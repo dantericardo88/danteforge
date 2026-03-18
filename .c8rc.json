@@ -1,0 +1,7 @@
+{
+  "reporter": ["text", "json-summary", "html"],
+  "report-dir": "coverage",
+  "all": true,
+  "src": ["src"],
+  "exclude": ["tests/**", "scripts/**", "dist/**", "node_modules/**", "vscode-extension/**"]
+}

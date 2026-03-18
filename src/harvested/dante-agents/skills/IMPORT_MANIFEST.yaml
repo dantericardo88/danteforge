@@ -1,0 +1,26 @@
+imports:
+  - bundle: Full-Stack Developer
+    imported_at: 2026-03-03T15:35:06.740Z
+    skills:
+      - senior-fullstack
+      - frontend-developer
+      - backend-dev-guidelines
+      - api-patterns
+      - database-design
+      - stripe-integration
+    source: antigravity
+    source_method: git
+    upstream_repo: https://github.com/sickn33/antigravity-awesome-skills.git
+  - bundle: Web Wizard
+    imported_at: 2026-03-03T15:35:06.240Z
+    skills:
+      - frontend-design
+      - react-best-practices
+      - react-patterns
+      - nextjs-best-practices
+      - tailwind-patterns
+      - form-cro
+      - seo-audit
+    source: antigravity
+    source_method: git
+    upstream_repo: https://github.com/sickn33/antigravity-awesome-skills.git

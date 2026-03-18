@@ -1,0 +1,53 @@
+name: Live Canary
+
+on:
+  workflow_dispatch:
+    inputs:
+      providers:
+        description: Comma-separated providers to exercise (openai, claude, gemini, grok, ollama)
+        required: false
+        default: openai,claude
+  schedule:
+    - cron: '0 13 * * 1'
+
+concurrency:
+  group: danteforge-live-canary
+  cancel-in-progress: false
+
+jobs:
+  live-canary:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    env:
+      OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+      ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+      GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+      XAI_API_KEY: ${{ secrets.XAI_API_KEY }}
+      OLLAMA_MODEL: ${{ vars.OLLAMA_MODEL }}
+      OLLAMA_BASE_URL: ${{ vars.OLLAMA_BASE_URL }}
+      ANTIGRAVITY_BUNDLES_URL: ${{ vars.ANTIGRAVITY_BUNDLES_URL }}
+      FIGMA_MCP_URL: ${{ vars.FIGMA_MCP_URL }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Resolve live provider matrix
+        shell: bash
+        run: |
+          if [ -n "${{ github.event.inputs.providers }}" ]; then
+            echo "DANTEFORGE_LIVE_PROVIDERS=${{ github.event.inputs.providers }}" >> "$GITHUB_ENV"
+          elif [ -n "${{ vars.DANTEFORGE_LIVE_PROVIDERS }}" ]; then
+            echo "DANTEFORGE_LIVE_PROVIDERS=${{ vars.DANTEFORGE_LIVE_PROVIDERS }}" >> "$GITHUB_ENV"
+          else
+            echo "DANTEFORGE_LIVE_PROVIDERS=openai,claude" >> "$GITHUB_ENV"
+          fi
+
+      - run: npm ci
+      - run: npm run build
+      - run: npm run check:cli-smoke
+      - run: npm run verify:live

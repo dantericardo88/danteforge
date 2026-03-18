@@ -1,0 +1,56 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+
+jobs:
+  publish-npm:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          registry-url: https://registry.npmjs.org
+
+      - run: npm run check:repo-hygiene:strict
+
+      - name: Install root dependencies
+        run: npm ci
+
+      - name: Install VS Code extension dependencies
+        run: npm ci
+        working-directory: vscode-extension
+
+      - run: npm run release:check
+      - run: npm audit --omit=dev
+      - run: npm --prefix vscode-extension audit --omit=dev
+
+      - run: npm --prefix vscode-extension run package:vsix
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: danteforge-vscode-vsix
+          path: vscode-extension/.artifacts/danteforge.vsix
+
+      - run: npm publish --provenance
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+
+      - run: npm --prefix vscode-extension run publish:vsce
+        if: ${{ secrets.VSCE_PAT != '' }}
+        env:
+          VSCE_PAT: ${{ secrets.VSCE_PAT }}
+
+      - run: npm --prefix vscode-extension run publish:ovsx
+        if: ${{ secrets.OVSX_PAT != '' }}
+        env:
+          OVSX_PAT: ${{ secrets.OVSX_PAT }}

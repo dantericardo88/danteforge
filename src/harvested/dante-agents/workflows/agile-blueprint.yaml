@@ -1,0 +1,6 @@
+# Harvested from BMAD workflows/ (34+ patterns, MIT)
+name: Dante Agile Sprint
+agents: [PM, Architect, Dev, UX]
+steps:
+  - specify -> clarify -> plan -> forge -> verify
+  - parallel: [UI, Backend]

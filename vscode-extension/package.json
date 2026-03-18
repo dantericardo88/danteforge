@@ -1,0 +1,92 @@
+{
+  "name": "danteforge-vscode",
+  "displayName": "DanteForge",
+  "description": "Agentic development workflow — structured specs, execution waves, and multi-agent orchestration inside VS Code",
+  "version": "0.8.0",
+  "publisher": "danteforge",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/danteforge/danteforge.git"
+  },
+  "homepage": "https://github.com/danteforge/danteforge",
+  "bugs": {
+    "url": "https://github.com/danteforge/danteforge/issues"
+  },
+  "engines": {
+    "vscode": "^1.85.0"
+  },
+  "categories": [
+    "Programming Languages",
+    "AI"
+  ],
+  "activationEvents": [
+    "onCommand:danteforge.setup",
+    "onCommand:danteforge.constitution",
+    "onCommand:danteforge.specify",
+    "onCommand:danteforge.review",
+    "onCommand:danteforge.verify",
+    "onCommand:danteforge.doctor",
+    "onCommand:danteforge.forge",
+    "onCommand:danteforge.party",
+    "onCommand:danteforge.magic"
+  ],
+  "main": "./dist/extension.js",
+  "contributes": {
+    "commands": [
+      {
+        "command": "danteforge.setup",
+        "title": "DanteForge: Setup Help"
+      },
+      {
+        "command": "danteforge.constitution",
+        "title": "DanteForge: Constitution"
+      },
+      {
+        "command": "danteforge.specify",
+        "title": "DanteForge: Specify Idea"
+      },
+      {
+        "command": "danteforge.review",
+        "title": "DanteForge: Review Project"
+      },
+      {
+        "command": "danteforge.verify",
+        "title": "DanteForge: Verify State"
+      },
+      {
+        "command": "danteforge.doctor",
+        "title": "DanteForge: Doctor"
+      },
+      {
+        "command": "danteforge.forge",
+        "title": "DanteForge: Forge Wave"
+      },
+      {
+        "command": "danteforge.party",
+        "title": "DanteForge: Party Mode"
+      },
+      {
+        "command": "danteforge.magic",
+        "title": "DanteForge: Magic Mode"
+      }
+    ]
+  },
+  "scripts": {
+    "build": "tsc -p .",
+    "watch": "tsc -p . --watch",
+    "package:vsix": "node -e \"require('fs').mkdirSync('.artifacts',{recursive:true})\" && vsce package --no-dependencies --out .artifacts/danteforge.vsix",
+    "publish:vsce": "vsce publish",
+    "publish:ovsx": "ovsx publish .artifacts/danteforge.vsix",
+    "verify": "npm run build && npm run package:vsix"
+  },
+  "devDependencies": {
+    "@types/vscode": "^1.85.0",
+    "@vscode/vsce": "^3.7.1",
+    "ovsx": "^0.10.9",
+    "typescript": "^5.7.2"
+  },
+  "overrides": {
+    "undici": "^7.24.4"
+  }
+}

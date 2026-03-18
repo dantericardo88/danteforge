@@ -1,0 +1,9 @@
+{
+  "SessionStart": [
+    {
+      "matcher": "startup|resume|clear|compact",
+      "command": "node '${CLAUDE_PLUGIN_ROOT}/hooks/run-hook.mjs' session-start",
+      "async": false
+    }
+  ]
+}

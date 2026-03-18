@@ -1,0 +1,52 @@
+# Dependencies
+node_modules/
+
+# Build output
+dist/
+vscode-extension/dist/
+vscode-extension/.artifacts/
+*.vsix
+
+# DanteForge runtime state (per-project, not shared)
+.danteforge/
+
+# Worktrees created by DanteForge agents
+.danteforge-worktrees/
+
+# Logs
+*.log
+
+# OS
+.DS_Store
+Thumbs.db
+Desktop.ini
+
+# Editors
+.vscode/settings.json
+*.swp
+*.swo
+*~
+
+# Secrets (never commit API keys)
+.env
+.env.*
+
+# DanteForge .op intermediates
+*.op.raw
+*.op.wip
+.danteforge/design-preview.html
+
+# Test runner output (contains local machine paths)
+test_output.tap
+test_output.txt
+
+# Code coverage reports
+coverage/
+
+# Local dev tool caches
+.claude/
+.cursor/
+.dantecode/
+
+# Binary docs (prefer .md)
+*.docx

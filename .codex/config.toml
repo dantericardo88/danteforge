@@ -1,0 +1,23 @@
+# DanteForge v0.7.0 Codex bootstrap
+project_root_markers = [".git", "package.json", "AGENTS.md"]
+
+[commands]
+install = "npm ci"
+repo-verify = "npm run verify"
+verify-all = "npm run verify:all"
+anti-stub = "npm run check:anti-stub"
+build = "npm run build"
+test = "npm test"
+lint = "npm run lint"
+hygiene = "npm run check:repo-hygiene"
+release-check = "npm run release:check"
+release-strict = "npm run release:check:strict"
+release-ga = "npm run release:ga"
+
+# DanteForge CLI utilities that do not collide with native workflow slash commands
+setup-assistants = "npx danteforge setup assistants --assistants codex"
+doctor = "npx danteforge doctor"
+doctor-live = "npx danteforge doctor --live"
+df-verify = "npx danteforge verify"
+verify-release = "npx danteforge verify --release"
+feedback = "npx danteforge feedback"

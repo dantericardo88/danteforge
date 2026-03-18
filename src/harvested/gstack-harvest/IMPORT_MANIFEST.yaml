@@ -1,0 +1,54 @@
+# GStack Harvest — Import Manifest
+# Skills imported and wrapped for DanteForge v0.8.0
+version: 0.8.0
+source: gstack-harvest
+imported_at: 2026-03-13
+
+skills:
+  - name: browser-inspect
+    domain: fullstack
+    path: skills/browser-inspect/SKILL.md
+    checklist: skills/browser-inspect/checklist.md
+    requires:
+      - browse-binary
+    integrates:
+      - verify
+      - ux-refine
+      - qa
+
+  - name: qa-lead
+    domain: testing
+    path: skills/qa-lead/SKILL.md
+    checklist: skills/qa-lead/checklist.md
+    requires:
+      - browse-binary
+    integrates:
+      - autoforge-loop
+      - verify
+      - completion-tracker
+
+  - name: retro
+    domain: general
+    path: skills/retro/SKILL.md
+    integrates:
+      - autoforge-loop
+      - synthesize
+      - lessons-index
+
+  - name: ceo-review
+    domain: architecture
+    path: skills/ceo-review/SKILL.md
+    integrates:
+      - specify
+      - plan
+      - autoforge-loop
+      - pdse
+
+  - name: paranoid-review
+    domain: security
+    path: skills/paranoid-review/SKILL.md
+    checklist: skills/paranoid-review/checklist.md
+    integrates:
+      - ship
+      - code-reviewer
+      - autoforge-loop
