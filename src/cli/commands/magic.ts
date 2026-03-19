@@ -3,6 +3,8 @@ import { readFile, writeFile, unlink, mkdir } from "node:fs/promises";
 import { join, dirname } from "node:path";
 import { logger } from "../../core/logger.js";
 import { loadState, saveState } from "../../core/state.js";
+import { createTelemetry, recordToolCall, recordBashCommand, type ExecutionTelemetry } from "../../core/execution-telemetry.js";
+import { detectLoop } from "../../core/loop-detector.js";
 import {
   DEFAULT_MAGIC_LEVEL,
   MAGIC_PRESETS,
@@ -188,6 +190,7 @@ async function runMagicPreset(
 
   const results = [...checkpoint.completedResults];
   const startIndex = checkpoint.currentStepIndex;
+  const pipelineTelemetry = createTelemetry();
 
   for (let i = startIndex; i < plan.steps.length; i++) {
     const step = plan.steps[i]!;
@@ -242,6 +245,12 @@ async function runMagicPreset(
       logger.success(
         `[${effectiveLevel}] ${label} complete (${(durationMs / 1000).toFixed(1)}s)`,
       );
+      // Track successful step as a write operation
+      recordToolCall(pipelineTelemetry, step.kind, true);
+    } else {
+      // Track failed step — record retry bash commands for loop detection
+      recordBashCommand(pipelineTelemetry, `${step.kind} (failed)`);
+      recordToolCall(pipelineTelemetry, step.kind, false);
     }
 
     // Update checkpoint after step completion (success or skip)
@@ -253,6 +262,19 @@ async function runMagicPreset(
 
   const failed = results.some((result) => result.status === "fail");
   const totalDur = Date.now() - magicStart;
+
+  // Pipeline-level loop detection
+  const loopResult = detectLoop(pipelineTelemetry);
+  if (loopResult.detected) {
+    logger.warn("");
+    logger.warn(`Loop detected: ${loopResult.type} loop (${loopResult.severity})`);
+    logger.warn(`Evidence: ${loopResult.evidence}`);
+    if (loopResult.type === "planning") {
+      logger.warn("Pipeline is reading without making progress. Consider running `danteforge forge` directly.");
+    } else {
+      logger.warn("Pipeline is repeating failed steps. Check errors above and fix the root cause.");
+    }
+  }
 
   logger.info("");
   logger.info("=".repeat(60));

@@ -5,6 +5,7 @@ import { promisify } from 'node:util';
 import { loadState, recordWorkflowStage, saveState, type WorkflowStage } from '../../core/state.js';
 import { detectProjectType, type ProjectType } from '../../core/completion-tracker.js';
 import { logger } from '../../core/logger.js';
+import { detectAIDrift } from '../../core/drift-detector.js';
 
 const execAsync = promisify(exec);
 const execFileAsync = promisify(execFile);
@@ -222,6 +223,47 @@ export async function verify(options: { release?: boolean; live?: boolean; url?:
     result.passed.push(`Audit log has ${state.auditLog.length} entries`);
   } else {
     result.failures.push('Audit log is empty - no actions recorded yet');
+  }
+
+  // AI drift detection on source files
+  try {
+    const srcDir = path.join(process.cwd(), 'src');
+    if (await fileExists(srcDir)) {
+      const { execSync } = await import('node:child_process');
+      let modifiedFiles: string[] = [];
+      try {
+        const gitOutput = execSync('git diff --name-only HEAD~1 -- src/', {
+          cwd: process.cwd(),
+          encoding: 'utf8',
+          timeout: 10000,
+        }).trim();
+        modifiedFiles = gitOutput ? gitOutput.split('\n').filter(Boolean) : [];
+      } catch {
+        // Git not available or no commits — skip drift check
+      }
+
+      if (modifiedFiles.length > 0) {
+        const driftViolations = await detectAIDrift(modifiedFiles);
+        const blockers = driftViolations.filter(v => v.severity === 'BLOCKER');
+        const warnings = driftViolations.filter(v => v.severity !== 'BLOCKER');
+
+        if (blockers.length > 0) {
+          for (const v of blockers) {
+            result.failures.push(`Drift: ${v.message}${v.file ? ` (${v.file})` : ''}`);
+          }
+        }
+        if (warnings.length > 0) {
+          for (const v of warnings) {
+            result.warnings.push(`Drift: ${v.message}${v.file ? ` (${v.file})` : ''}`);
+          }
+        }
+        if (driftViolations.length === 0) {
+          result.passed.push(`AI drift scan clean (${modifiedFiles.length} file${modifiedFiles.length === 1 ? '' : 's'} checked)`);
+        }
+      }
+    }
+  } catch {
+    // Drift detection should not block verification
   }
 
   // Live browser verification

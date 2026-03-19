@@ -20,6 +20,7 @@ import {
   detectProjectType,
 } from '../../core/completion-tracker.js';
 import { SCORE_THRESHOLDS, ARTIFACT_COMMAND_MAP } from '../../core/pdse-config.js';
+import { loadLatestVerdict } from '../../core/reflection-engine.js';
 
 export async function autoforge(goal?: string, options: {
   dryRun?: boolean;
@@ -102,6 +103,21 @@ export async function autoforge(goal?: string, options: {
   if (result.paused) {
     logger.info(`Paused after ${maxWaves} waves. Run \`danteforge autoforge\` again to continue.`);
   }
+
+  // Show reflection score if available
+  try {
+    const verdict = await loadLatestVerdict();
+    if (verdict) {
+      const score = Math.round(verdict.confidence * 100);
+      logger.info('');
+      logger.info(`Reflection: ${score}/100 (${verdict.status})${verdict.stuck ? ' [STUCK]' : ''}`);
+      if (verdict.remainingWork.length > 0) {
+        logger.warn(`Remaining: ${verdict.remainingWork.slice(0, 3).join(', ')}`);
+      }
+    }
+  } catch {
+    // Reflection not available — no problem
+  }
 }
 
 // ── Score-only mode ─────────────────────────────────────────────────────────
@@ -152,6 +168,14 @@ async function runScoreOnlyMode(): Promise<void> {
 
   logger.info('');
   logger.info(`Overall completion:  ${tracker.overall}%`);
+
+  // Reflection score (from last reflection verdict)
+  const verdict = await loadLatestVerdict(cwd);
+  if (verdict) {
+    const reflectionScore = Math.round(verdict.confidence * 100);
+    const reflectionIcon = reflectionScore >= 80 ? '✓' : reflectionScore >= 50 ? '⚠' : '✗';
+    logger.info(`Reflection score:    ${reflectionScore}  ${reflectionIcon} (${verdict.status})`);
+  }
 
   // Find bottleneck
   const bottleneck = findBottleneck(scores);
@@ -230,6 +254,12 @@ function buildGuidanceMarkdown(
     '## Estimated Steps to Completion',
     `${tracker.projectedCompletion}`,
   ];
+
+  // Append reflection score if available (async not possible here, so read state)
+  if (typeof globalThis !== 'undefined') {
+    lines.push('', '## Reflection Score');
+    lines.push('_Run `danteforge autoforge --score-only` to see latest reflection verdict._');
+  }
 
   return lines.join('\n') + '\n';
 }
