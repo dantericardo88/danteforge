@@ -1,13 +1,6 @@
 ---
 name: blaze
 description: "High-power preset - full party plus strong autoforge and self-improvement cleanup"
-contract_version: "danteforge.workflow/v1"
-stages: [party, autoforge, compact]
-execution_mode: freeform
-failure_policy: continue
-rollback_policy: preserve_untracked
-worktree_policy: preferred
-verification_required: true
 ---
 
 # /blaze - High-Power Preset

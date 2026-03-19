@@ -1,13 +1,6 @@
 ---
 name: forge
 description: "Execute GSD waves — build the specified feature with Dante Agents"
-contract_version: "danteforge.workflow/v1"
-stages: [wave_execute, verify]
-execution_mode: staged
-failure_policy: continue
-rollback_policy: preserve_untracked
-worktree_policy: preferred
-verification_required: true
 ---
 
 # /forge — GSD Wave Execution

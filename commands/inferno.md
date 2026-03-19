@@ -49,3 +49,14 @@ CLI parity: `danteforge inferno [goal]`
 - Only use `GitCommit` after a real `Edit` or `Write` tool result.
 - Use `Bash` only for: `npm run typecheck`, `npm test`, `npm run lint`, `gh` CLI, or safe read-only operations.
 - If `npm run typecheck` fails on a new package you created, **fix the TypeScript errors** — do NOT delete the package.
+
+**SEQUENTIAL VERIFICATION — after every Bash command, verify before proceeding**:
+- After `git clone <url> <dir>`: use `ListDir` to confirm `<dir>` exists BEFORE reading files inside it.
+- After any Bash that creates directories: verify with `ListDir` before referencing them.
+- After `Write <file>`: wait for the SUCCESS result. If you see an error, fix it — do NOT proceed as if it succeeded.
+- Tool calls run ONE AT A TIME. Each result is available before the next tool runs. Use this to verify.
+
+**JSON TOOL CALL FORMAT** — malformed JSON causes SILENT DROPS (file never written, command never ran):
+- Double quotes inside string values MUST be escaped: `\"`
+- Backslashes MUST be escaped: `\\`
+- Newlines inside string values MUST be `\n` — never a real newline character inside a JSON string.
