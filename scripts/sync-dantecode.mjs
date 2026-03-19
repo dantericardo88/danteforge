@@ -182,6 +182,21 @@ if (existsSync(cacheDir)) {
     }
     console.log(`[sync-dantecode] Updated plugin cache at ${cacheDir}`);
   }
+
+  // Sync commands/ directory to plugin cache
+  const srcCommands = resolve("commands");
+  const cacheCommands = join(cacheDir, "commands");
+  if (existsSync(srcCommands)) {
+    const { readdirSync } = await import("node:fs");
+    mkdirSync(cacheCommands, { recursive: true });
+    const cmdFiles = readdirSync(srcCommands).filter((f) => f.endsWith(".md"));
+    let synced = 0;
+    for (const file of cmdFiles) {
+      copyFileSync(join(srcCommands, file), join(cacheCommands, file));
+      synced++;
+    }
+    console.log(`[sync-dantecode] Synced ${synced} command files to plugin cache`);
+  }
 } else {
   console.log(`[sync-dantecode] Plugin cache for v${version} not found — skipping cache update`);
 }
