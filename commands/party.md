@@ -1,6 +1,13 @@
 ---
 name: party
 description: "Launch Dante Party Mode — multi-agent collaboration with isolated worktrees"
+contract_version: "danteforge.workflow/v1"
+stages: [spawn_lanes, execute_parallel, merge, verify]
+execution_mode: freeform
+failure_policy: continue
+rollback_policy: preserve_untracked
+worktree_policy: required
+verification_required: true
 ---
 
 # /party — Dante Party Mode
@@ -21,3 +28,15 @@ When the user invokes `/party`, follow this workflow:
 
 Use the `subagent-driven-development` skill for dispatch and review.
 Use the `using-git-worktrees` skill for worktree isolation.
+
+## TOOL SAFETY RULES — All Models Must Follow
+
+**NEVER run** these commands — they destroy all in-progress work:
+- `git clean` (any flags) — deletes untracked files
+- `git checkout -- .` — discards unstaged changes
+- `git reset --hard/--merge` — discards ALL changes
+- `git stash --include-untracked` — stashes new files away
+- `rm -rf packages/<name>` or `rm -rf src/<name>` — deletes newly-written directories
+
+**DO**: Read → Edit/Write → GitCommit. Always Read before editing. Only GitCommit after real file edits.
+**If typecheck fails on a new package you created**: fix the TypeScript errors with Edit — do NOT delete the package.

@@ -1,6 +1,13 @@
 ---
 name: autoforge
 description: "Deterministic auto-orchestration — score artifacts, plan next steps, execute pipeline"
+contract_version: "danteforge.workflow/v1"
+stages: [score, analyze, plan, execute, report]
+execution_mode: staged
+failure_policy: continue
+rollback_policy: preserve_untracked
+worktree_policy: preferred
+verification_required: true
 ---
 
 # /autoforge — Autonomous Pipeline Orchestration
@@ -29,3 +36,16 @@ Options:
 - `--prompt` — Generate copy-paste prompt describing what autoforge would do
 
 CLI fallback only on explicit request: `danteforge autoforge [goal]`
+
+## TOOL SAFETY RULES — All Models Must Follow
+
+**NEVER run** these commands — they destroy all in-progress work:
+- `git clean` (any flags) — deletes untracked files
+- `git checkout -- .` — discards unstaged changes
+- `git reset --hard/--merge` — discards ALL changes
+- `git stash --include-untracked` — stashes new files away
+- `rm -rf packages/<name>` or `rm -rf src/<name>` — deletes newly-written directories
+
+**DO**: Read → Edit/Write → GitCommit. Always Read before editing. Only GitCommit after real file edits.
+**Bash allowed for**: `npm run typecheck`, `npm test`, `npm run lint`, read-only git status queries.
+**If typecheck fails on a new package you created**: fix the TypeScript errors with Edit — do NOT delete the package.

@@ -1,6 +1,13 @@
 ---
 name: magic
 description: "Balanced default preset - token-efficient follow-up work with autoforge reliability and lessons"
+contract_version: "danteforge.workflow/v1"
+stages: [autoforge, lessons]
+execution_mode: freeform
+failure_policy: continue
+rollback_policy: preserve_untracked
+worktree_policy: preferred
+verification_required: true
 ---
 
 # /magic - Balanced Default Preset
@@ -39,3 +46,15 @@ Usage rule:
 - All follow-up PRD gap closing -> `/magic`
 
 CLI parity: `danteforge magic [goal]`
+
+## TOOL SAFETY RULES — All Models Must Follow
+
+**NEVER run** these commands — they destroy all in-progress work:
+- `git clean` (any flags) — deletes untracked files
+- `git checkout -- .` — discards unstaged changes
+- `git reset --hard/--merge` — discards ALL changes
+- `git stash --include-untracked` — stashes new files away
+- `rm -rf packages/<name>` or `rm -rf src/<name>` — deletes newly-written directories
+
+**DO**: Read → Edit/Write → GitCommit. Always Read before editing. Only GitCommit after real file edits.
+**If typecheck fails on a new package you created**: fix the TypeScript errors with Edit — do NOT delete the package.

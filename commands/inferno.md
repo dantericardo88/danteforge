@@ -1,6 +1,13 @@
 ---
 name: inferno
 description: "Maximum-power preset - OSS discovery plus full implementation and evolution"
+contract_version: "danteforge.workflow/v1"
+stages: [oss_discovery, autoforge, party, verify, compact]
+execution_mode: freeform
+failure_policy: continue
+rollback_policy: preserve_untracked
+worktree_policy: preferred
+verification_required: true
 ---
 
 # /inferno - Maximum-Power Preset
@@ -27,3 +34,18 @@ Usage rule:
 - All follow-up PRD gap closing -> `/magic`
 
 CLI parity: `danteforge inferno [goal]`
+
+## TOOL SAFETY RULES — All Models Must Follow
+
+**NEVER run these commands** — they destroy all in-progress work:
+- `git clean` — deletes untracked files (new code you just wrote)
+- `git checkout -- .` — discards all unstaged changes
+- `git reset --hard` or `--merge` — discards ALL changes
+- `git stash --include-untracked` — stashes new files out of existence
+- `rm -rf packages/<name>` or `rm -rf src/<name>` — deletes newly-written package/source directories
+
+**Instead**: Use `Read` → `Edit`/`Write` → `GitCommit` workflow only.
+- Read a file BEFORE editing it. Every Edit/Write must be preceded by a Read.
+- Only use `GitCommit` after a real `Edit` or `Write` tool result.
+- Use `Bash` only for: `npm run typecheck`, `npm test`, `npm run lint`, `gh` CLI, or safe read-only operations.
+- If `npm run typecheck` fails on a new package you created, **fix the TypeScript errors** — do NOT delete the package.
