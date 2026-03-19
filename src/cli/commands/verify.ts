@@ -3,6 +3,7 @@ import path from 'path';
 import { exec, execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import { loadState, recordWorkflowStage, saveState, type WorkflowStage } from '../../core/state.js';
+import { detectProjectType, type ProjectType } from '../../core/completion-tracker.js';
 import { logger } from '../../core/logger.js';
 
 const execAsync = promisify(exec);
@@ -14,6 +15,11 @@ interface VerifyResult {
   passed: string[];
   warnings: string[];
   failures: string[];
+}
+
+interface CurrentStateMetadata {
+  version?: string;
+  projectType?: ProjectType;
 }
 
 async function fileExists(filePath: string): Promise<boolean> {
@@ -67,6 +73,74 @@ async function runReleaseVerification(result: VerifyResult): Promise<void> {
   }
 }
 
+function normalizeMarkdownValue(value: string | undefined): string | undefined {
+  return value?.replace(/`/g, '').trim();
+}
+
+function parseCurrentStateMetadata(content: string): CurrentStateMetadata {
+  const capture = (patterns: RegExp[]): string | undefined => {
+    for (const pattern of patterns) {
+      const match = pattern.exec(content);
+      const value = normalizeMarkdownValue(match?.[1]);
+      if (value) return value;
+    }
+    return undefined;
+  };
+
+  const version = capture([
+    /^\|\s*Version\s*\|\s*([^|\n]+?)\s*\|$/im,
+    /^\s*-\s*\*\*Version\*\*:\s*(.+?)\s*$/im,
+  ]);
+
+  const rawProjectType = capture([
+    /^\|\s*(?:Detected project type|Project type)\s*\|\s*([^|\n]+?)\s*\|$/im,
+    /^\s*-\s*\*\*(?:Detected project type|Project type)\*\*:\s*(.+?)\s*$/im,
+  ]);
+
+  const projectType = rawProjectType && ['web', 'cli', 'library', 'unknown'].includes(rawProjectType.toLowerCase())
+    ? rawProjectType.toLowerCase() as ProjectType
+    : undefined;
+
+  return { version, projectType };
+}
+
+async function readWorkspacePackageVersion(): Promise<string | undefined> {
+  try {
+    const pkg = JSON.parse(await fs.readFile('package.json', 'utf8')) as { version?: string };
+    return typeof pkg.version === 'string' && pkg.version.trim().length > 0
+      ? pkg.version.trim()
+      : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+async function validateCurrentStateFreshness(result: VerifyResult): Promise<void> {
+  const artifactPath = path.join(STATE_DIR, 'CURRENT_STATE.md');
+  if (!(await fileExists(artifactPath))) return;
+
+  const content = await fs.readFile(artifactPath, 'utf8');
+  const metadata = parseCurrentStateMetadata(content);
+  const packageVersion = await readWorkspacePackageVersion();
+  const actualProjectType = await detectProjectType(process.cwd());
+
+  if (packageVersion && metadata.version) {
+    if (metadata.version === packageVersion) {
+      result.passed.push(`CURRENT_STATE.md version matches package.json (${packageVersion})`);
+    } else {
+      result.failures.push(`CURRENT_STATE.md version is stale (${metadata.version}); expected ${packageVersion} from package.json`);
+    }
+  }
+
+  if (metadata.projectType) {
+    if (metadata.projectType === actualProjectType) {
+      result.passed.push(`CURRENT_STATE.md project type matches detected repo type (${actualProjectType})`);
+    } else {
+      result.failures.push(`CURRENT_STATE.md project type is stale (${metadata.projectType}); expected ${actualProjectType}`);
+    }
+  }
+}
+
 export async function verify(options: { release?: boolean; live?: boolean; url?: string; recompute?: boolean } = {}) {
   logger.info('Running verification checks...');
 
@@ -90,7 +164,6 @@ export async function verify(options: { release?: boolean; live?: boolean; url?:
   }
 
   if (options.recompute) {
-    const { detectProjectType } = await import('../../core/completion-tracker.js');
     state.projectType = await detectProjectType(process.cwd());
     logger.info(`Project type re-detected: ${state.projectType}`);
   }
@@ -102,6 +175,7 @@ export async function verify(options: { release?: boolean; live?: boolean; url?:
   }
 
   await assertArtifact(result, 'CURRENT_STATE.md', 'Repo review');
+  await validateCurrentStateFreshness(result);
   await assertArtifact(result, 'CONSTITUTION.md', 'Constitution');
   await assertArtifact(result, 'SPEC.md', 'Specification');
   await assertArtifact(result, 'CLARIFY.md', 'Clarification');

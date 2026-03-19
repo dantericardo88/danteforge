@@ -73,7 +73,11 @@ describe('assistant skill install', () => {
     });
 
     assert.deepStrictEqual(result.assistants.map(entry => entry.assistant), ['cursor']);
-    await fs.access(path.join(projectDir, '.cursor', 'rules', 'danteforge.mdc'));
+    const cursorRulePath = path.join(projectDir, '.cursor', 'rules', 'danteforge.mdc');
+    await fs.access(cursorRulePath);
+    const cursorRule = await fs.readFile(cursorRulePath, 'utf8');
+    assert.match(cursorRule, /danteforge inferno/);
+    assert.match(cursorRule, /danteforge harvest/);
   });
 
   it('exports a setupAssistants command', async () => {
@@ -101,6 +105,7 @@ describe('assistant skill install', () => {
         '[commands]',
         'custom = "echo hello"',
         'autoforge = "npx danteforge autoforge"',
+        'inferno = "npx danteforge inferno"',
         '',
         '[windows]',
         'sandbox = "elevated"',
@@ -122,6 +127,7 @@ describe('assistant skill install', () => {
     assert.match(codexConfig, /\[commands\][\s\S]*custom = "echo hello"/);
     assert.match(codexConfig, /\[commands\][\s\S]*setup-assistants = "npx danteforge setup assistants --assistants codex"/);
     assert.doesNotMatch(codexConfig, /^autoforge\s*=/m);
+    assert.doesNotMatch(codexConfig, /^inferno\s*=/m);
   });
 
   it('merges the Codex global bootstrap into an existing AGENTS.md without dropping user content', async () => {

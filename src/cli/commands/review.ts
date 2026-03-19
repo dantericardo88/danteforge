@@ -4,6 +4,7 @@ import fs from 'fs/promises';
 import path from 'path';
 import { simpleGit } from 'simple-git';
 import { loadState, saveState } from '../../core/state.js';
+import { detectProjectType } from '../../core/completion-tracker.js';
 import { logger } from '../../core/logger.js';
 import { handoff } from '../../core/handoff.js';
 import { buildReviewPrompt, savePrompt, displayPrompt } from '../../core/prompt-builder.js';
@@ -143,6 +144,7 @@ export async function review(options: { prompt?: boolean } = {}) {
   const existingDocs = await getExistingDocs();
 
   const projectName = pkg?.name ?? path.basename(process.cwd());
+  const projectType = await detectProjectType(process.cwd());
   const timestamp = new Date().toISOString();
 
   if (sourceFiles.length < fullFileTree.length) {
@@ -152,6 +154,7 @@ export async function review(options: { prompt?: boolean } = {}) {
   // --prompt mode: generate a copy-paste prompt for Claude Code / ChatGPT
   if (options.prompt) {
     const state = await loadState();
+    state.projectType = projectType;
     const prompt = buildReviewPrompt({
       projectName,
       constitution: state.constitution,
@@ -187,6 +190,7 @@ export async function review(options: { prompt?: boolean } = {}) {
   const llmAvailable = await isLLMAvailable();
   if (llmAvailable) {
     const state = await loadState();
+    state.projectType = projectType;
     logger.info('LLM provider available - sending to LLM for deep review...');
 
     const prompt = buildReviewPrompt({
@@ -220,6 +224,7 @@ export async function review(options: { prompt?: boolean } = {}) {
         await fs.writeFile(path.join(STATE_DIR, 'CURRENT_STATE.md'), stateMd);
 
         resetExecutionStateForReview(state);
+        state.projectType = projectType;
         state.auditLog.push(`${timestamp} | review: CURRENT_STATE.md generated via API (${chunks.length} chunks, ${sourceFiles.length} source files)`);
         await saveState(state);
         await handoff('review', { stateFile: 'CURRENT_STATE.md' });
@@ -239,6 +244,7 @@ export async function review(options: { prompt?: boolean } = {}) {
         await fs.writeFile(path.join(STATE_DIR, 'CURRENT_STATE.md'), stateMd);
 
         resetExecutionStateForReview(state);
+        state.projectType = projectType;
         state.auditLog.push(`${timestamp} | review: CURRENT_STATE.md generated via API (${sourceFiles.length} source files)`);
         await saveState(state);
         await handoff('review', { stateFile: 'CURRENT_STATE.md' });
@@ -263,6 +269,7 @@ export async function review(options: { prompt?: boolean } = {}) {
   sections.push('## Project Overview');
   sections.push(`- **Name**: ${projectName}`);
   if (pkg?.version) sections.push(`- **Version**: ${pkg.version}`);
+  sections.push(`- **Detected project type**: \`${projectType}\``);
   sections.push(`- **Git**: ${isGitRepo ? 'Yes' : 'No'}`);
   sections.push(`- **Working Directory**: ${process.cwd()}`);
   sections.push(`- **Source files**: ${sourceFiles.length} (of ${fullFileTree.length} total)`);
@@ -346,6 +353,7 @@ export async function review(options: { prompt?: boolean } = {}) {
 
   const state = await loadState();
   resetExecutionStateForReview(state);
+  state.projectType = projectType;
   state.auditLog.push(`${timestamp} | review: CURRENT_STATE.md generated locally (${sourceFiles.length} source files)`);
   await saveState(state);
 
