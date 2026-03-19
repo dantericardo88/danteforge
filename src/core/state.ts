@@ -71,6 +71,14 @@ export interface DanteState {
   retroDelta?: number;
   retroLastRun?: string;
   completionTracker?: CompletionTracker;
+  // v0.9.0 — Reflection Engine + Premium
+  reflectionEnabled?: boolean;
+  reflectionAttempts?: number;
+  reflectionLastVerdict?: string;
+  reflectionScore?: number;
+  premiumTier?: 'free' | 'pro' | 'enterprise';
+  premiumLicenseKey?: string;
+  auditTrailEnabled?: boolean;
 }
 
 export function recordWorkflowStage(
@@ -177,6 +185,14 @@ export async function loadState(options: { cwd?: string } = {}): Promise<DanteSt
       retroDelta: parsed?.retroDelta as number | undefined,
       retroLastRun: parsed?.retroLastRun as string | undefined,
       completionTracker: parsed?.completionTracker as CompletionTracker | undefined,
+      // v0.9.0 migration defaults
+      reflectionEnabled: parsed?.reflectionEnabled,
+      reflectionAttempts: parsed?.reflectionAttempts,
+      reflectionLastVerdict: parsed?.reflectionLastVerdict,
+      reflectionScore: parsed?.reflectionScore,
+      premiumTier: parsed?.premiumTier as 'free' | 'pro' | 'enterprise' | undefined,
+      premiumLicenseKey: parsed?.premiumLicenseKey,
+      auditTrailEnabled: parsed?.auditTrailEnabled,
     };
   } catch (err) {
     // Only log if this is NOT a "file not found" — real errors should surface
@@ -219,6 +235,14 @@ export async function loadState(options: { cwd?: string } = {}): Promise<DanteSt
       retroDelta: undefined,
       retroLastRun: undefined,
       completionTracker: undefined,
+      // v0.9.0 defaults
+      reflectionEnabled: undefined,
+      reflectionAttempts: undefined,
+      reflectionLastVerdict: undefined,
+      reflectionScore: undefined,
+      premiumTier: undefined,
+      premiumLicenseKey: undefined,
+      auditTrailEnabled: undefined,
     };
     await saveState(defaultState, options);
     return defaultState;

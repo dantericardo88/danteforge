@@ -400,9 +400,15 @@ program
   .option('--lite', 'Run in SEP-LITE mode (Steps 1-3 + 5 only, 2-3 donors, 2-4 organs)')
   .action(commands.harvest);
 
+program
+  .command('premium [subcommand]')
+  .description('Manage premium tier, license, and audit trail')
+  .option('--key <key>', 'License key for activation')
+  .action((subcommand, opts) => commands.premium(subcommand ?? 'status', { key: opts.key }));
+
 // First-run detection — suggest init when no .danteforge/ exists
 program.hook('preAction', (_thisCommand, actionCommand) => {
-  const skip = new Set(['init', 'config', 'doctor', 'help', 'setup', 'skills', 'docs']);
+  const skip = new Set(['init', 'config', 'doctor', 'help', 'setup', 'skills', 'docs', 'premium']);
   if (skip.has(actionCommand.name())) return;
   if (!existsSync('.danteforge')) {
     logger.info('Tip: No .danteforge/ directory found. Run "danteforge init" to set up your project.');
@@ -427,7 +433,7 @@ Command Groups:
   Automation:     spark, ember, magic, blaze, inferno, autoforge, autoresearch, party
   Design:         design, ux-refine, browse, qa
   Intelligence:   tech-decide, debug, lessons, oss, harvest, retro
-  Tools:          config, setup, doctor, dashboard, compact, import, skills, ship
+  Tools:          config, setup, doctor, dashboard, compact, import, skills, ship, premium
   Meta:           help, review, feedback, update-mcp, awesome-scan, docs
 
 Run "danteforge help <command>" for detailed help on any command.

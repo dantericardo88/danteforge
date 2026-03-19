@@ -48,6 +48,8 @@ const expandedPatterns = [
 const fullyExemptFiles = [
   'pdse-config.ts',        // defines the anti-stub patterns themselves
   'check-anti-stub.mjs',   // this script references patterns by design
+  'drift-detector.ts',     // defines stub-detection regex patterns by design
+  'premium.ts',            // license validation stub is intentional (future implementation)
 ];
 
 // Files exempt from expanded pattern checks only (config, doctrine, docs, code-review tools)

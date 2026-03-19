@@ -41,3 +41,4 @@ export { autoResearch } from './autoresearch.js';
 export { ossResearcher } from './oss.js';
 export { init } from './init.js';
 export { docs } from './docs.js';
+export { premium } from './premium.js';

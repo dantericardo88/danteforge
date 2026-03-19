@@ -5,6 +5,8 @@ import { buildTaskPrompt, savePrompt, displayPrompt } from '../../../core/prompt
 import { isLLMAvailable, callLLM } from '../../../core/llm.js';
 import { recordMemory } from '../../../core/memory-engine.js';
 import { createAgentWorktree, removeAgentWorktree } from '../../../utils/worktree.js';
+import { reflect, evaluateVerdict, DEFAULT_REFLECTION_CONFIG } from '../../../core/reflection-engine.js';
+import { createTelemetry, recordToolCall, recordFileModified, type ExecutionTelemetry } from '../../../core/execution-telemetry.js';
 
 export const DEFAULT_TASK_TIMEOUT_MS = 300_000; // 5 minutes per task
 
@@ -89,12 +91,38 @@ export async function executeWave(
     const taskLabel = `[${index + 1}/${tasks.length}] ${task.name}`;
     logger.info(`Executing: ${taskLabel}`);
 
+    const telemetry: ExecutionTelemetry = createTelemetry();
+    const taskStart = Date.now();
+
     try {
+      recordToolCall(telemetry, 'callLLM', false);
       const taskPrompt = buildTaskPrompt(task, profile, state.constitution);
       const result = await callLLM(taskPrompt, undefined, { enrichContext: true });
       logger.success(`LLM result for "${task.name}" (${result.length} chars)`);
 
+      // Track file modifications from task metadata
+      for (const file of task.files ?? []) {
+        recordFileModified(telemetry, file);
+      }
+
+      recordToolCall(telemetry, 'verifyTask', false);
       const verified = await verifyTask(task, result);
+
+      // Reflection: structured self-assessment (harvested from Reflection-3 + Ralph Loop)
+      telemetry.duration = Date.now() - taskStart;
+      try {
+        const verdict = await reflect(task.name, result, telemetry);
+        const evaluation = evaluateVerdict(verdict, DEFAULT_REFLECTION_CONFIG);
+        if (!evaluation.complete) {
+          logger.warn(`Reflection: ${task.name} — ${evaluation.feedback}`);
+        }
+        // Update state with reflection score
+        state.reflectionScore = evaluation.score;
+        state.reflectionLastVerdict = verdict.timestamp;
+      } catch {
+        // Reflection should not block forge execution
+      }
+
       results.push({ task: task.name, success: verified });
     } catch (err) {
       const errMsg = err instanceof Error ? err.message : String(err);

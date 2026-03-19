@@ -4,6 +4,8 @@ import { isLLMAvailable } from '../../core/llm.js';
 import { recordMemory } from '../../core/memory-engine.js';
 import { buildSubagentContext, runIsolatedAgent, type AgentRole } from '../../core/subagent-isolator.js';
 import { createAgentWorktree, removeAgentWorktree, listWorktrees } from '../../utils/worktree.js';
+import { reflect, evaluateVerdict } from '../../core/reflection-engine.js';
+import { createTelemetry, recordToolCall, type ExecutionTelemetry } from '../../core/execution-telemetry.js';
 import { runPMAgent } from './agents/pm.js';
 import { runArchitectAgent } from './agents/architect.js';
 import { runDevAgent } from './agents/dev.js';
@@ -360,6 +362,20 @@ export async function runDanteParty(
     (agentResult as AgentResult & { qualityScore?: number }).qualityScore = qualityScore;
     if (qualityScore < 50) {
       logger.warn(`Agent "${agentResult.agent}" output quality score: ${qualityScore}/100 (below threshold)`);
+    }
+
+    // Reflection: structured self-assessment on agent output
+    try {
+      const agentTelemetry: ExecutionTelemetry = createTelemetry();
+      recordToolCall(agentTelemetry, `dispatch:${agentResult.agent}`, true);
+      agentTelemetry.duration = agentResult.durationMs;
+      const verdict = await reflect(agentResult.agent, agentResult.result, agentTelemetry);
+      const evaluation = evaluateVerdict(verdict);
+      if (!evaluation.complete && evaluation.score < 50) {
+        logger.warn(`Reflection: ${agentResult.agent} agent scored ${evaluation.score}/100 — ${evaluation.feedback}`);
+      }
+    } catch {
+      // Reflection should not block party mode
     }
   }
 

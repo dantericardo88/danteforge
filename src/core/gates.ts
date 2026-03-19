@@ -3,6 +3,10 @@ import fs from 'fs/promises';
 import path from 'path';
 import { loadState } from './state.js';
 import { logger } from './logger.js';
+import { detectLoop } from './loop-detector.js';
+import { detectAIDrift } from './drift-detector.js';
+import { loadLatestVerdict } from './reflection-engine.js';
+import type { ExecutionTelemetry } from './execution-telemetry.js';
 
 const STATE_DIR = '.danteforge';
 
@@ -151,6 +155,59 @@ export async function requireApproval(artifact: string, light = false): Promise<
   if (light) return;
   // In CLI mode, this logs a warning — actual blocking is done by the caller
   logger.warn(`Approval gate: "${artifact}" requires human review before proceeding.`);
+}
+
+/**
+ * Gate: No execution loops detected (v0.9.0 — Reflection Engine)
+ */
+export async function requireNoLoops(telemetry: ExecutionTelemetry, light = false): Promise<void> {
+  if (light) return;
+  const result = detectLoop(telemetry);
+  if (result.detected && result.severity === 'HIGH') {
+    throw new GateError(
+      `Gate blocked: ${result.type} loop detected — ${result.evidence}`,
+      'requireNoLoops',
+      result.type === 'planning'
+        ? 'Stop reading files and start writing code. You have enough context.'
+        : 'Stop repeating the same commands. Try a different approach or ask for help.',
+    );
+  }
+}
+
+/**
+ * Gate: Reflection score meets minimum threshold (v0.9.0 — Reflection Engine)
+ */
+export async function requireReflectionScore(minScore: number, light = false): Promise<void> {
+  if (light) return;
+  const verdict = await loadLatestVerdict();
+  if (!verdict) return; // No reflection data yet — don't block
+  const { evaluateVerdict } = await import('./reflection-engine.js');
+  const evaluation = evaluateVerdict(verdict);
+  if (evaluation.score < minScore) {
+    throw new GateError(
+      `Gate blocked: Reflection score ${evaluation.score} is below minimum ${minScore}.`,
+      'requireReflectionScore',
+      `Address reflection feedback: ${evaluation.missing.slice(0, 3).join('; ')}`,
+    );
+  }
+}
+
+/**
+ * Gate: No BLOCKER-level AI drift violations (v0.9.0 — Reflection Engine)
+ */
+export async function requireNoDrift(filesModified: string[], light = false): Promise<void> {
+  if (light) return;
+  if (filesModified.length === 0) return;
+  const violations = await detectAIDrift(filesModified);
+  const blockers = violations.filter(v => v.severity === 'BLOCKER' || v.severity === 'HIGH');
+  if (blockers.length > 0) {
+    const details = blockers.slice(0, 3).map(v => `${v.file}:${v.line} — ${v.message}`).join('; ');
+    throw new GateError(
+      `Gate blocked: ${blockers.length} AI drift violation(s) detected — ${details}`,
+      'requireNoDrift',
+      'Fix hallucinated imports, remove stubs, and verify API endpoints before proceeding.',
+    );
+  }
 }
 
 /**
