@@ -36,6 +36,8 @@ export interface QAReport {
   baselineCompared?: string; // path to baseline used
 }
 
+export type BrowseResult = { success: boolean; stdout: string; errorMessage?: string; evidencePath?: string };
+
 export interface QARunOptions {
   url: string;
   mode: QARunMode;
@@ -44,12 +46,15 @@ export interface QARunOptions {
   failBelow?: number;
   evidenceDir: string;
   browseConfig: BrowseAdapterConfig;
+  /** Injected for testing — replaces invokeBrowse to avoid real browser dependency */
+  _invokeBrowse?: (command: string, args: string[], config: BrowseAdapterConfig) => Promise<BrowseResult>;
 }
 
 // ── Main QA pass ────────────────────────────────────────────────────────────
 
 export async function runQAPass(options: QARunOptions): Promise<QAReport> {
   const { url, mode, evidenceDir, browseConfig } = options;
+  const browse = options._invokeBrowse ?? invokeBrowse;
 
   // Ensure evidence directory exists
   await fs.mkdir(evidenceDir, { recursive: true });
@@ -59,7 +64,7 @@ export async function runQAPass(options: QARunOptions): Promise<QAReport> {
   const timestamp = new Date().toISOString();
 
   // Step 1: Navigate
-  const gotoResult = await invokeBrowse('goto', [url], browseConfig);
+  const gotoResult = await browse('goto', [url], browseConfig);
   if (!gotoResult.success) {
     issues.push({
       id: 'nav-1',
@@ -80,7 +85,7 @@ export async function runQAPass(options: QARunOptions): Promise<QAReport> {
   }
 
   // Step 2: Screenshot
-  const screenshotResult = await invokeBrowse('screenshot', [], {
+  const screenshotResult = await browse('screenshot', [], {
     ...browseConfig,
     evidenceDir,
   });
@@ -89,7 +94,7 @@ export async function runQAPass(options: QARunOptions): Promise<QAReport> {
   }
 
   // Step 3: Accessibility check
-  const a11yResult = await invokeBrowse('accessibility', [], browseConfig);
+  const a11yResult = await browse('accessibility', [], browseConfig);
   if (a11yResult.success) {
     issues.push(...scoreAccessibility(a11yResult.stdout));
   }
@@ -108,19 +113,19 @@ export async function runQAPass(options: QARunOptions): Promise<QAReport> {
   }
 
   // Step 4: Console errors (full + regression only)
-  const consoleResult = await invokeBrowse('console', [], browseConfig);
+  const consoleResult = await browse('console', [], browseConfig);
   if (consoleResult.success) {
     issues.push(...scoreConsoleErrors(consoleResult.stdout));
   }
 
   // Step 5: Network failures (full + regression only)
-  const networkResult = await invokeBrowse('network', [], browseConfig);
+  const networkResult = await browse('network', [], browseConfig);
   if (networkResult.success) {
     issues.push(...scoreNetworkFailures(networkResult.stdout));
   }
 
   // Step 6: Performance (full + regression only)
-  const perfResult = await invokeBrowse('perf', [], browseConfig);
+  const perfResult = await browse('perf', [], browseConfig);
   if (perfResult.success) {
     issues.push(...scorePerformance(perfResult.stdout));
   }
