@@ -8,7 +8,10 @@ vscode-extension/.artifacts/
 *.vsix
 
 # DanteForge runtime state (per-project, not shared)
-.danteforge/
+# Use /* instead of / so git descends into the dir and honours the exception below
+.danteforge/*
+# Committed reference docs (required by tests, not runtime state)
+!.danteforge/MAGIC-LEVELS.md
 
 # Worktrees created by DanteForge agents
 .danteforge-worktrees/
