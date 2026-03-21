@@ -4,7 +4,7 @@ import fs from 'fs/promises';
 import path from 'path';
 import os from 'os';
 import { loadMemoryStore, saveMemoryStore } from '../src/core/memory-store.js';
-import { recordMemory, searchMemory, getRecentMemory, getMemoryBudget } from '../src/core/memory-engine.js';
+import { recordMemory, searchMemory, getRecentMemory, getMemoryBudget, compactMemory } from '../src/core/memory-engine.js';
 
 let tmpDir: string;
 
@@ -149,5 +149,208 @@ describe('getMemoryBudget', () => {
     assert.strictEqual(budget.entryCount, 1);
     assert.ok(budget.totalTokens > 0);
     assert.ok(budget.oldestEntry !== null);
+  });
+});
+
+describe('compactMemory', () => {
+  function oldTimestamp(daysAgo = 10): string {
+    const d = new Date();
+    d.setDate(d.getDate() - daysAgo);
+    return d.toISOString();
+  }
+
+  it('does nothing for empty store', async () => {
+    await assert.doesNotReject(() => compactMemory(200_000, tmpDir));
+    const store = await loadMemoryStore(tmpDir);
+    assert.strictEqual(store.entries.length, 0);
+  });
+
+  it('does nothing when all entries are recent (< 7 days old)', async () => {
+    await recordMemory({ category: 'command', summary: 'Recent entry', detail: 'detail', tags: [], relatedCommands: [] }, tmpDir);
+    await compactMemory(200_000, tmpDir);
+    const store = await loadMemoryStore(tmpDir);
+    assert.strictEqual(store.entries.length, 1, 'recent entries should not be removed');
+  });
+
+  it('compacts old entries by dropping detail in fallback mode (no LLM)', async () => {
+    // Write old entries directly to the store
+    const oldEntry = {
+      id: 'old-1',
+      timestamp: oldTimestamp(15),
+      sessionId: 'sess-old',
+      category: 'command' as const,
+      summary: 'Old forge run',
+      detail: 'Long detailed description that should be dropped during compaction for token savings',
+      tags: ['forge'],
+      relatedCommands: ['forge'],
+      tokenCount: 500,
+    };
+    await saveMemoryStore({ version: '1.0.0', entries: [oldEntry] }, tmpDir);
+
+    // compactMemory with a very large budget — fallback strips detail from old entries
+    await compactMemory(200_000, tmpDir);
+
+    const store = await loadMemoryStore(tmpDir);
+    // Entry should still exist but detail must be stripped and compactedAt must be set
+    assert.strictEqual(store.entries.length, 1, 'entry should survive compaction');
+    assert.strictEqual(store.entries[0]!.detail, '', 'detail should be stripped by fallback compaction');
+    assert.ok(store.compactedAt !== undefined, 'compactedAt should be set after compaction');
+  });
+
+  it('drops oldest entries when over budget after compaction', async () => {
+    const entries = Array.from({ length: 5 }, (_, i) => ({
+      id: `old-${i}`,
+      timestamp: oldTimestamp(10 + i),
+      sessionId: 'sess-old',
+      category: 'command' as const,
+      summary: `Old entry ${i}`,
+      detail: 'detail',
+      tags: [],
+      relatedCommands: [],
+      tokenCount: 100,
+    }));
+    await saveMemoryStore({ version: '1.0.0', entries }, tmpDir);
+
+    // Budget of 50 tokens forces dropping of oldest entries
+    await compactMemory(50, tmpDir);
+
+    const store = await loadMemoryStore(tmpDir);
+    const totalTokens = store.entries.reduce((sum, e) => sum + e.tokenCount, 0);
+    assert.ok(totalTokens <= 50, `total tokens ${totalTokens} should be <= 50`);
+  });
+
+  it('sets compactedAt and totalEntriesBeforeCompaction after compaction', async () => {
+    const oldEntry = {
+      id: 'old-1',
+      timestamp: oldTimestamp(15),
+      sessionId: 'sess',
+      category: 'command' as const,
+      summary: 'Old',
+      detail: 'Detail',
+      tags: [],
+      relatedCommands: [],
+      tokenCount: 10,
+    };
+    await saveMemoryStore({ version: '1.0.0', entries: [oldEntry] }, tmpDir);
+
+    await compactMemory(200_000, tmpDir);
+
+    const store = await loadMemoryStore(tmpDir);
+    assert.ok(store.compactedAt, 'compactedAt should be set');
+    assert.strictEqual(store.totalEntriesBeforeCompaction, 1);
+  });
+});
+
+describe('compactMemory — _llmCaller injection (LLM-assisted path)', () => {
+  function oldTimestamp(daysAgo = 10): string {
+    const d = new Date();
+    d.setDate(d.getDate() - daysAgo);
+    return d.toISOString();
+  }
+
+  function makeOldEntries(count: number, category: 'command' | 'decision' | 'error' = 'command') {
+    return Array.from({ length: count }, (_, i) => ({
+      id: `old-${i}`,
+      timestamp: oldTimestamp(15 + i),
+      sessionId: 'sess-old',
+      category,
+      summary: `Old entry ${i}`,
+      detail: `Detail for entry ${i}`,
+      tags: [`tag-${i}`],
+      relatedCommands: ['forge'],
+      tokenCount: 50,
+    }));
+  }
+
+  it('uses _llmCaller when group has > 2 entries of same category', async () => {
+    let llmCallCount = 0;
+    const llmCaller = async (_prompt: string) => {
+      llmCallCount++;
+      return 'Compacted summary of all entries';
+    };
+
+    const entries = makeOldEntries(3, 'command');
+    await saveMemoryStore({ version: '1.0.0', entries }, tmpDir);
+
+    await compactMemory(200_000, tmpDir, llmCaller);
+
+    assert.strictEqual(llmCallCount, 1, 'should call LLM once for the command group');
+    const store = await loadMemoryStore(tmpDir);
+    assert.strictEqual(store.entries.length, 1, '3 entries compacted into 1');
+    assert.ok(store.entries[0]!.summary.includes('Compacted'), 'summary should indicate compaction');
+  });
+
+  it('passes small groups (≤ 2 entries) through without calling _llmCaller', async () => {
+    let llmCallCount = 0;
+    const llmCaller = async (_prompt: string) => {
+      llmCallCount++;
+      return 'Should not be called';
+    };
+
+    const entries = makeOldEntries(2, 'decision');
+    await saveMemoryStore({ version: '1.0.0', entries }, tmpDir);
+
+    await compactMemory(200_000, tmpDir, llmCaller);
+
+    assert.strictEqual(llmCallCount, 0, 'should not call LLM for groups of ≤ 2');
+    const store = await loadMemoryStore(tmpDir);
+    assert.strictEqual(store.entries.length, 2, 'small group should pass through unchanged');
+  });
+
+  it('calls _llmCaller once per category group with > 2 entries', async () => {
+    let callCount = 0;
+    const llmCaller = async (_prompt: string) => {
+      callCount++;
+      return 'Summary';
+    };
+
+    const cmdEntries = makeOldEntries(3, 'command');
+    const decEntries = makeOldEntries(3, 'decision');
+    await saveMemoryStore({ version: '1.0.0', entries: [...cmdEntries, ...decEntries] }, tmpDir);
+
+    await compactMemory(200_000, tmpDir, llmCaller);
+
+    assert.strictEqual(callCount, 2, 'should call LLM once per large category group (2 groups)');
+  });
+
+  it('falls back to fallback path when _llmCaller throws', async () => {
+    const throwingLlm = async (_prompt: string): Promise<string> => {
+      throw new Error('LLM network error');
+    };
+
+    const entries = makeOldEntries(3, 'error');
+    await saveMemoryStore({ version: '1.0.0', entries }, tmpDir);
+
+    await compactMemory(200_000, tmpDir, throwingLlm);
+
+    // Fallback path should have run — entries still exist with detail stripped
+    const store = await loadMemoryStore(tmpDir);
+    assert.ok(store.compactedAt !== undefined, 'compactedAt should be set even after LLM error');
+    assert.ok(store.entries.length >= 1, 'entries should survive even after LLM failure');
+  });
+
+  it('sets compactedAt and totalEntriesBeforeCompaction via LLM path', async () => {
+    const llmCaller = async (_prompt: string) => 'Summarized entry';
+    const entries = makeOldEntries(3, 'command');
+    await saveMemoryStore({ version: '1.0.0', entries }, tmpDir);
+
+    await compactMemory(200_000, tmpDir, llmCaller);
+
+    const store = await loadMemoryStore(tmpDir);
+    assert.ok(store.compactedAt, 'compactedAt should be set via LLM path');
+    assert.strictEqual(store.totalEntriesBeforeCompaction, 3);
+  });
+
+  it('response from _llmCaller becomes the detail of the compacted entry', async () => {
+    const expectedSummary = 'Key insight from LLM compaction';
+    const llmCaller = async (_prompt: string) => expectedSummary;
+
+    const entries = makeOldEntries(3, 'command');
+    await saveMemoryStore({ version: '1.0.0', entries }, tmpDir);
+
+    await compactMemory(200_000, tmpDir, llmCaller);
+
+    const store = await loadMemoryStore(tmpDir);
+    assert.strictEqual(store.entries[0]!.detail, expectedSummary, 'LLM response should be stored as detail');
   });
 });

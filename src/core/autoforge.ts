@@ -229,10 +229,16 @@ export async function executeAutoForgePlan(
     profile?: string;
     parallel?: boolean;
     worktree?: boolean;
+    /** Injected for testing — replaces runAutoForgeStep to avoid real CLI execution */
+    _runStep?: (command: string, light?: boolean, goal?: string, runtime?: { profile?: string; parallel?: boolean; worktree?: boolean }) => Promise<void>;
+    /** Injected for testing — replaces isStageComplete to avoid real fs artifact check */
+    _isStageComplete?: (stage: string, cwd?: string) => Promise<boolean>;
   } = {},
 ): Promise<{ completed: string[]; failed: string[]; paused: boolean }> {
   const completed: string[] = [];
   const failed: string[] = [];
+  const runStep = options._runStep ?? runAutoForgeStep;
+  const checkStageComplete = options._isStageComplete ?? isStageComplete;
 
   if (options.dryRun) {
     logger.info('[AutoForge] DRY RUN — no commands will be executed');
@@ -263,7 +269,7 @@ export async function executeAutoForgePlan(
     try {
       const previousExitCode = process.exitCode;
       process.exitCode = 0;
-      await runAutoForgeStep(step.command, options.light, plan.goal, {
+      await runStep(step.command, options.light, plan.goal, {
         profile: options.profile,
         parallel: options.parallel,
         worktree: options.worktree,
@@ -279,7 +285,7 @@ export async function executeAutoForgePlan(
       const stageMap = getCommandStageMap();
       const stepStage = stageMap[step.command];
       if (stepStage) {
-        const artifactExists = await isStageComplete(stepStage, options.cwd);
+        const artifactExists = await checkStageComplete(stepStage, options.cwd);
         if (!artifactExists) {
           throw new Error(`${step.command} reported success but its expected artifact is missing from disk`);
         }
@@ -307,6 +313,31 @@ export async function executeAutoForgePlan(
           `${new Date().toISOString()} | pdse-score | post-${step.command} overall: ${tracker.overall}%`,
         );
         await saveState(postState, { cwd: options.cwd });
+
+        // Feed PDSE results to model profile engine (best-effort, non-blocking)
+        try {
+          const { ModelProfileEngine } = await import('./model-profile-engine.js');
+          const { resolveProvider } = await import('./config.js');
+          const providerInfo = await resolveProvider();
+          const modelKey = `${providerInfo.provider}:${providerInfo.model}`;
+          const profileEngine = new ModelProfileEngine(options.cwd ?? process.cwd());
+          for (const [artifact, scoreResult] of Object.entries(scores)) {
+            await profileEngine.recordResult({
+              modelKey,
+              providerId: providerInfo.provider,
+              modelId: providerInfo.model,
+              taskDescription: `${artifact} artifact — post-${step.command}`,
+              taskCategories: ['configuration'],
+              pdseScore: scoreResult.score,
+              passed: scoreResult.autoforgeDecision === 'advance',
+              antiStubViolations: 0,
+              tokensUsed: 0,
+              retriesNeeded: 0,
+            });
+          }
+        } catch {
+          // Profile recording is best-effort — never block the pipeline
+        }
       } catch {
         // Scoring is best-effort — don't fail the pipeline
       }
@@ -322,6 +353,31 @@ export async function executeAutoForgePlan(
       const msg = err instanceof Error ? err.message : String(err);
       failed.push(step.command);
       logger.error(`[AutoForge] ${step.command} failed: ${msg}`);
+
+      // 7 Levels Deep root cause analysis for significant forge/verify failures
+      if (step.command === 'verify' || step.command === 'forge') {
+        try {
+          const { SevenLevelsEngine, shouldTriggerSevenLevels } = await import('./seven-levels.js');
+          const { recordRootCauseLesson } = await import('./lessons-index.js');
+          if (shouldTriggerSevenLevels(undefined, 80)) {
+            const engine = new SevenLevelsEngine({ minDepth: 3, earlyStop: true });
+            const analysis = await engine.analyze(
+              { type: 'step_failure', details: msg },
+              {
+                taskDescription: step.reason,
+                generatedCode: '',
+                systemPrompt: '',
+                modelId: 'autoforge',
+                providerId: 'unknown',
+              },
+            );
+            await recordRootCauseLesson(analysis, options.cwd);
+            logger.info(`[7LD] Root cause (${analysis.rootCauseDomain}): ${analysis.rootCause.slice(0, 120)}`);
+          }
+        } catch {
+          // 7LD analysis is best-effort — never block the main failure path
+        }
+      }
 
       // Record failure
       await recordMemory({

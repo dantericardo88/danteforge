@@ -4,8 +4,8 @@ import { logger } from '../../core/logger.js';
 
 const KEEP_DETAILED = 20; // Keep last N entries in full detail
 
-export async function compact() {
-  const state = await loadState();
+export async function compact(cwd?: string) {
+  const state = await loadState({ cwd });
   const totalEntries = state.auditLog.length;
 
   if (totalEntries <= KEEP_DETAILED) {
@@ -33,7 +33,7 @@ export async function compact() {
   // Replace old entries with single summary line
   state.auditLog = [summary, ...recentEntries];
 
-  await saveState(state);
+  await saveState(state, { cwd });
   logger.success(`Compacted ${oldEntries.length} old entries into 1 summary line`);
   logger.info(`Audit log: ${totalEntries} entries -> ${state.auditLog.length} entries`);
   logger.info(`Kept ${recentEntries.length} recent entries in full detail`);

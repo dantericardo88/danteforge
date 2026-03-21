@@ -111,7 +111,11 @@ export async function getRecentMemory(count = 10, cwd?: string): Promise<MemoryE
   return store.entries.slice(-count);
 }
 
-export async function compactMemory(maxTokenBudget = MAX_TOKEN_BUDGET, cwd?: string): Promise<void> {
+export async function compactMemory(
+  maxTokenBudget = MAX_TOKEN_BUDGET,
+  cwd?: string,
+  _llmCaller?: (prompt: string) => Promise<string>,
+): Promise<void> {
   const store = await loadMemoryStore(cwd);
   if (store.entries.length === 0) return;
 
@@ -127,10 +131,10 @@ export async function compactMemory(maxTokenBudget = MAX_TOKEN_BUDGET, cwd?: str
   const totalBefore = store.entries.length;
 
   // Try LLM-assisted compression
-  const llmReady = await isLLMAvailable();
+  const llmReady = _llmCaller != null || await isLLMAvailable();
   if (llmReady) {
     try {
-      const compacted = await compactWithLLM(oldEntries);
+      const compacted = await compactWithLLM(oldEntries, _llmCaller);
       store.entries = [...compacted, ...recentEntries];
       store.compactedAt = new Date().toISOString();
       store.totalEntriesBeforeCompaction = totalBefore;
@@ -165,7 +169,10 @@ export async function compactMemory(maxTokenBudget = MAX_TOKEN_BUDGET, cwd?: str
   logger.verbose(`Memory compacted: ${totalBefore} -> ${store.entries.length} entries (truncation)`);
 }
 
-async function compactWithLLM(entries: MemoryEntry[]): Promise<MemoryEntry[]> {
+async function compactWithLLM(
+  entries: MemoryEntry[],
+  _llmCaller?: (prompt: string) => Promise<string>,
+): Promise<MemoryEntry[]> {
   // Group by category
   const groups = new Map<MemoryEntry['category'], MemoryEntry[]>();
   for (const entry of entries) {
@@ -189,7 +196,9 @@ async function compactWithLLM(entries: MemoryEntry[]): Promise<MemoryEntry[]> {
 
     const prompt = `Summarize these ${groupEntries.length} ${category} memory entries into a single concise entry that preserves all key decisions, errors, and insights. Return ONLY the summary text, nothing else.\n\n${summariesText}`;
 
-    const response = await callLLM(prompt, undefined, { recordMemory: false });
+    const response = _llmCaller
+      ? await _llmCaller(prompt)
+      : await callLLM(prompt, undefined, { recordMemory: false });
 
     compacted.push({
       id: crypto.randomUUID(),

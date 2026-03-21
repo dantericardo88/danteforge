@@ -57,11 +57,13 @@ export function classifyDomain(name: string, description: string): SkillDomain {
 
 /**
  * Determine source type from file path.
+ * Uses forward-slash normalisation so Windows backslash paths match correctly.
  */
 function resolveSource(filePath: string): 'packaged' | 'user' | 'antigravity' | 'external' {
-  if (filePath.includes('dante-agents/skills')) return 'packaged';
-  if (filePath.includes('.gemini/antigravity')) return 'antigravity';
-  if (filePath.includes('.codex') || filePath.includes('.claude')) return 'user';
+  const normalised = filePath.split('\\').join('/');
+  if (normalised.includes('dante-agents/skills')) return 'packaged';
+  if (normalised.includes('.gemini/antigravity')) return 'antigravity';
+  if (normalised.includes('.codex') || normalised.includes('.claude')) return 'user';
   return 'external';
 }
 

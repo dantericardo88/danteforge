@@ -5,8 +5,8 @@ import { readFileSync, existsSync } from 'node:fs';
 import { resolve } from 'node:path';
 
 const THRESHOLDS = {
-  lines: 60,
-  branches: 50,
+  lines: 70,
+  branches: 75,
 };
 
 const summaryPath = resolve('coverage/coverage-summary.json');

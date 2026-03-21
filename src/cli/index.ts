@@ -354,6 +354,12 @@ program
   .action(commands.awesomeScan);
 
 program
+  .command('profile [subcommand] [arg]')
+  .description('Model personality profiles — view learned behavioral patterns per model')
+  .option('--prompt', 'Generate a copy-paste prompt instead of displaying')
+  .action((subcommand, arg, opts) => commands.profile(subcommand, arg, { prompt: opts.prompt }));
+
+program
   .command('retro')
   .description('Project retrospective with metrics, delta scoring, and trend tracking')
   .option('--summary', 'Print trend summary of last 5 retros')
@@ -432,7 +438,7 @@ Command Groups:
   Pipeline:       init, constitution, specify, clarify, plan, tasks, forge, verify, synthesize
   Automation:     spark, ember, magic, blaze, inferno, autoforge, autoresearch, party
   Design:         design, ux-refine, browse, qa
-  Intelligence:   tech-decide, debug, lessons, oss, harvest, retro
+  Intelligence:   tech-decide, debug, lessons, profile, oss, harvest, retro
   Tools:          config, setup, doctor, dashboard, compact, import, skills, ship, premium
   Meta:           help, review, feedback, update-mcp, awesome-scan, docs
 

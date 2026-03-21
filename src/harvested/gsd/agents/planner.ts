@@ -7,22 +7,27 @@ import { logger } from '../../../core/logger.js';
  * Uses the configured LLM when available; otherwise falls back to a
  * sensible default breakdown derived from the requirements text.
  */
-export async function planPhase(requirements: string): Promise<string[]> {
+export async function planPhase(
+  requirements: string,
+  options?: { _llmCaller?: (prompt: string) => Promise<string> },
+): Promise<string[]> {
   logger.info('Planning phase from requirements...');
 
-  if (await isLLMAvailable()) {
-    try {
-      const prompt = [
-        'You are a technical project planner. Given the following requirements, ',
-        'break them down into an ordered, numbered list of small, atomic tasks ',
-        'that a developer can execute one at a time. Each task should be concrete ',
-        'and actionable. Return ONLY the numbered list, one task per line, in the ',
-        'format "1. <task description>".\n\n',
-        'Requirements:\n',
-        requirements,
-      ].join('');
+  const prompt = [
+    'You are a technical project planner. Given the following requirements, ',
+    'break them down into an ordered, numbered list of small, atomic tasks ',
+    'that a developer can execute one at a time. Each task should be concrete ',
+    'and actionable. Return ONLY the numbered list, one task per line, in the ',
+    'format "1. <task description>".\n\n',
+    'Requirements:\n',
+    requirements,
+  ].join('');
 
-      const response = await callLLM(prompt, undefined, { enrichContext: true });
+  if (options?._llmCaller != null || await isLLMAvailable()) {
+    try {
+      const response = options?._llmCaller
+        ? await options._llmCaller(prompt)
+        : await callLLM(prompt, undefined, { enrichContext: true });
       const tasks = parseNumberedList(response);
 
       if (tasks.length > 0) {

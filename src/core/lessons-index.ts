@@ -4,13 +4,14 @@
 import fs from 'fs/promises';
 import path from 'path';
 import { logger } from './logger.js';
+import type { SevenLevelsResult } from './seven-levels.js';
 
 const LESSONS_FILE = path.join('.danteforge', 'lessons.md');
 
 export interface StructuredLesson {
   id: string;
   timestamp: string;
-  category: 'design' | 'code' | 'test' | 'deploy' | 'architecture' | 'ux' | 'performance';
+  category: 'design' | 'code' | 'test' | 'deploy' | 'architecture' | 'ux' | 'performance' | 'root_cause';
   severity: 'critical' | 'important' | 'nice-to-know';
   rule: string;
   context: string;
@@ -63,7 +64,13 @@ export async function injectRelevantLessons(prompt: string, maxLessons = 5): Pro
     .slice(0, maxLessons);
 
   const lessonsSection = topLessons
-    .map(l => `- [${l.severity.toUpperCase()}] ${l.rule}`)
+    .map(l => {
+      if (l.category === 'root_cause') {
+        const domain = l.tags.find(t => t !== 'root_cause' && t !== 'seven-levels-deep') ?? 'unknown';
+        return `- [ROOT_CAUSE:${domain.toUpperCase()}] ${l.rule}`;
+      }
+      return `- [${l.severity.toUpperCase()}] ${l.rule}`;
+    })
     .join('\n');
 
   return `${prompt}\n\n## Lessons Learned (auto-injected)\n${lessonsSection}`;
@@ -124,5 +131,39 @@ function parseLessons(content: string): StructuredLesson[] {
   return lessons;
 }
 
-const validCategories: StructuredLesson['category'][] = ['design', 'code', 'test', 'deploy', 'architecture', 'ux', 'performance'];
+const validCategories: StructuredLesson['category'][] = ['design', 'code', 'test', 'deploy', 'architecture', 'ux', 'performance', 'root_cause'];
 const validSeverities: StructuredLesson['severity'][] = ['critical', 'important', 'nice-to-know'];
+
+/**
+ * Record a 7 Levels Deep root cause finding as a structured lesson.
+ * The lesson is appended to .danteforge/lessons.md for future task recall.
+ */
+export async function recordRootCauseLesson(result: SevenLevelsResult, cwd?: string): Promise<void> {
+  try {
+    const { appendLesson } = await import('../cli/commands/lessons.js');
+    const timestamp = new Date().toISOString().slice(0, 10);
+    const entry = [
+      `## ${timestamp} | root_cause | critical`,
+      `Rule: [${result.rootCauseDomain.replace('_', ' ').toUpperCase()}] ${result.lessonForFuture}`,
+      `Context: Failure type: ${result.failureType}. Root cause domain: ${result.rootCauseDomain}. Depth reached: ${result.depthReached}. Model: ${result.modelAttribution ?? 'unknown'}.`,
+      `Tags: root_cause, ${result.rootCauseDomain}, seven-levels-deep`,
+    ].join('\n');
+
+    // appendLesson uses process.cwd() — temporarily change if cwd is specified
+    if (cwd && cwd !== process.cwd()) {
+      const originalCwd = process.cwd();
+      try {
+        process.chdir(cwd);
+        await appendLesson(entry + '\n');
+      } finally {
+        process.chdir(originalCwd);
+      }
+    } else {
+      await appendLesson(entry + '\n');
+    }
+
+    logger.info(`[7LD] Root cause lesson recorded (domain: ${result.rootCauseDomain})`);
+  } catch (err) {
+    logger.warn(`[7LD] Failed to record root cause lesson: ${err instanceof Error ? err.message : String(err)}`);
+  }
+}

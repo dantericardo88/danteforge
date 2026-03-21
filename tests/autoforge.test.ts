@@ -1,7 +1,10 @@
 // AutoForge tests — all 6 scenarios, circuit breaker, dry-run, maxWaves, frontend detection
-import { describe, it } from 'node:test';
+import { describe, it, afterEach } from 'node:test';
 import assert from 'node:assert';
-import { planAutoForge, type AutoForgeInput } from '../src/core/autoforge.js';
+import fs from 'node:fs/promises';
+import os from 'node:os';
+import path from 'node:path';
+import { planAutoForge, executeAutoForgePlan, displayPlan, type AutoForgeInput, type AutoForgePlan } from '../src/core/autoforge.js';
 import type { DanteState } from '../src/core/state.js';
 
 function makeState(overrides: Partial<DanteState> = {}): DanteState {
@@ -165,5 +168,337 @@ describe('planAutoForge', () => {
       const plan = planAutoForge(makeInput());
       assert.strictEqual(plan.maxWaves, 3);
     });
+  });
+
+  describe('goal propagation', () => {
+    it('includes goal in plan when provided', () => {
+      const plan = planAutoForge(makeInput(), 3, 'Build a SaaS product');
+      assert.strictEqual(plan.goal, 'Build a SaaS product');
+    });
+
+    it('includes goal in cold-start reasoning', () => {
+      const plan = planAutoForge(makeInput(), 3, 'Build API');
+      assert.ok(plan.reasoning.includes('Build API'));
+    });
+
+    it('includes goal in mid-project reasoning', () => {
+      const plan = planAutoForge(makeInput({
+        state: makeState({ workflowStage: 'tasks', constitution: 'x' }),
+      }), 3, 'Ship v2');
+      assert.ok(plan.reasoning.includes('Ship v2'));
+    });
+  });
+
+  describe('getMidProjectSteps via planAutoForge', () => {
+    it('constitution -> specify', () => {
+      const plan = planAutoForge(makeInput({
+        state: makeState({ workflowStage: 'constitution', constitution: 'x' }),
+      }));
+      assert.ok(plan.steps.some(s => s.command === 'specify'));
+    });
+
+    it('specify -> clarify', () => {
+      const plan = planAutoForge(makeInput({
+        state: makeState({ workflowStage: 'specify', constitution: 'x' }),
+      }));
+      assert.ok(plan.steps.some(s => s.command === 'clarify'));
+    });
+
+    it('clarify -> plan', () => {
+      const plan = planAutoForge(makeInput({
+        state: makeState({ workflowStage: 'clarify', constitution: 'x' }),
+      }));
+      assert.ok(plan.steps.some(s => s.command === 'plan'));
+    });
+
+    it('plan -> tasks', () => {
+      const plan = planAutoForge(makeInput({
+        state: makeState({ workflowStage: 'plan', constitution: 'x' }),
+      }));
+      assert.ok(plan.steps.some(s => s.command === 'tasks'));
+    });
+
+    it('design -> forge', () => {
+      const plan = planAutoForge(makeInput({
+        state: makeState({ workflowStage: 'design', constitution: 'x' }),
+      }));
+      assert.ok(plan.steps.some(s => s.command === 'forge'));
+    });
+
+    it('ux-refine -> verify', () => {
+      const plan = planAutoForge(makeInput({
+        state: makeState({ workflowStage: 'ux-refine', constitution: 'x' }),
+      }));
+      assert.ok(plan.steps.some(s => s.command === 'verify'));
+    });
+
+    it('forge with design violations -> includes ux-refine then verify', () => {
+      const plan = planAutoForge(makeInput({
+        hasDesignOp: true,
+        designViolationCount: 2,
+        state: makeState({ workflowStage: 'forge', constitution: 'x' }),
+      }));
+      const commands = plan.steps.map(s => s.command);
+      assert.ok(commands.includes('ux-refine'));
+      assert.ok(commands.includes('verify'));
+    });
+
+    it('tasks with hasUI and no design -> includes design step', () => {
+      const plan = planAutoForge(makeInput({
+        hasUI: true,
+        hasDesignOp: false,
+        state: makeState({ workflowStage: 'tasks', constitution: 'x' }),
+      }));
+      const commands = plan.steps.map(s => s.command);
+      assert.ok(commands.includes('design'));
+    });
+  });
+});
+
+// ── displayPlan ────────────────────────────────────────────────────────────
+
+describe('displayPlan', () => {
+  it('runs without throwing for a valid plan', () => {
+    const plan: AutoForgePlan = {
+      scenario: 'cold-start',
+      reasoning: 'Fresh project',
+      steps: [
+        { command: 'review', reason: 'Scan codebase' },
+        { command: 'forge', reason: 'Build features' },
+      ],
+      maxWaves: 3,
+    };
+    assert.doesNotThrow(() => displayPlan(plan));
+  });
+
+  it('runs without throwing for plan with goal', () => {
+    const plan: AutoForgePlan = {
+      scenario: 'mid-project',
+      reasoning: 'Advancing',
+      steps: [],
+      maxWaves: 2,
+      goal: 'Build v2',
+    };
+    assert.doesNotThrow(() => displayPlan(plan));
+  });
+
+  it('runs without throwing for plan with no steps', () => {
+    const plan: AutoForgePlan = {
+      scenario: 'mid-project',
+      reasoning: 'Complete',
+      steps: [],
+      maxWaves: 3,
+    };
+    assert.doesNotThrow(() => displayPlan(plan));
+  });
+});
+
+// ── executeAutoForgePlan ──────────────────────────────────────────────────────
+
+const tempAutoforgeDirs: string[] = [];
+
+afterEach(async () => {
+  for (const dir of tempAutoforgeDirs.splice(0)) {
+    await fs.rm(dir, { recursive: true, force: true });
+  }
+});
+
+async function makeTmpProjectDir(): Promise<string> {
+  const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'df-autoforge-'));
+  tempAutoforgeDirs.push(dir);
+  const dfDir = path.join(dir, '.danteforge');
+  await fs.mkdir(dfDir, { recursive: true });
+
+  const stateContent = `project: test-autoforge
+workflowStage: initialized
+currentPhase: 0
+profile: balanced
+lastHandoff: none
+auditLog: []
+tasks: {}
+gateResults: {}
+autoforgeFailedAttempts: 0
+`;
+  await fs.writeFile(path.join(dfDir, 'STATE.yaml'), stateContent);
+  return dir;
+}
+
+function makePlan(overrides?: Partial<AutoForgePlan>): AutoForgePlan {
+  return {
+    scenario: 'mid-project',
+    reasoning: 'Test plan',
+    steps: [{ command: 'forge', reason: 'Execute tasks' }],
+    maxWaves: 3,
+    ...overrides,
+  };
+}
+
+describe('executeAutoForgePlan', () => {
+  it('dryRun returns empty completed/failed without executing steps', async () => {
+    const cwd = await makeTmpProjectDir();
+    const stepsExecuted: string[] = [];
+
+    const result = await executeAutoForgePlan(makePlan(), {
+      dryRun: true,
+      cwd,
+      _runStep: async (cmd) => { stepsExecuted.push(cmd); },
+      _isStageComplete: async () => true,
+    });
+
+    assert.deepStrictEqual(result, { completed: [], failed: [], paused: false });
+    assert.strictEqual(stepsExecuted.length, 0, 'no steps should run in dryRun');
+  });
+
+  it('executes injected step and records in completed', async () => {
+    const cwd = await makeTmpProjectDir();
+    const stepsExecuted: string[] = [];
+
+    const result = await executeAutoForgePlan(makePlan({
+      steps: [{ command: 'forge', reason: 'Build' }],
+      maxWaves: 5,
+    }), {
+      cwd,
+      _runStep: async (cmd) => { stepsExecuted.push(cmd); },
+      _isStageComplete: async () => true,
+    });
+
+    assert.deepStrictEqual(stepsExecuted, ['forge']);
+    assert.deepStrictEqual(result.completed, ['forge']);
+    assert.deepStrictEqual(result.failed, []);
+    assert.strictEqual(result.paused, false);
+  });
+
+  it('pauses when wavesExecuted reaches maxWaves', async () => {
+    const cwd = await makeTmpProjectDir();
+    const stepsExecuted: string[] = [];
+
+    const result = await executeAutoForgePlan(makePlan({
+      steps: [
+        { command: 'forge', reason: 'Build' },
+        { command: 'verify', reason: 'Check' },
+        { command: 'synthesize', reason: 'Wrap up' },
+      ],
+      maxWaves: 1,
+    }), {
+      cwd,
+      _runStep: async (cmd) => { stepsExecuted.push(cmd); },
+      _isStageComplete: async () => true,
+    });
+
+    assert.strictEqual(stepsExecuted.length, 1, 'only 1 step should run before pause');
+    assert.strictEqual(result.paused, true);
+  });
+
+  it('records failure and stops when step throws', async () => {
+    const cwd = await makeTmpProjectDir();
+    const stepsExecuted: string[] = [];
+
+    const result = await executeAutoForgePlan(makePlan({
+      steps: [
+        { command: 'forge', reason: 'Build' },
+        { command: 'verify', reason: 'Check' },
+      ],
+      maxWaves: 5,
+    }), {
+      cwd,
+      _runStep: async (cmd) => {
+        stepsExecuted.push(cmd);
+        if (cmd === 'forge') throw new Error('Build failed');
+      },
+      _isStageComplete: async () => true,
+    });
+
+    assert.deepStrictEqual(result.failed, ['forge']);
+    assert.deepStrictEqual(result.completed, []);
+    assert.strictEqual(stepsExecuted.length, 1, 'should stop after failure');
+  });
+
+  it('increments autoforgeFailedAttempts in state on failure', async () => {
+    const cwd = await makeTmpProjectDir();
+
+    await executeAutoForgePlan(makePlan({
+      steps: [{ command: 'forge', reason: 'Build' }],
+      maxWaves: 5,
+    }), {
+      cwd,
+      _runStep: async () => { throw new Error('forced failure'); },
+      _isStageComplete: async () => true,
+    });
+
+    const stateContent = await fs.readFile(path.join(cwd, '.danteforge', 'STATE.yaml'), 'utf8');
+    assert.ok(stateContent.includes('autoforgeFailedAttempts: 1'));
+  });
+
+  it('resets autoforgeFailedAttempts on success', async () => {
+    const cwd = await makeTmpProjectDir();
+    // Set initial failedAttempts to 2
+    const dfDir = path.join(cwd, '.danteforge');
+    const stateFile = path.join(dfDir, 'STATE.yaml');
+    let content = await fs.readFile(stateFile, 'utf8');
+    content = content.replace('autoforgeFailedAttempts: 0', 'autoforgeFailedAttempts: 2');
+    await fs.writeFile(stateFile, content);
+
+    await executeAutoForgePlan(makePlan({
+      steps: [{ command: 'forge', reason: 'Build' }],
+      maxWaves: 5,
+    }), {
+      cwd,
+      _runStep: async () => { /* success */ },
+      _isStageComplete: async () => true,
+    });
+
+    const finalContent = await fs.readFile(stateFile, 'utf8');
+    assert.ok(finalContent.includes('autoforgeFailedAttempts: 0'));
+  });
+
+  it('fails step when artifact check returns false', async () => {
+    const cwd = await makeTmpProjectDir();
+
+    const result = await executeAutoForgePlan(makePlan({
+      steps: [{ command: 'forge', reason: 'Build' }],
+      maxWaves: 5,
+    }), {
+      cwd,
+      _runStep: async () => { /* no-op */ },
+      _isStageComplete: async () => false,
+    });
+
+    assert.deepStrictEqual(result.failed, ['forge']);
+    assert.deepStrictEqual(result.completed, []);
+  });
+
+  it('executes all steps when maxWaves is large enough', async () => {
+    const cwd = await makeTmpProjectDir();
+    const stepsExecuted: string[] = [];
+
+    const result = await executeAutoForgePlan(makePlan({
+      steps: [
+        { command: 'forge', reason: 'Build' },
+        { command: 'verify', reason: 'Check' },
+      ],
+      maxWaves: 10,
+    }), {
+      cwd,
+      _runStep: async (cmd) => { stepsExecuted.push(cmd); },
+      _isStageComplete: async () => true,
+    });
+
+    assert.deepStrictEqual(stepsExecuted, ['forge', 'verify']);
+    assert.deepStrictEqual(result.completed, ['forge', 'verify']);
+    assert.strictEqual(result.paused, false);
+  });
+
+  it('empty steps returns immediately with no completed/failed', async () => {
+    const cwd = await makeTmpProjectDir();
+
+    const result = await executeAutoForgePlan(makePlan({ steps: [], maxWaves: 5 }), {
+      cwd,
+      _runStep: async () => { throw new Error('should not be called'); },
+      _isStageComplete: async () => true,
+    });
+
+    assert.deepStrictEqual(result.completed, []);
+    assert.deepStrictEqual(result.failed, []);
+    assert.strictEqual(result.paused, false);
   });
 });
