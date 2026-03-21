@@ -18,7 +18,7 @@ describe('magic preset docs', () => {
   });
 
   it('publishes MAGIC-LEVELS guidance and helper text for the full preset system', async () => {
-    const levels = await fs.readFile('.danteforge/MAGIC-LEVELS.md', 'utf8');
+    const levels = await fs.readFile('docs/MAGIC-LEVELS.md', 'utf8');
     const helpSrc = await fs.readFile('src/cli/commands/help.ts', 'utf8');
     const hook = await fs.readFile('hooks/session-start.mjs', 'utf8');
     const cursor = await fs.readFile('.cursor/rules/danteforge.mdc', 'utf8');

@@ -42,3 +42,4 @@ export { ossResearcher } from './oss.js';
 export { init } from './init.js';
 export { docs } from './docs.js';
 export { premium } from './premium.js';
+export { profile } from './profile.js';

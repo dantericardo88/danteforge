@@ -252,17 +252,20 @@ export async function reflect(
   taskName: string,
   taskOutput: string,
   telemetry: ExecutionTelemetry,
-  cwd?: string,
+  options?: { cwd?: string; _llmCaller?: (prompt: string) => Promise<string> },
 ): Promise<ReflectionVerdict> {
+  const cwd = options?.cwd;
   logger.info(`Reflecting on: ${taskName}`);
 
   let verdict: ReflectionVerdict;
-  const llmReady = await isLLMAvailable();
+  const llmReady = options?._llmCaller != null || await isLLMAvailable();
 
   if (llmReady) {
     try {
       const prompt = buildSelfAssessmentPrompt(taskName, taskOutput, telemetry);
-      const response = await callLLM(prompt, undefined, { recordMemory: false });
+      const response = options?._llmCaller
+        ? await options._llmCaller(prompt)
+        : await callLLM(prompt, undefined, { recordMemory: false });
       const parsed = parseVerdictJSON(response);
 
       if (parsed) {

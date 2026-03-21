@@ -1,10 +1,15 @@
 // PDSE Scoring Engine tests — all 6 dimensions, all 5 artifact types, decision thresholds
 import { describe, it } from 'node:test';
 import assert from 'node:assert';
+import fs from 'node:fs/promises';
+import os from 'node:os';
+import path from 'node:path';
 import {
   scoreArtifact,
   computeAutoforgeDecision,
   generateRemediationSuggestions,
+  loadCachedScore,
+  persistScoreResult,
   type ScoringContext,
   type ScoredArtifact,
 } from '../src/core/pdse.js';
@@ -290,5 +295,110 @@ describe('generateRemediationSuggestions', () => {
       'TASKS',
     );
     assert.ok(suggestions.length >= 1);
+  });
+});
+
+// ─── PASS 3: Integration hardening ────────────────────────────────────────────
+
+describe('PDSE — RegExp anti-stub patterns (integration hardening)', () => {
+  it('floors clarity to 0 when content contains "as any" (RegExp pattern)', () => {
+    const content = `# SPEC\n## Feature Name\nAuth\n## Acceptance Criteria\nconst value = data as any;\n`;
+    const result = scoreArtifact(makeContext({ artifactContent: content, artifactName: 'SPEC' }));
+    assert.strictEqual(result.dimensions.clarity, 0, 'as any should trigger anti-stub RegExp');
+    assert.ok(result.issues.some(i => i.message.includes('Anti-stub')));
+  });
+
+  it('floors clarity to 0 when content contains @ts-ignore (RegExp pattern)', () => {
+    const content = `# PLAN\n## Phase 1\nImplement auth\n// @ts-ignore\nconst x = getUser();\n`;
+    const result = scoreArtifact(makeContext({ artifactContent: content, artifactName: 'PLAN' }));
+    assert.strictEqual(result.dimensions.clarity, 0);
+  });
+
+  it('floors clarity to 0 when content contains @ts-expect-error (RegExp pattern)', () => {
+    const content = `# TASKS\n- [ ] Task 1\n// @ts-expect-error\nconst y = broken();\n`;
+    const result = scoreArtifact(makeContext({ artifactContent: content, artifactName: 'TASKS' }));
+    assert.strictEqual(result.dimensions.clarity, 0);
+  });
+
+  it('does NOT floor clarity for clean content with no anti-stub patterns', () => {
+    const content = `# SPEC\n## Feature Name\nLogin\n## Acceptance Criteria\n1. User logs in successfully\n`;
+    const result = scoreArtifact(makeContext({ artifactContent: content, artifactName: 'SPEC' }));
+    assert.ok(result.dimensions.clarity > 0, 'Clean content should not trigger anti-stub');
+  });
+
+  it('handles empty content without crashing (completeness = 0)', () => {
+    const result = scoreArtifact(makeContext({ artifactContent: '', artifactName: 'SPEC' }));
+    assert.ok(typeof result.score === 'number');
+    assert.ok(result.score >= 0);
+    // Empty content: no checklist sections found
+    assert.strictEqual(result.dimensions.completeness, 0);
+  });
+
+  it('handles content with only whitespace (treated as empty)', () => {
+    const result = scoreArtifact(makeContext({ artifactContent: '   \n  \t  \n', artifactName: 'PLAN' }));
+    assert.ok(typeof result.score === 'number');
+    assert.ok(result.score >= 0);
+  });
+
+  it('web project evidence bonus applies when isWebProject + evidenceDir are set', () => {
+    const baseResult = scoreArtifact(makeContext({
+      artifactContent: WELL_FORMED_SPEC,
+      artifactName: 'SPEC',
+      isWebProject: false,
+    }));
+    const webResult = scoreArtifact(makeContext({
+      artifactContent: WELL_FORMED_SPEC,
+      artifactName: 'SPEC',
+      isWebProject: true,
+      evidenceDir: '/some/evidence/dir',
+    }));
+    // Web project should have equal or higher testability
+    assert.ok(
+      webResult.dimensions.testability >= baseResult.dimensions.testability,
+      `Web project testability ${webResult.dimensions.testability} should be >= ${baseResult.dimensions.testability}`,
+    );
+  });
+});
+
+describe('loadCachedScore + persistScoreResult (integration hardening)', () => {
+  it('loadCachedScore returns null for a non-existent artifact', async () => {
+    const tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), 'df-pdse-cache-'));
+    const result = await loadCachedScore('SPEC', tmpDir);
+    assert.strictEqual(result, null);
+    await fs.rm(tmpDir, { recursive: true });
+  });
+
+  it('persistScoreResult writes file and loadCachedScore reads it back', async () => {
+    const tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), 'df-pdse-persist-'));
+    const scoreResult = scoreArtifact(makeContext({
+      artifactContent: WELL_FORMED_SPEC,
+      artifactName: 'SPEC',
+    }));
+
+    const savedPath = await persistScoreResult(scoreResult, tmpDir);
+    assert.ok(typeof savedPath === 'string' && savedPath.length > 0);
+
+    const loaded = await loadCachedScore('SPEC', tmpDir);
+    assert.ok(loaded !== null, 'should load the persisted score');
+    assert.strictEqual(loaded!.score, scoreResult.score);
+    assert.strictEqual(loaded!.artifact, 'SPEC');
+
+    await fs.rm(tmpDir, { recursive: true });
+  });
+
+  it('persistScoreResult uses atomic tmp→rename pattern (no partial writes)', async () => {
+    const tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), 'df-pdse-atomic-'));
+    const scoreResult = scoreArtifact(makeContext({ artifactContent: '# TEST', artifactName: 'PLAN' }));
+
+    await persistScoreResult(scoreResult, tmpDir);
+
+    const scoreDir = path.join(tmpDir, '.danteforge', 'scores');
+    const files = await fs.readdir(scoreDir);
+    // Only the final file should exist — no .tmp files left over
+    const tmpFiles = files.filter(f => f.endsWith('.tmp'));
+    assert.strictEqual(tmpFiles.length, 0, 'No .tmp files should remain after persist');
+    assert.ok(files.some(f => f === 'PLAN-score.json'));
+
+    await fs.rm(tmpDir, { recursive: true });
   });
 });

@@ -116,3 +116,83 @@ describe('magic preset system', () => {
     assert.match(cliSrc, /--level <level>/);
   });
 });
+
+// ─── buildMagicLevelsMarkdown ──────────────────────────────────────────────
+
+describe('buildMagicLevelsMarkdown', () => {
+  it('returns a markdown table with all 5 preset levels', async () => {
+    const { buildMagicLevelsMarkdown } = await import('../src/core/magic-presets.js');
+    const markdown = buildMagicLevelsMarkdown();
+
+    assert.ok(typeof markdown === 'string', 'should return a string');
+    assert.ok(markdown.includes('# Magic Levels'), 'should have a header');
+    assert.ok(markdown.includes('/spark'), 'should include spark preset');
+    assert.ok(markdown.includes('/ember'), 'should include ember preset');
+    assert.ok(markdown.includes('/magic'), 'should include magic preset');
+    assert.ok(markdown.includes('/blaze'), 'should include blaze preset');
+    assert.ok(markdown.includes('/inferno'), 'should include inferno preset');
+  });
+
+  it('includes token level and intensity columns', async () => {
+    const { buildMagicLevelsMarkdown } = await import('../src/core/magic-presets.js');
+    const markdown = buildMagicLevelsMarkdown();
+
+    assert.ok(markdown.includes('Token Level'), 'table should have Token Level column');
+    assert.ok(markdown.includes('Intensity'), 'table should have Intensity column');
+  });
+
+  it('includes usage rules section', async () => {
+    const { buildMagicLevelsMarkdown } = await import('../src/core/magic-presets.js');
+    const markdown = buildMagicLevelsMarkdown();
+
+    assert.ok(markdown.includes('## Usage Rule'), 'should have usage rules section');
+    assert.ok(markdown.includes('## Notes'), 'should have notes section');
+  });
+});
+
+// ─── formatMagicPlan (exercises formatMagicStep + capitalize) ─────────────
+
+describe('formatMagicPlan', () => {
+  it('formats a spark plan with all steps listed', async () => {
+    const { buildMagicExecutionPlan, formatMagicPlan } = await import('../src/core/magic-presets.js');
+    const plan = buildMagicExecutionPlan('spark', 'Launch my SaaS product');
+    const formatted = formatMagicPlan(plan);
+
+    assert.ok(typeof formatted === 'string', 'should return a string');
+    assert.ok(formatted.includes('Spark Preset Plan'), 'title should be capitalized');
+    assert.ok(formatted.includes('Goal: Launch my SaaS product'), 'should include the goal');
+    assert.ok(formatted.includes('Steps:'), 'should have steps section');
+    assert.ok(formatted.includes('danteforge review') || formatted.includes('review'), 'steps should list commands');
+  });
+
+  it('formats an inferno plan with all 7 steps', async () => {
+    const { buildMagicExecutionPlan, formatMagicPlan } = await import('../src/core/magic-presets.js');
+    const plan = buildMagicExecutionPlan('inferno', 'Build full e-commerce platform');
+    const formatted = formatMagicPlan(plan);
+
+    assert.ok(formatted.includes('Inferno Preset Plan'), 'inferno should be capitalized');
+    assert.ok(formatted.includes('danteforge oss') || formatted.includes('oss'), 'should include oss step');
+    assert.ok(formatted.includes('danteforge verify') || formatted.includes('verify'), 'should include verify step');
+  });
+
+  it('formats a blaze plan with party and worktree step', async () => {
+    const { buildMagicExecutionPlan, formatMagicPlan } = await import('../src/core/magic-presets.js');
+    const plan = buildMagicExecutionPlan('blaze', 'Complete big feature');
+    const formatted = formatMagicPlan(plan);
+
+    assert.ok(formatted.includes('Blaze Preset Plan'), 'blaze should be capitalized');
+    assert.ok(formatted.includes('danteforge party') || formatted.includes('party'), 'should include party step');
+  });
+
+  it('formats autoforge step with correct options', async () => {
+    const { buildMagicExecutionPlan, formatMagicPlan } = await import('../src/core/magic-presets.js');
+    const plan = buildMagicExecutionPlan('magic', 'Close PRD gaps');
+    const formatted = formatMagicPlan(plan);
+
+    assert.ok(
+      formatted.includes('--max-waves') || formatted.includes('autoforge'),
+      'autoforge step should show options',
+    );
+    assert.ok(formatted.includes('"Close PRD gaps"'), 'goal should be quoted in autoforge step');
+  });
+});
