@@ -173,17 +173,29 @@ change. Every engine that calls callLLM() should get this treatment.
 
 **Autoforge decision:** CONTINUE toward 90+ — add `_llmCaller` to `executor.ts` next.
 
-### After PASS 4 (Autoresearch Loop)
+### After PASS 4 (Autoresearch Loop — Honest Reassessment)
 
 | Dimension | Score | Notes |
 |---|---|---|
-| Completeness | 83/100 | executor, qa-runner, autoforge, memory-engine now all have injection seams |
-| Correctness | 97/100 | 0 failures in 1135 tests; 70.05% overall coverage |
+| Completeness | 72/100 | 70% coverage is a C; CLI commands ~45% dragging down; 3 vacuous assertions found |
+| Correctness | 96/100 | 0 failures in 1135 tests; 3 weak assertions later identified and fixed |
 | Clarity | 90/100 | Injection pattern now consistent across all core engines |
-| Consistency | 92/100 | All execution engines follow the injection pattern |
-| **Overall** | **91/100** | — |
+| Consistency | 89/100 | Core engines injected; CLI commands not yet |
+| **Overall** | **87/100** | — |
 
-**Autoforge decision:** TARGET MET — crossed 90/100 quality threshold.
+**Autoforge decision:** CONTINUE — 87/100 honest score; target 90+ requires fixing vacuous assertions + CLI injection pass.
+
+### After PASS 5 (Quality Audit + Coverage Push)
+
+| Dimension | Score | Notes |
+|---|---|---|
+| Completeness | 78/100 | 70.73% coverage; compactWithLLM + planPhase LLM paths now tested; compact/config CLI tested |
+| Correctness | 99/100 | 0 failures in 1164 tests; all 3 vacuous assertions fixed; coverage threshold enforced |
+| Clarity | 91/100 | _llmCaller injection now covers planner + memory-engine LLM paths |
+| Consistency | 92/100 | All injection seams follow same pattern; CLI wrappers testable via cwd param |
+| **Overall** | **90/100** | — |
+
+**Autoforge decision:** TARGET MET — 90/100 quality threshold crossed with honest accounting.
 
 **Lessons from PASS 4:**
 ```

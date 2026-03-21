@@ -45,35 +45,58 @@ describe('planPhase — fallback plan structure', () => {
   });
 });
 
-describe('planPhase — fallback plan content (no-LLM environment)', () => {
-  // These assertions are valid for the fallback path.
-  // If LLM is available and returns a numbered list, these checks may not hold,
-  // so we only assert them when the output looks like the fallback format.
+describe('planPhase — fallback plan content (forced via _llmCaller returning empty)', () => {
+  // Force the fallback path by injecting a _llmCaller that returns empty string,
+  // which triggers parseNumberedList to return [] and falls through to buildFallbackPlan.
 
-  it('fallback plan starts with review step or contains implementation tasks', async () => {
-    const tasks = await planPhase('Build a REST API for user management');
-    assert.ok(tasks.length >= 1);
-    // Fallback plan first item is always "Review and clarify requirements"
-    // LLM plan first item is whatever the LLM returns
-    const hasReviewStep = tasks[0] === 'Review and clarify requirements';
-    const hasImplementStep = tasks.some(t => t.toLowerCase().includes('implement') || t.toLowerCase().includes('build') || t.toLowerCase().includes('add') || t.toLowerCase().includes('create'));
-    assert.ok(hasReviewStep || hasImplementStep, `Expected a review or implement step, got: ${tasks[0]}`);
+  it('fallback plan always starts with "Review and clarify requirements"', async () => {
+    const tasks = await planPhase('Build a REST API for user management', { _llmCaller: async () => '' });
+    assert.strictEqual(tasks[0], 'Review and clarify requirements');
   });
 
-  it('fallback plan ends with verify step or has meaningful final task', async () => {
-    const tasks = await planPhase('Create a dashboard component');
-    assert.ok(tasks.length >= 1);
+  it('fallback plan always ends with verify step', async () => {
+    const tasks = await planPhase('Create a dashboard component', { _llmCaller: async () => '' });
     const lastTask = tasks[tasks.length - 1]!;
-    assert.ok(typeof lastTask === 'string' && lastTask.length > 0);
+    assert.strictEqual(lastTask, 'Verify all acceptance criteria are met');
   });
 
-  it('multi-sentence requirements produce more tasks in fallback path', async () => {
-    const single = await planPhase('Add login');
-    const multi = await planPhase('Add login. Add signup. Add logout. Add profile.');
-    // Both return arrays — multi should have at least as many as single in fallback
-    // (or both go through LLM, in which case both are valid arrays)
-    assert.ok(Array.isArray(single));
-    assert.ok(Array.isArray(multi));
-    assert.ok(multi.length >= 1);
+  it('multi-sentence requirements expand to more tasks in fallback path', async () => {
+    const single = await planPhase('Add login', { _llmCaller: async () => '' });
+    const multi = await planPhase('Add login. Add signup. Add logout. Add profile.', { _llmCaller: async () => '' });
+    assert.ok(multi.length > single.length, `multi (${multi.length}) should have more tasks than single (${single.length})`);
+  });
+});
+
+describe('planPhase — _llmCaller injection (LLM path)', () => {
+  it('uses _llmCaller response when it returns a numbered list', async () => {
+    const llmResponse = '1. Set up project\n2. Write the API\n3. Add tests';
+    const tasks = await planPhase('Build something', { _llmCaller: async () => llmResponse });
+    assert.deepStrictEqual(tasks, ['Set up project', 'Write the API', 'Add tests']);
+  });
+
+  it('falls back to buildFallbackPlan when _llmCaller returns empty', async () => {
+    const tasks = await planPhase('Add a button', { _llmCaller: async () => '' });
+    assert.strictEqual(tasks[0], 'Review and clarify requirements');
+    assert.ok(tasks.length >= 3);
+  });
+
+  it('falls back when _llmCaller throws', async () => {
+    const tasks = await planPhase('Add a button', {
+      _llmCaller: async () => { throw new Error('LLM unreachable'); },
+    });
+    assert.strictEqual(tasks[0], 'Review and clarify requirements');
+  });
+
+  it('returns LLM tasks when _llmCaller returns multiple numbered items', async () => {
+    const llmResponse = '1. Task alpha\n2. Task beta\n3. Task gamma\n4. Task delta';
+    const tasks = await planPhase('Complex requirements', { _llmCaller: async () => llmResponse });
+    assert.strictEqual(tasks.length, 4);
+    assert.strictEqual(tasks[0], 'Task alpha');
+    assert.strictEqual(tasks[3], 'Task delta');
+  });
+
+  it('falls back when _llmCaller returns non-numbered prose', async () => {
+    const tasks = await planPhase('Requirements', { _llmCaller: async () => 'Here is a plan: do stuff and things.' });
+    assert.strictEqual(tasks[0], 'Review and clarify requirements');
   });
 });

@@ -174,16 +174,22 @@ describe('ReflectionEngine', () => {
     assert.ok(result.missing.some(m => m.includes('human action')));
   });
 
-  it('hook registration and execution', async () => {
-    const { registerHook, clearHooks } = await import('../src/core/reflection-engine.js');
+  it('clearHooks prevents previously registered hook from firing', async () => {
+    const tmpDir = await makeTempDir('danteforge-clearhook-');
+    const origCwd = process.cwd();
+    process.chdir(tmpDir);
+    const { reflect, registerHook, clearHooks } = await import('../src/core/reflection-engine.js');
     clearHooks();
 
     let hookCalled = false;
     registerHook(async () => { hookCalled = true; });
+    clearHooks(); // clear before reflect — hook must NOT fire
 
-    // Hook is called internally by reflect(); we test registration works
-    assert.strictEqual(hookCalled, false); // Not called yet
-    clearHooks(); // Cleanup
+    const telemetry = { toolCalls: [], bashCommands: [], filesModified: [], duration: 100, tokenEstimate: 0 };
+    await reflect('clear-hook task', '', telemetry, { cwd: tmpDir, _llmCaller: async () => '{}' });
+
+    process.chdir(origCwd); // restore so Windows can delete tmpDir
+    assert.strictEqual(hookCalled, false, 'cleared hook must not be called');
   });
 
   it('loadLatestVerdict returns null when no reflections exist', async () => {

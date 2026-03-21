@@ -1,6 +1,0 @@
-experiment	metric_value	status	description
-baseline	68.84	keep	unmodified baseline — 1077 tests, 0 failures
-exp1	69.29	keep	add _llmCaller to executor.ts (34% → 86.27%)
-exp2	69.70	keep	add _invokeBrowse to qa-runner.ts (37.7% -> 96.81%) + 18 tests
-exp3	69.91	keep	add _runStep injection to executeAutoForgePlan (28.87% -> 78.07%) + 23 tests
-exp4	70.05	keep	add compactMemory tests to memory-engine (55.7% -> ~68%) + 5 tests

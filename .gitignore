@@ -40,6 +40,10 @@ Desktop.ini
 test_output.tap
 test_output.txt
 
+# AutoResearch experiment artifacts (human review only, not for commit)
+results.tsv
+AUTORESEARCH_REPORT.md
+
 # Code coverage reports
 coverage/
 
