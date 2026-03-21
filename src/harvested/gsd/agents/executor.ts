@@ -27,6 +27,12 @@ function withTimeout<T>(promise: Promise<T>, ms: number, taskName: string): Prom
   });
 }
 
+export interface ExecuteWaveOptions {
+  _llmCaller?: (prompt: string) => Promise<string>;
+  _verifier?: (task: { name: string; verify?: string }, output?: string) => Promise<boolean>;
+  _reflector?: typeof reflect;
+}
+
 export async function executeWave(
   phase: number,
   profile: string,
@@ -34,6 +40,7 @@ export async function executeWave(
   promptMode = false,
   worktree = false,
   timeoutMs = DEFAULT_TASK_TIMEOUT_MS,
+  options?: ExecuteWaveOptions,
 ): Promise<ExecuteWaveResult> {
   const state = await loadState();
   logger.success(`Wave ${phase} starting (${profile} profile${parallel ? ', parallel' : ''}${promptMode ? ', prompt mode' : ''}${worktree ? ', worktree isolation' : ''})`);
@@ -45,7 +52,7 @@ export async function executeWave(
     return { mode: 'blocked', success: false };
   }
 
-  const llmAvailable = await isLLMAvailable();
+  const llmAvailable = options?._llmCaller != null || await isLLMAvailable();
   if (!llmAvailable && !promptMode) {
     logger.error('No verified live LLM provider is configured for forge execution. Re-run with --prompt or configure a provider with working model access.');
     process.exitCode = 1;
@@ -97,7 +104,9 @@ export async function executeWave(
     try {
       recordToolCall(telemetry, 'callLLM', false);
       const taskPrompt = buildTaskPrompt(task, profile, state.constitution);
-      const result = await callLLM(taskPrompt, undefined, { enrichContext: true });
+      const result = options?._llmCaller
+        ? await options._llmCaller(taskPrompt)
+        : await callLLM(taskPrompt, undefined, { enrichContext: true });
       logger.success(`LLM result for "${task.name}" (${result.length} chars)`);
 
       // Track file modifications from task metadata
@@ -106,12 +115,15 @@ export async function executeWave(
       }
 
       recordToolCall(telemetry, 'verifyTask', false);
-      const verified = await verifyTask(task, result);
+      const verified = options?._verifier
+        ? await options._verifier(task, result)
+        : await verifyTask(task, result);
 
       // Reflection: structured self-assessment (harvested from Reflection-3 + Ralph Loop)
       telemetry.duration = Date.now() - taskStart;
       try {
-        const verdict = await reflect(task.name, result, telemetry);
+        const reflector = options?._reflector ?? reflect;
+        const verdict = await reflector(task.name, result, telemetry);
         const evaluation = evaluateVerdict(verdict, DEFAULT_REFLECTION_CONFIG);
         if (!evaluation.complete) {
           logger.warn(`Reflection: ${task.name} — ${evaluation.feedback}`);
