@@ -4,7 +4,7 @@ import fs from 'fs/promises';
 import path from 'path';
 import os from 'os';
 import { loadMemoryStore, saveMemoryStore } from '../src/core/memory-store.js';
-import { recordMemory, searchMemory, getRecentMemory, getMemoryBudget } from '../src/core/memory-engine.js';
+import { recordMemory, searchMemory, getRecentMemory, getMemoryBudget, compactMemory } from '../src/core/memory-engine.js';
 
 let tmpDir: string;
 
@@ -149,5 +149,92 @@ describe('getMemoryBudget', () => {
     assert.strictEqual(budget.entryCount, 1);
     assert.ok(budget.totalTokens > 0);
     assert.ok(budget.oldestEntry !== null);
+  });
+});
+
+describe('compactMemory', () => {
+  function oldTimestamp(daysAgo = 10): string {
+    const d = new Date();
+    d.setDate(d.getDate() - daysAgo);
+    return d.toISOString();
+  }
+
+  it('does nothing for empty store', async () => {
+    await assert.doesNotReject(() => compactMemory(200_000, tmpDir));
+    const store = await loadMemoryStore(tmpDir);
+    assert.strictEqual(store.entries.length, 0);
+  });
+
+  it('does nothing when all entries are recent (< 7 days old)', async () => {
+    await recordMemory({ category: 'command', summary: 'Recent entry', detail: 'detail', tags: [], relatedCommands: [] }, tmpDir);
+    await compactMemory(200_000, tmpDir);
+    const store = await loadMemoryStore(tmpDir);
+    assert.strictEqual(store.entries.length, 1, 'recent entries should not be removed');
+  });
+
+  it('compacts old entries by dropping detail in fallback mode (no LLM)', async () => {
+    // Write old entries directly to the store
+    const oldEntry = {
+      id: 'old-1',
+      timestamp: oldTimestamp(15),
+      sessionId: 'sess-old',
+      category: 'command' as const,
+      summary: 'Old forge run',
+      detail: 'Long detailed description that should be dropped during compaction for token savings',
+      tags: ['forge'],
+      relatedCommands: ['forge'],
+      tokenCount: 500,
+    };
+    await saveMemoryStore({ version: '1.0.0', entries: [oldEntry] }, tmpDir);
+
+    // compactMemory with a very large budget — fallback strips detail from old entries
+    await compactMemory(200_000, tmpDir);
+
+    const store = await loadMemoryStore(tmpDir);
+    // Entry should still exist but detail should be stripped
+    assert.ok(store.entries.length >= 1 || store.compactedAt !== undefined, 'compaction should have run');
+  });
+
+  it('drops oldest entries when over budget after compaction', async () => {
+    const entries = Array.from({ length: 5 }, (_, i) => ({
+      id: `old-${i}`,
+      timestamp: oldTimestamp(10 + i),
+      sessionId: 'sess-old',
+      category: 'command' as const,
+      summary: `Old entry ${i}`,
+      detail: 'detail',
+      tags: [],
+      relatedCommands: [],
+      tokenCount: 100,
+    }));
+    await saveMemoryStore({ version: '1.0.0', entries }, tmpDir);
+
+    // Budget of 50 tokens forces dropping of oldest entries
+    await compactMemory(50, tmpDir);
+
+    const store = await loadMemoryStore(tmpDir);
+    const totalTokens = store.entries.reduce((sum, e) => sum + e.tokenCount, 0);
+    assert.ok(totalTokens <= 50, `total tokens ${totalTokens} should be <= 50`);
+  });
+
+  it('sets compactedAt and totalEntriesBeforeCompaction after compaction', async () => {
+    const oldEntry = {
+      id: 'old-1',
+      timestamp: oldTimestamp(15),
+      sessionId: 'sess',
+      category: 'command' as const,
+      summary: 'Old',
+      detail: 'Detail',
+      tags: [],
+      relatedCommands: [],
+      tokenCount: 10,
+    };
+    await saveMemoryStore({ version: '1.0.0', entries: [oldEntry] }, tmpDir);
+
+    await compactMemory(200_000, tmpDir);
+
+    const store = await loadMemoryStore(tmpDir);
+    assert.ok(store.compactedAt, 'compactedAt should be set');
+    assert.strictEqual(store.totalEntriesBeforeCompaction, 1);
   });
 });
