@@ -1,11 +1,17 @@
 import { afterEach, describe, it } from 'node:test';
-import assert from 'node:assert';
+import assert from 'node:assert/strict';
 import fs from 'node:fs/promises';
-import { readFileSync } from 'node:fs';
 import os from 'node:os';
-import path, { resolve } from 'node:path';
+import path from 'node:path';
 import { logger } from '../src/core/logger.js';
-import { determineScale, runDanteParty } from '../src/harvested/dante-agents/party-mode.js';
+import {
+  determineScale,
+  runDanteParty,
+  dispatchAgentWithRetry,
+  AGENT_MAX_RETRIES,
+  AGENT_RETRY_DELAYS_MS,
+  type AgentResult,
+} from '../src/harvested/dante-agents/party-mode.js';
 
 const originalFetch = global.fetch;
 
@@ -84,9 +90,10 @@ describe('determineScale', () => {
     process.exitCode = 0;
 
     try {
-      await runDanteParty(['agent?bad'], true);
+      const result = await runDanteParty(['agent?bad'], true);
       const combined = logLines.join('\n');
-      assert.strictEqual(process.exitCode, 1);
+      assert.strictEqual(result.success, false, 'runDanteParty should return { success: false } on worktree failure');
+      assert.strictEqual(process.exitCode, 0, 'Library code must not mutate process.exitCode');
       assert.match(combined, /worktree setup failed/i);
       assert.doesNotMatch(combined, /non-isolated/i);
       assert.doesNotMatch(combined, /dispatching agents/i);
@@ -113,34 +120,109 @@ describe('determineScale', () => {
   });
 });
 
-describe('Party Mode Agent Retry (Wave 1C)', () => {
-  const partyModeSrc = readFileSync(resolve('src/harvested/dante-agents/party-mode.ts'), 'utf-8');
+describe('Party Mode Agent Retry (behavioral)', () => {
+  function makeSuccessResult(agent: string): AgentResult {
+    return { agent, result: '# Success\nAll good', durationMs: 100, success: true };
+  }
 
-  it('exports AGENT_MAX_RETRIES = 2', () => {
-    assert.ok(partyModeSrc.includes('export const AGENT_MAX_RETRIES'), 'Missing AGENT_MAX_RETRIES export');
-    assert.ok(partyModeSrc.includes('= 2'), 'AGENT_MAX_RETRIES should be 2');
+  function makeFailureResult(agent: string, msg: string): AgentResult {
+    return { agent, result: `# ${agent} Agent Error\n\n${msg}`, durationMs: 50, success: false, error: new Error(msg) };
+  }
+
+  it('returns first success immediately with no retries', async () => {
+    let callCount = 0;
+    const _dispatchAgent = async (agentName: string) => {
+      callCount++;
+      return makeSuccessResult(agentName);
+    };
+    const sleepCalls: number[] = [];
+    const _sleep = async (ms: number) => { sleepCalls.push(ms); };
+
+    const result = await dispatchAgentWithRetry('dev', '', 'medium', 'balanced', {}, false, { _dispatchAgent, _sleep });
+
+    assert.equal(result.success, true);
+    assert.equal(callCount, 1, 'Should only call dispatch once on first success');
+    assert.equal(sleepCalls.length, 0, 'Should not sleep when first attempt succeeds');
   });
 
-  it('exports AGENT_RETRY_DELAYS_MS', () => {
-    assert.ok(partyModeSrc.includes('export const AGENT_RETRY_DELAYS_MS'), 'Missing AGENT_RETRY_DELAYS_MS export');
-    assert.ok(partyModeSrc.includes('2000') && partyModeSrc.includes('5000'), 'Delays should be [2000, 5000]');
+  it('retries on failure and returns success on subsequent attempt', async () => {
+    let callCount = 0;
+    const _dispatchAgent = async (agentName: string) => {
+      callCount++;
+      if (callCount <= 1) return makeFailureResult(agentName, 'transient error');
+      return makeSuccessResult(agentName);
+    };
+    const sleepCalls: number[] = [];
+    const _sleep = async (ms: number) => { sleepCalls.push(ms); };
+
+    const result = await dispatchAgentWithRetry('architect', '', 'medium', 'balanced', {}, false, { _dispatchAgent, _sleep });
+
+    assert.equal(result.success, true);
+    assert.equal(callCount, 2, 'Should call dispatch twice (1 fail + 1 success)');
+    assert.equal(sleepCalls.length, 1, 'Should sleep once between attempts');
   });
 
-  it('defines dispatchAgentWithRetry function', () => {
-    assert.ok(partyModeSrc.includes('dispatchAgentWithRetry'), 'Missing dispatchAgentWithRetry');
+  it('exhausts retries and returns last failure result', async () => {
+    let callCount = 0;
+    const _dispatchAgent = async (agentName: string) => {
+      callCount++;
+      return makeFailureResult(agentName, `failure attempt ${callCount}`);
+    };
+    const sleepCalls: number[] = [];
+    const _sleep = async (ms: number) => { sleepCalls.push(ms); };
+
+    const result = await dispatchAgentWithRetry('pm', '', 'medium', 'balanced', {}, false, { _dispatchAgent, _sleep });
+
+    assert.equal(result.success, false);
+    assert.equal(callCount, AGENT_MAX_RETRIES + 1, `Should attempt ${AGENT_MAX_RETRIES + 1} times total`);
+    assert.ok(result.result.includes(`failure attempt ${AGENT_MAX_RETRIES + 1}`), 'Should return the last failure result');
   });
 
-  it('retry logs warning with attempt count', () => {
-    assert.ok(partyModeSrc.includes('failed (attempt'), 'Should log retry attempt');
+  it('uses correct delay values (2000, 5000) between retries', async () => {
+    const _dispatchAgent = async (agentName: string) => makeFailureResult(agentName, 'always fails');
+    const sleepCalls: number[] = [];
+    const _sleep = async (ms: number) => { sleepCalls.push(ms); };
+
+    await dispatchAgentWithRetry('dev', '', 'medium', 'balanced', {}, false, { _dispatchAgent, _sleep });
+
+    assert.deepStrictEqual(sleepCalls, [2000, 5000], 'Sleep delays should match AGENT_RETRY_DELAYS_MS');
   });
 
-  it('retry uses delay between attempts', () => {
-    assert.ok(partyModeSrc.includes('setTimeout(resolve, delay)') || partyModeSrc.includes('new Promise(resolve => setTimeout'), 'Should delay between retries');
+  it('detects synthetic "offline mode" output as failure and retries', async () => {
+    let callCount = 0;
+    const _dispatchAgent = async (agentName: string): Promise<AgentResult> => {
+      callCount++;
+      if (callCount === 1) {
+        // Simulate agent returning synthetic offline output — dispatch marks this as failure
+        return {
+          agent: agentName,
+          result: 'offline mode — no llm available',
+          durationMs: 10,
+          success: false,
+          error: new Error('produced offline/template output'),
+        };
+      }
+      return makeSuccessResult(agentName);
+    };
+    const sleepCalls: number[] = [];
+    const _sleep = async (ms: number) => { sleepCalls.push(ms); };
+
+    const result = await dispatchAgentWithRetry('ux', '', 'medium', 'balanced', {}, false, { _dispatchAgent, _sleep });
+
+    assert.equal(result.success, true);
+    assert.equal(callCount, 2, 'Should retry after synthetic offline output');
   });
 
-  it('main dispatch uses retry wrapper', () => {
-    // Count occurrences — dispatchAgentWithRetry should be used in the main flow
-    const retryCallCount = (partyModeSrc.match(/dispatchAgentWithRetry\(/g) || []).length;
-    assert.ok(retryCallCount >= 1, 'Main dispatch should use dispatchAgentWithRetry');
+  it('calls _sleep with AGENT_RETRY_DELAYS_MS values in order', async () => {
+    const _dispatchAgent = async (agentName: string) => makeFailureResult(agentName, 'keep failing');
+    const sleepCalls: number[] = [];
+    const _sleep = async (ms: number) => { sleepCalls.push(ms); };
+
+    await dispatchAgentWithRetry('design', '', 'medium', 'balanced', {}, false, { _dispatchAgent, _sleep });
+
+    assert.equal(sleepCalls.length, AGENT_MAX_RETRIES, `Should sleep ${AGENT_MAX_RETRIES} times`);
+    for (let i = 0; i < sleepCalls.length; i++) {
+      assert.equal(sleepCalls[i], AGENT_RETRY_DELAYS_MS[i], `Sleep call ${i} should be ${AGENT_RETRY_DELAYS_MS[i]}ms`);
+    }
   });
 });

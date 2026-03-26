@@ -36,6 +36,7 @@ export async function configCmd(options: {
     logger.success('=== DanteForge Configuration ===');
     logger.info(`Config file: ${paths.configFile}`);
     logger.info('Config scope: shared across Codex, Claude Code, Gemini/Antigravity, OpenCode, Cursor, and direct CLI use.');
+    logger.info('Native assistant slash commands use the host model/session. Direct DanteForge CLI uses this shared config.');
     logger.info(`Default provider: ${config.defaultProvider}`);
     logger.info(`Ollama model: ${config.ollamaModel}`);
     logger.info('');
@@ -52,6 +53,8 @@ export async function configCmd(options: {
 
     logger.info('');
     logger.info('Commands:');
+    logger.info('  danteforge setup ollama --pull');
+    logger.info('  danteforge setup assistants --pull');
     logger.info('  danteforge config --set-key "grok:<your-api-key>"');
     logger.info('  danteforge config --delete-key grok');
     logger.info('  danteforge config --provider claude');

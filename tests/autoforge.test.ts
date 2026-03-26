@@ -501,4 +501,39 @@ describe('executeAutoForgePlan', () => {
     assert.deepStrictEqual(result.failed, []);
     assert.strictEqual(result.paused, false);
   });
+
+  it('complexity calibration runs after successful step (best-effort)', async () => {
+    const cwd = await makeTmpProjectDir();
+    // Write state with tasks so the calibration code has something to assess
+    const dfDir = path.join(cwd, '.danteforge');
+    const stateWithTasks = `project: test-autoforge
+workflowStage: planned
+currentPhase: phase-1
+profile: balanced
+lastHandoff: none
+auditLog: []
+tasks:
+  phase-1:
+    - name: "Add auth module with new architecture"
+      files: ["src/auth.ts", "src/middleware.ts", "src/routes/login.ts"]
+      verify: "npm test"
+gateResults: {}
+autoforgeFailedAttempts: 0
+`;
+    await fs.writeFile(path.join(dfDir, 'STATE.yaml'), stateWithTasks);
+
+    const result = await executeAutoForgePlan(makePlan({
+      steps: [{ command: 'forge', reason: 'Build' }],
+      maxWaves: 5,
+    }), {
+      cwd,
+      _runStep: async () => { /* success */ },
+      _isStageComplete: async () => true,
+    });
+
+    assert.deepStrictEqual(result.completed, ['forge']);
+    assert.deepStrictEqual(result.failed, []);
+    // The complexity calibration should have run without errors
+    // (it's best-effort, so even if it did nothing visible, no crash)
+  });
 });

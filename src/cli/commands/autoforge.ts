@@ -10,6 +10,12 @@ import {
   displayPlan,
 } from '../../core/autoforge.js';
 import {
+  runAutoforgeLoop,
+  AutoforgeLoopState,
+  type AutoforgeLoopContext,
+  type AutoforgeLoopDeps,
+} from '../../core/autoforge-loop.js';
+import {
   scoreAllArtifacts,
   persistScoreResult,
   type ScoreResult,
@@ -33,24 +39,82 @@ export async function autoforge(goal?: string, options: {
   profile?: string;
   parallel?: boolean;
   worktree?: boolean;
+  /** Injection seam: replaces runAutoforgeLoop in --auto mode (for testing) */
+  _runLoop?: (ctx: AutoforgeLoopContext, deps?: Partial<AutoforgeLoopDeps>) => Promise<AutoforgeLoopContext>;
+  /** Injection seam: replaces score-only mode runner (for testing) */
+  _runScoreOnlyMode?: () => Promise<void>;
+  /** Injection seam: replaces analyzeProjectState (for testing) */
+  _analyzeProjectState?: typeof analyzeProjectState;
+  /** Injection seam: replaces planAutoForge (for testing) */
+  _planAutoForge?: typeof planAutoForge;
+  /** Injection seam: replaces displayPlan (for testing) */
+  _displayPlan?: typeof displayPlan;
+  /** Injection seam: replaces executeAutoForgePlan (for testing) */
+  _executeAutoForgePlan?: typeof executeAutoForgePlan;
+  /** Injection seam: replaces loadLatestVerdict (for testing) */
+  _loadLatestVerdict?: typeof loadLatestVerdict;
 } = {}): Promise<void> {
   const maxWaves = options.maxWaves ?? 3;
+  const runScoreOnly = options._runScoreOnlyMode ?? runScoreOnlyMode;
+  const analyze = options._analyzeProjectState ?? analyzeProjectState;
+  const planPipeline = options._planAutoForge ?? planAutoForge;
+  const renderPlan = options._displayPlan ?? displayPlan;
+  const executePlan = options._executeAutoForgePlan ?? executeAutoForgePlan;
+  const loadVerdict = options._loadLatestVerdict ?? loadLatestVerdict;
 
   logger.success('DanteForge AutoForge - Agentic Pipeline Orchestrator');
   logger.info('');
 
   // --score-only mode: score existing artifacts and write guidance
   if (options.scoreOnly) {
-    await runScoreOnlyMode();
+    await runScoreOnly();
+    return;
+  }
+
+  // --auto mode: run continuous loop (score → plan → execute → repeat) until 95% or BLOCKED
+  if (options.auto) {
+    const { spawnSync } = await import('node:child_process');
+    const _runLoop = options._runLoop ?? runAutoforgeLoop;
+    const state = await loadState({ cwd: process.cwd() });
+
+    const ctx: AutoforgeLoopContext = {
+      goal: goal ?? state.project ?? 'autoforge',
+      cwd: process.cwd(),
+      state,
+      loopState: AutoforgeLoopState.IDLE,
+      cycleCount: 0,
+      startedAt: new Date().toISOString(),
+      retryCounters: {},
+      blockedArtifacts: [],
+      lastGuidance: null,
+      isWebProject: false,
+      force: options.force ?? false,
+      maxRetries: 3,
+      dryRun: options.dryRun ?? false,
+    };
+
+    const executeCmd = async (command: string, cwd: string): Promise<{ success: boolean }> => {
+      const [cmd, ...rest] = command.trim().split(' ');
+      const result = spawnSync(process.execPath, [process.argv[1], cmd, ...rest], {
+        cwd, stdio: 'inherit', encoding: 'utf8',
+      });
+      return { success: result.status === 0 };
+    };
+
+    const loopResult = await _runLoop(ctx, { _executeCommand: executeCmd });
+    if (loopResult.loopState === AutoforgeLoopState.BLOCKED) {
+      logger.error(`[Autoforge] Loop blocked on: ${loopResult.blockedArtifacts.join(', ')}`);
+      process.exitCode = 1;
+    }
     return;
   }
 
   // Analyze current project state
   logger.info('Analyzing project state...');
-  const input = await analyzeProjectState();
+  const input = await analyze();
 
   // Generate the plan
-  const plan = planAutoForge(input, maxWaves, goal);
+  const plan = planPipeline(input, maxWaves, goal);
 
   // --prompt mode: generate copy-paste prompt
   if (options.prompt) {
@@ -65,13 +129,13 @@ export async function autoforge(goal?: string, options: {
 
   // --dry-run mode: display plan without executing
   if (options.dryRun) {
-    displayPlan(plan);
+    renderPlan(plan);
     logger.info('[AutoForge] Dry run complete — no commands were executed.');
     return;
   }
 
   // Execute the plan
-  const result = await executeAutoForgePlan(plan, {
+  const result = await executePlan(plan, {
     dryRun: false,
     light: options.light,
     profile: options.profile,
@@ -106,7 +170,7 @@ export async function autoforge(goal?: string, options: {
 
   // Show reflection score if available
   try {
-    const verdict = await loadLatestVerdict();
+    const verdict = await loadVerdict();
     if (verdict) {
       const score = Math.round(verdict.confidence * 100);
       logger.info('');
@@ -152,7 +216,7 @@ async function runScoreOnlyMode(): Promise<void> {
 
   // Print score table
   logger.info('');
-  logger.success('DanteForge v0.8.0 — Score-Only Pass');
+  logger.success('DanteForge v0.9.2 — Score-Only Pass');
   logger.info('━'.repeat(40));
 
   const artifacts: ScoredArtifact[] = ['CONSTITUTION', 'SPEC', 'CLARIFY', 'PLAN', 'TASKS'];

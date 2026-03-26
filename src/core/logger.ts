@@ -12,17 +12,30 @@ const LEVEL_ORDER: Record<LogLevel, number> = {
 };
 
 let currentLevel: LogLevel = 'info';
+let _stderrMode = false;
 
 function shouldLog(level: LogLevel): boolean {
   return LEVEL_ORDER[level] <= LEVEL_ORDER[currentLevel];
 }
 
+// When _stderrMode is active, stdout-bound log messages are redirected to stderr
+// so that --json callers receive clean JSON on stdout without log noise.
+function _log(msg: string): void {
+  if (_stderrMode) {
+    process.stderr.write(msg + '\n');
+  } else {
+    process.stdout.write(msg + '\n');
+  }
+}
+
 export const logger = {
   setLevel(level: LogLevel) { currentLevel = level; },
   getLevel(): LogLevel { return currentLevel; },
-  verbose: (msg: string) => { if (shouldLog('verbose')) console.log(chalk.gray(`[DBG] ${msg}`)); },
-  info: (msg: string) => { if (shouldLog('info')) console.log(chalk.blue(`[INFO] ${msg}`)); },
-  success: (msg: string) => { if (shouldLog('info')) console.log(chalk.green(`[OK] ${msg}`)); },
-  warn: (msg: string) => { if (shouldLog('warn')) console.log(chalk.yellow(`[WARN] ${msg}`)); },
+  /** Redirect non-error log output to stderr. Use when --json flag is active. */
+  setStderr(enabled: boolean) { _stderrMode = enabled; },
+  verbose: (msg: string) => { if (shouldLog('verbose')) _log(chalk.gray(`[DBG] ${msg}`)); },
+  info: (msg: string) => { if (shouldLog('info')) _log(chalk.blue(`[INFO] ${msg}`)); },
+  success: (msg: string) => { if (shouldLog('info')) _log(chalk.green(`[OK] ${msg}`)); },
+  warn: (msg: string) => { if (shouldLog('warn')) _log(chalk.yellow(`[WARN] ${msg}`)); },
   error: (msg: string) => { if (shouldLog('error')) console.error(chalk.red(`[ERR] ${msg}`)); },
 };

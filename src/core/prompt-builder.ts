@@ -3,6 +3,7 @@
 import fs from 'fs/promises';
 import path from 'path';
 import { logger } from './logger.js';
+import { collapseWhitespace } from './context-compressor.js';
 
 const STATE_DIR = '.danteforge';
 const PROMPTS_DIR = path.join(STATE_DIR, 'prompts');
@@ -53,15 +54,15 @@ ${ctx.constitution ? `Apply these project principles:\n${sanitizeInput(ctx.const
 === RAW PROJECT DATA ===
 
 Project: ${ctx.projectName}
-${ctx.dependencies ? `Dependencies: ${JSON.stringify(ctx.dependencies, null, 2)}` : 'No package.json found'}
+${ctx.dependencies ? `Dependencies: ${collapseWhitespace(JSON.stringify(ctx.dependencies, null, 2))}` : 'No package.json found'}
 
 Recent Commits:
 ${ctx.recentCommits.length > 0 ? ctx.recentCommits.join('\n') : '(no commits yet)'}
 
 File Tree:
-${ctx.fileTree.join('\n')}
+${collapseWhitespace(ctx.fileTree.join('\n'))}
 
-${ctx.existingDocs.length > 0 ? `Existing Planning Documents:\n${docPreviews}` : '(no existing docs)'}
+${ctx.existingDocs.length > 0 ? `Existing Planning Documents:\n${collapseWhitespace(docPreviews)}` : '(no existing docs)'}
 
 === END RAW DATA ===
 
@@ -127,10 +128,11 @@ Respond with:
 /**
  * Save a generated prompt to .danteforge/prompts/ for easy access
  */
-export async function savePrompt(name: string, prompt: string): Promise<string> {
-  await fs.mkdir(PROMPTS_DIR, { recursive: true });
+export async function savePrompt(name: string, prompt: string, cwd?: string): Promise<string> {
+  const promptsDir = cwd ? path.join(cwd, '.danteforge', 'prompts') : PROMPTS_DIR;
+  await fs.mkdir(promptsDir, { recursive: true });
   const filename = `${name}-${Date.now()}.md`;
-  const filePath = path.join(PROMPTS_DIR, filename);
+  const filePath = path.join(promptsDir, filename);
   await fs.writeFile(filePath, prompt);
   return filePath;
 }
@@ -205,7 +207,7 @@ Follow the .op JSON format:
 \`\`\`json
 {
   "formatVersion": "1.0.0",
-  "generator": "danteforge/0.8.0",
+  "generator": "danteforge/0.9.2",
   "created": "<ISO timestamp>",
   "document": { "name": "<project>", "pages": [...] },
   "nodes": [...],

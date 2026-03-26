@@ -1,3 +1,5 @@
+import fs from 'node:fs/promises';
+import path from 'node:path';
 import { loadState, recordWorkflowStage, saveState } from '../../../core/state.js';
 import { verifyTask } from '../../../core/verifier.js';
 import { logger } from '../../../core/logger.js';
@@ -9,6 +11,60 @@ import { reflect, evaluateVerdict, DEFAULT_REFLECTION_CONFIG } from '../../../co
 import { createTelemetry, recordToolCall, recordFileModified, type ExecutionTelemetry } from '../../../core/execution-telemetry.js';
 
 export const DEFAULT_TASK_TIMEOUT_MS = 300_000; // 5 minutes per task
+
+// ── Design context injection ─────────────────────────────────────────────────
+
+export interface DesignContextFsOps {
+  readFile: (p: string, enc: string) => Promise<string>;
+}
+
+// Minimal structural type for recursive node walk (satisfies OPNode)
+interface DesignNodeLike {
+  type: string;
+  name: string;
+  children?: DesignNodeLike[];
+}
+
+function collectAllNodes(nodes: DesignNodeLike[]): DesignNodeLike[] {
+  const result: DesignNodeLike[] = [];
+  for (const node of nodes) {
+    result.push(node);
+    if (node.children?.length) {
+      result.push(...collectAllNodes(node.children));
+    }
+  }
+  return result;
+}
+
+/**
+ * Reads DESIGN.op from `.danteforge/DESIGN.op` and returns a concise design
+ * context block suitable for injection into forge task prompts.
+ * Returns null when no DESIGN.op exists (graceful skip).
+ */
+export async function readDesignContext(
+  cwd: string,
+  opts?: { _fsOps?: DesignContextFsOps },
+): Promise<string | null> {
+  try {
+    const readFile = opts?._fsOps?.readFile ?? ((p: string, enc: string) => fs.readFile(p, enc as BufferEncoding));
+    const raw = await readFile(path.join(cwd, '.danteforge', 'DESIGN.op'), 'utf-8');
+    const { parseOP } = await import('../../openpencil/op-codec.js');
+    const doc = parseOP(raw);
+    const allNodes = collectAllNodes(doc.nodes as DesignNodeLike[]);
+    const components = allNodes
+      .filter(n => n.type === 'component' || n.type === 'frame')
+      .map(n => n.name)
+      .slice(0, 10);
+    const lines = ['## Design Context (from DESIGN.op)'];
+    if (components.length > 0) {
+      lines.push(`Components: ${components.join(', ')}`);
+    }
+    lines.push('Design tokens: .danteforge/design-tokens.css — use CSS custom properties');
+    return lines.join('\n');
+  } catch {
+    return null;
+  }
+}
 
 export interface ExecuteWaveResult {
   mode: 'executed' | 'prompt' | 'blocked';
@@ -31,6 +87,17 @@ export interface ExecuteWaveOptions {
   _llmCaller?: (prompt: string) => Promise<string>;
   _verifier?: (task: { name: string; verify?: string }, output?: string) => Promise<boolean>;
   _reflector?: typeof reflect;
+  /** Inject state load/save for testing */
+  _stateCaller?: {
+    load: (opts?: { cwd?: string }) => Promise<ReturnType<typeof loadState>>;
+    save: (state: Awaited<ReturnType<typeof loadState>>, opts?: { cwd?: string }) => Promise<void>;
+  };
+  /** Inject memory recording for testing */
+  _memorizer?: typeof recordMemory;
+  /** Inject design context reader for testing */
+  _readDesignContext?: (cwd: string) => Promise<string | null>;
+  /** Working directory — defaults to process.cwd() */
+  cwd?: string;
 }
 
 export async function executeWave(
@@ -42,12 +109,12 @@ export async function executeWave(
   timeoutMs = DEFAULT_TASK_TIMEOUT_MS,
   options?: ExecuteWaveOptions,
 ): Promise<ExecuteWaveResult> {
-  const state = await loadState();
+  const cwd = options?.cwd;
+  const state = await (options?._stateCaller?.load ?? loadState)({ cwd });
   logger.success(`Wave ${phase} starting (${profile} profile${parallel ? ', parallel' : ''}${promptMode ? ', prompt mode' : ''}${worktree ? ', worktree isolation' : ''})`);
 
   const tasks = state.tasks[phase] ?? [];
   if (tasks.length === 0) {
-    process.exitCode = 1;
     logger.error(`No tasks defined for phase ${phase}. Run "danteforge tasks" before forge.`);
     return { mode: 'blocked', success: false };
   }
@@ -55,7 +122,6 @@ export async function executeWave(
   const llmAvailable = options?._llmCaller != null || await isLLMAvailable();
   if (!llmAvailable && !promptMode) {
     logger.error('No verified live LLM provider is configured for forge execution. Re-run with --prompt or configure a provider with working model access.');
-    process.exitCode = 1;
     return { mode: 'blocked', success: false };
   }
 
@@ -63,8 +129,14 @@ export async function executeWave(
     logger.info(`Generating ${tasks.length} task prompt(s) for manual execution...`);
     for (let i = 0; i < tasks.length; i++) {
       const task = tasks[i]!;
-      const prompt = buildTaskPrompt(task, profile, state.constitution);
-      const savedPath = await savePrompt(`forge-phase${phase}-task${i + 1}`, prompt);
+      let prompt = buildTaskPrompt(task, profile, state.constitution);
+      try {
+        const designCtx = options?._readDesignContext
+          ? await options._readDesignContext(cwd ?? process.cwd())
+          : await readDesignContext(cwd ?? process.cwd());
+        if (designCtx) prompt = `${prompt}\n\n${designCtx}`;
+      } catch { /* graceful skip */ }
+      const savedPath = await savePrompt(`forge-phase${phase}-task${i + 1}`, prompt, cwd);
 
       logger.info('');
       logger.success(`--- Task ${i + 1}/${tasks.length}: ${task.name} ---`);
@@ -76,7 +148,7 @@ export async function executeWave(
 
     logger.info('Apply the generated changes manually, then rerun forge or verify once the code is updated.');
     state.auditLog.push(`${new Date().toISOString()} | forge: ${tasks.length} task prompts generated for phase ${phase}`);
-    await saveState(state);
+    await (options?._stateCaller?.save ?? saveState)(state, { cwd });
     return { mode: 'prompt', success: true };
   }
 
@@ -103,10 +175,17 @@ export async function executeWave(
 
     try {
       recordToolCall(telemetry, 'callLLM', false);
-      const taskPrompt = buildTaskPrompt(task, profile, state.constitution);
+      let taskPrompt = buildTaskPrompt(task, profile, state.constitution);
+      // Inject design context when DESIGN.op is present (best-effort)
+      try {
+        const designCtx = options?._readDesignContext
+          ? await options._readDesignContext(cwd ?? process.cwd())
+          : await readDesignContext(cwd ?? process.cwd());
+        if (designCtx) taskPrompt = `${taskPrompt}\n\n${designCtx}`;
+      } catch { /* graceful skip — DESIGN.op is optional */ }
       const result = options?._llmCaller
         ? await options._llmCaller(taskPrompt)
-        : await callLLM(taskPrompt, undefined, { enrichContext: true });
+        : await callLLM(taskPrompt, undefined, { enrichContext: true, cwd });
       logger.success(`LLM result for "${task.name}" (${result.length} chars)`);
 
       // Track file modifications from task metadata
@@ -131,21 +210,21 @@ export async function executeWave(
         // Update state with reflection score
         state.reflectionScore = evaluation.score;
         state.reflectionLastVerdict = verdict.timestamp;
-      } catch {
-        // Reflection should not block forge execution
-      }
+      } catch (err) { logger.verbose(`[best-effort] reflection: ${err instanceof Error ? err.message : String(err)}`); }
 
       results.push({ task: task.name, success: verified });
     } catch (err) {
       const errMsg = err instanceof Error ? err.message : String(err);
       logger.warn(`LLM failed for task "${task.name}": ${errMsg}`);
-      await recordMemory({
-        category: 'error',
-        summary: `Forge task failed: ${task.name}`,
-        detail: errMsg,
-        tags: ['forge', 'task-failure'],
-        relatedCommands: ['forge'],
-      });
+      try {
+        await (options?._memorizer ?? recordMemory)({
+          category: 'error',
+          summary: `Forge task failed: ${task.name}`,
+          detail: errMsg,
+          tags: ['forge', 'task-failure'],
+          relatedCommands: ['forge'],
+        }, cwd);
+      } catch (memErr) { logger.verbose(`[best-effort] memory recording: ${memErr instanceof Error ? memErr.message : String(memErr)}`); }
       results.push({ task: task.name, success: false, error: errMsg });
     }
   };
@@ -182,10 +261,7 @@ export async function executeWave(
         .filter(result => !result.success)
         .map(result => ({ task: result.task, error: result.error }));
       await captureFailureLessons(failedTasks, 'forge failure');
-    } catch {
-      // Lessons capture should not block forge.
-    }
-    process.exitCode = 1;
+    } catch (err) { logger.verbose(`[best-effort] lessons capture: ${err instanceof Error ? err.message : String(err)}`); }
   } else {
     logger.success(`Wave ${phase} complete - all ${passed} tasks passed`);
   }
@@ -196,7 +272,7 @@ export async function executeWave(
     recordWorkflowStage(state, 'forge', timestamp);
   }
   state.auditLog.push(`${timestamp} | forge: wave ${phase} complete (${passed}/${tasks.length} passed, profile: ${profile}${parallel ? ', parallel' : ''}${failed > 0 ? ', failed' : ''})`);
-  await saveState(state);
+  await (options?._stateCaller?.save ?? saveState)(state, { cwd });
   if (failed === 0) {
     logger.info('Ready for next wave or party mode');
   }

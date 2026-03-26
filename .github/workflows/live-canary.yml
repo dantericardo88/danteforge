@@ -51,3 +51,10 @@ jobs:
       - run: npm run build
       - run: npm run check:cli-smoke
       - run: npm run verify:live
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: danteforge-live-canary-proof
+          path: |
+            .danteforge/evidence/live/latest.json
+            .danteforge/evidence/live/latest.md

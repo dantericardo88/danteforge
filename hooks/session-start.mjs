@@ -25,13 +25,16 @@ In Codex, these slash commands are native workflow commands. Execute them in the
 **Multi-Agent & Automation:**
 - \`/spark\` - Zero-token planning preset for new ideas
 - \`/ember\` - Very low-token preset for quick follow-up work
+- \`/canvas\` - Design-first frontend preset: design → autoforge → ux-refine → verify
 - \`/party\` - Launch multi-agent collaboration mode
 - \`/autoforge\` - Deterministic auto-orchestration of the full pipeline
 - \`/magic\` - Balanced default preset for daily gap-closing
 - \`/blaze\` - High-power preset with full party escalation
+- \`/nova\` - Very-high-power preset: planning + deep execution + polish, no OSS
 - \`/inferno\` - Maximum-power preset with OSS discovery and evolution
 
 **Preset Usage Rule:**
+- Use \`/canvas\` for frontend-heavy features where visual design should drive implementation
 - Use \`/inferno\` for the first big attack on a new matrix dimension
 - Use \`/magic\` for follow-up PRD gap closing
 
@@ -48,6 +51,7 @@ In Codex, these slash commands are native workflow commands. Execute them in the
 - \`/browse\` - Browser automation for live app inspection
 - \`/oss\` - Auto-detect project, search OSS, clone, license-gate, scan, extract patterns
 - \`/harvest\` - Titan Harvest V2: 5-step constitutional harvest of OSS patterns with hash-verifiable ratification
+- \`/local-harvest\` - Harvest patterns from local private repos, folders, and zip archives — combine with OSS CI
 
 ### Skills (Auto-Triggered)
 Skills are automatically suggested based on context:

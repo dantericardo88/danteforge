@@ -26,15 +26,18 @@ describe('VS Code extension release readiness', () => {
   it('release workflow packages the VS Code extension artifact', async () => {
     const workflow = await fs.readFile('.github/workflows/release.yml', 'utf8');
 
-    assert.match(workflow, /npm --prefix vscode-extension run package:vsix/);
+    assert.match(workflow, /npm run release:proof/);
+    assert.match(workflow, /vscode-extension\/\.artifacts\/danteforge\.vsix/);
     assert.match(workflow, /upload-artifact/);
     assert.match(workflow, /OVSX_PAT/);
   });
 
   it('release workflow also runs package audits before publish', async () => {
     const workflow = await fs.readFile('.github/workflows/release.yml', 'utf8');
+    const releaseProofScript = await fs.readFile('scripts/check-release-proof.mjs', 'utf8');
 
-    assert.match(workflow, /npm audit --omit=dev/);
-    assert.match(workflow, /npm --prefix vscode-extension audit --omit=dev/);
+    assert.match(workflow, /npm run release:proof/);
+    assert.match(releaseProofScript, /'audit', '--omit=dev'/);
+    assert.match(releaseProofScript, /'--prefix', 'vscode-extension', 'audit'/);
   });
 });

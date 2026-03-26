@@ -15,7 +15,7 @@ import {
 const STATE_DIR = '.danteforge';
 
 export async function tasks(options: { prompt?: boolean; light?: boolean } = {}) {
-  if (!(await runGate(() => requirePlan(options.light)))) return;
+  if (!(await runGate(() => requirePlan(options.light)))) { process.exitCode = 1; return; }
 
   logger.info('Breaking plan into executable tasks...');
 

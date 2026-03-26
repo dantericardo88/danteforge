@@ -1,6 +1,6 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert';
-import { estimateTokens, estimateCost, chunkText, TOKEN_LIMITS } from '../src/core/token-estimator.js';
+import { estimateTokens, estimateCost, chunkText, TOKEN_LIMITS, isLikelyCode } from '../src/core/token-estimator.js';
 
 describe('estimateTokens', () => {
   it('estimates roughly 1 token per 4 chars', () => {
@@ -70,5 +70,32 @@ describe('TOKEN_LIMITS', () => {
     assert.ok(TOKEN_LIMITS.openai > 0);
     assert.ok(TOKEN_LIMITS.gemini > 0);
     assert.ok(TOKEN_LIMITS.ollama > 0);
+  });
+});
+
+describe('code-aware estimation', () => {
+  it('isLikelyCode detects TypeScript as code', () => {
+    const tsSnippet = `export function greet(name: string): string {
+  const msg = (name.length > 0) ? \`Hello, \${name}!\` : 'Hello!';
+  return msg;
+}`;
+    assert.strictEqual(isLikelyCode(tsSnippet), true);
+  });
+
+  it('isLikelyCode detects prose as not code', () => {
+    const prose = 'The quick brown fox jumps over the lazy dog. It was a fine morning and the sun was shining brightly across the meadow.';
+    assert.strictEqual(isLikelyCode(prose), false);
+  });
+
+  it('estimateTokens with code-aware strategy gives higher count for code', () => {
+    const tsSnippet = `export function add(a: number, b: number): number {
+  if (a < 0 || b < 0) { throw new Error('negative'); }
+  return a + b;
+}`;
+    const simpleCount = estimateTokens(tsSnippet, 'simple');
+    const codeAwareCount = estimateTokens(tsSnippet, 'code-aware');
+    // code-aware uses ~2.5 chars/token for code vs 4 chars/token for simple,
+    // so code-aware should produce a higher token count
+    assert.ok(codeAwareCount > simpleCount, `code-aware (${codeAwareCount}) should exceed simple (${simpleCount})`);
   });
 });

@@ -9,10 +9,22 @@ import { runGate, requireSpec } from '../../core/gates.js';
 
 const STATE_DIR = '.danteforge';
 
-export async function clarify(options: { prompt?: boolean; light?: boolean } = {}) {
+export async function clarify(options: {
+  prompt?: boolean;
+  light?: boolean;
+  /** Injection seam for testing: replaces runGate + requireSpec */
+  _runGate?: () => Promise<boolean>;
+  /** Injection seam for testing: replaces isLLMAvailable */
+  _isLLMAvailable?: () => Promise<boolean>;
+  /** Injection seam for testing: replaces callLLM */
+  _callLLM?: (prompt: string) => Promise<string>;
+  /** Injection seam for testing: replaces writeArtifact */
+  _writeArtifact?: (name: string, content: string) => Promise<void>;
+} = {}) {
   logger.info('Running clarification Q&A on current spec...');
 
-  if (!(await runGate(() => requireSpec(options.light)))) return;
+  const _gate = options._runGate ?? (() => runGate(() => requireSpec(options.light)));
+  if (!(await _gate())) { process.exitCode = 1; return; }
 
   const state = await loadState();
 
@@ -51,12 +63,16 @@ Output ONLY the markdown content - no preamble.`;
     return;
   }
 
-  const llmAvailable = await isLLMAvailable();
+  const _isLLMAvailableFn = options._isLLMAvailable ?? isLLMAvailable;
+  const _callLLMFn = options._callLLM ?? ((p: string) => callLLM(p, undefined, { enrichContext: true }));
+  const _writeArtifactFn = options._writeArtifact ?? writeArtifact;
+
+  const llmAvailable = await _isLLMAvailableFn();
   if (llmAvailable) {
     logger.info('Sending to LLM for spec review...');
     try {
-      const clarifyMd = await callLLM(prompt, undefined, { enrichContext: true });
-      await writeArtifact('CLARIFY.md', clarifyMd);
+      const clarifyMd = await _callLLMFn(prompt);
+      await _writeArtifactFn('CLARIFY.md', clarifyMd);
 
       const timestamp = recordWorkflowStage(state, 'clarify');
       state.auditLog.push(`${timestamp} | clarify: CLARIFY.md generated via API`);
@@ -69,7 +85,7 @@ Output ONLY the markdown content - no preamble.`;
     }
   }
 
-  await writeArtifact('CLARIFY.md', buildLocalClarify(specContent, currentState));
+  await _writeArtifactFn('CLARIFY.md', buildLocalClarify(specContent, currentState));
   const timestamp = recordWorkflowStage(state, 'clarify');
   state.auditLog.push(`${timestamp} | clarify: CLARIFY.md generated locally`);
   await saveState(state);

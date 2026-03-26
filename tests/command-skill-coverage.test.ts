@@ -10,6 +10,7 @@ const WORKFLOW_COMMANDS = [
   'blaze',
   'brainstorm',
   'browse',
+  'canvas',
   'clarify',
   'constitution',
   'debug',
@@ -18,8 +19,10 @@ const WORKFLOW_COMMANDS = [
   'forge',
   'harvest',
   'inferno',
+  'local-harvest',
   'lessons',
   'magic',
+  'nova',
   'oss',
   'party',
   'plan',
@@ -49,6 +52,11 @@ const UTILITY_COMMANDS = [
   'update-mcp',
 ];
 
+// Slash-command files that intentionally do not map 1:1 to a CLI command name.
+const EXTRA_SLASH_COMMANDS = [
+  'danteforge',
+];
+
 describe('command-skill-coverage', () => {
   it('every workflow command has a commands/*.md file', async () => {
     const commandsDir = path.resolve('commands');
@@ -70,8 +78,8 @@ describe('command-skill-coverage', () => {
 
     assert.strictEqual(
       commandFiles.length,
-      WORKFLOW_COMMANDS.length,
-      `Expected ${WORKFLOW_COMMANDS.length} command files, found ${commandFiles.length}: ${commandFiles.sort().join(', ')}`,
+      WORKFLOW_COMMANDS.length + EXTRA_SLASH_COMMANDS.length,
+      `Expected ${WORKFLOW_COMMANDS.length + EXTRA_SLASH_COMMANDS.length} command files, found ${commandFiles.length}: ${commandFiles.sort().join(', ')}`,
     );
   });
 

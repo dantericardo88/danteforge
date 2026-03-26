@@ -5,8 +5,8 @@ import { logger } from '../../core/logger.js';
 import fs from 'fs/promises';
 
 export async function forge(phase = '1', options: { profile?: string; parallel?: boolean; prompt?: boolean; light?: boolean; worktree?: boolean; figma?: boolean; skipUx?: boolean } = {}) {
-  if (!(await runGate(() => requirePlan(options.light)))) return;
-  if (!(await runGate(() => requireTests(options.light)))) return;
+  if (!(await runGate(() => requirePlan(options.light)))) { process.exitCode = 1; return; }
+  if (!(await runGate(() => requireTests(options.light)))) { process.exitCode = 1; return; }
 
   if (options.figma && !options.skipUx) {
     if (!options.prompt) {
@@ -23,11 +23,30 @@ export async function forge(phase = '1', options: { profile?: string; parallel?:
   const profile = options.profile ?? 'balanced';
   const result = await executeWave(parseInt(phase, 10), profile, options.parallel, options.prompt, options.worktree);
   if (!result.success) {
+    process.exitCode = 1;
     return;
   }
 
+  // Post-wave detective audit: check git diff for protected path mutations (best-effort)
+  if (result.mode === 'executed') {
+    try {
+      const { getChangedFiles } = await import('../../utils/git.js');
+      const { auditPostForgeProtectedMutations } = await import('../../core/safe-self-edit.js');
+      const { loadState } = await import('../../core/state.js');
+      const state = await loadState();
+      const changed = await getChangedFiles(process.cwd());
+      const policy = state.selfEditPolicy ?? 'deny';
+      const { violations } = await auditPostForgeProtectedMutations(changed, policy);
+      if (violations.length > 0 && policy !== 'allow-with-audit') {
+        process.exitCode = 1;
+        return;
+      }
+    } catch { /* best-effort: git may not be available or state unreadable */ }
+  }
+
   if (profile === 'quality' && result.mode === 'executed') {
-    await runDanteParty();
+    const partyResult = await runDanteParty();
+    if (!partyResult.success) process.exitCode = 1;
   }
 
   try {

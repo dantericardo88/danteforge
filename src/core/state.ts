@@ -4,6 +4,7 @@ import path from 'path';
 import yaml from 'yaml';
 import { logger } from './logger.js';
 import type { CompletionTracker, ProjectType } from './completion-tracker.js';
+import type { SelfEditPolicy } from './safe-self-edit.js';
 
 const STATE_DIR = '.danteforge';
 const STATE_FILE = path.join(STATE_DIR, 'STATE.yaml');
@@ -79,6 +80,14 @@ export interface DanteState {
   premiumTier?: 'free' | 'pro' | 'enterprise';
   premiumLicenseKey?: string;
   auditTrailEnabled?: boolean;
+  // v0.9.0 — Self-edit policy enforcement
+  selfEditPolicy?: SelfEditPolicy;
+  lastProtectedEditAt?: string;
+  lastProtectedEditDecision?: 'approved' | 'denied';
+  // v0.9.0 — Verify receipt spine
+  lastVerifyReceiptPath?: string;
+  lastVerifySha?: string;
+  lastVerifyStatus?: 'pass' | 'warn' | 'fail';
 }
 
 export function recordWorkflowStage(
@@ -193,6 +202,12 @@ export async function loadState(options: { cwd?: string } = {}): Promise<DanteSt
       premiumTier: parsed?.premiumTier as 'free' | 'pro' | 'enterprise' | undefined,
       premiumLicenseKey: parsed?.premiumLicenseKey,
       auditTrailEnabled: parsed?.auditTrailEnabled,
+      selfEditPolicy: parsed?.selfEditPolicy as SelfEditPolicy | undefined,
+      lastProtectedEditAt: parsed?.lastProtectedEditAt,
+      lastProtectedEditDecision: parsed?.lastProtectedEditDecision as 'approved' | 'denied' | undefined,
+      lastVerifyReceiptPath: parsed?.lastVerifyReceiptPath,
+      lastVerifySha: parsed?.lastVerifySha,
+      lastVerifyStatus: parsed?.lastVerifyStatus as 'pass' | 'warn' | 'fail' | undefined,
     };
   } catch (err) {
     // Only log if this is NOT a "file not found" — real errors should surface

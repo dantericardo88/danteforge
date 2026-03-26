@@ -9,6 +9,7 @@ import { discoverSkills } from '../../core/skills.js';
 import { detectHost, detectMCPCapabilities } from '../../core/mcp.js';
 import { resolveTier, testMCPConnection } from '../../core/mcp-adapter.js';
 import { installAssistantSkills } from '../../core/assistant-installer.js';
+import { chooseRecommendedOllamaModel, inspectOllama } from '../../core/spend-optimizer.js';
 
 const ANTIGRAVITY_BUNDLES_URL = process.env.ANTIGRAVITY_BUNDLES_URL ?? 'https://raw.githubusercontent.com/sickn33/antigravity-awesome-skills/main/docs/BUNDLES.md';
 const LIVE_PROVIDER_VALUES = ['openai', 'claude', 'gemini', 'grok', 'ollama'];
@@ -174,7 +175,7 @@ async function checkAntigravityUpstream(): Promise<DiagnosticResult> {
   }
 }
 
-function validateLiveReleaseConfig(env = process.env): LiveConfigResult {
+export function validateLiveReleaseConfig(env = process.env): LiveConfigResult {
   const rawProviders = env.DANTEFORGE_LIVE_PROVIDERS?.trim();
   if (!rawProviders) {
     return {
@@ -347,7 +348,27 @@ export async function doctor(options: { fix?: boolean; live?: boolean } = {}) {
       name: 'Config',
       status: 'warn',
       message: 'No config found',
-      fix: 'Run: danteforge config --set-key "openai:<key>"',
+      fix: 'Run: danteforge setup ollama --pull (recommended) or danteforge config --set-key "openai:<key>"',
+    });
+  }
+
+  const ollama = await inspectOllama();
+  if (ollama.available) {
+    const selectedModel = chooseRecommendedOllamaModel(ollama.installedModels);
+    results.push({
+      name: 'Ollama local runtime',
+      status: selectedModel ? 'ok' : 'warn',
+      message: selectedModel
+        ? `Available with spend-saver model "${selectedModel}".`
+        : 'Ollama is installed, but no recommended local model is available yet.',
+      fix: selectedModel ? undefined : 'Run: danteforge setup ollama --pull',
+    });
+  } else {
+    results.push({
+      name: 'Ollama local runtime',
+      status: 'warn',
+      message: ollama.detail ?? 'Ollama is not installed or not on PATH.',
+      fix: 'Run: danteforge setup ollama --pull',
     });
   }
 
@@ -359,7 +380,7 @@ export async function doctor(options: { fix?: boolean; live?: boolean } = {}) {
     message: llmReady
       ? `Configured provider is verified for direct calls (${llmProbe.message})`
       : `No verified live provider path is currently available. ${llmProbe.message}`,
-    fix: llmReady ? undefined : 'Configure a provider with working model access or start Ollama with the configured model before direct execution commands.',
+    fix: llmReady ? undefined : 'Run `danteforge setup ollama --pull` for local-first execution, or configure a hosted provider with working model access.',
   });
 
   try {

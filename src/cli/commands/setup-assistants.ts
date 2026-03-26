@@ -1,6 +1,7 @@
 import { logger } from '../../core/logger.js';
 import { installAssistantSkills, type AssistantRegistry } from '../../core/assistant-installer.js';
 import { resolveConfigPaths } from '../../core/config.js';
+import { configureSpendOptimizedDefaults } from '../../core/spend-optimizer.js';
 
 const DEFAULT_ASSISTANTS: AssistantRegistry[] = ['claude', 'codex', 'antigravity', 'opencode'];
 const ALL_ASSISTANTS: AssistantRegistry[] = ['claude', 'codex', 'antigravity', 'opencode', 'cursor'];
@@ -47,10 +48,20 @@ function parseAssistants(raw: string | undefined): AssistantRegistry[] | undefin
   return [...new Set(assistants)] as AssistantRegistry[];
 }
 
-export async function setupAssistants(options: { assistants?: string } = {}) {
+export async function setupAssistants(options: {
+  assistants?: string;
+  host?: string;
+  pull?: boolean;
+  ollamaModel?: string;
+} = {}) {
   const assistants = parseAssistants(options.assistants);
   const result = await installAssistantSkills({ assistants });
   const paths = resolveConfigPaths();
+  const spendOptimization = await configureSpendOptimizedDefaults({
+    hostOverride: options.host,
+    preferredOllamaModel: options.ollamaModel,
+    pullIfMissing: options.pull,
+  });
 
   logger.success('Installed DanteForge skills for local coding assistants');
   for (const entry of result.assistants) {
@@ -58,6 +69,10 @@ export async function setupAssistants(options: { assistants?: string } = {}) {
     logger.info(`${entry.assistant}: ${entry.installedSkills.length} ${noun} -> ${entry.targetDir}`);
   }
   logger.info(`Shared secrets/config: ${paths.configFile}`);
+  logger.info(spendOptimization.message);
+  for (const step of spendOptimization.nextSteps) {
+    logger.info(step);
+  }
   logger.info('Cursor is project-local and opt-in. Run `danteforge setup assistants --assistants cursor` when you want the `.cursor/rules/danteforge.mdc` bootstrap file.');
-  logger.info('Next: run `danteforge config --set-key "openai:..."` and `danteforge doctor --live` on the target machine.');
+  logger.info('Next: run `danteforge doctor` to validate local-first setup, then `danteforge doctor --live` if you also configure hosted fallback providers.');
 }

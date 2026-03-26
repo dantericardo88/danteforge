@@ -2,6 +2,7 @@
 // Falls back to non-streaming callLLM when streaming isn't available.
 
 import { callLLM, isLLMAvailable, type CallLLMOptions } from './llm.js';
+import type { LLMProvider } from './config.js';
 import { loadConfig } from './config.js';
 import { logger } from './logger.js';
 
@@ -12,7 +13,7 @@ import { logger } from './logger.js';
 export async function callLLMWithProgress(
   prompt: string,
   onChunk: (chunk: string) => void,
-  providerOverride?: string,
+  providerOverride?: LLMProvider,
   options?: CallLLMOptions,
 ): Promise<string> {
   // Streaming is provider-dependent and requires SDK-level support.
@@ -23,7 +24,7 @@ export async function callLLMWithProgress(
   }
 
   // Call the standard LLM and deliver the result in chunks
-  const response = await callLLM(prompt, providerOverride as any, options);
+  const response = await callLLM(prompt, providerOverride, options);
 
   // Simulate streaming by breaking response into chunks
   const chunkSize = 100;

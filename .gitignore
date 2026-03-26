@@ -46,6 +46,7 @@ AUTORESEARCH_REPORT.md
 
 # Code coverage reports
 coverage/
+.tmp-coverage-autoforge/
 
 # Local dev tool caches
 .claude/

@@ -98,6 +98,7 @@ describe('computeCompletionTracker — phase completion conditions', () => {
   it('marks verification complete when verifier passes and qaScore >= 80 for web projects', () => {
     const state = makeState({
       lastVerifiedAt: new Date().toISOString(),
+      lastVerifyStatus: 'pass',
       projectType: 'web',
       qaHealthScore: 87,
     } as Partial<DanteState>);
@@ -109,6 +110,7 @@ describe('computeCompletionTracker — phase completion conditions', () => {
   it('marks verification incomplete when qaScore < 80 for web projects', () => {
     const state = makeState({
       lastVerifiedAt: new Date().toISOString(),
+      lastVerifyStatus: 'pass',
       projectType: 'web',
       qaHealthScore: 60,
     } as Partial<DanteState>);
@@ -119,6 +121,7 @@ describe('computeCompletionTracker — phase completion conditions', () => {
   it('marks verification complete for non-web projects when tests pass', () => {
     const state = makeState({
       lastVerifiedAt: new Date().toISOString(),
+      lastVerifyStatus: 'pass',
       projectType: 'cli',
     } as Partial<DanteState>);
     const tracker = computeCompletionTracker(state, makeAllScores(80));
@@ -161,11 +164,93 @@ describe('computeCompletionTracker — phase completion conditions', () => {
       currentPhase: 4,
       tasks: { 1: [{ name: 't1' }], 2: [{ name: 't2' }], 3: [{ name: 't3' }] },
       lastVerifiedAt: new Date().toISOString(),
+      lastVerifyStatus: 'pass',
       workflowStage: 'synthesize',
       retroDelta: 5,
     } as Partial<DanteState>);
     const tracker = computeCompletionTracker(state, makeAllScores(95));
     assert.strictEqual(tracker.projectedCompletion, 'Ready for ship');
+  });
+});
+
+describe('computeCompletionTracker — receipt-based testsPassing', () => {
+  it('testsPassing is false when lastVerifyStatus is undefined', () => {
+    const state = makeState({ projectType: 'cli' } as Partial<DanteState>);
+    const tracker = computeCompletionTracker(state, makeAllScores(80));
+    assert.strictEqual(tracker.phases.verification.testsPassing, false);
+    assert.strictEqual(tracker.phases.verification.complete, false);
+  });
+
+  it('testsPassing is false when lastVerifyStatus is "fail"', () => {
+    const state = makeState({ projectType: 'cli', lastVerifyStatus: 'fail' } as Partial<DanteState>);
+    const tracker = computeCompletionTracker(state, makeAllScores(80));
+    assert.strictEqual(tracker.phases.verification.testsPassing, false);
+  });
+
+  it('testsPassing is false when lastVerifyStatus is "warn"', () => {
+    const state = makeState({ projectType: 'cli', lastVerifyStatus: 'warn' } as Partial<DanteState>);
+    const tracker = computeCompletionTracker(state, makeAllScores(80));
+    assert.strictEqual(tracker.phases.verification.testsPassing, false);
+  });
+
+  it('testsPassing is true when lastVerifyStatus is "pass"', () => {
+    const state = makeState({ projectType: 'cli', lastVerifyStatus: 'pass' } as Partial<DanteState>);
+    const tracker = computeCompletionTracker(state, makeAllScores(80));
+    assert.strictEqual(tracker.phases.verification.testsPassing, true);
+  });
+
+  it('testsPassing is false even if lastVerifiedAt is set but lastVerifyStatus is "fail"', () => {
+    const state = makeState({
+      projectType: 'cli',
+      lastVerifiedAt: new Date().toISOString(),
+      lastVerifyStatus: 'fail',
+    } as Partial<DanteState>);
+    const tracker = computeCompletionTracker(state, makeAllScores(80));
+    assert.strictEqual(tracker.phases.verification.testsPassing, false);
+    assert.strictEqual(tracker.phases.verification.complete, false);
+  });
+
+  it('verificationComplete is false for web project when testsPassing is false despite high qaScore', () => {
+    const state = makeState({
+      projectType: 'web',
+      qaHealthScore: 95,
+      lastVerifyStatus: 'fail',
+    } as Partial<DanteState>);
+    const tracker = computeCompletionTracker(state, makeAllScores(80));
+    assert.strictEqual(tracker.phases.verification.testsPassing, false);
+    assert.strictEqual(tracker.phases.verification.complete, false);
+  });
+
+  it('verificationComplete is false for non-web project when lastVerifyStatus is "warn"', () => {
+    const state = makeState({
+      projectType: 'library',
+      lastVerifyStatus: 'warn',
+    } as Partial<DanteState>);
+    const tracker = computeCompletionTracker(state, makeAllScores(80));
+    assert.strictEqual(tracker.phases.verification.complete, false);
+  });
+
+  it('verification score is 0 for cli project when lastVerifyStatus is missing', () => {
+    const state = makeState({ projectType: 'cli' } as Partial<DanteState>);
+    const tracker = computeCompletionTracker(state, makeAllScores(80));
+    assert.strictEqual(tracker.phases.verification.score, 0);
+  });
+
+  it('verification.testsPassing field matches receipt status, not presence of lastVerifiedAt', () => {
+    const withTimestampOnly = makeState({
+      projectType: 'cli',
+      lastVerifiedAt: new Date().toISOString(),
+    } as Partial<DanteState>);
+    const withReceiptPass = makeState({
+      projectType: 'cli',
+      lastVerifyStatus: 'pass',
+    } as Partial<DanteState>);
+
+    const t1 = computeCompletionTracker(withTimestampOnly, makeAllScores(80));
+    const t2 = computeCompletionTracker(withReceiptPass, makeAllScores(80));
+
+    assert.strictEqual(t1.phases.verification.testsPassing, false);
+    assert.strictEqual(t2.phases.verification.testsPassing, true);
   });
 });
 

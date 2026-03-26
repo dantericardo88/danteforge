@@ -11,7 +11,7 @@ import { buildLocalSpec, extractNumberedTasks, writeArtifact } from '../../core/
 const STATE_DIR = '.danteforge';
 
 export async function specify(idea: string, options: { prompt?: boolean; light?: boolean } = {}) {
-  if (!(await runGate(() => requireConstitution(options.light)))) return;
+  if (!(await runGate(() => requireConstitution(options.light)))) { process.exitCode = 1; return; }
 
   logger.info(`Specifying: ${idea}`);
 

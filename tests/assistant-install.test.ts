@@ -52,6 +52,83 @@ describe('assistant skill install', () => {
     await fs.access(path.join(homeDir, '.codex', 'commands', 'autoforge.md'));
   });
 
+  it('syncs the Claude plugin cache to the current package version when a Claude install exists', async () => {
+    const homeDir = await makeTempDir('danteforge-home-');
+    const skillsDir = await makeTempDir('danteforge-skills-');
+    const projectDir = await makeTempDir('danteforge-project-');
+
+    await fs.mkdir(path.join(skillsDir, 'example-skill'), { recursive: true });
+    await fs.writeFile(
+      path.join(skillsDir, 'example-skill', 'SKILL.md'),
+      '---\nname: example-skill\ndescription: Example skill\n---\n\nBody\n',
+      'utf8',
+    );
+
+    await fs.mkdir(path.join(projectDir, '.claude-plugin'), { recursive: true });
+    await fs.mkdir(path.join(projectDir, 'dist'), { recursive: true });
+    await fs.mkdir(path.join(projectDir, 'commands'), { recursive: true });
+    await fs.writeFile(path.join(projectDir, 'dist', 'index.js'), 'console.log("0.9.2");\n', 'utf8');
+    await fs.writeFile(
+      path.join(projectDir, 'package.json'),
+      JSON.stringify({
+        name: 'danteforge',
+        version: '0.9.2',
+        files: ['dist', 'commands', '.claude-plugin', 'README.md'],
+      }, null, 2),
+      'utf8',
+    );
+    await fs.writeFile(path.join(projectDir, 'README.md'), '# DanteForge\n', 'utf8');
+    await fs.writeFile(path.join(projectDir, 'commands', 'autoforge.md'), '---\nname: autoforge\ndescription: Test\n---\n', 'utf8');
+    await fs.writeFile(path.join(projectDir, '.claude-plugin', 'plugin.json'), '{"version":"0.9.2"}\n', 'utf8');
+    await fs.writeFile(path.join(projectDir, '.claude-plugin', 'marketplace.json'), '{"plugins":[{"version":"0.9.2"}]}\n', 'utf8');
+
+    const priorCacheDir = path.join(homeDir, '.claude', 'plugins', 'cache', 'danteforge-dev', 'danteforge', '0.9.1');
+    await fs.mkdir(path.join(priorCacheDir, 'node_modules'), { recursive: true });
+    await fs.writeFile(path.join(priorCacheDir, 'package.json'), '{"version":"0.9.1"}\n', 'utf8');
+    await fs.writeFile(path.join(priorCacheDir, 'node_modules', 'keep.txt'), 'keep\n', 'utf8');
+    await fs.mkdir(path.join(homeDir, '.claude', 'plugins'), { recursive: true });
+    await fs.writeFile(
+      path.join(homeDir, '.claude', 'plugins', 'installed_plugins.json'),
+      JSON.stringify({
+        version: 2,
+        plugins: {
+          'danteforge@danteforge-dev': [
+            {
+              scope: 'user',
+              installPath: priorCacheDir,
+              version: '0.9.1',
+              installedAt: '2026-03-25T00:00:00.000Z',
+              lastUpdated: '2026-03-25T00:00:00.000Z',
+            },
+          ],
+        },
+      }, null, 2),
+      'utf8',
+    );
+
+    const { installAssistantSkills } = await import('../src/core/assistant-installer.js');
+    await installAssistantSkills({
+      homeDir,
+      skillsDir,
+      projectDir,
+      assistants: ['claude'],
+    });
+
+    const nextCacheDir = path.join(homeDir, '.claude', 'plugins', 'cache', 'danteforge-dev', 'danteforge', '0.9.2');
+    await fs.access(path.join(nextCacheDir, 'dist', 'index.js'));
+    await fs.access(path.join(nextCacheDir, 'node_modules', 'keep.txt'));
+    const cachedPackage = await fs.readFile(path.join(nextCacheDir, 'package.json'), 'utf8');
+    assert.match(cachedPackage, /0\.9\.2/);
+
+    const installedPlugins = JSON.parse(await fs.readFile(path.join(homeDir, '.claude', 'plugins', 'installed_plugins.json'), 'utf8')) as {
+      plugins: Record<string, Array<{ installPath: string; version: string }>>;
+    };
+    const install = installedPlugins.plugins['danteforge@danteforge-dev']?.[0];
+    assert.ok(install, 'Claude install entry should exist');
+    assert.equal(install?.version, '0.9.2');
+    assert.equal(install?.installPath, nextCacheDir);
+  });
+
   it('can install a Cursor bootstrap rule into the current project', async () => {
     const homeDir = await makeTempDir('danteforge-home-');
     const skillsDir = await makeTempDir('danteforge-skills-');

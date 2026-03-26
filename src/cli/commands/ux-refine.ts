@@ -66,7 +66,7 @@ export async function uxRefine(options: {
     return;
   }
 
-  if (!(await runGate(() => requirePlan(options.light)))) return;
+  if (!(await runGate(() => requirePlan(options.light)))) { process.exitCode = 1; return; }
 
   const forgeCompleted = options.afterForge || await hasForgeRun();
   if (!forgeCompleted) {

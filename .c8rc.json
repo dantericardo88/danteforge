@@ -3,5 +3,9 @@
   "report-dir": "coverage",
   "all": true,
   "src": ["src"],
-  "exclude": ["tests/**", "scripts/**", "dist/**", "node_modules/**", "vscode-extension/**"]
+  "exclude": ["tests/**", "scripts/**", "dist/**", "node_modules/**", "vscode-extension/**"],
+  "check-coverage": true,
+  "lines": 84,
+  "branches": 81,
+  "functions": 88
 }

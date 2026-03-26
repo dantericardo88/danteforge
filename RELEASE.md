@@ -2,7 +2,7 @@
 
 This project ships a Node CLI package (`danteforge` / `dforge`) and a first-class VS Code extension client.
 
-Current operator status and non-blocking follow-ups are tracked in [docs/Operational-Readiness-v0.8.0.md](docs/Operational-Readiness-v0.8.0.md).
+Current operator status and non-blocking follow-ups are tracked in [docs/Operational-Readiness-v0.9.2.md](docs/Operational-Readiness-v0.9.2.md). Archived readiness guides and older planning context are indexed in [docs/Release-History.md](docs/Release-History.md).
 
 ## Prerequisites
 
@@ -27,12 +27,12 @@ npm --prefix vscode-extension ci
 npm run release:check:strict
 ```
 
-3. Run anti-stub and the remaining release checks
+3. Run the local maintainer release checks and proof gates
 
 ```bash
 npm run check:anti-stub
 danteforge verify --release
-npm run check:cli-smoke
+npm run release:proof
 npm run verify:live
 npm run release:ga
 ```
@@ -45,11 +45,12 @@ Notes:
 - The install smoke gate verifies that package installation is non-mutating for assistant registries, then proves that explicit assistant setup can populate the Claude, Codex, Gemini/Antigravity, and OpenCode registries and generate the Cursor bootstrap rule.
 - Standalone assistant install and secret setup details are documented in `docs/Standalone-Assistant-Setup.md`.
 - `release:check` includes tracked-path hygiene, root verification, CLI build, VS Code extension verification, plugin manifest validation, packed CLI install smoke verification, package dry-run, and third-party notices validation.
+- `release:proof` is the CI-facing ship authority. It starts with `check:repo-hygiene:strict`, then runs `release:check`, `npm audit --omit=dev`, `npm --prefix vscode-extension audit`, packages the VS Code extension, and writes `.danteforge/evidence/release/latest.json` plus `.md` with packaged npm metadata, artifact hashes, and publish-provenance summary details.
 - `release:check:strict` stages an isolated temp sandbox copy, runs the strict presence gate there, then executes the strict release chain with isolated home/config state.
 - `release:check:simulated-fresh` creates an isolated temp sandbox copy of the repo, runs the strict hygiene gate before installs, then runs the normal release gate there.
-- `verify:live` runs real provider prompt checks plus live upstream and Figma endpoint checks. This is intended for secret-backed CI or a maintainer workstation with live credentials configured.
-- `danteforge verify --release` exposes the release gate from the CLI surface and should pass before ship.
-- `release:ga` runs the strict release gate followed by `verify:live`.
+- `verify:live` runs real provider prompt checks plus live upstream and Figma endpoint checks, then writes `.danteforge/evidence/live/latest.json` plus `.md`.
+- `danteforge verify --release` exposes the project-state release gate from the CLI surface and remains a useful maintainer-local check, but it is not the CI publish authority.
+- `release:ga` runs the release proof gate followed by `verify:live`.
 
 Live verification environment:
 - `DANTEFORGE_LIVE_PROVIDERS=openai,claude,gemini,grok,ollama`
@@ -65,7 +66,7 @@ Live verification environment:
 - `FIGMA_MCP_URL` only if you need a non-default Figma MCP endpoint
 
 GitHub Actions live canary:
-- `.github/workflows/live-canary.yml` runs `npm run build`, `npm run check:cli-smoke`, and `npm run verify:live`.
+- `.github/workflows/live-canary.yml` runs `npm run build`, `npm run check:cli-smoke`, `npm run verify:live`, and uploads the live receipt artifact.
 - Configure `OPENAI_API_KEY`, `ANTHROPIC_API_KEY`, `GEMINI_API_KEY`, `XAI_API_KEY` as repository secrets as needed.
 - Configure `DANTEFORGE_LIVE_PROVIDERS`, `OLLAMA_MODEL`, `OLLAMA_BASE_URL`, `DANTEFORGE_LIVE_TIMEOUT_MS`, `OLLAMA_TIMEOUT_MS`, `ANTIGRAVITY_BUNDLES_URL`, and `FIGMA_MCP_URL` as repository variables when needed.
 
@@ -74,11 +75,12 @@ GA checklist:
 1. `npm run verify`
 2. `npm run verify:all`
 3. `npm run check:cli-smoke`
-4. `npm run release:check:strict`
-5. `npm run release:check:simulated-fresh`
-6. `npm audit --omit=dev`
-7. `npm --prefix vscode-extension audit --omit=dev`
-8. successful `npm run verify:live` canary
+4. `npm run release:proof`
+5. `npm run release:check:strict`
+6. `npm run release:check:simulated-fresh`
+7. `npm audit --omit=dev`
+8. `npm --prefix vscode-extension audit`
+9. successful `npm run verify:live` canary
 
 4. Package the VS Code extension
 
@@ -115,20 +117,18 @@ git push origin main --follow-tags
 
 ## Automated Release (GitHub Actions)
 
-- Push a tag like `v0.8.0` to trigger `.github/workflows/release.yml`
+- Push a tag like `v0.9.2` to trigger `.github/workflows/release.yml`
 - Or run the workflow manually via `workflow_dispatch`
 - Use `.github/workflows/live-canary.yml` for scheduled or manual secret-backed live verification outside the publish path
 
 The workflow will:
 
-1. Run `npm run check:repo-hygiene:strict`
-2. Install root and VS Code extension dependencies
-3. Run `npm run release:check`
-4. Run `npm audit --omit=dev` and `npm --prefix vscode-extension audit --omit=dev`
-5. Package the VS Code extension and upload the `.vsix` as a workflow artifact
-6. Publish to npm (requires `NPM_TOKEN`)
-7. Publish the VS Code extension to VS Code Marketplace when `VSCE_PAT` is available
-8. Publish the VS Code extension to Open VSX when `OVSX_PAT` is available
+1. Run `release-proof` to execute `npm run release:proof`, write `.danteforge/evidence/release/latest.json`, and upload the release receipt plus the `.vsix`
+2. Run `live-proof` to execute `npm run verify:live` and upload `.danteforge/evidence/live/latest.json`
+3. Block publish unless both proof jobs pass
+4. Publish to npm (requires `NPM_TOKEN`)
+5. Publish the VS Code extension to VS Code Marketplace when `VSCE_PAT` is available
+6. Publish the VS Code extension to Open VSX when `OVSX_PAT` is available
 
 ## Extension Notes
 

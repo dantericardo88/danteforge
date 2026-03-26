@@ -6,6 +6,7 @@ import { loadState, saveState } from '../../core/state.js';
 import { detectProjectType } from '../../core/completion-tracker.js';
 import { isLLMAvailable } from '../../core/llm.js';
 import { loadConfig } from '../../core/config.js';
+import { inspectOllama } from '../../core/spend-optimizer.js';
 
 export async function init(options: { prompt?: boolean } = {}): Promise<void> {
   const cwd = process.cwd();
@@ -51,18 +52,21 @@ export async function init(options: { prompt?: boolean } = {}): Promise<void> {
     const hasKey = Object.values(config.providers).some(
       (p) => p?.apiKey,
     );
+    const ollama = await inspectOllama();
     checks.push({
-      name: 'API key',
-      ok: hasKey,
+      name: 'Provider setup',
+      ok: hasKey || ollama.available,
       message: hasKey
-        ? `Provider: ${config.defaultProvider} (key configured)`
-        : 'No API key — local-only mode. Use "danteforge config --set-key" to add one.',
+        ? `Provider: ${config.defaultProvider} (hosted fallback configured)`
+        : ollama.available
+          ? `Local-first mode ready via Ollama (${ollama.installedModels.length} model(s) detected).`
+          : 'No hosted key or local Ollama runtime detected yet.',
     });
   } catch {
     checks.push({
-      name: 'API key',
+      name: 'Provider setup',
       ok: false,
-      message: 'No config found — local-only mode.',
+      message: 'No config found yet. DanteForge can run local-first once Ollama is set up.',
     });
   }
 
@@ -92,6 +96,10 @@ export async function init(options: { prompt?: boolean } = {}): Promise<void> {
   // Step 5: Guidance
   logger.info('');
   logger.success('Setup complete. Recommended next steps:');
+  logger.info('');
+
+  logger.info('Spend-optimized local setup:');
+  logger.info('  danteforge setup ollama --pull   - install or select a local Ollama model for DanteForge CLI');
   logger.info('');
 
   if (llmReady) {

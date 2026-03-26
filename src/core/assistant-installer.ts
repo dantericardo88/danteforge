@@ -169,6 +169,131 @@ function resolveAssistantTargetDir(homeDir: string, assistant: AssistantRegistry
   }
 }
 
+function compareSemver(a: string, b: string): number {
+  const aParts = a.split('.').map(part => Number.parseInt(part, 10) || 0);
+  const bParts = b.split('.').map(part => Number.parseInt(part, 10) || 0);
+  const max = Math.max(aParts.length, bParts.length);
+
+  for (let index = 0; index < max; index++) {
+    const left = aParts[index] ?? 0;
+    const right = bParts[index] ?? 0;
+    if (left !== right) {
+      return left - right;
+    }
+  }
+
+  return 0;
+}
+
+async function pathExists(targetPath: string): Promise<boolean> {
+  try {
+    await fs.access(targetPath);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+async function syncClaudePluginCache(homeDir: string, projectDir: string): Promise<void> {
+  const pluginsRoot = path.join(homeDir, '.claude', 'plugins');
+  const installedPluginsPath = path.join(pluginsRoot, 'installed_plugins.json');
+  const cacheRoot = path.join(pluginsRoot, 'cache', 'danteforge-dev', 'danteforge');
+
+  if (!await pathExists(pluginsRoot)) {
+    return;
+  }
+
+  const pkgPath = path.join(projectDir, 'package.json');
+  if (!await pathExists(pkgPath)) {
+    return;
+  }
+
+  const pkg = JSON.parse(await fs.readFile(pkgPath, 'utf8')) as {
+    version: string;
+    files?: string[];
+  };
+  const version = pkg.version;
+  const targetDir = path.join(cacheRoot, version);
+
+  await fs.mkdir(cacheRoot, { recursive: true });
+
+  if (!await pathExists(targetDir)) {
+    const cacheEntries = await fs.readdir(cacheRoot, { withFileTypes: true }).catch(() => []);
+    const priorVersions = cacheEntries
+      .filter(entry => entry.isDirectory() && entry.name !== version)
+      .map(entry => entry.name)
+      .sort((left, right) => compareSemver(right, left));
+    const priorVersion = priorVersions[0];
+
+    if (priorVersion) {
+      await fs.cp(path.join(cacheRoot, priorVersion), targetDir, { recursive: true, force: true });
+    } else {
+      await fs.mkdir(targetDir, { recursive: true });
+    }
+  }
+
+  const packageFiles = new Set<string>([
+    'package.json',
+    'package-lock.json',
+    ...(pkg.files ?? []),
+  ]);
+
+  for (const relativePath of packageFiles) {
+    const sourcePath = path.join(projectDir, relativePath);
+    if (!await pathExists(sourcePath)) {
+      continue;
+    }
+
+    const destinationPath = path.join(targetDir, relativePath);
+    const stat = await fs.stat(sourcePath);
+    if (stat.isDirectory()) {
+      await fs.cp(sourcePath, destinationPath, { recursive: true, force: true });
+    } else {
+      await fs.mkdir(path.dirname(destinationPath), { recursive: true });
+      await fs.copyFile(sourcePath, destinationPath);
+    }
+  }
+
+  const targetNodeModules = path.join(targetDir, 'node_modules');
+  const projectNodeModules = path.join(projectDir, 'node_modules');
+  if (!await pathExists(targetNodeModules) && await pathExists(projectNodeModules)) {
+    await fs.cp(projectNodeModules, targetNodeModules, { recursive: true, force: true });
+  }
+
+  let installedPlugins: {
+    version: number;
+    plugins: Record<string, Array<{
+      scope: string;
+      installPath: string;
+      version: string;
+      installedAt: string;
+      lastUpdated: string;
+    }>>;
+  } = {
+    version: 2,
+    plugins: {},
+  };
+
+  if (await pathExists(installedPluginsPath)) {
+    installedPlugins = JSON.parse(await fs.readFile(installedPluginsPath, 'utf8')) as typeof installedPlugins;
+  }
+
+  const pluginKey = 'danteforge@danteforge-dev';
+  const now = new Date().toISOString();
+  const existingInstall = installedPlugins.plugins[pluginKey]?.[0];
+  installedPlugins.version = installedPlugins.version || 2;
+  installedPlugins.plugins[pluginKey] = [{
+    scope: existingInstall?.scope ?? 'user',
+    installPath: targetDir,
+    version,
+    installedAt: existingInstall?.installedAt ?? now,
+    lastUpdated: now,
+  }];
+
+  await fs.mkdir(path.dirname(installedPluginsPath), { recursive: true });
+  await fs.writeFile(installedPluginsPath, JSON.stringify(installedPlugins, null, 2), 'utf8');
+}
+
 function buildCursorBootstrapRule(): string {
   return [
     '---',
@@ -453,6 +578,10 @@ export async function installAssistantSkills(
       await syncCodexConfig(homeDir);
       await syncCodexCommands(homeDir);
       await syncCodexBootstrap(homeDir);
+    }
+
+    if (assistant === 'claude') {
+      await syncClaudePluginCache(homeDir, projectDir);
     }
 
     results.push({ assistant, targetDir, installedSkills: skillDirs, installMode: 'skills' });

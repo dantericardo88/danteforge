@@ -136,6 +136,7 @@ program
   .option('--live', 'Run live browser checks on deployed app')
   .option('--url <url>', 'URL to verify against (requires --live)')
   .option('--recompute', 'Re-detect project type and recompute completion scores')
+  .option('--json', 'Output verify receipt JSON to stdout')
   .action(commands.verify);
 
 program
@@ -191,17 +192,20 @@ program
 
 program
   .command('setup')
-  .argument('<tool>', 'Tool to set up (figma|assistants)')
+  .argument('<tool>', 'Tool to set up (figma|assistants|ollama)')
   .description('Interactive setup wizard for integrations')
   .option('--host <type>', 'Specify host editor', 'auto')
   .option('--assistants <list>', 'Comma-separated assistant list (claude,codex,antigravity|gemini,opencode,cursor,all). Defaults to user-level assistants only; cursor is explicit.')
+  .option('--ollama-model <name>', 'Preferred Ollama model for local-first spend optimization')
+  .option('--pull', 'Pull the recommended Ollama model during setup when it is missing')
   .option('--figma-url <url>', 'Figma file URL')
   .option('--token-file <path>', 'Design tokens file path')
   .option('--no-test', 'Skip connection test')
   .action((tool: string, options) => {
     if (tool === 'figma') return commands.setupFigma(options);
     if (tool === 'assistants') return commands.setupAssistants(options);
-    logger.error(`Unknown tool: ${tool}. Available: figma, assistants`);
+    if (tool === 'ollama') return commands.setupOllama(options);
+    logger.error(`Unknown tool: ${tool}. Available: figma, assistants, ollama`);
   });
 
 program
@@ -218,11 +222,41 @@ program
   .action(commands.dashboard);
 
 program
+  .command('cost')
+  .description('Token cost reporting — view spend by agent, tier, model, and savings')
+  .option('--by-agent', 'Show cost breakdown by agent role')
+  .option('--by-tier', 'Show cost breakdown by model tier')
+  .option('--savings', 'Show savings from local transforms, compression, and gates')
+  .option('--history', 'Show historical cost across sessions')
+  .action(commands.cost);
+
+program
+  .command('mcp-start')
+  .description('Start DanteForge MCP server — expose tools to Claude Code, Codex, or any MCP client')
+  .action(commands.mcpServer);
+
+program
+  .command('policy [action] [value]')
+  .description('Get or set the self-edit policy for this project (deny | confirm | allow-with-audit)')
+  .option('--cwd <path>', 'Project directory')
+  .action((action, value, opts) => commands.policy(action, value, opts));
+
+program
+  .command('audit')
+  .description('Show self-edit audit log entries')
+  .option('--last <n>', 'Show last N entries')
+  .option('--format <fmt>', 'Output format: table | json', 'table')
+  .option('--cwd <path>', 'Project directory')
+  .action(opts => commands.audit(opts));
+
+program
   .command('spark [goal]')
-  .description('Zero-token planning preset: review -> constitution -> specify -> clarify -> plan -> tasks')
+  .description('Zero-token planning preset: review -> constitution -> specify -> clarify -> tech-decide -> plan -> tasks')
   .option('--prompt', 'Generate the preset plan without executing')
+  .option('--skip-tech-decide', 'Skip the tech-decide step (useful for follow-up sprints where tech is already decided)')
   .action((goal, opts) => commands.spark(goal, {
     prompt: opts.prompt,
+    skipTechDecide: opts.skipTechDecide,
   }));
 
 program
@@ -236,9 +270,21 @@ program
   }));
 
 program
+  .command('canvas [goal]')
+  .description('Design-first frontend preset: design → autoforge → ux-refine → verify')
+  .option('--profile <type>', 'quality | balanced | budget', 'budget')
+  .option('--prompt', 'Generate the preset plan without executing')
+  .option('--design-prompt <text>', 'Override design prompt (defaults to goal)')
+  .action((goal, opts) => commands.canvas(goal, {
+    profile: opts.profile,
+    prompt: opts.prompt,
+    designPrompt: opts.designPrompt,
+  }));
+
+program
   .command('magic [goal]')
   .description('Balanced preset and default hero command for most follow-up work')
-  .option('--level <level>', 'spark | ember | magic | blaze | inferno', 'magic')
+  .option('--level <level>', 'spark | ember | canvas | magic | blaze | nova | inferno', 'magic')
   .option('--profile <type>', 'quality | balanced | budget', 'budget')
   .option('--skip-ux', 'Skip UX refinement')
   .option('--host <type>', 'Specify host editor for MCP', 'auto')
@@ -259,16 +305,48 @@ program
 
 program
   .command('blaze [goal]')
-  .description('High-power preset: full party + strong autoforge + self-improve')
+  .description('High-power preset: full party + strong autoforge + synthesize + retro + self-improve')
   .option('--profile <type>', 'quality | balanced | budget', 'budget')
   .option('--prompt', 'Generate the preset plan without executing')
   .option('--worktree', 'Run in an isolated git worktree')
   .option('--isolation', 'Run party with isolation enabled')
+  .option('--with-design', 'Add design + ux-refine steps to the pipeline (design-first mode)')
+  .option('--design-prompt <text>', 'Prompt to pass to the design step (defaults to goal)')
+  .option('--local-sources <paths>', 'Comma-separated local repo/folder paths to harvest first')
+  .option('--local-depth <level>', 'Harvest depth for local sources: shallow|medium|full', 'medium')
   .action((goal, opts) => commands.blaze(goal, {
     profile: opts.profile,
     prompt: opts.prompt,
     worktree: opts.worktree,
     isolation: opts.isolation,
+    withDesign: opts.withDesign,
+    designPrompt: opts.designPrompt,
+    localSources: opts.localSources?.split(',').map((s: string) => s.trim()).filter(Boolean),
+    localDepth: opts.localDepth,
+  }));
+
+program
+  .command('nova [goal]')
+  .description('Very-high-power preset: planning prefix + blaze execution + inferno polish (no OSS)')
+  .option('--profile <type>', 'quality | balanced | budget', 'budget')
+  .option('--prompt', 'Generate the preset plan without executing')
+  .option('--worktree', 'Run in an isolated git worktree')
+  .option('--isolation', 'Run party with isolation enabled')
+  .option('--tech-decide', 'Add a tech-decide step after the planning prefix')
+  .option('--with-design', 'Add design + ux-refine steps to the pipeline (design-first mode)')
+  .option('--design-prompt <text>', 'Prompt to pass to the design step (defaults to goal)')
+  .option('--local-sources <paths>', 'Comma-separated local repo/folder paths to harvest first')
+  .option('--local-depth <level>', 'Harvest depth for local sources: shallow|medium|full', 'medium')
+  .action((goal, opts) => commands.nova(goal, {
+    profile: opts.profile,
+    prompt: opts.prompt,
+    worktree: opts.worktree,
+    isolation: opts.isolation,
+    withTechDecide: opts.techDecide,
+    withDesign: opts.withDesign,
+    designPrompt: opts.designPrompt,
+    localSources: opts.localSources?.split(',').map((s: string) => s.trim()).filter(Boolean),
+    localDepth: opts.localDepth,
   }));
 
 program
@@ -279,12 +357,22 @@ program
   .option('--worktree', 'Run in an isolated git worktree')
   .option('--isolation', 'Run party with isolation enabled')
   .option('--max-repos <n>', 'Maximum repos for OSS discovery', '12')
+  .option('--with-design', 'Add design + ux-refine steps to the pipeline (design-first mode)')
+  .option('--design-prompt <text>', 'Prompt to pass to the design step (defaults to goal)')
+  .option('--local-sources <paths>', 'Comma-separated local repo/folder paths to harvest first')
+  .option('--local-depth <level>', 'Harvest depth for local sources: shallow|medium|full', 'medium')
+  .option('--local-config <path>', 'YAML config file listing local sources')
   .action((goal, opts) => commands.inferno(goal, {
     profile: opts.profile,
     prompt: opts.prompt,
     worktree: opts.worktree,
     isolation: opts.isolation,
     maxRepos: parseInt(opts.maxRepos, 10),
+    withDesign: opts.withDesign,
+    designPrompt: opts.designPrompt,
+    localSources: opts.localSources?.split(',').map((s: string) => s.trim()).filter(Boolean),
+    localDepth: opts.localDepth,
+    localSourcesConfig: opts.localConfig,
   }));
 
 program
@@ -386,6 +474,22 @@ program
   }));
 
 program
+  .command('local-harvest [paths...]')
+  .description('Harvest patterns from local private repos, folders, and zip archives')
+  .option('--config <path>', 'YAML config file listing sources (.danteforge/local-sources.yaml)')
+  .option('--depth <level>', 'shallow | medium | full (default: medium)', 'medium')
+  .option('--prompt', 'Show harvest plan without executing')
+  .option('--dry-run', 'Detect source types without reading')
+  .option('--max-sources <n>', 'Maximum sources to analyze (default: 5)', '5')
+  .action((paths, opts) => commands.localHarvest(paths ?? [], {
+    config: opts.config,
+    depth: opts.depth,
+    prompt: opts.prompt,
+    dryRun: opts.dryRun,
+    maxSources: parseInt(opts.maxSources, 10),
+  }));
+
+program
   .command('autoresearch <goal>')
   .description('Autonomous metric-driven optimization loop — plan, rewrite, execute, evaluate, keep winners')
   .option('--metric <metric>', 'How to measure success (e.g., "startup time ms", "bundle size KB")')
@@ -439,7 +543,7 @@ Command Groups:
   Automation:     spark, ember, magic, blaze, inferno, autoforge, autoresearch, party
   Design:         design, ux-refine, browse, qa
   Intelligence:   tech-decide, debug, lessons, profile, oss, harvest, retro
-  Tools:          config, setup, doctor, dashboard, compact, import, skills, ship, premium
+  Tools:          config, setup, doctor, dashboard, cost, compact, import, skills, ship, premium
   Meta:           help, review, feedback, update-mcp, awesome-scan, docs
 
 Run "danteforge help <command>" for detailed help on any command.

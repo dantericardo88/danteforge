@@ -29,11 +29,16 @@ async function makeWorkspace() {
 }
 
 function runCli(cwd: string, home: string, args: string[]) {
+  return runCliWithEnv(cwd, home, args);
+}
+
+function runCliWithEnv(cwd: string, home: string, args: string[], extraEnv: Record<string, string> = {}) {
   const result = spawnSync(process.execPath, [tsxCli, cliEntry, ...args], {
     cwd,
     env: {
       ...process.env,
       DANTEFORGE_HOME: home,
+      ...extraEnv,
     },
     encoding: 'utf8',
   });
@@ -96,5 +101,19 @@ describe('config and assistant setup cli', () => {
     await assert.doesNotReject(() => fs.access(path.join(home, '.gemini', 'antigravity', 'skills', 'test-driven-development', 'SKILL.md')));
     await assert.doesNotReject(() => fs.access(path.join(home, '.config', 'opencode', 'skills', 'test-driven-development', 'SKILL.md')));
     await assert.rejects(() => fs.access(path.join(cwd, '.cursor', 'rules', 'danteforge.mdc')));
+  });
+
+  it('setup ollama explains host-native model usage and missing local runtime clearly', async () => {
+    const { cwd, home } = await makeWorkspace();
+
+    const result = runCliWithEnv(cwd, home, ['setup', 'ollama', '--host', 'codex'], {
+      PATH: '',
+    });
+    assert.strictEqual(result.status, 0, result.stderr);
+
+    const output = result.stdout + result.stderr;
+    assert.match(output, /Native codex workflows already use the host model\/session/i);
+    assert.match(output, /Install Ollama from https:\/\/ollama\.com\/download/i);
+    assert.match(output, /Recommended spend-saver model: qwen2\.5-coder:7b/i);
   });
 });

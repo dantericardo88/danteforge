@@ -42,7 +42,7 @@ DanteForge is for developers and teams who want:
 
 ## Operational Status
 
-DanteForge `0.8.0` is in GA hardening for offline and fail-closed operation. Treat release readiness as proven only when the verification and release gates below pass in your environment and CI. For the current-state verification surface and the explicit follow-up list, see [docs/Operational-Readiness-v0.8.0.md](docs/Operational-Readiness-v0.8.0.md).
+DanteForge `0.9.2` (Swarm Edition) is in public launch hardening for offline and fail-closed operation. Treat release readiness as proven only when the verification and release-proof gates below pass in your environment and CI. For the current-state verification surface and the explicit follow-up list, see [docs/Operational-Readiness-v0.9.2.md](docs/Operational-Readiness-v0.9.2.md). For archived readiness snapshots and older planning context, use [docs/Release-History.md](docs/Release-History.md).
 
 ## Install
 
@@ -62,7 +62,7 @@ If you are validating the packed release before npm publish, install from the ge
 
 ```bash
 npm pack
-npm install -g ./danteforge-0.8.0.tgz
+npm install -g ./danteforge-0.9.2.tgz
 ```
 
 Run `npm run verify:live` only when you are validating a secret-backed live environment or a release candidate.
@@ -93,6 +93,18 @@ danteforge setup assistants
 ```
 
 Standalone CLI secrets remain host-agnostic: configure them once with `danteforge config`, and DanteForge will read them from the shared user-level file `~/.danteforge/config.yaml` no matter whether you launch it from Codex, Claude Code, Gemini/Antigravity, OpenCode, or a raw terminal.
+
+Native workflow commands inside host tools keep using the host model/session. Direct DanteForge CLI execution is optimized separately, and the recommended low-cost path is:
+
+```bash
+danteforge setup ollama --pull
+```
+
+If you are already syncing assistant targets, you can combine both steps and let setup install a recommended local model when needed:
+
+```bash
+danteforge setup assistants --pull
+```
 
 If you want Cursor project bootstrap files as well, run:
 
@@ -133,6 +145,15 @@ danteforge init    # detect project, check health, show next steps
 danteforge config --set-key "grok:xai-YOUR-KEY"
 danteforge inferno "Build a modern photo-sharing app with real-time feeds"
 ```
+
+### Spend-optimized local-first CLI setup
+
+```bash
+danteforge setup ollama --pull
+danteforge review
+```
+
+Use this when you want DanteForge CLI to handle repo scans, planning passes, and other low-risk work locally through Ollama before reaching for hosted providers.
 
 ### Local-only mode
 
@@ -317,6 +338,7 @@ npm run check:plugin-manifests
 npm run check:third-party-notices
 npm run check:cli-smoke
 npm run release:check
+npm run release:proof
 npm run release:check:install-smoke
 npm run release:check:strict
 npm run release:check:simulated-fresh
@@ -333,11 +355,12 @@ What they mean:
 - `npm run check:cli-smoke`: runs operator-facing CLI smoke checks against the built `dist` binary.
 - `npm run release:check:install-smoke`: packs the CLI, installs it into a temp project, and proves the installed binary runs.
 - `npm run release:check`: repo hygiene, verification, plugin manifest validation, packed CLI install smoke test, packaging dry run, and notice validation.
+- `npm run release:proof`: CI-facing release proof that runs the authoritative release gate, root production audit, full VS Code extension audit, packages the VS Code extension, and writes `.danteforge/evidence/release/latest.json` with packaged-artifact, artifact-hash, and publish-provenance details.
 - `npm run release:check:strict`: stages an isolated temp sandbox copy, enforces strict generated-path hygiene there, then runs the strict release chain.
 - `npm run release:check:simulated-fresh`: copies the repo to a temp sandbox, isolates home/config state, runs the strict hygiene gate before installs, then runs the normal release gate in that simulated fresh environment.
-- `npm run verify:live`: runs real provider, upstream, and Figma reachability checks using live secrets and services.
-- `npm run release:ga`: runs the strict release gate plus `verify:live`.
-- `.github/workflows/live-canary.yml`: scheduled/manual secret-backed canary for `build`, `check:cli-smoke`, and `verify:live`.
+- `npm run verify:live`: runs real provider, upstream, and Figma reachability checks using live secrets and services and writes `.danteforge/evidence/live/latest.json`.
+- `npm run release:ga`: runs the release proof gate plus `verify:live`.
+- `.github/workflows/live-canary.yml`: scheduled/manual secret-backed canary for `build`, `check:cli-smoke`, `verify:live`, and live receipt upload.
 
 Live verification environment:
 
@@ -362,7 +385,7 @@ set ANTHROPIC_API_KEY=...
 Runtime verification:
 
 - `danteforge verify` checks DanteForge artifacts and phase consistency.
-- `danteforge verify --release` includes build/package/install release checks from the CLI.
+- `danteforge verify --release` includes build/package/install release checks from the CLI for a maintainer-local project state.
 - It exits non-zero when verification is incomplete or broken.
 - `npm run release:check:simulated-fresh` reproduces the strict release flow in a temp checkout.
 
@@ -371,10 +394,11 @@ GA checklist:
 - `npm run verify`
 - `npm run verify:all`
 - `npm run check:cli-smoke`
+- `npm run release:proof`
 - `npm run release:check:strict`
 - `npm run release:check:simulated-fresh`
 - `npm audit --omit=dev`
-- `npm --prefix vscode-extension audit --omit=dev`
+- `npm --prefix vscode-extension audit`
 - successful `npm run verify:live` canary
 
 ## LLM Providers
@@ -386,6 +410,12 @@ Supported providers:
 - `claude`
 - `openai`
 - `gemini`
+
+Recommended spend strategy:
+
+- Native slash-command workflows in Codex, Claude Code, Cursor, and similar hosts use the host model/session.
+- Direct DanteForge CLI defaults should stay local-first with `danteforge setup ollama --pull`.
+- Hosted provider keys are best kept as fallback capacity for heavier CLI execution and explicit live verification.
 
 Examples:
 
@@ -422,6 +452,7 @@ For maintainers:
 ```bash
 npm run release:check:strict
 npm run release:check:simulated-fresh
+npm run release:proof
 npm run verify:live
 npm run release:ga
 ```

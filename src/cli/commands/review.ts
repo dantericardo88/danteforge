@@ -10,6 +10,7 @@ import { handoff } from '../../core/handoff.js';
 import { buildReviewPrompt, savePrompt, displayPrompt } from '../../core/prompt-builder.js';
 import { isLLMAvailable, callLLM } from '../../core/llm.js';
 import { estimateTokens, chunkText } from '../../core/token-estimator.js';
+import { chooseSpendOptimizedProviderForReview } from '../../core/spend-optimizer.js';
 
 const STATE_DIR = '.danteforge';
 
@@ -188,10 +189,16 @@ export async function review(options: { prompt?: boolean } = {}) {
 
   // Auto-API mode: if an API key is configured, send directly to LLM
   const llmAvailable = await isLLMAvailable();
-  if (llmAvailable) {
+  const reviewProvider = await chooseSpendOptimizedProviderForReview();
+  const deepReviewAvailable = llmAvailable || reviewProvider === 'ollama';
+  if (deepReviewAvailable) {
     const state = await loadState();
     state.projectType = projectType;
-    logger.info('LLM provider available - sending to LLM for deep review...');
+    if (reviewProvider === 'ollama') {
+      logger.info('Using local Ollama for current-state scan to reduce hosted token spend...');
+    } else {
+      logger.info('LLM provider available - sending to LLM for deep review...');
+    }
 
     const prompt = buildReviewPrompt({
       projectName,
@@ -215,7 +222,7 @@ export async function review(options: { prompt?: boolean } = {}) {
           const chunkPrompt = i === 0
             ? chunks[i]!
             : `Continue the project review. This is part ${i + 1} of ${chunks.length}.\n\n${chunks[i]}`;
-          const result = await callLLM(chunkPrompt, undefined, { enrichContext: true });
+          const result = await callLLM(chunkPrompt, reviewProvider, { enrichContext: true });
           chunkResults.push(result);
         }
 
@@ -238,7 +245,7 @@ export async function review(options: { prompt?: boolean } = {}) {
       }
     } else {
       try {
-        const stateMd = await callLLM(prompt, undefined, { enrichContext: true });
+        const stateMd = await callLLM(prompt, reviewProvider, { enrichContext: true });
 
         await fs.mkdir(STATE_DIR, { recursive: true });
         await fs.writeFile(path.join(STATE_DIR, 'CURRENT_STATE.md'), stateMd);
@@ -360,8 +367,8 @@ export async function review(options: { prompt?: boolean } = {}) {
   await handoff('review', { stateFile: 'CURRENT_STATE.md' });
 
   logger.success(`CURRENT_STATE.md generated (${sourceFiles.length} source files indexed, ${recentCommits.length} commits captured)`);
-  if (!llmAvailable) {
-    logger.info('Tip: Set up an API key for LLM-powered deep reviews: danteforge config --set-key "grok:<key>"');
+  if (!deepReviewAvailable) {
+    logger.info('Tip: Set up local-first deep reviews with `danteforge setup ollama --pull` or add a hosted fallback provider key if needed.');
   }
   logger.info('Run "danteforge constitution" next, then "danteforge specify <goal>" to continue the pipeline');
 }

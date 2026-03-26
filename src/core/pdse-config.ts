@@ -1,5 +1,5 @@
 // PDSE Configuration — scoring constants, checklists, thresholds, and weights
-// Planning Document Scoring Engine configuration for v0.8.0
+// Planning Document Scoring Engine configuration.
 
 export type ScoredArtifact = 'CONSTITUTION' | 'SPEC' | 'CLARIFY' | 'PLAN' | 'TASKS';
 export type AutoforgeDecision = 'advance' | 'warn' | 'pause' | 'blocked';

@@ -18,7 +18,7 @@ interface VerifyResult {
   failures: string[];
 }
 
-interface CurrentStateMetadata {
+export interface CurrentStateMetadata {
   version?: string;
   projectType?: ProjectType;
 }
@@ -32,7 +32,7 @@ async function fileExists(filePath: string): Promise<boolean> {
   }
 }
 
-function stageRequiresExecution(stage: WorkflowStage): boolean {
+export function stageRequiresExecution(stage: WorkflowStage): boolean {
   return stage === 'forge' || stage === 'ux-refine' || stage === 'verify' || stage === 'synthesize';
 }
 
@@ -74,11 +74,11 @@ async function runReleaseVerification(result: VerifyResult): Promise<void> {
   }
 }
 
-function normalizeMarkdownValue(value: string | undefined): string | undefined {
+export function normalizeMarkdownValue(value: string | undefined): string | undefined {
   return value?.replace(/`/g, '').trim();
 }
 
-function parseCurrentStateMetadata(content: string): CurrentStateMetadata {
+export function parseCurrentStateMetadata(content: string): CurrentStateMetadata {
   const capture = (patterns: RegExp[]): string | undefined => {
     for (const pattern of patterns) {
       const match = pattern.exec(content);
@@ -105,9 +105,10 @@ function parseCurrentStateMetadata(content: string): CurrentStateMetadata {
   return { version, projectType };
 }
 
-async function readWorkspacePackageVersion(): Promise<string | undefined> {
+export async function readWorkspacePackageVersion(cwd?: string): Promise<string | undefined> {
   try {
-    const pkg = JSON.parse(await fs.readFile('package.json', 'utf8')) as { version?: string };
+    const pkgPath = cwd ? path.join(cwd, 'package.json') : 'package.json';
+    const pkg = JSON.parse(await fs.readFile(pkgPath, 'utf8')) as { version?: string };
     return typeof pkg.version === 'string' && pkg.version.trim().length > 0
       ? pkg.version.trim()
       : undefined;
@@ -142,7 +143,17 @@ async function validateCurrentStateFreshness(result: VerifyResult): Promise<void
   }
 }
 
-export async function verify(options: { release?: boolean; live?: boolean; url?: string; recompute?: boolean } = {}) {
+export async function verify(options: { release?: boolean; live?: boolean; url?: string; recompute?: boolean; json?: boolean } = {}) {
+  // When --json is set, redirect all logger output to stderr so stdout carries only clean JSON
+  if (options.json) logger.setStderr(true);
+  try {
+    return await _verifyImpl(options);
+  } finally {
+    if (options.json) logger.setStderr(false);
+  }
+}
+
+async function _verifyImpl(options: { release?: boolean; live?: boolean; url?: string; recompute?: boolean; json?: boolean }) {
   logger.info('Running verification checks...');
 
   const result: VerifyResult = { passed: [], warnings: [], failures: [] };
@@ -314,6 +325,81 @@ export async function verify(options: { release?: boolean; live?: boolean; url?:
 
   state.auditLog.push(`${timestamp} | verify: ${result.passed.length} passed, ${result.warnings.length} warnings, ${result.failures.length} failures`);
   await saveState(state);
+
+  // Best-effort verify receipt emission — never blocks main result
+  try {
+    const receiptsModule = await import('../../core/verify-receipts.js');
+    const { computeReceiptStatus, writeVerifyReceipt } = receiptsModule;
+    const { execSync } = await import('node:child_process');
+
+    let gitSha: string | null = null;
+    try {
+      gitSha = execSync('git rev-parse HEAD', { cwd: process.cwd(), encoding: 'utf8', timeout: 5000 }).trim();
+    } catch {
+      // git unavailable or no commits
+    }
+
+    const releaseCheckPassed = options.release
+      ? result.passed.some(p => p.includes('Release verification'))
+      : null;
+    const liveCheckPassed = options.live
+      ? !result.failures.some(f => f.toLowerCase().includes('live')) && !result.failures.some(f => f.toLowerCase().includes('navigation'))
+      : null;
+    const currentStateFresh = result.passed.some(p => p.includes('CURRENT_STATE.md version matches'));
+    // undefined selfEditPolicy means default deny is active (enforced)
+    const selfEditPolicyEnforced = (state.selfEditPolicy ?? 'deny') !== 'allow-with-audit';
+
+    const receiptStatus = computeReceiptStatus(result.passed, result.warnings, result.failures);
+
+    const pkgVersion = await readWorkspacePackageVersion();
+    const receipt = {
+      project: state.project ?? path.basename(process.cwd()),
+      version: pkgVersion ?? 'unknown',
+      gitSha,
+      platform: process.platform,
+      nodeVersion: process.version,
+      cwd: process.cwd(),
+      projectType: state.projectType ?? 'unknown',
+      workflowStage: state.workflowStage,
+      timestamp,
+      commandMode: {
+        release: options.release ?? false,
+        live: options.live ?? false,
+        recompute: options.recompute ?? false,
+      },
+      passed: result.passed,
+      warnings: result.warnings,
+      failures: result.failures,
+      counts: {
+        passed: result.passed.length,
+        warnings: result.warnings.length,
+        failures: result.failures.length,
+      },
+      releaseCheckPassed,
+      liveCheckPassed,
+      currentStateFresh,
+      selfEditPolicyEnforced,
+      status: receiptStatus,
+    };
+
+    // Persist status BEFORE writing the receipt file so the completion tracker
+    // is updated even if the file write subsequently fails.
+    state.lastVerifySha = gitSha ?? undefined;
+    state.lastVerifyStatus = receiptStatus;
+    await saveState(state);
+
+    const receiptPath = await writeVerifyReceipt(receipt);
+
+    // Best-effort path metadata — receipt file confirmed written
+    state.lastVerifyReceiptPath = receiptPath;
+    await saveState(state);
+
+    if (options.json) {
+      process.stdout.write(JSON.stringify(receipt, null, 2) + '\n');
+    }
+  } catch {
+    // Receipt emission failure must never block verify result
+  }
 
   if (result.failures.length > 0 || result.warnings.length > 0) {
     try {

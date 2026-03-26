@@ -1,6 +1,6 @@
 {
   "name": "danteforge",
-  "version": "0.8.0",
+  "version": "0.9.2",
   "description": "Agentic development CLI - structured specs, execution waves, multi-agent orchestration, skills, gates, TDD, worktrees",
   "license": "MIT",
   "type": "module",
@@ -45,7 +45,7 @@
   "scripts": {
     "postinstall": "node lib/postinstall.js",
     "build": "tsup",
-    "postbuild": "node scripts/sync-dantecode.mjs",
+    "build:dev-sync": "tsup && node scripts/sync-dantecode.mjs",
     "dev": "tsup --watch",
     "typecheck": "tsc --noEmit",
     "test": "tsx --test tests/**/*.test.ts",
@@ -68,15 +68,17 @@
     "release:check": "npm run check:repo-hygiene && npm run verify:all && npm run check:cli-smoke && npm run check:plugin-manifests && npm run release:check:install-smoke && npm run pack:dry-run && npm run check:third-party-notices",
     "release:check:strict": "node scripts/check-release-strict.mjs",
     "release:check:simulated-fresh": "node scripts/check-release-simulated-fresh.mjs",
-    "release:ga": "npm run release:check:strict && npm run verify:live",
+    "release:proof": "node scripts/check-release-proof.mjs",
+    "release:ga": "npm run release:proof && npm run verify:live",
     "prepublishOnly": "npm run verify && npm run build"
   },
   "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.27.1",
     "chalk": "^5.3.0",
     "commander": "^12.1.0",
     "ora": "^8.1.0",
     "simple-git": "^3.27.0",
-    "yaml": "^2.5.1"
+    "yaml": "^2.8.3"
   },
   "devDependencies": {
     "@eslint/js": "^9.20.0",
@@ -90,6 +92,7 @@
     "typescript": "^5.7.2"
   },
   "overrides": {
-    "flatted": "^3.4.2"
+    "flatted": "^3.4.2",
+    "picomatch": "^4.0.4"
   }
 }

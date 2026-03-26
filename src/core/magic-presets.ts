@@ -1,4 +1,8 @@
-export type MagicLevel = 'spark' | 'ember' | 'magic' | 'blaze' | 'inferno';
+export type MagicLevel = 'spark' | 'ember' | 'canvas' | 'magic' | 'blaze' | 'nova' | 'inferno';
+
+export type HarvestDepth = 'shallow' | 'medium' | 'full';
+
+export type RoutingAggressiveness = 'conservative' | 'balanced' | 'aggressive';
 
 export interface MagicPresetMetadata {
   level: MagicLevel;
@@ -7,6 +11,12 @@ export interface MagicPresetMetadata {
   combines: string;
   primaryUseCase: string;
   defaultProfile: 'budget';
+  /** How aggressively to route tasks to cheaper tiers */
+  routingAggressiveness: RoutingAggressiveness;
+  /** Total wave budget cap in USD */
+  maxBudgetUsd: number;
+  /** Max post-pipeline verify→re-execute cycles (0 = no convergence loop) */
+  convergenceCycles: number;
 }
 
 export const DEFAULT_MAGIC_LEVEL: MagicLevel = 'magic';
@@ -16,9 +26,12 @@ export const MAGIC_PRESETS: Record<MagicLevel, MagicPresetMetadata> = {
     level: 'spark',
     intensity: 'Planning',
     tokenLevel: 'Zero',
-    combines: 'review + constitution + specify + clarify + plan + tasks',
+    combines: 'review + constitution + specify + clarify + tech-decide + plan + tasks',
     primaryUseCase: 'Every new idea or project start',
     defaultProfile: 'budget',
+    routingAggressiveness: 'aggressive',
+    maxBudgetUsd: 0.05,
+    convergenceCycles: 0,
   },
   ember: {
     level: 'ember',
@@ -27,22 +40,53 @@ export const MAGIC_PRESETS: Record<MagicLevel, MagicPresetMetadata> = {
     combines: 'Budget magic + light checkpoints + basic loop detect',
     primaryUseCase: 'Quick features, prototyping, token-conscious work',
     defaultProfile: 'budget',
+    routingAggressiveness: 'aggressive',
+    maxBudgetUsd: 0.15,
+    convergenceCycles: 1,
+  },
+  canvas: {
+    level: 'canvas',
+    intensity: 'Design-First',
+    tokenLevel: 'Low-Medium',
+    combines: 'Design generation + autoforge + UX token extraction + verify',
+    primaryUseCase: 'Frontend-heavy features where visual design drives implementation',
+    defaultProfile: 'budget',
+    routingAggressiveness: 'balanced',
+    maxBudgetUsd: 0.75,
+    convergenceCycles: 2,
   },
   magic: {
     level: 'magic',
     intensity: 'Balanced (Default)',
     tokenLevel: 'Low-Medium',
-    combines: 'Balanced party lanes + autoforge reliability + lessons',
+    combines: 'Balanced party lanes + autoforge reliability + verify + lessons',
     primaryUseCase: 'Daily main command - 80% of all work',
     defaultProfile: 'budget',
+    routingAggressiveness: 'balanced',
+    maxBudgetUsd: 0.50,
+    convergenceCycles: 2,
   },
   blaze: {
     level: 'blaze',
     intensity: 'High',
     tokenLevel: 'High',
-    combines: 'Full party + strong autoforge + self-improve',
+    combines: 'Full party + strong autoforge + synthesize + retro + self-improve',
     primaryUseCase: 'Big features needing real power',
     defaultProfile: 'budget',
+    routingAggressiveness: 'balanced',
+    maxBudgetUsd: 1.50,
+    convergenceCycles: 2,
+  },
+  nova: {
+    level: 'nova',
+    intensity: 'Very High',
+    tokenLevel: 'High-Max',
+    combines: 'Planning prefix + blaze execution + inferno polish (no OSS)',
+    primaryUseCase: 'Feature sprints that need planning + deep execution without OSS overhead',
+    defaultProfile: 'budget',
+    routingAggressiveness: 'balanced',
+    maxBudgetUsd: 3.00,
+    convergenceCycles: 3,
   },
   inferno: {
     level: 'inferno',
@@ -51,11 +95,16 @@ export const MAGIC_PRESETS: Record<MagicLevel, MagicPresetMetadata> = {
     combines: 'Full party + max autoforge + deep OSS mining + evolution',
     primaryUseCase: 'First big attack on new matrix dimension',
     defaultProfile: 'budget',
+    routingAggressiveness: 'conservative',
+    maxBudgetUsd: 5.00,
+    convergenceCycles: 3,
   },
 };
 
 export const MAGIC_USAGE_RULES = [
+  'Use /canvas for frontend-heavy features where visual design should drive implementation.',
   'Use /inferno for the first big attack on a new matrix dimension with fresh OSS discovery.',
+  'Use /nova for planned feature sprints that need deep execution but not OSS discovery.',
   'Use /magic for all follow-up PRD gap closing.',
 ].join('\n');
 
@@ -64,15 +113,19 @@ export type MagicExecutionStep =
   | { kind: 'constitution' }
   | { kind: 'specify' }
   | { kind: 'clarify' }
+  | { kind: 'tech-decide' }
   | { kind: 'plan' }
   | { kind: 'tasks' }
+  | { kind: 'design'; designPrompt?: string }
   | { kind: 'autoforge'; maxWaves: number; profile: string; parallel: boolean; worktree: boolean }
+  | { kind: 'ux-refine'; openpencil: boolean }
   | { kind: 'party'; worktree: boolean; isolation: boolean }
   | { kind: 'verify' }
   | { kind: 'synthesize' }
   | { kind: 'retro' }
   | { kind: 'lessons-compact' }
-  | { kind: 'oss'; maxRepos: number };
+  | { kind: 'oss'; maxRepos: number }
+  | { kind: 'local-harvest'; sources: string[]; depth: HarvestDepth; configPath?: string };
 
 export interface MagicExecutionPlan {
   level: MagicLevel;
@@ -86,6 +139,20 @@ export interface BuildMagicExecutionPlanOptions {
   maxRepos?: number;
   worktree?: boolean;
   isolation?: boolean;
+  /** Local source paths to harvest before OSS discovery (inferno) */
+  localSources?: string[];
+  /** Depth for local source harvesting */
+  localDepth?: HarvestDepth;
+  /** Path to local-sources YAML config */
+  localSourcesConfig?: string;
+  /** Skip tech-decide step in spark (default: false — tech-decide is ON in spark) */
+  skipTechDecide?: boolean;
+  /** Add tech-decide step to nova pipeline (default: false) */
+  withTechDecide?: boolean;
+  /** Add design + ux-refine steps to blaze/nova/inferno pipeline */
+  withDesign?: boolean;
+  /** Design prompt to pass to the design step */
+  designPrompt?: string;
 }
 
 export function normalizeMagicLevel(value?: string): MagicLevel {
@@ -106,10 +173,10 @@ export function buildMagicExecutionPlan(
   const resolvedGoal = goal?.trim() || 'Advance the current project';
   const profile = options.profile ?? preset.defaultProfile;
   const worktree = options.worktree ?? false;
-  const isolation = options.isolation ?? (level === 'blaze' || level === 'inferno');
+  const isolation = options.isolation ?? (level === 'blaze' || level === 'nova' || level === 'inferno');
   const maxRepos = options.maxRepos ?? (level === 'inferno' ? 12 : 8);
 
-  const steps = buildMagicSteps(level, profile, worktree, isolation, maxRepos);
+  const steps = buildMagicSteps(level, profile, worktree, isolation, maxRepos, options);
   return {
     level,
     goal: resolvedGoal,
@@ -124,44 +191,116 @@ function buildMagicSteps(
   worktree: boolean,
   isolation: boolean,
   maxRepos: number,
+  options: BuildMagicExecutionPlanOptions = {},
 ): MagicExecutionStep[] {
+  const designStep: MagicExecutionStep = { kind: 'design', designPrompt: options.designPrompt };
+  const uxRefineStep: MagicExecutionStep = { kind: 'ux-refine', openpencil: true };
+
   switch (level) {
-    case 'spark':
-      return [
+    case 'spark': {
+      const steps: MagicExecutionStep[] = [
         { kind: 'review' },
         { kind: 'constitution' },
         { kind: 'specify' },
         { kind: 'clarify' },
-        { kind: 'plan' },
-        { kind: 'tasks' },
       ];
+      if (!options.skipTechDecide) {
+        steps.push({ kind: 'tech-decide' });
+      }
+      steps.push({ kind: 'plan' }, { kind: 'tasks' });
+      return steps;
+    }
     case 'ember':
       return [
         { kind: 'autoforge', maxWaves: 3, profile, parallel: false, worktree: false },
         { kind: 'lessons-compact' },
       ];
-    case 'magic':
+    case 'canvas':
       return [
-        { kind: 'autoforge', maxWaves: 8, profile, parallel: true, worktree: false },
-        { kind: 'lessons-compact' },
-      ];
-    case 'blaze':
-      return [
-        { kind: 'autoforge', maxWaves: 10, profile, parallel: true, worktree },
-        { kind: 'party', worktree, isolation },
+        { kind: 'design', designPrompt: options.designPrompt },
+        { kind: 'autoforge', maxWaves: 6, profile, parallel: true, worktree: false },
+        { kind: 'ux-refine', openpencil: true },
         { kind: 'verify' },
         { kind: 'lessons-compact' },
       ];
-    case 'inferno':
+    case 'magic':
       return [
-        { kind: 'oss', maxRepos },
+        { kind: 'autoforge', maxWaves: 8, profile, parallel: true, worktree: false },
+        { kind: 'verify' },
+        { kind: 'lessons-compact' },
+      ];
+    case 'blaze': {
+      const blazeSteps: MagicExecutionStep[] = [];
+      if (options.withDesign) {
+        blazeSteps.push(designStep);
+      }
+      blazeSteps.push({ kind: 'autoforge', maxWaves: 10, profile, parallel: true, worktree });
+      if (options.withDesign) {
+        blazeSteps.push(uxRefineStep);
+      }
+      blazeSteps.push(
+        { kind: 'party', worktree, isolation },
+        { kind: 'verify' },
+        { kind: 'synthesize' },
+        { kind: 'retro' },
+        { kind: 'lessons-compact' },
+      );
+      return blazeSteps;
+    }
+    case 'nova': {
+      const novaSteps: MagicExecutionStep[] = [
+        { kind: 'constitution' },
+        { kind: 'plan' },
+        { kind: 'tasks' },
+      ];
+      if (options.withTechDecide) {
+        novaSteps.push({ kind: 'tech-decide' });
+      }
+      if (options.withDesign) {
+        novaSteps.push(designStep);
+      }
+      novaSteps.push({ kind: 'autoforge', maxWaves: 10, profile, parallel: true, worktree });
+      if (options.withDesign) {
+        novaSteps.push(uxRefineStep);
+      }
+      novaSteps.push(
+        { kind: 'party', worktree, isolation },
+        { kind: 'verify' },
+        { kind: 'synthesize' },
+        { kind: 'retro' },
+        { kind: 'lessons-compact' },
+      );
+      return novaSteps;
+    }
+    case 'inferno': {
+      const infernoSteps: MagicExecutionStep[] = [];
+      if (options.localSources?.length || options.localSourcesConfig) {
+        infernoSteps.push({
+          kind: 'local-harvest',
+          sources: options.localSources ?? [],
+          depth: options.localDepth ?? 'medium',
+          configPath: options.localSourcesConfig,
+        });
+      }
+      infernoSteps.push({ kind: 'oss', maxRepos });
+      if (options.withDesign) {
+        infernoSteps.push(designStep);
+      }
+      infernoSteps.push(
         { kind: 'autoforge', maxWaves: 12, profile, parallel: true, worktree },
+      );
+      if (options.withDesign) {
+        infernoSteps.push(uxRefineStep);
+      }
+      infernoSteps.push(
         { kind: 'party', worktree, isolation: true },
         { kind: 'verify' },
         { kind: 'synthesize' },
         { kind: 'retro' },
         { kind: 'lessons-compact' },
-      ];
+      );
+      return infernoSteps;
+    }
   }
 }
 
@@ -184,6 +323,14 @@ export function formatMagicPlan(plan: MagicExecutionPlan): string {
     lines.push(`${i + 1}. ${formatMagicStep(plan.steps[i], plan.goal)}`);
   }
 
+  const cycles = plan.preset.convergenceCycles;
+  lines.push('');
+  if (cycles === 0) {
+    lines.push('Convergence: disabled (planning-only preset)');
+  } else {
+    lines.push(`Convergence: up to ${cycles} cycle${cycles === 1 ? '' : 's'} of (autoforge → verify) after pipeline if verify fails`);
+  }
+
   return lines.join('\n');
 }
 
@@ -195,7 +342,7 @@ export function buildMagicLevelsMarkdown(): string {
   return [
     '# Magic Levels',
     '',
-    'Token-Optimized Magic Preset System v0.8.1',
+    'Token-Optimized Magic Preset System',
     '',
     '| Command | Intensity | Token Level | Combines (Best Of) | Primary Use Case |',
     '| --- | --- | --- | --- | --- |',
@@ -203,6 +350,7 @@ export function buildMagicLevelsMarkdown(): string {
     '',
     '## Usage Rule',
     '',
+    '- /canvas for frontend-heavy features where visual design drives implementation.',
     '- First-time new matrix dimension + fresh OSS discovery -> /inferno',
     '- All follow-up PRD gap closing -> /magic',
     '',
@@ -210,8 +358,11 @@ export function buildMagicLevelsMarkdown(): string {
     '',
     '- /magic remains the default balanced preset and the hero command.',
     '- All preset execution paths default to the budget profile unless you override --profile.',
-    '- /spark is planning-only and stays local-first.',
-    '- /blaze and /inferno add full party orchestration on top of autoforge reliability.',
+    '- /spark is planning-only with tech-decide (use --skip-tech-decide to bypass).',
+    '- /canvas is design-first: generates DESIGN.op, autoforges from it, extracts tokens.',
+    '- /blaze, /nova, and /inferno add full party orchestration on top of autoforge reliability.',
+    '- /nova adds a planning prefix (constitution + plan + tasks) without OSS.',
+    '- Add --with-design to /blaze, /nova, or /inferno to include design + ux-refine steps.',
   ].join('\n') + '\n';
 }
 
@@ -226,8 +377,16 @@ function formatMagicStep(step: MagicExecutionStep, goal: string): string {
     case 'synthesize':
     case 'retro':
       return `danteforge ${step.kind}`;
+    case 'tech-decide':
+      return 'danteforge tech-decide --auto';
     case 'specify':
       return `danteforge specify "${goal}"`;
+    case 'design':
+      return step.designPrompt
+        ? `danteforge design "${step.designPrompt}"`
+        : `danteforge design "${goal}"`;
+    case 'ux-refine':
+      return step.openpencil ? 'danteforge ux-refine --openpencil' : 'danteforge ux-refine';
     case 'autoforge':
       return `danteforge autoforge "${goal}" --max-waves ${step.maxWaves} --profile ${step.profile}${step.parallel ? ' --parallel' : ''}${step.worktree ? ' --worktree' : ''}`;
     case 'party':
@@ -236,6 +395,12 @@ function formatMagicStep(step: MagicExecutionStep, goal: string): string {
       return 'danteforge lessons --compact';
     case 'oss':
       return `danteforge oss --max-repos ${step.maxRepos}`;
+    case 'local-harvest': {
+      const sourcesArg = step.sources.length > 0
+        ? ` ${step.sources.join(' ')}`
+        : step.configPath ? ` --config ${step.configPath}` : '';
+      return `danteforge local-harvest${sourcesArg} --depth ${step.depth}`;
+    }
   }
 }
 

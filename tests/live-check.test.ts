@@ -79,4 +79,12 @@ describe('live check configuration', () => {
       125_000,
     );
   });
+
+  it('ships live verification receipt writing in the live check script', async () => {
+    const fs = await import('node:fs/promises');
+    const script = await fs.readFile('scripts/check-live-integrations.mjs', 'utf8');
+
+    assert.match(script, /writeLiveVerifyReceipt/);
+    assert.match(script, /evidence\/live/);
+  });
 });

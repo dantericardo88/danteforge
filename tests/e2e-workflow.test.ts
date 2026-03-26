@@ -648,6 +648,7 @@ describe('E2E Workflow Pipeline', () => {
           3: [{ name: 'task3' }],
         },
         lastVerifiedAt: new Date().toISOString(),
+        lastVerifyStatus: 'pass' as const,
         retroDelta: 15,
         projectType: 'cli',
       });
@@ -673,6 +674,7 @@ describe('E2E Workflow Pipeline', () => {
           3: [{ name: 'task3' }],
         },
         lastVerifiedAt: new Date().toISOString(),
+        lastVerifyStatus: 'pass' as const,
         retroDelta: 15,
         projectType: 'cli',
       });

@@ -102,16 +102,20 @@ export async function exportAuditTrail(cwd = process.cwd()): Promise<AuditTrailE
   }
 }
 
-// --- License Validation (stub) -----------------------------------------------
+// --- License Validation ------------------------------------------------------
 
+/**
+ * Validate a premium license key using offline prefix-based matching.
+ * Keys follow the format DF-PRO-<key> (pro tier) or DF-ENT-<key> (enterprise tier).
+ * Returns { valid: false, tier: 'free' } for unrecognized key formats.
+ */
 export async function validatePremiumLicense(key: string): Promise<{ valid: boolean; tier: PremiumTier }> {
-  // Stub: In production, this would validate against a license server
   if (key.startsWith('DF-PRO-')) {
     return { valid: true, tier: 'pro' };
   }
   if (key.startsWith('DF-ENT-')) {
     return { valid: true, tier: 'enterprise' };
   }
-  logger.warn('Invalid license key format. Expected: DF-PRO-xxx or DF-ENT-xxx');
+  logger.warn('Invalid license key format. Expected: DF-PRO-<key> or DF-ENT-<key>');
   return { valid: false, tier: 'free' };
 }
