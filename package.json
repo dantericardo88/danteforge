@@ -63,6 +63,9 @@
     "check:repo-hygiene": "node scripts/check-repo-hygiene.mjs",
     "check:repo-hygiene:strict": "node scripts/check-repo-hygiene.mjs --strict-presence",
     "check:third-party-notices": "node scripts/check-third-party-notices.mjs",
+    "sbom:generate": "node scripts/generate-sbom.mjs",
+    "sbom:validate": "node scripts/validate-sbom.mjs",
+    "sbom:licenses": "license-checker --summary > sbom/license-report.txt",
     "pack:dry-run": "npm pack --dry-run",
     "release:check:install-smoke": "node scripts/check-package-install-smoke.mjs",
     "release:check": "npm run check:repo-hygiene && npm run verify:all && npm run check:cli-smoke && npm run check:plugin-manifests && npm run release:check:install-smoke && npm run pack:dry-run && npm run check:third-party-notices",
@@ -81,12 +84,14 @@
     "yaml": "^2.8.3"
   },
   "devDependencies": {
+    "@cyclonedx/cyclonedx-npm": "^4.2.1",
     "@eslint/js": "^9.20.0",
     "@types/node": "^22.13.0",
     "@typescript-eslint/parser": "^8.24.1",
     "c8": "^10.1.3",
     "eslint": "^9.20.0",
     "globals": "^15.15.0",
+    "license-checker": "^25.0.1",
     "tsup": "^8.3.0",
     "tsx": "^4.21.0",
     "typescript": "^5.7.2"

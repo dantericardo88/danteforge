@@ -7,6 +7,7 @@ import { detectLoop } from './loop-detector.js';
 import { detectAIDrift } from './drift-detector.js';
 import { loadLatestVerdict } from './reflection-engine.js';
 import type { ExecutionTelemetry } from './execution-telemetry.js';
+import type { ErrorCategory } from './error-catalog.js';
 
 const STATE_DIR = '.danteforge';
 
@@ -24,6 +25,9 @@ export class GateError extends Error {
     message: string,
     public readonly gate: string,
     public readonly remedy: string,
+    public readonly code?: string, // DF-WORKFLOW-001, etc.
+    public readonly helpUrl?: string,
+    public readonly category: ErrorCategory = 'workflow',
   ) {
     super(message);
     this.name = 'GateError';
@@ -41,7 +45,10 @@ export async function requireConstitution(light = false, cwd?: string): Promise<
     throw new GateError(
       'Gate blocked: No constitution defined.',
       'requireConstitution',
-      'Run "danteforge constitution" first to establish project principles.',
+      'Create a constitution: danteforge constitution "your project goals" or use --light to skip.',
+      'DF-WORKFLOW-001',
+      'https://github.com/danteforge/danteforge/blob/main/TROUBLESHOOTING.md#error-gate-checks',
+      'workflow',
     );
   }
 }
@@ -56,7 +63,10 @@ export async function requireSpec(light = false, cwd?: string): Promise<void> {
     throw new GateError(
       'Gate blocked: No SPEC.md found.',
       'requireSpec',
-      'Run "danteforge specify <idea>" first to generate spec artifacts.',
+      'Generate a spec: danteforge specify "your feature idea" or use --light to skip.',
+      'DF-WORKFLOW-002',
+      'https://github.com/danteforge/danteforge/blob/main/TROUBLESHOOTING.md#error-gate-checks',
+      'workflow',
     );
   }
 }
@@ -86,7 +96,10 @@ export async function requirePlan(light = false, cwd?: string): Promise<void> {
     throw new GateError(
       'Gate blocked: No PLAN.md found.',
       'requirePlan',
-      'Run "danteforge plan" first to generate an execution plan.',
+      'Create a plan: danteforge plan or use a magic preset that includes planning (e.g., /magic).',
+      'DF-WORKFLOW-003',
+      'https://github.com/danteforge/danteforge/blob/main/TROUBLESHOOTING.md#error-gate-checks',
+      'workflow',
     );
   }
 }

@@ -41,7 +41,7 @@ export { qa } from './qa.js';
 export { retro } from './retro.js';
 export { ship } from './ship.js';
 export { autoResearch } from './autoresearch.js';
-export { ossResearcher } from './oss.js';
+export { ossResearcher, ossLearn, ossClean } from './oss.js';
 export { init } from './init.js';
 export { docs } from './docs.js';
 export { premium } from './premium.js';

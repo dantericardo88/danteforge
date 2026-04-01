@@ -461,16 +461,40 @@ program
   .option('--skip-review', 'Skip pre-landing review (emergency only, logged to audit)')
   .action(commands.ship);
 
-program
+const ossCommand = program
   .command('oss')
-  .description('Auto-detect project, search OSS, clone, license-gate, scan, extract patterns, report')
+  .description('OSS repository discovery, persistent harvesting, and library management')
   .option('--prompt', 'Generate a copy-paste research plan prompt instead of executing')
   .option('--dry-run', 'Show what would be searched without cloning')
-  .option('--max-repos <n>', 'Maximum repos to clone and analyze (default: 8)', '8')
+  .option('--max-repos <n>', 'Maximum NEW repos to discover per run (default: 4)', '4')
   .action((opts) => commands.ossResearcher({
     prompt: opts.prompt,
     dryRun: opts.dryRun,
     maxRepos: opts.maxRepos,
+  }));
+
+ossCommand
+  .command('learn')
+  .description('Re-extract patterns from all cached repos and regenerate OSS_REPORT.md')
+  .option('--repo <name>', 'Re-learn a single repo by name (partial match)')
+  .option('--prompt', 'Show manual instructions instead of executing')
+  .action((opts) => commands.ossLearn({
+    repo: opts.repo,
+    prompt: opts.prompt,
+  }));
+
+ossCommand
+  .command('clean')
+  .description('Remove cached OSS repos from .danteforge/oss-repos/')
+  .option('--all', 'Remove all repos')
+  .option('--blocked', 'Remove only blocked-license repos')
+  .option('--older-than <days>', 'Remove repos older than N days')
+  .option('--dry-run', 'Preview what would be deleted without removing anything')
+  .action((opts) => commands.ossClean({
+    all: opts.all,
+    blocked: opts.blocked,
+    olderThan: opts.olderThan,
+    dryRun: opts.dryRun,
   }));
 
 program

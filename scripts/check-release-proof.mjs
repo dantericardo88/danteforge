@@ -27,6 +27,8 @@ const checkPlan = [
   { name: 'npm-ci', command: 'npm', args: ['ci'] },
   { name: 'vscode-ci', command: 'npm', args: ['--prefix', 'vscode-extension', 'ci'] },
   { name: 'release:check', command: 'npm', args: ['run', 'release:check'] },
+  { name: 'sbom:generate', command: 'npm', args: ['run', 'sbom:generate'] },
+  { name: 'sbom:validate', command: 'npm', args: ['run', 'sbom:validate'] },
   { name: 'npm-audit-prod', command: 'npm', args: ['audit', '--omit=dev'] },
   { name: 'vscode-audit', command: 'npm', args: ['--prefix', 'vscode-extension', 'audit'] },
   { name: 'package:vsix', command: 'npm', args: ['--prefix', 'vscode-extension', 'run', 'package:vsix'] },
@@ -145,6 +147,20 @@ if (publishedVsixPath) {
 }
 artifactHashes.notices = await hashFile('THIRD_PARTY_NOTICES.md');
 
+// Add SBOM to artifact hashes
+const sbomPath = `sbom/danteforge-${version}.cdx.json`;
+try {
+  artifactHashes.sbom = await hashFile(sbomPath);
+} catch (error) {
+  const message = error instanceof Error ? error.message : String(error);
+  checks.push({
+    name: 'sbom-artifact-hash',
+    command: `hash ${sbomPath}`,
+    status: 'warn',
+    detail: `SBOM artifact not found or not hashable: ${message}`,
+  });
+}
+
 const receipt = {
   project: 'danteforge',
   version,
@@ -166,6 +182,7 @@ const receipt = {
     releaseReceiptPath: '.danteforge/evidence/release/latest.json',
     liveReceiptPath: '.danteforge/evidence/live/latest.json',
     thirdPartyNoticesPath: 'THIRD_PARTY_NOTICES.md',
+    sbomPath: `sbom/danteforge-${version}.cdx.json`,
   },
   errorMessage,
   status: computeProofStatus([

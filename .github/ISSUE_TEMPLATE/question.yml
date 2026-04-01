@@ -1,0 +1,77 @@
+name: ❓ Question / Support
+description: Ask a question or get help using DanteForge
+title: "[Question]: "
+labels: ["question", "needs-triage"]
+assignees: []
+
+body:
+  - type: markdown
+    attributes:
+      value: |
+        👋 Have a question? We're here to help!
+
+        **Before asking:**
+        - Check the [documentation](https://github.com/danteforge/danteforge#readme)
+        - Search [existing discussions](https://github.com/danteforge/danteforge/discussions)
+        - Run `danteforge doctor` to diagnose common issues
+
+  - type: textarea
+    id: question
+    attributes:
+      label: Question
+      description: What would you like to know?
+      placeholder: "How do I...?"
+    validations:
+      required: true
+
+  - type: textarea
+    id: context
+    attributes:
+      label: Context
+      description: What are you trying to accomplish? What have you tried so far?
+      placeholder: |
+        I'm trying to build a React app with DanteForge...
+        I've tried running `danteforge magic "..."` but...
+    validations:
+      required: true
+
+  - type: input
+    id: version
+    attributes:
+      label: DanteForge Version
+      description: Run `danteforge --version`
+      placeholder: "1.0.0"
+    validations:
+      required: false
+
+  - type: dropdown
+    id: category
+    attributes:
+      label: Category
+      description: What category does your question fall into?
+      options:
+        - Installation / Setup
+        - Configuration
+        - Workflow / Commands
+        - LLM Providers (Ollama, Claude, etc.)
+        - Error Troubleshooting
+        - Performance / Token Usage
+        - Enterprise / Compliance
+        - Integration (CI/CD, VS Code, etc.)
+        - Other
+    validations:
+      required: false
+
+  - type: textarea
+    id: additional
+    attributes:
+      label: Additional Context
+      description: Any other information that might help us answer your question.
+    validations:
+      required: false
+
+  - type: markdown
+    attributes:
+      value: |
+        ---
+        **Note:** For general discussions, use [GitHub Discussions](https://github.com/danteforge/danteforge/discussions) instead of issues.
