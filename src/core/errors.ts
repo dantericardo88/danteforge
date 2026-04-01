@@ -12,7 +12,10 @@ export type DanteErrorCode =
   | 'LLM_CIRCUIT_OPEN'
   | 'BUDGET_EXCEEDED'
   | 'MODEL_NOT_AVAILABLE'
-  | 'CONFIG_MISSING_KEY';
+  | 'CONFIG_MISSING_KEY'
+  | 'CIRCUIT_OPEN'
+  | 'OPERATION_TIMEOUT'
+  | 'CONCURRENCY_LIMIT';
 
 export class DanteError extends Error {
   constructor(

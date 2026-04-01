@@ -199,7 +199,7 @@ export class AuditEventBuilder {
     return this;
   }
 
-  userId(id: string): this {
+  userId(id: string | undefined): this {
     this.event.userId = id;
     return this;
   }

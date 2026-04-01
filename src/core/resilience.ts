@@ -85,10 +85,13 @@ const concurrentOperations = new Map<string, number>();
  * Error thrown when circuit breaker is open
  */
 export class CircuitOpenError extends DanteError {
-  constructor(operationType: string, operationId: string) {
+  constructor(
+    public readonly operationType: string,
+    public readonly operationId: string,
+  ) {
     super(
       `Circuit breaker is OPEN for ${operationType}:${operationId}. Too many recent failures. Wait 30s and retry.`,
-      `CIRCUIT_OPEN_${operationType.toUpperCase()}`,
+      'CIRCUIT_OPEN',
     );
   }
 }
@@ -97,10 +100,14 @@ export class CircuitOpenError extends DanteError {
  * Error thrown when operation times out
  */
 export class OperationTimeoutError extends DanteError {
-  constructor(operationType: string, operationId: string, timeoutMs: number) {
+  constructor(
+    public readonly operationType: string,
+    public readonly operationId: string,
+    public readonly timeoutMs: number,
+  ) {
     super(
       `Operation ${operationType}:${operationId} timed out after ${timeoutMs}ms`,
-      `TIMEOUT_${operationType.toUpperCase()}`,
+      'OPERATION_TIMEOUT',
     );
   }
 }
@@ -109,10 +116,13 @@ export class OperationTimeoutError extends DanteError {
  * Error thrown when max concurrent limit reached
  */
 export class ConcurrencyLimitError extends DanteError {
-  constructor(operationType: string, maxConcurrent: number) {
+  constructor(
+    public readonly operationType: string,
+    public readonly maxConcurrent: number,
+  ) {
     super(
       `Maximum concurrent ${operationType} operations reached (${maxConcurrent}). Try again later.`,
-      `CONCURRENCY_LIMIT_${operationType.toUpperCase()}`,
+      'CONCURRENCY_LIMIT',
     );
   }
 }
