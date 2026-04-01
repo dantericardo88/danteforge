@@ -55,6 +55,8 @@ const UTILITY_COMMANDS = [
 // Slash-command files that intentionally do not map 1:1 to a CLI command name.
 const EXTRA_SLASH_COMMANDS = [
   'danteforge',
+  'oss-clean',
+  'oss-learn',
 ];
 
 describe('command-skill-coverage', () => {
