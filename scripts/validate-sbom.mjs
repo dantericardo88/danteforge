@@ -27,7 +27,7 @@ let sbomFiles = [];
 
 try {
   sbomFiles = readdirSync(sbomDir).filter((f) => f.endsWith('.cdx.json'));
-} catch (err) {
+} catch {
   console.error('[SBOM] ✗ SBOM directory not found. Run `npm run sbom:generate` first.');
   process.exit(1);
 }
