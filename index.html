@@ -1,0 +1,828 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>DanteForge | Run Claude at Full Power</title>
+    <meta
+      name="description"
+      content="DanteForge helps developers run Claude at full power without burning through session limits by turning big work into short-context, constitutional execution waves."
+    >
+    <link
+      rel="icon"
+      href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='18' fill='%23101722'/%3E%3Cpath d='M18 16h18c9 0 15 6 15 14s-6 14-15 14H26v12H18V16zm8 8v12h10c4.5 0 7-2.1 7-6s-2.5-6-7-6H26z' fill='%23ff6b35'/%3E%3C/svg%3E"
+    >
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link
+      href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=Space+Grotesk:wght@500;700&display=swap"
+      rel="stylesheet"
+    >
+    <style>
+      :root {
+        --bg: #111323;
+        --bg-elevated: rgba(26, 30, 53, 0.82);
+        --bg-panel: rgba(17, 19, 35, 0.86);
+        --line: rgba(255, 255, 255, 0.12);
+        --line-strong: rgba(255, 107, 53, 0.42);
+        --text: #f8f4ed;
+        --muted: #bbb6c7;
+        --accent: #ff6b35;
+        --accent-soft: #ff9c72;
+        --accent-deep: #c94b1c;
+        --cool: #7bc8ff;
+        --shadow: 0 24px 90px rgba(8, 10, 18, 0.46);
+        --radius: 28px;
+        --radius-sm: 18px;
+        --max: 1180px;
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      html {
+        scroll-behavior: smooth;
+      }
+
+      body {
+        margin: 0;
+        min-height: 100vh;
+        font-family: "IBM Plex Sans", sans-serif;
+        color: var(--text);
+        background:
+          radial-gradient(circle at 12% 18%, rgba(255, 107, 53, 0.22), transparent 30%),
+          radial-gradient(circle at 78% 14%, rgba(123, 200, 255, 0.12), transparent 28%),
+          radial-gradient(circle at 68% 72%, rgba(255, 107, 53, 0.12), transparent 32%),
+          linear-gradient(160deg, #0d1020 0%, #161a2e 38%, #101424 100%);
+      }
+
+      body::before {
+        content: "";
+        position: fixed;
+        inset: 0;
+        pointer-events: none;
+        background-image:
+          linear-gradient(rgba(255, 255, 255, 0.03) 1px, transparent 1px),
+          linear-gradient(90deg, rgba(255, 255, 255, 0.03) 1px, transparent 1px);
+        background-size: 32px 32px;
+        mask-image: radial-gradient(circle at center, black 35%, transparent 85%);
+      }
+
+      a {
+        color: inherit;
+        text-decoration: none;
+      }
+
+      .page {
+        position: relative;
+        overflow: hidden;
+      }
+
+      .page::after {
+        content: "";
+        position: absolute;
+        top: 104px;
+        right: -120px;
+        width: 340px;
+        height: 340px;
+        border: 1px solid rgba(255, 107, 53, 0.18);
+        border-radius: 38px;
+        transform: rotate(18deg);
+        pointer-events: none;
+      }
+
+      .shell {
+        width: min(calc(100% - 2rem), var(--max));
+        margin: 0 auto;
+      }
+
+      .topbar {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 1rem;
+        padding: 1.25rem 0 0;
+      }
+
+      .brand {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.9rem;
+        font-family: "Space Grotesk", sans-serif;
+        font-weight: 700;
+        letter-spacing: 0.04em;
+        text-transform: uppercase;
+      }
+
+      .brand-mark {
+        width: 2.7rem;
+        height: 2.7rem;
+        display: grid;
+        place-items: center;
+        border-radius: 0.9rem;
+        color: #0d1020;
+        background:
+          linear-gradient(135deg, var(--accent) 0%, #ffb27a 100%);
+        box-shadow: 0 18px 40px rgba(255, 107, 53, 0.24);
+      }
+
+      .status-pill {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.5rem;
+        padding: 0.7rem 1rem;
+        border: 1px solid var(--line);
+        border-radius: 999px;
+        color: var(--muted);
+        background: rgba(255, 255, 255, 0.03);
+        backdrop-filter: blur(12px);
+      }
+
+      .status-dot {
+        width: 0.6rem;
+        height: 0.6rem;
+        border-radius: 50%;
+        background: var(--accent);
+        box-shadow: 0 0 18px rgba(255, 107, 53, 0.9);
+      }
+
+      .hero {
+        display: grid;
+        grid-template-columns: minmax(0, 1.25fr) minmax(320px, 0.9fr);
+        gap: 2rem;
+        align-items: stretch;
+        padding: 4rem 0 2rem;
+      }
+
+      .hero-copy,
+      .waitlist-card,
+      .section-card,
+      .proof-card,
+      .cta-card {
+        position: relative;
+        background: var(--bg-elevated);
+        border: 1px solid var(--line);
+        box-shadow: var(--shadow);
+        backdrop-filter: blur(18px);
+      }
+
+      .hero-copy {
+        padding: 2.4rem;
+        border-radius: var(--radius);
+        overflow: hidden;
+      }
+
+      .hero-copy::before {
+        content: "";
+        position: absolute;
+        inset: 0 auto auto 0;
+        width: 100%;
+        height: 7px;
+        background: linear-gradient(90deg, var(--accent), rgba(255, 107, 53, 0));
+      }
+
+      .eyebrow {
+        display: inline-block;
+        margin-bottom: 1.2rem;
+        font-size: 0.82rem;
+        font-weight: 600;
+        letter-spacing: 0.16em;
+        text-transform: uppercase;
+        color: var(--accent-soft);
+      }
+
+      h1,
+      h2,
+      h3 {
+        margin: 0;
+        font-family: "Space Grotesk", sans-serif;
+        line-height: 0.96;
+      }
+
+      h1 {
+        max-width: 14ch;
+        font-size: clamp(3rem, 8vw, 5.8rem);
+      }
+
+      .lede {
+        max-width: 58ch;
+        margin-top: 1.4rem;
+        font-size: 1.15rem;
+        line-height: 1.7;
+        color: var(--muted);
+      }
+
+      .hero-rail {
+        display: grid;
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+        gap: 0.85rem;
+        margin-top: 2rem;
+      }
+
+      .rail-item {
+        padding: 1rem;
+        border-radius: var(--radius-sm);
+        border: 1px solid rgba(255, 255, 255, 0.08);
+        background: rgba(255, 255, 255, 0.03);
+      }
+
+      .rail-label {
+        display: block;
+        margin-bottom: 0.4rem;
+        font-size: 0.76rem;
+        letter-spacing: 0.11em;
+        text-transform: uppercase;
+        color: var(--accent-soft);
+      }
+
+      .rail-item strong {
+        display: block;
+        font-size: 1rem;
+        line-height: 1.5;
+      }
+
+      .hero-actions {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 0.95rem;
+        align-items: center;
+        margin-top: 2rem;
+      }
+
+      .button {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        min-height: 3.2rem;
+        padding: 0.95rem 1.35rem;
+        border-radius: 999px;
+        border: 1px solid transparent;
+        font-weight: 700;
+        transition: transform 160ms ease, border-color 160ms ease, background 160ms ease;
+      }
+
+      .button:hover {
+        transform: translateY(-1px);
+      }
+
+      .button-primary {
+        color: #0d1020;
+        background: linear-gradient(135deg, var(--accent) 0%, #ffaf79 100%);
+      }
+
+      .button-secondary {
+        border-color: var(--line);
+        color: var(--text);
+        background: rgba(255, 255, 255, 0.03);
+      }
+
+      .waitlist-card {
+        display: flex;
+        flex-direction: column;
+        justify-content: space-between;
+        padding: 1.7rem;
+        border-radius: 2rem 2rem 2rem 5rem;
+        background:
+          linear-gradient(180deg, rgba(255, 107, 53, 0.12) 0%, rgba(17, 19, 35, 0.96) 52%),
+          var(--bg-panel);
+      }
+
+      .waitlist-card h2 {
+        font-size: clamp(1.9rem, 5vw, 2.8rem);
+      }
+
+      .waitlist-copy {
+        margin: 0.85rem 0 1.2rem;
+        color: var(--muted);
+        line-height: 1.75;
+      }
+
+      .price-band {
+        display: flex;
+        align-items: baseline;
+        gap: 0.8rem;
+        padding: 1rem 1.1rem;
+        margin-bottom: 1.2rem;
+        border-radius: 1.3rem;
+        background: rgba(255, 255, 255, 0.04);
+        border: 1px solid rgba(255, 255, 255, 0.08);
+      }
+
+      .price-band strong {
+        font-family: "Space Grotesk", sans-serif;
+        font-size: 2rem;
+      }
+
+      .price-band span {
+        color: var(--muted);
+      }
+
+      form {
+        display: grid;
+        gap: 0.9rem;
+      }
+
+      label {
+        font-size: 0.92rem;
+        color: var(--muted);
+      }
+
+      input[type="email"] {
+        width: 100%;
+        min-height: 3.4rem;
+        padding: 0 1rem;
+        border: 1px solid rgba(255, 255, 255, 0.14);
+        border-radius: 1rem;
+        font: inherit;
+        color: var(--text);
+        background: rgba(8, 10, 18, 0.7);
+      }
+
+      input[type="email"]:focus {
+        outline: 2px solid rgba(255, 107, 53, 0.35);
+        outline-offset: 2px;
+      }
+
+      .privacy-note {
+        margin: 0;
+        font-size: 0.88rem;
+        line-height: 1.6;
+        color: var(--muted);
+      }
+
+      .status-text {
+        min-height: 1.25rem;
+        font-size: 0.9rem;
+        color: var(--accent-soft);
+      }
+
+      .stack {
+        display: grid;
+        gap: 1.2rem;
+        padding: 2rem 0 5rem;
+      }
+
+      .section-grid {
+        display: grid;
+        grid-template-columns: 1.05fr 0.95fr;
+        gap: 1.25rem;
+      }
+
+      .section-card,
+      .proof-card,
+      .cta-card {
+        padding: 1.7rem;
+        border-radius: 2rem;
+      }
+
+      .section-card h2,
+      .proof-card h2,
+      .cta-card h2 {
+        font-size: clamp(1.85rem, 4vw, 2.7rem);
+      }
+
+      .section-card p,
+      .proof-card p,
+      .cta-card p {
+        margin: 0.9rem 0 0;
+        color: var(--muted);
+        line-height: 1.75;
+      }
+
+      .problem-stat {
+        margin-top: 1.3rem;
+        padding: 1.1rem 1.15rem;
+        border-left: 4px solid var(--accent);
+        border-radius: 1rem;
+        background: rgba(255, 255, 255, 0.03);
+      }
+
+      .problem-stat strong {
+        display: block;
+        font-family: "Space Grotesk", sans-serif;
+        font-size: 2rem;
+      }
+
+      .problem-stat span {
+        display: block;
+        margin-top: 0.4rem;
+        color: var(--muted);
+        line-height: 1.6;
+      }
+
+      .solution-list,
+      .proof-list {
+        display: grid;
+        gap: 0.9rem;
+        margin-top: 1.4rem;
+      }
+
+      .solution-item,
+      .proof-list li {
+        list-style: none;
+        padding: 1rem 1rem 1rem 1.15rem;
+        border-radius: 1rem;
+        border: 1px solid rgba(255, 255, 255, 0.08);
+        background: rgba(255, 255, 255, 0.03);
+      }
+
+      .solution-item strong {
+        display: block;
+        margin-bottom: 0.45rem;
+        font-size: 1rem;
+      }
+
+      .proof-card {
+        display: grid;
+        gap: 1rem;
+      }
+
+      .proof-badge {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.6rem;
+        width: fit-content;
+        padding: 0.6rem 0.85rem;
+        border-radius: 999px;
+        border: 1px solid rgba(255, 107, 53, 0.28);
+        background: rgba(255, 107, 53, 0.08);
+        color: var(--accent-soft);
+        font-size: 0.84rem;
+        font-weight: 600;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+      }
+
+      .proof-list {
+        padding: 0;
+        margin: 0.4rem 0 0;
+      }
+
+      .proof-list li strong {
+        display: block;
+        margin-bottom: 0.3rem;
+      }
+
+      .cta-card {
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) minmax(320px, 0.88fr);
+        gap: 1.3rem;
+        align-items: center;
+      }
+
+      .foot {
+        display: flex;
+        flex-wrap: wrap;
+        justify-content: space-between;
+        gap: 1rem;
+        padding: 0 0 2rem;
+        color: var(--muted);
+        font-size: 0.92rem;
+      }
+
+      .foot a {
+        color: var(--text);
+      }
+
+      @media (max-width: 980px) {
+        .hero,
+        .section-grid,
+        .cta-card {
+          grid-template-columns: 1fr;
+        }
+
+        .hero-copy,
+        .waitlist-card {
+          border-radius: 2rem;
+        }
+      }
+
+      @media (max-width: 680px) {
+        .topbar {
+          align-items: flex-start;
+          flex-direction: column;
+        }
+
+        .hero {
+          padding-top: 2.4rem;
+        }
+
+        .hero-copy,
+        .waitlist-card,
+        .section-card,
+        .proof-card,
+        .cta-card {
+          padding: 1.25rem;
+        }
+
+        .hero-rail {
+          grid-template-columns: 1fr;
+        }
+
+        .button,
+        button.button {
+          width: 100%;
+        }
+
+        .hero-actions {
+          flex-direction: column;
+          align-items: stretch;
+        }
+      }
+    </style>
+    <script async src="https://f.convertkit.com/ckjs/ck.5.js"></script>
+  </head>
+  <body>
+    <div class="page">
+      <div class="shell">
+        <header class="topbar">
+          <a class="brand" href="#top" aria-label="DanteForge home">
+            <span class="brand-mark">DF</span>
+            <span>DanteForge</span>
+          </a>
+          <div class="status-pill" aria-label="Waitlist open">
+            <span class="status-dot"></span>
+            <span>Waitlist open for the first paid cohort</span>
+          </div>
+        </header>
+
+        <main id="top">
+          <section class="hero" aria-labelledby="hero-title">
+            <div class="hero-copy">
+              <span class="eyebrow">Built for developers who are done hitting Claude's limits</span>
+              <h1 id="hero-title">Run Claude at full power without burning through your session limits.</h1>
+              <p class="lede">
+                DanteForge turns sprawling AI work into short-context execution waves. You keep the
+                reasoning sharp, the prompts smaller, and the session meter from becoming the boss.
+              </p>
+
+              <div class="hero-rail" aria-label="Core value points">
+                <div class="rail-item">
+                  <span class="rail-label">Problem</span>
+                  <strong>Big context feels good until every session starts melting down.</strong>
+                </div>
+                <div class="rail-item">
+                  <span class="rail-label">Method</span>
+                  <strong>Constitution, plan, tasks, forge, verify. One bounded wave at a time.</strong>
+                </div>
+                <div class="rail-item">
+                  <span class="rail-label">Outcome</span>
+                  <strong>Less token waste. More clean handoffs. More real shipping.</strong>
+                </div>
+              </div>
+
+              <div class="hero-actions">
+                <a class="button button-primary" href="#waitlist">Join the waitlist</a>
+                <a class="button button-secondary" href="#problem">See why this matters</a>
+              </div>
+            </div>
+
+            <aside class="waitlist-card" id="waitlist" aria-labelledby="waitlist-title">
+              <div>
+                <span class="eyebrow">First access</span>
+                <h2 id="waitlist-title">Shorter prompts. Sharper sessions. Better output.</h2>
+                <p class="waitlist-copy">
+                  Get launch access, early pricing, and the onboarding path built specifically for
+                  developers who are tired of wasting their Claude session budget on setup chatter.
+                </p>
+                <div class="solution-list">
+                  <div class="solution-item">
+                    <strong>Constitution-first workflow</strong>
+                    Lock in constraints and goals before burning tokens on improvisation.
+                  </div>
+                  <div class="solution-item">
+                    <strong>Short-context command waves</strong>
+                    Each step carries only what it needs. No accumulation, no breaking point.
+                  </div>
+                  <div class="solution-item">
+                    <strong>Verification receipts included</strong>
+                    Proof before shipping. Every wave leaves an audit trail.
+                  </div>
+                </div>
+              </div>
+
+              <div>
+                <div class="price-band" aria-label="Pricing">
+                  <strong>14 days free</strong>
+                  <span>then $20/month, cancel anytime</span>
+                </div>
+
+                <form action="https://app.kit.com/forms/9275262/subscriptions" method="post" novalidate>
+                  <input type="hidden" name="source" value="github-pages-launch">
+                  <label for="email-top">Work email</label>
+                  <input
+                    id="email-top"
+                    name="email"
+                    type="email"
+                    inputmode="email"
+                    autocomplete="email"
+                    placeholder="you@company.com"
+                    required
+                  >
+                  <button class="button button-primary" type="submit">Reserve my spot</button>
+                  <p class="privacy-note">
+                    No spam. We only use your email for waitlist updates, launch access, and
+                    onboarding notes.
+                  </p>
+                  <p class="status-text" data-form-status></p>
+                </form>
+              </div>
+            </aside>
+          </section>
+
+          <div class="stack">
+            <section class="section-grid" id="problem" aria-labelledby="problem-title">
+              <article class="section-card">
+                <span class="eyebrow">The problem</span>
+                <h2 id="problem-title">Claude is incredible right up until the session limit starts running your day.</h2>
+                <p>
+                  Developers are trying to do planning, architecture, implementation, cleanup,
+                  review, and release prep inside one giant conversational blob. It feels efficient
+                  at first. Then the context gets heavy, the resets get frequent, and you start
+                  spending money and momentum on re-explaining the same project over and over.
+                </p>
+                <div class="problem-stat">
+                  <strong>The "$27K compute" conversation made the real issue obvious.</strong>
+                  <span>
+                    Raw model power is not the bottleneck. Workflow shape is. If the job stays huge,
+                    the session stays expensive.
+                  </span>
+                </div>
+              </article>
+
+              <article class="section-card">
+                <span class="eyebrow">What changes</span>
+                <h2>Stop asking for one miracle answer. Start running clean, bounded waves.</h2>
+                <div class="solution-list">
+                  <div class="solution-item">
+                    <strong>Constitution first</strong>
+                    DanteForge locks in the rules, constraints, and real goal before the model starts improvising.
+                  </div>
+                  <div class="solution-item">
+                    <strong>Short-context commands</strong>
+                    Review, specify, plan, tasks, forge, verify. Each step carries only what it needs.
+                  </div>
+                  <div class="solution-item">
+                    <strong>Proof before bravado</strong>
+                    Receipts, verification, and explicit next steps keep the workflow honest.
+                  </div>
+                </div>
+              </article>
+            </section>
+
+            <section class="section-grid" id="solution" aria-labelledby="solution-title">
+              <article class="proof-card">
+                <span class="proof-badge">Why this works</span>
+                <h2 id="solution-title">DanteForge is built around constitutional, short-context command architecture.</h2>
+                <p>
+                  Instead of throwing your whole repo and your whole plan into every message, DanteForge
+                  breaks the work into staged artifacts. The next command starts from a smaller,
+                  clearer truth surface, which means the model wastes less effort reconstructing context.
+                </p>
+                <ul class="proof-list">
+                  <li>
+                    <strong>Local-first planning</strong>
+                    Specs, plans, tasks, and release discipline can happen before you spend premium model time.
+                  </li>
+                  <li>
+                    <strong>Agent-agnostic by design</strong>
+                    Use Codex, Claude Code, raw CLI, or the VS Code extension without rebuilding the workflow from scratch.
+                  </li>
+                  <li>
+                    <strong>Trust spine included</strong>
+                    Gates, receipts, and verification push the system toward "prove it" instead of "sounds done."
+                  </li>
+                </ul>
+              </article>
+
+              <article class="proof-card">
+                <span class="eyebrow">Social proof</span>
+                <h2>Join X developers already on the waitlist.</h2>
+                <p>
+                  The first wave is for developers who already know the pain: too much project state,
+                  too many session resets, not enough clean execution. If that sounds familiar, you are
+                  exactly who this is for.
+                </p>
+                <ul class="proof-list">
+                  <li>
+                    <strong>Built for the real bottleneck</strong>
+                    This is not "AI but prettier." It is workflow infrastructure for shipping with less context waste.
+                  </li>
+                  <li>
+                    <strong>Honest roadmap</strong>
+                    Launch focus now. Enterprise integration sprint next. No pretend polish where the runtime is still catching up.
+                  </li>
+                </ul>
+              </article>
+            </section>
+
+            <section class="section-grid" id="permanence" aria-labelledby="permanence-title">
+              <article class="section-card">
+                <span class="eyebrow">The real problem</span>
+                <h2 id="permanence-title">Even after Anthropic fixes the cache bugs, the real problem remains.</h2>
+                <p>
+                  The two cache bugs burning your session limits right now will get patched. Anthropic is already on it.
+                </p>
+                <p>
+                  But here is what will not change.
+                </p>
+                <p>
+                  Claude Code is architecturally designed to accumulate context. Every turn carries the full weight of everything before it. The longer you work, the heavier the session gets. That is not a bug. That is how it is built.
+                </p>
+                <p>
+                  Even with perfect caching, a developer consumed $27,000 of compute on a $200 plan. That was not a cache bug. That was large work on an architecture that grows with every message.
+                </p>
+                <p>
+                  DanteForge solves the underlying architecture, not the symptom.
+                </p>
+                <p>
+                  Short-context command waves mean you never build the giant context wall in the first place. Review. Plan. Tasks. Forge. Verify. Each step carries only what it needs. Nothing accumulates. Nothing breaks.
+                </p>
+                <p>
+                  The cache fix helps casual users doing light work. DanteForge is for serious builders doing real work.
+                </p>
+              </article>
+
+              <article class="section-card">
+                <span class="eyebrow">What techniques can't fix</span>
+                <h2>Three things DanteForge does that Claude Code techniques alone cannot fix</h2>
+                <div class="solution-list">
+                  <div class="solution-item">
+                    <strong>1. CLAUDE.md loaded every turn still accumulates session weight.</strong>
+                    DanteForge resets the context intentionally between waves.
+                  </div>
+                  <div class="solution-item">
+                    <strong>2. Subagent parallelism shares a heavy parent context.</strong>
+                    DanteForge keeps each wave context minimal before spawning.
+                  </div>
+                  <div class="solution-item">
+                    <strong>3. /compact is a manual save point.</strong>
+                    DanteForge makes short context the default, not the recovery.
+                  </div>
+                </div>
+              </article>
+            </section>
+
+            <section class="cta-card" aria-labelledby="cta-title">
+              <div>
+                <span class="eyebrow">Final CTA</span>
+                <h2 id="cta-title">Get in before the public rollout and keep Claude focused on the work that matters.</h2>
+                <p>
+                  Start with a 14-day free trial. Pay $20/month after that. Cancel any time. If you are
+                  the person everyone pings when Claude runs out of runway, this is for you.
+                </p>
+              </div>
+
+              <div>
+                <form action="https://app.kit.com/forms/9275262/subscriptions" method="post" novalidate>
+                  <input type="hidden" name="source" value="github-pages-footer">
+                  <label for="email-bottom">Join the waitlist</label>
+                  <input
+                    id="email-bottom"
+                    name="email"
+                    type="email"
+                    inputmode="email"
+                    autocomplete="email"
+                    placeholder="name@team.com"
+                    required
+                  >
+                  <button class="button button-primary" type="submit">Get launch access</button>
+                  <p class="privacy-note">
+                    We will send launch updates, onboarding details, and pricing reminders. Nothing else.
+                  </p>
+                  <p class="status-text" data-form-status></p>
+                </form>
+              </div>
+            </section>
+          </div>
+        </main>
+
+        <footer class="foot">
+          <span>DanteForge | Constitutional workflow orchestration for developers who are done wasting AI context.</span>
+          <span><a href="https://github.com/danteforge/danteforge">GitHub</a></span>
+        </footer>
+      </div>
+    </div>
+
+    <script>
+      const forms = document.querySelectorAll("form");
+
+      forms.forEach((form) => {
+        const button = form.querySelector("button");
+        const status = form.querySelector("[data-form-status]");
+
+        form.addEventListener("submit", () => {
+          if (button instanceof HTMLButtonElement) {
+            button.disabled = true;
+            button.textContent = "Sending...";
+          }
+
+          if (status) {
+            status.textContent = "Passing your email to the waitlist...";
+          }
+        });
+      });
+    </script>
+  </body>
+</html>
