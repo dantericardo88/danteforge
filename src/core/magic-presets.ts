@@ -13,6 +13,7 @@ export interface MagicPresetMetadata {
   defaultProfile: 'budget';
   routingAggressiveness: RoutingAggressiveness;
   maxBudgetUsd: number;
+  autoforgeWaves: number; // How many waves per autoforge step (used in convergence cycles)
   convergenceCycles: number;
   targetMaturityLevel: 1 | 2 | 3 | 4 | 5 | 6;
 }
@@ -29,6 +30,7 @@ export const MAGIC_PRESETS: Record<MagicLevel, MagicPresetMetadata> = {
     defaultProfile: 'budget',
     routingAggressiveness: 'aggressive',
     maxBudgetUsd: 0.05,
+    autoforgeWaves: 3, // Light planning pass
     convergenceCycles: 0,
     targetMaturityLevel: 1, // Sketch: proves the idea works
   },
@@ -41,6 +43,7 @@ export const MAGIC_PRESETS: Record<MagicLevel, MagicPresetMetadata> = {
     defaultProfile: 'budget',
     routingAggressiveness: 'aggressive',
     maxBudgetUsd: 0.15,
+    autoforgeWaves: 5, // Light execution
     convergenceCycles: 1,
     targetMaturityLevel: 2, // Prototype: investor-ready
   },
@@ -53,6 +56,7 @@ export const MAGIC_PRESETS: Record<MagicLevel, MagicPresetMetadata> = {
     defaultProfile: 'budget',
     routingAggressiveness: 'balanced',
     maxBudgetUsd: 0.75,
+    autoforgeWaves: 6, // Design-driven implementation
     convergenceCycles: 2,
     targetMaturityLevel: 3, // Alpha: internal team use
   },
@@ -65,6 +69,7 @@ export const MAGIC_PRESETS: Record<MagicLevel, MagicPresetMetadata> = {
     defaultProfile: 'budget',
     routingAggressiveness: 'balanced',
     maxBudgetUsd: 0.50,
+    autoforgeWaves: 8, // Balanced execution
     convergenceCycles: 2,
     targetMaturityLevel: 4, // Beta: paid beta customers
   },
@@ -77,6 +82,7 @@ export const MAGIC_PRESETS: Record<MagicLevel, MagicPresetMetadata> = {
     defaultProfile: 'budget',
     routingAggressiveness: 'balanced',
     maxBudgetUsd: 1.50,
+    autoforgeWaves: 10, // Full power
     convergenceCycles: 2,
     targetMaturityLevel: 5, // Customer-Ready: production launch
   },
@@ -89,6 +95,7 @@ export const MAGIC_PRESETS: Record<MagicLevel, MagicPresetMetadata> = {
     defaultProfile: 'budget',
     routingAggressiveness: 'balanced',
     maxBudgetUsd: 3.00,
+    autoforgeWaves: 10, // Full nova power
     convergenceCycles: 3,
     targetMaturityLevel: 6, // Enterprise-Grade: Fortune 500
   },
@@ -101,6 +108,7 @@ export const MAGIC_PRESETS: Record<MagicLevel, MagicPresetMetadata> = {
     defaultProfile: 'budget',
     routingAggressiveness: 'conservative',
     maxBudgetUsd: 5.00,
+    autoforgeWaves: 15, // Maximum firepower
     convergenceCycles: 3,
     targetMaturityLevel: 6, // Enterprise-Grade: Fortune 500
   },

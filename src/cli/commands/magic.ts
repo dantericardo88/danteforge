@@ -22,6 +22,7 @@ export interface ConvergenceOptions {
   level: MagicLevel;
   goal: string;
   maxCycles: number;
+  autoforgeWaves: number; // Full wave count from preset for bursty cycles
   skipInitialVerify?: boolean;
   _getVerifyStatus?: () => Promise<VerifyStatus>;
   _runAutoforge?: (goal: string, waves: number) => Promise<void>;
@@ -112,17 +113,21 @@ export async function runConvergenceCycles(
 
       const criticalGaps = assessment.gaps.filter(g => g.severity === 'critical');
       if (criticalGaps.length > 0) {
+        logger.info(`[${opts.level}] 💥 CONVERGENCE CYCLE ${cyclesRun}/${opts.maxCycles}`);
         logger.warn(`[${opts.level}] ${criticalGaps.length} critical gap${criticalGaps.length === 1 ? '' : 's'} detected:`);
-        for (const gap of criticalGaps.slice(0, 3)) {
-          logger.warn(`  - ${gap.dimension}: ${gap.currentScore}/100 (${gap.recommendation})`);
+        for (const gap of criticalGaps.slice(0, 5)) {
+          logger.warn(`  - ${gap.dimension}: ${gap.currentScore}/100 (need ${gap.targetScore ?? 89}+)`);
         }
-        // Run focused remediation on critical gaps
+        // Run FULL wave burst to aggressively close ALL gaps
+        logger.info(`[${opts.level}] Launching ${opts.autoforgeWaves}-wave improvement burst...`);
         const remediationGoal = `Address critical quality gaps: ${criticalGaps.map(g => g.dimension).join(', ')}`;
-        await runAutoforge(remediationGoal, Math.min(3, criticalGaps.length));
+        await runAutoforge(remediationGoal, opts.autoforgeWaves);
       } else {
-        // Standard convergence fix
+        // Standard convergence fix with full wave burst
+        logger.info(`[${opts.level}] 💥 CONVERGENCE CYCLE ${cyclesRun}/${opts.maxCycles}`);
+        logger.info(`[${opts.level}] Launching ${opts.autoforgeWaves}-wave improvement burst...`);
         const fixGoal = `Fix failing verification - ${opts.goal}`;
-        await runAutoforge(fixGoal, 3);
+        await runAutoforge(fixGoal, opts.autoforgeWaves);
       }
     } catch (err) {
       // Fallback to standard convergence if maturity assessment fails
@@ -425,9 +430,20 @@ async function runMagicPreset(
     if (stepOk) {
       const durationMs = Date.now() - stepStart;
       results.push({ step: label, status: "ok", durationMs });
-      logger.success(
-        `[${effectiveLevel}] ${label} complete (${(durationMs / 1000).toFixed(1)}s)`,
-      );
+
+      // Only show [OK] complete for non-critical steps
+      // Critical steps (autoforge, verify, party) should wait for maturity check
+      const isCriticalStep = ['autoforge', 'verify', 'party'].includes(step.kind);
+      if (!isCriticalStep || !plan.preset.targetMaturityLevel) {
+        logger.success(
+          `[${effectiveLevel}] ${label} complete (${(durationMs / 1000).toFixed(1)}s)`,
+        );
+      } else {
+        // For critical steps with maturity targets, defer "complete" status
+        logger.info(
+          `[${effectiveLevel}] ${label} finished (${(durationMs / 1000).toFixed(1)}s) - will check maturity...`,
+        );
+      }
       recordToolCall(pipelineTelemetry, step.kind, true);
     } else {
       recordBashCommand(pipelineTelemetry, `${step.kind} (failed)`);
@@ -453,6 +469,7 @@ async function runMagicPreset(
         level: effectiveLevel,
         goal: plan.goal,
         maxCycles: convergenceCycles,
+        autoforgeWaves: plan.preset.autoforgeWaves, // Use full wave count from preset
         skipInitialVerify,
         _getVerifyStatus: options._convergenceOpts?.getVerifyStatus,
         _runAutoforge: options._convergenceOpts?.runAutoforge,
@@ -475,6 +492,52 @@ async function runMagicPreset(
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
       logger.warn(`[${effectiveLevel}] Convergence loop error: ${message}`);
+    }
+
+    // Final maturity check after convergence
+    if (plan.preset.targetMaturityLevel) {
+      logger.info('');
+      logger.info(`[${effectiveLevel}] 🤔 Final maturity check...`);
+      try {
+        const { assessMaturity } = await import("../../core/maturity-engine.js");
+        const { scoreAllArtifacts } = await import("../../core/pdse.js");
+        const state = await stOps.load();
+        const cwd = process.cwd();
+        const pdseScores = await scoreAllArtifacts(cwd, state);
+
+        const assessment = await assessMaturity({
+          cwd,
+          state,
+          pdseScores,
+          targetLevel: plan.preset.targetMaturityLevel,
+        });
+
+        const levelNames = ['', 'Sketch', 'Prototype', 'Alpha', 'Beta', 'Customer-Ready', 'Enterprise-Grade'];
+        const currentLevelName = levelNames[assessment.currentLevel] ?? `Level ${assessment.currentLevel}`;
+        const targetLevelName = levelNames[assessment.targetLevel] ?? `Level ${assessment.targetLevel}`;
+
+        logger.info(`[${effectiveLevel}] Current Level: ${currentLevelName} (${assessment.currentLevel}/6)`);
+        logger.info(`[${effectiveLevel}] Target Level: ${targetLevelName} (${assessment.targetLevel}/6)`);
+        logger.info(`[${effectiveLevel}] Overall Score: ${assessment.overallScore}/100`);
+
+        if (assessment.currentLevel >= assessment.targetLevel) {
+          logger.success(`[${effectiveLevel}] ✅ MATURITY TARGET ACHIEVED - ${currentLevelName}!`);
+          logger.info('');
+        } else {
+          logger.warn(`[${effectiveLevel}] ❌ Maturity target NOT met (${assessment.currentLevel}/${assessment.targetLevel})`);
+          const criticalGaps = assessment.gaps.filter(g => g.severity === 'critical');
+          if (criticalGaps.length > 0) {
+            logger.warn(`[${effectiveLevel}] Critical gaps remaining:`);
+            for (const gap of criticalGaps.slice(0, 3)) {
+              logger.warn(`  - ${gap.dimension}: ${gap.currentScore}/100 (${gap.recommendation})`);
+            }
+          }
+          logger.warn(`[${effectiveLevel}] Consider running more convergence cycles or focused remediation.`);
+          logger.info('');
+        }
+      } catch (err) {
+        logger.warn(`[${effectiveLevel}] Maturity assessment failed: ${err instanceof Error ? err.message : String(err)}`);
+      }
     }
   }
 

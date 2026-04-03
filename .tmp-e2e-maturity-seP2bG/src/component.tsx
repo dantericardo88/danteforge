@@ -1,1 +1,0 @@
-<button aria-label="Submit" isLoading={loading}>Submit</button>
