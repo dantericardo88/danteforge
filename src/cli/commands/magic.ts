@@ -82,11 +82,11 @@ export async function runConvergenceCycles(
 
   while (finalStatus !== 'pass' && cyclesRun < opts.maxCycles) {
     cyclesRun++;
-    logger.info(
-      `[${opts.level}] Convergence cycle ${cyclesRun}/${opts.maxCycles}: re-executing targeted fixes...`,
-    );
 
-    // Maturity-aware reflection gate: assess quality gaps before remediation
+    logger.info(`[${opts.level}] 💥 CONVERGENCE CYCLE ${cyclesRun}/${opts.maxCycles}`);
+    logger.info(`[${opts.level}] Launching ${opts.autoforgeWaves}-wave improvement burst...`);
+
+    // Run autoforge waves first
     try {
       const { assessMaturity } = await import("../../core/maturity-engine.js");
       const { scoreAllArtifacts } = await import("../../core/pdse.js");
@@ -104,28 +104,15 @@ export async function runConvergenceCycles(
         targetLevel,
       });
 
-      logger.info(`[${opts.level}] Maturity check: ${assessment.currentLevel}/6 (target: ${assessment.targetLevel}/6, score: ${assessment.overallScore}/100)`);
-
-      if (assessment.currentLevel >= assessment.targetLevel) {
-        logger.success(`[${opts.level}] Target maturity level achieved - exiting convergence early`);
-        return { cyclesRun, initialStatus, finalStatus: 'pass' };
-      }
-
       const criticalGaps = assessment.gaps.filter(g => g.severity === 'critical');
       if (criticalGaps.length > 0) {
-        logger.info(`[${opts.level}] 💥 CONVERGENCE CYCLE ${cyclesRun}/${opts.maxCycles}`);
-        logger.warn(`[${opts.level}] ${criticalGaps.length} critical gap${criticalGaps.length === 1 ? '' : 's'} detected:`);
+        logger.warn(`[${opts.level}] ${criticalGaps.length} critical gap${criticalGaps.length === 1 ? '' : 's'} to address:`);
         for (const gap of criticalGaps.slice(0, 5)) {
           logger.warn(`  - ${gap.dimension}: ${gap.currentScore}/100 (need ${gap.targetScore ?? 89}+)`);
         }
-        // Run FULL wave burst to aggressively close ALL gaps
-        logger.info(`[${opts.level}] Launching ${opts.autoforgeWaves}-wave improvement burst...`);
         const remediationGoal = `Address critical quality gaps: ${criticalGaps.map(g => g.dimension).join(', ')}`;
         await runAutoforge(remediationGoal, opts.autoforgeWaves);
       } else {
-        // Standard convergence fix with full wave burst
-        logger.info(`[${opts.level}] 💥 CONVERGENCE CYCLE ${cyclesRun}/${opts.maxCycles}`);
-        logger.info(`[${opts.level}] Launching ${opts.autoforgeWaves}-wave improvement burst...`);
         const fixGoal = `Fix failing verification - ${opts.goal}`;
         await runAutoforge(fixGoal, opts.autoforgeWaves);
       }
@@ -133,19 +120,57 @@ export async function runConvergenceCycles(
       // Fallback to standard convergence if maturity assessment fails
       logger.warn(`[${opts.level}] Maturity assessment failed: ${err instanceof Error ? err.message : String(err)} - falling back to standard convergence`);
       const fixGoal = `Fix failing verification - ${opts.goal}`;
-      await runAutoforge(fixGoal, 3);
+      await runAutoforge(fixGoal, opts.autoforgeWaves);
     }
 
+    // Run verify after autoforge
     await runVerify();
     finalStatus = await getStatus();
-    if (finalStatus === 'pass') {
-      logger.success(
-        `[${opts.level}] Convergence achieved after ${cyclesRun} cycle${cyclesRun === 1 ? '' : 's'}`,
-      );
-    } else {
-      logger.warn(
-        `[${opts.level}] Convergence cycle ${cyclesRun} complete - verify still ${finalStatus}`,
-      );
+
+    // NOW check maturity AFTER waves completed and verify ran
+    try {
+      const { assessMaturity } = await import("../../core/maturity-engine.js");
+      const { scoreAllArtifacts } = await import("../../core/pdse.js");
+      const { MAGIC_PRESETS } = await import("../../core/magic-presets.js");
+
+      const state = await loadState();
+      const cwd = process.cwd();
+      const pdseScores = await scoreAllArtifacts(cwd, state);
+      const targetLevel = MAGIC_PRESETS[opts.level]?.targetMaturityLevel ?? 4;
+
+      const assessment = await assessMaturity({
+        cwd,
+        state,
+        pdseScores,
+        targetLevel,
+      });
+
+      logger.info('');
+      logger.info(`[${opts.level}] 🤔 Maturity check after cycle ${cyclesRun}...`);
+      logger.info(`[${opts.level}] Current: ${assessment.currentLevel}/6 (score: ${assessment.overallScore}/100)`);
+      logger.info(`[${opts.level}] Target:  ${assessment.targetLevel}/6`);
+
+      if (assessment.currentLevel >= assessment.targetLevel) {
+        logger.success(`[${opts.level}] ✅ MATURITY TARGET ACHIEVED after ${cyclesRun} cycle${cyclesRun === 1 ? '' : 's'}!`);
+        return { cyclesRun, initialStatus, finalStatus: 'pass' };
+      } else {
+        const remaining = assessment.targetLevel - assessment.currentLevel;
+        logger.warn(`[${opts.level}] ⚠️  Still ${remaining} level${remaining === 1 ? '' : 's'} below target`);
+        if (cyclesRun < opts.maxCycles) {
+          logger.info(`[${opts.level}] Continuing to cycle ${cyclesRun + 1}/${opts.maxCycles}...`);
+        }
+      }
+    } catch (err) {
+      // If maturity check fails, fall back to verify status
+      if (finalStatus === 'pass') {
+        logger.success(
+          `[${opts.level}] Convergence achieved after ${cyclesRun} cycle${cyclesRun === 1 ? '' : 's'}`,
+        );
+      } else {
+        logger.warn(
+          `[${opts.level}] Convergence cycle ${cyclesRun} complete - verify still ${finalStatus}`,
+        );
+      }
     }
   }
 
