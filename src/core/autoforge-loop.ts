@@ -9,6 +9,8 @@ import { computeCompletionTracker, detectProjectType, type CompletionTracker } f
 import { SCORE_THRESHOLDS, ARTIFACT_COMMAND_MAP, ANTI_STUB_PATTERNS } from './pdse-config.js';
 import { logger } from './logger.js';
 import { recordMemory } from './memory-engine.js';
+import { assessMaturity, type MaturityAssessment } from './maturity-engine.js';
+import type { MaturityLevel } from './maturity-levels.js';
 
 // ── State machine ───────────────────────────────────────────────────────────
 
@@ -35,6 +37,7 @@ export interface AutoforgeLoopContext {
   force: boolean;
   dryRun?: boolean;
   maxRetries: number;
+  targetMaturityLevel?: MaturityLevel; // Optional maturity target override
 }
 
 export interface AutoforgeGuidance {
@@ -47,6 +50,7 @@ export interface AutoforgeGuidance {
   autoAdvanceEligible: boolean;
   autoAdvanceBlockReason?: string;
   estimatedStepsToCompletion: number;
+  maturityAssessment?: MaturityAssessment; // Maturity-aware quality scoring
 }
 
 export interface BlockingIssue {
@@ -117,8 +121,9 @@ export async function runAutoforgeLoop(ctx: AutoforgeLoopContext): Promise<Autof
         ctx.loopState = AutoforgeLoopState.COMPLETE;
         logger.success(`[Autoforge] Overall completion: ${tracker.overall}% — target reached!`);
 
-        // Write final guidance
-        const guidance = buildGuidance(tracker, scores, ctx);
+        // Write final guidance (include maturity assessment if available)
+        const { maturityAssessment: finalMaturity } = await findBlockedArtifacts(scores, ctx);
+        const guidance = buildGuidance(tracker, scores, ctx, finalMaturity);
         ctx.lastGuidance = guidance;
         await writeGuidanceFile(guidance, cwd);
 
@@ -143,8 +148,8 @@ export async function runAutoforgeLoop(ctx: AutoforgeLoopContext): Promise<Autof
         break;
       }
 
-      // 4. Find blocking artifacts
-      const blockedArtifacts = findBlockedArtifacts(scores);
+      // 4. Find blocking artifacts (maturity-aware)
+      const { blocked: blockedArtifacts, maturityAssessment } = await findBlockedArtifacts(scores, ctx);
 
       // 5. Handle BLOCKED state
       if (blockedArtifacts.length > 0) {
@@ -156,7 +161,7 @@ export async function runAutoforgeLoop(ctx: AutoforgeLoopContext): Promise<Autof
           logger.error(`[Autoforge] Circuit breaker tripped — ${consecutiveFailures} consecutive failures`);
 
           ctx.blockedArtifacts = blockedArtifacts.map(a => a.artifact);
-          const guidance = buildGuidance(tracker, scores, ctx);
+          const guidance = buildGuidance(tracker, scores, ctx, maturityAssessment);
           ctx.lastGuidance = guidance;
           await writeGuidanceFile(guidance, cwd);
 
@@ -196,7 +201,7 @@ export async function runAutoforgeLoop(ctx: AutoforgeLoopContext): Promise<Autof
             ctx.loopState = AutoforgeLoopState.BLOCKED;
             ctx.blockedArtifacts = permanentlyBlocked;
 
-            const guidance = buildGuidance(tracker, scores, ctx);
+            const guidance = buildGuidance(tracker, scores, ctx, maturityAssessment);
             ctx.lastGuidance = guidance;
             await writeGuidanceFile(guidance, cwd);
 
@@ -352,6 +357,32 @@ export function formatGuidanceMarkdown(guidance: AutoforgeGuidance): string {
   lines.push(`**Estimated Steps to Completion:** ${guidance.estimatedStepsToCompletion}`);
   lines.push('');
 
+  // Maturity assessment section
+  if (guidance.maturityAssessment) {
+    const m = guidance.maturityAssessment;
+    const levelNames: Record<MaturityLevel, string> = {
+      1: 'Sketch', 2: 'Prototype', 3: 'Alpha', 4: 'Beta', 5: 'Customer-Ready', 6: 'Enterprise-Grade',
+    };
+    lines.push('## Maturity Assessment');
+    lines.push('');
+    lines.push(`**Current Level:** ${levelNames[m.currentLevel]} (${m.currentLevel}/6)`);
+    lines.push(`**Target Level:** ${levelNames[m.targetLevel]} (${m.targetLevel}/6)`);
+    lines.push(`**Overall Score:** ${m.overallScore}/100`);
+    lines.push(`**Recommendation:** ${m.recommendation}`);
+    lines.push('');
+
+    if (m.gaps.length > 0) {
+      lines.push('### Quality Gaps');
+      lines.push('');
+      lines.push('| Dimension | Current | Target | Gap | Severity |');
+      lines.push('|-----------|---------|--------|-----|----------|');
+      for (const gap of m.gaps) {
+        lines.push(`| ${gap.dimension} | ${gap.currentScore} | ${gap.targetScore} | ${gap.gapSize} | ${gap.severity} |`);
+      }
+      lines.push('');
+    }
+  }
+
   if (guidance.blockingIssues.length > 0) {
     lines.push('## Blocking Issues');
     lines.push('');
@@ -371,8 +402,13 @@ export function formatGuidanceMarkdown(guidance: AutoforgeGuidance): string {
 
 // ── Helpers ─────────────────────────────────────────────────────────────────
 
-function findBlockedArtifacts(scores: Record<ScoredArtifact, ScoreResult>): BlockingIssue[] {
+async function findBlockedArtifacts(
+  scores: Record<ScoredArtifact, ScoreResult>,
+  ctx: AutoforgeLoopContext,
+): Promise<{ blocked: BlockingIssue[]; maturityAssessment?: MaturityAssessment }> {
   const blocked: BlockingIssue[] = [];
+
+  // Standard PDSE-based blocking check
   for (const [name, result] of Object.entries(scores)) {
     if (result.score < SCORE_THRESHOLDS.NEEDS_WORK) {
       const command = ARTIFACT_COMMAND_MAP[name as ScoredArtifact] ?? name.toLowerCase();
@@ -384,7 +420,43 @@ function findBlockedArtifacts(scores: Record<ScoredArtifact, ScoreResult>): Bloc
       });
     }
   }
-  return blocked;
+
+  // Maturity-aware override: If target maturity level is met, proceed even if PDSE < 95
+  let maturityAssessment: MaturityAssessment | undefined;
+  if (ctx.targetMaturityLevel) {
+    try {
+      maturityAssessment = await assessMaturity({
+        cwd: ctx.cwd,
+        state: ctx.state,
+        pdseScores: scores,
+        targetLevel: ctx.targetMaturityLevel,
+      });
+
+      // If current maturity >= target, override PDSE blocking
+      if (maturityAssessment.currentLevel >= maturityAssessment.targetLevel) {
+        logger.info(`[Autoforge] Maturity target met (${maturityAssessment.currentLevel}/${maturityAssessment.targetLevel}) - proceeding despite PDSE score`);
+        return { blocked: [], maturityAssessment };
+      }
+
+      // If maturity recommendation is 'blocked', add critical gaps to blocking issues
+      if (maturityAssessment.recommendation === 'blocked') {
+        const criticalGaps = maturityAssessment.gaps.filter(g => g.severity === 'critical');
+        for (const gap of criticalGaps) {
+          blocked.push({
+            artifact: `maturity:${gap.dimension}`,
+            score: gap.currentScore,
+            decision: 'blocked',
+            remediation: gap.recommendation,
+          });
+        }
+      }
+    } catch (err) {
+      logger.warn(`[Autoforge] Maturity assessment failed: ${err instanceof Error ? err.message : String(err)}`);
+      // Fall back to PDSE-only decision
+    }
+  }
+
+  return { blocked, maturityAssessment };
 }
 
 function determineNextCommand(
@@ -442,8 +514,23 @@ function buildGuidance(
   tracker: CompletionTracker,
   scores: Record<ScoredArtifact, ScoreResult>,
   ctx: AutoforgeLoopContext,
+  maturityAssessment?: MaturityAssessment,
 ): AutoforgeGuidance {
-  const blockingIssues = findBlockedArtifacts(scores);
+  // Note: findBlockedArtifacts is now async, but this function is called from sync contexts
+  // We use the maturityAssessment passed in instead of calling it again
+  const blockingIssues: BlockingIssue[] = [];
+  for (const [name, result] of Object.entries(scores)) {
+    if (result.score < SCORE_THRESHOLDS.NEEDS_WORK) {
+      const command = ARTIFACT_COMMAND_MAP[name as ScoredArtifact] ?? name.toLowerCase();
+      blockingIssues.push({
+        artifact: name,
+        score: result.score,
+        decision: result.autoforgeDecision,
+        remediation: `danteforge ${command} --refine`,
+      });
+    }
+  }
+
   const bottleneck = findBottleneck(tracker, scores);
   const nextCommand = determineNextCommand(ctx.state, tracker, scores) ?? 'ship --dry-run';
   const estimatedSteps = computeEstimatedSteps(ctx);
@@ -461,6 +548,7 @@ function buildGuidance(
       ? `${blockingIssues.length} artifact(s) below score threshold`
       : undefined,
     estimatedStepsToCompletion: estimatedSteps,
+    maturityAssessment,
   };
 }
 

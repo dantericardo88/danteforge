@@ -5,8 +5,10 @@ import fs from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import { executeWave } from '../src/harvested/gsd/agents/executor.js';
+import { configureOfflineHome, restoreOfflineHome } from './helpers/offline-home.js';
 
 const originalCwd = process.cwd();
+const originalHome = process.env.DANTEFORGE_HOME;
 const tempDirs: string[] = [];
 
 async function makeTmpStateDir(taskOverrides?: Record<number, { name: string; files?: string[]; verify?: string }[]>) {
@@ -35,9 +37,13 @@ ${taskYaml}
   return tmpDir;
 }
 
-beforeEach(() => { process.exitCode = 0; });
+beforeEach(async () => {
+  process.exitCode = 0;
+  await configureOfflineHome(tempDirs);
+});
 
 afterEach(async () => {
+  restoreOfflineHome(originalHome);
   process.exitCode = 0; // executor sets exitCode=1 on failure; reset so it doesn't poison the suite
   process.chdir(originalCwd);
   for (const dir of tempDirs.splice(0)) {

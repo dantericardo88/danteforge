@@ -94,7 +94,18 @@ async function checkCodexBootstrap(homeDir: string, strict = false): Promise<Dia
 
 async function checkCodexCommandFiles(homeDir: string, strict = false): Promise<DiagnosticResult> {
   const commandsDir = path.join(homeDir, '.codex', 'commands');
-  const expectedFiles = ['autoforge.md', 'verify.md'];
+  const expectedFiles = [
+    'autoforge.md',
+    'spark.md',
+    'ember.md',
+    'canvas.md',
+    'magic.md',
+    'blaze.md',
+    'nova.md',
+    'inferno.md',
+    'verify.md',
+    'local-harvest.md',
+  ];
   const missing: string[] = [];
 
   for (const file of expectedFiles) {

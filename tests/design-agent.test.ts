@@ -1,9 +1,29 @@
-import { describe, it } from 'node:test';
+import { afterEach, beforeEach, describe, it } from 'node:test';
 import assert from 'node:assert';
+import fs from 'node:fs/promises';
 import {
   runDesignAgent,
   DESIGN_AGENT_PROMPT,
 } from '../src/harvested/dante-agents/agents/design.js';
+import { configureOfflineHome, restoreOfflineHome } from './helpers/offline-home.js';
+
+const originalHome = process.env.DANTEFORGE_HOME;
+const tempDirs: string[] = [];
+
+beforeEach(async () => {
+  await configureOfflineHome(tempDirs);
+});
+
+afterEach(async () => {
+  restoreOfflineHome(originalHome);
+
+  while (tempDirs.length > 0) {
+    const dir = tempDirs.pop();
+    if (dir) {
+      await fs.rm(dir, { recursive: true, force: true });
+    }
+  }
+});
 
 describe('Design Agent exports', () => {
   it('runDesignAgent is exported as a function', () => {

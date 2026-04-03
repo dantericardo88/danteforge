@@ -10,6 +10,7 @@ const WORKFLOW_COMMANDS = [
   'blaze',
   'brainstorm',
   'browse',
+  'canvas',
   'clarify',
   'constitution',
   'debug',
@@ -19,7 +20,10 @@ const WORKFLOW_COMMANDS = [
   'harvest',
   'inferno',
   'lessons',
+  'local-harvest',
   'magic',
+  'maturity',
+  'nova',
   'oss',
   'party',
   'plan',
@@ -81,7 +85,7 @@ describe('command-skill-coverage', () => {
     const commandFiles = entries.filter(f => f.endsWith('.md'));
 
     for (const file of commandFiles) {
-      const content = await fs.readFile(path.join(commandsDir, file), 'utf8');
+      const content = (await fs.readFile(path.join(commandsDir, file), 'utf8')).replace(/\r\n/g, '\n');
       assert.match(
         content,
         /^---\n/,
@@ -106,7 +110,7 @@ describe('command-skill-coverage', () => {
     const commandFiles = entries.filter(f => f.endsWith('.md'));
 
     for (const file of commandFiles) {
-      const content = await fs.readFile(path.join(commandsDir, file), 'utf8');
+      const content = (await fs.readFile(path.join(commandsDir, file), 'utf8')).replace(/\r\n/g, '\n');
       const nameMatch = content.match(/\nname:\s*(.+)/);
       assert.ok(nameMatch, `${file} must have a name: field`);
 

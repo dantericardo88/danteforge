@@ -5,15 +5,26 @@ import path from 'path';
 import os from 'os';
 import { loadMemoryStore, saveMemoryStore } from '../src/core/memory-store.js';
 import { recordMemory, searchMemory, getRecentMemory, getMemoryBudget, compactMemory } from '../src/core/memory-engine.js';
+import { configureOfflineHome, restoreOfflineHome } from './helpers/offline-home.js';
 
 let tmpDir: string;
+const originalHome = process.env.DANTEFORGE_HOME;
+const tempHomes: string[] = [];
 
 beforeEach(async () => {
+  await configureOfflineHome(tempHomes);
   tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), 'df-mem-test-'));
   await fs.mkdir(path.join(tmpDir, '.danteforge'), { recursive: true });
 });
 
 afterEach(async () => {
+  restoreOfflineHome(originalHome);
+  while (tempHomes.length > 0) {
+    const home = tempHomes.pop();
+    if (home) {
+      await fs.rm(home, { recursive: true, force: true });
+    }
+  }
   await fs.rm(tmpDir, { recursive: true, force: true });
 });
 

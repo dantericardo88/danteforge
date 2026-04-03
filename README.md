@@ -82,7 +82,7 @@ This installs the bundled DanteForge skills into the user-level Claude, Codex, G
 - `~/.gemini/antigravity/skills`
 - `~/.config/opencode/skills`
 
-For Codex, explicit setup syncs the workflow command markdown files into `~/.codex/commands`, keeps a small non-colliding set of CLI utility aliases in `~/.codex/config.toml`, and maintains a managed global bootstrap at `~/.codex/AGENTS.md`, so commands such as `/spark`, `/ember`, `/magic`, `/blaze`, `/inferno`, `/autoforge`, and `/party` stay native workflow commands instead of shell aliases in local Codex environments.
+For Codex, explicit setup syncs the workflow command markdown files into `~/.codex/commands`, keeps a small non-colliding set of CLI utility aliases in `~/.codex/config.toml`, and maintains a managed global bootstrap at `~/.codex/AGENTS.md`, so commands such as `/spark`, `/ember`, `/canvas`, `/magic`, `/blaze`, `/nova`, `/inferno`, `/local-harvest`, `/autoforge`, and `/party` stay native workflow commands instead of shell aliases in local Codex environments.
 
 The bundled skill catalog also includes `danteforge-cli`, which now acts as an explicit CLI fallback when the user asks for terminal execution or when native workflow command files are unavailable.
 
@@ -219,18 +219,87 @@ danteforge autoforge "stabilize the release candidate" --dry-run
 ## Magic Levels
 
 Usage rule:
+- Frontend-heavy feature where design should drive implementation -> `/canvas`
 - First-time new matrix dimension + fresh OSS discovery -> `/inferno`
 - All follow-up PRD gap closing -> `/magic`
 
 | Command | Intensity | Token Level | Combines (Best Of) | Primary Use Case |
 | --- | --- | --- | --- | --- |
-| `danteforge spark [goal]` | Planning | Zero | review + constitution + specify + clarify + plan + tasks | Every new idea or project start |
+| `danteforge spark [goal]` | Planning | Zero | review + constitution + specify + clarify + tech-decide + plan + tasks | Every new idea or project start |
 | `danteforge ember [goal]` | Light | Very Low | Budget magic + light checkpoints + basic loop detect | Quick features, prototyping, token-conscious work |
-| `danteforge magic [goal]` | Balanced (Default) | Low-Medium | Balanced party lanes + autoforge reliability + lessons | Daily main command - 80% of all work |
-| `danteforge blaze [goal]` | High | High | Full party + strong autoforge + self-improve | Big features needing real power |
+| `danteforge canvas [goal]` | Design-First | Low-Medium | design + autoforge + ux-refine + verify | Frontend-heavy features where visual design drives implementation |
+| `danteforge magic [goal]` | Balanced (Default) | Low-Medium | Balanced party lanes + autoforge reliability + verify + lessons | Daily main command - 80% of all work |
+| `danteforge blaze [goal]` | High | High | Full party + strong autoforge + synthesize + retro + self-improve | Big features needing real power |
+| `danteforge nova [goal]` | Very High | High-Max | Planning prefix + blaze execution + inferno polish (no OSS) | Feature sprints that need planning + deep execution without OSS overhead |
 | `danteforge inferno [goal]` | Maximum | Maximum | Full party + max autoforge + deep OSS mining + evolution | First big attack on new matrix dimension |
 
 Full operator guidance lives in [.danteforge/MAGIC-LEVELS.md](.danteforge/MAGIC-LEVELS.md).
+
+## Quality Standards
+
+DanteForge scores your code across **8 quality dimensions** and assigns it a **maturity level (1-6)** that represents real-world readiness:
+
+| Level | Name | Score | Use Case |
+| --- | --- | --- | --- |
+| 1 | Sketch | 0-20 | Demo to co-founder |
+| 2 | Prototype | 21-40 | Show investors |
+| 3 | Alpha | 41-60 | Internal team use |
+| 4 | Beta | 61-75 | Paid beta customers |
+| 5 | Customer-Ready | 76-88 | Production launch |
+| 6 | Enterprise-Grade | 89-100 | Fortune 500 contracts |
+
+Each magic preset targets a specific maturity level. The **convergence loop** uses this target to prevent "premature done" — if your code doesn't meet the quality standard, it triggers **focused remediation** (3 autoforge waves) to close critical gaps.
+
+### Example Maturity Check
+
+```bash
+danteforge maturity --preset magic
+```
+
+Output:
+```
+════════════════════════════════════════════════════════════
+  DanteForge Maturity Assessment
+════════════════════════════════════════════════════════════
+
+Current Level: Alpha (3/6)
+Target Level:  Beta (4/6)
+Overall Score: 58/100
+Use Case:      Internal team use
+
+Quality Dimensions:
+  ✅ Functionality        75/100
+  ✅ Testing              82/100
+  ⚠️  Error Handling      65/100
+  ⚠️  Security            70/100
+  ⚠️  UX Polish           60/100
+  ❌ Documentation        55/100
+  ⚠️  Performance         70/100
+  ⚠️  Maintainability     68/100
+
+Major Gaps (1):
+  - Documentation: 55/100 (need 70+)
+    → Improve clarity and update stale documentation
+
+Next Steps:
+  1. Improve clarity and update stale documentation
+
+Recommendation: ⚠️  Refine — address gaps before shipping
+════════════════════════════════════════════════════════════
+```
+
+### The 8 Quality Dimensions
+
+1. **Functionality** (20% weight) — PDSE completeness + integration fitness
+2. **Testing** (15% weight) — Coverage, test files, E2E tests
+3. **Error Handling** (10% weight) — Try/catch, custom errors, ratio to functions
+4. **Security** (15% weight) — Secrets management, npm audit, dangerous patterns
+5. **UX Polish** (10% weight) — Loading states, accessibility, responsive design (web only)
+6. **Documentation** (10% weight) — PDSE clarity + freshness
+7. **Performance** (10% weight) — Nested loops, O(n²) patterns, profiling
+8. **Maintainability** (10% weight) — PDSE testability + constitution + function size
+
+See [docs/MATURITY-SYSTEM.md](docs/MATURITY-SYSTEM.md) for detailed explanations of each level, the reflection gate, and how to improve your scores.
 
 ## Command Reference
 
@@ -247,6 +316,7 @@ Full operator guidance lives in [.danteforge/MAGIC-LEVELS.md](.danteforge/MAGIC-
 | `danteforge forge [phase]` | Execute a wave with LLMs or generate prompts with `--prompt` |
 | `danteforge spark [goal]` | Zero-token planning preset for new ideas and project starts |
 | `danteforge ember [goal]` | Very low-token preset for token-conscious follow-up work |
+| `danteforge canvas [goal]` | Design-first frontend preset for visual-first execution |
 | `danteforge party` | Launch multi-agent collaboration mode, with optional `--worktree` and `--isolation` |
 | `danteforge review` | Scan the repo and generate `CURRENT_STATE.md` |
 | `danteforge browse` | Drive the browser automation surface for navigation, screenshots, console, network, and accessibility evidence |
@@ -262,11 +332,14 @@ Full operator guidance lives in [.danteforge/MAGIC-LEVELS.md](.danteforge/MAGIC-
 | `danteforge dashboard` | Start a local status dashboard |
 | `danteforge magic [goal]` | Run the balanced default preset for daily gap-closing |
 | `danteforge blaze [goal]` | Run the high-power preset with full party escalation |
+| `danteforge nova [goal]` | Run the very-high-power preset with planning prefix and deep execution |
 | `danteforge inferno [goal]` | Run the maximum-power preset with OSS discovery and evolution |
 | `danteforge setup figma` | Configure Figma MCP integration |
 | `danteforge update-mcp` | Check and apply MCP metadata updates |
 | `danteforge tech-decide` | Generate tech-stack guidance |
 | `danteforge lessons` | Capture and compact persistent lessons |
+| `danteforge maturity` | Analyze code maturity level across 8 quality dimensions (1-6 scale) |
+| `danteforge local-harvest [paths...]` | Harvest patterns from local private repos, folders, and zip archives |
 | `danteforge autoresearch <goal>` | Autonomous metric-driven optimization loop |
 | `danteforge oss` | Autonomous OSS pattern harvesting with license gates |
 | `danteforge harvest <system>` | Titan Harvest V2 — constitutional pattern harvesting |

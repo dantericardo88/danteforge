@@ -22,7 +22,7 @@ This file is the repo-level source of truth for coding agents (Codex, Claude Cod
 - Project workflow artifacts live in `./.danteforge/` (state/spec/plan/tasks/prompts).
 - Secrets are stored in user config at `~/.danteforge/config.yaml` (migrated from legacy project-local config on first read).
 - Prefer small, high-confidence edits and keep CLI behavior backward compatible unless a task explicitly changes UX/contracts.
-- In Codex, treat workflow slash commands backed by `commands/*.md` as native repo commands. When the user invokes `/spark`, `/ember`, `/magic`, `/blaze`, `/inferno`, `/autoforge`, `/party`, or another workflow slash command, execute the workflow in the workspace instead of defaulting to `danteforge <command>` unless the user explicitly asks for CLI execution or parity testing.
+- In Codex, treat workflow slash commands backed by `commands/*.md` as native repo commands. When the user invokes `/spark`, `/ember`, `/canvas`, `/magic`, `/blaze`, `/nova`, `/inferno`, `/autoforge`, `/party`, `/local-harvest`, or another workflow slash command, execute the workflow in the workspace instead of defaulting to `danteforge <command>` unless the user explicitly asks for CLI execution or parity testing.
 - Keep `.codex/config.toml` free of workflow-command alias collisions so native slash commands win in Codex.
 - Do not commit generated/vendor paths (`node_modules/`, `dist/`, `coverage/`, `./.danteforge/`, `vscode-extension/node_modules/`, `vscode-extension/dist/`).
 
@@ -46,15 +46,18 @@ Use `--light` flag on any command to bypass gates for simple changes.
 ### Magic Levels
 
 Usage rule:
+- Frontend-heavy feature where design should drive implementation -> `danteforge canvas`
 - First-time new matrix dimension + fresh OSS discovery -> `danteforge inferno`
 - All follow-up PRD gap closing -> `danteforge magic`
 
 | Command | Intensity | Token Level | Combines (Best Of) | Primary Use Case |
 |---------|-----------|-------------|--------------------|------------------|
-| `danteforge spark [goal]` | Planning | Zero | review + constitution + specify + clarify + plan + tasks | Every new idea or project start |
+| `danteforge spark [goal]` | Planning | Zero | review + constitution + specify + clarify + tech-decide + plan + tasks | Every new idea or project start |
 | `danteforge ember [goal]` | Light | Very Low | Budget magic + light checkpoints + basic loop detect | Quick features, prototyping, token-conscious work |
-| `danteforge magic [goal]` | Balanced (Default) | Low-Medium | Balanced party lanes + autoforge reliability + lessons | Daily main command - 80% of all work |
-| `danteforge blaze [goal]` | High | High | Full party + strong autoforge + self-improve | Big features needing real power |
+| `danteforge canvas [goal]` | Design-First | Low-Medium | design + autoforge + ux-refine + verify | Frontend-heavy features where visual design drives implementation |
+| `danteforge magic [goal]` | Balanced (Default) | Low-Medium | Balanced party lanes + autoforge reliability + verify + lessons | Daily main command - 80% of all work |
+| `danteforge blaze [goal]` | High | High | Full party + strong autoforge + synthesize + retro + self-improve | Big features needing real power |
+| `danteforge nova [goal]` | Very High | High-Max | Planning prefix + blaze execution + inferno polish (no OSS) | Feature sprints that need planning + deep execution without OSS overhead |
 | `danteforge inferno [goal]` | Maximum | Maximum | Full party + max autoforge + deep OSS mining + evolution | First big attack on new matrix dimension |
 
 ### Core Workflow
@@ -80,11 +83,13 @@ Usage rule:
 |---------|-------------|-----------|
 | `danteforge spark [goal]` | Zero-token planning preset | `--prompt` |
 | `danteforge ember [goal]` | Very low-token preset for quick follow-up work | `--profile`, `--prompt` |
+| `danteforge canvas [goal]` | Design-first frontend preset | `--profile`, `--prompt`, `--design-prompt` |
 | `danteforge party` | Multi-agent collaboration mode | `--worktree`, `--isolation`, `--design` |
 | `danteforge autoforge [goal]` | Deterministic auto-orchestration | `--dry-run`, `--auto`, `--score-only`, `--max-waves`, `--profile`, `--parallel`, `--force` |
 | `danteforge magic [goal]` | Balanced default preset for daily gap-closing | `--level`, `--profile`, `--prompt`, `--worktree`, `--isolation` |
-| `danteforge blaze [goal]` | High-power preset with full party escalation | `--profile`, `--prompt`, `--worktree`, `--isolation` |
-| `danteforge inferno [goal]` | Maximum-power preset with OSS discovery | `--profile`, `--prompt`, `--worktree`, `--isolation`, `--max-repos` |
+| `danteforge blaze [goal]` | High-power preset with full party escalation | `--profile`, `--prompt`, `--worktree`, `--isolation`, `--with-design`, `--design-prompt` |
+| `danteforge nova [goal]` | Very-high-power preset with planning prefix and deep execution | `--profile`, `--prompt`, `--worktree`, `--isolation`, `--tech-decide`, `--with-design`, `--design-prompt` |
+| `danteforge inferno [goal]` | Maximum-power preset with OSS discovery | `--profile`, `--prompt`, `--worktree`, `--isolation`, `--max-repos`, `--with-design`, `--local-sources`, `--local-depth` |
 
 ### Quality & Release
 
@@ -103,6 +108,7 @@ Usage rule:
 | `danteforge browse <subcommand>` | Browser automation (navigate, screenshot, inspect) | `--url`, `--port` |
 | `danteforge awesome-scan` | Discover and classify skills across sources | `--source`, `--domain`, `--install` |
 | `danteforge oss` | Auto-detect project, search OSS, clone, license-gate, extract patterns | `--prompt`, `--dry-run`, `--max-repos` |
+| `danteforge local-harvest [paths...]` | Harvest patterns from local private repos, folders, and zip archives | `--config`, `--depth`, `--prompt`, `--dry-run`, `--max-sources` |
 | `danteforge harvest` | Titan Harvest V2: 5-step constitutional harvest of OSS patterns | `--prompt`, `--lite` |
 
 ### Utilities
@@ -137,6 +143,44 @@ Usage rule:
 - Skills: design-orchestrator, design-token-sync, visual-regression
 - Output: DESIGN.op, design-tokens.css, design system audit
 
+## Quality Standards & Maturity System
+
+DanteForge includes a maturity-aware quality scoring system that prevents "premature done":
+
+### 6 Maturity Levels
+- **Level 1 (Sketch)**: Proves the idea works - demo to co-founder
+- **Level 2 (Prototype)**: Investor-ready - basic tests, input validation
+- **Level 3 (Alpha)**: Internal team use - 70%+ coverage, structured logging
+- **Level 4 (Beta)**: Paid beta customers - 80%+ coverage, error recovery
+- **Level 5 (Customer-Ready)**: Production launch - 85%+ coverage, monitoring, pen-tested
+- **Level 6 (Enterprise-Grade)**: Fortune 500 - 90%+ coverage, multi-tenant, SOC2/GDPR
+
+### Magic Preset Target Levels
+Each magic preset automatically targets a specific maturity level:
+- `spark` → Level 1 (Sketch)
+- `ember` → Level 2 (Prototype)
+- `canvas` → Level 3 (Alpha)
+- `magic` → Level 4 (Beta)
+- `blaze` → Level 5 (Customer-Ready)
+- `nova` / `inferno` → Level 6 (Enterprise-Grade)
+
+### Convergence Loops & Reflection Gate
+After the main build pipeline, DanteForge runs a **maturity assessment** that scores your code across 8 dimensions:
+1. Functionality (PDSE completeness + integration fitness)
+2. Testing (coverage, test files, E2E tests)
+3. Error Handling (try/catch ratio, custom errors)
+4. Security (secrets management, npm audit, dangerous patterns)
+5. UX Polish (loading states, accessibility, responsive design - web only)
+6. Documentation (PDSE clarity + freshness)
+7. Performance (nested loops, O(n²) patterns, profiling)
+8. Maintainability (PDSE testability + constitution + function size)
+
+If `currentLevel < targetLevel` and critical gaps exist (gap > 20 points), the convergence loop runs **3 focused autoforge waves** targeting the top gaps, then re-checks maturity.
+
+Use `danteforge maturity --preset <level>` to check if your code meets the quality standard for a specific preset.
+
+See `docs/MATURITY-SYSTEM.md` for detailed explanations and `commands/maturity.md` for CLI usage.
+
 ## Hard Gates
 
 DanteForge enforces mandatory checkpoints (bypass with `--light`):
@@ -144,3 +188,4 @@ DanteForge enforces mandatory checkpoints (bypass with `--light`):
 - Spec must exist before planning
 - Plan must exist before execution
 - Tests must exist before code (when TDD enabled)
+- Maturity level must meet target (in convergence loops)

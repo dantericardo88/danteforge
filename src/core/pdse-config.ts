@@ -2,7 +2,7 @@
 // Planning Document Scoring Engine configuration for v0.8.0
 
 export type ScoredArtifact = 'CONSTITUTION' | 'SPEC' | 'CLARIFY' | 'PLAN' | 'TASKS';
-export type AutoforgeDecision = 'advance' | 'warn' | 'pause' | 'blocked';
+export type AutoforgeDecision = 'advance' | 'warn' | 'pause' | 'blocked' | 'target-exceeded';
 
 export interface ScoreDimensions {
   completeness: number;           // 0–20

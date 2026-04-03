@@ -170,6 +170,7 @@ const cacheDir = join(PLUGIN_CACHE, version);
 
 if (existsSync(cacheDir)) {
   const cacheDist = join(cacheDir, "dist");
+  mkdirSync(cacheDist, { recursive: true });
   // Copy the main CLI dist (not the engine dist) to plugin cache
   const cliDist = resolve("dist");
   if (existsSync(join(cliDist, "index.js"))) {

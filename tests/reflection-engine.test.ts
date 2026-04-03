@@ -1,13 +1,26 @@
-import { describe, it, afterEach } from 'node:test';
+import { beforeEach, describe, it, afterEach } from 'node:test';
 import assert from 'node:assert';
 import fs from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import type { ExecutionTelemetry } from '../src/core/execution-telemetry.js';
+import { configureOfflineHome, restoreOfflineHome } from './helpers/offline-home.js';
 
 const tempDirs: string[] = [];
+const tempHomes: string[] = [];
+const originalHome = process.env.DANTEFORGE_HOME;
+
+beforeEach(async () => {
+  await configureOfflineHome(tempHomes);
+});
 
 afterEach(async () => {
+  restoreOfflineHome(originalHome);
+  while (tempHomes.length > 0) {
+    const home = tempHomes.pop();
+    if (home) await fs.rm(home, { recursive: true, force: true });
+  }
+
   while (tempDirs.length > 0) {
     const dir = tempDirs.pop();
     if (dir) await fs.rm(dir, { recursive: true, force: true });

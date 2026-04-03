@@ -13,41 +13,45 @@ In Codex, these slash commands are native workflow commands. Execute them in the
 - \`/constitution\` - Define project principles and constraints
 - \`/specify\` - Transform a high-level idea into spec artifacts
 - \`/clarify\` - Run clarification Q&A on current spec
-- \`/tech-decide\` - Guided tech stack selection with pros/cons
+- \`/tech-decide\` - Guided tech stack selection with pros and cons
 - \`/plan\` - Generate detailed implementation plan from spec
 - \`/tasks\` - Break plan into executable task list
 - \`/design\` - Generate design artifacts via OpenPencil Design-as-Code
 - \`/forge\` - Execute development waves with agent orchestration
-- \`/ux-refine\` - Refine UI/UX after forge (OpenPencil or Figma)
+- \`/ux-refine\` - Refine UI and UX after forge
 - \`/verify\` - Run verification checks on project state
 - \`/synthesize\` - Generate Ultimate Planning Resource (UPR.md)
 
-**Multi-Agent & Automation:**
+**Multi-Agent and Automation:**
 - \`/spark\` - Zero-token planning preset for new ideas
 - \`/ember\` - Very low-token preset for quick follow-up work
+- \`/canvas\` - Design-first frontend preset: design -> autoforge -> ux-refine -> verify
 - \`/party\` - Launch multi-agent collaboration mode
 - \`/autoforge\` - Deterministic auto-orchestration of the full pipeline
 - \`/magic\` - Balanced default preset for daily gap-closing
 - \`/blaze\` - High-power preset with full party escalation
+- \`/nova\` - Very-high-power preset: planning + deep execution + polish, no OSS
 - \`/inferno\` - Maximum-power preset with OSS discovery and evolution
 
 **Preset Usage Rule:**
+- Use \`/canvas\` for frontend-heavy features where visual design should drive implementation
 - Use \`/inferno\` for the first big attack on a new matrix dimension
 - Use \`/magic\` for follow-up PRD gap closing
 
-**Quality & Review:**
+**Quality and Review:**
 - \`/qa\` - Structured QA pass with health score on live app
-- \`/ship\` - Paranoid review + version bump + CHANGELOG + PR
+- \`/ship\` - Paranoid review + version bump + changelog + PR
 - \`/retro\` - Project retrospective with metrics and trends
 
-**Exploration & Learning:**
+**Exploration and Learning:**
 - \`/brainstorm\` - Socratic design refinement before implementation
 - \`/debug\` - Systematic 4-phase debugging framework
 - \`/lessons\` - Capture corrections as persistent self-improving rules
 - \`/awesome-scan\` - Discover and import skill catalogs
 - \`/browse\` - Browser automation for live app inspection
 - \`/oss\` - Auto-detect project, search OSS, clone, license-gate, scan, extract patterns
-- \`/harvest\` - Titan Harvest V2: 5-step constitutional harvest of OSS patterns with hash-verifiable ratification
+- \`/harvest\` - Titan Harvest V2: 5-step constitutional harvest of OSS patterns
+- \`/local-harvest\` - Harvest patterns from local private repos, folders, and zip archives
 
 ### Skills (Auto-Triggered)
 Skills are automatically suggested based on context:
@@ -58,7 +62,7 @@ Skills are automatically suggested based on context:
 - **using-git-worktrees** - Isolated parallel workspaces
 - **subagent-driven-development** - Task dispatch + two-stage review
 - **requesting-code-review** - Pre-merge quality gate
-- **finishing-a-development-branch** - Merge/PR/discard decisions
+- **finishing-a-development-branch** - Merge, PR, or discard decisions
 - **tech-decide** - Guided tech stack decisions
 - **lessons** - Self-improving agent memory
 - **design-orchestrator** - Spatial decomposition for Design-as-Code
@@ -71,7 +75,7 @@ DanteForge enforces mandatory checkpoints:
 - Plan must exist before execution
 - Tests must exist before code (when TDD enabled)
 
-Use \`--light\` flag on any command to bypass gates for simple changes.
+Use \`--light\` on any command to bypass gates for simple changes.
 
 ### Workflow
 \`review -> constitution -> specify -> clarify -> tech-decide -> plan -> tasks -> design -> forge -> ux-refine -> verify -> synthesize -> retro -> ship\`

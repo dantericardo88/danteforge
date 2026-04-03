@@ -219,10 +219,12 @@ program
 
 program
   .command('spark [goal]')
-  .description('Zero-token planning preset: review -> constitution -> specify -> clarify -> plan -> tasks')
+  .description('Zero-token planning preset: review -> constitution -> specify -> clarify -> tech-decide -> plan -> tasks')
   .option('--prompt', 'Generate the preset plan without executing')
+  .option('--skip-tech-decide', 'Skip the tech-decide step when the stack is already decided')
   .action((goal, opts) => commands.spark(goal, {
     prompt: opts.prompt,
+    skipTechDecide: opts.skipTechDecide,
   }));
 
 program
@@ -236,9 +238,21 @@ program
   }));
 
 program
+  .command('canvas [goal]')
+  .description('Design-first frontend preset: design -> autoforge -> ux-refine -> verify')
+  .option('--profile <type>', 'quality | balanced | budget', 'budget')
+  .option('--prompt', 'Generate the preset plan without executing')
+  .option('--design-prompt <text>', 'Override the prompt passed to the design step')
+  .action((goal, opts) => commands.canvas(goal, {
+    profile: opts.profile,
+    prompt: opts.prompt,
+    designPrompt: opts.designPrompt,
+  }));
+
+program
   .command('magic [goal]')
   .description('Balanced preset and default hero command for most follow-up work')
-  .option('--level <level>', 'spark | ember | magic | blaze | inferno', 'magic')
+  .option('--level <level>', 'spark | ember | canvas | magic | blaze | nova | inferno', 'magic')
   .option('--profile <type>', 'quality | balanced | budget', 'budget')
   .option('--skip-ux', 'Skip UX refinement')
   .option('--host <type>', 'Specify host editor for MCP', 'auto')
@@ -259,16 +273,40 @@ program
 
 program
   .command('blaze [goal]')
-  .description('High-power preset: full party + strong autoforge + self-improve')
+  .description('High-power preset: full party + strong autoforge + synthesize + retro + self-improve')
   .option('--profile <type>', 'quality | balanced | budget', 'budget')
   .option('--prompt', 'Generate the preset plan without executing')
   .option('--worktree', 'Run in an isolated git worktree')
   .option('--isolation', 'Run party with isolation enabled')
+  .option('--with-design', 'Add design + ux-refine steps to the pipeline')
+  .option('--design-prompt <text>', 'Prompt to pass to the design step')
   .action((goal, opts) => commands.blaze(goal, {
     profile: opts.profile,
     prompt: opts.prompt,
     worktree: opts.worktree,
     isolation: opts.isolation,
+    withDesign: opts.withDesign,
+    designPrompt: opts.designPrompt,
+  }));
+
+program
+  .command('nova [goal]')
+  .description('Very-high-power preset: planning prefix + blaze execution + inferno polish (no OSS)')
+  .option('--profile <type>', 'quality | balanced | budget', 'budget')
+  .option('--prompt', 'Generate the preset plan without executing')
+  .option('--worktree', 'Run in an isolated git worktree')
+  .option('--isolation', 'Run party with isolation enabled')
+  .option('--tech-decide', 'Add a tech-decide step after the planning prefix')
+  .option('--with-design', 'Add design + ux-refine steps to the pipeline')
+  .option('--design-prompt <text>', 'Prompt to pass to the design step')
+  .action((goal, opts) => commands.nova(goal, {
+    profile: opts.profile,
+    prompt: opts.prompt,
+    worktree: opts.worktree,
+    isolation: opts.isolation,
+    withTechDecide: opts.techDecide,
+    withDesign: opts.withDesign,
+    designPrompt: opts.designPrompt,
   }));
 
 program
@@ -279,12 +317,22 @@ program
   .option('--worktree', 'Run in an isolated git worktree')
   .option('--isolation', 'Run party with isolation enabled')
   .option('--max-repos <n>', 'Maximum repos for OSS discovery', '12')
+  .option('--with-design', 'Add design + ux-refine steps to the pipeline')
+  .option('--design-prompt <text>', 'Prompt to pass to the design step')
+  .option('--local-sources <paths>', 'Comma-separated local repo or folder paths to harvest first')
+  .option('--local-depth <level>', 'Harvest depth for local sources: shallow|medium|full', 'medium')
+  .option('--local-config <path>', 'YAML config file listing local sources')
   .action((goal, opts) => commands.inferno(goal, {
     profile: opts.profile,
     prompt: opts.prompt,
     worktree: opts.worktree,
     isolation: opts.isolation,
     maxRepos: parseInt(opts.maxRepos, 10),
+    withDesign: opts.withDesign,
+    designPrompt: opts.designPrompt,
+    localSources: opts.localSources?.split(',').map((source: string) => source.trim()).filter(Boolean),
+    localDepth: opts.localDepth,
+    localSourcesConfig: opts.localConfig,
   }));
 
 program
@@ -367,6 +415,18 @@ program
   .action(commands.retro);
 
 program
+  .command('maturity')
+  .description('Assess current code maturity level with founder-friendly quality report')
+  .option('--preset <level>', 'Target preset level (spark|ember|canvas|magic|blaze|nova|inferno)')
+  .option('--json', 'Output JSON instead of plain text')
+  .option('--cwd <path>', 'Project directory')
+  .action((opts) => commands.maturity({
+    preset: opts.preset,
+    json: opts.json,
+    cwd: opts.cwd,
+  }));
+
+program
   .command('ship')
   .description('Paranoid release guidance + version bump plan + changelog draft')
   .option('--dry-run', 'Run checks and generate guidance without changing the audit intent')
@@ -383,6 +443,22 @@ program
     prompt: opts.prompt,
     dryRun: opts.dryRun,
     maxRepos: opts.maxRepos,
+  }));
+
+program
+  .command('local-harvest [paths...]')
+  .description('Harvest patterns from local private repos, folders, and zip archives')
+  .option('--config <path>', 'YAML config file listing sources (.danteforge/local-sources.yaml)')
+  .option('--depth <level>', 'shallow | medium | full (default: medium)', 'medium')
+  .option('--prompt', 'Show harvest plan without executing')
+  .option('--dry-run', 'Detect source types without reading')
+  .option('--max-sources <n>', 'Maximum sources to analyze (default: 5)', '5')
+  .action((paths, opts) => commands.localHarvest(paths ?? [], {
+    config: opts.config,
+    depth: opts.depth,
+    prompt: opts.prompt,
+    dryRun: opts.dryRun,
+    maxSources: parseInt(opts.maxSources, 10),
   }));
 
 program
@@ -436,9 +512,9 @@ program.hook('preAction', async (_thisCommand, actionCommand) => {
 program.addHelpText('after', `
 Command Groups:
   Pipeline:       init, constitution, specify, clarify, plan, tasks, forge, verify, synthesize
-  Automation:     spark, ember, magic, blaze, inferno, autoforge, autoresearch, party
+  Automation:     spark, ember, canvas, magic, blaze, nova, inferno, autoforge, autoresearch, party
   Design:         design, ux-refine, browse, qa
-  Intelligence:   tech-decide, debug, lessons, profile, oss, harvest, retro
+  Intelligence:   tech-decide, debug, lessons, profile, oss, local-harvest, harvest, retro
   Tools:          config, setup, doctor, dashboard, compact, import, skills, ship, premium
   Meta:           help, review, feedback, update-mcp, awesome-scan, docs
 

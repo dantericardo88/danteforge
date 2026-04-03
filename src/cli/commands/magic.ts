@@ -2,7 +2,7 @@ import { randomUUID } from "node:crypto";
 import { readFile, writeFile, unlink, mkdir } from "node:fs/promises";
 import { join, dirname } from "node:path";
 import { logger } from "../../core/logger.js";
-import { loadState, saveState } from "../../core/state.js";
+import { loadState, saveState, type DanteState } from "../../core/state.js";
 import { createTelemetry, recordToolCall, recordBashCommand, type ExecutionTelemetry } from "../../core/execution-telemetry.js";
 import { detectLoop } from "../../core/loop-detector.js";
 import {
@@ -16,9 +16,144 @@ import {
   type MagicLevel,
 } from "../../core/magic-presets.js";
 
-// ── Magic Pipeline State (checkpoint/resume) ──
+export type VerifyStatus = 'pass' | 'warn' | 'fail' | 'unknown';
 
-interface MagicPipelineCheckpoint {
+export interface ConvergenceOptions {
+  level: MagicLevel;
+  goal: string;
+  maxCycles: number;
+  skipInitialVerify?: boolean;
+  _getVerifyStatus?: () => Promise<VerifyStatus>;
+  _runAutoforge?: (goal: string, waves: number) => Promise<void>;
+  _runVerify?: () => Promise<void>;
+}
+
+export interface ConvergenceResult {
+  cyclesRun: number;
+  initialStatus: VerifyStatus;
+  finalStatus: VerifyStatus;
+}
+
+export async function runConvergenceCycles(
+  opts: ConvergenceOptions,
+): Promise<ConvergenceResult> {
+  if (opts.maxCycles === 0) {
+    return { cyclesRun: 0, initialStatus: 'unknown', finalStatus: 'unknown' };
+  }
+
+  const getStatus: () => Promise<VerifyStatus> =
+    opts._getVerifyStatus ??
+    (async () => {
+      const state: DanteState = await loadState();
+      return (state.lastVerifyStatus ?? 'unknown') as VerifyStatus;
+    });
+
+  const runAutoforge: (goal: string, waves: number) => Promise<void> =
+    opts._runAutoforge ??
+    (async (goalText: string, waves: number) => {
+      const { autoforge } = await import("./autoforge.js");
+      await autoforge(goalText, { maxWaves: waves });
+    });
+
+  const runVerify: () => Promise<void> =
+    opts._runVerify ??
+    (async () => {
+      const { verify } = await import("./verify.js");
+      await verify();
+    });
+
+  if (!opts.skipInitialVerify) {
+    logger.info(`[${opts.level}] Convergence: running verify...`);
+    await runVerify();
+  }
+
+  const initialStatus = await getStatus();
+
+  if (initialStatus === 'pass') {
+    logger.success(
+      `[${opts.level}] Convergence: verify passed - no repair cycles needed`,
+    );
+    return { cyclesRun: 0, initialStatus, finalStatus: 'pass' };
+  }
+
+  let finalStatus: VerifyStatus = initialStatus;
+  let cyclesRun = 0;
+
+  while (finalStatus !== 'pass' && cyclesRun < opts.maxCycles) {
+    cyclesRun++;
+    logger.info(
+      `[${opts.level}] Convergence cycle ${cyclesRun}/${opts.maxCycles}: re-executing targeted fixes...`,
+    );
+
+    // Maturity-aware reflection gate: assess quality gaps before remediation
+    try {
+      const { assessMaturity } = await import("../../core/maturity-engine.js");
+      const { scoreAllArtifacts } = await import("../../core/pdse.js");
+      const { MAGIC_PRESETS } = await import("../../core/magic-presets.js");
+
+      const state = await loadState();
+      const cwd = process.cwd();
+      const pdseScores = await scoreAllArtifacts(cwd, state);
+      const targetLevel = MAGIC_PRESETS[opts.level]?.targetMaturityLevel ?? 4;
+
+      const assessment = await assessMaturity({
+        cwd,
+        state,
+        pdseScores,
+        targetLevel,
+      });
+
+      logger.info(`[${opts.level}] Maturity check: ${assessment.currentLevel}/6 (target: ${assessment.targetLevel}/6, score: ${assessment.overallScore}/100)`);
+
+      if (assessment.currentLevel >= assessment.targetLevel) {
+        logger.success(`[${opts.level}] Target maturity level achieved - exiting convergence early`);
+        return { cyclesRun, initialStatus, finalStatus: 'pass' };
+      }
+
+      const criticalGaps = assessment.gaps.filter(g => g.severity === 'critical');
+      if (criticalGaps.length > 0) {
+        logger.warn(`[${opts.level}] ${criticalGaps.length} critical gap${criticalGaps.length === 1 ? '' : 's'} detected:`);
+        for (const gap of criticalGaps.slice(0, 3)) {
+          logger.warn(`  - ${gap.dimension}: ${gap.currentScore}/100 (${gap.recommendation})`);
+        }
+        // Run focused remediation on critical gaps
+        const remediationGoal = `Address critical quality gaps: ${criticalGaps.map(g => g.dimension).join(', ')}`;
+        await runAutoforge(remediationGoal, Math.min(3, criticalGaps.length));
+      } else {
+        // Standard convergence fix
+        const fixGoal = `Fix failing verification - ${opts.goal}`;
+        await runAutoforge(fixGoal, 3);
+      }
+    } catch (err) {
+      // Fallback to standard convergence if maturity assessment fails
+      logger.warn(`[${opts.level}] Maturity assessment failed: ${err instanceof Error ? err.message : String(err)} - falling back to standard convergence`);
+      const fixGoal = `Fix failing verification - ${opts.goal}`;
+      await runAutoforge(fixGoal, 3);
+    }
+
+    await runVerify();
+    finalStatus = await getStatus();
+    if (finalStatus === 'pass') {
+      logger.success(
+        `[${opts.level}] Convergence achieved after ${cyclesRun} cycle${cyclesRun === 1 ? '' : 's'}`,
+      );
+    } else {
+      logger.warn(
+        `[${opts.level}] Convergence cycle ${cyclesRun} complete - verify still ${finalStatus}`,
+      );
+    }
+  }
+
+  if (finalStatus !== 'pass') {
+    logger.warn(
+      `[${opts.level}] Convergence exhausted (${cyclesRun}/${opts.maxCycles} cycles) - verify: ${finalStatus}`,
+    );
+  }
+
+  return { cyclesRun, initialStatus, finalStatus };
+}
+
+export interface MagicPipelineCheckpoint {
   pipelineId: string;
   level: MagicLevel;
   goal: string;
@@ -64,7 +199,7 @@ async function clearMagicCheckpoint(): Promise<void> {
   try {
     await unlink(getMagicCheckpointPath());
   } catch {
-    // File doesn't exist — that's fine
+    // File does not exist.
   }
 }
 
@@ -77,8 +212,29 @@ export interface MagicCommandOptions {
   worktree?: boolean;
   isolation?: boolean;
   maxRepos?: number;
-  /** Resume from a previously interrupted pipeline run. */
   resume?: boolean;
+  localSources?: string[];
+  localDepth?: string;
+  localSourcesConfig?: string;
+  skipTechDecide?: boolean;
+  withTechDecide?: boolean;
+  withDesign?: boolean;
+  designPrompt?: string;
+  _runStep?: (step: MagicExecutionStep, goal: string) => Promise<void>;
+  _convergenceOpts?: {
+    getVerifyStatus?: () => Promise<VerifyStatus>;
+    runAutoforge?: (goal: string, waves: number) => Promise<void>;
+    runVerify?: () => Promise<void>;
+  };
+  _checkpointOps?: {
+    load: () => Promise<MagicPipelineCheckpoint | null>;
+    save: (cp: MagicPipelineCheckpoint) => Promise<void>;
+    clear: () => Promise<void>;
+  };
+  _stateOps?: {
+    load: () => Promise<DanteState>;
+    save: (state: DanteState) => Promise<void>;
+  };
 }
 
 export async function magic(goal?: string, options: MagicCommandOptions = {}) {
@@ -109,6 +265,20 @@ export async function blaze(
   return runMagicPreset(goal, { ...options, level: "blaze" });
 }
 
+export async function nova(
+  goal?: string,
+  options: Omit<MagicCommandOptions, "level"> = {},
+) {
+  return runMagicPreset(goal, { ...options, level: "nova" });
+}
+
+export async function canvas(
+  goal?: string,
+  options: Omit<MagicCommandOptions, "level"> = {},
+) {
+  return runMagicPreset(goal, { ...options, level: "canvas" });
+}
+
 export async function inferno(
   goal?: string,
   options: Omit<MagicCommandOptions, "level"> = {},
@@ -123,19 +293,28 @@ async function runMagicPreset(
   const magicStart = Date.now();
   const level = normalizeMagicLevel(options.level);
 
-  // ── Resume from checkpoint? ──
+  const cpOps = {
+    load: options._checkpointOps?.load ?? loadMagicCheckpoint,
+    save: options._checkpointOps?.save ?? saveMagicCheckpoint,
+    clear: options._checkpointOps?.clear ?? clearMagicCheckpoint,
+  };
+  const stOps = {
+    load: options._stateOps?.load ?? loadState,
+    save: options._stateOps?.save ?? saveState,
+  };
+
   let checkpoint: MagicPipelineCheckpoint | null = null;
   if (options.resume) {
-    checkpoint = await loadMagicCheckpoint();
+    checkpoint = await cpOps.load();
     if (checkpoint) {
       logger.success(
         `Resuming ${capitalize(checkpoint.level)} pipeline (${checkpoint.completedResults.length}/${checkpoint.steps.length} steps done)`,
       );
-      for (const r of checkpoint.completedResults) {
-        logger.info(`  [SKIP] ${r.step} (already ${r.status})`);
+      for (const result of checkpoint.completedResults) {
+        logger.info(`  [SKIP] ${result.step} (already ${result.status})`);
       }
     } else {
-      logger.warn("No magic pipeline checkpoint found — starting fresh.");
+      logger.warn("No magic pipeline checkpoint found - starting fresh.");
     }
   }
 
@@ -151,6 +330,13 @@ async function runMagicPreset(
         maxRepos: options.maxRepos,
         worktree: options.worktree,
         isolation: options.isolation,
+        localSources: options.localSources,
+        localDepth: options.localDepth as import("../../core/magic-presets.js").HarvestDepth | undefined,
+        localSourcesConfig: options.localSourcesConfig,
+        skipTechDecide: options.skipTechDecide,
+        withTechDecide: options.withTechDecide,
+        withDesign: options.withDesign,
+        designPrompt: options.designPrompt,
       });
 
   if (options.prompt) {
@@ -173,7 +359,6 @@ async function runMagicPreset(
     logger.info("");
   }
 
-  // Initialize or restore checkpoint state
   if (!checkpoint) {
     checkpoint = {
       pipelineId: randomUUID(),
@@ -200,16 +385,15 @@ async function runMagicPreset(
       `[${effectiveLevel}] Running: ${label} (${i + 1}/${plan.steps.length})`,
     );
 
-    // Save checkpoint before starting each step
     checkpoint.currentStepIndex = i;
-    await saveMagicCheckpoint(checkpoint);
+    await cpOps.save(checkpoint);
 
     let stepOk = false;
     for (let attempt = 0; attempt <= MAX_RETRIES_PER_STEP; attempt++) {
       try {
         const previousExitCode = process.exitCode;
         process.exitCode = 0;
-        await runMagicPlanStep(step, plan.goal);
+        await (options._runStep ?? runMagicPlanStep)(step, plan.goal);
         const stepExitCode = process.exitCode ?? 0;
         process.exitCode = previousExitCode;
         if (stepExitCode !== 0) {
@@ -221,17 +405,16 @@ async function runMagicPreset(
         const message = err instanceof Error ? err.message : String(err);
         if (attempt < MAX_RETRIES_PER_STEP) {
           logger.warn(
-            `[${effectiveLevel}] ${label} failed (attempt ${attempt + 1}/${MAX_RETRIES_PER_STEP + 1}): ${message} — retrying...`,
+            `[${effectiveLevel}] ${label} failed (attempt ${attempt + 1}/${MAX_RETRIES_PER_STEP + 1}): ${message} - retrying...`,
           );
           checkpoint.currentStepRetries = attempt + 1;
-          await saveMagicCheckpoint(checkpoint);
+          await cpOps.save(checkpoint);
         } else {
           const durationMs = Date.now() - stepStart;
           results.push({ step: label, status: "fail", durationMs, message });
           logger.error(
             `[${effectiveLevel}] ${label} failed after ${MAX_RETRIES_PER_STEP + 1} attempts: ${message}`,
           );
-          // Don't break — continue to next step instead of halting the pipeline
           logger.warn(
             `[${effectiveLevel}] Skipping failed step and continuing pipeline...`,
           );
@@ -245,25 +428,59 @@ async function runMagicPreset(
       logger.success(
         `[${effectiveLevel}] ${label} complete (${(durationMs / 1000).toFixed(1)}s)`,
       );
-      // Track successful step as a write operation
       recordToolCall(pipelineTelemetry, step.kind, true);
     } else {
-      // Track failed step — record retry bash commands for loop detection
       recordBashCommand(pipelineTelemetry, `${step.kind} (failed)`);
       recordToolCall(pipelineTelemetry, step.kind, false);
     }
 
-    // Update checkpoint after step completion (success or skip)
     checkpoint.completedResults = [...results];
     checkpoint.currentStepIndex = i + 1;
     checkpoint.currentStepRetries = 0;
-    await saveMagicCheckpoint(checkpoint);
+    await cpOps.save(checkpoint);
+  }
+
+  const convergenceCycles = plan.preset.convergenceCycles;
+  if (convergenceCycles > 0) {
+    const convergeStart = Date.now();
+    const skipInitialVerify = plan.steps.some((plannedStep) => plannedStep.kind === 'verify');
+    logger.info('');
+    logger.info(
+      `[${effectiveLevel}] Starting convergence loop (up to ${convergenceCycles} cycle${convergenceCycles === 1 ? '' : 's'})...`,
+    );
+    try {
+      const convergeResult = await runConvergenceCycles({
+        level: effectiveLevel,
+        goal: plan.goal,
+        maxCycles: convergenceCycles,
+        skipInitialVerify,
+        _getVerifyStatus: options._convergenceOpts?.getVerifyStatus,
+        _runAutoforge: options._convergenceOpts?.runAutoforge,
+        _runVerify: options._convergenceOpts?.runVerify,
+      });
+      const convergeDur = Date.now() - convergeStart;
+      if (convergeResult.cyclesRun === 0) {
+        results.push({
+          step: `convergence verify (passed, 0 cycles)`,
+          status: 'ok',
+          durationMs: convergeDur,
+        });
+      } else {
+        results.push({
+          step: `convergence (${convergeResult.cyclesRun}/${convergenceCycles} cycles -> ${convergeResult.finalStatus})`,
+          status: convergeResult.finalStatus === 'pass' ? 'ok' : 'fail',
+          durationMs: convergeDur,
+        });
+      }
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      logger.warn(`[${effectiveLevel}] Convergence loop error: ${message}`);
+    }
   }
 
   const failed = results.some((result) => result.status === "fail");
   const totalDur = Date.now() - magicStart;
 
-  // Pipeline-level loop detection
   const loopResult = detectLoop(pipelineTelemetry);
   if (loopResult.detected) {
     logger.warn("");
@@ -303,58 +520,92 @@ async function runMagicPreset(
   logger.info(MAGIC_USAGE_RULES);
   logger.info(`Total time: ${(totalDur / 1000).toFixed(1)}s`);
 
-  const appState = await loadState();
+  const appState = await stOps.load();
   appState.auditLog.push(
     `${new Date().toISOString()} | magic-preset:${effectiveLevel} ${failed ? "completed-with-failures" : "complete"} (${results.length} step${results.length === 1 ? "" : "s"}, ${(totalDur / 1000).toFixed(1)}s)`,
   );
-  await saveState(appState);
+  await stOps.save(appState);
 
-  // Clear checkpoint on pipeline completion (success or completed-with-failures)
-  await clearMagicCheckpoint();
+  await cpOps.clear();
 
   if (failed) {
     process.exitCode = 1;
   }
 }
 
-async function runMagicPlanStep(
+export interface MagicStepCommandFns {
+  review?: (opts: { prompt: boolean }) => Promise<void>;
+  autoforge?: (goal: string, opts: { maxWaves: number; profile: string; parallel: boolean; worktree: boolean }) => Promise<void>;
+  verify?: () => Promise<void>;
+  techDecide?: (opts: { auto: boolean }) => Promise<void>;
+  design?: (prompt: string, opts: { light: boolean }) => Promise<void>;
+  uxRefine?: (opts: { openpencil: boolean; light: boolean }) => Promise<void>;
+  constitution?: () => Promise<void>;
+  specify?: (goal: string) => Promise<void>;
+  clarify?: () => Promise<void>;
+  plan?: () => Promise<void>;
+  tasks?: () => Promise<void>;
+  party?: (opts: { worktree: boolean; isolation: boolean }) => Promise<void>;
+  synthesize?: () => Promise<void>;
+  retro?: () => Promise<void>;
+  lessonsCompact?: () => Promise<void>;
+  oss?: (opts: { maxRepos: string }) => Promise<void>;
+  localHarvest?: (sources: string[], opts: { depth: string; config?: string }) => Promise<void>;
+}
+
+export async function runMagicPlanStep(
   step: MagicExecutionStep,
   goal: string,
+  _fns?: MagicStepCommandFns,
 ): Promise<void> {
   switch (step.kind) {
     case "review": {
-      const { review } = await import("./review.js");
-      await review({ prompt: false });
+      await (_fns?.review ?? (async (opts: { prompt: boolean }) => {
+        const { review } = await import("./review.js");
+        await review(opts);
+      }))({ prompt: false });
       return;
     }
     case "constitution": {
-      const { constitution } = await import("./constitution.js");
-      await constitution();
+      await (_fns?.constitution ?? (async () => {
+        const { constitution } = await import("./constitution.js");
+        await constitution();
+      }))();
       return;
     }
     case "specify": {
-      const { specify } = await import("./specify.js");
-      await specify(goal);
+      await (_fns?.specify ?? (async (goalText: string) => {
+        const { specify } = await import("./specify.js");
+        await specify(goalText);
+      }))(goal);
       return;
     }
     case "clarify": {
-      const { clarify } = await import("./clarify.js");
-      await clarify();
+      await (_fns?.clarify ?? (async () => {
+        const { clarify } = await import("./clarify.js");
+        await clarify();
+      }))();
       return;
     }
     case "plan": {
-      const { plan } = await import("./plan.js");
-      await plan();
+      await (_fns?.plan ?? (async () => {
+        const { plan } = await import("./plan.js");
+        await plan();
+      }))();
       return;
     }
     case "tasks": {
-      const { tasks } = await import("./tasks.js");
-      await tasks();
+      await (_fns?.tasks ?? (async () => {
+        const { tasks } = await import("./tasks.js");
+        await tasks();
+      }))();
       return;
     }
     case "autoforge": {
-      const { autoforge } = await import("./autoforge.js");
-      await autoforge(goal, {
+      await (_fns?.autoforge ?? (async (goalText: string, opts: { maxWaves: number; profile: string; parallel: boolean; worktree: boolean }) => {
+        const { autoforge } = await import("./autoforge.js");
+        await autoforge(goalText, opts);
+      }))(goal, {
         maxWaves: step.maxWaves,
         profile: step.profile,
         parallel: step.parallel,
@@ -363,36 +614,76 @@ async function runMagicPlanStep(
       return;
     }
     case "party": {
-      const { party } = await import("./party.js");
-      await party({
+      await (_fns?.party ?? (async (opts: { worktree: boolean; isolation: boolean }) => {
+        const { party } = await import("./party.js");
+        await party(opts);
+      }))({
         worktree: step.worktree,
         isolation: step.isolation,
       });
       return;
     }
     case "verify": {
-      const { verify } = await import("./verify.js");
-      await verify();
+      await (_fns?.verify ?? (async () => {
+        const { verify } = await import("./verify.js");
+        await verify();
+      }))();
       return;
     }
     case "synthesize": {
-      const { synthesize } = await import("./synthesize.js");
-      await synthesize();
+      await (_fns?.synthesize ?? (async () => {
+        const { synthesize } = await import("./synthesize.js");
+        await synthesize();
+      }))();
       return;
     }
     case "retro": {
-      const { retro } = await import("./retro.js");
-      await retro();
+      await (_fns?.retro ?? (async () => {
+        const { retro } = await import("./retro.js");
+        await retro();
+      }))();
       return;
     }
     case "lessons-compact": {
-      const { lessons } = await import("./lessons.js");
-      await lessons(undefined, { compact: true });
+      await (_fns?.lessonsCompact ?? (async () => {
+        const { lessons } = await import("./lessons.js");
+        await lessons(undefined, { compact: true });
+      }))();
       return;
     }
     case "oss": {
-      const { ossResearcher } = await import("./oss.js");
-      await ossResearcher({ maxRepos: String(step.maxRepos) });
+      await (_fns?.oss ?? (async (opts: { maxRepos: string }) => {
+        const { ossResearcher } = await import("./oss.js");
+        await ossResearcher(opts);
+      }))({ maxRepos: String(step.maxRepos) });
+      return;
+    }
+    case "tech-decide": {
+      await (_fns?.techDecide ?? (async (opts: { auto: boolean }) => {
+        const { techDecide } = await import("./tech-decide.js");
+        await techDecide(opts);
+      }))({ auto: true });
+      return;
+    }
+    case "design": {
+      await (_fns?.design ?? (async (prompt: string, opts: { light: boolean }) => {
+        const { design } = await import("./design.js");
+        await design(prompt, opts);
+      }))(step.designPrompt ?? goal, { light: false });
+      return;
+    }
+    case "ux-refine": {
+      await (_fns?.uxRefine ?? (async (opts: { openpencil: boolean; light: boolean }) => {
+        const { uxRefine } = await import("./ux-refine.js");
+        await uxRefine(opts);
+      }))({ openpencil: step.openpencil, light: true });
+      return;
+    }
+    case "local-harvest": {
+      await (_fns?.localHarvest ?? (async (sources: string[], opts: { depth: string; config?: string }) => {
+        const { localHarvest } = await import("./local-harvest.js");
+        await localHarvest(sources, opts);
+      }))(step.sources, { depth: step.depth, config: step.configPath });
       return;
     }
   }
@@ -408,6 +699,14 @@ function describeStep(step: MagicExecutionStep): string {
       return "lessons --compact";
     case "oss":
       return `oss --max-repos ${step.maxRepos}`;
+    case "local-harvest":
+      return `local-harvest (${step.sources.length > 0 ? `${step.sources.length} sources` : 'config'}, depth: ${step.depth})`;
+    case "design":
+      return step.designPrompt ? `design "${step.designPrompt}"` : "design";
+    case "ux-refine":
+      return step.openpencil ? "ux-refine --openpencil" : "ux-refine";
+    case "tech-decide":
+      return "tech-decide --auto";
     default:
       return step.kind;
   }

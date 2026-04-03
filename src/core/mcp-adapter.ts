@@ -174,8 +174,10 @@ export async function isUIProject(cwd = process.cwd()): Promise<boolean> {
   try {
     const pkg = JSON.parse(await fs.readFile(path.join(cwd, 'package.json'), 'utf8'));
     const allDeps = { ...pkg.dependencies, ...pkg.devDependencies };
-    const frontendFrameworks = ['react', 'vue', 'svelte', '@angular/core', 'next', 'nuxt', 'astro', 'solid-js', 'preact'];
+    const frontendFrameworks = ['react', 'vue', 'svelte', '@angular/core', 'next', 'nuxt', 'astro', 'solid-js', 'preact', 'vite'];
     if (frontendFrameworks.some(fw => fw in allDeps)) return true;
+    // CLI packages can ship a landing page or dashboard without being UI-first projects.
+    if (pkg.bin) return false;
   } catch {
     // No package.json — continue checking
   }

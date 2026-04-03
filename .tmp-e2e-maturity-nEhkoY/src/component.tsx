@@ -1,0 +1,1 @@
+<button aria-label="Click">Click</button>

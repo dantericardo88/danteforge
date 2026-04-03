@@ -68,6 +68,7 @@ export interface DanteState {
   qaHealthScore?: number;
   qaBaseline?: string;
   qaLastRun?: string;
+  lastVerifyStatus?: 'pass' | 'warn' | 'fail' | 'unknown';
   retroDelta?: number;
   retroLastRun?: string;
   completionTracker?: CompletionTracker;

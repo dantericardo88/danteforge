@@ -1,14 +1,21 @@
-import { afterEach, describe, it } from 'node:test';
+import { afterEach, beforeEach, describe, it } from 'node:test';
 import assert from 'node:assert';
 import fs from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import { parseVerdict, verifyTask, generateVerifyPrompt } from '../src/core/verifier.js';
+import { configureOfflineHome, restoreOfflineHome } from './helpers/offline-home.js';
 
 const originalCwd = process.cwd();
+const originalHome = process.env.DANTEFORGE_HOME;
 const tempDirs: string[] = [];
 
+beforeEach(async () => {
+  await configureOfflineHome(tempDirs);
+});
+
 afterEach(async () => {
+  restoreOfflineHome(originalHome);
   process.chdir(originalCwd);
   process.exitCode = 0;
   while (tempDirs.length > 0) {

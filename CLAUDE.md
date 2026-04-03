@@ -41,6 +41,7 @@ npm run lint:fix # eslint --fix
 - **Token estimation**: Warns before expensive API calls, auto-chunks large inputs
 - **Self-improving lessons**: `.danteforge/lessons.md` captures corrections and failures; auto-compacts; feeds into forge/party/tech-decide
 - **Design-as-Code**: `.op` JSON format for version-controlled design artifacts; 86-tool OpenPencil registry; native SVG renderer; design token extraction to CSS/Tailwind
+- **Maturity-Aware Quality Scoring**: 8-dimension scoring system (functionality, testing, error handling, security, UX polish, documentation, performance, maintainability) maps to 6 maturity levels (Sketch→Enterprise-Grade); convergence loops use maturity assessment to prevent "premature done"
 
 ## Workflow Pipeline
 

@@ -4,8 +4,9 @@ import { listSkills } from '../../core/skills.js';
 import { loadState, type WorkflowStage } from '../../core/state.js';
 
 const COMMAND_HELP: Record<string, string> = {
-  spark: 'Zero-token planning preset.\n  Usage: danteforge spark [goal] [--prompt]\n  Runs review -> constitution -> specify -> clarify -> plan -> tasks without jumping into execution.',
+  spark: 'Zero-token planning preset.\n  Usage: danteforge spark [goal] [--prompt] [--skip-tech-decide]\n  Runs review -> constitution -> specify -> clarify -> tech-decide -> plan -> tasks without jumping into execution.',
   ember: 'Very low-token preset for quick features and prototypes.\n  Usage: danteforge ember [goal] [--profile budget|balanced|quality] [--prompt]\n  Uses budget-focused autoforge with light checkpoints and basic loop detection.',
+  canvas: 'Design-first frontend preset.\n  Usage: danteforge canvas [goal] [--profile budget|balanced|quality] [--prompt] [--design-prompt "<text>"]\n  Runs design -> autoforge -> ux-refine -> verify for frontend-heavy work.',
   constitution: 'Establish project principles and constraints.\n  Usage: danteforge constitution\n  Run this first to set the foundation for your project.',
   specify: 'Transform a high-level idea into full spec artifacts.\n  Usage: danteforge specify <idea> [--prompt] [--light]\n  Example: danteforge specify "Build a real-time chat app with WebSocket support"',
   clarify: 'Find gaps, ambiguities, and inconsistencies in your spec.\n  Usage: danteforge clarify [--prompt]\n  Generates Q&A to refine your specification.',
@@ -22,7 +23,8 @@ const COMMAND_HELP: Record<string, string> = {
   setup: 'Bootstrap assistant registries and integrations.\n  Usage: danteforge setup assistants [--assistants claude,codex,gemini,opencode]\n  Cursor is project-local and must be requested explicitly with --assistants cursor.\n  Also supports: danteforge setup figma',
   doctor: 'Run offline diagnostics, optional repairs, and live validation.\n  Usage: danteforge doctor [--fix] [--live]\n  --fix repairs state plus user-level assistant registries. Use setup assistants --assistants cursor for project-local Cursor files. --live validates secret-backed providers and MCP reachability.',
   autoforge: 'Plan or execute the deterministic DanteForge pipeline.\n  Usage: danteforge autoforge [goal] [--dry-run] [--prompt] [--max-waves <n>] [--profile <type>] [--parallel]\n  Goal is advisory context only; the execution graph remains deterministic.',
-  blaze: 'High-power preset for big feature pushes.\n  Usage: danteforge blaze [goal] [--worktree] [--isolation] [--prompt]\n  Adds full party mode on top of strong autoforge execution and self-improvement cleanup.',
+  blaze: 'High-power preset for big feature pushes.\n  Usage: danteforge blaze [goal] [--worktree] [--isolation] [--prompt] [--with-design]\n  Adds full party mode on top of strong autoforge execution, synthesis, and retro.',
+  nova: 'Very-high-power preset for major feature sprints.\n  Usage: danteforge nova [goal] [--worktree] [--isolation] [--prompt] [--tech-decide] [--with-design]\n  Adds a planning prefix before deep execution and polish without OSS discovery.',
   inferno: 'Maximum-power preset for first attacks on new dimensions.\n  Usage: danteforge inferno [goal] [--worktree] [--isolation] [--max-repos <n>] [--prompt]\n  Adds OSS mining, full party orchestration, verification, synthesis, and retro.',
   'awesome-scan': 'Discover, classify, and optionally import skills.\n  Usage: danteforge awesome-scan [--source <path>] [--domain <type>] [--install]',
   compact: 'Summarize old audit log entries to save context.\n  Usage: danteforge compact',
@@ -31,7 +33,8 @@ const COMMAND_HELP: Record<string, string> = {
   docs: 'Generate or update the command reference documentation.\n  Usage: danteforge docs\n  Outputs docs/COMMAND_REFERENCE.md from Commander.js metadata.',
   autoresearch: 'Autonomous metric-driven optimization loop.\n  Usage: danteforge autoresearch <goal> --metric "<metric>" [--time <budget>] [--prompt] [--dry-run]\n  Example: danteforge autoresearch "reduce bundle size" --metric "bundle size KB"',
   oss: 'Autonomous OSS pattern harvesting pipeline.\n  Usage: danteforge oss [--prompt] [--dry-run] [--max-repos <n>]\n  Detects project, searches OSS, clones with license gate, extracts patterns, implements.',
-  harvest: 'Titan Harvest V2 — constitutional harvest of OSS patterns.\n  Usage: danteforge harvest <system> [--prompt] [--lite]\n  Runs 5-step track (or SEP-LITE), produces summary.json + sha256 hash.',
+  'local-harvest': 'Harvest patterns from local private repos, folders, and zip archives.\n  Usage: danteforge local-harvest [paths...] [--config <path>] [--depth shallow|medium|full] [--dry-run]\n  Creates LOCAL_HARVEST_REPORT.md and recommended OSS queries from private project sources.',
+  harvest: 'Titan Harvest V2 - constitutional harvest of OSS patterns.\n  Usage: danteforge harvest <system> [--prompt] [--lite]\n  Runs the 5-step track (or SEP-LITE) and produces summary.json plus a sha256 hash.',
 };
 
 const STAGE_SUGGESTIONS: Record<WorkflowStage, string> = {
@@ -59,7 +62,7 @@ export async function helpCmd(query?: string) {
     }
 
     const skills = await listSkills();
-    const matchedSkill = skills.find(skill => skill.name.includes(key) || key.includes(skill.name));
+    const matchedSkill = skills.find((skill) => skill.name.includes(key) || key.includes(skill.name));
     if (matchedSkill) {
       logger.info(`Skill: ${matchedSkill.name}`);
       logger.info(matchedSkill.description);
@@ -75,7 +78,7 @@ export async function helpCmd(query?: string) {
   logger.info('DanteForge - Agentic Development CLI');
   logger.info('');
   logger.info('Pipeline: review -> constitution -> specify -> clarify -> plan -> tasks -> forge -> verify -> synthesize');
-  logger.info('Preset ladder: spark -> ember -> magic -> blaze -> inferno');
+  logger.info('Preset ladder: spark -> ember -> canvas -> magic -> blaze -> nova -> inferno');
   logger.info('');
 
   try {
@@ -88,13 +91,15 @@ export async function helpCmd(query?: string) {
     if (state.workflowStage === 'initialized') {
       logger.info('');
       logger.info('Getting Started:');
-      logger.info('  danteforge init          — set up a new project (recommended first step)');
-      logger.info('  danteforge spark <goal>  — zero-token planning for a new idea');
-      logger.info('  danteforge magic [goal]  — default follow-up gap-closing preset');
-      logger.info('  danteforge inferno <goal> — first big attack with OSS discovery');
-      logger.info('  danteforge constitution  — start the step-by-step workflow');
+      logger.info('  danteforge init           - set up a new project (recommended first step)');
+      logger.info('  danteforge spark <goal>   - zero-token planning for a new idea');
+      logger.info('  danteforge canvas <goal>  - design-first frontend execution');
+      logger.info('  danteforge magic [goal]   - default follow-up gap-closing preset');
+      logger.info('  danteforge nova <goal>    - planned sprint with deep execution, no OSS');
+      logger.info('  danteforge inferno <goal> - first big attack with OSS discovery');
+      logger.info('  danteforge constitution   - start the step-by-step workflow');
       logger.info('');
-      logger.info('Usage rule: /inferno for first-time new matrix dimensions, /magic for follow-up PRD gap closing.');
+      logger.info('Usage rule: /canvas for design-first frontend work, /inferno for first-time new matrix dimensions, /magic for follow-up PRD gap closing.');
       logger.info('');
       logger.info('Use "danteforge --help" for the full command list with categories.');
     }
