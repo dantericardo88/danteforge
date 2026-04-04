@@ -99,7 +99,20 @@ export async function assess(options: AssessOptions = {}): Promise<AssessResult>
 
   // ── Step 0: Load or prompt for completion target ────────────────────────────
   const completionTarget = await getTargetFn(cwd);
+  const isFirstRun = completionTarget.definedBy === 'default';
   const minScore = options.minScore ?? completionTarget.minScore;
+
+  // Show CTA on first run so users know define-done exists
+  if (isFirstRun) {
+    logger.info('');
+    logger.info('┌──────────────────────��────────────────────────────���─────┐');
+    logger.info('│  No completion target set — using default:              │');
+    logger.info(`│  Feature Universe: ${minScore.toFixed(1)}/10 avg on 90% of features     │`);
+    logger.info('│                                                         │');
+    logger.info('│  To customize "done": run `danteforge define-done`     │');
+    logger.info('└─────────────────────────────────────────────────────────┘');
+    logger.info('');
+  }
 
   logger.info(`[assess] Running self-assessment (harsh=${harsh}, mode=${completionTarget.mode}, target=${minScore}/10)...`);
 

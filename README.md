@@ -1,5 +1,22 @@
 # DanteForge
 
+## Quick Start (3 minutes)
+
+```bash
+npm install -g danteforge
+danteforge init                                   # detect project, configure provider
+danteforge magic "Build a todo app with React"    # full pipeline in one command
+```
+
+That's it. DanteForge will spec → plan → code → test → verify your project.
+
+**New?** → `danteforge init` asks 3 questions and personalizes your setup.
+**Lost?** → `danteforge help` gives context-aware guidance for your current stage.
+**Define "done"** → `danteforge define-done` sets your quality target (feature universe, dimensions, or custom).
+**Check quality** → `danteforge assess` scores harshly against competitors and generates a gap-closing masterplan.
+
+---
+
 DanteForge is an agent-oriented development workflow for Codex, Claude Code, VS Code, and direct CLI use. It turns high-level intent into explicit artifacts, execution prompts, and verification gates without claiming work happened when it did not.
 
 > Anti-Stub Doctrine: shipped implementation must not rely on `TODO`, `FIXME`, `TBD`, or placeholder/stub markers. Repo verification enforces this with `npm run check:anti-stub`.

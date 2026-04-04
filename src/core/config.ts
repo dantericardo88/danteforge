@@ -8,12 +8,17 @@ import { logger } from './logger.js';
 const CONFIG_DIRNAME = '.danteforge';
 const CONFIG_FILENAME = 'config.yaml';
 
-export type LLMProvider = 'grok' | 'claude' | 'openai' | 'gemini' | 'ollama';
+// Built-in providers with hardcoded dispatch logic
+export type BuiltinLLMProvider = 'grok' | 'claude' | 'openai' | 'gemini' | 'ollama';
+// Additional providers dispatched via the llm-provider registry
+export type ExtendedLLMProvider = BuiltinLLMProvider | 'together' | 'groq' | 'mistral';
+// Accept any string for forward-compatibility with user-registered providers
+export type LLMProvider = ExtendedLLMProvider | string;
 
 export interface DanteConfig {
   defaultProvider: LLMProvider;
   ollamaModel: string;
-  providers: Partial<Record<LLMProvider, { apiKey?: string; model?: string; baseUrl?: string }>>;
+  providers: Partial<Record<string, { apiKey?: string; model?: string; baseUrl?: string }>>;
   figma?: {
     defaultFileUrl?: string;
     designTokensPath?: string;
@@ -39,13 +44,17 @@ const DEFAULT_CONFIG: DanteConfig = {
   providers: {},
 };
 
-// Default models per provider
-const DEFAULT_MODELS: Record<LLMProvider, string> = {
+// Default models per built-in provider
+const DEFAULT_MODELS: Record<string, string> = {
   grok: 'grok-3-mini',
   claude: 'claude-sonnet-4-20250514',
   openai: 'gpt-4o',
   gemini: 'gemini-2.0-flash',
   ollama: 'llama3',
+  // Extended providers
+  together: 'meta-llama/Llama-3-70b-chat-hf',
+  groq: 'mixtral-8x7b-32768',
+  mistral: 'mistral-large-latest',
 };
 
 // Default base URLs per provider
@@ -55,10 +64,14 @@ const DEFAULT_BASE_URLS: Record<string, string> = {
   claude: 'https://api.anthropic.com',
   gemini: 'https://generativelanguage.googleapis.com/v1beta',
   ollama: 'http://127.0.0.1:11434',
+  // Extended providers
+  together: 'https://api.together.xyz/v1',
+  groq: 'https://api.groq.com/openai/v1',
+  mistral: 'https://api.mistral.ai/v1',
 };
 
 export function getDefaultModel(provider: LLMProvider): string {
-  return DEFAULT_MODELS[provider];
+  return DEFAULT_MODELS[provider] ?? 'gpt-4o';
 }
 
 export function getDefaultBaseUrl(provider: LLMProvider): string | undefined {

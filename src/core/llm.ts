@@ -1,6 +1,7 @@
-// Multi-provider LLM client - Grok, Claude, OpenAI, Gemini, Ollama
+// Multi-provider LLM client - Grok, Claude, OpenAI, Gemini, Ollama + registry providers
 // Uses direct HTTP calls so package installs work without optional provider SDKs.
 import { resolveProvider, loadConfig, type LLMProvider } from './config.js';
+import { getProvider as getRegistryProvider, isRegisteredProvider } from './llm-provider.js';
 import { checkContextRot, truncateContext } from '../harvested/gsd/hooks/context-rot.js';
 import { warnIfExpensive } from './token-estimator.js';
 import { logger } from './logger.js';
@@ -73,16 +74,15 @@ function sleep(ms: number): Promise<void> {
 
 function displayProvider(provider: LLMProvider): string {
   switch (provider) {
-    case 'grok':
-      return 'xAI Grok';
-    case 'claude':
-      return 'Anthropic Claude';
-    case 'openai':
-      return 'OpenAI';
-    case 'gemini':
-      return 'Google Gemini';
-    case 'ollama':
-      return 'Ollama';
+    case 'grok': return 'xAI Grok';
+    case 'claude': return 'Anthropic Claude';
+    case 'openai': return 'OpenAI';
+    case 'gemini': return 'Google Gemini';
+    case 'ollama': return 'Ollama';
+    default: {
+      const adapter = getRegistryProvider(provider);
+      return adapter?.displayName ?? provider;
+    }
   }
 }
 
@@ -92,22 +92,26 @@ function normalizeBaseUrl(provider: LLMProvider, baseUrl?: string): string {
   }
 
   switch (provider) {
-    case 'grok':
-      return 'https://api.x.ai/v1';
-    case 'openai':
-      return 'https://api.openai.com/v1';
-    case 'claude':
-      return 'https://api.anthropic.com';
-    case 'gemini':
-      return 'https://generativelanguage.googleapis.com/v1beta';
-    case 'ollama':
-      return 'http://127.0.0.1:11434';
+    case 'grok': return 'https://api.x.ai/v1';
+    case 'openai': return 'https://api.openai.com/v1';
+    case 'claude': return 'https://api.anthropic.com';
+    case 'gemini': return 'https://generativelanguage.googleapis.com/v1beta';
+    case 'ollama': return 'http://127.0.0.1:11434';
+    default: {
+      const adapter = getRegistryProvider(provider);
+      return adapter?.defaultBaseUrl ?? 'https://api.openai.com/v1';
+    }
   }
 }
 
 function requireApiKey(provider: LLMProvider, apiKey: string | undefined): string {
   if (!apiKey) {
-    throw new Error(`No API key configured for ${provider}. Run: danteforge config --set-key "${provider}:<key>"`);
+    throw new Error(
+      `No API key found for provider '${provider}'.\n` +
+      `  Fix: run \`danteforge config --set-key ${provider}\`\n` +
+      `  Or:  set the ${provider.toUpperCase()}_API_KEY environment variable.\n` +
+      `  Or:  run \`danteforge init\` to configure a provider interactively.`
+    );
   }
   return apiKey;
 }
@@ -117,7 +121,11 @@ function normalizeProviderError(provider: LLMProvider, status: number, body: str
   const snippet = body.replace(/\s+/g, ' ').slice(0, 240).trim();
 
   if (status === 401 || status === 403) {
-    return new Error(`${label} authentication failed (${status}). Check your API key and model access.`);
+    return new Error(
+      `${label} authentication failed (HTTP ${status}).\n` +
+      `  Your API key may be expired or invalid.\n` +
+      `  Fix: run \`danteforge config --set-key ${provider}\` with a fresh key.`
+    );
   }
   if (status === 404) {
     return new Error(`${label} endpoint or model was not found (404). Check the configured base URL and model.`);
@@ -272,6 +280,8 @@ function extractProviderModelNames(provider: LLMProvider, payload: unknown): str
       const models = (payload as { models?: Array<{ name?: string; model?: string }> })?.models ?? [];
       return models.flatMap(model => [model.model, model.name].filter((value): value is string => Boolean(value)));
     }
+    default:
+      return [];
   }
 }
 
@@ -379,8 +389,18 @@ export async function callLLM(
           modelUsed = await resolveOllamaCallableModel(target.ollamaModel, target.baseUrl);
           output = await callOllama(enrichedPrompt, modelUsed, target.baseUrl);
           break;
-        default:
-          throw new Error(`Unknown provider: ${target.provider}. Use: grok, claude, openai, gemini, ollama`);
+        default: {
+          // Try the provider registry for additional providers (together, groq, mistral, etc.)
+          const adapter = getRegistryProvider(target.provider);
+          if (adapter) {
+            const timeoutMs = resolveProviderRequestTimeoutMs(target.provider);
+            const model = target.model || adapter.defaultModel;
+            const baseUrl = target.baseUrl || adapter.defaultBaseUrl;
+            output = await adapter.call(enrichedPrompt, model, baseUrl, target.apiKey, timeoutMs);
+          } else {
+            throw new Error(`Unknown provider: "${target.provider}". Built-in: grok, claude, openai, gemini, ollama. Extended: together, groq, mistral.`);
+          }
+        }
       }
 
       const state = await loadState({ cwd: options.cwd });
@@ -464,6 +484,16 @@ export async function probeLLMProvider(providerOverride?: LLMProvider): Promise<
           ? `Ollama model "${resolvedModel}" is reachable.`
           : `Ollama model "${target.ollamaModel}" resolved to "${resolvedModel}" and is reachable.`;
         return { ok: true, provider: 'ollama', model: resolvedModel, message: resolutionMessage };
+      }
+      default: {
+        // Extended providers — just check if we have an API key
+        if (isRegisteredProvider(target.provider)) {
+          if (!target.apiKey) {
+            return { ok: false, provider: target.provider, model: target.model, message: `No API key for ${target.provider}.` };
+          }
+          return { ok: true, provider: target.provider, model: target.model, message: `${displayProvider(target.provider)} configured (key present).` };
+        }
+        return { ok: false, provider: target.provider, model: target.model, message: `Unknown provider: ${target.provider}.` };
       }
     }
   } catch (err) {
