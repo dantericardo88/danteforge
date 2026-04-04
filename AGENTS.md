@@ -179,6 +179,14 @@ If `currentLevel < targetLevel` and critical gaps exist (gap > 20 points), the c
 
 Use `danteforge maturity --preset <level>` to check if your code meets the quality standard for a specific preset.
 
+Use `danteforge define-done` to set the completion target — defines what "9+" means by analyzing competitors, extracting every unique function-level capability, building a union of 40-100 features, and scoring against that universe.
+
+Use `danteforge universe` to view the competitive feature universe — all unique capabilities across competitors, scored against the current project.
+
+Use `danteforge assess` for harsh self-assessment against the feature universe or 12 quality dimensions, with competitor benchmarking and gap masterplan generation.
+
+Use `danteforge self-improve` to run the autonomous quality loop — it scores harshly, generates a masterplan, and keeps forging until the completion target (9+/10 on 90%+ of features) is met.
+
 See `docs/MATURITY-SYSTEM.md` for detailed explanations and `commands/maturity.md` for CLI usage.
 
 ## Hard Gates

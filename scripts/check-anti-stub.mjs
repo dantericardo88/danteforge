@@ -50,6 +50,7 @@ const fullyExemptFiles = [
   'check-anti-stub.mjs',   // this script references patterns by design
   'drift-detector.ts',     // defines stub-detection regex patterns by design
   'premium.ts',            // license validation stub is intentional (future implementation)
+  'harsh-scorer.ts',       // stub detection engine — references patterns by design
 ];
 
 // Files exempt from expanded pattern checks only (config, doctrine, docs, code-review tools)

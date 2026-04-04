@@ -42,6 +42,11 @@ In Codex, these slash commands are native workflow commands. Execute them in the
 - \`/qa\` - Structured QA pass with health score on live app
 - \`/ship\` - Paranoid review + version bump + changelog + PR
 - \`/retro\` - Project retrospective with metrics and trends
+- \`/maturity\` - Assess code maturity level with founder-friendly quality report
+- \`/define-done\` - Define what "9+" means — interactive prompt, saves completion target
+- \`/assess\` - Harsh self-assessment: score vs feature universe or 12 dimensions, gap masterplan
+- \`/self-improve\` - Autonomous quality loop: keeps forging until completion target met
+- \`/universe\` - View competitive feature universe — all unique capabilities scored against project
 
 **Exploration and Learning:**
 - \`/brainstorm\` - Socratic design refinement before implementation

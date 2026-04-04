@@ -72,6 +72,16 @@ export interface DanteState {
   retroDelta?: number;
   retroLastRun?: string;
   completionTracker?: CompletionTracker;
+  // v0.10.0 — Self-Assessment & Onboarding
+  competitors?: string[];       // user-defined competitor list for `danteforge assess`
+  preferredLevel?: string;      // preferred magic level set during init wizard (e.g., 'magic', 'inferno')
+  completionTarget?: {        // persisted completion target (mode + minScore + coverage)
+    mode: 'feature-universe' | 'dimension-based' | 'custom';
+    minScore: number;
+    featureCoverage?: number;
+    definedAt: string;
+  };
+  featureUniversePath?: string; // path to cached feature-universe.json
   // v0.9.0 — Reflection Engine + Premium
   reflectionEnabled?: boolean;
   reflectionAttempts?: number;

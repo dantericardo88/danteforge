@@ -25,6 +25,7 @@ describe('magic preset system', () => {
       defaultProfile: 'budget',
       routingAggressiveness: 'aggressive',
       maxBudgetUsd: 0.05,
+      autoforgeWaves: 3,
       convergenceCycles: 0,
       targetMaturityLevel: 1,
     });
@@ -38,6 +39,7 @@ describe('magic preset system', () => {
       defaultProfile: 'budget',
       routingAggressiveness: 'balanced',
       maxBudgetUsd: 0.75,
+      autoforgeWaves: 6,
       convergenceCycles: 2,
       targetMaturityLevel: 3,
     });
@@ -51,6 +53,7 @@ describe('magic preset system', () => {
       defaultProfile: 'budget',
       routingAggressiveness: 'balanced',
       maxBudgetUsd: 3.00,
+      autoforgeWaves: 10,
       convergenceCycles: 3,
       targetMaturityLevel: 6,
     });

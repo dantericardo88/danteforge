@@ -47,3 +47,7 @@ export { docs } from './docs.js';
 export { premium } from './premium.js';
 export { profile } from './profile.js';
 export { maturity } from './maturity.js';
+export { assess } from './assess.js';
+export { selfImprove } from './self-improve.js';
+export { defineDone } from './define-done.js';
+export { universe } from './universe.js';

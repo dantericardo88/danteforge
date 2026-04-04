@@ -18,7 +18,8 @@ program
 program
   .command('init')
   .description('Interactive first-run wizard — detect project, check health, show next steps')
-  .action(commands.init);
+  .option('--non-interactive', 'Skip wizard questions (for CI/scripts)')
+  .action((opts) => commands.init({ nonInteractive: opts.nonInteractive }));
 
 program
   .command('constitution')
@@ -488,6 +489,63 @@ program
   .option('--key <key>', 'License key for activation')
   .action((subcommand, opts) => commands.premium(subcommand ?? 'status', { key: opts.key }));
 
+program
+  .command('assess')
+  .description('Harsh self-assessment: score all 12 dimensions, benchmark vs competitors, generate masterplan')
+  .option('--no-harsh', 'Use normal PDSE thresholds instead of harsh mode')
+  .option('--no-competitors', 'Skip competitor benchmarking')
+  .option('--min-score <n>', 'Target score threshold (default: 9.0)', '9.0')
+  .option('--json', 'Output machine-readable JSON')
+  .option('--preset <level>', 'Preset for target maturity level')
+  .option('--cwd <path>', 'Project directory')
+  .action((opts) => void commands.assess({
+    harsh: opts.harsh !== false,
+    competitors: opts.competitors !== false,
+    minScore: parseFloat(opts.minScore),
+    json: opts.json,
+    preset: opts.preset,
+    cwd: opts.cwd,
+  }));
+
+program
+  .command('self-improve [goal]')
+  .description('Autonomous quality loop: assess → forge gaps → verify → repeat until 9+/10')
+  .option('--min-score <n>', 'Target score threshold (default: 9.0)', '9.0')
+  .option('--max-cycles <n>', 'Safety limit on loop cycles (default: 20)', '20')
+  .option('--focus <dimension>', 'Focus on a specific dimension')
+  .option('--preset <level>', 'Preset for target maturity level')
+  .option('--cwd <path>', 'Project directory')
+  .action((goal, opts) => void commands.selfImprove({
+    goal,
+    minScore: parseFloat(opts.minScore),
+    maxCycles: parseInt(opts.maxCycles, 10),
+    focusDimensions: opts.focus ? [opts.focus] : undefined,
+    preset: opts.preset,
+    cwd: opts.cwd,
+  }));
+
+program
+  .command('define-done')
+  .description('Define what "9+" means — sets the completion target used by assess and self-improve')
+  .option('--reset', 'Clear existing target and re-prompt')
+  .option('--cwd <path>', 'Project directory')
+  .action((opts) => void commands.defineDone({
+    reset: opts.reset,
+    cwd: opts.cwd,
+  }));
+
+program
+  .command('universe')
+  .description('View the competitive feature universe — all unique capabilities across competitors, scored')
+  .option('--refresh', 'Force rebuild of feature universe from competitors')
+  .option('--json', 'Output machine-readable JSON')
+  .option('--cwd <path>', 'Project directory')
+  .action((opts) => void commands.universe({
+    refresh: opts.refresh,
+    json: opts.json,
+    cwd: opts.cwd,
+  }));
+
 // First-run detection — suggest init when no .danteforge/ exists
 program.hook('preAction', (_thisCommand, actionCommand) => {
   const skip = new Set(['init', 'config', 'doctor', 'help', 'setup', 'skills', 'docs', 'premium']);
@@ -515,6 +573,7 @@ Command Groups:
   Automation:     spark, ember, canvas, magic, blaze, nova, inferno, autoforge, autoresearch, party
   Design:         design, ux-refine, browse, qa
   Intelligence:   tech-decide, debug, lessons, profile, oss, local-harvest, harvest, retro
+  Self-Assessment: assess, self-improve, maturity
   Tools:          config, setup, doctor, dashboard, compact, import, skills, ship, premium
   Meta:           help, review, feedback, update-mcp, awesome-scan, docs
 
