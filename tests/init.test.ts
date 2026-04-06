@@ -3,7 +3,7 @@ import assert from 'node:assert';
 import fs from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
-import { spawnSync } from 'node:child_process';
+import { runTsxCli } from './helpers/cli-runner.ts';
 
 const tempRoots: string[] = [];
 
@@ -15,19 +15,15 @@ afterEach(async () => {
 });
 
 function runCli(cwd: string, home: string, args: string[]) {
-  const tsxCli = path.resolve('node_modules', 'tsx', 'dist', 'cli.mjs');
-  const cliEntry = path.resolve('src', 'cli', 'index.ts');
-  return spawnSync(process.execPath, [tsxCli, cliEntry, ...args], {
+  return runTsxCli(args, {
     cwd,
+    timeout: 60_000,
     env: {
-      ...process.env,
       HOME: home,
       USERPROFILE: home,
       DANTEFORGE_HOME: home,
       NODE_ENV: 'test',
     },
-    encoding: 'utf8',
-    timeout: 15_000,
   });
 }
 
@@ -48,7 +44,7 @@ describe('danteforge init', () => {
     await fs.writeFile(path.join(cwd, 'package.json'), '{"name":"test"}');
 
     const result = runCli(cwd, home, ['init']);
-    const output = (result.stdout ?? '') + (result.stderr ?? '');
+    const output = result.stdout + result.stderr;
     assert.strictEqual(result.status, 0, `Exit code: ${result.status}\n${output}`);
     assert.match(output, /Detected project type/i);
     assert.match(output, /danteforge/i); // shows some command guidance
@@ -63,7 +59,7 @@ describe('danteforge init', () => {
     await fs.mkdir(home, { recursive: true });
 
     const result = runCli(cwd, home, ['init']);
-    const output = (result.stdout ?? '') + (result.stderr ?? '');
+    const output = result.stdout + result.stderr;
     assert.strictEqual(result.status, 0, `Exit code: ${result.status}\n${output}`);
     assert.match(output, /already exists/i);
   });
@@ -77,7 +73,7 @@ describe('danteforge init', () => {
     await fs.mkdir(home, { recursive: true });
 
     const result = runCli(cwd, home, ['init']);
-    const output = (result.stdout ?? '') + (result.stderr ?? '');
+    const output = result.stdout + result.stderr;
     assert.strictEqual(result.status, 0, `Exit code: ${result.status}\n${output}`);
     // Should show some guidance commands
     assert.match(output, /danteforge (magic|spark|help)/i);
@@ -95,7 +91,7 @@ describe('help grouping', () => {
     await fs.mkdir(home, { recursive: true });
 
     const result = runCli(cwd, home, ['--help']);
-    const output = (result.stdout ?? '') + (result.stderr ?? '');
+    const output = result.stdout + result.stderr;
     assert.strictEqual(result.status, 0, `Exit code: ${result.status}\n${output}`);
     assert.match(output, /Command Groups:/);
     assert.match(output, /Pipeline:/);
@@ -121,7 +117,7 @@ describe('docs command', () => {
     await fs.mkdir(home, { recursive: true });
 
     const result = runCli(cwd, home, ['docs']);
-    const output = (result.stdout ?? '') + (result.stderr ?? '');
+    const output = result.stdout + result.stderr;
     assert.strictEqual(result.status, 0, `Exit code: ${result.status}\n${output}`);
 
     const refPath = path.join(cwd, 'docs', 'COMMAND_REFERENCE.md');

@@ -526,3 +526,43 @@ function rollingAvg(currentAvg: number, currentCount: number, newValue: number):
   if (currentCount === 0) return newValue;
   return (currentAvg * currentCount + newValue) / (currentCount + 1);
 }
+
+// ── Tier-aware model selection ──────────────────────────────────────────────
+
+/**
+ * Get the best model for a given task tier based on historical performance.
+ * Returns the top-ranked model key or null if no profiles exist.
+ */
+export async function getBestModelForTier(
+  tier: import('./task-router.js').TaskTier,
+  taskDescription: string,
+  projectRoot?: string,
+): Promise<string | null> {
+  try {
+    const engine = new ModelProfileEngine(projectRoot ?? process.cwd());
+    const profiles = await engine.getAllProfiles();
+    if (profiles.length === 0) return null;
+
+    const availableModels = profiles.map(p => p.modelKey);
+    const rankings = await engine.rankModelsForTask(taskDescription, availableModels);
+
+    if (rankings.length === 0) return null;
+
+    // For local tier, no model needed
+    if (tier === 'local') return null;
+
+    // For light tier, prefer models with lower average token usage
+    if (tier === 'light') {
+      const lightCandidate = rankings.find(r => {
+        const profile = profiles.find(p => p.modelKey === r.modelKey);
+        return profile && profile.aggregate.averageTokensPerTask < 2000;
+      });
+      return lightCandidate?.modelKey ?? rankings[0]?.modelKey ?? null;
+    }
+
+    // For heavy tier, use the highest-ranked model
+    return rankings[0]?.modelKey ?? null;
+  } catch {
+    return null;
+  }
+}

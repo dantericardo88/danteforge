@@ -1,6 +1,8 @@
+> **ARCHIVED** — This document reflects the 0.8.0 release. For the current release surface see [Operational-Readiness-v0.9.2.md](Operational-Readiness-v0.9.2.md). Do not treat this file as current release truth.
+
 # DanteForge v0.8.0 Operational Readiness
 
-This document reflects the current shipped state of DanteForge `0.8.0`.
+This document reflects the shipped state of DanteForge `0.8.0` at the time of that release.
 
 ## New in v0.8.0
 

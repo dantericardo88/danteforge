@@ -16,8 +16,8 @@ const STAGE_SUGGESTIONS: Record<WorkflowStage, string> = {
   synthesize: 'Run "danteforge feedback" or "danteforge feedback --auto" for the next refinement loop.',
 };
 
-export async function getContextualHelp(query?: string): Promise<string> {
-  const state = await loadState();
+export async function getContextualHelp(query?: string, options?: { cwd?: string }): Promise<string> {
+  const state = await loadState({ cwd: options?.cwd });
 
   if (query) {
     return `For "${query}": current workflow stage is "${state.workflowStage}" and execution wave is "${state.currentPhase}".`;

@@ -62,7 +62,7 @@ export function autoDecideBumpLevel(linesChanged: number): BumpLevel {
   return 'patch';
 }
 
-function computeNewVersion(current: string, bump: BumpLevel): string {
+export function computeNewVersion(current: string, bump: BumpLevel): string {
   const parts = current.replace(/^v/, '').split('.').map(Number);
   const [major = 0, minor = 0, patch = 0] = parts;
 
@@ -240,7 +240,7 @@ async function getGitOutput(cwd: string, args: string[]): Promise<string> {
   }
 }
 
-function countChangedLines(diffText: string): number {
+export function countChangedLines(diffText: string): number {
   let count = 0;
   for (const line of diffText.split('\n')) {
     if (line.startsWith('+') && !line.startsWith('+++')) count++;

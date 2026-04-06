@@ -1,6 +1,6 @@
 # DanteForge v0.7.0 Operational Readiness
 
-This document reflects the current shipped state of DanteForge `0.7.0`, not the historical PRD snapshots.
+This document reflects the shipped state of DanteForge `0.7.0` at the time of that release, not the historical PRD snapshots.
 
 ## Current Status
 

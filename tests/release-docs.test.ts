@@ -2,6 +2,18 @@ import assert from 'node:assert';
 import fs from 'node:fs/promises';
 import { describe, it } from 'node:test';
 
+async function loadPackageVersion(): Promise<string> {
+  const pkg = JSON.parse(await fs.readFile('package.json', 'utf8')) as { version: string };
+  return pkg.version;
+}
+
+async function loadActiveReadinessGuide(): Promise<{ version: string; path: string; content: string }> {
+  const version = await loadPackageVersion();
+  const guidePath = `docs/Operational-Readiness-v${version}.md`;
+  const content = await fs.readFile(guidePath, 'utf8');
+  return { version, path: guidePath, content };
+}
+
 describe('release documentation', () => {
   it('keeps live verification out of the default install flow', async () => {
     const readme = await fs.readFile('README.md', 'utf8');
@@ -21,13 +33,15 @@ describe('release documentation', () => {
   });
 
   it('documents the built-cli smoke gate and operational readiness guide', async () => {
+    const { path: readinessPath, content: readinessGuide } = await loadActiveReadinessGuide();
     const readme = await fs.readFile('README.md', 'utf8');
     const releaseGuide = await fs.readFile('RELEASE.md', 'utf8');
-    const readinessGuide = await fs.readFile('docs/Operational-Readiness-v0.8.0.md', 'utf8');
     const liveCanaryWorkflow = await fs.readFile('.github/workflows/live-canary.yml', 'utf8');
 
     assert.match(readme, /check:cli-smoke/);
     assert.match(releaseGuide, /check:cli-smoke/);
+    assert.match(readme, new RegExp(readinessPath.replace(/\./g, '\\.')));
+    assert.match(releaseGuide, new RegExp(readinessPath.replace(/\./g, '\\.')));
     assert.match(readinessGuide, /Known Outstanding Work/);
     assert.match(readinessGuide, /verify:live/);
     assert.match(readme, /live-canary\.yml/);
@@ -104,16 +118,31 @@ describe('release documentation', () => {
   });
 
   it('surfaces the Anti-Stub Doctrine and current operational readiness guide', async () => {
+    const { version, path: readinessPath, content: readinessGuide } = await loadActiveReadinessGuide();
     const readme = await fs.readFile('README.md', 'utf8');
     const releaseGuide = await fs.readFile('RELEASE.md', 'utf8');
-    const readinessGuide = await fs.readFile('docs/Operational-Readiness-v0.8.0.md', 'utf8');
+    const escapedVersion = version.replace(/\./g, '\\.');
+    const escapedPath = readinessPath.replace(/\./g, '\\.');
 
     assert.match(readme, /Anti-Stub Doctrine/i);
-    assert.match(readme, /Operational-Readiness-v0\.8\.0\.md/);
+    assert.match(readme, new RegExp(escapedPath));
     assert.doesNotMatch(readme, /Operational-Readiness-v0\.6\.0\.md/);
-    assert.match(releaseGuide, /Operational-Readiness-v0\.8\.0\.md/);
-    assert.match(readinessGuide, /v0\.8\.0/);
+    assert.match(releaseGuide, new RegExp(escapedPath));
+    assert.match(readinessGuide, new RegExp(`v${escapedVersion}`));
     assert.match(readinessGuide, /anti-stub/i);
+  });
+
+  it('keeps active release docs, install examples, and tag examples aligned with the current package version', async () => {
+    const version = await loadPackageVersion();
+    const readme = await fs.readFile('README.md', 'utf8');
+    const releaseGuide = await fs.readFile('RELEASE.md', 'utf8');
+    const standaloneGuide = await fs.readFile('docs/Standalone-Assistant-Setup.md', 'utf8');
+    const escapedVersion = version.replace(/\./g, '\\.');
+
+    assert.match(readme, new RegExp(`DanteForge .*${escapedVersion}`));
+    assert.match(readme, new RegExp(`danteforge-${escapedVersion}\\.tgz`));
+    assert.match(standaloneGuide, new RegExp(`danteforge-${escapedVersion}\\.tgz`));
+    assert.match(releaseGuide, new RegExp(`v${escapedVersion}`));
   });
 
   it('documents browse, qa, retro, and ship in the top-level command docs', async () => {

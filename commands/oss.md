@@ -26,11 +26,13 @@ Select **5-10 repos** that are in the same domain, have permissive licenses, sig
 
 ## Phase 2: Clone & License Gate
 
-- Shallow-clone each selected repo: `git clone --depth 1 <url> /tmp/oss-research-<name>`
+- Shallow-clone each selected repo: `git clone --depth 1 <url> .danteforge/oss-repos/<name>`
+- Repos are stored persistently (NEVER auto-deleted) — use `/oss-clean` to remove
+- Skip cloning if repo already exists (idempotent)
 - **License gate** — Check LICENSE file immediately:
   - **ALLOWED**: MIT, Apache-2.0, BSD-2-Clause, BSD-3-Clause, ISC, Unlicense, MPL-2.0
   - **BLOCKED**: GPL, AGPL, SSPL, EUPL, proprietary, no license file
-  - If blocked: delete the clone, note the reason, move on.
+  - If blocked: mark as `status: 'blocked'` in registry (keep for audit), skip pattern extraction.
 
 ## Phase 3: Structural Scan
 
@@ -68,15 +70,31 @@ For each selected pattern:
 4. Run `npm run verify` after each change.
 5. Fix failures before moving to the next pattern.
 
-## Phase 7: Report & Cleanup
+## Phase 7: Holistic Synthesis & Report
 
-- Write `.danteforge/OSS_REPORT.md` with repos scanned, patterns found, what was implemented.
-- Always clean up: `rm -rf /tmp/oss-research-*`
+- Combine patterns from ALL repos in `.danteforge/oss-registry.json` (not just current run)
+- Prioritize patterns: P0 → P1 → P2 → P3 across full library
+- Write `.danteforge/OSS_REPORT.md` with holistic view of entire knowledge base
+- Update registry with new repos and patterns
+- **NO cleanup** — repos persist in `.danteforge/oss-repos/` for future reference
 
 ## Options
 
 - `--prompt` — Generate a copy-paste research plan prompt
 - `--dry-run` — Show search queries without cloning
-- `--max-repos <n>` — Maximum repos to analyze (default: 8)
+- `--max-repos <n>` — Maximum NEW repos to discover per run (default: 4)
+
+## Incremental Growth
+
+Each run discovers N **new** repos (filters against `.danteforge/oss-registry.json`). Run multiple times to grow your library:
+
+```
+Run 1: 4 repos  → Library: 4 repos
+Run 2: 4 repos  → Library: 8 repos
+Run 3: 4 repos  → Library: 12 repos
+```
+
+Use `/oss-learn` to re-extract patterns from all cached repos.
+Use `/oss-clean` to remove repos from storage.
 
 CLI fallback: `danteforge oss`

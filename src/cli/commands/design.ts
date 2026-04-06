@@ -25,7 +25,7 @@ export async function design(
   await ensureOPIntermediatesIgnored();
 
   // Gate: PLAN.md must exist (unless --light)
-  if (!(await runGate(() => requirePlan(options.light)))) return;
+  if (!(await runGate(() => requirePlan(options.light)))) { process.exitCode = 1; return; }
 
   const state = await loadState();
 

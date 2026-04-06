@@ -47,11 +47,31 @@ function getPricing(provider: LLMProvider): { inputPer1M: number; outputPer1M: n
 }
 
 /**
- * Rough token estimation: ~4 characters per token for English text.
- * This is intentionally simple — no tokenizer dependency needed.
+ * Token estimation strategy.
+ * - 'simple': ~4 chars/token (conservative, backward-compatible default)
+ * - 'code-aware': ~2.5 chars/token for code, ~3.5 for prose (more accurate)
  */
-export function estimateTokens(text: string): number {
-  return Math.ceil(text.length / 4);
+export type TokenEstimationStrategy = 'simple' | 'code-aware';
+
+/**
+ * Heuristic: detect whether text is likely code or prose.
+ * Code has a higher density of special characters ({, }, ;, =, <, >, etc.).
+ */
+export function isLikelyCode(text: string): boolean {
+  if (text.length === 0) return false;
+  const codeSignals = (text.match(/[{}();=<>[\]|&!~^+\-*/%]/g) || []).length;
+  return (codeSignals / text.length) > 0.02;
+}
+
+/**
+ * Estimate token count for a given text.
+ * @param text The input text to estimate tokens for.
+ * @param strategy Estimation strategy — 'simple' (4:1) or 'code-aware' (variable ratio).
+ */
+export function estimateTokens(text: string, strategy: TokenEstimationStrategy = 'simple'): number {
+  if (strategy === 'simple') return Math.ceil(text.length / 4);
+  const ratio = isLikelyCode(text) ? 2.5 : 3.5;
+  return Math.ceil(text.length / ratio);
 }
 
 /**

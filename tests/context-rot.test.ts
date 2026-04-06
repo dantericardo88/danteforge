@@ -6,6 +6,7 @@ import { resolve } from 'node:path';
 describe('Context Rot Mitigation (Wave 1B)', () => {
   const contextRotSrc = readFileSync(resolve('src/harvested/gsd/hooks/context-rot.ts'), 'utf-8');
   const llmSrc = readFileSync(resolve('src/core/llm.ts'), 'utf-8');
+  const llmPipelineSrc = readFileSync(resolve('src/core/llm-pipeline.ts'), 'utf-8');
 
   it('exports CONTEXT_WARN_THRESHOLD = 120_000', () => {
     assert.ok(contextRotSrc.includes('CONTEXT_WARN_THRESHOLD'), 'Missing CONTEXT_WARN_THRESHOLD');
@@ -48,8 +49,10 @@ describe('Context Rot Mitigation (Wave 1B)', () => {
     assert.ok(contextRotSrc.includes('content.slice(content.length - keepEnd)'), 'Should keep end of content');
   });
 
-  it('llm.ts consumes ContextRotResult and auto-truncates', () => {
-    assert.ok(llmSrc.includes('truncateContext'), 'llm.ts should import truncateContext');
-    assert.ok(llmSrc.includes('shouldTruncate'), 'llm.ts should check shouldTruncate');
+  it('LLM pipeline consumes ContextRotResult and auto-truncates', () => {
+    // Context rot is consumed in llm-pipeline.ts (enrichPrompt stage), imported by llm.ts
+    const src = llmPipelineSrc + llmSrc;
+    assert.ok(src.includes('truncateContext'), 'LLM pipeline should import truncateContext');
+    assert.ok(src.includes('shouldTruncate'), 'LLM pipeline should check shouldTruncate');
   });
 });

@@ -45,8 +45,8 @@ export interface AutoResearchReport {
  * Run the measurement command and parse a numeric result from stdout.
  * Throws if the command fails or produces no parseable number.
  */
-export async function runBaseline(config: AutoResearchConfig): Promise<number> {
-  const value = await runMeasurement(config);
+export async function runBaseline(config: AutoResearchConfig, execFn?: ExecFileFn): Promise<number> {
+  const value = await runMeasurement(config, execFn);
   return value;
 }
 
@@ -58,12 +58,13 @@ export async function runExperiment(
   config: AutoResearchConfig,
   experimentId: number,
   description: string,
+  execFn?: ExecFileFn,
 ): Promise<ExperimentResult> {
   let metricValue: number | null = null;
   let status: ExperimentResult['status'] = 'crash';
 
   try {
-    metricValue = await runMeasurement(config);
+    metricValue = await runMeasurement(config, execFn);
     status = 'keep'; // default; caller should override with shouldKeep result
   } catch {
     status = 'crash';
@@ -190,12 +191,22 @@ export function formatReport(report: AutoResearchReport): string {
 
 // ── Internal helpers ───────────────────────────────────────────────────────────
 
+/** Injection-seam type for execFile — accepts just what runMeasurement needs. */
+export type ExecFileFn = (
+  file: string,
+  args: string[],
+  opts: { cwd: string; timeout: number; maxBuffer: number; env: NodeJS.ProcessEnv | undefined },
+) => Promise<{ stdout: string }>;
+
 /**
  * Execute the measurement command and extract a numeric value from stdout.
  * The command is expected to print a number (possibly amid other text); the
  * first floating-point value found in stdout is used as the metric.
  */
-async function runMeasurement(config: AutoResearchConfig): Promise<number> {
+export async function runMeasurement(
+  config: AutoResearchConfig,
+  execFn: ExecFileFn = execFileAsync as unknown as ExecFileFn,
+): Promise<number> {
   const MEASUREMENT_TIMEOUT_MS = 5 * 60 * 1000; // 5 minutes hard cap
 
   // Split command into executable + args to avoid shell injection.
@@ -206,7 +217,7 @@ async function runMeasurement(config: AutoResearchConfig): Promise<number> {
     throw new Error('Empty measurement command');
   }
 
-  const { stdout } = await execFileAsync(executable, args, {
+  const { stdout } = await execFn(executable, args, {
     cwd: config.cwd,
     timeout: MEASUREMENT_TIMEOUT_MS,
     maxBuffer: 10 * 1024 * 1024,
@@ -227,7 +238,7 @@ async function runMeasurement(config: AutoResearchConfig): Promise<number> {
  * Split a shell-style command string into tokens without spawning a shell.
  * Handles quoted strings and basic escaping.
  */
-function splitCommand(command: string): string[] {
+export function splitCommand(command: string): string[] {
   const tokens: string[] = [];
   let current = '';
   let inSingle = false;
@@ -261,7 +272,7 @@ function splitCommand(command: string): string[] {
  * Extract the first floating-point number found in a string.
  * Returns null if no number is found.
  */
-function extractNumber(text: string): number | null {
+export function extractNumber(text: string): number | null {
   const match = text.match(/-?\d+(?:\.\d+)?/);
   if (!match) return null;
   const parsed = parseFloat(match[0]!);

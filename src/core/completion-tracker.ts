@@ -118,7 +118,7 @@ export function computeCompletionTracker(
   const qaScore = typeof state.qaHealthScore === 'number'
     ? state.qaHealthScore
     : 0;
-  const testsPassing = state.lastVerifiedAt !== undefined;
+  const testsPassing = state.lastVerifyStatus === 'pass';
   const isWebProject = state.projectType === 'web';
 
   let verificationScore: number;

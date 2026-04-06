@@ -87,6 +87,7 @@ describe('release check scripts', () => {
     };
 
     assert.match(pkg.scripts?.['verify:live'] ?? '', /check/i);
+    assert.match(pkg.scripts?.['release:proof'] ?? '', /check-release-proof\.mjs/);
     assert.match(pkg.scripts?.['release:ga'] ?? '', /verify:live/);
   });
 
@@ -123,5 +124,24 @@ describe('release check scripts', () => {
     const extensionPkg = JSON.parse(await fs.readFile('vscode-extension/package.json', 'utf8')) as { version: string };
 
     assert.strictEqual(extensionPkg.version, rootPkg.version);
+  });
+
+  it('hard-gates publish behind release-proof and live-proof jobs', async () => {
+    const releaseWorkflow = await fs.readFile('.github/workflows/release.yml', 'utf8');
+
+    assert.match(releaseWorkflow, /release-proof:/);
+    assert.match(releaseWorkflow, /live-proof:/);
+    assert.match(releaseWorkflow, /publish:/);
+    assert.match(releaseWorkflow, /needs:\s*\[release-proof,\s*live-proof\]/);
+  });
+
+  it('uploads receipt artifacts from release and live proof workflows', async () => {
+    const releaseWorkflow = await fs.readFile('.github/workflows/release.yml', 'utf8');
+    const liveWorkflow = await fs.readFile('.github/workflows/live-canary.yml', 'utf8');
+
+    assert.match(releaseWorkflow, /\.danteforge\/evidence\/release\/latest\.json/);
+    assert.match(releaseWorkflow, /\.danteforge\/evidence\/live\/latest\.json/);
+    assert.match(releaseWorkflow, /danteforge-vscode-vsix/);
+    assert.match(liveWorkflow, /\.danteforge\/evidence\/live\/latest\.json/);
   });
 });

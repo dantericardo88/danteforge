@@ -363,3 +363,189 @@ describe('runQAPass — regression mode', () => {
     assert.strictEqual(report.regressions, undefined);
   });
 });
+
+// ── Wave I3: Additional coverage tests ─────────────────────────────────────
+
+describe('runQAPass — full mode with specific step failures', () => {
+  it('continues when accessibility check fails', async () => {
+    const evidenceDir = await makeTmpEvidenceDir();
+    const commands: string[] = [];
+    const report = await runQAPass({
+      ...baseRunOptions(evidenceDir, { mode: 'full' }),
+      _invokeBrowse: async (cmd) => {
+        commands.push(cmd);
+        if (cmd === 'accessibility') return { success: false, stdout: '', errorMessage: 'a11y check failed' };
+        return { success: true, stdout: '' };
+      },
+    });
+
+    // Should complete all steps despite a11y failure
+    assert.ok(commands.includes('goto'), 'should have run goto');
+    assert.ok(commands.includes('accessibility'), 'should have run accessibility');
+    assert.ok(commands.includes('perf'), 'should continue to perf after a11y failure');
+    // Score should still be computed (may or may not have issues depending on impl)
+    assert.ok(typeof report.score === 'number', 'should still compute a score');
+  });
+
+  it('continues when console check fails', async () => {
+    const evidenceDir = await makeTmpEvidenceDir();
+    const commands: string[] = [];
+    const report = await runQAPass({
+      ...baseRunOptions(evidenceDir, { mode: 'full' }),
+      _invokeBrowse: async (cmd) => {
+        commands.push(cmd);
+        if (cmd === 'console') return { success: false, stdout: '', errorMessage: 'console check error' };
+        return { success: true, stdout: '' };
+      },
+    });
+
+    assert.ok(commands.includes('console'), 'should have run console');
+    assert.ok(commands.length >= 5, 'should continue running remaining steps');
+  });
+
+  it('continues when network check fails', async () => {
+    const evidenceDir = await makeTmpEvidenceDir();
+    const commands: string[] = [];
+    await runQAPass({
+      ...baseRunOptions(evidenceDir, { mode: 'full' }),
+      _invokeBrowse: async (cmd) => {
+        commands.push(cmd);
+        if (cmd === 'network') return { success: false, stdout: '', errorMessage: 'network error' };
+        return { success: true, stdout: '' };
+      },
+    });
+
+    assert.ok(commands.includes('network'), 'should have run network');
+    assert.ok(commands.includes('perf'), 'should continue to perf after network failure');
+  });
+
+  it('continues when perf check fails', async () => {
+    const evidenceDir = await makeTmpEvidenceDir();
+    const commands: string[] = [];
+    const report = await runQAPass({
+      ...baseRunOptions(evidenceDir, { mode: 'full' }),
+      _invokeBrowse: async (cmd) => {
+        commands.push(cmd);
+        if (cmd === 'perf') return { success: false, stdout: '', errorMessage: 'perf timeout' };
+        return { success: true, stdout: '' };
+      },
+    });
+
+    assert.ok(commands.includes('perf'), 'should have attempted perf');
+    assert.strictEqual(typeof report.score, 'number');
+    assert.ok(report.score >= 0 && report.score <= 100, `score should be 0-100, got ${report.score}`);
+  });
+});
+
+describe('runQAPass — evidence collection', () => {
+  it('collects evidence paths from successful browse results', async () => {
+    const evidenceDir = await makeTmpEvidenceDir();
+    const screenshotPath = path.join(evidenceDir, 'test-screenshot.png');
+    await fs.writeFile(screenshotPath, 'fake-png');
+
+    const report = await runQAPass({
+      ...baseRunOptions(evidenceDir, { mode: 'full' }),
+      _invokeBrowse: async (cmd) => {
+        if (cmd === 'screenshot') {
+          return { success: true, stdout: '', evidencePath: screenshotPath };
+        }
+        return { success: true, stdout: '' };
+      },
+    });
+
+    assert.ok(report.screenshots.length > 0, 'should collect screenshot evidence');
+    assert.ok(report.screenshots[0].includes('test-screenshot'), 'screenshot path should match');
+  });
+});
+
+describe('computeQAScore — boundary cases', () => {
+  it('returns 0 when 4+ critical issues', () => {
+    const issues = Array.from({ length: 4 }, () => makeIssue('critical'));
+    const score = computeQAScore(issues);
+    assert.strictEqual(score, 0, '4 critical issues = 0 score');
+  });
+
+  it('returns 0 when score would be negative', () => {
+    const issues = Array.from({ length: 10 }, () => makeIssue('critical'));
+    const score = computeQAScore(issues);
+    assert.strictEqual(score, 0, 'score should never be negative');
+  });
+
+  it('mixed severity computes weighted deductions', () => {
+    const issues = [
+      makeIssue('critical'),
+      makeIssue('high'),
+      makeIssue('medium'),
+      makeIssue('informational'),
+    ];
+    const score = computeQAScore(issues);
+    assert.ok(score > 0, 'mixed issues should still have positive score');
+    assert.ok(score < 100, 'mixed issues should reduce score');
+  });
+});
+
+describe('saveQABaseline — edge cases', () => {
+  it('overwrites existing baseline file', async () => {
+    const dir = await makeTmpEvidenceDir();
+    const baselinePath = path.join(dir, 'baseline.json');
+
+    const report1 = makeReport({ score: 80 });
+    await saveQABaseline(report1, baselinePath);
+
+    const report2 = makeReport({ score: 95 });
+    await saveQABaseline(report2, baselinePath);
+
+    const content = await fs.readFile(baselinePath, 'utf8');
+    const parsed = JSON.parse(content);
+    assert.strictEqual(parsed.score, 95, 'should have overwritten with second report');
+  });
+});
+
+describe('QAReport structure', () => {
+  it('preserves url and mode fields', () => {
+    const report = makeReport({ url: 'https://test.local', mode: 'quick' });
+    assert.strictEqual(report.url, 'https://test.local');
+    assert.strictEqual(report.mode, 'quick');
+  });
+
+  it('regression mode has optional regressions field', () => {
+    const report = makeReport({ mode: 'regression', regressions: [makeIssue('high', 'perf')] });
+    assert.ok(Array.isArray(report.regressions));
+    assert.strictEqual(report.regressions!.length, 1);
+    assert.strictEqual(report.regressions![0].category, 'perf');
+  });
+});
+
+describe('runQAPass — regression with matching baseline', () => {
+  it('reports no regressions when current matches baseline', async () => {
+    const evidenceDir = await makeTmpEvidenceDir();
+    const baselinePath = path.join(evidenceDir, 'baseline.json');
+
+    // Both baseline and current have no issues
+    await saveQABaseline(makeReport({ issues: [] }), baselinePath);
+
+    const report = await runQAPass({
+      ...baseRunOptions(evidenceDir, { mode: 'regression', baselinePath }),
+      _invokeBrowse: async () => ({ success: true, stdout: '' }),
+    });
+
+    // No new issues = no regressions
+    if (report.regressions) {
+      assert.strictEqual(report.regressions.length, 0, 'matching baseline should have no regressions');
+    }
+  });
+});
+
+describe('runQAPass — quick mode', () => {
+  it('quick mode with perfect score returns 100', async () => {
+    const evidenceDir = await makeTmpEvidenceDir();
+    const report = await runQAPass({
+      ...baseRunOptions(evidenceDir, { mode: 'quick' }),
+      _invokeBrowse: async () => ({ success: true, stdout: '' }),
+    });
+
+    assert.strictEqual(report.score, 100, 'no issues should give perfect score');
+    assert.strictEqual(report.mode, 'quick');
+    assert.strictEqual(report.issues.length, 0);
+  });
+});
