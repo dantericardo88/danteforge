@@ -6,10 +6,12 @@ import { isLLMAvailable, callLLM } from '../../core/llm.js';
 import { displayPrompt, savePrompt } from '../../core/prompt-builder.js';
 import { buildLocalClarify, writeArtifact } from '../../core/local-artifacts.js';
 import { runGate, requireSpec } from '../../core/gates.js';
+import { withErrorBoundary } from '../../core/cli-error-boundary.js';
 
 const STATE_DIR = '.danteforge';
 
 export async function clarify(options: { prompt?: boolean; light?: boolean } = {}) {
+  return withErrorBoundary('clarify', async () => {
   logger.info('Running clarification Q&A on current spec...');
 
   if (!(await runGate(() => requireSpec(options.light)))) return;
@@ -77,4 +79,5 @@ Output ONLY the markdown content - no preamble.`;
   if (!llmAvailable) {
     logger.info('Tip: Set up an API key for richer clarification output: danteforge config --set-key "grok:<key>"');
   }
+  });
 }

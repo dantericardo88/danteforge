@@ -1,6 +1,7 @@
 import { loadState, recordWorkflowStage, saveState } from '../../../core/state.js';
 import { verifyTask } from '../../../core/verifier.js';
 import { logger } from '../../../core/logger.js';
+import { emitWaveStart, emitTaskStart, emitTaskComplete } from '../../../core/event-bus.js';
 import { buildTaskPrompt, savePrompt, displayPrompt } from '../../../core/prompt-builder.js';
 import { isLLMAvailable, callLLM } from '../../../core/llm.js';
 import { recordMemory } from '../../../core/memory-engine.js';
@@ -46,6 +47,7 @@ export async function executeWave(
   logger.success(`Wave ${phase} starting (${profile} profile${parallel ? ', parallel' : ''}${promptMode ? ', prompt mode' : ''}${worktree ? ', worktree isolation' : ''})`);
 
   const tasks = state.tasks[phase] ?? [];
+  emitWaveStart(phase, tasks.length);
   if (tasks.length === 0) {
     process.exitCode = 1;
     logger.error(`No tasks defined for phase ${phase}. Run "danteforge tasks" before forge.`);
@@ -97,6 +99,7 @@ export async function executeWave(
   const runTask = async (task: { name: string; files?: string[]; verify?: string }, index: number) => {
     const taskLabel = `[${index + 1}/${tasks.length}] ${task.name}`;
     logger.info(`Executing: ${taskLabel}`);
+    emitTaskStart(taskLabel);
 
     const telemetry: ExecutionTelemetry = createTelemetry();
     const taskStart = Date.now();
@@ -136,6 +139,7 @@ export async function executeWave(
       }
 
       results.push({ task: task.name, success: verified });
+      emitTaskComplete(taskLabel, verified ? 8 : 3);
     } catch (err) {
       const errMsg = err instanceof Error ? err.message : String(err);
       logger.warn(`LLM failed for task "${task.name}": ${errMsg}`);
@@ -147,6 +151,7 @@ export async function executeWave(
         relatedCommands: ['forge'],
       });
       results.push({ task: task.name, success: false, error: errMsg });
+      emitTaskComplete(taskLabel, 0);
     }
   };
 

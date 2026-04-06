@@ -93,8 +93,8 @@ export async function promptUserForCompletionTarget(
   logger.info('     "Done" = 9+/10 avg on 90% of all unique features');
   logger.info('');
   logger.info('  2. Standard Dimensions');
-  logger.info('     Use 12-dimension quality scoring (functionality, testing, security, etc.)');
-  logger.info('     "Done" = all 12 dimensions score 9+/10');
+  logger.info('     Use 18-dimension quality scoring (functionality, testing, security, etc.)');
+  logger.info('     "Done" = all 18 dimensions score 9+/10');
   logger.info('');
   logger.info('  3. Custom Criteria');
   logger.info('     You define what "done" looks like in plain text');
@@ -109,7 +109,7 @@ export async function promptUserForCompletionTarget(
     const target: CompletionTarget = {
       mode: 'dimension-based',
       minScore: isFinite(minScore) ? Math.max(0, Math.min(10, minScore)) : 9.0,
-      description: `Standard 12-dimension scoring: all dimensions ≥ ${minScore}/10`,
+      description: `Standard 18-dimension scoring: all dimensions ≥ ${minScore}/10`,
       definedAt: now(),
       definedBy: 'user-prompted',
     };
@@ -192,7 +192,7 @@ export function formatCompletionTarget(target: CompletionTarget): string {
 
     case 'dimension-based':
       return [
-        `Mode: Standard 12-Dimension Scoring`,
+        `Mode: Standard 18-Dimension Scoring`,
         `Target: ${target.minScore}/10 across all dimensions`,
         `Description: ${target.description}`,
       ].join('\n');

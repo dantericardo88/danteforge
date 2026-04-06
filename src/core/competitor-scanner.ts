@@ -73,6 +73,8 @@ const DEV_TOOL_BASELINES: CompetitorProfile[] = [
       functionality: 88, testing: 72, errorHandling: 75, security: 70,
       uxPolish: 65, documentation: 68, performance: 72, maintainability: 70,
       developerExperience: 75, autonomy: 92, planningQuality: 78, selfImprovement: 60,
+      specDrivenPipeline: 55, convergenceSelfHealing: 85, tokenEconomy: 50,
+      ecosystemMcp: 45, enterpriseReadiness: 55, communityAdoption: 72,
     },
   },
   {
@@ -84,6 +86,8 @@ const DEV_TOOL_BASELINES: CompetitorProfile[] = [
       functionality: 82, testing: 78, errorHandling: 72, security: 80,
       uxPolish: 85, documentation: 75, performance: 70, maintainability: 74,
       developerExperience: 88, autonomy: 68, planningQuality: 76, selfImprovement: 55,
+      specDrivenPipeline: 60, convergenceSelfHealing: 55, tokenEconomy: 55,
+      ecosystemMcp: 80, enterpriseReadiness: 88, communityAdoption: 92,
     },
   },
   {
@@ -95,6 +99,8 @@ const DEV_TOOL_BASELINES: CompetitorProfile[] = [
       functionality: 85, testing: 70, errorHandling: 68, security: 72,
       uxPolish: 92, documentation: 72, performance: 74, maintainability: 76,
       developerExperience: 90, autonomy: 65, planningQuality: 62, selfImprovement: 50,
+      specDrivenPipeline: 35, convergenceSelfHealing: 40, tokenEconomy: 70,
+      ecosystemMcp: 65, enterpriseReadiness: 60, communityAdoption: 95,
     },
   },
   {
@@ -106,6 +112,8 @@ const DEV_TOOL_BASELINES: CompetitorProfile[] = [
       functionality: 78, testing: 68, errorHandling: 65, security: 62,
       uxPolish: 58, documentation: 70, performance: 65, maintainability: 70,
       developerExperience: 75, autonomy: 70, planningQuality: 60, selfImprovement: 55,
+      specDrivenPipeline: 30, convergenceSelfHealing: 50, tokenEconomy: 55,
+      ecosystemMcp: 40, enterpriseReadiness: 35, communityAdoption: 82,
     },
   },
   {
@@ -117,6 +125,8 @@ const DEV_TOOL_BASELINES: CompetitorProfile[] = [
       functionality: 80, testing: 78, errorHandling: 72, security: 65,
       uxPolish: 52, documentation: 68, performance: 68, maintainability: 68,
       developerExperience: 62, autonomy: 82, planningQuality: 72, selfImprovement: 58,
+      specDrivenPipeline: 45, convergenceSelfHealing: 70, tokenEconomy: 40,
+      ecosystemMcp: 35, enterpriseReadiness: 40, communityAdoption: 68,
     },
   },
   {
@@ -128,6 +138,8 @@ const DEV_TOOL_BASELINES: CompetitorProfile[] = [
       functionality: 75, testing: 70, errorHandling: 65, security: 60,
       uxPolish: 55, documentation: 72, performance: 62, maintainability: 65,
       developerExperience: 65, autonomy: 75, planningQuality: 85, selfImprovement: 65,
+      specDrivenPipeline: 75, convergenceSelfHealing: 60, tokenEconomy: 45,
+      ecosystemMcp: 40, enterpriseReadiness: 35, communityAdoption: 72,
     },
   },
   {
@@ -139,6 +151,8 @@ const DEV_TOOL_BASELINES: CompetitorProfile[] = [
       functionality: 70, testing: 55, errorHandling: 55, security: 55,
       uxPolish: 58, documentation: 68, performance: 58, maintainability: 60,
       developerExperience: 68, autonomy: 65, planningQuality: 70, selfImprovement: 45,
+      specDrivenPipeline: 50, convergenceSelfHealing: 45, tokenEconomy: 35,
+      ecosystemMcp: 40, enterpriseReadiness: 30, communityAdoption: 55,
     },
   },
   {
@@ -150,15 +164,273 @@ const DEV_TOOL_BASELINES: CompetitorProfile[] = [
       functionality: 85, testing: 75, errorHandling: 78, security: 80,
       uxPolish: 72, documentation: 80, performance: 76, maintainability: 80,
       developerExperience: 88, autonomy: 72, planningQuality: 70, selfImprovement: 60,
+      specDrivenPipeline: 40, convergenceSelfHealing: 55, tokenEconomy: 75,
+      ecosystemMcp: 90, enterpriseReadiness: 72, communityAdoption: 90,
+    },
+  },
+  // Multi-agent orchestration frameworks
+  {
+    name: 'AutoGen (Microsoft)',
+    url: 'https://github.com/microsoft/autogen',
+    description: 'Multi-agent conversation framework with dynamic agent collaboration and role specialization.',
+    source: 'hardcoded',
+    scores: {
+      functionality: 82, testing: 75, errorHandling: 78, security: 72,
+      uxPolish: 55, documentation: 78, performance: 76, maintainability: 78,
+      developerExperience: 68, autonomy: 85, planningQuality: 78, selfImprovement: 65,
+      specDrivenPipeline: 50, convergenceSelfHealing: 65, tokenEconomy: 45,
+      ecosystemMcp: 55, enterpriseReadiness: 55, communityAdoption: 78,
+    },
+  },
+  {
+    name: 'CrewAI',
+    url: 'https://github.com/joaomdmoura/crewai',
+    description: 'Role-based multi-agent framework for collaborative task execution with crew orchestration.',
+    source: 'hardcoded',
+    scores: {
+      functionality: 80, testing: 72, errorHandling: 74, security: 68,
+      uxPolish: 65, documentation: 75, performance: 72, maintainability: 74,
+      developerExperience: 72, autonomy: 82, planningQuality: 80, selfImprovement: 68,
+      specDrivenPipeline: 55, convergenceSelfHealing: 60, tokenEconomy: 40,
+      ecosystemMcp: 50, enterpriseReadiness: 42, communityAdoption: 70,
+    },
+  },
+  {
+    name: 'OpenHands (All-Hands AI)',
+    url: 'https://github.com/All-Hands-AI/OpenHands',
+    description: 'SWE-bench leading autonomous agent with Docker-sandboxed execution environment.',
+    source: 'hardcoded',
+    scores: {
+      functionality: 85, testing: 80, errorHandling: 78, security: 80,
+      uxPolish: 62, documentation: 72, performance: 74, maintainability: 72,
+      developerExperience: 68, autonomy: 88, planningQuality: 72, selfImprovement: 65,
+      specDrivenPipeline: 40, convergenceSelfHealing: 80, tokenEconomy: 45,
+      ecosystemMcp: 55, enterpriseReadiness: 50, communityAdoption: 75,
+    },
+  },
+  // Test generation
+  {
+    name: 'CodiumAI / Qodo',
+    url: 'https://www.codium.ai',
+    description: 'AI test suite generation and code integrity analysis directly from source code.',
+    source: 'hardcoded',
+    scores: {
+      functionality: 80, testing: 90, errorHandling: 72, security: 70,
+      uxPolish: 78, documentation: 68, performance: 68, maintainability: 74,
+      developerExperience: 82, autonomy: 68, planningQuality: 60, selfImprovement: 72,
+      specDrivenPipeline: 30, convergenceSelfHealing: 72, tokenEconomy: 50,
+      ecosystemMcp: 60, enterpriseReadiness: 65, communityAdoption: 70,
+    },
+  },
+  // AI code review
+  {
+    name: 'CodeRabbit',
+    url: 'https://coderabbit.ai',
+    description: 'AI-powered code review with line-level suggestions and context-aware PR feedback.',
+    source: 'hardcoded',
+    scores: {
+      functionality: 82, testing: 78, errorHandling: 80, security: 82,
+      uxPolish: 85, documentation: 72, performance: 72, maintainability: 80,
+      developerExperience: 88, autonomy: 62, planningQuality: 60, selfImprovement: 68,
+      specDrivenPipeline: 25, convergenceSelfHealing: 50, tokenEconomy: 45,
+      ecosystemMcp: 70, enterpriseReadiness: 78, communityAdoption: 72,
+    },
+  },
+  // Terminal-native agents
+  {
+    name: 'Cline',
+    url: 'https://github.com/cline/cline',
+    description: 'Autonomous VS Code agent that reads, writes, and executes code with human approval gates.',
+    source: 'hardcoded',
+    scores: {
+      functionality: 80, testing: 68, errorHandling: 72, security: 72,
+      uxPolish: 85, documentation: 65, performance: 72, maintainability: 68,
+      developerExperience: 88, autonomy: 78, planningQuality: 60, selfImprovement: 55,
+      specDrivenPipeline: 25, convergenceSelfHealing: 45, tokenEconomy: 55,
+      ecosystemMcp: 85, enterpriseReadiness: 50, communityAdoption: 78,
+    },
+  },
+  {
+    name: 'Continue.dev',
+    url: 'https://docs.continue.dev',
+    description: 'Open-source IDE copilot with agent, chat, autocomplete, and edit modes across IDEs.',
+    source: 'hardcoded',
+    scores: {
+      functionality: 80, testing: 70, errorHandling: 70, security: 72,
+      uxPolish: 88, documentation: 75, performance: 74, maintainability: 72,
+      developerExperience: 90, autonomy: 65, planningQuality: 62, selfImprovement: 58,
+      specDrivenPipeline: 30, convergenceSelfHealing: 40, tokenEconomy: 50,
+      ecosystemMcp: 82, enterpriseReadiness: 48, communityAdoption: 75,
+    },
+  },
+  // Documentation & specification
+  {
+    name: 'Swimm',
+    url: 'https://swimm.io',
+    description: 'Living documentation that automatically stays in sync with code as it evolves.',
+    source: 'hardcoded',
+    scores: {
+      functionality: 78, testing: 62, errorHandling: 65, security: 68,
+      uxPolish: 82, documentation: 92, performance: 65, maintainability: 78,
+      developerExperience: 85, autonomy: 55, planningQuality: 85, selfImprovement: 62,
+      specDrivenPipeline: 70, convergenceSelfHealing: 35, tokenEconomy: 30,
+      ecosystemMcp: 45, enterpriseReadiness: 55, communityAdoption: 65,
+    },
+  },
+  // Agent frameworks
+  {
+    name: 'LangChain Agents',
+    url: 'https://github.com/langchain-ai/langchain',
+    description: 'Composable agent framework with 100+ tool integrations and ReAct reasoning pattern.',
+    source: 'hardcoded',
+    scores: {
+      functionality: 82, testing: 72, errorHandling: 76, security: 70,
+      uxPolish: 60, documentation: 80, performance: 70, maintainability: 68,
+      developerExperience: 72, autonomy: 78, planningQuality: 72, selfImprovement: 65,
+      specDrivenPipeline: 40, convergenceSelfHealing: 55, tokenEconomy: 50,
+      ecosystemMcp: 88, enterpriseReadiness: 50, communityAdoption: 88,
+    },
+  },
+  // ── New competitors (2025-2026 wave) ──────────────────────────────────────
+  {
+    name: 'Kiro (AWS)',
+    url: 'https://kiro.dev',
+    description: 'Spec-driven development tool with EARS-notation requirements, agent hooks, built on Bedrock.',
+    source: 'hardcoded',
+    scores: {
+      functionality: 78, testing: 72, errorHandling: 70, security: 78,
+      uxPolish: 75, documentation: 72, performance: 70, maintainability: 72,
+      developerExperience: 80, autonomy: 72, planningQuality: 82, selfImprovement: 55,
+      specDrivenPipeline: 80, convergenceSelfHealing: 55, tokenEconomy: 60,
+      ecosystemMcp: 65, enterpriseReadiness: 80, communityAdoption: 62,
+    },
+  },
+  {
+    name: 'Codex CLI (OpenAI)',
+    url: 'https://developers.openai.com/codex/cli',
+    description: 'Rust-based terminal agent with OS-level sandboxing, first-class plugins, MCP support.',
+    source: 'hardcoded',
+    scores: {
+      functionality: 82, testing: 72, errorHandling: 72, security: 78,
+      uxPolish: 70, documentation: 75, performance: 80, maintainability: 76,
+      developerExperience: 82, autonomy: 80, planningQuality: 68, selfImprovement: 55,
+      specDrivenPipeline: 35, convergenceSelfHealing: 60, tokenEconomy: 65,
+      ecosystemMcp: 78, enterpriseReadiness: 65, communityAdoption: 80,
+    },
+  },
+  {
+    name: 'Gemini CLI (Google)',
+    url: 'https://github.com/google-gemini/gemini-cli',
+    description: 'Open-source CLI with 1M token context via Gemini 2.5 Pro, generous free tier.',
+    source: 'hardcoded',
+    scores: {
+      functionality: 78, testing: 68, errorHandling: 68, security: 72,
+      uxPolish: 72, documentation: 70, performance: 72, maintainability: 70,
+      developerExperience: 78, autonomy: 65, planningQuality: 60, selfImprovement: 50,
+      specDrivenPipeline: 25, convergenceSelfHealing: 40, tokenEconomy: 72,
+      ecosystemMcp: 65, enterpriseReadiness: 68, communityAdoption: 75,
+    },
+  },
+  {
+    name: 'GitHub Copilot CLI',
+    url: 'https://github.blog/changelog/2026-02-25-github-copilot-cli-is-now-generally-available/',
+    description: 'GA Feb 2026. Plan mode, autopilot, dynamic agent delegation, multi-model, persistent memory.',
+    source: 'hardcoded',
+    scores: {
+      functionality: 85, testing: 78, errorHandling: 75, security: 82,
+      uxPolish: 85, documentation: 80, performance: 74, maintainability: 78,
+      developerExperience: 90, autonomy: 75, planningQuality: 78, selfImprovement: 60,
+      specDrivenPipeline: 55, convergenceSelfHealing: 60, tokenEconomy: 60,
+      ecosystemMcp: 82, enterpriseReadiness: 88, communityAdoption: 95,
+    },
+  },
+  {
+    name: 'Goose (Block)',
+    url: 'https://block.xyz/open-source/goose',
+    description: 'Open-source MCP-native agent, Linux Foundation Agentic AI member, red-team tested.',
+    source: 'hardcoded',
+    scores: {
+      functionality: 78, testing: 70, errorHandling: 72, security: 75,
+      uxPolish: 68, documentation: 70, performance: 68, maintainability: 72,
+      developerExperience: 75, autonomy: 72, planningQuality: 60, selfImprovement: 55,
+      specDrivenPipeline: 30, convergenceSelfHealing: 50, tokenEconomy: 50,
+      ecosystemMcp: 85, enterpriseReadiness: 55, communityAdoption: 72,
+    },
+  },
+  {
+    name: 'Replit Agent',
+    url: 'https://replit.com',
+    description: 'Most autonomous app builder — continuous generate/test/debug/fix loop with deployment.',
+    source: 'hardcoded',
+    scores: {
+      functionality: 82, testing: 68, errorHandling: 70, security: 68,
+      uxPolish: 88, documentation: 65, performance: 70, maintainability: 65,
+      developerExperience: 88, autonomy: 85, planningQuality: 65, selfImprovement: 60,
+      specDrivenPipeline: 45, convergenceSelfHealing: 78, tokenEconomy: 55,
+      ecosystemMcp: 60, enterpriseReadiness: 50, communityAdoption: 85,
+    },
+  },
+  {
+    name: 'Zencoder',
+    url: 'https://zencoder.ai',
+    description: 'SOC 2 Type II + ISO 27001/42001 certified. Dozens of agents in isolated environments.',
+    source: 'hardcoded',
+    scores: {
+      functionality: 78, testing: 72, errorHandling: 75, security: 85,
+      uxPolish: 72, documentation: 70, performance: 70, maintainability: 74,
+      developerExperience: 75, autonomy: 72, planningQuality: 65, selfImprovement: 55,
+      specDrivenPipeline: 40, convergenceSelfHealing: 55, tokenEconomy: 55,
+      ecosystemMcp: 55, enterpriseReadiness: 90, communityAdoption: 48,
+    },
+  },
+  {
+    name: 'Qodo 2.0',
+    url: 'https://www.codium.ai',
+    description: 'Multi-agent code review + automatic test generation. $120M funded.',
+    source: 'hardcoded',
+    scores: {
+      functionality: 82, testing: 92, errorHandling: 75, security: 72,
+      uxPolish: 80, documentation: 72, performance: 70, maintainability: 76,
+      developerExperience: 85, autonomy: 72, planningQuality: 62, selfImprovement: 72,
+      specDrivenPipeline: 35, convergenceSelfHealing: 72, tokenEconomy: 55,
+      ecosystemMcp: 65, enterpriseReadiness: 72, communityAdoption: 72,
+    },
+  },
+  {
+    name: 'Dagger',
+    url: 'https://dagger.io',
+    description: 'CI/CD pipelines as code with native AI agent integration and LLMs-in-pipelines.',
+    source: 'hardcoded',
+    scores: {
+      functionality: 80, testing: 75, errorHandling: 72, security: 70,
+      uxPolish: 70, documentation: 78, performance: 78, maintainability: 75,
+      developerExperience: 78, autonomy: 60, planningQuality: 55, selfImprovement: 45,
+      specDrivenPipeline: 30, convergenceSelfHealing: 40, tokenEconomy: 50,
+      ecosystemMcp: 80, enterpriseReadiness: 65, communityAdoption: 70,
+    },
+  },
+  {
+    name: 'Kilo Code',
+    url: 'https://marketplace.visualstudio.com/items?itemName=kilocode.Kilo-Code',
+    description: 'Open-source multi-IDE agent with structured modes, 500+ AI model support.',
+    source: 'hardcoded',
+    scores: {
+      functionality: 78, testing: 68, errorHandling: 68, security: 70,
+      uxPolish: 82, documentation: 68, performance: 72, maintainability: 70,
+      developerExperience: 85, autonomy: 72, planningQuality: 58, selfImprovement: 52,
+      specDrivenPipeline: 30, convergenceSelfHealing: 45, tokenEconomy: 55,
+      ecosystemMcp: 78, enterpriseReadiness: 48, communityAdoption: 62,
     },
   },
 ];
 
-// All 12 dimension keys for iteration
+// All 18 dimension keys for iteration
 const ALL_DIMENSIONS: ScoringDimension[] = [
   'functionality', 'testing', 'errorHandling', 'security',
   'uxPolish', 'documentation', 'performance', 'maintainability',
   'developerExperience', 'autonomy', 'planningQuality', 'selfImprovement',
+  'specDrivenPipeline', 'convergenceSelfHealing', 'tokenEconomy',
+  'ecosystemMcp', 'enterpriseReadiness', 'communityAdoption',
 ];
 
 // Keywords that indicate the project is a developer/coding tool
@@ -166,6 +438,8 @@ const DEV_TOOL_KEYWORDS = [
   'cli', 'agent', 'ide', 'coding', 'developer tool', 'ai tool', 'code generator',
   'workflow', 'forge', 'autoforge', 'automate code', 'code assistant', 'copilot',
   'programming', 'software engineer', 'devtool', 'dev tool',
+  'multi-agent', 'orchestrat', 'agent framework', 'test generation', 'code review',
+  'autonomous', 'scaffold', 'agentic',
 ];
 
 // ── Main scan function ────────────────────────────────────────────────────────
@@ -261,7 +535,8 @@ async function discoverAndScoreCompetitors(
     '  name: string, url: string, description: string (1 sentence)',
     '  scores: object with keys: functionality, testing, errorHandling, security, uxPolish,',
     '    documentation, performance, maintainability, developerExperience, autonomy,',
-    '    planningQuality, selfImprovement — each scored 0-100.',
+    '    planningQuality, selfImprovement, specDrivenPipeline, convergenceSelfHealing,',
+    '    tokenEconomy, ecosystemMcp, enterpriseReadiness, communityAdoption — each scored 0-100.',
     '',
     'Score each competitor honestly based on public reputation and capabilities.',
     'Respond ONLY with valid JSON: [{"name":"...","url":"...","description":"...","scores":{...}}, ...]',
@@ -322,7 +597,8 @@ async function scoreCompetitorsByName(
     names.map((n) => `- ${n}`).join('\n'),
     '',
     'Dimensions: functionality, testing, errorHandling, security, uxPolish, documentation,',
-    'performance, maintainability, developerExperience, autonomy, planningQuality, selfImprovement',
+    'performance, maintainability, developerExperience, autonomy, planningQuality, selfImprovement,',
+    'specDrivenPipeline, convergenceSelfHealing, tokenEconomy, ecosystemMcp, enterpriseReadiness, communityAdoption',
     '',
     'Respond ONLY with JSON: {"name": {"url":"...", "description":"...", "scores":{...}}, ...}',
     'Estimate scores based on public reputation. Use 70 as the default if uncertain.',
@@ -361,7 +637,8 @@ async function enrichDevToolScores(
     'For each tool below, provide updated capability scores (0-100) based on recent public information.',
     'Respond ONLY with a JSON object. Keys are tool names, values are score objects.',
     'Dimensions: functionality, testing, errorHandling, security, uxPolish, documentation,',
-    'performance, maintainability, developerExperience, autonomy, planningQuality, selfImprovement',
+    'performance, maintainability, developerExperience, autonomy, planningQuality, selfImprovement,',
+    'specDrivenPipeline, convergenceSelfHealing, tokenEconomy, ecosystemMcp, enterpriseReadiness, communityAdoption',
     '',
     'Tools to score:',
     competitors.map((c) => `- ${c.name}`).join('\n'),
@@ -405,6 +682,8 @@ function buildScoresFromRaw(raw: Record<string, unknown>): Record<ScoringDimensi
     functionality: 70, testing: 70, errorHandling: 70, security: 70,
     uxPolish: 70, documentation: 70, performance: 70, maintainability: 70,
     developerExperience: 70, autonomy: 70, planningQuality: 70, selfImprovement: 70,
+    specDrivenPipeline: 40, convergenceSelfHealing: 45, tokenEconomy: 50,
+    ecosystemMcp: 50, enterpriseReadiness: 50, communityAdoption: 60,
   };
   for (const dim of ALL_DIMENSIONS) {
     const val = raw[dim];

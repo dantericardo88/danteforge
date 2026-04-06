@@ -5,6 +5,7 @@ import { loadState, saveState } from '../../core/state.js';
 import { logger } from '../../core/logger.js';
 import { savePrompt, displayPrompt } from '../../core/prompt-builder.js';
 import { isLLMAvailable, callLLM } from '../../core/llm.js';
+import { withErrorBoundary } from '../../core/cli-error-boundary.js';
 
 const STATE_DIR = '.danteforge';
 
@@ -18,6 +19,7 @@ async function fileExists(filePath: string): Promise<boolean> {
 }
 
 export async function feedbackPrompt(options: { auto?: boolean } = {}) {
+  return withErrorBoundary('feedback', async () => {
   const uprPath = path.join(STATE_DIR, 'UPR.md');
 
   if (!await fileExists(uprPath)) {
@@ -97,4 +99,5 @@ Output a refined markdown document with:
 
   state.auditLog.push(`${timestamp} | feedback: prompt generated for manual LLM`);
   await saveState(state);
+  });
 }

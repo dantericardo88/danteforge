@@ -9,6 +9,7 @@ import {
   getBrowseInstallInstructions,
   getBrowsePort,
 } from '../../core/browse-adapter.js';
+import { withErrorBoundary } from '../../core/cli-error-boundary.js';
 import {
   runQAPass,
   saveQABaseline,
@@ -22,6 +23,7 @@ export async function qa(options: {
   saveBaseline?: boolean;
   failBelow?: string;
 } = { url: '' }) {
+  return withErrorBoundary('qa', async () => {
   // Binary detection — fail-closed
   const binaryPath = await detectBrowseBinary();
   if (!binaryPath) {
@@ -111,4 +113,5 @@ export async function qa(options: {
     logger.error(`\nQA score ${report.score} is below threshold ${failBelow} — failing`);
     process.exitCode = 1;
   }
+  });
 }

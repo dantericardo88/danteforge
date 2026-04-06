@@ -4,6 +4,7 @@
 
 import { loadState, saveState } from '../../core/state.js';
 import { logger } from '../../core/logger.js';
+import { withErrorBoundary } from '../../core/cli-error-boundary.js';
 import { resolveProvider } from '../../core/config.js';
 import { ModelProfileEngine } from '../../core/model-profile-engine.js';
 import { classifyTask } from '../../core/model-profile.js';
@@ -25,43 +26,45 @@ export async function profile(
   arg?: string,
   options: { prompt?: boolean } = {},
 ): Promise<void> {
-  if (options.prompt) {
-    showProfilePrompt(subcommand, arg);
-    return;
-  }
-
-  const state = await loadState();
-  const timestamp = new Date().toISOString();
-  const engine = new ModelProfileEngine(process.cwd());
-
-  if (!subcommand || subcommand === 'summary') {
-    await showCurrentModelSummary(engine);
-    state.auditLog.push(`${timestamp} | profile: viewed current model summary`);
-  } else if (subcommand === 'compare') {
-    await showCompare(engine);
-    state.auditLog.push(`${timestamp} | profile: viewed model comparison`);
-  } else if (subcommand === 'report') {
-    const modelKey = arg ?? await resolveCurrentModelKey();
-    await showFullReport(engine, modelKey);
-    state.auditLog.push(`${timestamp} | profile: viewed full report for ${modelKey}`);
-  } else if (subcommand === 'weakness') {
-    const modelKey = arg ?? await resolveCurrentModelKey();
-    await showWeaknesses(engine, modelKey);
-    state.auditLog.push(`${timestamp} | profile: viewed weaknesses for ${modelKey}`);
-  } else if (subcommand === 'recommend') {
-    if (!arg) {
-      logger.error('Usage: danteforge profile recommend "<task description>"');
+  return withErrorBoundary('profile', async () => {
+    if (options.prompt) {
+      showProfilePrompt(subcommand, arg);
       return;
     }
-    await showRecommendation(engine, arg);
-    state.auditLog.push(`${timestamp} | profile: task recommendation for "${arg.slice(0, 50)}"`);
-  } else {
-    // Treat subcommand as a model key for direct model lookup
-    await showModelSummary(engine, subcommand);
-    state.auditLog.push(`${timestamp} | profile: viewed summary for ${subcommand}`);
-  }
 
-  await saveState(state);
+    const state = await loadState();
+    const timestamp = new Date().toISOString();
+    const engine = new ModelProfileEngine(process.cwd());
+
+    if (!subcommand || subcommand === 'summary') {
+      await showCurrentModelSummary(engine);
+      state.auditLog.push(`${timestamp} | profile: viewed current model summary`);
+    } else if (subcommand === 'compare') {
+      await showCompare(engine);
+      state.auditLog.push(`${timestamp} | profile: viewed model comparison`);
+    } else if (subcommand === 'report') {
+      const modelKey = arg ?? await resolveCurrentModelKey();
+      await showFullReport(engine, modelKey);
+      state.auditLog.push(`${timestamp} | profile: viewed full report for ${modelKey}`);
+    } else if (subcommand === 'weakness') {
+      const modelKey = arg ?? await resolveCurrentModelKey();
+      await showWeaknesses(engine, modelKey);
+      state.auditLog.push(`${timestamp} | profile: viewed weaknesses for ${modelKey}`);
+    } else if (subcommand === 'recommend') {
+      if (!arg) {
+        logger.error('Usage: danteforge profile recommend "<task description>"');
+        return;
+      }
+      await showRecommendation(engine, arg);
+      state.auditLog.push(`${timestamp} | profile: task recommendation for "${arg.slice(0, 50)}"`);
+    } else {
+      // Treat subcommand as a model key for direct model lookup
+      await showModelSummary(engine, subcommand);
+      state.auditLog.push(`${timestamp} | profile: viewed summary for ${subcommand}`);
+    }
+
+    await saveState(state);
+  });
 }
 
 // ── Subcommand Handlers ────────────────────────────────────────────────────────

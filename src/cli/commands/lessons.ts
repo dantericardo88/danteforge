@@ -10,6 +10,7 @@ import { isLLMAvailable, callLLM } from '../../core/llm.js';
 import { recordMemory } from '../../core/memory-engine.js';
 import { savePrompt, displayPrompt } from '../../core/prompt-builder.js';
 import { resolveSkill } from '../../core/skills.js';
+import { withErrorBoundary } from '../../core/cli-error-boundary.js';
 
 const LESSONS_FILE = path.join('.danteforge', 'lessons.md');
 const MAX_LESSONS_LINES = 2000;
@@ -227,6 +228,7 @@ export async function lessons(correction?: string, options: {
   prompt?: boolean;
   compact?: boolean;
 } = {}) {
+  return withErrorBoundary('lessons', async () => {
   logger.success('DanteForge Lessons — Self-Improving Knowledge Base');
   logger.info('');
 
@@ -364,4 +366,5 @@ RULE: <one sentence rule to prevent this in future>`;
 
   state.auditLog.push(`${new Date().toISOString()} | lessons: viewed (${(content.match(/^## \[/gm) || []).length} lessons)`);
   await saveState(state);
+  });
 }

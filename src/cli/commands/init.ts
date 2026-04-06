@@ -7,28 +7,36 @@ import { logger } from '../../core/logger.js';
 import { loadState, saveState } from '../../core/state.js';
 import { detectProjectType } from '../../core/completion-tracker.js';
 import { isLLMAvailable } from '../../core/llm.js';
-import { loadConfig } from '../../core/config.js';
+import { loadConfig, setDefaultProvider, type LLMProvider } from '../../core/config.js';
+import { selectProvider } from '../../core/prompts.js';
+import {
+  getOrPromptCompletionTarget,
+  type CompletionTarget,
+  type CompletionTargetOptions,
+} from '../../core/completion-target.js';
+import { withErrorBoundary } from '../../core/cli-error-boundary.js';
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
 export interface InitOptions {
   prompt?: boolean;
   nonInteractive?: boolean;
+  provider?: LLMProvider;
   cwd?: string;
   // Injection seams for testing
   _isTTY?: boolean;
-  _readline?: {
-    question: (prompt: string, callback: (answer: string) => void) => void;
-    close: () => void;
-  };
+  _readline?: CompletionTargetOptions['_readline'];
+  _now?: () => string;
   _isLLMAvailable?: () => Promise<boolean>;
   _loadState?: typeof loadState;
   _saveState?: typeof saveState;
+  _getOrPromptTarget?: typeof getOrPromptCompletionTarget;
 }
 
 // ── Main command ──────────────────────────────────────────────────────────────
 
 export async function init(options: InitOptions = {}): Promise<void> {
+  return withErrorBoundary('init', async () => {
   const cwd = options.cwd ?? process.cwd();
   const timestamp = new Date().toISOString();
   const isInteractive = (options._isTTY ?? process.stdout.isTTY) && !options.nonInteractive;
@@ -72,6 +80,49 @@ export async function init(options: InitOptions = {}): Promise<void> {
     preferredLevel = levelNum === 1 ? 'spark' : levelNum === 3 ? 'inferno' : 'magic';
 
     logger.info('');
+
+    // Provider selection — use @inquirer/prompts in production, readline seam in tests
+    if (!options.provider) {
+      let selectedProvider: LLMProvider;
+      if (options._readline) {
+        logger.info('  Which LLM provider do you want to use?');
+        logger.info('    1. Ollama (local, free)');
+        logger.info('    2. Claude (Anthropic)');
+        logger.info('    3. OpenAI (GPT-4o)');
+        logger.info('    4. Grok (xAI)');
+        logger.info('    5. Gemini (Google)');
+        const provChoice = await askQuestion('  Enter choice [1]: ', options._readline);
+        const provNum = parseInt(provChoice.trim() || '1', 10);
+        const provMap: Record<number, LLMProvider> = { 1: 'ollama', 2: 'claude', 3: 'openai', 4: 'grok', 5: 'gemini' };
+        selectedProvider = provMap[provNum] ?? 'ollama';
+      } else {
+        selectedProvider = await selectProvider();
+      }
+      try { await setDefaultProvider(selectedProvider); } catch { /* best-effort */ }
+    }
+
+    logger.info('');
+  }
+
+  // ── Step 1b: Completion target (interactive only, skip if already set) ───────
+  let completionTarget: CompletionTarget | undefined;
+  if (isInteractive) {
+    try {
+      const getTargetFn = options._getOrPromptTarget ?? getOrPromptCompletionTarget;
+      completionTarget = await getTargetFn(cwd, true, {
+        _readFile: async (p) => fs.readFile(p, 'utf-8'),
+        _writeFile: async (p, c) => {
+          await fs.mkdir(path.dirname(p), { recursive: true });
+          await fs.writeFile(p, c, 'utf-8');
+        },
+        _readline: options._readline,
+        _now: options._now,
+      });
+      logger.success('Completion target saved.');
+      logger.info('');
+    } catch {
+      // Completion target prompt failed — continue without it
+    }
   }
 
   // ── Step 2: Detect project type ───────────────────────────────────────────
@@ -136,6 +187,14 @@ export async function init(options: InitOptions = {}): Promise<void> {
   state.projectType = projectType;
   if (projectDescription) state.constitution = projectDescription;
   state.preferredLevel = preferredLevel;
+  if (completionTarget) {
+    state.completionTarget = {
+      mode: completionTarget.mode,
+      minScore: completionTarget.minScore,
+      featureCoverage: completionTarget.featureCoverage,
+      definedAt: completionTarget.definedAt,
+    };
+  }
   state.auditLog.push(
     `${timestamp} | init: type=${projectType}, level=${preferredLevel}, existing=${isExisting}`,
   );
@@ -177,6 +236,7 @@ export async function init(options: InitOptions = {}): Promise<void> {
 
   logger.info('');
   logger.info('Run "danteforge doctor" for full system diagnostics.');
+  });
 }
 
 // ── readline helper (same pattern as completion-target.ts) ────────────────────

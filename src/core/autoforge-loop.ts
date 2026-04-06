@@ -9,6 +9,7 @@ import { computeCompletionTracker, detectProjectType, type CompletionTracker } f
 import { SCORE_THRESHOLDS, ARTIFACT_COMMAND_MAP, ANTI_STUB_PATTERNS } from './pdse-config.js';
 import { logger } from './logger.js';
 import { recordMemory } from './memory-engine.js';
+import { emitScoreUpdate, emitCycleComplete } from './event-bus.js';
 import { assessMaturity, type MaturityAssessment } from './maturity-engine.js';
 import type { MaturityLevel } from './maturity-levels.js';
 
@@ -115,6 +116,8 @@ export async function runAutoforgeLoop(ctx: AutoforgeLoopContext): Promise<Autof
       }
       const tracker = computeCompletionTracker(ctx.state, scores);
       ctx.state.completionTracker = tracker;
+      emitScoreUpdate('completion', tracker.overall);
+      emitCycleComplete(ctx.cycleCount, tracker.overall);
 
       // 3. Check completion threshold
       if (tracker.overall >= COMPLETION_THRESHOLD) {

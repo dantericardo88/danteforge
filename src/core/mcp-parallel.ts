@@ -2,6 +2,7 @@
 // Respects concurrency limits and handles partial failures.
 
 import { logger } from './logger.js';
+import { NetworkError } from './errors.js';
 
 export interface MCPToolCall {
   tool: string;
@@ -73,7 +74,7 @@ async function executeWithTimeout(
   return Promise.race([
     executor(call),
     new Promise<MCPToolResult>((_, reject) =>
-      setTimeout(() => reject(new Error(`Tool "${call.tool}" timed out after ${timeout}ms`)), timeout),
+      setTimeout(() => reject(new NetworkError(`Tool "${call.tool}" timed out after ${timeout}ms`, `Increase timeout or check if "${call.tool}" is responsive`)), timeout),
     ),
   ]);
 }

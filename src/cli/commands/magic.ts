@@ -2,6 +2,9 @@ import { randomUUID } from "node:crypto";
 import { readFile, writeFile, unlink, mkdir } from "node:fs/promises";
 import { join, dirname } from "node:path";
 import { logger } from "../../core/logger.js";
+import { withErrorBoundary } from "../../core/cli-error-boundary.js";
+import { emitTaskStart, emitTaskComplete } from "../../core/event-bus.js";
+import { withSpinner } from "../../core/progress.js";
 import { loadState, saveState, type DanteState } from "../../core/state.js";
 import { createTelemetry, recordToolCall, recordBashCommand, type ExecutionTelemetry } from "../../core/execution-telemetry.js";
 import { detectLoop } from "../../core/loop-detector.js";
@@ -268,9 +271,11 @@ export interface MagicCommandOptions {
 }
 
 export async function magic(goal?: string, options: MagicCommandOptions = {}) {
-  return runMagicPreset(goal, {
-    ...options,
-    level: options.level ?? DEFAULT_MAGIC_LEVEL,
+  return withErrorBoundary('magic', async () => {
+    await runMagicPreset(goal, {
+      ...options,
+      level: options.level ?? DEFAULT_MAGIC_LEVEL,
+    });
   });
 }
 
@@ -278,42 +283,54 @@ export async function spark(
   goal?: string,
   options: Omit<MagicCommandOptions, "level"> = {},
 ) {
-  return runMagicPreset(goal, { ...options, level: "spark" });
+  return withErrorBoundary('spark', async () => {
+    await runMagicPreset(goal, { ...options, level: "spark" });
+  });
 }
 
 export async function ember(
   goal?: string,
   options: Omit<MagicCommandOptions, "level"> = {},
 ) {
-  return runMagicPreset(goal, { ...options, level: "ember" });
+  return withErrorBoundary('ember', async () => {
+    await runMagicPreset(goal, { ...options, level: "ember" });
+  });
 }
 
 export async function blaze(
   goal?: string,
   options: Omit<MagicCommandOptions, "level"> = {},
 ) {
-  return runMagicPreset(goal, { ...options, level: "blaze" });
+  return withErrorBoundary('blaze', async () => {
+    await runMagicPreset(goal, { ...options, level: "blaze" });
+  });
 }
 
 export async function nova(
   goal?: string,
   options: Omit<MagicCommandOptions, "level"> = {},
 ) {
-  return runMagicPreset(goal, { ...options, level: "nova" });
+  return withErrorBoundary('nova', async () => {
+    await runMagicPreset(goal, { ...options, level: "nova" });
+  });
 }
 
 export async function canvas(
   goal?: string,
   options: Omit<MagicCommandOptions, "level"> = {},
 ) {
-  return runMagicPreset(goal, { ...options, level: "canvas" });
+  return withErrorBoundary('canvas', async () => {
+    await runMagicPreset(goal, { ...options, level: "canvas" });
+  });
 }
 
 export async function inferno(
   goal?: string,
   options: Omit<MagicCommandOptions, "level"> = {},
 ) {
-  return runMagicPreset(goal, { ...options, level: "inferno" });
+  return withErrorBoundary('inferno', async () => {
+    await runMagicPreset(goal, { ...options, level: "inferno" });
+  });
 }
 
 async function runMagicPreset(
@@ -411,6 +428,7 @@ async function runMagicPreset(
     const step = plan.steps[i]!;
     const stepStart = Date.now();
     const label = describeStep(step);
+    emitTaskStart(label);
     logger.info(
       `[${effectiveLevel}] Running: ${label} (${i + 1}/${plan.steps.length})`,
     );
@@ -459,6 +477,7 @@ async function runMagicPreset(
       // Only show [OK] complete for non-critical steps
       // Critical steps (autoforge, verify, party) should wait for maturity check
       const isCriticalStep = ['autoforge', 'verify', 'party'].includes(step.kind);
+      emitTaskComplete(label);
       if (!isCriticalStep || !plan.preset.targetMaturityLevel) {
         logger.success(
           `[${effectiveLevel}] ${label} complete (${(durationMs / 1000).toFixed(1)}s)`,
@@ -690,15 +709,19 @@ export async function runMagicPlanStep(
       return;
     }
     case "autoforge": {
-      await (_fns?.autoforge ?? (async (goalText: string, opts: { maxWaves: number; profile: string; parallel: boolean; worktree: boolean }) => {
-        const { autoforge } = await import("./autoforge.js");
-        await autoforge(goalText, opts);
-      }))(goal, {
-        maxWaves: step.maxWaves,
-        profile: step.profile,
-        parallel: step.parallel,
-        worktree: step.worktree,
-      });
+      await withSpinner(
+        `Running autoforge (${step.maxWaves} waves)...`,
+        () => (_fns?.autoforge ?? (async (goalText: string, opts: { maxWaves: number; profile: string; parallel: boolean; worktree: boolean }) => {
+          const { autoforge } = await import("./autoforge.js");
+          await autoforge(goalText, opts);
+        }))(goal, {
+          maxWaves: step.maxWaves,
+          profile: step.profile,
+          parallel: step.parallel,
+          worktree: step.worktree,
+        }),
+        'Autoforge waves complete',
+      );
       return;
     }
     case "party": {
@@ -740,10 +763,14 @@ export async function runMagicPlanStep(
       return;
     }
     case "oss": {
-      await (_fns?.oss ?? (async (opts: { maxRepos: string }) => {
-        const { ossResearcher } = await import("./oss.js");
-        await ossResearcher(opts);
-      }))({ maxRepos: String(step.maxRepos) });
+      await withSpinner(
+        `Discovering OSS patterns (max ${step.maxRepos} repos)...`,
+        () => (_fns?.oss ?? (async (opts: { maxRepos: string }) => {
+          const { ossResearcher } = await import("./oss.js");
+          await ossResearcher(opts);
+        }))({ maxRepos: String(step.maxRepos) }),
+        'OSS discovery complete',
+      );
       return;
     }
     case "tech-decide": {

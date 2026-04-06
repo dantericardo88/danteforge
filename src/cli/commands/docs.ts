@@ -3,6 +3,7 @@ import fs from 'fs/promises';
 import path from 'path';
 import { logger } from '../../core/logger.js';
 import { loadState, saveState } from '../../core/state.js';
+import { withErrorBoundary } from '../../core/cli-error-boundary.js';
 
 interface CommandEntry {
   name: string;
@@ -108,6 +109,7 @@ function formatCommandReference(): string {
 }
 
 export async function docs(): Promise<void> {
+  return withErrorBoundary('docs', async () => {
   const cwd = process.cwd();
   const timestamp = new Date().toISOString();
 
@@ -131,4 +133,5 @@ export async function docs(): Promise<void> {
   } catch {
     // Best-effort audit log only.
   }
+  });
 }

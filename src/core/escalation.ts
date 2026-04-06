@@ -2,6 +2,7 @@
 // Harvested from: Reflection-3.ts (OpenCode plugin) — 3-tier escalation with loop overrides
 
 import type { LoopDetectionResult } from './loop-detector.js';
+import { ValidationError } from './errors.js';
 
 // --- Escalating Feedback Builder ---------------------------------------------
 // Attempt 1: Polite with missing items
@@ -15,6 +16,13 @@ export function buildEscalatingFeedback(
   missing: string[],
   loopResult?: LoopDetectionResult,
 ): string {
+  if (attempt < 1 || maxAttempts < 1) {
+    throw new ValidationError(
+      `Invalid escalation params: attempt=${attempt}, maxAttempts=${maxAttempts}`,
+      'Ensure attempt >= 1 and maxAttempts >= 1',
+    );
+  }
+
   // Loop overrides take precedence over normal escalation
   if (loopResult?.detected) {
     if (loopResult.type === 'planning') {

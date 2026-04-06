@@ -18,6 +18,7 @@ import {
   type PatternExtraction,
   type OSSResearchReport,
 } from '../../core/oss-researcher.js';
+import { withErrorBoundary } from '../../core/cli-error-boundary.js';
 
 const execFileAsync = promisify(execFile);
 
@@ -562,6 +563,7 @@ export async function ossResearcher(options: {
   dryRun?: boolean;
   maxRepos?: string;
 } = {}): Promise<void> {
+  return withErrorBoundary('oss', async () => {
   const timestamp = new Date().toISOString();
   const maxRepos = Math.min(Math.max(parseInt(options.maxRepos ?? '8', 10) || MAX_REPOS_DEFAULT, 1), 15);
 
@@ -668,4 +670,5 @@ export async function ossResearcher(options: {
     `${report.patternsExtracted.length} patterns extracted, ${p0p1Count} P0/P1`,
   );
   await saveState(state);
+  });
 }

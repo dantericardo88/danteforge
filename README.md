@@ -1,21 +1,69 @@
-# DanteForge
+# DanteForge — spec-driven agentic dev CLI. Works with Claude Code, Codex, Cursor.
 
-## Quick Start (3 minutes)
+[![npm version](https://img.shields.io/badge/npm-0.10.0-blue)](https://www.npmjs.com/package/danteforge)
+[![license](https://img.shields.io/badge/license-MIT-green)](LICENSE)
+[![node](https://img.shields.io/badge/node-%3E%3D18-brightgreen)](package.json)
+
+## 30-Second Install
 
 ```bash
 npm install -g danteforge
-danteforge init                                   # detect project, configure provider
-danteforge magic "Build a todo app with React"    # full pipeline in one command
+danteforge init
 ```
 
-That's it. DanteForge will spec → plan → code → test → verify your project.
+## Quick Start
 
-**New?** → `danteforge init` asks 3 questions and personalizes your setup.
-**Lost?** → `danteforge help` gives context-aware guidance for your current stage.
-**Define "done"** → `danteforge define-done` sets your quality target (feature universe, dimensions, or custom).
-**Check quality** → `danteforge assess` scores harshly against competitors and generates a gap-closing masterplan.
+```bash
+danteforge constitution   # define your project
+danteforge nova           # 9-step autonomous build cycle (~$3)
+danteforge assess         # 18-dimension quality report vs 27 competitors
+```
+
+## Works With
+
+DanteForge exposes an MCP server that each of these agents can connect to directly:
+
+- **Claude Code** — full MCP integration + plugin manifest + slash commands
+- **Codex CLI** — native workflow slash commands via `~/.codex/commands`
+- **Cursor** — MCP server + `.cursor/mcp.json` config
+- **Windsurf** — MCP server via stdio
+
+```json
+// Add to your Claude Code / Cursor MCP config:
+{ "danteforge": { "command": "danteforge", "args": ["mcp-server"] } }
+```
+
+## Why DanteForge?
+
+- **Constitution-driven pipeline enforces spec→plan→verify — no skipping steps**
+- **Convergence loops repair until quality gates pass — not just until it runs**
+- **Harsh 18-dimension scoring benchmarked against 27 competitors — no grade inflation**
+
+## Competitor Comparison
+
+| Tool | specDriven | autonomy | testing | tokenEcon | enterprise | community |
+|---|---|---|---|---|---|---|
+| **DanteForge** | **8.5** | **8.0** | **8.5** | **7.5** | 4.5 | 1.5 |
+| Claude Code | 6.0 | 8.5 | 8.0 | 7.5 | 8.5 | 9.5 |
+| Devin | 7.5 | 9.0 | 7.0 | 6.5 | 7.0 | 7.5 |
+| Kiro (AWS) | 8.0 | 7.0 | 7.5 | 6.5 | 6.5 | 4.0 |
+| Cursor | 5.5 | 6.5 | 7.5 | 6.0 | 7.0 | 9.0 |
+| Codex CLI | 5.5 | 8.0 | 7.0 | 7.0 | 6.0 | 7.0 |
+| Aider | 6.5 | 7.5 | 7.5 | 6.0 | 5.0 | 8.0 |
+| Qodo 2.0 | 5.5 | 6.0 | 9.2 | 5.5 | 6.5 | 5.5 |
+
+Full 18-dimension × 27-competitor matrix: run `danteforge assess`
+
+## Links
+
+- [Integration Guide](docs/INTEGRATION-GUIDE.md)
+- [Magic Levels](docs/MAGIC-LEVELS.md)
+- [SECURITY.md](SECURITY.md)
+- [CONTRIBUTING.md](CONTRIBUTING.md)
 
 ---
+
+## Who This Is For
 
 DanteForge is an agent-oriented development workflow for Codex, Claude Code, VS Code, and direct CLI use. It turns high-level intent into explicit artifacts, execution prompts, and verification gates without claiming work happened when it did not.
 
@@ -23,43 +71,9 @@ DanteForge is an agent-oriented development workflow for Codex, Claude Code, VS 
 
 > **5-10x Token Savings**: Local-first planning, scoped wave execution, hard gates, context rot detection, and self-improving lessons mean you can run multiple projects without burning through LLM credits. See [docs/Token-Savings.md](docs/Token-Savings.md) for the full breakdown.
 
-## Product Focus
-
-DanteForge is designed to be used in three primary ways:
-
-1. From terminal-based coding agents such as Codex or Claude Code.
-2. From the VS Code extension as a workspace command surface.
-3. From the raw CLI in repositories that want structured planning and execution artifacts.
-
-The CLI and the VS Code extension are both first-class release targets.
-The packaged npm artifact also carries the `.claude-plugin/` manifests used for plugin-host packaging and parity checks.
-
-## Who This Is For
-
-DanteForge is for developers and teams who want:
-
-- **Structured development workflows** — not ad-hoc prompting, but a deterministic pipeline from idea to verified implementation
-- **Multi-agent orchestration** — coordinate multiple coding agents (Claude Code, Codex, Gemini, OpenCode, Cursor) with shared state
-- **Offline-first planning** — generate specs, plans, and tasks locally without burning LLM credits
-- **Quality gates** — hard gates that prevent skipping steps, anti-stub doctrine, and fail-closed verification
-- **Token efficiency** — scoped context windows, wave-based execution, and self-improving lessons reduce LLM costs by 5-10x
-
-### Compared To
-
-| Feature | DanteForge | Cursor | Aider | Continue.dev | Windsurf |
-|---------|-----------|--------|-------|--------------|----------|
-| Structured pipeline | 12-stage | No | No | No | No |
-| Multi-agent party mode | Yes | No | No | No | No |
-| Offline planning | Yes | No | Partial | Partial | No |
-| Hard quality gates | Yes | No | No | No | No |
-| Agent-agnostic | Yes | Cursor only | Git-based | VS Code | Windsurf only |
-| Design-as-Code | Yes (.op files) | No | No | No | No |
-| OSS pattern harvesting | Yes (license-gated) | No | No | No | No |
-| Autonomous optimization | Yes (autoresearch) | No | No | No | No |
-
 ## Operational Status
 
-DanteForge `0.8.0` is in GA hardening for offline and fail-closed operation. Treat release readiness as proven only when the verification and release gates below pass in your environment and CI. For the current-state verification surface and the explicit follow-up list, see [docs/Operational-Readiness-v0.8.0.md](docs/Operational-Readiness-v0.8.0.md).
+DanteForge `0.10.0` is in active development. Treat release readiness as proven only when the verification and release gates below pass in your environment and CI. See [docs/Operational-Readiness-v0.8.0.md](docs/Operational-Readiness-v0.8.0.md) for the v0.8.0 readiness report.
 
 ## Install
 

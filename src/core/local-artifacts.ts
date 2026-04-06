@@ -1,5 +1,6 @@
 import fs from 'fs/promises';
 import path from 'path';
+import { FileError } from './errors.js';
 
 const STATE_DIR = '.danteforge';
 
@@ -12,9 +13,16 @@ export interface LocalTask {
 }
 
 export async function writeArtifact(filename: string, content: string): Promise<string> {
-  await fs.mkdir(STATE_DIR, { recursive: true });
   const filePath = path.join(STATE_DIR, filename);
-  await fs.writeFile(filePath, content);
+  try {
+    await fs.mkdir(STATE_DIR, { recursive: true });
+    await fs.writeFile(filePath, content);
+  } catch (err) {
+    throw new FileError(
+      `Failed to write artifact "${filename}": ${err instanceof Error ? err.message : String(err)}`,
+      filePath,
+    );
+  }
   return filePath;
 }
 

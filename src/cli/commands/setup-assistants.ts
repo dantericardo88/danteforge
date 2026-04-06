@@ -1,4 +1,5 @@
 import { logger } from '../../core/logger.js';
+import { withErrorBoundary } from '../../core/cli-error-boundary.js';
 import { installAssistantSkills, type AssistantRegistry } from '../../core/assistant-installer.js';
 import { resolveConfigPaths } from '../../core/config.js';
 
@@ -48,16 +49,18 @@ function parseAssistants(raw: string | undefined): AssistantRegistry[] | undefin
 }
 
 export async function setupAssistants(options: { assistants?: string } = {}) {
-  const assistants = parseAssistants(options.assistants);
-  const result = await installAssistantSkills({ assistants });
-  const paths = resolveConfigPaths();
+  return withErrorBoundary('setup-assistants', async () => {
+    const assistants = parseAssistants(options.assistants);
+    const result = await installAssistantSkills({ assistants });
+    const paths = resolveConfigPaths();
 
-  logger.success('Installed DanteForge skills for local coding assistants');
-  for (const entry of result.assistants) {
-    const noun = entry.installMode === 'cursor-rules' ? 'bootstrap file' : 'skills';
-    logger.info(`${entry.assistant}: ${entry.installedSkills.length} ${noun} -> ${entry.targetDir}`);
-  }
-  logger.info(`Shared secrets/config: ${paths.configFile}`);
-  logger.info('Cursor is project-local and opt-in. Run `danteforge setup assistants --assistants cursor` when you want the `.cursor/rules/danteforge.mdc` bootstrap file.');
-  logger.info('Next: run `danteforge config --set-key "openai:..."` and `danteforge doctor --live` on the target machine.');
+    logger.success('Installed DanteForge skills for local coding assistants');
+    for (const entry of result.assistants) {
+      const noun = entry.installMode === 'cursor-rules' ? 'bootstrap file' : 'skills';
+      logger.info(`${entry.assistant}: ${entry.installedSkills.length} ${noun} -> ${entry.targetDir}`);
+    }
+    logger.info(`Shared secrets/config: ${paths.configFile}`);
+    logger.info('Cursor is project-local and opt-in. Run `danteforge setup assistants --assistants cursor` when you want the `.cursor/rules/danteforge.mdc` bootstrap file.');
+    logger.info('Next: run `danteforge config --set-key "openai:..."` and `danteforge doctor --live` on the target machine.');
+  });
 }

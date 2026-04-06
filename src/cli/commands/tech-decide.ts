@@ -7,6 +7,7 @@ import { loadState, saveState } from '../../core/state.js';
 import { isLLMAvailable, callLLM } from '../../core/llm.js';
 import { savePrompt, displayPrompt } from '../../core/prompt-builder.js';
 import { resolveSkill } from '../../core/skills.js';
+import { withErrorBoundary } from '../../core/cli-error-boundary.js';
 import fs from 'fs/promises';
 import path from 'path';
 
@@ -117,6 +118,7 @@ export async function techDecide(options: {
   prompt?: boolean;
   auto?: boolean;
 } = {}) {
+  return withErrorBoundary('tech-decide', async () => {
   logger.success('DanteForge Tech Decide — Guided Tech Stack Selection');
   logger.info('');
 
@@ -292,4 +294,5 @@ Default recommendation: [list the recommended option from each category]`;
 
   state.auditLog.push(`${new Date().toISOString()} | tech-decide: manual guidance displayed`);
   await saveState(state);
+  });
 }

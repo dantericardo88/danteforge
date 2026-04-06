@@ -6,6 +6,7 @@ import { loadState, recordWorkflowStage, saveState, type WorkflowStage } from '.
 import { detectProjectType, type ProjectType } from '../../core/completion-tracker.js';
 import { logger } from '../../core/logger.js';
 import { detectAIDrift } from '../../core/drift-detector.js';
+import { withErrorBoundary } from '../../core/cli-error-boundary.js';
 
 const execAsync = promisify(exec);
 const execFileAsync = promisify(execFile);
@@ -143,6 +144,7 @@ async function validateCurrentStateFreshness(result: VerifyResult): Promise<void
 }
 
 export async function verify(options: { release?: boolean; live?: boolean; url?: string; recompute?: boolean } = {}) {
+  return withErrorBoundary('verify', async () => {
   logger.info('Running verification checks...');
 
   const result: VerifyResult = { passed: [], warnings: [], failures: [] };
@@ -325,6 +327,7 @@ export async function verify(options: { release?: boolean; live?: boolean; url?:
   }
 
   reportResults(result);
+  });
 }
 
 function reportResults(result: VerifyResult) {

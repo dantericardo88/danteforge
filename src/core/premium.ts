@@ -3,9 +3,14 @@
 
 import fs from 'fs/promises';
 import path from 'path';
+import { timingSafeEqual } from 'node:crypto';
 import { loadState } from './state.js';
 import { logger } from './logger.js';
+import { DanteError } from './errors.js';
+import { computeExpectedHmac } from './license-keygen.js';
 import type { ReflectionVerdict } from './reflection-engine.js';
+
+const DEFAULT_SECRET = 'danteforge-dev-secret-do-not-use-in-production';
 
 // --- Types -------------------------------------------------------------------
 
@@ -24,6 +29,12 @@ export interface AuditTrailEntry {
   verdict?: ReflectionVerdict;
   pdseScores?: Record<string, number>;
   gateResults?: Record<string, boolean>;
+}
+
+export interface LicenseValidationResult {
+  valid: boolean;
+  tier: PremiumTier;
+  expiresAt?: string;  // ISO date string
 }
 
 // --- Premium Features --------------------------------------------------------
@@ -49,9 +60,21 @@ export function getPremiumConfig(tier: PremiumTier): PremiumConfig {
 }
 
 export async function getPremiumTier(cwd?: string): Promise<PremiumTier> {
+  // Env var override
+  const envKey = process.env['DANTEFORGE_LICENSE_KEY'];
+  if (envKey) {
+    const result = validatePremiumLicense(envKey);
+    if (result.valid && !isLicenseExpired(envKey)) return result.tier;
+  }
+
   try {
     const state = await loadState({ cwd });
-    return state.premiumTier ?? 'free';
+    const licKey = (state as any).premiumLicenseKey as string | undefined;
+    if (licKey && !isLicenseExpired(licKey)) {
+      const result = validatePremiumLicense(licKey);
+      if (result.valid) return result.tier;
+    }
+    return (state as any).premiumTier ?? 'free';
   } catch {
     return 'free';
   }
@@ -73,6 +96,81 @@ export function canAccessFeature(userTier: PremiumTier, feature: string): boolea
 
 export function listPremiumFeatures(): { feature: string; tier: PremiumTier }[] {
   return Object.entries(PREMIUM_FEATURES).map(([feature, tier]) => ({ feature, tier }));
+}
+
+// --- License Validation -------------------------------------------------------
+
+// Parse format: DF-PRO-YYYYMMDD-HMAC16 or DF-ENT-YYYYMMDD-HMAC16
+// Validates HMAC-SHA256 signature using timingSafeEqual to prevent timing attacks
+export function validatePremiumLicense(
+  key: string,
+  deps?: { _getSecret?: () => string },
+): LicenseValidationResult {
+  if (!key || typeof key !== 'string') return { valid: false, tier: 'free' };
+
+  const upper = key.toUpperCase().trim();
+  let tier: PremiumTier = 'free';
+  let expiresAt: string | undefined;
+
+  if (upper.startsWith('DF-ENT-')) {
+    tier = 'enterprise';
+  } else if (upper.startsWith('DF-PRO-')) {
+    tier = 'pro';
+  } else {
+    return { valid: false, tier: 'free' };
+  }
+
+  const parts = upper.split('-');
+  // Need exactly 4 segments: DF, PRO/ENT, YYYYMMDD, HMAC
+  if (parts.length < 4) return { valid: false, tier: 'free' };
+
+  if (/^\d{8}$/.test(parts[2])) {
+    const d = parts[2];
+    expiresAt = `${d.slice(0, 4)}-${d.slice(4, 6)}-${d.slice(6, 8)}`;
+  }
+
+  // Verify HMAC
+  const body = `${parts[0]}-${parts[1]}-${parts[2]}`;
+  const secret = deps?._getSecret?.() ?? process.env['DANTEFORGE_LICENSE_SECRET'] ?? DEFAULT_SECRET;
+  const expected = computeExpectedHmac(body, secret);
+  const actual = Buffer.from(parts[3], 'utf-8');
+
+  if (expected.length !== actual.length) return { valid: false, tier: 'free' };
+
+  try {
+    if (!timingSafeEqual(expected, actual)) return { valid: false, tier: 'free' };
+  } catch {
+    return { valid: false, tier: 'free' };
+  }
+
+  return { valid: true, tier, expiresAt };
+}
+
+export function isLicenseExpired(key: string, deps?: { _getSecret?: () => string }): boolean {
+  const result = validatePremiumLicense(key, deps);
+  if (!result.valid || !result.expiresAt) return false;
+  return new Date(result.expiresAt) < new Date();
+}
+
+// --- Premium Gate Enforcement ------------------------------------------------
+
+export async function requirePremiumFeature(feature: string, cwd?: string): Promise<void> {
+  // Check env var override first (for CI/CD)
+  const envKey = process.env['DANTEFORGE_LICENSE_KEY'];
+  if (envKey) {
+    const envResult = validatePremiumLicense(envKey);
+    if (envResult.valid && canAccessFeature(envResult.tier, feature)) return;
+  }
+
+  const tier = await getPremiumTier(cwd);
+  if (!canAccessFeature(tier, feature)) {
+    const required = getRequiredTier(feature);
+    throw new DanteError(
+      `'${feature}' requires DanteForge ${required.toUpperCase()} tier`,
+      'PREMIUM_REQUIRED',
+      `Activate with: danteforge premium activate <license-key>`,
+    );
+  }
 }
 
 // --- Audit Trail -------------------------------------------------------------
@@ -100,18 +198,4 @@ export async function exportAuditTrail(cwd = process.cwd()): Promise<AuditTrailE
   } catch {
     return [];
   }
-}
-
-// --- License Validation (stub) -----------------------------------------------
-
-export async function validatePremiumLicense(key: string): Promise<{ valid: boolean; tier: PremiumTier }> {
-  // Stub: In production, this would validate against a license server
-  if (key.startsWith('DF-PRO-')) {
-    return { valid: true, tier: 'pro' };
-  }
-  if (key.startsWith('DF-ENT-')) {
-    return { valid: true, tier: 'enterprise' };
-  }
-  logger.warn('Invalid license key format. Expected: DF-PRO-xxx or DF-ENT-xxx');
-  return { valid: false, tier: 'free' };
 }

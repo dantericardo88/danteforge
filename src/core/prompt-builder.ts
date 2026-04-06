@@ -3,6 +3,7 @@
 import fs from 'fs/promises';
 import path from 'path';
 import { logger } from './logger.js';
+import { FileError } from './errors.js';
 
 const STATE_DIR = '.danteforge';
 const PROMPTS_DIR = path.join(STATE_DIR, 'prompts');
@@ -128,10 +129,17 @@ Respond with:
  * Save a generated prompt to .danteforge/prompts/ for easy access
  */
 export async function savePrompt(name: string, prompt: string): Promise<string> {
-  await fs.mkdir(PROMPTS_DIR, { recursive: true });
   const filename = `${name}-${Date.now()}.md`;
   const filePath = path.join(PROMPTS_DIR, filename);
-  await fs.writeFile(filePath, prompt);
+  try {
+    await fs.mkdir(PROMPTS_DIR, { recursive: true });
+    await fs.writeFile(filePath, prompt);
+  } catch (err) {
+    throw new FileError(
+      `Failed to save prompt: ${err instanceof Error ? err.message : String(err)}`,
+      filePath,
+    );
+  }
   return filePath;
 }
 

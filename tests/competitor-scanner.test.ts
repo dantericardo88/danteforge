@@ -23,6 +23,8 @@ const ALL_DIMS: ScoringDimension[] = [
   'functionality', 'testing', 'errorHandling', 'security',
   'uxPolish', 'documentation', 'performance', 'maintainability',
   'developerExperience', 'autonomy', 'planningQuality', 'selfImprovement',
+  'specDrivenPipeline', 'convergenceSelfHealing', 'tokenEconomy',
+  'ecosystemMcp', 'enterpriseReadiness', 'communityAdoption',
 ];
 
 function makeOurScores(score = 70): Record<ScoringDimension, number> {
@@ -60,9 +62,9 @@ describe('scanCompetitors', () => {
     assert.ok(typeof result.competitorSource === 'string', 'competitorSource is string');
   });
 
-  it('includes all 12 dimensions in gapReport', async () => {
+  it('includes all 18 dimensions in gapReport', async () => {
     const result = await scanCompetitors(makeOptions());
-    assert.equal(result.gapReport.length, 12);
+    assert.equal(result.gapReport.length, 18);
     const dims = result.gapReport.map((g) => g.dimension).sort();
     assert.deepEqual(dims, [...ALL_DIMS].sort());
   });
@@ -263,7 +265,7 @@ _No repositories scanned._
 describe('buildGapReport', () => {
   it('returns 12 gaps, one per dimension', () => {
     const gaps = buildGapReport(makeOurScores(70), COMPETITOR_BASELINES);
-    assert.equal(gaps.length, 12);
+    assert.equal(gaps.length, 18);
   });
 
   it('sets severity=leading when we score the highest', () => {
@@ -299,7 +301,7 @@ describe('buildGapReport', () => {
 
   it('returns empty array when no competitors', () => {
     const gaps = buildGapReport(makeOurScores(70), []);
-    assert.equal(gaps.length, 12);
+    assert.equal(gaps.length, 18);
     for (const gap of gaps) {
       assert.equal(gap.severity, 'leading'); // leading ourselves
       assert.equal(gap.delta, 0);
@@ -375,7 +377,7 @@ describe('formatCompetitorReport', () => {
 // ── COMPETITOR_BASELINES integrity ────────────────────────────────────────────
 
 describe('COMPETITOR_BASELINES (dev-tool defaults)', () => {
-  it('all competitors have all 12 dimensions', () => {
+  it('all competitors have all 18 dimensions', () => {
     for (const comp of COMPETITOR_BASELINES) {
       for (const dim of ALL_DIMS) {
         assert.ok(dim in comp.scores, `${comp.name} missing dimension ${dim}`);
@@ -385,7 +387,7 @@ describe('COMPETITOR_BASELINES (dev-tool defaults)', () => {
     }
   });
 
-  it('has at least 8 competitors', () => {
-    assert.ok(COMPETITOR_BASELINES.length >= 8);
+  it('has at least 17 competitors (8 original + 9 new categories)', () => {
+    assert.ok(COMPETITOR_BASELINES.length >= 27);
   });
 });

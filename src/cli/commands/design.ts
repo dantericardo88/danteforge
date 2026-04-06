@@ -8,6 +8,7 @@ import { isLLMAvailable, callLLM } from '../../core/llm.js';
 import { buildDesignPrompt, savePrompt, displayPrompt } from '../../core/prompt-builder.js';
 import { isUIProject } from '../../core/mcp-adapter.js';
 import { ensureOPIntermediatesIgnored } from '../../utils/worktree.js';
+import { withErrorBoundary } from '../../core/cli-error-boundary.js';
 import fs from 'fs/promises';
 import path from 'path';
 
@@ -17,6 +18,7 @@ export async function design(
   prompt: string,
   options: { prompt?: boolean; light?: boolean; format?: string; parallel?: boolean; worktree?: boolean } = {},
 ): Promise<void> {
+  return withErrorBoundary('design', async () => {
   logger.info('Design: generating design artifacts from natural language');
 
   // Ensure .op intermediate files are gitignored
@@ -120,4 +122,5 @@ export async function design(
     logger.info('Re-run with --prompt to generate a manual design prompt.');
     process.exitCode = 1;
   }
+  });
 }

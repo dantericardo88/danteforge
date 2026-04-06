@@ -3,11 +3,13 @@
 import { logger } from '../../core/logger.js';
 import { loadState, saveState } from '../../core/state.js';
 import { buildShipPlan } from '../../core/ship-engine.js';
+import { withErrorBoundary } from '../../core/cli-error-boundary.js';
 
 export async function ship(options: {
   dryRun?: boolean;
   skipReview?: boolean;
 } = {}) {
+  return withErrorBoundary('ship', async () => {
   const cwd = process.cwd();
   const timestamp = new Date().toISOString();
 
@@ -61,4 +63,5 @@ export async function ship(options: {
   } catch {
     // State save is best-effort
   }
+  });
 }

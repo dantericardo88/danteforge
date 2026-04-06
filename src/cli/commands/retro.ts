@@ -5,8 +5,10 @@ import fs from 'fs/promises';
 import { logger } from '../../core/logger.js';
 import { loadState, saveState } from '../../core/state.js';
 import { runRetro, writeRetroFiles, loadPriorRetro } from '../../core/retro-engine.js';
+import { withErrorBoundary } from '../../core/cli-error-boundary.js';
 
 export async function retro(options: { summary?: boolean; cwd?: string } = {}) {
+  return withErrorBoundary('retro', async () => {
   const cwd = options.cwd ?? process.cwd();
 
   if (options.summary) {
@@ -48,6 +50,7 @@ export async function retro(options: { summary?: boolean; cwd?: string } = {}) {
   } catch {
     // State save is best-effort
   }
+  });
 }
 
 async function printRetroSummary(cwd: string): Promise<void> {

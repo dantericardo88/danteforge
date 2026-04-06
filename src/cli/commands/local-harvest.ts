@@ -12,6 +12,7 @@ import {
   type HarvestDepth,
   type LocalHarvesterOptions,
 } from '../../core/local-harvester.js';
+import { withErrorBoundary } from '../../core/cli-error-boundary.js';
 
 export interface LocalHarvestCommandOptions {
   config?: string;
@@ -38,6 +39,7 @@ export async function localHarvest(
   paths: string[],
   options: LocalHarvestCommandOptions = {},
 ): Promise<void> {
+  return withErrorBoundary('local-harvest', async () => {
   const cwd = options.cwd ?? process.cwd();
   const depth = (options.depth as HarvestDepth | undefined) ?? 'medium';
   const harvester = options._harvester ?? harvestLocalSources;
@@ -158,6 +160,7 @@ export async function localHarvest(
   } catch {
     // Best-effort audit log only.
   }
+  });
 }
 
 export async function pickSourcesInteractive(cwd: string): Promise<string[]> {

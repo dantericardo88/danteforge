@@ -11,7 +11,6 @@ import { scoreAllArtifacts } from '../../core/pdse.js';
 import { assessMaturity, type MaturityAssessment } from '../../core/maturity-engine.js';
 import {
   computeHarshScore,
-  formatDimensionBar,
   type HarshScoreResult,
   type HarshScorerOptions,
   type ScoringDimension,
@@ -44,6 +43,7 @@ import {
   saveFeatureScores,
   type FeatureUniverseAssessment,
 } from '../../core/feature-universe.js';
+import { formatDimensionTable, type DimRow } from '../../core/report-formatter.js';
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -245,17 +245,22 @@ function printAssessReport(result: AssessResult, cycleNumber: number): void {
     'functionality', 'testing', 'errorHandling', 'security',
     'uxPolish', 'documentation', 'performance', 'maintainability',
     'developerExperience', 'autonomy', 'planningQuality', 'selfImprovement',
+    'specDrivenPipeline', 'convergenceSelfHealing', 'tokenEconomy',
+    'ecosystemMcp', 'enterpriseReadiness', 'communityAdoption',
   ];
-  for (const dim of dimOrder) {
+  const dimRows: DimRow[] = dimOrder.map((dim) => {
     const score = assessment.displayDimensions[dim] ?? 0;
-    const bar = formatDimensionBar(score * 10);
     const gap = gaps.find((g) => g.dimension === dim);
-    const compStr = gap && gap.delta > 0
-      ? `  vs ${gap.bestCompetitor}: ${(gap.bestScore / 10).toFixed(1)} (${gap.severity})`
-      : gap ? '  ✓ leading' : '';
-    const pFlag = score <= 5.0 ? ' ⚠ P0' : score <= 7.5 ? ' △ P1' : '';
-    logger.info(`  ${dim.padEnd(22)} ${bar}  ${score.toFixed(1)}${compStr}${pFlag}`);
-  }
+    return {
+      dim,
+      score,
+      bestCompetitor: gap && gap.delta > 0 ? gap.bestCompetitor : undefined,
+      bestScore: gap && gap.delta > 0 ? gap.bestScore : undefined,
+      delta: gap ? gap.delta : undefined,
+      severity: gap?.severity,
+    };
+  });
+  logger.info(formatDimensionTable(dimRows));
 
   if (assessment.penalties.length > 0) {
     logger.info('');

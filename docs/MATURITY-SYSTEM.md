@@ -2,7 +2,7 @@
 
 ## For Founders: Understanding Code Quality Levels
 
-DanteForge scores your code across 8 quality dimensions and maps it to one of 6 maturity levels. Each level represents a real-world readiness milestone — from proving the idea works to landing Fortune 500 contracts.
+DanteForge scores your code across 18 quality dimensions (8 base + 10 extended) and maps it to one of 6 maturity levels. Each level represents a real-world readiness milestone — from proving the idea works to landing Fortune 500 contracts.
 
 This is not arbitrary. The system analyzes your actual code, tests, documentation, security practices, and error handling to tell you what your code is ready for — and what it needs to get to the next level.
 
@@ -292,7 +292,9 @@ Recommendation: ❌ Blocked — critical gaps must be fixed
 
 ---
 
-## The 8 Quality Dimensions Explained
+## The 18 Quality Dimensions Explained
+
+### Base Dimensions (8)
 
 ### 1. Functionality (20% weight)
 
@@ -408,6 +410,52 @@ Recommendation: ❌ Blocked — critical gaps must be fixed
 - Extract shared logic into reusable modules
 - Follow your project's constitution/coding standards
 - Add dependency injection for testability
+
+---
+
+### Extended Dimensions (10)
+
+The extended dimensions cover operational readiness, strategic alignment, and ecosystem concerns. They are scored alongside the base 8 and contribute to the overall maturity level.
+
+#### 9. Spec-Driven Pipeline (`specDrivenPipeline`)
+
+**What it measures:** How faithfully the codebase follows the spec-to-plan-to-tasks pipeline. Checks for the presence and completeness of SPEC.md, PLAN.md, and TASKS.md artifacts, and whether the implementation matches the spec.
+
+#### 10. Convergence Self-Healing (`convergenceSelfHealing`)
+
+**What it measures:** Whether the project uses convergence loops effectively. Scores based on verify receipt history, convergence cycle usage, and whether the maturity gate catches regressions before they ship.
+
+#### 11. Token Economy (`tokenEconomy`)
+
+**What it measures:** How efficiently the project uses LLM tokens. Evaluates routing aggressiveness, local transform usage, context compression, and budget adherence across magic preset runs.
+
+#### 12. Ecosystem MCP (`ecosystemMcp`)
+
+**What it measures:** Integration with the Model Context Protocol ecosystem. Checks for MCP server configuration, tool handler coverage, and whether external MCP tools are leveraged for workflows like Figma, browsing, or database access.
+
+#### 13. Enterprise Readiness (`enterpriseReadiness`)
+
+**What it measures:** Preparedness for enterprise deployment. Evaluates configuration management, audit trail completeness, safe self-edit policy enforcement, RBAC readiness, and compliance documentation.
+
+#### 14. Community Adoption (`communityAdoption`)
+
+**What it measures:** How well the project supports community contribution and adoption. Checks for CONTRIBUTING.md, SECURITY.md, issue templates, skill documentation, and plugin extensibility.
+
+#### 15. CI/CD Integration (`ciCdIntegration`)
+
+**What it measures:** Whether verification and quality gates are wired into continuous integration. Scores based on presence of CI config, verify receipt automation, and coverage threshold enforcement.
+
+#### 16. Observability (`observability`)
+
+**What it measures:** Runtime visibility into the system. Evaluates structured logging, execution telemetry, circuit breaker instrumentation, and cost tracking.
+
+#### 17. Resilience (`resilience`)
+
+**What it measures:** How well the system handles failures. Scores based on circuit breaker coverage, retry logic, graceful degradation paths, and advisory mode fallbacks.
+
+#### 18. Developer Experience (`developerExperience`)
+
+**What it measures:** How easy it is for developers to use and extend the tool. Evaluates CLI help quality, spinner/progress feedback, error message clarity, and interactive wizard availability.
 
 ---
 

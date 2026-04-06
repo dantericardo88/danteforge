@@ -9,6 +9,7 @@ import { isLLMAvailable, callLLM } from '../../core/llm.js';
 import { savePrompt, displayPrompt } from '../../core/prompt-builder.js';
 import { detectHost, detectMCPCapabilities } from '../../core/mcp.js';
 import { resolveTier, testMCPConnection } from '../../core/mcp-adapter.js';
+import { withErrorBoundary } from '../../core/cli-error-boundary.js';
 import fs from 'fs/promises';
 import path from 'path';
 
@@ -92,6 +93,7 @@ async function applyMcpUpdates(params: {
 }
 
 export async function updateMcp(options: { prompt?: boolean; apply?: boolean; check?: boolean } = {}) {
+  return withErrorBoundary('update-mcp', async () => {
   logger.success('DanteForge MCP Update — Manual Self-Healing');
   logger.info('');
 
@@ -241,4 +243,5 @@ Important: Only recommend changes you are confident about. Do not fabricate MCP 
   const state = await loadState();
   state.auditLog.push(`${new Date().toISOString()} | update-mcp: manual guidance displayed`);
   await saveState(state);
+  });
 }

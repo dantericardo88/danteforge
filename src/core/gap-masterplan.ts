@@ -116,6 +116,36 @@ const DIMENSION_METADATA: Record<ScoringDimension, {
     forgeCommand: 'danteforge forge "Strengthen self-improvement: lessons capture, retro depth, convergence loops" --max-waves 6',
     verifyCondition: 'Lessons file has >= 10 entries, retro score delta is positive',
   },
+  specDrivenPipeline: {
+    title: 'Spec-Driven Pipeline Maturity',
+    forgeCommand: 'danteforge forge "Improve spec pipeline: CONSTITUTION, SPEC, CLARIFY, PLAN, TASKS artifact quality" --max-waves 6',
+    verifyCondition: 'All 5 PDSE artifacts exist with scores >= 80, pipeline reaches tasked stage',
+  },
+  convergenceSelfHealing: {
+    title: 'Convergence & Self-Healing Loops',
+    forgeCommand: 'danteforge forge "Strengthen convergence: verify-repair cycles, auto-recovery from failures" --max-waves 8',
+    verifyCondition: 'Autoforge completes with self-recovery from at least one simulated failure',
+  },
+  tokenEconomy: {
+    title: 'Token Economy & Budget Controls',
+    forgeCommand: 'danteforge forge "Improve token economy: budget fences, task routing, complexity classification" --max-waves 5',
+    verifyCondition: 'Budget fence prevents overspend in dry-run mode, task-router routes correctly',
+  },
+  ecosystemMcp: {
+    title: 'Ecosystem & MCP Integration',
+    forgeCommand: 'danteforge forge "Expand ecosystem: MCP tools, skills, plugin manifest, provider support" --max-waves 6',
+    verifyCondition: 'MCP server exposes >= 15 tools, skill registry discovers >= 10 skills',
+  },
+  enterpriseReadiness: {
+    title: 'Enterprise Readiness & Compliance',
+    forgeCommand: 'danteforge forge "Improve enterprise readiness: audit trails, safe-self-edit, RBAC foundations, verify receipts" --max-waves 8',
+    verifyCondition: 'Audit log > 20 entries, safe-self-edit policy is deny, verify receipts generated',
+  },
+  communityAdoption: {
+    title: 'Community & Adoption Growth',
+    forgeCommand: 'danteforge forge "Improve adoption: landing page, docs site, quickstart guide, contribution guidelines" --max-waves 5',
+    verifyCondition: 'README has quickstart section, CONTRIBUTING.md exists, SECURITY.md exists',
+  },
 };
 
 // ── Main generator ────────────────────────────────────────────────────────────

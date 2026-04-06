@@ -2,6 +2,7 @@
 // Manage premium tier, license activation, audit trail export.
 
 import { logger } from '../../core/logger.js';
+import { withErrorBoundary } from '../../core/cli-error-boundary.js';
 import { loadState, saveState } from '../../core/state.js';
 import {
   getPremiumTier,
@@ -9,23 +10,36 @@ import {
   listPremiumFeatures,
   canAccessFeature,
   validatePremiumLicense,
+  isLicenseExpired,
   exportAuditTrail,
 } from '../../core/premium.js';
 
-export async function premium(subcommand: string, options: { key?: string } = {}): Promise<void> {
-  switch (subcommand) {
-    case 'status':
-      return showStatus();
-    case 'activate':
-      return activateLicense(options.key);
-    case 'audit-export':
-      return auditExport();
-    case 'features':
-      return showFeatures();
-    default:
-      logger.error(`Unknown subcommand: ${subcommand}. Available: status, activate, audit-export, features`);
-      process.exitCode = 1;
-  }
+export async function premium(subcommand: string, options: { key?: string; tier?: string; days?: string } = {}): Promise<void> {
+  return withErrorBoundary('premium', async () => {
+    switch (subcommand) {
+      case 'status':
+        return showStatus();
+      case 'activate':
+        return activateLicense(options.key);
+      case 'audit-export':
+        return auditExport();
+      case 'features':
+        return showFeatures();
+      case 'keygen': {
+        const tier: 'pro' | 'enterprise' = options.tier === 'enterprise' ? 'enterprise' : 'pro';
+        const days = parseInt(options.days ?? '365', 10);
+        const expiresAt = new Date(Date.now() + days * 24 * 60 * 60 * 1000);
+        const { generateLicenseKey } = await import('../../core/license-keygen.js');
+        const key = generateLicenseKey({ tier, expiresAt });
+        logger.success(`Generated ${tier.toUpperCase()} license key (expires ${expiresAt.toISOString().split('T')[0]}):`);
+        console.log(key);
+        return;
+      }
+      default:
+        logger.error(`Unknown subcommand: ${subcommand}. Available: status, activate, audit-export, features, keygen`);
+        process.exitCode = 1;
+    }
+  });
 }
 
 async function showStatus(): Promise<void> {
@@ -36,6 +50,16 @@ async function showStatus(): Promise<void> {
   logger.info(`  Cloud Audit: ${config.cloudAuditEnabled ? 'enabled' : 'disabled'}`);
   logger.info(`  Advanced Gates: ${config.advancedGatesEnabled ? 'enabled' : 'disabled'}`);
   logger.info(`  SLA Verification: ${config.slaVerification ? 'enabled' : 'disabled'}`);
+
+  // Show license expiry if a key is stored
+  const licKey = process.env['DANTEFORGE_LICENSE_KEY'];
+  if (licKey) {
+    const result = validatePremiumLicense(licKey);
+    if (result.valid && result.expiresAt) {
+      const expired = isLicenseExpired(licKey);
+      logger.info(`  License expires: ${result.expiresAt}${expired ? ' (EXPIRED)' : ''}`);
+    }
+  }
 }
 
 async function activateLicense(key?: string): Promise<void> {
@@ -45,7 +69,7 @@ async function activateLicense(key?: string): Promise<void> {
     return;
   }
 
-  const result = await validatePremiumLicense(key);
+  const result = validatePremiumLicense(key);
   if (result.valid) {
     const state = await loadState();
     state.premiumTier = result.tier;

@@ -1,0 +1,9 @@
+{
+  "mcpServers": {
+    "danteforge": {
+      "command": "danteforge",
+      "args": ["mcp-server"],
+      "description": "DanteForge spec-driven agentic dev pipeline — 16 tools for forge, verify, assess, plan, tasks, and more"
+    }
+  }
+}

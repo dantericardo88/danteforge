@@ -2,6 +2,7 @@
 import { logger } from '../../core/logger.js';
 import { listSkills } from '../../core/skills.js';
 import { loadState, type WorkflowStage } from '../../core/state.js';
+import { withErrorBoundary } from '../../core/cli-error-boundary.js';
 
 const COMMAND_HELP: Record<string, string> = {
   spark: 'Zero-token planning preset.\n  Usage: danteforge spark [goal] [--prompt] [--skip-tech-decide]\n  Runs review -> constitution -> specify -> clarify -> tech-decide -> plan -> tasks without jumping into execution.',
@@ -53,6 +54,7 @@ const STAGE_SUGGESTIONS: Record<WorkflowStage, string> = {
 };
 
 export async function helpCmd(query?: string) {
+  return withErrorBoundary('help', async () => {
   if (query) {
     const key = query.toLowerCase().replace('danteforge ', '');
 
@@ -111,4 +113,5 @@ export async function helpCmd(query?: string) {
   logger.info('');
   logger.info('Run "danteforge help <command>" for detailed help on any command.');
   logger.info('Run "danteforge <command> --help" for usage options.');
+  });
 }

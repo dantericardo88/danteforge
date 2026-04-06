@@ -1,10 +1,12 @@
 // Setup Figma — interactive wizard for MCP Figma connection
 import { logger } from '../../core/logger.js';
+import { withErrorBoundary } from '../../core/cli-error-boundary.js';
 import { loadState, saveState } from '../../core/state.js';
 import { initMCPAdapter, getMCPSetupCommand, testMCPConnection, saveFigmaConfig } from '../../core/mcp-adapter.js';
 import { detectHost } from '../../core/mcp.js';
 
 export async function setupFigma(options: { host?: string; figmaUrl?: string; tokenFile?: string; test?: boolean } = {}) {
+  return withErrorBoundary('setup-figma', async () => {
   logger.success('DanteForge Figma Setup Wizard');
   logger.info('');
   logger.info('This wizard configures Figma MCP integration for your editor.');
@@ -81,4 +83,5 @@ export async function setupFigma(options: { host?: string; figmaUrl?: string; to
   const state = await loadState();
   state.auditLog.push(`${new Date().toISOString()} | setup-figma: wizard completed (host: ${host}, tier: ${adapter.tier})`);
   await saveState(state);
+  });
 }

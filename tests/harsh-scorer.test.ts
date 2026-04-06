@@ -126,12 +126,14 @@ describe('computeHarshScore', () => {
     assert.equal(result.displayScore, expected);
   });
 
-  it('has all 12 dimensions', async () => {
+  it('has all 18 dimensions', async () => {
     const result = await computeHarshScore(makeOptions());
     const expected: ScoringDimension[] = [
       'functionality', 'testing', 'errorHandling', 'security',
       'uxPolish', 'documentation', 'performance', 'maintainability',
       'developerExperience', 'autonomy', 'planningQuality', 'selfImprovement',
+      'specDrivenPipeline', 'convergenceSelfHealing', 'tokenEconomy',
+      'ecosystemMcp', 'enterpriseReadiness', 'communityAdoption',
     ];
     for (const dim of expected) {
       assert.ok(dim in result.dimensions, `Missing dimension: ${dim}`);
@@ -291,7 +293,8 @@ describe('computeHarshScore', () => {
 describe('computeHarshVerdict', () => {
   const goodDims = Object.fromEntries(
     ['functionality','testing','errorHandling','security','uxPolish','documentation',
-     'performance','maintainability','developerExperience','autonomy','planningQuality','selfImprovement']
+     'performance','maintainability','developerExperience','autonomy','planningQuality','selfImprovement',
+     'specDrivenPipeline','convergenceSelfHealing','tokenEconomy','ecosystemMcp','enterpriseReadiness','communityAdoption']
       .map((k) => [k, 80]),
   ) as Record<ScoringDimension, number>;
 
@@ -347,7 +350,8 @@ describe('computeWeightedScore', () => {
   it('returns 100 when all dimensions are 100', () => {
     const dims = Object.fromEntries(
       ['functionality','testing','errorHandling','security','uxPolish','documentation',
-       'performance','maintainability','developerExperience','autonomy','planningQuality','selfImprovement']
+       'performance','maintainability','developerExperience','autonomy','planningQuality','selfImprovement',
+       'specDrivenPipeline','convergenceSelfHealing','tokenEconomy','ecosystemMcp','enterpriseReadiness','communityAdoption']
         .map((k) => [k, 100]),
     ) as Record<ScoringDimension, number>;
     assert.ok(Math.abs(computeWeightedScore(dims) - 100) < 0.01);
@@ -356,7 +360,8 @@ describe('computeWeightedScore', () => {
   it('returns 0 when all dimensions are 0', () => {
     const dims = Object.fromEntries(
       ['functionality','testing','errorHandling','security','uxPolish','documentation',
-       'performance','maintainability','developerExperience','autonomy','planningQuality','selfImprovement']
+       'performance','maintainability','developerExperience','autonomy','planningQuality','selfImprovement',
+       'specDrivenPipeline','convergenceSelfHealing','tokenEconomy','ecosystemMcp','enterpriseReadiness','communityAdoption']
         .map((k) => [k, 0]),
     ) as Record<ScoringDimension, number>;
     assert.equal(computeWeightedScore(dims), 0);

@@ -1,5 +1,6 @@
 // Config command – manage API keys and LLM provider settings
 import { logger } from '../../core/logger.js';
+import { withErrorBoundary } from '../../core/cli-error-boundary.js';
 import {
   loadConfig,
   resolveConfigPaths,
@@ -29,6 +30,7 @@ export async function configCmd(options: {
   model?: string;
   show?: boolean;
 }) {
+  return withErrorBoundary('config', async () => {
   // Show current config
   if (options.show || (!options.setKey && !options.deleteKey && !options.provider && !options.model)) {
     const config = await loadConfig();
@@ -120,4 +122,5 @@ export async function configCmd(options: {
     await setProviderModel(provider, model);
     return;
   }
+  });
 }

@@ -3,6 +3,7 @@ import fs from 'fs/promises';
 import path from 'path';
 import { loadState, recordWorkflowStage, saveState } from '../../core/state.js';
 import { logger } from '../../core/logger.js';
+import { withErrorBoundary } from '../../core/cli-error-boundary.js';
 
 const STATE_DIR = '.danteforge';
 
@@ -44,6 +45,7 @@ async function gatherDocs(): Promise<DocSection[]> {
 }
 
 export async function synthesize() {
+  return withErrorBoundary('synthesize', async () => {
   logger.info('Synthesizing Ultimate Planning Resource (UPR.md)...');
 
   const state = await loadState();
@@ -174,4 +176,5 @@ export async function synthesize() {
 
   logger.success(`UPR.md generated — ${docs.length} artifacts merged into Ultimate Planning Resource`);
   logger.info('Find it at .danteforge/UPR.md');
+  });
 }

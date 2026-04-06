@@ -1,5 +1,6 @@
 // Core state management — YAML-based project state tracking
 import fs from 'fs/promises';
+import os from 'os';
 import path from 'path';
 import yaml from 'yaml';
 import { logger } from './logger.js';
@@ -90,6 +91,20 @@ export interface DanteState {
   premiumTier?: 'free' | 'pro' | 'enterprise';
   premiumLicenseKey?: string;
   auditTrailEnabled?: boolean;
+  // v0.10.0 — Workspace / multi-user
+  userId?: string;
+  workspaceId?: string;
+}
+
+/**
+ * Append a user-stamped audit entry to state.auditLog.
+ * Format: "ISO-timestamp | userId | entry"
+ */
+export function appendAuditEntry(state: DanteState, entry: string): void {
+  const userId = process.env['DANTEFORGE_USER'] ?? os.userInfo().username ?? 'unknown';
+  const timestamp = new Date().toISOString();
+  state.auditLog = state.auditLog ?? [];
+  state.auditLog.push(`${timestamp} | ${userId} | ${entry}`);
 }
 
 export function recordWorkflowStage(
@@ -204,6 +219,9 @@ export async function loadState(options: { cwd?: string } = {}): Promise<DanteSt
       premiumTier: parsed?.premiumTier as 'free' | 'pro' | 'enterprise' | undefined,
       premiumLicenseKey: parsed?.premiumLicenseKey,
       auditTrailEnabled: parsed?.auditTrailEnabled,
+      // v0.10.0 workspace fields
+      userId: parsed?.userId,
+      workspaceId: parsed?.workspaceId,
     };
   } catch (err) {
     // Only log if this is NOT a "file not found" — real errors should surface
@@ -254,6 +272,9 @@ export async function loadState(options: { cwd?: string } = {}): Promise<DanteSt
       premiumTier: undefined,
       premiumLicenseKey: undefined,
       auditTrailEnabled: undefined,
+      // v0.10.0 workspace fields
+      userId: undefined,
+      workspaceId: undefined,
     };
     await saveState(defaultState, options);
     return defaultState;

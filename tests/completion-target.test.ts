@@ -242,7 +242,7 @@ describe('formatCompletionTarget', () => {
       description: 'Standard dims', definedAt: '', definedBy: 'user-prompted',
     };
     const formatted = formatCompletionTarget(target);
-    assert.ok(formatted.includes('12-Dimension'));
+    assert.ok(formatted.includes('18-Dimension'));
     assert.ok(formatted.includes('8.5'));
   });
 

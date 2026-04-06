@@ -3,6 +3,7 @@
 // Upgrades DanteForge from blocking gates to actionable remediation.
 
 import { logger } from './logger.js';
+import { ValidationError } from './errors.js';
 import type { ReflectionVerdict } from './reflection-engine.js';
 import type { LoopDetectionResult } from './loop-detector.js';
 
@@ -220,6 +221,12 @@ export function generateFixPacket(
   verdict: ReflectionVerdict,
   loopResult: LoopDetectionResult = { detected: false, type: 'none', evidence: '', severity: 'LOW' },
 ): FixPacket {
+  if (!verdict || !verdict.taskName) {
+    throw new ValidationError(
+      'generateFixPacket requires a valid verdict with taskName',
+      'Ensure the reflection engine produces a complete verdict before generating fix packets',
+    );
+  }
   const verdictViolations = verdictToViolations(verdict);
   const loopViolations = loopToViolations(loopResult);
   const allViolations = sortViolations([...verdictViolations, ...loopViolations]);

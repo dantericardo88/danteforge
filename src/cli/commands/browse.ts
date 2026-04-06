@@ -2,6 +2,7 @@
 // Fail-closed: exits code 1 if binary not found with install instructions.
 import { logger } from '../../core/logger.js';
 import { loadState, saveState } from '../../core/state.js';
+import { withErrorBoundary } from '../../core/cli-error-boundary.js';
 import {
   detectBrowseBinary,
   invokeBrowse,
@@ -15,6 +16,7 @@ export async function browse(
   args: string[],
   options: { url?: string; install?: boolean; port?: string } = {},
 ) {
+  return withErrorBoundary('browse', async () => {
   // Binary detection — fail-closed
   const binaryPath = await detectBrowseBinary();
   if (!binaryPath) {
@@ -70,4 +72,5 @@ export async function browse(
   } catch {
     // State save is best-effort for browse
   }
+  });
 }

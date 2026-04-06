@@ -4,8 +4,10 @@ import { loadState, saveState } from '../../core/state.js';
 import { resolveSkill } from '../../core/skills.js';
 import { isLLMAvailable, callLLM } from '../../core/llm.js';
 import { savePrompt, displayPrompt } from '../../core/prompt-builder.js';
+import { withErrorBoundary } from '../../core/cli-error-boundary.js';
 
 export async function debug(issue: string, options: { prompt?: boolean } = {}) {
+  return withErrorBoundary('debug', async () => {
   logger.info(`Systematic Debugging: "${issue}"`);
 
   const state = await loadState();
@@ -80,4 +82,5 @@ Output a structured debugging plan in markdown.`;
 
   state.auditLog.push(`${new Date().toISOString()} | debug: framework displayed for "${issue}"`);
   await saveState(state);
+  });
 }

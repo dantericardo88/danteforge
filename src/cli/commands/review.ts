@@ -10,6 +10,7 @@ import { handoff } from '../../core/handoff.js';
 import { buildReviewPrompt, savePrompt, displayPrompt } from '../../core/prompt-builder.js';
 import { isLLMAvailable, callLLM } from '../../core/llm.js';
 import { estimateTokens, chunkText } from '../../core/token-estimator.js';
+import { withErrorBoundary } from '../../core/cli-error-boundary.js';
 
 const STATE_DIR = '.danteforge';
 
@@ -124,6 +125,7 @@ function resetExecutionStateForReview<T extends {
 }
 
 export async function review(options: { prompt?: boolean } = {}) {
+  return withErrorBoundary('review', async () => {
   logger.success('Reviewing existing project state...');
 
   const git = simpleGit();
@@ -364,4 +366,5 @@ export async function review(options: { prompt?: boolean } = {}) {
     logger.info('Tip: Set up an API key for LLM-powered deep reviews: danteforge config --set-key "grok:<key>"');
   }
   logger.info('Run "danteforge constitution" next, then "danteforge specify <goal>" to continue the pipeline');
+  });
 }

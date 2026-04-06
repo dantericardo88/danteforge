@@ -10,6 +10,13 @@ import {
   displayPlan,
 } from '../../core/autoforge.js';
 import {
+  runAutoforgeLoop,
+  AutoforgeLoopState,
+  type AutoforgeLoopContext,
+} from '../../core/autoforge-loop.js';
+import { withSpinner } from '../../core/progress.js';
+import { withErrorBoundary } from '../../core/cli-error-boundary.js';
+import {
   scoreAllArtifacts,
   persistScoreResult,
   type ScoreResult,
@@ -33,8 +40,13 @@ export async function autoforge(goal?: string, options: {
   profile?: string;
   parallel?: boolean;
   worktree?: boolean;
+  cwd?: string;
+  // Injection seam — override the autonomous loop for testing
+  _runLoop?: (ctx: AutoforgeLoopContext) => Promise<AutoforgeLoopContext>;
 } = {}): Promise<void> {
+  return withErrorBoundary('autoforge', async () => {
   const maxWaves = options.maxWaves ?? 3;
+  const cwd = options.cwd ?? process.cwd();
 
   logger.success('DanteForge AutoForge - Agentic Pipeline Orchestrator');
   logger.info('');
@@ -45,9 +57,38 @@ export async function autoforge(goal?: string, options: {
     return;
   }
 
+  // ── Autonomous loop mode (--auto flag) ──────────────────────────────────────
+  // Runs the full state-machine convergence loop until 95%+ completion or BLOCKED.
+  if (options.auto) {
+    logger.info('[AutoForge] Autonomous mode — running convergence loop...');
+    const state = await loadState({ cwd });
+    const isWebProject = (state.projectType ?? 'unknown') === 'web';
+    const ctx: AutoforgeLoopContext = {
+      goal: goal ?? 'Advance the project to completion',
+      cwd,
+      state,
+      loopState: AutoforgeLoopState.IDLE,
+      cycleCount: 0,
+      startedAt: new Date().toISOString(),
+      retryCounters: {},
+      blockedArtifacts: [],
+      lastGuidance: null,
+      isWebProject,
+      force: options.force ?? false,
+      dryRun: options.dryRun,
+      maxRetries: 3,
+    };
+    const loopFn = options._runLoop ?? runAutoforgeLoop;
+    await loopFn(ctx);
+    return;
+  }
+
   // Analyze current project state
-  logger.info('Analyzing project state...');
-  const input = await analyzeProjectState();
+  const input = await withSpinner(
+    'Analyzing project state...',
+    () => analyzeProjectState(),
+    'Project state analyzed',
+  );
 
   // Generate the plan
   const plan = planAutoForge(input, maxWaves, goal);
@@ -71,13 +112,17 @@ export async function autoforge(goal?: string, options: {
   }
 
   // Execute the plan
-  const result = await executeAutoForgePlan(plan, {
-    dryRun: false,
-    light: options.light,
-    profile: options.profile,
-    parallel: options.parallel,
-    worktree: options.worktree,
-  });
+  const result = await withSpinner(
+    `Executing autoforge plan (${maxWaves} waves)...`,
+    () => executeAutoForgePlan(plan, {
+      dryRun: false,
+      light: options.light,
+      profile: options.profile,
+      parallel: options.parallel,
+      worktree: options.worktree,
+    }),
+    'Autoforge waves complete',
+  );
 
   // Report results
   logger.info('');
@@ -118,6 +163,7 @@ export async function autoforge(goal?: string, options: {
   } catch {
     // Reflection not available — no problem
   }
+  });
 }
 
 // ── Score-only mode ─────────────────────────────────────────────────────────

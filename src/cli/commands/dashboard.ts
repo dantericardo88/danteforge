@@ -7,6 +7,7 @@ import { loadConfig, type DanteConfig } from '../../core/config.js';
 import { detectHost, detectMCPCapabilities } from '../../core/mcp.js';
 import { resolveTier } from '../../core/mcp-adapter.js';
 import { estimateTokens } from '../../core/token-estimator.js';
+import { withErrorBoundary } from '../../core/cli-error-boundary.js';
 
 interface DashboardCapabilities {
   hasFigmaMCP: boolean;
@@ -148,6 +149,7 @@ export function renderDashboardHtml(input: DashboardRenderInput): string {
 }
 
 export async function dashboard(options: { port?: string } = {}) {
+  return withErrorBoundary('dashboard', async () => {
   let port = 4242;
   try {
     port = parseDashboardPort(options.port);
@@ -196,6 +198,7 @@ export async function dashboard(options: { port?: string } = {}) {
     server.close();
     logger.info('Dashboard stopped');
     process.exit(0);
+  });
   });
 }
 

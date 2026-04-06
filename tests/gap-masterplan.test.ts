@@ -23,6 +23,8 @@ const ALL_DIMS: ScoringDimension[] = [
   'functionality', 'testing', 'errorHandling', 'security',
   'uxPolish', 'documentation', 'performance', 'maintainability',
   'developerExperience', 'autonomy', 'planningQuality', 'selfImprovement',
+  'specDrivenPipeline', 'convergenceSelfHealing', 'tokenEconomy',
+  'ecosystemMcp', 'enterpriseReadiness', 'communityAdoption',
 ];
 
 function makeDims(score: number): Record<ScoringDimension, number> {
@@ -109,8 +111,8 @@ describe('generateMasterplan', () => {
 
   it('generates items for all dimensions below target', async () => {
     const plan = await generateMasterplan(makeOptions());
-    // All dims at 65 (6.5/10) are below target 9.0, so all 12 should have items
-    assert.equal(plan.items.length, 12);
+    // All dims at 65 (6.5/10) are below target 9.0, so all 18 should have items
+    assert.equal(plan.items.length, 18);
   });
 
   it('generates no items when all dimensions meet target', async () => {

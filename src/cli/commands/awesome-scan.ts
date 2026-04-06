@@ -1,5 +1,6 @@
 // awesome-scan — Skill discovery, domain classification, and import CLI
 import { logger } from '../../core/logger.js';
+import { withErrorBoundary } from '../../core/cli-error-boundary.js';
 import {
   buildRegistry,
   scanExternalSource,
@@ -14,6 +15,7 @@ export async function awesomeScan(options: {
   domain?: string;
   install?: boolean;
 }): Promise<void> {
+  return withErrorBoundary('awesome-scan', async () => {
   logger.success('DanteForge Skill Scanner');
   logger.info('');
 
@@ -85,4 +87,5 @@ export async function awesomeScan(options: {
   if (externalSkills.length > 0 && !options.install) {
     logger.info('Run with --install to import compatible external skills.');
   }
+  });
 }

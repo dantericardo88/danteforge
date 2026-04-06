@@ -54,3 +54,6 @@ coverage/
 
 # Binary docs (prefer .md)
 *.docx
+
+# Test temp directories
+.tmp-*/

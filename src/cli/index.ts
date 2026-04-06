@@ -6,6 +6,7 @@ import * as commands from './commands/index.js';
 import { loadState } from '../core/state.js';
 import { logger } from '../core/logger.js';
 import { enforceWorkflow } from '../core/workflow-enforcer.js';
+import { formatAndLogError } from '../core/format-error.js';
 
 const program = new Command();
 program
@@ -158,15 +159,18 @@ program
 
 const skillsCommand = program
   .command('skills')
-  .description('Manage DanteForge skill catalogs and imports');
+  .description('Manage DanteForge skill catalogs and imports')
+  .addHelpText('after', '\nSubcommands: import --from <source> [--bundle <name>] [--allow-overwrite] [--enhance]');
 
 skillsCommand
   .command('import')
-  .description('Import one Antigravity bundle into the packaged DanteForge skills catalog')
-  .requiredOption('--from <source>', 'Source catalog to import from (antigravity)')
+  .description('Import one Antigravity bundle into the packaged DanteForge skills catalog, or export skills to an agent tool directory')
+  .option('--from <source>', 'Source catalog to import from (antigravity)')
   .option('--bundle <name>', 'Bundle name from docs/BUNDLES.md (default: Essentials)')
   .option('--allow-overwrite', 'Replace an existing packaged skill when the imported skill name collides')
   .option('--enhance', 'Apply DanteForge wrappers to imported skills')
+  .option('--export', 'Export packaged skills to a target agent tool directory')
+  .option('--target <agent>', 'Export target: claude-code, codex, cursor, windsurf, or all (default: claude-code)')
   .action(commands.skillsImport);
 
 program
@@ -199,6 +203,7 @@ program
   .option('--figma-url <url>', 'Figma file URL')
   .option('--token-file <path>', 'Design tokens file path')
   .option('--no-test', 'Skip connection test')
+  .addHelpText('after', '\nSubcommands: figma, assistants')
   .action((tool: string, options) => {
     if (tool === 'figma') return commands.setupFigma(options);
     if (tool === 'assistants') return commands.setupAssistants(options);
@@ -337,6 +342,14 @@ program
   }));
 
 program
+  .command('workflow')
+  .description('Show the 12-stage pipeline with your current position highlighted')
+  .action(async () => {
+    const { workflow } = await import('./commands/workflow.js');
+    await workflow();
+  });
+
+program
   .command('help [query]')
   .description('Context-aware guidance engine')
   .action(commands.helpCmd);
@@ -406,6 +419,7 @@ program
   .command('profile [subcommand] [arg]')
   .description('Model personality profiles — view learned behavioral patterns per model')
   .option('--prompt', 'Generate a copy-paste prompt instead of displaying')
+  .addHelpText('after', '\nSubcommands: (none)=summary, compare, report, weakness <model>, recommend <task>')
   .action((subcommand, arg, opts) => commands.profile(subcommand, arg, { prompt: opts.prompt }));
 
 program
@@ -487,25 +501,57 @@ program
   .command('premium [subcommand]')
   .description('Manage premium tier, license, and audit trail')
   .option('--key <key>', 'License key for activation')
-  .action((subcommand, opts) => commands.premium(subcommand ?? 'status', { key: opts.key }));
+  .option('--tier <tier>', 'License tier for keygen: pro or enterprise', 'pro')
+  .option('--days <n>', 'Days until expiry for keygen (default: 365)', '365')
+  .action((subcommand, opts) => commands.premium(subcommand ?? 'status', { key: opts.key, tier: opts.tier, days: opts.days }));
+
+program
+  .command('mcp-server')
+  .description('Start DanteForge MCP server over stdio — for Claude Code, Codex, Cursor')
+  .action(() => commands.mcpServer());
+
+program
+  .command('publish-check')
+  .description('Pre-publish validation gate — 12 parallel checks before npm publish')
+  .option('--json', 'Output machine-readable JSON')
+  .action((opts) => commands.publishCheck({ json: opts.json }));
+
+program
+  .command('audit-export')
+  .description('Export audit trail to JSON, CSV, or Markdown for compliance reporting')
+  .option('--format <type>', 'Output format: json, csv, markdown (default: json)', 'json')
+  .option('--since <date>', 'Filter entries since ISO date (e.g., 2026-01-01)')
+  .option('--output <path>', 'Write to file instead of stdout')
+  .option('--json', 'Machine-readable JSON output')
+  .action(async (opts) => {
+    const { auditExport } = await import('./commands/audit-export.js');
+    await auditExport(opts);
+  });
 
 program
   .command('assess')
-  .description('Harsh self-assessment: score all 12 dimensions, benchmark vs competitors, generate masterplan')
+  .description('Harsh self-assessment: score all 18 dimensions, benchmark vs 27 competitors, generate masterplan')
   .option('--no-harsh', 'Use normal PDSE thresholds instead of harsh mode')
   .option('--no-competitors', 'Skip competitor benchmarking')
   .option('--min-score <n>', 'Target score threshold (default: 9.0)', '9.0')
   .option('--json', 'Output machine-readable JSON')
   .option('--preset <level>', 'Preset for target maturity level')
   .option('--cwd <path>', 'Project directory')
-  .action((opts) => void commands.assess({
-    harsh: opts.harsh !== false,
-    competitors: opts.competitors !== false,
-    minScore: parseFloat(opts.minScore),
-    json: opts.json,
-    preset: opts.preset,
-    cwd: opts.cwd,
-  }));
+  .action(async (opts) => {
+    try {
+      await commands.assess({
+        harsh: opts.harsh !== false,
+        competitors: opts.competitors !== false,
+        minScore: parseFloat(opts.minScore),
+        json: opts.json,
+        preset: opts.preset,
+        cwd: opts.cwd,
+      });
+    } catch (err) {
+      formatAndLogError(err, 'assess');
+      process.exitCode = 1;
+    }
+  });
 
 program
   .command('self-improve [goal]')
@@ -546,9 +592,17 @@ program
     cwd: opts.cwd,
   }));
 
+program
+  .command('workspace <subcommand> [args...]')
+  .description('Manage workspaces for multi-user projects')
+  .option('--role <role>', 'Member role: owner, editor, reviewer', 'editor')
+  .action(async (subcommand: string, args: string[], options: { role?: string }) => {
+    await commands.workspace(subcommand, args ?? [], options);
+  });
+
 // First-run detection — suggest init when no .danteforge/ exists
 program.hook('preAction', (_thisCommand, actionCommand) => {
-  const skip = new Set(['init', 'config', 'doctor', 'help', 'setup', 'skills', 'docs', 'premium']);
+  const skip = new Set(['init', 'config', 'doctor', 'help', 'setup', 'skills', 'docs', 'premium', 'workflow', 'mcp-server', 'publish-check']);
   if (skip.has(actionCommand.name())) return;
   if (!existsSync('.danteforge')) {
     logger.info('Tip: No .danteforge/ directory found. Run "danteforge init" to set up your project.');
@@ -574,11 +628,18 @@ Command Groups:
   Design:         design, ux-refine, browse, qa
   Intelligence:   tech-decide, debug, lessons, profile, oss, local-harvest, harvest, retro
   Self-Assessment: assess, self-improve, maturity
-  Tools:          config, setup, doctor, dashboard, compact, import, skills, ship, premium
-  Meta:           help, review, feedback, update-mcp, awesome-scan, docs
+  Tools:          config, setup, doctor, dashboard, compact, import, skills, ship, premium, publish-check, mcp-server
+  Meta:           help, review, feedback, update-mcp, awesome-scan, docs, workflow
 
 Run "danteforge help <command>" for detailed help on any command.
 Run "danteforge init" to set up a new project.
+
+Common flags:
+  --light          Skip hard gates (constitution, spec, plan, tests)
+  --prompt         Generate copy-paste prompt instead of auto-executing
+  --profile <name> Use a specific quality profile
+  --worktree       Run in isolated git worktree
+  --verbose        Show debug output
 `);
 
 loadState().catch(() => { /* state will be created on first write */ });

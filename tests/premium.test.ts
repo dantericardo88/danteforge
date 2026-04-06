@@ -3,6 +3,10 @@ import assert from 'node:assert';
 import fs from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
+import { generateLicenseKey } from '../src/core/license-keygen.js';
+
+const TEST_SECRET = 'premium-test-secret';
+const testDeps = { _getSecret: () => TEST_SECRET };
 
 const tempDirs: string[] = [];
 
@@ -39,18 +43,21 @@ describe('Premium', () => {
     assert.ok(features.some(f => f.feature === 'sla-verification'));
   });
 
-  it('validatePremiumLicense recognizes pro and enterprise keys', async () => {
+  it('validatePremiumLicense recognizes HMAC-signed pro and enterprise keys', async () => {
     const { validatePremiumLicense } = await import('../src/core/premium.js');
+    const farFuture = new Date('2099-12-31');
 
-    const proResult = await validatePremiumLicense('DF-PRO-test123');
+    const proKey = generateLicenseKey({ tier: 'pro', expiresAt: farFuture, deps: testDeps });
+    const proResult = validatePremiumLicense(proKey, testDeps);
     assert.strictEqual(proResult.valid, true);
     assert.strictEqual(proResult.tier, 'pro');
 
-    const entResult = await validatePremiumLicense('DF-ENT-test456');
+    const entKey = generateLicenseKey({ tier: 'enterprise', expiresAt: farFuture, deps: testDeps });
+    const entResult = validatePremiumLicense(entKey, testDeps);
     assert.strictEqual(entResult.valid, true);
     assert.strictEqual(entResult.tier, 'enterprise');
 
-    const invalidResult = await validatePremiumLicense('invalid-key');
+    const invalidResult = validatePremiumLicense('invalid-key');
     assert.strictEqual(invalidResult.valid, false);
     assert.strictEqual(invalidResult.tier, 'free');
   });

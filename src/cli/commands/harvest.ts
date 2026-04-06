@@ -13,6 +13,7 @@ import {
   type HarvestTrack,
 } from '../../core/harvest-engine.js';
 import { auditSelfEdit } from '../../core/safe-self-edit.js';
+import { withErrorBoundary } from '../../core/cli-error-boundary.js';
 
 // ─── Copy-paste prompt template ───────────────────────────────────────────────
 
@@ -293,6 +294,7 @@ export async function harvest(
   system: string,
   options: { lite?: boolean; prompt?: boolean } = {},
 ): Promise<void> {
+  return withErrorBoundary('harvest', async () => {
   const mode: 'full' | 'sep-lite' = options.lite ? 'sep-lite' : 'full';
 
   logger.info(`Titan Harvest V2 — system: "${system}" (${mode} mode)`);
@@ -422,4 +424,5 @@ export async function harvest(
 
   state.auditLog.push(`${new Date().toISOString()} | harvest: local template displayed for "${system}"`);
   await saveState(state);
+  });
 }

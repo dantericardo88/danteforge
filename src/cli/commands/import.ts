@@ -4,6 +4,7 @@ import path from 'path';
 import { loadState, recordWorkflowStage, saveState } from '../../core/state.js';
 import { logger } from '../../core/logger.js';
 import { handoff } from '../../core/handoff.js';
+import { withErrorBoundary } from '../../core/cli-error-boundary.js';
 import { extractNumberedTasks, FIRST_EXECUTION_PHASE } from '../../core/local-artifacts.js';
 
 const STATE_DIR = '.danteforge';
@@ -31,6 +32,7 @@ async function fileExists(filePath: string): Promise<boolean> {
 }
 
 export async function importFile(source: string, options: { as?: string } = {}) {
+  return withErrorBoundary('import', async () => {
   // Resolve the source path
   const sourcePath = path.resolve(source);
 
@@ -151,4 +153,5 @@ export async function importFile(source: string, options: { as?: string } = {}) 
   await saveState(state);
   logger.success(`Imported ${targetName} into .danteforge/`);
   logger.info('Run "danteforge synthesize" to merge all artifacts into UPR.md');
+  });
 }

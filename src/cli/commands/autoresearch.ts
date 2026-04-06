@@ -18,6 +18,7 @@ import {
   type ExperimentResult,
   type AutoResearchReport,
 } from '../../core/autoresearch-engine.js';
+import { withErrorBoundary } from '../../core/cli-error-boundary.js';
 
 const execFileAsync = promisify(execFile);
 
@@ -288,6 +289,7 @@ export async function autoResearch(
     dryRun?: boolean;
   } = {},
 ): Promise<void> {
+  return withErrorBoundary('autoresearch', async () => {
   const metric = options.metric ?? 'metric value';
   const timeBudgetMinutes = parseTimeBudget(options.time ?? '4h');
   const cwd = process.cwd();
@@ -534,6 +536,7 @@ export async function autoResearch(
   logger.info(`Branch:            ${branchName}`);
   logger.info('');
   logger.info('Run `danteforge verify` to validate the final state.');
+  });
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────

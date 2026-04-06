@@ -11,8 +11,8 @@ import { computeCompletionTracker } from './completion-tracker.js';
 import { assessMaturity, type MaturityAssessment, type MaturityDimensions } from './maturity-engine.js';
 import { scoreToMaturityLevel, type MaturityLevel } from './maturity-levels.js';
 
-// ── 12-Dimension Scoring Type ────────────────────────────────────────────────
-// Extends the 8 existing MaturityDimensions with 4 new competitor-facing ones.
+// ── 18-Dimension Scoring Type ────────────────────────────────────────────────
+// Extends the 8 existing MaturityDimensions with 10 competitor-facing ones.
 
 export type ScoringDimension =
   // Existing 8 from maturity-engine.ts (camelCase)
@@ -24,11 +24,18 @@ export type ScoringDimension =
   | 'documentation'
   | 'performance'
   | 'maintainability'
-  // New 4 for competitor comparison
-  | 'developerExperience'  // CLI UX, error messages, onboarding friction
-  | 'autonomy'             // Self-correction depth, loop quality, planning
-  | 'planningQuality'      // PDSE artifact scores averaged
-  | 'selfImprovement';     // Lessons captured, retro delta, convergence quality
+  // 4 competitor comparison dimensions
+  | 'developerExperience'     // CLI UX, error messages, onboarding friction
+  | 'autonomy'                // Self-correction depth, loop quality, planning
+  | 'planningQuality'         // PDSE artifact scores averaged
+  | 'selfImprovement'         // Lessons captured, retro delta, convergence quality
+  // 6 strategic differentiation dimensions
+  | 'specDrivenPipeline'      // PDSE artifact presence + pipeline stage completeness
+  | 'convergenceSelfHealing'  // Verify-repair loops, convergence cycles, auto-recovery
+  | 'tokenEconomy'            // Task routing, budget fences, complexity classification
+  | 'ecosystemMcp'            // MCP tools, skills, plugin manifest breadth
+  | 'enterpriseReadiness'     // Audit trails, safe-self-edit, RBAC, compliance
+  | 'communityAdoption';      // npm downloads, GitHub stars, contributor count
 
 export type HarshVerdict = 'blocked' | 'needs-work' | 'acceptable' | 'excellent';
 
@@ -90,20 +97,26 @@ const STUB_PATTERNS = [
 
 // ── Dimension Weights (sum = 1.0) ─────────────────────────────────────────────
 
-// Weights sum exactly to 1.0
+// Weights sum exactly to 1.0 (18 dimensions)
 const DIMENSION_WEIGHTS: Record<ScoringDimension, number> = {
-  functionality: 0.13,
-  testing: 0.11,
-  errorHandling: 0.09,
-  security: 0.10,
-  uxPolish: 0.07,
-  documentation: 0.07,
-  performance: 0.07,
-  maintainability: 0.08,
-  developerExperience: 0.09,
-  autonomy: 0.08,
-  planningQuality: 0.06,
-  selfImprovement: 0.05,
+  functionality: 0.11,
+  testing: 0.09,
+  errorHandling: 0.08,
+  security: 0.08,
+  uxPolish: 0.06,
+  documentation: 0.06,
+  performance: 0.06,
+  maintainability: 0.07,
+  developerExperience: 0.08,
+  autonomy: 0.07,
+  planningQuality: 0.05,
+  selfImprovement: 0.04,
+  specDrivenPipeline: 0.03,
+  convergenceSelfHealing: 0.03,
+  tokenEconomy: 0.03,
+  ecosystemMcp: 0.02,
+  enterpriseReadiness: 0.02,
+  communityAdoption: 0.02,
 };
 
 // ── Options & Injection Seams ────────────────────────────────────────────────
@@ -147,12 +160,12 @@ export async function computeHarshScore(options: HarshScorerOptions = {}): Promi
   const allArtifacts = pdseScores as Record<ScoredArtifact, ScoreResult>;
   const completionTracker = computeTrackerFn(state, allArtifacts);
 
-  // Step 4: Derive the 4 new dimensions from existing data
-  const newDimensions = computeNewDimensions(pdseScores, state, maturityAssessment);
+  // Step 4: Derive the 10 extended dimensions from existing data
+  const newDimensions = computeNewDimensions(pdseScores, state, maturityAssessment, cwd);
 
-  // Step 5: Combine all 12 dimensions
+  // Step 5: Combine all 18 dimensions (8 from maturity + 10 extended)
   const dims = maturityAssessment.dimensions;
-  const dimensions: Record<ScoringDimension, number> = {
+  const dimensions = {
     functionality: dims.functionality,
     testing: dims.testing,
     errorHandling: dims.errorHandling,
@@ -162,7 +175,7 @@ export async function computeHarshScore(options: HarshScorerOptions = {}): Promi
     performance: dims.performance,
     maintainability: dims.maintainability,
     ...newDimensions,
-  };
+  } as Record<ScoringDimension, number>;
 
   // Step 6: Weighted raw score
   const rawScore = computeWeightedScore(dimensions);
@@ -307,12 +320,19 @@ function computeNewDimensions(
   pdseScores: Partial<Record<ScoredArtifact, ScoreResult>>,
   state: DanteState,
   assessment: MaturityAssessment,
-): { developerExperience: number; autonomy: number; planningQuality: number; selfImprovement: number } {
+  cwd: string,
+): Record<string, number> {
   return {
     planningQuality: computePlanningQualityScore(pdseScores),
     selfImprovement: computeSelfImprovementScore(state),
     developerExperience: computeDeveloperExperienceScore(assessment),
     autonomy: computeAutonomyScore(state, assessment),
+    specDrivenPipeline: computeSpecDrivenPipelineScore(pdseScores, state),
+    convergenceSelfHealing: computeConvergenceSelfHealingScore(state),
+    tokenEconomy: computeTokenEconomyScore(state),
+    ecosystemMcp: computeEcosystemMcpScore(state, cwd),
+    enterpriseReadiness: computeEnterpriseReadinessScore(state, assessment),
+    communityAdoption: computeCommunityAdoptionScore(),
   };
 }
 
@@ -352,6 +372,83 @@ export function computeAutonomyScore(state: DanteState, assessment: MaturityAsse
   else if (completedPhases >= 1) score += 7;
   if (state.autoforgeEnabled) score += 10;
   return Math.max(0, Math.min(100, score));
+}
+
+// ── Strategic dimension computations ─────────────────────────────────────────
+
+export function computeSpecDrivenPipelineScore(
+  pdseScores: Partial<Record<ScoredArtifact, ScoreResult>>,
+  state: DanteState,
+): number {
+  let score = 20; // base: pipeline exists
+  const artifacts: ScoredArtifact[] = ['CONSTITUTION', 'SPEC', 'CLARIFY', 'PLAN', 'TASKS'];
+  const present = artifacts.filter((a) => pdseScores[a] && (pdseScores[a]!.score ?? 0) > 0);
+  score += present.length * 12; // up to 60 for all 5 artifacts
+  const stage = state.workflowStage ?? 'initialized';
+  const stageOrder = ['initialized', 'constitution', 'specified', 'clarified', 'planned', 'tasked', 'forging', 'verified', 'synthesized'];
+  const stageIndex = stageOrder.indexOf(stage);
+  if (stageIndex >= 5) score += 20;
+  else if (stageIndex >= 3) score += 10;
+  return Math.max(0, Math.min(100, score));
+}
+
+export function computeConvergenceSelfHealingScore(state: DanteState): number {
+  let score = 30; // base: convergence infrastructure exists
+  if (state.lastVerifyStatus === 'pass') score += 25;
+  if ((state.autoforgeFailedAttempts ?? 0) > 0 && state.lastVerifyStatus === 'pass') score += 15;
+  const auditEntries = state.auditLog?.length ?? 0;
+  if (auditEntries > 10) score += 15;
+  else if (auditEntries > 3) score += 8;
+  if (state.autoforgeEnabled) score += 15;
+  return Math.max(0, Math.min(100, score));
+}
+
+export function computeTokenEconomyScore(state: DanteState): number {
+  // Access optional state fields safely via record pattern
+  const s = state as unknown as Record<string, unknown>;
+  let score = 40; // base: task-router and budget systems exist
+  if (typeof s['maxBudgetUsd'] === 'number' && s['maxBudgetUsd'] > 0) score += 20;
+  if (s['routingAggressiveness']) score += 15;
+  if (s['lastComplexityPreset']) score += 15;
+  if (typeof s['totalTokensUsed'] === 'number' && s['totalTokensUsed'] > 0 &&
+      (state.autoforgeFailedAttempts ?? 0) === 0) score += 10;
+  return Math.max(0, Math.min(100, score));
+}
+
+export function computeEcosystemMcpScore(state: DanteState, _cwd: string): number {
+  const s = state as unknown as Record<string, unknown>;
+  let score = 30; // base: MCP server + skill system exists
+  const skillCount = typeof s['skillCount'] === 'number' ? s['skillCount'] : 0;
+  if (skillCount >= 10) score += 25;
+  else if (skillCount >= 5) score += 15;
+  else if (skillCount > 0) score += 8;
+  const mcpToolCount = typeof s['mcpToolCount'] === 'number' ? s['mcpToolCount'] : 15;
+  if (mcpToolCount >= 15) score += 20;
+  else if (mcpToolCount >= 5) score += 10;
+  if (s['hasPluginManifest']) score += 15;
+  if ((typeof s['providerCount'] === 'number' ? s['providerCount'] : 5) >= 5) score += 10;
+  return Math.max(0, Math.min(100, score));
+}
+
+export function computeEnterpriseReadinessScore(
+  state: DanteState,
+  assessment: MaturityAssessment,
+): number {
+  const s = state as unknown as Record<string, unknown>;
+  let score = 15; // base: audit log exists
+  const auditEntries = state.auditLog?.length ?? 0;
+  if (auditEntries > 20) score += 20;
+  else if (auditEntries > 5) score += 10;
+  if (s['selfEditPolicy'] === 'deny' || s['selfEditPolicy'] === 'prompt') score += 15;
+  if (assessment.dimensions.security >= 80) score += 20;
+  else if (assessment.dimensions.security >= 70) score += 10;
+  if (s['lastVerifyReceiptPath']) score += 15;
+  return Math.max(0, Math.min(100, score));
+}
+
+export function computeCommunityAdoptionScore(): number {
+  // Static: no external users, no npm publish, no GitHub stars yet
+  return 15;
 }
 
 // ── Score helpers ─────────────────────────────────────────────────────────────

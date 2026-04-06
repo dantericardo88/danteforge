@@ -51,3 +51,8 @@ export { assess } from './assess.js';
 export { selfImprove } from './self-improve.js';
 export { defineDone } from './define-done.js';
 export { universe } from './universe.js';
+export { workflow } from './workflow.js';
+export { auditExport } from './audit-export.js';
+export { workspace } from './workspace.js';
+export { mcpServer } from './mcp-server.js';
+export { publishCheck } from './publish-check.js';

@@ -11,10 +11,12 @@ import {
   FIRST_EXECUTION_PHASE,
   writeArtifact,
 } from '../../core/local-artifacts.js';
+import { withErrorBoundary } from '../../core/cli-error-boundary.js';
 
 const STATE_DIR = '.danteforge';
 
 export async function tasks(options: { prompt?: boolean; light?: boolean } = {}) {
+  return withErrorBoundary('tasks', async () => {
   if (!(await runGate(() => requirePlan(options.light)))) return;
 
   logger.info('Breaking plan into executable tasks...');
@@ -103,4 +105,5 @@ Output ONLY the markdown content - no preamble.`;
   if (!llmAvailable) {
     logger.info('Tip: Set up an API key for richer task breakdowns: danteforge config --set-key "grok:<key>"');
   }
+  });
 }

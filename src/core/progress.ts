@@ -109,3 +109,34 @@ export function progressBar(
   process.stdout.write(`\r${label}  [${bar}] ${pctStr.padStart(4)} (${current}/${total})`);
   if (current >= total) process.stdout.write('\n');
 }
+
+// ── Step tracker (multi-step progress) ──────────────────────────────────────
+
+export interface StepTracker {
+  /** Advance to the next step with a label, e.g. "Running tests" → "[2/5] Running tests" */
+  step(label: string): void;
+  /** Get current step number (1-based) */
+  current(): number;
+  /** Get total step count */
+  total(): number;
+}
+
+export function createStepTracker(totalSteps: number, opts: ProgressOptions = {}): StepTracker {
+  const isTTY = opts._isTTY ?? (process.stdout.isTTY === true);
+  let _current = 0;
+
+  return {
+    step(label: string): void {
+      _current = Math.min(_current + 1, totalSteps);
+      const prefix = `[${_current}/${totalSteps}]`;
+      const spinner = getActiveSpinner();
+      if (spinner) {
+        spinner.update(`${prefix} ${label}`);
+      } else if (isTTY) {
+        console.log(`${prefix} ${label}`);
+      }
+    },
+    current(): number { return _current; },
+    total(): number { return totalSteps; },
+  };
+}

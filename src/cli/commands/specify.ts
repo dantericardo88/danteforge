@@ -7,10 +7,12 @@ import { isLLMAvailable, callLLM } from '../../core/llm.js';
 import { displayPrompt, savePrompt } from '../../core/prompt-builder.js';
 import { requireConstitution, runGate } from '../../core/gates.js';
 import { buildLocalSpec, extractNumberedTasks, writeArtifact } from '../../core/local-artifacts.js';
+import { withErrorBoundary } from '../../core/cli-error-boundary.js';
 
 const STATE_DIR = '.danteforge';
 
 export async function specify(idea: string, options: { prompt?: boolean; light?: boolean } = {}) {
+  return withErrorBoundary('specify', async () => {
   if (!(await runGate(() => requireConstitution(options.light)))) return;
 
   logger.info(`Specifying: ${idea}`);
@@ -84,4 +86,5 @@ Output ONLY the markdown content - no preamble.`;
   if (!llmAvailable) {
     logger.info('Tip: Set up an API key for richer specs: danteforge config --set-key "grok:<key>"');
   }
+  });
 }

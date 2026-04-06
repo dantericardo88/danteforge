@@ -9,6 +9,7 @@ import { discoverSkills } from '../../core/skills.js';
 import { detectHost, detectMCPCapabilities } from '../../core/mcp.js';
 import { resolveTier, testMCPConnection } from '../../core/mcp-adapter.js';
 import { installAssistantSkills } from '../../core/assistant-installer.js';
+import { withErrorBoundary } from '../../core/cli-error-boundary.js';
 
 const ANTIGRAVITY_BUNDLES_URL = process.env.ANTIGRAVITY_BUNDLES_URL ?? 'https://raw.githubusercontent.com/sickn33/antigravity-awesome-skills/main/docs/BUNDLES.md';
 const LIVE_PROVIDER_VALUES = ['openai', 'claude', 'gemini', 'grok', 'ollama'];
@@ -301,6 +302,7 @@ async function runRepairs(): Promise<DiagnosticResult> {
 }
 
 export async function doctor(options: { fix?: boolean; live?: boolean } = {}) {
+  return withErrorBoundary('doctor', async () => {
   logger.success('DanteForge Doctor - System Health Check');
   logger.info('');
 
@@ -500,4 +502,5 @@ export async function doctor(options: { fix?: boolean; live?: boolean } = {}) {
   if (failCount > 0) {
     process.exitCode = 1;
   }
+  });
 }

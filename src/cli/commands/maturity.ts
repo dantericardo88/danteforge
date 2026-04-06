@@ -9,6 +9,7 @@ import { scoreAllArtifacts } from '../../core/pdse.js';
 import { assessMaturity, type MaturityAssessment } from '../../core/maturity-engine.js';
 import { getMaturityLevelName, getMaturityUseCase, type MaturityLevel } from '../../core/maturity-levels.js';
 import { MAGIC_PRESETS, type MagicLevel } from '../../core/magic-presets.js';
+import { withErrorBoundary } from '../../core/cli-error-boundary.js';
 
 export interface MaturityOptions {
   preset?: string;
@@ -20,14 +21,14 @@ export interface MaturityOptions {
   _assessMaturity?: (ctx: any) => Promise<MaturityAssessment>;
 }
 
-export async function maturity(options: MaturityOptions = {}) {
-  const cwd = options.cwd ?? process.cwd();
+export async function maturity(options: MaturityOptions = {}): Promise<void> {
+  return withErrorBoundary('maturity', async () => {
+    const cwd = options.cwd ?? process.cwd();
 
-  const loadStateFn = options._loadState ?? loadState;
-  const scoreArtifactsFn = options._scoreArtifacts ?? scoreAllArtifacts;
-  const assessMaturityFn = options._assessMaturity ?? assessMaturity;
+    const loadStateFn = options._loadState ?? loadState;
+    const scoreArtifactsFn = options._scoreArtifacts ?? scoreAllArtifacts;
+    const assessMaturityFn = options._assessMaturity ?? assessMaturity;
 
-  try {
     logger.info('Analyzing project maturity...');
 
     const state = await loadStateFn();
@@ -72,10 +73,7 @@ export async function maturity(options: MaturityOptions = {}) {
     if (assessment.recommendation === 'blocked') {
       process.exitCode = 1;
     }
-  } catch (err) {
-    logger.error(`Maturity assessment failed: ${err instanceof Error ? err.message : String(err)}`);
-    process.exitCode = 1;
-  }
+  });
 }
 
 function printFounderReport(assessment: MaturityAssessment): void {

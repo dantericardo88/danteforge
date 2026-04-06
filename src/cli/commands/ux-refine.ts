@@ -6,6 +6,7 @@ import { requirePlan, runGate } from '../../core/gates.js';
 import { detectHost, detectMCPCapabilities, buildUXRefinePrompt } from '../../core/mcp.js';
 import { isUIProject } from '../../core/mcp-adapter.js';
 import { handoff } from '../../core/handoff.js';
+import { withErrorBoundary } from '../../core/cli-error-boundary.js';
 import fs from 'fs/promises';
 import path from 'path';
 
@@ -44,6 +45,7 @@ export async function uxRefine(options: {
   openpencil?: boolean;
   lint?: boolean;
 } = {}) {
+  return withErrorBoundary('ux-refine', async () => {
   if (options.skipUx) {
     logger.info('UX refinement skipped (--skip-ux)');
     return;
@@ -128,6 +130,7 @@ export async function uxRefine(options: {
   state.designTokensPath = tokenFile;
   state.auditLog.push(`${new Date().toISOString()} | ux-refine: prompt generated (host: ${host}, figma-mcp: ${capabilities.hasFigmaMCP})`);
   await saveState(state);
+  });
 }
 
 async function runOpenPencilRefinement(): Promise<void> {

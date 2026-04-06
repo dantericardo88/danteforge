@@ -2,9 +2,11 @@ import { executeWave } from '../../harvested/gsd/agents/executor.js';
 import { runDanteParty } from '../../harvested/dante-agents/party-mode.js';
 import { requirePlan, requireTests, runGate } from '../../core/gates.js';
 import { logger } from '../../core/logger.js';
+import { withErrorBoundary } from '../../core/cli-error-boundary.js';
 import fs from 'fs/promises';
 
 export async function forge(phase = '1', options: { profile?: string; parallel?: boolean; prompt?: boolean; light?: boolean; worktree?: boolean; figma?: boolean; skipUx?: boolean } = {}) {
+  return withErrorBoundary('forge', async () => {
   if (!(await runGate(() => requirePlan(options.light)))) return;
   if (!(await runGate(() => requireTests(options.light)))) return;
 
@@ -49,4 +51,5 @@ export async function forge(phase = '1', options: { profile?: string; parallel?:
   } catch {
     // No DESIGN.op - skip token extraction for non-design projects.
   }
+  });
 }
