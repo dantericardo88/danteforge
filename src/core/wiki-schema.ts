@@ -1,5 +1,7 @@
 // Wiki Engine Schema — TypeScript types, interfaces, and constants for the Wiki Engine
 // Three-tier knowledge architecture: T1 (immutable constitutional), T2 (compiled wiki), T3 (raw sources)
+import path from 'node:path';
+import os from 'node:os';
 
 // ── Entity types ──────────────────────────────────────────────────────────────
 
@@ -14,6 +16,10 @@ export interface WikiFrontmatter {
   links: string[];           // entity IDs this page links to
   constitutionRefs: string[]; // constitutional invariant IDs referenced
   tags: string[];
+  /** Confidence score 0–1 assigned by wiki-ingestor; used for federation threshold */
+  confidence?: number;
+  /** Source project directory at ingest time (for traceability) */
+  sourceProject?: string;
 }
 
 export interface WikiEntityPage {
@@ -200,3 +206,9 @@ export const PDSE_HISTORY_WINDOW = 5;
 
 /** Minimum Levenshtein similarity ratio (0–1) for fuzzy entity matching */
 export const FUZZY_MATCH_THRESHOLD = 0.75;
+
+/** Global wiki directory — knowledge federated across all projects */
+export const GLOBAL_WIKI_DIR = path.join(os.homedir(), '.danteforge', 'global-wiki');
+
+/** Minimum confidence for an entity to be federated to the global wiki */
+export const GLOBAL_FEDERATION_THRESHOLD = 0.75;

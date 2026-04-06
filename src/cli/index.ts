@@ -394,6 +394,7 @@ program
   .option('--score-only', 'Score existing artifacts and write AUTOFORGE_GUIDANCE.md — no execution')
   .option('--auto', 'Run autonomous loop until 95% completion or BLOCKED state')
   .option('--force', 'Override one BLOCKED artifact for one cycle (logged to audit trail)')
+  .option('--pause-at <score>', 'Pause the loop when average PDSE score reaches this value')
   .action((goal, opts) => commands.autoforge(goal, {
     dryRun: opts.dryRun,
     maxWaves: parseInt(opts.maxWaves, 10),
@@ -405,7 +406,13 @@ program
     profile: opts.profile,
     parallel: opts.parallel,
     worktree: opts.worktree,
+    pauseAt: opts.pauseAt !== undefined ? parseInt(opts.pauseAt, 10) : undefined,
   }));
+
+program
+  .command('resume')
+  .description('Resume a paused autoforge loop from the last checkpoint')
+  .action(() => commands.resumeAutoforge());
 
 program
   .command('awesome-scan')

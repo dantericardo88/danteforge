@@ -529,16 +529,45 @@ export async function getWikiContextForPrompt(
     const exists = opts._exists ?? defaultExists;
     const wikiDir = path.join(cwd, WIKI_DIR);
 
-    if (!(await exists(wikiDir))) return '';
+    // Query local wiki (70% of budget)
+    const localBudget = Math.floor(tokenBudget * 0.7);
+    let results: import('./wiki-schema.js').WikiQueryResult[] = [];
 
-    const results = await query(promptText, { ...opts, maxResults: 5, useLLMFallback: false });
+    if (await exists(wikiDir)) {
+      results = await query(promptText, { ...opts, maxResults: 5, useLLMFallback: false });
+    }
+
+    // Query global wiki (30% of budget) — best-effort, non-fatal
+    try {
+      const { queryGlobalWiki } = await import('./wiki-federation.js');
+      const { GLOBAL_WIKI_DIR } = await import('./wiki-schema.js');
+      const globalExists = await exists(GLOBAL_WIKI_DIR);
+      if (globalExists) {
+        const globalResults = await queryGlobalWiki(promptText, GLOBAL_WIKI_DIR, Math.floor(tokenBudget * 0.3), {
+          _readDir: opts._readDir,
+          _readFile: opts._readFile,
+        });
+        // Merge: deduplicate by entityId (local wins), sort by score descending
+        const seenIds = new Set(results.map(r => r.entityId));
+        for (const gr of globalResults) {
+          if (!seenIds.has(gr.entityId)) {
+            results.push(gr);
+            seenIds.add(gr.entityId);
+          }
+        }
+        results.sort((a, b) => b.score - a.score);
+      }
+    } catch {
+      // Non-fatal: global wiki unavailable or import failed
+    }
+
     if (!results.length) return '';
 
     const lines: string[] = ['[WIKI CONTEXT]'];
     let usedChars = 0;
-    const charBudget = tokenBudget * 4; // rough 4 chars/token estimate
+    const charBudget = localBudget * 4; // rough 4 chars/token estimate
 
-    for (const result of results) {
+    for (const result of results.slice(0, 5)) {
       const entry = `[WIKI: ${result.entityId}] ${result.excerpt}`;
       if (usedChars + entry.length > charBudget) break;
       lines.push(entry);

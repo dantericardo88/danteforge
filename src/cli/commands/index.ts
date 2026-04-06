@@ -61,3 +61,4 @@ export { wikiLintCommand } from './wiki-lint.js';
 export { wikiQueryCommand } from './wiki-query.js';
 export { wikiStatusCommand } from './wiki-status.js';
 export { wikiExportCommand } from './wiki-export.js';
+export { resumeAutoforge } from './resume.js';

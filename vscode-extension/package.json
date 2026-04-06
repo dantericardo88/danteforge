@@ -2,7 +2,7 @@
   "name": "danteforge-vscode",
   "displayName": "DanteForge",
   "description": "Agentic development workflow — structured specs, execution waves, and multi-agent orchestration inside VS Code",
-  "version": "0.10.0",
+  "version": "0.11.0",
   "publisher": "danteforge",
   "license": "MIT",
   "repository": {
@@ -29,7 +29,12 @@
     "onCommand:danteforge.doctor",
     "onCommand:danteforge.forge",
     "onCommand:danteforge.party",
-    "onCommand:danteforge.magic"
+    "onCommand:danteforge.magic",
+    "onCommand:danteforge.wikiQuery",
+    "onCommand:danteforge.wikiStatus",
+    "onCommand:danteforge.pdseScore",
+    "onCommand:danteforge.resume",
+    "onCommand:danteforge.pauseAt"
   ],
   "main": "./dist/extension.js",
   "contributes": {
@@ -69,6 +74,26 @@
       {
         "command": "danteforge.magic",
         "title": "DanteForge: Magic Mode"
+      },
+      {
+        "command": "danteforge.wikiQuery",
+        "title": "DanteForge: Wiki Query"
+      },
+      {
+        "command": "danteforge.wikiStatus",
+        "title": "DanteForge: Wiki Status"
+      },
+      {
+        "command": "danteforge.pdseScore",
+        "title": "DanteForge: PDSE Score"
+      },
+      {
+        "command": "danteforge.resume",
+        "title": "DanteForge: Resume Autoforge"
+      },
+      {
+        "command": "danteforge.pauseAt",
+        "title": "DanteForge: Autoforge — Pause At Score"
       }
     ]
   },

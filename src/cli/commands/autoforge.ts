@@ -41,6 +41,8 @@ export async function autoforge(goal?: string, options: {
   parallel?: boolean;
   worktree?: boolean;
   cwd?: string;
+  /** Pause loop when avg PDSE score reaches this value */
+  pauseAt?: number;
   // Injection seam — override the autonomous loop for testing
   _runLoop?: (ctx: AutoforgeLoopContext) => Promise<AutoforgeLoopContext>;
 } = {}): Promise<void> {
@@ -77,6 +79,7 @@ export async function autoforge(goal?: string, options: {
       force: options.force ?? false,
       dryRun: options.dryRun,
       maxRetries: 3,
+      ...(options.pauseAt !== undefined ? { pauseAtScore: options.pauseAt } : {}),
     };
     const loopFn = options._runLoop ?? runAutoforgeLoop;
     await loopFn(ctx);

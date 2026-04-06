@@ -322,6 +322,8 @@ export function scoreArtifact(ctx: ScoringContext): ScoreResult {
 export interface ScoreAllArtifactsOptions {
   /** Injection seam: override history append for testing */
   _appendHistory?: (entry: Parameters<typeof appendPdseHistory>[0], opts?: AppendPdseHistoryOptions) => Promise<void>;
+  /** Optional toolchain metrics to apply as post-scoring adjustments */
+  toolchainMetrics?: import('./pdse-toolchain.js').ToolchainMetrics;
 }
 
 export async function scoreAllArtifacts(
@@ -399,7 +401,17 @@ export async function scoreAllArtifacts(
     });
   }
 
-  const finalResults = results as Record<ScoredArtifact, ScoreResult>;
+  let finalResults = results as Record<ScoredArtifact, ScoreResult>;
+
+  // Apply toolchain grounding if metrics were provided (post-scoring adjustment)
+  if (opts?.toolchainMetrics) {
+    try {
+      const { applyToolchainToScores } = await import('./pdse-toolchain.js');
+      finalResults = applyToolchainToScores(finalResults, opts.toolchainMetrics);
+    } catch {
+      // Non-fatal — fall back to ungrounded scores
+    }
+  }
 
   // Best-effort: append each score result to wiki PDSE history
   const appendFn = opts?._appendHistory ?? appendPdseHistory;

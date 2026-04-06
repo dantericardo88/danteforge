@@ -43,6 +43,31 @@ export interface AutoforgeLoopContext {
   dryRun?: boolean;
   maxRetries: number;
   targetMaturityLevel?: MaturityLevel; // Optional maturity target override
+  /** Pause the loop when avgScore reaches or exceeds this value */
+  pauseAtScore?: number;
+  /** Override file writer for testing */
+  _writePauseFile?: (filePath: string, content: string) => Promise<void>;
+  /** Previous cycle toolchain metrics for auto-lessons comparison */
+  prevToolchainMetrics?: import('./pdse-toolchain.js').ToolchainMetrics;
+  /** Previous cycle avg score for auto-lessons comparison */
+  prevAvgScore?: number;
+  /** Token estimator for ROI tracking */
+  _estimateTokens?: () => number;
+  /** Signal listener injection seam */
+  _addSignalListener?: (event: string, fn: (...args: unknown[]) => void) => void;
+  /** Signal listener removal injection seam */
+  _removeSignalListener?: (event: string, fn: (...args: unknown[]) => void) => void;
+}
+
+export const AUTOFORGE_PAUSE_FILE = '.danteforge/AUTOFORGE_PAUSED';
+
+export interface AutoforgePauseSnapshot {
+  pausedAt: string;
+  avgScore: number;
+  cycleCount: number;
+  goal: string;
+  retryCounters: Record<string, number>;
+  blockedArtifacts: string[];
 }
 
 export interface AutoforgeGuidance {
@@ -97,7 +122,9 @@ export async function runAutoforgeLoop(ctx: AutoforgeLoopContext): Promise<Autof
     interrupted = true;
     logger.info('\n[Autoforge] Interrupt received — completing current step and saving progress...');
   };
-  process.on('SIGINT', sigintHandler);
+  const addListener = ctx._addSignalListener ?? ((e, fn) => process.on(e, fn as NodeJS.SignalsListener));
+  const removeListener = ctx._removeSignalListener ?? ((e, fn) => process.removeListener(e, fn as NodeJS.SignalsListener));
+  addListener('SIGINT', sigintHandler);
 
   try {
     ctx.loopState = AutoforgeLoopState.RUNNING;
@@ -150,6 +177,81 @@ export async function runAutoforgeLoop(ctx: AutoforgeLoopContext): Promise<Autof
       }
       const tracker = computeCompletionTracker(ctx.state, scores);
       ctx.state.completionTracker = tracker;
+
+      // Compute avg score for ROI / auto-lessons / pause-at checks
+      const scoreValues = Object.values(scores).map(r => r.score);
+      const avgScore = scoreValues.length > 0 ? Math.round(scoreValues.reduce((a, b) => a + b, 0) / scoreValues.length) : 0;
+
+      // 2a. PDSE snapshot for VS Code status bar (best-effort)
+      try {
+        const { writePdseSnapshot } = await import('./pdse-snapshot.js');
+        await writePdseSnapshot(scores, cwd);
+      } catch {
+        // Non-fatal
+      }
+
+      // 2b. Auto-lessons: detect regressions and record lessons (best-effort)
+      try {
+        const { detectLessonEvents, captureAutoLesson } = await import('./auto-lessons.js');
+        const events = detectLessonEvents(
+          ctx.prevToolchainMetrics ?? null,
+          null,
+          ctx.prevAvgScore ?? null,
+          avgScore,
+        );
+        for (const event of events) {
+          await captureAutoLesson(event, {
+            artifact: 'autoforge',
+            prevValue: ctx.prevAvgScore ?? undefined,
+            currValue: avgScore,
+            cycleCount: ctx.cycleCount,
+            cwd,
+          });
+        }
+        ctx.prevAvgScore = avgScore;
+      } catch {
+        // Non-fatal
+      }
+
+      // 2c. Token ROI tracking (best-effort)
+      try {
+        const tokensSpent = ctx._estimateTokens ? ctx._estimateTokens() : 0;
+        if (tokensSpent > 0 && ctx.prevAvgScore !== undefined) {
+          const { buildROIEntry, appendROIEntry } = await import('./token-roi.js');
+          const entry = buildROIEntry(ctx.cycleCount, tokensSpent, ctx.prevAvgScore, avgScore);
+          await appendROIEntry(entry, cwd);
+        }
+      } catch {
+        // Non-fatal
+      }
+
+      // 2d. Pause-at-score check (Wave 4 escape hatch)
+      if (ctx.pauseAtScore !== undefined && avgScore >= ctx.pauseAtScore) {
+        const writePauseFile = ctx._writePauseFile ?? ((p, c) => fs.writeFile(p, c, 'utf8'));
+        try {
+          const pauseSnapshot: AutoforgePauseSnapshot = {
+            pausedAt: new Date().toISOString(),
+            avgScore,
+            cycleCount: ctx.cycleCount,
+            goal: ctx.goal,
+            retryCounters: ctx.retryCounters,
+            blockedArtifacts: ctx.blockedArtifacts,
+          };
+          const pauseFilePath = path.join(cwd, AUTOFORGE_PAUSE_FILE);
+          await fs.mkdir(path.dirname(pauseFilePath), { recursive: true });
+          await writePauseFile(pauseFilePath, JSON.stringify(pauseSnapshot, null, 2));
+          logger.success(`[Autoforge] Score ${avgScore} >= pause target ${ctx.pauseAtScore} — paused. Run: danteforge resume`);
+          ctx.loopState = AutoforgeLoopState.COMPLETE;
+          ctx.state.auditLog.push(
+            `${new Date().toISOString()} | autoforge-loop: paused at score ${avgScore} (target ${ctx.pauseAtScore})`,
+          );
+          await saveState(ctx.state, { cwd });
+        } catch {
+          // Non-fatal — if write fails, keep going
+        }
+        if (ctx.loopState === AutoforgeLoopState.COMPLETE) break;
+      }
+
       emitScoreUpdate('completion', tracker.overall);
       emitCycleComplete(ctx.cycleCount, tracker.overall);
 
@@ -324,7 +426,7 @@ export async function runAutoforgeLoop(ctx: AutoforgeLoopContext): Promise<Autof
 
     return ctx;
   } finally {
-    process.removeListener('SIGINT', sigintHandler);
+    removeListener('SIGINT', sigintHandler);
   }
 }
 
