@@ -4,6 +4,9 @@ import { estimateTokens } from './token-estimator.js';
 import { logger } from './logger.js';
 import type { MemoryEntry } from './memory-store.js';
 import fs from 'fs/promises';
+import { getWikiContextForPrompt } from './wiki-engine.js';
+import type { WikiEngineOptions } from './wiki-engine.js';
+import { WIKI_TIER0_TOKEN_BUDGET } from './wiki-schema.js';
 
 const DEFAULT_MAX_BUDGET = 4000; // tokens for injected context
 const LESSONS_FILE = '.danteforge/lessons.md';
@@ -149,57 +152,95 @@ export function buildProgressiveContext(
 }
 
 /**
+ * Options for injectContext — allows injection seams for testing.
+ */
+export interface InjectContextOptions {
+  maxTokenBudget?: number;
+  cwd?: string;
+  /** Injection seam: override wiki query for testing */
+  _wikiQuery?: (prompt: string, opts: WikiEngineOptions, budget: number) => Promise<string>;
+}
+
+/**
  * Main entry point: inject relevant past context into a prompt.
- * Returns the enriched prompt with a "Prior Context" section appended.
+ * Returns the enriched prompt with a "Prior Context" section prepended.
+ *
+ * Tier 0 (NEW): Wiki entity pages relevant to the current task (highest priority).
+ * Tier 1: Error corrections and critical lessons.
+ * Tier 2: Recent decisions and insights.
+ * Tier 3: Historical command summaries.
  */
 export async function injectContext(
   prompt: string,
-  maxTokenBudget: number = DEFAULT_MAX_BUDGET,
+  maxTokenBudgetOrOpts: number | InjectContextOptions = DEFAULT_MAX_BUDGET,
   cwd?: string,
 ): Promise<string> {
-  const budget = await getMemoryBudget(cwd);
-  if (budget.entryCount === 0) {
-    // No memory — return prompt as-is
+  // Support both legacy (number, cwd) and new options-object signatures
+  let maxTokenBudget: number;
+  let resolvedCwd: string | undefined;
+  let wikiQueryFn: InjectContextOptions['_wikiQuery'];
+
+  if (typeof maxTokenBudgetOrOpts === 'number') {
+    maxTokenBudget = maxTokenBudgetOrOpts;
+    resolvedCwd = cwd;
+  } else {
+    maxTokenBudget = maxTokenBudgetOrOpts.maxTokenBudget ?? DEFAULT_MAX_BUDGET;
+    resolvedCwd = maxTokenBudgetOrOpts.cwd ?? cwd;
+    wikiQueryFn = maxTokenBudgetOrOpts._wikiQuery;
+  }
+
+  // ── Tier 0: Wiki context (best-effort, never blocks) ──────────────────────
+  const wikiOpts: WikiEngineOptions = { cwd: resolvedCwd };
+  const tier0Fn = wikiQueryFn ?? getWikiContextForPrompt;
+  const tier0Content = await tier0Fn(prompt, wikiOpts, WIKI_TIER0_TOKEN_BUDGET);
+  const tier0Tokens = tier0Content ? estimateTokens(tier0Content) : 0;
+
+  // Remaining budget for Tiers 1–3
+  const budgetForMemory = Math.max(0, maxTokenBudget - tier0Tokens);
+
+  const budget = await getMemoryBudget(resolvedCwd);
+  if (budget.entryCount === 0 && !tier0Content) {
     return prompt;
   }
 
   const promptTokens = estimateTokens(prompt);
-  const availableBudget = Math.max(0, maxTokenBudget - Math.min(promptTokens * 0.1, 500));
+  const availableBudget = Math.max(0, budgetForMemory - Math.min(promptTokens * 0.1, 500));
 
-  if (availableBudget < 50) {
-    return prompt; // Not enough budget for meaningful context
-  }
+  let contextBlock = '';
 
-  // Extract key terms and search memory
-  const terms = extractKeyTerms(prompt);
-  const searchQuery = terms.join(' ');
+  if (budget.entryCount > 0 && availableBudget >= 50) {
+    // Extract key terms and search memory
+    const terms = extractKeyTerms(prompt);
+    const searchQuery = terms.join(' ');
 
-  let memories: MemoryEntry[] = [];
-  if (searchQuery.length > 0) {
-    memories = await searchMemory(searchQuery, 20, cwd);
-  }
-
-  // Also get recent memories for recency
-  const recent = await getRecentMemory(10, cwd);
-  const seen = new Set(memories.map(m => m.id));
-  for (const r of recent) {
-    if (!seen.has(r.id)) {
-      memories.push(r);
-      seen.add(r.id);
+    let memories: MemoryEntry[] = [];
+    if (searchQuery.length > 0) {
+      memories = await searchMemory(searchQuery, 20, resolvedCwd);
     }
+
+    const recent = await getRecentMemory(10, resolvedCwd);
+    const seen = new Set(memories.map(m => m.id));
+    for (const r of recent) {
+      if (!seen.has(r.id)) {
+        memories.push(r);
+        seen.add(r.id);
+      }
+    }
+
+    const lessons = await loadLessons(resolvedCwd);
+    contextBlock = buildProgressiveContext(memories, lessons, availableBudget);
   }
 
-  // Load lessons
-  const lessons = await loadLessons(cwd);
-
-  // Build progressive context
-  const contextBlock = buildProgressiveContext(memories, lessons, availableBudget);
-
-  if (contextBlock.length === 0) {
+  if (!tier0Content && contextBlock.length === 0) {
     return prompt;
   }
 
-  logger.info(`[Context] Injected ${estimateTokens(contextBlock)} tokens of prior context`);
+  const totalTokens = tier0Tokens + estimateTokens(contextBlock);
+  logger.info(`[Context] Injected ${totalTokens} tokens (Tier0: ${tier0Tokens}, memory: ${estimateTokens(contextBlock)})`);
 
-  return `${prompt}\n\n## Prior Context (auto-injected)\n${contextBlock}`;
+  const parts: string[] = [prompt, '\n\n## Prior Context (auto-injected)'];
+  if (tier0Content) parts.push(tier0Content);
+  if (contextBlock.length > 0) parts.push(contextBlock);
+
+  return parts.join('\n');
 }

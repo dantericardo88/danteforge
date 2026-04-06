@@ -642,6 +642,63 @@ Common flags:
   --verbose        Show debug output
 `);
 
+program
+  .command('wiki-ingest')
+  .description('Ingest raw source files into compiled wiki entity pages')
+  .option('--bootstrap', 'Seed wiki from existing .danteforge/ artifacts')
+  .option('--prompt', 'Show the command without executing')
+  .option('--cwd <path>', 'Project directory')
+  .action((opts) => void commands.wikiIngestCommand({
+    bootstrap: opts.bootstrap,
+    prompt: opts.prompt,
+    cwd: opts.cwd,
+  }));
+
+program
+  .command('wiki-lint')
+  .description('Run self-evolution scan: contradictions, staleness, link integrity, pattern synthesis')
+  .option('--heuristic-only', 'Skip LLM calls (zero-cost mode)')
+  .option('--prompt', 'Show the command without executing')
+  .option('--cwd <path>', 'Project directory')
+  .action((opts) => void commands.wikiLintCommand({
+    heuristicOnly: opts.heuristicOnly,
+    prompt: opts.prompt,
+    cwd: opts.cwd,
+  }));
+
+program
+  .command('wiki-query <topic>')
+  .description('Search wiki for entity pages, decisions, and patterns relevant to a topic')
+  .option('--json', 'Output machine-readable JSON')
+  .option('--cwd <path>', 'Project directory')
+  .action((topic, opts) => void commands.wikiQueryCommand({
+    topic,
+    json: opts.json,
+    cwd: opts.cwd,
+  }));
+
+program
+  .command('wiki-status')
+  .description('Display wiki health metrics: pages, link density, staleness, lint pass rate, anomalies')
+  .option('--json', 'Output machine-readable JSON')
+  .option('--cwd <path>', 'Project directory')
+  .action((opts) => void commands.wikiStatusCommand({
+    json: opts.json,
+    cwd: opts.cwd,
+  }));
+
+program
+  .command('wiki-export')
+  .description('Export compiled wiki as Obsidian vault or static HTML')
+  .option('--format <type>', 'Export format: obsidian or html (default: obsidian)', 'obsidian')
+  .option('--out <dir>', 'Output directory path')
+  .option('--cwd <path>', 'Project directory')
+  .action((opts) => void commands.wikiExportCommand({
+    format: opts.format as 'obsidian' | 'html',
+    out: opts.out,
+    cwd: opts.cwd,
+  }));
+
 loadState().catch(() => { /* state will be created on first write */ });
 
 program.parse(process.argv);

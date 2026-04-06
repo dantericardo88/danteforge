@@ -1,6 +1,6 @@
 // E2E Maturity Pipeline — 8 tests for full pipeline from spark to nova
 
-import { describe, it, beforeEach } from 'node:test';
+import { describe, it, beforeEach, afterEach } from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'fs/promises';
 import path from 'path';
@@ -14,6 +14,10 @@ describe('e2e-maturity-pipeline', () => {
 
   beforeEach(async () => {
     tmpDir = await fs.mkdtemp(path.join(await fs.realpath(process.cwd()), '.tmp-e2e-maturity-'));
+  });
+
+  afterEach(async () => {
+    await fs.rm(tmpDir, { recursive: true, force: true });
   });
 
   describe('spark → sketch level (level 1)', () => {

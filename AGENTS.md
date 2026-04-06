@@ -110,6 +110,11 @@ Usage rule:
 | `danteforge oss` | Auto-detect project, search OSS, clone, license-gate, extract patterns | `--prompt`, `--dry-run`, `--max-repos` |
 | `danteforge local-harvest [paths...]` | Harvest patterns from local private repos, folders, and zip archives | `--config`, `--depth`, `--prompt`, `--dry-run`, `--max-sources` |
 | `danteforge harvest` | Titan Harvest V2: 5-step constitutional harvest of OSS patterns | `--prompt`, `--lite` |
+| `danteforge wiki-ingest` | Ingest source files into the three-tier knowledge wiki | `--bootstrap`, `--prompt` |
+| `danteforge wiki-lint` | Run lint cycle on wiki: contradictions, staleness, link integrity | `--heuristic-only` |
+| `danteforge wiki-query <topic>` | Query the wiki for relevant knowledge | `--json` |
+| `danteforge wiki-status` | View wiki health metrics dashboard | `--json` |
+| `danteforge wiki-export` | Export wiki as Obsidian vault or static HTML | `--format`, `--out` |
 
 ### Utilities
 

@@ -28,9 +28,10 @@ describe('maturity-command', () => {
     }) as typeof process.stdout.write;
   });
 
-  afterEach(() => {
+  afterEach(async () => {
     process.exitCode = originalExitCode;
     process.stdout.write = originalStdoutWrite;
+    await fs.rm(tmpDir, { recursive: true, force: true });
   });
 
   describe('basic execution', () => {

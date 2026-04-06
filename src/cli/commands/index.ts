@@ -56,3 +56,8 @@ export { auditExport } from './audit-export.js';
 export { workspace } from './workspace.js';
 export { mcpServer } from './mcp-server.js';
 export { publishCheck } from './publish-check.js';
+export { wikiIngestCommand } from './wiki-ingest.js';
+export { wikiLintCommand } from './wiki-lint.js';
+export { wikiQueryCommand } from './wiki-query.js';
+export { wikiStatusCommand } from './wiki-status.js';
+export { wikiExportCommand } from './wiki-export.js';

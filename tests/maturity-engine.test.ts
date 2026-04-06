@@ -1,6 +1,6 @@
 // Maturity Engine — 40 tests for 8-dimension scoring and assessment
 
-import { describe, it, beforeEach } from 'node:test';
+import { describe, it, beforeEach, afterEach } from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'fs/promises';
 import path from 'path';
@@ -20,6 +20,10 @@ describe('maturity-engine', () => {
 
   beforeEach(async () => {
     tmpDir = await fs.mkdtemp(path.join(await fs.realpath(process.cwd()), '.tmp-maturity-'));
+  });
+
+  afterEach(async () => {
+    await fs.rm(tmpDir, { recursive: true, force: true });
   });
 
   // ── Functionality ──

@@ -11,6 +11,8 @@ export interface ScoreDimensions {
   constitutionAlignment: number;  // 0–20
   integrationFitness: number;     // 0–10
   freshness: number;              // 0–10
+  wikiCoverage?: number;          // 0–10 (optional — present only when wiki is initialized)
+  // Note: without wikiCoverage total = 100; with wikiCoverage total = 110 (normalize on use)
 }
 
 // Section checklists — each item is a required heading or keyword pattern

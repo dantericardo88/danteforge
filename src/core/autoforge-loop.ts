@@ -12,6 +12,10 @@ import { recordMemory } from './memory-engine.js';
 import { emitScoreUpdate, emitCycleComplete } from './event-bus.js';
 import { assessMaturity, type MaturityAssessment } from './maturity-engine.js';
 import type { MaturityLevel } from './maturity-levels.js';
+import { LINT_INTERVAL_CYCLES } from './wiki-schema.js';
+import { wikiIngest, getWikiHealth } from './wiki-engine.js';
+import { runLintCycle } from './wiki-linter.js';
+import { detectAnomalies } from './pdse-anomaly.js';
 
 // ── State machine ───────────────────────────────────────────────────────────
 
@@ -108,6 +112,36 @@ export async function runAutoforgeLoop(ctx: AutoforgeLoopContext): Promise<Autof
       const scores = await scoreAllArtifacts(cwd, ctx.state);
       for (const result of Object.values(scores)) {
         await persistScoreResult(result, cwd);
+      }
+
+      // 1a. PDSE anomaly detection (best-effort — never blocks loop)
+      try {
+        const anomalyFlags = await Promise.all(
+          Object.entries(scores).map(([artifact, result]) =>
+            detectAnomalies(artifact, result.score, { cwd }),
+          ),
+        );
+        const activeFlags = anomalyFlags.filter(Boolean);
+        if (activeFlags.length > 0) {
+          for (const flag of activeFlags) {
+            logger.warn(`[Wiki] PDSE anomaly: ${flag!.artifact} jumped ${flag!.delta > 0 ? '+' : ''}${flag!.delta} pts (avg: ${flag!.previousAvg})`);
+            ctx.state.auditLog.push(
+              `${new Date().toISOString()} | wiki-anomaly: ${flag!.artifact} delta=${flag!.delta} avg=${flag!.previousAvg}`,
+            );
+          }
+        }
+      } catch {
+        // Non-fatal
+      }
+
+      // 1b. Wiki lint every LINT_INTERVAL_CYCLES cycles (best-effort)
+      if (ctx.cycleCount % LINT_INTERVAL_CYCLES === 0) {
+        try {
+          await runLintCycle({ cwd, heuristicOnly: true });
+          logger.info(`[Wiki] Lint cycle completed (cycle ${ctx.cycleCount})`);
+        } catch {
+          // Non-fatal
+        }
       }
 
       // 2. Compute completion
@@ -271,6 +305,13 @@ export async function runAutoforgeLoop(ctx: AutoforgeLoopContext): Promise<Autof
 
       // Reload state after execution
       ctx.state = await loadState({ cwd });
+
+      // Post-execution wiki ingestion (best-effort — never blocks loop)
+      try {
+        await wikiIngest({ cwd });
+      } catch {
+        // Non-fatal
+      }
     }
 
     if (interrupted) {

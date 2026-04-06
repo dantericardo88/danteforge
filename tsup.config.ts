@@ -2,7 +2,7 @@ import { defineConfig } from 'tsup';
 import pkg from './package.json' with { type: 'json' };
 
 export default defineConfig({
-  entry: ['src/cli/index.ts', 'src/sdk.ts'],
+  entry: { index: 'src/cli/index.ts', sdk: 'src/sdk.ts' },
   format: ['esm'],
   dts: true,
   clean: true,

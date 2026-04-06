@@ -1,6 +1,6 @@
 // Maturity Convergence — 20 tests for reflection gate and remediation integration
 
-import { describe, it, beforeEach } from 'node:test';
+import { describe, it, beforeEach, afterEach } from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'fs/promises';
 import path from 'path';
@@ -12,6 +12,10 @@ describe('maturity-convergence', () => {
 
   beforeEach(async () => {
     tmpDir = await fs.mkdtemp(path.join(await fs.realpath(process.cwd()), '.tmp-convergence-'));
+  });
+
+  afterEach(async () => {
+    await fs.rm(tmpDir, { recursive: true, force: true });
   });
 
   describe('reflection gate triggers remediation', () => {

@@ -8,6 +8,8 @@ import { detectHost, detectMCPCapabilities } from '../../core/mcp.js';
 import { resolveTier } from '../../core/mcp-adapter.js';
 import { estimateTokens } from '../../core/token-estimator.js';
 import { withErrorBoundary } from '../../core/cli-error-boundary.js';
+import { getWikiHealth } from '../../core/wiki-engine.js';
+import type { WikiHealth } from '../../core/wiki-schema.js';
 
 interface DashboardCapabilities {
   hasFigmaMCP: boolean;
@@ -21,6 +23,7 @@ interface DashboardRenderInput {
   tier: string;
   packageVersion: string;
   totalTokensEstimated: number;
+  wikiHealth?: WikiHealth | null;
 }
 
 export function parseDashboardPort(rawPort?: string): number {
@@ -54,6 +57,7 @@ export function renderDashboardHtml(input: DashboardRenderInput): string {
     tier,
     packageVersion,
     totalTokensEstimated,
+    wikiHealth,
   } = input;
 
   const totalTasks = Object.values(state.tasks).flat().length;
@@ -135,6 +139,36 @@ export function renderDashboardHtml(input: DashboardRenderInput): string {
     </div>
   </div>
 
+  ${wikiHealth ? `
+  <h2>Wiki Health</h2>
+  <div class="grid">
+    <div class="card">
+      <div class="label">Wiki Pages</div>
+      <div class="value">${wikiHealth.pageCount}</div>
+    </div>
+    <div class="card">
+      <div class="label">Link Density</div>
+      <div class="value ${wikiHealth.linkDensity >= 3 ? 'ok' : 'warn'}">${wikiHealth.linkDensity.toFixed(1)}</div>
+    </div>
+    <div class="card">
+      <div class="label">Orphan Ratio</div>
+      <div class="value ${wikiHealth.orphanRatio <= 0.05 ? 'ok' : 'warn'}">${(wikiHealth.orphanRatio * 100).toFixed(1)}%</div>
+    </div>
+    <div class="card">
+      <div class="label">Lint Pass Rate</div>
+      <div class="value ${wikiHealth.lintPassRate >= 0.95 ? 'ok' : 'warn'}">${(wikiHealth.lintPassRate * 100).toFixed(1)}%</div>
+    </div>
+    <div class="card">
+      <div class="label">PDSE Anomalies</div>
+      <div class="value ${wikiHealth.anomalyCount === 0 ? 'ok' : 'warn'}">${wikiHealth.anomalyCount === 0 ? 'None' : wikiHealth.anomalyCount}</div>
+    </div>
+    <div class="card">
+      <div class="label">Last Lint</div>
+      <div class="value" style="font-size:0.9rem">${wikiHealth.lastLint ? escapeHtml(wikiHealth.lastLint.slice(0, 16).replace('T', ' ')) : 'Never'}</div>
+    </div>
+  </div>
+  ` : ''}
+
   <h2>Recent Activity</h2>
   <table>
     <thead><tr><th>Timestamp</th><th>Action</th></tr></thead>
@@ -168,6 +202,15 @@ export async function dashboard(options: { port?: string } = {}) {
   const tier = resolveTier(host, capabilities.hasFigmaMCP);
   const packageVersion = await loadPackageVersion();
   const totalTokensEstimated = estimateTokens(state.auditLog.join('\n'));
+
+  // Wiki health (best-effort — null if wiki not initialized)
+  let wikiHealth: WikiHealth | null = null;
+  try {
+    wikiHealth = await getWikiHealth({ cwd: process.cwd() });
+  } catch {
+    // Non-fatal
+  }
+
   const html = renderDashboardHtml({
     state,
     config,
@@ -176,6 +219,7 @@ export async function dashboard(options: { port?: string } = {}) {
     tier,
     packageVersion,
     totalTokensEstimated,
+    wikiHealth,
   });
 
   const server = http.createServer((_req, res) => {

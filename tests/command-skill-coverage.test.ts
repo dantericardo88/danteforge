@@ -42,6 +42,11 @@ const WORKFLOW_COMMANDS = [
   'tech-decide',
   'ux-refine',
   'verify',
+  'wiki-export',
+  'wiki-ingest',
+  'wiki-lint',
+  'wiki-query',
+  'wiki-status',
 ];
 
 // Commands intentionally NOT registered as slash commands (utilities/config).

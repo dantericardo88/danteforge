@@ -57,6 +57,11 @@ In Codex, these slash commands are native workflow commands. Execute them in the
 - \`/oss\` - Auto-detect project, search OSS, clone, license-gate, scan, extract patterns
 - \`/harvest\` - Titan Harvest V2: 5-step constitutional harvest of OSS patterns
 - \`/local-harvest\` - Harvest patterns from local private repos, folders, and zip archives
+- \`/wiki-ingest\` - Ingest source files into the three-tier knowledge wiki
+- \`/wiki-lint\` - Run lint cycle on wiki: contradictions, staleness, link integrity
+- \`/wiki-query\` - Query the wiki for relevant knowledge on a topic
+- \`/wiki-status\` - View wiki health metrics dashboard
+- \`/wiki-export\` - Export wiki as Obsidian vault or static HTML
 
 ### Skills (Auto-Triggered)
 Skills are automatically suggested based on context:

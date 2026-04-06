@@ -3,6 +3,8 @@
 // and makes autoforge advance/pause/block decisions. All scoring functions are pure.
 import fs from 'fs/promises';
 import path from 'path';
+import { appendPdseHistory } from './pdse-anomaly.js';
+import type { AppendPdseHistoryOptions } from './pdse-anomaly.js';
 import type { DanteState } from './state.js';
 import {
   type ScoredArtifact,
@@ -317,9 +319,15 @@ export function scoreArtifact(ctx: ScoringContext): ScoreResult {
 
 // ── Score all artifacts on disk ──────────────────────────────────────────────
 
+export interface ScoreAllArtifactsOptions {
+  /** Injection seam: override history append for testing */
+  _appendHistory?: (entry: Parameters<typeof appendPdseHistory>[0], opts?: AppendPdseHistoryOptions) => Promise<void>;
+}
+
 export async function scoreAllArtifacts(
   cwd: string,
   state: DanteState,
+  opts?: ScoreAllArtifactsOptions,
 ): Promise<Record<ScoredArtifact, ScoreResult>> {
   const stateDir = path.join(cwd, '.danteforge');
   const artifactFiles: Record<ScoredArtifact, string> = {
@@ -391,7 +399,28 @@ export async function scoreAllArtifacts(
     });
   }
 
-  return results as Record<ScoredArtifact, ScoreResult>;
+  const finalResults = results as Record<ScoredArtifact, ScoreResult>;
+
+  // Best-effort: append each score result to wiki PDSE history
+  const appendFn = opts?._appendHistory ?? appendPdseHistory;
+  for (const [artifact, result] of Object.entries(finalResults)) {
+    try {
+      await appendFn(
+        {
+          timestamp: result.timestamp,
+          artifact,
+          score: result.score,
+          dimensions: result.dimensions as unknown as Record<string, number>,
+          decision: result.autoforgeDecision,
+        },
+        { cwd },
+      );
+    } catch {
+      // Non-fatal — never block scoring on wiki write failure
+    }
+  }
+
+  return finalResults;
 }
 
 // ── Persistence ─────────────────────────────────────────────────────────────
