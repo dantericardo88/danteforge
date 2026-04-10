@@ -4,6 +4,13 @@ import os from 'os';
 import path from 'path';
 import yaml from 'yaml';
 import { logger } from './logger.js';
+import { StateError } from './errors.js';
+import { withStateLock } from './state-lock.js';
+import { logFileWrite, generateCorrelationId } from './structured-audit.js';
+
+export const AUDIT_LOG_MAX_ENTRIES = 500;
+export const CURRENT_SCHEMA_VERSION = 1;
+export const MAX_STATE_FILE_SIZE_BYTES = 1_048_576; // 1 MB — reject YAML bombs
 import type { CompletionTracker, ProjectType } from './completion-tracker.js';
 
 const STATE_DIR = '.danteforge';
@@ -23,6 +30,63 @@ export type WorkflowStage =
   | 'ux-refine'
   | 'verify'
   | 'synthesize';
+
+/** Known workflow stages — used for schema validation. */
+export const VALID_WORKFLOW_STAGES = new Set<WorkflowStage>([
+  'initialized', 'review', 'constitution', 'specify', 'clarify',
+  'plan', 'tasks', 'design', 'forge', 'ux-refine', 'verify', 'synthesize',
+]);
+
+/** Maximum auditLog entries loaded from disk (prevent memory exhaustion from unbounded arrays). */
+export const MAX_AUDIT_LOG_ON_LOAD = 1000;
+
+/**
+ * Validate and auto-repair a parsed DanteState object after schema migration.
+ * Logs warnings for suspicious values and auto-corrects where possible.
+ * Never throws — always returns a safe object.
+ */
+export function validateStateSchema(parsed: Partial<DanteState>): Partial<DanteState> {
+  let result = { ...parsed };
+
+  if (result.workflowStage !== undefined && !VALID_WORKFLOW_STAGES.has(result.workflowStage)) {
+    logger.warn(`[state] Unknown workflowStage "${result.workflowStage}" in STATE.yaml — resetting to "initialized"`);
+    result = { ...result, workflowStage: 'initialized' };
+  }
+
+  if (result.currentPhase !== undefined &&
+      (typeof result.currentPhase !== 'number' || !Number.isInteger(result.currentPhase) || result.currentPhase < 0)) {
+    logger.warn(`[state] Invalid currentPhase "${result.currentPhase}" — resetting to 0`);
+    result = { ...result, currentPhase: 0 };
+  }
+
+  if (result.auditLog !== undefined) {
+    if (!Array.isArray(result.auditLog)) {
+      logger.warn('[state] auditLog is not an array — resetting to empty');
+      result = { ...result, auditLog: [] };
+    } else if (result.auditLog.length > MAX_AUDIT_LOG_ON_LOAD) {
+      logger.warn(`[state] auditLog has ${result.auditLog.length} entries — truncating to newest ${MAX_AUDIT_LOG_ON_LOAD}`);
+      result = { ...result, auditLog: result.auditLog.slice(-MAX_AUDIT_LOG_ON_LOAD) };
+    }
+  }
+
+  if (result.tasks !== undefined && (typeof result.tasks !== 'object' || Array.isArray(result.tasks))) {
+    logger.warn('[state] tasks field is not an object — resetting to empty');
+    result = { ...result, tasks: {} };
+  }
+
+  return result;
+}
+
+/**
+ * Migrate parsed state from an older schema version to CURRENT_SCHEMA_VERSION.
+ * Each migration step is idempotent — running twice produces the same result.
+ */
+function migrateState(parsed: Partial<DanteState>): Partial<DanteState> {
+  const v = parsed._schemaVersion ?? 0;
+  if (v >= CURRENT_SCHEMA_VERSION) return parsed;
+  // v0 → v1: establish baseline; all fields already have defaults in loadState
+  return { ...parsed, _schemaVersion: CURRENT_SCHEMA_VERSION };
+}
 
 function resolveStatePaths(cwd = process.cwd()) {
   const stateDir = path.join(cwd, STATE_DIR);
@@ -94,6 +158,10 @@ export interface DanteState {
   // v0.10.0 — Workspace / multi-user
   userId?: string;
   workspaceId?: string;
+  // v0.11.0 — Self-edit policy
+  selfEditPolicy?: import('./safe-self-edit.js').SelfEditPolicy;
+  // v0.19.0 — Schema versioning (migration chain)
+  _schemaVersion?: number;
 }
 
 /**
@@ -165,13 +233,43 @@ async function inferWorkflowStage(cwd: string, parsed?: Partial<DanteState>): Pr
   return 'initialized';
 }
 
-export async function loadState(options: { cwd?: string } = {}): Promise<DanteState> {
+export async function loadState(
+  options: { cwd?: string; _stat?: (p: string) => Promise<{ size: number }> } = {},
+): Promise<DanteState> {
   const cwd = options.cwd ?? process.cwd();
   const { stateDir, stateFile } = resolveStatePaths(cwd);
   try {
     await fs.mkdir(stateDir, { recursive: true });
+    // Size guard — reject files that could cause memory exhaustion (YAML bomb, huge auditLog)
+    const statFn = options._stat ?? fs.stat;
+    try {
+      const statResult = await statFn(stateFile);
+      if (statResult.size > MAX_STATE_FILE_SIZE_BYTES) {
+        throw new StateError(
+          `STATE.yaml is too large (${statResult.size} bytes, limit ${MAX_STATE_FILE_SIZE_BYTES}). ` +
+          `Delete to reset: rm .danteforge/STATE.yaml`,
+          'STATE_CORRUPT',
+        );
+      }
+    } catch (statErr) {
+      if (statErr instanceof StateError) throw statErr;
+      // ENOENT or other stat error — file doesn't exist yet, continue to readFile
+    }
     const content = await fs.readFile(stateFile, 'utf8');
-    const parsed = yaml.parse(content) as Partial<DanteState>;
+    let rawParsed: unknown;
+    try {
+      rawParsed = yaml.parse(content);
+    } catch (parseErr) {
+      throw new StateError(
+        `STATE.yaml is corrupt and cannot be parsed: ${parseErr instanceof Error ? parseErr.message : String(parseErr)}`,
+        'STATE_CORRUPT',
+      );
+    }
+    if (rawParsed === null || typeof rawParsed !== 'object') {
+      throw new StateError('STATE.yaml is corrupt: parsed value is not an object', 'STATE_CORRUPT');
+    }
+    const migrated = migrateState(rawParsed as Partial<DanteState>);
+    const parsed = validateStateSchema(migrated);
     // Validate required fields — fill gaps with defaults
     const project = await deriveProjectName(parsed?.project, cwd);
     const workflowStage = await inferWorkflowStage(cwd, parsed);
@@ -222,8 +320,14 @@ export async function loadState(options: { cwd?: string } = {}): Promise<DanteSt
       // v0.10.0 workspace fields
       userId: parsed?.userId,
       workspaceId: parsed?.workspaceId,
+      // v0.11.0 self-edit policy
+      selfEditPolicy: parsed?.selfEditPolicy as import('./safe-self-edit.js').SelfEditPolicy | undefined,
+      // v0.19.0 schema version
+      _schemaVersion: parsed?._schemaVersion,
     };
   } catch (err) {
+    // Re-throw state corruption errors — they must not be silently swallowed
+    if (err instanceof StateError) throw err;
     // Only log if this is NOT a "file not found" — real errors should surface
     if (err instanceof Error && !err.message.includes('ENOENT')) {
       logger.warn(`Failed to load STATE.yaml: ${err.message} — using defaults`);
@@ -275,6 +379,10 @@ export async function loadState(options: { cwd?: string } = {}): Promise<DanteSt
       // v0.10.0 workspace fields
       userId: undefined,
       workspaceId: undefined,
+      // v0.11.0 self-edit policy
+      selfEditPolicy: undefined,
+      // v0.19.0 schema version
+      _schemaVersion: undefined,
     };
     await saveState(defaultState, options);
     return defaultState;
@@ -282,8 +390,27 @@ export async function loadState(options: { cwd?: string } = {}): Promise<DanteSt
 }
 
 export async function saveState(state: DanteState, options: { cwd?: string } = {}) {
+  const correlationId = generateCorrelationId();
   const { stateDir, stateFile } = resolveStatePaths(options.cwd);
   await fs.mkdir(stateDir, { recursive: true });
-  await fs.writeFile(stateFile, yaml.stringify(state));
-  logger.info('STATE.yaml updated');
+  const lockPath = path.join(stateDir, '.state.lock');
+  // Bound audit log before writing
+  if (state.auditLog && state.auditLog.length > AUDIT_LOG_MAX_ENTRIES) {
+    state.auditLog = state.auditLog.slice(-AUDIT_LOG_MAX_ENTRIES);
+  }
+  // Stamp schema version
+  state._schemaVersion = CURRENT_SCHEMA_VERSION;
+  await withStateLock(lockPath, async () => {
+    const tmpPath = `${stateFile}.${process.pid}.${Date.now()}.tmp`;
+    try {
+      await fs.writeFile(tmpPath, yaml.stringify(state), 'utf8');
+      await fs.rename(tmpPath, stateFile);
+      logFileWrite(stateFile, correlationId, 'success', options.cwd);
+      logger.info('STATE.yaml updated');
+    } catch (err) {
+      logFileWrite(stateFile, correlationId, 'failure', options.cwd);
+      await fs.unlink(tmpPath).catch(() => {});
+      throw err;
+    }
+  });
 }

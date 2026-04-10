@@ -1,6 +1,6 @@
 {
   "name": "danteforge",
-  "version": "0.10.0",
+  "version": "0.15.0",
   "description": "Agentic development CLI - structured specs, execution waves, multi-agent orchestration, skills, gates, TDD, worktrees",
   "license": "MIT",
   "type": "module",
@@ -9,11 +9,11 @@
   },
   "repository": {
     "type": "git",
-    "url": "https://github.com/danteforge/danteforge.git"
+    "url": "https://github.com/dantericardo88/danteforge.git"
   },
-  "homepage": "https://github.com/danteforge/danteforge#readme",
+  "homepage": "https://github.com/dantericardo88/danteforge",
   "bugs": {
-    "url": "https://github.com/danteforge/danteforge/issues"
+    "url": "https://github.com/dantericardo88/danteforge/issues"
   },
   "keywords": [
     "ai",
@@ -80,12 +80,14 @@
     "check:cli-smoke": "node scripts/check-cli-smoke.mjs",
     "check:repo-hygiene": "node scripts/check-repo-hygiene.mjs",
     "check:repo-hygiene:strict": "node scripts/check-repo-hygiene.mjs --strict-presence",
+    "check:truth-surface": "node scripts/check-truth-surface.mjs",
     "check:third-party-notices": "node scripts/check-third-party-notices.mjs",
     "pack:dry-run": "npm pack --dry-run",
     "release:check:install-smoke": "node scripts/check-package-install-smoke.mjs",
-    "release:check": "npm run check:repo-hygiene && npm run verify:all && npm run check:cli-smoke && npm run check:plugin-manifests && npm run release:check:install-smoke && npm run pack:dry-run && npm run check:third-party-notices",
+    "release:check": "npm run check:truth-surface && npm run check:repo-hygiene && npm run verify:all && npm run check:cli-smoke && npm run check:plugin-manifests && npm run release:check:install-smoke && npm run pack:dry-run && npm run check:third-party-notices",
     "release:check:strict": "node scripts/check-release-strict.mjs",
     "release:check:simulated-fresh": "node scripts/check-release-simulated-fresh.mjs",
+    "release:proof": "node scripts/check-release-proof.mjs",
     "release:ga": "npm run release:check:strict && npm run verify:live",
     "prepublishOnly": "npm run verify && npm run build"
   },

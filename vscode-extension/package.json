@@ -2,16 +2,16 @@
   "name": "danteforge-vscode",
   "displayName": "DanteForge",
   "description": "Agentic development workflow — structured specs, execution waves, and multi-agent orchestration inside VS Code",
-  "version": "0.11.0",
+  "version": "0.15.0",
   "publisher": "danteforge",
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "https://github.com/danteforge/danteforge.git"
+    "url": "https://github.com/dantericardo88/danteforge.git"
   },
-  "homepage": "https://github.com/danteforge/danteforge",
+  "homepage": "https://github.com/dantericardo88/danteforge",
   "bugs": {
-    "url": "https://github.com/danteforge/danteforge/issues"
+    "url": "https://github.com/dantericardo88/danteforge/issues"
   },
   "engines": {
     "vscode": "^1.85.0"
@@ -34,7 +34,10 @@
     "onCommand:danteforge.wikiStatus",
     "onCommand:danteforge.pdseScore",
     "onCommand:danteforge.resume",
-    "onCommand:danteforge.pauseAt"
+    "onCommand:danteforge.pauseAt",
+    "onCommand:danteforge.refreshTree",
+    "onCommand:danteforge.showDiagnostics",
+    "onView:danteforge.projectState"
   ],
   "main": "./dist/extension.js",
   "contributes": {
@@ -94,8 +97,25 @@
       {
         "command": "danteforge.pauseAt",
         "title": "DanteForge: Autoforge — Pause At Score"
+      },
+      {
+        "command": "danteforge.refreshTree",
+        "title": "DanteForge: Refresh Project Tree"
+      },
+      {
+        "command": "danteforge.showDiagnostics",
+        "title": "DanteForge: Show PDSE Diagnostics"
       }
-    ]
+    ],
+    "views": {
+      "explorer": [
+        {
+          "id": "danteforge.projectState",
+          "name": "DanteForge",
+          "when": "workspaceFolderCount > 0"
+        }
+      ]
+    }
   },
   "scripts": {
     "build": "tsc -p .",

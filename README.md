@@ -1,6 +1,6 @@
-# DanteForge — spec-driven agentic dev CLI. Works with Claude Code, Codex, Cursor.
+# DanteForge — spec-driven agentic dev CLI. Works with Claude Code, Codex, Cursor, Goose.
 
-[![npm version](https://img.shields.io/badge/npm-0.10.0-blue)](https://www.npmjs.com/package/danteforge)
+[![npm version](https://img.shields.io/badge/npm-0.15.0-blue)](https://www.npmjs.com/package/danteforge)
 [![license](https://img.shields.io/badge/license-MIT-green)](LICENSE)
 [![node](https://img.shields.io/badge/node-%3E%3D18-brightgreen)](package.json)
 
@@ -37,27 +37,27 @@ DanteForge exposes an MCP server that each of these agents can connect to direct
 
 - **Constitution-driven pipeline enforces spec→plan→verify — no skipping steps**
 - **Convergence loops repair until quality gates pass — not just until it runs**
-- **Harsh 18-dimension scoring benchmarked against 27 competitors — no grade inflation**
+- **18-dimension scoring with self-assessment against 27 competitors**
 
-## Competitor Comparison
+## Quick Example
 
-| Tool | specDriven | autonomy | testing | tokenEcon | enterprise | community |
-|---|---|---|---|---|---|---|
-| **DanteForge** | **8.5** | **8.0** | **8.5** | **7.5** | 4.5 | 1.5 |
-| Claude Code | 6.0 | 8.5 | 8.0 | 7.5 | 8.5 | 9.5 |
-| Devin | 7.5 | 9.0 | 7.0 | 6.5 | 7.0 | 7.5 |
-| Kiro (AWS) | 8.0 | 7.0 | 7.5 | 6.5 | 6.5 | 4.0 |
-| Cursor | 5.5 | 6.5 | 7.5 | 6.0 | 7.0 | 9.0 |
-| Codex CLI | 5.5 | 8.0 | 7.0 | 7.0 | 6.0 | 7.0 |
-| Aider | 6.5 | 7.5 | 7.5 | 6.0 | 5.0 | 8.0 |
-| Qodo 2.0 | 5.5 | 6.0 | 9.2 | 5.5 | 6.5 | 5.5 |
+See [`examples/todo-app/`](examples/todo-app/) for a complete walkthrough — build a TODO CLI app from spec to working code with zero manual coding.
 
-Full 18-dimension × 27-competitor matrix: run `danteforge assess`
+## How DanteForge Compares
+
+DanteForge occupies a different niche than editor-native tools (Cursor, Copilot) or hosted agents (Devin). It's a **CLI-first, spec-driven pipeline** — closest to Aider and Codex CLI in form factor, but with a structured constitution-to-verify workflow that those tools lack.
+
+**Strengths:** Spec enforcement, multi-provider LLM support (7 providers), convergence loops, deterministic autoforge pipeline, budget controls.
+
+**Gaps:** No deep IDE integration (VS Code extension is a terminal wrapper), no hosted mode, early-stage community.
+
+Run `danteforge assess` for a full 18-dimension self-assessment against 27 competitors. Note: these scores are self-generated and not independently verified.
 
 ## Links
 
 - [Integration Guide](docs/INTEGRATION-GUIDE.md)
 - [Magic Levels](docs/MAGIC-LEVELS.md)
+- [Release History](docs/Release-History.md)
 - [SECURITY.md](SECURITY.md)
 - [CONTRIBUTING.md](CONTRIBUTING.md)
 
@@ -73,14 +73,14 @@ DanteForge is an agent-oriented development workflow for Codex, Claude Code, VS 
 
 ## Operational Status
 
-DanteForge `0.10.0` is in active development. Treat release readiness as proven only when the verification and release gates below pass in your environment and CI. See [docs/Operational-Readiness-v0.8.0.md](docs/Operational-Readiness-v0.8.0.md) for the v0.8.0 readiness report.
+DanteForge `0.15.0` is in active development. Treat release readiness as proven only when the verification and release gates below pass in your environment and CI. See [docs/Operational-Readiness-v0.15.0.md](docs/Operational-Readiness-v0.15.0.md) for the v0.15.0 readiness report.
 
 ## Install
 
 ### From source
 
 ```bash
-git clone https://github.com/danteforge/danteforge.git
+git clone https://github.com/dantericardo88/danteforge.git
 cd danteforge
 npm ci
 npm run verify:all
@@ -93,7 +93,7 @@ If you are validating the packed release before npm publish, install from the ge
 
 ```bash
 npm pack
-npm install -g ./danteforge-0.8.0.tgz
+npm install -g ./danteforge-0.15.0.tgz
 ```
 
 Run `npm run verify:live` only when you are validating a secret-backed live environment or a release candidate.
@@ -150,9 +150,7 @@ npm --prefix vscode-extension ci
 npm --prefix vscode-extension run verify
 ```
 
-The extension prefers a workspace-local DanteForge binary when one exists in `node_modules/.bin/`, and falls back to a global `danteforge` install otherwise.
-
-## Quick Start
+The extension prefers a workspace-local DanteForge binary when one exists in `node_modules/.bin/`, and falls back to a global `danteforge` install otherwise.\r\n\r\n### Goose\r\n\r\nGoose integration is available via extension-based commands. Run `danteforge setup assistants --assistants goose` to install DanteForge skills into `~/.goose/skills/`. This enables native slash commands like `/spark`, `/magic`, `/verify`, etc., directly in Goose conversations.\r\n\r\nFor advanced integration, the extension `extensions/danteforge.json` provides tool-based access to DanteForge commands.\r\n\r\n## Quick Start
 
 ```bash
 danteforge init    # detect project, check health, show next steps
@@ -546,3 +544,4 @@ See [RELEASE.md](RELEASE.md) for the full release flow.
 ## License
 
 MIT. See [LICENSE](LICENSE) for details.
+
