@@ -324,6 +324,8 @@ export interface ScoreAllArtifactsOptions {
   _appendHistory?: (entry: Parameters<typeof appendPdseHistory>[0], opts?: AppendPdseHistoryOptions) => Promise<void>;
   /** Optional toolchain metrics to apply as post-scoring adjustments */
   toolchainMetrics?: import('./pdse-toolchain.js').ToolchainMetrics;
+  /** Optional semantic scoring options — when present, enhances scores with LLM assessment */
+  semanticOpts?: import('./pdse-semantic.js').SemanticScoringOptions;
 }
 
 export async function scoreAllArtifacts(
@@ -331,6 +333,11 @@ export async function scoreAllArtifacts(
   state: DanteState,
   opts?: ScoreAllArtifactsOptions,
 ): Promise<Record<ScoredArtifact, ScoreResult>> {
+  if (opts?.semanticOpts) {
+    const { scoreAllArtifactsSemantically } = await import('./pdse-semantic.js');
+    return scoreAllArtifactsSemantically(cwd, state, { ...opts, ...opts.semanticOpts });
+  }
+
   const stateDir = path.join(cwd, '.danteforge');
   const artifactFiles: Record<ScoredArtifact, string> = {
     CONSTITUTION: path.join(stateDir, 'CONSTITUTION.md'),

@@ -39,9 +39,16 @@ describe('isProtectedPath', () => {
     assert.strictEqual(isProtectedPath('C:/Projects/DanteForge/src/core/gates.ts'), true);
   });
 
+  it('returns true for security-critical protected files', () => {
+    assert.strictEqual(isProtectedPath('src/core/llm.ts'), true);
+    assert.strictEqual(isProtectedPath('src/core/prompt-builder.ts'), true);
+    assert.strictEqual(isProtectedPath('src/core/mcp-server.ts'), true);
+    assert.strictEqual(isProtectedPath('src/core/input-validation.ts'), true);
+    assert.strictEqual(isProtectedPath('src/core/circuit-breaker.ts'), true);
+  });
+
   it('returns false for non-protected files', () => {
     assert.strictEqual(isProtectedPath('src/core/logger.ts'), false);
-    assert.strictEqual(isProtectedPath('src/core/llm.ts'), false);
     assert.strictEqual(isProtectedPath('src/cli/commands/plan.ts'), false);
     assert.strictEqual(isProtectedPath('tests/state.test.ts'), false);
     assert.strictEqual(isProtectedPath('package.json'), false);

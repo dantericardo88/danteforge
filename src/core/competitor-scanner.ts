@@ -52,11 +52,11 @@ export interface ProjectCompetitorContext {
 }
 
 export interface CompetitorScanOptions {
-  ourScores: Record<ScoringDimension, number>;
-  projectContext?: ProjectCompetitorContext;
-  enableWebSearch?: boolean;              // default: true
+  ourScores: Record<string, number>;
+  projectContext: ProjectCompetitorContext;
+  enableWebSearch: boolean;
+  useRealEvidence?: boolean; // New: use actual benchmark evidence instead of mock
   _callLLM?: (prompt: string) => Promise<string>;
-  _now?: () => string;
 }
 
 // ── AI coding tool fallback baseline ─────────────────────────────────────────
@@ -825,3 +825,47 @@ function avg(values: number[]): number {
 
 // Export for tests and assess command
 export { DEV_TOOL_BASELINES as COMPETITOR_BASELINES };
+
+// ── Cross-project registry integration ───────────────────────────────────────
+
+import type { ProjectsManifest } from './project-registry.js';
+
+export interface BuildCompetitorProfilesFromRegistryOptions {
+  _loadManifest?: () => Promise<ProjectsManifest>;
+}
+
+/**
+ * Convert registered DanteForge projects into CompetitorProfile[] for benchmarking.
+ * These appear as internal benchmarks in the leaderboard.
+ * Never throws — returns [] on any error.
+ */
+export async function buildCompetitorProfilesFromRegistry(
+  opts?: BuildCompetitorProfilesFromRegistryOptions,
+): Promise<CompetitorProfile[]> {
+  try {
+    const loadManifest = opts?._loadManifest ?? (async () => {
+      const { loadProjectsManifest } = await import('./project-registry.js');
+      return loadProjectsManifest();
+    });
+    const manifest = await loadManifest();
+    if (!manifest.projects || manifest.projects.length === 0) return [];
+
+    return manifest.projects.map((entry) => {
+      // Map avgScore linearly to all scoring dimensions
+      const score = entry.avgScore;
+      const scores = Object.fromEntries(
+        ALL_DIMENSIONS.map((dim) => [dim, score]),
+      ) as Record<ScoringDimension, number>;
+
+      return {
+        name: `[Internal] ${entry.name}`,
+        url: `file://${entry.path}`,
+        description: `DanteForge project at ${entry.path} (avg PDSE: ${entry.avgScore})`,
+        source: 'user-defined' as CompetitorSource,
+        scores,
+      };
+    });
+  } catch {
+    return [];
+  }
+}

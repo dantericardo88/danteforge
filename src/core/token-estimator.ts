@@ -139,13 +139,6 @@ export function chunkText(text: string, maxChars: number): string[] {
   return chunks;
 }
 
-export type TokenEstimationStrategy = 'simple' | 'code-aware';
-
-export function isLikelyCode(text: string): boolean {
-  const codePatterns = [/^\s*(function|const|let|var|import|export|class|interface)\s/m, /[{};]\s*$/m, /^\s*\/\//m];
-  return codePatterns.some(p => p.test(text));
-}
-
 export function hardTokenCap(provider: LLMProvider): number {
   return Math.floor(getTokenLimit(provider) * 0.8);
 }

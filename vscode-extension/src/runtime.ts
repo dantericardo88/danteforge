@@ -3,6 +3,8 @@ import {
   type DanteForgeInstallation,
 } from './cli-discovery.js';
 import { buildSpecifySubcommand, sanitizeShellInput } from './shell-safety.js';
+import { DanteForgeTreeProvider as _DanteForgeTreeProvider } from './tree-provider.js';
+import { buildDiagnostics as _buildDiagnostics, scoresToDiagnostics as _scoresToDiagnostics, formatDiagnosticMessage as _formatDiagnosticMessage, type DiagnosticItemLike } from './diagnostics.js';
 
 export interface DisposableLike {
   dispose(): void;
@@ -22,7 +24,7 @@ export interface WorkspaceFolderLike {
 
 export interface StatusBarItemLike {
   text: string;
-  tooltip: string;
+  tooltip: string | object | undefined;
   show(): void;
   hide(): void;
   dispose(): void;
@@ -42,10 +44,15 @@ export interface VscodeLike {
       prompt: string;
       placeHolder: string;
     }): PromiseLike<string | undefined>;
-    createStatusBarItem?(alignment?: number, priority?: number): StatusBarItemLike;
+    createStatusBarItem?(idOrAlignment?: string | number, priority?: number): StatusBarItemLike;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    createTreeView?(viewId: string, options: { treeDataProvider: any }): TreeViewLike;
   };
   commands: {
     registerCommand(name: string, handler: () => unknown | Promise<unknown>): DisposableLike;
+  };
+  languages?: {
+    createDiagnosticCollection?(name: string): DiagnosticCollectionLike;
   };
 }
 
@@ -103,9 +110,35 @@ export async function runDanteForgeSubcommand(
   }
 }
 
+export interface TreeViewLike {
+  dispose(): void;
+}
+
+export interface TreeViewProviderLike {
+  getChildren(element?: unknown): unknown[] | Promise<unknown[]>;
+  getTreeItem(element: unknown): unknown;
+  refresh?(): Promise<void>;
+}
+
+export interface DiagnosticCollectionLike {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  set(...args: any[]): void;
+  clear(): void;
+  dispose(): void;
+}
+
+export interface FileSystemWatcherLike {
+  onDidChange(cb: () => void): DisposableLike;
+  onDidCreate(cb: () => void): DisposableLike;
+  dispose(): void;
+}
+
 export interface RegisterCommandsOptions {
   _readFile?: RuntimeReadFileFn;
   _setInterval?: (fn: () => void, ms: number) => unknown;
+  _treeProvider?: TreeViewProviderLike;
+  _diagnosticCollection?: DiagnosticCollectionLike;
+  _createWatcher?: (pattern: string) => FileSystemWatcherLike;
 }
 
 export function registerDanteForgeCommands(
@@ -115,31 +148,92 @@ export function registerDanteForgeCommands(
 ): DisposableLike[] {
   const disposables: DisposableLike[] = [];
 
-  // ── Status bar: polls .danteforge/latest-pdse.json every 5s ────────────────
+  // ── Polling setup (shared by status bar, tree view, diagnostics) ────────────
+  const workspaceRoot = getWorkspaceRoot(vscodeApi);
+  const readFile = opts?._readFile ?? defaultReadFile;
+  const setIntervalFn = opts?._setInterval ?? setInterval;
+
+  // ── Status bar: polls .danteforge/latest-pdse.json every 5s ─────────────────
   const statusBar = vscodeApi.window.createStatusBarItem?.(1, 100);
+  const pollSnapshot = async () => {
+    if (!statusBar) return;
+    if (!workspaceRoot) { statusBar.hide(); return; }
+    try {
+      const snapshotPath = `${workspaceRoot}/.danteforge/latest-pdse.json`;
+      const raw = await readFile(snapshotPath);
+      const snapshot = JSON.parse(raw) as { avgScore: number };
+      statusBar.text = `$(check) DF: ${snapshot.avgScore}`;
+      statusBar.tooltip = `DanteForge avg PDSE score: ${snapshot.avgScore}`;
+      statusBar.show();
+    } catch {
+      statusBar.hide();
+    }
+  };
   if (statusBar) {
-    const workspaceRoot = getWorkspaceRoot(vscodeApi);
-    const readFile = opts?._readFile ?? defaultReadFile;
-    const setIntervalFn = opts?._setInterval ?? setInterval;
-
-    const pollSnapshot = async () => {
-      if (!workspaceRoot) { statusBar.hide(); return; }
-      try {
-        const snapshotPath = `${workspaceRoot}/.danteforge/latest-pdse.json`;
-        const raw = await readFile(snapshotPath);
-        const snapshot = JSON.parse(raw) as { avgScore: number };
-        statusBar.text = `$(check) DF: ${snapshot.avgScore}`;
-        statusBar.tooltip = `DanteForge avg PDSE score: ${snapshot.avgScore}`;
-        statusBar.show();
-      } catch {
-        statusBar.hide();
-      }
-    };
-
     void pollSnapshot();
-    setIntervalFn(() => { void pollSnapshot(); }, 5000);
     disposables.push(statusBar);
   }
+
+  // ── Tree view: shows project state + PDSE scores in Explorer panel ───────────
+  let treeProvider: TreeViewProviderLike | undefined;
+  if (vscodeApi.window.createTreeView && workspaceRoot) {
+    treeProvider = opts?._treeProvider ?? new _DanteForgeTreeProvider({ workspaceRoot, _readFile: readFile });
+    const treeView = vscodeApi.window.createTreeView('danteforge.projectState', {
+      treeDataProvider: treeProvider,
+    });
+    disposables.push(treeView);
+  }
+
+  // ── Diagnostics: maps low-scoring artifacts to warnings/errors ───────────────
+  let diagnosticCollection: DiagnosticCollectionLike | undefined;
+  if (vscodeApi.languages?.createDiagnosticCollection && workspaceRoot) {
+    diagnosticCollection = opts?._diagnosticCollection
+      ?? vscodeApi.languages.createDiagnosticCollection('danteforge');
+    disposables.push(diagnosticCollection);
+  }
+
+  // ── Shared refresh helpers ────────────────────────────────────────────────
+  const refreshDiagnosticsAndTree = async () => {
+    if (treeProvider?.refresh) {
+      try { await treeProvider.refresh(); } catch { /* best-effort */ }
+    }
+    if (diagnosticCollection && workspaceRoot) {
+      try {
+        const items = await _buildDiagnostics({ workspaceRoot, _readFile: readFile });
+        diagnosticCollection.set([[workspaceRoot, items]]);
+      } catch { /* best-effort */ }
+    }
+  };
+
+  const updateStatusBar = async () => {
+    await pollSnapshot();
+  };
+
+  const pollAll = async () => {
+    await updateStatusBar();
+    await refreshDiagnosticsAndTree();
+  };
+
+  void pollAll();
+
+  // ── FileSystemWatcher for live refresh (replaces 5s polling) ─────────────
+  const createWatcher = opts?._createWatcher;
+  if (workspaceRoot && createWatcher) {
+    // Watch STATE.yaml for live tree refresh
+    const stateWatcher = createWatcher(`${workspaceRoot}/.danteforge/STATE.yaml`);
+    stateWatcher.onDidChange(() => { void refreshDiagnosticsAndTree(); });
+    stateWatcher.onDidCreate(() => { void refreshDiagnosticsAndTree(); });
+    disposables.push(stateWatcher);
+
+    // Watch latest-pdse.json for score bar updates
+    const pdseWatcher = createWatcher(`${workspaceRoot}/.danteforge/latest-pdse.json`);
+    pdseWatcher.onDidChange(() => { void updateStatusBar(); });
+    disposables.push(pdseWatcher);
+  }
+
+  // Keep 30s fallback interval (was 5s) for initial load and edge cases
+  const fallbackInterval = setIntervalFn(() => { void pollAll(); }, 30000);
+  disposables.push({ dispose: () => clearInterval(fallbackInterval as ReturnType<typeof setInterval>) });
 
   // ── Original 9 commands ─────────────────────────────────────────────────────
   disposables.push(
@@ -245,6 +339,18 @@ export function registerDanteForgeCommands(
     }),
   );
 
+  // ── 2 new Wave 4 commands ───────────────────────────────────────────────────
+  disposables.push(
+    vscodeApi.commands.registerCommand('danteforge.refreshTree', async () => {
+      if (treeProvider?.refresh) {
+        try { await treeProvider.refresh(); } catch { /* best-effort */ }
+      }
+    }),
+    vscodeApi.commands.registerCommand('danteforge.showDiagnostics', () =>
+      runDanteForgeSubcommand(vscodeApi, 'autoforge --score-only', inspector),
+    ),
+  );
+
   return disposables;
 }
 
@@ -252,3 +358,14 @@ async function defaultReadFile(filePath: string): Promise<string> {
   const { readFile } = await import('fs/promises');
   return readFile(filePath, 'utf8');
 }
+
+// Direct const exports so tests can import from runtime.js as a single entry
+// point. Using `export const X = _X` compiles to `exports.X = _X` (direct
+// assignment) which is statically analysable by Node.js cjs-module-lexer —
+// unlike `export { X } from '...'` which emits Object.defineProperty getters.
+export type { TreeItemLike, TreeDataProviderLike, ProjectStateNode, DanteForgeTreeProviderOptions } from './tree-provider.js';
+export type { DanteForgeHoverOptions } from './diagnostics.js';
+export const DanteForgeTreeProvider = _DanteForgeTreeProvider;
+export const scoresToDiagnostics = _scoresToDiagnostics;
+export const formatDiagnosticMessage = _formatDiagnosticMessage;
+export const buildDiagnostics = _buildDiagnostics;

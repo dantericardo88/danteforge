@@ -1,4 +1,5 @@
 import path from 'path';
+import { ValidationError } from './errors.js';
 
 /**
  * Sanitize a file path — resolve, normalize, and reject directory traversal.
@@ -11,7 +12,9 @@ export function sanitizePath(input: string, baseCwd?: string): string {
   const normalizedBase = path.normalize(base) + path.sep;
   const normalizedResolved = path.normalize(resolved);
   if (!normalizedResolved.startsWith(normalizedBase) && normalizedResolved !== path.normalize(base)) {
-    throw new Error(`Path traversal rejected: "${input}" resolves outside project root`);
+    throw new ValidationError(
+      `Path traversal rejected: "${input}" resolves outside project root`,
+    );
   }
   return resolved;
 }

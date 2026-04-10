@@ -39,7 +39,7 @@ describe('auditPostForgeProtectedMutations', () => {
     const dir = await freshDir();
     try {
       const result = await auditPostForgeProtectedMutations(
-        ['src/core/llm.ts', 'tests/foo.test.ts', 'README.md'],
+        ['src/core/config.ts', 'tests/foo.test.ts', 'README.md'],
         'deny',
         { cwd: dir },
       );
@@ -57,10 +57,10 @@ describe('auditPostForgeProtectedMutations', () => {
         'deny',
         { cwd: dir },
       );
-      assert.deepStrictEqual(result.violations, ['src/core/state.ts']);
+      // Both state.ts and llm.ts are now protected (llm.ts added in security hardening)
+      assert.deepStrictEqual(result.violations.sort(), ['src/core/llm.ts', 'src/core/state.ts']);
       const entries = await loadAuditLog(dir);
-      assert.strictEqual(entries.length, 1);
-      assert.strictEqual(entries[0].filePath, 'src/core/state.ts');
+      assert.strictEqual(entries.length, 2);
       assert.strictEqual(entries[0].approved, false);
       assert.strictEqual(entries[0].policy, 'deny');
     } finally {
@@ -94,7 +94,8 @@ describe('auditPostForgeProtectedMutations', () => {
         'deny',
         { cwd: dir },
       );
-      assert.deepStrictEqual(result.violations.sort(), ['src/cli/index.ts', 'src/core/state.ts']);
+      // llm.ts is now protected (added in security hardening sprint)
+      assert.deepStrictEqual(result.violations.sort(), ['src/cli/index.ts', 'src/core/llm.ts', 'src/core/state.ts']);
     } finally {
       await fs.rm(dir, { recursive: true, force: true });
     }

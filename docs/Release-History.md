@@ -2,13 +2,15 @@
 
 This index keeps the current release surface separate from archived readiness snapshots and historical planning documents.
 
-## Current Release Surface
+## Current Release Surface (v0.15.0)
 
-- [Operational-Readiness-v0.9.2.md](Operational-Readiness-v0.9.2.md)
+- [Operational-Readiness-v0.15.0.md](Operational-Readiness-v0.15.0.md) (if available)
 - [RELEASE.md](../RELEASE.md)
+- [CHANGELOG.md](../CHANGELOG.md)
 
 ## Archived Operational Readiness Guides
 
+- [Operational-Readiness-v0.9.2.md](Operational-Readiness-v0.9.2.md)
 - [Operational-Readiness-v0.9.1.md](Operational-Readiness-v0.9.1.md)
 - [Operational-Readiness-v0.9.0.md](Operational-Readiness-v0.9.0.md)
 - [Operational-Readiness-v0.8.0.md](Operational-Readiness-v0.8.0.md)

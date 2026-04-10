@@ -55,6 +55,8 @@ In Codex, these slash commands are native workflow commands. Execute them in the
 - \`/awesome-scan\` - Discover and import skill catalogs
 - \`/browse\` - Browser automation for live app inspection
 - \`/oss\` - Auto-detect project, search OSS, clone, license-gate, scan, extract patterns
+- \`/oss-clean\` - Remove cached OSS repos from .danteforge/oss-repos/
+- \`/oss-learn\` - Re-extract patterns from cached OSS repos and regenerate OSS_REPORT.md
 - \`/harvest\` - Titan Harvest V2: 5-step constitutional harvest of OSS patterns
 - \`/local-harvest\` - Harvest patterns from local private repos, folders, and zip archives
 - \`/wiki-ingest\` - Ingest source files into the three-tier knowledge wiki
@@ -62,6 +64,8 @@ In Codex, these slash commands are native workflow commands. Execute them in the
 - \`/wiki-query\` - Query the wiki for relevant knowledge on a topic
 - \`/wiki-status\` - View wiki health metrics dashboard
 - \`/wiki-export\` - Export wiki as Obsidian vault or static HTML
+- \`/resume\` - Resume a paused autoforge loop from the last checkpoint
+- \`/danteforge\` - Maximum-power all-in-one: harvest + OSS + 10-wave autoforge + party + convergence
 
 ### Skills (Auto-Triggered)
 Skills are automatically suggested based on context:

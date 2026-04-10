@@ -1,0 +1,251 @@
+{
+  "name": "danteforge",
+  "description": "Integration with DanteForge CLI for structured software development workflows",
+  "instructions": "Use this extension to access DanteForge commands directly. DanteForge provides spec-driven development with multi-agent orchestration, maturity scoring, and quality gates. Use the appropriate tools for planning, development, and verification phases.",
+  "tools": [
+    {
+      "name": "danteforge_spark",
+      "description": "Zero-token planning preset for new ideas and project starts",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "goal": {
+            "type": "string",
+            "description": "The development goal or idea to plan for"
+          },
+          "skip_tech_decide": {
+            "type": "boolean",
+            "description": "Skip guided tech stack selection",
+            "default": false
+          }
+        },
+        "required": ["goal"]
+      }
+    },
+    {
+      "name": "danteforge_magic",
+      "description": "Balanced default preset for daily follow-up work",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "goal": {
+            "type": "string",
+            "description": "The development goal to execute"
+          },
+          "level": {
+            "type": "string",
+            "description": "Maturity level target (sketch, prototype, alpha, beta, customer, enterprise)",
+            "enum": ["sketch", "prototype", "alpha", "beta", "customer", "enterprise"]
+          },
+          "profile": {
+            "type": "string",
+            "description": "Execution profile (quality, balanced, budget)",
+            "enum": ["quality", "balanced", "budget"],
+            "default": "balanced"
+          },
+          "skip_ux": {
+            "type": "boolean",
+            "description": "Skip UX refinement steps",
+            "default": false
+          },
+          "worktree": {
+            "type": "boolean",
+            "description": "Run in isolated git worktree",
+            "default": false
+          },
+          "isolation": {
+            "type": "boolean",
+            "description": "Run subagents in isolation",
+            "default": false
+          }
+        },
+        "required": ["goal"]
+      }
+    },
+    {
+      "name": "danteforge_verify",
+      "description": "Run verification checks on project state and artifacts",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "release": {
+            "type": "boolean",
+            "description": "Include release readiness checks",
+            "default": false
+          },
+          "live": {
+            "type": "boolean",
+            "description": "Run live provider checks",
+            "default": false
+          },
+          "url": {
+            "type": "string",
+            "description": "URL for live QA checks"
+          }
+        }
+      }
+    },
+    {
+      "name": "danteforge_constitution",
+      "description": "Initialize project constitution and principles",
+      "parameters": {
+        "type": "object",
+        "properties": {}
+      }
+    },
+    {
+      "name": "danteforge_specify",
+      "description": "Convert high-level idea to detailed spec",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "idea": {
+            "type": "string",
+            "description": "The idea or requirement to specify"
+          },
+          "light": {
+            "type": "boolean",
+            "description": "Bypass hard gates for exploratory work",
+            "default": false
+          }
+        },
+        "required": ["idea"]
+      }
+    },
+    {
+      "name": "danteforge_plan",
+      "description": "Generate implementation plan from spec",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "light": {
+            "type": "boolean",
+            "description": "Bypass hard gates for exploratory work",
+            "default": false
+          }
+        }
+      }
+    },
+    {
+      "name": "danteforge_tasks",
+      "description": "Break plan into executable tasks",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "light": {
+            "type": "boolean",
+            "description": "Bypass hard gates for exploratory work",
+            "default": false
+          }
+        }
+      }
+    },
+    {
+      "name": "danteforge_forge",
+      "description": "Execute development waves",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "phase": {
+            "type": "integer",
+            "description": "Specific phase to execute",
+            "minimum": 1
+          },
+          "parallel": {
+            "type": "boolean",
+            "description": "Run tasks in parallel",
+            "default": false
+          },
+          "profile": {
+            "type": "string",
+            "description": "Execution profile (quality, balanced, budget)",
+            "enum": ["quality", "balanced", "budget"],
+            "default": "balanced"
+          },
+          "worktree": {
+            "type": "boolean",
+            "description": "Run in isolated git worktree",
+            "default": false
+          },
+          "light": {
+            "type": "boolean",
+            "description": "Bypass hard gates for exploratory work",
+            "default": false
+          }
+        }
+      }
+    },
+    {
+      "name": "danteforge_party",
+      "description": "Launch multi-agent collaboration mode",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "worktree": {
+            "type": "boolean",
+            "description": "Run in isolated git worktree",
+            "default": false
+          },
+          "isolation": {
+            "type": "boolean",
+            "description": "Run subagents in isolation",
+            "default": false
+          }
+        }
+      }
+    },
+    {
+      "name": "danteforge_autoforge",
+      "description": "Deterministic auto-orchestration of the full pipeline",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "goal": {
+            "type": "string",
+            "description": "The development goal to execute autonomously"
+          },
+          "dry_run": {
+            "type": "boolean",
+            "description": "Show what would be done without executing",
+            "default": false
+          },
+          "max_waves": {
+            "type": "integer",
+            "description": "Maximum number of waves to execute",
+            "minimum": 1
+          },
+          "parallel": {
+            "type": "boolean",
+            "description": "Run tasks in parallel",
+            "default": false
+          },
+          "worktree": {
+            "type": "boolean",
+            "description": "Run in isolated git worktree",
+            "default": false
+          },
+          "light": {
+            "type": "boolean",
+            "description": "Bypass hard gates for exploratory work",
+            "default": false
+          }
+        },
+        "required": ["goal"]
+      }
+    },
+    {
+      "name": "danteforge_maturity",
+      "description": "Analyze project maturity across quality dimensions",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "preset": {
+            "type": "string",
+            "description": "Preset to target (spark, ember, canvas, magic, blaze, nova, inferno)",
+            "enum": ["spark", "ember", "canvas", "magic", "blaze", "nova", "inferno"]
+          }
+        }
+      }
+    }
+  ]
+}

@@ -1,5 +1,6 @@
 // autoforge — deterministic state machine that auto-orchestrates the DanteForge pipeline
 import fs from 'fs/promises';
+import { ValidationError } from '../../core/errors.js';
 import path from 'path';
 import { logger } from '../../core/logger.js';
 import { loadState, saveState } from '../../core/state.js';
@@ -29,6 +30,17 @@ import {
 import { SCORE_THRESHOLDS, ARTIFACT_COMMAND_MAP } from '../../core/pdse-config.js';
 import { loadLatestVerdict } from '../../core/reflection-engine.js';
 
+/**
+ * Allowlist of valid danteforge subcommands that the --auto executor may invoke.
+ * Any command not in this set is rejected before spawnSync is called.
+ */
+export const ALLOWED_AUTOFORGE_COMMANDS = new Set([
+  'review', 'constitution', 'specify', 'clarify', 'plan', 'tasks',
+  'design', 'forge', 'ux-refine', 'verify', 'synthesize',
+  'doctor', 'party', 'assess', 'retro', 'maturity', 'autoforge',
+  'ship',
+]);
+
 export async function autoforge(goal?: string, options: {
   dryRun?: boolean;
   maxWaves?: number;
@@ -43,8 +55,17 @@ export async function autoforge(goal?: string, options: {
   cwd?: string;
   /** Pause loop when avg PDSE score reaches this value */
   pauseAt?: number;
-  // Injection seam — override the autonomous loop for testing
+  /** Max loops for automatic restart on low maturity */
+  maxLoops?: number;
+  // Injection seams for testing
   _runLoop?: (ctx: AutoforgeLoopContext) => Promise<AutoforgeLoopContext>;
+  _executeCommand?: (cmd: string, cwd: string) => Promise<{ success: boolean }>;
+  _runScoreOnlyMode?: () => Promise<void>;
+  _analyzeProjectState?: () => Promise<Awaited<ReturnType<typeof analyzeProjectState>>>;
+  _planAutoForge?: typeof planAutoForge;
+  _executeAutoForgePlan?: typeof executeAutoForgePlan;
+  _displayPlan?: typeof displayPlan;
+  _loadLatestVerdict?: typeof loadLatestVerdict;
 } = {}): Promise<void> {
   return withErrorBoundary('autoforge', async () => {
   const maxWaves = options.maxWaves ?? 3;
@@ -55,7 +76,8 @@ export async function autoforge(goal?: string, options: {
 
   // --score-only mode: score existing artifacts and write guidance
   if (options.scoreOnly) {
-    await runScoreOnlyMode();
+    const scoreOnlyFn = options._runScoreOnlyMode ?? runScoreOnlyMode;
+    await scoreOnlyFn();
     return;
   }
 
@@ -81,20 +103,49 @@ export async function autoforge(goal?: string, options: {
       maxRetries: 3,
       ...(options.pauseAt !== undefined ? { pauseAtScore: options.pauseAt } : {}),
     };
-    const loopFn = options._runLoop ?? runAutoforgeLoop;
-    await loopFn(ctx);
+    // Provide a real command executor so the loop can actually run danteforge sub-commands
+    // instead of staying in advisory mode (which happens when _executeCommand is absent).
+    async function defaultExecutor(cmd: string, execCwd: string): Promise<{ success: boolean }> {
+      const { spawnSync } = await import('node:child_process');
+      const args = cmd.split(/\s+/).filter(Boolean);
+      const baseCommand = args[0] ?? '';
+      if (!ALLOWED_AUTOFORGE_COMMANDS.has(baseCommand)) {
+        throw new ValidationError(
+          `Command not in autoforge allowlist: "${baseCommand}"`,
+          `Valid autoforge commands: ${[...ALLOWED_AUTOFORGE_COMMANDS].join(', ')}`,
+        );
+      }
+      const proc = spawnSync(process.execPath, [process.argv[1]!, ...args], {
+        cwd: execCwd,
+        stdio: 'inherit',
+        timeout: 300_000,
+      });
+      return { success: proc.status === 0 };
+    }
+    const realExecutor = options._executeCommand ?? defaultExecutor;
+
+    const loopFn: (loopCtx: AutoforgeLoopContext) => Promise<AutoforgeLoopContext> =
+      options._runLoop ??
+      ((loopCtx: AutoforgeLoopContext) => runAutoforgeLoop(loopCtx, { _executeCommand: realExecutor }));
+
+    const result = await loopFn(ctx);
+    if (result.loopState === AutoforgeLoopState.BLOCKED) {
+      process.exitCode = 1;
+    }
     return;
   }
 
   // Analyze current project state
+  const analyzeState = options._analyzeProjectState ?? (() => analyzeProjectState());
   const input = await withSpinner(
     'Analyzing project state...',
-    () => analyzeProjectState(),
+    analyzeState,
     'Project state analyzed',
   );
 
   // Generate the plan
-  const plan = planAutoForge(input, maxWaves, goal);
+  const planFn = options._planAutoForge ?? planAutoForge;
+  const plan = planFn(input, maxWaves, goal);
 
   // --prompt mode: generate copy-paste prompt
   if (options.prompt) {
@@ -109,15 +160,17 @@ export async function autoforge(goal?: string, options: {
 
   // --dry-run mode: display plan without executing
   if (options.dryRun) {
-    displayPlan(plan);
+    const displayFn = options._displayPlan ?? displayPlan;
+    displayFn(plan);
     logger.info('[AutoForge] Dry run complete — no commands were executed.');
     return;
   }
 
   // Execute the plan
+  const executeFn = options._executeAutoForgePlan ?? executeAutoForgePlan;
   const result = await withSpinner(
     `Executing autoforge plan (${maxWaves} waves)...`,
-    () => executeAutoForgePlan(plan, {
+    () => executeFn(plan, {
       dryRun: false,
       light: options.light,
       profile: options.profile,
@@ -154,7 +207,8 @@ export async function autoforge(goal?: string, options: {
 
   // Show reflection score if available
   try {
-    const verdict = await loadLatestVerdict();
+    const verdictFn = options._loadLatestVerdict ?? loadLatestVerdict;
+    const verdict = await verdictFn();
     if (verdict) {
       const score = Math.round(verdict.confidence * 100);
       logger.info('');
@@ -201,7 +255,7 @@ async function runScoreOnlyMode(): Promise<void> {
 
   // Print score table
   logger.info('');
-  logger.success('DanteForge v0.8.0 — Score-Only Pass');
+  logger.success('DanteForge v0.15.0 — Score-Only Pass');
   logger.info('━'.repeat(40));
 
   const artifacts: ScoredArtifact[] = ['CONSTITUTION', 'SPEC', 'CLARIFY', 'PLAN', 'TASKS'];
@@ -247,7 +301,7 @@ async function runScoreOnlyMode(): Promise<void> {
 
 // ── Guidance file generation ────────────────────────────────────────────────
 
-function buildGuidanceMarkdown(
+export function buildGuidanceMarkdown(
   scores: Record<ScoredArtifact, ScoreResult>,
   tracker: ReturnType<typeof computeCompletionTracker>,
 ): string {
@@ -322,7 +376,7 @@ interface Bottleneck {
   maxScore: number;
 }
 
-function findBottleneck(scores: Record<ScoredArtifact, ScoreResult>): Bottleneck | null {
+export function findBottleneck(scores: Record<ScoredArtifact, ScoreResult>): Bottleneck | null {
   let worst: Bottleneck | null = null;
   const artifacts: ScoredArtifact[] = ['CONSTITUTION', 'SPEC', 'CLARIFY', 'PLAN', 'TASKS'];
 
@@ -350,7 +404,7 @@ interface Recommendation {
   reason: string;
 }
 
-function getRecommendation(scores: Record<ScoredArtifact, ScoreResult>): Recommendation | null {
+export function getRecommendation(scores: Record<ScoredArtifact, ScoreResult>): Recommendation | null {
   const artifacts: ScoredArtifact[] = ['CONSTITUTION', 'SPEC', 'CLARIFY', 'PLAN', 'TASKS'];
 
   // Find the worst-scoring artifact that has issues

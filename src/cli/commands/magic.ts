@@ -25,24 +25,28 @@ export interface ConvergenceOptions {
   level: MagicLevel;
   goal: string;
   maxCycles: number;
-  autoforgeWaves: number; // Full wave count from preset for bursty cycles
+  autoforgeWaves?: number; // Full wave count from preset for bursty cycles (default: 3)
   skipInitialVerify?: boolean;
   _getVerifyStatus?: () => Promise<VerifyStatus>;
   _runAutoforge?: (goal: string, waves: number) => Promise<void>;
   _runVerify?: () => Promise<void>;
+  _assessMaturity?: () => Promise<{ currentLevel: number; targetLevel: number }>;
+  _getAvgScore?: () => Promise<number>;
 }
 
 export interface ConvergenceResult {
   cyclesRun: number;
   initialStatus: VerifyStatus;
   finalStatus: VerifyStatus;
+  cycleScores: number[];
+  regressionDetected: boolean;
 }
 
 export async function runConvergenceCycles(
   opts: ConvergenceOptions,
 ): Promise<ConvergenceResult> {
   if (opts.maxCycles === 0) {
-    return { cyclesRun: 0, initialStatus: 'unknown', finalStatus: 'unknown' };
+    return { cyclesRun: 0, initialStatus: 'unknown', finalStatus: 'unknown', cycleScores: [], regressionDetected: false };
   }
 
   const getStatus: () => Promise<VerifyStatus> =
@@ -77,103 +81,129 @@ export async function runConvergenceCycles(
     logger.success(
       `[${opts.level}] Convergence: verify passed - no repair cycles needed`,
     );
-    return { cyclesRun: 0, initialStatus, finalStatus: 'pass' };
+    return { cyclesRun: 0, initialStatus, finalStatus: 'pass', cycleScores: [], regressionDetected: false };
   }
 
+  const wavesPerCycle = opts.autoforgeWaves ?? 3;
   let finalStatus: VerifyStatus = initialStatus;
   let cyclesRun = 0;
+  const cycleScores: number[] = [];
+  let consecutiveDrops = 0;
+  let regressionDetected = false;
+
+  const getAvgScore: () => Promise<number> =
+    opts._getAvgScore ??
+    (async () => {
+      try {
+        const cwd = process.cwd();
+        const raw = await readFile(join(cwd, '.danteforge', 'evidence', 'latest-pdse.json'), 'utf8');
+        const parsed = JSON.parse(raw);
+        if (typeof parsed.averageScore === 'number') return parsed.averageScore;
+        if (Array.isArray(parsed.scores) && parsed.scores.length > 0) {
+          const sum = parsed.scores.reduce((a: number, s: { score?: number }) => a + (s.score ?? 0), 0);
+          return sum / parsed.scores.length;
+        }
+        return -1;
+      } catch {
+        return -1;
+      }
+    });
 
   while (finalStatus !== 'pass' && cyclesRun < opts.maxCycles) {
     cyclesRun++;
 
     logger.info(`[${opts.level}] 💥 CONVERGENCE CYCLE ${cyclesRun}/${opts.maxCycles}`);
-    logger.info(`[${opts.level}] Launching ${opts.autoforgeWaves}-wave improvement burst...`);
+    logger.info(`[${opts.level}] Launching ${wavesPerCycle}-wave improvement burst...`);
 
-    // Run autoforge waves first
-    try {
-      const { assessMaturity } = await import("../../core/maturity-engine.js");
-      const { scoreAllArtifacts } = await import("../../core/pdse.js");
-      const { MAGIC_PRESETS } = await import("../../core/magic-presets.js");
+    // Run autoforge waves
+    // In production (no _runAutoforge injection), use maturity assessment to prioritize
+    if (!opts._runAutoforge) {
+      try {
+        const { assessMaturity } = await import("../../core/maturity-engine.js");
+        const { scoreAllArtifacts } = await import("../../core/pdse.js");
+        const { MAGIC_PRESETS } = await import("../../core/magic-presets.js");
 
-      const state = await loadState();
-      const cwd = process.cwd();
-      const pdseScores = await scoreAllArtifacts(cwd, state);
-      const targetLevel = MAGIC_PRESETS[opts.level]?.targetMaturityLevel ?? 4;
+        const state = await loadState();
+        const cwd = process.cwd();
+        const pdseScores = await scoreAllArtifacts(cwd, state);
+        const targetLevel = MAGIC_PRESETS[opts.level]?.targetMaturityLevel ?? 4;
 
-      const assessment = await assessMaturity({
-        cwd,
-        state,
-        pdseScores,
-        targetLevel,
-      });
+        const assessment = await assessMaturity({ cwd, state, pdseScores, targetLevel });
 
-      const criticalGaps = assessment.gaps.filter(g => g.severity === 'critical');
-      if (criticalGaps.length > 0) {
-        logger.warn(`[${opts.level}] ${criticalGaps.length} critical gap${criticalGaps.length === 1 ? '' : 's'} to address:`);
-        for (const gap of criticalGaps.slice(0, 5)) {
-          logger.warn(`  - ${gap.dimension}: ${gap.currentScore}/100 (need ${gap.targetScore ?? 89}+)`);
+        const criticalGaps = assessment.gaps.filter(g => g.severity === 'critical');
+        if (criticalGaps.length > 0) {
+          logger.warn(`[${opts.level}] ${criticalGaps.length} critical gap${criticalGaps.length === 1 ? '' : 's'} to address:`);
+          for (const gap of criticalGaps.slice(0, 5)) {
+            logger.warn(`  - ${gap.dimension}: ${gap.currentScore}/100 (need ${gap.targetScore ?? 89}+)`);
+          }
+          await runAutoforge(`Address critical quality gaps: ${criticalGaps.map(g => g.dimension).join(', ')}`, wavesPerCycle);
+        } else {
+          await runAutoforge(`Fix failing verification - ${opts.goal}`, wavesPerCycle);
         }
-        const remediationGoal = `Address critical quality gaps: ${criticalGaps.map(g => g.dimension).join(', ')}`;
-        await runAutoforge(remediationGoal, opts.autoforgeWaves);
-      } else {
-        const fixGoal = `Fix failing verification - ${opts.goal}`;
-        await runAutoforge(fixGoal, opts.autoforgeWaves);
+      } catch {
+        await runAutoforge(`Fix failing verification - ${opts.goal}`, wavesPerCycle);
       }
-    } catch (err) {
-      // Fallback to standard convergence if maturity assessment fails
-      logger.warn(`[${opts.level}] Maturity assessment failed: ${err instanceof Error ? err.message : String(err)} - falling back to standard convergence`);
-      const fixGoal = `Fix failing verification - ${opts.goal}`;
-      await runAutoforge(fixGoal, opts.autoforgeWaves);
+    } else {
+      // Test mode: skip pre-cycle maturity assessment, just run autoforge
+      await runAutoforge(`Fix failing verification - ${opts.goal}`, wavesPerCycle);
     }
 
     // Run verify after autoforge
     await runVerify();
     finalStatus = await getStatus();
 
-    // NOW check maturity AFTER waves completed and verify ran
-    try {
-      const { assessMaturity } = await import("../../core/maturity-engine.js");
-      const { scoreAllArtifacts } = await import("../../core/pdse.js");
-      const { MAGIC_PRESETS } = await import("../../core/magic-presets.js");
-
-      const state = await loadState();
-      const cwd = process.cwd();
-      const pdseScores = await scoreAllArtifacts(cwd, state);
-      const targetLevel = MAGIC_PRESETS[opts.level]?.targetMaturityLevel ?? 4;
-
-      const assessment = await assessMaturity({
-        cwd,
-        state,
-        pdseScores,
-        targetLevel,
-      });
-
-      logger.info('');
-      logger.info(`[${opts.level}] 🤔 Maturity check after cycle ${cyclesRun}...`);
-      logger.info(`[${opts.level}] Current: ${assessment.currentLevel}/6 (score: ${assessment.overallScore}/100)`);
-      logger.info(`[${opts.level}] Target:  ${assessment.targetLevel}/6`);
-
-      if (assessment.currentLevel >= assessment.targetLevel) {
-        logger.success(`[${opts.level}] ✅ MATURITY TARGET ACHIEVED after ${cyclesRun} cycle${cyclesRun === 1 ? '' : 's'}!`);
-        return { cyclesRun, initialStatus, finalStatus: 'pass' };
+    // Score regression detection
+    const score = await getAvgScore();
+    if (score >= 0) {
+      cycleScores.push(score);
+      const prevScore = cycleScores.length >= 2 ? cycleScores[cycleScores.length - 2] : undefined;
+      if (prevScore !== undefined && score < prevScore) {
+        consecutiveDrops++;
+        logger.warn(`[${opts.level}] Score regression: ${prevScore.toFixed(1)} → ${score.toFixed(1)} (drop ${consecutiveDrops})`);
+        if (consecutiveDrops >= 2) {
+          regressionDetected = true;
+          logger.warn(`[${opts.level}] 2 consecutive score drops detected — stopping convergence early`);
+          break;
+        }
       } else {
-        const remaining = assessment.targetLevel - assessment.currentLevel;
-        logger.warn(`[${opts.level}] ⚠️  Still ${remaining} level${remaining === 1 ? '' : 's'} below target`);
-        if (cyclesRun < opts.maxCycles) {
-          logger.info(`[${opts.level}] Continuing to cycle ${cyclesRun + 1}/${opts.maxCycles}...`);
+        consecutiveDrops = 0;
+      }
+    }
+
+    // Post-cycle maturity check (only in production mode)
+    if (!opts._runAutoforge && !opts._runVerify) {
+      if (opts._assessMaturity) {
+        const matResult = await opts._assessMaturity();
+        if (matResult.currentLevel >= matResult.targetLevel) {
+          return { cyclesRun, initialStatus, finalStatus: 'pass', cycleScores, regressionDetected };
+        }
+      } else {
+        try {
+          const { assessMaturity } = await import("../../core/maturity-engine.js");
+          const { scoreAllArtifacts } = await import("../../core/pdse.js");
+          const { MAGIC_PRESETS } = await import("../../core/magic-presets.js");
+
+          const state = await loadState();
+          const cwd = process.cwd();
+          const pdseScores = await scoreAllArtifacts(cwd, state);
+          const targetLevel = MAGIC_PRESETS[opts.level]?.targetMaturityLevel ?? 4;
+
+          const assessment = await assessMaturity({ cwd, state, pdseScores, targetLevel });
+
+          logger.info(`[${opts.level}] Current: ${assessment.currentLevel}/6 (score: ${assessment.overallScore}/100)`);
+
+          if (assessment.currentLevel >= assessment.targetLevel) {
+            logger.success(`[${opts.level}] ✅ MATURITY TARGET ACHIEVED after ${cyclesRun} cycle${cyclesRun === 1 ? '' : 's'}!`);
+            return { cyclesRun, initialStatus, finalStatus: 'pass', cycleScores, regressionDetected };
+          }
+        } catch {
+          // If maturity check fails, fall back to verify status only
         }
       }
-    } catch (err) {
-      // If maturity check fails, fall back to verify status
-      if (finalStatus === 'pass') {
-        logger.success(
-          `[${opts.level}] Convergence achieved after ${cyclesRun} cycle${cyclesRun === 1 ? '' : 's'}`,
-        );
-      } else {
-        logger.warn(
-          `[${opts.level}] Convergence cycle ${cyclesRun} complete - verify still ${finalStatus}`,
-        );
-      }
+    }
+
+    if (finalStatus !== 'pass' && cyclesRun < opts.maxCycles) {
+      logger.info(`[${opts.level}] Continuing to cycle ${cyclesRun + 1}/${opts.maxCycles}...`);
     }
   }
 
@@ -183,7 +213,7 @@ export async function runConvergenceCycles(
     );
   }
 
-  return { cyclesRun, initialStatus, finalStatus };
+  return { cyclesRun, initialStatus, finalStatus, cycleScores, regressionDetected };
 }
 
 export interface MagicPipelineCheckpoint {

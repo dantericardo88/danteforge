@@ -4,7 +4,7 @@ import { logger } from '../../core/logger.js';
 import { loadState, saveState } from '../../core/state.js';
 import { handoff } from '../../core/handoff.js';
 import { isLLMAvailable, callLLM } from '../../core/llm.js';
-import { displayPrompt, savePrompt } from '../../core/prompt-builder.js';
+import { displayPrompt, savePrompt, sanitizeInput } from '../../core/prompt-builder.js';
 import { requireConstitution, runGate } from '../../core/gates.js';
 import { buildLocalSpec, extractNumberedTasks, writeArtifact } from '../../core/local-artifacts.js';
 import { withErrorBoundary } from '../../core/cli-error-boundary.js';
@@ -15,7 +15,8 @@ export async function specify(idea: string, options: { prompt?: boolean; light?:
   return withErrorBoundary('specify', async () => {
   if (!(await runGate(() => requireConstitution(options.light)))) return;
 
-  logger.info(`Specifying: ${idea}`);
+  const safeIdea = sanitizeInput(idea, 2000);
+  logger.info(`Specifying: ${safeIdea}`);
 
   const state = await loadState();
 
@@ -26,12 +27,15 @@ export async function specify(idea: string, options: { prompt?: boolean; light?:
     // Current state review is optional context.
   }
 
+  const safeConstitution = state.constitution ? sanitizeInput(state.constitution, 5000) : '';
+  const safeCurrentState = currentState ? sanitizeInput(currentState.slice(0, 3000), 3000) : '';
+
   const prompt = `You are a senior software architect creating a detailed specification from a high-level idea.
 
-Idea: "${idea}"
+Idea: "${safeIdea}"
 
-${state.constitution ? `Project principles:\n${state.constitution}\n` : ''}
-${currentState ? `Current project state:\n${currentState.slice(0, 3000)}\n` : ''}
+${safeConstitution ? `Project principles:\n${safeConstitution}\n` : ''}
+${safeCurrentState ? `Current project state:\n${safeCurrentState}\n` : ''}
 
 Generate a complete SPEC.md with:
 1. **Feature Name** and one-line summary
@@ -51,7 +55,7 @@ Output ONLY the markdown content - no preamble.`;
       'Paste into your LLM, then run: danteforge import <file> --as SPEC.md',
       `Prompt saved to: ${savedPath}`,
     ].join('\n'));
-    state.auditLog.push(`${new Date().toISOString()} | specify: prompt generated for "${idea}"`);
+    state.auditLog.push(`${new Date().toISOString()} | specify: prompt generated for "${safeIdea}"`);
     await saveState(state);
     return;
   }
@@ -66,10 +70,10 @@ Output ONLY the markdown content - no preamble.`;
       const tasks = extractNumberedTasks(specMd, 'Task Breakdown');
       const normalizedTasks = tasks.length > 0
         ? tasks
-        : [{ name: `Implement ${idea}`, verify: 'All acceptance criteria met' }];
+        : [{ name: `Implement ${safeIdea}`, verify: 'All acceptance criteria met' }];
 
       await handoff('spec', { constitution: state.constitution, tasks: normalizedTasks });
-      logger.success(`SPEC.md generated for "${idea}" - ${normalizedTasks.length} tasks identified`);
+      logger.success(`SPEC.md generated for "${safeIdea}" - ${normalizedTasks.length} tasks identified`);
       logger.info('Run "danteforge clarify" next, then continue with "danteforge plan" and "danteforge tasks" before forge.');
       return;
     } catch (err) {
@@ -78,10 +82,10 @@ Output ONLY the markdown content - no preamble.`;
     }
   }
 
-  const localSpec = buildLocalSpec(idea, state.constitution, currentState);
+  const localSpec = buildLocalSpec(safeIdea, state.constitution, currentState);
   await writeArtifact('SPEC.md', localSpec.markdown);
   await handoff('spec', { constitution: state.constitution ?? 'Loaded from .danteforge', tasks: localSpec.tasks });
-  logger.success(`SPEC.md generated locally for "${idea}" - ${localSpec.tasks.length} tasks identified`);
+  logger.success(`SPEC.md generated locally for "${safeIdea}" - ${localSpec.tasks.length} tasks identified`);
   logger.info('Run "danteforge clarify" next, then continue with "danteforge plan" and "danteforge tasks" before forge.');
   if (!llmAvailable) {
     logger.info('Tip: Set up an API key for richer specs: danteforge config --set-key "grok:<key>"');

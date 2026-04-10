@@ -27,6 +27,7 @@ export interface WorkspaceConfig {
   providers?: Partial<Record<string, { apiKey?: string }>>;
   createdAt: string;
   signingKeySalt?: string;  // 32 hex chars, generated at workspace creation
+  revokedTokens?: string[]; // nonces of revoked tokens — checked by verifyWorkspaceToken
 }
 
 // ── Injection seams (for testing) ─────────────────────────────────────────────
@@ -200,7 +201,31 @@ export function verifyWorkspaceToken(
   if (payload.expiresAt < now) return null;
   if (payload.userId !== expectedUserId) return null;
 
+  // Check revocation list
+  if (ws.revokedTokens?.includes(payload.nonce)) return null;
+
   return payload;
+}
+
+/**
+ * Revoke a workspace token by its nonce. Adds nonce to the workspace config's
+ * revocation list and persists. Subsequent verifyWorkspaceToken calls will
+ * reject the token.
+ */
+export async function revokeWorkspaceToken(
+  workspaceId: string,
+  tokenNonce: string,
+  ops?: WorkspaceOps,
+): Promise<void> {
+  const ws = await loadWorkspace(workspaceId, ops);
+  if (!ws) throw new Error(`Workspace '${workspaceId}' not found`);
+  if (!ws.revokedTokens) {
+    ws.revokedTokens = [];
+  }
+  if (!ws.revokedTokens.includes(tokenNonce)) {
+    ws.revokedTokens.push(tokenNonce);
+  }
+  await saveWorkspace(ws, ops);
 }
 
 export async function saveWorkspaceToken(

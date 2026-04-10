@@ -3,8 +3,8 @@ import { withErrorBoundary } from '../../core/cli-error-boundary.js';
 import { installAssistantSkills, type AssistantRegistry } from '../../core/assistant-installer.js';
 import { resolveConfigPaths } from '../../core/config.js';
 
-const DEFAULT_ASSISTANTS: AssistantRegistry[] = ['claude', 'codex', 'antigravity', 'opencode'];
-const ALL_ASSISTANTS: AssistantRegistry[] = ['claude', 'codex', 'antigravity', 'opencode', 'cursor'];
+const DEFAULT_ASSISTANTS: AssistantRegistry[] = ['claude', 'codex', 'antigravity', 'opencode', 'goose'];
+const ALL_ASSISTANTS: AssistantRegistry[] = ['claude', 'codex', 'antigravity', 'opencode', 'cursor', 'goose'];
 
 function normalizeAssistant(value: string): AssistantRegistry | null {
   switch (value.trim().toLowerCase()) {
@@ -22,11 +22,12 @@ function normalizeAssistant(value: string): AssistantRegistry | null {
       return 'opencode';
     case 'cursor':
       return 'cursor';
+    case 'goose':
+      return 'goose';
     default:
       return null;
   }
 }
-
 function parseAssistants(raw: string | undefined): AssistantRegistry[] | undefined {
   if (!raw) {
     return DEFAULT_ASSISTANTS;
@@ -39,7 +40,7 @@ function parseAssistants(raw: string | undefined): AssistantRegistry[] | undefin
   const assistants = raw
     .split(',')
     .map(value => normalizeAssistant(value))
-    .filter(Boolean);
+    .filter(a => a !== null);
 
   if (assistants.length === 0) {
     throw new Error('Invalid assistant list. Use: claude,codex,antigravity|gemini,opencode,cursor');
@@ -64,3 +65,10 @@ export async function setupAssistants(options: { assistants?: string } = {}) {
     logger.info('Next: run `danteforge config --set-key "openai:..."` and `danteforge doctor --live` on the target machine.');
   });
 }
+
+
+
+
+
+
+

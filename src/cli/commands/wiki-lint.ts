@@ -54,7 +54,7 @@ export async function wikiLintCommand(options: WikiLintCommandOptions = {}): Pro
     }
 
     if (report.brokenLinks.length > 0) {
-      logger.warn(`  Broken links fixed: ${report.brokenLinks.filter(b => b.stubCreated).length} stubs created`);
+      logger.warn(`  Broken links fixed: ${report.brokenLinks.filter(b => b.skeletonCreated).length} skeleton pages created`);
     }
 
     if (report.patternSuggestions.length > 0) {

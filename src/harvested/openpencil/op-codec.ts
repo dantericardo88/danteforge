@@ -353,7 +353,7 @@ export function createSkeletonOP(projectName: string, pageName = 'Main'): OPDocu
 
   return {
     formatVersion: CURRENT_FORMAT_VERSION,
-    generator: 'danteforge/0.10.0',
+    generator: 'danteforge/0.15.0',
     created: new Date().toISOString(),
     document: {
       name: projectName,

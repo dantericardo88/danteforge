@@ -108,6 +108,8 @@ Usage rule:
 | `danteforge browse <subcommand>` | Browser automation (navigate, screenshot, inspect) | `--url`, `--port` |
 | `danteforge awesome-scan` | Discover and classify skills across sources | `--source`, `--domain`, `--install` |
 | `danteforge oss` | Auto-detect project, search OSS, clone, license-gate, extract patterns | `--prompt`, `--dry-run`, `--max-repos` |
+| `danteforge oss-clean` | Remove cached OSS repos from .danteforge/oss-repos/ | `--dry-run` |
+| `danteforge oss-learn` | Re-extract patterns from cached OSS repos and regenerate OSS_REPORT.md | `--prompt` |
 | `danteforge local-harvest [paths...]` | Harvest patterns from local private repos, folders, and zip archives | `--config`, `--depth`, `--prompt`, `--dry-run`, `--max-sources` |
 | `danteforge harvest` | Titan Harvest V2: 5-step constitutional harvest of OSS patterns | `--prompt`, `--lite` |
 | `danteforge wiki-ingest` | Ingest source files into the three-tier knowledge wiki | `--bootstrap`, `--prompt` |
@@ -115,6 +117,8 @@ Usage rule:
 | `danteforge wiki-query <topic>` | Query the wiki for relevant knowledge | `--json` |
 | `danteforge wiki-status` | View wiki health metrics dashboard | `--json` |
 | `danteforge wiki-export` | Export wiki as Obsidian vault or static HTML | `--format`, `--out` |
+| `danteforge resume` | Resume a paused autoforge loop from the last checkpoint | |
+| `danteforge danteforge` | Maximum-power all-in-one: harvest + OSS + 10-wave autoforge + party + convergence | |
 
 ### Utilities
 

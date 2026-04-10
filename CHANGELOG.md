@@ -3,6 +3,83 @@
 All notable changes to DanteForge are documented here.
 Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)
 
+## [0.15.0] — 2026-04-08 (Evidence Ready Edition)
+
+### Added
+- Reliability hardening: circuit breaker wired into callLLM (was dead code), safeWrite logger (broken pipe safe), SIGTERM handler for Docker/k8s, provider fallback chain
+- Security hardening: shell command denylist (sanitizeShellCommand), autoforge command allowlist (17 commands), MCP path traversal protection (sanitizePath in resolveCwd), YAML bomb protection (1MB state file limit), prompt injection stripping (stripPromptInjectionMarkers), protected file list expanded 7→12
+- dispatchProviderCall extraction from callLLM — enables provider fallback chain without switch duplication
+- dispatchWithRetry over-counting fix — recordFailure only on retry exhaustion, not per-attempt
+- Real E2E subprocess tests: --version semver check, verify --json with seeded state
+- examples/todo-app: working walkthrough project with constitution, spec, and initialized state
+
+### Changed
+- Logger: all 7 raw process.stderr/stdout.write() calls replaced with safeWrite()
+- SIGTERM registered alongside SIGINT in autoforge-loop (non-win32, symmetric cleanup)
+- MCP handlers: _sanitize injection seam threaded through all 25 resolveCwd calls via McpServerDeps
+- Protected paths: added llm.ts, prompt-builder.ts, mcp-server.ts, input-validation.ts, circuit-breaker.ts
+- State validation: currentPhase enforced as non-negative integer, workflowStage validated against known stages
+
+### Fixed
+- Circuit breaker was never called from callLLM — dead providers hammered indefinitely
+- dispatchWithRetry opened circuits after 1 failed call chain (3 attempts = 3 failures = threshold met)
+- Logger crashed process on broken pipe (7 unguarded .write() calls)
+- SIGTERM not handled — Docker/k8s/systemd graceful shutdown failed
+- resolveCwd tests used raw Unix paths that failed Windows sanitization
+- post-forge-audit tests assumed old 7-file protected list
+- help-engine test used string currentPhase rejected by state validation
+
+## [0.14.0] — 2026-04-07
+
+### Added
+- Reliability test suite: 18 tests covering circuit breaker integration, SIGTERM handler, safeWrite
+- Coverage completion sprint: all 16 runMagicPlanStep arms tested, structure-executor branches, ship.ts + debug.ts injection seams
+- LLM error paths test suite: 15 tests covering normalizeProviderError, fetchProviderJson edge cases, per-provider empty responses
+
+### Changed
+- .c8rc.json thresholds: lines 84%, branches 79%, functions 88%
+- Test count: 4210→4286, coverage: 85.5% lines / 79.1% branches / 89.4% functions
+
+## [0.13.0] — 2026-04-07
+
+### Added
+- Security hardening sprint: 55 new tests across 8 groups
+- Shell command sanitization with SHELL_METACHARACTERS denylist
+- Autoforge ALLOWED_AUTOFORGE_COMMANDS allowlist (17 commands validated before spawnSync)
+- State file size guard (MAX_STATE_FILE_SIZE_BYTES = 1MB)
+- validateStateSchema auto-repairs corrupt fields (unknown stage, negative phase, oversized auditLog)
+- Artifact size guard (MAX_ARTIFACT_SIZE_BYTES = 512KB)
+- stripPromptInjectionMarkers: filters [SYSTEM], "Ignore previous", "You are now" patterns
+- Lessons index size limit (512KB) with injection stripping
+
+### Changed
+- MCP resolveCwd now applies sanitizePath with fail-safe fallback to process.cwd()
+- Safe self-edit PROTECTED_PATHS expanded from 7 to 12 files
+
+## [0.12.0] — 2026-04-06
+
+### Added
+- v0.23.0 test hardening: fixed slow tests caused by real LLM calls in unit tests
+- _sevenLevelsAnalysis, _captureFailureLessons, _isLLMAvailable injection seams for autoforge/executor
+- autoforge-step-cases.test.ts (14 tests), autoforge-guidance-markdown.test.ts (12 tests)
+- run-agent-llm.test.ts (3 tests), variable-executors-errors.test.ts (16 tests)
+
+### Fixed
+- autoforge.test.ts: 717s→1.7s (eliminated real Ollama calls via injection seams)
+- executor-state.test.ts: 304s→1.5s (same fix)
+- Coverage truth: previous "81.23%" was from partial run; true full-suite = 79.07%
+
+## [0.11.0] — 2026-04-05
+
+### Added
+- Enterprise Phase 1: structured audit trail, SBOM generation (validate-sbom.mjs)
+- TypeScript strict mode compliance across all source files
+- CI live-canary workflow for scheduled provider validation
+- GitHub Actions release workflow with semver tag trigger and artifact uploads
+
+### Changed
+- Build pipeline: tsup with obfuscation, dev-sync opt-in (removed hardcoded path)
+
 ## [0.10.0] — 2026-04-05
 
 ### Added

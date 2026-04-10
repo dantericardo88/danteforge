@@ -6,7 +6,11 @@ import path from 'path';
 import crypto from 'crypto';
 import { logger } from './logger.js';
 
-const CACHE_DIR = path.join('.danteforge', 'cache');
+const CACHE_SUBDIR = path.join('.danteforge', 'cache');
+
+function resolveCacheDir(cwd?: string): string {
+  return path.join(cwd ?? '.', CACHE_SUBDIR);
+}
 const DEFAULT_TTL_MS = 60 * 60 * 1000; // 1 hour
 
 interface CacheEntry {
@@ -24,10 +28,11 @@ function hashPrompt(prompt: string): string {
 /**
  * Get a cached response for a prompt, if one exists and hasn't expired.
  */
-export async function getCachedResponse(prompt: string): Promise<string | null> {
+export async function getCachedResponse(prompt: string, cwd?: string): Promise<string | null> {
   try {
+    const cacheDir = resolveCacheDir(cwd);
     const hash = hashPrompt(prompt);
-    const filePath = path.join(CACHE_DIR, `${hash}.json`);
+    const filePath = path.join(cacheDir, `${hash}.json`);
     const content = await fs.readFile(filePath, 'utf8');
     const entry: CacheEntry = JSON.parse(content);
 
@@ -52,10 +57,12 @@ export async function cacheResponse(
   prompt: string,
   response: string,
   provider: string = 'unknown',
+  cwd?: string,
   ttlMs: number = DEFAULT_TTL_MS,
 ): Promise<void> {
   try {
-    await fs.mkdir(CACHE_DIR, { recursive: true });
+    const cacheDir = resolveCacheDir(cwd);
+    await fs.mkdir(cacheDir, { recursive: true });
     const hash = hashPrompt(prompt);
     const entry: CacheEntry = {
       promptHash: hash,
@@ -64,7 +71,7 @@ export async function cacheResponse(
       timestamp: new Date().toISOString(),
       ttlMs,
     };
-    await fs.writeFile(path.join(CACHE_DIR, `${hash}.json`), JSON.stringify(entry));
+    await fs.writeFile(path.join(cacheDir, `${hash}.json`), JSON.stringify(entry));
   } catch {
     // Cache write failure is non-critical
   }
@@ -73,11 +80,12 @@ export async function cacheResponse(
 /**
  * Clear the entire LLM cache.
  */
-export async function clearCache(): Promise<void> {
+export async function clearCache(cwd?: string): Promise<void> {
   try {
-    const files = await fs.readdir(CACHE_DIR);
+    const cacheDir = resolveCacheDir(cwd);
+    const files = await fs.readdir(cacheDir);
     for (const file of files) {
-      await fs.unlink(path.join(CACHE_DIR, file)).catch(() => {});
+      await fs.unlink(path.join(cacheDir, file)).catch(() => {});
     }
     logger.info('LLM cache cleared');
   } catch {
@@ -88,12 +96,13 @@ export async function clearCache(): Promise<void> {
 /**
  * Get cache statistics.
  */
-export async function getCacheStats(): Promise<{ entries: number; sizeBytes: number }> {
+export async function getCacheStats(cwd?: string): Promise<{ entries: number; sizeBytes: number }> {
   try {
-    const files = await fs.readdir(CACHE_DIR);
+    const cacheDir = resolveCacheDir(cwd);
+    const files = await fs.readdir(cacheDir);
     let totalSize = 0;
     for (const file of files) {
-      const stat = await fs.stat(path.join(CACHE_DIR, file));
+      const stat = await fs.stat(path.join(cacheDir, file));
       totalSize += stat.size;
     }
     return { entries: files.length, sizeBytes: totalSize };

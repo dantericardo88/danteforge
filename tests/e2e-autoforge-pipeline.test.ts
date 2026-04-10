@@ -135,6 +135,7 @@ describe('e2e autoforge pipeline', () => {
         if (command === 'forge') throw new Error('Simulated forge failure');
       },
       _isStageComplete: async () => true,
+      _sevenLevelsAnalysis: async () => { /* skip real LLM calls in unit tests */ },
     });
 
     assert.equal(result.failed.length, 1);

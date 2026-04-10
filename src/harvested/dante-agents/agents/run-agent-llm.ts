@@ -5,14 +5,16 @@ export async function runAgentPrompt(
   agentName: string,
   prompt: string,
   successMessage: string,
+  _isLLMAvailable?: () => Promise<boolean>,
+  _callLLM?: (prompt: string, override?: unknown, opts?: unknown) => Promise<string>,
 ): Promise<string> {
-  const llmReady = await isLLMAvailable();
+  const llmReady = await (_isLLMAvailable ?? isLLMAvailable)();
   if (!llmReady) {
     throw new Error(`${agentName} requires a verified live LLM provider.`);
   }
 
   try {
-    const response = await callLLM(prompt, undefined, { enrichContext: true });
+    const response = await (_callLLM ?? callLLM)(prompt, undefined, { enrichContext: true });
     logger.success(successMessage);
     return response;
   } catch (err) {

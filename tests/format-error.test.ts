@@ -1,6 +1,6 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { errorToJson } from '../src/core/format-error.js';
+import { errorToJson, formatAndLogError } from '../src/core/format-error.js';
 import { DanteError } from '../src/core/errors.js';
 import { GateError } from '../src/core/gates.js';
 
@@ -34,5 +34,31 @@ describe('format-error', () => {
       assert.equal(result.error, true);
       assert.equal(result.message, 'just a string');
     });
+  });
+});
+
+describe('formatAndLogError', () => {
+  it('handles GateError without throwing', () => {
+    assert.doesNotThrow(() => formatAndLogError(new GateError('gate blocked', 'testGate', 'run fix')));
+  });
+
+  it('handles DanteError without throwing', () => {
+    assert.doesNotThrow(() => formatAndLogError(new DanteError('dante msg', 'DANTE_CODE', 'fix it')));
+  });
+
+  it('handles Error with context prefix without throwing', () => {
+    assert.doesNotThrow(() => formatAndLogError(new Error('something failed'), 'myCommand'));
+  });
+
+  it('handles Error without context without throwing', () => {
+    assert.doesNotThrow(() => formatAndLogError(new Error('bare error')));
+  });
+
+  it('handles non-Error with context without throwing', () => {
+    assert.doesNotThrow(() => formatAndLogError('string error message', 'someContext'));
+  });
+
+  it('handles non-Error without context without throwing', () => {
+    assert.doesNotThrow(() => formatAndLogError('plain string error'));
   });
 });

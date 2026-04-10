@@ -63,9 +63,9 @@ describe('mcp-server module import', () => {
 // ---------------------------------------------------------------------------
 
 describe('TOOL_DEFINITIONS', () => {
-  it('registers exactly 15 tools', async () => {
+  it('registers exactly 27 tools', async () => {
     const { TOOL_DEFINITIONS } = await import('../src/core/mcp-server.js');
-    assert.strictEqual(TOOL_DEFINITIONS.length, 15, `Expected 15 tools, got ${TOOL_DEFINITIONS.length}`);
+    assert.strictEqual(TOOL_DEFINITIONS.length, 27, `Expected 27 tools, got ${TOOL_DEFINITIONS.length}`);
   });
 
   it('each tool has name, description, and inputSchema', async () => {
@@ -109,10 +109,10 @@ describe('TOOL_DEFINITIONS', () => {
 // ---------------------------------------------------------------------------
 
 describe('TOOL_HANDLERS', () => {
-  it('has exactly 15 handlers', async () => {
+  it('has exactly 27 handlers', async () => {
     const { TOOL_HANDLERS } = await import('../src/core/mcp-server.js');
     const count = Object.keys(TOOL_HANDLERS).length;
-    assert.strictEqual(count, 15, `Expected 15 handlers, got ${count}`);
+    assert.strictEqual(count, 27, `Expected 27 handlers, got ${count}`);
   });
 
   it('all handlers are functions', async () => {

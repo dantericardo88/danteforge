@@ -15,12 +15,14 @@ import {
   type CompletionTargetOptions,
 } from '../../core/completion-target.js';
 import { withErrorBoundary } from '../../core/cli-error-boundary.js';
+import type { ConstitutionOptions } from './constitution.js';
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
 export interface InitOptions {
   prompt?: boolean;
   nonInteractive?: boolean;
+  simple?: boolean;
   provider?: LLMProvider;
   cwd?: string;
   // Injection seams for testing
@@ -31,6 +33,14 @@ export interface InitOptions {
   _loadState?: typeof loadState;
   _saveState?: typeof saveState;
   _getOrPromptTarget?: typeof getOrPromptCompletionTarget;
+  // Chained step injections
+  _setupAssistants?: () => Promise<void>;
+  _constitution?: (opts: ConstitutionOptions) => Promise<void>;
+  _configSetKey?: (provider: LLMProvider, key: string) => Promise<void>;
+  // Simple-mode injection seams
+  _stdout?: (line: string) => void;
+  _writeFile?: (p: string, content: string) => Promise<void>;
+  _mkdirp?: (p: string) => Promise<void>;
 }
 
 // ── Main command ──────────────────────────────────────────────────────────────
@@ -45,7 +55,62 @@ export async function init(options: InitOptions = {}): Promise<void> {
   const llmAvailableFn = options._isLLMAvailable ?? isLLMAvailable;
 
   logger.success('DanteForge Init — Project Setup Wizard');
+  if (options.simple) {
+    logger.info('Run \'danteforge explain\' to see the full glossary of DanteForge terms.');
+  }
   logger.info('');
+
+  // ── Simple mode: 2 prompts max, no LLM, sensible defaults ───────────────
+  if (options.simple) {
+    const print = options._stdout ?? ((line: string) => logger.info(line));
+    let projectName = '';
+    let projectDescription = '';
+
+    if (isInteractive) {
+      projectName = await askQuestion(
+        '  Project name (Enter to use "My Project"): ',
+        options._readline,
+      );
+      projectName = projectName.trim() || 'My Project';
+
+      projectDescription = await askQuestion(
+        '  One-sentence description (Enter to skip): ',
+        options._readline,
+      );
+      projectDescription = projectDescription.trim();
+    } else {
+      projectName = 'My Project';
+    }
+
+    // Write STATE.yaml with sensible defaults
+    const stateDir = path.join(cwd, '.danteforge');
+    const statePath = path.join(stateDir, 'STATE.yaml');
+    const stateContent = [
+      `project: "${projectName}"`,
+      `description: "${projectDescription}"`,
+      `workflowStage: initialized`,
+      `currentPhase: 0`,
+      `tasks: {}`,
+      `profile: default`,
+      `automationLevel: guided`,
+      `completionTarget: 70`,
+      `auditLog: []`,
+    ].join('\n') + '\n';
+
+    try {
+      const mkdirp = options._mkdirp ?? (async (p: string) => fs.mkdir(p, { recursive: true }));
+      const writeFile = options._writeFile ?? (async (p: string, c: string) => fs.writeFile(p, c, 'utf-8'));
+      await mkdirp(stateDir);
+      await writeFile(statePath, stateContent);
+      print(`Project "${projectName}" initialized.`);
+    } catch {
+      print('Could not write state — continuing...');
+    }
+
+    print('');
+    print('Run "danteforge quickstart --simple" for the guided setup path.');
+    return;
+  }
 
   // ── Step 1: Wizard questions (TTY only) ──────────────────────────────────
   let projectDescription = '';
@@ -78,6 +143,9 @@ export async function init(options: InitOptions = {}): Promise<void> {
     const levelChoice = await askQuestion('  Enter choice [2]: ', options._readline);
     const levelNum = parseInt(levelChoice.trim() || '2', 10);
     preferredLevel = levelNum === 1 ? 'spark' : levelNum === 3 ? 'inferno' : 'magic';
+    if (options.simple) {
+      logger.info('  (Hint: "spark" = planning only, "magic" = recommended everyday use, "inferno" = maximum quality push)');
+    }
 
     logger.info('');
 
@@ -119,6 +187,9 @@ export async function init(options: InitOptions = {}): Promise<void> {
         _now: options._now,
       });
       logger.success('Completion target saved.');
+      if (options.simple) {
+        logger.info('  (This sets your quality bar for when the project is "done")');
+      }
       logger.info('');
     } catch {
       // Completion target prompt failed — continue without it
@@ -234,8 +305,59 @@ export async function init(options: InitOptions = {}): Promise<void> {
     logger.info('  Help:         danteforge help');
   }
 
+  // ── Step 6b: Chained optional setup steps ────────────────────────────────
+  if (isInteractive) {
+    // LLM key setup if no LLM available
+    if (!llmReady) {
+      const setupKey = await askQuestion(
+        '  No LLM configured. Set up an API key now? [Y/n]: ',
+        options._readline,
+      );
+      if (!setupKey.trim() || setupKey.trim().toLowerCase().startsWith('y')) {
+        if (options._configSetKey) {
+          try { await options._configSetKey('claude', ''); } catch { /* best-effort */ }
+        } else {
+          logger.info('  Run: danteforge config --set-key <provider:key>');
+        }
+      }
+    }
+
+    // Assistant integration
+    const setupAssistants = await askQuestion(
+      '  Set up Claude Code / Cursor integration? [Y/n]: ',
+      options._readline,
+    );
+    if (!setupAssistants.trim() || setupAssistants.trim().toLowerCase().startsWith('y')) {
+      if (options._setupAssistants) {
+        try { await options._setupAssistants(); } catch { /* best-effort */ }
+      } else {
+        try {
+          const { setupAssistants } = await import('./setup-assistants.js');
+          await setupAssistants({});
+        } catch { /* best-effort */ }
+      }
+    }
+
+    // Constitution setup
+    const setupConstitution = await askQuestion(
+      '  Define your project constitution now? [Y/n]: ',
+      options._readline,
+    );
+    if (!setupConstitution.trim() || setupConstitution.trim().toLowerCase().startsWith('y')) {
+      const constitutionFn = options._constitution
+        ?? (async (opts: ConstitutionOptions) => {
+          const { constitution } = await import('./constitution.js');
+          await constitution(opts);
+        });
+      try {
+        await constitutionFn({ _readline: options._readline, cwd });
+      } catch { /* best-effort */ }
+    }
+  }
+
   logger.info('');
   logger.info('Run "danteforge doctor" for full system diagnostics.');
+  logger.info('Run "danteforge quickstart" for the guided 5-minute path.');
   });
 }
 

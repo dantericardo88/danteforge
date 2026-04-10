@@ -2,7 +2,7 @@
 
 This project ships a Node CLI package (`danteforge` / `dforge`) and a first-class VS Code extension client.
 
-Current operator status and non-blocking follow-ups are tracked in [docs/Operational-Readiness-v0.9.2.md](docs/Operational-Readiness-v0.9.2.md). Archived readiness guides and older planning context are indexed in [docs/Release-History.md](docs/Release-History.md).
+Current operator status and non-blocking follow-ups are tracked in [docs/Operational-Readiness-v0.15.0.md](docs/Operational-Readiness-v0.15.0.md). Archived readiness guides and older planning context are indexed in [docs/Release-History.md](docs/Release-History.md).
 
 ## Prerequisites
 
@@ -117,7 +117,7 @@ git push origin main --follow-tags
 
 ## Automated Release (GitHub Actions)
 
-- Push a tag like `v0.9.2` to trigger `.github/workflows/release.yml`
+- Push a tag like `v0.15.0` to trigger `.github/workflows/release.yml`
 - Or run the workflow manually via `workflow_dispatch`
 - Use `.github/workflows/live-canary.yml` for scheduled or manual secret-backed live verification outside the publish path
 

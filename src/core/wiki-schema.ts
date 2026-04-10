@@ -127,7 +127,7 @@ export interface WikiStalePage {
 export interface WikiBrokenLink {
   sourceEntityId: string;
   targetEntityId: string;   // the unresolved link target
-  stubCreated: boolean;
+  skeletonCreated: boolean;
 }
 
 export interface WikiPatternSuggestion {

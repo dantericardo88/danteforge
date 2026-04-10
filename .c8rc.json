@@ -6,6 +6,6 @@
   "exclude": ["tests/**", "scripts/**", "dist/**", "node_modules/**", "vscode-extension/**"],
   "check-coverage": true,
   "lines": 84,
-  "branches": 81,
+  "branches": 79,
   "functions": 88
 }

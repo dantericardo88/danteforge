@@ -6,7 +6,12 @@ import { getActiveSpinner } from './progress.js';
 
 export type LogLevel = 'silent' | 'error' | 'warn' | 'info' | 'verbose';
 
-const SECRET_PATTERNS: RegExp[] = [];
+const SECRET_PATTERNS: RegExp[] = [
+  /api[_-]?key/i,
+  /secret/i,
+  /token/i,
+  /password/i,
+];
 
 export function registerSecretPattern(pattern: RegExp): void {
   SECRET_PATTERNS.push(pattern);
@@ -30,6 +35,13 @@ const LEVEL_ORDER: Record<LogLevel, number> = {
 };
 
 let currentLevel: LogLevel = 'info';
+let useStderr = false;
+
+/** Write to a stream, silently ignoring broken-pipe / closed-fd errors.
+ *  Exported for direct testing without monkey-patching process streams. */
+export function safeWrite(stream: { write(s: string): void }, text: string): void {
+  try { stream.write(text); } catch { /* broken pipe — never crash the process */ }
+}
 
 function shouldLog(level: LogLevel): boolean {
   return LEVEL_ORDER[level] <= LEVEL_ORDER[currentLevel];
@@ -43,9 +55,11 @@ function logOrSpin(formatted: string, plainText: string, level: LogLevel): void 
     spinner.update(plainText);
   } else {
     if (level === 'error') {
-      console.error(formatted);
+      safeWrite(process.stderr, formatted + '\n');
+    } else if (useStderr) {
+      safeWrite(process.stderr, formatted + '\n');
     } else {
-      console.log(formatted);
+      safeWrite(process.stdout, formatted + '\n');
     }
   }
 }
@@ -53,18 +67,21 @@ function logOrSpin(formatted: string, plainText: string, level: LogLevel): void 
 export const logger = {
   setLevel(level: LogLevel) { currentLevel = level; },
   getLevel(): LogLevel { return currentLevel; },
+  setStderr(value: boolean) { useStderr = value; },
   verbose: (msg: string) => {
     const safe = maskSecrets(msg);
-    if (shouldLog('verbose')) console.log(chalk.gray(`[DBG] ${safe}`));
+    if (shouldLog('verbose')) {
+      safeWrite(useStderr ? process.stderr : process.stdout, chalk.gray(`[DBG] ${safe}`) + '\n');
+    }
   },
   info: (msg: string) => { const safe = maskSecrets(msg); logOrSpin(chalk.blue(`[INFO] ${safe}`), safe, 'info'); },
   success: (msg: string) => { const safe = maskSecrets(msg); logOrSpin(chalk.green(`[OK] ${safe}`), safe, 'info'); },
   warn: (msg: string) => { const safe = maskSecrets(msg); logOrSpin(chalk.yellow(`[WARN] ${safe}`), safe, 'warn'); },
-  error: (msg: string) => { if (shouldLog('error')) console.error(chalk.red(`[ERR] ${maskSecrets(msg)}`)); },
+  error: (msg: string) => { if (shouldLog('error')) safeWrite(process.stderr, chalk.red(`[ERR] ${maskSecrets(msg)}`) + '\n'); },
   errorWithRemedy: (msg: string, remedy?: string) => {
     if (shouldLog('error')) {
-      console.error(chalk.red(`[ERR] ${maskSecrets(msg)}`));
-      if (remedy) console.error(chalk.yellow(`      Remedy: ${maskSecrets(remedy)}`));
+      safeWrite(process.stderr, chalk.red(`[ERR] ${maskSecrets(msg)}`) + '\n');
+      if (remedy) safeWrite(process.stderr, chalk.yellow(`      Remedy: ${maskSecrets(remedy)}`) + '\n');
     }
   },
 };

@@ -140,3 +140,41 @@ export function createStepTracker(totalSteps: number, opts: ProgressOptions = {}
     total(): number { return totalSteps; },
   };
 }
+
+// ── Wave tracker (preset-level progress) ─────────────────────────────────────
+
+export interface WaveTracker extends StepTracker {
+  /** Returns the name of the current wave, e.g. "Planning" */
+  waveName(): string;
+}
+
+/**
+ * Create a wave tracker that renders "[currentWave/totalWaves] waveName — stepLabel"
+ * Used by magic presets to show wave-by-wave progress during execution.
+ */
+export function createWaveTracker(
+  totalWaves: number,
+  currentWave: number,
+  name: string,
+  opts: ProgressOptions = {},
+): WaveTracker {
+  const isTTY = opts._isTTY ?? (process.stdout.isTTY === true);
+  let _stepCount = 0;
+
+  return {
+    step(label: string): void {
+      _stepCount++;
+      const prefix = `[${currentWave}/${totalWaves}] ${name}`;
+      const text = label ? `${prefix} — ${label}` : prefix;
+      const spinner = getActiveSpinner();
+      if (spinner) {
+        spinner.update(text);
+      } else if (isTTY) {
+        console.log(text);
+      }
+    },
+    current(): number { return _stepCount; },
+    total(): number { return totalWaves; },
+    waveName(): string { return name; },
+  };
+}

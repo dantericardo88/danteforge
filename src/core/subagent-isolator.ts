@@ -220,3 +220,102 @@ export function getAgentRoles(): AgentRole[] {
 export function getRoleConstraints(role: AgentRole): string[] {
   return ROLE_CONSTRAINTS[role] ?? [];
 }
+
+// ─── Custom Role Support ───────────────────────────────────────────────────────
+
+export type BuiltinAgentRole = 'pm' | 'architect' | 'dev' | 'ux' | 'design' | 'scrum-master';
+
+export interface CustomAgentRoleDefinition {
+  role: string;
+  contextKeys: string[];
+  constraints: string[];
+}
+
+export interface CustomRolesOptions {
+  _readFile?: (p: string) => Promise<string>;
+  cwd?: string;
+}
+
+const BUILTIN_ROLES = new Set<string>(['pm', 'architect', 'dev', 'ux', 'design', 'scrum-master']);
+
+/**
+ * Reads .danteforge/party-agents.yaml. Returns [] if file doesn't exist.
+ */
+export async function loadCustomRoles(opts?: CustomRolesOptions): Promise<CustomAgentRoleDefinition[]> {
+  const cwd = opts?.cwd ?? process.cwd();
+  const readFile = opts?._readFile ?? ((p: string) => import('fs/promises').then(m => m.readFile(p, 'utf8')));
+  const agentsPath = (await import('path')).join(cwd, '.danteforge', 'party-agents.yaml');
+
+  try {
+    const content = await readFile(agentsPath);
+    if (!content || content.trim().length === 0) return [];
+    const { parse } = await import('yaml');
+    const parsed = parse(content) as unknown;
+    if (!parsed || !Array.isArray(parsed)) return [];
+    const result: CustomAgentRoleDefinition[] = [];
+    for (const item of parsed) {
+      if (
+        item &&
+        typeof item === 'object' &&
+        typeof (item as Record<string, unknown>)['role'] === 'string' &&
+        Array.isArray((item as Record<string, unknown>)['contextKeys']) &&
+        Array.isArray((item as Record<string, unknown>)['constraints'])
+      ) {
+        result.push(item as CustomAgentRoleDefinition);
+      }
+    }
+    return result;
+  } catch {
+    return [];
+  }
+}
+
+/**
+ * Like buildSubagentContext but supports custom roles.
+ * Falls back to built-in role handling for BuiltinAgentRole values.
+ * If role matches neither built-in nor custom, returns a minimal fallback context.
+ */
+export function buildSubagentContextWithCustom(
+  agentName: string,
+  fullContext: Record<string, string>,
+  role: AgentRole | string,
+  customRoles: CustomAgentRoleDefinition[],
+): SubagentContext {
+  // Delegate to built-in handler if it's a known built-in role
+  if (BUILTIN_ROLES.has(role)) {
+    return buildSubagentContext(agentName, fullContext, role as AgentRole);
+  }
+
+  // Look for a matching custom role
+  const customRole = customRoles.find(r => r.role === role);
+
+  const contextKeys = customRole?.contextKeys ?? [];
+  const constraints = customRole?.constraints ?? [];
+
+  const filteredParts: string[] = [];
+  for (const key of contextKeys) {
+    if (fullContext[key]) {
+      filteredParts.push(`## ${key}\n${fullContext[key]}`);
+    }
+  }
+
+  return {
+    agentName,
+    role,
+    systemPrompt: `You are the ${role} agent for DanteForge. ${constraints.join('. ')}.`,
+    projectContext: filteredParts.join('\n\n'),
+    constraints,
+    reviewStages: [
+      {
+        name: 'spec-compliance',
+        prompt: 'Review the following agent output for spec compliance. Does it align with the project specification and plan? Respond with PASS or FAIL followed by a brief explanation.',
+        required: true,
+      },
+      {
+        name: 'code-quality',
+        prompt: 'Review the following agent output for code quality. Does it follow coding standards, avoid security issues, and maintain consistency? Respond with PASS or FAIL followed by a brief explanation.',
+        required: true,
+      },
+    ],
+  };
+}

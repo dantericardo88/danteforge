@@ -158,6 +158,89 @@ describe('planAutoForge', () => {
     });
   });
 
+  describe('Scenario 6: Mid-Project — getMidProjectSteps coverage', () => {
+    it('stage=initialized (with artifacts) → constitution', () => {
+      const plan = planAutoForge(makeInput({
+        state: makeState({ workflowStage: 'initialized', constitution: 'exists' }),
+      }));
+      assert.strictEqual(plan.scenario, 'mid-project');
+      assert.ok(plan.steps.some(s => s.command === 'constitution'));
+    });
+
+    it('stage=review → constitution', () => {
+      const plan = planAutoForge(makeInput({
+        state: makeState({ workflowStage: 'review', constitution: 'exists' }),
+      }));
+      assert.strictEqual(plan.scenario, 'mid-project');
+      assert.ok(plan.steps.some(s => s.command === 'constitution'));
+    });
+
+    it('stage=constitution → specify', () => {
+      const plan = planAutoForge(makeInput({
+        state: makeState({ workflowStage: 'constitution', constitution: 'exists' }),
+      }));
+      assert.strictEqual(plan.scenario, 'mid-project');
+      assert.ok(plan.steps.some(s => s.command === 'specify'));
+    });
+
+    it('stage=specify → clarify', () => {
+      const plan = planAutoForge(makeInput({
+        state: makeState({ workflowStage: 'specify', constitution: 'exists' }),
+      }));
+      assert.strictEqual(plan.scenario, 'mid-project');
+      assert.ok(plan.steps.some(s => s.command === 'clarify'));
+    });
+
+    it('stage=clarify → plan', () => {
+      const plan = planAutoForge(makeInput({
+        state: makeState({ workflowStage: 'clarify', constitution: 'exists' }),
+      }));
+      assert.strictEqual(plan.scenario, 'mid-project');
+      assert.ok(plan.steps.some(s => s.command === 'plan'));
+    });
+
+    it('stage=plan → tasks', () => {
+      const plan = planAutoForge(makeInput({
+        state: makeState({ workflowStage: 'plan', constitution: 'exists' }),
+      }));
+      assert.strictEqual(plan.scenario, 'mid-project');
+      assert.ok(plan.steps.some(s => s.command === 'tasks'));
+    });
+
+    it('stage=design → forge', () => {
+      const plan = planAutoForge(makeInput({
+        state: makeState({ workflowStage: 'design', constitution: 'exists' }),
+      }));
+      assert.strictEqual(plan.scenario, 'mid-project');
+      assert.ok(plan.steps.some(s => s.command === 'forge'));
+    });
+
+    it('stage=ux-refine → verify', () => {
+      const plan = planAutoForge(makeInput({
+        state: makeState({ workflowStage: 'ux-refine', constitution: 'exists' }),
+      }));
+      assert.strictEqual(plan.scenario, 'mid-project');
+      assert.ok(plan.steps.some(s => s.command === 'verify'));
+    });
+
+    it('stage=forge + hasDesignOp + violations → includes ux-refine before verify', () => {
+      const plan = planAutoForge(makeInput({
+        hasDesignOp: true,
+        designViolationCount: 3,
+        state: makeState({ workflowStage: 'forge', constitution: 'exists' }),
+      }));
+      // Frontend scenario takes over when violations exist
+      assert.ok(plan.steps.some(s => s.command === 'ux-refine'));
+    });
+
+    it('goal string appears in mid-project reasoning', () => {
+      const plan = planAutoForge(makeInput({
+        state: makeState({ workflowStage: 'constitution', constitution: 'exists' }),
+      }), 3, 'Build auth system');
+      assert.ok(plan.reasoning.includes('Build auth system'));
+    });
+  });
+
   describe('maxWaves', () => {
     it('respects custom maxWaves', () => {
       const plan = planAutoForge(makeInput(), 5);
@@ -406,6 +489,7 @@ describe('executeAutoForgePlan', () => {
         if (cmd === 'forge') throw new Error('Build failed');
       },
       _isStageComplete: async () => true,
+      _sevenLevelsAnalysis: async () => { /* skip real LLM calls in unit tests */ },
     });
 
     assert.deepStrictEqual(result.failed, ['forge']);
@@ -423,6 +507,7 @@ describe('executeAutoForgePlan', () => {
       cwd,
       _runStep: async () => { throw new Error('forced failure'); },
       _isStageComplete: async () => true,
+      _sevenLevelsAnalysis: async () => { /* skip real LLM calls in unit tests */ },
     });
 
     const stateContent = await fs.readFile(path.join(cwd, '.danteforge', 'STATE.yaml'), 'utf8');
@@ -461,6 +546,7 @@ describe('executeAutoForgePlan', () => {
       cwd,
       _runStep: async () => { /* no-op */ },
       _isStageComplete: async () => false,
+      _sevenLevelsAnalysis: async () => { /* skip real LLM calls in unit tests */ },
     });
 
     assert.deepStrictEqual(result.failed, ['forge']);

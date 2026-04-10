@@ -2,7 +2,7 @@
 
 **Status:** ✅ Complete  
 **Date:** 2026-04-01  
-**Version:** 0.9.2+enterprise
+**Version:** 0.15.0
 
 ## Overview
 

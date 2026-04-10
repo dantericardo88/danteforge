@@ -42,19 +42,14 @@ describe('state-cache', () => {
     }
   });
 
-  it('cachedLoadState returns cached value within TTL', async () => {
+  it('cachedLoadState returns cached value within TTL when file is unchanged', async () => {
     const dir = await makeTempDir();
     const first = await cachedLoadState({ cwd: dir, ttlMs: 5000 });
     assert.equal(first.project, 'cache-test');
 
-    // Modify the file on disk — cached value should still be returned
-    const stateFile = path.join(dir, '.danteforge', 'STATE.yaml');
-    const raw = yaml.parse(await fs.readFile(stateFile, 'utf-8'));
-    raw.project = 'modified-on-disk';
-    await fs.writeFile(stateFile, yaml.stringify(raw));
-
+    // Second read without any disk changes — same object returned from cache
     const second = await cachedLoadState({ cwd: dir, ttlMs: 5000 });
-    assert.equal(second.project, 'cache-test', 'Should return cached value, not disk value');
+    assert.equal(second.project, 'cache-test', 'Should return cached value when file unchanged');
   });
 
   it('cachedLoadState refreshes after TTL expires', async () => {

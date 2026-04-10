@@ -1,6 +1,7 @@
 // Autoforge v2 — Intelligent Autonomous Loop (IAL)
 // State machine that drives the full pipeline toward completion.
 import fs from 'fs/promises';
+import { existsSync } from 'fs';
 import path from 'path';
 import { loadState, saveState, type DanteState } from './state.js';
 import { scoreAllArtifacts, persistScoreResult, computeAutoforgeDecision } from './pdse.js';
@@ -16,6 +17,18 @@ import { LINT_INTERVAL_CYCLES } from './wiki-schema.js';
 import { wikiIngest, getWikiHealth } from './wiki-engine.js';
 import { runLintCycle } from './wiki-linter.js';
 import { detectAnomalies } from './pdse-anomaly.js';
+import { createStepTracker, type StepTracker } from './progress.js';
+
+// ── Elapsed time formatter ──────────────────────────────────────────────────
+
+export function formatElapsed(startedAt: string): string {
+  const ms = Date.now() - new Date(startedAt).getTime();
+  const s = Math.floor(ms / 1000);
+  if (s < 60) return `${s}s`;
+  const m = Math.floor(s / 60);
+  const rem = s % 60;
+  return `${m}m${rem > 0 ? `${rem}s` : ''}`;
+}
 
 // ── State machine ───────────────────────────────────────────────────────────
 
@@ -57,6 +70,14 @@ export interface AutoforgeLoopContext {
   _addSignalListener?: (event: string, fn: (...args: unknown[]) => void) => void;
   /** Signal listener removal injection seam */
   _removeSignalListener?: (event: string, fn: (...args: unknown[]) => void) => void;
+  /** Step tracker for progress display — injected for testing */
+  _stepTracker?: StepTracker;
+  /** Accumulated real spend across all cycles (USD) — updated each cycle from cost reports */
+  totalSpendUsd?: number;
+  /** Hard budget cap (USD) — loop stops when totalSpendUsd reaches this */
+  maxBudgetUsd?: number;
+  /** Maturity assessor injection for testing targetMaturityLevel branch */
+  _assessMaturity?: typeof assessMaturity;
 }
 
 export const AUTOFORGE_PAUSE_FILE = '.danteforge/AUTOFORGE_PAUSED';
@@ -90,6 +111,64 @@ export interface BlockingIssue {
   remediation: string;
 }
 
+// ── Dependency injection interface ─────────────────────────────────────────
+
+export interface AutoforgeLoopDeps {
+  scoreAllArtifacts?: typeof import('./pdse.js').scoreAllArtifacts;
+  persistScoreResult?: typeof import('./pdse.js').persistScoreResult;
+  detectProjectType?: typeof import('./completion-tracker.js').detectProjectType;
+  computeCompletionTracker?: typeof import('./completion-tracker.js').computeCompletionTracker;
+  recordMemory?: typeof import('./memory-engine.js').recordMemory;
+  loadState?: (opts?: { cwd?: string }) => Promise<DanteState>;
+  saveState?: (state: DanteState, opts?: { cwd?: string }) => Promise<void>;
+  setTimeout?: (fn: () => void, ms: number) => ReturnType<typeof globalThis.setTimeout>;
+  _checkProtectedPaths?: (state: DanteState) => Promise<{ approved: boolean; blocked: string[] }>;
+  _executeCommand?: (cmd: string, cwd: string) => Promise<{ success: boolean }>;
+  _addSignalListener?: (event: string, fn: (...args: unknown[]) => void) => void;
+  _removeSignalListener?: (event: string, fn: (...args: unknown[]) => void) => void;
+  _syncContext?: (opts: { cwd: string; target: 'cursor' }) => Promise<void>;
+  _existsSync?: (p: string) => boolean;
+  _createStepTracker?: typeof createStepTracker;
+}
+
+// ── Protected path check ────────────────────────────────────────────────────
+
+export interface CheckProtectedTaskPathsOptions {
+  _requestApproval?: (
+    file: string,
+    reason: string,
+    opts?: { policy: import('./safe-self-edit.js').SelfEditPolicy },
+  ) => Promise<boolean>;
+}
+
+/**
+ * Check if any tasks in the current phase touch protected paths.
+ * Returns { approved: true, blocked: [] } if all paths are safe or approved.
+ */
+export async function checkProtectedTaskPaths(
+  state: DanteState,
+  opts?: CheckProtectedTaskPathsOptions,
+): Promise<{ approved: boolean; blocked: string[] }> {
+  const { isProtectedPath } = await import('./safe-self-edit.js');
+  const policy = state.selfEditPolicy ?? 'deny';
+  const phaseTasks = state.tasks[state.currentPhase] ?? [];
+  const blocked: string[] = [];
+
+  for (const task of phaseTasks) {
+    for (const file of task.files ?? []) {
+      if (!isProtectedPath(file)) continue;
+      const requestApproval = opts?._requestApproval ?? (async (_f, _r, o) => {
+        if (o?.policy === 'allow-with-audit') return true;
+        return false;
+      });
+      const approved = await requestApproval(file, `Task "${task.name}" requires editing protected path`, { policy });
+      if (!approved) blocked.push(file);
+    }
+  }
+
+  return { approved: blocked.length === 0, blocked };
+}
+
 // ── Pipeline stages in order ────────────────────────────────────────────────
 
 const PIPELINE_STAGES = [
@@ -113,32 +192,51 @@ export function computeBackoff(retryCount: number): number {
 
 // ── Main loop ───────────────────────────────────────────────────────────────
 
-export async function runAutoforgeLoop(ctx: AutoforgeLoopContext): Promise<AutoforgeLoopContext> {
+export async function runAutoforgeLoop(ctx: AutoforgeLoopContext, deps?: AutoforgeLoopDeps): Promise<AutoforgeLoopContext> {
+  const scoreAllArtifactsFn = deps?.scoreAllArtifacts ?? scoreAllArtifacts;
+  const persistScoreResultFn = deps?.persistScoreResult ?? persistScoreResult;
+  const detectProjectTypeFn = deps?.detectProjectType ?? detectProjectType;
+  const computeCompletionTrackerFn = deps?.computeCompletionTracker ?? computeCompletionTracker;
+  const recordMemoryFn = deps?.recordMemory ?? recordMemory;
+  const loadStateFn = deps?.loadState ?? loadState;
+  const saveStateFn = deps?.saveState ?? saveState;
+  const setTimeoutFn = deps?.setTimeout ?? globalThis.setTimeout.bind(globalThis);
+  const executeCommandFn = deps?._executeCommand;
+
   let interrupted = false;
   let consecutiveFailures = 0;
+  let consecutiveExecFailures = 0;
 
   // SIGINT handler for graceful shutdown
   const sigintHandler = () => {
     interrupted = true;
     logger.info('\n[Autoforge] Interrupt received — completing current step and saving progress...');
   };
-  const addListener = ctx._addSignalListener ?? ((e, fn) => process.on(e, fn as NodeJS.SignalsListener));
-  const removeListener = ctx._removeSignalListener ?? ((e, fn) => process.removeListener(e, fn as NodeJS.SignalsListener));
+  const addListener = deps?._addSignalListener ?? ctx._addSignalListener ?? ((e, fn) => process.on(e, fn as NodeJS.SignalsListener));
+  const removeListener = deps?._removeSignalListener ?? ctx._removeSignalListener ?? ((e, fn) => process.removeListener(e, fn as NodeJS.SignalsListener));
   addListener('SIGINT', sigintHandler);
+  if (process.platform !== 'win32') {
+    addListener('SIGTERM', sigintHandler);
+  }
 
   try {
     ctx.loopState = AutoforgeLoopState.RUNNING;
     ctx.startedAt = new Date().toISOString();
 
+    // Step tracker for progress display (injected or auto-created)
+    const createTrackerFn = deps?._createStepTracker ?? createStepTracker;
+    const stepTracker = ctx._stepTracker ?? createTrackerFn(10);
+
     while (!interrupted) {
       ctx.cycleCount++;
+      stepTracker.step(`Cycle ${ctx.cycleCount} — scoring artifacts`);
 
       // 1. Score all artifacts
       ctx.loopState = AutoforgeLoopState.SCORING;
       const cwd = ctx.cwd;
-      const scores = await scoreAllArtifacts(cwd, ctx.state);
+      const scores = await scoreAllArtifactsFn(cwd, ctx.state);
       for (const result of Object.values(scores)) {
-        await persistScoreResult(result, cwd);
+        await persistScoreResultFn(result, cwd);
       }
 
       // 1a. PDSE anomaly detection (best-effort — never blocks loop)
@@ -173,9 +271,9 @@ export async function runAutoforgeLoop(ctx: AutoforgeLoopContext): Promise<Autof
 
       // 2. Compute completion
       if (!ctx.state.projectType || ctx.state.projectType === 'unknown') {
-        ctx.state.projectType = await detectProjectType(cwd);
+        ctx.state.projectType = await detectProjectTypeFn(cwd);
       }
-      const tracker = computeCompletionTracker(ctx.state, scores);
+      const tracker = computeCompletionTrackerFn(ctx.state, scores);
       ctx.state.completionTracker = tracker;
 
       // Compute avg score for ROI / auto-lessons / pause-at checks
@@ -213,11 +311,42 @@ export async function runAutoforgeLoop(ctx: AutoforgeLoopContext): Promise<Autof
         // Non-fatal
       }
 
-      // 2c. Token ROI tracking (best-effort)
+      // 2c. Token ROI tracking — real spend from cost reports (best-effort)
       try {
-        const tokensSpent = ctx._estimateTokens ? ctx._estimateTokens() : 0;
+        const { buildROIEntry, appendROIEntry } = await import('./token-roi.js');
+
+        // Try to get real token data from the latest cost report written by forge/party subprocess
+        let tokensSpent = 0;
+        let cycleSpendUsd = 0;
+        try {
+          const reportsDir = path.join(cwd, '.danteforge', 'reports');
+          const files = (await fs.readdir(reportsDir).catch(() => [] as string[]))
+            .filter(f => f.startsWith('cost-'))
+            .sort();
+          const latest = files.at(-1);
+          if (latest) {
+            const raw = await fs.readFile(path.join(reportsDir, latest), 'utf8');
+            const report = JSON.parse(raw) as { totalInputTokens?: number; totalOutputTokens?: number; totalCostUsd?: number };
+            tokensSpent = (report.totalInputTokens ?? 0) + (report.totalOutputTokens ?? 0);
+            cycleSpendUsd = report.totalCostUsd ?? 0;
+          }
+        } catch { /* non-fatal — cost reports may not exist yet */ }
+
+        // Fall back to token estimator if no report available
+        if (tokensSpent === 0) {
+          tokensSpent = ctx._estimateTokens ? ctx._estimateTokens() : 0;
+        }
+
+        ctx.totalSpendUsd = (ctx.totalSpendUsd ?? 0) + cycleSpendUsd;
+
+        // Budget enforcement
+        if (ctx.maxBudgetUsd && ctx.totalSpendUsd && ctx.totalSpendUsd >= ctx.maxBudgetUsd) {
+          logger.warn(`[Autoforge] Budget limit reached ($${ctx.totalSpendUsd.toFixed(2)}/$${ctx.maxBudgetUsd.toFixed(2)}) — stopping loop`);
+          ctx.loopState = AutoforgeLoopState.COMPLETE;
+          break;
+        }
+
         if (tokensSpent > 0 && ctx.prevAvgScore !== undefined) {
-          const { buildROIEntry, appendROIEntry } = await import('./token-roi.js');
           const entry = buildROIEntry(ctx.cycleCount, tokensSpent, ctx.prevAvgScore, avgScore);
           await appendROIEntry(entry, cwd);
         }
@@ -245,23 +374,31 @@ export async function runAutoforgeLoop(ctx: AutoforgeLoopContext): Promise<Autof
           ctx.state.auditLog.push(
             `${new Date().toISOString()} | autoforge-loop: paused at score ${avgScore} (target ${ctx.pauseAtScore})`,
           );
-          await saveState(ctx.state, { cwd });
+          await saveStateFn(ctx.state, { cwd });
         } catch {
           // Non-fatal — if write fails, keep going
         }
         if (ctx.loopState === AutoforgeLoopState.COMPLETE) break;
       }
 
+      const spendStr = ctx.totalSpendUsd && ctx.totalSpendUsd > 0
+        ? ` | $${ctx.totalSpendUsd.toFixed(3)} spent`
+        : '';
+      logger.info(`[Autoforge] Cycle ${ctx.cycleCount} — score: ${avgScore}% avg | completion: ${tracker.overall}%${spendStr} | elapsed: ${formatElapsed(ctx.startedAt)}`);
       emitScoreUpdate('completion', tracker.overall);
       emitCycleComplete(ctx.cycleCount, tracker.overall);
 
       // 3. Check completion threshold
       if (tracker.overall >= COMPLETION_THRESHOLD) {
         ctx.loopState = AutoforgeLoopState.COMPLETE;
-        logger.success(`[Autoforge] Overall completion: ${tracker.overall}% — target reached!`);
+        const elapsed = formatElapsed(ctx.startedAt);
+        const totalSpendStr = ctx.totalSpendUsd && ctx.totalSpendUsd > 0
+          ? ` | total: $${ctx.totalSpendUsd.toFixed(3)}`
+          : '';
+        logger.success(`[Autoforge] Overall completion: ${tracker.overall}% — target reached! (${ctx.cycleCount} cycles, ${elapsed}${totalSpendStr})`);
 
         // Write final guidance (include maturity assessment if available)
-        const { maturityAssessment: finalMaturity } = await findBlockedArtifacts(scores, ctx);
+        const { maturityAssessment: finalMaturity } = await findBlockedArtifactsWithMaturity(scores, ctx);
         const guidance = buildGuidance(tracker, scores, ctx, finalMaturity);
         ctx.lastGuidance = guidance;
         await writeGuidanceFile(guidance, cwd);
@@ -270,7 +407,7 @@ export async function runAutoforgeLoop(ctx: AutoforgeLoopContext): Promise<Autof
         printSummaryTable(scores);
 
         // Record to memory
-        await recordMemory({
+        await recordMemoryFn({
           category: 'decision',
           summary: `Autoforge loop completed at ${tracker.overall}% after ${ctx.cycleCount} cycles`,
           detail: `Goal: ${ctx.goal}. Projected: ${tracker.projectedCompletion}`,
@@ -282,13 +419,13 @@ export async function runAutoforgeLoop(ctx: AutoforgeLoopContext): Promise<Autof
         ctx.state.auditLog.push(
           `${new Date().toISOString()} | autoforge-loop: COMPLETE at ${tracker.overall}% after ${ctx.cycleCount} cycles`,
         );
-        await saveState(ctx.state, { cwd });
+        await saveStateFn(ctx.state, { cwd });
 
         break;
       }
 
       // 4. Find blocking artifacts (maturity-aware)
-      const { blocked: blockedArtifacts, maturityAssessment } = await findBlockedArtifacts(scores, ctx);
+      const { blocked: blockedArtifacts, maturityAssessment } = await findBlockedArtifactsWithMaturity(scores, ctx);
 
       // 5. Handle BLOCKED state
       if (blockedArtifacts.length > 0) {
@@ -304,7 +441,7 @@ export async function runAutoforgeLoop(ctx: AutoforgeLoopContext): Promise<Autof
           ctx.lastGuidance = guidance;
           await writeGuidanceFile(guidance, cwd);
 
-          await recordMemory({
+          await recordMemoryFn({
             category: 'error',
             summary: `Autoforge circuit breaker tripped after ${consecutiveFailures} consecutive failures`,
             detail: guidance.blockingIssues.map(i => `${i.artifact}: ${i.remediation}`).join('\n'),
@@ -315,7 +452,7 @@ export async function runAutoforgeLoop(ctx: AutoforgeLoopContext): Promise<Autof
           ctx.state.auditLog.push(
             `${new Date().toISOString()} | autoforge-loop: circuit breaker tripped after ${consecutiveFailures} consecutive failures`,
           );
-          await saveState(ctx.state, { cwd });
+          await saveStateFn(ctx.state, { cwd });
 
           break;
         }
@@ -347,7 +484,7 @@ export async function runAutoforgeLoop(ctx: AutoforgeLoopContext): Promise<Autof
             logger.error(`[Autoforge] BLOCKED: ${permanentlyBlocked.join(', ')} failed after ${MAX_RETRIES} retries`);
             logger.info('[Autoforge] See .danteforge/AUTOFORGE_GUIDANCE.md for remediation commands');
 
-            await recordMemory({
+            await recordMemoryFn({
               category: 'error',
               summary: `Autoforge BLOCKED on ${permanentlyBlocked.join(', ')}`,
               detail: guidance.blockingIssues.map(i => `${i.artifact}: ${i.remediation}`).join('\n'),
@@ -358,7 +495,7 @@ export async function runAutoforgeLoop(ctx: AutoforgeLoopContext): Promise<Autof
             ctx.state.auditLog.push(
               `${new Date().toISOString()} | autoforge-loop: BLOCKED on ${permanentlyBlocked.join(', ')}`,
             );
-            await saveState(ctx.state, { cwd });
+            await saveStateFn(ctx.state, { cwd });
 
             break;
           }
@@ -369,7 +506,7 @@ export async function runAutoforgeLoop(ctx: AutoforgeLoopContext): Promise<Autof
             const retryCount = ctx.retryCounters[blocked.artifact] ?? 0;
             const backoffMs = computeBackoff(retryCount);
             logger.info(`[Autoforge] Backing off ${backoffMs}ms before retry...`);
-            await new Promise(resolve => setTimeout(resolve, backoffMs));
+            await new Promise<void>(resolve => setTimeoutFn(resolve, backoffMs));
 
             ctx.retryCounters[blocked.artifact] = retryCount + 1;
             logger.info(`[Autoforge] Refining ${blocked.artifact} (attempt ${ctx.retryCounters[blocked.artifact]}/${ctx.maxRetries})`);
@@ -387,6 +524,25 @@ export async function runAutoforgeLoop(ctx: AutoforgeLoopContext): Promise<Autof
         break;
       }
 
+      // 6b. Protected path gate — only checked when about to forge
+      if (nextCommand.includes('forge') && !ctx.dryRun) {
+        const checkFn = deps?._checkProtectedPaths ?? ((s: DanteState) => checkProtectedTaskPaths(s));
+        try {
+          const { approved, blocked: protectedBlocked } = await checkFn(ctx.state);
+          if (!approved) {
+            ctx.loopState = AutoforgeLoopState.BLOCKED;
+            ctx.blockedArtifacts = protectedBlocked;
+            ctx.state.auditLog.push(
+              `${new Date().toISOString()} | autoforge-loop: BLOCKED by protected path gate: ${protectedBlocked.join(', ')}`,
+            );
+            await saveStateFn(ctx.state, { cwd });
+            break;
+          }
+        } catch {
+          // Non-fatal — if check fails, proceed
+        }
+      }
+
       // 7. Write guidance
       const guidance = buildGuidance(tracker, scores, ctx);
       ctx.lastGuidance = guidance;
@@ -399,14 +555,37 @@ export async function runAutoforgeLoop(ctx: AutoforgeLoopContext): Promise<Autof
         break;
       }
 
+      // Advisory mode: if no executor provided, write guidance and break
+      if (!executeCommandFn) {
+        logger.info(`[Autoforge] Advisory mode — next command: ${nextCommand}`);
+        logger.info('[Autoforge] No executor provided. See .danteforge/AUTOFORGE_GUIDANCE.md for commands.');
+        break;
+      }
+
       logger.info(`[Autoforge] Executing: ${nextCommand}`);
       ctx.state.auditLog.push(
         `${new Date().toISOString()} | autoforge-loop: cycle ${ctx.cycleCount} executing ${nextCommand}`,
       );
-      await saveState(ctx.state, { cwd });
+      await saveStateFn(ctx.state, { cwd });
+
+      const execResult = await executeCommandFn(nextCommand, cwd);
+      if (execResult.success) {
+        consecutiveExecFailures = 0;
+      } else {
+        consecutiveExecFailures++;
+        logger.warn(`[Autoforge] Command failed: ${nextCommand} (consecutive failures: ${consecutiveExecFailures})`);
+        if (consecutiveExecFailures >= CIRCUIT_BREAKER_CONSECUTIVE_FAILURE_LIMIT) {
+          ctx.loopState = AutoforgeLoopState.BLOCKED;
+          ctx.state.auditLog.push(
+            `${new Date().toISOString()} | autoforge-loop: execution circuit breaker tripped after ${consecutiveExecFailures} failures`,
+          );
+          await saveStateFn(ctx.state, { cwd });
+          break;
+        }
+      }
 
       // Reload state after execution
-      ctx.state = await loadState({ cwd });
+      ctx.state = await loadStateFn({ cwd });
 
       // Post-execution wiki ingestion (best-effort — never blocks loop)
       try {
@@ -414,45 +593,73 @@ export async function runAutoforgeLoop(ctx: AutoforgeLoopContext): Promise<Autof
       } catch {
         // Non-fatal
       }
+
+      // Auto-sync Cursor context after each wave (best-effort — never blocks loop)
+      try {
+        const hasCursor = (deps?._existsSync ?? existsSync)(path.join(cwd, '.cursor'));
+        if (hasCursor) {
+          const syncFn = deps?._syncContext ?? (async (opts: { cwd: string; target: 'cursor' }) => {
+            const { syncContext } = await import('./context-syncer.js');
+            await syncContext(opts);
+          });
+          await syncFn({ cwd, target: 'cursor' });
+        }
+      } catch {
+        // Non-fatal — cursor context sync is best-effort
+      }
     }
 
     if (interrupted) {
-      logger.info('[Autoforge] Interrupted — progress saved.');
+      const elapsed = formatElapsed(ctx.startedAt);
+      const interruptSpendStr = ctx.totalSpendUsd && ctx.totalSpendUsd > 0
+        ? ` | $${ctx.totalSpendUsd.toFixed(3)} spent`
+        : '';
+      logger.info(`[Autoforge] Interrupted after ${ctx.cycleCount} cycles (${elapsed}${interruptSpendStr}) — progress saved.`);
       ctx.state.auditLog.push(
         `${new Date().toISOString()} | autoforge-loop: interrupted at cycle ${ctx.cycleCount}`,
       );
-      await saveState(ctx.state, { cwd: ctx.cwd });
+      await saveStateFn(ctx.state, { cwd: ctx.cwd });
     }
 
     return ctx;
   } finally {
     removeListener('SIGINT', sigintHandler);
+    if (process.platform !== 'win32') {
+      removeListener('SIGTERM', sigintHandler);
+    }
   }
 }
 
 // ── Score-only pass ─────────────────────────────────────────────────────────
 
-export async function runScoreOnlyPass(cwd: string): Promise<{
+export async function runScoreOnlyPass(cwd: string, deps?: Partial<AutoforgeLoopDeps>): Promise<{
   scores: Record<ScoredArtifact, ScoreResult>;
   tracker: CompletionTracker;
   guidance: AutoforgeGuidance;
 }> {
-  const state = await loadState({ cwd });
+  const loadStateFn = deps?.loadState ?? loadState;
+  const detectProjectTypeFn = deps?.detectProjectType ?? detectProjectType;
+  const scoreAllArtifactsFn = deps?.scoreAllArtifacts ?? scoreAllArtifacts;
+  const persistScoreResultFn = deps?.persistScoreResult ?? persistScoreResult;
+  const computeCompletionTrackerFn = deps?.computeCompletionTracker ?? computeCompletionTracker;
+  const saveStateFn = deps?.saveState ?? saveState;
+
+  const state = await loadStateFn({ cwd });
   if (!state.projectType || state.projectType === 'unknown') {
-    state.projectType = await detectProjectType(cwd);
+    state.projectType = await detectProjectTypeFn(cwd);
   }
 
-  const scores = await scoreAllArtifacts(cwd, state);
+  const scores = await scoreAllArtifactsFn(cwd, state);
   for (const result of Object.values(scores)) {
-    await persistScoreResult(result, cwd);
+    await persistScoreResultFn(result, cwd);
   }
 
-  const tracker = computeCompletionTracker(state, scores);
+  const tracker = computeCompletionTrackerFn(state, scores);
   state.completionTracker = tracker;
   state.auditLog.push(
     `${new Date().toISOString()} | autoforge-loop: score-only pass, overall ${tracker.overall}%`,
   );
-  await saveState(state, { cwd });
+  await saveStateFn(state, { cwd });
 
   const ctx: AutoforgeLoopContext = {
     goal: '',
@@ -548,13 +755,10 @@ export function formatGuidanceMarkdown(guidance: AutoforgeGuidance): string {
 
 // ── Helpers ─────────────────────────────────────────────────────────────────
 
-async function findBlockedArtifacts(
+export function findBlockedArtifacts(
   scores: Record<ScoredArtifact, ScoreResult>,
-  ctx: AutoforgeLoopContext,
-): Promise<{ blocked: BlockingIssue[]; maturityAssessment?: MaturityAssessment }> {
+): BlockingIssue[] {
   const blocked: BlockingIssue[] = [];
-
-  // Standard PDSE-based blocking check
   for (const [name, result] of Object.entries(scores)) {
     if (result.score < SCORE_THRESHOLDS.NEEDS_WORK) {
       const command = ARTIFACT_COMMAND_MAP[name as ScoredArtifact] ?? name.toLowerCase();
@@ -566,12 +770,21 @@ async function findBlockedArtifacts(
       });
     }
   }
+  return blocked;
+}
+
+async function findBlockedArtifactsWithMaturity(
+  scores: Record<ScoredArtifact, ScoreResult>,
+  ctx: AutoforgeLoopContext,
+): Promise<{ blocked: BlockingIssue[]; maturityAssessment?: MaturityAssessment }> {
+  const blocked: BlockingIssue[] = findBlockedArtifacts(scores);
 
   // Maturity-aware override: If target maturity level is met, proceed even if PDSE < 95
   let maturityAssessment: MaturityAssessment | undefined;
   if (ctx.targetMaturityLevel) {
+    const assessMaturityFn = ctx._assessMaturity ?? assessMaturity;
     try {
-      maturityAssessment = await assessMaturity({
+      maturityAssessment = await assessMaturityFn({
         cwd: ctx.cwd,
         state: ctx.state,
         pdseScores: scores,
@@ -605,7 +818,7 @@ async function findBlockedArtifacts(
   return { blocked, maturityAssessment };
 }
 
-function determineNextCommand(
+export function determineNextCommand(
   state: DanteState,
   tracker: CompletionTracker,
   scores: Record<ScoredArtifact, ScoreResult>,
@@ -656,7 +869,7 @@ export function computeEstimatedSteps(ctx: AutoforgeLoopContext): number {
   return Math.max(1, steps);
 }
 
-function buildGuidance(
+export function buildGuidance(
   tracker: CompletionTracker,
   scores: Record<ScoredArtifact, ScoreResult>,
   ctx: AutoforgeLoopContext,
@@ -698,7 +911,7 @@ function buildGuidance(
   };
 }
 
-function findBottleneck(
+export function findBottleneck(
   tracker: CompletionTracker,
   scores: Record<ScoredArtifact, ScoreResult>,
 ): string {
@@ -722,7 +935,7 @@ function findBottleneck(
   return 'None';
 }
 
-function getRecommendationReason(
+export function getRecommendationReason(
   tracker: CompletionTracker,
   blockingIssues: BlockingIssue[],
 ): string {

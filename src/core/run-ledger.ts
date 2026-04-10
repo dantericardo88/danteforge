@@ -3,6 +3,7 @@ import fs from 'fs/promises';
 import path from 'path';
 import type { DanteState } from './state.js';
 import type { ResidualGapReport } from './residual-gap-miner.js';
+import { generateGapReport } from './residual-gap-miner.js';
 
 export interface RunMetadata {
   runId: string;
@@ -209,7 +210,7 @@ export class RunLedger {
       evidenceHash: '', // Will be computed
     };
 
-    const bundle: EvidenceBundle = {
+    let bundle: EvidenceBundle = {
       run: {
         runId: this.runId,
         sessionId: this.sessionId,
@@ -229,11 +230,14 @@ export class RunLedger {
       gates: this.gates,
       receipts: this.receipts,
       verdict: finalVerdict,
-      summary: this.generateSummary(bundle),
+      summary: '', // Will be set after
     };
 
+    // Generate summary after bundle is created
+    bundle.summary = this.generateSummary(bundle);
+
     // Generate residual gap analysis if state provided
-    let gapReport;
+    let gapReport: ResidualGapReport | undefined;
     if (state) {
       gapReport = await generateGapReport(bundle, state, path.join(this.runDir, 'gap-analysis.json'));
     }

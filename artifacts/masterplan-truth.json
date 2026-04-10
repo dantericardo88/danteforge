@@ -1,0 +1,29 @@
+{
+  "timestamp": "2026-04-10T17:23:24.000Z",
+  "version": "1.0.0",
+  "repoVersion": "0.15.0",
+  "commit": "HEAD",
+  "enforcementStatus": "active",
+  "focus": "self-use-first-adoption-later",
+  "excludedDimensions": ["communityAdoption"],
+  "targetDimensions": [
+    "truthSurfaceIntegrity",
+    "installReliability", 
+    "assistantPortability",
+    "mcpContractReliability",
+    "specPlanningQuality",
+    "executionAutonomy",
+    "taskRoutingOrchestration",
+    "completionTruthfulness",
+    "verificationDepth",
+    "evidenceReceiptsQuality",
+    "testingRigor",
+    "observabilityAuditability",
+    "resilienceFailSafety",
+    "enterpriseComplianceReadiness",
+    "selfImprovementSafety",
+    "benchmarkScoringCredibility",
+    "performanceCostEfficiency",
+    "ideUxPolish"
+  ]
+}

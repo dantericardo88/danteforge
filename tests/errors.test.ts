@@ -142,12 +142,12 @@ describe('LLMError', () => {
   });
 
   it('stores provider', () => {
-    const err = new LLMError('failed', 'claude');
+    const err = new LLMError('failed', undefined, 'claude');
     assert.equal(err.provider, 'claude');
   });
 
   it('builds default remedy from provider', () => {
-    const err = new LLMError('failed', 'grok');
+    const err = new LLMError('failed', undefined, 'grok');
     assert.ok(err.remedy.includes('grok'));
   });
 
@@ -157,7 +157,7 @@ describe('LLMError', () => {
   });
 
   it('accepts custom remedy', () => {
-    const err = new LLMError('failed', 'claude', 'restart');
+    const err = new LLMError('failed', undefined, 'claude', 'restart');
     assert.equal(err.remedy, 'restart');
   });
 
@@ -170,7 +170,7 @@ describe('BudgetError', () => {
   it('has correct name and code', () => {
     const err = new BudgetError('over budget');
     assert.equal(err.name, 'BudgetError');
-    assert.equal(err.code, 'BUDGET_ERROR');
+    assert.equal(err.code, 'BUDGET_EXCEEDED');
   });
 
   it('uses default remedy', () => {

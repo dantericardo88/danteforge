@@ -8,7 +8,7 @@ import path from 'path';
 import os from 'os';
 import { logger } from './logger.js';
 
-export type MCPHost = 'claude-code' | 'cursor' | 'codex' | 'vscode' | 'windsurf' | 'unknown';
+export type MCPHost = 'claude-code' | 'cursor' | 'codex' | 'vscode' | 'windsurf' | 'jetbrains' | 'unknown';
 
 export interface MCPCapabilities {
   host: MCPHost;
@@ -26,7 +26,7 @@ export interface MCPCapabilities {
  */
 export function detectHost(override?: string): MCPHost {
   if (override && override !== 'auto') {
-    const valid: MCPHost[] = ['claude-code', 'cursor', 'codex', 'vscode', 'windsurf'];
+    const valid: MCPHost[] = ['claude-code', 'cursor', 'codex', 'vscode', 'windsurf', 'jetbrains'];
     if (valid.includes(override as MCPHost)) return override as MCPHost;
     logger.warn(`Unknown host "${override}" — falling back to auto-detection`);
   }
@@ -44,6 +44,9 @@ export function detectHost(override?: string): MCPHost {
 
   // Windsurf (check before VS Code since Windsurf is VS Code-based)
   if (env.WINDSURF_SESSION || env.TERM_PROGRAM === 'windsurf') return 'windsurf';
+
+  // JetBrains (check before VS Code — IntelliJ/WebStorm/PyCharm/etc.)
+  if (env.IDEA_INITIAL_DIRECTORY || env.INTELLIJ_ENVIRONMENT_READER) return 'jetbrains';
 
   // VS Code (most generic — check last)
   if (env.VSCODE_PID || env.VSCODE_CWD || env.TERM_PROGRAM === 'vscode') return 'vscode';
@@ -86,6 +89,11 @@ export async function detectMCPCapabilities(host: MCPHost): Promise<MCPCapabilit
     case 'codex':
       configPaths.push(
         path.join(cwd, '.codex', 'mcp.json'),
+      );
+      break;
+    case 'jetbrains':
+      configPaths.push(
+        path.join(cwd, '.idea', 'mcp.json'),
       );
       break;
     default:

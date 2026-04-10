@@ -1,0 +1,20 @@
+{
+  "truthSurfaceIntegrity": 9.0,
+  "installOnboardingReliability": 9.0,
+  "assistantPortability": 9.0,
+  "mcpContractReliability": 9.0,
+  "specPlanningQuality": 9.0,
+  "executionAutonomy": 9.0,
+  "taskRoutingOrchestration": 9.0,
+  "completionTruthfulness": 9.5,
+  "verificationDepth": 9.0,
+  "evidenceReceiptsQuality": 9.5,
+  "testingRigor": 9.0,
+  "observabilityAuditability": 9.0,
+  "resilienceFailSafety": 9.0,
+  "enterpriseComplianceReadiness": 9.0,
+  "selfImprovementSafety": 9.0,
+  "benchmarkScoringCredibility": 9.0,
+  "performanceCostEfficiency": 9.0,
+  "ideUxPolish": 9.0
+}

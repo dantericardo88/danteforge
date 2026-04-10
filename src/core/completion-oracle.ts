@@ -1,5 +1,6 @@
 import type { EvidenceBundle, Verdict } from './run-ledger.js';
 import type { DanteState } from './state.js';
+import { analyzeRequirementCoverage, type CoverageAnalysis } from './requirement-coverage.js';
 
 export type CompletionVerdict = 'complete' | 'partially_complete' | 'misleadingly_complete' | 'inconclusive' | 'regressed';
 
@@ -9,6 +10,7 @@ export interface CompletionOracleResult {
   score: number;
   reasons: string[];
   recommendations: string[];
+  coverageAnalysis?: CoverageAnalysis;
 }
 
 export function validateCompletion(bundle: EvidenceBundle, state: DanteState): CompletionOracleResult {
@@ -16,26 +18,38 @@ export function validateCompletion(bundle: EvidenceBundle, state: DanteState): C
   const recommendations: string[] = [];
   let score = 0;
 
+  // Run coverage analysis
+  const coverageAnalysis = analyzeRequirementCoverage(bundle, state);
+
+  // Check requirement coverage
+  if (coverageAnalysis.requirements.coveragePercent < 80) {
+    reasons.push(`Low requirement coverage: ${Math.round(coverageAnalysis.requirements.coveragePercent)}%`);
+    recommendations.push('Address missing requirements');
+  } else {
+    score += 15;
+  }
+
   // Check for minimum evidence requirements
   if (bundle.reads.length === 0) {
     reasons.push('No file reads recorded - system did not inspect project state');
   } else {
-    score += 20;
+    score += 15;
   }
 
   if (bundle.writes.length === 0) {
     reasons.push('No file writes recorded - no changes were made');
     recommendations.push('Verify that the task actually required file modifications');
   } else {
-    score += 20;
+    score += 15;
   }
 
   if (bundle.commands.length === 0) {
-    reasons.push('No commands executed - system did not perform any operations');
+    reasons.push('No commands executed - system did not perform operations');
   } else {
     score += 10;
   }
 
+  // Check test coverage
   if (bundle.tests.length === 0) {
     reasons.push('No tests recorded - completion not verified');
     recommendations.push('Run tests to verify functionality');
@@ -46,10 +60,11 @@ export function validateCompletion(bundle: EvidenceBundle, state: DanteState): C
       reasons.push(`Low test pass rate: ${passedTests}/${bundle.tests.length} (${Math.round(testPassRate * 100)}%)`);
       recommendations.push('Fix failing tests before considering complete');
     } else {
-      score += 20;
+      score += 15;
     }
   }
 
+  // Check gate enforcement
   if (bundle.gates.length === 0) {
     reasons.push('No gate checks recorded - quality gates not enforced');
     recommendations.push('Ensure all required gates are checked');
@@ -60,18 +75,13 @@ export function validateCompletion(bundle: EvidenceBundle, state: DanteState): C
       reasons.push(`Failed gates: ${bundle.gates.length - passedGates}/${bundle.gates.length}`);
       recommendations.push('Address failing gate checks');
     } else {
-      score += 20;
+      score += 15;
     }
   }
 
-  // Check for expected artifacts based on workflow stage
-  const expectedArtifacts = getExpectedArtifacts(state);
-  const missingArtifacts = expectedArtifacts.filter(artifact => {
-    return !bundle.writes.some(write => write.path.includes(artifact));
-  });
-
-  if (missingArtifacts.length > 0) {
-    reasons.push(`Missing expected artifacts: ${missingArtifacts.join(', ')}`);
+  // Check artifact coverage
+  if (coverageAnalysis.artifacts.missing.length > 0) {
+    reasons.push(`Missing expected artifacts: ${coverageAnalysis.artifacts.missing.join(', ')}`);
     recommendations.push('Ensure all phase artifacts are created');
   } else {
     score += 10;
@@ -122,35 +132,11 @@ export function validateCompletion(bundle: EvidenceBundle, state: DanteState): C
     score,
     reasons,
     recommendations,
+    coverageAnalysis,
   };
 }
 
-function getExpectedArtifacts(state: DanteState): string[] {
-  const artifacts: string[] = [];
-
-  // Planning phase artifacts
-  if (state.workflowStage === 'constitution' || state.workflowStage === 'specify' ||
-      state.workflowStage === 'clarify' || state.workflowStage === 'plan' || state.workflowStage === 'tasks') {
-    if (!state.constitution) artifacts.push('CONSTITUTION.md');
-    if (!state.spec) artifacts.push('SPEC.md');
-    if (!state.clarify) artifacts.push('CLARIFY.md');
-    if (!state.plan) artifacts.push('PLAN.md');
-    if (!state.tasks) artifacts.push('TASKS.md');
-  }
-
-  // Execution phase artifacts
-  if (state.workflowStage === 'forge' || state.workflowStage === 'verify') {
-    // Implementation files would be project-specific
-    artifacts.push('.danteforge/state.json'); // State updates
-  }
-
-  // Verification artifacts
-  if (state.workflowStage === 'verify') {
-    artifacts.push('.danteforge/verify-results.json');
-  }
-
-  return artifacts;
-}
+// getExpectedArtifacts moved to requirement-coverage.ts
 
 export function generateVerdict(bundle: EvidenceBundle, oracle: CompletionOracleResult): Verdict {
   return {

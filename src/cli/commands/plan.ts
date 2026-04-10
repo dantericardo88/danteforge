@@ -12,8 +12,8 @@ const STATE_DIR = '.danteforge';
 
 export async function plan(options: { prompt?: boolean; light?: boolean } = {}) {
   return withErrorBoundary('plan', async () => {
-  if (!(await runGate(() => requireSpec(options.light)))) return;
-  if (!(await runGate(() => requireClarify(options.light)))) return;
+  if (!(await runGate(() => requireSpec(options.light)))) { process.exitCode = 1; return; }
+  if (!(await runGate(() => requireClarify(options.light)))) { process.exitCode = 1; return; }
 
   logger.info('Generating detailed plan from spec...');
 

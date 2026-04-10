@@ -18,7 +18,7 @@ async function makeStateDir(stage: string): Promise<string> {
     project: 'help-test',
     created: new Date().toISOString(),
     workflowStage: stage,
-    currentPhase: 'phase-2',
+    currentPhase: 2,
     lastHandoff: 'none',
     profile: 'balanced',
     tasks: {},
@@ -64,7 +64,7 @@ describe('help-engine — getContextualHelp', () => {
     const dir = await makeStateDir('plan');
     const help = await getContextualHelp('how do I proceed?', { cwd: dir });
     assert.ok(help.includes('plan'));
-    assert.ok(help.includes('phase'));
+    assert.ok(help.includes('wave'), 'help should mention execution wave');
   });
 
   it('falls back to initialized suggestion for unknown/missing stage', async () => {

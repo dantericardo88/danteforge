@@ -1,0 +1,3174 @@
+
+> danteforge@0.15.0 test
+> tsx --test tests/**/*.test.ts
+
+▶ executeToolBatch
+  ✔ returns empty results for empty calls (1.8342ms)
+  ✔ returns result for single valid call (182.1047ms)
+  ✔ processes multiple calls (20.8407ms)
+  ✔ handles partial failures gracefully (2.6362ms)
+✔ executeToolBatch (210.6681ms)
+▶ buildToolPromptSummary
+  ✔ returns markdown with category headers (0.7349ms)
+  ✔ includes all 7 categories (0.6773ms)
+✔ buildToolPromptSummary (1.7267ms)
+▶ getRelevantTools
+  ✔ "create a button" context includes create category (1.3132ms)
+  ✔ "inspect the layout" context includes read tools (0.479ms)
+  ✔ no matching keywords defaults to read+create+modify (0.5349ms)
+  ✔ "delete and restructure" includes structure tools (0.4432ms)
+✔ getRelevantTools (3.2673ms)
+▶ executeToolCall — type validation
+  ✔ rejects number for string parameter (0.32ms)
+  ✔ rejects invalid enum value (0.2126ms)
+✔ executeToolCall — type validation (0.7235ms)
+[WARN] Agent "architect" failed — blocking downstream agents
+[WARN] Agent "pm" failed — blocking downstream agents
+▶ buildDefaultDAG
+  ✔ returns 6 nodes (1.6389ms)
+  ✔ has pm with no dependencies (2.7419ms)
+  ✔ has scrum-master depending on dev, ux, design (1.4276ms)
+  ✔ contains all six standard roles (1.671ms)
+  ✔ has architect depending on pm (0.3706ms)
+✔ buildDefaultDAG (166.9986ms)
+▶ computeExecutionLevels
+  ✔ produces 4 levels from default DAG (229.9732ms)
+  ✔ puts pm at level 0 (0.822ms)
+  ✔ puts architect at level 1 (136.6711ms)
+  ✔ puts dev, ux, design at level 2 (0.6205ms)
+  ✔ puts scrum-master at level 3 (0.449ms)
+  ✔ computes correct critical path through all 4 levels (0.3131ms)
+  ✔ reports estimatedParallelism of 3 for default DAG (0.243ms)
+  ✔ reports estimatedDurationMs as levels * 60000 (0.3076ms)
+  ✔ handles single-agent DAG (0.3058ms)
+  ✔ detects cycles and throws (1.3299ms)
+  ✔ handles empty node list (0.8633ms)
+  ✔ ignores dependencies on roles not in the graph (0.8374ms)
+✔ computeExecutionLevels (374.2895ms)
+▶ executeDAG
+  ✔ executes level by level sequentially (3.6576ms)
+  ✔ marks downstream agents as BLOCKED on failure (2.7201ms)
+  ✔ returns totalDurationMs as a non-negative number (0.3828ms)
+  ✔ includes the original plan in the result (0.366ms)
+  ✔ handles partial level failure — only failed agent downstream is blocked (0.5921ms)
+✔ executeDAG (8.2417ms)
+▶ filterDAGToRoles
+  ✔ filters to only specified roles (3.8308ms)
+  ✔ removes dependency references to excluded roles (0.4816ms)
+  ✔ returns empty array when no roles match (0.1778ms)
+  ✔ preserves priority values (0.1962ms)
+  ✔ filtered sub-DAG computes valid execution levels (0.1874ms)
+✔ filterDAGToRoles (5.2506ms)
+▶ anti-stub scan
+  ✔ passes for clean implementation files and exempt doctrine/config files (4347.3133ms)
+  ✔ fails when a production implementation file contains stub markers (1920.4923ms)
+✔ anti-stub scan (6270.1467ms)
+[INFO] [assess] Running self-assessment (harsh=true, mode=feature-universe, target=9/10)...
+[INFO] 
+╔══════════════════════════════════════════════════════╗
+║     DanteForge Self-Assessment Report                 ║
+║     Harsh scoring: stubs, fake-completion penalized  ║
+╚══════════════════════════════════════════════════════╝
+[INFO] 
+[INFO] COMPLETION TARGET: Mode: Feature Universe
+Target: 9/10 average score
+Coverage: 90% of feature universe must be implemented
+Description: Feature universe: 9/10 avg on 90% of competitor features
+[INFO] 
+[INFO] OVERALL SCORE: 7.2 / 10  (target: 9.0, gap: 1.8)  ✗ BELOW TARGET
+[INFO] Verdict: ACCEPTABLE  |  Fake-completion risk: LOW
+[INFO] 
+[INFO] DIMENSION BREAKDOWN:
+[INFO] [90m┌──────────────────────────[39m[90m┬───────[39m[90m┬────────────────[39m[90m┬──────[39m[90m┬──────[39m[90m┬──────┐[39m
+[90m│[39m[36m Dimension                [39m[90m│[39m[36m Score [39m[90m│[39m[36m Best Peer      [39m[90m│[39m[36m Peer [39m[90m│[39m[36m Gap  [39m[90m│[39m[36m Flag [39m[90m│[39m
+[90m├──────────────────────────[39m[90m┼───────[39m[90m┼────────────────[39m[90m┼──────[39m[90m┼──────[39m[90m┼──────┤[39m
+[90m│[39m functionality            [90m│[39m 7.2   [90m│[39m Devin          [90m│[39m 8.5  [90m│[39m +1.3 [90m│[39m △ P1 [90m│[39m
+[90m├──────────────────────────[39m[90m┼───────[39m[90m┼────────────────[39m[90m┼──────[39m[90m┼──────[39m[90m┼──────┤[39m
+[90m│[39m testing                  [90m│[39m 7.2   [90m│[39m Devin          [90m│[39m 8.5  [90m│[39m +1.3 [90m│[39m △ P1 [90m│[39m
+[90m├──────────────────────────[39m[90m┼───────[39m[90m┼────────────────[39m[90m┼──────[39m[90m┼──────[39m[90m┼──────┤[39m
+[90m│[39m errorHandling            [90m│[39m 7.2   [90m│[39m Devin          [90m│[39m 8.5  [90m│[39m +1.3 [90m│[39m △ P1 [90m│[39m
+[90m├──────────────────────────[39m[90m┼───────[39m[90m┼────────────────[39m[90m┼──────[39m[90m┼──────[39m[90m┼──────┤[39m
+[90m│[39m security                 [90m│[39m 7.2   [90m│[39m Devin          [90m│[39m 8.5  [90m│[39m +1.3 [90m│[39m △ P1 [90m│[39m
+[90m├──────────────────────────[39m[90m┼───────[39m[90m┼────────────────[39m[90m┼──────[39m[90m┼──────[39m[90m┼──────┤[39m
+[90m│[39m uxPolish                 [90m│[39m 7.2   [90m│[39m Devin          [90m│[39m 8.5  [90m│[39m +1.3 [90m│[39m △ P1 [90m│[39m
+[90m├──────────────────────────[39m[90m┼───────[39m[90m┼────────────────[39m[90m┼──────[39m[90m┼──────[39m[90m┼──────┤[39m
+[90m│[39m documentation            [90m│[39m 7.2   [90m│[39m Devin          [90m│[39m 8.5  [90m│[39m +1.3 [90m│[39m △ P1 [90m│[39m
+[90m├──────────────────────────[39m[90m┼───────[39m[90m┼────────────────[39m[90m┼──────[39m[90m┼──────[39m[90m┼──────┤[39m
+[90m│[39m performance              [90m│[39m 7.2   [90m│[39m Devin          [90m│[39m 8.5  [90m│[39m +1.3 [90m│[39m △ P1 [90m│[39m
+[90m├──────────────────────────[39m[90m┼───────[39m[90m┼────────────────[39m[90m┼──────[39m[90m┼──────[39m[90m┼──────┤[39m
+[90m│[39m maintainability          [90m│[39m 7.2   [90m│[39m Devin          [90m│[39m 8.5  [90m│[39m +1.3 [90m│[39m △ P1 [90m│[39m
+[90m├──────────────────────────[39m[90m┼───────[39m[90m┼────────────────[39m[90m┼──────[39m[90m┼──────[39m[90m┼──────┤[39m
+[90m│[39m developerExperience      [90m│[39m 7.2   [90m│[39m Devin          [90m│[39m 8.5  [90m│[39m +1.3 [90m│[39m △ P1 [90m│[39m
+[90m├──────────────────────────[39m[90m┼───────[39m[90m┼────────────────[39m[90m┼──────[39m[90m┼──────[39m[90m┼──────┤[39m
+[90m│[39m autonomy                 [90m│[39m 7.2   [90m│[39m Devin          [90m│[39m 8.5  [90m│[39m +1.3 [90m│[39m △ P1 [90m│[39m
+[90m├──────────────────────────[39m[90m┼───────[39m[90m┼────────────────[39m[90m┼──────[39m[90m┼──────[39m[90m┼──────┤[39m
+[90m│[39m planningQuality          [90m│[39m 7.2   [90m│[39m Devin          [90m│[39m 8.5  [90m│[39m +1.3 [90m│[39m △ P1 [90m│[39m
+[90m├──────────────────────────[39m[90m┼───────[39m[90m┼────────────────[39m[90m┼──────[39m[90m┼──────[39m[90m┼──────┤[39m
+[90m│[39m selfImprovement          [90m│[39m 7.2   [90m│[39m Devin          [90m│[39m 8.5  [90m│[39m +1.3 [90m│[39m △ P1 [90m│[39m
+[90m├──────────────────────────[39m[90m┼───────[39m[90m┼────────────────[39m[90m┼──────[39m[90m┼──────[39m[90m┼──────┤[39m
+[90m│[39m specDrivenPipeline       [90m│[39m 0.0   [90m│[39m —              [90m│[39m —    [90m│[39m —    [90m│[39m ⚠ P0 [90m│[39m
+[90m├──────────────────────────[39m[90m┼───────[39m[90m┼────────────────[39m[90m┼──────[39m[90m┼──────[39m[90m┼──────┤[39m
+[90m│[39m convergenceSelfHealing   [90m│[39m 0.0   [90m│[39m —              [90m│[39m —    [90m│[39m —    [90m│[39m ⚠ P0 [90m│[39m
+[90m├──────────────────────────[39m[90m┼───────[39m[90m┼────────────────[39m[90m┼──────[39m[90m┼──────[39m[90m┼──────┤[39m
+[90m│[39m tokenEconomy             [90m│[39m 0.0   [90m│[39m —              [90m│[39m —    [90m│[39m —    [90m│[39m ⚠ P0 [90m│[39m
+[90m├──────────────────────────[39m[90m┼───────[39m[90m┼────────────────[39m[90m┼──────[39m[90m┼──────[39m[90m┼──────┤[39m
+[90m│[39m ecosystemMcp             [90m│[39m 0.0   [90m│[39m —              [90m│[39m —    [90m│[39m —    [90m│[39m ⚠ P0 [90m│[39m
+[90m├──────────────────────────[39m[90m┼───────[39m[90m┼────────────────[39m[90m┼──────[39m[90m┼──────[39m[90m┼──────┤[39m
+[90m│[39m enterpriseReadiness      [90m│[39m 0.0   [90m│[39m —              [90m│[39m —    [90m│[39m —    [90m│[39m ⚠ P0 [90m│[39m
+[90m├──────────────────────────[39m[90m┼───────[39m[90m┼────────────────[39m[90m┼──────[39m[90m┼──────[39m[90m┼──────┤[39m
+[90m│[39m communityAdoption        [90m│[39m 0.0   [90m│[39m —              [90m│[39m —    [90m│[39m —    [90m│[39m ⚠ P0 [90m│[39m
+[90m└──────────────────────────[39m[90m┴───────[39m[90m┴────────────────[39m[90m┴──────[39m[90m┴──────[39m[90m┴──────┘[39m
+[INFO] 
+[INFO] ## Competitor Benchmarking Report
+Source: undefined
+
+### Leaderboard (average across all dimensions)
+
+  1. DanteForge: 0.7/10
+
+### Gap Analysis
+
+  No competitors found. Run `/oss` or set `state.competitors` to add them.
+[INFO] 
+[INFO] MASTERPLAN: 5 action items generated
+[INFO]   P0 (critical): 0  |  P1 (major): 5  |  P2 (minor): 0
+[INFO]   Estimated cycles to target: ~4
+[INFO]   Saved to: .danteforge/MASTERPLAN.md
+[INFO] 
+[INFO] Run `danteforge self-improve` to execute the masterplan autonomously.
+[INFO] The loop will continue until all dimensions score 9.0/10.
+▶ assess
+  ✔ returns AssessResult with all required fields (820.5979ms)
+[INFO] [assess] Running self-assessment (harsh=true, mode=feature-universe, target=9/10)...
+[INFO] 
+╔══════════════════════════════════════════════════════╗
+║     DanteForge Self-Assessment Report                 ║
+║     Harsh scoring: stubs, fake-completion penalized  ║
+╚══════════════════════════════════════════════════════╝
+[INFO] 
+[INFO] COMPLETION TARGET: Mode: Feature Universe
+Target: 9/10 average score
+Coverage: 90% of feature universe must be implemented
+Description: Feature universe: 9/10 avg on 90% of competitor features
+[INFO] 
+[INFO] OVERALL SCORE: 9.5 / 10  (target: 9.0, gap: 0.0)  ✓ PASS
+[INFO] Verdict: EXCELLENT  |  Fake-completion risk: LOW
+[INFO] 
+[INFO] DIMENSION BREAKDOWN:
+[INFO] [90m┌──────────────────────────[39m[90m┬───────[39m[90m┬────────────────[39m[90m┬──────[39m[90m┬──────[39m[90m┬──────┐[39m
+[90m│[39m[36m Dimension                [39m[90m│[39m[36m Score [39m[90m│[39m[36m Best Peer      [39m[90m│[39m[36m Peer [39m[90m│[39m[36m Gap  [39m[90m│[39m[36m Flag [39m[90m│[39m
+[90m├──────────────────────────[39m[90m┼───────[39m[90m┼────────────────[39m[90m┼──────[39m[90m┼──────[39m[90m┼──────┤[39m
+[90m│[39m functionality            [90m│[39m 9.5   [90m│[39m Devin          [90m│[39m 8.5  [90m│[39m +1.3 [90m│[39m ✓    [90m│[39m
+[90m├──────────────────────────[39m[90m┼───────[39m[90m┼────────────────[39m[90m┼──────[39m[90m┼──────[39m[90m┼──────┤[39m
+[90m│[39m testing                  [90m│[39m 9.5   [90m│[39m Devin          [90m│[39m 8.5  [90m│[39m +1.3 [90m│[39m ✓    [90m│[39m
+[90m├──────────────────────────[39m[90m┼───────[39m[90m┼────────────────[39m[90m┼──────[39m[90m┼──────[39m[90m┼──────┤[39m
+[90m│[39m errorHandling            [90m│[39m 9.5   [90m│[39m Devin          [90m│[39m 8.5  [90m│[39m +1.3 [90m│[39m ✓    [90m│[39m
+[90m├──────────────────────────[39m[90m┼───────[39m[90m┼────────────────[39m[90m┼──────[39m[90m┼──────[39m[90m┼──────┤[39m
+[90m│[39m security                 [90m│[39m 9.5   [90m│[39m Devin          [90m│[39m 8.5  [90m│[39m +1.3 [90m│[39m ✓    [90m│[39m
+[90m├──────────────────────────[39m[90m┼───────[39m[90m┼────────────────[39m[90m┼──────[39m[90m┼──────[39m[90m┼──────┤[39m
+[90m│[39m uxPolish                 [90m│[39m 9.5   [90m│[39m Devin          [90m│[39m 8.5  [90m│[39m +1.3 [90m│[39m ✓    [90m│[39m
+[90m├──────────────────────────[39m[90m┼───────[39m[90m┼────────────────[39m[90m┼──────[39m[90m┼──────[39m[90m┼──────┤[39m
+[90m│[39m documentation            [90m│[39m 9.5   [90m│[39m Devin          [90m│[39m 8.5  [90m│[39m +1.3 [90m│[39m ✓    [90m│[39m
+[90m├──────────────────────────[39m[90m┼───────[39m[90m┼────────────────[39m[90m┼──────[39m[90m┼──────[39m[90m┼──────┤[39m
+[90m│[39m performance              [90m│[39m 9.5   [90m│[39m Devin          [90m│[39m 8.5  [90m│[39m +1.3 [90m│[39m ✓    [90m│[39m
+[90m├──────────────────────────[39m[90m┼───────[39m[90m┼────────────────[39m[90m┼──────[39m[90m┼──────[39m[90m┼──────┤[39m
+[90m│[39m maintainability          [90m│[39m 9.5   [90m│[39m Devin          [90m│[39m 8.5  [90m│[39m +1.3 [90m│[39m ✓    [90m│[39m
+[90m├──────────────────────────[39m[90m┼───────[39m[90m┼────────────────[39m[90m┼──────[39m[90m┼──────[39m[90m┼──────┤[39m
+[90m│[39m developerExperience      [90m│[39m 9.5   [90m│[39m Devin          [90m│[39m 8.5  [90m│[39m +1.3 [90m│[39m ✓    [90m│[39m
+[90m├──────────────────────────[39m[90m┼───────[39m[90m┼────────────────[39m[90m┼──────[39m[90m┼──────[39m[90m┼──────┤[39m
+[90m│[39m autonomy                 [90m│[39m 9.5   [90m│[39m Devin          [90m│[39m 8.5  [90m│[39m +1.3 [90m│[39m ✓    [90m│[39m
+[90m├──────────────────────────[39m[90m┼───────[39m[90m┼────────────────[39m[90m┼──────[39m[90m┼──────[39m[90m┼──────┤[39m
+[90m│[39m planningQuality          [90m│[39m 9.5   [90m│[39m Devin          [90m│[39m 8.5  [90m│[39m +1.3 [90m│[39m ✓    [90m│[39m
+[90m├──────────────────────────[39m[90m┼───────[39m[90m┼────────────────[39m[90m┼──────[39m[90m┼──────[39m[90m┼──────┤[39m
+[90m│[39m selfImprovement          [90m│[39m 9.5   [90m│[39m Devin          [90m│[39m 8.5  [90m│[39m +1.3 [90m│[39m ✓    [90m│[39m
+[90m├──────────────────────────[39m[90m┼───────[39m[90m┼────────────────[39m[90m┼──────[39m[90m┼──────[39m[90m┼──────┤[39m
+[90m│[39m specDrivenPipeline       [90m│[39m 0.0   [90m│[39m —              [90m│[39m —    [90m│[39m —    [90m│[39m ⚠ P0 [90m│[39m
+[90m├──────────────────────────[39m[90m┼───────[39m[90m┼────────────────[39m[90m┼──────[39m[90m┼──────[39m[90m┼──────┤[39m
+[90m│[39m convergenceSelfHealing   [90m│[39m 0.0   [90m│[39m —              [90m│[39m —    [90m│[39m —    [90m│[39m ⚠ P0 [90m│[39m
+[90m├──────────────────────────[39m[90m┼───────[39m[90m┼────────────────[39m[90m┼──────[39m[90m┼──────[39m[90m┼──────┤[39m
+[90m│[39m tokenEconomy             [90m│[39m 0.0   [90m│[39m —              [90m│[39m —    [90m│[39m —    [90m│[39m ⚠ P0 [90m│[39m
+[90m├──────────────────────────[39m[90m┼───────[39m[90m┼────────────────[39m[90m┼──────[39m[90m┼──────[39m[90m┼──────┤[39m
+[90m│[39m ecosystemMcp             [90m│[39m 0.0   [90m│[39m —              [90m│[39m —    [90m│[39m —    [90m│[39m ⚠ P0 [90m│[39m
+[90m├──────────────────────────[39m[90m┼───────[39m[90m┼────────────────[39m[90m┼──────[39m[90m┼──────[39m[90m┼──────┤[39m
+[90m│[39m enterpriseReadiness      [90m│[39m 0.0   [90m│[39m —              [90m│[39m —    [90m│[39m —    [90m│[39m ⚠ P0 [90m│[39m
+[90m├──────────────────────────[39m[90m┼───────[39m[90m┼────────────────[39m[90m┼──────[39m[90m┼──────[39m[90m┼──────┤[39m
+[90m│[39m communityAdoption        [90m│[39m 0.0   [90m│[39m —              [90m│[39m —    [90m│[39m —    [90m│[39m ⚠ P0 [90m│[39m
+[90m└──────────────────────────[39m[90m┴───────[39m[90m┴────────────────[39m[90m┴──────[39m[90m┴──────[39m[90m┴──────┘[39m
+[INFO] 
+[INFO] ## Competitor Benchmarking Report
+Source: undefined
+
+### Leaderboard (average across all dimensions)
+
+  1. DanteForge: 0.7/10
+
+### Gap Analysis
+
+  No competitors found. Run `/oss` or set `state.competitors` to add them.
+[INFO] 
+[INFO] MASTERPLAN: 5 action items generated
+[INFO]   P0 (critical): 0  |  P1 (major): 5  |  P2 (minor): 0
+[INFO]   Estimated cycles to target: ~4
+[INFO]   Saved to: .danteforge/MASTERPLAN.md
+[OK] 
+[OK] ✓ All dimensions at or above target 9.0/10 — work is complete!
+  ✔ passesThreshold=true when displayScore >= minScore (16.7819ms)
+[INFO] [assess] Running self-assessment (harsh=true, mode=feature-universe, target=9/10)...
+[INFO] 
+╔══════════════════════════════════════════════════════╗
+║     DanteForge Self-Assessment Report                 ║
+║     Harsh scoring: stubs, fake-completion penalized  ║
+╚══════════════════════════════════════════════════════╝
+[INFO] 
+[INFO] COMPLETION TARGET: Mode: Feature Universe
+Target: 9/10 average score
+Coverage: 90% of feature universe must be implemented
+Description: Feature universe: 9/10 avg on 90% of competitor features
+[INFO] 
+[INFO] OVERALL SCORE: 7.2 / 10  (target: 9.0, gap: 1.8)  ✗ BELOW TARGET
+[INFO] Verdict: ACCEPTABLE  |  Fake-completion risk: LOW
+[INFO] 
+[INFO] DIMENSION BREAKDOWN:
+[INFO] [90m┌──────────────────────────[39m[90m┬───────[39m[90m┬────────────────[39m[90m┬──────[39m[90m┬──────[39m[90m┬──────┐[39m
+[90m│[39m[36m Dimension                [39m[90m│[39m[36m Score [39m[90m│[39m[36m Best Peer      [39m[90m│[39m[36m Peer [39m[90m│[39m[36m Gap  [39m[90m│[39m[36m Flag [39m[90m│[39m
+[90m├──────────────────────────[39m[90m┼───────[39m[90m┼────────────────[39m[90m┼──────[39m[90m┼──────[39m[90m┼──────┤[39m
+[90m│[39m functionality            [90m│[39m 7.2   [90m│[39m Devin          [90m│[39m 8.5  [90m│[39m +1.3 [90m│[39m △ P1 [90m│[39m
+[90m├──────────────────────────[39m[90m┼───────[39m[90m┼────────────────[39m[90m┼──────[39m[90m┼──────[39m[90m┼──────┤[39m
+[90m│[39m testing                  [90m│[39m 7.2   [90m│[39m Devin          [90m│[39m 8.5  [90m│[39m +1.3 [90m│[39m △ P1 [90m│[39m
+[90m├──────────────────────────[39m[90m┼───────[39m[90m┼────────────────[39m[90m┼──────[39m[90m┼──────[39m[90m┼──────┤[39m
+[90m│[39m errorHandling            [90m│[39m 7.2   [90m│[39m Devin          [90m│[39m 8.5  [90m│[39m +1.3 [90m│[39m △ P1 [90m│[39m
+[90m├──────────────────────────[39m[90m┼───────[39m[90m┼────────────────[39m[90m┼──────[39m[90m┼──────[39m[90m┼──────┤[39m
+[90m│[39m security                 [90m│[39m 7.2   [90m│[39m Devin          [90m│[39m 8.5  [90m│[39m +1.3 [90m│[39m △ P1 [90m│[39m
+[90m├──────────────────────────[39m[90m┼───────[39m[90m┼────────────────[39m[90m┼──────[39m[90m┼──────[39m[90m┼──────┤[39m
+[90m│[39m uxPolish                 [90m│[39m 7.2   [90m│[39m Devin          [90m│[39m 8.5  [90m│[39m +1.3 [90m│[39m △ P1 [90m│[39m
+[90m├──────────────────────────[39m[90m┼───────[39m[90m┼────────────────[39m[90m┼──────[39m[90m┼──────[39m[90m┼──────┤[39m
+[90m│[39m documentation            [90m│[39m 7.2   [90m│[39m Devin          [90m│[39m 8.5  [90m│[39m +1.3 [90m│[39m △ P1 [90m│[39m
+[90m├──────────────────────────[39m[90m┼───────[39m[90m┼────────────────[39m[90m┼──────[39m[90m┼──────[39m[90m┼──────┤[39m
+[90m│[39m performance              [90m│[39m 7.2   [90m│[39m Devin          [90m│[39m 8.5  [90m│[39m +1.3 [90m│[39m △ P1 [90m│[39m
+[90m├──────────────────────────[39m[90m┼───────[39m[90m┼────────────────[39m[90m┼──────[39m[90m┼──────[39m[90m┼──────┤[39m
+[90m│[39m maintainability          [90m│[39m 7.2   [90m│[39m Devin          [90m│[39m 8.5  [90m│[39m +1.3 [90m│[39m △ P1 [90m│[39m
+[90m├──────────────────────────[39m[90m┼───────[39m[90m┼────────────────[39m[90m┼──────[39m[90m┼──────[39m[90m┼──────┤[39m
+[90m│[39m developerExperience      [90m│[39m 7.2   [90m│[39m Devin          [90m│[39m 8.5  [90m│[39m +1.3 [90m│[39m △ P1 [90m│[39m
+[90m├──────────────────────────[39m[90m┼───────[39m[90m┼────────────────[39m[90m┼──────[39m[90m┼──────[39m[90m┼──────┤[39m
+[90m│[39m autonomy                 [90m│[39m 7.2   [90m│[39m Devin          [90m│[39m 8.5  [90m│[39m +1.3 [90m│[39m △ P1 [90m│[39m
+[90m├──────────────────────────[39m[90m┼───────[39m[90m┼────────────────[39m[90m┼──────[39m[90m┼──────[39m[90m┼──────┤[39m
+[90m│[39m planningQuality          [90m│[39m 7.2   [90m│[39m Devin          [90m│[39m 8.5  [90m│[39m +1.3 [90m│[39m △ P1 [90m│[39m
+[90m├──────────────────────────[39m[90m┼───────[39m[90m┼────────────────[39m[90m┼──────[39m[90m┼──────[39m[90m┼──────┤[39m
+[90m│[39m selfImprovement          [90m│[39m 7.2   [90m│[39m Devin          [90m│[39m 8.5  [90m│[39m +1.3 [90m│[39m △ P1 [90m│[39m
+[90m├──────────────────────────[39m[90m┼───────[39m[90m┼────────────────[39m[90m┼──────[39m[90m┼──────[39m[90m┼──────┤[39m
+[90m│[39m specDrivenPipeline       [90m│[39m 0.0   [90m│[39m —              [90m│[39m —    [90m│[39m —    [90m│[39m ⚠ P0 [90m│[39m
+[90m├──────────────────────────[39m[90m┼───────[39m[90m┼────────────────[39m[90m┼──────[39m[90m┼──────[39m[90m┼──────┤[39m
+[90m│[39m convergenceSelfHealing   [90m│[39m 0.0   [90m│[39m —              [90m│[39m —    [90m│[39m —    [90m│[39m ⚠ P0 [90m│[39m
+[90m├──────────────────────────[39m[90m┼───────[39m[90m┼────────────────[39m[90m┼──────[39m[90m┼──────[39m[90m┼──────┤[39m
+[90m│[39m tokenEconomy             [90m│[39m 0.0   [90m│[39m —              [90m│[39m —    [90m│[39m —    [90m│[39m ⚠ P0 [90m│[39m
+[90m├──────────────────────────[39m[90m┼───────[39m[90m┼────────────────[39m[90m┼──────[39m[90m┼──────[39m[90m┼──────┤[39m
+[90m│[39m ecosystemMcp             [90m│[39m 0.0   [90m│[39m —              [90m│[39m —    [90m│[39m —    [90m│[39m ⚠ P0 [90m│[39m
+[90m├──────────────────────────[39m[90m┼───────[39m[90m┼────────────────[39m[90m┼──────[39m[90m┼──────[39m[90m┼──────┤[39m
+[90m│[39m enterpriseReadiness      [90m│[39m 0.0   [90m│[39m —              [90m│[39m —    [90m│[39m —    [90m│[39m ⚠ P0 [90m│[39m
+[90m├──────────────────────────[39m[90m┼───────[39m[90m┼────────────────[39m[90m┼──────[39m[90m┼──────[39m[90m┼──────┤[39m
+[90m│[39m communityAdoption        [90m│[39m 0.0   [90m│[39m —              [90m│[39m —    [90m│[39m —    [90m│[39m ⚠ P0 [90m│[39m
+[90m└──────────────────────────[39m[90m┴───────[39m[90m┴────────────────[39m[90m┴──────[39m[90m┴──────[39m[90m┴──────┘[39m
+[INFO] 
+[INFO] ## Competitor Benchmarking Report
+Source: undefined
+
+### Leaderboard (average across all dimensions)
+
+  1. DanteForge: 0.7/10
+
+### Gap Analysis
+
+  No competitors found. Run `/oss` or set `state.competitors` to add them.
+[INFO] 
+[INFO] MASTERPLAN: 5 action items generated
+[INFO]   P0 (critical): 0  |  P1 (major): 5  |  P2 (minor): 0
+[INFO]   Estimated cycles to target: ~4
+[INFO]   Saved to: .danteforge/MASTERPLAN.md
+[INFO] 
+[INFO] Run `danteforge self-improve` to execute the masterplan autonomously.
+[INFO] The loop will continue until all dimensions score 9.0/10.
+  ✔ passesThreshold=false when displayScore < minScore (157.3848ms)
+[INFO] [assess] Running self-assessment (harsh=true, mode=feature-universe, target=9/10)...
+[INFO] 
+╔══════════════════════════════════════════════════════╗
+║     DanteForge Self-Assessment Report                 ║
+║     Harsh scoring: stubs, fake-completion penalized  ║
+╚══════════════════════════════════════════════════════╝
+[INFO] 
+[INFO] COMPLETION TARGET: Mode: Feature Universe
+Target: 9/10 average score
+Coverage: 90% of feature universe must be implemented
+Description: Feature universe: 9/10 avg on 90% of competitor features
+[INFO] 
+[INFO] OVERALL SCORE: 9.0 / 10  (target: 9.0, gap: 0.0)  ✓ PASS
+[INFO] Verdict: EXCELLENT  |  Fake-completion risk: LOW
+[INFO] 
+[INFO] DIMENSION BREAKDOWN:
+[INFO] [90m┌──────────────────────────[39m[90m┬───────[39m[90m┬────────────────[39m[90m┬──────[39m[90m┬──────[39m[90m┬──────┐[39m
+[90m│[39m[36m Dimension                [39m[90m│[39m[36m Score [39m[90m│[39m[36m Best Peer      [39m[90m│[39m[36m Peer [39m[90m│[39m[36m Gap  [39m[90m│[39m[36m Flag [39m[90m│[39m
+[90m├──────────────────────────[39m[90m┼───────[39m[90m┼────────────────[39m[90m┼──────[39m[90m┼──────[39m[90m┼──────┤[39m
+[90m│[39m functionality            [90m│[39m 9.0   [90m│[39m Devin          [90m│[39m 8.5  [90m│[39m +1.3 [90m│[39m ✓    [90m│[39m
+[90m├──────────────────────────[39m[90m┼───────[39m[90m┼────────────────[39m[90m┼──────[39m[90m┼──────[39m[90m┼──────┤[39m
+[90m│[39m testing                  [90m│[39m 9.0   [90m│[39m Devin          [90m│[39m 8.5  [90m│[39m +1.3 [90m│[39m ✓    [90m│[39m
+[90m├──────────────────────────[39m[90m┼───────[39m[90m┼────────────────[39m[90m┼──────[39m[90m┼──────[39m[90m┼──────┤[39m
+[90m│[39m errorHandling            [90m│[39m 9.0   [90m│[39m Devin          [90m│[39m 8.5  [90m│[39m +1.3 [90m│[39m ✓    [90m│[39m
+[90m├──────────────────────────[39m[90m┼───────[39m[90m┼────────────────[39m[90m┼──────[39m[90m┼──────[39m[90m┼──────┤[39m
+[90m│[39m security                 [90m│[39m 9.0   [90m│[39m Devin          [90m│[39m 8.5  [90m│[39m +1.3 [90m│[39m ✓    [90m│[39m
+[90m├──────────────────────────[39m[90m┼───────[39m[90m┼────────────────[39m[90m┼──────[39m[90m┼──────[39m[90m┼──────┤[39m
+[90m│[39m uxPolish                 [90m│[39m 9.0   [90m│[39m Devin          [90m│[39m 8.5  [90m│[39m +1.3 [90m│[39m ✓    [90m│[39m
+[90m├──────────────────────────[39m[90m┼───────[39m[90m┼────────────────[39m[90m┼──────[39m[90m┼──────[39m[90m┼──────┤[39m
+[90m│[39m documentation            [90m│[39m 9.0   [90m│[39m Devin          [90m│[39m 8.5  [90m│[39m +1.3 [90m│[39m ✓    [90m│[39m
+[90m├──────────────────────────[39m[90m┼───────[39m[90m┼────────────────[39m[90m┼──────[39m[90m┼──────[39m[90m┼──────┤[39m
+[90m│[39m performance              [90m│[39m 9.0   [90m│[39m Devin          [90m│[39m 8.5  [90m│[39m +1.3 [90m│[39m ✓    [90m│[39m
+[90m├──────────────────────────[39m[90m┼───────[39m[90m┼────────────────[39m[90m┼──────[39m[90m┼──────[39m[90m┼──────┤[39m
+[90m│[39m maintainability          [90m│[39m 9.0   [90m│[39m Devin          [90m│[39m 8.5  [90m│[39m +1.3 [90m│[39m ✓    [90m│[39m
+[90m├──────────────────────────[39m[90m┼───────[39m[90m┼────────────────[39m[90m┼──────[39m[90m┼──────[39m[90m┼──────┤[39m
+[90m│[39m developerExperience      [90m│[39m 9.0   [90m│[39m Devin          [90m│[39m 8.5  [90m│[39m +1.3 [90m│[39m ✓    [90m│[39m
+[90m├──────────────────────────[39m[90m┼───────[39m[90m┼────────────────[39m[90m┼──────[39m[90m┼──────[39m[90m┼──────┤[39m
+[90m│[39m autonomy                 [90m│[39m 9.0   [90m│[39m Devin          [90m│[39m 8.5  [90m│[39m +1.3 [90m│[39m ✓    [90m│[39m
+[90m├──────────────────────────[39m[90m┼───────[39m[90m┼────────────────[39m[90m┼──────[39m[90m┼──────[39m[90m┼──────┤[39m
+[90m│[39m planningQuality          [90m│[39m 9.0   [90m│[39m Devin          [90m│[39m 8.5  [90m│[39m +1.3 [90m│[39m ✓    [90m│[39m
+[90m├──────────────────────────[39m[90m┼───────[39m[90m┼────────────────[39m[90m┼──────[39m[90m┼──────[39m[90m┼──────┤[39m
+[90m│[39m selfImprovement          [90m│[39m 9.0   [90m│[39m Devin          [90m│[39m 8.5  [90m│[39m +1.3 [90m│[39m ✓    [90m│[39m
+[90m├──────────────────────────[39m[90m┼───────[39m[90m┼────────────────[39m[90m┼──────[39m[90m┼──────[39m[90m┼──────┤[39m
+[90m│[39m specDrivenPipeline       [90m│[39m 0.0   [90m│[39m —              [90m│[39m —    [90m│[39m —    [90m│[39m ⚠ P0 [90m│[39m
+[90m├──────────────────────────[39m[90m┼───────[39m[90m┼────────────────[39m[90m┼──────[39m[90m┼──────[39m[90m┼──────┤[39m
+[90m│[39m convergenceSelfHealing   [90m│[39m 0.0   [90m│[39m —              [90m│[39m —    [90m│[39m —    [90m│[39m ⚠ P0 [90m│[39m
+[90m├──────────────────────────[39m[90m┼───────[39m[90m┼────────────────[39m[90m┼──────[39m[90m┼──────[39m[90m┼──────┤[39m
+[90m│[39m tokenEconomy             [90m│[39m 0.0   [90m│[39m —              [90m│[39m —    [90m│[39m —    [90m│[39m ⚠ P0 [90m│[39m
+[90m├──────────────────────────[39m[90m┼───────[39m[90m┼────────────────[39m[90m┼──────[39m[90m┼──────[39m[90m┼──────┤[39m
+[90m│[39m ecosystemMcp             [90m│[39m 0.0   [90m│[39m —              [90m│[39m —    [90m│[39m —    [90m│[39m ⚠ P0 [90m│[39m
+[90m├──────────────────────────[39m[90m┼───────[39m[90m┼────────────────[39m[90m┼──────[39m[90m┼──────[39m[90m┼──────┤[39m
+[90m│[39m enterpriseReadiness      [90m│[39m 0.0   [90m│[39m —              [90m│[39m —    [90m│[39m —    [90m│[39m ⚠ P0 [90m│[39m
+[90m├──────────────────────────[39m[90m┼───────[39m[90m┼────────────────[39m[90m┼──────[39m[90m┼──────[39m[90m┼──────┤[39m
+[90m│[39m communityAdoption        [90m│[39m 0.0   [90m│[39m —              [90m│[39m —    [90m│[39m —    [90m│[39m ⚠ P0 [90m│[39m
+[90m└──────────────────────────[39m[90m┴───────[39m[90m┴────────────────[39m[90m┴──────[39m[90m┴──────[39m[90m┴──────┘[39m
+[INFO] 
+[INFO] ## Competitor Benchmarking Report
+Source: undefined
+
+### Leaderboard (average across all dimensions)
+
+  1. DanteForge: 0.7/10
+
+### Gap Analysis
+
+  No competitors found. Run `/oss` or set `state.competitors` to add them.
+[INFO] 
+[INFO] MASTERPLAN: 5 action items generated
+[INFO]   P0 (critical): 0  |  P1 (major): 5  |  P2 (minor): 0
+[INFO]   Estimated cycles to target: ~4
+[INFO]   Saved to: .danteforge/MASTERPLAN.md
+[OK] 
+[OK] ✓ All dimensions at or above target 9.0/10 — work is complete!
+  ✔ passesThreshold=true at exact minScore (322.7774ms)
+[INFO] [assess] Running self-assessment (harsh=true, mode=feature-universe, target=7/10)...
+[INFO] 
+╔══════════════════════════════════════════════════════╗
+║     DanteForge Self-Assessment Report                 ║
+║     Harsh scoring: stubs, fake-completion penalized  ║
+╚══════════════════════════════════════════════════════╝
+[INFO] 
+[INFO] COMPLETION TARGET: Mode: Feature Universe
+Target: 9/10 average score
+Coverage: 90% of feature universe must be implemented
+Description: Feature universe: 9/10 avg on 90% of competitor features
+[INFO] 
+[INFO] OVERALL SCORE: 7.5 / 10  (target: 7.0, gap: 0.0)  ✓ PASS
+[INFO] Verdict: ACCEPTABLE  |  Fake-completion risk: LOW
+[INFO] 
+[INFO] DIMENSION BREAKDOWN:
+[INFO] [90m┌──────────────────────────[39m[90m┬───────[39m[90m┬────────────────[39m[90m┬──────[39m[90m┬──────[39m[90m┬──────┐[39m
+[90m│[39m[36m Dimension                [39m[90m│[39m[36m Score [39m[90m│[39m[36m Best Peer      [39m[90m│[39m[36m Peer [39m[90m│[39m[36m Gap  [39m[90m│[39m[36m Flag [39m[90m│[39m
+[90m├──────────────────────────[39m[90m┼───────[39m[90m┼────────────────[39m[90m┼──────[39m[90m┼──────[39m[90m┼──────┤[39m
+[90m│[39m functionality            [90m│[39m 7.5   [90m│[39m Devin          [90m│[39m 8.5  [90m│[39m +1.3 [90m│[39m △ P1 [90m│[39m
+[90m├──────────────────────────[39m[90m┼───────[39m[90m┼────────────────[39m[90m┼──────[39m[90m┼──────[39m[90m┼──────┤[39m
+[90m│[39m testing                  [90m│[39m 7.5   [90m│[39m Devin          [90m│[39m 8.5  [90m│[39m +1.3 [90m│[39m △ P1 [90m│[39m
+[90m├──────────────────────────[39m[90m┼───────[39m[90m┼────────────────[39m[90m┼──────[39m[90m┼──────[39m[90m┼──────┤[39m
+[90m│[39m errorHandling            [90m│[39m 7.5   [90m│[39m Devin          [90m│[39m 8.5  [90m│[39m +1.3 [90m│[39m △ P1 [90m│[39m
+[90m├──────────────────────────[39m[90m┼───────[39m[90m┼────────────────[39m[90m┼──────[39m[90m┼──────[39m[90m┼──────┤[39m
+[90m│[39m security                 [90m│[39m 7.5   [90m│[39m Devin          [90m│[39m 8.5  [90m│[39m +1.3 [90m│[39m △ P1 [90m│[39m
+[90m├──────────────────────────[39m[90m┼───────[39m[90m┼────────────────[39m[90m┼──────[39m[90m┼──────[39m[90m┼──────┤[39m
+[90m│[39m uxPolish                 [90m│[39m 7.5   [90m│[39m Devin          [90m│[39m 8.5  [90m│[39m +1.3 [90m│[39m △ P1 [90m│[39m
+[90m├──────────────────────────[39m[90m┼───────[39m[90m┼────────────────[39m[90m┼──────[39m[90m┼──────[39m[90m┼──────┤[39m
+[90m│[39m documentation            [90m│[39m 7.5   [90m│[39m Devin          [90m│[39m 8.5  [90m│[39m +1.3 [90m│[39m △ P1 [90m│[39m
+[90m├──────────────────────────[39m[90m┼───────[39m[90m┼────────────────[39m[90m┼──────[39m[90m┼──────[39m[90m┼──────┤[39m
+[90m│[39m performance              [90m│[39m 7.5   [90m│[39m Devin          [90m│[39m 8.5  [90m│[39m +1.3 [90m│[39m △ P1 [90m│[39m
+[90m├──────────────────────────[39m[90m┼───────[39m[90m┼────────────────[39m[90m┼──────[39m[90m┼──────[39m[90m┼──────┤[39m
+[90m│[39m maintainability          [90m│[39m 7.5   [90m│[39m Devin          [90m│[39m 8.5  [90m│[39m +1.3 [90m│[39m △ P1 [90m│[39m
+[90m├──────────────────────────[39m[90m┼───────[39m[90m┼────────────────[39m[90m┼──────[39m[90m┼──────[39m[90m┼──────┤[39m
+[90m│[39m developerExperience      [90m│[39m 7.5   [90m│[39m Devin          [90m│[39m 8.5  [90m│[39m +1.3 [90m│[39m △ P1 [90m│[39m
+[90m├──────────────────────────[39m[90m┼───────[39m[90m┼────────────────[39m[90m┼──────[39m[90m┼──────[39m[90m┼──────┤[39m
+[90m│[39m autonomy                 [90m│[39m 7.5   [90m│[39m Devin          [90m│[39m 8.5  [90m│[39m +1.3 [90m│[39m △ P1 [90m│[39m
+[90m├──────────────────────────[39m[90m┼───────[39m[90m┼────────────────[39m[90m┼──────[39m[90m┼──────[39m[90m┼──────┤[39m
+[90m│[39m planningQuality          [90m│[39m 7.5   [90m│[39m Devin          [90m│[39m 8.5  [90m│[39m +1.3 [90m│[39m △ P1 [90m│[39m
+[90m├──────────────────────────[39m[90m┼───────[39m[90m┼────────────────[39m[90m┼──────[39m[90m┼──────[39m[90m┼──────┤[39m
+[90m│[39m selfImprovement          [90m│[39m 7.5   [90m│[39m Devin          [90m│[39m 8.5  [90m│[39m +1.3 [90m│[39m △ P1 [90m│[39m
+[90m├──────────────────────────[39m[90m┼───────[39m[90m┼────────────────[39m[90m┼──────[39m[90m┼──────[39m[90m┼──────┤[39m
+[90m│[39m specDrivenPipeline       [90m│[39m 0.0   [90m│[39m —              [90m│[39m —    [90m│[39m —    [90m│[39m ⚠ P0 [90m│[39m
+[90m├──────────────────────────[39m[90m┼───────[39m[90m┼────────────────[39m[90m┼──────[39m[90m┼──────[39m[90m┼──────┤[39m
+[90m│[39m convergenceSelfHealing   [90m│[39m 0.0   [90m│[39m —              [90m│[39m —    [90m│[39m —    [90m│[39m ⚠ P0 [90m│[39m
+[90m├──────────────────────────[39m[90m┼───────[39m[90m┼────────────────[39m[90m┼──────[39m[90m┼──────[39m[90m┼──────┤[39m
+[90m│[39m tokenEconomy             [90m│[39m 0.0   [90m│[39m —              [90m│[39m —    [90m│[39m —    [90m│[39m ⚠ P0 [90m│[39m
+[90m├──────────────────────────[39m[90m┼───────[39m[90m┼────────────────[39m[90m┼──────[39m[90m┼──────[39m[90m┼──────┤[39m
+[90m│[39m ecosystemMcp             [90m│[39m 0.0   [90m│[39m —              [90m│[39m —    [90m│[39m —    [90m│[39m ⚠ P0 [90m│[39m
+[90m├──────────────────────────[39m[90m┼───────[39m[90m┼────────────────[39m[90m┼──────[39m[90m┼──────[39m[90m┼──────┤[39m
+[90m│[39m enterpriseReadiness      [90m│[39m 0.0   [90m│[39m —              [90m│[39m —    [90m│[39m —    [90m│[39m ⚠ P0 [90m│[39m
+[90m├──────────────────────────[39m[90m┼───────[39m[90m┼────────────────[39m[90m┼──────[39m[90m┼──────[39m[90m┼──────┤[39m
+[90m│[39m communityAdoption        [90m│[39m 0.0   [90m│[39m —              [90m│[39m —    [90m│[39m —    [90m│[39m ⚠ P0 [90m│[39m
+[90m└──────────────────────────[39m[90m┴───────[39m[90m┴────────────────[39m[90m┴──────[39m[90m┴──────[39m[90m┴──────┘[39m
+[INFO] 
+[INFO] ## Competitor Benchmarking Report
+Source: undefined
+
+### Leaderboard (average across all dimensions)
+
+  1. DanteForge: 0.7/10
+
+### Gap Analysis
+
+  No competitors found. Run `/oss` or set `state.competitors` to add them.
+[INFO] 
+[INFO] MASTERPLAN: 5 action items generated
+[INFO]   P0 (critical): 0  |  P1 (major): 5  |  P2 (minor): 0
+[INFO]   Estimated cycles to target: ~4
+[INFO]   Saved to: .danteforge/MASTERPLAN.md
+[OK] 
+[OK] ✓ All dimensions at or above target 7.0/10 — work is complete!
+  ✔ uses custom minScore (930.4341ms)
+[INFO] [assess] Running self-assessment (harsh=true, mode=feature-universe, target=9/10)...
+[INFO] 
+╔══════════════════════════════════════════════════════╗
+║     DanteForge Self-Assessment Report                 ║
+║     Harsh scoring: stubs, fake-completion penalized  ║
+╚══════════════════════════════════════════════════════╝
+[INFO] 
+[INFO] COMPLETION TARGET: Mode: Feature Universe
+Target: 9/10 average score
+Coverage: 90% of feature universe must be implemented
+Description: Feature universe: 9/10 avg on 90% of competitor features
+[INFO] 
+[INFO] OVERALL SCORE: 7.2 / 10  (target: 9.0, gap: 1.8)  ✗ BELOW TARGET
+[INFO] Verdict: ACCEPTABLE  |  Fake-completion risk: LOW
+[INFO] 
+[INFO] DIMENSION BREAKDOWN:
+[INFO] [90m┌──────────────────────────[39m[90m┬───────[39m[90m┬────────────────[39m[90m┬──────[39m[90m┬──────[39m[90m┬──────┐[39m
+[90m│[39m[36m Dimension                [39m[90m│[39m[36m Score [39m[90m│[39m[36m Best Peer      [39m[90m│[39m[36m Peer [39m[90m│[39m[36m Gap  [39m[90m│[39m[36m Flag [39m[90m│[39m
+[90m├──────────────────────────[39m[90m┼───────[39m[90m┼────────────────[39m[90m┼──────[39m[90m┼──────[39m[90m┼──────┤[39m
+[90m│[39m functionality            [90m│[39m 7.2   [90m│[39m —              [90m│[39m —    [90m│[39m —    [90m│[39m △ P1 [90m│[39m
+[90m├──────────────────────────[39m[90m┼───────[39m[90m┼────────────────[39m[90m┼──────[39m[90m┼──────[39m[90m┼──────┤[39m
+[90m│[39m testing                  [90m│[39m 7.2   [90m│[39m —              [90m│[39m —    [90m│[39m —    [90m│[39m △ P1 [90m│[39m
+[90m├──────────────────────────[39m[90m┼───────[39m[90m┼────────────────[39m[90m┼──────[39m[90m┼──────[39m[90m┼──────┤[39m
+[90m│[39m errorHandling            [90m│[39m 7.2   [90m│[39m —              [90m│[39m —    [90m│[39m —    [90m│[39m △ P1 [90m│[39m
+[90m├──────────────────────────[39m[90m┼───────[39m[90m┼────────────────[39m[90m┼──────[39m[90m┼──────[39m[90m┼──────┤[39m
+[90m│[39m security                 [90m│[39m 7.2   [90m│[39m —              [90m│[39m —    [90m│[39m —    [90m│[39m △ P1 [90m│[39m
+[90m├──────────────────────────[39m[90m┼───────[39m[90m┼────────────────[39m[90m┼──────[39m[90m┼──────[39m[90m┼──────┤[39m
+[90m│[39m uxPolish                 [90m│[39m 7.2   [90m│[39m —              [90m│[39m —    [90m│[39m —    [90m│[39m △ P1 [90m│[39m
+[90m├──────────────────────────[39m[90m┼───────[39m[90m┼────────────────[39m[90m┼──────[39m[90m┼──────[39m[90m┼──────┤[39m
+[90m│[39m documentation            [90m│[39m 7.2   [90m│[39m —              [90m│[39m —    [90m│[39m —    [90m│[39m △ P1 [90m│[39m
+[90m├──────────────────────────[39m[90m┼───────[39m[90m┼────────────────[39m[90m┼──────[39m[90m┼──────[39m[90m┼──────┤[39m
+[90m│[39m performance              [90m│[39m 7.2   [90m│[39m —              [90m│[39m —    [90m│[39m —    [90m│[39m △ P1 [90m│[39m
+[90m├──────────────────────────[39m[90m┼───────[39m[90m┼────────────────[39m[90m┼──────[39m[90m┼──────[39m[90m┼──────┤[39m
+[90m│[39m maintainability          [90m│[39m 7.2   [90m│[39m —              [90m│[39m —    [90m│[39m —    [90m│[39m △ P1 [90m│[39m
+[90m├──────────────────────────[39m[90m┼───────[39m[90m┼────────────────[39m[90m┼──────[39m[90m┼──────[39m[90m┼──────┤[39m
+[90m│[39m developerExperience      [90m│[39m 7.2   [90m│[39m —              [90m│[39m —    [90m│[39m —    [90m│[39m △ P1 [90m│[39m
+[90m├──────────────────────────[39m[90m┼───────[39m[90m┼────────────────[39m[90m┼──────[39m[90m┼──────[39m[90m┼──────┤[39m
+[90m│[39m autonomy                 [90m│[39m 7.2   [90m│[39m —              [90m│[39m —    [90m│[39m —    [90m│[39m △ P1 [90m│[39m
+[90m├──────────────────────────[39m[90m┼───────[39m[90m┼────────────────[39m[90m┼──────[39m[90m┼──────[39m[90m┼──────┤[39m
+[90m│[39m planningQuality          [90m│[39m 7.2   [90m│[39m —              [90m│[39m —    [90m│[39m —    [90m│[39m △ P1 [90m│[39m
+[90m├──────────────────────────[39m[90m┼───────[39m[90m┼────────────────[39m[90m┼──────[39m[90m┼──────[39m[90m┼──────┤[39m
+[90m│[39m selfImprovement          [90m│[39m 7.2   [90m│[39m —              [90m│[39m —    [90m│[39m —    [90m│[39m △ P1 [90m│[39m
+[90m├──────────────────────────[39m[90m┼───────[39m[90m┼────────────────[39m[90m┼──────[39m[90m┼──────[39m[90m┼──────┤[39m
+[90m│[39m specDrivenPipeline       [90m│[39m 0.0   [90m│[39m —              [90m│[39m —    [90m│[39m —    [90m│[39m ⚠ P0 [90m│[39m
+[90m├──────────────────────────[39m[90m┼───────[39m[90m┼────────────────[39m[90m┼──────[39m[90m┼──────[39m[90m┼──────┤[39m
+[90m│[39m convergenceSelfHealing   [90m│[39m 0.0   [90m│[39m —              [90m│[39m —    [90m│[39m —    [90m│[39m ⚠ P0 [90m│[39m
+[90m├──────────────────────────[39m[90m┼───────[39m[90m┼────────────────[39m[90m┼──────[39m[90m┼──────[39m[90m┼──────┤[39m
+[90m│[39m tokenEconomy             [90m│[39m 0.0   [90m│[39m —              [90m│[39m —    [90m│[39m —    [90m│[39m ⚠ P0 [90m│[39m
+[90m├──────────────────────────[39m[90m┼───────[39m[90m┼────────────────[39m[90m┼──────[39m[90m┼──────[39m[90m┼──────┤[39m
+[90m│[39m ecosystemMcp             [90m│[39m 0.0   [90m│[39m —              [90m│[39m —    [90m│[39m —    [90m│[39m ⚠ P0 [90m│[39m
+[90m├──────────────────────────[39m[90m┼───────[39m[90m┼────────────────[39m[90m┼──────[39m[90m┼──────[39m[90m┼──────┤[39m
+[90m│[39m enterpriseReadiness      [90m│[39m 0.0   [90m│[39m —              [90m│[39m —    [90m│[39m —    [90m│[39m ⚠ P0 [90m│[39m
+[90m├──────────────────────────[39m[90m┼───────[39m[90m┼────────────────[39m[90m┼──────[39m[90m┼──────[39m[90m┼──────┤[39m
+[90m│[39m communityAdoption        [90m│[39m 0.0   [90m│[39m —              [90m│[39m —    [90m│[39m —    [90m│[39m ⚠ P0 [90m│[39m
+[90m└──────────────────────────[39m[90m┴───────[39m[90m┴────────────────[39m[90m┴──────[39m[90m┴──────[39m[90m┴──────┘[39m
+[INFO] 
+[INFO] MASTERPLAN: 5 action items generated
+[INFO]   P0 (critical): 0  |  P1 (major): 5  |  P2 (minor): 0
+[INFO]   Estimated cycles to target: ~4
+[INFO]   Saved to: .danteforge/MASTERPLAN.md
+[INFO] 
+[INFO] Run `danteforge self-improve` to execute the masterplan autonomously.
+[INFO] The loop will continue until all dimensions score 9.0/10.
+  ✔ skips competitor scan when competitors=false (56.1679ms)
+[INFO] [assess] Running self-assessment (harsh=true, mode=feature-universe, target=9/10)...
+[INFO] 
+╔══════════════════════════════════════════════════════╗
+║     DanteForge Self-Assessment Report                 ║
+║     Harsh scoring: stubs, fake-completion penalized  ║
+╚══════════════════════════════════════════════════════╝
+[INFO] 
+[INFO] COMPLETION TARGET: Mode: Feature Universe
+Target: 9/10 average score
+Coverage: 90% of feature universe must be implemented
+Description: Feature universe: 9/10 avg on 90% of competitor features
+[INFO] 
+[INFO] OVERALL SCORE: 7.2 / 10  (target: 9.0, gap: 1.8)  ✗ BELOW TARGET
+[INFO] Verdict: ACCEPTABLE  |  Fake-completion risk: LOW
+[INFO] 
+[INFO] DIMENSION BREAKDOWN:
+[INFO] [90m┌──────────────────────────[39m[90m┬───────[39m[90m┬────────────────[39m[90m┬──────[39m[90m┬──────[39m[90m┬──────┐[39m
+[90m│[39m[36m Dimension                [39m[90m│[39m[36m Score [39m[90m│[39m[36m Best Peer      [39m[90m│[39m[36m Peer [39m[90m│[39m[36m Gap  [39m[90m│[39m[36m Flag [39m[90m│[39m
+[90m├──────────────────────────[39m[90m┼───────[39m[90m┼────────────────[39m[90m┼──────[39m[90m┼──────[39m[90m┼──────┤[39m
+[90m│[39m functionality            [90m│[39m 7.2   [90m│[39m Devin          [90m│[39m 8.5  [90m│[39m +1.3 [90m│[39m △ P1 [90m│[39m
+[90m├──────────────────────────[39m[90m┼───────[39m[90m┼────────────────[39m[90m┼──────[39m[90m┼──────[39m[90m┼──────┤[39m
+[90m│[39m testing                  [90m│[39m 7.2   [90m│[39m Devin          [90m│[39m 8.5  [90m│[39m +1.3 [90m│[39m △ P1 [90m│[39m
+[90m├──────────────────────────[39m[90m┼───────[39m[90m┼────────────────[39m[90m┼──────[39m[90m┼──────[39m[90m┼──────┤[39m
+[90m│[39m errorHandling            [90m│[39m 7.2   [90m│[39m Devin          [90m│[39m 8.5  [90m│[39m +1.3 [90m│[39m △ P1 [90m│[39m
+[90m├──────────────────────────[39m[90m┼───────[39m[90m┼────────────────[39m[90m┼──────[39m[90m┼──────[39m[90m┼──────┤[39m
+[90m│[39m security                 [90m│[39m 7.2   [90m│[39m Devin          [90m│[39m 8.5  [90m│[39m +1.3 [90m│[39m △ P1 [90m│[39m
+[90m├──────────────────────────[39m[90m┼───────[39m[90m┼────────────────[39m[90m┼──────[39m[90m┼──────[39m[90m┼──────┤[39m
+[90m│[39m uxPolish                 [90m│[39m 7.2   [90m│[39m Devin          [90m│[39m 8.5  [90m│[39m +1.3 [90m│[39m △ P1 [90m│[39m
+[90m├──────────────────────────[39m[90m┼───────[39m[90m┼────────────────[39m[90m┼──────[39m[90m┼──────[39m[90m┼──────┤[39m
+[90m│[39m documentation            [90m│[39m 7.2   [90m│[39m Devin          [90m│[39m 8.5  [90m│[39m +1.3 [90m│[39m △ P1 [90m│[39m
+[90m├──────────────────────────[39m[90m┼───────[39m[90m┼────────────────[39m[90m┼──────[39m[90m┼──────[39m[90m┼──────┤[39m
+[90m│[39m performance              [90m│[39m 7.2   [90m│[39m Devin          [90m│[39m 8.5  [90m│[39m +1.3 [90m│[39m △ P1 [90m│[39m
+[90m├──────────────────────────[39m[90m┼───────[39m[90m┼────────────────[39m[90m┼──────[39m[90m┼──────[39m[90m┼──────┤[39m
+[90m│[39m maintainability          [90m│[39m 7.2   [90m│[39m Devin          [90m│[39m 8.5  [90m│[39m +1.3 [90m│[39m △ P1 [90m│[39m
+[90m├──────────────────────────[39m[90m┼───────[39m[90m┼────────────────[39m[90m┼──────[39m[90m┼──────[39m[90m┼──────┤[39m
+[90m│[39m developerExperience      [90m│[39m 7.2   [90m│[39m Devin          [90m│[39m 8.5  [90m│[39m +1.3 [90m│[39m △ P1 [90m│[39m
+[90m├──────────────────────────[39m[90m┼───────[39m[90m┼────────────────[39m[90m┼──────[39m[90m┼──────[39m[90m┼──────┤[39m
+[90m│[39m autonomy                 [90m│[39m 7.2   [90m│[39m Devin          [90m│[39m 8.5  [90m│[39m +1.3 [90m│[39m △ P1 [90m│[39m
+[90m├──────────────────────────[39m[90m┼───────[39m[90m┼────────────────[39m[90m┼──────[39m[90m┼──────[39m[90m┼──────┤[39m
+[90m│[39m planningQuality          [90m│[39m 7.2   [90m│[39m Devin          [90m│[39m 8.5  [90m│[39m +1.3 [90m│[39m △ P1 [90m│[39m
+[90m├──────────────────────────[39m[90m┼───────[39m[90m┼────────────────[39m[90m┼──────[39m[90m┼──────[39m[90m┼──────┤[39m
+[90m│[39m selfImprovement          [90m│[39m 7.2   [90m│[39m Devin          [90m│[39m 8.5  [90m│[39m +1.3 [90m│[39m △ P1 [90m│[39m
+[90m├──────────────────────────[39m[90m┼───────[39m[90m┼────────────────[39m[90m┼──────[39m[90m┼──────[39m[90m┼──────┤[39m
+[90m│[39m specDrivenPipeline       [90m│[39m 0.0   [90m│[39m —              [90m│[39m —    [90m│[39m —    [90m│[39m ⚠ P0 [90m│[39m
+[90m├──────────────────────────[39m[90m┼───────[39m[90m┼────────────────[39m[90m┼──────[39m[90m┼──────[39m[90m┼──────┤[39m
+[90m│[39m convergenceSelfHealing   [90m│[39m 0.0   [90m│[39m —              [90m│[39m —    [90m│[39m —    [90m│[39m ⚠ P0 [90m│[39m
+[90m├──────────────────────────[39m[90m┼───────[39m[90m┼────────────────[39m[90m┼──────[39m[90m┼──────[39m[90m┼──────┤[39m
+[90m│[39m tokenEconomy             [90m│[39m 0.0   [90m│[39m —              [90m│[39m —    [90m│[39m —    [90m│[39m ⚠ P0 [90m│[39m
+[90m├──────────────────────────[39m[90m┼───────[39m[90m┼────────────────[39m[90m┼──────[39m[90m┼──────[39m[90m┼──────┤[39m
+[90m│[39m ecosystemMcp             [90m│[39m 0.0   [90m│[39m —              [90m│[39m —    [90m│[39m —    [90m│[39m ⚠ P0 [90m│[39m
+[90m├──────────────────────────[39m[90m┼───────[39m[90m┼────────────────[39m[90m┼──────[39m[90m┼──────[39m[90m┼──────┤[39m
+[90m│[39m enterpriseReadiness      [90m│[39m 0.0   [90m│[39m —              [90m│[39m —    [90m│[39m —    [90m│[39m ⚠ P0 [90m│[39m
+[90m├──────────────────────────[39m[90m┼───────[39m[90m┼────────────────[39m[90m┼──────[39m[90m┼──────[39m[90m┼──────┤[39m
+[90m│[39m communityAdoption        [90m│[39m 0.0   [90m│[39m —              [90m│[39m —    [90m│[39m —    [90m│[39m ⚠ P0 [90m│[39m
+[90m└──────────────────────────[39m[90m┴───────[39m[90m┴────────────────[39m[90m┴──────[39m[90m┴──────[39m[90m┴──────┘[39m
+[INFO] 
+[INFO] ## Competitor Benchmarking Report
+Source: undefined
+
+### Leaderboard (average across all dimensions)
+
+  1. DanteForge: 0.7/10
+
+### Gap Analysis
+
+  No competitors found. Run `/oss` or set `state.competitors` to add them.
+[INFO] 
+[INFO] MASTERPLAN: 5 action items generated
+[INFO]   P0 (critical): 0  |  P1 (major): 5  |  P2 (minor): 0
+[INFO]   Estimated cycles to target: ~4
+[INFO]   Saved to: .danteforge/MASTERPLAN.md
+[INFO] 
+[INFO] Run `danteforge self-improve` to execute the masterplan autonomously.
+[INFO] The loop will continue until all dimensions score 9.0/10.
+  ✔ includes comparison when competitors=true (13.6955ms)
+[INFO] [assess] Running self-assessment (harsh=true, mode=feature-universe, target=9/10)...
+[WARN] [assess] Competitor scan failed — continuing without competitor data
+[INFO] 
+╔══════════════════════════════════════════════════════╗
+║     DanteForge Self-Assessment Report                 ║
+║     Harsh scoring: stubs, fake-completion penalized  ║
+╚══════════════════════════════════════════════════════╝
+[INFO] 
+[INFO] COMPLETION TARGET: Mode: Feature Universe
+Target: 9/10 average score
+Coverage: 90% of feature universe must be implemented
+Description: Feature universe: 9/10 avg on 90% of competitor features
+[INFO] 
+[INFO] OVERALL SCORE: 7.2 / 10  (target: 9.0, gap: 1.8)  ✗ BELOW TARGET
+[INFO] Verdict: ACCEPTABLE  |  Fake-completion risk: LOW
+[INFO] 
+[INFO] DIMENSION BREAKDOWN:
+[INFO] [90m┌──────────────────────────[39m[90m┬───────[39m[90m┬────────────────[39m[90m┬──────[39m[90m┬──────[39m[90m┬──────┐[39m
+[90m│[39m[36m Dimension                [39m[90m│[39m[36m Score [39m[90m│[39m[36m Best Peer      [39m[90m│[39m[36m Peer [39m[90m│[39m[36m Gap  [39m[90m│[39m[36m Flag [39m[90m│[39m
+[90m├──────────────────────────[39m[90m┼───────[39m[90m┼────────────────[39m[90m┼──────[39m[90m┼──────[39m[90m┼──────┤[39m
+[90m│[39m functionality            [90m│[39m 7.2   [90m│[39m —              [90m│[39m —    [90m│[39m —    [90m│[39m △ P1 [90m│[39m
+[90m├──────────────────────────[39m[90m┼───────[39m[90m┼────────────────[39m[90m┼──────[39m[90m┼──────[39m[90m┼──────┤[39m
+[90m│[39m testing                  [90m│[39m 7.2   [90m│[39m —              [90m│[39m —    [90m│[39m —    [90m│[39m △ P1 [90m│[39m
+[90m├──────────────────────────[39m[90m┼───────[39m[90m┼────────────────[39m[90m┼──────[39m[90m┼──────[39m[90m┼──────┤[39m
+[90m│[39m errorHandling            [90m│[39m 7.2   [90m│[39m —              [90m│[39m —    [90m│[39m —    [90m│[39m △ P1 [90m│[39m
+[90m├──────────────────────────[39m[90m┼───────[39m[90m┼────────────────[39m[90m┼──────[39m[90m┼──────[39m[90m┼──────┤[39m
+[90m│[39m security                 [90m│[39m 7.2   [90m│[39m —              [90m│[39m —    [90m│[39m —    [90m│[39m △ P1 [90m│[39m
+[90m├──────────────────────────[39m[90m┼───────[39m[90m┼────────────────[39m[90m┼──────[39m[90m┼──────[39m[90m┼──────┤[39m
+[90m│[39m uxPolish                 [90m│[39m 7.2   [90m│[39m —              [90m│[39m —    [90m│[39m —    [90m│[39m △ P1 [90m│[39m
+[90m├──────────────────────────[39m[90m┼───────[39m[90m┼────────────────[39m[90m┼──────[39m[90m┼──────[39m[90m┼──────┤[39m
+[90m│[39m documentation            [90m│[39m 7.2   [90m│[39m —              [90m│[39m —    [90m│[39m —    [90m│[39m △ P1 [90m│[39m
+[90m├──────────────────────────[39m[90m┼───────[39m[90m┼────────────────[39m[90m┼──────[39m[90m┼──────[39m[90m┼──────┤[39m
+[90m│[39m performance              [90m│[39m 7.2   [90m│[39m —              [90m│[39m —    [90m│[39m —    [90m│[39m △ P1 [90m│[39m
+[90m├──────────────────────────[39m[90m┼───────[39m[90m┼────────────────[39m[90m┼──────[39m[90m┼──────[39m[90m┼──────┤[39m
+[90m│[39m maintainability          [90m│[39m 7.2   [90m│[39m —              [90m│[39m —    [90m│[39m —    [90m│[39m △ P1 [90m│[39m
+[90m├──────────────────────────[39m[90m┼───────[39m[90m┼────────────────[39m[90m┼──────[39m[90m┼──────[39m[90m┼──────┤[39m
+[90m│[39m developerExperience      [90m│[39m 7.2   [90m│[39m —              [90m│[39m —    [90m│[39m —    [90m│[39m △ P1 [90m│[39m
+[90m├──────────────────────────[39m[90m┼───────[39m[90m┼────────────────[39m[90m┼──────[39m[90m┼──────[39m[90m┼──────┤[39m
+[90m│[39m autonomy                 [90m│[39m 7.2   [90m│[39m —              [90m│[39m —    [90m│[39m —    [90m│[39m △ P1 [90m│[39m
+[90m├──────────────────────────[39m[90m┼───────[39m[90m┼────────────────[39m[90m┼──────[39m[90m┼──────[39m[90m┼──────┤[39m
+[90m│[39m planningQuality          [90m│[39m 7.2   [90m│[39m —              [90m│[39m —    [90m│[39m —    [90m│[39m △ P1 [90m│[39m
+[90m├──────────────────────────[39m[90m┼───────[39m[90m┼────────────────[39m[90m┼──────[39m[90m┼──────[39m[90m┼──────┤[39m
+[90m│[39m selfImprovement          [90m│[39m 7.2   [90m│[39m —              [90m│[39m —    [90m│[39m —    [90m│[39m △ P1 [90m│[39m
+[90m├──────────────────────────[39m[90m┼───────[39m[90m┼────────────────[39m[90m┼──────[39m[90m┼──────[39m[90m┼──────┤[39m
+[90m│[39m specDrivenPipeline       [90m│[39m 0.0   [90m│[39m —              [90m│[39m —    [90m│[39m —    [90m│[39m ⚠ P0 [90m│[39m
+[90m├──────────────────────────[39m[90m┼───────[39m[90m┼────────────────[39m[90m┼──────[39m[90m┼──────[39m[90m┼──────┤[39m
+[90m│[39m convergenceSelfHealing   [90m│[39m 0.0   [90m│[39m —              [90m│[39m —    [90m│[39m —    [90m│[39m ⚠ P0 [90m│[39m
+[90m├──────────────────────────[39m[90m┼───────[39m[90m┼────────────────[39m[90m┼──────[39m[90m┼──────[39m[90m┼──────┤[39m
+[90m│[39m tokenEconomy             [90m│[39m 0.0   [90m│[39m —              [90m│[39m —    [90m│[39m —    [90m│[39m ⚠ P0 [90m│[39m
+[90m├──────────────────────────[39m[90m┼───────[39m[90m┼────────────────[39m[90m┼──────[39m[90m┼──────[39m[90m┼──────┤[39m
+[90m│[39m ecosystemMcp             [90m│[39m 0.0   [90m│[39m —              [90m│[39m —    [90m│[39m —    [90m│[39m ⚠ P0 [90m│[39m
+[90m├──────────────────────────[39m[90m┼───────[39m[90m┼────────────────[39m[90m┼──────[39m[90m┼──────[39m[90m┼──────┤[39m
+[90m│[39m enterpriseReadiness      [90m│[39m 0.0   [90m│[39m —              [90m│[39m —    [90m│[39m —    [90m│[39m ⚠ P0 [90m│[39m
+[90m├──────────────────────────[39m[90m┼───────[39m[90m┼────────────────[39m[90m┼──────[39m[90m┼──────[39m[90m┼──────┤[39m
+[90m│[39m communityAdoption        [90m│[39m 0.0   [90m│[39m —              [90m│[39m —    [90m│[39m —    [90m│[39m ⚠ P0 [90m│[39m
+[90m└──────────────────────────[39m[90m┴───────[39m[90m┴────────────────[39m[90m┴──────[39m[90m┴──────[39m[90m┴──────┘[39m
+[INFO] 
+[INFO] MASTERPLAN: 5 action items generated
+[INFO]   P0 (critical): 0  |  P1 (major): 5  |  P2 (minor): 0
+[INFO]   Estimated cycles to target: ~4
+[INFO]   Saved to: .danteforge/MASTERPLAN.md
+[INFO] 
+[INFO] Run `danteforge self-improve` to execute the masterplan autonomously.
+[INFO] The loop will continue until all dimensions score 9.0/10.
+  ✔ continues gracefully when competitor scan throws (163.1366ms)
+[INFO] [assess] Running self-assessment (harsh=true, mode=feature-universe, target=9/10)...
+[INFO] 
+╔══════════════════════════════════════════════════════╗
+║     DanteForge Self-Assessment Report                 ║
+║     Cycle 5  of autonomous self-improve loop    ║
+╚══════════════════════════════════════════════════════╝
+[INFO] 
+[INFO] COMPLETION TARGET: Mode: Feature Universe
+Target: 9/10 average score
+Coverage: 90% of feature universe must be implemented
+Description: Feature universe: 9/10 avg on 90% of competitor features
+[INFO] 
+[INFO] OVERALL SCORE: 7.2 / 10  (target: 9.0, gap: 1.8)  ✗ BELOW TARGET
+[INFO] Verdict: ACCEPTABLE  |  Fake-completion risk: LOW
+[INFO] 
+[INFO] DIMENSION BREAKDOWN:
+[INFO] [90m┌──────────────────────────[39m[90m┬───────[39m[90m┬────────────────[39m[90m┬──────[39m[90m┬──────[39m[90m┬──────┐[39m
+[90m│[39m[36m Dimension                [39m[90m│[39m[36m Score [39m[90m│[39m[36m Best Peer      [39m[90m│[39m[36m Peer [39m[90m│[39m[36m Gap  [39m[90m│[39m[36m Flag [39m[90m│[39m
+[90m├──────────────────────────[39m[90m┼───────[39m[90m┼────────────────[39m[90m┼──────[39m[90m┼──────[39m[90m┼──────┤[39m
+[90m│[39m functionality            [90m│[39m 7.2   [90m│[39m Devin          [90m│[39m 8.5  [90m│[39m +1.3 [90m│[39m △ P1 [90m│[39m
+[90m├──────────────────────────[39m[90m┼───────[39m[90m┼────────────────[39m[90m┼──────[39m[90m┼──────[39m[90m┼──────┤[39m
+[90m│[39m testing                  [90m│[39m 7.2   [90m│[39m Devin          [90m│[39m 8.5  [90m│[39m +1.3 [90m│[39m △ P1 [90m│[39m
+[90m├──────────────────────────[39m[90m┼───────[39m[90m┼────────────────[39m[90m┼──────[39m[90m┼──────[39m[90m┼──────┤[39m
+[90m│[39m errorHandling            [90m│[39m 7.2   [90m│[39m Devin          [90m│[39m 8.5  [90m│[39m +1.3 [90m│[39m △ P1 [90m│[39m
+[90m├──────────────────────────[39m[90m┼───────[39m[90m┼────────────────[39m[90m┼──────[39m[90m┼──────[39m[90m┼──────┤[39m
+[90m│[39m security                 [90m│[39m 7.2   [90m│[39m Devin          [90m│[39m 8.5  [90m│[39m +1.3 [90m│[39m △ P1 [90m│[39m
+[90m├──────────────────────────[39m[90m┼───────[39m[90m┼────────────────[39m[90m┼──────[39m[90m┼──────[39m[90m┼──────┤[39m
+[90m│[39m uxPolish                 [90m│[39m 7.2   [90m│[39m Devin          [90m│[39m 8.5  [90m│[39m +1.3 [90m│[39m △ P1 [90m│[39m
+[90m├──────────────────────────[39m[90m┼───────[39m[90m┼────────────────[39m[90m┼──────[39m[90m┼──────[39m[90m┼──────┤[39m
+[90m│[39m documentation            [90m│[39m 7.2   [90m│[39m Devin          [90m│[39m 8.5  [90m│[39m +1.3 [90m│[39m △ P1 [90m│[39m
+[90m├──────────────────────────[39m[90m┼───────[39m[90m┼────────────────[39m[90m┼──────[39m[90m┼──────[39m[90m┼──────┤[39m
+[90m│[39m performance              [90m│[39m 7.2   [90m│[39m Devin          [90m│[39m 8.5  [90m│[39m +1.3 [90m│[39m △ P1 [90m│[39m
+[90m├──────────────────────────[39m[90m┼───────[39m[90m┼────────────────[39m[90m┼──────[39m[90m┼──────[39m[90m┼──────┤[39m
+[90m│[39m maintainability          [90m│[39m 7.2   [90m│[39m Devin          [90m│[39m 8.5  [90m│[39m +1.3 [90m│[39m △ P1 [90m│[39m
+[90m├──────────────────────────[39m[90m┼───────[39m[90m┼────────────────[39m[90m┼──────[39m[90m┼──────[39m[90m┼──────┤[39m
+[90m│[39m developerExperience      [90m│[39m 7.2   [90m│[39m Devin          [90m│[39m 8.5  [90m│[39m +1.3 [90m│[39m △ P1 [90m│[39m
+[90m├──────────────────────────[39m[90m┼───────[39m[90m┼────────────────[39m[90m┼──────[39m[90m┼──────[39m[90m┼──────┤[39m
+[90m│[39m autonomy                 [90m│[39m 7.2   [90m│[39m Devin          [90m│[39m 8.5  [90m│[39m +1.3 [90m│[39m △ P1 [90m│[39m
+[90m├──────────────────────────[39m[90m┼───────[39m[90m┼────────────────[39m[90m┼──────[39m[90m┼──────[39m[90m┼──────┤[39m
+[90m│[39m planningQuality          [90m│[39m 7.2   [90m│[39m Devin          [90m│[39m 8.5  [90m│[39m +1.3 [90m│[39m △ P1 [90m│[39m
+[90m├──────────────────────────[39m[90m┼───────[39m[90m┼────────────────[39m[90m┼──────[39m[90m┼──────[39m[90m┼──────┤[39m
+[90m│[39m selfImprovement          [90m│[39m 7.2   [90m│[39m Devin          [90m│[39m 8.5  [90m│[39m +1.3 [90m│[39m △ P1 [90m│[39m
+[90m├──────────────────────────[39m[90m┼───────[39m[90m┼────────────────[39m[90m┼──────[39m[90m┼──────[39m[90m┼──────┤[39m
+[90m│[39m specDrivenPipeline       [90m│[39m 0.0   [90m│[39m —              [90m│[39m —    [90m│[39m —    [90m│[39m ⚠ P0 [90m│[39m
+[90m├──────────────────────────[39m[90m┼───────[39m[90m┼────────────────[39m[90m┼──────[39m[90m┼──────[39m[90m┼──────┤[39m
+[90m│[39m convergenceSelfHealing   [90m│[39m 0.0   [90m│[39m —              [90m│[39m —    [90m│[39m —    [90m│[39m ⚠ P0 [90m│[39m
+[90m├──────────────────────────[39m[90m┼───────[39m[90m┼────────────────[39m[90m┼──────[39m[90m┼──────[39m[90m┼──────┤[39m
+[90m│[39m tokenEconomy             [90m│[39m 0.0   [90m│[39m —              [90m│[39m —    [90m│[39m —    [90m│[39m ⚠ P0 [90m│[39m
+[90m├──────────────────────────[39m[90m┼───────[39m[90m┼────────────────[39m[90m┼──────[39m[90m┼──────[39m[90m┼──────┤[39m
+[90m│[39m ecosystemMcp             [90m│[39m 0.0   [90m│[39m —              [90m│[39m —    [90m│[39m —    [90m│[39m ⚠ P0 [90m│[39m
+[90m├──────────────────────────[39m[90m┼───────[39m[90m┼────────────────[39m[90m┼──────[39m[90m┼──────[39m[90m┼──────┤[39m
+[90m│[39m enterpriseReadiness      [90m│[39m 0.0   [90m│[39m —              [90m│[39m —    [90m│[39m —    [90m│[39m ⚠ P0 [90m│[39m
+[90m├──────────────────────────[39m[90m┼───────[39m[90m┼────────────────[39m[90m┼──────[39m[90m┼──────[39m[90m┼──────┤[39m
+[90m│[39m communityAdoption        [90m│[39m 0.0   [90m│[39m —              [90m│[39m —    [90m│[39m —    [90m│[39m ⚠ P0 [90m│[39m
+[90m└──────────────────────────[39m[90m┴───────[39m[90m┴────────────────[39m[90m┴──────[39m[90m┴──────[39m[90m┴──────┘[39m
+[INFO] 
+[INFO] ## Competitor Benchmarking Report
+Source: undefined
+
+### Leaderboard (average across all dimensions)
+
+  1. DanteForge: 0.7/10
+
+### Gap Analysis
+
+  No competitors found. Run `/oss` or set `state.competitors` to add them.
+[INFO] 
+[INFO] MASTERPLAN: 5 action items generated
+[INFO]   P0 (critical): 0  |  P1 (major): 5  |  P2 (minor): 0
+[INFO]   Estimated cycles to target: ~4
+[INFO]   Saved to: .danteforge/MASTERPLAN.md
+[INFO] 
+[INFO] Run `danteforge self-improve` to execute the masterplan autonomously.
+[INFO] The loop will continue until all dimensions score 9.0/10.
+  ✔ passes cycleNumber to generateMasterplan (491.5104ms)
+[INFO] [assess] Running self-assessment (harsh=true, mode=feature-universe, target=8.5/10)...
+[INFO] 
+╔══════════════════════════════════════════════════════╗
+║     DanteForge Self-Assessment Report                 ║
+║     Harsh scoring: stubs, fake-completion penalized  ║
+╚══════════════════════════════════════════════════════╝
+[INFO] 
+[INFO] COMPLETION TARGET: Mode: Feature Universe
+Target: 9/10 average score
+Coverage: 90% of feature universe must be implemented
+Description: Feature universe: 9/10 avg on 90% of competitor features
+[INFO] 
+[INFO] OVERALL SCORE: 7.2 / 10  (target: 8.5, gap: 1.3)  ✗ BELOW TARGET
+[INFO] Verdict: ACCEPTABLE  |  Fake-completion risk: LOW
+[INFO] 
+[INFO] DIMENSION BREAKDOWN:
+[INFO] [90m┌──────────────────────────[39m[90m┬───────[39m[90m┬────────────────[39m[90m┬──────[39m[90m┬──────[39m[90m┬──────┐[39m
+[90m│[39m[36m Dimension                [39m[90m│[39m[36m Score [39m[90m│[39m[36m Best Peer      [39m[90m│[39m[36m Peer [39m[90m│[39m[36m Gap  [39m[90m│[39m[36m Flag [39m[90m│[39m
+[90m├──────────────────────────[39m[90m┼───────[39m[90m┼────────────────[39m[90m┼──────[39m[90m┼──────[39m[90m┼──────┤[39m
+[90m│[39m functionality            [90m│[39m 7.2   [90m│[39m Devin          [90m│[39m 8.5  [90m│[39m +1.3 [90m│[39m △ P1 [90m│[39m
+[90m├──────────────────────────[39m[90m┼───────[39m[90m┼────────────────[39m[90m┼──────[39m[90m┼──────[39m[90m┼──────┤[39m
+[90m│[39m testing                  [90m│[39m 7.2   [90m│[39m Devin          [90m│[39m 8.5  [90m│[39m +1.3 [90m│[39m △ P1 [90m│[39m
+[90m├──────────────────────────[39m[90m┼───────[39m[90m┼────────────────[39m[90m┼──────[39m[90m┼──────[39m[90m┼──────┤[39m
+[90m│[39m errorHandling            [90m│[39m 7.2   [90m│[39m Devin          [90m│[39m 8.5  [90m│[39m +1.3 [90m│[39m △ P1 [90m│[39m
+[90m├──────────────────────────[39m[90m┼───────[39m[90m┼────────────────[39m[90m┼──────[39m[90m┼──────[39m[90m┼──────┤[39m
+[90m│[39m security                 [90m│[39m 7.2   [90m│[39m Devin          [90m│[39m 8.5  [90m│[39m +1.3 [90m│[39m △ P1 [90m│[39m
+[90m├──────────────────────────[39m[90m┼───────[39m[90m┼────────────────[39m[90m┼──────[39m[90m┼──────[39m[90m┼──────┤[39m
+[90m│[39m uxPolish                 [90m│[39m 7.2   [90m│[39m Devin          [90m│[39m 8.5  [90m│[39m +1.3 [90m│[39m △ P1 [90m│[39m
+[90m├──────────────────────────[39m[90m┼───────[39m[90m┼────────────────[39m[90m┼──────[39m[90m┼──────[39m[90m┼──────┤[39m
+[90m│[39m documentation            [90m│[39m 7.2   [90m│[39m Devin          [90m│[39m 8.5  [90m│[39m +1.3 [90m│[39m △ P1 [90m│[39m
+[90m├──────────────────────────[39m[90m┼───────[39m[90m┼────────────────[39m[90m┼──────[39m[90m┼──────[39m[90m┼──────┤[39m
+[90m│[39m performance              [90m│[39m 7.2   [90m│[39m Devin          [90m│[39m 8.5  [90m│[39m +1.3 [90m│[39m △ P1 [90m│[39m
+[90m├──────────────────────────[39m[90m┼───────[39m[90m┼────────────────[39m[90m┼──────[39m[90m┼──────[39m[90m┼──────┤[39m
+[90m│[39m maintainability          [90m│[39m 7.2   [90m│[39m Devin          [90m│[39m 8.5  [90m│[39m +1.3 [90m│[39m △ P1 [90m│[39m
+[90m├──────────────────────────[39m[90m┼───────[39m[90m┼────────────────[39m[90m┼──────[39m[90m┼──────[39m[90m┼──────┤[39m
+[90m│[39m developerExperience      [90m│[39m 7.2   [90m│[39m Devin          [90m│[39m 8.5  [90m│[39m +1.3 [90m│[39m △ P1 [90m│[39m
+[90m├──────────────────────────[39m[90m┼───────[39m[90m┼────────────────[39m[90m┼──────[39m[90m┼──────[39m[90m┼──────┤[39m
+[90m│[39m autonomy                 [90m│[39m 7.2   [90m│[39m Devin          [90m│[39m 8.5  [90m│[39m +1.3 [90m│[39m △ P1 [90m│[39m
+[90m├──────────────────────────[39m[90m┼───────[39m[90m┼────────────────[39m[90m┼──────[39m[90m┼──────[39m[90m┼──────┤[39m
+[90m│[39m planningQuality          [90m│[39m 7.2   [90m│[39m Devin          [90m│[39m 8.5  [90m│[39m +1.3 [90m│[39m △ P1 [90m│[39m
+[90m├──────────────────────────[39m[90m┼───────[39m[90m┼────────────────[39m[90m┼──────[39m[90m┼──────[39m[90m┼──────┤[39m
+[90m│[39m selfImprovement          [90m│[39m 7.2   [90m│[39m Devin          [90m│[39m 8.5  [90m│[39m +1.3 [90m│[39m △ P1 [90m│[39m
+[90m├──────────────────────────[39m[90m┼───────[39m[90m┼────────────────[39m[90m┼──────[39m[90m┼──────[39m[90m┼──────┤[39m
+[90m│[39m specDrivenPipeline       [90m│[39m 0.0   [90m│[39m —              [90m│[39m —    [90m│[39m —    [90m│[39m ⚠ P0 [90m│[39m
+[90m├──────────────────────────[39m[90m┼───────[39m[90m┼────────────────[39m[90m┼──────[39m[90m┼──────[39m[90m┼──────┤[39m
+[90m│[39m convergenceSelfHealing   [90m│[39m 0.0   [90m│[39m —              [90m│[39m —    [90m│[39m —    [90m│[39m ⚠ P0 [90m│[39m
+[90m├──────────────────────────[39m[90m┼───────[39m[90m┼────────────────[39m[90m┼──────[39m[90m┼──────[39m[90m┼──────┤[39m
+[90m│[39m tokenEconomy             [90m│[39m 0.0   [90m│[39m —              [90m│[39m —    [90m│[39m —    [90m│[39m ⚠ P0 [90m│[39m
+[90m├──────────────────────────[39m[90m┼───────[39m[90m┼────────────────[39m[90m┼──────[39m[90m┼──────[39m[90m┼──────┤[39m
+[90m│[39m ecosystemMcp             [90m│[39m 0.0   [90m│[39m —              [90m│[39m —    [90m│[39m —    [90m│[39m ⚠ P0 [90m│[39m
+[90m├──────────────────────────[39m[90m┼───────[39m[90m┼────────────────[39m[90m┼──────[39m[90m┼──────[39m[90m┼──────┤[39m
+[90m│[39m enterpriseReadiness      [90m│[39m 0.0   [90m│[39m —              [90m│[39m —    [90m│[39m —    [90m│[39m ⚠ P0 [90m│[39m
+[90m├──────────────────────────[39m[90m┼───────[39m[90m┼────────────────[39m[90m┼──────[39m[90m┼──────[39m[90m┼──────┤[39m
+[90m│[39m communityAdoption        [90m│[39m 0.0   [90m│[39m —              [90m│[39m —    [90m│[39m —    [90m│[39m ⚠ P0 [90m│[39m
+[90m└──────────────────────────[39m[90m┴───────[39m[90m┴────────────────[39m[90m┴──────[39m[90m┴──────[39m[90m┴──────┘[39m
+[INFO] 
+[INFO] ## Competitor Benchmarking Report
+Source: undefined
+
+### Leaderboard (average across all dimensions)
+
+  1. DanteForge: 0.7/10
+
+### Gap Analysis
+
+  No competitors found. Run `/oss` or set `state.competitors` to add them.
+[INFO] 
+[INFO] MASTERPLAN: 5 action items generated
+[INFO]   P0 (critical): 0  |  P1 (major): 5  |  P2 (minor): 0
+[INFO]   Estimated cycles to target: ~4
+[INFO]   Saved to: .danteforge/MASTERPLAN.md
+[INFO] 
+[INFO] Run `danteforge self-improve` to execute the masterplan autonomously.
+[INFO] The loop will continue until all dimensions score 8.5/10.
+  ✔ passes minScore as targetScore to generateMasterplan (20.7043ms)
+[INFO] [assess] Running self-assessment (harsh=true, mode=feature-universe, target=9/10)...
+[INFO] 
+╔══════════════════════════════════════════════════════╗
+║     DanteForge Self-Assessment Report                 ║
+║     Harsh scoring: stubs, fake-completion penalized  ║
+╚══════════════════════════════════════════════════════╝
+[INFO] 
+[INFO] COMPLETION TARGET: Mode: Feature Universe
+Target: 9/10 average score
+Coverage: 90% of feature universe must be implemented
+Description: Feature universe: 9/10 avg on 90% of competitor features
+[INFO] 
+[INFO] OVERALL SCORE: 7.2 / 10  (target: 9.0, gap: 1.8)  ✗ BELOW TARGET
+[INFO] Verdict: ACCEPTABLE  |  Fake-completion risk: LOW
+[INFO] 
+[INFO] DIMENSION BREAKDOWN:
+[INFO] [90m┌──────────────────────────[39m[90m┬───────[39m[90m┬────────────────[39m[90m┬──────[39m[90m┬──────[39m[90m┬──────┐[39m
+[90m│[39m[36m Dimension                [39m[90m│[39m[36m Score [39m[90m│[39m[36m Best Peer      [39m[90m│[39m[36m Peer [39m[90m│[39m[36m Gap  [39m[90m│[39m[36m Flag [39m[90m│[39m
+[90m├──────────────────────────[39m[90m┼───────[39m[90m┼────────────────[39m[90m┼──────[39m[90m┼──────[39m[90m┼──────┤[39m
+[90m│[39m functionality            [90m│[39m 7.2   [90m│[39m Devin          [90m│[39m 8.5  [90m│[39m +1.3 [90m│[39m △ P1 [90m│[39m
+[90m├──────────────────────────[39m[90m┼───────[39m[90m┼────────────────[39m[90m┼──────[39m[90m┼──────[39m[90m┼──────┤[39m
+[90m│[39m testing                  [90m│[39m 7.2   [90m│[39m Devin          [90m│[39m 8.5  [90m│[39m +1.3 [90m│[39m △ P1 [90m│[39m
+[90m├──────────────────────────[39m[90m┼───────[39m[90m┼────────────────[39m[90m┼──────[39m[90m┼──────[39m[90m┼──────┤[39m
+[90m│[39m errorHandling            [90m│[39m 7.2   [90m│[39m Devin          [90m│[39m 8.5  [90m│[39m +1.3 [90m│[39m △ P1 [90m│[39m
+[90m├──────────────────────────[39m[90m┼───────[39m[90m┼────────────────[39m[90m┼──────[39m[90m┼──────[39m[90m┼──────┤[39m
+[90m│[39m security                 [90m│[39m 7.2   [90m│[39m Devin          [90m│[39m 8.5  [90m│[39m +1.3 [90m│[39m △ P1 [90m│[39m
+[90m├──────────────────────────[39m[90m┼───────[39m[90m┼────────────────[39m[90m┼──────[39m[90m┼──────[39m[90m┼──────┤[39m
+[90m│[39m uxPolish                 [90m│[39m 7.2   [90m│[39m Devin          [90m│[39m 8.5  [90m│[39m +1.3 [90m│[39m △ P1 [90m│[39m
+[90m├──────────────────────────[39m[90m┼───────[39m[90m┼────────────────[39m[90m┼──────[39m[90m┼──────[39m[90m┼──────┤[39m
+[90m│[39m documentation            [90m│[39m 7.2   [90m│[39m Devin          [90m│[39m 8.5  [90m│[39m +1.3 [90m│[39m △ P1 [90m│[39m
+[90m├──────────────────────────[39m[90m┼───────[39m[90m┼────────────────[39m[90m┼──────[39m[90m┼──────[39m[90m┼──────┤[39m
+[90m│[39m performance              [90m│[39m 7.2   [90m│[39m Devin          [90m│[39m 8.5  [90m│[39m +1.3 [90m│[39m △ P1 [90m│[39m
+[90m├──────────────────────────[39m[90m┼───────[39m[90m┼────────────────[39m[90m┼──────[39m[90m┼──────[39m[90m┼──────┤[39m
+[90m│[39m maintainability          [90m│[39m 7.2   [90m│[39m Devin          [90m│[39m 8.5  [90m│[39m +1.3 [90m│[39m △ P1 [90m│[39m
+[90m├──────────────────────────[39m[90m┼───────[39m[90m┼────────────────[39m[90m┼──────[39m[90m┼──────[39m[90m┼──────┤[39m
+[90m│[39m developerExperience      [90m│[39m 7.2   [90m│[39m Devin          [90m│[39m 8.5  [90m│[39m +1.3 [90m│[39m △ P1 [90m│[39m
+[90m├──────────────────────────[39m[90m┼───────[39m[90m┼────────────────[39m[90m┼──────[39m[90m┼──────[39m[90m┼──────┤[39m
+[90m│[39m autonomy                 [90m│[39m 7.2   [90m│[39m Devin          [90m│[39m 8.5  [90m│[39m +1.3 [90m│[39m △ P1 [90m│[39m
+[90m├──────────────────────────[39m[90m┼───────[39m[90m┼────────────────[39m[90m┼──────[39m[90m┼──────[39m[90m┼──────┤[39m
+[90m│[39m planningQuality          [90m│[39m 7.2   [90m│[39m Devin          [90m│[39m 8.5  [90m│[39m +1.3 [90m│[39m △ P1 [90m│[39m
+[90m├──────────────────────────[39m[90m┼───────[39m[90m┼────────────────[39m[90m┼──────[39m[90m┼──────[39m[90m┼──────┤[39m
+[90m│[39m selfImprovement          [90m│[39m 7.2   [90m│[39m Devin          [90m│[39m 8.5  [90m│[39m +1.3 [90m│[39m △ P1 [90m│[39m
+[90m├──────────────────────────[39m[90m┼───────[39m[90m┼────────────────[39m[90m┼──────[39m[90m┼──────[39m[90m┼──────┤[39m
+[90m│[39m specDrivenPipeline       [90m│[39m 0.0   [90m│[39m —              [90m│[39m —    [90m│[39m —    [90m│[39m ⚠ P0 [90m│[39m
+[90m├──────────────────────────[39m[90m┼───────[39m[90m┼────────────────[39m[90m┼──────[39m[90m┼──────[39m[90m┼──────┤[39m
+[90m│[39m convergenceSelfHealing   [90m│[39m 0.0   [90m│[39m —              [90m│[39m —    [90m│[39m —    [90m│[39m ⚠ P0 [90m│[39m
+[90m├──────────────────────────[39m[90m┼───────[39m[90m┼────────────────[39m[90m┼──────[39m[90m┼──────[39m[90m┼──────┤[39m
+[90m│[39m tokenEconomy             [90m│[39m 0.0   [90m│[39m —              [90m│[39m —    [90m│[39m —    [90m│[39m ⚠ P0 [90m│[39m
+[90m├──────────────────────────[39m[90m┼───────[39m[90m┼────────────────[39m[90m┼──────[39m[90m┼──────[39m[90m┼──────┤[39m
+[90m│[39m ecosystemMcp             [90m│[39m 0.0   [90m│[39m —              [90m│[39m —    [90m│[39m —    [90m│[39m ⚠ P0 [90m│[39m
+[90m├──────────────────────────[39m[90m┼───────[39m[90m┼────────────────[39m[90m┼──────[39m[90m┼──────[39m[90m┼──────┤[39m
+[90m│[39m enterpriseReadiness      [90m│[39m 0.0   [90m│[39m —              [90m│[39m —    [90m│[39m —    [90m│[39m ⚠ P0 [90m│[39m
+[90m├──────────────────────────[39m[90m┼───────[39m[90m┼────────────────[39m[90m┼──────[39m[90m┼──────[39m[90m┼──────┤[39m
+[90m│[39m communityAdoption        [90m│[39m 0.0   [90m│[39m —              [90m│[39m —    [90m│[39m —    [90m│[39m ⚠ P0 [90m│[39m
+[90m└──────────────────────────[39m[90m┴───────[39m[90m┴────────────────[39m[90m┴──────[39m[90m┴──────[39m[90m┴──────┘[39m
+[INFO] 
+[INFO] ## Competitor Benchmarking Report
+Source: undefined
+
+### Leaderboard (average across all dimensions)
+
+  1. DanteForge: 0.7/10
+
+### Gap Analysis
+
+  No competitors found. Run `/oss` or set `state.competitors` to add them.
+[INFO] 
+[INFO] MASTERPLAN: 5 action items generated
+[INFO]   P0 (critical): 0  |  P1 (major): 5  |  P2 (minor): 0
+[INFO]   Estimated cycles to target: ~4
+[INFO]   Saved to: .danteforge/MASTERPLAN.md
+[INFO] 
+[INFO] Run `danteforge self-improve` to execute the masterplan autonomously.
+[INFO] The loop will continue until all dimensions score 9.0/10.
+  ✔ returns JSON-serializable result (330.4012ms)
+[INFO] [assess] Running self-assessment (harsh=true, mode=feature-universe, target=9/10)...
+[INFO] 
+╔══════════════════════════════════════════════════════╗
+║     DanteForge Self-Assessment Report                 ║
+║     Harsh scoring: stubs, fake-completion penalized  ║
+╚══════════════════════════════════════════════════════╝
+[INFO] 
+[INFO] COMPLETION TARGET: Mode: Feature Universe
+Target: 9/10 average score
+Coverage: 90% of feature universe must be implemented
+Description: Feature universe: 9/10 avg on 90% of competitor features
+[INFO] 
+[INFO] OVERALL SCORE: 7.8 / 10  (target: 9.0, gap: 1.2)  ✗ BELOW TARGET
+[INFO] Verdict: ACCEPTABLE  |  Fake-completion risk: LOW
+[INFO] 
+[INFO] DIMENSION BREAKDOWN:
+[INFO] [90m┌──────────────────────────[39m[90m┬───────[39m[90m┬────────────────[39m[90m┬──────[39m[90m┬──────[39m[90m┬──────┐[39m
+[90m│[39m[36m Dimension                [39m[90m│[39m[36m Score [39m[90m│[39m[36m Best Peer      [39m[90m│[39m[36m Peer [39m[90m│[39m[36m Gap  [39m[90m│[39m[36m Flag [39m[90m│[39m
+[90m├──────────────────────────[39m[90m┼───────[39m[90m┼────────────────[39m[90m┼──────[39m[90m┼──────[39m[90m┼──────┤[39m
+[90m│[39m functionality            [90m│[39m 7.8   [90m│[39m Devin          [90m│[39m 8.5  [90m│[39m +1.3 [90m│[39m ✓    [90m│[39m
+[90m├──────────────────────────[39m[90m┼───────[39m[90m┼────────────────[39m[90m┼──────[39m[90m┼──────[39m[90m┼──────┤[39m
+[90m│[39m testing                  [90m│[39m 7.8   [90m│[39m Devin          [90m│[39m 8.5  [90m│[39m +1.3 [90m│[39m ✓    [90m│[39m
+[90m├──────────────────────────[39m[90m┼───────[39m[90m┼────────────────[39m[90m┼──────[39m[90m┼──────[39m[90m┼──────┤[39m
+[90m│[39m errorHandling            [90m│[39m 7.8   [90m│[39m Devin          [90m│[39m 8.5  [90m│[39m +1.3 [90m│[39m ✓    [90m│[39m
+[90m├──────────────────────────[39m[90m┼───────[39m[90m┼────────────────[39m[90m┼──────[39m[90m┼──────[39m[90m┼──────┤[39m
+[90m│[39m security                 [90m│[39m 7.8   [90m│[39m Devin          [90m│[39m 8.5  [90m│[39m +1.3 [90m│[39m ✓    [90m│[39m
+[90m├──────────────────────────[39m[90m┼───────[39m[90m┼────────────────[39m[90m┼──────[39m[90m┼──────[39m[90m┼──────┤[39m
+[90m│[39m uxPolish                 [90m│[39m 7.8   [90m│[39m Devin          [90m│[39m 8.5  [90m│[39m +1.3 [90m│[39m ✓    [90m│[39m
+[90m├──────────────────────────[39m[90m┼───────[39m[90m┼────────────────[39m[90m┼──────[39m[90m┼──────[39m[90m┼──────┤[39m
+[90m│[39m documentation            [90m│[39m 7.8   [90m│[39m Devin          [90m│[39m 8.5  [90m│[39m +1.3 [90m│[39m ✓    [90m│[39m
+[90m├──────────────────────────[39m[90m┼───────[39m[90m┼────────────────[39m[90m┼──────[39m[90m┼──────[39m[90m┼──────┤[39m
+[90m│[39m performance              [90m│[39m 7.8   [90m│[39m Devin          [90m│[39m 8.5  [90m│[39m +1.3 [90m│[39m ✓    [90m│[39m
+[90m├──────────────────────────[39m[90m┼───────[39m[90m┼────────────────[39m[90m┼──────[39m[90m┼──────[39m[90m┼──────┤[39m
+[90m│[39m maintainability          [90m│[39m 7.8   [90m│[39m Devin          [90m│[39m 8.5  [90m│[39m +1.3 [90m│[39m ✓    [90m│[39m
+[90m├──────────────────────────[39m[90m┼───────[39m[90m┼────────────────[39m[90m┼──────[39m[90m┼──────[39m[90m┼──────┤[39m
+[90m│[39m developerExperience      [90m│[39m 7.8   [90m│[39m Devin          [90m│[39m 8.5  [90m│[39m +1.3 [90m│[39m ✓    [90m│[39m
+[90m├──────────────────────────[39m[90m┼───────[39m[90m┼────────────────[39m[90m┼──────[39m[90m┼──────[39m[90m┼──────┤[39m
+[90m│[39m autonomy                 [90m│[39m 7.8   [90m│[39m Devin          [90m│[39m 8.5  [90m│[39m +1.3 [90m│[39m ✓    [90m│[39m
+[90m├──────────────────────────[39m[90m┼───────[39m[90m┼────────────────[39m[90m┼──────[39m[90m┼──────[39m[90m┼──────┤[39m
+[90m│[39m planningQuality          [90m│[39m 7.8   [90m│[39m Devin          [90m│[39m 8.5  [90m│[39m +1.3 [90m│[39m ✓    [90m│[39m
+[90m├──────────────────────────[39m[90m┼───────[39m[90m┼────────────────[39m[90m┼──────[39m[90m┼──────[39m[90m┼──────┤[39m
+[90m│[39m selfImprovement          [90m│[39m 7.8   [90m│[39m Devin          [90m│[39m 8.5  [90m│[39m +1.3 [90m│[39m ✓    [90m│[39m
+[90m├──────────────────────────[39m[90m┼───────[39m[90m┼────────────────[39m[90m┼──────[39m[90m┼──────[39m[90m┼──────┤[39m
+[90m│[39m specDrivenPipeline       [90m│[39m 0.0   [90m│[39m —              [90m│[39m —    [90m│[39m —    [90m│[39m ⚠ P0 [90m│[39m
+[90m├──────────────────────────[39m[90m┼───────[39m[90m┼────────────────[39m[90m┼──────[39m[90m┼──────[39m[90m┼──────┤[39m
+[90m│[39m convergenceSelfHealing   [90m│[39m 0.0   [90m│[39m —              [90m│[39m —    [90m│[39m —    [90m│[39m ⚠ P0 [90m│[39m
+[90m├──────────────────────────[39m[90m┼───────[39m[90m┼────────────────[39m[90m┼──────[39m[90m┼──────[39m[90m┼──────┤[39m
+[90m│[39m tokenEconomy             [90m│[39m 0.0   [90m│[39m —              [90m│[39m —    [90m│[39m —    [90m│[39m ⚠ P0 [90m│[39m
+[90m├──────────────────────────[39m[90m┼───────[39m[90m┼────────────────[39m[90m┼──────[39m[90m┼──────[39m[90m┼──────┤[39m
+[90m│[39m ecosystemMcp             [90m│[39m 0.0   [90m│[39m —              [90m│[39m —    [90m│[39m —    [90m│[39m ⚠ P0 [90m│[39m
+[90m├──────────────────────────[39m[90m┼───────[39m[90m┼────────────────[39m[90m┼──────[39m[90m┼──────[39m[90m┼──────┤[39m
+[90m│[39m enterpriseReadiness      [90m│[39m 0.0   [90m│[39m —              [90m│[39m —    [90m│[39m —    [90m│[39m ⚠ P0 [90m│[39m
+[90m├──────────────────────────[39m[90m┼───────[39m[90m┼────────────────[39m[90m┼──────[39m[90m┼──────[39m[90m┼──────┤[39m
+[90m│[39m communityAdoption        [90m│[39m 0.0   [90m│[39m —              [90m│[39m —    [90m│[39m —    [90m│[39m ⚠ P0 [90m│[39m
+[90m└──────────────────────────[39m[90m┴───────[39m[90m┴────────────────[39m[90m┴──────[39m[90m┴──────[39m[90m┴──────┘[39m
+[INFO] 
+[INFO] ## Competitor Benchmarking Report
+Source: undefined
+
+### Leaderboard (average across all dimensions)
+
+  1. DanteForge: 0.7/10
+
+### Gap Analysis
+
+  No competitors found. Run `/oss` or set `state.competitors` to add them.
+[INFO] 
+[INFO] MASTERPLAN: 5 action items generated
+[INFO]   P0 (critical): 0  |  P1 (major): 5  |  P2 (minor): 0
+[INFO]   Estimated cycles to target: ~4
+[INFO]   Saved to: .danteforge/MASTERPLAN.md
+[INFO] 
+[INFO] Run `danteforge self-improve` to execute the masterplan autonomously.
+[INFO] The loop will continue until all dimensions score 9.0/10.
+  ✔ overallScore matches assessment.displayScore (142.2607ms)
+[INFO] [assess] Running self-assessment (harsh=true, mode=feature-universe, target=9/10)...
+[INFO] 
+╔══════════════════════════════════════════════════════╗
+║     DanteForge Self-Assessment Report                 ║
+║     Harsh scoring: stubs, fake-completion penalized  ║
+╚══════════════════════════════════════════════════════╝
+[INFO] 
+[INFO] COMPLETION TARGET: Mode: Feature Universe
+Target: 9/10 average score
+Coverage: 90% of feature universe must be implemented
+Description: Feature universe: 9/10 avg on 90% of competitor features
+[INFO] 
+[INFO] OVERALL SCORE: 7.2 / 10  (target: 9.0, gap: 1.8)  ✗ BELOW TARGET
+[INFO] Verdict: ACCEPTABLE  |  Fake-completion risk: LOW
+[INFO] 
+[INFO] DIMENSION BREAKDOWN:
+[INFO] [90m┌──────────────────────────[39m[90m┬───────[39m[90m┬────────────────[39m[90m┬──────[39m[90m┬──────[39m[90m┬──────┐[39m
+[90m│[39m[36m Dimension                [39m[90m│[39m[36m Score [39m[90m│[39m[36m Best Peer      [39m[90m│[39m[36m Peer [39m[90m│[39m[36m Gap  [39m[90m│[39m[36m Flag [39m[90m│[39m
+[90m├──────────────────────────[39m[90m┼───────[39m[90m┼────────────────[39m[90m┼──────[39m[90m┼──────[39m[90m┼──────┤[39m
+[90m│[39m functionality            [90m│[39m 7.2   [90m│[39m Devin          [90m│[39m 8.5  [90m│[39m +1.3 [90m│[39m △ P1 [90m│[39m
+[90m├──────────────────────────[39m[90m┼───────[39m[90m┼────────────────[39m[90m┼──────[39m[90m┼──────[39m[90m┼──────┤[39m
+[90m│[39m testing                  [90m│[39m 7.2   [90m│[39m Devin          [90m│[39m 8.5  [90m│[39m +1.3 [90m│[39m △ P1 [90m│[39m
+[90m├──────────────────────────[39m[90m┼───────[39m[90m┼────────────────[39m[90m┼──────[39m[90m┼──────[39m[90m┼──────┤[39m
+[90m│[39m errorHandling            [90m│[39m 7.2   [90m│[39m Devin          [90m│[39m 8.5  [90m│[39m +1.3 [90m│[39m △ P1 [90m│[39m
+[90m├──────────────────────────[39m[90m┼───────[39m[90m┼────────────────[39m[90m┼──────[39m[90m┼──────[39m[90m┼──────┤[39m
+[90m│[39m security                 [90m│[39m 7.2   [90m│[39m Devin          [90m│[39m 8.5  [90m│[39m +1.3 [90m│[39m △ P1 [90m│[39m
+[90m├──────────────────────────[39m[90m┼───────[39m[90m┼────────────────[39m[90m┼──────[39m[90m┼──────[39m[90m┼──────┤[39m
+[90m│[39m uxPolish                 [90m│[39m 7.2   [90m│[39m Devin          [90m│[39m 8.5  [90m│[39m +1.3 [90m│[39m △ P1 [90m│[39m
+[90m├──────────────────────────[39m[90m┼───────[39m[90m┼────────────────[39m[90m┼──────[39m[90m┼──────[39m[90m┼──────┤[39m
+[90m│[39m documentation            [90m│[39m 7.2   [90m│[39m Devin          [90m│[39m 8.5  [90m│[39m +1.3 [90m│[39m △ P1 [90m│[39m
+[90m├──────────────────────────[39m[90m┼───────[39m[90m┼────────────────[39m[90m┼──────[39m[90m┼──────[39m[90m┼──────┤[39m
+[90m│[39m performance              [90m│[39m 7.2   [90m│[39m Devin          [90m│[39m 8.5  [90m│[39m +1.3 [90m│[39m △ P1 [90m│[39m
+[90m├──────────────────────────[39m[90m┼───────[39m[90m┼────────────────[39m[90m┼──────[39m[90m┼──────[39m[90m┼──────┤[39m
+[90m│[39m maintainability          [90m│[39m 7.2   [90m│[39m Devin          [90m│[39m 8.5  [90m│[39m +1.3 [90m│[39m △ P1 [90m│[39m
+[90m├──────────────────────────[39m[90m┼───────[39m[90m┼────────────────[39m[90m┼──────[39m[90m┼──────[39m[90m┼──────┤[39m
+[90m│[39m developerExperience      [90m│[39m 7.2   [90m│[39m Devin          [90m│[39m 8.5  [90m│[39m +1.3 [90m│[39m △ P1 [90m│[39m
+[90m├──────────────────────────[39m[90m┼───────[39m[90m┼────────────────[39m[90m┼──────[39m[90m┼──────[39m[90m┼──────┤[39m
+[90m│[39m autonomy                 [90m│[39m 7.2   [90m│[39m Devin          [90m│[39m 8.5  [90m│[39m +1.3 [90m│[39m △ P1 [90m│[39m
+[90m├──────────────────────────[39m[90m┼───────[39m[90m┼────────────────[39m[90m┼──────[39m[90m┼──────[39m[90m┼──────┤[39m
+[90m│[39m planningQuality          [90m│[39m 7.2   [90m│[39m Devin          [90m│[39m 8.5  [90m│[39m +1.3 [90m│[39m △ P1 [90m│[39m
+[90m├──────────────────────────[39m[90m┼───────[39m[90m┼────────────────[39m[90m┼──────[39m[90m┼──────[39m[90m┼──────┤[39m
+[90m│[39m selfImprovement          [90m│[39m 7.2   [90m│[39m Devin          [90m│[39m 8.5  [90m│[39m +1.3 [90m│[39m △ P1 [90m│[39m
+[90m├──────────────────────────[39m[90m┼───────[39m[90m┼────────────────[39m[90m┼──────[39m[90m┼──────[39m[90m┼──────┤[39m
+[90m│[39m specDrivenPipeline       [90m│[39m 0.0   [90m│[39m —              [90m│[39m —    [90m│[39m —    [90m│[39m ⚠ P0 [90m│[39m
+[90m├──────────────────────────[39m[90m┼───────[39m[90m┼────────────────[39m[90m┼──────[39m[90m┼──────[39m[90m┼──────┤[39m
+[90m│[39m convergenceSelfHealing   [90m│[39m 0.0   [90m│[39m —              [90m│[39m —    [90m│[39m —    [90m│[39m ⚠ P0 [90m│[39m
+[90m├──────────────────────────[39m[90m┼───────[39m[90m┼────────────────[39m[90m┼──────[39m[90m┼──────[39m[90m┼──────┤[39m
+[90m│[39m tokenEconomy             [90m│[39m 0.0   [90m│[39m —              [90m│[39m —    [90m│[39m —    [90m│[39m ⚠ P0 [90m│[39m
+[90m├──────────────────────────[39m[90m┼───────[39m[90m┼────────────────[39m[90m┼──────[39m[90m┼──────[39m[90m┼──────┤[39m
+[90m│[39m ecosystemMcp             [90m│[39m 0.0   [90m│[39m —              [90m│[39m —    [90m│[39m —    [90m│[39m ⚠ P0 [90m│[39m
+[90m├──────────────────────────[39m[90m┼───────[39m[90m┼────────────────[39m[90m┼──────[39m[90m┼──────[39m[90m┼──────┤[39m
+[90m│[39m enterpriseReadiness      [90m│[39m 0.0   [90m│[39m —              [90m│[39m —    [90m│[39m —    [90m│[39m ⚠ P0 [90m│[39m
+[90m├──────────────────────────[39m[90m┼───────[39m[90m┼────────────────[39m[90m┼──────[39m[90m┼──────[39m[90m┼──────┤[39m
+[90m│[39m communityAdoption        [90m│[39m 0.0   [90m│[39m —              [90m│[39m —    [90m│[39m —    [90m│[39m ⚠ P0 [90m│[39m
+[90m└──────────────────────────[39m[90m┴───────[39m[90m┴────────────────[39m[90m┴──────[39m[90m┴──────[39m[90m┴──────┘[39m
+[INFO] 
+[INFO] ## Competitor Benchmarking Report
+Source: undefined
+
+### Leaderboard (average across all dimensions)
+
+  1. DanteForge: 0.7/10
+
+### Gap Analysis
+
+  No competitors found. Run `/oss` or set `state.competitors` to add them.
+[INFO] 
+[INFO] MASTERPLAN: 5 action items generated
+[INFO]   P0 (critical): 0  |  P1 (major): 5  |  P2 (minor): 0
+[INFO]   Estimated cycles to target: ~4
+[INFO]   Saved to: .danteforge/MASTERPLAN.md
+[INFO] 
+[INFO] Run `danteforge self-improve` to execute the masterplan autonomously.
+[INFO] The loop will continue until all dimensions score 9.0/10.
+  ✔ uses preset targetMaturityLevel when preset provided (617.0225ms)
+✔ assess (4086.8098ms)
+▶ assistant skill install
+  ✔ installs packaged skills into Codex, Claude, Antigravity, and OpenCode registries (24708.8736ms)
+  ✔ syncs the Claude plugin cache to the current package version when a Claude install exists (1655.0754ms)
+  ✔ can install a Cursor bootstrap rule into the current project (258.1756ms)
+  ✔ exports a setupAssistants command (9655.5755ms)
+  ✔ merges Codex utility aliases into an existing user config without dropping existing settings or native workflow commands (1601.5159ms)
+  ✔ merges the Codex global bootstrap into an existing AGENTS.md without dropping user content (2032.861ms)
+✔ assistant skill install (39914.6084ms)
+[INFO] No self-edit audit entries found.
+▶ audit command
+  ✔ does not crash when log is empty and returns zero entries (214.981ms)
+[INFO] No self-edit audit entries found.
+  ✔ does not create audit directory when log does not exist (6.177ms)
+  ✔ shows all entries when log has entries (18.2246ms)
+  ✔ --last 2 shows only last 2 entries from 5-entry log (39.4974ms)
+  ✔ --format json outputs valid JSON array (5.3931ms)
+  ✔ denied entry produces an audit entry with approved=false (17.1505ms)
+  ✔ approved entry produces an audit entry with approved=true (594.336ms)
+[INFO] No self-edit audit entries found.
+  ✔ --last 0 shows no entries (1439.2423ms)
+✔ audit command (2338.5916ms)
+▶ audit-export
+  ✔ exports all entries (5.9845ms)
+  ✔ filters by since date (0.7443ms)
+  ✔ handles empty audit log (0.3374ms)
+  ✔ handles missing audit log (0.2562ms)
+  ✔ handles legacy string entries (0.6822ms)
+  ▶ formatAuditExport
+    ✔ formats as JSON (1.1138ms)
+    ✔ formats as CSV (1.2301ms)
+    ✔ formats as markdown (0.7052ms)
+  ✔ formatAuditExport (3.7642ms)
+  ▶ writeAuditExport
+    ✔ writes formatted content to file (0.7741ms)
+  ✔ writeAuditExport (1.17ms)
+✔ audit-export (17.2561ms)
+▶ detectLessonEvents
+  ✔ returns empty array when no changes (2.5999ms)
+  ✔ detects tsc_errors_increased (0.3231ms)
+  ✔ does NOT flag tsc_errors_increased when errors stayed same (0.1807ms)
+  ✔ detects tests_regressed when failures increase (0.186ms)
+  ✔ does NOT flag tests_regressed when failures decreased (0.2863ms)
+  ✔ detects score_dropped when drop > 5 (0.209ms)
+  ✔ does NOT flag score_dropped when drop is exactly 5 (0.1728ms)
+  ✔ does NOT flag score_dropped when score increased (0.1441ms)
+  ✔ returns multiple events at once (0.2369ms)
+  ✔ handles null prevMetrics gracefully (0.2708ms)
+  ✔ handles null currMetrics gracefully (0.2313ms)
+✔ detectLessonEvents (6.8157ms)
+▶ captureAutoLesson
+  ✔ calls recordLesson for tsc_errors_increased (0.7895ms)
+  ✔ calls recordLesson for tests_regressed (0.2861ms)
+  ✔ calls recordLesson for score_dropped (0.2352ms)
+  ✔ calls recordLesson for convergence_stalled (0.2115ms)
+  ✔ never throws even if recordLesson throws (0.5891ms)
+  ✔ includes artifact name in mistake for score_dropped (0.1965ms)
+  ✔ includes cycle count in mistake for convergence_stalled (0.1767ms)
+✔ captureAutoLesson (2.8822ms)
+[OK] DanteForge AutoForge - Agentic Pipeline Orchestrator
+[INFO] 
+[INFO] [AutoForge] Autonomous mode — running convergence loop...
+[OK] DanteForge AutoForge - Agentic Pipeline Orchestrator
+[INFO] 
+[INFO] [AutoForge] Autonomous mode — running convergence loop...
+▶ autoforge --auto flag
+  ✔ calls _runLoop when options.auto is true (591.1952ms)
+[OK] DanteForge AutoForge - Agentic Pipeline Orchestrator
+[INFO] 
+[INFO] [AutoForge] Autonomous mode — running convergence loop...
+  ✔ populates ctx.goal from the goal argument (45.3877ms)
+[OK] DanteForge AutoForge - Agentic Pipeline Orchestrator
+[INFO] 
+[INFO] [AutoForge] Autonomous mode — running convergence loop...
+  ✔ uses default goal when no goal argument provided (630.6858ms)
+[OK] DanteForge AutoForge - Agentic Pipeline Orchestrator
+[INFO] 
+[INFO] [AutoForge] Autonomous mode — running convergence loop...
+  ✔ initializes ctx with IDLE loop state (858.2146ms)
+[OK] DanteForge AutoForge - Agentic Pipeline Orchestrator
+[INFO] 
+[INFO] [AutoForge] Autonomous mode — running convergence loop...
+  ✔ initializes ctx.cycleCount at 0 (155.9374ms)
+[OK] DanteForge AutoForge - Agentic Pipeline Orchestrator
+[INFO] 
+[INFO] [AutoForge] Autonomous mode — running convergence loop...
+  ✔ passes force=true when options.force is set (19.4856ms)
+[OK] DanteForge AutoForge - Agentic Pipeline Orchestrator
+[INFO] 
+  ✔ passes force=false by default (559.7968ms)
+[INFO] 
+[OK] === AutoForge Plan ===
+[INFO] Scenario: mid-project
+[INFO] Goal: goal
+[INFO] Reasoning: Project at "constitution" stage — advancing toward "goal".
+[INFO] Max waves: 3
+[INFO] 
+[INFO] Steps:
+[INFO]   1. specify — Build the specification
+[INFO] 
+[INFO] [AutoForge] Dry run complete — no commands were executed.
+[OK] DanteForge AutoForge - Agentic Pipeline Orchestrator
+[INFO] 
+[INFO] [AutoForge] Autonomous mode — running convergence loop...
+  ✔ does NOT call _runLoop when --auto is false (2699.474ms)
+  ✔ returns immediately after loop completes (458.7029ms)
+✔ autoforge --auto flag (6025.4137ms)
+[OK] DanteForge AutoForge - Agentic Pipeline Orchestrator
+[INFO] 
+[INFO] [AutoForge] Autonomous mode — running convergence loop...
+[OK] DanteForge AutoForge - Agentic Pipeline Orchestrator
+[INFO] 
+▶ autoforge CLI — --auto loop mode
+  ✔ calls _runLoop when auto=true (790.8212ms)
+[INFO] 
+[OK] === AutoForge Plan ===
+[INFO] Scenario: mid-project
+[INFO] Reasoning: Project at "constitution" stage — advancing to next steps.
+[INFO] Max waves: 3
+[INFO] 
+[INFO] Steps:
+[INFO]   1. specify — Build the specification
+[INFO] 
+[INFO] [AutoForge] Dry run complete — no commands were executed.
+[OK] DanteForge AutoForge - Agentic Pipeline Orchestrator
+[INFO] 
+[INFO] [AutoForge] Autonomous mode — running convergence loop...
+  ✔ does NOT call _runLoop when auto is absent (uses dry-run to exit early) (406.293ms)
+[OK] DanteForge AutoForge - Agentic Pipeline Orchestrator
+[INFO] 
+[INFO] [AutoForge] Autonomous mode — running convergence loop...
+  ✔ sets exitCode=1 when loop returns BLOCKED state (476.4892ms)
+[OK] DanteForge AutoForge - Agentic Pipeline Orchestrator
+[INFO] 
+[INFO] [AutoForge] Autonomous mode — running convergence loop...
+  ✔ passes the goal string into loop context (16.5841ms)
+[OK] DanteForge AutoForge - Agentic Pipeline Orchestrator
+[INFO] 
+[OK] DanteForge AutoForge - Agentic Pipeline Orchestrator
+[INFO] 
+[OK] === COPY-PASTE PROMPT (start) ===
+
+# AutoForge Pipeline Plan
+
+**Goal:** ship it
+
+**Scenario:** cold-start
+**Current Stage:** initialized
+**Reasoning:** test
+
+## Steps to Execute
+
+1. `danteforge review` — scan
+
+## Project Context
+
+- UI Project: No
+- Design File: No
+- Memory Entries: 0
+- Design Violations: 0
+- Failed Attempts: 0
+
+[OK] === COPY-PASTE PROMPT (end) ===
+[INFO] 
+[INFO] Paste this into your LLM interface to get guidance on executing these steps.
+[OK] DanteForge AutoForge - Agentic Pipeline Orchestrator
+[INFO] 
+[INFO] [AutoForge] Dry run complete — no commands were executed.
+[OK] DanteForge AutoForge - Agentic Pipeline Orchestrator
+[INFO] 
+[INFO] 
+[INFO] ============================================================
+[ERR]   AUTOFORGE COMPLETED WITH FAILURES
+[INFO] ============================================================
+[INFO] 
+[INFO] Run `danteforge doctor` to diagnose, then `danteforge autoforge` to retry.
+[ERR] Failed: forge
+  ✔ passes force flag into loop context (275.4977ms)
+  ✔ delegates score-only mode to the injected score runner (0.7432ms)
+  ✔ uses injected analysis + planner in prompt mode without executing the plan (2.2246ms)
+  ✔ uses injected displayPlan in dry-run mode (1.4443ms)
+  ✔ uses injected executor in standard execution mode and marks failures via exitCode (1.425ms)
+[OK] DanteForge AutoForge - Agentic Pipeline Orchestrator
+[INFO] 
+[INFO] Scoring existing artifacts...
+[INFO] STATE.yaml updated
+[INFO] 
+[OK] DanteForge v0.15.0 — Score-Only Pass
+[INFO] ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+[INFO] CONSTITUTION.md         0  ✗ BLOCKED
+[INFO] SPEC.md                 0  ✗ BLOCKED
+[INFO] CLARIFY.md              0  ✗ BLOCKED
+[INFO] PLAN.md                 0  ✗ BLOCKED
+[INFO] TASKS.md                0  ✗ BLOCKED
+[INFO] 
+[INFO] Overall completion:  0%
+[INFO] Current bottleneck:  CONSTITUTION.md (completeness: 0/20)
+[INFO] 
+[INFO] Recommended next action:
+[INFO]   danteforge constitution
+[INFO]   Reason: Artifact CONSTITUTION.md does not exist
+[INFO] 
+[INFO] Guidance written to: C:\Users\richa\AppData\Local\Temp\df-autoforge-cli-Cab3hc\.danteforge\AUTOFORGE_GUIDANCE.md
+[OK] DanteForge AutoForge - Agentic Pipeline Orchestrator
+[INFO] 
+[INFO] 
+[INFO] ============================================================
+[OK]   AUTOFORGE COMPLETE
+[INFO] ============================================================
+[INFO] 
+[OK] Completed: forge
+[INFO] 
+[INFO] Reflection: 92/100 (ready)
+[WARN] Remaining: final polish
+[OK] DanteForge AutoForge - Agentic Pipeline Orchestrator
+[INFO] 
+[INFO] 
+[INFO] ============================================================
+[INFO]   AUTOFORGE PAUSED AT CHECKPOINT
+[INFO] ============================================================
+[INFO] 
+[OK] Completed: forge
+[INFO] Paused after 3 waves. Run `danteforge autoforge` again to continue.
+[OK] DanteForge AutoForge - Agentic Pipeline Orchestrator
+[INFO] 
+[INFO] 
+[INFO] ============================================================
+[OK]   AUTOFORGE COMPLETE
+[INFO] ============================================================
+[INFO] 
+[OK] Completed: forge
+  ✔ writes AUTOFORGE_GUIDANCE.md in a real score-only workspace (3458.5635ms)
+  ✔ loads and reports reflection data when the verdict is available (1.1004ms)
+  ✔ reports paused execution without marking the process as failed (0.6248ms)
+  ✔ swallows reflection lookup errors after a successful execution (0.6421ms)
+✔ autoforge CLI — --auto loop mode (5443.5691ms)
+▶ complexity feedback loop — end-to-end
+  ✔ adjustWeightsFromOutcome returns non-null when presets differ by ≥2 steps (1654.0827ms)
+  ✔ adjustWeightsFromOutcome returns null when presets are within 1 step (close enough) (449.8178ms)
+  ✔ persistComplexityWeights writes YAML file that loadComplexityWeights can read back (1914.8116ms)
+  ✔ full loop: persist → reload → adjust again produces further deltas (183.6904ms)
+✔ complexity feedback loop — end-to-end (4318.4005ms)
+[OK] DanteForge AutoForge - Agentic Pipeline Orchestrator
+[INFO] 
+[INFO] [AutoForge] Autonomous mode — running convergence loop...
+[OK] DanteForge AutoForge - Agentic Pipeline Orchestrator
+[INFO] 
+[INFO] [AutoForge] Autonomous mode — running convergence loop...
+▶ autoforge CLI — _executeCommand and --auto wiring
+  ✔ --auto mode wires _executeCommand into the loop context via _runLoop closure (896.6325ms)
+[OK] DanteForge AutoForge - Agentic Pipeline Orchestrator
+[INFO] 
+[INFO] [AutoForge] Autonomous mode — running convergence loop...
+  ✔ uses provided _executeCommand instead of default spawner (606.3824ms)
+[OK] DanteForge AutoForge - Agentic Pipeline Orchestrator
+[INFO] 
+[INFO] [AutoForge] Autonomous mode — running convergence loop...
+  ✔ uses _runLoop directly when provided in --auto mode (1445.8188ms)
+[OK] DanteForge AutoForge - Agentic Pipeline Orchestrator
+[INFO] 
+[INFO] [AutoForge] Autonomous mode — running convergence loop...
+  ✔ sets process.exitCode = 1 when loop returns BLOCKED state (731.4966ms)
+  ✔ does NOT set process.exitCode = 1 when loop returns COMPLETE state (18.0349ms)
+[OK] DanteForge AutoForge - Agentic Pipeline Orchestrator
+[INFO] 
+[INFO] [AutoForge] Autonomous mode — running convergence loop...
+[OK] DanteForge AutoForge - Agentic Pipeline Orchestrator
+[INFO] 
+[INFO] [AutoForge] Autonomous mode — running convergence loop...
+  ✔ _executeCommand injection receives the correct command and cwd (1883.3869ms)
+[OK] DanteForge AutoForge - Agentic Pipeline Orchestrator
+[INFO] 
+[INFO] [AutoForge] Dry run complete — no commands were executed.
+[OK] DanteForge AutoForge - Agentic Pipeline Orchestrator
+[INFO] 
+[INFO] 
+[INFO] ============================================================
+[OK]   AUTOFORGE COMPLETE
+[INFO] ============================================================
+[INFO] 
+[OK] Completed: review
+[OK] DanteForge AutoForge - Agentic Pipeline Orchestrator
+[INFO] 
+[INFO] [AutoForge] Autonomous mode — running convergence loop...
+  ✔ handles _executeCommand returning { success: false } without throwing (571.0944ms)
+  ✔ does NOT call _runLoop when auto option is false (157.9901ms)
+  ✔ executes the plan in non-auto standard mode (1.5793ms)
+[OK] DanteForge AutoForge - Agentic Pipeline Orchestrator
+[INFO] 
+[INFO] [AutoForge] Autonomous mode — running convergence loop...
+  ✔ passes the goal string to AutoforgeLoopContext in --auto mode (25.1359ms)
+  ✔ uses default goal text when no goal is provided (838.6019ms)
+[OK] DanteForge AutoForge - Agentic Pipeline Orchestrator
+[INFO] 
+[INFO] [AutoForge] Autonomous mode — running convergence loop...
+[OK] DanteForge AutoForge - Agentic Pipeline Orchestrator
+[INFO] 
+[INFO] [AutoForge] Autonomous mode — running convergence loop...
+  ✔ forwards cwd option to the AutoforgeLoopContext (1599.5216ms)
+[OK] DanteForge AutoForge - Agentic Pipeline Orchestrator
+[INFO] 
+[INFO] [AutoForge] Autonomous mode — running convergence loop...
+  ✔ forwards force=true option to the AutoforgeLoopContext (603.8345ms)
+[OK] DanteForge AutoForge - Agentic Pipeline Orchestrator
+[INFO] 
+  ✔ forwards dryRun option to the AutoforgeLoopContext (19.7562ms)
+  ✔ score-only mode bypasses the auto loop entirely (0.6949ms)
+✔ autoforge CLI — _executeCommand and --auto wiring (9404.968ms)
+▶ findBottleneck
+  ✔ returns artifact with lowest score (8.8571ms)
+  ✔ returns valid Bottleneck with worstDimension and worstScore (2.6382ms)
+✔ findBottleneck (16.356ms)
+▶ getRecommendation
+  ✔ returns null when all scores are EXCELLENT (>= 95) (1.7828ms)
+  ✔ returns recommendation for worst artifact with issues (0.6531ms)
+  ✔ uses "Score X is below Y" reason when no issues (topIssue=undefined branch) (0.5652ms)
+✔ getRecommendation (3.8536ms)
+▶ buildGuidanceMarkdown
+  ✔ renders "_None_" for bottleneck when all scores equal (no clear worst) (1.513ms)
+  ✔ renders "_None_" for blocking issues when all scores >= 50 (0.4927ms)
+  ✔ lists blocking issues when score < 50 (0.5738ms)
+  ✔ renders "YES" for autoAdvance when all scores >= 50 (0.451ms)
+  ✔ renders "NO" for autoAdvance when any score < 50 (0.4978ms)
+  ✔ renders "# No action required" when getRecommendation returns null (0.4083ms)
+  ✔ renders recommendation command when scores are below threshold (0.6065ms)
+✔ buildGuidanceMarkdown (188.8782ms)
+▶ findBlockedArtifacts
+  ✔ returns empty array when all scores above threshold (4.4305ms)
+  ✔ returns blocking issues for scores below NEEDS_WORK (0.7665ms)
+  ✔ blocking issue has correct fields (3.0534ms)
+  ✔ remediation uses artifact command map (0.8267ms)
+✔ findBlockedArtifacts (16.5426ms)
+▶ determineNextCommand
+  ✔ returns planning command when planning incomplete and artifact below ACCEPTABLE (2.6864ms)
+  ✔ returns forge when planning complete but execution incomplete (0.6106ms)
+  ✔ returns verify when execution complete but verification incomplete (0.5804ms)
+  ✔ returns synthesize when verification complete but synthesis incomplete (0.6096ms)
+  ✔ returns null when all phases complete (3.397ms)
+✔ determineNextCommand (8.9932ms)
+▶ findBottleneck
+  ✔ returns lowest artifact when blocked (1.1515ms)
+  ✔ returns planning phase message when incomplete but not blocked (0.5689ms)
+  ✔ returns None when all complete (0.6947ms)
+✔ findBottleneck (2.8388ms)
+▶ buildGuidance
+  ✔ returns correct overallCompletion (2.7603ms)
+  ✔ autoAdvanceEligible true when no blocking and below threshold (0.4064ms)
+  ✔ autoAdvanceBlockReason set when blocking issues (0.3209ms)
+✔ buildGuidance (4.0726ms)
+▶ getRecommendationReason
+  ✔ returns remediation message with blocking issues (0.4393ms)
+  ✔ returns phase message with no blocking issues (0.2967ms)
+✔ getRecommendationReason (1.169ms)
+▶ computeEstimatedSteps
+  ✔ returns pipeline length when no completionTracker (0.4431ms)
+✔ computeEstimatedSteps (0.6413ms)
+▶ formatElapsed
+  ✔ returns seconds format for < 60s (3.1033ms)
+  ✔ returns minutes+seconds format for >= 60s with remainder (0.5709ms)
+  ✔ returns just minutes when remainder is 0 (0.3358ms)
+  ✔ handles very short elapsed (< 2s) as 0s or 1s (0.2954ms)
+  ✔ handles large elapsed (10 minutes) (0.2639ms)
+✔ formatElapsed (6.5349ms)
+▶ createStepTracker injection in runAutoforgeLoop
+  ✔ createStepTracker is importable from progress.ts (0.3432ms)
+  ✔ step tracker increments and reports current step (0.4882ms)
+  ✔ step tracker does not exceed total (0.2613ms)
+  ✔ AutoforgeLoopContext._stepTracker field accepts a StepTracker (1.98ms)
+  ✔ formatElapsed is exported from autoforge-loop (0.3056ms)
+✔ createStepTracker injection in runAutoforgeLoop (3.9148ms)
+▶ autoforge-loop — totalSpendUsd accumulation
+  ✔ totalSpendUsd field is present on AutoforgeLoopContext type (314.8766ms)
+[INFO] [Autoforge] Cycle 1 — score: 60% avg | completion: 30% | $0.045 spent | elapsed: 1s
+[INFO] [Autoforge] DRY RUN — would execute: constitution
+[INFO] [Autoforge] Overall: 30% | Bottleneck: Planning phase incomplete
+  ✔ totalSpendUsd accumulates across cycles from cost reports (1557.7845ms)
+[INFO] [Autoforge] Cycle 1 — score: 60% avg | completion: 30% | elapsed: 0s
+[INFO] [Autoforge] DRY RUN — would execute: constitution
+[INFO] [Autoforge] Overall: 30% | Bottleneck: Planning phase incomplete
+  ✔ totalSpendUsd is 0 when no cost reports exist (20.0091ms)
+[INFO] [Autoforge] Cycle 1 — score: 60% avg | completion: 30% | elapsed: 0s
+[INFO] [Autoforge] DRY RUN — would execute: constitution
+[INFO] [Autoforge] Overall: 30% | Bottleneck: Planning phase incomplete
+  ✔ cost report read failure is non-fatal — loop continues (17.8693ms)
+[INFO] [Autoforge] Cycle 1 — score: 60% avg | completion: 30% | elapsed: 0s
+[INFO] [Autoforge] DRY RUN — would execute: constitution
+[INFO] [Autoforge] Overall: 30% | Bottleneck: Planning phase incomplete
+  ✔ fall back to _estimateTokens when no cost report exists (665.3198ms)
+[INFO] [Autoforge] Cycle 1 — score: 65% avg | completion: 40% | $0.080 spent | elapsed: 0s
+[INFO] [Autoforge] DRY RUN — would execute: constitution
+[INFO] [Autoforge] Overall: 40% | Bottleneck: Planning phase incomplete
+  ✔ ROI entry written when tokensSpent > 0 and prevAvgScore is set (32.1601ms)
+✔ autoforge-loop — totalSpendUsd accumulation (2618.1929ms)
+[WARN] [Wiki] PDSE anomaly: CONSTITUTION jumped +90 pts (avg: 0)
+[WARN] [Wiki] PDSE anomaly: SPEC jumped +85 pts (avg: 0)
+[WARN] [Wiki] PDSE anomaly: CLARIFY jumped +80 pts (avg: 0)
+[WARN] [Wiki] PDSE anomaly: PLAN jumped +80 pts (avg: 0)
+[WARN] [Wiki] PDSE anomaly: TASKS jumped +75 pts (avg: 0)
+[INFO] [Autoforge] Cycle 1 — score: 82% avg | completion: 96% | elapsed: 2s
+[OK] [Autoforge] Overall completion: 96% — target reached! (1 cycles, 2s)
+[INFO] 
+┌────────────────┬───────┬──────────┐
+[INFO] │ Artifact       │ Score │ Decision │
+[INFO] ├────────────────┼───────┼──────────┤
+[INFO] │ CONSTITUTION   │    90 │ advance  │
+[INFO] │ SPEC           │    85 │ advance  │
+[INFO] │ CLARIFY        │    80 │ advance  │
+[INFO] │ PLAN           │    80 │ advance  │
+[INFO] │ TASKS          │    75 │ advance  │
+[INFO] └────────────────┴───────┴──────────┘
+▶ runAutoforgeLoop state machine
+  ✔ IDLE → COMPLETE when tracker >= 95% (2837.8749ms)
+[WARN] [Wiki] PDSE anomaly: CONSTITUTION jumped +90 pts (avg: 0)
+[WARN] [Wiki] PDSE anomaly: SPEC jumped +30 pts (avg: 0)
+[WARN] [Wiki] PDSE anomaly: CLARIFY jumped +80 pts (avg: 0)
+[WARN] [Wiki] PDSE anomaly: PLAN jumped +80 pts (avg: 0)
+[WARN] [Wiki] PDSE anomaly: TASKS jumped +75 pts (avg: 0)
+[INFO] [Autoforge] Cycle 1 — score: 71% avg | completion: 40% | elapsed: 0s
+[ERR] [Autoforge] BLOCKED: SPEC failed after 3 retries
+[INFO] [Autoforge] See .danteforge/AUTOFORGE_GUIDANCE.md for remediation commands
+  ✔ IDLE → BLOCKED when maxRetries=0 and artifact blocked (938.7919ms)
+[WARN] [Wiki] PDSE anomaly: CONSTITUTION jumped +90 pts (avg: 0)
+[WARN] [Wiki] PDSE anomaly: SPEC jumped +30 pts (avg: 0)
+[WARN] [Wiki] PDSE anomaly: CLARIFY jumped +80 pts (avg: 0)
+[WARN] [Wiki] PDSE anomaly: PLAN jumped +80 pts (avg: 0)
+[WARN] [Wiki] PDSE anomaly: TASKS jumped +75 pts (avg: 0)
+[INFO] [Autoforge] Cycle 1 — score: 71% avg | completion: 40% | elapsed: 0s
+[INFO] [Autoforge] Backing off 2000ms before retry...
+[INFO] [Autoforge] Refining SPEC (attempt 1/100)
+[INFO] [Autoforge] Executing: forge
+[WARN] [Wiki] PDSE anomaly: CONSTITUTION jumped +90 pts (avg: 0)
+[WARN] [Wiki] PDSE anomaly: SPEC jumped +30 pts (avg: 0)
+[WARN] [Wiki] PDSE anomaly: CLARIFY jumped +80 pts (avg: 0)
+[WARN] [Wiki] PDSE anomaly: PLAN jumped +80 pts (avg: 0)
+[WARN] [Wiki] PDSE anomaly: TASKS jumped +75 pts (avg: 0)
+[INFO] [Autoforge] Cycle 2 — score: 71% avg | completion: 40% | elapsed: 1s
+[INFO] [Autoforge] Backing off 4000ms before retry...
+[INFO] [Autoforge] Refining SPEC (attempt 2/100)
+[INFO] [Autoforge] Executing: forge
+[WARN] [Wiki] PDSE anomaly: CONSTITUTION jumped +90 pts (avg: 0)
+[WARN] [Wiki] PDSE anomaly: SPEC jumped +30 pts (avg: 0)
+[WARN] [Wiki] PDSE anomaly: CLARIFY jumped +80 pts (avg: 0)
+[WARN] [Wiki] PDSE anomaly: PLAN jumped +80 pts (avg: 0)
+[WARN] [Wiki] PDSE anomaly: TASKS jumped +75 pts (avg: 0)
+[INFO] [Autoforge] Cycle 3 — score: 71% avg | completion: 40% | elapsed: 5s
+[INFO] [Autoforge] Backing off 8000ms before retry...
+[INFO] [Autoforge] Refining SPEC (attempt 3/100)
+[INFO] [Autoforge] Executing: forge
+[WARN] [Wiki] PDSE anomaly: CONSTITUTION jumped +90 pts (avg: 0)
+[WARN] [Wiki] PDSE anomaly: SPEC jumped +30 pts (avg: 0)
+[WARN] [Wiki] PDSE anomaly: CLARIFY jumped +80 pts (avg: 0)
+[WARN] [Wiki] PDSE anomaly: PLAN jumped +80 pts (avg: 0)
+[WARN] [Wiki] PDSE anomaly: TASKS jumped +75 pts (avg: 0)
+[INFO] [Autoforge] Cycle 4 — score: 71% avg | completion: 40% | elapsed: 6s
+[INFO] [Autoforge] Backing off 16000ms before retry...
+[INFO] [Autoforge] Refining SPEC (attempt 4/100)
+[INFO] [Autoforge] Executing: forge
+[WARN] [Wiki] PDSE anomaly: CONSTITUTION jumped +90 pts (avg: 0)
+[WARN] [Wiki] PDSE anomaly: SPEC jumped +30 pts (avg: 0)
+[WARN] [Wiki] PDSE anomaly: CLARIFY jumped +80 pts (avg: 0)
+[WARN] [Wiki] PDSE anomaly: PLAN jumped +80 pts (avg: 0)
+[WARN] [Wiki] PDSE anomaly: TASKS jumped +75 pts (avg: 0)
+[INFO] [Wiki] Lint cycle completed (cycle 5)
+[INFO] [Autoforge] Cycle 5 — score: 71% avg | completion: 40% | elapsed: 9s
+  ✔ circuit breaker trips after consecutive failure limit (9200.9134ms)
+[ERR] [Autoforge] Circuit breaker tripped — 5 consecutive failures
+[WARN] [Wiki] PDSE anomaly: CONSTITUTION jumped +90 pts (avg: 0)
+[WARN] [Wiki] PDSE anomaly: SPEC jumped +30 pts (avg: 0)
+[WARN] [Wiki] PDSE anomaly: CLARIFY jumped +80 pts (avg: 0)
+[WARN] [Wiki] PDSE anomaly: PLAN jumped +80 pts (avg: 0)
+[WARN] [Wiki] PDSE anomaly: TASKS jumped +75 pts (avg: 0)
+[INFO] [Autoforge] Cycle 1 — score: 71% avg | completion: 40% | elapsed: 0s
+[INFO] [Autoforge] Backing off 2000ms before retry...
+[INFO] [Autoforge] Refining SPEC (attempt 1/5)
+[INFO] [Autoforge] Executing: forge
+[WARN] [Wiki] PDSE anomaly: CONSTITUTION jumped +90 pts (avg: 0)
+[WARN] [Wiki] PDSE anomaly: SPEC jumped +85 pts (avg: 0)
+[WARN] [Wiki] PDSE anomaly: CLARIFY jumped +80 pts (avg: 0)
+[WARN] [Wiki] PDSE anomaly: PLAN jumped +80 pts (avg: 0)
+[WARN] [Wiki] PDSE anomaly: TASKS jumped +75 pts (avg: 0)
+[INFO] [Autoforge] Cycle 2 — score: 82% avg | completion: 96% | elapsed: 2s
+[OK] [Autoforge] Overall completion: 96% — target reached! (2 cycles, 2s)
+[INFO] 
+┌────────────────┬───────┬──────────┐
+[INFO] │ Artifact       │ Score │ Decision │
+[INFO] ├────────────────┼───────┼──────────┤
+[INFO] │ CONSTITUTION   │    90 │ advance  │
+[INFO] │ SPEC           │    85 │ advance  │
+[INFO] │ CLARIFY        │    80 │ advance  │
+[INFO] │ PLAN           │    80 │ advance  │
+[INFO] │ TASKS          │    75 │ advance  │
+[INFO] └────────────────┴───────┴──────────┘
+  ✔ retry/backoff path: first pass blocked, second passes (2174.0461ms)
+[WARN] [Wiki] PDSE anomaly: CONSTITUTION jumped +90 pts (avg: 0)
+[WARN] [Wiki] PDSE anomaly: SPEC jumped +30 pts (avg: 0)
+[WARN] [Wiki] PDSE anomaly: CLARIFY jumped +80 pts (avg: 0)
+[WARN] [Wiki] PDSE anomaly: PLAN jumped +80 pts (avg: 0)
+[WARN] [Wiki] PDSE anomaly: TASKS jumped +75 pts (avg: 0)
+[INFO] [Autoforge] Cycle 1 — score: 71% avg | completion: 40% | elapsed: 1s
+[WARN] [Autoforge] --force: overriding BLOCKED artifact(s) for one cycle
+[INFO] [Autoforge] Executing: forge
+[WARN] [Wiki] PDSE anomaly: CONSTITUTION jumped +90 pts (avg: 0)
+[WARN] [Wiki] PDSE anomaly: SPEC jumped +85 pts (avg: 0)
+[WARN] [Wiki] PDSE anomaly: CLARIFY jumped +80 pts (avg: 0)
+[WARN] [Wiki] PDSE anomaly: PLAN jumped +80 pts (avg: 0)
+[WARN] [Wiki] PDSE anomaly: TASKS jumped +75 pts (avg: 0)
+[INFO] [Autoforge] Cycle 2 — score: 82% avg | completion: 96% | elapsed: 1s
+[OK] [Autoforge] Overall completion: 96% — target reached! (2 cycles, 1s)
+[INFO] 
+┌────────────────┬───────┬──────────┐
+[INFO] │ Artifact       │ Score │ Decision │
+[INFO] ├────────────────┼───────┼──────────┤
+[INFO] │ CONSTITUTION   │    90 │ advance  │
+[INFO] │ SPEC           │    85 │ advance  │
+[INFO] │ CLARIFY        │    80 │ advance  │
+[INFO] │ PLAN           │    80 │ advance  │
+[INFO] │ TASKS          │    75 │ advance  │
+[INFO] └────────────────┴───────┴──────────┘
+  ✔ force override bypasses blocking on first cycle (1818.9992ms)
+[WARN] [Wiki] PDSE anomaly: CONSTITUTION jumped +90 pts (avg: 0)
+[WARN] [Wiki] PDSE anomaly: SPEC jumped +85 pts (avg: 0)
+[WARN] [Wiki] PDSE anomaly: CLARIFY jumped +80 pts (avg: 0)
+[WARN] [Wiki] PDSE anomaly: PLAN jumped +80 pts (avg: 0)
+[WARN] [Wiki] PDSE anomaly: TASKS jumped +75 pts (avg: 0)
+[INFO] [Autoforge] Cycle 1 — score: 82% avg | completion: 40% | elapsed: 0s
+[INFO] [Autoforge] DRY RUN — would execute: forge
+[INFO] [Autoforge] Overall: 40% | Bottleneck: Execution phase incomplete
+  ✔ dry-run exits after computing guidance without executing (736.7702ms)
+[WARN] [Wiki] PDSE anomaly: CONSTITUTION jumped +90 pts (avg: 0)
+[WARN] [Wiki] PDSE anomaly: SPEC jumped +85 pts (avg: 0)
+[WARN] [Wiki] PDSE anomaly: CLARIFY jumped +80 pts (avg: 0)
+[WARN] [Wiki] PDSE anomaly: PLAN jumped +80 pts (avg: 0)
+[WARN] [Wiki] PDSE anomaly: TASKS jumped +75 pts (avg: 0)
+[INFO] [Autoforge] Cycle 1 — score: 82% avg | completion: 80% | elapsed: 1s
+  ✔ COMPLETE when no next command found (1452.3288ms)
+[WARN] [Wiki] PDSE anomaly: CONSTITUTION jumped +90 pts (avg: 0)
+[WARN] [Wiki] PDSE anomaly: SPEC jumped +85 pts (avg: 0)
+[WARN] [Wiki] PDSE anomaly: CLARIFY jumped +80 pts (avg: 0)
+[WARN] [Wiki] PDSE anomaly: PLAN jumped +80 pts (avg: 0)
+[WARN] [Wiki] PDSE anomaly: TASKS jumped +75 pts (avg: 0)
+[INFO] [Autoforge] Cycle 1 — score: 82% avg | completion: 40% | elapsed: 1s
+[INFO] [Autoforge] Executing: forge
+[WARN] [Wiki] PDSE anomaly: CONSTITUTION jumped +90 pts (avg: 0)
+[WARN] [Wiki] PDSE anomaly: SPEC jumped +85 pts (avg: 0)
+[WARN] [Wiki] PDSE anomaly: CLARIFY jumped +80 pts (avg: 0)
+[WARN] [Wiki] PDSE anomaly: PLAN jumped +80 pts (avg: 0)
+[WARN] [Wiki] PDSE anomaly: TASKS jumped +75 pts (avg: 0)
+[INFO] [Autoforge] Cycle 2 — score: 82% avg | completion: 96% | elapsed: 2s
+[OK] [Autoforge] Overall completion: 96% — target reached! (2 cycles, 2s)
+[INFO] 
+┌────────────────┬───────┬──────────┐
+[INFO] │ Artifact       │ Score │ Decision │
+[INFO] ├────────────────┼───────┼──────────┤
+[INFO] │ CONSTITUTION   │    90 │ advance  │
+[INFO] │ SPEC           │    85 │ advance  │
+[INFO] │ CLARIFY        │    80 │ advance  │
+[INFO] │ PLAN           │    80 │ advance  │
+[INFO] │ TASKS          │    75 │ advance  │
+[INFO] └────────────────┴───────┴──────────┘
+  ✔ reloads state at end of non-dry-run iteration (2256.1576ms)
+[WARN] [Wiki] PDSE anomaly: CONSTITUTION jumped +90 pts (avg: 0)
+[WARN] [Wiki] PDSE anomaly: SPEC jumped +85 pts (avg: 0)
+[WARN] [Wiki] PDSE anomaly: CLARIFY jumped +80 pts (avg: 0)
+[WARN] [Wiki] PDSE anomaly: PLAN jumped +80 pts (avg: 0)
+[WARN] [Wiki] PDSE anomaly: TASKS jumped +75 pts (avg: 0)
+[INFO] [Autoforge] Cycle 1 — score: 82% avg | completion: 96% | elapsed: 0s
+[OK] [Autoforge] Overall completion: 96% — target reached! (1 cycles, 0s)
+[INFO] 
+┌────────────────┬───────┬──────────┐
+[INFO] │ Artifact       │ Score │ Decision │
+[INFO] ├────────────────┼───────┼──────────┤
+[INFO] │ CONSTITUTION   │    90 │ advance  │
+[INFO] │ SPEC           │    85 │ advance  │
+[INFO] │ CLARIFY        │    80 │ advance  │
+[INFO] │ PLAN           │    80 │ advance  │
+[INFO] │ TASKS          │    75 │ advance  │
+[INFO] └────────────────┴───────┴──────────┘
+  ✔ recordMemory called on COMPLETE (404.5597ms)
+[WARN] [Wiki] PDSE anomaly: CONSTITUTION jumped +90 pts (avg: 0)
+[WARN] [Wiki] PDSE anomaly: SPEC jumped +30 pts (avg: 0)
+[WARN] [Wiki] PDSE anomaly: CLARIFY jumped +80 pts (avg: 0)
+[WARN] [Wiki] PDSE anomaly: PLAN jumped +80 pts (avg: 0)
+[WARN] [Wiki] PDSE anomaly: TASKS jumped +75 pts (avg: 0)
+[INFO] [Autoforge] Cycle 1 — score: 71% avg | completion: 40% | elapsed: 0s
+[INFO] [Autoforge] Backing off 2000ms before retry...
+[INFO] [Autoforge] Refining SPEC (attempt 1/100)
+[INFO] [Autoforge] Executing: forge
+[WARN] [Wiki] PDSE anomaly: CONSTITUTION jumped +90 pts (avg: 0)
+[WARN] [Wiki] PDSE anomaly: SPEC jumped +30 pts (avg: 0)
+[WARN] [Wiki] PDSE anomaly: CLARIFY jumped +80 pts (avg: 0)
+[WARN] [Wiki] PDSE anomaly: PLAN jumped +80 pts (avg: 0)
+[WARN] [Wiki] PDSE anomaly: TASKS jumped +75 pts (avg: 0)
+[INFO] [Autoforge] Cycle 2 — score: 71% avg | completion: 40% | elapsed: 2s
+[INFO] [Autoforge] Backing off 4000ms before retry...
+[INFO] [Autoforge] Refining SPEC (attempt 2/100)
+[INFO] [Autoforge] Executing: forge
+[WARN] [Wiki] PDSE anomaly: CONSTITUTION jumped +90 pts (avg: 0)
+[WARN] [Wiki] PDSE anomaly: SPEC jumped +30 pts (avg: 0)
+[WARN] [Wiki] PDSE anomaly: CLARIFY jumped +80 pts (avg: 0)
+[WARN] [Wiki] PDSE anomaly: PLAN jumped +80 pts (avg: 0)
+[WARN] [Wiki] PDSE anomaly: TASKS jumped +75 pts (avg: 0)
+✖ tests\autoforge-loop-state-machine.test.ts (37326.3009ms)
+[INFO] [Autoforge] Cycle 1 — score: 82% avg | completion: 60% | elapsed: 0s
+[INFO] [Autoforge] Executing: forge
+[INFO] [Autoforge] Cycle 2 — score: 82% avg | completion: 96% | elapsed: 2s
+[OK] [Autoforge] Overall completion: 96% — target reached! (2 cycles, 2s)
+[INFO] 
+┌────────────────┬───────┬──────────┐
+[INFO] │ Artifact       │ Score │ Decision │
+[INFO] ├────────────────┼───────┼──────────┤
+[INFO] │ CONSTITUTION   │    90 │ advance  │
+[INFO] │ SPEC           │    85 │ advance  │
+[INFO] │ CLARIFY        │    80 │ advance  │
+[INFO] │ PLAN           │    80 │ advance  │
+[INFO] │ TASKS          │    75 │ advance  │
+[INFO] └────────────────┴───────┴──────────┘
+▶ autoforge-loop context-sync hook
+  ✔ _syncContext is called when .cursor directory exists (2239.5513ms)
+[INFO] [Autoforge] Cycle 1 — score: 82% avg | completion: 60% | elapsed: 0s
+[INFO] [Autoforge] Executing: forge
+[INFO] [Autoforge] Cycle 2 — score: 82% avg | completion: 96% | elapsed: 0s
+[OK] [Autoforge] Overall completion: 96% — target reached! (2 cycles, 0s)
+[INFO] 
+┌────────────────┬───────┬──────────┐
+[INFO] │ Artifact       │ Score │ Decision │
+[INFO] ├────────────────┼───────┼──────────┤
+[INFO] │ CONSTITUTION   │    90 │ advance  │
+[INFO] │ SPEC           │    85 │ advance  │
+[INFO] │ CLARIFY        │    80 │ advance  │
+[INFO] │ PLAN           │    80 │ advance  │
+[INFO] │ TASKS          │    75 │ advance  │
+[INFO] └────────────────┴───────┴──────────┘
+  ✔ _syncContext is NOT called when .cursor directory is absent (310.5888ms)
+[INFO] [Autoforge] Cycle 1 — score: 82% avg | completion: 60% | elapsed: 0s
+[INFO] [Autoforge] Executing: forge
+[INFO] [Autoforge] Cycle 2 — score: 82% avg | completion: 96% | elapsed: 0s
+[OK] [Autoforge] Overall completion: 96% — target reached! (2 cycles, 0s)
+[INFO] 
+┌────────────────┬───────┬──────────┐
+[INFO] │ Artifact       │ Score │ Decision │
+[INFO] ├────────────────┼───────┼──────────┤
+[INFO] │ CONSTITUTION   │    90 │ advance  │
+[INFO] │ SPEC           │    85 │ advance  │
+[INFO] │ CLARIFY        │    80 │ advance  │
+[INFO] │ PLAN           │    80 │ advance  │
+[INFO] │ TASKS          │    75 │ advance  │
+[INFO] └────────────────┴───────┴──────────┘
+  ✔ _syncContext error does not block the loop (51.2422ms)
+[INFO] [Autoforge] Cycle 1 — score: 82% avg | completion: 60% | elapsed: 0s
+[INFO] [Autoforge] Executing: forge
+[INFO] [Autoforge] Cycle 2 — score: 82% avg | completion: 96% | elapsed: 3s
+[OK] [Autoforge] Overall completion: 96% — target reached! (2 cycles, 3s)
+[INFO] 
+┌────────────────┬───────┬──────────┐
+[INFO] │ Artifact       │ Score │ Decision │
+[INFO] ├────────────────┼───────┼──────────┤
+[INFO] │ CONSTITUTION   │    90 │ advance  │
+[INFO] │ SPEC           │    85 │ advance  │
+[INFO] │ CLARIFY        │    80 │ advance  │
+[INFO] │ PLAN           │    80 │ advance  │
+[INFO] │ TASKS          │    75 │ advance  │
+[INFO] └────────────────┴───────┴──────────┘
+  ✔ _existsSync receives the correct .cursor path (3413.5264ms)
+✔ autoforge-loop context-sync hook (6018.0921ms)
+▶ AutoforgeLoopState enum
+  ✔ has all expected states (1.9981ms)
+✔ AutoforgeLoopState enum (4.5521ms)
+▶ formatGuidanceMarkdown
+  ✔ produces valid markdown with all fields (2.3003ms)
+  ✔ includes blocking issues table when present (0.5302ms)
+  ✔ omits blocking issues table when empty (0.4736ms)
+  ✔ includes block reason when auto-advance is not eligible (0.429ms)
+  ✔ includes DanteForge footer (0.3825ms)
+✔ formatGuidanceMarkdown (6.3328ms)
+▶ computeEstimatedSteps
+  ✔ returns remaining steps based on tracker (0.9004ms)
+  ✔ returns pipeline length when no tracker exists (0.2596ms)
+  ✔ counts incomplete planning artifacts (0.399ms)
+  ✔ returns at least 1 (0.4861ms)
+✔ computeEstimatedSteps (2.5412ms)
+▶ AutoforgeLoopContext types
+  ✔ creates a valid context (0.329ms)
+  ✔ tracks retry counters per artifact (0.2061ms)
+  ✔ tracks blocked artifacts list (1.4654ms)
+✔ AutoforgeLoopContext types (2.2511ms)
+▶ BlockingIssue structure
+  ✔ contains all required fields (0.2537ms)
+✔ BlockingIssue structure (0.4245ms)
+▶ Autoforge Circuit Breaker (Wave 1D)
+  ✔ exports CIRCUIT_BREAKER_BACKOFF_BASE_MS = 2000 (0.3614ms)
+  ✔ exports CIRCUIT_BREAKER_MAX_BACKOFF_MS = 30_000 (0.1594ms)
+  ✔ exports computeBackoff function (0.0997ms)
+  ✔ computeBackoff uses exponential formula (0.1224ms)
+  ✔ computeBackoff caps at MAX_BACKOFF (0.0974ms)
+  ✔ tracks consecutiveFailures counter (0.1359ms)
+  ✔ resets consecutiveFailures on success (0.0934ms)
+  ✔ trips circuit breaker at CONSECUTIVE_FAILURE_LIMIT (0.1518ms)
+  ✔ applies backoff before retry in REFINING state (0.1766ms)
+  ✔ exports CIRCUIT_BREAKER_CONSECUTIVE_FAILURE_LIMIT = 5 (0.141ms)
+✔ Autoforge Circuit Breaker (Wave 1D) (1.9349ms)
+▶ computeBackoff direct tests
+  ✔ retryCount=0 returns base backoff (0.2478ms)
+  ✔ retryCount=1 doubles the base (0.1123ms)
+  ✔ retryCount=2 quadruples the base (0.151ms)
+  ✔ high retryCount caps at MAX_BACKOFF (0.1071ms)
+  ✔ negative retryCount returns base or less (no crash) (0.1279ms)
+✔ computeBackoff direct tests (0.9868ms)
+▶ formatGuidanceMarkdown extra cases
+  ✔ includes estimatedStepsToCompletion when provided (0.2456ms)
+  ✔ formats multiple blocking issues (0.2012ms)
+✔ formatGuidanceMarkdown extra cases (0.6245ms)
+▶ computeEstimatedSteps extra cases
+  ✔ all phases complete returns 1 (0.346ms)
+  ✔ partially complete returns reasonable estimate (0.2447ms)
+  ✔ no tracker returns pipeline stage count (0.2893ms)
+✔ computeEstimatedSteps extra cases (1.1257ms)
+▶ AutoforgeLoopState enum values
+  ✔ all enum values are distinct strings (0.2254ms)
+✔ AutoforgeLoopState enum values (1.388ms)
+▶ writeGuidanceFile
+  ✔ writes guidance YAML to correct path (436.1005ms)
+✔ writeGuidanceFile (649.7029ms)
+▶ AutoforgeLoopContext fields
+  ✔ dryRun flag is preserved in context (0.4928ms)
+  ✔ context preserves all required fields with correct defaults (146.1157ms)
+✔ AutoforgeLoopContext fields (146.8679ms)
+▶ checkProtectedTaskPaths
+  ✔ returns approved=true when tasks have no files (723.7281ms)
+  ✔ returns approved=true when no tasks in current phase (284.6754ms)
+  ✔ returns approved=true when files are all non-protected (170.9199ms)
+  ✔ returns approved=false with blocked file when protected path is denied (deny policy) (161.7565ms)
+  ✔ returns approved=true when protected path is approved via allow-with-audit (173.7769ms)
+  ✔ uses selfEditPolicy from state (defaults to deny when undefined) (262.2142ms)
+✔ checkProtectedTaskPaths (1777.8528ms)
+[WARN] [Wiki] PDSE anomaly: CONSTITUTION jumped +85 pts (avg: 0)
+[WARN] [Wiki] PDSE anomaly: SPEC jumped +85 pts (avg: 0)
+[WARN] [Wiki] PDSE anomaly: CLARIFY jumped +85 pts (avg: 0)
+[WARN] [Wiki] PDSE anomaly: PLAN jumped +85 pts (avg: 0)
+[WARN] [Wiki] PDSE anomaly: TASKS jumped +85 pts (avg: 0)
+[INFO] [Autoforge] Cycle 1 — score: 85% avg | completion: 30% | elapsed: 0s
+▶ runAutoforgeLoop integration — _checkProtectedPaths seam
+  ✔ sets loopState=BLOCKED when _checkProtectedPaths returns approved=false (859.398ms)
+[WARN] [Wiki] PDSE anomaly: CONSTITUTION jumped +85 pts (avg: 0)
+[WARN] [Wiki] PDSE anomaly: SPEC jumped +85 pts (avg: 0)
+[WARN] [Wiki] PDSE anomaly: CLARIFY jumped +85 pts (avg: 0)
+[WARN] [Wiki] PDSE anomaly: PLAN jumped +85 pts (avg: 0)
+[WARN] [Wiki] PDSE anomaly: TASKS jumped +85 pts (avg: 0)
+[INFO] [Autoforge] Cycle 1 — score: 85% avg | completion: 30% | elapsed: 0s
+  ✔ sets blockedArtifacts to the blocked files list from _checkProtectedPaths (219.1579ms)
+[WARN] [Wiki] PDSE anomaly: CONSTITUTION jumped +85 pts (avg: 0)
+[WARN] [Wiki] PDSE anomaly: SPEC jumped +85 pts (avg: 0)
+[WARN] [Wiki] PDSE anomaly: CLARIFY jumped +85 pts (avg: 0)
+[WARN] [Wiki] PDSE anomaly: PLAN jumped +85 pts (avg: 0)
+[WARN] [Wiki] PDSE anomaly: TASKS jumped +85 pts (avg: 0)
+[INFO] [Autoforge] Cycle 1 — score: 85% avg | completion: 30% | elapsed: 0s
+  ✔ loop breaks after protected path block without continuing execution (24.8507ms)
+[WARN] [Wiki] PDSE anomaly: CONSTITUTION jumped +85 pts (avg: 0)
+[WARN] [Wiki] PDSE anomaly: SPEC jumped +85 pts (avg: 0)
+[WARN] [Wiki] PDSE anomaly: CLARIFY jumped +85 pts (avg: 0)
+[WARN] [Wiki] PDSE anomaly: PLAN jumped +85 pts (avg: 0)
+[WARN] [Wiki] PDSE anomaly: TASKS jumped +85 pts (avg: 0)
+[INFO] [Autoforge] Cycle 1 — score: 85% avg | completion: 30% | elapsed: 1s
+[INFO] [Autoforge] DRY RUN — would execute: forge
+[INFO] [Autoforge] Overall: 30% | Bottleneck: Execution phase incomplete
+  ✔ loop completes normally when _checkProtectedPaths returns approved=true (1038.9024ms)
+[WARN] [Wiki] PDSE anomaly: CONSTITUTION jumped +40 pts (avg: 0)
+[WARN] [Wiki] PDSE anomaly: SPEC jumped +40 pts (avg: 0)
+[WARN] [Wiki] PDSE anomaly: CLARIFY jumped +40 pts (avg: 0)
+[WARN] [Wiki] PDSE anomaly: PLAN jumped +40 pts (avg: 0)
+[WARN] [Wiki] PDSE anomaly: TASKS jumped +40 pts (avg: 0)
+[INFO] [Autoforge] Cycle 1 — score: 40% avg | completion: 15% | elapsed: 2s
+[INFO] [Autoforge] Backing off 2000ms before retry...
+[INFO] [Autoforge] Refining CONSTITUTION (attempt 1/3)
+[INFO] [Autoforge] Backing off 2000ms before retry...
+[INFO] [Autoforge] Refining SPEC (attempt 1/3)
+[INFO] [Autoforge] Backing off 2000ms before retry...
+[INFO] [Autoforge] Refining CLARIFY (attempt 1/3)
+[INFO] [Autoforge] Backing off 2000ms before retry...
+[INFO] [Autoforge] Refining PLAN (attempt 1/3)
+[INFO] [Autoforge] Backing off 2000ms before retry...
+[INFO] [Autoforge] Refining TASKS (attempt 1/3)
+[INFO] [Autoforge] DRY RUN — would execute: constitution
+[INFO] [Autoforge] Overall: 15% | Bottleneck: CONSTITUTION (score: 40, blocked)
+  ✔ _checkProtectedPaths is not called when planning is incomplete (nextCommand != forge) (2172.2788ms)
+✔ runAutoforgeLoop integration — _checkProtectedPaths seam (4315.2612ms)
+[WARN] [Wiki] PDSE anomaly: CONSTITUTION jumped +85 pts (avg: 0)
+[WARN] [Wiki] PDSE anomaly: SPEC jumped +85 pts (avg: 0)
+[WARN] [Wiki] PDSE anomaly: CLARIFY jumped +85 pts (avg: 0)
+[WARN] [Wiki] PDSE anomaly: PLAN jumped +85 pts (avg: 0)
+[WARN] [Wiki] PDSE anomaly: TASKS jumped +85 pts (avg: 0)
+[INFO] [Autoforge] Cycle 1 — score: 85% avg | completion: 30% | elapsed: 1s
+[INFO] [Autoforge] Executing: forge
+[WARN] [Wiki] PDSE anomaly: CONSTITUTION jumped +85 pts (avg: 0)
+[WARN] [Wiki] PDSE anomaly: SPEC jumped +85 pts (avg: 0)
+[WARN] [Wiki] PDSE anomaly: CLARIFY jumped +85 pts (avg: 0)
+[WARN] [Wiki] PDSE anomaly: PLAN jumped +85 pts (avg: 0)
+[WARN] [Wiki] PDSE anomaly: TASKS jumped +85 pts (avg: 0)
+[INFO] [Autoforge] Cycle 2 — score: 85% avg | completion: 96% | elapsed: 2s
+[OK] [Autoforge] Overall completion: 96% — target reached! (2 cycles, 2s)
+[INFO] 
+┌────────────────┬───────┬──────────┐
+[INFO] │ Artifact       │ Score │ Decision │
+[INFO] ├────────────────┼───────┼──────────┤
+[INFO] │ CONSTITUTION   │    85 │ warn     │
+[INFO] │ SPEC           │    85 │ warn     │
+[INFO] │ CLARIFY        │    85 │ warn     │
+[INFO] │ PLAN           │    85 │ warn     │
+[INFO] │ TASKS          │    85 │ warn     │
+[INFO] └────────────────┴───────┴──────────┘
+▶ runAutoforgeLoop — _executeCommand seam
+  ✔ calls _executeCommand with the determined next command (2680.0319ms)
+[INFO] [Autoforge] Cycle 1 — score: 85% avg | completion: 30% | elapsed: 0s
+[INFO] [Autoforge] Executing: forge
+[INFO] [Autoforge] Cycle 2 — score: 85% avg | completion: 96% | elapsed: 1s
+[OK] [Autoforge] Overall completion: 96% — target reached! (2 cycles, 1s)
+[INFO] 
+┌────────────────┬───────┬──────────┐
+[INFO] │ Artifact       │ Score │ Decision │
+[INFO] ├────────────────┼───────┼──────────┤
+[INFO] │ CONSTITUTION   │    85 │ warn     │
+[INFO] │ SPEC           │    85 │ warn     │
+[INFO] │ CLARIFY        │    85 │ warn     │
+[INFO] │ PLAN           │    85 │ warn     │
+[INFO] │ TASKS          │    85 │ warn     │
+[INFO] └────────────────┴───────┴──────────┘
+  ✔ _executeCommand receives the project cwd (1361.9396ms)
+[WARN] [Wiki] PDSE anomaly: CONSTITUTION jumped +85 pts (avg: 0)
+[WARN] [Wiki] PDSE anomaly: SPEC jumped +85 pts (avg: 0)
+[WARN] [Wiki] PDSE anomaly: CLARIFY jumped +85 pts (avg: 0)
+[WARN] [Wiki] PDSE anomaly: PLAN jumped +85 pts (avg: 0)
+[WARN] [Wiki] PDSE anomaly: TASKS jumped +85 pts (avg: 0)
+[INFO] [Autoforge] Cycle 1 — score: 85% avg | completion: 30% | elapsed: 0s
+[INFO] [Autoforge] Executing: forge
+[WARN] [Autoforge] Command failed: forge (consecutive failures: 1)
+[WARN] [Wiki] PDSE anomaly: CONSTITUTION jumped +85 pts (avg: 0)
+[WARN] [Wiki] PDSE anomaly: SPEC jumped +85 pts (avg: 0)
+[WARN] [Wiki] PDSE anomaly: CLARIFY jumped +85 pts (avg: 0)
+[WARN] [Wiki] PDSE anomaly: PLAN jumped +85 pts (avg: 0)
+[WARN] [Wiki] PDSE anomaly: TASKS jumped +85 pts (avg: 0)
+[INFO] [Autoforge] Cycle 2 — score: 85% avg | completion: 96% | elapsed: 1s
+[OK] [Autoforge] Overall completion: 96% — target reached! (2 cycles, 1s)
+[INFO] 
+┌────────────────┬───────┬──────────┐
+[INFO] │ Artifact       │ Score │ Decision │
+[INFO] ├────────────────┼───────┼──────────┤
+[INFO] │ CONSTITUTION   │    85 │ warn     │
+[INFO] │ SPEC           │    85 │ warn     │
+[INFO] │ CLARIFY        │    85 │ warn     │
+[INFO] │ PLAN           │    85 │ warn     │
+[INFO] │ TASKS          │    85 │ warn     │
+[INFO] └────────────────┴───────┴──────────┘
+  ✔ loop continues after _executeCommand failure (resilient execution) (1378.5028ms)
+[WARN] [Wiki] PDSE anomaly: CONSTITUTION jumped +85 pts (avg: 0)
+[WARN] [Wiki] PDSE anomaly: SPEC jumped +85 pts (avg: 0)
+[WARN] [Wiki] PDSE anomaly: CLARIFY jumped +85 pts (avg: 0)
+[WARN] [Wiki] PDSE anomaly: PLAN jumped +85 pts (avg: 0)
+[WARN] [Wiki] PDSE anomaly: TASKS jumped +85 pts (avg: 0)
+[INFO] [Autoforge] Cycle 1 — score: 85% avg | completion: 30% | elapsed: 0s
+[INFO] [Autoforge] DRY RUN — would execute: forge
+[INFO] [Autoforge] Overall: 30% | Bottleneck: Execution phase incomplete
+  ✔ loop works without _executeCommand (advisory/log-only mode) (222.1844ms)
+✔ runAutoforgeLoop — _executeCommand seam (5643.222ms)
+[WARN] [Wiki] PDSE anomaly: CONSTITUTION jumped +85 pts (avg: 0)
+[WARN] [Wiki] PDSE anomaly: SPEC jumped +85 pts (avg: 0)
+[WARN] [Wiki] PDSE anomaly: CLARIFY jumped +85 pts (avg: 0)
+[WARN] [Wiki] PDSE anomaly: PLAN jumped +85 pts (avg: 0)
+[WARN] [Wiki] PDSE anomaly: TASKS jumped +85 pts (avg: 0)
+[INFO] [Autoforge] Cycle 1 — score: 85% avg | completion: 30% | elapsed: 0s
+[INFO] [Autoforge] Advisory mode — next command: forge
+[INFO] [Autoforge] No executor provided. See .danteforge/AUTOFORGE_GUIDANCE.md for commands.
+▶ runAutoforgeLoop — advisory mode + execution circuit breaker
+  ✔ exits after one cycle in advisory mode when no _executeCommand and dryRun=false (1479.357ms)
+[WARN] [Wiki] PDSE anomaly: CONSTITUTION jumped +85 pts (avg: 0)
+[WARN] [Wiki] PDSE anomaly: SPEC jumped +85 pts (avg: 0)
+[WARN] [Wiki] PDSE anomaly: CLARIFY jumped +85 pts (avg: 0)
+[WARN] [Wiki] PDSE anomaly: PLAN jumped +85 pts (avg: 0)
+[WARN] [Wiki] PDSE anomaly: TASKS jumped +85 pts (avg: 0)
+[INFO] [Autoforge] Cycle 1 — score: 85% avg | completion: 30% | elapsed: 0s
+[INFO] [Autoforge] Executing: forge
+[WARN] [Autoforge] Command failed: forge (consecutive failures: 1)
+[WARN] [Wiki] PDSE anomaly: CONSTITUTION jumped +85 pts (avg: 0)
+[WARN] [Wiki] PDSE anomaly: SPEC jumped +85 pts (avg: 0)
+[WARN] [Wiki] PDSE anomaly: CLARIFY jumped +85 pts (avg: 0)
+[WARN] [Wiki] PDSE anomaly: PLAN jumped +85 pts (avg: 0)
+[WARN] [Wiki] PDSE anomaly: TASKS jumped +85 pts (avg: 0)
+[INFO] [Autoforge] Cycle 2 — score: 85% avg | completion: 30% | elapsed: 0s
+[INFO] [Autoforge] Executing: forge
+[WARN] [Autoforge] Command failed: forge (consecutive failures: 2)
+[WARN] [Wiki] PDSE anomaly: CONSTITUTION jumped +85 pts (avg: 0)
+[WARN] [Wiki] PDSE anomaly: SPEC jumped +85 pts (avg: 0)
+[WARN] [Wiki] PDSE anomaly: CLARIFY jumped +85 pts (avg: 0)
+[WARN] [Wiki] PDSE anomaly: PLAN jumped +85 pts (avg: 0)
+[WARN] [Wiki] PDSE anomaly: TASKS jumped +85 pts (avg: 0)
+[INFO] [Autoforge] Cycle 3 — score: 85% avg | completion: 30% | elapsed: 1s
+[INFO] [Autoforge] Executing: forge
+[WARN] [Autoforge] Command failed: forge (consecutive failures: 3)
+[WARN] [Wiki] PDSE anomaly: CONSTITUTION jumped +85 pts (avg: 0)
+[WARN] [Wiki] PDSE anomaly: SPEC jumped +85 pts (avg: 0)
+[WARN] [Wiki] PDSE anomaly: CLARIFY jumped +85 pts (avg: 0)
+[WARN] [Wiki] PDSE anomaly: PLAN jumped +85 pts (avg: 0)
+[WARN] [Wiki] PDSE anomaly: TASKS jumped +85 pts (avg: 0)
+[INFO] [Autoforge] Cycle 4 — score: 85% avg | completion: 30% | elapsed: 3s
+[INFO] [Autoforge] Executing: forge
+[WARN] [Autoforge] Command failed: forge (consecutive failures: 4)
+[WARN] [Wiki] PDSE anomaly: CONSTITUTION jumped +85 pts (avg: 0)
+[WARN] [Wiki] PDSE anomaly: SPEC jumped +85 pts (avg: 0)
+[WARN] [Wiki] PDSE anomaly: CLARIFY jumped +85 pts (avg: 0)
+[WARN] [Wiki] PDSE anomaly: PLAN jumped +85 pts (avg: 0)
+[WARN] [Wiki] PDSE anomaly: TASKS jumped +85 pts (avg: 0)
+[INFO] [Wiki] Lint cycle completed (cycle 5)
+[INFO] [Autoforge] Cycle 5 — score: 85% avg | completion: 30% | elapsed: 4s
+[INFO] [Autoforge] Executing: forge
+[WARN] [Autoforge] Command failed: forge (consecutive failures: 5)
+[INFO] 
+[Autoforge] Interrupt received — completing current step and saving progress...
+[INFO] [Autoforge] Interrupted after 0 cycles (0s) — progress saved.
+  ✔ circuit breaker trips to BLOCKED after repeated _executeCommand failures (4016.6009ms)
+✔ runAutoforgeLoop — advisory mode + execution circuit breaker (5496.355ms)
+▶ runAutoforgeLoop — interrupt / force / retry paths
+  ✔ saves state with interrupt audit entry when signal fires before loop starts (1.1576ms)
+[WARN] [Wiki] PDSE anomaly: CONSTITUTION jumped +20 pts (avg: 0)
+[WARN] [Wiki] PDSE anomaly: SPEC jumped +20 pts (avg: 0)
+[WARN] [Wiki] PDSE anomaly: CLARIFY jumped +20 pts (avg: 0)
+[WARN] [Wiki] PDSE anomaly: PLAN jumped +20 pts (avg: 0)
+[WARN] [Wiki] PDSE anomaly: TASKS jumped +20 pts (avg: 0)
+[INFO] [Autoforge] Cycle 1 — score: 20% avg | completion: 30% | elapsed: 0s
+[WARN] [Autoforge] --force: overriding BLOCKED artifact(s) for one cycle
+[INFO] [Autoforge] Executing: forge
+[WARN] [Wiki] PDSE anomaly: CONSTITUTION jumped +20 pts (avg: 0)
+[WARN] [Wiki] PDSE anomaly: SPEC jumped +20 pts (avg: 0)
+[WARN] [Wiki] PDSE anomaly: CLARIFY jumped +20 pts (avg: 0)
+[WARN] [Wiki] PDSE anomaly: PLAN jumped +20 pts (avg: 0)
+[WARN] [Wiki] PDSE anomaly: TASKS jumped +20 pts (avg: 0)
+[INFO] [Autoforge] Cycle 2 — score: 20% avg | completion: 96% | elapsed: 0s
+[OK] [Autoforge] Overall completion: 96% — target reached! (2 cycles, 0s)
+[INFO] 
+┌────────────────┬───────┬──────────┐
+[INFO] │ Artifact       │ Score │ Decision │
+[INFO] ├────────────────┼───────┼──────────┤
+[INFO] │ CONSTITUTION   │    20 │ blocked  │
+[INFO] │ SPEC           │    20 │ blocked  │
+[INFO] │ CLARIFY        │    20 │ blocked  │
+[INFO] │ PLAN           │    20 │ blocked  │
+[INFO] │ TASKS          │    20 │ blocked  │
+[INFO] └────────────────┴───────┴──────────┘
+  ✔ force flag prevents permanent block on first cycle with low-score artifacts (498.0685ms)
+[WARN] [Wiki] PDSE anomaly: CONSTITUTION jumped +20 pts (avg: 0)
+[WARN] [Wiki] PDSE anomaly: SPEC jumped +20 pts (avg: 0)
+[WARN] [Wiki] PDSE anomaly: CLARIFY jumped +20 pts (avg: 0)
+[WARN] [Wiki] PDSE anomaly: PLAN jumped +20 pts (avg: 0)
+[WARN] [Wiki] PDSE anomaly: TASKS jumped +20 pts (avg: 0)
+[INFO] [Autoforge] Cycle 1 — score: 20% avg | completion: 30% | elapsed: 0s
+[ERR] [Autoforge] BLOCKED: SPEC failed after 3 retries
+[INFO] [Autoforge] See .danteforge/AUTOFORGE_GUIDANCE.md for remediation commands
+  ✔ permanently blocks when artifact retry counter equals maxRetries (26.7692ms)
+✔ runAutoforgeLoop — interrupt / force / retry paths (526.4014ms)
+[ERR] [Resume] No pause file found. Run `danteforge autoforge --auto` to start.
+[OK] [Resume] Resuming autoforge from pause snapshot
+[INFO]   Paused at score: 85
+[INFO]   Cycle count: 7
+[INFO]   Goal: Resume test
+▶ AUTOFORGE_PAUSE_FILE
+  ✔ is a string under .danteforge/ (2.0135ms)
+  ✔ is named AUTOFORGE_PAUSED (2.6062ms)
+✔ AUTOFORGE_PAUSE_FILE (15.008ms)
+▶ AutoforgeLoopContext pauseAtScore field
+  ✔ accepts pauseAtScore on the context object (2.9872ms)
+  ✔ accepts _writePauseFile injection seam (0.7912ms)
+✔ AutoforgeLoopContext pauseAtScore field (5.3268ms)
+▶ resumeAutoforge
+  ✔ logs error and returns when pause file missing (9.8537ms)
+[INFO] [Resume] Restarting convergence loop...
+[OK] [Resume] Resuming autoforge from pause snapshot
+[INFO]   Paused at score: 82
+[INFO]   Cycle count: 5
+[INFO]   Goal: Build test project
+  ✔ parses pause snapshot and reconstructs context (482.6645ms)
+[INFO] [Resume] Restarting convergence loop...
+[OK] [Resume] Resuming autoforge from pause snapshot
+[INFO]   Paused at score: 82
+[INFO]   Cycle count: 5
+[INFO]   Goal: Build test project
+  ✔ deletes pause file before running loop (8.2813ms)
+[INFO] [Resume] Restarting convergence loop...
+[OK] [Resume] Resuming autoforge from pause snapshot
+[INFO]   Paused at score: 82
+[INFO]   Cycle count: 5
+[INFO]   Goal: Build test project
+  ✔ starts loop with IDLE state regardless of paused state (2303.0234ms)
+[INFO] [Resume] Restarting convergence loop...
+[OK] [Resume] Resuming autoforge from pause snapshot
+[INFO]   Paused at score: 82
+[INFO]   Cycle count: 5
+[INFO]   Goal: Build test project
+  ✔ preserves retryCounters from snapshot (2039.0371ms)
+[INFO] [Resume] Restarting convergence loop...
+[ERR] [Resume] No pause file found. Run `danteforge autoforge --auto` to start.
+  ✔ still runs loop even if unlink fails (9.233ms)
+  ✔ does not run loop when pause file is corrupt JSON (0.5177ms)
+✔ resumeAutoforge (4853.8104ms)
+▶ runAutoForgeStep — switch case branch coverage
+  ✔ switch case 'review' fires injected fn (branch covered, no real command) (2.7504ms)
+  ✔ switch case 'constitution' fires injected fn (branch covered, no real command) (0.3627ms)
+  ✔ switch case 'specify' fires injected fn (branch covered, no real command) (0.2208ms)
+  ✔ switch case 'clarify' fires injected fn (branch covered, no real command) (0.2983ms)
+  ✔ switch case 'plan' fires injected fn (branch covered, no real command) (1.7149ms)
+  ✔ switch case 'tasks' fires injected fn (branch covered, no real command) (0.336ms)
+  ✔ switch case 'design' fires injected fn (branch covered, no real command) (0.2232ms)
+  ✔ switch case 'forge' fires injected fn (branch covered, no real command) (0.1881ms)
+  ✔ switch case 'ux-refine' fires injected fn (branch covered, no real command) (0.2639ms)
+  ✔ switch case 'verify' fires injected fn (branch covered, no real command) (0.8274ms)
+  ✔ switch case 'synthesize' fires injected fn (branch covered, no real command) (0.306ms)
+  ✔ switch case 'doctor' fires injected fn (branch covered, no real command) (0.2465ms)
+  ✔ default case throws Unknown autoforge step (145.4688ms)
+  ✔ _commandFns injection is case-specific — wrong key falls through to default throw (0.6969ms)
+✔ runAutoForgeStep — switch case branch coverage (157.3633ms)
+[INFO] 
+[OK] === AutoForge Plan ===
+[INFO] Scenario: cold-start
+[INFO] Reasoning: Fresh project
+[INFO] Max waves: 3
+[INFO] 
+[INFO] Steps:
+[INFO]   1. review — Scan codebase
+[INFO]   2. forge — Build features
+[INFO] 
+[INFO] 
+[OK] === AutoForge Plan ===
+[INFO] Scenario: mid-project
+[INFO] Goal: Build v2
+[INFO] Reasoning: Advancing
+[INFO] Max waves: 2
+[INFO] 
+[INFO] Steps:
+[INFO] 
+[INFO] 
+[OK] === AutoForge Plan ===
+[INFO] Scenario: mid-project
+[INFO] Reasoning: Complete
+[INFO] Max waves: 3
+[INFO] 
+[INFO] Steps:
+[INFO] 
+▶ planAutoForge
+  ▶ Scenario 1: Circuit Breaker
+    ✔ triggers doctor after 3 failed attempts (5.9256ms)
+    ✔ triggers at exactly 3 failures (1.1574ms)
+    ✔ does not trigger at 2 failures (6.6256ms)
+  ✔ Scenario 1: Circuit Breaker (44.9432ms)
+  ▶ Scenario 2: Cold Start
+    ✔ generates full pipeline for fresh project without UI (0.7565ms)
+    ✔ includes design + ux-refine for UI projects (0.774ms)
+  ✔ Scenario 2: Cold Start (1.8788ms)
+  ▶ Scenario 3: Multi-Session Resume
+    ✔ starts with review when last session was > 24h ago (0.5631ms)
+  ✔ Scenario 3: Multi-Session Resume (143.7554ms)
+  ▶ Scenario 4: Stalled
+    ✔ triggers doctor when no next steps available (4.2703ms)
+  ✔ Scenario 4: Stalled (5.4097ms)
+  ▶ Scenario 5: Frontend
+    ✔ prepends ux-refine when design violations exist (0.6983ms)
+  ✔ Scenario 5: Frontend (1.4688ms)
+  ▶ Scenario 6: Mid-Project
+    ✔ advances from tasks to forge (0.9389ms)
+    ✔ advances from forge to verify (0.7929ms)
+    ✔ advances from verify to synthesize (0.3319ms)
+    ✔ treats synthesize as terminal with no further steps (0.5896ms)
+    ✔ adds design step for UI project at tasks stage (0.4832ms)
+  ✔ Scenario 6: Mid-Project (3.5709ms)
+  ▶ Scenario 6: Mid-Project — getMidProjectSteps coverage
+    ✔ stage=initialized (with artifacts) → constitution (1.5318ms)
+    ✔ stage=review → constitution (1.5338ms)
+    ✔ stage=constitution → specify (0.6227ms)
+    ✔ stage=specify → clarify (120.7222ms)
+    ✔ stage=clarify → plan (1.712ms)
+    ✔ stage=plan → tasks (0.7293ms)
+    ✔ stage=design → forge (0.5446ms)
+    ✔ stage=ux-refine → verify (0.457ms)
+    ✔ stage=forge + hasDesignOp + violations → includes ux-refine before verify (0.5241ms)
+    ✔ goal string appears in mid-project reasoning (0.4354ms)
+  ✔ Scenario 6: Mid-Project — getMidProjectSteps coverage (130.3413ms)
+  ▶ maxWaves
+    ✔ respects custom maxWaves (0.3772ms)
+    ✔ defaults to 3 waves (2.1805ms)
+  ✔ maxWaves (2.9364ms)
+  ▶ goal propagation
+    ✔ includes goal in plan when provided (0.8974ms)
+    ✔ includes goal in cold-start reasoning (0.6293ms)
+    ✔ includes goal in mid-project reasoning (1.5753ms)
+  ✔ goal propagation (3.521ms)
+  ▶ getMidProjectSteps via planAutoForge
+    ✔ constitution -> specify (3.079ms)
+    ✔ specify -> clarify (1.1453ms)
+    ✔ clarify -> plan (0.7714ms)
+    ✔ plan -> tasks (0.548ms)
+    ✔ design -> forge (0.7651ms)
+    ✔ ux-refine -> verify (2.6258ms)
+    ✔ forge with design violations -> includes ux-refine then verify (0.6661ms)
+    ✔ tasks with hasUI and no design -> includes design step (0.8372ms)
+  ✔ getMidProjectSteps via planAutoForge (12.1032ms)
+✔ planAutoForge (353.6975ms)
+▶ displayPlan
+  ✔ runs without throwing for a valid plan (5.8401ms)
+  ✔ runs without throwing for plan with goal (0.4823ms)
+  ✔ runs without throwing for plan with no steps (0.5181ms)
+✔ displayPlan (9.6247ms)
+[INFO] [AutoForge] DRY RUN — no commands will be executed
+[INFO] 
+[OK] === AutoForge Plan ===
+[INFO] Scenario: mid-project
+[INFO] Reasoning: Test plan
+[INFO] Max waves: 3
+[INFO] 
+[INFO] Steps:
+[INFO]   1. forge — Execute tasks
+[INFO] 
+▶ executeAutoForgePlan
+  ✔ dryRun returns empty completed/failed without executing steps (3316.3149ms)
+[OK] [AutoForge] Scenario: mid-project
+[INFO] [AutoForge] Test plan
+[INFO] [AutoForge] 1 step(s) planned, max 5 waves
+[INFO] 
+[INFO] [AutoForge] Step: forge — Build
+[OK] [AutoForge] forge complete
+[INFO] STATE.yaml updated
+[INFO] STATE.yaml updated
+  ✔ executes injected step and records in completed (5644.5318ms)
+[OK] [AutoForge] Scenario: mid-project
+[INFO] [AutoForge] Test plan
+[INFO] [AutoForge] 3 step(s) planned, max 1 waves
+[INFO] 
+[INFO] [AutoForge] Step: forge — Build
+[OK] [AutoForge] forge complete
+[INFO] STATE.yaml updated
+[INFO] [AutoForge] Checkpoint: completed 1 waves. Pausing for review.
+  ✔ pauses when wavesExecuted reaches maxWaves (376.9778ms)
+[OK] [AutoForge] Scenario: mid-project
+[INFO] [AutoForge] Test plan
+[INFO] [AutoForge] 2 step(s) planned, max 5 waves
+[INFO] 
+[INFO] [AutoForge] Step: forge — Build
+[ERR] [AutoForge] forge failed: Build failed
+[INFO] STATE.yaml updated
+  ✔ records failure and stops when step throws (94.0989ms)
+[OK] [AutoForge] Scenario: mid-project
+[INFO] [AutoForge] Test plan
+[INFO] [AutoForge] 1 step(s) planned, max 5 waves
+[INFO] 
+[INFO] [AutoForge] Step: forge — Build
+[ERR] [AutoForge] forge failed: forced failure
+[INFO] STATE.yaml updated
+  ✔ increments autoforgeFailedAttempts in state on failure (42.9839ms)
+[OK] [AutoForge] Scenario: mid-project
+[INFO] [AutoForge] Test plan
+[INFO] [AutoForge] 1 step(s) planned, max 5 waves
+[INFO] 
+[INFO] [AutoForge] Step: forge — Build
+[OK] [AutoForge] forge complete
+[INFO] STATE.yaml updated
+[INFO] STATE.yaml updated
+  ✔ resets autoforgeFailedAttempts on success (137.8079ms)
+[OK] [AutoForge] Scenario: mid-project
+[INFO] [AutoForge] Test plan
+[INFO] [AutoForge] 1 step(s) planned, max 5 waves
+[INFO] 
+[INFO] [AutoForge] Step: forge — Build
+[ERR] [AutoForge] forge failed: forge reported success but its expected artifact is missing from disk
+[INFO] STATE.yaml updated
+  ✔ fails step when artifact check returns false (50.88ms)
+[OK] [AutoForge] Scenario: mid-project
+[INFO] [AutoForge] Test plan
+[INFO] [AutoForge] 2 step(s) planned, max 10 waves
+[INFO] 
+[INFO] [AutoForge] Step: forge — Build
+[OK] [AutoForge] forge complete
+[INFO] STATE.yaml updated
+[INFO] [AutoForge] Step: verify — Check
+[OK] [AutoForge] verify complete
+[INFO] STATE.yaml updated
+[INFO] STATE.yaml updated
+  ✔ executes all steps when maxWaves is large enough (3542.7469ms)
+[OK] [AutoForge] Scenario: mid-project
+[INFO] [AutoForge] Test plan
+[INFO] [AutoForge] 0 step(s) planned, max 5 waves
+[INFO] 
+[INFO] STATE.yaml updated
+  ✔ empty steps returns immediately with no completed/failed (55.4597ms)
+[OK] [AutoForge] Scenario: mid-project
+[INFO] [AutoForge] Test plan
+[INFO] [AutoForge] 1 step(s) planned, max 5 waves
+[INFO] 
+[INFO] [AutoForge] Step: forge — Build
+[WARN] [state] Unknown workflowStage "planned" in STATE.yaml — resetting to "initialized"
+[WARN] [state] Invalid currentPhase "phase-1" — resetting to 0
+[INFO] [AutoForge] Complexity Assessment
+---------------------
+Score:        63/100
+Preset:       blaze
+Mode:         party (multi-agent)
+Est. Time:    ~13 min
+Est. Cost:    $1.50
+
+Signals:
+  Files:              3
+  Modules:            1
+  Lines (est.):       300
+  Dependency Depth:   1
+  New Module:         no
+  Architectural:      yes
+  Security:           yes
+  Database:           no
+  API:                yes
+  Test Requirement:   yes
+
+Score 63/100 -> blaze. 3 file(s) across 1 module(s); involves architectural changes; has security implications; modifies API surface; requires test verification. Party mode recommended for multi-agent coordination.
+[OK] [AutoForge] forge complete
+[WARN] [state] Unknown workflowStage "planned" in STATE.yaml — resetting to "initialized"
+[WARN] [state] Invalid currentPhase "phase-1" — resetting to 0
+[INFO] STATE.yaml updated
+[INFO] STATE.yaml updated
+  ✔ complexity calibration runs after successful step (best-effort) (870.7412ms)
+✔ executeAutoForgePlan (14134.6089ms)
+[OK] DanteForge AutoResearch — Autonomous Optimization Loop
+[INFO] 
+[INFO] Goal:    reduce bundle size
+[INFO] Metric:  metric value
+[INFO] Budget:  240 minutes
+[INFO] Command: echo 0
+[INFO] 
+[OK] === COPY-PASTE PROMPT (start) ===
+
+# AutoResearch — Copy-Paste Prompt
+
+Paste this into your LLM interface to run autoresearch manually.
+
+---
+
+**Goal**: reduce bundle size
+**Metric**: metric value
+**Time budget**: 240 minutes
+**Measurement command**: `echo 0`
+
+## Instructions for the Agent
+
+1. Run the measurement command to establish a baseline.
+2. Analyze the codebase and generate a hypothesis for improving the metric.
+3. Apply a small, surgical code change.
+4. Run the measurement command again.
+5. If the metric improved beyond noise (>1% for timing, >0.5% otherwise), commit it and continue.
+6. If not, revert the change with `git reset --hard` and try a different hypothesis.
+7. Repeat until time runs out.
+8. Produce AUTORESEARCH_REPORT.md at the project root.
+
+Do NOT stop to ask the human for input. You are fully autonomous.
+
+[OK] === COPY-PASTE PROMPT (end) ===
+[INFO] 
+[INFO] Paste this into your LLM interface to run autoresearch manually.
+[OK] DanteForge AutoResearch — Autonomous Optimization Loop
+[INFO] 
+[INFO] Goal:    my goal
+[INFO] Metric:  metric value
+[INFO] Budget:  240 minutes
+[INFO] Command: echo 0
+[INFO] 
+[OK] === COPY-PASTE PROMPT (start) ===
+
+# AutoResearch — Copy-Paste Prompt
+
+Paste this into your LLM interface to run autoresearch manually.
+
+---
+
+**Goal**: my goal
+**Metric**: metric value
+**Time budget**: 240 minutes
+**Measurement command**: `echo 0`
+
+## Instructions for the Agent
+
+1. Run the measurement command to establish a baseline.
+2. Analyze the codebase and generate a hypothesis for improving the metric.
+3. Apply a small, surgical code change.
+4. Run the measurement command again.
+5. If the metric improved beyond noise (>1% for timing, >0.5% otherwise), commit it and continue.
+6. If not, revert the change with `git reset --hard` and try a different hypothesis.
+7. Repeat until time runs out.
+8. Produce AUTORESEARCH_REPORT.md at the project root.
+
+Do NOT stop to ask the human for input. You are fully autonomous.
+
+[OK] === COPY-PASTE PROMPT (end) ===
+[INFO] 
+[INFO] Paste this into your LLM interface to run autoresearch manually.
+[OK] DanteForge AutoResearch — Autonomous Optimization Loop
+[INFO] 
+[INFO] Goal:    my goal
+[INFO] Metric:  metric value
+[INFO] Budget:  240 minutes
+[INFO] Command: echo 0
+[INFO] 
+[OK] === COPY-PASTE PROMPT (start) ===
+
+# AutoResearch — Copy-Paste Prompt
+
+Paste this into your LLM interface to run autoresearch manually.
+
+---
+
+**Goal**: my goal
+**Metric**: metric value
+**Time budget**: 240 minutes
+**Measurement command**: `echo 0`
+
+## Instructions for the Agent
+
+1. Run the measurement command to establish a baseline.
+2. Analyze the codebase and generate a hypothesis for improving the metric.
+3. Apply a small, surgical code change.
+4. Run the measurement command again.
+5. If the metric improved beyond noise (>1% for timing, >0.5% otherwise), commit it and continue.
+6. If not, revert the change with `git reset --hard` and try a different hypothesis.
+7. Repeat until time runs out.
+8. Produce AUTORESEARCH_REPORT.md at the project root.
+
+Do NOT stop to ask the human for input. You are fully autonomous.
+
+[OK] === COPY-PASTE PROMPT (end) ===
+[INFO] 
+[INFO] Paste this into your LLM interface to run autoresearch manually.
+[OK] DanteForge AutoResearch — Autonomous Optimization Loop
+[INFO] 
+[INFO] Goal:    optimize coverage
+[INFO] Metric:  metric value
+[INFO] Budget:  240 minutes
+[INFO] Command: echo 0
+[INFO] 
+[INFO] --- Dry Run Plan ---
+[INFO] 1. Create branch: autoresearch/optimize-coverage
+[INFO] 2. Run baseline: echo 0
+[INFO] 3. Enter experiment loop for 240 minutes
+[INFO] 4. On each iteration: generate hypothesis -> apply change -> measure -> keep/discard
+[INFO] 5. Write AUTORESEARCH_REPORT.md when time expires
+[INFO] --- Dry Run Complete (no commands executed) ---
+[OK] DanteForge AutoResearch — Autonomous Optimization Loop
+[INFO] 
+[INFO] Goal:    my goal
+[INFO] Metric:  metric value
+[INFO] Budget:  240 minutes
+[INFO] Command: echo 0
+[INFO] 
+[INFO] --- Dry Run Plan ---
+[INFO] 1. Create branch: autoresearch/my-goal
+[INFO] 2. Run baseline: echo 0
+[INFO] 3. Enter experiment loop for 240 minutes
+[INFO] 4. On each iteration: generate hypothesis -> apply change -> measure -> keep/discard
+[INFO] 5. Write AUTORESEARCH_REPORT.md when time expires
+[INFO] --- Dry Run Complete (no commands executed) ---
+[OK] DanteForge AutoResearch — Autonomous Optimization Loop
+[INFO] 
+[INFO] Goal:    my goal
+[INFO] Metric:  metric value
+[INFO] Budget:  240 minutes
+[INFO] Command: echo 0
+[INFO] 
+[INFO] --- Dry Run Plan ---
+[INFO] 1. Create branch: autoresearch/my-goal
+[INFO] 2. Run baseline: echo 0
+[INFO] 3. Enter experiment loop for 240 minutes
+[INFO] 4. On each iteration: generate hypothesis -> apply change -> measure -> keep/discard
+[INFO] 5. Write AUTORESEARCH_REPORT.md when time expires
+[INFO] --- Dry Run Complete (no commands executed) ---
+[OK] DanteForge AutoResearch — Autonomous Optimization Loop
+[INFO] 
+[INFO] Goal:    goal
+[INFO] Metric:  metric value
+[INFO] Budget:  1 minutes
+[INFO] Command: echo 0
+[INFO] 
+[INFO] Creating branch: autoresearch/goal
+[WARN] Branch autoresearch/goal already exists — checking it out.
+[INFO] Running baseline measurement...
+[ERR] Baseline measurement failed: measurement command not found
+[ERR] Cannot start autoresearch without a working measurement command.
+[OK] DanteForge AutoResearch — Autonomous Optimization Loop
+[INFO] 
+[INFO] Goal:    goal
+[INFO] Metric:  metric value
+[INFO] Budget:  1 minutes
+[INFO] Command: echo 0
+[INFO] 
+[INFO] Creating branch: autoresearch/goal
+[WARN] Branch autoresearch/goal already exists — checking it out.
+[ERR] Failed to create branch autoresearch/goal: not a git repo
+[INFO] Continuing on current branch.
+[INFO] Running baseline measurement...
+[OK] Baseline established at 100
+[INFO] Beginning experiment loop. Time budget: 1 minutes.
+[INFO] 
+[WARN] No LLM available — cannot generate hypotheses. Exiting experiment loop.
+[INFO] 
+[OK] ============================================================
+[OK]   AUTORESEARCH COMPLETE
+[OK] ============================================================
+[INFO] 
+[INFO] Duration:    0s
+[INFO] Experiments: 0
+[INFO] Kept:        0  |  Discarded: 0  |  Crashed: 0
+[INFO] Baseline:    100
+[INFO] Final:       100
+[INFO] Improvement: +0.0000 (+0.00%)
+[INFO] 
+[OK] Report written to: C:\Projects\DanteForge\AUTORESEARCH_REPORT.md
+[INFO] Results log:       C:\Projects\DanteForge\results.tsv
+[INFO] Branch:            autoresearch/goal
+[INFO] 
+[INFO] Run `danteforge verify` to validate the final state.
+[OK] DanteForge AutoResearch — Autonomous Optimization Loop
+[INFO] 
+[INFO] Goal:    reduce latency
+[INFO] Metric:  metric value
+[INFO] Budget:  1 minutes
+[INFO] Command: echo 0
+[INFO] 
+[INFO] Creating branch: autoresearch/reduce-latency
+[WARN] Branch autoresearch/reduce-latency already exists — checking it out.
+[INFO] Running baseline measurement...
+[OK] Baseline established at 100
+[INFO] Beginning experiment loop. Time budget: 1 minutes.
+[INFO] 
+[WARN] No LLM available — cannot generate hypotheses. Exiting experiment loop.
+[INFO] 
+[OK] ============================================================
+[OK]   AUTORESEARCH COMPLETE
+[OK] ============================================================
+[INFO] 
+[INFO] Duration:    0s
+[INFO] Experiments: 0
+[INFO] Kept:        0  |  Discarded: 0  |  Crashed: 0
+[INFO] Baseline:    100
+[INFO] Final:       100
+[INFO] Improvement: +0.0000 (+0.00%)
+[INFO] 
+[OK] Report written to: C:\Projects\DanteForge\AUTORESEARCH_REPORT.md
+[INFO] Results log:       C:\Projects\DanteForge\results.tsv
+[INFO] Branch:            autoresearch/reduce-latency
+[INFO] 
+[INFO] Run `danteforge verify` to validate the final state.
+[OK] DanteForge AutoResearch — Autonomous Optimization Loop
+[INFO] 
+[INFO] Goal:    goal
+[INFO] Metric:  metric value
+[INFO] Budget:  1 minutes
+[INFO] Command: echo 0
+[INFO] 
+[INFO] Creating branch: autoresearch/goal
+[WARN] Branch autoresearch/goal already exists — checking it out.
+[INFO] Running baseline measurement...
+[OK] Baseline established at 100
+[INFO] Beginning experiment loop. Time budget: 1 minutes.
+[INFO] 
+[WARN] No LLM available — cannot generate hypotheses. Exiting experiment loop.
+[INFO] 
+[OK] ============================================================
+[OK]   AUTORESEARCH COMPLETE
+[OK] ============================================================
+[INFO] 
+[INFO] Duration:    0s
+[INFO] Experiments: 0
+[INFO] Kept:        0  |  Discarded: 0  |  Crashed: 0
+[INFO] Baseline:    100
+[INFO] Final:       100
+[INFO] Improvement: +0.0000 (+0.00%)
+[INFO] 
+[OK] Report written to: C:\Projects\DanteForge\AUTORESEARCH_REPORT.md
+[INFO] Results log:       C:\Projects\DanteForge\results.tsv
+[INFO] Branch:            autoresearch/goal
+[INFO] 
+[INFO] Run `danteforge verify` to validate the final state.
+[OK] DanteForge AutoResearch — Autonomous Optimization Loop
+[INFO] 
+[INFO] Goal:    goal
+[INFO] Metric:  metric value
+[INFO] Budget:  30 minutes
+[INFO] Command: echo 0
+[INFO] 
+[INFO] Creating branch: autoresearch/goal
+[WARN] Branch autoresearch/goal already exists — checking it out.
+[INFO] Running baseline measurement...
+[OK] Baseline established at 100
+[INFO] Beginning experiment loop. Time budget: 30 minutes.
+[INFO] 
+[INFO] --- Experiment 1 ---
+[WARN] Failed to parse LLM hypothesis JSON: Missing required fields in hypothesis JSON
+[INFO] Hypothesis: Experiment 1: exploratory no-op to establish loop integrity
+[INFO] No file change in hypothesis — running as-is.
+[OK] Kept! New best: 50 (was 50). Commit: abc1234
+[INFO] 
+[OK] ============================================================
+[OK]   AUTORESEARCH COMPLETE
+[OK] ============================================================
+[INFO] 
+[INFO] Duration:    31m 0s
+[INFO] Experiments: 1
+[INFO] Kept:        1  |  Discarded: 0  |  Crashed: 0
+[INFO] Baseline:    100
+[INFO] Final:       50
+[INFO] Improvement: +50.0000 (+50.00%)
+[INFO] 
+[OK] Report written to: C:\Projects\DanteForge\AUTORESEARCH_REPORT.md
+[INFO] Results log:       C:\Projects\DanteForge\results.tsv
+[INFO] Branch:            autoresearch/goal
+[INFO] 
+[INFO] Run `danteforge verify` to validate the final state.
+[OK] DanteForge AutoResearch — Autonomous Optimization Loop
+[INFO] 
+[INFO] Goal:    goal
+[INFO] Metric:  metric value
+[INFO] Budget:  30 minutes
+[INFO] Command: echo 0
+[INFO] 
+[INFO] Creating branch: autoresearch/goal
+[WARN] Branch autoresearch/goal already exists — checking it out.
+[INFO] Running baseline measurement...
+[OK] Baseline established at 50
+[INFO] Beginning experiment loop. Time budget: 30 minutes.
+[INFO] 
+[INFO] --- Experiment 1 ---
+[WARN] Failed to parse LLM hypothesis JSON: Missing required fields in hypothesis JSON
+[INFO] Hypothesis: Experiment 1: exploratory no-op to establish loop integrity
+[INFO] No file change in hypothesis — running as-is.
+[INFO] Discarding (did not improve metric). Rolling back to abc1234.
+[INFO] 
+[OK] ============================================================
+[OK]   AUTORESEARCH COMPLETE
+[OK] ============================================================
+[INFO] 
+[INFO] Duration:    31m 0s
+[INFO] Experiments: 1
+[INFO] Kept:        0  |  Discarded: 1  |  Crashed: 0
+[INFO] Baseline:    50
+[INFO] Final:       50
+[INFO] Improvement: +0.0000 (+0.00%)
+[INFO] 
+[OK] Report written to: C:\Projects\DanteForge\AUTORESEARCH_REPORT.md
+[INFO] Results log:       C:\Projects\DanteForge\results.tsv
+[INFO] Branch:            autoresearch/goal
+[INFO] 
+[INFO] Run `danteforge verify` to validate the final state.
+[OK] DanteForge AutoResearch — Autonomous Optimization Loop
+[INFO] 
+[INFO] Goal:    goal
+[INFO] Metric:  metric value
+[INFO] Budget:  1 minutes
+[INFO] Command: echo 0
+[INFO] 
+[INFO] Creating branch: autoresearch/goal
+[WARN] Branch autoresearch/goal already exists — checking it out.
+[INFO] Running baseline measurement...
+[OK] Baseline established at 100
+[INFO] Beginning experiment loop. Time budget: 1 minutes.
+[INFO] 
+[INFO] Time budget nearly exhausted — stopping experiment loop.
+[INFO] 
+[OK] ============================================================
+[OK]   AUTORESEARCH COMPLETE
+[OK] ============================================================
+[INFO] 
+[INFO] Duration:    0s
+[INFO] Experiments: 0
+[INFO] Kept:        0  |  Discarded: 0  |  Crashed: 0
+[INFO] Baseline:    100
+[INFO] Final:       100
+[INFO] Improvement: +0.0000 (+0.00%)
+[INFO] 
+[OK] Report written to: C:\Projects\DanteForge\AUTORESEARCH_REPORT.md
+[INFO] Results log:       C:\Projects\DanteForge\results.tsv
+[INFO] Branch:            autoresearch/goal
+[INFO] 
+[INFO] Run `danteforge verify` to validate the final state.
+[OK] DanteForge AutoResearch — Autonomous Optimization Loop
+[INFO] 
+[INFO] Goal:    goal
+[INFO] Metric:  metric value
+[INFO] Budget:  1 minutes
+[INFO] Command: echo 0
+[INFO] 
+[INFO] Creating branch: autoresearch/goal
+[WARN] Branch autoresearch/goal already exists — checking it out.
+[INFO] Running baseline measurement...
+[OK] Baseline established at 100
+[INFO] Beginning experiment loop. Time budget: 1 minutes.
+[INFO] 
+[WARN] No LLM available — cannot generate hypotheses. Exiting experiment loop.
+[INFO] 
+[OK] ============================================================
+[OK]   AUTORESEARCH COMPLETE
+[OK] ============================================================
+[INFO] 
+[INFO] Duration:    0s
+[INFO] Experiments: 0
+[INFO] Kept:        0  |  Discarded: 0  |  Crashed: 0
+[INFO] Baseline:    100
+[INFO] Final:       100
+[INFO] Improvement: +0.0000 (+0.00%)
+[INFO] 
+[OK] Report written to: C:\Projects\DanteForge\AUTORESEARCH_REPORT.md
+[INFO] Results log:       C:\Projects\DanteForge\results.tsv
+[INFO] Branch:            autoresearch/goal
+[INFO] 
+[INFO] Run `danteforge verify` to validate the final state.
+[OK] DanteForge AutoResearch — Autonomous Optimization Loop
+[INFO] 
+[INFO] Goal:    goal
+[INFO] Metric:  metric value
+[INFO] Budget:  30 minutes
+[INFO] Command: echo 0
+[INFO] 
+[INFO] Creating branch: autoresearch/goal
+[WARN] Branch autoresearch/goal already exists — checking it out.
+[INFO] Running baseline measurement...
+[OK] Baseline established at 100
+[INFO] Beginning experiment loop. Time budget: 30 minutes.
+[INFO] 
+[INFO] --- Experiment 1 ---
+[WARN] Hypothesis generation failed: LLM timeout
+[INFO] 
+[OK] ============================================================
+[OK]   AUTORESEARCH COMPLETE
+[OK] ============================================================
+[INFO] 
+[INFO] Duration:    31m 0s
+[INFO] Experiments: 0
+[INFO] Kept:        0  |  Discarded: 0  |  Crashed: 0
+[INFO] Baseline:    100
+[INFO] Final:       100
+[INFO] Improvement: +0.0000 (+0.00%)
+[INFO] 
+[OK] Report written to: C:\Projects\DanteForge\AUTORESEARCH_REPORT.md
+[INFO] Results log:       C:\Projects\DanteForge\results.tsv
+[INFO] Branch:            autoresearch/goal
+[INFO] 
+[INFO] Run `danteforge verify` to validate the final state.
+[OK] DanteForge AutoResearch — Autonomous Optimization Loop
+[INFO] 
+[INFO] Goal:    goal
+[INFO] Metric:  metric value
+[INFO] Budget:  30 minutes
+[INFO] Command: echo 0
+[INFO] 
+[INFO] Creating branch: autoresearch/goal
+[WARN] Branch autoresearch/goal already exists — checking it out.
+[INFO] Running baseline measurement...
+[OK] Baseline established at 100
+[INFO] Beginning experiment loop. Time budget: 30 minutes.
+[INFO] 
+[INFO] --- Experiment 1 ---
+[WARN] Failed to parse LLM hypothesis JSON: Missing required fields in hypothesis JSON
+[INFO] Hypothesis: Experiment 1: exploratory no-op to establish loop integrity
+[INFO] No file change in hypothesis — running as-is.
+[WARN] Commit failed: commit failed
+[INFO] 
+[OK] ============================================================
+[OK]   AUTORESEARCH COMPLETE
+[OK] ============================================================
+[INFO] 
+[INFO] Duration:    31m 0s
+[INFO] Experiments: 1
+[INFO] Kept:        1  |  Discarded: 0  |  Crashed: 0
+[INFO] Baseline:    100
+[INFO] Final:       100
+[INFO] Improvement: +0.0000 (+0.00%)
+[INFO] 
+[OK] Report written to: C:\Projects\DanteForge\AUTORESEARCH_REPORT.md
+[INFO] Results log:       C:\Projects\DanteForge\results.tsv
+[INFO] Branch:            autoresearch/goal
+[INFO] 
+[INFO] Run `danteforge verify` to validate the final state.
+[OK] DanteForge AutoResearch — Autonomous Optimization Loop
+[INFO] 
+[INFO] Goal:    goal
+[INFO] Metric:  metric value
+[INFO] Budget:  30 minutes
+[INFO] Command: echo 0
+[INFO] 
+[INFO] Creating branch: autoresearch/goal
+[WARN] Branch autoresearch/goal already exists — checking it out.
+[INFO] Running baseline measurement...
+[OK] Baseline established at 50
+[INFO] Beginning experiment loop. Time budget: 30 minutes.
+[INFO] 
+[INFO] --- Experiment 1 ---
+[WARN] Failed to parse LLM hypothesis JSON: Missing required fields in hypothesis JSON
+[INFO] Hypothesis: Experiment 1: exploratory no-op to establish loop integrity
+[INFO] No file change in hypothesis — running as-is.
+[INFO] Discarding (did not improve metric). Rolling back to abc1234.
+[WARN] Rollback failed: reset failed
+[INFO] 
+[OK] ============================================================
+[OK]   AUTORESEARCH COMPLETE
+[OK] ============================================================
+[INFO] 
+[INFO] Duration:    31m 0s
+[INFO] Experiments: 1
+[INFO] Kept:        0  |  Discarded: 1  |  Crashed: 0
+[INFO] Baseline:    50
+[INFO] Final:       50
+[INFO] Improvement: +0.0000 (+0.00%)
+[INFO] 
+[OK] Report written to: C:\Projects\DanteForge\AUTORESEARCH_REPORT.md
+[INFO] Results log:       C:\Projects\DanteForge\results.tsv
+[INFO] Branch:            autoresearch/goal
+[INFO] 
+[INFO] Run `danteforge verify` to validate the final state.
+[OK] DanteForge AutoResearch — Autonomous Optimization Loop
+[INFO] 
+[INFO] Goal:    goal
+[INFO] Metric:  metric value
+[INFO] Budget:  30 minutes
+[INFO] Command: echo 0
+[INFO] 
+[INFO] Creating branch: autoresearch/goal
+[WARN] Branch autoresearch/goal already exists — checking it out.
+[INFO] Running baseline measurement...
+[OK] Baseline established at 100
+[INFO] Beginning experiment loop. Time budget: 30 minutes.
+[INFO] 
+[INFO] --- Experiment 1 ---
+[WARN] Failed to parse LLM hypothesis JSON: Missing required fields in hypothesis JSON
+[INFO] Hypothesis: Experiment 1: exploratory no-op to establish loop integrity
+[INFO] No file change in hypothesis — running as-is.
+[INFO] Discarding (crashed). Rolling back to abc1234.
+[INFO] 
+[OK] ============================================================
+[OK]   AUTORESEARCH COMPLETE
+[OK] ============================================================
+[INFO] 
+[INFO] Duration:    31m 0s
+[INFO] Experiments: 1
+[INFO] Kept:        0  |  Discarded: 0  |  Crashed: 1
+[INFO] Baseline:    100
+[INFO] Final:       100
+[INFO] Improvement: +0.0000 (+0.00%)
+[INFO] 
+[OK] Report written to: C:\Projects\DanteForge\AUTORESEARCH_REPORT.md
+[INFO] Results log:       C:\Projects\DanteForge\results.tsv
+[INFO] Branch:            autoresearch/goal
+[INFO] 
+[INFO] Run `danteforge verify` to validate the final state.
+▶ autoResearch: prompt mode
+  ✔ writes audit log entry with "prompt mode" and saves state (58.3232ms)
+  ✔ does NOT call _isLLMAvailable in prompt mode (5.4815ms)
+  ✔ does NOT call _runBaseline in prompt mode (1.1028ms)
+✔ autoResearch: prompt mode (71.0152ms)
+▶ autoResearch: dry-run mode
+  ✔ writes audit log entry with "dry-run" and saves state (1.4025ms)
+  ✔ does NOT call _runBaseline in dry-run mode (0.7818ms)
+  ✔ does NOT call _isLLMAvailable in dry-run mode (1.2218ms)
+✔ autoResearch: dry-run mode (3.8219ms)
+▶ autoResearch: execute mode — baseline failure
+  ✔ sets exitCode=1 when _runBaseline throws (1.3334ms)
+  ✔ continues and runs baseline when _git throws on branch creation (308.4375ms)
+✔ autoResearch: execute mode — baseline failure (310.3927ms)
+▶ autoResearch: execute mode — LLM unavailable
+  ✔ skips experiment loop and still writes report via _writeFile (155.4211ms)
+  ✔ saves audit log with 0 experiments when LLM unavailable (3.9294ms)
+✔ autoResearch: execute mode — LLM unavailable (159.6482ms)
+▶ autoResearch: execute mode — experiment cycle
+  ✔ calls _git for commit when experiment is kept (metric improved) (6.7831ms)
+  ✔ calls _git for reset when experiment is discarded (2.1194ms)
+  ✔ exits loop immediately when _now returns time past budget (1.1104ms)
+  ✔ calls _writeFile to write the report after experiments (325.2584ms)
+✔ autoResearch: execute mode — experiment cycle (335.7375ms)
+▶ autoResearch: execute mode — experiment error paths
+  ✔ continues loop after hypothesis generation failure (_callLLM throws) (2.0745ms)
+  ✔ does not throw when git commit fails in keep path (best-effort commit) (4.9408ms)
+  ✔ does not throw when git reset fails during rollback (best-effort rollback) (2.4017ms)
+  ✔ skips commit but runs rollback when experiment crashes (metricValue null) (5.9911ms)
+✔ autoResearch: execute mode — experiment error paths (15.9239ms)
+▶ splitCommand
+  ✔ splits simple two-token command (2.5314ms)
+  ✔ preserves single-quoted argument as one token (0.2895ms)
+  ✔ preserves double-quoted argument as one token (0.1756ms)
+  ✔ collapses multiple consecutive spaces (0.2021ms)
+  ✔ returns single-element array for single token (0.1505ms)
+  ✔ returns empty array for empty string (0.1302ms)
+✔ splitCommand (5.2452ms)
+▶ extractNumber
+  ✔ extracts float from mixed text (0.564ms)
+  ✔ extracts negative number (0.2691ms)
+  ✔ returns null when no number present (0.3025ms)
+  ✔ returns first number from text with multiple numbers (0.2428ms)
+  ✔ extracts bare decimal (0.1642ms)
+✔ extractNumber (1.9597ms)
+▶ runMeasurement
+  ✔ returns parsed number from execFn stdout (0.5195ms)
+  ✔ throws on empty measurement command (212.3139ms)
+  ✔ throws when stdout contains no parseable number (0.873ms)
+  ✔ passes split args to execFn (0.442ms)
+  ✔ passes cwd from config to execFn (0.3201ms)
+✔ runMeasurement (214.8921ms)
+▶ shouldKeep
+  ✔ returns true when improvement exceeds noise margin (lower=better) (0.2641ms)
+  ✔ returns false when improvement is within noise margin (0.6513ms)
+  ✔ returns false when value is unchanged (0.1993ms)
+✔ shouldKeep (1.4846ms)
+▶ formatResultsTsv
+  ✔ includes header row and data rows for kept experiments (0.491ms)
+  ✔ shows "crash" in metric column for crashed experiments (0.1613ms)
+✔ formatResultsTsv (1.0347ms)
+▶ formatReport
+  ✔ produces markdown with goal and no-experiments message when empty (1.3948ms)
+  ✔ includes improvement percent when experiments were kept (0.7548ms)
+✔ formatReport (2.3646ms)
+▶ runBaseline
+  ✔ returns parsed number from injected execFn stdout (0.8753ms)
+  ✔ propagates execFn error (command timeout) (0.5734ms)
+  ✔ extracts first number from noisy stdout (0.6744ms)
+✔ runBaseline (2.3547ms)
+▶ runExperiment
+  ✔ returns metricValue and status=keep on successful measurement (1.5669ms)
+  ✔ returns metricValue=null and status=crash when execFn throws (0.3957ms)
+  ✔ passes id and description through correctly in both paths (0.3026ms)
+✔ runExperiment (2.6786ms)
+▶ resolveNoiseMargin
+  ✔ returns 0.01 for timing keyword "ms" (7.5072ms)
+  ✔ returns 0.01 for timing keyword "latency" (1.1197ms)
+  ✔ returns 0.005 for non-timing metric (0.5454ms)
+✔ resolveNoiseMargin (23.6394ms)
+▶ slugify
+  ✔ lowercases and replaces spaces + special chars with dashes (9.1968ms)
+  ✔ deduplicates multiple consecutive dashes (0.6414ms)
+  ✔ truncates to 50 characters (0.207ms)
+  ✔ strips leading and trailing dashes (0.9078ms)
+✔ slugify (11.8996ms)
+▶ parseTimeBudget
+  ✔ parses hours with "h" suffix (1.3153ms)
+  ✔ parses minutes with "m" suffix (0.3079ms)
+  ✔ parses minutes with "min" suffix (0.3747ms)
+  ✔ treats bare number as minutes (2.7522ms)
+  ✔ returns 240 for invalid input (0.3687ms)
+✔ parseTimeBudget (13.766ms)
+▶ formatDuration
+  ✔ formats hours, minutes and seconds (1.6168ms)
+  ✔ formats minutes and seconds (no hours) (7.3483ms)
+  ✔ formats seconds only (0.4834ms)
+✔ formatDuration (28.3775ms)
+▶ deriveMeasurementCommand
+  ✔ returns npm test command for test passing rate (0.6826ms)
+  ✔ returns build command for bundle size (0.2663ms)
+  ✔ returns lint command for lint error count (0.23ms)
+  ✔ returns echo fallback for unknown metric (0.2061ms)
+✔ deriveMeasurementCommand (2.1194ms)
+▶ buildFallbackInsights
+  ✔ returns single no-experiments message for empty array (0.9278ms)
+  ✔ includes improvement pct and crash warning when applicable (1.4332ms)
+✔ buildFallbackInsights (2.8228ms)
+▶ buildPromptModeOutput
+  ✔ includes goal, metric, time budget and measurement command (0.5833ms)
+  ✔ contains autonomous instruction (no stopping for human) (0.3624ms)
+✔ buildPromptModeOutput (1.8625ms)
+▶ shouldKeep
+  ✔ returns true when improvement exceeds noise margin (1%) (1.5145ms)
+  ✔ returns false when improvement is within noise margin (1%) (0.2507ms)
+  ✔ returns false when improvement is exactly at noise margin boundary (0.2308ms)
+  ✔ returns true for 0.6% improvement against a 0.5% noise margin (0.2174ms)
+  ✔ returns false for 0.4% improvement against a 0.5% noise margin (0.1855ms)
+  ✔ returns false when current is equal to best (0.1426ms)
+  ✔ returns false when current is worse than best (higher value) (0.145ms)
+  ✔ handles negative best values correctly (e.g. negative scores where higher is better inverted) (0.1525ms)
+  ✔ returns false when best is 0 and current is 0 (0.1927ms)
+  ✔ handles large improvement (50%) well above threshold (0.3366ms)
+✔ shouldKeep (5.8435ms)
+▶ formatResultsTsv
+  ✔ produces a header row as the first line (0.4794ms)
+  ✔ produces exactly one data row per experiment (0.2669ms)
+  ✔ uses "crash" as the metric_value when metricValue is null (0.2843ms)
+  ✔ uses tab characters as delimiters (0.1461ms)
+  ✔ includes the experiment id, metric value, status, and description in each row (0.2073ms)
+  ✔ returns only the header when experiments array is empty (0.1458ms)
+✔ formatResultsTsv (1.8808ms)
+▶ formatReport
+  ✔ includes the goal in the report title (0.9766ms)
+  ✔ includes a Metric Progress section with baseline and final values (0.2813ms)
+  ✔ includes a Winning Experiments section (0.299ms)
+  ✔ includes a Key Insights section (0.1866ms)
+  ✔ includes a Full Results Log section (0.1516ms)
+  ✔ lists winning experiments in the table (0.2865ms)
+  ✔ lists notable failures in the report (0.2237ms)
+  ✔ includes insights when provided (0.2227ms)
+  ✔ handles zero experiments gracefully without throwing (0.2397ms)
+  ✔ shows keep rate as 0.0% when no experiments ran (0.1794ms)
+  ✔ shows duration in the report header (0.1321ms)
+  ✔ shows total experiment count (0.2161ms)
+  ✔ shows improvement percentage correctly (0.1529ms)
+✔ formatReport (4.3211ms)
+▶ invokeBrowse
+  ✔ success path returns stdout (1.9146ms)
+  ✔ screenshot subcommand creates evidence path (2.1366ms)
+  ✔ timeout handling (0.545ms)
+  ✔ non-zero exit code (0.4888ms)
+  ✔ empty opts object uses defaults (319.4911ms)
+✔ invokeBrowse (327.0956ms)
+▶ detectBrowseBinary
+  ✔ finds binary at common location (0.8313ms)
+  ✔ returns null when no binary found (3.4632ms)
+  ✔ checks multiple paths in order (2.8702ms)
+  ✔ undefined opts uses real fs.access defaults (908.6419ms)
+✔ detectBrowseBinary (916.5943ms)
+▶ isBrowseDaemonRunning
+  ✔ returns true on healthy daemon (0.6162ms)
+  ✔ returns false when daemon is down (0.2317ms)
+  ✔ uses default port when none specified (0.3029ms)
+✔ isBrowseDaemonRunning (1.467ms)
+▶ getBrowsePort
+  ✔ returns conductor port when provided (0.2214ms)
+  ✔ derives deterministic port from worktree ID (0.1666ms)
+✔ getBrowsePort (0.5222ms)
+▶ getBrowsePort
+  ✔ returns 9400 as default port when no worktree ID (1.7ms)
+  ✔ returns conductor port when provided (0.2474ms)
+  ✔ derives a deterministic port from worktree ID (0.3121ms)
+  ✔ produces consistent results for same worktree ID (0.2119ms)
+  ✔ produces different ports for different worktree IDs (0.245ms)
+✔ getBrowsePort (5.2087ms)
+▶ getBrowseInstallInstructions
+  ✔ returns platform-specific instructions for darwin (0.6601ms)
+  ✔ returns platform-specific instructions for linux (2.3146ms)
+  ✔ returns platform-specific instructions for win32 (1.2307ms)
+  ✔ returns generic instructions for unknown platforms (0.2853ms)
+  ✔ always includes re-run message (0.4892ms)
+✔ getBrowseInstallInstructions (6.1938ms)
+▶ BrowseAdapterConfig types
+  ✔ accepts a valid config object (12.6573ms)
+  ✔ allows minimal config with only binaryPath (2.0895ms)
+✔ BrowseAdapterConfig types (15.157ms)
+[INFO] STATE.yaml updated
+[INFO] STATE.yaml updated
+✖ tests\burn-in.test.ts (19405.2613ms)
+▶ detectAmbiguitySignals
+  ✔ detects common ambiguity words (14.6535ms)
+  ✔ returns empty array for unambiguous text (2.9591ms)
+  ✔ is case insensitive (0.7096ms)
+  ✔ detects TBD (1.3645ms)
+✔ detectAmbiguitySignals (23.471ms)
+▶ shouldAutoCEOReview
+  ✔ returns true for >= 3 ambiguity signals (0.4575ms)
+  ✔ returns false for < 3 ambiguity signals (0.3605ms)
+  ✔ returns false for unambiguous goals (0.5925ms)
+✔ shouldAutoCEOReview (2.0575ms)
+▶ AMBIGUITY_SIGNALS
+  ✔ has at least 10 entries (0.4011ms)
+  ✔ includes key terms from PRD (0.3739ms)
+✔ AMBIGUITY_SIGNALS (1.1485ms)
+▶ formatCEOReviewSection
+  ✔ produces markdown with ## CEO Review Notes header (0.5667ms)
+  ✔ includes auto-trigger note when applicable (0.4609ms)
+  ✔ omits ambiguity section when no signals found (0.3317ms)
+✔ formatCEOReviewSection (1.6603ms)
+▶ buildGitHubWorkflow
+  ✔ contains DanteForge Quality Gate (1.6679ms)
+  ✔ contains danteforge verify (0.2863ms)
+  ✔ contains latest-pdse.json (0.2306ms)
+  ✔ contains actions/github-script (0.2332ms)
+  ✔ contains branch name when develop is passed (0.1974ms)
+✔ buildGitHubWorkflow (4.7075ms)
+▶ buildGitLabCI
+  ✔ contains danteforge verify (0.2818ms)
+  ✔ contains merge_requests (0.2309ms)
+✔ buildGitLabCI (0.7861ms)
+▶ buildBitbucketPipelines
+  ✔ contains danteforge verify (0.4094ms)
+  ✔ contains pipelines (0.2618ms)
+✔ buildBitbucketPipelines (0.9996ms)
+▶ resolveWorkflowPath
+  ✔ github path ends with danteforge.yml (0.5953ms)
+  ✔ github path includes .github/workflows (0.262ms)
+  ✔ gitlab path ends with .gitlab-ci.yml (0.3531ms)
+  ✔ bitbucket path ends with bitbucket-pipelines.yml (0.2335ms)
+  ✔ github with custom outputDir uses that dir (0.2224ms)
+✔ resolveWorkflowPath (2.0069ms)
+▶ ciSetup
+  ✔ resolves with provider, writtenPath, and content for github (1.0499ms)
+  ✔ ciSetup with provider gitlab writes gitlab content (0.3684ms)
+  ✔ defaults to github when no provider given (0.3022ms)
+  ✔ calls _writeFile with the correct path (0.42ms)
+  ✔ ciSetup with provider bitbucket writes bitbucket content (0.369ms)
+✔ ciSetup (176.1256ms)
+▶ detectHost — jetbrains
+  ✔ returns jetbrains when override is jetbrains (0.4856ms)
+  ✔ returns jetbrains when IDEA_INITIAL_DIRECTORY is set (env detection) (0.767ms)
+  ✔ returns jetbrains when INTELLIJ_ENVIRONMENT_READER is set (env detection) (0.7049ms)
+✔ detectHost — jetbrains (2.2868ms)
+▶ resolveTier
+  ✔ cursor with figma returns full (0.5171ms)
+  ✔ jetbrains with figma returns pull-only (0.152ms)
+  ✔ claude-code with figma still returns full (0.2732ms)
+  ✔ jetbrains without figma returns prompt-only (0.1854ms)
+✔ resolveTier (1.3954ms)
+▶ circuit-breaker
+  ✔ starts in closed state (1.7284ms)
+  ✔ recordFailure × threshold transitions to open (0.4808ms)
+  ✔ shouldAllowRequest returns false when open (0.5898ms)
+  ✔ shouldAllowRequest returns true after resetTimeout (transitions to half_open) (0.6402ms)
+  ✔ recordSuccess in half_open transitions to closed (0.4913ms)
+  ✔ recordFailure in half_open transitions back to open (0.3294ms)
+  ✔ computeBackoffDelay grows exponentially (0.3869ms)
+  ✔ computeBackoffDelay caps at maxDelay (0.3692ms)
+  ✔ resetAllCircuits clears all state (0.4881ms)
+✔ circuit-breaker (7.8301ms)
+[INFO] Running clarification Q&A on current spec...
+[INFO] Running clarification Q&A on current spec...
+▶ clarify CLI command — injection seam tests
+  ✔ sets exitCode=1 and returns when gate fails (8.8052ms)
+[INFO] STATE.yaml updated
+[OK] CLARIFY.md generated locally - review and resolve, then run "danteforge plan"
+[INFO] Tip: Set up an API key for richer clarification output: danteforge config --set-key "grok:<key>"
+[INFO] Running clarification Q&A on current spec...
+  ✔ does not set exitCode=1 when gate passes and LLM is unavailable (local fallback) (702.9085ms)
+✖ tests\clarify-command.test.ts (13382.1588ms)
+[INFO] Analyzing spec for ambiguities...
+[INFO] Analyzing spec for ambiguities...
+▶ clarify-engine — fallback gap detection
+  ✔ returns 4 gaps for empty spec (no persona, performance, error, security) (637.6035ms)
+[INFO] Analyzing spec for ambiguities...
+  ✔ returns fewer gaps when spec contains "persona" (52.5062ms)
+[INFO] Analyzing spec for ambiguities...
+  ✔ returns fewer gaps when spec contains "performance" (31.4095ms)
+[INFO] Analyzing spec for ambiguities...
+  ✔ returns fewer gaps when spec contains "error" (50.3784ms)
+[INFO] Analyzing spec for ambiguities...
+  ✔ returns fewer gaps when spec contains "security" (35.9912ms)
+[INFO] Analyzing spec for ambiguities...
+  ✔ returns 0 gaps when spec covers all keywords (40.8256ms)
+[INFO] Running consistency check against constitution...
+  ✔ each gap has id, question, and context fields (46.6986ms)
+  ✔ runConsistencyCheck returns empty array when no LLM available (18.1886ms)
+[INFO] Analyzing spec for ambiguities...
+[INFO] Analyzing spec for ambiguities...
+[INFO] Analyzing spec for ambiguities...
+[INFO] Analyzing spec for ambiguities...
+[WARN] LLM clarification failed, using local analysis
+[INFO] Running consistency check against constitution...
+[WARN] Found 2 consistency issue(s)
+[INFO] Running consistency check against constitution...
+[OK] Spec is consistent with constitution
+[INFO] Running consistency check against constitution...
+[WARN] LLM consistency check failed
+✔ clarify-engine — fallback gap detection (940.704ms)
+▶ clarify-engine — _llmCaller injection
+  ✔ parseQuestions parses [QUESTION] [CONTEXT] format (1.7266ms)
+  ✔ parseQuestions handles numbered lines without [QUESTION] markers (0.781ms)
+  ✔ falls back to detectBasicGaps when LLM returns no parseable questions (0.4063ms)
+  ✔ falls back to local analysis when LLM throws (0.5689ms)
+  ✔ runConsistencyCheck parses VIOLATION lines (0.6056ms)
+  ✔ runConsistencyCheck returns empty for no violations (0.4287ms)
+  ✔ runConsistencyCheck falls back on LLM error (0.4068ms)
+✔ clarify-engine — _llmCaller injection (5.6032ms)
+✖ tests\cli-error-boundary.test.ts (9131.0001ms)
+✖ tests\cli-flags.test.ts (5787.8847ms)
+✖ tests\cli-release-readiness.test.ts (2916.1119ms)
+▶ parseCodeOperations — unified diff format
+  ✔ parses a single-hunk diff with removals and additions (3.2731ms)
+  ✔ strips the a/ prefix from the --- line (0.7208ms)
+  ✔ handles diff without a/ prefix (plain filepath) (0.3867ms)
+  ✔ produces a create op for a pure-addition diff (no - lines) (0.3092ms)
+  ✔ handles multiple files in one diff response (0.3858ms)
+  ✔ skips /dev/null as source path (0.2932ms)
+✔ parseCodeOperations — unified diff format (7.5856ms)
+▶ parseCodeOperations — whole-file heading format
+  ✔ parses ## FILE: path before a fenced block (0.3679ms)
+  ✔ parses === File: path === before a fenced block (0.3689ms)
+  ✔ parses ### path before a fenced block (0.4044ms)
+  ✔ does not include the fence language line in content (0.3232ms)
+✔ parseCodeOperations — whole-file heading format (1.9421ms)
+▶ parseCodeOperations — flexible fence fallback
+  ✔ parses filepath from fence header (```typescript src/foo.ts) (0.731ms)
+  ✔ parses # hash comment as filepath on first line (0.6893ms)
+  ✔ parses // filepath: keyword comment on first line (0.363ms)
+  ✔ does not false-positive on a language-only fence header (0.2115ms)
+  ✔ does not false-positive on empty fenced block (0.1781ms)
+✔ parseCodeOperations — flexible fence fallback (2.5073ms)
+▶ parseCodeOperations — mixed formats
+  ✔ parses SEARCH/REPLACE block and a unified diff in the same response (0.3782ms)
+  ✔ parses unified diff and NEW_FILE block in the same response (0.2563ms)
+  ✔ parses whole-file heading and SEARCH/REPLACE in same response (0.437ms)
+  ✔ returns no duplicate ops for the same file (0.2836ms)
+✔ parseCodeOperations — mixed formats (1.6237ms)
+▶ parseCodeOperations — edge cases
+  ✔ returns [] for empty string (1.291ms)
+  ✔ returns [] for plain prose with no code (0.1832ms)
+  ✔ returns [] for whitespace-only fenced block (0.164ms)
+  ✔ handles CRLF line endings in unified diff (0.326ms)
+  ✔ parseCodeOperations result is always an array (0.3007ms)
+✔ parseCodeOperations — edge cases (2.598ms)
+▶ applyOperation — path traversal protection
+  ✔ rejects Unix-style traversal ../../.env — returns success=false, no file written (6.5263ms)
+  ✔ rejects deep traversal path — ../../../../../../../etc/passwd (0.6014ms)
+  ✔ rejects Windows-style traversal ..\..\sensitive (0.5117ms)
+  ✔ rejects absolute path outside cwd (0.3816ms)
+  ✔ error message on traversal contains the attempted path (0.4215ms)
+  ✔ allows valid create of src/feature.ts within cwd (616.5901ms)
+  ✔ allows valid nested create src/components/Button.tsx and creates directories (4.9171ms)
+  ✔ rejects replace type with traversal path — returns success=false, not thrown (1.5292ms)
+✔ applyOperation — path traversal protection (645.8427ms)
+▶ parseCodeOperations — SEARCH/REPLACE format
+  ✔ single block returns one replace operation with correct fields (3.0601ms)
+  ✔ multiple blocks returns all operations (1.2468ms)
+  ✔ // filepath: prefix is stripped from the filepath (0.4371ms)
+  ✔ filepath appears BEFORE <<<<<<< SEARCH block (5 lines above) still parsed (0.2943ms)
+  ✔ no SEARCH/REPLACE patterns returns empty array (0.6551ms)
+✔ parseCodeOperations — SEARCH/REPLACE format (7.9459ms)
+▶ parseCodeOperations — NEW_FILE format
+  ✔ single NEW_FILE block returns one create operation (0.4677ms)
+  ✔ four-backtick fence still parsed (0.4233ms)
+  ✔ mixed NEW_FILE and SEARCH/REPLACE returns both (0.4089ms)
+✔ parseCodeOperations — NEW_FILE format (2.0401ms)
+▶ applyOperation — exact match
+  ✔ exact search block found — file updated, matchStrategy: exact (1.6193ms)
+  ✔ no match in file — success: false, error contains SEARCH block not found (1.0396ms)
+  ✔ file not found for replace — success: false, error contains not found (0.3447ms)
+  ✔ create type — file written via _writeFile, success: true (0.3013ms)
+✔ applyOperation — exact match (3.6835ms)
+▶ applyOperation — whitespace match
+  ✔ search block with extra indentation vs file matches via whitespace tier (0.4793ms)
+  ✔ search block with trailing spaces still matches via whitespace tier (0.3018ms)
+✔ applyOperation — whitespace match (0.9308ms)
+▶ applyOperation — fuzzy match
+  ✔ near-identical search (1-2 chars different) produces matchStrategy: fuzzy (2.7459ms)
+  ✔ very different search content (similarity < 0.8) — success: false (170.376ms)
+✔ applyOperation — fuzzy match (173.3624ms)
+▶ applyAllOperations
+  ✔ all operations succeed — success: true, filesWritten populated (9.1824ms)
+  ✔ one failure in mix — success: false, filesFailedToApply has failed path, others written (4.6485ms)
+  ✔ empty ops array — success: true, zero files written (0.7757ms)
+✔ applyAllOperations (17.7284ms)
+▶ findFuzzyMatch
+  ✔ near-identical needle returns { index, score } with score >= 0.8 (2.9867ms)
+  ✔ exact match returns score = 1.0 (3.4919ms)
+  ✔ completely different content returns null (1.1233ms)
+✔ findFuzzyMatch (9.3458ms)
+▶ command-skill-coverage
+  ✔ every workflow command has a commands/*.md file (9.4158ms)
+  ✔ has exactly the expected number of command files (191.4952ms)
+  ✔ every commands/*.md file has valid YAML frontmatter with name and description (248.5443ms)
+  ✔ frontmatter name matches filename for every command file (5202.2545ms)
+  ✔ no utility commands have slash command files (0.9748ms)
+  ✔ session-start hook lists all workflow commands (2.7065ms)
+  ✔ AGENTS.md lists all workflow commands (2.5982ms)
+  ✔ Codex config.toml avoids workflow command alias collisions with native slash commands (2.7771ms)
+  ✔ Codex config.toml includes the latest verification and release aliases (1.4715ms)
+  ✔ Cursor rules file lists all workflow commands (3.5628ms)
+✔ command-skill-coverage (5669.8124ms)
+[INFO] Audit log has 10 entries (threshold: 20) — no compaction needed
+▶ compact — no-op when audit log is small
+  ✔ does nothing when auditLog.length <= 20 (241.7894ms)
+[INFO] Audit log has 20 entries (threshold: 20) — no compaction needed

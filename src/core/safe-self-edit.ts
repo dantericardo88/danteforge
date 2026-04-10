@@ -14,6 +14,12 @@ const PROTECTED_PATHS = [
   'src/core/autoforge.ts',
   'src/core/pdse.ts',
   'src/cli/index.ts',
+  // Security-critical additions (2026-04-08)
+  'src/core/llm.ts',
+  'src/core/prompt-builder.ts',
+  'src/core/mcp-server.ts',
+  'src/core/input-validation.ts',
+  'src/core/circuit-breaker.ts',
 ];
 
 const AUDIT_DIR = '.danteforge/audit';

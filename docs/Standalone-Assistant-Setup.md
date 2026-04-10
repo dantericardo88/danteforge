@@ -51,7 +51,7 @@ From a packaged tarball before public npm publish:
 
 ```bash
 npm pack
-npm install -g ./danteforge-0.9.2.tgz
+npm install -g ./danteforge-0.15.0.tgz
 ```
 
 From source:
