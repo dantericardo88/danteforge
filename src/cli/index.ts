@@ -259,20 +259,20 @@ program
   .description('Zero-token planning preset: review -> constitution -> specify -> clarify -> tech-decide -> plan -> tasks')
   .option('--prompt', 'Generate the preset plan without executing')
   .option('--skip-tech-decide', 'Skip the tech-decide step when the stack is already decided')
-  .action((goal, opts) => commands.spark(goal, {
+  .action(withAuditLogging('spark', async (goal, opts) => await commands.spark(goal, {
     prompt: opts.prompt,
     skipTechDecide: opts.skipTechDecide,
-  }));
+  })));
 
 program
   .command('ember [goal]')
   .description('Very low-token preset for quick features and light checkpoints')
   .option('--profile <type>', 'quality | balanced | budget', 'budget')
   .option('--prompt', 'Generate the preset plan without executing')
-  .action((goal, opts) => commands.ember(goal, {
+  .action(withAuditLogging('ember', async (goal, opts) => await commands.ember(goal, {
     profile: opts.profile,
     prompt: opts.prompt,
-  }));
+  })));
 
 program
   .command('canvas [goal]')
@@ -280,11 +280,11 @@ program
   .option('--profile <type>', 'quality | balanced | budget', 'budget')
   .option('--prompt', 'Generate the preset plan without executing')
   .option('--design-prompt <text>', 'Override the prompt passed to the design step')
-  .action((goal, opts) => commands.canvas(goal, {
+  .action(withAuditLogging('canvas', async (goal, opts) => await commands.canvas(goal, {
     profile: opts.profile,
     prompt: opts.prompt,
     designPrompt: opts.designPrompt,
-  }));
+  })));
 
 program
   .command('magic [goal]')
@@ -297,7 +297,7 @@ program
   .option('--worktree', 'Run heavy preset execution inside an isolated git worktree')
   .option('--isolation', 'Use isolation when a preset escalates into party mode')
   .option('--max-repos <n>', 'Maximum repos for inferno OSS discovery', '12')
-  .action((goal, opts) => commands.magic(goal, {
+  .action(withAuditLogging('magic', async (goal, opts) => await commands.magic(goal, {
     level: opts.level,
     profile: opts.profile,
     skipUx: opts.skipUx,
@@ -306,7 +306,7 @@ program
     worktree: opts.worktree,
     isolation: opts.isolation,
     maxRepos: parseInt(opts.maxRepos, 10),
-  }));
+  })));
 
 program
   .command('blaze [goal]')
@@ -317,14 +317,14 @@ program
   .option('--isolation', 'Run party with isolation enabled')
   .option('--with-design', 'Add design + ux-refine steps to the pipeline')
   .option('--design-prompt <text>', 'Prompt to pass to the design step')
-  .action((goal, opts) => commands.blaze(goal, {
+  .action(withAuditLogging('blaze', async (goal, opts) => await commands.blaze(goal, {
     profile: opts.profile,
     prompt: opts.prompt,
     worktree: opts.worktree,
     isolation: opts.isolation,
     withDesign: opts.withDesign,
     designPrompt: opts.designPrompt,
-  }));
+  })));
 
 program
   .command('nova [goal]')
@@ -336,7 +336,7 @@ program
   .option('--tech-decide', 'Add a tech-decide step after the planning prefix')
   .option('--with-design', 'Add design + ux-refine steps to the pipeline')
   .option('--design-prompt <text>', 'Prompt to pass to the design step')
-  .action((goal, opts) => commands.nova(goal, {
+  .action(withAuditLogging('nova', async (goal, opts) => await commands.nova(goal, {
     profile: opts.profile,
     prompt: opts.prompt,
     worktree: opts.worktree,
@@ -344,7 +344,7 @@ program
     withTechDecide: opts.techDecide,
     withDesign: opts.withDesign,
     designPrompt: opts.designPrompt,
-  }));
+  })));
 
 program
   .command('inferno [goal]')
@@ -359,7 +359,7 @@ program
   .option('--local-sources <paths>', 'Comma-separated local repo or folder paths to harvest first')
   .option('--local-depth <level>', 'Harvest depth for local sources: shallow|medium|full', 'medium')
   .option('--local-config <path>', 'YAML config file listing local sources')
-  .action((goal, opts) => commands.inferno(goal, {
+  .action(withAuditLogging('inferno', async (goal, opts) => await commands.inferno(goal, {
     profile: opts.profile,
     prompt: opts.prompt,
     worktree: opts.worktree,
@@ -370,25 +370,25 @@ program
     localSources: opts.localSources?.split(',').map((source: string) => source.trim()).filter(Boolean),
     localDepth: opts.localDepth,
     localSourcesConfig: opts.localConfig,
-  }));
+  })));
 
 program
   .command('workflow')
   .description('Show the 12-stage pipeline with your current position highlighted')
-  .action(async () => {
+  .action(withAuditLogging('workflow', async () => {
     const { workflow } = await import('./commands/workflow.js');
     await workflow();
-  });
+  }));
 
 program
   .command('help [query]')
   .description('Context-aware guidance engine')
-  .action(commands.helpCmd);
+  .action(withAuditLogging('help', async (query) => await commands.helpCmd(query)));
 
 program
   .command('docs')
   .description('Generate or update the command reference documentation')
-  .action(commands.docs);
+  .action(withAuditLogging('docs', commands.docs));
 
 program
   .command('update-mcp')
@@ -396,21 +396,21 @@ program
   .option('--prompt', 'Generate a copy-paste prompt instead of auto-executing')
   .option('--apply', 'Apply recommended updates after review')
   .option('--check', 'Check-only mode (no changes)')
-  .action(commands.updateMcp);
+  .action(withAuditLogging('update-mcp', commands.updateMcp));
 
 program
   .command('tech-decide')
   .description('Guided tech stack selection - 3-5 options per category with pros/cons')
   .option('--prompt', 'Generate a copy-paste prompt instead of auto-executing')
   .option('--auto', 'Accept all recommended defaults without interactive review')
-  .action(commands.techDecide);
+  .action(withAuditLogging('tech-decide', commands.techDecide));
 
 program
   .command('lessons [correction]')
   .description('Self-improving lessons - capture corrections, view rules, auto-compact')
   .option('--prompt', 'Generate a copy-paste prompt instead of auto-executing')
   .option('--compact', 'Force compaction of lessons file')
-  .action(commands.lessons);
+  .action(withAuditLogging('lessons', async (correction, opts) => await commands.lessons(correction, opts)));
 
 program
   .command('autoforge [goal]')
@@ -426,7 +426,7 @@ program
   .option('--auto', 'Run autonomous loop until 95% completion or BLOCKED state')
   .option('--force', 'Override one BLOCKED artifact for one cycle (logged to audit trail)')
   .option('--pause-at <score>', 'Pause the loop when average PDSE score reaches this value')
-  .action((goal, opts) => commands.autoforge(goal, {
+  .action(withAuditLogging('autoforge', async (goal, opts) => await commands.autoforge(goal, {
     dryRun: opts.dryRun,
     maxWaves: parseInt(opts.maxWaves, 10),
     light: opts.light,
@@ -438,12 +438,12 @@ program
     parallel: opts.parallel,
     worktree: opts.worktree,
     pauseAt: opts.pauseAt !== undefined ? parseInt(opts.pauseAt, 10) : undefined,
-  }));
+  })));
 
 program
   .command('resume')
   .description('Resume a paused autoforge loop from the last checkpoint')
-  .action(() => commands.resumeAutoforge());
+  .action(withAuditLogging('resume', async () => await commands.resumeAutoforge()));
 
 program
   .command('awesome-scan')
@@ -451,21 +451,21 @@ program
   .option('--source <path>', 'Scan an external directory for skills')
   .option('--domain <type>', 'Filter by domain (security|fullstack|devops|ux|backend|frontend|data|testing|architecture|general)')
   .option('--install', 'Import compatible external skills')
-  .action(commands.awesomeScan);
+  .action(withAuditLogging('awesome-scan', commands.awesomeScan));
 
 program
   .command('profile [subcommand] [arg]')
   .description('Model personality profiles — view learned behavioral patterns per model')
   .option('--prompt', 'Generate a copy-paste prompt instead of displaying')
   .addHelpText('after', '\nSubcommands: (none)=summary, compare, report, weakness <model>, recommend <task>')
-  .action((subcommand, arg, opts) => commands.profile(subcommand, arg, { prompt: opts.prompt }));
+  .action(withAuditLogging('profile', async (subcommand, arg, opts) => await commands.profile(subcommand, arg, { prompt: opts.prompt })));
 
 program
   .command('retro')
   .description('Project retrospective with metrics, delta scoring, and trend tracking')
   .option('--summary', 'Print trend summary of last 5 retros')
   .option('--cwd <path>', 'Project directory')
-  .action(commands.retro);
+  .action(withAuditLogging('retro', commands.retro));
 
 program
   .command('maturity')
@@ -473,18 +473,18 @@ program
   .option('--preset <level>', 'Target preset level (spark|ember|canvas|magic|blaze|nova|inferno)')
   .option('--json', 'Output JSON instead of plain text')
   .option('--cwd <path>', 'Project directory')
-  .action((opts) => commands.maturity({
+  .action(withAuditLogging('maturity', async (opts) => await commands.maturity({
     preset: opts.preset,
     json: opts.json,
     cwd: opts.cwd,
-  }));
+  })));
 
 program
   .command('ship')
   .description('Paranoid release guidance + version bump plan + changelog draft')
   .option('--dry-run', 'Run checks and generate guidance without changing the audit intent')
   .option('--skip-review', 'Skip pre-landing review (emergency only, logged to audit)')
-  .action(commands.ship);
+  .action(withAuditLogging('ship', commands.ship));
 
 program
   .command('oss')
@@ -492,11 +492,11 @@ program
   .option('--prompt', 'Generate a copy-paste research plan prompt instead of executing')
   .option('--dry-run', 'Show what would be searched without cloning')
   .option('--max-repos <n>', 'Maximum repos to clone and analyze (default: 8)', '8')
-  .action((opts) => commands.ossResearcher({
+  .action(withAuditLogging('oss', async (opts) => await commands.ossResearcher({
     prompt: opts.prompt,
     dryRun: opts.dryRun,
     maxRepos: opts.maxRepos,
-  }));
+  })));
 
 program
   .command('local-harvest [paths...]')
@@ -506,13 +506,13 @@ program
   .option('--prompt', 'Show harvest plan without executing')
   .option('--dry-run', 'Detect source types without reading')
   .option('--max-sources <n>', 'Maximum sources to analyze (default: 5)', '5')
-  .action((paths, opts) => commands.localHarvest(paths ?? [], {
+  .action(withAuditLogging('local-harvest', async (paths, opts) => await commands.localHarvest(paths ?? [], {
     config: opts.config,
     depth: opts.depth,
     prompt: opts.prompt,
     dryRun: opts.dryRun,
     maxSources: parseInt(opts.maxSources, 10),
-  }));
+  })));
 
 program
   .command('autoresearch <goal>')
@@ -521,19 +521,19 @@ program
   .option('--time <budget>', 'Time budget (e.g., "4h", "30m")', '4h')
   .option('--prompt', 'Generate a copy-paste prompt instead of executing')
   .option('--dry-run', 'Show the experiment plan without running')
-  .action((goal, opts) => commands.autoResearch(goal, {
+  .action(withAuditLogging('autoresearch', async (goal, opts) => await commands.autoResearch(goal, {
     metric: opts.metric,
     time: opts.time,
     prompt: opts.prompt,
     dryRun: opts.dryRun,
-  }));
+  })));
 
 program
   .command('harvest <system>')
   .description('Titan Harvest V2 — 5-step constitutional harvest of OSS patterns with hash-verifiable ratification')
   .option('--prompt', 'Display the 5-step copy-paste template without calling the LLM')
   .option('--lite', 'Run in SEP-LITE mode (Steps 1-3 + 5 only, 2-3 donors, 2-4 organs)')
-  .action(commands.harvest);
+  .action(withAuditLogging('harvest', async (system) => await commands.harvest(system)));
 
 program
   .command('premium [subcommand]')
@@ -541,18 +541,18 @@ program
   .option('--key <key>', 'License key for activation')
   .option('--tier <tier>', 'License tier for keygen: pro or enterprise', 'pro')
   .option('--days <n>', 'Days until expiry for keygen (default: 365)', '365')
-  .action((subcommand, opts) => commands.premium(subcommand ?? 'status', { key: opts.key, tier: opts.tier, days: opts.days }));
+  .action(withAuditLogging('premium', async (subcommand, opts) => await commands.premium(subcommand ?? 'status', { key: opts.key, tier: opts.tier, days: opts.days })));
 
 program
   .command('mcp-server')
   .description('Start DanteForge MCP server over stdio — for Claude Code, Codex, Cursor')
-  .action(() => commands.mcpServer());
+  .action(withAuditLogging('mcp-server', async () => await commands.mcpServer()));
 
 program
   .command('publish-check')
   .description('Pre-publish validation gate — 12 parallel checks before npm publish')
   .option('--json', 'Output machine-readable JSON')
-  .action((opts) => commands.publishCheck({ json: opts.json }));
+  .action(withAuditLogging('publish-check', async (opts) => await commands.publishCheck({ json: opts.json })));
 
 program
   .command('audit-export')
@@ -561,10 +561,10 @@ program
   .option('--since <date>', 'Filter entries since ISO date (e.g., 2026-01-01)')
   .option('--output <path>', 'Write to file instead of stdout')
   .option('--json', 'Machine-readable JSON output')
-  .action(async (opts) => {
+  .action(withAuditLogging('audit-export', async (opts) => {
     const { auditExport } = await import('./commands/audit-export.js');
     await auditExport(opts);
-  });
+  }));
 
 program
   .command('assess')
@@ -575,7 +575,7 @@ program
   .option('--json', 'Output machine-readable JSON')
   .option('--preset <level>', 'Preset for target maturity level')
   .option('--cwd <path>', 'Project directory')
-  .action(async (opts) => {
+  .action(withAuditLogging('assess', async (opts) => {
     try {
       await commands.assess({
         harsh: opts.harsh !== false,
@@ -589,7 +589,7 @@ program
       formatAndLogError(err, 'assess');
       process.exitCode = 1;
     }
-  });
+  }));
 
 program
   .command('self-improve [goal]')
@@ -613,10 +613,10 @@ program
   .description('Define what "9+" means — sets the completion target used by assess and self-improve')
   .option('--reset', 'Clear existing target and re-prompt')
   .option('--cwd <path>', 'Project directory')
-  .action((opts) => void commands.defineDone({
+  .action(withAuditLogging('define-done', async (opts) => void commands.defineDone({
     reset: opts.reset,
     cwd: opts.cwd,
-  }));
+  })));
 
 program
   .command('universe')
@@ -624,19 +624,19 @@ program
   .option('--refresh', 'Force rebuild of feature universe from competitors')
   .option('--json', 'Output machine-readable JSON')
   .option('--cwd <path>', 'Project directory')
-  .action((opts) => void commands.universe({
+  .action(withAuditLogging('universe', async (opts) => void commands.universe({
     refresh: opts.refresh,
     json: opts.json,
     cwd: opts.cwd,
-  }));
+  })));
 
 program
   .command('workspace <subcommand> [args...]')
   .description('Manage workspaces for multi-user projects')
   .option('--role <role>', 'Member role: owner, editor, reviewer', 'editor')
-  .action(async (subcommand: string, args: string[], options: { role?: string }) => {
+  .action(withAuditLogging('workspace', async (subcommand: string, args: string[], options: { role?: string }) => {
     await commands.workspace(subcommand, args ?? [], options);
-  });
+  }));
 
 // First-run detection — suggest init when no .danteforge/ exists
 program.hook('preAction', (_thisCommand, actionCommand) => {
@@ -696,11 +696,11 @@ program
   .option('--bootstrap', 'Seed wiki from existing .danteforge/ artifacts')
   .option('--prompt', 'Show the command without executing')
   .option('--cwd <path>', 'Project directory')
-  .action((opts) => void commands.wikiIngestCommand({
+  .action(withAuditLogging('wiki-ingest', async (opts) => void commands.wikiIngestCommand({
     bootstrap: opts.bootstrap,
     prompt: opts.prompt,
     cwd: opts.cwd,
-  }));
+  })));
 
 program
   .command('wiki-lint')
@@ -708,32 +708,32 @@ program
   .option('--heuristic-only', 'Skip LLM calls (zero-cost mode)')
   .option('--prompt', 'Show the command without executing')
   .option('--cwd <path>', 'Project directory')
-  .action((opts) => void commands.wikiLintCommand({
+  .action(withAuditLogging('wiki-lint', async (opts) => void commands.wikiLintCommand({
     heuristicOnly: opts.heuristicOnly,
     prompt: opts.prompt,
     cwd: opts.cwd,
-  }));
+  })));
 
 program
   .command('wiki-query <topic>')
   .description('Search wiki for entity pages, decisions, and patterns relevant to a topic')
   .option('--json', 'Output machine-readable JSON')
   .option('--cwd <path>', 'Project directory')
-  .action((topic, opts) => void commands.wikiQueryCommand({
+  .action(withAuditLogging('wiki-query', async (topic, opts) => void commands.wikiQueryCommand({
     topic,
     json: opts.json,
     cwd: opts.cwd,
-  }));
+  })));
 
 program
   .command('wiki-status')
   .description('Display wiki health metrics: pages, link density, staleness, lint pass rate, anomalies')
   .option('--json', 'Output machine-readable JSON')
   .option('--cwd <path>', 'Project directory')
-  .action((opts) => void commands.wikiStatusCommand({
+  .action(withAuditLogging('wiki-status', async (opts) => void commands.wikiStatusCommand({
     json: opts.json,
     cwd: opts.cwd,
-  }));
+  })));
 
 program
   .command('wiki-export')
@@ -741,24 +741,24 @@ program
   .option('--format <type>', 'Export format: obsidian or html (default: obsidian)', 'obsidian')
   .option('--out <dir>', 'Output directory path')
   .option('--cwd <path>', 'Project directory')
-  .action((opts) => void commands.wikiExportCommand({
+  .action(withAuditLogging('wiki-export', async (opts) => void commands.wikiExportCommand({
     format: opts.format as 'obsidian' | 'html',
     out: opts.out,
     cwd: opts.cwd,
-  }));
+  })));
 
 program
   .command('quickstart [idea]')
   .description('Guided 5-minute path: init → constitution → spark → PDSE score')
   .option('--non-interactive', 'Skip all prompts (CI mode)')
-  .action((idea, opts) => void commands.quickstart({ idea, nonInteractive: opts.nonInteractive }));
+  .action(withAuditLogging('quickstart', async (idea, opts) => void commands.quickstart({ idea, nonInteractive: opts.nonInteractive })));
 
 program
   .command('plugin <subcommand> [args...]')
   .description('Manage community skill plugins: install, list, remove')
-  .action(async (subcommand: string, args: string[]) => {
+  .action(withAuditLogging('plugin', async (subcommand: string, args: string[]) => {
     await commands.pluginCommand(subcommand as 'install' | 'list' | 'remove', args ?? []);
-  });
+  }));
 
 program
   .command('benchmark')
@@ -771,7 +771,7 @@ program
   .option('--task <id>', 'Benchmark task to run (with --harness)')
   .option('--all', 'Run all benchmark suites (with --harness)')
   .option('--cwd <path>', 'Project directory')
-  .action((opts) => void commands.benchmark({
+  .action(withAuditLogging('benchmark', async (opts) => void commands.benchmark({
     register: opts.register,
     compare: opts.compare,
     report: opts.report,
@@ -780,7 +780,7 @@ program
     task: opts.task,
     all: opts.all,
     cwd: opts.cwd,
-  }));
+  })));
 
 program
   .command('benchmark-llm')
@@ -788,15 +788,15 @@ program
   .argument('[task]', 'Task description to benchmark')
   .option('--compare', 'Show historical comparison')
   .option('--no-save', 'Skip saving results')
-  .action(async (task: string | undefined, opts: { compare?: boolean; save?: boolean }) => {
+  .action(withAuditLogging('benchmark-llm', async (task: string | undefined, opts: { compare?: boolean; save?: boolean }) => {
     await commands.benchmarkLLM({ task, compare: opts.compare, save: opts.save });
-  });
+  }));
 
 program
   .command('explain [term]')
   .description('Plain-English glossary — explain any DanteForge term or list all terms')
   .option('--list', 'List all glossary terms with one-line descriptions')
-  .action((term, opts) => commands.explain({ term, list: opts.list }));
+  .action(withAuditLogging('explain', async (term, opts) => await commands.explain({ term, list: opts.list })));
 
 program
   .command('pack [output]')
@@ -806,14 +806,14 @@ program
   .option('--exclude <patterns>', 'Comma-separated patterns to exclude')
   .option('--token-count', 'Show token summary only (no file content)')
   .option('--no-gitignore', 'Ignore .gitignore patterns')
-  .action((output, opts) => void commands.pack({
+  .action(withAuditLogging('pack', async (output, opts) => void commands.pack({
     output,
     format: opts.format as 'xml' | 'markdown' | 'plain',
     include: opts.include?.split(',').map((s: string) => s.trim()).filter(Boolean),
     exclude: opts.exclude?.split(',').map((s: string) => s.trim()).filter(Boolean),
     tokenCount: opts.tokenCount,
     gitignore: opts.gitignore !== false,
-  }));
+  })));
 
 program
   .command('ci-setup')
@@ -821,31 +821,31 @@ program
   .option('--provider <name>', 'CI provider: github | gitlab | bitbucket', 'github')
   .option('--branch <name>', 'Branch to trigger on', 'main')
   .option('--output-dir <path>', 'Override output directory for the generated file')
-  .action((opts) => void commands.ciSetup({
+  .action(withAuditLogging('ci-setup', async (opts) => void commands.ciSetup({
     provider: opts.provider as 'github' | 'gitlab' | 'bitbucket',
     branch: opts.branch,
     outputDir: opts.outputDir,
-  }));
+  })));
 
 program
   .command('proof')
   .description('Measure AI context quality improvement — compare raw prompt vs DanteForge structured artifacts')
   .option('--prompt <text>', 'Raw prompt to score against DanteForge artifacts')
   .option('--cwd <path>', 'Project directory')
-  .action((opts) => void commands.proof({
+  .action(withAuditLogging('proof', async (opts) => void commands.proof({
     prompt: opts.prompt,
     cwd: opts.cwd ?? process.cwd(),
-  }));
+  })));
 
 program
   .command('sync-context')
   .description('Generate project-specific context files for Cursor, Claude Code, and Codex from live state')
   .option('--target <name>', 'Target tool: cursor | claude | codex | all (default: all)', 'all')
   .option('--cwd <path>', 'Project directory')
-  .action((opts) => void commands.syncContext({
+  .action(withAuditLogging('sync-context', async (opts) => void commands.syncContext({
     target: opts.target as 'cursor' | 'claude' | 'codex' | 'all',
     cwd: opts.cwd ?? process.cwd(),
-  }));
+  })));
 
 program
   .command('demo')
@@ -853,30 +853,30 @@ program
   .option('--fixture <name>', 'Demo fixture: task-tracker | auth-system | data-pipeline', 'task-tracker')
   .option('--all', 'Run all demo fixtures')
   .option('--cwd <path>', 'Project directory')
-  .action((opts) => void commands.demo({
+  .action(withAuditLogging('demo', async (opts) => void commands.demo({
     fixture: opts.fixture,
     all: opts.all,
     cwd: opts.cwd ?? process.cwd(),
-  }));
+  })));
 
 program
   .command('completion [shell]')
   .description('Output shell completion script (bash, zsh, fish)')
   .addHelpText('after', '\nUsage:\n  eval "$(danteforge completion bash)"   # add to ~/.bashrc\n  eval "$(danteforge completion zsh)"    # add to ~/.zshrc\n  danteforge completion fish > ~/.config/fish/completions/danteforge.fish')
-  .action(async (shell) => { await commands.completionCmd(shell); });
+  .action(withAuditLogging('completion', async (shell) => { await commands.completionCmd(shell); }));
 
 program
   .command('commit')
   .description('Stage changed files and commit with task-derived message')
   .option('--message <msg>', 'Override generated commit message')
   .option('--push', 'Also push after committing')
-  .action(async (opts) => { await commands.gitCommit({ message: opts.message, push: opts.push }); });
+  .action(withAuditLogging('commit', async (opts) => { await commands.gitCommit({ message: opts.message, push: opts.push }); }));
 
 program
   .command('branch')
   .description('Create git branch from current task state')
   .option('--name <name>', 'Override generated branch name')
-  .action(async (opts) => { await commands.gitBranch({ name: opts.name }); });
+  .action(withAuditLogging('branch', async (opts) => { await commands.gitBranch({ name: opts.name }); }));
 
 program
   .command('pr')
@@ -884,7 +884,7 @@ program
   .option('--draft', 'Create draft PR')
   .option('--base <branch>', 'Base branch for PR')
   .option('--title <title>', 'Override PR title')
-  .action(async (opts) => { await commands.gitPR({ draft: opts.draft, base: opts.base, title: opts.title }); });
+  .action(withAuditLogging('pr', async (opts) => { await commands.gitPR({ draft: opts.draft, base: opts.base, title: opts.title }); }));
 
 loadState().catch(() => { /* state will be created on first write */ });
 
