@@ -6,6 +6,7 @@
 import fs from 'fs/promises';
 import path from 'path';
 import { logger } from '../../core/logger.js';
+import { startSpinner } from '../../core/progress.js';
 import { loadState } from '../../core/state.js';
 import { scoreAllArtifacts } from '../../core/pdse.js';
 import { assessMaturity, type MaturityAssessment } from '../../core/maturity-engine.js';
@@ -116,6 +117,9 @@ export async function assess(options: AssessOptions = {}): Promise<AssessResult>
 
   logger.info(`[assess] Running self-assessment (harsh=${harsh}, mode=${completionTarget.mode}, target=${minScore}/10)...`);
 
+  const spinner = await startSpinner('Analyzing codebase...');
+  spinner.update('Scoring PDSE artifacts...');
+
   // Determine target maturity level from preset
   let targetLevel = 5 as 1 | 2 | 3 | 4 | 5 | 6;
   if (options.preset) {
@@ -124,6 +128,7 @@ export async function assess(options: AssessOptions = {}): Promise<AssessResult>
   }
 
   // ── Step 1: Run harsh scoring (always runs for maturity tracking) ───────────
+  spinner.update('Running maturity assessment...');
   const assessment = await harshScoreFn({
     cwd,
     targetLevel,

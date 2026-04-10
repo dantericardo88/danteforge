@@ -27,6 +27,37 @@ export function setActiveSpinner(spinner: SpinnerHandle | null): void {
   _activeSpinner = spinner;
 }
 
+// ── Loading state helpers ─────────────────────────────────────────────────────
+
+export interface LoadingState {
+  isLoading: boolean;
+  message: string;
+  progress?: number;
+}
+
+export function createLoadingState(message: string, progress?: number): LoadingState {
+  return {
+    isLoading: true,
+    message,
+    progress,
+  };
+}
+
+export function updateLoadingState(state: LoadingState, message: string, progress?: number): LoadingState {
+  return {
+    ...state,
+    message,
+    progress,
+  };
+}
+
+export function completeLoadingState(state: LoadingState): LoadingState {
+  return {
+    ...state,
+    isLoading: false,
+  };
+}
+
 // ── Spinner factory ───────────────────────────────────────────────────────────
 
 export async function startSpinner(

@@ -94,8 +94,7 @@ export async function autoforge(goal?: string, options: {
       loopState: AutoforgeLoopState.IDLE,
       cycleCount: 0,
       startedAt: new Date().toISOString(),
-      retryCounters: {},
-      blockedArtifacts: [],
+
       lastGuidance: null,
       isWebProject,
       force: options.force ?? false,

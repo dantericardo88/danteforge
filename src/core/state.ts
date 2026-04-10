@@ -169,10 +169,24 @@ export interface DanteState {
  * Format: "ISO-timestamp | userId | entry"
  */
 export function appendAuditEntry(state: DanteState, entry: string): void {
-  const userId = process.env['DANTEFORGE_USER'] ?? os.userInfo().username ?? 'unknown';
-  const timestamp = new Date().toISOString();
-  state.auditLog = state.auditLog ?? [];
-  state.auditLog.push(`${timestamp} | ${userId} | ${entry}`);
+  try {
+    const userId = process.env['DANTEFORGE_USER'] ?? os.userInfo().username ?? 'unknown';
+    const timestamp = new Date().toISOString();
+    state.auditLog = state.auditLog ?? [];
+    state.auditLog.push(`${timestamp} | ${userId} | ${entry}`);
+  } catch (error) {
+    // Log audit failures but don't crash
+    console.error(`Failed to append audit entry: ${error}`);
+  }
+}
+
+export function validateStateIntegrity(state: DanteState): void {
+  if (!state || typeof state !== 'object') {
+    throw new Error('Invalid state object');
+  }
+  if (typeof state.cycleCount !== 'number' || state.cycleCount < 0) {
+    throw new Error('Invalid cycle count');
+  }
 }
 
 export function recordWorkflowStage(

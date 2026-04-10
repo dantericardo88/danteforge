@@ -26,12 +26,19 @@ export type KnownProvider = typeof KNOWN_PROVIDERS[number];
  * Validate that a provider name is recognized.
  */
 export function validateProviderName(input: string): KnownProvider {
-  const normalized = input.toLowerCase().trim();
-  const match = KNOWN_PROVIDERS.find(p => p === normalized);
-  if (!match) {
-    throw new Error(`Unknown provider: "${input}". Valid providers: ${KNOWN_PROVIDERS.join(', ')}`);
+  try {
+    const normalized = input.toLowerCase().trim();
+    const match = KNOWN_PROVIDERS.find(p => p === normalized);
+    if (!match) {
+      throw new ValidationError(
+        `Unknown provider "${input}". Supported: ${KNOWN_PROVIDERS.join(', ')}`,
+      );
+    }
+    return match;
+  } catch (error) {
+    if (error instanceof ValidationError) throw error;
+    throw new ValidationError(`Provider validation failed: ${error}`);
   }
-  return match;
 }
 
 /**

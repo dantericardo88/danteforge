@@ -71,13 +71,18 @@ export function computeFileHash(content: string): string {
  * Creates the audit directory if it does not already exist.
  */
 export async function auditSelfEdit(entry: SelfEditAuditEntry, cwd?: string): Promise<void> {
-  const base = cwd ?? process.cwd();
-  const auditDir = path.join(base, AUDIT_DIR);
-  const auditFile = path.join(base, AUDIT_FILE);
+  try {
+    const base = cwd ?? process.cwd();
+    const auditDir = path.join(base, AUDIT_DIR);
+    const auditFile = path.join(base, AUDIT_FILE);
 
-  await fs.mkdir(auditDir, { recursive: true });
-  await fs.appendFile(auditFile, JSON.stringify(entry) + '\n', 'utf8');
-  logger.verbose(`Self-edit audit written: ${entry.action} ${entry.filePath} (approved=${entry.approved}, policy=${entry.policy})`);
+    await fs.mkdir(auditDir, { recursive: true });
+    await fs.appendFile(auditFile, JSON.stringify(entry) + '\n', 'utf8');
+    logger.verbose(`Self-edit audit written: ${entry.action} ${entry.filePath} (approved=${entry.approved}, policy=${entry.policy})`);
+  } catch (error) {
+    logger.error(`Failed to write self-edit audit: ${error}`);
+    throw new Error(`Self-edit audit failed: ${error}`);
+  }
 }
 
 /**
@@ -95,6 +100,7 @@ export async function loadAuditLog(cwd?: string): Promise<SelfEditAuditEntry[]> 
     if (err instanceof Error && (err as NodeJS.ErrnoException).code === 'ENOENT') {
       return [];
     }
+    logger.error(`Failed to read audit log: ${err}`);
     throw err;
   }
 

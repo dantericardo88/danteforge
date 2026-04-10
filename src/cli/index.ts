@@ -173,22 +173,11 @@ program
   .option('--level <number>', 'Target maturity level (1-6)', '4')
   .option('--profile <type>', 'quality | balanced | budget', 'quality')
   .option('--prompt', 'Generate the improvement plan without executing')
-  .action(withAuditLogging('self-improve', (goal, opts) => void commands.selfImprove({
+  .action(withAuditLogging('self-improve', async (goal, opts) => await commands.selfImprove({
     goal,
-    minScore: parseFloat(opts.minScore),
-    maxCycles: parseInt(opts.maxCycles, 10),
-    focusDimensions: opts.focus ? [opts.focus] : undefined,
-    preset: opts.preset,
-    cwd: opts.cwd,
-  }));
-
-program
-  .command('define-done')
-  .description('Define what "9+" means — sets the completion target used by assess and self-improve')
-  .option('--reset', 'Clear existing target and re-prompt')
-  .option('--cwd <path>', 'Project directory')
-  .action(withAuditLogging('define-done', async (opts) => void commands.defineDone({
-    reset: opts.reset,
+    minScore: parseFloat(opts.level) * 1.5, // Convert level to score
+    maxCycles: 20,
+    preset: opts.profile,
     cwd: opts.cwd,
   })));
 
@@ -199,7 +188,16 @@ program
   .option('--costs', 'Show cost tracking')
   .option('--baseline', 'Update performance baseline')
   .option('--check', 'Check for performance regression')
-  .action(withAuditLogging('performance', async (opts) => void commands.performance(opts)));
+  .action(withAuditLogging('performance', async (opts) => {
+    try {
+      await commands.performance(opts);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      console.error(`Performance command failed: ${message}`);
+      console.error('Usage: danteforge performance --help');
+      process.exit(1);
+    }
+  }));
 
 program
   .command('wiki-lint')
@@ -259,15 +257,7 @@ program
     await commands.pluginCommand(subcommand as 'install' | 'list' | 'remove', args ?? []);
   }));
 
-program
-  .command('self-improve [goal]')
-  .description('Run autonomous quality improvement loop')
-  .option('--min-score <number>', 'Target score (0-10)', '9.0')
-  .option('--max-cycles <number>', 'Maximum improvement cycles', '20')
-  .option('--focus <dimension>', 'Focus on specific dimension')
-  .option('--preset <type>', 'Quality preset', 'balanced')
-  .option('--cwd <path>', 'Project directory')
-  .action(withAuditLogging('self-improve', async (goal, opts) => void commands.selfImprove({ goal, ...opts })));
+
 
 program
   .command('benchmark-llm')
@@ -381,32 +371,35 @@ program
   .option('--format <type>', 'Output format: json, markdown, html', 'json')
   .option('--include-audit', 'Include audit logging analysis')
   .action(withAuditLogging('enterprise-readiness', async (opts) => {
-    const { enterpriseReadiness } = await import('./commands/enterprise-readiness.js');
-    await enterpriseReadiness(opts);
+    try {
+      const { enterpriseReadiness } = await import('./commands/enterprise-readiness.js');
+      await enterpriseReadiness(opts);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      console.error(`Enterprise-readiness command failed: ${message}`);
+      console.error('Usage: danteforge enterprise-readiness --help');
+      process.exit(1);
+    }
   }));
 
 program
-  .command('community-adoption')
-  .description('Improve community adoption with examples, docs, and showcase')
-  .option('--examples', 'Generate example projects')
-  .option('--templates', 'Generate project templates')
-  .option('--docs', 'Improve documentation')
-  .option('--showcase', 'Create showcase demo')
-  .option('--all', 'Do all improvements')
-  .action(withAuditLogging('community-adoption', async (opts) => {
-    const { improveCommunityAdoption } = await import('../core/community-adoption.js');
-    const options = opts.all ? {
-      generateExamples: true,
-      generateTemplates: true,
-      improveDocs: true,
-      createShowcase: true
-    } : {
-      generateExamples: opts.examples,
-      generateTemplates: opts.templates,
-      improveDocs: opts.docs,
-      createShowcase: opts.showcase
-    };
-    await improveCommunityAdoption(options);
+  .command('assess')
+  .description('Harsh self-assessment: score all 18 dimensions, benchmark vs 27 competitors')
+  .option('--no-harsh', 'Use normal PDSE thresholds instead of harsh mode')
+  .option('--no-competitors', 'Skip competitor benchmarking')
+  .option('--min-score <n>', 'Target score threshold (default: 9.0)')
+  .option('--json', 'Output machine-readable JSON')
+  .option('--preset <level>', 'Preset for target maturity level')
+  .option('--cwd <path>', 'Project directory')
+  .action(withAuditLogging('assess', async (opts) => {
+    try {
+      await commands.assess(opts);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      console.error(`Assess command failed: ${message}`);
+      console.error('Usage: danteforge assess --help');
+      process.exit(1);
+    }
   }));
 
 // v0.19.0 — CLI safety handlers: surface uncaught errors instead of silent exit

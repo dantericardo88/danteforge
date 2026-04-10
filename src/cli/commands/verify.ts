@@ -146,6 +146,8 @@ async function validateCurrentStateFreshness(result: VerifyResult): Promise<void
 
 export async function verify(options: { release?: boolean; live?: boolean; url?: string; recompute?: boolean; json?: boolean } = {}) {
   return withErrorBoundary('verify', async () => {
+    const cwd = process.cwd();
+
     if (options.json) {
       logger.setStderr(true);
     }
@@ -153,6 +155,10 @@ export async function verify(options: { release?: boolean; live?: boolean; url?:
 
     const result: VerifyResult = { passed: [], warnings: [], failures: [] };
     const timestamp = new Date().toISOString();
+
+    // Load current state
+    const state = await loadState({ cwd });
+
     await checkForIncompleteWork(result);
 
     // Run completion oracle validation with real evidence
@@ -175,16 +181,23 @@ export async function verify(options: { release?: boolean; live?: boolean; url?:
         ledger.logTest('verification-failures', 'fail', result.failures.length * -20);
       }
 
-      const bundle = await ledger.finalize({}, {}, {
+      const runId = await ledger.finalize({}, {}, {
         status: result.failures.length === 0 ? 'success' : 'failure',
         completionOracle: false
       });
 
-      const oracleResult = validateCompletion(bundle, state);
-      if (oracleResult.isComplete) {
-        result.passed.push('Completion oracle validation passed');
+      const { loadRunBundle } = await import('../../core/run-ledger.js');
+      const bundle = await loadRunBundle(runId, cwd);
+
+      if (!bundle) {
+        result.warnings.push('Could not load evidence bundle for completion oracle validation');
       } else {
-        result.warnings.push(`Completion oracle concerns: ${oracleResult.reasons.join(', ')}`);
+        const oracleResult = validateCompletion(bundle, state);
+        if (oracleResult.isComplete) {
+          result.passed.push('Completion oracle validation passed');
+        } else {
+          result.warnings.push(`Completion oracle concerns: ${oracleResult.reasons.join(', ')}`);
+        }
       }
 
       // Also check for performance regression
@@ -212,10 +225,7 @@ export async function verify(options: { release?: boolean; live?: boolean; url?:
     result.failures.push('.danteforge/ directory missing - run "danteforge review" first');
   }
 
-    let state;
-
     try {
-      state = await loadState();
       result.passed.push('STATE.yaml is valid and loadable');
     } catch (error) {
     result.failures.push('STATE.yaml is corrupt or unreadable');

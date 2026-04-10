@@ -1,7 +1,9 @@
 import { logger } from '../../core/logger.js';
 import { withErrorBoundary } from '../../core/cli-error-boundary.js';
-import { installAssistantSkills, type AssistantRegistry } from '../../core/assistant-installer.js';
+import { installAssistantSkills } from '../../core/assistant-installer.js';
 import { resolveConfigPaths } from '../../core/config.js';
+
+type AssistantRegistry = 'claude' | 'codex' | 'antigravity' | 'opencode' | 'cursor' | 'goose';
 
 const DEFAULT_ASSISTANTS: AssistantRegistry[] = ['claude', 'codex', 'antigravity', 'opencode', 'goose'];
 const ALL_ASSISTANTS: AssistantRegistry[] = ['claude', 'codex', 'antigravity', 'opencode', 'cursor', 'goose'];
@@ -56,7 +58,7 @@ export async function setupAssistants(options: { assistants?: string } = {}) {
     const paths = resolveConfigPaths();
 
     logger.success('Installed DanteForge skills for local coding assistants');
-    for (const entry of result.assistants) {
+    for (const entry of result) {
       const noun = entry.installMode === 'cursor-rules' ? 'bootstrap file' : 'skills';
       logger.info(`${entry.assistant}: ${entry.installedSkills.length} ${noun} -> ${entry.targetDir}`);
     }

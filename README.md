@@ -35,13 +35,79 @@ DanteForge exposes an MCP server that each of these agents can connect to direct
 
 ## Why DanteForge?
 
-- **Constitution-driven pipeline enforces spec→plan→verify — no skipping steps**
-- **Convergence loops repair until quality gates pass — not just until it runs**
-- **18-dimension scoring with self-assessment against 27 competitors**
+DanteForge is the **trust spine** for AI-assisted development — it prevents the "narrate completion, skip closure" failure mode that plagues most AI coding tools.
+
+### Key Differentiators
+
+- **Evidence-based convergence**: Runs assess→forge→verify→assess loops until measurable quality targets are hit
+- **Spec enforcement**: Constitution-driven pipeline prevents skipping steps (spec→clarify→plan→tasks→forge→verify)
+- **18-dimension quality scoring**: Self-assessment against 27 competitors with gap analysis and masterplans
+- **Enterprise-ready**: SOC 2 compliance, audit trails, RBAC, budget controls, multi-tenancy
+- **Multi-agent orchestration**: MCP server + plugin manifest for Claude Code, Cursor, Codex CLI, Goose
+- **Constitution guarantees**: Project principles are enforced, not just suggested
+
+### Quality Standards
+
+DanteForge enforces a **maturity-aware quality system** with 6 levels:
+- **Level 1 (Sketch)**: Proves the idea works
+- **Level 2 (Prototype)**: Investor-ready MVP
+- **Level 3 (Alpha)**: Internal team use
+- **Level 4 (Beta)**: Paid beta customers
+- **Level 5 (Customer-Ready)**: Production launch
+- **Level 6 (Enterprise-Grade)**: Fortune 500 scale
 
 ## Quick Example
 
-See [`examples/todo-app/`](examples/todo-app/) for a complete walkthrough — build a TODO CLI app from spec to working code with zero manual coding.
+**Build a complete TODO CLI app in 3 minutes:**
+
+```bash
+# Define what you want
+danteforge constitution "A simple CLI todo app with add, list, complete, delete"
+
+# AI generates spec, plan, and code
+danteforge nova "todo app with CLI interface"
+
+# Quality check vs competitors
+danteforge assess
+```
+
+See [`examples/todo-app/`](examples/todo-app/) for a complete walkthrough — spec to working code with zero manual coding.
+
+## Advanced Usage
+
+### Autonomous Development Loops
+```bash
+# Run until 9.0+ quality scores
+danteforge self-improve --level 5
+
+# Assess current state vs 27 competitors
+danteforge assess --json | jq '.assessment.displayScore'
+```
+
+### MCP Integration
+```json
+// Add to Claude Code / Cursor config:
+{
+  "mcpServers": {
+    "danteforge": {
+      "command": "danteforge",
+      "args": ["mcp-server"]
+    }
+  }
+}
+```
+
+### Enterprise Features
+```bash
+# Audit trails and compliance
+danteforge enterprise-readiness
+
+# Multi-tenant isolation
+danteforge config --workspace my-team
+
+# Budget controls
+danteforge spark --max-budget 5.00
+```
 
 ## How DanteForge Compares
 
@@ -541,7 +607,28 @@ Before `npm run verify:live`, configure the live environment explicitly:
 
 See [RELEASE.md](RELEASE.md) for the full release flow.
 
-## License
+## Community & Support
 
-MIT. See [LICENSE](LICENSE) for details.
+### Getting Help
+- `danteforge help` - General help
+- `danteforge help <command>` - Help for specific commands
+- [Documentation](docs/) - Complete guides and API reference
+- [GitHub Issues](https://github.com/dantericardo88/danteforge/issues) - Bug reports and feature requests
+- [GitHub Discussions](https://github.com/dantericardo88/danteforge/discussions) - Q&A and community support
+
+### Contributing
+We welcome contributions! See [CONTRIBUTING.md](CONTRIBUTING.md) for development setup and guidelines.
+
+**Quick contribution start:**
+```bash
+git clone https://github.com/dantericardo88/danteforge
+cd danteforge
+npm ci
+npm run verify  # Run tests and typecheck
+```
+
+### License & Security
+- **License**: MIT
+- **Security**: See [SECURITY.md](SECURITY.md) for vulnerability reporting
+- **Enterprise**: SOC 2 Type II compliant with premium features
 

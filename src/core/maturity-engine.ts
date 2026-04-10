@@ -200,16 +200,21 @@ async function scoreErrorHandling(
     for (const filePath of files) {
       try {
         const content = await readFile(filePath);
+        if (!content || content.length === 0) {
+          throw new Error(`Empty or invalid file: ${filePath}`);
+        }
         throwCount += (content.match(/throw new/g) || []).length;
         tryCount += (content.match(/try\s*\{/g) || []).length;
         customErrorCount += (content.match(/class\s+\w+Error\s+extends\s+Error/g) || []).length;
         functionCount += (content.match(/function\s+\w+|=>\s*\{|async\s+\w+\(/g) || []).length;
-      } catch {
-        // Unreadable file
+      } catch (error) {
+        // Log but continue - some files may be unreadable
+        console.warn(`Failed to analyze file ${filePath}: ${error}`);
       }
     }
-  } catch {
-    // No src directory
+  } catch (error) {
+    // No src directory or collection failed
+    console.warn(`Error handling assessment failed: ${error}`);
     return 50;
   }
 
@@ -292,11 +297,15 @@ async function scoreUxPolish(
     for (const filePath of files) {
       try {
         const content = await readFile(filePath);
+        if (!content) {
+          throw new Error(`Failed to read file: ${filePath}`);
+        }
         if (/isLoading|loading\s*:/i.test(content)) loadingStateCount++;
         if (/aria-/i.test(content)) ariaCount++;
         if (/<Spinner|<Loading|loading\.\.\.]/i.test(content)) spinnerCount++;
-      } catch {
-        // Unreadable file
+      } catch (error) {
+        // Log and continue
+        console.warn(`UX analysis failed for ${filePath}: ${error}`);
       }
     }
 

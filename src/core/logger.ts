@@ -18,12 +18,18 @@ export function registerSecretPattern(pattern: RegExp): void {
 }
 
 export function maskSecrets(input: string): string {
-  if (SECRET_PATTERNS.length === 0) return input;
-  let result = input;
-  for (const pattern of SECRET_PATTERNS) {
-    result = result.replace(pattern, '[REDACTED]');
+  try {
+    if (SECRET_PATTERNS.length === 0) return input;
+    let result = input;
+    for (const pattern of SECRET_PATTERNS) {
+      result = result.replace(pattern, '[REDACTED]');
+    }
+    return result;
+  } catch (error) {
+    // If masking fails, return original but log error
+    console.error(`Secret masking failed: ${error}`);
+    return input;
   }
-  return result;
 }
 
 const LEVEL_ORDER: Record<LogLevel, number> = {
@@ -40,7 +46,12 @@ let useStderr = false;
 /** Write to a stream, silently ignoring broken-pipe / closed-fd errors.
  *  Exported for direct testing without monkey-patching process streams. */
 export function safeWrite(stream: { write(s: string): void }, text: string): void {
-  try { stream.write(text); } catch { /* broken pipe — never crash the process */ }
+  try {
+    stream.write(text);
+  } catch (error) {
+    // Silent failure for broken pipes - prevents crashes
+    // This is important for UX as it prevents CLI crashes on pipe errors
+  }
 }
 
 function shouldLog(level: LogLevel): boolean {

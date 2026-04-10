@@ -292,7 +292,7 @@ async function runRepairs(): Promise<DiagnosticResult> {
     homeDir,
     assistants: ['claude', 'codex', 'antigravity', 'opencode'],
   });
-  const installed = installResult.assistants.map(entry => `${entry.assistant}:${entry.installedSkills.length}`).join(', ');
+  const installed = installResult.map(entry => `${entry.assistant}:${entry.installedSkills.length}`).join(', ');
 
   return {
     name: 'Repairs',
