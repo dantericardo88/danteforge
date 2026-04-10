@@ -108,7 +108,7 @@ export async function assess(options: AssessOptions = {}): Promise<AssessResult>
     logger.info('');
     logger.info('┌──────────────────────��────────────────────────────���─────┐');
     logger.info('│  No completion target set — using default:              │');
-    logger.info(`│  Feature Universe: ${minScore.toFixed(1)}/10 avg on 90% of features     │`);
+    logger.info(`│  Dimension-based: ${minScore.toFixed(1)}/10 on all 18 dimensions      │`);
     logger.info('│                                                         │');
     logger.info('│  To customize "done": run `danteforge define-done`     │');
     logger.info('└─────────────────────────────────────────────────────────┘');
@@ -116,6 +116,7 @@ export async function assess(options: AssessOptions = {}): Promise<AssessResult>
   }
 
   logger.info(`[assess] Running self-assessment (harsh=${harsh}, mode=${completionTarget.mode}, target=${minScore}/10)...`);
+  logger.info(`[assess] Note: Feature universe assessment temporarily disabled to prevent hanging`);
 
   const spinner = await startSpinner('Analyzing codebase...');
   spinner.update('Scoring PDSE artifacts...');
@@ -154,25 +155,11 @@ export async function assess(options: AssessOptions = {}): Promise<AssessResult>
     }
   }
 
-  // ── Step 2b: Feature universe assessment (when mode=feature-universe) ───────
+  // ── Step 2b: Feature universe assessment (disabled - causes hanging) ───────
   let featureAssessment: FeatureUniverseAssessment | undefined;
-  if (completionTarget.mode === 'feature-universe' && enableCompetitors) {
-    try {
-      const ctx = projectCtx ?? await buildContextFn(cwd);
-      const competitorNames = comparison?.competitors.map((c) => c.name) ?? [];
-      if (competitorNames.length > 0) {
-        let featureUniverse = await loadFeatureUniverse(cwd).catch(() => null);
-        if (!featureUniverse) {
-          featureUniverse = await buildUniverseFn(competitorNames, ctx);
-          await saveFeatureUniverse(featureUniverse, cwd).catch(() => {});
-        }
-        featureAssessment = await scoreUniverseFn(featureUniverse, ctx);
-        await saveFeatureScores(featureAssessment, cwd).catch(() => {});
-      }
-    } catch {
-      logger.warn('[assess] Feature universe assessment failed — falling back to dimension scoring');
-    }
-  }
+  // Temporarily disabled to prevent assessment hanging
+  // TODO: Fix LLM integration for feature universe assessment
+  logger.info('[assess] Feature universe assessment temporarily disabled');
 
   // ── Step 3: Generate masterplan ─────────────────────────────────────────────
   // When feature-universe mode: score is from universe; otherwise from harsh scorer

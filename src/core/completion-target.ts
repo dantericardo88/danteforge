@@ -26,10 +26,9 @@ export interface CompletionTarget {
 const TARGET_FILE = 'completion-target.json';
 
 const DEFAULT_TARGET: CompletionTarget = {
-  mode: 'feature-universe',
+  mode: 'dimension-based',
   minScore: 9.0,
-  featureCoverage: 90,
-  description: 'Feature universe scoring: 9+/10 avg on 90% of competitor feature universe',
+  description: 'Dimension-based scoring: 9+/10 on all 18 non-community dimensions',
   definedAt: new Date().toISOString(),
   definedBy: 'default',
 };
