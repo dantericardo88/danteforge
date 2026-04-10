@@ -18,6 +18,8 @@ import { wikiIngest, getWikiHealth } from './wiki-engine.js';
 import { runLintCycle } from './wiki-linter.js';
 import { detectAnomalies } from './pdse-anomaly.js';
 import { createStepTracker, type StepTracker } from './progress.js';
+import { validateCompletion, type CompletionOracleResult } from './completion-oracle.js';
+import { RunLedger } from './run-ledger.js';
 
 // ── Elapsed time formatter ──────────────────────────────────────────────────
 
@@ -48,6 +50,7 @@ export interface AutoforgeLoopContext {
   loopState: AutoforgeLoopState;
   cycleCount: number;
   startedAt: string;
+  lastOracleResult?: CompletionOracleResult;
   retryCounters: Record<string, number>;  // artifact name → retry count
   blockedArtifacts: string[];
   lastGuidance: AutoforgeGuidance | null;
@@ -896,18 +899,10 @@ export function buildGuidance(
   const autoAdvanceEligible = blockingIssues.length === 0 && tracker.overall < COMPLETION_THRESHOLD;
 
   return {
-    timestamp: new Date().toISOString(),
-    overallCompletion: tracker.overall,
-    currentBottleneck: bottleneck,
-    blockingIssues,
-    recommendedCommand: `danteforge ${nextCommand}`,
-    recommendedReason: getRecommendationReason(tracker, blockingIssues),
-    autoAdvanceEligible,
-    autoAdvanceBlockReason: !autoAdvanceEligible && blockingIssues.length > 0
-      ? `${blockingIssues.length} artifact(s) below score threshold`
-      : undefined,
-    estimatedStepsToCompletion: estimatedSteps,
-    maturityAssessment,
+    ...context,
+    finalDecision: decision,
+    terminationReason: shouldTerminate.reason,
+    oracleResult: context.lastOracleResult,
   };
 }
 

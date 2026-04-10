@@ -193,88 +193,13 @@ program
   })));
 
 program
-  .command('universe')
-  .description('View the competitive feature universe — all unique capabilities across competitors, scored')
-  .option('--refresh', 'Force rebuild of feature universe from competitors')
-  .option('--json', 'Output machine-readable JSON')
-  .option('--cwd <path>', 'Project directory')
-  .action(withAuditLogging('universe', async (opts) => void commands.universe({
-    refresh: opts.refresh,
-    json: opts.json,
-    cwd: opts.cwd,
-  })));
-
-program
-  .command('workspace <subcommand> [args...]')
-  .description('Manage workspaces for multi-user projects')
-  .option('--role <role>', 'Member role: owner, editor, reviewer', 'editor')
-  .action(withAuditLogging('workspace', async (subcommand: string, args: string[], options: { role?: string }) => {
-    await commands.workspace(subcommand, args ?? [], options);
-  }));
-
-// First-run detection — suggest init when no .danteforge/ exists
-program.hook('preAction', (_thisCommand, actionCommand) => {
-  const skip = new Set(['init', 'quickstart', 'config', 'doctor', 'help', 'setup', 'skills', 'docs', 'premium', 'workflow', 'mcp-server', 'publish-check', 'plugin', 'benchmark', 'benchmark-llm', 'explain', 'pack', 'ci-setup', 'proof', 'sync-context', 'demo', 'commit', 'branch', 'pr']);
-  if (skip.has(actionCommand.name())) return;
-  if (!existsSync('.danteforge')) {
-    logger.info('Tip: No .danteforge/ directory found. Run "danteforge init" to set up your project.');
-  }
-});
-
-program.hook('preAction', () => {
-  const opts = program.opts();
-  if (opts.quiet) logger.setLevel('error');
-  else if (opts.verbose) logger.setLevel('verbose');
-});
-
-program.hook('preAction', async (_thisCommand, actionCommand) => {
-  const opts = actionCommand.optsWithGlobals?.() ?? actionCommand.opts();
-  await enforceWorkflow(actionCommand.name(), undefined, Boolean(opts.light));
-});
-
-// Command group help for discoverability
-program.addHelpText('after', `
-Command Groups:
-  Pipeline:       init, constitution, specify, clarify, plan, tasks, forge, verify, synthesize
-  Presets:        spark, ember, canvas, magic, blaze, nova, inferno
-  Automation:     autoforge, autoresearch, party, resume
-  Intelligence:   tech-decide, debug, lessons, profile, oss, local-harvest, harvest, retro, maturity
-  Self-Assessment: assess, self-improve, define-done, universe
-  Design & QA:    design, ux-refine, browse, qa, awesome-scan
-  Git Integration: commit, branch, pr
-  Setup & Health: config, setup, doctor, dashboard, mcp-server, sync-context, publish-check, premium
-  Wiki:           wiki-ingest, wiki-lint, wiki-query, wiki-status, wiki-export
-  Tools:          compact, import, skills, ship, pack, ci-setup, proof, benchmark, demo, plugin
-  Meta:           help, review, feedback, docs, workflow, explain, completion, update-mcp, audit-export
-
-Run "danteforge help <command>" for detailed help on any command.
-Run "danteforge init" to set up a new project.
-
-Preset ladder: spark → ember → canvas → magic → blaze → nova → inferno
-
-Common flags:
-  --light          Skip hard gates (constitution, spec, plan, tests)
-  --prompt         Generate copy-paste prompt instead of auto-executing
-  --profile <name> Use a specific quality profile (quality|balanced|budget)
-  --worktree       Run in isolated git worktree
-  --verbose        Show debug output
-
-Shell completion:
-  eval "\$(danteforge completion bash)"   # add to ~/.bashrc
-  eval "\$(danteforge completion zsh)"    # add to ~/.zshrc
-`);
-
-program
-  .command('wiki-ingest')
-  .description('Ingest raw source files into compiled wiki entity pages')
-  .option('--bootstrap', 'Seed wiki from existing .danteforge/ artifacts')
-  .option('--prompt', 'Show the command without executing')
-  .option('--cwd <path>', 'Project directory')
-  .action(withAuditLogging('wiki-ingest', async (opts) => void commands.wikiIngestCommand({
-    bootstrap: opts.bootstrap,
-    prompt: opts.prompt,
-    cwd: opts.cwd,
-  })));
+  .command('performance')
+  .description('Performance monitoring and regression detection')
+  .option('--monitor', 'Show performance metrics')
+  .option('--costs', 'Show cost tracking')
+  .option('--baseline', 'Update performance baseline')
+  .option('--check', 'Check for performance regression')
+  .action(withAuditLogging('performance', async (opts) => void commands.performance(opts)));
 
 program
   .command('wiki-lint')
@@ -335,33 +260,14 @@ program
   }));
 
 program
-  .command('benchmark')
-  .description('Cross-project PDSE benchmarking and completion truthfulness harness')
-  .option('--register', 'Register this project in global benchmark registry')
-  .option('--compare', 'Show ranked table of all registered projects')
-  .option('--report', 'Generate BENCHMARK_REPORT.md')
-  .option('--harness', 'Run completion truthfulness benchmark harness')
-  .option('--suite <id>', 'Benchmark suite to run (with --harness)')
-  .option('--task <id>', 'Benchmark task to run (with --harness)')
-  .option('--all', 'Run all benchmark suites (with --harness)')
+  .command('self-improve [goal]')
+  .description('Run autonomous quality improvement loop')
+  .option('--min-score <number>', 'Target score (0-10)', '9.0')
+  .option('--max-cycles <number>', 'Maximum improvement cycles', '20')
+  .option('--focus <dimension>', 'Focus on specific dimension')
+  .option('--preset <type>', 'Quality preset', 'balanced')
   .option('--cwd <path>', 'Project directory')
-  .action(withAuditLogging('benchmark', async (opts) => void commands.benchmark({
-    suite: opts.suite,
-    task: opts.task,
-    all: opts.all,
-    harness: opts.harness,
-    startup: opts.startup,
-    startupRuns: opts.startupRuns
-  })));
-    register: opts.register,
-    compare: opts.compare,
-    report: opts.report,
-    harness: opts.harness,
-    suite: opts.suite,
-    task: opts.task,
-    all: opts.all,
-    cwd: opts.cwd,
-  })));
+  .action(withAuditLogging('self-improve', async (goal, opts) => void commands.selfImprove({ goal, ...opts })));
 
 program
   .command('benchmark-llm')

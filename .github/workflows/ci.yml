@@ -30,6 +30,8 @@ jobs:
       - name: Security audit
         run: npm audit --audit-level=high
       - run: npm run verify
+      - name: Performance regression check
+        run: node dist/index.js performance --check
       - run: npm run build
 
   design-integration:
