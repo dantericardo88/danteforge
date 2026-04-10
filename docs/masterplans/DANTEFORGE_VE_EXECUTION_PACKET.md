@@ -1,9 +1,9 @@
 # DanteForge V+E Execution Packet
 
-**Version:** 1.0.0
-**Target:** Wave-by-wave implementation
+**Version:** 2.0.0 (Truth Surface Reconciled)
+**Target:** Complete integration/E2E proof + autoforge automation
 **Status:** READY FOR EXECUTION
-**Focus:** Self-use first, adoption ignored
+**Focus:** Close final gaps to true 9.0+ completion
 
 ## EXECUTION PROTOCOL
 
@@ -13,105 +13,93 @@ Wave Completion Criteria: Objectives met, gates pass, artifacts generated, no re
 
 Emergency Protocol: Document blockers, seek alternatives.
 
-## WAVE 1: FOUNDATION CORRECTIONS (P0 - 2 DAYS)
+## WAVE 11: TRUTH SURFACE RECONCILIATION + CLOSURE AUTOMATION (P0 - 5 days)
 
-Objectives: Fix verify.ts compilation errors, complete audit logging for remaining CLI commands, validate evidence spine integrity.
+Objectives:
+1. Reconcile current-gap-matrix.json, current-scorecard.json, and PHASE_G_REPORT.md
+2. Complete integration/E2E proof layer with 95%+ workflow coverage
+3. Implement true autoforge closure-loop automation with oracle-driven termination/re-initiation
 
-Files: src/cli/commands/verify.ts, src/cli/index.ts, src/core/run-ledger.ts, src/core/completion-oracle.ts, src/core/residual-gap-miner.ts
+Files:
+- artifacts/current-gap-matrix.json - Reconcile contradictions
+- artifacts/current-scorecard.json - Validate evidence-based scores
+- PHASE_G_REPORT.md - Update with accurate status
+- src/core/autoforge-loop.ts - Wire oracle termination
+- src/core/termination-governor.ts - Create evidence-based governor
+- src/core/wave-delta-tracker.ts - Create progress measurement
+- tests/e2e/comprehensive-workflow.test.ts - Enhance E2E coverage
+- tests/integration/workflow-integration.test.ts - Complete integration coverage
 
 Commands:
-npm run typecheck
-npm run verify
-npm test -- tests/run-ledger.test.ts tests/completion-oracle.test.ts
+npm run check:truth-surface
+npm run test:integration
+npm run test:e2e
+npm run test:adversarial
+npm run verify:artifacts
 
-Gates: npm run typecheck passes, npm run verify passes, npm run test passes, audit logging visible.
+Gates: Truth surface gate, artifact completeness gate, completion truth gate, install/integration gate.
 
-Artifacts: artifacts/current-gap-matrix.json, artifacts/current-scorecard.json, evidence bundles.
+Artifacts: Reconciled gap matrix/scorecard, adversarial-false-completion.json, golden-flows.json, replay-validation.json.
 
-Success Criteria: TypeScript clean, verification passes, evidence spine functional, audit comprehensive.
+Success Criteria: Truth surfaces unified, autoforge uses oracle for automated closure, 95%+ integration/E2E coverage, all gates pass.
 
-## WAVE 2: TRUTH SURFACE UNIFICATION (P0 - 1 DAY)
+## WAVE 12: PERFORMANCE REGRESSION COMPLETION (P1 - 3 days)
 
-Objectives: Unify version references, implement validation, block releases on drift.
+Objectives:
+1. Complete CI integration of performance regression detection
+2. Add performance baseline management and alerting
+3. Validate end-to-end performance regression detection
 
-Files: package.json, README.md, docs/, scripts/check-truth-surface.mjs
+Files:
+- src/core/performance-monitor.ts - Complete baseline management
+- .github/workflows/ci.yml - Add performance regression gate
+- src/cli/commands/performance.ts - Enhance CLI interface
+- artifacts/perf-cost-regression.json - Generate baseline
 
-Gates: Truth surface validation passes, no drift.
+Commands:
+npm run performance:check
+npm run test:performance
 
-Artifacts: artifacts/release-truth.json, unified surfaces.
+Gates: Regression gate passes, performance monitoring operational.
 
-## WAVE 3: ENTERPRISE IMPLEMENTATION (P0 - 5 DAYS)
+Artifacts: perf-cost-regression.json with current baseline.
 
-Objectives: Implement actual enterprise features (security, compliance, access control).
+Success Criteria: Performance regression detection fully wired to CI, baselines established, alerting works.
 
-Files: src/core/enterprise-readiness.ts, new security modules, compliance automation.
+## WAVE 13: FINAL VERIFICATION & 9.0+ CLOSURE (P1 - 3 days)
 
-Gates: Enterprise score >7.0, features functional.
+Objectives:
+1. Run comprehensive assessment across all 18 dimensions
+2. Validate all artifacts exist and are consistent
+3. Confirm all dimensions at 9.0+ with supporting evidence
+4. Produce final closure report
 
-Artifacts: artifacts/enterprise-controls.json.
+Files:
+- All dimension implementations - Final validation
+- artifacts/current-scorecard.json - Final scoring
+- artifacts/closure-targets.json - Target achievement validation
+- docs/masterplans/ - Final documentation
 
-## WAVE 4: COMPLETION ENGINE INTEGRATION (P0 - 3 DAYS)
+Commands:
+npm run assess
+npm run verify --release
+npm run check:truth-surface
+npm run test:integration && npm run test:e2e
 
-Objectives: Wire completion oracle into verification, add coverage analysis, adversarial testing.
+Gates: All canonical gates pass, assessment shows 9.0+ across all dimensions.
 
-Files: src/core/completion-oracle.ts, src/core/requirement-coverage.ts, src/cli/commands/verify.ts
+Artifacts: Final scorecard, release-truth.json, all required artifacts validated.
 
-Gates: Oracle prevents false claims, adversarial tests pass.
-
-Artifacts: artifacts/adversarial-false-completion.json.
-
-## WAVE 5: BENCHMARK REALITY (P1 - 3 DAYS)
-
-Objectives: Replace mock data with real evidence, reproducible scoring.
-
-Files: src/core/benchmark-harness.ts, src/cli/commands/benchmark-run.ts
-
-Gates: Benchmarks use real evidence, reproducible.
-
-Artifacts: artifacts/benchmark-report.jsonl.
-
-## WAVE 6: INTEGRATION RIGOR (P1 - 4 DAYS)
-
-Objectives: Complete MCP contracts, validate IDE compatibility, ensure clean installs.
-
-Files: src/core/mcp-server.ts, extension files, install validation.
-
-Gates: All integrations tested, clean installs.
-
-Artifacts: artifacts/compatibility-matrix.json, artifacts/install-matrix.json.
-
-## WAVE 7: PERFORMANCE CONTROLS (P1 - 2 DAYS)
-
-Objectives: Add performance monitoring, cost controls.
-
-Files: src/core/performance-monitor.ts, src/core/cost-tracker.ts
-
-Gates: Regressions detected automatically.
-
-Artifacts: artifacts/perf-cost-regression.json.
-
-## WAVE 8: TESTING RIGOR COMPLETION (P1 - 4 DAYS)
-
-Objectives: 95%+ coverage with integration/E2E tests.
-
-Files: Complete test suites, CI integration.
-
-Gates: Coverage >95%, all tests pass.
-
-Artifacts: Comprehensive test reports.
-
-## WAVE 9: FINAL VALIDATION & CLOSURE (P2 - 1 DAY)
-
-Objectives: End-to-end validation, all dimensions 9.0+.
-
-Files: All docs, validation scripts.
-
-Gates: All dimensions ≥9.0, no gaps.
-
-Artifacts: Final scorecard, release ready.
+Success Criteria: All 18 non-community dimensions at 9.0+, all truth surfaces unified, no artifact contradictions, autoforge closure loop automated.
 
 ## VALIDATION SCRIPTS
 
-Quick Health Check: build, verify, assess min 8.0.
+Quick Health Check: npm run verify && npm run check:truth-surface
 
-Artifact Validation: Check all required artifacts exist.
+Artifact Validation: Check all required artifacts exist, valid, and consistent.
+
+Integration Validation: npm run test:integration && npm run test:e2e
+
+Performance Validation: npm run performance:check
+
+Closure Validation: npm run assess (must show 9.0+ across all dimensions)

@@ -260,12 +260,31 @@ console.log('All tests passed! ✅');
       // Run tests
       execSync('node test-comprehensive.js', { cwd: e2eDir, stdio: 'pipe' });
 
-      // Run verification with oracle
-      const verifyResult = execSync('node dist/index.js verify', { cwd: e2eDir, stdio: 'pipe' });
-      assert(verifyResult, 'Comprehensive E2E verification should pass');
+    // Run verification with oracle
+    const verifyResult = execSync('node dist/index.js verify', { cwd: e2eDir, stdio: 'pipe' });
+    assert(verifyResult, 'Comprehensive E2E verification should pass');
 
-      // Check performance
-      execSync('node dist/index.js performance --check', { cwd: e2eDir, stdio: 'pipe' });
+    // Check oracle integration
+    const oracleCheck = execSync('node dist/index.js verify --json', { cwd: e2eDir, stdio: 'pipe' });
+    const verifyOutput = JSON.parse(oracleCheck.toString());
+    assert(verifyOutput, 'Verification should produce JSON output with oracle results');
+
+    // Check performance regression detection
+    execSync('node dist/index.js performance --check', { cwd: e2eDir, stdio: 'pipe' });
+
+    // Validate enterprise security
+    const enterpriseResult = execSync('node dist/index.js enterprise-readiness --format json', {
+      cwd: e2eDir,
+      stdio: 'pipe'
+    });
+    const enterpriseData = JSON.parse(enterpriseResult.toString());
+    assert(enterpriseData.enterpriseReadinessScore >= 9.0, 'Enterprise readiness should be 9.0+');
+
+    // Test benchmark execution
+    execSync('node dist/index.js benchmark --harness --suite completion-truthfulness', {
+      cwd: e2eDir,
+      stdio: 'pipe'
+    });
 
       console.log('✅ Comprehensive E2E test passed');
 

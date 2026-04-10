@@ -1,5 +1,5 @@
 {
-  "truthSurfaceIntegrity": 9.0,
+  "truthSurfaceIntegrity": 8.5,
   "installOnboardingReliability": 7.0,
   "assistantPortability": 7.0,
   "mcpContractReliability": 7.5,
@@ -11,11 +11,11 @@
   "evidenceReceiptsQuality": 9.5,
   "testingRigor": 8.0,
   "observabilityAuditability": 9.0,
-    "resilienceFailSafety": 8.0,
-    "enterpriseComplianceReadiness": 9.0,
-    "selfImprovementSafety": 7.5,
-    "benchmarkScoringCredibility": 9.0,
-    "performanceCostEfficiency": 8.0,
+  "resilienceFailSafety": 8.0,
+  "enterpriseComplianceReadiness": 9.0,
+  "selfImprovementSafety": 7.5,
+  "benchmarkScoringCredibility": 8.5,
+  "performanceCostEfficiency": 8.0,
   "ideUxPolish": 5.0,
   "communityAdoption": 1.5
 }

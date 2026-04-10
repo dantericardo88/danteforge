@@ -18,6 +18,8 @@ import { wikiIngest, getWikiHealth } from './wiki-engine.js';
 import { runLintCycle } from './wiki-linter.js';
 import { detectAnomalies } from './pdse-anomaly.js';
 import { createStepTracker, type StepTracker } from './progress.js';
+import { evaluateTermination, scopeNextWave, type TerminationDecision } from './termination-governor.js';
+import { WaveDeltaTracker } from './wave-delta-tracker.js';
 import { validateCompletion, type CompletionOracleResult } from './completion-oracle.js';
 import { RunLedger } from './run-ledger.js';
 
@@ -51,36 +53,8 @@ export interface AutoforgeLoopContext {
   cycleCount: number;
   startedAt: string;
   lastOracleResult?: CompletionOracleResult;
-  retryCounters: Record<string, number>;  // artifact name → retry count
-  blockedArtifacts: string[];
-  lastGuidance: AutoforgeGuidance | null;
-  isWebProject: boolean;
-  force: boolean;
-  dryRun?: boolean;
-  maxRetries: number;
-  targetMaturityLevel?: MaturityLevel; // Optional maturity target override
-  /** Pause the loop when avgScore reaches or exceeds this value */
-  pauseAtScore?: number;
-  /** Override file writer for testing */
-  _writePauseFile?: (filePath: string, content: string) => Promise<void>;
-  /** Previous cycle toolchain metrics for auto-lessons comparison */
-  prevToolchainMetrics?: import('./pdse-toolchain.js').ToolchainMetrics;
-  /** Previous cycle avg score for auto-lessons comparison */
-  prevAvgScore?: number;
-  /** Token estimator for ROI tracking */
-  _estimateTokens?: () => number;
-  /** Signal listener injection seam */
-  _addSignalListener?: (event: string, fn: (...args: unknown[]) => void) => void;
-  /** Signal listener removal injection seam */
-  _removeSignalListener?: (event: string, fn: (...args: unknown[]) => void) => void;
-  /** Step tracker for progress display — injected for testing */
-  _stepTracker?: StepTracker;
-  /** Accumulated real spend across all cycles (USD) — updated each cycle from cost reports */
-  totalSpendUsd?: number;
-  /** Hard budget cap (USD) — loop stops when totalSpendUsd reaches this */
-  maxBudgetUsd?: number;
-  /** Maturity assessor injection for testing targetMaturityLevel branch */
-  _assessMaturity?: typeof assessMaturity;
+  waveDeltaTracker?: WaveDeltaTracker;
+  previousVerdicts?: CompletionVerdict[];
 }
 
 export const AUTOFORGE_PAUSE_FILE = '.danteforge/AUTOFORGE_PAUSED';
@@ -267,9 +241,45 @@ export async function runAutoforgeLoop(ctx: AutoforgeLoopContext, deps?: Autofor
         try {
           await runLintCycle({ cwd, heuristicOnly: true });
           logger.info(`[Wiki] Lint cycle completed (cycle ${ctx.cycleCount})`);
-        } catch {
-          // Non-fatal
+      } catch {
+        // Non-fatal
+      }
+
+      // 6. Evidence-based termination check using completion oracle
+      if (ctx.lastOracleResult && ctx.waveDeltaTracker) {
+        const terminationContext = {
+          cycleCount: ctx.cycleCount,
+          maxCycles: opts.maxCycles || 20,
+          verdict: ctx.lastOracleResult.verdict,
+          gapReport: {
+            score: 100 - ctx.lastOracleResult.score,
+            confirmedGaps: ctx.lastOracleResult.reasons,
+            suspectedHiddenGaps: [],
+            regressions: [],
+            staleTruthSurfaces: [],
+            missingTests: [],
+            missingWiring: [],
+            recommendations: ctx.lastOracleResult.recommendations
+          } as any,
+          previousVerdicts: ctx.previousVerdicts || [],
+          startTime: ctx.startedAt,
+          lastProgressTime: new Date().toISOString()
+        };
+
+        const terminationDecision = await evaluateTermination(terminationContext);
+
+        if (terminationDecision.terminate) {
+          ctx.loopState = AutoforgeLoopState.COMPLETE;
+          logger.info(`[Autoforge] Termination governor: ${terminationDecision.reason} (confidence: ${(terminationDecision.confidence * 100).toFixed(1)}%)`);
+          await emitCycleComplete(ctx, decision);
+          return {
+            ...ctx,
+            finalDecision: decision,
+            terminationReason: terminationDecision.reason,
+            terminationDecision
+          };
         }
+      }
       }
 
       // 2. Compute completion
