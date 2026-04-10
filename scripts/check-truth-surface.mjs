@@ -59,9 +59,42 @@ function checkConsistency() {
       errors.push(`README version badge mismatch: got ${readmeVersionBadge[1]}, expected ${pkgVersion}`);
     }
 
-    const readmeCloneUrl = readme.match(/git clone (https:\/\/github\.com\/[^\/]+\/[^\/]+\.git)/);
+    const readmeCloneUrl = readme.match(/git clone (https:\/\/github\.com\/[^/]+\/[^/]+\.git)/);
     if (readmeCloneUrl && readmeCloneUrl[1] !== expectedRemote) {
       errors.push(`README clone URL mismatch: got ${readmeCloneUrl[1]}, expected ${expectedRemote}`);
+    }
+
+    // Check RELEASE.md if exists
+    try {
+      const releaseMd = readFileSync('RELEASE.md', 'utf8');
+      const releaseVersion = releaseMd.match(/Version: ([\d.]+)/);
+      if (releaseVersion && releaseVersion[1] !== pkgVersion) {
+        errors.push(`RELEASE.md version mismatch: got ${releaseVersion[1]}, expected ${pkgVersion}`);
+      }
+    } catch {
+      // File not found, skip check
+    }
+
+    // Check docs/Operational-Readiness-v${pkgVersion}.md if exists
+    try {
+      const operationalMd = readFileSync(`docs/Operational-Readiness-v${pkgVersion}.md`, 'utf8');
+      const operationalVersion = operationalMd.match(/Version: ([\d.]+)/);
+      if (operationalVersion && operationalVersion[1] !== pkgVersion) {
+        errors.push(`Operational readiness doc version mismatch: got ${operationalVersion[1]}, expected ${pkgVersion}`);
+      }
+    } catch {
+      // File not found, skip check
+    }
+
+    // Check enterprise doc version
+    try {
+      const enterpriseMd = readFileSync('docs/PHASE_1_ENTERPRISE_READINESS.md', 'utf8');
+      const enterpriseVersion = enterpriseMd.match(/Version: ([\d.]+)\+enterprise/);
+      if (enterpriseVersion && enterpriseVersion[1] !== pkgVersion) {
+        errors.push(`Enterprise doc version mismatch: got ${enterpriseVersion[1]}, expected ${pkgVersion}`);
+      }
+    } catch {
+      // File not found, skip check
     }
 
     if (errors.length > 0) {

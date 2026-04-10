@@ -1,7 +1,10 @@
 import type { EvidenceBundle, Verdict } from './run-ledger.js';
 import type { DanteState } from './state.js';
 
+export type CompletionVerdict = 'complete' | 'partially_complete' | 'misleadingly_complete' | 'inconclusive' | 'regressed';
+
 export interface CompletionOracleResult {
+  verdict: CompletionVerdict;
   isComplete: boolean;
   score: number;
   reasons: string[];
@@ -91,16 +94,30 @@ export function validateCompletion(bundle: EvidenceBundle, state: DanteState): C
     score += 10;
   }
 
-  // Final determination
-  const isComplete = reasons.length === 0 && score >= 80;
+  // Determine verdict type
+  let verdict: CompletionVerdict;
+  if (reasons.length === 0 && score >= 80) {
+    verdict = 'complete';
+  } else if (score >= 60 && reasons.length <= 2) {
+    verdict = 'partially_complete';
+  } else if (score < 50) {
+    verdict = 'regressed';
+  } else if (bundle.commands.length === 0 && bundle.writes.length > 0) {
+    verdict = 'misleadingly_complete'; // Wrote files without commands
+  } else {
+    verdict = 'inconclusive';
+  }
+
+  const isComplete = verdict === 'complete';
 
   if (isComplete) {
     reasons.push('All completion criteria met');
-  } else if (score < 50) {
+  } else if (verdict === 'regressed') {
     recommendations.unshift('This appears to be a failed or incomplete execution');
   }
 
   return {
+    verdict,
     isComplete,
     score,
     reasons,

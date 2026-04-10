@@ -2,6 +2,7 @@ import { randomUUID } from 'crypto';
 import fs from 'fs/promises';
 import path from 'path';
 import type { DanteState } from './state.js';
+import type { ResidualGapReport } from './residual-gap-miner.js';
 
 export interface RunMetadata {
   runId: string;
@@ -26,6 +27,7 @@ export interface EvidenceBundle {
   receipts: Receipt[];
   verdict: Verdict;
   summary: string;
+  gapReport?: ResidualGapReport;
 }
 
 export interface EvidenceEvent {
@@ -200,7 +202,7 @@ export class RunLedger {
     });
   }
 
-  async finalize(inputs: Record<string, any>, plan: any, verdict: Omit<Verdict, 'timestamp' | 'evidenceHash'>): Promise<string> {
+  async finalize(inputs: Record<string, any>, plan: any, verdict: Omit<Verdict, 'timestamp' | 'evidenceHash'>, state?: DanteState): Promise<string> {
     const finalVerdict: Verdict = {
       ...verdict,
       timestamp: new Date().toISOString(),
@@ -230,14 +232,27 @@ export class RunLedger {
       summary: this.generateSummary(bundle),
     };
 
-    // Compute evidence hash
-    const bundleJson = JSON.stringify(bundle, null, 2);
+    // Generate residual gap analysis if state provided
+    let gapReport;
+    if (state) {
+      gapReport = await generateGapReport(bundle, state, path.join(this.runDir, 'gap-analysis.json'));
+    }
+
+    // Compute evidence hash (exclude the hash field to avoid self-reference)
+    const bundleForHash = { ...bundle, verdict: { ...finalVerdict, evidenceHash: '' } };
+    const bundleJson = JSON.stringify(bundleForHash, null, 2);
     const crypto = await import('crypto');
     finalVerdict.evidenceHash = crypto.default.createHash('sha256').update(bundleJson).digest('hex');
     bundle.verdict = finalVerdict;
 
     // Write bundle files
     await this.writeBundle(bundle);
+
+    // Write gap report to bundle if generated
+    if (gapReport) {
+      bundle.gapReport = gapReport;
+      await fs.writeFile(path.join(this.runDir, 'bundle-with-gaps.json'), JSON.stringify(bundle, null, 2));
+    }
 
     return this.runId;
   }
