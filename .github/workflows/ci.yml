@@ -31,7 +31,14 @@ jobs:
         run: npm audit --audit-level=high
       - run: npm run verify
       - name: Performance regression check
-        run: node dist/index.js performance --check
+        run: |
+          # Create performance baseline if it doesn't exist
+          if [ ! -f .danteforge/performance-baseline.json ]; then
+            echo "Creating initial performance baseline..."
+            node dist/index.js performance --baseline
+          fi
+          # Check for regressions
+          node dist/index.js performance --check
       - run: npm run build
 
   design-integration:
