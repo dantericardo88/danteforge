@@ -1,836 +1,754 @@
-# DanteForge V+E Masterplan
-
-**Version:** 2.0.0 (Post-Enterprise Implementation)
-**Generated:** 2026-04-10
-**Target:** True 9.0+ across all non-community dimensions
-**Status:** ENFORCEMENT-FIRST - RECONCILED TRUTH SURFACES
-**Focus:** Close final gaps to 9.0+ completion
+# DanteForge V+E Masterplan - Truth Surface Reconciliation & All-9s Closure
 
 ## 1. EXECUTIVE TRUTH
 
 ### What DanteForge Actually Is Now
+DanteForge is a partially implemented AI development CLI that claims to be a "trust spine" for spec-driven development but currently contains critical implementation gaps and truth surface contradictions.
 
-DanteForge is an evidence-based development orchestration platform with:
-- Complete evidence spine (run-ledger, completion-oracle, residual gap mining)
-- Enterprise-grade security (access control, encryption, multi-tenancy at 9.0/10)
-- Performance monitoring and regression detection
-- Comprehensive testing infrastructure (290 test files)
-- MCP integration for multi-tool compatibility
+### What DanteForge Is Not Yet
+- A working autonomous development loop (autoforge is stubbed)
+- A system that prevents false completion claims
+- A tool with reconciled artifact truth surfaces
+- Enterprise-ready with SOC 2 compliance
+- A multi-agent orchestration platform with working MCP integration
 
-### What It Is Not Yet
+### Current Repo Reality
+- **Implemented**: Comprehensive testing infrastructure (295 test files), PDSE scoring, completion tracking, maturity assessment, residual gap mining, termination governor
+- **Stubbed**: Core autoforge loop (returns context unchanged)
+- **Partial**: CLI commands exist but core verification not exposed
+- **Contradicted**: Artifacts disagree on current state (enterprise readiness 4.5 vs 9.0+)
+- **Missing**: Real execution wiring for autonomous operation
 
-Not fully autonomous with automated closure loops, integration/E2E coverage incomplete despite test files, performance regression detection not fully wired to CI despite implementation.
+### Top Blockers Preventing All-9s Closure
+1. **Truth Surface Contradictions**: Scorecard, gap matrix, and assessment results disagree
+2. **Stubbed Autoforge Loop**: Core autonomous execution is not implemented
+3. **Missing CLI Integration**: Verify command exists but not exposed
+4. **Architecture Without Wiring**: Components exist but not connected to real execution paths
+5. **Score Inflation**: Artifacts claim capabilities not supported by implementation
 
-### The Top Blockers to 9+
-
-1. **Autoforge Closure Loop Automation**: Exists but doesn't self-re-initiate based on residual gaps
-2. **Integration/E2E Coverage Gaps**: Test files exist but don't provide complete workflow coverage
-3. **Performance Regression Wiring**: Implementation exists but CI integration incomplete
-
-### The Current Repo Truth-Surface Contradictions
-
-- current-gap-matrix.json claims autoforge termination logic "completed" but code inspection shows partial wiring
-- PHASE_G_REPORT.md claims enterprise at 8.0/10 but scorecard correctly shows 9.0
-- Masterplan docs show outdated scores and version drift claims no longer valid
-- Gap matrix shows enterprise "completed" twice but scorecard correctly reflects 9.0
-
-### The Real Definition of Completion for DanteForge
-
-All 18 non-community dimensions at 9.0+, all truth surfaces unified, autoforge uses completion oracle for automated evidence-based closure, integration/E2E provides complete workflow coverage, performance regression detection fully wired, no contradictions between artifacts/docs/code.
+### Definition of Real Completion for DanteForge
+DanteForge achieves true 9.0+ when:
+- All 18 non-community dimensions score 9.0+ on honest assessment
+- Artifacts agree with implementation reality
+- Autoforge loop drives real autonomous development cycles
+- Verification prevents false completion claims
+- Enterprise compliance is actually implemented
+- Multi-agent orchestration works end-to-end
 
 ## 2. PRODUCT NORTH STAR
 
 ### Exact Product Thesis
+DanteForge is the **trust, verification, orchestration, governance, and closure spine** for AI-assisted development. It solves the core problem that AI tools narrate completion before work is actually closed.
 
-DanteForge is the trust, verification, orchestration, governance, and closure spine for AI-assisted development workflows.
+### Exact Moat
+Evidence-based convergence loops that prevent false completion claims through:
+- Multi-state completion oracle with adversarial validation
+- Residual gap mining that finds hidden dependencies
+- Termination governor that stops on real evidence, not enthusiasm
+- Truth surface reconciliation that prevents artifact drift
 
-### Exact Differentiation
+### Relationship to DanteCode
+DanteCode is the IDE extension that surfaces DanteForge's autonomous capabilities in the editor, providing real-time guidance and automated fixes.
 
-Unlike Cursor/Copilot/Devin/Aider, DanteForge provides evidence-based completion verification, automated gap detection, multi-agent orchestration with governance, and refuses false completion claims.
+### Relationship to External Agents
+DanteForge provides MCP server and plugin manifests for Claude Code, Cursor, Codex CLI, and other AI agents, allowing them to leverage DanteForge's verification and orchestration without reimplementing the closure engine.
 
-### Exact Relationship to DanteCode and External Agents
+### Honest Present-Day Promise
+DanteForge provides spec-driven development with comprehensive testing and scoring, but autonomous operation is currently stubbed and must be implemented.
 
-DanteCode: Underlying trust infrastructure. External agents (Claude Code, Cursor, Windsurf, Codex): MCP-integrated tools that DanteForge orchestrates and verifies.
-
-### Exact Promise DanteForge Can Honestly Make Today
-
-Provides evidence collection, completion verification, enterprise security, performance monitoring, and multi-tool compatibility.
-
-### Exact Future-State Promise (After 9.0+ Closure)
-
-Fully autonomous development orchestration with automated closure loops, complete integration coverage, and performance guarantees.
+### Future-State Promise Allowed After Proof
+After achieving 9.0+ closure: DanteForge becomes the universal trust layer for AI development, preventing billions in wasted development cycles from false completion claims.
 
 ## 3. CLAIMS VS REALITY
 
-### Public Claims Extracted
+### Claims Found in Repo Surfaces
 
-Evidence-based development, enterprise security, automated closure, comprehensive testing, performance monitoring.
+**README Claims:**
+- "trust spine" preventing "narrate completion, skip closure" failure mode
+- Evidence-based convergence with assess→forge→verify loops
+- 18-dimension quality scoring against 27 competitors
+- Enterprise-ready with SOC 2 compliance, audit trails, RBAC
+- Multi-agent orchestration with MCP server
 
-### Which Claims Are Proven
+**Package.json Claims:**
+- Comprehensive CLI with autonomous development features
+- Multi-agent integration capabilities
+- Enterprise-grade tooling
 
-Evidence collection works, enterprise security at 9.0/10, performance monitoring implemented, testing infrastructure exists.
+**Scorecard Claims:**
+- Multiple dimensions at 9.0+ (completion truthfulness, verification depth, etc.)
+- Enterprise readiness at implied 9.0+
 
-### Which Are Partial
+### Proven Claims
+- Testing infrastructure exists (295 test files)
+- PDSE scoring system works
+- Maturity assessment functions correctly
+- Basic CLI structure and commands implemented
+- MCP server infrastructure present
+- Comprehensive error handling patterns in many modules
 
-Automated closure (exists but not fully evidence-driven), integration/E2E coverage (test files exist but incomplete).
+### Partial Claims
+- Multi-agent orchestration (MCP server exists but integration untested)
+- Spec-driven pipeline (PDSE works but autoforge loop stubbed)
+- Enterprise compliance (audit trails exist but SOC 2 compliance not verified)
 
-### Which Are Contradicted
+### Contradicted Claims
+- **Enterprise Readiness**: Scorecard shows 9.0+ but assessment shows 4.5/10
+- **Autonomous Operation**: Claims autonomous loops but autoforge is stubbed
+- **Truth Surface Integrity**: Artifacts disagree on current state
+- **All-9s Achievement**: Claims 9.0+ but assessment shows 4 dimensions below 7.0
 
-"Autoforge termination logic completed" - partial implementation, "Enterprise readiness 8.0/10" - actually 9.0/10.
+### Unsupported Claims
+- "SOC 2 compliance" - no evidence of actual compliance
+- "27 competitors" - assessment hangs, unclear if actually implemented
+- "Real autonomous development" - core loop is stubbed
 
-### Which Are Unsupported
-
-Fully autonomous closure loops, complete integration/E2E coverage.
-
-### What Stale Truth Surfaces Still Exist
-
-Masterplan docs outdated, gap matrix contradictions, inconsistent artifact claims.
+### Stale Truth Surfaces
+- Gap matrix lists different issues than current assessment
+- Masterplan claims "truthSurfaceReconciled": true but contradictions exist
+- Closure targets all set to 9.0+ but implementation doesn't support
 
 ## 4. 18-DIMENSION SCORECARD
 
-### 1. Truth-surface integrity: 8.5/10
-**Why not higher:** Artifact contradictions exist
-**Target:** All artifacts/docs unified and consistent
-**Missing:** Automated reconciliation
-**Required:** Truth surface validation gate
-**Upgrade:** Implement artifact consistency checks
+### Truth Surface Integrity: 8.0/10
+**Current: 8.0** - Artifacts mostly consistent but contradictions exist
+**Why not higher:** Gap matrix and scorecard disagree on enterprise readiness
+**Target state:** All artifacts agree on implementation reality
+**Missing:** Automated truth surface reconciliation
 
-### 2. Install/onboarding reliability: 7.0/10
-**Why not higher:** Basic install, no comprehensive validation
-**Target:** One-command install with validation everywhere
-**Missing:** Cross-platform install matrix
-**Required:** artifacts/install-matrix.json
-**Upgrade:** Add install validation tests
+### Install/Onboarding Reliability: 7.0/10
+**Current: 7.0** - Postinstall script and basic setup exist
+**Why not higher:** No comprehensive install verification
+**Target state:** Automated install testing and onboarding validation
+**Missing:** Install smoke tests, onboarding flow validation
 
-### 3. Assistant portability: 7.0/10
-**Why not higher:** MCP integration exists but not fully validated
-**Target:** Seamless integration with Claude/Cursor/Windsurf/Codex
-**Missing:** Compatibility validation
-**Required:** artifacts/compatibility-matrix.json
-**Upgrade:** Add MCP contract tests
+### Assistant Portability: 7.0/10
+**Current: 7.0** - MCP infrastructure exists
+**Why not higher:** Integration not end-to-end tested
+**Target state:** Working MCP connections to Claude Code, Cursor, etc.
+**Missing:** Cross-platform compatibility testing
 
-### 4. MCP contract reliability: 7.5/10
-**Why not higher:** Basic contracts, missing comprehensive validation
-**Target:** Versioned, tested contracts with error handling
-**Missing:** Contract validation tests
-**Required:** MCP integration tests
-**Upgrade:** Add contract reliability tests
+### MCP Contract Reliability: 7.5/10
+**Current: 7.5** - MCP server implemented
+**Why not higher:** Contract testing incomplete
+**Target state:** Full MCP protocol compliance with comprehensive testing
+**Missing:** MCP message validation, error handling tests
 
-### 5. Spec/planning quality: 7.5/10
-**Why not higher:** Planning exists but not fully validated
-**Target:** Deterministic specs/plans with validation
-**Missing:** Plan validation logic
-**Required:** Planning integration tests
-**Upgrade:** Add spec validation
+### Spec/Planning Quality: 7.5/10
+**Current: 7.5** - PDSE scoring works
+**Why not higher:** Planning artifacts not fully enforced
+**Target state:** Spec changes automatically update dependent artifacts
+**Missing:** Spec-to-artifact dependency tracking
 
-### 6. Execution autonomy: 7.0/10
-**Why not higher:** Autoforge exists but closure loop not automated
-**Target:** Fully autonomous with evidence-based termination
-**Missing:** Automated closure loop
-**Required:** Evidence-driven autoforge
-**Upgrade:** Wire oracle to autoforge termination
+### Execution Autonomy: 5.7/10
+**Current: 5.7** - Infrastructure exists but core loop stubbed
+**Why not higher:** Autoforge loop returns context unchanged
+**Target state:** Full autonomous development cycles
+**Missing:** Working autoforge implementation, real execution wiring
 
-### 7. Task routing/orchestration: 7.5/10
-**Why not higher:** Basic routing, missing optimization
-**Target:** Intelligent routing with load balancing
-**Missing:** Advanced orchestration logic
-**Required:** Orchestration tests
-**Upgrade:** Add intelligent routing
+### Task Routing/Orchestration: 7.5/10
+**Current: 7.5** - Task router exists
+**Why not higher:** Not integrated with autoforge loop
+**Target state:** Intelligent task routing in autonomous execution
+**Missing:** Runtime task classification and routing
 
-### 8. Completion truthfulness: 9.5/10
-**Why not higher:** Oracle works but integration incomplete
-**Target:** 95%+ accuracy detecting false completion
-**Missing:** Full integration with autoforge
-**Required:** Completion validation tests
-**Upgrade:** Integrate oracle everywhere
+### Completion Truthfulness: 9.5/10
+**Current: 9.5** - Completion oracle exists
+**Why not higher:** Not integrated with autoforge loop
+**Target state:** Oracle prevents false completion claims
+**Missing:** Oracle integration in execution path
 
-### 9. Verification depth: 9.0/10
-**Why not higher:** Deep verification exists
-**Target:** Multi-layer verification with evidence
-**Missing:** Some integration gaps
-**Required:** Verification E2E tests
-**Upgrade:** Add verification integration
+### Verification Depth: 9.0/10
+**Current: 9.0** - Comprehensive verification infrastructure
+**Why not higher:** CLI exposure missing
+**Target state:** Full verification pipeline accessible
+**Missing:** CLI command integration
 
-### 10. Evidence/receipts quality: 9.5/10
-**Why not higher:** Run-ledger provides excellent evidence
-**Target:** Immutable, queryable evidence everywhere
-**Missing:** Query interfaces in some areas
-**Required:** Evidence integration tests
-**Upgrade:** Add evidence querying
+### Evidence/Receipts Quality: 9.5/10
+**Current: 9.5** - Run ledger and evidence collection work
+**Why not higher:** Not integrated with verification
+**Target state:** Evidence drives all decisions
+**Missing:** Evidence-based decision making
 
-### 11. Testing rigor: 8.0/10
-**Why not higher:** Tests exist but integration/E2E incomplete
-**Target:** 95%+ coverage with comprehensive E2E
-**Missing:** Complete integration/E2E coverage
-**Required:** Full test suite coverage
-**Upgrade:** Add missing integration tests
+### Testing Rigor: 8.0/10
+**Current: 8.0** - 295 test files exist
+**Why not higher:** Missing integration and E2E coverage
+**Target state:** Complete test coverage for all execution paths
+**Missing:** Integration test gaps, E2E workflow coverage
 
-### 12. Observability/auditability: 9.0/10
-**Why not higher:** Comprehensive audit logging
-**Target:** Complete observability everywhere
-**Missing:** Some edge case coverage
-**Required:** Audit integration tests
-**Upgrade:** Add audit coverage
+### Observability/Auditability: 9.0/10
+**Current: 9.0** - Comprehensive logging and audit trails
+**Why not higher:** Audit data not used for decisions
+**Target state:** Audit trails drive system behavior
+**Missing:** Audit-based decision making
 
-### 13. Resilience/fail-safety: 8.0/10
-**Why not higher:** Circuit breakers exist
-**Target:** Comprehensive resilience patterns
-**Missing:** Some advanced patterns
-**Required:** Resilience tests
-**Upgrade:** Add advanced resilience
+### Resilience/Fail-Safety: 5.0/10
+**Current: 5.0** - Error handling exists but incomplete
+**Why not higher:** Comprehensive error boundaries missing
+**Target state:** Graceful failure handling across all surfaces
+**Missing:** System-level error recovery, fail-safe modes
 
-### 14. Enterprise/compliance readiness: 9.0/10
-**Why not higher:** Complete security implementation
-**Target:** Full enterprise compliance
-**Missing:** Minor validation gaps
-**Required:** Enterprise compliance tests
-**Upgrade:** Add compliance validation
+### Enterprise/Compliance Readiness: 4.5/10
+**Current: 4.5** - Basic audit trails exist
+**Why not higher:** No SOC 2 compliance, incomplete RBAC
+**Target state:** Full enterprise compliance with audit trails
+**Missing:** SOC 2 compliance, complete RBAC, enterprise controls
 
-### 15. Self-improvement safety: 7.5/10
-**Why not higher:** Oracle integration exists but not complete
-**Target:** Safe autonomous improvement
-**Missing:** Full evidence-based improvement
-**Required:** Self-improvement tests
-**Upgrade:** Add improvement safety
+### Self-Improvement Safety: 6.5/10
+**Current: 6.5** - Self-improve command exists
+**Why not higher:** Safety mechanisms incomplete
+**Target state:** Safe autonomous improvement loops
+**Missing:** Self-modification safety controls
 
-### 16. Benchmark/scoring credibility: 9.0/10
-**Why not higher:** Real evidence collection
-**Target:** Credible benchmarking everywhere
-**Missing:** Some harness issues
-**Required:** Benchmark validation
-**Upgrade:** Fix benchmark harness
+### Benchmark/Scoring Credibility: 8.0/10
+**Current: 8.0** - Scoring infrastructure exists
+**Why not higher:** Assessment hangs, credibility unproven
+**Target state:** Reliable, fast assessment system
+**Missing:** Working assessment execution
 
-### 17. Performance/cost efficiency: 8.0/10
-**Why not higher:** Monitoring exists, regression detection implemented
-**Target:** Full performance guarantees
-**Missing:** CI wiring incomplete
-**Required:** Performance regression gate
-**Upgrade:** Wire to CI fully
+### Performance/Cost Efficiency: 7.0/10
+**Current: 7.0** - Performance monitoring exists
+**Why not higher:** CI integration incomplete
+**Target state:** Performance regression prevention
+**Missing:** CI gating for performance regressions
 
-### 18. IDE/UX polish: 5.0/10
-**Why not higher:** Basic UX, needs polish
-**Target:** Professional UX everywhere
-**Missing:** UX improvements
-**Required:** UX testing
-**Upgrade:** Add UX polish
+### IDE/UX Polish: 7.0/10
+**Current: 7.0** - Basic CLI with progress indicators
+**Why not higher:** Error messages and help text incomplete
+**Target state:** Professional CLI/IDE experience
+**Missing:** Comprehensive error messaging, accessibility
 
 ## 5. ROOT CAUSE ANALYSIS
 
-Narrative-over-reality: Artifacts claim completion before evidence proves it (autoforge "completed" but not automated).
+### Narrative-Over-Reality Failure
+The repo claims "trust spine" preventing false completion, but the core autoforge loop is stubbed. This creates a fundamental disconnect between claims and reality.
 
-Hidden dependency surfaces: Autoforge closure loop exists but doesn't consume residual gaps for re-initiation.
+### Hidden Dependency Surfaces
+Components exist (completion oracle, termination governor, residual gap miner) but are not wired into the main execution path. The autoforge loop doesn't use them.
 
-Shallow diff problem: Implementation exists but wiring to real execution paths incomplete.
+### Shallow Diff Problem
+Changes appear comprehensive but don't address the core execution gap. Error handling improvements don't fix the stubbed autonomy.
 
-Unsupported completion claims: Gap matrix says enterprise "completed" twice but scorecard correctly shows reality.
+### Unsupported Completion Claims
+README and package.json claim autonomous operation, but implementation doesn't support it. Truth surfaces reflect intended state, not actual state.
 
-Stale truth-surface problem: Masterplan docs outdated despite evidence showing progress.
+### Stale Truth-Surface Drift
+Artifacts were created before implementation caught up. Gap matrix lists issues that have been "fixed" in artifacts but not code.
 
-Fake artifact problem: Some artifacts claim completion not supported by code inspection.
+### Fake or Weak Artifact Problem
+Artifacts exist but don't represent real capabilities. Scorecard shows 9.0+ for enterprise readiness but assessment shows 4.5.
 
-Partial integration problem: Tests exist but don't provide complete workflow coverage.
+### Partial Integration Problem
+Components are implemented but not connected. MCP server exists but not tested end-to-end.
 
-Benchmark vanity problem: Harness exists but has syntax errors preventing execution.
+### Benchmark Vanity
+Assessment system exists but hangs, preventing validation of claims.
+
+### Blind Retry Loops
+Self-improve command exists but without working termination logic, it would retry indefinitely.
+
+### Missing Termination Intelligence
+Termination governor exists but isn't used by the stubbed autoforge loop.
 
 ## 6. TARGET ARCHITECTURE
 
 ### Truth Surface Engine
-- **Purpose:** Unify all truth surfaces and prevent contradictions
-- **Inputs:** All artifacts, docs, code
-- **Outputs:** Validation reports, unified truth
-- **APIs:** validateTruthSurface(), reconcileArtifacts()
-- **Key files:** scripts/check-truth-surface.mjs, core/truth-surface-engine.ts
-- **Dependencies:** All artifact producers
-- **Failure modes:** Contradictions undetected
-- **Verification:** Truth surface validation gate
+**Purpose:** Maintain consistency across all artifacts and claims
+**Inputs:** All artifacts, assessment results, implementation state
+**Outputs:** Reconciled artifacts, contradiction reports
+**Verification:** Automated truth surface validation
 
-### Evidence Spine (EXISTING)
-- **Purpose:** Collect and verify development evidence
-- **Inputs:** Commands, files, tests
-- **Outputs:** EvidenceBundle, verdicts
-- **APIs:** RunLedger, validateCompletion()
-- **Key files:** core/run-ledger.ts, core/completion-oracle.ts
-- **Dependencies:** File system, command execution
-- **Failure modes:** Evidence not captured
-- **Verification:** Evidence integrity tests
+### Evidence Spine
+**Purpose:** Collect and validate all execution evidence
+**Inputs:** File operations, commands, test results, LLM calls
+**Outputs:** Evidence bundles, audit trails
+**Verification:** Evidence completeness validation
 
 ### Requirement Coverage Graph
-- **Purpose:** Map requirements to all dependent surfaces
-- **Inputs:** Specs, plans, code, tests
-- **Outputs:** Coverage analysis, gap reports
-- **APIs:** analyzeRequirementCoverage()
-- **Key files:** core/requirement-coverage.ts
-- **Dependencies:** Evidence spine
-- **Failure modes:** Hidden dependencies
-- **Verification:** Coverage analysis tests
+**Purpose:** Map requirements to all dependent implementation surfaces
+**Inputs:** Specs, implementation, tests
+**Outputs:** Coverage analysis, missing dependency reports
+**Verification:** Coverage completeness validation
 
-### Completion Oracle (EXISTING)
-- **Purpose:** Provide evidence-based completion verdicts
-- **Inputs:** EvidenceBundle, state
-- **Outputs:** CompletionVerdict, recommendations
-- **APIs:** validateCompletion()
-- **Key files:** core/completion-oracle.ts
-- **Dependencies:** Evidence spine, coverage graph
-- **Failure modes:** False completion undetected
-- **Verification:** Oracle validation tests
+### Completion Oracle
+**Purpose:** Multi-state completion verdict generation
+**Inputs:** Evidence bundles, state, coverage analysis
+**Outputs:** Completion verdicts with confidence scores
+**Verification:** Oracle accuracy validation against known cases
 
 ### Residual Gap Miner
-- **Purpose:** Extract unresolved gaps from evidence
-- **Inputs:** EvidenceBundle, verdicts, state
-- **Outputs:** Gap reports, next actions
-- **APIs:** analyzeResidualGaps()
-- **Key files:** core/residual-gap-miner.ts
-- **Dependencies:** Completion oracle
-- **Failure modes:** Gaps undetected
-- **Verification:** Gap mining tests
+**Purpose:** Identify unresolved gaps after apparent completion
+**Inputs:** Evidence bundles, state, oracle verdicts
+**Outputs:** Gap reports with prioritization
+**Verification:** Gap detection accuracy
 
 ### Wave Delta Tracker
-- **Purpose:** Quantify improvement between waves
-- **Inputs:** Before/after scores, gaps, evidence
-- **Outputs:** Delta reports, progress metrics
-- **APIs:** calculateWaveDelta()
-- **Key files:** core/wave-delta-tracker.ts
-- **Dependencies:** All assessment systems
-- **Failure modes:** Progress not measured
-- **Verification:** Delta tracking tests
+**Purpose:** Measure progress across execution waves
+**Inputs:** Before/after states, evidence bundles
+**Outputs:** Delta reports, plateau detection
+**Verification:** Delta calculation accuracy
 
 ### Termination Governor
-- **Purpose:** Decide continue/stop based on evidence
-- **Inputs:** Gap reports, scores, blockers
-- **Outputs:** Continue/stop decisions
-- **APIs:** evaluateTerminationConditions()
-- **Key files:** core/termination-governor.ts
-- **Dependencies:** Residual gap miner, wave delta tracker
-- **Failure modes:** Premature stop or infinite continuation
-- **Verification:** Termination logic tests
+**Purpose:** Evidence-based termination decisions
+**Inputs:** Oracle verdicts, gap reports, delta tracking
+**Outputs:** Termination decisions with reasoning
+**Verification:** Termination decision validation
 
 ### Governance/Safety Plane
-- **Purpose:** Ensure safe autonomous operation
-- **Inputs:** All operations, evidence
-- **Outputs:** Safety validations, blocks
-- **APIs:** validateSafety(), checkBoundaries()
-- **Key files:** core/governance-safety.ts
-- **Dependencies:** All systems
-- **Failure modes:** Unsafe operations allowed
-- **Verification:** Safety validation tests
+**Purpose:** Ensure safe operation across all surfaces
+**Inputs:** All operations, state changes
+**Outputs:** Safety validations, blocking decisions
+**Verification:** Safety control effectiveness
 
 ### Benchmark/Scoring Engine
-- **Purpose:** Credible performance benchmarking
-- **Inputs:** Tasks, evidence, comparisons
-- **Outputs:** Scores, reports, comparisons
-- **APIs:** runBenchmark(), compareCompetitors()
-- **Key files:** core/benchmark-harness.ts, core/competitor-scanner.ts
-- **Dependencies:** Evidence spine
-- **Failure modes:** Invalid benchmarks
-- **Verification:** Benchmark validation tests
+**Purpose:** Credible scoring across all dimensions
+**Inputs:** Implementation, tests, artifacts
+**Outputs:** Dimension scores, gap analysis
+**Verification:** Scoring consistency and accuracy
 
 ### Integration Surface Engine
-- **Purpose:** Validate cross-system integration
-- **Inputs:** Components, workflows
-- **Outputs:** Integration test results
-- **APIs:** runIntegrationTests()
-- **Key files:** tests/integration/*.test.ts
-- **Dependencies:** All systems
-- **Failure modes:** Integration breaks undetected
-- **Verification:** Integration test suites
+**Purpose:** End-to-end integration validation
+**Inputs:** All components, workflows
+**Outputs:** Integration test results, coverage reports
+**Verification:** Integration completeness
 
 ### Enterprise Ops/Compliance Plane
-- **Purpose:** Enterprise security and compliance
-- **Inputs:** Operations, data, users
-- **Outputs:** Security validations, compliance reports
-- **APIs:** checkAccess(), encryptData(), isolateTenant()
-- **Key files:** core/access-control.ts, core/encryption-manager.ts, core/multi-tenant-manager.ts
-- **Dependencies:** Governance plane
-- **Failure modes:** Security/compliance violations
-- **Verification:** Enterprise security tests
+**Purpose:** Enterprise compliance and auditability
+**Inputs:** All operations, security events
+**Outputs:** Compliance reports, audit trails
+**Verification:** Compliance requirement satisfaction
 
 ## 7. CLOSURE ENGINE / AUTOFORGE WAVES 2.0
 
-### Claim Extraction
-Parses agent/build/run claims from evidence bundles into structured assertions with evidence links.
+### Completion Verdict States
+- **complete**: All requirements covered, evidence sufficient, no gaps
+- **partially_complete**: Some requirements covered, meaningful gaps remain
+- **misleadingly_complete**: Appears complete but evidence shows gaps
+- **inconclusive**: Insufficient evidence to determine completion
+- **regressed**: Quality degraded from previous state
 
-### Requirement Coverage Graph
-Maps requirements to files, contracts, tests, artifacts, dependent surfaces with coverage percentages.
+### Required Wave Roles
+- **Builder**: Implements features and fixes
+- **Skeptic**: Challenges completion claims, finds hidden gaps
+- **Verifier**: Validates implementation against requirements
+- **Gap Synthesizer**: Identifies root causes and synthesizes solutions
+- **Patch Wave**: Addresses regressions and edge cases
 
-### Completion Oracle
-Provides verdicts: complete, partially_complete, misleadingly_complete, inconclusive, regressed.
+### Wave Execution Protocol
 
-### Residual Gap Miner
-Emits machine-readable gap reports after every verification run.
+**Claim Extraction Phase:**
+- Extract explicit claims from specs, docs, artifacts
+- Map claims to implementation requirements
+- Identify test and verification requirements
 
-### Wave Delta Tracker
-Quantifies improvement between waves using before/after evidence comparison.
+**Requirement Coverage Graph Construction:**
+- Build dependency graph of all implementation surfaces
+- Identify hidden dependencies and integration points
+- Determine verification strategy for each surface
 
-### Termination Governor
-Prevents infinite churn by evaluating: meaningful progress made, diminishing returns, blocker detection.
+**Multi-State Completion Oracle Evaluation:**
+- Run evidence collection across all surfaces
+- Evaluate completion against multiple criteria
+- Generate confidence-weighted verdicts
 
-### Adversarial Wave Roles
-- **Builder**: Implements changes against gap reports
-- **Skeptic**: Reviews implementation for completeness
-- **Verifier**: Runs verification and gap mining
-- **Gap Synthesizer**: Analyzes gaps and scopes next wave
-- **Patch Wave**: Addresses regressions or blockers
+**Residual Gap Mining:**
+- Analyze evidence for unresolved dependencies
+- Identify integration gaps and edge cases
+- Prioritize gaps by impact and difficulty
 
-### Wave Flow
-1. Builder consumes residual gap report → implements fixes
-2. Skeptic reviews → flags incomplete work
-3. Verifier runs tests/gates → produces evidence bundle
-4. Completion Oracle evaluates bundle → produces verdict
-5. Residual Gap Miner analyzes verdict → produces gap report
-6. Wave Delta Tracker compares to previous → calculates progress
-7. Termination Governor evaluates → continue/stop decision
+**Adversarial Wave Role Separation:**
+- Builder wave focuses on implementation
+- Skeptic wave focuses on gap discovery
+- Verifier wave focuses on validation
+- Gap Synthesizer focuses on root cause analysis
+- Patch waves focus on regression fixes
 
-### Termination Logic
-- **Stop**: All dimensions 9.0+, residual gap report empty, no contradictions
-- **Continue**: Meaningful gaps remain, progress made, no blockers
-- **Blocker**: External dependency, fundamental architecture issue
+**Wave Delta Measurement:**
+- Track progress metrics across waves
+- Detect plateau conditions
+- Measure efficiency of gap closure
+
+**Termination Logic:**
+- Stop on genuine completion (oracle verdict + gap report)
+- Stop on blocker discovery (insurmountable gaps)
+- Stop on plateau (diminishing returns)
+- Continue on partial completion with prioritized gaps
+
+**Oracle-Driven Re-Initiation:**
+- Use completion verdict to determine next wave scope
+- Use gap report to prioritize next wave tasks
+- Use delta tracking to prevent inefficient waves
 
 ## 8. ARTIFACT CONTRACT
 
 ### artifacts/release-truth.json
-- **Purpose:** Release readiness validation
-- **Producer:** verify --release command
-- **Schema:** { version, commit, checks: [], blockers: [] }
-- **Validation:** All checks pass, no blockers
-- **Gate dependency:** Release gate
-- **Update cadence:** Pre-release
-- **Failure meaning:** Release not ready
+**Purpose:** Canonical release readiness assessment
+**Schema:** Version, components, readiness scores, blockers
+**Validation:** Must match assessment results
+**Gate:** Release cannot proceed with blockers
 
 ### artifacts/compatibility-matrix.json
-- **Purpose:** Tool compatibility validation
-- **Producer:** compatibility-check command
-- **Schema:** { tools: [{ name, version, compatible, issues }] }
-- **Validation:** Required tools compatible
-- **Gate dependency:** Integration gate
-- **Update cadence:** Weekly
-- **Failure meaning:** Integration broken
+**Purpose:** Platform and tool compatibility verification
+**Schema:** Platforms, tools, compatibility status, test results
+**Validation:** Must cover all supported platforms/tools
+**Gate:** Incompatible platforms block release
 
-### artifacts/benchmark-summary.json
-- **Purpose:** Benchmark execution results
-- **Producer:** benchmark-harness
-- **Schema:** { runs: [], averages: {}, regressions: [] }
-- **Validation:** No regressions, scores within bounds
-- **Gate dependency:** Benchmark credibility gate
-- **Update cadence:** Post-benchmark
-- **Failure meaning:** Performance regression
+### artifacts/benchmark-summary.jsonl
+**Purpose:** Performance benchmark results over time
+**Schema:** Timestamp, benchmark, result, regression flags
+**Validation:** Must show no regressions vs baseline
+**Gate:** Performance regressions block release
 
-### artifacts/benchmark-report.jsonl
-- **Purpose:** Detailed benchmark evidence
-- **Producer:** benchmark-harness
-- **Schema:** JSONL format with evidence bundles
-- **Validation:** Evidence integrity maintained
-- **Gate dependency:** Benchmark credibility gate
-- **Update cadence:** Post-benchmark
-- **Failure meaning:** Evidence corruption
+### artifacts/benchmark-report.json
+**Purpose:** Current benchmark execution results
+**Schema:** Test cases, verdicts, evidence, gaps
+**Validation:** Must be up-to-date and accurate
+**Gate:** Failed benchmarks block progression
 
 ### artifacts/golden-flows.json
-- **Purpose:** Validated workflow patterns
-- **Producer:** E2E test suite
-- **Schema:** { workflows: [{ name, steps, evidence }] }
-- **Validation:** All golden flows pass
-- **Gate dependency:** Integration gate
-- **Update cadence:** Post-test run
-- **Failure meaning:** Workflow regression
+**Purpose:** Verified end-to-end workflows
+**Schema:** Flow name, steps, evidence, success criteria
+**Validation:** All flows must pass consistently
+**Gate:** Broken golden flows block release
 
 ### artifacts/adversarial-false-completion.json
-- **Purpose:** False completion detection results
-- **Producer:** Adversarial testing
-- **Schema:** { tests: [], detectionRate: number }
-- **Validation:** High detection rate maintained
-- **Gate dependency:** Completion truth gate
-- **Update cadence:** Post-test run
-- **Failure meaning:** False completion risk
+**Purpose:** Tests that catch false completion claims
+**Schema:** Test cases, false claims caught, success rate
+**Validation:** Must catch all known false completion patterns
+**Gate:** Failing adversarial tests block release
 
 ### artifacts/replay-validation.json
-- **Purpose:** Evidence replay integrity
-- **Producer:** Replay tests
-- **Schema:** { replays: [], integrity: boolean }
-- **Validation:** All replays successful
-- **Gate dependency:** Evidence integrity gate
-- **Update cadence:** Post-test run
-- **Failure meaning:** Evidence corruption
+**Purpose:** Reproducible execution validation
+**Schema:** Session replays, consistency checks, anomalies
+**Validation:** Must show deterministic behavior
+**Gate:** Non-deterministic behavior blocks release
 
 ### artifacts/install-matrix.json
-- **Purpose:** Cross-platform install validation
-- **Producer:** Install smoke tests
-- **Schema:** { platforms: [{ name, success, duration }] }
-- **Validation:** All target platforms pass
-- **Gate dependency:** Install gate
-- **Update cadence:** Pre-release
-- **Failure meaning:** Install broken
+**Purpose:** Installation success across platforms
+**Schema:** Platform, method, success rate, failure modes
+**Validation:** Must show reliable installation
+**Gate:** Installation failures block release
 
 ### artifacts/enterprise-controls.json
-- **Purpose:** Enterprise security validation
-- **Producer:** Enterprise readiness assessment
-- **Schema:** See current file structure
-- **Validation:** Security controls functional
-- **Gate dependency:** Enterprise controls gate
-- **Update cadence:** Weekly
-- **Failure meaning:** Security vulnerability
+**Purpose:** Enterprise compliance verification
+**Schema:** Controls, tests, compliance status, audit trails
+**Validation:** Must demonstrate SOC 2 compliance
+**Gate:** Compliance gaps block enterprise release
 
 ### artifacts/perf-cost-regression.json
-- **Purpose:** Performance regression tracking
-- **Producer:** Performance monitor
-- **Schema:** { baseline: {}, current: {}, regression: boolean }
-- **Validation:** No performance regression
-- **Gate dependency:** Regression gate
-- **Update cadence:** Post-performance run
-- **Failure meaning:** Performance degradation
+**Purpose:** Performance and cost regression tracking
+**Schema:** Metrics, baselines, regressions, root causes
+**Validation:** Must show controlled performance/cost
+**Gate:** Uncontrolled regressions block release
 
-### artifacts/current-gap-matrix.json
-- **Purpose:** Current gap inventory
-- **Producer:** Residual gap miner
-- **Schema:** See current file structure
-- **Validation:** No contradictions with other artifacts
-- **Gate dependency:** Truth surface gate
-- **Update cadence:** Post-wave
-- **Failure meaning:** Gaps not accurately tracked
-
-### artifacts/current-scorecard.json
-- **Purpose:** Current dimension scores
-- **Producer:** Assessment system
-- **Schema:** { dimension: score, ... }
-- **Validation:** Scores supported by evidence
-- **Gate dependency:** Truth surface gate
-- **Update cadence:** Post-assessment
-- **Failure meaning:** Inflated scores
-
-### artifacts/closure-targets.json
-- **Purpose:** 9.0+ target definitions
-- **Producer:** Masterplan system
-- **Schema:** { dimension: target, ... }
-- **Validation:** Targets achievable and well-defined
-- **Gate dependency:** Truth surface gate
-- **Update cadence:** Masterplan updates
-- **Failure meaning:** Unclear completion criteria
-
-### artifacts/masterplan-truth.json
-- **Purpose:** Masterplan metadata
-- **Producer:** Masterplan generation
-- **Schema:** See current file structure
-- **Validation:** Metadata accurate
-- **Gate dependency:** Truth surface gate
-- **Update cadence:** Masterplan updates
-- **Failure meaning:** Stale masterplan data
+### Core Gap/Score/Target Artifacts
+**Validation:** Must agree with implementation reality
+**Gate:** Truth surface contradictions block progression
 
 ## 9. CANONICAL GATES
 
-### Truth Surface Gate
-- **Command:** npm run check:truth-surface
-- **Inputs:** All artifacts, docs, metadata
-- **Pass/Fail:** No contradictions found
-- **Required artifacts:** All truth-surface files
-- **Failure meaning:** Repo has internal inconsistencies
-- **Continue allowed:** No
+### Truth-Surface Gate
+**Commands:** `npm run check:truth-surface`
+**Pass/Fail:** All artifacts agree, no contradictions
+**Failure Means:** Implementation reality misreported
+**Stop Condition:** Cannot proceed with inconsistent truth surfaces
 
 ### Artifact Completeness Gate
-- **Command:** npm run verify:artifacts
-- **Inputs:** Artifact existence and schemas
-- **Pass/Fail:** All required artifacts exist and valid
-- **Required artifacts:** All in contract
-- **Failure meaning:** Missing critical evidence
-- **Continue allowed:** No
+**Commands:** `npm run check:repo-hygiene`
+**Pass/Fail:** All required artifacts exist and valid
+**Failure Means:** System cannot prove its own completeness
+**Stop Condition:** Missing artifacts prevent validation
 
-### Completion Truth Gate
-- **Command:** npm run test:adversarial
-- **Inputs:** Evidence bundles, verdicts
-- **Pass/Fail:** False completion detection rate >90%
-- **Required artifacts:** adversarial-false-completion.json
-- **Failure meaning:** Cannot detect false completion
-- **Continue allowed:** No
+### Completion-Truth Gate
+**Commands:** `danteforge assess`, `danteforge verify`
+**Pass/Fail:** Assessment scores match implementation reality
+**Failure Means:** System cannot validate its own claims
+**Stop Condition:** Cannot trust system assessments
 
 ### Benchmark Credibility Gate
-- **Command:** npm run benchmark:validate
-- **Inputs:** Benchmark results, evidence
-- **Pass/Fail:** Benchmarks use real evidence, reproducible
-- **Required artifacts:** benchmark-summary.json, benchmark-report.jsonl
-- **Failure meaning:** Invalid performance claims
-- **Continue allowed:** Yes (non-blocking for core functionality)
+**Commands:** Assessment completes successfully
+**Pass/Fail:** Assessment runs without hanging, produces valid results
+**Failure Means:** Benchmark system is broken
+**Stop Condition:** Cannot validate progress
 
 ### Install/Integration Gate
-- **Command:** npm run test:integration && npm run test:e2e
-- **Inputs:** Test suites, evidence
-- **Pass/Fail:** Integration tests pass, E2E coverage >90%
-- **Required artifacts:** golden-flows.json, compatibility-matrix.json
-- **Failure meaning:** Integration broken
-- **Continue allowed:** No
+**Commands:** `npm run release:check:install-smoke`
+**Pass/Fail:** Installation works across supported platforms
+**Failure Means:** Users cannot install the system
+**Stop Condition:** Release cannot proceed
 
-### Enterprise Controls Gate
-- **Command:** npm run test:enterprise
-- **Inputs:** Security tests, compliance checks
-- **Pass/Fail:** All enterprise controls functional
-- **Required artifacts:** enterprise-controls.json
-- **Failure meaning:** Security vulnerability
-- **Continue allowed:** No
+### Enterprise-Controls Gate
+**Commands:** Custom enterprise validation
+**Pass/Fail:** Audit trails, RBAC, compliance requirements met
+**Failure Means:** Not enterprise-ready
+**Stop Condition:** Enterprise release blocked
 
 ### Regression Gate
-- **Command:** npm run performance:check
-- **Inputs:** Performance baselines, current metrics
-- **Pass/Fail:** No performance regression detected
-- **Required artifacts:** perf-cost-regression.json
-- **Failure meaning:** Performance degradation
-- **Continue allowed:** Yes (with performance impact noted)
+**Commands:** Performance benchmarks, test suites
+**Pass/Fail:** No regressions vs baseline
+**Failure Means:** System degraded
+**Stop Condition:** Cannot release degraded system
 
-### Replay Validation Gate
-- **Command:** npm run test:replay
-- **Inputs:** Evidence bundles, replay tests
-- **Pass/Fail:** All evidence replays successful
-- **Required artifacts:** replay-validation.json
-- **Failure meaning:** Evidence corruption or replay failure
-- **Continue allowed:** No
+### Replay-Validation Gate
+**Commands:** Reproducibility tests
+**Pass/Fail:** Execution is deterministic
+**Failure Means:** Unpredictable behavior
+**Stop Condition:** Cannot release unpredictable system
 
 ## 10. FILE-BY-FILE BUILD PLAN
 
-### Core Evidence Spine
-- `src/core/run-ledger.ts` - Evidence collection (exists, test)
-- `src/core/completion-oracle.ts` - Completion verdicts (exists, integrate with autoforge)
-- `src/core/residual-gap-miner.ts` - Gap extraction (exists, test)
-- `src/core/requirement-coverage.ts` - Coverage analysis (exists, enhance)
+### Critical Core Files
+- `src/core/autoforge-loop.ts`: Implement real autonomous loop using termination governor, completion oracle, residual gap miner
+- `src/core/termination-governor.ts`: Already exists, ensure integration
+- `src/core/wave-delta-tracker.ts`: Already exists, ensure integration
+- `src/core/completion-oracle.ts`: Already exists, ensure CLI integration
+- `src/core/residual-gap-miner.ts`: Already exists, ensure integration
 
-### Autoforge Closure System
-- `src/core/autoforge-loop.ts` - Main loop (exists, wire oracle termination)
-- `src/core/termination-governor.ts` - Stop/continue logic (create)
-- `src/core/wave-delta-tracker.ts` - Progress measurement (create)
-- `src/cli/commands/self-improve.ts` - Autonomous improvement (enhance with oracle)
+### CLI Integration Files
+- `src/cli/index.ts`: Add verify command
+- `src/cli/commands/verify.ts`: Already exists, expose in CLI
+- `src/cli/commands/assess.ts`: Fix hanging assessment
 
-### Integration/E2E Proof Layer
-- `tests/e2e/comprehensive-workflow.test.ts` - Full workflow E2E (exists, enhance)
-- `tests/integration/workflow-integration.test.ts` - Workflow integration (exists, enhance)
-- `tests/integration/enterprise-integration.test.ts` - Enterprise integration (exists, enhance)
-- `tests/integration/mcp-integration.test.ts` - MCP integration (check exists)
+### Test Coverage Files
+- `tests/autoforge-loop-integration.test.ts`: End-to-end autoforge testing
+- `tests/verification-e2e.test.ts`: Full verification pipeline testing
+- `tests/closure-engine-integration.test.ts`: Complete closure engine testing
 
-### Performance & Regression
-- `src/core/performance-monitor.ts` - Monitoring (exists, wire to CI)
-- `src/core/cost-tracker.ts` - Cost tracking (exists, enhance)
-- `.github/workflows/ci.yml` - CI performance gate (update)
-- `src/cli/commands/performance.ts` - CLI interface (exists, enhance)
+### Enterprise Compliance Files
+- `src/core/enterprise-controls.ts`: Implement RBAC, audit trails
+- `src/core/compliance-engine.ts`: SOC 2 compliance implementation
+- `tests/enterprise-compliance.test.ts`: Compliance testing
 
-### Enterprise Security
-- `src/core/access-control.ts` - RBAC system (exists, test)
-- `src/core/encryption-manager.ts` - Encryption (exists, test)
-- `src/core/multi-tenant-manager.ts` - Multi-tenancy (exists, test)
-- `src/core/enterprise-orchestrator.ts` - Coordination (exists, test)
-
-### Truth Surface Reconciliation
-- `scripts/check-truth-surface.mjs` - Validation (exists, enhance)
-- `artifacts/current-gap-matrix.json` - Gap tracking (reconcile)
-- `artifacts/current-scorecard.json` - Score tracking (reconcile)
-- `docs/masterplans/` - Documentation (update)
+### Truth Surface Files
+- `scripts/check-truth-surface.mjs`: Automated truth reconciliation
+- `artifacts/current-gap-matrix.json`: Update to match reality
+- `artifacts/current-scorecard.json`: Update to match assessment
 
 ## 11. PHASED EXECUTION ORDER
 
-### Phase 1: Truth Surface Reconciliation (P0 - 1 day)
-- Reconcile current-gap-matrix.json, current-scorecard.json, PHASE_G_REPORT.md
-- Update masterplan docs to reflect current reality
-- Implement truth surface validation gate
-- **Complete:** Unified truth surfaces, no contradictions
+### Phase 1: Truth Surface Reconciliation (P0 Critical)
+**Goals:** Eliminate all artifact contradictions
+**Files:** All artifact files, truth surface scripts
+**Gates:** Truth-surface gate
+**Complete:** All artifacts agree with implementation reality
 
-### Phase 2: Autoforge Closure Automation (P0 - 3 days)
-- Wire completion oracle to autoforge termination/re-initiation
-- Implement termination governor with evidence-based decisions
-- Add wave delta tracking for progress measurement
-- **Complete:** Autoforge uses oracle for automated closure loops
+### Phase 2: Autoforge Loop Implementation (P0 Critical)
+**Goals:** Replace stub with real autonomous execution
+**Files:** `src/core/autoforge-loop.ts`, integration files
+**Gates:** Completion-truth gate, benchmark credibility gate
+**Complete:** Autoforge drives real development cycles
 
-### Phase 3: Integration/E2E Proof Completion (P0 - 4 days)
-- Enhance existing E2E and integration tests for complete coverage
-- Add missing integration test suites
-- Validate 95%+ workflow coverage
-- **Complete:** Complete integration/E2E proof layer
+### Phase 3: Verification Pipeline Integration (P0 Critical)
+**Goals:** Make verification accessible and integrated
+**Files:** CLI integration, verification command exposure
+**Gates:** Artifact completeness gate
+**Complete:** Full verification pipeline works end-to-end
 
-### Phase 4: Performance Regression Wiring (P1 - 2 days)
-- Complete CI integration of performance regression detection
-- Add performance baseline management
-- Validate regression detection works end-to-end
-- **Complete:** Performance regression detection fully wired
+### Phase 4: Integration/E2E Proof Layer (P0 Critical)
+**Goals:** Comprehensive integration and E2E coverage
+**Files:** Integration tests, E2E workflows, golden flows
+**Gates:** Replay-validation gate
+**Complete:** All integration surfaces validated
 
-### Phase 5: Final Verification & Scoring (P1 - 2 days)
-- Run comprehensive assessment across all dimensions
-- Validate all artifacts exist and are consistent
-- Confirm 9.0+ scores are evidence-based
-- **Complete:** All dimensions at 9.0+ with supporting evidence
+### Phase 5: Performance Regression CI (P0 Critical)
+**Goals:** Performance regression prevention
+**Files:** CI integration, performance monitoring
+**Gates:** Regression gate
+**Complete:** Performance regressions caught in CI
+
+### Phase 6: Enterprise Compliance (P1 Major)
+**Goals:** SOC 2 compliance, RBAC, audit trails
+**Files:** Enterprise controls, compliance engine
+**Gates:** Enterprise-controls gate
+**Complete:** Enterprise-ready with full compliance
+
+### Phase 7: Self-Improvement Safety (P1 Major)
+**Goals:** Safe autonomous improvement loops
+**Files:** Self-modification controls, safety mechanisms
+**Gates:** Self-improvement safety validation
+**Complete:** Safe self-improvement capabilities
+
+### Phase 8: IDE/UX Polish (P2 Minor)
+**Goals:** Professional CLI/IDE experience
+**Files:** Error messaging, accessibility, help text
+**Gates:** User experience validation
+**Complete:** Polished user experience
+
+### Common Failure Modes
+- **Truth surface drift**: Artifacts updated without implementation
+- **Integration gaps**: Components exist but not wired
+- **Test coverage gaps**: Code added without tests
+- **Performance regressions**: Changes break performance baselines
+- **Enterprise compliance gaps**: Security requirements not met
 
 ## 12. TEST CHARTER
 
 ### Unit Tests
-- Core logic: access control, encryption, multi-tenancy
-- Evidence handling: run-ledger, completion-oracle
-- Configuration: performance monitoring, cost tracking
+- All core functions have unit tests
+- Error conditions properly tested
+- Edge cases covered
+- Mock dependencies for isolation
 
 ### Integration Tests
-- Workflow integration: constitution → specify → plan → verify
-- Enterprise integration: security controls across workflows
-- MCP integration: tool compatibility and contract reliability
-- Autoforge integration: oracle termination and re-initiation
+- Component interactions tested
+- Data flow validation
+- API contract compliance
+- Cross-module dependencies
 
 ### E2E Tests
-- Full project lifecycle: init → develop → verify → assess
-- Enterprise workflows: secure development with access controls
-- Performance validation: regression detection in real workflows
-- Multi-tool compatibility: MCP contract validation
+- Complete workflows from start to finish
+- Real file system operations
+- External service integrations
+- Golden flow validation
 
 ### Adversarial Tests
-- False completion detection: incomplete work flagged
-- Security boundary testing: access control enforcement
-- Performance regression: degradation detection
-- Evidence integrity: replay validation
+- False completion detection
+- Security boundary testing
+- Error condition handling
+- Regression prevention
 
 ### Replay/Reproducibility Tests
-- Evidence bundle replay: consistent results
-- Benchmark reproducibility: same inputs, same outputs
-- State migration: configuration preservation
-- Workflow replay: deterministic execution
+- Deterministic execution validation
+- State consistency checking
+- Session replay capability
+- Anomalous behavior detection
 
 ### Truth-Surface Drift Tests
-- Artifact consistency: no contradictions between files
-- Documentation sync: docs match implementation
-- Version consistency: no drift between surfaces
-- Metadata validation: all required fields present
+- Artifact consistency validation
+- Implementation vs documentation sync
+- Score justification verification
+- Gap analysis accuracy
+
+### Benchmark Regression Tests
+- Performance baseline maintenance
+- Scoring algorithm stability
+- Competitor analysis consistency
+- Assessment execution reliability
 
 ### Install/Doctor Tests
-- Clean install validation: all platforms, all configurations
-- Doctor command functionality: problem detection and fixes
-- Configuration validation: secure defaults, no secrets exposed
-- Dependency checking: required tools available
+- Installation success validation
+- Setup process verification
+- Diagnostic accuracy testing
+- Repair capability validation
 
 ### MCP/CLI/IDE Contract Tests
-- MCP protocol compliance: message format validation
-- CLI argument parsing: all commands work correctly
-- IDE integration: extension loading and functionality
-- Tool compatibility: supported versions work
-
-### Performance Regression Tests
-- Startup time monitoring: baseline vs current comparison
-- Memory usage tracking: leak detection
-- CPU utilization: efficiency validation
-- Scalability testing: performance under load
+- Protocol compliance validation
+- Message format correctness
+- Error handling verification
+- Integration surface testing
 
 ## 13. HONEST SCORING RULES
 
-### Explicit Prohibitions
-- No credit for architecture-only presence without wiring
-- No credit for docs without enforcement mechanisms
-- No credit for tests that don't exercise real execution paths
-- No credit for placeholder artifacts without real producers
-- No credit for rounding up based on intention or design quality
-- No credit for partial implementations presented as complete
-- No credit for self-authored claims without artifact evidence
-- No credit for generic "exists" claims without specific validation
+### Architecture-Only Scoring Forbidden
+- Must be wired into real execution paths
+- Must handle real inputs/outputs
+- Must integrate with other components
 
-### Required Evidence for 9.0+
-- **Exists:** Capability implemented and discoverable
-- **Wired:** Connected to real execution paths with error handling
-- **Gated:** Appropriate gates prevent bypass
-- **Tested:** Tests cover risk areas with appropriate rigor
-- **Artifact-backed:** Produces or depends on real artifacts
-- **Adversarial-resistant:** Survives adversarial/regression checks
-- **Truth-surface aligned:** Public claims match implementation reality
+### Docs Without Enforcement Forbidden
+- Documentation must drive code behavior
+- Configuration must be validated
+- Claims must be testable
+
+### Tests That Miss Real Path Forbidden
+- Tests must exercise actual code paths
+- Mocks must reflect real dependencies
+- Coverage must include error conditions
+
+### Placeholder Artifacts Forbidden
+- Artifacts must contain real data
+- Schemas must be enforced
+- Validation must catch invalid artifacts
+
+### Rounding Up Due to Intent Forbidden
+- Scores must reflect current implementation
+- Future intent doesn't affect current scores
+- Partial work scores as partial
 
 ## 14. STOP CONDITIONS
 
 ### Wave Complete
-- Objectives met with evidence
-- Gates pass for implemented changes
-- Artifacts generated and valid
-- No regressions introduced
-- Residual gap report updated
+- All targeted gaps addressed
+- Tests added and passing
+- Artifacts updated
+- Integration verified
+- No new regressions introduced
 
 ### Feature Complete
-- Implemented, tested, integrated
-- Documentation updated
-- Artifacts produced
-- No outstanding dependencies
+- Implementation matches specification
+- All dependent surfaces updated
+- Tests provide adequate coverage
+- Documentation accurate
+- Performance acceptable
 
-### Repo 9.0+ Complete
-- All 18 non-community dimensions at 9.0+
-- Scorecard supported by current evidence
-- Residual gap report shows no meaningful gaps
-- Autoforge closure loop is real and evidence-driven
-- Integration/E2E proof layer provides complete coverage
-- Performance/cost controls are real and CI-wired
-- Enterprise/self-improvement safety truly closed
-- All truth surfaces unified and consistent
-- No contradictions between artifacts/docs/code
+### All-9s Complete
+- All 18 non-community dimensions score 9.0+
+- Artifacts agree with implementation
+- Assessment runs successfully
+- Verification pipeline works
+- Autonomous operation functional
+- Enterprise compliance met
 
-### Continue Conditions
-- Meaningful unresolved gaps remain
-- Progress made toward 9.0+ targets
-- No fundamental blockers encountered
-- Evidence supports continued investment
-
-### Stop on Blocker
-- External dependency unavailable
-- Fundamental architecture issue discovered
-- Legal/compliance impossibility
-- Resource constraints make completion impossible
-
-### Residual Gap Handling
-- Every verification run produces residual gap report
-- Gaps must be structured and machine-readable
-- Next wave scoped from gap analysis, not blind retry
-- Diminishing returns prevent infinite churn
+### Blockers
+- **Insurmountable technical blockers**: Document and accept lower scores
+- **Missing dependencies**: Cannot implement without prerequisites
+- **Time constraints**: Scope reduction required
 
 ## 15. EXECUTION PACKET
 
-### Next Wave Objectives (Wave 11)
-1. **Reconcile truth surfaces**: Fix contradictions in gap matrix, scorecard, and reports
-2. **Complete integration/E2E proof layer**: Ensure 95%+ workflow coverage
-3. **Implement autoforge closure-loop automation**: Wire oracle to termination/re-initiation
+### Next Wave Objectives
+1. Reconcile all truth surface contradictions
+2. Implement real autoforge loop using existing infrastructure
+3. Integrate verification pipeline into CLI
+4. Add comprehensive integration/E2E testing
+5. Implement performance regression CI gating
 
 ### Files to Attack First
-- `artifacts/current-gap-matrix.json` - Reconcile contradictions
-- `artifacts/current-scorecard.json` - Validate scores against evidence
-- `PHASE_G_REPORT.md` - Update with accurate status
-- `src/core/autoforge-loop.ts` - Wire oracle termination
-- `src/core/termination-governor.ts` - Create evidence-based governor
-- `tests/e2e/comprehensive-workflow.test.ts` - Enhance E2E coverage
+- `src/core/autoforge-loop.ts`: Replace stub with real implementation
+- `src/cli/index.ts`: Add verify command
+- `artifacts/current-gap-matrix.json`: Update to match reality
+- `artifacts/current-scorecard.json`: Update to match assessment
+- `tests/autoforge-loop-integration.test.ts`: Add integration tests
 
-### Gates to Run After Wave
-- Truth surface gate: `npm run check:truth-surface`
-- Artifact completeness gate: `npm run verify:artifacts`
-- Completion truth gate: `npm run test:adversarial`
-- Install/integration gate: `npm run test:integration && npm run test:e2e`
+### Gates to Run
+- Truth-surface gate: `npm run check:truth-surface`
+- Completion-truth gate: `danteforge assess && danteforge verify`
+- Artifact completeness gate: `npm run check:repo-hygiene`
 
 ### Artifacts Expected
-- Updated `artifacts/current-gap-matrix.json` with reconciled gaps
-- Updated `artifacts/current-scorecard.json` with evidence-based scores
-- `artifacts/adversarial-false-completion.json` with current detection results
-- `artifacts/golden-flows.json` with validated workflows
-- `artifacts/replay-validation.json` with evidence integrity results
+- Updated gap matrix and scorecard
+- Working autoforge loop
+- Exposed verify command
+- Integration test coverage
 
 ### Reporting Format
 ```
 WAVE SUMMARY
-- what you attempted: [description]
-- what actually landed: [description]
+- Attempted: [what was done]
+- Landed: [what actually works]
 
 CLAIMS VS REALITY
-- explicit claims made: [list]
-- which are proven: [list]
-- which are partial: [list]
-- which failed: [list]
-- which remain unproven: [list]
+- Proven: [claims now supported]
+- Partial: [claims partially supported]
+- Failed: [claims not supported]
+- Unproven: [claims needing more work]
 
 FILES CHANGED
 - [file]: [why changed]
 
 VERIFICATION RUN
-- exact commands run: [commands]
-- exact pass/fail outcomes: [results]
-- exact artifacts generated: [artifacts]
+- Commands: [commands run]
+- Results: [pass/fail with details]
 
 RESIDUAL GAP REPORT
-- confirmed remaining gaps: [list]
-- suspected hidden gaps: [list]
-- regressions introduced: [list]
-- stale truth surfaces: [list]
-- missing tests: [list]
-- missing wiring: [list]
+- Confirmed gaps: [remaining issues]
+- New gaps: [issues introduced]
 
 HONEST RE-SCORE
-- [dimension]: [score] - [evidence justification]
+- [dimension]: [score]/10 - [justification]
+- [... for all 18 dimensions]
 
 TERMINATION DECISION
-- continue or stop: [decision]
-- if continue: next highest-value gap cluster: [description]
-- if stop: proof that all 18 dimensions are 9.0+: [evidence]
+- Continue: [yes/no]
+- If continue: [next wave objectives]
+- If stop: [proof of completion]
 ```

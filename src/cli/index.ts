@@ -402,6 +402,25 @@ program
     }
   }));
 
+program
+  .command('verify')
+  .description('Run verification checks against current implementation')
+  .option('--release', 'Run release verification checks')
+  .option('--live', 'Include live integration tests')
+  .option('--url <url>', 'Base URL for live checks')
+  .option('--recompute', 'Force recomputation of all checks')
+  .option('--json', 'Output machine-readable JSON')
+  .action(withAuditLogging('verify', async (opts) => {
+    try {
+      await commands.verify(opts);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      console.error(`Verify command failed: ${message}`);
+      console.error('Usage: danteforge verify --help');
+      process.exit(1);
+    }
+  }));
+
 // v0.19.0 — CLI safety handlers: surface uncaught errors instead of silent exit
 process.on('uncaughtException', (err) => {
   logger.error(`Uncaught exception: ${err.message}`);
