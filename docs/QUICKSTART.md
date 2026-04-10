@@ -1,89 +1,58 @@
-# DanteForge Quickstart
+# DanteForge Quick Start Guide
 
-Three commands to go from idea to verified implementation.
+## Welcome to DanteForge!
 
-## 1. Initialize
+DanteForge is an AI-powered development assistant that helps you build software through structured workflows.
+
+## Getting Started
+
+### 1. Installation
+
+```bash
+npm install -g danteforge
+```
+
+### 2. Initialize Your Project
 
 ```bash
 danteforge init
 ```
 
-Sets up `.danteforge/` project state, detects your environment, and checks system health.
-
-## 2. Build
+### 3. Define Your Project Constitution
 
 ```bash
-danteforge magic "your idea here"
+danteforge constitution
 ```
 
-Runs the full pipeline automatically: constitution, spec, clarify, plan, tasks, and forge. Requires a configured LLM provider — run `danteforge config --set-key <provider:key>` first if you haven't.
-
-No LLM? Use prompt mode:
+### 4. Specify What You Want to Build
 
 ```bash
-danteforge magic "your idea here" --prompt
+danteforge specify "Create a web application for task management"
 ```
 
-This generates copy-paste prompts for each stage instead of calling an API.
-
-## 3. Verify
+### 5. Plan and Execute
 
 ```bash
+danteforge plan
+danteforge tasks
+danteforge forge
 danteforge verify
 ```
 
-Checks that all artifacts exist, gates pass, and the workflow is consistent.
+## Key Features
 
-## What Just Happened?
+- **Structured Development**: Follow proven software development patterns
+- **AI Assistance**: Get help from AI at every step
+- **Quality Assurance**: Built-in testing and verification
+- **Multi-Agent Support**: Collaborate with AI agents
+- **Enterprise Ready**: Production-grade tooling
 
-DanteForge ran a 12-stage pipeline:
+## Getting Help
 
-1. **Constitution** — established project principles and constraints
-2. **Specify** — turned your idea into a detailed spec with acceptance criteria
-3. **Clarify** — found and resolved ambiguities in the spec
-4. **Tech Decide** — selected technologies with trade-off analysis
-5. **Plan** — created an architecture and implementation plan
-6. **Tasks** — broke the plan into atomic, executable tasks
-7. **Forge** — executed tasks in waves using LLM agents
-8. **Verify** — confirmed everything passes
+- `danteforge help` - General help
+- `danteforge help <command>` - Help for specific commands
+- Documentation: https://github.com/dantericardo88/danteforge
 
-All artifacts are stored in `.danteforge/` as plain files you can read and edit.
+## Examples
 
-## What's Next?
-
-| Goal | Command |
-|------|---------|
-| Run another forge wave | `danteforge forge 2` |
-| Multi-agent parallel work | `danteforge party` |
-| Autonomous optimization | `danteforge autoforge` |
-| Harvest OSS patterns | `danteforge oss` |
-| Debug a specific issue | `danteforge debug "the issue"` |
-| Generate design artifacts | `danteforge design "component"` |
-| See all commands | `danteforge --help` |
-| Get context-aware guidance | `danteforge help` |
-
-## Advanced Workflows
-
-**Party + AutoForge combo** — let multiple agents work in parallel while autoforge orchestrates the pipeline:
-
-```bash
-danteforge autoforge "build feature X"
-danteforge party
-```
-
-**OSS-driven development** — discover and harvest patterns from open-source projects:
-
-```bash
-danteforge oss --max-repos 5
-danteforge harvest <system>
-```
-
-**Prompt-only mode** — generate prompts without API calls (works offline):
-
-```bash
-danteforge specify "idea" --prompt
-danteforge plan --prompt
-danteforge forge 1 --prompt
-```
-
-See the full [command reference](ARCHITECTURE.md) and [README](../README.md) for details.
+Check out the `examples/` directory for sample projects and use cases.

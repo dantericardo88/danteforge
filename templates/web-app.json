@@ -1,0 +1,16 @@
+{
+  "name": "web-application",
+  "description": "Template for web applications",
+  "constitution": [
+    "Zero ambiguity in requirements",
+    "Progressive enhancement approach",
+    "Accessible by default",
+    "Performance-first development"
+  ],
+  "techStack": [
+    "HTML",
+    "CSS",
+    "JavaScript",
+    "Node.js"
+  ]
+}
