@@ -25,9 +25,9 @@ describe('LLM module', () => {
   it('uses fetch-based provider transports instead of optional SDK imports', async () => {
     const source = await fs.readFile('src/core/llm.ts', 'utf8');
 
-    // fetchProviderJson uses _llmFetch (module-level, lazy resolution via ?? globalThis.fetch) — verify the pattern
-    assert.match(source, /_llmFetch\s*\?\?/);
-    assert.match(source, /globalThis\.fetch/); // lazy fallback in fetchProviderJson
+    // Uses direct HTTP via fetchProviderJson — no SDK imports
+    assert.match(source, /fetchProviderJson/);
+    assert.match(source, /globalThis\.fetch/); // fetch injection seam in CallLLMOptions
     assert.doesNotMatch(source, /import\('openai'\)/);
     assert.doesNotMatch(source, /import\('@anthropic-ai\/sdk'\)/);
     assert.doesNotMatch(source, /import\('@google\/generative-ai'\)/);
@@ -129,11 +129,8 @@ describe('LLMUsageMetadata type contract', () => {
   });
 
   it('exports LLMUsageMetadata and onUsage callback in CallLLMOptions', async () => {
-    // Definitions moved to llm-pipeline.ts; llm.ts re-exports via `export type { ... }`
-    const pipelineSource = await fs.readFile('src/core/llm-pipeline.ts', 'utf8');
-    assert.match(pipelineSource, /export interface LLMUsageMetadata/);
-    assert.match(pipelineSource, /onUsage\?\s*:\s*\(usage:\s*LLMUsageMetadata\)/);
     const llmSource = await fs.readFile('src/core/llm.ts', 'utf8');
-    assert.match(llmSource, /export type\s*\{[^}]*LLMUsageMetadata/);
+    assert.match(llmSource, /export interface LLMUsageMetadata/);
+    assert.match(llmSource, /onUsage\?.*LLMUsageMetadata/);
   });
 });

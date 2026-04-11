@@ -1,5 +1,6 @@
 // Multi-provider LLM client - Grok, Claude, OpenAI, Gemini, Ollama + registry providers
 // Uses direct HTTP calls so package installs work without optional provider SDKs.
+import type { CallLLMOptions } from './llm-pipeline.js';
 import { resolveProvider, loadConfig, type LLMProvider } from './config.js';
 import { getProvider as getRegistryProvider, isRegisteredProvider } from './llm-provider.js';
 import { checkContextRot, truncateContext } from '../harvested/gsd/hooks/context-rot.js';
@@ -604,8 +605,71 @@ async function callOllama(prompt: string, model: string, baseUrl: string): Promi
   }
   return content;
 }
-export interface CallLLMOptions {
-  enrichContext?: boolean;
-  recordMemory?: boolean;
-  cwd?: string;
+export type { CallLLMOptions } from './llm-pipeline.js';
+
+// ─── Fetch injection seam ────────────────────────────────────────
+
+// Module-level fetch override for backward-compat with tests that use setLLMFetch/resetLLMFetch
+let _llmFetchOverride: typeof globalThis.fetch | undefined;
+
+/** Override the module-level fetch function (for test isolation) */
+export function setLLMFetch(fn: typeof globalThis.fetch): void {
+  _llmFetchOverride = fn;
+}
+
+/** Reset module-level fetch override (for test isolation) */
+export function resetLLMFetch(): void {
+  _llmFetchOverride = undefined;
+}
+
+// ─── Type Guards ─────────────────────────────────────────────────
+
+function isRecord(v: unknown): v is Record<string, unknown> {
+  return typeof v === 'object' && v !== null && !Array.isArray(v);
+}
+
+function getField(obj: unknown, key: string): unknown {
+  return isRecord(obj) ? obj[key] : undefined;
+}
+
+// ─── Usage Extraction (type-guarded) ─────────────────────────────
+
+export interface LLMUsageMetadata {
+  inputTokens: number;
+  outputTokens: number;
+}
+
+/** Extract token usage from an OpenAI-compatible response payload */
+export function extractOpenAIUsage(payload: unknown): LLMUsageMetadata | undefined {
+  const usage = getField(payload, 'usage');
+  if (!isRecord(usage)) return undefined;
+  const input = Number(usage.prompt_tokens ?? 0);
+  const output = Number(usage.completion_tokens ?? 0);
+  return (input > 0 || output > 0) ? { inputTokens: input, outputTokens: output } : undefined;
+}
+
+/** Extract token usage from a Claude/Anthropic response payload */
+export function extractClaudeUsage(payload: unknown): LLMUsageMetadata | undefined {
+  const usage = getField(payload, 'usage');
+  if (!isRecord(usage)) return undefined;
+  const input = Number(usage.input_tokens ?? 0);
+  const output = Number(usage.output_tokens ?? 0);
+  return (input > 0 || output > 0) ? { inputTokens: input, outputTokens: output } : undefined;
+}
+
+/** Extract token usage from a Gemini response payload */
+export function extractGeminiUsage(payload: unknown): LLMUsageMetadata | undefined {
+  const meta = getField(payload, 'usageMetadata');
+  if (!isRecord(meta)) return undefined;
+  const input = Number(meta.promptTokenCount ?? 0);
+  const output = Number(meta.candidatesTokenCount ?? 0);
+  return (input > 0 || output > 0) ? { inputTokens: input, outputTokens: output } : undefined;
+}
+
+/** Extract token usage from an Ollama response payload */
+export function extractOllamaUsage(payload: unknown): LLMUsageMetadata | undefined {
+  if (!isRecord(payload)) return undefined;
+  const input = Number(payload.prompt_eval_count ?? 0);
+  const output = Number(payload.eval_count ?? 0);
+  return (input > 0 || output > 0) ? { inputTokens: input, outputTokens: output } : undefined;
 }
