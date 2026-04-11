@@ -49,7 +49,7 @@ const COMMAND_REGISTRY: CommandEntry[] = [
   { name: 'retro', description: 'Project retrospective with metrics, delta scoring, and trend tracking', options: ['--summary', '--cwd <path>'], group: 'Intelligence' },
 
   { name: 'config', description: 'Manage API keys and LLM provider settings', options: ['--set-key <provider:key>', '--delete-key <provider>', '--provider <name>', '--model <provider:model>', '--show'], group: 'Tools' },
-  { name: 'setup', args: '<tool>', description: 'Interactive setup wizard for integrations (figma|assistants|goose)', options: ['--host <type>', '--assistants <list>', '--figma-url <url>', '--token-file <path>', '--no-test'], group: 'Tools' },
+  { name: 'setup', args: '<tool>', description: 'Interactive setup wizard for integrations (figma|assistants)', options: ['--host <type>', '--assistants <list>', '--figma-url <url>', '--token-file <path>', '--no-test'], group: 'Tools' },
   { name: 'doctor', description: 'System health check and diagnostics', options: ['--fix', '--live'], group: 'Tools' },
   { name: 'dashboard', description: 'Launch progress dashboard (local HTML, auto-closes in 5 min)', options: ['--port <number>'], group: 'Tools' },
   { name: 'compact', description: 'Compact audit log - summarize old entries to save context', options: [], group: 'Tools' },

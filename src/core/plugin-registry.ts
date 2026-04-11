@@ -158,8 +158,8 @@ export async function discoverPluginSkills(
             results.push({
               name,
               description,
-              source: 'plugin',
-              pluginName: plugin.name,
+              source: 'external',
+              // pluginName: plugin.name, // Not in SkillRegistryEntry type
               domain: classifyDomain(name, description),
               compatibility: { requiredTools: [], requiredFrameworks: [] },
               filePath: skillMdPath,
@@ -175,8 +175,8 @@ export async function discoverPluginSkills(
             results.push({
               name,
               description,
-              source: 'plugin',
-              pluginName: plugin.name,
+              source: 'external',
+              // pluginName: plugin.name, // Not in SkillRegistryEntry type
               domain: classifyDomain(name, description),
               compatibility: { requiredTools: [], requiredFrameworks: [] },
               filePath: skillMdPath,

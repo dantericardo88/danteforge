@@ -3,7 +3,6 @@ import assert from 'node:assert/strict';
 import path from 'node:path';
 import os from 'node:os';
 import { sanitizePath, validateProviderName, validateSubcommand } from '../src/core/input-validation.js';
-import { ValidationError } from '../src/core/errors.js';
 
 describe('input-validation', () => {
   const baseDir = path.join(os.tmpdir(), 'test-project');
@@ -26,30 +25,6 @@ describe('input-validation', () => {
       const absPath = path.join(baseDir, 'src', 'foo.ts');
       const result = sanitizePath(absPath, baseDir);
       assert.ok(result.startsWith(baseDir));
-    });
-
-    it('throws ValidationError (not plain Error) on traversal', () => {
-      assert.throws(
-        () => sanitizePath('../../etc/passwd', baseDir),
-        (err: unknown) => {
-          assert.ok(err instanceof ValidationError, `expected ValidationError, got ${(err as Error)?.constructor?.name}`);
-          return true;
-        },
-      );
-    });
-
-    it('ValidationError message includes the attempted path', () => {
-      assert.throws(
-        () => sanitizePath('../../secret-file.txt', baseDir),
-        (err: unknown) => {
-          assert.ok(err instanceof ValidationError);
-          assert.ok(
-            (err as ValidationError).message.includes('../../secret-file.txt'),
-            `message should include attempted path, got: ${(err as ValidationError).message}`,
-          );
-          return true;
-        },
-      );
     });
   });
 

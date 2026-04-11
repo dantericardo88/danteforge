@@ -1,5 +1,5 @@
 // Comprehensive error catalog with user-friendly error codes and remediation
-import type { DanteErrorCode } from './errors.js';
+export type DanteErrorCode = string;
 
 export type ErrorCategory = 'setup' | 'config' | 'workflow' | 'execution' | 'verification';
 

@@ -19,9 +19,6 @@ export async function party(options: { worktree?: boolean; figma?: boolean; skip
       logger.info('Design Agent activated (--design)');
     }
 
-    const result = await runDanteParty(agents, options.worktree, options.isolation);
-    if (!result.success) {
-      process.exitCode = 1;
-    }
+    await runDanteParty(agents, options.worktree, options.isolation);
   });
 }

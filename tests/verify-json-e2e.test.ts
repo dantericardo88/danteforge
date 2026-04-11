@@ -31,7 +31,7 @@ after(async () => {
 function runVerifyJson(cwd: string): { stdout: string; stderr: string; status: number | null } {
   const result = runTsxCli(['verify', '--json'], {
     cwd,
-    timeout: 60000,
+    timeout: 30000,
   });
   return {
     stdout: result.stdout,

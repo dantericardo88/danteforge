@@ -11,7 +11,7 @@ export type SkillDomain =
 export interface SkillRegistryEntry {
   name: string;
   description: string;
-  source: 'packaged' | 'user' | 'antigravity' | 'external' | 'plugin';
+  source: 'packaged' | 'user' | 'antigravity' | 'external';
   domain: SkillDomain;
   compatibility: {
     requiredTools: string[];
@@ -20,7 +20,6 @@ export interface SkillRegistryEntry {
   };
   filePath: string;
   importedAt?: string;
-  pluginName?: string;  // set when source === 'plugin'
 }
 
 // Domain classification keywords
@@ -90,39 +89,12 @@ function extractCompatibility(content: string): SkillRegistryEntry['compatibilit
   return { requiredTools: tools, requiredFrameworks: frameworks };
 }
 
-export interface BuildRegistryOptions extends SkillDiscoveryOptions {
-  includePlugins?: boolean;  // default: true
-  _pluginDiscovery?: () => Promise<SkillRegistryEntry[]>;
-  cwd?: string;
-}
-
 /**
- * Build a complete registry from all discovered skills, including plugin skills.
+ * Build a complete registry from all discovered skills.
  */
-export async function buildRegistry(options?: BuildRegistryOptions): Promise<SkillRegistryEntry[]> {
+export async function buildRegistry(options?: SkillDiscoveryOptions): Promise<SkillRegistryEntry[]> {
   const skills = await discoverSkills(options);
-  const entries = skills.map(skillToEntry);
-
-  if (options?.includePlugins !== false) {
-    try {
-      const pluginFn = options?._pluginDiscovery ?? (async () => {
-        const { discoverPluginSkills } = await import('./plugin-registry.js');
-        return discoverPluginSkills({ cwd: options?.cwd as string | undefined });
-      });
-      const pluginEntries = await pluginFn();
-      // Deduplicate by filePath — plugin skills don't overwrite packaged skills,
-      // and duplicate plugin entries (same filePath) are also deduplicated.
-      const existingPaths = new Set(entries.map((e) => e.filePath));
-      for (const pe of pluginEntries) {
-        if (!existingPaths.has(pe.filePath)) {
-          entries.push(pe);
-          existingPaths.add(pe.filePath);
-        }
-      }
-    } catch { /* plugin discovery failure never blocks main registry */ }
-  }
-
-  return entries;
+  return skills.map(skillToEntry);
 }
 
 function skillToEntry(skill: Skill): SkillRegistryEntry {

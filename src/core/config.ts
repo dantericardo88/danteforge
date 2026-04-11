@@ -71,16 +71,7 @@ const DEFAULT_BASE_URLS: Record<string, string> = {
 };
 
 export function getDefaultModel(provider: LLMProvider): string {
-  try {
-    const model = DEFAULT_MODELS[provider];
-    if (!model) {
-      throw new Error(`No default model configured for provider: ${provider}`);
-    }
-    return model;
-  } catch (error) {
-    // Fallback to safe default
-    return 'gpt-4o';
-  }
+  return DEFAULT_MODELS[provider] ?? 'gpt-4o';
 }
 
 export function getDefaultBaseUrl(provider: LLMProvider): string | undefined {

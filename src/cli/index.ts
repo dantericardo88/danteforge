@@ -7,23 +7,6 @@ import { loadState } from '../core/state.js';
 import { logger } from '../core/logger.js';
 import { enforceWorkflow } from '../core/workflow-enforcer.js';
 import { formatAndLogError } from '../core/format-error.js';
-import { logCommandStart, logCommandEnd } from '../core/structured-audit.js';
-
-// Helper to wrap command actions with audit logging
-function withAuditLogging(commandName: string, action: (...args: any[]) => any) {
-  return async (...args: any[]) => {
-    const correlationId = logCommandStart(commandName, undefined, process.cwd());
-    const startTime = Date.now();
-    try {
-      const result = await action(...args);
-      logCommandEnd(commandName, correlationId, 'success', Date.now() - startTime, process.cwd());
-      return result;
-    } catch (error) {
-      logCommandEnd(commandName, correlationId, 'failure', Date.now() - startTime, process.cwd());
-      throw error;
-    }
-  };
-}
 
 const program = new Command();
 program
@@ -42,7 +25,7 @@ program
 program
   .command('constitution')
   .description('Initialize project constitution and principles')
-  .action(withAuditLogging('constitution', commands.constitution));
+  .action(commands.constitution);
 
 program
   .command('specify <idea>')
@@ -51,14 +34,14 @@ program
   .option('--light', 'Skip hard gates for simple changes')
   .option('--ceo-review', 'Apply founder/CEO intent elevation before writing SPEC.md')
   .option('--refine', 'Inject PDSE score as context for iterative improvement')
-  .action(withAuditLogging('specify', async (idea, opts) => await commands.specify(idea, opts)));
+  .action(commands.specify);
 
 program
   .command('clarify')
   .description('Run clarification Q&A on current spec')
   .option('--prompt', 'Generate a copy-paste prompt instead of auto-generating')
   .option('--light', 'Skip hard gates for simple changes')
-  .action(withAuditLogging('clarify', commands.clarify));
+  .action(commands.clarify);
 
 program
   .command('plan')
@@ -67,12 +50,128 @@ program
   .option('--light', 'Skip hard gates for simple changes')
   .option('--ceo-review', 'Apply CEO-level strategic review before writing PLAN.md')
   .option('--refine', 'Inject PDSE score as context for iterative improvement')
-  .action(withAuditLogging('plan', commands.plan));
+  .action(commands.plan);
 
 program
-  .command('skills import')
-  .description('Import Antigravity skill bundle')
-  .action(withAuditLogging('skills-import', commands.skillsImport));
+  .command('tasks')
+  .description('Break plan into executable tasks')
+  .option('--prompt', 'Generate a copy-paste prompt instead of auto-generating')
+  .option('--light', 'Skip hard gates for simple changes')
+  .action(commands.tasks);
+
+program
+  .command('design <prompt>')
+  .description('Generate design artifacts from natural language via OpenPencil Design-as-Code engine')
+  .option('--prompt', 'Generate a copy-paste prompt instead of auto-executing')
+  .option('--light', 'Skip hard gates')
+  .option('--format <type>', 'Export format: jsx | vue | html', 'jsx')
+  .option('--parallel', 'Enable spatial parallel decomposition')
+  .option('--worktree', 'Run in isolated git worktree')
+  .action(commands.design);
+
+program
+  .command('ux-refine')
+  .description('Explicit UX refinement: use --openpencil for local DESIGN.op extraction or --prompt for guided Figma/manual refinement')
+  .option('--prompt', 'Generate a copy-paste prompt instead of auto-executing')
+  .option('--light', 'Skip hard gates for simple changes')
+  .option('--host <type>', 'Specify host editor (claude-code|cursor|codex|vscode|windsurf|auto)', 'auto')
+  .option('--figma-url <url>', 'Figma file URL to sync with')
+  .option('--token-file <path>', 'Path to design tokens file')
+  .option('--skip-ux', 'Skip UX refinement entirely')
+  .option('--after-forge', 'Confirm running after forge pass (skip auto-detect)')
+  .option('--openpencil', 'Use local OpenPencil engine instead of Figma MCP')
+  .option('--lint', 'Run design rules engine against DESIGN.op')
+  .option('--live', 'Capture live browser screenshot and accessibility as UX evidence')
+  .option('--url <url>', 'URL to capture (requires --live)')
+  .action(commands.uxRefine);
+
+program
+  .command('forge [phase]')
+  .description('Execute development waves with agent orchestration')
+  .option('--parallel', 'Enable parallel wave execution')
+  .option('--profile <type>', 'quality | balanced | budget', 'balanced')
+  .option('--prompt', 'Generate copy-paste prompts for each task instead of executing')
+  .option('--light', 'Skip hard gates for simple changes')
+  .option('--worktree', 'Run execution in an isolated git worktree')
+  .option('--figma', 'Use the prompt-driven Figma refinement path during this wave (requires --prompt)')
+  .option('--skip-ux', 'Skip UX refinement even with --figma')
+  .action(commands.forge);
+
+program
+  .command('party')
+  .description('Launch multi-agent collaboration mode')
+  .option('--worktree', 'Create isolated worktrees for each agent')
+  .option('--isolation', 'Run each agent through subagent isolation and dual-stage review')
+  .option('--figma', 'Legacy compatibility flag; use ux-refine separately for Figma workflows')
+  .option('--skip-ux', 'Skip UX refinement even with --figma')
+  .option('--design', 'Activate Design Agent for UI generation via OpenPencil')
+  .option('--no-design', 'Exclude Design Agent from party mode')
+  .action(commands.party);
+
+program
+  .command('review')
+  .description('Scan existing repo -> generate CURRENT_STATE.md')
+  .option('--prompt', 'Generate a copy-paste prompt for Claude Code / ChatGPT instead of local/API')
+  .action(commands.review);
+
+program
+  .command('browse <subcommand> [args...]')
+  .description('Browser automation — navigate, screenshot, inspect live apps')
+  .option('--url <url>', 'Target URL (shorthand for goto)')
+  .option('--port <port>', 'Override browse daemon port', '9400')
+  .action(commands.browse);
+
+program
+  .command('qa')
+  .description('Structured QA pass with health score on live app')
+  .requiredOption('--url <url>', 'Staging or production URL to test')
+  .option('--type <mode>', 'QA mode: full | quick | regression', 'full')
+  .option('--baseline <path>', 'Baseline JSON for regression comparison')
+  .option('--save-baseline', 'Save current report as new baseline')
+  .option('--fail-below <score>', 'Exit code 1 if score below threshold', '0')
+  .action(commands.qa);
+
+program
+  .command('verify')
+  .description('Run verification checks on project state & artifacts')
+  .option('--release', 'Include release/build/package verification checks')
+  .option('--live', 'Run live browser checks on deployed app')
+  .option('--url <url>', 'URL to verify against (requires --live)')
+  .option('--recompute', 'Re-detect project type and recompute completion scores')
+  .action(commands.verify);
+
+program
+  .command('synthesize')
+  .description('Generate Ultimate Planning Resource (UPR.md) from all artifacts')
+  .action(commands.synthesize);
+
+program
+  .command('feedback')
+  .description('Generate prompt from UPR.md for LLM refinement (closes the loop)')
+  .option('--auto', 'Send directly to a live provider instead of generating a copy-paste prompt')
+  .action(commands.feedbackPrompt);
+
+program
+  .command('import <file>')
+  .description('Import an LLM-generated file into .danteforge/')
+  .option('--as <name>', 'Save as a specific filename (default: keep original name)')
+  .action(commands.importFile);
+
+const skillsCommand = program
+  .command('skills')
+  .description('Manage DanteForge skill catalogs and imports')
+  .addHelpText('after', '\nSubcommands: import --from <source> [--bundle <name>] [--allow-overwrite] [--enhance]');
+
+skillsCommand
+  .command('import')
+  .description('Import one Antigravity bundle into the packaged DanteForge skills catalog, or export skills to an agent tool directory')
+  .option('--from <source>', 'Source catalog to import from (antigravity)')
+  .option('--bundle <name>', 'Bundle name from docs/BUNDLES.md (default: Essentials)')
+  .option('--allow-overwrite', 'Replace an existing packaged skill when the imported skill name collides')
+  .option('--enhance', 'Apply DanteForge wrappers to imported skills')
+  .option('--export', 'Export packaged skills to a target agent tool directory')
+  .option('--target <agent>', 'Export target: claude-code, codex, cursor, windsurf, or all (default: claude-code)')
+  .action(commands.skillsImport);
 
 program
   .command('config')
@@ -82,78 +181,67 @@ program
   .option('--provider <name>', 'Set default provider (grok, claude, openai, gemini, ollama)')
   .option('--model <provider:model>', 'Set model for provider (e.g., "grok:grok-3")')
   .option('--show', 'Show current configuration')
-  .action(withAuditLogging('config', commands.configCmd));
+  .action(commands.configCmd);
 
 program
   .command('debug <issue>')
   .description('Systematic 4-phase debugging framework')
   .option('--prompt', 'Generate a copy-paste prompt instead of auto-executing')
-  .action(withAuditLogging('debug', async (issue, opts) => await commands.debug(issue, opts)));
+  .action(commands.debug);
 
 program
   .command('compact')
   .description('Compact audit log - summarize old entries to save context')
-  .action(withAuditLogging('compact', commands.compact));
+  .action(commands.compact);
 
 program
   .command('setup')
-  .argument('<tool>', 'Tool to set up (figma|assistants|ollama)')
+  .argument('<tool>', 'Tool to set up (figma|assistants)')
   .description('Interactive setup wizard for integrations')
   .option('--host <type>', 'Specify host editor', 'auto')
   .option('--assistants <list>', 'Comma-separated assistant list (claude,codex,antigravity|gemini,opencode,cursor,all). Defaults to user-level assistants only; cursor is explicit.')
   .option('--figma-url <url>', 'Figma file URL')
   .option('--token-file <path>', 'Design tokens file path')
   .option('--no-test', 'Skip connection test')
-  .addHelpText('after', '\nSubcommands: figma, assistants, ollama')
-  .action(withAuditLogging('setup', async (tool: string, options) => {
+  .addHelpText('after', '\nSubcommands: figma, assistants')
+  .action((tool: string, options) => {
     if (tool === 'figma') return commands.setupFigma(options);
     if (tool === 'assistants') return commands.setupAssistants(options);
-    if (tool === 'ollama') {
-      if (options.host === 'codex') {
-        logger.info('Native Codex workflows already use the host model/session — no Ollama required for Codex.');
-        logger.info('Codex executes workflow commands through its own model context automatically.');
-      }
-      logger.info('Install Ollama from https://ollama.com/download');
-      logger.info('Recommended spend-saver model: qwen2.5-coder:7b');
-      logger.info('After install: ollama pull qwen2.5-coder:7b');
-      logger.info('Then set in DanteForge: danteforge config --set-key "ollama:qwen2.5-coder:7b"');
-      return;
-    }
     logger.error(`Unknown tool: ${tool}. Available: figma, assistants`);
-  }));
+  });
 
 program
   .command('doctor')
   .description('System health check and diagnostics')
   .option('--fix', 'Attempt to auto-fix issues')
   .option('--live', 'Run live connectivity checks for providers, upstreams, registries, and Figma MCP')
-  .action(withAuditLogging('doctor', commands.doctor));
+  .action(commands.doctor);
 
 program
   .command('dashboard')
   .description('Launch progress dashboard (local HTML, auto-closes in 5 min)')
   .option('--port <number>', 'Port to serve on', '4242')
-  .action(withAuditLogging('dashboard', commands.dashboard));
+  .action(commands.dashboard);
 
 program
   .command('spark [goal]')
   .description('Zero-token planning preset: review -> constitution -> specify -> clarify -> tech-decide -> plan -> tasks')
   .option('--prompt', 'Generate the preset plan without executing')
   .option('--skip-tech-decide', 'Skip the tech-decide step when the stack is already decided')
-  .action(withAuditLogging('spark', async (goal, opts) => await commands.spark(goal, {
+  .action((goal, opts) => commands.spark(goal, {
     prompt: opts.prompt,
     skipTechDecide: opts.skipTechDecide,
-  })));
+  }));
 
 program
   .command('ember [goal]')
   .description('Very low-token preset for quick features and light checkpoints')
   .option('--profile <type>', 'quality | balanced | budget', 'budget')
   .option('--prompt', 'Generate the preset plan without executing')
-  .action(withAuditLogging('ember', async (goal, opts) => await commands.ember(goal, {
+  .action((goal, opts) => commands.ember(goal, {
     profile: opts.profile,
     prompt: opts.prompt,
-  })));
+  }));
 
 program
   .command('canvas [goal]')
@@ -161,42 +249,416 @@ program
   .option('--profile <type>', 'quality | balanced | budget', 'budget')
   .option('--prompt', 'Generate the preset plan without executing')
   .option('--design-prompt <text>', 'Override the prompt passed to the design step')
-  .action(withAuditLogging('canvas', async (goal, opts) => await commands.canvas(goal, {
+  .action((goal, opts) => commands.canvas(goal, {
     profile: opts.profile,
     prompt: opts.prompt,
     designPrompt: opts.designPrompt,
-  })));
+  }));
+
+program
+  .command('magic [goal]')
+  .description('Balanced preset and default hero command for most follow-up work')
+  .option('--level <level>', 'spark | ember | canvas | magic | blaze | nova | inferno', 'magic')
+  .option('--profile <type>', 'quality | balanced | budget', 'budget')
+  .option('--skip-ux', 'Skip UX refinement')
+  .option('--host <type>', 'Specify host editor for MCP', 'auto')
+  .option('--prompt', 'Generate the preset plan without executing')
+  .option('--worktree', 'Run heavy preset execution inside an isolated git worktree')
+  .option('--isolation', 'Use isolation when a preset escalates into party mode')
+  .option('--max-repos <n>', 'Maximum repos for inferno OSS discovery', '12')
+  .action((goal, opts) => commands.magic(goal, {
+    level: opts.level,
+    profile: opts.profile,
+    skipUx: opts.skipUx,
+    host: opts.host,
+    prompt: opts.prompt,
+    worktree: opts.worktree,
+    isolation: opts.isolation,
+    maxRepos: parseInt(opts.maxRepos, 10),
+  }));
+
+program
+  .command('blaze [goal]')
+  .description('High-power preset: full party + strong autoforge + synthesize + retro + self-improve')
+  .option('--profile <type>', 'quality | balanced | budget', 'budget')
+  .option('--prompt', 'Generate the preset plan without executing')
+  .option('--worktree', 'Run in an isolated git worktree')
+  .option('--isolation', 'Run party with isolation enabled')
+  .option('--with-design', 'Add design + ux-refine steps to the pipeline')
+  .option('--design-prompt <text>', 'Prompt to pass to the design step')
+  .action((goal, opts) => commands.blaze(goal, {
+    profile: opts.profile,
+    prompt: opts.prompt,
+    worktree: opts.worktree,
+    isolation: opts.isolation,
+    withDesign: opts.withDesign,
+    designPrompt: opts.designPrompt,
+  }));
+
+program
+  .command('nova [goal]')
+  .description('Very-high-power preset: planning prefix + blaze execution + inferno polish (no OSS)')
+  .option('--profile <type>', 'quality | balanced | budget', 'budget')
+  .option('--prompt', 'Generate the preset plan without executing')
+  .option('--worktree', 'Run in an isolated git worktree')
+  .option('--isolation', 'Run party with isolation enabled')
+  .option('--tech-decide', 'Add a tech-decide step after the planning prefix')
+  .option('--with-design', 'Add design + ux-refine steps to the pipeline')
+  .option('--design-prompt <text>', 'Prompt to pass to the design step')
+  .action((goal, opts) => commands.nova(goal, {
+    profile: opts.profile,
+    prompt: opts.prompt,
+    worktree: opts.worktree,
+    isolation: opts.isolation,
+    withTechDecide: opts.techDecide,
+    withDesign: opts.withDesign,
+    designPrompt: opts.designPrompt,
+  }));
+
+program
+  .command('inferno [goal]')
+  .description('Maximum-power preset: OSS mining + full implementation + evolution')
+  .option('--profile <type>', 'quality | balanced | budget', 'budget')
+  .option('--prompt', 'Generate the preset plan without executing')
+  .option('--worktree', 'Run in an isolated git worktree')
+  .option('--isolation', 'Run party with isolation enabled')
+  .option('--max-repos <n>', 'Maximum repos for OSS discovery', '12')
+  .option('--with-design', 'Add design + ux-refine steps to the pipeline')
+  .option('--design-prompt <text>', 'Prompt to pass to the design step')
+  .option('--local-sources <paths>', 'Comma-separated local repo or folder paths to harvest first')
+  .option('--local-depth <level>', 'Harvest depth for local sources: shallow|medium|full', 'medium')
+  .option('--local-config <path>', 'YAML config file listing local sources')
+  .action((goal, opts) => commands.inferno(goal, {
+    profile: opts.profile,
+    prompt: opts.prompt,
+    worktree: opts.worktree,
+    isolation: opts.isolation,
+    maxRepos: parseInt(opts.maxRepos, 10),
+    withDesign: opts.withDesign,
+    designPrompt: opts.designPrompt,
+    localSources: opts.localSources?.split(',').map((source: string) => source.trim()).filter(Boolean),
+    localDepth: opts.localDepth,
+    localSourcesConfig: opts.localConfig,
+  }));
+
+program
+  .command('workflow')
+  .description('Show the 12-stage pipeline with your current position highlighted')
+  .action(async () => {
+    const { workflow } = await import('./commands/workflow.js');
+    await workflow();
+  });
+
+program
+  .command('help [query]')
+  .description('Context-aware guidance engine')
+  .action(commands.helpCmd);
+
+program
+  .command('docs')
+  .description('Generate or update the command reference documentation')
+  .action(commands.docs);
+
+program
+  .command('update-mcp')
+  .description('Manual MCP self-healing - check for protocol updates and apply safely')
+  .option('--prompt', 'Generate a copy-paste prompt instead of auto-executing')
+  .option('--apply', 'Apply recommended updates after review')
+  .option('--check', 'Check-only mode (no changes)')
+  .action(commands.updateMcp);
+
+program
+  .command('tech-decide')
+  .description('Guided tech stack selection - 3-5 options per category with pros/cons')
+  .option('--prompt', 'Generate a copy-paste prompt instead of auto-executing')
+  .option('--auto', 'Accept all recommended defaults without interactive review')
+  .action(commands.techDecide);
+
+program
+  .command('lessons [correction]')
+  .description('Self-improving lessons - capture corrections, view rules, auto-compact')
+  .option('--prompt', 'Generate a copy-paste prompt instead of auto-executing')
+  .option('--compact', 'Force compaction of lessons file')
+  .action(commands.lessons);
+
+program
+  .command('autoforge [goal]')
+  .description('Deterministic auto-orchestration of the full DanteForge pipeline')
+  .option('--dry-run', 'Show plan without executing')
+  .option('--max-waves <n>', 'Max steps before checkpoint', '3')
+  .option('--profile <type>', 'quality | balanced | budget', 'balanced')
+  .option('--parallel', 'Run forge steps in parallel lanes when execution begins')
+  .option('--worktree', 'Run forge steps in an isolated git worktree')
+  .option('--light', 'Skip hard gates')
+  .option('--prompt', 'Generate copy-paste prompt describing what autoforge would do')
+  .option('--score-only', 'Score existing artifacts and write AUTOFORGE_GUIDANCE.md — no execution')
+  .option('--auto', 'Run autonomous loop until 95% completion or BLOCKED state')
+  .option('--force', 'Override one BLOCKED artifact for one cycle (logged to audit trail)')
+  .option('--pause-at <score>', 'Pause the loop when average PDSE score reaches this value')
+  .action((goal, opts) => commands.autoforge(goal, {
+    dryRun: opts.dryRun,
+    maxWaves: parseInt(opts.maxWaves, 10),
+    light: opts.light,
+    prompt: opts.prompt,
+    scoreOnly: opts.scoreOnly,
+    auto: opts.auto,
+    force: opts.force,
+    profile: opts.profile,
+    parallel: opts.parallel,
+    worktree: opts.worktree,
+    pauseAt: opts.pauseAt !== undefined ? parseInt(opts.pauseAt, 10) : undefined,
+  }));
+
+program
+  .command('resume')
+  .description('Resume a paused autoforge loop from the last checkpoint')
+  .action(() => commands.resumeAutoforge());
+
+program
+  .command('awesome-scan')
+  .description('Discover, classify, and import skills across all sources')
+  .option('--source <path>', 'Scan an external directory for skills')
+  .option('--domain <type>', 'Filter by domain (security|fullstack|devops|ux|backend|frontend|data|testing|architecture|general)')
+  .option('--install', 'Import compatible external skills')
+  .action(commands.awesomeScan);
+
+program
+  .command('profile [subcommand] [arg]')
+  .description('Model personality profiles — view learned behavioral patterns per model')
+  .option('--prompt', 'Generate a copy-paste prompt instead of displaying')
+  .addHelpText('after', '\nSubcommands: (none)=summary, compare, report, weakness <model>, recommend <task>')
+  .action((subcommand, arg, opts) => commands.profile(subcommand, arg, { prompt: opts.prompt }));
+
+program
+  .command('retro')
+  .description('Project retrospective with metrics, delta scoring, and trend tracking')
+  .option('--summary', 'Print trend summary of last 5 retros')
+  .option('--cwd <path>', 'Project directory')
+  .action(commands.retro);
+
+program
+  .command('maturity')
+  .description('Assess current code maturity level with founder-friendly quality report')
+  .option('--preset <level>', 'Target preset level (spark|ember|canvas|magic|blaze|nova|inferno)')
+  .option('--json', 'Output JSON instead of plain text')
+  .option('--cwd <path>', 'Project directory')
+  .action((opts) => commands.maturity({
+    preset: opts.preset,
+    json: opts.json,
+    cwd: opts.cwd,
+  }));
+
+program
+  .command('ship')
+  .description('Paranoid release guidance + version bump plan + changelog draft')
+  .option('--dry-run', 'Run checks and generate guidance without changing the audit intent')
+  .option('--skip-review', 'Skip pre-landing review (emergency only, logged to audit)')
+  .action(commands.ship);
+
+program
+  .command('oss')
+  .description('Auto-detect project, search OSS, clone, license-gate, scan, extract patterns, report')
+  .option('--prompt', 'Generate a copy-paste research plan prompt instead of executing')
+  .option('--dry-run', 'Show what would be searched without cloning')
+  .option('--max-repos <n>', 'Maximum repos to clone and analyze (default: 8)', '8')
+  .action((opts) => commands.ossResearcher({
+    prompt: opts.prompt,
+    dryRun: opts.dryRun,
+    maxRepos: opts.maxRepos,
+  }));
+
+program
+  .command('local-harvest [paths...]')
+  .description('Harvest patterns from local private repos, folders, and zip archives')
+  .option('--config <path>', 'YAML config file listing sources (.danteforge/local-sources.yaml)')
+  .option('--depth <level>', 'shallow | medium | full (default: medium)', 'medium')
+  .option('--prompt', 'Show harvest plan without executing')
+  .option('--dry-run', 'Detect source types without reading')
+  .option('--max-sources <n>', 'Maximum sources to analyze (default: 5)', '5')
+  .action((paths, opts) => commands.localHarvest(paths ?? [], {
+    config: opts.config,
+    depth: opts.depth,
+    prompt: opts.prompt,
+    dryRun: opts.dryRun,
+    maxSources: parseInt(opts.maxSources, 10),
+  }));
+
+program
+  .command('autoresearch <goal>')
+  .description('Autonomous metric-driven optimization loop — plan, rewrite, execute, evaluate, keep winners')
+  .option('--metric <metric>', 'How to measure success (e.g., "startup time ms", "bundle size KB")')
+  .option('--time <budget>', 'Time budget (e.g., "4h", "30m")', '4h')
+  .option('--prompt', 'Generate a copy-paste prompt instead of executing')
+  .option('--dry-run', 'Show the experiment plan without running')
+  .action((goal, opts) => commands.autoResearch(goal, {
+    metric: opts.metric,
+    time: opts.time,
+    prompt: opts.prompt,
+    dryRun: opts.dryRun,
+  }));
+
+program
+  .command('harvest <system>')
+  .description('Titan Harvest V2 — 5-step constitutional harvest of OSS patterns with hash-verifiable ratification')
+  .option('--prompt', 'Display the 5-step copy-paste template without calling the LLM')
+  .option('--lite', 'Run in SEP-LITE mode (Steps 1-3 + 5 only, 2-3 donors, 2-4 organs)')
+  .action(commands.harvest);
+
+program
+  .command('premium [subcommand]')
+  .description('Manage premium tier, license, and audit trail')
+  .option('--key <key>', 'License key for activation')
+  .option('--tier <tier>', 'License tier for keygen: pro or enterprise', 'pro')
+  .option('--days <n>', 'Days until expiry for keygen (default: 365)', '365')
+  .action((subcommand, opts) => commands.premium(subcommand ?? 'status', { key: opts.key, tier: opts.tier, days: opts.days }));
+
+program
+  .command('mcp-server')
+  .description('Start DanteForge MCP server over stdio — for Claude Code, Codex, Cursor')
+  .action(() => commands.mcpServer());
+
+program
+  .command('publish-check')
+  .description('Pre-publish validation gate — 12 parallel checks before npm publish')
+  .option('--json', 'Output machine-readable JSON')
+  .action((opts) => commands.publishCheck({ json: opts.json }));
+
+program
+  .command('audit-export')
+  .description('Export audit trail to JSON, CSV, or Markdown for compliance reporting')
+  .option('--format <type>', 'Output format: json, csv, markdown (default: json)', 'json')
+  .option('--since <date>', 'Filter entries since ISO date (e.g., 2026-01-01)')
+  .option('--output <path>', 'Write to file instead of stdout')
+  .option('--json', 'Machine-readable JSON output')
+  .action(async (opts) => {
+    const { auditExport } = await import('./commands/audit-export.js');
+    await auditExport(opts);
+  });
+
+program
+  .command('assess')
+  .description('Harsh self-assessment: score all 18 dimensions, benchmark vs 27 competitors, generate masterplan')
+  .option('--no-harsh', 'Use normal PDSE thresholds instead of harsh mode')
+  .option('--no-competitors', 'Skip competitor benchmarking')
+  .option('--min-score <n>', 'Target score threshold (default: 9.0)', '9.0')
+  .option('--json', 'Output machine-readable JSON')
+  .option('--preset <level>', 'Preset for target maturity level')
+  .option('--cwd <path>', 'Project directory')
+  .action(async (opts) => {
+    try {
+      await commands.assess({
+        harsh: opts.harsh !== false,
+        competitors: opts.competitors !== false,
+        minScore: parseFloat(opts.minScore),
+        json: opts.json,
+        preset: opts.preset,
+        cwd: opts.cwd,
+      });
+    } catch (err) {
+      formatAndLogError(err, 'assess');
+      process.exitCode = 1;
+    }
+  });
 
 program
   .command('self-improve [goal]')
-  .description('Run autonomous quality loop until target score achieved')
-  .option('--level <number>', 'Target maturity level (1-6)', '4')
-  .option('--profile <type>', 'quality | balanced | budget', 'quality')
-  .option('--prompt', 'Generate the improvement plan without executing')
-  .action(withAuditLogging('self-improve', async (goal, opts) => await commands.selfImprove({
+  .description('Autonomous quality loop: assess → forge gaps → verify → repeat until 9+/10')
+  .option('--min-score <n>', 'Target score threshold (default: 9.0)', '9.0')
+  .option('--max-cycles <n>', 'Safety limit on loop cycles (default: 20)', '20')
+  .option('--focus <dimension>', 'Focus on a specific dimension')
+  .option('--preset <level>', 'Preset for target maturity level')
+  .option('--cwd <path>', 'Project directory')
+  .action((goal, opts) => void commands.selfImprove({
     goal,
-    minScore: parseFloat(opts.level) * 1.5, // Convert level to score
-    maxCycles: 20,
-    preset: opts.profile,
+    minScore: parseFloat(opts.minScore),
+    maxCycles: parseInt(opts.maxCycles, 10),
+    focusDimensions: opts.focus ? [opts.focus] : undefined,
+    preset: opts.preset,
     cwd: opts.cwd,
-  })));
+  }));
 
 program
-  .command('performance')
-  .description('Performance monitoring and regression detection')
-  .option('--monitor', 'Show performance metrics')
-  .option('--costs', 'Show cost tracking')
-  .option('--baseline', 'Update performance baseline')
-  .option('--check', 'Check for performance regression')
-  .action(withAuditLogging('performance', async (opts) => {
-    try {
-      await commands.performance(opts);
-    } catch (error) {
-      const message = error instanceof Error ? error.message : String(error);
-      console.error(`Performance command failed: ${message}`);
-      console.error('Usage: danteforge performance --help');
-      process.exit(1);
-    }
+  .command('define-done')
+  .description('Define what "9+" means — sets the completion target used by assess and self-improve')
+  .option('--reset', 'Clear existing target and re-prompt')
+  .option('--cwd <path>', 'Project directory')
+  .action((opts) => void commands.defineDone({
+    reset: opts.reset,
+    cwd: opts.cwd,
+  }));
+
+program
+  .command('universe')
+  .description('View the competitive feature universe — all unique capabilities across competitors, scored')
+  .option('--refresh', 'Force rebuild of feature universe from competitors')
+  .option('--json', 'Output machine-readable JSON')
+  .option('--cwd <path>', 'Project directory')
+  .action((opts) => void commands.universe({
+    refresh: opts.refresh,
+    json: opts.json,
+    cwd: opts.cwd,
+  }));
+
+program
+  .command('workspace <subcommand> [args...]')
+  .description('Manage workspaces for multi-user projects')
+  .option('--role <role>', 'Member role: owner, editor, reviewer', 'editor')
+  .action(async (subcommand: string, args: string[], options: { role?: string }) => {
+    await commands.workspace(subcommand, args ?? [], options);
+  });
+
+// First-run detection — suggest init when no .danteforge/ exists
+program.hook('preAction', (_thisCommand, actionCommand) => {
+  const skip = new Set(['init', 'config', 'doctor', 'help', 'setup', 'skills', 'docs', 'premium', 'workflow', 'mcp-server', 'publish-check']);
+  if (skip.has(actionCommand.name())) return;
+  if (!existsSync('.danteforge')) {
+    logger.info('Tip: No .danteforge/ directory found. Run "danteforge init" to set up your project.');
+  }
+});
+
+program.hook('preAction', () => {
+  const opts = program.opts();
+  if (opts.quiet) logger.setLevel('error');
+  else if (opts.verbose) logger.setLevel('verbose');
+});
+
+program.hook('preAction', async (_thisCommand, actionCommand) => {
+  const opts = actionCommand.optsWithGlobals?.() ?? actionCommand.opts();
+  await enforceWorkflow(actionCommand.name(), undefined, Boolean(opts.light));
+});
+
+// Command group help for discoverability
+program.addHelpText('after', `
+Command Groups:
+  Pipeline:       init, constitution, specify, clarify, plan, tasks, forge, verify, synthesize
+  Automation:     spark, ember, canvas, magic, blaze, nova, inferno, autoforge, autoresearch, party
+  Design:         design, ux-refine, browse, qa
+  Intelligence:   tech-decide, debug, lessons, profile, oss, local-harvest, harvest, retro
+  Self-Assessment: assess, self-improve, maturity
+  Tools:          config, setup, doctor, dashboard, compact, import, skills, ship, premium, publish-check, mcp-server
+  Meta:           help, review, feedback, update-mcp, awesome-scan, docs, workflow
+
+Run "danteforge help <command>" for detailed help on any command.
+Run "danteforge init" to set up a new project.
+
+Common flags:
+  --light          Skip hard gates (constitution, spec, plan, tests)
+  --prompt         Generate copy-paste prompt instead of auto-executing
+  --profile <name> Use a specific quality profile
+  --worktree       Run in isolated git worktree
+  --verbose        Show debug output
+`);
+
+program
+  .command('wiki-ingest')
+  .description('Ingest raw source files into compiled wiki entity pages')
+  .option('--bootstrap', 'Seed wiki from existing .danteforge/ artifacts')
+  .option('--prompt', 'Show the command without executing')
+  .option('--cwd <path>', 'Project directory')
+  .action((opts) => void commands.wikiIngestCommand({
+    bootstrap: opts.bootstrap,
+    prompt: opts.prompt,
+    cwd: opts.cwd,
   }));
 
 program
@@ -205,32 +667,32 @@ program
   .option('--heuristic-only', 'Skip LLM calls (zero-cost mode)')
   .option('--prompt', 'Show the command without executing')
   .option('--cwd <path>', 'Project directory')
-  .action(withAuditLogging('wiki-lint', async (opts) => void commands.wikiLintCommand({
+  .action((opts) => void commands.wikiLintCommand({
     heuristicOnly: opts.heuristicOnly,
     prompt: opts.prompt,
     cwd: opts.cwd,
-  })));
+  }));
 
 program
   .command('wiki-query <topic>')
   .description('Search wiki for entity pages, decisions, and patterns relevant to a topic')
   .option('--json', 'Output machine-readable JSON')
   .option('--cwd <path>', 'Project directory')
-  .action(withAuditLogging('wiki-query', async (topic, opts) => void commands.wikiQueryCommand({
+  .action((topic, opts) => void commands.wikiQueryCommand({
     topic,
     json: opts.json,
     cwd: opts.cwd,
-  })));
+  }));
 
 program
   .command('wiki-status')
   .description('Display wiki health metrics: pages, link density, staleness, lint pass rate, anomalies')
   .option('--json', 'Output machine-readable JSON')
   .option('--cwd <path>', 'Project directory')
-  .action(withAuditLogging('wiki-status', async (opts) => void commands.wikiStatusCommand({
+  .action((opts) => void commands.wikiStatusCommand({
     json: opts.json,
     cwd: opts.cwd,
-  })));
+  }));
 
 program
   .command('wiki-export')
@@ -238,198 +700,12 @@ program
   .option('--format <type>', 'Export format: obsidian or html (default: obsidian)', 'obsidian')
   .option('--out <dir>', 'Output directory path')
   .option('--cwd <path>', 'Project directory')
-  .action(withAuditLogging('wiki-export', async (opts) => void commands.wikiExportCommand({
+  .action((opts) => void commands.wikiExportCommand({
     format: opts.format as 'obsidian' | 'html',
     out: opts.out,
     cwd: opts.cwd,
-  })));
-
-program
-  .command('quickstart [idea]')
-  .description('Guided 5-minute path: init → constitution → spark → PDSE score')
-  .option('--non-interactive', 'Skip all prompts (CI mode)')
-  .action(withAuditLogging('quickstart', async (idea, opts) => void commands.quickstart({ idea, nonInteractive: opts.nonInteractive })));
-
-program
-  .command('plugin <subcommand> [args...]')
-  .description('Manage community skill plugins: install, list, remove')
-  .action(withAuditLogging('plugin', async (subcommand: string, args: string[]) => {
-    await commands.pluginCommand(subcommand as 'install' | 'list' | 'remove', args ?? []);
   }));
-
-
-
-program
-  .command('benchmark-llm')
-  .description('Run A/B LLM benchmark: raw prompt vs DanteForge-structured context')
-  .argument('[task]', 'Task description to benchmark')
-  .option('--compare', 'Show historical comparison')
-  .option('--no-save', 'Skip saving results')
-  .action(withAuditLogging('benchmark-llm', async (task: string | undefined, opts: { compare?: boolean; save?: boolean }) => {
-    await commands.benchmarkLLM({ task, compare: opts.compare, save: opts.save });
-  }));
-
-program
-  .command('explain [term]')
-  .description('Plain-English glossary — explain any DanteForge term or list all terms')
-  .option('--list', 'List all glossary terms with one-line descriptions')
-  .action(withAuditLogging('explain', async (term, opts) => await commands.explain({ term, list: opts.list })));
-
-program
-  .command('pack [output]')
-  .description('Pack workspace into a single AI-ready context bundle (Repomix-style)')
-  .option('--format <type>', 'Output format: xml | markdown | plain', 'markdown')
-  .option('--include <patterns>', 'Comma-separated glob patterns to include')
-  .option('--exclude <patterns>', 'Comma-separated patterns to exclude')
-  .option('--token-count', 'Show token summary only (no file content)')
-  .option('--no-gitignore', 'Ignore .gitignore patterns')
-  .action(withAuditLogging('pack', async (output, opts) => void commands.pack({
-    output,
-    format: opts.format as 'xml' | 'markdown' | 'plain',
-    include: opts.include?.split(',').map((s: string) => s.trim()).filter(Boolean),
-    exclude: opts.exclude?.split(',').map((s: string) => s.trim()).filter(Boolean),
-    tokenCount: opts.tokenCount,
-    gitignore: opts.gitignore !== false,
-  })));
-
-program
-  .command('ci-setup')
-  .description('Generate CI/CD pipeline config with DanteForge quality gate (GitHub/GitLab/Bitbucket)')
-  .option('--provider <name>', 'CI provider: github | gitlab | bitbucket', 'github')
-  .option('--branch <name>', 'Branch to trigger on', 'main')
-  .option('--output-dir <path>', 'Override output directory for the generated file')
-  .action(withAuditLogging('ci-setup', async (opts) => void commands.ciSetup({
-    provider: opts.provider as 'github' | 'gitlab' | 'bitbucket',
-    branch: opts.branch,
-    outputDir: opts.outputDir,
-  })));
-
-program
-  .command('proof')
-  .description('Measure AI context quality improvement — compare raw prompt vs DanteForge structured artifacts')
-  .option('--prompt <text>', 'Raw prompt to score against DanteForge artifacts')
-  .option('--cwd <path>', 'Project directory')
-  .action(withAuditLogging('proof', async (opts) => void commands.proof({
-    prompt: opts.prompt,
-    cwd: opts.cwd ?? process.cwd(),
-  })));
-
-program
-  .command('sync-context')
-  .description('Generate project-specific context files for Cursor, Claude Code, and Codex from live state')
-  .option('--target <name>', 'Target tool: cursor | claude | codex | all (default: all)', 'all')
-  .option('--cwd <path>', 'Project directory')
-  .action(withAuditLogging('sync-context', async (opts) => void commands.syncContext({
-    target: opts.target as 'cursor' | 'claude' | 'codex' | 'all',
-    cwd: opts.cwd ?? process.cwd(),
-  })));
-
-program
-  .command('demo')
-  .description('Show DanteForge proof of value — before/after AI context quality scores (zero setup)')
-  .option('--fixture <name>', 'Demo fixture: task-tracker | auth-system | data-pipeline', 'task-tracker')
-  .option('--all', 'Run all demo fixtures')
-  .option('--cwd <path>', 'Project directory')
-  .action(withAuditLogging('demo', async (opts) => void commands.demo({
-    fixture: opts.fixture,
-    all: opts.all,
-    cwd: opts.cwd ?? process.cwd(),
-  })));
-
-program
-  .command('completion [shell]')
-  .description('Output shell completion script (bash, zsh, fish)')
-  .addHelpText('after', '\nUsage:\n  eval "$(danteforge completion bash)"   # add to ~/.bashrc\n  eval "$(danteforge completion zsh)"    # add to ~/.zshrc\n  danteforge completion fish > ~/.config/fish/completions/danteforge.fish')
-  .action(withAuditLogging('completion', async (shell) => { await commands.completionCmd(shell); }));
-
-program
-  .command('commit')
-  .description('Stage changed files and commit with task-derived message')
-  .option('--message <msg>', 'Override generated commit message')
-  .option('--push', 'Also push after committing')
-  .action(withAuditLogging('commit', async (opts) => { await commands.gitCommit({ message: opts.message, push: opts.push }); }));
-
-program
-  .command('branch')
-  .description('Create git branch from current task state')
-  .option('--name <name>', 'Override generated branch name')
-  .action(withAuditLogging('branch', async (opts) => { await commands.gitBranch({ name: opts.name }); }));
-
-program
-  .command('pr')
-  .description('Generate PR body from spec and plan, then open PR via gh CLI')
-  .option('--draft', 'Create draft PR')
-  .option('--base <branch>', 'Base branch for PR')
-  .option('--title <title>', 'Override PR title')
-  .action(withAuditLogging('pr', async (opts) => { await commands.gitPR({ draft: opts.draft, base: opts.base, title: opts.title }); }));
 
 loadState().catch(() => { /* state will be created on first write */ });
-
-program
-  .command('enterprise-readiness')
-  .description('Generate enterprise readiness report')
-  .option('--format <type>', 'Output format: json, markdown, html', 'json')
-  .option('--include-audit', 'Include audit logging analysis')
-  .action(withAuditLogging('enterprise-readiness', async (opts) => {
-    try {
-      const { enterpriseReadiness } = await import('./commands/enterprise-readiness.js');
-      await enterpriseReadiness(opts);
-    } catch (error) {
-      const message = error instanceof Error ? error.message : String(error);
-      console.error(`Enterprise-readiness command failed: ${message}`);
-      console.error('Usage: danteforge enterprise-readiness --help');
-      process.exit(1);
-    }
-  }));
-
-program
-  .command('assess')
-  .description('Harsh self-assessment: score all 18 dimensions, benchmark vs 27 competitors')
-  .option('--no-harsh', 'Use normal PDSE thresholds instead of harsh mode')
-  .option('--no-competitors', 'Skip competitor benchmarking')
-  .option('--min-score <n>', 'Target score threshold (default: 9.0)')
-  .option('--json', 'Output machine-readable JSON')
-  .option('--preset <level>', 'Preset for target maturity level')
-  .option('--cwd <path>', 'Project directory')
-  .action(withAuditLogging('assess', async (opts) => {
-    try {
-      await commands.assess(opts);
-    } catch (error) {
-      const message = error instanceof Error ? error.message : String(error);
-      console.error(`Assess command failed: ${message}`);
-      console.error('Usage: danteforge assess --help');
-      process.exit(1);
-    }
-  }));
-
-program
-  .command('verify')
-  .description('Run verification checks against current implementation')
-  .option('--release', 'Run release verification checks')
-  .option('--live', 'Include live integration tests')
-  .option('--url <url>', 'Base URL for live checks')
-  .option('--recompute', 'Force recomputation of all checks')
-  .option('--json', 'Output machine-readable JSON')
-  .action(withAuditLogging('verify', async (opts) => {
-    try {
-      await commands.verify(opts);
-    } catch (error) {
-      const message = error instanceof Error ? error.message : String(error);
-      console.error(`Verify command failed: ${message}`);
-      console.error('Usage: danteforge verify --help');
-      process.exit(1);
-    }
-  }));
-
-// v0.19.0 — CLI safety handlers: surface uncaught errors instead of silent exit
-process.on('uncaughtException', (err) => {
-  logger.error(`Uncaught exception: ${err.message}`);
-  process.exit(1);
-});
-
-process.on('unhandledRejection', (reason) => {
-  logger.error(`Unhandled rejection: ${String(reason instanceof Error ? reason.message : reason)}`);
-  process.exit(1);
-});
 
 program.parse(process.argv);

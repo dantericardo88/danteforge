@@ -332,7 +332,7 @@ export function formatMagicPlan(plan: MagicExecutionPlan): string {
   if (cycles === 0) {
     lines.push('Convergence: disabled (planning-only preset)');
   } else {
-    lines.push(`Convergence: up to ${cycles} cycle${cycles === 1 ? '' : 's'} of (autoforge → verify) after pipeline if verify fails`);
+    lines.push(`Convergence: up to ${cycles} cycle${cycles === 1 ? '' : 's'} of (autoforge -> verify) after pipeline if verify fails`);
   }
 
   return lines.join('\n');

@@ -67,7 +67,6 @@ describe('executeWave — _stateCaller injection', () => {
       _verifier: async () => false,
       _reflector: async () => { throw new Error('skip'); },
       _stateCaller: sc,
-      _captureFailureLessons: async () => { /* skip real LLM calls in unit tests */ },
     });
 
     assert.strictEqual(sc.calls.lastSavedState!.currentPhase, 1, 'phase should remain at 1 when task fails verification');
@@ -90,7 +89,6 @@ describe('executeWave — _stateCaller injection', () => {
       _verifier: async () => { callNum++; return callNum === 1; },
       _reflector: async () => { throw new Error('skip'); },
       _stateCaller: sc,
-      _captureFailureLessons: async () => { /* skip real LLM calls in unit tests */ },
     });
 
     const lastLog = sc.calls.lastSavedState!.auditLog.at(-1)!;
@@ -111,7 +109,6 @@ describe('executeWave — _memorizer injection', () => {
       _reflector: async () => { throw new Error('skip'); },
       _stateCaller: sc,
       _memorizer: async (entry) => { memoryCalled = true; memoryCategory = entry.category; },
-      _captureFailureLessons: async () => { /* skip real LLM calls in unit tests */ },
     });
 
     assert.ok(memoryCalled, '_memorizer should have been called on LLM failure');
@@ -128,7 +125,6 @@ describe('executeWave — _memorizer injection', () => {
       _reflector: async () => { throw new Error('skip'); },
       _stateCaller: sc,
       _memorizer: async () => { throw new Error('Memory write failed'); },
-      _captureFailureLessons: async () => { /* skip real LLM calls in unit tests */ },
     });
 
     // Should still complete (success=false because LLM threw, but did not crash)
@@ -171,10 +167,9 @@ describe('executeWave — edge cases with _stateCaller', () => {
     const state = makeState();
     const sc = makeStateCaller(state);
 
-    // No _llmCaller and injected unavailable LLM → blocked
+    // No _llmCaller and no live LLM → blocked
     const result = await executeWave(1, 'balanced', false, false, false, 30000, {
       _stateCaller: sc,
-      _isLLMAvailable: async () => false,
     });
 
     assert.strictEqual(result.mode, 'blocked');

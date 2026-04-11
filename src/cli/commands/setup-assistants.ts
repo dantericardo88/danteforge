@@ -1,12 +1,10 @@
 import { logger } from '../../core/logger.js';
 import { withErrorBoundary } from '../../core/cli-error-boundary.js';
-import { installAssistantSkills } from '../../core/assistant-installer.js';
+import { installAssistantSkills, type AssistantRegistry } from '../../core/assistant-installer.js';
 import { resolveConfigPaths } from '../../core/config.js';
 
-type AssistantRegistry = 'claude' | 'codex' | 'antigravity' | 'opencode' | 'cursor' | 'goose';
-
-const DEFAULT_ASSISTANTS: AssistantRegistry[] = ['claude', 'codex', 'antigravity', 'opencode', 'goose'];
-const ALL_ASSISTANTS: AssistantRegistry[] = ['claude', 'codex', 'antigravity', 'opencode', 'cursor', 'goose'];
+const DEFAULT_ASSISTANTS: AssistantRegistry[] = ['claude', 'codex', 'antigravity', 'opencode'];
+const ALL_ASSISTANTS: AssistantRegistry[] = ['claude', 'codex', 'antigravity', 'opencode', 'cursor'];
 
 function normalizeAssistant(value: string): AssistantRegistry | null {
   switch (value.trim().toLowerCase()) {
@@ -24,12 +22,11 @@ function normalizeAssistant(value: string): AssistantRegistry | null {
       return 'opencode';
     case 'cursor':
       return 'cursor';
-    case 'goose':
-      return 'goose';
     default:
       return null;
   }
 }
+
 function parseAssistants(raw: string | undefined): AssistantRegistry[] | undefined {
   if (!raw) {
     return DEFAULT_ASSISTANTS;
@@ -42,7 +39,7 @@ function parseAssistants(raw: string | undefined): AssistantRegistry[] | undefin
   const assistants = raw
     .split(',')
     .map(value => normalizeAssistant(value))
-    .filter(a => a !== null);
+    .filter(Boolean);
 
   if (assistants.length === 0) {
     throw new Error('Invalid assistant list. Use: claude,codex,antigravity|gemini,opencode,cursor');
@@ -58,7 +55,7 @@ export async function setupAssistants(options: { assistants?: string } = {}) {
     const paths = resolveConfigPaths();
 
     logger.success('Installed DanteForge skills for local coding assistants');
-    for (const entry of result) {
+    for (const entry of result.assistants) {
       const noun = entry.installMode === 'cursor-rules' ? 'bootstrap file' : 'skills';
       logger.info(`${entry.assistant}: ${entry.installedSkills.length} ${noun} -> ${entry.targetDir}`);
     }
@@ -67,10 +64,3 @@ export async function setupAssistants(options: { assistants?: string } = {}) {
     logger.info('Next: run `danteforge config --set-key "openai:..."` and `danteforge doctor --live` on the target machine.');
   });
 }
-
-
-
-
-
-
-

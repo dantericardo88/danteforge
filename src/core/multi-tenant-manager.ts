@@ -117,7 +117,7 @@ export class MultiTenantManager {
   }
 
   getTenantStats(): {
-    totalTenants: number;
+    tenantsCount: number;
     currentTenant: string | null;
     isolationLevels: Record<string, number>;
   } {
@@ -128,7 +128,7 @@ export class MultiTenantManager {
     }
 
     return {
-      totalTenants: this.tenants.size,
+      tenantsCount: this.tenants.size,
       currentTenant: this.currentTenantId,
       isolationLevels
     };

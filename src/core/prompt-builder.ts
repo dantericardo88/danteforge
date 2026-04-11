@@ -12,7 +12,7 @@ const PROMPTS_DIR = path.join(STATE_DIR, 'prompts');
  * Sanitize user input before embedding in prompts.
  * Strips control characters and trims excessive length.
  */
-export function sanitizeInput(input: string, maxLength = 10000): string {
+function sanitizeInput(input: string, maxLength = 10000): string {
   // Strip control characters except newlines and tabs
   const cleaned = input.replace(/[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]/g, '');
   if (cleaned.length > maxLength) {
@@ -95,51 +95,6 @@ Requirements:
 Output the complete code changes needed — show full file contents for modified files.`;
 }
 
-const CODE_FORMAT_INSTRUCTIONS = `## Code Output Format
-
-Output ALL code changes FIRST using the exact format below — before any explanation.
-
-### Format 1 — Modify existing code (SEARCH/REPLACE):
-<<<<<<< SEARCH
-[exact lines to find in the file — must match character-for-character]
-=======
-[replacement lines]
->>>>>>> REPLACE
-filepath: src/path/to/file.ts
-
-### Format 2 — Create a new file:
-NEW_FILE: src/path/to/new-file.ts
-\`\`\`typescript
-[complete file content]
-\`\`\`
-
-### Example:
-<<<<<<< SEARCH
-export function greet(name: string): string {
-  return 'hello';
-}
-=======
-export function greet(name: string): string {
-  return \`Hello, \${name}!\`;
-}
->>>>>>> REPLACE
-filepath: src/example.ts
-
-Rules:
-- SEARCH block must match the file exactly (whitespace matters)
-- Multiple SEARCH/REPLACE blocks are allowed — one per logical change
-- filepath: line is required after every REPLACE block
-- Do NOT wrap SEARCH/REPLACE blocks inside markdown code fences`;
-
-/**
- * Like buildTaskPrompt but prepends SEARCH/REPLACE format instructions for live execution.
- * Instructions come FIRST so the LLM receives them at full attention weight.
- * Use this when the LLM response will be parsed and applied directly to disk.
- */
-export function buildTaskPromptWithCodeFormat(task: { name: string; files?: string[]; verify?: string }, profile: string, constitution?: string): string {
-  return CODE_FORMAT_INSTRUCTIONS + '\n\n' + buildTaskPrompt(task, profile, constitution);
-}
-
 /**
  * Generate a verification prompt for an LLM to review task output
  */
@@ -173,12 +128,11 @@ Respond with:
 /**
  * Save a generated prompt to .danteforge/prompts/ for easy access
  */
-export async function savePrompt(name: string, prompt: string, cwd?: string): Promise<string> {
-  const promptsDir = cwd ? path.join(cwd, '.danteforge', 'prompts') : PROMPTS_DIR;
+export async function savePrompt(name: string, prompt: string): Promise<string> {
   const filename = `${name}-${Date.now()}.md`;
-  const filePath = path.join(promptsDir, filename);
+  const filePath = path.join(PROMPTS_DIR, filename);
   try {
-    await fs.mkdir(promptsDir, { recursive: true });
+    await fs.mkdir(PROMPTS_DIR, { recursive: true });
     await fs.writeFile(filePath, prompt);
   } catch (err) {
     throw new FileError(
@@ -259,7 +213,7 @@ Follow the .op JSON format:
 \`\`\`json
 {
   "formatVersion": "1.0.0",
-  "generator": "danteforge/0.15.0",
+  "generator": "danteforge/0.10.0",
   "created": "<ISO timestamp>",
   "document": { "name": "<project>", "pages": [...] },
   "nodes": [...],

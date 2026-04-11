@@ -82,10 +82,6 @@ export function parseFrontmatter(content: string): WikiFrontmatter | null {
   const entityType = readScalar('type') as WikiFrontmatter['type'];
   const validTypes = ['module', 'decision', 'pattern', 'tool', 'concept'];
 
-  const confidenceStr = readScalar('confidence');
-  const confidence = confidenceStr ? parseFloat(confidenceStr) : undefined;
-  const sourceProject = readScalar('sourceProject') || undefined;
-
   return {
     entity: readScalar('entity'),
     type: validTypes.includes(entityType) ? entityType : 'concept',
@@ -95,8 +91,6 @@ export function parseFrontmatter(content: string): WikiFrontmatter | null {
     links: readArray('links'),
     constitutionRefs: readArray('constitution-refs'),
     tags: readArray('tags'),
-    ...(confidence !== undefined && !isNaN(confidence) ? { confidence } : {}),
-    ...(sourceProject ? { sourceProject } : {}),
   };
 }
 

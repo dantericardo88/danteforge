@@ -5,14 +5,11 @@ import fs from 'node:fs/promises';
 import path from 'node:path';
 import os from 'node:os';
 
-import { jsonResult, errorResult, TOOL_HANDLERS, TOOL_DEFINITIONS, resolveCwd, type McpServerDeps } from '../src/core/mcp-server.js';
+import { jsonResult, errorResult, TOOL_HANDLERS, TOOL_DEFINITIONS, resolveCwd } from '../src/core/mcp-server.js';
 import { loadState, saveState } from '../src/core/state.js';
 import { assessComplexity, recordComplexityOutcome, mapScoreToPreset } from '../src/core/complexity-classifier.js';
 import { classifyTaskSignature, routeTask } from '../src/core/task-router.js';
 import type { DanteState } from '../src/core/state.js';
-
-/** Deps that bypass resolveCwd sanitization so temp dirs outside project root work */
-const BYPASS_SANITIZE: McpServerDeps = { _sanitize: (raw: string) => raw };
 
 // ---------------------------------------------------------------------------
 // Fixture helpers
@@ -33,12 +30,12 @@ function makeState(overrides?: Partial<DanteState>): DanteState {
   return {
     project: 'test-project',
     created: new Date().toISOString(),
-    workflowStage: 'plan' as DanteState['workflowStage'],
-    currentPhase: 1,
+    workflowStage: 'planned' as DanteState['workflowStage'],
+    currentPhase: 'phase-1',
     lastHandoff: 'none',
     profile: 'balanced',
     tasks: {
-      1: [
+      'phase-1': [
         { name: 'Add user auth module', files: ['src/auth.ts', 'src/middleware.ts', 'src/routes/login.ts'], verify: 'npm test' },
         { name: 'Create database schema migration', files: ['prisma/schema.prisma'], verify: 'prisma migrate dev' },
       ],
@@ -96,7 +93,7 @@ describe('MCP result helpers', () => {
 describe('MCP complexity handler logic', () => {
   it('assessComplexity returns valid assessment for multi-file task', () => {
     const state = makeState();
-    const tasks = state.tasks[1]!;
+    const tasks = state.tasks['phase-1']!;
     const assessment = assessComplexity(tasks, state);
     assert.ok(assessment.score > 0);
     assert.ok(['spark', 'ember', 'magic', 'blaze', 'inferno'].includes(assessment.recommendedPreset));
@@ -108,7 +105,7 @@ describe('MCP complexity handler logic', () => {
 
   it('assessComplexity detects database and API signals', () => {
     const state = makeState();
-    const tasks = state.tasks[1]!;
+    const tasks = state.tasks['phase-1']!;
     const assessment = assessComplexity(tasks, state);
     assert.ok(assessment.signals.hasDatabaseChange);
     assert.ok(assessment.signals.hasTestRequirement);
@@ -116,7 +113,7 @@ describe('MCP complexity handler logic', () => {
 
   it('complexity + outcome recording closes feedback loop', () => {
     const state = makeState();
-    const tasks = state.tasks[1]!;
+    const tasks = state.tasks['phase-1']!;
     const assessment = assessComplexity(tasks, state);
     // Simulate significant overestimation: predicted high but actual was spark
     const lesson = recordComplexityOutcome(assessment, 'spark', 0.001);
@@ -129,7 +126,7 @@ describe('MCP complexity handler logic', () => {
 
   it('outcome recording returns null when prediction is close', () => {
     const state = makeState();
-    const tasks = state.tasks[1]!;
+    const tasks = state.tasks['phase-1']!;
     const assessment = assessComplexity(tasks, state);
     // Use the predicted preset as actual — drift should be 0
     const lesson = recordComplexityOutcome(assessment, assessment.recommendedPreset, assessment.estimatedCostUsd);
@@ -251,8 +248,8 @@ describe('MCP state handler logic', () => {
     const state = makeState();
     await saveState(state, { cwd: dir });
     const loaded = await loadState({ cwd: dir });
-    assert.ok(loaded.tasks[1]);
-    assert.equal(loaded.tasks[1]!.length, 2);
+    assert.ok(loaded.tasks['phase-1']);
+    assert.equal(loaded.tasks['phase-1']!.length, 2);
   });
 
   it('audit log accumulates across saves', async () => {
@@ -274,17 +271,12 @@ describe('MCP state handler logic', () => {
 // ---------------------------------------------------------------------------
 
 describe('resolveCwd', () => {
-  it('returns _cwd when provided as string (with sanitize bypass)', () => {
-    assert.equal(resolveCwd({ _cwd: '/tmp/test' }, (p) => p), '/tmp/test');
+  it('returns _cwd when provided as string', () => {
+    assert.equal(resolveCwd({ _cwd: '/tmp/test' }), '/tmp/test');
   });
 
   it('falls back to process.cwd() when _cwd not provided', () => {
     assert.equal(resolveCwd({}), process.cwd());
-  });
-
-  it('rejects paths outside project root via sanitizePath', () => {
-    // Without _sanitize bypass, paths outside cwd fall back to process.cwd()
-    assert.equal(resolveCwd({ _cwd: '/etc/shadow' }), process.cwd());
   });
 });
 
@@ -311,10 +303,10 @@ describe('TOOL_HANDLERS via _cwd injection', () => {
     const state = makeState({ project: 'mcp-state-test' } as Partial<DanteState>);
     await saveState(state, { cwd: dir });
 
-    const result = await TOOL_HANDLERS.danteforge_state({ _cwd: dir }, BYPASS_SANITIZE);
+    const result = await TOOL_HANDLERS.danteforge_state({ _cwd: dir });
     const data = parseHandlerResult(result) as Record<string, unknown>;
     assert.equal(data.project, 'mcp-state-test');
-    assert.equal(data.workflowStage, 'plan');
+    assert.equal(data.workflowStage, 'planned');
   });
 
   it('danteforge_task_list returns tasks via _cwd', async () => {
@@ -322,7 +314,7 @@ describe('TOOL_HANDLERS via _cwd injection', () => {
     const state = makeState();
     await saveState(state, { cwd: dir });
 
-    const result = await TOOL_HANDLERS.danteforge_task_list({ _cwd: dir }, BYPASS_SANITIZE);
+    const result = await TOOL_HANDLERS.danteforge_task_list({ _cwd: dir });
     const data = parseHandlerResult(result) as { taskCount: number; tasks: unknown[] };
     assert.equal(data.taskCount, 2);
     assert.equal(data.tasks.length, 2);
@@ -333,7 +325,7 @@ describe('TOOL_HANDLERS via _cwd injection', () => {
     const state = makeState();
     await saveState(state, { cwd: dir });
 
-    const result = await TOOL_HANDLERS.danteforge_complexity({ _cwd: dir }, BYPASS_SANITIZE);
+    const result = await TOOL_HANDLERS.danteforge_complexity({ _cwd: dir });
     const data = parseHandlerResult(result) as { score: number; recommendedPreset: string };
     assert.ok(typeof data.score === 'number');
     assert.ok(data.score > 0);
@@ -345,7 +337,7 @@ describe('TOOL_HANDLERS via _cwd injection', () => {
     const state = makeState();
     await saveState(state, { cwd: dir });
 
-    const result = await TOOL_HANDLERS.danteforge_route_task({ _cwd: dir, taskName: 'Fix typo' }, BYPASS_SANITIZE);
+    const result = await TOOL_HANDLERS.danteforge_route_task({ _cwd: dir, taskName: 'Fix typo' });
     const data = parseHandlerResult(result) as { taskName: string; routing: { tier: string } };
     assert.equal(data.taskName, 'Fix typo');
     assert.ok(['local', 'light', 'heavy'].includes(data.routing.tier));
@@ -366,7 +358,7 @@ describe('TOOL_HANDLERS via _cwd injection', () => {
       JSON.stringify(report),
     );
 
-    const result = await TOOL_HANDLERS.danteforge_budget_status({ _cwd: dir }, BYPASS_SANITIZE);
+    const result = await TOOL_HANDLERS.danteforge_budget_status({ _cwd: dir });
     const data = parseHandlerResult(result) as { totalReports: number; data: { totalCostUsd: number } };
     assert.equal(data.totalReports, 1);
     assert.equal(data.data.totalCostUsd, 0.12);
@@ -374,7 +366,7 @@ describe('TOOL_HANDLERS via _cwd injection', () => {
 
   it('danteforge_budget_status handles empty reports', async () => {
     const dir = await createTempProject();
-    const result = await TOOL_HANDLERS.danteforge_budget_status({ _cwd: dir }, BYPASS_SANITIZE);
+    const result = await TOOL_HANDLERS.danteforge_budget_status({ _cwd: dir });
     const data = parseHandlerResult(result) as { message: string };
     assert.ok(data.message.includes('No cost reports'));
   });
@@ -385,7 +377,7 @@ describe('TOOL_HANDLERS via _cwd injection', () => {
     state.auditLog = ['entry-alpha', 'entry-beta', 'entry-gamma'];
     await saveState(state, { cwd: dir });
 
-    const result = await TOOL_HANDLERS.danteforge_audit_log({ _cwd: dir, count: 2 }, BYPASS_SANITIZE);
+    const result = await TOOL_HANDLERS.danteforge_audit_log({ _cwd: dir, count: 2 });
     const data = parseHandlerResult(result) as { total: number; returned: number; entries: string[] };
     assert.equal(data.total, 3);
     assert.equal(data.returned, 2);
@@ -397,7 +389,7 @@ describe('TOOL_HANDLERS via _cwd injection', () => {
     const dir = await createTempProject();
     await fs.writeFile(path.join(dir, '.danteforge', 'SPEC.md'), '# Test Spec\nContent here.');
 
-    const result = await TOOL_HANDLERS.danteforge_artifact_read({ _cwd: dir, name: 'SPEC.md' }, BYPASS_SANITIZE);
+    const result = await TOOL_HANDLERS.danteforge_artifact_read({ _cwd: dir, name: 'SPEC.md' });
     const data = parseHandlerResult(result) as { name: string; content: string };
     assert.equal(data.name, 'SPEC.md');
     assert.ok(data.content.includes('# Test Spec'));
@@ -405,7 +397,7 @@ describe('TOOL_HANDLERS via _cwd injection', () => {
 
   it('danteforge_artifact_read returns error for missing artifact', async () => {
     const dir = await createTempProject();
-    const result = await TOOL_HANDLERS.danteforge_artifact_read({ _cwd: dir, name: 'NONEXISTENT.md' }, BYPASS_SANITIZE);
+    const result = await TOOL_HANDLERS.danteforge_artifact_read({ _cwd: dir, name: 'NONEXISTENT.md' });
     const data = parseHandlerResult(result) as { error: string };
     assert.ok(data.error.includes('not found'));
   });
@@ -415,7 +407,7 @@ describe('TOOL_HANDLERS via _cwd injection', () => {
     const state = makeState();
     await saveState(state, { cwd: dir });
 
-    const result = await TOOL_HANDLERS.danteforge_lessons({ _cwd: dir }, BYPASS_SANITIZE);
+    const result = await TOOL_HANDLERS.danteforge_lessons({ _cwd: dir });
     const data = parseHandlerResult(result) as { content: string; message?: string };
     assert.equal(data.content, '');
   });
@@ -425,7 +417,7 @@ describe('TOOL_HANDLERS via _cwd injection', () => {
     const state = makeState();
     await saveState(state, { cwd: dir });
 
-    const result = await TOOL_HANDLERS.danteforge_next_steps({ _cwd: dir }, BYPASS_SANITIZE);
+    const result = await TOOL_HANDLERS.danteforge_next_steps({ _cwd: dir });
     const data = parseHandlerResult(result) as { currentStage: string; nextSteps: unknown[] };
     assert.ok(typeof data.currentStage === 'string');
     assert.ok(Array.isArray(data.nextSteps));
@@ -438,7 +430,7 @@ describe('TOOL_HANDLERS via _cwd injection', () => {
     const state = makeState();
     await saveState(state, { cwd: dir });
 
-    const result = await TOOL_HANDLERS.danteforge_gate_check({ _cwd: dir, gate: 'requireConstitution' }, BYPASS_SANITIZE);
+    const result = await TOOL_HANDLERS.danteforge_gate_check({ _cwd: dir, gate: 'requireConstitution' });
     const data = parseHandlerResult(result) as { gate: string; status: string; remedy?: string };
     assert.equal(data.gate, 'requireConstitution');
     assert.equal(data.status, 'FAIL');
@@ -451,7 +443,7 @@ describe('TOOL_HANDLERS via _cwd injection', () => {
     await saveState(state, { cwd: dir });
     await fs.writeFile(path.join(dir, '.danteforge', 'CONSTITUTION.md'), '# Constitution');
 
-    const result = await TOOL_HANDLERS.danteforge_gate_check({ _cwd: dir, gate: 'requireConstitution' }, BYPASS_SANITIZE);
+    const result = await TOOL_HANDLERS.danteforge_gate_check({ _cwd: dir, gate: 'requireConstitution' });
     const data = parseHandlerResult(result) as { gate: string; status: string };
     assert.equal(data.gate, 'requireConstitution');
     assert.equal(data.status, 'PASS');
@@ -462,7 +454,7 @@ describe('TOOL_HANDLERS via _cwd injection', () => {
     const state = makeState();
     await saveState(state, { cwd: dir });
 
-    const result = await TOOL_HANDLERS.danteforge_gate_check({ _cwd: dir, gate: 'requireSpec' }, BYPASS_SANITIZE);
+    const result = await TOOL_HANDLERS.danteforge_gate_check({ _cwd: dir, gate: 'requireSpec' });
     const data = parseHandlerResult(result) as { gate: string; status: string };
     assert.equal(data.status, 'FAIL');
   });
@@ -473,7 +465,7 @@ describe('TOOL_HANDLERS via _cwd injection', () => {
     await saveState(state, { cwd: dir });
     await fs.writeFile(path.join(dir, '.danteforge', 'SPEC.md'), '# Spec');
 
-    const result = await TOOL_HANDLERS.danteforge_gate_check({ _cwd: dir, gate: 'requireSpec' }, BYPASS_SANITIZE);
+    const result = await TOOL_HANDLERS.danteforge_gate_check({ _cwd: dir, gate: 'requireSpec' });
     const data = parseHandlerResult(result) as { gate: string; status: string };
     assert.equal(data.status, 'PASS');
   });
@@ -483,7 +475,7 @@ describe('TOOL_HANDLERS via _cwd injection', () => {
     const state = makeState();
     await saveState(state, { cwd: dir });
 
-    const result = await TOOL_HANDLERS.danteforge_verify({ _cwd: dir }, BYPASS_SANITIZE);
+    const result = await TOOL_HANDLERS.danteforge_verify({ _cwd: dir });
     assert.ok(result.isError);
   });
 
@@ -495,7 +487,7 @@ describe('TOOL_HANDLERS via _cwd injection', () => {
     const memoryStore = JSON.stringify({ entries: [] });
     await fs.writeFile(path.join(dir, '.danteforge', 'MEMORY.json'), memoryStore);
 
-    const result = await TOOL_HANDLERS.danteforge_memory_query({ _cwd: dir, query: 'test query' }, BYPASS_SANITIZE);
+    const result = await TOOL_HANDLERS.danteforge_memory_query({ _cwd: dir, query: 'test query' });
     const data = parseHandlerResult(result) as { query: string; resultCount: number; results: unknown[] };
     assert.equal(data.query, 'test query');
     assert.equal(data.resultCount, 0);

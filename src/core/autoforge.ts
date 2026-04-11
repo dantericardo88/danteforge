@@ -233,8 +233,6 @@ export async function executeAutoForgePlan(
     _runStep?: (command: string, light?: boolean, goal?: string, runtime?: { profile?: string; parallel?: boolean; worktree?: boolean }) => Promise<void>;
     /** Injected for testing — replaces isStageComplete to avoid real fs artifact check */
     _isStageComplete?: (stage: string, cwd?: string) => Promise<boolean>;
-    /** Injected for testing — replaces 7LD analysis to avoid real LLM calls on step failure */
-    _sevenLevelsAnalysis?: (error: string, command: string, cwd: string) => Promise<void>;
   } = {},
 ): Promise<{ completed: string[]; failed: string[]; paused: boolean }> {
   const completed: string[] = [];
@@ -393,26 +391,22 @@ export async function executeAutoForgePlan(
       // 7 Levels Deep root cause analysis for significant forge/verify failures
       if (step.command === 'verify' || step.command === 'forge') {
         try {
-          if (options._sevenLevelsAnalysis) {
-            await options._sevenLevelsAnalysis(msg, step.command, options.cwd ?? process.cwd());
-          } else {
-            const { SevenLevelsEngine, shouldTriggerSevenLevels } = await import('./seven-levels.js');
-            const { recordRootCauseLesson } = await import('./lessons-index.js');
-            if (shouldTriggerSevenLevels(undefined, 80)) {
-              const engine = new SevenLevelsEngine({ minDepth: 3, earlyStop: true });
-              const analysis = await engine.analyze(
-                { type: 'step_failure', details: msg },
-                {
-                  taskDescription: step.reason,
-                  generatedCode: '',
-                  systemPrompt: '',
-                  modelId: 'autoforge',
-                  providerId: 'unknown',
-                },
-              );
-              await recordRootCauseLesson(analysis, options.cwd);
-              logger.info(`[7LD] Root cause (${analysis.rootCauseDomain}): ${analysis.rootCause.slice(0, 120)}`);
-            }
+          const { SevenLevelsEngine, shouldTriggerSevenLevels } = await import('./seven-levels.js');
+          const { recordRootCauseLesson } = await import('./lessons-index.js');
+          if (shouldTriggerSevenLevels(undefined, 80)) {
+            const engine = new SevenLevelsEngine({ minDepth: 3, earlyStop: true });
+            const analysis = await engine.analyze(
+              { type: 'step_failure', details: msg },
+              {
+                taskDescription: step.reason,
+                generatedCode: '',
+                systemPrompt: '',
+                modelId: 'autoforge',
+                providerId: 'unknown',
+              },
+            );
+            await recordRootCauseLesson(analysis, options.cwd);
+            logger.info(`[7LD] Root cause (${analysis.rootCauseDomain}): ${analysis.rootCause.slice(0, 120)}`);
           }
         } catch (err) { logger.verbose(`[best-effort] 7LD analysis: ${err instanceof Error ? err.message : String(err)}`); }
       }
@@ -529,60 +523,51 @@ function getMidProjectSteps(
   return steps;
 }
 
-export async function runAutoForgeStep(
+async function runAutoForgeStep(
   command: string,
   light?: boolean,
   goal?: string,
   runtime: { profile?: string; parallel?: boolean; worktree?: boolean } = {},
-  _commandFns?: Partial<Record<string, () => Promise<void>>>,
 ): Promise<void> {
   await enforceWorkflow(command, undefined, Boolean(light));
 
   switch (command) {
     case 'review': {
-      if (_commandFns?.review) { await _commandFns.review(); return; }
       const { review } = await import('../cli/commands/review.js');
       await review({ prompt: false });
       return;
     }
     case 'constitution': {
-      if (_commandFns?.constitution) { await _commandFns.constitution(); return; }
       const { constitution } = await import('../cli/commands/constitution.js');
       await constitution();
       return;
     }
     case 'specify': {
-      if (_commandFns?.specify) { await _commandFns.specify(); return; }
       const { specify } = await import('../cli/commands/specify.js');
       await specify(goal ?? 'AutoForge: continue from current spec');
       return;
     }
     case 'clarify': {
-      if (_commandFns?.clarify) { await _commandFns.clarify(); return; }
       const { clarify } = await import('../cli/commands/clarify.js');
       await clarify();
       return;
     }
     case 'plan': {
-      if (_commandFns?.plan) { await _commandFns.plan(); return; }
       const { plan } = await import('../cli/commands/plan.js');
       await plan();
       return;
     }
     case 'tasks': {
-      if (_commandFns?.tasks) { await _commandFns.tasks(); return; }
       const { tasks } = await import('../cli/commands/tasks.js');
       await tasks();
       return;
     }
     case 'design': {
-      if (_commandFns?.design) { await _commandFns.design(); return; }
       const { design } = await import('../cli/commands/design.js');
       await design(goal ? `AutoForge: ${goal}` : 'AutoForge: generate design for current spec');
       return;
     }
     case 'forge': {
-      if (_commandFns?.forge) { await _commandFns.forge(); return; }
       const { forge } = await import('../cli/commands/forge.js');
       await forge('1', {
         profile: runtime.profile ?? 'balanced',
@@ -592,25 +577,21 @@ export async function runAutoForgeStep(
       return;
     }
     case 'ux-refine': {
-      if (_commandFns?.['ux-refine']) { await _commandFns['ux-refine'](); return; }
       const { uxRefine } = await import('../cli/commands/ux-refine.js');
       await uxRefine({ magic: true, afterForge: true });
       return;
     }
     case 'verify': {
-      if (_commandFns?.verify) { await _commandFns.verify(); return; }
       const { verify } = await import('../cli/commands/verify.js');
       await verify();
       return;
     }
     case 'synthesize': {
-      if (_commandFns?.synthesize) { await _commandFns.synthesize(); return; }
       const { synthesize } = await import('../cli/commands/synthesize.js');
       await synthesize();
       return;
     }
     case 'doctor': {
-      if (_commandFns?.doctor) { await _commandFns.doctor(); return; }
       const { doctor } = await import('../cli/commands/doctor.js');
       await doctor();
       return;

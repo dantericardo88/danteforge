@@ -20,7 +20,6 @@ export interface LLMProviderAdapter {
     baseUrl: string,
     apiKey: string | undefined,
     timeoutMs: number,
-    systemPrompt?: string,
   ): Promise<string>;
 }
 
@@ -53,15 +52,10 @@ export async function callOpenAICompatibleAdapter(
   apiKey: string | undefined,
   timeoutMs: number,
   providerName: string,
-  systemPrompt?: string,
 ): Promise<string> {
   if (!apiKey) {
     throw new Error(`No API key for ${providerName}. Run: danteforge config --set-key "${providerName.toLowerCase()}:<key>"`);
   }
-
-  const messages: Array<{ role: string; content: string }> = [];
-  if (systemPrompt) messages.push({ role: 'system', content: systemPrompt });
-  messages.push({ role: 'user', content: prompt });
 
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeoutMs);
@@ -73,7 +67,11 @@ export async function callOpenAICompatibleAdapter(
         'Content-Type': 'application/json',
         'Authorization': `Bearer ${apiKey}`,
       },
-      body: JSON.stringify({ model, messages, max_tokens: 4096 }),
+      body: JSON.stringify({
+        model,
+        messages: [{ role: 'user', content: prompt }],
+        max_tokens: 4096,
+      }),
       signal: controller.signal,
     });
 

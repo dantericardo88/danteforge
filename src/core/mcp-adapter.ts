@@ -39,10 +39,8 @@ export function resolveTier(host: MCPHost, hasFigmaMCP: boolean): MCPTier {
     case 'codex':
       return 'full';
     case 'cursor':
-      return 'full';   // Cursor now supports full bidirectional MCP
     case 'vscode':
     case 'windsurf':
-    case 'jetbrains':
       return 'pull-only';
     default:
       return 'prompt-only';

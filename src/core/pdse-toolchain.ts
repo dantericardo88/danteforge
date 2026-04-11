@@ -87,7 +87,7 @@ export function parseLintErrors(output: string): number {
 export function parseCoverage(output: string): number | null {
   // c8/Istanbul: "All files | N%" or "Lines    : N%"
   const match = output.match(/Lines\s*[:|]\s*([\d.]+)%/) ??
-                output.match(/All files\s*\|\s*([\d.]+)/) ??
+                output.match(/All files\s*\|[^|]*\|\s*([\d.]+)/) ??
                 output.match(/coverage[:\s]+([\d.]+)%/i);
   if (match) return parseFloat(match[1]);
   return null;

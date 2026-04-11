@@ -68,7 +68,8 @@ export async function resumeAutoforge(opts: ResumeOptions = {}): Promise<void> {
       loopState: AutoforgeLoopState.IDLE,
       cycleCount: snapshot.cycleCount,
       startedAt: new Date().toISOString(),
-
+      retryCounters: snapshot.retryCounters,
+      blockedArtifacts: snapshot.blockedArtifacts,
       lastGuidance: null,
       isWebProject,
       force: false,

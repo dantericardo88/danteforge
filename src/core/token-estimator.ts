@@ -82,17 +82,13 @@ export function estimateCost(
   tokens: number,
   provider: LLMProvider
 ): { inputCost: number; outputCost: number; totalEstimate: number } {
-  try {
-    const pricing = getPricing(provider);
-    const inputCost = (tokens / 1_000_000) * pricing.inputPer1M;
-    // Assume output is ~25% of input tokens for cost estimation
-    const estimatedOutputTokens = Math.ceil(tokens * 0.25);
-    const outputCost = (estimatedOutputTokens / 1_000_000) * pricing.outputPer1M;
-    const totalEstimate = inputCost + outputCost;
-    return { inputCost, outputCost, totalEstimate };
-  } catch (error) {
-    throw new Error(`Cost estimation failed: ${error}`);
-  }
+  const pricing = getPricing(provider);
+  const inputCost = (tokens / 1_000_000) * pricing.inputPer1M;
+  // Assume output is ~25% of input tokens for cost estimation
+  const estimatedOutputTokens = Math.ceil(tokens * 0.25);
+  const outputCost = (estimatedOutputTokens / 1_000_000) * pricing.outputPer1M;
+  const totalEstimate = inputCost + outputCost;
+  return { inputCost, outputCost, totalEstimate };
 }
 
 const EXPENSIVE_THRESHOLD_USD = 0.05;
@@ -143,6 +139,3 @@ export function chunkText(text: string, maxChars: number): string[] {
   return chunks;
 }
 
-export function hardTokenCap(provider: LLMProvider): number {
-  return Math.floor(getTokenLimit(provider) * 0.8);
-}

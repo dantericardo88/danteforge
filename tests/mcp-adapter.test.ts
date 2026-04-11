@@ -20,16 +20,11 @@ describe('MCP Adapter', () => {
     assert.strictEqual(resolveTier('codex', true), 'full');
   });
 
-  it('resolves full tier for Cursor with Figma MCP (bidirectional)', async () => {
+  it('resolves pull-only tier for Cursor/VS Code with Figma MCP', async () => {
     const { resolveTier } = await import('../src/core/mcp-adapter.js');
-    assert.strictEqual(resolveTier('cursor', true), 'full');
-  });
-
-  it('resolves pull-only tier for VS Code / Windsurf / JetBrains with Figma MCP', async () => {
-    const { resolveTier } = await import('../src/core/mcp-adapter.js');
+    assert.strictEqual(resolveTier('cursor', true), 'pull-only');
     assert.strictEqual(resolveTier('vscode', true), 'pull-only');
     assert.strictEqual(resolveTier('windsurf', true), 'pull-only');
-    assert.strictEqual(resolveTier('jetbrains', true), 'pull-only');
   });
 
   it('resolves prompt-only tier when no Figma MCP', async () => {

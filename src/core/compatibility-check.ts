@@ -32,7 +32,7 @@ export async function runCompatibilityCheck(): Promise<void> {
     logger.success(`Compatibility check complete: ${compatibleCount}/${checks.length} tools compatible`);
 
   } catch (error) {
-    logger.error('Compatibility check failed:', error);
+    logger.error(`Compatibility check failed: ${error}`);
     process.exit(1);
   }
 }

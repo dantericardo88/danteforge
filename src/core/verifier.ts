@@ -50,13 +50,6 @@ export async function verifyTask(
 
   const llmReady = await llmChecker();
   if (!llmReady) {
-    if (!task.verify) {
-      // No explicit criteria — treat as pass-through (test runner already gated it)
-      logger.info(`Verification skipped: no explicit criteria for "${task.name}" and LLM unavailable.`);
-      state.auditLog.push(`${timestamp} | verify: ${task.name} - SKIP (no criteria, no LLM)`);
-      await stateSaver(state);
-      return true;
-    }
     logger.error(`Verification blocked: no verified live LLM provider is available for "${task.name}".`);
     logger.info(`Run "danteforge feedback" or generate a manual verification prompt for "${task.name}".`);
     state.auditLog.push(`${timestamp} | verify: ${task.name} - BLOCKED (no live verifier)`);

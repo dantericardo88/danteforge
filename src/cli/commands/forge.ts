@@ -7,8 +7,8 @@ import fs from 'fs/promises';
 
 export async function forge(phase = '1', options: { profile?: string; parallel?: boolean; prompt?: boolean; light?: boolean; worktree?: boolean; figma?: boolean; skipUx?: boolean } = {}) {
   return withErrorBoundary('forge', async () => {
-  if (!(await runGate(() => requirePlan(options.light)))) { process.exitCode = 1; return; }
-  if (!(await runGate(() => requireTests(options.light)))) { process.exitCode = 1; return; }
+  if (!(await runGate(() => requirePlan(options.light)))) return;
+  if (!(await runGate(() => requireTests(options.light)))) return;
 
   if (options.figma && !options.skipUx) {
     if (!options.prompt) {
@@ -25,7 +25,6 @@ export async function forge(phase = '1', options: { profile?: string; parallel?:
   const profile = options.profile ?? 'balanced';
   const result = await executeWave(parseInt(phase, 10), profile, options.parallel, options.prompt, options.worktree);
   if (!result.success) {
-    process.exitCode = 1;
     return;
   }
 

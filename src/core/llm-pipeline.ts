@@ -18,34 +18,12 @@ export interface CallLLMOptions {
   budgetFence?: { agentRole: string; maxBudgetUsd: number; currentSpendUsd: number; isExceeded: boolean; warningThresholdPercent: number };
   /** Callback for real token usage data from provider responses (v0.9.0 hardening) */
   onUsage?: (usage: LLMUsageMetadata) => void;
-  /** Optional system prompt — sent as system/developer role message before the user turn.
-   *  Supported by all providers: OpenAI/Grok (role:system), Claude (top-level system field),
-   *  Gemini (systemInstruction), Ollama (role:system). */
-  systemPrompt?: string;
   /** Injected fetch function for testing — replaces globalThis.fetch in all provider calls */
   _fetch?: typeof globalThis.fetch;
   /** Injected sleep function for retry-path tests — avoids real backoff waits */
   _sleep?: (ms: number) => Promise<void>;
   /** Injected retry delays for tests — overrides the default/provider backoff sequence */
   _retryDelays?: number[];
-  /** Disable LLM response cache for this call (default: cache is ON) */
-  noCache?: boolean;
-  /** Injected cache read function for testing */
-  _getCached?: (prompt: string) => Promise<string | null>;
-  /** Injected cache write function for testing */
-  _setCached?: (prompt: string, response: string, provider: string) => Promise<void>;
-  /** Stream output tokens as they arrive (default: true when process.stdout.isTTY) */
-  streaming?: boolean;
-  /** Callback invoked for each streamed token chunk */
-  onChunk?: (chunk: string) => void;
-  /** Injected circuit factory — overrides real circuit-breaker for testing */
-  _getCircuit?: (provider: string) => {
-    isOpen(): boolean;
-    recordSuccess(): void;
-    recordFailure(): void;
-  };
-  /** Fallback provider chain — tried in order when primary exhausts all retries */
-  fallbackProviders?: LLMProvider[];
 }
 
 /** Real token usage metadata extracted from LLM provider responses */
@@ -108,9 +86,6 @@ export function enforceBudget(options: Pick<CallLLMOptions, 'budgetFence'>): voi
   if (fence.currentSpendUsd >= fence.maxBudgetUsd) {
     throw new BudgetError(
       `Budget fence exceeded for ${fence.agentRole}: $${fence.currentSpendUsd.toFixed(4)} of $${fence.maxBudgetUsd.toFixed(4)} max`,
-      fence.agentRole,
-      fence.currentSpendUsd,
-      fence.maxBudgetUsd,
     );
   }
   const usagePercent = (fence.currentSpendUsd / fence.maxBudgetUsd) * 100;
@@ -136,10 +111,7 @@ export async function dispatchWithRetry(
     if (provider && !shouldAllowRequest(provider)) {
       throw new LLMError(
         `Circuit breaker OPEN for provider '${provider}' — too many consecutive failures`,
-        'LLM_CIRCUIT_OPEN',
-        provider as LLMProvider,
-        undefined,
-        false,
+        provider,
       );
     }
     try {
@@ -147,6 +119,7 @@ export async function dispatchWithRetry(
       if (provider) recordSuccess(provider);
       return { ...result, attempt };
     } catch (err) {
+      if (provider) recordFailure(provider);
       lastError = err;
       if (attempt < config.maxRetries && isRetryableError(err)) {
         const delay = provider
@@ -156,7 +129,6 @@ export async function dispatchWithRetry(
         await (hooks?.sleep ?? sleep)(delay);
         continue;
       }
-      if (provider) recordFailure(provider);
       throw err;
     }
   }

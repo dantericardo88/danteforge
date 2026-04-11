@@ -8,11 +8,6 @@ import { logger } from './logger.js';
 import { loadState, saveState } from './state.js';
 import { injectContext } from './context-injector.js';
 import { recordMemory } from './memory-engine.js';
-import { LLMError } from './errors.js';
-import { enforceBudget, handleUsage, type CallLLMOptions, type ProviderResponse } from './llm-pipeline.js';
-import { shouldAllowRequest, recordSuccess as cbRecordSuccess, recordFailure as cbRecordFailure } from './circuit-breaker.js';
-import { getCachedResponse, cacheResponse } from './llm-cache.js';
-import { logLLMCall, generateCorrelationId } from './structured-audit.js';
 
 const MAX_RETRIES = 2;
 const RETRY_DELAYS_MS = [1000, 3000];
@@ -148,67 +143,17 @@ function normalizeProviderError(provider: LLMProvider, status: number, body: str
   return new Error(`${label} request failed (${status})${snippet ? `: ${snippet}` : ''}`);
 }
 
-// ── Module-level fetch override (for testing concurrency/injection without per-call _fetch) ──
-let _llmFetch: typeof globalThis.fetch | null = null;
-export function setLLMFetch(fn: typeof globalThis.fetch): void { _llmFetch = fn; }
-export function resetLLMFetch(): void { _llmFetch = null; }
-
-// ── Provider usage extraction helpers ────────────────────────────────────────
-
-export interface ProviderUsageResult { inputTokens: number; outputTokens: number }
-
-function isRecord(v: unknown): v is Record<string, unknown> {
-  return typeof v === 'object' && v !== null && !Array.isArray(v);
-}
-
-export function extractOpenAIUsage(payload: unknown): ProviderUsageResult | undefined {
-  if (!isRecord(payload) || !isRecord(payload['usage'])) return undefined;
-  const u = payload['usage'];
-  const input = Number(u['prompt_tokens'] ?? 0);
-  const output = Number(u['completion_tokens'] ?? 0);
-  if (input === 0 && output === 0) return undefined;
-  return { inputTokens: input, outputTokens: output };
-}
-
-export function extractClaudeUsage(payload: unknown): ProviderUsageResult | undefined {
-  if (!isRecord(payload) || !isRecord(payload['usage'])) return undefined;
-  const u = payload['usage'];
-  const input = Number(u['input_tokens'] ?? 0);
-  const output = Number(u['output_tokens'] ?? 0);
-  if (input === 0 && output === 0) return undefined;
-  return { inputTokens: input, outputTokens: output };
-}
-
-export function extractGeminiUsage(payload: unknown): ProviderUsageResult | undefined {
-  if (!isRecord(payload) || !isRecord(payload['usageMetadata'])) return undefined;
-  const u = payload['usageMetadata'];
-  const input = Number(u['promptTokenCount'] ?? 0);
-  const output = Number(u['candidatesTokenCount'] ?? 0);
-  if (input === 0 && output === 0) return undefined;
-  return { inputTokens: input, outputTokens: output };
-}
-
-export function extractOllamaUsage(payload: unknown): ProviderUsageResult | undefined {
-  if (!isRecord(payload)) return undefined;
-  const input = Number(payload['prompt_eval_count'] ?? 0);
-  const output = Number(payload['eval_count'] ?? 0);
-  if (input === 0 && output === 0) return undefined;
-  return { inputTokens: input, outputTokens: output };
-}
-
 async function fetchProviderJson(
   provider: LLMProvider,
   url: string,
   init: RequestInit,
   timeoutMs = resolveProviderRequestTimeoutMs(provider),
-  fetchOverride?: typeof globalThis.fetch,
 ): Promise<unknown> {
-  const fetchFn = fetchOverride ?? globalThis.fetch;
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), timeoutMs);
 
   try {
-    const response = await fetchFn(url, {
+    const response = await fetch(url, {
       ...init,
       signal: controller.signal,
       headers: {
@@ -380,10 +325,10 @@ function resolveConfiguredModelName(provider: LLMProvider, configuredModel: stri
   return match;
 }
 
-async function resolveOllamaCallableModel(configuredModel: string, baseUrl: string, fetchFn?: typeof globalThis.fetch): Promise<string> {
+async function resolveOllamaCallableModel(configuredModel: string, baseUrl: string): Promise<string> {
   const payload = await fetchProviderJson('ollama', `${baseUrl}/api/tags`, {
     method: 'GET',
-  }, undefined, fetchFn);
+  });
   return resolveConfiguredModelName('ollama', configuredModel, payload);
 }
 
@@ -402,51 +347,6 @@ async function resolveCallTarget(providerOverride?: LLMProvider) {
   };
 }
 
-/** Dispatch a single provider call — extracted so the fallback chain can reuse it without
- *  duplicating the 30-line provider switch. */
-async function dispatchProviderCall(
-  enrichedPrompt: string,
-  target: Awaited<ReturnType<typeof resolveCallTarget>>,
-  fetchFn: typeof globalThis.fetch | undefined,
-  systemPrompt: string | undefined,
-): Promise<{ response: ProviderResponse; modelUsed: string }> {
-  let modelUsed = target.model;
-  let response: ProviderResponse = { text: '' };
-  switch (target.provider) {
-    case 'grok':
-    case 'openai':
-      response = await callOpenAICompatible(enrichedPrompt, target.provider, target.apiKey, target.model, target.baseUrl, fetchFn, systemPrompt);
-      break;
-    case 'claude':
-      response = await callClaude(enrichedPrompt, target.apiKey, target.model, target.baseUrl, fetchFn, systemPrompt);
-      break;
-    case 'gemini':
-      response = await callGemini(enrichedPrompt, target.apiKey, target.model, target.baseUrl, fetchFn, systemPrompt);
-      break;
-    case 'ollama':
-      modelUsed = await resolveOllamaCallableModel(target.ollamaModel, target.baseUrl, fetchFn);
-      response = await callOllama(enrichedPrompt, modelUsed, target.baseUrl, fetchFn, systemPrompt);
-      break;
-    default: {
-      const adapter = getRegistryProvider(target.provider);
-      if (adapter) {
-        const timeoutMs = resolveProviderRequestTimeoutMs(target.provider);
-        const model = target.model || adapter.defaultModel;
-        const baseUrl = target.baseUrl || adapter.defaultBaseUrl;
-        const text = await adapter.call(enrichedPrompt, model, baseUrl, target.apiKey, timeoutMs);
-        response = { text };
-      } else {
-        throw new LLMError(
-          `Unknown provider: ${target.provider}. Built-in: grok, claude, openai, gemini, ollama. Extended: together, groq, mistral.`,
-          'LLM_UNKNOWN_PROVIDER',
-          target.provider,
-        );
-      }
-    }
-  }
-  return { response, modelUsed };
-}
-
 /**
  * Call the configured LLM provider with automatic retry for transient failures.
  * Includes token estimation warnings for expensive calls.
@@ -456,11 +356,6 @@ export async function callLLM(
   providerOverride?: LLMProvider,
   options: CallLLMOptions = {},
 ): Promise<string> {
-  if (process.env.NODE_ENV === 'test') {
-    return 'Mock LLM response for testing';
-  }
-  const correlationId = generateCorrelationId();
-  const startTime = Date.now();
   const target = await resolveCallTarget(providerOverride);
   let modelUsed = target.model;
   let enrichedPrompt = options.enrichContext
@@ -471,145 +366,70 @@ export async function callLLM(
   if (rotResult.shouldTruncate && rotResult.truncateTarget) {
     enrichedPrompt = truncateContext(enrichedPrompt, rotResult.truncateTarget);
   }
-  // Wave D — Budget pre-flight: fail fast BEFORE expensive provider call
-  if (options.budgetFence?.isExceeded) {
-    enforceBudget(options);
-  }
-
-  // Resolve effective fetch early (used for both skipCache and provider dispatch)
-  const effectiveFetch = options._fetch ?? _llmFetch ?? undefined;
-
-  // Wave A — Cache check: return early on hit (saves 100% tokens + latency)
-  // Skip real cache when fetch is injected (test mode) unless _getCached is explicitly provided
-  const skipCache = options.noCache
-    || (effectiveFetch !== undefined && options._getCached === undefined);
-  if (!skipCache) {
-    const getCachedFn = options._getCached ?? ((p: string) => getCachedResponse(p, options.cwd));
-    const cached = await getCachedFn(enrichedPrompt).catch(() => null);
-    if (cached !== null) {
-      logger.info('[LLM] Cache hit — skipping provider call');
-      return cached;
-    }
-  }
-
   await warnIfExpensive(enrichedPrompt, target.provider);
   logger.info(`LLM call: ${target.provider}/${modelUsed} (${enrichedPrompt.length} chars)`);
 
-  // Enforce budget fence before any provider call
-  enforceBudget(options);
-
-  // Wave B — Streaming path: real-time output for Ollama + Claude in TTY mode
-  const useStreaming = options.streaming ?? (process.stdout.isTTY === true);
-  if (useStreaming && (target.provider === 'ollama' || target.provider === 'claude')) {
-    try {
-      const { callLLMWithProgress } = await import('./llm-stream.js');
-      const text = await callLLMWithProgress(
-        enrichedPrompt,
-        (chunk) => {
-          options.onChunk?.(chunk);
-          if (process.stdout.isTTY) process.stdout.write(chunk);
-        },
-        target.provider,
-        { _fetch: effectiveFetch, noCache: true },
-      );
-      // Cache write after streaming
-      if (!skipCache) {
-        const setCachedFn = options._setCached ?? ((p: string, r: string, prov: string) => cacheResponse(p, r, prov, options.cwd));
-        setCachedFn(enrichedPrompt, text, target.provider).catch(() => {});
-      }
-      return text;
-    } catch {
-      // Streaming failed — fall through to standard dispatch path
-      logger.verbose('[LLM] Streaming path failed — falling back to standard dispatch');
-    }
-  }
-
-  const fetchFn = effectiveFetch;
-  const retryDelays = options._retryDelays ?? RETRY_DELAYS_MS;
-  const sleepFn = options._sleep ?? sleep;
-
-  const circuitFn = options._getCircuit ?? ((provider: string) => ({
-    isOpen: () => !shouldAllowRequest(provider),
-    recordSuccess: () => cbRecordSuccess(provider),
-    recordFailure: () => cbRecordFailure(provider),
-  }));
-  const circuit = circuitFn(target.provider);
-
-  let response: ProviderResponse = { text: '' };
+  let output = '';
   let lastError: unknown;
 
   for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
-    if (circuit.isOpen()) {
-      throw new LLMError(
-        `LLM circuit open for provider "${target.provider}" — too many recent failures`,
-        'LLM_CIRCUIT_OPEN',
-        target.provider,
-      );
-    }
     try {
-      const { response: r, modelUsed: m } = await dispatchProviderCall(enrichedPrompt, target, fetchFn, options.systemPrompt);
-      modelUsed = m;
-      response = r;
-
-      // Record usage + update budget fence (best-effort)
-      let usageMetadata;
-      try { usageMetadata = await handleUsage(response, target.provider, modelUsed, options); } catch { /* best-effort */ }
-
-      const duration = Date.now() - startTime;
-      const totalTokens = usageMetadata ? usageMetadata.inputTokens + usageMetadata.outputTokens : undefined;
-      const costUsd = usageMetadata?.costUsd;
-      logLLMCall(target.provider, modelUsed, correlationId, totalTokens, costUsd, duration, options.cwd);
+      switch (target.provider) {
+        case 'grok':
+        case 'openai':
+          output = await callOpenAICompatible(enrichedPrompt, target.provider, target.apiKey, target.model, target.baseUrl);
+          break;
+        case 'claude':
+          output = await callClaude(enrichedPrompt, target.apiKey, target.model, target.baseUrl);
+          break;
+        case 'gemini':
+          output = await callGemini(enrichedPrompt, target.apiKey, target.model, target.baseUrl);
+          break;
+        case 'ollama':
+          modelUsed = await resolveOllamaCallableModel(target.ollamaModel, target.baseUrl);
+          output = await callOllama(enrichedPrompt, modelUsed, target.baseUrl);
+          break;
+        default: {
+          // Try the provider registry for additional providers (together, groq, mistral, etc.)
+          const adapter = getRegistryProvider(target.provider);
+          if (adapter) {
+            const timeoutMs = resolveProviderRequestTimeoutMs(target.provider);
+            const model = target.model || adapter.defaultModel;
+            const baseUrl = target.baseUrl || adapter.defaultBaseUrl;
+            output = await adapter.call(enrichedPrompt, model, baseUrl, target.apiKey, timeoutMs);
+          } else {
+            throw new Error(`Unknown provider: "${target.provider}". Built-in: grok, claude, openai, gemini, ollama. Extended: together, groq, mistral.`);
+          }
+        }
+      }
 
       const state = await loadState({ cwd: options.cwd });
-      state.auditLog.push(`${new Date().toISOString()} | llm: ${target.provider}/${modelUsed} (${response.text.length} chars returned${attempt > 0 ? `, attempt ${attempt + 1}` : ''})`);
+      state.auditLog.push(`${new Date().toISOString()} | llm: ${target.provider}/${modelUsed} (${output.length} chars returned${attempt > 0 ? `, attempt ${attempt + 1}` : ''})`);
       await saveState(state, { cwd: options.cwd });
 
       if (options.recordMemory !== false) {
         await recordMemory({
           category: 'command',
           summary: `LLM call: ${target.provider}/${modelUsed}`,
-          detail: `Prompt chars: ${enrichedPrompt.length}. Response chars: ${response.text.length}.`,
+          detail: `Prompt chars: ${enrichedPrompt.length}. Response chars: ${output.length}.`,
           tags: ['llm', target.provider, modelUsed],
           relatedCommands: ['llm'],
         }, options.cwd);
       }
 
-      // Cache write — best-effort, never blocks return
-      if (!skipCache && response.text) {
-        const setCachedFn = options._setCached ?? ((p: string, r: string, prov: string) => cacheResponse(p, r, prov, options.cwd));
-        setCachedFn(enrichedPrompt, response.text, target.provider).catch(() => {});
-      }
-
-      circuit.recordSuccess();
-      return response.text;
+      return output;
     } catch (err) {
       lastError = err;
       if (attempt < MAX_RETRIES && isRetryableError(err)) {
-        const delay = retryDelays[attempt] ?? 0;
+        const delay = RETRY_DELAYS_MS[attempt]!;
         logger.warn(`LLM call failed (attempt ${attempt + 1}/${MAX_RETRIES + 1}): ${err instanceof Error ? err.message : String(err)} - retrying in ${delay}ms`);
-        await sleepFn(delay);
+        await sleep(delay);
         continue;
       }
-      circuit.recordFailure();
-      break;
+      throw err;
     }
   }
 
-  // Fallback provider chain — only reached when primary exhausted retries
-  const fallbacks = options.fallbackProviders ?? [];
-  for (const fallbackProvider of fallbacks) {
-    try {
-      logger.warn(`[LLM] Primary "${target.provider}" failed — trying fallback "${fallbackProvider}"`);
-      const fallbackTarget = await resolveCallTarget(fallbackProvider);
-      const { response: fbResp } = await dispatchProviderCall(enrichedPrompt, fallbackTarget, fetchFn, options.systemPrompt);
-      if (fbResp.text) {
-        logger.success(`[LLM] Fallback "${fallbackProvider}" succeeded`);
-        return fbResp.text;
-      }
-    } catch (fallbackErr) {
-      logger.warn(`[LLM] Fallback "${fallbackProvider}" failed: ${fallbackErr instanceof Error ? fallbackErr.message : String(fallbackErr)}`);
-    }
-  }
   throw lastError;
 }
 
@@ -652,9 +472,8 @@ export async function probeLLMProvider(providerOverride?: LLMProvider): Promise<
       }
       case 'gemini': {
         const key = requireApiKey('gemini', target.apiKey);
-        const payload = await fetchProviderJson('gemini', `${target.baseUrl}/models`, {
+        const payload = await fetchProviderJson('gemini', `${target.baseUrl}/models?key=${encodeURIComponent(key)}`, {
           method: 'GET',
-          headers: { 'x-goog-api-key': key },
         });
         const resolvedModel = resolveConfiguredModelName('gemini', target.model, payload);
         return { ok: true, provider: 'gemini', model: resolvedModel, message: `Google Gemini model "${resolvedModel}" is reachable.` };
@@ -693,26 +512,25 @@ async function callOpenAICompatible(
   apiKey: string | undefined,
   model: string,
   baseUrl: string,
-  fetchFn?: typeof globalThis.fetch,
-  systemPrompt?: string,
-): Promise<ProviderResponse> {
+): Promise<string> {
   const key = requireApiKey(provider, apiKey);
-  const messages: Array<{ role: string; content: string }> = [];
-  if (systemPrompt) messages.push({ role: 'system', content: systemPrompt });
-  messages.push({ role: 'user', content: prompt });
   const payload = await fetchProviderJson(provider, `${baseUrl}/chat/completions`, {
     method: 'POST',
     headers: {
       Authorization: `Bearer ${key}`,
     },
-    body: JSON.stringify({ model, messages, max_tokens: 4096 }),
-  }, undefined, fetchFn);
+    body: JSON.stringify({
+      model,
+      messages: [{ role: 'user', content: prompt }],
+      max_tokens: 4096,
+    }),
+  });
 
   const text = extractOpenAICompatibleText(payload);
   if (!text) {
     throw new Error(`${displayProvider(provider)} returned an empty response.`);
   }
-  return { text, usage: extractOpenAIUsage(payload) };
+  return text;
 }
 
 async function callClaude(
@@ -720,9 +538,7 @@ async function callClaude(
   apiKey: string | undefined,
   model: string,
   baseUrl: string,
-  fetchFn?: typeof globalThis.fetch,
-  systemPrompt?: string,
-): Promise<ProviderResponse> {
+): Promise<string> {
   const key = requireApiKey('claude', apiKey);
   const payload = await fetchProviderJson('claude', `${baseUrl}/v1/messages`, {
     method: 'POST',
@@ -733,16 +549,15 @@ async function callClaude(
     body: JSON.stringify({
       model,
       max_tokens: 4096,
-      ...(systemPrompt ? { system: systemPrompt } : {}),
       messages: [{ role: 'user', content: prompt }],
     }),
-  }, undefined, fetchFn);
+  });
 
   const text = extractClaudeText(payload);
   if (!text) {
     throw new Error('Anthropic Claude returned an empty response.');
   }
-  return { text, usage: extractClaudeUsage(payload) };
+  return text;
 }
 
 async function callGemini(
@@ -750,48 +565,47 @@ async function callGemini(
   apiKey: string | undefined,
   model: string,
   baseUrl: string,
-  fetchFn?: typeof globalThis.fetch,
-  systemPrompt?: string,
-): Promise<ProviderResponse> {
+): Promise<string> {
   const key = requireApiKey('gemini', apiKey);
   const payload = await fetchProviderJson(
     'gemini',
-    `${baseUrl}/models/${encodeURIComponent(model)}:generateContent`,
+    `${baseUrl}/models/${encodeURIComponent(model)}:generateContent?key=${encodeURIComponent(key)}`,
     {
       method: 'POST',
-      headers: { 'x-goog-api-key': key },
       body: JSON.stringify({
-        ...(systemPrompt ? { systemInstruction: { parts: [{ text: systemPrompt }] } } : {}),
         contents: [{ role: 'user', parts: [{ text: prompt }] }],
-        generationConfig: { maxOutputTokens: 4096 },
+        generationConfig: {
+          maxOutputTokens: 4096,
+        },
       }),
     },
-    undefined,
-    fetchFn,
   );
 
   const text = extractGeminiText(payload);
   if (!text) {
     throw new Error('Google Gemini returned an empty response.');
   }
-  return { text, usage: extractGeminiUsage(payload) };
+  return text;
 }
 
-async function callOllama(prompt: string, model: string, baseUrl: string, fetchFn?: typeof globalThis.fetch, systemPrompt?: string): Promise<ProviderResponse> {
-  const messages: Array<{ role: string; content: string }> = [];
-  if (systemPrompt) messages.push({ role: 'system', content: systemPrompt });
-  messages.push({ role: 'user', content: prompt });
+async function callOllama(prompt: string, model: string, baseUrl: string): Promise<string> {
   const payload = await fetchProviderJson('ollama', `${baseUrl}/api/chat`, {
     method: 'POST',
-    body: JSON.stringify({ model, stream: false, messages }),
-  }, undefined, fetchFn);
+    body: JSON.stringify({
+      model,
+      stream: false,
+      messages: [{ role: 'user', content: prompt }],
+    }),
+  });
 
   const content = (payload as { message?: { content?: string } })?.message?.content?.trim() ?? '';
   if (!content) {
     throw new Error('Ollama returned an empty response.');
   }
-  return { text: content, usage: extractOllamaUsage(payload) };
+  return content;
 }
-
-// Re-export types from llm-pipeline so consumers can import from a single location
-export type { LLMUsageMetadata, CallLLMOptions, ProviderResponse } from './llm-pipeline.js';
+export interface CallLLMOptions {
+  enrichContext?: boolean;
+  recordMemory?: boolean;
+  cwd?: string;
+}

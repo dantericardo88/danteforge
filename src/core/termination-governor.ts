@@ -98,21 +98,21 @@ export async function evaluateTermination(context: TerminationContext): Promise<
   // Continue if no termination conditions met
   return {
     terminate: false,
-    reason: `continue: ${context.verdict} with ${context.gapReport.score} gaps remaining`,
+    reason: `continue: ${context.verdict} with ${context.gapReport.analysis.score} gaps remaining`,
     confidence: 0.6
   };
 }
 
 function detectBlocker(context: TerminationContext): string | null {
   // Check for external dependency issues
-  if (context.gapReport.staleTruthSurfaces.some(surface =>
+  if (context.gapReport.analysis.staleTruthSurfaces.some((surface: string) =>
     surface.includes('external') || surface.includes('dependency')
   )) {
     return 'external_dependency_unavailable';
   }
 
   // Check for fundamental architecture issues
-  if (context.gapReport.confirmedGaps.some(gap =>
+  if (context.gapReport.analysis.confirmedGaps.some((gap: string) =>
     gap.includes('architecture') || gap.includes('fundamental')
   )) {
     return 'architecture_blocker';
@@ -139,10 +139,10 @@ function assessProgress(context: TerminationContext): {
 
   // Check if gaps are decreasing
   const previousGapCount = context.previousVerdicts.length;
-  const currentGapScore = context.gapReport.score;
+  const currentGapScore = context.gapReport.analysis.score;
 
   // If gaps are increasing, no progress
-  if (currentGapScore > context.gapReport.score + 5) { // Allow small fluctuations
+  if (currentGapScore > context.gapReport.analysis.score + 5) { // Allow small fluctuations
     return {
       hasMeaningfulProgress: false,
       reason: 'gaps_increasing',
@@ -174,7 +174,7 @@ export function scopeNextWave(gapReport: ResidualGapReport): {
   priority: 'P0' | 'P1' | 'P2';
   estimatedEffort: number; // hours
 } {
-  const highPriorityGaps = gapReport.confirmedGaps.filter(gap =>
+  const highPriorityGaps = gapReport.analysis.confirmedGaps.filter((gap: string) =>
     gap.includes('autoforge') ||
     gap.includes('closure') ||
     gap.includes('integration') ||
@@ -183,13 +183,13 @@ export function scopeNextWave(gapReport: ResidualGapReport): {
     gap.includes('security')
   );
 
-  const mediumPriorityGaps = gapReport.confirmedGaps.filter(gap =>
+  const mediumPriorityGaps = gapReport.analysis.confirmedGaps.filter((gap: string) =>
     gap.includes('performance') ||
     gap.includes('test') ||
     gap.includes('validation')
   );
 
-  const lowPriorityGaps = gapReport.confirmedGaps.filter(gap =>
+  const lowPriorityGaps = gapReport.analysis.confirmedGaps.filter((gap: string) =>
     !highPriorityGaps.includes(gap) && !mediumPriorityGaps.includes(gap)
   );
 

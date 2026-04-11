@@ -121,7 +121,7 @@ export async function federateHighConfidenceEntities(
       if (!fm) { skipped.push(path.basename(filePath)); continue; }
 
       // Check confidence threshold
-      const confidence = fm.confidence;
+      const confidence = (fm as unknown as Record<string, unknown>)['confidence'];
       if (typeof confidence !== 'number' || confidence < GLOBAL_FEDERATION_THRESHOLD) {
         skipped.push(fm.entity ?? path.basename(filePath));
         continue;
@@ -135,14 +135,12 @@ export async function federateHighConfidenceEntities(
       let sourceProjects: string[] = [wikiDir];
       try {
         const existing = await readFile(destPath);
-        // Extract sourceProjects list directly from the YAML block (federation-specific field)
-        const spBlock = existing.match(/^sourceProjects:\s*\n((?:[ \t]+-[ \t]+.+\n?)*)/m);
-        if (spBlock) {
-          const existingProjects = spBlock[1]!
-            .split('\n')
-            .map(l => l.replace(/^\s*-\s*/, '').trim().replace(/^["']|["']$/g, ''))
-            .filter(Boolean);
-          sourceProjects = Array.from(new Set([...existingProjects, wikiDir]));
+        const existingFm = parseFrontmatter(existing) as Record<string, unknown> | null;
+        if (existingFm) {
+          const prev = existingFm['sourceProjects'];
+          if (Array.isArray(prev)) {
+            sourceProjects = Array.from(new Set([...prev as string[], wikiDir]));
+          }
         }
       } catch {
         // File doesn't exist — first federation

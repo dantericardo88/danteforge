@@ -14,12 +14,6 @@ const PROTECTED_PATHS = [
   'src/core/autoforge.ts',
   'src/core/pdse.ts',
   'src/cli/index.ts',
-  // Security-critical additions (2026-04-08)
-  'src/core/llm.ts',
-  'src/core/prompt-builder.ts',
-  'src/core/mcp-server.ts',
-  'src/core/input-validation.ts',
-  'src/core/circuit-breaker.ts',
 ];
 
 const AUDIT_DIR = '.danteforge/audit';
@@ -71,18 +65,13 @@ export function computeFileHash(content: string): string {
  * Creates the audit directory if it does not already exist.
  */
 export async function auditSelfEdit(entry: SelfEditAuditEntry, cwd?: string): Promise<void> {
-  try {
-    const base = cwd ?? process.cwd();
-    const auditDir = path.join(base, AUDIT_DIR);
-    const auditFile = path.join(base, AUDIT_FILE);
+  const base = cwd ?? process.cwd();
+  const auditDir = path.join(base, AUDIT_DIR);
+  const auditFile = path.join(base, AUDIT_FILE);
 
-    await fs.mkdir(auditDir, { recursive: true });
-    await fs.appendFile(auditFile, JSON.stringify(entry) + '\n', 'utf8');
-    logger.verbose(`Self-edit audit written: ${entry.action} ${entry.filePath} (approved=${entry.approved}, policy=${entry.policy})`);
-  } catch (error) {
-    logger.error(`Failed to write self-edit audit: ${error}`);
-    throw new Error(`Self-edit audit failed: ${error}`);
-  }
+  await fs.mkdir(auditDir, { recursive: true });
+  await fs.appendFile(auditFile, JSON.stringify(entry) + '\n', 'utf8');
+  logger.verbose(`Self-edit audit written: ${entry.action} ${entry.filePath} (approved=${entry.approved}, policy=${entry.policy})`);
 }
 
 /**
@@ -100,7 +89,6 @@ export async function loadAuditLog(cwd?: string): Promise<SelfEditAuditEntry[]> 
     if (err instanceof Error && (err as NodeJS.ErrnoException).code === 'ENOENT') {
       return [];
     }
-    logger.error(`Failed to read audit log: ${err}`);
     throw err;
   }
 

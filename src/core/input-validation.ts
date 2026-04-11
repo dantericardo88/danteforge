@@ -1,5 +1,4 @@
 import path from 'path';
-import { ValidationError } from './errors.js';
 
 /**
  * Sanitize a file path — resolve, normalize, and reject directory traversal.
@@ -12,9 +11,7 @@ export function sanitizePath(input: string, baseCwd?: string): string {
   const normalizedBase = path.normalize(base) + path.sep;
   const normalizedResolved = path.normalize(resolved);
   if (!normalizedResolved.startsWith(normalizedBase) && normalizedResolved !== path.normalize(base)) {
-    throw new ValidationError(
-      `Path traversal rejected: "${input}" resolves outside project root`,
-    );
+    throw new Error(`Path traversal rejected: "${input}" resolves outside project root`);
   }
   return resolved;
 }
@@ -26,19 +23,12 @@ export type KnownProvider = typeof KNOWN_PROVIDERS[number];
  * Validate that a provider name is recognized.
  */
 export function validateProviderName(input: string): KnownProvider {
-  try {
-    const normalized = input.toLowerCase().trim();
-    const match = KNOWN_PROVIDERS.find(p => p === normalized);
-    if (!match) {
-      throw new ValidationError(
-        `Unknown provider "${input}". Supported: ${KNOWN_PROVIDERS.join(', ')}`,
-      );
-    }
-    return match;
-  } catch (error) {
-    if (error instanceof ValidationError) throw error;
-    throw new ValidationError(`Provider validation failed: ${error}`);
+  const normalized = input.toLowerCase().trim();
+  const match = KNOWN_PROVIDERS.find(p => p === normalized);
+  if (!match) {
+    throw new Error(`Unknown provider: "${input}". Valid providers: ${KNOWN_PROVIDERS.join(', ')}`);
   }
+  return match;
 }
 
 /**

@@ -45,9 +45,6 @@ describe('e2e MCP integration', () => {
       const args: Record<string, unknown> = {};
       if (tool.name === 'danteforge_specify') args['idea'] = 'test idea';
       if (tool.name === 'danteforge_lessons_add') args['lesson'] = 'test lesson';
-      if (tool.name === 'danteforge_artifact_read') args['name'] = 'SPEC.md';
-      if (tool.name === 'danteforge_verify') args['confirm'] = true;
-      if (tool.name === 'danteforge_route_task') args['taskName'] = 'test task';
       await assert.doesNotReject(
         () => session.callTool(tool.name, args),
         `Tool ${tool.name} should not throw`,

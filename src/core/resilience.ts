@@ -92,6 +92,7 @@ export class CircuitOpenError extends DanteError {
     super(
       `Circuit breaker is OPEN for ${operationType}:${operationId}. Too many recent failures. Wait 30s and retry.`,
       'CIRCUIT_OPEN',
+      'Wait 30s and retry',
     );
   }
 }
@@ -108,6 +109,7 @@ export class OperationTimeoutError extends DanteError {
     super(
       `Operation ${operationType}:${operationId} timed out after ${timeoutMs}ms`,
       'OPERATION_TIMEOUT',
+      'Increase timeout or check connectivity',
     );
   }
 }
@@ -123,6 +125,7 @@ export class ConcurrencyLimitError extends DanteError {
     super(
       `Maximum concurrent ${operationType} operations reached (${maxConcurrent}). Try again later.`,
       'CONCURRENCY_LIMIT',
+      'Try again later',
     );
   }
 }

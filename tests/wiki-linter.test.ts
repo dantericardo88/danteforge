@@ -267,8 +267,8 @@ describe('scanLinkIntegrity', () => {
 
     assert.equal(brokenLinks.length, 1);
     assert.equal(brokenLinks[0].sourceEntityId, 'a');
-    assert.ok(brokenLinks[0].skeletonCreated);
-    // Verify skeleton page was written
+    assert.ok(brokenLinks[0].stubCreated);
+    // Verify stub page was written
     assert.ok(Object.keys(written).some(k => k.includes('nonexistent-entity')));
   });
 

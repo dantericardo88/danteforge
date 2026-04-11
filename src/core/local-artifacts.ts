@@ -6,37 +6,6 @@ const STATE_DIR = '.danteforge';
 
 export const FIRST_EXECUTION_PHASE = 1;
 
-/** Maximum allowed file size for planning artifacts (512 KB). */
-export const MAX_ARTIFACT_SIZE_BYTES = 524_288; // 512 KB
-
-/**
- * Read a DanteForge artifact file with a size guard.
- * Throws FileError if the file exceeds MAX_ARTIFACT_SIZE_BYTES.
- * ENOENT propagates as a normal readFile error.
- */
-export async function readArtifact(
-  filename: string,
-  cwd?: string,
-  _stat?: (p: string) => Promise<{ size: number }>,
-): Promise<string> {
-  const filePath = path.join(cwd ?? process.cwd(), STATE_DIR, filename);
-  const statFn = _stat ?? fs.stat;
-  try {
-    const { size } = await statFn(filePath);
-    if (size > MAX_ARTIFACT_SIZE_BYTES) {
-      throw new FileError(
-        `Artifact "${filename}" is too large (${size} bytes, limit ${MAX_ARTIFACT_SIZE_BYTES}). ` +
-        `Regenerate with: danteforge ${filename.replace('.md', '').toLowerCase()}`,
-        filePath,
-      );
-    }
-  } catch (err) {
-    if (err instanceof FileError) throw err;
-    // ENOENT or other stat errors — let readFile report the missing file
-  }
-  return fs.readFile(filePath, 'utf8');
-}
-
 export interface LocalTask {
   name: string;
   files?: string[];

@@ -5,7 +5,6 @@ import { logger } from '../../core/logger.js';
 import { withErrorBoundary } from '../../core/cli-error-boundary.js';
 import { createStepTracker } from '../../core/progress.js';
 import type { InitOptions } from './init.js';
-import type { ConstitutionOptions } from './constitution.js';
 import type { DanteState } from '../../core/state.js';
 
 export const SIMPLE_CONSTITUTION_TEMPLATE = (projectName: string): string =>
@@ -43,7 +42,7 @@ export interface QuickstartOptions {
   _isTTY?: boolean;
   _readline?: QuickstartReadlineLike;
   _runInit?: (opts: InitOptions) => Promise<void>;
-  _runConstitution?: (opts: ConstitutionOptions) => Promise<void>;
+  _runConstitution?: () => Promise<void>;
   _runSpark?: (goal: string) => Promise<void>;
   _isLLMAvailable?: () => Promise<boolean>;
   _readFile?: (p: string) => Promise<string>;
@@ -132,7 +131,6 @@ export async function quickstart(options: QuickstartOptions = {}): Promise<void>
         : undefined;
       await runInit({
         nonInteractive: options.nonInteractive,
-        simple: options.simple,
         cwd,
         _isTTY: options._isTTY,
         _readline: initReadline,
@@ -144,17 +142,12 @@ export async function quickstart(options: QuickstartOptions = {}): Promise<void>
 
     // ── [2/4] Constitution ────────────────────────────────────────────────────
     tracker.step(options.simple ? 'Defining your project rules...' : 'Defining project constitution...');
-    const runConstitution = options._runConstitution ?? (async (opts: ConstitutionOptions) => {
+    const runConstitution = options._runConstitution ?? (async () => {
       const { constitution } = await import('./constitution.js');
-      await constitution(opts);
+      await constitution();
     });
     try {
-      await runConstitution({
-        nonInteractive: options.nonInteractive,
-        cwd,
-        _isTTY: options._isTTY,
-        _readline: options._readline,
-      });
+      await runConstitution();
     } catch (err) {
       logger.warn('Constitution step had issues — continuing...');
     }

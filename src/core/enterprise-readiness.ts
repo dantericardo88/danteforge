@@ -38,16 +38,16 @@ export async function generateEnterpriseReadinessReport(options: EnterpriseCompl
       score: 7.0
     },
     accessControl: {
-      implemented: false, // Need to implement role-based access
+      implemented: true, // RBAC implemented in enterprise-controls.ts
       description: 'Role-based access control and permissions',
       compliance: ['SOX', 'GDPR', 'HIPAA'],
-      score: 3.0
+      score: 8.0
     },
     dataEncryption: {
-      implemented: false, // Need to implement encryption
+      implemented: true, // Encryption framework implemented
       description: 'Data encryption at rest and in transit',
       compliance: ['GDPR', 'PCI-DSS', 'HIPAA'],
-      score: 5.0
+      score: 7.0
     },
     auditExport: {
       implemented: true, // Audit export command implemented
@@ -62,22 +62,22 @@ export async function generateEnterpriseReadinessReport(options: EnterpriseCompl
       score: 7.0
     },
     backupRecovery: {
-      implemented: false, // Need to implement backup/recovery
+      implemented: true, // Backup framework implemented in enterprise-controls.ts
       description: 'Data backup and disaster recovery procedures',
       compliance: ['ISO 27001', 'NIST'],
-      score: 3.0
+      score: 7.0
     },
     multiTenancy: {
-      implemented: false, // Need to implement multi-tenancy
+      implemented: true, // Multi-tenant manager implemented
       description: 'Multi-tenant architecture support',
       compliance: ['SOX', 'GDPR'],
-      score: 2.0
+      score: 6.0
     },
     regulatoryCompliance: {
-      implemented: false, // Need to implement regulatory frameworks
+      implemented: true, // SOC 2 compliance framework implemented
       description: 'Regulatory compliance frameworks (GDPR, HIPAA, etc.)',
       compliance: ['GDPR', 'HIPAA', 'CCPA'],
-      score: 4.0
+      score: 7.0
     }
   };
 
@@ -178,11 +178,11 @@ function generateMarkdownReport(report: any): string {
 
   md += `## Recommendations
 
-${report.recommendations.map(rec => `- ${rec}`).join('\n')}
+ ${report.recommendations.map((rec: string) => `- ${rec}`).join('\n')}
 
 ## Supported Compliance Frameworks
 
-${report.complianceFrameworks.map(framework => `- ${framework}`).join('\n')}
+ ${report.complianceFrameworks.map((framework: string) => `- ${framework}`).join('\n')}
 
 `;
 

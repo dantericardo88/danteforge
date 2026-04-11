@@ -70,7 +70,7 @@ describe('danteforge_assess handler', () => {
 
     const result = await TOOL_HANDLERS.danteforge_assess(
       { cwd: '/tmp/myproject' },
-      { ...deps, _sanitize: (raw: string) => raw },
+      deps,
     );
 
     assert.ok(receivedOpts !== undefined);
@@ -116,7 +116,7 @@ describe('danteforge_state_read handler', () => {
 
     const result = await TOOL_HANDLERS.danteforge_state_read(
       { cwd: '/tmp/testproject' },
-      { ...deps, _sanitize: (raw: string) => raw },
+      deps,
     );
 
     assert.ok(receivedOpts !== undefined);

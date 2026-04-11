@@ -2,7 +2,10 @@
 // No external dependencies. Uses fs.open with 'wx' (exclusive create) which is
 // atomic on all platforms (POSIX O_EXCL, Windows CREATE_NEW).
 import fs from 'fs/promises';
-import { StateError } from './errors.js';
+import { DanteError } from './errors.js';
+class StateError extends DanteError {
+  constructor(message: string) { super(message, 'STATE_ERROR', 'Check STATE.yaml'); this.name = 'StateError'; }
+}
 
 export const LOCK_MAX_RETRIES = 10;
 export const LOCK_BASE_DELAY_MS = 50;
@@ -58,9 +61,7 @@ export async function acquireStateLock(lockPath: string): Promise<() => Promise<
     }
   }
   throw new StateError(
-    `Could not acquire state lock at "${lockPath}" after ${LOCK_MAX_RETRIES} attempts`,
-    'STATE_LOCK_FAILED',
-    'Another DanteForge process may be running. Wait a moment and retry.',
+    `Could not acquire state lock at "${lockPath}" after ${LOCK_MAX_RETRIES} attempts. Another DanteForge process may be running.`,
   );
 }
 
