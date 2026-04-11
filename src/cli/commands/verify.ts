@@ -33,7 +33,7 @@ async function fileExists(filePath: string): Promise<boolean> {
   }
 }
 
-function stageRequiresExecution(stage: WorkflowStage): boolean {
+export function stageRequiresExecution(stage: WorkflowStage): boolean {
   return stage === 'forge' || stage === 'ux-refine' || stage === 'verify' || stage === 'synthesize';
 }
 
@@ -75,11 +75,11 @@ async function runReleaseVerification(result: VerifyResult): Promise<void> {
   }
 }
 
-function normalizeMarkdownValue(value: string | undefined): string | undefined {
+export function normalizeMarkdownValue(value: string | undefined): string | undefined {
   return value?.replace(/`/g, '').trim();
 }
 
-function parseCurrentStateMetadata(content: string): CurrentStateMetadata {
+export function parseCurrentStateMetadata(content: string): CurrentStateMetadata {
   const capture = (patterns: RegExp[]): string | undefined => {
     for (const pattern of patterns) {
       const match = pattern.exec(content);
@@ -106,7 +106,7 @@ function parseCurrentStateMetadata(content: string): CurrentStateMetadata {
   return { version, projectType };
 }
 
-async function readWorkspacePackageVersion(): Promise<string | undefined> {
+export async function readWorkspacePackageVersion(): Promise<string | undefined> {
   try {
     const pkg = JSON.parse(await fs.readFile('package.json', 'utf8')) as { version?: string };
     return typeof pkg.version === 'string' && pkg.version.trim().length > 0

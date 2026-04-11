@@ -186,7 +186,7 @@ async function checkAntigravityUpstream(): Promise<DiagnosticResult> {
   }
 }
 
-function validateLiveReleaseConfig(env = process.env): LiveConfigResult {
+export function validateLiveReleaseConfig(env = process.env): LiveConfigResult {
   const rawProviders = env.DANTEFORGE_LIVE_PROVIDERS?.trim();
   if (!rawProviders) {
     return {

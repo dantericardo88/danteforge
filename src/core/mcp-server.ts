@@ -690,3 +690,29 @@ export async function createAndStartMCPServer(): Promise<void> {
   const transport = new StdioServerTransport();
   await server.connect(transport);
 }
+
+// ---------------------------------------------------------------------------
+// Lightweight server factory (for tests and programmatic use)
+// ---------------------------------------------------------------------------
+
+export interface ManualMcpServer {
+  handleRequest: (request: { method: string; params?: Record<string, unknown> }) => Promise<unknown>;
+}
+
+export function createMcpServer(_opts: Record<string, unknown> = {}): ManualMcpServer {
+  return {
+    async handleRequest(request) {
+      if (request.method === 'tools/list') {
+        return { tools: TOOL_DEFINITIONS };
+      }
+      if (request.method === 'tools/call') {
+        const name = (request.params as Record<string, unknown>)?.name as string;
+        const args = ((request.params as Record<string, unknown>)?.arguments ?? {}) as Record<string, unknown>;
+        const handler = TOOL_HANDLERS[name];
+        if (!handler) return errorResult(`Unknown tool: ${name}`);
+        return await handler(args);
+      }
+      return errorResult(`Unknown method: ${request.method}`);
+    },
+  };
+}
