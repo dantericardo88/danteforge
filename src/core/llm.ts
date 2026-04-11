@@ -149,12 +149,14 @@ async function fetchProviderJson(
   url: string,
   init: RequestInit,
   timeoutMs = resolveProviderRequestTimeoutMs(provider),
+  fetchFn?: typeof globalThis.fetch,
 ): Promise<unknown> {
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), timeoutMs);
+  const useFetch = fetchFn ?? _llmFetchOverride ?? globalThis.fetch;
 
   try {
-    const response = await fetch(url, {
+    const response = await useFetch(url, {
       ...init,
       signal: controller.signal,
       headers: {
@@ -353,6 +355,22 @@ async function resolveCallTarget(providerOverride?: LLMProvider) {
  * Includes token estimation warnings for expensive calls.
  */
 export async function callLLM(
+  prompt: string,
+  providerOverride?: LLMProvider,
+  options: CallLLMOptions = {},
+): Promise<string> {
+  // Wire per-call _fetch override into module-level for provider functions
+  const previousFetch = _llmFetchOverride;
+  if (options._fetch) _llmFetchOverride = options._fetch;
+
+  try {
+  return await _callLLMInner(prompt, providerOverride, options);
+  } finally {
+    _llmFetchOverride = previousFetch;
+  }
+}
+
+async function _callLLMInner(
   prompt: string,
   providerOverride?: LLMProvider,
   options: CallLLMOptions = {},
