@@ -19,6 +19,7 @@ export { compact } from './compact.js';
 export { uxRefine } from './ux-refine.js';
 export { setupFigma } from './setup-figma.js';
 export { setupAssistants } from './setup-assistants.js';
+export { setupOllama } from './setup-ollama.js';
 export { doctor } from './doctor.js';
 export { dashboard } from './dashboard.js';
 export { magic } from './magic.js';

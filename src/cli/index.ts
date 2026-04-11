@@ -138,6 +138,7 @@ program
   .option('--live', 'Run live browser checks on deployed app')
   .option('--url <url>', 'URL to verify against (requires --live)')
   .option('--recompute', 'Re-detect project type and recompute completion scores')
+  .option('--json', 'Output results as JSON to stdout (logs go to stderr)')
   .action(commands.verify);
 
 program
@@ -196,18 +197,21 @@ program
 
 program
   .command('setup')
-  .argument('<tool>', 'Tool to set up (figma|assistants)')
+  .argument('<tool>', 'Tool to set up (figma|assistants|ollama)')
   .description('Interactive setup wizard for integrations')
   .option('--host <type>', 'Specify host editor', 'auto')
   .option('--assistants <list>', 'Comma-separated assistant list (claude,codex,antigravity|gemini,opencode,cursor,all). Defaults to user-level assistants only; cursor is explicit.')
   .option('--figma-url <url>', 'Figma file URL')
   .option('--token-file <path>', 'Design tokens file path')
   .option('--no-test', 'Skip connection test')
-  .addHelpText('after', '\nSubcommands: figma, assistants')
+  .option('--pull', 'Pull recommended Ollama model if missing')
+  .option('--ollama-model <model>', 'Override the recommended Ollama model')
+  .addHelpText('after', '\nSubcommands: figma, assistants, ollama')
   .action((tool: string, options) => {
     if (tool === 'figma') return commands.setupFigma(options);
     if (tool === 'assistants') return commands.setupAssistants(options);
-    logger.error(`Unknown tool: ${tool}. Available: figma, assistants`);
+    if (tool === 'ollama') return commands.setupOllama(options);
+    logger.error(`Unknown tool: ${tool}. Available: figma, assistants, ollama`);
   });
 
 program

@@ -9,6 +9,7 @@ import { logger } from './logger.js';
 import { loadState, saveState } from './state.js';
 import { injectContext } from './context-injector.js';
 import { recordMemory } from './memory-engine.js';
+import { LLMError } from './errors.js';
 
 const MAX_RETRIES = 2;
 const RETRY_DELAYS_MS = [1000, 3000];
@@ -328,10 +329,10 @@ function resolveConfiguredModelName(provider: LLMProvider, configuredModel: stri
   return match;
 }
 
-async function resolveOllamaCallableModel(configuredModel: string, baseUrl: string): Promise<string> {
+async function resolveOllamaCallableModel(configuredModel: string, baseUrl: string, fetchFn?: typeof globalThis.fetch): Promise<string> {
   const payload = await fetchProviderJson('ollama', `${baseUrl}/api/tags`, {
     method: 'GET',
-  });
+  }, undefined, fetchFn);
   return resolveConfiguredModelName('ollama', configuredModel, payload);
 }
 
@@ -353,21 +354,15 @@ async function resolveCallTarget(providerOverride?: LLMProvider) {
 /**
  * Call the configured LLM provider with automatic retry for transient failures.
  * Includes token estimation warnings for expensive calls.
+ * Supports onUsage callback and budgetFence for per-call cost tracking.
+ * onUsage?: (usage: LLMUsageMetadata) => void
  */
 export async function callLLM(
   prompt: string,
   providerOverride?: LLMProvider,
   options: CallLLMOptions = {},
 ): Promise<string> {
-  // Wire per-call _fetch override into module-level for provider functions
-  const previousFetch = _llmFetchOverride;
-  if (options._fetch) _llmFetchOverride = options._fetch;
-
-  try {
-  return await _callLLMInner(prompt, providerOverride, options);
-  } finally {
-    _llmFetchOverride = previousFetch;
-  }
+  return _callLLMInner(prompt, providerOverride, options);
 }
 
 async function _callLLMInner(
@@ -375,6 +370,9 @@ async function _callLLMInner(
   providerOverride?: LLMProvider,
   options: CallLLMOptions = {},
 ): Promise<string> {
+  // Resolve the per-call fetch: prefer per-call _fetch, then module-level override, then globalThis
+  const perCallFetch: typeof globalThis.fetch | undefined = options._fetch ?? _llmFetchOverride;
+
   const target = await resolveCallTarget(providerOverride);
   let modelUsed = target.model;
   let enrichedPrompt = options.enrichContext
@@ -388,7 +386,15 @@ async function _callLLMInner(
   await warnIfExpensive(enrichedPrompt, target.provider);
   logger.info(`LLM call: ${target.provider}/${modelUsed} (${enrichedPrompt.length} chars)`);
 
-  let output = '';
+  // Enforce budget fence before making any API call
+  if (options.budgetFence) {
+    const fence = options.budgetFence;
+    if (fence.isExceeded || fence.currentSpendUsd >= fence.maxBudgetUsd) {
+      throw new Error(`Budget fence exceeded for ${fence.agentRole}: $${fence.currentSpendUsd.toFixed(4)} of $${fence.maxBudgetUsd.toFixed(4)} max`);
+    }
+  }
+
+  let result: ProviderCallResult = { text: '' };
   let lastError: unknown;
 
   for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
@@ -396,18 +402,19 @@ async function _callLLMInner(
       switch (target.provider) {
         case 'grok':
         case 'openai':
-          output = await callOpenAICompatible(enrichedPrompt, target.provider, target.apiKey, target.model, target.baseUrl);
+          result = await callOpenAICompatible(enrichedPrompt, target.provider, target.apiKey, target.model, target.baseUrl, perCallFetch);
           break;
         case 'claude':
-          output = await callClaude(enrichedPrompt, target.apiKey, target.model, target.baseUrl);
+          result = await callClaude(enrichedPrompt, target.apiKey, target.model, target.baseUrl, perCallFetch);
           break;
         case 'gemini':
-          output = await callGemini(enrichedPrompt, target.apiKey, target.model, target.baseUrl);
+          result = await callGemini(enrichedPrompt, target.apiKey, target.model, target.baseUrl, perCallFetch);
           break;
-        case 'ollama':
-          modelUsed = await resolveOllamaCallableModel(target.ollamaModel, target.baseUrl);
-          output = await callOllama(enrichedPrompt, modelUsed, target.baseUrl);
+        case 'ollama': {
+          modelUsed = await resolveOllamaCallableModel(target.ollamaModel, target.baseUrl, perCallFetch);
+          result = await callOllama(enrichedPrompt, modelUsed, target.baseUrl, perCallFetch);
           break;
+        }
         default: {
           // Try the provider registry for additional providers (together, groq, mistral, etc.)
           const adapter = getRegistryProvider(target.provider);
@@ -415,28 +422,54 @@ async function _callLLMInner(
             const timeoutMs = resolveProviderRequestTimeoutMs(target.provider);
             const model = target.model || adapter.defaultModel;
             const baseUrl = target.baseUrl || adapter.defaultBaseUrl;
-            output = await adapter.call(enrichedPrompt, model, baseUrl, target.apiKey, timeoutMs);
+            const text = await adapter.call(enrichedPrompt, model, baseUrl, target.apiKey, timeoutMs);
+            result = { text };
           } else {
-            throw new Error(`Unknown provider: "${target.provider}". Built-in: grok, claude, openai, gemini, ollama. Extended: together, groq, mistral.`);
+            throw new LLMError(`Unknown provider: ${target.provider}. Built-in: grok, claude, openai, gemini, ollama. Extended: together, groq, mistral.`, target.provider, undefined, 'LLM_UNKNOWN_PROVIDER');
           }
         }
       }
 
+      // Fire onUsage callback and update budget fence if usage data is available
+      if (result.usage && (options.onUsage || options.budgetFence)) {
+        try {
+          const { estimateCost } = await import('./token-estimator.js');
+          const totalTokens = result.usage.inputTokens + result.usage.outputTokens;
+          const costData = estimateCost(totalTokens, target.provider);
+          const usageMeta: LLMUsageMetadata = {
+            inputTokens: result.usage.inputTokens,
+            outputTokens: result.usage.outputTokens,
+            costUsd: costData.totalEstimate,
+            model: modelUsed,
+            provider: target.provider,
+          };
+          if (options.onUsage) {
+            try { options.onUsage(usageMeta); } catch { /* best-effort */ }
+          }
+          if (options.budgetFence) {
+            options.budgetFence.currentSpendUsd += costData.totalEstimate;
+            if (options.budgetFence.currentSpendUsd >= options.budgetFence.maxBudgetUsd) {
+              options.budgetFence.isExceeded = true;
+            }
+          }
+        } catch { /* best-effort usage tracking */ }
+      }
+
       const state = await loadState({ cwd: options.cwd });
-      state.auditLog.push(`${new Date().toISOString()} | llm: ${target.provider}/${modelUsed} (${output.length} chars returned${attempt > 0 ? `, attempt ${attempt + 1}` : ''})`);
+      state.auditLog.push(`${new Date().toISOString()} | llm: ${target.provider}/${modelUsed} (${result.text.length} chars returned${attempt > 0 ? `, attempt ${attempt + 1}` : ''})`);
       await saveState(state, { cwd: options.cwd });
 
       if (options.recordMemory !== false) {
         await recordMemory({
           category: 'command',
           summary: `LLM call: ${target.provider}/${modelUsed}`,
-          detail: `Prompt chars: ${enrichedPrompt.length}. Response chars: ${output.length}.`,
+          detail: `Prompt chars: ${enrichedPrompt.length}. Response chars: ${result.text.length}.`,
           tags: ['llm', target.provider, modelUsed],
           relatedCommands: ['llm'],
         }, options.cwd);
       }
 
-      return output;
+      return result.text;
     } catch (err) {
       lastError = err;
       if (attempt < MAX_RETRIES && isRetryableError(err)) {
@@ -525,13 +558,16 @@ export async function probeLLMProvider(providerOverride?: LLMProvider): Promise<
   }
 }
 
+type ProviderCallResult = { text: string; usage?: { inputTokens: number; outputTokens: number } };
+
 async function callOpenAICompatible(
   prompt: string,
   provider: 'grok' | 'openai',
   apiKey: string | undefined,
   model: string,
   baseUrl: string,
-): Promise<string> {
+  fetchFn?: typeof globalThis.fetch,
+): Promise<ProviderCallResult> {
   const key = requireApiKey(provider, apiKey);
   const payload = await fetchProviderJson(provider, `${baseUrl}/chat/completions`, {
     method: 'POST',
@@ -543,13 +579,14 @@ async function callOpenAICompatible(
       messages: [{ role: 'user', content: prompt }],
       max_tokens: 4096,
     }),
-  });
+  }, undefined, fetchFn);
 
   const text = extractOpenAICompatibleText(payload);
   if (!text) {
     throw new Error(`${displayProvider(provider)} returned an empty response.`);
   }
-  return text;
+  const usage = extractOpenAIUsageLocal(payload);
+  return { text, ...(usage ? { usage } : {}) };
 }
 
 async function callClaude(
@@ -557,7 +594,8 @@ async function callClaude(
   apiKey: string | undefined,
   model: string,
   baseUrl: string,
-): Promise<string> {
+  fetchFn?: typeof globalThis.fetch,
+): Promise<ProviderCallResult> {
   const key = requireApiKey('claude', apiKey);
   const payload = await fetchProviderJson('claude', `${baseUrl}/v1/messages`, {
     method: 'POST',
@@ -570,13 +608,14 @@ async function callClaude(
       max_tokens: 4096,
       messages: [{ role: 'user', content: prompt }],
     }),
-  });
+  }, undefined, fetchFn);
 
   const text = extractClaudeText(payload);
   if (!text) {
     throw new Error('Anthropic Claude returned an empty response.');
   }
-  return text;
+  const usage = extractClaudeUsageLocal(payload);
+  return { text, ...(usage ? { usage } : {}) };
 }
 
 async function callGemini(
@@ -584,7 +623,8 @@ async function callGemini(
   apiKey: string | undefined,
   model: string,
   baseUrl: string,
-): Promise<string> {
+  fetchFn?: typeof globalThis.fetch,
+): Promise<ProviderCallResult> {
   const key = requireApiKey('gemini', apiKey);
   const payload = await fetchProviderJson(
     'gemini',
@@ -598,16 +638,24 @@ async function callGemini(
         },
       }),
     },
+    undefined,
+    fetchFn,
   );
 
   const text = extractGeminiText(payload);
   if (!text) {
     throw new Error('Google Gemini returned an empty response.');
   }
-  return text;
+  const usage = extractGeminiUsageLocal(payload);
+  return { text, ...(usage ? { usage } : {}) };
 }
 
-async function callOllama(prompt: string, model: string, baseUrl: string): Promise<string> {
+async function callOllama(
+  prompt: string,
+  model: string,
+  baseUrl: string,
+  fetchFn?: typeof globalThis.fetch,
+): Promise<ProviderCallResult> {
   const payload = await fetchProviderJson('ollama', `${baseUrl}/api/chat`, {
     method: 'POST',
     body: JSON.stringify({
@@ -615,13 +663,50 @@ async function callOllama(prompt: string, model: string, baseUrl: string): Promi
       stream: false,
       messages: [{ role: 'user', content: prompt }],
     }),
-  });
+  }, undefined, fetchFn);
 
   const content = (payload as { message?: { content?: string } })?.message?.content?.trim() ?? '';
   if (!content) {
     throw new Error('Ollama returned an empty response.');
   }
-  return content;
+  const usage = extractOllamaUsageLocal(payload);
+  return { text: content, ...(usage ? { usage } : {}) };
+}
+
+// Local usage extractors that return the simpler {inputTokens, outputTokens} shape
+function extractOpenAIUsageLocal(payload: unknown): { inputTokens: number; outputTokens: number } | undefined {
+  const u = (payload as Record<string, unknown> | undefined)?.['usage'];
+  if (typeof u !== 'object' || u === null) return undefined;
+  const rec = u as Record<string, unknown>;
+  const input = Number(rec['prompt_tokens'] ?? 0);
+  const output = Number(rec['completion_tokens'] ?? 0);
+  return (input > 0 || output > 0) ? { inputTokens: input, outputTokens: output } : undefined;
+}
+
+function extractClaudeUsageLocal(payload: unknown): { inputTokens: number; outputTokens: number } | undefined {
+  const u = (payload as Record<string, unknown> | undefined)?.['usage'];
+  if (typeof u !== 'object' || u === null) return undefined;
+  const rec = u as Record<string, unknown>;
+  const input = Number(rec['input_tokens'] ?? 0);
+  const output = Number(rec['output_tokens'] ?? 0);
+  return (input > 0 || output > 0) ? { inputTokens: input, outputTokens: output } : undefined;
+}
+
+function extractGeminiUsageLocal(payload: unknown): { inputTokens: number; outputTokens: number } | undefined {
+  const meta = (payload as Record<string, unknown> | undefined)?.['usageMetadata'];
+  if (typeof meta !== 'object' || meta === null) return undefined;
+  const rec = meta as Record<string, unknown>;
+  const input = Number(rec['promptTokenCount'] ?? 0);
+  const output = Number(rec['candidatesTokenCount'] ?? 0);
+  return (input > 0 || output > 0) ? { inputTokens: input, outputTokens: output } : undefined;
+}
+
+function extractOllamaUsageLocal(payload: unknown): { inputTokens: number; outputTokens: number } | undefined {
+  if (typeof payload !== 'object' || payload === null) return undefined;
+  const rec = payload as Record<string, unknown>;
+  const input = Number(rec['prompt_eval_count'] ?? 0);
+  const output = Number(rec['eval_count'] ?? 0);
+  return (input > 0 || output > 0) ? { inputTokens: input, outputTokens: output } : undefined;
 }
 export type { CallLLMOptions } from './llm-pipeline.js';
 
@@ -652,13 +737,29 @@ function getField(obj: unknown, key: string): unknown {
 
 // ─── Usage Extraction (type-guarded) ─────────────────────────────
 
-export interface LLMUsageMetadata {
+/** Raw token usage from provider responses (just the counts).
+ * Used by extractXXXUsage functions. For full metadata with cost/model/provider,
+ * see LLMUsageMetadata (surfaced via onUsage callback).
+ */
+export interface RawTokenUsage {
   inputTokens: number;
   outputTokens: number;
 }
 
+/** Real token usage metadata extracted from LLM provider responses.
+ * Surfaced via the CallLLMOptions.onUsage?: (usage: LLMUsageMetadata) => void callback.
+ */
+export interface LLMUsageMetadata extends RawTokenUsage {
+  /** Estimated cost in USD based on token counts */
+  costUsd: number;
+  /** Model name used for the call */
+  model: string;
+  /** Provider name for the call */
+  provider: string;
+}
+
 /** Extract token usage from an OpenAI-compatible response payload */
-export function extractOpenAIUsage(payload: unknown): LLMUsageMetadata | undefined {
+export function extractOpenAIUsage(payload: unknown): RawTokenUsage | undefined {
   const usage = getField(payload, 'usage');
   if (!isRecord(usage)) return undefined;
   const input = Number(usage.prompt_tokens ?? 0);
@@ -667,7 +768,7 @@ export function extractOpenAIUsage(payload: unknown): LLMUsageMetadata | undefin
 }
 
 /** Extract token usage from a Claude/Anthropic response payload */
-export function extractClaudeUsage(payload: unknown): LLMUsageMetadata | undefined {
+export function extractClaudeUsage(payload: unknown): RawTokenUsage | undefined {
   const usage = getField(payload, 'usage');
   if (!isRecord(usage)) return undefined;
   const input = Number(usage.input_tokens ?? 0);
@@ -676,7 +777,7 @@ export function extractClaudeUsage(payload: unknown): LLMUsageMetadata | undefin
 }
 
 /** Extract token usage from a Gemini response payload */
-export function extractGeminiUsage(payload: unknown): LLMUsageMetadata | undefined {
+export function extractGeminiUsage(payload: unknown): RawTokenUsage | undefined {
   const meta = getField(payload, 'usageMetadata');
   if (!isRecord(meta)) return undefined;
   const input = Number(meta.promptTokenCount ?? 0);
@@ -685,7 +786,7 @@ export function extractGeminiUsage(payload: unknown): LLMUsageMetadata | undefin
 }
 
 /** Extract token usage from an Ollama response payload */
-export function extractOllamaUsage(payload: unknown): LLMUsageMetadata | undefined {
+export function extractOllamaUsage(payload: unknown): RawTokenUsage | undefined {
   if (!isRecord(payload)) return undefined;
   const input = Number(payload.prompt_eval_count ?? 0);
   const output = Number(payload.eval_count ?? 0);

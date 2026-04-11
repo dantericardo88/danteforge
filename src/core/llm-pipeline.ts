@@ -86,6 +86,7 @@ export function enforceBudget(options: Pick<CallLLMOptions, 'budgetFence'>): voi
   if (fence.currentSpendUsd >= fence.maxBudgetUsd) {
     throw new BudgetError(
       `Budget fence exceeded for ${fence.agentRole}: $${fence.currentSpendUsd.toFixed(4)} of $${fence.maxBudgetUsd.toFixed(4)} max`,
+      { agentRole: fence.agentRole, currentSpendUsd: fence.currentSpendUsd, maxBudgetUsd: fence.maxBudgetUsd },
     );
   }
   const usagePercent = (fence.currentSpendUsd / fence.maxBudgetUsd) * 100;
@@ -112,6 +113,8 @@ export async function dispatchWithRetry(
       throw new LLMError(
         `Circuit breaker OPEN for provider '${provider}' — too many consecutive failures`,
         provider,
+        undefined,
+        'LLM_CIRCUIT_OPEN',
       );
     }
     try {

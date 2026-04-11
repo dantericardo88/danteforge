@@ -224,6 +224,15 @@ export async function loadState(options: { cwd?: string } = {}): Promise<DanteSt
       // v0.10.0 workspace fields
       userId: parsed?.userId,
       workspaceId: parsed?.workspaceId,
+      // Self-edit policy
+      selfEditPolicy: parsed?.selfEditPolicy,
+      // v0.8.0 verify status
+      lastVerifyStatus: parsed?.lastVerifyStatus,
+      // v0.10.0 competitors + targets
+      competitors: parsed?.competitors,
+      preferredLevel: parsed?.preferredLevel,
+      completionTarget: parsed?.completionTarget,
+      featureUniversePath: parsed?.featureUniversePath,
     };
   } catch (err) {
     // Only log if this is NOT a "file not found" — real errors should surface

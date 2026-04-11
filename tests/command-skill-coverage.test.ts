@@ -47,6 +47,7 @@ const WORKFLOW_COMMANDS = [
   'wiki-lint',
   'wiki-query',
   'wiki-status',
+  'resume',
 ];
 
 // Commands intentionally NOT registered as slash commands (utilities/config).

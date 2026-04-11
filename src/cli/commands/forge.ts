@@ -25,6 +25,7 @@ export async function forge(phase = '1', options: { profile?: string; parallel?:
   const profile = options.profile ?? 'balanced';
   const result = await executeWave(parseInt(phase, 10), profile, options.parallel, options.prompt, options.worktree);
   if (!result.success) {
+    process.exitCode = 1;
     return;
   }
 

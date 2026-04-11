@@ -30,6 +30,7 @@ const LEVEL_ORDER: Record<LogLevel, number> = {
 };
 
 let currentLevel: LogLevel = 'info';
+let useStderr = false;
 
 function shouldLog(level: LogLevel): boolean {
   return LEVEL_ORDER[level] <= LEVEL_ORDER[currentLevel];
@@ -42,10 +43,10 @@ function logOrSpin(formatted: string, plainText: string, level: LogLevel): void 
     // Update spinner text so it reflects latest activity without adding new lines
     spinner.update(plainText);
   } else {
-    if (level === 'error') {
-      console.error(formatted);
+    if (level === 'error' || useStderr) {
+      process.stderr.write(formatted + '\n');
     } else {
-      console.log(formatted);
+      process.stdout.write(formatted + '\n');
     }
   }
 }
@@ -53,6 +54,7 @@ function logOrSpin(formatted: string, plainText: string, level: LogLevel): void 
 export const logger = {
   setLevel(level: LogLevel) { currentLevel = level; },
   getLevel(): LogLevel { return currentLevel; },
+  setStderr(flag: boolean) { useStderr = flag; },
   verbose: (msg: string) => {
     const safe = maskSecrets(msg);
     if (shouldLog('verbose')) console.log(chalk.gray(`[DBG] ${safe}`));

@@ -25,7 +25,8 @@ export interface ConvergenceOptions {
   level: MagicLevel;
   goal: string;
   maxCycles: number;
-  autoforgeWaves: number; // Full wave count from preset for bursty cycles
+  /** Full wave count from preset for bursty cycles. Defaults to preset's autoforgeWaves if not provided. */
+  autoforgeWaves?: number;
   skipInitialVerify?: boolean;
   _getVerifyStatus?: () => Promise<VerifyStatus>;
   _runAutoforge?: (goal: string, waves: number) => Promise<void>;
@@ -44,6 +45,9 @@ export async function runConvergenceCycles(
   if (opts.maxCycles === 0) {
     return { cyclesRun: 0, initialStatus: 'unknown', finalStatus: 'unknown' };
   }
+
+  // Resolve autoforgeWaves: explicit > 3 (convergence cycles use a lighter wave count by default)
+  const resolvedAutoforgeWaves = opts.autoforgeWaves ?? 3;
 
   const getStatus: () => Promise<VerifyStatus> =
     opts._getVerifyStatus ??
@@ -87,7 +91,7 @@ export async function runConvergenceCycles(
     cyclesRun++;
 
     logger.info(`[${opts.level}] 💥 CONVERGENCE CYCLE ${cyclesRun}/${opts.maxCycles}`);
-    logger.info(`[${opts.level}] Launching ${opts.autoforgeWaves}-wave improvement burst...`);
+    logger.info(`[${opts.level}] Launching ${resolvedAutoforgeWaves}-wave improvement burst...`);
 
     // Run autoforge waves first
     try {
@@ -114,16 +118,16 @@ export async function runConvergenceCycles(
           logger.warn(`  - ${gap.dimension}: ${gap.currentScore}/100 (need ${gap.targetScore ?? 89}+)`);
         }
         const remediationGoal = `Address critical quality gaps: ${criticalGaps.map(g => g.dimension).join(', ')}`;
-        await runAutoforge(remediationGoal, opts.autoforgeWaves);
+        await runAutoforge(remediationGoal, resolvedAutoforgeWaves);
       } else {
         const fixGoal = `Fix failing verification - ${opts.goal}`;
-        await runAutoforge(fixGoal, opts.autoforgeWaves);
+        await runAutoforge(fixGoal, resolvedAutoforgeWaves);
       }
     } catch (err) {
       // Fallback to standard convergence if maturity assessment fails
       logger.warn(`[${opts.level}] Maturity assessment failed: ${err instanceof Error ? err.message : String(err)} - falling back to standard convergence`);
       const fixGoal = `Fix failing verification - ${opts.goal}`;
-      await runAutoforge(fixGoal, opts.autoforgeWaves);
+      await runAutoforge(fixGoal, resolvedAutoforgeWaves);
     }
 
     // Run verify after autoforge
@@ -153,7 +157,7 @@ export async function runConvergenceCycles(
       logger.info(`[${opts.level}] Current: ${assessment.currentLevel}/6 (score: ${assessment.overallScore}/100)`);
       logger.info(`[${opts.level}] Target:  ${assessment.targetLevel}/6`);
 
-      if (assessment.currentLevel >= assessment.targetLevel) {
+      if (assessment.currentLevel >= assessment.targetLevel && finalStatus === 'pass') {
         logger.success(`[${opts.level}] ✅ MATURITY TARGET ACHIEVED after ${cyclesRun} cycle${cyclesRun === 1 ? '' : 's'}!`);
         return { cyclesRun, initialStatus, finalStatus: 'pass' };
       } else {

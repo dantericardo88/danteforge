@@ -391,6 +391,91 @@ async function syncCodexCommands(homeDir: string): Promise<void> {
   }
 }
 
+async function syncClaudePluginCache(homeDir: string, projectDir: string): Promise<void> {
+  // Read the package.json from the project directory to get the current version
+  let pkgJson: { version?: string; files?: string[] };
+  try {
+    const raw = await fs.readFile(path.join(projectDir, 'package.json'), 'utf8');
+    pkgJson = JSON.parse(raw) as { version?: string; files?: string[] };
+  } catch {
+    return; // No package.json — nothing to sync
+  }
+
+  const version = pkgJson.version;
+  if (!version) return;
+
+  const pluginsDir = path.join(homeDir, '.claude', 'plugins');
+  const installedPluginsPath = path.join(pluginsDir, 'installed_plugins.json');
+
+  let installedPlugins: {
+    version?: number;
+    plugins?: Record<string, Array<{ scope?: string; installPath?: string; version?: string; installedAt?: string; lastUpdated?: string }>>;
+  };
+  try {
+    const raw = await fs.readFile(installedPluginsPath, 'utf8');
+    installedPlugins = JSON.parse(raw) as typeof installedPlugins;
+  } catch {
+    return; // No installed plugins registry — nothing to sync
+  }
+
+  const pluginKey = 'danteforge@danteforge-dev';
+  const entries = installedPlugins.plugins?.[pluginKey];
+  if (!entries || entries.length === 0) return;
+
+  const entry = entries[0]!;
+  if (entry.version === version) return; // Already at this version
+
+  // Locate the old cache dir to inherit node_modules
+  const oldCacheDir = entry.installPath;
+
+  // Build the new cache dir path
+  const cacheBaseDir = path.join(pluginsDir, 'cache', 'danteforge-dev', 'danteforge', version);
+  await fs.mkdir(cacheBaseDir, { recursive: true });
+
+  // Copy package files from the project dir
+  const filesToCopy = pkgJson.files ?? [];
+  for (const fileEntry of filesToCopy) {
+    const src = path.join(projectDir, fileEntry);
+    const dst = path.join(cacheBaseDir, fileEntry);
+    try {
+      const stat = await fs.stat(src);
+      if (stat.isDirectory()) {
+        await fs.cp(src, dst, { recursive: true, force: true });
+      } else {
+        await fs.mkdir(path.dirname(dst), { recursive: true });
+        await fs.copyFile(src, dst);
+      }
+    } catch {
+      // File/dir not found — skip
+    }
+  }
+
+  // Always copy package.json
+  try {
+    await fs.copyFile(path.join(projectDir, 'package.json'), path.join(cacheBaseDir, 'package.json'));
+  } catch {
+    // Ignore
+  }
+
+  // Inherit node_modules from the prior version cache dir
+  if (oldCacheDir) {
+    const oldNodeModules = path.join(oldCacheDir, 'node_modules');
+    try {
+      await fs.access(oldNodeModules);
+      await fs.cp(oldNodeModules, path.join(cacheBaseDir, 'node_modules'), { recursive: true, force: true });
+    } catch {
+      // No prior node_modules — skip
+    }
+  }
+
+  // Update installed_plugins.json
+  const now = new Date().toISOString();
+  entry.version = version;
+  entry.installPath = cacheBaseDir;
+  entry.lastUpdated = now;
+  await fs.writeFile(installedPluginsPath, JSON.stringify(installedPlugins, null, 2), 'utf8');
+}
+
 async function syncCodexBootstrap(homeDir: string): Promise<void> {
   const codexDir = path.join(homeDir, '.codex');
   const bootstrapPath = path.join(codexDir, 'AGENTS.md');
@@ -459,6 +544,14 @@ export async function installAssistantSkills(
       await syncCodexConfig(homeDir);
       await syncCodexCommands(homeDir);
       await syncCodexBootstrap(homeDir);
+    }
+
+    if (assistant === 'claude' && options.projectDir) {
+      try {
+        await syncClaudePluginCache(homeDir, options.projectDir);
+      } catch {
+        // Plugin cache sync is best-effort — don't block skill installation
+      }
     }
 
     results.push({ assistant, targetDir, installedSkills: skillDirs, installMode: 'skills' });

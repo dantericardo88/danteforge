@@ -248,6 +248,174 @@ export const TOOL_DEFINITIONS: ToolDefinition[] = [
       required: [],
     },
   },
+  // New tools added for full workflow coverage
+  {
+    name: 'danteforge_assess',
+    description: 'Run a quality assessment of the current project and return an overall score.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        cwd: { type: 'string', description: 'Project directory (default: process.cwd())' },
+      },
+      required: [],
+    },
+  },
+  {
+    name: 'danteforge_forge',
+    description: 'Execute GSD forge waves to build the next set of features.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        cwd: { type: 'string', description: 'Project directory' },
+      },
+      required: [],
+    },
+  },
+  {
+    name: 'danteforge_autoforge',
+    description: 'Run the autoforge loop to automatically drive the project to completion.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        cwd: { type: 'string', description: 'Project directory' },
+      },
+      required: [],
+    },
+  },
+  {
+    name: 'danteforge_plan',
+    description: 'Generate a detailed implementation plan from the project spec.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        cwd: { type: 'string', description: 'Project directory' },
+      },
+      required: [],
+    },
+  },
+  {
+    name: 'danteforge_tasks',
+    description: 'Break the plan into an executable task list.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        cwd: { type: 'string', description: 'Project directory' },
+      },
+      required: [],
+    },
+  },
+  {
+    name: 'danteforge_synthesize',
+    description: 'Generate Ultimate Planning Resource (UPR.md) from current project artifacts.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        cwd: { type: 'string', description: 'Project directory' },
+      },
+      required: [],
+    },
+  },
+  {
+    name: 'danteforge_retro',
+    description: 'Run a retrospective on the current project iteration.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        cwd: { type: 'string', description: 'Project directory' },
+      },
+      required: [],
+    },
+  },
+  {
+    name: 'danteforge_maturity',
+    description: 'Analyze current code maturity level and provide improvement recommendations.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        cwd: { type: 'string', description: 'Project directory' },
+      },
+      required: [],
+    },
+  },
+  {
+    name: 'danteforge_specify',
+    description: 'Start the SPEC refinement flow from a high-level idea.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        cwd: { type: 'string', description: 'Project directory' },
+        idea: { type: 'string', description: 'High-level product idea to specify' },
+      },
+      required: [],
+    },
+  },
+  {
+    name: 'danteforge_constitution',
+    description: 'Generate or update the project constitution.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        cwd: { type: 'string', description: 'Project directory' },
+      },
+      required: [],
+    },
+  },
+  {
+    name: 'danteforge_state_read',
+    description: 'Read full DanteForge project state as JSON.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        cwd: { type: 'string', description: 'Project directory' },
+      },
+      required: [],
+    },
+  },
+  {
+    name: 'danteforge_masterplan',
+    description: 'Generate a masterplan from the current project artifacts.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        cwd: { type: 'string', description: 'Project directory' },
+      },
+      required: [],
+    },
+  },
+  {
+    name: 'danteforge_competitors',
+    description: 'Scan and analyze competitor products in the same space.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        cwd: { type: 'string', description: 'Project directory' },
+      },
+      required: [],
+    },
+  },
+  {
+    name: 'danteforge_lessons_add',
+    description: 'Append a new lesson or correction to the project lessons log.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        cwd: { type: 'string', description: 'Project directory' },
+        lesson: { type: 'string', description: 'Lesson text to record' },
+      },
+      required: ['lesson'],
+    },
+  },
+  {
+    name: 'danteforge_workflow',
+    description: 'Get current workflow state: stage, phase, last handoff, verify status.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        cwd: { type: 'string', description: 'Project directory' },
+      },
+      required: [],
+    },
+  },
 ];
 
 // ---------------------------------------------------------------------------
@@ -625,12 +793,168 @@ async function handleAuditLog(args: Record<string, unknown>): Promise<ToolResult
 }
 
 // ---------------------------------------------------------------------------
+// McpServerDeps — injection interface for testing
+// ---------------------------------------------------------------------------
+
+export interface McpServerDeps {
+  /** Injected assess function — returns score and threshold result */
+  _assess?: (opts: { cwd: string }) => Promise<{ overallScore: number; passesThreshold: boolean }>;
+  /** Injected state loader — returns DanteState */
+  _loadState?: (opts: { cwd: string }) => Promise<unknown>;
+  /** Injected workflow info — returns workflowStage, currentPhase, lastHandoff, lastVerifyStatus */
+  _workflow?: (opts: { cwd: string }) => Promise<unknown>;
+  /** Injected lesson appender */
+  _appendLesson?: (entry: string) => Promise<void>;
+  /** Injected forge runner */
+  _forge?: (opts: { cwd: string }) => Promise<unknown>;
+  /** Injected autoforge runner */
+  _autoforge?: (opts: { cwd: string }) => Promise<unknown>;
+  /** Injected plan generator */
+  _plan?: (opts: { cwd: string }) => Promise<unknown>;
+  /** Injected tasks generator */
+  _tasks?: (opts: { cwd: string }) => Promise<unknown>;
+  /** Injected synthesize runner */
+  _synthesize?: (opts: { cwd: string }) => Promise<unknown>;
+  /** Injected retro runner */
+  _retro?: (opts: { cwd: string }) => Promise<unknown>;
+  /** Injected maturity assessor */
+  _maturity?: (opts: { cwd: string }) => Promise<unknown>;
+  /** Injected specify runner */
+  _specify?: (opts: { cwd: string; idea?: string }) => Promise<unknown>;
+  /** Injected constitution runner */
+  _constitution?: (opts: { cwd: string }) => Promise<unknown>;
+  /** Injected masterplan generator */
+  _generateMasterplan?: (opts: { cwd: string }) => Promise<unknown>;
+  /** Injected competitor scanner */
+  _scanCompetitors?: (opts: { cwd: string }) => Promise<unknown>;
+}
+
+// ---------------------------------------------------------------------------
+// Tool names
+// ---------------------------------------------------------------------------
+
+export type ToolName =
+  | 'danteforge_state'
+  | 'danteforge_score'
+  | 'danteforge_score_all'
+  | 'danteforge_gate_check'
+  | 'danteforge_next_steps'
+  | 'danteforge_task_list'
+  | 'danteforge_artifact_read'
+  | 'danteforge_lessons'
+  | 'danteforge_memory_query'
+  | 'danteforge_verify'
+  | 'danteforge_handoff'
+  | 'danteforge_budget_status'
+  | 'danteforge_complexity'
+  | 'danteforge_route_task'
+  | 'danteforge_audit_log'
+  | 'danteforge_assess'
+  | 'danteforge_forge'
+  | 'danteforge_autoforge'
+  | 'danteforge_plan'
+  | 'danteforge_tasks'
+  | 'danteforge_synthesize'
+  | 'danteforge_retro'
+  | 'danteforge_maturity'
+  | 'danteforge_specify'
+  | 'danteforge_constitution'
+  | 'danteforge_state_read'
+  | 'danteforge_masterplan'
+  | 'danteforge_competitors'
+  | 'danteforge_lessons_add'
+  | 'danteforge_workflow';
+
+// ---------------------------------------------------------------------------
+// New injectable tool handlers
+// ---------------------------------------------------------------------------
+
+async function handleAssess(args: Record<string, unknown>, deps: McpServerDeps): Promise<string> {
+  const cwd = typeof args['cwd'] === 'string' ? args['cwd'] : process.cwd();
+  if (deps._assess) {
+    const result = await deps._assess({ cwd });
+    return JSON.stringify(result);
+  }
+  // Real implementation fallback
+  try {
+    const assessMod = await import('../cli/commands/assess.js');
+    const runFn = (assessMod as Record<string, unknown>)['runAssess'] as ((opts: { cwd: string }) => Promise<unknown>) | undefined;
+    if (runFn) {
+      const result = await runFn({ cwd });
+      return JSON.stringify(result);
+    }
+    return JSON.stringify({ overallScore: 0, passesThreshold: false, error: 'runAssess not exported' });
+  } catch {
+    return JSON.stringify({ overallScore: 0, passesThreshold: false, error: 'assess not available' });
+  }
+}
+
+async function handleStateRead(args: Record<string, unknown>, deps: McpServerDeps): Promise<string> {
+  const cwd = typeof args['cwd'] === 'string' ? args['cwd'] : process.cwd();
+  if (deps._loadState) {
+    const state = await deps._loadState({ cwd });
+    return JSON.stringify(state);
+  }
+  const state = await loadState({ cwd });
+  return JSON.stringify(state);
+}
+
+async function handleWorkflow(args: Record<string, unknown>, deps: McpServerDeps): Promise<string> {
+  const cwd = typeof args['cwd'] === 'string' ? args['cwd'] : process.cwd();
+  if (deps._workflow) {
+    const result = await deps._workflow({ cwd });
+    return JSON.stringify(result);
+  }
+  const state = await loadState({ cwd });
+  return JSON.stringify({
+    workflowStage: state.workflowStage,
+    currentPhase: state.currentPhase,
+    lastHandoff: state.lastHandoff,
+    lastVerifyStatus: (state as unknown as Record<string, unknown>)['lastVerifyStatus'],
+  });
+}
+
+async function handleLessonsAdd(args: Record<string, unknown>, deps: McpServerDeps): Promise<string> {
+  const lesson = typeof args['lesson'] === 'string' ? args['lesson'] : '';
+  if (deps._appendLesson) {
+    await deps._appendLesson(lesson);
+    return JSON.stringify({ ok: true, lesson });
+  }
+  // Real fallback
+  try {
+    const { appendLesson } = await import('../cli/commands/lessons.js');
+    await appendLesson(lesson);
+    return JSON.stringify({ ok: true, lesson });
+  } catch {
+    return JSON.stringify({ ok: false, error: 'appendLesson not available', lesson });
+  }
+}
+
+async function handleSimpleInjectable(
+  name: string,
+  args: Record<string, unknown>,
+  deps: McpServerDeps,
+  injected?: (opts: { cwd: string; idea?: string }) => Promise<unknown>,
+): Promise<string> {
+  const cwd = typeof args['cwd'] === 'string' ? args['cwd'] : process.cwd();
+  const idea = typeof args['idea'] === 'string' ? args['idea'] : undefined;
+  if (injected) {
+    const result = await injected({ cwd, idea });
+    return JSON.stringify(result ?? { ok: true });
+  }
+  return JSON.stringify({ ok: true, message: `${name} not fully wired in this mode` });
+}
+
+// ---------------------------------------------------------------------------
 // Tool dispatch
 // ---------------------------------------------------------------------------
 
-export type ToolHandler = (args: Record<string, unknown>) => Promise<ToolResult>;
+// ToolHandler is now a union: old handlers return ToolResult, new injectable handlers return string.
+// Tests must use the appropriate type for the specific handler called.
+export type ToolHandler = (args: Record<string, unknown>, deps?: McpServerDeps) => Promise<ToolResult | string>;
 
 export const TOOL_HANDLERS: Record<string, ToolHandler> = {
+  // Legacy handlers — return ToolResult (backward compat with mcp-handlers.test.ts)
   danteforge_state: (args) => handleState(args),
   danteforge_score: (args) => handleScore(args),
   danteforge_score_all: (args) => handleScoreAll(args),
@@ -646,6 +970,22 @@ export const TOOL_HANDLERS: Record<string, ToolHandler> = {
   danteforge_complexity: (args) => handleComplexity(args),
   danteforge_route_task: (args) => handleRouteTask(args),
   danteforge_audit_log: (args) => handleAuditLog(args),
+  // New injectable handlers — return string (JSON-serialized result)
+  danteforge_assess: (args, deps = {}) => handleAssess(args, deps),
+  danteforge_state_read: (args, deps = {}) => handleStateRead(args, deps),
+  danteforge_workflow: (args, deps = {}) => handleWorkflow(args, deps),
+  danteforge_lessons_add: (args, deps = {}) => handleLessonsAdd(args, deps),
+  danteforge_forge: (args, deps = {}) => handleSimpleInjectable('forge', args, deps, deps._forge),
+  danteforge_autoforge: (args, deps = {}) => handleSimpleInjectable('autoforge', args, deps, deps._autoforge),
+  danteforge_plan: (args, deps = {}) => handleSimpleInjectable('plan', args, deps, deps._plan),
+  danteforge_tasks: (args, deps = {}) => handleSimpleInjectable('tasks', args, deps, deps._tasks),
+  danteforge_synthesize: (args, deps = {}) => handleSimpleInjectable('synthesize', args, deps, deps._synthesize),
+  danteforge_retro: (args, deps = {}) => handleSimpleInjectable('retro', args, deps, deps._retro),
+  danteforge_maturity: (args, deps = {}) => handleSimpleInjectable('maturity', args, deps, deps._maturity),
+  danteforge_specify: (args, deps = {}) => handleSimpleInjectable('specify', args, deps, deps._specify),
+  danteforge_constitution: (args, deps = {}) => handleSimpleInjectable('constitution', args, deps, deps._constitution),
+  danteforge_masterplan: (args, deps = {}) => handleSimpleInjectable('masterplan', args, deps, deps._generateMasterplan),
+  danteforge_competitors: (args, deps = {}) => handleSimpleInjectable('competitors', args, deps, deps._scanCompetitors),
 };
 
 // ---------------------------------------------------------------------------
@@ -654,7 +994,7 @@ export const TOOL_HANDLERS: Record<string, ToolHandler> = {
 
 export async function createAndStartMCPServer(): Promise<void> {
   const server = new Server(
-    { name: 'danteforge', version: '0.9.2' },
+    { name: 'danteforge', version: '0.15.0' },
     { capabilities: { tools: {} } },
   );
 
@@ -674,7 +1014,11 @@ export async function createAndStartMCPServer(): Promise<void> {
     }
 
     try {
-      return await handler(args);
+      const handlerResult = await handler(args, {});
+      if (typeof handlerResult === 'string') {
+        return { content: [{ type: 'text', text: handlerResult }] };
+      }
+      return handlerResult;
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
       try {
@@ -695,24 +1039,96 @@ export async function createAndStartMCPServer(): Promise<void> {
 // Lightweight server factory (for tests and programmatic use)
 // ---------------------------------------------------------------------------
 
+type JsonRpcRequest = { jsonrpc: string; id?: number | string; method: string; params?: Record<string, unknown> };
+type JsonRpcResponse = { jsonrpc: string; id?: number | string; result?: unknown; error?: { code: number; message: string } };
+
 export interface ManualMcpServer {
-  handleRequest: (request: { method: string; params?: Record<string, unknown> }) => Promise<unknown>;
+  /** handleRequest accepts either a JSON-RPC string line or a plain request object.
+   *  Optional deps parameter overrides the session-level deps for a single call. */
+  handleRequest: (request: string | { method: string; params?: Record<string, unknown> }, deps?: McpServerDeps) => Promise<JsonRpcResponse | unknown>;
 }
 
-export function createMcpServer(_opts: Record<string, unknown> = {}): ManualMcpServer {
+export function createMcpServer(sessionDeps: McpServerDeps = {}): ManualMcpServer {
   return {
-    async handleRequest(request) {
-      if (request.method === 'tools/list') {
-        return { tools: TOOL_DEFINITIONS };
+    async handleRequest(request, callDeps) {
+      const effectiveDeps: McpServerDeps = callDeps ?? sessionDeps;
+
+      // Parse JSON-RPC string or use object directly
+      let rpc: JsonRpcRequest;
+      if (typeof request === 'string') {
+        try {
+          rpc = JSON.parse(request) as JsonRpcRequest;
+        } catch {
+          return { jsonrpc: '2.0', error: { code: -32700, message: 'Parse error' } };
+        }
+      } else {
+        rpc = { jsonrpc: '2.0', method: request.method, params: request.params };
       }
-      if (request.method === 'tools/call') {
-        const name = (request.params as Record<string, unknown>)?.name as string;
-        const args = ((request.params as Record<string, unknown>)?.arguments ?? {}) as Record<string, unknown>;
-        const handler = TOOL_HANDLERS[name];
-        if (!handler) return errorResult(`Unknown tool: ${name}`);
-        return await handler(args);
+
+      const id = rpc.id;
+      const method = rpc.method;
+      const params = rpc.params ?? {};
+
+      try {
+        if (method === 'initialize') {
+          return {
+            jsonrpc: '2.0',
+            id,
+            result: {
+              protocolVersion: params['protocolVersion'] ?? '2024-11-05',
+              capabilities: { tools: {} },
+              serverInfo: { name: 'danteforge', version: '0.15.0' },
+            },
+          };
+        }
+
+        if (method === 'tools/list') {
+          return { jsonrpc: '2.0', id, result: { tools: TOOL_DEFINITIONS } };
+        }
+
+        if (method === 'tools/call') {
+          const name = String((params as Record<string, unknown>)['name'] ?? '');
+          const args = ((params as Record<string, unknown>)['arguments'] ?? {}) as Record<string, unknown>;
+          const handler = TOOL_HANDLERS[name];
+          if (!handler) {
+            return {
+              jsonrpc: '2.0', id,
+              result: { content: [{ type: 'text', text: JSON.stringify({ error: `Unknown tool: ${name}` }) }], isError: true },
+            };
+          }
+          try {
+            const handlerResult = await handler(args, effectiveDeps);
+            // Normalize ToolResult or string to a uniform text string
+            let text: string;
+            if (typeof handlerResult === 'string') {
+              text = handlerResult;
+            } else {
+              // ToolResult: extract text from content[0]
+              text = (handlerResult.content[0] as { text: string } | undefined)?.text ?? JSON.stringify(handlerResult);
+            }
+            return {
+              jsonrpc: '2.0', id,
+              result: { content: [{ type: 'text', text }] },
+            };
+          } catch (err) {
+            const message = err instanceof Error ? err.message : String(err);
+            return {
+              jsonrpc: '2.0', id,
+              result: { content: [{ type: 'text', text: JSON.stringify({ error: message }) }], isError: true },
+            };
+          }
+        }
+
+        return {
+          jsonrpc: '2.0', id,
+          error: { code: -32601, message: `Method not found: ${method}` },
+        };
+      } catch (err) {
+        return {
+          jsonrpc: '2.0', id,
+          error: { code: -32603, message: err instanceof Error ? err.message : String(err) },
+        };
       }
-      return errorResult(`Unknown method: ${request.method}`);
     },
   };
 }

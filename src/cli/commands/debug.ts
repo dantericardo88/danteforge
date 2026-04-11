@@ -1,17 +1,33 @@
 // Debug command — systematic 4-phase debugging framework
 import { logger } from '../../core/logger.js';
-import { loadState, saveState } from '../../core/state.js';
+import { loadState, saveState, type DanteState } from '../../core/state.js';
 import { resolveSkill } from '../../core/skills.js';
 import { isLLMAvailable, callLLM } from '../../core/llm.js';
 import { savePrompt, displayPrompt } from '../../core/prompt-builder.js';
 import { withErrorBoundary } from '../../core/cli-error-boundary.js';
 
-export async function debug(issue: string, options: { prompt?: boolean } = {}) {
+interface DebugDeps {
+  _loadState?: () => Promise<DanteState>;
+  _saveState?: (s: DanteState) => Promise<void>;
+  _resolveSkill?: (name: string) => Promise<{ content: string } | null>;
+  _isLLMAvailable?: () => Promise<boolean>;
+  _callLLM?: (prompt: string) => Promise<string>;
+  _savePrompt?: (name: string, template: string) => Promise<string>;
+}
+
+export async function debug(issue: string, options: { prompt?: boolean } = {}, deps: DebugDeps = {}) {
   return withErrorBoundary('debug', async () => {
   logger.info(`Systematic Debugging: "${issue}"`);
 
-  const state = await loadState();
-  const skill = await resolveSkill('systematic-debugging');
+  const loadStateFn = deps._loadState ?? loadState;
+  const saveStateFn = deps._saveState ?? ((s: DanteState) => saveState(s));
+  const resolveSkillFn = deps._resolveSkill ?? resolveSkill;
+  const isLLMFn = deps._isLLMAvailable ?? isLLMAvailable;
+  const callLLMFn = deps._callLLM ?? ((p: string) => callLLM(p, undefined, { enrichContext: true }));
+  const savePromptFn = deps._savePrompt ?? savePrompt;
+
+  const state = await loadStateFn();
+  const skill = await resolveSkillFn('systematic-debugging');
 
   const prompt = `You are a senior software engineer performing systematic debugging using a strict 4-phase framework.
 
@@ -48,24 +64,24 @@ Follow the 4-phase debugging framework EXACTLY:
 Output a structured debugging plan in markdown.`;
 
   if (options.prompt) {
-    const savedPath = await savePrompt('debug', prompt);
+    const savedPath = await savePromptFn('debug', prompt);
     displayPrompt(prompt, [
       'Paste into your LLM to get a structured debugging plan.',
       `Prompt saved to: ${savedPath}`,
     ].join('\n'));
     state.auditLog.push(`${new Date().toISOString()} | debug: prompt generated for "${issue}"`);
-    await saveState(state);
+    await saveStateFn(state);
     return;
   }
 
-  const llmAvailable = await isLLMAvailable();
+  const llmAvailable = await isLLMFn();
   if (llmAvailable) {
     logger.info('Sending to LLM for systematic debug analysis...');
     try {
-      const result = await callLLM(prompt, undefined, { enrichContext: true });
+      const result = await callLLMFn(prompt);
       process.stdout.write('\n' + result + '\n');
       state.auditLog.push(`${new Date().toISOString()} | debug: LLM analysis for "${issue}" (${result.length} chars)`);
-      await saveState(state);
+      await saveStateFn(state);
       return;
     } catch (err) {
       logger.warn(`API call failed: ${err instanceof Error ? err.message : String(err)}`);
@@ -81,6 +97,6 @@ Output a structured debugging plan in markdown.`;
   }
 
   state.auditLog.push(`${new Date().toISOString()} | debug: framework displayed for "${issue}"`);
-  await saveState(state);
+  await saveStateFn(state);
   });
 }

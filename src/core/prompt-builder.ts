@@ -213,7 +213,7 @@ Follow the .op JSON format:
 \`\`\`json
 {
   "formatVersion": "1.0.0",
-  "generator": "danteforge/0.10.0",
+  "generator": "danteforge/0.15.0",
   "created": "<ISO timestamp>",
   "document": { "name": "<project>", "pages": [...] },
   "nodes": [...],

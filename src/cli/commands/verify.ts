@@ -106,9 +106,10 @@ export function parseCurrentStateMetadata(content: string): CurrentStateMetadata
   return { version, projectType };
 }
 
-export async function readWorkspacePackageVersion(): Promise<string | undefined> {
+export async function readWorkspacePackageVersion(cwd?: string): Promise<string | undefined> {
   try {
-    const pkg = JSON.parse(await fs.readFile('package.json', 'utf8')) as { version?: string };
+    const pkgPath = cwd ? path.join(cwd, 'package.json') : 'package.json';
+    const pkg = JSON.parse(await fs.readFile(pkgPath, 'utf8')) as { version?: string };
     return typeof pkg.version === 'string' && pkg.version.trim().length > 0
       ? pkg.version.trim()
       : undefined;
@@ -143,8 +144,13 @@ async function validateCurrentStateFreshness(result: VerifyResult): Promise<void
   }
 }
 
-export async function verify(options: { release?: boolean; live?: boolean; url?: string; recompute?: boolean } = {}) {
+export async function verify(options: { release?: boolean; live?: boolean; url?: string; recompute?: boolean; json?: boolean } = {}) {
   return withErrorBoundary('verify', async () => {
+  // In JSON mode, redirect all logger output to stderr so stdout is clean JSON
+  if (options.json) {
+    logger.setStderr(true);
+  }
+
   logger.info('Running verification checks...');
 
   const result: VerifyResult = { passed: [], warnings: [], failures: [] };
@@ -324,6 +330,27 @@ export async function verify(options: { release?: boolean; live?: boolean; url?:
     } catch {
       // Lessons capture should not block verification.
     }
+  }
+
+  if (options.json) {
+    const status = result.failures.length > 0 ? 'fail'
+      : result.warnings.length > 0 ? 'warn'
+      : 'pass';
+    const output = {
+      status,
+      counts: {
+        passed: result.passed.length,
+        warnings: result.warnings.length,
+        failures: result.failures.length,
+      },
+      passed: result.passed,
+      warnings: result.warnings,
+      failures: result.failures,
+    };
+    process.stdout.write(JSON.stringify(output) + '\n');
+    // Reset stderr redirect after JSON output
+    logger.setStderr(false);
+    return;
   }
 
   reportResults(result);
