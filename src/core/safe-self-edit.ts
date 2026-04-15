@@ -14,6 +14,12 @@ const PROTECTED_PATHS = [
   'src/core/autoforge.ts',
   'src/core/pdse.ts',
   'src/cli/index.ts',
+  // Project config files — changes here break the build / all tests
+  'package.json',
+  'tsconfig.json',
+  'tsconfig.tsbuildinfo',
+  '.gitignore',
+  'README.md',
 ];
 
 const AUDIT_DIR = '.danteforge/audit';

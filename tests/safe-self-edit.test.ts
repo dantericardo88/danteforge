@@ -44,7 +44,7 @@ describe('isProtectedPath', () => {
     assert.strictEqual(isProtectedPath('src/core/llm.ts'), false);
     assert.strictEqual(isProtectedPath('src/cli/commands/plan.ts'), false);
     assert.strictEqual(isProtectedPath('tests/state.test.ts'), false);
-    assert.strictEqual(isProtectedPath('package.json'), false);
+    assert.strictEqual(isProtectedPath('package.json'), true);  // package.json is protected — forge must not corrupt it
     assert.strictEqual(isProtectedPath('src/harvested/gsd/hooks/context-rot.ts'), false);
   });
 

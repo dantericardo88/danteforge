@@ -617,30 +617,16 @@ export async function runAscend(options: AscendEngineOptions = {}): Promise<Asce
       recentScores: [],
     };
 
-    // Normalize workflowStage for the inner loop so the PDSE pipeline can run:
-    //   tasks → forge
-    // The workflow enforcer graph is: plan→tasks, tasks→forge, forge→ux-refine→verify.
-    // - If stage is 'plan': determineNextCommand routes to 'tasks' first (to populate
-    //   state.tasks), then 'forge' on the next inner cycle. Both transitions are valid.
-    // - If stage is 'forge'/'tasks'/'design': determineNextCommand goes straight to 'forge'
-    //   BUT forge requires state.tasks to be populated. If tasks are empty, fall back to 'plan'.
-    // - Any other stage ('clarify', 'verify', 'synthesize', etc.) also falls back to 'plan'
-    //   because those stages block both tasks and forge transitions.
-    {
-      const DIRECT_FORGE_STAGES: Set<string> = new Set(['forge', 'tasks', 'design']);
-      const currentPhase: number = (loopCtx.state as unknown as { currentPhase?: number }).currentPhase ?? 1;
-      const phaseTasks: unknown[] = (loopCtx.state as unknown as { tasks?: Record<number, unknown[]> }).tasks?.[currentPhase] ?? [];
-      const stage = loopCtx.state.workflowStage ?? '';
-      if (!DIRECT_FORGE_STAGES.has(stage) || phaseTasks.length === 0) {
-        // Set to 'plan' so the inner loop runs tasks→forge in sequence.
-        // tasks gate: requirePlan (PLAN.md must exist — DanteForge always has this).
-        // forge gate: requirePlan + requireTests (TDD only — disabled by default).
-        loopCtx.state.workflowStage = 'plan' as WorkflowStage;
-      }
-    }
-
-    // PHASE 1 FIX: pass _executeCommand so the loop doesn't enter advisory mode
-    await runLoopFn(loopCtx, { _executeCommand: wrappedExecuteCommandFn }).catch((err: unknown) => {
+    // Run the inner autoforge loop in advisory mode — it writes AUTOFORGE_GUIDANCE.md
+    // but does NOT execute forge/tasks commands via CLI. Executing PDSE commands here
+    // is counterproductive for an already-built project: the tasks command reads PLAN.md
+    // and generates generic placeholder tasks that are unrelated to the dimension goal,
+    // causing forge to write off-topic code (React components, validation stubs) that
+    // damages the codebase. Real dimension score improvements for an existing project
+    // come from: retro evidence accumulation (_runRetro), verify evidence (_runVerify),
+    // OSS harvest bootstrap (_bootstrapHarvest), and organic lesson/commit accumulation.
+    // _executeCommand is only injected via options to allow tests to verify the seam.
+    await runLoopFn(loopCtx, options._executeCommand ? { _executeCommand: wrappedExecuteCommandFn } : {}).catch((err: unknown) => {
       logger.warn(`[Ascend] Loop error for ${nextDim.label}: ${String(err)}`);
     });
 

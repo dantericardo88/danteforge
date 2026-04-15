@@ -39,7 +39,7 @@ describe('auditPostForgeProtectedMutations', () => {
     const dir = await freshDir();
     try {
       const result = await auditPostForgeProtectedMutations(
-        ['src/core/llm.ts', 'tests/foo.test.ts', 'README.md'],
+        ['src/core/llm.ts', 'tests/foo.test.ts', 'src/core/logger.ts'],
         'deny',
         { cwd: dir },
       );
