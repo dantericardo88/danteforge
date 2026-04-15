@@ -955,6 +955,14 @@ export async function computeStrictDimensions(
   const lessonsExists = await checkExists(path.join(cwd, '.danteforge', 'lessons.md'));
   if (lessonsExists) selfImprovement += 15;
 
+  // Evidence: retro session outputs in .danteforge/retros/ — each file = a retrospective was run
+  // (different from evidence/retro/ which holds pipeline-stamped receipts)
+  const retrosOutputDir = path.join(cwd, '.danteforge', 'retros');
+  const retrosOutputFiles = await listDir(retrosOutputDir);
+  if (retrosOutputFiles.length >= 10) selfImprovement += 15;
+  else if (retrosOutputFiles.length >= 3) selfImprovement += 8;
+  else if (retrosOutputFiles.length >= 1) selfImprovement += 3;
+
   selfImprovement = Math.max(0, Math.min(100, selfImprovement));
 
   // ── tokenEconomy ──────────────────────────────────────────────────────────────

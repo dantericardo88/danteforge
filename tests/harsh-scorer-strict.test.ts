@@ -103,6 +103,18 @@ describe('computeStrictDimensions — Sprint 49 new dimensions', () => {
       assert.ok(result[key] >= 0 && result[key] <= 100, `${key} must be in [0,100], got ${result[key]}`);
     }
   });
+
+  it('selfImprovement: scores higher with ≥10 retro session outputs in .danteforge/retros/', async () => {
+    const withRetroOutputs: ListDirFn = async (p) => {
+      if (p.includes('retros') && !p.includes('evidence')) {
+        return Array.from({ length: 12 }, (_, i) => `retro-session-${i}.json`);
+      }
+      return [];
+    };
+    const result = await computeStrictDimensions('/tmp/retroed', noGit, noExists, withRetroOutputs);
+    // Base 20 + 0 (no retro commits) + 0 (no lesson commits) + 0 (no evidence/retro) + 0 (no lessons.md) + 15 (≥10 retro outputs) = 35
+    assert.ok(result.selfImprovement >= 35, `Expected selfImprovement boosted by retro outputs, got ${result.selfImprovement}`);
+  });
 });
 
 describe('applyStrictOverrides — automation ceiling enforcement', () => {
