@@ -7,7 +7,8 @@
  *   2. config.adversary.provider set      → use it            (mode: 'configured')
  *   3. env DANTEFORGE_ADVERSARY_PROVIDER  → use it            (mode: 'configured')
  *   4. primary != 'ollama' + Ollama probe → use ollama        (mode: 'ollama-auto')
- *   5. fallback                           → use primary LLM   (mode: 'self-challenge')
+ *   5. primary == 'ollama' + alternate model installed → use it (mode: 'ollama-auto')
+ *   6. fallback                           → use primary LLM   (mode: 'self-challenge')
  */
 import { type DanteConfig, type LLMProvider, type AdversaryResolution } from './config.js';
 
@@ -16,6 +17,8 @@ export interface AdversaryResolverOptions {
   _probeOllama?: () => Promise<boolean>;
   /** Injection seam: replaces process.env lookup (for tests) */
   _env?: NodeJS.ProcessEnv;
+  /** Injection seam: replaces the Ollama /api/tags fetch (for tests) */
+  _fetchOllamaModels?: () => Promise<string[]>;
 }
 
 /**
@@ -73,7 +76,24 @@ export async function resolveAdversaryProvider(
     }
   }
 
-  // 5. Self-challenge fallback — use primary provider with adversarial framing
+  // 5. When primary IS ollama — probe for an alternate installed model to avoid self-challenge
+  if (config.defaultProvider === 'ollama') {
+    const alternateModel = await findAlternateOllamaModel(
+      config.ollamaModel ?? 'llama3',
+      opts._fetchOllamaModels,
+    );
+    if (alternateModel) {
+      return {
+        provider: 'ollama',
+        model: alternateModel,
+        apiKey: undefined,
+        baseUrl: undefined,
+        mode: 'ollama-auto',
+      };
+    }
+  }
+
+  // 6. Self-challenge fallback — use primary provider with adversarial framing
   const primary = config.defaultProvider as LLMProvider;
   return {
     provider: primary,
@@ -114,5 +134,33 @@ async function probeOllama(
     return await isLLMAvailable();
   } catch {
     return false;
+  }
+}
+
+/**
+ * Probe the local Ollama server for an installed model different from the primary.
+ * Returns the first alternate model name found, or null if none available.
+ * This gives meaningful cross-model adversarial scoring without any config changes.
+ */
+async function findAlternateOllamaModel(
+  primaryModel: string,
+  _fetchOllamaModels?: () => Promise<string[]>,
+): Promise<string | null> {
+  try {
+    let modelNames: string[];
+    if (_fetchOllamaModels) {
+      modelNames = await _fetchOllamaModels();
+    } else {
+      const resp = await fetch('http://localhost:11434/api/tags');
+      if (!resp.ok) return null;
+      const body = await resp.json() as { models?: { name: string }[] };
+      modelNames = (body.models ?? []).map(m => m.name);
+    }
+    // Pick the first model whose base name (before ':') differs from the primary
+    const primaryBase = primaryModel.split(':')[0];
+    const alternate = modelNames.find(name => !name.startsWith(primaryBase));
+    return alternate ?? null;
+  } catch {
+    return null;
   }
 }

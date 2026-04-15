@@ -849,6 +849,14 @@ export interface StrictDimensions {
   selfImprovement: number;
   /** tokenEconomy: derived from LLM cache entry count + router code presence */
   tokenEconomy: number;
+  /** specDrivenPipeline: derived from PDSE artifact presence on disk */
+  specDrivenPipeline: number;
+  /** developerExperience: derived from onboarding docs + examples + test count */
+  developerExperience: number;
+  /** planningQuality: derived from planning artifacts + git plan/spec commits */
+  planningQuality: number;
+  /** convergenceSelfHealing: derived from circuit-breaker + autoforge evidence */
+  convergenceSelfHealing: number;
 }
 
 type GitLogFn = (args: string[], cwd: string) => Promise<string>;
@@ -974,5 +982,89 @@ export async function computeStrictDimensions(
 
   tokenEconomy = Math.max(0, Math.min(100, tokenEconomy));
 
-  return { autonomy, selfImprovement, tokenEconomy };
+  // ── specDrivenPipeline ────────────────────────────────────────────────────────
+  // Base: 10. Signals: PDSE artifact files on disk, pipeline evidence, e2e tests.
+  // Capped at 85 — file existence can't fully prove pipeline execution quality.
+  let specDrivenPipeline = 10;
+
+  const pdseArtifacts = ['CONSTITUTION.md', 'SPEC.md', 'PLAN.md', 'TASKS.md'];
+  for (const artifact of pdseArtifacts) {
+    if (await checkExists(path.join(cwd, artifact))) specDrivenPipeline += 15;
+    else if (await checkExists(path.join(cwd, '.danteforge', artifact))) specDrivenPipeline += 15;
+  }
+
+  const evidenceDir = path.join(cwd, '.danteforge', 'evidence');
+  const evidenceFiles = await listDir(evidenceDir);
+  if (evidenceFiles.length >= 1) specDrivenPipeline += 10;
+
+  const testFiles = await listDir(path.join(cwd, 'tests'));
+  const hasE2ETest = testFiles.some(f => f.includes('e2e') || f.includes('integration'));
+  if (hasE2ETest) specDrivenPipeline += 5;
+
+  specDrivenPipeline = Math.max(0, Math.min(85, specDrivenPipeline));
+
+  // ── developerExperience ───────────────────────────────────────────────────────
+  // Base: 15. Signals: onboarding docs, examples directory, test suite depth.
+  let developerExperience = 15;
+
+  if (await checkExists(path.join(cwd, 'CLAUDE.md'))) developerExperience += 20;
+
+  try {
+    const readmePath = path.join(cwd, 'README.md');
+    const { readFile } = await import('node:fs/promises');
+    const readmeContent = await readFile(readmePath, 'utf8').catch(() => '');
+    if (readmeContent.length > 500) developerExperience += 15;
+  } catch { /* non-fatal */ }
+
+  const examplesFiles = await listDir(path.join(cwd, 'examples'));
+  if (examplesFiles.length >= 1) developerExperience += 20;
+
+  if (testFiles.length >= 100) developerExperience += 15;
+  else if (testFiles.length >= 50) developerExperience += 10;
+  else if (testFiles.length >= 10) developerExperience += 5;
+
+  developerExperience = Math.max(0, Math.min(100, developerExperience));
+
+  // ── planningQuality ───────────────────────────────────────────────────────────
+  // Base: 15. Signals: PDSE planning artifacts + git commits with plan/spec keywords.
+  let planningQuality = 15;
+
+  const planningArtifacts: [string, number][] = [
+    ['PLAN.md', 20], ['SPEC.md', 15], ['CONSTITUTION.md', 15], ['CLARIFY.md', 15],
+  ];
+  for (const [artifact, pts] of planningArtifacts) {
+    const exists = await checkExists(path.join(cwd, artifact))
+      || await checkExists(path.join(cwd, '.danteforge', artifact));
+    if (exists) planningQuality += pts;
+  }
+
+  const planCommits = await runGit(['log', '--oneline', '--grep=plan', '--no-merges'], cwd);
+  const planCount = planCommits.trim() === '' ? 0 : planCommits.trim().split('\n').length;
+  if (planCount >= 3) planningQuality += 10;
+
+  const specCommits = await runGit(['log', '--oneline', '--grep=spec', '--no-merges'], cwd);
+  const specCount = specCommits.trim() === '' ? 0 : specCommits.trim().split('\n').length;
+  if (specCount >= 3) planningQuality += 10;
+
+  planningQuality = Math.max(0, Math.min(100, planningQuality));
+
+  // ── convergenceSelfHealing ────────────────────────────────────────────────────
+  // Base: 15. Signals: circuit-breaker, context-compressor, autoforge evidence.
+  let convergenceSelfHealing = 15;
+
+  if (await checkExists(path.join(cwd, 'src', 'core', 'circuit-breaker.ts'))) convergenceSelfHealing += 25;
+  if (await checkExists(path.join(cwd, 'src', 'core', 'context-compressor.ts'))) convergenceSelfHealing += 20;
+
+  const autoforgeEvidenceDir = path.join(cwd, '.danteforge', 'evidence', 'autoforge');
+  const autoforgeEvidenceFiles = await listDir(autoforgeEvidenceDir);
+  if (autoforgeEvidenceFiles.length >= 3) convergenceSelfHealing += 15;
+  else if (autoforgeEvidenceFiles.length >= 1) convergenceSelfHealing += 8;
+
+  const convergenceProof = await checkExists(path.join(cwd, '.danteforge', 'evidence', 'convergence-proof.json'))
+    || await checkExists(path.join(cwd, 'examples', 'todo-app', 'evidence', 'convergence-proof.json'));
+  if (convergenceProof) convergenceSelfHealing += 10;
+
+  convergenceSelfHealing = Math.max(0, Math.min(100, convergenceSelfHealing));
+
+  return { autonomy, selfImprovement, tokenEconomy, specDrivenPipeline, developerExperience, planningQuality, convergenceSelfHealing };
 }

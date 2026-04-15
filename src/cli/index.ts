@@ -1303,6 +1303,7 @@ program
   .option('--retro-interval <n>', 'cycles between automatic retro runs during loop (default: 5)', parseInt, 5)
   .option('--no-auto-harvest', 'skip OSS harvest receipt bootstrap at ascend start')
   .option('--no-verify-loop', 'skip mid-loop verify pass before first cycle')
+  .option('--execute', 'run forge for each dimension instead of advisory mode (caution: modifies files)')
   .action((opts) => {
     void (async () => {
       try {
@@ -1321,6 +1322,7 @@ program
           retroInterval: opts.retroInterval as number | undefined,
           autoHarvest: opts.autoHarvest as boolean | undefined,
           verifyLoop: opts.verifyLoop as boolean | undefined,
+          executeMode: opts.execute ? 'forge' : 'advisory',
         });
       } catch (err) {
         const { formatAndLogError } = await import('../core/format-error.js');

@@ -285,3 +285,90 @@ describe('AscendEngineOptions — Sprint 48 seams present', () => {
     assert.ok(!calls.includes('retro'), 'retro should NOT fire in dryRun');
   });
 });
+
+describe('AscendEngineOptions — Sprint 49 executeMode', () => {
+  it('executeMode seams present in AscendEngineOptions interface', () => {
+    const opts: import('../src/core/ascend-engine.js').AscendEngineOptions = {
+      executeMode: 'forge',
+      _setWorkflowStage: async (_stage: string, _cwd: string) => {},
+    };
+    assert.strictEqual(opts.executeMode, 'forge');
+    assert.ok(typeof opts._setWorkflowStage === 'function');
+  });
+
+  it('executeMode: advisory does NOT call _executeCommand (default behavior preserved)', async () => {
+    const { runAscend } = await import('../src/core/ascend-engine.js');
+
+    const executeCalls: string[] = [];
+    await runAscend({
+      yes: true,
+      executeMode: 'advisory',
+      maxCycles: 1,
+      _loadMatrix: async () => ({
+        project: 'test', competitors: [], oss_competitors: [], closed_source_competitors: [],
+        dimensions: [{
+          id: 'testing', label: 'Testing', weight: 1.0, category: 'quality', frequency: 'high' as const,
+          scores: { self: 5.0, Cursor: 9.0 }, gap_to_leader: 4.0, leader: 'Cursor',
+          gap_to_closed_source_leader: 4.0, closed_source_leader: 'Cursor',
+          gap_to_oss_leader: 0, oss_leader: 'unknown', status: 'in-progress' as const,
+          sprint_history: [], next_sprint_target: 7.0,
+        }],
+        overallSelfScore: 5.0, lastUpdated: new Date().toISOString(),
+      }),
+      _saveMatrix: async () => {},
+      _harshScore: async () => ({ displayScore: 5.0, displayDimensions: { testing: 5 }, rawScores: {}, summary: '', recommendations: [] } as never),
+      _computeStrictDims: async () => ({ autonomy: 50, selfImprovement: 50, tokenEconomy: 50 }),
+      _loadState: async () => ({ project: 'test', workflowStage: 'forge', tasks: {}, auditLog: [] } as never),
+      _saveState: async () => {},
+      _confirmMatrix: async () => true,
+      _isLLMAvailable: async () => true,
+      _bootstrapHarvest: async () => {},
+      _runVerify: async () => {},
+      _runLoop: async (ctx) => ctx,
+      _executeCommand: async (cmd: string) => { executeCalls.push(cmd); return { success: true }; },
+    });
+
+    // In advisory mode, _executeCommand should NOT be called directly by the executeMode fork
+    // (it may be passed to _runLoop but advisory mode won't call it from the forge fork)
+    const forgeCalls = executeCalls.filter(c => c.startsWith('forge '));
+    assert.strictEqual(forgeCalls.length, 0, 'advisory mode should not call forge via executeMode fork');
+  });
+
+  it('executeMode: forge calls _executeCommand with forge goal string', async () => {
+    const { runAscend } = await import('../src/core/ascend-engine.js');
+
+    const executeCalls: string[] = [];
+    await runAscend({
+      yes: true,
+      executeMode: 'forge',
+      maxCycles: 1,
+      _loadMatrix: async () => ({
+        project: 'test', competitors: [], oss_competitors: [], closed_source_competitors: [],
+        dimensions: [{
+          id: 'testing', label: 'Testing', weight: 1.0, category: 'quality', frequency: 'high' as const,
+          scores: { self: 5.0, Cursor: 9.0 }, gap_to_leader: 4.0, leader: 'Cursor',
+          gap_to_closed_source_leader: 4.0, closed_source_leader: 'Cursor',
+          gap_to_oss_leader: 0, oss_leader: 'unknown', status: 'in-progress' as const,
+          sprint_history: [], next_sprint_target: 7.0,
+        }],
+        overallSelfScore: 5.0, lastUpdated: new Date().toISOString(),
+      }),
+      _saveMatrix: async () => {},
+      _harshScore: async () => ({ displayScore: 5.0, displayDimensions: { testing: 5 }, rawScores: {}, summary: '', recommendations: [] } as never),
+      _computeStrictDims: async () => ({ autonomy: 50, selfImprovement: 50, tokenEconomy: 50 }),
+      _loadState: async () => ({ project: 'test', workflowStage: 'forge', tasks: {}, auditLog: [] } as never),
+      _saveState: async () => {},
+      _confirmMatrix: async () => true,
+      _isLLMAvailable: async () => true,
+      _bootstrapHarvest: async () => {},
+      _runVerify: async () => {},
+      _runLoop: async (ctx) => ctx,
+      _setWorkflowStage: async () => {},
+      _executeCommand: async (cmd: string) => { executeCalls.push(cmd); return { success: true }; },
+    });
+
+    const forgeCalls = executeCalls.filter(c => c.startsWith('forge '));
+    assert.ok(forgeCalls.length >= 1, `Expected at least one forge call, got: ${JSON.stringify(executeCalls)}`);
+    assert.ok(forgeCalls[0]!.includes('Testing'), 'Forge goal should mention dimension label');
+  });
+});

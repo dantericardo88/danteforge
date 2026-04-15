@@ -91,6 +91,17 @@ export interface AscendEngineOptions {
     selfResult: import('./harsh-scorer.js').HarshScoreResult,
     opts: import('./adversarial-scorer-dim.js').AdversarialScorerDimOptions,
   ) => Promise<import('./adversarial-scorer-dim.js').AdversarialScoreResult>;
+
+  /**
+   * Execution mode for each cycle.
+   * 'advisory' (default): writes AUTOFORGE_GUIDANCE.md but does not execute forge.
+   * 'forge': calls `danteforge forge "<goal>"` directly with the dimension-specific goal,
+   *          bypassing the tasks command and PLAN.md to avoid off-topic code generation.
+   *          Forge-from-forge is same-stage allowed by the workflow enforcer.
+   */
+  executeMode?: 'advisory' | 'forge';
+  /** Injection seam: set workflowStage in STATE.yaml before forge execution. */
+  _setWorkflowStage?: (stage: string, cwd: string) => Promise<void>;
 }
 
 export interface CeilingReport {
@@ -310,6 +321,10 @@ export async function applyStrictOverrides(
   result.displayDimensions.autonomy = Math.round(strict.autonomy / 10);
   result.displayDimensions.selfImprovement = Math.round(strict.selfImprovement / 10);
   result.displayDimensions.tokenEconomy = Math.round(strict.tokenEconomy / 10);
+  result.displayDimensions.specDrivenPipeline = Math.round(strict.specDrivenPipeline / 10);
+  result.displayDimensions.developerExperience = Math.round(strict.developerExperience / 10);
+  result.displayDimensions.planningQuality = Math.round(strict.planningQuality / 10);
+  result.displayDimensions.convergenceSelfHealing = Math.round(strict.convergenceSelfHealing / 10);
   // Note: we intentionally do NOT recompute displayScore here.
   // Convergence is decided per-dimension via displayDimensions[scoringDim], not displayScore.
   // The matrix's overallSelfScore is managed by updateDimensionScore() which is authoritative.
@@ -617,18 +632,35 @@ export async function runAscend(options: AscendEngineOptions = {}): Promise<Asce
       recentScores: [],
     };
 
-    // Run the inner autoforge loop in advisory mode — it writes AUTOFORGE_GUIDANCE.md
-    // but does NOT execute forge/tasks commands via CLI. Executing PDSE commands here
-    // is counterproductive for an already-built project: the tasks command reads PLAN.md
-    // and generates generic placeholder tasks that are unrelated to the dimension goal,
-    // causing forge to write off-topic code (React components, validation stubs) that
-    // damages the codebase. Real dimension score improvements for an existing project
-    // come from: retro evidence accumulation (_runRetro), verify evidence (_runVerify),
-    // OSS harvest bootstrap (_bootstrapHarvest), and organic lesson/commit accumulation.
-    // _executeCommand is only injected via options to allow tests to verify the seam.
-    await runLoopFn(loopCtx, options._executeCommand ? { _executeCommand: wrappedExecuteCommandFn } : {}).catch((err: unknown) => {
-      logger.warn(`[Ascend] Loop error for ${nextDim.label}: ${String(err)}`);
-    });
+    if ((options.executeMode ?? 'advisory') === 'forge' && !dryRun) {
+      // Direct forge execution: bypass tasks/PLAN.md entirely. Call `forge "<goal>"` directly
+      // with the dimension-specific goal. Forge-from-forge is same-stage allowed by the
+      // workflow enforcer. This avoids the off-topic code generation that occurs when
+      // tasks reads PLAN.md and generates unrelated placeholder tasks.
+      const forgeGoal = `Improve ${nextDim.label}: current ${beforeScore.toFixed(1)}/10, target ${target}/10`;
+      const setWorkflowStageFn = options._setWorkflowStage ?? (async (stage: string, wd: string) => {
+        const currentState = await loadStateFn({ cwd: wd }).catch(() => null);
+        if (currentState) {
+          currentState.workflowStage = stage as import('./state.js').WorkflowStage;
+          await (options._saveState ?? saveState)(currentState, { cwd: wd });
+        }
+      });
+      try {
+        // Set workflowStage = 'forge' so the same-stage rule allows the forge call.
+        await setWorkflowStageFn('forge', cwd);
+        await wrappedExecuteCommandFn(`forge "${forgeGoal.replace(/"/g, '\\"')}"`, cwd);
+        logger.info(`[Ascend] Forge executed for ${nextDim.label}`);
+      } catch (err: unknown) {
+        logger.warn(`[Ascend] Forge failed for ${nextDim.label}: ${String(err)} — falling back to advisory`);
+        await runLoopFn(loopCtx, {}).catch((e: unknown) => logger.warn(`[Ascend] Loop error: ${String(e)}`));
+      }
+    } else {
+      // Advisory mode (default): writes AUTOFORGE_GUIDANCE.md but does not execute forge.
+      // _executeCommand is only injected via options to allow tests to verify the seam.
+      await runLoopFn(loopCtx, options._executeCommand ? { _executeCommand: wrappedExecuteCommandFn } : {}).catch((err: unknown) => {
+        logger.warn(`[Ascend] Loop error for ${nextDim.label}: ${String(err)}`);
+      });
+    }
 
     // Reload state from disk after the inner loop so the next cycle's loopCtx sees
     // any stage advances or tasks populated by commands this cycle executed.

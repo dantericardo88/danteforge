@@ -274,7 +274,9 @@ export function updateDimensionScore(
   if (!dim) throw new Error(`Dimension "${dimensionId}" not found in matrix`);
 
   const before = dim.scores['self'] ?? 0;
-  dim.scores['self'] = newScore;
+  // Clamp to ceiling so a dimension can never be scored above its automation ceiling.
+  const clamped = dim.ceiling !== undefined ? Math.min(newScore, dim.ceiling) : newScore;
+  dim.scores['self'] = clamped;
 
   // Recompute gap_to_leader (all competitors)
   const competitorEntries = Object.entries(dim.scores).filter(([k]) => k !== 'self');
@@ -282,7 +284,7 @@ export function updateDimensionScore(
     (best, [k, v]) => v > best[1] ? [k, v] : best,
     ['', 0] as [string, number],
   );
-  dim.gap_to_leader = Math.max(0, maxEntry[1] - newScore);
+  dim.gap_to_leader = Math.max(0, maxEntry[1] - clamped);
   if (maxEntry[0]) dim.leader = maxEntry[0];
 
   // Recompute two-gap fields
@@ -296,7 +298,7 @@ export function updateDimensionScore(
   const record: SprintRecord = {
     dimensionId,
     before,
-    after: newScore,
+    after: clamped,
     date: new Date().toISOString().slice(0, 10),
     ...(commit ? { commit } : {}),
     ...(harvestSource ? { harvestSource } : {}),
@@ -456,7 +458,10 @@ export function bootstrapMatrixFromComparison(
 
   const dimensions: MatrixDimension[] = comparison.gapReport.map(gap => {
     const id = gap.dimension as string;
-    const selfScoreNorm = Math.round((comparison.ourDimensions[gap.dimension] ?? 0) / 10 * 10) / 10;
+    const knownCeiling = KNOWN_CEILINGS[id];
+    const rawSelfScore = Math.round((comparison.ourDimensions[gap.dimension] ?? 0) / 10 * 10) / 10;
+    // Clamp initial score to ceiling so bootstrap can never create a score > ceiling.
+    const selfScoreNorm = knownCeiling ? Math.min(rawSelfScore, knownCeiling.ceiling) : rawSelfScore;
 
     const scores: Record<string, number> = { self: selfScoreNorm };
     for (const c of comparison.competitors) {
@@ -472,7 +477,6 @@ export function bootstrapMatrixFromComparison(
 
     const twoGaps = computeTwoGaps({ scores }, closedSourceNames, ossNames);
 
-    const knownCeiling = KNOWN_CEILINGS[id];
     const snakeId = id.replace(/([A-Z])/g, '_$1').toLowerCase().replace(/^_/, '');
     return {
       id: snakeId,

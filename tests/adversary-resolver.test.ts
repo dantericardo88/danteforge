@@ -63,13 +63,15 @@ describe('resolveAdversaryProvider', () => {
     assert.equal(result!.mode, 'ollama-auto');
   });
 
-  it('does NOT auto-detect Ollama when primary provider is ollama', async () => {
-    const config = makeConfig({ defaultProvider: 'ollama' });
+  it('does NOT auto-detect Ollama when primary provider is ollama and no alternate model installed', async () => {
+    const config = makeConfig({ defaultProvider: 'ollama', ollamaModel: 'llama3' } as Partial<DanteConfig>);
     const result = await resolveAdversaryProvider(config, {
       _env: {},
       _probeOllama: async () => { throw new Error('should not be called'); },
+      // Only the primary model installed — no alternate available
+      _fetchOllamaModels: async () => ['llama3'],
     });
-    // Falls through to self-challenge since Ollama is primary
+    // Falls through to self-challenge since no alternate model exists
     assert.equal(result?.mode, 'self-challenge');
   });
 
@@ -139,5 +141,38 @@ describe('resolveAdversaryProvider', () => {
     // Should fall through to self-challenge, not throw
     assert.ok(result !== null);
     assert.equal(result!.mode, 'self-challenge');
+  });
+
+  // ── Sprint 49: alternate Ollama model diversity ──────────────────────────────
+
+  it('uses alternate Ollama model when primary is ollama and a different model is installed', async () => {
+    const config = makeConfig({
+      defaultProvider: 'ollama',
+      ollamaModel: 'qwen2.5-coder:latest',
+    } as Partial<DanteConfig>);
+    const result = await resolveAdversaryProvider(config, {
+      _env: {},
+      _fetchOllamaModels: async () => ['qwen2.5-coder:latest', 'llama3.1:latest', 'mistral:7b'],
+    });
+    assert.ok(result !== null, 'Should return a result');
+    assert.equal(result!.mode, 'ollama-auto', 'Should use ollama-auto mode with alternate model');
+    assert.notEqual(result!.model, 'qwen2.5-coder:latest', 'Should not pick the primary model');
+    assert.ok(
+      result!.model === 'llama3.1:latest' || result!.model === 'mistral:7b',
+      `Expected alternate model, got: ${result!.model}`,
+    );
+  });
+
+  it('falls back to self-challenge when only one Ollama model is installed', async () => {
+    const config = makeConfig({
+      defaultProvider: 'ollama',
+      ollamaModel: 'qwen2.5-coder:latest',
+    } as Partial<DanteConfig>);
+    const result = await resolveAdversaryProvider(config, {
+      _env: {},
+      _fetchOllamaModels: async () => ['qwen2.5-coder:latest'],
+    });
+    assert.ok(result !== null);
+    assert.equal(result!.mode, 'self-challenge', 'Only one model installed → self-challenge');
   });
 });

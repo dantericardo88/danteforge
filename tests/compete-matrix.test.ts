@@ -340,6 +340,73 @@ describe('compete-matrix', () => {
     assert.ok(updated.gap_to_oss_leader >= 0, 'OSS gap should be non-negative');
     assert.ok(updated.gap_to_closed_source_leader >= 0, 'Closed-source gap should be non-negative');
   });
+
+  // ── T11: ceiling clamp ────────────────────────────────────────────────────────
+
+  it('T11: updateDimensionScore clamps score to ceiling when score > ceiling', () => {
+    const dim = makeDim({
+      id: 'enterprise_readiness',
+      scores: { self: 4.0, Cursor: 9.0 },
+      ceiling: 6.0,
+    } as Partial<MatrixDimension>);
+    const matrix: CompeteMatrix = {
+      project: 'TestProject',
+      competitors: ['Cursor'],
+      competitors_closed_source: ['Cursor'],
+      competitors_oss: [],
+      lastUpdated: new Date().toISOString(),
+      overallSelfScore: 4.0,
+      dimensions: [dim],
+    };
+    // Attempt to set score to 7.0, should be clamped to ceiling 6.0
+    updateDimensionScore(matrix, 'enterprise_readiness', 7.0);
+    assert.strictEqual(matrix.dimensions[0]!.scores['self'], 6.0, 'Score must be clamped to ceiling');
+    assert.strictEqual(matrix.dimensions[0]!.sprint_history.at(-1)!.after, 6.0, 'Sprint record after must reflect clamped value');
+  });
+
+  it('T11b: updateDimensionScore accepts score exactly at ceiling', () => {
+    const dim = makeDim({
+      id: 'community_adoption',
+      scores: { self: 2.0, Cursor: 9.0 },
+      ceiling: 4.0,
+    } as Partial<MatrixDimension>);
+    const matrix: CompeteMatrix = {
+      project: 'TestProject',
+      competitors: ['Cursor'],
+      competitors_closed_source: ['Cursor'],
+      competitors_oss: [],
+      lastUpdated: new Date().toISOString(),
+      overallSelfScore: 2.0,
+      dimensions: [dim],
+    };
+    updateDimensionScore(matrix, 'community_adoption', 4.0);
+    assert.strictEqual(matrix.dimensions[0]!.scores['self'], 4.0, 'Score exactly at ceiling should be accepted');
+  });
+
+  it('T12: bootstrapMatrixFromComparison clamps initial selfScore to ceiling', () => {
+    // enterpriseReadiness has KNOWN_CEILINGS entry: ceiling = 6.0
+    // Our score raw = 90/10 = 9.0, which should be clamped to 6.0
+    const comparison: CompetitorComparison = {
+      ourDimensions: { enterpriseReadiness: 90 },
+      projectName: 'TestForge',
+      competitors: [{
+        name: 'Cursor', url: '', description: '', source: 'hardcoded' as const,
+        scores: { enterpriseReadiness: 80 },
+      }],
+      leaderboard: [{ name: 'Cursor', avgScore: 80, rank: 1 }],
+      gapReport: [{ dimension: 'enterpriseReadiness', ourScore: 90, bestScore: 80, bestCompetitor: 'Cursor', delta: -10, severity: 'none' as const }],
+      overallGap: 0,
+      competitorSource: 'hardcoded',
+      analysisTimestamp: new Date().toISOString(),
+    };
+    const matrix = bootstrapMatrixFromComparison(comparison, 'TestForge');
+    const dim = matrix.dimensions.find(d => d.id === 'enterprise_readiness');
+    assert.ok(dim, 'enterprise_readiness dimension should exist');
+    assert.ok(
+      (dim!.scores['self'] ?? 99) <= 6.0,
+      `enterpriseReadiness self score ${dim!.scores['self']} should be clamped to ceiling 6.0`,
+    );
+  });
 });
 
 // ── checkMatrixStaleness ──────────────────────────────────────────────────────

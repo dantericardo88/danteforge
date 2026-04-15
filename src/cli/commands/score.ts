@@ -254,7 +254,7 @@ export async function score(options: ScoreOptions = {}): Promise<ScoreResult> {
     _writeHistory: options._writeHistory ?? (async () => {}),
   });
 
-  // Strict mode: override the three STATE.yaml-gamed dimensions with code-derived signals.
+  // Strict mode: override STATE.yaml-gamed dimensions with code-derived signals.
   // This produces a tamper-resistant score that cannot be inflated by editing STATE.yaml.
   if (options.strict) {
     const strict = await computeStrictDimensions(
@@ -266,6 +266,10 @@ export async function score(options: ScoreOptions = {}): Promise<ScoreResult> {
     result.displayDimensions.autonomy = Math.round(strict.autonomy / 10);
     result.displayDimensions.selfImprovement = Math.round(strict.selfImprovement / 10);
     result.displayDimensions.tokenEconomy = Math.round(strict.tokenEconomy / 10);
+    result.displayDimensions.specDrivenPipeline = Math.round(strict.specDrivenPipeline / 10);
+    result.displayDimensions.developerExperience = Math.round(strict.developerExperience / 10);
+    result.displayDimensions.planningQuality = Math.round(strict.planningQuality / 10);
+    result.displayDimensions.convergenceSelfHealing = Math.round(strict.convergenceSelfHealing / 10);
 
     // Recompute displayScore from patched dimensions
     const patched = result.displayDimensions;
@@ -273,7 +277,7 @@ export async function score(options: ScoreOptions = {}): Promise<ScoreResult> {
       .reduce((sum, [k, w]) => sum + (patched[k] ?? 0) * w, 0);
     result.displayScore = Math.round(patchedWeighted * 10) / 10;
 
-    emit('  [strict mode: autonomy, selfImprovement, tokenEconomy overridden with code-derived signals]');
+    emit('  [strict mode: 7 dimensions overridden with code-derived signals]');
   }
 
   // Session baseline with TTL — reset if older than 4 hours so delta stays meaningful
@@ -448,7 +452,10 @@ function renderDualScorePanel(
   if (adv.adversaryResolution.mode === 'self-challenge') {
     emit('');
     emit('  Note: adversary is your primary provider in self-challenge mode.');
-    emit('  For stronger signal: configure a second provider or install Ollama.');
+    emit('  For stronger signal: install a second Ollama model or set DANTEFORGE_ADVERSARY_PROVIDER.');
+  } else if (adv.adversaryResolution.mode === 'ollama-auto' && adv.adversaryResolution.model) {
+    emit('');
+    emit(`  Note: adversary using alternate Ollama model: ${adv.adversaryResolution.model}`);
   }
   emit('');
 }

@@ -28,6 +28,11 @@ export interface AscendOptions {
   autoHarvest?: boolean;
   /** Set false to skip mid-loop verify pass (--no-verify-loop) */
   verifyLoop?: boolean;
+  /**
+   * Execution mode: 'advisory' (default) writes guidance only; 'forge' calls
+   * `danteforge forge "<goal>"` directly for each dimension, bypassing tasks/PLAN.md.
+   */
+  executeMode?: 'advisory' | 'forge';
   _executeCommand?: (cmd: string, cwd: string) => Promise<{ success: boolean }>;
   /** Injection seam for testing — replaces the full runAscend engine */
   _runAscend?: (opts: AscendEngineOptions) => Promise<AscendResult>;
@@ -52,6 +57,7 @@ export async function ascend(options: AscendOptions = {}): Promise<AscendResult>
       retroInterval: options.retroInterval,
       autoHarvest: options.autoHarvest,
       verifyLoop: options.verifyLoop,
+      executeMode: options.executeMode,
       _executeCommand: options._executeCommand,
     });
   } catch (err) {
