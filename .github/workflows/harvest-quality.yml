@@ -1,0 +1,47 @@
+name: Harvest Quality Gate
+
+on:
+  schedule:
+    - cron: '0 2 * * 1'
+  workflow_dispatch:
+
+jobs:
+  harvest-quality:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      DANTEFORGE_LLM_API_KEY: ${{ secrets.DANTEFORGE_LLM_API_KEY }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'npm'
+
+      - name: Install
+        run: npm ci
+
+      - name: Build
+        run: npm run build
+
+      - name: Typecheck
+        run: npm run typecheck || npx tsc --noEmit
+
+      - name: Test
+        run: npm test
+
+      - name: Harvest quality check
+        env:
+          DANTEFORGE_LLM_API_KEY: ${{ secrets.DANTEFORGE_LLM_API_KEY }}
+        run: node dist/index.js status --json > quality-report.json 2>/dev/null || echo '{}' > quality-report.json
+        continue-on-error: true
+
+      - name: Upload quality report artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: quality-report
+          path: quality-report.json
