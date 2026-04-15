@@ -20,7 +20,8 @@ program
   .command('init')
   .description('Interactive first-run wizard — detect project, check health, show next steps')
   .option('--non-interactive', 'Skip wizard questions (for CI/scripts)')
-  .action((opts) => commands.init({ nonInteractive: opts.nonInteractive }));
+  .option('--guided', 'Force the full interactive setup wizard (overrides TTY detection)')
+  .action((opts) => commands.init({ nonInteractive: opts.nonInteractive, guided: opts.guided }));
 
 program
   .command('constitution')
@@ -1303,7 +1304,7 @@ program
   .option('--retro-interval <n>', 'cycles between automatic retro runs during loop (default: 5)', parseInt, 5)
   .option('--no-auto-harvest', 'skip OSS harvest receipt bootstrap at ascend start')
   .option('--no-verify-loop', 'skip mid-loop verify pass before first cycle')
-  .option('--execute', 'run forge for each dimension instead of advisory mode (caution: modifies files)')
+  .option('--advisory', 'write guidance files per dimension without executing forge (preview mode)')
   .action((opts) => {
     void (async () => {
       try {
@@ -1322,7 +1323,7 @@ program
           retroInterval: opts.retroInterval as number | undefined,
           autoHarvest: opts.autoHarvest as boolean | undefined,
           verifyLoop: opts.verifyLoop as boolean | undefined,
-          executeMode: opts.execute ? 'forge' : 'advisory',
+          executeMode: opts.advisory ? 'advisory' : 'forge',
         });
       } catch (err) {
         const { formatAndLogError } = await import('../core/format-error.js');
@@ -1350,6 +1351,22 @@ program
       } catch (err) {
         const { formatAndLogError } = await import('../core/format-error.js');
         formatAndLogError(err, 'score');
+        process.exitCode = 1;
+      }
+    })();
+  });
+
+program
+  .command('quality')
+  .description('Visual quality scorecard: dimension bars, P0 gaps, and automation ceilings')
+  .action(() => {
+    void (async () => {
+      try {
+        const { quality } = await import('./commands/quality.js');
+        await quality();
+      } catch (err) {
+        const { formatAndLogError } = await import('../core/format-error.js');
+        formatAndLogError(err, 'quality');
         process.exitCode = 1;
       }
     })();
@@ -1390,12 +1407,13 @@ program
 
 program
   .command('go [goal]')
-  .description('Daily driver: run self-improve loop with no flags (maxCycles:5, target:9.0)')
-  .action((goal) => {
+  .description('Smart entry point: shows project state on existing projects, setup wizard on first run')
+  .option('--yes', 'Skip confirmation and run immediately')
+  .action((goal, opts) => {
     void (async () => {
       try {
         const { go } = await import('./commands/go.js');
-        await go({ goal: goal as string | undefined });
+        await go({ goal: goal as string | undefined, yes: opts.yes as boolean | undefined });
       } catch (err) {
         const { formatAndLogError } = await import('../core/format-error.js');
         formatAndLogError(err, 'go');

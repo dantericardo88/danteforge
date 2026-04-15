@@ -8,6 +8,7 @@ import { logger } from '../../../core/logger.js';
 import { emitWaveStart, emitTaskStart, emitTaskComplete } from '../../../core/event-bus.js';
 import { buildTaskPrompt, savePrompt, displayPrompt } from '../../../core/prompt-builder.js';
 import { isLLMAvailable, callLLM } from '../../../core/llm.js';
+import { callLLMWithProgress } from '../../../core/llm-stream.js';
 import { recordMemory } from '../../../core/memory-engine.js';
 import { createAgentWorktree, removeAgentWorktree } from '../../../utils/worktree.js';
 import { reflect, evaluateVerdict, DEFAULT_REFLECTION_CONFIG } from '../../../core/reflection-engine.js';
@@ -114,6 +115,8 @@ export interface ExecuteWaveOptions {
   _readFileFn?: (filePath: string) => Promise<string>;
   /** Inject LLM availability check — defaults to isLLMAvailable() from llm.ts */
   _isLLMAvailable?: () => Promise<boolean>;
+  /** Stream LLM output chunks to caller — fires per token in TTY mode */
+  _onChunk?: (chunk: string) => void;
 }
 
 // ── Code Application Pipeline ─────────────────────────────────────────────────
@@ -302,9 +305,12 @@ export async function executeWave(
         const { injectRelevantLessons } = await import('../../../core/lessons-index.js');
         taskPrompt = await injectRelevantLessons(taskPrompt, 3, cwd ?? process.cwd());
       } catch { /* best-effort — never block forge */ }
+      const onChunk = options?._onChunk;
       const result = options?._llmCaller
         ? await options._llmCaller(taskPrompt)
-        : await callLLM(taskPrompt, undefined, { enrichContext: true, cwd, onUsage: internalOnUsage });
+        : onChunk
+          ? await callLLMWithProgress(taskPrompt, onChunk, undefined, { enrichContext: true, cwd, onUsage: internalOnUsage })
+          : await callLLM(taskPrompt, undefined, { enrichContext: true, cwd, onUsage: internalOnUsage });
       logger.success(`LLM result for "${task.name}" (${result.length} chars)`);
 
       // Apply LLM-generated code changes with retry on test failure (best-effort)

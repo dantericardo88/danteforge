@@ -36,6 +36,8 @@ export function detectRunningIDE(): AssistantRegistry | null {
 export interface InitOptions {
   prompt?: boolean;
   nonInteractive?: boolean;
+  /** Force the full interactive wizard even when TTY detection is uncertain */
+  guided?: boolean;
   provider?: LLMProvider;
   cwd?: string;
   // Injection seams for testing
@@ -62,7 +64,7 @@ export async function init(options: InitOptions = {}): Promise<void> {
   return withErrorBoundary('init', async () => {
   const cwd = options.cwd ?? process.cwd();
   const timestamp = new Date().toISOString();
-  const isInteractive = (options._isTTY ?? process.stdout.isTTY) && !options.nonInteractive;
+  const isInteractive = ((options._isTTY ?? process.stdout.isTTY) || options.guided === true) && !options.nonInteractive;
   const loadStateFn = options._loadState ?? loadState;
   const saveStateFn = options._saveState ?? saveState;
   const llmAvailableFn = options._isLLMAvailable ?? isLLMAvailable;

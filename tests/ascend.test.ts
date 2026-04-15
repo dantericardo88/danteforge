@@ -235,6 +235,7 @@ describe('ascend() — engine integration via injection', () => {
       cwd,
       target: 9.0,
       maxCycles: 1,
+      executeMode: 'advisory',  // test advisory loop path via _runLoop stub
       _loadMatrix: async () => null, // no matrix
       _defineUniverse: async () => { defineUniverseCalled = true; return stubMatrix; },
       _harshScore: async () => ({

@@ -11,7 +11,42 @@ npm install -g danteforge
 danteforge init
 ```
 
-## Quick Start
+## Get Started in 5 Minutes
+
+```bash
+danteforge go
+```
+
+**First run:** 5-question setup wizard → your first quality score + top 3 gaps to fix.
+**Every run after:** shows current score, recommends the one next action, asks to confirm.
+
+See it working right now — the todo-app has already been run through the full pipeline:
+
+```bash
+cd examples/todo-app && danteforge quality
+```
+
+### What DanteForge actually gives you
+
+| Without DanteForge | With DanteForge |
+|---|---|
+| AI produces code, you guess if it's good | Score 0–10 across 17 dimensions |
+| Each session starts from scratch | Self-improving lessons injected from past failures |
+| You accept whatever the AI produces | Convergence loop runs until quality gates pass |
+| No idea how you compare to alternatives | Competitive matrix tracks gap to leader per dimension |
+| Scoring is self-reported and inflated | Blind adversary model catches inflation automatically |
+
+### Core commands
+
+```bash
+danteforge go          # smart entry point: state panel + guided action
+danteforge quality     # visual scorecard: dimension bars, P0 gaps, ceilings
+danteforge ascend      # full autonomous loop: runs until all dims hit 9.0
+danteforge score       # fast score: one number + 3 P0 items in <5s
+danteforge init        # first-run wizard (or --guided to force interactive)
+```
+
+## Quick Start (Full Pipeline)
 
 ```bash
 danteforge constitution   # define your project

@@ -79,6 +79,7 @@ function makeBaseOpts(overrides: Partial<AscendEngineOptions> = {}): AscendEngin
     cwd: '/tmp/test',
     target: 9.0,
     maxCycles: 3,
+    executeMode: 'advisory',   // tests use advisory path to exercise _runLoop seam
     _loadMatrix: async () => matrix,
     _saveMatrix: async () => {},
     _loadState: async () => ({ project: 'test' }) as never,

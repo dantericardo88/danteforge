@@ -3,6 +3,7 @@ import assert from 'node:assert';
 import { go } from '../src/cli/commands/go.js';
 import type { GoOptions } from '../src/cli/commands/go.js';
 import type { SelfImproveOptions, SelfImproveResult } from '../src/cli/commands/self-improve.js';
+import type { HarshScoreResult } from '../src/core/harsh-scorer.js';
 
 function makeResult(overrides: Partial<SelfImproveResult> = {}): SelfImproveResult {
   return {
@@ -16,9 +17,27 @@ function makeResult(overrides: Partial<SelfImproveResult> = {}): SelfImproveResu
   };
 }
 
+const stubScore: HarshScoreResult = {
+  displayScore: 7.5,
+  displayDimensions: {
+    functionality: 8.5, testing: 9.0, errorHandling: 8.5, security: 8.5,
+    developerExperience: 5.5, autonomy: 9.0, maintainability: 8.0, performance: 7.5,
+    documentation: 7.0, uxPolish: 6.0, planningQuality: 9.5, selfImprovement: 9.0,
+    specDrivenPipeline: 9.5, convergenceSelfHealing: 9.0, tokenEconomy: 8.5,
+    enterpriseReadiness: 6.0, mcpIntegration: 9.0, communityAdoption: 2.0,
+  } as never,
+  rawScores: {},
+  summary: '',
+  recommendations: [],
+};
+
 function makeOpts(overrides: Partial<GoOptions> = {}): GoOptions {
   return {
     cwd: '/tmp/go-test',
+    // Sprint 50: go is state-aware. Tests must simulate existing project.
+    _stateExists: async () => true,
+    _computeScore: async () => stubScore,
+    _confirm: async () => true,  // auto-confirm improvement loop
     _runSelfImprove: async () => makeResult(),
     _stdout: () => {},
     ...overrides,
@@ -26,13 +45,13 @@ function makeOpts(overrides: Partial<GoOptions> = {}): GoOptions {
 }
 
 describe('go command', () => {
-  it('_runSelfImprove called with maxCycles: 5 default', async () => {
+  it('_runSelfImprove called with maxCycles: 3 (new default for state-aware go)', async () => {
     let capturedOpts: SelfImproveOptions | null = null;
     await go(makeOpts({
       _runSelfImprove: async (opts) => { capturedOpts = opts; return makeResult(); },
     }));
     assert.ok(capturedOpts !== null, '_runSelfImprove should be called');
-    assert.strictEqual(capturedOpts!.maxCycles, 5);
+    assert.strictEqual(capturedOpts!.maxCycles, 3);
   });
 
   it('_runSelfImprove called with minScore: 9.0 default', async () => {

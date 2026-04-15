@@ -805,3 +805,31 @@ describe('runAutoforgeLoop — interrupt / force / retry paths', () => {
     assert.ok(result.blockedArtifacts.length > 0, 'blockedArtifacts should be populated');
   });
 });
+
+describe('runAutoforgeLoop — LLM pre-flight check (Sprint 51)', () => {
+  it('loop still runs when _isLLMAvailable returns false (pre-flight is warn-only)', async () => {
+    // Pre-flight warns but never blocks — the loop continues regardless
+    const ctx = makeContext({ dryRun: false });
+    const result = await runAutoforgeLoop(ctx, makeMockDeps({
+      _isLLMAvailable: async () => false,
+      computeCompletionTracker: () => makeTracker({ overall: 96 }), // force COMPLETE
+    }));
+    // Loop should reach COMPLETE or BLOCKED, not crash due to pre-flight
+    assert.ok(
+      result.loopState === AutoforgeLoopState.COMPLETE || result.loopState === AutoforgeLoopState.BLOCKED,
+      'loop should complete normally even when LLM is unavailable (pre-flight is warn-only)',
+    );
+  });
+
+  it('loop runs normally when _isLLMAvailable returns true', async () => {
+    const ctx = makeContext({ dryRun: false });
+    const result = await runAutoforgeLoop(ctx, makeMockDeps({
+      _isLLMAvailable: async () => true,
+      computeCompletionTracker: () => makeTracker({ overall: 96 }), // force COMPLETE
+    }));
+    assert.ok(
+      result.loopState === AutoforgeLoopState.COMPLETE || result.loopState === AutoforgeLoopState.BLOCKED,
+      'loop should complete normally when LLM is available',
+    );
+  });
+});

@@ -3,11 +3,13 @@
 import fs from 'fs/promises';
 import path from 'path';
 import { loadState, saveState, type DanteState } from './state.js';
+import { isLLMAvailable } from './llm.js';
 import { scoreAllArtifacts, persistScoreResult, computeAutoforgeDecision } from './pdse.js';
 import type { ScoreResult, ScoredArtifact } from './pdse.js';
 import { computeCompletionTracker, detectProjectType, type CompletionTracker, type ProjectType } from './completion-tracker.js';
 import { SCORE_THRESHOLDS, ARTIFACT_COMMAND_MAP, ANTI_STUB_PATTERNS } from './pdse-config.js';
 import { logger } from './logger.js';
+import { createStepTracker } from './progress.js';
 import { recordMemory } from './memory-engine.js';
 import { isProtectedPath, requestSelfEditApproval, type SelfEditPolicy } from './safe-self-edit.js';
 import { detectPlateau, formatPlateauAnalysis } from './plateau-detector.js';
@@ -144,6 +146,8 @@ export interface AutoforgeLoopDeps {
   _writeLoopResult?: (result: LoopResult, cwd: string) => Promise<void>;
   /** Injection seam for termination-governor evaluateTermination(). */
   _evaluateTermination?: typeof evaluateTermination;
+  /** Injection seam for LLM pre-flight check (testing). */
+  _isLLMAvailable?: () => Promise<boolean>;
 }
 
 // ── Pipeline stages in order ────────────────────────────────────────────────
@@ -233,8 +237,23 @@ export async function runAutoforgeLoop(ctx: AutoforgeLoopContext, deps?: Partial
     ctx.loopState = AutoforgeLoopState.RUNNING;
     ctx.startedAt = new Date().toISOString();
 
+    // LLM pre-flight — warn early before wasting a cycle
+    try {
+      const isLLMAvailableFn = deps?._isLLMAvailable ?? isLLMAvailable;
+      const llmOk = await isLLMAvailableFn().catch(() => false);
+      if (!llmOk) {
+        logger.warn('[Autoforge] ⚠ No LLM detected — forge cycles will fail.');
+        logger.warn('[Autoforge]   Run `danteforge doctor` for diagnostics.');
+        logger.warn('[Autoforge]   Run `danteforge config` to set a provider.');
+      }
+    } catch { /* best-effort — never block the loop */ }
+
+    const cycleTracker = createStepTracker(ctx.maxRetries * 5);
+
     while (!interrupted) {
       ctx.cycleCount++;
+      cycleTracker.step(`Cycle ${ctx.cycleCount} — scoring → refining → verifying`);
+      logger.info(`[Autoforge] ▶ Cycle ${ctx.cycleCount} — scoring → refining → verifying`);
 
       // 1. Score all artifacts
       ctx.loopState = AutoforgeLoopState.SCORING;

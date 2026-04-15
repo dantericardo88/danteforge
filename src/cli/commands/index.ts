@@ -80,6 +80,7 @@ export { cost } from './cost.js';
 export { compete } from './compete.js';
 export { showcase } from './showcase.js';
 export { score } from './score.js';
+export { quality } from './quality.js';
 export { prime } from './prime.js';
 export { teach } from './teach.js';
 export { go } from './go.js';

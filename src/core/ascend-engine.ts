@@ -18,6 +18,7 @@ import { runAutoforgeLoop, AutoforgeLoopState, type AutoforgeLoopContext, type A
 import { executeAutoforgeCommand } from './autoforge-executor.js';
 import { generateAdversarialCritique } from './adversarial-critique.js';
 import { logger } from './logger.js';
+import { createStepTracker } from './progress.js';
 import { confirmMatrix } from './matrix-confirm.js';
 import { isLLMAvailable } from './llm.js';
 
@@ -594,6 +595,8 @@ export async function runAscend(options: AscendEngineOptions = {}): Promise<Asce
     await runVerifyFn(cwd).catch(() => { /* non-fatal */ });
   }
 
+  const dimTracker = createStepTracker(achievable.length);
+
   while (cyclesRun < maxCycles) {
     const nextDim = getNextSprintDimension(matrix, target);
     if (!nextDim) break; // all achievable dims are closed or at ceiling
@@ -622,7 +625,9 @@ export async function runAscend(options: AscendEngineOptions = {}): Promise<Asce
       critiqueTargetDimId = null;
     }
 
-    logger.info(`[Ascend] Cycle ${cyclesRun + 1}/${maxCycles} — targeting: ${nextDim.label}`);
+    const pctDone = Math.round((cyclesRun / maxCycles) * 100);
+    dimTracker.step(`${nextDim.label} — ${beforeScore.toFixed(1)}/10 → target ${target}/10`);
+    logger.info(`[Ascend] ▶ [${cyclesRun + 1}/${maxCycles}] ${nextDim.label}  (${beforeScore.toFixed(1)}/10 → target ${target}/10)  ${pctDone}% complete`);
     logger.info(`  Goal: ${goal.slice(0, 120)}`);
 
     // Run one autoforge improvement cycle targeting this dimension
@@ -642,7 +647,7 @@ export async function runAscend(options: AscendEngineOptions = {}): Promise<Asce
       recentScores: [],
     };
 
-    if ((options.executeMode ?? 'advisory') === 'forge' && !dryRun) {
+    if ((options.executeMode ?? 'forge') === 'forge' && !dryRun) {
       // Direct forge execution: bypass tasks/PLAN.md entirely. Call `forge "<goal>"` directly
       // with the dimension-specific goal. Forge-from-forge is same-stage allowed by the
       // workflow enforcer. This avoids the off-topic code generation that occurs when
