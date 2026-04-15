@@ -3,7 +3,8 @@ import assert from 'node:assert';
 import fs from 'fs/promises';
 import os from 'os';
 import path from 'path';
-import { loadState, saveState } from '../src/core/state.js';
+import { loadState, saveState, appendScoreHistory } from '../src/core/state.js';
+import type { DanteState, ScoreHistoryEntry } from '../src/core/state.js';
 
 describe('state management', () => {
   let tmpDir: string;
@@ -67,5 +68,43 @@ describe('state management', () => {
     } finally {
       await fs.rm(freshDir, { recursive: true, force: true });
     }
+  });
+});
+
+describe('appendScoreHistory', () => {
+  function makeState(history?: ScoreHistoryEntry[]): DanteState {
+    return {
+      project: 'test',
+      lastHandoff: new Date().toISOString(),
+      workflowStage: 'initialized',
+      currentPhase: 0,
+      tasks: {},
+      auditLog: [],
+      profile: 'default',
+      scoreHistory: history,
+    };
+  }
+
+  it('prepends entry and initialises scoreHistory when undefined', () => {
+    const state = makeState(undefined);
+    const entry: ScoreHistoryEntry = { timestamp: '2026-04-13T00:00:00.000Z', displayScore: 7.4 };
+    const next = appendScoreHistory(state, entry);
+    assert.ok(Array.isArray(next.scoreHistory));
+    assert.strictEqual(next.scoreHistory![0].displayScore, 7.4);
+    assert.strictEqual(next.scoreHistory!.length, 1);
+  });
+
+  it('trims to maxEntries and does not mutate original state', () => {
+    const existing: ScoreHistoryEntry[] = Array.from({ length: 5 }, (_, i) => ({
+      timestamp: `2026-04-0${i + 1}T00:00:00.000Z`,
+      displayScore: i + 1,
+    }));
+    const state = makeState(existing);
+    const entry: ScoreHistoryEntry = { timestamp: '2026-04-13T00:00:00.000Z', displayScore: 9.0 };
+    const next = appendScoreHistory(state, entry, 4);
+    assert.strictEqual(next.scoreHistory!.length, 4);
+    assert.strictEqual(next.scoreHistory![0].displayScore, 9.0);
+    // original not mutated
+    assert.strictEqual(state.scoreHistory!.length, 5);
   });
 });

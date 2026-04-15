@@ -198,6 +198,36 @@ describe('writeVerifyReceipt + readLatestVerifyReceipt', () => {
     const md = buildReceiptMarkdown(receipt);
     assert.ok(md.includes('Self-edit policy enforced: no'));
   });
+
+  it('writes a timestamped verify-${ts}.json alongside latest.json', async () => {
+    const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'danteforge-receipts-ts-'));
+    const written: string[] = [];
+    const fakeFsWrite = async (p: string, _d: string) => { written.push(p); };
+    try {
+      const receipt = makeReceipt({ timestamp: '2026-04-15T10:30:00.000Z' });
+      await writeVerifyReceipt(receipt, dir, fakeFsWrite);
+      // Should have written one timestamped file
+      const tsFile = written.find(p => p.includes('verify-2026-04-15_10-30-00.json'));
+      assert.ok(tsFile !== undefined, `timestamped file not found in: ${JSON.stringify(written)}`);
+    } finally {
+      await fs.rm(dir, { recursive: true, force: true });
+    }
+  });
+
+  it('two successive calls produce two differently-named timestamped files', async () => {
+    const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'danteforge-receipts-ts2-'));
+    const written: string[] = [];
+    const fakeFsWrite = async (p: string, _d: string) => { written.push(p); };
+    try {
+      await writeVerifyReceipt(makeReceipt({ timestamp: '2026-04-15T10:00:00.000Z' }), dir, fakeFsWrite);
+      await writeVerifyReceipt(makeReceipt({ timestamp: '2026-04-15T11:00:00.000Z' }), dir, fakeFsWrite);
+      const tsFiles = written.filter(p => p.includes('verify-2026-04-15'));
+      assert.strictEqual(tsFiles.length, 2, `expected 2 timestamped files, got: ${JSON.stringify(tsFiles)}`);
+      assert.notStrictEqual(tsFiles[0], tsFiles[1]);
+    } finally {
+      await fs.rm(dir, { recursive: true, force: true });
+    }
+  });
 });
 
 describe('selfEditPolicyEnforced — policy logic (verify.ts A2 fix)', () => {

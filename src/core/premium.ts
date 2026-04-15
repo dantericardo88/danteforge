@@ -189,12 +189,12 @@ export async function exportAuditTrail(cwd = process.cwd()): Promise<AuditTrailE
   const dir = path.join(cwd, AUDIT_DIR);
   try {
     const files = (await fs.readdir(dir)).filter(f => f.endsWith('.json')).sort();
-    const entries: AuditTrailEntry[] = [];
-    for (const file of files) {
-      const content = await fs.readFile(path.join(dir, file), 'utf8');
-      entries.push(JSON.parse(content) as AuditTrailEntry);
-    }
-    return entries;
+    const readResults = await Promise.allSettled(
+      files.map((f) => fs.readFile(path.join(dir, f), 'utf8')),
+    );
+    return readResults
+      .filter((r): r is PromiseFulfilledResult<string> => r.status === 'fulfilled')
+      .map((r) => JSON.parse(r.value) as AuditTrailEntry);
   } catch {
     return [];
   }

@@ -520,3 +520,78 @@ describe('magic-command: retry behavior', () => {
     assert.ok(calls >= 4, `autoforge runs 3 times + lessons-compact once = 4 calls, got ${calls}`);
   });
 });
+
+// ─── post-inferno prime hook ──────────────────────────────────────────────────
+
+describe('magic-command: inferno post-prime hook', () => {
+  it('inferno level triggers _runPrime call after last step', async () => {
+    let primeCalled = false;
+    await inferno('test goal', {
+      prompt: false,
+      _runStep: async () => {},
+      _runPrime: async () => { primeCalled = true; },
+      _convergenceOpts: noopConvergence,
+    } as Parameters<typeof inferno>[1]);
+    assert.ok(primeCalled, '_runPrime should be called after inferno completes');
+  });
+
+  it('non-inferno level does NOT trigger _runPrime', async () => {
+    let primeCalled = false;
+    await ember('test goal', {
+      prompt: false,
+      _runStep: async () => {},
+      _runPrime: async () => { primeCalled = true; },
+      _convergenceOpts: noopConvergence,
+    } as Parameters<typeof ember>[1]);
+    assert.ok(!primeCalled, '_runPrime should NOT be called for ember level');
+  });
+});
+
+describe('magic — confirmMatrix gate', () => {
+  it('calls _confirmMatrix when no --yes flag and no resume', async () => {
+    let confirmCalled = false;
+    await magic('test goal', {
+      yes: false,
+      _confirmMatrix: async (_cwd) => { confirmCalled = true; return true; },
+      _runStep: async () => {},
+      _convergenceOpts: noopConvergence,
+    });
+    assert.ok(confirmCalled, '_confirmMatrix should be called when yes is false');
+  });
+
+  it('skips _confirmMatrix when yes: true', async () => {
+    let confirmCalled = false;
+    await magic('test goal', {
+      yes: true,
+      _confirmMatrix: async (_cwd) => { confirmCalled = true; return true; },
+      _runStep: async () => {},
+      _convergenceOpts: noopConvergence,
+    });
+    assert.ok(!confirmCalled, '_confirmMatrix should NOT be called when yes is true');
+  });
+
+  it('aborts pipeline when _confirmMatrix returns false', async () => {
+    let stepsCalled = 0;
+    await magic('test goal', {
+      yes: false,
+      _confirmMatrix: async (_cwd) => false,
+      _runStep: async () => { stepsCalled++; },
+      _convergenceOpts: noopConvergence,
+    });
+    assert.strictEqual(stepsCalled, 0, 'pipeline steps should not run when confirmMatrix returns false');
+  });
+
+  it('calls _computeStrictDims after pipeline completes', async () => {
+    let strictCalled = false;
+    await magic('test goal', {
+      yes: true,
+      _runStep: async () => {},
+      _convergenceOpts: noopConvergence,
+      _computeStrictDims: async (_cwd) => {
+        strictCalled = true;
+        return { autonomy: 80, selfImprovement: 70, tokenEconomy: 85 };
+      },
+    });
+    assert.ok(strictCalled, '_computeStrictDims should be called after pipeline completes');
+  });
+});

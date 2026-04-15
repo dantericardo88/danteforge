@@ -1,6 +1,6 @@
 {
   "name": "danteforge",
-  "version": "0.15.0",
+  "version": "0.17.0",
   "description": "Agentic development CLI - structured specs, execution waves, multi-agent orchestration, skills, gates, TDD, worktrees",
   "license": "MIT",
   "type": "module",
@@ -69,7 +69,7 @@
     "test": "tsx --test tests/**/*.test.ts",
     "test:integration": "tsx --test tests/integration/*.test.ts",
     "test:e2e": "tsx --test tests/e2e/*.test.ts",
-    "test:coverage": "c8 tsx --test tests/**/*.test.ts",
+    "test:coverage": "c8 tsx --test tests/**/*.test.ts && node scripts/write-coverage-summary.mjs",
     "check:coverage": "node scripts/check-coverage.mjs",
     "test:design": "tsx --test tests/op-codec.test.ts tests/tool-registry.test.ts tests/design-command.test.ts tests/design-gate.test.ts tests/design-agent.test.ts tests/spatial-decomposer.test.ts tests/token-extractor.test.ts tests/headless-renderer.test.ts",
     "lint": "eslint .",

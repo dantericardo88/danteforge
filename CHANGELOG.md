@@ -3,6 +3,48 @@
 All notable changes to DanteForge are documented here.
 Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)
 
+## [0.17.0] — 2026-04-13 (Sprint 30 — 5 Exceptional Flows)
+
+### Added
+- **Flow 1 — Daily Driver**: `danteforge score` (pure-fs, <5 sec, no LLM) + `danteforge prime` (PRIME.md session brief) + `danteforge teach` (correction capture → PRIME.md auto-update) + `danteforge go` (daily driver: self-improve --max-cycles 5 --min-score 9.0) + `proof --since` (score arc report with HTML).
+- **Flow 2 — OSS Harvest**: `danteforge harvest-pattern <pattern>` — focused OSS pattern discovery with Y/N confirmation loop, score delta after each implementation, lesson capture.
+- **Flow 3 — Multi-Agent**: `_onAgentUpdate` seam in party-mode for live per-agent progress callbacks; post-inferno `prime()` auto-update in magic.ts; `useWhen` field in all 5 WORKFLOWS with updated workflow IDs matching the 5 flows.
+- **Flow 4 — Spec-to-Ship**: `danteforge build <spec>` — guided wizard with stage detection (skips completed), optional `--interactive` confirmation, entry/exit score comparison.
+- **Flow 5 — Competitive Leapfrog**: `compete --auto` via `actionAutoSprint()` — picks top gap, runs inferno, scores post-sprint, updates matrix, prints victory message when self-score exceeds competitor.
+- `scoreHistory?: ScoreHistoryEntry[]` rolling array in `DanteState` with `appendScoreHistory()` pure helper.
+- `buildScoreArc()` pure function in proof.ts for `--since` mode.
+- 6 new slash command files: `commands/score.md`, `prime.md`, `teach.md`, `go.md`, `harvest-pattern.md`, `build.md`.
+- +55 tests (4045 → 4100 projected).
+
+### Changed
+- `danteforge flow` workflows updated to reflect the 5 new flows (daily-driver, oss-harvest, multi-agent, spec-to-ship, competitive-leapfrog). Each workflow now has a `useWhen` field.
+- `compete` action type extended with `'auto'` variant.
+- Version: 0.16.0 → 0.17.0 across all 4 version-stamped files.
+
+## [0.16.0] — 2026-04-13 (Credibility & Guided Path Edition)
+
+### Added
+- `danteforge showcase` command — runs the harsh scorer against any project (default: examples/todo-app) and generates `docs/CASE_STUDY.md` with a full 18-dimension scorecard and improvement opportunities. First reproducible external proof.
+- `danteforge assess` now tracks session progress: baseline score is stored in STATE.yaml on first run; subsequent runs show "▲ +1.4 since session start" delta line. `--set-baseline` flag resets the baseline.
+- `danteforge flow --interactive` is now a real numbered menu picker instead of a static text printout. Select your workflow and get the exact commands to run, copy-pasteable.
+- `danteforge self-improve` auto-exports `docs/IMPROVEMENT_REPORT.md` after every run — cycle-by-cycle score arc, before/after summary, and verdict.
+- `docs/CASE_STUDY.md` shipped in repo — generated from showcase run against examples/todo-app with real PDSE scores.
+- 19 new tests covering all 4 new features (assess-delta: 5, flow-interactive: 5, showcase: 5, self-improve-report: 4).
+
+### Changed
+- Version synchronized: package.json + vscode-extension/package.json both at 0.16.0.
+
+## [0.15.1] — 2026-04-13 (Sprint 27+28 Backfill)
+
+### Added
+- Sprint 27: Session-start matrix validation — `hooks/session-start.mjs` validates staleness of STATE.yaml on Claude Code session open; autoforge resume command restores paused loops from snapshot.
+- Sprint 28: Termination governor wired into `autoforge-loop.ts` — `evaluateTermination()` now called after every cycle; loop exits BLOCKED on plateau (same verdict 3+ cycles), diminishing returns, regression detection. Injection seam `_evaluateTermination` added to `AutoforgeLoopDeps`.
+- Sprint 28: `danteforge benchmark` — replaced 3-line stub with full 18-dimension scorecard. Supports `--dimension`, `--compare`, `--format table|json`.
+- Sprint 28: Community adoption scoring wired — `fetchCommunityMetrics()` hits GitHub + npm APIs (best-effort, 5s timeout). `computeCommunityAdoptionScore()` scores stars/downloads/contributors. Score is no longer hardcoded 15.
+- Sprint 28: `readCoveragePercent()` reads `.danteforge/coverage-summary.json`; testing dimension now blends maturity score (40%) with real coverage % (60%).
+- Sprint 28: `danteforge init` detects running IDE from env vars (Cursor, Windsurf, Codex, Copilot, Continue) and offers immediate skill installation.
+- Sprint 28: Postinstall now routes new users to `danteforge init` instead of `setup assistants`.
+
 ## [0.15.0] — 2026-04-08 (Evidence Ready Edition)
 
 ### Added

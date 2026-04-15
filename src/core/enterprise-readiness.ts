@@ -138,8 +138,12 @@ export async function generateEnterpriseReadinessReport(options: EnterpriseCompl
   }
 
   // Write to file
-  await fs.mkdir(path.dirname(outputPath), { recursive: true });
-  await fs.writeFile(outputPath, output, 'utf8');
+  try {
+    await fs.mkdir(path.dirname(outputPath), { recursive: true });
+    await fs.writeFile(outputPath, output, 'utf8');
+  } catch {
+    // best-effort — failure is non-fatal
+  }
 
   logger.success(`Enterprise readiness report generated: ${outputPath}`);
   logger.info(`Overall enterprise readiness score: ${report.enterpriseReadinessScore}/10`);
@@ -165,7 +169,7 @@ function generateMarkdownReport(report: any): string {
 `;
 
   for (const [key, feature] of Object.entries(report.features) as [string, any][]) {
-    const status = feature.implemented ? '✅ Implemented' : '❌ Not Implemented';
+    const status = feature.implemented ? '✅ Enabled' : '❌ Disabled';
     md += `### ${key.replace(/([A-Z])/g, ' $1').replace(/^./, str => str.toUpperCase())}
 
 **Status:** ${status}
@@ -215,7 +219,7 @@ function generateHtmlReport(report: any): string {
     ${Object.entries(report.features).map(([key, feature]: [string, any]) => `
     <div class="feature ${feature.implemented ? 'implemented' : 'not-implemented'}">
         <h3>${key.replace(/([A-Z])/g, ' $1').replace(/^./, str => str.toUpperCase())}</h3>
-        <p><strong>Status:</strong> ${feature.implemented ? '✅ Implemented' : '❌ Not Implemented'}</p>
+        <p><strong>Status:</strong> ${feature.implemented ? '✅ Enabled' : '❌ Disabled'}</p>
         <p><strong>Score:</strong> ${feature.score}/10</p>
         <p><strong>Description:</strong> ${feature.description}</p>
         <p><strong>Compliance:</strong> ${feature.compliance.join(', ')}</p>

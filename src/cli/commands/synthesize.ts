@@ -26,17 +26,17 @@ function categorizeDoc(filename: string): DocSection['category'] {
 async function gatherDocs(): Promise<DocSection[]> {
   const docs: DocSection[] = [];
   try {
-    const files = await fs.readdir(STATE_DIR);
-    for (const file of files) {
-      if (file === 'UPR.md') continue;
-      if (!file.endsWith('.md') && !file.endsWith('.yaml')) continue;
-
-      const content = await fs.readFile(path.join(STATE_DIR, file), 'utf8');
-      docs.push({
-        filename: file,
-        category: categorizeDoc(file),
-        content,
-      });
+    const allFiles = await fs.readdir(STATE_DIR);
+    const eligible = allFiles.filter(
+      (f) => f !== 'UPR.md' && (f.endsWith('.md') || f.endsWith('.yaml')),
+    );
+    const readResults = await Promise.allSettled(
+      eligible.map((f) => fs.readFile(path.join(STATE_DIR, f), 'utf8')),
+    );
+    for (let i = 0; i < eligible.length; i++) {
+      const result = readResults[i]!;
+      if (result.status !== 'fulfilled') continue;
+      docs.push({ filename: eligible[i]!, category: categorizeDoc(eligible[i]!), content: result.value });
     }
   } catch {
     logger.warn('No .danteforge/ directory found — run "danteforge review" first');

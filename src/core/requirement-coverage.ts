@@ -76,6 +76,10 @@ export function analyzeRequirementCoverage(bundle: EvidenceBundle, state: DanteS
   };
 }
 
+function hasCompletedStage(state: DanteState, stage: string): boolean {
+  return (state.auditLog ?? []).some((entry) => entry.includes(`| ${stage}:`));
+}
+
 function extractRequirements(state: DanteState): string[] {
   const requirements: string[] = [];
 
@@ -85,12 +89,12 @@ function extractRequirements(state: DanteState): string[] {
   }
 
   // From spec
-  if ((state as any).spec) {
+  if (hasCompletedStage(state, 'specify')) {
     requirements.push('Specification defined');
   }
 
   // From plan
-  if ((state as any).plan) {
+  if (hasCompletedStage(state, 'plan')) {
     requirements.push('Implementation plan created');
   }
 
@@ -139,11 +143,11 @@ function getExpectedArtifacts(state: DanteState): string[] {
   // Planning phase artifacts
   if (state.workflowStage === 'constitution' || state.workflowStage === 'specify' ||
       state.workflowStage === 'clarify' || state.workflowStage === 'plan' || state.workflowStage === 'tasks') {
-    if (!(state as any).constitution) artifacts.push('CONSTITUTION.md');
-    if (!(state as any).spec) artifacts.push('SPEC.md');
-    if (!(state as any).clarify) artifacts.push('CLARIFY.md');
-    if (!(state as any).plan) artifacts.push('PLAN.md');
-    if (!(state as any).tasks) artifacts.push('TASKS.md');
+    if (!hasCompletedStage(state, 'constitution')) artifacts.push('CONSTITUTION.md');
+    if (!hasCompletedStage(state, 'specify')) artifacts.push('SPEC.md');
+    if (!hasCompletedStage(state, 'clarify')) artifacts.push('CLARIFY.md');
+    if (!hasCompletedStage(state, 'plan')) artifacts.push('PLAN.md');
+    if (!hasCompletedStage(state, 'tasks')) artifacts.push('TASKS.md');
   }
 
   // Execution phase artifacts

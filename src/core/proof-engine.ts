@@ -372,6 +372,265 @@ export async function runProof(rawPrompt: string, opts: ProofEngineOptions = {})
   };
 }
 
+// ── Pipeline proof types ──────────────────────────────────────────────────────
+
+export interface PipelineStageRecord {
+  stage: string;
+  artifact: string;
+  status: 'present' | 'generated' | 'missing';
+  pdseScore?: number;
+  filesGenerated?: number;
+  testsPassing?: boolean;
+}
+
+export interface PipelineProofReport {
+  pipeline: {
+    stages: PipelineStageRecord[];
+    artifacts: string[];
+    pdseScores: Record<string, number>;
+    duration_ms: number;
+    success: boolean;
+    generatedAt: string;
+  };
+}
+
+export interface PipelineProofOptions {
+  cwd?: string;
+  _readFile?: (p: string) => Promise<string>;
+  _exists?: (p: string) => Promise<boolean>;
+  _writeFile?: (p: string, content: string) => Promise<void>;
+  _mkdir?: (p: string, opts?: { recursive?: boolean }) => Promise<void>;
+}
+
+const PIPELINE_STAGES = [
+  { stage: 'constitution', artifact: 'CONSTITUTION.md', scoreKey: 'CONSTITUTION' as ScoredArtifact },
+  { stage: 'specify',      artifact: 'SPEC.md',          scoreKey: 'SPEC' as ScoredArtifact },
+  { stage: 'clarify',      artifact: 'CLARIFY.md',       scoreKey: 'CLARIFY' as ScoredArtifact },
+  { stage: 'plan',         artifact: 'PLAN.md',           scoreKey: 'PLAN' as ScoredArtifact },
+  { stage: 'tasks',        artifact: 'TASKS.md',          scoreKey: 'TASKS' as ScoredArtifact },
+] as const;
+
+/**
+ * Generate structured pipeline execution evidence.
+ * Scans the project for PDSE artifacts, scores each, checks for generated source files,
+ * and writes evidence to .danteforge/evidence/pipeline-proof.json.
+ */
+export async function runPipelineProof(opts: PipelineProofOptions = {}): Promise<PipelineProofReport> {
+  const { default: nodeFs } = await import('node:fs/promises');
+  const cwd = opts.cwd ?? process.cwd();
+  const start = Date.now();
+  const stateDir = path.join(cwd, '.danteforge');
+
+  const existsFn = opts._exists ?? (async (p: string) => {
+    try { await nodeFs.access(p); return true; } catch { return false; }
+  });
+  const readFile = opts._readFile ?? ((p: string) => nodeFs.readFile(p, 'utf-8'));
+  const writeFile = opts._writeFile ?? ((p: string, c: string) => nodeFs.writeFile(p, c, 'utf-8'));
+  const mkdir = opts._mkdir ?? ((p: string, o?: { recursive?: boolean }) => nodeFs.mkdir(p, o));
+
+  // Load state for a minimal scoring context
+  let state: DanteState | undefined;
+  try { state = await loadState({ cwd }); } catch { /* best-effort */ }
+
+  const stages: PipelineStageRecord[] = [];
+  const pdseScores: Record<string, number> = {};
+  const artifactPaths: string[] = [];
+
+  for (const { stage, artifact, scoreKey } of PIPELINE_STAGES) {
+    // Check both root directory and .danteforge/ subdirectory
+    const rootPath = path.join(cwd, artifact);
+    const dfPath = path.join(stateDir, artifact);
+    const rootExists = await existsFn(rootPath);
+    const dfExists = !rootExists && await existsFn(dfPath);
+    const filePath = rootExists ? rootPath : dfExists ? dfPath : null;
+
+    if (filePath) {
+      let pdseScore = 0;
+      try {
+        const content = await readFile(filePath);
+        const ctx: ScoringContext = {
+          artifactContent: content,
+          artifactName: scoreKey,
+          stateYaml: state ?? { project: 'unknown', lastHandoff: '', workflowStage: 'initialized', currentPhase: 0, tasks: {}, auditLog: [], profile: 'balanced', lastVerifyStatus: 'unknown' } as DanteState,
+          upstreamArtifacts: {},
+          isWebProject: false,
+        };
+        pdseScore = scoreArtifact(ctx).score;
+      } catch { /* score 0 on unreadable */ }
+      stages.push({ stage, artifact, status: 'present', pdseScore });
+      pdseScores[scoreKey] = pdseScore;
+      artifactPaths.push(filePath);
+    } else {
+      stages.push({ stage, artifact, status: 'missing' });
+    }
+  }
+
+  // Check for generated source files (forge evidence)
+  const srcDir = path.join(cwd, 'src');
+  const srcExists = await existsFn(srcDir);
+  stages.push({ stage: 'forge', artifact: 'src/', status: srcExists ? 'generated' : 'missing' });
+
+  // Check for tests (verify evidence)
+  const testsDir = path.join(cwd, 'tests');
+  const testsExists = await existsFn(testsDir);
+  stages.push({ stage: 'verify', artifact: 'tests/', status: testsExists ? 'generated' : 'missing' });
+
+  const missingCount = stages.filter((s) => s.status === 'missing').length;
+  const success = missingCount === 0;
+
+  const report: PipelineProofReport = {
+    pipeline: {
+      stages,
+      artifacts: artifactPaths,
+      pdseScores,
+      duration_ms: Date.now() - start,
+      success,
+      generatedAt: new Date().toISOString(),
+    },
+  };
+
+  // Write to .danteforge/evidence/pipeline-proof.json (best-effort)
+  try {
+    const evidenceDir = path.join(stateDir, 'evidence');
+    await mkdir(evidenceDir, { recursive: true });
+    await writeFile(path.join(evidenceDir, 'pipeline-proof.json'), JSON.stringify(report, null, 2));
+  } catch { /* best-effort */ }
+
+  return report;
+}
+
+// ── Convergence proof types & runner ─────────────────────────────────────────
+
+export interface ConvergenceProofOptions {
+  cwd?: string;
+  _readFile?: (p: string) => Promise<string>;
+  _exists?: (p: string) => Promise<boolean>;
+  _writeFile?: (p: string, content: string) => Promise<void>;
+  _mkdir?: (p: string, opts?: { recursive?: boolean }) => Promise<void>;
+}
+
+export interface RepairCycleRecord {
+  cycle: number;
+  status: 'pass' | 'fail';
+  errorClass: string | null;
+  recovered: boolean;
+}
+
+export interface ConvergenceProofReport {
+  convergence: {
+    totalCycles: number;
+    repairCycles: RepairCycleRecord[];
+    verifyRepairSequences: number;
+    recoverySuccessRatio: { total: number; successful: number };
+    convergenceVelocity: { avgScoreImprovement: number; monotonic: boolean };
+    finalStatus: 'converged' | 'stalled' | 'unknown';
+    duration_ms: number;
+    generatedAt: string;
+  };
+}
+
+/**
+ * Generate structured convergence & self-healing evidence.
+ * Reads state and assessment history to reconstruct the loop's convergence story,
+ * then writes evidence to .danteforge/evidence/convergence-proof.json.
+ */
+export async function runConvergenceProof(opts: ConvergenceProofOptions = {}): Promise<ConvergenceProofReport> {
+  const { default: nodeFs } = await import('node:fs/promises');
+  const cwd = opts.cwd ?? process.cwd();
+  const start = Date.now();
+
+  const existsFn = opts._exists ?? (async (p: string) => {
+    try { await nodeFs.access(p); return true; } catch { return false; }
+  });
+  const readFile = opts._readFile ?? ((p: string) => nodeFs.readFile(p, 'utf-8'));
+  const writeFile = opts._writeFile ?? ((p: string, c: string) => nodeFs.writeFile(p, c, 'utf-8'));
+  const mkdir = opts._mkdir ?? ((p: string, o?: { recursive?: boolean }) => nodeFs.mkdir(p, o));
+
+  // Load state for audit log + convergence fields
+  let state: DanteState | undefined;
+  try { state = await loadState({ cwd }); } catch { /* best-effort */ }
+
+  const auditLog = state?.auditLog ?? [];
+  const failedAttempts = state?.autoforgeFailedAttempts ?? 0;
+  const lastStatus = state?.lastVerifyStatus ?? 'unknown';
+
+  // Scan audit log for verify→forge sequences (repair cycles)
+  let verifyRepairSequences = 0;
+  for (let i = 0; i < auditLog.length - 1; i++) {
+    if (auditLog[i].includes('| verify:') && auditLog[i + 1].includes('| forge:')) {
+      verifyRepairSequences++;
+    }
+  }
+
+  // Build repair cycles from state fields
+  const repairCycles: RepairCycleRecord[] = [];
+  if (failedAttempts > 0) {
+    for (let i = 1; i <= failedAttempts; i++) {
+      repairCycles.push({
+        cycle: i,
+        status: 'fail',
+        errorClass: 'autoforge-failure',
+        recovered: false,
+      });
+    }
+  }
+  // Final cycle: current state
+  const totalCycles = failedAttempts + 1;
+  repairCycles.push({
+    cycle: totalCycles,
+    status: lastStatus === 'pass' ? 'pass' : 'fail',
+    errorClass: lastStatus === 'pass' ? null : 'verify-failure',
+    recovered: lastStatus === 'pass' && failedAttempts > 0,
+  });
+
+  // Load assessment history for convergence velocity
+  let avgScoreImprovement = 0;
+  let monotonic = true;
+  try {
+    const historyPath = path.join(cwd, '.danteforge', 'assessment-history.json');
+    if (await existsFn(historyPath)) {
+      const raw = await readFile(historyPath);
+      const history = JSON.parse(raw) as Array<{ harshScore: number }>;
+      if (history.length >= 2) {
+        const deltas: number[] = [];
+        for (let i = 1; i < history.length; i++) {
+          deltas.push(history[i].harshScore - history[i - 1].harshScore);
+        }
+        avgScoreImprovement = deltas.reduce((a, b) => a + b, 0) / deltas.length;
+        monotonic = deltas.every((d) => d >= 0);
+      }
+    }
+  } catch { /* best-effort */ }
+
+  const recoveredCount = repairCycles.filter((c) => c.recovered).length;
+  const finalStatus: 'converged' | 'stalled' | 'unknown' =
+    lastStatus === 'pass' && failedAttempts > 0 ? 'converged' :
+    lastStatus === 'pass' ? 'converged' :
+    failedAttempts > 0 ? 'stalled' : 'unknown';
+
+  const report: ConvergenceProofReport = {
+    convergence: {
+      totalCycles,
+      repairCycles,
+      verifyRepairSequences,
+      recoverySuccessRatio: { total: Math.max(failedAttempts, verifyRepairSequences), successful: recoveredCount },
+      convergenceVelocity: { avgScoreImprovement: Math.round(avgScoreImprovement * 10) / 10, monotonic },
+      finalStatus,
+      duration_ms: Date.now() - start,
+      generatedAt: new Date().toISOString(),
+    },
+  };
+
+  // Write evidence artifact
+  try {
+    const evidenceDir = path.join(cwd, '.danteforge', 'evidence');
+    await mkdir(evidenceDir, { recursive: true });
+    await writeFile(path.join(evidenceDir, 'convergence-proof.json'), JSON.stringify(report, null, 2));
+  } catch { /* best-effort */ }
+
+  return report;
+}
+
 // ── Terminal report formatter ──────────────────────────────────────────────────
 
 export function generateProofReport(report: ProofReport): string {

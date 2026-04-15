@@ -42,6 +42,7 @@ export interface PartyModeOptions {
   _loadState?: () => Promise<PartyState>;
   _isLLMAvailable?: () => Promise<boolean>;
   _readArtifact?: (filename: string) => Promise<string>;
+  _onAgentUpdate?: (agent: string, status: 'starting' | 'done' | 'failed') => void;
   _dispatchAgent?: (
     agentName: string, context: string, projectSize: string,
     profile: string, fullContext: Record<string, string>, isolation: boolean,
@@ -52,6 +53,8 @@ export interface PartyModeOptions {
   _reflect?: typeof reflect;
   _recordMemory?: typeof recordMemory;
   _sleep?: (ms: number) => Promise<void>;
+  /** Project directory — used for lesson injection. Defaults to process.cwd(). */
+  _cwd?: string;
 }
 
 const AGENT_ROLES: Record<string, AgentRole> = {
@@ -294,14 +297,22 @@ export async function dispatchAgentWithRetry(
   options?: {
     _dispatchAgent?: PartyModeOptions['_dispatchAgent'];
     _sleep?: (ms: number) => Promise<void>;
+    _onAgentUpdate?: PartyModeOptions['_onAgentUpdate'];
   },
 ): Promise<AgentResult> {
   const dispatch = options?._dispatchAgent ?? dispatchAgent;
   const sleep = options?._sleep ?? ((ms: number) => new Promise(resolve => setTimeout(resolve, ms)));
+  const onUpdate = options?._onAgentUpdate ?? ((agent: string, status: string) => {
+    logger.info(`[party:${agent}] ${status}`);
+  });
   let lastResult: AgentResult | undefined;
+  onUpdate(agentName, 'starting');
   for (let attempt = 0; attempt <= AGENT_MAX_RETRIES; attempt++) {
     const result = await dispatch(agentName, context, projectSize, profile, fullContext, isolation);
-    if (result.success) return result;
+    if (result.success) {
+      onUpdate(agentName, 'done');
+      return result;
+    }
     lastResult = result;
     if (attempt < AGENT_MAX_RETRIES) {
       const delay = AGENT_RETRY_DELAYS_MS[attempt]!;
@@ -309,6 +320,7 @@ export async function dispatchAgentWithRetry(
       await sleep(delay);
     }
   }
+  onUpdate(agentName, 'failed');
   return lastResult!;
 }
 
@@ -344,7 +356,16 @@ export async function runDanteParty(
   }
 
   const fullContext = await buildStructuredContextFromState(state, options?._readArtifact);
-  const context = buildContextFromState(state, fullContext);
+  let context = buildContextFromState(state, fullContext);
+
+  // Inject relevant lessons from lessons.md into the agent context (best-effort)
+  if (fullContext['lessons']?.trim()) {
+    try {
+      const { injectRelevantLessons } = await import('../../core/lessons-index.js');
+      const cwd = options?._cwd ?? process.cwd();
+      context = await injectRelevantLessons(context, 5, cwd);
+    } catch { /* lessons injection is best-effort — never block party mode */ }
+  }
   const worktreePaths: { agent: string; path: string }[] = [];
 
   if (useWorktrees) {
@@ -397,7 +418,7 @@ export async function runDanteParty(
           const levelPromises = levelAgents.map(async (role) => {
             const agentName = role as string;
             try {
-              const result = await dispatchAgentWithRetry(agentName, context, projectSize, profile, fullContext, false, { _dispatchAgent: options?._dispatchAgent, _sleep: options?._sleep });
+              const result = await dispatchAgentWithRetry(agentName, context, projectSize, profile, fullContext, false, { _dispatchAgent: options?._dispatchAgent, _sleep: options?._sleep, _onAgentUpdate: options?._onAgentUpdate });
               levelResults.set(role, result);
             } catch (err) {
               levelResults.set(role, {
@@ -436,7 +457,7 @@ export async function runDanteParty(
 
   if (!dagExecutionUsed) {
     results = await Promise.all(activeAgents.map((agentName) =>
-      dispatchAgentWithRetry(agentName, context, projectSize, profile, fullContext, isolatedMode, { _dispatchAgent: options?._dispatchAgent, _sleep: options?._sleep }).catch((err): AgentResult => ({
+      dispatchAgentWithRetry(agentName, context, projectSize, profile, fullContext, isolatedMode, { _dispatchAgent: options?._dispatchAgent, _sleep: options?._sleep, _onAgentUpdate: options?._onAgentUpdate }).catch((err): AgentResult => ({
         agent: agentName,
         result: `# ${agentName} Agent Error\n\nFailed to execute: ${err instanceof Error ? err.message : String(err)}`,
         durationMs: Date.now() - partyStart,

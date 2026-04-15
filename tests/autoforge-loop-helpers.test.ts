@@ -184,7 +184,8 @@ describe('determineNextCommand', () => {
       PLAN: makeScoreResult('PLAN', 80),
       TASKS: makeScoreResult('TASKS', 75),
     };
-    const state = makeState();
+    // Use an early stage where planning commands are allowed by the workflow enforcer
+    const state = makeState({ workflowStage: 'specify' });
     const result = determineNextCommand(state, tracker, scores);
     assert.equal(result, 'specify --refine');
   });
@@ -250,6 +251,73 @@ describe('determineNextCommand', () => {
     const state = makeState();
     const result = determineNextCommand(state, tracker, scores);
     assert.equal(result, null);
+  });
+
+  it('returns forge (not constitution) when planning incomplete but stage is synthesize', () => {
+    // Reproduces the bug: autoforge --auto on a synthesized project tries to run
+    // `constitution` which the workflow enforcer blocks (synthesize → constitution invalid).
+    const tracker = makeTracker({
+      phases: {
+        ...makeTracker().phases,
+        planning: {
+          score: 0,
+          complete: false,
+          artifacts: {
+            CONSTITUTION: { score: 0, complete: false },
+            SPEC: { score: 0, complete: false },
+            CLARIFY: { score: 0, complete: false },
+            PLAN: { score: 0, complete: false },
+            TASKS: { score: 0, complete: false },
+          },
+        },
+        execution: { score: 100, complete: true, currentPhase: 3, wavesComplete: 3, totalWaves: 3 },
+        verification: { score: 100, complete: true, qaScore: 95, testsPassing: true },
+        synthesis: { score: 100, complete: true, retroDelta: 5 },
+      },
+    });
+    const scores: Record<ScoredArtifact, ScoreResult> = {
+      CONSTITUTION: makeScoreResult('CONSTITUTION', 0),
+      SPEC: makeScoreResult('SPEC', 0),
+      CLARIFY: makeScoreResult('CLARIFY', 0),
+      PLAN: makeScoreResult('PLAN', 0),
+      TASKS: makeScoreResult('TASKS', 0),
+    };
+    const state = makeState({ workflowStage: 'synthesize' });
+    const result = determineNextCommand(state, tracker, scores);
+    // Must NOT return 'constitution' — that would be blocked by the workflow enforcer.
+    // Must return 'forge' — the safe improvement command from synthesize stage.
+    assert.equal(result, 'forge');
+  });
+
+  it('returns forge (not planning command) when stage is verify and planning incomplete', () => {
+    const tracker = makeTracker({
+      phases: {
+        ...makeTracker().phases,
+        planning: {
+          score: 30,
+          complete: false,
+          artifacts: {
+            CONSTITUTION: { score: 30, complete: false },
+            SPEC: { score: 30, complete: false },
+            CLARIFY: { score: 80, complete: true },
+            PLAN: { score: 80, complete: true },
+            TASKS: { score: 75, complete: true },
+          },
+        },
+        execution: { score: 50, complete: false, currentPhase: 1, wavesComplete: 1, totalWaves: 3 },
+      },
+    });
+    const scores: Record<ScoredArtifact, ScoreResult> = {
+      CONSTITUTION: makeScoreResult('CONSTITUTION', 30),
+      SPEC: makeScoreResult('SPEC', 30),
+      CLARIFY: makeScoreResult('CLARIFY', 80),
+      PLAN: makeScoreResult('PLAN', 80),
+      TASKS: makeScoreResult('TASKS', 75),
+    };
+    const state = makeState({ workflowStage: 'verify' });
+    const result = determineNextCommand(state, tracker, scores);
+    // verify stage → can't go back to constitution; execution incomplete → forge
+    assert.equal(result, 'forge');
   });
 });
 

@@ -129,17 +129,14 @@ export async function buildLinkGraph(
   const outbound = new Map<string, Set<string>>(); // entityId → entities it links to
   const allEntities = new Set<string>();
 
-  // First pass: collect all entity IDs and outbound links
-  for (const filePath of files) {
-    try {
-      const content = await readFile(filePath);
-      const fm = parseFrontmatter(content);
-      if (!fm?.entity) continue;
-      allEntities.add(fm.entity);
-      outbound.set(fm.entity, new Set(fm.links.filter(Boolean)));
-    } catch {
-      // Skip unreadable files
-    }
+  // First pass: collect all entity IDs and outbound links — read all files in parallel
+  const results = await Promise.allSettled(files.map((filePath) => readFile(filePath)));
+  for (const result of results) {
+    if (result.status !== 'fulfilled') continue;
+    const fm = parseFrontmatter(result.value);
+    if (!fm?.entity) continue;
+    allEntities.add(fm.entity);
+    outbound.set(fm.entity, new Set(fm.links.filter(Boolean)));
   }
 
   // Build inbound link map (for each entity, who links TO it)

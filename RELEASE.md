@@ -2,7 +2,7 @@
 
 This project ships a Node CLI package (`danteforge` / `dforge`) and a first-class VS Code extension client.
 
-Current operator status and non-blocking follow-ups are tracked in [docs/Operational-Readiness-v0.15.0.md](docs/Operational-Readiness-v0.15.0.md). Archived readiness guides and older planning context are indexed in [docs/Release-History.md](docs/Release-History.md).
+Current operator status and non-blocking follow-ups are tracked in [docs/Operational-Readiness-v0.17.0.md](docs/Operational-Readiness-v0.17.0.md). Archived readiness guides and older planning context are indexed in [docs/Release-History.md](docs/Release-History.md).
 
 ## Prerequisites
 

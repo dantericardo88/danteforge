@@ -345,7 +345,11 @@ async function resolveCallTarget(providerOverride?: LLMProvider) {
   return {
     provider,
     model: providerConfig?.model ?? resolved.model,
-    apiKey: providerConfig?.apiKey ?? resolved.apiKey,
+    apiKey: providerConfig?.apiKey
+      ?? resolved.apiKey
+      // CI/CD: DANTEFORGE_LLM_API_KEY (generic) or DANTEFORGE_<PROVIDER>_API_KEY (provider-specific)
+      ?? process.env[`DANTEFORGE_${provider.toUpperCase()}_API_KEY`]
+      ?? process.env.DANTEFORGE_LLM_API_KEY,
     baseUrl: normalizeBaseUrl(provider, providerConfig?.baseUrl ?? resolved.baseUrl),
     ollamaModel: config.ollamaModel || resolved.model,
   };

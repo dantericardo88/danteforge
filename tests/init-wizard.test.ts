@@ -193,3 +193,101 @@ describe('init — nonInteractive option', () => {
     assert.equal(questionCalled, false);
   });
 });
+
+// ── Adversarial scoring onboarding ───────────────────────────────────────────
+
+describe('init — adversarial scoring Q6', () => {
+  it('adversary question is asked in TTY mode', async () => {
+    const questions: string[] = [];
+    // answers: description, experience, level, provider, adversary
+    const answers = ['My app', '1', '2', '1', 'Y'];
+    let idx = 0;
+    await init(makeOptions({
+      _isTTY: true,
+      _detectIDE: () => null,   // no IDE question
+      _readline: {
+        question: (p: string, cb: (a: string) => void) => {
+          questions.push(p);
+          cb(answers[idx++] ?? '');
+        },
+        close: () => {},
+      },
+      _loadConfig: async () => ({ defaultProvider: 'ollama', providers: {} } as unknown as import('../src/core/config.js').DanteConfig),
+      _saveConfig: async () => {},
+    }));
+    const hasAdversaryQ = questions.some(q =>
+      q.toLowerCase().includes('adversar') || q.toLowerCase().includes('scoring'),
+    );
+    assert.ok(hasAdversaryQ, `expected adversary question, got: ${questions.join(' | ')}`);
+  });
+
+  it('saves adversary config when user answers Y', async () => {
+    let savedConfig: unknown;
+    const answers = ['', '1', '2', '1', 'Y'];
+    let idx = 0;
+    await init(makeOptions({
+      _isTTY: true,
+      _detectIDE: () => null,
+      _readline: {
+        question: (_p: string, cb: (a: string) => void) => cb(answers[idx++] ?? ''),
+        close: () => {},
+      },
+      _loadConfig: async () => ({ defaultProvider: 'ollama', providers: {} } as unknown as import('../src/core/config.js').DanteConfig),
+      _saveConfig: async (cfg) => { savedConfig = cfg; },
+    }));
+    assert.ok(savedConfig !== undefined, 'config should have been saved');
+    const cfg = savedConfig as { adversary?: { enabled?: boolean } };
+    assert.equal(cfg.adversary?.enabled, true, 'adversary.enabled should be true');
+  });
+
+  it('adversary question is NOT asked in non-TTY mode', async () => {
+    let saveConfigCalled = false;
+    await init(makeOptions({
+      _isTTY: false,
+      _loadConfig: async () => ({ defaultProvider: 'ollama', providers: {} } as unknown as import('../src/core/config.js').DanteConfig),
+      _saveConfig: async () => { saveConfigCalled = true; },
+    }));
+    assert.equal(saveConfigCalled, false, 'saveConfig should NOT be called in non-TTY mode');
+  });
+});
+
+// ── Q7: Universe definition onboarding ───────────────────────────────────────
+
+describe('init — Q7 universe definition', () => {
+  it('answers y to universe definition → _defineUniverse called', async () => {
+    let universeCalled = false;
+    // answers: description, experience, level, provider, adversary, universe
+    const answers = ['test project', '1', '2', '1', 'n', 'y'];
+    let idx = 0;
+    await init(makeOptions({
+      _isTTY: true,
+      _detectIDE: () => null,
+      _readline: {
+        question: (_p: string, cb: (a: string) => void) => cb(answers[idx++] ?? ''),
+        close: () => {},
+      },
+      _loadConfig: async () => ({ defaultProvider: 'ollama', providers: {} } as unknown as import('../src/core/config.js').DanteConfig),
+      _saveConfig: async () => {},
+      _defineUniverse: async () => { universeCalled = true; },
+    }));
+    assert.ok(universeCalled, 'defineUniverse must be called when user answers y');
+  });
+
+  it('answers n to universe definition → _defineUniverse not called', async () => {
+    let universeCalled = false;
+    const answers = ['test project', '1', '2', '1', 'n', 'n'];
+    let idx = 0;
+    await init(makeOptions({
+      _isTTY: true,
+      _detectIDE: () => null,
+      _readline: {
+        question: (_p: string, cb: (a: string) => void) => cb(answers[idx++] ?? ''),
+        close: () => {},
+      },
+      _loadConfig: async () => ({ defaultProvider: 'ollama', providers: {} } as unknown as import('../src/core/config.js').DanteConfig),
+      _saveConfig: async () => {},
+      _defineUniverse: async () => { universeCalled = true; },
+    }));
+    assert.ok(!universeCalled, 'defineUniverse must NOT be called when user answers n');
+  });
+});

@@ -11,6 +11,8 @@ import {
   writeLiveVerifyReceipt,
   writeReleaseProofReceipt,
 } from '../scripts/proof-receipts.mjs';
+import { buildScoreArc } from '../src/cli/commands/proof.js';
+import type { ScoreHistoryEntry } from '../src/core/state.js';
 
 function makeLiveReceipt(overrides: Record<string, unknown> = {}) {
   return {
@@ -149,5 +151,47 @@ describe('proof receipts', () => {
     assert.ok(loaded);
     assert.strictEqual(loaded?.checks.length, 4);
     assert.strictEqual(loaded?.artifactPaths.vsix, 'vscode-extension/.artifacts/danteforge.vsix');
+  });
+});
+
+describe('buildScoreArc', () => {
+  function makeEntry(dateStr: string, score: number): ScoreHistoryEntry {
+    return { timestamp: `${dateStr}T12:00:00.000Z`, displayScore: score };
+  }
+
+  it('returns correct before/after from history slice', () => {
+    const history: ScoreHistoryEntry[] = [
+      makeEntry('2026-04-13', 8.5),
+      makeEntry('2026-04-12', 8.0),
+      makeEntry('2026-04-11', 7.5),
+      makeEntry('2026-04-10', 7.0),
+    ];
+    const arc = buildScoreArc('2026-04-12', history, 8.5);
+    assert.strictEqual(arc.after, 8.5);
+    // before = last entry in the window (2026-04-12)
+    assert.ok(arc.before >= 7.5 && arc.before <= 8.5, `before should be in window: ${arc.before}`);
+    assert.ok(arc.entries.length > 0, 'entries should be non-empty');
+  });
+
+  it('handles empty history gracefully — before equals currentScore', () => {
+    const arc = buildScoreArc('2026-04-01', [], 7.2);
+    assert.strictEqual(arc.before, 7.2);
+    assert.strictEqual(arc.after, 7.2);
+    assert.strictEqual(arc.gain, 0);
+    assert.strictEqual(arc.entries.length, 0);
+  });
+
+  it('generated HTML contains Before and After strings', () => {
+    const history: ScoreHistoryEntry[] = [makeEntry('2026-04-12', 7.0)];
+    const arc = buildScoreArc('2026-04-12', history, 8.0);
+    assert.ok(arc.html.includes('Before'), 'HTML should contain Before');
+    assert.ok(arc.html.includes('After'), 'HTML should contain After');
+  });
+
+  it('markdown contains Score Arc header and gain indicator', () => {
+    const history: ScoreHistoryEntry[] = [makeEntry('2026-04-10', 6.0)];
+    const arc = buildScoreArc('2026-04-10', history, 8.0);
+    assert.ok(arc.markdown.includes('Score Arc'), 'markdown should contain Score Arc header');
+    assert.ok(arc.gain > 0, 'gain should be positive');
   });
 });

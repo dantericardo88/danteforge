@@ -1,7 +1,8 @@
 import fs from 'fs/promises';
 import path from 'path';
-import { exec, execFile } from 'node:child_process';
+import { exec, execFile, execSync } from 'node:child_process';
 import { promisify } from 'node:util';
+import { writeVerifyReceipt, computeReceiptStatus } from '../../core/verify-receipts.js';
 import { loadState, recordWorkflowStage, saveState, type WorkflowStage } from '../../core/state.js';
 import { detectProjectType, type ProjectType } from '../../core/completion-tracker.js';
 import { logger } from '../../core/logger.js';
@@ -37,13 +38,30 @@ export function stageRequiresExecution(stage: WorkflowStage): boolean {
   return stage === 'forge' || stage === 'ux-refine' || stage === 'verify' || stage === 'synthesize';
 }
 
-async function assertArtifact(result: VerifyResult, filename: string, label: string): Promise<void> {
-  const artifactPath = path.join(STATE_DIR, filename);
+export function computeVerifyStatus(
+  result: { failures: string[]; warnings: string[] },
+): 'pass' | 'warn' | 'fail' {
+  if (result.failures.length > 0) return 'fail';
+  if (result.warnings.length > 0) return 'warn';
+  return 'pass';
+}
+
+async function assertArtifact(result: VerifyResult, filename: string, label: string, stateDir: string): Promise<void> {
+  const artifactPath = path.join(stateDir, filename);
   if (await fileExists(artifactPath)) {
     result.passed.push(`${label} (${filename}) present`);
     return;
   }
   result.failures.push(`${label} (${filename}) missing`);
+}
+
+async function runCommandCheck(command: string, cwd: string): Promise<boolean> {
+  try {
+    await execAsync(command, { cwd, env: process.env });
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 async function runReleaseVerification(result: VerifyResult): Promise<void> {
@@ -118,14 +136,14 @@ export async function readWorkspacePackageVersion(cwd?: string): Promise<string 
   }
 }
 
-async function validateCurrentStateFreshness(result: VerifyResult): Promise<void> {
-  const artifactPath = path.join(STATE_DIR, 'CURRENT_STATE.md');
+async function validateCurrentStateFreshness(result: VerifyResult, stateDir: string, cwd: string): Promise<void> {
+  const artifactPath = path.join(stateDir, 'CURRENT_STATE.md');
   if (!(await fileExists(artifactPath))) return;
 
   const content = await fs.readFile(artifactPath, 'utf8');
   const metadata = parseCurrentStateMetadata(content);
-  const packageVersion = await readWorkspacePackageVersion();
-  const actualProjectType = await detectProjectType(process.cwd());
+  const packageVersion = await readWorkspacePackageVersion(cwd);
+  const actualProjectType = await detectProjectType(cwd);
 
   if (packageVersion && metadata.version) {
     if (metadata.version === packageVersion) {
@@ -144,8 +162,23 @@ async function validateCurrentStateFreshness(result: VerifyResult): Promise<void
   }
 }
 
-export async function verify(options: { release?: boolean; live?: boolean; url?: string; recompute?: boolean; json?: boolean } = {}) {
+export async function verify(options: {
+  release?: boolean;
+  live?: boolean;
+  url?: string;
+  recompute?: boolean;
+  json?: boolean;
+  light?: boolean;
+  cwd?: string;
+  /** Injection seam: override test runner for light-mode (returns true = passed) */
+  _runTests?: (cwd: string) => Promise<boolean>;
+  /** Injection seam: override build runner for light-mode (returns true = passed) */
+  _runBuild?: (cwd: string) => Promise<boolean>;
+} = {}) {
   return withErrorBoundary('verify', async () => {
+  const cwd = options.cwd ?? process.cwd();
+  const stateDir = path.join(cwd, '.danteforge');
+
   // In JSON mode, redirect all logger output to stderr so stdout is clean JSON
   if (options.json) {
     logger.setStderr(true);
@@ -156,7 +189,7 @@ export async function verify(options: { release?: boolean; live?: boolean; url?:
   const result: VerifyResult = { passed: [], warnings: [], failures: [] };
   const timestamp = new Date().toISOString();
 
-  if (await fileExists(STATE_DIR)) {
+  if (await fileExists(stateDir)) {
     result.passed.push('.danteforge/ directory exists');
   } else {
     result.failures.push('.danteforge/ directory missing - run "danteforge review" first');
@@ -164,7 +197,7 @@ export async function verify(options: { release?: boolean; live?: boolean; url?:
 
   let state;
   try {
-    state = await loadState();
+    state = await loadState({ cwd });
     result.passed.push('STATE.yaml is valid and loadable');
   } catch {
     result.failures.push('STATE.yaml is corrupt or unreadable');
@@ -173,7 +206,7 @@ export async function verify(options: { release?: boolean; live?: boolean; url?:
   }
 
   if (options.recompute) {
-    state.projectType = await detectProjectType(process.cwd());
+    state.projectType = await detectProjectType(cwd);
     logger.info(`Project type re-detected: ${state.projectType}`);
   }
 
@@ -183,32 +216,52 @@ export async function verify(options: { release?: boolean; live?: boolean; url?:
     result.failures.push('Constitution is not defined');
   }
 
-  await assertArtifact(result, 'CURRENT_STATE.md', 'Repo review');
-  await validateCurrentStateFreshness(result);
-  await assertArtifact(result, 'CONSTITUTION.md', 'Constitution');
-  await assertArtifact(result, 'SPEC.md', 'Specification');
-  await assertArtifact(result, 'CLARIFY.md', 'Clarification');
-  await assertArtifact(result, 'PLAN.md', 'Execution plan');
-  await assertArtifact(result, 'TASKS.md', 'Task breakdown');
+  await assertArtifact(result, 'CURRENT_STATE.md', 'Repo review', stateDir);
+  await validateCurrentStateFreshness(result, stateDir, cwd);
+  await assertArtifact(result, 'CONSTITUTION.md', 'Constitution', stateDir);
+  await assertArtifact(result, 'SPEC.md', 'Specification', stateDir);
+  await assertArtifact(result, 'CLARIFY.md', 'Clarification', stateDir);
+  await assertArtifact(result, 'PLAN.md', 'Execution plan', stateDir);
+  await assertArtifact(result, 'TASKS.md', 'Task breakdown', stateDir);
 
   if (state.designEnabled) {
-    await assertArtifact(result, 'DESIGN.op', 'Design-as-Code');
+    await assertArtifact(result, 'DESIGN.op', 'Design-as-Code', stateDir);
   }
 
-  if ((state.tasks[1] ?? []).length > 0) {
-    result.passed.push(`Phase 1 has ${state.tasks[1]!.length} task(s) defined`);
-  } else {
-    result.failures.push('No phase 1 tasks are recorded in STATE.yaml');
-  }
+  if (options.light) {
+    // Light mode: for CLI tools whose "execution" is their test suite, substitute
+    // the pipeline execution checks (forge waves, workflow stage, task phases) with
+    // direct quality gates — npm test and npm run build.
+    const runTests = options._runTests ?? ((dir: string) => runCommandCheck('npm test', dir));
+    const runBuild = options._runBuild ?? ((dir: string) => runCommandCheck('npm run build', dir));
 
-  if (!stageRequiresExecution(state.workflowStage)) {
-    result.failures.push(`Workflow stage "${state.workflowStage}" is not execution-complete. Run "danteforge forge 1" before verify.`);
-  } else {
-    const forgeEntries = state.auditLog.filter(entry => entry.includes('| forge: wave '));
-    if (forgeEntries.length > 0) {
-      result.passed.push(`${forgeEntries.length} forge wave completion entr${forgeEntries.length === 1 ? 'y' : 'ies'} recorded`);
+    if (await runTests(cwd)) {
+      result.passed.push('Light mode: test suite passes (substitutes forge wave check)');
     } else {
-      result.failures.push('No successful forge wave was recorded');
+      result.failures.push('Light mode: test suite failed — fix failing tests before verifying');
+    }
+
+    if (await runBuild(cwd)) {
+      result.passed.push('Light mode: build succeeds (substitutes task phase check)');
+    } else {
+      result.failures.push('Light mode: build failed — fix build errors before verifying');
+    }
+  } else {
+    if ((state.tasks[1] ?? []).length > 0) {
+      result.passed.push(`Phase 1 has ${state.tasks[1]!.length} task(s) defined`);
+    } else {
+      result.failures.push('No phase 1 tasks are recorded in STATE.yaml');
+    }
+
+    if (!stageRequiresExecution(state.workflowStage)) {
+      result.failures.push(`Workflow stage "${state.workflowStage}" is not execution-complete. Run "danteforge forge 1" before verify.`);
+    } else {
+      const forgeEntries = state.auditLog.filter(entry => entry.includes('| forge: wave '));
+      if (forgeEntries.length > 0) {
+        result.passed.push(`${forgeEntries.length} forge wave completion entr${forgeEntries.length === 1 ? 'y' : 'ies'} recorded`);
+      } else {
+        result.failures.push('No successful forge wave was recorded');
+      }
     }
   }
 
@@ -216,7 +269,7 @@ export async function verify(options: { release?: boolean; live?: boolean; url?:
     const uxArtifacts = ['UX_REFINE.md', 'design-tokens.css', 'design-preview.html'];
     const foundArtifacts: string[] = [];
     for (const artifact of uxArtifacts) {
-      if (await fileExists(path.join(STATE_DIR, artifact))) {
+      if (await fileExists(path.join(stateDir, artifact))) {
         foundArtifacts.push(artifact);
       }
     }
@@ -235,13 +288,13 @@ export async function verify(options: { release?: boolean; live?: boolean; url?:
 
   // AI drift detection on source files
   try {
-    const srcDir = path.join(process.cwd(), 'src');
+    const srcDir = path.join(cwd, 'src');
     if (await fileExists(srcDir)) {
       const { execSync } = await import('node:child_process');
       let modifiedFiles: string[] = [];
       try {
         const gitOutput = execSync('git diff --name-only HEAD~1 -- src/', {
-          cwd: process.cwd(),
+          cwd,
           encoding: 'utf8',
           timeout: 10000,
         }).trim();
@@ -283,7 +336,7 @@ export async function verify(options: { release?: boolean; live?: boolean; url?:
         result.failures.push('Browse binary not found — cannot run live verification. Install with: danteforge browse --install');
       } else {
         const port = getBrowsePort();
-        const evidenceDir = path.join(STATE_DIR, 'evidence');
+        const evidenceDir = path.join(stateDir, 'evidence');
         const browseConfig = { binaryPath, port, evidenceDir };
 
         const gotoResult = await invokeBrowse('goto', [options.url], browseConfig);
@@ -320,8 +373,41 @@ export async function verify(options: { release?: boolean; live?: boolean; url?:
     recordWorkflowStage(state, 'verify', timestamp);
   }
 
+  state.lastVerifyStatus = computeVerifyStatus(result);
   state.auditLog.push(`${timestamp} | verify: ${result.passed.length} passed, ${result.warnings.length} warnings, ${result.failures.length} failures`);
-  await saveState(state);
+  await saveState(state, { cwd });
+
+  // Write receipt file and persist path for scoring
+  try {
+    let gitSha: string | null = null;
+    try { gitSha = execSync('git rev-parse HEAD', { cwd, encoding: 'utf8', timeout: 5000 }).trim(); } catch { /* no git */ }
+    const pkgVersion = await readWorkspacePackageVersion(cwd) ?? 'unknown';
+    const receiptPath = await writeVerifyReceipt({
+      status: computeReceiptStatus(result.passed, result.warnings, result.failures),
+      timestamp,
+      project: 'danteforge',
+      version: pkgVersion,
+      gitSha,
+      platform: process.platform,
+      nodeVersion: process.version,
+      cwd,
+      projectType: state.projectType ?? 'unknown',
+      workflowStage: state.workflowStage,
+      commandMode: { release: options.release ?? false, live: options.live ?? false, recompute: options.recompute ?? false },
+      passed: result.passed,
+      warnings: result.warnings,
+      failures: result.failures,
+      counts: { passed: result.passed.length, warnings: result.warnings.length, failures: result.failures.length },
+      releaseCheckPassed: options.release ? result.failures.every(f => !f.includes('Release')) : null,
+      liveCheckPassed: options.live ? result.failures.every(f => !f.includes('Live')) : null,
+      currentStateFresh: result.failures.every(f => !f.includes('stale')),
+      selfEditPolicyEnforced: !!state.selfEditPolicy,
+    }, cwd);
+    state.lastVerifyReceiptPath = receiptPath;
+    await saveState(state, { cwd });
+  } catch {
+    // Receipt write should not block verification
+  }
 
   if (result.failures.length > 0 || result.warnings.length > 0) {
     try {
@@ -330,6 +416,29 @@ export async function verify(options: { release?: boolean; live?: boolean; url?:
     } catch {
       // Lessons capture should not block verification.
     }
+  }
+
+  // On pass or warn: fire-and-forget success pattern capture (OpenSpace CAPTURED mode).
+  // Extracts 2-3 reusable patterns from the git diff → lessons.md → feeds next forge.
+  if (result.failures.length === 0) {
+    const verifyStatus = result.warnings.length > 0 ? 'warn' : 'pass';
+    import('../../core/auto-lessons.js').then(({ captureSuccessLessons }) => {
+      const receipt = {
+        status: verifyStatus as 'pass' | 'warn',
+        passed: result.passed,
+        warnings: result.warnings,
+        failures: [],
+        // Minimal receipt — captureSuccessLessons only needs status, passed, warnings
+        project: '', version: '', gitSha: null, platform: '', nodeVersion: '',
+        cwd, projectType: '', workflowStage: '',
+        timestamp: new Date().toISOString(),
+        commandMode: { release: false, live: false, recompute: false },
+        counts: { passed: result.passed.length, warnings: result.warnings.length, failures: 0 },
+        releaseCheckPassed: null, liveCheckPassed: null,
+        currentStateFresh: true, selfEditPolicyEnforced: false,
+      };
+      captureSuccessLessons(receipt, cwd).catch(() => {});
+    }).catch(() => {});
   }
 
   if (options.json) {

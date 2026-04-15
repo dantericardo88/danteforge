@@ -50,7 +50,21 @@ program
   .option('--light', 'Skip hard gates for simple changes')
   .option('--ceo-review', 'Apply CEO-level strategic review before writing PLAN.md')
   .option('--refine', 'Inject PDSE score as context for iterative improvement')
+  .option('--skip-critique', 'Skip adversarial critique gate after plan generation')
+  .option('--stakes <level>', 'Critique depth: low|medium|high|critical (default: medium)')
   .action(commands.plan);
+
+program
+  .command('critique <plan-file>')
+  .description('Adversarial critique of a plan — finds gaps before they become bugs')
+  .option('--source <files>', 'Comma-separated source files to include as context')
+  .option('--auto-refine', 'Annotate plan file with blocking gaps')
+  .option('--json', 'Machine-readable JSON output')
+  .option('--skip-critique', 'Bypass critique (escape hatch)')
+  .option('--stakes <level>', 'Check depth: low|medium|high|critical (default: medium)')
+  .option('--diff <ref>', 'Compare built code against plan (e.g. HEAD~1)')
+  .option('--no-premortem', 'Skip pre-mortem failure hypothesis generation')
+  .action(commands.critique);
 
 program
   .command('tasks')
@@ -139,6 +153,8 @@ program
   .option('--url <url>', 'URL to verify against (requires --live)')
   .option('--recompute', 'Re-detect project type and recompute completion scores')
   .option('--json', 'Output results as JSON to stdout (logs go to stderr)')
+  .option('--light', 'Skip pipeline execution checks; substitute npm test + build (for CLI projects or early-stage pipelines)')
+  .option('--cwd <path>', 'Working directory for verification (defaults to current directory)')
   .action(commands.verify);
 
 program
@@ -270,6 +286,7 @@ program
   .option('--worktree', 'Run heavy preset execution inside an isolated git worktree')
   .option('--isolation', 'Use isolation when a preset escalates into party mode')
   .option('--max-repos <n>', 'Maximum repos for inferno OSS discovery', '12')
+  .option('--yes', 'Skip competitive matrix confirmation gate')
   .action((goal, opts) => commands.magic(goal, {
     level: opts.level,
     profile: opts.profile,
@@ -279,6 +296,7 @@ program
     worktree: opts.worktree,
     isolation: opts.isolation,
     maxRepos: parseInt(opts.maxRepos, 10),
+    yes: opts.yes,
   }));
 
 program
@@ -290,6 +308,7 @@ program
   .option('--isolation', 'Run party with isolation enabled')
   .option('--with-design', 'Add design + ux-refine steps to the pipeline')
   .option('--design-prompt <text>', 'Prompt to pass to the design step')
+  .option('--yes', 'Skip competitive matrix confirmation gate')
   .action((goal, opts) => commands.blaze(goal, {
     profile: opts.profile,
     prompt: opts.prompt,
@@ -297,6 +316,7 @@ program
     isolation: opts.isolation,
     withDesign: opts.withDesign,
     designPrompt: opts.designPrompt,
+    yes: opts.yes,
   }));
 
 program
@@ -309,6 +329,7 @@ program
   .option('--tech-decide', 'Add a tech-decide step after the planning prefix')
   .option('--with-design', 'Add design + ux-refine steps to the pipeline')
   .option('--design-prompt <text>', 'Prompt to pass to the design step')
+  .option('--yes', 'Skip competitive matrix confirmation gate')
   .action((goal, opts) => commands.nova(goal, {
     profile: opts.profile,
     prompt: opts.prompt,
@@ -317,6 +338,7 @@ program
     withTechDecide: opts.techDecide,
     withDesign: opts.withDesign,
     designPrompt: opts.designPrompt,
+    yes: opts.yes,
   }));
 
 program
@@ -332,6 +354,7 @@ program
   .option('--local-sources <paths>', 'Comma-separated local repo or folder paths to harvest first')
   .option('--local-depth <level>', 'Harvest depth for local sources: shallow|medium|full', 'medium')
   .option('--local-config <path>', 'YAML config file listing local sources')
+  .option('--yes', 'Skip competitive matrix confirmation gate')
   .action((goal, opts) => commands.inferno(goal, {
     profile: opts.profile,
     prompt: opts.prompt,
@@ -343,6 +366,7 @@ program
     localSources: opts.localSources?.split(',').map((source: string) => source.trim()).filter(Boolean),
     localDepth: opts.localDepth,
     localSourcesConfig: opts.localConfig,
+    yes: opts.yes,
   }));
 
 program
@@ -472,6 +496,87 @@ program
   }));
 
 program
+  .command('oss-deep [url-or-path]')
+  .description('Deep systematic extraction from a single OSS repo (persistent cache, full src read)')
+  .option('--prompt', 'Show extraction plan without executing')
+  .option('--include-git-log', 'Include commit history analysis for top 5 files (slower)')
+  .option('--max-files <n>', 'Max critical files to read in full (default: 20)', '20')
+  .action(async (urlOrPath, opts) => {
+    const { ossDeepCommand } = await import('./commands/oss-deep.js');
+    await ossDeepCommand(urlOrPath ?? '', {
+      prompt: opts.prompt,
+      includeGitLog: opts.includeGitLog,
+      maxFiles: opts.maxFiles,
+    });
+  });
+
+program
+  .command('oss-intel')
+  .description('Multi-repo systematic harvest — builds ADOPTION_QUEUE.md from harvest-queue.json')
+  .option('--max-repos <n>', 'Max repos to deep-extract per run (default: 5)', '5')
+  .option('--prompt', 'Show harvest plan without executing')
+  .action(async (opts) => {
+    const { ossIntel } = await import('./commands/oss-intel.js');
+    await ossIntel({ maxRepos: parseInt(opts.maxRepos, 10), promptMode: opts.prompt });
+  });
+
+program
+  .command('oss-clean')
+  .description('Purge OSS clone cache (.danteforge/oss-repos/ and oss-deep/)')
+  .option('--dry-run', 'Show what would be deleted without deleting')
+  .action(async (opts) => {
+    const { ossClean } = await import('./commands/oss-clean.js');
+    await ossClean({ dryRun: opts.dryRun });
+  });
+
+program
+  .command('harvest-forge')
+  .description('Compounding OSS intelligence loop: discover → extract → implement → verify → repeat')
+  .option('--max-cycles <n>', 'Max iteration cycles (default: 10)', '10')
+  .option('--target <score>', 'Target convergence score 0-10 (default: 9.0)', '9.0')
+  .option('--auto', 'Auto-approve all cycles without human checkpoint')
+  .option('--prompt', 'Show the loop plan without executing')
+  .option('--max-hours <h>', 'Max wall-clock hours before stopping with budget-exhausted')
+  .action(async (opts) => {
+    const { harvestForge } = await import('./commands/harvest-forge.js');
+    await harvestForge({
+      maxCycles: parseInt(opts.maxCycles, 10),
+      targetScore: parseFloat(opts.target),
+      autoApprove: opts.auto,
+      promptMode: opts.prompt,
+      maxHours: opts.maxHours ? parseFloat(opts.maxHours) : undefined,
+    });
+  });
+
+program
+  .command('universe-scan')
+  .description('Scan competitive universe, derive dimensions, score codebase with evidence')
+  .option('--prompt', 'Show scan plan without executing')
+  .action(async (opts) => {
+    const { universeScan } = await import('./commands/universe-scan.js');
+    await universeScan({ promptMode: opts.prompt });
+  });
+
+program
+  .command('set-goal')
+  .description('Set convergence goal: category, competitors, budget, oversight level')
+  .option('--prompt', 'Show goal template without writing')
+  .option('--no-scan', 'Skip auto universe-scan after goal is set')
+  .action(async (opts) => {
+    const { setGoal } = await import('./commands/set-goal.js');
+    await setGoal({ promptMode: opts.prompt, autoScan: opts.scan !== false });
+  });
+
+program
+  .command('status')
+  .description('Show convergence dashboard: dimensions, cost, OSS harvest stats, next cycle plan')
+  .action(async () => {
+    const { status, renderStatus } = await import('./commands/status.js');
+    const report = await status();
+    console.log(renderStatus(report));
+  });
+
+program
   .command('local-harvest [paths...]')
   .description('Harvest patterns from local private repos, folders, and zip archives')
   .option('--config <path>', 'YAML config file listing sources (.danteforge/local-sources.yaml)')
@@ -528,6 +633,31 @@ program
   .action((opts) => commands.publishCheck({ json: opts.json }));
 
 program
+  .command('proof')
+  .description('Proof of value — raw prompt vs structured artifacts, or pipeline/convergence evidence report')
+  .option('--prompt <text>', 'Raw prompt to compare against structured artifacts')
+  .option('--pipeline', 'Generate structured pipeline execution evidence report')
+  .option('--convergence', 'Generate structured convergence & self-healing evidence report')
+  .option('--cwd <path>', 'Project directory (defaults to cwd)')
+  .option('--semantic', 'LLM-enhanced PDSE scoring')
+  .option('--since <date>', 'Score arc since date or git SHA (e.g. "yesterday", "2026-04-01", a commit SHA)')
+  .action((opts) => commands.proof({ prompt: opts.prompt, pipeline: opts.pipeline, convergence: opts.convergence, cwd: opts.cwd, semantic: opts.semantic, since: opts.since }));
+
+program
+  .command('cost')
+  .description('Display token usage and cost breakdown from this session')
+  .option('--by-agent', 'Break down by agent role')
+  .option('--by-tier', 'Break down by model tier')
+  .option('--savings', 'Show token savings from routing and compression')
+  .option('--history', 'Show all sessions in chronological order')
+  .action((opts) => commands.cost({
+    byAgent: opts.byAgent,
+    byTier: opts.byTier,
+    savings: opts.savings,
+    history: opts.history,
+  }));
+
+program
   .command('audit-export')
   .description('Export audit trail to JSON, CSV, or Markdown for compliance reporting')
   .option('--format <type>', 'Output format: json, csv, markdown (default: json)', 'json')
@@ -547,6 +677,7 @@ program
   .option('--min-score <n>', 'Target score threshold (default: 9.0)', '9.0')
   .option('--json', 'Output machine-readable JSON')
   .option('--preset <level>', 'Preset for target maturity level')
+  .option('--set-baseline', 'Reset the session baseline score to the current score')
   .option('--cwd <path>', 'Project directory')
   .action(async (opts) => {
     try {
@@ -556,12 +687,168 @@ program
         minScore: parseFloat(opts.minScore),
         json: opts.json,
         preset: opts.preset,
+        setBaseline: opts.setBaseline as boolean | undefined,
         cwd: opts.cwd,
       });
     } catch (err) {
       formatAndLogError(err, 'assess');
       process.exitCode = 1;
     }
+  });
+
+program
+  .command('benchmark')
+  .description('18-dimension scorecard — real scores across all quality dimensions with optional competitor comparison')
+  .option('--dimension <dim>', 'Score only one named dimension')
+  .option('--compare', 'Show gap vs CHL matrix competitor scores')
+  .option('--format <fmt>', 'Output format: table or json (default: table)', 'table')
+  .option('--cwd <path>', 'Project directory')
+  .action(async (opts) => {
+    try {
+      await commands.benchmark({
+        dimension: opts.dimension,
+        compare: opts.compare,
+        format: opts.format,
+        cwd: opts.cwd,
+      });
+    } catch (err) {
+      formatAndLogError(err, 'benchmark');
+      process.exitCode = 1;
+    }
+  });
+
+program
+  .command('showcase')
+  .description('Score any project with the full harsh scorer and generate docs/CASE_STUDY.md — reproducible external proof')
+  .option('--project <path>', 'Path to project directory (default: examples/todo-app)')
+  .option('--format <fmt>', 'Output format: markdown or json (default: markdown)', 'markdown')
+  .option('--cwd <path>', 'Working directory')
+  .action(async (opts) => {
+    try {
+      await commands.showcase({
+        project: opts.project,
+        format: opts.format as 'markdown' | 'json' | undefined,
+        cwd: opts.cwd,
+      });
+    } catch (err) {
+      formatAndLogError(err, 'showcase');
+      process.exitCode = 1;
+    }
+  });
+
+program
+  .command('next')
+  .description('Strategic advisor: reads all project state and recommends the highest-ROI next action')
+  .option('--cwd <path>', 'Project directory')
+  .option('--prompt', 'Print prompt without calling LLM')
+  .action(async (opts) => {
+    try {
+      const { runNext } = await import('./commands/next.js');
+      await runNext({ cwd: opts.cwd, promptMode: opts.prompt });
+    } catch (err) {
+      formatAndLogError(err, 'next');
+      process.exitCode = 1;
+    }
+  });
+
+program
+  .command('certify')
+  .description('Generate a tamper-evident quality certificate (evidenceFingerprint) from convergence state')
+  .option('--cwd <path>', 'Project directory')
+  .action(async (opts) => {
+    try {
+      const { runCertify } = await import('./commands/certify.js');
+      await runCertify({ cwd: opts.cwd });
+    } catch (err) {
+      formatAndLogError(err, 'certify');
+      process.exitCode = 1;
+    }
+  });
+
+program
+  .command('outcome-check')
+  .description('Re-measure quality scores to validate pattern adoption outcomes (lagging indicators)')
+  .option('--cwd <path>', 'Project directory')
+  .option('--days <n>', 'Days threshold for outcome check (default: 7)', '7')
+  .action(async (opts) => {
+    try {
+      const { runOutcomeCheck } = await import('./commands/outcome-check.js');
+      await runOutcomeCheck({ cwd: opts.cwd, daysThreshold: parseInt(opts.days, 10) });
+    } catch (err) {
+      formatAndLogError(err, 'outcome-check');
+      process.exitCode = 1;
+    }
+  });
+
+program
+  .command('chart')
+  .description('Show ASCII sparklines of convergence quality score history per dimension')
+  .option('--cwd <path>', 'Project directory')
+  .option('--dimension <name>', 'Show only this dimension')
+  .option('--cycles <n>', 'How many recent cycles to show (default: 20)', '20')
+  .action(async (opts) => {
+    try {
+      const { runChart } = await import('./commands/chart.js');
+      await runChart({ cwd: opts.cwd, dimension: opts.dimension, cycles: parseInt(opts.cycles, 10) });
+    } catch (err) {
+      formatAndLogError(err, 'chart');
+      process.exitCode = 1;
+    }
+  });
+
+program
+  .command('sprint-plan')
+  .description('Generate next sprint plan from project state + auto-critique it before you build')
+  .option('--max-cycles <n>', 'Max harvest-forge cycles in the generated plan (default: 5)', '5')
+  .option('--stakes <level>', 'Critique depth: low|medium|high|critical (default: high)', 'high')
+  .option('--skip-critique', 'Skip running plan critic after generation')
+  .option('--auto-approve', 'Accept plan even if blocking gaps found (CI use)')
+  .option('--cwd <path>', 'Project directory')
+  .action((opts) => {
+    void (async () => {
+      try {
+        const { runSprintPlan } = await import('./commands/sprint-plan.js');
+        await runSprintPlan({
+          maxCycles: parseInt(opts.maxCycles, 10),
+          stakes: opts.stakes,
+          skipCritique: opts.skipCritique,
+          autoApprove: opts.autoApprove,
+          cwd: opts.cwd,
+        });
+      } catch (err) {
+        const { formatAndLogError } = await import('../core/format-error.js');
+        formatAndLogError(err, 'sprint-plan');
+        process.exitCode = 1;
+      }
+    })();
+  });
+
+program
+  .command('critique-plan [plan-file]')
+  .description('Adversarial pre-build plan review: 7 critique categories, LLM + deterministic, blocking/high/medium gaps')
+  .option('--stakes <level>', 'Critique depth: low|medium|high|critical (default: medium)', 'medium')
+  .option('--diff <file>', 'Also review a git diff against the plan (--diff path/to/diff.txt)')
+  .option('--deterministic-only', 'Skip LLM augmentation — deterministic regex checks only')
+  .option('--fail-on-blocking', 'Exit non-zero if any blocking gap is found (default: true)', true)
+  .option('--cwd <path>', 'Project directory')
+  .action((planFile, opts) => {
+    void (async () => {
+      try {
+        const { runCritiquePlan } = await import('./commands/critique-plan.js');
+        await runCritiquePlan({
+          planFile,
+          stakes: opts.stakes,
+          diffFile: opts.diff,
+          deterministicOnly: opts.deterministicOnly,
+          failOnBlocking: opts.failOnBlocking,
+          cwd: opts.cwd,
+        });
+      } catch (err) {
+        const { formatAndLogError } = await import('../core/format-error.js');
+        formatAndLogError(err, 'critique-plan');
+        process.exitCode = 1;
+      }
+    })();
   });
 
 program
@@ -613,7 +900,7 @@ program
 
 // First-run detection — suggest init when no .danteforge/ exists
 program.hook('preAction', (_thisCommand, actionCommand) => {
-  const skip = new Set(['init', 'config', 'doctor', 'help', 'setup', 'skills', 'docs', 'premium', 'workflow', 'mcp-server', 'publish-check']);
+  const skip = new Set(['init', 'config', 'doctor', 'help', 'setup', 'skills', 'docs', 'premium', 'workflow', 'mcp-server', 'publish-check', 'proof']);
   if (skip.has(actionCommand.name())) return;
   if (!existsSync('.danteforge')) {
     logger.info('Tip: No .danteforge/ directory found. Run "danteforge init" to set up your project.');
@@ -709,6 +996,450 @@ program
     out: opts.out,
     cwd: opts.cwd,
   }));
+
+program
+  .command('self-assess')
+  .description('Capture machine-verifiable quality metrics for this project and diff against previous baseline')
+  .option('--llm-score <n>', 'LLM-assigned quality score to blend with objective metrics (default: 7.0)', '7.0')
+  .option('--no-compare', 'Skip comparison against previous baseline')
+  .option('--cwd <path>', 'Project directory')
+  .action((opts) => {
+    (async () => {
+      try {
+        const { runSelfAssess } = await import('./commands/self-assess.js');
+        await runSelfAssess({
+          llmScore: parseFloat(opts.llmScore ?? '7.0'),
+          compareBaseline: opts.compare !== false,
+          cwd: opts.cwd,
+        });
+      } catch (err) {
+        const { formatAndLogError } = await import('../core/format-error.js');
+        formatAndLogError(err, 'self-assess');
+        process.exitCode = 1;
+      }
+    })();
+  });
+
+program
+  .command('share-patterns')
+  .description('Export anonymised pattern attribution data as a portable bundle for team sharing')
+  .option('--min-samples <n>', 'Minimum adoption samples to include a pattern (default: 1)', '1')
+  .option('--cwd <path>', 'Project directory')
+  .action((opts) => {
+    (async () => {
+      try {
+        const { runSharePatterns } = await import('./commands/share-patterns.js');
+        await runSharePatterns({
+          minSamples: parseInt(opts.minSamples ?? '1', 10),
+          cwd: opts.cwd,
+        });
+      } catch (err) {
+        const { formatAndLogError } = await import('../core/format-error.js');
+        formatAndLogError(err, 'share-patterns');
+        process.exitCode = 1;
+      }
+    })();
+  });
+
+program
+  .command('import-patterns <bundle-file>')
+  .description('Import a shared pattern bundle into the local global pattern library')
+  .option('--trust-factor <n>', 'Trust weight for imported evidence (default: 0.5)', '0.5')
+  .option('--cwd <path>', 'Project directory')
+  .action((bundleFile, opts) => {
+    (async () => {
+      try {
+        const { runImportPatterns } = await import('./commands/import-patterns.js');
+        await runImportPatterns(bundleFile, {
+          trustFactor: parseFloat(opts.trustFactor ?? '0.5'),
+          cwd: opts.cwd,
+        });
+      } catch (err) {
+        const { formatAndLogError } = await import('../core/format-error.js');
+        formatAndLogError(err, 'import-patterns');
+        process.exitCode = 1;
+      }
+    })();
+  });
+
+program
+  .command('ci-report')
+  .description('Run CI attribution gate: capture metrics, diff vs baseline, attribute regressions to recently adopted patterns')
+  .option('--window <days>', 'Days back to attribute regressions', '7')
+  .option('--threshold <score>', 'Score drop that triggers failure', '0.5')
+  .option('--no-update', 'Do not update the baseline snapshot after running')
+  .action((_opts) => {
+    (async () => {
+      try {
+        const { runCIReportCommand } = await import('./commands/ci-report.js');
+        await runCIReportCommand({
+          cwd: process.cwd(),
+          window: parseInt(_opts.window ?? '7'),
+          threshold: parseFloat(_opts.threshold ?? '0.5'),
+          noUpdate: !_opts.update,
+        });
+      } catch (err) {
+        const { formatAndLogError } = await import('../core/format-error.js');
+        formatAndLogError(err, 'ci-report');
+        process.exitCode = 1;
+      }
+    })();
+  });
+
+program
+  .command('external-validate <projects...>')
+  .description('Validate DanteForge quality metrics against external open-source projects (calibration check)')
+  .option('--tier <mapping>', 'Comma-separated label:tier pairs e.g. lodash:high,underscore:medium')
+  .action((projectUrls: string[], _opts) => {
+    (async () => {
+      try {
+        const { runExternalValidation } = await import('./commands/external-validate.js');
+        const tierMap: Record<string, 'high' | 'medium' | 'low'> = {};
+        if (_opts.tier) {
+          for (const pair of (_opts.tier as string).split(',')) {
+            const [label, tier] = pair.split(':');
+            if (label && tier) tierMap[label.trim()] = tier.trim() as 'high' | 'medium' | 'low';
+          }
+        }
+        const projects = projectUrls.map(url => {
+          const label = url.split('/').pop() ?? url;
+          return { label, url, expectedTier: tierMap[label] ?? 'medium' as const };
+        });
+        const report = await runExternalValidation(projects, { cwd: process.cwd() });
+        for (const line of report.summary) {
+          const { logger } = await import('../core/logger.js');
+          logger.info(line);
+        }
+      } catch (err) {
+        const { formatAndLogError } = await import('../core/format-error.js');
+        formatAndLogError(err, 'external-validate');
+        process.exitCode = 1;
+      }
+    })();
+  });
+
+program
+  .command('self-mutate')
+  .description('Run mutation testing on DanteForge\'s own core files to validate test quality. Reports per-file mutation score and overall gate pass/fail.')
+  .option('--min-score <n>', 'Minimum mutation score to pass gate (0-1)', '0.6')
+  .option('--max-mutants <n>', 'Max mutants tested per file', '10')
+  .action((_opts) => {
+    (async () => {
+      try {
+        const { runSelfMutate } = await import('./commands/self-mutate.js');
+        const { logger } = await import('../core/logger.js');
+        const result = await runSelfMutate({
+          cwd: process.cwd(),
+          minMutationScore: parseFloat(_opts.minScore ?? '0.6'),
+          maxMutantsPerFile: parseInt(_opts.maxMutants ?? '10'),
+        });
+        logger.info(`\nSelf-Mutate Results:`);
+        for (const f of result.perFile) {
+          const icon = f.mutationScore >= 0.7 ? '✓' : f.mutationScore >= 0.5 ? '~' : '✗';
+          logger.info(`  ${icon} ${f.file}: ${(f.mutationScore * 100).toFixed(0)}% (${f.killed}/${f.total} killed)`);
+        }
+        logger.info(`\nOverall mutation score: ${(result.overallScore * 100).toFixed(0)}%`);
+        logger.info(`Gate: ${result.gatePass ? 'PASS' : 'FAIL'} (min ${(result.minMutationScore * 100).toFixed(0)}%)`);
+        logger.info(`Report: ${result.reportPath}`);
+        if (!result.gatePass) process.exitCode = 1;
+      } catch (err) {
+        const { formatAndLogError } = await import('../core/format-error.js');
+        formatAndLogError(err, 'self-mutate');
+        process.exitCode = 1;
+      }
+    })();
+  });
+
+program
+  .command('refused-patterns')
+  .description('List, add, or remove patterns from the refused (blocklist) store')
+  .option('--add <name>', 'Manually block a pattern by name')
+  .option('--remove <name>', 'Unblock a pattern by name')
+  .option('--clear', 'Clear the entire refused-patterns blocklist')
+  .action((opts) => {
+    void (async () => {
+      try {
+        const { runRefusedPatterns } = await import('./commands/refused-patterns.js');
+        await runRefusedPatterns({
+          add: opts.add as string | undefined,
+          remove: opts.remove as string | undefined,
+          clear: opts.clear as boolean | undefined,
+        });
+      } catch (err) {
+        const { formatAndLogError } = await import('../core/format-error.js');
+        formatAndLogError(err, 'refused-patterns');
+        process.exitCode = 1;
+      }
+    })();
+  });
+
+program
+  .command('respec')
+  .description('Re-run specification with lessons learned and refused patterns injected')
+  .action(() => {
+    void (async () => {
+      try {
+        const { runRespec } = await import('./commands/respec.js');
+        const result = await runRespec();
+        if (!result.revised) process.exitCode = 1;
+      } catch (err) {
+        const { formatAndLogError } = await import('../core/format-error.js');
+        formatAndLogError(err, 'respec');
+        process.exitCode = 1;
+      }
+    })();
+  });
+
+program
+  .command('cross-synthesize')
+  .description('Synthesize winning patterns from attribution history to escape a plateau')
+  .option('--window <n>', 'Number of recent attribution records to analyze (default: 10)', '10')
+  .action((opts) => {
+    void (async () => {
+      try {
+        const { runCrossSynthesize } = await import('./commands/cross-synthesize.js');
+        const result = await runCrossSynthesize({ window: parseInt(opts.window as string, 10) });
+        if (!result.written) process.exitCode = 1;
+      } catch (err) {
+        const { formatAndLogError } = await import('../core/format-error.js');
+        formatAndLogError(err, 'cross-synthesize');
+        process.exitCode = 1;
+      }
+    })();
+  });
+
+program
+  .command('flow')
+  .description('Show the 5 DanteForge workflows and what to run next')
+  .option('--interactive', 'Get a personalized workflow recommendation')
+  .action((opts) => {
+    void (async () => {
+      try {
+        const { runFlow } = await import('./commands/flow.js');
+        await runFlow({ interactive: opts.interactive as boolean | undefined });
+      } catch (err) {
+        const { formatAndLogError } = await import('../core/format-error.js');
+        formatAndLogError(err, 'flow');
+        process.exitCode = 1;
+      }
+    })();
+  });
+
+program
+  .command('guide')
+  .description('Generate a project-specific guide at .danteforge/GUIDE.md')
+  .action(() => {
+    void (async () => {
+      try {
+        const { runGuide } = await import('./commands/guide.js');
+        const result = await runGuide();
+        logger.info(`Guide written: ${result.guidePath}`);
+        logger.info('Load in Claude Code: @.danteforge/GUIDE.md');
+      } catch (err) {
+        const { formatAndLogError } = await import('../core/format-error.js');
+        formatAndLogError(err, 'guide');
+        process.exitCode = 1;
+      }
+    })();
+  });
+
+program
+  .command('compete')
+  .description('Competitive Harvest Loop: score gaps against competitors, sprint to close them')
+  .option('--init', 'Bootstrap CHL matrix from a competitor scan (Phase 1: INVENTORY)')
+  .option('--sprint', 'Identify top gap and generate /inferno masterplan (Phase 3: SOURCE)')
+  .option('--rescore <score>', 'Update dimension score after a sprint, e.g. "ux_polish=7.5" or "ux_polish=7.5,sha"')
+  .option('--report', 'Generate full CHL report at .danteforge/compete/COMPETE_REPORT.md')
+  .option('--json', 'Machine-readable output')
+  .option('--skip-verify', 'Skip verify receipt check (use when certifying without running verify)')
+  .option('--validate', 'Cross-check matrix self-scores against latest harsh-scorer assessment')
+  .option('--auto', 'Run autonomous sprint+rescore loop (up to 5 cycles, stops when all gaps closed)')
+  .option('--remove-competitor <name>', 'Remove a competitor from the matrix and recompute gaps')
+  .option('--drop-dimension <id>', 'Remove a scoring dimension from the matrix')
+  .option('--edit', 'Interactive matrix amendment session')
+  .option('--yes', 'Skip the confirmation gate in --auto mode')
+  .action((opts) => {
+    void (async () => {
+      try {
+        const { compete } = await import('./commands/compete.js');
+        const result = await compete({
+          init: opts.init as boolean | undefined,
+          sprint: opts.sprint as boolean | undefined,
+          rescore: opts.rescore as string | undefined,
+          report: opts.report as boolean | undefined,
+          json: opts.json as boolean | undefined,
+          skipVerify: opts.skipVerify as boolean | undefined,
+          validate: opts.validate as boolean | undefined,
+          auto: opts.auto as boolean | undefined,
+          removeCompetitor: opts.removeCompetitor as string | undefined,
+          dropDimension: opts.dropDimension as string | undefined,
+          edit: opts.edit as boolean | undefined,
+          yes: opts.yes as boolean | undefined,
+        });
+        if (opts.json) {
+          process.stdout.write(JSON.stringify(result, null, 2) + '\n');
+        }
+      } catch (err) {
+        const { formatAndLogError } = await import('../core/format-error.js');
+        formatAndLogError(err, 'compete');
+        process.exitCode = 1;
+      }
+    })();
+  });
+
+program
+  .command('ascend')
+  .description('Autonomous quality ascent: drives all achievable competitive dimensions to target (default 9.0/10)')
+  .option('--target <n>', 'target score for all dimensions (0-10)', parseFloat, 9.0)
+  .option('--max-cycles <n>', 'max total improvement cycles', parseInt, 60)
+  .option('--dry-run', 'print plan without executing')
+  .option('--interactive', 'ask questions to define competitive universe (requires TTY)')
+  .option('--forge-provider <provider>', 'LLM provider for forge cycles (e.g. claude, grok, openai)')
+  .option('--scorer-provider <provider>', 'LLM provider for adversarial critique after each forge cycle')
+  .option('--max-dim-retries <n>', 'max times to retry same dimension after critic is unsatisfied (default: 2)', parseInt, 2)
+  .option('--adversarial-gating', 'require adversarial score agreement before declaring convergence')
+  .option('--adversary-tolerance <n>', 'acceptable gap between self and adversarial score for convergence (default: 0.5)', parseFloat, 0.5)
+  .option('--yes', 'Skip the competitive landscape confirmation gate')
+  .option('--retro-interval <n>', 'cycles between automatic retro runs during loop (default: 5)', parseInt, 5)
+  .option('--no-auto-harvest', 'skip OSS harvest receipt bootstrap at ascend start')
+  .option('--no-verify-loop', 'skip mid-loop verify pass before first cycle')
+  .action((opts) => {
+    void (async () => {
+      try {
+        const { ascend } = await import('./commands/ascend.js');
+        await ascend({
+          target: opts.target as number | undefined,
+          maxCycles: opts.maxCycles as number | undefined,
+          dryRun: opts.dryRun as boolean | undefined,
+          interactive: opts.interactive as boolean | undefined,
+          forgeProvider: opts.forgeProvider as string | undefined,
+          scorerProvider: opts.scorerProvider as string | undefined,
+          maxDimRetries: opts.maxDimRetries as number | undefined,
+          adversarialGating: opts.adversarialGating as boolean | undefined,
+          adversaryTolerance: opts.adversaryTolerance as number | undefined,
+          yes: opts.yes as boolean | undefined,
+          retroInterval: opts.retroInterval as number | undefined,
+          autoHarvest: opts.autoHarvest as boolean | undefined,
+          verifyLoop: opts.verifyLoop as boolean | undefined,
+        });
+      } catch (err) {
+        const { formatAndLogError } = await import('../core/format-error.js');
+        formatAndLogError(err, 'ascend');
+        process.exitCode = 1;
+      }
+    })();
+  });
+
+program
+  .command('score')
+  .description('Fast project score: one number + 3 P0 action items in <5 seconds (no LLM)')
+  .option('--full', 'Show all 18 dimensions (like assess)')
+  .option('--strict', 'Use only code-derived signals — excludes mutable STATE.yaml fields for tamper-resistant scoring')
+  .option('--adversary', 'Run a second independent LLM to challenge the self-score and detect inflation')
+  .action((opts) => {
+    void (async () => {
+      try {
+        const { score } = await import('./commands/score.js');
+        await score({
+          full: opts.full as boolean | undefined,
+          strict: opts.strict as boolean | undefined,
+          adversary: opts.adversary as boolean | undefined,
+        });
+      } catch (err) {
+        const { formatAndLogError } = await import('../core/format-error.js');
+        formatAndLogError(err, 'score');
+        process.exitCode = 1;
+      }
+    })();
+  });
+
+program
+  .command('prime')
+  .description('Generate .danteforge/PRIME.md — 200-word session brief for Claude Code')
+  .option('--copy', 'Show clipboard copy hint after writing')
+  .action((opts) => {
+    void (async () => {
+      try {
+        const { prime } = await import('./commands/prime.js');
+        await prime({ copy: opts.copy as boolean | undefined });
+      } catch (err) {
+        const { formatAndLogError } = await import('../core/format-error.js');
+        formatAndLogError(err, 'prime');
+        process.exitCode = 1;
+      }
+    })();
+  });
+
+program
+  .command('teach <correction>')
+  .description('Capture an AI correction into lessons.md and auto-update PRIME.md')
+  .action((correction) => {
+    void (async () => {
+      try {
+        const { teach } = await import('./commands/teach.js');
+        await teach({ correction });
+      } catch (err) {
+        const { formatAndLogError } = await import('../core/format-error.js');
+        formatAndLogError(err, 'teach');
+        process.exitCode = 1;
+      }
+    })();
+  });
+
+program
+  .command('go [goal]')
+  .description('Daily driver: run self-improve loop with no flags (maxCycles:5, target:9.0)')
+  .action((goal) => {
+    void (async () => {
+      try {
+        const { go } = await import('./commands/go.js');
+        await go({ goal: goal as string | undefined });
+      } catch (err) {
+        const { formatAndLogError } = await import('../core/format-error.js');
+        formatAndLogError(err, 'go');
+        process.exitCode = 1;
+      }
+    })();
+  });
+
+program
+  .command('harvest-pattern <pattern>')
+  .description('Focused OSS pattern harvest with Y/N confirmation per gap')
+  .option('--max-repos <n>', 'Max repos to search (default: 5)', '5')
+  .option('--url <github-url>', 'Target a specific GitHub repo URL directly (bypass search)')
+  .action((pattern, opts) => {
+    void (async () => {
+      try {
+        const { harvestPattern } = await import('./commands/harvest-pattern.js');
+        await harvestPattern({
+          pattern,
+          maxRepos: parseInt(opts.maxRepos as string, 10),
+          url: opts.url as string | undefined,
+        });
+      } catch (err) {
+        const { formatAndLogError } = await import('../core/format-error.js');
+        formatAndLogError(err, 'harvest-pattern');
+        process.exitCode = 1;
+      }
+    })();
+  });
+
+program
+  .command('build <spec>')
+  .description('Guided spec-to-ship wizard: constitution → specify → clarify → plan → tasks → forge → verify → score')
+  .option('--interactive', 'Confirm before each stage')
+  .action((spec, opts) => {
+    void (async () => {
+      try {
+        const { build } = await import('./commands/build.js');
+        await build({ spec, interactive: opts.interactive as boolean | undefined });
+      } catch (err) {
+        const { formatAndLogError } = await import('../core/format-error.js');
+        formatAndLogError(err, 'build');
+        process.exitCode = 1;
+      }
+    })();
+  });
 
 loadState().catch(() => { /* state will be created on first write */ });
 

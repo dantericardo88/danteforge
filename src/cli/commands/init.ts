@@ -7,7 +7,7 @@ import { logger } from '../../core/logger.js';
 import { loadState, saveState } from '../../core/state.js';
 import { detectProjectType } from '../../core/completion-tracker.js';
 import { isLLMAvailable } from '../../core/llm.js';
-import { loadConfig, setDefaultProvider, type LLMProvider } from '../../core/config.js';
+import { loadConfig, saveConfig, setDefaultProvider, type LLMProvider, type DanteConfig } from '../../core/config.js';
 import { selectProvider } from '../../core/prompts.js';
 import {
   getOrPromptCompletionTarget,
@@ -15,6 +15,21 @@ import {
   type CompletionTargetOptions,
 } from '../../core/completion-target.js';
 import { withErrorBoundary } from '../../core/cli-error-boundary.js';
+import type { AssistantRegistry } from '../../core/assistant-installer.js';
+
+// ── IDE Detection ────────────────────────────────────────────────────────────
+
+/** Detects the running IDE/assistant from environment variables. Returns null if unknown. */
+export function detectRunningIDE(): AssistantRegistry | null {
+  const env = process.env;
+  if (env['CLAUDE_CODE'] || env['CLAUDE_SESSION_ID']) return 'claude';
+  if (env['CURSOR_TRACE_ID'] || env['CURSOR_CHANNEL']) return 'cursor';
+  if (env['WINDSURF_EXTENSION'] || env['WINDSURF_AUTH_TOKEN']) return 'windsurf';
+  if (env['CODEX_DEPLOYMENT_ID']) return 'codex';
+  if (env['GITHUB_COPILOT_TOKEN']) return 'copilot';
+  if (env['CONTINUE_EXTENSION_INSTALLED']) return 'continue';
+  return null;
+}
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -31,6 +46,14 @@ export interface InitOptions {
   _loadState?: typeof loadState;
   _saveState?: typeof saveState;
   _getOrPromptTarget?: typeof getOrPromptCompletionTarget;
+  /** Injection seam: override IDE detection for testing */
+  _detectIDE?: () => AssistantRegistry | null;
+  /** Injection seam: load config for adversary setup (for testing) */
+  _loadConfig?: () => Promise<DanteConfig>;
+  /** Injection seam: save config for adversary setup (for testing) */
+  _saveConfig?: (config: DanteConfig) => Promise<void>;
+  /** Injection seam: override defineUniverse for testing */
+  _defineUniverse?: (opts: { cwd: string; interactive: boolean }) => Promise<unknown>;
 }
 
 // ── Main command ──────────────────────────────────────────────────────────────
@@ -101,7 +124,57 @@ export async function init(options: InitOptions = {}): Promise<void> {
       try { await setDefaultProvider(selectedProvider); } catch { /* best-effort */ }
     }
 
+    // IDE detection — suggest setup assistants for non-Claude IDEs
+    const detectedIDE = options._detectIDE ? options._detectIDE() : detectRunningIDE();
+    if (detectedIDE && detectedIDE !== 'claude') {
+      logger.info(`Detected editor: ${detectedIDE}`);
+      const ideChoice = await askQuestion(
+        `  Set up DanteForge skills for ${detectedIDE}? [Y/n] `,
+        options._readline,
+      );
+      if (ideChoice.trim().toLowerCase() !== 'n') {
+        try {
+          const { setupAssistants } = await import('./setup-assistants.js');
+          await setupAssistants({ assistants: detectedIDE });
+          logger.success(`✓ Skills installed for ${detectedIDE}`);
+        } catch { /* best-effort — don't break init if setup fails */ }
+      }
+    }
+
+    // Q6 — Adversarial scoring setup
     logger.info('');
+    logger.info('  Adversarial scoring runs a second LLM to challenge your self-score.');
+    logger.info('  It catches inflation: the same LLM that builds code tends to be lenient');
+    logger.info('  on its own work. A second opinion — especially a different model —');
+    logger.info('  produces scores you can actually trust.');
+    logger.info('  → Ollama (local, free) is detected and used automatically.');
+    logger.info('  → The better the adversary, the more honest the score.');
+    const advAnswer = await askQuestion('  Enable adversarial scoring? [Y/n] ', options._readline);
+    if (advAnswer.trim().toLowerCase() !== 'n') {
+      try {
+        const loadConfigFn = options._loadConfig ?? loadConfig;
+        const saveConfigFn = options._saveConfig ?? saveConfig;
+        const cfg = await loadConfigFn();
+        cfg.adversary = { enabled: true };
+        await saveConfigFn(cfg);
+        logger.success('  Adversarial scoring enabled. Run `danteforge score --adversary` to try it.');
+      } catch { /* best-effort — don't break init if config save fails */ }
+    }
+
+    logger.info('');
+
+    // Q7: Define competitive universe now?
+    const defineNow = await askQuestion('Define your competitive universe now? (helps ascend/compete target the right goals) [y/N]: ', options._readline);
+    if (defineNow.toLowerCase() === 'y' || defineNow.toLowerCase() === 'yes') {
+      try {
+        const { defineUniverse } = await import('../../core/universe-definer.js');
+        const defineUniverseFn = options._defineUniverse ?? defineUniverse;
+        await defineUniverseFn({ cwd, interactive: true });
+        logger.success('Competitive universe defined! Run `danteforge ascend` to start improving.');
+      } catch (err) {
+        logger.warn(`Universe definition skipped: ${err instanceof Error ? err.message : String(err)}`);
+      }
+    }
   }
 
   // ── Step 1b: Completion target (interactive only, skip if already set) ───────

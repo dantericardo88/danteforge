@@ -43,10 +43,10 @@ describe('policy command — get', () => {
     const dir = await freshProject();
     try {
       const stateBefore = await loadState({ cwd: dir });
-      assert.strictEqual(stateBefore.selfEditPolicy, undefined);
+      assert.strictEqual(stateBefore.selfEditPolicy, 'deny'); // default applied on load
       await policy('get', undefined, { cwd: dir });
       const stateAfter = await loadState({ cwd: dir });
-      assert.strictEqual(stateAfter.selfEditPolicy, undefined, 'get should not mutate selfEditPolicy');
+      assert.strictEqual(stateAfter.selfEditPolicy, stateBefore.selfEditPolicy, 'get should not mutate selfEditPolicy');
       assert.strictEqual(stateAfter.auditLog.length, stateBefore.auditLog.length, 'get should not add audit log entry');
     } finally {
       await fs.rm(dir, { recursive: true, force: true });
@@ -123,7 +123,7 @@ describe('policy command — set', () => {
       await policy('set', 'super-allow', { cwd: dir });
       assert.strictEqual(process.exitCode, 1);
       const state = await loadState({ cwd: dir });
-      assert.strictEqual(state.selfEditPolicy, undefined);
+      assert.notStrictEqual(state.selfEditPolicy, 'super-allow'); // invalid value rejected
     } finally {
       await fs.rm(dir, { recursive: true, force: true });
     }

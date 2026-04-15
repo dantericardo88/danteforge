@@ -103,15 +103,23 @@ export class PerformanceMonitor {
   private async saveBaseline(): Promise<void> {
     if (this.baseline) {
       const dir = path.dirname(this.baselinePath);
-      await fs.mkdir(dir, { recursive: true });
-      await fs.writeFile(this.baselinePath, JSON.stringify(this.baseline, null, 2));
+      try {
+        await fs.mkdir(dir, { recursive: true });
+        await fs.writeFile(this.baselinePath, JSON.stringify(this.baseline, null, 2));
+      } catch {
+        // best-effort — failure is non-fatal
+      }
     }
   }
 
   private async saveMetrics(): Promise<void> {
     const metricsPath = path.join(path.dirname(this.baselinePath), 'performance-metrics.json');
     const dir = path.dirname(metricsPath);
-    await fs.mkdir(dir, { recursive: true });
-    await fs.writeFile(metricsPath, JSON.stringify(this.metrics, null, 2));
+    try {
+      await fs.mkdir(dir, { recursive: true });
+      await fs.writeFile(metricsPath, JSON.stringify(this.metrics, null, 2));
+    } catch {
+      // best-effort — failure is non-fatal
+    }
   }
 }

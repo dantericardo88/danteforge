@@ -124,6 +124,10 @@ function makeStubDeps(overrides: Partial<AutoforgeLoopDeps> = {}): AutoforgeLoop
     // Default no-op executor so the advisory-mode guard does not break multi-cycle tests.
     // Tests that need to verify advisory-mode behaviour should override with _executeCommand: undefined.
     _executeCommand: async () => ({ success: true }),
+    // Disable the real termination-governor so circuit-breaker and artifact-blocking tests
+    // exercise those specific mechanisms without the governor pre-empting them.
+    // Tests that need governor behaviour inject their own _evaluateTermination.
+    _evaluateTermination: async () => ({ terminate: false, reason: 'stub', confidence: 0 }),
     ...overrides,
   };
 }

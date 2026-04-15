@@ -14,6 +14,7 @@ import {
   computeSelfImprovementScore,
   computeDeveloperExperienceScore,
   computeAutonomyScore,
+  computeEnterpriseReadinessScore,
   formatDimensionBar,
   readAssessmentHistory,
   writeAssessmentHistory,
@@ -480,5 +481,47 @@ describe('history I/O', () => {
   it('returns empty array when file does not exist', async () => {
     const result = await readAssessmentHistory('/nonexistent/path/xyz');
     assert.deepEqual(result, []);
+  });
+});
+
+// ── computeEnterpriseReadinessScore ──────────────────────────────────────────
+
+describe('computeEnterpriseReadinessScore', () => {
+  function makeAssessment(security: number): MaturityAssessment {
+    return makeMaturityAssessment({ dimensions: { functionality: 75, testing: 80, errorHandling: 65, security, uxPolish: 70, documentation: 60, performance: 55, maintainability: 72 } });
+  }
+
+  it('base score: audit log with 8 entries (>5) → 25', () => {
+    const state = { auditLog: Array.from({ length: 8 }, (_, i) => `e${i}`) } as DanteState;
+    assert.equal(computeEnterpriseReadinessScore(state, makeAssessment(50)), 25); // 15+10
+  });
+
+  it('selfEditPolicy deny adds +15', () => {
+    const state = { auditLog: Array.from({ length: 8 }, (_, i) => `e${i}`), selfEditPolicy: 'deny' } as DanteState;
+    assert.equal(computeEnterpriseReadinessScore(state, makeAssessment(50)), 40); // 15+10+15
+  });
+
+  it('selfEditPolicy prompt also adds +15', () => {
+    const state = { auditLog: Array.from({ length: 8 }, (_, i) => `e${i}`), selfEditPolicy: 'prompt' } as DanteState;
+    assert.equal(computeEnterpriseReadinessScore(state, makeAssessment(50)), 40); // 15+10+15
+  });
+
+  it('lastVerifyReceiptPath set adds +15', () => {
+    const state = { auditLog: Array.from({ length: 8 }, (_, i) => `e${i}`), lastVerifyReceiptPath: '/path/receipt.json' } as DanteState;
+    assert.equal(computeEnterpriseReadinessScore(state, makeAssessment(50)), 40); // 15+10+15
+  });
+
+  it('security ≥ 80 adds +20', () => {
+    const state = { auditLog: Array.from({ length: 8 }, (_, i) => `e${i}`) } as DanteState;
+    assert.equal(computeEnterpriseReadinessScore(state, makeAssessment(85)), 45); // 15+10+20
+  });
+
+  it('all signals maxed: audit>20 + selfEditPolicy + security≥80 + receipt → 85', () => {
+    const state = {
+      auditLog: Array.from({ length: 25 }, (_, i) => `entry${i}`),
+      selfEditPolicy: 'deny',
+      lastVerifyReceiptPath: '/path/receipt.json',
+    } as DanteState;
+    assert.equal(computeEnterpriseReadinessScore(state, makeAssessment(90)), 85); // 15+20+15+20+15
   });
 });

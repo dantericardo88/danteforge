@@ -92,4 +92,45 @@ describe('circuit-breaker', () => {
     assert.equal(getCircuitState('a'), 'closed');
     assert.equal(getCircuitState('b'), 'closed');
   });
+
+  // ── Mutation-killing boundary tests ──────────────────────────────────────────
+
+  it('Tmut1: exactly failureThreshold failures trips OPEN (not threshold-1)', () => {
+    // Kills: condition `>= threshold` mutated to `> threshold`
+    const config = { failureThreshold: 4, resetTimeoutMs: 60_000, halfOpenSuccessThreshold: 1 };
+    for (let i = 0; i < 3; i++) recordFailure('mut1', config);
+    assert.equal(getCircuitState('mut1'), 'closed', 'threshold-1 failures should NOT trip open');
+    recordFailure('mut1', config);
+    assert.equal(getCircuitState('mut1'), 'open', 'exactly threshold failures MUST trip open');
+  });
+
+  it('Tmut2: timeout boundary — open at resetTimeoutMs-1, half_open at resetTimeoutMs', () => {
+    // Kills: `>= config.resetTimeoutMs` mutated to `> config.resetTimeoutMs`
+    const config = { failureThreshold: 1, resetTimeoutMs: 1000, halfOpenSuccessThreshold: 1 };
+    recordFailure('mut2', config);
+    const openedAt = Date.now();
+
+    // Just before timeout: still open
+    assert.equal(shouldAllowRequest('mut2', config, openedAt + 999), false,
+      'should still be open at resetTimeoutMs - 1ms');
+
+    // At exactly resetTimeoutMs: should transition to half_open
+    assert.equal(shouldAllowRequest('mut2', config, openedAt + 1000), true,
+      'should allow request at exactly resetTimeoutMs');
+    assert.equal(getCircuitState('mut2'), 'half_open');
+  });
+
+  it('Tmut3: exactly halfOpenSuccessThreshold successes closes circuit (not threshold-1)', () => {
+    // Kills: `>= halfOpenSuccessThreshold` mutated to `> halfOpenSuccessThreshold`
+    const config = { failureThreshold: 1, resetTimeoutMs: 100, halfOpenSuccessThreshold: 3 };
+    recordFailure('mut3', config);
+    shouldAllowRequest('mut3', config, Date.now() + 200); // → half_open
+
+    recordSuccess('mut3', config);
+    assert.equal(getCircuitState('mut3'), 'half_open', 'threshold-1 successes should NOT close');
+    recordSuccess('mut3', config);
+    assert.equal(getCircuitState('mut3'), 'half_open', 'threshold-1 successes should NOT close');
+    recordSuccess('mut3', config);
+    assert.equal(getCircuitState('mut3'), 'closed', 'exactly threshold successes MUST close');
+  });
 });

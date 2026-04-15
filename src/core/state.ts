@@ -70,6 +70,7 @@ export interface DanteState {
   qaBaseline?: string;
   qaLastRun?: string;
   lastVerifyStatus?: 'pass' | 'warn' | 'fail' | 'unknown';
+  lastVerifyReceiptPath?: string;
   retroDelta?: number;
   retroLastRun?: string;
   completionTracker?: CompletionTracker;
@@ -96,6 +97,40 @@ export interface DanteState {
   workspaceId?: string;
   // Self-edit policy
   selfEditPolicy?: import('./safe-self-edit.js').SelfEditPolicy;
+  // v0.16.0 — Token Economy & Cost Visibility
+  totalTokensUsed?: number;           // accumulated across all LLM calls in this project
+  maxBudgetUsd?: number;              // per-session budget ceiling (default: 10.0)
+  routingAggressiveness?: 'conservative' | 'balanced' | 'aggressive';
+  lastComplexityPreset?: string;      // last preset used by the complexity classifier
+  // v0.16.0 — Session progress tracking
+  sessionBaselineScore?: number;      // harsh score captured at session or baseline start
+  sessionBaselineTimestamp?: string;  // ISO timestamp when baseline was set
+  // v0.17.0 — Score history for proof arcs
+  scoreHistory?: ScoreHistoryEntry[]; // rolling append, max 90 entries
+  // v0.34.0 — Ecosystem MCP signals (written by score bootstrap)
+  skillCount?: number;         // count of skill dirs with SKILL.md under src/harvested/dante-agents/skills/
+  hasPluginManifest?: boolean; // true when .claude-plugin/plugin.json exists
+}
+
+// v0.17.0 — Score history entry for proof arcs
+export interface ScoreHistoryEntry {
+  timestamp: string;     // ISO
+  displayScore: number;  // 0.0-10.0
+  gitSha?: string;       // best-effort from git rev-parse HEAD
+}
+
+/**
+ * Prepend a score entry to state.scoreHistory, trimmed to maxEntries.
+ * Pure function — returns a new state object.
+ */
+export function appendScoreHistory(
+  state: DanteState,
+  entry: ScoreHistoryEntry,
+  maxEntries = 90,
+): DanteState {
+  const existing = state.scoreHistory ?? [];
+  const updated = [entry, ...existing].slice(0, maxEntries);
+  return { ...state, scoreHistory: updated };
 }
 
 /**
@@ -213,6 +248,10 @@ export async function loadState(options: { cwd?: string } = {}): Promise<DanteSt
       retroDelta: parsed?.retroDelta as number | undefined,
       retroLastRun: parsed?.retroLastRun as string | undefined,
       completionTracker: parsed?.completionTracker as CompletionTracker | undefined,
+      // v0.10.0+ — score history and session baseline (were missing from loadState mapping)
+      sessionBaselineScore: parsed?.sessionBaselineScore as number | undefined,
+      sessionBaselineTimestamp: parsed?.sessionBaselineTimestamp as string | undefined,
+      scoreHistory: Array.isArray(parsed?.scoreHistory) ? parsed.scoreHistory as ScoreHistoryEntry[] : undefined,
       // v0.9.0 migration defaults
       reflectionEnabled: parsed?.reflectionEnabled,
       reflectionAttempts: parsed?.reflectionAttempts,
@@ -225,14 +264,22 @@ export async function loadState(options: { cwd?: string } = {}): Promise<DanteSt
       userId: parsed?.userId,
       workspaceId: parsed?.workspaceId,
       // Self-edit policy
-      selfEditPolicy: parsed?.selfEditPolicy,
+      selfEditPolicy: parsed?.selfEditPolicy ?? 'deny',
       // v0.8.0 verify status
       lastVerifyStatus: parsed?.lastVerifyStatus,
+      lastVerifyReceiptPath: parsed?.lastVerifyReceiptPath,
       // v0.10.0 competitors + targets
       competitors: parsed?.competitors,
       preferredLevel: parsed?.preferredLevel,
       completionTarget: parsed?.completionTarget,
       featureUniversePath: parsed?.featureUniversePath,
+      // v0.16.0 — token economy defaults applied on every load
+      totalTokensUsed: parsed?.totalTokensUsed,
+      maxBudgetUsd: parsed?.maxBudgetUsd ?? 10.0,
+      routingAggressiveness: parsed?.routingAggressiveness ?? 'balanced',
+      lastComplexityPreset: parsed?.lastComplexityPreset,
+      skillCount: parsed?.skillCount as number | undefined,
+      hasPluginManifest: parsed?.hasPluginManifest as boolean | undefined,
     };
   } catch (err) {
     // Only log if this is NOT a "file not found" — real errors should surface
@@ -286,6 +333,13 @@ export async function loadState(options: { cwd?: string } = {}): Promise<DanteSt
       // v0.10.0 workspace fields
       userId: undefined,
       workspaceId: undefined,
+      // v0.16.0 — token economy defaults
+      totalTokensUsed: undefined,
+      maxBudgetUsd: 10.0,
+      routingAggressiveness: 'balanced',
+      lastComplexityPreset: undefined,
+      skillCount: undefined,
+      hasPluginManifest: undefined,
     };
     await saveState(defaultState, options);
     return defaultState;

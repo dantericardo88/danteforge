@@ -12,6 +12,7 @@ import {
 } from '@modelcontextprotocol/sdk/types.js';
 import { loadState, saveState } from './state.js';
 import type { DanteState, WorkflowStage } from './state.js';
+import { getMcpRateLimiter, type RateLimiter } from './rate-limiter.js';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -412,6 +413,102 @@ export const TOOL_DEFINITIONS: ToolDefinition[] = [
       type: 'object',
       properties: {
         cwd: { type: 'string', description: 'Project directory' },
+      },
+      required: [],
+    },
+  },
+  {
+    name: 'danteforge_adoption_queue',
+    description: 'Read the current OSS adoption queue showing patterns ready to implement. Returns the ADOPTION_QUEUE.md content.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        cwd: { type: 'string', description: 'Project directory (default: current)' },
+      },
+    },
+  },
+  {
+    name: 'danteforge_quality_certificate',
+    description: 'Generate a tamper-evident quality certificate (evidenceFingerprint) from current convergence state.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        cwd: { type: 'string', description: 'Project directory (default: current)' },
+      },
+    },
+  },
+  {
+    name: 'danteforge_pattern_coverage',
+    description: 'Show which spec requirements have OSS pattern coverage. Reads PATTERN_COVERAGE.md if present.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        cwd: { type: 'string', description: 'Project directory (default: current)' },
+      },
+    },
+  },
+  {
+    name: 'danteforge_harvest_next_pattern',
+    description: 'Adopt the highest-priority pattern from ADOPTION_QUEUE.md. Requires human approval (policy: confirm) — writes files and may run tests.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        cwd: { type: 'string', description: 'Project directory (default: current)' },
+        dryRun: { type: 'boolean', description: 'If true, show what would be adopted without executing (default: true for safety)' },
+      },
+    },
+  },
+  {
+    name: 'danteforge_explain_score',
+    description: 'Explain a maturity score dimension — what it measures, why it matters, and what would improve it.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        dimension: { type: 'string', description: 'Score dimension name (e.g. "circuit-breaker-reliability")' },
+        score: { type: 'number', description: 'Current score 0-10 (optional — loads from state if omitted)' },
+        cwd: { type: 'string', description: 'Project directory (default: current)' },
+      },
+      required: ['dimension'],
+    },
+  },
+  {
+    name: 'danteforge_leapfrog_opportunities',
+    description: 'List competitive leapfrog opportunities — dimensions where OSS patterns can jump this project ahead of named competitors.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        cwd: { type: 'string', description: 'Project directory (default: current)' },
+        maxOpportunities: { type: 'number', description: 'Maximum opportunities to return (default: 5)' },
+      },
+    },
+  },
+  {
+    name: 'danteforge_pattern_search',
+    description: 'Search the global OSS pattern library by keyword, category, or complexity. Returns patterns ranked by ROI.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        keyword: { type: 'string', description: 'Search term matched against pattern name and description' },
+        category: { type: 'string', description: 'Filter by category (e.g. "reliability", "performance")' },
+        maxComplexity: { type: 'string', enum: ['low', 'medium', 'high'], description: 'Maximum adoption complexity' },
+        minAvgRoi: { type: 'number', description: 'Minimum average ROI 0-1 (default: 0)' },
+        limit: { type: 'number', description: 'Maximum results (default: 10)' },
+      },
+    },
+  },
+  {
+    name: 'danteforge_adversarial_score',
+    description: 'Challenge the self-score with an independent adversary LLM. Returns a divergence panel showing selfScore vs adversarialScore, verdict (trusted/watch/inflated/underestimated), and the most inflated dimensions. Use this to catch score inflation before declaring a feature complete.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        cwd: { type: 'string', description: 'Working directory (defaults to process.cwd())' },
+        summaryOnly: { type: 'boolean', description: 'Use a single LLM call for summary score instead of per-dimension (faster, lower cost)' },
+        dimensions: {
+          type: 'array',
+          items: { type: 'string' },
+          description: 'Specific dimensions to score adversarially. Omit to score all dimensions.',
+        },
       },
       required: [],
     },
@@ -827,6 +924,10 @@ export interface McpServerDeps {
   _generateMasterplan?: (opts: { cwd: string }) => Promise<unknown>;
   /** Injected competitor scanner */
   _scanCompetitors?: (opts: { cwd: string }) => Promise<unknown>;
+  /** Injected rate limiter — defaults to the MCP singleton. Override in tests to bypass. */
+  _rateLimiter?: RateLimiter | null;
+  /** Injected adversarial scorer — for testing danteforge_adversarial_score without LLM */
+  _adversarialScore?: (opts: { cwd: string; summaryOnly?: boolean }) => Promise<unknown>;
 }
 
 // ---------------------------------------------------------------------------
@@ -863,7 +964,15 @@ export type ToolName =
   | 'danteforge_masterplan'
   | 'danteforge_competitors'
   | 'danteforge_lessons_add'
-  | 'danteforge_workflow';
+  | 'danteforge_workflow'
+  | 'danteforge_adoption_queue'
+  | 'danteforge_quality_certificate'
+  | 'danteforge_pattern_coverage'
+  | 'danteforge_harvest_next_pattern'
+  | 'danteforge_explain_score'
+  | 'danteforge_leapfrog_opportunities'
+  | 'danteforge_pattern_search'
+  | 'danteforge_adversarial_score';
 
 // ---------------------------------------------------------------------------
 // New injectable tool handlers
@@ -930,6 +1039,26 @@ async function handleLessonsAdd(args: Record<string, unknown>, deps: McpServerDe
   }
 }
 
+async function handleAdversarialScore(args: Record<string, unknown>, deps: McpServerDeps): Promise<string> {
+  const cwd = typeof args['cwd'] === 'string' ? args['cwd'] : process.cwd();
+  const summaryOnly = args['summaryOnly'] === true;
+  if (deps._adversarialScore) {
+    const result = await deps._adversarialScore({ cwd, summaryOnly });
+    return JSON.stringify(result ?? { ok: true });
+  }
+  try {
+    const { generateAdversarialScore } = await import('./adversarial-scorer-dim.js');
+    const { computeHarshScore } = await import('./harsh-scorer.js');
+    const selfResult = await computeHarshScore({ cwd });
+    const result = await generateAdversarialScore(selfResult, { cwd, summaryOnly });
+    return JSON.stringify(result);
+  } catch (err) {
+    return JSON.stringify({
+      error: `Adversarial scoring failed: ${err instanceof Error ? err.message : String(err)}`,
+    });
+  }
+}
+
 async function handleSimpleInjectable(
   name: string,
   args: Record<string, unknown>,
@@ -943,6 +1072,250 @@ async function handleSimpleInjectable(
     return JSON.stringify(result ?? { ok: true });
   }
   return JSON.stringify({ ok: true, message: `${name} not fully wired in this mode` });
+}
+
+async function handleAdoptionQueue(args: Record<string, unknown>): Promise<ToolResult> {
+  const cwd = resolveCwd(args);
+  try {
+    const queuePath = path.join(cwd, '.danteforge', 'ADOPTION_QUEUE.md');
+    const content = await fs.readFile(queuePath, 'utf8');
+    return jsonResult({ content, path: queuePath });
+  } catch {
+    return jsonResult({ content: '# Adoption Queue\n\n_(empty — run oss-intel to populate)_', path: null });
+  }
+}
+
+async function handleQualityCertificate(args: Record<string, unknown>): Promise<ToolResult> {
+  const cwd = resolveCwd(args);
+  try {
+    const certPath = path.join(cwd, '.danteforge', 'QUALITY_CERTIFICATE.json');
+    const content = await fs.readFile(certPath, 'utf8');
+    return jsonResult(JSON.parse(content) as unknown);
+  } catch {
+    return jsonResult({ error: 'No quality certificate found. Run danteforge certify to generate one.' });
+  }
+}
+
+async function handlePatternCoverage(args: Record<string, unknown>): Promise<ToolResult> {
+  const cwd = resolveCwd(args);
+  try {
+    const coveragePath = path.join(cwd, '.danteforge', 'PATTERN_COVERAGE.md');
+    const content = await fs.readFile(coveragePath, 'utf8');
+    return jsonResult({ content, path: coveragePath });
+  } catch {
+    return jsonResult({ content: '# Pattern Coverage\n\n_(not yet generated — run danteforge spec-match to compute)_', path: null });
+  }
+}
+
+async function handleHarvestNextPattern(args: Record<string, unknown>): Promise<ToolResult> {
+  const cwd = resolveCwd(args);
+  // Safety gate: dryRun=true by default — this tool writes files and must not auto-execute
+  const dryRun = args['dryRun'] !== false; // default true unless explicitly set to false
+
+  try {
+    const queuePath = path.join(cwd, '.danteforge', 'ADOPTION_QUEUE.md');
+    const content = await fs.readFile(queuePath, 'utf8');
+
+    // Extract first pattern name from queue
+    const firstPatternMatch = content.match(/^##\s+(.+)$/m);
+    const patternName = firstPatternMatch?.[1] ?? 'unknown';
+
+    if (dryRun) {
+      return jsonResult({
+        dryRun: true,
+        nextPattern: patternName,
+        message: `Would adopt "${patternName}". Set dryRun=false to execute (requires human approval policy).`,
+        policy: 'confirm',
+        warning: 'This tool writes files and may run tests. Human approval required.',
+      });
+    }
+
+    // Non-dry-run: return authorization required message
+    // Full adoption requires safe-self-edit approval flow — not auto-executed via MCP
+    return jsonResult({
+      requiresApproval: true,
+      nextPattern: patternName,
+      message: `Adopting "${patternName}" requires human approval. Use the CLI: danteforge oss-intel --adopt ${patternName}`,
+      policy: 'confirm',
+    });
+  } catch {
+    return jsonResult({ error: 'No adoption queue found. Run oss-intel first.' });
+  }
+}
+
+async function handleExplainScore(args: Record<string, unknown>): Promise<ToolResult> {
+  const dimension = String(args['dimension'] ?? '');
+  if (!dimension) return errorResult('Missing required parameter: dimension');
+
+  const cwd = resolveCwd(args);
+  const score = typeof args['score'] === 'number' ? args['score'] : null;
+
+  // Load score from state if not provided
+  let resolvedScore = score;
+  if (resolvedScore === null) {
+    try {
+      const stateDir = path.join(cwd, '.danteforge');
+      const competitorPath = path.join(stateDir, 'COMPETITOR_MATRIX.md');
+      const maturityPath = path.join(stateDir, 'MATURITY_REPORT.md');
+      for (const p of [maturityPath, competitorPath]) {
+        try {
+          const content = await fs.readFile(p, 'utf8');
+          const match = content.match(new RegExp(`${dimension}[^\\d]*(\\d+\\.?\\d*)\\/10`));
+          if (match) { resolvedScore = parseFloat(match[1]); break; }
+        } catch { /* keep looking */ }
+      }
+    } catch { /* best-effort */ }
+  }
+
+  const scoreLabel = resolvedScore !== null ? `${resolvedScore}/10` : 'unknown';
+
+  const DIMENSION_EXPLANATIONS: Record<string, { what: string; why: string; howToImprove: string }> = {
+    'circuit-breaker-reliability': {
+      what: 'Measures whether external calls (LLM, API, DB) are wrapped in circuit breakers that open on repeated failure and recover gracefully.',
+      why: 'Without it, one flaky provider cascades into full system downtime. Circuit breakers contain blast radius.',
+      howToImprove: 'Add CLOSED/OPEN/HALF_OPEN state machine per provider; wrap callLLM with circuit-breaker check; add backoff strategy.',
+    },
+    'test-injection-discipline': {
+      what: 'Measures whether tests use injected dependencies (_llmCaller, _isLLMAvailable, _readFile etc.) instead of real I/O.',
+      why: 'Real I/O in tests causes 200x+ slowdowns, non-determinism, and CI failures. Injection seams are the antidote.',
+      howToImprove: 'Add _fnName? optional params to all functions that call LLM or FS; use them in tests via stub injection.',
+    },
+  };
+
+  const explanation = DIMENSION_EXPLANATIONS[dimension] ?? {
+    what: `"${dimension}" measures this dimension of software maturity in your codebase.`,
+    why: 'Higher scores on this dimension indicate production-readiness and reduced operational risk.',
+    howToImprove: `Review the ${dimension} section in MATURITY_REPORT.md or run: danteforge assess`,
+  };
+
+  return jsonResult({
+    dimension,
+    score: scoreLabel,
+    what: explanation.what,
+    why: explanation.why,
+    howToImprove: explanation.howToImprove,
+    nextAction: resolvedScore !== null && resolvedScore < 7
+      ? `Run: danteforge oss-intel --focus ${dimension} to find patterns that improve this score`
+      : 'Score looks healthy. Run danteforge assess to see full picture.',
+  });
+}
+
+async function handleLeapfrogOpportunities(args: Record<string, unknown>): Promise<ToolResult> {
+  const cwd = resolveCwd(args);
+  const maxOpportunities = typeof args['maxOpportunities'] === 'number' ? args['maxOpportunities'] : 5;
+
+  try {
+    const stateDir = path.join(cwd, '.danteforge');
+
+    // Read competitor matrix and harvest queue to find leapfrog gaps
+    let competitorContent = '';
+    let queueContent = '';
+    try { competitorContent = await fs.readFile(path.join(stateDir, 'COMPETITOR_MATRIX.md'), 'utf8'); } catch {}
+    try { queueContent = await fs.readFile(path.join(stateDir, 'ADOPTION_QUEUE.md'), 'utf8'); } catch {}
+
+    // Parse dimensions where we score lower than competitors
+    const opportunities: Array<{ dimension: string; ourScore: number; competitorScore: number; gap: number; patternAvailable: boolean }> = [];
+
+    // Extract score comparisons from competitor matrix (format: "| dimension | ourScore | competitorScore |")
+    const tableRows = competitorContent.matchAll(/\|\s*([^|]+)\s*\|\s*(\d+\.?\d*)\s*\|\s*(\d+\.?\d*)\s*\|/g);
+    for (const row of tableRows) {
+      const dimension = row[1].trim();
+      const ourScore = parseFloat(row[2]);
+      const competitorScore = parseFloat(row[3]);
+      if (!isNaN(ourScore) && !isNaN(competitorScore) && competitorScore > ourScore + 1) {
+        const patternAvailable = queueContent.toLowerCase().includes(dimension.toLowerCase());
+        opportunities.push({ dimension, ourScore, competitorScore, gap: competitorScore - ourScore, patternAvailable });
+      }
+    }
+
+    // Sort by gap size (biggest opportunity first)
+    opportunities.sort((a, b) => b.gap - a.gap);
+    const top = opportunities.slice(0, maxOpportunities);
+
+    if (top.length === 0) {
+      return jsonResult({
+        opportunities: [],
+        message: 'No leapfrog opportunities found. Run: danteforge universe-scan to populate competitor data.',
+        nextAction: 'danteforge universe-scan',
+      });
+    }
+
+    return jsonResult({
+      opportunities: top.map(o => ({
+        dimension: o.dimension,
+        ourScore: o.ourScore,
+        competitorAverage: o.competitorScore,
+        gap: Math.round(o.gap * 10) / 10,
+        patternAvailable: o.patternAvailable,
+        action: o.patternAvailable
+          ? `danteforge oss-intel --focus ${o.dimension} (pattern queued)`
+          : `danteforge harvest --focus ${o.dimension} (needs discovery)`,
+      })),
+      totalOpportunities: opportunities.length,
+      nextAction: `danteforge oss-intel --focus ${top[0].dimension}`,
+    });
+  } catch (err) {
+    return jsonResult({
+      opportunities: [],
+      error: err instanceof Error ? err.message : String(err),
+      nextAction: 'danteforge universe-scan',
+    });
+  }
+}
+
+async function handlePatternSearch(args: Record<string, unknown>): Promise<ToolResult> {
+  const keyword = typeof args['keyword'] === 'string' ? args['keyword'].toLowerCase() : '';
+  const category = typeof args['category'] === 'string' ? args['category'] : undefined;
+  const maxComplexity = typeof args['maxComplexity'] === 'string'
+    ? (args['maxComplexity'] as 'low' | 'medium' | 'high')
+    : undefined;
+  const minAvgRoi = typeof args['minAvgRoi'] === 'number' ? args['minAvgRoi'] : 0;
+  const limit = typeof args['limit'] === 'number' ? args['limit'] : 10;
+
+  try {
+    const { queryLibrary } = await import('./global-pattern-library.js');
+    const results = await queryLibrary({ category, maxComplexity, minAvgRoi, limit: limit * 2 });
+
+    // Apply keyword filter client-side
+    const filtered = keyword
+      ? results.filter(e =>
+          e.patternName.toLowerCase().includes(keyword) ||
+          e.whyItWorks.toLowerCase().includes(keyword) ||
+          e.category.toLowerCase().includes(keyword),
+        )
+      : results;
+
+    const top = filtered.slice(0, limit);
+
+    if (top.length === 0) {
+      return jsonResult({
+        patterns: [],
+        message: `No patterns found matching "${keyword || '(all)'}". Run danteforge oss-intel to populate the library.`,
+        totalInLibrary: results.length,
+      });
+    }
+
+    return jsonResult({
+      patterns: top.map(e => ({
+        name: e.patternName,
+        category: e.category,
+        complexity: e.adoptionComplexity,
+        avgRoi: Math.round(e.avgRoi * 100) + '%',
+        useCount: e.useCount,
+        sourceRepo: e.sourceRepo,
+        whyItWorks: e.whyItWorks.slice(0, 200),
+        adoptAction: `danteforge oss-intel --adopt "${e.patternName}"`,
+      })),
+      totalMatched: filtered.length,
+      totalInLibrary: results.length,
+    });
+  } catch (err) {
+    return jsonResult({
+      patterns: [],
+      error: err instanceof Error ? err.message : String(err),
+      message: 'Global pattern library unavailable. Run danteforge oss-intel to populate it.',
+    });
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -986,6 +1359,14 @@ export const TOOL_HANDLERS: Record<string, ToolHandler> = {
   danteforge_constitution: (args, deps = {}) => handleSimpleInjectable('constitution', args, deps, deps._constitution),
   danteforge_masterplan: (args, deps = {}) => handleSimpleInjectable('masterplan', args, deps, deps._generateMasterplan),
   danteforge_competitors: (args, deps = {}) => handleSimpleInjectable('competitors', args, deps, deps._scanCompetitors),
+  danteforge_adversarial_score: (args, deps = {}) => handleAdversarialScore(args, deps),
+  danteforge_adoption_queue: (args) => handleAdoptionQueue(args),
+  danteforge_quality_certificate: (args) => handleQualityCertificate(args),
+  danteforge_pattern_coverage: (args) => handlePatternCoverage(args),
+  danteforge_harvest_next_pattern: (args) => handleHarvestNextPattern(args),
+  danteforge_explain_score: (args) => handleExplainScore(args),
+  danteforge_leapfrog_opportunities: (args) => handleLeapfrogOpportunities(args),
+  danteforge_pattern_search: (args) => handlePatternSearch(args),
 };
 
 // ---------------------------------------------------------------------------
@@ -994,7 +1375,7 @@ export const TOOL_HANDLERS: Record<string, ToolHandler> = {
 
 export async function createAndStartMCPServer(): Promise<void> {
   const server = new Server(
-    { name: 'danteforge', version: '0.15.0' },
+    { name: 'danteforge', version: '0.17.0' },
     { capabilities: { tools: {} } },
   );
 
@@ -1007,6 +1388,16 @@ export async function createAndStartMCPServer(): Promise<void> {
   server.setRequestHandler(CallToolRequestSchema, async (request, _extra) => {
     const { name, arguments: toolArgs } = request.params;
     const args = (toolArgs ?? {}) as Record<string, unknown>;
+
+    // Rate limit per tool name — protects against DoS / tight automation loops
+    const limiter = getMcpRateLimiter();
+    const rateResult = limiter.consume(name);
+    if (!rateResult.allowed) {
+      return errorResult(
+        `Rate limit exceeded for '${name}'. Retry after ${rateResult.retryAfterMs}ms. ` +
+        `(Limit: 30 burst / 10 per second)`,
+      );
+    }
 
     const handler = TOOL_HANDLERS[name];
     if (!handler) {
@@ -1077,7 +1468,7 @@ export function createMcpServer(sessionDeps: McpServerDeps = {}): ManualMcpServe
             result: {
               protocolVersion: params['protocolVersion'] ?? '2024-11-05',
               capabilities: { tools: {} },
-              serverInfo: { name: 'danteforge', version: '0.15.0' },
+              serverInfo: { name: 'danteforge', version: '0.17.0' },
             },
           };
         }

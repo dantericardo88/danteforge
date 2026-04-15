@@ -77,7 +77,7 @@ describe('release check scripts', () => {
 
     assert.match(postinstall, /postinstall/);
     const script = await fs.readFile('lib/postinstall.js', 'utf8');
-    assert.match(script, /setup assistants/);
+    assert.match(script, /danteforge init/);
     assert.doesNotMatch(script, /syncSkills\(/);
   });
 

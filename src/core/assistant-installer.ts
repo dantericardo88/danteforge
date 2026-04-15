@@ -4,13 +4,24 @@ import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-export type AssistantRegistry = 'claude' | 'codex' | 'antigravity' | 'opencode' | 'cursor';
+export type AssistantRegistry =
+  | 'claude'
+  | 'codex'
+  | 'antigravity'
+  | 'opencode'
+  | 'cursor'
+  | 'windsurf'
+  | 'aider'
+  | 'openhands'
+  | 'copilot'
+  | 'continue'
+  | 'gemini-cli';
 
 export interface AssistantInstallResult {
   assistant: AssistantRegistry;
   targetDir: string;
   installedSkills: string[];
-  installMode?: 'skills' | 'cursor-rules';
+  installMode?: 'skills' | 'cursor-rules' | 'windsurf-rules' | 'aider-config' | 'openhands-microagent' | 'copilot-instructions' | 'continue-config' | 'gemini-cli';
 }
 
 export interface InstallAssistantSkillsOptions {
@@ -169,6 +180,18 @@ function resolveAssistantTargetDir(homeDir: string, assistant: AssistantRegistry
       return path.join(resolveConfigHome(homeDir), 'opencode', 'skills');
     case 'cursor':
       return path.join(projectDir, '.cursor', 'rules');
+    case 'windsurf':
+      return path.join(projectDir, '.windsurf', 'rules');
+    case 'aider':
+      return projectDir;
+    case 'openhands':
+      return path.join(projectDir, '.openhands', 'microagents');
+    case 'copilot':
+      return path.join(projectDir, '.github');
+    case 'continue':
+      return path.join(homeDir, '.continue');
+    case 'gemini-cli':
+      return projectDir;
   }
 }
 
@@ -271,6 +294,223 @@ function buildCursorBootstrapRuleV2(): string {
     'If Figma MCP is needed in Cursor, configure `.cursor/mcp.json` via `danteforge setup figma`.',
     '',
   ].join('\n');
+}
+
+function buildWindsurfBootstrapRule(): string {
+  return [
+    '## DanteForge Workflow Framework',
+    '',
+    'You are assisting with a project that uses DanteForge — a structured spec-driven pipeline.',
+    '',
+    '## Pipeline Stages (in order)',
+    'Each stage has a hard gate. You cannot skip stages.',
+    '',
+    '1. `danteforge constitution` — Define project vision, principles, stack',
+    '2. `danteforge specify` — Generate SPEC.md from constitution',
+    '3. `danteforge clarify` — Review spec for gaps',
+    '4. `danteforge plan` — Break spec into implementation plan',
+    '5. `danteforge tasks` — Break plan into executable tasks per phase',
+    '6. `danteforge forge <phase>` — Implement tasks for a phase',
+    '7. `danteforge verify` — **Always run this after forge to validate**',
+    '8. `danteforge synthesize` — Consolidate learnings',
+    '',
+    '## Your Role',
+    '- Read `.danteforge/STATE.yaml` to know the current phase and tasks',
+    '- Implement tasks using your native file editing tools',
+    '- Run tests using your terminal access',
+    '- Always call `danteforge verify` when your implementation is complete',
+    '- Never skip the verify step — it updates STATE.yaml and unlocks the next stage',
+    '',
+  ].join('\n');
+}
+
+function buildAiderConfig(): string {
+  return [
+    '# DanteForge workflow integration',
+    '# Read CONVENTIONS.md for project conventions and pipeline stages',
+    'read:',
+    '  - CONVENTIONS.md',
+    '',
+  ].join('\n');
+}
+
+function buildAiderConventions(): string {
+  return [
+    '# Project Conventions',
+    '',
+    '## DanteForge Workflow Framework',
+    '',
+    'This project uses DanteForge for structured development.',
+    '',
+    '### Pipeline Stages',
+    '1. **constitution** — Vision, principles, stack (`danteforge constitution`)',
+    '2. **specify** — SPEC.md generation (`danteforge specify`)',
+    '3. **clarify** — Gap review (`danteforge clarify`)',
+    '4. **plan** — Implementation plan (`danteforge plan`)',
+    '5. **tasks** — Executable task breakdown (`danteforge tasks`)',
+    '6. **forge** — Implementation (`danteforge forge <phase>`)',
+    '7. **verify** — **Always run after forge**: `danteforge verify`',
+    '8. **synthesize** — Learnings (`danteforge synthesize`)',
+    '',
+    '### Your Role',
+    '- Read `.danteforge/STATE.yaml` to know the current phase and tasks',
+    '- Implement code changes for the current phase\'s tasks',
+    '- After completing work, run: `danteforge verify`',
+    '- The verify step updates state and gates progression to the next stage',
+    '',
+  ].join('\n');
+}
+
+function buildOpenHandsMicroagent(): string {
+  return [
+    '# DanteForge Workflow Framework',
+    '',
+    'This repository uses DanteForge for structured, spec-driven development.',
+    '',
+    '## Setup',
+    '```bash',
+    'npm install -g danteforge',
+    'danteforge doctor',
+    '```',
+    '',
+    '## Current State',
+    'Read `.danteforge/STATE.yaml` to see:',
+    '- `workflowStage` — current pipeline stage',
+    '- `currentPhase` — active forge phase',
+    '- `tasks` — tasks by phase',
+    '',
+    '## Pipeline Stages',
+    'Run these commands in order (each has a hard gate):',
+    '',
+    '1. `danteforge constitution` — Define vision and principles',
+    '2. `danteforge specify` — Generate SPEC.md',
+    '3. `danteforge clarify` — Review spec for gaps',
+    '4. `danteforge plan` — Create implementation plan',
+    '5. `danteforge tasks` — Break plan into tasks',
+    '6. `danteforge forge <phase>` — Implement tasks',
+    '7. `danteforge verify` — **Run after every forge** — validates and unlocks next stage',
+    '8. `danteforge synthesize` — Consolidate learnings',
+    '',
+    '## Your Role',
+    '- Use your file editing and terminal tools to implement the tasks for the current phase',
+    '- Check `.danteforge/STATE.yaml` before starting',
+    '- Always run `danteforge verify` when you finish implementing',
+    '',
+  ].join('\n');
+}
+
+function buildCopilotInstructions(): string {
+  return [
+    '# DanteForge Workflow Framework',
+    '',
+    'This project uses DanteForge for structured, spec-driven development.',
+    '',
+    '## Pipeline',
+    'DanteForge enforces a strict pipeline. Read `.danteforge/STATE.yaml` to know the current stage.',
+    '',
+    'Stages (in order):',
+    '1. **constitution** (`danteforge constitution`) — Vision, principles, tech stack',
+    '2. **specify** (`danteforge specify`) — Detailed spec generation',
+    '3. **clarify** (`danteforge clarify`) — Spec gap review',
+    '4. **plan** (`danteforge plan`) — Implementation plan',
+    '5. **tasks** (`danteforge tasks`) — Task breakdown by phase',
+    '6. **forge** (`danteforge forge <phase>`) — Code implementation',
+    '7. **verify** (`danteforge verify`) — **Always run after implementing**',
+    '8. **synthesize** (`danteforge synthesize`) — Learning consolidation',
+    '',
+    '## When Implementing',
+    '- Check `STATE.yaml` for current phase and tasks before starting',
+    '- Implement code using standard file operations and terminal',
+    '- Run `danteforge verify` when complete — this is mandatory before the next stage',
+    '',
+  ].join('\n');
+}
+
+function buildGeminiMd(): string {
+  return [
+    '# DanteForge Workflow Framework',
+    '',
+    '@AGENTS.md',
+    '',
+    '## Pipeline Stages',
+    '',
+    'This project uses DanteForge for structured, spec-driven development.',
+    '',
+    'Run commands in order (hard gates enforce sequence):',
+    '',
+    '1. `danteforge constitution` — Vision, principles, tech stack',
+    '2. `danteforge specify` — SPEC.md generation',
+    '3. `danteforge clarify` — Spec gap review',
+    '4. `danteforge plan` — Implementation plan',
+    '5. `danteforge tasks` — Task breakdown by phase',
+    '6. `danteforge forge <phase>` — Implement tasks for phase',
+    '7. `danteforge verify` — **Always run after forge**',
+    '8. `danteforge synthesize` — Learnings consolidation',
+    '',
+    '## Current Project State',
+    'Read `.danteforge/STATE.yaml` to know:',
+    '- Current workflow stage',
+    '- Active phase number',
+    '- Tasks for the current phase',
+    '',
+    '## Your Role',
+    'Implement the tasks for the current phase using your file and terminal tools.',
+    'Always run `danteforge verify` when you finish — this updates state and unlocks the next stage.',
+    '',
+  ].join('\n');
+}
+
+const CONTINUE_RULES = [
+  'This project uses DanteForge workflow framework. Read .danteforge/STATE.yaml to see current phase and tasks.',
+  'DanteForge pipeline: constitution → specify → clarify → plan → tasks → forge → verify → synthesize',
+  'After completing forge work, always run: danteforge verify',
+  'Never skip the verify step — it gates progression to the next stage',
+];
+
+async function syncContinueConfig(targetDir: string): Promise<void> {
+  const configPath = path.join(targetDir, 'config.yaml');
+  let existingContent = '';
+  try {
+    existingContent = await fs.readFile(configPath, 'utf8');
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error;
+  }
+
+  // Parse existing rules array (simple line-based detection — avoids heavy YAML dep)
+  const lines = existingContent.split('\n');
+  const rulesHeaderIdx = lines.findIndex(l => l.trim() === 'rules:');
+
+  if (rulesHeaderIdx === -1) {
+    // No rules section — append one
+    const trimmed = existingContent.trimEnd();
+    const prefix = trimmed.length > 0 ? trimmed + '\n\n' : '';
+    const rulesBlock = 'rules:\n' + CONTINUE_RULES.map(r => `  - "${r}"`).join('\n') + '\n';
+    await fs.writeFile(configPath, prefix + rulesBlock, 'utf8');
+    return;
+  }
+
+  // Rules section exists — collect existing rule strings, append missing ones
+  const existingRules = new Set<string>();
+  let i = rulesHeaderIdx + 1;
+  while (i < lines.length && (lines[i]!.startsWith('  ') || lines[i]!.trim() === '')) {
+    const m = lines[i]!.match(/^\s*-\s*"(.+)"$/);
+    if (m) existingRules.add(m[1]!);
+    i++;
+  }
+
+  const missing = CONTINUE_RULES.filter(r => !existingRules.has(r));
+  if (missing.length === 0) {
+    return; // Already idempotent
+  }
+
+  // Insert missing rules before the next non-rules line
+  const insertAt = i;
+  const newLines = [
+    ...lines.slice(0, insertAt),
+    ...missing.map(r => `  - "${r}"`),
+    ...lines.slice(insertAt),
+  ];
+  await fs.writeFile(configPath, newLines.join('\n'), 'utf8');
 }
 
 const DEFAULT_GLOBAL_ASSISTANTS: AssistantRegistry[] = ['claude', 'codex', 'antigravity', 'opencode'];
@@ -525,6 +765,52 @@ export async function installAssistantSkills(
         installedSkills: ['danteforge.mdc'],
         installMode: 'cursor-rules',
       });
+      continue;
+    }
+
+    if (assistant === 'windsurf') {
+      const filePath = path.join(targetDir, 'danteforge.md');
+      await fs.writeFile(filePath, buildWindsurfBootstrapRule(), 'utf8');
+      results.push({ assistant, targetDir, installedSkills: ['danteforge.md'], installMode: 'windsurf-rules' });
+      continue;
+    }
+
+    if (assistant === 'aider') {
+      await fs.writeFile(path.join(targetDir, '.aider.conf.yml'), buildAiderConfig(), 'utf8');
+      const convPath = path.join(targetDir, 'CONVENTIONS.md');
+      try {
+        await fs.access(convPath);
+      } catch {
+        await fs.writeFile(convPath, buildAiderConventions(), 'utf8');
+      }
+      results.push({ assistant, targetDir, installedSkills: ['.aider.conf.yml', 'CONVENTIONS.md'], installMode: 'aider-config' });
+      continue;
+    }
+
+    if (assistant === 'openhands') {
+      const filePath = path.join(targetDir, 'repo.md');
+      await fs.writeFile(filePath, buildOpenHandsMicroagent(), 'utf8');
+      results.push({ assistant, targetDir, installedSkills: ['repo.md'], installMode: 'openhands-microagent' });
+      continue;
+    }
+
+    if (assistant === 'copilot') {
+      const filePath = path.join(targetDir, 'copilot-instructions.md');
+      await fs.writeFile(filePath, buildCopilotInstructions(), 'utf8');
+      results.push({ assistant, targetDir, installedSkills: ['copilot-instructions.md'], installMode: 'copilot-instructions' });
+      continue;
+    }
+
+    if (assistant === 'continue') {
+      await syncContinueConfig(targetDir);
+      results.push({ assistant, targetDir, installedSkills: ['config.yaml'], installMode: 'continue-config' });
+      continue;
+    }
+
+    if (assistant === 'gemini-cli') {
+      const filePath = path.join(targetDir, 'GEMINI.md');
+      await fs.writeFile(filePath, buildGeminiMd(), 'utf8');
+      results.push({ assistant, targetDir, installedSkills: ['GEMINI.md'], installMode: 'gemini-cli' });
       continue;
     }
 

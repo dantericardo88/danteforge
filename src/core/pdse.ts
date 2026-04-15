@@ -108,8 +108,10 @@ export function scoreArtifact(ctx: ScoringContext): ScoreResult {
 
   // Anti-stub scan — floors clarity to 0
   // Supports both plain string patterns (case-insensitive includes) and RegExp patterns
+  // CONSTITUTION is exempt: it documents anti-stub policy by name and legitimately uses "stub"
   const stubHits: string[] = [];
-  for (const pattern of ANTI_STUB_PATTERNS) {
+  const skipAntiStub = ctx.artifactName === 'CONSTITUTION';
+  for (const pattern of (skipAntiStub ? [] : ANTI_STUB_PATTERNS)) {
     if (pattern instanceof RegExp) {
       if (pattern.test(content)) {
         stubHits.push(pattern.source);

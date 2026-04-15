@@ -48,7 +48,29 @@ const WORKFLOW_COMMANDS = [
   'wiki-query',
   'wiki-status',
   'resume',
+  'refused-patterns',
+  'respec',
+  'cross-synthesize',
+  'compete',
+  'score',
+  'prime',
+  'teach',
+  'go',
+  'harvest-pattern',
+  'build',
+  // Flow-level slash commands (slash-only — no CLI equivalent)
+  'daily-driver',
+  'oss-harvest',
+  'multi-agent',
+  'spec-to-ship',
+  'competitive-leapfrog',
+  // Existing CLI commands that were missing their slash command files
+  'proof',
+  'ascend',
 ];
+
+// Commands that have slash command files but no CLI equivalent (documentation-only flows).
+const SLASH_ONLY = ['brainstorm', 'daily-driver', 'oss-harvest', 'multi-agent', 'spec-to-ship', 'competitive-leapfrog'];
 
 // Commands intentionally NOT registered as slash commands (utilities/config).
 const UTILITY_COMMANDS = [
@@ -161,9 +183,6 @@ describe('command-skill-coverage', () => {
   it('AGENTS.md lists all workflow commands', async () => {
     const agents = await fs.readFile('AGENTS.md', 'utf8');
 
-    // Slash-command-only entries (no CLI equivalent) are exempt from AGENTS.md check
-    const SLASH_ONLY = ['brainstorm'];
-
     for (const cmd of WORKFLOW_COMMANDS) {
       if (SLASH_ONLY.includes(cmd)) continue;
       assert.match(
@@ -176,8 +195,6 @@ describe('command-skill-coverage', () => {
 
   it('Codex config.toml avoids workflow command alias collisions with native slash commands', async () => {
     const config = await fs.readFile('.codex/config.toml', 'utf8');
-
-    const SLASH_ONLY = ['brainstorm'];
 
     for (const cmd of WORKFLOW_COMMANDS) {
       if (SLASH_ONLY.includes(cmd)) continue;
@@ -208,7 +225,7 @@ describe('command-skill-coverage', () => {
     const cursor = await fs.readFile('.cursor/rules/danteforge.mdc', 'utf8');
 
     for (const cmd of WORKFLOW_COMMANDS) {
-      if (cmd === 'brainstorm') continue; // brainstorm is a facilitative command, not in cursor pipeline
+      if (SLASH_ONLY.includes(cmd)) continue; // slash-only flows have no CLI equivalent in cursor pipeline
       assert.match(
         cursor,
         new RegExp(`danteforge ${cmd.replace('-', '\\-')}`),

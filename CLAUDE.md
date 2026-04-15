@@ -16,9 +16,22 @@ npm run lint     # eslint (check mode)
 npm run lint:fix # eslint --fix
 ```
 
+## First time? Run `danteforge flow`
+
+DanteForge has 5 workflows. Pick the one that matches what you're trying to do:
+
+1. **New project** → `/specify` → `/plan` → `/tasks` → `/forge` → `/verify`
+2. **Improve existing** → `/assess` → `/goal` → `/magic or /inferno` → `/outcome-check`
+3. **Learn from OSS** → `/harvest-forge` → `/outcome-check` → `/share-patterns`
+4. **Validate quality** → `/self-assess` → `/self-mutate` → `/ci-report`
+5. **Recover from plateau** → `/status` → `/refused-patterns` → `/respec`
+
+In Claude Code: use `/danteforge-flow` for the workflow picker, or `/danteforge-guide` to generate
+a session-persistent guide file you can load with `@.danteforge/GUIDE.md`.
+
 ## Architecture
 
-- `src/cli/` - Commander.js CLI with 25 commands
+- `src/cli/` - Commander.js CLI with 103+ commands
 - `src/core/` - State (YAML), config, LLM client, gates, skills, logger, handoff, prompt builder, token estimator, MCP adapter
 - `src/harvested/gsd/` - Wave executor, context-rot hooks, XML utils
 - `src/harvested/spec/` - Clarify engine, templates

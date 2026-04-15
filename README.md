@@ -1,6 +1,6 @@
 # DanteForge — spec-driven agentic dev CLI. Works with Claude Code, Codex, Cursor, Goose.
 
-[![npm version](https://img.shields.io/badge/npm-0.15.0-blue)](https://www.npmjs.com/package/danteforge)
+[![npm version](https://img.shields.io/badge/npm-0.17.0-blue)](https://www.npmjs.com/package/danteforge)
 [![license](https://img.shields.io/badge/license-MIT-green)](LICENSE)
 [![node](https://img.shields.io/badge/node-%3E%3D18-brightgreen)](package.json)
 
@@ -139,7 +139,7 @@ DanteForge is an agent-oriented development workflow for Codex, Claude Code, VS 
 
 ## Operational Status
 
-DanteForge `0.15.0` is in active development. Treat release readiness as proven only when the verification and release gates below pass in your environment and CI. See [docs/Operational-Readiness-v0.15.0.md](docs/Operational-Readiness-v0.15.0.md) for the v0.15.0 readiness report.
+DanteForge `0.17.0` is in active development. Treat release readiness as proven only when the verification and release gates below pass in your environment and CI. See [docs/Operational-Readiness-v0.17.0.md](docs/Operational-Readiness-v0.17.0.md) for the v0.17.0 readiness report.
 
 ## Install
 
@@ -159,7 +159,7 @@ If you are validating the packed release before npm publish, install from the ge
 
 ```bash
 npm pack
-npm install -g ./danteforge-0.15.0.tgz
+npm install -g ./danteforge-0.17.0.tgz
 ```
 
 Run `npm run verify:live` only when you are validating a secret-backed live environment or a release candidate.

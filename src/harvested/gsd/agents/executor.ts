@@ -1,5 +1,7 @@
 import fs from 'node:fs/promises';
 import path from 'node:path';
+import type { FileOperation, ApplyAllResult } from '../../../core/code-writer.js';
+import type { TestRunResult } from '../../../core/test-runner.js';
 import { loadState, recordWorkflowStage, saveState } from '../../../core/state.js';
 import { verifyTask } from '../../../core/verifier.js';
 import { logger } from '../../../core/logger.js';
@@ -12,6 +14,7 @@ import { reflect, evaluateVerdict, DEFAULT_REFLECTION_CONFIG } from '../../../co
 import { createTelemetry, recordToolCall, recordFileModified, type ExecutionTelemetry } from '../../../core/execution-telemetry.js';
 
 export const DEFAULT_TASK_TIMEOUT_MS = 300_000; // 5 minutes per task
+const MAX_CODE_APPLY_RETRIES = 2;
 
 // ── Design context injection ─────────────────────────────────────────────────
 
@@ -70,6 +73,8 @@ export async function readDesignContext(
 export interface ExecuteWaveResult {
   mode: 'executed' | 'prompt' | 'blocked';
   success: boolean;
+  totalTokens?: number;
+  totalCostUsd?: number;
 }
 
 function withTimeout<T>(promise: Promise<T>, ms: number, taskName: string): Promise<T> {
@@ -99,6 +104,98 @@ export interface ExecuteWaveOptions {
   _readDesignContext?: (cwd: string) => Promise<string | null>;
   /** Working directory — defaults to process.cwd() */
   cwd?: string;
+  /** Token usage callback — fires after each LLM call with cost metadata */
+  onUsage?: (usage: { inputTokens: number; outputTokens: number; costUsd: number; model: string }) => void;
+  /** Inject code application for testing — defaults to applyAllOperations from code-writer */
+  _applyOperations?: (ops: FileOperation[], opts: { cwd: string }) => Promise<ApplyAllResult>;
+  /** Inject test runner for testing — defaults to runProjectTests from test-runner */
+  _runTests?: (opts: { cwd: string }) => Promise<TestRunResult>;
+  /** Inject file reader for retry context enrichment — defaults to fs.readFile */
+  _readFileFn?: (filePath: string) => Promise<string>;
+}
+
+// ── Code Application Pipeline ─────────────────────────────────────────────────
+// Extracts code operations from LLM output, applies them to disk, runs tests,
+// and retries up to MAX_CODE_APPLY_RETRIES times on failure. Best-effort: never
+// throws — errors are logged and the forge step continues to verify.
+
+async function applyCodePipeline(
+  result: string,
+  taskName: string,
+  taskPrompt: string,
+  effectiveCwd: string,
+  options: ExecuteWaveOptions | undefined,
+  internalOnUsage: (u: { inputTokens: number; outputTokens: number; costUsd: number; model: string }) => void,
+  cwd: string | undefined,
+): Promise<void> {
+  try {
+    const { parseCodeOperations, applyAllOperations } = await import('../../../core/code-writer.js');
+    const { runProjectTests, formatErrorsForLLM } = await import('../../../core/test-runner.js');
+
+    const ops = parseCodeOperations(result);
+    if (ops.length === 0) return;
+
+    logger.info(`[forge] Applying ${ops.length} code operation(s) for "${taskName}"`);
+    const applyFn = options?._applyOperations
+      ?? ((o: FileOperation[], o2: { cwd: string }) => applyAllOperations(o, o2));
+    const applyResult = await applyFn(ops, { cwd: effectiveCwd });
+
+    if (applyResult.filesWritten.length > 0) {
+      logger.success(`[forge] Applied: ${applyResult.filesWritten.join(', ')}`);
+    }
+    if (applyResult.filesFailedToApply.length > 0) {
+      logger.warn(`[forge] Failed to apply: ${applyResult.filesFailedToApply.join(', ')}`);
+    }
+
+    const testFn = options?._runTests ?? ((o: { cwd: string }) => runProjectTests(o));
+    let testResult = await testFn({ cwd: effectiveCwd });
+    let filesInFlight: string[] = [...applyResult.filesWritten, ...applyResult.filesFailedToApply];
+    const readFn = options?._readFileFn ?? ((p: string) => fs.readFile(p, 'utf8'));
+
+    for (let attempt = 0; !testResult.passed && attempt < MAX_CODE_APPLY_RETRIES; attempt++) {
+      const errorSummary = formatErrorsForLLM(testResult);
+      logger.warn(`[forge] Tests failed (attempt ${attempt + 1}/${MAX_CODE_APPLY_RETRIES}), retrying with error context...`);
+
+      let fileContext = '';
+      if (filesInFlight.length > 0) {
+        const sections: string[] = ['Current state of files after previous apply:'];
+        for (const filePath of filesInFlight) {
+          try {
+            const absPath = path.isAbsolute(filePath) ? filePath : path.join(effectiveCwd, filePath);
+            const content = await readFn(absPath);
+            sections.push(`=== ${filePath} ===\n${content.split('\n').slice(0, 200).join('\n')}`);
+          } catch { /* file may not exist — best-effort */ }
+        }
+        if (sections.length > 1) fileContext = '\n\n' + sections.join('\n\n');
+      }
+
+      const retryPrompt = `${taskPrompt}\n\n---\nPrevious attempt produced code that failed tests:\n${errorSummary}${fileContext}\n\nFix all failing tests. Provide the corrected files using the same SEARCH/REPLACE or NEW_FILE format.`;
+      const retryResponse = options?._llmCaller
+        ? await options._llmCaller(retryPrompt)
+        : await callLLM(retryPrompt, undefined, { enrichContext: true, cwd, onUsage: internalOnUsage });
+      const retryOps = parseCodeOperations(retryResponse);
+      if (retryOps.length > 0) {
+        const retryApplyResult = await applyFn(retryOps, { cwd: effectiveCwd });
+        if (retryApplyResult.filesWritten.length > 0) {
+          logger.success(`[forge] Retry applied: ${retryApplyResult.filesWritten.join(', ')}`);
+        }
+        if (retryApplyResult.filesFailedToApply.length > 0) {
+          logger.warn(`[forge] Retry failed to apply: ${retryApplyResult.filesFailedToApply.join(', ')}`);
+        }
+        filesInFlight = [...retryApplyResult.filesWritten, ...retryApplyResult.filesFailedToApply];
+      }
+      testResult = await testFn({ cwd: effectiveCwd });
+    }
+
+    if (testResult.passed) {
+      logger.success(`[forge] Tests pass after code application for "${taskName}"`);
+    } else {
+      logger.warn(`[forge] Tests still failing after ${MAX_CODE_APPLY_RETRIES} retries for "${taskName}"`);
+    }
+  } catch (applyErr) {
+    // Best-effort — never block the verify step
+    logger.verbose(`[best-effort] code application: ${applyErr instanceof Error ? applyErr.message : String(applyErr)}`);
+  }
 }
 
 export async function executeWave(
@@ -168,6 +265,17 @@ export async function executeWave(
 
   const results: { task: string; success: boolean; error?: string }[] = [];
 
+  // Token accumulator — driven by onUsage callback, forwarded to caller
+  let totalInputTokens = 0;
+  let totalOutputTokens = 0;
+  let totalCostUsd = 0;
+  const internalOnUsage = (usage: { inputTokens: number; outputTokens: number; costUsd: number; model: string }) => {
+    totalInputTokens += usage.inputTokens;
+    totalOutputTokens += usage.outputTokens;
+    totalCostUsd += usage.costUsd;
+    options?.onUsage?.(usage);
+  };
+
   const runTask = async (task: { name: string; files?: string[]; verify?: string }, index: number) => {
     const taskLabel = `[${index + 1}/${tasks.length}] ${task.name}`;
     logger.info(`Executing: ${taskLabel}`);
@@ -186,10 +294,18 @@ export async function executeWave(
           : await readDesignContext(cwd ?? process.cwd());
         if (designCtx) taskPrompt = `${taskPrompt}\n\n${designCtx}`;
       } catch { /* graceful skip — DESIGN.op is optional */ }
+      // Inject relevant lessons into the prompt so past failures inform this forge cycle (best-effort)
+      try {
+        const { injectRelevantLessons } = await import('../../../core/lessons-index.js');
+        taskPrompt = await injectRelevantLessons(taskPrompt, 3, cwd ?? process.cwd());
+      } catch { /* best-effort — never block forge */ }
       const result = options?._llmCaller
         ? await options._llmCaller(taskPrompt)
-        : await callLLM(taskPrompt, undefined, { enrichContext: true, cwd });
+        : await callLLM(taskPrompt, undefined, { enrichContext: true, cwd, onUsage: internalOnUsage });
       logger.success(`LLM result for "${task.name}" (${result.length} chars)`);
+
+      // Apply LLM-generated code changes with retry on test failure (best-effort)
+      await applyCodePipeline(result, task.name, taskPrompt, cwd ?? process.cwd(), options, internalOnUsage, cwd);
 
       // Track file modifications from task metadata
       for (const file of task.files ?? []) {
@@ -278,8 +394,20 @@ export async function executeWave(
   }
   state.auditLog.push(`${timestamp} | forge: wave ${phase} complete (${passed}/${tasks.length} passed, profile: ${profile}${parallel ? ', parallel' : ''}${failed > 0 ? ', failed' : ''})`);
   await (options?._stateCaller?.save ?? saveState)(state, { cwd });
+
+  // Persist token economy metrics — best-effort, never blocks main path
+  const totalTokens = totalInputTokens + totalOutputTokens;
+  if (totalTokens > 0) {
+    try {
+      const latestState = await (options?._stateCaller?.load ?? loadState)({ cwd });
+      latestState.totalTokensUsed = (latestState.totalTokensUsed ?? 0) + totalTokens;
+      latestState.lastComplexityPreset = profile;
+      await (options?._stateCaller?.save ?? saveState)(latestState, { cwd });
+    } catch { /* best-effort — token tracking never blocks forge */ }
+  }
+
   if (failed === 0) {
     logger.info('Ready for next wave or party mode');
   }
-  return { mode: 'executed', success: failed === 0 };
+  return { mode: 'executed', success: failed === 0, totalTokens: totalTokens || undefined, totalCostUsd: totalCostUsd || undefined };
 }

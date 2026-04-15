@@ -31,6 +31,7 @@ export interface ConvergenceOptions {
   _getVerifyStatus?: () => Promise<VerifyStatus>;
   _runAutoforge?: (goal: string, waves: number) => Promise<void>;
   _runVerify?: () => Promise<void>;
+  _assessMaturity?: (ctx: { cwd: string; state: import('../../core/state.js').DanteState; pdseScores: Record<string, unknown>; targetLevel: number }) => Promise<import('../../core/maturity-engine.js').MaturityAssessment>;
 }
 
 export interface ConvergenceResult {
@@ -95,16 +96,17 @@ export async function runConvergenceCycles(
 
     // Run autoforge waves first
     try {
-      const { assessMaturity } = await import("../../core/maturity-engine.js");
+      const { assessMaturity: defaultAssessMaturity } = await import("../../core/maturity-engine.js");
       const { scoreAllArtifacts } = await import("../../core/pdse.js");
       const { MAGIC_PRESETS } = await import("../../core/magic-presets.js");
+      const assessMaturityFn = opts._assessMaturity ?? defaultAssessMaturity;
 
       const state = await loadState();
       const cwd = process.cwd();
       const pdseScores = await scoreAllArtifacts(cwd, state);
       const targetLevel = MAGIC_PRESETS[opts.level]?.targetMaturityLevel ?? 4;
 
-      const assessment = await assessMaturity({
+      const assessment = await assessMaturityFn({
         cwd,
         state,
         pdseScores,
@@ -136,16 +138,17 @@ export async function runConvergenceCycles(
 
     // NOW check maturity AFTER waves completed and verify ran
     try {
-      const { assessMaturity } = await import("../../core/maturity-engine.js");
+      const { assessMaturity: defaultAssessMaturity2 } = await import("../../core/maturity-engine.js");
       const { scoreAllArtifacts } = await import("../../core/pdse.js");
       const { MAGIC_PRESETS } = await import("../../core/magic-presets.js");
+      const assessMaturityFn2 = opts._assessMaturity ?? defaultAssessMaturity2;
 
       const state = await loadState();
       const cwd = process.cwd();
       const pdseScores = await scoreAllArtifacts(cwd, state);
       const targetLevel = MAGIC_PRESETS[opts.level]?.targetMaturityLevel ?? 4;
 
-      const assessment = await assessMaturity({
+      const assessment = await assessMaturityFn2({
         cwd,
         state,
         pdseScores,
@@ -257,7 +260,14 @@ export interface MagicCommandOptions {
   withTechDecide?: boolean;
   withDesign?: boolean;
   designPrompt?: string;
+  /** Skip the confirmation gate (equivalent to --yes on ascend/compete) */
+  yes?: boolean;
   _runStep?: (step: MagicExecutionStep, goal: string) => Promise<void>;
+  _runPrime?: () => Promise<void>;
+  /** Injection seam for confirmMatrix gate — avoids real TTY/filesystem in tests */
+  _confirmMatrix?: (cwd: string) => Promise<boolean>;
+  /** Injection seam for computeStrictDimensions — used for post-pipeline score update */
+  _computeStrictDims?: (cwd: string) => Promise<{ autonomy: number; selfImprovement: number; tokenEconomy: number }>;
   _convergenceOpts?: {
     getVerifyStatus?: () => Promise<VerifyStatus>;
     runAutoforge?: (goal: string, waves: number) => Promise<void>;
@@ -397,6 +407,34 @@ async function runMagicPreset(
     logger.info("");
     logger.info(MAGIC_USAGE_RULES);
     return;
+  }
+
+  // Confirmation gate — show competitive landscape before a potentially-long pipeline run.
+  // Skipped with yes: true (--yes flag) or when running from tests via _confirmMatrix injection.
+  if (!options.yes && !options.resume) {
+    try {
+      const cwd = process.cwd();
+      if (options._confirmMatrix) {
+        const ok = await options._confirmMatrix(cwd);
+        if (!ok) {
+          logger.warn(`[${plan.level}] Aborted by user at confirmation gate.`);
+          return;
+        }
+      } else {
+        const { confirmMatrix } = await import('../../core/matrix-confirm.js');
+        const { loadMatrix } = await import('../../core/compete-matrix.js');
+        const matrix = await loadMatrix(cwd).catch(() => null);
+        if (matrix) {
+          const ok = await confirmMatrix(matrix);
+          if (!ok) {
+            logger.warn(`[${plan.level}] Aborted by user at confirmation gate.`);
+            return;
+          }
+        }
+      }
+    } catch {
+      // No matrix or confirmMatrix unavailable — proceed without gate
+    }
   }
 
   const effectiveLevel = plan.level as MagicLevel;
@@ -589,6 +627,28 @@ async function runMagicPreset(
     }
   }
 
+  // Apply strict overrides to STATE.yaml after pipeline completes.
+  // computeStrictDimensions reads git log + evidence files so the values are tamper-resistant.
+  // Best-effort: never blocks pipeline completion.
+  try {
+    const cwd = process.cwd();
+    const computeStrictFn = options._computeStrictDims
+      ?? (await import('../../core/harsh-scorer.js').catch(() => null))?.computeStrictDimensions;
+    if (computeStrictFn) {
+      const strict = await computeStrictFn(cwd);
+      const state = await stOps.load().catch(() => null);
+      if (state) {
+        const s = state as unknown as Record<string, unknown>;
+        s['autonomyScore'] = strict.autonomy;
+        s['selfImprovementScore'] = strict.selfImprovement;
+        s['tokenEconomyScore'] = strict.tokenEconomy;
+        await stOps.save(state as DanteState).catch(() => {/* non-fatal */});
+      }
+    }
+  } catch {
+    // non-fatal — strict score update never blocks pipeline result
+  }
+
   const failed = results.some((result) => result.status === "fail");
   const totalDur = Date.now() - magicStart;
 
@@ -638,6 +698,20 @@ async function runMagicPreset(
   await stOps.save(appState);
 
   await cpOps.clear();
+
+  // Post-inferno: auto-update PRIME.md best-effort
+  if (effectiveLevel === 'inferno') {
+    try {
+      if (options._runPrime) {
+        await options._runPrime();
+      } else {
+        const { prime } = await import('./prime.js');
+        await prime({});
+      }
+    } catch {
+      // best-effort — never block on prime failure
+    }
+  }
 
   if (failed) {
     process.exitCode = 1;

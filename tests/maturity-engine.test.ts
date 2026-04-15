@@ -26,6 +26,16 @@ describe('maturity-engine', () => {
     await fs.rm(tmpDir, { recursive: true, force: true });
   });
 
+  function makeCtx(cwd: string, overrides: Partial<MaturityContext> = {}): MaturityContext {
+    return {
+      cwd,
+      state: { projectType: 'web' } as DanteState,
+      pdseScores: {},
+      targetLevel: 4,
+      ...overrides,
+    };
+  }
+
   // ── Functionality ──
 
   describe('scoreFunctionality', () => {
@@ -241,6 +251,42 @@ describe('maturity-engine', () => {
       // 1 function, 0 try/throw => 0 base + 10 custom error bonus = 10
       assert.equal(dimensions.errorHandling, 10);
     });
+
+    it('finds try/catch in nested subdirectory file via _collectFiles injection', async () => {
+      const nestedFile = path.join(tmpDir, 'src', 'core', 'svc.ts');
+      const content = 'function handle() { try { throw new Error(); } catch {} }';
+      const ctx = makeCtx(tmpDir, {
+        _collectFiles: async () => [nestedFile],
+        _readFile: async () => content,
+      });
+      const dims = await scoreMaturityDimensions(ctx);
+      // 1 function, 1 try, 1 throw → ratio 2/1 = 2.0 → capped 100
+      assert.equal(dims.errorHandling, 100);
+    });
+
+    it('finds custom error class in deeply nested file via _collectFiles', async () => {
+      const nestedFile = path.join(tmpDir, 'src', 'core', 'errors', 'app.ts');
+      const content = 'class AppError extends Error {}\nfunction fn() {}';
+      const ctx = makeCtx(tmpDir, {
+        _collectFiles: async () => [nestedFile],
+        _readFile: async () => content,
+      });
+      const dims = await scoreMaturityDimensions(ctx);
+      // 1 function, 0 try/throw → base 0 + 10 custom error bonus = 10
+      assert.ok(dims.errorHandling > 0);
+      assert.notEqual(dims.errorHandling, 50); // not the zero-file fallback
+    });
+
+    it('regression: real subdirectory file is found by defaultCollectFiles', async () => {
+      const coreDir = path.join(tmpDir, 'src', 'core');
+      await fs.mkdir(coreDir, { recursive: true });
+      // 1 function with 3 throws → ratio 3/1 = 3.0 → capped 100 (distinguishes from fallback 50)
+      const content = `function f() {\n  throw new Error();\n  throw new Error();\n  throw new Error();\n}`;
+      await fs.writeFile(path.join(coreDir, 'main.ts'), content, 'utf8');
+      // No _collectFiles injection — exercises real defaultCollectFiles recursion
+      const dims = await scoreMaturityDimensions(makeCtx(tmpDir));
+      assert.equal(dims.errorHandling, 100);
+    });
   });
 
   // ── Security ──
@@ -315,15 +361,54 @@ describe('maturity-engine', () => {
       // 70 - 10 (SQL without parameterization) = 60
       assert.equal(dimensions.security, 60);
     });
+
+    it('penalizes eval() found in nested src/core/ file via _collectFiles', async () => {
+      const nestedFile = path.join(tmpDir, 'src', 'core', 'bad.ts');
+      const ctx = makeCtx(tmpDir, {
+        _collectFiles: async () => [nestedFile],
+        _readFile: async () => "eval('alert(1)')",
+      });
+      const dims = await scoreMaturityDimensions(ctx);
+      assert.equal(dims.security, 60); // 70 - 10
+    });
+
+    it('penalizes innerHTML found in nested component file via _collectFiles', async () => {
+      const nestedFile = path.join(tmpDir, 'src', 'components', 'widget.tsx');
+      const ctx = makeCtx(tmpDir, {
+        _collectFiles: async () => [nestedFile],
+        _readFile: async () => 'el.innerHTML = userInput',
+      });
+      const dims = await scoreMaturityDimensions(ctx);
+      assert.equal(dims.security, 60); // 70 - 10
+    });
+
+    it('clean nested file retains 70 baseline with no deductions', async () => {
+      const nestedFile = path.join(tmpDir, 'src', 'core', 'safe.ts');
+      const ctx = makeCtx(tmpDir, {
+        _collectFiles: async () => [nestedFile],
+        _readFile: async () => 'export function add(a: number, b: number) { return a + b; }',
+      });
+      const dims = await scoreMaturityDimensions(ctx);
+      assert.equal(dims.security, 70);
+    });
+
+    it('regression: real nested subdirectory file with eval is penalized', async () => {
+      const coreDir = path.join(tmpDir, 'src', 'core');
+      await fs.mkdir(coreDir, { recursive: true });
+      await fs.writeFile(path.join(coreDir, 'vuln.ts'), "eval('test')", 'utf8');
+      // No _collectFiles injection — exercises real defaultCollectFiles recursion
+      const dims = await scoreMaturityDimensions(makeCtx(tmpDir));
+      assert.equal(dims.security, 60); // before fix this was always 70
+    });
   });
 
   // ── UX Polish ──
 
   describe('scoreUxPolish', () => {
-    it('returns 50 for non-web projects', async () => {
+    it('returns 50 for non-web, non-cli projects (library)', async () => {
       const ctx: MaturityContext = {
         cwd: tmpDir,
-        state: { projectType: 'cli' } as DanteState,
+        state: { projectType: 'library' } as DanteState,
         pdseScores: {},
         targetLevel: 4,
       };
@@ -389,6 +474,159 @@ describe('maturity-engine', () => {
 
       const dimensions = await scoreMaturityDimensions(ctx);
       assert.equal(dimensions.uxPolish, 60); // 50 + 10
+    });
+
+    it('finds isLoading in nested src/pages/ file via _collectFiles', async () => {
+      const nestedFile = path.join(tmpDir, 'src', 'pages', 'home.tsx');
+      const ctx = makeCtx(tmpDir, {
+        _collectFiles: async () => [nestedFile],
+        _readFile: async (p: string) => {
+          if (p === nestedFile) return 'const [isLoading] = useState(false)';
+          throw new Error('Not found');
+        },
+      });
+      const dims = await scoreMaturityDimensions(ctx);
+      assert.equal(dims.uxPolish, 65); // 50 + 15
+    });
+
+    it('finds aria-label in nested component via _collectFiles', async () => {
+      const nestedFile = path.join(tmpDir, 'src', 'components', 'ui', 'button.tsx');
+      const ctx = makeCtx(tmpDir, {
+        _collectFiles: async () => [nestedFile],
+        _readFile: async (p: string) => {
+          if (p === nestedFile) return '<button aria-label="submit">Go</button>';
+          throw new Error('Not found');
+        },
+      });
+      const dims = await scoreMaturityDimensions(ctx);
+      assert.equal(dims.uxPolish, 65); // 50 + 15
+    });
+
+    it('regression: aria-label in real subdirectory scores above 50', async () => {
+      const compDir = path.join(tmpDir, 'src', 'components');
+      await fs.mkdir(compDir, { recursive: true });
+      await fs.writeFile(path.join(compDir, 'btn.tsx'), '<button aria-label="close">X</button>', 'utf8');
+      // No _collectFiles injection — exercises real defaultCollectFiles
+      const dims = await scoreMaturityDimensions(makeCtx(tmpDir));
+      assert.ok(dims.uxPolish > 50); // before fix this was always 50
+    });
+
+    // ── CLI scoring branch ──
+
+    it('CLI: logger usage adds +15 (score 65)', async () => {
+      const srcFile = path.join(tmpDir, 'src', 'cmd.ts');
+      const ctx = makeCtx(tmpDir, {
+        state: { projectType: 'cli' } as DanteState,
+        _collectFiles: async () => [srcFile],
+        _readFile: async (p: string) => {
+          if (p === srcFile) return 'logger.info("starting")';
+          throw new Error('not found');
+        },
+      });
+      const dims = await scoreMaturityDimensions(ctx);
+      assert.equal(dims.uxPolish, 65); // 50 + 15
+    });
+
+    it('CLI: --json flag adds +15 (score 65)', async () => {
+      const srcFile = path.join(tmpDir, 'src', 'cmd.ts');
+      const ctx = makeCtx(tmpDir, {
+        state: { projectType: 'cli' } as DanteState,
+        _collectFiles: async () => [srcFile],
+        _readFile: async (p: string) => {
+          if (p === srcFile) return '.option("--json", "output as json")';
+          throw new Error('not found');
+        },
+      });
+      const dims = await scoreMaturityDimensions(ctx);
+      assert.equal(dims.uxPolish, 65); // 50 + 15
+    });
+
+    it('CLI: spinner usage adds +10 (score 60)', async () => {
+      const srcFile = path.join(tmpDir, 'src', 'cmd.ts');
+      const ctx = makeCtx(tmpDir, {
+        state: { projectType: 'cli' } as DanteState,
+        _collectFiles: async () => [srcFile],
+        _readFile: async (p: string) => {
+          if (p === srcFile) return 'const spin = ora("loading").start()';
+          throw new Error('not found');
+        },
+      });
+      const dims = await scoreMaturityDimensions(ctx);
+      assert.equal(dims.uxPolish, 60); // 50 + 10
+    });
+
+    it('CLI: process.exitCode discipline adds +10 (score 60)', async () => {
+      const srcFile = path.join(tmpDir, 'src', 'cmd.ts');
+      const ctx = makeCtx(tmpDir, {
+        state: { projectType: 'cli' } as DanteState,
+        _collectFiles: async () => [srcFile],
+        _readFile: async (p: string) => {
+          if (p === srcFile) return 'process.exitCode = 1;';
+          throw new Error('not found');
+        },
+      });
+      const dims = await scoreMaturityDimensions(ctx);
+      assert.equal(dims.uxPolish, 60); // 50 + 10
+    });
+
+    it('CLI: all 4 signals → score 100 (capped)', async () => {
+      const srcFile = path.join(tmpDir, 'src', 'cmd.ts');
+      const ctx = makeCtx(tmpDir, {
+        state: { projectType: 'cli' } as DanteState,
+        _collectFiles: async () => [srcFile],
+        _readFile: async (p: string) => {
+          if (p === srcFile) return [
+            'logger.info("go")',
+            '.option("--json", "json")',
+            'const s = ora("loading").start()',
+            'process.exitCode = 1;',
+          ].join('\n');
+          throw new Error('not found');
+        },
+      });
+      const dims = await scoreMaturityDimensions(ctx);
+      assert.equal(dims.uxPolish, 100); // 50 + 15 + 15 + 10 + 10 = 100
+    });
+
+    it('CLI: projectType unknown + bin in package.json → detected as CLI, scores logger', async () => {
+      const srcFile = path.join(tmpDir, 'src', 'index.ts');
+      const pkgPath = path.join(tmpDir, 'package.json');
+      const ctx = makeCtx(tmpDir, {
+        state: { projectType: 'unknown' } as DanteState,
+        _collectFiles: async () => [srcFile],
+        _readFile: async (p: string) => {
+          if (p === pkgPath) return JSON.stringify({ name: 'mytool', bin: { mytool: 'dist/index.js' } });
+          if (p === srcFile) return 'logger.info("ready")';
+          throw new Error('not found');
+        },
+      });
+      const dims = await scoreMaturityDimensions(ctx);
+      assert.equal(dims.uxPolish, 65); // 50 + 15
+    });
+
+    it('CLI: projectType unknown + no bin in package.json → returns 50', async () => {
+      const pkgPath = path.join(tmpDir, 'package.json');
+      const ctx = makeCtx(tmpDir, {
+        state: { projectType: 'unknown' } as DanteState,
+        _collectFiles: async () => [],
+        _readFile: async (p: string) => {
+          if (p === pkgPath) return JSON.stringify({ name: 'mylib', version: '1.0.0' });
+          throw new Error('not found');
+        },
+      });
+      const dims = await scoreMaturityDimensions(ctx);
+      assert.equal(dims.uxPolish, 50);
+    });
+
+    it('CLI: web project still uses web scoring branch (regression guard)', async () => {
+      // Web project with no web-specific UX signals → stays at 50
+      const ctx = makeCtx(tmpDir, {
+        state: { projectType: 'web' } as DanteState,
+        _collectFiles: async () => [],
+        _readFile: async () => { throw new Error('not found'); },
+      });
+      const dims = await scoreMaturityDimensions(ctx);
+      assert.equal(dims.uxPolish, 50);
     });
   });
 
@@ -487,6 +725,101 @@ describe('maturity-engine', () => {
       // 70 - 5 = 65
       assert.equal(dimensions.performance, 65);
     });
+
+    it('penalizes nested loop in nested src/algorithms/ file via _collectFiles', async () => {
+      const nestedFile = path.join(tmpDir, 'src', 'algorithms', 'sort.ts');
+      const content = 'for (let i = 0; i < n; i++) {\n  for (let j = 0; j < n; j++) { sum++; }\n}';
+      const ctx = makeCtx(tmpDir, {
+        _collectFiles: async () => [nestedFile],
+        _readFile: async () => content,
+      });
+      const dims = await scoreMaturityDimensions(ctx);
+      assert.equal(dims.performance, 65); // 70 - 5
+    });
+
+    it('penalizes SELECT * in nested src/db/ file via _collectFiles', async () => {
+      const nestedFile = path.join(tmpDir, 'src', 'db', 'queries.ts');
+      const ctx = makeCtx(tmpDir, {
+        _collectFiles: async () => [nestedFile],
+        _readFile: async () => "const q = 'SELECT * FROM users'",
+      });
+      const dims = await scoreMaturityDimensions(ctx);
+      assert.equal(dims.performance, 65); // 70 - 5
+    });
+
+    it('clean nested file retains 70 baseline', async () => {
+      const nestedFile = path.join(tmpDir, 'src', 'utils', 'helper.ts');
+      const ctx = makeCtx(tmpDir, {
+        _collectFiles: async () => [nestedFile],
+        _readFile: async () => 'export const add = (a: number) => a + 1;',
+      });
+      const dims = await scoreMaturityDimensions(ctx);
+      assert.equal(dims.performance, 70);
+    });
+
+    it('regression: nested loop in real subdirectory file is penalized', async () => {
+      const algoDir = path.join(tmpDir, 'src', 'algorithms');
+      await fs.mkdir(algoDir, { recursive: true });
+      const content = 'for (let i = 0; i < n; i++) {\n  for (let j = 0; j < n; j++) { sum++; }\n}';
+      await fs.writeFile(path.join(algoDir, 'brute.ts'), content, 'utf8');
+      // No _collectFiles injection — exercises real defaultCollectFiles
+      const dims = await scoreMaturityDimensions(makeCtx(tmpDir));
+      assert.equal(dims.performance, 65); // before fix this was always 70
+    });
+
+    it('penalty is capped at 4 files even when 8 files have nested loops', async () => {
+      const nestedContent = 'for (let i = 0; i < n; i++) { for (let j = 0; j < m; j++) { x++; } }';
+      const ctx = makeCtx(tmpDir, {
+        _collectFiles: async () => Array.from({ length: 8 }, (_, i) => `${tmpDir}/src/f${i}.ts`),
+        _readFile: async () => nestedContent,
+      });
+      const dims = await scoreMaturityDimensions(ctx);
+      // penaltyFiles = 8, capped at 4 → 70 - 20 = 50
+      assert.equal(dims.performance, 50);
+    });
+
+    it('await + IO keyword inside loop is penalized (true N+1 pattern)', async () => {
+      const n1Content = `for (const id of ids) { const r = await db.query('SELECT 1', id); }`;
+      const ctx = makeCtx(tmpDir, {
+        _collectFiles: async () => [`${tmpDir}/src/repo.ts`],
+        _readFile: async () => n1Content,
+      });
+      const dims = await scoreMaturityDimensions(ctx);
+      // matches .query — penaltyFiles = 1 → 70 - 5 = 65
+      assert.equal(dims.performance, 65);
+    });
+
+    it('await WITHOUT IO keyword inside loop is NOT penalized (intentional sequential)', async () => {
+      const seqContent = `for (const step of steps) { await runStep(step); await saveState(); }`;
+      const ctx = makeCtx(tmpDir, {
+        _collectFiles: async () => [`${tmpDir}/src/runner.ts`],
+        _readFile: async () => seqContent,
+      });
+      const dims = await scoreMaturityDimensions(ctx);
+      // no fetch/query/find/readFile/readdir — score stays 70
+      assert.equal(dims.performance, 70);
+    });
+
+    it('caching bonus adds +5 to clean file score', async () => {
+      const cachingContent = `const cache = new Map<string, Result>();`;
+      const ctx = makeCtx(tmpDir, {
+        _collectFiles: async () => [`${tmpDir}/src/svc.ts`],
+        _readFile: async () => cachingContent,
+      });
+      const dims = await scoreMaturityDimensions(ctx);
+      // no anti-patterns + hasCaching → 70 + 5 = 75
+      assert.equal(dims.performance, 75);
+    });
+
+    it('performance-baseline.json bonus adds +10 to score', async () => {
+      const ctx = makeCtx(tmpDir, {
+        _collectFiles: async () => [],
+        _fileExists: async (p: string) => p.includes('performance-baseline.json'),
+      });
+      const dims = await scoreMaturityDimensions(ctx);
+      // no files scanned, baseline exists → 70 + 10 = 80
+      assert.equal(dims.performance, 80);
+    });
   });
 
   // ── Maintainability ──
@@ -541,6 +874,42 @@ describe('maturity-engine', () => {
       const dimensions = await scoreMaturityDimensions(ctx);
       // 50 - 5 (1 large function) = 45
       assert.equal(dimensions.maintainability, 45);
+    });
+
+    it('penalizes large function in nested src/core/ file via _collectFiles', async () => {
+      const nestedFile = path.join(tmpDir, 'src', 'core', 'proc.ts');
+      const bodyLines = Array(110).fill('  const x = 1;').join('\n');
+      const content = `function processAll() {\n${bodyLines}\n}`;
+      const ctx = makeCtx(tmpDir, {
+        _collectFiles: async () => [nestedFile],
+        _readFile: async () => content,
+      });
+      const dims = await scoreMaturityDimensions(ctx);
+      assert.ok(dims.maintainability < 50); // penalty applied
+    });
+
+    it('accumulates penalty across multiple nested files with large functions', async () => {
+      const fileA = path.join(tmpDir, 'src', 'core', 'a.ts');
+      const fileB = path.join(tmpDir, 'src', 'cli', 'b.ts');
+      const bodyLines = Array(120).fill('  const x = 1;').join('\n');
+      const bigFn = `function big() {\n${bodyLines}\n}`;
+      const ctx = makeCtx(tmpDir, {
+        _collectFiles: async () => [fileA, fileB],
+        _readFile: async () => bigFn,
+      });
+      const dims = await scoreMaturityDimensions(ctx);
+      assert.ok(dims.maintainability <= 40); // pdseBase(50) - 5 - 5 = 40
+    });
+
+    it('regression: large function in real subdirectory is penalized', async () => {
+      const coreDir = path.join(tmpDir, 'src', 'core');
+      await fs.mkdir(coreDir, { recursive: true });
+      const bodyLines = Array(110).fill('  const x = 1;').join('\n');
+      const content = `function huge() {\n${bodyLines}\n}`;
+      await fs.writeFile(path.join(coreDir, 'big.ts'), content, 'utf8');
+      // No _collectFiles injection — exercises real defaultCollectFiles
+      const dims = await scoreMaturityDimensions(makeCtx(tmpDir));
+      assert.ok(dims.maintainability < 50); // before fix: always 50 (no penalty applied)
     });
   });
 

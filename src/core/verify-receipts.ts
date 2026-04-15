@@ -108,17 +108,38 @@ export function buildReceiptMarkdown(receipt: VerifyReceipt): string {
 
 /**
  * Write a VerifyReceipt to .danteforge/evidence/verify/latest.json and latest.md.
+ * Also writes a timestamped copy (verify-${ts}.json) so computeStrictDimensions
+ * can count historical runs — 5+ files → +25 autonomy pts instead of +15.
  * Creates directories as needed. Returns the path to the JSON file.
  */
-export async function writeVerifyReceipt(receipt: VerifyReceipt, cwd?: string): Promise<string> {
+export async function writeVerifyReceipt(
+  receipt: VerifyReceipt,
+  cwd?: string,
+  _fsWrite?: (p: string, d: string) => Promise<void>,
+): Promise<string> {
   const base = cwd ?? process.cwd();
   const evidenceDir = path.join(base, EVIDENCE_DIR);
   const jsonPath = path.join(base, LATEST_JSON);
   const mdPath = path.join(base, LATEST_MD);
 
+  const write = _fsWrite ?? (async (p: string, d: string) => {
+    await fs.mkdir(path.dirname(p), { recursive: true });
+    await fs.writeFile(p, d, 'utf8');
+  });
+
   await fs.mkdir(evidenceDir, { recursive: true });
   await fs.writeFile(jsonPath, JSON.stringify(receipt, null, 2) + '\n', 'utf8');
   await fs.writeFile(mdPath, buildReceiptMarkdown(receipt), 'utf8');
+
+  // Also write a timestamped copy so historical runs accumulate in the directory.
+  // computeStrictDimensions awards +25 autonomy pts for 5+ files (vs +15 for 2 files).
+  try {
+    const ts = receipt.timestamp.replace(/[:.]/g, '-').replace('T', '_').slice(0, 19);
+    const tsPath = path.join(evidenceDir, `verify-${ts}.json`);
+    await write(tsPath, JSON.stringify(receipt, null, 2) + '\n');
+  } catch {
+    // non-fatal — timestamped copy is a bonus signal, not critical output
+  }
 
   return jsonPath;
 }

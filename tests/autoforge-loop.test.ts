@@ -638,16 +638,22 @@ function makeMockDeps(overrides: Partial<AutoforgeLoopDeps> = {}): AutoforgeLoop
 
 describe('runAutoforgeLoop integration — _checkProtectedPaths seam', () => {
   it('sets loopState=BLOCKED when _checkProtectedPaths returns approved=false', async () => {
-    const ctx = makeContext({ dryRun: false });
+    // workflowStage:'tasks' is in FORGE_PREREQUISITE_STAGES so determineNextCommand routes to 'forge',
+    // which triggers _checkProtectedPaths
+    const forgeStageState = makeState({ workflowStage: 'tasks', currentPhase: 1, tasks: { 1: [{ name: 'task-a' }] } });
+    const ctx = makeContext({ dryRun: false, state: forgeStageState });
     const result = await runAutoforgeLoop(ctx, makeMockDeps({
+      loadState: async () => forgeStageState,
       _checkProtectedPaths: async () => ({ approved: false, blocked: ['src/core/state.ts'] }),
     }));
     assert.strictEqual(result.loopState, AutoforgeLoopState.BLOCKED);
   });
 
   it('sets blockedArtifacts to the blocked files list from _checkProtectedPaths', async () => {
-    const ctx = makeContext({ dryRun: false });
+    const forgeStageState = makeState({ workflowStage: 'tasks', currentPhase: 1, tasks: { 1: [{ name: 'task-a' }] } });
+    const ctx = makeContext({ dryRun: false, state: forgeStageState });
     const result = await runAutoforgeLoop(ctx, makeMockDeps({
+      loadState: async () => forgeStageState,
       _checkProtectedPaths: async () => ({ approved: false, blocked: ['src/core/state.ts', 'src/cli/index.ts'] }),
     }));
     assert.deepStrictEqual(result.blockedArtifacts, ['src/core/state.ts', 'src/cli/index.ts']);

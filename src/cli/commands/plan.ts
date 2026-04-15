@@ -7,10 +7,20 @@ import { displayPrompt, savePrompt } from '../../core/prompt-builder.js';
 import { requireClarify, requireSpec, runGate } from '../../core/gates.js';
 import { buildLocalPlan, writeArtifact } from '../../core/local-artifacts.js';
 import { withErrorBoundary } from '../../core/cli-error-boundary.js';
+import { critiquePlan, printCritiqueReport, type CritiqueStakes } from '../../core/plan-critic.js';
 
 const STATE_DIR = '.danteforge';
 
-export async function plan(options: { prompt?: boolean; light?: boolean } = {}) {
+export interface PlanOptions {
+  prompt?: boolean;
+  light?: boolean;
+  skipCritique?: boolean;
+  stakes?: string;
+  /** Injection seam — overrides critiquePlan for testing */
+  _critiquePlan?: typeof critiquePlan;
+}
+
+export async function plan(options: PlanOptions = {}) {
   return withErrorBoundary('plan', async () => {
   if (!(await runGate(() => requireSpec(options.light)))) { process.exitCode = 1; return; }
   if (!(await runGate(() => requireClarify(options.light)))) { process.exitCode = 1; return; }
@@ -62,6 +72,12 @@ Output ONLY the markdown content - no preamble.`;
       const planMd = await callLLM(prompt, undefined, { enrichContext: true });
       await writeArtifact('PLAN.md', planMd);
 
+      // Auto-critique gate (skip with --skip-critique)
+      if (!options.skipCritique) {
+        await runCritiqueGate(planMd, options, state);
+        if (process.exitCode === 1) return;
+      }
+
       const timestamp = recordWorkflowStage(state, 'plan');
       state.auditLog.push(`${timestamp} | plan: PLAN.md generated via API`);
       await saveState(state);
@@ -75,6 +91,13 @@ Output ONLY the markdown content - no preamble.`;
 
   const localPlan = buildLocalPlan(specContent, state.constitution, currentState);
   await writeArtifact('PLAN.md', localPlan);
+
+  // Auto-critique gate on local plan too (skip with --skip-critique)
+  if (!options.skipCritique) {
+    await runCritiqueGate(localPlan, options, state);
+    if (process.exitCode === 1) return;
+  }
+
   const timestamp = recordWorkflowStage(state, 'plan');
   state.auditLog.push(`${timestamp} | plan: PLAN.md generated locally`);
   await saveState(state);
@@ -83,4 +106,39 @@ Output ONLY the markdown content - no preamble.`;
     logger.info('Tip: Set up an API key for richer plans: danteforge config --set-key "grok:<key>"');
   }
   });
+}
+
+// ── Critique gate (internal) ──────────────────────────────────────────────────
+
+async function runCritiqueGate(
+  planContent: string,
+  options: PlanOptions,
+  state: Awaited<ReturnType<typeof loadState>>,
+): Promise<void> {
+  try {
+    const validStakes = ['low', 'medium', 'high', 'critical'];
+    const stakes: CritiqueStakes = validStakes.includes(options.stakes ?? '')
+      ? (options.stakes as CritiqueStakes)
+      : 'medium';
+
+    logger.info('[plan] Running critique gate...');
+    const criticFn = options._critiquePlan ?? critiquePlan;
+    const report = await criticFn({ planContent, stakes, enablePremortem: false });
+
+    printCritiqueReport(report);
+
+    const timestamp = new Date().toISOString();
+    state.auditLog.push(
+      `${timestamp} | plan-critique: ${report.blockingCount} blocking, ${report.highCount} high gaps`,
+    );
+
+    if (!report.approved) {
+      logger.warn('[plan] Critique found blocking gaps — resolve before running "danteforge tasks".');
+      logger.warn('[plan] Use --skip-critique to bypass (not recommended).');
+      process.exitCode = 1;
+    }
+  } catch (err) {
+    // Critique is best-effort — never block the plan command from completing
+    logger.warn(`[plan] Critique failed (non-fatal): ${err instanceof Error ? err.message : String(err)}`);
+  }
 }

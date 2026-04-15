@@ -16,24 +16,36 @@ const LESSONS_FILE = path.join('.danteforge', 'lessons.md');
 const MAX_LESSONS_LINES = 2000;
 
 /**
- * Read existing lessons file content (empty string if not found).
+ * Read lessons from an explicit file path (internal helper).
  */
-export async function readLessons(): Promise<string> {
+async function readLessonsFrom(filePath: string): Promise<string> {
   try {
-    return await fs.readFile(LESSONS_FILE, 'utf8');
+    return await fs.readFile(filePath, 'utf8');
   } catch {
     return '';
   }
 }
 
 /**
- * Append a new lesson entry to lessons.md.
+ * Read existing lessons file content (empty string if not found).
  */
-export async function appendLesson(entry: string): Promise<void> {
-  await fs.mkdir('.danteforge', { recursive: true });
-  const existing = await readLessons();
+export async function readLessons(): Promise<string> {
+  return readLessonsFrom(LESSONS_FILE);
+}
+
+/**
+ * Append a new lesson entry to lessons.md.
+ * @param cwd - Optional project root; defaults to process.cwd(). Fixes a bug where
+ *              verify called from a subdirectory would write lessons to the wrong location.
+ */
+export async function appendLesson(entry: string, cwd?: string): Promise<void> {
+  const base = cwd ?? process.cwd();
+  const dir = path.join(base, '.danteforge');
+  const file = path.join(dir, 'lessons.md');
+  await fs.mkdir(dir, { recursive: true });
+  const existing = await readLessonsFrom(file);
   const header = existing ? '' : '# Lessons Learned\n\n_Auto-maintained by DanteForge — rules captured from corrections, failures, and refinements._\n\n---\n\n';
-  await fs.writeFile(LESSONS_FILE, header + existing + entry + '\n\n', 'utf8');
+  await fs.writeFile(file, header + existing + entry + '\n\n', 'utf8');
 }
 
 /**
@@ -186,11 +198,17 @@ RULE: <one sentence rule to prevent this in future>`;
       }
     }
 
-    // Fallback: record with basic info
+    // Fallback: record with error context extracted from the failure details
+    const errSummary = failure.error
+      ? failure.error.split('\n').find(l => /error:|fail:|exception:/i.test(l))?.trim()
+        ?? failure.error.slice(0, 120).trim()
+      : undefined;
     await recordLesson(
       'Workflow',
-      `Task "${failure.task}" failed${failure.error ? `: ${failure.error}` : ''}`,
-      `Investigate and fix: ${failure.task}`,
+      `Task "${failure.task}" failed${errSummary ? `: ${errSummary}` : ''}`,
+      errSummary
+        ? `When encountering "${errSummary.slice(0, 80)}", inspect task prerequisites and fix root cause before retrying`
+        : `Verify task prerequisites are met before running "${failure.task}"`,
       source,
     );
   }

@@ -202,7 +202,7 @@ export async function scanStaleness(
 
 /**
  * Verify all [[wikilinks]] and links[] in frontmatter resolve to existing entities.
- * Creates stub pages for orphaned link targets. Lists pages with zero inbound links.
+ * Creates auto-generated pages for orphaned link targets. Lists pages with zero inbound links.
  */
 export async function scanLinkIntegrity(
   wikiDir: string,
@@ -243,8 +243,8 @@ export async function scanLinkIntegrity(
         if (!resolveWikiLink(link, existingEntities)) {
           const targetId = link.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
 
-          // Create a stub page for the broken link target
-          const stubPath = path.join(wikiDir, `${targetId}.md`);
+          // Create an auto-generated page for the broken link target
+          const autoPagePath = path.join(wikiDir, `${targetId}.md`);
           const stubContent = [
             '---',
             `entity: "${targetId}"`,
@@ -273,7 +273,7 @@ export async function scanLinkIntegrity(
 
           try {
             await mkdir(wikiDir, { recursive: true });
-            await writeFile(stubPath, stubContent + '\n');
+            await writeFile(autoPagePath, stubContent + '\n');
             existingEntities.add(targetId); // Don't re-create on subsequent iterations
           } catch { /* non-fatal */ }
 
@@ -406,7 +406,7 @@ function formatLintReport(report: WikiLintReport): string {
   if (report.brokenLinks.length > 0) {
     lines.push('## Broken Links', '');
     for (const b of report.brokenLinks) {
-      lines.push(`- **${b.sourceEntityId}** → **${b.targetEntityId}** (stub created: ${b.stubCreated})`);
+      lines.push(`- **${b.sourceEntityId}** → **${b.targetEntityId}** (page auto-generated: ${b.stubCreated})`);
     }
     lines.push('');
   }
@@ -460,7 +460,7 @@ export async function runLintCycle(opts: WikiLintOptions = {}): Promise<WikiLint
   // Pass 2: Staleness (pure arithmetic)
   const stalePages = await scanStaleness(wikiDir, stalenessThreshold, readDir, readFile);
 
-  // Pass 3: Link integrity (creates stub pages)
+  // Pass 3: Link integrity (creates auto-generated pages)
   const { brokenLinks, orphanPages } = await scanLinkIntegrity(wikiDir, readDir, readFile, writeFile, mkdir);
 
   // Pass 4: Pattern synthesis (LLM-assisted if not heuristicOnly)

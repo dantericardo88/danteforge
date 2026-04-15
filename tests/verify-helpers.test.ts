@@ -9,6 +9,7 @@ import {
   stageRequiresExecution,
   normalizeMarkdownValue,
   readWorkspacePackageVersion,
+  computeVerifyStatus,
 } from '../src/cli/commands/verify.js';
 
 const tempDirs: string[] = [];
@@ -129,5 +130,29 @@ describe('readWorkspacePackageVersion', () => {
     await fs.writeFile(path.join(dir, 'package.json'), JSON.stringify({ name: 'test' }));
     const version = await readWorkspacePackageVersion(dir);
     assert.strictEqual(version, undefined);
+  });
+});
+
+// ── computeVerifyStatus ────────────────────────────────────────────────────
+
+describe('computeVerifyStatus', () => {
+  it('returns fail when failures exist', () => {
+    assert.equal(computeVerifyStatus({ failures: ['Tests failed'], warnings: [] }), 'fail');
+  });
+
+  it('returns warn when warnings exist but no failures', () => {
+    assert.equal(computeVerifyStatus({ failures: [], warnings: ['Coverage below threshold'] }), 'warn');
+  });
+
+  it('returns pass when no failures and no warnings', () => {
+    assert.equal(computeVerifyStatus({ failures: [], warnings: [] }), 'pass');
+  });
+
+  it('failures take precedence over warnings', () => {
+    assert.equal(computeVerifyStatus({ failures: ['Build failed'], warnings: ['Coverage low'] }), 'fail');
+  });
+
+  it('single failure returns fail', () => {
+    assert.equal(computeVerifyStatus({ failures: ['x'], warnings: [] }), 'fail');
   });
 });

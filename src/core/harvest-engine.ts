@@ -138,13 +138,18 @@ export async function writeTrackFiles(
   const base = cwd ?? process.cwd();
   const trackDir = path.join(base, HARVEST_DIR, track.trackId);
 
-  await fs.mkdir(trackDir, { recursive: true });
-
   const trackPath = path.join(trackDir, 'track.json');
   const summaryPath = path.join(trackDir, 'summary.json');
 
-  await fs.writeFile(trackPath, JSON.stringify(track, null, 2), 'utf8');
-  await fs.writeFile(summaryPath, JSON.stringify(track.summary, null, 2), 'utf8');
+  try {
+    await fs.mkdir(trackDir, { recursive: true });
+    await fs.writeFile(trackPath, JSON.stringify(track, null, 2), 'utf8');
+    await fs.writeFile(summaryPath, JSON.stringify(track.summary, null, 2), 'utf8');
+  } catch (err) {
+    throw new Error(
+      `Failed to write track files to "${trackDir}": ${err instanceof Error ? err.message : String(err)}`,
+    );
+  }
 
   logger.success(`Track written: ${trackDir}`);
   return { trackPath, summaryPath };

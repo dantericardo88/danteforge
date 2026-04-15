@@ -202,6 +202,12 @@ describe('runConvergenceCycles', () => {
       _getVerifyStatus: async () => (statusCalls++ >= 1 ? 'pass' : 'fail'),
       _runAutoforge: async (goal) => { capturedGoals.push(goal); },
       _runVerify: async () => {},
+      _assessMaturity: async () => ({
+        currentLevel: 4, targetLevel: 4, overallScore: 80,
+        dimensions: { functionality: 80, testing: 80, errorHandling: 80, security: 80, uxPolish: 80, documentation: 80, performance: 80, maintainability: 80 },
+        gaps: [], founderExplanation: 'Good.', recommendation: 'proceed',
+        timestamp: new Date().toISOString(),
+      }),
     });
     assert.strictEqual(capturedGoals.length, 1, 'should call autoforge once');
     assert.ok(capturedGoals[0]!.includes('Build payment flow'), 'goal should reference original goal');

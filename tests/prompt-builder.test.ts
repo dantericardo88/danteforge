@@ -47,6 +47,26 @@ describe('buildTaskPrompt', () => {
     assert.ok(!prompt.includes('\x00'));
     assert.ok(prompt.includes('testtask'));
   });
+
+  it('T8: includes NEW_FILE format instruction', () => {
+    const prompt = buildTaskPrompt({ name: 'Add util' }, 'balanced');
+    assert.ok(prompt.includes('NEW_FILE:'), 'prompt must contain NEW_FILE: format marker');
+  });
+
+  it('T9: includes SEARCH/REPLACE delimiters', () => {
+    const prompt = buildTaskPrompt({ name: 'Edit util' }, 'quality');
+    assert.ok(prompt.includes('<<<<<<< SEARCH'), 'prompt must contain SEARCH delimiter');
+    assert.ok(prompt.includes('>>>>>>> REPLACE'), 'prompt must contain REPLACE delimiter');
+    assert.ok(prompt.includes('filepath:'), 'prompt must contain filepath: marker');
+  });
+
+  it('T10: format instruction is present regardless of profile', () => {
+    for (const profile of ['quality', 'balanced', 'budget']) {
+      const prompt = buildTaskPrompt({ name: 'Task' }, profile);
+      assert.ok(prompt.includes('NEW_FILE:'), `NEW_FILE: missing for profile ${profile}`);
+      assert.ok(prompt.includes('<<<<<<< SEARCH'), `SEARCH missing for profile ${profile}`);
+    }
+  });
 });
 
 describe('buildVerifyPrompt', () => {
