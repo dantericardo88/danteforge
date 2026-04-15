@@ -12,7 +12,7 @@ import fs from 'fs/promises';
 import path from 'path';
 import { loadState, saveState, type WorkflowStage } from './state.js';
 import { computeHarshScore, computeStrictDimensions, type HarshScorerOptions, type HarshScoreResult, type ScoringDimension } from './harsh-scorer.js';
-import { loadMatrix, saveMatrix, classifyDimensions, getNextSprintDimension, updateDimensionScore, type CompeteMatrix, type MatrixDimension } from './compete-matrix.js';
+import { loadMatrix, saveMatrix, classifyDimensions, getNextSprintDimension, updateDimensionScore, KNOWN_CEILINGS, type CompeteMatrix, type MatrixDimension } from './compete-matrix.js';
 import { defineUniverse, type UniverseDefinerOptions } from './universe-definer.js';
 import { runAutoforgeLoop, AutoforgeLoopState, type AutoforgeLoopContext, type AutoforgeLoopDeps } from './autoforge-loop.js';
 import { executeAutoforgeCommand } from './autoforge-executor.js';
@@ -325,6 +325,16 @@ export async function applyStrictOverrides(
   result.displayDimensions.developerExperience = Math.round(strict.developerExperience / 10);
   result.displayDimensions.planningQuality = Math.round(strict.planningQuality / 10);
   result.displayDimensions.convergenceSelfHealing = Math.round(strict.convergenceSelfHealing / 10);
+
+  // Enforce automation ceilings — a dimension cannot score above its known ceiling
+  // even if the harsh scorer returns a higher value from STATE.yaml signals.
+  for (const [dimId, { ceiling }] of Object.entries(KNOWN_CEILINGS)) {
+    const dim = dimId as ScoringDimension;
+    if (result.displayDimensions[dim] !== undefined) {
+      result.displayDimensions[dim] = Math.min(result.displayDimensions[dim]!, ceiling);
+    }
+  }
+
   // Note: we intentionally do NOT recompute displayScore here.
   // Convergence is decided per-dimension via displayDimensions[scoringDim], not displayScore.
   // The matrix's overallSelfScore is managed by updateDimensionScore() which is authoritative.

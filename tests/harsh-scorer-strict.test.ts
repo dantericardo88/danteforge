@@ -1,7 +1,9 @@
 // Tests for the 4 new strict dimensions added in Sprint 49
+// and automation ceiling enforcement added in Sprint 49b
 import { describe, it } from 'node:test';
 import assert from 'node:assert';
 import { computeStrictDimensions } from '../src/core/harsh-scorer.js';
+import { applyStrictOverrides } from '../src/core/ascend-engine.js';
 
 // Injection seam types
 type GitLogFn = (args: string[], cwd: string) => Promise<string>;
@@ -100,5 +102,47 @@ describe('computeStrictDimensions — Sprint 49 new dimensions', () => {
     for (const key of ['specDrivenPipeline', 'developerExperience', 'planningQuality', 'convergenceSelfHealing'] as const) {
       assert.ok(result[key] >= 0 && result[key] <= 100, `${key} must be in [0,100], got ${result[key]}`);
     }
+  });
+});
+
+describe('applyStrictOverrides — automation ceiling enforcement', () => {
+  // Stub computeStrictDimensions that returns all zeros (so only the ceiling clamp matters)
+  const zeroStrict: typeof computeStrictDimensions = async () => ({
+    autonomy: 0, selfImprovement: 0, tokenEconomy: 0,
+    specDrivenPipeline: 0, developerExperience: 0, planningQuality: 0, convergenceSelfHealing: 0,
+  });
+
+  it('clamps enterpriseReadiness to ceiling 6.0 when harsh scorer returns a higher value', async () => {
+    const result = {
+      displayScore: 9.0,
+      displayDimensions: { enterpriseReadiness: 8.5 } as Record<string, number>,
+      rawScores: {},
+      summary: '',
+      recommendations: [],
+    } as never;
+
+    await applyStrictOverrides(result, '/tmp', zeroStrict);
+
+    assert.ok(
+      result.displayDimensions.enterpriseReadiness <= 6.0,
+      `enterpriseReadiness should be clamped to ≤6.0, got ${result.displayDimensions.enterpriseReadiness}`,
+    );
+  });
+
+  it('clamps communityAdoption to ceiling 4.0 when harsh scorer returns a higher value', async () => {
+    const result = {
+      displayScore: 9.0,
+      displayDimensions: { communityAdoption: 7.5 } as Record<string, number>,
+      rawScores: {},
+      summary: '',
+      recommendations: [],
+    } as never;
+
+    await applyStrictOverrides(result, '/tmp', zeroStrict);
+
+    assert.ok(
+      result.displayDimensions.communityAdoption <= 4.0,
+      `communityAdoption should be clamped to ≤4.0, got ${result.displayDimensions.communityAdoption}`,
+    );
   });
 });

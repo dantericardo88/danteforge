@@ -19,6 +19,7 @@ import type {
   AssessmentHistoryEntry,
 } from '../../core/harsh-scorer.js';
 import { computeStrictDimensions } from '../../core/harsh-scorer.js';
+import { KNOWN_CEILINGS } from '../../core/compete-matrix.js';
 import type { PrimeOptions } from './prime.js';
 
 // ── Types ─────────────────────────────────────────────────────────────────────
@@ -271,13 +272,22 @@ export async function score(options: ScoreOptions = {}): Promise<ScoreResult> {
     result.displayDimensions.planningQuality = Math.round(strict.planningQuality / 10);
     result.displayDimensions.convergenceSelfHealing = Math.round(strict.convergenceSelfHealing / 10);
 
+    // Enforce automation ceilings — a dimension cannot display above its known ceiling
+    // even if the harsh scorer returns a higher value from STATE.yaml signals.
+    for (const [dimId, { ceiling }] of Object.entries(KNOWN_CEILINGS)) {
+      const dim = dimId as ScoringDimension;
+      if (result.displayDimensions[dim] !== undefined) {
+        result.displayDimensions[dim] = Math.min(result.displayDimensions[dim]!, ceiling);
+      }
+    }
+
     // Recompute displayScore from patched dimensions
     const patched = result.displayDimensions;
     const patchedWeighted = (Object.entries(SCORE_DISPLAY_WEIGHTS) as [ScoringDimension, number][])
       .reduce((sum, [k, w]) => sum + (patched[k] ?? 0) * w, 0);
     result.displayScore = Math.round(patchedWeighted * 10) / 10;
 
-    emit('  [strict mode: 7 dimensions overridden with code-derived signals]');
+    emit('  [strict mode: 7 dimensions overridden + automation ceilings enforced]');
   }
 
   // Session baseline with TTL — reset if older than 4 hours so delta stays meaningful
