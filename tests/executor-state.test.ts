@@ -167,9 +167,10 @@ describe('executeWave — edge cases with _stateCaller', () => {
     const state = makeState();
     const sc = makeStateCaller(state);
 
-    // No _llmCaller and no live LLM → blocked
+    // No _llmCaller and injected unavailability → blocked (independent of Ollama state)
     const result = await executeWave(1, 'balanced', false, false, false, 30000, {
       _stateCaller: sc,
+      _isLLMAvailable: async () => false,
     });
 
     assert.strictEqual(result.mode, 'blocked');

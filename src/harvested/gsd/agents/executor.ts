@@ -112,6 +112,8 @@ export interface ExecuteWaveOptions {
   _runTests?: (opts: { cwd: string }) => Promise<TestRunResult>;
   /** Inject file reader for retry context enrichment — defaults to fs.readFile */
   _readFileFn?: (filePath: string) => Promise<string>;
+  /** Inject LLM availability check — defaults to isLLMAvailable() from llm.ts */
+  _isLLMAvailable?: () => Promise<boolean>;
 }
 
 // ── Code Application Pipeline ─────────────────────────────────────────────────
@@ -218,7 +220,8 @@ export async function executeWave(
     return { mode: 'blocked', success: false };
   }
 
-  const llmAvailable = options?._llmCaller != null || await isLLMAvailable();
+  const checkLLM = options?._isLLMAvailable ?? isLLMAvailable;
+  const llmAvailable = options?._llmCaller != null || await checkLLM();
   if (!llmAvailable && !promptMode) {
     logger.error('No verified live LLM provider is configured for forge execution. Re-run with --prompt or configure a provider with working model access.');
     return { mode: 'blocked', success: false };

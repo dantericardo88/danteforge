@@ -164,13 +164,18 @@ export function computeGapPriority(dim: MatrixDimension): number {
 
 /**
  * Find the next dimension to sprint on: highest priority that isn't 'closed'
- * and hasn't hit its automation ceiling.
+ * and hasn't hit its automation ceiling AND whose ceiling can reach the target.
+ * A dim is ineligible if its ceiling < target (can never reach target via automation),
+ * or if its current score has already hit the ceiling.
  * Returns null if all dimensions are closed/at-ceiling or the matrix is empty.
  */
-export function getNextSprintDimension(matrix: CompeteMatrix): MatrixDimension | null {
+export function getNextSprintDimension(matrix: CompeteMatrix, target = 9.0): MatrixDimension | null {
   const eligible = matrix.dimensions.filter(d =>
     d.status !== 'closed' &&
-    (d.ceiling === undefined || (d.scores['self'] ?? 0) < d.ceiling),
+    // exclude dims already at or above target — nothing to improve
+    (d.scores['self'] ?? 0) < target &&
+    // ceiling must either not exist, OR be >= target (can reach target) AND score not yet at ceiling
+    (d.ceiling === undefined || (d.ceiling >= target && (d.scores['self'] ?? 0) < d.ceiling)),
   );
   if (eligible.length === 0) return null;
   return eligible.reduce((best, d) =>
