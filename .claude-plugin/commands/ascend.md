@@ -9,9 +9,20 @@ When the user invokes `/danteforge-ascend [args]`, run the full autonomous impro
 
 ## What It Does
 
+0. **Dossier intelligence refresh** — Before the autonomous loop begins, ensure competitor evidence is current.
+   Run: `danteforge dossier build --all --since 30d`
+   (30-day filter: the loop may run for hours — no need to re-fetch every cycle.)
+   Then: `danteforge landscape gap` — get the rubric-backed gap list.
+   The ascend loop uses these evidence-backed gaps to rank dimensions, replacing
+   LLM-estimated competitor scores with sourced, verifiable evidence.
+
 1. **Universe definition** — if no competitive matrix exists, asks 5 questions (or auto-detects) and bootstraps one using WebSearch + competitor analysis
 2. **Ceiling classification** — identifies dimensions that cannot be automated past a threshold (e.g. `communityAdoption` can't be pushed past 4/10 via code alone) and announces them upfront
-3. **Autonomous improvement loop** — picks the highest-priority achievable dimension, runs a targeted improvement cycle, re-scores, and repeats until all achievable dimensions hit the target
+3. **Autonomous improvement loop** — picks the highest-priority achievable dimension (driven by
+   `danteforge landscape gap`), runs a targeted improvement cycle, re-scores, and repeats.
+   After each cycle: run `danteforge landscape` to update DanteCode's position. The next
+   dimension target is pulled from `danteforge landscape gap` — ensuring each cycle attacks
+   the most verified remaining gap, not a stale LLM estimate.
 4. **Ceiling report** — when done, explains every ceiling dimension with the specific manual action required to go further
 
 ## Execution
