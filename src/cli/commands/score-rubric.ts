@@ -4,12 +4,15 @@ import fs from 'node:fs/promises';
 import path from 'node:path';
 import { DIMENSIONS_28, getDimension } from '../../scoring/dimensions.js';
 import { parseEvidenceFile } from '../../scoring/evidence.js';
+import { dossiersToEvidence } from '../../scoring/dossier-adapter.js';
 import { runMatrix, diffSnapshots } from '../../scoring/run-matrix.js';
 import { formatMarkdownReport, formatDiffReport, formatJsonSnapshot, parseJsonSnapshot } from '../../scoring/report.js';
 import { ALL_RUBRIC_IDS } from '../../scoring/rubrics.js';
 import type { RubricId, EvidenceRecord, DimensionDefinition } from '../../scoring/types.js';
 
 // ── Injection seams ───────────────────────────────────────────────────────────
+
+export type DossierLoader = (cwd: string) => Promise<import('../../dossier/types.js').Dossier[]>;
 
 export interface ScoreRubricOptions {
   matrix?: string;
@@ -22,6 +25,8 @@ export interface ScoreRubricOptions {
   _writeFile?: (p: string, d: string) => Promise<void>;
   _mkdir?: (p: string) => Promise<void>;
   _emit?: (msg: string) => void;
+  /** Override dossier loader for testing; defaults to listDossiers from builder */
+  _loadDossiers?: DossierLoader;
 }
 
 export interface ScoreDiffOptions {
@@ -31,6 +36,38 @@ export interface ScoreDiffOptions {
   _readFile?: (p: string) => Promise<string>;
   _writeFile?: (p: string, d: string) => Promise<void>;
   _emit?: (msg: string) => void;
+}
+
+// ── Auto-bootstrap evidence from dossier system ───────────────────────────────
+
+async function autoBootstrapEvidence(
+  cwd: string,
+  emit: (msg: string) => void,
+  _loadDossiers?: DossierLoader,
+): Promise<EvidenceRecord[]> {
+  try {
+    const loadDossiers: DossierLoader = _loadDossiers ?? (async (dir) => {
+      const { listDossiers } = await import('../../dossier/builder.js');
+      return listDossiers(dir);
+    });
+
+    emit('[rubric-score] Loading competitor dossiers...');
+    const dossiers = await loadDossiers(cwd);
+
+    if (dossiers.length === 0) {
+      emit('[rubric-score] No dossiers found. Run `danteforge dossier build --all` to generate evidence.');
+      emit('[rubric-score] Proceeding with empty evidence (all dims will score 0).');
+      return [];
+    }
+
+    const evidence = dossiersToEvidence(dossiers);
+    emit(`[rubric-score] Auto-bootstrapped ${evidence.length} evidence records from ${dossiers.length} dossier(s): ${dossiers.map((d) => d.competitor).join(', ')}`);
+    return evidence;
+  } catch (e) {
+    emit(`[rubric-score] Warning: dossier bootstrap failed: ${(e as Error).message}`);
+    emit('[rubric-score] Proceeding with empty evidence (all dims will score 0).');
+    return [];
+  }
 }
 
 // ── rubric-score command ──────────────────────────────────────────────────────
@@ -48,7 +85,7 @@ export async function rubricScore(options: ScoreRubricOptions = {}): Promise<voi
   const dimensions: DimensionDefinition[] = DIMENSIONS_28;
   const matrixId = options.matrix ?? 'product-28';
 
-  // 2. Load evidence
+  // 2. Load evidence — with auto-bootstrap from dossiers when no file provided
   let evidence: EvidenceRecord[] = [];
   if (options.evidence) {
     const evidencePath = path.resolve(cwd, options.evidence);
@@ -58,10 +95,12 @@ export async function rubricScore(options: ScoreRubricOptions = {}): Promise<voi
       emit(`[rubric-score] Loaded ${evidence.length} evidence records from ${evidencePath}`);
     } catch (e) {
       emit(`[rubric-score] Warning: could not load evidence file: ${(e as Error).message}`);
-      emit('[rubric-score] Proceeding with empty evidence (all dims will score 0).');
+      emit('[rubric-score] Falling back to dossier auto-bootstrap...');
+      evidence = await autoBootstrapEvidence(cwd, emit, options._loadDossiers);
     }
   } else {
-    emit('[rubric-score] No --evidence file provided. Scoring with empty evidence.');
+    emit('[rubric-score] No --evidence file provided — checking for competitor dossiers...');
+    evidence = await autoBootstrapEvidence(cwd, emit, options._loadDossiers);
   }
 
   // 3. Parse rubric IDs
