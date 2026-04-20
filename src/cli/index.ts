@@ -7,6 +7,10 @@ import { loadState } from '../core/state.js';
 import { logger } from '../core/logger.js';
 import { enforceWorkflow } from '../core/workflow-enforcer.js';
 import { formatAndLogError } from '../core/format-error.js';
+import {
+  CANVAS_PRESET_TEXT,
+  SPARK_PLANNING_TEXT,
+} from '../core/workflow-surface.js';
 
 const program = new Command();
 program
@@ -246,7 +250,7 @@ program
 
 program
   .command('spark [goal]')
-  .description('Zero-token planning preset: review -> constitution -> specify -> clarify -> tech-decide -> plan -> tasks')
+  .description(`Zero-token planning preset: ${SPARK_PLANNING_TEXT}`)
   .option('--prompt', 'Generate the preset plan without executing')
   .option('--skip-tech-decide', 'Skip the tech-decide step when the stack is already decided')
   .action((goal, opts) => commands.spark(goal, {
@@ -266,7 +270,7 @@ program
 
 program
   .command('canvas [goal]')
-  .description('Design-first frontend preset: design -> autoforge -> ux-refine -> verify')
+  .description(`Design-first frontend preset: ${CANVAS_PRESET_TEXT}`)
   .option('--profile <type>', 'quality | balanced | budget', 'budget')
   .option('--prompt', 'Generate the preset plan without executing')
   .option('--design-prompt <text>', 'Override the prompt passed to the design step')
@@ -1456,6 +1460,220 @@ program
       } catch (err) {
         const { formatAndLogError } = await import('../core/format-error.js');
         formatAndLogError(err, 'build');
+        process.exitCode = 1;
+      }
+    })();
+  });
+
+// ── Dossier command group ─────────────────────────────────────────────────────
+const dossierGroup = program
+  .command('dossier')
+  .description('Competitor dossier management — build source-backed evidence + scores');
+
+dossierGroup
+  .command('build [competitor]')
+  .description('Build or refresh a competitor dossier')
+  .option('--all', 'Rebuild all competitors in registry')
+  .option('--sources <urls>', 'Comma-separated source URLs (override registry)')
+  .option('--since <duration>', 'Skip if dossier fresher than duration (e.g. 7d)')
+  .action((competitor, opts) => {
+    void (async () => {
+      try {
+        const { dossierBuild } = await import('./commands/dossier.js');
+        await dossierBuild(competitor as string | undefined, {
+          all: opts.all as boolean | undefined,
+          sources: opts.sources as string | undefined,
+          since: opts.since as string | undefined,
+        });
+      } catch (err) {
+        const { formatAndLogError } = await import('../core/format-error.js');
+        formatAndLogError(err, 'dossier build');
+        process.exitCode = 1;
+      }
+    })();
+  });
+
+dossierGroup
+  .command('diff <competitor>')
+  .description('Show what changed since last dossier build')
+  .action((competitor) => {
+    void (async () => {
+      try {
+        const { dossierDiff } = await import('./commands/dossier.js');
+        await dossierDiff(competitor as string);
+      } catch (err) {
+        const { formatAndLogError } = await import('../core/format-error.js');
+        formatAndLogError(err, 'dossier diff');
+        process.exitCode = 1;
+      }
+    })();
+  });
+
+dossierGroup
+  .command('show <competitor>')
+  .description('Pretty-print a competitor dossier')
+  .option('--dim <n>', 'Show single dimension evidence')
+  .action((competitor, opts) => {
+    void (async () => {
+      try {
+        const { dossierShow } = await import('./commands/dossier.js');
+        await dossierShow(competitor as string, { dim: opts.dim as string | undefined });
+      } catch (err) {
+        const { formatAndLogError } = await import('../core/format-error.js');
+        formatAndLogError(err, 'dossier show');
+        process.exitCode = 1;
+      }
+    })();
+  });
+
+dossierGroup
+  .command('list')
+  .description('List all built dossiers with composite scores')
+  .action(() => {
+    void (async () => {
+      try {
+        const { dossierList } = await import('./commands/dossier.js');
+        await dossierList();
+      } catch (err) {
+        const { formatAndLogError } = await import('../core/format-error.js');
+        formatAndLogError(err, 'dossier list');
+        process.exitCode = 1;
+      }
+    })();
+  });
+
+// ── Landscape command group ───────────────────────────────────────────────────
+const landscapeGroup = program
+  .command('landscape')
+  .description('Competitive landscape matrix assembled from all dossiers')
+  .action(() => {
+    void (async () => {
+      try {
+        const { landscapeBuild } = await import('./commands/landscape-cmd.js');
+        await landscapeBuild();
+      } catch (err) {
+        const { formatAndLogError } = await import('../core/format-error.js');
+        formatAndLogError(err, 'landscape');
+        process.exitCode = 1;
+      }
+    })();
+  });
+
+landscapeGroup
+  .command('diff')
+  .description('Show landscape staleness and last-generated metadata')
+  .action(() => {
+    void (async () => {
+      try {
+        const { landscapeDiff } = await import('./commands/landscape-cmd.js');
+        await landscapeDiff();
+      } catch (err) {
+        const { formatAndLogError } = await import('../core/format-error.js');
+        formatAndLogError(err, 'landscape diff');
+        process.exitCode = 1;
+      }
+    })();
+  });
+
+landscapeGroup
+  .command('ranking')
+  .description('Print sorted competitor rankings table')
+  .action(() => {
+    void (async () => {
+      try {
+        const { landscapeRanking } = await import('./commands/landscape-cmd.js');
+        await landscapeRanking();
+      } catch (err) {
+        const { formatAndLogError } = await import('../core/format-error.js');
+        formatAndLogError(err, 'landscape ranking');
+        process.exitCode = 1;
+      }
+    })();
+  });
+
+landscapeGroup
+  .command('gap')
+  .description('Show dimensions where DC lags the leader by >1.0')
+  .option('--target <id>', 'Target competitor id (default: dantescode)')
+  .action((opts) => {
+    void (async () => {
+      try {
+        const { landscapeGap } = await import('./commands/landscape-cmd.js');
+        await landscapeGap({ target: (opts as { target?: string }).target });
+      } catch (err) {
+        const { formatAndLogError } = await import('../core/format-error.js');
+        formatAndLogError(err, 'landscape gap');
+        process.exitCode = 1;
+      }
+    })();
+  });
+
+// ── Rubric command group ──────────────────────────────────────────────────────
+const rubricGroup = program
+  .command('rubric')
+  .description('Scoring rubric management — frozen criteria for each dimension');
+
+rubricGroup
+  .command('show')
+  .description('Print full rubric or single dimension criteria')
+  .option('--dim <n>', 'Show criteria for one dimension')
+  .action((opts) => {
+    void (async () => {
+      try {
+        const { rubricShow } = await import('./commands/rubric-cmd.js');
+        await rubricShow({ dim: (opts as { dim?: string }).dim });
+      } catch (err) {
+        const { formatAndLogError } = await import('../core/format-error.js');
+        formatAndLogError(err, 'rubric show');
+        process.exitCode = 1;
+      }
+    })();
+  });
+
+rubricGroup
+  .command('init')
+  .description('Initialize rubric.json (checks if already present)')
+  .action(() => {
+    void (async () => {
+      try {
+        const { rubricInit } = await import('./commands/rubric-cmd.js');
+        await rubricInit();
+      } catch (err) {
+        const { formatAndLogError } = await import('../core/format-error.js');
+        formatAndLogError(err, 'rubric init');
+        process.exitCode = 1;
+      }
+    })();
+  });
+
+rubricGroup
+  .command('validate')
+  .description('Check all dossiers have evidence for each rubric dimension')
+  .action(() => {
+    void (async () => {
+      try {
+        const { rubricValidate } = await import('./commands/rubric-cmd.js');
+        await rubricValidate();
+      } catch (err) {
+        const { formatAndLogError } = await import('../core/format-error.js');
+        formatAndLogError(err, 'rubric validate');
+        process.exitCode = 1;
+      }
+    })();
+  });
+
+rubricGroup
+  .command('add-dim')
+  .description('Add a new dimension to the rubric')
+  .option('--name <name>', 'Dimension name')
+  .action((opts) => {
+    void (async () => {
+      try {
+        const { rubricAddDim } = await import('./commands/rubric-cmd.js');
+        await rubricAddDim({ name: (opts as { name?: string }).name });
+      } catch (err) {
+        const { formatAndLogError } = await import('../core/format-error.js');
+        formatAndLogError(err, 'rubric add-dim');
         process.exitCode = 1;
       }
     })();

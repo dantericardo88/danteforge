@@ -72,6 +72,8 @@ export interface ScoreOptions {
     opts: import('../../core/adversarial-scorer-dim.js').AdversarialScorerDimOptions,
   ) => Promise<import('../../core/adversarial-scorer-dim.js').AdversarialScoreResult>;
   _loadConfig?: () => Promise<import('../../core/config.js').DanteConfig>;
+  // Landscape staleness check seam
+  _readFile?: (p: string, enc: BufferEncoding) => Promise<string>;
 }
 
 // ── Dimension weights (mirrors DIMENSION_WEIGHTS in harsh-scorer.ts) ──────────
@@ -391,6 +393,20 @@ export async function score(options: ScoreOptions = {}): Promise<ScoreResult> {
       // best-effort — if prime not available yet, skip silently
     }
   }
+
+  // Stale landscape warning (best-effort, never blocks score)
+  try {
+    const landscapePath = path.join(cwd, '.danteforge', 'landscape.json');
+    const landscapeRaw = await (options._readFile
+      ? options._readFile(landscapePath, 'utf8')
+      : (await import('node:fs/promises')).readFile(landscapePath, 'utf8'));
+    const lm = JSON.parse(landscapeRaw) as { generatedAt: string };
+    const ageMs = Date.now() - new Date(lm.generatedAt).getTime();
+    if (ageMs > 7 * 24 * 60 * 60 * 1000) {
+      emit('');
+      emit('  ⚠ Competitive landscape is >7 days old. Run: danteforge landscape');
+    }
+  } catch { /* no landscape yet — silent */ }
 
   emit('');
   return {

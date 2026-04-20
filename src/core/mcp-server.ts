@@ -513,6 +513,95 @@ export const TOOL_DEFINITIONS: ToolDefinition[] = [
       required: [],
     },
   },
+  // ── Dossier system tools ──────────────────────────────────────────────────
+  {
+    name: 'danteforge_dossier_build',
+    description: 'Build or refresh a competitor dossier with source-backed evidence and rubric scores',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        competitor: { type: 'string', description: 'Competitor id (e.g. "cursor", "aider")' },
+        sources: {
+          type: 'array',
+          items: { type: 'string' },
+          description: 'Override primary source URLs (optional)',
+        },
+        since: { type: 'string', description: 'Skip if dossier built within this duration (e.g. "7d")' },
+        _cwd: { type: 'string', description: 'Working directory override (for testing)' },
+      },
+      required: ['competitor'],
+    },
+  },
+  {
+    name: 'danteforge_dossier_get',
+    description: 'Get a competitor dossier, optionally filtered to a single dimension',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        competitor: { type: 'string', description: 'Competitor id' },
+        dim: { type: 'number', description: 'Dimension number (1–28). Omit for full dossier.' },
+        _cwd: { type: 'string', description: 'Working directory override (for testing)' },
+      },
+      required: ['competitor'],
+    },
+  },
+  {
+    name: 'danteforge_dossier_list',
+    description: 'List all built competitor dossiers with composite scores',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        _cwd: { type: 'string', description: 'Working directory override (for testing)' },
+      },
+      required: [],
+    },
+  },
+  {
+    name: 'danteforge_landscape_build',
+    description: 'Rebuild the full competitive landscape matrix from all dossiers and write COMPETITIVE_LANDSCAPE.md',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        _cwd: { type: 'string', description: 'Working directory override (for testing)' },
+      },
+      required: [],
+    },
+  },
+  {
+    name: 'danteforge_landscape_diff',
+    description: 'Show competitive landscape staleness and metadata since last build',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        _cwd: { type: 'string', description: 'Working directory override (for testing)' },
+      },
+      required: [],
+    },
+  },
+  {
+    name: 'danteforge_rubric_get',
+    description: 'Get the scoring rubric — all dimensions or a single dimension with criteria',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        dim: { type: 'number', description: 'Dimension number (1–28). Omit for full rubric.' },
+        _cwd: { type: 'string', description: 'Working directory override (for testing)' },
+      },
+      required: [],
+    },
+  },
+  {
+    name: 'danteforge_score_competitor',
+    description: 'Get the composite score and dimension breakdown for a specific competitor',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        competitor: { type: 'string', description: 'Competitor id' },
+        _cwd: { type: 'string', description: 'Working directory override (for testing)' },
+      },
+      required: ['competitor'],
+    },
+  },
 ];
 
 // ---------------------------------------------------------------------------
@@ -1367,7 +1456,155 @@ export const TOOL_HANDLERS: Record<string, ToolHandler> = {
   danteforge_explain_score: (args) => handleExplainScore(args),
   danteforge_leapfrog_opportunities: (args) => handleLeapfrogOpportunities(args),
   danteforge_pattern_search: (args) => handlePatternSearch(args),
+  danteforge_dossier_build: (args) => handleDossierBuild(args),
+  danteforge_dossier_get: (args) => handleDossierGet(args),
+  danteforge_dossier_list: (args) => handleDossierList(args),
+  danteforge_landscape_build: (args) => handleLandscapeBuild(args),
+  danteforge_landscape_diff: (args) => handleLandscapeDiff(args),
+  danteforge_rubric_get: (args) => handleRubricGet(args),
+  danteforge_score_competitor: (args) => handleScoreCompetitor(args),
 };
+
+// ---------------------------------------------------------------------------
+// Dossier MCP handlers
+// ---------------------------------------------------------------------------
+
+async function handleDossierBuild(args: Record<string, unknown>): Promise<ToolResult> {
+  const cwd = resolveCwd(args);
+  const competitor = String(args['competitor'] ?? '');
+  if (!competitor) return errorResult('Missing required parameter: competitor');
+  const sources = Array.isArray(args['sources'])
+    ? (args['sources'] as string[])
+    : undefined;
+  const since = args['since'] ? String(args['since']) : undefined;
+  try {
+    const { buildDossier } = await import('../dossier/builder.js');
+    const dossier = await buildDossier({ cwd, competitor, sources, since });
+    return jsonResult({
+      competitor: dossier.competitor,
+      displayName: dossier.displayName,
+      composite: dossier.composite,
+      lastBuilt: dossier.lastBuilt,
+      dimCount: Object.keys(dossier.dimensions).length,
+    });
+  } catch (err) {
+    return errorResult(`dossier build failed: ${String(err)}`);
+  }
+}
+
+async function handleDossierGet(args: Record<string, unknown>): Promise<ToolResult> {
+  const cwd = resolveCwd(args);
+  const competitor = String(args['competitor'] ?? '');
+  if (!competitor) return errorResult('Missing required parameter: competitor');
+  const dim = args['dim'] !== undefined ? Number(args['dim']) : undefined;
+  try {
+    const { loadDossier } = await import('../dossier/builder.js');
+    const dossier = await loadDossier(cwd, competitor);
+    if (!dossier) return errorResult(`No dossier found for "${competitor}"`);
+    if (dim !== undefined) {
+      const dimDef = dossier.dimensions[String(dim)];
+      if (!dimDef) return errorResult(`Dimension ${dim} not found in dossier`);
+      return jsonResult(dimDef);
+    }
+    return jsonResult(dossier);
+  } catch (err) {
+    return errorResult(`dossier get failed: ${String(err)}`);
+  }
+}
+
+async function handleDossierList(args: Record<string, unknown>): Promise<ToolResult> {
+  const cwd = resolveCwd(args);
+  try {
+    const { listDossiers } = await import('../dossier/builder.js');
+    const dossiers = await listDossiers(cwd);
+    const summary = dossiers
+      .sort((a, b) => b.composite - a.composite)
+      .map((d) => ({
+        competitor: d.competitor,
+        displayName: d.displayName,
+        composite: d.composite,
+        type: d.type,
+        lastBuilt: d.lastBuilt,
+      }));
+    return jsonResult({ count: dossiers.length, dossiers: summary });
+  } catch (err) {
+    return errorResult(`dossier list failed: ${String(err)}`);
+  }
+}
+
+async function handleLandscapeBuild(args: Record<string, unknown>): Promise<ToolResult> {
+  const cwd = resolveCwd(args);
+  try {
+    const { buildLandscape } = await import('../dossier/landscape.js');
+    const matrix = await buildLandscape(cwd);
+    return jsonResult({
+      generatedAt: matrix.generatedAt,
+      rubricVersion: matrix.rubricVersion,
+      competitorCount: matrix.competitors.length,
+      topRankings: matrix.rankings.slice(0, 5),
+    });
+  } catch (err) {
+    return errorResult(`landscape build failed: ${String(err)}`);
+  }
+}
+
+async function handleLandscapeDiff(args: Record<string, unknown>): Promise<ToolResult> {
+  const cwd = resolveCwd(args);
+  try {
+    const { loadLandscape, isLandscapeStale } = await import('../dossier/landscape.js');
+    const landscape = await loadLandscape(cwd);
+    if (!landscape) return jsonResult({ status: 'no_landscape', message: 'Run danteforge landscape to build' });
+    return jsonResult({
+      generatedAt: landscape.generatedAt,
+      rubricVersion: landscape.rubricVersion,
+      competitorCount: landscape.competitors.length,
+      stale: isLandscapeStale(landscape),
+    });
+  } catch (err) {
+    return errorResult(`landscape diff failed: ${String(err)}`);
+  }
+}
+
+async function handleRubricGet(args: Record<string, unknown>): Promise<ToolResult> {
+  const cwd = resolveCwd(args);
+  const dim = args['dim'] !== undefined ? Number(args['dim']) : undefined;
+  try {
+    const { getRubric, getDimCriteria } = await import('../dossier/rubric.js');
+    const rubric = await getRubric(cwd);
+    if (dim !== undefined) {
+      const dimDef = getDimCriteria(rubric, dim);
+      if (!dimDef) return errorResult(`Dimension ${dim} not found in rubric`);
+      return jsonResult({ dim, ...dimDef });
+    }
+    return jsonResult(rubric);
+  } catch (err) {
+    return errorResult(`rubric get failed: ${String(err)}`);
+  }
+}
+
+async function handleScoreCompetitor(args: Record<string, unknown>): Promise<ToolResult> {
+  const cwd = resolveCwd(args);
+  const competitor = String(args['competitor'] ?? '');
+  if (!competitor) return errorResult('Missing required parameter: competitor');
+  try {
+    const { loadDossier } = await import('../dossier/builder.js');
+    const dossier = await loadDossier(cwd, competitor);
+    if (!dossier) return errorResult(`No dossier found for "${competitor}". Run: danteforge dossier build ${competitor}`);
+    const dimSummary: Record<string, number> = {};
+    for (const [k, v] of Object.entries(dossier.dimensions)) {
+      dimSummary[k] = v.humanOverride ?? v.score;
+    }
+    return jsonResult({
+      competitor: dossier.competitor,
+      displayName: dossier.displayName,
+      composite: dossier.composite,
+      dimensions: dimSummary,
+      lastBuilt: dossier.lastBuilt,
+    });
+  } catch (err) {
+    return errorResult(`score competitor failed: ${String(err)}`);
+  }
+}
 
 // ---------------------------------------------------------------------------
 // Server factory

@@ -69,6 +69,8 @@ export interface AssessOptions {
   _now?: () => string;
   _loadState?: typeof loadState;
   _saveState?: typeof saveState;
+  // Self-dossier refresh (best-effort, never blocks assess)
+  _buildSelfDossier?: (opts: { cwd: string }) => Promise<unknown>;
 }
 
 export interface AssessResult {
@@ -90,6 +92,16 @@ export async function assess(options: AssessOptions = {}): Promise<AssessResult>
   const enableCompetitors = options.competitors ?? true;
   const cycleNumber = options.cycleNumber ?? 1;
   const isInteractive = options.interactive ?? false;
+
+  // Refresh self-dossier for evidence-based gap analysis (best-effort, never blocks assess)
+  try {
+    if (options._buildSelfDossier) {
+      await options._buildSelfDossier({ cwd });
+    } else {
+      const { buildSelfDossier } = await import('../../dossier/self-scorer.js');
+      await buildSelfDossier({ cwd });
+    }
+  } catch { /* self-dossier is optional; assess continues without it */ }
 
   const harshScoreFn = options._harshScore ?? computeHarshScore;
   const scanFn = options._scanCompetitors ?? scanCompetitors;
