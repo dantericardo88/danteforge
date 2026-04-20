@@ -90,3 +90,4 @@ export { ascend } from './ascend.js';
 export { dossierBuild, dossierDiff, dossierShow, dossierList } from './dossier.js';
 export { landscapeBuild, landscapeDiff, landscapeRanking, landscapeGap } from './landscape-cmd.js';
 export { rubricShow, rubricInit, rubricValidate, rubricAddDim } from './rubric-cmd.js';
+export { rubricScore, rubricScoreDiff, showDimension } from './score-rubric.js';

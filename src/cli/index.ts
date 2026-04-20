@@ -1679,6 +1679,59 @@ rubricGroup
     })();
   });
 
+// ── rubric-score group ────────────────────────────────────────────────────────
+const rubricScoreGroup = program
+  .command('rubric-score')
+  .description('Triple-rubric scoring: internal_optimistic, public_defensible, hostile_diligence');
+
+rubricScoreGroup
+  .option('--matrix <id>', 'Matrix ID (default: product-28)')
+  .option('--subject <name>', 'Subject being scored (e.g. DanteCode)')
+  .option('--evidence <path>', 'Path to JSON evidence file')
+  .option('--rubrics <list>', 'Comma-separated rubric IDs (default: all three)')
+  .option('--out <path>', 'Output path prefix (creates .md + .json)')
+  .action((opts) => {
+    void (async () => {
+      try {
+        const { rubricScore } = await import('./commands/score-rubric.js');
+        await rubricScore({
+          matrix: (opts as { matrix?: string }).matrix,
+          subject: (opts as { subject?: string }).subject,
+          evidence: (opts as { evidence?: string }).evidence,
+          rubrics: (opts as { rubrics?: string }).rubrics,
+          out: (opts as { out?: string }).out,
+        });
+      } catch (err) {
+        const { formatAndLogError } = await import('../core/format-error.js');
+        formatAndLogError(err, 'rubric-score');
+        process.exitCode = 1;
+      }
+    })();
+  });
+
+rubricScoreGroup
+  .command('diff')
+  .description('Compare two scoring snapshots and report changes')
+  .requiredOption('--before <path>', 'Path to before JSON snapshot')
+  .requiredOption('--after <path>', 'Path to after JSON snapshot')
+  .option('--out <path>', 'Write diff report to file')
+  .action((opts) => {
+    void (async () => {
+      try {
+        const { rubricScoreDiff } = await import('./commands/score-rubric.js');
+        await rubricScoreDiff({
+          before: (opts as { before: string }).before,
+          after: (opts as { after: string }).after,
+          out: (opts as { out?: string }).out,
+        });
+      } catch (err) {
+        const { formatAndLogError } = await import('../core/format-error.js');
+        formatAndLogError(err, 'rubric-score diff');
+        process.exitCode = 1;
+      }
+    })();
+  });
+
 loadState().catch(() => { /* state will be created on first write */ });
 
 program.parse(process.argv);
