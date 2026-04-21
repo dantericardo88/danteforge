@@ -2,7 +2,7 @@
 
 This project ships a Node CLI package (`danteforge` / `dforge`) and a first-class VS Code extension client.
 
-Current operator status and non-blocking follow-ups are tracked in [docs/Operational-Readiness-v0.17.0.md](docs/Operational-Readiness-v0.17.0.md). Archived readiness guides and older planning context are indexed in [docs/Release-History.md](docs/Release-History.md).
+Current operator status and non-blocking follow-ups are tracked in [docs/Operational-Readiness-v0.17.0.md](docs/Operational-Readiness-v0.17.0.md). That guide is generated from the latest local verify, release-proof, and live-proof receipts. Archived readiness guides and older planning context are indexed in [docs/Release-History.md](docs/Release-History.md).
 
 ## Prerequisites
 
@@ -11,6 +11,31 @@ Current operator status and non-blocking follow-ups are tracked in [docs/Operati
 - `VSCE_PAT` configured in GitHub Actions if you want automated VS Code Marketplace publish
 - `OVSX_PAT` configured in GitHub Actions if you want automated Open VSX publish
 - Ability to stage an isolated sandbox copy for strict hygiene verification
+
+## Launch-Supported Surfaces
+
+These are the only surfaces DanteForge currently treats as launch-supported:
+
+- local-only CLI
+- live-provider CLI
+- VS Code extension
+
+Everything else should be treated as beta or experimental until it has the same proof depth.
+
+## Authority Chain
+
+Use this order when deciding whether the project is actually ready:
+
+1. `npm run verify` proves the local repo gates.
+2. `npm run release:proof` proves the release artifact chain and supported surfaces.
+3. `npm run verify:live` proves the secret-backed live-provider path.
+4. `npm run sync:readiness-doc` turns the latest receipts into the active operator-facing readiness guide.
+
+## Proof Pack
+
+- [First 15 Minutes](docs/tutorials/first-15-minutes.md)
+- [Case Study: Public Example](docs/case-studies/public-example.md)
+- [Case Study: Internal Self-Hosting](docs/case-studies/internal-self-hosting.md)
 
 ## Local Release (Manual)
 
@@ -42,8 +67,10 @@ Notes:
 - `check:plugin-manifests` verifies the packaged `.claude-plugin/` manifests stay aligned with the npm package metadata.
 - `release:check:install-smoke` packs the CLI, installs it into a temp project, and proves the installed binary can run a real command.
 - `check:cli-smoke` runs operator-facing checks against the built CLI, including `--help`, `party --help`, `autoforge --dry-run`, and `awesome-scan`.
+- `npm run build` is the public, side-effect-free build. Maintainer-only sibling repo sync is explicit via `npm run sync:dantecode` or `npm run build:local-sync`.
 - The install smoke gate verifies that package installation is non-mutating for assistant registries, then proves that explicit assistant setup can populate the Claude, Codex, Gemini/Antigravity, and OpenCode registries and generate the Cursor bootstrap rule.
 - Standalone assistant install and secret setup details are documented in `docs/Standalone-Assistant-Setup.md`.
+- The canonical local Codex install and cross-machine validation flow is documented in `docs/Codex-Install.md`.
 - `release:check` includes tracked-path hygiene, root verification, CLI build, VS Code extension verification, plugin manifest validation, packed CLI install smoke verification, package dry-run, and third-party notices validation.
 - `release:proof` is the CI-facing ship authority. It starts with `check:repo-hygiene:strict`, then runs `release:check`, `npm audit --omit=dev`, `npm --prefix vscode-extension audit`, packages the VS Code extension, and writes `.danteforge/evidence/release/latest.json` plus `.md` with packaged npm metadata, artifact hashes, and publish-provenance summary details.
 - `release:check:strict` stages an isolated temp sandbox copy, runs the strict presence gate there, then executes the strict release chain with isolated home/config state.

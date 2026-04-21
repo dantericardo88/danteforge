@@ -22,6 +22,15 @@ describe('CLI flag parsing', () => {
     assert.ok(stdout.includes('party'), 'Should list party command');
   });
 
+  it('root help lists beginner-friendly aliases', () => {
+    const { stdout, stderr, status, error } = runCli('--help');
+    assert.equal(status, 0, error?.message ?? stderr);
+    assert.ok(stdout.includes('start'), 'Should list start alias command');
+    assert.ok(stdout.includes('measure'), 'Should list measure alias command');
+    assert.ok(stdout.includes('check'), 'Should list check alias command');
+    assert.ok(stdout.includes('auto-improve'), 'Should list auto-improve alias command');
+  });
+
   it('forge --help shows --parallel, --prompt, --light flags', () => {
     const { stdout, stderr, status, error } = runCli('forge', '--help');
     assert.equal(status, 0, error?.message ?? stderr);
@@ -40,6 +49,14 @@ describe('CLI flag parsing', () => {
     const { stdout, stderr, status, error } = runCli('config', '--help');
     assert.equal(status, 0, error?.message ?? stderr);
     assert.ok(stdout.includes('--set-key') || stdout.includes('set-key'), 'Should show --set-key option');
+  });
+
+  it('rubric-score --help shows scoring options and diff subcommand', () => {
+    const { stdout, stderr, status, error } = runCli('rubric-score', '--help');
+    assert.equal(status, 0, error?.message ?? stderr);
+    assert.ok(stdout.includes('--matrix'), 'Should show --matrix option');
+    assert.ok(stdout.includes('--evidence'), 'Should show --evidence option');
+    assert.ok(stdout.includes('diff [options]'), 'Should show diff subcommand');
   });
 
   it('unknown command shows error or help', () => {

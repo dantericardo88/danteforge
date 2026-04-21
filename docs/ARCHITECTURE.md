@@ -2,13 +2,13 @@
 
 ## System Overview
 
-DanteForge is an agentic development CLI that orchestrates structured software development workflows through a deterministic state machine, LLM integration, and multi-agent collaboration. The system exposes 37+ commands across pipeline, automation, design, intelligence, and tooling categories. It is ESM-only TypeScript with zero new runtime dependencies beyond 5 packages.
+DanteForge is an agentic development CLI that orchestrates structured software development workflows through a deterministic state machine, LLM integration, and multi-agent collaboration. The system exposes dozens of commands across pipeline, automation, design, intelligence, and tooling categories. It is ESM-only TypeScript with a deliberately small runtime dependency footprint.
 
 ## Directory Structure
 
 ```
 src/
-  cli/                          Commander.js CLI entry and 37+ command handlers
+  cli/                          Commander.js CLI entry and command handlers
     commands/                   Individual command modules (one async function per file)
   core/                         Shared infrastructure
     state.ts                    YAML-based project state (.danteforge/STATE.yaml)
@@ -42,23 +42,37 @@ vscode-extension/               VS Code integration (shells out to CLI)
 
 ## Workflow Pipeline
 
-The canonical pipeline enforces a left-to-right progression through development phases. Hard gates prevent skipping stages.
+The repo-level operator pipeline and the persisted state machine are related but not identical. The full operator pipeline includes planning/reporting steps such as `tech-decide`, `retro`, and `ship`, while `workflowStage` tracks the execution-critical subset that is enforced in state.
 
-```
-init -> constitution -> specify -> clarify -> plan -> tasks -> design -> forge -> ux-refine -> verify -> synthesize
-```
+Repo-level pipeline:
 
-- **init** — Project scaffolding and first-run detection
-- **constitution** — Establish project principles and constraints
-- **specify** — Write the specification artifact
-- **clarify** — LLM-assisted spec refinement with interactive Q&A
-- **plan** — Generate an execution plan scored by PDSE
-- **tasks** — Break the plan into discrete work items
-- **design** — Produce design artifacts (.op format for Design-as-Code)
-- **forge** — Execute tasks via multi-agent orchestration (party mode)
-- **ux-refine** — Push live UI to Figma for visual iteration via MCP
-- **verify** — Run quality gates (typecheck, lint, tests, anti-stub scan)
-- **synthesize** — Generate summary artifacts and handoff documents
+<!-- DANTEFORGE_REPO_PIPELINE:START -->
+```text
+review -> constitution -> specify -> clarify -> tech-decide -> plan -> tasks -> design -> forge -> ux-refine -> verify -> synthesize -> retro -> ship
+```
+<!-- DANTEFORGE_REPO_PIPELINE:END -->
+
+Persisted workflow state machine:
+
+<!-- DANTEFORGE_STATE_MACHINE:START -->
+```
+initialized -> review -> constitution -> specify -> clarify -> plan -> tasks -> design -> forge -> ux-refine -> verify -> synthesize
+```
+<!-- DANTEFORGE_STATE_MACHINE:END -->
+
+- **review** â€” Scan an existing repo and capture the current baseline
+- **constitution** â€” Establish project principles and constraints
+- **specify** â€” Write the specification artifact
+- **clarify** â€” LLM-assisted spec refinement with interactive Q&A
+- **tech-decide** â€” Record or confirm the stack decisions that shape implementation
+- **plan** â€” Generate an execution plan scored by PDSE
+- **tasks** â€” Break the plan into discrete work items
+- **design** â€” Produce design artifacts (.op format for Design-as-Code)
+- **forge** â€” Execute tasks via multi-agent orchestration (party mode)
+- **ux-refine** â€” Push live UI to Figma for visual iteration via MCP
+- **verify** â€” Run quality gates (typecheck, lint, tests, anti-stub scan)
+- **synthesize** â€” Generate summary artifacts and handoff documents
+- **retro / ship** â€” Close the loop with project learning and release planning once verification is complete
 
 Build first, then refine visually. UX-refine runs after forge because you need live UI to push to Figma.
 
@@ -66,11 +80,11 @@ Build first, then refine visually. UX-refine runs after forge because you need l
 
 Every command supports three execution modes, enabling use across diverse environments:
 
-1. **Direct API** — Requires `isLLMAvailable() === true`. The command calls the configured LLM provider directly and writes artifacts to the project state.
+1. **Direct API** â€” Requires `isLLMAvailable() === true`. The command calls the configured LLM provider directly and writes artifacts to the project state.
 
-2. **`--prompt` mode** — Generates copy-paste prompt text in `.danteforge/prompts/`. The user can paste this into any LLM interface manually.
+2. **`--prompt` mode** â€” Generates copy-paste prompt text in `.danteforge/prompts/`. The user can paste this into any LLM interface manually.
 
-3. **Local fallback** — Deterministic offline artifact generation using templates and heuristics. No network access required.
+3. **Local fallback** â€” Deterministic offline artifact generation using templates and heuristics. No network access required.
 
 This three-mode design ensures DanteForge remains functional without API keys, in air-gapped environments, and during provider outages.
 
@@ -78,9 +92,9 @@ This three-mode design ensures DanteForge remains functional without API keys, i
 
 Configuration is resolved in the following precedence order (highest to lowest):
 
-1. **Environment variables** — `DANTEFORGE_HOME`, provider API keys (`OLLAMA_HOST`, `GROK_API_KEY`, `ANTHROPIC_API_KEY`, `OPENAI_API_KEY`, `GEMINI_API_KEY`)
-2. **User-level config** — `~/.danteforge/config.yaml` stores API keys, default provider, and user preferences
-3. **Project state** — `./.danteforge/STATE.yaml` tracks the current project phase, tasks, audit log, and pipeline progress
+1. **Environment variables** â€” `DANTEFORGE_HOME`, provider API keys (`OLLAMA_HOST`, `GROK_API_KEY`, `ANTHROPIC_API_KEY`, `OPENAI_API_KEY`, `GEMINI_API_KEY`)
+2. **User-level config** â€” `~/.danteforge/config.yaml` stores API keys, default provider, and user preferences
+3. **Project state** â€” `./.danteforge/STATE.yaml` tracks the current project phase, tasks, audit log, and pipeline progress
 
 User-level config is never committed to source control. Project state is project-scoped and may be committed.
 
@@ -90,10 +104,10 @@ User-level config is never committed to source control. Project state is project
 
 Gates prevent out-of-order execution and enforce workflow discipline. Each gate checks a prerequisite before allowing a command to proceed:
 
-- `requireConstitution` — Blocks commands that depend on project principles
-- `requireSpec` — Blocks commands that depend on a written specification
-- `requirePlan` — Blocks commands that depend on an execution plan
-- `requireTests` — Blocks commands that depend on passing tests
+- `requireConstitution` â€” Blocks commands that depend on project principles
+- `requireSpec` â€” Blocks commands that depend on a written specification
+- `requirePlan` â€” Blocks commands that depend on an execution plan
+- `requireTests` â€” Blocks commands that depend on passing tests
 
 Gates can be bypassed with `--light` for rapid prototyping, but this is logged in the audit trail.
 

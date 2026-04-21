@@ -142,6 +142,7 @@ function makeWaveOpts(root: string, llmResponse = MOCK_LLM_HELLO) {
       verdict: 'proceed' as const,
     }),
     _memorizer: async () => {},
+    _captureFailureLessons: async () => {},
     _runTests: async () => ({
       passed: true,
       exitCode: 0,
@@ -231,16 +232,15 @@ describe('Autonomous Forge Integration', () => {
     assert.ok(hasForgeEntry, `auditLog must have forge entry — got: ${JSON.stringify(state.auditLog)}`);
   });
 
-  it('T5: verify({ cwd: tmpDir }) sets lastVerifyStatus to "pass" in STATE.yaml', async () => {
+  it('T5: verify({ cwd: tmpDir }) writes a passing receipt and exposes warn-on-dirty freshness through loadState()', async () => {
     await verify({ cwd: tmpDir });
 
     const { loadState } = await import('../src/core/state.js');
     const state = await loadState({ cwd: tmpDir });
-    assert.strictEqual(
-      state.lastVerifyStatus,
-      'pass',
-      `lastVerifyStatus must be "pass" — got "${state.lastVerifyStatus}"`,
-    );
+    const rawState = await fs.readFile(path.join(tmpDir, '.danteforge', 'STATE.yaml'), 'utf8');
+    assert.match(rawState, /lastVerifyStatus:\s+pass/);
+    assert.strictEqual(state.verifyEvidence?.status, 'pass');
+    assert.strictEqual(state.lastVerifyStatus, 'warn');
     // Reset exitCode verify may have set
     process.exitCode = 0;
   });

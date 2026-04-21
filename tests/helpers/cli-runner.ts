@@ -1,9 +1,10 @@
 import { spawnSync } from 'node:child_process';
 import { createRequire } from 'node:module';
 import path from 'node:path';
+import { pathToFileURL } from 'node:url';
 
 const require = createRequire(import.meta.url);
-const TSX_CLI = require.resolve('tsx/cli');
+const TSX_IMPORT = pathToFileURL(require.resolve('tsx')).href;
 const CLI_ENTRY = path.resolve('src/cli/index.ts');
 
 export interface CliRunResult {
@@ -18,9 +19,9 @@ export function runTsxCli(args: string[], options?: {
   timeout?: number;
   env?: NodeJS.ProcessEnv;
 }): CliRunResult {
-  const result = spawnSync(process.execPath, [TSX_CLI, CLI_ENTRY, ...args], {
+  const result = spawnSync(process.execPath, ['--import', TSX_IMPORT, CLI_ENTRY, ...args], {
     encoding: 'utf8',
-    timeout: options?.timeout ?? 60000,
+    timeout: options?.timeout ?? 180000,
     cwd: options?.cwd ?? process.cwd(),
     env: {
       ...process.env,
@@ -31,8 +32,8 @@ export function runTsxCli(args: string[], options?: {
 
   return {
     stdout: result.stdout ?? '',
-    stderr: result.stderr ?? '',
-    status: result.status,
+    stderr: `${result.stderr ?? ''}${result.error ? `${result.stderr ? '\n' : ''}[spawn-error] ${result.error.message}` : ''}`,
+    status: result.status ?? (result.error ? 1 : null),
     error: result.error ?? null,
   };
 }

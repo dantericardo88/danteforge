@@ -4,6 +4,7 @@ import path from 'path';
 import { loadState, recordWorkflowStage, saveState } from '../../core/state.js';
 import { logger } from '../../core/logger.js';
 import { withErrorBoundary } from '../../core/cli-error-boundary.js';
+import { REPO_PIPELINE_TEXT } from '../../core/workflow-surface.js';
 
 const STATE_DIR = '.danteforge';
 
@@ -119,8 +120,8 @@ export async function synthesize() {
   sections.push('## DanteForge Pipeline');
   sections.push('');
   sections.push('```');
-  sections.push('review -> constitution -> specify -> clarify -> plan -> tasks -> forge -> verify -> synthesize');
-  sections.push('  |                                                                                  |');
+  sections.push(REPO_PIPELINE_TEXT);
+  sections.push('  |                                                                                                                                            |');
   sections.push('  +-------------------- iterative loop: re-review or re-plan when gaps are found -----+');
   sections.push('```');
   sections.push('');

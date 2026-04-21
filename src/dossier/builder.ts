@@ -12,6 +12,7 @@ import type { CompetitorRegistry } from './types.js';
 export type WriteFileFn = (p: string, d: string) => Promise<void>;
 export type MkdirFn = (p: string, opts: { recursive: boolean }) => Promise<unknown>;
 export type ReadFileFn = (p: string, enc: BufferEncoding) => Promise<string>;
+export type ReadDirFn = (p: string) => Promise<string[]>;
 
 export type FetchSourceFn = (
   url: string,
@@ -68,6 +69,21 @@ function dossierPath(cwd: string, competitorId: string): string {
   return path.join(dossierDir(cwd), `${competitorId}.json`);
 }
 
+function dossierHistoryDir(cwd: string, competitorId: string): string {
+  return path.join(dossierDir(cwd), 'history', competitorId);
+}
+
+function sanitizeSnapshotTimestamp(timestamp: string): string {
+  return timestamp.replace(/[:.]/g, '-');
+}
+
+function dossierSnapshotPath(cwd: string, competitorId: string, lastBuilt: string): string {
+  return path.join(
+    dossierHistoryDir(cwd, competitorId),
+    `${sanitizeSnapshotTimestamp(lastBuilt)}.json`,
+  );
+}
+
 function parseSince(since: string): number {
   // e.g. "7d" → 7 days in ms; "24h" → 24h in ms
   const match = /^(\d+)([dhm])$/.exec(since);
@@ -88,6 +104,35 @@ async function loadExistingDossier(p: string): Promise<Dossier | null> {
   } catch {
     return null;
   }
+}
+
+async function loadLatestSnapshot(
+  dir: string,
+  readDir: ReadDirFn = fs.readdir,
+  readFile: ReadFileFn = fs.readFile as unknown as ReadFileFn,
+): Promise<Dossier | null> {
+  let files: string[];
+  try {
+    files = await readDir(dir);
+  } catch {
+    return null;
+  }
+
+  const snapshots = files
+    .filter((file) => file.endsWith('.json'))
+    .sort()
+    .reverse();
+
+  for (const snapshot of snapshots) {
+    try {
+      const raw = await readFile(path.join(dir, snapshot), 'utf8');
+      return JSON.parse(raw) as Dossier;
+    } catch {
+      // Skip malformed snapshots and keep looking.
+    }
+  }
+
+  return null;
 }
 
 function isDossierFresh(dossier: Dossier, sinceMs: number): boolean {
@@ -124,17 +169,18 @@ export async function buildDossier(opts: BuildDossierOptions): Promise<Dossier> 
   const loadRegistryFn = opts._loadRegistry ?? defaultLoadRegistry;
   const writeFileFn: WriteFileFn = opts._writeFile ?? ((p, d) => fs.writeFile(p, d));
   const mkdirFn: MkdirFn = opts._mkdir ?? ((p, o) => fs.mkdir(p, o));
+  const readExistingFn = opts._readExisting ?? loadExistingDossier;
 
   // Skip if fresh enough
   const sinceMs = since ? parseSince(since) : 0;
   if (sinceMs > 0) {
-    const existing = opts._readExisting
-      ? await opts._readExisting(dossierPath(cwd, competitor))
-      : await loadExistingDossier(dossierPath(cwd, competitor));
+    const existing = await readExistingFn(dossierPath(cwd, competitor));
     if (existing && isDossierFresh(existing, sinceMs)) {
       return existing;
     }
   }
+
+  const existing = await readExistingFn(dossierPath(cwd, competitor));
 
   // Load rubric and registry
   const rubric = await loadRubricFn(cwd);
@@ -205,6 +251,13 @@ export async function buildDossier(opts: BuildDossierOptions): Promise<Dossier> 
 
   // Write dossier
   await mkdirFn(dossierDir(cwd), { recursive: true });
+  if (existing) {
+    await mkdirFn(dossierHistoryDir(cwd, competitor), { recursive: true });
+    await writeFileFn(
+      dossierSnapshotPath(cwd, competitor, existing.lastBuilt),
+      JSON.stringify(existing, null, 2),
+    );
+  }
   await writeFileFn(dossierPath(cwd, competitor), JSON.stringify(dossier, null, 2));
 
   return dossier;
@@ -232,6 +285,15 @@ export async function loadDossier(cwd: string, competitor: string): Promise<Doss
   return loadExistingDossier(dossierPath(cwd, competitor));
 }
 
+export async function loadPreviousDossier(
+  cwd: string,
+  competitor: string,
+  readDir: ReadDirFn = fs.readdir,
+  readFile: ReadFileFn = fs.readFile as unknown as ReadFileFn,
+): Promise<Dossier | null> {
+  return loadLatestSnapshot(dossierHistoryDir(cwd, competitor), readDir, readFile);
+}
+
 export async function listDossiers(cwd: string): Promise<Dossier[]> {
   const dir = dossierDir(cwd);
   let files: string[];
@@ -250,4 +312,12 @@ export async function listDossiers(cwd: string): Promise<Dossier[]> {
 }
 
 // Exported for testing
-export { dossierPath, dossierDir, computeComposite, parseSince, isDossierFresh };
+export {
+  computeComposite,
+  dossierDir,
+  dossierHistoryDir,
+  dossierPath,
+  dossierSnapshotPath,
+  isDossierFresh,
+  parseSince,
+};

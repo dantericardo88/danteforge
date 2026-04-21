@@ -107,5 +107,14 @@ describe('showcase command', () => {
     assert.ok(markdown.includes('7.2'), 'Should include the display score');
     assert.ok(markdown.includes('| Dimension |'), 'Should include dimension table header');
     assert.ok(markdown.includes('Top Improvement Opportunities'), 'Should include improvement section');
+    assert.ok(markdown.includes('#######---'), 'Should render ASCII score bars');
+    assert.doesNotMatch(markdown, /[█░]/, 'Markdown should avoid Unicode bar glyphs');
+  });
+  it('T6: markdown explains why a showcase score is capped', () => {
+    const markdown = buildCaseStudyMarkdown('todo-app', 'examples/todo-app', makeHarshResult(4.2));
+    assert.match(markdown, /Why This Score Is Capped/);
+    assert.match(markdown, /bundled example is intentionally minimal/i);
+    assert.match(markdown, /missing tests/i);
+    assert.match(markdown, /Documentation/);
   });
 });

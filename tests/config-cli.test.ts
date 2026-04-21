@@ -1,13 +1,11 @@
 import assert from 'node:assert';
-import { spawnSync } from 'node:child_process';
 import fs from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import { afterEach, describe, it } from 'node:test';
+import { runTsxCli } from './helpers/cli-runner.ts';
 
 const tempRoots: string[] = [];
-const tsxCli = path.resolve('node_modules', 'tsx', 'dist', 'cli.mjs');
-const cliEntry = path.resolve('src', 'cli', 'index.ts');
 
 afterEach(async () => {
   while (tempRoots.length > 0) {
@@ -33,14 +31,13 @@ function runCli(cwd: string, home: string, args: string[]) {
 }
 
 function runCliWithEnv(cwd: string, home: string, args: string[], extraEnv: Record<string, string> = {}) {
-  const result = spawnSync(process.execPath, [tsxCli, cliEntry, ...args], {
+  const result = runTsxCli(args, {
     cwd,
+    timeout: 180000,
     env: {
-      ...process.env,
       DANTEFORGE_HOME: home,
       ...extraEnv,
     },
-    encoding: 'utf8',
   });
 
   return {
@@ -101,6 +98,20 @@ describe('config and assistant setup cli', () => {
     await assert.doesNotReject(() => fs.access(path.join(home, '.gemini', 'antigravity', 'skills', 'test-driven-development', 'SKILL.md')));
     await assert.doesNotReject(() => fs.access(path.join(home, '.config', 'opencode', 'skills', 'test-driven-development', 'SKILL.md')));
     await assert.rejects(() => fs.access(path.join(cwd, '.cursor', 'rules', 'danteforge.mdc')));
+  });
+
+  it('setup assistants --assistants codex prints the Codex install contract and machine-setup guide', async () => {
+    const { cwd, home } = await makeWorkspace();
+
+    const result = runCli(cwd, home, ['setup', 'assistants', '--assistants', 'codex']);
+    assert.strictEqual(result.status, 0, result.stderr);
+
+    const output = result.stdout + result.stderr;
+    assert.match(output, /~\/\.codex\/commands/i);
+    assert.match(output, /danteforge-cli/i);
+    assert.match(output, /~\/\.codex\/AGENTS\.md/i);
+    assert.match(output, /~\/\.codex\/config\.toml/i);
+    assert.match(output, /docs\/Codex-Install\.md/i);
   });
 
   it('setup ollama explains host-native model usage and missing local runtime clearly', async () => {

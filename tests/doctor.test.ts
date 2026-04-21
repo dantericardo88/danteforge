@@ -1,7 +1,34 @@
 // doctor.ts — unit tests for the exported pure-function helpers
-import { describe, it } from 'node:test';
+import { afterEach, describe, it } from 'node:test';
 import assert from 'node:assert';
+import fs from 'node:fs/promises';
+import os from 'node:os';
+import path from 'node:path';
+import yaml from 'yaml';
 import { validateLiveReleaseConfig } from '../src/cli/commands/doctor.js';
+import { runTsxCli } from './helpers/cli-runner.ts';
+
+const tempRoots: string[] = [];
+
+afterEach(async () => {
+  while (tempRoots.length > 0) {
+    const root = tempRoots.pop();
+    if (root) await fs.rm(root, { recursive: true, force: true });
+  }
+});
+
+function runCli(cwd: string, home: string, args: string[]) {
+  return runTsxCli(args, {
+    cwd,
+    timeout: 60_000,
+    env: {
+      HOME: home,
+      USERPROFILE: home,
+      DANTEFORGE_HOME: home,
+      NODE_ENV: 'test',
+    },
+  });
+}
 
 describe('validateLiveReleaseConfig — branch coverage', () => {
   it('returns an error when DANTEFORGE_LIVE_PROVIDERS is not set', () => {
@@ -75,5 +102,116 @@ describe('validateLiveReleaseConfig — branch coverage', () => {
     });
     assert.strictEqual(result.error, undefined);
     assert.deepStrictEqual(result.missing, []);
+  });
+});
+
+describe('doctor CLI — verify guidance', () => {
+  it('surfaces stale verify receipts with a concrete rerun command', async () => {
+    const root = await fs.mkdtemp(path.join(os.tmpdir(), 'df-doctor-'));
+    tempRoots.push(root);
+    const cwd = path.join(root, 'project');
+    const home = path.join(root, 'home');
+    const evidenceDir = path.join(cwd, '.danteforge', 'evidence', 'verify');
+    await fs.mkdir(evidenceDir, { recursive: true });
+    await fs.mkdir(home, { recursive: true });
+
+    await fs.writeFile(path.join(cwd, 'package.json'), JSON.stringify({ name: 'doctor-fixture' }), 'utf8');
+    await fs.writeFile(path.join(cwd, '.danteforge', 'STATE.yaml'), yaml.stringify({
+      project: 'doctor-fixture',
+      lastHandoff: 'verify',
+      workflowStage: 'verify',
+      currentPhase: 1,
+      tasks: {},
+      auditLog: [],
+      profile: 'balanced',
+      lastVerifyStatus: 'pass',
+    }), 'utf8');
+    await fs.writeFile(path.join(evidenceDir, 'latest.json'), JSON.stringify({
+      status: 'pass',
+      timestamp: '2026-04-16T12:00:00.000Z',
+      gitSha: null,
+      currentStateFresh: false,
+    }), 'utf8');
+
+    const result = runCli(cwd, home, ['doctor']);
+    const output = result.stdout + result.stderr;
+    assert.strictEqual(result.status, 0, `Exit code: ${result.status}\n${output}`);
+    assert.match(output, /Verify receipt/i);
+    assert.match(output, /stale pass receipt/i);
+    assert.match(output, /npm run verify/i);
+  });
+
+  it('warns when no verify receipt exists yet', async () => {
+    const root = await fs.mkdtemp(path.join(os.tmpdir(), 'df-doctor-'));
+    tempRoots.push(root);
+    const cwd = path.join(root, 'project');
+    const home = path.join(root, 'home');
+    await fs.mkdir(path.join(cwd, '.danteforge'), { recursive: true });
+    await fs.mkdir(home, { recursive: true });
+
+    await fs.writeFile(path.join(cwd, 'package.json'), JSON.stringify({ name: 'doctor-fixture' }), 'utf8');
+    await fs.writeFile(path.join(cwd, '.danteforge', 'STATE.yaml'), yaml.stringify({
+      project: 'doctor-fixture',
+      lastHandoff: 'initialized',
+      workflowStage: 'forge',
+      currentPhase: 1,
+      tasks: {},
+      auditLog: [],
+      profile: 'balanced',
+    }), 'utf8');
+
+    const result = runCli(cwd, home, ['doctor']);
+    const output = result.stdout + result.stderr;
+    assert.strictEqual(result.status, 0, `Exit code: ${result.status}\n${output}`);
+    assert.match(output, /Verify receipt/i);
+    assert.match(output, /No verify receipt found/i);
+    assert.match(output, /npm run verify/i);
+  });
+
+  it('surfaces Codex CLI fallback and utility alias health when Codex bootstrap is installed', async () => {
+    const root = await fs.mkdtemp(path.join(os.tmpdir(), 'df-doctor-'));
+    tempRoots.push(root);
+    const cwd = path.join(root, 'project');
+    const home = path.join(root, 'home');
+    await fs.mkdir(path.join(cwd, '.danteforge'), { recursive: true });
+    await fs.mkdir(path.join(home, '.codex', 'skills', 'danteforge-cli'), { recursive: true });
+    await fs.mkdir(path.join(home, '.codex', 'commands'), { recursive: true });
+
+    await fs.writeFile(path.join(cwd, 'package.json'), JSON.stringify({ name: 'doctor-fixture', version: '1.0.0' }), 'utf8');
+    await fs.writeFile(path.join(cwd, '.danteforge', 'STATE.yaml'), yaml.stringify({
+      project: 'doctor-fixture',
+      lastHandoff: 'verify',
+      workflowStage: 'verify',
+      currentPhase: 1,
+      tasks: { 1: [{ name: 'Ship it' }] },
+      auditLog: ['2026-04-20T00:00:00.000Z | forge: wave 1 - shipped'],
+      profile: 'balanced',
+      constitution: 'CONSTITUTION.md',
+      lastVerifyStatus: 'pass',
+    }), 'utf8');
+    await fs.writeFile(path.join(home, '.codex', 'skills', 'danteforge-cli', 'SKILL.md'), '# skill\n', 'utf8');
+    await fs.writeFile(path.join(home, '.codex', 'AGENTS.md'), '# bootstrap\n', 'utf8');
+    await fs.writeFile(path.join(home, '.codex', 'commands', 'autoforge.md'), '# autoforge\n', 'utf8');
+    await fs.writeFile(path.join(home, '.codex', 'commands', 'spark.md'), '# spark\n', 'utf8');
+    await fs.writeFile(path.join(home, '.codex', 'commands', 'ember.md'), '# ember\n', 'utf8');
+    await fs.writeFile(path.join(home, '.codex', 'commands', 'canvas.md'), '# canvas\n', 'utf8');
+    await fs.writeFile(path.join(home, '.codex', 'commands', 'magic.md'), '# magic\n', 'utf8');
+    await fs.writeFile(path.join(home, '.codex', 'commands', 'blaze.md'), '# blaze\n', 'utf8');
+    await fs.writeFile(path.join(home, '.codex', 'commands', 'nova.md'), '# nova\n', 'utf8');
+    await fs.writeFile(path.join(home, '.codex', 'commands', 'inferno.md'), '# inferno\n', 'utf8');
+    await fs.writeFile(path.join(home, '.codex', 'commands', 'verify.md'), '# verify\n', 'utf8');
+    await fs.writeFile(path.join(home, '.codex', 'commands', 'local-harvest.md'), '# local-harvest\n', 'utf8');
+    await fs.writeFile(path.join(home, '.codex', 'config.toml'), [
+      '[commands]',
+      'setup-assistants = "npx danteforge setup assistants --assistants codex"',
+      'doctor-live = "npx danteforge doctor --live"',
+      'df-verify = "npx danteforge verify"',
+    ].join('\n'), 'utf8');
+
+    const result = runCli(cwd, home, ['doctor']);
+    const output = result.stdout + result.stderr;
+    assert.strictEqual(result.status, 0, `Exit code: ${result.status}\n${output}`);
+    assert.match(output, /Codex CLI fallback/i);
+    assert.match(output, /Codex utility aliases/i);
   });
 });

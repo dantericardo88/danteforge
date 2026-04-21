@@ -1,4 +1,4 @@
-// src/scoring/report.ts — Markdown and JSON report formatter
+// src/scoring/report.ts - Markdown and JSON report formatter
 
 import type { MatrixSnapshot, SnapshotDiff, RubricId } from './types.js';
 import { getTopOverclaimed, getTopUnderProven, getNextLifts } from './run-matrix.js';
@@ -62,8 +62,8 @@ export function formatMarkdownReport(snapshot: MatrixSnapshot): string {
     const opt = snapshot.dimensions.find((d) => d.dimensionId === dimId && d.rubricId === 'internal_optimistic');
     const pub = snapshot.dimensions.find((d) => d.dimensionId === dimId && d.rubricId === 'public_defensible');
     const hos = snapshot.dimensions.find((d) => d.dimensionId === dimId && d.rubricId === 'hostile_diligence');
-    const conf = hos?.confidence ?? opt?.confidence ?? '—';
-    const nextLift = opt?.nextLift?.slice(0, 60) ?? '—';
+    const conf = hos?.confidence ?? opt?.confidence ?? 'n/a';
+    const nextLift = opt?.nextLift?.slice(0, 60) ?? 'n/a';
     lines.push(`| ${dimId} | ${opt?.score ?? 0} | ${pub?.score ?? 0} | ${hos?.score ?? 0} | ${conf} | ${nextLift} |`);
   }
   lines.push('');
@@ -90,7 +90,7 @@ export function formatMarkdownReport(snapshot: MatrixSnapshot): string {
     lines.push('_Lowest public-defensible scores:_');
     lines.push('');
     for (const d of underProven) {
-      lines.push(`- **${d.dimensionId}**: public=${d.score} — ${d.rationale}`);
+      lines.push(`- **${d.dimensionId}**: public=${d.score} - ${d.rationale}`);
     }
     lines.push('');
   }
@@ -125,7 +125,7 @@ export function formatDiffReport(diff: SnapshotDiff): string {
   lines.push('| Rubric | Before | After | Delta |');
   lines.push('|--------|--------|-------|-------|');
   for (const r of diff.rubricTotals) {
-    const arrow = r.delta > 0 ? '▲' : r.delta < 0 ? '▼' : '—';
+    const arrow = r.delta > 0 ? 'UP' : r.delta < 0 ? 'DOWN' : 'SAME';
     lines.push(`| ${RUBRIC_LABELS[r.rubricId]} | ${r.totalBefore} | ${r.totalAfter} | ${arrow} ${Math.abs(r.delta)} |`);
   }
   lines.push('');
@@ -142,7 +142,7 @@ export function formatDiffReport(diff: SnapshotDiff): string {
   lines.push('|-----------|--------|--------|-------|-------|--------|');
   const sorted = [...diff.dimensionChanges].sort((a, b) => Math.abs(b.delta) - Math.abs(a.delta));
   for (const c of sorted) {
-    const arrow = c.delta > 0 ? '▲' : '▼';
+    const arrow = c.delta > 0 ? 'UP' : 'DOWN';
     lines.push(`| ${c.dimensionId} | ${RUBRIC_LABELS[c.rubricId]} | ${c.scoreBefore} | ${c.scoreAfter} | ${arrow} ${Math.abs(c.delta)} | ${c.driver} |`);
   }
   lines.push('');

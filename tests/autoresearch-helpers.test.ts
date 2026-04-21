@@ -104,8 +104,8 @@ describe('deriveMeasurementCommand', () => {
     assert.ok(deriveMeasurementCommand('lint errors').includes('npm run lint'));
   });
 
-  it('returns echo fallback for unknown metric', () => {
-    assert.ok(deriveMeasurementCommand('some unknown metric').includes('echo'));
+  it('returns null for unknown metric so callers must provide an explicit command', () => {
+    assert.strictEqual(deriveMeasurementCommand('some unknown metric'), null);
   });
 });
 

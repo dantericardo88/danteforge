@@ -2,7 +2,16 @@
 
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { getRubric, getDimCriteria, validateFrozenAt, getDimCount } from '../src/dossier/rubric.js';
+import fs from 'node:fs/promises';
+import os from 'node:os';
+import path from 'node:path';
+import {
+  ensureRubricScaffold,
+  getDimCount,
+  getDimCriteria,
+  getRubric,
+  validateFrozenAt,
+} from '../src/dossier/rubric.js';
 import type { Rubric } from '../src/dossier/types.js';
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -161,5 +170,32 @@ describe('getDimCount()', () => {
   it('returns correct count', () => {
     const rubric = makeRubric();
     assert.equal(getDimCount(rubric), 2);
+  });
+});
+
+describe('ensureRubricScaffold()', () => {
+  it('creates a seed rubric with 28 dimensions when missing', async () => {
+    const cwd = await fs.mkdtemp(path.join(os.tmpdir(), 'rubric-init-'));
+    const rubric = await ensureRubricScaffold(cwd);
+
+    const raw = await fs.readFile(path.join(cwd, '.danteforge', 'rubric.json'), 'utf8');
+    const written = JSON.parse(raw) as Rubric;
+
+    assert.equal(rubric.version, 1);
+    assert.equal(Object.keys(rubric.dimensions).length, 28);
+    assert.equal(written.frozenAt, rubric.frozenAt);
+    assert.equal(written.dimensions['28']?.name, 'Open source quality / community');
+  });
+
+  it('returns the existing rubric without overwriting it', async () => {
+    const cwd = await fs.mkdtemp(path.join(os.tmpdir(), 'rubric-existing-'));
+    const existing = makeRubric();
+
+    await fs.mkdir(path.join(cwd, '.danteforge'), { recursive: true });
+    await fs.writeFile(path.join(cwd, '.danteforge', 'rubric.json'), JSON.stringify(existing, null, 2));
+
+    const result = await ensureRubricScaffold(cwd);
+    assert.equal(Object.keys(result.dimensions).length, 2);
+    assert.equal(result.dimensions['1']?.name, existing.dimensions['1']?.name);
   });
 });

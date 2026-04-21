@@ -650,8 +650,8 @@ export async function runAscend(options: AscendEngineOptions = {}): Promise<Asce
     if ((options.executeMode ?? 'forge') === 'forge' && !dryRun) {
       // Direct forge execution: bypass tasks/PLAN.md entirely. Call `forge "<goal>"` directly
       // with the dimension-specific goal. Forge-from-forge is same-stage allowed by the
-      // workflow enforcer. This avoids the off-topic code generation that occurs when
-      // tasks reads PLAN.md and generates unrelated placeholder tasks.
+      // workflow enforcer. This avoids the off-target task generation that can happen when
+      // ascend routes through tasks and PLAN.md instead of calling forge with the focused goal.
       const forgeGoal = `Improve ${nextDim.label}: current ${beforeScore.toFixed(1)}/10, target ${target}/10`;
       const setWorkflowStageFn = options._setWorkflowStage ?? (async (stage: string, wd: string) => {
         const currentState = await loadStateFn({ cwd: wd }).catch(() => null);

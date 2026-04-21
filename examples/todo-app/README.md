@@ -1,101 +1,72 @@
-# Example: Build a TODO CLI with DanteForge
+# Example: TODO CLI Snapshot
 
-This example demonstrates the DanteForge workflow from spec to working code. The constitution and spec are pre-written — you drive the build.
+This directory ships a completed DanteForge example. The goal is to let you inspect a truthful pipeline snapshot and run the resulting app immediately, without depending on an external LLM.
 
-## Prerequisites
+## What this example proves
 
-```bash
-npm i -g danteforge    # Install DanteForge globally
-# OR: clone the repo and run `npm link` from the root
-```
+- DanteForge can ship a finished pipeline snapshot with the planning artifacts intact.
+- The bundled app is runnable without hidden dependencies or a local maintainer setup.
+- The example includes real verification proof: tests, state, and public evidence artifacts.
 
-You also need a configured LLM provider:
-```bash
-danteforge init        # Interactive setup — picks Ollama (local, free) by default
-```
+## What this example does not prove
 
-## Walkthrough
+- This is not a launch-ready product.
+- It is a finished pipeline snapshot, not a polished public app or full customer-facing workflow.
+- The score is intentionally capped by its narrow scope, small docs surface, and minimal operator UX.
 
-### 1. Review the current state
+## What ships in this example
+
+- `.danteforge/CONSTITUTION.md` - the project constraints for the example
+- `.danteforge/SPEC.md` - the feature contract for the todo CLI
+- `.danteforge/CLARIFY.md`, `.danteforge/PLAN.md`, `.danteforge/TASKS.md` - the planning artifacts that drove the implementation
+- `src/cli.js`, `src/storage.js`, `src/todo.js` - the bundled zero-dependency app
+- `tests/todo.test.js` - the automated proof that the shipped behavior works
+- `evidence/pipeline-run.json` and `evidence/convergence-proof.json` - public proof artifacts copied from the example run
+
+Generated scratch files such as assessment history or wiki indexes are intentionally excluded from the shipped snapshot so the example stays reviewable.
+
+## Inspect the pipeline artifacts
 
 ```bash
 cd examples/todo-app
-danteforge review
+danteforge quality
 ```
 
-DanteForge reads the CONSTITUTION.md, SPEC.md, and `.danteforge/STATE.yaml` to understand where the project is. You should see it's in the `specify` stage with the constitution and spec already written.
+Useful files to open next:
 
-### 2. Plan the implementation
+- `.danteforge/CONSTITUTION.md`
+- `.danteforge/SPEC.md`
+- `.danteforge/PLAN.md`
+- `.danteforge/TASKS.md`
+- `.danteforge/STATE.yaml`
+
+## Run the bundled app
 
 ```bash
-danteforge plan
+cd examples/todo-app
+node src/cli.js add "Ship DanteForge"
+node src/cli.js list
+node src/cli.js done 1
+node src/cli.js clear
 ```
 
-The LLM reads the spec and generates a phased implementation plan. Review the output — it should propose:
-- Phase 1: Core data model + storage layer
-- Phase 2: CLI commands (add, list, done, delete, clear)
-- Phase 3: Tests
+Todos are stored locally in `~/.todos.json`.
 
-### 3. Generate the task list
+## Verify the example
 
 ```bash
-danteforge tasks
+cd examples/todo-app
+node --test tests/todo.test.js
 ```
 
-Breaks the plan into executable tasks with file lists and verify commands.
+The test suite covers the pure todo logic plus the file-storage behavior, including corrupt JSON handling.
 
-### 4. Build it
+## How this maps to DanteForge
 
-```bash
-danteforge forge
-```
+1. **Constitution** keeps the example local-first, explicit, and zero-dependency.
+2. **Spec** defines the exact CLI commands, persistence model, and edge cases.
+3. **Clarify / Plan / Tasks** translate the idea into concrete files and verification steps.
+4. **Forge output** lives in `src/` and `tests/`.
+5. **Verify evidence** lives in `.danteforge/STATE.yaml` and `evidence/`.
 
-Executes the first wave of tasks. DanteForge generates the source files, runs the verify commands, and advances the state.
-
-For a more autonomous experience:
-```bash
-danteforge magic       # Balanced: plan → forge → verify cycle
-# OR
-danteforge blaze       # High power: adds party mode + self-improvement
-```
-
-### 5. Verify
-
-```bash
-danteforge verify
-```
-
-Runs all quality checks: tests pass, types check, no lint errors.
-
-### 6. See the result
-
-After a successful forge + verify cycle, you should have:
-```
-examples/todo-app/
-  src/
-    store.ts           # TodoStore CRUD operations
-    cli.ts             # Commander.js CLI entry point
-  tests/
-    store.test.ts      # Unit tests for store operations
-  package.json
-  tsconfig.json
-```
-
-## What just happened?
-
-DanteForge followed its spec-driven pipeline:
-
-1. **Constitution** defined project principles and constraints
-2. **Spec** described exact behavior and data model
-3. **Plan** decomposed the spec into implementation phases
-4. **Tasks** broke phases into file-level work items
-5. **Forge** executed each task with LLM-generated code
-6. **Verify** confirmed the result meets quality gates
-
-No code was written manually. The spec drove everything.
-
-## Next steps
-
-- Try `danteforge assess` to see how the generated code scores
-- Try `danteforge synthesize` to generate a project summary
-- Modify SPEC.md (add priorities, due dates) and run `danteforge forge` again
+This is a snapshot of a finished example, not a half-generated workspace. If you want to iterate on it further, edit the artifacts in `.danteforge/` and rerun the DanteForge commands from this directory.

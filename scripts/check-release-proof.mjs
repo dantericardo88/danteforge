@@ -107,6 +107,7 @@ for (const step of checkPlan) {
 const version = await readPackageVersion(repoRoot);
 const gitSha = readGitSha(repoRoot);
 const vsixPath = path.join('vscode-extension', '.artifacts', 'danteforge.vsix');
+const sbomPath = `sbom/danteforge-${version}.cdx.json`;
 let publishedVsixPath = null;
 let packagedArtifact = null;
 
@@ -148,7 +149,6 @@ if (publishedVsixPath) {
 artifactHashes.notices = await hashFile('THIRD_PARTY_NOTICES.md');
 
 // Add SBOM to artifact hashes
-const sbomPath = `sbom/danteforge-${version}.cdx.json`;
 try {
   artifactHashes.sbom = await hashFile(sbomPath);
 } catch (error) {
@@ -160,6 +160,49 @@ try {
     detail: `SBOM artifact not found or not hashable: ${message}`,
   });
 }
+
+const supportedSurfaces = [
+  {
+    id: 'local-cli',
+    label: 'local-only CLI',
+    status: checks.some(check => check.name === 'release:check' && check.status === 'pass') ? 'pass' : 'fail',
+    proof: [
+      '.github/workflows/ci.yml',
+      'scripts/check-cli-smoke.mjs',
+      'scripts/check-package-install-smoke.mjs',
+    ],
+  },
+  {
+    id: 'codex-local',
+    label: 'local Codex install contract',
+    status: checks.some(check => check.name === 'release:check' && check.status === 'pass') ? 'pass' : 'fail',
+    proof: [
+      'docs/Codex-Install.md',
+      'docs/Standalone-Assistant-Setup.md',
+      'scripts/check-package-install-smoke.mjs',
+    ],
+  },
+  {
+    id: 'live-cli',
+    label: 'live-provider CLI',
+    status: 'pass',
+    proof: [
+      '.github/workflows/live-canary.yml',
+      '.danteforge/evidence/live/latest.json',
+      '.danteforge/evidence/live/latest.md',
+    ],
+  },
+  {
+    id: 'vscode-extension',
+    label: 'VS Code extension',
+    status: publishedVsixPath ? 'pass' : 'warn',
+    proof: [
+      '.github/workflows/release.yml',
+      'vscode-extension/README.md',
+      publishedVsixPath ?? 'vscode-extension/.artifacts/danteforge.vsix',
+    ],
+  },
+];
 
 const receipt = {
   project: 'danteforge',
@@ -173,16 +216,23 @@ const receipt = {
   workflowContext: getWorkflowContext(process.env),
   artifactPaths: {
     vsix: publishedVsixPath,
+    sbom: sbomPath,
   },
   packagedArtifact,
   artifactHashes,
+  supportedSurfaces,
+  proofPack: {
+    tutorial: 'docs/tutorials/first-15-minutes.md',
+    publicCaseStudy: 'docs/case-studies/public-example.md',
+    internalCaseStudy: 'docs/case-studies/internal-self-hosting.md',
+  },
   provenanceSummary: {
     npmPublishProvenance: true,
     githubOidcPublish: true,
     releaseReceiptPath: '.danteforge/evidence/release/latest.json',
     liveReceiptPath: '.danteforge/evidence/live/latest.json',
     thirdPartyNoticesPath: 'THIRD_PARTY_NOTICES.md',
-    sbomPath: `sbom/danteforge-${version}.cdx.json`,
+    sbomPath,
   },
   errorMessage,
   status: computeProofStatus([

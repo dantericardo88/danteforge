@@ -307,7 +307,12 @@ describe('pipeline-run.json evidence schema', () => {
       return;
     }
     const evidence = JSON.parse(raw) as {
-      pipeline?: { success?: boolean; stages?: unknown[]; pdseScores?: Record<string, number> };
+      pipeline?: {
+        success?: boolean;
+        stages?: unknown[];
+        pdseScores?: Record<string, number>;
+        artifacts?: string[];
+      };
     };
     assert.ok(evidence.pipeline, 'pipeline key must exist');
     assert.strictEqual(evidence.pipeline.success, true, 'success must be true');
@@ -318,5 +323,14 @@ describe('pipeline-run.json evidence schema', () => {
     const scores = evidence.pipeline.pdseScores;
     assert.ok(scores['CONSTITUTION'] && scores['CONSTITUTION'] > 0, 'CONSTITUTION score > 0');
     assert.ok(scores['SPEC'] && scores['SPEC'] > 0, 'SPEC score > 0');
+    assert.ok(Array.isArray(evidence.pipeline.artifacts) && evidence.pipeline.artifacts.length > 0,
+      'artifacts must be a non-empty array');
+
+    for (const artifact of evidence.pipeline.artifacts ?? []) {
+      await assert.doesNotReject(
+        fs.access(path.resolve(artifact)),
+        `pipeline evidence references a missing artifact: ${artifact}`,
+      );
+    }
   });
 });

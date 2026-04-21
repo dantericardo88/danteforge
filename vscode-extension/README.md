@@ -2,6 +2,8 @@
 
 The DanteForge VS Code extension exposes the DanteForge workflow inside VS Code for developers who prefer command-palette and terminal-driven execution from their editor.
 
+This extension is one of the three launch-supported DanteForge surfaces alongside the local-only CLI and the live-provider CLI.
+
 ## Features
 
 - Show setup guidance directly from the command palette with `DanteForge: Setup Help`.

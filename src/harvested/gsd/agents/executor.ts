@@ -117,6 +117,11 @@ export interface ExecuteWaveOptions {
   _isLLMAvailable?: () => Promise<boolean>;
   /** Stream LLM output chunks to caller — fires per token in TTY mode */
   _onChunk?: (chunk: string) => void;
+  /** Inject failure-lesson capture for testing or fast paths */
+  _captureFailureLessons?: (
+    failedTasks: { task: string; error?: string }[],
+    context: 'forge failure' | 'party failure',
+  ) => Promise<void>;
 }
 
 // ── Code Application Pipeline ─────────────────────────────────────────────────
@@ -386,7 +391,13 @@ export async function executeWave(
     }
 
     try {
-      const { captureFailureLessons } = await import('../../../cli/commands/lessons.js');
+      const captureFailureLessons = options?._captureFailureLessons ?? (async (
+        failedTasks: { task: string; error?: string }[],
+        context: 'forge failure' | 'party failure',
+      ) => {
+        const { captureFailureLessons: defaultCaptureFailureLessons } = await import('../../../cli/commands/lessons.js');
+        await defaultCaptureFailureLessons(failedTasks, context);
+      });
       const failedTasks = results
         .filter(result => !result.success)
         .map(result => ({ task: result.task, error: result.error }));

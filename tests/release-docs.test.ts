@@ -49,6 +49,18 @@ describe('release documentation', () => {
     assert.match(liveCanaryWorkflow, /verify:live/);
   });
 
+  it('keeps the active readiness guide receipt-backed instead of hard-coding green gate claims', async () => {
+    const { content: readinessGuide } = await loadActiveReadinessGuide();
+
+    assert.match(readinessGuide, /latest local receipt snapshots/i);
+    assert.match(readinessGuide, /\.danteforge\/evidence\/verify\/latest\.json/);
+    assert.match(readinessGuide, /\.danteforge\/evidence\/release\/latest\.json/);
+    assert.match(readinessGuide, /\.danteforge\/evidence\/live\/latest\.json/);
+    assert.match(readinessGuide, /sync:readiness-doc/);
+    assert.doesNotMatch(readinessGuide, /npm run typecheck\s*#\s*0 errors/i);
+    assert.doesNotMatch(readinessGuide, /npm run release:check\s*#\s*EXIT:0/i);
+  });
+
   it('documents the harvested skills import manifest', async () => {
     const readme = await fs.readFile('README.md', 'utf8');
     assert.match(readme, /IMPORT_MANIFEST\.yaml/);
@@ -81,25 +93,35 @@ describe('release documentation', () => {
     const readme = await fs.readFile('README.md', 'utf8');
     const releaseGuide = await fs.readFile('RELEASE.md', 'utf8');
     const standaloneGuide = await fs.readFile('docs/Standalone-Assistant-Setup.md', 'utf8');
+    const codexGuide = await fs.readFile('docs/Codex-Install.md', 'utf8');
 
     assert.match(readme, /Standalone-Assistant-Setup\.md/);
+    assert.match(readme, /Codex-Install\.md/);
     assert.match(readme, /~\/\.danteforge\/config\.yaml/);
     assert.match(standaloneGuide, /Codex/);
     assert.match(standaloneGuide, /Claude Code/);
     assert.match(standaloneGuide, /Gemini \/ Antigravity/);
     assert.match(standaloneGuide, /OpenCode/);
     assert.match(standaloneGuide, /Cursor/);
+    assert.match(standaloneGuide, /Codex-Install\.md/);
     assert.match(standaloneGuide, /\.codex\/config\.toml/);
     assert.match(standaloneGuide, /\.codex\/AGENTS\.md/);
     assert.match(standaloneGuide, /danteforge setup assistants/);
     assert.match(standaloneGuide, /explicit/i);
     assert.match(standaloneGuide, /danteforge doctor --live/);
     assert.match(releaseGuide, /Standalone-Assistant-Setup\.md/);
+    assert.match(releaseGuide, /Codex-Install\.md/);
+    assert.match(codexGuide, /~\/\.codex\/commands/);
+    assert.match(codexGuide, /danteforge-cli/);
+    assert.match(codexGuide, /~\/\.codex\/AGENTS\.md/);
+    assert.match(codexGuide, /~\/\.codex\/config\.toml/);
+    assert.match(codexGuide, /hosted Codex/i);
   });
 
   it('documents assistant setup as explicit after package installation and clarifies Codex limits', async () => {
     const readme = await fs.readFile('README.md', 'utf8');
     const standaloneGuide = await fs.readFile('docs/Standalone-Assistant-Setup.md', 'utf8');
+    const codexGuide = await fs.readFile('docs/Codex-Install.md', 'utf8');
 
     assert.match(readme, /setup assistants --assistants codex/i);
     assert.match(readme, /setup assistants --assistants cursor/i);
@@ -107,6 +129,10 @@ describe('release documentation', () => {
     assert.match(readme, /hosted Codex/i);
     assert.match(standaloneGuide, /local Codex/i);
     assert.match(standaloneGuide, /hosted Codex/i);
+    assert.match(codexGuide, /npm install -g danteforge/i);
+    assert.match(codexGuide, /npm install -g \.\/danteforge-/i);
+    assert.match(codexGuide, /npm link/i);
+    assert.match(codexGuide, /danteforge doctor/i);
   });
 
   it('documents ux-refine as openpencil or prompt-driven instead of automatic fallback', async () => {
@@ -137,12 +163,42 @@ describe('release documentation', () => {
     const readme = await fs.readFile('README.md', 'utf8');
     const releaseGuide = await fs.readFile('RELEASE.md', 'utf8');
     const standaloneGuide = await fs.readFile('docs/Standalone-Assistant-Setup.md', 'utf8');
+    const codexGuide = await fs.readFile('docs/Codex-Install.md', 'utf8');
     const escapedVersion = version.replace(/\./g, '\\.');
 
     assert.match(readme, new RegExp(`DanteForge .*${escapedVersion}`));
     assert.match(readme, new RegExp(`danteforge-${escapedVersion}\\.tgz`));
     assert.match(standaloneGuide, new RegExp(`danteforge-${escapedVersion}\\.tgz`));
+    assert.match(codexGuide, new RegExp(`danteforge-${escapedVersion}\\.tgz`));
     assert.match(releaseGuide, new RegExp(`v${escapedVersion}`));
+  });
+
+  it('keeps Release-History pointed at the current readiness guide', async () => {
+    const version = await loadPackageVersion();
+    const releaseHistory = await fs.readFile('docs/Release-History.md', 'utf8');
+    const escapedVersion = version.replace(/\./g, '\\.');
+
+    assert.match(releaseHistory, new RegExp(`Current Release Surface \\(v${escapedVersion}\\)`));
+    assert.match(releaseHistory, new RegExp(`Operational-Readiness-v${escapedVersion}\\.md`));
+  });
+
+  it('marks non-current readiness guides as archived and keeps architecture wording non-brittle', async () => {
+    const version = await loadPackageVersion();
+    const docsDir = await fs.readdir('docs');
+    const readinessDocs = docsDir.filter((name) => /^Operational-Readiness-v.*\.md$/.test(name));
+    const nonCurrentDocs = readinessDocs.filter((name) => name !== `Operational-Readiness-v${version}.md`);
+    const architecture = await fs.readFile('docs/ARCHITECTURE.md', 'utf8');
+
+    for (const name of nonCurrentDocs) {
+      const content = await fs.readFile(`docs/${name}`, 'utf8');
+      assert.match(content, /^> \*\*ARCHIVED\*\*/);
+      assert.doesNotMatch(content, /current shipped state/i);
+      assert.match(content, new RegExp(`Operational-Readiness-v${version.replace(/\./g, '\\.')}\\.md`));
+    }
+
+    assert.match(architecture, /dozens of commands/i);
+    assert.doesNotMatch(architecture, /37\+ commands/);
+    assert.doesNotMatch(architecture, /37\+ command handlers/);
   });
 
   it('documents browse, qa, retro, and ship in the top-level command docs', async () => {
@@ -182,5 +238,16 @@ describe('release documentation', () => {
     assert.match(readme, /danteforge oss/);
     assert.match(readme, /danteforge harvest/);
     assert.match(readme, /danteforge docs/);
+  });
+
+  it('keeps the README launch story singular and honest', async () => {
+    const readme = await fs.readFile('README.md', 'utf8');
+    const quickStartHeadings = readme.match(/^## Quick Start\b/gm) ?? [];
+
+    assert.strictEqual(quickStartHeadings.length, 1, 'README should expose exactly one primary Quick Start section');
+    assert.doesNotMatch(readme, /Enterprise-ready:\s*SOC 2 compliance/i);
+    assert.match(readme, /Stable/i);
+    assert.match(readme, /Beta/i);
+    assert.match(readme, /Experimental/i);
   });
 });

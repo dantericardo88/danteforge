@@ -40,8 +40,14 @@
     "registry": "https://registry.npmjs.org/"
   },
   "exports": {
-    ".": "./dist/index.js",
-    "./sdk": "./dist/sdk.js"
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    },
+    "./sdk": {
+      "types": "./dist/sdk.d.ts",
+      "import": "./dist/sdk.js"
+    }
   },
   "bin": {
     "danteforge": "dist/index.js",
@@ -63,10 +69,14 @@
   "scripts": {
     "postinstall": "node lib/postinstall.js",
     "build": "tsup",
-    "postbuild": "node scripts/sync-dantecode.mjs",
+    "build:receipt": "node scripts/run-build.mjs",
+    "sync:dantecode": "node scripts/sync-dantecode.mjs",
+    "sync:workflow-surfaces": "tsx scripts/sync-workflow-surfaces.ts",
+    "sync:readiness-doc": "tsx scripts/sync-operational-readiness.ts",
+    "build:local-sync": "npm run build && npm run sync:dantecode",
     "dev": "tsup --watch",
     "typecheck": "tsc --noEmit",
-    "test": "tsx --test tests/**/*.test.ts",
+    "test": "node scripts/run-test-suite.mjs",
     "test:integration": "tsx --test tests/integration/*.test.ts",
     "test:e2e": "tsx --test tests/e2e/*.test.ts",
     "test:coverage": "c8 tsx --test tests/**/*.test.ts && node scripts/write-coverage-summary.mjs",
@@ -76,6 +86,8 @@
     "lint:fix": "eslint . --fix",
     "check:anti-stub": "node scripts/check-anti-stub.mjs",
     "check:plugin-manifests": "node scripts/check-plugin-manifests.mjs",
+    "sbom:generate": "node scripts/generate-sbom.mjs",
+    "sbom:validate": "node scripts/validate-sbom.mjs",
     "verify": "npm run typecheck && npm run lint && npm run check:anti-stub && npm test",
     "verify:all": "npm run verify && npm run build && npm --prefix vscode-extension run verify",
     "verify:live": "node scripts/check-live-integrations.mjs",
@@ -101,7 +113,7 @@
     "commander": "^12.1.0",
     "ora": "^8.1.0",
     "simple-git": "^3.27.0",
-    "yaml": "^2.5.1"
+    "yaml": "^2.8.3"
   },
   "devDependencies": {
     "@eslint/js": "^9.20.0",
@@ -116,6 +128,18 @@
     "typescript": "^5.7.2"
   },
   "overrides": {
-    "flatted": "^3.4.2"
+    "@hono/node-server": "^1.19.14",
+    "flatted": "^3.4.2",
+    "hono": "^4.12.14",
+    "minimatch@^10.2.2": {
+      "brace-expansion": "^5.0.5"
+    },
+    "minimatch@^3.1.2": {
+      "brace-expansion": "^1.1.14"
+    },
+    "minimatch@^9.0.4": {
+      "brace-expansion": "^2.1.0"
+    },
+    "picomatch": "^4.0.4"
   }
 }

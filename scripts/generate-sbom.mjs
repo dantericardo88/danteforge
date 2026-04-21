@@ -46,10 +46,14 @@ console.log(`[SBOM] Output: ${outputPath}`);
 try {
   // Generate SBOM using @cyclonedx/cyclonedx-npm
   const cmd = includeDev
-    ? 'npx @cyclonedx/cyclonedx-npm --output-file ' + outputPath
-    : 'npx @cyclonedx/cyclonedx-npm --omit dev --output-file ' + outputPath;
+    ? 'npx --yes @cyclonedx/cyclonedx-npm --output-file ' + outputPath
+    : 'npx --yes @cyclonedx/cyclonedx-npm --omit dev --output-file ' + outputPath;
 
-  execSync(cmd, { cwd: projectRoot, stdio: 'inherit' });
+  execSync(cmd, {
+    cwd: projectRoot,
+    stdio: 'inherit',
+    env: { ...process.env, npm_config_yes: 'true' },
+  });
 
   // Read generated SBOM to enrich metadata
   const sbom = JSON.parse(readFileSync(outputPath, 'utf8'));

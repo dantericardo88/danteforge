@@ -126,7 +126,7 @@ describe('formatDiffReport()', () => {
     const after = runMatrix({ matrixId: 'm', subject: 's', dimensions: dims, evidence: [makeEvidence('a')] });
     const diff = diffSnapshots(before, after);
     const report = formatDiffReport(diff);
-    assert.ok(report.includes('▲') || report.includes('▼'));
+    assert.ok(report.includes('UP') || report.includes('DOWN'));
   });
 
   it('includes subject name in heading', () => {

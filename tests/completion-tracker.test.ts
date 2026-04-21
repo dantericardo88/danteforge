@@ -174,6 +174,49 @@ describe('computeCompletionTracker — phase completion conditions', () => {
 });
 
 describe('computeCompletionTracker — receipt-based testsPassing', () => {
+  it('treats stale verify evidence as not passing even when lastVerifyStatus is pass', () => {
+    const state = makeState({
+      projectType: 'cli',
+      lastVerifyStatus: 'pass',
+      verifyEvidence: {
+        status: 'pass',
+        fresh: false,
+        currentHead: false,
+        dirtyWorktree: true,
+        sourcePath: '.danteforge/evidence/verify/latest.json',
+        gitSha: 'stale-sha',
+        timestamp: '2026-04-16T00:00:00.000Z',
+      },
+    } as Partial<DanteState>);
+
+    const tracker = computeCompletionTracker(state, makeAllScores(80));
+
+    assert.strictEqual(tracker.phases.verification.testsPassing, false);
+    assert.strictEqual(tracker.phases.verification.complete, false);
+    assert.match(tracker.projectedCompletion, /refresh receipt/i);
+  });
+
+  it('prefers fresh verify evidence over a stale state flag', () => {
+    const state = makeState({
+      projectType: 'cli',
+      lastVerifyStatus: 'warn',
+      verifyEvidence: {
+        status: 'pass',
+        fresh: true,
+        currentHead: true,
+        dirtyWorktree: false,
+        sourcePath: '.danteforge/evidence/verify/latest.json',
+        gitSha: 'current-sha',
+        timestamp: '2026-04-16T00:00:00.000Z',
+      },
+    } as Partial<DanteState>);
+
+    const tracker = computeCompletionTracker(state, makeAllScores(80));
+
+    assert.strictEqual(tracker.phases.verification.testsPassing, true);
+    assert.strictEqual(tracker.phases.verification.complete, true);
+  });
+
   it('testsPassing is false when lastVerifyStatus is undefined', () => {
     const state = makeState({ projectType: 'cli' } as Partial<DanteState>);
     const tracker = computeCompletionTracker(state, makeAllScores(80));

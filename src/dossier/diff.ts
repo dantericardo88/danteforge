@@ -1,4 +1,4 @@
-// src/dossier/diff.ts — Compare two dossier versions, produce per-dimension delta
+// src/dossier/diff.ts - Compare two dossier versions, produce per-dimension delta
 
 import type { Dossier, DossierDelta, DossierDimDelta, EvidenceItem } from './types.js';
 
@@ -6,8 +6,8 @@ function newEvidenceItems(
   previousEvidence: EvidenceItem[],
   currentEvidence: EvidenceItem[],
 ): EvidenceItem[] {
-  const prevQuotes = new Set(previousEvidence.map((e) => e.quote));
-  return currentEvidence.filter((e) => !prevQuotes.has(e.quote));
+  const previousQuotes = new Set(previousEvidence.map((evidence) => evidence.quote));
+  return currentEvidence.filter((evidence) => !previousQuotes.has(evidence.quote));
 }
 
 export function diffDossiers(previous: Dossier, current: Dossier): DossierDelta {
@@ -19,19 +19,17 @@ export function diffDossiers(previous: Dossier, current: Dossier): DossierDelta 
   const dimensionDeltas: DossierDimDelta[] = [];
 
   for (const dimKey of allDimKeys) {
-    const prevDim = previous.dimensions[dimKey];
-    const currDim = current.dimensions[dimKey];
+    const previousDim = previous.dimensions[dimKey];
+    const currentDim = current.dimensions[dimKey];
 
-    const before = prevDim ? (prevDim.humanOverride ?? prevDim.score) : 0;
-    const after = currDim ? (currDim.humanOverride ?? currDim.score) : 0;
+    const before = previousDim ? (previousDim.humanOverride ?? previousDim.score) : 0;
+    const after = currentDim ? (currentDim.humanOverride ?? currentDim.score) : 0;
     const delta = Math.round((after - before) * 10) / 10;
-
     const newEvidence = newEvidenceItems(
-      prevDim?.evidence ?? [],
-      currDim?.evidence ?? [],
+      previousDim?.evidence ?? [],
+      currentDim?.evidence ?? [],
     );
 
-    // Only include dims that changed or gained new evidence
     if (delta !== 0 || newEvidence.length > 0) {
       dimensionDeltas.push({
         dim: dimKey,
@@ -44,7 +42,6 @@ export function diffDossiers(previous: Dossier, current: Dossier): DossierDelta 
     }
   }
 
-  // Sort by absolute delta desc
   dimensionDeltas.sort((a, b) => Math.abs(b.delta) - Math.abs(a.delta));
 
   return {
@@ -59,7 +56,7 @@ export function diffDossiers(previous: Dossier, current: Dossier): DossierDelta 
 export function formatDeltaReport(delta: DossierDelta): string {
   const lines: string[] = [
     `Dossier diff: ${delta.competitor}`,
-    `Previous: ${delta.previousBuilt.slice(0, 10)}  →  Current: ${delta.currentBuilt.slice(0, 10)}`,
+    `Previous: ${delta.previousBuilt.slice(0, 10)}  ->  Current: ${delta.currentBuilt.slice(0, 10)}`,
     `Composite change: ${delta.compositeChange >= 0 ? '+' : ''}${delta.compositeChange}`,
     '',
   ];
@@ -70,12 +67,14 @@ export function formatDeltaReport(delta: DossierDelta): string {
   }
 
   lines.push('Dimension changes:');
-  for (const d of delta.dimensionDeltas) {
-    const arrow = d.delta >= 0 ? '▲' : '▼';
-    const sign = d.delta >= 0 ? '+' : '';
-    lines.push(`  ${d.dim}. ${d.dimName}: ${d.before} → ${d.after} (${arrow}${sign}${d.delta})`);
-    if (d.newEvidence.length > 0) {
-      lines.push(`     +${d.newEvidence.length} new evidence item(s)`);
+  for (const dimensionDelta of delta.dimensionDeltas) {
+    const arrow = dimensionDelta.delta >= 0 ? 'UP' : 'DOWN';
+    const sign = dimensionDelta.delta >= 0 ? '+' : '';
+    lines.push(
+      `  ${dimensionDelta.dim}. ${dimensionDelta.dimName}: ${dimensionDelta.before} -> ${dimensionDelta.after} (${arrow} ${sign}${dimensionDelta.delta})`,
+    );
+    if (dimensionDelta.newEvidence.length > 0) {
+      lines.push(`     +${dimensionDelta.newEvidence.length} new evidence item(s)`);
     }
   }
 

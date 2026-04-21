@@ -73,6 +73,18 @@ function makeUnsatisfiedCritique(score: number, actions = ['Fix the gap']): Adve
   };
 }
 
+function makeStrictDims() {
+  return {
+    autonomy: 80,
+    selfImprovement: 70,
+    tokenEconomy: 85,
+    specDrivenPipeline: 80,
+    developerExperience: 70,
+    planningQuality: 70,
+    convergenceSelfHealing: 70,
+  };
+}
+
 function makeBaseOpts(overrides: Partial<AscendEngineOptions> = {}): AscendEngineOptions {
   const matrix = makeMatrix([{ id: 'functionality', score: 6.0 }]);
   return {
@@ -90,6 +102,7 @@ function makeBaseOpts(overrides: Partial<AscendEngineOptions> = {}): AscendEngin
     _saveCheckpoint: async () => {},
     _loadCheckpoint: async () => null,
     _clearCheckpoint: async () => {},
+    _computeStrictDims: async () => makeStrictDims(),
     ...overrides,
   };
 }

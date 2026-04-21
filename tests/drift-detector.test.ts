@@ -63,6 +63,20 @@ describe('DriftDetector', () => {
     assert.strictEqual(driftViolations.length, 0);
   });
 
+  it('ignores package import examples that only appear inside comments', async () => {
+    const { detectAIDrift } = await import('../src/core/drift-detector.js');
+    const root = await makeTempProject({
+      'src/sdk.ts': [
+        '// Usage: import { assess } from \'danteforge/sdk\'',
+        'export const ok = true;',
+      ].join('\n'),
+    });
+
+    const violations = await detectAIDrift(['src/sdk.ts'], root);
+    const driftViolations = violations.filter(v => v.type === 'ai-drift');
+    assert.strictEqual(driftViolations.length, 0);
+  });
+
   it('detects multiple violation types in one file', async () => {
     const { detectAIDrift } = await import('../src/core/drift-detector.js');
     const root = await makeTempProject({

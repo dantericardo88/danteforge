@@ -91,6 +91,99 @@ describe('release check scripts', () => {
     assert.match(pkg.scripts?.['release:ga'] ?? '', /verify:live/);
   });
 
+  it('defines SBOM scripts for the release proof chain', async () => {
+    const pkg = JSON.parse(await fs.readFile('package.json', 'utf8')) as {
+      scripts?: Record<string, string>;
+    };
+    const releaseProofScript = await fs.readFile('scripts/check-release-proof.mjs', 'utf8');
+
+    assert.match(pkg.scripts?.['sbom:generate'] ?? '', /generate-sbom\.mjs/);
+    assert.match(pkg.scripts?.['sbom:validate'] ?? '', /validate-sbom\.mjs/);
+    assert.match(releaseProofScript, /sbom:generate/);
+    assert.match(releaseProofScript, /sbom:validate/);
+  });
+
+  it('pins production dependency floors that satisfy the release audit gate', async () => {
+    const pkg = JSON.parse(await fs.readFile('package.json', 'utf8')) as {
+      dependencies?: Record<string, string>;
+      overrides?: Record<string, string>;
+    };
+
+    assert.strictEqual(pkg.dependencies?.yaml, '^2.8.3');
+    assert.strictEqual(pkg.overrides?.hono, '^4.12.14');
+    assert.strictEqual(pkg.overrides?.['@hono/node-server'], '^1.19.14');
+  });
+
+  it('pins root dev-tool dependency floors that satisfy audit-safe packaging', async () => {
+    const pkg = JSON.parse(await fs.readFile('package.json', 'utf8')) as {
+      overrides?: Record<string, string | Record<string, string>>;
+    };
+
+    assert.strictEqual(pkg.overrides?.picomatch, '^4.0.4');
+    assert.deepStrictEqual(pkg.overrides?.['minimatch@^3.1.2'], {
+      'brace-expansion': '^1.1.14',
+    });
+    assert.deepStrictEqual(pkg.overrides?.['minimatch@^9.0.4'], {
+      'brace-expansion': '^2.1.0',
+    });
+    assert.deepStrictEqual(pkg.overrides?.['minimatch@^10.2.2'], {
+      'brace-expansion': '^5.0.5',
+    });
+  });
+
+  it('keeps SBOM generation non-interactive for fresh-checkout release proof runs', async () => {
+    const sbomScript = await fs.readFile('scripts/generate-sbom.mjs', 'utf8');
+
+    assert.match(
+      sbomScript,
+      /--yes|npm_config_yes/i,
+      'SBOM generation must avoid interactive npx install prompts in release sandboxes',
+    );
+  });
+
+  it('routes npm test through the quiet test-suite wrapper', async () => {
+    const pkg = JSON.parse(await fs.readFile('package.json', 'utf8')) as {
+      scripts?: Record<string, string>;
+    };
+    const testRunner = await fs.readFile('scripts/run-test-suite.mjs', 'utf8').catch(() => '');
+
+    assert.match(pkg.scripts?.test ?? '', /run-test-suite\.mjs/);
+    assert.match(testRunner, /tsx/);
+    assert.match(testRunner, /tests\/\*\*\/\*\.test\.ts/);
+    assert.match(testRunner, /INFO|WARN|OK/);
+  });
+
+  it('keeps the public build pure while exposing an explicit build-proof wrapper', async () => {
+    const pkg = JSON.parse(await fs.readFile('package.json', 'utf8')) as {
+      scripts?: Record<string, string>;
+    };
+    const buildRunner = await fs.readFile('scripts/run-build.mjs', 'utf8').catch(() => '');
+
+    assert.strictEqual(pkg.scripts?.build, 'tsup');
+    assert.match(pkg.scripts?.['build:receipt'] ?? '', /run-build\.mjs/);
+    assert.match(buildRunner, /tsup/);
+    assert.match(buildRunner, /command-check/i);
+  });
+
+  it('gives shared tsx CLI test runs a cold-start-safe default timeout', async () => {
+    const cliRunner = await fs.readFile('tests/helpers/cli-runner.ts', 'utf8');
+
+    assert.match(
+      cliRunner,
+      /timeout:\s*options\?\.timeout\s*\?\?\s*(1[2-9]\d{4}|[2-9]\d{5,})/,
+      'Fresh-checkout release proof runs need a default CLI helper timeout above 60s',
+    );
+  });
+
+  it('provides explicit sync scripts for workflow surfaces and the readiness guide', async () => {
+    const pkg = JSON.parse(await fs.readFile('package.json', 'utf8')) as {
+      scripts?: Record<string, string>;
+    };
+
+    assert.match(pkg.scripts?.['sync:workflow-surfaces'] ?? '', /sync-workflow-surfaces\.ts/);
+    assert.match(pkg.scripts?.['sync:readiness-doc'] ?? '', /sync-operational-readiness\.ts/);
+  });
+
   it('ships the live verification script and keeps install smoke focused on explicit assistant setup', async () => {
     const liveScript = await fs.readFile('scripts/check-live-integrations.mjs', 'utf8');
     const installSmoke = await fs.readFile('scripts/check-package-install-smoke.mjs', 'utf8');
@@ -101,6 +194,9 @@ describe('release check scripts', () => {
     assert.match(liveScript, /figma/i);
     assert.match(installSmoke, /'setup', 'assistants'/);
     assert.match(installSmoke, /'--assistants', 'cursor'/);
+    assert.match(installSmoke, /danteforge-cli/);
+    assert.match(installSmoke, /doctor-live = "npx danteforge doctor --live"/);
+    assert.match(installSmoke, /df-verify = "npx danteforge verify"/);
     assert.doesNotMatch(installSmoke, /did not sync Codex skills/i);
     assert.match(simulatedFresh, /createReleaseSandbox/);
     assert.match(releaseUtils, /DANTEFORGE_HOME/);
@@ -124,6 +220,22 @@ describe('release check scripts', () => {
     const extensionPkg = JSON.parse(await fs.readFile('vscode-extension/package.json', 'utf8')) as { version: string };
 
     assert.strictEqual(extensionPkg.version, rootPkg.version);
+  });
+
+  it('pins VS Code extension packaging dependencies to audit-safe floors', async () => {
+    const extensionPkg = JSON.parse(await fs.readFile('vscode-extension/package.json', 'utf8')) as {
+      overrides?: Record<string, string | Record<string, string>>;
+    };
+
+    assert.strictEqual(extensionPkg.overrides?.undici, '^7.24.4');
+    assert.strictEqual(extensionPkg.overrides?.['follow-redirects'], '^1.16.0');
+    assert.strictEqual(extensionPkg.overrides?.lodash, '^4.18.1');
+    assert.deepStrictEqual(extensionPkg.overrides?.['minimatch@^3.0.3'], {
+      'brace-expansion': '^1.1.14',
+    });
+    assert.deepStrictEqual(extensionPkg.overrides?.['minimatch@^10.1.1'], {
+      'brace-expansion': '^5.0.5',
+    });
   });
 
   it('hard-gates publish behind release-proof and live-proof jobs', async () => {

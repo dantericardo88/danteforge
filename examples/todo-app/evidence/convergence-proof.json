@@ -1,18 +1,16 @@
 {
   "version": "1.0.0",
   "project": "todo-app",
-  "generatedAt": "2026-04-11T00:00:00.000Z",
+  "generatedAt": "2026-04-15T00:05:00.000Z",
   "convergence": {
-    "totalCycles": 3,
+    "totalCycles": 1,
     "repairCycles": [
-      { "cycle": 1, "status": "fail", "errorClass": "test-failure", "recovered": false },
-      { "cycle": 2, "status": "fail", "errorClass": "type-error", "recovered": false },
-      { "cycle": 3, "status": "pass", "errorClass": null, "recovered": true }
+      { "cycle": 1, "status": "pass", "errorClass": null, "recovered": false }
     ],
-    "verifyRepairSequences": 2,
-    "recoverySuccessRatio": { "total": 2, "successful": 2 },
-    "convergenceVelocity": { "avgScoreImprovement": 12.5, "monotonic": true },
+    "verifyRepairSequences": 0,
+    "recoverySuccessRatio": { "total": 0, "successful": 0 },
+    "convergenceVelocity": { "avgScoreImprovement": 0, "monotonic": true },
     "finalStatus": "converged",
-    "duration_ms": 8400
+    "duration_ms": 950
   }
 }

@@ -1,7 +1,9 @@
 // Core state management — YAML-based project state tracking
 import fs from 'fs/promises';
+import { execFile } from 'node:child_process';
 import os from 'os';
 import path from 'path';
+import { promisify } from 'node:util';
 import yaml from 'yaml';
 import { logger } from './logger.js';
 import type { CompletionTracker, ProjectType } from './completion-tracker.js';
@@ -9,6 +11,7 @@ import type { CompletionTracker, ProjectType } from './completion-tracker.js';
 const STATE_DIR = '.danteforge';
 const STATE_FILE = path.join(STATE_DIR, 'STATE.yaml');
 const LEGACY_DEFAULT_PROJECT = 'legacy-project';
+const execFileAsync = promisify(execFile);
 
 export type WorkflowStage =
   | 'initialized'
@@ -23,6 +26,34 @@ export type WorkflowStage =
   | 'ux-refine'
   | 'verify'
   | 'synthesize';
+
+const WORKFLOW_STAGE_ORDER: WorkflowStage[] = [
+  'initialized',
+  'review',
+  'constitution',
+  'specify',
+  'clarify',
+  'plan',
+  'tasks',
+  'design',
+  'forge',
+  'ux-refine',
+  'verify',
+  'synthesize',
+];
+
+const LEGACY_WORKFLOW_STAGE_ALIASES: Record<string, WorkflowStage> = {
+  reviewed: 'review',
+  specified: 'specify',
+  clarified: 'clarify',
+  planned: 'plan',
+  tasked: 'tasks',
+  designed: 'design',
+  forged: 'forge',
+  refined: 'ux-refine',
+  verified: 'verify',
+  synthesized: 'synthesize',
+};
 
 function resolveStatePaths(cwd = process.cwd()) {
   const stateDir = path.join(cwd, STATE_DIR);
@@ -71,6 +102,7 @@ export interface DanteState {
   qaLastRun?: string;
   lastVerifyStatus?: 'pass' | 'warn' | 'fail' | 'unknown';
   lastVerifyReceiptPath?: string;
+  verifyEvidence?: VerifyEvidence;
   retroDelta?: number;
   retroLastRun?: string;
   completionTracker?: CompletionTracker;
@@ -110,6 +142,17 @@ export interface DanteState {
   // v0.34.0 — Ecosystem MCP signals (written by score bootstrap)
   skillCount?: number;         // count of skill dirs with SKILL.md under src/harvested/dante-agents/skills/
   hasPluginManifest?: boolean; // true when .claude-plugin/plugin.json exists
+}
+
+export interface VerifyEvidence {
+  status: 'pass' | 'warn' | 'fail';
+  sourcePath: string;
+  gitSha: string | null;
+  timestamp: string;
+  fresh: boolean;
+  currentHead: boolean;
+  dirtyWorktree: boolean;
+  currentStateFresh: boolean;
 }
 
 // v0.17.0 — Score history entry for proof arcs
@@ -184,22 +227,137 @@ async function deriveProjectName(existingProject: string | undefined, cwd: strin
   return cwdName;
 }
 
-async function inferWorkflowStage(cwd: string, parsed?: Partial<DanteState>): Promise<WorkflowStage> {
+function workflowStageRank(stage: WorkflowStage | undefined): number {
+  if (!stage) return -1;
+  return WORKFLOW_STAGE_ORDER.indexOf(stage);
+}
+
+function normalizeWorkflowStage(stage: unknown): WorkflowStage | undefined {
+  if (typeof stage !== 'string') {
+    return undefined;
+  }
+
+  if (WORKFLOW_STAGE_ORDER.includes(stage as WorkflowStage)) {
+    return stage as WorkflowStage;
+  }
+
+  return LEGACY_WORKFLOW_STAGE_ALIASES[stage];
+}
+
+function pickMostAdvancedWorkflowStage(
+  recordedStage: unknown,
+  inferredStage: WorkflowStage,
+): WorkflowStage {
+  const normalizedRecordedStage = normalizeWorkflowStage(recordedStage);
+
+  return workflowStageRank(normalizedRecordedStage) >= workflowStageRank(inferredStage)
+    ? normalizedRecordedStage!
+    : inferredStage;
+}
+
+async function getGitSignal(cwd: string): Promise<{ headSha: string | null; dirtyWorktree: boolean }> {
+  try {
+    const { stdout: headOut } = await execFileAsync('git', ['rev-parse', 'HEAD'], { cwd, timeout: 5000 });
+    const { stdout: dirtyOut } = await execFileAsync('git', ['status', '--porcelain'], { cwd, timeout: 5000 });
+    return {
+      headSha: headOut.trim() || null,
+      dirtyWorktree: dirtyOut.trim().length > 0,
+    };
+  } catch {
+    return { headSha: null, dirtyWorktree: false };
+  }
+}
+
+async function loadVerifyEvidence(cwd: string, receiptPath?: string): Promise<VerifyEvidence | undefined> {
+  const candidatePath = receiptPath
+    ? path.resolve(cwd, receiptPath)
+    : path.join(cwd, STATE_DIR, 'evidence', 'verify', 'latest.json');
+
+  try {
+    const raw = await fs.readFile(candidatePath, 'utf8');
+    const parsed = JSON.parse(raw) as {
+      status?: 'pass' | 'warn' | 'fail';
+      gitSha?: string | null;
+      timestamp?: string;
+      currentStateFresh?: boolean;
+    };
+
+    if (!parsed.status || !parsed.timestamp) {
+      return undefined;
+    }
+
+    const { headSha, dirtyWorktree } = await getGitSignal(cwd);
+    const currentHead = headSha ? parsed.gitSha === headSha : true;
+    const currentStateFresh = parsed.currentStateFresh !== false;
+    const fresh = parsed.status === 'pass' && currentHead && !dirtyWorktree && currentStateFresh;
+
+    return {
+      status: parsed.status,
+      sourcePath: candidatePath,
+      gitSha: parsed.gitSha ?? null,
+      timestamp: parsed.timestamp,
+      fresh,
+      currentHead,
+      dirtyWorktree,
+      currentStateFresh,
+    };
+  } catch {
+    return undefined;
+  }
+}
+
+function deriveEffectiveVerifyStatus(
+  legacyStatus: DanteState['lastVerifyStatus'],
+  verifyEvidence?: VerifyEvidence,
+): DanteState['lastVerifyStatus'] {
+  if (!verifyEvidence) {
+    return legacyStatus;
+  }
+
+  if (verifyEvidence.status === 'pass' && verifyEvidence.fresh) {
+    return 'pass';
+  }
+
+  if (verifyEvidence.status === 'pass' && !verifyEvidence.fresh) {
+    return 'warn';
+  }
+
+  return verifyEvidence.status;
+}
+
+async function inferWorkflowStage(
+  cwd: string,
+  parsed?: Partial<DanteState>,
+  verifyEvidence?: VerifyEvidence,
+): Promise<WorkflowStage> {
   const stateDir = path.join(cwd, STATE_DIR);
   const has = (filename: string) => fileExists(path.join(stateDir, filename));
 
-  if (parsed?.workflowStage) return parsed.workflowStage;
-  if (await has('UPR.md')) return 'synthesize';
-  if (parsed?.lastVerifiedAt) return 'verify';
-  if ((await has('UX_REFINE.md')) || (await has('design-tokens.css'))) return 'ux-refine';
-  if (await has('DESIGN.op')) return 'design';
-  if (await has('TASKS.md')) return 'tasks';
-  if (await has('PLAN.md')) return 'plan';
-  if (await has('CLARIFY.md')) return 'clarify';
-  if (await has('SPEC.md')) return 'specify';
-  if ((await has('CONSTITUTION.md')) || parsed?.constitution) return 'constitution';
-  if (await has('CURRENT_STATE.md')) return 'review';
-  return 'initialized';
+  let inferred: WorkflowStage = 'initialized';
+
+  if (await has('UPR.md')) {
+    inferred = 'synthesize';
+  } else if (verifyEvidence || parsed?.lastVerifyReceiptPath || parsed?.lastVerifiedAt) {
+    inferred = 'verify';
+  } else if ((await has('UX_REFINE.md')) || (await has('design-tokens.css'))) {
+    inferred = 'ux-refine';
+  } else if (await has('DESIGN.op')) {
+    inferred = 'design';
+  } else if (await has('TASKS.md')) {
+    inferred = 'tasks';
+  } else if (await has('PLAN.md')) {
+    inferred = 'plan';
+  } else if (await has('CLARIFY.md')) {
+    inferred = 'clarify';
+  } else if (await has('SPEC.md')) {
+    inferred = 'specify';
+  } else if ((await has('CONSTITUTION.md')) || parsed?.constitution) {
+    inferred = 'constitution';
+  } else if (await has('CURRENT_STATE.md')) {
+    inferred = 'review';
+  }
+
+  return pickMostAdvancedWorkflowStage(parsed?.workflowStage, inferred);
 }
 
 export async function loadState(options: { cwd?: string } = {}): Promise<DanteState> {
@@ -211,7 +369,11 @@ export async function loadState(options: { cwd?: string } = {}): Promise<DanteSt
     const parsed = yaml.parse(content) as Partial<DanteState>;
     // Validate required fields — fill gaps with defaults
     const project = await deriveProjectName(parsed?.project, cwd);
-    const workflowStage = await inferWorkflowStage(cwd, parsed);
+    const verifyEvidence = await loadVerifyEvidence(cwd, parsed?.lastVerifyReceiptPath);
+    const workflowStage = await inferWorkflowStage(cwd, parsed, verifyEvidence);
+    const lastVerifyStatus = deriveEffectiveVerifyStatus(parsed?.lastVerifyStatus, verifyEvidence);
+    const constitution = parsed?.constitution
+      ?? (await fileExists(path.join(stateDir, 'CONSTITUTION.md')) ? 'CONSTITUTION.md' : undefined);
     return {
       project,
       lastHandoff: parsed?.lastHandoff ?? 'initialized',
@@ -220,7 +382,7 @@ export async function loadState(options: { cwd?: string } = {}): Promise<DanteSt
       tasks: parsed?.tasks ?? {},
       auditLog: Array.isArray(parsed?.auditLog) ? parsed.auditLog : [],
       profile: parsed?.profile ?? 'balanced',
-      constitution: parsed?.constitution,
+      constitution,
       lastVerifiedAt: parsed?.lastVerifiedAt,
       tddEnabled: parsed?.tddEnabled,
       lightMode: parsed?.lightMode,
@@ -266,8 +428,9 @@ export async function loadState(options: { cwd?: string } = {}): Promise<DanteSt
       // Self-edit policy
       selfEditPolicy: parsed?.selfEditPolicy ?? 'deny',
       // v0.8.0 verify status
-      lastVerifyStatus: parsed?.lastVerifyStatus,
-      lastVerifyReceiptPath: parsed?.lastVerifyReceiptPath,
+      lastVerifyStatus,
+      lastVerifyReceiptPath: verifyEvidence?.sourcePath ?? parsed?.lastVerifyReceiptPath,
+      verifyEvidence,
       // v0.10.0 competitors + targets
       competitors: parsed?.competitors,
       preferredLevel: parsed?.preferredLevel,
@@ -349,6 +512,7 @@ export async function loadState(options: { cwd?: string } = {}): Promise<DanteSt
 export async function saveState(state: DanteState, options: { cwd?: string } = {}) {
   const { stateDir, stateFile } = resolveStatePaths(options.cwd);
   await fs.mkdir(stateDir, { recursive: true });
-  await fs.writeFile(stateFile, yaml.stringify(state));
+  const { verifyEvidence: _verifyEvidence, ...persistedState } = state;
+  await fs.writeFile(stateFile, yaml.stringify(persistedState));
   logger.info('STATE.yaml updated');
 }

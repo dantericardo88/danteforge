@@ -9,6 +9,25 @@ export type ReadFileFn = (p: string, enc: BufferEncoding) => Promise<string>;
 export type WriteFileFn = (p: string, d: string) => Promise<void>;
 export type MkdirFn = (p: string, opts: { recursive: boolean }) => Promise<unknown>;
 
+export interface LandscapeRankingDelta {
+  competitor: string;
+  displayName: string;
+  beforeRank: number | null;
+  afterRank: number | null;
+  beforeComposite: number | null;
+  afterComposite: number | null;
+  rankDelta: number;
+  compositeDelta: number;
+}
+
+export interface LandscapeDelta {
+  previousGeneratedAt: string;
+  currentGeneratedAt: string;
+  newCompetitors: string[];
+  removedCompetitors: string[];
+  rankingChanges: LandscapeRankingDelta[];
+}
+
 export interface LandscapeDeps {
   _readDir?: ReadDirFn;
   _readFile?: ReadFileFn;
@@ -27,6 +46,21 @@ function landscapeJsonPath(cwd: string): string {
 
 function landscapeMdPath(cwd: string): string {
   return path.join(cwd, '.danteforge', 'COMPETITIVE_LANDSCAPE.md');
+}
+
+function landscapeHistoryDir(cwd: string): string {
+  return path.join(cwd, '.danteforge', 'landscape-history');
+}
+
+function sanitizeSnapshotTimestamp(timestamp: string): string {
+  return timestamp.replace(/[:.]/g, '-');
+}
+
+function landscapeSnapshotPath(cwd: string, generatedAt: string): string {
+  return path.join(
+    landscapeHistoryDir(cwd),
+    `${sanitizeSnapshotTimestamp(generatedAt)}.json`,
+  );
 }
 
 async function loadAllDossiers(
@@ -188,6 +222,7 @@ export async function buildLandscape(
   const readFile = deps._readFile ?? ((p, e) => fs.readFile(p, e as BufferEncoding));
   const writeFile = deps._writeFile ?? ((p, d) => fs.writeFile(p, d));
   const mkdirFn = deps._mkdir ?? ((p, o) => fs.mkdir(p, o));
+  const existing = await loadLandscape(cwd);
 
   const dossiers = deps._loadDossiers
     ? await deps._loadDossiers(cwd)
@@ -217,6 +252,13 @@ export async function buildLandscape(
 
   // Write landscape.json
   await mkdirFn(path.join(cwd, '.danteforge'), { recursive: true });
+  if (existing) {
+    await mkdirFn(landscapeHistoryDir(cwd), { recursive: true });
+    await writeFile(
+      landscapeSnapshotPath(cwd, existing.generatedAt),
+      JSON.stringify(existing, null, 2),
+    );
+  }
   await writeFile(landscapeJsonPath(cwd), JSON.stringify(matrix, null, 2));
 
   // Write COMPETITIVE_LANDSCAPE.md
@@ -235,6 +277,35 @@ export async function loadLandscape(cwd: string): Promise<LandscapeMatrix | null
   }
 }
 
+export async function loadPreviousLandscape(
+  cwd: string,
+  readDir: ReadDirFn = fs.readdir,
+  readFile: ReadFileFn = fs.readFile as unknown as ReadFileFn,
+): Promise<LandscapeMatrix | null> {
+  let files: string[];
+  try {
+    files = await readDir(landscapeHistoryDir(cwd));
+  } catch {
+    return null;
+  }
+
+  const snapshots = files
+    .filter((file) => file.endsWith('.json'))
+    .sort()
+    .reverse();
+
+  for (const snapshot of snapshots) {
+    try {
+      const raw = await readFile(path.join(landscapeHistoryDir(cwd), snapshot), 'utf8');
+      return JSON.parse(raw) as LandscapeMatrix;
+    } catch {
+      // Skip malformed snapshots and continue.
+    }
+  }
+
+  return null;
+}
+
 export function isLandscapeStale(
   landscape: LandscapeMatrix,
   maxAgeDays = 7,
@@ -243,6 +314,85 @@ export function isLandscapeStale(
   return ageMs > maxAgeDays * 24 * 60 * 60 * 1000;
 }
 
+export function diffLandscape(
+  previous: LandscapeMatrix,
+  current: LandscapeMatrix,
+): LandscapeDelta {
+  const previousRanks = new Map(
+    previous.rankings.map((ranking, index) => [ranking.competitor, { ranking, rank: index + 1 }]),
+  );
+  const currentRanks = new Map(
+    current.rankings.map((ranking, index) => [ranking.competitor, { ranking, rank: index + 1 }]),
+  );
+
+  const previousCompetitors = new Set(previous.rankings.map((ranking) => ranking.competitor));
+  const currentCompetitors = new Set(current.rankings.map((ranking) => ranking.competitor));
+
+  const newCompetitors = current.rankings
+    .filter((ranking) => !previousCompetitors.has(ranking.competitor))
+    .map((ranking) => ranking.competitor);
+  const removedCompetitors = previous.rankings
+    .filter((ranking) => !currentCompetitors.has(ranking.competitor))
+    .map((ranking) => ranking.competitor);
+
+  const rankingChanges: LandscapeRankingDelta[] = [];
+  const allCompetitors = new Set<string>([
+    ...previous.rankings.map((ranking) => ranking.competitor),
+    ...current.rankings.map((ranking) => ranking.competitor),
+  ]);
+
+  for (const competitor of allCompetitors) {
+    const before = previousRanks.get(competitor);
+    const after = currentRanks.get(competitor);
+    const beforeRank = before?.rank ?? null;
+    const afterRank = after?.rank ?? null;
+    const beforeComposite = before?.ranking.composite ?? null;
+    const afterComposite = after?.ranking.composite ?? null;
+    const rankDelta = beforeRank !== null && afterRank !== null ? beforeRank - afterRank : 0;
+    const compositeDelta =
+      beforeComposite !== null && afterComposite !== null
+        ? Math.round((afterComposite - beforeComposite) * 10) / 10
+        : 0;
+
+    if (
+      beforeRank !== afterRank ||
+      beforeComposite !== afterComposite
+    ) {
+      rankingChanges.push({
+        competitor,
+        displayName: after?.ranking.displayName ?? before?.ranking.displayName ?? competitor,
+        beforeRank,
+        afterRank,
+        beforeComposite,
+        afterComposite,
+        rankDelta,
+        compositeDelta,
+      });
+    }
+  }
+
+  rankingChanges.sort((a, b) => {
+    const rankDeltaDiff = Math.abs(b.rankDelta) - Math.abs(a.rankDelta);
+    if (rankDeltaDiff !== 0) return rankDeltaDiff;
+    return Math.abs(b.compositeDelta) - Math.abs(a.compositeDelta);
+  });
+
+  return {
+    previousGeneratedAt: previous.generatedAt,
+    currentGeneratedAt: current.generatedAt,
+    newCompetitors,
+    removedCompetitors,
+    rankingChanges,
+  };
+}
+
 export function landscapeJsonPath_ (cwd: string): string {
   return landscapeJsonPath(cwd);
 }
+
+export {
+  landscapeHistoryDir,
+  landscapeJsonPath,
+  landscapeMdPath,
+  landscapeSnapshotPath,
+};

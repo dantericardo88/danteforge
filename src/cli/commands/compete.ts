@@ -356,6 +356,39 @@ async function actionSprint(options: CompeteOptions, cwd: string): Promise<Compe
   logger.info(`\nAfter the sprint, update the matrix:`);
   logger.info(`  danteforge compete --rescore "${next.id}=<new_score>[,<commit_sha>]"`);
 
+  // ── COFL Operator Leverage panel (best-effort — never blocks sprint) ──────
+  try {
+    const { classifyCompetitorRoles, scoreOperatorLeverage } = await import('../../core/cofl-engine.js');
+    const partition = classifyCompetitorRoles(
+      matrix.competitors_closed_source ?? [],
+      matrix.competitors_oss ?? [],
+    );
+    const entries = scoreOperatorLeverage([{
+      id: next.id,
+      label: next.label,
+      gap_to_closed_source_leader: next.gap_to_closed_source_leader ?? next.gap_to_leader,
+      gap_to_oss_leader: next.gap_to_oss_leader ?? 0,
+      oss_leader: next.oss_leader ?? '',
+      weight: next.weight ?? 1,
+      frequency: (next as unknown as { frequency?: string }).frequency ?? 'medium',
+    }], partition);
+    const entry = entries[0];
+    if (entry) {
+      logger.info('\n## COFL Operator Leverage');
+      logger.info(`Leverage score:    ${entry.leverageScore.toFixed(2)}`);
+      logger.info(`Operator visible:  ${entry.operatorVisibleLift.toFixed(1)}/10`);
+      logger.info(`OSS borrowable:    ${entry.borrowableFromOSS ? '✓ Yes — run /inferno to harvest' : '✗ No direct OSS pattern available'}`);
+      if (partition.referenceTeachers.length > 0 || partition.specialistTeachers.length > 0) {
+        logger.info(`Teacher set:       ${[...partition.referenceTeachers, ...partition.specialistTeachers].join(', ')}`);
+      }
+      if (partition.directPeers.length > 0) {
+        logger.info(`Direct peers:      ${partition.directPeers.join(', ')}`);
+      }
+      logger.info('');
+      logger.info('Run `danteforge cofl --auto` to run the full 10-phase competitive loop.');
+    }
+  } catch { /* best-effort — cofl-engine not available or matrix incomplete */ }
+
   return {
     action: 'sprint',
     matrixPath,

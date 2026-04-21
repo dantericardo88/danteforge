@@ -72,6 +72,7 @@ function makeLoopOpts(extra: Partial<AscendEngineOptions> = {}): AscendEngineOpt
     dryRun: false,
     yes: true,
     maxCycles: 6,
+    executeMode: 'advisory',
     _loadMatrix: async () => makeMatrix(),   // no dimensions → loop exits after 0 cycles
     _saveMatrix: async () => {},
     _harshScore: async () => makeScoreResult(),
@@ -94,6 +95,7 @@ function makeActiveLoopOpts(extra: Partial<AscendEngineOptions> = {}): AscendEng
     dryRun: false,
     yes: true,
     maxCycles: 6,
+    executeMode: 'advisory',
     _loadMatrix: async () => makeMatrix({ dimensions: [makeAchievableDim()], overallSelfScore: 5.0 }),
     _saveMatrix: async () => {},
     _harshScore: async () => makeScoreResult(5.0),  // score stays same → plateau → loop stops

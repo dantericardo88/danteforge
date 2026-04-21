@@ -118,7 +118,9 @@ export function computeCompletionTracker(
   const qaScore = typeof state.qaHealthScore === 'number'
     ? state.qaHealthScore
     : 0;
-  const testsPassing = state.lastVerifyStatus === 'pass';
+  const testsPassing = state.verifyEvidence
+    ? state.verifyEvidence.status === 'pass' && state.verifyEvidence.fresh
+    : state.lastVerifyStatus === 'pass';
   const isWebProject = state.projectType === 'web';
 
   let verificationScore: number;
@@ -199,7 +201,8 @@ export function computeProjectedCompletion(
   }
 
   if (!phases.verification.complete) {
-    remaining.push('verify');
+    const needsReceiptRefresh = state.verifyEvidence?.status === 'pass' && !state.verifyEvidence.fresh;
+    remaining.push(needsReceiptRefresh ? 'verify (refresh receipt)' : 'verify');
   }
 
   if (!phases.synthesis.complete) {

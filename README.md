@@ -8,7 +8,7 @@
 
 ```bash
 npm install -g danteforge
-danteforge init
+danteforge go
 ```
 
 ## First 5 Minutes
@@ -17,24 +17,24 @@ danteforge init
 danteforge go
 ```
 
-**First run** (no project yet): 3-question setup wizard (2 min) → quality score → top 3 gaps.
+**First run** (no project yet): 3-question setup wizard (2 min) -> fast score -> top 3 gaps.  
 **Every run after**: shows current score, recommends the one next action, asks to confirm.
 
 **What you'll see after setup:**
 
-```
-  DanteForge  —  Project State
-  ─────────────────────────────────────────
+```text
+  DanteForge - Project State
+  -------------------------------------------------
   Overall  6.8/10  needs-work
 
   P0 gaps (below 7.0):
-    Error Handling        ████░░░░  6.2
-    Security              ████░░░░  6.8
+    Error Handling        ====....  6.2
+    Security              =====...  6.8
 
   Recommended next step:
     Improve Error Handling  (currently 6.2/10)
-    Runs an automated cycle targeting this gap — takes 1-3 minutes.
-    → danteforge magic "improve error handling"
+    Runs one targeted improvement cycle and then re-checks your score.
+    -> danteforge improve "improve error handling"
 
   Start? [Y/n]
 ```
@@ -42,7 +42,8 @@ danteforge go
 **No API key yet?** All planning commands work offline. Only improvement loops need a provider.
 
 ```bash
-danteforge spark "your idea"   # zero-token planning — works without any API key
+danteforge score               # fast local score, no API key required
+danteforge spark "your idea"   # zero-token planning - works without any API key
 danteforge config --set-key "claude:<key>"  # add a key when ready
 ```
 
@@ -50,21 +51,21 @@ danteforge config --set-key "claude:<key>"  # add a key when ready
 
 If you only learn one DanteForge loop, make it this one:
 
-1. `danteforge init` — 3-question setup, detect project, health checks (2 min).
-2. `danteforge go` — see your score, confirm one improvement, let it run.
-3. `danteforge verify` — machine-readable quality gate before you call anything "done".
+1. `danteforge go` - 3-question setup on first run, then your score and top gaps.
+2. `danteforge improve "<goal>"` - targeted improvement cycle when you want to push one area.
+3. `danteforge verify` - machine-readable quality gate before you call anything "done".
 
-See it working right now — the todo-app has already been run through the full pipeline:
+See it working right now - the todo-app has already been run through the full pipeline:
 
 ```bash
-cd examples/todo-app && danteforge quality
+cd examples/todo-app && danteforge score
 ```
 
 ### What DanteForge actually gives you
 
 | Without DanteForge | With DanteForge |
 |---|---|
-| AI produces code, you guess if it's good | Score 0–10 across 17 dimensions |
+| AI produces code, you guess if it's good | Score 0-10 across 17 dimensions |
 | Each session starts from scratch | Self-improving lessons injected from past failures |
 | You accept whatever the AI produces | Convergence loop runs until quality gates pass |
 | No idea how you compare to alternatives | Competitive matrix tracks gap to leader per dimension |
@@ -74,12 +75,15 @@ cd examples/todo-app && danteforge quality
 
 ```bash
 danteforge go          # smart entry point: state panel + guided action
-danteforge quality     # visual scorecard: dimension bars, P0 gaps, ceilings
-danteforge ascend      # full autonomous loop: runs until all dims hit 9.0
+danteforge start       # plain-English alias for go
 danteforge score       # fast score: one number + 3 P0 items in <5s
-danteforge init        # first-run wizard (or --guided to force interactive)
+danteforge measure     # plain-English alias for score
+danteforge verify      # machine-readable quality gate
+danteforge check       # plain-English alias for verify
+danteforge improve     # plain-English alias for magic
+danteforge ascend      # full autonomous loop: runs until all dims hit 9.0
+danteforge init        # setup wizard (use --advanced for provider/editor extras)
 ```
-
 ## Full Pipeline Example
 
 ```bash
@@ -114,12 +118,12 @@ Treat the root `danteforge` package as the CLI entrypoint, not the primary typed
 
 ## Why DanteForge?
 
-DanteForge is the **trust spine** for AI-assisted development — it prevents the "narrate completion, skip closure" failure mode that plagues most AI coding tools.
+DanteForge is the **trust spine** for AI-assisted development â€” it prevents the "narrate completion, skip closure" failure mode that plagues most AI coding tools.
 
 ### Key Differentiators
 
-- **Evidence-based convergence**: Runs assess→forge→verify→assess loops until measurable quality targets are hit
-- **Spec enforcement**: Constitution-driven pipeline prevents skipping steps (spec→clarify→plan→tasks→forge→verify)
+- **Evidence-based convergence**: Runs assessâ†’forgeâ†’verifyâ†’assess loops until measurable quality targets are hit
+- **Spec enforcement**: Constitution-driven pipeline prevents skipping steps (specâ†’clarifyâ†’planâ†’tasksâ†’forgeâ†’verify)
 - **18-dimension quality scoring**: Self-assessment against 27 competitors with gap analysis and masterplans
 - **Enterprise foundations**: audit trails, workspace controls, budget controls, and release gates
 - **Multi-agent orchestration**: MCP server + plugin manifest for Claude Code, Cursor, Codex CLI, Goose
@@ -162,7 +166,7 @@ danteforge nova "todo app with CLI interface"
 danteforge assess
 ```
 
-See [`examples/todo-app/`](examples/todo-app/) for a complete walkthrough — spec to working code with zero manual coding.
+See [`examples/todo-app/`](examples/todo-app/) for a complete walkthrough â€” spec to working code with zero manual coding.
 
 ## Advanced Usage
 
@@ -202,7 +206,7 @@ danteforge spark --max-budget 5.00
 
 ## How DanteForge Compares
 
-DanteForge occupies a different niche than editor-native tools (Cursor, Copilot) or hosted agents (Devin). It's a **CLI-first, spec-driven pipeline** — closest to Aider and Codex CLI in form factor, but with a structured constitution-to-verify workflow that those tools lack.
+DanteForge occupies a different niche than editor-native tools (Cursor, Copilot) or hosted agents (Devin). It's a **CLI-first, spec-driven pipeline** â€” closest to Aider and Codex CLI in form factor, but with a structured constitution-to-verify workflow that those tools lack.
 
 **Strengths:** Spec enforcement, multi-provider LLM support (7 providers), convergence loops, deterministic autoforge pipeline, budget controls.
 
@@ -395,7 +399,7 @@ review -> constitution -> specify -> clarify -> tech-decide -> plan -> tasks -> 
 ```
 <!-- DANTEFORGE_REPO_PIPELINE:END -->
 
-Most users never run the pipeline manually — `danteforge go`, `danteforge magic`, and
+Most users never run the pipeline manually â€” `danteforge go`, `danteforge magic`, and
 `danteforge ascend` orchestrate it automatically. Expand below if you want step-by-step control.
 
 <details>
@@ -461,7 +465,7 @@ DanteForge scores your code across **8 quality dimensions** and assigns it a **m
 | 5 | Customer-Ready | 76-88 | Production launch |
 | 6 | Enterprise-Grade | 89-100 | Fortune 500 contracts |
 
-Each magic preset targets a specific maturity level. The **convergence loop** uses this target to prevent "premature done" — if your code doesn't meet the quality standard, it triggers **focused remediation** (3 autoforge waves) to close critical gaps.
+Each magic preset targets a specific maturity level. The **convergence loop** uses this target to prevent "premature done" â€” if your code doesn't meet the quality standard, it triggers **focused remediation** (3 autoforge waves) to close critical gaps.
 
 ### Example Maturity Check
 
@@ -471,9 +475,9 @@ danteforge maturity --preset magic
 
 Output:
 ```
-════════════════════════════════════════════════════════════
+â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
   DanteForge Maturity Assessment
-════════════════════════════════════════════════════════════
+â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
 
 Current Level: Alpha (3/6)
 Target Level:  Beta (4/6)
@@ -481,36 +485,36 @@ Overall Score: 58/100
 Use Case:      Internal team use
 
 Quality Dimensions:
-  ✅ Functionality        75/100
-  ✅ Testing              82/100
-  ⚠️  Error Handling      65/100
-  ⚠️  Security            70/100
-  ⚠️  UX Polish           60/100
-  ❌ Documentation        55/100
-  ⚠️  Performance         70/100
-  ⚠️  Maintainability     68/100
+  âœ… Functionality        75/100
+  âœ… Testing              82/100
+  âš ï¸  Error Handling      65/100
+  âš ï¸  Security            70/100
+  âš ï¸  UX Polish           60/100
+  âŒ Documentation        55/100
+  âš ï¸  Performance         70/100
+  âš ï¸  Maintainability     68/100
 
 Major Gaps (1):
   - Documentation: 55/100 (need 70+)
-    → Improve clarity and update stale documentation
+    â†’ Improve clarity and update stale documentation
 
 Next Steps:
   1. Improve clarity and update stale documentation
 
-Recommendation: ⚠️  Refine — address gaps before shipping
-════════════════════════════════════════════════════════════
+Recommendation: âš ï¸  Refine â€” address gaps before shipping
+â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
 ```
 
 ### The 8 Quality Dimensions
 
-1. **Functionality** (20% weight) — PDSE completeness + integration fitness
-2. **Testing** (15% weight) — Coverage, test files, E2E tests
-3. **Error Handling** (10% weight) — Try/catch, custom errors, ratio to functions
-4. **Security** (15% weight) — Secrets management, npm audit, dangerous patterns
-5. **UX Polish** (10% weight) — Loading states, accessibility, responsive design (web only)
-6. **Documentation** (10% weight) — PDSE clarity + freshness
-7. **Performance** (10% weight) — Nested loops, O(n²) patterns, profiling
-8. **Maintainability** (10% weight) — PDSE testability + constitution + function size
+1. **Functionality** (20% weight) â€” PDSE completeness + integration fitness
+2. **Testing** (15% weight) â€” Coverage, test files, E2E tests
+3. **Error Handling** (10% weight) â€” Try/catch, custom errors, ratio to functions
+4. **Security** (15% weight) â€” Secrets management, npm audit, dangerous patterns
+5. **UX Polish** (10% weight) â€” Loading states, accessibility, responsive design (web only)
+6. **Documentation** (10% weight) â€” PDSE clarity + freshness
+7. **Performance** (10% weight) â€” Nested loops, O(nÂ²) patterns, profiling
+8. **Maintainability** (10% weight) â€” PDSE testability + constitution + function size
 
 See [docs/MATURITY-SYSTEM.md](docs/MATURITY-SYSTEM.md) for detailed explanations of each level, the reflection gate, and how to improve your scores.
 
@@ -518,7 +522,7 @@ See [docs/MATURITY-SYSTEM.md](docs/MATURITY-SYSTEM.md) for detailed explanations
 
 | Command | Description |
 | --- | --- |
-| `danteforge init` | Interactive first-run wizard — detect project, check health, show next steps |
+| `danteforge init` | Interactive first-run wizard â€” detect project, check health, show next steps |
 | `danteforge constitution` | Initialize project principles and constraints |
 | `danteforge specify <idea>` | Turn a high-level idea into `SPEC.md` |
 | `danteforge clarify` | Generate `CLARIFY.md` for requirement gaps |
@@ -555,7 +559,7 @@ See [docs/MATURITY-SYSTEM.md](docs/MATURITY-SYSTEM.md) for detailed explanations
 | `danteforge local-harvest [paths...]` | Harvest patterns from local private repos, folders, and zip archives |
 | `danteforge autoresearch <goal>` | Autonomous metric-driven optimization loop |
 | `danteforge oss` | Autonomous OSS pattern harvesting with license gates |
-| `danteforge harvest <system>` | Titan Harvest V2 — constitutional pattern harvesting |
+| `danteforge harvest <system>` | Titan Harvest V2 â€” constitutional pattern harvesting |
 | `danteforge docs` | Generate or update the command reference documentation |
 
 Common flags:
@@ -749,4 +753,5 @@ npm run verify  # Run tests and typecheck
 - **License**: MIT
 - **Security**: See [SECURITY.md](SECURITY.md) for vulnerability reporting
 - **Enterprise**: SOC 2 Type II compliant with premium features
+
 

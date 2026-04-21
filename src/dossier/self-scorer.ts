@@ -138,6 +138,27 @@ function dossierPath(cwd: string, id: string): string {
   return path.join(dossierDir(cwd), `${id}.json`);
 }
 
+function dossierHistoryDir(cwd: string, id: string): string {
+  return path.join(dossierDir(cwd), 'history', id);
+}
+
+function dossierSnapshotPath(cwd: string, id: string, lastBuilt: string): string {
+  return path.join(dossierHistoryDir(cwd, id), `${lastBuilt.replace(/[:.]/g, '-')}.json`);
+}
+
+async function loadExistingDossier(
+  cwd: string,
+  id: string,
+  readFileFn: ReadFileFn,
+): Promise<Dossier | null> {
+  try {
+    const raw = await readFileFn(dossierPath(cwd, id), 'utf8');
+    return JSON.parse(raw) as Dossier;
+  } catch {
+    return null;
+  }
+}
+
 function computeComposite(dimensions: Record<string, DossierDimension>): number {
   const scores = Object.values(dimensions).map((d) => d.humanOverride ?? d.score);
   if (scores.length === 0) return 0;
@@ -157,6 +178,7 @@ export async function buildSelfDossier(opts: SelfScorerOptions): Promise<Dossier
   const readFileFn: ReadFileFn = opts._readFile ?? ((p, e) => fs.readFile(p, e as BufferEncoding));
   const writeFileFn: WriteFileFn = opts._writeFile ?? ((p, d) => fs.writeFile(p, d));
   const mkdirFn: MkdirFn = opts._mkdir ?? ((p, o) => fs.mkdir(p, o));
+  const existing = await loadExistingDossier(cwd, competitorId, readFileFn);
 
   const rubric = await loadRubricFn(cwd);
 
@@ -233,6 +255,13 @@ export async function buildSelfDossier(opts: SelfScorerOptions): Promise<Dossier
   };
 
   await mkdirFn(dossierDir(cwd), { recursive: true });
+  if (existing) {
+    await mkdirFn(dossierHistoryDir(cwd, competitorId), { recursive: true });
+    await writeFileFn(
+      dossierSnapshotPath(cwd, competitorId, existing.lastBuilt),
+      JSON.stringify(existing, null, 2),
+    );
+  }
   await writeFileFn(dossierPath(cwd, competitorId), JSON.stringify(dossier, null, 2));
 
   return dossier;

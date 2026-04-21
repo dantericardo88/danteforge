@@ -1,4 +1,4 @@
-// src/cli/commands/score-rubric.ts — Triple-rubric scoring CLI commands
+// src/cli/commands/score-rubric.ts - Triple-rubric scoring CLI commands
 
 import fs from 'node:fs/promises';
 import path from 'node:path';
@@ -85,7 +85,7 @@ export async function rubricScore(options: ScoreRubricOptions = {}): Promise<voi
   const dimensions: DimensionDefinition[] = DIMENSIONS_28;
   const matrixId = options.matrix ?? 'product-28';
 
-  // 2. Load evidence — with auto-bootstrap from dossiers when no file provided
+  // 2. Load evidence - with auto-bootstrap from dossiers when no file provided
   let evidence: EvidenceRecord[] = [];
   if (options.evidence) {
     const evidencePath = path.resolve(cwd, options.evidence);
@@ -99,7 +99,7 @@ export async function rubricScore(options: ScoreRubricOptions = {}): Promise<voi
       evidence = await autoBootstrapEvidence(cwd, emit, options._loadDossiers);
     }
   } else {
-    emit('[rubric-score] No --evidence file provided — checking for competitor dossiers...');
+    emit('[rubric-score] No --evidence file provided - checking for competitor dossiers...');
     evidence = await autoBootstrapEvidence(cwd, emit, options._loadDossiers);
   }
 
@@ -117,12 +117,12 @@ export async function rubricScore(options: ScoreRubricOptions = {}): Promise<voi
   const subject = options.subject ?? 'Unknown';
 
   // 4. Run matrix
-  emit(`[rubric-score] Running matrix for "${subject}" on ${dimensions.length} dimensions × ${rubricIds.length} rubrics...`);
+  emit(`[rubric-score] Running matrix for "${subject}" on ${dimensions.length} dimensions x ${rubricIds.length} rubrics...`);
   const snapshot = runMatrix({ matrixId, subject, dimensions, evidence, rubricIds });
 
   // 5. Emit summary
   emit('');
-  emit(`## ${subject} — Triple Rubric Score`);
+  emit(`## ${subject} - Triple Rubric Score`);
   emit('');
   for (const r of snapshot.rubricScores) {
     const pct = r.normalized.toFixed(1);

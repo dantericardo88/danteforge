@@ -1,4 +1,4 @@
-// src/cli/commands/rubric-cmd.ts — CLI handlers for rubric show/init/validate/add-dim
+// src/cli/commands/rubric-cmd.ts - CLI handlers for rubric show/init/validate/add-dim
 
 import { logger } from '../../core/logger.js';
 import { withErrorBoundary } from '../../core/cli-error-boundary.js';
@@ -7,9 +7,9 @@ import type { Rubric, RubricDimension } from '../../dossier/types.js';
 export interface RubricOptions {
   cwd?: string;
   dim?: string;
-  // Injection seams
   _getRubric?: typeof import('../../dossier/rubric.js').getRubric;
   _saveRubric?: typeof import('../../dossier/rubric.js').saveRubric;
+  _ensureRubricScaffold?: typeof import('../../dossier/rubric.js').ensureRubricScaffold;
   _listDossiers?: typeof import('../../dossier/builder.js').listDossiers;
 }
 
@@ -37,8 +37,7 @@ export async function rubricShow(options: RubricOptions = {}): Promise<void> {
     logger.info('');
     const keys = Object.keys(rubric.dimensions).sort((a, b) => Number(a) - Number(b));
     for (const key of keys) {
-      const dim = rubric.dimensions[key]!;
-      logger.info(`  ${key.padEnd(3)}: ${dim.name}`);
+      logger.info(`  ${key.padEnd(3)}: ${rubric.dimensions[key]!.name}`);
     }
   });
 }
@@ -46,19 +45,23 @@ export async function rubricShow(options: RubricOptions = {}): Promise<void> {
 export async function rubricInit(options: RubricOptions = {}): Promise<void> {
   return withErrorBoundary('rubric init', async () => {
     const cwd = options.cwd ?? process.cwd();
-    const { getRubric: defaultGet } = await import('../../dossier/rubric.js');
+    const {
+      ensureRubricScaffold: defaultEnsure,
+      getRubric: defaultGet,
+    } = await import('../../dossier/rubric.js');
+    const ensureRubricScaffoldFn = options._ensureRubricScaffold ?? defaultEnsure;
+    const getRubricFn = options._getRubric ?? defaultGet;
 
     try {
-      const existing = await (options._getRubric ?? defaultGet)(cwd);
+      const existing = await getRubricFn(cwd);
       logger.info(`[Rubric] Rubric already exists (v${existing.version}, frozen: ${existing.frozenAt})`);
       logger.info('[Rubric] Use `danteforge rubric add-dim` to add new dimensions.');
       return;
-    } catch { /* not found — create it */ }
-
-    logger.info('[Rubric] Rubric not found. Copying from project seed file...');
-    logger.info('[Rubric] The project ships with a 28-dimension rubric at .danteforge/rubric.json.');
-    logger.info('[Rubric] If the file is missing, re-run: danteforge dossier build --all');
-    logger.info('[Rubric] (rubric.json is committed to source control — check .danteforge/)');
+    } catch {
+      const rubric = await ensureRubricScaffoldFn(cwd);
+      logger.success(`[Rubric] Seed rubric created at .danteforge/rubric.json (v${rubric.version}).`);
+      logger.info(`[Rubric] Scaffolded ${Object.keys(rubric.dimensions).length} dimensions.`);
+    }
   });
 }
 
@@ -107,7 +110,7 @@ export async function rubricValidate(options: RubricOptions = {}): Promise<void>
           issues += unverifiedDims.length;
         }
       } else {
-        logger.info(`  ✓ ${dossier.displayName} — all dimensions verified`);
+        logger.info(`  [ok] ${dossier.displayName} - all dimensions verified`);
       }
     }
 
@@ -159,8 +162,8 @@ function printDimCriteria(dimKey: string, dim: RubricDimension): void {
     ([a], [b]) => Number(b) - Number(a),
   )) {
     logger.info(`  Score ${score}:`);
-    for (const c of criteria as string[]) {
-      logger.info(`    • ${c}`);
+    for (const criterion of criteria as string[]) {
+      logger.info(`    - ${criterion}`);
     }
   }
 }

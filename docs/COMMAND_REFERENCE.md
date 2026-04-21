@@ -98,7 +98,7 @@ Generate Ultimate Planning Resource (UPR.md) from all artifacts
 
 ### `danteforge spark [goal]`
 
-Zero-token planning preset for new ideas and project starts
+Zero-token planning preset: review -> constitution -> specify -> clarify -> tech-decide -> plan -> tasks
 
 **Options:**
 
@@ -207,9 +207,11 @@ Autonomous metric-driven optimization loop
 **Options:**
 
 - `--metric <metric>`
+- `--measurement-command <command>`
 - `--time <budget>`
 - `--prompt`
 - `--dry-run`
+- `--allow-dirty`
 
 ### `danteforge party`
 

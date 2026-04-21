@@ -91,7 +91,6 @@ export function readGitSha(cwd = process.cwd()) {
   const result = spawnSync('git', ['rev-parse', 'HEAD'], {
     cwd,
     encoding: 'utf8',
-    shell: process.platform === 'win32',
   });
 
   if (result.status !== 0) {
@@ -183,8 +182,19 @@ export function buildReleaseProofReceiptMarkdown(receipt) {
         ['Release receipt', receipt.provenanceSummary.releaseReceiptPath ?? 'unavailable'],
         ['Live receipt', receipt.provenanceSummary.liveReceiptPath ?? 'unavailable'],
         ['Third-party notices', receipt.provenanceSummary.thirdPartyNoticesPath ?? 'unavailable'],
+        ['SBOM', receipt.provenanceSummary.sbomPath ?? 'unavailable'],
       ]
     : [['none', 'unavailable']];
+  const supportedSurfaceRows = (receipt.supportedSurfaces ?? []).map(surface => [
+    surface.id ?? 'unknown',
+    surface.label ?? 'unknown',
+    surface.status ?? 'unknown',
+    Array.isArray(surface.proof) ? surface.proof.join('\n') : 'unavailable',
+  ]);
+  const proofPackRows = Object.entries(receipt.proofPack ?? {}).map(([label, target]) => [
+    label,
+    target ?? 'unavailable',
+  ]);
 
   const lines = [
     '# DanteForge Release Proof Receipt',
@@ -220,6 +230,17 @@ export function buildReleaseProofReceiptMarkdown(receipt) {
     '## Publish Provenance',
     '',
     ...buildTable(['Field', 'Value'], provenanceRows),
+    '',
+    '## Supported Surfaces',
+    '',
+    ...buildTable(
+      ['ID', 'Surface', 'Status', 'Proof'],
+      supportedSurfaceRows.length > 0 ? supportedSurfaceRows : [['none', 'unavailable', 'unknown', 'unavailable']],
+    ),
+    '',
+    '## Proof Pack',
+    '',
+    ...buildTable(['Artifact', 'Path'], proofPackRows.length > 0 ? proofPackRows : [['none', 'unavailable']]),
   ];
 
   if (receipt.errorMessage) {

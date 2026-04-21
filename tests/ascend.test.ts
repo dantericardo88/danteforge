@@ -67,6 +67,18 @@ function makeSuccessResult(overrides: Partial<AscendResult> = {}): AscendResult 
   };
 }
 
+function makeStrictDims() {
+  return {
+    autonomy: 80,
+    selfImprovement: 70,
+    tokenEconomy: 85,
+    specDrivenPipeline: 80,
+    developerExperience: 70,
+    planningQuality: 70,
+    convergenceSelfHealing: 70,
+  };
+}
+
 // ── Tests ──────────────────────────────────────────────────────────────────────
 
 describe('ascend() command', () => {
@@ -254,6 +266,7 @@ describe('ascend() — engine integration via injection', () => {
       _saveMatrix: async () => { saveMatrixCalled = true; },
       _loadState: async () => ({ project: 'test', workflowStage: 'initialized', currentPhase: 1, tasks: {}, lastHandoff: '', profile: 'balanced', auditLog: [] } as never),
       _writeFile: async () => { writeFileCalled = true; },
+      _computeStrictDims: async () => makeStrictDims(),
     });
 
     assert.ok(defineUniverseCalled, 'defineUniverse should be called when no matrix exists');
@@ -274,6 +287,7 @@ describe('ascend() — engine integration via injection', () => {
       cwd,
       target: 9.0,
       maxCycles: 1,
+      executeMode: 'advisory',
       _loadMatrix: async () => stubMatrix, // matrix already exists
       _defineUniverse: async () => { defineUniverseCalled = true; return stubMatrix; },
       _harshScore: async () => ({
@@ -287,6 +301,7 @@ describe('ascend() — engine integration via injection', () => {
       _saveMatrix: async () => {},
       _loadState: async () => ({ project: 'test', workflowStage: 'initialized', currentPhase: 1, tasks: {}, lastHandoff: '', profile: 'balanced', auditLog: [] } as never),
       _writeFile: async () => {},
+      _computeStrictDims: async () => makeStrictDims(),
     });
 
     assert.equal(defineUniverseCalled, false, 'defineUniverse should NOT be called when matrix exists');
@@ -302,6 +317,7 @@ describe('ascend() — engine integration via injection', () => {
       cwd,
       target: 9.0,
       dryRun: true,
+      executeMode: 'advisory',
       _loadMatrix: async () => stubMatrix,
       _harshScore: async () => ({
         rawScore: 50, harshScore: 50, displayScore: 5.0,
@@ -314,6 +330,7 @@ describe('ascend() — engine integration via injection', () => {
       _saveMatrix: async () => {},
       _loadState: async () => ({ project: 'test', workflowStage: 'initialized', currentPhase: 1, tasks: {}, lastHandoff: '', profile: 'balanced', auditLog: [] } as never),
       _writeFile: async () => {},
+      _computeStrictDims: async () => makeStrictDims(),
     });
 
     assert.equal(loopCalled, false, 'dryRun should not call the improvement loop');
@@ -339,11 +356,13 @@ describe('ascend() — engine integration via injection', () => {
 
     const result = await runAscend({
       cwd,
+      executeMode: 'advisory',
       _loadMatrix: async () => closedMatrix,
       _runLoop: async (ctx) => { loopCalled = true; return ctx; },
       _saveMatrix: async () => {},
       _loadState: async () => ({ project: 'test', workflowStage: 'initialized', currentPhase: 1, tasks: {}, lastHandoff: '', profile: 'balanced', auditLog: [] } as never),
       _writeFile: async () => {},
+      _computeStrictDims: async () => makeStrictDims(),
       _harshScore: async () => ({
         rawScore: 95, harshScore: 95, displayScore: 9.5,
         dimensions: {} as never, displayDimensions: {} as never,

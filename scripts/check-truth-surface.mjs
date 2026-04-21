@@ -21,6 +21,8 @@ function checkConsistency() {
     const pkgHomepage = pkg.homepage;
     const pkgBugs = pkg.bugs.url;
     const pkgVersion = pkg.version;
+    const pkgScripts = pkg.scripts ?? {};
+    const currentGitSha = execSync('git rev-parse HEAD', { encoding: 'utf8' }).trim();
 
     if (pkgRemote !== expectedRemote) {
       errors.push(`package.json repository.url mismatch: got ${pkgRemote}, expected ${expectedRemote}`);
@@ -30,6 +32,21 @@ function checkConsistency() {
     }
     if (pkgBugs !== expectedRemote.replace('.git', '/issues')) {
       errors.push(`package.json bugs.url mismatch: got ${pkgBugs}, expected ${expectedRemote.replace('.git', '/issues')}`);
+    }
+    if ('postbuild' in pkgScripts) {
+      errors.push('package.json must not define postbuild; sibling repo sync must stay opt-in');
+    }
+    if (pkgScripts['sync:dantecode'] !== 'node scripts/sync-dantecode.mjs') {
+      errors.push('package.json sync:dantecode script is missing or incorrect');
+    }
+    if (pkgScripts['build:local-sync'] !== 'npm run build && npm run sync:dantecode') {
+      errors.push('package.json build:local-sync script is missing or incorrect');
+    }
+    if (!/sync-workflow-surfaces\.ts/.test(pkgScripts['sync:workflow-surfaces'] ?? '')) {
+      errors.push('package.json sync:workflow-surfaces script is missing or incorrect');
+    }
+    if (!/sync-operational-readiness\.ts/.test(pkgScripts['sync:readiness-doc'] ?? '')) {
+      errors.push('package.json sync:readiness-doc script is missing or incorrect');
     }
 
     // Check vscode-extension/package.json
@@ -58,6 +75,19 @@ function checkConsistency() {
     if (readmeVersionBadge && readmeVersionBadge[1] !== pkgVersion) {
       errors.push(`README version badge mismatch: got ${readmeVersionBadge[1]}, expected ${pkgVersion}`);
     }
+    const quickStartHeadings = readme.match(/^## Quick Start\b/gm) ?? [];
+    if (quickStartHeadings.length !== 1) {
+      errors.push(`README must contain exactly one primary Quick Start heading; found ${quickStartHeadings.length}`);
+    }
+    if (/Enterprise-ready:\s*SOC 2 compliance/i.test(readme)) {
+      errors.push('README still overclaims enterprise readiness with direct SOC 2 compliance language');
+    }
+    if (!/sync:dantecode/.test(readme)) {
+      errors.push('README must document sync:dantecode as an explicit maintainer action');
+    }
+    if (!/<!-- DANTEFORGE_REPO_PIPELINE:START -->/.test(readme)) {
+      errors.push('README must keep the generated repo pipeline marker block');
+    }
 
     const readmeCloneUrl = readme.match(/git clone (https:\/\/github\.com\/[^/]+\/[^/]+\.git)/);
     if (readmeCloneUrl && readmeCloneUrl[1] !== expectedRemote) {
@@ -71,6 +101,9 @@ function checkConsistency() {
       if (releaseVersion && releaseVersion[1] !== pkgVersion) {
         errors.push(`RELEASE.md version mismatch: got ${releaseVersion[1]}, expected ${pkgVersion}`);
       }
+      if (!/sync:dantecode/.test(releaseMd)) {
+        errors.push('RELEASE.md must document sync:dantecode as an explicit maintainer action');
+      }
     } catch {
       // File not found, skip check
     }
@@ -81,6 +114,21 @@ function checkConsistency() {
       const operationalVersion = operationalMd.match(/Version: ([\d.]+)/);
       if (operationalVersion && operationalVersion[1] !== pkgVersion) {
         errors.push(`Operational readiness doc version mismatch: got ${operationalVersion[1]}, expected ${pkgVersion}`);
+      }
+      if (!operationalMd.includes(`Current Git SHA: ${currentGitSha}`)) {
+        errors.push(`Operational readiness doc must be refreshed for current git SHA ${currentGitSha}`);
+      }
+      if (!/latest local receipt snapshots/i.test(operationalMd)) {
+        errors.push('Operational readiness doc must declare that it was generated from receipt snapshots');
+      }
+      for (const receiptPath of [
+        '.danteforge/evidence/verify/latest.json',
+        '.danteforge/evidence/release/latest.json',
+        '.danteforge/evidence/live/latest.json',
+      ]) {
+        if (!operationalMd.includes(receiptPath)) {
+          errors.push(`Operational readiness doc must reference ${receiptPath}`);
+        }
       }
     } catch {
       // File not found, skip check

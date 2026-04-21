@@ -1,6 +1,8 @@
+> **ARCHIVED** - This document reflects the v0.15.0 release. For the current release surface see [Operational-Readiness-v0.17.0.md](Operational-Readiness-v0.17.0.md). Do not treat this file as current release truth.
+
 # DanteForge v0.15.0 Operational Readiness
 
-This document reflects the current shipped state of DanteForge `v0.15.0` (Evidence Ready Edition).
+This document reflects the shipped state of DanteForge `v0.15.0` (Evidence Ready Edition) at the time of that release.
 
 Historical readiness guides and planning snapshots are indexed in [Release-History.md](Release-History.md).
 

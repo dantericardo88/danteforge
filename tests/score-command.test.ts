@@ -61,11 +61,11 @@ describe('score command', () => {
   it('returns top 3 lowest-scoring dimensions as P0 items', async () => {
     const result = await score(makeOpts());
     assert.strictEqual(result.p0Items.length, 3);
-    // communityAdoption (1.5), performance (2.5), security (3.0) are lowest
+    // builder dims take priority over meta dims; lowest builder dims are performance (2.5), security (3.0), testing (7.8)
     const dims = result.p0Items.map(i => i.dimension);
-    assert.ok(dims.includes('communityAdoption'), `expected communityAdoption in ${dims}`);
     assert.ok(dims.includes('performance'), `expected performance in ${dims}`);
     assert.ok(dims.includes('security'), `expected security in ${dims}`);
+    assert.ok(dims.includes('testing'), `expected testing in ${dims}`);
   });
 
   it('P0 items have non-empty action strings', async () => {

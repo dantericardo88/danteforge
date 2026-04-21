@@ -32,11 +32,44 @@ type SnapshotData = {
   scores: Record<string, { score: number; decision: string }>;
 } | null;
 
+type VerifyStatus = 'pass' | 'warn' | 'fail' | 'unknown';
+
 type StateData = {
   workflowStage?: string;
   currentPhase?: number;
+  lastVerifyStatus?: VerifyStatus;
+  verifyMessage?: string;
+  nextAction?: string;
   tasks?: Record<number, Array<{ name: string }>>;
 } | null;
+
+function parseTaskNames(raw: string): Array<{ name: string }> {
+  const matches = raw.matchAll(/^\s*-\s+name:\s*(.+)\s*$/gm);
+  return [...matches].map(match => ({ name: match[1]!.trim().replace(/^['"]|['"]$/g, '') }));
+}
+
+function parseStateData(raw: string): StateData {
+  const stageMatch = raw.match(/workflowStage:\s*(.+)/);
+  const phaseMatch = raw.match(/currentPhase:\s*(\d+)/);
+  const verifyMatch = raw.match(/lastVerifyStatus:\s*(.+)/);
+  const taskNames = parseTaskNames(raw);
+  const lastVerifyStatus = verifyMatch?.[1]?.trim() as VerifyStatus | undefined;
+
+  return {
+    workflowStage: stageMatch?.[1]?.trim(),
+    currentPhase: phaseMatch ? parseInt(phaseMatch[1], 10) : undefined,
+    lastVerifyStatus,
+    verifyMessage: lastVerifyStatus === 'pass'
+      ? 'Latest verify passed.'
+      : lastVerifyStatus === 'fail'
+        ? 'Latest verify failed.'
+        : lastVerifyStatus === 'warn'
+          ? 'Verify needs refresh.'
+          : undefined,
+    nextAction: lastVerifyStatus && lastVerifyStatus !== 'pass' ? 'npm run verify' : undefined,
+    tasks: taskNames.length > 0 ? { 1: taskNames } : undefined,
+  };
+}
 
 export class DanteForgeTreeProvider implements TreeDataProviderLike<ProjectStateNode> {
   private _root: ProjectStateNode[] = [];
@@ -65,13 +98,7 @@ export class DanteForgeTreeProvider implements TreeDataProviderLike<ProjectState
 
     try {
       const raw = await readFile(`${workspaceRoot}/.danteforge/STATE.yaml`);
-      // Minimal YAML parse for the fields we need
-      const stageMatch = raw.match(/workflowStage:\s*(.+)/);
-      const phaseMatch = raw.match(/currentPhase:\s*(\d+)/);
-      state = {
-        workflowStage: stageMatch?.[1]?.trim(),
-        currentPhase: phaseMatch ? parseInt(phaseMatch[1], 10) : undefined,
-      };
+      state = parseStateData(raw);
     } catch { /* state file absent — leave null */ }
 
     this._root = DanteForgeTreeProvider.buildTree(snapshot, state);
@@ -125,6 +152,23 @@ export class DanteForgeTreeProvider implements TreeDataProviderLike<ProjectState
       if (stateNode.children!.length > 0) {
         root.children!.push(stateNode);
       }
+    }
+
+    if (state?.lastVerifyStatus) {
+      const verifyNode: ProjectStateNode = {
+        kind: 'stage',
+        label: `Verify: ${state.lastVerifyStatus}`,
+        description: state.verifyMessage,
+        tooltip: state.verifyMessage,
+        children: [],
+      };
+      if (state.nextAction) {
+        verifyNode.children!.push({
+          kind: 'stage',
+          label: `Next: ${state.nextAction}`,
+        });
+      }
+      root.children!.push(verifyNode);
     }
 
     // PDSE Score section

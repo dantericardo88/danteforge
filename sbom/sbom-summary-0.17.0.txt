@@ -1,0 +1,39 @@
+DanteForge 0.17.0 - Software Bill of Materials
+============================================================
+
+Generated: 2026-04-17T04:15:22.576Z
+Serial: urn:uuid:c7a339bd-debd-4058-b931-531ebb6a097f
+Format: CycloneDX 1.6
+
+Component Summary:
+  Total components: 138
+
+Licenses:
+  BSD-2-Clause: 1 packages
+  BSD-3-Clause: 2 packages
+  ISC: 11 packages
+  MIT: 124 packages
+
+Top 10 Dependencies:
+  - prompts@8.3.2 (MIT)
+  - sdk@1.29.0 (MIT)
+  - chalk@5.6.2 (MIT)
+  - cli-table3@0.6.5 (MIT)
+  - commander@12.1.0 (MIT)
+  - ora@8.2.0 (MIT)
+  - simple-git@3.32.3 (MIT)
+  - yaml@2.8.2 (ISC)
+  - checkbox@5.1.2 (MIT)
+  - confirm@6.0.10 (MIT)
+
+Security & Compliance:
+  ✓ SBOM generated for release 0.17.0
+  ✓ Full dependency tree included
+  ✓ License information captured
+  ✓ NTIA minimum elements satisfied
+
+Next Steps:
+  1. Upload to Dependency-Track for vulnerability scanning
+  2. Review licenses for compliance
+  3. Sign SBOM with GPG for authenticity
+  4. Include in release artifacts

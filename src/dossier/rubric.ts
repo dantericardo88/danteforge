@@ -7,6 +7,64 @@ import type { Rubric, RubricDimension } from './types.js';
 export type ReadFileFn = typeof fs.readFile;
 export type WriteFileFn = typeof fs.writeFile;
 
+const DEFAULT_DIMENSIONS = [
+  'Ghost text / inline completions',
+  'Chat interface UX',
+  'Semantic codebase search',
+  'Agentic code editing',
+  'Multi-file editing',
+  'Terminal / shell integration',
+  'Test generation',
+  'Error diagnosis & auto-repair',
+  'Code review assistance',
+  'Refactoring tools',
+  'Spec / planning pipeline',
+  'Autonomous improvement loop',
+  'Multi-agent orchestration',
+  'OSS pattern harvesting',
+  'LLM routing & cost management',
+  'IDE integration depth',
+  'Streaming output quality',
+  'Context window management',
+  'MCP / plugin ecosystem',
+  'Documentation generation',
+  'Security awareness',
+  'Self-improvement / lessons',
+  'Onboarding experience (first 5 min)',
+  'Configuration simplicity',
+  'Enterprise features (audit, RBAC)',
+  'Performance (latency, throughput)',
+  'Reliability (error recovery, circuit breakers)',
+  'Open source quality / community',
+] as const;
+
+function buildSeedRubric(): Rubric {
+  const dimensions = Object.fromEntries(
+    DEFAULT_DIMENSIONS.map((name, index) => {
+      const dim = String(index + 1);
+      return [
+        dim,
+        {
+          name,
+          scoreCriteria: {
+            '9': [`Observable ${name} behavior for a best-in-class score.`],
+            '7': [`Observable ${name} behavior for a strong score.`],
+            '5': [`Observable ${name} behavior for a partial score.`],
+            '3': [`Observable ${name} behavior for a weak score.`],
+            '1': [`Observable ${name} behavior for no meaningful support.`],
+          },
+        },
+      ];
+    }),
+  ) as Rubric['dimensions'];
+
+  return {
+    version: 1,
+    frozenAt: '2026-04-20',
+    dimensions,
+  };
+}
+
 export function rubricPath(cwd: string): string {
   return path.join(cwd, '.danteforge', 'rubric.json');
 }
@@ -67,6 +125,25 @@ export async function saveRubric(
     filePath,
     JSON.stringify(rubric, null, 2),
   );
+}
+
+export async function ensureRubricScaffold(
+  cwd: string,
+  _readFile: ReadFileFn = fs.readFile,
+  _writeFile: WriteFileFn = fs.writeFile,
+): Promise<Rubric> {
+  try {
+    return await getRubric(cwd, _readFile);
+  } catch {
+    const filePath = rubricPath(cwd);
+    const rubric = buildSeedRubric();
+    await fs.mkdir(path.dirname(filePath), { recursive: true });
+    await (_writeFile as (p: string, d: string) => Promise<void>)(
+      filePath,
+      JSON.stringify(rubric, null, 2),
+    );
+    return rubric;
+  }
 }
 
 export function getDimCount(rubric: Rubric): number {

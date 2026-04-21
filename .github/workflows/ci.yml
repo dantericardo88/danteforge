@@ -13,6 +13,28 @@ jobs:
           node-version: 22
       - run: node scripts/check-repo-hygiene.mjs --strict-presence
 
+  local-cli-golden-path:
+    name: Local-only CLI Golden Path
+    needs: repo-hygiene
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - name: Build local-only CLI surface
+        run: npm run build
+      - name: Smoke-test supported local-only CLI commands
+        run: npm run check:cli-smoke
+      - name: Prove packed install works without live secrets
+        run: npm run release:check:install-smoke
+
   cli:
     needs: repo-hygiene
     runs-on: ubuntu-latest
@@ -59,6 +81,7 @@ jobs:
         name: Design integration tests
 
   vscode-extension:
+    name: VS Code extension
     needs: repo-hygiene
     runs-on: ubuntu-latest
     steps:

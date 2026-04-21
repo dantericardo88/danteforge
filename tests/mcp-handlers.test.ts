@@ -306,7 +306,7 @@ describe('TOOL_HANDLERS via _cwd injection', () => {
     const result = await TOOL_HANDLERS.danteforge_state({ _cwd: dir });
     const data = parseHandlerResult(result) as Record<string, unknown>;
     assert.equal(data.project, 'mcp-state-test');
-    assert.equal(data.workflowStage, 'planned');
+    assert.equal(data.workflowStage, 'plan');
   });
 
   it('danteforge_task_list returns tasks via _cwd', async () => {

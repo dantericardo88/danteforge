@@ -67,6 +67,7 @@ export { resumeAutoforge } from './resume.js';
 export { quickstart } from './quickstart.js';
 export { pluginCommand, pluginInstall, pluginList, pluginRemove } from './plugin.js';
 export { benchmark } from './benchmark.js';
+export { cofl } from './cofl.js';
 export { explain } from './explain.js';
 export { pack } from './pack.js';
 export { ciSetup } from './ci-setup.js';

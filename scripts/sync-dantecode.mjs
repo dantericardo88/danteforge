@@ -16,12 +16,21 @@ import { createHash } from "node:crypto";
 
 // --- Configuration -----------------------------------------------------------
 
-const ENGINE_ROOT = resolve("C:/Projects/DanteForgeEngine");
-const DANTECODE_ROOT = resolve("C:/Projects/DanteCode");
+const ENGINE_ROOT = resolve(
+  process.env.DANTEFORGE_ENGINE_ROOT
+    ?? join(process.cwd(), "..", "DanteForgeEngine")
+);
+const DANTECODE_ROOT = resolve(
+  process.env.DANTECODE_ROOT
+    ?? join(process.cwd(), "..", "DanteCode")
+);
 const DANTECODE_PKG = join(DANTECODE_ROOT, "packages", "danteforge");
 const PLUGIN_CACHE = resolve(
-  process.env.USERPROFILE ?? process.env.HOME ?? "",
-  ".claude/plugins/cache/danteforge-dev/danteforge"
+  process.env.DANTEFORGE_PLUGIN_CACHE
+    ?? resolve(
+      process.env.USERPROFILE ?? process.env.HOME ?? "",
+      ".claude/plugins/cache/danteforge-dev/danteforge"
+    )
 );
 
 const ENGINE_DIST = join(ENGINE_ROOT, "dist");
@@ -34,11 +43,6 @@ const INTERNAL_DEPS = {
 };
 
 // --- Guards ------------------------------------------------------------------
-
-if (process.env.SKIP_DANTECODE_SYNC === "1") {
-  console.log("[sync-dantecode] Skipped (SKIP_DANTECODE_SYNC=1)");
-  process.exit(0);
-}
 
 if (!existsSync(ENGINE_ROOT)) {
   console.log("[sync-dantecode] DanteForgeEngine not found at", ENGINE_ROOT, "— skipping");

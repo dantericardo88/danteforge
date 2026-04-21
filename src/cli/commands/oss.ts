@@ -663,6 +663,42 @@ export async function ossResearcher(options: {
     logger.info('No patterns extracted — the repos may already align with your architecture.');
   }
 
+  // COFL gap cross-check: flag patterns that address known operator-visible gaps (best-effort)
+  try {
+    const { loadMatrix } = await import('../../core/compete-matrix.js');
+    const { runDecisionFilter } = await import('../../core/cofl-engine.js');
+    const matrix = await loadMatrix(cwd).catch(() => null);
+    if (matrix && report.patternsExtracted.length > 0) {
+      const gapDimensions = matrix.dimensions
+        .filter(d => (d.gap_to_closed_source_leader ?? d.gap_to_leader ?? 0) > 1)
+        .map(d => d.id);
+      const coflAligned = report.patternsExtracted.filter(p => {
+        // Map oss pattern category to COFL dimension coverage proxy
+        const category = p.category;
+        const isOperatorVisible = category === 'cli-ux' || category === 'agent-ai' || category === 'innovation';
+        const decision = runDecisionFilter(
+          {
+            sourceRole: 'reference_teacher',
+            operatorLeverageScore: p.priority === 'P0' ? 8 : p.priority === 'P1' ? 6 : 3,
+            affectedDimensions: gapDimensions.slice(0, 2),
+            proofRequirement: `Implement and run npm test (${p.effort} effort)`,
+            implementationScope: p.effort === 'L' ? 'broad' : 'narrow',
+          },
+          { validTeacherRoles: ['reference_teacher', 'specialist_teacher'], knownGapDimensions: gapDimensions },
+        );
+        return isOperatorVisible && decision.passedAll;
+      });
+      if (coflAligned.length > 0) {
+        logger.info('');
+        logger.info(`COFL-aligned patterns (operator-visible, gap-closing): ${coflAligned.length}`);
+        for (const p of coflAligned.slice(0, 5)) {
+          logger.info(`  [${p.priority}] ${p.pattern} — ${p.description.slice(0, 80)}`);
+        }
+        logger.info('Run `danteforge cofl --harvest` to extract and classify these via the full COFL pipeline.');
+      }
+    }
+  } catch { /* best-effort — never block oss output */ }
+
   // Audit
   const state = await loadState();
   state.auditLog.push(

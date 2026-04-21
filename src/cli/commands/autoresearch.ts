@@ -56,6 +56,15 @@ async function git(args: string[], cwd: string): Promise<string> {
   return stdout.trim();
 }
 
+async function gitIsDirty(cwd: string, gitFn: GitFn = git): Promise<boolean> {
+  try {
+    const status = await gitFn(['status', '--porcelain'], cwd);
+    return status.trim().length > 0;
+  } catch {
+    return false;
+  }
+}
+
 async function gitBranchExists(branch: string, cwd: string, gitFn: GitFn = git): Promise<boolean> {
   try {
     await gitFn(['rev-parse', '--verify', branch], cwd);
@@ -103,10 +112,20 @@ async function generateHypothesis(
   experimentId: number,
   previousResults: ExperimentResult[],
   callLLMFn: CallLLMFn = callLLM,
+  readFileFn: (p: string) => Promise<string> = (p) => fs.readFile(p, 'utf8'),
 ): Promise<Hypothesis> {
   const resultsContext = previousResults.length > 0
     ? `Previous experiments:\n${formatResultsTsv(previousResults)}\n`
     : 'No previous experiments yet.\n';
+
+  // Read optional program.md research strategy (Karpathy pattern: human-authored guidance per iteration)
+  let programContext = '';
+  try {
+    const programMd = await readFileFn(path.join(config.cwd, 'autoresearch.program.md'));
+    if (programMd.trim()) {
+      programContext = `Research strategy (from autoresearch.program.md):\n${programMd.trim()}\n\n`;
+    }
+  } catch { /* optional file — no-op */ }
 
   const prompt = `You are an autonomous code optimizer implementing Karpathy's autoresearch pattern.
 
@@ -116,7 +135,7 @@ Measurement command: ${config.measurementCommand}
 Working directory: ${config.cwd}
 Experiment number: ${experimentId}
 
-${resultsContext}
+${programContext}${resultsContext}
 
 Generate a single, focused hypothesis for the next experiment. Make ONE small, surgical change.
 Prefer high-impact, low-effort changes. Build on what worked; avoid what failed.
@@ -298,6 +317,8 @@ export interface AutoResearchOpts {
   _git?: GitFn;
   _writeFile?: (p: string, content: string) => Promise<void>;
   _appendFile?: (p: string, content: string) => Promise<void>;
+  _readFile?: (p: string) => Promise<string>;
+  _sleep?: (ms: number) => Promise<void>;
   _now?: () => number;
 }
 
@@ -309,6 +330,7 @@ export async function autoResearch(
     measurementCommand?: string;
     prompt?: boolean;
     dryRun?: boolean;
+    allowDirty?: boolean;
   } = {},
   _opts: AutoResearchOpts = {},
 ): Promise<void> {
@@ -327,22 +349,25 @@ export async function autoResearch(
   const gitFn: GitFn = _opts._git ?? git;
   const writeFileFn = _opts._writeFile ?? ((p: string, c: string) => fs.writeFile(p, c, 'utf8'));
   const appendFileFn = _opts._appendFile ?? ((p: string, c: string) => fs.appendFile(p, c, 'utf8'));
+  const readFileFn = _opts._readFile ?? ((p: string) => fs.readFile(p, 'utf8'));
+  const sleepFn = _opts._sleep ?? ((ms: number) => new Promise<void>(r => setTimeout(r, ms)));
   const nowFn = _opts._now ?? (() => Date.now());
 
-  // Derive measurement command from metric if not provided
+  // Derive measurement command from metric if not provided.
   const measurementCommand = options.measurementCommand ?? deriveMeasurementCommand(metric);
+  const displayMeasurementCommand = measurementCommand ?? '<provide --measurement-command>';
 
   logger.success('DanteForge AutoResearch — Autonomous Optimization Loop');
   logger.info('');
   logger.info(`Goal:    ${goal}`);
   logger.info(`Metric:  ${metric}`);
   logger.info(`Budget:  ${timeBudgetMinutes} minutes`);
-  logger.info(`Command: ${measurementCommand}`);
+  logger.info(`Command: ${displayMeasurementCommand}`);
   logger.info('');
 
   // --prompt mode: generate copy-paste prompt and exit
   if (options.prompt) {
-    const promptText = buildPromptModeOutput(goal, metric, timeBudgetMinutes, measurementCommand);
+    const promptText = buildPromptModeOutput(goal, metric, timeBudgetMinutes, displayMeasurementCommand);
     logger.success('=== COPY-PASTE PROMPT (start) ===');
     process.stdout.write('\n' + promptText + '\n\n');
     logger.success('=== COPY-PASTE PROMPT (end) ===');
@@ -359,7 +384,7 @@ export async function autoResearch(
   if (options.dryRun) {
     logger.info('--- Dry Run Plan ---');
     logger.info(`1. Create branch: autoresearch/${slugify(goal)}`);
-    logger.info(`2. Run baseline: ${measurementCommand}`);
+    logger.info(`2. Run baseline: ${displayMeasurementCommand}`);
     logger.info(`3. Enter experiment loop for ${timeBudgetMinutes} minutes`);
     logger.info('4. On each iteration: generate hypothesis -> apply change -> measure -> keep/discard');
     logger.info('5. Write AUTORESEARCH_REPORT.md when time expires');
@@ -372,6 +397,20 @@ export async function autoResearch(
   }
 
   // ── Execute mode ─────────────────────────────────────────────────────────────
+
+  if (!measurementCommand) {
+    logger.error('AutoResearch needs an explicit measurement command for unknown metrics.');
+    logger.error('Provide --measurement-command "<command>" or choose a supported metric like "bundle size KB".');
+    process.exitCode = 1;
+    return;
+  }
+
+  if (!options.allowDirty && await gitIsDirty(cwd, gitFn)) {
+    logger.error('AutoResearch refuses to run on a dirty working tree.');
+    logger.error('Commit or stash your changes first, or rerun with --allow-dirty if you intentionally want that risk.');
+    process.exitCode = 1;
+    return;
+  }
 
   const config: AutoResearchConfig = {
     goal,
@@ -426,15 +465,21 @@ export async function autoResearch(
   logger.info(`Beginning experiment loop. Time budget: ${timeBudgetMinutes} minutes.`);
   logger.info('');
 
-  const llmAvailable = await isLLMAvailableFn();
-  if (!llmAvailable) {
-    logger.warn('No LLM available — cannot generate hypotheses. Exiting experiment loop.');
+  // Pre-flight LLM check — exit fast with actionable error before wasting time on the loop
+  const llmAvailablePrecheck = await isLLMAvailableFn();
+  if (!llmAvailablePrecheck) {
+    logger.error('No LLM available — cannot generate hypotheses.');
+    logger.error('Fix: set ANTHROPIC_API_KEY, or start Ollama, or run with --prompt for copy-paste mode.');
+    process.exitCode = 1;
+    return;
   }
 
   // Phase 1: Experiment loop
   let experimentId = 1;
+  let consecutiveLLMFailures = 0;
+  const MAX_LLM_FAILURES = 5;
 
-  while (llmAvailable && nowFn() - startTime < budgetMs) {
+  while (nowFn() - startTime < budgetMs) {
     const remainingMs = budgetMs - (nowFn() - startTime);
     // Don't start a new experiment if there are fewer than 90 seconds left
     if (remainingMs < 90_000) {
@@ -442,12 +487,26 @@ export async function autoResearch(
       break;
     }
 
+    // Per-iteration LLM check — recovers from transient failures (rate limits, restarts)
+    const llmOk = await isLLMAvailableFn();
+    if (!llmOk) {
+      consecutiveLLMFailures++;
+      if (consecutiveLLMFailures >= MAX_LLM_FAILURES) {
+        logger.error(`LLM unavailable for ${MAX_LLM_FAILURES} consecutive checks — stopping experiment loop.`);
+        break;
+      }
+      logger.warn(`LLM temporarily unavailable (${consecutiveLLMFailures}/${MAX_LLM_FAILURES}). Retrying in 30s...`);
+      await sleepFn(30_000);
+      continue;
+    }
+    consecutiveLLMFailures = 0;
+
     logger.info(`--- Experiment ${experimentId} ---`);
 
     // 1. PLAN: generate hypothesis
     let hypothesis;
     try {
-      hypothesis = await generateHypothesis(config, experimentId, allExperiments, callLLMFn);
+      hypothesis = await generateHypothesis(config, experimentId, allExperiments, callLLMFn, readFileFn);
       logger.info(`Hypothesis: ${hypothesis.description}`);
     } catch (err) {
       logger.warn(`Hypothesis generation failed: ${err instanceof Error ? err.message : String(err)}`);
@@ -600,7 +659,7 @@ export function formatDuration(ms: number): string {
   return parts.join(' ');
 }
 
-export function deriveMeasurementCommand(metric: string): string {
+export function deriveMeasurementCommand(metric: string): string | null {
   const lower = metric.toLowerCase();
   if (lower.includes('test') && lower.includes('pass')) {
     return 'npm test 2>&1 | tail -1';
@@ -612,7 +671,7 @@ export function deriveMeasurementCommand(metric: string): string {
     return 'npm run lint 2>&1 | grep -c "error"';
   }
   // Generic fallback — caller should provide an explicit command
-  return 'echo 0';
+  return null;
 }
 
 async function writeTsv(

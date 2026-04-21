@@ -1,5 +1,6 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
+import fs from 'node:fs/promises';
 
 describe('SDK exports', () => {
   it('exports SDK_VERSION string', async () => {
@@ -26,5 +27,12 @@ describe('SDK exports', () => {
   it('exports scanCompetitors function', async () => {
     const sdk = await import('../src/sdk.js');
     assert.equal(typeof sdk.scanCompetitors, 'function');
+  });
+
+  it('keeps SDK_VERSION aligned with package.json', async () => {
+    const sdk = await import('../src/sdk.js');
+    const pkg = JSON.parse(await fs.readFile('package.json', 'utf8')) as { version: string };
+
+    assert.equal(sdk.SDK_VERSION, pkg.version);
   });
 });

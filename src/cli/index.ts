@@ -605,14 +605,18 @@ program
   .command('autoresearch <goal>')
   .description('Autonomous metric-driven optimization loop — plan, rewrite, execute, evaluate, keep winners')
   .option('--metric <metric>', 'How to measure success (e.g., "startup time ms", "bundle size KB")')
+  .option('--measurement-command <command>', 'Explicit command that prints the metric as a number')
   .option('--time <budget>', 'Time budget (e.g., "4h", "30m")', '4h')
   .option('--prompt', 'Generate a copy-paste prompt instead of executing')
   .option('--dry-run', 'Show the experiment plan without running')
+  .option('--allow-dirty', 'Allow execution on a dirty git working tree (unsafe; disabled by default)')
   .action((goal, opts) => commands.autoResearch(goal, {
     metric: opts.metric,
+    measurementCommand: opts.measurementCommand,
     time: opts.time,
     prompt: opts.prompt,
     dryRun: opts.dryRun,
+    allowDirty: opts.allowDirty,
   }));
 
 program
@@ -1343,6 +1347,44 @@ program
       } catch (err) {
         const { formatAndLogError } = await import('../core/format-error.js');
         formatAndLogError(err, 'compete');
+        process.exitCode = 1;
+      }
+    })();
+  });
+
+program
+  .command('cofl')
+  .description('Competitive Operator Forge Loop: 10-phase disciplined system to learn from OSS operator tools, forge improvements, and prove progress vs closed-source leaders')
+  .option('--universe', 'Phases 1-2: refresh + partition competitor universe into roles (direct_peer / specialist_teacher / reference_teacher)')
+  .option('--harvest', 'Phase 3: extract operator patterns from teacher set (requires LLM)')
+  .option('--prioritize', 'Phase 5: rank opportunities by operator leverage score')
+  .option('--guards', 'Run all 7 anti-failure guardrail checks')
+  .option('--reframe', 'Phase 10: assess strategic position (preferred? coherent? inflating rows?)')
+  .option('--report', 'Write COFL_REPORT.md to .danteforge/cofl/')
+  .option('--auto', 'Run all phases in sequence (advisory — forge step prints recommendation)')
+  .option('--dry-run', 'Print plan without executing')
+  .option('--json', 'Machine-readable output')
+  .action((opts) => {
+    void (async () => {
+      try {
+        const { cofl } = await import('./commands/cofl.js');
+        const result = await cofl({
+          universe: opts.universe as boolean | undefined,
+          harvest: opts.harvest as boolean | undefined,
+          prioritize: opts.prioritize as boolean | undefined,
+          guards: opts.guards as boolean | undefined,
+          reframe: opts.reframe as boolean | undefined,
+          report: opts.report as boolean | undefined,
+          auto: opts.auto as boolean | undefined,
+          dryRun: opts.dryRun as boolean | undefined,
+          json: opts.json as boolean | undefined,
+        });
+        if (opts.json && result) {
+          process.stdout.write(JSON.stringify(result, null, 2) + '\n');
+        }
+      } catch (err) {
+        const { formatAndLogError } = await import('../core/format-error.js');
+        formatAndLogError(err, 'cofl');
         process.exitCode = 1;
       }
     })();

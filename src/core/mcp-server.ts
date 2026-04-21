@@ -602,6 +602,25 @@ export const TOOL_DEFINITIONS: ToolDefinition[] = [
       required: ['competitor'],
     },
   },
+  // ── COFL tool ──────────────────────────────────────────────────────────────
+  {
+    name: 'danteforge_cofl',
+    description: 'Run a Competitive Operator Forge Loop (COFL) phase. Partitions competitors into direct_peer/specialist_teacher/reference_teacher roles, scores operator leverage for each matrix dimension, checks 7 anti-failure guardrails, and returns a full cycle result with reframe assessment. Use --auto for a complete end-to-end cycle.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        universe: { type: 'boolean', description: 'Run universe+partition phase — classify competitors by role' },
+        harvest: { type: 'boolean', description: 'Run harvest phase — extract patterns from OSS teacher set (requires LLM)' },
+        prioritize: { type: 'boolean', description: 'Run prioritize phase — rank dimensions by operator leverage score' },
+        guards: { type: 'boolean', description: 'Run anti-failure guardrail checks (7 codified failure modes)' },
+        reframe: { type: 'boolean', description: 'Run reframe phase — strategic position assessment (inflating rows vs real preference gain)' },
+        report: { type: 'boolean', description: 'Write COFL_REPORT.md to .danteforge/cofl/' },
+        auto: { type: 'boolean', description: 'Run all phases end-to-end (full 10-phase cycle)' },
+        _cwd: { type: 'string', description: 'Working directory override (for testing)' },
+      },
+      required: [],
+    },
+  },
 ];
 
 // ---------------------------------------------------------------------------
@@ -1408,6 +1427,33 @@ async function handlePatternSearch(args: Record<string, unknown>): Promise<ToolR
 }
 
 // ---------------------------------------------------------------------------
+// COFL handler
+// ---------------------------------------------------------------------------
+
+async function handleCofl(args: Record<string, unknown>): Promise<ToolResult> {
+  const cwd = resolveCwd(args);
+  try {
+    const { cofl } = await import('../cli/commands/cofl.js');
+    const hasFlag = (key: string) => args[key] === true;
+    const anyFlagSet = ['universe', 'harvest', 'prioritize', 'guards', 'reframe', 'report'].some(hasFlag);
+    const options = {
+      universe: hasFlag('universe'),
+      harvest: hasFlag('harvest'),
+      prioritize: hasFlag('prioritize'),
+      guards: hasFlag('guards'),
+      reframe: hasFlag('reframe'),
+      report: hasFlag('report'),
+      auto: hasFlag('auto') || !anyFlagSet, // default to auto when no specific phase flag given
+    };
+    const result = await cofl(options, { _cwd: cwd });
+    await auditLog(`cofl: cycle ${result?.cycleNumber ?? '?'}, patterns=${result?.extractedPatterns?.length ?? 0}`, cwd);
+    return jsonResult(result ?? { error: 'COFL returned no result — check matrix and registry' });
+  } catch (err) {
+    return errorResult(`COFL failed: ${err instanceof Error ? err.message : String(err)}`);
+  }
+}
+
+// ---------------------------------------------------------------------------
 // Tool dispatch
 // ---------------------------------------------------------------------------
 
@@ -1463,6 +1509,7 @@ export const TOOL_HANDLERS: Record<string, ToolHandler> = {
   danteforge_landscape_diff: (args) => handleLandscapeDiff(args),
   danteforge_rubric_get: (args) => handleRubricGet(args),
   danteforge_score_competitor: (args) => handleScoreCompetitor(args),
+  danteforge_cofl: (args) => handleCofl(args),
 };
 
 // ---------------------------------------------------------------------------
@@ -1551,14 +1598,31 @@ async function handleLandscapeBuild(args: Record<string, unknown>): Promise<Tool
 async function handleLandscapeDiff(args: Record<string, unknown>): Promise<ToolResult> {
   const cwd = resolveCwd(args);
   try {
-    const { loadLandscape, isLandscapeStale } = await import('../dossier/landscape.js');
+    const {
+      diffLandscape,
+      isLandscapeStale,
+      loadLandscape,
+      loadPreviousLandscape,
+    } = await import('../dossier/landscape.js');
     const landscape = await loadLandscape(cwd);
     if (!landscape) return jsonResult({ status: 'no_landscape', message: 'Run danteforge landscape to build' });
+    const previous = await loadPreviousLandscape(cwd);
+    if (!previous) {
+      return jsonResult({
+        status: 'no_previous_snapshot',
+        generatedAt: landscape.generatedAt,
+        rubricVersion: landscape.rubricVersion,
+        competitorCount: landscape.competitors.length,
+        stale: isLandscapeStale(landscape),
+      });
+    }
+
     return jsonResult({
+      status: 'ok',
       generatedAt: landscape.generatedAt,
-      rubricVersion: landscape.rubricVersion,
-      competitorCount: landscape.competitors.length,
+      previousGeneratedAt: previous.generatedAt,
       stale: isLandscapeStale(landscape),
+      diff: diffLandscape(previous, landscape),
     });
   } catch (err) {
     return errorResult(`landscape diff failed: ${String(err)}`);

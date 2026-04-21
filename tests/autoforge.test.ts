@@ -333,7 +333,40 @@ function makePlan(overrides?: Partial<AutoForgePlan>): AutoForgePlan {
   };
 }
 
+function makeExecuteDeps(
+  overrides: Record<string, unknown> = {},
+): Record<string, unknown> {
+  return {
+    _isLLMAvailable: async () => false,
+    _recordMemory: async () => {},
+    _runFailureAnalysis: async () => {},
+    ...overrides,
+  };
+}
+
 describe('executeAutoForgePlan', () => {
+  it('uses the injected LLM availability seam instead of probing providers', async () => {
+    const cwd = await makeTmpProjectDir();
+    let llmProbeCalls = 0;
+
+    await executeAutoForgePlan(makePlan({
+      steps: [{ command: 'forge', reason: 'Build' }],
+      maxWaves: 5,
+    }), {
+      cwd,
+      ...makeExecuteDeps({
+        _isLLMAvailable: async () => {
+          llmProbeCalls += 1;
+          return true;
+        },
+        _runStep: async () => { /* success */ },
+        _isStageComplete: async () => true,
+      }),
+    });
+
+    assert.strictEqual(llmProbeCalls, 1);
+  });
+
   it('dryRun returns empty completed/failed without executing steps', async () => {
     const cwd = await makeTmpProjectDir();
     const stepsExecuted: string[] = [];
@@ -341,8 +374,10 @@ describe('executeAutoForgePlan', () => {
     const result = await executeAutoForgePlan(makePlan(), {
       dryRun: true,
       cwd,
-      _runStep: async (cmd) => { stepsExecuted.push(cmd); },
-      _isStageComplete: async () => true,
+      ...makeExecuteDeps({
+        _runStep: async (cmd: string) => { stepsExecuted.push(cmd); },
+        _isStageComplete: async () => true,
+      }),
     });
 
     assert.deepStrictEqual(result, { completed: [], failed: [], paused: false });
@@ -358,8 +393,10 @@ describe('executeAutoForgePlan', () => {
       maxWaves: 5,
     }), {
       cwd,
-      _runStep: async (cmd) => { stepsExecuted.push(cmd); },
-      _isStageComplete: async () => true,
+      ...makeExecuteDeps({
+        _runStep: async (cmd: string) => { stepsExecuted.push(cmd); },
+        _isStageComplete: async () => true,
+      }),
     });
 
     assert.deepStrictEqual(stepsExecuted, ['forge']);
@@ -381,8 +418,10 @@ describe('executeAutoForgePlan', () => {
       maxWaves: 1,
     }), {
       cwd,
-      _runStep: async (cmd) => { stepsExecuted.push(cmd); },
-      _isStageComplete: async () => true,
+      ...makeExecuteDeps({
+        _runStep: async (cmd: string) => { stepsExecuted.push(cmd); },
+        _isStageComplete: async () => true,
+      }),
     });
 
     assert.strictEqual(stepsExecuted.length, 1, 'only 1 step should run before pause');
@@ -401,11 +440,13 @@ describe('executeAutoForgePlan', () => {
       maxWaves: 5,
     }), {
       cwd,
-      _runStep: async (cmd) => {
-        stepsExecuted.push(cmd);
-        if (cmd === 'forge') throw new Error('Build failed');
-      },
-      _isStageComplete: async () => true,
+      ...makeExecuteDeps({
+        _runStep: async (cmd: string) => {
+          stepsExecuted.push(cmd);
+          if (cmd === 'forge') throw new Error('Build failed');
+        },
+        _isStageComplete: async () => true,
+      }),
     });
 
     assert.deepStrictEqual(result.failed, ['forge']);
@@ -421,8 +462,10 @@ describe('executeAutoForgePlan', () => {
       maxWaves: 5,
     }), {
       cwd,
-      _runStep: async () => { throw new Error('forced failure'); },
-      _isStageComplete: async () => true,
+      ...makeExecuteDeps({
+        _runStep: async () => { throw new Error('forced failure'); },
+        _isStageComplete: async () => true,
+      }),
     });
 
     const stateContent = await fs.readFile(path.join(cwd, '.danteforge', 'STATE.yaml'), 'utf8');
@@ -443,8 +486,10 @@ describe('executeAutoForgePlan', () => {
       maxWaves: 5,
     }), {
       cwd,
-      _runStep: async () => { /* success */ },
-      _isStageComplete: async () => true,
+      ...makeExecuteDeps({
+        _runStep: async () => { /* success */ },
+        _isStageComplete: async () => true,
+      }),
     });
 
     const finalContent = await fs.readFile(stateFile, 'utf8');
@@ -459,8 +504,10 @@ describe('executeAutoForgePlan', () => {
       maxWaves: 5,
     }), {
       cwd,
-      _runStep: async () => { /* no-op */ },
-      _isStageComplete: async () => false,
+      ...makeExecuteDeps({
+        _runStep: async () => { /* no-op */ },
+        _isStageComplete: async () => false,
+      }),
     });
 
     assert.deepStrictEqual(result.failed, ['forge']);
@@ -479,8 +526,10 @@ describe('executeAutoForgePlan', () => {
       maxWaves: 10,
     }), {
       cwd,
-      _runStep: async (cmd) => { stepsExecuted.push(cmd); },
-      _isStageComplete: async () => true,
+      ...makeExecuteDeps({
+        _runStep: async (cmd: string) => { stepsExecuted.push(cmd); },
+        _isStageComplete: async () => true,
+      }),
     });
 
     assert.deepStrictEqual(stepsExecuted, ['forge', 'verify']);
@@ -493,8 +542,10 @@ describe('executeAutoForgePlan', () => {
 
     const result = await executeAutoForgePlan(makePlan({ steps: [], maxWaves: 5 }), {
       cwd,
-      _runStep: async () => { throw new Error('should not be called'); },
-      _isStageComplete: async () => true,
+      ...makeExecuteDeps({
+        _runStep: async () => { throw new Error('should not be called'); },
+        _isStageComplete: async () => true,
+      }),
     });
 
     assert.deepStrictEqual(result.completed, []);
@@ -527,8 +578,10 @@ autoforgeFailedAttempts: 0
       maxWaves: 5,
     }), {
       cwd,
-      _runStep: async () => { /* success */ },
-      _isStageComplete: async () => true,
+      ...makeExecuteDeps({
+        _runStep: async () => { /* success */ },
+        _isStageComplete: async () => true,
+      }),
     });
 
     assert.deepStrictEqual(result.completed, ['forge']);

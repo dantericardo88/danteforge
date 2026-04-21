@@ -9,6 +9,7 @@ import path from 'node:path';
 import { createHash } from 'node:crypto';
 import { loadConvergence, type ConvergenceState } from '../../core/convergence.js';
 import { logger } from '../../core/logger.js';
+import { DANTEFORGE_VERSION } from '../../core/version.js';
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -36,8 +37,6 @@ export interface CertifyOptions {
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
-
-const DANTEFORGE_VERSION = '0.5.0';
 
 function sha256(data: string): string {
   return createHash('sha256').update(data, 'utf8').digest('hex');

@@ -77,11 +77,13 @@ export async function detectCompletedStages(cwd: string): Promise<Set<BuildStage
     if (hasSrc) completed.add('forge');
   } catch { /* ignore */ }
 
-  // verify: check state.lastVerifyStatus
+  // verify: require fresh verify evidence when it exists
   try {
-    const stateFile = path.join(danteDir, 'STATE.yaml');
-    const content = await fs.readFile(stateFile, 'utf8');
-    if (content.includes('lastVerifyStatus: pass')) completed.add('verify');
+    const state = await loadState({ cwd });
+    const verifyPassed = state.verifyEvidence
+      ? state.verifyEvidence.status === 'pass' && state.verifyEvidence.fresh
+      : state.lastVerifyStatus === 'pass';
+    if (verifyPassed) completed.add('verify');
   } catch { /* ignore */ }
 
   return completed;

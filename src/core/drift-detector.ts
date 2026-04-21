@@ -62,6 +62,12 @@ function extractPackageName(importPath: string): string {
   return importPath.split('/')[0]!;
 }
 
+function stripCommentsForImportScan(content: string): string {
+  return content
+    .replace(/\/\*[\s\S]*?\*\//g, '')
+    .replace(/^\s*\/\/.*$/gm, '');
+}
+
 // --- Detectors ---------------------------------------------------------------
 
 async function detectHallucinatedImports(
@@ -70,12 +76,13 @@ async function detectHallucinatedImports(
   cwd: string,
 ): Promise<Violation[]> {
   const violations: Violation[] = [];
+  const importScanContent = stripCommentsForImportScan(content);
 
   for (const pattern of IMPORT_PATTERNS) {
     const regex = new RegExp(pattern.source, pattern.flags);
     let match: RegExpExecArray | null;
 
-    while ((match = regex.exec(content)) !== null) {
+    while ((match = regex.exec(importScanContent)) !== null) {
       const rawImport = match[1]!;
       const pkgName = extractPackageName(rawImport);
 
@@ -89,7 +96,7 @@ async function detectHallucinatedImports(
       const projectPath = path.join(cwd, rawImport);
       if (await fileExists(projectPath) || await fileExists(`${projectPath}.ts`) || await fileExists(`${projectPath}.js`)) continue;
 
-      const lineNumber = content.substring(0, match.index).split('\n').length;
+      const lineNumber = importScanContent.substring(0, match.index).split('\n').length;
       violations.push({
         type: 'ai-drift',
         severity: 'HIGH' as ViolationSeverity,

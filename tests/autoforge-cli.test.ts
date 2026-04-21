@@ -54,8 +54,11 @@ function makeLoopCtx(overrides: Partial<AutoforgeLoopContext> = {}): AutoforgeLo
 describe('autoforge CLI — --auto loop mode', () => {
   it('calls _runLoop when auto=true', async () => {
     let called = false;
+    const cwd = await makeWorkspace();
     await autoforge('test-goal', {
       auto: true,
+      cwd,
+      _computeRetroScore: false,
       _runLoop: async (ctx) => { called = true; return makeLoopCtx({ ...ctx, loopState: AutoforgeLoopState.COMPLETE }); },
     });
     assert.ok(called, '_runLoop should be invoked when auto=true');
@@ -71,8 +74,11 @@ describe('autoforge CLI — --auto loop mode', () => {
   });
 
   it('sets exitCode=1 when loop returns BLOCKED state', async () => {
+    const cwd = await makeWorkspace();
     await autoforge(undefined, {
       auto: true,
+      cwd,
+      _computeRetroScore: false,
       _runLoop: async (ctx) => makeLoopCtx({
         ...ctx,
         loopState: AutoforgeLoopState.BLOCKED,
@@ -84,8 +90,11 @@ describe('autoforge CLI — --auto loop mode', () => {
 
   it('passes the goal string into loop context', async () => {
     let receivedGoal = '';
+    const cwd = await makeWorkspace();
     await autoforge('my-specific-goal', {
       auto: true,
+      cwd,
+      _computeRetroScore: false,
       _runLoop: async (ctx) => { receivedGoal = ctx.goal; return makeLoopCtx(ctx); },
     });
     assert.strictEqual(receivedGoal, 'my-specific-goal', 'goal should be passed to loop context');
@@ -93,9 +102,12 @@ describe('autoforge CLI — --auto loop mode', () => {
 
   it('passes force flag into loop context', async () => {
     let receivedForce = false;
+    const cwd = await makeWorkspace();
     await autoforge(undefined, {
       auto: true,
       force: true,
+      cwd,
+      _computeRetroScore: false,
       _runLoop: async (ctx) => { receivedForce = ctx.force; return makeLoopCtx(ctx); },
     });
     assert.ok(receivedForce, 'force flag should be passed to loop context');

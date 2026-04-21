@@ -1,39 +1,39 @@
 {
   "version": "1.0.0",
   "project": "todo-app",
-  "generatedAt": "2026-04-11T00:00:00.000Z",
+  "generatedAt": "2026-04-15T00:05:00.000Z",
   "pipeline": {
     "preset": "magic",
     "stages": [
       {
         "stage": "constitution",
-        "artifact": "CONSTITUTION.md",
+        "artifact": ".danteforge/CONSTITUTION.md",
         "status": "present",
-        "pdseScore": 85
+        "pdseScore": 92
       },
       {
         "stage": "specify",
-        "artifact": "SPEC.md",
+        "artifact": ".danteforge/SPEC.md",
         "status": "present",
-        "pdseScore": 82
+        "pdseScore": 95
       },
       {
         "stage": "clarify",
         "artifact": ".danteforge/CLARIFY.md",
         "status": "generated",
-        "pdseScore": 78
+        "pdseScore": 93
       },
       {
         "stage": "plan",
         "artifact": ".danteforge/PLAN.md",
         "status": "generated",
-        "pdseScore": 80
+        "pdseScore": 94
       },
       {
         "stage": "tasks",
         "artifact": ".danteforge/TASKS.md",
         "status": "generated",
-        "pdseScore": 77
+        "pdseScore": 92
       },
       {
         "stage": "forge",
@@ -49,24 +49,24 @@
       }
     ],
     "artifacts": [
-      "examples/todo-app/CONSTITUTION.md",
-      "examples/todo-app/SPEC.md",
+      "examples/todo-app/.danteforge/CONSTITUTION.md",
+      "examples/todo-app/.danteforge/SPEC.md",
       "examples/todo-app/.danteforge/CLARIFY.md",
       "examples/todo-app/.danteforge/PLAN.md",
       "examples/todo-app/.danteforge/TASKS.md",
-      "examples/todo-app/src/todo.ts",
-      "examples/todo-app/src/storage.ts",
-      "examples/todo-app/src/cli.ts",
-      "examples/todo-app/tests/todo.test.ts"
+      "examples/todo-app/src/todo.js",
+      "examples/todo-app/src/storage.js",
+      "examples/todo-app/src/cli.js",
+      "examples/todo-app/tests/todo.test.js"
     ],
     "pdseScores": {
-      "CONSTITUTION": 85,
-      "SPEC": 82,
-      "CLARIFY": 78,
-      "PLAN": 80,
-      "TASKS": 77
+      "CONSTITUTION": 92,
+      "SPEC": 95,
+      "CLARIFY": 93,
+      "PLAN": 94,
+      "TASKS": 92
     },
-    "duration_ms": 4200,
+    "duration_ms": 1800,
     "success": true
   }
 }

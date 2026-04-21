@@ -169,6 +169,32 @@ describe('executeWave — LLM injection path', () => {
     assert.strictEqual(result.success, false);
   });
 
+  it('captures failed forge lessons with the forge failure context', async () => {
+    const tmpDir = await makeTmpStateDir();
+    process.chdir(tmpDir);
+
+    const captures: Array<{
+      failedTasks: { task: string; error?: string }[];
+      context: 'forge failure' | 'party failure';
+    }> = [];
+
+    const result = await executeWave(1, 'balanced', false, false, false, 30000, {
+      _llmCaller: async () => 'Partial implementation only',
+      _verifier: async () => false,
+      _captureFailureLessons: async (failedTasks, context) => {
+        captures.push({ failedTasks, context });
+      },
+    });
+
+    assert.strictEqual(result.mode, 'executed');
+    assert.strictEqual(result.success, false);
+    assert.strictEqual(captures.length, 1);
+    assert.strictEqual(captures[0]?.context, 'forge failure');
+    assert.deepStrictEqual(captures[0]?.failedTasks, [
+      { task: 'Build auth endpoint', error: undefined },
+    ]);
+  });
+
   it('handles LLM call failure gracefully — records error, continues', async () => {
     const tmpDir = await makeTmpStateDir({
       1: [{ name: 'Failing task' }, { name: 'Second task' }],

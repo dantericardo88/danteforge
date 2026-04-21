@@ -54,12 +54,25 @@ function makeScoreResult(score = 7.0): HarshScoreResult {
   };
 }
 
+function makeStrictDims() {
+  return {
+    autonomy: 80,
+    selfImprovement: 70,
+    tokenEconomy: 85,
+    specDrivenPipeline: 80,
+    developerExperience: 70,
+    planningQuality: 70,
+    convergenceSelfHealing: 70,
+  };
+}
+
 function makeBaseOpts(overrides: Partial<AscendEngineOptions> = {}): AscendEngineOptions {
   const matrix = makeMatrix([{ id: 'functionality', score: 6.0 }]);
   return {
     cwd: '/tmp/test',
     target: 9.0,
     maxCycles: 2,
+    executeMode: 'advisory',
     _loadMatrix: async () => matrix,
     _saveMatrix: async () => {},
     _loadState: async () => ({ project: 'test' }) as never,
@@ -70,6 +83,7 @@ function makeBaseOpts(overrides: Partial<AscendEngineOptions> = {}): AscendEngin
     _saveCheckpoint: async () => {},
     _loadCheckpoint: async () => null,
     _clearCheckpoint: async () => {},
+    _computeStrictDims: async () => makeStrictDims(),
     ...overrides,
   };
 }
@@ -195,6 +209,7 @@ describe('ascend checkpoint — file I/O', () => {
       _executeCommand: async () => ({ success: true }),
       _writeFile: async () => {},
       _loadCheckpoint: async () => null,
+      _computeStrictDims: async () => makeStrictDims(),
       // Prevent auto-clear so we can verify the file was written
       _clearCheckpoint: async () => {},
     });

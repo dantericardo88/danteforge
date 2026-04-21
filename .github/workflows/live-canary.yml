@@ -16,6 +16,7 @@ concurrency:
 
 jobs:
   live-canary:
+    name: Live-provider CLI Canary
     runs-on: ubuntu-latest
     permissions:
       contents: read

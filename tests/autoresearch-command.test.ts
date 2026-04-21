@@ -29,7 +29,7 @@ function makeBaseOpts(overrides: Partial<Parameters<typeof autoResearch>[2]> = {
     _runExperiment: async (_c: AutoResearchConfig, _id: number, _d: string): Promise<ExperimentResult> => ({
       id: 1, description: 'test experiment', metricValue: 90, status: 'keep',
     }),
-    _git: async (_args: string[], _cwd: string) => 'abc1234',
+    _git: async (args: string[], _cwd: string) => args[0] === 'status' ? '' : 'abc1234',
     _writeFile: async (_p: string, _c: string) => {},
     _appendFile: async (_p: string, _c: string) => {},
     _now: () => 0,
@@ -92,6 +92,42 @@ describe('autoResearch: dry-run mode', () => {
   });
 });
 
+// ── Execute mode — safety rails ───────────────────────────────────────────────
+
+describe('autoResearch: execute mode — safety rails', () => {
+  it('sets exitCode=1 and returns before baseline when metric cannot derive a command', async () => {
+    let baselineCalled = false;
+    const opts = makeBaseOpts({
+      _runBaseline: async () => {
+        baselineCalled = true;
+        return 100;
+      },
+    });
+    await autoResearch('goal', { metric: 'some unknown metric' }, opts);
+    assert.strictEqual(process.exitCode, 1);
+    assert.strictEqual(baselineCalled, false, 'baseline should not run without a valid measurement command');
+    process.exitCode = 0;
+  });
+
+  it('sets exitCode=1 and returns before baseline when the git working tree is dirty', async () => {
+    let baselineCalled = false;
+    const opts = makeBaseOpts({
+      _runBaseline: async () => {
+        baselineCalled = true;
+        return 100;
+      },
+      _git: async (args: string[]) => {
+        if (args[0] === 'status') return ' M src/cli/commands/autoresearch.ts';
+        return 'abc1234';
+      },
+    });
+    await autoResearch('goal', { measurementCommand: 'echo 0', time: '1m' }, opts);
+    assert.strictEqual(process.exitCode, 1);
+    assert.strictEqual(baselineCalled, false, 'baseline should not run on a dirty worktree');
+    process.exitCode = 0;
+  });
+});
+
 // ── Execute mode — baseline failure ──────────────────────────────────────────
 
 describe('autoResearch: execute mode — baseline failure', () => {
@@ -100,7 +136,7 @@ describe('autoResearch: execute mode — baseline failure', () => {
       _runBaseline: async () => { throw new Error('measurement command not found'); },
       // time=0 so loop won't run anyway
     });
-    await autoResearch('goal', { time: '1m' }, opts);
+    await autoResearch('goal', { time: '1m', measurementCommand: 'echo 0' }, opts);
     assert.strictEqual(process.exitCode, 1);
     process.exitCode = 0;
   });
@@ -109,6 +145,7 @@ describe('autoResearch: execute mode — baseline failure', () => {
     let baselineCalled = false;
     const opts = makeBaseOpts({
       _git: async (args: string[]) => {
+        if (args[0] === 'status') return '';
         if (args[0] === 'checkout') throw new Error('not a git repo');
         return '';
       },
@@ -116,31 +153,38 @@ describe('autoResearch: execute mode — baseline failure', () => {
       _isLLMAvailable: async () => false,
       _now: () => Date.now() + 999_999_999, // budget exhausted immediately
     });
-    await autoResearch('goal', { time: '1m' }, opts);
+    await autoResearch('goal', { time: '1m', measurementCommand: 'echo 0' }, opts);
     assert.ok(baselineCalled, 'baseline should still run after branch creation failure');
   });
 });
 
 // ── Execute mode — LLM unavailable ───────────────────────────────────────────
 
-describe('autoResearch: execute mode — LLM unavailable', () => {
-  it('skips experiment loop and still writes report via _writeFile', async () => {
-    const written: Array<[string, string]> = [];
-    const opts = makeBaseOpts({
-      _isLLMAvailable: async () => false,
-      _writeFile: async (p, c) => { written.push([p, c]); },
-    });
+describe('autoResearch: execute mode — LLM unavailable (pre-flight)', () => {
+  it('sets exitCode=1 and returns early when LLM unavailable at pre-flight check', async () => {
+    const opts = makeBaseOpts({ _isLLMAvailable: async () => false });
     await autoResearch('reduce latency', { time: '1m', measurementCommand: 'echo 0' }, opts);
-    // Report should be written
-    assert.ok(written.some(([p]) => p.includes('AUTORESEARCH_REPORT')), 'report file should be written');
+    assert.strictEqual(process.exitCode, 1, 'exitCode should be 1 when LLM unavailable');
+    process.exitCode = 0;
   });
 
-  it('saves audit log with 0 experiments when LLM unavailable', async () => {
+  it('does NOT write report when LLM unavailable at pre-flight check', async () => {
+    const written: string[] = [];
+    const opts = makeBaseOpts({
+      _isLLMAvailable: async () => false,
+      _writeFile: async (p) => { written.push(p); },
+    });
+    await autoResearch('reduce latency', { time: '1m', measurementCommand: 'echo 0' }, opts);
+    assert.strictEqual(written.filter(p => p.includes('AUTORESEARCH_REPORT')).length, 0,
+      'report should NOT be written when LLM unavailable at pre-flight');
+    process.exitCode = 0;
+  });
+
+  it('does NOT save state when LLM unavailable at pre-flight check', async () => {
     const opts = makeBaseOpts({ _isLLMAvailable: async () => false });
     await autoResearch('goal', { time: '1m', measurementCommand: 'echo 0' }, opts);
-    assert.ok(opts.saved.length > 0, 'state should be saved');
-    const entry = opts.saved[0]!.auditLog[0]!;
-    assert.ok(entry.includes('experiments: 0'), 'should log 0 experiments');
+    assert.strictEqual(opts.saved.length, 0, 'state should NOT be saved when LLM unavailable at pre-flight');
+    process.exitCode = 0;
   });
 });
 
@@ -161,6 +205,7 @@ describe('autoResearch: execute mode — experiment cycle', () => {
       },
       _git: async (args: string[]) => {
         gitCalls.push([...args]);
+        if (args[0] === 'status') return '';
         return 'abc1234';
       },
       _now: () => budgetExpired ? 31 * 60 * 1000 : 0,
@@ -185,6 +230,7 @@ describe('autoResearch: execute mode — experiment cycle', () => {
       },
       _git: async (args: string[]) => {
         gitCalls.push([...args]);
+        if (args[0] === 'status') return '';
         return 'abc1234';
       },
       _now: () => budgetExpired ? 31 * 60 * 1000 : 0,
@@ -207,11 +253,12 @@ describe('autoResearch: execute mode — experiment cycle', () => {
     assert.strictEqual(experimentCalled, false, 'no experiments should run when budget is exhausted');
   });
 
-  it('calls _writeFile to write the report after experiments', async () => {
+  it('calls _writeFile to write the report when budget expires with no experiments', async () => {
     const written: string[] = [];
     const opts = makeBaseOpts({
-      _isLLMAvailable: async () => false,
+      _isLLMAvailable: async () => true,
       _writeFile: async (p) => { written.push(p); },
+      _now: () => 999_999_999, // budget always exhausted → loop exits immediately, report still written
     });
     await autoResearch('goal', { time: '1m', measurementCommand: 'echo 0' }, opts);
     assert.ok(written.some(p => p.includes('AUTORESEARCH_REPORT')), 'report should be written');
@@ -253,6 +300,7 @@ describe('autoResearch: execute mode — experiment error paths', () => {
       },
       _git: async (args: string[]) => {
         gitCalls.push([...args]);
+        if (args[0] === 'status') return '';
         if (args[0] === 'commit') throw new Error('commit failed');
         return 'abc1234';
       },
@@ -277,6 +325,7 @@ describe('autoResearch: execute mode — experiment error paths', () => {
       },
       _git: async (args: string[]) => {
         gitCalls.push([...args]);
+        if (args[0] === 'status') return '';
         if (args[0] === 'reset') throw new Error('reset failed');
         return 'abc1234';
       },
@@ -299,11 +348,125 @@ describe('autoResearch: execute mode — experiment error paths', () => {
         budgetExpired = true;
         return { id, description: 'x', metricValue: null, status: 'crash' };
       },
-      _git: async (args: string[]) => { gitCalls.push([...args]); return 'abc1234'; },
+      _git: async (args: string[]) => {
+        gitCalls.push([...args]);
+        if (args[0] === 'status') return '';
+        return 'abc1234';
+      },
       _now: () => budgetExpired ? 31 * 60 * 1000 : 0,
     });
     await autoResearch('goal', { time: '30m', measurementCommand: 'echo 0' }, opts);
     assert.ok(!gitCalls.some(a => a[0] === 'commit'), 'commit NOT called for crash result');
     assert.ok(gitCalls.some(a => a[0] === 'reset'), 'reset IS called for crash result (rollback path)');
+  });
+});
+
+// ── Execute mode — per-iteration LLM retry ───────────────────────────────────
+
+describe('autoResearch: execute mode — per-iteration LLM retry', () => {
+  it('retries and runs experiment when LLM recovers after transient failures', async () => {
+    let llmCallCount = 0;
+    let experimentRan = false;
+    let budgetExpired = false;
+
+    // Pre-flight: true. Per-iter call 1: false, call 2: false, call 3: true → run experiment
+    const opts = makeBaseOpts({
+      _isLLMAvailable: async () => {
+        llmCallCount++;
+        // call 1 = pre-flight (true), calls 2-3 = per-iteration (false), call 4+ = true
+        return llmCallCount === 1 || llmCallCount >= 4;
+      },
+      _sleep: async () => {}, // instant sleep so test doesn't hang
+      _callLLM: async () => '{"description":"test","fileToChange":"","change":""}',
+      _runBaseline: async () => 100,
+      _runExperiment: async (_c: AutoResearchConfig, id: number): Promise<ExperimentResult> => {
+        budgetExpired = true;
+        experimentRan = true;
+        return { id, description: 'recovered', metricValue: 50, status: 'keep' };
+      },
+      _now: () => budgetExpired ? 31 * 60 * 1000 : 0,
+    });
+    await autoResearch('goal', { time: '30m', measurementCommand: 'echo 0' }, opts);
+    assert.ok(experimentRan, 'experiment should run after LLM recovers from transient failures');
+  });
+
+  it('breaks loop after MAX_LLM_FAILURES consecutive per-iteration failures', async () => {
+    let preflightCalled = false;
+    let experimentRan = false;
+
+    const opts = makeBaseOpts({
+      _isLLMAvailable: async () => {
+        if (!preflightCalled) { preflightCalled = true; return true; } // pre-flight passes
+        return false; // all per-iteration checks fail
+      },
+      _sleep: async () => {},
+      _runBaseline: async () => 100,
+      _runExperiment: async (_c: AutoResearchConfig, id: number): Promise<ExperimentResult> => {
+        experimentRan = true;
+        return { id, description: 'x', metricValue: 50, status: 'keep' };
+      },
+      _now: () => 0, // budget never expires by time — loop must exit via consecutive failure limit
+    });
+    await autoResearch('goal', { time: '30m', measurementCommand: 'echo 0' }, opts);
+    assert.strictEqual(experimentRan, false, 'no experiments should run when LLM is persistently unavailable');
+  });
+});
+
+// ── Execute mode — program.md research strategy ───────────────────────────────
+
+describe('autoResearch: execute mode — program.md research strategy', () => {
+  it('injects program.md contents into the hypothesis LLM prompt', async () => {
+    const capturedPrompts: string[] = [];
+    let budgetExpired = false;
+
+    const opts = makeBaseOpts({
+      _isLLMAvailable: async () => true,
+      _callLLM: async (prompt: string) => {
+        capturedPrompts.push(prompt);
+        return '{"description":"test","fileToChange":"","change":""}';
+      },
+      _readFile: async (p: string) => {
+        if (p.includes('autoresearch.program.md')) return '## Strategy\nFocus on caching only.';
+        throw Object.assign(new Error('ENOENT'), { code: 'ENOENT' });
+      },
+      _runBaseline: async () => 100,
+      _runExperiment: async (_c: AutoResearchConfig, id: number): Promise<ExperimentResult> => {
+        budgetExpired = true;
+        return { id, description: 'x', metricValue: 90, status: 'keep' };
+      },
+      _now: () => budgetExpired ? 31 * 60 * 1000 : 0,
+    });
+    await autoResearch('goal', { time: '30m', measurementCommand: 'echo 0' }, opts);
+    const hypothesisPrompts = capturedPrompts.filter(p => p.includes('autonomous code optimizer'));
+    assert.ok(hypothesisPrompts.length > 0, 'at least one hypothesis prompt should be captured');
+    assert.ok(
+      hypothesisPrompts.some(p => p.includes('Focus on caching only')),
+      'program.md strategy should appear in the hypothesis LLM prompt',
+    );
+  });
+
+  it('runs normally when autoresearch.program.md does not exist', async () => {
+    let experimentRan = false;
+    let budgetExpired = false;
+
+    const opts = makeBaseOpts({
+      _isLLMAvailable: async () => true,
+      _callLLM: async () => '{"description":"test","fileToChange":"","change":""}',
+      _readFile: async (_p: string) => {
+        throw Object.assign(new Error('ENOENT'), { code: 'ENOENT' });
+      },
+      _runBaseline: async () => 100,
+      _runExperiment: async (_c: AutoResearchConfig, id: number): Promise<ExperimentResult> => {
+        budgetExpired = true;
+        experimentRan = true;
+        return { id, description: 'x', metricValue: 90, status: 'keep' };
+      },
+      _now: () => budgetExpired ? 31 * 60 * 1000 : 0,
+    });
+    await assert.doesNotReject(
+      () => autoResearch('goal', { time: '30m', measurementCommand: 'echo 0' }, opts),
+      'should not throw when program.md is absent',
+    );
+    assert.ok(experimentRan, 'experiment should run when program.md is absent');
   });
 });

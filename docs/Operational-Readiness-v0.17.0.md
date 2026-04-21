@@ -1,69 +1,82 @@
 # DanteForge v0.17.0 Operational Readiness
 
-This document reflects the current shipped state of DanteForge `v0.17.0` (Credibility & Guided Path Edition).
+Version: 0.17.0
+Current Git SHA: cf20d36d75d3280adf3ac4e787a9408fd281f17f
 
-Historical readiness guides and planning snapshots are indexed in [Release-History.md](Release-History.md).
+Generated on 2026-04-21T21:24:38.189Z from the latest local receipt snapshots.
 
-## New in v0.17.0
+This guide is evidence-backed on purpose. It summarizes the latest local `verify`, `release:proof`, and `verify:live` receipts instead of hard-coding green claims into the docs.
+Anti-stub enforcement remains part of the readiness story: shipped implementation is expected to clear `npm run check:anti-stub` before release claims are treated as trustworthy.
 
-### Wave 1 — Version Bump & CHANGELOG Backfill
-- `package.json` + `vscode-extension/package.json` bumped to `0.17.0`
-- `CHANGELOG.md` backfilled with v0.15.1 (Sprints 27+28) and v0.17.0 (Sprint 29) entries
+## Canonical Pipeline
 
-### Wave 2 — Delta-Aware `assess` Output
-- `src/core/state.ts` — added `sessionBaselineScore` and `sessionBaselineTimestamp` fields
-- `src/cli/commands/assess.ts` — baseline is captured on first run; subsequent runs show "▲ +1.4 since session start" delta line
-- `--set-baseline` flag resets the baseline to the current score at any time
-
-### Wave 3 — Interactive `danteforge flow`
-- `src/cli/commands/flow.ts` — `--interactive` flag now launches a real numbered menu picker instead of a static text printout
-- `_prompt` injection seam for testing without TTY
-- User picks workflow → gets the exact commands to run, copy-pasteable
-
-### Wave 4 — `danteforge showcase` Command
-- `src/cli/commands/showcase.ts` — NEW: scores any project with the full harsh scorer, generates `docs/CASE_STUDY.md`
-- `docs/CASE_STUDY.md` — shipped in repo: real 18-dimension scorecard for `examples/todo-app` (2.3/10 overall, with real scores per dimension)
-- `--project <path>` to score any project, `--format json` for machine-readable output
-
-### Wave 5 — Improvement Report Auto-Export
-- `src/cli/commands/self-improve.ts` — `buildImprovementReport()` pure function exported
-- After every `self-improve` run with ≥1 cycle, `docs/IMPROVEMENT_REPORT.md` is auto-written
-- Contains: before/after summary, cycle-by-cycle score table, verdict, next steps
-
-## Anti-Stub Compliance
-
-All implementation uses real injection seams — no TODO, FIXME, TBD, or stub markers. Run `npm run check:anti-stub` to verify.
-
-## Verification Gates
-
-```bash
-npm run typecheck         # 0 errors
-npm run lint              # 0 violations
-npm run check:anti-stub   # 0 stubs
-npm test                  # >= 4045 pass, 0 fail
-npm run build             # dist/index.js emitted
-npm run release:check     # EXIT:0
-npm run verify:live       # requires DANTEFORGE_LIVE_PROVIDERS set
+```text
+review -> constitution -> specify -> clarify -> tech-decide -> plan -> tasks -> design -> forge -> ux-refine -> verify -> synthesize -> retro -> ship
 ```
 
-## Test Coverage
+## Receipt Snapshot
 
-4045 tests, 0 failures. 19 new tests in Sprint 29:
-- `tests/assess-delta.test.ts` — 5 tests (session baseline, delta rendering, --set-baseline)
-- `tests/flow-interactive.test.ts` — 5 tests (numbered picker, non-interactive, out-of-range)
-- `tests/showcase.test.ts` — 5 tests (injection seams, JSON format, Markdown output)
-- `tests/self-improve-report.test.ts` — 4 tests (pure function, file write, verdict labels)
+| Surface | Status | Version | Timestamp | Git SHA | Receipt |
+| --- | --- | --- | --- | --- | --- |
+| Repo verify | FAIL | 0.17.0 | 2026-04-20T18:43:47.187Z | 265a27f4cd4e82cf9ac38234cb6df8d878ac6c6e | .danteforge/evidence/verify/latest.json |
+| Release proof | PASS | 0.17.0 | 2026-04-20T13:58:27.037Z | b762bf57293beaa68659bfb6293b99c7b1584a6a | .danteforge/evidence/release/latest.json |
+| Live verification | PASS | 0.9.2 | 2026-03-25T23:47:37.672Z | 1e67861e711487c8b4263dffccaf16fdacd12559 | .danteforge/evidence/live/latest.json |
 
-## Shipped Artifacts
+## Receipt Details
 
-- `docs/CASE_STUDY.md` — real 18-dimension scorecard for examples/todo-app project
-- `src/cli/commands/showcase.ts` — 180-line command with full injection seam coverage
-- `docs/IMPROVEMENT_REPORT.md` — generated after each self-improve run
+### Repo verify
+
+- Command: `npm run verify`
+- Receipt: `.danteforge/evidence/verify/latest.json`
+- Status: FAIL
+- Timestamp: 2026-04-20T18:43:47.187Z
+- Version: 0.17.0
+- Git SHA: 265a27f4cd4e82cf9ac38234cb6df8d878ac6c6e
+- Receipt git SHA 265a27f4cd4e82cf9ac38234cb6df8d878ac6c6e does not match the current workspace SHA cf20d36d75d3280adf3ac4e787a9408fd281f17f.
+- Recorded failures: 1.
+
+### Release proof
+
+- Command: `npm run release:proof`
+- Receipt: `.danteforge/evidence/release/latest.json`
+- Status: PASS
+- Timestamp: 2026-04-20T13:58:27.037Z
+- Version: 0.17.0
+- Git SHA: b762bf57293beaa68659bfb6293b99c7b1584a6a
+- Receipt git SHA b762bf57293beaa68659bfb6293b99c7b1584a6a does not match the current workspace SHA cf20d36d75d3280adf3ac4e787a9408fd281f17f.
+- Recorded release checks: 9.
+
+### Live verification
+
+- Command: `npm run verify:live`
+- Receipt: `.danteforge/evidence/live/latest.json`
+- Status: PASS
+- Timestamp: 2026-03-25T23:47:37.672Z
+- Version: 0.9.2
+- Git SHA: 1e67861e711487c8b4263dffccaf16fdacd12559
+- Receipt version 0.9.2 does not match the current package version 0.17.0.
+- Receipt git SHA 1e67861e711487c8b4263dffccaf16fdacd12559 does not match the current workspace SHA cf20d36d75d3280adf3ac4e787a9408fd281f17f.
+- Recorded live providers: 1.
+
+## Supported Surfaces
+
+| ID | Surface | Status | Proof |
+| --- | --- | --- | --- |
+| local-cli | local-only CLI | PASS | .github/workflows/ci.yml<br />scripts/check-cli-smoke.mjs<br />scripts/check-package-install-smoke.mjs |
+| live-cli | live-provider CLI | PASS | .github/workflows/live-canary.yml<br />.danteforge/evidence/live/latest.json<br />.danteforge/evidence/live/latest.md |
+| vscode-extension | VS Code extension | PASS | .github/workflows/release.yml<br />vscode-extension/README.md<br />vscode-extension\.artifacts\danteforge.vsix |
 
 ## Known Outstanding Work
 
-- `danteforge benchmark-llm` requires a live LLM to generate real A/B evidence — results are meaningful only with an API key configured
-- Semantic PDSE scoring (`--semantic`) requires Ollama or a configured LLM provider
-- `danteforge showcase` scores the todo-app at 2.3/10 because it lacks a full DanteForge pipeline (CONSTITUTION, SPEC, etc.) — this is accurate and expected for a minimal demo app
-- Community adoption metrics require GitHub + npm API access; `fetchCommunityMetrics` returns `{}` in offline/CI environments
-- VS Code FileSystemWatcher requires the extension to be rebuilt (`npm --prefix vscode-extension run build`) for changes to take effect
+- Repo verify receipt is FAIL. Re-run `npm run verify` and inspect .danteforge/evidence/verify/latest.json.
+- Repo verify receipt was captured at 265a27f4cd4e82cf9ac38234cb6df8d878ac6c6e, not the current workspace SHA cf20d36d75d3280adf3ac4e787a9408fd281f17f.
+- Release proof receipt was captured at b762bf57293beaa68659bfb6293b99c7b1584a6a, not the current workspace SHA cf20d36d75d3280adf3ac4e787a9408fd281f17f.
+- Live verification receipt targets version 0.9.2, not the current package version 0.17.0.
+- Live verification receipt was captured at 1e67861e711487c8b4263dffccaf16fdacd12559, not the current workspace SHA cf20d36d75d3280adf3ac4e787a9408fd281f17f.
+
+## Regeneration
+
+- Refresh verify evidence with `npm run verify`.
+- Refresh release proof with `npm run release:proof`.
+- Refresh live proof with `npm run verify:live` when the live environment is available.
+- Regenerate this guide with `npm run sync:readiness-doc`.

@@ -1,11 +1,9 @@
-// tests/dossier-diff.test.ts — Tests for src/dossier/diff.ts
+// tests/dossier-diff.test.ts - Tests for src/dossier/diff.ts
 
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { diffDossiers, formatDeltaReport } from '../src/dossier/diff.js';
 import type { Dossier, DossierDimension, EvidenceItem } from '../src/dossier/types.js';
-
-// ── Helpers ───────────────────────────────────────────────────────────────────
 
 function makeDim(score: number, evidence: EvidenceItem[] = []): DossierDimension {
   return {
@@ -39,8 +37,6 @@ function makeDossier(
     rubricVersion: 1,
   };
 }
-
-// ── Tests ─────────────────────────────────────────────────────────────────────
 
 describe('diffDossiers()', () => {
   it('returns no deltas when dossier unchanged', () => {
@@ -93,7 +89,7 @@ describe('diffDossiers()', () => {
     const curr = makeDossier('cursor', { '1': makeDim(8), '2': makeDim(7) }, '2026-04-10T00:00:00Z');
 
     const delta = diffDossiers(prev, curr);
-    const newDim = delta.dimensionDeltas.find((d) => d.dim === '2');
+    const newDim = delta.dimensionDeltas.find((dimensionDelta) => dimensionDelta.dim === '2');
     assert.ok(newDim !== undefined);
     assert.equal(newDim.before, 0);
     assert.equal(newDim.after, 7);
@@ -114,7 +110,6 @@ describe('diffDossiers()', () => {
     const curr = makeDossier('cursor', { '1': makeDim(9), '2': makeDim(7) }, '2026-04-10T00:00:00Z', 8);
 
     const delta = diffDossiers(prev, curr);
-    // Both moved by 4, order stable
     assert.equal(delta.dimensionDeltas.length, 2);
     assert.ok(Math.abs(delta.dimensionDeltas[0]!.delta) >= Math.abs(delta.dimensionDeltas[1]!.delta));
   });
@@ -129,12 +124,12 @@ describe('formatDeltaReport()', () => {
     assert.ok(report.includes('No changes detected'));
   });
 
-  it('shows dimension change with arrow', () => {
+  it('shows dimension change with direction marker', () => {
     const prev = makeDossier('cursor', { '1': makeDim(6) }, '2026-04-01T00:00:00Z', 6);
     const curr = makeDossier('cursor', { '1': makeDim(9) }, '2026-04-10T00:00:00Z', 9);
     const delta = diffDossiers(prev, curr);
     const report = formatDeltaReport(delta);
-    assert.ok(report.includes('▲'));
+    assert.ok(report.includes('UP'));
     assert.ok(report.includes('+3'));
   });
 });

@@ -2,7 +2,17 @@
 
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { buildLandscape, isLandscapeStale, loadLandscape } from '../src/dossier/landscape.js';
+import fs from 'node:fs/promises';
+import os from 'node:os';
+import path from 'node:path';
+import {
+  buildLandscape,
+  diffLandscape,
+  isLandscapeStale,
+  landscapeSnapshotPath,
+  loadLandscape,
+  loadPreviousLandscape,
+} from '../src/dossier/landscape.js';
 import type { Dossier, LandscapeMatrix } from '../src/dossier/types.js';
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -121,6 +131,34 @@ describe('buildLandscape()', () => {
     assert.ok(paths.some((p) => p.endsWith('landscape.json')));
     assert.ok(paths.some((p) => p.endsWith('COMPETITIVE_LANDSCAPE.md')));
   });
+
+  it('archives the previous landscape before overwriting the latest build', async () => {
+    const cwd = await fs.mkdtemp(path.join(os.tmpdir(), 'landscape-builder-'));
+    const previous: LandscapeMatrix = {
+      generatedAt: '2026-04-10T12:00:00.000Z',
+      rubricVersion: 1,
+      competitors: ['cursor'],
+      rankings: [{ competitor: 'cursor', displayName: 'Cursor', composite: 7, type: 'closed-source' }],
+      dimScores: { '1': { cursor: 7 } },
+    };
+
+    await fs.mkdir(path.join(cwd, '.danteforge'), { recursive: true });
+    await fs.writeFile(path.join(cwd, '.danteforge', 'landscape.json'), JSON.stringify(previous, null, 2));
+
+    const current = await buildLandscape(cwd, {
+      _loadDossiers: makeLoadDossiers([makeDossier('cursor', 9.0)]),
+    });
+
+    const archivedRaw = await fs.readFile(
+      landscapeSnapshotPath(cwd, previous.generatedAt),
+      'utf8',
+    );
+    const archived = JSON.parse(archivedRaw) as LandscapeMatrix;
+
+    assert.equal(current.rankings[0]!.composite, 9);
+    assert.equal(archived.generatedAt, previous.generatedAt);
+    assert.equal(archived.rankings[0]!.composite, previous.rankings[0]!.composite);
+  });
 });
 
 // ── Tests: isLandscapeStale() ─────────────────────────────────────────────────
@@ -148,5 +186,68 @@ describe('isLandscapeStale()', () => {
       rubricVersion: 1, competitors: [], rankings: [], dimScores: {},
     };
     assert.equal(isLandscapeStale(old), true);
+  });
+});
+
+describe('loadPreviousLandscape()', () => {
+  it('loads the latest archived landscape snapshot', async () => {
+    const cwd = await fs.mkdtemp(path.join(os.tmpdir(), 'landscape-history-'));
+    const older: LandscapeMatrix = {
+      generatedAt: '2026-04-01T12:00:00.000Z',
+      rubricVersion: 1,
+      competitors: ['cursor'],
+      rankings: [{ competitor: 'cursor', displayName: 'Cursor', composite: 7, type: 'closed-source' }],
+      dimScores: { '1': { cursor: 7 } },
+    };
+    const newer: LandscapeMatrix = {
+      ...older,
+      generatedAt: '2026-04-10T12:00:00.000Z',
+      rankings: [{ competitor: 'cursor', displayName: 'Cursor', composite: 8, type: 'closed-source' }],
+      dimScores: { '1': { cursor: 8 } },
+    };
+
+    await fs.mkdir(path.dirname(landscapeSnapshotPath(cwd, older.generatedAt)), { recursive: true });
+    await fs.writeFile(landscapeSnapshotPath(cwd, older.generatedAt), JSON.stringify(older, null, 2));
+    await fs.writeFile(landscapeSnapshotPath(cwd, newer.generatedAt), JSON.stringify(newer, null, 2));
+
+    const previous = await loadPreviousLandscape(cwd);
+    assert.ok(previous);
+    assert.equal(previous.generatedAt, newer.generatedAt);
+    assert.equal(previous.rankings[0]!.composite, 8);
+  });
+});
+
+describe('diffLandscape()', () => {
+  it('reports ranking movement, composite changes, and new competitors', () => {
+    const previous: LandscapeMatrix = {
+      generatedAt: '2026-04-01T12:00:00.000Z',
+      rubricVersion: 1,
+      competitors: ['cursor', 'dantescode'],
+      rankings: [
+        { competitor: 'cursor', displayName: 'Cursor', composite: 9, type: 'closed-source' },
+        { competitor: 'dantescode', displayName: 'DanteCode', composite: 7, type: 'open-source' },
+      ],
+      dimScores: { '1': { cursor: 9, dantescode: 7 } },
+    };
+    const current: LandscapeMatrix = {
+      generatedAt: '2026-04-10T12:00:00.000Z',
+      rubricVersion: 1,
+      competitors: ['dantescode', 'cursor', 'aider'],
+      rankings: [
+        { competitor: 'dantescode', displayName: 'DanteCode', composite: 8.5, type: 'open-source' },
+        { competitor: 'cursor', displayName: 'Cursor', composite: 9.1, type: 'closed-source' },
+        { competitor: 'aider', displayName: 'Aider', composite: 6.5, type: 'open-source' },
+      ],
+      dimScores: { '1': { dantescode: 8.5, cursor: 9.1, aider: 6.5 } },
+    };
+
+    const delta = diffLandscape(previous, current);
+
+    assert.deepEqual(delta.newCompetitors, ['aider']);
+    const selfChange = delta.rankingChanges.find((change) => change.competitor === 'dantescode');
+    assert.ok(selfChange);
+    assert.equal(selfChange.beforeRank, 2);
+    assert.equal(selfChange.afterRank, 1);
+    assert.equal(selfChange.rankDelta, 1);
   });
 });

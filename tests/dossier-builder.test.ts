@@ -2,12 +2,17 @@
 
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
+import fs from 'node:fs/promises';
+import os from 'node:os';
+import path from 'node:path';
 import {
   buildDossier,
   computeComposite,
-  parseSince,
-  isDossierFresh,
   dossierPath,
+  dossierSnapshotPath,
+  isDossierFresh,
+  loadPreviousDossier,
+  parseSince,
 } from '../src/dossier/builder.js';
 import type { Dossier, DossierDimension, EvidenceItem, Rubric, RubricDimension } from '../src/dossier/types.js';
 
@@ -200,5 +205,82 @@ describe('buildDossier()', () => {
     // Should still produce a dossier with score 1
     assert.equal(dossier.competitor, 'cursor');
     assert.equal(dossier.dimensions['1']!.score, 1);
+  });
+
+  it('archives the previous dossier before overwriting the latest build', async () => {
+    const cwd = await fs.mkdtemp(path.join(os.tmpdir(), 'dossier-builder-'));
+    const previous: Dossier = {
+      competitor: 'cursor',
+      displayName: 'Cursor',
+      type: 'closed-source',
+      lastBuilt: '2026-04-10T12:00:00.000Z',
+      sources: [],
+      dimensions: {
+        '1': { score: 6, scoreJustification: 'old', evidence: [], humanOverride: null, humanOverrideReason: null },
+      },
+      composite: 6,
+      compositeMethod: 'mean_28_dims',
+      rubricVersion: 1,
+    };
+
+    await fs.mkdir(path.dirname(dossierPath(cwd, 'cursor')), { recursive: true });
+    await fs.writeFile(dossierPath(cwd, 'cursor'), JSON.stringify(previous, null, 2));
+
+    const next = await buildDossier({
+      cwd,
+      competitor: 'cursor',
+      _loadRubric: async () => makeRubric(),
+      _loadRegistry: async () => makeRegistry(),
+      _fetchSource: async () => ({ content: 'fresh content', fromCache: false, hash: 'sha256:new' }),
+      _extractEvidence: async () => [makeEvidence()],
+      _scoreDimension: async () => ({ score: 9, justification: 'fresh evidence' }),
+    });
+
+    const archivedRaw = await fs.readFile(
+      dossierSnapshotPath(cwd, 'cursor', previous.lastBuilt),
+      'utf8',
+    );
+    const archived = JSON.parse(archivedRaw) as Dossier;
+
+    assert.equal(next.composite, 9);
+    assert.equal(archived.lastBuilt, previous.lastBuilt);
+    assert.equal(archived.composite, previous.composite);
+  });
+});
+
+describe('loadPreviousDossier()', () => {
+  it('loads the most recent archived dossier snapshot', async () => {
+    const cwd = await fs.mkdtemp(path.join(os.tmpdir(), 'dossier-history-'));
+    const historyDir = path.dirname(dossierSnapshotPath(cwd, 'cursor', '2026-04-10T12:00:00.000Z'));
+    const older: Dossier = {
+      competitor: 'cursor',
+      displayName: 'Cursor',
+      type: 'closed-source',
+      lastBuilt: '2026-04-01T12:00:00.000Z',
+      sources: [],
+      dimensions: {
+        '1': { score: 5, scoreJustification: 'older', evidence: [], humanOverride: null, humanOverrideReason: null },
+      },
+      composite: 5,
+      compositeMethod: 'mean_28_dims',
+      rubricVersion: 1,
+    };
+    const newer: Dossier = {
+      ...older,
+      lastBuilt: '2026-04-10T12:00:00.000Z',
+      composite: 8,
+      dimensions: {
+        '1': { score: 8, scoreJustification: 'newer', evidence: [], humanOverride: null, humanOverrideReason: null },
+      },
+    };
+
+    await fs.mkdir(historyDir, { recursive: true });
+    await fs.writeFile(dossierSnapshotPath(cwd, 'cursor', older.lastBuilt), JSON.stringify(older, null, 2));
+    await fs.writeFile(dossierSnapshotPath(cwd, 'cursor', newer.lastBuilt), JSON.stringify(newer, null, 2));
+
+    const previous = await loadPreviousDossier(cwd, 'cursor');
+    assert.ok(previous);
+    assert.equal(previous.lastBuilt, newer.lastBuilt);
+    assert.equal(previous.composite, newer.composite);
   });
 });

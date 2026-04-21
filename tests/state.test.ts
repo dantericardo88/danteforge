@@ -69,6 +69,97 @@ describe('state management', () => {
       await fs.rm(freshDir, { recursive: true, force: true });
     }
   });
+
+  it('reconciles stale workflowStage values upward when receipt or artifact evidence is newer', async () => {
+    const freshDir = await fs.mkdtemp(path.join(os.tmpdir(), 'danteforge-state-stage-'));
+    try {
+      const stateDir = path.join(freshDir, '.danteforge');
+      const verifyDir = path.join(stateDir, 'evidence', 'verify');
+      await fs.mkdir(verifyDir, { recursive: true });
+      await fs.writeFile(path.join(stateDir, 'TASKS.md'), '# TASKS.md\n', 'utf8');
+      await fs.writeFile(
+        path.join(stateDir, 'STATE.yaml'),
+        [
+          'project: stage-reconcile-test',
+          'lastHandoff: clarify -> next',
+          'workflowStage: clarify',
+          'currentPhase: 0',
+          'tasks: {}',
+          'auditLog: []',
+          'profile: balanced',
+        ].join('\n'),
+        'utf8',
+      );
+      await fs.writeFile(
+        path.join(verifyDir, 'latest.json'),
+        JSON.stringify({
+          status: 'pass',
+          timestamp: '2026-04-20T00:00:00.000Z',
+          gitSha: null,
+          currentStateFresh: true,
+        }),
+        'utf8',
+      );
+
+      const state = await loadState({ cwd: freshDir });
+      assert.strictEqual(state.workflowStage, 'verify');
+    } finally {
+      await fs.rm(freshDir, { recursive: true, force: true });
+    }
+  });
+
+  it('normalizes legacy workflow stage aliases from persisted state', async () => {
+    const freshDir = await fs.mkdtemp(path.join(os.tmpdir(), 'danteforge-state-legacy-stage-'));
+    try {
+      const stateDir = path.join(freshDir, '.danteforge');
+      await fs.mkdir(stateDir, { recursive: true });
+      await fs.writeFile(
+        path.join(stateDir, 'STATE.yaml'),
+        [
+          'project: legacy-stage-test',
+          'lastHandoff: planned -> next',
+          'workflowStage: planned',
+          'currentPhase: 0',
+          'tasks: {}',
+          'auditLog: []',
+          'profile: balanced',
+        ].join('\n'),
+        'utf8',
+      );
+
+      const state = await loadState({ cwd: freshDir });
+      assert.strictEqual(state.workflowStage, 'plan');
+    } finally {
+      await fs.rm(freshDir, { recursive: true, force: true });
+    }
+  });
+
+  it('derives the constitution pointer from CONSTITUTION.md when STATE.yaml is missing it', async () => {
+    const freshDir = await fs.mkdtemp(path.join(os.tmpdir(), 'danteforge-state-constitution-'));
+    try {
+      const stateDir = path.join(freshDir, '.danteforge');
+      await fs.mkdir(stateDir, { recursive: true });
+      await fs.writeFile(path.join(stateDir, 'CONSTITUTION.md'), '# DanteForge Constitution\n', 'utf8');
+      await fs.writeFile(
+        path.join(stateDir, 'STATE.yaml'),
+        [
+          'project: constitution-reconcile-test',
+          'lastHandoff: constitution -> next',
+          'workflowStage: constitution',
+          'currentPhase: 0',
+          'tasks: {}',
+          'auditLog: []',
+          'profile: balanced',
+        ].join('\n'),
+        'utf8',
+      );
+
+      const state = await loadState({ cwd: freshDir });
+      assert.strictEqual(state.constitution, 'CONSTITUTION.md');
+    } finally {
+      await fs.rm(freshDir, { recursive: true, force: true });
+    }
+  });
 });
 
 describe('appendScoreHistory', () => {

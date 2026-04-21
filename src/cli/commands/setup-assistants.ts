@@ -80,19 +80,24 @@ export async function setupAssistants(options: { assistants?: string } = {}) {
       logger.info(`${entry.assistant}: ${entry.installedSkills.length} ${noun} -> ${entry.targetDir}`);
     }
     logger.info(`Shared secrets/config: ${paths.configFile}`);
+    if (assistants?.includes('codex')) {
+      logger.info('Codex install contract: native commands in `~/.codex/commands`, CLI fallback in `~/.codex/skills/danteforge-cli`, bootstrap in `~/.codex/AGENTS.md`, and utility aliases in `~/.codex/config.toml`.');
+      logger.info('Codex validation: rerun `danteforge doctor` and see `docs/Codex-Install.md` for npm, tarball, and source install flows on other machines.');
+      logger.info('Codex note: local Codex installs are supported; hosted Codex/chat surfaces may ignore user-level `~/.codex/*` files.');
+    }
     logger.info('Cursor is project-local and opt-in. Run `danteforge setup assistants --assistants cursor` when you want the `.cursor/rules/danteforge.mdc` bootstrap file.');
     logger.info('Next: run `danteforge config --set-key "openai:..."` and `danteforge doctor --live` on the target machine.');
     logger.info('');
-    logger.info('━━━ Adversarial Scoring — Why It Matters ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+    logger.info('--- Adversarial Scoring: Why It Matters -------------------------------------');
     logger.info('  DanteForge can use a SECOND independent LLM to challenge scores.');
     logger.info('  When the same model that built the code also scores it, scores inflate.');
     logger.info('  NOTE: The better the adversary model, the more honest the signal.');
-    logger.info('        Two providers with different training → the sharpest critique.');
+    logger.info('        Two providers with different training -> the sharpest critique.');
     logger.info('');
-    logger.info('  • Ollama auto-detected when running (free, local, zero config)');
-    logger.info('  • Configure: danteforge init');
-    logger.info('  • Try it:    danteforge score --adversary');
-    logger.info('  • In ascend: danteforge ascend --adversarial-gating');
-    logger.info('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+    logger.info('  - Ollama auto-detected when running (free, local, zero config)');
+    logger.info('  - Configure: danteforge init');
+    logger.info('  - Try it:    danteforge score --adversary');
+    logger.info('  - In ascend: danteforge ascend --adversarial-gating');
+    logger.info('----------------------------------------------------------------------------');
   });
 }

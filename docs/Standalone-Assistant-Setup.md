@@ -91,6 +91,8 @@ For Codex specifically, `danteforge setup assistants --assistants codex` refresh
 
 The bundled registries also include the `danteforge-cli` skill. That skill is now the explicit CLI path when the user asks for terminal execution or when native workflow command files are unavailable.
 
+The canonical Codex-specific machine setup and validation flow now lives in `docs/Codex-Install.md`.
+
 Accepted aliases:
 
 - `gemini` and `gemini-3.1` map to the Gemini / Antigravity registry
@@ -196,6 +198,7 @@ Codex troubleshooting path:
 2. Confirm `~/.codex/skills` contains `danteforge-cli` and the packaged skills you expect
 3. Confirm `~/.codex/AGENTS.md` contains the DanteForge bootstrap block
 4. Confirm the current project still ships the intended `.codex/config.toml`
+5. Use `docs/Codex-Install.md` as the canonical fresh-machine setup and validation checklist
 
 ## Recommended Battle-Tested Baseline
 

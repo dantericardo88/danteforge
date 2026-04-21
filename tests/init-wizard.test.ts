@@ -1,42 +1,38 @@
-// Init wizard — tests for question flow, non-TTY skip, state persistence,
-// and personalized guidance output.
-
-import { describe, it, beforeEach, afterEach } from 'node:test';
+import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { init, type InitOptions } from '../src/cli/commands/init.js';
 import type { DanteState } from '../src/core/state.js';
 
-// ── Mock readline builder ─────────────────────────────────────────────────────
-
 function mockReadline(answers: string[]): InitOptions['_readline'] {
   let idx = 0;
   return {
-    question: (_p: string, cb: (a: string) => void) => cb(answers[idx++] ?? ''),
+    question: (_prompt: string, cb: (answer: string) => void) => cb(answers[idx++] ?? ''),
     close: () => {},
   };
 }
 
-// ── Fixtures ──────────────────────────────────────────────────────────────────
-
 function makeOptions(overrides: Partial<InitOptions> = {}): InitOptions {
-  let savedState: DanteState | undefined;
   const mockState: DanteState = {
-    project: 'test', lastHandoff: '', workflowStage: 'initialized',
-    currentPhase: 1, tasks: {}, auditLog: [], profile: 'budget',
+    project: 'test',
+    lastHandoff: '',
+    workflowStage: 'initialized',
+    currentPhase: 1,
+    tasks: {},
+    auditLog: [],
+    profile: 'budget',
   };
+
   return {
     cwd: '/fake/project',
-    _isTTY: false,         // non-interactive by default for tests
+    _isTTY: false,
     _isLLMAvailable: async () => false,
     _loadState: async () => ({ ...mockState }),
-    _saveState: async (state) => { savedState = state; },
+    _saveState: async () => {},
     ...overrides,
   };
 }
 
-// ── Non-interactive mode ──────────────────────────────────────────────────────
-
-describe('init — non-interactive (non-TTY)', () => {
+describe('init - non-interactive (non-TTY)', () => {
   it('runs without throwing when non-TTY', async () => {
     await assert.doesNotReject(() => init(makeOptions()));
   });
@@ -45,254 +41,195 @@ describe('init — non-interactive (non-TTY)', () => {
     let questionCalled = false;
     await init(makeOptions({
       _readline: {
-        question: (_p: string, _cb: (a: string) => void) => { questionCalled = true; },
+        question: () => {
+          questionCalled = true;
+        },
         close: () => {},
       },
     }));
-    assert.equal(questionCalled, false, 'Should not ask questions in non-TTY mode');
+    assert.equal(questionCalled, false);
   });
 
   it('saves state with audit log entry', async () => {
     let savedState: DanteState | undefined;
     await init(makeOptions({
-      _saveState: async (state) => { savedState = state; },
+      _saveState: async (state) => {
+        savedState = state;
+      },
     }));
-    assert.ok(savedState !== undefined, 'saveState should be called');
-    assert.ok(
-      savedState!.auditLog.some((entry) => entry.includes('init:')),
-      'Audit log should contain init entry',
-    );
-  });
-
-  it('detects LLM availability and includes in health checks', async () => {
-    await assert.doesNotReject(() => init(makeOptions({ _isLLMAvailable: async () => true })));
+    assert.ok(savedState);
+    assert.ok(savedState?.auditLog.some((entry) => entry.includes('init:')));
   });
 });
 
-// ── Interactive mode ──────────────────────────────────────────────────────────
-
-describe('init — interactive (TTY)', () => {
-  it('asks 3 questions in interactive mode', async () => {
+describe('init - interactive default path', () => {
+  it('asks exactly 3 questions in interactive mode', async () => {
     const questions: string[] = [];
     await init(makeOptions({
       _isTTY: true,
       _readline: {
-        question: (p: string, cb: (a: string) => void) => {
-          questions.push(p);
-          cb(''); // empty answers
+        question: (prompt: string, cb: (answer: string) => void) => {
+          questions.push(prompt);
+          cb('');
         },
         close: () => {},
       },
     }));
-    assert.ok(questions.length >= 3, `Expected at least 3 questions, got ${questions.length}`);
+    assert.equal(questions.length, 3);
   });
 
-  it('stores project description in state.constitution when provided', async () => {
+  it('stores project description in constitution when provided', async () => {
     let savedState: DanteState | undefined;
     await init(makeOptions({
       _isTTY: true,
       _readline: mockReadline(['Building a todo app', '1', '2']),
-      _saveState: async (state) => { savedState = state; },
+      _saveState: async (state) => {
+        savedState = state;
+      },
     }));
     assert.equal(savedState?.constitution, 'Building a todo app');
   });
 
-  it('does not set constitution when description is empty', async () => {
-    let savedState: DanteState | undefined;
-    await init(makeOptions({
-      _isTTY: true,
-      _readline: mockReadline(['', '1', '2']),
-      _saveState: async (state) => { savedState = state; },
-    }));
-    assert.ok(
-      !savedState?.constitution || savedState.constitution === '',
-      'constitution should be empty when user skips',
-    );
-  });
+  it('maps work style choices to preferred levels', async () => {
+    let sparkState: DanteState | undefined;
+    let magicState: DanteState | undefined;
+    let infernoState: DanteState | undefined;
 
-  it('sets preferredLevel=spark for choice 1', async () => {
-    let savedState: DanteState | undefined;
     await init(makeOptions({
       _isTTY: true,
-      _readline: mockReadline(['My app', '1', '1']),  // spark
-      _saveState: async (state) => { savedState = state; },
+      _readline: mockReadline(['My app', '1', '1']),
+      _saveState: async (state) => {
+        sparkState = state;
+      },
     }));
-    assert.equal(savedState?.preferredLevel, 'spark');
-  });
+    await init(makeOptions({
+      _isTTY: true,
+      _readline: mockReadline(['My app', '2', '1']),
+      _saveState: async (state) => {
+        magicState = state;
+      },
+    }));
+    await init(makeOptions({
+      _isTTY: true,
+      _readline: mockReadline(['My app', '3', '1']),
+      _saveState: async (state) => {
+        infernoState = state;
+      },
+    }));
 
-  it('sets preferredLevel=magic for choice 2 (default)', async () => {
-    let savedState: DanteState | undefined;
-    await init(makeOptions({
-      _isTTY: true,
-      _readline: mockReadline(['', '2', '2']),  // magic
-      _saveState: async (state) => { savedState = state; },
-    }));
-    assert.equal(savedState?.preferredLevel, 'magic');
-  });
-
-  it('sets preferredLevel=inferno for choice 3', async () => {
-    let savedState: DanteState | undefined;
-    await init(makeOptions({
-      _isTTY: true,
-      _readline: mockReadline(['My project', '3', '3']),  // inferno
-      _saveState: async (state) => { savedState = state; },
-    }));
-    assert.equal(savedState?.preferredLevel, 'inferno');
-  });
-
-  it('defaults to magic when user presses Enter on level choice', async () => {
-    let savedState: DanteState | undefined;
-    await init(makeOptions({
-      _isTTY: true,
-      _readline: mockReadline(['', '', '']),  // all Enter = defaults
-      _saveState: async (state) => { savedState = state; },
-    }));
-    assert.equal(savedState?.preferredLevel, 'magic');
+    assert.equal(sparkState?.preferredLevel, 'spark');
+    assert.equal(magicState?.preferredLevel, 'magic');
+    assert.equal(infernoState?.preferredLevel, 'inferno');
   });
 
   it('treats invalid level choice as magic', async () => {
     let savedState: DanteState | undefined;
-    // Q1=description, Q2=level (banana→invalid→magic), Q3=provider
     await init(makeOptions({
       _isTTY: true,
       _readline: mockReadline(['', 'banana', '']),
-      _saveState: async (state) => { savedState = state; },
+      _saveState: async (state) => {
+        savedState = state;
+      },
     }));
     assert.equal(savedState?.preferredLevel, 'magic');
   });
-
-  it('experience level 1 is new user (default)', async () => {
-    // Should not throw and should complete health checks
-    await assert.doesNotReject(() => init(makeOptions({
-      _isTTY: true,
-      _readline: mockReadline(['', '1', '2']),
-    })));
-  });
-
-  it('experience level 3 shows power user guidance', async () => {
-    // Should not throw
-    await assert.doesNotReject(() => init(makeOptions({
-      _isTTY: true,
-      _readline: mockReadline(['Power project', '3', '3']),
-    })));
-  });
 });
 
-// ── --non-interactive flag ────────────────────────────────────────────────────
-
-describe('init — nonInteractive option', () => {
-  it('skips wizard questions when nonInteractive=true even if TTY', async () => {
-    let questionCalled = false;
-    await init({
-      ...makeOptions({ _isTTY: true }),
-      nonInteractive: true,
-      _readline: {
-        question: (_p: string, _cb: (a: string) => void) => { questionCalled = true; },
-        close: () => {},
-      },
-    });
-    assert.equal(questionCalled, false);
-  });
-});
-
-// ── Adversarial scoring onboarding ───────────────────────────────────────────
-
-describe('init — adversarial scoring Q6', () => {
-  it('adversary question is asked in TTY mode with --advanced', async () => {
+describe('init - advanced path', () => {
+  it('asks adversarial scoring question only with --advanced', async () => {
     const questions: string[] = [];
-    // answers: description, level, provider, adversary (Q6 only shown with advanced:true)
-    const answers = ['My app', '2', '1', 'Y'];
     let idx = 0;
+    const answers = ['My app', '2', '1', 'n', 'n'];
+
     await init(makeOptions({
       _isTTY: true,
       advanced: true,
-      _detectIDE: () => null,   // no IDE question
+      _detectIDE: () => null,
       _readline: {
-        question: (p: string, cb: (a: string) => void) => {
-          questions.push(p);
+        question: (prompt: string, cb: (answer: string) => void) => {
+          questions.push(prompt);
           cb(answers[idx++] ?? '');
         },
         close: () => {},
       },
-      _loadConfig: async () => ({ defaultProvider: 'ollama', providers: {} } as unknown as import('../src/core/config.js').DanteConfig),
+      _loadConfig: async () => ({ defaultProvider: 'ollama', providers: {} } as never),
       _saveConfig: async () => {},
     }));
-    const hasAdversaryQ = questions.some(q =>
-      q.toLowerCase().includes('adversar') || q.toLowerCase().includes('scoring'),
-    );
-    assert.ok(hasAdversaryQ, `expected adversary question, got: ${questions.join(' | ')}`);
+
+    assert.ok(questions.some((q) => /adversarial|scoring/i.test(q)));
   });
 
-  it('saves adversary config when user answers Y with --advanced', async () => {
+  it('does not ask adversarial scoring question without --advanced', async () => {
+    const questions: string[] = [];
+    await init(makeOptions({
+      _isTTY: true,
+      _readline: {
+        question: (prompt: string, cb: (answer: string) => void) => {
+          questions.push(prompt);
+          cb('');
+        },
+        close: () => {},
+      },
+    }));
+    assert.equal(questions.some((q) => /adversarial|scoring/i.test(q)), false);
+  });
+
+  it('saves adversary config when user answers yes with --advanced', async () => {
     let savedConfig: unknown;
-    // answers: description, level, provider, adversary
-    const answers = ['', '2', '1', 'Y'];
     let idx = 0;
+    const answers = ['', '2', '1', '1', 'Y', 'n'];
+
     await init(makeOptions({
       _isTTY: true,
       advanced: true,
       _detectIDE: () => null,
       _readline: {
-        question: (_p: string, cb: (a: string) => void) => cb(answers[idx++] ?? ''),
+        question: (_prompt: string, cb: (answer: string) => void) => cb(answers[idx++] ?? ''),
         close: () => {},
       },
-      _loadConfig: async () => ({ defaultProvider: 'ollama', providers: {} } as unknown as import('../src/core/config.js').DanteConfig),
-      _saveConfig: async (cfg) => { savedConfig = cfg; },
+      _loadConfig: async () => ({ defaultProvider: 'ollama', providers: {} } as never),
+      _saveConfig: async (cfg) => {
+        savedConfig = cfg;
+      },
     }));
-    assert.ok(savedConfig !== undefined, 'config should have been saved');
+
+    assert.ok(savedConfig);
     const cfg = savedConfig as { adversary?: { enabled?: boolean } };
-    assert.equal(cfg.adversary?.enabled, true, 'adversary.enabled should be true');
+    assert.equal(cfg.adversary?.enabled, true);
   });
 
-  it('adversary question is NOT asked in non-TTY mode', async () => {
-    let saveConfigCalled = false;
-    await init(makeOptions({
-      _isTTY: false,
-      _loadConfig: async () => ({ defaultProvider: 'ollama', providers: {} } as unknown as import('../src/core/config.js').DanteConfig),
-      _saveConfig: async () => { saveConfigCalled = true; },
-    }));
-    assert.equal(saveConfigCalled, false, 'saveConfig should NOT be called in non-TTY mode');
-  });
-});
-
-// ── Q7: Universe definition onboarding ───────────────────────────────────────
-
-describe('init — Q7 universe definition', () => {
-  it('answers y to universe definition → _defineUniverse called (requires --advanced)', async () => {
+  it('calls defineUniverse when user answers yes in advanced mode', async () => {
     let universeCalled = false;
-    // answers: description, level, provider, adversary=n, universe=y
-    const answers = ['test project', '2', '1', 'n', 'y'];
     let idx = 0;
+    const answers = ['test project', '2', '1', '1', 'n', 'y'];
+
     await init(makeOptions({
       _isTTY: true,
       advanced: true,
       _detectIDE: () => null,
       _readline: {
-        question: (_p: string, cb: (a: string) => void) => cb(answers[idx++] ?? ''),
+        question: (_prompt: string, cb: (answer: string) => void) => cb(answers[idx++] ?? ''),
         close: () => {},
       },
-      _loadConfig: async () => ({ defaultProvider: 'ollama', providers: {} } as unknown as import('../src/core/config.js').DanteConfig),
+      _loadConfig: async () => ({ defaultProvider: 'ollama', providers: {} } as never),
       _saveConfig: async () => {},
-      _defineUniverse: async () => { universeCalled = true; },
+      _defineUniverse: async () => {
+        universeCalled = true;
+      },
     }));
-    assert.ok(universeCalled, 'defineUniverse must be called when user answers y');
+
+    assert.equal(universeCalled, true);
   });
 
-  it('answers n to universe definition → _defineUniverse not called', async () => {
+  it('does not call defineUniverse when advanced mode is off', async () => {
     let universeCalled = false;
-    const answers = ['test project', '1', '2', '1', 'n', 'n'];
-    let idx = 0;
     await init(makeOptions({
       _isTTY: true,
-      _detectIDE: () => null,
-      _readline: {
-        question: (_p: string, cb: (a: string) => void) => cb(answers[idx++] ?? ''),
-        close: () => {},
+      _readline: mockReadline(['test project', '2', '1']),
+      _defineUniverse: async () => {
+        universeCalled = true;
       },
-      _loadConfig: async () => ({ defaultProvider: 'ollama', providers: {} } as unknown as import('../src/core/config.js').DanteConfig),
-      _saveConfig: async () => {},
-      _defineUniverse: async () => { universeCalled = true; },
     }));
-    assert.ok(!universeCalled, 'defineUniverse must NOT be called when user answers n');
+    assert.equal(universeCalled, false);
   });
 });

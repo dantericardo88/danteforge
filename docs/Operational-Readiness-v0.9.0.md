@@ -1,4 +1,4 @@
-> **ARCHIVED** — This document reflects the 0.9.0 release. For the current release surface see [Operational-Readiness-v0.9.2.md](Operational-Readiness-v0.9.2.md). Do not treat this file as current release truth.
+> **ARCHIVED** — This document reflects the 0.9.0 release. For the current release surface see [Operational-Readiness-v0.17.0.md](Operational-Readiness-v0.17.0.md). Do not treat this file as current release truth.
 
 # DanteForge v0.9.0 Operational Readiness
 
