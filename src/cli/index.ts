@@ -153,6 +153,7 @@ program
 
 program
   .command('verify')
+  .alias('check')
   .description('Run verification checks on project state & artifacts')
   .option('--release', 'Include release/build/package verification checks')
   .option('--live', 'Run live browser checks on deployed app')
@@ -283,6 +284,7 @@ program
 
 program
   .command('magic [goal]')
+  .alias('improve')
   .description('Balanced preset and default hero command for most follow-up work')
   .option('--level <level>', 'spark | ember | canvas | magic | blaze | nova | inferno', 'magic')
   .option('--profile <type>', 'quality | balanced | budget', 'budget')
@@ -754,6 +756,29 @@ program
       await runNext({ cwd: opts.cwd, promptMode: opts.prompt });
     } catch (err) {
       formatAndLogError(err, 'next');
+      process.exitCode = 1;
+    }
+  });
+
+program
+  .command('frontier-gap [dimension]')
+  .description('Frontier Gap Engine: rank skeptic objections, classify gap types, prescribe smallest proof')
+  .option('--raise-ready', 'Synthesize investor raise-readiness verdict')
+  .option('--matrix <path>', 'Path to competitive matrix (default: .danteforge/compete/matrix.json)')
+  .option('--project', 'Scope analysis to flagship workflow dimensions only')
+  .option('--cwd <path>', 'Project directory')
+  .action(async (dimension, opts) => {
+    try {
+      const { frontierGap } = await import('./commands/frontier-gap.js');
+      await frontierGap({
+        dimension,
+        raiseReady: opts.raiseReady,
+        matrix: opts.matrix,
+        project: opts.project,
+        cwd: opts.cwd,
+      });
+    } catch (err) {
+      formatAndLogError(err, 'frontier-gap');
       process.exitCode = 1;
     }
   });
@@ -1296,6 +1321,7 @@ program
 
 program
   .command('ascend')
+  .alias('auto-improve')
   .description('Autonomous quality ascent: drives all achievable competitive dimensions to target (default 9.0/10)')
   .option('--target <n>', 'target score for all dimensions (0-10)', parseFloat, 9.0)
   .option('--max-cycles <n>', 'max total improvement cycles', parseInt, 60)
@@ -1341,6 +1367,7 @@ program
 
 program
   .command('score')
+  .alias('measure')
   .description('Fast project score: one number + 3 P0 action items in <5 seconds (no LLM)')
   .option('--full', 'Show all 18 dimensions (like assess)')
   .option('--strict', 'Use only code-derived signals — excludes mutable STATE.yaml fields for tamper-resistant scoring')
@@ -1413,6 +1440,7 @@ program
 
 program
   .command('go [goal]')
+  .alias('start')
   .description('Smart entry point: shows project state on existing projects, setup wizard on first run')
   .option('--yes', 'Skip confirmation and run immediately')
   .action((goal, opts) => {

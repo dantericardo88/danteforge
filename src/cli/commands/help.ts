@@ -35,12 +35,13 @@ export const COMMAND_HELP: Record<string, string> = {
   'awesome-scan': 'Discover, classify, and optionally import skills.\n  Usage: danteforge awesome-scan [--source <path>] [--domain <type>] [--install]',
   compact: 'Summarize old audit log entries to save context.\n  Usage: danteforge compact',
   import: 'Import an LLM-generated file into .danteforge/.\n  Usage: danteforge import <file> [--as <name>]',
-  init: 'Set up a new DanteForge project with health checks and guidance.\n  Usage: danteforge init\n  Detects project type, checks system health, shows recommended workflow.',
+  init: 'Set up a new DanteForge project with health checks and guidance.\n  Usage: danteforge init\n  Detects project type, checks system health, and points you to the next step.',
   docs: 'Generate or update the command reference documentation.\n  Usage: danteforge docs\n  Outputs docs/COMMAND_REFERENCE.md from Commander.js metadata.',
   autoresearch: 'Autonomous metric-driven optimization loop.\n  Usage: danteforge autoresearch <goal> --metric "<metric>" [--time <budget>] [--prompt] [--dry-run]\n  Example: danteforge autoresearch "reduce bundle size" --metric "bundle size KB"',
-  oss: 'Autonomous OSS pattern harvesting pipeline.\n  Usage: danteforge oss [--prompt] [--dry-run] [--max-repos <n>]\n  Detects project, searches OSS, clones with license gate, extracts patterns, implements.',
+  oss: 'Autonomous OSS pattern harvesting pipeline.\n  Usage: danteforge oss [--prompt] [--dry-run] [--max-repos <n>]\n  Detects project, searches OSS, clones with license gate, extracts patterns, and implements.',
   'local-harvest': 'Harvest patterns from local private repos, folders, and zip archives.\n  Usage: danteforge local-harvest [paths...] [--config <path>] [--depth shallow|medium|full] [--dry-run]\n  Creates LOCAL_HARVEST_REPORT.md and recommended OSS queries from private project sources.',
   harvest: 'Titan Harvest V2 - constitutional harvest of OSS patterns.\n  Usage: danteforge harvest <system> [--prompt] [--lite]\n  Runs the 5-step track (or SEP-LITE) and produces summary.json plus a sha256 hash.',
+  'frontier-gap': 'Frontier Gap Engine: rank skeptic objections, classify gap types, prescribe smallest proof.\n  Usage: danteforge frontier-gap [dimension] [--raise-ready] [--matrix <path>] [--cwd <path>]\n  Example: danteforge frontier-gap D12  |  danteforge frontier-gap --raise-ready',
 };
 
 const STAGE_SUGGESTIONS: Record<WorkflowStage, string> = {
@@ -60,89 +61,95 @@ const STAGE_SUGGESTIONS: Record<WorkflowStage, string> = {
 
 export async function helpCmd(query?: string, opts: { all?: boolean } = {}) {
   return withErrorBoundary('help', async () => {
-  if (query) {
-    const key = query.toLowerCase().replace('danteforge ', '');
+    if (query) {
+      const key = query.toLowerCase().replace('danteforge ', '');
 
-    if (COMMAND_HELP[key]) {
-      logger.info(`\n${COMMAND_HELP[key]}\n`);
+      if (COMMAND_HELP[key]) {
+        logger.info(`\n${COMMAND_HELP[key]}\n`);
+        return;
+      }
+
+      const skills = await listSkills();
+      const matchedSkill = skills.find((skill) => skill.name.includes(key) || key.includes(skill.name));
+      if (matchedSkill) {
+        logger.info(`Skill: ${matchedSkill.name}`);
+        logger.info(matchedSkill.description);
+        return;
+      }
+
+      logger.info(`No specific help for "${query}".`);
+      logger.info('Try: danteforge help <command-name>');
+      logger.info(`Available commands: ${Object.keys(COMMAND_HELP).join(', ')}`);
       return;
     }
 
-    const skills = await listSkills();
-    const matchedSkill = skills.find((skill) => skill.name.includes(key) || key.includes(skill.name));
-    if (matchedSkill) {
-      logger.info(`Skill: ${matchedSkill.name}`);
-      logger.info(matchedSkill.description);
+    if (opts.all) {
+      logger.info('DanteForge - Full Command Reference');
+      logger.info('');
+      logger.info(`Pipeline: ${REPO_PIPELINE_TEXT}`);
+      logger.info('Preset ladder: spark -> ember -> canvas -> magic -> blaze -> nova -> inferno');
+      logger.info('');
+
+      try {
+        const state = await loadState();
+        const suggestion = STAGE_SUGGESTIONS[state.workflowStage] ?? STAGE_SUGGESTIONS.initialized;
+        logger.info(`Current workflow stage: ${state.workflowStage}`);
+        logger.info(`Current execution wave: ${state.currentPhase}`);
+        logger.success(`Suggested next step: ${suggestion}`);
+      } catch {
+        // no state
+      }
+
+      logger.info('');
+      logger.info('All commands:');
+      for (const [cmd, desc] of Object.entries(COMMAND_HELP)) {
+        const firstLine = desc.split('\n')[0] ?? desc;
+        logger.info(`  danteforge ${cmd.padEnd(20)} ${firstLine}`);
+      }
+      logger.info('');
+      logger.info('Run "danteforge help <command>" for detailed help on any command.');
       return;
     }
 
-    logger.info(`No specific help for "${query}".`);
-    logger.info('Try: danteforge help <command-name>');
-    logger.info(`Available commands: ${Object.keys(COMMAND_HELP).join(', ')}`);
-    return;
-  }
-
-  // Full command reference (--all flag)
-  if (opts.all) {
-    logger.info('DanteForge - Full Command Reference');
     logger.info('');
-    logger.info(`Pipeline: ${REPO_PIPELINE_TEXT}`);
-    logger.info('Preset ladder: spark -> ember -> canvas -> magic -> blaze -> nova -> inferno');
+    logger.info('DanteForge - what do you want to do?');
+    logger.info('');
+    logger.info('  Start here:');
+    logger.info('    danteforge go             - state panel + guided action');
+    logger.info('    danteforge start          - plain-English alias for go');
+    logger.info('');
+    logger.info('  Improve your project:');
+    logger.info('    danteforge improve <goal> - plain-English alias for magic');
+    logger.info('    danteforge magic <goal>   - targeted improvement cycle');
+    logger.info('    danteforge auto-improve   - plain-English alias for ascend');
+    logger.info('');
+    logger.info('  Score and verify:');
+    logger.info('    danteforge measure        - plain-English alias for score');
+    logger.info('    danteforge score          - fast score: one number + 3 P0 items (<5s)');
+    logger.info('    danteforge check          - plain-English alias for verify');
+    logger.info('    danteforge verify         - machine-readable quality gate');
+    logger.info('');
+    logger.info('  Learn from open source:');
+    logger.info('    danteforge oss            - harvest patterns from top OSS repos');
+    logger.info('');
+    logger.info('  Set up:');
+    logger.info('    danteforge init           - first-run wizard (3 questions, 2 minutes)');
+    logger.info('    danteforge init --advanced - editor/provider/universe extras');
     logger.info('');
 
     try {
       const state = await loadState();
       const suggestion = STAGE_SUGGESTIONS[state.workflowStage] ?? STAGE_SUGGESTIONS.initialized;
-      logger.info(`Current workflow stage: ${state.workflowStage}`);
-      logger.info(`Current execution wave: ${state.currentPhase}`);
-      logger.success(`Suggested next step: ${suggestion}`);
-    } catch { /* no state — skip */ }
-
-    logger.info('');
-    logger.info('All commands:');
-    for (const [cmd, desc] of Object.entries(COMMAND_HELP)) {
-      const firstLine = desc.split('\n')[0] ?? desc;
-      logger.info(`  danteforge ${cmd.padEnd(20)} ${firstLine}`);
+      logger.info(`  Current workflow stage: ${state.workflowStage}`);
+      logger.success(`  Next for your project: ${suggestion}`);
+      logger.info('');
+    } catch {
+      // no state
     }
+
+    logger.info('  See all 100+ commands:  danteforge help --all');
+    logger.info('  Command detail:         danteforge help <command>');
+    logger.info('  Usage flags:            danteforge <command> --help');
     logger.info('');
-    logger.info('Run "danteforge help <command>" for detailed help on any command.');
-    return;
-  }
-
-  // Default: progressive disclosure — show 8 essential commands grouped by intent
-  logger.info('');
-  logger.info('DanteForge — what do you want to do?');
-  logger.info('');
-  logger.info('  See your score + top gaps:');
-  logger.info('    danteforge go            — state panel + guided action (start here)');
-  logger.info('');
-  logger.info('  Improve your project:');
-  logger.info('    danteforge magic <goal>  — targeted improvement cycle (most common)');
-  logger.info('    danteforge inferno <goal>— maximum push: OSS discovery + full quality run');
-  logger.info('    danteforge ascend        — autonomous loop: runs until all dims hit 9.0');
-  logger.info('');
-  logger.info('  Score and verify:');
-  logger.info('    danteforge score         — fast score: one number + 3 P0 items (<5s)');
-  logger.info('    danteforge verify        — machine-readable quality gate');
-  logger.info('');
-  logger.info('  Learn from open source:');
-  logger.info('    danteforge oss           — harvest patterns from top OSS repos');
-  logger.info('');
-  logger.info('  Set up:');
-  logger.info('    danteforge init          — first-run wizard (3 questions, 2 minutes)');
-  logger.info('    danteforge init --advanced  — also configure adversarial scoring + universe');
-  logger.info('');
-
-  try {
-    const state = await loadState();
-    const suggestion = STAGE_SUGGESTIONS[state.workflowStage] ?? STAGE_SUGGESTIONS.initialized;
-    logger.success(`  Next for your project: ${suggestion}`);
-    logger.info('');
-  } catch { /* no state — skip */ }
-
-  logger.info('  See all 100+ commands:  danteforge help --all');
-  logger.info('  Command detail:         danteforge help <command>');
-  logger.info('  Usage flags:            danteforge <command> --help');
-  logger.info('');
   });
 }
