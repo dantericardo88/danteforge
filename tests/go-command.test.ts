@@ -37,7 +37,7 @@ function makeOpts(overrides: Partial<GoOptions> = {}): GoOptions {
     // Sprint 50: go is state-aware. Tests must simulate existing project.
     _stateExists: async () => true,
     _computeScore: async () => stubScore,
-    _confirm: async () => true,  // auto-confirm improvement loop
+    _choiceFn: async () => '2',  // choose "Apply one improvement" (1 cycle)
     _runSelfImprove: async () => makeResult(),
     _stdout: () => {},
     ...overrides,
@@ -45,13 +45,14 @@ function makeOpts(overrides: Partial<GoOptions> = {}): GoOptions {
 }
 
 describe('go command', () => {
-  it('_runSelfImprove called with maxCycles: 3 (new default for state-aware go)', async () => {
+  it('_runSelfImprove called with maxCycles: 1 for single-improvement choice', async () => {
     let capturedOpts: SelfImproveOptions | null = null;
     await go(makeOpts({
+      _choiceFn: async () => '2',
       _runSelfImprove: async (opts) => { capturedOpts = opts; return makeResult(); },
     }));
     assert.ok(capturedOpts !== null, '_runSelfImprove should be called');
-    assert.strictEqual(capturedOpts!.maxCycles, 3);
+    assert.strictEqual(capturedOpts!.maxCycles, 1);
   });
 
   it('_runSelfImprove called with minScore: 9.0 default', async () => {

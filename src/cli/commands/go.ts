@@ -143,17 +143,39 @@ function showStatePanel(result: HarshScoreResult, emit: (l: string) => void): vo
   const score = result.displayScore;
   const dims = result.displayDimensions ?? {};
 
-  emit('');
-  emit(chalk.bold('  DanteForge - Project State'));
-  emit('  -------------------------------------------------');
-  emit('');
-  emit(`  Overall  ${chalk.bold(score.toFixed(1) + '/10')}  ${verdict(score)}`);
-  emit('');
-
   const p0Dims = Object.entries(dims)
     .filter(([, v]) => v < 7.0)
     .sort(([, a], [, b]) => a - b)
     .slice(0, 3);
+
+  emit('');
+  emit(chalk.bold('  DanteForge - Project State'));
+  emit('  -------------------------------------------------');
+  emit('');
+
+  // Lead with the outcome-first recommendation so the most actionable info appears first
+  if (p0Dims.length > 0) {
+    const [topDimId, topScore] = p0Dims[0]!;
+    const topLabel = topDimId.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase());
+    const lang = OUTCOME_LANGUAGE[topDimId];
+    emit('  Recommended next step:');
+    emit(`    Your project is weakest at ${chalk.bold(topLabel)}.`);
+    if (lang) {
+      emit(`    Best next move:   ${lang.nextMove}.`);
+      emit(`    Expected outcome: ${lang.outcome}.`);
+    } else {
+      emit(`    Current score: ${topScore.toFixed(1)}/10 — one improvement cycle will target this gap.`);
+    }
+    emit(`    ${chalk.dim('->')} ${chalk.cyan(`danteforge improve "${topLabel.toLowerCase()}"`)}`);
+  } else {
+    emit('  All tracked dimensions at 7.0+.');
+    emit(`    Push to 9.0+ with ${chalk.cyan('danteforge auto-improve')} (autonomous loop).`);
+  }
+  emit('');
+
+  // Score and gaps as secondary metadata
+  emit(`  Overall  ${chalk.bold(score.toFixed(1) + '/10')}  ${verdict(score)}`);
+  emit('');
 
   if (p0Dims.length > 0) {
     emit('  ' + chalk.yellow('P0 gaps') + ' (below 7.0):');
@@ -175,24 +197,6 @@ function showStatePanel(result: HarshScoreResult, emit: (l: string) => void): vo
     emit('');
   }
 
-  if (p0Dims.length > 0) {
-    const [topDimId, topScore] = p0Dims[0]!;
-    const topLabel = topDimId.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase());
-    const lang = OUTCOME_LANGUAGE[topDimId];
-    emit('  Recommended next step:');
-    emit(`    Your project is weakest at ${chalk.bold(topLabel)}.`);
-    if (lang) {
-      emit(`    Best next move:   ${lang.nextMove}.`);
-      emit(`    Expected outcome: ${lang.outcome}.`);
-    } else {
-      emit(`    Current score: ${topScore.toFixed(1)}/10 — one improvement cycle will target this gap.`);
-    }
-    emit(`    ${chalk.dim('->')} ${chalk.cyan(`danteforge improve "${topLabel.toLowerCase()}"`)}`);
-  } else {
-    emit('  All tracked dimensions at 7.0+.');
-    emit(`    Push to 9.0+ with ${chalk.cyan('danteforge auto-improve')} (autonomous loop).`);
-  }
-  emit('');
   emit(`  ${chalk.dim('Unfamiliar with a term?')}  ${chalk.cyan('danteforge explain <term>')}`);
   emit('  -------------------------------------------------');
   emit('');
