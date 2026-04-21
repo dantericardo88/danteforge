@@ -1472,11 +1472,12 @@ program
   .alias('start')
   .description('Smart entry point: shows project state on existing projects, setup wizard on first run')
   .option('--yes', 'Skip confirmation and run immediately')
+  .option('--simple', 'Show only core project quality gaps (hides meta/ecosystem dimensions)')
   .action((goal, opts) => {
     void (async () => {
       try {
         const { go } = await import('./commands/go.js');
-        await go({ goal: goal as string | undefined, yes: opts.yes as boolean | undefined });
+        await go({ goal: goal as string | undefined, yes: opts.yes as boolean | undefined, simple: opts.simple as boolean | undefined });
       } catch (err) {
         const { formatAndLogError } = await import('../core/format-error.js');
         formatAndLogError(err, 'go');

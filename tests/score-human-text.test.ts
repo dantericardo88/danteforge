@@ -1,6 +1,6 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { DIMENSION_HUMAN_TEXT } from '../src/cli/commands/score.js';
+import { DIMENSION_HUMAN_TEXT, BUILDER_DIMENSIONS } from '../src/cli/commands/score.js';
 import { score } from '../src/cli/commands/score.js';
 import type { HarshScoreResult } from '../src/core/harsh-scorer.js';
 
@@ -127,6 +127,47 @@ describe('score P0 output — human text', () => {
       _stdout: (l) => lines.push(l),
     });
     const text = lines.join('\n');
-    assert.match(text, /danteforge (improve|forge)/i);
+    assert.match(text, /danteforge improve/i);
+    assert.doesNotMatch(text, /danteforge forge/i);
+  });
+
+  it('communityAdoption action uses danteforge improve not npm publish', async () => {
+    const lines: string[] = [];
+    await score({
+      ...noopState,
+      _harshScore: async () => makeScoreResult({ communityAdoption: 1.0, testing: 1.5, errorHandling: 2.0 }),
+      _readHistory: async () => [],
+      _writeHistory: async () => {},
+      _stdout: (l) => lines.push(l),
+    });
+    const text = lines.join('\n');
+    assert.doesNotMatch(text, /npm publish/i);
+    assert.match(text, /danteforge improve/i);
+  });
+
+  it('BUILDER_DIMENSIONS contains exactly the 8 core project quality dims', () => {
+    const expected = ['functionality', 'testing', 'errorHandling', 'security',
+      'uxPolish', 'documentation', 'performance', 'maintainability'];
+    for (const d of expected) {
+      assert.ok(BUILDER_DIMENSIONS.has(d as never), `Expected BUILDER_DIMENSIONS to contain ${d}`);
+    }
+    assert.equal(BUILDER_DIMENSIONS.size, 8);
+  });
+
+  it('default P0 output prefers builder dims over meta dims', async () => {
+    const lines: string[] = [];
+    await score({
+      ...noopState,
+      _harshScore: async () => makeScoreResult({
+        communityAdoption: 1.0, selfImprovement: 1.5, autonomy: 2.0,
+        errorHandling: 5.0, testing: 5.5, uxPolish: 6.0,
+      }),
+      _readHistory: async () => [],
+      _writeHistory: async () => {},
+      _stdout: (l) => lines.push(l),
+    });
+    const text = lines.join('\n');
+    // Builder dims should appear before meta dims in P0
+    assert.match(text, /Error [Hh]andling|Testing|Ux Polish/i);
   });
 });

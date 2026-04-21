@@ -12,10 +12,12 @@ import type { GoWizardOptions, WizardAnswers } from '../../core/go-wizard.js';
 import type { SelfImproveOptions, SelfImproveResult } from './self-improve.js';
 import type { HarshScoreResult } from '../../core/harsh-scorer.js';
 import type { ScoreOptions } from './score.js';
+import { BUILDER_DIMENSIONS } from './score.js';
 
 export interface GoOptions {
   goal?: string;
   yes?: boolean;
+  simple?: boolean;
   cwd?: string;
   _runSelfImprove?: (opts: SelfImproveOptions) => Promise<SelfImproveResult>;
   _computeScore?: (cwd: string) => Promise<HarshScoreResult>;
@@ -35,12 +37,12 @@ function bar(score: number, width = 10): string {
   return chalk.green('='.repeat(filled)) + chalk.gray('.'.repeat(width - filled));
 }
 
-function verdict(score: number): string {
+export function verdict(score: number): string {
   if (score >= 9.0) return chalk.green('excellent');
   if (score >= 8.0) return chalk.green('good');
-  if (score >= 7.0) return chalk.yellow('needs-work');
+  if (score >= 7.0) return chalk.yellow('solid');
   if (score >= 5.0) return chalk.yellow('developing');
-  return chalk.red('critical');
+  return chalk.red('needs attention');
 }
 
 const OUTCOME_LANGUAGE: Record<string, { nextMove: string; outcome: string }> = {
@@ -131,6 +133,10 @@ function showWelcomeBanner(emit: (l: string) => void): void {
   emit('');
   emit(chalk.cyan('    danteforge init') + '    - guided setup');
   emit('');
+  emit('  Or see what improvement looks like:');
+  emit('');
+  emit(chalk.cyan('    danteforge demo') + '    - before/after quality demo (no setup needed)');
+  emit('');
   emit('  Or see a live example:');
   emit('');
   emit(chalk.cyan('    cd examples/todo-app && danteforge dashboard'));
@@ -139,14 +145,18 @@ function showWelcomeBanner(emit: (l: string) => void): void {
   emit('');
 }
 
-function showStatePanel(result: HarshScoreResult, emit: (l: string) => void): void {
+function showStatePanel(result: HarshScoreResult, emit: (l: string) => void, simple = false): void {
   const score = result.displayScore;
   const dims = result.displayDimensions ?? {};
 
-  const p0Dims = Object.entries(dims)
+  // In simple mode, only surface builder dimensions so meta/ecosystem gaps don't dominate
+  const allGaps = Object.entries(dims)
     .filter(([, v]) => v < 7.0)
-    .sort(([, a], [, b]) => a - b)
-    .slice(0, 3);
+    .sort(([, a], [, b]) => a - b);
+  const builderGaps = allGaps.filter(([d]) => BUILDER_DIMENSIONS.has(d as never));
+  const p0Dims = simple
+    ? builderGaps.slice(0, 3)
+    : [...builderGaps, ...allGaps.filter(([d]) => !BUILDER_DIMENSIONS.has(d as never))].slice(0, 3);
 
   emit('');
   emit(chalk.bold('  DanteForge - Project State'));
@@ -186,15 +196,17 @@ function showStatePanel(result: HarshScoreResult, emit: (l: string) => void): vo
     emit('');
   }
 
-  const ceilingEntries = Object.entries(KNOWN_CEILINGS);
-  if (ceilingEntries.length > 0) {
-    emit('  ' + chalk.gray('Ceilings') + ' (cannot auto-improve past):');
-    for (const [dimId, { ceiling, reason }] of ceilingEntries) {
-      const label = dimId.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase());
-      const self = dims[dimId as keyof typeof dims] ?? ceiling;
-      emit(`    ${label.padEnd(26)}${self.toFixed(1)}/10  !  ${reason.slice(0, 50)}`);
+  if (!simple) {
+    const ceilingEntries = Object.entries(KNOWN_CEILINGS);
+    if (ceilingEntries.length > 0) {
+      emit('  ' + chalk.gray('Ceilings') + ' (cannot auto-improve past):');
+      for (const [dimId, { ceiling, reason }] of ceilingEntries) {
+        const label = dimId.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase());
+        const self = dims[dimId as keyof typeof dims] ?? ceiling;
+        emit(`    ${label.padEnd(26)}${self.toFixed(1)}/10  !  ${reason.slice(0, 50)}`);
+      }
+      emit('');
     }
-    emit('');
   }
 
   emit(`  ${chalk.dim('Unfamiliar with a term?')}  ${chalk.cyan('danteforge explain <term>')}`);
@@ -309,7 +321,7 @@ export async function go(options: GoOptions = {}): Promise<void> {
     return;
   }
 
-  showStatePanel(scoreResult, emit);
+  showStatePanel(scoreResult, emit, options.simple ?? false);
 
   try {
     const isLLMAvailableFn = options._isLLMAvailable ?? (async () => {

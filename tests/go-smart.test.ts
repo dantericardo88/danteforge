@@ -1,6 +1,6 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert';
-import { go } from '../src/cli/commands/go.js';
+import { go, verdict } from '../src/cli/commands/go.js';
 import type { GoOptions } from '../src/cli/commands/go.js';
 import type { HarshScoreResult } from '../src/core/harsh-scorer.js';
 
@@ -313,5 +313,64 @@ describe('go - existing project', () => {
       _stdout: (l) => lines.push(l),
     });
     assert.doesNotMatch(lines.join('\n'), /No LLM detected/i);
+  });
+});
+
+describe('verdict labels', () => {
+  it('returns excellent at 9.0+', () => { assert.match(verdict(9.0), /excellent/i); });
+  it('returns good at 8.0-8.9', () => { assert.match(verdict(8.5), /good/i); });
+  it('returns solid at 7.0-7.9', () => { assert.match(verdict(7.5), /solid/i); });
+  it('returns developing at 5.0-6.9', () => { assert.match(verdict(6.0), /developing/i); });
+  it('returns needs attention below 5.0', () => { assert.match(verdict(4.9), /needs attention/i); });
+  it('does not return needs-work at any score', () => {
+    for (const s of [9, 8.5, 7.5, 6, 4]) {
+      assert.doesNotMatch(verdict(s), /needs-work/);
+    }
+  });
+  it('does not return critical at any score', () => {
+    for (const s of [9, 8.5, 7.5, 6, 4]) {
+      assert.doesNotMatch(verdict(s), /^critical$/);
+    }
+  });
+});
+
+describe('go --simple mode', () => {
+  const makeMetaHeavyScore = (): HarshScoreResult => ({
+    displayScore: 7.5,
+    displayDimensions: {
+      functionality: 8.5, testing: 8.0, errorHandling: 8.0, security: 8.0,
+      uxPolish: 7.5, documentation: 7.5, performance: 7.5, maintainability: 7.5,
+      developerExperience: 7.0, autonomy: 7.0, planningQuality: 7.0,
+      selfImprovement: 5.0, specDrivenPipeline: 5.0, convergenceSelfHealing: 7.0,
+      tokenEconomy: 7.0, ecosystemMcp: 7.0, enterpriseReadiness: 7.0,
+      communityAdoption: 2.0,
+    } as never,
+    rawScores: {}, summary: '', recommendations: [],
+  });
+
+  it('--simple hides ceiling section', async () => {
+    const lines: string[] = [];
+    await go({
+      simple: true,
+      _stateExists: async () => true,
+      _computeScore: async () => makeMetaHeavyScore(),
+      _choiceFn: async () => '',
+      _stdout: (l) => lines.push(l),
+    });
+    assert.doesNotMatch(lines.join('\n'), /Ceilings/i);
+  });
+
+  it('--simple does not show communityAdoption in P0 gaps when builder dims are healthy', async () => {
+    const lines: string[] = [];
+    await go({
+      simple: true,
+      _stateExists: async () => true,
+      _computeScore: async () => makeMetaHeavyScore(),
+      _choiceFn: async () => '',
+      _stdout: (l) => lines.push(l),
+    });
+    // All builder dims are above 7.0 in this fixture, so community adoption
+    // (2.0/10) should NOT appear in the recommendation — simple mode skips meta dims
+    assert.doesNotMatch(lines.join('\n'), /Community Adoption/i);
   });
 });

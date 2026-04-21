@@ -57,13 +57,15 @@ danteforge config --set-key "claude:<your-key>"
 
 ---
 
-## The 3 commands you need
+## The essential commands
 
 | What you want | Command |
 |--------------|---------|
 | See where you stand | `danteforge go` |
 | Improve one thing | `danteforge improve "your goal"` |
 | Improve everything hands-off | `danteforge auto-improve` |
+| See a before/after demo | `danteforge demo` |
+| Explain any term | `danteforge explain <term>` |
 
 ---
 

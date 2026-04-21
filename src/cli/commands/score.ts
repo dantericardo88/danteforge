@@ -24,6 +24,11 @@ import type { PrimeOptions } from './prime.js';
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
+export const BUILDER_DIMENSIONS = new Set<ScoringDimension>([
+  'functionality', 'testing', 'errorHandling', 'security',
+  'uxPolish', 'documentation', 'performance', 'maintainability',
+]);
+
 export interface P0Item {
   dimension: ScoringDimension;
   score: number;
@@ -120,7 +125,7 @@ const DIMENSION_ACTIONS: Record<ScoringDimension, string> = {
   tokenEconomy:           'danteforge improve "token economy"',
   ecosystemMcp:           'danteforge setup mcp-server',
   enterpriseReadiness:    'danteforge improve "enterprise readiness"',
-  communityAdoption:      'npm publish && danteforge showcase',
+  communityAdoption:      'danteforge improve "community adoption"',
 };
 
 // ── Session baseline TTL ──────────────────────────────────────────────────────
@@ -342,13 +347,19 @@ export async function score(options: ScoreOptions = {}): Promise<ScoreResult> {
   const updatedState = appendScoreHistory(state, entry);
   await saveStateFn(updatedState, { cwd });
 
-  // Build P0 items (bottom 3 dimensions)
+  // Build P0 items — in default mode, prefer builder dimensions over meta dims
   const dims = Object.entries(result.displayDimensions) as [ScoringDimension, number][];
   dims.sort((a, b) => a[1] - b[1]);
-  const p0Items: P0Item[] = dims.slice(0, 3).map(([dim, sc]) => ({
+  let p0Source = dims;
+  if (!options.full) {
+    const builderGaps = dims.filter(([d]) => BUILDER_DIMENSIONS.has(d));
+    const metaGaps = dims.filter(([d]) => !BUILDER_DIMENSIONS.has(d));
+    p0Source = [...builderGaps, ...metaGaps];
+  }
+  const p0Items: P0Item[] = p0Source.slice(0, 3).map(([dim, sc]) => ({
     dimension: dim,
     score: sc,
-    action: DIMENSION_ACTIONS[dim] ?? `danteforge forge "improve ${dim}"`,
+    action: DIMENSION_ACTIONS[dim] ?? `danteforge improve "${dim}"`,
   }));
 
   // Render header
