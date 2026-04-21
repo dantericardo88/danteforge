@@ -18,7 +18,7 @@ DanteForge will ask 3 quick questions, then show your quality score and the sing
   DanteForge - Project State
   -------------------------------------------------
 
-  Overall  6.8/10  needs-work
+  Overall  6.8/10  developing
 
   P0 gaps (below 7.0):
     Error handling          ======....  4.0/10

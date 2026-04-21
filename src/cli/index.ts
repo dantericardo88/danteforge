@@ -1397,7 +1397,7 @@ program
 program
   .command('score')
   .alias('measure')
-  .description('Fast project score: one number + 3 P0 action items in <5 seconds (no LLM)')
+  .description('Fast project score: one number + 3 P0 action items in <5 seconds (no LLM, updates PRIME.md)')
   .option('--full', 'Show all 18 dimensions (like assess)')
   .option('--strict', 'Use only code-derived signals — excludes mutable STATE.yaml fields for tamper-resistant scoring')
   .option('--adversary', 'Run a second independent LLM to challenge the self-score and detect inflation')
@@ -1481,6 +1481,28 @@ program
       } catch (err) {
         const { formatAndLogError } = await import('../core/format-error.js');
         formatAndLogError(err, 'go');
+        process.exitCode = 1;
+      }
+    })();
+  });
+
+program
+  .command('quickstart [idea]')
+  .description('Guided 5-minute setup: init → constitution → first spark → quality score')
+  .option('--simple', 'Template-based setup — no LLM needed, under 90 seconds')
+  .option('--non-interactive', 'Skip all prompts (for CI or scripted flows)')
+  .action((idea, opts) => {
+    void (async () => {
+      try {
+        const { quickstart } = await import('./commands/quickstart.js');
+        await quickstart({
+          idea: idea as string | undefined,
+          simple: opts.simple as boolean | undefined,
+          nonInteractive: opts.nonInteractive as boolean | undefined,
+        });
+      } catch (err) {
+        const { formatAndLogError } = await import('../core/format-error.js');
+        formatAndLogError(err, 'quickstart');
         process.exitCode = 1;
       }
     })();

@@ -71,7 +71,14 @@ run(['awesome-scan'], [/Skill Scanner/i, /Total:\s+\d+\s+skill/i]);
 run(['explain', 'magic'], [/MAGIC|magic/i, /preset|power/i]);
 run(['demo', '--help'], [/demo/i, /fixture/i]);
 run(['help'], [/danteforge improve/i, /danteforge explain/i, /danteforge go/i]);
-run(['go', '--help'], [/--yes/i]);
+run(['go', '--help'], [/--yes/i, /--simple/i]);
 runNotContains(['help'], [/danteforge magic\s/]);
+
+// Launch hardening gates — Sprint 58
+run(['measure'], [/\/10/i]);
+run(['demo'], [/danteforge go/i]);
+run(['quickstart', '--help'], [/quickstart/i, /simple/i]);
+runNotContains(['demo'], [/quickstart/i]);
+runNotContains(['measure'], [/needs-work/i]);
 
 console.log('CLI smoke checks passed');

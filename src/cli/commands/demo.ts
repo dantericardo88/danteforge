@@ -71,5 +71,5 @@ export async function demo(options: DemoCommandOptions = {}): Promise<void> {
     await runFixture(fixture, options);
   }
 
-  print(`\nRun 'danteforge quickstart --simple' to get started with your own project.`, options);
+  print(`\nRun 'danteforge go' to see your project's quality score and top improvement.`, options);
 }

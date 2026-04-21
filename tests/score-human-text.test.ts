@@ -171,3 +171,57 @@ describe('score P0 output — human text', () => {
     assert.match(text, /Error [Hh]andling|Testing|Ux Polish/i);
   });
 });
+
+describe('verdict display mapping', () => {
+  it('maps needs-work to solid in score output', async () => {
+    const lines: string[] = [];
+    await score({
+      ...noopState,
+      _harshScore: async () => ({
+        ...makeScoreResult({ errorHandling: 3.0 }),
+        verdict: 'needs-work',
+        displayScore: 7.5,
+      }),
+      _readHistory: async () => [],
+      _writeHistory: async () => {},
+      _stdout: (l) => lines.push(l),
+    });
+    const text = lines.join('\n');
+    assert.doesNotMatch(text, /needs-work/);
+    assert.match(text, /solid/i);
+  });
+
+  it('maps blocked to needs attention in score output', async () => {
+    const lines: string[] = [];
+    await score({
+      ...noopState,
+      _harshScore: async () => ({
+        ...makeScoreResult({ errorHandling: 1.0, testing: 1.0, security: 1.0 }),
+        verdict: 'blocked',
+        displayScore: 3.0,
+      }),
+      _readHistory: async () => [],
+      _writeHistory: async () => {},
+      _stdout: (l) => lines.push(l),
+    });
+    const text = lines.join('\n');
+    assert.doesNotMatch(text, /\bblocked\b/);
+    assert.match(text, /needs attention/i);
+  });
+
+  it('maps excellent to excellent unchanged', async () => {
+    const lines: string[] = [];
+    await score({
+      ...noopState,
+      _harshScore: async () => ({
+        ...makeScoreResult(),
+        verdict: 'excellent',
+        displayScore: 9.5,
+      }),
+      _readHistory: async () => [],
+      _writeHistory: async () => {},
+      _stdout: (l) => lines.push(l),
+    });
+    assert.match(lines.join('\n'), /excellent/i);
+  });
+});

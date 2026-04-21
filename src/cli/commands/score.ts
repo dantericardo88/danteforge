@@ -24,6 +24,17 @@ import type { PrimeOptions } from './prime.js';
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
+const VERDICT_DISPLAY: Record<string, string> = {
+  'needs-work':  'solid',
+  'blocked':     'needs attention',
+  'acceptable':  'good',
+  'excellent':   'excellent',
+};
+
+function displayVerdict(v: string): string {
+  return VERDICT_DISPLAY[v] ?? v;
+}
+
 export const BUILDER_DIMENSIONS = new Set<ScoringDimension>([
   'functionality', 'testing', 'errorHandling', 'security',
   'uxPolish', 'documentation', 'performance', 'maintainability',
@@ -367,7 +378,7 @@ export async function score(options: ScoreOptions = {}): Promise<ScoreResult> {
     ? `  (${sessionDelta > 0.05 ? '▲' : sessionDelta < -0.05 ? '▼' : '─'} ${sessionDelta > 0 ? '+' : ''}${sessionDelta.toFixed(1)} today)`
     : '';
   emit('');
-  emit(`  ${result.displayScore.toFixed(1)}/10  — ${result.verdict}${deltaStr}`);
+  emit(`  ${result.displayScore.toFixed(1)}/10  — ${displayVerdict(result.verdict)}${deltaStr}`);
   emit('');
   emit('  P0 gaps:');
   p0Items.forEach((item, i) => {
