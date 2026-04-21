@@ -3,8 +3,22 @@ import assert from 'node:assert/strict';
 import {
   detectAmbiguitySignals,
   shouldAutoCEOReview,
+  formatCEOReviewSection,
   AMBIGUITY_SIGNALS,
+  type CEOReviewResult,
 } from '../src/core/ceo-review-engine.js';
+
+function makeResult(overrides: Partial<CEOReviewResult> = {}): CEOReviewResult {
+  return {
+    originalGoal: 'Build a thing',
+    elevatedVision: 'A revolutionary platform',
+    challengingQuestions: ['Why this?', 'Who benefits?'],
+    tenStarVersion: 'The ideal version changes everything',
+    ambiguitySignalsFound: [],
+    wasAutoTriggered: false,
+    ...overrides,
+  };
+}
 
 describe('detectAmbiguitySignals', () => {
   it('finds known ambiguity signal in text', () => {
@@ -62,5 +76,42 @@ describe('shouldAutoCEOReview', () => {
   it('returns true for maximally ambiguous goal', () => {
     const vague = 'I kind of want something that might probably work, not sure how, maybe TBD';
     assert.equal(shouldAutoCEOReview(vague), true);
+  });
+});
+
+describe('formatCEOReviewSection', () => {
+  it('includes original goal', () => {
+    const md = formatCEOReviewSection(makeResult({ originalGoal: 'my-unique-goal' }));
+    assert.ok(md.includes('my-unique-goal'));
+  });
+
+  it('includes elevated vision', () => {
+    const md = formatCEOReviewSection(makeResult({ elevatedVision: 'Elevated platform vision' }));
+    assert.ok(md.includes('Elevated platform vision'));
+  });
+
+  it('includes challenging questions', () => {
+    const md = formatCEOReviewSection(makeResult({ challengingQuestions: ['Why build this?'] }));
+    assert.ok(md.includes('Why build this?'));
+  });
+
+  it('includes ten star version', () => {
+    const md = formatCEOReviewSection(makeResult({ tenStarVersion: 'Perfect 10-star product' }));
+    assert.ok(md.includes('Perfect 10-star product'));
+  });
+
+  it('shows ambiguity signals when present', () => {
+    const md = formatCEOReviewSection(makeResult({ ambiguitySignalsFound: ['maybe', 'TBD'] }));
+    assert.ok(md.includes('maybe') || md.includes('TBD'));
+  });
+
+  it('mentions auto-triggered when true', () => {
+    const md = formatCEOReviewSection(makeResult({ wasAutoTriggered: true }));
+    assert.ok(md.toLowerCase().includes('auto'));
+  });
+
+  it('returns non-empty string', () => {
+    const md = formatCEOReviewSection(makeResult());
+    assert.ok(md.length > 0);
   });
 });
