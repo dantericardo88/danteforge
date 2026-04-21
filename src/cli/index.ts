@@ -784,6 +784,35 @@ program
   });
 
 program
+  .command('demo [fixture]')
+  .description('Side-by-side demo: raw prompt quality vs DanteForge-structured quality')
+  .option('--all', 'Run all demo fixtures')
+  .option('--cwd <path>', 'Project directory')
+  .action(async (fixture, opts) => {
+    try {
+      const { demo: demoCmd } = await import('./commands/demo.js');
+      await demoCmd({ fixture, all: opts.all, cwd: opts.cwd });
+    } catch (err) {
+      formatAndLogError(err, 'demo');
+      process.exitCode = 1;
+    }
+  });
+
+program
+  .command('explain [term]')
+  .description('Plain-English glossary — explain any DanteForge term, command, or concept')
+  .option('--list', 'List all available terms')
+  .action(async (term, opts) => {
+    try {
+      const { explain: explainFn } = await import('./commands/explain.js');
+      explainFn({ term, list: opts.list });
+    } catch (err) {
+      formatAndLogError(err, 'explain');
+      process.exitCode = 1;
+    }
+  });
+
+program
   .command('certify')
   .description('Generate a tamper-evident quality certificate (evidenceFingerprint) from convergence state')
   .option('--cwd <path>', 'Project directory')

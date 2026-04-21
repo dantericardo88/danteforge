@@ -1,25 +1,22 @@
-// Tests for the smart go.ts entry point (Sprint 50)
 import { describe, it } from 'node:test';
 import assert from 'node:assert';
 import { go } from '../src/cli/commands/go.js';
 import type { GoOptions } from '../src/cli/commands/go.js';
 import type { HarshScoreResult } from '../src/core/harsh-scorer.js';
 
-// ── Stubs ─────────────────────────────────────────────────────────────────────
-
 const makeScoreResult = (overall = 7.5): HarshScoreResult => ({
   displayScore: overall,
   displayDimensions: {
     functionality: 8.5,
     testing: 9.0,
-    errorHandling: 8.5,
-    security: 8.5,
-    developerExperience: 5.5,   // P0 gap
+    errorHandling: 6.2,
+    security: 6.8,
+    developerExperience: 5.5,
     autonomy: 9.0,
     maintainability: 8.0,
     performance: 7.5,
     documentation: 7.0,
-    uxPolish: 6.0,               // P0 gap
+    uxPolish: 6.0,
     planningQuality: 9.5,
     selfImprovement: 9.0,
     specDrivenPipeline: 9.5,
@@ -43,45 +40,101 @@ const stubSelfImprove = async () => ({
   dimensionsImproved: [],
 });
 
-// ── Tests ─────────────────────────────────────────────────────────────────────
+describe('go - first-run (no STATE.yaml)', () => {
+  const stubWizardAnswers = {
+    description: 'A test project',
+    projectType: 'CLI' as const,
+    competitors: [],
+    provider: 'ollama' as const,
+    qualityTarget: 9.0 as const,
+    startMode: 'offline' as const,
+    preferredLevel: 'magic' as const,
+  };
 
-describe('go — first-run (no STATE.yaml)', () => {
   it('shows welcome banner when no state exists', async () => {
     const lines: string[] = [];
     const opts: GoOptions = {
       _stateExists: async () => false,
-      _computeScore: async () => makeScoreResult(),
       _stdout: (l) => lines.push(l),
+      _runWizard: async () => null,
     };
     await go(opts);
     const text = lines.join('\n');
-    assert.ok(text.includes('Welcome to DanteForge'), 'should show welcome message');
-    assert.ok(text.includes('danteforge init'), 'should suggest init command');
+    assert.match(text, /Welcome to DanteForge/i);
+    assert.match(text, /3 quick questions/i);
   });
 
-  it('does not call computeScore when no state exists', async () => {
-    let scoreCalled = false;
+  it('first-run path uses wizard answers to seed init', async () => {
+    let initArgs: Record<string, unknown> | undefined;
     await go({
       _stateExists: async () => false,
-      _computeScore: async () => { scoreCalled = true; return makeScoreResult(); },
+      _runWizard: async () => stubWizardAnswers,
+      _initFn: async (opts) => {
+        initArgs = opts;
+      },
+      _scoreFn: async () => {},
       _stdout: () => {},
     });
-    assert.ok(!scoreCalled, 'score should not be computed on first run');
+    assert.deepStrictEqual(initArgs, {
+      cwd: process.cwd(),
+      guided: false,
+      nonInteractive: true,
+      provider: 'ollama',
+      projectDescription: 'A test project',
+      preferredLevel: 'magic',
+      preferLive: false,
+    });
+  });
+
+  it('wizard returning null skips bootstrap and score', async () => {
+    let initCalled = false;
+    let scoreCalled = false;
+    const lines: string[] = [];
+    await go({
+      _stateExists: async () => false,
+      _runWizard: async () => null,
+      _initFn: async () => {
+        initCalled = true;
+      },
+      _scoreFn: async () => {
+        scoreCalled = true;
+      },
+      _stdout: (l) => lines.push(l),
+    });
+    assert.equal(initCalled, false);
+    assert.equal(scoreCalled, false);
+    assert.match(lines.join('\n'), /Welcome to DanteForge/i);
+  });
+
+  it('shows setup complete message after first score', async () => {
+    const lines: string[] = [];
+    await go({
+      _stateExists: async () => false,
+      _runWizard: async () => stubWizardAnswers,
+      _initFn: async () => {},
+      _scoreFn: async (opts) => {
+        opts._stdout?.('score output');
+      },
+      _stdout: (l) => lines.push(l),
+    });
+    const text = lines.join('\n');
+    assert.match(text, /Setup complete/i);
+    assert.match(text, /danteforge auto-improve/i);
   });
 });
 
-describe('go — existing project', () => {
+describe('go - existing project', () => {
   it('shows state panel with score when STATE.yaml exists', async () => {
     const lines: string[] = [];
     await go({
       _stateExists: async () => true,
       _computeScore: async () => makeScoreResult(7.9),
-      _confirm: async () => false,  // skip self-improve
+      _choiceFn: async () => '',
       _stdout: (l) => lines.push(l),
     });
     const text = lines.join('\n');
-    assert.ok(text.includes('7.9'), 'should show overall score');
-    assert.ok(text.includes('P0'), 'should show P0 gaps');
+    assert.match(text, /7\.9/);
+    assert.match(text, /P0 gaps/i);
   });
 
   it('shows ceiling dimensions in state panel', async () => {
@@ -89,12 +142,84 @@ describe('go — existing project', () => {
     await go({
       _stateExists: async () => true,
       _computeScore: async () => makeScoreResult(),
-      _confirm: async () => false,
+      _choiceFn: async () => '',
+      _stdout: (l) => lines.push(l),
+    });
+    assert.match(lines.join('\n'), /Ceilings/i);
+  });
+
+  it('uses improve alias in the recommended next step', async () => {
+    const lines: string[] = [];
+    await go({
+      _stateExists: async () => true,
+      _computeScore: async () => makeScoreResult(),
+      _choiceFn: async () => '',
+      _stdout: (l) => lines.push(l),
+    });
+    assert.match(lines.join('\n'), /danteforge improve/i);
+  });
+
+  it('shows outcome-first recommendation language', async () => {
+    const lines: string[] = [];
+    await go({
+      _stateExists: async () => true,
+      _computeScore: async () => makeScoreResult(),
+      _choiceFn: async () => '',
       _stdout: (l) => lines.push(l),
     });
     const text = lines.join('\n');
-    // KNOWN_CEILINGS has Enterprise Readiness and Community Adoption
-    assert.ok(text.includes('Ceiling') || text.includes('ceiling'), 'should show ceiling info');
+    assert.match(text, /Your project is weakest at/i);
+    assert.match(text, /Best next move/i);
+    assert.match(text, /Expected outcome/i);
+  });
+
+  it('shows 3-choice menu when no --yes flag', async () => {
+    const lines: string[] = [];
+    await go({
+      _stateExists: async () => true,
+      _computeScore: async () => makeScoreResult(),
+      _choiceFn: async () => '',
+      _stdout: (l) => lines.push(l),
+    });
+    const text = lines.join('\n');
+    assert.match(text, /Review only/i);
+    assert.match(text, /Apply one improvement/i);
+    assert.match(text, /auto-improve/i);
+  });
+
+  it('choice 1 exits without running improvement', async () => {
+    let selfImproveCalled = false;
+    await go({
+      _stateExists: async () => true,
+      _computeScore: async () => makeScoreResult(),
+      _choiceFn: async () => '1',
+      _runSelfImprove: async () => { selfImproveCalled = true; return stubSelfImprove(); },
+      _stdout: () => {},
+    });
+    assert.equal(selfImproveCalled, false);
+  });
+
+  it('choice 3 runs autonomous loop with maxCycles 3', async () => {
+    let capturedMax: number | undefined;
+    await go({
+      _stateExists: async () => true,
+      _computeScore: async () => makeScoreResult(),
+      _choiceFn: async () => '3',
+      _runSelfImprove: async (opts) => { capturedMax = opts.maxCycles; return stubSelfImprove(); },
+      _stdout: () => {},
+    });
+    assert.equal(capturedMax, 3);
+  });
+
+  it('shows explain footer in state panel', async () => {
+    const lines: string[] = [];
+    await go({
+      _stateExists: async () => true,
+      _computeScore: async () => makeScoreResult(),
+      _choiceFn: async () => '',
+      _stdout: (l) => lines.push(l),
+    });
+    assert.match(lines.join('\n'), /danteforge explain/i);
   });
 
   it('runs self-improve when user confirms', async () => {
@@ -102,11 +227,14 @@ describe('go — existing project', () => {
     await go({
       _stateExists: async () => true,
       _computeScore: async () => makeScoreResult(),
-      _confirm: async () => true,
-      _runSelfImprove: async (opts) => { selfImproveCalled = true; return stubSelfImprove(); },
+      _choiceFn: async () => '2',
+      _runSelfImprove: async () => {
+        selfImproveCalled = true;
+        return stubSelfImprove();
+      },
       _stdout: () => {},
     });
-    assert.ok(selfImproveCalled, 'self-improve should run when confirmed');
+    assert.equal(selfImproveCalled, true);
   });
 
   it('skips self-improve when user declines', async () => {
@@ -114,11 +242,14 @@ describe('go — existing project', () => {
     await go({
       _stateExists: async () => true,
       _computeScore: async () => makeScoreResult(),
-      _confirm: async () => false,
-      _runSelfImprove: async () => { selfImproveCalled = true; return stubSelfImprove(); },
+      _choiceFn: async () => '',
+      _runSelfImprove: async () => {
+        selfImproveCalled = true;
+        return stubSelfImprove();
+      },
       _stdout: () => {},
     });
-    assert.ok(!selfImproveCalled, 'self-improve should not run when declined');
+    assert.equal(selfImproveCalled, false);
   });
 
   it('--yes flag bypasses confirm and runs self-improve directly', async () => {
@@ -127,11 +258,16 @@ describe('go — existing project', () => {
       yes: true,
       _stateExists: async () => true,
       _computeScore: async () => makeScoreResult(),
-      _confirm: async () => { throw new Error('confirm should not be called with --yes'); },
-      _runSelfImprove: async () => { selfImproveCalled = true; return stubSelfImprove(); },
+      _choiceFn: async () => {
+        throw new Error('choiceFn should not be called with --yes');
+      },
+      _runSelfImprove: async () => {
+        selfImproveCalled = true;
+        return stubSelfImprove();
+      },
       _stdout: () => {},
     });
-    assert.ok(selfImproveCalled, 'self-improve should run with --yes flag');
+    assert.equal(selfImproveCalled, true);
   });
 
   it('shows improvement summary after self-improve completes', async () => {
@@ -151,8 +287,8 @@ describe('go — existing project', () => {
       _stdout: (l) => lines.push(l),
     });
     const text = lines.join('\n');
-    assert.ok(text.includes('7.5'), 'should show before score');
-    assert.ok(text.includes('8.2'), 'should show after score');
+    assert.match(text, /Before:\s+7\.5/);
+    assert.match(text, /After:\s+8\.2/);
   });
 
   it('shows LLM warning when no LLM is configured', async () => {
@@ -160,12 +296,11 @@ describe('go — existing project', () => {
     await go({
       _stateExists: async () => true,
       _computeScore: async () => makeScoreResult(),
-      _confirm: async () => false,
+      _choiceFn: async () => '',
       _isLLMAvailable: async () => false,
       _stdout: (l) => lines.push(l),
     });
-    const text = lines.join('\n');
-    assert.ok(text.includes('No LLM detected') || text.includes('danteforge doctor'), 'should warn about missing LLM');
+    assert.match(lines.join('\n'), /No LLM detected|danteforge doctor/i);
   });
 
   it('does not show LLM warning when LLM is available', async () => {
@@ -173,65 +308,10 @@ describe('go — existing project', () => {
     await go({
       _stateExists: async () => true,
       _computeScore: async () => makeScoreResult(),
-      _confirm: async () => false,
+      _choiceFn: async () => '',
       _isLLMAvailable: async () => true,
       _stdout: (l) => lines.push(l),
     });
-    const text = lines.join('\n');
-    assert.ok(!text.includes('No LLM detected'), 'should not warn when LLM is available');
-  });
-});
-
-describe('go — first-run wizard path (Sprint 51)', () => {
-  const stubWizardAnswers = {
-    description: 'A test project',
-    projectType: 'CLI' as const,
-    competitors: [],
-    provider: 'ollama' as const,
-    qualityTarget: 9.0 as const,
-  };
-
-  it('calls wizard on first-run when state does not exist', async () => {
-    let wizardCalled = false;
-    const lines: string[] = [];
-    await go({
-      _stateExists: async () => false,
-      _runWizard: async () => { wizardCalled = true; return stubWizardAnswers; },
-      _initFn: async () => {},
-      _qualityFn: async () => {},
-      _stdout: (l) => lines.push(l),
-    });
-    assert.ok(wizardCalled, 'wizard should be called on first run');
-  });
-
-  it('wizard returning null skips bootstrap and returns after banner', async () => {
-    let initCalled = false;
-    let qualityCalled = false;
-    const lines: string[] = [];
-    await go({
-      _stateExists: async () => false,
-      _runWizard: async () => null,
-      _initFn: async () => { initCalled = true; },
-      _qualityFn: async () => { qualityCalled = true; },
-      _stdout: (l) => lines.push(l),
-    });
-    assert.ok(!initCalled, 'init should not be called when wizard returns null');
-    assert.ok(!qualityCalled, 'quality should not be called when wizard returns null');
-    const text = lines.join('\n');
-    assert.ok(text.includes('Welcome to DanteForge'), 'banner should still show');
-  });
-
-  it('wizard answers trigger setup complete message', async () => {
-    const lines: string[] = [];
-    await go({
-      _stateExists: async () => false,
-      _runWizard: async () => stubWizardAnswers,
-      _initFn: async () => {},
-      _qualityFn: async (opts) => { opts._stdout('  7.5/10  — good'); },
-      _stdout: (l) => lines.push(l),
-    });
-    const text = lines.join('\n');
-    assert.ok(text.includes('Setup complete'), 'should emit setup complete message');
-    assert.ok(text.includes('danteforge ascend') || text.includes('ascend'), 'should mention ascend command');
+    assert.doesNotMatch(lines.join('\n'), /No LLM detected/i);
   });
 });

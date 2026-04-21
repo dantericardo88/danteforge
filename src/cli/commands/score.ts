@@ -203,6 +203,27 @@ export async function bootstrapEcosystemSignals(
   return { skillCount, hasPluginManifest, hasComplexityClassifier, inferredWorkflowStage, hasVerifyEvidence };
 }
 
+// ── Human-readable dimension descriptions ─────────────────────────────────────
+// Shown below each P0 item so non-technical users understand what the score means.
+
+export const DIMENSION_HUMAN_TEXT: Partial<Record<string, string>> = {
+  errorHandling: 'code crashes or shows confusing errors when things go wrong',
+  testing: 'insufficient tests — bugs are harder to catch before users see them',
+  security: 'security gaps that could expose user data or allow attacks',
+  performance: 'slower than needed — users wait longer than necessary',
+  documentation: 'hard to understand or onboard new contributors',
+  maintainability: 'risky to change — modifications break other things',
+  uxPolish: 'user-facing interfaces feel rough or inconsistent',
+  functionality: 'core features are missing, incomplete, or unreliable',
+  autonomy: 'still requires too much manual intervention between steps',
+  selfImprovement: 'limited ability to learn and adapt from past mistakes',
+  specDrivenPipeline: 'build process is hard to predict or review',
+  developerExperience: 'CLI output is unclear and errors are hard to debug',
+  tokenEconomy: 'excessive LLM calls — same quality at higher cost than needed',
+  convergenceSelfHealing: 'failures stop progress instead of recovering automatically',
+  planningQuality: 'task breakdown leads to rework and blocked steps',
+};
+
 // ── Main ──────────────────────────────────────────────────────────────────────
 
 export async function score(options: ScoreOptions = {}): Promise<ScoreResult> {
@@ -339,9 +360,17 @@ export async function score(options: ScoreOptions = {}): Promise<ScoreResult> {
   emit('');
   emit('  P0 gaps:');
   p0Items.forEach((item, i) => {
-    const dimLabel = item.dimension.padEnd(22);
-    emit(`  ${i + 1}. ${dimLabel}(${item.score.toFixed(1)})  → ${item.action}`);
+    const label = item.dimension.replace(/([A-Z])/g, ' $1').trim();
+    const humanLabel = label.charAt(0).toUpperCase() + label.slice(1);
+    const humanText = DIMENSION_HUMAN_TEXT[item.dimension];
+    if (humanText) {
+      emit(`  ${i + 1}. ${humanLabel.padEnd(22)}${item.score.toFixed(1)}/10  — ${humanText}`);
+      emit(`     ${''.padEnd(22)}→ ${item.action}`);
+    } else {
+      emit(`  ${i + 1}. ${humanLabel.padEnd(22)}${item.score.toFixed(1)}/10  → ${item.action}`);
+    }
   });
+  emit('  Unfamiliar with any term? Run: danteforge explain <term>');
   emit('');
 
   // --full: show all 18 dimensions sorted by score (lowest = biggest gap first)

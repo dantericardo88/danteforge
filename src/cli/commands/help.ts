@@ -42,6 +42,8 @@ export const COMMAND_HELP: Record<string, string> = {
   'local-harvest': 'Harvest patterns from local private repos, folders, and zip archives.\n  Usage: danteforge local-harvest [paths...] [--config <path>] [--depth shallow|medium|full] [--dry-run]\n  Creates LOCAL_HARVEST_REPORT.md and recommended OSS queries from private project sources.',
   harvest: 'Titan Harvest V2 - constitutional harvest of OSS patterns.\n  Usage: danteforge harvest <system> [--prompt] [--lite]\n  Runs the 5-step track (or SEP-LITE) and produces summary.json plus a sha256 hash.',
   'frontier-gap': 'Frontier Gap Engine: rank skeptic objections, classify gap types, prescribe smallest proof.\n  Usage: danteforge frontier-gap [dimension] [--raise-ready] [--matrix <path>] [--cwd <path>]\n  Example: danteforge frontier-gap D12  |  danteforge frontier-gap --raise-ready',
+  explain: 'Plain-English glossary — explain any DanteForge term or concept.\n  Usage: danteforge explain [term] [--list]\n  Example: danteforge explain magic  |  danteforge explain --list',
+  demo: 'Side-by-side demo: raw prompt quality vs DanteForge-structured quality.\n  Usage: danteforge demo [fixture] [--all]\n  Example: danteforge demo  |  danteforge demo task-tracker',
 };
 
 const STAGE_SUGGESTIONS: Record<WorkflowStage, string> = {
@@ -115,26 +117,24 @@ export async function helpCmd(query?: string, opts: { all?: boolean } = {}) {
     logger.info('DanteForge - what do you want to do?');
     logger.info('');
     logger.info('  Start here:');
-    logger.info('    danteforge go             - state panel + guided action');
-    logger.info('    danteforge start          - plain-English alias for go');
+    logger.info('    danteforge go             - see your score and top gaps (start here)');
     logger.info('');
     logger.info('  Improve your project:');
-    logger.info('    danteforge improve <goal> - plain-English alias for magic');
-    logger.info('    danteforge magic <goal>   - targeted improvement cycle');
-    logger.info('    danteforge auto-improve   - plain-English alias for ascend');
+    logger.info('    danteforge improve <goal> - run one targeted improvement cycle');
+    logger.info('    danteforge auto-improve   - autonomous loop until 9.0/10');
     logger.info('');
     logger.info('  Score and verify:');
-    logger.info('    danteforge measure        - plain-English alias for score');
-    logger.info('    danteforge score          - fast score: one number + 3 P0 items (<5s)');
-    logger.info('    danteforge check          - plain-English alias for verify');
-    logger.info('    danteforge verify         - machine-readable quality gate');
+    logger.info('    danteforge measure        - fast score: one number + 3 gaps (<5s)');
+    logger.info('    danteforge check          - machine-readable quality gate');
     logger.info('');
     logger.info('  Learn from open source:');
     logger.info('    danteforge oss            - harvest patterns from top OSS repos');
     logger.info('');
+    logger.info('  Understand a term:');
+    logger.info('    danteforge explain <term> - plain-English glossary');
+    logger.info('');
     logger.info('  Set up:');
     logger.info('    danteforge init           - first-run wizard (3 questions, 2 minutes)');
-    logger.info('    danteforge init --advanced - editor/provider/universe extras');
     logger.info('');
 
     try {
