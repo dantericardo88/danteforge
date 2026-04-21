@@ -152,9 +152,10 @@ describe('init — interactive (TTY)', () => {
 
   it('treats invalid level choice as magic', async () => {
     let savedState: DanteState | undefined;
+    // Q1=description, Q2=level (banana→invalid→magic), Q3=provider
     await init(makeOptions({
       _isTTY: true,
-      _readline: mockReadline(['', '1', 'banana']),
+      _readline: mockReadline(['', 'banana', '']),
       _saveState: async (state) => { savedState = state; },
     }));
     assert.equal(savedState?.preferredLevel, 'magic');
@@ -197,13 +198,14 @@ describe('init — nonInteractive option', () => {
 // ── Adversarial scoring onboarding ───────────────────────────────────────────
 
 describe('init — adversarial scoring Q6', () => {
-  it('adversary question is asked in TTY mode', async () => {
+  it('adversary question is asked in TTY mode with --advanced', async () => {
     const questions: string[] = [];
-    // answers: description, experience, level, provider, adversary
-    const answers = ['My app', '1', '2', '1', 'Y'];
+    // answers: description, level, provider, adversary (Q6 only shown with advanced:true)
+    const answers = ['My app', '2', '1', 'Y'];
     let idx = 0;
     await init(makeOptions({
       _isTTY: true,
+      advanced: true,
       _detectIDE: () => null,   // no IDE question
       _readline: {
         question: (p: string, cb: (a: string) => void) => {
@@ -221,12 +223,14 @@ describe('init — adversarial scoring Q6', () => {
     assert.ok(hasAdversaryQ, `expected adversary question, got: ${questions.join(' | ')}`);
   });
 
-  it('saves adversary config when user answers Y', async () => {
+  it('saves adversary config when user answers Y with --advanced', async () => {
     let savedConfig: unknown;
-    const answers = ['', '1', '2', '1', 'Y'];
+    // answers: description, level, provider, adversary
+    const answers = ['', '2', '1', 'Y'];
     let idx = 0;
     await init(makeOptions({
       _isTTY: true,
+      advanced: true,
       _detectIDE: () => null,
       _readline: {
         question: (_p: string, cb: (a: string) => void) => cb(answers[idx++] ?? ''),
@@ -254,13 +258,14 @@ describe('init — adversarial scoring Q6', () => {
 // ── Q7: Universe definition onboarding ───────────────────────────────────────
 
 describe('init — Q7 universe definition', () => {
-  it('answers y to universe definition → _defineUniverse called', async () => {
+  it('answers y to universe definition → _defineUniverse called (requires --advanced)', async () => {
     let universeCalled = false;
-    // answers: description, experience, level, provider, adversary, universe
-    const answers = ['test project', '1', '2', '1', 'n', 'y'];
+    // answers: description, level, provider, adversary=n, universe=y
+    const answers = ['test project', '2', '1', 'n', 'y'];
     let idx = 0;
     await init(makeOptions({
       _isTTY: true,
+      advanced: true,
       _detectIDE: () => null,
       _readline: {
         question: (_p: string, cb: (a: string) => void) => cb(answers[idx++] ?? ''),

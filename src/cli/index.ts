@@ -25,7 +25,8 @@ program
   .description('Interactive first-run wizard — detect project, check health, show next steps')
   .option('--non-interactive', 'Skip wizard questions (for CI/scripts)')
   .option('--guided', 'Force the full interactive setup wizard (overrides TTY detection)')
-  .action((opts) => commands.init({ nonInteractive: opts.nonInteractive, guided: opts.guided }));
+  .option('--advanced', 'Enable advanced setup: adversarial scoring + competitive universe')
+  .action((opts) => commands.init({ nonInteractive: opts.nonInteractive, guided: opts.guided, advanced: opts.advanced }));
 
 program
   .command('constitution')
@@ -384,8 +385,9 @@ program
 
 program
   .command('help [query]')
-  .description('Context-aware guidance engine')
-  .action(commands.helpCmd);
+  .description('Context-aware guidance — shows essential commands by default, --all for full list')
+  .option('--all', 'Show all 100+ commands instead of the essential 8')
+  .action((query, opts) => commands.helpCmd(query, { all: opts.all }));
 
 program
   .command('docs')

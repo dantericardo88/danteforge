@@ -3,11 +3,16 @@ import { logger } from '../../core/logger.js';
 import { listSkills } from '../../core/skills.js';
 import { loadState, type WorkflowStage } from '../../core/state.js';
 import { withErrorBoundary } from '../../core/cli-error-boundary.js';
+import {
+  CANVAS_PRESET_TEXT,
+  REPO_PIPELINE_TEXT,
+  SPARK_PLANNING_TEXT,
+} from '../../core/workflow-surface.js';
 
-const COMMAND_HELP: Record<string, string> = {
-  spark: 'Zero-token planning preset.\n  Usage: danteforge spark [goal] [--prompt] [--skip-tech-decide]\n  Runs review -> constitution -> specify -> clarify -> tech-decide -> plan -> tasks without jumping into execution.',
+export const COMMAND_HELP: Record<string, string> = {
+  spark: `Zero-token planning preset.\n  Usage: danteforge spark [goal] [--prompt] [--skip-tech-decide]\n  Runs ${SPARK_PLANNING_TEXT} without jumping into execution.`,
   ember: 'Very low-token preset for quick features and prototypes.\n  Usage: danteforge ember [goal] [--profile budget|balanced|quality] [--prompt]\n  Uses budget-focused autoforge with light checkpoints and basic loop detection.',
-  canvas: 'Design-first frontend preset.\n  Usage: danteforge canvas [goal] [--profile budget|balanced|quality] [--prompt] [--design-prompt "<text>"]\n  Runs design -> autoforge -> ux-refine -> verify for frontend-heavy work.',
+  canvas: `Design-first frontend preset.\n  Usage: danteforge canvas [goal] [--profile budget|balanced|quality] [--prompt] [--design-prompt "<text>"]\n  Runs ${CANVAS_PRESET_TEXT} for frontend-heavy work.`,
   constitution: 'Establish project principles and constraints.\n  Usage: danteforge constitution\n  Run this first to set the foundation for your project.',
   specify: 'Transform a high-level idea into full spec artifacts.\n  Usage: danteforge specify <idea> [--prompt] [--light]\n  Example: danteforge specify "Build a real-time chat app with WebSocket support"',
   clarify: 'Find gaps, ambiguities, and inconsistencies in your spec.\n  Usage: danteforge clarify [--prompt]\n  Generates Q&A to refine your specification.',
@@ -53,7 +58,7 @@ const STAGE_SUGGESTIONS: Record<WorkflowStage, string> = {
   synthesize: 'Run "danteforge feedback" for manual refinement or "danteforge feedback --auto" with a verified live provider.',
 };
 
-export async function helpCmd(query?: string) {
+export async function helpCmd(query?: string, opts: { all?: boolean } = {}) {
   return withErrorBoundary('help', async () => {
   if (query) {
     const key = query.toLowerCase().replace('danteforge ', '');
@@ -77,41 +82,67 @@ export async function helpCmd(query?: string) {
     return;
   }
 
-  logger.info('DanteForge - Agentic Development CLI');
+  // Full command reference (--all flag)
+  if (opts.all) {
+    logger.info('DanteForge - Full Command Reference');
+    logger.info('');
+    logger.info(`Pipeline: ${REPO_PIPELINE_TEXT}`);
+    logger.info('Preset ladder: spark -> ember -> canvas -> magic -> blaze -> nova -> inferno');
+    logger.info('');
+
+    try {
+      const state = await loadState();
+      const suggestion = STAGE_SUGGESTIONS[state.workflowStage] ?? STAGE_SUGGESTIONS.initialized;
+      logger.info(`Current workflow stage: ${state.workflowStage}`);
+      logger.info(`Current execution wave: ${state.currentPhase}`);
+      logger.success(`Suggested next step: ${suggestion}`);
+    } catch { /* no state — skip */ }
+
+    logger.info('');
+    logger.info('All commands:');
+    for (const [cmd, desc] of Object.entries(COMMAND_HELP)) {
+      const firstLine = desc.split('\n')[0] ?? desc;
+      logger.info(`  danteforge ${cmd.padEnd(20)} ${firstLine}`);
+    }
+    logger.info('');
+    logger.info('Run "danteforge help <command>" for detailed help on any command.');
+    return;
+  }
+
+  // Default: progressive disclosure — show 8 essential commands grouped by intent
   logger.info('');
-  logger.info('Pipeline: review -> constitution -> specify -> clarify -> plan -> tasks -> forge -> verify -> synthesize');
-  logger.info('Preset ladder: spark -> ember -> canvas -> magic -> blaze -> nova -> inferno');
+  logger.info('DanteForge — what do you want to do?');
+  logger.info('');
+  logger.info('  See your score + top gaps:');
+  logger.info('    danteforge go            — state panel + guided action (start here)');
+  logger.info('');
+  logger.info('  Improve your project:');
+  logger.info('    danteforge magic <goal>  — targeted improvement cycle (most common)');
+  logger.info('    danteforge inferno <goal>— maximum push: OSS discovery + full quality run');
+  logger.info('    danteforge ascend        — autonomous loop: runs until all dims hit 9.0');
+  logger.info('');
+  logger.info('  Score and verify:');
+  logger.info('    danteforge score         — fast score: one number + 3 P0 items (<5s)');
+  logger.info('    danteforge verify        — machine-readable quality gate');
+  logger.info('');
+  logger.info('  Learn from open source:');
+  logger.info('    danteforge oss           — harvest patterns from top OSS repos');
+  logger.info('');
+  logger.info('  Set up:');
+  logger.info('    danteforge init          — first-run wizard (3 questions, 2 minutes)');
+  logger.info('    danteforge init --advanced  — also configure adversarial scoring + universe');
   logger.info('');
 
   try {
     const state = await loadState();
     const suggestion = STAGE_SUGGESTIONS[state.workflowStage] ?? STAGE_SUGGESTIONS.initialized;
-    logger.info(`Current workflow stage: ${state.workflowStage}`);
-    logger.info(`Current execution wave: ${state.currentPhase}`);
-    logger.success(`Suggested next step: ${suggestion}`);
-
-    if (state.workflowStage === 'initialized') {
-      logger.info('');
-      logger.info('Getting Started:');
-      logger.info('  danteforge init           - set up a new project (recommended first step)');
-      logger.info('  danteforge spark <goal>   - zero-token planning for a new idea');
-      logger.info('  danteforge canvas <goal>  - design-first frontend execution');
-      logger.info('  danteforge magic [goal]   - default follow-up gap-closing preset');
-      logger.info('  danteforge nova <goal>    - planned sprint with deep execution, no OSS');
-      logger.info('  danteforge inferno <goal> - first big attack with OSS discovery');
-      logger.info('  danteforge constitution   - start the step-by-step workflow');
-      logger.info('');
-      logger.info('Usage rule: /canvas for design-first frontend work, /inferno for first-time new matrix dimensions, /magic for follow-up PRD gap closing.');
-      logger.info('');
-      logger.info('Use "danteforge --help" for the full command list with categories.');
-    }
-  } catch {
+    logger.success(`  Next for your project: ${suggestion}`);
     logger.info('');
-    logger.info('No project detected. Run "danteforge init" to get started.');
-  }
+  } catch { /* no state — skip */ }
 
+  logger.info('  See all 100+ commands:  danteforge help --all');
+  logger.info('  Command detail:         danteforge help <command>');
+  logger.info('  Usage flags:            danteforge <command> --help');
   logger.info('');
-  logger.info('Run "danteforge help <command>" for detailed help on any command.');
-  logger.info('Run "danteforge <command> --help" for usage options.');
   });
 }

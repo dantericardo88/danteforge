@@ -79,6 +79,23 @@ describe('danteforge init', () => {
     assert.match(output, /danteforge (magic|spark|help)/i);
     assert.match(output, /Setup complete/i);
   });
+
+  it('prints an offline summary with one clear next command', async () => {
+    const root = await fs.mkdtemp(path.join(os.tmpdir(), 'df-init-'));
+    tempRoots.push(root);
+    const cwd = path.join(root, 'project');
+    const home = path.join(root, 'home');
+    await fs.mkdir(cwd, { recursive: true });
+    await fs.mkdir(home, { recursive: true });
+    await fs.writeFile(path.join(cwd, 'package.json'), '{"name":"test"}');
+
+    const result = runCli(cwd, home, ['init']);
+    const output = result.stdout + result.stderr;
+    assert.strictEqual(result.status, 0, `Exit code: ${result.status}\n${output}`);
+    assert.match(output, /Your next command/i);
+    assert.match(output, /danteforge go/i);
+    assert.match(output, /danteforge config --set-key/i);
+  });
 });
 
 describe('help grouping', () => {

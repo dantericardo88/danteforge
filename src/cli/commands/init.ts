@@ -38,6 +38,8 @@ export interface InitOptions {
   nonInteractive?: boolean;
   /** Force the full interactive wizard even when TTY detection is uncertain */
   guided?: boolean;
+  /** Enable advanced setup questions (adversarial scoring, competitive universe) */
+  advanced?: boolean;
   provider?: LLMProvider;
   cwd?: string;
   // Injection seams for testing
@@ -58,6 +60,31 @@ export interface InitOptions {
   _defineUniverse?: (opts: { cwd: string; interactive: boolean }) => Promise<unknown>;
 }
 
+interface InitSummaryOptions {
+  llmReady: boolean;
+  preferredLevel: string;
+  projectDescription: string;
+  hasConfiguredKey: boolean;
+}
+
+function buildInitSummary(options: InitSummaryOptions): string[] {
+  const idea = options.projectDescription || 'Your idea here';
+  const nextCommand = options.llmReady
+    ? `danteforge ${options.preferredLevel} "${idea}"`
+    : `danteforge spark "${idea}"`;
+
+  const lines = [
+    `Mode: ${options.llmReady ? 'live LLM ready' : 'offline prompt-first'}`,
+    `Recommended next command: ${nextCommand}`,
+  ];
+
+  if (!options.hasConfiguredKey) {
+    lines.push('Add a provider: danteforge config --set-key "openai:<key>"');
+  }
+
+  return lines;
+}
+
 // ── Main command ──────────────────────────────────────────────────────────────
 
 export async function init(options: InitOptions = {}): Promise<void> {
@@ -74,11 +101,10 @@ export async function init(options: InitOptions = {}): Promise<void> {
 
   // ── Step 1: Wizard questions (TTY only) ──────────────────────────────────
   let projectDescription = '';
-  let experienceLevel = 1;  // 1=new, 2=used before, 3=power user
   let preferredLevel = 'magic';
 
   if (isInteractive) {
-    logger.info('Welcome to DanteForge! Let me personalize your setup.');
+    logger.info('Welcome to DanteForge! Three quick questions to personalize your setup.');
     logger.info('');
 
     projectDescription = await askQuestion(
@@ -87,19 +113,10 @@ export async function init(options: InitOptions = {}): Promise<void> {
     );
 
     logger.info('');
-    logger.info('  Your experience with DanteForge:');
-    logger.info('    1. New to DanteForge');
-    logger.info('    2. Used it before');
-    logger.info('    3. Power user');
-    const expChoice = await askQuestion('  Enter choice [1]: ', options._readline);
-    experienceLevel = parseInt(expChoice.trim() || '1', 10);
-    if (![1, 2, 3].includes(experienceLevel)) experienceLevel = 1;
-
-    logger.info('');
     logger.info('  How much automation do you want by default?');
-    logger.info('    1. Just planning (spark)  — zero tokens, safe to try');
-    logger.info('    2. Balanced (magic)       — recommended for most work');
-    logger.info('    3. Full power (inferno)   — maximum quality push');
+    logger.info('    1. Light (spark)    — planning only, zero tokens, safe to try');
+    logger.info('    2. Balanced (magic) — recommended for most work');
+    logger.info('    3. Maximum (inferno)— full OSS discovery + quality push');
     const levelChoice = await askQuestion('  Enter choice [2]: ', options._readline);
     const levelNum = parseInt(levelChoice.trim() || '2', 10);
     preferredLevel = levelNum === 1 ? 'spark' : levelNum === 3 ? 'inferno' : 'magic';
@@ -143,39 +160,42 @@ export async function init(options: InitOptions = {}): Promise<void> {
       }
     }
 
-    // Q6 — Adversarial scoring setup
-    logger.info('');
-    logger.info('  Adversarial scoring runs a second LLM to challenge your self-score.');
-    logger.info('  It catches inflation: the same LLM that builds code tends to be lenient');
-    logger.info('  on its own work. A second opinion — especially a different model —');
-    logger.info('  produces scores you can actually trust.');
-    logger.info('  → Ollama (local, free) is detected and used automatically.');
-    logger.info('  → The better the adversary, the more honest the score.');
-    const advAnswer = await askQuestion('  Enable adversarial scoring? [Y/n] ', options._readline);
-    if (advAnswer.trim().toLowerCase() !== 'n') {
-      try {
-        const loadConfigFn = options._loadConfig ?? loadConfig;
-        const saveConfigFn = options._saveConfig ?? saveConfig;
-        const cfg = await loadConfigFn();
-        cfg.adversary = { enabled: true };
-        await saveConfigFn(cfg);
-        logger.success('  Adversarial scoring enabled. Run `danteforge score --adversary` to try it.');
-      } catch { /* best-effort — don't break init if config save fails */ }
-    }
-
-    logger.info('');
-
-    // Q7: Define competitive universe now?
-    const defineNow = await askQuestion('Define your competitive universe now? (helps ascend/compete target the right goals) [y/N]: ', options._readline);
-    if (defineNow.toLowerCase() === 'y' || defineNow.toLowerCase() === 'yes') {
-      try {
-        const { defineUniverse } = await import('../../core/universe-definer.js');
-        const defineUniverseFn = options._defineUniverse ?? defineUniverse;
-        await defineUniverseFn({ cwd, interactive: true });
-        logger.success('Competitive universe defined! Run `danteforge ascend` to start improving.');
-      } catch (err) {
-        logger.warn(`Universe definition skipped: ${err instanceof Error ? err.message : String(err)}`);
+    // Advanced setup questions — only asked with --advanced flag
+    if (options.advanced) {
+      // Adversarial scoring
+      logger.info('');
+      logger.info('  Adversarial scoring runs a second LLM to challenge your self-score,');
+      logger.info('  catching inflation automatically. Recommended for honest quality tracking.');
+      const advAnswer = await askQuestion('  Enable adversarial scoring? [Y/n] ', options._readline);
+      if (advAnswer.trim().toLowerCase() !== 'n') {
+        try {
+          const loadConfigFn = options._loadConfig ?? loadConfig;
+          const saveConfigFn = options._saveConfig ?? saveConfig;
+          const cfg = await loadConfigFn();
+          cfg.adversary = { enabled: true };
+          await saveConfigFn(cfg);
+          logger.success('  Adversarial scoring enabled. Run `danteforge score --adversary` to try it.');
+        } catch { /* best-effort — don't break init if config save fails */ }
       }
+
+      logger.info('');
+
+      // Competitive universe
+      const defineNow = await askQuestion('  Define your competitive universe now? (helps ascend/compete target the right goals) [y/N] ', options._readline);
+      if (defineNow.toLowerCase() === 'y' || defineNow.toLowerCase() === 'yes') {
+        try {
+          const { defineUniverse } = await import('../../core/universe-definer.js');
+          const defineUniverseFn = options._defineUniverse ?? defineUniverse;
+          await defineUniverseFn({ cwd, interactive: true });
+          logger.success('Competitive universe defined! Run `danteforge ascend` to start improving.');
+        } catch (err) {
+          logger.warn(`Universe definition skipped: ${err instanceof Error ? err.message : String(err)}`);
+        }
+      }
+    } else {
+      logger.info('');
+      logger.info('  Tip: run `danteforge init --advanced` to configure adversarial scoring and');
+      logger.info('  competitive universe (helps ascend/compete target the right dimensions).');
     }
   }
 
@@ -220,6 +240,7 @@ export async function init(options: InitOptions = {}): Promise<void> {
   logger.info('Health checks:');
 
   const checks: { name: string; ok: boolean; message: string }[] = [];
+  let hasConfiguredKey = false;
 
   const major = parseInt(process.version.slice(1), 10);
   checks.push({
@@ -232,11 +253,11 @@ export async function init(options: InitOptions = {}): Promise<void> {
 
   try {
     const config = await loadConfig();
-    const hasKey = Object.values(config.providers).some((p) => p?.apiKey);
+    hasConfiguredKey = Object.values(config.providers).some((p) => p?.apiKey);
     checks.push({
       name: 'API key',
-      ok: hasKey,
-      message: hasKey
+      ok: hasConfiguredKey,
+      message: hasConfiguredKey
         ? `Provider: ${config.defaultProvider} (key configured)`
         : 'No API key — run "danteforge config --set-key" to add one.',
     });
@@ -280,34 +301,21 @@ export async function init(options: InitOptions = {}): Promise<void> {
   logger.success('Setup complete!');
   logger.info('');
 
-  if (isInteractive && experienceLevel === 1) {
-    // New user — hand-hold
-    logger.info('Since you\'re new, here\'s the recommended path:');
+  // Simple, consistent guidance for all users
+  const idea = projectDescription || 'your idea here';
+  logger.info('Your next command:');
+  logger.info('');
+  logger.info(`  danteforge go`);
+  logger.info('  ↑ Shows your quality score and top gaps, then asks what to improve.');
+  logger.info('');
+  logger.info('Or jump straight in:');
+  logger.info(`  danteforge ${preferredLevel} "${idea}"`);
+  logger.info('');
+  if (!hasConfiguredKey) {
+    logger.info('  To add a provider: danteforge config --set-key "openai:<key>"');
     logger.info('');
-    logger.info(`  1. danteforge ${preferredLevel} "${projectDescription || 'your idea here'}"`);
-    logger.info('     ↑ This single command runs the full pipeline.');
-    logger.info('');
-    logger.info('  Or step-by-step to learn how it works:');
-    logger.info('    danteforge spark "your idea"  — planning only, zero tokens');
-    logger.info('    danteforge help               — context-aware guidance');
-    logger.info('');
-    logger.info('  → Tip: run "danteforge define-done" to set your quality target.');
-  } else if (isInteractive && experienceLevel === 3) {
-    // Power user — show the power commands
-    logger.info('Power user commands:');
-    logger.info(`  danteforge ${preferredLevel} "goal"   — run at preferred level`);
-    logger.info('  danteforge assess                — score vs competitive universe');
-    logger.info('  danteforge self-improve          — autonomous quality loop');
-    logger.info('  danteforge universe              — view feature universe');
-    logger.info('  danteforge define-done           — set completion target');
-  } else {
-    // Default guidance
-    if (llmReady) {
-      logger.info('  Quick start:  danteforge magic "Your idea here"');
-    }
-    logger.info('  Step-by-step: danteforge spark "Your idea here"');
-    logger.info('  Help:         danteforge help');
   }
+  logger.info('  Help: danteforge help');
 
   logger.info('');
   logger.info('Run "danteforge doctor" for full system diagnostics.');

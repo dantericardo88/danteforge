@@ -1,4 +1,4 @@
-# DanteForge — spec-driven agentic dev CLI. Works with Claude Code, Codex, Cursor, Goose.
+# DanteForge - spec-driven agentic dev CLI. Works with Claude Code, local Codex installs, Cursor, and Goose.
 
 [![npm version](https://img.shields.io/badge/npm-0.17.0-blue)](https://www.npmjs.com/package/danteforge)
 [![license](https://img.shields.io/badge/license-MIT-green)](LICENSE)
@@ -11,14 +11,48 @@ npm install -g danteforge
 danteforge init
 ```
 
-## Get Started in 5 Minutes
+## First 5 Minutes
 
 ```bash
 danteforge go
 ```
 
-**First run:** 5-question setup wizard → your first quality score + top 3 gaps to fix.
-**Every run after:** shows current score, recommends the one next action, asks to confirm.
+**First run** (no project yet): 3-question setup wizard (2 min) → quality score → top 3 gaps.
+**Every run after**: shows current score, recommends the one next action, asks to confirm.
+
+**What you'll see after setup:**
+
+```
+  DanteForge  —  Project State
+  ─────────────────────────────────────────
+  Overall  6.8/10  needs-work
+
+  P0 gaps (below 7.0):
+    Error Handling        ████░░░░  6.2
+    Security              ████░░░░  6.8
+
+  Recommended next step:
+    Improve Error Handling  (currently 6.2/10)
+    Runs an automated cycle targeting this gap — takes 1-3 minutes.
+    → danteforge magic "improve error handling"
+
+  Start? [Y/n]
+```
+
+**No API key yet?** All planning commands work offline. Only improvement loops need a provider.
+
+```bash
+danteforge spark "your idea"   # zero-token planning — works without any API key
+danteforge config --set-key "claude:<key>"  # add a key when ready
+```
+
+## Flagship Path
+
+If you only learn one DanteForge loop, make it this one:
+
+1. `danteforge init` — 3-question setup, detect project, health checks (2 min).
+2. `danteforge go` — see your score, confirm one improvement, let it run.
+3. `danteforge verify` — machine-readable quality gate before you call anything "done".
 
 See it working right now — the todo-app has already been run through the full pipeline:
 
@@ -46,7 +80,7 @@ danteforge score       # fast score: one number + 3 P0 items in <5s
 danteforge init        # first-run wizard (or --guided to force interactive)
 ```
 
-## Quick Start (Full Pipeline)
+## Full Pipeline Example
 
 ```bash
 danteforge constitution   # define your project
@@ -58,15 +92,25 @@ danteforge assess         # 18-dimension quality report vs 27 competitors
 
 DanteForge exposes an MCP server that each of these agents can connect to directly:
 
-- **Claude Code** — full MCP integration + plugin manifest + slash commands
-- **Codex CLI** — native workflow slash commands via `~/.codex/commands`
-- **Cursor** — MCP server + `.cursor/mcp.json` config
-- **Windsurf** — MCP server via stdio
+- **Claude Code** - full MCP integration + plugin manifest + slash commands
+- **Codex CLI (local installs)** - native workflow slash commands via `~/.codex/commands`
+- **Cursor** - MCP server + `.cursor/mcp.json` config
+- **Windsurf** - MCP server via stdio
 
 ```json
 // Add to your Claude Code / Cursor MCP config:
 { "danteforge": { "command": "danteforge", "args": ["mcp-server"] } }
 ```
+
+## Supported Programmatic API
+
+The supported typed library surface is `danteforge/sdk`.
+
+```ts
+import { assess, computeHarshScore, loadState } from 'danteforge/sdk';
+```
+
+Treat the root `danteforge` package as the CLI entrypoint, not the primary typed API surface.
 
 ## Why DanteForge?
 
@@ -77,9 +121,21 @@ DanteForge is the **trust spine** for AI-assisted development — it prevents th
 - **Evidence-based convergence**: Runs assess→forge→verify→assess loops until measurable quality targets are hit
 - **Spec enforcement**: Constitution-driven pipeline prevents skipping steps (spec→clarify→plan→tasks→forge→verify)
 - **18-dimension quality scoring**: Self-assessment against 27 competitors with gap analysis and masterplans
-- **Enterprise-ready**: SOC 2 compliance, audit trails, RBAC, budget controls, multi-tenancy
+- **Enterprise foundations**: audit trails, workspace controls, budget controls, and release gates
 - **Multi-agent orchestration**: MCP server + plugin manifest for Claude Code, Cursor, Codex CLI, Goose
 - **Constitution guarantees**: Project principles are enforced, not just suggested
+
+## Stability
+
+- **Stable**: core CLI workflow, verify gates, assistant setup, release checks, and the VS Code extension install path
+- **Beta**: autonomous loops, live verification, and higher-power multi-agent orchestration
+- **Experimental**: advanced provider integrations, deep OSS harvesting loops, and maintainer-only sibling repo sync flows
+
+## Launch-Supported Surfaces
+
+- **local-only CLI**: no API keys required for `danteforge init`, `danteforge go`, `danteforge review`, and the bundled example path
+- **live-provider CLI**: secret-backed verification via `npm run verify:live` or `.github/workflows/live-canary.yml`
+- **VS Code extension**: verified install/package path backed by `npm --prefix vscode-extension run verify`
 
 ### Quality Standards
 
@@ -159,6 +215,9 @@ Run `danteforge assess` for a full 18-dimension self-assessment against 27 compe
 - [Integration Guide](docs/INTEGRATION-GUIDE.md)
 - [Magic Levels](docs/MAGIC-LEVELS.md)
 - [Release History](docs/Release-History.md)
+- [First 15 Minutes](docs/tutorials/first-15-minutes.md)
+- [Case Study: Public Example](docs/case-studies/public-example.md)
+- [Case Study: Internal Self-Hosting](docs/case-studies/internal-self-hosting.md)
 - [SECURITY.md](SECURITY.md)
 - [CONTRIBUTING.md](CONTRIBUTING.md)
 
@@ -174,7 +233,7 @@ DanteForge is an agent-oriented development workflow for Codex, Claude Code, VS 
 
 ## Operational Status
 
-DanteForge `0.17.0` is in active development. Treat release readiness as proven only when the verification and release gates below pass in your environment and CI. See [docs/Operational-Readiness-v0.17.0.md](docs/Operational-Readiness-v0.17.0.md) for the v0.17.0 readiness report.
+DanteForge `0.17.0` is in active development. Treat release readiness as proven only when the verification and release gates below pass in your environment and CI. [docs/Operational-Readiness-v0.17.0.md](docs/Operational-Readiness-v0.17.0.md) is generated from the latest local verify, release-proof, and live-proof receipts so the readiness story stays evidence-backed.
 
 ## Install
 
@@ -196,6 +255,8 @@ If you are validating the packed release before npm publish, install from the ge
 npm pack
 npm install -g ./danteforge-0.17.0.tgz
 ```
+
+Maintainer note: `npm run build` is intentionally side-effect free. Use `npm run sync:dantecode` or `npm run build:local-sync` only when you explicitly want to sync the sibling DanteCode environment.
 
 Run `npm run verify:live` only when you are validating a secret-backed live environment or a release candidate.
 
@@ -234,7 +295,7 @@ danteforge setup assistants --assistants cursor
 
 This creates `.cursor/rules/danteforge.mdc` in the current project.
 
-For the full standalone install matrix, assistant targets, and secret setup flow, see [docs/Standalone-Assistant-Setup.md](docs/Standalone-Assistant-Setup.md).
+For the full standalone install matrix, assistant targets, and secret setup flow, see [docs/Standalone-Assistant-Setup.md](docs/Standalone-Assistant-Setup.md). For the machine-to-machine Codex contract specifically, see [docs/Codex-Install.md](docs/Codex-Install.md).
 
 To harvest one upstream Antigravity bundle into the packaged DanteForge skills catalog:
 
@@ -251,7 +312,15 @@ npm --prefix vscode-extension ci
 npm --prefix vscode-extension run verify
 ```
 
-The extension prefers a workspace-local DanteForge binary when one exists in `node_modules/.bin/`, and falls back to a global `danteforge` install otherwise.\r\n\r\n### Goose\r\n\r\nGoose integration is available via extension-based commands. Run `danteforge setup assistants --assistants goose` to install DanteForge skills into `~/.goose/skills/`. This enables native slash commands like `/spark`, `/magic`, `/verify`, etc., directly in Goose conversations.\r\n\r\nFor advanced integration, the extension `extensions/danteforge.json` provides tool-based access to DanteForge commands.\r\n\r\n## Quick Start
+The extension prefers a workspace-local DanteForge binary when one exists in `node_modules/.bin/`, and falls back to a global `danteforge` install otherwise.
+
+### Goose
+
+Goose integration is available via extension-based commands. Run `danteforge setup assistants --assistants goose` to install DanteForge skills into `~/.goose/skills/`. This enables native slash commands like `/spark`, `/magic`, `/verify`, etc., directly in Goose conversations.
+
+For advanced integration, the extension `extensions/danteforge.json` provides tool-based access to DanteForge commands.
+
+## Quick Start
 
 ```bash
 danteforge init    # detect project, check health, show next steps
@@ -290,18 +359,20 @@ In local-only mode:
 - `CLAUDE.md` contains adapter notes and architecture context for Claude-oriented workflows.
 - DanteForge package install does not modify assistant registries automatically.
 - Run `danteforge setup assistants` to explicitly install or refresh Claude, Codex, Gemini/Antigravity, and OpenCode registries.
-- For Codex specifically, keep the repo-local `.codex/config.toml` and refresh `~/.codex/skills`, `~/.codex/config.toml`, `~/.codex/commands`, and `~/.codex/AGENTS.md` with `danteforge setup assistants --assistants codex` after upgrades.
+- For Codex specifically, keep the repo-local `.codex/config.toml` and refresh `~/.codex/skills`, `~/.codex/config.toml`, `~/.codex/commands`, and `~/.codex/AGENTS.md` with `danteforge setup assistants --assistants codex` after upgrades on local Codex installs.
 - In Codex, workflow slash commands are native and come from `commands/*.md` plus `~/.codex/commands/*.md`; use the CLI only when explicitly requested.
 - Codex, Claude, Gemini/Antigravity, and OpenCode all receive the bundled `danteforge-cli` skill as a CLI fallback path for explicit terminal execution.
 - Run `danteforge setup assistants --assistants cursor` to create the Cursor project bootstrap rule in `.cursor/rules/`.
 - Secrets still live once in `~/.danteforge/config.yaml` even when different assistants invoke the CLI.
+- [docs/Codex-Install.md](docs/Codex-Install.md) is the canonical cross-machine setup guide for local Codex installs.
 
 ## What Codex Can Do Today
 
 - Local Codex environments can use synced `~/.codex/skills`, `~/.codex/commands`, `~/.codex/AGENTS.md`, and the repo-local `.codex/config.toml` for a native DanteForge workflow experience.
 - Hosted Codex/chat surfaces may not honor user-level installs such as `~/.codex/commands` or `~/.codex/skills`; that is a platform limitation, not a DanteForge bug.
 - When native Codex command files are unavailable, the bundled `danteforge-cli` skill is the explicit fallback path for terminal-style execution.
-- If Codex does not feel native locally, verify `~/.codex/commands`, `~/.codex/skills`, `~/.codex/AGENTS.md`, and the current repo’s `.codex/config.toml`, then rerun `danteforge setup assistants --assistants codex`.
+- If Codex does not feel native locally, verify `~/.codex/commands`, `~/.codex/skills`, `~/.codex/AGENTS.md`, and the current repo's `.codex/config.toml`, then rerun `danteforge setup assistants --assistants codex`.
+- For install and validation on another machine, follow [docs/Codex-Install.md](docs/Codex-Install.md).
 
 ### VS Code
 
@@ -318,22 +389,32 @@ Available extension commands:
 
 ## Core Workflow
 
+<!-- DANTEFORGE_REPO_PIPELINE:START -->
 ```text
-review -> constitution -> specify -> clarify -> plan -> tasks -> forge -> verify -> synthesize
+review -> constitution -> specify -> clarify -> tech-decide -> plan -> tasks -> design -> forge -> ux-refine -> verify -> synthesize -> retro -> ship
 ```
+<!-- DANTEFORGE_REPO_PIPELINE:END -->
 
-Typical CLI usage:
+Most users never run the pipeline manually — `danteforge go`, `danteforge magic`, and
+`danteforge ascend` orchestrate it automatically. Expand below if you want step-by-step control.
+
+<details>
+<summary>Step-by-step pipeline commands (click to expand)</summary>
 
 ```bash
 danteforge review
 danteforge constitution
 danteforge specify "Build a modern photo-sharing app with real-time feeds and social features"
 danteforge clarify
+danteforge tech-decide
 danteforge plan
 danteforge tasks
+danteforge design "social feed, profile, upload flow"
 danteforge forge 1 --parallel --profile quality
+danteforge ux-refine --openpencil
 danteforge verify
 danteforge synthesize
+danteforge retro
 ```
 
 If the project has a frontend workflow:
@@ -345,6 +426,8 @@ danteforge forge 2 --figma --prompt --profile quality
 danteforge party --worktree --isolation
 danteforge autoforge "stabilize the release candidate" --dry-run
 ```
+
+</details>
 
 ## Magic Levels
 

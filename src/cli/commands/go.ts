@@ -107,13 +107,17 @@ function showStatePanel(result: HarshScoreResult, emit: (l: string) => void): vo
     emit('');
   }
 
-  // Recommended next action
+  // Recommended next action — plain English first, command second
   if (p0Dims.length > 0) {
-    const [topDimId] = p0Dims[0]!;
+    const [topDimId, topScore] = p0Dims[0]!;
     const topLabel = topDimId.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase());
-    emit(`  Recommended:  ${chalk.cyan(`danteforge forge "Improve ${topLabel}"`)}`);
+    emit(`  Recommended next step:`);
+    emit(`    Improve ${chalk.bold(topLabel)}  (currently ${topScore.toFixed(1)}/10)`);
+    emit(`    Runs an automated cycle targeting this gap — takes 1-3 minutes.`);
+    emit(`    ${chalk.dim('→')} ${chalk.cyan(`danteforge magic "improve ${topLabel.toLowerCase()}"`)}`);
   } else {
-    emit(`  All tracked dimensions at 7.0+.  Run ${chalk.cyan('danteforge ascend')} to push further.`);
+    emit(`  All tracked dimensions at 7.0+.`);
+    emit(`    Push to 9.0+ with ${chalk.cyan('danteforge ascend')} (autonomous loop).`);
   }
   emit('');
   emit('  ─────────────────────────────────────────────────');
@@ -233,10 +237,12 @@ export async function go(options: GoOptions = {}): Promise<void> {
 
   // Confirm before running self-improve
   if (!options.yes) {
-    const ok = await confirmFn('  Run improvement loop? [Y/n]');
+    emit('  This will run up to 3 improvement cycles, each targeting your lowest-scoring gap.');
+    const ok = await confirmFn('  Start? [Y/n]');
     if (!ok) {
       emit('');
-      emit('  Skipped. Run ' + chalk.cyan('danteforge ascend') + ' for the full autonomous loop.');
+      emit('  Skipped. Run ' + chalk.cyan('danteforge ascend') + ' for the full autonomous loop,');
+      emit('  or ' + chalk.cyan('danteforge magic "<goal>"') + ' to target a specific area.');
       emit('');
       return;
     }
