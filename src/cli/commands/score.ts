@@ -294,22 +294,25 @@ export async function score(options: ScoreOptions = {}): Promise<ScoreResult> {
     _writeHistory: options._writeHistory ?? (async () => {}),
   });
 
-  // Strict mode: override STATE.yaml-gamed dimensions with code-derived signals.
-  // This produces a tamper-resistant score that cannot be inflated by editing STATE.yaml.
+  // Evidence-based dimensions are always computed from filesystem signals — STATE.yaml
+  // snapshots go stale between runs. autonomy/selfImprovement/convergenceSelfHealing are
+  // the three dims most vulnerable to drift, so we always override them with live evidence.
+  // --strict additionally overrides the remaining 4 dims and enforces automation ceilings.
+  const strict = await computeStrictDimensions(
+    cwd,
+    options._gitLog,
+    options._fileExistsStrict,
+    options._listDir,
+  );
+  result.displayDimensions.autonomy = Math.round(strict.autonomy / 10);
+  result.displayDimensions.selfImprovement = Math.round(strict.selfImprovement / 10);
+  result.displayDimensions.convergenceSelfHealing = Math.round(strict.convergenceSelfHealing / 10);
+
   if (options.strict) {
-    const strict = await computeStrictDimensions(
-      cwd,
-      options._gitLog,
-      options._fileExistsStrict,
-      options._listDir,
-    );
-    result.displayDimensions.autonomy = Math.round(strict.autonomy / 10);
-    result.displayDimensions.selfImprovement = Math.round(strict.selfImprovement / 10);
     result.displayDimensions.tokenEconomy = Math.round(strict.tokenEconomy / 10);
     result.displayDimensions.specDrivenPipeline = Math.round(strict.specDrivenPipeline / 10);
     result.displayDimensions.developerExperience = Math.round(strict.developerExperience / 10);
     result.displayDimensions.planningQuality = Math.round(strict.planningQuality / 10);
-    result.displayDimensions.convergenceSelfHealing = Math.round(strict.convergenceSelfHealing / 10);
 
     // Enforce automation ceilings — a dimension cannot display above its known ceiling
     // even if the harsh scorer returns a higher value from STATE.yaml signals.
@@ -320,13 +323,15 @@ export async function score(options: ScoreOptions = {}): Promise<ScoreResult> {
       }
     }
 
-    // Recompute displayScore from patched dimensions
+    emit('  [strict mode: 4 additional dimensions overridden + automation ceilings enforced]');
+  }
+
+  // Recompute displayScore from patched dimensions (always, since we always override 3 dims)
+  {
     const patched = result.displayDimensions;
     const patchedWeighted = (Object.entries(SCORE_DISPLAY_WEIGHTS) as [ScoringDimension, number][])
       .reduce((sum, [k, w]) => sum + (patched[k] ?? 0) * w, 0);
     result.displayScore = Math.round(patchedWeighted * 10) / 10;
-
-    emit('  [strict mode: 7 dimensions overridden + automation ceilings enforced]');
   }
 
   // Session baseline with TTL — reset if older than 4 hours so delta stays meaningful
