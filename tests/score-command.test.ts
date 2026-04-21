@@ -44,6 +44,12 @@ function makeOpts(overrides: Partial<ScoreOptions> = {}): ScoreOptions {
     _saveState: async (s) => { capturedState = s; },
     _getGitSha: async () => 'abc1234',
     _stdout: (line) => lines.push(line),
+    // Stub strict-dimension seams so computeStrictDimensions returns deterministic values
+    // in tests (no real git or filesystem access). These produce autonomy=20, selfImprovement=20,
+    // convergenceSelfHealing=15 (all-base, no bonuses) → 2.0/2.0/1.5 after /10 rounding.
+    _gitLog: async () => '',
+    _listDir: async () => [],
+    _fileExistsStrict: async () => false,
     ...overrides,
   };
 }
@@ -99,7 +105,7 @@ describe('score command', () => {
 
   it('appendScoreHistory is called with correct displayScore', async () => {
     let savedState: DanteState | null = null;
-    await score(makeOpts({
+    const result = await score(makeOpts({
       _harshScore: async () => makeHarshResult({ displayScore: 8.1 }),
       _saveState: async (s) => { savedState = s; },
       _runPrime: async () => {},
@@ -107,7 +113,9 @@ describe('score command', () => {
     assert.ok(savedState !== null, 'state should have been saved');
     assert.ok(savedState!.scoreHistory && savedState!.scoreHistory.length > 0,
       'scoreHistory should have an entry');
-    assert.strictEqual(savedState!.scoreHistory![0].displayScore, 8.1);
+    // displayScore is recomputed from evidence-based strict dims + harsh dims;
+    // verify history records the same value that score() returned.
+    assert.strictEqual(savedState!.scoreHistory![0].displayScore, result.displayScore);
   });
 
   it('--full flag is recorded in options without crashing', async () => {
