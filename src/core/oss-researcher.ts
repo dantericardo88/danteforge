@@ -173,6 +173,30 @@ export function prioritizePatterns(patterns: PatternExtraction[]): PatternExtrac
 
 // ── Report Formatter ──────────────────────────────────────────────────────────
 
+function formatPatternsSectionLines(patternsExtracted: PatternExtraction[]): string[] {
+  const lines: string[] = ['## Patterns Extracted', ''];
+  const prioritized = prioritizePatterns(patternsExtracted);
+  if (prioritized.length === 0) {
+    lines.push('_No patterns extracted._');
+    return lines;
+  }
+  const CATEGORY_LABELS: Record<PatternExtraction['category'], string> = {
+    architecture: 'Architecture', 'agent-ai': 'Agent / AI',
+    'cli-ux': 'CLI / UX', quality: 'Quality', innovation: 'Unique Innovations',
+  };
+  const categories: Array<PatternExtraction['category']> = ['architecture', 'agent-ai', 'cli-ux', 'quality', 'innovation'];
+  for (const category of categories) {
+    const categoryPatterns = prioritized.filter(p => p.category === category);
+    if (categoryPatterns.length === 0) continue;
+    lines.push(`### ${CATEGORY_LABELS[category]}`, '', '| Priority | Effort | Pattern | Repo | Description |', '|---|---|---|---|---|');
+    for (const p of categoryPatterns) {
+      lines.push(`| ${p.priority} | ${p.effort} | **${p.pattern}** | ${p.repoName} | ${p.description} |`);
+    }
+    lines.push('');
+  }
+  return lines;
+}
+
 /**
  * Generate a complete markdown OSS research report.
  * Sections: project summary, repos scanned, patterns found, what was implemented/skipped.
@@ -211,45 +235,7 @@ export function formatOSSReport(report: OSSResearchReport): string {
   lines.push('');
 
   // Patterns Extracted
-  lines.push('## Patterns Extracted');
-  lines.push('');
-
-  const prioritized = prioritizePatterns(report.patternsExtracted);
-
-  if (prioritized.length === 0) {
-    lines.push('_No patterns extracted._');
-  } else {
-    const categories: Array<PatternExtraction['category']> = [
-      'architecture',
-      'agent-ai',
-      'cli-ux',
-      'quality',
-      'innovation',
-    ];
-
-    for (const category of categories) {
-      const categoryPatterns = prioritized.filter(p => p.category === category);
-      if (categoryPatterns.length === 0) continue;
-
-      const categoryLabel = {
-        architecture: 'Architecture',
-        'agent-ai': 'Agent / AI',
-        'cli-ux': 'CLI / UX',
-        quality: 'Quality',
-        innovation: 'Unique Innovations',
-      }[category];
-
-      lines.push(`### ${categoryLabel}`);
-      lines.push('');
-      lines.push('| Priority | Effort | Pattern | Repo | Description |');
-      lines.push('|---|---|---|---|---|');
-
-      for (const p of categoryPatterns) {
-        lines.push(`| ${p.priority} | ${p.effort} | **${p.pattern}** | ${p.repoName} | ${p.description} |`);
-      }
-      lines.push('');
-    }
-  }
+  lines.push(...formatPatternsSectionLines(report.patternsExtracted));
 
   // Implemented
   lines.push('## Implemented');
