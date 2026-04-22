@@ -62,7 +62,193 @@ const PLATEAU_CYCLE_COUNT = 3;     // After N cycles with < threshold gain, esca
 const FOCUSED_AUTOFORGE_WAVES = 6;
 const PLATEAU_PARTY_WAVES = 10;    // More aggressive when plateaued
 
-// ── Main loop ─────────────────────────────────────────────────────────────────
+// ── Cycle action dispatch ──────────────────────────────────────────────────────
+
+interface CycleActionResult {
+  newPlateauDetected?: boolean;
+  resetConsecutivePlateau?: boolean;
+  shouldStop?: boolean;
+  stopReason?: SelfImproveResult['stopReason'];
+}
+
+async function executeCycleActions(
+  cycle: number,
+  cycleAssessResult: AssessResult,
+  consecutivePlateauCycles: number,
+  plateauDetected: boolean,
+  goal: string,
+  cwd: string,
+  runAutoforgeF: (goal: string, waves: number, cwd: string) => Promise<void>,
+  runPartyFn: (goal: string, cwd: string) => Promise<void>,
+  runLocalHarvestFn: (cwd: string) => Promise<void>,
+  appendLessonFn: (entry: string) => Promise<void>,
+  focusDimensions?: ScoringDimension[],
+): Promise<CycleActionResult> {
+  const isFeatureUniverseMode = cycleAssessResult.completionTarget.mode === 'feature-universe';
+  const isPlateauCycle = consecutivePlateauCycles >= PLATEAU_CYCLE_COUNT;
+
+  if (isPlateauCycle) {
+    if (!plateauDetected) {
+      logger.warn(`[self-improve] Plateau detected after ${consecutivePlateauCycles} cycles — escalating to party mode`);
+      const focusItems = selectFocusItems(cycleAssessResult, focusDimensions);
+      const partyGoal = buildPlateauEscalationPrompt(focusItems, cycleAssessResult);
+      await runPartyFn(partyGoal, cwd);
+      return { newPlateauDetected: true, resetConsecutivePlateau: true };
+    } else {
+      logger.warn(`[self-improve] Party mode did not break plateau — running self-harvest...`);
+      try {
+        await runLocalHarvestFn(cwd);
+        await appendLessonFn(
+          `[self-improve] Self-harvest triggered at cycle ${cycle} — party escalation failed to break plateau`,
+        );
+      } catch (err) {
+        logger.warn(`[self-improve] Self-harvest failed: ${err instanceof Error ? err.message : String(err)}`);
+      }
+      return { resetConsecutivePlateau: true };
+    }
+  } else if (isFeatureUniverseMode && cycleAssessResult.featureAssessment) {
+    const featureItems = selectFeatureFocusItems(cycleAssessResult);
+    if (featureItems.length === 0) {
+      logger.warn('[self-improve] No feature gaps found — stopping');
+      return { shouldStop: true, stopReason: 'error' };
+    }
+    const projectName = 'the project';
+    for (const { score, feature } of featureItems) {
+      const featureGoal = buildFeatureFocusedGoal(score, feature, projectName);
+      logger.info(`[self-improve] Forging feature: ${feature.name} (score: ${score.score})`);
+      await runAutoforgeF(featureGoal, FOCUSED_AUTOFORGE_WAVES, cwd);
+    }
+    return {};
+  } else {
+    const focusItems = selectFocusItems(cycleAssessResult, focusDimensions);
+    if (focusItems.length === 0) {
+      logger.warn('[self-improve] No actionable gaps found — stopping');
+      return { shouldStop: true, stopReason: 'error' };
+    }
+    for (const item of focusItems) {
+      const itemGoal = buildFocusedForgeGoal(item, goal);
+      logger.info(`[self-improve] Forging: [${item.dimension}] ${item.description}`);
+      await runAutoforgeF(itemGoal, FOCUSED_AUTOFORGE_WAVES, cwd);
+    }
+    return {};
+  }
+}
+
+// ── Main improvement loop ──────────────────────────────────────────────────────
+
+interface SelfImproveLoopCtx {
+  maxCycles: number;
+  minScore: number;
+  cwd: string;
+  goal: string;
+  preset?: string;
+  focusDimensions?: ScoringDimension[];
+  initialResult: AssessResult;
+  cycleHistory: CycleRecord[];
+  runAssessFn: (opts: AssessOptions) => Promise<AssessResult>;
+  runAutoforgeF: (goal: string, waves: number, cwd: string) => Promise<void>;
+  runVerifyFn: (cwd: string) => Promise<void>;
+  runPartyFn: (goal: string, cwd: string) => Promise<void>;
+  runLocalHarvestFn: (cwd: string) => Promise<void>;
+  appendLessonFn: (entry: string) => Promise<void>;
+  now: () => string;
+}
+
+interface LoopOutcome {
+  cyclesRun: number;
+  currentScore: number;
+  plateauDetected: boolean;
+  stopReason: SelfImproveResult['stopReason'];
+}
+
+async function runSelfImproveLoop(ctx: SelfImproveLoopCtx): Promise<LoopOutcome> {
+  let currentScore = ctx.initialResult.overallScore;
+  let cyclesRun = 0;
+  let consecutivePlateauCycles = 0;
+  let plateauDetected = false;
+  let stopReason: SelfImproveResult['stopReason'] = 'max-cycles';
+
+  try {
+    for (let cycle = 1; cycle <= ctx.maxCycles; cycle++) {
+      cyclesRun = cycle;
+      logger.info('');
+      logger.info(`━━━ Cycle ${cycle}/${ctx.maxCycles}  |  Score: ${currentScore.toFixed(1)}/10  |  Gap: ${(ctx.minScore - currentScore).toFixed(1)} ━━━`);
+
+      const cycleAssessResult = cycle === 1
+        ? ctx.initialResult
+        : await ctx.runAssessFn({
+            cwd: ctx.cwd, preset: ctx.preset, minScore: ctx.minScore, cycleNumber: cycle,
+            competitors: cycle % 3 === 0,
+            harsh: true,
+          });
+
+      if (cycleAssessResult.passesThreshold) {
+        currentScore = cycleAssessResult.overallScore;
+        stopReason = 'target-achieved';
+        logger.success(`✓ Target ${ctx.minScore.toFixed(1)}/10 achieved in cycle ${cycle}!`);
+        break;
+      }
+
+      const cycleAction = await executeCycleActions(
+        cycle, cycleAssessResult, consecutivePlateauCycles, plateauDetected,
+        ctx.goal, ctx.cwd, ctx.runAutoforgeF, ctx.runPartyFn, ctx.runLocalHarvestFn,
+        ctx.appendLessonFn, ctx.focusDimensions,
+      );
+      if (cycleAction.newPlateauDetected !== undefined) plateauDetected = cycleAction.newPlateauDetected;
+      if (cycleAction.resetConsecutivePlateau) consecutivePlateauCycles = 0;
+      if (cycleAction.shouldStop) { stopReason = cycleAction.stopReason ?? 'error'; break; }
+
+      logger.info('[self-improve] Running verify...');
+      try { await ctx.runVerifyFn(ctx.cwd); } catch { logger.warn('[self-improve] Verify encountered issues — continuing loop'); }
+
+      const postCycleResult = await ctx.runAssessFn({
+        cwd: ctx.cwd, preset: ctx.preset, minScore: ctx.minScore, cycleNumber: cycle,
+        competitors: false, harsh: true,
+      });
+
+      const prevScore = currentScore;
+      currentScore = postCycleResult.overallScore;
+      const cycleDelta = currentScore - prevScore;
+      ctx.cycleHistory.push({ cycle, score: currentScore, timestamp: ctx.now() });
+
+      logger.info(`[self-improve] Cycle ${cycle} complete: ${prevScore.toFixed(1)} → ${currentScore.toFixed(1)} (${cycleDelta >= 0 ? '+' : ''}${cycleDelta.toFixed(1)})`);
+
+      if (cycleDelta < PLATEAU_THRESHOLD) {
+        consecutivePlateauCycles++;
+        if (consecutivePlateauCycles >= PLATEAU_CYCLE_COUNT) {
+          logger.warn(`[self-improve] Score has not improved by ${PLATEAU_THRESHOLD} in ${consecutivePlateauCycles} cycles`);
+        }
+      } else {
+        consecutivePlateauCycles = 0;
+      }
+
+      if (cycleDelta > 0.5) {
+        try {
+          await ctx.appendLessonFn(
+            `[self-improvement] Score improved ${cycleDelta.toFixed(1)} points in cycle ${cycle}. Mode: ${cycleAssessResult.completionTarget.mode}`,
+          );
+        } catch { /* best-effort */ }
+      }
+
+      if (postCycleResult.passesThreshold) {
+        stopReason = 'target-achieved';
+        logger.success(`✓ Target ${ctx.minScore.toFixed(1)}/10 achieved in cycle ${cycle}!`);
+        break;
+      }
+    }
+  } catch (err) {
+    logger.error(`[self-improve] Loop error: ${err instanceof Error ? err.message : String(err)}`);
+    stopReason = 'error';
+  }
+
+  if (plateauDetected && stopReason !== 'target-achieved') {
+    stopReason = 'plateau-unresolved';
+  }
+
+  return { cyclesRun, currentScore, plateauDetected, stopReason };
+}
+
+// ── Main entry ─────────────────────────────────────────────────────────────────
 
 export async function selfImprove(options: SelfImproveOptions = {}): Promise<SelfImproveResult> {
   const cwd = options.cwd ?? process.cwd();
@@ -108,150 +294,13 @@ export async function selfImprove(options: SelfImproveOptions = {}): Promise<Sel
     };
   }
 
-  // ── Main loop ─────────────────────────────────────────────────────────────
   const cycleHistory: CycleRecord[] = [{ cycle: 0, score: initialScore, timestamp: now() }];
-  let currentScore = initialScore;
-  let cyclesRun = 0;
-  let consecutivePlateauCycles = 0;
-  let plateauDetected = false;
-  let stopReason: SelfImproveResult['stopReason'] = 'max-cycles';
-
-  try {
-    for (let cycle = 1; cycle <= maxCycles; cycle++) {
-      cyclesRun = cycle;
-      logger.info('');
-      logger.info(`━━━ Cycle ${cycle}/${maxCycles}  |  Score: ${currentScore.toFixed(1)}/10  |  Gap: ${(minScore - currentScore).toFixed(1)} ━━━`);
-
-      // Get the masterplan from last assess (or re-run assess at start of each cycle)
-      const cycleAssessResult = cycle === 1
-        ? initialResult
-        : await runAssessFn({
-            cwd, preset: options.preset, minScore, cycleNumber: cycle,
-            competitors: cycle % 3 === 0, // re-scan competitors every 3 cycles
-            harsh: true,
-          });
-
-      if (cycleAssessResult.passesThreshold) {
-        currentScore = cycleAssessResult.overallScore;
-        stopReason = 'target-achieved';
-        logger.success(`✓ Target ${minScore.toFixed(1)}/10 achieved in cycle ${cycle}!`);
-        break;
-      }
-
-      const isFeatureUniverseMode = cycleAssessResult.completionTarget.mode === 'feature-universe';
-      const isPlateauCycle = consecutivePlateauCycles >= PLATEAU_CYCLE_COUNT;
-
-      if (isPlateauCycle) {
-        // Escalate: party mode first, then self-harvest if plateau persists
-        if (!plateauDetected) {
-          // First plateau: escalate to party mode
-          logger.warn(`[self-improve] Plateau detected after ${consecutivePlateauCycles} cycles — escalating to party mode`);
-          plateauDetected = true;
-          const focusItems = selectFocusItems(cycleAssessResult, options.focusDimensions);
-          const partyGoal = buildPlateauEscalationPrompt(focusItems, cycleAssessResult);
-          await runPartyFn(partyGoal, cwd);
-        } else {
-          // Second plateau: self-harvest — discover internal patterns from codebase itself
-          logger.warn(`[self-improve] Party mode did not break plateau — running self-harvest to discover internal patterns`);
-          try {
-            await runLocalHarvestFn(cwd);
-            await appendLessonFn(`[self-improve] Self-harvest triggered at cycle ${cycle} after plateau at ${currentScore.toFixed(1)}/10`);
-          } catch (err) {
-            logger.warn(`[self-improve] Self-harvest failed (non-fatal): ${err instanceof Error ? err.message : String(err)}`);
-          }
-        }
-        consecutivePlateauCycles = 0;
-      } else if (isFeatureUniverseMode && cycleAssessResult.featureAssessment) {
-        // Feature-universe mode: forge on missing/partial features directly
-        const featureItems = selectFeatureFocusItems(cycleAssessResult);
-        const projectName = cycleAssessResult.completionTarget.description ?? 'this project';
-
-        if (featureItems.length === 0) {
-          logger.warn('[self-improve] No feature gaps found — stopping.');
-          stopReason = 'error';
-          break;
-        }
-
-        for (const { score, feature } of featureItems) {
-          const forgeGoal = buildFeatureFocusedGoal(score, feature, projectName);
-          logger.info(`[self-improve] ${score.score < 4 ? 'Implementing' : 'Improving'}: ${feature.name} (${score.score}/10)`);
-          await runAutoforgeF(forgeGoal, FOCUSED_AUTOFORGE_WAVES, cwd);
-        }
-      } else {
-        // Dimension mode: run focused autoforge for each gap dimension
-        const focusItems = selectFocusItems(cycleAssessResult, options.focusDimensions);
-
-        if (focusItems.length === 0) {
-          logger.warn('[self-improve] No actionable gaps found — stopping.');
-          stopReason = 'error';
-          break;
-        }
-
-        for (const item of focusItems) {
-          const forgeGoal = buildFocusedForgeGoal(item, goal);
-          logger.info(`[self-improve] Focusing on: ${item.dimension} (${item.currentScore}/10 → ${item.targetScore}/10)`);
-          await runAutoforgeF(forgeGoal, FOCUSED_AUTOFORGE_WAVES, cwd);
-        }
-      }
-
-      // Run verify after forge
-      logger.info('[self-improve] Running verify...');
-      try {
-        await runVerifyFn(cwd);
-      } catch {
-        logger.warn('[self-improve] Verify encountered issues — continuing loop');
-      }
-
-      // Re-assess to measure progress
-      const postCycleResult = await runAssessFn({
-        cwd, preset: options.preset, minScore, cycleNumber: cycle,
-        competitors: false, // skip competitor scan on progress checks (faster)
-        harsh: true,
-      });
-
-      const prevScore = currentScore;
-      currentScore = postCycleResult.overallScore;
-      const cycleDelta = currentScore - prevScore;
-
-      cycleHistory.push({ cycle, score: currentScore, timestamp: now() });
-
-      logger.info(`[self-improve] Cycle ${cycle} complete: ${prevScore.toFixed(1)} → ${currentScore.toFixed(1)} (${cycleDelta >= 0 ? '+' : ''}${cycleDelta.toFixed(1)})`);
-
-      // Plateau detection
-      if (cycleDelta < PLATEAU_THRESHOLD) {
-        consecutivePlateauCycles++;
-        if (consecutivePlateauCycles >= PLATEAU_CYCLE_COUNT) {
-          logger.warn(`[self-improve] Score has not improved by ${PLATEAU_THRESHOLD} in ${consecutivePlateauCycles} cycles`);
-        }
-      } else {
-        consecutivePlateauCycles = 0;
-      }
-
-      // Capture improvement pattern as lesson
-      if (cycleDelta > 0.5) {
-        try {
-          await appendLessonFn(
-            `[self-improvement] Score improved ${cycleDelta.toFixed(1)} points in cycle ${cycle}. Mode: ${cycleAssessResult.completionTarget.mode}`,
-          );
-        } catch { /* best-effort */ }
-      }
-
-      // Final check
-      if (postCycleResult.passesThreshold) {
-        stopReason = 'target-achieved';
-        logger.success(`✓ Target ${minScore.toFixed(1)}/10 achieved in cycle ${cycle}!`);
-        break;
-      }
-    }
-  } catch (err) {
-    logger.error(`[self-improve] Loop error: ${err instanceof Error ? err.message : String(err)}`);
-    stopReason = 'error';
-  }
-
-  // ── Final report ──────────────────────────────────────────────────────────
-  if (plateauDetected && stopReason !== 'target-achieved') {
-    stopReason = 'plateau-unresolved';
-  }
+  const { cyclesRun, currentScore, plateauDetected, stopReason } = await runSelfImproveLoop({
+    maxCycles, minScore, cwd, goal,
+    preset: options.preset, focusDimensions: options.focusDimensions,
+    initialResult, cycleHistory,
+    runAssessFn, runAutoforgeF, runVerifyFn, runPartyFn, runLocalHarvestFn, appendLessonFn, now,
+  });
 
   const achieved = stopReason === 'target-achieved';
   printFinalReport({ cyclesRun, initialScore, finalScore: currentScore, achieved, stopReason, minScore });
