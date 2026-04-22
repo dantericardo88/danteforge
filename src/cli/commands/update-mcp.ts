@@ -92,7 +92,13 @@ async function applyMcpUpdates(params: {
   logger.info('If your editor MCP config changed upstream, run: danteforge setup figma');
 }
 
-export async function updateMcp(options: { prompt?: boolean; apply?: boolean; check?: boolean } = {}) {
+export async function updateMcp(options: {
+  prompt?: boolean;
+  apply?: boolean;
+  check?: boolean;
+  _llmCaller?: typeof callLLM;
+  _isLLMAvailable?: typeof isLLMAvailable;
+} = {}) {
   return withErrorBoundary('update-mcp', async () => {
   logger.success('DanteForge MCP Update — Manual Self-Healing');
   logger.info('');

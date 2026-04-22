@@ -61,7 +61,11 @@ const STAGE_SUGGESTIONS: Record<WorkflowStage, string> = {
   synthesize: 'Run "danteforge feedback" for manual refinement or "danteforge feedback --auto" with a verified live provider.',
 };
 
-export async function helpCmd(query?: string, opts: { all?: boolean } = {}) {
+export async function helpCmd(query?: string, opts: {
+  all?: boolean;
+  _loadState?: typeof loadState;
+} = {}) {
+  const loadFn = opts._loadState ?? loadState;
   return withErrorBoundary('help', async () => {
     if (query) {
       const key = query.toLowerCase().replace('danteforge ', '');
@@ -93,7 +97,7 @@ export async function helpCmd(query?: string, opts: { all?: boolean } = {}) {
       logger.info('');
 
       try {
-        const state = await loadState();
+        const state = await loadFn();
         const suggestion = STAGE_SUGGESTIONS[state.workflowStage] ?? STAGE_SUGGESTIONS.initialized;
         logger.info(`Current workflow stage: ${state.workflowStage}`);
         logger.info(`Current execution wave: ${state.currentPhase}`);
