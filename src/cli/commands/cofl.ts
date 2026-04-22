@@ -217,6 +217,143 @@ function buildCoflReport(
   return lines.join('\n');
 }
 
+// ── Phase 3-5: Harvest + Map + Prioritize ────────────────────────────────────
+
+interface LeverageInput {
+  id: string; label: string; gap_to_closed_source_leader: number;
+  gap_to_oss_leader: number; oss_leader: string; weight: number; frequency: string;
+}
+
+interface HarvestResult {
+  filteredPatterns: CoflPattern[];
+  extractedPatterns: CoflPattern[];
+  operatorLeverage: OperatorLeverageEntry[];
+}
+
+async function runCoflHarvestAndPrioritize(
+  partition: UniversePartition,
+  registryPatterns: CoflPattern[],
+  knownGapsForHarvest: string[],
+  knownGapDimensions: string[],
+  leverageInput: LeverageInput[],
+  options: CoflOptions,
+  isLLMAvailableFn: () => Promise<boolean>,
+  callLLMFn: typeof callLLM,
+  cwd: string,
+): Promise<HarvestResult> {
+  let extractedPatterns: CoflPattern[] = [...registryPatterns];
+  const newPatterns: CoflPattern[] = [];
+
+  if (options.harvest || options.auto) {
+    logger.info('Phase 3: Harvesting patterns from teacher set...');
+    const llmOk = await isLLMAvailableFn();
+    if (!llmOk) {
+      logger.warn('No LLM available — skipping pattern extraction. Run with an LLM configured.');
+    } else {
+      const freshPatterns = await extractPatternsFromTeachers(partition, knownGapsForHarvest, callLLMFn, cwd);
+      newPatterns.push(...freshPatterns);
+      extractedPatterns = [...extractedPatterns, ...freshPatterns];
+      logger.success(`Extracted ${freshPatterns.length} new pattern(s)`);
+    }
+    logger.info('');
+  }
+
+  const filteredPatterns = newPatterns.filter(p => {
+    const r = runDecisionFilter(p, {
+      validTeacherRoles: ['reference_teacher', 'specialist_teacher'],
+      knownGapDimensions,
+      minOperatorLeverage: 3,
+    });
+    if (!r.passedAll) {
+      const failed = r.checks.filter(c => !c.passed).map(c => c.question);
+      logger.warn(`Pattern "${p.description.slice(0, 50)}" filtered: ${failed[0]}`);
+    }
+    return r.passedAll;
+  });
+
+  const operatorLeverage: OperatorLeverageEntry[] = scoreOperatorLeverage(leverageInput, partition);
+
+  if (options.prioritize || options.auto) {
+    logger.info('Phase 5: Operator Leverage Rankings (top 5)');
+    const top5 = [...operatorLeverage].sort((a, b) => b.leverageScore - a.leverageScore).slice(0, 5);
+    for (const e of top5) {
+      const borrowed = e.borrowableFromOSS ? '[OSS borrowable]' : '';
+      logger.info(`  ${e.dimensionLabel.padEnd(24)} leverage=${e.leverageScore.toFixed(2)} ${borrowed}`);
+    }
+    logger.info('');
+  }
+
+  return { filteredPatterns, extractedPatterns, operatorLeverage };
+}
+
+// ── Phases 8-10: Score + Persist + Reframe + Summary ─────────────────────────
+
+interface PersistCoflParams {
+  cycleNumber: number;
+  now: () => string;
+  partition: UniversePartition;
+  filteredPatterns: CoflPattern[];
+  extractedPatterns: CoflPattern[];
+  operatorLeverage: OperatorLeverageEntry[];
+  scoreDimensions: { id: string; scores: Record<string, number> }[];
+  currentScore: number;
+  closedSourceGapBefore: number;
+  registry: Awaited<ReturnType<typeof loadCoflRegistry>>;
+  options: CoflOptions;
+  saveRegistryFn: typeof saveCoflRegistry;
+  writeFileFn: (p: string, content: string) => Promise<void>;
+  cwd: string;
+}
+
+async function persistAndSummarizeCoflCycle(params: PersistCoflParams): Promise<CoflCycleResult> {
+  const { cycleNumber, now, partition, filteredPatterns, extractedPatterns,
+    operatorLeverage, scoreDimensions, currentScore, closedSourceGapBefore,
+    registry, options, saveRegistryFn, writeFileFn, cwd } = params;
+
+  const antiFailureChecks = runAntiFailureGuards(extractedPatterns, scoreDimensions, registry);
+  const failedGuards = antiFailureChecks.filter(g => !g.passed);
+  if (failedGuards.length > 0) {
+    logger.warn(`⚠ ${failedGuards.length} anti-failure guardrail(s) violated:`);
+    for (const g of failedGuards) logger.warn(`  [${g.failureMode}] ${g.violation}`);
+    logger.info('');
+  }
+
+  const reframe = runReframePhase(currentScore, currentScore, cycleNumber, operatorLeverage, closedSourceGapBefore, closedSourceGapBefore);
+  const objectiveFunction = computeObjectiveFunction(operatorLeverage, extractedPatterns, 0);
+  if (options.reframe || options.auto) { logger.info(renderReframe(reframe)); logger.info(''); }
+  if (options.guards) { logger.info(renderAntiFailureReport(antiFailureChecks)); logger.info(''); }
+
+  const cycleResult: CoflCycleResult = {
+    cycleNumber, completedAt: now(), partition,
+    extractedPatterns: filteredPatterns, operatorLeverage, antiFailureChecks,
+    reframe, persistedAt: now(), objectiveFunction,
+  };
+  const updatedRegistry = persistCycleLearnings(cycleResult, registry);
+  await saveRegistryFn(updatedRegistry, cwd);
+
+  if (options.report || options.auto) {
+    const reportPath = `${cwd}/.danteforge/cofl/COFL_REPORT.md`;
+    await writeFileFn(reportPath, buildCoflReport(cycleResult, cycleNumber));
+    logger.success(`Report written to: ${reportPath}`);
+    logger.info('');
+  }
+
+  logger.success('='.repeat(60));
+  logger.success('  COFL CYCLE COMPLETE');
+  logger.success('='.repeat(60));
+  logger.info('');
+  logger.info(`Cycle:          ${cycleNumber}`);
+  logger.info(`Patterns found: ${filteredPatterns.length}`);
+  logger.info(`Guardrails:     ${antiFailureChecks.filter(g => g.passed).length}/${antiFailureChecks.length} passed`);
+  logger.info(`Preferred:      ${reframe.becomeMorePreferred ? '✓' : '✗'}`);
+  logger.info(`Coherent:       ${reframe.becomeMoreCoherent ? '✓' : '✗'}`);
+  logger.info(`Inflating rows: ${reframe.onlyInflatingRows ? '⚠ yes' : '✓ no'}`);
+  logger.info('');
+  logger.info(`Next: ${reframe.recommendation}`);
+
+  return cycleResult;
+}
+
 // ── Main command ──────────────────────────────────────────────────────────────
 
 export async function cofl(
@@ -244,18 +381,13 @@ export async function cofl(
     logger.success('DanteForge COFL — Competitive Operator Forge Loop');
     logger.info('');
 
-    // Load current state
     const state = await loadStateFn({ cwd });
     const matrix = await loadMatrixFn(cwd);
     const registry = await loadRegistryFn(cwd);
-
     const cycleNumber = registry.cyclesRun + 1;
-
-    // ── Phase 1-2: Universe + Partition ──────────────────────────────────────
 
     const closedSource = matrix?.competitors_closed_source ?? [];
     const ossTools = matrix?.competitors_oss ?? [];
-
     const partition = classifyCompetitorRoles(closedSource, ossTools);
 
     if (options.universe || options.auto) {
@@ -264,78 +396,20 @@ export async function cofl(
       logger.info('');
     }
 
-    // ── Phase 3: Harvest ─────────────────────────────────────────────────────
-
-    let extractedPatterns: CoflPattern[] = [...registry.patterns];
-    const newPatterns: CoflPattern[] = [];
-
-    if (options.harvest || options.auto) {
-      logger.info('Phase 3: Harvesting patterns from teacher set...');
-
-      const llmOk = await isLLMAvailableFn();
-      if (!llmOk) {
-        logger.warn('No LLM available — skipping pattern extraction. Run with an LLM configured.');
-      } else {
-        const knownGaps = matrix?.dimensions
-          .filter(d => (d.gap_to_closed_source_leader ?? 0) > 1)
-          .map(d => d.id) ?? [];
-
-        const freshPatterns = await extractPatternsFromTeachers(
-          partition, knownGaps, callLLMFn, cwd,
-        );
-        newPatterns.push(...freshPatterns);
-        extractedPatterns = [...extractedPatterns, ...freshPatterns];
-        logger.success(`Extracted ${freshPatterns.length} new pattern(s)`);
-      }
-      logger.info('');
-    }
-
-    // ── Phase 4-5: Map + Prioritize ──────────────────────────────────────────
-
-    const knownGapDimensions = matrix?.dimensions
-      .filter(d => (d.gap_to_closed_source_leader ?? 0) > 0.5)
-      .map(d => d.id) ?? [];
-
-    // Apply decision filter to new patterns
-    const filteredPatterns = newPatterns.filter(p => {
-      const result = runDecisionFilter(p, {
-        validTeacherRoles: ['reference_teacher', 'specialist_teacher'],
-        knownGapDimensions,
-        minOperatorLeverage: 3,
-      });
-      if (!result.passedAll) {
-        const failed = result.checks.filter(c => !c.passed).map(c => c.question);
-        logger.warn(`Pattern "${p.description.slice(0, 50)}" filtered: ${failed[0]}`);
-      }
-      return result.passedAll;
-    });
-
-    // Compute operator leverage for matrix dimensions
-    const leverageInput = (matrix?.dimensions ?? []).map(d => ({
-      id: d.id,
-      label: d.label,
+    const matrixDimensions = matrix?.dimensions ?? [];
+    const knownGapsForHarvest = matrixDimensions.filter(d => (d.gap_to_closed_source_leader ?? 0) > 1).map(d => d.id);
+    const knownGapDimensions = matrixDimensions.filter(d => (d.gap_to_closed_source_leader ?? 0) > 0.5).map(d => d.id);
+    const leverageInput: LeverageInput[] = matrixDimensions.map(d => ({
+      id: d.id, label: d.label,
       gap_to_closed_source_leader: d.gap_to_closed_source_leader ?? (d.gap_to_leader ?? 0),
       gap_to_oss_leader: d.gap_to_oss_leader ?? 0,
-      oss_leader: d.oss_leader ?? '',
-      weight: d.weight ?? 1,
-      frequency: d.frequency ?? 'medium',
+      oss_leader: d.oss_leader ?? '', weight: d.weight ?? 1, frequency: d.frequency ?? 'medium',
     }));
 
-    const operatorLeverage: OperatorLeverageEntry[] = scoreOperatorLeverage(leverageInput, partition);
-
-    if (options.prioritize || options.auto) {
-      logger.info('Phase 5: Operator Leverage Rankings (top 5)');
-      const top5 = [...operatorLeverage]
-        .sort((a, b) => b.leverageScore - a.leverageScore)
-        .slice(0, 5);
-      for (const e of top5) {
-        const borrowed = e.borrowableFromOSS ? '[OSS borrowable]' : '';
-        logger.info(`  ${e.dimensionLabel.padEnd(24)} leverage=${e.leverageScore.toFixed(2)} ${borrowed}`);
-      }
-      logger.info('');
-    }
-
-    // ── Phase 6-7: Forge + Verify (advisory — user runs these) ───────────────
+    const { filteredPatterns, extractedPatterns, operatorLeverage } = await runCoflHarvestAndPrioritize(
+      partition, [...registry.patterns], knownGapsForHarvest, knownGapDimensions,
+      leverageInput, options, isLLMAvailableFn, callLLMFn, cwd,
+    );
 
     if (options.auto) {
       const topDim = [...operatorLeverage].sort((a, b) => b.leverageScore - a.leverageScore)[0];
@@ -344,9 +418,7 @@ export async function cofl(
         logger.info(`  Dimension: ${topDim.dimensionLabel}`);
         logger.info(`  Operator leverage: ${topDim.leverageScore.toFixed(2)}`);
         logger.info(`  Gap to closed-source leader: ${topDim.gapToClosedSourceLeader.toFixed(1)}`);
-        if (topDim.borrowableFromOSS) {
-          logger.info(`  OSS borrowable: ✓ (run /inferno to harvest)`);
-        }
+        if (topDim.borrowableFromOSS) logger.info(`  OSS borrowable: ✓ (run /inferno to harvest)`);
         logger.info('');
         logger.info('  → Run: danteforge inferno "<goal for this dimension>"');
         logger.info('  → Then: danteforge compete --rescore <dimension>=<score>');
@@ -354,102 +426,18 @@ export async function cofl(
       }
     }
 
-    // ── Phase 8-9: Score + Persist ────────────────────────────────────────────
-
-    const closedSourceGapBefore = (matrix?.dimensions ?? [])
-      .reduce((sum, d) => sum + (d.gap_to_closed_source_leader ?? 0), 0) /
-      Math.max(1, (matrix?.dimensions ?? []).length);
-
+    const closedSourceGapBefore = matrixDimensions.reduce((sum, d) => sum + (d.gap_to_closed_source_leader ?? 0), 0) / Math.max(1, matrixDimensions.length);
     const currentScore = matrix?.overallSelfScore ?? 0;
+    const scoreDimensions = matrixDimensions.map(d => ({ id: d.id, scores: d.scores ?? {} }));
 
-    const antiFailureChecks = runAntiFailureGuards(
-      extractedPatterns,
-      (matrix?.dimensions ?? []).map(d => ({ id: d.id, scores: d.scores ?? {} })),
-      registry,
-    );
+    const cycleResult = await persistAndSummarizeCoflCycle({
+      cycleNumber, now, partition, filteredPatterns, extractedPatterns, operatorLeverage,
+      scoreDimensions, currentScore, closedSourceGapBefore,
+      registry, options, saveRegistryFn, writeFileFn, cwd,
+    });
 
-    const failedGuards = antiFailureChecks.filter(g => !g.passed);
-    if (failedGuards.length > 0) {
-      logger.warn(`⚠ ${failedGuards.length} anti-failure guardrail(s) violated:`);
-      for (const g of failedGuards) {
-        logger.warn(`  [${g.failureMode}] ${g.violation}`);
-      }
-      logger.info('');
-    }
-
-    // ── Phase 10: Reframe ─────────────────────────────────────────────────────
-
-    const reframe = runReframePhase(
-      currentScore,
-      currentScore, // no score change this cycle — forge is advisory
-      cycleNumber,
-      operatorLeverage,
-      closedSourceGapBefore,
-      closedSourceGapBefore,
-    );
-
-    const objectiveFunction = computeObjectiveFunction(
-      operatorLeverage,
-      extractedPatterns,
-      0,
-    );
-
-    if (options.reframe || options.auto) {
-      logger.info(renderReframe(reframe));
-      logger.info('');
-    }
-
-    if (options.guards) {
-      logger.info(renderAntiFailureReport(antiFailureChecks));
-      logger.info('');
-    }
-
-    // ── Build cycle result ────────────────────────────────────────────────────
-
-    const cycleResult: CoflCycleResult = {
-      cycleNumber,
-      completedAt: now(),
-      partition,
-      extractedPatterns: filteredPatterns,
-      operatorLeverage,
-      antiFailureChecks,
-      reframe,
-      persistedAt: now(),
-      objectiveFunction,
-    };
-
-    // Persist registry
-    const updatedRegistry = persistCycleLearnings(cycleResult, registry);
-    await saveRegistryFn(updatedRegistry, cwd);
-
-    // Write report
-    if (options.report || options.auto) {
-      const reportPath = `${cwd}/.danteforge/cofl/COFL_REPORT.md`;
-      const reportContent = buildCoflReport(cycleResult, cycleNumber);
-      await writeFileFn(reportPath, reportContent);
-      logger.success(`Report written to: ${reportPath}`);
-      logger.info('');
-    }
-
-    // Audit log
-    state.auditLog.push(
-      `${now()} | cofl: cycle ${cycleNumber} — ${filteredPatterns.length} patterns, ${failedGuards.length} guardrail failures, objective Δ: ${objectiveFunction.operator_preference_gain}`,
-    );
+    state.auditLog.push(`${now()} | cofl: cycle ${cycleNumber} — ${filteredPatterns.length} patterns extracted`);
     await saveStateFn(state, { cwd });
-
-    // Summary
-    logger.success('='.repeat(60));
-    logger.success('  COFL CYCLE COMPLETE');
-    logger.success('='.repeat(60));
-    logger.info('');
-    logger.info(`Cycle:          ${cycleNumber}`);
-    logger.info(`Patterns found: ${filteredPatterns.length}`);
-    logger.info(`Guardrails:     ${antiFailureChecks.filter(g => g.passed).length}/${antiFailureChecks.length} passed`);
-    logger.info(`Preferred:      ${reframe.becomeMorePreferred ? '✓' : '✗'}`);
-    logger.info(`Coherent:       ${reframe.becomeMoreCoherent ? '✓' : '✗'}`);
-    logger.info(`Inflating rows: ${reframe.onlyInflatingRows ? '⚠ yes' : '✓ no'}`);
-    logger.info('');
-    logger.info(`Next: ${reframe.recommendation}`);
 
     result = cycleResult;
   });
