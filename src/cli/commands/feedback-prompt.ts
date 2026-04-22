@@ -18,7 +18,18 @@ async function fileExists(filePath: string): Promise<boolean> {
   }
 }
 
-export async function feedbackPrompt(options: { auto?: boolean } = {}) {
+export async function feedbackPrompt(options: {
+  auto?: boolean;
+  _llmCaller?: typeof callLLM;
+  _isLLMAvailable?: typeof isLLMAvailable;
+  _loadState?: typeof loadState;
+  _saveState?: typeof saveState;
+} = {}) {
+  const llmFn = options._llmCaller ?? callLLM;
+  const llmAvailFn = options._isLLMAvailable ?? isLLMAvailable;
+  const loadFn = options._loadState ?? loadState;
+  const saveFn = options._saveState ?? saveState;
+
   return withErrorBoundary('feedback', async () => {
   const uprPath = path.join(STATE_DIR, 'UPR.md');
 
@@ -29,7 +40,7 @@ export async function feedbackPrompt(options: { auto?: boolean } = {}) {
   }
 
   const uprContent = await fs.readFile(uprPath, 'utf8');
-  const state = await loadState();
+  const state = await loadFn();
   const timestamp = new Date().toISOString();
 
   const prompt = `You are a senior software architect and project planner. Review and refine this Ultimate Planning Resource (UPR.md) for a production software project.
@@ -58,7 +69,7 @@ Output a refined markdown document with:
 - Suggested next DanteForge commands to run`;
 
   if (options.auto) {
-    const available = await isLLMAvailable();
+    const available = await llmAvailFn();
     if (!available) {
       process.exitCode = 1;
       logger.error('feedback --auto requires a verified live LLM provider. Configure a provider with working model access or start Ollama with the configured model first.');
@@ -67,12 +78,12 @@ Output a refined markdown document with:
 
     logger.info('Sending UPR.md to the configured LLM provider for refinement...');
     try {
-      const refined = await callLLM(prompt, undefined, { enrichContext: true });
+      const refined = await llmFn(prompt, undefined, { enrichContext: true });
       const refinedPath = path.join(STATE_DIR, 'REFINED_UPR.md');
       await fs.writeFile(refinedPath, refined);
 
       state.auditLog.push(`${timestamp} | feedback: REFINED_UPR.md generated via API`);
-      await saveState(state);
+      await saveFn(state);
 
       logger.success('REFINED_UPR.md generated via API');
       logger.info('Find it at .danteforge/REFINED_UPR.md');
@@ -98,6 +109,6 @@ Output a refined markdown document with:
   ].join('\n'));
 
   state.auditLog.push(`${timestamp} | feedback: prompt generated for manual LLM`);
-  await saveState(state);
+  await saveFn(state);
   });
 }
