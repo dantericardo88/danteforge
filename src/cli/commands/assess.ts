@@ -84,6 +84,109 @@ export interface AssessResult {
   minScore: number;
 }
 
+// ── Private helpers ───────────────────────────────────────────────────────────
+
+function showFirstRunCTA(minScore: number): void {
+  logger.info('');
+  logger.info('┌─────────────────────────────────────────────────────────┐');
+  logger.info('│  No completion target set — using default:              │');
+  logger.info(`│  Feature Universe: ${minScore.toFixed(1)}/10 avg on 90% of features     │`);
+  logger.info('│                                                         │');
+  logger.info('│  To customize "done": run `danteforge define-done`     │');
+  logger.info('└─────────────────────────────────────────────────────────┘');
+  logger.info('');
+}
+
+async function runCompetitorScan(
+  scanFn: (opts: CompetitorScanOptions) => Promise<CompetitorComparison>,
+  buildContextFn: (cwd: string) => Promise<ProjectCompetitorContext>,
+  assessment: HarshScoreResult,
+  cwd: string,
+  callLLMFn?: (prompt: string) => Promise<string>,
+): Promise<{ comparison: CompetitorComparison | undefined; projectCtx: ProjectCompetitorContext | undefined }> {
+  try {
+    const projectCtx = await buildContextFn(cwd);
+    const comparison = await scanFn({
+      ourScores: assessment.dimensions,
+      projectContext: projectCtx,
+      enableWebSearch: true,
+      _callLLM: callLLMFn,
+    });
+    return { comparison, projectCtx };
+  } catch {
+    logger.warn('[assess] Competitor scan failed — continuing without competitor data');
+    return { comparison: undefined, projectCtx: undefined };
+  }
+}
+
+async function runFeatureUniverseAssessment(
+  completionTarget: CompletionTarget,
+  enableCompetitors: boolean,
+  buildContextFn: (cwd: string) => Promise<ProjectCompetitorContext>,
+  buildUniverseFn: AssessOptions['_buildFeatureUniverse'],
+  scoreUniverseFn: AssessOptions['_scoreFeatureUniverse'],
+  comparison: CompetitorComparison | undefined,
+  projectCtx: ProjectCompetitorContext | undefined,
+  cwd: string,
+): Promise<FeatureUniverseAssessment | undefined> {
+  if (completionTarget.mode !== 'feature-universe' || !enableCompetitors) return undefined;
+  try {
+    const ctx = projectCtx ?? await buildContextFn(cwd);
+    const competitorNames = comparison?.competitors.map((c) => c.name) ?? [];
+    if (competitorNames.length === 0) return undefined;
+    const buildUniverse = buildUniverseFn ?? buildFeatureUniverse;
+    const scoreUniverse = scoreUniverseFn ?? scoreProjectAgainstUniverse;
+    let featureUniverse = await loadFeatureUniverse(cwd).catch(() => null);
+    if (!featureUniverse) {
+      featureUniverse = await buildUniverse(competitorNames, ctx);
+      await saveFeatureUniverse(featureUniverse, cwd).catch(() => {});
+    }
+    const featureAssessment = await scoreUniverse(featureUniverse, ctx);
+    await saveFeatureScores(featureAssessment, cwd).catch(() => {});
+    return featureAssessment;
+  } catch {
+    logger.warn('[assess] Feature universe assessment failed — falling back to dimension scoring');
+    return undefined;
+  }
+}
+
+async function trackSessionBaseline(
+  loadStateFn: typeof loadState,
+  saveStateFn: typeof saveState,
+  effectiveScore: number,
+  cwd: string,
+  setBaseline?: boolean,
+): Promise<{ sessionDelta?: number; sessionBaseline?: number; sessionBaselineDate?: string }> {
+  try {
+    const state = await loadStateFn({ cwd });
+    const needsBaseline = !state.sessionBaselineScore || setBaseline;
+    if (needsBaseline) {
+      state.sessionBaselineScore = effectiveScore;
+      state.sessionBaselineTimestamp = new Date().toISOString();
+      await saveStateFn(state, { cwd });
+      return {};
+    }
+    return {
+      sessionBaseline: state.sessionBaselineScore,
+      sessionBaselineDate: state.sessionBaselineTimestamp,
+      sessionDelta: effectiveScore - (state.sessionBaselineScore ?? effectiveScore),
+    };
+  } catch {
+    return {};
+  }
+}
+
+async function refreshSelfDossier(cwd: string, dossierFn?: (opts: { cwd: string }) => Promise<unknown>): Promise<void> {
+  try {
+    if (dossierFn) {
+      await dossierFn({ cwd });
+    } else {
+      const { buildSelfDossier } = await import('../../dossier/self-scorer.js');
+      await buildSelfDossier({ cwd });
+    }
+  } catch { /* self-dossier is optional; assess continues without it */ }
+}
+
 // ── Main command ──────────────────────────────────────────────────────────────
 
 export async function assess(options: AssessOptions = {}): Promise<AssessResult> {
@@ -93,15 +196,7 @@ export async function assess(options: AssessOptions = {}): Promise<AssessResult>
   const cycleNumber = options.cycleNumber ?? 1;
   const isInteractive = options.interactive ?? false;
 
-  // Refresh self-dossier for evidence-based gap analysis (best-effort, never blocks assess)
-  try {
-    if (options._buildSelfDossier) {
-      await options._buildSelfDossier({ cwd });
-    } else {
-      const { buildSelfDossier } = await import('../../dossier/self-scorer.js');
-      await buildSelfDossier({ cwd });
-    }
-  } catch { /* self-dossier is optional; assess continues without it */ }
+  await refreshSelfDossier(cwd, options._buildSelfDossier);
 
   const harshScoreFn = options._harshScore ?? computeHarshScore;
   const scanFn = options._scanCompetitors ?? scanCompetitors;
@@ -109,26 +204,13 @@ export async function assess(options: AssessOptions = {}): Promise<AssessResult>
   const buildContextFn = options._buildProjectContext ?? buildProjectContext;
   const getTargetFn = options._getCompletionTarget
     ?? ((dir: string) => getOrPromptCompletionTarget(dir, isInteractive));
-  const buildUniverseFn = options._buildFeatureUniverse ?? buildFeatureUniverse;
-  const scoreUniverseFn = options._scoreFeatureUniverse ?? scoreProjectAgainstUniverse;
 
   // ── Step 0: Load or prompt for completion target ────────────────────────────
   const completionTarget = await getTargetFn(cwd);
   const isFirstRun = completionTarget.definedBy === 'default';
   const minScore = options.minScore ?? completionTarget.minScore;
 
-  // Show CTA on first run so users know define-done exists
-  if (isFirstRun) {
-    logger.info('');
-    logger.info('┌──────────────────────��────────────────────────────���─────┐');
-    logger.info('│  No completion target set — using default:              │');
-    logger.info(`│  Feature Universe: ${minScore.toFixed(1)}/10 avg on 90% of features     │`);
-    logger.info('│                                                         │');
-    logger.info('│  To customize "done": run `danteforge define-done`     │');
-    logger.info('└─────────────────────────────────────────────────────────┘');
-    logger.info('');
-  }
-
+  if (isFirstRun) showFirstRunCTA(minScore);
   logger.info(`[assess] Running self-assessment (harsh=${harsh}, mode=${completionTarget.mode}, target=${minScore}/10)...`);
 
   // Determine target maturity level from preset
@@ -151,38 +233,15 @@ export async function assess(options: AssessOptions = {}): Promise<AssessResult>
   let comparison: CompetitorComparison | undefined;
   let projectCtx: ProjectCompetitorContext | undefined;
   if (enableCompetitors) {
-    try {
-      projectCtx = await buildContextFn(cwd);
-      comparison = await scanFn({
-        ourScores: assessment.dimensions,
-        projectContext: projectCtx,
-        enableWebSearch: true,
-        _callLLM: options._callLLM,
-      });
-    } catch {
-      logger.warn('[assess] Competitor scan failed — continuing without competitor data');
-    }
+    ({ comparison, projectCtx } = await runCompetitorScan(scanFn, buildContextFn, assessment, cwd, options._callLLM));
   }
 
   // ── Step 2b: Feature universe assessment (when mode=feature-universe) ───────
-  let featureAssessment: FeatureUniverseAssessment | undefined;
-  if (completionTarget.mode === 'feature-universe' && enableCompetitors) {
-    try {
-      const ctx = projectCtx ?? await buildContextFn(cwd);
-      const competitorNames = comparison?.competitors.map((c) => c.name) ?? [];
-      if (competitorNames.length > 0) {
-        let featureUniverse = await loadFeatureUniverse(cwd).catch(() => null);
-        if (!featureUniverse) {
-          featureUniverse = await buildUniverseFn(competitorNames, ctx);
-          await saveFeatureUniverse(featureUniverse, cwd).catch(() => {});
-        }
-        featureAssessment = await scoreUniverseFn(featureUniverse, ctx);
-        await saveFeatureScores(featureAssessment, cwd).catch(() => {});
-      }
-    } catch {
-      logger.warn('[assess] Feature universe assessment failed — falling back to dimension scoring');
-    }
-  }
+  const featureAssessment = await runFeatureUniverseAssessment(
+    completionTarget, enableCompetitors, buildContextFn,
+    options._buildFeatureUniverse, options._scoreFeatureUniverse,
+    comparison, projectCtx, cwd,
+  );
 
   // ── Step 3: Generate masterplan ─────────────────────────────────────────────
   // When feature-universe mode: score is from universe; otherwise from harsh scorer
@@ -211,24 +270,11 @@ export async function assess(options: AssessOptions = {}): Promise<AssessResult>
   };
 
   // ── Step 3b: Session baseline tracking ─────────────────────────────────────
-  let sessionDelta: number | undefined;
-  let sessionBaseline: number | undefined;
-  let sessionBaselineDate: string | undefined;
-  try {
-    const loadStateFn = options._loadState ?? loadState;
-    const saveStateFn = options._saveState ?? saveState;
-    const state = await loadStateFn({ cwd });
-    const needsBaseline = !state.sessionBaselineScore || options.setBaseline;
-    if (needsBaseline) {
-      state.sessionBaselineScore = effectiveScore;
-      state.sessionBaselineTimestamp = new Date().toISOString();
-      await saveStateFn(state, { cwd });
-    } else {
-      sessionBaseline = state.sessionBaselineScore;
-      sessionBaselineDate = state.sessionBaselineTimestamp;
-      sessionDelta = effectiveScore - (sessionBaseline ?? effectiveScore);
-    }
-  } catch { /* best-effort — state may not exist yet */ }
+  const loadStateFn = options._loadState ?? loadState;
+  const saveStateFn = options._saveState ?? saveState;
+  const { sessionDelta, sessionBaseline, sessionBaselineDate } = await trackSessionBaseline(
+    loadStateFn, saveStateFn, effectiveScore, cwd, options.setBaseline,
+  );
 
   // ── Step 4: Output ──────────────────────────────────────────────────────────
   if (options.json) {
