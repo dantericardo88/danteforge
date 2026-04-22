@@ -738,6 +738,40 @@ async function syncCodexBootstrap(homeDir: string): Promise<void> {
   await fs.writeFile(bootstrapPath, mergedContent, 'utf8');
 }
 
+async function installNativeSkills(
+  assistant: AssistantRegistry,
+  skillDirs: string[],
+  skillsDir: string,
+  targetDir: string,
+  homeDir: string,
+  projectDir: string | undefined,
+): Promise<void> {
+  for (const skillName of skillDirs) {
+    const sourceDir = path.join(skillsDir, skillName);
+    const skillFile = path.join(sourceDir, 'SKILL.md');
+    try {
+      await fs.access(skillFile);
+    } catch {
+      continue;
+    }
+    await fs.cp(sourceDir, path.join(targetDir, skillName), { recursive: true, force: true });
+  }
+
+  if (assistant === 'codex') {
+    await syncCodexConfig(homeDir);
+    await syncCodexCommands(homeDir);
+    await syncCodexBootstrap(homeDir);
+  }
+
+  if (assistant === 'claude' && projectDir) {
+    try {
+      await syncClaudePluginCache(homeDir, projectDir);
+    } catch {
+      // Plugin cache sync is best-effort — don't block skill installation
+    }
+  }
+}
+
 export async function installAssistantSkills(
   options: InstallAssistantSkillsOptions = {},
 ): Promise<{ homeDir: string; assistants: AssistantInstallResult[] }> {
@@ -815,32 +849,7 @@ export async function installAssistantSkills(
       continue;
     }
 
-    for (const skillName of skillDirs) {
-      const sourceDir = path.join(skillsDir, skillName);
-      const skillFile = path.join(sourceDir, 'SKILL.md');
-      try {
-        await fs.access(skillFile);
-      } catch {
-        continue;
-      }
-
-      await fs.cp(sourceDir, path.join(targetDir, skillName), { recursive: true, force: true });
-    }
-
-    if (assistant === 'codex') {
-      await syncCodexConfig(homeDir);
-      await syncCodexCommands(homeDir);
-      await syncCodexBootstrap(homeDir);
-    }
-
-    if (assistant === 'claude' && options.projectDir) {
-      try {
-        await syncClaudePluginCache(homeDir, options.projectDir);
-      } catch {
-        // Plugin cache sync is best-effort — don't block skill installation
-      }
-    }
-
+    await installNativeSkills(assistant, skillDirs, skillsDir, targetDir, homeDir, options.projectDir);
     results.push({ assistant, targetDir, installedSkills: skillDirs, installMode: 'skills' });
   }
 

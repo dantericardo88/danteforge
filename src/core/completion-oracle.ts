@@ -13,15 +13,14 @@ export interface CompletionOracleResult {
   coverageAnalysis?: CoverageAnalysis;
 }
 
-export function validateCompletion(bundle: EvidenceBundle, state: DanteState): CompletionOracleResult {
+function scoreEvidence(
+  bundle: EvidenceBundle,
+  coverageAnalysis: CoverageAnalysis,
+): { score: number; reasons: string[]; recommendations: string[] } {
   const reasons: string[] = [];
   const recommendations: string[] = [];
   let score = 0;
 
-  // Run coverage analysis
-  const coverageAnalysis = analyzeRequirementCoverage(bundle, state);
-
-  // Check requirement coverage
   if (coverageAnalysis.requirements.coveragePercent < 80) {
     reasons.push(`Low requirement coverage: ${Math.round(coverageAnalysis.requirements.coveragePercent)}%`);
     recommendations.push('Address missing requirements');
@@ -29,7 +28,6 @@ export function validateCompletion(bundle: EvidenceBundle, state: DanteState): C
     score += 15;
   }
 
-  // Check for minimum evidence requirements
   if (bundle.reads.length === 0) {
     reasons.push('No file reads recorded - system did not inspect project state');
   } else {
@@ -49,7 +47,6 @@ export function validateCompletion(bundle: EvidenceBundle, state: DanteState): C
     score += 10;
   }
 
-  // Check test coverage
   if (bundle.tests.length === 0) {
     reasons.push('No tests recorded - completion not verified');
     recommendations.push('Run tests to verify functionality');
@@ -64,7 +61,6 @@ export function validateCompletion(bundle: EvidenceBundle, state: DanteState): C
     }
   }
 
-  // Check gate enforcement
   if (bundle.gates.length === 0) {
     reasons.push('No gate checks recorded - quality gates not enforced');
     recommendations.push('Ensure all required gates are checked');
@@ -79,7 +75,6 @@ export function validateCompletion(bundle: EvidenceBundle, state: DanteState): C
     }
   }
 
-  // Check artifact coverage
   if (coverageAnalysis.artifacts.missing.length > 0) {
     reasons.push(`Missing expected artifacts: ${coverageAnalysis.artifacts.missing.join(', ')}`);
     recommendations.push('Ensure all phase artifacts are created');
@@ -87,7 +82,6 @@ export function validateCompletion(bundle: EvidenceBundle, state: DanteState): C
     score += 10;
   }
 
-  // Check for plan adherence
   if (!bundle.plan || Object.keys(bundle.plan).length === 0) {
     reasons.push('No execution plan recorded');
     recommendations.push('Ensure tasks follow a defined plan');
@@ -95,7 +89,6 @@ export function validateCompletion(bundle: EvidenceBundle, state: DanteState): C
     score += 10;
   }
 
-  // Check for error-free execution
   const failedCommands = bundle.commands.filter(c => c.exitCode !== 0);
   if (failedCommands.length > 0) {
     reasons.push(`${failedCommands.length} commands failed execution`);
@@ -103,6 +96,13 @@ export function validateCompletion(bundle: EvidenceBundle, state: DanteState): C
   } else if (bundle.commands.length > 0) {
     score += 10;
   }
+
+  return { score, reasons, recommendations };
+}
+
+export function validateCompletion(bundle: EvidenceBundle, state: DanteState): CompletionOracleResult {
+  const coverageAnalysis = analyzeRequirementCoverage(bundle, state);
+  const { score, reasons, recommendations } = scoreEvidence(bundle, coverageAnalysis);
 
   // Determine verdict type
   let verdict: CompletionVerdict;
