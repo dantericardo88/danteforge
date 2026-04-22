@@ -139,54 +139,7 @@ or pass them directly via --fields in programmatic usage.
       updatedAt: now,
     };
   } else if (process.stdin.isTTY) {
-    // Interactive TTY path
-    logger.info('\n  SET CONVERGENCE GOAL\n  ════════════════════\n');
-
-    const category = await readLine(
-      `  Software category [${existing?.category ?? 'agentic dev CLI'}]: `,
-    ) || (existing?.category ?? 'agentic dev CLI');
-
-    const competitorsRaw = await readLine(
-      `  Competitors (comma-separated) [${(existing?.competitors ?? []).join(', ') || 'none'}]: `,
-    );
-    const competitors = deduplicateCompetitors(
-      competitorsRaw
-        ? competitorsRaw.split(',').map(s => s.trim()).filter(Boolean)
-        : (existing?.competitors ?? []),
-    );
-
-    const definition9 = await readLine(
-      `  Definition of 9/10 [${existing?.definition9 ?? 'Fully autonomous self-improvement'}]: `,
-    ) || (existing?.definition9 ?? 'Fully autonomous self-improvement with verified convergence');
-
-    const exclusionsRaw = await readLine(
-      `  Exclusions (comma-separated) [${(existing?.exclusions ?? []).join(', ') || 'none'}]: `,
-    );
-    const exclusions = exclusionsRaw
-      ? exclusionsRaw.split(',').map(s => s.trim()).filter(Boolean)
-      : (existing?.exclusions ?? []);
-
-    const budgetRaw = await readLine(
-      `  Daily budget USD [${existing?.dailyBudgetUsd ?? 5.0}]: `,
-    );
-    const dailyBudgetUsd = budgetRaw ? parseFloat(budgetRaw) : (existing?.dailyBudgetUsd ?? 5.0);
-
-    const oversightRaw = await readLine(
-      `  Oversight level 1/2/3 [${existing?.oversightLevel ?? 2}]: `,
-    );
-    const oversightLevel = (oversightRaw ? parseInt(oversightRaw, 10) : (existing?.oversightLevel ?? 2)) as 1 | 2 | 3;
-
-    goal = {
-      version: '1.0.0',
-      category,
-      competitors,
-      definition9,
-      exclusions,
-      dailyBudgetUsd: isNaN(dailyBudgetUsd) ? 5.0 : dailyBudgetUsd,
-      oversightLevel: ([1, 2, 3] as const).includes(oversightLevel) ? oversightLevel : 2,
-      createdAt: existing?.createdAt ?? now,
-      updatedAt: now,
-    };
+    goal = await readGoalInteractively(existing, readLine, now);
   } else {
     // Non-TTY, no fields provided — use defaults merged with existing
     goal = {
@@ -225,6 +178,45 @@ or pass them directly via --fields in programmatic usage.
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
+
+async function readGoalInteractively(
+  existing: GoalConfig | null,
+  readLine: (prompt: string) => Promise<string>,
+  now: string,
+): Promise<GoalConfig> {
+  logger.info('\n  SET CONVERGENCE GOAL\n  ════════════════════\n');
+
+  const category = await readLine(`  Software category [${existing?.category ?? 'agentic dev CLI'}]: `) || (existing?.category ?? 'agentic dev CLI');
+
+  const competitorsRaw = await readLine(`  Competitors (comma-separated) [${(existing?.competitors ?? []).join(', ') || 'none'}]: `);
+  const competitors = deduplicateCompetitors(
+    competitorsRaw ? competitorsRaw.split(',').map(s => s.trim()).filter(Boolean) : (existing?.competitors ?? []),
+  );
+
+  const definition9 = await readLine(`  Definition of 9/10 [${existing?.definition9 ?? 'Fully autonomous self-improvement'}]: `)
+    || (existing?.definition9 ?? 'Fully autonomous self-improvement with verified convergence');
+
+  const exclusionsRaw = await readLine(`  Exclusions (comma-separated) [${(existing?.exclusions ?? []).join(', ') || 'none'}]: `);
+  const exclusions = exclusionsRaw ? exclusionsRaw.split(',').map(s => s.trim()).filter(Boolean) : (existing?.exclusions ?? []);
+
+  const budgetRaw = await readLine(`  Daily budget USD [${existing?.dailyBudgetUsd ?? 5.0}]: `);
+  const dailyBudgetUsd = budgetRaw ? parseFloat(budgetRaw) : (existing?.dailyBudgetUsd ?? 5.0);
+
+  const oversightRaw = await readLine(`  Oversight level 1/2/3 [${existing?.oversightLevel ?? 2}]: `);
+  const oversightLevel = (oversightRaw ? parseInt(oversightRaw, 10) : (existing?.oversightLevel ?? 2)) as 1 | 2 | 3;
+
+  return {
+    version: '1.0.0',
+    category,
+    competitors,
+    definition9,
+    exclusions,
+    dailyBudgetUsd: isNaN(dailyBudgetUsd) ? 5.0 : dailyBudgetUsd,
+    oversightLevel: ([1, 2, 3] as const).includes(oversightLevel) ? oversightLevel : 2,
+    createdAt: existing?.createdAt ?? now,
+    updatedAt: now,
+  };
+}
 
 function deduplicateCompetitors(competitors: string[]): string[] {
   const seen = new Set<string>();

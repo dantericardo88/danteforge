@@ -93,12 +93,65 @@ async function runTestFileDefault(testFile: string, cwd: string): Promise<boolea
   }
 }
 
+// ── Per-file mutation runner ───────────────────────────────────────────────────
+
+async function mutateSingleFile(
+  target: TargetPair,
+  cwd: string,
+  maxMutantsPerFile: number,
+  readFile: (p: string) => Promise<string>,
+  writeFile: (p: string, c: string) => Promise<void>,
+  restoreFile: (p: string, orig: string) => Promise<void>,
+  runTests: (testFile: string, cwd: string) => Promise<boolean>,
+): Promise<PerFileResult> {
+  const srcPath = path.join(cwd, target.src);
+  const empty: PerFileResult = { file: target.src, testFile: target.test, mutationScore: 1.0, killed: 0, survived: 0, total: 0, operatorBreakdown: {} };
+
+  let original: string;
+  try {
+    original = await readFile(srcPath);
+  } catch {
+    logger.warn(`[self-mutate] Skipping ${target.src}: cannot read file`);
+    return empty;
+  }
+
+  const mutants = generateMutants(original, Math.ceil(maxMutantsPerFile / 5)).slice(0, maxMutantsPerFile);
+  if (mutants.length === 0) {
+    logger.info(`[self-mutate] ${target.src}: no mutants generated — score=1.0`);
+    return empty;
+  }
+
+  logger.info(`[self-mutate] ${target.src}: testing ${mutants.length} mutants against ${target.test}`);
+  const results: Array<{ operator: string; killed: boolean }> = [];
+
+  for (const mutant of mutants) {
+    let killed = false;
+    try {
+      await writeFile(srcPath, applyMutant(original, mutant));
+      killed = await runTests(target.test, cwd).catch(() => false);
+    } finally {
+      await restoreFile(srcPath, original).catch(() => {});
+    }
+    results.push({ operator: mutant.operator, killed });
+  }
+
+  const killedCount = results.filter(r => r.killed).length;
+  const total = results.length;
+  const mutationScore = total > 0 ? Math.round((killedCount / total) * 1000) / 1000 : 1.0;
+
+  const operatorBreakdown: Record<string, { killed: number; total: number }> = {};
+  for (const r of results) {
+    if (!operatorBreakdown[r.operator]) operatorBreakdown[r.operator] = { killed: 0, total: 0 };
+    operatorBreakdown[r.operator].total++;
+    if (r.killed) operatorBreakdown[r.operator].killed++;
+  }
+
+  logger.info(`[self-mutate] ${target.src}: score=${mutationScore.toFixed(2)} (${killedCount}/${total} killed)`);
+  return { file: target.src, testFile: target.test, mutationScore, killed: killedCount, survived: total - killedCount, total, operatorBreakdown };
+}
+
 // ── Main export ───────────────────────────────────────────────────────────────
 
-/**
- * Run mutation testing on DanteForge's own core files.
- * Uses per-file test targeting to keep runtime bounded.
- */
 export async function runSelfMutate(opts: SelfMutateOptions = {}): Promise<SelfMutateResult> {
   const cwd = opts.cwd ?? process.cwd();
   const targets = opts.targets ?? CORE_TARGETS;
@@ -112,87 +165,10 @@ export async function runSelfMutate(opts: SelfMutateOptions = {}): Promise<SelfM
   const writeReport = opts._writeReport ?? ((p: string, c: string) => fs.writeFile(p, c, 'utf8'));
 
   const perFile: PerFileResult[] = [];
-
   for (const target of targets) {
-    const srcPath = path.join(cwd, target.src);
-
-    let original: string;
-    try {
-      original = await readFile(srcPath);
-    } catch {
-      logger.warn(`[self-mutate] Skipping ${target.src}: cannot read file`);
-      // File not readable — contribute score of 1.0 (no mutations = clean)
-      perFile.push({
-        file: target.src,
-        testFile: target.test,
-        mutationScore: 1.0,
-        killed: 0,
-        survived: 0,
-        total: 0,
-        operatorBreakdown: {},
-      });
-      continue;
-    }
-
-    const maxPerOp = Math.ceil(maxMutantsPerFile / 5);
-    const mutants = generateMutants(original, maxPerOp).slice(0, maxMutantsPerFile);
-
-    if (mutants.length === 0) {
-      logger.info(`[self-mutate] ${target.src}: no mutants generated — score=1.0`);
-      perFile.push({
-        file: target.src,
-        testFile: target.test,
-        mutationScore: 1.0,
-        killed: 0,
-        survived: 0,
-        total: 0,
-        operatorBreakdown: {},
-      });
-      continue;
-    }
-
-    logger.info(`[self-mutate] ${target.src}: testing ${mutants.length} mutants against ${target.test}`);
-
-    const results: Array<{ operator: string; killed: boolean }> = [];
-
-    for (const mutant of mutants) {
-      const mutatedSource = applyMutant(original, mutant);
-      let killed = false;
-      try {
-        await writeFile(srcPath, mutatedSource);
-        killed = await runTests(target.test, cwd).catch(() => false);
-      } finally {
-        await restoreFile(srcPath, original).catch(() => {});
-      }
-      results.push({ operator: mutant.operator, killed });
-    }
-
-    const killedCount = results.filter(r => r.killed).length;
-    const total = results.length;
-    const mutationScore = total > 0 ? Math.round((killedCount / total) * 1000) / 1000 : 1.0;
-
-    // Build operator breakdown
-    const operatorBreakdown: Record<string, { killed: number; total: number }> = {};
-    for (const r of results) {
-      if (!operatorBreakdown[r.operator]) operatorBreakdown[r.operator] = { killed: 0, total: 0 };
-      operatorBreakdown[r.operator].total++;
-      if (r.killed) operatorBreakdown[r.operator].killed++;
-    }
-
-    logger.info(`[self-mutate] ${target.src}: score=${mutationScore.toFixed(2)} (${killedCount}/${total} killed)`);
-
-    perFile.push({
-      file: target.src,
-      testFile: target.test,
-      mutationScore,
-      killed: killedCount,
-      survived: total - killedCount,
-      total,
-      operatorBreakdown,
-    });
+    perFile.push(await mutateSingleFile(target, cwd, maxMutantsPerFile, readFile, writeFile, restoreFile, runTests));
   }
 
-  // Compute overall score: weighted by total mutants (files with 0 mutants don't dilute)
   const filesWithMutants = perFile.filter(f => f.total > 0);
   const overallScore = filesWithMutants.length > 0
     ? Math.round((filesWithMutants.reduce((sum, f) => sum + f.mutationScore * f.total, 0) /
@@ -200,17 +176,8 @@ export async function runSelfMutate(opts: SelfMutateOptions = {}): Promise<SelfM
     : 1.0;
 
   const gatePass = overallScore >= minMutationScore;
-
   const reportPath = path.join(cwd, '.danteforge', 'mutation-report.json');
-  const report = {
-    capturedAt: new Date().toISOString(),
-    overallScore,
-    gatePass,
-    minMutationScore,
-    perFile,
-  };
-
-  await writeReport(reportPath, JSON.stringify(report, null, 2)).catch(() => {});
+  await writeReport(reportPath, JSON.stringify({ capturedAt: new Date().toISOString(), overallScore, gatePass, minMutationScore, perFile }, null, 2)).catch(() => {});
 
   return { perFile, overallScore, gatePass, minMutationScore, reportPath };
 }
