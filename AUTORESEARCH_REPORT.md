@@ -1,57 +1,87 @@
-# AutoResearch Report: autonomy + selfImprovement score accuracy
+# AutoResearch Report: add injection seams to zero-seam CLI command files
 
-**Duration**: ~20 minutes
-**Experiments run**: 1
-**Kept**: 1 | **Discarded**: 0 | **Crashed**: 0
+**Duration**: ~2 hours
+**Experiments run**: 10
+**Kept**: 10 | **Discarded**: 0 | **Crashed**: 0
 **Keep rate**: 100%
 
 ## Metric Progress
+- Baseline: 80/124 files with at least one `_param?:` injection seam
+- Final: 115/124 files seamed
+- Total improvement: +35 files (+43.75%)
+- Maximum achievable: 115/124 (9 remaining files are un-injectable: 6 re-export stubs, 2 empty files, 1 barrel index)
 
-| Dimension | Baseline | Final | Delta |
-|-----------|----------|-------|-------|
-| autonomy | 6.5 | 9.0 | +2.5 |
-| selfImprovement | 6.5 | 10.0 | +3.5 |
-| convergenceSelfHealing | 7.0 | 9.0 | +2.0 |
-| **Overall score** | **9.0** | **9.4** | **+0.4** |
+## Winning Experiments (all kept)
 
-## Root Cause
+| # | Description | Files Added | Metric |
+|---|-------------|-------------|--------|
+| 1 | enterprise-readiness, constitution, audit, party | +4 | 84 |
+| 2 | policy, compact, audit-export | +3 | 87 |
+| 3 | setup-ollama, browse, oss-clean | +3 | 90 |
+| 4 | awesome-scan, setup-figma, specify | +3 | 93 |
+| 5 | tasks, tech-decide, feedback-prompt | +3 | 96 |
+| 6 | design, review, synthesize | +3 | 99 |
+| 7 | qa, oss, lessons | +3 | 102 |
+| 8 | docs, cost, completion, dashboard, premium | +5 | 107 |
+| 9 | profile, import, help, update-mcp | +4 | 111 |
+| 10 | config, setup-assistants, ux-refine, doctor | +4 | 115 |
 
-The default `score` command was reading autonomy/selfImprovement/convergenceSelfHealing
-from STATE.yaml snapshots, which go stale between runs. The --strict flag correctly read
-live filesystem evidence (23 verify receipts, 32 retro evidence files, 64 retro sessions,
-1582-line lessons.md) and always produced accurate scores — but users had to know to pass
---strict.
+## Seam Patterns Applied
 
-## Winning Experiment
+All seams follow the DanteForge injection seam pattern:
+- Optional `_`-prefixed parameters in function options objects
+- Resolver pattern: `const fn = options._fn ?? realFn`
+- All seams default to the real implementation when not provided
+- TypeScript strict mode compliant — no `as any` casts
 
-### Experiment 1: Always apply strict overrides for evidence-based dimensions
+### Common seam types added:
+- `_loadState?: typeof loadState` / `_saveState?: typeof saveState` — state I/O
+- `_llmCaller?: typeof callLLM` / `_isLLMAvailable?: typeof isLLMAvailable` — LLM deps
+- `_stdout?: (line: string) => void` — output capture for testing
+- Domain-specific: `_buildRegistry`, `_scanExternal`, `_detectBinary`, `_runQAPass`, etc.
 
-**Hypothesis**: Moving computeStrictDimensions for the three evidence-based dims out of
-the `if (options.strict)` guard makes the default score accurate.
+## Files Still Without Seams (9 — structural, not fixable)
 
-**Change**: src/cli/commands/score.ts — always call computeStrictDimensions and apply
-its values for autonomy, selfImprovement, convergenceSelfHealing. --strict now only
-additionally overrides the remaining 4 dims and enforces automation ceilings.
-
-**Metric delta**: autonomy 6.5→9.0, selfImprovement 6.5→10.0, convergence 7.0→9.0.
-Overall: 9.0→9.4.
-
-**Tests**: 16/16 pass. Updated makeOpts in score-command.test.ts to inject _gitLog,
-_listDir, _fileExistsStrict stubs. Updated appendScoreHistory assertion to check
-recorded score matches actual returned score.
-
-## Why No More Experiments
-
-Remaining P0 items are either excluded (communityAdoption) or LLM-assessed
-(enterpriseReadiness, maintainability) — not improveable via code experiments.
+| File | Reason |
+|------|--------|
+| blaze.ts | Pure re-export: `export { blaze } from './magic.js'` |
+| canvas.ts | Pure re-export: `export { canvas } from './magic.js'` |
+| ember.ts | Pure re-export: `export { ember } from './magic.js'` |
+| inferno.ts | Pure re-export: `export { inferno } from './magic.js'` |
+| nova.ts | Pure re-export: `export { nova } from './magic.js'` |
+| spark.ts | Pure re-export: `export { spark } from './magic.js'` |
+| benchmark-run.ts | Empty file (0 bytes) |
+| performance.ts | Empty file (0 bytes) |
+| index.ts | Barrel re-export only |
 
 ## Key Insights
 
-1. STATE.yaml snapshots decay while the project improves. Evidence-based dims should
-   always read from the filesystem, not from mutable config.
+1. **100% keep rate** — Every seam addition improved the metric. No rollbacks needed.
+2. **Uniform pattern** — The resolver pattern (`const fn = options._fn ?? realFn`) works cleanly across all command types.
+3. **Typecheck gate** — `npx tsc --noEmit` after every batch caught zero regressions across 10 experiments.
+4. **Batch sizing** — 3-5 files per commit was optimal: enough to amortize the commit overhead, small enough to stay focused.
+5. **Re-export ceiling** — 6 magic preset files (blaze/canvas/ember/inferno/nova/spark) are structural re-exports — cannot be seamed without changing magic.ts itself.
 
-2. The --strict design was backwards: strict should be the default for dims with
-   reliable filesystem signals.
+## Next Steps for Stage 2
 
-3. Test injection seams must cover all code paths — always inject _gitLog/_listDir/
-   _fileExistsStrict stubs in score tests or you get non-deterministic host-fs reads.
+These seams are now ready for test coverage. The recommended next autoresearch goal:
+> "write unit tests for CLI commands that have injection seams but zero test coverage"
+
+Target files: `awesome-scan.ts`, `setup-figma.ts`, `specify.ts`, `tasks.ts`, `tech-decide.ts`, `feedback-prompt.ts`, `design.ts`, `review.ts`, `synthesize.ts`, `qa.ts`, `oss.ts`, `docs.ts`, `cost.ts`, `completion.ts`, `dashboard.ts`, `premium.ts`, `profile.ts`, `import.ts`, `help.ts`, `update-mcp.ts`, `config.ts`, `setup-assistants.ts`, `ux-refine.ts`, `doctor.ts`
+
+## Full Results Log
+
+```
+experiment	metric_value	status	description
+baseline	80	keep	unmodified baseline — 80/124 files with seams, 44 without
+exp-1	84	keep	add seams: enterprise-readiness, constitution, audit, party (+4 files)
+exp-2	87	keep	add seams: policy, compact, audit-export (+3 files)
+exp-3	90	keep	add seams: setup-ollama, browse, oss-clean (+3 files)
+exp-4	93	keep	add seams: awesome-scan, setup-figma, specify (+3 files)
+exp-5	96	keep	add seams: tasks, tech-decide, feedback-prompt (+3 files)
+exp-6	99	keep	add seams: design, review, synthesize (+3 files)
+exp-7	102	keep	add seams: qa, oss, lessons (+3 files)
+exp-8	107	keep	add seams: docs, cost, completion, dashboard, premium (+5 files)
+exp-9	111	keep	add seams: profile, import, help, update-mcp (+4 files)
+exp-10	115	keep	add seams: config, setup-assistants, ux-refine, doctor (+4 files — maximum achievable)
+```
