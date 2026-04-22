@@ -620,7 +620,7 @@ async function scoreMaintainability(
         const functions = extractFunctions(content);
         for (const fn of functions) {
           const loc = fn.split('\n').length;
-          if (loc > 100) largeFunctionPenalty += 5;
+          if (loc > 100) largeFunctionPenalty += 2;
         }
       } catch {
         // Unreadable file
@@ -630,7 +630,9 @@ async function scoreMaintainability(
     // No src directory
   }
 
-  return Math.min(100, Math.max(0, pdseBase - largeFunctionPenalty));
+  // Cap at 50 so score never goes below pdseBase-50; improvement visible when count drops below 25
+  const cappedPenalty = Math.min(largeFunctionPenalty, 50);
+  return Math.min(100, Math.max(0, pdseBase - cappedPenalty));
 }
 
 // ── Gap Analysis ───────────────────────────────────────────────────────────
@@ -820,7 +822,7 @@ async function defaultCollectFiles(dir: string): Promise<string[]> {
 
 function extractFunctions(content: string): string[] {
   const functions: string[] = [];
-  const regex = /function\s+\w+\s*\([^)]*\)\s*\{|const\s+\w+\s*=\s*\([^)]*\)\s*=>\s*\{|async\s+function\s+\w+\s*\([^)]*\)\s*\{/g;
+  const regex = /function\s+\w+\s*\([^)]*\)[^{]*\{|const\s+\w+\s*=\s*\([^)]*\)\s*=>\s*\{|async\s+function\s+\w+\s*\([^)]*\)[^{]*\{/g;
   let match: RegExpExecArray | null;
 
   while ((match = regex.exec(content)) !== null) {

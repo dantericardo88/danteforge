@@ -11,11 +11,15 @@ function requireNode(ctx: ToolContext, nodeId: string) {
 function applyChange(ctx: ToolContext, nodeId: string, apply: (node: Record<string, unknown>) => void) {
   const node = requireNode(ctx, nodeId);
   if ('error' in node) return node;
-  const mutCtx = withUndo(ctx);
-  apply(node as unknown as Record<string, unknown>);
-  mutCtx.modified = true;
-  Object.assign(ctx, { undoStack: mutCtx.undoStack, modified: true });
-  return { updated: true, nodeId };
+  try {
+    const mutCtx = withUndo(ctx);
+    apply(node as unknown as Record<string, unknown>);
+    mutCtx.modified = true;
+    Object.assign(ctx, { undoStack: mutCtx.undoStack, modified: true });
+    return { updated: true, nodeId };
+  } catch (err) {
+    return { error: `Failed to apply change to node ${nodeId}: ${err instanceof Error ? err.message : String(err)}` };
+  }
 }
 
 export function executeSetFill(params: Record<string, unknown>, ctx: ToolContext) {
