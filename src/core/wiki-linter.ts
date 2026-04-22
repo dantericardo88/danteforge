@@ -200,6 +200,50 @@ export async function scanStaleness(
 
 // ── Pass 3: Link integrity ────────────────────────────────────────────────────
 
+async function createStubPage(
+  link: string,
+  sourceEntityId: string,
+  wikiDir: string,
+  existingEntities: Set<string>,
+  brokenLinks: WikiBrokenLink[],
+  writeFile: WriteFileFn,
+  mkdir: MkdirFn,
+): Promise<void> {
+  const targetId = link.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
+  const now = new Date().toISOString();
+  const stubContent = [
+    '---',
+    `entity: "${targetId}"`,
+    'type: concept',
+    `created: ${now}`,
+    `updated: ${now}`,
+    'sources: []',
+    'links: []',
+    'constitution-refs: []',
+    'tags:',
+    '  - stub',
+    '---',
+    '',
+    `# ${link}`,
+    '',
+    '## Summary',
+    '',
+    '_Stub page created by wiki linter for unresolved link. Fill in details._',
+    '',
+    '## History',
+    '',
+    `### ${now}`,
+    '',
+    `Stub created: referenced from \`${sourceEntityId}\` but not yet documented.`,
+  ].join('\n');
+  try {
+    await mkdir(wikiDir, { recursive: true });
+    await writeFile(path.join(wikiDir, `${targetId}.md`), stubContent + '\n');
+    existingEntities.add(targetId);
+  } catch { /* non-fatal */ }
+  brokenLinks.push({ sourceEntityId, targetEntityId: targetId, stubCreated: true });
+}
+
 /**
  * Verify all [[wikilinks]] and links[] in frontmatter resolve to existing entities.
  * Creates auto-generated pages for orphaned link targets. Lists pages with zero inbound links.
@@ -241,47 +285,7 @@ export async function scanLinkIntegrity(
       // Check frontmatter links[]
       for (const link of fm.links) {
         if (!resolveWikiLink(link, existingEntities)) {
-          const targetId = link.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
-
-          // Create an auto-generated page for the broken link target
-          const autoPagePath = path.join(wikiDir, `${targetId}.md`);
-          const stubContent = [
-            '---',
-            `entity: "${targetId}"`,
-            'type: concept',
-            `created: ${new Date().toISOString()}`,
-            `updated: ${new Date().toISOString()}`,
-            'sources: []',
-            'links: []',
-            'constitution-refs: []',
-            'tags:',
-            '  - stub',
-            '---',
-            '',
-            `# ${link}`,
-            '',
-            '## Summary',
-            '',
-            '_Stub page created by wiki linter for unresolved link. Fill in details._',
-            '',
-            '## History',
-            '',
-            `### ${new Date().toISOString()}`,
-            '',
-            `Stub created: referenced from \`${fm.entity}\` but not yet documented.`,
-          ].join('\n');
-
-          try {
-            await mkdir(wikiDir, { recursive: true });
-            await writeFile(autoPagePath, stubContent + '\n');
-            existingEntities.add(targetId); // Don't re-create on subsequent iterations
-          } catch { /* non-fatal */ }
-
-          brokenLinks.push({
-            sourceEntityId: fm.entity,
-            targetEntityId: targetId,
-            stubCreated: true,
-          });
+          await createStubPage(link, fm.entity, wikiDir, existingEntities, brokenLinks, writeFile, mkdir);
         }
       }
 

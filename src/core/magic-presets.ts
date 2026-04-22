@@ -191,6 +191,50 @@ export function buildMagicExecutionPlan(
   };
 }
 
+function buildBlazeSteps(
+  profile: string, worktree: boolean, isolation: boolean,
+  designStep: MagicExecutionStep, uxRefineStep: MagicExecutionStep,
+  withDesign?: boolean,
+): MagicExecutionStep[] {
+  const steps: MagicExecutionStep[] = [];
+  if (withDesign) steps.push(designStep);
+  steps.push({ kind: 'autoforge', maxWaves: 10, profile, parallel: true, worktree });
+  if (withDesign) steps.push(uxRefineStep);
+  steps.push({ kind: 'party', worktree, isolation }, { kind: 'verify' }, { kind: 'synthesize' }, { kind: 'retro' }, { kind: 'lessons-compact' });
+  return steps;
+}
+
+function buildNovaSteps(
+  profile: string, worktree: boolean, isolation: boolean,
+  designStep: MagicExecutionStep, uxRefineStep: MagicExecutionStep,
+  withTechDecide?: boolean, withDesign?: boolean,
+): MagicExecutionStep[] {
+  const steps: MagicExecutionStep[] = [{ kind: 'constitution' }, { kind: 'plan' }, { kind: 'tasks' }];
+  if (withTechDecide) steps.push({ kind: 'tech-decide' });
+  if (withDesign) steps.push(designStep);
+  steps.push({ kind: 'autoforge', maxWaves: 10, profile, parallel: true, worktree });
+  if (withDesign) steps.push(uxRefineStep);
+  steps.push({ kind: 'party', worktree, isolation }, { kind: 'verify' }, { kind: 'synthesize' }, { kind: 'retro' }, { kind: 'lessons-compact' });
+  return steps;
+}
+
+function buildInfernoSteps(
+  profile: string, worktree: boolean, maxRepos: number,
+  designStep: MagicExecutionStep, uxRefineStep: MagicExecutionStep,
+  options: BuildMagicExecutionPlanOptions,
+): MagicExecutionStep[] {
+  const steps: MagicExecutionStep[] = [];
+  if (options.localSources?.length || options.localSourcesConfig) {
+    steps.push({ kind: 'local-harvest', sources: options.localSources ?? [], depth: options.localDepth ?? 'medium', configPath: options.localSourcesConfig });
+  }
+  steps.push({ kind: 'oss', maxRepos });
+  if (options.withDesign) steps.push(designStep);
+  steps.push({ kind: 'autoforge', maxWaves: 12, profile, parallel: true, worktree });
+  if (options.withDesign) steps.push(uxRefineStep);
+  steps.push({ kind: 'party', worktree, isolation: true }, { kind: 'verify' }, { kind: 'synthesize' }, { kind: 'retro' }, { kind: 'lessons-compact' });
+  return steps;
+}
+
 function buildMagicSteps(
   level: MagicLevel,
   profile: string,
@@ -205,106 +249,28 @@ function buildMagicSteps(
   switch (level) {
     case 'spark': {
       const steps: MagicExecutionStep[] = [
-        { kind: 'review' },
-        { kind: 'constitution' },
-        { kind: 'specify' },
-        { kind: 'clarify' },
+        { kind: 'review' }, { kind: 'constitution' }, { kind: 'specify' }, { kind: 'clarify' },
       ];
-      if (!options.skipTechDecide) {
-        steps.push({ kind: 'tech-decide' });
-      }
+      if (!options.skipTechDecide) steps.push({ kind: 'tech-decide' });
       steps.push({ kind: 'plan' }, { kind: 'tasks' });
       return steps;
     }
     case 'ember':
-      return [
-        { kind: 'autoforge', maxWaves: 3, profile, parallel: false, worktree: false },
-        { kind: 'lessons-compact' },
-      ];
+      return [{ kind: 'autoforge', maxWaves: 3, profile, parallel: false, worktree: false }, { kind: 'lessons-compact' }];
     case 'canvas':
       return [
         { kind: 'design', designPrompt: options.designPrompt },
         { kind: 'autoforge', maxWaves: 6, profile, parallel: true, worktree: false },
-        { kind: 'ux-refine', openpencil: true },
-        { kind: 'verify' },
-        { kind: 'lessons-compact' },
+        { kind: 'ux-refine', openpencil: true }, { kind: 'verify' }, { kind: 'lessons-compact' },
       ];
     case 'magic':
-      return [
-        { kind: 'autoforge', maxWaves: 8, profile, parallel: true, worktree: false },
-        { kind: 'verify' },
-        { kind: 'lessons-compact' },
-      ];
-    case 'blaze': {
-      const blazeSteps: MagicExecutionStep[] = [];
-      if (options.withDesign) {
-        blazeSteps.push(designStep);
-      }
-      blazeSteps.push({ kind: 'autoforge', maxWaves: 10, profile, parallel: true, worktree });
-      if (options.withDesign) {
-        blazeSteps.push(uxRefineStep);
-      }
-      blazeSteps.push(
-        { kind: 'party', worktree, isolation },
-        { kind: 'verify' },
-        { kind: 'synthesize' },
-        { kind: 'retro' },
-        { kind: 'lessons-compact' },
-      );
-      return blazeSteps;
-    }
-    case 'nova': {
-      const novaSteps: MagicExecutionStep[] = [
-        { kind: 'constitution' },
-        { kind: 'plan' },
-        { kind: 'tasks' },
-      ];
-      if (options.withTechDecide) {
-        novaSteps.push({ kind: 'tech-decide' });
-      }
-      if (options.withDesign) {
-        novaSteps.push(designStep);
-      }
-      novaSteps.push({ kind: 'autoforge', maxWaves: 10, profile, parallel: true, worktree });
-      if (options.withDesign) {
-        novaSteps.push(uxRefineStep);
-      }
-      novaSteps.push(
-        { kind: 'party', worktree, isolation },
-        { kind: 'verify' },
-        { kind: 'synthesize' },
-        { kind: 'retro' },
-        { kind: 'lessons-compact' },
-      );
-      return novaSteps;
-    }
-    case 'inferno': {
-      const infernoSteps: MagicExecutionStep[] = [];
-      if (options.localSources?.length || options.localSourcesConfig) {
-        infernoSteps.push({
-          kind: 'local-harvest',
-          sources: options.localSources ?? [],
-          depth: options.localDepth ?? 'medium',
-          configPath: options.localSourcesConfig,
-        });
-      }
-      infernoSteps.push({ kind: 'oss', maxRepos });
-      if (options.withDesign) {
-        infernoSteps.push(designStep);
-      }
-      infernoSteps.push({ kind: 'autoforge', maxWaves: 12, profile, parallel: true, worktree });
-      if (options.withDesign) {
-        infernoSteps.push(uxRefineStep);
-      }
-      infernoSteps.push(
-        { kind: 'party', worktree, isolation: true },
-        { kind: 'verify' },
-        { kind: 'synthesize' },
-        { kind: 'retro' },
-        { kind: 'lessons-compact' },
-      );
-      return infernoSteps;
-    }
+      return [{ kind: 'autoforge', maxWaves: 8, profile, parallel: true, worktree: false }, { kind: 'verify' }, { kind: 'lessons-compact' }];
+    case 'blaze':
+      return buildBlazeSteps(profile, worktree, isolation, designStep, uxRefineStep, options.withDesign);
+    case 'nova':
+      return buildNovaSteps(profile, worktree, isolation, designStep, uxRefineStep, options.withTechDecide, options.withDesign);
+    case 'inferno':
+      return buildInfernoSteps(profile, worktree, maxRepos, designStep, uxRefineStep, options);
   }
 }
 
