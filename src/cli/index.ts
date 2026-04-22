@@ -2,7 +2,11 @@
 // Main CLI entry
 import { Command } from 'commander';
 import { existsSync } from 'node:fs';
-import * as commands from './commands/index.js';
+// Lazy-load command implementations — deferred until action fires, not at startup
+type Commands = Awaited<typeof import('./commands/index.js')>;
+let _cmds: Commands | null = null;
+const C = (): Promise<Commands> =>
+  _cmds ? Promise.resolve(_cmds) : import('./commands/index.js').then(m => (_cmds = m as Commands));
 import { loadState } from '../core/state.js';
 import { logger } from '../core/logger.js';
 import { enforceWorkflow } from '../core/workflow-enforcer.js';
@@ -26,12 +30,12 @@ program
   .option('--non-interactive', 'Skip wizard questions (for CI/scripts)')
   .option('--guided', 'Force the full interactive setup wizard (overrides TTY detection)')
   .option('--advanced', 'Enable advanced setup: adversarial scoring + competitive universe')
-  .action((opts) => commands.init({ nonInteractive: opts.nonInteractive, guided: opts.guided, advanced: opts.advanced }));
+  .action(async (opts) => (await C()).init({ nonInteractive: opts.nonInteractive, guided: opts.guided, advanced: opts.advanced }));
 
 program
   .command('constitution')
   .description('Initialize project constitution and principles')
-  .action(commands.constitution);
+  .action((...a: unknown[]) => void C().then(c => (c.constitution as (...x: unknown[]) => unknown)(...a)));
 
 program
   .command('specify <idea>')
@@ -40,14 +44,14 @@ program
   .option('--light', 'Skip hard gates for simple changes')
   .option('--ceo-review', 'Apply founder/CEO intent elevation before writing SPEC.md')
   .option('--refine', 'Inject PDSE score as context for iterative improvement')
-  .action(commands.specify);
+  .action((...a: unknown[]) => void C().then(c => (c.specify as (...x: unknown[]) => unknown)(...a)));
 
 program
   .command('clarify')
   .description('Run clarification Q&A on current spec')
   .option('--prompt', 'Generate a copy-paste prompt instead of auto-generating')
   .option('--light', 'Skip hard gates for simple changes')
-  .action(commands.clarify);
+  .action((...a: unknown[]) => void C().then(c => (c.clarify as (...x: unknown[]) => unknown)(...a)));
 
 program
   .command('plan [goal]')
@@ -59,15 +63,15 @@ program
   .option('--refine', 'Inject PDSE score as context for iterative improvement')
   .option('--skip-critique', 'Skip adversarial critique gate after plan generation')
   .option('--stakes <level>', 'Critique depth: low|medium|high|critical (default: medium)')
-  .action((goal, opts) => {
+  .action(async (goal, opts) => {
     if (opts.level) {
-      return commands.canonicalPlan(goal as string | undefined, {
+      return (await C()).canonicalPlan(goal as string | undefined, {
         level: opts.level as string,
         prompt: opts.prompt as boolean | undefined,
         light: opts.light as boolean | undefined,
       });
     }
-    return commands.plan({
+    return (await C()).plan({
       prompt: opts.prompt as boolean | undefined,
       light: opts.light as boolean | undefined,
       skipCritique: opts.skipCritique as boolean | undefined,
@@ -85,14 +89,14 @@ program
   .option('--stakes <level>', 'Check depth: low|medium|high|critical (default: medium)')
   .option('--diff <ref>', 'Compare built code against plan (e.g. HEAD~1)')
   .option('--no-premortem', 'Skip pre-mortem failure hypothesis generation')
-  .action(commands.critique);
+  .action((...a: unknown[]) => void C().then(c => (c.critique as (...x: unknown[]) => unknown)(...a)));
 
 program
   .command('tasks')
   .description('Break plan into executable tasks')
   .option('--prompt', 'Generate a copy-paste prompt instead of auto-generating')
   .option('--light', 'Skip hard gates for simple changes')
-  .action(commands.tasks);
+  .action((...a: unknown[]) => void C().then(c => (c.tasks as (...x: unknown[]) => unknown)(...a)));
 
 program
   .command('design <prompt>')
@@ -102,7 +106,7 @@ program
   .option('--format <type>', 'Export format: jsx | vue | html', 'jsx')
   .option('--parallel', 'Enable spatial parallel decomposition')
   .option('--worktree', 'Run in isolated git worktree')
-  .action(commands.design);
+  .action((...a: unknown[]) => void C().then(c => (c.design as (...x: unknown[]) => unknown)(...a)));
 
 program
   .command('ux-refine')
@@ -118,7 +122,7 @@ program
   .option('--lint', 'Run design rules engine against DESIGN.op')
   .option('--live', 'Capture live browser screenshot and accessibility as UX evidence')
   .option('--url <url>', 'URL to capture (requires --live)')
-  .action(commands.uxRefine);
+  .action((...a: unknown[]) => void C().then(c => (c.uxRefine as (...x: unknown[]) => unknown)(...a)));
 
 program
   .command('forge [phase]')
@@ -130,7 +134,7 @@ program
   .option('--worktree', 'Run execution in an isolated git worktree')
   .option('--figma', 'Use the prompt-driven Figma refinement path during this wave (requires --prompt)')
   .option('--skip-ux', 'Skip UX refinement even with --figma')
-  .action(commands.forge);
+  .action((...a: unknown[]) => void C().then(c => (c.forge as (...x: unknown[]) => unknown)(...a)));
 
 program
   .command('party')
@@ -141,20 +145,20 @@ program
   .option('--skip-ux', 'Skip UX refinement even with --figma')
   .option('--design', 'Activate Design Agent for UI generation via OpenPencil')
   .option('--no-design', 'Exclude Design Agent from party mode')
-  .action(commands.party);
+  .action((...a: unknown[]) => void C().then(c => (c.party as (...x: unknown[]) => unknown)(...a)));
 
 program
   .command('review')
   .description('Scan existing repo -> generate CURRENT_STATE.md')
   .option('--prompt', 'Generate a copy-paste prompt for Claude Code / ChatGPT instead of local/API')
-  .action(commands.review);
+  .action((...a: unknown[]) => void C().then(c => (c.review as (...x: unknown[]) => unknown)(...a)));
 
 program
   .command('browse <subcommand> [args...]')
   .description('Browser automation — navigate, screenshot, inspect live apps')
   .option('--url <url>', 'Target URL (shorthand for goto)')
   .option('--port <port>', 'Override browse daemon port', '9400')
-  .action(commands.browse);
+  .action((...a: unknown[]) => void C().then(c => (c.browse as (...x: unknown[]) => unknown)(...a)));
 
 program
   .command('qa')
@@ -164,7 +168,7 @@ program
   .option('--baseline <path>', 'Baseline JSON for regression comparison')
   .option('--save-baseline', 'Save current report as new baseline')
   .option('--fail-below <score>', 'Exit code 1 if score below threshold', '0')
-  .action(commands.qa);
+  .action((...a: unknown[]) => void C().then(c => (c.qa as (...x: unknown[]) => unknown)(...a)));
 
 program
   .command('verify')
@@ -177,24 +181,24 @@ program
   .option('--json', 'Output results as JSON to stdout (logs go to stderr)')
   .option('--light', 'Skip pipeline execution checks; substitute npm test + build (for CLI projects or early-stage pipelines)')
   .option('--cwd <path>', 'Working directory for verification (defaults to current directory)')
-  .action(commands.verify);
+  .action((...a: unknown[]) => void C().then(c => (c.verify as (...x: unknown[]) => unknown)(...a)));
 
 program
   .command('synthesize')
   .description('Generate Ultimate Planning Resource (UPR.md) from all artifacts')
-  .action(commands.synthesize);
+  .action((...a: unknown[]) => void C().then(c => (c.synthesize as (...x: unknown[]) => unknown)(...a)));
 
 program
   .command('feedback')
   .description('Generate prompt from UPR.md for LLM refinement (closes the loop)')
   .option('--auto', 'Send directly to a live provider instead of generating a copy-paste prompt')
-  .action(commands.feedbackPrompt);
+  .action((...a: unknown[]) => void C().then(c => (c.feedbackPrompt as (...x: unknown[]) => unknown)(...a)));
 
 program
   .command('import <file>')
   .description('Import an LLM-generated file into .danteforge/')
   .option('--as <name>', 'Save as a specific filename (default: keep original name)')
-  .action(commands.importFile);
+  .action((...a: unknown[]) => void C().then(c => (c.importFile as (...x: unknown[]) => unknown)(...a)));
 
 const skillsCommand = program
   .command('skills')
@@ -210,7 +214,7 @@ skillsCommand
   .option('--enhance', 'Apply DanteForge wrappers to imported skills')
   .option('--export', 'Export packaged skills to a target agent tool directory')
   .option('--target <agent>', 'Export target: claude-code, codex, cursor, windsurf, or all (default: claude-code)')
-  .action(commands.skillsImport);
+  .action((...a: unknown[]) => void C().then(c => (c.skillsImport as (...x: unknown[]) => unknown)(...a)));
 
 program
   .command('config')
@@ -220,18 +224,18 @@ program
   .option('--provider <name>', 'Set default provider (grok, claude, openai, gemini, ollama)')
   .option('--model <provider:model>', 'Set model for provider (e.g., "grok:grok-3")')
   .option('--show', 'Show current configuration')
-  .action(commands.configCmd);
+  .action((...a: unknown[]) => void C().then(c => (c.configCmd as (...x: unknown[]) => unknown)(...a)));
 
 program
   .command('debug <issue>')
   .description('Systematic 4-phase debugging framework')
   .option('--prompt', 'Generate a copy-paste prompt instead of auto-executing')
-  .action(commands.debug);
+  .action((...a: unknown[]) => void C().then(c => (c.debug as (...x: unknown[]) => unknown)(...a)));
 
 program
   .command('compact')
   .description('Compact audit log - summarize old entries to save context')
-  .action(commands.compact);
+  .action((...a: unknown[]) => void C().then(c => (c.compact as (...x: unknown[]) => unknown)(...a)));
 
 program
   .command('setup')
@@ -245,10 +249,10 @@ program
   .option('--pull', 'Pull recommended Ollama model if missing')
   .option('--ollama-model <model>', 'Override the recommended Ollama model')
   .addHelpText('after', '\nSubcommands: figma, assistants, ollama')
-  .action((tool: string, options) => {
-    if (tool === 'figma') return commands.setupFigma(options);
-    if (tool === 'assistants') return commands.setupAssistants(options);
-    if (tool === 'ollama') return commands.setupOllama(options);
+  .action(async (tool: string, options) => {
+    if (tool === 'figma') return (await C()).setupFigma(options);
+    if (tool === 'assistants') return (await C()).setupAssistants(options);
+    if (tool === 'ollama') return (await C()).setupOllama(options);
     logger.error(`Unknown tool: ${tool}. Available: figma, assistants, ollama`);
   });
 
@@ -257,20 +261,20 @@ program
   .description('System health check and diagnostics')
   .option('--fix', 'Attempt to auto-fix issues')
   .option('--live', 'Run live connectivity checks for providers, upstreams, registries, and Figma MCP')
-  .action(commands.doctor);
+  .action((...a: unknown[]) => void C().then(c => (c.doctor as (...x: unknown[]) => unknown)(...a)));
 
 program
   .command('dashboard')
   .description('Launch progress dashboard (local HTML, auto-closes in 5 min)')
   .option('--port <number>', 'Port to serve on', '4242')
-  .action(commands.dashboard);
+  .action((...a: unknown[]) => void C().then(c => (c.dashboard as (...x: unknown[]) => unknown)(...a)));
 
 program
   .command('spark [goal]')
   .description(`Alias: plan --level light. Zero-token planning preset: ${SPARK_PLANNING_TEXT}`)
   .option('--prompt', 'Generate the preset plan without executing')
   .option('--skip-tech-decide', 'Skip the tech-decide step when the stack is already decided')
-  .action((goal, opts) => commands.spark(goal, {
+  .action(async (goal, opts) => (await C()).spark(goal, {
     prompt: opts.prompt,
     skipTechDecide: opts.skipTechDecide,
   }));
@@ -280,7 +284,7 @@ program
   .description('Alias: build --level light. Very low-token preset for quick features and light checkpoints')
   .option('--profile <type>', 'quality | balanced | budget', 'budget')
   .option('--prompt', 'Generate the preset plan without executing')
-  .action((goal, opts) => commands.ember(goal, {
+  .action(async (goal, opts) => (await C()).ember(goal, {
     profile: opts.profile,
     prompt: opts.prompt,
   }));
@@ -291,7 +295,7 @@ program
   .option('--profile <type>', 'quality | balanced | budget', 'budget')
   .option('--prompt', 'Generate the preset plan without executing')
   .option('--design-prompt <text>', 'Override the prompt passed to the design step')
-  .action((goal, opts) => commands.canvas(goal, {
+  .action(async (goal, opts) => (await C()).canvas(goal, {
     profile: opts.profile,
     prompt: opts.prompt,
     designPrompt: opts.designPrompt,
@@ -310,7 +314,7 @@ program
   .option('--isolation', 'Use isolation when a preset escalates into party mode')
   .option('--max-repos <n>', 'Maximum repos for inferno OSS discovery', '12')
   .option('--yes', 'Skip competitive matrix confirmation gate')
-  .action((goal, opts) => commands.magic(goal, {
+  .action(async (goal, opts) => (await C()).magic(goal, {
     level: opts.level,
     profile: opts.profile,
     skipUx: opts.skipUx,
@@ -332,7 +336,7 @@ program
   .option('--with-design', 'Add design + ux-refine steps to the pipeline')
   .option('--design-prompt <text>', 'Prompt to pass to the design step')
   .option('--yes', 'Skip competitive matrix confirmation gate')
-  .action((goal, opts) => commands.blaze(goal, {
+  .action(async (goal, opts) => (await C()).blaze(goal, {
     profile: opts.profile,
     prompt: opts.prompt,
     worktree: opts.worktree,
@@ -353,7 +357,7 @@ program
   .option('--with-design', 'Add design + ux-refine steps to the pipeline')
   .option('--design-prompt <text>', 'Prompt to pass to the design step')
   .option('--yes', 'Skip competitive matrix confirmation gate')
-  .action((goal, opts) => commands.nova(goal, {
+  .action(async (goal, opts) => (await C()).nova(goal, {
     profile: opts.profile,
     prompt: opts.prompt,
     worktree: opts.worktree,
@@ -378,7 +382,7 @@ program
   .option('--local-depth <level>', 'Harvest depth for local sources: shallow|medium|full', 'medium')
   .option('--local-config <path>', 'YAML config file listing local sources')
   .option('--yes', 'Skip competitive matrix confirmation gate')
-  .action((goal, opts) => commands.inferno(goal, {
+  .action(async (goal, opts) => (await C()).inferno(goal, {
     profile: opts.profile,
     prompt: opts.prompt,
     worktree: opts.worktree,
@@ -404,12 +408,12 @@ program
   .command('help [query]')
   .description('Context-aware guidance — shows essential commands by default, --all for full list')
   .option('--all', 'Show all 100+ commands instead of the essential 8')
-  .action((query, opts) => commands.helpCmd(query, { all: opts.all }));
+  .action(async (query, opts) => (await C()).helpCmd(query, { all: opts.all }));
 
 program
   .command('docs')
   .description('Generate or update the command reference documentation')
-  .action(commands.docs);
+  .action((...a: unknown[]) => void C().then(c => (c.docs as (...x: unknown[]) => unknown)(...a)));
 
 program
   .command('update-mcp')
@@ -417,21 +421,21 @@ program
   .option('--prompt', 'Generate a copy-paste prompt instead of auto-executing')
   .option('--apply', 'Apply recommended updates after review')
   .option('--check', 'Check-only mode (no changes)')
-  .action(commands.updateMcp);
+  .action((...a: unknown[]) => void C().then(c => (c.updateMcp as (...x: unknown[]) => unknown)(...a)));
 
 program
   .command('tech-decide')
   .description('Guided tech stack selection - 3-5 options per category with pros/cons')
   .option('--prompt', 'Generate a copy-paste prompt instead of auto-executing')
   .option('--auto', 'Accept all recommended defaults without interactive review')
-  .action(commands.techDecide);
+  .action((...a: unknown[]) => void C().then(c => (c.techDecide as (...x: unknown[]) => unknown)(...a)));
 
 program
   .command('lessons [correction]')
   .description('Self-improving lessons - capture corrections, view rules, auto-compact')
   .option('--prompt', 'Generate a copy-paste prompt instead of auto-executing')
   .option('--compact', 'Force compaction of lessons file')
-  .action(commands.lessons);
+  .action((...a: unknown[]) => void C().then(c => (c.lessons as (...x: unknown[]) => unknown)(...a)));
 
 program
   .command('autoforge [goal]')
@@ -447,7 +451,7 @@ program
   .option('--auto', 'Run autonomous loop until 95% completion or BLOCKED state')
   .option('--force', 'Override one BLOCKED artifact for one cycle (logged to audit trail)')
   .option('--pause-at <score>', 'Pause the loop when average PDSE score reaches this value')
-  .action((goal, opts) => commands.autoforge(goal, {
+  .action(async (goal, opts) => (await C()).autoforge(goal, {
     dryRun: opts.dryRun,
     maxWaves: parseInt(opts.maxWaves, 10),
     light: opts.light,
@@ -464,7 +468,7 @@ program
 program
   .command('resume')
   .description('Resume a paused autoforge loop from the last checkpoint')
-  .action(() => commands.resumeAutoforge());
+  .action(async () => (await C()).resumeAutoforge());
 
 program
   .command('awesome-scan')
@@ -472,21 +476,21 @@ program
   .option('--source <path>', 'Scan an external directory for skills')
   .option('--domain <type>', 'Filter by domain (security|fullstack|devops|ux|backend|frontend|data|testing|architecture|general)')
   .option('--install', 'Import compatible external skills')
-  .action(commands.awesomeScan);
+  .action((...a: unknown[]) => void C().then(c => (c.awesomeScan as (...x: unknown[]) => unknown)(...a)));
 
 program
   .command('profile [subcommand] [arg]')
   .description('Model personality profiles — view learned behavioral patterns per model')
   .option('--prompt', 'Generate a copy-paste prompt instead of displaying')
   .addHelpText('after', '\nSubcommands: (none)=summary, compare, report, weakness <model>, recommend <task>')
-  .action((subcommand, arg, opts) => commands.profile(subcommand, arg, { prompt: opts.prompt }));
+  .action(async (subcommand, arg, opts) => (await C()).profile(subcommand, arg, { prompt: opts.prompt }));
 
 program
   .command('retro')
   .description('Project retrospective with metrics, delta scoring, and trend tracking')
   .option('--summary', 'Print trend summary of last 5 retros')
   .option('--cwd <path>', 'Project directory')
-  .action(commands.retro);
+  .action((...a: unknown[]) => void C().then(c => (c.retro as (...x: unknown[]) => unknown)(...a)));
 
 program
   .command('maturity')
@@ -494,7 +498,7 @@ program
   .option('--preset <level>', 'Target preset level (spark|ember|canvas|magic|blaze|nova|inferno)')
   .option('--json', 'Output JSON instead of plain text')
   .option('--cwd <path>', 'Project directory')
-  .action((opts) => commands.maturity({
+  .action(async (opts) => (await C()).maturity({
     preset: opts.preset,
     json: opts.json,
     cwd: opts.cwd,
@@ -505,7 +509,7 @@ program
   .description('Paranoid release guidance + version bump plan + changelog draft')
   .option('--dry-run', 'Run checks and generate guidance without changing the audit intent')
   .option('--skip-review', 'Skip pre-landing review (emergency only, logged to audit)')
-  .action(commands.ship);
+  .action((...a: unknown[]) => void C().then(c => (c.ship as (...x: unknown[]) => unknown)(...a)));
 
 program
   .command('oss')
@@ -513,7 +517,7 @@ program
   .option('--prompt', 'Generate a copy-paste research plan prompt instead of executing')
   .option('--dry-run', 'Show what would be searched without cloning')
   .option('--max-repos <n>', 'Maximum repos to clone and analyze (default: 8)', '8')
-  .action((opts) => commands.ossResearcher({
+  .action(async (opts) => (await C()).ossResearcher({
     prompt: opts.prompt,
     dryRun: opts.dryRun,
     maxRepos: opts.maxRepos,
@@ -608,7 +612,7 @@ program
   .option('--prompt', 'Show harvest plan without executing')
   .option('--dry-run', 'Detect source types without reading')
   .option('--max-sources <n>', 'Maximum sources to analyze (default: 5)', '5')
-  .action((paths, opts) => commands.localHarvest(paths ?? [], {
+  .action(async (paths, opts) => (await C()).localHarvest(paths ?? [], {
     config: opts.config,
     depth: opts.depth,
     prompt: opts.prompt,
@@ -625,7 +629,7 @@ program
   .option('--prompt', 'Generate a copy-paste prompt instead of executing')
   .option('--dry-run', 'Show the experiment plan without running')
   .option('--allow-dirty', 'Allow execution on a dirty git working tree (unsafe; disabled by default)')
-  .action((goal, opts) => commands.autoResearch(goal, {
+  .action(async (goal, opts) => (await C()).autoResearch(goal, {
     metric: opts.metric,
     measurementCommand: opts.measurementCommand,
     time: opts.time,
@@ -646,9 +650,9 @@ program
   .option('--saturation-threshold <n>', 'Min new features per cycle before cycle is "lean" (default: 3)', '3')
   .option('--prompt', 'Display the 5-step copy-paste template without calling the LLM')
   .option('--lite', 'Run in SEP-LITE mode (Steps 1-3 + 5 only, 2-3 donors, 2-4 organs)')
-  .action((goal, opts) => {
+  .action(async (goal, opts) => {
     if (opts.level) {
-      return commands.canonicalHarvest(goal as string | undefined, {
+      return (await C()).canonicalHarvest(goal as string | undefined, {
         level: opts.level as string,
         source: opts.source as string | undefined,
         maxRepos: opts.maxRepos ? parseInt(opts.maxRepos as string, 10) : undefined,
@@ -659,7 +663,7 @@ program
         saturationThreshold: opts.saturationThreshold ? parseInt(opts.saturationThreshold as string, 10) : undefined,
       });
     }
-    return commands.harvest(goal as string ?? '', { prompt: opts.prompt as boolean | undefined, lite: opts.lite as boolean | undefined });
+    return (await C()).harvest(goal as string ?? '', { prompt: opts.prompt as boolean | undefined, lite: opts.lite as boolean | undefined });
   });
 
 program
@@ -668,18 +672,18 @@ program
   .option('--key <key>', 'License key for activation')
   .option('--tier <tier>', 'License tier for keygen: pro or enterprise', 'pro')
   .option('--days <n>', 'Days until expiry for keygen (default: 365)', '365')
-  .action((subcommand, opts) => commands.premium(subcommand ?? 'status', { key: opts.key, tier: opts.tier, days: opts.days }));
+  .action(async (subcommand, opts) => (await C()).premium(subcommand ?? 'status', { key: opts.key, tier: opts.tier, days: opts.days }));
 
 program
   .command('mcp-server')
   .description('Start DanteForge MCP server over stdio — for Claude Code, Codex, Cursor')
-  .action(() => commands.mcpServer());
+  .action(async () => (await C()).mcpServer());
 
 program
   .command('publish-check')
   .description('Pre-publish validation gate — 12 parallel checks before npm publish')
   .option('--json', 'Output machine-readable JSON')
-  .action((opts) => commands.publishCheck({ json: opts.json }));
+  .action(async (opts) => (await C()).publishCheck({ json: opts.json }));
 
 program
   .command('proof')
@@ -690,7 +694,7 @@ program
   .option('--cwd <path>', 'Project directory (defaults to cwd)')
   .option('--semantic', 'LLM-enhanced PDSE scoring')
   .option('--since <date>', 'Score arc since date or git SHA (e.g. "yesterday", "2026-04-01", a commit SHA)')
-  .action((opts) => commands.proof({ prompt: opts.prompt, pipeline: opts.pipeline, convergence: opts.convergence, cwd: opts.cwd, semantic: opts.semantic, since: opts.since }));
+  .action(async (opts) => (await C()).proof({ prompt: opts.prompt, pipeline: opts.pipeline, convergence: opts.convergence, cwd: opts.cwd, semantic: opts.semantic, since: opts.since }));
 
 program
   .command('cost')
@@ -699,7 +703,7 @@ program
   .option('--by-tier', 'Break down by model tier')
   .option('--savings', 'Show token savings from routing and compression')
   .option('--history', 'Show all sessions in chronological order')
-  .action((opts) => commands.cost({
+  .action(async (opts) => (await C()).cost({
     byAgent: opts.byAgent,
     byTier: opts.byTier,
     savings: opts.savings,
@@ -730,7 +734,7 @@ program
   .option('--cwd <path>', 'Project directory')
   .action(async (opts) => {
     try {
-      await commands.assess({
+      await (await C()).assess({
         harsh: opts.harsh !== false,
         competitors: opts.competitors !== false,
         minScore: parseFloat(opts.minScore),
@@ -754,7 +758,7 @@ program
   .option('--cwd <path>', 'Project directory')
   .action(async (opts) => {
     try {
-      await commands.benchmark({
+      await (await C()).benchmark({
         dimension: opts.dimension,
         compare: opts.compare,
         format: opts.format,
@@ -774,7 +778,7 @@ program
   .option('--cwd <path>', 'Working directory')
   .action(async (opts) => {
     try {
-      await commands.showcase({
+      await (await C()).showcase({
         project: opts.project,
         format: opts.format as 'markdown' | 'json' | undefined,
         cwd: opts.cwd,
@@ -905,7 +909,7 @@ program
   .option('--skip-critique', 'Skip running plan critic after generation')
   .option('--auto-approve', 'Accept plan even if blocking gaps found (CI use)')
   .option('--cwd <path>', 'Project directory')
-  .action((opts) => {
+  .action(async (opts) => {
     void (async () => {
       try {
         const { runSprintPlan } = await import('./commands/sprint-plan.js');
@@ -932,7 +936,7 @@ program
   .option('--deterministic-only', 'Skip LLM augmentation — deterministic regex checks only')
   .option('--fail-on-blocking', 'Exit non-zero if any blocking gap is found (default: true)', true)
   .option('--cwd <path>', 'Project directory')
-  .action((planFile, opts) => {
+  .action(async (planFile, opts) => {
     void (async () => {
       try {
         const { runCritiquePlan } = await import('./commands/critique-plan.js');
@@ -960,24 +964,24 @@ program
   .option('--focus <dimension>', 'Focus on a specific dimension')
   .option('--preset <level>', 'Preset for target maturity level')
   .option('--cwd <path>', 'Project directory')
-  .action((goal, opts) => void commands.selfImprove({
+  .action(async (goal, opts) => { void (await C()).selfImprove({
     goal,
     minScore: parseFloat(opts.minScore),
     maxCycles: parseInt(opts.maxCycles, 10),
     focusDimensions: opts.focus ? [opts.focus] : undefined,
     preset: opts.preset,
     cwd: opts.cwd,
-  }));
+  }); });
 
 program
   .command('define-done')
   .description('Define what "9+" means — sets the completion target used by assess and self-improve')
   .option('--reset', 'Clear existing target and re-prompt')
   .option('--cwd <path>', 'Project directory')
-  .action((opts) => void commands.defineDone({
+  .action(async (opts) => { void (await C()).defineDone({
     reset: opts.reset,
     cwd: opts.cwd,
-  }));
+  }); });
 
 program
   .command('universe')
@@ -985,18 +989,18 @@ program
   .option('--refresh', 'Force rebuild of feature universe from competitors')
   .option('--json', 'Output machine-readable JSON')
   .option('--cwd <path>', 'Project directory')
-  .action((opts) => void commands.universe({
+  .action(async (opts) => { void (await C()).universe({
     refresh: opts.refresh,
     json: opts.json,
     cwd: opts.cwd,
-  }));
+  }); });
 
 program
   .command('workspace <subcommand> [args...]')
   .description('Manage workspaces for multi-user projects')
   .option('--role <role>', 'Member role: owner, editor, reviewer', 'editor')
   .action(async (subcommand: string, args: string[], options: { role?: string }) => {
-    await commands.workspace(subcommand, args ?? [], options);
+    await (await C()).workspace(subcommand, args ?? [], options);
   });
 
 // First-run detection — suggest init when no .danteforge/ exists
@@ -1062,11 +1066,11 @@ program
   .option('--bootstrap', 'Seed wiki from existing .danteforge/ artifacts')
   .option('--prompt', 'Show the command without executing')
   .option('--cwd <path>', 'Project directory')
-  .action((opts) => void commands.wikiIngestCommand({
+  .action(async (opts) => { void (await C()).wikiIngestCommand({
     bootstrap: opts.bootstrap,
     prompt: opts.prompt,
     cwd: opts.cwd,
-  }));
+  }); });
 
 program
   .command('wiki-lint')
@@ -1074,32 +1078,32 @@ program
   .option('--heuristic-only', 'Skip LLM calls (zero-cost mode)')
   .option('--prompt', 'Show the command without executing')
   .option('--cwd <path>', 'Project directory')
-  .action((opts) => void commands.wikiLintCommand({
+  .action(async (opts) => { void (await C()).wikiLintCommand({
     heuristicOnly: opts.heuristicOnly,
     prompt: opts.prompt,
     cwd: opts.cwd,
-  }));
+  }); });
 
 program
   .command('wiki-query <topic>')
   .description('Search wiki for entity pages, decisions, and patterns relevant to a topic')
   .option('--json', 'Output machine-readable JSON')
   .option('--cwd <path>', 'Project directory')
-  .action((topic, opts) => void commands.wikiQueryCommand({
+  .action(async (topic, opts) => { void (await C()).wikiQueryCommand({
     topic,
     json: opts.json,
     cwd: opts.cwd,
-  }));
+  }); });
 
 program
   .command('wiki-status')
   .description('Display wiki health metrics: pages, link density, staleness, lint pass rate, anomalies')
   .option('--json', 'Output machine-readable JSON')
   .option('--cwd <path>', 'Project directory')
-  .action((opts) => void commands.wikiStatusCommand({
+  .action(async (opts) => { void (await C()).wikiStatusCommand({
     json: opts.json,
     cwd: opts.cwd,
-  }));
+  }); });
 
 program
   .command('wiki-export')
@@ -1107,11 +1111,11 @@ program
   .option('--format <type>', 'Export format: obsidian or html (default: obsidian)', 'obsidian')
   .option('--out <dir>', 'Output directory path')
   .option('--cwd <path>', 'Project directory')
-  .action((opts) => void commands.wikiExportCommand({
+  .action(async (opts) => { void (await C()).wikiExportCommand({
     format: opts.format as 'obsidian' | 'html',
     out: opts.out,
     cwd: opts.cwd,
-  }));
+  }); });
 
 program
   .command('self-assess')
@@ -1119,7 +1123,7 @@ program
   .option('--llm-score <n>', 'LLM-assigned quality score to blend with objective metrics (default: 7.0)', '7.0')
   .option('--no-compare', 'Skip comparison against previous baseline')
   .option('--cwd <path>', 'Project directory')
-  .action((opts) => {
+  .action(async (opts) => {
     (async () => {
       try {
         const { runSelfAssess } = await import('./commands/self-assess.js');
@@ -1141,7 +1145,7 @@ program
   .description('Export anonymised pattern attribution data as a portable bundle for team sharing')
   .option('--min-samples <n>', 'Minimum adoption samples to include a pattern (default: 1)', '1')
   .option('--cwd <path>', 'Project directory')
-  .action((opts) => {
+  .action(async (opts) => {
     (async () => {
       try {
         const { runSharePatterns } = await import('./commands/share-patterns.js');
@@ -1162,7 +1166,7 @@ program
   .description('Import a shared pattern bundle into the local global pattern library')
   .option('--trust-factor <n>', 'Trust weight for imported evidence (default: 0.5)', '0.5')
   .option('--cwd <path>', 'Project directory')
-  .action((bundleFile, opts) => {
+  .action(async (bundleFile, opts) => {
     (async () => {
       try {
         const { runImportPatterns } = await import('./commands/import-patterns.js');
@@ -1184,7 +1188,7 @@ program
   .option('--window <days>', 'Days back to attribute regressions', '7')
   .option('--threshold <score>', 'Score drop that triggers failure', '0.5')
   .option('--no-update', 'Do not update the baseline snapshot after running')
-  .action((_opts) => {
+  .action(async (_opts) => {
     (async () => {
       try {
         const { runCIReportCommand } = await import('./commands/ci-report.js');
@@ -1206,7 +1210,7 @@ program
   .command('external-validate <projects...>')
   .description('Validate DanteForge quality metrics against external open-source projects (calibration check)')
   .option('--tier <mapping>', 'Comma-separated label:tier pairs e.g. lodash:high,underscore:medium')
-  .action((projectUrls: string[], _opts) => {
+  .action(async (projectUrls: string[], _opts) => {
     (async () => {
       try {
         const { runExternalValidation } = await import('./commands/external-validate.js');
@@ -1239,7 +1243,7 @@ program
   .description('Run mutation testing on DanteForge\'s own core files to validate test quality. Reports per-file mutation score and overall gate pass/fail.')
   .option('--min-score <n>', 'Minimum mutation score to pass gate (0-1)', '0.6')
   .option('--max-mutants <n>', 'Max mutants tested per file', '10')
-  .action((_opts) => {
+  .action(async (_opts) => {
     (async () => {
       try {
         const { runSelfMutate } = await import('./commands/self-mutate.js');
@@ -1272,7 +1276,7 @@ program
   .option('--add <name>', 'Manually block a pattern by name')
   .option('--remove <name>', 'Unblock a pattern by name')
   .option('--clear', 'Clear the entire refused-patterns blocklist')
-  .action((opts) => {
+  .action(async (opts) => {
     void (async () => {
       try {
         const { runRefusedPatterns } = await import('./commands/refused-patterns.js');
@@ -1292,7 +1296,7 @@ program
 program
   .command('respec')
   .description('Re-run specification with lessons learned and refused patterns injected')
-  .action(() => {
+  .action(async () => {
     void (async () => {
       try {
         const { runRespec } = await import('./commands/respec.js');
@@ -1310,7 +1314,7 @@ program
   .command('cross-synthesize')
   .description('Synthesize winning patterns from attribution history to escape a plateau')
   .option('--window <n>', 'Number of recent attribution records to analyze (default: 10)', '10')
-  .action((opts) => {
+  .action(async (opts) => {
     void (async () => {
       try {
         const { runCrossSynthesize } = await import('./commands/cross-synthesize.js');
@@ -1328,7 +1332,7 @@ program
   .command('flow')
   .description('Show the 5 DanteForge workflows and what to run next')
   .option('--interactive', 'Get a personalized workflow recommendation')
-  .action((opts) => {
+  .action(async (opts) => {
     void (async () => {
       try {
         const { runFlow } = await import('./commands/flow.js');
@@ -1344,7 +1348,7 @@ program
 program
   .command('guide')
   .description('Generate a project-specific guide at .danteforge/GUIDE.md')
-  .action(() => {
+  .action(async () => {
     void (async () => {
       try {
         const { runGuide } = await import('./commands/guide.js');
@@ -1376,9 +1380,9 @@ program
   .option('--drop-dimension <id>', 'Remove a scoring dimension from the matrix')
   .option('--edit', 'Interactive matrix amendment session')
   .option('--yes', 'Skip the confirmation gate in --auto mode')
-  .action((opts) => {
+  .action(async (opts) => {
     if (opts.level) {
-      return commands.canonicalCompete({
+      return (await C()).canonicalCompete({
         level: opts.level as string,
         json: opts.json as boolean | undefined,
         refresh: opts.refresh as boolean | undefined,
@@ -1506,9 +1510,9 @@ program
   .option('--strict', 'Use only code-derived signals — excludes mutable STATE.yaml fields for tamper-resistant scoring')
   .option('--adversary', 'Run a second independent LLM to challenge the self-score and detect inflation')
   .option('--json', 'Machine-readable JSON output')
-  .action((opts) => {
+  .action(async (opts) => {
     if (opts.level) {
-      return commands.canonicalMeasure({
+      return (await C()).canonicalMeasure({
         level: opts.level as string,
         full: opts.full as boolean | undefined,
         strict: opts.strict as boolean | undefined,
@@ -1655,9 +1659,9 @@ program
   .option('--isolation', 'Use isolation when preset escalates into party mode')
   .option('--max-repos <n>', 'Max repos for deep OSS harvest', '12')
   .option('--yes', 'Skip competitive matrix confirmation gate')
-  .action((spec, opts) => {
+  .action(async (spec, opts) => {
     if (opts.level) {
-      return commands.canonicalBuild(spec as string, {
+      return (await C()).canonicalBuild(spec as string, {
         level: opts.level as string,
         prompt: opts.prompt as boolean | undefined,
         profile: opts.profile as string | undefined,

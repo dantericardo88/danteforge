@@ -11,7 +11,8 @@ export default defineConfig({
     },
   },
   clean: true,
-  minify: false,
+  minify: true,
+
   target: 'es2022',
   outDir: 'dist',
   define: {
