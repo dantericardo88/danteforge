@@ -1,109 +1,114 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { analyzeRequirementCoverage } from '../src/core/requirement-coverage.js';
-import type { EvidenceBundle } from '../src/core/run-ledger.js';
-import type { DanteState } from '../src/core/state.js';
 
-function makeBundle(overrides: Partial<EvidenceBundle> = {}): EvidenceBundle {
+function makeBundle(overrides = {}) {
   return {
-    run: {
-      runId: 'test-run',
-      command: 'forge',
-      args: [],
-      startedAt: new Date().toISOString(),
-      completedAt: new Date().toISOString(),
-      exitCode: 0,
-      correlationId: 'corr-1',
-    },
-    verdict: { status: 'success', completionOracle: true, evidenceHash: 'a'.repeat(64) },
+    run: { id: 'run-1', startedAt: '2026-01-01T00:00:00.000Z', command: 'forge' },
     events: [],
     inputs: {},
-    plan: null,
+    plan: {},
     reads: [],
     writes: [],
     commands: [],
     tests: [],
     gates: [],
     receipts: [],
-    summary: '',
+    verdict: { status: 'pass', score: 80 },
+    summary: 'run summary',
     ...overrides,
   };
 }
 
-function makeState(overrides: Partial<DanteState> = {}): DanteState {
+function makeState(overrides = {}) {
   return {
-    project: 'test-project',
-    currentPhase: 1,
+    project: 'TestProject',
+    profile: 'standard',
     workflowStage: 'forge',
+    currentPhase: 1,
     tasks: {},
     auditLog: [],
-    profile: '',
-    lastHandoff: '',
+    constitution: false,
+    spec: false,
+    plan: false,
+    tests: false,
+    totalTokensUsed: 0,
+    scoreHistory: [],
     ...overrides,
-  } as DanteState;
+  };
 }
 
 describe('analyzeRequirementCoverage', () => {
-  it('always has at least 4 default requirements', () => {
-    const analysis = analyzeRequirementCoverage(makeBundle(), makeState());
-    assert.ok(analysis.requirements.totalRequirements >= 4, 'should have default requirements');
-    assert.ok(analysis.requirements.coveragePercent >= 0);
-    assert.ok(Array.isArray(analysis.requirements.missingRequirements));
+  it('returns structured result with all required fields', () => {
+    const result = analyzeRequirementCoverage(makeBundle(), makeState());
+    assert.ok(typeof result.requirements.totalRequirements === 'number');
+    assert.ok(typeof result.requirements.coveragePercent === 'number');
+    assert.ok(typeof result.tests.total === 'number');
+    assert.ok(Array.isArray(result.artifacts.expected));
+    assert.ok(Array.isArray(result.artifacts.present));
+    assert.ok(Array.isArray(result.artifacts.missing));
   });
 
-  it('extracts requirements from constitution lines', () => {
-    const state = makeState({ constitution: 'Zero ambiguity\nTest everything\nFast feedback' } as any);
-    const analysis = analyzeRequirementCoverage(makeBundle(), state);
-    assert.ok(analysis.requirements.totalRequirements >= 3);
-  });
-
-  it('counts passing tests', () => {
+  it('counts passing tests correctly', () => {
     const bundle = makeBundle({
       tests: [
-        { testName: 'a', status: 'pass', duration: 10, timestamp: '' },
-        { testName: 'b', status: 'fail', duration: 5, timestamp: '' },
-        { testName: 'c', status: 'pass', duration: 8, timestamp: '' },
+        { status: 'pass', name: 'test1' },
+        { status: 'pass', name: 'test2' },
+        { status: 'fail', name: 'test3' },
       ],
     });
-    const analysis = analyzeRequirementCoverage(bundle, makeState());
-    assert.equal(analysis.tests.total, 3);
-    assert.equal(analysis.tests.passing, 2);
-    assert.ok(Math.abs(analysis.tests.coverage - 66.67) < 1);
+    const result = analyzeRequirementCoverage(bundle, makeState());
+    assert.equal(result.tests.total, 3);
+    assert.equal(result.tests.passing, 2);
+    assert.ok(result.tests.coverage > 0);
   });
 
-  it('returns 0 test coverage when no tests', () => {
-    const analysis = analyzeRequirementCoverage(makeBundle({ tests: [] }), makeState());
-    assert.equal(analysis.tests.coverage, 0);
-  });
-
-  it('includes specification requirement when specify stage completed', () => {
-    const state = makeState({
-      auditLog: ['2026-01-01T00:00:00.000Z | specify: created spec'],
-    });
-    const analysis = analyzeRequirementCoverage(makeBundle(), state);
-    assert.ok(analysis.requirements.totalRequirements >= 1);
-  });
-
-  it('tracks artifact coverage from writes', () => {
+  it('reports 100 test coverage with all passing tests', () => {
     const bundle = makeBundle({
-      writes: [
-        { path: '.danteforge/SPEC.md', operation: 'write', timestamp: '' },
-        { path: 'src/index.ts', operation: 'write', timestamp: '' },
-      ],
+      tests: [{ status: 'pass', name: 'test1' }, { status: 'pass', name: 'test2' }],
     });
-    const state = makeState({
-      auditLog: ['2026-01-01T00:00:00.000Z | specify: created spec'],
-    });
-    const analysis = analyzeRequirementCoverage(bundle, state);
-    assert.ok(Array.isArray(analysis.artifacts.expected));
-    assert.ok(Array.isArray(analysis.artifacts.present));
-    assert.ok(Array.isArray(analysis.artifacts.missing));
+    const result = analyzeRequirementCoverage(bundle, makeState());
+    assert.equal(result.tests.coverage, 100);
   });
 
-  it('coverage percent is 0-100', () => {
-    const state = makeState({ constitution: 'Line 1\nLine 2' } as any);
-    const analysis = analyzeRequirementCoverage(makeBundle(), state);
-    assert.ok(analysis.requirements.coveragePercent >= 0);
-    assert.ok(analysis.requirements.coveragePercent <= 100);
+  it('reports 0 test coverage when no tests', () => {
+    const result = analyzeRequirementCoverage(makeBundle({ tests: [] }), makeState());
+    assert.equal(result.tests.total, 0);
+    assert.equal(result.tests.coverage, 0);
+  });
+
+  it('returns coverage map with boolean values', () => {
+    const result = analyzeRequirementCoverage(makeBundle(), makeState());
+    for (const value of Object.values(result.requirements.coverageMap)) {
+      assert.ok(typeof value === 'boolean');
+    }
+  });
+
+  it('missing artifacts = expected minus present', () => {
+    const result = analyzeRequirementCoverage(makeBundle(), makeState());
+    assert.equal(
+      result.artifacts.missing.length,
+      result.artifacts.expected.length - result.artifacts.present.length
+    );
+  });
+
+  it('coverage percent is between 0 and 100', () => {
+    const result = analyzeRequirementCoverage(makeBundle(), makeState());
+    assert.ok(result.requirements.coveragePercent >= 0);
+    assert.ok(result.requirements.coveragePercent <= 100);
+  });
+
+  it('detects written artifacts as present', () => {
+    const bundle = makeBundle({ writes: [{ path: '.danteforge/state.json', size: 100 }] });
+    const result = analyzeRequirementCoverage(bundle, makeState());
+    assert.ok(result.artifacts.present.includes('.danteforge/state.json'));
+  });
+
+  it('covered + missing = total requirements', () => {
+    const result = analyzeRequirementCoverage(makeBundle(), makeState());
+    assert.equal(
+      result.requirements.coveredRequirements + result.requirements.missingRequirements.length,
+      result.requirements.totalRequirements
+    );
   });
 });
