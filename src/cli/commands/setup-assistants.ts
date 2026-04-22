@@ -68,11 +68,18 @@ function parseAssistants(raw: string | undefined): AssistantRegistry[] | undefin
   return [...new Set(assistants)] as AssistantRegistry[];
 }
 
-export async function setupAssistants(options: { assistants?: string } = {}) {
+export async function setupAssistants(options: {
+  assistants?: string;
+  _installSkills?: typeof installAssistantSkills;
+  _resolvePaths?: typeof resolveConfigPaths;
+} = {}) {
+  const installFn = options._installSkills ?? installAssistantSkills;
+  const resolvePathsFn = options._resolvePaths ?? resolveConfigPaths;
+
   return withErrorBoundary('setup-assistants', async () => {
     const assistants = parseAssistants(options.assistants);
-    const result = await installAssistantSkills({ assistants });
-    const paths = resolveConfigPaths();
+    const result = await installFn({ assistants });
+    const paths = resolvePathsFn();
 
     logger.success('Installed DanteForge skills for local coding assistants');
     for (const entry of result.assistants) {

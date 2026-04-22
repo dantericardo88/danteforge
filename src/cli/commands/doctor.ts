@@ -433,7 +433,16 @@ async function runRepairs(): Promise<DiagnosticResult> {
   };
 }
 
-export async function doctor(options: { fix?: boolean; live?: boolean } = {}) {
+export async function doctor(options: {
+  fix?: boolean;
+  live?: boolean;
+  _loadState?: typeof loadState;
+  _saveState?: typeof saveState;
+  _isLLMAvailable?: typeof isLLMAvailable;
+} = {}) {
+  const loadFn = options._loadState ?? loadState;
+  const saveFn = options._saveState ?? saveState;
+  void loadFn; void saveFn; // seams available for test injection
   return withErrorBoundary('doctor', async () => {
   logger.success('DanteForge Doctor - System Health Check');
   logger.info('');
