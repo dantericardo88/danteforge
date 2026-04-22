@@ -82,6 +82,28 @@ async function autoRefinePlan(
   }
 }
 
+// ── Context loader ────────────────────────────────────────────────────────────
+
+async function loadCritiqueContext(
+  opts: CritiqueCommandOptions,
+  cwd: string,
+): Promise<{ sourceFilePaths: string[]; diffContent: string | undefined }> {
+  const sourceFilePaths = opts.source
+    ? opts.source.split(',').map(s => s.trim()).filter(Boolean)
+    : [];
+  let diffContent: string | undefined;
+  if (opts.diff) {
+    try {
+      const gitDiffFn = opts._gitDiff ?? defaultGitDiff;
+      diffContent = await gitDiffFn(opts.diff, cwd);
+      logger.info(`[critique] Loaded diff from ${opts.diff} (${diffContent.length} chars)`);
+    } catch (err) {
+      logger.warn(`[critique] Failed to load diff: ${err instanceof Error ? err.message : String(err)}`);
+    }
+  }
+  return { sourceFilePaths, diffContent };
+}
+
 // ── Main command ──────────────────────────────────────────────────────────────
 
 export async function critique(
@@ -110,22 +132,7 @@ export async function critique(
       return;
     }
 
-    // Load source files for context
-    const sourceFilePaths = opts.source
-      ? opts.source.split(',').map(s => s.trim()).filter(Boolean)
-      : [];
-
-    // Load git diff if requested
-    let diffContent: string | undefined;
-    if (opts.diff) {
-      try {
-        const gitDiffFn = opts._gitDiff ?? defaultGitDiff;
-        diffContent = await gitDiffFn(opts.diff, cwd);
-        logger.info(`[critique] Loaded diff from ${opts.diff} (${diffContent.length} chars)`);
-      } catch (err) {
-        logger.warn(`[critique] Failed to load diff: ${err instanceof Error ? err.message : String(err)}`);
-      }
-    }
+    const { sourceFilePaths, diffContent } = await loadCritiqueContext(opts, cwd);
 
     // Validate stakes
     const validStakes: CritiqueStakes[] = ['low', 'medium', 'high', 'critical'];
