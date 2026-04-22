@@ -350,7 +350,7 @@ async function buildDimEvidence(
 
     if (dim === 'errorHandling') {
       // Find file with highest function density but few try blocks (ratio gap)
-      interface ErrRatio { file: string; gap: number; fnCount: number; tryCount: number; }
+      interface ErrRatio { file: string; gap: number; fnCount: number; tryCount: number; firstFnLine: number; }
       const worstFiles: ErrRatio[] = [];
       async function walkErr(dir: string): Promise<void> {
         let entries: { name: string; isDirectory: () => boolean }[] = [];
@@ -364,7 +364,16 @@ async function buildDimEvidence(
             const fnCount = (content.match(/function\s+\w+|=>\s*\{|async\s+\w+\(/g) || []).length;
             const tryCount = (content.match(/try\s*\{/g) || []).length;
             if (fnCount >= 10 && tryCount < fnCount * 0.3) {
-              worstFiles.push({ file: full, gap: fnCount - tryCount * 3, fnCount, tryCount });
+              // Find the first function declaration line number
+              const lines = content.split('\n');
+              let firstFnLine = 1;
+              for (let i = 0; i < lines.length; i++) {
+                if (/function\s+\w+|const\s+\w+\s*=\s*(?:async\s+)?\(/.test(lines[i])) {
+                  firstFnLine = i + 1;
+                  break;
+                }
+              }
+              worstFiles.push({ file: full, gap: fnCount - tryCount * 3, fnCount, tryCount, firstFnLine });
             }
           } catch { /* ignore */ }
         }
@@ -374,7 +383,7 @@ async function buildDimEvidence(
         worstFiles.sort((a, b) => b.gap - a.gap);
         const worst = worstFiles[0];
         const rel = path.relative(cwd, worst.file).replace(/\\/g, '/');
-        return `low try/catch ratio in: ${rel} (${worst.tryCount} try / ${worst.fnCount} fns)`;
+        return `low try/catch ratio in: ${rel}:${worst.firstFnLine} (${worst.tryCount} try / ${worst.fnCount} fns)`;
       }
       return null;
     }
@@ -555,12 +564,16 @@ export async function score(options: ScoreOptions = {}): Promise<ScoreResult> {
     const humanLabel = label.charAt(0).toUpperCase() + label.slice(1);
     const humanText = DIMENSION_HUMAN_TEXT[item.dimension];
     const evidence = evidenceMap.get(item.dimension);
+    // When we have file-specific evidence, show a targeted command instead of the generic one
+    const action = evidence
+      ? `danteforge ascend --dim ${item.dimension}`
+      : item.action;
     if (humanText) {
       emit(`  ${i + 1}. ${humanLabel.padEnd(22)}${item.score.toFixed(1)}/10  — ${humanText}`);
       if (evidence) emit(`     ${''.padEnd(22)}  ↳ ${evidence}`);
-      emit(`     ${''.padEnd(22)}→ ${item.action}`);
+      emit(`     ${''.padEnd(22)}→ ${action}`);
     } else {
-      emit(`  ${i + 1}. ${humanLabel.padEnd(22)}${item.score.toFixed(1)}/10  → ${item.action}`);
+      emit(`  ${i + 1}. ${humanLabel.padEnd(22)}${item.score.toFixed(1)}/10  → ${action}`);
       if (evidence) emit(`     ${''.padEnd(22)}  ↳ ${evidence}`);
     }
   }
