@@ -125,23 +125,12 @@ export function measureOutputMetrics(output: string, task: BenchmarkTask): Bench
   };
 }
 
-export async function runLLMBenchmark(
+async function buildDanteForgePrompt(
   task: BenchmarkTask,
-  opts: LLMBenchmarkOptions = {},
-): Promise<BenchmarkResult> {
-  const cwd = opts.cwd ?? process.cwd();
-  const llm = opts._llmCaller ?? ((prompt: string) => callLLM(prompt));
-  const readFile = opts._readFile ?? ((p: string) => fs.readFile(p, 'utf8'));
-  const writeFile = opts._writeFile ?? ((p: string, content: string) => fs.writeFile(p, content, 'utf8'));
-  const exists = opts._exists ?? ((p: string) => fs.access(p).then(() => true).catch(() => false));
-
-  // --- Raw approach ---
-  const rawPrompt = task.description;
-  const rawStart = Date.now();
-  const rawResponse = await llm(rawPrompt);
-  const rawDurationMs = Date.now() - rawStart;
-
-  // --- DanteForge approach ---
+  cwd: string,
+  readFile: (p: string) => Promise<string>,
+  exists: (p: string) => Promise<boolean>,
+): Promise<string> {
   const artifactPaths: Array<{ label: string; filePath: string }> = [
     { label: 'CONSTITUTION', filePath: path.join(cwd, '.danteforge', 'CONSTITUTION.md') },
     { label: 'SPECIFICATION', filePath: path.join(cwd, '.danteforge', 'SPEC.md') },
@@ -160,70 +149,63 @@ export async function runLLMBenchmark(
     }
   }
 
-  let danteforgePrompt =
-    'You are implementing a feature. Follow these project rules exactly:\n\n';
+  let prompt = 'You are implementing a feature. Follow these project rules exactly:\n\n';
   for (const part of contextParts) {
-    danteforgePrompt += `${part}\n`;
+    prompt += `${part}\n`;
   }
-  danteforgePrompt += `TASK: ${task.description}\n\nImplement this feature following all project principles. Include tests.`;
+  prompt += `TASK: ${task.description}\n\nImplement this feature following all project principles. Include tests.`;
+  return prompt;
+}
 
-  const dfStart = Date.now();
-  const danteforgeResponse = await llm(danteforgePrompt);
-  const dfDurationMs = Date.now() - dfStart;
-
-  // --- Metrics ---
+function assembleBenchmarkResult(
+  task: BenchmarkTask,
+  rawPrompt: string, rawResponse: string, rawDurationMs: number,
+  danteforgePrompt: string, danteforgeResponse: string, dfDurationMs: number,
+): BenchmarkResult {
   const rawMetrics = measureOutputMetrics(rawResponse, task);
   const dfMetrics = measureOutputMetrics(danteforgeResponse, task);
-
-  // --- Improvement deltas ---
   const deltaTest = round4(dfMetrics.testLinesRatio - rawMetrics.testLinesRatio);
   const deltaError = round4(dfMetrics.errorHandlingRatio - rawMetrics.errorHandlingRatio);
   const deltaType = round4(dfMetrics.typeSafetyScore - rawMetrics.typeSafetyScore);
   const deltaComplete = round4(dfMetrics.completenessScore - rawMetrics.completenessScore);
   const deltaDoc = round4(dfMetrics.docCoverageRatio - rawMetrics.docCoverageRatio);
   const overallDeltaPercent = round4(((deltaTest + deltaError + deltaType + deltaComplete + deltaDoc) / 5) * 100);
-
-  // --- Verdict ---
   let verdict: BenchmarkResult['verdict'];
-  if (overallDeltaPercent > 20) {
-    verdict = 'significant';
-  } else if (overallDeltaPercent > 5) {
-    verdict = 'moderate';
-  } else if (overallDeltaPercent > 0) {
-    verdict = 'marginal';
-  } else {
-    verdict = 'none';
-  }
-
-  const savedAt = new Date().toISOString();
-
-  const result: BenchmarkResult = {
+  if (overallDeltaPercent > 20) verdict = 'significant';
+  else if (overallDeltaPercent > 5) verdict = 'moderate';
+  else if (overallDeltaPercent > 0) verdict = 'marginal';
+  else verdict = 'none';
+  return {
     task,
-    raw: {
-      name: 'raw',
-      prompt: rawPrompt,
-      response: rawResponse,
-      durationMs: rawDurationMs,
-      metrics: rawMetrics,
-    },
-    danteforge: {
-      name: 'danteforge',
-      prompt: danteforgePrompt,
-      response: danteforgeResponse,
-      durationMs: dfDurationMs,
-      metrics: dfMetrics,
-    },
-    improvement: {
-      testLinesRatio: deltaTest,
-      errorHandlingRatio: deltaError,
-      typeSafetyScore: deltaType,
-      completenessScore: deltaComplete,
-      docCoverageRatio: deltaDoc,
-      overallDeltaPercent,
-    },
+    raw: { name: 'raw', prompt: rawPrompt, response: rawResponse, durationMs: rawDurationMs, metrics: rawMetrics },
+    danteforge: { name: 'danteforge', prompt: danteforgePrompt, response: danteforgeResponse, durationMs: dfDurationMs, metrics: dfMetrics },
+    improvement: { testLinesRatio: deltaTest, errorHandlingRatio: deltaError, typeSafetyScore: deltaType, completenessScore: deltaComplete, docCoverageRatio: deltaDoc, overallDeltaPercent },
     verdict,
-    savedAt,
+    savedAt: new Date().toISOString(),
   };
+}
+
+export async function runLLMBenchmark(
+  task: BenchmarkTask,
+  opts: LLMBenchmarkOptions = {},
+): Promise<BenchmarkResult> {
+  const cwd = opts.cwd ?? process.cwd();
+  const llm = opts._llmCaller ?? ((prompt: string) => callLLM(prompt));
+  const readFile = opts._readFile ?? ((p: string) => fs.readFile(p, 'utf8'));
+  const writeFile = opts._writeFile ?? ((p: string, content: string) => fs.writeFile(p, content, 'utf8'));
+  const exists = opts._exists ?? ((p: string) => fs.access(p).then(() => true).catch(() => false));
+
+  const rawPrompt = task.description;
+  const rawStart = Date.now();
+  const rawResponse = await llm(rawPrompt);
+  const rawDurationMs = Date.now() - rawStart;
+
+  const danteforgePrompt = await buildDanteForgePrompt(task, cwd, readFile, exists);
+  const dfStart = Date.now();
+  const danteforgeResponse = await llm(danteforgePrompt);
+  const dfDurationMs = Date.now() - dfStart;
+
+  const result = assembleBenchmarkResult(task, rawPrompt, rawResponse, rawDurationMs, danteforgePrompt, danteforgeResponse, dfDurationMs);
 
   // --- Save results ---
   const resultsPath = path.join(cwd, '.danteforge', 'benchmark-results.json');

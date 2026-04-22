@@ -213,6 +213,49 @@ export function parseStreamJsonOutput(
  * The function builds the CLI args, spawns the process, collects stdout/stderr,
  * enforces an optional timeout, and parses stream-json for token usage.
  */
+function awaitAgentProcess(
+  child: ReturnType<NonNullable<SpawnerOptions['_spawnFn']>>,
+  config: HeadlessAgentConfig,
+  timeoutMs: number,
+  start: number,
+): Promise<HeadlessAgentResult> {
+  return new Promise<HeadlessAgentResult>((resolve) => {
+    let stdoutBuf = '';
+    let stderrBuf = '';
+    let resolved = false;
+    let timedOut = false;
+
+    const finish = (exitCode: number) => {
+      if (resolved) return;
+      resolved = true;
+      if (timer !== null) clearTimeout(timer);
+      const durationMs = Date.now() - start;
+      const parsed = parseStreamJsonOutput(stdoutBuf);
+      if (timedOut) stderrBuf += (stderrBuf ? '\n' : '') + `Process timed out after ${timeoutMs}ms`;
+      resolve({ role: config.role, exitCode, stdout: parsed.text || stdoutBuf, stderr: stderrBuf, durationMs, tokenUsage: parsed.tokenUsage });
+    };
+
+    child.stdout.on('data', (data: Buffer) => { stdoutBuf += data.toString(); });
+    child.stderr.on('data', (data: Buffer) => { stderrBuf += data.toString(); });
+    child.on('close', (code: number | null) => { finish(code ?? 1); });
+    child.on('error', (errOrCode: number | null) => {
+      const errObj = errOrCode as unknown;
+      const msg = (typeof errObj === 'object' && errObj !== null && 'message' in errObj)
+        ? String((errObj as { message: unknown }).message)
+        : `spawn failed (code ${String(errOrCode)})`;
+      stderrBuf += (stderrBuf ? '\n' : '') + `Spawn error: ${msg}`;
+      finish(1);
+    });
+
+    const timer: ReturnType<typeof setTimeout> | null = setTimeout(() => {
+      if (resolved) return;
+      timedOut = true;
+      logger.warn(`[HeadlessSpawner] ${config.role} agent timed out after ${timeoutMs}ms — killing`);
+      try { child.kill('SIGTERM'); } catch { /* best-effort */ }
+    }, timeoutMs);
+  });
+}
+
 export async function spawnHeadlessAgent(
   config: HeadlessAgentConfig,
   options?: SpawnerOptions,
@@ -231,74 +274,8 @@ export async function spawnHeadlessAgent(
   logger.verbose(`[HeadlessSpawner] Spawning ${config.role} agent (timeout=${timeoutMs}ms)`);
 
   try {
-    const result = await new Promise<HeadlessAgentResult>((resolve) => {
-      const child = spawnFn(CLAUDE_CLI_BINARY, cliArgs, spawnOpts);
-
-      let stdoutBuf = '';
-      let stderrBuf = '';
-      let resolved = false;
-      let timedOut = false;
-
-      const finish = (exitCode: number) => {
-        if (resolved) return;
-        resolved = true;
-
-        if (timer !== null) {
-          clearTimeout(timer);
-        }
-
-        const durationMs = Date.now() - start;
-        const parsed = parseStreamJsonOutput(stdoutBuf);
-
-        if (timedOut) {
-          stderrBuf += (stderrBuf ? '\n' : '') + `Process timed out after ${timeoutMs}ms`;
-        }
-
-        resolve({
-          role: config.role,
-          exitCode,
-          stdout: parsed.text || stdoutBuf,
-          stderr: stderrBuf,
-          durationMs,
-          tokenUsage: parsed.tokenUsage,
-        });
-      };
-
-      child.stdout.on('data', (data: Buffer) => {
-        stdoutBuf += data.toString();
-      });
-
-      child.stderr.on('data', (data: Buffer) => {
-        stderrBuf += data.toString();
-      });
-
-      child.on('close', (code: number | null) => {
-        finish(code ?? 1);
-      });
-
-      child.on('error', (errOrCode: number | null) => {
-        // The _spawnFn type collapses all event signatures; on a real process
-        // the 'error' callback receives an Error, so we handle both shapes.
-        const errObj = errOrCode as unknown;
-        const msg = (typeof errObj === 'object' && errObj !== null && 'message' in errObj)
-          ? String((errObj as { message: unknown }).message)
-          : `spawn failed (code ${String(errOrCode)})`;
-        stderrBuf += (stderrBuf ? '\n' : '') + `Spawn error: ${msg}`;
-        finish(1);
-      });
-
-      // Timeout enforcement — kill the child if it exceeds the deadline
-      const timer: ReturnType<typeof setTimeout> | null = setTimeout(() => {
-        if (resolved) return;
-        timedOut = true;
-        logger.warn(`[HeadlessSpawner] ${config.role} agent timed out after ${timeoutMs}ms — killing`);
-        try {
-          child.kill('SIGTERM');
-        } catch {
-          // best-effort kill — process may already have exited
-        }
-      }, timeoutMs);
-    });
+    const child = spawnFn(CLAUDE_CLI_BINARY, cliArgs, spawnOpts);
+    const result = await awaitAgentProcess(child, config, timeoutMs, start);
 
     if (result.exitCode !== 0) {
       logger.warn(`[HeadlessSpawner] ${config.role} agent exited with code ${result.exitCode}`);
