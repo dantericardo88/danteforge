@@ -543,6 +543,77 @@ async function executeOSSResearch(
   }
 }
 
+// ── Execute mode helper ───────────────────────────────────────────────────────
+
+async function runOSSExecuteMode(ctx: {
+  projectSummary: string; projectType: string; language: string; queries: string[];
+  maxRepos: number; cwd: string; timestamp: string;
+  loadFn: typeof loadState; saveFn: typeof saveState; llmAvailFn: typeof isLLMAvailable;
+}): Promise<void> {
+  const { projectSummary, projectType, language, queries, maxRepos, cwd, timestamp, loadFn, saveFn, llmAvailFn } = ctx;
+  const llmAvailable = await llmAvailFn();
+  if (!llmAvailable) {
+    displayLocalFallback(projectSummary, projectType, language, queries);
+    const state = await loadFn();
+    state.auditLog.push(`${timestamp} | oss: local fallback — no LLM provider available`);
+    await saveFn(state);
+    return;
+  }
+
+  logger.info(`LLM provider available — starting full OSS research pipeline (max ${maxRepos} repos)`);
+  logger.info('');
+  const report = await executeOSSResearch(projectSummary, projectType, language, queries, maxRepos);
+
+  const reportPath = path.join(cwd, '.danteforge', 'OSS_REPORT.md');
+  await fs.mkdir(path.join(cwd, '.danteforge'), { recursive: true });
+  await fs.writeFile(reportPath, formatOSSReport(report), 'utf8');
+
+  const p0p1Count = report.patternsExtracted.filter(p => p.priority === 'P0' || p.priority === 'P1').length;
+  logger.info('');
+  logger.info('='.repeat(60));
+  logger.success('  OSS RESEARCH COMPLETE');
+  logger.info('='.repeat(60));
+  logger.info('');
+  logger.info(`Repos scanned:       ${report.reposScanned.length}`);
+  logger.info(`Repos skipped:       ${report.skipped.length}`);
+  logger.info(`Patterns extracted:  ${report.patternsExtracted.length}`);
+  logger.info(`P0/P1 patterns:      ${p0p1Count}`);
+  logger.info('');
+  logger.info(`Report saved to:     ${reportPath}`);
+  logger.info('');
+
+  if (p0p1Count > 0) { logger.info('Next: review the report and implement the P0/P1 patterns.'); logger.info('Run `danteforge verify` after implementing each pattern.'); }
+  else if (report.patternsExtracted.length > 0) { logger.info('No P0/P1 patterns found. Review the report for P2/P3 items.'); }
+  else { logger.info('No patterns extracted — the repos may already align with your architecture.'); }
+
+  try {
+    const { loadMatrix } = await import('../../core/compete-matrix.js');
+    const { runDecisionFilter } = await import('../../core/cofl-engine.js');
+    const matrix = await loadMatrix(cwd).catch(() => null);
+    if (matrix && report.patternsExtracted.length > 0) {
+      const gapDimensions = matrix.dimensions.filter(d => (d.gap_to_closed_source_leader ?? d.gap_to_leader ?? 0) > 1).map(d => d.id);
+      const coflAligned = report.patternsExtracted.filter(p => {
+        const isOperatorVisible = p.category === 'cli-ux' || p.category === 'agent-ai' || p.category === 'innovation';
+        const decision = runDecisionFilter(
+          { sourceRole: 'reference_teacher', operatorLeverageScore: p.priority === 'P0' ? 8 : p.priority === 'P1' ? 6 : 3, affectedDimensions: gapDimensions.slice(0, 2), proofRequirement: `Implement and run npm test (${p.effort} effort)`, implementationScope: p.effort === 'L' ? 'broad' : 'narrow' },
+          { validTeacherRoles: ['reference_teacher', 'specialist_teacher'], knownGapDimensions: gapDimensions },
+        );
+        return isOperatorVisible && decision.passedAll;
+      });
+      if (coflAligned.length > 0) {
+        logger.info('');
+        logger.info(`COFL-aligned patterns (operator-visible, gap-closing): ${coflAligned.length}`);
+        for (const p of coflAligned.slice(0, 5)) logger.info(`  [${p.priority}] ${p.pattern} — ${p.description.slice(0, 80)}`);
+        logger.info('Run `danteforge cofl --harvest` to extract and classify these via the full COFL pipeline.');
+      }
+    }
+  } catch { /* best-effort */ }
+
+  const state = await loadFn();
+  state.auditLog.push(`${timestamp} | oss: research complete — ${report.reposScanned.length} repos scanned, ${report.patternsExtracted.length} patterns extracted, ${p0p1Count} P0/P1`);
+  await saveFn(state);
+}
+
 // ── Main command ──────────────────────────────────────────────────────────────
 
 /**
@@ -610,99 +681,6 @@ export async function ossResearcher(options: {
   }
 
   // ── Execute mode ─────────────────────────────────────────────────────────────
-  const llmAvailable = await llmAvailFn();
-  if (!llmAvailable) {
-    displayLocalFallback(projectSummary, projectType, language, queries);
-
-    const state = await loadFn();
-    state.auditLog.push(`${timestamp} | oss: local fallback — no LLM provider available`);
-    await saveFn(state);
-    return;
-  }
-
-  logger.info(`LLM provider available — starting full OSS research pipeline (max ${maxRepos} repos)`);
-  logger.info('');
-
-  const report = await executeOSSResearch(
-    projectSummary,
-    projectType,
-    language,
-    queries,
-    maxRepos,
-  );
-
-  // Write report
-  const reportPath = path.join(cwd, '.danteforge', 'OSS_REPORT.md');
-  await fs.mkdir(path.join(cwd, '.danteforge'), { recursive: true });
-  const reportMd = formatOSSReport(report);
-  await fs.writeFile(reportPath, reportMd, 'utf8');
-
-  // Final summary
-  logger.info('');
-  logger.info('='.repeat(60));
-  logger.success('  OSS RESEARCH COMPLETE');
-  logger.info('='.repeat(60));
-  logger.info('');
-  logger.info(`Repos scanned:       ${report.reposScanned.length}`);
-  logger.info(`Repos skipped:       ${report.skipped.length}`);
-  logger.info(`Patterns extracted:  ${report.patternsExtracted.length}`);
-  const p0p1Count = report.patternsExtracted.filter(p => p.priority === 'P0' || p.priority === 'P1').length;
-  logger.info(`P0/P1 patterns:      ${p0p1Count}`);
-  logger.info('');
-  logger.info(`Report saved to:     ${reportPath}`);
-  logger.info('');
-
-  if (p0p1Count > 0) {
-    logger.info('Next: review the report and implement the P0/P1 patterns.');
-    logger.info('Run `danteforge verify` after implementing each pattern.');
-  } else if (report.patternsExtracted.length > 0) {
-    logger.info('No P0/P1 patterns found. Review the report for P2/P3 items.');
-  } else {
-    logger.info('No patterns extracted — the repos may already align with your architecture.');
-  }
-
-  // COFL gap cross-check: flag patterns that address known operator-visible gaps (best-effort)
-  try {
-    const { loadMatrix } = await import('../../core/compete-matrix.js');
-    const { runDecisionFilter } = await import('../../core/cofl-engine.js');
-    const matrix = await loadMatrix(cwd).catch(() => null);
-    if (matrix && report.patternsExtracted.length > 0) {
-      const gapDimensions = matrix.dimensions
-        .filter(d => (d.gap_to_closed_source_leader ?? d.gap_to_leader ?? 0) > 1)
-        .map(d => d.id);
-      const coflAligned = report.patternsExtracted.filter(p => {
-        // Map oss pattern category to COFL dimension coverage proxy
-        const category = p.category;
-        const isOperatorVisible = category === 'cli-ux' || category === 'agent-ai' || category === 'innovation';
-        const decision = runDecisionFilter(
-          {
-            sourceRole: 'reference_teacher',
-            operatorLeverageScore: p.priority === 'P0' ? 8 : p.priority === 'P1' ? 6 : 3,
-            affectedDimensions: gapDimensions.slice(0, 2),
-            proofRequirement: `Implement and run npm test (${p.effort} effort)`,
-            implementationScope: p.effort === 'L' ? 'broad' : 'narrow',
-          },
-          { validTeacherRoles: ['reference_teacher', 'specialist_teacher'], knownGapDimensions: gapDimensions },
-        );
-        return isOperatorVisible && decision.passedAll;
-      });
-      if (coflAligned.length > 0) {
-        logger.info('');
-        logger.info(`COFL-aligned patterns (operator-visible, gap-closing): ${coflAligned.length}`);
-        for (const p of coflAligned.slice(0, 5)) {
-          logger.info(`  [${p.priority}] ${p.pattern} — ${p.description.slice(0, 80)}`);
-        }
-        logger.info('Run `danteforge cofl --harvest` to extract and classify these via the full COFL pipeline.');
-      }
-    }
-  } catch { /* best-effort — never block oss output */ }
-
-  // Audit
-  const state = await loadFn();
-  state.auditLog.push(
-    `${timestamp} | oss: research complete — ${report.reposScanned.length} repos scanned, ` +
-    `${report.patternsExtracted.length} patterns extracted, ${p0p1Count} P0/P1`,
-  );
-  await saveFn(state);
+  await runOSSExecuteMode({ projectSummary, projectType, language, queries, maxRepos, cwd, loadFn, saveFn, llmAvailFn, timestamp });
   });
 }
