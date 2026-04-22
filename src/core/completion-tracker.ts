@@ -62,14 +62,7 @@ const PHASE_WEIGHTS = {
 
 const EXECUTION_COMPLETE_STAGES = new Set(['verify', 'synthesize']);
 
-// ── Primary computation — pure, idempotent ──────────────────────────────────
-
-export function computeCompletionTracker(
-  state: DanteState,
-  scores: Record<ScoredArtifact, ScoreResult>,
-): CompletionTracker {
-
-  // ── Planning phase ──
+function computePlanningPhase(scores: Record<ScoredArtifact, ScoreResult>): PlanningPhaseTracking {
   const artifactNames: ScoredArtifact[] = ['CONSTITUTION', 'SPEC', 'CLARIFY', 'PLAN', 'TASKS'];
   const artifactScores: Record<string, ArtifactScore> = {};
   let planningTotal = 0;
@@ -84,16 +77,23 @@ export function computeCompletionTracker(
     planningTotal += artScore;
   }
 
-  const planningScore = Math.round(planningTotal / artifactNames.length);
-  const planningComplete = artifactNames.every(
-    name => (artifactScores[name]?.score ?? 0) >= SCORE_THRESHOLDS.ACCEPTABLE,
-  );
-
-  const planning: PlanningPhaseTracking = {
-    score: planningScore,
-    complete: planningComplete,
+  return {
+    score: Math.round(planningTotal / artifactNames.length),
+    complete: artifactNames.every(
+      name => (artifactScores[name]?.score ?? 0) >= SCORE_THRESHOLDS.ACCEPTABLE,
+    ),
     artifacts: artifactScores as PlanningPhaseTracking['artifacts'],
   };
+}
+
+// ── Primary computation — pure, idempotent ──────────────────────────────────
+
+export function computeCompletionTracker(
+  state: DanteState,
+  scores: Record<ScoredArtifact, ScoreResult>,
+): CompletionTracker {
+
+  const planning = computePlanningPhase(scores);
 
   // ── Execution phase ──
   const currentPhase = state.currentPhase ?? 1;
