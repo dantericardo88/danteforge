@@ -267,7 +267,7 @@ program
 
 program
   .command('spark [goal]')
-  .description(`Zero-token planning preset: ${SPARK_PLANNING_TEXT}`)
+  .description(`Alias: plan --level light. Zero-token planning preset: ${SPARK_PLANNING_TEXT}`)
   .option('--prompt', 'Generate the preset plan without executing')
   .option('--skip-tech-decide', 'Skip the tech-decide step when the stack is already decided')
   .action((goal, opts) => commands.spark(goal, {
@@ -277,7 +277,7 @@ program
 
 program
   .command('ember [goal]')
-  .description('Very low-token preset for quick features and light checkpoints')
+  .description('Alias: build --level light. Very low-token preset for quick features and light checkpoints')
   .option('--profile <type>', 'quality | balanced | budget', 'budget')
   .option('--prompt', 'Generate the preset plan without executing')
   .action((goal, opts) => commands.ember(goal, {
@@ -300,7 +300,7 @@ program
 program
   .command('magic [goal]')
   .alias('improve')
-  .description('Balanced preset and default hero command for most follow-up work')
+  .description('Alias: build --level standard. Balanced preset and default hero command for most follow-up work')
   .option('--level <level>', 'spark | ember | canvas | magic | blaze | nova | inferno', 'magic')
   .option('--profile <type>', 'quality | balanced | budget', 'budget')
   .option('--skip-ux', 'Skip UX refinement')
@@ -324,7 +324,7 @@ program
 
 program
   .command('blaze [goal]')
-  .description('High-power preset: full party + strong autoforge + synthesize + retro + self-improve')
+  .description('Alias: build --level deep. High-power preset: full party + strong autoforge + synthesize + retro + self-improve')
   .option('--profile <type>', 'quality | balanced | budget', 'budget')
   .option('--prompt', 'Generate the preset plan without executing')
   .option('--worktree', 'Run in an isolated git worktree')
@@ -344,7 +344,7 @@ program
 
 program
   .command('nova [goal]')
-  .description('Very-high-power preset: planning prefix + blaze execution + inferno polish (no OSS)')
+  .description('Alias: build --level deep --planning-prefix. Very-high-power preset: planning prefix + blaze execution + inferno polish (no OSS)')
   .option('--profile <type>', 'quality | balanced | budget', 'budget')
   .option('--prompt', 'Generate the preset plan without executing')
   .option('--worktree', 'Run in an isolated git worktree')
@@ -366,7 +366,7 @@ program
 
 program
   .command('inferno [goal]')
-  .description('Maximum-power preset: OSS mining + full implementation + evolution')
+  .description('Alias: build --level deep --with-harvest. Maximum-power preset: OSS mining + full implementation + evolution')
   .option('--profile <type>', 'quality | balanced | budget', 'budget')
   .option('--prompt', 'Generate the preset plan without executing')
   .option('--worktree', 'Run in an isolated git worktree')
@@ -641,6 +641,9 @@ program
   .option('--source <type>', 'Source type: oss | local | mixed (default: oss)')
   .option('--max-repos <n>', 'Max repos for OSS harvest', '8')
   .option('--depth <level>', 'Local harvest depth: shallow | medium | full', 'medium')
+  .option('--until-saturation', 'deep only: loop OSS cycles until new-feature yield drops (two consecutive lean cycles stops the loop)')
+  .option('--max-cycles <n>', 'Max cycles for --until-saturation (default: 5)', '5')
+  .option('--saturation-threshold <n>', 'Min new features per cycle before cycle is "lean" (default: 3)', '3')
   .option('--prompt', 'Display the 5-step copy-paste template without calling the LLM')
   .option('--lite', 'Run in SEP-LITE mode (Steps 1-3 + 5 only, 2-3 donors, 2-4 organs)')
   .action((goal, opts) => {
@@ -651,6 +654,9 @@ program
         maxRepos: opts.maxRepos ? parseInt(opts.maxRepos as string, 10) : undefined,
         prompt: opts.prompt as boolean | undefined,
         depth: opts.depth as string | undefined,
+        untilSaturation: opts.untilSaturation as boolean | undefined,
+        maxCycles: opts.maxCycles ? parseInt(opts.maxCycles as string, 10) : undefined,
+        saturationThreshold: opts.saturationThreshold ? parseInt(opts.saturationThreshold as string, 10) : undefined,
       });
     }
     return commands.harvest(goal as string ?? '', { prompt: opts.prompt as boolean | undefined, lite: opts.lite as boolean | undefined });

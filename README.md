@@ -71,6 +71,39 @@ cd examples/todo-app && danteforge score
 | No idea how you compare to alternatives | Competitive matrix tracks gap to leader per dimension |
 | Scoring is self-reported and inflated | Blind adversary model catches inflation automatically |
 
+### Canonical Commands
+
+Five commands, three levels. That's the whole mental model.
+
+```bash
+# plan — what should we build?
+danteforge plan "build auth system" --level light     # review + specify
+danteforge plan "build auth system" --level standard  # full planning pipeline
+danteforge plan "build auth system" --level deep      # + tech-decide + tasks
+
+# build — make progress
+danteforge build "close auth gaps" --level light      # single forge wave
+danteforge build "close auth gaps" --level standard   # magic-style balanced execution
+danteforge build "close auth gaps" --level deep       # inferno + OSS harvest
+
+# measure — how good are we?
+danteforge measure --level light                      # quick score (default)
+danteforge measure --level standard                   # score + maturity + proof delta
+danteforge measure --level deep                       # verify + adversarial + convergence
+
+# compete — where do we lag?
+danteforge compete --level light                      # harsh self-assessment
+danteforge compete --level standard                   # + universe refresh
+danteforge compete --level deep                       # full Competitive Harvest Loop
+
+# harvest — learn from OSS
+danteforge harvest "CLI patterns" --level light       # focused pattern harvest
+danteforge harvest --level standard                   # bounded OSS pass
+danteforge harvest --level deep --until-saturation    # loop until library saturates
+```
+
+Branded presets (`spark`, `magic`, `inferno`, etc.) still work — they are aliases for the canonical commands above.
+
 ### Core commands
 
 ```bash
