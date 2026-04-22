@@ -120,6 +120,43 @@ function classifyDimension(
   return { name: d.dimension, score: d.score, targetScore, status: 'in-progress', symbol: '▷' };
 }
 
+// ── Cost attribution ──────────────────────────────────────────────────────────
+
+async function computeCostAttribution(
+  convergence: ConvergenceState,
+  queue: HarvestQueue,
+  dimensions: DimensionStatus[],
+  totalCostUsd: number,
+): Promise<CostAttribution> {
+  const cyclesRun = convergence.lastCycle;
+  const patternsAdopted = queue.totalPatternsAdopted;
+  const ESTIMATED_COST_PER_CYCLE = 0.05;
+
+  let totalScoreImprovement = 0;
+  for (const record of convergence.cycleHistory) {
+    const before = Object.values(record.scoresBefore);
+    const after = Object.values(record.scoresAfter);
+    if (before.length > 0 && after.length === before.length) {
+      totalScoreImprovement += Math.max(0, after.reduce((a, b) => a + b, 0) / after.length - before.reduce((a, b) => a + b, 0) / before.length);
+    }
+  }
+
+  const costPerPatternAdopted = patternsAdopted > 0 ? totalCostUsd / patternsAdopted : (cyclesRun > 0 ? ESTIMATED_COST_PER_CYCLE : 0);
+  const costPerScorePoint = totalScoreImprovement > 0 ? totalCostUsd / totalScoreImprovement : (cyclesRun > 0 ? ESTIMATED_COST_PER_CYCLE / 0.5 : 0);
+
+  const currentAvgScore = dimensions.length > 0 ? dimensions.reduce((sum, d) => sum + d.score, 0) / dimensions.length : 0;
+  const scoreGapRemaining = Math.max(0, convergence.targetScore - currentAvgScore);
+  const scoreGainPerCycle = cyclesRun > 0 && totalScoreImprovement > 0 ? totalScoreImprovement / cyclesRun : 0.3;
+  const projectedCyclesRemaining = scoreGainPerCycle > 0 ? Math.ceil(scoreGapRemaining / scoreGainPerCycle) : 0;
+  const costPerCycle = cyclesRun > 0 ? totalCostUsd / cyclesRun : ESTIMATED_COST_PER_CYCLE;
+  const projectedCostToConvergence = projectedCyclesRemaining * costPerCycle;
+
+  let intelligenceCompoundRate = 0;
+  try { const { computeCompoundRate } = await import('./chart.js'); intelligenceCompoundRate = computeCompoundRate(convergence); } catch { /* best-effort */ }
+
+  return { costPerPatternAdopted, costPerScorePoint, projectedCostToConvergence, projectedCyclesRemaining, intelligenceCompoundRate };
+}
+
 // ── Main entry ─────────────────────────────────────────────────────────────────
 
 export async function status(opts: StatusOptions = {}): Promise<StatusReport> {
@@ -174,62 +211,8 @@ export async function status(opts: StatusOptions = {}): Promise<StatusReport> {
 
   const lastCycleRecord = convergence.cycleHistory[convergence.cycleHistory.length - 1];
 
-  // ── Cost Attribution ───────────────────────────────────────────────────────
   const cyclesRun = convergence.lastCycle;
-  const patternsAdopted = queue.totalPatternsAdopted;
-  const ESTIMATED_COST_PER_CYCLE = 0.05; // USD default when no real cost data
-
-  // Total score improvement across all cycles
-  let totalScoreImprovement = 0;
-  for (const record of convergence.cycleHistory) {
-    const before = Object.values(record.scoresBefore);
-    const after = Object.values(record.scoresAfter);
-    if (before.length > 0 && after.length === before.length) {
-      const avgBefore = before.reduce((a, b) => a + b, 0) / before.length;
-      const avgAfter = after.reduce((a, b) => a + b, 0) / after.length;
-      totalScoreImprovement += Math.max(0, avgAfter - avgBefore);
-    }
-  }
-
-  const costPerPatternAdopted = patternsAdopted > 0
-    ? totalCostUsd / patternsAdopted
-    : (cyclesRun > 0 ? ESTIMATED_COST_PER_CYCLE : 0);
-
-  const costPerScorePoint = totalScoreImprovement > 0
-    ? totalCostUsd / totalScoreImprovement
-    : (cyclesRun > 0 ? ESTIMATED_COST_PER_CYCLE / 0.5 : 0);
-
-  // Estimate remaining cycles based on current avg score vs target
-  const currentAvgScore = dimensions.length > 0
-    ? dimensions.reduce((sum, d) => sum + d.score, 0) / dimensions.length
-    : 0;
-  const targetScore = convergence.targetScore;
-  const scoreGapRemaining = Math.max(0, targetScore - currentAvgScore);
-  const scoreGainPerCycle = cyclesRun > 0 && totalScoreImprovement > 0
-    ? totalScoreImprovement / cyclesRun
-    : 0.3; // fallback estimate
-  const projectedCyclesRemaining = scoreGainPerCycle > 0
-    ? Math.ceil(scoreGapRemaining / scoreGainPerCycle)
-    : 0;
-  const costPerCycle = cyclesRun > 0
-    ? totalCostUsd / cyclesRun
-    : ESTIMATED_COST_PER_CYCLE;
-  const projectedCostToConvergence = projectedCyclesRemaining * costPerCycle;
-
-  // Intelligence Compound Rate: lazy import from chart to avoid circular dep
-  let intelligenceCompoundRate = 0;
-  try {
-    const { computeCompoundRate } = await import('./chart.js');
-    intelligenceCompoundRate = computeCompoundRate(convergence);
-  } catch { /* best-effort */ }
-
-  const costAttribution: CostAttribution = {
-    costPerPatternAdopted,
-    costPerScorePoint,
-    projectedCostToConvergence,
-    projectedCyclesRemaining,
-    intelligenceCompoundRate,
-  };
+  const costAttribution = await computeCostAttribution(convergence, queue, dimensions, totalCostUsd);
 
   return {
     goal,

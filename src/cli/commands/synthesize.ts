@@ -45,6 +45,57 @@ async function gatherDocs(): Promise<DocSection[]> {
   return docs;
 }
 
+function buildUPRTrailer(state: Awaited<ReturnType<typeof loadState>>): string[] {
+  const parts: string[] = [];
+  parts.push('## DanteForge Pipeline');
+  parts.push('');
+  parts.push('```');
+  parts.push(REPO_PIPELINE_TEXT);
+  parts.push('  |                                                                                                                                            |');
+  parts.push('  +-------------------- iterative loop: re-review or re-plan when gaps are found -----+');
+  parts.push('```');
+  parts.push('');
+  parts.push('### Specification Refinement');
+  parts.push('- Constitution: Zero-ambiguity principles enforced at every phase');
+  parts.push('- Clarify: Automated gap detection and consistency checking');
+  parts.push('- Templates: Structured artifacts for specs, plans, and tasks');
+  parts.push('');
+  parts.push('### Execution Waves');
+  parts.push('- Structured prompts for LLM-driven task execution');
+  parts.push('- Atomic commits with verification loops');
+  parts.push('- Profile-adaptive: quality (thorough) | balanced | budget (fast)');
+  parts.push('');
+  parts.push('### Multi-Agent Orchestration');
+  parts.push('- PM: Prioritization + constitution alignment');
+  parts.push('- Architect: System design + trade-off evaluation');
+  parts.push('- Dev: Implementation + atomic code units');
+  parts.push('- UX: User-facing review + accessibility');
+  parts.push('- Scrum Master: Progress monitoring + blocker detection');
+  parts.push('');
+
+  if (state.auditLog.length > 0) {
+    parts.push('## Audit Trail');
+    parts.push('');
+    for (const entry of state.auditLog) parts.push(`- ${entry}`);
+    parts.push('');
+  }
+
+  parts.push('## Next Steps');
+  parts.push('');
+  parts.push('1. Run `danteforge feedback` for manual refinement or `danteforge feedback --auto` with a verified live provider.');
+  const nextPhase = state.currentPhase + 1;
+  const hasNextPhase = (state.tasks[nextPhase] ?? []).length > 0;
+  if (hasNextPhase) {
+    parts.push(`2. When the next planned wave is ready, run \`danteforge forge ${nextPhase}\`.`);
+  } else {
+    parts.push('2. If more work is needed, refresh the artifacts with `danteforge review`, `danteforge specify`, or `danteforge tasks` before starting another forge wave.');
+  }
+  parts.push('3. Run `danteforge verify` after the next real execution wave.');
+  parts.push('4. Re-run `danteforge synthesize` after the next verified milestone to keep UPR.md current.');
+  parts.push('');
+  return parts;
+}
+
 export async function synthesize(options: {
   _loadState?: typeof loadState;
   _saveState?: typeof saveState;
@@ -123,54 +174,7 @@ export async function synthesize(options: {
     }
   }
 
-  sections.push('## DanteForge Pipeline');
-  sections.push('');
-  sections.push('```');
-  sections.push(REPO_PIPELINE_TEXT);
-  sections.push('  |                                                                                                                                            |');
-  sections.push('  +-------------------- iterative loop: re-review or re-plan when gaps are found -----+');
-  sections.push('```');
-  sections.push('');
-  sections.push('### Specification Refinement');
-  sections.push('- Constitution: Zero-ambiguity principles enforced at every phase');
-  sections.push('- Clarify: Automated gap detection and consistency checking');
-  sections.push('- Templates: Structured artifacts for specs, plans, and tasks');
-  sections.push('');
-  sections.push('### Execution Waves');
-  sections.push('- Structured prompts for LLM-driven task execution');
-  sections.push('- Atomic commits with verification loops');
-  sections.push('- Profile-adaptive: quality (thorough) | balanced | budget (fast)');
-  sections.push('');
-  sections.push('### Multi-Agent Orchestration');
-  sections.push('- PM: Prioritization + constitution alignment');
-  sections.push('- Architect: System design + trade-off evaluation');
-  sections.push('- Dev: Implementation + atomic code units');
-  sections.push('- UX: User-facing review + accessibility');
-  sections.push('- Scrum Master: Progress monitoring + blocker detection');
-  sections.push('');
-
-  if (state.auditLog.length > 0) {
-    sections.push('## Audit Trail');
-    sections.push('');
-    for (const entry of state.auditLog) {
-      sections.push(`- ${entry}`);
-    }
-    sections.push('');
-  }
-
-  sections.push('## Next Steps');
-  sections.push('');
-  sections.push('1. Run `danteforge feedback` for manual refinement or `danteforge feedback --auto` with a verified live provider.');
-  const nextPhase = state.currentPhase + 1;
-  const hasNextPhase = (state.tasks[nextPhase] ?? []).length > 0;
-  if (hasNextPhase) {
-    sections.push(`2. When the next planned wave is ready, run \`danteforge forge ${nextPhase}\`.`);
-  } else {
-    sections.push('2. If more work is needed, refresh the artifacts with `danteforge review`, `danteforge specify`, or `danteforge tasks` before starting another forge wave.');
-  }
-  sections.push('3. Run `danteforge verify` after the next real execution wave.');
-  sections.push('4. Re-run `danteforge synthesize` after the next verified milestone to keep UPR.md current.');
-  sections.push('');
+  sections.push(...buildUPRTrailer(state));
 
   const uprContent = sections.join('\n');
 
