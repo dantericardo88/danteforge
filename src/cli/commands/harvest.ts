@@ -290,6 +290,89 @@ function extractJson<T>(raw: string): T {
 
 // ─── Main command ─────────────────────────────────────────────────────────────
 
+async function runHarvestSteps(
+  system: string,
+  mode: 'full' | 'sep-lite',
+  llmCallerFn: (p: string) => Promise<string>,
+  computeHashFn: (track: HarvestTrack) => string,
+): Promise<HarvestTrack> {
+  const track = createEmptyTrack(system, mode);
+
+  logger.info('Step 1: Discovery...');
+  const step1Data = extractJson<HarvestTrack['step1Discovery']>(await llmCallerFn(buildStep1Prompt(system, mode)));
+  track.step1Discovery = step1Data;
+  logger.success(`Step 1 complete — ${step1Data.organs.length} organ(s) discovered`);
+
+  logger.info('Step 2: Constitution & Behavior...');
+  const step2Data = extractJson<HarvestTrack['step2Constitution']>(await llmCallerFn(buildStep2Prompt(system, track.step1Discovery)));
+  track.step2Constitution = step2Data;
+  logger.success('Step 2 complete');
+
+  logger.info('Step 3: Wiring...');
+  const step3Data = extractJson<HarvestTrack['step3Wiring']>(await llmCallerFn(buildStep3Prompt(system, track.step1Discovery)));
+  track.step3Wiring = step3Data;
+  logger.success(`Step 3 complete — ${step3Data.signals.length} signal(s) wired`);
+
+  if (mode === 'full') {
+    logger.info('Step 4: Evidence & Tests...');
+    const step4Data = extractJson<NonNullable<HarvestTrack['step4Evidence']>>(await llmCallerFn(buildStep4Prompt(system, track.step1Discovery)));
+    track.step4Evidence = step4Data;
+    logger.success(`Step 4 complete — ${step4Data.goldenFlows.length} golden flow(s)`);
+  } else {
+    logger.info('Step 4: Skipped (SEP-LITE mode)');
+  }
+
+  logger.info('Step 5: Ratification & Metacode...');
+  const step5Data = extractJson<Omit<HarvestTrack['step5Ratification'], 'hash'>>(await llmCallerFn(buildStep5Prompt(system, track)));
+  track.step5Ratification = { ...step5Data, hash: '' };
+  const hash = computeHashFn(track);
+  track.step5Ratification.hash = hash;
+
+  const goldenFlows = mode === 'full' && track.step4Evidence ? track.step4Evidence.goldenFlows : [];
+  track.summary = {
+    trackId: track.trackId,
+    organs: track.step1Discovery.organs.map(o => o.name),
+    goldenFlows,
+    expansionReadiness: track.step5Ratification.expansionReadiness,
+  };
+  logger.success(`Step 5 complete — expansion readiness: ${track.step5Ratification.expansionReadiness}/10`);
+  return track;
+}
+
+async function persistHarvestTrack(
+  track: HarvestTrack,
+  system: string,
+  mode: 'full' | 'sep-lite',
+  writeTrackFilesFn: (t: HarvestTrack) => Promise<{ trackPath: string; summaryPath: string }>,
+  loadTrackCountFn: () => Promise<number>,
+  shouldTriggerFn: (n: number) => boolean,
+  auditSelfEditFn: (e: unknown) => Promise<void>,
+  auditLog: string[],
+): Promise<void> {
+  const { trackPath, summaryPath } = await writeTrackFilesFn(track);
+  logger.success(`Track ratified: ${trackPath}`);
+  logger.info(`Summary: ${summaryPath}`);
+
+  const trackCount = await loadTrackCountFn();
+  if (shouldTriggerFn(trackCount)) {
+    logger.warn(`Meta-evolution triggered at track #${trackCount}! Run a harvest on "Titan Harvest Framework" to self-evolve.`);
+    auditLog.push(`${new Date().toISOString()} | harvest: WARNING meta-evolution triggered at track #${trackCount}`);
+  }
+
+  await auditSelfEditFn({
+    timestamp: new Date().toISOString(),
+    filePath: trackPath,
+    action: 'write',
+    reason: `Titan Harvest V2 track created for system: ${system}`,
+    approved: true,
+    afterHash: track.step5Ratification.hash,
+    policy: 'allow-with-audit',
+  });
+
+  auditLog.push(`${new Date().toISOString()} | harvest: track ${track.trackId} ratified (${mode}, readiness=${track.step5Ratification.expansionReadiness})`);
+  logger.success(`Titan Harvest V2 complete. Track ID: ${track.trackId}`);
+}
+
 export async function harvest(
   system: string,
   options: {
@@ -321,7 +404,7 @@ export async function harvest(
   const loadTrackCountFn = options._loadTrackCount ?? loadTrackCount;
   const shouldTriggerFn = options._shouldTriggerMetaEvolution ?? shouldTriggerMetaEvolution;
   const computeHashFn = options._computeTrackHash ?? computeTrackHash;
-  const auditSelfEditFn = options._auditSelfEdit ?? auditSelfEdit;
+  const auditSelfEditFn: (e: unknown) => Promise<void> = options._auditSelfEdit ?? ((e) => auditSelfEdit(e as Parameters<typeof auditSelfEdit>[0]));
   const llmCallerFn = options._llmCaller ?? ((p: string) => callLLM(p));
 
   logger.info(`Titan Harvest V2 — system: "${system}" (${mode} mode)`);
@@ -349,92 +432,9 @@ export async function harvest(
     logger.info('LLM available — running Titan Harvest V2 steps via API...');
 
     try {
-      const track = createEmptyTrack(system, mode);
-
-      // Step 1: Discovery
-      logger.info('Step 1: Discovery...');
-      const step1Raw = await llmCallerFn(buildStep1Prompt(system, mode));
-      const step1Data = extractJson<HarvestTrack['step1Discovery']>(step1Raw);
-      track.step1Discovery = step1Data;
-      logger.success(`Step 1 complete — ${step1Data.organs.length} organ(s) discovered`);
-
-      // Step 2: Constitution
-      logger.info('Step 2: Constitution & Behavior...');
-      const step2Raw = await llmCallerFn(buildStep2Prompt(system, track.step1Discovery));
-      const step2Data = extractJson<HarvestTrack['step2Constitution']>(step2Raw);
-      track.step2Constitution = step2Data;
-      logger.success('Step 2 complete');
-
-      // Step 3: Wiring
-      logger.info('Step 3: Wiring...');
-      const step3Raw = await llmCallerFn(buildStep3Prompt(system, track.step1Discovery));
-      const step3Data = extractJson<HarvestTrack['step3Wiring']>(step3Raw);
-      track.step3Wiring = step3Data;
-      logger.success(`Step 3 complete — ${step3Data.signals.length} signal(s) wired`);
-
-      // Step 4: Evidence (full mode only)
-      if (mode === 'full') {
-        logger.info('Step 4: Evidence & Tests...');
-        const step4Raw = await llmCallerFn(buildStep4Prompt(system, track.step1Discovery));
-        const step4Data = extractJson<NonNullable<HarvestTrack['step4Evidence']>>(step4Raw);
-        track.step4Evidence = step4Data;
-        logger.success(`Step 4 complete — ${step4Data.goldenFlows.length} golden flow(s)`);
-      } else {
-        logger.info('Step 4: Skipped (SEP-LITE mode)');
-      }
-
-      // Step 5: Ratification
-      logger.info('Step 5: Ratification & Metacode...');
-      const step5Raw = await llmCallerFn(buildStep5Prompt(system, track));
-      const step5Data = extractJson<Omit<HarvestTrack['step5Ratification'], 'hash'>>(step5Raw);
-      track.step5Ratification = { ...step5Data, hash: '' };
-
-      // Compute deterministic hash and finalize summary
-      const hash = computeHashFn(track);
-      track.step5Ratification.hash = hash;
-
-      const goldenFlows = mode === 'full' && track.step4Evidence
-        ? track.step4Evidence.goldenFlows
-        : [];
-
-      track.summary = {
-        trackId: track.trackId,
-        organs: track.step1Discovery.organs.map(o => o.name),
-        goldenFlows,
-        expansionReadiness: track.step5Ratification.expansionReadiness,
-      };
-
-      logger.success(`Step 5 complete — expansion readiness: ${track.step5Ratification.expansionReadiness}/10`);
-
-      // Write track files
-      const { trackPath, summaryPath } = await writeTrackFilesFn(track);
-      logger.success(`Track ratified: ${trackPath}`);
-      logger.info(`Summary: ${summaryPath}`);
-
-      // Check meta-evolution trigger
-      const trackCount = await loadTrackCountFn();
-      if (shouldTriggerFn(trackCount)) {
-        logger.warn(`Meta-evolution triggered at track #${trackCount}! Run a harvest on "Titan Harvest Framework" to self-evolve.`);
-        state.auditLog.push(`${new Date().toISOString()} | harvest: WARNING meta-evolution triggered at track #${trackCount}`);
-      }
-
-      // Audit log entry
-      await auditSelfEditFn({
-        timestamp: new Date().toISOString(),
-        filePath: trackPath,
-        action: 'write',
-        reason: `Titan Harvest V2 track created for system: ${system}`,
-        approved: true,
-        afterHash: hash,
-        policy: 'allow-with-audit',
-      });
-
-      state.auditLog.push(
-        `${new Date().toISOString()} | harvest: track ${track.trackId} ratified (${mode}, readiness=${track.step5Ratification.expansionReadiness})`,
-      );
+      const track = await runHarvestSteps(system, mode, llmCallerFn, computeHashFn);
+      await persistHarvestTrack(track, system, mode, writeTrackFilesFn, loadTrackCountFn, shouldTriggerFn, auditSelfEditFn, state.auditLog);
       await saveStateFn(state);
-
-      logger.success(`Titan Harvest V2 complete. Track ID: ${track.trackId}`);
       return;
     } catch (err) {
       logger.warn(`LLM harvest failed: ${err instanceof Error ? err.message : String(err)}`);
