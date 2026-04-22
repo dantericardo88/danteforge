@@ -61,6 +61,11 @@ const COMMAND_REGISTRY: CommandEntry[] = [
   { name: 'skills import', description: 'Import one Antigravity bundle into the packaged skills catalog', options: ['--from <source> (required)', '--bundle <name>', '--allow-overwrite', '--enhance'], group: 'Tools' },
   { name: 'ship', description: 'Paranoid release guidance + version bump plan + changelog draft', options: ['--dry-run', '--skip-review'], group: 'Tools' },
 
+  { name: 'measure', args: '', description: 'Answer "How good is the project?" — light=quick score, standard=score+maturity+proof, deep=verify+adversary. Alias: score', options: ['--level light|standard|deep', '--full', '--strict', '--adversary', '--json'], group: 'Self-Assessment' },
+  { name: 'assess', description: 'Harsh self-assessment: score all 18 dimensions, benchmark vs competitors, generate masterplan', options: ['--no-harsh', '--min-score <n>', '--json', '--preset <level>', '--set-baseline', '--cwd <path>'], group: 'Self-Assessment' },
+  { name: 'maturity', description: 'Assess current code maturity level with founder-friendly quality report', options: ['--preset <level>', '--json', '--cwd <path>'], group: 'Self-Assessment' },
+  { name: 'quality', description: 'Visual quality scorecard: dimension bars, P0 gaps, and automation ceilings', options: [], group: 'Self-Assessment' },
+
   { name: 'help', args: '[query]', description: 'Context-aware guidance engine', options: [], group: 'Meta' },
   { name: 'review', description: 'Scan existing repo -> generate CURRENT_STATE.md', options: ['--prompt'], group: 'Meta' },
   { name: 'feedback', description: 'Generate prompt from UPR.md for LLM refinement', options: ['--auto'], group: 'Meta' },

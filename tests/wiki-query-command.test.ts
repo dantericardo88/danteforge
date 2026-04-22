@@ -1,7 +1,14 @@
-import { describe, it } from 'node:test';
+import { describe, it, beforeEach, afterEach } from 'node:test';
 import assert from 'node:assert/strict';
 import { wikiQueryCommand } from '../src/cli/commands/wiki-query.js';
 import type { WikiQueryResult } from '../src/core/wiki-schema.js';
+
+// Guard against cross-test pollution from other test files in the full suite.
+// Some tests monkeypatch process.stdout.write or set process.exitCode and don't restore.
+const ORIGINAL_EXIT_CODE = process.exitCode;
+const ORIGINAL_STDOUT_WRITE = process.stdout.write.bind(process.stdout);
+beforeEach(() => { process.exitCode = 0; process.stdout.write = ORIGINAL_STDOUT_WRITE; });
+afterEach(() => { process.exitCode = ORIGINAL_EXIT_CODE; process.stdout.write = ORIGINAL_STDOUT_WRITE; });
 
 function makeResult(overrides: Partial<WikiQueryResult> = {}): WikiQueryResult {
   return {

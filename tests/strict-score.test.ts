@@ -289,6 +289,33 @@ describe('score --strict — overrides inflated STATE.yaml dimensions', () => {
     assert.equal(result.displayDimensions!.tokenEconomy, 2);
   });
 
+  it('non-strict mode caps inflated dims downward (anti-inflation)', async () => {
+    const cwd = await fs.mkdtemp(path.join(tmpDir, 'anti-inflation-'));
+    await fs.mkdir(path.join(cwd, '.danteforge'), { recursive: true });
+    await fs.writeFile(path.join(cwd, '.danteforge', 'STATE.yaml'), 'project: test\n', 'utf8');
+
+    // harsh scorer reports high autonomy (10) but strict signals show 2
+    const result = await score({
+      cwd,
+      strict: false,
+      _harshScore: async () => makeHarshResult({ displayScore: 9.1, autonomy: 10 }),
+      _loadState: async () => ({ project: 'test' } as never),
+      _saveState: async () => {},
+      _getGitSha: async () => undefined,
+      _stdout: () => {},
+      _listSkillDirs: async () => [],
+      _fileExists: async () => false,
+      _gitLog: async () => '',
+      _listDir: async () => [],
+      _fileExistsStrict: async () => false,
+    });
+
+    // Anti-inflation: autonomy capped at strict value (2), not left at inflated 10
+    assert.ok(result.displayDimensions!.autonomy! <= 2, 'autonomy should be capped by live signal');
+    // displayScore still comes from harsh scorer (not recomputed)
+    assert.equal(result.displayScore, 9.1, 'displayScore must not be recomputed in non-strict mode');
+  });
+
   it('strict displayScore is recomputed from patched weighted sum', async () => {
     const cwd = await fs.mkdtemp(path.join(tmpDir, 'recompute-'));
     await fs.mkdir(path.join(cwd, '.danteforge'), { recursive: true });

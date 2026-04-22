@@ -294,18 +294,23 @@ export async function score(options: ScoreOptions = {}): Promise<ScoreResult> {
     _writeHistory: options._writeHistory ?? (async () => {}),
   });
 
+  // Always compute live code-derived signals for the 3 dims most vulnerable to STATE.yaml drift.
+  // In non-strict mode: apply downward only (anti-inflation — cap but never raise).
+  // In strict mode: override unconditionally + override 4 more dims + ceilings + recompute score.
+  const strict = await computeStrictDimensions(
+    cwd,
+    options._gitLog,
+    options._fileExistsStrict,
+    options._listDir,
+  );
+  const strictAutonomy = Math.round(strict.autonomy / 10);
+  const strictSelf = Math.round(strict.selfImprovement / 10);
+  const strictConvergence = Math.round(strict.convergenceSelfHealing / 10);
+
   if (options.strict) {
-    // --strict: override all 7 evidence-based dimensions with code-derived signals only,
-    // enforce automation ceilings, then recompute displayScore from the patched set.
-    const strict = await computeStrictDimensions(
-      cwd,
-      options._gitLog,
-      options._fileExistsStrict,
-      options._listDir,
-    );
-    result.displayDimensions.autonomy = Math.round(strict.autonomy / 10);
-    result.displayDimensions.selfImprovement = Math.round(strict.selfImprovement / 10);
-    result.displayDimensions.convergenceSelfHealing = Math.round(strict.convergenceSelfHealing / 10);
+    result.displayDimensions.autonomy = strictAutonomy;
+    result.displayDimensions.selfImprovement = strictSelf;
+    result.displayDimensions.convergenceSelfHealing = strictConvergence;
     result.displayDimensions.tokenEconomy = Math.round(strict.tokenEconomy / 10);
     result.displayDimensions.specDrivenPipeline = Math.round(strict.specDrivenPipeline / 10);
     result.displayDimensions.developerExperience = Math.round(strict.developerExperience / 10);
@@ -320,11 +325,17 @@ export async function score(options: ScoreOptions = {}): Promise<ScoreResult> {
 
     emit('  [strict mode: 7 dimensions overridden from code signals + automation ceilings enforced]');
 
-    // Recompute displayScore from the patched dimension set
+    // Recompute displayScore from the patched dimension set (strict mode only)
     const patched = result.displayDimensions;
     const patchedWeighted = (Object.entries(SCORE_DISPLAY_WEIGHTS) as [ScoringDimension, number][])
       .reduce((sum, [k, w]) => sum + (patched[k] ?? 0) * w, 0);
     result.displayScore = Math.round(patchedWeighted * 10) / 10;
+  } else {
+    // Non-strict: apply live signals downward only — prevent STATE.yaml inflation without penalising
+    result.displayDimensions.autonomy = Math.min(result.displayDimensions.autonomy ?? 10, strictAutonomy);
+    result.displayDimensions.selfImprovement = Math.min(result.displayDimensions.selfImprovement ?? 10, strictSelf);
+    result.displayDimensions.convergenceSelfHealing = Math.min(result.displayDimensions.convergenceSelfHealing ?? 10, strictConvergence);
+    // displayScore is intentionally NOT recomputed — preserves harsh scorer's weighted number
   }
 
   // Session baseline with TTL — reset if older than 4 hours so delta stays meaningful
