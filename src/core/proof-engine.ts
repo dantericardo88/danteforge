@@ -249,6 +249,32 @@ function makeMinimalState(): DanteState {
   };
 }
 
+function scoreFoundArtifacts(
+  foundArtifacts: ArtifactFile[],
+  artifactContents: Partial<Record<ArtifactFile, string>>,
+  state: DanteState,
+  upstreamMap: Partial<Record<ScoredArtifact, string>>,
+): number {
+  if (foundArtifacts.length === 0) return 0;
+  let weightedSum = 0;
+  let totalWeight = 0;
+  for (const filename of foundArtifacts) {
+    const content = artifactContents[filename] ?? '';
+    const artifactName = ARTIFACT_NAME_MAP[filename];
+    const weight = ARTIFACT_WEIGHTS[filename];
+    const result = scoreArtifact({
+      artifactContent: content,
+      artifactName,
+      stateYaml: state,
+      upstreamArtifacts: upstreamMap,
+      isWebProject: state.projectType === 'web',
+    });
+    weightedSum += result.score * weight;
+    totalWeight += weight;
+  }
+  return totalWeight > 0 ? Math.round(weightedSum / totalWeight) : 0;
+}
+
 // ── Main async proof function ──────────────────────────────────────────────────
 
 export async function runProof(rawPrompt: string, opts: ProofEngineOptions = {}): Promise<ProofReport> {
@@ -305,33 +331,7 @@ export async function runProof(rawPrompt: string, opts: ProofEngineOptions = {})
     upstreamMap[artifactName] = artifactContents[filename] ?? '';
   }
 
-  // Score each found artifact via PDSE
-  let pdseScore = 0;
-
-  if (foundArtifacts.length > 0) {
-    let weightedSum = 0;
-    let totalWeight = 0;
-
-    for (const filename of foundArtifacts) {
-      const content = artifactContents[filename] ?? '';
-      const artifactName = ARTIFACT_NAME_MAP[filename];
-      const weight = ARTIFACT_WEIGHTS[filename];
-
-      const scoringCtx: ScoringContext = {
-        artifactContent: content,
-        artifactName,
-        stateYaml: state,
-        upstreamArtifacts: upstreamMap,
-        isWebProject: state.projectType === 'web',
-      };
-
-      const result = scoreArtifact(scoringCtx);
-      weightedSum += result.score * weight;
-      totalWeight += weight;
-    }
-
-    pdseScore = totalWeight > 0 ? Math.round(weightedSum / totalWeight) : 0;
-  }
+  const pdseScore = scoreFoundArtifacts(foundArtifacts, artifactContents, state, upstreamMap);
 
   const improvementPercent = ((pdseScore - rawScore.total) / Math.max(rawScore.total, 1)) * 100;
 

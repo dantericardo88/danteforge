@@ -82,6 +82,50 @@ export async function analyzeProjectState(cwd?: string): Promise<AutoForgeInput>
   };
 }
 
+function buildColdStartPlan(hasUI: boolean, maxWaves: number, goal?: string): AutoForgePlan {
+  const steps: AutoForgeStep[] = [
+    { command: 'review', reason: 'Scan the codebase to establish baseline' },
+    { command: 'constitution', reason: 'Set project principles' },
+    { command: 'specify', reason: 'Build the specification' },
+    { command: 'clarify', reason: 'Clarify ambiguities in the spec' },
+    { command: 'plan', reason: 'Create the implementation plan' },
+    { command: 'tasks', reason: 'Break the plan into executable tasks' },
+  ];
+  if (hasUI) {
+    steps.push(
+      { command: 'design', reason: 'Generate Design-as-Code (.op) for UI' },
+      { command: 'forge', reason: 'Execute the task plan' },
+      { command: 'ux-refine', reason: 'Refine UX after forge' },
+      { command: 'verify', reason: 'Verify the implementation' },
+    );
+  } else {
+    steps.push(
+      { command: 'forge', reason: 'Execute the task plan' },
+      { command: 'verify', reason: 'Verify the implementation' },
+    );
+  }
+  return {
+    scenario: 'cold-start',
+    reasoning: goal ? `Fresh project with no artifacts — running full pipeline toward "${goal}".` : 'Fresh project with no artifacts — running full pipeline.',
+    steps, maxWaves, goal,
+  };
+}
+
+function buildMultiSessionResumePlan(
+  lastMemoryAge: number, stage: string, hasDesignOp: boolean, hasUI: boolean,
+  designViolationCount: number, maxWaves: number, goal?: string,
+): AutoForgePlan {
+  const resumeSteps: AutoForgeStep[] = [
+    { command: 'review', reason: `Last session was ${Math.round(lastMemoryAge)}h ago — refresh codebase state` },
+  ];
+  resumeSteps.push(...getMidProjectSteps(stage, hasDesignOp, hasUI, designViolationCount));
+  return {
+    scenario: 'multi-session-resume',
+    reasoning: `Last activity was ${Math.round(lastMemoryAge)}h ago. Refreshing state before continuing.`,
+    steps: resumeSteps, maxWaves, goal,
+  };
+}
+
 /**
  * Pure deterministic function — given project input, return a plan.
  * This is NOT an LLM reasoning loop. It's a priority-ordered decision tree.
@@ -103,38 +147,7 @@ export function planAutoForge(input: AutoForgeInput, maxWaves = 3, goal?: string
 
   // 2. COLD START
   if (stage === 'initialized' && !hasAnyArtifacts(state)) {
-    const steps: AutoForgeStep[] = [
-      { command: 'review', reason: 'Scan the codebase to establish baseline' },
-      { command: 'constitution', reason: 'Set project principles' },
-      { command: 'specify', reason: 'Build the specification' },
-      { command: 'clarify', reason: 'Clarify ambiguities in the spec' },
-      { command: 'plan', reason: 'Create the implementation plan' },
-      { command: 'tasks', reason: 'Break the plan into executable tasks' },
-    ];
-
-    if (hasUI) {
-      steps.push(
-        { command: 'design', reason: 'Generate Design-as-Code (.op) for UI' },
-        { command: 'forge', reason: 'Execute the task plan' },
-        { command: 'ux-refine', reason: 'Refine UX after forge' },
-        { command: 'verify', reason: 'Verify the implementation' },
-      );
-    } else {
-      steps.push(
-        { command: 'forge', reason: 'Execute the task plan' },
-        { command: 'verify', reason: 'Verify the implementation' },
-      );
-    }
-
-    return {
-      scenario: 'cold-start',
-      reasoning: goal
-        ? `Fresh project with no artifacts — running full pipeline toward "${goal}".`
-        : 'Fresh project with no artifacts — running full pipeline.',
-      steps,
-      maxWaves,
-      goal,
-    };
+    return buildColdStartPlan(hasUI, maxWaves, goal);
   }
 
   // 3. TERMINAL STATE
@@ -150,18 +163,7 @@ export function planAutoForge(input: AutoForgeInput, maxWaves = 3, goal?: string
 
   // 4. MULTI-SESSION RESUME
   if (memoryEntryCount > 0 && lastMemoryAge !== null && lastMemoryAge > STALE_SESSION_HOURS) {
-    const resumeSteps: AutoForgeStep[] = [
-      { command: 'review', reason: `Last session was ${Math.round(lastMemoryAge)}h ago — refresh codebase state` },
-    ];
-    // Then fall through to mid-project logic
-    resumeSteps.push(...getMidProjectSteps(stage, hasDesignOp, hasUI, designViolationCount));
-    return {
-      scenario: 'multi-session-resume',
-      reasoning: `Last activity was ${Math.round(lastMemoryAge)}h ago. Refreshing state before continuing.`,
-      steps: resumeSteps,
-      maxWaves,
-      goal,
-    };
+    return buildMultiSessionResumePlan(lastMemoryAge, stage, hasDesignOp, hasUI, designViolationCount, maxWaves, goal);
   }
 
   // 4. STALLED — same stage for too long (would need memory analysis)
