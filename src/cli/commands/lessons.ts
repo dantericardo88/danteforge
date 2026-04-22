@@ -245,12 +245,19 @@ export async function captureVerifyLessons(
 export async function lessons(correction?: string, options: {
   prompt?: boolean;
   compact?: boolean;
+  _loadState?: typeof loadState;
+  _saveState?: typeof saveState;
+  _llmCaller?: typeof callLLM;
+  _isLLMAvailable?: typeof isLLMAvailable;
 } = {}) {
+  const loadFn = options._loadState ?? loadState;
+  const saveFn = options._saveState ?? saveState;
+
   return withErrorBoundary('lessons', async () => {
   logger.success('DanteForge Lessons — Self-Improving Knowledge Base');
   logger.info('');
 
-  const state = await loadState();
+  const state = await loadFn();
 
   // --compact: force compaction
   if (options.compact) {
@@ -265,7 +272,7 @@ export async function lessons(correction?: string, options: {
       logger.info(`Lessons file has ${linesBefore} lines — under threshold (${MAX_LESSONS_LINES}), no compaction needed.`);
     }
     state.auditLog.push(`${new Date().toISOString()} | lessons: compaction ${compacted ? 'performed' : 'skipped'}`);
-    await saveState(state);
+    await saveFn(state);
     return;
   }
 
@@ -292,7 +299,7 @@ RULE: <one sentence rule to prevent this in future>`;
       ].join('\n'));
 
       state.auditLog.push(`${new Date().toISOString()} | lessons: extraction prompt generated`);
-      await saveState(state);
+      await saveFn(state);
       return;
     }
 
@@ -383,6 +390,6 @@ RULE: <one sentence rule to prevent this in future>`;
   }
 
   state.auditLog.push(`${new Date().toISOString()} | lessons: viewed (${(content.match(/^## \[/gm) || []).length} lessons)`);
-  await saveState(state);
+  await saveFn(state);
   });
 }

@@ -562,7 +562,14 @@ export async function ossResearcher(options: {
   prompt?: boolean;
   dryRun?: boolean;
   maxRepos?: string;
+  _loadState?: typeof loadState;
+  _saveState?: typeof saveState;
+  _isLLMAvailable?: typeof isLLMAvailable;
 } = {}): Promise<void> {
+  const loadFn = options._loadState ?? loadState;
+  const saveFn = options._saveState ?? saveState;
+  const llmAvailFn = options._isLLMAvailable ?? isLLMAvailable;
+
   return withErrorBoundary('oss', async () => {
   const timestamp = new Date().toISOString();
   const maxRepos = Math.min(Math.max(parseInt(options.maxRepos ?? '8', 10) || MAX_REPOS_DEFAULT, 1), 15);
@@ -595,9 +602,9 @@ export async function ossResearcher(options: {
     logger.info('Paste this into Claude Code, ChatGPT, or any LLM with web search access.');
     logger.info('The LLM will execute the full OSS research pipeline autonomously.');
 
-    const state = await loadState();
+    const state = await loadFn();
     state.auditLog.push(`${timestamp} | oss: research plan prompt generated (${projectType}, ${language})`);
-    await saveState(state);
+    await saveFn(state);
     return;
   }
 
@@ -605,20 +612,20 @@ export async function ossResearcher(options: {
   if (options.dryRun) {
     displayDryRun(projectSummary, projectType, language, queries, maxRepos);
 
-    const state = await loadState();
+    const state = await loadFn();
     state.auditLog.push(`${timestamp} | oss: dry run — ${queries.length} queries, ${maxRepos} max repos`);
-    await saveState(state);
+    await saveFn(state);
     return;
   }
 
   // ── Execute mode ─────────────────────────────────────────────────────────────
-  const llmAvailable = await isLLMAvailable();
+  const llmAvailable = await llmAvailFn();
   if (!llmAvailable) {
     displayLocalFallback(projectSummary, projectType, language, queries);
 
-    const state = await loadState();
+    const state = await loadFn();
     state.auditLog.push(`${timestamp} | oss: local fallback — no LLM provider available`);
-    await saveState(state);
+    await saveFn(state);
     return;
   }
 
@@ -700,11 +707,11 @@ export async function ossResearcher(options: {
   } catch { /* best-effort — never block oss output */ }
 
   // Audit
-  const state = await loadState();
+  const state = await loadFn();
   state.auditLog.push(
     `${timestamp} | oss: research complete — ${report.reposScanned.length} repos scanned, ` +
     `${report.patternsExtracted.length} patterns extracted, ${p0p1Count} P0/P1`,
   );
-  await saveState(state);
+  await saveFn(state);
   });
 }
