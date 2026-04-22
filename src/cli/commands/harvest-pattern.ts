@@ -80,6 +80,97 @@ export interface HarvestPatternOptions {
 
 // ── Main ──────────────────────────────────────────────────────────────────────
 
+async function handleNoGapsResult(
+  emit: (l: string) => void,
+  options: HarvestPatternOptions,
+  repos: OSSRepo[],
+  reposLanguages: string[],
+  receiptNotes: string[],
+  beforeScore: number | null,
+  beforeGitSha: string | null,
+  writeReceiptFn: (cwd: string, r: OSSHarvestReceipt) => Promise<void>,
+  cwd: string,
+): Promise<void> {
+  if (repos.length === 0) {
+    receiptNotes.push(`GitHub search returned 0 repos for "${options.pattern}" (TypeScript only, >100 stars). Use --url to target a specific repo.`);
+  }
+  emit('  No actionable gaps found — your project may already implement this pattern.');
+  if (repos.length === 0) {
+    emit('  Tip: use --url <github-url> to target a specific repo directly.');
+    receiptNotes.push('No repos found — cannot extract gaps without a target repo.');
+  } else {
+    receiptNotes.push('extractGaps returned 0 gaps — no LLM available or project already implements pattern.');
+  }
+  emit('');
+  const receipt: OSSHarvestReceipt = {
+    timestamp: new Date().toISOString(),
+    pattern: options.pattern,
+    url: options.url,
+    reposFound: repos.length,
+    reposLanguages,
+    gapsPresented: 0,
+    gapsImplemented: 0,
+    beforeScore,
+    afterScore: beforeScore,
+    beforeGitSha,
+    afterGitSha: beforeGitSha,
+    status: 'no-harvest',
+    notes: receiptNotes,
+  };
+  await writeReceiptFn(cwd, receipt).catch(() => { /* best-effort */ });
+}
+
+async function processGapLoop(
+  allGaps: PatternGap[],
+  emit: (l: string) => void,
+  confirmFn: (msg: string) => Promise<boolean>,
+  implementPattern: (gap: PatternGap, cwd: string) => Promise<ImplementResult>,
+  harshScoreFn: (opts: HarshScorerOptions) => Promise<HarshScoreResult>,
+  appendLessonFn: (entry: string, cwd?: string) => Promise<void>,
+  cwd: string,
+): Promise<{ implemented: number; presented: number }> {
+  let implemented = 0;
+  let presented = 0;
+
+  for (const gap of allGaps) {
+    presented++;
+    emit(`  Pattern: ${gap.description}`);
+    emit(`  Source:  ${gap.sourceRepo} → ${gap.sourceFile}${gap.sourceLine !== undefined ? `:${gap.sourceLine}` : ''}`);
+    emit(`  Dimension: ${gap.estimatedDimension}  |  Est. gain: +${(gap.estimatedGain * 10).toFixed(1)}`);
+
+    const yes = await confirmFn(`  Implement this pattern? (Y/n)`);
+    if (!yes) { emit('  Skipped.'); emit(''); continue; }
+
+    emit('  Implementing...');
+    const result = await implementPattern(gap, cwd);
+
+    if (result.success) {
+      let deltaStr = '';
+      try {
+        const scoreResult = await harshScoreFn({ cwd });
+        deltaStr = `  Score: ${scoreResult.displayScore.toFixed(1)}/10`;
+      } catch { /* best-effort */ }
+      const timestamp = new Date().toISOString().slice(0, 10);
+      const entry = [
+        `## ${timestamp} | ${gap.estimatedDimension} | important`,
+        `Rule: ${gap.description}`,
+        `Context: Harvested from ${gap.sourceRepo} via \`danteforge harvest-pattern\``,
+        `Tags: harvest, oss-pattern, ${gap.estimatedDimension}`,
+        '',
+      ].join('\n');
+      await appendLessonFn(entry, cwd);
+      emit(`  Implemented — ${result.filesChanged.length} file${result.filesChanged.length !== 1 ? 's' : ''} changed.`);
+      if (deltaStr) emit(deltaStr);
+      emit('  Lesson captured.');
+      implemented++;
+    } else {
+      emit('  Implementation failed — skipping.');
+    }
+    emit('');
+  }
+  return { implemented, presented };
+}
+
 export async function harvestPattern(options: HarvestPatternOptions): Promise<void> {
   const emit = options._stdout ?? ((line: string) => logger.info(line));
   const cwd = options.cwd ?? process.cwd();
@@ -129,93 +220,15 @@ export async function harvestPattern(options: HarvestPatternOptions): Promise<vo
   const reposLanguages = repos.map(r => r.language);
 
   if (allGaps.length === 0) {
-    if (repos.length === 0) {
-      receiptNotes.push(`GitHub search returned 0 repos for "${options.pattern}" (TypeScript only, >100 stars). Use --url to target a specific repo.`);
-    }
-    emit('  No actionable gaps found — your project may already implement this pattern.');
-    if (repos.length === 0) {
-      emit('  Tip: use --url <github-url> to target a specific repo directly.');
-      receiptNotes.push('No repos found — cannot extract gaps without a target repo.');
-    } else {
-      receiptNotes.push('extractGaps returned 0 gaps — no LLM available or project already implements pattern.');
-    }
-    emit('');
-
-    // Always write a receipt even on failure
-    const receipt: OSSHarvestReceipt = {
-      timestamp: new Date().toISOString(),
-      pattern: options.pattern,
-      url: options.url,
-      reposFound: repos.length,
-      reposLanguages,
-      gapsPresented: 0,
-      gapsImplemented: 0,
-      beforeScore,
-      afterScore: beforeScore, // no change
-      beforeGitSha,
-      afterGitSha: beforeGitSha, // no change
-      status: 'no-harvest',
-      notes: receiptNotes,
-    };
-    await writeReceiptFn(cwd, receipt).catch(() => { /* best-effort */ });
+    await handleNoGapsResult(emit, options, repos, reposLanguages, receiptNotes, beforeScore, beforeGitSha, writeReceiptFn, cwd);
     return;
   }
 
-  // Sort by estimated gain descending
   allGaps.sort((a, b) => b.estimatedGain - a.estimatedGain);
-
   emit(`  Found ${allGaps.length} gap${allGaps.length !== 1 ? 's' : ''} — sorted by estimated impact.`);
   emit('');
 
-  let implemented = 0;
-  let presented = 0;
-
-  for (const gap of allGaps) {
-    presented++;
-    emit(`  Pattern: ${gap.description}`);
-    emit(`  Source:  ${gap.sourceRepo} → ${gap.sourceFile}${gap.sourceLine !== undefined ? `:${gap.sourceLine}` : ''}`);
-    emit(`  Dimension: ${gap.estimatedDimension}  |  Est. gain: +${(gap.estimatedGain * 10).toFixed(1)}`);
-
-    const yes = await confirmFn(`  Implement this pattern? (Y/n)`);
-    if (!yes) {
-      emit('  Skipped.');
-      emit('');
-      continue;
-    }
-
-    emit('  Implementing...');
-    const result = await implementPattern(gap, cwd);
-
-    if (result.success) {
-      // Score delta
-      let deltaStr = '';
-      try {
-        const scoreResult = await harshScoreFn({ cwd });
-        deltaStr = `  Score: ${scoreResult.displayScore.toFixed(1)}/10`;
-      } catch {
-        // best-effort
-      }
-
-      const timestamp = new Date().toISOString().slice(0, 10);
-      const entry = [
-        `## ${timestamp} | ${gap.estimatedDimension} | important`,
-        `Rule: ${gap.description}`,
-        `Context: Harvested from ${gap.sourceRepo} via \`danteforge harvest-pattern\``,
-        `Tags: harvest, oss-pattern, ${gap.estimatedDimension}`,
-        '',
-      ].join('\n');
-      await appendLessonFn(entry, cwd);
-
-      emit(`  Implemented — ${result.filesChanged.length} file${result.filesChanged.length !== 1 ? 's' : ''} changed.`);
-      if (deltaStr) emit(deltaStr);
-      emit('  Lesson captured.');
-      implemented++;
-    } else {
-      emit('  Implementation failed — skipping.');
-    }
-    emit('');
-  }
-
+  const { implemented, presented } = await processGapLoop(allGaps, emit, confirmFn, implementPattern, harshScoreFn, appendLessonFn, cwd);
   emit(`  Done — ${implemented} pattern${implemented !== 1 ? 's' : ''} implemented.`);
   emit('');
 
