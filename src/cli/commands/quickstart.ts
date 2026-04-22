@@ -51,54 +51,109 @@ export interface QuickstartOptions {
   _stdout?: (line: string) => void;
 }
 
+async function runSimpleQuickstart(options: QuickstartOptions, cwd: string): Promise<void> {
+  const print = options._stdout ?? ((line: string) => logger.info(line));
+  const projectName = options.projectName ?? options.idea ?? 'My Project';
+  const constitutionContent = SIMPLE_CONSTITUTION_TEMPLATE(projectName);
+  const constitutionPath = path.join(cwd, '.danteforge', 'CONSTITUTION.md');
+
+  const writeFile = options._writeFile ?? (async (p: string, content: string) => {
+    const { mkdir, writeFile: fsWrite } = await import('fs/promises');
+    await mkdir(path.dirname(p), { recursive: true });
+    await fsWrite(p, content, 'utf-8');
+  });
+  try {
+    await writeFile(constitutionPath, constitutionContent);
+    print('Constitution written to .danteforge/CONSTITUTION.md');
+  } catch {
+    print('Could not write constitution — continuing...');
+  }
+
+  let score = 0;
+  try {
+    if (options._scoreArtifacts) {
+      const { loadState } = await import('../../core/state.js');
+      const state = await loadState({ cwd });
+      score = await options._scoreArtifacts(cwd, state);
+    } else {
+      const { scoreAllArtifacts } = await import('../../core/pdse.js');
+      const { loadState } = await import('../../core/state.js');
+      const state = await loadState({ cwd });
+      const scores = await scoreAllArtifacts(cwd, state);
+      score = typeof scores === 'number' ? scores : (scores as { avgScore?: number }).avgScore ?? 0;
+    }
+    print(`Quality Score: ${score}/100`);
+  } catch {
+    print('Quality Score: — (no artifacts yet)');
+  }
+
+  print('');
+  print('Next steps:');
+  print('  danteforge specify');
+  print('  danteforge autoforge');
+  print('  danteforge verify');
+}
+
+async function runQuickstartSteps(options: QuickstartOptions, cwd: string, idea: string, tracker: ReturnType<typeof createStepTracker>): Promise<void> {
+  tracker.step('Setting up project...');
+  const runInit = options._runInit ?? (async (opts: InitOptions) => {
+    const { init } = await import('./init.js');
+    await init(opts);
+  });
+  try {
+    const initReadline = options._readline
+      ? { question: options._readline.question.bind(options._readline), close: () => {} }
+      : undefined;
+    await runInit({ nonInteractive: options.nonInteractive, cwd, _isTTY: options._isTTY, _readline: initReadline, _isLLMAvailable: options._isLLMAvailable });
+  } catch { logger.warn('Init step had issues — continuing...'); }
+
+  tracker.step('Defining project constitution...');
+  const runConstitution = options._runConstitution ?? (async () => {
+    const { constitution } = await import('./constitution.js');
+    await constitution();
+  });
+  try { await runConstitution(); } catch { logger.warn('Constitution step had issues — continuing...'); }
+
+  if (idea) {
+    tracker.step(`Running spark: "${idea}"...`);
+    const runSpark = options._runSpark ?? (async (goal: string) => {
+      const { magic } = await import('./magic.js');
+      await magic(goal, { level: 'spark' });
+    });
+    try { await runSpark(idea); } catch { logger.warn('Spark step had issues — your planning artifacts may be partial.'); }
+  } else {
+    tracker.step('Skipping spark (no idea provided)');
+    logger.info('  Tip: run "danteforge spark \\"your idea\\"" to generate planning artifacts.');
+  }
+
+  tracker.step('Reading PDSE score...');
+  try {
+    const readFile = options._readFile ?? (async (p: string) => {
+      const { readFile: fsRead } = await import('fs/promises');
+      return fsRead(p, 'utf8');
+    });
+    const raw = await readFile(path.join(cwd, '.danteforge', 'latest-pdse.json'));
+    const snapshot = JSON.parse(raw) as { avgScore: number };
+    logger.success(`PDSE Score: ${snapshot.avgScore}/100`);
+  } catch {
+    logger.info('  No PDSE snapshot yet — run "danteforge autoforge --score-only" to score your artifacts.');
+  }
+
+  logger.info('');
+  logger.success('Quickstart complete!');
+  logger.info('');
+  logger.info('Next steps:');
+  if (idea) logger.info(`  danteforge magic "${idea}"    — full pipeline with LLM`);
+  logger.info('  danteforge verify              — check artifact quality');
+  logger.info('  danteforge doctor              — full diagnostics');
+}
+
 export async function quickstart(options: QuickstartOptions = {}): Promise<void> {
   return withErrorBoundary('quickstart', async () => {
     const cwd = options.cwd ?? process.cwd();
 
-    // ── Simple mode: 0 LLM calls, template-based, <90 seconds ───────────────
     if (options.simple) {
-      const print = options._stdout ?? ((line: string) => logger.info(line));
-      const projectName = options.projectName ?? options.idea ?? 'My Project';
-      const constitutionContent = SIMPLE_CONSTITUTION_TEMPLATE(projectName);
-      const constitutionPath = path.join(cwd, '.danteforge', 'CONSTITUTION.md');
-
-      // Write constitution
-      const writeFile = options._writeFile ?? (async (p: string, content: string) => {
-        const { mkdir, writeFile: fsWrite } = await import('fs/promises');
-        await mkdir(path.dirname(p), { recursive: true });
-        await fsWrite(p, content, 'utf-8');
-      });
-      try {
-        await writeFile(constitutionPath, constitutionContent);
-        print('Constitution written to .danteforge/CONSTITUTION.md');
-      } catch {
-        print('Could not write constitution — continuing...');
-      }
-
-      // Score artifacts
-      let score = 0;
-      try {
-        if (options._scoreArtifacts) {
-          const { loadState } = await import('../../core/state.js');
-          const state = await loadState({ cwd });
-          score = await options._scoreArtifacts(cwd, state);
-        } else {
-          const { scoreAllArtifacts } = await import('../../core/pdse.js');
-          const { loadState } = await import('../../core/state.js');
-          const state = await loadState({ cwd });
-          const scores = await scoreAllArtifacts(cwd, state);
-          score = typeof scores === 'number' ? scores : (scores as { avgScore?: number }).avgScore ?? 0;
-        }
-        print(`Quality Score: ${score}/100`);
-      } catch {
-        print('Quality Score: — (no artifacts yet)');
-      }
-
-      print('');
-      print('Next steps:');
-      print('  danteforge specify');
-      print('  danteforge autoforge');
-      print('  danteforge verify');
+      await runSimpleQuickstart(options, cwd);
       return;
     }
 
@@ -108,99 +163,13 @@ export async function quickstart(options: QuickstartOptions = {}): Promise<void>
     logger.success('DanteForge Quickstart — Guided 5-Minute Setup');
     logger.info('');
 
-    // Capture idea upfront
     let idea = options.idea ?? '';
     if (!idea && isInteractive) {
-      idea = await askQuestion(
-        '  What are you building? (idea for your first spark): ',
-        options._readline,
-      );
+      idea = await askQuestion('  What are you building? (idea for your first spark): ', options._readline);
       idea = idea.trim();
     }
 
-    // ── [1/4] Init ────────────────────────────────────────────────────────────
-    tracker.step('Setting up project...');
-    const runInit = options._runInit ?? (async (opts: InitOptions) => {
-      const { init } = await import('./init.js');
-      await init(opts);
-    });
-    try {
-      // Adapt QuickstartReadlineLike → InitOptions _readline (which needs close())
-      const initReadline = options._readline
-        ? { question: options._readline.question.bind(options._readline), close: () => {} }
-        : undefined;
-      await runInit({
-        nonInteractive: options.nonInteractive,
-        cwd,
-        _isTTY: options._isTTY,
-        _readline: initReadline,
-        _isLLMAvailable: options._isLLMAvailable,
-      });
-    } catch (err) {
-      logger.warn('Init step had issues — continuing...');
-    }
-
-    // ── [2/4] Constitution ────────────────────────────────────────────────────
-    tracker.step(options.simple ? 'Defining your project rules...' : 'Defining project constitution...');
-    const runConstitution = options._runConstitution ?? (async () => {
-      const { constitution } = await import('./constitution.js');
-      await constitution();
-    });
-    try {
-      await runConstitution();
-    } catch (err) {
-      logger.warn('Constitution step had issues — continuing...');
-    }
-
-    // ── [3/4] Spark ───────────────────────────────────────────────────────────
-    if (idea) {
-      tracker.step(options.simple ? `Running quick plan: "${idea}"...` : `Running spark: "${idea}"...`);
-      const runSpark = options._runSpark ?? (async (goal: string) => {
-        const { magic } = await import('./magic.js');
-        await magic(goal, { level: 'spark' });
-      });
-      try {
-        await runSpark(idea);
-      } catch (err) {
-        logger.warn('Spark step had issues — your planning artifacts may be partial.');
-      }
-    } else {
-      tracker.step('Skipping spark (no idea provided)');
-      logger.info('  Tip: run "danteforge spark \\"your idea\\"" to generate planning artifacts.');
-    }
-
-    // ── [4/4] Show PDSE score ─────────────────────────────────────────────────
-    tracker.step(options.simple ? 'Reading quality score...' : 'Reading PDSE score...');
-    try {
-      const readFile = options._readFile ?? (async (p: string) => {
-        const { readFile: fsRead } = await import('fs/promises');
-        return fsRead(p, 'utf8');
-      });
-      const snapshotPath = path.join(cwd, '.danteforge', 'latest-pdse.json');
-      const raw = await readFile(snapshotPath);
-      const snapshot = JSON.parse(raw) as { avgScore: number };
-      logger.success(options.simple ? `Quality Score: ${snapshot.avgScore}/100` : `PDSE Score: ${snapshot.avgScore}/100`);
-    } catch {
-      logger.info(
-        options.simple
-          ? '  No quality snapshot yet — run "danteforge autoforge --score-only to score your work".'
-          : '  No PDSE snapshot yet — run "danteforge autoforge --score-only" to score your artifacts.',
-      );
-    }
-
-    logger.info('');
-    logger.success('Quickstart complete!');
-    logger.info('');
-    logger.info('Next steps:');
-    if (idea) {
-      logger.info(`  danteforge magic "${idea}"    — full pipeline with LLM`);
-    }
-    logger.info(
-      options.simple
-        ? '  danteforge verify              — check your work quality'
-        : '  danteforge verify              — check artifact quality',
-    );
-    logger.info('  danteforge doctor              — full diagnostics');
+    await runQuickstartSteps(options, cwd, idea, tracker);
   });
 }
 
