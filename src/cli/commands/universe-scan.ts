@@ -291,6 +291,70 @@ Respond ONLY with valid JSON:
 
 // ── Main entry ─────────────────────────────────────────────────────────────────
 
+async function mergeWebCompetitors(
+  searchWeb: (query: string) => Promise<string[]>,
+  competitors: string[],
+  category: string,
+): Promise<string[]> {
+  logger.info('[universe-scan] Phase 1: Searching for fresh competitors...');
+  try {
+    const results = await Promise.all([
+      searchWeb(`"${category}" tool 2025 2026 github stars`),
+      searchWeb(`"${category}" alternative open source github`),
+    ]);
+    const discovered = results.flat().map(name => name.trim()).filter(Boolean);
+    const seen = new Set(competitors.map(c => c.toLowerCase()));
+    let merged = [...competitors];
+    for (const name of discovered) {
+      if (!seen.has(name.toLowerCase())) { merged = [...merged, name]; seen.add(name.toLowerCase()); }
+    }
+    if (discovered.length > 0) logger.info(`[universe-scan] Merged ${discovered.length} web-discovered competitors.`);
+    return merged;
+  } catch (err) {
+    logger.warn(`[universe-scan] Web search failed (non-fatal): ${err instanceof Error ? err.message : String(err)}`);
+    return competitors;
+  }
+}
+
+async function persistUniverseScanResults(
+  scan: UniverseScan,
+  selfScores: Record<string, number>,
+  dimensions: UniverseDimension[],
+  cwd: string | undefined,
+  danteforgeDir: string,
+): Promise<void> {
+  await fs.mkdir(danteforgeDir, { recursive: true });
+  await fs.writeFile(path.join(danteforgeDir, UNIVERSE_FILENAME), JSON.stringify(scan, null, 2), 'utf8');
+  await fs.writeFile(path.join(danteforgeDir, SCORES_FILENAME), JSON.stringify(selfScores, null, 2), 'utf8');
+
+  const historyDir = path.join(danteforgeDir, 'universe-history');
+  await fs.mkdir(historyDir, { recursive: true });
+  await fs.writeFile(path.join(historyDir, `${new Date().toISOString().replace(/[:.]/g, '-')}.json`), JSON.stringify(scan, null, 2), 'utf8');
+
+  try {
+    let queue = await loadHarvestQueue(cwd);
+    for (const dim of dimensions) queue = updateGapCoverage(queue, dim.name, selfScores[dim.name] ?? 0);
+    await saveHarvestQueue(queue, cwd);
+  } catch { /* best-effort */ }
+}
+
+async function logEmergentDimensions(cwd: string | undefined): Promise<void> {
+  try {
+    const emergentPath = path.join(cwd ?? process.cwd(), '.danteforge', 'emergent-dimensions.json');
+    const emergentRaw = await fs.readFile(emergentPath, 'utf8');
+    const emergentData = JSON.parse(emergentRaw) as { dimensions?: Array<{ dimension: string; description: string; emergenceSignal: string; relevanceScore: number }> };
+    if (Array.isArray(emergentData.dimensions) && emergentData.dimensions.length > 0) {
+      logger.info(`[universe-scan] Merging ${emergentData.dimensions.length} emergent dimensions from oss-deep`);
+      for (const dim of emergentData.dimensions) {
+        if (dim.relevanceScore > 0.7) {
+          logger.info(`[universe-scan] Emergent dimension: "${dim.dimension}" — ${dim.description}`);
+          logger.info(`[universe-scan]   Signal: ${dim.emergenceSignal}`);
+        }
+      }
+    }
+  } catch { /* No emergent dims file — normal for new projects */ }
+}
+
 export async function universeScan(opts: UniverseScanOptions = {}): Promise<UniverseScan> {
   const cwd = opts.cwd ?? process.cwd();
   const llmCaller = opts._llmCaller ?? callLLM;
@@ -328,29 +392,8 @@ export async function universeScan(opts: UniverseScanOptions = {}): Promise<Univ
   const category = goal?.category ?? 'agentic development CLI';
   let competitors = goal?.competitors ?? [];
 
-  // Fresh competitor discovery via web search (additive, backwards-compatible)
   if (searchWeb) {
-    logger.info('[universe-scan] Phase 1: Searching for fresh competitors...');
-    try {
-      const results = await Promise.all([
-        searchWeb(`"${category}" tool 2025 2026 github stars`),
-        searchWeb(`"${category}" alternative open source github`),
-      ]);
-      const discovered = results.flat().map(name => name.trim()).filter(Boolean);
-      // Deduplicate: preserve existing order, append new names (case-insensitive)
-      const seen = new Set(competitors.map(c => c.toLowerCase()));
-      for (const name of discovered) {
-        if (!seen.has(name.toLowerCase())) {
-          competitors = [...competitors, name];
-          seen.add(name.toLowerCase());
-        }
-      }
-      if (discovered.length > 0) {
-        logger.info(`[universe-scan] Merged ${discovered.length} web-discovered competitors.`);
-      }
-    } catch (err) {
-      logger.warn(`[universe-scan] Web search failed (non-fatal): ${err instanceof Error ? err.message : String(err)}`);
-    }
+    competitors = await mergeWebCompetitors(searchWeb, competitors, category);
   }
 
   logger.info(`[universe-scan] Category: ${category}`);
@@ -398,72 +441,9 @@ export async function universeScan(opts: UniverseScanOptions = {}): Promise<Univ
   }
 
   // ── Phase 5: Persist ─────────────────────────────────────────────────────
-  const scan: UniverseScan = {
-    version: '1.0.0',
-    scannedAt: new Date().toISOString(),
-    category,
-    dimensions,
-    selfScores,
-    dimensionChanges,
-  };
-
-  await fs.mkdir(danteforgeDir, { recursive: true });
-
-  // Write UNIVERSE.json
-  await fs.writeFile(
-    path.join(danteforgeDir, UNIVERSE_FILENAME),
-    JSON.stringify(scan, null, 2),
-    'utf8',
-  );
-
-  // Write SCORES.json (flat map — consumed by harvest-forge)
-  await fs.writeFile(
-    path.join(danteforgeDir, SCORES_FILENAME),
-    JSON.stringify(selfScores, null, 2),
-    'utf8',
-  );
-
-  // Write snapshot to universe-history/
-  const historyDir = path.join(danteforgeDir, 'universe-history');
-  await fs.mkdir(historyDir, { recursive: true });
-  const snapshotName = `${new Date().toISOString().replace(/[:.]/g, '-')}.json`;
-  await fs.writeFile(
-    path.join(historyDir, snapshotName),
-    JSON.stringify(scan, null, 2),
-    'utf8',
-  );
-
-  // Update harvest-queue gaps
-  try {
-    let queue = await loadHarvestQueue(cwd);
-    for (const dim of dimensions) {
-      const score = selfScores[dim.name] ?? 0;
-      queue = updateGapCoverage(queue, dim.name, score);
-    }
-    await saveHarvestQueue(queue, cwd);
-  } catch {
-    // Best-effort — queue update failure must not block scan results
-  }
-
-  // Sprint B-1F: Merge emergent dimensions discovered by oss-deep
-  try {
-    const emergentPath = path.join(cwd ?? process.cwd(), '.danteforge', 'emergent-dimensions.json');
-    const emergentRaw = await fs.readFile(emergentPath, 'utf8');
-    const emergentData = JSON.parse(emergentRaw) as { dimensions?: Array<{ dimension: string; description: string; emergenceSignal: string; relevanceScore: number }> };
-    if (Array.isArray(emergentData.dimensions) && emergentData.dimensions.length > 0) {
-      logger.info(`[universe-scan] Merging ${emergentData.dimensions.length} emergent dimensions from oss-deep`);
-      // Emergent dims are surfaced in the output for user awareness — they need to be
-      // investigated and formally added to the universe scan dimensions if validated
-      for (const dim of emergentData.dimensions) {
-        if (dim.relevanceScore > 0.7) {
-          logger.info(`[universe-scan] Emergent dimension: "${dim.dimension}" — ${dim.description}`);
-          logger.info(`[universe-scan]   Signal: ${dim.emergenceSignal}`);
-        }
-      }
-    }
-  } catch {
-    // No emergent dims file — normal for new projects
-  }
+  const scan: UniverseScan = { version: '1.0.0', scannedAt: new Date().toISOString(), category, dimensions, selfScores, dimensionChanges };
+  await persistUniverseScanResults(scan, selfScores, dimensions, cwd, danteforgeDir);
+  await logEmergentDimensions(cwd);
 
   logger.info(`[universe-scan] Complete. ${dimensions.length} dimensions scored. Written to .danteforge/.`);
   return scan;
