@@ -41,8 +41,18 @@ export async function autoforge(goal?: string, options: {
   parallel?: boolean;
   worktree?: boolean;
   cwd?: string;
-  // Injection seam — override the autonomous loop for testing
-  _runLoop?: (ctx: AutoforgeLoopContext) => Promise<AutoforgeLoopContext>;
+  /** Pause loop when avg PDSE score reaches this value */
+  pauseAt?: number;
+  // Injection seams for testing
+  _runLoop?: (ctx: AutoforgeLoopContext, deps?: { _executeCommand?: (command: string, cwd: string) => Promise<{ success: boolean }> }) => Promise<AutoforgeLoopContext>;
+  _executeCommand?: (command: string, cwd: string) => Promise<{ success: boolean }>;
+  _computeRetroScore?: boolean; // set false to skip retro delta computation in tests
+  _runScoreOnlyMode?: () => Promise<void>;
+  _analyzeProjectState?: typeof analyzeProjectState;
+  _planAutoForge?: typeof planAutoForge;
+  _displayPlan?: typeof displayPlan;
+  _executeAutoForgePlan?: typeof executeAutoForgePlan;
+  _loadLatestVerdict?: typeof loadLatestVerdict;
 } = {}): Promise<void> {
   return withErrorBoundary('autoforge', async () => {
   const maxWaves = options.maxWaves ?? 3;
@@ -53,7 +63,7 @@ export async function autoforge(goal?: string, options: {
 
   // --score-only mode: score existing artifacts and write guidance
   if (options.scoreOnly) {
-    await runScoreOnlyMode();
+    await (options._runScoreOnlyMode ?? runScoreOnlyMode)();
     return;
   }
 
@@ -61,7 +71,39 @@ export async function autoforge(goal?: string, options: {
   // Runs the full state-machine convergence loop until 95%+ completion or BLOCKED.
   if (options.auto) {
     logger.info('[AutoForge] Autonomous mode — running convergence loop...');
+
+    // Clear any stale pause snapshot so the loop starts fresh
+    try {
+      await fs.unlink(path.join(cwd, '.danteforge', 'AUTOFORGE_PAUSED'));
+    } catch { /* may not exist */ }
+
     const state = await loadState({ cwd });
+
+    // Mark autoforge as enabled — signals to the scorer that the loop is active
+    if (!state.autoforgeEnabled) {
+      state.autoforgeEnabled = true;
+      state.auditLog.push(`${new Date().toISOString()} | autoforge: autonomous mode enabled`);
+    }
+
+    // Compute retro delta if we have a baseline score from a previous session
+    if (state.sessionBaselineScore != null && options._computeRetroScore !== false) {
+      try {
+        const { computeHarshScore } = await import('../../core/harsh-scorer.js');
+        const current = await computeHarshScore({ cwd });
+        // sessionBaselineScore is in display-score units (0–10); compare against displayScore
+        const delta = Math.round((current.displayScore - state.sessionBaselineScore) * 10) / 10;
+        if (delta > 0) {
+          state.retroDelta = delta;
+          state.retroLastRun = new Date().toISOString();
+          state.auditLog.push(
+            `${new Date().toISOString()} | autoforge: retro delta +${delta} pts (baseline ${state.sessionBaselineScore} → current ${current.displayScore})`,
+          );
+        }
+      } catch { /* best-effort — never block the loop */ }
+    }
+
+    await saveState(state, { cwd });
+
     const isWebProject = (state.projectType ?? 'unknown') === 'web';
     const ctx: AutoforgeLoopContext = {
       goal: goal ?? 'Advance the project to completion',
@@ -76,22 +118,32 @@ export async function autoforge(goal?: string, options: {
       isWebProject,
       force: options.force ?? false,
       dryRun: options.dryRun,
-      maxRetries: 3,
+      maxRetries: 10,  // Must be > number of pipeline stages (5) to avoid premature BLOCKED
+      recentScores: [],
+      ...(options.pauseAt !== undefined ? { pauseAtScore: options.pauseAt } : {}),
     };
     const loopFn = options._runLoop ?? runAutoforgeLoop;
-    await loopFn(ctx);
+    const { executeAutoforgeCommand } = await import('../../core/autoforge-executor.js');
+    const finalCtx = await loopFn(ctx, {
+      _executeCommand: options._executeCommand ?? executeAutoforgeCommand,
+    });
+    if (finalCtx.loopState === AutoforgeLoopState.BLOCKED) {
+      process.exitCode = 1;
+    }
     return;
   }
 
   // Analyze current project state
+  const analyzeFn = options._analyzeProjectState ?? analyzeProjectState;
   const input = await withSpinner(
     'Analyzing project state...',
-    () => analyzeProjectState(),
+    () => analyzeFn(),
     'Project state analyzed',
   );
 
   // Generate the plan
-  const plan = planAutoForge(input, maxWaves, goal);
+  const planFn = options._planAutoForge ?? planAutoForge;
+  const plan = planFn(input, maxWaves, goal);
 
   // --prompt mode: generate copy-paste prompt
   if (options.prompt) {
@@ -106,15 +158,17 @@ export async function autoforge(goal?: string, options: {
 
   // --dry-run mode: display plan without executing
   if (options.dryRun) {
-    displayPlan(plan);
+    const dpy = options._displayPlan ?? displayPlan;
+    dpy(plan);
     logger.info('[AutoForge] Dry run complete — no commands were executed.');
     return;
   }
 
   // Execute the plan
+  const execFn = options._executeAutoForgePlan ?? executeAutoForgePlan;
   const result = await withSpinner(
     `Executing autoforge plan (${maxWaves} waves)...`,
-    () => executeAutoForgePlan(plan, {
+    () => execFn(plan, {
       dryRun: false,
       light: options.light,
       profile: options.profile,
@@ -151,7 +205,8 @@ export async function autoforge(goal?: string, options: {
 
   // Show reflection score if available
   try {
-    const verdict = await loadLatestVerdict();
+    const verdictFn = options._loadLatestVerdict ?? loadLatestVerdict;
+    const verdict = await verdictFn();
     if (verdict) {
       const score = Math.round(verdict.confidence * 100);
       logger.info('');
@@ -198,7 +253,7 @@ async function runScoreOnlyMode(): Promise<void> {
 
   // Print score table
   logger.info('');
-  logger.success('DanteForge v0.8.0 — Score-Only Pass');
+  logger.success('DanteForge v0.17.0 — Score-Only Pass');
   logger.info('━'.repeat(40));
 
   const artifacts: ScoredArtifact[] = ['CONSTITUTION', 'SPEC', 'CLARIFY', 'PLAN', 'TASKS'];

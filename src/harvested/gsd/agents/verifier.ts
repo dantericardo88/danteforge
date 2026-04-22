@@ -6,18 +6,21 @@ import { logger } from '../../../core/logger.js';
  * Verify whether a task output satisfies the given acceptance criteria.
  * This path is fail-closed: missing live verification or empty output is a failure.
  */
-export async function verify(taskOutput: string, criteria: string): Promise<boolean> {
+export async function verify(
+  taskOutput: string,
+  criteria: string,
+  options?: { _llmCaller?: (prompt: string) => Promise<string> },
+): Promise<boolean> {
   logger.info(`Verifying output against criteria: ${criteria}`);
 
   if (!taskOutput || taskOutput.trim().length === 0) {
     logger.error('Verification blocked: task output is empty.');
-    process.exitCode = 1;
     return false;
   }
 
-  if (!await isLLMAvailable()) {
+  const llmReady = options?._llmCaller != null || await isLLMAvailable();
+  if (!llmReady) {
     logger.error('Verification blocked: no verified live LLM provider is available.');
-    process.exitCode = 1;
     return false;
   }
 
@@ -36,7 +39,9 @@ export async function verify(taskOutput: string, criteria: string): Promise<bool
       'Then provide a brief explanation of your assessment on subsequent lines.',
     ].join('');
 
-    const response = await callLLM(prompt, undefined, { enrichContext: true });
+    const response = options?._llmCaller
+      ? await options._llmCaller(prompt)
+      : await callLLM(prompt, undefined, { enrichContext: true });
     const result = parseVerdict(response);
 
     if (result.passed) {
@@ -45,12 +50,10 @@ export async function verify(taskOutput: string, criteria: string): Promise<bool
     }
 
     logger.error(`Verification FAILED: ${result.explanation}`);
-    process.exitCode = 1;
     return false;
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
     logger.error(`LLM verification failed: ${message}`);
-    process.exitCode = 1;
     return false;
   }
 }

@@ -7,10 +7,14 @@ import { logger } from '../../../core/logger.js';
  * patterns, risks, and recommendations. Uses the configured LLM when
  * available; otherwise returns a structured template for manual research.
  */
-export async function research(topic: string): Promise<string> {
+export async function research(
+  topic: string,
+  options?: { _llmCaller?: (prompt: string) => Promise<string> },
+): Promise<string> {
   logger.info(`Researching: ${topic}`);
 
-  if (await isLLMAvailable()) {
+  const llmReady = options?._llmCaller != null || await isLLMAvailable();
+  if (llmReady) {
     try {
       const prompt = [
         'You are a senior software engineering researcher. Provide a thorough ',
@@ -24,7 +28,9 @@ export async function research(topic: string): Promise<string> {
         topic,
       ].join('');
 
-      const response = await callLLM(prompt, undefined, { enrichContext: true });
+      const response = options?._llmCaller
+        ? await options._llmCaller(prompt)
+        : await callLLM(prompt, undefined, { enrichContext: true });
 
       if (response.trim().length > 0) {
         logger.success(`Research complete for: ${topic}`);

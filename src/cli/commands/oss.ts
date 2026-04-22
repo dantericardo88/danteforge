@@ -562,7 +562,14 @@ export async function ossResearcher(options: {
   prompt?: boolean;
   dryRun?: boolean;
   maxRepos?: string;
+  _loadState?: typeof loadState;
+  _saveState?: typeof saveState;
+  _isLLMAvailable?: typeof isLLMAvailable;
 } = {}): Promise<void> {
+  const loadFn = options._loadState ?? loadState;
+  const saveFn = options._saveState ?? saveState;
+  const llmAvailFn = options._isLLMAvailable ?? isLLMAvailable;
+
   return withErrorBoundary('oss', async () => {
   const timestamp = new Date().toISOString();
   const maxRepos = Math.min(Math.max(parseInt(options.maxRepos ?? '8', 10) || MAX_REPOS_DEFAULT, 1), 15);
@@ -595,9 +602,9 @@ export async function ossResearcher(options: {
     logger.info('Paste this into Claude Code, ChatGPT, or any LLM with web search access.');
     logger.info('The LLM will execute the full OSS research pipeline autonomously.');
 
-    const state = await loadState();
+    const state = await loadFn();
     state.auditLog.push(`${timestamp} | oss: research plan prompt generated (${projectType}, ${language})`);
-    await saveState(state);
+    await saveFn(state);
     return;
   }
 
@@ -605,20 +612,20 @@ export async function ossResearcher(options: {
   if (options.dryRun) {
     displayDryRun(projectSummary, projectType, language, queries, maxRepos);
 
-    const state = await loadState();
+    const state = await loadFn();
     state.auditLog.push(`${timestamp} | oss: dry run — ${queries.length} queries, ${maxRepos} max repos`);
-    await saveState(state);
+    await saveFn(state);
     return;
   }
 
   // ── Execute mode ─────────────────────────────────────────────────────────────
-  const llmAvailable = await isLLMAvailable();
+  const llmAvailable = await llmAvailFn();
   if (!llmAvailable) {
     displayLocalFallback(projectSummary, projectType, language, queries);
 
-    const state = await loadState();
+    const state = await loadFn();
     state.auditLog.push(`${timestamp} | oss: local fallback — no LLM provider available`);
-    await saveState(state);
+    await saveFn(state);
     return;
   }
 
@@ -663,12 +670,48 @@ export async function ossResearcher(options: {
     logger.info('No patterns extracted — the repos may already align with your architecture.');
   }
 
+  // COFL gap cross-check: flag patterns that address known operator-visible gaps (best-effort)
+  try {
+    const { loadMatrix } = await import('../../core/compete-matrix.js');
+    const { runDecisionFilter } = await import('../../core/cofl-engine.js');
+    const matrix = await loadMatrix(cwd).catch(() => null);
+    if (matrix && report.patternsExtracted.length > 0) {
+      const gapDimensions = matrix.dimensions
+        .filter(d => (d.gap_to_closed_source_leader ?? d.gap_to_leader ?? 0) > 1)
+        .map(d => d.id);
+      const coflAligned = report.patternsExtracted.filter(p => {
+        // Map oss pattern category to COFL dimension coverage proxy
+        const category = p.category;
+        const isOperatorVisible = category === 'cli-ux' || category === 'agent-ai' || category === 'innovation';
+        const decision = runDecisionFilter(
+          {
+            sourceRole: 'reference_teacher',
+            operatorLeverageScore: p.priority === 'P0' ? 8 : p.priority === 'P1' ? 6 : 3,
+            affectedDimensions: gapDimensions.slice(0, 2),
+            proofRequirement: `Implement and run npm test (${p.effort} effort)`,
+            implementationScope: p.effort === 'L' ? 'broad' : 'narrow',
+          },
+          { validTeacherRoles: ['reference_teacher', 'specialist_teacher'], knownGapDimensions: gapDimensions },
+        );
+        return isOperatorVisible && decision.passedAll;
+      });
+      if (coflAligned.length > 0) {
+        logger.info('');
+        logger.info(`COFL-aligned patterns (operator-visible, gap-closing): ${coflAligned.length}`);
+        for (const p of coflAligned.slice(0, 5)) {
+          logger.info(`  [${p.priority}] ${p.pattern} — ${p.description.slice(0, 80)}`);
+        }
+        logger.info('Run `danteforge cofl --harvest` to extract and classify these via the full COFL pipeline.');
+      }
+    }
+  } catch { /* best-effort — never block oss output */ }
+
   // Audit
-  const state = await loadState();
+  const state = await loadFn();
   state.auditLog.push(
     `${timestamp} | oss: research complete — ${report.reposScanned.length} repos scanned, ` +
     `${report.patternsExtracted.length} patterns extracted, ${p0p1Count} P0/P1`,
   );
-  await saveState(state);
+  await saveFn(state);
   });
 }

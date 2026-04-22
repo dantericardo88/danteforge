@@ -1,0 +1,13 @@
+{
+  "name": "basic-todo-app",
+  "description": "A simple todo application built with DanteForge",
+  "steps": [
+    "danteforge init",
+    "danteforge constitution",
+    "danteforge specify \"Create a todo list app with add, complete, and delete features\"",
+    "danteforge plan",
+    "danteforge tasks",
+    "danteforge forge",
+    "danteforge verify"
+  ]
+}

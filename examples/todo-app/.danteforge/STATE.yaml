@@ -1,0 +1,77 @@
+project: todo-app
+lastHandoff: verify -> next (2026-04-15T00:05:00.000Z)
+workflowStage: verify
+currentPhase: 1
+tasks:
+  "1":
+    - name: Implement the zero-dependency todo CLI
+      files:
+        - src/cli.js
+        - src/storage.js
+        - src/todo.js
+      verify: Commands add, list, complete, delete, and clear todos against the persisted JSON store
+    - name: Prove the shipped behavior
+      files:
+        - tests/todo.test.js
+      verify: node --test tests/todo.test.js passes
+auditLog:
+  - "2026-04-15T00:00:00.000Z | init: example snapshot created"
+  - "2026-04-15T00:01:00.000Z | review: .danteforge artifacts aligned with the shipped todo app"
+  - "2026-04-15T00:02:00.000Z | plan: PLAN.md updated for the zero-dependency JS implementation"
+  - "2026-04-15T00:03:00.000Z | tasks: file-level task list aligned to src/*.js and tests/todo.test.js"
+  - "2026-04-15T00:04:00.000Z | forge: bundled app snapshot includes CLI, storage, and pure todo logic"
+  - "2026-04-15T00:05:00.000Z | verify: node --test tests/todo.test.js passed"
+profile: balanced
+constitution: |-
+  # TODO CLI Example Constitution
+  - Keep the example local-first and runnable with plain Node.js.
+  - Use a single JSON file in the operator home directory for persistence.
+  - Keep business logic pure and isolate file I/O in src/storage.js.
+  - CLI errors must fail closed with clear usage messages.
+  - Ship only artifacts that truthfully match the example code and tests.
+autoforgeEnabled: false
+projectType: cli
+lastVerifiedAt: 2026-04-15T00:05:00.000Z
+lastVerifyStatus: pass
+completionTracker:
+  overall: 92
+  phases:
+    planning:
+      score: 100
+      complete: true
+      artifacts:
+        CONSTITUTION:
+          score: 92
+          complete: true
+        SPEC:
+          score: 95
+          complete: true
+        CLARIFY:
+          score: 93
+          complete: true
+        PLAN:
+          score: 94
+          complete: true
+        TASKS:
+          score: 92
+          complete: true
+    execution:
+      score: 100
+      complete: true
+      currentPhase: 1
+      wavesComplete: 1
+      totalWaves: 1
+    verification:
+      score: 100
+      complete: true
+      qaScore: 100
+      testsPassing: true
+    synthesis:
+      score: 20
+      complete: false
+      retroDelta: null
+  lastUpdated: 2026-04-15T00:05:00.000Z
+  projectedCompletion: Run danteforge synthesize to add the final project summary artifact.
+selfEditPolicy: deny
+maxBudgetUsd: 10
+routingAggressiveness: balanced

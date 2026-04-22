@@ -16,8 +16,23 @@ const STATE_DIR = '.danteforge';
 
 export async function design(
   prompt: string,
-  options: { prompt?: boolean; light?: boolean; format?: string; parallel?: boolean; worktree?: boolean } = {},
+  options: {
+    prompt?: boolean;
+    light?: boolean;
+    format?: string;
+    parallel?: boolean;
+    worktree?: boolean;
+    _llmCaller?: typeof callLLM;
+    _isLLMAvailable?: typeof isLLMAvailable;
+    _loadState?: typeof loadState;
+    _saveState?: typeof saveState;
+  } = {},
 ): Promise<void> {
+  const llmFn = options._llmCaller ?? callLLM;
+  const llmAvailFn = options._isLLMAvailable ?? isLLMAvailable;
+  const loadFn = options._loadState ?? loadState;
+  const saveFn = options._saveState ?? saveState;
+
   return withErrorBoundary('design', async () => {
   logger.info('Design: generating design artifacts from natural language');
 
@@ -25,9 +40,9 @@ export async function design(
   await ensureOPIntermediatesIgnored();
 
   // Gate: PLAN.md must exist (unless --light)
-  if (!(await runGate(() => requirePlan(options.light)))) return;
+  if (!(await runGate(() => requirePlan(options.light)))) { process.exitCode = 1; return; }
 
-  const state = await loadState();
+  const state = await loadFn();
 
   // Context-aware: check if this is a UI project
   const hasUI = await isUIProject();
@@ -54,12 +69,12 @@ export async function design(
     ].join('\n'));
 
     state.auditLog.push(`${new Date().toISOString()} | design: prompt generated`);
-    await saveState(state);
+    await saveFn(state);
     return;
   }
 
   // Mode 2: LLM API mode
-  const llmAvailable = await isLLMAvailable();
+  const llmAvailable = await llmAvailFn();
   if (!llmAvailable) {
     logger.error('No verified live LLM provider is available for design generation. Re-run with --prompt or configure a provider with working model access.');
     process.exitCode = 1;
@@ -69,7 +84,7 @@ export async function design(
   logger.info('Running design generation via LLM...');
 
   try {
-    const result = await callLLM(designPrompt, undefined, { enrichContext: true });
+    const result = await llmFn(designPrompt, undefined, { enrichContext: true });
     logger.success(`Design generation complete (${result.length} chars)`);
 
     const jsonMatch = result.match(/```(?:json)?\s*([\s\S]*?)```/) ?? [null, result];
@@ -94,7 +109,7 @@ export async function design(
     state.designFormatVersion = '1.0.0';
     state.workflowStage = 'design';
     state.auditLog.push(`${new Date().toISOString()} | design: .op artifact created via LLM`);
-    await saveState(state);
+    await saveFn(state);
     await handoff('design', { designFile: 'DESIGN.op' });
 
     // Auto-run design rules and report warnings

@@ -31,7 +31,14 @@ async function fileExists(filePath: string): Promise<boolean> {
   }
 }
 
-export async function importFile(source: string, options: { as?: string } = {}) {
+export async function importFile(source: string, options: {
+  as?: string;
+  _loadState?: typeof loadState;
+  _saveState?: typeof saveState;
+} = {}) {
+  const loadFn = options._loadState ?? loadState;
+  const saveFn = options._saveState ?? saveState;
+
   return withErrorBoundary('import', async () => {
   // Resolve the source path
   const sourcePath = path.resolve(source);
@@ -63,7 +70,7 @@ export async function importFile(source: string, options: { as?: string } = {}) 
 
   // Update state
   const timestamp = new Date().toISOString();
-  const state = await loadState();
+  const state = await loadFn();
   state.auditLog.push(`${timestamp} | import: ${targetName} (from ${path.basename(sourcePath)}, ${content.length} bytes)`);
   if (invalidatesVerification(targetName)) {
     state.lastVerifiedAt = undefined;
@@ -72,7 +79,7 @@ export async function importFile(source: string, options: { as?: string } = {}) 
   if (targetName === 'CURRENT_STATE.md') {
     state.currentPhase = 0;
     state.tasks = {};
-    await saveState(state);
+    await saveFn(state);
     await handoff('review', { stateFile: 'CURRENT_STATE.md' });
     logger.success(`Imported ${targetName} — review handoff complete`);
     logger.info('Run "danteforge constitution" next, then "danteforge specify <goal>" to continue the pipeline');
@@ -80,7 +87,7 @@ export async function importFile(source: string, options: { as?: string } = {}) 
   }
 
   if (targetName === 'CONSTITUTION.md') {
-    await saveState(state);
+    await saveFn(state);
     await handoff('constitution', { constitution: content });
     logger.success(`Imported ${targetName} — constitution handoff complete`);
     logger.info('Run "danteforge specify <goal>" to continue the pipeline');
@@ -89,7 +96,7 @@ export async function importFile(source: string, options: { as?: string } = {}) 
 
   if (targetName === 'SPEC.md') {
     const tasks = extractNumberedTasks(content, 'Task Breakdown');
-    await saveState(state);
+    await saveFn(state);
     await handoff('spec', {
       constitution: state.constitution,
       tasks: tasks.length > 0 ? tasks : undefined,
@@ -101,7 +108,7 @@ export async function importFile(source: string, options: { as?: string } = {}) 
 
   if (targetName === 'CLARIFY.md') {
     recordWorkflowStage(state, 'clarify', timestamp);
-    await saveState(state);
+    await saveFn(state);
     logger.success(`Imported ${targetName} into .danteforge/`);
     logger.info('Run "danteforge plan" to turn the clarified spec into an execution plan.');
     return;
@@ -109,7 +116,7 @@ export async function importFile(source: string, options: { as?: string } = {}) 
 
   if (targetName === 'PLAN.md') {
     recordWorkflowStage(state, 'plan', timestamp);
-    await saveState(state);
+    await saveFn(state);
     logger.success(`Imported ${targetName} into .danteforge/`);
     logger.info('Run "danteforge tasks" to break the plan into executable work.');
     return;
@@ -120,14 +127,14 @@ export async function importFile(source: string, options: { as?: string } = {}) 
     state.tasks[FIRST_EXECUTION_PHASE] = tasks;
     state.currentPhase = FIRST_EXECUTION_PHASE;
     recordWorkflowStage(state, 'tasks', timestamp);
-    await saveState(state);
+    await saveFn(state);
     logger.success(`Imported ${targetName} into .danteforge/`);
     logger.info('Run "danteforge forge 1" to execute the first wave, or use "--prompt" for manual execution planning.');
     return;
   }
 
   if (targetName === 'DESIGN.op') {
-    await saveState(state);
+    await saveFn(state);
     await handoff('design', { designFile: 'DESIGN.op' });
     logger.success(`Imported ${targetName} — design handoff complete`);
     logger.info('Run "danteforge ux-refine --openpencil" to extract local design artifacts, or continue with "danteforge forge 1".');
@@ -135,7 +142,7 @@ export async function importFile(source: string, options: { as?: string } = {}) 
   }
 
   if (targetName === 'UX_REFINE.md') {
-    await saveState(state);
+    await saveFn(state);
     await handoff('ux-refine', {});
     logger.success(`Imported ${targetName} into .danteforge/`);
     logger.info('Run "danteforge verify" to confirm UX artifacts and workflow consistency.');
@@ -144,13 +151,13 @@ export async function importFile(source: string, options: { as?: string } = {}) 
 
   if (targetName === 'UPR.md') {
     recordWorkflowStage(state, 'synthesize', timestamp);
-    await saveState(state);
+    await saveFn(state);
     logger.success(`Imported ${targetName} into .danteforge/`);
     logger.info('Run "danteforge feedback" for manual refinement or "danteforge feedback --auto" with a verified live provider.');
     return;
   }
 
-  await saveState(state);
+  await saveFn(state);
   logger.success(`Imported ${targetName} into .danteforge/`);
   logger.info('Run "danteforge synthesize" to merge all artifacts into UPR.md');
   });

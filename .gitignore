@@ -9,6 +9,15 @@ vscode-extension/.artifacts/
 
 # DanteForge runtime state (per-project, not shared)
 .danteforge/
+!examples/todo-app/.danteforge/
+examples/todo-app/.danteforge/**
+!examples/todo-app/.danteforge/AUTOFORGE_GUIDANCE.md
+!examples/todo-app/.danteforge/CLARIFY.md
+!examples/todo-app/.danteforge/CONSTITUTION.md
+!examples/todo-app/.danteforge/PLAN.md
+!examples/todo-app/.danteforge/SPEC.md
+!examples/todo-app/.danteforge/STATE.yaml
+!examples/todo-app/.danteforge/TASKS.md
 
 # Worktrees created by DanteForge agents
 .danteforge-worktrees/
@@ -46,6 +55,7 @@ AUTORESEARCH_REPORT.md
 
 # Code coverage reports
 coverage/
+.tmp-coverage-autoforge/
 
 # Local dev tool caches
 .claude/

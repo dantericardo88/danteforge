@@ -36,10 +36,49 @@ function run(args, expectedPatterns) {
   console.log(`ok - danteforge ${args.join(' ') || '--help'}`);
 }
 
+function runNotContains(args, forbiddenPatterns) {
+  const result = spawnSync(process.execPath, [distEntry, ...args], {
+    cwd: root,
+    encoding: 'utf8',
+    timeout: 30_000,
+  });
+
+  if (result.error) {
+    throw result.error;
+  }
+
+  const output = `${result.stdout ?? ''}\n${result.stderr ?? ''}`;
+  for (const pattern of forbiddenPatterns) {
+    if (pattern.test(output)) {
+      throw new Error(
+        `CLI smoke command matched forbidden pattern ${pattern}:\n` +
+        `danteforge ${args.join(' ')}\n${output}`,
+      );
+    }
+  }
+
+  console.log(`ok (not-contains) - danteforge ${args.join(' ')}`);
+}
+
 run(['--help'], [/autoforge/i, /awesome-scan/i]);
 run(['party', '--help'], [/--isolation/i]);
 run(['autoforge', '--help'], [/autoforge .*?\[goal\]/i]);
+run(['rubric-score', '--help'], [/--matrix/i, /diff \[options\]/i]);
 run(['autoforge', '--dry-run'], [/AutoForge/i, /Plan/i]);
 run(['awesome-scan'], [/Skill Scanner/i, /Total:\s+\d+\s+skill/i]);
+
+// Beginner command gates — verifies source truth = shipped truth
+run(['explain', 'magic'], [/MAGIC|magic/i, /preset|power/i]);
+run(['demo', '--help'], [/demo/i, /fixture/i]);
+run(['help'], [/danteforge improve/i, /danteforge explain/i, /danteforge go/i]);
+run(['go', '--help'], [/--yes/i, /--simple/i]);
+runNotContains(['help'], [/danteforge magic\s/]);
+
+// Launch hardening gates — Sprint 58
+run(['measure'], [/\/10/i]);
+run(['demo'], [/danteforge go/i]);
+run(['quickstart', '--help'], [/quickstart/i, /simple/i]);
+runNotContains(['demo'], [/quickstart/i]);
+runNotContains(['measure'], [/needs-work/i]);
 
 console.log('CLI smoke checks passed');

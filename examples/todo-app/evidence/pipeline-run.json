@@ -1,0 +1,72 @@
+{
+  "version": "1.0.0",
+  "project": "todo-app",
+  "generatedAt": "2026-04-15T00:05:00.000Z",
+  "pipeline": {
+    "preset": "magic",
+    "stages": [
+      {
+        "stage": "constitution",
+        "artifact": ".danteforge/CONSTITUTION.md",
+        "status": "present",
+        "pdseScore": 92
+      },
+      {
+        "stage": "specify",
+        "artifact": ".danteforge/SPEC.md",
+        "status": "present",
+        "pdseScore": 95
+      },
+      {
+        "stage": "clarify",
+        "artifact": ".danteforge/CLARIFY.md",
+        "status": "generated",
+        "pdseScore": 93
+      },
+      {
+        "stage": "plan",
+        "artifact": ".danteforge/PLAN.md",
+        "status": "generated",
+        "pdseScore": 94
+      },
+      {
+        "stage": "tasks",
+        "artifact": ".danteforge/TASKS.md",
+        "status": "generated",
+        "pdseScore": 92
+      },
+      {
+        "stage": "forge",
+        "artifact": "src/",
+        "status": "generated",
+        "filesGenerated": 3
+      },
+      {
+        "stage": "verify",
+        "artifact": "tests/",
+        "status": "generated",
+        "testsPassing": true
+      }
+    ],
+    "artifacts": [
+      "examples/todo-app/.danteforge/CONSTITUTION.md",
+      "examples/todo-app/.danteforge/SPEC.md",
+      "examples/todo-app/.danteforge/CLARIFY.md",
+      "examples/todo-app/.danteforge/PLAN.md",
+      "examples/todo-app/.danteforge/TASKS.md",
+      "examples/todo-app/src/todo.js",
+      "examples/todo-app/src/storage.js",
+      "examples/todo-app/src/cli.js",
+      "examples/todo-app/tests/todo.test.js"
+    ],
+    "pdseScores": {
+      "CONSTITUTION": 92,
+      "SPEC": 95,
+      "CLARIFY": 93,
+      "PLAN": 94,
+      "TASKS": 92
+    },
+    "duration_ms": 1800,
+    "success": true
+  }
+}

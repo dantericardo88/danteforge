@@ -99,6 +99,7 @@ Usage rule:
 | `danteforge ship` | Paranoid release guidance + version bump plan | `--dry-run`, `--skip-review` |
 | `danteforge retro` | Project retrospective with trends | `--summary`, `--cwd` |
 | `danteforge lessons [correction]` | Self-improving rules from corrections | `--compact`, `--prompt` |
+| `danteforge proof` | Score-arc evidence report: before/after delta since a date or git SHA | `--since` |
 
 ### Exploration & Discovery
 
@@ -108,8 +109,28 @@ Usage rule:
 | `danteforge browse <subcommand>` | Browser automation (navigate, screenshot, inspect) | `--url`, `--port` |
 | `danteforge awesome-scan` | Discover and classify skills across sources | `--source`, `--domain`, `--install` |
 | `danteforge oss` | Auto-detect project, search OSS, clone, license-gate, extract patterns | `--prompt`, `--dry-run`, `--max-repos` |
+| `danteforge oss-clean` | Remove cached OSS repos from .danteforge/oss-repos/ | `--dry-run` |
+| `danteforge oss-learn` | Re-extract patterns from cached OSS repos and regenerate OSS_REPORT.md | `--prompt` |
 | `danteforge local-harvest [paths...]` | Harvest patterns from local private repos, folders, and zip archives | `--config`, `--depth`, `--prompt`, `--dry-run`, `--max-sources` |
 | `danteforge harvest` | Titan Harvest V2: 5-step constitutional harvest of OSS patterns | `--prompt`, `--lite` |
+| `danteforge wiki-ingest` | Ingest source files into the three-tier knowledge wiki | `--bootstrap`, `--prompt` |
+| `danteforge wiki-lint` | Run lint cycle on wiki: contradictions, staleness, link integrity | `--heuristic-only` |
+| `danteforge wiki-query <topic>` | Query the wiki for relevant knowledge | `--json` |
+| `danteforge wiki-status` | View wiki health metrics dashboard | `--json` |
+| `danteforge wiki-export` | Export wiki as Obsidian vault or static HTML | `--format`, `--out` |
+| `danteforge resume` | Resume a paused autoforge loop from the last checkpoint | |
+| `danteforge refused-patterns` | List/add/remove patterns from the refused-patterns blocklist | `--add`, `--remove`, `--clear` |
+| `danteforge respec` | Re-run specification with lessons learned and refused patterns injected | |
+| `danteforge cross-synthesize` | Synthesize winning patterns from attribution history to escape a plateau | `--window` |
+| `danteforge compete` | Competitive Harvest Loop: score gaps, sprint to close them (6-phase CHL) | `--init`, `--sprint`, `--rescore`, `--report`, `--auto` |
+| `danteforge score` | Fast pure-fs score: one number + 3 P0 action items in <5 seconds (no LLM) | `--full` |
+| `danteforge prime` | Generate .danteforge/PRIME.md session brief for Claude Code | `--copy` |
+| `danteforge teach` | Capture an AI correction into lessons.md and auto-update PRIME.md | |
+| `danteforge go` | Daily driver: run self-improve loop with no flags (maxCycles:5, target:9.0) | |
+| `danteforge harvest-pattern` | Focused OSS pattern harvest with Y/N confirmation per gap | `--max-repos` |
+| `danteforge build` | Guided spec-to-ship wizard: constitution→specify→clarify→plan→tasks→forge→verify→score | `--interactive` |
+| `danteforge ascend` | Fully autonomous scoring loop: classify ceiling dims, drive all achievable to 9.0/10 | `--target`, `--max-cycles`, `--interactive`, `--dry-run` |
+| `danteforge danteforge` | Maximum-power all-in-one: harvest + OSS + 10-wave autoforge + party + convergence | |
 
 ### Utilities
 

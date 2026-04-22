@@ -1,6 +1,6 @@
 {
   "name": "danteforge",
-  "version": "0.10.0",
+  "version": "0.17.0",
   "description": "Agentic development CLI - structured specs, execution waves, multi-agent orchestration, skills, gates, TDD, worktrees",
   "license": "MIT",
   "type": "module",
@@ -9,11 +9,11 @@
   },
   "repository": {
     "type": "git",
-    "url": "https://github.com/danteforge/danteforge.git"
+    "url": "https://github.com/dantericardo88/danteforge.git"
   },
-  "homepage": "https://github.com/danteforge/danteforge#readme",
+  "homepage": "https://github.com/dantericardo88/danteforge",
   "bugs": {
-    "url": "https://github.com/danteforge/danteforge/issues"
+    "url": "https://github.com/dantericardo88/danteforge/issues"
   },
   "keywords": [
     "ai",
@@ -40,8 +40,14 @@
     "registry": "https://registry.npmjs.org/"
   },
   "exports": {
-    ".": "./dist/index.js",
-    "./sdk": "./dist/sdk.js"
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    },
+    "./sdk": {
+      "types": "./dist/sdk.d.ts",
+      "import": "./dist/sdk.js"
+    }
   },
   "bin": {
     "danteforge": "dist/index.js",
@@ -63,29 +69,39 @@
   "scripts": {
     "postinstall": "node lib/postinstall.js",
     "build": "tsup",
-    "postbuild": "node scripts/sync-dantecode.mjs",
+    "build:receipt": "node scripts/run-build.mjs",
+    "sync:dantecode": "node scripts/sync-dantecode.mjs",
+    "sync:workflow-surfaces": "tsx scripts/sync-workflow-surfaces.ts",
+    "sync:readiness-doc": "tsx scripts/sync-operational-readiness.ts",
+    "build:local-sync": "npm run build && npm run sync:dantecode",
     "dev": "tsup --watch",
     "typecheck": "tsc --noEmit",
-    "test": "tsx --test tests/**/*.test.ts",
-    "test:coverage": "c8 tsx --test tests/**/*.test.ts",
+    "test": "node scripts/run-test-suite.mjs",
+    "test:integration": "tsx --test tests/integration/*.test.ts",
+    "test:e2e": "tsx --test tests/e2e/*.test.ts",
+    "test:coverage": "c8 tsx --test tests/**/*.test.ts && node scripts/write-coverage-summary.mjs",
     "check:coverage": "node scripts/check-coverage.mjs",
     "test:design": "tsx --test tests/op-codec.test.ts tests/tool-registry.test.ts tests/design-command.test.ts tests/design-gate.test.ts tests/design-agent.test.ts tests/spatial-decomposer.test.ts tests/token-extractor.test.ts tests/headless-renderer.test.ts",
     "lint": "eslint .",
     "lint:fix": "eslint . --fix",
     "check:anti-stub": "node scripts/check-anti-stub.mjs",
     "check:plugin-manifests": "node scripts/check-plugin-manifests.mjs",
+    "sbom:generate": "node scripts/generate-sbom.mjs",
+    "sbom:validate": "node scripts/validate-sbom.mjs",
     "verify": "npm run typecheck && npm run lint && npm run check:anti-stub && npm test",
     "verify:all": "npm run verify && npm run build && npm --prefix vscode-extension run verify",
     "verify:live": "node scripts/check-live-integrations.mjs",
     "check:cli-smoke": "node scripts/check-cli-smoke.mjs",
     "check:repo-hygiene": "node scripts/check-repo-hygiene.mjs",
     "check:repo-hygiene:strict": "node scripts/check-repo-hygiene.mjs --strict-presence",
+    "check:truth-surface": "node scripts/check-truth-surface.mjs",
     "check:third-party-notices": "node scripts/check-third-party-notices.mjs",
     "pack:dry-run": "npm pack --dry-run",
     "release:check:install-smoke": "node scripts/check-package-install-smoke.mjs",
-    "release:check": "npm run check:repo-hygiene && npm run verify:all && npm run check:cli-smoke && npm run check:plugin-manifests && npm run release:check:install-smoke && npm run pack:dry-run && npm run check:third-party-notices",
+    "release:check": "npm run check:truth-surface && npm run check:repo-hygiene && npm run verify:all && npm run check:cli-smoke && npm run check:plugin-manifests && npm run release:check:install-smoke && npm run pack:dry-run && npm run check:third-party-notices",
     "release:check:strict": "node scripts/check-release-strict.mjs",
     "release:check:simulated-fresh": "node scripts/check-release-simulated-fresh.mjs",
+    "release:proof": "node scripts/check-release-proof.mjs",
     "release:ga": "npm run release:check:strict && npm run verify:live",
     "prepublishOnly": "npm run verify && npm run build"
   },
@@ -97,10 +113,11 @@
     "commander": "^12.1.0",
     "ora": "^8.1.0",
     "simple-git": "^3.27.0",
-    "yaml": "^2.5.1"
+    "yaml": "^2.8.3"
   },
   "devDependencies": {
     "@eslint/js": "^9.20.0",
+    "@types/express": "^5.0.6",
     "@types/node": "^22.13.0",
     "@typescript-eslint/parser": "^8.24.1",
     "c8": "^10.1.3",
@@ -111,6 +128,18 @@
     "typescript": "^5.7.2"
   },
   "overrides": {
-    "flatted": "^3.4.2"
+    "@hono/node-server": "^1.19.14",
+    "flatted": "^3.4.2",
+    "hono": "^4.12.14",
+    "minimatch@^10.2.2": {
+      "brace-expansion": "^5.0.5"
+    },
+    "minimatch@^3.1.2": {
+      "brace-expansion": "^1.1.14"
+    },
+    "minimatch@^9.0.4": {
+      "brace-expansion": "^2.1.0"
+    },
+    "picomatch": "^4.0.4"
   }
 }

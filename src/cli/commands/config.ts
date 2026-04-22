@@ -29,15 +29,21 @@ export async function configCmd(options: {
   provider?: string;
   model?: string;
   show?: boolean;
+  _loadConfig?: typeof loadConfig;
+  _setApiKey?: typeof setApiKey;
 }) {
+  const loadConfigFn = options._loadConfig ?? loadConfig;
+  const setKeyFn = options._setApiKey ?? setApiKey;
+
   return withErrorBoundary('config', async () => {
   // Show current config
   if (options.show || (!options.setKey && !options.deleteKey && !options.provider && !options.model)) {
-    const config = await loadConfig();
+    const config = await loadConfigFn();
     const paths = resolveConfigPaths();
     logger.success('=== DanteForge Configuration ===');
     logger.info(`Config file: ${paths.configFile}`);
     logger.info('Config scope: shared across Codex, Claude Code, Gemini/Antigravity, OpenCode, Cursor, and direct CLI use.');
+    logger.info('Native assistant slash commands use the host model/session. Direct DanteForge CLI uses this shared config.');
     logger.info(`Default provider: ${config.defaultProvider}`);
     logger.info(`Ollama model: ${config.ollamaModel}`);
     logger.info('');
@@ -54,6 +60,8 @@ export async function configCmd(options: {
 
     logger.info('');
     logger.info('Commands:');
+    logger.info('  danteforge setup ollama --pull');
+    logger.info('  danteforge setup assistants --pull');
     logger.info('  danteforge config --set-key "grok:<your-api-key>"');
     logger.info('  danteforge config --delete-key grok');
     logger.info('  danteforge config --provider claude');
@@ -80,7 +88,7 @@ export async function configCmd(options: {
       return;
     }
 
-    await setApiKey(provider, key.trim());
+    await setKeyFn(provider, key.trim());
     logger.success(`Key saved for ${provider} (${maskKey(key.trim())})`);
     return;
   }

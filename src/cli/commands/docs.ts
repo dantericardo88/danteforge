@@ -4,6 +4,10 @@ import path from 'path';
 import { logger } from '../../core/logger.js';
 import { loadState, saveState } from '../../core/state.js';
 import { withErrorBoundary } from '../../core/cli-error-boundary.js';
+import {
+  CANVAS_PRESET_TEXT,
+  SPARK_PLANNING_TEXT,
+} from '../../core/workflow-surface.js';
 
 interface CommandEntry {
   name: string;
@@ -24,15 +28,15 @@ const COMMAND_REGISTRY: CommandEntry[] = [
   { name: 'verify', description: 'Run verification checks on project state and artifacts', options: ['--release', '--live', '--url <url>', '--recompute'], group: 'Pipeline' },
   { name: 'synthesize', description: 'Generate Ultimate Planning Resource (UPR.md) from all artifacts', options: [], group: 'Pipeline' },
 
-  { name: 'spark', args: '[goal]', description: 'Zero-token planning preset for new ideas and project starts', options: ['--prompt', '--skip-tech-decide'], group: 'Automation' },
+  { name: 'spark', args: '[goal]', description: `Zero-token planning preset: ${SPARK_PLANNING_TEXT}`, options: ['--prompt', '--skip-tech-decide'], group: 'Automation' },
   { name: 'ember', args: '[goal]', description: 'Very low-token preset with light checkpoints and loop detection', options: ['--profile <type>', '--prompt'], group: 'Automation' },
-  { name: 'canvas', args: '[goal]', description: 'Design-first frontend preset: design -> autoforge -> ux-refine -> verify', options: ['--profile <type>', '--prompt', '--design-prompt <text>'], group: 'Automation' },
+  { name: 'canvas', args: '[goal]', description: `Design-first frontend preset: ${CANVAS_PRESET_TEXT}`, options: ['--profile <type>', '--prompt', '--design-prompt <text>'], group: 'Automation' },
   { name: 'magic', args: '[goal]', description: 'Balanced default preset for daily follow-up work', options: ['--level <level>', '--profile <type>', '--skip-ux', '--host <type>', '--prompt', '--worktree', '--isolation', '--max-repos <n>'], group: 'Automation' },
   { name: 'blaze', args: '[goal]', description: 'High-power preset with full party orchestration, synthesis, and retro', options: ['--profile <type>', '--prompt', '--worktree', '--isolation', '--with-design', '--design-prompt <text>'], group: 'Automation' },
   { name: 'nova', args: '[goal]', description: 'Very-high-power preset with planning prefix plus deep execution and polish', options: ['--profile <type>', '--prompt', '--worktree', '--isolation', '--tech-decide', '--with-design', '--design-prompt <text>'], group: 'Automation' },
   { name: 'inferno', args: '[goal]', description: 'Maximum-power preset with OSS discovery, full implementation, and evolution', options: ['--profile <type>', '--prompt', '--worktree', '--isolation', '--max-repos <n>', '--with-design', '--design-prompt <text>', '--local-sources <paths>', '--local-depth <level>', '--local-config <path>'], group: 'Automation' },
   { name: 'autoforge', args: '[goal]', description: 'Deterministic auto-orchestration of the full DanteForge pipeline', options: ['--dry-run', '--max-waves <n>', '--profile <type>', '--parallel', '--worktree', '--light', '--prompt', '--score-only', '--auto', '--force'], group: 'Automation' },
-  { name: 'autoresearch', args: '<goal>', description: 'Autonomous metric-driven optimization loop', options: ['--metric <metric>', '--time <budget>', '--prompt', '--dry-run'], group: 'Automation' },
+  { name: 'autoresearch', args: '<goal>', description: 'Autonomous metric-driven optimization loop', options: ['--metric <metric>', '--measurement-command <command>', '--time <budget>', '--prompt', '--dry-run', '--allow-dirty'], group: 'Automation' },
   { name: 'party', description: 'Launch multi-agent collaboration mode', options: ['--worktree', '--isolation', '--figma', '--skip-ux', '--design', '--no-design'], group: 'Automation' },
 
   { name: 'design', args: '<prompt>', description: 'Generate design artifacts via OpenPencil Design-as-Code engine', options: ['--prompt', '--light', '--format <type>', '--parallel', '--worktree'], group: 'Design' },
@@ -57,6 +61,11 @@ const COMMAND_REGISTRY: CommandEntry[] = [
   { name: 'skills import', description: 'Import one Antigravity bundle into the packaged skills catalog', options: ['--from <source> (required)', '--bundle <name>', '--allow-overwrite', '--enhance'], group: 'Tools' },
   { name: 'ship', description: 'Paranoid release guidance + version bump plan + changelog draft', options: ['--dry-run', '--skip-review'], group: 'Tools' },
 
+  { name: 'measure', args: '', description: 'Answer "How good is the project?" — light=quick score, standard=score+maturity+proof, deep=verify+adversary. Alias: score', options: ['--level light|standard|deep', '--full', '--strict', '--adversary', '--json'], group: 'Self-Assessment' },
+  { name: 'assess', description: 'Harsh self-assessment: score all 18 dimensions, benchmark vs competitors, generate masterplan', options: ['--no-harsh', '--min-score <n>', '--json', '--preset <level>', '--set-baseline', '--cwd <path>'], group: 'Self-Assessment' },
+  { name: 'maturity', description: 'Assess current code maturity level with founder-friendly quality report', options: ['--preset <level>', '--json', '--cwd <path>'], group: 'Self-Assessment' },
+  { name: 'quality', description: 'Visual quality scorecard: dimension bars, P0 gaps, and automation ceilings', options: [], group: 'Self-Assessment' },
+
   { name: 'help', args: '[query]', description: 'Context-aware guidance engine', options: [], group: 'Meta' },
   { name: 'review', description: 'Scan existing repo -> generate CURRENT_STATE.md', options: ['--prompt'], group: 'Meta' },
   { name: 'feedback', description: 'Generate prompt from UPR.md for LLM refinement', options: ['--auto'], group: 'Meta' },
@@ -65,7 +74,7 @@ const COMMAND_REGISTRY: CommandEntry[] = [
   { name: 'docs', description: 'Generate or update the command reference documentation', options: [], group: 'Meta' },
 ];
 
-function formatCommandReference(): string {
+export function formatCommandReference(): string {
   const groups = new Map<string, CommandEntry[]>();
   for (const cmd of COMMAND_REGISTRY) {
     const list = groups.get(cmd.group) ?? [];
@@ -108,7 +117,13 @@ function formatCommandReference(): string {
   return lines.join('\n');
 }
 
-export async function docs(): Promise<void> {
+export async function docs(options: {
+  _loadState?: typeof loadState;
+  _saveState?: typeof saveState;
+} = {}): Promise<void> {
+  const loadFn = options._loadState ?? loadState;
+  const saveFn = options._saveState ?? saveState;
+
   return withErrorBoundary('docs', async () => {
   const cwd = process.cwd();
   const timestamp = new Date().toISOString();
@@ -125,11 +140,11 @@ export async function docs(): Promise<void> {
   logger.info(`${COMMAND_REGISTRY.length} commands documented.`);
 
   try {
-    const state = await loadState();
+    const state = await loadFn();
     state.auditLog.push(
       `${timestamp} | docs: generated COMMAND_REFERENCE.md (${COMMAND_REGISTRY.length} commands)`,
     );
-    await saveState(state);
+    await saveFn(state);
   } catch {
     // Best-effort audit log only.
   }

@@ -92,7 +92,16 @@ async function applyMcpUpdates(params: {
   logger.info('If your editor MCP config changed upstream, run: danteforge setup figma');
 }
 
-export async function updateMcp(options: { prompt?: boolean; apply?: boolean; check?: boolean } = {}) {
+export async function updateMcp(options: {
+  prompt?: boolean;
+  apply?: boolean;
+  check?: boolean;
+  _llmCaller?: typeof callLLM;
+  _isLLMAvailable?: typeof isLLMAvailable;
+} = {}) {
+  const llmFn = options._llmCaller ?? callLLM;
+  const llmAvailFn = options._isLLMAvailable ?? isLLMAvailable;
+
   return withErrorBoundary('update-mcp', async () => {
   logger.success('DanteForge MCP Update — Manual Self-Healing');
   logger.info('');
@@ -189,15 +198,14 @@ Important: Only recommend changes you are confident about. Do not fabricate MCP 
   }
 
   // Mode 2: --check (default) via LLM API mode
-  // Mode 2: LLM API mode
-  const llmAvailable = await isLLMAvailable();
+  const llmAvailable = await llmAvailFn();
   if (llmAvailable) {
     logger.info('Researching MCP updates via LLM...');
     logger.info('(This checks for protocol changes, new tools, and endpoint updates)');
     logger.info('');
 
     try {
-      const result = await callLLM(prompt, undefined, { enrichContext: true });
+      const result = await llmFn(prompt, undefined, { enrichContext: true });
 
       // Save the research report
       const reportPath = path.join('.danteforge', 'MCP_UPDATE_REPORT.md');

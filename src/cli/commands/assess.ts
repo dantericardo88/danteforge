@@ -6,7 +6,7 @@
 import fs from 'fs/promises';
 import path from 'path';
 import { logger } from '../../core/logger.js';
-import { loadState } from '../../core/state.js';
+import { loadState, saveState } from '../../core/state.js';
 import { scoreAllArtifacts } from '../../core/pdse.js';
 import { assessMaturity, type MaturityAssessment } from '../../core/maturity-engine.js';
 import {
@@ -56,6 +56,7 @@ export interface AssessOptions {
   cwd?: string;
   cycleNumber?: number;         // for display in loop context
   interactive?: boolean;        // whether to prompt for completion target if not set
+  setBaseline?: boolean;        // force-reset the session baseline to the current score
   // Injection seams for testing
   _harshScore?: (opts: HarshScorerOptions) => Promise<HarshScoreResult>;
   _scanCompetitors?: (opts: CompetitorScanOptions) => Promise<CompetitorComparison>;
@@ -66,6 +67,10 @@ export interface AssessOptions {
   _scoreFeatureUniverse?: (universe: import('../../core/feature-universe.js').FeatureUniverse, ctx: { projectName: string; projectDescription?: string }) => Promise<FeatureUniverseAssessment>;
   _callLLM?: (prompt: string) => Promise<string>;
   _now?: () => string;
+  _loadState?: typeof loadState;
+  _saveState?: typeof saveState;
+  // Self-dossier refresh (best-effort, never blocks assess)
+  _buildSelfDossier?: (opts: { cwd: string }) => Promise<unknown>;
 }
 
 export interface AssessResult {
@@ -87,6 +92,16 @@ export async function assess(options: AssessOptions = {}): Promise<AssessResult>
   const enableCompetitors = options.competitors ?? true;
   const cycleNumber = options.cycleNumber ?? 1;
   const isInteractive = options.interactive ?? false;
+
+  // Refresh self-dossier for evidence-based gap analysis (best-effort, never blocks assess)
+  try {
+    if (options._buildSelfDossier) {
+      await options._buildSelfDossier({ cwd });
+    } else {
+      const { buildSelfDossier } = await import('../../dossier/self-scorer.js');
+      await buildSelfDossier({ cwd });
+    }
+  } catch { /* self-dossier is optional; assess continues without it */ }
 
   const harshScoreFn = options._harshScore ?? computeHarshScore;
   const scanFn = options._scanCompetitors ?? scanCompetitors;
@@ -195,11 +210,31 @@ export async function assess(options: AssessOptions = {}): Promise<AssessResult>
     minScore,
   };
 
+  // ── Step 3b: Session baseline tracking ─────────────────────────────────────
+  let sessionDelta: number | undefined;
+  let sessionBaseline: number | undefined;
+  let sessionBaselineDate: string | undefined;
+  try {
+    const loadStateFn = options._loadState ?? loadState;
+    const saveStateFn = options._saveState ?? saveState;
+    const state = await loadStateFn({ cwd });
+    const needsBaseline = !state.sessionBaselineScore || options.setBaseline;
+    if (needsBaseline) {
+      state.sessionBaselineScore = effectiveScore;
+      state.sessionBaselineTimestamp = new Date().toISOString();
+      await saveStateFn(state, { cwd });
+    } else {
+      sessionBaseline = state.sessionBaselineScore;
+      sessionBaselineDate = state.sessionBaselineTimestamp;
+      sessionDelta = effectiveScore - (sessionBaseline ?? effectiveScore);
+    }
+  } catch { /* best-effort — state may not exist yet */ }
+
   // ── Step 4: Output ──────────────────────────────────────────────────────────
   if (options.json) {
-    logger.info(JSON.stringify(result, null, 2));
+    logger.info(JSON.stringify({ ...result, sessionDelta, sessionBaseline }, null, 2));
   } else {
-    printAssessReport(result, cycleNumber);
+    printAssessReport(result, cycleNumber, sessionDelta, sessionBaseline, sessionBaselineDate);
   }
 
   return result;
@@ -207,7 +242,13 @@ export async function assess(options: AssessOptions = {}): Promise<AssessResult>
 
 // ── Report printer ────────────────────────────────────────────────────────────
 
-function printAssessReport(result: AssessResult, cycleNumber: number): void {
+function printAssessReport(
+  result: AssessResult,
+  cycleNumber: number,
+  sessionDelta?: number,
+  sessionBaseline?: number,
+  sessionBaselineDate?: string,
+): void {
   const { assessment, comparison, masterplan, featureAssessment, completionTarget } = result;
 
   const banner = [
@@ -228,6 +269,14 @@ function printAssessReport(result: AssessResult, cycleNumber: number): void {
 
   const passIcon = result.passesThreshold ? '✓ PASS' : '✗ BELOW TARGET';
   logger.info(`OVERALL SCORE: ${result.overallScore.toFixed(1)} / 10  (target: ${result.minScore.toFixed(1)}, gap: ${Math.max(0, result.minScore - result.overallScore).toFixed(1)})  ${passIcon}`);
+
+  // Session delta — show progress since baseline was set
+  if (sessionDelta !== undefined && sessionBaseline !== undefined) {
+    const arrow = sessionDelta > 0.05 ? '▲' : sessionDelta < -0.05 ? '▼' : '─';
+    const sign = sessionDelta > 0 ? '+' : '';
+    const dateLabel = sessionBaselineDate ? sessionBaselineDate.slice(0, 10) : 'baseline';
+    logger.info(`Session delta:  ${sessionBaseline.toFixed(1)} → ${result.overallScore.toFixed(1)}  (${arrow} ${sign}${sessionDelta.toFixed(1)} since ${dateLabel})`);
+  }
   logger.info(`Verdict: ${assessment.verdict.toUpperCase()}  |  Fake-completion risk: ${assessment.fakeCompletionRisk.toUpperCase()}`);
 
   // Feature universe summary (when mode=feature-universe)

@@ -1,14 +1,12 @@
 import assert from 'node:assert';
-import { spawnSync } from 'node:child_process';
 import fs from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import { afterEach, describe, it } from 'node:test';
 import { getMediumOPString } from './helpers/mock-op.js';
+import { runTsxCli } from './helpers/cli-runner.ts';
 
 const tempRoots: string[] = [];
-const tsxCli = path.resolve('node_modules', 'tsx', 'dist', 'cli.mjs');
-const cliEntry = path.resolve('src', 'cli', 'index.ts');
 
 afterEach(async () => {
   while (tempRoots.length > 0) {
@@ -30,14 +28,12 @@ async function makeWorkspace() {
 }
 
 function runCli(cwd: string, home: string, args: string[], extraEnv: NodeJS.ProcessEnv = {}) {
-  const result = spawnSync(process.execPath, [tsxCli, cliEntry, ...args], {
+  const result = runTsxCli(args, {
     cwd,
     env: {
-      ...process.env,
       DANTEFORGE_HOME: home,
       ...extraEnv,
     },
-    encoding: 'utf8',
   });
 
   return {
@@ -690,7 +686,7 @@ describe('CLI release readiness', () => {
     assert.strictEqual(result.status, 0, result.stderr);
 
     const upr = await readProjectFile(cwd, path.join('.danteforge', 'UPR.md'));
-    assert.match(upr, /review -> constitution -> specify -> clarify -> plan -> tasks -> forge -> verify -> synthesize/i);
+    assert.match(upr, /review -> constitution -> specify -> clarify -> tech-decide -> plan -> tasks -> design -> forge -> ux-refine -> verify -> synthesize -> retro -> ship/i);
     assert.doesNotMatch(upr, /verify -> party -> synthesize/i);
     assert.match(upr, /danteforge feedback/i);
   });
@@ -909,14 +905,8 @@ describe('CLI release readiness', () => {
     await fs.mkdir(path.join(cwd, 'src', 'harvested', 'dante-agents', 'skills'), { recursive: true });
     await createAntigravityFixture(fixtureDir);
 
-    const result = spawnSync(process.execPath, [tsxCli, cliEntry, 'skills', 'import', '--from', 'antigravity', '--bundle', 'Web Wizard'], {
-      cwd,
-      env: {
-        ...process.env,
-        DANTEFORGE_HOME: home,
-        DANTEFORGE_ANTIGRAVITY_SOURCE_DIR: fixtureDir,
-      },
-      encoding: 'utf8',
+    const result = runCli(cwd, home, ['skills', 'import', '--from', 'antigravity', '--bundle', 'Web Wizard'], {
+      DANTEFORGE_ANTIGRAVITY_SOURCE_DIR: fixtureDir,
     });
 
     assert.strictEqual(result.status ?? 0, 0, result.stderr);
@@ -938,14 +928,8 @@ describe('CLI release readiness', () => {
       'utf8',
     );
 
-    const result = spawnSync(process.execPath, [tsxCli, cliEntry, 'skills', 'import', '--from', 'antigravity', '--bundle', 'Web Wizard'], {
-      cwd,
-      env: {
-        ...process.env,
-        DANTEFORGE_HOME: home,
-        DANTEFORGE_ANTIGRAVITY_SOURCE_DIR: fixtureDir,
-      },
-      encoding: 'utf8',
+    const result = runCli(cwd, home, ['skills', 'import', '--from', 'antigravity', '--bundle', 'Web Wizard'], {
+      DANTEFORGE_ANTIGRAVITY_SOURCE_DIR: fixtureDir,
     });
 
     assert.notStrictEqual(result.status ?? 0, 0);

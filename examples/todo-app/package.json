@@ -1,0 +1,16 @@
+{
+  "name": "todo-app",
+  "version": "1.0.0",
+  "description": "Zero-dependency command-line TODO manager bundled as the DanteForge example",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test": "node --test tests/todo.test.js",
+    "start": "node src/cli.js"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "keywords": ["todo", "cli", "danteforge-example"],
+  "license": "MIT"
+}

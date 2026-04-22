@@ -14,13 +14,22 @@ import {
   exportAuditTrail,
 } from '../../core/premium.js';
 
-export async function premium(subcommand: string, options: { key?: string; tier?: string; days?: string } = {}): Promise<void> {
+export async function premium(subcommand: string, options: {
+  key?: string;
+  tier?: string;
+  days?: string;
+  _loadState?: typeof loadState;
+  _saveState?: typeof saveState;
+} = {}): Promise<void> {
+  const loadFn = options._loadState ?? loadState;
+  const saveFn = options._saveState ?? saveState;
+
   return withErrorBoundary('premium', async () => {
     switch (subcommand) {
       case 'status':
         return showStatus();
       case 'activate':
-        return activateLicense(options.key);
+        return activateLicense(options.key, loadFn, saveFn);
       case 'audit-export':
         return auditExport();
       case 'features':
@@ -62,7 +71,11 @@ async function showStatus(): Promise<void> {
   }
 }
 
-async function activateLicense(key?: string): Promise<void> {
+async function activateLicense(
+  key?: string,
+  loadFn: typeof loadState = loadState,
+  saveFn: typeof saveState = saveState,
+): Promise<void> {
   if (!key) {
     logger.error('Usage: danteforge premium activate <license-key>');
     process.exitCode = 1;
@@ -71,11 +84,11 @@ async function activateLicense(key?: string): Promise<void> {
 
   const result = validatePremiumLicense(key);
   if (result.valid) {
-    const state = await loadState();
+    const state = await loadFn();
     state.premiumTier = result.tier;
     state.premiumLicenseKey = key;
     state.auditTrailEnabled = result.tier !== 'free';
-    await saveState(state);
+    await saveFn(state);
     logger.success(`License activated! Tier: ${result.tier.toUpperCase()}`);
   } else {
     logger.error('Invalid license key.');

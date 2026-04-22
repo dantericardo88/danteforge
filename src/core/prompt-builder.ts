@@ -92,7 +92,23 @@ Requirements:
 - Make atomic, focused changes
 - Include verification that the criteria are met
 
-Output the complete code changes needed — show full file contents for modified files.`;
+Code Output Format — you MUST use one of these exact formats for every file change:
+
+**New files** (use NEW_FILE):
+NEW_FILE: src/path/to/file.ts
+\`\`\`typescript
+// complete file content here
+\`\`\`
+
+**Edits to existing files** (use SEARCH/REPLACE):
+<<<<<<< SEARCH
+// exact existing code to find (must match character-for-character)
+=======
+// replacement code
+>>>>>>> REPLACE
+filepath: src/path/to/file.ts
+
+Output ONLY these code blocks — no prose explanations between blocks. Every file you change must have a corresponding block in one of the above formats.`;
 }
 
 /**
@@ -123,6 +139,50 @@ Respond with:
 - PASS or FAIL
 - Brief explanation
 - If FAIL: specific items to fix`;
+}
+
+/**
+ * Enrich a task prompt with relevant patterns from the global pattern library.
+ * Patterns are filtered by category match and top avgRoi, then prepended as
+ * "OSS Pattern References" context. Best-effort — never throws.
+ */
+export async function enrichPromptWithLibraryPatterns(
+  taskPrompt: string,
+  category: string,
+  opts?: {
+    maxPatterns?: number;
+    _queryLibrary?: (opts: { category?: string; limit?: number }) => Promise<Array<{ patternName: string; implementationSnippet: string; whyItWorks: string; avgRoi: number }>>;
+  },
+): Promise<string> {
+  try {
+    let patterns: Array<{ patternName: string; implementationSnippet: string; whyItWorks: string; avgRoi: number }> = [];
+
+    if (opts?._queryLibrary) {
+      patterns = await opts._queryLibrary({ category, limit: opts.maxPatterns ?? 3 });
+    } else {
+      // Dynamic import to avoid circular dep — best-effort
+      const { queryLibrary } = await import('./global-pattern-library.js').catch(() => ({ queryLibrary: null }));
+      if (queryLibrary) {
+        patterns = await queryLibrary({ category, limit: opts?.maxPatterns ?? 3 });
+      }
+    }
+
+    if (patterns.length === 0) return taskPrompt;
+
+    const patternContext = [
+      '\n## OSS Pattern References (from global pattern library)',
+      ...patterns.map(p =>
+        `### ${p.patternName} (ROI: ${(p.avgRoi * 100).toFixed(0)}%)\n` +
+        `Why it works: ${p.whyItWorks}\n` +
+        `Reference:\n\`\`\`\n${p.implementationSnippet.slice(0, 300)}\n\`\`\``
+      ),
+      '\nUse these patterns as reference when relevant — do not copy verbatim.\n',
+    ].join('\n');
+
+    return taskPrompt + patternContext;
+  } catch {
+    return taskPrompt; // Best-effort: never fail the main prompt
+  }
 }
 
 /**
@@ -213,7 +273,7 @@ Follow the .op JSON format:
 \`\`\`json
 {
   "formatVersion": "1.0.0",
-  "generator": "danteforge/0.10.0",
+  "generator": "danteforge/0.17.0",
   "created": "<ISO timestamp>",
   "document": { "name": "<project>", "pages": [...] },
   "nodes": [...],

@@ -10,6 +10,7 @@ import {
   loadAuditLog,
   requestSelfEditApproval,
   type SelfEditAuditEntry,
+  type SelfEditApprovalOptions,
 } from '../src/core/safe-self-edit.js';
 
 describe('isProtectedPath', () => {
@@ -43,7 +44,7 @@ describe('isProtectedPath', () => {
     assert.strictEqual(isProtectedPath('src/core/llm.ts'), false);
     assert.strictEqual(isProtectedPath('src/cli/commands/plan.ts'), false);
     assert.strictEqual(isProtectedPath('tests/state.test.ts'), false);
-    assert.strictEqual(isProtectedPath('package.json'), false);
+    assert.strictEqual(isProtectedPath('package.json'), true);  // package.json is protected — forge must not corrupt it
     assert.strictEqual(isProtectedPath('src/harvested/gsd/hooks/context-rot.ts'), false);
   });
 
@@ -101,6 +102,7 @@ describe('auditSelfEdit + loadAuditLog', () => {
       action: 'write',
       reason: 'test reason',
       approved: true,
+      policy: 'allow-with-audit',
     };
 
     await auditSelfEdit(entry, tmpDir);
@@ -120,6 +122,7 @@ describe('auditSelfEdit + loadAuditLog', () => {
         action: 'write',
         reason: 'first entry',
         approved: true,
+        policy: 'allow-with-audit',
       };
       const entry2: SelfEditAuditEntry = {
         timestamp: '2026-01-02T00:00:00.000Z',
@@ -127,6 +130,7 @@ describe('auditSelfEdit + loadAuditLog', () => {
         action: 'delete',
         reason: 'second entry',
         approved: false,
+        policy: 'deny',
       };
 
       await auditSelfEdit(entry1, cwd);
@@ -161,8 +165,9 @@ describe('auditSelfEdit + loadAuditLog', () => {
         timestamp: '2026-03-18T12:00:00.000Z',
         filePath: 'src/core/handoff.ts',
         action: 'rename',
-        reason: 'Renaming for v0.8.0 refactor',
+        reason: 'Renaming for v0.9.0 refactor',
         approved: true,
+        policy: 'allow-with-audit',
         beforeHash: 'abc123',
         afterHash: 'def456',
       };
@@ -177,6 +182,7 @@ describe('auditSelfEdit + loadAuditLog', () => {
       assert.strictEqual(loaded0.action, entry.action);
       assert.strictEqual(loaded0.reason, entry.reason);
       assert.strictEqual(loaded0.approved, entry.approved);
+      assert.strictEqual(loaded0.policy, entry.policy);
       assert.strictEqual(loaded0.beforeHash, entry.beforeHash);
       assert.strictEqual(loaded0.afterHash, entry.afterHash);
     } finally {
@@ -196,9 +202,9 @@ describe('requestSelfEditApproval', () => {
     await fs.rm(tmpDir, { recursive: true, force: true });
   });
 
-  it('returns true for protected paths (auto-approved in v0.8.0)', async () => {
-    const approved = await requestSelfEditApproval('src/core/state.ts', 'Unit test approval', tmpDir);
-    assert.strictEqual(approved, true);
+  it('returns false for protected paths with default deny policy', async () => {
+    const approved = await requestSelfEditApproval('src/core/state.ts', 'Unit test deny', tmpDir);
+    assert.strictEqual(approved, false);
   });
 
   it('returns true for non-protected paths', async () => {
@@ -216,6 +222,170 @@ describe('requestSelfEditApproval', () => {
       assert.strictEqual(entries.length, 2);
       assert.ok(entries.some(e => e.filePath === 'src/core/gates.ts'));
       assert.ok(entries.some(e => e.filePath === 'src/core/logger.ts'));
+    } finally {
+      await fs.rm(dir, { recursive: true, force: true });
+    }
+  });
+});
+
+describe('requestSelfEditApproval — policy enforcement', () => {
+  it('deny policy: returns false for protected path and true for non-protected', async () => {
+    const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'danteforge-policy-deny-'));
+    try {
+      const protectedResult = await requestSelfEditApproval(
+        'src/core/state.ts',
+        'deny test',
+        { cwd: dir, policy: 'deny' },
+      );
+      const nonProtectedResult = await requestSelfEditApproval(
+        'src/core/logger.ts',
+        'deny test non-protected',
+        { cwd: dir, policy: 'deny' },
+      );
+      assert.strictEqual(protectedResult, false);
+      assert.strictEqual(nonProtectedResult, true);
+    } finally {
+      await fs.rm(dir, { recursive: true, force: true });
+    }
+  });
+
+  it('allow-with-audit policy: returns true for protected path with audit entry', async () => {
+    const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'danteforge-policy-audit-'));
+    try {
+      const result = await requestSelfEditApproval(
+        'src/core/gates.ts',
+        'explicit audit approval',
+        { cwd: dir, policy: 'allow-with-audit' },
+      );
+      assert.strictEqual(result, true);
+
+      const entries = await loadAuditLog(dir);
+      assert.strictEqual(entries.length, 1);
+      assert.strictEqual(entries[0]!.approved, true);
+      assert.strictEqual(entries[0]!.policy, 'allow-with-audit');
+    } finally {
+      await fs.rm(dir, { recursive: true, force: true });
+    }
+  });
+
+  it('confirm policy + _isTTY=false: degrades to deny for protected path', async () => {
+    const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'danteforge-policy-confirm-no-tty-'));
+    try {
+      const result = await requestSelfEditApproval(
+        'src/core/autoforge.ts',
+        'confirm without TTY',
+        { cwd: dir, policy: 'confirm', _isTTY: false },
+      );
+      assert.strictEqual(result, false);
+
+      const entries = await loadAuditLog(dir);
+      assert.strictEqual(entries[0]!.approved, false);
+    } finally {
+      await fs.rm(dir, { recursive: true, force: true });
+    }
+  });
+
+  it('confirm policy + _readLine returning "y": returns true for protected path', async () => {
+    const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'danteforge-policy-confirm-yes-'));
+    try {
+      const opts: SelfEditApprovalOptions = {
+        cwd: dir,
+        policy: 'confirm',
+        _isTTY: true,
+        _readLine: async () => 'y',
+      };
+      const result = await requestSelfEditApproval('src/core/pdse.ts', 'user says yes', opts);
+      assert.strictEqual(result, true);
+
+      const entries = await loadAuditLog(dir);
+      assert.strictEqual(entries[0]!.approved, true);
+      assert.strictEqual(entries[0]!.policy, 'confirm');
+    } finally {
+      await fs.rm(dir, { recursive: true, force: true });
+    }
+  });
+
+  it('confirm policy + _readLine returning "n": returns false for protected path', async () => {
+    const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'danteforge-policy-confirm-no-'));
+    try {
+      const opts: SelfEditApprovalOptions = {
+        cwd: dir,
+        policy: 'confirm',
+        _isTTY: true,
+        _readLine: async () => 'n',
+      };
+      const result = await requestSelfEditApproval('src/core/handoff.ts', 'user says no', opts);
+      assert.strictEqual(result, false);
+
+      const entries = await loadAuditLog(dir);
+      assert.strictEqual(entries[0]!.approved, false);
+    } finally {
+      await fs.rm(dir, { recursive: true, force: true });
+    }
+  });
+
+  it('backward compat: string cwd argument defaults to deny policy for protected paths', async () => {
+    const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'danteforge-policy-compat-'));
+    try {
+      const result = await requestSelfEditApproval('src/core/state.ts', 'compat test', dir);
+      assert.strictEqual(result, false);
+
+      const entries = await loadAuditLog(dir);
+      assert.strictEqual(entries[0]!.policy, 'deny');
+    } finally {
+      await fs.rm(dir, { recursive: true, force: true });
+    }
+  });
+
+  it('policy field is present in every audit entry', async () => {
+    const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'danteforge-policy-field-'));
+    try {
+      await requestSelfEditApproval('src/core/state.ts', 'protected deny', { cwd: dir, policy: 'deny' });
+      await requestSelfEditApproval('src/core/logger.ts', 'non-protected', { cwd: dir, policy: 'deny' });
+      await requestSelfEditApproval('src/core/gates.ts', 'allow-with-audit', { cwd: dir, policy: 'allow-with-audit' });
+
+      const entries = await loadAuditLog(dir);
+      assert.strictEqual(entries.length, 3);
+      for (const entry of entries) {
+        assert.ok(
+          entry.policy === 'deny' || entry.policy === 'allow-with-audit' || entry.policy === 'confirm',
+          `Expected valid policy, got: ${entry.policy}`,
+        );
+      }
+    } finally {
+      await fs.rm(dir, { recursive: true, force: true });
+    }
+  });
+
+  it('non-protected path is always approved regardless of policy', async () => {
+    const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'danteforge-policy-nonprotected-'));
+    try {
+      const deny = await requestSelfEditApproval('src/core/logger.ts', 'deny policy', { cwd: dir, policy: 'deny' });
+      const audit = await requestSelfEditApproval('src/core/llm.ts', 'audit policy', { cwd: dir, policy: 'allow-with-audit' });
+      const confirm = await requestSelfEditApproval('src/utils/git.ts', 'confirm policy', { cwd: dir, policy: 'confirm', _isTTY: false });
+
+      assert.strictEqual(deny, true);
+      assert.strictEqual(audit, true);
+      assert.strictEqual(confirm, true);
+    } finally {
+      await fs.rm(dir, { recursive: true, force: true });
+    }
+  });
+
+  it('audit entry approved field matches actual decision outcome', async () => {
+    const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'danteforge-policy-outcome-'));
+    try {
+      // deny → approved=false
+      await requestSelfEditApproval('src/core/state.ts', 'deny', { cwd: dir, policy: 'deny' });
+      // allow-with-audit → approved=true
+      await requestSelfEditApproval('src/core/gates.ts', 'audit', { cwd: dir, policy: 'allow-with-audit' });
+
+      const entries = await loadAuditLog(dir);
+      assert.strictEqual(entries.length, 2);
+      const denyEntry = entries.find(e => e.policy === 'deny')!;
+      const auditEntry = entries.find(e => e.policy === 'allow-with-audit')!;
+      assert.strictEqual(denyEntry.approved, false);
+      assert.strictEqual(auditEntry.approved, true);
     } finally {
       await fs.rm(dir, { recursive: true, force: true });
     }

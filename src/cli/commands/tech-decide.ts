@@ -117,12 +117,21 @@ function formatTechDecision(categories: TechCategory[]): string {
 export async function techDecide(options: {
   prompt?: boolean;
   auto?: boolean;
+  _llmCaller?: typeof callLLM;
+  _isLLMAvailable?: typeof isLLMAvailable;
+  _loadState?: typeof loadState;
+  _saveState?: typeof saveState;
 } = {}) {
+  const llmFn = options._llmCaller ?? callLLM;
+  const llmAvailFn = options._isLLMAvailable ?? isLLMAvailable;
+  const loadFn = options._loadState ?? loadState;
+  const saveFn = options._saveState ?? saveState;
+
   return withErrorBoundary('tech-decide', async () => {
   logger.success('DanteForge Tech Decide — Guided Tech Stack Selection');
   logger.info('');
 
-  const state = await loadState();
+  const state = await loadFn();
   const skill = await resolveSkill('brainstorming');
 
   // Load SPEC if available
@@ -216,18 +225,18 @@ Default recommendation: [list the recommended option from each category]`;
     ].join('\n'));
 
     state.auditLog.push(`${new Date().toISOString()} | tech-decide: prompt generated`);
-    await saveState(state);
+    await saveFn(state);
     return;
   }
 
   // Mode 2: LLM API mode
-  const llmAvailable = await isLLMAvailable();
+  const llmAvailable = await llmAvailFn();
   if (llmAvailable) {
     logger.info('Analyzing project for tech stack recommendations...');
     logger.info('');
 
     try {
-      const result = await callLLM(prompt, undefined, { enrichContext: true });
+      const result = await llmFn(prompt, undefined, { enrichContext: true });
 
       // Parse and format
       const categories = parseTechOptions(result);
@@ -272,7 +281,7 @@ Default recommendation: [list the recommended option from each category]`;
       logger.info('  danteforge forge   — builds with selected stack');
 
       state.auditLog.push(`${new Date().toISOString()} | tech-decide: ${categories.length} categories analyzed, saved to TECH_STACK.md`);
-      await saveState(state);
+      await saveFn(state);
       return;
     } catch (err) {
       logger.warn(`LLM call failed: ${err instanceof Error ? err.message : String(err)}`);
@@ -293,6 +302,6 @@ Default recommendation: [list the recommended option from each category]`;
   logger.info('  4. Run: danteforge plan (will incorporate your selections)');
 
   state.auditLog.push(`${new Date().toISOString()} | tech-decide: manual guidance displayed`);
-  await saveState(state);
+  await saveFn(state);
   });
 }

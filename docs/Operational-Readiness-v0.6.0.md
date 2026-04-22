@@ -1,6 +1,8 @@
+> **ARCHIVED** - This document reflects the v0.6.0 release. For the current release surface see [Operational-Readiness-v0.17.0.md](Operational-Readiness-v0.17.0.md). Do not treat this file as current release truth.
+
 # DanteForge v0.6.0 Operational Readiness
 
-This document reflects the current shipped state of DanteForge `0.6.0`, not the historical PRD snapshots.
+This document reflects the shipped state of DanteForge `0.6.0` at the time of that release, not the historical PRD snapshots.
 
 ## Current Status
 

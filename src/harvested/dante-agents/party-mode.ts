@@ -19,6 +19,44 @@ const PARTY_ARTIFACT_DIR = '.danteforge';
 export const AGENT_MAX_RETRIES = 2;
 export const AGENT_RETRY_DELAYS_MS = [2000, 5000];
 
+/**
+ * Shared state type used by party-mode internals.
+ */
+export interface PartyState {
+  project: string;
+  constitution?: string;
+  workflowStage?: string;
+  currentPhase: number;
+  tasks: Record<number, { name: string; files?: string[]; verify?: string }[]>;
+  lastHandoff: string;
+  profile: string;
+  tddEnabled?: boolean;
+  lightMode?: boolean;
+  auditLog?: string[];
+}
+
+/**
+ * Injection interface for testing party-mode without real dependencies.
+ */
+export interface PartyModeOptions {
+  _loadState?: () => Promise<PartyState>;
+  _isLLMAvailable?: () => Promise<boolean>;
+  _readArtifact?: (filename: string) => Promise<string>;
+  _onAgentUpdate?: (agent: string, status: 'starting' | 'done' | 'failed') => void;
+  _dispatchAgent?: (
+    agentName: string, context: string, projectSize: string,
+    profile: string, fullContext: Record<string, string>, isolation: boolean,
+  ) => Promise<AgentResult>;
+  _createWorktree?: (name: string) => Promise<string>;
+  _removeWorktree?: (name: string) => Promise<void>;
+  _listWorktrees?: () => Promise<{ path: string; branch: string }[]>;
+  _reflect?: typeof reflect;
+  _recordMemory?: typeof recordMemory;
+  _sleep?: (ms: number) => Promise<void>;
+  /** Project directory — used for lesson injection. Defaults to process.cwd(). */
+  _cwd?: string;
+}
+
 const AGENT_ROLES: Record<string, AgentRole> = {
   pm: 'pm',
   architect: 'architect',
@@ -42,17 +80,7 @@ export function determineScale(projectSize: string): 'light' | 'standard' | 'dee
   return 'standard';
 }
 
-function buildTaskSummary(state: {
-  project: string;
-  constitution?: string;
-  workflowStage?: string;
-  currentPhase: number;
-  tasks: Record<number, { name: string; files?: string[]; verify?: string }[]>;
-  lastHandoff: string;
-  profile: string;
-  tddEnabled?: boolean;
-  lightMode?: boolean;
-}): string {
+export function buildTaskSummary(state: PartyState): string {
   const lines: string[] = [];
   const phaseKeys = Object.keys(state.tasks).map(Number).sort((a, b) => a - b);
   if (phaseKeys.length > 0) {
@@ -75,7 +103,7 @@ function buildTaskSummary(state: {
   return lines.join('\n');
 }
 
-async function readArtifact(filename: string): Promise<string> {
+export async function readArtifact(filename: string): Promise<string> {
   try {
     return await fs.readFile(`${PARTY_ARTIFACT_DIR}/${filename}`, 'utf8');
   } catch {
@@ -83,18 +111,11 @@ async function readArtifact(filename: string): Promise<string> {
   }
 }
 
-async function buildStructuredContextFromState(state: {
-  project: string;
-  constitution?: string;
-  workflowStage?: string;
-  currentPhase: number;
-  tasks: Record<number, { name: string; files?: string[]; verify?: string }[]>;
-  lastHandoff: string;
-  profile: string;
-  tddEnabled?: boolean;
-  lightMode?: boolean;
-  auditLog?: string[];
-}): Promise<Record<string, string>> {
+async function buildStructuredContextFromState(
+  state: PartyState,
+  _readArtifact?: (filename: string) => Promise<string>,
+): Promise<Record<string, string>> {
+  const read = _readArtifact ?? readArtifact;
   const uniqueFiles = new Set<string>();
   for (const phaseTasks of Object.values(state.tasks)) {
     for (const task of phaseTasks ?? []) {
@@ -104,11 +125,11 @@ async function buildStructuredContextFromState(state: {
     }
   }
 
-  const spec = await readArtifact('SPEC.md');
-  const plan = await readArtifact('PLAN.md');
-  const design = await readArtifact('DESIGN.op');
-  const designTokens = await readArtifact('design-tokens.css');
-  const lessons = await readArtifact('lessons.md');
+  const spec = await read('SPEC.md');
+  const plan = await read('PLAN.md');
+  const design = await read('DESIGN.op');
+  const designTokens = await read('design-tokens.css');
+  const lessons = await read('lessons.md');
   const taskSummary = buildTaskSummary(state);
   const summaries = (state.auditLog ?? []).slice(-10).join('\n');
 
@@ -130,18 +151,8 @@ async function buildStructuredContextFromState(state: {
   };
 }
 
-function buildContextFromState(
-  state: {
-    project: string;
-    constitution?: string;
-    workflowStage?: string;
-    currentPhase: number;
-    tasks: Record<number, { name: string; files?: string[]; verify?: string }[]>;
-    lastHandoff: string;
-    profile: string;
-    tddEnabled?: boolean;
-    lightMode?: boolean;
-  },
+export function buildContextFromState(
+  state: PartyState,
   fullContext: Record<string, string>,
 ): string {
   const lines: string[] = [];
@@ -181,8 +192,23 @@ export interface AgentResult {
   error?: Error;
 }
 
-function isSyntheticAgentResult(result: string): boolean {
+export function isSyntheticAgentResult(result: string): boolean {
   return /offline mode|no llm available|manual review required|configure an llm provider/i.test(result);
+}
+
+/**
+ * Compute a quality score for agent output based on length and structure.
+ * PDSE-style heuristic: length contributes up to 40pts, headings 30pts, action items 30pts.
+ */
+export function computeQualityScore(output: string): number {
+  const outputLength = output.length;
+  const hasHeadings = /^#+ /m.test(output);
+  const hasActionItems = /^[-*] /m.test(output);
+  return Math.min(100,
+    (outputLength > 500 ? 40 : Math.round(outputLength / 12.5)) +
+    (hasHeadings ? 30 : 0) +
+    (hasActionItems ? 30 : 0),
+  );
 }
 
 async function dispatchAgent(
@@ -261,25 +287,40 @@ async function dispatchAgent(
   return { agent: agentName, result, durationMs: Date.now() - start, success, error };
 }
 
-async function dispatchAgentWithRetry(
+export async function dispatchAgentWithRetry(
   agentName: string,
   context: string,
   projectSize: string,
   profile: string,
   fullContext: Record<string, string>,
   isolation: boolean,
+  options?: {
+    _dispatchAgent?: PartyModeOptions['_dispatchAgent'];
+    _sleep?: (ms: number) => Promise<void>;
+    _onAgentUpdate?: PartyModeOptions['_onAgentUpdate'];
+  },
 ): Promise<AgentResult> {
+  const dispatch = options?._dispatchAgent ?? dispatchAgent;
+  const sleep = options?._sleep ?? ((ms: number) => new Promise(resolve => setTimeout(resolve, ms)));
+  const onUpdate = options?._onAgentUpdate ?? ((agent: string, status: string) => {
+    logger.info(`[party:${agent}] ${status}`);
+  });
   let lastResult: AgentResult | undefined;
+  onUpdate(agentName, 'starting');
   for (let attempt = 0; attempt <= AGENT_MAX_RETRIES; attempt++) {
-    const result = await dispatchAgent(agentName, context, projectSize, profile, fullContext, isolation);
-    if (result.success) return result;
+    const result = await dispatch(agentName, context, projectSize, profile, fullContext, isolation);
+    if (result.success) {
+      onUpdate(agentName, 'done');
+      return result;
+    }
     lastResult = result;
     if (attempt < AGENT_MAX_RETRIES) {
       const delay = AGENT_RETRY_DELAYS_MS[attempt]!;
       logger.warn(`Agent "${agentName}" failed (attempt ${attempt + 1}/${AGENT_MAX_RETRIES + 1}) — retrying in ${delay}ms`);
-      await new Promise(resolve => setTimeout(resolve, delay));
+      await sleep(delay);
     }
   }
+  onUpdate(agentName, 'failed');
   return lastResult!;
 }
 
@@ -287,27 +328,44 @@ export async function runDanteParty(
   agents?: string[],
   useWorktrees?: boolean,
   isolation?: boolean,
-): Promise<void> {
+  options?: PartyModeOptions,
+): Promise<{ success: boolean }> {
   const isolatedMode = isolation ?? false;
   const activeAgents = agents ?? DEFAULT_AGENTS;
   const partyStart = Date.now();
 
+  const stateLoader = options?._loadState ?? (async () => await loadState() as PartyState);
+  const llmChecker = options?._isLLMAvailable ?? isLLMAvailable;
+  const createWt = options?._createWorktree ?? createAgentWorktree;
+  const removeWt = options?._removeWorktree ?? removeAgentWorktree;
+  const listWt = options?._listWorktrees ?? listWorktrees;
+  const reflectFn = options?._reflect ?? reflect;
+  const memoryFn = options?._recordMemory ?? recordMemory;
+
   logger.success(`Dante Party Mode - ${activeAgents.length} agent(s) assembling`);
   logger.info(`Agents: ${activeAgents.join(', ')}`);
 
-  const state = await loadState();
+  const state = await stateLoader();
   const scale = determineScale(state.lightMode ? 'small' : 'medium');
   logger.info(`Orchestration scale: ${scale}`);
 
-  const llmReady = await isLLMAvailable();
+  const llmReady = await llmChecker();
   if (!llmReady) {
     logger.error('Party mode requires a verified live LLM provider. Configure a provider with working model access or start Ollama with the configured model before dispatching agents.');
-    process.exitCode = 1;
-    return;
+    return { success: false };
   }
 
-  const fullContext = await buildStructuredContextFromState(state);
-  const context = buildContextFromState(state, fullContext);
+  const fullContext = await buildStructuredContextFromState(state, options?._readArtifact);
+  let context = buildContextFromState(state, fullContext);
+
+  // Inject relevant lessons from lessons.md into the agent context (best-effort)
+  if (fullContext['lessons']?.trim()) {
+    try {
+      const { injectRelevantLessons } = await import('../../core/lessons-index.js');
+      const cwd = options?._cwd ?? process.cwd();
+      context = await injectRelevantLessons(context, 5, cwd);
+    } catch { /* lessons injection is best-effort — never block party mode */ }
+  }
   const worktreePaths: { agent: string; path: string }[] = [];
 
   if (useWorktrees) {
@@ -315,7 +373,7 @@ export async function runDanteParty(
     try {
       for (const agent of activeAgents) {
         const safeName = agent.toLowerCase().replace(/\s+/g, '-');
-        const worktreePath = await createAgentWorktree(safeName);
+        const worktreePath = await createWt(safeName);
         worktreePaths.push({ agent, path: worktreePath });
       }
       logger.success(`${worktreePaths.length} worktree(s) created for parallel execution`);
@@ -325,12 +383,11 @@ export async function runDanteParty(
     } catch (err) {
       logger.error(`Worktree setup failed: ${err instanceof Error ? err.message : String(err)}`);
       if (worktreePaths.length > 0) {
-        await cleanupWorktrees(worktreePaths.map(worktree => worktree.agent));
+        await cleanupWorktrees(worktreePaths.map(worktree => worktree.agent), removeWt);
         worktreePaths.length = 0;
       }
       logger.error('Party mode requires worktree isolation when --worktree is requested. Fix git/worktree setup and re-run.');
-      process.exitCode = 1;
-      return;
+      return { success: false };
     }
   }
 
@@ -338,27 +395,82 @@ export async function runDanteParty(
   const projectSize = state.lightMode ? 'small' : 'medium';
   const profile = state.profile ?? 'balanced';
 
-  const results = await Promise.all(activeAgents.map((agentName) =>
-    dispatchAgentWithRetry(agentName, context, projectSize, profile, fullContext, isolatedMode).catch((err): AgentResult => ({
-      agent: agentName,
-      result: `# ${agentName} Agent Error\n\nFailed to execute: ${err instanceof Error ? err.message : String(err)}`,
-      durationMs: Date.now() - partyStart,
-      success: false,
-      error: err instanceof Error ? err : new Error(String(err)),
-    })),
-  ));
+  // v0.9.0 — DAG-based execution when headless CLI is available
+  let dagExecutionUsed = false;
+  let results: AgentResult[] = [];
+  try {
+    const { isClaudeCliAvailable } = await import('../../core/headless-spawner.js');
+    const cliAvailable = await isClaudeCliAvailable();
+    if (cliAvailable && !isolatedMode) {
+      const { buildDefaultDAG, computeExecutionLevels, executeDAG, loadCustomDAG, filterDAGToRoles } = await import('../../core/agent-dag.js');
+      const { spawnParallelAgents } = await import('../../core/headless-spawner.js');
+
+      const customDag = await loadCustomDAG();
+      const dagNodes = customDag ?? buildDefaultDAG();
+      const filteredNodes = filterDAGToRoles(dagNodes, activeAgents as AgentRole[]);
+
+      if (filteredNodes.length > 0) {
+        const dagPlan = computeExecutionLevels(filteredNodes);
+        logger.info(`[Party] DAG execution: ${dagPlan.levels.length} levels, max parallelism ${dagPlan.estimatedParallelism}`);
+
+        const dagResult = await executeDAG<AgentResult>(dagPlan, async (levelAgents) => {
+          const levelResults = new Map<AgentRole, AgentResult>();
+          const levelPromises = levelAgents.map(async (role) => {
+            const agentName = role as string;
+            try {
+              const result = await dispatchAgentWithRetry(agentName, context, projectSize, profile, fullContext, false, { _dispatchAgent: options?._dispatchAgent, _sleep: options?._sleep, _onAgentUpdate: options?._onAgentUpdate });
+              levelResults.set(role, result);
+            } catch (err) {
+              levelResults.set(role, {
+                agent: agentName,
+                result: `# ${agentName} Agent Error\n\nFailed to execute: ${err instanceof Error ? err.message : String(err)}`,
+                durationMs: Date.now() - partyStart,
+                success: false,
+                error: err instanceof Error ? err : new Error(String(err)),
+              });
+            }
+          });
+          await Promise.all(levelPromises);
+          return levelResults;
+        });
+
+        results = Array.from(dagResult.results.values());
+
+        // Add placeholder failures for blocked agents
+        for (const blockedRole of dagResult.blockedAgents) {
+          results.push({
+            agent: blockedRole,
+            result: `# ${blockedRole} Agent Blocked\n\nBlocked by upstream DAG dependency failure`,
+            durationMs: 0,
+            success: false,
+            error: new Error(`Blocked by upstream DAG dependency failure`),
+          });
+        }
+
+        dagExecutionUsed = true;
+        logger.info(`[Party] DAG execution completed: ${dagResult.results.size} succeeded, ${dagResult.blockedAgents.length} blocked`);
+      }
+    }
+  } catch (err) {
+    logger.info(`[Party] DAG execution unavailable, using standard dispatch: ${err instanceof Error ? err.message : String(err)}`);
+  }
+
+  if (!dagExecutionUsed) {
+    results = await Promise.all(activeAgents.map((agentName) =>
+      dispatchAgentWithRetry(agentName, context, projectSize, profile, fullContext, isolatedMode, { _dispatchAgent: options?._dispatchAgent, _sleep: options?._sleep, _onAgentUpdate: options?._onAgentUpdate }).catch((err): AgentResult => ({
+        agent: agentName,
+        result: `# ${agentName} Agent Error\n\nFailed to execute: ${err instanceof Error ? err.message : String(err)}`,
+        durationMs: Date.now() - partyStart,
+        success: false,
+        error: err instanceof Error ? err : new Error(String(err)),
+      })),
+    ));
+  }
 
   // Score each successful agent's output for quality (PDSE-style length + structure check)
   for (const agentResult of results) {
     if (!agentResult.success) continue;
-    const outputLength = agentResult.result.length;
-    const hasHeadings = /^#+ /m.test(agentResult.result);
-    const hasActionItems = /^[-*] /m.test(agentResult.result);
-    const qualityScore = Math.min(100,
-      (outputLength > 500 ? 40 : Math.round(outputLength / 12.5)) +
-      (hasHeadings ? 30 : 0) +
-      (hasActionItems ? 30 : 0),
-    );
+    const qualityScore = computeQualityScore(agentResult.result);
     (agentResult as AgentResult & { qualityScore?: number }).qualityScore = qualityScore;
     if (qualityScore < 50) {
       logger.warn(`Agent "${agentResult.agent}" output quality score: ${qualityScore}/100 (below threshold)`);
@@ -369,7 +481,7 @@ export async function runDanteParty(
       const agentTelemetry: ExecutionTelemetry = createTelemetry();
       recordToolCall(agentTelemetry, `dispatch:${agentResult.agent}`, true);
       agentTelemetry.duration = agentResult.durationMs;
-      const verdict = await reflect(agentResult.agent, agentResult.result, agentTelemetry);
+      const verdict = await reflectFn(agentResult.agent, agentResult.result, agentTelemetry);
       const evaluation = evaluateVerdict(verdict);
       if (!evaluation.complete && evaluation.score < 50) {
         logger.warn(`Reflection: ${agentResult.agent} agent scored ${evaluation.score}/100 — ${evaluation.feedback}`);
@@ -388,7 +500,7 @@ export async function runDanteParty(
 
   for (const failedAgent of failedAgents) {
     logger.warn(`  ${failedAgent.agent}: ${failedAgent.result.split('\n')[2] ?? 'unknown error'}`);
-    await recordMemory({
+    await memoryFn({
       category: 'error',
       summary: `Party agent failed: ${failedAgent.agent}`,
       detail: failedAgent.error?.message ?? failedAgent.result,
@@ -398,7 +510,6 @@ export async function runDanteParty(
   }
 
   if (failedAgents.length > 0) {
-    process.exitCode = 1;
     try {
       const { captureFailureLessons } = await import('../../cli/commands/lessons.js');
       const failures = failedAgents.map(entry => ({
@@ -406,9 +517,7 @@ export async function runDanteParty(
         error: entry.result.split('\n')[2] ?? 'unknown error',
       }));
       await captureFailureLessons(failures, 'party failure');
-    } catch {
-      // Lessons capture should not block party mode.
-    }
+    } catch (err) { logger.verbose(`[best-effort] party lessons: ${err instanceof Error ? err.message : String(err)}`); }
   }
 
   logger.info('');
@@ -442,11 +551,11 @@ export async function runDanteParty(
   }
 
   if (worktreePaths.length > 0) {
-    const activeWorktrees = await listWorktrees();
+    const activeWorktrees = await listWt();
     if (activeWorktrees.length > 0) {
       logger.info(`Active DanteForge worktrees: ${activeWorktrees.length}`);
     }
-    await cleanupWorktrees(activeAgents);
+    await cleanupWorktrees(activeAgents, removeWt);
   }
 
   const totalDurationSec = ((Date.now() - partyStart) / 1000).toFixed(1);
@@ -456,15 +565,20 @@ export async function runDanteParty(
   } else {
     logger.success(`Dante Party Mode complete - ${results.length} agent(s), ${totalDurationSec}s total`);
   }
+  return { success: failedAgents.length === 0 };
 }
 
-export async function cleanupWorktrees(agents: string[]): Promise<void> {
+export async function cleanupWorktrees(
+  agents: string[],
+  _removeWorktree?: (name: string) => Promise<void>,
+): Promise<void> {
+  const remove = _removeWorktree ?? removeAgentWorktree;
   logger.info('Cleaning up agent worktrees...');
 
   for (const agent of agents) {
     const safeName = agent.toLowerCase().replace(/\s+/g, '-');
     try {
-      await removeAgentWorktree(safeName);
+      await remove(safeName);
     } catch (err) {
       logger.warn(`Failed to remove worktree for "${agent}": ${err instanceof Error ? err.message : String(err)}`);
     }

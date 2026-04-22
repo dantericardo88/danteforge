@@ -8,6 +8,9 @@ import { withErrorBoundary } from '../../core/cli-error-boundary.js';
 export async function ship(options: {
   dryRun?: boolean;
   skipReview?: boolean;
+  _buildShipPlan?: (cwd: string, isDryRun: boolean) => Promise<import('../../core/ship-engine.js').ShipPlan>;
+  _loadState?: () => Promise<import('../../core/state.js').DanteState>;
+  _saveState?: (state: import('../../core/state.js').DanteState) => Promise<void>;
 } = {}) {
   return withErrorBoundary('ship', async () => {
   const cwd = process.cwd();
@@ -15,7 +18,8 @@ export async function ship(options: {
 
   logger.info('Building release guidance...');
 
-  const plan = await buildShipPlan(cwd, Boolean(options.dryRun));
+  const planFn = options._buildShipPlan ?? buildShipPlan;
+  const plan = await planFn(cwd, Boolean(options.dryRun));
 
   if (plan.reviewResult.critical.length > 0) {
     logger.error(`\n${plan.reviewResult.critical.length} CRITICAL finding(s):`);
@@ -51,7 +55,7 @@ export async function ship(options: {
   }
 
   try {
-    const state = await loadState();
+    const state = await (options._loadState ?? loadState)();
     const mode = options.dryRun ? 'dry-run' : 'execute';
     state.auditLog.push(
       `${timestamp} | ship: ${mode} ${plan.currentVersion}->${plan.newVersion} (${plan.reviewResult.critical.length} critical, ${plan.reviewResult.informational.length} info)`,
@@ -59,7 +63,7 @@ export async function ship(options: {
     if (options.skipReview) {
       state.auditLog.push(`${timestamp} | ship: WARNING --skip-review used, bypassing ${plan.reviewResult.critical.length} critical findings`);
     }
-    await saveState(state);
+    await (options._saveState ?? saveState)(state);
   } catch {
     // State save is best-effort
   }

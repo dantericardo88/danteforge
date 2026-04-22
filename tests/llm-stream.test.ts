@@ -171,6 +171,7 @@ describe('llm-stream real streaming', () => {
       undefined,
       undefined,
       {
+        _isLLMAvailable: async () => true,
         _callLLM: async () => 'hello world response',
         _loadConfig: async () => ({ defaultProvider: 'grok', ollamaModel: 'llama3', providers: {} } as any),
         _fetchStream: async () => { throw new Error('should not call fetch'); },
@@ -199,6 +200,7 @@ describe('llm-stream real streaming', () => {
       'ollama',
       undefined,
       {
+        _isLLMAvailable: async () => true,
         _fetchStream: mockFetch as unknown as typeof fetch,
         _loadConfig: async () => ({
           defaultProvider: 'ollama',
@@ -232,6 +234,7 @@ describe('llm-stream real streaming', () => {
       'claude',
       undefined,
       {
+        _isLLMAvailable: async () => true,
         _fetchStream: mockFetch as unknown as typeof fetch,
         _loadConfig: async () => ({
           defaultProvider: 'claude',
@@ -264,6 +267,7 @@ describe('llm-stream real streaming', () => {
       'claude',
       undefined,
       {
+        _isLLMAvailable: async () => true,
         _fetchStream: mockFetch as unknown as typeof fetch,
         _loadConfig: async () => ({
           defaultProvider: 'claude',
@@ -284,6 +288,7 @@ describe('llm-stream real streaming', () => {
       undefined,
       undefined,
       {
+        _isLLMAvailable: async () => true,
         _callLLM: async () => 'response text',
         _loadConfig: async () => ({ defaultProvider: 'grok', ollamaModel: 'llama3', providers: {} } as any),
       },
@@ -298,6 +303,7 @@ describe('llm-stream real streaming', () => {
       undefined,
       undefined,
       {
+        _isLLMAvailable: async () => true,
         _callLLM: async () => 'full response text',
         _loadConfig: async () => ({ defaultProvider: 'grok', ollamaModel: 'llama3', providers: {} } as any),
       },

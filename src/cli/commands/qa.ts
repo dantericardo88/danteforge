@@ -22,10 +22,19 @@ export async function qa(options: {
   baseline?: string;
   saveBaseline?: boolean;
   failBelow?: string;
+  _loadState?: typeof loadState;
+  _saveState?: typeof saveState;
+  _detectBinary?: typeof detectBrowseBinary;
+  _runQAPass?: typeof runQAPass;
 } = { url: '' }) {
+  const loadFn = options._loadState ?? loadState;
+  const saveFn = options._saveState ?? saveState;
+  const detectFn = options._detectBinary ?? detectBrowseBinary;
+  const runQAFn = options._runQAPass ?? runQAPass;
+
   return withErrorBoundary('qa', async () => {
   // Binary detection — fail-closed
-  const binaryPath = await detectBrowseBinary();
+  const binaryPath = await detectFn();
   if (!binaryPath) {
     const instructions = getBrowseInstallInstructions(process.platform);
     logger.error(instructions);
@@ -46,7 +55,7 @@ export async function qa(options: {
 
   logger.info(`Running ${mode} QA pass on ${options.url}...`);
 
-  const report = await runQAPass({
+  const report = await runQAFn({
     url: options.url,
     mode,
     baselinePath: options.baseline,
@@ -97,13 +106,13 @@ export async function qa(options: {
 
   // Update state
   try {
-    const state = await loadState();
+    const state = await loadFn();
     state.qaHealthScore = report.score;
     state.qaLastRun = report.timestamp;
     state.auditLog.push(
       `${report.timestamp} | qa: ${mode} pass on ${options.url} → score ${report.score}/100 (${report.issues.length} issues)`,
     );
-    await saveState(state);
+    await saveFn(state);
   } catch {
     // State save is best-effort
   }

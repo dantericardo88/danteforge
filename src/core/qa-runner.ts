@@ -48,6 +48,12 @@ export interface QARunOptions {
   browseConfig: BrowseAdapterConfig;
   /** Injected for testing — replaces invokeBrowse to avoid real browser dependency */
   _invokeBrowse?: (command: string, args: string[], config: BrowseAdapterConfig) => Promise<BrowseResult>;
+  /** Injected for testing — replaces fs operations to avoid real I/O */
+  _fsAdapter?: {
+    mkdir: (p: string, opts: { recursive: boolean }) => Promise<string | undefined>;
+    readFile: (p: string, encoding: string) => Promise<string>;
+    writeFile: (p: string, content: string) => Promise<void>;
+  };
 }
 
 // ── Main QA pass ────────────────────────────────────────────────────────────
@@ -55,9 +61,14 @@ export interface QARunOptions {
 export async function runQAPass(options: QARunOptions): Promise<QAReport> {
   const { url, mode, evidenceDir, browseConfig } = options;
   const browse = options._invokeBrowse ?? invokeBrowse;
+  const fsOps = {
+    mkdir: options._fsAdapter?.mkdir ?? ((p: string, opts: { recursive: boolean }) => fs.mkdir(p, opts)),
+    readFile: options._fsAdapter?.readFile ?? ((p: string, enc: string) => fs.readFile(p, enc as BufferEncoding)),
+    writeFile: options._fsAdapter?.writeFile ?? ((p: string, c: string) => fs.writeFile(p, c)),
+  };
 
   // Ensure evidence directory exists
-  await fs.mkdir(evidenceDir, { recursive: true });
+  await fsOps.mkdir(evidenceDir, { recursive: true });
 
   const issues: QAIssue[] = [];
   const screenshots: string[] = [];
@@ -143,7 +154,7 @@ export async function runQAPass(options: QARunOptions): Promise<QAReport> {
   // Regression comparison
   if (mode === 'regression' && options.baselinePath) {
     try {
-      const baselineContent = await fs.readFile(options.baselinePath, 'utf8');
+      const baselineContent = await fsOps.readFile(options.baselinePath, 'utf8');
       const baseline = JSON.parse(baselineContent) as QAReport;
       const regressions = findRegressions(baseline, report);
       report.regressions = regressions;
@@ -158,9 +169,14 @@ export async function runQAPass(options: QARunOptions): Promise<QAReport> {
 
 // ── Baseline management ─────────────────────────────────────────────────────
 
-export async function saveQABaseline(report: QAReport, baselinePath: string): Promise<void> {
-  await fs.mkdir(path.dirname(baselinePath), { recursive: true });
-  await fs.writeFile(baselinePath, JSON.stringify(report, null, 2));
+export async function saveQABaseline(
+  report: QAReport,
+  baselinePath: string,
+  _fsAdapter?: { mkdir: (p: string, opts: { recursive: boolean }) => Promise<string | undefined>; writeFile: (p: string, content: string) => Promise<void> },
+): Promise<void> {
+  const fsOps = _fsAdapter ?? { mkdir: (p: string, opts: { recursive: boolean }) => fs.mkdir(p, opts), writeFile: (p: string, c: string) => fs.writeFile(p, c) };
+  await fsOps.mkdir(path.dirname(baselinePath), { recursive: true });
+  await fsOps.writeFile(baselinePath, JSON.stringify(report, null, 2));
 }
 
 // ── Score computation (re-export from qa-scorer) ────────────────────────────
@@ -171,7 +187,7 @@ export function computeQAScore(issues: QAIssue[]): number {
 
 // ── Regression detection ────────────────────────────────────────────────────
 
-function findRegressions(baseline: QAReport, current: QAReport): QAIssue[] {
+export function findRegressions(baseline: QAReport, current: QAReport): QAIssue[] {
   const baselineIds = new Set(baseline.issues.map(i => `${i.category}:${i.description}`));
   return current.issues.filter(i => !baselineIds.has(`${i.category}:${i.description}`));
 }

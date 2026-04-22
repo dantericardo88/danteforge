@@ -15,13 +15,27 @@ import { withErrorBoundary } from '../../core/cli-error-boundary.js';
 
 const STATE_DIR = '.danteforge';
 
-export async function tasks(options: { prompt?: boolean; light?: boolean } = {}) {
+export async function tasks(options: {
+  prompt?: boolean;
+  light?: boolean;
+  _llmCaller?: typeof callLLM;
+  _isLLMAvailable?: typeof isLLMAvailable;
+  _loadState?: typeof loadState;
+  _saveState?: typeof saveState;
+  _writeArtifact?: typeof writeArtifact;
+} = {}) {
+  const llmFn = options._llmCaller ?? callLLM;
+  const llmAvailFn = options._isLLMAvailable ?? isLLMAvailable;
+  const loadFn = options._loadState ?? loadState;
+  const saveFn = options._saveState ?? saveState;
+  const writeFn = options._writeArtifact ?? writeArtifact;
+
   return withErrorBoundary('tasks', async () => {
   if (!(await runGate(() => requirePlan(options.light)))) return;
 
   logger.info('Breaking plan into executable tasks...');
 
-  const state = await loadState();
+  const state = await loadFn();
 
   let planContent = '';
   let specContent = '';
@@ -60,16 +74,16 @@ Output ONLY the markdown content - no preamble.`;
       `Prompt saved to: ${savedPath}`,
     ].join('\n'));
     state.auditLog.push(`${new Date().toISOString()} | tasks: prompt generated`);
-    await saveState(state);
+    await saveFn(state);
     return;
   }
 
-  const llmAvailable = await isLLMAvailable();
+  const llmAvailable = await llmAvailFn();
   if (llmAvailable) {
     logger.info('Sending to LLM for task breakdown...');
     try {
-      const tasksMd = await callLLM(prompt, undefined, { enrichContext: true });
-      await writeArtifact('TASKS.md', tasksMd);
+      const tasksMd = await llmFn(prompt, undefined, { enrichContext: true });
+      await writeFn('TASKS.md', tasksMd);
 
       const parsedTasks = extractNumberedTasks(tasksMd, 'Phase 1');
       if (parsedTasks.length > 0) {
@@ -81,7 +95,7 @@ Output ONLY the markdown content - no preamble.`;
 
       const timestamp = recordWorkflowStage(state, 'tasks');
       state.auditLog.push(`${timestamp} | tasks: ${parsedTasks.length} tasks generated via API`);
-      await saveState(state);
+      await saveFn(state);
       logger.success(`TASKS.md generated - ${parsedTasks.length} tasks ready for forge`);
       logger.info('Run "danteforge forge 1" to start executing');
       return;
@@ -92,14 +106,14 @@ Output ONLY the markdown content - no preamble.`;
   }
 
   const localTasks = buildLocalTasks(planContent, specContent);
-  await writeArtifact('TASKS.md', localTasks.markdown);
+  await writeFn('TASKS.md', localTasks.markdown);
   state.tasks[FIRST_EXECUTION_PHASE] = localTasks.tasks;
   if (state.currentPhase < FIRST_EXECUTION_PHASE) {
     state.currentPhase = FIRST_EXECUTION_PHASE;
   }
   const timestamp = recordWorkflowStage(state, 'tasks');
   state.auditLog.push(`${timestamp} | tasks: ${localTasks.tasks.length} tasks generated locally`);
-  await saveState(state);
+  await saveFn(state);
   logger.success(`TASKS.md generated locally - ${localTasks.tasks.length} tasks ready for forge`);
   logger.info('Run "danteforge forge 1" to start executing');
   if (!llmAvailable) {

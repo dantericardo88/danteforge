@@ -14,10 +14,18 @@ const PROTECTED_PATHS = [
   'src/core/autoforge.ts',
   'src/core/pdse.ts',
   'src/cli/index.ts',
+  // Project config files — changes here break the build / all tests
+  'package.json',
+  'tsconfig.json',
+  'tsconfig.tsbuildinfo',
+  '.gitignore',
+  'README.md',
 ];
 
 const AUDIT_DIR = '.danteforge/audit';
 const AUDIT_FILE = path.join(AUDIT_DIR, 'self-edit.log');
+
+export type SelfEditPolicy = 'deny' | 'confirm' | 'allow-with-audit';
 
 export interface SelfEditAuditEntry {
   timestamp: string;
@@ -25,8 +33,18 @@ export interface SelfEditAuditEntry {
   action: 'write' | 'delete' | 'rename';
   reason: string;
   approved: boolean;
+  policy: SelfEditPolicy;
   beforeHash?: string;
   afterHash?: string;
+}
+
+export interface SelfEditApprovalOptions {
+  cwd?: string;
+  policy?: SelfEditPolicy;
+  /** Test injection: override TTY detection */
+  _isTTY?: boolean;
+  /** Test injection: provide readline for confirm mode */
+  _readLine?: () => Promise<string>;
 }
 
 /**
@@ -59,7 +77,7 @@ export async function auditSelfEdit(entry: SelfEditAuditEntry, cwd?: string): Pr
 
   await fs.mkdir(auditDir, { recursive: true });
   await fs.appendFile(auditFile, JSON.stringify(entry) + '\n', 'utf8');
-  logger.verbose(`Self-edit audit written: ${entry.action} ${entry.filePath} (approved=${entry.approved})`);
+  logger.verbose(`Self-edit audit written: ${entry.action} ${entry.filePath} (approved=${entry.approved}, policy=${entry.policy})`);
 }
 
 /**
@@ -96,22 +114,78 @@ export async function loadAuditLog(cwd?: string): Promise<SelfEditAuditEntry[]> 
 /**
  * Request approval for a self-edit operation on a potentially protected file.
  *
- * In v0.8.0 all requests are auto-approved (Pro escalation gate is deferred).
- * An audit entry is always written regardless of whether the file is protected.
+ * Policy modes:
+ *   deny (default) — protected paths are blocked; non-protected always approved
+ *   allow-with-audit — protected paths approved with warning log (explicit opt-in)
+ *   confirm — interactive y/N prompt in TTY; degrades to deny in non-TTY contexts
  *
- * Returns true when the edit may proceed (always in v0.8.0).
+ * Accepts either a legacy string cwd argument or a SelfEditApprovalOptions object
+ * for backward compatibility with existing callers.
  */
 export async function requestSelfEditApproval(
   filePath: string,
   reason: string,
-  cwd?: string,
+  cwdOrOptions?: string | SelfEditApprovalOptions,
 ): Promise<boolean> {
+  const opts: SelfEditApprovalOptions =
+    typeof cwdOrOptions === 'string' ? { cwd: cwdOrOptions } : (cwdOrOptions ?? {});
+  const cwd = opts.cwd;
+  const policy: SelfEditPolicy = opts.policy ?? 'deny';
   const protected_ = isProtectedPath(filePath);
 
-  if (protected_) {
-    logger.warn(`Self-edit requested on protected path: ${filePath}`);
-    logger.info(`Reason: ${reason}`);
-    logger.info('Auto-approving (Pro escalation gate deferred to v0.8.0+)');
+  let approved: boolean;
+
+  if (!protected_) {
+    approved = true;
+  } else {
+    switch (policy) {
+      case 'deny':
+        approved = false;
+        logger.error(`Self-edit DENIED: ${filePath} is a protected path (policy=deny)`);
+        logger.error(`Reason given: ${reason}`);
+        logger.error('To allow: pass policy "confirm" or "allow-with-audit" to requestSelfEditApproval');
+        break;
+
+      case 'allow-with-audit':
+        approved = true;
+        logger.warn(`Self-edit APPROVED with audit: ${filePath} (policy=allow-with-audit)`);
+        logger.info(`Reason: ${reason}`);
+        break;
+
+      case 'confirm': {
+        const isTTY = opts._isTTY ?? (process.stdin.isTTY === true);
+        if (!isTTY) {
+          approved = false;
+          logger.error(`Self-edit DENIED: ${filePath} — confirm mode requires interactive TTY, none available`);
+          logger.error('Run interactively or use policy "allow-with-audit" to approve non-interactively');
+        } else {
+          logger.warn(`Self-edit requested on protected path: ${filePath}`);
+          logger.warn(`Reason: ${reason}`);
+          process.stdout.write('Allow this protected edit? [y/N] ');
+          const readLine = opts._readLine ?? (() =>
+            new Promise<string>(resolve => {
+              let buf = '';
+              process.stdin.setEncoding('utf8');
+              process.stdin.once('data', (chunk: string) => {
+                buf += chunk;
+                resolve(buf.trim());
+              });
+            })
+          );
+          const answer = await readLine();
+          approved = answer.toLowerCase() === 'y';
+          if (!approved) {
+            logger.error('Self-edit denied by user.');
+          } else {
+            logger.success('Self-edit approved by user.');
+          }
+        }
+        break;
+      }
+
+      default:
+        approved = false;
+    }
   }
 
   const entry: SelfEditAuditEntry = {
@@ -119,14 +193,50 @@ export async function requestSelfEditApproval(
     filePath,
     action: 'write',
     reason,
-    approved: true,
+    approved,
+    policy,
   };
 
   await auditSelfEdit(entry, cwd);
+  return approved;
+}
 
-  if (protected_) {
-    logger.success(`Self-edit approved and logged for protected file: ${filePath}`);
+/**
+ * Detective control: run after a forge wave completes to detect whether any
+ * protected paths were mutated. Writes an audit entry for each violation.
+ *
+ * This is NOT a preventive gate — it cannot undo changes already made by the
+ * LLM. It provides audit evidence and, under 'deny' policy, fails the forge
+ * wave so the user is informed before the changes propagate further.
+ */
+export async function auditPostForgeProtectedMutations(
+  changedFiles: string[],
+  policy: SelfEditPolicy,
+  opts?: { cwd?: string },
+): Promise<{ violations: string[] }> {
+  const protectedTouched = changedFiles.filter(f => isProtectedPath(f));
+  const violations: string[] = [];
+
+  for (const filePath of protectedTouched) {
+    const approved = policy === 'allow-with-audit';
+    const entry: SelfEditAuditEntry = {
+      timestamp: new Date().toISOString(),
+      filePath,
+      action: 'write',
+      reason: 'post-forge git diff detected mutation',
+      approved,
+      policy,
+    };
+    await auditSelfEdit(entry, opts?.cwd);
+
+    if (approved) {
+      logger.warn(`[Forge] Self-edit APPROVED with audit: ${filePath} (policy=allow-with-audit)`);
+    } else {
+      violations.push(filePath);
+      logger.error(`[Forge] Self-edit DENIED: ${filePath} was mutated but policy=${policy} forbids it.`);
+      logger.error('  Run `danteforge policy set allow-with-audit` to permit and audit self-modifications.');
+    }
   }
 
-  return true;
+  return { violations };
 }

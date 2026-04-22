@@ -1,89 +1,113 @@
-# DanteForge Quickstart
+# DanteForge Quick Start
 
-Three commands to go from idea to verified implementation.
+Five steps from install to your first automated improvement.
 
-## 1. Initialize
+---
 
-```bash
-danteforge init
-```
-
-Sets up `.danteforge/` project state, detects your environment, and checks system health.
-
-## 2. Build
+## Step 1 — Install
 
 ```bash
-danteforge magic "your idea here"
+npm install -g danteforge
 ```
 
-Runs the full pipeline automatically: constitution, spec, clarify, plan, tasks, and forge. Requires a configured LLM provider — run `danteforge config --set-key <provider:key>` first if you haven't.
+**What it does:** Installs the `danteforge` CLI globally.
+**What you'll see:** Nothing. Run `danteforge --version` to confirm.
 
-No LLM? Use prompt mode:
+---
+
+## Step 2 — Run `danteforge go` in your project
 
 ```bash
-danteforge magic "your idea here" --prompt
+cd your-project
+danteforge go
 ```
 
-This generates copy-paste prompts for each stage instead of calling an API.
+**What it does:** Asks 3 quick questions (what you're building, how you like to work, whether you have an API key), then shows your quality score.
 
-## 3. Verify
+**What you'll see:**
+```
+  What are you building? (brief description, Enter to skip)
+  > A REST API for my SaaS app
+
+  How do you want to work?
+    1. Plan first  2. Improve one thing  3. Full autonomous push
+  Enter choice [2]: 2
+
+  How do you want to start?
+    1. Offline first  2. Live AI is ready  3. Set up AI later
+  Enter choice [1]: 1
+
+  Overall  6.8/10  needs-work
+  P0 gaps: Error handling (4.0)  Testing (5.5)  Security (6.2)
+```
+
+---
+
+## Step 3 — Look at your top gap
+
+DanteForge will highlight your weakest dimension and explain it in plain English:
+
+```
+  Your project is weakest at Error handling.
+  Best next move:   add safer error messages and recovery paths.
+  Expected outcome: fewer crashes and clearer failures for users.
+  → danteforge improve "error handling"
+```
+
+Don't know what a term means? Run `danteforge explain <term>` — for example:
+```bash
+danteforge explain "error handling"
+danteforge explain testing
+```
+
+---
+
+## Step 4 — Apply one improvement
+
+When prompted, choose option 2:
+```
+  What would you like to do?
+    1. Review only
+    2. Apply one improvement — targeted cycle, ~2-3 min
+    3. Run auto-improve
+  Your choice [2]: 2
+```
+
+Or run directly:
+```bash
+danteforge improve "error handling"
+```
+
+**What it does:** Runs one LLM-driven improvement cycle targeting your weakest gap, then re-scores.
+**What you'll see:** A before/after score showing the gain from that cycle.
+
+> No API key yet? Run `danteforge config --set-key "claude:<key>"` first, then retry.
+
+---
+
+## Step 5 — Check your new score
 
 ```bash
-danteforge verify
+danteforge measure
 ```
 
-Checks that all artifacts exist, gates pass, and the workflow is consistent.
+**What it does:** Shows your updated score + top 3 gaps with human explanations.
+**What you'll see:**
+```
+  7.2/10  — needs-work  (▲ +0.4 today)
 
-## What Just Happened?
-
-DanteForge ran a 12-stage pipeline:
-
-1. **Constitution** — established project principles and constraints
-2. **Specify** — turned your idea into a detailed spec with acceptance criteria
-3. **Clarify** — found and resolved ambiguities in the spec
-4. **Tech Decide** — selected technologies with trade-off analysis
-5. **Plan** — created an architecture and implementation plan
-6. **Tasks** — broke the plan into atomic, executable tasks
-7. **Forge** — executed tasks in waves using LLM agents
-8. **Verify** — confirmed everything passes
-
-All artifacts are stored in `.danteforge/` as plain files you can read and edit.
-
-## What's Next?
-
-| Goal | Command |
-|------|---------|
-| Run another forge wave | `danteforge forge 2` |
-| Multi-agent parallel work | `danteforge party` |
-| Autonomous optimization | `danteforge autoforge` |
-| Harvest OSS patterns | `danteforge oss` |
-| Debug a specific issue | `danteforge debug "the issue"` |
-| Generate design artifacts | `danteforge design "component"` |
-| See all commands | `danteforge --help` |
-| Get context-aware guidance | `danteforge help` |
-
-## Advanced Workflows
-
-**Party + AutoForge combo** — let multiple agents work in parallel while autoforge orchestrates the pipeline:
-
-```bash
-danteforge autoforge "build feature X"
-danteforge party
+  P0 gaps:
+  1. Testing                6.0/10  — insufficient tests, bugs are harder to catch
+     → danteforge improve "testing"
+  2. Security               6.5/10  — security gaps that could expose user data
+     → danteforge improve "security"
 ```
 
-**OSS-driven development** — discover and harvest patterns from open-source projects:
+---
 
-```bash
-danteforge oss --max-repos 5
-danteforge harvest <system>
-```
+## What's next?
 
-**Prompt-only mode** — generate prompts without API calls (works offline):
-
-```bash
-danteforge specify "idea" --prompt
-danteforge plan --prompt
-danteforge forge 1 --prompt
-```
-
-See the full [command reference](ARCHITECTURE.md) and [README](../README.md) for details.
+- Run `danteforge auto-improve` for a hands-off loop until 9.0/10
+- Run `danteforge init --advanced` to set up adversarial scoring and competitive targeting
+- Run `danteforge help --all` for all 100+ commands
+- Run `danteforge explain <term>` for any unfamiliar concept

@@ -1,0 +1,159 @@
+name: 🐛 Bug Report
+description: Report a bug or unexpected behavior in DanteForge
+title: "[Bug]: "
+labels: ["bug", "needs-triage"]
+assignees: []
+
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for taking the time to fill out this bug report! Please provide as much detail as possible.
+
+  - type: checkboxes
+    id: prerequisites
+    attributes:
+      label: Prerequisites
+      description: Please confirm you've completed these steps before submitting.
+      options:
+        - label: I have searched existing issues to ensure this isn't a duplicate
+          required: true
+        - label: I have run `danteforge doctor --verbose` and reviewed the output
+          required: true
+        - label: I am using the latest version of DanteForge (`npm install -g danteforge@latest`)
+          required: false
+
+  - type: textarea
+    id: description
+    attributes:
+      label: Bug Description
+      description: A clear and concise description of the bug.
+      placeholder: "DanteForge crashes when running..."
+    validations:
+      required: true
+
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to Reproduce
+      description: Step-by-step instructions to reproduce the issue.
+      placeholder: |
+        1. Run `danteforge magic "add feature X"`
+        2. Wait for forge to complete
+        3. See error message
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected Behavior
+      description: What did you expect to happen?
+      placeholder: "I expected the forge command to complete successfully..."
+    validations:
+      required: true
+
+  - type: textarea
+    id: actual
+    attributes:
+      label: Actual Behavior
+      description: What actually happened? Include full error messages.
+      placeholder: "Error: ECONNREFUSED: Connection refused..."
+      render: shell
+    validations:
+      required: true
+
+  - type: textarea
+    id: doctor-output
+    attributes:
+      label: Doctor Output
+      description: Output of `danteforge doctor --verbose`
+      placeholder: "Paste the full output here..."
+      render: shell
+    validations:
+      required: false
+
+  - type: input
+    id: version
+    attributes:
+      label: DanteForge Version
+      description: Run `danteforge --version`
+      placeholder: "1.0.0"
+    validations:
+      required: true
+
+  - type: input
+    id: node-version
+    attributes:
+      label: Node.js Version
+      description: Run `node --version`
+      placeholder: "v20.11.0"
+    validations:
+      required: true
+
+  - type: dropdown
+    id: os
+    attributes:
+      label: Operating System
+      description: What OS are you using?
+      options:
+        - Windows 11
+        - Windows 10
+        - macOS Sonoma (14.x)
+        - macOS Ventura (13.x)
+        - macOS Monterey (12.x)
+        - Ubuntu 24.04
+        - Ubuntu 22.04
+        - Ubuntu 20.04
+        - Other Linux (specify in Additional Context)
+        - WSL2 (Windows Subsystem for Linux)
+    validations:
+      required: true
+
+  - type: dropdown
+    id: llm-provider
+    attributes:
+      label: LLM Provider
+      description: Which LLM provider were you using?
+      options:
+        - Ollama (local)
+        - Anthropic Claude
+        - OpenAI GPT-4
+        - xAI Grok
+        - Google Gemini
+        - Multiple providers
+    validations:
+      required: true
+
+  - type: textarea
+    id: config
+    attributes:
+      label: Configuration
+      description: Relevant parts of your `~/.danteforge/config.yaml` (REMOVE API KEYS!)
+      placeholder: |
+        llm:
+          defaultProvider: ollama
+          ollama:
+            baseUrl: http://localhost:11434
+            model: qwen2.5-coder:32b
+      render: yaml
+    validations:
+      required: false
+
+  - type: textarea
+    id: additional
+    attributes:
+      label: Additional Context
+      description: Any other context, screenshots, or logs that might help debug this issue.
+    validations:
+      required: false
+
+  - type: checkboxes
+    id: impact
+    attributes:
+      label: Impact
+      description: How severe is this bug?
+      options:
+        - label: Blocks my workflow (critical)
+        - label: Major inconvenience but I can work around it
+        - label: Minor issue, low priority

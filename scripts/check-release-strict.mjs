@@ -12,6 +12,7 @@ const env = releaseEnv(sandbox.homeDir, sandbox.xdgConfigHome);
 try {
   console.log(`Creating strict release checkout in ${sandbox.checkoutDir}`);
 
+  run('npm', ['run', 'check:truth-surface'], sandbox.checkoutDir, env);
   run('npm', ['run', 'check:repo-hygiene:strict'], sandbox.checkoutDir, env);
   run('npm', ['ci'], sandbox.checkoutDir, env);
   run('npm', ['--prefix', 'vscode-extension', 'ci'], sandbox.checkoutDir, env);

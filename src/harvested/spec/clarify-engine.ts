@@ -8,10 +8,14 @@ export interface ClarifyQuestion {
   context: string;
 }
 
-export async function generateClarifyQuestions(spec: string): Promise<ClarifyQuestion[]> {
+export async function generateClarifyQuestions(
+  spec: string,
+  options?: { _llmCaller?: (prompt: string) => Promise<string> },
+): Promise<ClarifyQuestion[]> {
   logger.info('Analyzing spec for ambiguities...');
 
-  if (await isLLMAvailable()) {
+  const llmReady = options?._llmCaller != null || await isLLMAvailable();
+  if (llmReady) {
     try {
       const prompt = `Analyze this specification and identify gaps, ambiguities, and missing requirements.
 
@@ -31,7 +35,9 @@ Focus on:
 ${spec}
 === END SPECIFICATION ===`;
 
-      const response = await callLLM(prompt, undefined, { enrichContext: true });
+      const response = options?._llmCaller
+        ? await options._llmCaller(prompt)
+        : await callLLM(prompt, undefined, { enrichContext: true });
       return parseQuestions(response);
     } catch (err) {
       logger.warn('LLM clarification failed, using local analysis');
@@ -42,10 +48,15 @@ ${spec}
   return detectBasicGaps(spec);
 }
 
-export async function runConsistencyCheck(spec: string, constitution: string): Promise<string[]> {
+export async function runConsistencyCheck(
+  spec: string,
+  constitution: string,
+  options?: { _llmCaller?: (prompt: string) => Promise<string> },
+): Promise<string[]> {
   logger.info('Running consistency check against constitution...');
 
-  if (await isLLMAvailable()) {
+  const llmReady = options?._llmCaller != null || await isLLMAvailable();
+  if (llmReady) {
     try {
       const prompt = `Check this specification for consistency with the project constitution.
 
@@ -62,7 +73,9 @@ ${constitution}
 ${spec}
 === END SPECIFICATION ===`;
 
-      const response = await callLLM(prompt, undefined, { enrichContext: true });
+      const response = options?._llmCaller
+        ? await options._llmCaller(prompt)
+        : await callLLM(prompt, undefined, { enrichContext: true });
       const violations = response
         .split('\n')
         .filter(line => line.trim().startsWith('VIOLATION:') || line.trim().startsWith('- VIOLATION:'))

@@ -5,10 +5,31 @@ import { logger } from '../../core/logger.js';
 import { withErrorBoundary } from '../../core/cli-error-boundary.js';
 import fs from 'fs/promises';
 
-export async function forge(phase = '1', options: { profile?: string; parallel?: boolean; prompt?: boolean; light?: boolean; worktree?: boolean; figma?: boolean; skipUx?: boolean } = {}) {
+export async function forge(phase = '1', options: { profile?: string; parallel?: boolean; prompt?: boolean; light?: boolean; worktree?: boolean; figma?: boolean; skipUx?: boolean; _isLLMAvailable?: () => Promise<boolean> } = {}) {
   return withErrorBoundary('forge', async () => {
   if (!(await runGate(() => requirePlan(options.light)))) return;
   if (!(await runGate(() => requireTests(options.light)))) return;
+
+  // LLM pre-flight — surface misconfiguration before wasting a full wave
+  if (!options.prompt) {
+    try {
+      const isLLMAvailableFn = options._isLLMAvailable ?? (async () => {
+        const { isLLMAvailable } = await import('../../core/llm.js');
+        return isLLMAvailable();
+      });
+      const llmReady = await isLLMAvailableFn().catch(() => false);
+      if (!llmReady) {
+        logger.error(
+          '[Forge] No LLM configured. Forge requires an LLM to generate code.\n' +
+          '  → Run: danteforge doctor      (full health check)\n' +
+          '  → Or:  danteforge config      (set API key / provider)\n' +
+          '  → Or:  danteforge forge --prompt  (copy-paste mode, no API needed)',
+        );
+        process.exitCode = 1;
+        return;
+      }
+    } catch { /* best-effort — never block if check itself fails */ }
+  }
 
   if (options.figma && !options.skipUx) {
     if (!options.prompt) {
@@ -23,8 +44,10 @@ export async function forge(phase = '1', options: { profile?: string; parallel?:
   }
 
   const profile = options.profile ?? 'balanced';
-  const result = await executeWave(parseInt(phase, 10), profile, options.parallel, options.prompt, options.worktree);
+  const onChunk = process.stdout.isTTY ? (chunk: string) => { process.stdout.write(chunk); } : undefined;
+  const result = await executeWave(parseInt(phase, 10), profile, options.parallel, options.prompt, options.worktree, undefined, { _onChunk: onChunk });
   if (!result.success) {
+    process.exitCode = 1;
     return;
   }
 

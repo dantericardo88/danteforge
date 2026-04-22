@@ -1,6 +1,6 @@
-# DanteForge — spec-driven agentic dev CLI. Works with Claude Code, Codex, Cursor.
+# DanteForge - spec-driven agentic dev CLI. Works with Claude Code, local Codex installs, Cursor, and Goose.
 
-[![npm version](https://img.shields.io/badge/npm-0.10.0-blue)](https://www.npmjs.com/package/danteforge)
+[![npm version](https://img.shields.io/badge/npm-0.17.0-blue)](https://www.npmjs.com/package/danteforge)
 [![license](https://img.shields.io/badge/license-MIT-green)](LICENSE)
 [![node](https://img.shields.io/badge/node-%3E%3D18-brightgreen)](package.json)
 
@@ -8,10 +8,116 @@
 
 ```bash
 npm install -g danteforge
-danteforge init
+danteforge go
 ```
 
-## Quick Start
+## First 5 Minutes
+
+```bash
+danteforge go
+```
+
+**First run** (no project yet): 3-question setup wizard (2 min) -> fast score -> top 3 gaps.  
+**Every run after**: shows current score, recommends the one next action, asks to confirm.
+
+**What you'll see after setup:**
+
+```text
+  DanteForge - Project State
+  -------------------------------------------------
+  Overall  6.8/10  needs-work
+
+  P0 gaps (below 7.0):
+    Error Handling        ====....  6.2
+    Security              =====...  6.8
+
+  Recommended next step:
+    Improve Error Handling  (currently 6.2/10)
+    Runs one targeted improvement cycle and then re-checks your score.
+    -> danteforge improve "improve error handling"
+
+  Start? [Y/n]
+```
+
+**No API key yet?** All planning commands work offline. Only improvement loops need a provider.
+
+```bash
+danteforge score               # fast local score, no API key required
+danteforge spark "your idea"   # zero-token planning - works without any API key
+danteforge config --set-key "claude:<key>"  # add a key when ready
+```
+
+## Flagship Path
+
+If you only learn one DanteForge loop, make it this one:
+
+1. `danteforge go` - 3-question setup on first run, then your score and top gaps.
+2. `danteforge improve "<goal>"` - targeted improvement cycle when you want to push one area.
+3. `danteforge verify` - machine-readable quality gate before you call anything "done".
+
+See it working right now - the todo-app has already been run through the full pipeline:
+
+```bash
+cd examples/todo-app && danteforge score
+```
+
+### What DanteForge actually gives you
+
+| Without DanteForge | With DanteForge |
+|---|---|
+| AI produces code, you guess if it's good | Score 0-10 across 17 dimensions |
+| Each session starts from scratch | Self-improving lessons injected from past failures |
+| You accept whatever the AI produces | Convergence loop runs until quality gates pass |
+| No idea how you compare to alternatives | Competitive matrix tracks gap to leader per dimension |
+| Scoring is self-reported and inflated | Blind adversary model catches inflation automatically |
+
+### Canonical Commands
+
+Five commands, three levels. That's the whole mental model.
+
+```bash
+# plan — what should we build?
+danteforge plan "build auth system" --level light     # review + specify
+danteforge plan "build auth system" --level standard  # full planning pipeline
+danteforge plan "build auth system" --level deep      # + tech-decide + tasks
+
+# build — make progress
+danteforge build "close auth gaps" --level light      # single forge wave
+danteforge build "close auth gaps" --level standard   # magic-style balanced execution
+danteforge build "close auth gaps" --level deep       # inferno + OSS harvest
+
+# measure — how good are we?
+danteforge measure --level light                      # quick score (default)
+danteforge measure --level standard                   # score + maturity + proof delta
+danteforge measure --level deep                       # verify + adversarial + convergence
+
+# compete — where do we lag?
+danteforge compete --level light                      # harsh self-assessment
+danteforge compete --level standard                   # + universe refresh
+danteforge compete --level deep                       # full Competitive Harvest Loop
+
+# harvest — learn from OSS
+danteforge harvest "CLI patterns" --level light       # focused pattern harvest
+danteforge harvest --level standard                   # bounded OSS pass
+danteforge harvest --level deep --until-saturation    # loop until library saturates
+```
+
+Branded presets (`spark`, `magic`, `inferno`, etc.) still work — they are aliases for the canonical commands above.
+
+### Core commands
+
+```bash
+danteforge go          # smart entry point: state panel + guided action
+danteforge start       # plain-English alias for go
+danteforge score       # fast score: one number + 3 P0 items in <5s
+danteforge measure     # plain-English alias for score
+danteforge verify      # machine-readable quality gate
+danteforge check       # plain-English alias for verify
+danteforge improve     # plain-English alias for magic
+danteforge ascend      # full autonomous loop: runs until all dims hit 9.0
+danteforge init        # setup wizard (use --advanced for provider/editor extras)
+```
+## Full Pipeline Example
 
 ```bash
 danteforge constitution   # define your project
@@ -23,41 +129,132 @@ danteforge assess         # 18-dimension quality report vs 27 competitors
 
 DanteForge exposes an MCP server that each of these agents can connect to directly:
 
-- **Claude Code** — full MCP integration + plugin manifest + slash commands
-- **Codex CLI** — native workflow slash commands via `~/.codex/commands`
-- **Cursor** — MCP server + `.cursor/mcp.json` config
-- **Windsurf** — MCP server via stdio
+- **Claude Code** - full MCP integration + plugin manifest + slash commands
+- **Codex CLI (local installs)** - native workflow slash commands via `~/.codex/commands`
+- **Cursor** - MCP server + `.cursor/mcp.json` config
+- **Windsurf** - MCP server via stdio
 
 ```json
 // Add to your Claude Code / Cursor MCP config:
 { "danteforge": { "command": "danteforge", "args": ["mcp-server"] } }
 ```
 
+## Supported Programmatic API
+
+The supported typed library surface is `danteforge/sdk`.
+
+```ts
+import { assess, computeHarshScore, loadState } from 'danteforge/sdk';
+```
+
+Treat the root `danteforge` package as the CLI entrypoint, not the primary typed API surface.
+
 ## Why DanteForge?
 
-- **Constitution-driven pipeline enforces spec→plan→verify — no skipping steps**
-- **Convergence loops repair until quality gates pass — not just until it runs**
-- **Harsh 18-dimension scoring benchmarked against 27 competitors — no grade inflation**
+DanteForge is the **trust spine** for AI-assisted development â€” it prevents the "narrate completion, skip closure" failure mode that plagues most AI coding tools.
 
-## Competitor Comparison
+### Key Differentiators
 
-| Tool | specDriven | autonomy | testing | tokenEcon | enterprise | community |
-|---|---|---|---|---|---|---|
-| **DanteForge** | **8.5** | **8.0** | **8.5** | **7.5** | 4.5 | 1.5 |
-| Claude Code | 6.0 | 8.5 | 8.0 | 7.5 | 8.5 | 9.5 |
-| Devin | 7.5 | 9.0 | 7.0 | 6.5 | 7.0 | 7.5 |
-| Kiro (AWS) | 8.0 | 7.0 | 7.5 | 6.5 | 6.5 | 4.0 |
-| Cursor | 5.5 | 6.5 | 7.5 | 6.0 | 7.0 | 9.0 |
-| Codex CLI | 5.5 | 8.0 | 7.0 | 7.0 | 6.0 | 7.0 |
-| Aider | 6.5 | 7.5 | 7.5 | 6.0 | 5.0 | 8.0 |
-| Qodo 2.0 | 5.5 | 6.0 | 9.2 | 5.5 | 6.5 | 5.5 |
+- **Evidence-based convergence**: Runs assessâ†’forgeâ†’verifyâ†’assess loops until measurable quality targets are hit
+- **Spec enforcement**: Constitution-driven pipeline prevents skipping steps (specâ†’clarifyâ†’planâ†’tasksâ†’forgeâ†’verify)
+- **18-dimension quality scoring**: Self-assessment against 27 competitors with gap analysis and masterplans
+- **Enterprise foundations**: audit trails, workspace controls, budget controls, and release gates
+- **Multi-agent orchestration**: MCP server + plugin manifest for Claude Code, Cursor, Codex CLI, Goose
+- **Constitution guarantees**: Project principles are enforced, not just suggested
 
-Full 18-dimension × 27-competitor matrix: run `danteforge assess`
+## Stability
+
+- **Stable**: core CLI workflow, verify gates, assistant setup, release checks, and the VS Code extension install path
+- **Beta**: autonomous loops, live verification, and higher-power multi-agent orchestration
+- **Experimental**: advanced provider integrations, deep OSS harvesting loops, and maintainer-only sibling repo sync flows
+
+## Launch-Supported Surfaces
+
+- **local-only CLI**: no API keys required for `danteforge init`, `danteforge go`, `danteforge review`, and the bundled example path
+- **live-provider CLI**: secret-backed verification via `npm run verify:live` or `.github/workflows/live-canary.yml`
+- **VS Code extension**: verified install/package path backed by `npm --prefix vscode-extension run verify`
+
+### Quality Standards
+
+DanteForge enforces a **maturity-aware quality system** with 6 levels:
+- **Level 1 (Sketch)**: Proves the idea works
+- **Level 2 (Prototype)**: Investor-ready MVP
+- **Level 3 (Alpha)**: Internal team use
+- **Level 4 (Beta)**: Paid beta customers
+- **Level 5 (Customer-Ready)**: Production launch
+- **Level 6 (Enterprise-Grade)**: Fortune 500 scale
+
+## Quick Example
+
+**Build a complete TODO CLI app in 3 minutes:**
+
+```bash
+# Define what you want
+danteforge constitution "A simple CLI todo app with add, list, complete, delete"
+
+# AI generates spec, plan, and code
+danteforge nova "todo app with CLI interface"
+
+# Quality check vs competitors
+danteforge assess
+```
+
+See [`examples/todo-app/`](examples/todo-app/) for a complete walkthrough â€” spec to working code with zero manual coding.
+
+## Advanced Usage
+
+### Autonomous Development Loops
+```bash
+# Run until 9.0+ quality scores
+danteforge self-improve --level 5
+
+# Assess current state vs 27 competitors
+danteforge assess --json | jq '.assessment.displayScore'
+```
+
+### MCP Integration
+```json
+// Add to Claude Code / Cursor config:
+{
+  "mcpServers": {
+    "danteforge": {
+      "command": "danteforge",
+      "args": ["mcp-server"]
+    }
+  }
+}
+```
+
+### Enterprise Features
+```bash
+# Audit trails and compliance
+danteforge enterprise-readiness
+
+# Multi-tenant isolation
+danteforge config --workspace my-team
+
+# Budget controls
+danteforge spark --max-budget 5.00
+```
+
+## How DanteForge Compares
+
+DanteForge occupies a different niche than editor-native tools (Cursor, Copilot) or hosted agents (Devin). It's a **CLI-first, spec-driven pipeline** â€” closest to Aider and Codex CLI in form factor, but with a structured constitution-to-verify workflow that those tools lack.
+
+**Strengths:** Spec enforcement, multi-provider LLM support (7 providers), convergence loops, deterministic autoforge pipeline, budget controls.
+
+**Gaps:** No deep IDE integration (VS Code extension is a terminal wrapper), no hosted mode, early-stage community.
+
+Run `danteforge assess` for a full 18-dimension self-assessment against 27 competitors. Note: these scores are self-generated and not independently verified.
 
 ## Links
 
 - [Integration Guide](docs/INTEGRATION-GUIDE.md)
 - [Magic Levels](docs/MAGIC-LEVELS.md)
+- [Release History](docs/Release-History.md)
+- [First 15 Minutes](docs/tutorials/first-15-minutes.md)
+- [Case Study: Public Example](docs/case-studies/public-example.md)
+- [Case Study: Internal Self-Hosting](docs/case-studies/internal-self-hosting.md)
 - [SECURITY.md](SECURITY.md)
 - [CONTRIBUTING.md](CONTRIBUTING.md)
 
@@ -73,14 +270,14 @@ DanteForge is an agent-oriented development workflow for Codex, Claude Code, VS 
 
 ## Operational Status
 
-DanteForge `0.10.0` is in active development. Treat release readiness as proven only when the verification and release gates below pass in your environment and CI. See [docs/Operational-Readiness-v0.8.0.md](docs/Operational-Readiness-v0.8.0.md) for the v0.8.0 readiness report.
+DanteForge `0.17.0` is in active development. Treat release readiness as proven only when the verification and release gates below pass in your environment and CI. [docs/Operational-Readiness-v0.17.0.md](docs/Operational-Readiness-v0.17.0.md) is generated from the latest local verify, release-proof, and live-proof receipts so the readiness story stays evidence-backed.
 
 ## Install
 
 ### From source
 
 ```bash
-git clone https://github.com/danteforge/danteforge.git
+git clone https://github.com/dantericardo88/danteforge.git
 cd danteforge
 npm ci
 npm run verify:all
@@ -93,8 +290,10 @@ If you are validating the packed release before npm publish, install from the ge
 
 ```bash
 npm pack
-npm install -g ./danteforge-0.8.0.tgz
+npm install -g ./danteforge-0.17.0.tgz
 ```
+
+Maintainer note: `npm run build` is intentionally side-effect free. Use `npm run sync:dantecode` or `npm run build:local-sync` only when you explicitly want to sync the sibling DanteCode environment.
 
 Run `npm run verify:live` only when you are validating a secret-backed live environment or a release candidate.
 
@@ -133,7 +332,7 @@ danteforge setup assistants --assistants cursor
 
 This creates `.cursor/rules/danteforge.mdc` in the current project.
 
-For the full standalone install matrix, assistant targets, and secret setup flow, see [docs/Standalone-Assistant-Setup.md](docs/Standalone-Assistant-Setup.md).
+For the full standalone install matrix, assistant targets, and secret setup flow, see [docs/Standalone-Assistant-Setup.md](docs/Standalone-Assistant-Setup.md). For the machine-to-machine Codex contract specifically, see [docs/Codex-Install.md](docs/Codex-Install.md).
 
 To harvest one upstream Antigravity bundle into the packaged DanteForge skills catalog:
 
@@ -151,6 +350,12 @@ npm --prefix vscode-extension run verify
 ```
 
 The extension prefers a workspace-local DanteForge binary when one exists in `node_modules/.bin/`, and falls back to a global `danteforge` install otherwise.
+
+### Goose
+
+Goose integration is available via extension-based commands. Run `danteforge setup assistants --assistants goose` to install DanteForge skills into `~/.goose/skills/`. This enables native slash commands like `/spark`, `/magic`, `/verify`, etc., directly in Goose conversations.
+
+For advanced integration, the extension `extensions/danteforge.json` provides tool-based access to DanteForge commands.
 
 ## Quick Start
 
@@ -191,18 +396,20 @@ In local-only mode:
 - `CLAUDE.md` contains adapter notes and architecture context for Claude-oriented workflows.
 - DanteForge package install does not modify assistant registries automatically.
 - Run `danteforge setup assistants` to explicitly install or refresh Claude, Codex, Gemini/Antigravity, and OpenCode registries.
-- For Codex specifically, keep the repo-local `.codex/config.toml` and refresh `~/.codex/skills`, `~/.codex/config.toml`, `~/.codex/commands`, and `~/.codex/AGENTS.md` with `danteforge setup assistants --assistants codex` after upgrades.
+- For Codex specifically, keep the repo-local `.codex/config.toml` and refresh `~/.codex/skills`, `~/.codex/config.toml`, `~/.codex/commands`, and `~/.codex/AGENTS.md` with `danteforge setup assistants --assistants codex` after upgrades on local Codex installs.
 - In Codex, workflow slash commands are native and come from `commands/*.md` plus `~/.codex/commands/*.md`; use the CLI only when explicitly requested.
 - Codex, Claude, Gemini/Antigravity, and OpenCode all receive the bundled `danteforge-cli` skill as a CLI fallback path for explicit terminal execution.
 - Run `danteforge setup assistants --assistants cursor` to create the Cursor project bootstrap rule in `.cursor/rules/`.
 - Secrets still live once in `~/.danteforge/config.yaml` even when different assistants invoke the CLI.
+- [docs/Codex-Install.md](docs/Codex-Install.md) is the canonical cross-machine setup guide for local Codex installs.
 
 ## What Codex Can Do Today
 
 - Local Codex environments can use synced `~/.codex/skills`, `~/.codex/commands`, `~/.codex/AGENTS.md`, and the repo-local `.codex/config.toml` for a native DanteForge workflow experience.
 - Hosted Codex/chat surfaces may not honor user-level installs such as `~/.codex/commands` or `~/.codex/skills`; that is a platform limitation, not a DanteForge bug.
 - When native Codex command files are unavailable, the bundled `danteforge-cli` skill is the explicit fallback path for terminal-style execution.
-- If Codex does not feel native locally, verify `~/.codex/commands`, `~/.codex/skills`, `~/.codex/AGENTS.md`, and the current repo’s `.codex/config.toml`, then rerun `danteforge setup assistants --assistants codex`.
+- If Codex does not feel native locally, verify `~/.codex/commands`, `~/.codex/skills`, `~/.codex/AGENTS.md`, and the current repo's `.codex/config.toml`, then rerun `danteforge setup assistants --assistants codex`.
+- For install and validation on another machine, follow [docs/Codex-Install.md](docs/Codex-Install.md).
 
 ### VS Code
 
@@ -219,22 +426,32 @@ Available extension commands:
 
 ## Core Workflow
 
+<!-- DANTEFORGE_REPO_PIPELINE:START -->
 ```text
-review -> constitution -> specify -> clarify -> plan -> tasks -> forge -> verify -> synthesize
+review -> constitution -> specify -> clarify -> tech-decide -> plan -> tasks -> design -> forge -> ux-refine -> verify -> synthesize -> retro -> ship
 ```
+<!-- DANTEFORGE_REPO_PIPELINE:END -->
 
-Typical CLI usage:
+Most users never run the pipeline manually â€” `danteforge go`, `danteforge magic`, and
+`danteforge ascend` orchestrate it automatically. Expand below if you want step-by-step control.
+
+<details>
+<summary>Step-by-step pipeline commands (click to expand)</summary>
 
 ```bash
 danteforge review
 danteforge constitution
 danteforge specify "Build a modern photo-sharing app with real-time feeds and social features"
 danteforge clarify
+danteforge tech-decide
 danteforge plan
 danteforge tasks
+danteforge design "social feed, profile, upload flow"
 danteforge forge 1 --parallel --profile quality
+danteforge ux-refine --openpencil
 danteforge verify
 danteforge synthesize
+danteforge retro
 ```
 
 If the project has a frontend workflow:
@@ -246,6 +463,8 @@ danteforge forge 2 --figma --prompt --profile quality
 danteforge party --worktree --isolation
 danteforge autoforge "stabilize the release candidate" --dry-run
 ```
+
+</details>
 
 ## Magic Levels
 
@@ -279,7 +498,7 @@ DanteForge scores your code across **8 quality dimensions** and assigns it a **m
 | 5 | Customer-Ready | 76-88 | Production launch |
 | 6 | Enterprise-Grade | 89-100 | Fortune 500 contracts |
 
-Each magic preset targets a specific maturity level. The **convergence loop** uses this target to prevent "premature done" — if your code doesn't meet the quality standard, it triggers **focused remediation** (3 autoforge waves) to close critical gaps.
+Each magic preset targets a specific maturity level. The **convergence loop** uses this target to prevent "premature done" â€” if your code doesn't meet the quality standard, it triggers **focused remediation** (3 autoforge waves) to close critical gaps.
 
 ### Example Maturity Check
 
@@ -289,9 +508,9 @@ danteforge maturity --preset magic
 
 Output:
 ```
-════════════════════════════════════════════════════════════
+â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
   DanteForge Maturity Assessment
-════════════════════════════════════════════════════════════
+â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
 
 Current Level: Alpha (3/6)
 Target Level:  Beta (4/6)
@@ -299,36 +518,36 @@ Overall Score: 58/100
 Use Case:      Internal team use
 
 Quality Dimensions:
-  ✅ Functionality        75/100
-  ✅ Testing              82/100
-  ⚠️  Error Handling      65/100
-  ⚠️  Security            70/100
-  ⚠️  UX Polish           60/100
-  ❌ Documentation        55/100
-  ⚠️  Performance         70/100
-  ⚠️  Maintainability     68/100
+  âœ… Functionality        75/100
+  âœ… Testing              82/100
+  âš ï¸  Error Handling      65/100
+  âš ï¸  Security            70/100
+  âš ï¸  UX Polish           60/100
+  âŒ Documentation        55/100
+  âš ï¸  Performance         70/100
+  âš ï¸  Maintainability     68/100
 
 Major Gaps (1):
   - Documentation: 55/100 (need 70+)
-    → Improve clarity and update stale documentation
+    â†’ Improve clarity and update stale documentation
 
 Next Steps:
   1. Improve clarity and update stale documentation
 
-Recommendation: ⚠️  Refine — address gaps before shipping
-════════════════════════════════════════════════════════════
+Recommendation: âš ï¸  Refine â€” address gaps before shipping
+â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
 ```
 
 ### The 8 Quality Dimensions
 
-1. **Functionality** (20% weight) — PDSE completeness + integration fitness
-2. **Testing** (15% weight) — Coverage, test files, E2E tests
-3. **Error Handling** (10% weight) — Try/catch, custom errors, ratio to functions
-4. **Security** (15% weight) — Secrets management, npm audit, dangerous patterns
-5. **UX Polish** (10% weight) — Loading states, accessibility, responsive design (web only)
-6. **Documentation** (10% weight) — PDSE clarity + freshness
-7. **Performance** (10% weight) — Nested loops, O(n²) patterns, profiling
-8. **Maintainability** (10% weight) — PDSE testability + constitution + function size
+1. **Functionality** (20% weight) â€” PDSE completeness + integration fitness
+2. **Testing** (15% weight) â€” Coverage, test files, E2E tests
+3. **Error Handling** (10% weight) â€” Try/catch, custom errors, ratio to functions
+4. **Security** (15% weight) â€” Secrets management, npm audit, dangerous patterns
+5. **UX Polish** (10% weight) â€” Loading states, accessibility, responsive design (web only)
+6. **Documentation** (10% weight) â€” PDSE clarity + freshness
+7. **Performance** (10% weight) â€” Nested loops, O(nÂ²) patterns, profiling
+8. **Maintainability** (10% weight) â€” PDSE testability + constitution + function size
 
 See [docs/MATURITY-SYSTEM.md](docs/MATURITY-SYSTEM.md) for detailed explanations of each level, the reflection gate, and how to improve your scores.
 
@@ -336,7 +555,7 @@ See [docs/MATURITY-SYSTEM.md](docs/MATURITY-SYSTEM.md) for detailed explanations
 
 | Command | Description |
 | --- | --- |
-| `danteforge init` | Interactive first-run wizard — detect project, check health, show next steps |
+| `danteforge init` | Interactive first-run wizard â€” detect project, check health, show next steps |
 | `danteforge constitution` | Initialize project principles and constraints |
 | `danteforge specify <idea>` | Turn a high-level idea into `SPEC.md` |
 | `danteforge clarify` | Generate `CLARIFY.md` for requirement gaps |
@@ -373,7 +592,7 @@ See [docs/MATURITY-SYSTEM.md](docs/MATURITY-SYSTEM.md) for detailed explanations
 | `danteforge local-harvest [paths...]` | Harvest patterns from local private repos, folders, and zip archives |
 | `danteforge autoresearch <goal>` | Autonomous metric-driven optimization loop |
 | `danteforge oss` | Autonomous OSS pattern harvesting with license gates |
-| `danteforge harvest <system>` | Titan Harvest V2 — constitutional pattern harvesting |
+| `danteforge harvest <system>` | Titan Harvest V2 â€” constitutional pattern harvesting |
 | `danteforge docs` | Generate or update the command reference documentation |
 
 Common flags:
@@ -543,6 +762,29 @@ Before `npm run verify:live`, configure the live environment explicitly:
 
 See [RELEASE.md](RELEASE.md) for the full release flow.
 
-## License
+## Community & Support
 
-MIT. See [LICENSE](LICENSE) for details.
+### Getting Help
+- `danteforge help` - General help
+- `danteforge help <command>` - Help for specific commands
+- [Documentation](docs/) - Complete guides and API reference
+- [GitHub Issues](https://github.com/dantericardo88/danteforge/issues) - Bug reports and feature requests
+- [GitHub Discussions](https://github.com/dantericardo88/danteforge/discussions) - Q&A and community support
+
+### Contributing
+We welcome contributions! See [CONTRIBUTING.md](CONTRIBUTING.md) for development setup and guidelines.
+
+**Quick contribution start:**
+```bash
+git clone https://github.com/dantericardo88/danteforge
+cd danteforge
+npm ci
+npm run verify  # Run tests and typecheck
+```
+
+### License & Security
+- **License**: MIT
+- **Security**: See [SECURITY.md](SECURITY.md) for vulnerability reporting
+- **Enterprise**: SOC 2 Type II compliant with premium features
+
+

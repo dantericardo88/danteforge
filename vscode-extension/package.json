@@ -2,16 +2,16 @@
   "name": "danteforge-vscode",
   "displayName": "DanteForge",
   "description": "Agentic development workflow — structured specs, execution waves, and multi-agent orchestration inside VS Code",
-  "version": "0.10.0",
+  "version": "0.17.0",
   "publisher": "danteforge",
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "https://github.com/danteforge/danteforge.git"
+    "url": "https://github.com/dantericardo88/danteforge.git"
   },
-  "homepage": "https://github.com/danteforge/danteforge",
+  "homepage": "https://github.com/dantericardo88/danteforge",
   "bugs": {
-    "url": "https://github.com/danteforge/danteforge/issues"
+    "url": "https://github.com/dantericardo88/danteforge/issues"
   },
   "engines": {
     "vscode": "^1.85.0"
@@ -29,7 +29,15 @@
     "onCommand:danteforge.doctor",
     "onCommand:danteforge.forge",
     "onCommand:danteforge.party",
-    "onCommand:danteforge.magic"
+    "onCommand:danteforge.magic",
+    "onCommand:danteforge.wikiQuery",
+    "onCommand:danteforge.wikiStatus",
+    "onCommand:danteforge.pdseScore",
+    "onCommand:danteforge.resume",
+    "onCommand:danteforge.pauseAt",
+    "onCommand:danteforge.refreshTree",
+    "onCommand:danteforge.showDiagnostics",
+    "onView:danteforge.projectState"
   ],
   "main": "./dist/extension.js",
   "contributes": {
@@ -69,8 +77,45 @@
       {
         "command": "danteforge.magic",
         "title": "DanteForge: Magic Mode"
+      },
+      {
+        "command": "danteforge.wikiQuery",
+        "title": "DanteForge: Wiki Query"
+      },
+      {
+        "command": "danteforge.wikiStatus",
+        "title": "DanteForge: Wiki Status"
+      },
+      {
+        "command": "danteforge.pdseScore",
+        "title": "DanteForge: PDSE Score"
+      },
+      {
+        "command": "danteforge.resume",
+        "title": "DanteForge: Resume Autoforge"
+      },
+      {
+        "command": "danteforge.pauseAt",
+        "title": "DanteForge: Autoforge — Pause At Score"
+      },
+      {
+        "command": "danteforge.refreshTree",
+        "title": "DanteForge: Refresh Project Tree"
+      },
+      {
+        "command": "danteforge.showDiagnostics",
+        "title": "DanteForge: Show PDSE Diagnostics"
       }
-    ]
+    ],
+    "views": {
+      "explorer": [
+        {
+          "id": "danteforge.projectState",
+          "name": "DanteForge",
+          "when": "workspaceFolderCount > 0"
+        }
+      ]
+    }
   },
   "scripts": {
     "build": "tsc -p .",
@@ -87,6 +132,14 @@
     "typescript": "^5.7.2"
   },
   "overrides": {
+    "follow-redirects": "^1.16.0",
+    "lodash": "^4.18.1",
+    "minimatch@^10.1.1": {
+      "brace-expansion": "^5.0.5"
+    },
+    "minimatch@^3.0.3": {
+      "brace-expansion": "^1.1.14"
+    },
     "undici": "^7.24.4"
   }
 }

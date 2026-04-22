@@ -233,12 +233,21 @@ export async function executeAutoForgePlan(
     _runStep?: (command: string, light?: boolean, goal?: string, runtime?: { profile?: string; parallel?: boolean; worktree?: boolean }) => Promise<void>;
     /** Injected for testing — replaces isStageComplete to avoid real fs artifact check */
     _isStageComplete?: (stage: string, cwd?: string) => Promise<boolean>;
+    /** Injected for testing — replaces LLM/provider availability probing */
+    _isLLMAvailable?: () => Promise<boolean>;
+    /** Injected for testing — replaces memory recording side effects */
+    _recordMemory?: typeof recordMemory;
+    /** Injected for testing — replaces expensive failure analysis */
+    _runFailureAnalysis?: (stepCommand: string, message: string, reason: string, cwd?: string) => Promise<void>;
   } = {},
 ): Promise<{ completed: string[]; failed: string[]; paused: boolean }> {
   const completed: string[] = [];
   const failed: string[] = [];
   const runStep = options._runStep ?? runAutoForgeStep;
   const checkStageComplete = options._isStageComplete ?? isStageComplete;
+  const llmAvailabilityProbe = options._isLLMAvailable ?? isLLMAvailable;
+  const memoryRecorder = options._recordMemory ?? recordMemory;
+  const failureAnalyzer = options._runFailureAnalysis ?? runAutoForgeFailureAnalysis;
 
   if (options.dryRun) {
     logger.info('[AutoForge] DRY RUN — no commands will be executed');
@@ -246,7 +255,7 @@ export async function executeAutoForgePlan(
     return { completed: [], failed: [], paused: false };
   }
 
-  const llmReady = await isLLMAvailable();
+  const llmReady = await llmAvailabilityProbe();
   if (!llmReady) {
     logger.warn('[AutoForge] No LLM provider available. Some steps may fail.');
   }
@@ -266,20 +275,25 @@ export async function executeAutoForgePlan(
 
     logger.info(`[AutoForge] Step: ${step.command} — ${step.reason}`);
 
+    // Best-effort complexity assessment before step execution.
     try {
-      const previousExitCode = process.exitCode;
-      process.exitCode = 0;
+      const { assessComplexity, formatAssessment } = await import('./complexity-classifier.js');
+      const state = await loadState({ cwd: options.cwd });
+      const tasks = Object.values(state.tasks).flat();
+      if (tasks.length > 0) {
+        const assessment = assessComplexity(tasks, state);
+        logger.info(`[AutoForge] ${formatAssessment(assessment)}`);
+      }
+    } catch (err) { logger.verbose(`[best-effort] classifier: ${err instanceof Error ? err.message : String(err)}`); }
+
+    try {
+      // v0.10.0 — removed exitCode save/restore pattern (concurrency bug).
+      // runStep throws on failure; we catch below. Artifact check provides belt-and-suspenders.
       await runStep(step.command, options.light, plan.goal, {
         profile: options.profile,
         parallel: options.parallel,
         worktree: options.worktree,
       });
-      const exitCode = process.exitCode ?? 0;
-      process.exitCode = previousExitCode;
-
-      if (exitCode !== 0) {
-        throw new Error(`${step.command} exited with code ${exitCode}`);
-      }
 
       // Verify the step's expected artifact was actually written to disk
       const stageMap = getCommandStageMap();
@@ -335,14 +349,43 @@ export async function executeAutoForgePlan(
               retriesNeeded: 0,
             });
           }
-        } catch {
-          // Profile recording is best-effort — never block the pipeline
-        }
-      } catch {
-        // Scoring is best-effort — don't fail the pipeline
-      }
+        } catch (err) { logger.verbose(`[best-effort] model profile: ${err instanceof Error ? err.message : String(err)}`); }
 
-      await recordMemory({
+        // Best-effort complexity outcome recording for calibration feedback.
+        try {
+          const { recordComplexityOutcome, assessComplexity: assess, mapScoreToPreset, adjustWeightsFromOutcome, persistComplexityWeights } = await import('./complexity-classifier.js');
+          const tasks = Object.values(postState.tasks).flat();
+          if (tasks.length > 0) {
+            const assessment = assess(tasks, postState);
+            // Determine actual preset: user-specified profile if valid, else classifier recommendation
+            const validPresets = ['spark', 'ember', 'magic', 'blaze', 'inferno'] as const;
+            const actualPreset = validPresets.includes(options.profile as typeof validPresets[number])
+              ? (options.profile as typeof validPresets[number])
+              : mapScoreToPreset(assessment.score);
+            const lesson = recordComplexityOutcome(assessment, actualPreset, assessment.estimatedCostUsd);
+            if (lesson) {
+              logger.info(`[AutoForge] Complexity calibration: ${lesson}`);
+              postState.auditLog.push(
+                `${new Date().toISOString()} | complexity-calibration | ${lesson}`,
+              );
+              await saveState(postState, { cwd: options.cwd });
+              // Close the feedback loop: adjust weights and persist
+              const { loadComplexityWeights } = await import('./complexity-classifier.js');
+              const currentWeights = await loadComplexityWeights(options.cwd);
+              const adjusted = adjustWeightsFromOutcome(
+                currentWeights,
+                assessment.recommendedPreset,
+                actualPreset,
+              );
+              if (adjusted) {
+                await persistComplexityWeights(adjusted, options.cwd);
+              }
+            }
+          }
+        } catch (err) { logger.verbose(`[best-effort] calibration: ${err instanceof Error ? err.message : String(err)}`); }
+      } catch (err) { logger.verbose(`[best-effort] scoring: ${err instanceof Error ? err.message : String(err)}`); }
+
+      await memoryRecorder({
         category: 'command',
         summary: `AutoForge executed: ${step.command}`,
         detail: `Scenario: ${plan.scenario}. Reason: ${step.reason}${plan.goal ? `. Goal: ${plan.goal}` : ''}`,
@@ -354,33 +397,10 @@ export async function executeAutoForgePlan(
       failed.push(step.command);
       logger.error(`[AutoForge] ${step.command} failed: ${msg}`);
 
-      // 7 Levels Deep root cause analysis for significant forge/verify failures
-      if (step.command === 'verify' || step.command === 'forge') {
-        try {
-          const { SevenLevelsEngine, shouldTriggerSevenLevels } = await import('./seven-levels.js');
-          const { recordRootCauseLesson } = await import('./lessons-index.js');
-          if (shouldTriggerSevenLevels(undefined, 80)) {
-            const engine = new SevenLevelsEngine({ minDepth: 3, earlyStop: true });
-            const analysis = await engine.analyze(
-              { type: 'step_failure', details: msg },
-              {
-                taskDescription: step.reason,
-                generatedCode: '',
-                systemPrompt: '',
-                modelId: 'autoforge',
-                providerId: 'unknown',
-              },
-            );
-            await recordRootCauseLesson(analysis, options.cwd);
-            logger.info(`[7LD] Root cause (${analysis.rootCauseDomain}): ${analysis.rootCause.slice(0, 120)}`);
-          }
-        } catch {
-          // 7LD analysis is best-effort — never block the main failure path
-        }
-      }
+      await failureAnalyzer(step.command, msg, step.reason, options.cwd);
 
       // Record failure
-      await recordMemory({
+      await memoryRecorder({
         category: 'error',
         summary: `AutoForge failed at: ${step.command}`,
         detail: `Error: ${msg}. Scenario: ${plan.scenario}${plan.goal ? `. Goal: ${plan.goal}` : ''}`,
@@ -406,6 +426,39 @@ export async function executeAutoForgePlan(
   }
 
   return { completed, failed, paused: false };
+}
+
+async function runAutoForgeFailureAnalysis(
+  stepCommand: string,
+  message: string,
+  reason: string,
+  cwd?: string,
+): Promise<void> {
+  if (stepCommand !== 'verify' && stepCommand !== 'forge') {
+    return;
+  }
+
+  try {
+    const { SevenLevelsEngine, shouldTriggerSevenLevels } = await import('./seven-levels.js');
+    const { recordRootCauseLesson } = await import('./lessons-index.js');
+    if (shouldTriggerSevenLevels(undefined, 80)) {
+      const engine = new SevenLevelsEngine({ minDepth: 3, earlyStop: true });
+      const analysis = await engine.analyze(
+        { type: 'step_failure', details: message },
+        {
+          taskDescription: reason,
+          generatedCode: '',
+          systemPrompt: '',
+          modelId: 'autoforge',
+          providerId: 'unknown',
+        },
+      );
+      await recordRootCauseLesson(analysis, cwd);
+      logger.info(`[7LD] Root cause (${analysis.rootCauseDomain}): ${analysis.rootCause.slice(0, 120)}`);
+    }
+  } catch (err) {
+    logger.verbose(`[best-effort] 7LD analysis: ${err instanceof Error ? err.message : String(err)}`);
+  }
 }
 
 /**

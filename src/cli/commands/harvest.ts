@@ -292,31 +292,58 @@ function extractJson<T>(raw: string): T {
 
 export async function harvest(
   system: string,
-  options: { lite?: boolean; prompt?: boolean } = {},
+  options: {
+    lite?: boolean;
+    prompt?: boolean;
+    // Injection seams for testing
+    _isLLMAvailable?: () => Promise<boolean>;
+    _loadState?: () => Promise<import('../../core/state.js').DanteState>;
+    _saveState?: (s: import('../../core/state.js').DanteState) => Promise<void>;
+    _savePrompt?: (name: string, template: string) => Promise<string>;
+    _displayPrompt?: (template: string, msg: string) => void;
+    _writeTrackFiles?: (track: HarvestTrack) => Promise<{ trackPath: string; summaryPath: string }>;
+    _loadTrackCount?: () => Promise<number>;
+    _shouldTriggerMetaEvolution?: (count: number) => boolean;
+    _computeTrackHash?: (track: HarvestTrack) => string;
+    _auditSelfEdit?: (entry: unknown) => Promise<void>;
+    _llmCaller?: (prompt: string) => Promise<string>;
+  } = {},
 ): Promise<void> {
   return withErrorBoundary('harvest', async () => {
   const mode: 'full' | 'sep-lite' = options.lite ? 'sep-lite' : 'full';
 
+  const loadStateFn = options._loadState ?? loadState;
+  const saveStateFn = options._saveState ?? ((s: import('../../core/state.js').DanteState) => saveState(s));
+  const savePromptFn = options._savePrompt ?? savePrompt;
+  const displayPromptFn = options._displayPrompt ?? ((t: string, msg: string) => displayPrompt(t, msg));
+  const isLLMFn = options._isLLMAvailable ?? isLLMAvailable;
+  const writeTrackFilesFn = options._writeTrackFiles ?? writeTrackFiles;
+  const loadTrackCountFn = options._loadTrackCount ?? loadTrackCount;
+  const shouldTriggerFn = options._shouldTriggerMetaEvolution ?? shouldTriggerMetaEvolution;
+  const computeHashFn = options._computeTrackHash ?? computeTrackHash;
+  const auditSelfEditFn = options._auditSelfEdit ?? auditSelfEdit;
+  const llmCallerFn = options._llmCaller ?? ((p: string) => callLLM(p));
+
   logger.info(`Titan Harvest V2 — system: "${system}" (${mode} mode)`);
 
-  const state = await loadState();
+  const state = await loadStateFn();
   const template = buildHarvestTemplate(system, mode);
 
   // Mode 1: --prompt (display the 5-step template for copy-paste)
   if (options.prompt) {
-    const savedPath = await savePrompt(`harvest-${system.replace(/\s+/g, '-')}`, template);
-    displayPrompt(template, [
+    const savedPath = await savePromptFn(`harvest-${system.replace(/\s+/g, '-')}`, template);
+    displayPromptFn(template, [
       'Fill in each step and paste the output back.',
       `Prompt saved to: ${savedPath}`,
       'Once you have the completed JSON, re-run without --prompt to write the track files.',
     ].join('\n'));
     state.auditLog.push(`${new Date().toISOString()} | harvest: prompt generated for "${system}"`);
-    await saveState(state);
+    await saveStateFn(state);
     return;
   }
 
   // Mode 2: LLM execute — fill each step via API
-  const llmAvailable = await isLLMAvailable();
+  const llmAvailable = await isLLMFn();
 
   if (llmAvailable) {
     logger.info('LLM available — running Titan Harvest V2 steps via API...');
@@ -326,21 +353,21 @@ export async function harvest(
 
       // Step 1: Discovery
       logger.info('Step 1: Discovery...');
-      const step1Raw = await callLLM(buildStep1Prompt(system, mode));
+      const step1Raw = await llmCallerFn(buildStep1Prompt(system, mode));
       const step1Data = extractJson<HarvestTrack['step1Discovery']>(step1Raw);
       track.step1Discovery = step1Data;
       logger.success(`Step 1 complete — ${step1Data.organs.length} organ(s) discovered`);
 
       // Step 2: Constitution
       logger.info('Step 2: Constitution & Behavior...');
-      const step2Raw = await callLLM(buildStep2Prompt(system, track.step1Discovery));
+      const step2Raw = await llmCallerFn(buildStep2Prompt(system, track.step1Discovery));
       const step2Data = extractJson<HarvestTrack['step2Constitution']>(step2Raw);
       track.step2Constitution = step2Data;
       logger.success('Step 2 complete');
 
       // Step 3: Wiring
       logger.info('Step 3: Wiring...');
-      const step3Raw = await callLLM(buildStep3Prompt(system, track.step1Discovery));
+      const step3Raw = await llmCallerFn(buildStep3Prompt(system, track.step1Discovery));
       const step3Data = extractJson<HarvestTrack['step3Wiring']>(step3Raw);
       track.step3Wiring = step3Data;
       logger.success(`Step 3 complete — ${step3Data.signals.length} signal(s) wired`);
@@ -348,7 +375,7 @@ export async function harvest(
       // Step 4: Evidence (full mode only)
       if (mode === 'full') {
         logger.info('Step 4: Evidence & Tests...');
-        const step4Raw = await callLLM(buildStep4Prompt(system, track.step1Discovery));
+        const step4Raw = await llmCallerFn(buildStep4Prompt(system, track.step1Discovery));
         const step4Data = extractJson<NonNullable<HarvestTrack['step4Evidence']>>(step4Raw);
         track.step4Evidence = step4Data;
         logger.success(`Step 4 complete — ${step4Data.goldenFlows.length} golden flow(s)`);
@@ -358,12 +385,12 @@ export async function harvest(
 
       // Step 5: Ratification
       logger.info('Step 5: Ratification & Metacode...');
-      const step5Raw = await callLLM(buildStep5Prompt(system, track));
+      const step5Raw = await llmCallerFn(buildStep5Prompt(system, track));
       const step5Data = extractJson<Omit<HarvestTrack['step5Ratification'], 'hash'>>(step5Raw);
       track.step5Ratification = { ...step5Data, hash: '' };
 
       // Compute deterministic hash and finalize summary
-      const hash = computeTrackHash(track);
+      const hash = computeHashFn(track);
       track.step5Ratification.hash = hash;
 
       const goldenFlows = mode === 'full' && track.step4Evidence
@@ -380,30 +407,32 @@ export async function harvest(
       logger.success(`Step 5 complete — expansion readiness: ${track.step5Ratification.expansionReadiness}/10`);
 
       // Write track files
-      const { trackPath, summaryPath } = await writeTrackFiles(track);
+      const { trackPath, summaryPath } = await writeTrackFilesFn(track);
       logger.success(`Track ratified: ${trackPath}`);
       logger.info(`Summary: ${summaryPath}`);
 
       // Check meta-evolution trigger
-      const trackCount = await loadTrackCount();
-      if (shouldTriggerMetaEvolution(trackCount)) {
+      const trackCount = await loadTrackCountFn();
+      if (shouldTriggerFn(trackCount)) {
         logger.warn(`Meta-evolution triggered at track #${trackCount}! Run a harvest on "Titan Harvest Framework" to self-evolve.`);
+        state.auditLog.push(`${new Date().toISOString()} | harvest: WARNING meta-evolution triggered at track #${trackCount}`);
       }
 
       // Audit log entry
-      await auditSelfEdit({
+      await auditSelfEditFn({
         timestamp: new Date().toISOString(),
         filePath: trackPath,
         action: 'write',
         reason: `Titan Harvest V2 track created for system: ${system}`,
         approved: true,
         afterHash: hash,
+        policy: 'allow-with-audit',
       });
 
       state.auditLog.push(
         `${new Date().toISOString()} | harvest: track ${track.trackId} ratified (${mode}, readiness=${track.step5Ratification.expansionReadiness})`,
       );
-      await saveState(state);
+      await saveStateFn(state);
 
       logger.success(`Titan Harvest V2 complete. Track ID: ${track.trackId}`);
       return;
@@ -415,14 +444,14 @@ export async function harvest(
 
   // Mode 3: Local fallback — display template for manual use
   logger.info('No LLM available. Displaying Titan Harvest V2 template for manual use.');
-  const savedPath = await savePrompt(`harvest-${system.replace(/\s+/g, '-')}`, template);
-  displayPrompt(template, [
+  const savedPath = await savePromptFn(`harvest-${system.replace(/\s+/g, '-')}`, template);
+  displayPromptFn(template, [
     'Fill in each step with your AI assistant, then re-run with a live LLM configured.',
     `Template saved to: ${savedPath}`,
     'Configure a provider with: danteforge config --set-key "grok:<key>"',
   ].join('\n'));
 
   state.auditLog.push(`${new Date().toISOString()} | harvest: local template displayed for "${system}"`);
-  await saveState(state);
+  await saveStateFn(state);
   });
 }

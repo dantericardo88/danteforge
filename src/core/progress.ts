@@ -27,6 +27,37 @@ export function setActiveSpinner(spinner: SpinnerHandle | null): void {
   _activeSpinner = spinner;
 }
 
+// ── Loading state helpers ─────────────────────────────────────────────────────
+
+export interface LoadingState {
+  isLoading: boolean;
+  message: string;
+  progress?: number;
+}
+
+export function createLoadingState(message: string, progress?: number): LoadingState {
+  return {
+    isLoading: true,
+    message,
+    progress,
+  };
+}
+
+export function updateLoadingState(state: LoadingState, message: string, progress?: number): LoadingState {
+  return {
+    ...state,
+    message,
+    progress,
+  };
+}
+
+export function completeLoadingState(state: LoadingState): LoadingState {
+  return {
+    ...state,
+    isLoading: false,
+  };
+}
+
 // ── Spinner factory ───────────────────────────────────────────────────────────
 
 export async function startSpinner(
@@ -138,5 +169,43 @@ export function createStepTracker(totalSteps: number, opts: ProgressOptions = {}
     },
     current(): number { return _current; },
     total(): number { return totalSteps; },
+  };
+}
+
+// ── Wave tracker (preset-level progress) ─────────────────────────────────────
+
+export interface WaveTracker extends StepTracker {
+  /** Returns the name of the current wave, e.g. "Planning" */
+  waveName(): string;
+}
+
+/**
+ * Create a wave tracker that renders "[currentWave/totalWaves] waveName — stepLabel"
+ * Used by magic presets to show wave-by-wave progress during execution.
+ */
+export function createWaveTracker(
+  totalWaves: number,
+  currentWave: number,
+  name: string,
+  opts: ProgressOptions = {},
+): WaveTracker {
+  const isTTY = opts._isTTY ?? (process.stdout.isTTY === true);
+  let _stepCount = 0;
+
+  return {
+    step(label: string): void {
+      _stepCount++;
+      const prefix = `[${currentWave}/${totalWaves}] ${name}`;
+      const text = label ? `${prefix} — ${label}` : prefix;
+      const spinner = getActiveSpinner();
+      if (spinner) {
+        spinner.update(text);
+      } else if (isTTY) {
+        console.log(text);
+      }
+    },
+    current(): number { return _stepCount; },
+    total(): number { return totalWaves; },
+    waveName(): string { return name; },
   };
 }

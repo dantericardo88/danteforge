@@ -24,6 +24,30 @@ export interface DanteConfig {
     designTokensPath?: string;
     mcpServerName?: string;
   };
+  adversary?: {
+    /** LLM provider to use as adversary (defaults to Ollama auto-detect, then self-challenge) */
+    provider?: string;
+    /** Optional model override for the adversary provider */
+    model?: string;
+    /** Optional API key — inherits from providers[provider].apiKey if absent */
+    apiKey?: string;
+    /** Optional base URL override */
+    baseUrl?: string;
+    /** How much lower the adversarial score can be vs self before flagging as 'inflated' (default 0.5) */
+    tolerance?: number;
+    /** Set to false to explicitly disable all adversarial features */
+    enabled?: boolean;
+  };
+}
+
+/** Resolved adversary provider after applying the full resolution chain */
+export interface AdversaryResolution {
+  provider: LLMProvider;
+  model?: string;
+  apiKey?: string;
+  baseUrl?: string;
+  /** How the adversary was chosen */
+  mode: 'configured' | 'ollama-auto' | 'self-challenge';
 }
 
 export interface ConfigPathOptions {
@@ -179,6 +203,15 @@ export async function setDefaultProvider(provider: LLMProvider): Promise<void> {
   config.defaultProvider = provider;
   await saveConfig(config);
   logger.success(`Default provider set to ${provider}`);
+}
+
+export async function setAdversaryConfig(
+  partial: DanteConfig['adversary'],
+  options: ConfigPathOptions = {},
+): Promise<void> {
+  const config = await loadConfig(options);
+  config.adversary = { ...config.adversary, ...partial };
+  await saveConfig(config, options);
 }
 
 export async function setProviderModel(provider: LLMProvider, model: string): Promise<void> {

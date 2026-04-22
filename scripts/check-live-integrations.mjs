@@ -4,11 +4,19 @@ import {
   resolveLiveRequestTimeoutMs,
   validateLiveConfiguration,
 } from './live-check-lib.mjs';
+import {
+  computeProofStatus,
+  getWorkflowContext,
+  readGitSha,
+  readPackageVersion,
+  writeLiveVerifyReceipt,
+} from './proof-receipts.mjs';
 
 const PROMPT = 'Reply with exactly the single word DanteForge.';
 const EXPECTED = /danteforge/i;
 const ANTIGRAVITY_BUNDLES_URL = process.env.ANTIGRAVITY_BUNDLES_URL ?? 'https://raw.githubusercontent.com/sickn33/antigravity-awesome-skills/main/docs/BUNDLES.md';
 const FIGMA_MCP_URL = process.env.FIGMA_MCP_URL ?? 'https://mcp.figma.com/mcp';
+const LIVE_RECEIPT_JSON_PATH = '.danteforge/evidence/live/latest.json';
 
 async function fetchJson(url, init = {}, timeoutMs = resolveLiveRequestTimeoutMs(process.env)) {
   const controller = new AbortController();
@@ -164,33 +172,88 @@ const checks = {
   ollama: checkOllama,
 };
 
+const cwd = process.cwd();
+const version = await readPackageVersion(cwd);
+const gitSha = readGitSha(cwd);
+const providerResults = [];
+const upstreamChecks = [];
+let providers = [];
+let errorMessage = null;
+
 try {
   const configuration = validateLiveConfiguration(process.env);
   if (configuration.error || configuration.missing.length > 0) {
     throw new Error(formatLiveConfigurationError(configuration));
   }
 
-  const providers = configuration.providers;
+  providers = configuration.providers;
   for (const provider of providers) {
     const check = checks[provider];
     if (!check) {
       throw new Error(`Unknown live provider "${provider}". Valid values: ${Object.keys(checks).join(', ')}`);
     }
     process.stdout.write(`Checking ${provider}...\n`);
-    const result = await check();
-    process.stdout.write(`  ok: ${result}\n`);
+    try {
+      const result = await check();
+      providerResults.push({ provider, status: 'pass', detail: result });
+      process.stdout.write(`  ok: ${result}\n`);
+    } catch (error) {
+      const detail = error instanceof Error ? error.message : String(error);
+      providerResults.push({ provider, status: 'fail', detail });
+      throw error;
+    }
   }
 
   process.stdout.write('Checking Antigravity upstream...\n');
-  await checkAntigravityUpstream();
-  process.stdout.write('  ok: upstream reachable\n');
+  try {
+    await checkAntigravityUpstream();
+    upstreamChecks.push({ name: 'antigravity-upstream', status: 'pass', detail: 'reachable' });
+    process.stdout.write('  ok: upstream reachable\n');
+  } catch (error) {
+    const detail = error instanceof Error ? error.message : String(error);
+    upstreamChecks.push({ name: 'antigravity-upstream', status: 'fail', detail });
+    throw error;
+  }
 
   process.stdout.write('Checking Figma MCP endpoint...\n');
-  await checkFigmaMcp();
-  process.stdout.write('  ok: endpoint reachable\n');
+  try {
+    await checkFigmaMcp();
+    upstreamChecks.push({ name: 'figma-mcp', status: 'pass', detail: 'reachable' });
+    process.stdout.write('  ok: endpoint reachable\n');
+  } catch (error) {
+    const detail = error instanceof Error ? error.message : String(error);
+    upstreamChecks.push({ name: 'figma-mcp', status: 'fail', detail });
+    throw error;
+  }
 
   process.stdout.write('Live integration checks passed\n');
 } catch (error) {
-  process.stderr.write(`Live integration checks failed: ${error instanceof Error ? error.message : String(error)}\n`);
+  errorMessage = error instanceof Error ? error.message : String(error);
+  if (providerResults.length === 0 && providers.length === 0) {
+    upstreamChecks.push({ name: 'configuration', status: 'fail', detail: errorMessage });
+  }
+  process.stderr.write(`Live integration checks failed: ${errorMessage}\n`);
   process.exitCode = 1;
+} finally {
+  const receipt = {
+    project: 'danteforge',
+    version,
+    gitSha,
+    timestamp: new Date().toISOString(),
+    cwd,
+    platform: process.platform,
+    nodeVersion: process.version,
+    providers,
+    providerResults,
+    upstreamChecks,
+    workflowContext: getWorkflowContext(process.env),
+    errorMessage,
+    status: computeProofStatus([
+      ...providerResults,
+      ...upstreamChecks,
+      ...(errorMessage ? [{ status: 'fail' }] : []),
+    ]),
+  };
+  const receiptPath = await writeLiveVerifyReceipt(receipt, cwd);
+  process.stdout.write(`Live verify receipt written to ${receiptPath} (${LIVE_RECEIPT_JSON_PATH})\n`);
 }

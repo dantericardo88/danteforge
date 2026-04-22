@@ -5,7 +5,23 @@ import { loadState, saveState } from '../../core/state.js';
 import { initMCPAdapter, getMCPSetupCommand, testMCPConnection, saveFigmaConfig } from '../../core/mcp-adapter.js';
 import { detectHost } from '../../core/mcp.js';
 
-export async function setupFigma(options: { host?: string; figmaUrl?: string; tokenFile?: string; test?: boolean } = {}) {
+export async function setupFigma(options: {
+  host?: string;
+  figmaUrl?: string;
+  tokenFile?: string;
+  test?: boolean;
+  _initMCP?: typeof initMCPAdapter;
+  _testMCP?: typeof testMCPConnection;
+  _getMCPSetupCommand?: typeof getMCPSetupCommand;
+  _loadState?: typeof loadState;
+  _saveState?: typeof saveState;
+} = {}) {
+  const initFn = options._initMCP ?? initMCPAdapter;
+  const testFn = options._testMCP ?? testMCPConnection;
+  const setupCmdFn = options._getMCPSetupCommand ?? getMCPSetupCommand;
+  const loadFn = options._loadState ?? loadState;
+  const saveFn = options._saveState ?? saveState;
+
   return withErrorBoundary('setup-figma', async () => {
   logger.success('DanteForge Figma Setup Wizard');
   logger.info('');
@@ -29,14 +45,14 @@ export async function setupFigma(options: { host?: string; figmaUrl?: string; to
   logger.info('');
   logger.info('Step 1: Add the Figma MCP server to your editor');
   logger.info('');
-  const setupCmd = getMCPSetupCommand(host);
+  const setupCmd = setupCmdFn(host);
   process.stdout.write(setupCmd + '\n');
   logger.info('');
 
   // Step 3: Test connection
   if (options.test !== false) {
     logger.info('Step 2: Testing Figma MCP endpoint...');
-    const result = await testMCPConnection();
+    const result = await testFn();
     if (result.ok) {
       logger.success(result.message);
     } else {
@@ -50,7 +66,7 @@ export async function setupFigma(options: { host?: string; figmaUrl?: string; to
   }
 
   // Step 4: Check existing MCP capabilities
-  const adapter = await initMCPAdapter(options.host);
+  const adapter = await initFn(options.host);
   logger.info('');
   logger.info(`Step 3: MCP capability check`);
   logger.info(`  Host: ${adapter.host}`);
@@ -80,8 +96,8 @@ export async function setupFigma(options: { host?: string; figmaUrl?: string; to
   logger.info('  danteforge forge 1 --figma --prompt              # Prompt-driven wave + Figma workflow');
 
   // Audit log
-  const state = await loadState();
+  const state = await loadFn();
   state.auditLog.push(`${new Date().toISOString()} | setup-figma: wizard completed (host: ${host}, tier: ${adapter.tier})`);
-  await saveState(state);
+  await saveFn(state);
   });
 }

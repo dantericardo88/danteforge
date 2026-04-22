@@ -103,11 +103,15 @@ export function getMCPSetupCommand(host: MCPHost, figmaToken?: string): string {
  * Test MCP connection by checking if the remote endpoint is reachable.
  * Returns true if the endpoint responds (does not require authentication).
  */
-export async function testMCPConnection(): Promise<{ ok: boolean; message: string }> {
+export async function testMCPConnection(
+  opts?: { _fetch?: typeof globalThis.fetch } | typeof globalThis.fetch,
+): Promise<{ ok: boolean; message: string }> {
+  // Support both legacy positional and new options-object style
+  const fetchFn = typeof opts === 'function' ? opts : opts?._fetch ?? fetch;
   try {
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), 5000);
-    const response = await fetch(REMOTE_MCP_ENDPOINT, {
+    const response = await fetchFn(REMOTE_MCP_ENDPOINT, {
       method: 'HEAD',
       signal: controller.signal,
     });
@@ -206,19 +210,29 @@ export async function getProjectCharacteristics(): Promise<{
   return getProjectCharacteristicsFor(process.cwd());
 }
 
-export async function getProjectCharacteristicsFor(cwd = process.cwd()): Promise<{
+export async function getProjectCharacteristicsFor(
+  cwd = process.cwd(),
+  _deps?: {
+    isUIProject?: (dir: string) => Promise<boolean>;
+    initMCPAdapter?: (hostOverride?: string) => Promise<MCPAdapterResult>;
+    fsAccess?: (p: string) => Promise<void>;
+  },
+): Promise<{
   hasUI: boolean;
   hasFigma: boolean;
   hasDesign: boolean;
 }> {
-  const hasUI = await isUIProject(cwd);
-  const adapter = await initMCPAdapter();
+  const checkUI = _deps?.isUIProject ?? isUIProject;
+  const initAdapter = _deps?.initMCPAdapter ?? initMCPAdapter;
+  const checkAccess = _deps?.fsAccess ?? (async (p: string) => { const fsm = await import('fs/promises'); await fsm.access(p); });
+
+  const hasUI = await checkUI(cwd);
+  const adapter = await initAdapter();
   const hasFigma = adapter.tier !== 'prompt-only';
 
   let hasDesign = false;
   try {
-    const fsm = await import('fs/promises');
-    await fsm.access(path.join(cwd, '.danteforge', 'DESIGN.op'));
+    await checkAccess(path.join(cwd, '.danteforge', 'DESIGN.op'));
     hasDesign = true;
   } catch { /* no design file */ }
 
@@ -228,14 +242,24 @@ export async function getProjectCharacteristicsFor(cwd = process.cwd()): Promise
 /**
  * Save Figma connection info to config after successful setup.
  */
-export async function saveFigmaConfig(figmaUrl?: string, tokenPath?: string, serverName?: string): Promise<void> {
-  const config = await loadConfig();
+export async function saveFigmaConfig(
+  figmaUrl?: string,
+  tokenPath?: string,
+  serverName?: string,
+  _configOps?: {
+    load: () => Promise<ReturnType<typeof loadConfig>>;
+    save: (config: Awaited<ReturnType<typeof loadConfig>>) => Promise<void>;
+  },
+): Promise<void> {
+  const configLoad = _configOps?.load ?? loadConfig;
+  const configSave = _configOps?.save ?? saveConfig;
+  const config = await configLoad();
   config.figma = {
     ...config.figma,
     ...(figmaUrl && { defaultFileUrl: figmaUrl }),
     ...(tokenPath && { designTokensPath: tokenPath }),
     ...(serverName && { mcpServerName: serverName }),
   };
-  await saveConfig(config);
+  await configSave(config);
   logger.success('Figma configuration saved');
 }

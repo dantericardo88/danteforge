@@ -8,6 +8,8 @@ import path from 'node:path';
 import {
   autoDecideBumpLevel,
   buildShipPlan,
+  computeNewVersion,
+  countChangedLines,
   type BumpLevel,
   type CommitGroup,
   type ShipPlan,
@@ -125,6 +127,47 @@ describe('version computation', () => {
     const patchLevel = autoDecideBumpLevel(100);
     assert.strictEqual(microLevel, 'micro');
     assert.strictEqual(patchLevel, 'patch');
+  });
+});
+
+// ── computeNewVersion ─────────────────────────────────────────────────────────
+
+describe('computeNewVersion', () => {
+  it('increments major and resets minor/patch for "major" bump', () => {
+    assert.strictEqual(computeNewVersion('1.2.3', 'major'), '2.0.0');
+  });
+
+  it('increments minor and resets patch for "minor" bump', () => {
+    assert.strictEqual(computeNewVersion('1.2.3', 'minor'), '1.3.0');
+  });
+
+  it('increments patch for "patch" bump', () => {
+    assert.strictEqual(computeNewVersion('1.2.3', 'patch'), '1.2.4');
+  });
+
+  it('increments patch for "micro" bump (same behaviour as patch)', () => {
+    assert.strictEqual(computeNewVersion('1.2.3', 'micro'), '1.2.4');
+  });
+});
+
+// ── countChangedLines ─────────────────────────────────────────────────────────
+
+describe('countChangedLines', () => {
+  it('counts added lines starting with +', () => {
+    assert.strictEqual(countChangedLines('+foo\n+bar\n+baz\n'), 3);
+  });
+
+  it('excludes +++ and --- header lines from the count', () => {
+    const diff = '--- a/file.ts\n+++ b/file.ts\n+new line\n-old line\n';
+    assert.strictEqual(countChangedLines(diff), 2);
+  });
+
+  it('returns 0 for empty diff', () => {
+    assert.strictEqual(countChangedLines(''), 0);
+  });
+
+  it('returns 0 when diff contains only header lines', () => {
+    assert.strictEqual(countChangedLines('--- a/old.ts\n+++ b/new.ts\n'), 0);
   });
 });
 

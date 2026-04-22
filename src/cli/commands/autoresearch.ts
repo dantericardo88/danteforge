@@ -8,6 +8,8 @@ import { promisify } from 'node:util';
 import { logger } from '../../core/logger.js';
 import { loadState, saveState } from '../../core/state.js';
 import { isLLMAvailable, callLLM } from '../../core/llm.js';
+import type { LLMProvider } from '../../core/config.js';
+import type { CallLLMOptions } from '../../core/llm-pipeline.js';
 import {
   runBaseline,
   runExperiment,
@@ -28,7 +30,7 @@ const TIMING_KEYWORDS = ['ms', 'millisecond', 'second', 'latency', 'time', 'dura
 const TIMING_NOISE_MARGIN = 0.01;   // 1%
 const OTHER_NOISE_MARGIN  = 0.005;  // 0.5%
 
-function resolveNoiseMargin(metric: string): number {
+export function resolveNoiseMargin(metric: string): number {
   const lower = metric.toLowerCase();
   return TIMING_KEYWORDS.some(kw => lower.includes(kw))
     ? TIMING_NOISE_MARGIN
@@ -37,7 +39,7 @@ function resolveNoiseMargin(metric: string): number {
 
 // ── Slug helper ───────────────────────────────────────────────────────────────
 
-function slugify(text: string): string {
+export function slugify(text: string): string {
   return text
     .toLowerCase()
     .replace(/[^a-z0-9]+/g, '-')
@@ -47,41 +49,52 @@ function slugify(text: string): string {
 
 // ── Git helpers ───────────────────────────────────────────────────────────────
 
+type GitFn = (args: string[], cwd: string) => Promise<string>;
+
 async function git(args: string[], cwd: string): Promise<string> {
   const { stdout } = await execFileAsync('git', args, { cwd, timeout: 30_000, env: process.env });
   return stdout.trim();
 }
 
-async function gitBranchExists(branch: string, cwd: string): Promise<boolean> {
+async function gitIsDirty(cwd: string, gitFn: GitFn = git): Promise<boolean> {
   try {
-    await git(['rev-parse', '--verify', branch], cwd);
+    const status = await gitFn(['status', '--porcelain'], cwd);
+    return status.trim().length > 0;
+  } catch {
+    return false;
+  }
+}
+
+async function gitBranchExists(branch: string, cwd: string, gitFn: GitFn = git): Promise<boolean> {
+  try {
+    await gitFn(['rev-parse', '--verify', branch], cwd);
     return true;
   } catch {
     return false;
   }
 }
 
-async function gitCurrentHash(cwd: string): Promise<string> {
-  return git(['rev-parse', 'HEAD'], cwd);
+async function gitCurrentHash(cwd: string, gitFn: GitFn = git): Promise<string> {
+  return gitFn(['rev-parse', 'HEAD'], cwd);
 }
 
-async function gitCreateBranch(branch: string, cwd: string): Promise<void> {
-  if (await gitBranchExists(branch, cwd)) {
+async function gitCreateBranch(branch: string, cwd: string, gitFn: GitFn = git): Promise<void> {
+  if (await gitBranchExists(branch, cwd, gitFn)) {
     logger.warn(`Branch ${branch} already exists — checking it out.`);
-    await git(['checkout', branch], cwd);
+    await gitFn(['checkout', branch], cwd);
   } else {
-    await git(['checkout', '-b', branch], cwd);
+    await gitFn(['checkout', '-b', branch], cwd);
   }
 }
 
-async function gitResetHard(hash: string, cwd: string): Promise<void> {
-  await git(['reset', '--hard', hash], cwd);
+async function gitResetHard(hash: string, cwd: string, gitFn: GitFn = git): Promise<void> {
+  await gitFn(['reset', '--hard', hash], cwd);
 }
 
-async function gitCommitAll(message: string, cwd: string): Promise<string> {
-  await git(['add', '-A'], cwd);
-  await git(['commit', '--allow-empty', '-m', message], cwd);
-  return gitCurrentHash(cwd);
+async function gitCommitAll(message: string, cwd: string, gitFn: GitFn = git): Promise<string> {
+  await gitFn(['add', '-A'], cwd);
+  await gitFn(['commit', '--allow-empty', '-m', message], cwd);
+  return gitCurrentHash(cwd, gitFn);
 }
 
 // ── LLM-based hypothesis generation ──────────────────────────────────────────
@@ -92,14 +105,27 @@ interface Hypothesis {
   change: string;
 }
 
+type CallLLMFn = (prompt: string, provider?: LLMProvider | undefined, opts?: CallLLMOptions) => Promise<string>;
+
 async function generateHypothesis(
   config: AutoResearchConfig,
   experimentId: number,
   previousResults: ExperimentResult[],
+  callLLMFn: CallLLMFn = callLLM,
+  readFileFn: (p: string) => Promise<string> = (p) => fs.readFile(p, 'utf8'),
 ): Promise<Hypothesis> {
   const resultsContext = previousResults.length > 0
     ? `Previous experiments:\n${formatResultsTsv(previousResults)}\n`
     : 'No previous experiments yet.\n';
+
+  // Read optional program.md research strategy (Karpathy pattern: human-authored guidance per iteration)
+  let programContext = '';
+  try {
+    const programMd = await readFileFn(path.join(config.cwd, 'autoresearch.program.md'));
+    if (programMd.trim()) {
+      programContext = `Research strategy (from autoresearch.program.md):\n${programMd.trim()}\n\n`;
+    }
+  } catch { /* optional file — no-op */ }
 
   const prompt = `You are an autonomous code optimizer implementing Karpathy's autoresearch pattern.
 
@@ -109,7 +135,7 @@ Measurement command: ${config.measurementCommand}
 Working directory: ${config.cwd}
 Experiment number: ${experimentId}
 
-${resultsContext}
+${programContext}${resultsContext}
 
 Generate a single, focused hypothesis for the next experiment. Make ONE small, surgical change.
 Prefer high-impact, low-effort changes. Build on what worked; avoid what failed.
@@ -121,7 +147,7 @@ Respond with EXACTLY this JSON format (no other text, no markdown fences):
   "change": "<complete new content for that file, or a precise diff/patch>"
 }`;
 
-  const response = await callLLM(prompt, undefined, {
+  const response = await callLLMFn(prompt, undefined, {
     enrichContext: true,
     cwd: config.cwd,
   });
@@ -167,8 +193,10 @@ async function generateInsights(
   experiments: ExperimentResult[],
   baseline: number,
   final: number,
+  callLLMFn: CallLLMFn = callLLM,
+  isLLMAvailableFn: () => Promise<boolean> = isLLMAvailable,
 ): Promise<string[]> {
-  const llmAvailable = await isLLMAvailable();
+  const llmAvailable = await isLLMAvailableFn();
   if (!llmAvailable || experiments.length === 0) {
     return buildFallbackInsights(experiments, baseline, final);
   }
@@ -193,7 +221,7 @@ Summarize the key insights in 3-5 bullet points:
 Respond with a plain list, one insight per line, starting each line with "- ".`;
 
   try {
-    const response = await callLLM(prompt, undefined, {
+    const response = await callLLMFn(prompt, undefined, {
       enrichContext: false,
       cwd: config.cwd,
     });
@@ -207,7 +235,7 @@ Respond with a plain list, one insight per line, starting each line with "- ".`;
   }
 }
 
-function buildFallbackInsights(
+export function buildFallbackInsights(
   experiments: ExperimentResult[],
   baseline: number,
   final: number,
@@ -243,7 +271,7 @@ function buildFallbackInsights(
 
 // ── Prompt mode output ─────────────────────────────────────────────────────────
 
-function buildPromptModeOutput(
+export function buildPromptModeOutput(
   goal: string,
   metric: string,
   timeBudgetMinutes: number,
@@ -279,6 +307,21 @@ function buildPromptModeOutput(
 
 // ── Main command ───────────────────────────────────────────────────────────────
 
+export interface AutoResearchOpts {
+  _loadState?: (opts?: { cwd?: string }) => Promise<import('../../core/state.js').DanteState>;
+  _saveState?: (state: import('../../core/state.js').DanteState, opts?: { cwd?: string }) => Promise<void>;
+  _isLLMAvailable?: () => Promise<boolean>;
+  _callLLM?: CallLLMFn;
+  _runBaseline?: (config: AutoResearchConfig) => Promise<number>;
+  _runExperiment?: (config: AutoResearchConfig, id: number, desc: string) => Promise<ExperimentResult>;
+  _git?: GitFn;
+  _writeFile?: (p: string, content: string) => Promise<void>;
+  _appendFile?: (p: string, content: string) => Promise<void>;
+  _readFile?: (p: string) => Promise<string>;
+  _sleep?: (ms: number) => Promise<void>;
+  _now?: () => number;
+}
+
 export async function autoResearch(
   goal: string,
   options: {
@@ -287,36 +330,53 @@ export async function autoResearch(
     measurementCommand?: string;
     prompt?: boolean;
     dryRun?: boolean;
+    allowDirty?: boolean;
   } = {},
+  _opts: AutoResearchOpts = {},
 ): Promise<void> {
   return withErrorBoundary('autoresearch', async () => {
   const metric = options.metric ?? 'metric value';
   const timeBudgetMinutes = parseTimeBudget(options.time ?? '4h');
   const cwd = process.cwd();
 
-  // Derive measurement command from metric if not provided
+  // Resolved seams
+  const loadStateFn = _opts._loadState ?? loadState;
+  const saveStateFn = _opts._saveState ?? saveState;
+  const isLLMAvailableFn = _opts._isLLMAvailable ?? isLLMAvailable;
+  const callLLMFn: CallLLMFn = _opts._callLLM ?? callLLM;
+  const runBaselineFn = _opts._runBaseline ?? runBaseline;
+  const runExperimentFn = _opts._runExperiment ?? runExperiment;
+  const gitFn: GitFn = _opts._git ?? git;
+  const writeFileFn = _opts._writeFile ?? ((p: string, c: string) => fs.writeFile(p, c, 'utf8'));
+  const appendFileFn = _opts._appendFile ?? ((p: string, c: string) => fs.appendFile(p, c, 'utf8'));
+  const readFileFn = _opts._readFile ?? ((p: string) => fs.readFile(p, 'utf8'));
+  const sleepFn = _opts._sleep ?? ((ms: number) => new Promise<void>(r => setTimeout(r, ms)));
+  const nowFn = _opts._now ?? (() => Date.now());
+
+  // Derive measurement command from metric if not provided.
   const measurementCommand = options.measurementCommand ?? deriveMeasurementCommand(metric);
+  const displayMeasurementCommand = measurementCommand ?? '<provide --measurement-command>';
 
   logger.success('DanteForge AutoResearch — Autonomous Optimization Loop');
   logger.info('');
   logger.info(`Goal:    ${goal}`);
   logger.info(`Metric:  ${metric}`);
   logger.info(`Budget:  ${timeBudgetMinutes} minutes`);
-  logger.info(`Command: ${measurementCommand}`);
+  logger.info(`Command: ${displayMeasurementCommand}`);
   logger.info('');
 
   // --prompt mode: generate copy-paste prompt and exit
   if (options.prompt) {
-    const promptText = buildPromptModeOutput(goal, metric, timeBudgetMinutes, measurementCommand);
+    const promptText = buildPromptModeOutput(goal, metric, timeBudgetMinutes, displayMeasurementCommand);
     logger.success('=== COPY-PASTE PROMPT (start) ===');
     process.stdout.write('\n' + promptText + '\n\n');
     logger.success('=== COPY-PASTE PROMPT (end) ===');
     logger.info('');
     logger.info('Paste this into your LLM interface to run autoresearch manually.');
 
-    const state = await loadState({ cwd });
+    const state = await loadStateFn({ cwd });
     state.auditLog.push(`${new Date().toISOString()} | autoresearch: prompt mode — goal: ${goal}`);
-    await saveState(state, { cwd });
+    await saveStateFn(state, { cwd });
     return;
   }
 
@@ -324,19 +384,33 @@ export async function autoResearch(
   if (options.dryRun) {
     logger.info('--- Dry Run Plan ---');
     logger.info(`1. Create branch: autoresearch/${slugify(goal)}`);
-    logger.info(`2. Run baseline: ${measurementCommand}`);
+    logger.info(`2. Run baseline: ${displayMeasurementCommand}`);
     logger.info(`3. Enter experiment loop for ${timeBudgetMinutes} minutes`);
     logger.info('4. On each iteration: generate hypothesis -> apply change -> measure -> keep/discard');
     logger.info('5. Write AUTORESEARCH_REPORT.md when time expires');
     logger.info('--- Dry Run Complete (no commands executed) ---');
 
-    const state = await loadState({ cwd });
+    const state = await loadStateFn({ cwd });
     state.auditLog.push(`${new Date().toISOString()} | autoresearch: dry-run — goal: ${goal}`);
-    await saveState(state, { cwd });
+    await saveStateFn(state, { cwd });
     return;
   }
 
   // ── Execute mode ─────────────────────────────────────────────────────────────
+
+  if (!measurementCommand) {
+    logger.error('AutoResearch needs an explicit measurement command for unknown metrics.');
+    logger.error('Provide --measurement-command "<command>" or choose a supported metric like "bundle size KB".');
+    process.exitCode = 1;
+    return;
+  }
+
+  if (!options.allowDirty && await gitIsDirty(cwd, gitFn)) {
+    logger.error('AutoResearch refuses to run on a dirty working tree.');
+    logger.error('Commit or stash your changes first, or rerun with --allow-dirty if you intentionally want that risk.');
+    process.exitCode = 1;
+    return;
+  }
 
   const config: AutoResearchConfig = {
     goal,
@@ -347,14 +421,14 @@ export async function autoResearch(
   };
 
   const noiseMargin = resolveNoiseMargin(metric);
-  const startTime = Date.now();
+  const startTime = nowFn();
   const budgetMs = timeBudgetMinutes * 60 * 1000;
 
   // Create the experiment branch
   const branchName = `autoresearch/${slugify(goal)}`;
   logger.info(`Creating branch: ${branchName}`);
   try {
-    await gitCreateBranch(branchName, cwd);
+    await gitCreateBranch(branchName, cwd, gitFn);
   } catch (err) {
     logger.error(`Failed to create branch ${branchName}: ${err instanceof Error ? err.message : String(err)}`);
     logger.info('Continuing on current branch.');
@@ -364,7 +438,7 @@ export async function autoResearch(
   logger.info('Running baseline measurement...');
   let baseline: number;
   try {
-    baseline = await runBaseline(config);
+    baseline = await runBaselineFn(config);
     logger.success(`Baseline established at ${baseline}`);
   } catch (err) {
     logger.error(`Baseline measurement failed: ${err instanceof Error ? err.message : String(err)}`);
@@ -382,37 +456,57 @@ export async function autoResearch(
 
   const allExperiments: ExperimentResult[] = [baselineResult];
   let bestValue = baseline;
-  let bestHash = await gitCurrentHash(cwd).catch(() => '');
+  let bestHash = await gitCurrentHash(cwd, gitFn).catch(() => '');
 
   // Write initial results.tsv (untracked — do not commit)
   const tsvPath = path.join(cwd, 'results.tsv');
-  await writeTsv(tsvPath, [baselineResult]);
+  await writeTsv(tsvPath, [baselineResult], writeFileFn);
 
   logger.info(`Beginning experiment loop. Time budget: ${timeBudgetMinutes} minutes.`);
   logger.info('');
 
-  const llmAvailable = await isLLMAvailable();
-  if (!llmAvailable) {
-    logger.warn('No LLM available — cannot generate hypotheses. Exiting experiment loop.');
+  // Pre-flight LLM check — exit fast with actionable error before wasting time on the loop
+  const llmAvailablePrecheck = await isLLMAvailableFn();
+  if (!llmAvailablePrecheck) {
+    logger.error('No LLM available — cannot generate hypotheses.');
+    logger.error('Fix: set ANTHROPIC_API_KEY, or start Ollama, or run with --prompt for copy-paste mode.');
+    process.exitCode = 1;
+    return;
   }
 
   // Phase 1: Experiment loop
   let experimentId = 1;
+  let consecutiveLLMFailures = 0;
+  const MAX_LLM_FAILURES = 5;
 
-  while (llmAvailable && Date.now() - startTime < budgetMs) {
-    const remainingMs = budgetMs - (Date.now() - startTime);
+  while (nowFn() - startTime < budgetMs) {
+    const remainingMs = budgetMs - (nowFn() - startTime);
     // Don't start a new experiment if there are fewer than 90 seconds left
     if (remainingMs < 90_000) {
       logger.info('Time budget nearly exhausted — stopping experiment loop.');
       break;
     }
 
+    // Per-iteration LLM check — recovers from transient failures (rate limits, restarts)
+    const llmOk = await isLLMAvailableFn();
+    if (!llmOk) {
+      consecutiveLLMFailures++;
+      if (consecutiveLLMFailures >= MAX_LLM_FAILURES) {
+        logger.error(`LLM unavailable for ${MAX_LLM_FAILURES} consecutive checks — stopping experiment loop.`);
+        break;
+      }
+      logger.warn(`LLM temporarily unavailable (${consecutiveLLMFailures}/${MAX_LLM_FAILURES}). Retrying in 30s...`);
+      await sleepFn(30_000);
+      continue;
+    }
+    consecutiveLLMFailures = 0;
+
     logger.info(`--- Experiment ${experimentId} ---`);
 
     // 1. PLAN: generate hypothesis
     let hypothesis;
     try {
-      hypothesis = await generateHypothesis(config, experimentId, allExperiments);
+      hypothesis = await generateHypothesis(config, experimentId, allExperiments, callLLMFn, readFileFn);
       logger.info(`Hypothesis: ${hypothesis.description}`);
     } catch (err) {
       logger.warn(`Hypothesis generation failed: ${err instanceof Error ? err.message : String(err)}`);
@@ -420,7 +514,7 @@ export async function autoResearch(
       continue;
     }
 
-    const preExperimentHash = await gitCurrentHash(cwd).catch(() => '');
+    const preExperimentHash = await gitCurrentHash(cwd, gitFn).catch(() => '');
 
     // 2. REWRITE: apply the hypothesis
     const applied = await applyHypothesis(hypothesis, cwd);
@@ -433,13 +527,13 @@ export async function autoResearch(
         status: 'crash',
       };
       allExperiments.push(crashResult);
-      await appendTsv(tsvPath, crashResult);
+      await appendTsv(tsvPath, crashResult, appendFileFn);
       experimentId++;
       continue;
     }
 
     // 3. EXECUTE: measure
-    let result = await runExperiment(config, experimentId, hypothesis.description);
+    let result = await runExperimentFn(config, experimentId, hypothesis.description);
 
     // 4. EVALUATE + DECIDE
     if (result.status !== 'crash' && result.metricValue !== null) {
@@ -450,7 +544,7 @@ export async function autoResearch(
     if (result.status === 'keep' && result.metricValue !== null) {
       // Commit the winning change
       try {
-        const hash = await gitCommitAll(`experiment: ${hypothesis.description}`, cwd);
+        const hash = await gitCommitAll(`experiment: ${hypothesis.description}`, cwd, gitFn);
         result = { ...result, commitHash: hash };
         bestValue = result.metricValue!;
         bestHash = hash;
@@ -464,7 +558,7 @@ export async function autoResearch(
       const reason = result.status === 'crash' ? 'crashed' : 'did not improve metric';
       logger.info(`Discarding (${reason}). Rolling back to ${preExperimentHash.slice(0, 8)}.`);
       try {
-        await gitResetHard(preExperimentHash, cwd);
+        await gitResetHard(preExperimentHash, cwd, gitFn);
       } catch (err) {
         logger.warn(`Rollback failed: ${err instanceof Error ? err.message : String(err)}`);
       }
@@ -472,13 +566,13 @@ export async function autoResearch(
 
     // 6. RECORD
     allExperiments.push(result);
-    await appendTsv(tsvPath, result);
+    await appendTsv(tsvPath, result, appendFileFn);
 
     experimentId++;
   }
 
   // Phase 2: Report
-  const durationMs = Date.now() - startTime;
+  const durationMs = nowFn() - startTime;
   const durationStr = formatDuration(durationMs);
 
   const kept = allExperiments.filter(e => e.status === 'keep' && e.id > 0).length;
@@ -491,7 +585,7 @@ export async function autoResearch(
     : 0;
 
   const nonBaselineExperiments = allExperiments.filter(e => e.id > 0);
-  const insights = await generateInsights(config, nonBaselineExperiments, baseline, finalValue);
+  const insights = await generateInsights(config, nonBaselineExperiments, baseline, finalValue, callLLMFn, isLLMAvailableFn);
 
   const report: AutoResearchReport = {
     goal,
@@ -510,14 +604,14 @@ export async function autoResearch(
 
   const reportMd = formatReport(report);
   const reportPath = path.join(cwd, 'AUTORESEARCH_REPORT.md');
-  await fs.writeFile(reportPath, reportMd, 'utf8');
+  await writeFileFn(reportPath, reportMd);
 
   // Audit log
-  const state = await loadState({ cwd });
+  const state = await loadStateFn({ cwd });
   state.auditLog.push(
     `${new Date().toISOString()} | autoresearch: complete — goal: ${goal}, metric: ${metric}, experiments: ${nonBaselineExperiments.length}, kept: ${kept}, improvement: ${improvementPercent.toFixed(2)}%`,
   );
-  await saveState(state, { cwd });
+  await saveStateFn(state, { cwd });
 
   logger.info('');
   logger.success('='.repeat(60));
@@ -541,7 +635,7 @@ export async function autoResearch(
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
-function parseTimeBudget(time: string): number {
+export function parseTimeBudget(time: string): number {
   const lower = time.trim().toLowerCase();
   const value = parseFloat(lower);
 
@@ -552,7 +646,7 @@ function parseTimeBudget(time: string): number {
   return Number.isFinite(value) ? value : 240;
 }
 
-function formatDuration(ms: number): string {
+export function formatDuration(ms: number): string {
   const totalSeconds = Math.floor(ms / 1000);
   const hours = Math.floor(totalSeconds / 3600);
   const minutes = Math.floor((totalSeconds % 3600) / 60);
@@ -565,7 +659,7 @@ function formatDuration(ms: number): string {
   return parts.join(' ');
 }
 
-function deriveMeasurementCommand(metric: string): string {
+export function deriveMeasurementCommand(metric: string): string | null {
   const lower = metric.toLowerCase();
   if (lower.includes('test') && lower.includes('pass')) {
     return 'npm test 2>&1 | tail -1';
@@ -577,21 +671,29 @@ function deriveMeasurementCommand(metric: string): string {
     return 'npm run lint 2>&1 | grep -c "error"';
   }
   // Generic fallback — caller should provide an explicit command
-  return 'echo 0';
+  return null;
 }
 
-async function writeTsv(tsvPath: string, experiments: ExperimentResult[]): Promise<void> {
+async function writeTsv(
+  tsvPath: string,
+  experiments: ExperimentResult[],
+  writeFileFn: (p: string, content: string) => Promise<void> = (p, c) => fs.writeFile(p, c, 'utf8'),
+): Promise<void> {
   const header = 'experiment\tmetric_value\tstatus\tdescription\n';
   const rows = experiments
     .map(e => `${e.id}\t${e.metricValue ?? 'crash'}\t${e.status}\t${e.description}\n`)
     .join('');
-  await fs.writeFile(tsvPath, header + rows, 'utf8');
+  await writeFileFn(tsvPath, header + rows);
 }
 
-async function appendTsv(tsvPath: string, experiment: ExperimentResult): Promise<void> {
+async function appendTsv(
+  tsvPath: string,
+  experiment: ExperimentResult,
+  appendFileFn: (p: string, content: string) => Promise<void> = (p, c) => fs.appendFile(p, c, 'utf8'),
+): Promise<void> {
   const row = `${experiment.id}\t${experiment.metricValue ?? 'crash'}\t${experiment.status}\t${experiment.description}\n`;
   try {
-    await fs.appendFile(tsvPath, row, 'utf8');
+    await appendFileFn(tsvPath, row);
   } catch {
     // Non-fatal — TSV is informational
   }

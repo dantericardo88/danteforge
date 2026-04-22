@@ -3,6 +3,8 @@
 // and makes autoforge advance/pause/block decisions. All scoring functions are pure.
 import fs from 'fs/promises';
 import path from 'path';
+import { appendPdseHistory } from './pdse-anomaly.js';
+import type { AppendPdseHistoryOptions } from './pdse-anomaly.js';
 import type { DanteState } from './state.js';
 import {
   type ScoredArtifact,
@@ -106,8 +108,10 @@ export function scoreArtifact(ctx: ScoringContext): ScoreResult {
 
   // Anti-stub scan — floors clarity to 0
   // Supports both plain string patterns (case-insensitive includes) and RegExp patterns
+  // CONSTITUTION is exempt: it documents anti-stub policy by name and legitimately uses "stub"
   const stubHits: string[] = [];
-  for (const pattern of ANTI_STUB_PATTERNS) {
+  const skipAntiStub = ctx.artifactName === 'CONSTITUTION';
+  for (const pattern of (skipAntiStub ? [] : ANTI_STUB_PATTERNS)) {
     if (pattern instanceof RegExp) {
       if (pattern.test(content)) {
         stubHits.push(pattern.source);
@@ -317,9 +321,17 @@ export function scoreArtifact(ctx: ScoringContext): ScoreResult {
 
 // ── Score all artifacts on disk ──────────────────────────────────────────────
 
+export interface ScoreAllArtifactsOptions {
+  /** Injection seam: override history append for testing */
+  _appendHistory?: (entry: Parameters<typeof appendPdseHistory>[0], opts?: AppendPdseHistoryOptions) => Promise<void>;
+  /** Optional toolchain metrics to apply as post-scoring adjustments */
+  toolchainMetrics?: import('./pdse-toolchain.js').ToolchainMetrics;
+}
+
 export async function scoreAllArtifacts(
   cwd: string,
   state: DanteState,
+  opts?: ScoreAllArtifactsOptions,
 ): Promise<Record<ScoredArtifact, ScoreResult>> {
   const stateDir = path.join(cwd, '.danteforge');
   const artifactFiles: Record<ScoredArtifact, string> = {
@@ -391,7 +403,38 @@ export async function scoreAllArtifacts(
     });
   }
 
-  return results as Record<ScoredArtifact, ScoreResult>;
+  let finalResults = results as Record<ScoredArtifact, ScoreResult>;
+
+  // Apply toolchain grounding if metrics were provided (post-scoring adjustment)
+  if (opts?.toolchainMetrics) {
+    try {
+      const { applyToolchainToScores } = await import('./pdse-toolchain.js');
+      finalResults = applyToolchainToScores(finalResults, opts.toolchainMetrics);
+    } catch {
+      // Non-fatal — fall back to ungrounded scores
+    }
+  }
+
+  // Best-effort: append each score result to wiki PDSE history
+  const appendFn = opts?._appendHistory ?? appendPdseHistory;
+  for (const [artifact, result] of Object.entries(finalResults)) {
+    try {
+      await appendFn(
+        {
+          timestamp: result.timestamp,
+          artifact,
+          score: result.score,
+          dimensions: result.dimensions as unknown as Record<string, number>,
+          decision: result.autoforgeDecision,
+        },
+        { cwd },
+      );
+    } catch {
+      // Non-fatal — never block scoring on wiki write failure
+    }
+  }
+
+  return finalResults;
 }
 
 // ── Persistence ─────────────────────────────────────────────────────────────

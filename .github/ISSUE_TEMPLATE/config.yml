@@ -1,0 +1,14 @@
+blank_issues_enabled: false
+contact_links:
+  - name: 💬 GitHub Discussions
+    url: https://github.com/danteforge/danteforge/discussions
+    about: Ask questions, share ideas, and discuss DanteForge with the community
+  - name: 📖 Documentation
+    url: https://github.com/danteforge/danteforge#readme
+    about: Read the full documentation, guides, and tutorials
+  - name: 🛠️ Troubleshooting Guide
+    url: https://github.com/danteforge/danteforge/blob/main/TROUBLESHOOTING.md
+    about: Common errors and solutions
+  - name: 🔒 Security Vulnerability
+    url: https://github.com/danteforge/danteforge/security/advisories/new
+    about: Report a security vulnerability privately

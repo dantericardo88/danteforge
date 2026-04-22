@@ -7,7 +7,14 @@ import { loadState, saveState } from '../../core/state.js';
 import { runRetro, writeRetroFiles, loadPriorRetro } from '../../core/retro-engine.js';
 import { withErrorBoundary } from '../../core/cli-error-boundary.js';
 
-export async function retro(options: { summary?: boolean; cwd?: string } = {}) {
+export interface RetroOptions {
+  summary?: boolean;
+  cwd?: string;
+  /** Injection seam: mirror retro to evidence/retro/ for selfImprovement scoring signal */
+  _writeRetroEvidence?: (report: Awaited<ReturnType<typeof runRetro>>, cwd: string) => Promise<void>;
+}
+
+export async function retro(options: RetroOptions = {}) {
   return withErrorBoundary('retro', async () => {
   const cwd = options.cwd ?? process.cwd();
 
@@ -21,6 +28,22 @@ export async function retro(options: { summary?: boolean; cwd?: string } = {}) {
   const report = await runRetro(cwd);
   const retroDir = path.join(cwd, '.danteforge', 'retros');
   const { jsonPath, mdPath } = await writeRetroFiles(report, retroDir);
+
+  // Mirror to evidence/retro/ so computeStrictDimensions can measure self-improvement cadence.
+  // +20 selfImprovement pts after 5+ retro runs. Non-fatal — never blocks main retro flow.
+  try {
+    if (options._writeRetroEvidence) {
+      await options._writeRetroEvidence(report, cwd);
+    } else {
+      const evidenceRetroDir = path.join(cwd, '.danteforge', 'evidence', 'retro');
+      await fs.mkdir(evidenceRetroDir, { recursive: true });
+      const ts = report.timestamp.replace(/[:.]/g, '-').replace('T', '_').slice(0, 19);
+      const evidencePath = path.join(evidenceRetroDir, `retro-${ts}.json`);
+      await fs.writeFile(evidencePath, JSON.stringify(report, null, 2), 'utf8');
+    }
+  } catch {
+    // best-effort — evidence write never blocks retro output
+  }
 
   logger.success(`\nRetro Score: ${report.score}/100`);
   if (report.delta !== null) {

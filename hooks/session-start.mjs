@@ -1,96 +1,152 @@
 #!/usr/bin/env node
 
-const context = `## DanteForge - Active Plugin
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
 
-DanteForge is installed and active. You have access to the following capabilities:
+// ── State helpers (pure — exported for tests) ─────────────────────────────────
 
-### Slash Commands
+function extractTasksForPhase(yaml, phase) {
+  if (!phase) return [];
+  const lines = yaml.split('\n');
+  const tasks = [];
+  let inPhaseBlock = false;
+  const phaseKey = new RegExp(`^\\s*${phase}:\\s*$`);
 
-In Codex, these slash commands are native workflow commands. Execute them in the workspace instead of routing them to \`danteforge ...\` unless the user explicitly asks for terminal CLI execution.
+  for (const line of lines) {
+    if (phaseKey.test(line)) { inPhaseBlock = true; continue; }
+    if (inPhaseBlock) {
+      if (/^\s*\d+:\s*$/.test(line) && !phaseKey.test(line)) break;
+      const nameMatch = line.match(/^\s*-?\s*name:\s*(.+)$/);
+      if (nameMatch) tasks.push(nameMatch[1].trim());
+    }
+  }
+  return tasks;
+}
 
-**Core Workflow (in order):**
-- \`/review\` - Scan repo and generate CURRENT_STATE.md
-- \`/constitution\` - Define project principles and constraints
-- \`/specify\` - Transform a high-level idea into spec artifacts
-- \`/clarify\` - Run clarification Q&A on current spec
-- \`/tech-decide\` - Guided tech stack selection with pros and cons
-- \`/plan\` - Generate detailed implementation plan from spec
-- \`/tasks\` - Break plan into executable task list
-- \`/design\` - Generate design artifacts via OpenPencil Design-as-Code
-- \`/forge\` - Execute development waves with agent orchestration
-- \`/ux-refine\` - Refine UI and UX after forge
-- \`/verify\` - Run verification checks on project state
-- \`/synthesize\` - Generate Ultimate Planning Resource (UPR.md)
+function nextActionForStage(stage, project) {
+  const p = project ?? 'your project';
+  switch (stage) {
+    case 'specify':   return `Run /clarify to sharpen the spec for ${p}`;
+    case 'clarify':   return `Run /tech-decide to choose your stack, then /plan`;
+    case 'plan':      return `Run /tasks to break the plan into execution tasks`;
+    case 'tasks':     return `Run /forge to begin implementation`;
+    case 'verify':    return `Run /synthesize to finalize, then /ship when ready`;
+    case 'synthesize':return `Run /ship to cut a release`;
+    default:          return `Run /danteforge-flow to pick the right workflow`;
+  }
+}
 
-**Multi-Agent and Automation:**
-- \`/spark\` - Zero-token planning preset for new ideas
-- \`/ember\` - Very low-token preset for quick follow-up work
-- \`/canvas\` - Design-first frontend preset: design -> autoforge -> ux-refine -> verify
-- \`/party\` - Launch multi-agent collaboration mode
-- \`/autoforge\` - Deterministic auto-orchestration of the full pipeline
-- \`/magic\` - Balanced default preset for daily gap-closing
-- \`/blaze\` - High-power preset with full party escalation
-- \`/nova\` - Very-high-power preset: planning + deep execution + polish, no OSS
-- \`/inferno\` - Maximum-power preset with OSS discovery and evolution
+// ── Matrix section builder (pure — exported for tests) ───────────────────────
 
-**Preset Usage Rule:**
-- Use \`/canvas\` for frontend-heavy features where visual design should drive implementation
-- Use \`/inferno\` for the first big attack on a new matrix dimension
-- Use \`/magic\` for follow-up PRD gap closing
+export function buildMatrixSection(matrixState) {
+  if (!matrixState) return '';
+  const staleWarning = matrixState.daysOld !== null && matrixState.daysOld > 7
+    ? `  ⚠  Matrix ${matrixState.daysOld}d old — run \`danteforge compete --init\` to rescan\n`
+    : '';
+  const sprintLine = matrixState.next
+    ? `  CHL Sprint: "${matrixState.next.label}" (gap: ${matrixState.next.gap_to_leader.toFixed(1)}, harvest: ${matrixState.next.harvest_source ?? matrixState.next.oss_leader ?? '?'})\n`
+    : '  CHL: All gaps closed! Run `danteforge compete --init` to refresh.\n';
+  return (
+    `\n## Competitive Position — ${matrixState.project}\n` +
+    `Score: ${matrixState.overallScore.toFixed(1)}/10  |  ${sprintLine}` +
+    staleWarning +
+    `  Run: \`danteforge compete --sprint\`\n`
+  );
+}
 
-**Quality and Review:**
-- \`/qa\` - Structured QA pass with health score on live app
-- \`/ship\` - Paranoid review + version bump + changelog + PR
-- \`/retro\` - Project retrospective with metrics and trends
-- \`/maturity\` - Assess code maturity level with founder-friendly quality report
-- \`/define-done\` - Define what "9+" means — interactive prompt, saves completion target
-- \`/assess\` - Harsh self-assessment: score vs feature universe or 12 dimensions, gap masterplan
-- \`/self-improve\` - Autonomous quality loop: keeps forging until completion target met
-- \`/universe\` - View competitive feature universe — all unique capabilities scored against project
+export function buildSessionContext(stateYaml, matrixState = null) {
+  const header = `## DanteForge — Active\n`;
+  const matrixSection = buildMatrixSection(matrixState);
+  const footer = (
+    `\n## Available Commands\n` +
+    `**Workflow:** /constitution /specify /clarify /tech-decide /plan /tasks /design /forge /ux-refine /verify /synthesize /review\n` +
+    `**Presets:** /spark /ember /canvas /magic /blaze /nova /inferno /autoforge /party\n` +
+    `**Quality:** /qa /retro /ship /debug /brainstorm /assess /maturity /define-done /self-improve /universe\n` +
+    `**Harvest:** /oss /harvest /local-harvest /awesome-scan /wiki-ingest /wiki-lint /wiki-query /wiki-status /wiki-export\n` +
+    `**Other:** /lessons /browse /resume /self-assess /self-mutate /ci-report /share-patterns /import-patterns\n` +
+    `**Recovery:** /refused-patterns /respec /cross-synthesize\n` +
+    `**Compete:** /compete /ascend\n` +
+    `**Daily Flow:** /score /prime /teach /go /harvest-pattern /build /proof\n` +
+    `**Flows:** /daily-driver /oss-harvest /multi-agent /spec-to-ship /competitive-leapfrog\n` +
+    `\nHelp: /danteforge-flow (all workflows) | danteforge help <command>\n`
+  );
 
-**Exploration and Learning:**
-- \`/brainstorm\` - Socratic design refinement before implementation
-- \`/debug\` - Systematic 4-phase debugging framework
-- \`/lessons\` - Capture corrections as persistent self-improving rules
-- \`/awesome-scan\` - Discover and import skill catalogs
-- \`/browse\` - Browser automation for live app inspection
-- \`/oss\` - Auto-detect project, search OSS, clone, license-gate, scan, extract patterns
-- \`/harvest\` - Titan Harvest V2: 5-step constitutional harvest of OSS patterns
-- \`/local-harvest\` - Harvest patterns from local private repos, folders, and zip archives
+  if (!stateYaml || stateYaml.trim() === '') {
+    return (
+      header +
+      matrixSection +
+      `\n✦ New project? Run \`/danteforge-flow\` to choose your path.\n` +
+      `Quick starts: /spark "idea" (free) | /magic "idea" (~$1) | /inferno "idea" (max power)\n` +
+      footer
+    );
+  }
 
-### Skills (Auto-Triggered)
-Skills are automatically suggested based on context:
-- **brainstorming** - Design before implementation
-- **writing-plans** - Bite-sized executable tasks
-- **test-driven-development** - RED-GREEN-REFACTOR enforcement
-- **systematic-debugging** - 4-phase root-cause analysis
-- **using-git-worktrees** - Isolated parallel workspaces
-- **subagent-driven-development** - Task dispatch + two-stage review
-- **requesting-code-review** - Pre-merge quality gate
-- **finishing-a-development-branch** - Merge, PR, or discard decisions
-- **tech-decide** - Guided tech stack decisions
-- **lessons** - Self-improving agent memory
-- **design-orchestrator** - Spatial decomposition for Design-as-Code
-- **ux-refine** - UX refinement workflow patterns
+  let stage, phase, project;
+  try {
+    stage   = (stateYaml.match(/^workflowStage:\s*(.+)$/m) ?? [])[1]?.trim();
+    phase   = (stateYaml.match(/^currentPhase:\s*(.+)$/m) ?? [])[1]?.trim();
+    project = (stateYaml.match(/^project:\s*(.+)$/m) ?? [])[1]?.trim();
+  } catch {
+    return header + matrixSection + `\nDanteForge is active. Run /danteforge-flow to get started.\n` + footer;
+  }
 
-### Hard Gates
-DanteForge enforces mandatory checkpoints:
-- Constitution must exist before specification
-- Spec must exist before planning
-- Plan must exist before execution
-- Tests must exist before code (when TDD enabled)
+  if (stage === 'forge') {
+    const tasks = extractTasksForPhase(stateYaml, phase);
+    const taskLines = tasks.length > 0
+      ? tasks.map((t, i) => `  ${i + 1}. ${t}`).join('\n')
+      : '  (run `danteforge tasks` to generate tasks)';
 
-Use \`--light\` on any command to bypass gates for simple changes.
+    return (
+      header +
+      matrixSection +
+      `\n✦ Phase ${phase} | project: ${project ?? 'unknown'} | stage: forge\n` +
+      `Next: Load the forge skill — \`@danteforge-forge\`\n\n` +
+      `**Tasks for phase ${phase}:**\n${taskLines}\n\n` +
+      `When done: \`danteforge verify --json\` → read \`.danteforge/evidence/verify/latest.json\`\n` +
+      footer
+    );
+  }
 
-### Workflow
-\`review -> constitution -> specify -> clarify -> tech-decide -> plan -> tasks -> design -> forge -> ux-refine -> verify -> synthesize -> retro -> ship\`
-`;
+  if (stage) {
+    const next = nextActionForStage(stage, project);
+    return (
+      header +
+      matrixSection +
+      `\n✦ Stage: ${stage} | project: ${project ?? 'unknown'}\n` +
+      `Next: ${next}\n` +
+      footer
+    );
+  }
 
-const payload = {
-  additional_context: context,
-  hookSpecificOutput: {
-    additionalContext: context,
-  },
-};
+  return header + matrixSection + `\nDanteForge is active. Run /danteforge-flow to get started.\n` + footer;
+}
 
+// ── Main ──────────────────────────────────────────────────────────────────────
+
+const stateFile = join(process.cwd(), '.danteforge', 'STATE.yaml');
+let stateYaml = null;
+try { stateYaml = readFileSync(stateFile, 'utf8'); } catch { /* no state file — ok */ }
+
+// Load CHL matrix state
+const matrixFile = join(process.cwd(), '.danteforge', 'compete', 'matrix.json');
+let matrixState = null;
+try {
+  const raw = readFileSync(matrixFile, 'utf8');
+  const matrix = JSON.parse(raw);
+  const FREQ = { high: 1.5, medium: 1.0, low: 0.5 };
+  const eligible = (matrix.dimensions ?? []).filter(d => d.status !== 'closed');
+  const next = eligible.length > 0
+    ? eligible.reduce((best, d) => {
+        const p = d.weight * d.gap_to_leader * (FREQ[d.frequency] ?? 1.0);
+        const bp = best.weight * best.gap_to_leader * (FREQ[best.frequency] ?? 1.0);
+        return p > bp ? d : best;
+      })
+    : null;
+  const lastUpdated = matrix.lastUpdated ? new Date(matrix.lastUpdated) : null;
+  const daysOld = lastUpdated ? Math.floor((Date.now() - lastUpdated.getTime()) / 86400000) : null;
+  matrixState = { overallScore: matrix.overallSelfScore ?? 0, next, daysOld, project: matrix.project ?? 'Project' };
+} catch { /* no matrix — ok */ }
+
+const context = buildSessionContext(stateYaml, matrixState);
+const payload = { additional_context: context, hookSpecificOutput: { additionalContext: context } };
 process.stdout.write(`${JSON.stringify(payload, null, 2)}\n`);

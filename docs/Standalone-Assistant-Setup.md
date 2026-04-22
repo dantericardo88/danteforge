@@ -6,6 +6,8 @@ This guide describes the supported standalone DanteForge install surface for loc
 
 DanteForge runs as a standalone CLI. Assistant integrations only bootstrap instructions and discovery paths around that CLI.
 
+When a host tool supports native DanteForge workflow commands, those native workflows keep using the host model/session. Direct DanteForge CLI execution uses DanteForge's own shared config and should prefer a local Ollama model first when you want to minimize spend.
+
 Assistant setup is explicit. Installing the package does not modify user-level assistant registries or project-local Cursor files until you run `danteforge setup assistants`.
 
 Secrets are configured once with `danteforge config` and stored in the shared user-level file:
@@ -49,7 +51,7 @@ From a packaged tarball before public npm publish:
 
 ```bash
 npm pack
-npm install -g ./danteforge-0.8.0.tgz
+npm install -g ./danteforge-0.17.0.tgz
 ```
 
 From source:
@@ -89,6 +91,8 @@ For Codex specifically, `danteforge setup assistants --assistants codex` refresh
 
 The bundled registries also include the `danteforge-cli` skill. That skill is now the explicit CLI path when the user asks for terminal execution or when native workflow command files are unavailable.
 
+The canonical Codex-specific machine setup and validation flow now lives in `docs/Codex-Install.md`.
+
 Accepted aliases:
 
 - `gemini` and `gemini-3.1` map to the Gemini / Antigravity registry
@@ -96,9 +100,25 @@ Accepted aliases:
 - `open-code` maps to `opencode`
 - `all` installs every supported target, including the project-local Cursor bootstrap rule
 
-### 3. Configure providers and secrets
+### 3. Configure spend-optimized local execution first
 
-Set whichever providers you actually intend to use:
+Recommended local-first path:
+
+```bash
+danteforge setup ollama --pull
+```
+
+If you are already syncing assistants, you can combine setup plus local-model provisioning:
+
+```bash
+danteforge setup assistants --pull
+```
+
+That keeps native Codex / Claude Code / Cursor workflows on the host model while steering direct DanteForge CLI execution toward a cheaper local Ollama model.
+
+### 4. Configure hosted fallback providers only when you want them
+
+Set whichever hosted providers you actually intend to use:
 
 ```bash
 danteforge config --set-key "openai:sk-..."
@@ -107,14 +127,14 @@ danteforge config --set-key "gemini:AIza..."
 danteforge config --set-key "grok:xai-..."
 ```
 
-Optional local-provider flow:
+Optional manual local-provider flow:
 
 ```bash
 danteforge config --provider ollama
 danteforge config --model "ollama:qwen2.5-coder"
 ```
 
-### 4. Validate the local install
+### 5. Validate the local install
 
 Repair local state and user-level assistant paths:
 
@@ -178,6 +198,7 @@ Codex troubleshooting path:
 2. Confirm `~/.codex/skills` contains `danteforge-cli` and the packaged skills you expect
 3. Confirm `~/.codex/AGENTS.md` contains the DanteForge bootstrap block
 4. Confirm the current project still ships the intended `.codex/config.toml`
+5. Use `docs/Codex-Install.md` as the canonical fresh-machine setup and validation checklist
 
 ## Recommended Battle-Tested Baseline
 
@@ -185,9 +206,8 @@ For a fully provisioned standalone machine:
 
 ```bash
 danteforge setup assistants
+danteforge setup ollama --pull
 danteforge config --set-key "openai:sk-..."
-danteforge config --set-key "claude:sk-ant-..."
-danteforge config --set-key "gemini:AIza..."
 danteforge doctor --fix
 danteforge doctor --live
 ```

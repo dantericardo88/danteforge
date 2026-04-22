@@ -1,5 +1,6 @@
 // DanteForge SDK — programmatic API for use as a library
 // Usage: import { assess, computeHarshScore } from 'danteforge/sdk'
+import { DANTEFORGE_VERSION } from './core/version.js';
 
 // Core assessment and scoring
 export { assess } from './cli/commands/assess.js';
@@ -30,4 +31,4 @@ export { buildFeatureUniverse, scoreProjectAgainstUniverse } from './core/featur
 export type { FeatureUniverseAssessment } from './core/feature-universe.js';
 
 // Version
-export const SDK_VERSION = '0.10.0';
+export const SDK_VERSION = DANTEFORGE_VERSION;

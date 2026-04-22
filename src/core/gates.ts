@@ -7,6 +7,7 @@ import { detectLoop } from './loop-detector.js';
 import { detectAIDrift } from './drift-detector.js';
 import { loadLatestVerdict } from './reflection-engine.js';
 import type { ExecutionTelemetry } from './execution-telemetry.js';
+import type { ErrorCategory } from './error-catalog.js';
 
 const STATE_DIR = '.danteforge';
 
@@ -24,6 +25,9 @@ export class GateError extends Error {
     message: string,
     public readonly gate: string,
     public readonly remedy: string,
+    public readonly code?: string, // DF-WORKFLOW-001, etc.
+    public readonly helpUrl?: string,
+    public readonly category: ErrorCategory = 'workflow',
   ) {
     super(message);
     this.name = 'GateError';
@@ -33,14 +37,18 @@ export class GateError extends Error {
 /**
  * Gate: Constitution must exist before spec/clarify/plan
  */
-export async function requireConstitution(light = false): Promise<void> {
+export async function requireConstitution(light = false, cwd?: string): Promise<void> {
   if (light) return;
-  const state = await loadState();
-  if (!state.constitution || !(await fileExists(path.join(STATE_DIR, 'CONSTITUTION.md')))) {
+  const base = cwd ?? process.cwd();
+  const state = await loadState({ cwd });
+  if (!state.constitution || !(await fileExists(path.join(base, STATE_DIR, 'CONSTITUTION.md')))) {
     throw new GateError(
       'Gate blocked: No constitution defined.',
       'requireConstitution',
-      'Run "danteforge constitution" first to establish project principles.',
+      'Create a constitution: danteforge constitution "your project goals" or use --light to skip.',
+      'DF-WORKFLOW-001',
+      'https://github.com/danteforge/danteforge/blob/main/TROUBLESHOOTING.md#error-gate-checks',
+      'workflow',
     );
   }
 }
@@ -48,13 +56,17 @@ export async function requireConstitution(light = false): Promise<void> {
 /**
  * Gate: SPEC.md must exist before plan/tasks
  */
-export async function requireSpec(light = false): Promise<void> {
+export async function requireSpec(light = false, cwd?: string): Promise<void> {
   if (light) return;
-  if (!(await fileExists(path.join(STATE_DIR, 'SPEC.md')))) {
+  const base = cwd ?? process.cwd();
+  if (!(await fileExists(path.join(base, STATE_DIR, 'SPEC.md')))) {
     throw new GateError(
       'Gate blocked: No SPEC.md found.',
       'requireSpec',
-      'Run "danteforge specify <idea>" first to generate spec artifacts.',
+      'Generate a spec: danteforge specify "your feature idea" or use --light to skip.',
+      'DF-WORKFLOW-002',
+      'https://github.com/danteforge/danteforge/blob/main/TROUBLESHOOTING.md#error-gate-checks',
+      'workflow',
     );
   }
 }
@@ -62,9 +74,10 @@ export async function requireSpec(light = false): Promise<void> {
 /**
  * Gate: CLARIFY.md must exist before plan generation
  */
-export async function requireClarify(light = false): Promise<void> {
+export async function requireClarify(light = false, cwd?: string): Promise<void> {
   if (light) return;
-  if (!(await fileExists(path.join(STATE_DIR, 'CLARIFY.md')))) {
+  const base = cwd ?? process.cwd();
+  if (!(await fileExists(path.join(base, STATE_DIR, 'CLARIFY.md')))) {
     throw new GateError(
       'Gate blocked: No CLARIFY.md found.',
       'requireClarify',
@@ -76,13 +89,17 @@ export async function requireClarify(light = false): Promise<void> {
 /**
  * Gate: PLAN.md must exist before forge/tasks execution
  */
-export async function requirePlan(light = false): Promise<void> {
+export async function requirePlan(light = false, cwd?: string): Promise<void> {
   if (light) return;
-  if (!(await fileExists(path.join(STATE_DIR, 'PLAN.md')))) {
+  const base = cwd ?? process.cwd();
+  if (!(await fileExists(path.join(base, STATE_DIR, 'PLAN.md')))) {
     throw new GateError(
       'Gate blocked: No PLAN.md found.',
       'requirePlan',
-      'Run "danteforge plan" first to generate an execution plan.',
+      'Create a plan: danteforge plan or use a magic preset that includes planning (e.g., /magic).',
+      'DF-WORKFLOW-003',
+      'https://github.com/danteforge/danteforge/blob/main/TROUBLESHOOTING.md#error-gate-checks',
+      'workflow',
     );
   }
 }
@@ -90,9 +107,10 @@ export async function requirePlan(light = false): Promise<void> {
 /**
  * Gate: Tests must exist before production code generation (TDD enforcement)
  */
-export async function requireTests(light = false): Promise<void> {
+export async function requireTests(light = false, cwd?: string): Promise<void> {
   if (light) return;
-  const state = await loadState();
+  const base = cwd ?? process.cwd();
+  const state = await loadState({ cwd });
   if (!state.tddEnabled) return; // TDD gate only active when explicitly enabled
 
   // Check for any test files in the project
@@ -100,8 +118,9 @@ export async function requireTests(light = false): Promise<void> {
   let hasTests = false;
 
   for (const dir of testDirs) {
-    if (await fileExists(dir)) {
-      const entries = await fs.readdir(dir);
+    const testDirPath = path.join(base, dir);
+    if (await fileExists(testDirPath)) {
+      const entries = await fs.readdir(testDirPath);
       if (entries.some(e => e.includes('.test.') || e.includes('.spec.'))) {
         hasTests = true;
         break;
@@ -121,9 +140,10 @@ export async function requireTests(light = false): Promise<void> {
 /**
  * Gate: DESIGN.op must exist before design-dependent commands
  */
-export async function requireDesign(light = false): Promise<void> {
+export async function requireDesign(light = false, cwd?: string): Promise<void> {
   if (light) return;
-  const designPath = path.join(STATE_DIR, 'DESIGN.op');
+  const base = cwd ?? process.cwd();
+  const designPath = path.join(base, STATE_DIR, 'DESIGN.op');
   if (!(await fileExists(designPath))) {
     throw new GateError(
       'Gate blocked: No DESIGN.op found.',
@@ -221,7 +241,6 @@ export async function runGate(gateFn: () => Promise<void>): Promise<boolean> {
     if (err instanceof GateError) {
       logger.error(`${err.message}`);
       logger.info(`Remedy: ${err.remedy}`);
-      process.exitCode = 1;
       return false;
     }
     throw err;

@@ -1,0 +1,16 @@
+{
+  "version": "1.0.0",
+  "project": "todo-app",
+  "generatedAt": "2026-04-15T00:05:00.000Z",
+  "convergence": {
+    "totalCycles": 1,
+    "repairCycles": [
+      { "cycle": 1, "status": "pass", "errorClass": null, "recovered": false }
+    ],
+    "verifyRepairSequences": 0,
+    "recoverySuccessRatio": { "total": 0, "successful": 0 },
+    "convergenceVelocity": { "avgScoreImprovement": 0, "monotonic": true },
+    "finalStatus": "converged",
+    "duration_ms": 950
+  }
+}

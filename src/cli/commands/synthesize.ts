@@ -4,6 +4,7 @@ import path from 'path';
 import { loadState, recordWorkflowStage, saveState } from '../../core/state.js';
 import { logger } from '../../core/logger.js';
 import { withErrorBoundary } from '../../core/cli-error-boundary.js';
+import { REPO_PIPELINE_TEXT } from '../../core/workflow-surface.js';
 
 const STATE_DIR = '.danteforge';
 
@@ -26,17 +27,17 @@ function categorizeDoc(filename: string): DocSection['category'] {
 async function gatherDocs(): Promise<DocSection[]> {
   const docs: DocSection[] = [];
   try {
-    const files = await fs.readdir(STATE_DIR);
-    for (const file of files) {
-      if (file === 'UPR.md') continue;
-      if (!file.endsWith('.md') && !file.endsWith('.yaml')) continue;
-
-      const content = await fs.readFile(path.join(STATE_DIR, file), 'utf8');
-      docs.push({
-        filename: file,
-        category: categorizeDoc(file),
-        content,
-      });
+    const allFiles = await fs.readdir(STATE_DIR);
+    const eligible = allFiles.filter(
+      (f) => f !== 'UPR.md' && (f.endsWith('.md') || f.endsWith('.yaml')),
+    );
+    const readResults = await Promise.allSettled(
+      eligible.map((f) => fs.readFile(path.join(STATE_DIR, f), 'utf8')),
+    );
+    for (let i = 0; i < eligible.length; i++) {
+      const result = readResults[i]!;
+      if (result.status !== 'fulfilled') continue;
+      docs.push({ filename: eligible[i]!, category: categorizeDoc(eligible[i]!), content: result.value });
     }
   } catch {
     logger.warn('No .danteforge/ directory found — run "danteforge review" first');
@@ -44,11 +45,17 @@ async function gatherDocs(): Promise<DocSection[]> {
   return docs;
 }
 
-export async function synthesize() {
+export async function synthesize(options: {
+  _loadState?: typeof loadState;
+  _saveState?: typeof saveState;
+} = {}) {
+  const loadFn = options._loadState ?? loadState;
+  const saveFn = options._saveState ?? saveState;
+
   return withErrorBoundary('synthesize', async () => {
   logger.info('Synthesizing Ultimate Planning Resource (UPR.md)...');
 
-  const state = await loadState();
+  const state = await loadFn();
   const canSynthesize = state.workflowStage === 'verify' || state.workflowStage === 'synthesize';
   if (!state.lastVerifiedAt || !canSynthesize) {
     logger.error('Synthesis is blocked until verification succeeds. Run "danteforge verify" after a real forge pass first.');
@@ -119,8 +126,8 @@ export async function synthesize() {
   sections.push('## DanteForge Pipeline');
   sections.push('');
   sections.push('```');
-  sections.push('review -> constitution -> specify -> clarify -> plan -> tasks -> forge -> verify -> synthesize');
-  sections.push('  |                                                                                  |');
+  sections.push(REPO_PIPELINE_TEXT);
+  sections.push('  |                                                                                                                                            |');
   sections.push('  +-------------------- iterative loop: re-review or re-plan when gaps are found -----+');
   sections.push('```');
   sections.push('');
@@ -172,7 +179,7 @@ export async function synthesize() {
 
   recordWorkflowStage(state, 'synthesize', timestamp);
   state.auditLog.push(`${timestamp} | synthesize: UPR.md generated (${docs.length} artifacts merged)`);
-  await saveState(state);
+  await saveFn(state);
 
   logger.success(`UPR.md generated — ${docs.length} artifacts merged into Ultimate Planning Resource`);
   logger.info('Find it at .danteforge/UPR.md');

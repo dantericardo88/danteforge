@@ -44,7 +44,11 @@ export async function uxRefine(options: {
   afterForge?: boolean;
   openpencil?: boolean;
   lint?: boolean;
+  _loadState?: typeof loadState;
+  _saveState?: typeof saveState;
 } = {}) {
+  const loadFn = options._loadState ?? loadState;
+  const saveFn = options._saveState ?? saveState;
   return withErrorBoundary('ux-refine', async () => {
   if (options.skipUx) {
     logger.info('UX refinement skipped (--skip-ux)');
@@ -68,7 +72,7 @@ export async function uxRefine(options: {
     return;
   }
 
-  if (!(await runGate(() => requirePlan(options.light)))) return;
+  if (!(await runGate(() => requirePlan(options.light)))) { process.exitCode = 1; return; }
 
   const forgeCompleted = options.afterForge || await hasForgeRun();
   if (!forgeCompleted) {
@@ -84,7 +88,7 @@ export async function uxRefine(options: {
     return;
   }
 
-  const state = await loadState();
+  const state = await loadFn();
   const config = await loadConfig();
   const host = detectHost(options.host);
   const capabilities = await detectMCPCapabilities(host);
@@ -129,7 +133,7 @@ export async function uxRefine(options: {
   if (figmaUrl) state.figmaUrl = figmaUrl;
   state.designTokensPath = tokenFile;
   state.auditLog.push(`${new Date().toISOString()} | ux-refine: prompt generated (host: ${host}, figma-mcp: ${capabilities.hasFigmaMCP})`);
-  await saveState(state);
+  await saveFn(state);
   });
 }
 

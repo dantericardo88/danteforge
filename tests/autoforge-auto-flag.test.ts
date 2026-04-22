@@ -1,8 +1,11 @@
 // autoforge --auto flag wiring — tests that runAutoforgeLoop is called when --auto is set,
 // normal flow runs without --auto, and ctx fields are correctly populated.
 
-import { describe, it } from 'node:test';
+import { after, describe, it } from 'node:test';
 import assert from 'node:assert/strict';
+import fs from 'node:fs/promises';
+import os from 'node:os';
+import path from 'node:path';
 import { autoforge } from '../src/cli/commands/autoforge.js';
 import {
   AutoforgeLoopState,
@@ -25,16 +28,45 @@ function makeState(overrides: Partial<DanteState> = {}): DanteState {
   };
 }
 
+const tempDirs: string[] = [];
+
+async function makeWorkspace(): Promise<string> {
+  const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'df-autoforge-auto-'));
+  tempDirs.push(dir);
+  await fs.mkdir(path.join(dir, '.danteforge'), { recursive: true });
+  await fs.writeFile(path.join(dir, '.danteforge', 'STATE.yaml'), [
+    'project: test-project',
+    'lastHandoff: initialized',
+    'workflowStage: initialized',
+    'currentPhase: 0',
+    'tasks: {}',
+    'profile: balanced',
+    'auditLog: []',
+  ].join('\n'));
+  return dir;
+}
+
+after(async () => {
+  while (tempDirs.length > 0) {
+    const dir = tempDirs.pop();
+    if (dir) {
+      await fs.rm(dir, { recursive: true, force: true });
+    }
+  }
+});
+
 // ── --auto flag tests ─────────────────────────────────────────────────────────
 
 describe('autoforge --auto flag', () => {
   it('calls _runLoop when options.auto is true', async () => {
     let loopCalled = false;
     let capturedCtx: AutoforgeLoopContext | undefined;
+    const cwd = await makeWorkspace();
 
     await autoforge('My goal', {
       auto: true,
-      cwd: process.cwd(),
+      _computeRetroScore: false,
+      cwd,
       _runLoop: async (ctx) => {
         loopCalled = true;
         capturedCtx = ctx;
@@ -48,10 +80,12 @@ describe('autoforge --auto flag', () => {
 
   it('populates ctx.goal from the goal argument', async () => {
     let capturedCtx: AutoforgeLoopContext | undefined;
+    const cwd = await makeWorkspace();
 
     await autoforge('Build auth module', {
       auto: true,
-      cwd: process.cwd(),
+      _computeRetroScore: false,
+      cwd,
       _runLoop: async (ctx) => { capturedCtx = ctx; return ctx; },
     });
 
@@ -60,10 +94,12 @@ describe('autoforge --auto flag', () => {
 
   it('uses default goal when no goal argument provided', async () => {
     let capturedCtx: AutoforgeLoopContext | undefined;
+    const cwd = await makeWorkspace();
 
     await autoforge(undefined, {
       auto: true,
-      cwd: process.cwd(),
+      _computeRetroScore: false,
+      cwd,
       _runLoop: async (ctx) => { capturedCtx = ctx; return ctx; },
     });
 
@@ -72,10 +108,12 @@ describe('autoforge --auto flag', () => {
 
   it('initializes ctx with IDLE loop state', async () => {
     let capturedCtx: AutoforgeLoopContext | undefined;
+    const cwd = await makeWorkspace();
 
     await autoforge('goal', {
       auto: true,
-      cwd: process.cwd(),
+      _computeRetroScore: false,
+      cwd,
       _runLoop: async (ctx) => { capturedCtx = ctx; return ctx; },
     });
 
@@ -84,10 +122,12 @@ describe('autoforge --auto flag', () => {
 
   it('initializes ctx.cycleCount at 0', async () => {
     let capturedCtx: AutoforgeLoopContext | undefined;
+    const cwd = await makeWorkspace();
 
     await autoforge('goal', {
       auto: true,
-      cwd: process.cwd(),
+      _computeRetroScore: false,
+      cwd,
       _runLoop: async (ctx) => { capturedCtx = ctx; return ctx; },
     });
 
@@ -96,11 +136,13 @@ describe('autoforge --auto flag', () => {
 
   it('passes force=true when options.force is set', async () => {
     let capturedCtx: AutoforgeLoopContext | undefined;
+    const cwd = await makeWorkspace();
 
     await autoforge('goal', {
       auto: true,
       force: true,
-      cwd: process.cwd(),
+      _computeRetroScore: false,
+      cwd,
       _runLoop: async (ctx) => { capturedCtx = ctx; return ctx; },
     });
 
@@ -109,10 +151,12 @@ describe('autoforge --auto flag', () => {
 
   it('passes force=false by default', async () => {
     let capturedCtx: AutoforgeLoopContext | undefined;
+    const cwd = await makeWorkspace();
 
     await autoforge('goal', {
       auto: true,
-      cwd: process.cwd(),
+      _computeRetroScore: false,
+      cwd,
       _runLoop: async (ctx) => { capturedCtx = ctx; return ctx; },
     });
 
@@ -138,10 +182,12 @@ describe('autoforge --auto flag', () => {
 
   it('returns immediately after loop completes', async () => {
     let afterLoopCode = false;
+    const cwd = await makeWorkspace();
 
     await autoforge('goal', {
       auto: true,
-      cwd: process.cwd(),
+      _computeRetroScore: false,
+      cwd,
       _runLoop: async (ctx) => ctx, // immediate return
     });
 

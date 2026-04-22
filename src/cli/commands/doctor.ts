@@ -2,7 +2,7 @@ import fs from 'fs/promises';
 import path from 'path';
 import { logger } from '../../core/logger.js';
 import type { LogLevel } from '../../core/logger.js';
-import { loadState, saveState } from '../../core/state.js';
+import { loadState, saveState, type DanteState, type VerifyEvidence } from '../../core/state.js';
 import { loadConfig } from '../../core/config.js';
 import { isLLMAvailable, probeLLMProvider } from '../../core/llm.js';
 import { discoverSkills } from '../../core/skills.js';
@@ -25,6 +25,80 @@ interface LiveConfigResult {
   providers: string[];
   missing: string[];
   error?: string;
+}
+
+function formatShortSha(sha: string | null | undefined): string {
+  return sha ? sha.slice(0, 7) : 'no-git';
+}
+
+function buildVerifyReceiptMessage(verifyEvidence: VerifyEvidence): string {
+  const base = `${verifyEvidence.status} receipt from ${verifyEvidence.timestamp} @ ${formatShortSha(verifyEvidence.gitSha)}`;
+  if (verifyEvidence.status === 'pass' && verifyEvidence.fresh) {
+    return `Fresh ${base}.`;
+  }
+
+  if (verifyEvidence.status === 'pass' && !verifyEvidence.fresh) {
+    const reasons: string[] = [];
+    if (!verifyEvidence.currentHead) reasons.push('HEAD changed');
+    if (verifyEvidence.dirtyWorktree) reasons.push('working tree is dirty');
+    if (!verifyEvidence.currentStateFresh) reasons.push('workflow state changed');
+    const suffix = reasons.length > 0 ? ` (${reasons.join(', ')})` : '';
+    return `Stale pass receipt from ${verifyEvidence.timestamp} @ ${formatShortSha(verifyEvidence.gitSha)}${suffix}.`;
+  }
+
+  return `${base}.`;
+}
+
+function buildVerifyDiagnostic(state?: Pick<DanteState, 'lastVerifyStatus' | 'verifyEvidence'>): DiagnosticResult {
+  if (!state) {
+    return {
+      name: 'Verify receipt',
+      status: 'warn',
+      message: 'No verify receipt found yet.',
+      fix: 'Run: npm run verify',
+    };
+  }
+
+  if (state.verifyEvidence) {
+    const message = buildVerifyReceiptMessage(state.verifyEvidence);
+    const status =
+      state.verifyEvidence.status === 'pass' && state.verifyEvidence.fresh
+        ? 'ok'
+        : state.verifyEvidence.status === 'fail'
+          ? 'fail'
+          : 'warn';
+    return {
+      name: 'Verify receipt',
+      status,
+      message,
+      fix: status === 'ok' ? undefined : 'Run: npm run verify',
+    };
+  }
+
+  if (!state.lastVerifyStatus || state.lastVerifyStatus === 'unknown') {
+    return {
+      name: 'Verify receipt',
+      status: 'warn',
+      message: 'No verify receipt found yet.',
+      fix: 'Run: npm run verify',
+    };
+  }
+
+  if (state.lastVerifyStatus === 'pass') {
+    return {
+      name: 'Verify receipt',
+      status: 'warn',
+      message: 'STATE.yaml says pass, but no verify receipt was found to prove freshness.',
+      fix: 'Run: npm run verify',
+    };
+  }
+
+  return {
+    name: 'Verify receipt',
+    status: state.lastVerifyStatus === 'fail' ? 'fail' : 'warn',
+    message: `Latest verify status is ${state.lastVerifyStatus}, but no verify receipt was found to inspect details.`,
+    fix: 'Run: npm run verify',
+  };
 }
 
 async function exists(targetPath: string): Promise<boolean> {
@@ -131,6 +205,64 @@ async function checkCodexCommandFiles(homeDir: string, strict = false): Promise<
   };
 }
 
+async function checkCodexCliFallbackSkill(homeDir: string, strict = false): Promise<DiagnosticResult> {
+  const target = path.join(homeDir, '.codex', 'skills', 'danteforge-cli', 'SKILL.md');
+  if (await exists(target)) {
+    return {
+      name: 'Codex CLI fallback',
+      status: 'ok',
+      message: `Explicit DanteForge CLI fallback skill present at ${target}`,
+    };
+  }
+
+  return {
+    name: 'Codex CLI fallback',
+    status: strict ? 'fail' : 'warn',
+    message: 'Codex is missing the bundled danteforge-cli fallback skill.',
+    fix: 'Run: danteforge setup assistants --assistants codex',
+  };
+}
+
+async function checkCodexUtilityAliases(homeDir: string, strict = false): Promise<DiagnosticResult> {
+  const target = path.join(homeDir, '.codex', 'config.toml');
+  if (!await exists(target)) {
+    return {
+      name: 'Codex utility aliases',
+      status: strict ? 'fail' : 'warn',
+      message: 'Codex global config.toml is missing.',
+      fix: 'Run: danteforge setup assistants --assistants codex',
+    };
+  }
+
+  const content = await fs.readFile(target, 'utf8');
+  const expectedAliases = [
+    /setup-assistants = "npx danteforge setup assistants --assistants codex"/,
+    /doctor-live = "npx danteforge doctor --live"/,
+    /df-verify = "npx danteforge verify"/,
+  ];
+  const missing = expectedAliases.filter((pattern) => !pattern.test(content));
+  const hijacksNativeWorkflow = /^autoforge\s*=/m.test(content) || /^magic\s*=/m.test(content);
+
+  if (missing.length === 0 && !hijacksNativeWorkflow) {
+    return {
+      name: 'Codex utility aliases',
+      status: 'ok',
+      message: `Non-colliding Codex utility aliases are present in ${target}`,
+    };
+  }
+
+  const detailParts: string[] = [];
+  if (missing.length > 0) detailParts.push(`missing ${missing.length} expected alias${missing.length === 1 ? '' : 'es'}`);
+  if (hijacksNativeWorkflow) detailParts.push('native workflow slash commands are being shadowed');
+
+  return {
+    name: 'Codex utility aliases',
+    status: strict ? 'fail' : 'warn',
+    message: `Codex config needs repair: ${detailParts.join('; ')}.`,
+    fix: 'Run: danteforge setup assistants --assistants codex',
+  };
+}
+
 async function checkCursorBootstrap(cwd: string): Promise<DiagnosticResult> {
   const target = path.join(cwd, '.cursor', 'rules', 'danteforge.mdc');
   if (await exists(target)) {
@@ -186,7 +318,7 @@ async function checkAntigravityUpstream(): Promise<DiagnosticResult> {
   }
 }
 
-function validateLiveReleaseConfig(env = process.env): LiveConfigResult {
+export function validateLiveReleaseConfig(env = process.env): LiveConfigResult {
   const rawProviders = env.DANTEFORGE_LIVE_PROVIDERS?.trim();
   if (!rawProviders) {
     return {
@@ -301,7 +433,16 @@ async function runRepairs(): Promise<DiagnosticResult> {
   };
 }
 
-export async function doctor(options: { fix?: boolean; live?: boolean } = {}) {
+export async function doctor(options: {
+  fix?: boolean;
+  live?: boolean;
+  _loadState?: typeof loadState;
+  _saveState?: typeof saveState;
+  _isLLMAvailable?: typeof isLLMAvailable;
+} = {}) {
+  const loadFn = options._loadState ?? loadState;
+  const saveFn = options._saveState ?? saveState;
+  void loadFn; void saveFn; // seams available for test injection
   return withErrorBoundary('doctor', async () => {
   logger.success('DanteForge Doctor - System Health Check');
   logger.info('');
@@ -341,6 +482,7 @@ export async function doctor(options: { fix?: boolean; live?: boolean } = {}) {
       status: 'ok',
       message: `Project: ${state.project}, Workflow stage: ${state.workflowStage}, Phase: ${state.currentPhase}`,
     });
+    results.push(buildVerifyDiagnostic(state));
   } catch {
     results.push({
       name: 'State file',
@@ -348,6 +490,7 @@ export async function doctor(options: { fix?: boolean; live?: boolean } = {}) {
       message: 'No state file found',
       fix: 'Run: danteforge review',
     });
+    results.push(buildVerifyDiagnostic());
   }
 
   try {
@@ -392,6 +535,8 @@ export async function doctor(options: { fix?: boolean; live?: boolean } = {}) {
     results.push(await checkAssistantRegistries(homeDir, Boolean(options.live)));
     results.push(await checkCodexBootstrap(homeDir, Boolean(options.live)));
     results.push(await checkCodexCommandFiles(homeDir, Boolean(options.live)));
+    results.push(await checkCodexCliFallbackSkill(homeDir, Boolean(options.live)));
+    results.push(await checkCodexUtilityAliases(homeDir, Boolean(options.live)));
   }
   results.push(await checkCursorBootstrap(process.cwd()));
 

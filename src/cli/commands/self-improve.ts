@@ -2,6 +2,8 @@
 // Runs assess → forge focused gaps → verify → assess until all dimensions
 // score >= minScore. Replaces the 3 manual prompts users previously had to type.
 
+import fs from 'node:fs/promises';
+import path from 'node:path';
 import { logger } from '../../core/logger.js';
 import { loadState, saveState, type DanteState } from '../../core/state.js';
 import { assess, type AssessOptions, type AssessResult } from './assess.js';
@@ -9,6 +11,7 @@ import type { ScoringDimension } from '../../core/harsh-scorer.js';
 import type { MasterplanItem } from '../../core/gap-masterplan.js';
 import { formatCompletionTarget, type CompletionTarget } from '../../core/completion-target.js';
 import { buildFeatureForgePrompt, type FeatureScore, type FeatureItem } from '../../core/feature-universe.js';
+import { generatedByLine } from '../../core/version.js';
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -24,10 +27,15 @@ export interface SelfImproveOptions {
   _runAutoforge?: (goal: string, waves: number, cwd: string) => Promise<void>;
   _runVerify?: (cwd: string) => Promise<void>;
   _runParty?: (goal: string, cwd: string) => Promise<void>;
+  /** Self-harvest: run local-harvest on the codebase itself to discover internal patterns.
+   *  Called as a second-order plateau escalation when party mode fails to break through. */
+  _runLocalHarvest?: (cwd: string) => Promise<void>;
   _loadState?: (opts?: { cwd?: string }) => Promise<DanteState>;
   _saveState?: (state: DanteState, opts?: { cwd?: string }) => Promise<void>;
   _appendLesson?: (entry: string) => Promise<void>;
   _now?: () => string;
+  /** Injection seam for writing the improvement report (default: fs.writeFile). */
+  _writeReport?: (filePath: string, content: string) => Promise<void>;
 }
 
 export interface SelfImproveResult {
@@ -66,6 +74,7 @@ export async function selfImprove(options: SelfImproveOptions = {}): Promise<Sel
   const runAutoforgeF = options._runAutoforge ?? defaultRunAutoforge;
   const runVerifyFn = options._runVerify ?? defaultRunVerify;
   const runPartyFn = options._runParty ?? defaultRunParty;
+  const runLocalHarvestFn = options._runLocalHarvest ?? defaultRunLocalHarvest;
   const loadStateFn = options._loadState ?? loadState;
   const saveStateFn = options._saveState ?? saveState;
   const appendLessonFn = options._appendLesson ?? defaultAppendLesson;
@@ -133,12 +142,24 @@ export async function selfImprove(options: SelfImproveOptions = {}): Promise<Sel
       const isPlateauCycle = consecutivePlateauCycles >= PLATEAU_CYCLE_COUNT;
 
       if (isPlateauCycle) {
-        // Escalate: use party mode
-        logger.warn(`[self-improve] Plateau detected after ${consecutivePlateauCycles} cycles — escalating to party mode`);
-        plateauDetected = true;
-        const focusItems = selectFocusItems(cycleAssessResult, options.focusDimensions);
-        const partyGoal = buildPlateauEscalationPrompt(focusItems, cycleAssessResult);
-        await runPartyFn(partyGoal, cwd);
+        // Escalate: party mode first, then self-harvest if plateau persists
+        if (!plateauDetected) {
+          // First plateau: escalate to party mode
+          logger.warn(`[self-improve] Plateau detected after ${consecutivePlateauCycles} cycles — escalating to party mode`);
+          plateauDetected = true;
+          const focusItems = selectFocusItems(cycleAssessResult, options.focusDimensions);
+          const partyGoal = buildPlateauEscalationPrompt(focusItems, cycleAssessResult);
+          await runPartyFn(partyGoal, cwd);
+        } else {
+          // Second plateau: self-harvest — discover internal patterns from codebase itself
+          logger.warn(`[self-improve] Party mode did not break plateau — running self-harvest to discover internal patterns`);
+          try {
+            await runLocalHarvestFn(cwd);
+            await appendLessonFn(`[self-improve] Self-harvest triggered at cycle ${cycle} after plateau at ${currentScore.toFixed(1)}/10`);
+          } catch (err) {
+            logger.warn(`[self-improve] Self-harvest failed (non-fatal): ${err instanceof Error ? err.message : String(err)}`);
+          }
+        }
         consecutivePlateauCycles = 0;
       } else if (isFeatureUniverseMode && cycleAssessResult.featureAssessment) {
         // Feature-universe mode: forge on missing/partial features directly
@@ -235,6 +256,21 @@ export async function selfImprove(options: SelfImproveOptions = {}): Promise<Sel
   const achieved = stopReason === 'target-achieved';
   printFinalReport({ cyclesRun, initialScore, finalScore: currentScore, achieved, stopReason, minScore });
 
+  // Auto-export improvement report (best-effort)
+  if (cycleHistory.length > 1) {
+    try {
+      const writeFn = options._writeReport
+        ?? (async (filePath: string, content: string) => {
+          await fs.mkdir(path.dirname(filePath), { recursive: true });
+          await fs.writeFile(filePath, content, 'utf8');
+        });
+      const reportPath = path.join(cwd, 'docs', 'IMPROVEMENT_REPORT.md');
+      const report = buildImprovementReport(cycleHistory, initialScore, currentScore, stopReason, goal, minScore);
+      await writeFn(reportPath, report);
+      logger.success('Improvement report written to docs/IMPROVEMENT_REPORT.md');
+    } catch { /* best-effort */ }
+  }
+
   // Persist final score to state (best-effort)
   try {
     const state = await loadStateFn({ cwd });
@@ -330,6 +366,88 @@ function buildPlateauEscalationPrompt(items: MasterplanItem[], result: AssessRes
   ].join(' ');
 }
 
+// ── Improvement report builder (pure — no I/O) ───────────────────────────────
+
+export function buildImprovementReport(
+  cycleHistory: CycleRecord[],
+  initialScore: number,
+  finalScore: number,
+  stopReason: SelfImproveResult['stopReason'],
+  goal: string,
+  minScore: number,
+): string {
+  const gain = finalScore - initialScore;
+  const gainLabel = gain >= 0 ? `+${gain.toFixed(1)}` : gain.toFixed(1);
+  const verdictLabel =
+    stopReason === 'target-achieved' ? '✓ TARGET ACHIEVED'
+    : stopReason === 'plateau-unresolved' ? '△ PLATEAU — manual intervention suggested'
+    : stopReason === 'max-cycles' ? '✗ Max cycles reached without hitting target'
+    : '⚠ Stopped due to error';
+
+  const date = new Date().toISOString().slice(0, 10);
+
+  const lines: string[] = [
+    '# DanteForge Improvement Report',
+    '',
+    `> Generated: ${date}`,
+    `> Goal: ${goal}`,
+    '',
+    '## Summary',
+    '',
+    `| Metric | Value |`,
+    `|--------|-------|`,
+    `| Before | ${initialScore.toFixed(1)} / 10 |`,
+    `| After  | ${finalScore.toFixed(1)} / 10 |`,
+    `| Gain   | **${gainLabel}** |`,
+    `| Cycles | ${cycleHistory.length - 1} |`,
+    `| Target | ${minScore.toFixed(1)} / 10 |`,
+    `| Result | ${verdictLabel} |`,
+    '',
+    '## Cycle-by-Cycle Progress',
+    '',
+    '| Cycle | Score | Delta |',
+    '|-------|-------|-------|',
+  ];
+
+  for (let i = 0; i < cycleHistory.length; i++) {
+    const entry = cycleHistory[i];
+    if (!entry) continue;
+    const prev = i > 0 ? (cycleHistory[i - 1]?.score ?? entry.score) : entry.score;
+    const delta = entry.score - prev;
+    const deltaLabel = i === 0 ? '—' : `${delta >= 0 ? '+' : ''}${delta.toFixed(1)}`;
+    const label = i === 0 ? 'Start' : `Cycle ${i}`;
+    lines.push(`| ${label} | ${entry.score.toFixed(1)} / 10 | ${deltaLabel} |`);
+  }
+
+  lines.push(
+    '',
+    '## What to Do Next',
+    '',
+  );
+
+  if (stopReason === 'target-achieved') {
+    lines.push(
+      '- Run `danteforge assess` to confirm the current score.',
+      '- Run `danteforge synthesize` to generate your project summary.',
+      '- Run `danteforge showcase` to generate a shareable case study.',
+    );
+  } else {
+    lines.push(
+      '- Review `MASTERPLAN.md` for the highest-priority gaps.',
+      '- Run `danteforge inferno` for a deeper autonomous push.',
+      '- Run `danteforge cross-synthesize` to discover cross-project patterns.',
+    );
+  }
+
+  lines.push(
+    '',
+    '---',
+    generatedByLine(),
+  );
+
+  return lines.join('\n');
+}
+
 // ── Final report ──────────────────────────────────────────────────────────────
 
 function printFinalReport(params: {
@@ -380,6 +498,12 @@ async function defaultRunVerify(_cwd: string): Promise<void> {
 async function defaultRunParty(_goal: string, _cwd: string): Promise<void> {
   const { party } = await import('./party.js');
   await party({ isolation: true, worktree: false });
+}
+
+async function defaultRunLocalHarvest(cwd: string): Promise<void> {
+  const { localHarvest } = await import('./local-harvest.js');
+  // Harvest from src/ — discover internal patterns in the codebase itself
+  await localHarvest(['src/'], { cwd, depth: 'medium', dryRun: false });
 }
 
 async function defaultAppendLesson(entry: string): Promise<void> {

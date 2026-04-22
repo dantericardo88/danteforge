@@ -43,17 +43,29 @@ const DEFAULT_EVIDENCE_DIR = '.danteforge/evidence';
 
 // ── Binary detection ────────────────────────────────────────────────────────
 
+/** Consolidated injection seam options for browse-adapter testing */
+export interface BrowseAdapterTestOpts {
+  _exec?: (bin: string, args: string[], opts: { timeout: number; maxBuffer: number }) => Promise<{ stdout: string; stderr: string }>;
+  _mkdir?: (p: string, opts: { recursive: boolean }) => Promise<string | undefined>;
+  _fsAccess?: (p: string) => Promise<void>;
+  _checkHealth?: (targetPort: number) => Promise<boolean>;
+}
+
 const BINARY_NAMES = ['browse', 'browse.exe'];
 const COMMON_LOCATIONS = [
   './bin/browse',
   './node_modules/.bin/browse',
 ];
 
-export async function detectBrowseBinary(): Promise<string | null> {
+export async function detectBrowseBinary(
+  opts?: BrowseAdapterTestOpts,
+): Promise<string | null> {
+  const checkAccess = opts?._fsAccess ?? ((p: string) => fs.access(p));
+
   // 1. Check common project-local locations
   for (const loc of COMMON_LOCATIONS) {
     try {
-      await fs.access(loc);
+      await checkAccess(loc);
       return loc;
     } catch {
       // Not found, continue
@@ -66,7 +78,7 @@ export async function detectBrowseBinary(): Promise<string | null> {
     for (const name of BINARY_NAMES) {
       const candidate = path.join(dir, name);
       try {
-        await fs.access(candidate);
+        await checkAccess(candidate);
         return candidate;
       } catch {
         // Not found, continue
@@ -97,7 +109,11 @@ export async function invokeBrowse(
   subcommand: BrowseSubcommand,
   args: string[],
   config: BrowseAdapterConfig,
+  opts?: BrowseAdapterTestOpts,
 ): Promise<BrowseResult> {
+  const exec = opts?._exec ?? execFileAsync;
+  const mkdir = opts?._mkdir ?? ((p: string, o: { recursive: boolean }) => fs.mkdir(p, o));
+
   const port = config.port ?? DEFAULT_PORT;
   const timeoutMs = config.timeoutMs ?? DEFAULT_TIMEOUT_MS;
   const evidenceDir = config.evidenceDir ?? DEFAULT_EVIDENCE_DIR;
@@ -105,7 +121,7 @@ export async function invokeBrowse(
   // For screenshot subcommand, auto-generate evidence path
   let evidencePath: string | undefined;
   if (subcommand === 'screenshot') {
-    await fs.mkdir(evidenceDir, { recursive: true });
+    await mkdir(evidenceDir, { recursive: true });
     const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
     evidencePath = path.join(evidenceDir, `screenshot-${timestamp}.png`);
     args = [...args, '--output', evidencePath];
@@ -114,7 +130,7 @@ export async function invokeBrowse(
   const fullArgs = [subcommand, '--port', String(port), ...args];
 
   try {
-    const { stdout, stderr } = await execFileAsync(config.binaryPath, fullArgs, {
+    const { stdout, stderr } = await exec(config.binaryPath, fullArgs, {
       timeout: timeoutMs,
       maxBuffer: 10 * 1024 * 1024, // 10 MB
     });
@@ -147,8 +163,12 @@ export async function invokeBrowse(
 
 // ── Daemon check ────────────────────────────────────────────────────────────
 
-export async function isBrowseDaemonRunning(port?: number): Promise<boolean> {
+export async function isBrowseDaemonRunning(
+  port?: number,
+  opts?: BrowseAdapterTestOpts,
+): Promise<boolean> {
   const targetPort = port ?? DEFAULT_PORT;
+  if (opts?._checkHealth) return opts._checkHealth(targetPort);
   try {
     const http = await import('node:http');
     return new Promise<boolean>((resolve) => {

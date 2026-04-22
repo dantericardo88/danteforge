@@ -10,6 +10,7 @@ export interface LLMStreamDeps {
   _fetchStream?: typeof fetch;
   _loadConfig?: typeof loadConfig;
   _callLLM?: typeof callLLM;
+  _isLLMAvailable?: () => Promise<boolean>;
 }
 
 async function streamOllama(
@@ -117,7 +118,8 @@ export async function callLLMWithProgress(
   options?: CallLLMOptions,
   deps: LLMStreamDeps = {},
 ): Promise<string> {
-  const llmReady = await isLLMAvailable();
+  const llmAvailableFn = deps._isLLMAvailable ?? isLLMAvailable;
+  const llmReady = await llmAvailableFn();
   if (!llmReady) {
     throw new NetworkError('No verified live LLM provider is available.');
   }

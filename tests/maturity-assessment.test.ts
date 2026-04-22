@@ -1,6 +1,6 @@
 // Maturity Assessment — 30 tests for gap classification, recommendations, and founder explanations
 
-import { describe, it, beforeEach } from 'node:test';
+import { describe, it, beforeEach, afterEach } from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'fs/promises';
 import path from 'path';
@@ -19,6 +19,10 @@ describe('maturity-assessment', () => {
 
   beforeEach(async () => {
     tmpDir = await fs.mkdtemp(path.join(await fs.realpath(process.cwd()), '.tmp-assessment-'));
+  });
+
+  afterEach(async () => {
+    await fs.rm(tmpDir, { recursive: true, force: true });
   });
 
   // ── Gap Classification ──

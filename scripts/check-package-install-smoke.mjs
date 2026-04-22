@@ -176,6 +176,16 @@ try {
     /setup-assistants = "npx danteforge setup assistants --assistants codex"/,
     'Explicit assistant setup did not sync Codex utility aliases',
   );
+  await assertFileContains(
+    path.join(homeDir, '.codex', 'config.toml'),
+    /doctor-live = "npx danteforge doctor --live"/,
+    'Explicit assistant setup did not sync the Codex live-doctor alias',
+  );
+  await assertFileContains(
+    path.join(homeDir, '.codex', 'config.toml'),
+    /df-verify = "npx danteforge verify"/,
+    'Explicit assistant setup did not sync the Codex df-verify alias',
+  );
   await assertFileDoesNotContain(
     path.join(homeDir, '.codex', 'config.toml'),
     /^autoforge\s*=/m,

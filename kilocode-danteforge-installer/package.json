@@ -1,0 +1,25 @@
+{
+  "name": "kilocode-danteforge",
+  "version": "1.0.0",
+  "description": "Installation package for integrating DanteForge with Kilocode",
+  "main": "index.js",
+  "bin": {
+    "kilocode-danteforge-setup": "setup.js"
+  },
+  "scripts": {
+    "postinstall": "node setup.js"
+  },
+  "dependencies": {
+    "danteforge": "^0.9.2"
+  },
+  "keywords": [
+    "kilocode",
+    "danteforge",
+    "integration",
+    "ai",
+    "development",
+    "automation"
+  ],
+  "author": "Kilo",
+  "license": "MIT"
+}

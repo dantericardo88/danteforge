@@ -24,15 +24,22 @@ const PROFILE_DIR_MSG = 'Profiles are stored in .danteforge/model-profiles/ (pro
 export async function profile(
   subcommand?: string,
   arg?: string,
-  options: { prompt?: boolean } = {},
+  options: {
+    prompt?: boolean;
+    _loadState?: typeof loadState;
+    _saveState?: typeof saveState;
+  } = {},
 ): Promise<void> {
+  const loadFn = options._loadState ?? loadState;
+  const saveFn = options._saveState ?? saveState;
+
   return withErrorBoundary('profile', async () => {
     if (options.prompt) {
       showProfilePrompt(subcommand, arg);
       return;
     }
 
-    const state = await loadState();
+    const state = await loadFn();
     const timestamp = new Date().toISOString();
     const engine = new ModelProfileEngine(process.cwd());
 
@@ -63,7 +70,7 @@ export async function profile(
       state.auditLog.push(`${timestamp} | profile: viewed summary for ${subcommand}`);
     }
 
-    await saveState(state);
+    await saveFn(state);
   });
 }
 

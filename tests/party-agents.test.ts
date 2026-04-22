@@ -8,6 +8,8 @@ import { runArchitectAgent } from '../src/harvested/dante-agents/agents/architec
 import { runDevAgent } from '../src/harvested/dante-agents/agents/dev.js';
 import { runUXAgent } from '../src/harvested/dante-agents/agents/ux.js';
 import { runScrumMasterAgent } from '../src/harvested/dante-agents/agents/scrum-master.js';
+import { dispatchAgentWithRetry } from '../src/harvested/dante-agents/party-mode.js';
+import type { AgentResult } from '../src/harvested/dante-agents/party-mode.js';
 
 const originalHome = process.env.DANTEFORGE_HOME;
 const tempDirs: string[] = [];
@@ -54,5 +56,53 @@ describe('party agents offline behavior', () => {
     await assert.rejects(() => runDevAgent('Test context', 'quality'), /verified live LLM provider/i);
     await assert.rejects(() => runUXAgent('Test context', 'small'), /verified live LLM provider/i);
     await assert.rejects(() => runScrumMasterAgent('Test context', 'small'), /verified live LLM provider/i);
+  });
+});
+
+describe('dispatchAgentWithRetry _onAgentUpdate seam', () => {
+  function makeSuccessDispatch(): () => Promise<AgentResult> {
+    return async () => ({ agent: 'test', result: 'ok', durationMs: 1, success: true });
+  }
+
+  function makeFailDispatch(): () => Promise<AgentResult> {
+    return async () => ({ agent: 'test', result: 'fail', durationMs: 1, success: false });
+  }
+
+  it('_onAgentUpdate called with "starting" before dispatch', async () => {
+    const updates: Array<[string, string]> = [];
+    await dispatchAgentWithRetry('my-agent', 'ctx', 'small', 'quality', {}, false, {
+      _dispatchAgent: makeSuccessDispatch(),
+      _onAgentUpdate: (agent, status) => updates.push([agent, status]),
+    });
+    assert.ok(updates.some(([a, s]) => a === 'my-agent' && s === 'starting'), 'should emit starting');
+  });
+
+  it('_onAgentUpdate called with "done" after successful dispatch', async () => {
+    const updates: Array<[string, string]> = [];
+    await dispatchAgentWithRetry('my-agent', 'ctx', 'small', 'quality', {}, false, {
+      _dispatchAgent: makeSuccessDispatch(),
+      _onAgentUpdate: (agent, status) => updates.push([agent, status]),
+    });
+    assert.ok(updates.some(([a, s]) => a === 'my-agent' && s === 'done'), 'should emit done on success');
+  });
+
+  it('_onAgentUpdate called with "failed" when all retries exhausted', async () => {
+    const updates: Array<[string, string]> = [];
+    await dispatchAgentWithRetry('my-agent', 'ctx', 'small', 'quality', {}, false, {
+      _dispatchAgent: makeFailDispatch(),
+      _sleep: async () => {},
+      _onAgentUpdate: (agent, status) => updates.push([agent, status]),
+    });
+    assert.ok(updates.some(([a, s]) => a === 'my-agent' && s === 'failed'), 'should emit failed when retries exhausted');
+  });
+
+  it('completes without error when _onAgentUpdate is NOT provided (default logger fires)', async () => {
+    // Default logger.info should fire instead of crashing — no optional chaining means it always calls
+    const result = await dispatchAgentWithRetry('my-agent', 'ctx', 'small', 'quality', {}, false, {
+      _dispatchAgent: makeSuccessDispatch(),
+      // _onAgentUpdate intentionally omitted — default logger path
+    });
+    assert.strictEqual(result.success, true);
+    assert.strictEqual(result.agent, 'test');
   });
 });

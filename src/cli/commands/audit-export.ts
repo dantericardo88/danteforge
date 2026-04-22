@@ -8,22 +8,32 @@ export interface AuditExportCommandOptions {
   since?: string;
   output?: string;
   json?: boolean;
+  _exportLog?: typeof exportAuditLog;
+  _formatLog?: typeof formatAuditExport;
+  _writeLog?: typeof writeAuditExport;
+  _requirePremium?: typeof requirePremiumFeature;
+  _stdout?: (line: string) => void;
 }
 
 export async function auditExport(options: AuditExportCommandOptions = {}): Promise<void> {
+  const exportFn = options._exportLog ?? exportAuditLog;
+  const formatFn = options._formatLog ?? formatAuditExport;
+  const writeFn = options._writeLog ?? writeAuditExport;
+  const premiumFn = options._requirePremium ?? requirePremiumFeature;
+  const emit = options._stdout ?? ((l) => console.log(l));
+
   return withErrorBoundary('audit-export', async () => {
-    await requirePremiumFeature('audit-export');
+    await premiumFn('audit-export');
     const format = (options.format ?? 'json') as 'json' | 'csv' | 'markdown';
-    const result = await exportAuditLog({ format, since: options.since });
+    const result = await exportFn({ format, since: options.since });
 
     if (options.output) {
-      await writeAuditExport(result, options.output);
+      await writeFn(result, options.output);
       logger.success(`Audit log exported to ${options.output} (${result.filteredCount} entries)`);
     } else if (options.json) {
-      console.log(JSON.stringify(result, null, 2));
+      emit(JSON.stringify(result, null, 2));
     } else {
-      const formatted = formatAuditExport(result);
-      console.log(formatted);
+      emit(formatFn(result));
     }
 
     if (!options.json && !options.output) {

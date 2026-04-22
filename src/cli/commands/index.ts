@@ -3,6 +3,7 @@ export { constitution } from './constitution.js';
 export { specify } from './specify.js';
 export { clarify } from './clarify.js';
 export { plan } from './plan.js';
+export { critique } from './critique.js';
 export { tasks } from './tasks.js';
 export { forge } from './forge.js';
 export { party } from './party.js';
@@ -19,6 +20,7 @@ export { compact } from './compact.js';
 export { uxRefine } from './ux-refine.js';
 export { setupFigma } from './setup-figma.js';
 export { setupAssistants } from './setup-assistants.js';
+export { setupOllama } from './setup-ollama.js';
 export { doctor } from './doctor.js';
 export { dashboard } from './dashboard.js';
 export { magic } from './magic.js';
@@ -56,3 +58,50 @@ export { auditExport } from './audit-export.js';
 export { workspace } from './workspace.js';
 export { mcpServer } from './mcp-server.js';
 export { publishCheck } from './publish-check.js';
+export { wikiIngestCommand } from './wiki-ingest.js';
+export { wikiLintCommand } from './wiki-lint.js';
+export { wikiQueryCommand } from './wiki-query.js';
+export { wikiStatusCommand } from './wiki-status.js';
+export { wikiExportCommand } from './wiki-export.js';
+export { resumeAutoforge } from './resume.js';
+export { quickstart } from './quickstart.js';
+export { pluginCommand, pluginInstall, pluginList, pluginRemove } from './plugin.js';
+export { benchmark } from './benchmark.js';
+export { cofl } from './cofl.js';
+export { explain } from './explain.js';
+export { pack } from './pack.js';
+export { ciSetup } from './ci-setup.js';
+export { proof } from './proof.js';
+export { syncContext } from './sync-context.js';
+export { demo } from './demo.js';
+export { gitCommit, gitBranch, gitPR } from './git-helpers.js';
+export { benchmarkLLM } from './benchmark-llm.js';
+export { completionCmd, COMPLETION_COMMANDS, generateBashCompletion, generateZshCompletion, generateFishCompletion } from './completion.js';
+export { cost } from './cost.js';
+export { compete } from './compete.js';
+export { showcase } from './showcase.js';
+export { score } from './score.js';
+export { quality } from './quality.js';
+export { prime } from './prime.js';
+export { teach } from './teach.js';
+export { go } from './go.js';
+export { harvestPattern } from './harvest-pattern.js';
+export { build } from './build.js';
+export { ascend } from './ascend.js';
+export {
+  canonicalPlan,
+  canonicalBuild,
+  canonicalMeasure,
+  canonicalCompete,
+  canonicalHarvest,
+  type CanonicalLevel,
+  type CanonicalPlanOptions,
+  type CanonicalBuildOptions,
+  type CanonicalMeasureOptions,
+  type CanonicalCompeteOptions,
+  type CanonicalHarvestOptions,
+} from './canonical.js';
+export { dossierBuild, dossierDiff, dossierShow, dossierList } from './dossier.js';
+export { landscapeBuild, landscapeDiff, landscapeRanking, landscapeGap } from './landscape-cmd.js';
+export { rubricShow, rubricInit, rubricValidate, rubricAddDim } from './rubric-cmd.js';
+export { rubricScore, rubricScoreDiff, showDimension } from './score-rubric.js';
