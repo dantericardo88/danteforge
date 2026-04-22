@@ -14,6 +14,53 @@ import path from 'path';
 
 const STATE_DIR = '.danteforge';
 
+async function persistDesignArtifact(
+  result: string,
+  state: Awaited<ReturnType<typeof loadState>>,
+  saveFn: typeof saveState,
+  stateDir: string,
+): Promise<object> {
+  const jsonMatch = result.match(/```(?:json)?\s*([\s\S]*?)```/) ?? [null, result];
+  const rawJson = jsonMatch[1]?.trim() ?? result.trim();
+  const parsed = JSON.parse(rawJson) as Record<string, unknown>;
+  if (!parsed['nodes'] || !parsed['document']) {
+    throw new Error('LLM response missing required .op fields: nodes, document');
+  }
+  parsed['generator'] = parsed['generator'] ?? 'danteforge/0.6.0';
+  parsed['formatVersion'] = parsed['formatVersion'] ?? '1.0.0';
+  parsed['created'] = parsed['created'] ?? new Date().toISOString();
+  const designPath = path.join(stateDir, 'DESIGN.op');
+  await fs.mkdir(stateDir, { recursive: true });
+  await fs.writeFile(designPath, JSON.stringify(parsed, null, 2));
+  logger.success(`Design artifact saved to ${designPath}`);
+  state.designEnabled = true;
+  state.designFilePath = 'DESIGN.op';
+  state.designFormatVersion = '1.0.0';
+  state.workflowStage = 'design';
+  state.auditLog.push(`${new Date().toISOString()} | design: .op artifact created via LLM`);
+  await saveFn(state);
+  await handoff('design', { designFile: 'DESIGN.op' });
+  return parsed;
+}
+
+async function runDesignLintCheck(parsed: object): Promise<void> {
+  try {
+    const { parseOP } = await import('../../harvested/openpencil/op-codec.js');
+    const { evaluateDocument, loadRules, loadRuleConfig } = await import('../../core/design-rules-engine.js');
+    const doc = parseOP(JSON.stringify(parsed));
+    const violations = evaluateDocument(doc, loadRules('.danteforge/design-rules.yaml'), loadRuleConfig('.danteforge/design-rules.yaml'));
+    const errors = violations.filter(v => v.severity === 'error');
+    const warnings = violations.filter(v => v.severity === 'warning');
+    if (errors.length > 0 || warnings.length > 0) {
+      logger.warn(`Design lint: ${errors.length} error(s), ${warnings.length} warning(s). Run \`danteforge ux-refine --lint\` for details.`);
+    } else {
+      logger.info('Design lint: all rules passed');
+    }
+  } catch {
+    // Design rules evaluation should not block design command
+  }
+}
+
 export async function design(
   prompt: string,
   options: {
@@ -86,52 +133,8 @@ export async function design(
   try {
     const result = await llmFn(designPrompt, undefined, { enrichContext: true });
     logger.success(`Design generation complete (${result.length} chars)`);
-
-    const jsonMatch = result.match(/```(?:json)?\s*([\s\S]*?)```/) ?? [null, result];
-    const rawJson = jsonMatch[1]?.trim() ?? result.trim();
-    const parsed = JSON.parse(rawJson);
-
-    if (!parsed.nodes || !parsed.document) {
-      throw new Error('LLM response missing required .op fields: nodes, document');
-    }
-
-    parsed.generator = parsed.generator ?? 'danteforge/0.6.0';
-    parsed.formatVersion = parsed.formatVersion ?? '1.0.0';
-    parsed.created = parsed.created ?? new Date().toISOString();
-
-    const designPath = path.join(STATE_DIR, 'DESIGN.op');
-    await fs.mkdir(STATE_DIR, { recursive: true });
-    await fs.writeFile(designPath, JSON.stringify(parsed, null, 2));
-    logger.success(`Design artifact saved to ${designPath}`);
-
-    state.designEnabled = true;
-    state.designFilePath = 'DESIGN.op';
-    state.designFormatVersion = '1.0.0';
-    state.workflowStage = 'design';
-    state.auditLog.push(`${new Date().toISOString()} | design: .op artifact created via LLM`);
-    await saveFn(state);
-    await handoff('design', { designFile: 'DESIGN.op' });
-
-    // Auto-run design rules and report warnings
-    try {
-      const { parseOP } = await import('../../harvested/openpencil/op-codec.js');
-      const { evaluateDocument, loadRules, loadRuleConfig } = await import('../../core/design-rules-engine.js');
-      const doc = parseOP(JSON.stringify(parsed));
-      const violations = evaluateDocument(
-        doc,
-        loadRules('.danteforge/design-rules.yaml'),
-        loadRuleConfig('.danteforge/design-rules.yaml'),
-      );
-      const errors = violations.filter(v => v.severity === 'error');
-      const warnings = violations.filter(v => v.severity === 'warning');
-      if (errors.length > 0 || warnings.length > 0) {
-        logger.warn(`Design lint: ${errors.length} error(s), ${warnings.length} warning(s). Run \`danteforge ux-refine --lint\` for details.`);
-      } else {
-        logger.info('Design lint: all rules passed');
-      }
-    } catch {
-      // Design rules evaluation should not block design command
-    }
+    const parsed = await persistDesignArtifact(result, state, saveFn, STATE_DIR);
+    await runDesignLintCheck(parsed);
   } catch (err) {
     logger.error(`Design generation failed: ${err instanceof Error ? err.message : String(err)}`);
     logger.info('Re-run with --prompt to generate a manual design prompt.');

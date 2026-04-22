@@ -405,6 +405,46 @@ function displayLocalFallback(
   logger.info('  danteforge config --set-key "grok:<key>"');
 }
 
+async function cloneAndLicenseGate(
+  candidateRepos: OSSRepo[],
+  report: OSSResearchReport,
+  clonedPaths: string[],
+): Promise<Array<OSSRepo & { clonePath: string }>> {
+  logger.info('');
+  logger.info('Phase 2/3: Clone & License Gate');
+  logger.info('-'.repeat(40));
+  const allowedRepos: Array<OSSRepo & { clonePath: string }> = [];
+  for (const repo of candidateRepos) {
+    logger.info(`Cloning: ${repo.name} (${repo.url})`);
+    const clonePath = await shallowClone(repo.url, repo.name.split('/').pop() ?? repo.name);
+    if (!clonePath) { report.skipped.push(`${repo.name} — clone failed`); continue; }
+    clonedPaths.push(clonePath);
+    const licenseContent = await readLicenseFile(clonePath);
+    const { status, name: licenseName } = classifyLicense(licenseContent);
+    const finalRepo: OSSRepo = { ...repo, license: status, licenseName: licenseContent ? licenseName : repo.licenseName, clonePath };
+    if (status === 'blocked') {
+      logger.warn(`  License BLOCKED (${licenseName}) — skipping ${repo.name}`);
+      report.skipped.push(`${repo.name} — ${licenseName} license blocked`);
+      await safeRm(clonePath);
+      clonedPaths.splice(clonedPaths.indexOf(clonePath), 1);
+      report.reposScanned.push({ ...finalRepo, clonePath: undefined });
+      continue;
+    }
+    if (status === 'unknown') {
+      logger.warn(`  License UNKNOWN — skipping ${repo.name} (no license file or unrecognized)`);
+      report.skipped.push(`${repo.name} — license unknown or missing`);
+      await safeRm(clonePath);
+      clonedPaths.splice(clonedPaths.indexOf(clonePath), 1);
+      report.reposScanned.push({ ...finalRepo, clonePath: undefined });
+      continue;
+    }
+    logger.success(`  License OK (${licenseName}) — ${repo.name}`);
+    report.reposScanned.push(finalRepo);
+    allowedRepos.push({ ...finalRepo, clonePath });
+  }
+  return allowedRepos;
+}
+
 // ── Execute mode ──────────────────────────────────────────────────────────────
 
 async function executeOSSResearch(
@@ -447,56 +487,7 @@ async function executeOSSResearch(
     logger.info(`Selected ${candidateRepos.length} candidate repos`);
 
     // Phase 3: Clone & license gate
-    logger.info('');
-    logger.info('Phase 2/3: Clone & License Gate');
-    logger.info('-'.repeat(40));
-
-    const allowedRepos: Array<OSSRepo & { clonePath: string }> = [];
-
-    for (const repo of candidateRepos) {
-      logger.info(`Cloning: ${repo.name} (${repo.url})`);
-      const clonePath = await shallowClone(repo.url, repo.name.split('/').pop() ?? repo.name);
-
-      if (!clonePath) {
-        report.skipped.push(`${repo.name} — clone failed`);
-        continue;
-      }
-
-      clonedPaths.push(clonePath);
-
-      // License gate
-      const licenseContent = await readLicenseFile(clonePath);
-      const { status, name: licenseName } = classifyLicense(licenseContent);
-
-      const finalRepo: OSSRepo = {
-        ...repo,
-        license: status,
-        licenseName: licenseContent ? licenseName : repo.licenseName,
-        clonePath,
-      };
-
-      if (status === 'blocked') {
-        logger.warn(`  License BLOCKED (${licenseName}) — skipping ${repo.name}`);
-        report.skipped.push(`${repo.name} — ${licenseName} license blocked`);
-        await safeRm(clonePath);
-        clonedPaths.splice(clonedPaths.indexOf(clonePath), 1);
-        report.reposScanned.push({ ...finalRepo, clonePath: undefined });
-        continue;
-      }
-
-      if (status === 'unknown') {
-        logger.warn(`  License UNKNOWN — skipping ${repo.name} (no license file or unrecognized)`);
-        report.skipped.push(`${repo.name} — license unknown or missing`);
-        await safeRm(clonePath);
-        clonedPaths.splice(clonedPaths.indexOf(clonePath), 1);
-        report.reposScanned.push({ ...finalRepo, clonePath: undefined });
-        continue;
-      }
-
-      logger.success(`  License OK (${licenseName}) — ${repo.name}`);
-      report.reposScanned.push(finalRepo);
-      allowedRepos.push({ ...finalRepo, clonePath });
-    }
+    const allowedRepos = await cloneAndLicenseGate(candidateRepos, report, clonedPaths);
 
     if (allowedRepos.length === 0) {
       logger.warn('No repos passed the license gate. Nothing to analyze.');
