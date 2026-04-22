@@ -620,7 +620,7 @@ async function scoreMaintainability(
         const functions = extractFunctions(content);
         for (const fn of functions) {
           const loc = fn.split('\n').length;
-          if (loc > 100) largeFunctionPenalty += 5;
+          if (loc > 100) largeFunctionPenalty += 2;
         }
       } catch {
         // Unreadable file
@@ -630,6 +630,7 @@ async function scoreMaintainability(
     // No src directory
   }
 
+  // Cap at 50 so score never goes below pdseBase-50; improvement visible when count drops below 25
   const cappedPenalty = Math.min(largeFunctionPenalty, 50);
   return Math.min(100, Math.max(0, pdseBase - cappedPenalty));
 }

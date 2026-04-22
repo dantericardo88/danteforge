@@ -872,8 +872,8 @@ describe('maturity-engine', () => {
       };
 
       const dimensions = await scoreMaturityDimensions(ctx);
-      // 50 - 5 (1 large function) = 45
-      assert.equal(dimensions.maintainability, 45);
+      // 50 - 2 (1 large function × 2pts) = 48
+      assert.equal(dimensions.maintainability, 48);
     });
 
     it('penalizes large function in nested src/core/ file via _collectFiles', async () => {
@@ -898,7 +898,7 @@ describe('maturity-engine', () => {
         _readFile: async () => bigFn,
       });
       const dims = await scoreMaturityDimensions(ctx);
-      assert.ok(dims.maintainability <= 40); // pdseBase(50) - 5 - 5 = 40
+      assert.ok(dims.maintainability <= 46); // pdseBase(50) - 2 - 2 = 46
     });
 
     it('regression: large function in real subdirectory is penalized', async () => {
