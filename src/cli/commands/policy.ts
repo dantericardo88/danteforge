@@ -8,10 +8,17 @@ const VALID_POLICIES: SelfEditPolicy[] = ['deny', 'confirm', 'allow-with-audit']
 export async function policy(
   action?: string,
   value?: string,
-  options: { cwd?: string } = {},
+  options: {
+    cwd?: string;
+    _loadState?: typeof loadState;
+    _saveState?: typeof saveState;
+  } = {},
 ): Promise<void> {
+  const loadFn = options._loadState ?? loadState;
+  const saveFn = options._saveState ?? saveState;
+
   if (!action || action === 'get') {
-    const state = await loadState({ cwd: options.cwd });
+    const state = await loadFn({ cwd: options.cwd });
     const current = state.selfEditPolicy ?? 'deny (default)';
     logger.info(`Self-edit policy: ${current}`);
     logger.info('Options: deny | confirm | allow-with-audit');
@@ -24,12 +31,12 @@ export async function policy(
       process.exitCode = 1;
       return;
     }
-    const state = await loadState({ cwd: options.cwd });
+    const state = await loadFn({ cwd: options.cwd });
     state.selfEditPolicy = value as SelfEditPolicy;
     state.auditLog.push(
       `${new Date().toISOString()} | policy: selfEditPolicy set to ${value}`,
     );
-    await saveState(state, { cwd: options.cwd });
+    await saveFn(state, { cwd: options.cwd });
     logger.success(`Self-edit policy set to: ${value}`);
     return;
   }

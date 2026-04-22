@@ -5,9 +5,15 @@ import { withErrorBoundary } from '../../core/cli-error-boundary.js';
 
 const KEEP_DETAILED = 20; // Keep last N entries in full detail
 
-export async function compact(cwd?: string) {
+export async function compact(cwd?: string, _opts: {
+  _loadState?: typeof loadState;
+  _saveState?: typeof saveState;
+} = {}) {
+  const loadFn = _opts._loadState ?? loadState;
+  const saveFn = _opts._saveState ?? saveState;
+
   return withErrorBoundary('compact', async () => {
-    const state = await loadState({ cwd });
+    const state = await loadFn({ cwd });
     const totalEntries = state.auditLog.length;
 
     if (totalEntries <= KEEP_DETAILED) {
@@ -35,7 +41,7 @@ export async function compact(cwd?: string) {
     // Replace old entries with single summary line
     state.auditLog = [summary, ...recentEntries];
 
-    await saveState(state, { cwd });
+    await saveFn(state, { cwd });
     logger.success(`Compacted ${oldEntries.length} old entries into 1 summary line`);
     logger.info(`Audit log: ${totalEntries} entries -> ${state.auditLog.length} entries`);
     logger.info(`Kept ${recentEntries.length} recent entries in full detail`);
