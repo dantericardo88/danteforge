@@ -1022,7 +1022,7 @@ program.hook('preAction', async (_thisCommand, actionCommand) => {
 // Command group help for discoverability
 program.addHelpText('after', `
 Canonical Commands (use --level light|standard|deep):
-  plan      "What should we build?"         light=review+specify, standard=full planning, deep=+tasks+critique
+  plan      "What should we build?"         light=review+specify, standard=full planning, deep=+tech-decide+tasks+critique
   build     "How do we make progress?"      light=forge, standard=magic, deep=inferno+OSS harvest
   measure   "How good is the project?"      light=score, standard=score+maturity+proof, deep=verify+adversary
   compete   "Where do we lag the market?"   light=assess, standard=assess+universe, deep=full CHL loop
@@ -1498,9 +1498,9 @@ program
   });
 
 program
-  .command('score')
-  .alias('measure')
-  .description('Fast project score: one number + 3 P0 action items in <5 seconds. Use --level for canonical measure depth.')
+  .command('measure')
+  .alias('score')
+  .description('Measure project quality. --level selects depth: light=quick score, standard=score+maturity+proof, deep=verify+adversary.')
   .option('--level <level>', 'Canonical intensity: light | standard | deep')
   .option('--full', 'Show all 18 dimensions (like assess)')
   .option('--strict', 'Use only code-derived signals — excludes mutable STATE.yaml fields for tamper-resistant scoring')

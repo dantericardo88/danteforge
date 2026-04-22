@@ -34,12 +34,12 @@ export async function wikiQueryCommand(options: WikiQueryCommandOptions): Promis
 
     for (const result of results) {
       const scoreBar = '█'.repeat(Math.round(result.score * 10)).padEnd(10, '░');
-      const tagStr = result.tags.length ? ` [${result.tags.slice(0, 3).join(', ')}]` : '';
+      const tagStr = result.tags?.length ? ` [${result.tags.slice(0, 3).join(', ')}]` : '';
       logger.info(`${scoreBar} ${result.entityId} (${result.entityType})${tagStr}`);
       if (result.excerpt) {
         logger.info(`  ${result.excerpt.slice(0, 120)}`);
       }
-      if (result.sources.length > 0) {
+      if (result.sources?.length > 0) {
         logger.info(`  Sources: ${result.sources.slice(0, 2).join(', ')}`);
       }
       logger.info('');

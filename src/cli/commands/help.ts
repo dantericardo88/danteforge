@@ -16,7 +16,7 @@ export const COMMAND_HELP: Record<string, string> = {
   constitution: 'Establish project principles and constraints.\n  Usage: danteforge constitution\n  Run this first to set the foundation for your project.',
   specify: 'Transform a high-level idea into full spec artifacts.\n  Usage: danteforge specify <idea> [--prompt] [--light]\n  Example: danteforge specify "Build a real-time chat app with WebSocket support"',
   clarify: 'Find gaps, ambiguities, and inconsistencies in your spec.\n  Usage: danteforge clarify [--prompt]\n  Generates Q&A to refine your specification.',
-  plan: 'Generate a detailed execution plan from your spec.\n  Usage: danteforge plan [--prompt] [--light]\n  Outputs PLAN.md with phases, tech decisions, and risk mitigations.',
+  plan: 'Answer "What should we build?" — plan pipeline with optional --level depth.\n  Usage: danteforge plan [goal] [--level light|standard|deep] [--prompt] [--light]\n  light=review+specify, standard=constitution+specify+clarify+plan, deep=+tech-decide+tasks+critique\n  Without --level: danteforge plan [--prompt] generates PLAN.md from current spec.',
   tasks: 'Break the plan into atomic, executable tasks.\n  Usage: danteforge tasks [--prompt] [--light]\n  Outputs TASKS.md with parallel flags [P] and effort estimates.',
   forge: 'Execute development waves with agent orchestration.\n  Usage: danteforge forge [phase] [--parallel] [--profile quality|balanced|budget] [--prompt] [--light] [--worktree]\n  Example: danteforge forge 1 --parallel --profile quality',
   party: 'Launch multi-agent collaboration mode.\n  Usage: danteforge party [--worktree] [--isolation]\n  Requires a verified live LLM provider and fails closed when none is available.',
@@ -40,7 +40,10 @@ export const COMMAND_HELP: Record<string, string> = {
   autoresearch: 'Autonomous metric-driven optimization loop.\n  Usage: danteforge autoresearch <goal> (--metric "<metric>" | --measurement-command "<command>") [--time <budget>] [--prompt] [--dry-run] [--allow-dirty]\n  Example: danteforge autoresearch "reduce bundle size" --metric "bundle size KB"\n  Execute mode refuses dirty working trees by default so rollback stays safe.',
   oss: 'Autonomous OSS pattern harvesting pipeline.\n  Usage: danteforge oss [--prompt] [--dry-run] [--max-repos <n>]\n  Detects project, searches OSS, clones with license gate, extracts patterns, and implements.',
   'local-harvest': 'Harvest patterns from local private repos, folders, and zip archives.\n  Usage: danteforge local-harvest [paths...] [--config <path>] [--depth shallow|medium|full] [--dry-run]\n  Creates LOCAL_HARVEST_REPORT.md and recommended OSS queries from private project sources.',
-  harvest: 'Titan Harvest V2 - constitutional harvest of OSS patterns.\n  Usage: danteforge harvest <system> [--prompt] [--lite]\n  Runs the 5-step track (or SEP-LITE) and produces summary.json plus a sha256 hash.',
+  harvest: 'Answer "What can we learn from OSS?" — harvest pipeline with optional --level depth.\n  Usage: danteforge harvest [goal] [--level light|standard|deep] [--source oss|local|mixed] [--prompt] [--lite]\n  light=focused pattern, standard=bounded OSS pass, deep=OSS+local+universe refresh\n  Without --level: danteforge harvest <system> [--prompt] [--lite] runs constitutional harvest.',
+  measure: 'Answer "How good is the project?" — measure pipeline with optional --level depth.\n  Usage: danteforge measure [--level light|standard|deep] [--full] [--strict] [--adversary]\n  light=quick score, standard=score+maturity+proof, deep=verify+adversarial+convergence-proof\n  Without --level: fast score — one number + 3 P0 action items in <5 seconds. Alias: score',
+  compete: 'Answer "Where do we lag the market?" — compete pipeline with optional --level depth.\n  Usage: danteforge compete [--level light|standard|deep] [--refresh] [--yes]\n  light=harsh self-assessment, standard=assess+universe refresh, deep=full Competitive Harvest Loop\n  Without --level: danteforge compete [--init] [--sprint] [--report] [--auto] full CHL commands.',
+  build: 'Answer "How do we make progress?" — build pipeline with optional --level depth.\n  Usage: danteforge build <spec> [--level light|standard|deep] [--profile quality|balanced|budget] [--worktree]\n  light=forge, standard=magic, deep=inferno+OSS harvest\n  Without --level: danteforge build <spec> runs the full spec-to-ship wizard.',
   'frontier-gap': 'Frontier Gap Engine: rank skeptic objections, classify gap types, prescribe smallest proof.\n  Usage: danteforge frontier-gap [dimension] [--raise-ready] [--matrix <path>] [--cwd <path>]\n  Example: danteforge frontier-gap D12  |  danteforge frontier-gap --raise-ready',
   explain: 'Plain-English glossary — explain any DanteForge term or concept.\n  Usage: danteforge explain [term] [--list]\n  Example: danteforge explain magic  |  danteforge explain --list',
   demo: 'Side-by-side demo: raw prompt quality vs DanteForge-structured quality.\n  Usage: danteforge demo [fixture] [--all]\n  Example: danteforge demo  |  danteforge demo task-tracker',
@@ -118,27 +121,32 @@ export async function helpCmd(query?: string, opts: {
     }
 
     logger.info('');
-    logger.info('DanteForge - what do you want to do?');
+    logger.info('DanteForge - start with one of the 5 canonical processes');
     logger.info('');
-    logger.info('  Start here:');
-    logger.info('    danteforge go             - see your score and top gaps (start here)');
+    logger.info('  Canonical processes:');
+    logger.info('    danteforge plan [goal]       - what should we build?');
+    logger.info('    danteforge build <spec>      - how do we make progress?');
+    logger.info('    danteforge measure           - how good is the project?');
+    logger.info('    danteforge compete           - where do we lag the market?');
+    logger.info('    danteforge harvest [goal]    - what can we learn from OSS?');
     logger.info('');
-    logger.info('  Improve your project:');
-    logger.info('    danteforge improve <goal> - run one targeted improvement cycle');
-    logger.info('    danteforge auto-improve   - autonomous loop until 9.0/10');
+    logger.info('  Use a shared depth model:');
+    logger.info('    --level light                - quick answer or first pass');
+    logger.info('    --level standard             - default balanced workflow');
+    logger.info('    --level deep                 - maximum rigor and orchestration');
     logger.info('');
-    logger.info('  Score and verify:');
-    logger.info('    danteforge measure        - fast score: one number + 3 gaps (<5s)');
-    logger.info('    danteforge check          - machine-readable quality gate');
+    logger.info('  Common starting points:');
+    logger.info('    danteforge go               - see current score and top gaps');
+    logger.info('    danteforge plan --level light "<idea>"');
+    logger.info('    danteforge build --level standard "<goal>"');
+    logger.info('    danteforge measure --level light');
     logger.info('');
-    logger.info('  Learn from open source:');
-    logger.info('    danteforge oss            - harvest patterns from top OSS repos');
-    logger.info('');
-    logger.info('  Understand a term:');
-    logger.info('    danteforge explain <term> - plain-English glossary');
-    logger.info('');
-    logger.info('  Set up:');
-    logger.info('    danteforge init           - first-run wizard (3 questions, 2 minutes)');
+    logger.info('  Specialist/support commands:');
+    logger.info('    danteforge verify|check     - machine-readable quality gate');
+    logger.info('    danteforge autoresearch     - metric-driven optimization loop');
+    logger.info('    danteforge inferno          - branded deep build preset');
+    logger.info('    danteforge explain <term>   - plain-English glossary');
+    logger.info('    danteforge init             - first-run wizard');
     logger.info('');
 
     try {
