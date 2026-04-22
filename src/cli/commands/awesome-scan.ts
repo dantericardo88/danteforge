@@ -14,21 +14,30 @@ export async function awesomeScan(options: {
   source?: string;
   domain?: string;
   install?: boolean;
+  _buildRegistry?: typeof buildRegistry;
+  _scanExternal?: typeof scanExternalSource;
+  _checkCompatibility?: typeof checkCompatibility;
+  _importSkill?: typeof importExternalSkill;
 }): Promise<void> {
+  const buildFn = options._buildRegistry ?? buildRegistry;
+  const scanFn = options._scanExternal ?? scanExternalSource;
+  const checkFn = options._checkCompatibility ?? checkCompatibility;
+  const importFn = options._importSkill ?? importExternalSkill;
+
   return withErrorBoundary('awesome-scan', async () => {
   logger.success('DanteForge Skill Scanner');
   logger.info('');
 
   // Build current registry
   logger.info('Scanning packaged and user skills...');
-  const registry = await buildRegistry();
+  const registry = await buildFn();
   logger.info(`Found ${registry.length} registered skill(s)`);
 
   // Scan external source if provided
   let externalSkills: SkillRegistryEntry[] = [];
   if (options.source) {
     logger.info(`\nScanning external source: ${options.source}`);
-    externalSkills = await scanExternalSource(options.source);
+    externalSkills = await scanFn(options.source);
     logger.info(`Found ${externalSkills.length} external skill(s)`);
   }
 
@@ -64,13 +73,13 @@ export async function awesomeScan(options: {
     logger.info('Checking compatibility and importing external skills...');
 
     for (const skill of externalSkills) {
-      const compat = await checkCompatibility(skill);
+      const compat = await checkFn(skill);
       if (!compat.compatible) {
         logger.warn(`  Skipping "${skill.name}": missing ${compat.missing.join(', ')}`);
         continue;
       }
 
-      const result = await importExternalSkill(skill);
+      const result = await importFn(skill);
       if (result.success) {
         logger.success(`  Imported "${skill.name}" -> ${result.path}`);
       } else {

@@ -11,13 +11,27 @@ import { withErrorBoundary } from '../../core/cli-error-boundary.js';
 
 const STATE_DIR = '.danteforge';
 
-export async function specify(idea: string, options: { prompt?: boolean; light?: boolean } = {}) {
+export async function specify(idea: string, options: {
+  prompt?: boolean;
+  light?: boolean;
+  _llmCaller?: typeof callLLM;
+  _isLLMAvailable?: typeof isLLMAvailable;
+  _loadState?: typeof loadState;
+  _saveState?: typeof saveState;
+  _writeArtifact?: typeof writeArtifact;
+} = {}) {
+  const llmFn = options._llmCaller ?? callLLM;
+  const llmAvailFn = options._isLLMAvailable ?? isLLMAvailable;
+  const loadFn = options._loadState ?? loadState;
+  const saveFn = options._saveState ?? saveState;
+  const writeFn = options._writeArtifact ?? writeArtifact;
+
   return withErrorBoundary('specify', async () => {
   if (!(await runGate(() => requireConstitution(options.light)))) return;
 
   logger.info(`Specifying: ${idea}`);
 
-  const state = await loadState();
+  const state = await loadFn();
 
   let currentState = '';
   try {
@@ -52,16 +66,16 @@ Output ONLY the markdown content - no preamble.`;
       `Prompt saved to: ${savedPath}`,
     ].join('\n'));
     state.auditLog.push(`${new Date().toISOString()} | specify: prompt generated for "${idea}"`);
-    await saveState(state);
+    await saveFn(state);
     return;
   }
 
-  const llmAvailable = await isLLMAvailable();
+  const llmAvailable = await llmAvailFn();
   if (llmAvailable) {
     logger.info('Sending to LLM for spec generation...');
     try {
-      const specMd = await callLLM(prompt, undefined, { enrichContext: true });
-      await writeArtifact('SPEC.md', specMd);
+      const specMd = await llmFn(prompt, undefined, { enrichContext: true });
+      await writeFn('SPEC.md', specMd);
 
       const tasks = extractNumberedTasks(specMd, 'Task Breakdown');
       const normalizedTasks = tasks.length > 0
@@ -79,7 +93,7 @@ Output ONLY the markdown content - no preamble.`;
   }
 
   const localSpec = buildLocalSpec(idea, state.constitution, currentState);
-  await writeArtifact('SPEC.md', localSpec.markdown);
+  await writeFn('SPEC.md', localSpec.markdown);
   await handoff('spec', { constitution: state.constitution ?? 'Loaded from .danteforge', tasks: localSpec.tasks });
   logger.success(`SPEC.md generated locally for "${idea}" - ${localSpec.tasks.length} tasks identified`);
   logger.info('Run "danteforge clarify" next, then continue with "danteforge plan" and "danteforge tasks" before forge.');
