@@ -6,8 +6,12 @@ export async function audit(options: {
   last?: string;
   format?: string;
   cwd?: string;
+  _loadLog?: typeof loadAuditLog;
+  _stdout?: (line: string) => void;
 } = {}): Promise<void> {
-  const entries = await loadAuditLog(options.cwd);
+  const loadFn = options._loadLog ?? loadAuditLog;
+  const emit = options._stdout ?? ((l) => logger.info(l));
+  const entries = await loadFn(options.cwd);
   const n = options.last ? Math.max(0, parseInt(options.last, 10)) : entries.length;
   const slice = entries.slice(-n || entries.length);
 
