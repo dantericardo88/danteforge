@@ -820,49 +820,47 @@ async function defaultCollectFiles(dir: string): Promise<string[]> {
   return results;
 }
 
+let _tsModule: typeof import('typescript') | null = null;
+try {
+  const { createRequire } = await import('node:module');
+  const require = createRequire(import.meta.url);
+  _tsModule = require('typescript') as typeof import('typescript');
+} catch { /* TypeScript not available — fall back to regex */ }
+
 function extractFunctions(content: string): string[] {
-  const functions: string[] = [];
-  const regex = /function\s+\w+\s*\([^)]*\)[^{]*\{|const\s+\w+\s*=\s*\([^)]*\)\s*=>\s*\{|async\s+function\s+\w+\s*\([^)]*\)[^{]*\{/g;
-  let match: RegExpExecArray | null;
-
-  while ((match = regex.exec(content)) !== null) {
-    const start = match.index;
-    const end = findClosingBrace(content, start);
-    if (end > start) {
-      functions.push(content.slice(start, end));
-    }
-  }
-
-  return functions;
-}
-
-function findClosingBrace(content: string, start: number): number {
-  let depth = 0;
-  let inString = false;
-  let stringChar = '';
-
-  for (let i = start; i < content.length; i++) {
-    const char = content[i];
-    const prev = content[i - 1];
-
-    if (!inString) {
-      if ((char === '"' || char === "'" || char === '`') && prev !== '\\') {
-        inString = true;
-        stringChar = char;
-      } else if (char === '{') {
-        depth++;
-      } else if (char === '}') {
-        depth--;
-        if (depth === 0) return i + 1;
+  if (_tsModule) {
+    try {
+      const ts = _tsModule;
+      const sf = ts.createSourceFile('temp.ts', content, ts.ScriptTarget.Latest, true, ts.ScriptKind.TS);
+      const results: string[] = [];
+      for (const stmt of sf.statements) {
+        if (ts.isFunctionDeclaration(stmt)) {
+          results.push(stmt.getFullText(sf));
+        } else if (ts.isVariableStatement(stmt)) {
+          for (const decl of stmt.declarationList.declarations) {
+            if (decl.initializer && (ts.isArrowFunction(decl.initializer) || ts.isFunctionExpression(decl.initializer))) {
+              results.push(stmt.getFullText(sf));
+            }
+          }
+        }
       }
-    } else {
-      if (char === stringChar && prev !== '\\') {
-        inString = false;
-      }
-    }
+      return results;
+    } catch { /* fall through to regex */ }
   }
-
-  return start;
+  // Regex fallback (no TypeScript compiler available)
+  const fns: string[] = [];
+  const re = /^(?:export\s+)?(?:async\s+)?function\s+\w+|^(?:export\s+)?const\s+\w+\s*=\s*(?:async\s+)?\(/gm;
+  let m: RegExpExecArray | null;
+  const lines = content.split('\n');
+  const starts: number[] = [];
+  while ((m = re.exec(content)) !== null) {
+    starts.push(content.slice(0, m.index).split('\n').length - 1);
+  }
+  starts.forEach((s, i) => {
+    const end = i + 1 < starts.length ? starts[i + 1] : lines.length;
+    fns.push(lines.slice(s, end).join('\n'));
+  });
+  return fns;
 }
 
 function capitalize(str: string): string {

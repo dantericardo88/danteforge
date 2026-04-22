@@ -54,7 +54,7 @@ for (const f of walkTs('src')) {
 }
 byFile.sort((a, b) => b.count - a.count);
 console.log('Total large fns >100 LOC (AST-based):', total);
-byFile.slice(0, 15).forEach(f => {
+byFile.forEach(f => {
   console.log(`\n  [${f.count} fns, max ${f.max}L] ${f.file}`);
   f.fns.forEach(fn => console.log(`      ${fn.lines}L: ${fn.name}`));
 });
