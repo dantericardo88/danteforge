@@ -267,6 +267,52 @@ function normalizeWS(s: string): string {
 /**
  * Apply a single FileOperation using real fs or injected seams.
  */
+async function applyReplaceOp(
+  filePath: string,
+  absPath: string,
+  op: FileOperation,
+  readFile: (p: string) => Promise<string>,
+  writeFile: (p: string, c: string) => Promise<void>,
+  exists: (p: string) => Promise<boolean>,
+): Promise<ApplyResult> {
+  if (!op.searchBlock && op.searchBlock !== '') {
+    return { filePath, success: false, error: 'No searchBlock provided for replace operation' };
+  }
+  if (!(await exists(absPath))) {
+    return { filePath, success: false, error: 'File not found for replace operation' };
+  }
+  let existing: string;
+  try {
+    existing = await readFile(absPath);
+  } catch {
+    return { filePath, success: false, error: 'File not found for replace operation' };
+  }
+  const searchBlock = op.searchBlock ?? '';
+  if (existing.includes(searchBlock)) {
+    await writeFile(absPath, existing.replace(searchBlock, op.replaceBlock));
+    return { filePath, success: true, matchStrategy: 'exact' };
+  }
+  const normExisting = normalizeWS(existing);
+  const normSearch = normalizeWS(searchBlock);
+  if (normSearch.length > 0 && normExisting.includes(normSearch)) {
+    const searchLines = searchBlock.split('\n');
+    const existingLines = existing.split('\n');
+    const firstTrimmed = searchLines[0]?.trim() ?? '';
+    const startIdx = existingLines.findIndex((l) => l.trim() === firstTrimmed);
+    if (startIdx !== -1) {
+      const updated = [...existingLines.slice(0, startIdx), op.replaceBlock, ...existingLines.slice(startIdx + searchLines.length)].join('\n');
+      await writeFile(absPath, updated);
+      return { filePath, success: true, matchStrategy: 'whitespace' };
+    }
+  }
+  const match = findFuzzyMatch(existing, searchBlock);
+  if (match !== null) {
+    await writeFile(absPath, existing.slice(0, match.index) + op.replaceBlock + existing.slice(match.index + searchBlock.length));
+    return { filePath, success: true, matchStrategy: 'fuzzy' };
+  }
+  return { filePath, success: false, error: 'SEARCH block not found in file' };
+}
+
 export async function applyOperation(
   op: FileOperation,
   opts?: CodeWriterOptions,
@@ -320,62 +366,7 @@ export async function applyOperation(
   }
 
   // 'replace' type
-  if (!op.searchBlock && op.searchBlock !== '') {
-    return { filePath: op.filePath, success: false, error: 'No searchBlock provided for replace operation' };
-  }
-
-  const fileExists = await exists(absPath);
-  if (!fileExists) {
-    return { filePath: op.filePath, success: false, error: 'File not found for replace operation' };
-  }
-
-  let existing: string;
-  try {
-    existing = await readFile(absPath);
-  } catch {
-    return { filePath: op.filePath, success: false, error: 'File not found for replace operation' };
-  }
-
-  const searchBlock = op.searchBlock ?? '';
-
-  // Tier 1 — exact match
-  if (existing.includes(searchBlock)) {
-    const updated = existing.replace(searchBlock, op.replaceBlock);
-    await writeFile(absPath, updated);
-    return { filePath: op.filePath, success: true, matchStrategy: 'exact' };
-  }
-
-  // Tier 2 — whitespace normalized
-  const normExisting = normalizeWS(existing);
-  const normSearch = normalizeWS(searchBlock);
-  if (normSearch.length > 0 && normExisting.includes(normSearch)) {
-    const searchLines = searchBlock.split('\n');
-    const existingLines = existing.split('\n');
-    const firstTrimmed = searchLines[0]?.trim() ?? '';
-    const startIdx = existingLines.findIndex((l) => l.trim() === firstTrimmed);
-    if (startIdx !== -1) {
-      const updated = [
-        ...existingLines.slice(0, startIdx),
-        op.replaceBlock,
-        ...existingLines.slice(startIdx + searchLines.length),
-      ].join('\n');
-      await writeFile(absPath, updated);
-      return { filePath: op.filePath, success: true, matchStrategy: 'whitespace' };
-    }
-  }
-
-  // Tier 3 — fuzzy match
-  const match = findFuzzyMatch(existing, searchBlock);
-  if (match !== null) {
-    const updated =
-      existing.slice(0, match.index) +
-      op.replaceBlock +
-      existing.slice(match.index + searchBlock.length);
-    await writeFile(absPath, updated);
-    return { filePath: op.filePath, success: true, matchStrategy: 'fuzzy' };
-  }
-
-  return { filePath: op.filePath, success: false, error: 'SEARCH block not found in file' };
+  return applyReplaceOp(op.filePath, absPath, op, readFile, writeFile, exists);
 }
 
 // ---------------------------------------------------------------------------

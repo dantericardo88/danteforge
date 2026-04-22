@@ -328,6 +328,22 @@ export interface ScoreAllArtifactsOptions {
   toolchainMetrics?: import('./pdse-toolchain.js').ToolchainMetrics;
 }
 
+function buildMissingArtifactResult(artifactName: ScoredArtifact): ScoreResult {
+  return {
+    artifact: artifactName,
+    score: 0,
+    dimensions: {
+      completeness: 0, clarity: 0, testability: 0,
+      constitutionAlignment: 0, integrationFitness: 0, freshness: 0,
+    },
+    issues: [{ dimension: 'completeness', severity: 'error', message: `Artifact ${artifactName}.md does not exist` }],
+    remediationSuggestions: [`Run: danteforge ${ARTIFACT_COMMAND_MAP[artifactName]}`],
+    timestamp: new Date().toISOString(),
+    autoforgeDecision: 'blocked',
+    hasCEOReviewBonus: false,
+  };
+}
+
 export async function scoreAllArtifacts(
   cwd: string,
   state: DanteState,
@@ -370,26 +386,7 @@ export async function scoreAllArtifacts(
   for (const artifactName of artifacts) {
     const content = loaded[artifactName];
     if (content === undefined) {
-      // Missing artifact → score 0, blocked
-      results[artifactName] = {
-        artifact: artifactName,
-        score: 0,
-        dimensions: {
-          completeness: 0, clarity: 0, testability: 0,
-          constitutionAlignment: 0, integrationFitness: 0, freshness: 0,
-        },
-        issues: [{
-          dimension: 'completeness',
-          severity: 'error',
-          message: `Artifact ${artifactName}.md does not exist`,
-        }],
-        remediationSuggestions: [
-          `Run: danteforge ${ARTIFACT_COMMAND_MAP[artifactName]}`,
-        ],
-        timestamp: new Date().toISOString(),
-        autoforgeDecision: 'blocked',
-        hasCEOReviewBonus: false,
-      };
+      results[artifactName] = buildMissingArtifactResult(artifactName);
       continue;
     }
 
