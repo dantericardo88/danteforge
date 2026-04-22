@@ -45,11 +45,17 @@ async function gatherDocs(): Promise<DocSection[]> {
   return docs;
 }
 
-export async function synthesize() {
+export async function synthesize(options: {
+  _loadState?: typeof loadState;
+  _saveState?: typeof saveState;
+} = {}) {
+  const loadFn = options._loadState ?? loadState;
+  const saveFn = options._saveState ?? saveState;
+
   return withErrorBoundary('synthesize', async () => {
   logger.info('Synthesizing Ultimate Planning Resource (UPR.md)...');
 
-  const state = await loadState();
+  const state = await loadFn();
   const canSynthesize = state.workflowStage === 'verify' || state.workflowStage === 'synthesize';
   if (!state.lastVerifiedAt || !canSynthesize) {
     logger.error('Synthesis is blocked until verification succeeds. Run "danteforge verify" after a real forge pass first.');
@@ -173,7 +179,7 @@ export async function synthesize() {
 
   recordWorkflowStage(state, 'synthesize', timestamp);
   state.auditLog.push(`${timestamp} | synthesize: UPR.md generated (${docs.length} artifacts merged)`);
-  await saveState(state);
+  await saveFn(state);
 
   logger.success(`UPR.md generated — ${docs.length} artifacts merged into Ultimate Planning Resource`);
   logger.info('Find it at .danteforge/UPR.md');

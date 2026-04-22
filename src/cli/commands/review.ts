@@ -124,7 +124,18 @@ function resetExecutionStateForReview<T extends {
   return state;
 }
 
-export async function review(options: { prompt?: boolean } = {}) {
+export async function review(options: {
+  prompt?: boolean;
+  _llmCaller?: typeof callLLM;
+  _isLLMAvailable?: typeof isLLMAvailable;
+  _loadState?: typeof loadState;
+  _saveState?: typeof saveState;
+} = {}) {
+  const llmFn = options._llmCaller ?? callLLM;
+  const llmAvailFn = options._isLLMAvailable ?? isLLMAvailable;
+  const loadFn = options._loadState ?? loadState;
+  const saveFn = options._saveState ?? saveState;
+
   return withErrorBoundary('review', async () => {
   logger.success('Reviewing existing project state...');
 
@@ -155,7 +166,7 @@ export async function review(options: { prompt?: boolean } = {}) {
 
   // --prompt mode: generate a copy-paste prompt for Claude Code / ChatGPT
   if (options.prompt) {
-    const state = await loadState();
+    const state = await loadFn();
     state.projectType = projectType;
     const prompt = buildReviewPrompt({
       projectName,
@@ -184,14 +195,14 @@ export async function review(options: { prompt?: boolean } = {}) {
     ].join('\n'));
 
     state.auditLog.push(`${timestamp} | review: LLM prompt generated (${sourceFiles.length} source files, ${recentCommits.length} commits)`);
-    await saveState(state);
+    await saveFn(state);
     return;
   }
 
   // Auto-API mode: if an API key is configured, send directly to LLM
-  const llmAvailable = await isLLMAvailable();
+  const llmAvailable = await llmAvailFn();
   if (llmAvailable) {
-    const state = await loadState();
+    const state = await loadFn();
     state.projectType = projectType;
     logger.info('LLM provider available - sending to LLM for deep review...');
 
@@ -217,7 +228,7 @@ export async function review(options: { prompt?: boolean } = {}) {
           const chunkPrompt = i === 0
             ? chunks[i]!
             : `Continue the project review. This is part ${i + 1} of ${chunks.length}.\n\n${chunks[i]}`;
-          const result = await callLLM(chunkPrompt, undefined, { enrichContext: true });
+          const result = await llmFn(chunkPrompt, undefined, { enrichContext: true });
           chunkResults.push(result);
         }
 
@@ -228,7 +239,7 @@ export async function review(options: { prompt?: boolean } = {}) {
         resetExecutionStateForReview(state);
         state.projectType = projectType;
         state.auditLog.push(`${timestamp} | review: CURRENT_STATE.md generated via API (${chunks.length} chunks, ${sourceFiles.length} source files)`);
-        await saveState(state);
+        await saveFn(state);
         await handoff('review', { stateFile: 'CURRENT_STATE.md' });
 
         logger.success(`CURRENT_STATE.md generated via LLM (${chunks.length} chunks, ${sourceFiles.length} source files reviewed)`);
@@ -240,7 +251,7 @@ export async function review(options: { prompt?: boolean } = {}) {
       }
     } else {
       try {
-        const stateMd = await callLLM(prompt, undefined, { enrichContext: true });
+        const stateMd = await llmFn(prompt, undefined, { enrichContext: true });
 
         await fs.mkdir(STATE_DIR, { recursive: true });
         await fs.writeFile(path.join(STATE_DIR, 'CURRENT_STATE.md'), stateMd);
@@ -248,7 +259,7 @@ export async function review(options: { prompt?: boolean } = {}) {
         resetExecutionStateForReview(state);
         state.projectType = projectType;
         state.auditLog.push(`${timestamp} | review: CURRENT_STATE.md generated via API (${sourceFiles.length} source files)`);
-        await saveState(state);
+        await saveFn(state);
         await handoff('review', { stateFile: 'CURRENT_STATE.md' });
 
         logger.success(`CURRENT_STATE.md generated via LLM (${sourceFiles.length} source files reviewed)`);
@@ -353,11 +364,11 @@ export async function review(options: { prompt?: boolean } = {}) {
   await fs.mkdir(STATE_DIR, { recursive: true });
   await fs.writeFile(path.join(STATE_DIR, 'CURRENT_STATE.md'), stateMd);
 
-  const state = await loadState();
+  const state = await loadFn();
   resetExecutionStateForReview(state);
   state.projectType = projectType;
   state.auditLog.push(`${timestamp} | review: CURRENT_STATE.md generated locally (${sourceFiles.length} source files)`);
-  await saveState(state);
+  await saveFn(state);
 
   await handoff('review', { stateFile: 'CURRENT_STATE.md' });
 
