@@ -240,6 +240,116 @@ export const DIMENSION_HUMAN_TEXT: Partial<Record<string, string>> = {
   planningQuality: 'task breakdown leads to rework and blocked steps',
 };
 
+// ── P0 evidence: dynamic codebase signals for each dimension ─────────────────
+// Each function returns a short, file-grounded string or null if no signal found.
+
+async function findLargeFunctions(
+  srcDir: string,
+  thresholdLoc: number,
+): Promise<Array<{ file: string; fnLoc: number }>> {
+  const results: Array<{ file: string; fnLoc: number }> = [];
+  async function walk(dir: string): Promise<void> {
+    let entries: { name: string; isDirectory: () => boolean }[] = [];
+    try { entries = await fs.readdir(dir, { withFileTypes: true }); } catch { return; }
+    for (const e of entries) {
+      const full = path.join(dir, e.name);
+      if (e.isDirectory()) { await walk(full); continue; }
+      if (!e.name.endsWith('.ts') || e.name.endsWith('.d.ts')) continue;
+      try {
+        const content = await fs.readFile(full, 'utf8');
+        const fnBlocks = extractFunctionBlocks(content);
+        for (const loc of fnBlocks) {
+          if (loc > thresholdLoc) results.push({ file: full, fnLoc: loc });
+        }
+      } catch { /* ignore */ }
+    }
+  }
+  await walk(srcDir);
+  return results;
+}
+
+function extractFunctionBlocks(src: string): number[] {
+  const locs: number[] = [];
+  const lines = src.split('\n');
+  let depth = 0;
+  let start = -1;
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i];
+    const isFnStart = depth === 0 && /^\s*(export\s+)?(async\s+)?function\s+\w+|^\s*(export\s+)?const\s+\w+\s*=\s*(async\s+)?\(/.test(line);
+    for (const ch of line) {
+      if (ch === '{') { if (depth === 0 && start === -1 && isFnStart) start = i; depth++; }
+      else if (ch === '}') { depth--; if (depth === 0 && start !== -1) { locs.push(i - start + 1); start = -1; } }
+    }
+  }
+  return locs;
+}
+
+async function buildDimEvidence(
+  dim: ScoringDimension,
+  cwd: string,
+  harshResult: HarshScoreResult,
+): Promise<string | null> {
+  try {
+    const srcDir = path.join(cwd, 'src');
+
+    if (dim === 'maintainability') {
+      // Find files with functions >100 LOC (the exact signal used by maturity-engine)
+      const hits = await findLargeFunctions(srcDir, 100);
+      if (hits.length === 0) return null;
+      hits.sort((a, b) => b.fnLoc - a.fnLoc);
+      const worst = hits[0];
+      const rel = path.relative(cwd, worst.file).replace(/\\/g, '/');
+      return `${hits.length} large function${hits.length > 1 ? 's' : ''} >100 LOC — worst: ${rel} (${worst.fnLoc} lines)`;
+    }
+
+    if (dim === 'functionality') {
+      // Prefer unwired modules, then stubs, then TODO patterns
+      if (harshResult.unwiredModules && harshResult.unwiredModules.length > 0) {
+        const rel = harshResult.unwiredModules[0].replace(/\\/g, '/');
+        return `unwired module: ${rel}`;
+      }
+      if (harshResult.stubsDetected.length > 0) {
+        const rel = harshResult.stubsDetected[0].replace(/\\/g, '/');
+        return `stub patterns in: ${rel}`;
+      }
+      return null;
+    }
+
+    if (dim === 'errorHandling') {
+      // Scan for catch blocks that discard the error (empty or single-line swallow)
+      const EMPTY_CATCH = /catch\s*\([^)]*\)\s*\{\s*\}/;
+      async function walk(dir: string): Promise<string | null> {
+        let entries: { name: string; isDirectory: () => boolean }[] = [];
+        try { entries = await fs.readdir(dir, { withFileTypes: true }); } catch { return null; }
+        for (const e of entries) {
+          const full = path.join(dir, e.name);
+          if (e.isDirectory()) { const r = await walk(full); if (r) return r; continue; }
+          if (!e.name.endsWith('.ts') || e.name.endsWith('.d.ts')) continue;
+          try {
+            const content = await fs.readFile(full, 'utf8');
+            if (EMPTY_CATCH.test(content)) return path.relative(cwd, full).replace(/\\/g, '/');
+          } catch { /* ignore */ }
+        }
+        return null;
+      }
+      const file = await walk(srcDir);
+      return file ? `empty catch blocks in: ${file}` : null;
+    }
+
+    if (dim === 'testing') {
+      // Surface any penalty evidence from the harsh scorer
+      const testPenalty = harshResult.penalties.find(p => p.category === 'testing');
+      return testPenalty ? testPenalty.evidence.slice(0, 80) : null;
+    }
+
+    if (dim === 'security') {
+      const secPenalty = harshResult.penalties.find(p => p.category === 'security');
+      return secPenalty ? secPenalty.evidence.slice(0, 80) : null;
+    }
+  } catch { /* evidence is always best-effort */ }
+  return null;
+}
+
 // ── Main ──────────────────────────────────────────────────────────────────────
 
 export async function score(options: ScoreOptions = {}): Promise<ScoreResult> {
@@ -390,17 +500,27 @@ export async function score(options: ScoreOptions = {}): Promise<ScoreResult> {
   emit(`  ${result.displayScore.toFixed(1)}/10  — ${displayVerdict(result.verdict)}${deltaStr}`);
   emit('');
   emit('  P0 gaps:');
-  p0Items.forEach((item, i) => {
+  // Build file-grounded evidence for each P0 dim (best-effort, parallel)
+  const evidenceMap = new Map<string, string>();
+  await Promise.all(p0Items.map(async (item) => {
+    const ev = await buildDimEvidence(item.dimension, cwd, result);
+    if (ev) evidenceMap.set(item.dimension, ev);
+  }));
+  for (let i = 0; i < p0Items.length; i++) {
+    const item = p0Items[i];
     const label = item.dimension.replace(/([A-Z])/g, ' $1').trim();
     const humanLabel = label.charAt(0).toUpperCase() + label.slice(1);
     const humanText = DIMENSION_HUMAN_TEXT[item.dimension];
+    const evidence = evidenceMap.get(item.dimension);
     if (humanText) {
       emit(`  ${i + 1}. ${humanLabel.padEnd(22)}${item.score.toFixed(1)}/10  — ${humanText}`);
+      if (evidence) emit(`     ${''.padEnd(22)}  ↳ ${evidence}`);
       emit(`     ${''.padEnd(22)}→ ${item.action}`);
     } else {
       emit(`  ${i + 1}. ${humanLabel.padEnd(22)}${item.score.toFixed(1)}/10  → ${item.action}`);
+      if (evidence) emit(`     ${''.padEnd(22)}  ↳ ${evidence}`);
     }
-  });
+  }
   emit('  Unfamiliar with any term? Run: danteforge explain <term>');
   emit('');
 
