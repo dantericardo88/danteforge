@@ -129,9 +129,17 @@ function printHistorySummary(reports: TokenReport[]): void {
   logger.info(`Cumulative cost: ${formatUsd(cumulativeCost)}`);
 }
 
-export async function cost(options: CostOptions = {}): Promise<void> {
+export interface CostCommandOptions extends CostOptions {
+  _findReports?: typeof findCostReports;
+  _readReport?: typeof readReport;
+}
+
+export async function cost(options: CostCommandOptions = {}): Promise<void> {
+  const findFn = options._findReports ?? findCostReports;
+  const readFn = options._readReport ?? readReport;
+
   const cwd = process.cwd();
-  const reportFiles = await findCostReports(cwd);
+  const reportFiles = await findFn(cwd);
 
   if (reportFiles.length === 0) {
     logger.info('No cost reports found in .danteforge/reports/.');
@@ -142,7 +150,7 @@ export async function cost(options: CostOptions = {}): Promise<void> {
   if (options.history) {
     const reports: TokenReport[] = [];
     for (const file of reportFiles) {
-      const r = await readReport(file);
+      const r = await readFn(file);
       if (r) reports.push(r);
     }
     if (reports.length === 0) {
@@ -154,7 +162,7 @@ export async function cost(options: CostOptions = {}): Promise<void> {
   }
 
   const latestFile = reportFiles[reportFiles.length - 1];
-  const report = await readReport(latestFile);
+  const report = await readFn(latestFile);
   if (!report) {
     logger.error(`Failed to read latest report: ${latestFile}`);
     return;

@@ -112,7 +112,13 @@ export function formatCommandReference(): string {
   return lines.join('\n');
 }
 
-export async function docs(): Promise<void> {
+export async function docs(options: {
+  _loadState?: typeof loadState;
+  _saveState?: typeof saveState;
+} = {}): Promise<void> {
+  const loadFn = options._loadState ?? loadState;
+  const saveFn = options._saveState ?? saveState;
+
   return withErrorBoundary('docs', async () => {
   const cwd = process.cwd();
   const timestamp = new Date().toISOString();
@@ -129,11 +135,11 @@ export async function docs(): Promise<void> {
   logger.info(`${COMMAND_REGISTRY.length} commands documented.`);
 
   try {
-    const state = await loadState();
+    const state = await loadFn();
     state.auditLog.push(
       `${timestamp} | docs: generated COMMAND_REFERENCE.md (${COMMAND_REGISTRY.length} commands)`,
     );
-    await saveState(state);
+    await saveFn(state);
   } catch {
     // Best-effort audit log only.
   }

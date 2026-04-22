@@ -182,7 +182,14 @@ export function renderDashboardHtml(input: DashboardRenderInput): string {
 </html>`;
 }
 
-export async function dashboard(options: { port?: string } = {}) {
+export async function dashboard(options: {
+  port?: string;
+  _loadState?: typeof loadState;
+  _loadConfig?: typeof loadConfig;
+} = {}) {
+  const loadFn = options._loadState ?? loadState;
+  const loadConfigFn = options._loadConfig ?? loadConfig;
+
   return withErrorBoundary('dashboard', async () => {
   let port = 4242;
   try {
@@ -195,8 +202,8 @@ export async function dashboard(options: { port?: string } = {}) {
 
   logger.info('Starting DanteForge Dashboard...');
 
-  const state = await loadState();
-  const config = await loadConfig();
+  const state = await loadFn();
+  const config = await loadConfigFn();
   const host = detectHost();
   const capabilities = await detectMCPCapabilities(host);
   const tier = resolveTier(host, capabilities.hasFigmaMCP);

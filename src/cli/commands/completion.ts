@@ -339,21 +339,27 @@ complete -c danteforge -f -n '__fish_seen_subcommand_from setup' -a 'assistants 
 
 // ── CLI entry point ────────────────────────────────────────────────────────────
 
-export async function completionCmd(shell?: string): Promise<void> {
+export async function completionCmd(shell?: string, options: {
+  _stdout?: (output: string) => void;
+  _stderr?: (output: string) => void;
+} = {}): Promise<void> {
+  const emit = options._stdout ?? ((s) => process.stdout.write(s));
+  const emitErr = options._stderr ?? ((s) => process.stderr.write(s));
+
   const target = (shell ?? 'bash').toLowerCase();
 
   switch (target) {
     case 'bash':
-      process.stdout.write(generateBashCompletion());
+      emit(generateBashCompletion());
       break;
     case 'zsh':
-      process.stdout.write(generateZshCompletion());
+      emit(generateZshCompletion());
       break;
     case 'fish':
-      process.stdout.write(generateFishCompletion());
+      emit(generateFishCompletion());
       break;
     default:
-      process.stderr.write(`Unknown shell: ${target}\nSupported: bash, zsh, fish\n`);
+      emitErr(`Unknown shell: ${target}\nSupported: bash, zsh, fish\n`);
       process.exit(1);
   }
 }
