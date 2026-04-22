@@ -243,11 +243,13 @@ export const DIMENSION_HUMAN_TEXT: Partial<Record<string, string>> = {
 // ── P0 evidence: dynamic codebase signals for each dimension ─────────────────
 // Each function returns a short, file-grounded string or null if no signal found.
 
+interface FnHit { file: string; fnLoc: number; fnName: string; startLine: number; }
+
 async function findLargeFunctions(
   srcDir: string,
   thresholdLoc: number,
-): Promise<Array<{ file: string; fnLoc: number }>> {
-  const results: Array<{ file: string; fnLoc: number }> = [];
+): Promise<FnHit[]> {
+  const results: FnHit[] = [];
   async function walk(dir: string): Promise<void> {
     let entries: { name: string; isDirectory: () => boolean }[] = [];
     try { entries = await fs.readdir(dir, { withFileTypes: true }); } catch { return; }
@@ -258,8 +260,8 @@ async function findLargeFunctions(
       try {
         const content = await fs.readFile(full, 'utf8');
         const fnBlocks = extractFunctionBlocks(content);
-        for (const loc of fnBlocks) {
-          if (loc > thresholdLoc) results.push({ file: full, fnLoc: loc });
+        for (const { loc, name, line } of fnBlocks) {
+          if (loc > thresholdLoc) results.push({ file: full, fnLoc: loc, fnName: name, startLine: line });
         }
       } catch { /* ignore */ }
     }
@@ -268,20 +270,41 @@ async function findLargeFunctions(
   return results;
 }
 
-function extractFunctionBlocks(src: string): number[] {
-  const locs: number[] = [];
+function extractFunctionBlocks(src: string): Array<{ loc: number; name: string; line: number }> {
+  const results: Array<{ loc: number; name: string; line: number }> = [];
   const lines = src.split('\n');
   let depth = 0;
   let start = -1;
+  let pendingName = '';
+  // Match: standalone functions, const arrows, class methods (public/private/async/static prefix)
+  const DECL_RE = /^\s*(?:export\s+)?(?:(?:private|protected|public|static|override)\s+)*(?:async\s+)?(?:function\s+(\w+)|(\w+)\s*\()/;
   for (let i = 0; i < lines.length; i++) {
     const line = lines[i];
-    const isFnStart = depth === 0 && /^\s*(export\s+)?(async\s+)?function\s+\w+|^\s*(export\s+)?const\s+\w+\s*=\s*(async\s+)?\(/.test(line);
+    const isFnStart = depth === 0 && (
+      /^\s*(?:export\s+)?(?:async\s+)?function\s+\w+/.test(line) ||
+      /^\s*(?:export\s+)?const\s+\w+\s*=\s*(?:async\s+)?\(/.test(line) ||
+      /^\s*(?:(?:private|protected|public|static|override)\s+)+(?:async\s+)?\w+\s*\(/.test(line) ||
+      /^\s*(?:async\s+)\w+\s*\(/.test(line)
+    );
+    if (isFnStart && depth === 0) {
+      const m = DECL_RE.exec(line);
+      pendingName = m ? (m[1] ?? m[2] ?? '') : '';
+    }
     for (const ch of line) {
-      if (ch === '{') { if (depth === 0 && start === -1 && isFnStart) start = i; depth++; }
-      else if (ch === '}') { depth--; if (depth === 0 && start !== -1) { locs.push(i - start + 1); start = -1; } }
+      if (ch === '{') {
+        if (depth === 0 && start === -1 && isFnStart) start = i;
+        depth++;
+      } else if (ch === '}') {
+        depth--;
+        if (depth === 0 && start !== -1) {
+          results.push({ loc: i - start + 1, name: pendingName, line: start + 1 });
+          start = -1;
+          pendingName = '';
+        }
+      }
     }
   }
-  return locs;
+  return results;
 }
 
 async function buildDimEvidence(
@@ -299,11 +322,12 @@ async function buildDimEvidence(
       hits.sort((a, b) => b.fnLoc - a.fnLoc);
       const worst = hits[0];
       const rel = path.relative(cwd, worst.file).replace(/\\/g, '/');
-      return `${hits.length} large function${hits.length > 1 ? 's' : ''} >100 LOC — worst: ${rel} (${worst.fnLoc} lines)`;
+      const fnTag = worst.fnName ? `${worst.fnName}()` : `line ${worst.startLine}`;
+      return `${hits.length} large fn${hits.length > 1 ? 's' : ''} >100 LOC — ${rel}:${worst.startLine} ${fnTag} (${worst.fnLoc} lines)`;
     }
 
     if (dim === 'functionality') {
-      // Prefer unwired modules, then stubs, then TODO patterns
+      // Prefer unwired modules, then stubs, then incomplete PDSE artifacts
       if (harshResult.unwiredModules && harshResult.unwiredModules.length > 0) {
         const rel = harshResult.unwiredModules[0].replace(/\\/g, '/');
         return `unwired module: ${rel}`;
@@ -312,28 +336,47 @@ async function buildDimEvidence(
         const rel = harshResult.stubsDetected[0].replace(/\\/g, '/');
         return `stub patterns in: ${rel}`;
       }
+      // Scan for largest source file without a matching test file — gaps in test coverage
+      const hits = await findLargeFunctions(srcDir, 50);
+      if (hits.length > 0) {
+        hits.sort((a, b) => b.fnLoc - a.fnLoc);
+        const biggest = hits[0];
+        const rel = path.relative(cwd, biggest.file).replace(/\\/g, '/');
+        const fnTag = biggest.fnName ? `${biggest.fnName}()` : `line ${biggest.startLine}`;
+        return `largest fn without tests: ${rel}:${biggest.startLine} ${fnTag} (${biggest.fnLoc} lines)`;
+      }
       return null;
     }
 
     if (dim === 'errorHandling') {
-      // Scan for catch blocks that discard the error (empty or single-line swallow)
-      const EMPTY_CATCH = /catch\s*\([^)]*\)\s*\{\s*\}/;
-      async function walk(dir: string): Promise<string | null> {
+      // Find file with highest function density but few try blocks (ratio gap)
+      interface ErrRatio { file: string; gap: number; fnCount: number; tryCount: number; }
+      const worstFiles: ErrRatio[] = [];
+      async function walkErr(dir: string): Promise<void> {
         let entries: { name: string; isDirectory: () => boolean }[] = [];
-        try { entries = await fs.readdir(dir, { withFileTypes: true }); } catch { return null; }
+        try { entries = await fs.readdir(dir, { withFileTypes: true }); } catch { return; }
         for (const e of entries) {
           const full = path.join(dir, e.name);
-          if (e.isDirectory()) { const r = await walk(full); if (r) return r; continue; }
+          if (e.isDirectory()) { await walkErr(full); continue; }
           if (!e.name.endsWith('.ts') || e.name.endsWith('.d.ts')) continue;
           try {
             const content = await fs.readFile(full, 'utf8');
-            if (EMPTY_CATCH.test(content)) return path.relative(cwd, full).replace(/\\/g, '/');
+            const fnCount = (content.match(/function\s+\w+|=>\s*\{|async\s+\w+\(/g) || []).length;
+            const tryCount = (content.match(/try\s*\{/g) || []).length;
+            if (fnCount >= 10 && tryCount < fnCount * 0.3) {
+              worstFiles.push({ file: full, gap: fnCount - tryCount * 3, fnCount, tryCount });
+            }
           } catch { /* ignore */ }
         }
-        return null;
       }
-      const file = await walk(srcDir);
-      return file ? `empty catch blocks in: ${file}` : null;
+      await walkErr(srcDir);
+      if (worstFiles.length > 0) {
+        worstFiles.sort((a, b) => b.gap - a.gap);
+        const worst = worstFiles[0];
+        const rel = path.relative(cwd, worst.file).replace(/\\/g, '/');
+        return `low try/catch ratio in: ${rel} (${worst.tryCount} try / ${worst.fnCount} fns)`;
+      }
+      return null;
     }
 
     if (dim === 'testing') {
