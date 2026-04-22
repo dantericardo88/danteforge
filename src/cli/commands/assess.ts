@@ -242,6 +242,32 @@ export async function assess(options: AssessOptions = {}): Promise<AssessResult>
 
 // ── Report printer ────────────────────────────────────────────────────────────
 
+function printScoreSummary(
+  result: AssessResult,
+  sessionDelta?: number,
+  sessionBaseline?: number,
+  sessionBaselineDate?: string,
+): void {
+  const { assessment, featureAssessment, completionTarget } = result;
+  const passIcon = result.passesThreshold ? '✓ PASS' : '✗ BELOW TARGET';
+  logger.info(`OVERALL SCORE: ${result.overallScore.toFixed(1)} / 10  (target: ${result.minScore.toFixed(1)}, gap: ${Math.max(0, result.minScore - result.overallScore).toFixed(1)})  ${passIcon}`);
+
+  if (sessionDelta !== undefined && sessionBaseline !== undefined) {
+    const arrow = sessionDelta > 0.05 ? '▲' : sessionDelta < -0.05 ? '▼' : '─';
+    const sign = sessionDelta > 0 ? '+' : '';
+    const dateLabel = sessionBaselineDate ? sessionBaselineDate.slice(0, 10) : 'baseline';
+    logger.info(`Session delta:  ${sessionBaseline.toFixed(1)} → ${result.overallScore.toFixed(1)}  (${arrow} ${sign}${sessionDelta.toFixed(1)} since ${dateLabel})`);
+  }
+  logger.info(`Verdict: ${assessment.verdict.toUpperCase()}  |  Fake-completion risk: ${assessment.fakeCompletionRisk.toUpperCase()}`);
+
+  if (featureAssessment) {
+    logger.info('');
+    logger.info(`FEATURE UNIVERSE: ${featureAssessment.implementedCount} implemented | ${featureAssessment.partialCount} partial | ${featureAssessment.missingCount} missing`);
+    logger.info(`  Coverage: ${featureAssessment.coveragePercent}% (target: ${completionTarget.featureCoverage ?? 90}%)`);
+    logger.info(`  Run \`danteforge universe\` for full feature breakdown`);
+  }
+}
+
 function printAssessReport(
   result: AssessResult,
   cycleNumber: number,
@@ -249,7 +275,7 @@ function printAssessReport(
   sessionBaseline?: number,
   sessionBaselineDate?: string,
 ): void {
-  const { assessment, comparison, masterplan, featureAssessment, completionTarget } = result;
+  const { assessment, comparison, masterplan, completionTarget } = result;
 
   const banner = [
     '╔══════════════════════════════════════════════════════╗',
@@ -262,30 +288,9 @@ function printAssessReport(
 
   logger.info('\n' + banner);
   logger.info('');
-
-  // Show completion target definition
   logger.info(`COMPLETION TARGET: ${formatCompletionTarget(completionTarget)}`);
   logger.info('');
-
-  const passIcon = result.passesThreshold ? '✓ PASS' : '✗ BELOW TARGET';
-  logger.info(`OVERALL SCORE: ${result.overallScore.toFixed(1)} / 10  (target: ${result.minScore.toFixed(1)}, gap: ${Math.max(0, result.minScore - result.overallScore).toFixed(1)})  ${passIcon}`);
-
-  // Session delta — show progress since baseline was set
-  if (sessionDelta !== undefined && sessionBaseline !== undefined) {
-    const arrow = sessionDelta > 0.05 ? '▲' : sessionDelta < -0.05 ? '▼' : '─';
-    const sign = sessionDelta > 0 ? '+' : '';
-    const dateLabel = sessionBaselineDate ? sessionBaselineDate.slice(0, 10) : 'baseline';
-    logger.info(`Session delta:  ${sessionBaseline.toFixed(1)} → ${result.overallScore.toFixed(1)}  (${arrow} ${sign}${sessionDelta.toFixed(1)} since ${dateLabel})`);
-  }
-  logger.info(`Verdict: ${assessment.verdict.toUpperCase()}  |  Fake-completion risk: ${assessment.fakeCompletionRisk.toUpperCase()}`);
-
-  // Feature universe summary (when mode=feature-universe)
-  if (featureAssessment) {
-    logger.info('');
-    logger.info(`FEATURE UNIVERSE: ${featureAssessment.implementedCount} implemented | ${featureAssessment.partialCount} partial | ${featureAssessment.missingCount} missing`);
-    logger.info(`  Coverage: ${featureAssessment.coveragePercent}% (target: ${completionTarget.featureCoverage ?? 90}%)`);
-    logger.info(`  Run \`danteforge universe\` for full feature breakdown`);
-  }
+  printScoreSummary(result, sessionDelta, sessionBaseline, sessionBaselineDate);
   logger.info('');
 
   logger.info('DIMENSION BREAKDOWN:');

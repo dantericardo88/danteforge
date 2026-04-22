@@ -529,6 +529,40 @@ export interface ConvergenceProofReport {
   };
 }
 
+function buildRepairCycles(
+  auditLog: string[],
+  failedAttempts: number,
+  lastStatus: string,
+): { repairCycles: RepairCycleRecord[]; totalCycles: number; verifyRepairSequences: number; recoveredCount: number; finalStatus: 'converged' | 'stalled' | 'unknown' } {
+  let verifyRepairSequences = 0;
+  for (let i = 0; i < auditLog.length - 1; i++) {
+    if (auditLog[i].includes('| verify:') && auditLog[i + 1].includes('| forge:')) {
+      verifyRepairSequences++;
+    }
+  }
+
+  const repairCycles: RepairCycleRecord[] = [];
+  if (failedAttempts > 0) {
+    for (let i = 1; i <= failedAttempts; i++) {
+      repairCycles.push({ cycle: i, status: 'fail', errorClass: 'autoforge-failure', recovered: false });
+    }
+  }
+  const totalCycles = failedAttempts + 1;
+  repairCycles.push({
+    cycle: totalCycles,
+    status: lastStatus === 'pass' ? 'pass' : 'fail',
+    errorClass: lastStatus === 'pass' ? null : 'verify-failure',
+    recovered: lastStatus === 'pass' && failedAttempts > 0,
+  });
+
+  const recoveredCount = repairCycles.filter((c) => c.recovered).length;
+  const finalStatus: 'converged' | 'stalled' | 'unknown' =
+    lastStatus === 'pass' ? 'converged' :
+    failedAttempts > 0 ? 'stalled' : 'unknown';
+
+  return { repairCycles, totalCycles, verifyRepairSequences, recoveredCount, finalStatus };
+}
+
 /**
  * Generate structured convergence & self-healing evidence.
  * Reads state and assessment history to reconstruct the loop's convergence story,
@@ -554,34 +588,8 @@ export async function runConvergenceProof(opts: ConvergenceProofOptions = {}): P
   const failedAttempts = state?.autoforgeFailedAttempts ?? 0;
   const lastStatus = state?.lastVerifyStatus ?? 'unknown';
 
-  // Scan audit log for verify→forge sequences (repair cycles)
-  let verifyRepairSequences = 0;
-  for (let i = 0; i < auditLog.length - 1; i++) {
-    if (auditLog[i].includes('| verify:') && auditLog[i + 1].includes('| forge:')) {
-      verifyRepairSequences++;
-    }
-  }
-
-  // Build repair cycles from state fields
-  const repairCycles: RepairCycleRecord[] = [];
-  if (failedAttempts > 0) {
-    for (let i = 1; i <= failedAttempts; i++) {
-      repairCycles.push({
-        cycle: i,
-        status: 'fail',
-        errorClass: 'autoforge-failure',
-        recovered: false,
-      });
-    }
-  }
-  // Final cycle: current state
-  const totalCycles = failedAttempts + 1;
-  repairCycles.push({
-    cycle: totalCycles,
-    status: lastStatus === 'pass' ? 'pass' : 'fail',
-    errorClass: lastStatus === 'pass' ? null : 'verify-failure',
-    recovered: lastStatus === 'pass' && failedAttempts > 0,
-  });
+  const { repairCycles, totalCycles, verifyRepairSequences, recoveredCount, finalStatus } =
+    buildRepairCycles(auditLog, failedAttempts, lastStatus);
 
   // Load assessment history for convergence velocity
   let avgScoreImprovement = 0;
@@ -601,12 +609,6 @@ export async function runConvergenceProof(opts: ConvergenceProofOptions = {}): P
       }
     }
   } catch { /* best-effort */ }
-
-  const recoveredCount = repairCycles.filter((c) => c.recovered).length;
-  const finalStatus: 'converged' | 'stalled' | 'unknown' =
-    lastStatus === 'pass' && failedAttempts > 0 ? 'converged' :
-    lastStatus === 'pass' ? 'converged' :
-    failedAttempts > 0 ? 'stalled' : 'unknown';
 
   const report: ConvergenceProofReport = {
     convergence: {
