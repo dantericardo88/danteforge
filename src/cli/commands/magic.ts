@@ -40,6 +40,71 @@ export interface ConvergenceResult {
   finalStatus: VerifyStatus;
 }
 
+async function runMaturityGuidedAutoforge(
+  opts: ConvergenceOptions,
+  resolvedAutoforgeWaves: number,
+  runAutoforge: (goal: string, waves: number) => Promise<void>,
+): Promise<void> {
+  try {
+    const { assessMaturity: defaultAssessMaturity } = await import("../../core/maturity-engine.js");
+    const { scoreAllArtifacts } = await import("../../core/pdse.js");
+    const { MAGIC_PRESETS } = await import("../../core/magic-presets.js");
+    const assessMaturityFn = opts._assessMaturity ?? defaultAssessMaturity;
+    const state = await loadState();
+    const cwd = process.cwd();
+    const pdseScores = await scoreAllArtifacts(cwd, state);
+    const targetLevel = MAGIC_PRESETS[opts.level]?.targetMaturityLevel ?? 4;
+    const assessment = await assessMaturityFn({ cwd, state, pdseScores, targetLevel });
+    const criticalGaps = assessment.gaps.filter(g => g.severity === 'critical');
+    if (criticalGaps.length > 0) {
+      logger.warn(`[${opts.level}] ${criticalGaps.length} critical gap${criticalGaps.length === 1 ? '' : 's'} to address:`);
+      for (const gap of criticalGaps.slice(0, 5)) {
+        logger.warn(`  - ${gap.dimension}: ${gap.currentScore}/100 (need ${gap.targetScore ?? 89}+)`);
+      }
+      await runAutoforge(`Address critical quality gaps: ${criticalGaps.map(g => g.dimension).join(', ')}`, resolvedAutoforgeWaves);
+    } else {
+      await runAutoforge(`Fix failing verification - ${opts.goal}`, resolvedAutoforgeWaves);
+    }
+  } catch (err) {
+    logger.warn(`[${opts.level}] Maturity assessment failed: ${err instanceof Error ? err.message : String(err)} - falling back to standard convergence`);
+    await runAutoforge(`Fix failing verification - ${opts.goal}`, resolvedAutoforgeWaves);
+  }
+}
+
+async function checkMaturityAfterCycle(
+  opts: ConvergenceOptions,
+  cyclesRun: number,
+  finalStatus: VerifyStatus,
+): Promise<{ achieved: boolean }> {
+  try {
+    const { assessMaturity: defaultAssessMaturity2 } = await import("../../core/maturity-engine.js");
+    const { scoreAllArtifacts } = await import("../../core/pdse.js");
+    const { MAGIC_PRESETS } = await import("../../core/magic-presets.js");
+    const assessMaturityFn2 = opts._assessMaturity ?? defaultAssessMaturity2;
+    const state = await loadState();
+    const cwd = process.cwd();
+    const pdseScores = await scoreAllArtifacts(cwd, state);
+    const targetLevel = MAGIC_PRESETS[opts.level]?.targetMaturityLevel ?? 4;
+    const assessment = await assessMaturityFn2({ cwd, state, pdseScores, targetLevel });
+    logger.info('');
+    logger.info(`[${opts.level}] 🤔 Maturity check after cycle ${cyclesRun}...`);
+    logger.info(`[${opts.level}] Current: ${assessment.currentLevel}/6 (score: ${assessment.overallScore}/100)`);
+    logger.info(`[${opts.level}] Target:  ${assessment.targetLevel}/6`);
+    if (assessment.currentLevel >= assessment.targetLevel && finalStatus === 'pass') {
+      logger.success(`[${opts.level}] ✅ MATURITY TARGET ACHIEVED after ${cyclesRun} cycle${cyclesRun === 1 ? '' : 's'}!`);
+      return { achieved: true };
+    }
+    const remaining = assessment.targetLevel - assessment.currentLevel;
+    logger.warn(`[${opts.level}] ⚠️  Still ${remaining} level${remaining === 1 ? '' : 's'} below target`);
+    if (cyclesRun < opts.maxCycles) logger.info(`[${opts.level}] Continuing to cycle ${cyclesRun + 1}/${opts.maxCycles}...`);
+    return { achieved: false };
+  } catch (err) {
+    if (finalStatus === 'pass') logger.success(`[${opts.level}] Convergence achieved after ${cyclesRun} cycle${cyclesRun === 1 ? '' : 's'}`);
+    else logger.warn(`[${opts.level}] Convergence cycle ${cyclesRun} complete - verify still ${finalStatus}`);
+    return { achieved: false };
+  }
+}
+
 export async function runConvergenceCycles(
   opts: ConvergenceOptions,
 ): Promise<ConvergenceResult> {
@@ -95,93 +160,15 @@ export async function runConvergenceCycles(
     logger.info(`[${opts.level}] Launching ${resolvedAutoforgeWaves}-wave improvement burst...`);
 
     // Run autoforge waves first
-    try {
-      const { assessMaturity: defaultAssessMaturity } = await import("../../core/maturity-engine.js");
-      const { scoreAllArtifacts } = await import("../../core/pdse.js");
-      const { MAGIC_PRESETS } = await import("../../core/magic-presets.js");
-      const assessMaturityFn = opts._assessMaturity ?? defaultAssessMaturity;
-
-      const state = await loadState();
-      const cwd = process.cwd();
-      const pdseScores = await scoreAllArtifacts(cwd, state);
-      const targetLevel = MAGIC_PRESETS[opts.level]?.targetMaturityLevel ?? 4;
-
-      const assessment = await assessMaturityFn({
-        cwd,
-        state,
-        pdseScores,
-        targetLevel,
-      });
-
-      const criticalGaps = assessment.gaps.filter(g => g.severity === 'critical');
-      if (criticalGaps.length > 0) {
-        logger.warn(`[${opts.level}] ${criticalGaps.length} critical gap${criticalGaps.length === 1 ? '' : 's'} to address:`);
-        for (const gap of criticalGaps.slice(0, 5)) {
-          logger.warn(`  - ${gap.dimension}: ${gap.currentScore}/100 (need ${gap.targetScore ?? 89}+)`);
-        }
-        const remediationGoal = `Address critical quality gaps: ${criticalGaps.map(g => g.dimension).join(', ')}`;
-        await runAutoforge(remediationGoal, resolvedAutoforgeWaves);
-      } else {
-        const fixGoal = `Fix failing verification - ${opts.goal}`;
-        await runAutoforge(fixGoal, resolvedAutoforgeWaves);
-      }
-    } catch (err) {
-      // Fallback to standard convergence if maturity assessment fails
-      logger.warn(`[${opts.level}] Maturity assessment failed: ${err instanceof Error ? err.message : String(err)} - falling back to standard convergence`);
-      const fixGoal = `Fix failing verification - ${opts.goal}`;
-      await runAutoforge(fixGoal, resolvedAutoforgeWaves);
-    }
+    await runMaturityGuidedAutoforge(opts, resolvedAutoforgeWaves, runAutoforge);
 
     // Run verify after autoforge
     await runVerify();
     finalStatus = await getStatus();
 
     // NOW check maturity AFTER waves completed and verify ran
-    try {
-      const { assessMaturity: defaultAssessMaturity2 } = await import("../../core/maturity-engine.js");
-      const { scoreAllArtifacts } = await import("../../core/pdse.js");
-      const { MAGIC_PRESETS } = await import("../../core/magic-presets.js");
-      const assessMaturityFn2 = opts._assessMaturity ?? defaultAssessMaturity2;
-
-      const state = await loadState();
-      const cwd = process.cwd();
-      const pdseScores = await scoreAllArtifacts(cwd, state);
-      const targetLevel = MAGIC_PRESETS[opts.level]?.targetMaturityLevel ?? 4;
-
-      const assessment = await assessMaturityFn2({
-        cwd,
-        state,
-        pdseScores,
-        targetLevel,
-      });
-
-      logger.info('');
-      logger.info(`[${opts.level}] 🤔 Maturity check after cycle ${cyclesRun}...`);
-      logger.info(`[${opts.level}] Current: ${assessment.currentLevel}/6 (score: ${assessment.overallScore}/100)`);
-      logger.info(`[${opts.level}] Target:  ${assessment.targetLevel}/6`);
-
-      if (assessment.currentLevel >= assessment.targetLevel && finalStatus === 'pass') {
-        logger.success(`[${opts.level}] ✅ MATURITY TARGET ACHIEVED after ${cyclesRun} cycle${cyclesRun === 1 ? '' : 's'}!`);
-        return { cyclesRun, initialStatus, finalStatus: 'pass' };
-      } else {
-        const remaining = assessment.targetLevel - assessment.currentLevel;
-        logger.warn(`[${opts.level}] ⚠️  Still ${remaining} level${remaining === 1 ? '' : 's'} below target`);
-        if (cyclesRun < opts.maxCycles) {
-          logger.info(`[${opts.level}] Continuing to cycle ${cyclesRun + 1}/${opts.maxCycles}...`);
-        }
-      }
-    } catch (err) {
-      // If maturity check fails, fall back to verify status
-      if (finalStatus === 'pass') {
-        logger.success(
-          `[${opts.level}] Convergence achieved after ${cyclesRun} cycle${cyclesRun === 1 ? '' : 's'}`,
-        );
-      } else {
-        logger.warn(
-          `[${opts.level}] Convergence cycle ${cyclesRun} complete - verify still ${finalStatus}`,
-        );
-      }
-    }
+    const { achieved } = await checkMaturityAfterCycle(opts, cyclesRun, finalStatus);
+    if (achieved) return { cyclesRun, initialStatus, finalStatus: 'pass' };
   }
 
   if (finalStatus !== 'pass') {
@@ -738,148 +725,62 @@ export interface MagicStepCommandFns {
   localHarvest?: (sources: string[], opts: { depth: string; config?: string }) => Promise<void>;
 }
 
+async function runMagicPlanStepPipeline(step: MagicExecutionStep, goal: string, _fns?: MagicStepCommandFns): Promise<boolean> {
+  switch (step.kind) {
+    case "review":
+      await (_fns?.review ?? (async (opts: { prompt: boolean }) => { const { review } = await import("./review.js"); await review(opts); }))({ prompt: false }); return true;
+    case "constitution":
+      await (_fns?.constitution ?? (async () => { const { constitution } = await import("./constitution.js"); await constitution(); }))(); return true;
+    case "specify":
+      await (_fns?.specify ?? (async (goalText: string) => { const { specify } = await import("./specify.js"); await specify(goalText); }))(goal); return true;
+    case "clarify":
+      await (_fns?.clarify ?? (async () => { const { clarify } = await import("./clarify.js"); await clarify(); }))(); return true;
+    case "plan":
+      await (_fns?.plan ?? (async () => { const { plan } = await import("./plan.js"); await plan(); }))(); return true;
+    case "tasks":
+      await (_fns?.tasks ?? (async () => { const { tasks } = await import("./tasks.js"); await tasks(); }))(); return true;
+    case "autoforge":
+      await withSpinner(`Running autoforge (${step.maxWaves} waves)...`,
+        () => (_fns?.autoforge ?? (async (goalText: string, opts: { maxWaves: number; profile: string; parallel: boolean; worktree: boolean }) => { const { autoforge } = await import("./autoforge.js"); await autoforge(goalText, opts); }))(goal, { maxWaves: step.maxWaves, profile: step.profile, parallel: step.parallel, worktree: step.worktree }),
+        'Autoforge waves complete'); return true;
+    case "party":
+      await (_fns?.party ?? (async (opts: { worktree: boolean; isolation: boolean }) => { const { party } = await import("./party.js"); await party(opts); }))({ worktree: step.worktree, isolation: step.isolation }); return true;
+    default: return false;
+  }
+}
+
+async function runMagicPlanStepSupport(step: MagicExecutionStep, goal: string, _fns?: MagicStepCommandFns): Promise<void> {
+  switch (step.kind) {
+    case "verify":
+      await (_fns?.verify ?? (async () => { const { verify } = await import("./verify.js"); await verify(); }))(); return;
+    case "synthesize":
+      await (_fns?.synthesize ?? (async () => { const { synthesize } = await import("./synthesize.js"); await synthesize(); }))(); return;
+    case "retro":
+      await (_fns?.retro ?? (async () => { const { retro } = await import("./retro.js"); await retro(); }))(); return;
+    case "lessons-compact":
+      await (_fns?.lessonsCompact ?? (async () => { const { lessons } = await import("./lessons.js"); await lessons(undefined, { compact: true }); }))(); return;
+    case "oss":
+      await withSpinner(`Discovering OSS patterns (max ${step.maxRepos} repos)...`,
+        () => (_fns?.oss ?? (async (opts: { maxRepos: string }) => { const { ossResearcher } = await import("./oss.js"); await ossResearcher(opts); }))({ maxRepos: String(step.maxRepos) }),
+        'OSS discovery complete'); return;
+    case "tech-decide":
+      await (_fns?.techDecide ?? (async (opts: { auto: boolean }) => { const { techDecide } = await import("./tech-decide.js"); await techDecide(opts); }))({ auto: true }); return;
+    case "design":
+      await (_fns?.design ?? (async (prompt: string, opts: { light: boolean }) => { const { design } = await import("./design.js"); await design(prompt, opts); }))(step.designPrompt ?? goal, { light: false }); return;
+    case "ux-refine":
+      await (_fns?.uxRefine ?? (async (opts: { openpencil: boolean; light: boolean }) => { const { uxRefine } = await import("./ux-refine.js"); await uxRefine(opts); }))({ openpencil: step.openpencil, light: true }); return;
+    case "local-harvest":
+      await (_fns?.localHarvest ?? (async (sources: string[], opts: { depth: string; config?: string }) => { const { localHarvest } = await import("./local-harvest.js"); await localHarvest(sources, opts); }))(step.sources, { depth: step.depth, config: step.configPath }); return;
+  }
+}
+
 export async function runMagicPlanStep(
   step: MagicExecutionStep,
   goal: string,
   _fns?: MagicStepCommandFns,
 ): Promise<void> {
-  switch (step.kind) {
-    case "review": {
-      await (_fns?.review ?? (async (opts: { prompt: boolean }) => {
-        const { review } = await import("./review.js");
-        await review(opts);
-      }))({ prompt: false });
-      return;
-    }
-    case "constitution": {
-      await (_fns?.constitution ?? (async () => {
-        const { constitution } = await import("./constitution.js");
-        await constitution();
-      }))();
-      return;
-    }
-    case "specify": {
-      await (_fns?.specify ?? (async (goalText: string) => {
-        const { specify } = await import("./specify.js");
-        await specify(goalText);
-      }))(goal);
-      return;
-    }
-    case "clarify": {
-      await (_fns?.clarify ?? (async () => {
-        const { clarify } = await import("./clarify.js");
-        await clarify();
-      }))();
-      return;
-    }
-    case "plan": {
-      await (_fns?.plan ?? (async () => {
-        const { plan } = await import("./plan.js");
-        await plan();
-      }))();
-      return;
-    }
-    case "tasks": {
-      await (_fns?.tasks ?? (async () => {
-        const { tasks } = await import("./tasks.js");
-        await tasks();
-      }))();
-      return;
-    }
-    case "autoforge": {
-      await withSpinner(
-        `Running autoforge (${step.maxWaves} waves)...`,
-        () => (_fns?.autoforge ?? (async (goalText: string, opts: { maxWaves: number; profile: string; parallel: boolean; worktree: boolean }) => {
-          const { autoforge } = await import("./autoforge.js");
-          await autoforge(goalText, opts);
-        }))(goal, {
-          maxWaves: step.maxWaves,
-          profile: step.profile,
-          parallel: step.parallel,
-          worktree: step.worktree,
-        }),
-        'Autoforge waves complete',
-      );
-      return;
-    }
-    case "party": {
-      await (_fns?.party ?? (async (opts: { worktree: boolean; isolation: boolean }) => {
-        const { party } = await import("./party.js");
-        await party(opts);
-      }))({
-        worktree: step.worktree,
-        isolation: step.isolation,
-      });
-      return;
-    }
-    case "verify": {
-      await (_fns?.verify ?? (async () => {
-        const { verify } = await import("./verify.js");
-        await verify();
-      }))();
-      return;
-    }
-    case "synthesize": {
-      await (_fns?.synthesize ?? (async () => {
-        const { synthesize } = await import("./synthesize.js");
-        await synthesize();
-      }))();
-      return;
-    }
-    case "retro": {
-      await (_fns?.retro ?? (async () => {
-        const { retro } = await import("./retro.js");
-        await retro();
-      }))();
-      return;
-    }
-    case "lessons-compact": {
-      await (_fns?.lessonsCompact ?? (async () => {
-        const { lessons } = await import("./lessons.js");
-        await lessons(undefined, { compact: true });
-      }))();
-      return;
-    }
-    case "oss": {
-      await withSpinner(
-        `Discovering OSS patterns (max ${step.maxRepos} repos)...`,
-        () => (_fns?.oss ?? (async (opts: { maxRepos: string }) => {
-          const { ossResearcher } = await import("./oss.js");
-          await ossResearcher(opts);
-        }))({ maxRepos: String(step.maxRepos) }),
-        'OSS discovery complete',
-      );
-      return;
-    }
-    case "tech-decide": {
-      await (_fns?.techDecide ?? (async (opts: { auto: boolean }) => {
-        const { techDecide } = await import("./tech-decide.js");
-        await techDecide(opts);
-      }))({ auto: true });
-      return;
-    }
-    case "design": {
-      await (_fns?.design ?? (async (prompt: string, opts: { light: boolean }) => {
-        const { design } = await import("./design.js");
-        await design(prompt, opts);
-      }))(step.designPrompt ?? goal, { light: false });
-      return;
-    }
-    case "ux-refine": {
-      await (_fns?.uxRefine ?? (async (opts: { openpencil: boolean; light: boolean }) => {
-        const { uxRefine } = await import("./ux-refine.js");
-        await uxRefine(opts);
-      }))({ openpencil: step.openpencil, light: true });
-      return;
-    }
-    case "local-harvest": {
-      await (_fns?.localHarvest ?? (async (sources: string[], opts: { depth: string; config?: string }) => {
-        const { localHarvest } = await import("./local-harvest.js");
-        await localHarvest(sources, opts);
-      }))(step.sources, { depth: step.depth, config: step.configPath });
-      return;
-    }
-  }
+  if (await runMagicPlanStepPipeline(step, goal, _fns)) return;
+  await runMagicPlanStepSupport(step, goal, _fns);
 }
 
 function describeStep(step: MagicExecutionStep): string {
