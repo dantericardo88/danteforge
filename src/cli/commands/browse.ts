@@ -14,11 +14,24 @@ import {
 export async function browse(
   subcommand: string,
   args: string[],
-  options: { url?: string; install?: boolean; port?: string } = {},
+  options: {
+    url?: string;
+    install?: boolean;
+    port?: string;
+    _detectBinary?: typeof detectBrowseBinary;
+    _invokeBrowse?: typeof invokeBrowse;
+    _loadState?: typeof loadState;
+    _saveState?: typeof saveState;
+  } = {},
 ) {
+  const detectFn = options._detectBinary ?? detectBrowseBinary;
+  const invokeFn = options._invokeBrowse ?? invokeBrowse;
+  const loadFn = options._loadState ?? loadState;
+  const saveFn = options._saveState ?? saveState;
+
   return withErrorBoundary('browse', async () => {
   // Binary detection — fail-closed
-  const binaryPath = await detectBrowseBinary();
+  const binaryPath = await detectFn();
   if (!binaryPath) {
     const instructions = getBrowseInstallInstructions(process.platform);
     logger.error(instructions);
@@ -42,7 +55,7 @@ export async function browse(
     return;
   }
 
-  const result = await invokeBrowse(
+  const result = await invokeFn(
     subcommand as BrowseSubcommand,
     args,
     { binaryPath, port, evidenceDir },
@@ -62,13 +75,13 @@ export async function browse(
 
   // Audit log
   try {
-    const state = await loadState();
+    const state = await loadFn();
     const entry = `${new Date().toISOString()} | browse: ${subcommand} ${args.join(' ')} → ${result.success ? 'ok' : 'fail'}`;
     state.auditLog.push(entry);
     if (result.evidencePath) {
       state.auditLog.push(`${new Date().toISOString()} | browse: evidence → ${result.evidencePath}`);
     }
-    await saveState(state);
+    await saveFn(state);
   } catch {
     // State save is best-effort for browse
   }

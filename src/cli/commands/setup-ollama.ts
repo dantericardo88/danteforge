@@ -6,19 +6,23 @@ export async function setupOllama(options: {
   host?: string;
   pull?: boolean;
   ollamaModel?: string;
+  _configure?: typeof configureSpendOptimizedDefaults;
+  _resolvePaths?: typeof resolveConfigPaths;
 } = {}) {
+  const configureFn = options._configure ?? configureSpendOptimizedDefaults;
+  const resolvePathsFn = options._resolvePaths ?? resolveConfigPaths;
   logger.success('DanteForge Ollama Setup Wizard');
   logger.info('');
   logger.info('This configures DanteForge CLI for local-first execution to reduce hosted token spend.');
   logger.info('Native assistant workflows continue using the host model/session when they run inside Codex, Claude Code, Cursor, or similar tools.');
   logger.info('');
 
-  const result = await configureSpendOptimizedDefaults({
+  const result = await configureFn({
     hostOverride: options.host,
     preferredOllamaModel: options.ollamaModel,
     pullIfMissing: options.pull,
   });
-  const paths = resolveConfigPaths();
+  const paths = resolvePathsFn();
 
   logger.info(result.message);
   logger.info(`Shared config: ${paths.configFile}`);

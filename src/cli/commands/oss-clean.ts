@@ -12,6 +12,10 @@ export interface OssCleanOptions {
   cwd?: string;
   /** Preview what would be deleted without actually deleting (default false) */
   dryRun?: boolean;
+  _access?: (p: string) => Promise<void>;
+  _rm?: (p: string, opts: { recursive: boolean; force: boolean }) => Promise<void>;
+  _getDirSize?: (dir: string) => Promise<number>;
+  _stdout?: (line: string) => void;
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -44,6 +48,11 @@ async function getDirSize(dir: string): Promise<number> {
  * The next `oss-deep` run will re-clone and re-extract from scratch.
  */
 export async function ossClean(opts: OssCleanOptions = {}): Promise<void> {
+  const accessFn = opts._access ?? ((p) => fs.access(p));
+  const rmFn = opts._rm ?? ((p, o) => fs.rm(p, o));
+  const getSizeFn = opts._getDirSize ?? getDirSize;
+  const emit = opts._stdout ?? ((l) => logger.info(l));
+
   const cwd = opts.cwd ?? process.cwd();
   const danteforgeDir = path.join(cwd, '.danteforge');
   const cacheNames = ['oss-repos', 'oss-deep'];
@@ -52,23 +61,23 @@ export async function ossClean(opts: OssCleanOptions = {}): Promise<void> {
   for (const name of cacheNames) {
     const target = path.join(danteforgeDir, name);
     try {
-      await fs.access(target);
+      await accessFn(target);
       anyFound = true;
-      const size = await getDirSize(target);
+      const size = await getSizeFn(target);
       if (opts.dryRun) {
-        logger.info(`[oss-clean] Would remove: ${target} (${formatBytes(size)})`);
+        emit(`[oss-clean] Would remove: ${target} (${formatBytes(size)})`);
       } else {
-        await fs.rm(target, { recursive: true, force: true });
-        logger.info(`[oss-clean] Removed: ${target} (${formatBytes(size)})`);
+        await rmFn(target, { recursive: true, force: true });
+        emit(`[oss-clean] Removed: ${target} (${formatBytes(size)})`);
       }
     } catch { /* directory does not exist — skip silently */ }
   }
 
   if (!anyFound) {
-    logger.info('[oss-clean] No OSS cache found — nothing to remove.');
+    emit('[oss-clean] No OSS cache found — nothing to remove.');
   } else if (opts.dryRun) {
-    logger.info('[oss-clean] Dry run complete. Re-run without --dry-run to delete.');
+    emit('[oss-clean] Dry run complete. Re-run without --dry-run to delete.');
   } else {
-    logger.info('[oss-clean] Cache cleared. Next oss-deep run will re-clone from scratch.');
+    emit('[oss-clean] Cache cleared. Next oss-deep run will re-clone from scratch.');
   }
 }
