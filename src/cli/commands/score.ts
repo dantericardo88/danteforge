@@ -240,6 +240,168 @@ export const DIMENSION_HUMAN_TEXT: Partial<Record<string, string>> = {
   planningQuality: 'task breakdown leads to rework and blocked steps',
 };
 
+// ── P0 evidence: dynamic codebase signals for each dimension ─────────────────
+// Each function returns a short, file-grounded string or null if no signal found.
+
+interface FnHit { file: string; fnLoc: number; fnName: string; startLine: number; }
+
+async function findLargeFunctions(
+  srcDir: string,
+  thresholdLoc: number,
+): Promise<FnHit[]> {
+  const results: FnHit[] = [];
+  async function walk(dir: string): Promise<void> {
+    let entries: { name: string; isDirectory: () => boolean }[] = [];
+    try { entries = await fs.readdir(dir, { withFileTypes: true }); } catch { return; }
+    for (const e of entries) {
+      const full = path.join(dir, e.name);
+      if (e.isDirectory()) { await walk(full); continue; }
+      if (!e.name.endsWith('.ts') || e.name.endsWith('.d.ts')) continue;
+      try {
+        const content = await fs.readFile(full, 'utf8');
+        const fnBlocks = extractFunctionBlocks(content);
+        for (const { loc, name, line } of fnBlocks) {
+          if (loc > thresholdLoc) results.push({ file: full, fnLoc: loc, fnName: name, startLine: line });
+        }
+      } catch { /* ignore */ }
+    }
+  }
+  await walk(srcDir);
+  return results;
+}
+
+function extractFunctionBlocks(src: string): Array<{ loc: number; name: string; line: number }> {
+  const results: Array<{ loc: number; name: string; line: number }> = [];
+  const lines = src.split('\n');
+  let depth = 0;
+  let start = -1;
+  let pendingName = '';
+  // Match: standalone functions, const arrows, class methods (public/private/async/static prefix)
+  const DECL_RE = /^\s*(?:export\s+)?(?:(?:private|protected|public|static|override)\s+)*(?:async\s+)?(?:function\s+(\w+)|(\w+)\s*\()/;
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i];
+    const isFnStart = depth === 0 && (
+      /^\s*(?:export\s+)?(?:async\s+)?function\s+\w+/.test(line) ||
+      /^\s*(?:export\s+)?const\s+\w+\s*=\s*(?:async\s+)?\(/.test(line) ||
+      /^\s*(?:(?:private|protected|public|static|override)\s+)+(?:async\s+)?\w+\s*\(/.test(line) ||
+      /^\s*(?:async\s+)\w+\s*\(/.test(line)
+    );
+    if (isFnStart && depth === 0) {
+      const m = DECL_RE.exec(line);
+      pendingName = m ? (m[1] ?? m[2] ?? '') : '';
+    }
+    for (const ch of line) {
+      if (ch === '{') {
+        if (depth === 0 && start === -1 && isFnStart) start = i;
+        depth++;
+      } else if (ch === '}') {
+        depth--;
+        if (depth === 0 && start !== -1) {
+          results.push({ loc: i - start + 1, name: pendingName, line: start + 1 });
+          start = -1;
+          pendingName = '';
+        }
+      }
+    }
+  }
+  return results;
+}
+
+async function buildDimEvidence(
+  dim: ScoringDimension,
+  cwd: string,
+  harshResult: HarshScoreResult,
+): Promise<string | null> {
+  try {
+    const srcDir = path.join(cwd, 'src');
+
+    if (dim === 'maintainability') {
+      // Find files with functions >100 LOC (the exact signal used by maturity-engine)
+      const hits = await findLargeFunctions(srcDir, 100);
+      if (hits.length === 0) return null;
+      hits.sort((a, b) => b.fnLoc - a.fnLoc);
+      const worst = hits[0];
+      const rel = path.relative(cwd, worst.file).replace(/\\/g, '/');
+      const fnLabel = worst.fnName ? ` ${worst.fnName}()` : '';
+      return `${hits.length} large fn${hits.length > 1 ? 's' : ''} >100 LOC — ${rel}:${worst.startLine}${fnLabel} (${worst.fnLoc} lines)`;
+    }
+
+    if (dim === 'functionality') {
+      // Prefer unwired modules, then stubs, then incomplete PDSE artifacts
+      if (harshResult.unwiredModules && harshResult.unwiredModules.length > 0) {
+        const rel = harshResult.unwiredModules[0].replace(/\\/g, '/');
+        return `unwired module: ${rel}`;
+      }
+      if (harshResult.stubsDetected.length > 0) {
+        const rel = harshResult.stubsDetected[0].replace(/\\/g, '/');
+        return `stub patterns in: ${rel}`;
+      }
+      // Scan for largest source file without a matching test file — gaps in test coverage
+      const hits = await findLargeFunctions(srcDir, 50);
+      if (hits.length > 0) {
+        hits.sort((a, b) => b.fnLoc - a.fnLoc);
+        const biggest = hits[0];
+        const rel = path.relative(cwd, biggest.file).replace(/\\/g, '/');
+        const fnLabel = biggest.fnName ? ` ${biggest.fnName}()` : '';
+        return `largest fn without tests: ${rel}:${biggest.startLine}${fnLabel} (${biggest.fnLoc} lines)`;
+      }
+      return null;
+    }
+
+    if (dim === 'errorHandling') {
+      // Find file with highest function density but few try blocks (ratio gap)
+      interface ErrRatio { file: string; gap: number; fnCount: number; tryCount: number; firstFnLine: number; }
+      const worstFiles: ErrRatio[] = [];
+      async function walkErr(dir: string): Promise<void> {
+        let entries: { name: string; isDirectory: () => boolean }[] = [];
+        try { entries = await fs.readdir(dir, { withFileTypes: true }); } catch { return; }
+        for (const e of entries) {
+          const full = path.join(dir, e.name);
+          if (e.isDirectory()) { await walkErr(full); continue; }
+          if (!e.name.endsWith('.ts') || e.name.endsWith('.d.ts')) continue;
+          try {
+            const content = await fs.readFile(full, 'utf8');
+            const fnCount = (content.match(/function\s+\w+|=>\s*\{|async\s+\w+\(/g) || []).length;
+            const tryCount = (content.match(/try\s*\{/g) || []).length;
+            if (fnCount >= 10 && tryCount < fnCount * 0.3) {
+              // Find the first function declaration line number
+              const lines = content.split('\n');
+              let firstFnLine = 1;
+              for (let i = 0; i < lines.length; i++) {
+                if (/function\s+\w+|const\s+\w+\s*=\s*(?:async\s+)?\(/.test(lines[i])) {
+                  firstFnLine = i + 1;
+                  break;
+                }
+              }
+              worstFiles.push({ file: full, gap: fnCount - tryCount * 3, fnCount, tryCount, firstFnLine });
+            }
+          } catch { /* ignore */ }
+        }
+      }
+      await walkErr(srcDir);
+      if (worstFiles.length > 0) {
+        worstFiles.sort((a, b) => b.gap - a.gap);
+        const worst = worstFiles[0];
+        const rel = path.relative(cwd, worst.file).replace(/\\/g, '/');
+        return `low try/catch ratio in: ${rel}:${worst.firstFnLine} (${worst.tryCount} try / ${worst.fnCount} fns)`;
+      }
+      return null;
+    }
+
+    if (dim === 'testing') {
+      // Surface any penalty evidence from the harsh scorer
+      const testPenalty = harshResult.penalties.find(p => p.category === 'testing');
+      return testPenalty ? testPenalty.evidence.slice(0, 80) : null;
+    }
+
+    if (dim === 'security') {
+      const secPenalty = harshResult.penalties.find(p => p.category === 'security');
+      return secPenalty ? secPenalty.evidence.slice(0, 80) : null;
+    }
+  } catch { /* evidence is always best-effort */ }
+  return null;
+}
+
 // ── Main ──────────────────────────────────────────────────────────────────────
 
 export async function score(options: ScoreOptions = {}): Promise<ScoreResult> {
@@ -390,17 +552,31 @@ export async function score(options: ScoreOptions = {}): Promise<ScoreResult> {
   emit(`  ${result.displayScore.toFixed(1)}/10  — ${displayVerdict(result.verdict)}${deltaStr}`);
   emit('');
   emit('  P0 gaps:');
-  p0Items.forEach((item, i) => {
+  // Build file-grounded evidence for each P0 dim (best-effort, parallel)
+  const evidenceMap = new Map<string, string>();
+  await Promise.all(p0Items.map(async (item) => {
+    const ev = await buildDimEvidence(item.dimension, cwd, result);
+    if (ev) evidenceMap.set(item.dimension, ev);
+  }));
+  for (let i = 0; i < p0Items.length; i++) {
+    const item = p0Items[i];
     const label = item.dimension.replace(/([A-Z])/g, ' $1').trim();
     const humanLabel = label.charAt(0).toUpperCase() + label.slice(1);
     const humanText = DIMENSION_HUMAN_TEXT[item.dimension];
+    const evidence = evidenceMap.get(item.dimension);
+    // When we have file-specific evidence, show a targeted command instead of the generic one
+    const action = evidence
+      ? `danteforge ascend --dim ${item.dimension}`
+      : item.action;
     if (humanText) {
       emit(`  ${i + 1}. ${humanLabel.padEnd(22)}${item.score.toFixed(1)}/10  — ${humanText}`);
-      emit(`     ${''.padEnd(22)}→ ${item.action}`);
+      if (evidence) emit(`     ${''.padEnd(22)}  ↳ ${evidence}`);
+      emit(`     ${''.padEnd(22)}→ ${action}`);
     } else {
-      emit(`  ${i + 1}. ${humanLabel.padEnd(22)}${item.score.toFixed(1)}/10  → ${item.action}`);
+      emit(`  ${i + 1}. ${humanLabel.padEnd(22)}${item.score.toFixed(1)}/10  → ${action}`);
+      if (evidence) emit(`     ${''.padEnd(22)}  ↳ ${evidence}`);
     }
-  });
+  }
   emit('  Unfamiliar with any term? Run: danteforge explain <term>');
   emit('');
 
