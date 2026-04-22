@@ -52,6 +52,48 @@ export interface ImportPatternsResult {
   trustScore: number;
 }
 
+function mergePatternIntoLibrary(
+  pattern: { patternName: string; sampleCount: number; avgScoreDelta: number; sourceRepo: string },
+  library: PatternLibraryIndex,
+  trustFactor: number,
+  sourceProjectHash: string,
+): 'imported' | 'updated' {
+  const existing = library.entries.find(e => e.patternName === pattern.patternName);
+  if (existing) {
+    const importedWeight = pattern.sampleCount * trustFactor;
+    const totalWeight = existing.useCount + importedWeight;
+    existing.avgRoi = Math.round(((existing.avgRoi * existing.useCount + pattern.avgScoreDelta * importedWeight) / totalWeight) * 1000) / 1000;
+    existing.useCount += Math.max(1, Math.floor(importedWeight));
+    return 'updated';
+  }
+  library.entries.push({
+    patternName: pattern.patternName,
+    category: deriveCategory(pattern.patternName),
+    implementationSnippet: '',
+    whyItWorks: `Imported from external bundle (${pattern.sampleCount} sample${pattern.sampleCount !== 1 ? 's' : ''}, avg delta +${pattern.avgScoreDelta.toFixed(2)})`,
+    adoptionComplexity: 'medium',
+    sourceRepo: pattern.sourceRepo,
+    sourceProject: `external:${sourceProjectHash}`,
+    publishedAt: new Date().toISOString(),
+    lastValidatedAt: new Date().toISOString(),
+    useCount: Math.max(1, Math.floor(pattern.sampleCount * trustFactor)),
+    avgRoi: pattern.avgScoreDelta,
+    fitness: 'active',
+  } as GlobalPatternEntry);
+  return 'imported';
+}
+
+function absorbRefusedPatterns(bundle: SharedPatternBundle, refusedStore: RefusedPatternsStore): number {
+  let absorbed = 0;
+  for (const refusedName of bundle.refusedPatternNames) {
+    if (!isPatternRefused(refusedName, refusedStore)) {
+      refusedStore.patterns.push({ patternName: refusedName, sourceRepo: 'imported', refusedAt: new Date().toISOString(), reason: 'manual' });
+      absorbed++;
+    }
+  }
+  return absorbed;
+}
+
 // ── Main import ───────────────────────────────────────────────────────────────
 
 export async function runImportPatterns(
@@ -111,51 +153,12 @@ export async function runImportPatterns(
       continue;
     }
 
-    // Check if pattern already exists in local library
-    const existing = library.entries.find(e => e.patternName === pattern.patternName);
-    if (existing) {
-      // Blend imported evidence: weight by sample count with trust discount
-      const importedWeight = pattern.sampleCount * trustFactor;
-      const totalWeight = existing.useCount + importedWeight;
-      existing.avgRoi = Math.round(
-        ((existing.avgRoi * existing.useCount + pattern.avgScoreDelta * importedWeight) / totalWeight) * 1000,
-      ) / 1000;
-      existing.useCount += Math.max(1, Math.floor(importedWeight));
-      updated++;
-    } else {
-      // New pattern — add with discounted evidence
-      const newEntry: GlobalPatternEntry = {
-        patternName: pattern.patternName,
-        category: deriveCategory(pattern.patternName),
-        implementationSnippet: '',
-        whyItWorks: `Imported from external bundle (${pattern.sampleCount} sample${pattern.sampleCount !== 1 ? 's' : ''}, avg delta +${pattern.avgScoreDelta.toFixed(2)})`,
-        adoptionComplexity: 'medium',
-        sourceRepo: pattern.sourceRepo,
-        sourceProject: `external:${bundle.sourceProjectHash}`,
-        publishedAt: new Date().toISOString(),
-        lastValidatedAt: new Date().toISOString(),
-        useCount: Math.max(1, Math.floor(pattern.sampleCount * trustFactor)),
-        avgRoi: pattern.avgScoreDelta,
-        fitness: 'active',
-      };
-      library.entries.push(newEntry);
-      imported++;
-    }
+    const outcome = mergePatternIntoLibrary(pattern, library, trustFactor, bundle.sourceProjectHash);
+    if (outcome === 'imported') imported++; else updated++;
   }
 
   // Absorb refused pattern names from bundle into local refused store
-  let refusedAbsorbed = 0;
-  for (const refusedName of bundle.refusedPatternNames) {
-    if (!isPatternRefused(refusedName, refusedStore)) {
-      refusedStore.patterns.push({
-        patternName: refusedName,
-        sourceRepo: 'imported',
-        refusedAt: new Date().toISOString(),
-        reason: 'manual',
-      });
-      refusedAbsorbed++;
-    }
-  }
+  const refusedAbsorbed = absorbRefusedPatterns(bundle, refusedStore);
 
   // Persist both stores
   library.updatedAt = new Date().toISOString();
