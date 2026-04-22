@@ -195,26 +195,11 @@ Respond with a markdown report titled "## Cross-Repo Pattern Synthesis".`;
   }
 }
 
-// ── Wave 4: Adoption planning ─────────────────────────────────────────────────
-
-async function buildAdoptionQueue(
-  allPatterns: DeepPattern[],
-  gaps: GapScore[],
-  cwd: string,
-  llm: (p: string) => Promise<string>,
-  adoptedPatterns: string[] = [],
-  opts?: Pick<OssIntelOptions, 'disableSecurityScan' | 'disableConstellations'>,
-): Promise<AdoptionCandidate[]> {
-  if (allPatterns.length === 0) return [];
-
-  const complexityWeight = { low: 1, medium: 3, high: 8 };
-  const gapDimensions = gaps.map(g => g.dimension).join(', ');
-
+function buildAdoptionPrompt(allPatterns: DeepPattern[], gaps: GapScore[], adoptedPatterns: string[]): string {
   const alreadyAdoptedSection = adoptedPatterns.length > 0
     ? `\nALREADY ADOPTED IN PRIOR CYCLES (do NOT re-suggest these):\n${adoptedPatterns.map(p => `- ${p}`).join('\n')}\n`
     : '';
-
-  const prompt = `You are creating an adoption plan from extracted OSS patterns.${alreadyAdoptedSection}
+  return `You are creating an adoption plan from extracted OSS patterns.${alreadyAdoptedSection}
 
 AVAILABLE PATTERNS:
 ${allPatterns.slice(0, 30).map(p =>
@@ -222,7 +207,7 @@ ${allPatterns.slice(0, 30).map(p =>
   Why: ${p.whyItWorks}`,
 ).join('\n')}
 
-CURRENT GAPS TO CLOSE: ${gapDimensions}
+CURRENT GAPS TO CLOSE: ${gaps.map(g => g.dimension).join(', ')}
 
 For each of the TOP 10 patterns (ranked by impact × confidence / adoption_complexity):
 Provide an adoption spec. Respond with ONLY JSON array:
@@ -236,6 +221,22 @@ Provide an adoption spec. Respond with ONLY JSON array:
   "estimatedEffort": "1h|4h|1d|3d",
   "unlocksGapClosure": ["dimension1", "dimension2"]
 }]`;
+}
+
+// ── Wave 4: Adoption planning ─────────────────────────────────────────────────
+
+async function buildAdoptionQueue(
+  allPatterns: DeepPattern[],
+  gaps: GapScore[],
+  cwd: string,
+  llm: (p: string) => Promise<string>,
+  adoptedPatterns: string[] = [],
+  opts?: Pick<OssIntelOptions, 'disableSecurityScan' | 'disableConstellations'>,
+): Promise<AdoptionCandidate[]> {
+  if (allPatterns.length === 0) return [];
+
+  const complexityWeight = { low: 1, medium: 3, high: 8 };
+  const prompt = buildAdoptionPrompt(allPatterns, gaps, adoptedPatterns);
 
   let candidates: Omit<AdoptionCandidate, 'adoptionScore'>[] = [];
   try {

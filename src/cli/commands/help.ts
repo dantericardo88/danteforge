@@ -64,6 +64,37 @@ const STAGE_SUGGESTIONS: Record<WorkflowStage, string> = {
   synthesize: 'Run "danteforge feedback" for manual refinement or "danteforge feedback --auto" with a verified live provider.',
 };
 
+function printDefaultHelp(): void {
+  logger.info('');
+  logger.info('DanteForge - start with one of the 5 canonical processes');
+  logger.info('');
+  logger.info('  Canonical processes:');
+  logger.info('    danteforge plan [goal]       - what should we build?');
+  logger.info('    danteforge build <spec>      - how do we make progress?');
+  logger.info('    danteforge measure           - how good is the project?');
+  logger.info('    danteforge compete           - where do we lag the market?');
+  logger.info('    danteforge harvest [goal]    - what can we learn from OSS?');
+  logger.info('');
+  logger.info('  Use a shared depth model:');
+  logger.info('    --level light                - quick answer or first pass');
+  logger.info('    --level standard             - default balanced workflow');
+  logger.info('    --level deep                 - maximum rigor and orchestration');
+  logger.info('');
+  logger.info('  Common starting points:');
+  logger.info('    danteforge go               - see current score and top gaps');
+  logger.info('    danteforge plan --level light "<idea>"');
+  logger.info('    danteforge build --level standard "<goal>"');
+  logger.info('    danteforge measure --level light');
+  logger.info('');
+  logger.info('  Specialist/support commands:');
+  logger.info('    danteforge verify|check     - machine-readable quality gate');
+  logger.info('    danteforge autoresearch     - metric-driven optimization loop');
+  logger.info('    danteforge inferno          - branded deep build preset');
+  logger.info('    danteforge explain <term>   - plain-English glossary');
+  logger.info('    danteforge init             - first-run wizard');
+  logger.info('');
+}
+
 export async function helpCmd(query?: string, opts: {
   all?: boolean;
   _loadState?: typeof loadState;
@@ -120,34 +151,7 @@ export async function helpCmd(query?: string, opts: {
       return;
     }
 
-    logger.info('');
-    logger.info('DanteForge - start with one of the 5 canonical processes');
-    logger.info('');
-    logger.info('  Canonical processes:');
-    logger.info('    danteforge plan [goal]       - what should we build?');
-    logger.info('    danteforge build <spec>      - how do we make progress?');
-    logger.info('    danteforge measure           - how good is the project?');
-    logger.info('    danteforge compete           - where do we lag the market?');
-    logger.info('    danteforge harvest [goal]    - what can we learn from OSS?');
-    logger.info('');
-    logger.info('  Use a shared depth model:');
-    logger.info('    --level light                - quick answer or first pass');
-    logger.info('    --level standard             - default balanced workflow');
-    logger.info('    --level deep                 - maximum rigor and orchestration');
-    logger.info('');
-    logger.info('  Common starting points:');
-    logger.info('    danteforge go               - see current score and top gaps');
-    logger.info('    danteforge plan --level light "<idea>"');
-    logger.info('    danteforge build --level standard "<goal>"');
-    logger.info('    danteforge measure --level light');
-    logger.info('');
-    logger.info('  Specialist/support commands:');
-    logger.info('    danteforge verify|check     - machine-readable quality gate');
-    logger.info('    danteforge autoresearch     - metric-driven optimization loop');
-    logger.info('    danteforge inferno          - branded deep build preset');
-    logger.info('    danteforge explain <term>   - plain-English glossary');
-    logger.info('    danteforge init             - first-run wizard');
-    logger.info('');
+    printDefaultHelp();
 
     try {
       const state = await loadState();
