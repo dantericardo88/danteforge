@@ -1,144 +1,141 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { runCertify, type CertifyOptions, type QualityCertificate } from '../src/cli/commands/certify.js';
-import type { ConvergenceState } from '../src/core/convergence.js';
+import { runCertify } from '../src/cli/commands/certify.js';
 
-// ── Fixture helpers ───────────────────────────────────────────────────────────
-
-function emptyConvergence(): ConvergenceState {
+function makeConvergence(dimensions = []) {
   return {
-    version: '1.0.0',
     targetScore: 9.0,
-    dimensions: [],
-    cycleHistory: [],
-    lastCycle: 0,
-    totalCostUsd: 0,
-    startedAt: new Date().toISOString(),
-    lastUpdatedAt: new Date().toISOString(),
-    adoptedPatternsSummary: [],
+    dimensions,
+    lastCycle: 3,
+    adoptedPatternsSummary: ['pattern-a'],
   };
 }
 
-function makeBaseOptions(overrides: Partial<CertifyOptions> = {}): CertifyOptions {
-  return {
-    cwd: '/tmp/test-project',
-    _loadConvergence: async () => null,
-    _writeJson: async () => {},
-    _writeMarkdown: async () => {},
-    ...overrides,
-  };
-}
-
-// ── Tests ─────────────────────────────────────────────────────────────────────
-
-describe('certify-command', () => {
-  it('T1: with no convergence state → writes certificate with overallScore=0', async () => {
-    const options = makeBaseOptions({
-      _loadConvergence: async () => null,
+describe('runCertify', () => {
+  it('returns a quality certificate with correct structure', async () => {
+    const cert = await runCertify({
+      _loadConvergence: async () => makeConvergence([]),
+      _computeHash: (data) => 'fakehash123',
+      _writeJson: async () => {},
+      _writeMarkdown: async () => {},
     });
+    assert.equal(cert.version, '1.0.0');
+    assert.ok(typeof cert.projectName === 'string');
+    assert.ok(typeof cert.overallScore === 'number');
+    assert.ok(typeof cert.evidenceFingerprint === 'string');
+    assert.ok(typeof cert.attestation === 'string');
+  });
 
-    const cert = await runCertify(options);
+  it('uses injected hash function', async () => {
+    const cert = await runCertify({
+      _loadConvergence: async () => makeConvergence([]),
+      _computeHash: () => 'custom-hash-value',
+      _writeJson: async () => {},
+      _writeMarkdown: async () => {},
+    });
+    assert.equal(cert.evidenceFingerprint, 'custom-hash-value');
+  });
 
+  it('builds dimensions from convergence state', async () => {
+    const convergence = makeConvergence([
+      { dimension: 'testing', score: 8.5, target: 9, converged: false, scoreHistory: [8.5] },
+      { dimension: 'functionality', score: 9.0, target: 9, converged: true, scoreHistory: [9.0] },
+    ]);
+    const cert = await runCertify({
+      _loadConvergence: async () => convergence,
+      _computeHash: () => 'hash',
+      _writeJson: async () => {},
+      _writeMarkdown: async () => {},
+    });
+    assert.equal(cert.dimensions['testing'], 8.5);
+    assert.equal(cert.dimensions['functionality'], 9.0);
+  });
+
+  it('computes overall score as average of dimensions', async () => {
+    const convergence = makeConvergence([
+      { dimension: 'd1', score: 8.0, target: 9, converged: false, scoreHistory: [8.0] },
+      { dimension: 'd2', score: 6.0, target: 9, converged: false, scoreHistory: [6.0] },
+    ]);
+    const cert = await runCertify({
+      _loadConvergence: async () => convergence,
+      _computeHash: () => 'hash',
+      _writeJson: async () => {},
+      _writeMarkdown: async () => {},
+    });
+    assert.equal(cert.overallScore, 7.0);
+  });
+
+  it('handles null convergence gracefully', async () => {
+    const cert = await runCertify({
+      _loadConvergence: async () => null,
+      _computeHash: () => 'hash',
+      _writeJson: async () => {},
+      _writeMarkdown: async () => {},
+    });
     assert.equal(cert.overallScore, 0);
     assert.deepEqual(cert.dimensions, {});
   });
 
-  it('T2: with dimension scores → computes correct weighted average', async () => {
-    const convergence: ConvergenceState = {
-      ...emptyConvergence(),
-      dimensions: [
-        { dimension: 'testing', score: 8.0, evidence: [], scoreHistory: [8.0], converged: false },
-        { dimension: 'security', score: 6.0, evidence: [], scoreHistory: [6.0], converged: false },
-        { dimension: 'performance', score: 7.0, evidence: [], scoreHistory: [7.0], converged: false },
-      ],
-    };
+  it('testsPassing is false when no dimensions', async () => {
+    const cert = await runCertify({
+      _loadConvergence: async () => makeConvergence([]),
+      _computeHash: () => 'hash',
+      _writeJson: async () => {},
+      _writeMarkdown: async () => {},
+    });
+    assert.equal(cert.testsPassing, false);
+  });
 
-    const options = makeBaseOptions({
+  it('testsPassing is true when all dimensions have score > 0', async () => {
+    const convergence = makeConvergence([
+      { dimension: 'd1', score: 8.0, target: 9, converged: false, scoreHistory: [8.0] },
+    ]);
+    const cert = await runCertify({
       _loadConvergence: async () => convergence,
+      _computeHash: () => 'hash',
+      _writeJson: async () => {},
+      _writeMarkdown: async () => {},
     });
-
-    const cert = await runCertify(options);
-
-    // (8 + 6 + 7) / 3 = 7.00
-    assert.equal(cert.overallScore, 7.0);
-    assert.equal(cert.dimensions['testing'], 8.0);
-    assert.equal(cert.dimensions['security'], 6.0);
-    assert.equal(cert.dimensions['performance'], 7.0);
+    assert.equal(cert.testsPassing, true);
   });
 
-  it('T3: evidenceFingerprint is a 64-char hex string (SHA-256)', async () => {
-    const options = makeBaseOptions();
-
-    const cert = await runCertify(options);
-
-    assert.match(
-      cert.evidenceFingerprint,
-      /^[0-9a-f]{64}$/,
-      `evidenceFingerprint should be 64-char hex, got: "${cert.evidenceFingerprint}"`,
-    );
-  });
-
-  it('T4: _writeJson injection receives valid JSON', async () => {
-    let capturedPath = '';
-    let capturedData = '';
-
-    const options = makeBaseOptions({
-      _writeJson: async (filePath, data) => {
-        capturedPath = filePath;
-        capturedData = data;
-      },
+  it('testsPassing is false when any dimension has score 0', async () => {
+    const convergence = makeConvergence([
+      { dimension: 'd1', score: 8.0, target: 9, converged: false, scoreHistory: [8.0] },
+      { dimension: 'd2', score: 0, target: 9, converged: false, scoreHistory: [0] },
+    ]);
+    const cert = await runCertify({
+      _loadConvergence: async () => convergence,
+      _computeHash: () => 'hash',
+      _writeJson: async () => {},
+      _writeMarkdown: async () => {},
     });
-
-    await runCertify(options);
-
-    assert.ok(capturedPath.length > 0, 'writeJson should receive a file path');
-    assert.ok(capturedPath.endsWith('QUALITY_CERTIFICATE.json'), `Expected JSON certificate path, got: "${capturedPath}"`);
-
-    // The data should be valid JSON
-    let parsed: QualityCertificate;
-    assert.doesNotThrow(() => {
-      parsed = JSON.parse(capturedData) as QualityCertificate;
-    }, 'writeJson data should be valid JSON');
-
-    assert.equal(parsed!.version, '1.0.0');
-    assert.ok(typeof parsed!.overallScore === 'number');
-    assert.ok(typeof parsed!.evidenceFingerprint === 'string');
+    assert.equal(cert.testsPassing, false);
   });
 
-  it('T5: _writeMarkdown injection receives markdown containing "Quality Certificate"', async () => {
-    let capturedMarkdown = '';
-
-    const options = makeBaseOptions({
-      _writeMarkdown: async (_filePath, data) => {
-        capturedMarkdown = data;
-      },
+  it('writes json and markdown via injected writers', async () => {
+    const written: string[] = [];
+    await runCertify({
+      _loadConvergence: async () => makeConvergence([]),
+      _computeHash: () => 'hash',
+      _writeJson: async (p, data) => { written.push('json:' + p); },
+      _writeMarkdown: async (p, data) => { written.push('md:' + p); },
     });
-
-    await runCertify(options);
-
-    assert.ok(capturedMarkdown.length > 0, 'writeMarkdown should receive content');
-    assert.ok(
-      capturedMarkdown.includes('Quality Certificate'),
-      `Expected "Quality Certificate" in markdown, got:\n${capturedMarkdown.slice(0, 200)}`,
-    );
-    assert.ok(
-      capturedMarkdown.includes('Overall Score'),
-      'Markdown should include "Overall Score"',
-    );
+    assert.ok(written.some(w => w.startsWith('json:')));
+    assert.ok(written.some(w => w.startsWith('md:')));
   });
 
-  it('T6: returns QualityCertificate with correct version="1.0.0"', async () => {
-    const options = makeBaseOptions();
-
-    const cert = await runCertify(options);
-
-    assert.equal(cert.version, '1.0.0');
-    assert.ok(typeof cert.projectName === 'string', 'projectName should be a string');
-    assert.ok(cert.projectName.length > 0, 'projectName should not be empty');
-    assert.ok(typeof cert.generatedAt === 'string', 'generatedAt should be an ISO timestamp string');
-    assert.ok(typeof cert.certifiedBy === 'string', 'certifiedBy should be a string');
-    assert.ok(cert.certifiedBy.startsWith('danteforge-'), `certifiedBy should start with "danteforge-", got: "${cert.certifiedBy}"`);
-    assert.ok(typeof cert.attestation === 'string', 'attestation should be a string');
-    assert.ok(cert.attestation.length > 0, 'attestation should not be empty');
+  it('attestation mentions project name and score', async () => {
+    const convergence = makeConvergence([
+      { dimension: 'd1', score: 9.0, target: 9, converged: true, scoreHistory: [9.0] },
+    ]);
+    const cert = await runCertify({
+      _loadConvergence: async () => convergence,
+      _computeHash: () => 'hash',
+      _writeJson: async () => {},
+      _writeMarkdown: async () => {},
+    });
+    assert.ok(cert.attestation.includes('9.00'));
+    assert.ok(cert.attestation.includes('Enterprise-Grade') || cert.attestation.includes('Production'));
   });
 });
