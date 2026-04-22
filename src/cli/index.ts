@@ -50,15 +50,30 @@ program
   .action(commands.clarify);
 
 program
-  .command('plan')
-  .description('Generate detailed plan from spec')
+  .command('plan [goal]')
+  .description('Plan a goal or generate detailed plan from spec. Use --level to select scope.')
+  .option('--level <level>', 'Canonical intensity: light | standard | deep')
   .option('--prompt', 'Generate a copy-paste prompt instead of auto-generating')
   .option('--light', 'Skip hard gates for simple changes')
   .option('--ceo-review', 'Apply CEO-level strategic review before writing PLAN.md')
   .option('--refine', 'Inject PDSE score as context for iterative improvement')
   .option('--skip-critique', 'Skip adversarial critique gate after plan generation')
   .option('--stakes <level>', 'Critique depth: low|medium|high|critical (default: medium)')
-  .action(commands.plan);
+  .action((goal, opts) => {
+    if (opts.level) {
+      return commands.canonicalPlan(goal as string | undefined, {
+        level: opts.level as string,
+        prompt: opts.prompt as boolean | undefined,
+        light: opts.light as boolean | undefined,
+      });
+    }
+    return commands.plan({
+      prompt: opts.prompt as boolean | undefined,
+      light: opts.light as boolean | undefined,
+      skipCritique: opts.skipCritique as boolean | undefined,
+      stakes: opts.stakes as string | undefined,
+    });
+  });
 
 program
   .command('critique <plan-file>')
@@ -620,11 +635,26 @@ program
   }));
 
 program
-  .command('harvest <system>')
-  .description('Titan Harvest V2 — 5-step constitutional harvest of OSS patterns with hash-verifiable ratification')
+  .command('harvest [goal]')
+  .description('Discover and learn from OSS patterns. --level selects depth: light=focused pattern, standard=bounded OSS pass, deep=OSS+local+universe refresh.')
+  .option('--level <level>', 'Canonical intensity: light | standard | deep')
+  .option('--source <type>', 'Source type: oss | local | mixed (default: oss)')
+  .option('--max-repos <n>', 'Max repos for OSS harvest', '8')
+  .option('--depth <level>', 'Local harvest depth: shallow | medium | full', 'medium')
   .option('--prompt', 'Display the 5-step copy-paste template without calling the LLM')
   .option('--lite', 'Run in SEP-LITE mode (Steps 1-3 + 5 only, 2-3 donors, 2-4 organs)')
-  .action(commands.harvest);
+  .action((goal, opts) => {
+    if (opts.level) {
+      return commands.canonicalHarvest(goal as string | undefined, {
+        level: opts.level as string,
+        source: opts.source as string | undefined,
+        maxRepos: opts.maxRepos ? parseInt(opts.maxRepos as string, 10) : undefined,
+        prompt: opts.prompt as boolean | undefined,
+        depth: opts.depth as string | undefined,
+      });
+    }
+    return commands.harvest(goal as string ?? '', { prompt: opts.prompt as boolean | undefined, lite: opts.lite as boolean | undefined });
+  });
 
 program
   .command('premium [subcommand]')
@@ -985,19 +1015,34 @@ program.hook('preAction', async (_thisCommand, actionCommand) => {
 
 // Command group help for discoverability
 program.addHelpText('after', `
+Canonical Commands (use --level light|standard|deep):
+  plan      "What should we build?"         light=review+specify, standard=full planning, deep=+tasks+critique
+  build     "How do we make progress?"      light=forge, standard=magic, deep=inferno+OSS harvest
+  measure   "How good is the project?"      light=score, standard=score+maturity+proof, deep=verify+adversary
+  compete   "Where do we lag the market?"   light=assess, standard=assess+universe, deep=full CHL loop
+  harvest   "What can we learn from OSS?"   light=focused pattern, standard=OSS pass, deep=OSS+local+universe
+
+Preset Aliases:
+  spark → plan --level light        (zero-token planning entry)
+  magic → build --level standard    (balanced daily-driver)
+  blaze → build --level deep        (high-power push)
+  nova  → build --level deep --planning-prefix
+  inferno → build --level deep --with-harvest  (maximum power)
+
 Command Groups:
-  Pipeline:       init, constitution, specify, clarify, plan, tasks, forge, verify, synthesize
-  Automation:     spark, ember, canvas, magic, blaze, nova, inferno, autoforge, autoresearch, party
-  Design:         design, ux-refine, browse, qa
-  Intelligence:   tech-decide, debug, lessons, profile, oss, local-harvest, harvest, retro
-  Self-Assessment: assess, self-improve, maturity
-  Tools:          config, setup, doctor, dashboard, compact, import, skills, ship, premium, publish-check, mcp-server
-  Meta:           help, review, feedback, update-mcp, awesome-scan, docs, workflow
+  Pipeline:        init, constitution, specify, clarify, tasks, forge, verify, synthesize
+  Automation:      autoforge, autoresearch, party, ascend, self-improve
+  Design:          design, ux-refine, browse, qa
+  Intelligence:    tech-decide, debug, lessons, profile, retro, oss, local-harvest
+  Self-Assessment: assess, maturity, score, quality
+  Tools:           config, setup, doctor, dashboard, compact, import, skills, ship, premium, publish-check, mcp-server
+  Meta:            help, review, feedback, update-mcp, awesome-scan, docs, workflow
 
 Run "danteforge help <command>" for detailed help on any command.
 Run "danteforge init" to set up a new project.
 
 Common flags:
+  --level <l>      Canonical intensity: light | standard | deep
   --light          Skip hard gates (constitution, spec, plan, tests)
   --prompt         Generate copy-paste prompt instead of auto-executing
   --profile <name> Use a specific quality profile
@@ -1310,7 +1355,9 @@ program
 
 program
   .command('compete')
-  .description('Competitive Harvest Loop: score gaps against competitors, sprint to close them')
+  .description('Benchmark against peers and close competitive gaps. --level selects depth: light=assess, standard=assess+universe, deep=full CHL loop.')
+  .option('--level <level>', 'Canonical intensity: light | standard | deep')
+  .option('--refresh', 'Force rebuild of feature universe after assessment')
   .option('--init', 'Bootstrap CHL matrix from a competitor scan (Phase 1: INVENTORY)')
   .option('--sprint', 'Identify top gap and generate /inferno masterplan (Phase 3: SOURCE)')
   .option('--rescore <score>', 'Update dimension score after a sprint, e.g. "ux_polish=7.5" or "ux_polish=7.5,sha"')
@@ -1324,6 +1371,14 @@ program
   .option('--edit', 'Interactive matrix amendment session')
   .option('--yes', 'Skip the confirmation gate in --auto mode')
   .action((opts) => {
+    if (opts.level) {
+      return commands.canonicalCompete({
+        level: opts.level as string,
+        json: opts.json as boolean | undefined,
+        refresh: opts.refresh as boolean | undefined,
+        yes: opts.yes as boolean | undefined,
+      });
+    }
     void (async () => {
       try {
         const { compete } = await import('./commands/compete.js');
@@ -1439,11 +1494,22 @@ program
 program
   .command('score')
   .alias('measure')
-  .description('Fast project score: one number + 3 P0 action items in <5 seconds (no LLM, updates PRIME.md)')
+  .description('Fast project score: one number + 3 P0 action items in <5 seconds. Use --level for canonical measure depth.')
+  .option('--level <level>', 'Canonical intensity: light | standard | deep')
   .option('--full', 'Show all 18 dimensions (like assess)')
   .option('--strict', 'Use only code-derived signals — excludes mutable STATE.yaml fields for tamper-resistant scoring')
   .option('--adversary', 'Run a second independent LLM to challenge the self-score and detect inflation')
+  .option('--json', 'Machine-readable JSON output')
   .action((opts) => {
+    if (opts.level) {
+      return commands.canonicalMeasure({
+        level: opts.level as string,
+        full: opts.full as boolean | undefined,
+        strict: opts.strict as boolean | undefined,
+        adversary: opts.adversary as boolean | undefined,
+        json: opts.json as boolean | undefined,
+      });
+    }
     void (async () => {
       try {
         const { score } = await import('./commands/score.js');
@@ -1574,13 +1640,31 @@ program
 
 program
   .command('build <spec>')
-  .description('Guided spec-to-ship wizard: constitution → specify → clarify → plan → tasks → forge → verify → score')
-  .option('--interactive', 'Confirm before each stage')
+  .description('Execute product work. --level selects depth: light=forge, standard=magic, deep=inferno. Without --level runs the full spec-to-ship wizard.')
+  .option('--level <level>', 'Canonical intensity: light | standard | deep')
+  .option('--interactive', 'Confirm before each stage (wizard mode only)')
+  .option('--profile <type>', 'quality | balanced | budget', 'balanced')
+  .option('--prompt', 'Generate copy-paste prompt instead of executing')
+  .option('--worktree', 'Run in an isolated git worktree')
+  .option('--isolation', 'Use isolation when preset escalates into party mode')
+  .option('--max-repos <n>', 'Max repos for deep OSS harvest', '12')
+  .option('--yes', 'Skip competitive matrix confirmation gate')
   .action((spec, opts) => {
+    if (opts.level) {
+      return commands.canonicalBuild(spec as string, {
+        level: opts.level as string,
+        prompt: opts.prompt as boolean | undefined,
+        profile: opts.profile as string | undefined,
+        worktree: opts.worktree as boolean | undefined,
+        isolation: opts.isolation as boolean | undefined,
+        maxRepos: opts.maxRepos ? parseInt(opts.maxRepos as string, 10) : undefined,
+        yes: opts.yes as boolean | undefined,
+      });
+    }
     void (async () => {
       try {
         const { build } = await import('./commands/build.js');
-        await build({ spec, interactive: opts.interactive as boolean | undefined });
+        await build({ spec: spec as string, interactive: opts.interactive as boolean | undefined });
       } catch (err) {
         const { formatAndLogError } = await import('../core/format-error.js');
         formatAndLogError(err, 'build');
