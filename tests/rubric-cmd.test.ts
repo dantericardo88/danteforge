@@ -8,8 +8,8 @@ function makeRubric(overrides: Partial<Rubric> = {}): Rubric {
     version: 1,
     frozenAt: '2026-01-01T00:00:00.000Z',
     dimensions: {
-      '1': { name: 'Functionality', description: 'Core functionality', criteria: [], weight: 1.0 },
-      '2': { name: 'Testing', description: 'Test coverage', criteria: [], weight: 1.0 },
+      '1': { name: 'Functionality', description: 'Core functionality', criteria: [], weight: 1.0, scoreCriteria: { '10': ['Perfect'], '5': ['Adequate'] } } as any,
+      '2': { name: 'Testing', description: 'Test coverage', criteria: [], weight: 1.0, scoreCriteria: {} } as any,
     },
     ...overrides,
   };
@@ -100,7 +100,7 @@ describe('rubricInit', () => {
     await assert.doesNotReject(() =>
       rubricInit({
         _getRubric: async () => { throw new Error('not found'); },
-        _ensureRubricScaffold: async () => {},
+        _ensureRubricScaffold: async () => makeRubric() as any,
       })
     );
   });
