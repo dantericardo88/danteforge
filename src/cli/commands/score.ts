@@ -322,8 +322,8 @@ async function buildDimEvidence(
       hits.sort((a, b) => b.fnLoc - a.fnLoc);
       const worst = hits[0];
       const rel = path.relative(cwd, worst.file).replace(/\\/g, '/');
-      const fnTag = worst.fnName ? `${worst.fnName}()` : `line ${worst.startLine}`;
-      return `${hits.length} large fn${hits.length > 1 ? 's' : ''} >100 LOC — ${rel}:${worst.startLine} ${fnTag} (${worst.fnLoc} lines)`;
+      const fnLabel = worst.fnName ? ` ${worst.fnName}()` : '';
+      return `${hits.length} large fn${hits.length > 1 ? 's' : ''} >100 LOC — ${rel}:${worst.startLine}${fnLabel} (${worst.fnLoc} lines)`;
     }
 
     if (dim === 'functionality') {
@@ -342,8 +342,8 @@ async function buildDimEvidence(
         hits.sort((a, b) => b.fnLoc - a.fnLoc);
         const biggest = hits[0];
         const rel = path.relative(cwd, biggest.file).replace(/\\/g, '/');
-        const fnTag = biggest.fnName ? `${biggest.fnName}()` : `line ${biggest.startLine}`;
-        return `largest fn without tests: ${rel}:${biggest.startLine} ${fnTag} (${biggest.fnLoc} lines)`;
+        const fnLabel = biggest.fnName ? ` ${biggest.fnName}()` : '';
+        return `largest fn without tests: ${rel}:${biggest.startLine}${fnLabel} (${biggest.fnLoc} lines)`;
       }
       return null;
     }
