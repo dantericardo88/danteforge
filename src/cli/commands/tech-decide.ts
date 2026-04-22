@@ -114,6 +114,102 @@ function formatTechDecision(categories: TechCategory[]): string {
   return lines.join('\n');
 }
 
+function buildTechDecidePrompt(
+  state: Awaited<ReturnType<typeof loadState>>,
+  specContent: string,
+  projectContext: string,
+  lessonsContext: string,
+): string {
+  return `You are a senior software architect helping a developer choose their tech stack. Analyze the project context and generate EXACTLY 3-5 tailored options per category with pros/cons.
+
+${state.constitution ? `## Project Principles\n${state.constitution}\n` : ''}
+${specContent ? `## Project Spec\n${specContent.slice(0, 3000)}\n` : '## No spec yet — provide general-purpose options for a modern application.\n'}
+${projectContext ? `## Current State\n${projectContext.slice(0, 2000)}\n` : ''}
+${lessonsContext ? `## Lessons Learned (Naming/Style History)\nThe team has recorded these naming and style preferences from past corrections:\n${lessonsContext.slice(0, 1500)}\nFactor these lessons into your Naming/Style recommendations.\n` : ''}
+## Instructions
+
+Generate tech stack options for these categories:
+1. **Language/Runtime** — e.g., TypeScript/Node, Python, Go, Rust, etc.
+2. **Framework** — e.g., Next.js, Express, FastAPI, Gin, etc.
+3. **Database** — e.g., PostgreSQL, SQLite, MongoDB, Supabase, etc.
+4. **Deployment** — e.g., Vercel, Railway, Docker/K8s, AWS Lambda, etc.
+5. **Naming/Style** — e.g., camelCase, snake_case, kebab-case conventions — include detailed pros/cons of each naming convention (readability, tooling support, language ecosystem norms, team consistency)
+
+For EACH category:
+- Provide 3-5 options (not more, not fewer)
+- Mark ONE as "(Recommended)" based on the project context
+- For each option list **Pros** and **Cons** (2-4 bullet points each)
+- Tailor to the project — don't give generic lists
+
+## Output Format
+
+Use this exact format for each category:
+
+## Category Name
+
+### 1. Option Name (Recommended)
+**Pros:**
+- Pro 1
+- Pro 2
+
+**Cons:**
+- Con 1
+- Con 2
+
+### 2. Option Name
+**Pros:**
+- Pro 1
+
+**Cons:**
+- Con 1
+
+(repeat for all options)
+
+End with:
+## Summary
+Default recommendation: [list the recommended option from each category]`;
+}
+
+async function runTechDecideLLMMode(
+  prompt: string,
+  state: Awaited<ReturnType<typeof loadState>>,
+  llmFn: typeof callLLM,
+  saveFn: typeof saveState,
+  auto: boolean,
+): Promise<boolean> {
+  logger.info('Analyzing project for tech stack recommendations...');
+  logger.info('');
+  try {
+    const result = await llmFn(prompt, undefined, { enrichContext: true });
+    const categories = parseTechOptions(result);
+    const formatted = categories.length > 0 ? formatTechDecision(categories) : result;
+    const outputPath = path.join('.danteforge', 'TECH_STACK.md');
+    await fs.mkdir('.danteforge', { recursive: true });
+    await fs.writeFile(outputPath, `# Tech Stack Decision\n\n_Generated: ${new Date().toISOString()}_\n_Profile: ${state.profile}_\n\n${result}`);
+    process.stdout.write('\n' + (categories.length > 0 ? formatted : result) + '\n');
+    logger.info('');
+    logger.success(`Tech stack analysis saved to: ${outputPath}`);
+    logger.info('');
+    if (auto) {
+      const recommended = categories.map(c => { const rec = c.options.find(o => o.recommended); return rec ? `${c.category}: ${rec.name}` : null; }).filter(Boolean);
+      if (recommended.length > 0) { logger.success('Auto-selected recommended options:'); for (const r of recommended) logger.info(`  ${r}`); }
+    } else {
+      logger.info('Review the options above and edit .danteforge/TECH_STACK.md');
+      logger.info('Or use --auto to accept all recommended defaults');
+    }
+    logger.info('');
+    logger.info('Next steps:');
+    logger.info('  danteforge plan    — uses TECH_STACK.md in planning');
+    logger.info('  danteforge forge   — builds with selected stack');
+    state.auditLog.push(`${new Date().toISOString()} | tech-decide: ${categories.length} categories analyzed, saved to TECH_STACK.md`);
+    await saveFn(state);
+    return true;
+  } catch (err) {
+    logger.warn(`LLM call failed: ${err instanceof Error ? err.message : String(err)}`);
+    return false;
+  }
+}
+
 export async function techDecide(options: {
   prompt?: boolean;
   auto?: boolean;
@@ -165,55 +261,7 @@ export async function techDecide(options: {
     }
   } catch { /* no lessons yet */ }
 
-  // Build the analysis prompt
-  const prompt = `You are a senior software architect helping a developer choose their tech stack. Analyze the project context and generate EXACTLY 3-5 tailored options per category with pros/cons.
-
-${state.constitution ? `## Project Principles\n${state.constitution}\n` : ''}
-${specContent ? `## Project Spec\n${specContent.slice(0, 3000)}\n` : '## No spec yet — provide general-purpose options for a modern application.\n'}
-${projectContext ? `## Current State\n${projectContext.slice(0, 2000)}\n` : ''}
-${lessonsContext ? `## Lessons Learned (Naming/Style History)\nThe team has recorded these naming and style preferences from past corrections:\n${lessonsContext.slice(0, 1500)}\nFactor these lessons into your Naming/Style recommendations.\n` : ''}
-## Instructions
-
-Generate tech stack options for these categories:
-1. **Language/Runtime** — e.g., TypeScript/Node, Python, Go, Rust, etc.
-2. **Framework** — e.g., Next.js, Express, FastAPI, Gin, etc.
-3. **Database** — e.g., PostgreSQL, SQLite, MongoDB, Supabase, etc.
-4. **Deployment** — e.g., Vercel, Railway, Docker/K8s, AWS Lambda, etc.
-5. **Naming/Style** — e.g., camelCase, snake_case, kebab-case conventions — include detailed pros/cons of each naming convention (readability, tooling support, language ecosystem norms, team consistency)
-
-For EACH category:
-- Provide 3-5 options (not more, not fewer)
-- Mark ONE as "(Recommended)" based on the project context
-- For each option list **Pros** and **Cons** (2-4 bullet points each)
-- Tailor to the project — don't give generic lists
-
-## Output Format
-
-Use this exact format for each category:
-
-## Category Name
-
-### 1. Option Name (Recommended)
-**Pros:**
-- Pro 1
-- Pro 2
-
-**Cons:**
-- Con 1
-- Con 2
-
-### 2. Option Name
-**Pros:**
-- Pro 1
-
-**Cons:**
-- Con 1
-
-(repeat for all options)
-
-End with:
-## Summary
-Default recommendation: [list the recommended option from each category]`;
+  const prompt = buildTechDecidePrompt(state, specContent, projectContext, lessonsContext);
 
   // Mode 1: --prompt (copy-paste)
   if (options.prompt) {
@@ -230,62 +278,9 @@ Default recommendation: [list the recommended option from each category]`;
   }
 
   // Mode 2: LLM API mode
-  const llmAvailable = await llmAvailFn();
-  if (llmAvailable) {
-    logger.info('Analyzing project for tech stack recommendations...');
-    logger.info('');
-
-    try {
-      const result = await llmFn(prompt, undefined, { enrichContext: true });
-
-      // Parse and format
-      const categories = parseTechOptions(result);
-      const formatted = categories.length > 0 ? formatTechDecision(categories) : result;
-
-      // Save to TECH_STACK.md
-      const outputPath = path.join('.danteforge', 'TECH_STACK.md');
-      await fs.mkdir('.danteforge', { recursive: true });
-      const output = `# Tech Stack Decision\n\n_Generated: ${new Date().toISOString()}_\n_Profile: ${state.profile}_\n\n${result}`;
-      await fs.writeFile(outputPath, output);
-
-      // Display
-      process.stdout.write('\n' + (categories.length > 0 ? formatted : result) + '\n');
-
-      logger.info('');
-      logger.success(`Tech stack analysis saved to: ${outputPath}`);
-      logger.info('');
-
-      if (options.auto) {
-        // Auto mode: pick recommended options
-        const recommended = categories
-          .map(c => {
-            const rec = c.options.find(o => o.recommended);
-            return rec ? `${c.category}: ${rec.name}` : null;
-          })
-          .filter(Boolean);
-
-        if (recommended.length > 0) {
-          logger.success('Auto-selected recommended options:');
-          for (const r of recommended) {
-            logger.info(`  ${r}`);
-          }
-        }
-      } else {
-        logger.info('Review the options above and edit .danteforge/TECH_STACK.md');
-        logger.info('Or use --auto to accept all recommended defaults');
-      }
-
-      logger.info('');
-      logger.info('Next steps:');
-      logger.info('  danteforge plan    — uses TECH_STACK.md in planning');
-      logger.info('  danteforge forge   — builds with selected stack');
-
-      state.auditLog.push(`${new Date().toISOString()} | tech-decide: ${categories.length} categories analyzed, saved to TECH_STACK.md`);
-      await saveFn(state);
-      return;
-    } catch (err) {
-      logger.warn(`LLM call failed: ${err instanceof Error ? err.message : String(err)}`);
-    }
+  if (await llmAvailFn()) {
+    const handled = await runTechDecideLLMMode(prompt, state, llmFn, saveFn, Boolean(options.auto));
+    if (handled) return;
   }
 
   // Mode 3: Fallback — display skill content or guidance
