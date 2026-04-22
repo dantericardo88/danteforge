@@ -48,6 +48,36 @@ async function loadPackageVersion(): Promise<string> {
   }
 }
 
+function renderWikiSection(wikiHealth?: WikiHealth | null): string {
+  if (!wikiHealth) return '';
+  return `
+  <h2>Wiki Health</h2>
+  <div class="grid">
+    <div class="card"><div class="label">Wiki Pages</div><div class="value">${wikiHealth.pageCount}</div></div>
+    <div class="card"><div class="label">Link Density</div><div class="value ${wikiHealth.linkDensity >= 3 ? 'ok' : 'warn'}">${wikiHealth.linkDensity.toFixed(1)}</div></div>
+    <div class="card"><div class="label">Orphan Ratio</div><div class="value ${wikiHealth.orphanRatio <= 0.05 ? 'ok' : 'warn'}">${(wikiHealth.orphanRatio * 100).toFixed(1)}%</div></div>
+    <div class="card"><div class="label">Lint Pass Rate</div><div class="value ${wikiHealth.lintPassRate >= 0.95 ? 'ok' : 'warn'}">${(wikiHealth.lintPassRate * 100).toFixed(1)}%</div></div>
+    <div class="card"><div class="label">PDSE Anomalies</div><div class="value ${wikiHealth.anomalyCount === 0 ? 'ok' : 'warn'}">${wikiHealth.anomalyCount === 0 ? 'None' : wikiHealth.anomalyCount}</div></div>
+    <div class="card"><div class="label">Last Lint</div><div class="value" style="font-size:0.9rem">${wikiHealth.lastLint ? escapeHtml(wikiHealth.lastLint.slice(0, 16).replace('T', ' ')) : 'Never'}</div></div>
+  </div>`;
+}
+
+function renderMetricGrid(input: DashboardRenderInput, executionWaveLabel: string, totalTasks: number, totalAuditEntries: number): string {
+  const { config, capabilities, tier, totalTokensEstimated } = input;
+  const figmaStatus = capabilities.hasFigmaMCP ? 'Connected' : 'Not configured';
+  return `<div class="grid">
+    <div class="card"><div class="label">Workflow Stage</div><div class="value">${escapeHtml(input.state.workflowStage)}</div></div>
+    <div class="card"><div class="label">Execution Wave</div><div class="value">${escapeHtml(executionWaveLabel)}</div></div>
+    <div class="card"><div class="label">Total Tasks</div><div class="value">${totalTasks}</div></div>
+    <div class="card"><div class="label">LLM Provider</div><div class="value">${escapeHtml(config.defaultProvider)}</div></div>
+    <div class="card"><div class="label">Figma MCP</div><div class="value ${capabilities.hasFigmaMCP ? 'ok' : 'warn'}">${figmaStatus}</div></div>
+    <div class="card"><div class="label">MCP Host</div><div class="value">${escapeHtml(input.host)}</div></div>
+    <div class="card"><div class="label">MCP Tier</div><div class="value">${escapeHtml(tier)}</div></div>
+    <div class="card"><div class="label">Audit Entries</div><div class="value">${totalAuditEntries}</div></div>
+    <div class="card"><div class="label">Est. Tokens Used</div><div class="value">${totalTokensEstimated.toLocaleString()}</div></div>
+  </div>`;
+}
+
 export function renderDashboardHtml(input: DashboardRenderInput): string {
   const {
     state,
@@ -62,22 +92,14 @@ export function renderDashboardHtml(input: DashboardRenderInput): string {
 
   const totalTasks = Object.values(state.tasks).flat().length;
   const totalAuditEntries = state.auditLog.length;
-  const figmaStatus = capabilities.hasFigmaMCP ? 'Connected' : 'Not configured';
   const executionWaveLabel = state.currentPhase > 0 ? String(state.currentPhase) : 'Not started';
   const recentLog = state.auditLog.slice(-20).reverse();
   const timelineRows = recentLog.map(entry => {
     const [timestamp, ...rest] = entry.split(' | ');
-    const action = rest.join(' | ');
-    return `<tr><td class="ts">${escapeHtml(timestamp)}</td><td>${escapeHtml(action)}</td></tr>`;
+    return `<tr><td class="ts">${escapeHtml(timestamp)}</td><td>${escapeHtml(rest.join(' | '))}</td></tr>`;
   }).join('\n');
 
-  return `<!DOCTYPE html>
-<html lang="en">
-<head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>DanteForge Dashboard</title>
-<style>
+  const style = `<style>
   * { margin: 0; padding: 0; box-sizing: border-box; }
   body { font-family: system-ui, -apple-system, sans-serif; background: #0a0a0a; color: #e0e0e0; padding: 24px; }
   h1 { font-size: 1.5rem; color: #ff6b35; margin-bottom: 4px; }
@@ -94,90 +116,22 @@ export function renderDashboardHtml(input: DashboardRenderInput): string {
   td { padding: 8px 12px; border-bottom: 1px solid #1a1a1a; }
   .ts { color: #888; white-space: nowrap; font-family: monospace; font-size: 0.75rem; }
   .footer { margin-top: 24px; color: #555; font-size: 0.75rem; text-align: center; }
-</style>
-</head>
+</style>`;
+
+  return `<!DOCTYPE html>
+<html lang="en">
+<head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><title>DanteForge Dashboard</title>${style}</head>
 <body>
   <h1>DanteForge Dashboard</h1>
   <div class="subtitle">Project: ${escapeHtml(state.project)} | Workflow Stage: ${escapeHtml(state.workflowStage)} | Profile: ${escapeHtml(state.profile)}</div>
-
-  <div class="grid">
-    <div class="card">
-      <div class="label">Workflow Stage</div>
-      <div class="value">${escapeHtml(state.workflowStage)}</div>
-    </div>
-    <div class="card">
-      <div class="label">Execution Wave</div>
-      <div class="value">${escapeHtml(executionWaveLabel)}</div>
-    </div>
-    <div class="card">
-      <div class="label">Total Tasks</div>
-      <div class="value">${totalTasks}</div>
-    </div>
-    <div class="card">
-      <div class="label">LLM Provider</div>
-      <div class="value">${escapeHtml(config.defaultProvider)}</div>
-    </div>
-    <div class="card">
-      <div class="label">Figma MCP</div>
-      <div class="value ${capabilities.hasFigmaMCP ? 'ok' : 'warn'}">${figmaStatus}</div>
-    </div>
-    <div class="card">
-      <div class="label">MCP Host</div>
-      <div class="value">${escapeHtml(host)}</div>
-    </div>
-    <div class="card">
-      <div class="label">MCP Tier</div>
-      <div class="value">${escapeHtml(tier)}</div>
-    </div>
-    <div class="card">
-      <div class="label">Audit Entries</div>
-      <div class="value">${totalAuditEntries}</div>
-    </div>
-    <div class="card">
-      <div class="label">Est. Tokens Used</div>
-      <div class="value">${totalTokensEstimated.toLocaleString()}</div>
-    </div>
-  </div>
-
-  ${wikiHealth ? `
-  <h2>Wiki Health</h2>
-  <div class="grid">
-    <div class="card">
-      <div class="label">Wiki Pages</div>
-      <div class="value">${wikiHealth.pageCount}</div>
-    </div>
-    <div class="card">
-      <div class="label">Link Density</div>
-      <div class="value ${wikiHealth.linkDensity >= 3 ? 'ok' : 'warn'}">${wikiHealth.linkDensity.toFixed(1)}</div>
-    </div>
-    <div class="card">
-      <div class="label">Orphan Ratio</div>
-      <div class="value ${wikiHealth.orphanRatio <= 0.05 ? 'ok' : 'warn'}">${(wikiHealth.orphanRatio * 100).toFixed(1)}%</div>
-    </div>
-    <div class="card">
-      <div class="label">Lint Pass Rate</div>
-      <div class="value ${wikiHealth.lintPassRate >= 0.95 ? 'ok' : 'warn'}">${(wikiHealth.lintPassRate * 100).toFixed(1)}%</div>
-    </div>
-    <div class="card">
-      <div class="label">PDSE Anomalies</div>
-      <div class="value ${wikiHealth.anomalyCount === 0 ? 'ok' : 'warn'}">${wikiHealth.anomalyCount === 0 ? 'None' : wikiHealth.anomalyCount}</div>
-    </div>
-    <div class="card">
-      <div class="label">Last Lint</div>
-      <div class="value" style="font-size:0.9rem">${wikiHealth.lastLint ? escapeHtml(wikiHealth.lastLint.slice(0, 16).replace('T', ' ')) : 'Never'}</div>
-    </div>
-  </div>
-  ` : ''}
-
+  ${renderMetricGrid(input, executionWaveLabel, totalTasks, totalAuditEntries)}
+  ${renderWikiSection(wikiHealth)}
   <h2>Recent Activity</h2>
   <table>
     <thead><tr><th>Timestamp</th><th>Action</th></tr></thead>
     <tbody>${timelineRows || '<tr><td colspan="2">No activity yet. Run: danteforge review</td></tr>'}</tbody>
   </table>
-
-  <div class="footer">
-    DanteForge v${escapeHtml(packageVersion)} | Auto-closes in 5 minutes | Refresh for latest data
-  </div>
+  <div class="footer">DanteForge v${escapeHtml(packageVersion)} | Auto-closes in 5 minutes | Refresh for latest data</div>
 </body>
 </html>`;
 }

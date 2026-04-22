@@ -97,11 +97,26 @@ async function defaultCloneRepo(url: string, dir: string): Promise<void> {
 
 // ── Main export ───────────────────────────────────────────────────────────────
 
-/**
- * Run external validation against a set of external projects.
- * Clones each, captures metrics, scores, and checks calibration.
- * Returns a validation report — does NOT throw on individual project failures.
- */
+function buildExternalSummary(
+  entries: ExternalValidationEntry[],
+  localScore: number,
+  calibrationRate: number,
+  rankingValid: boolean,
+  capturedAt: string,
+): string[] {
+  const summary: string[] = [];
+  summary.push(`External Validation Report — ${capturedAt}`);
+  summary.push(`Local score: ${localScore.toFixed(2)}`);
+  summary.push(`Projects validated: ${entries.length}`);
+  summary.push(`Calibration rate: ${(calibrationRate * 100).toFixed(0)}%`);
+  summary.push(`Ranking valid (high > low): ${rankingValid}`);
+  for (const entry of entries) {
+    const status = entry.calibrated ? 'OK' : 'MISCALIBRATED';
+    summary.push(`  ${entry.label}: ${entry.score.toFixed(2)} [${entry.expectedTier}] — ${status}`);
+  }
+  return summary;
+}
+
 export async function runExternalValidation(
   projects: ExternalProject[],
   opts: ExternalValidateOptions = {},
@@ -168,18 +183,8 @@ export async function runExternalValidation(
   const maxLow = lowScores.length > 0 ? Math.max(...lowScores) : -Infinity;
   const rankingValid = highScores.length === 0 || lowScores.length === 0 || minHigh > maxLow;
 
-  // Build summary
-  const summary: string[] = [];
-  summary.push(`External Validation Report — ${capturedAt}`);
-  summary.push(`Local score: ${localScore.toFixed(2)}`);
-  summary.push(`Projects validated: ${entries.length}/${projects.length}`);
-  summary.push(`Calibration rate: ${(calibrationRate * 100).toFixed(0)}%`);
-  summary.push(`Ranking valid (high > low): ${rankingValid}`);
-
-  for (const entry of entries) {
-    const status = entry.calibrated ? 'OK' : 'MISCALIBRATED';
-    summary.push(`  ${entry.label}: ${entry.score.toFixed(2)} [${entry.expectedTier}] — ${status}`);
-  }
+  const summary = buildExternalSummary(entries, localScore, calibrationRate, rankingValid, capturedAt);
+  summary[2] = `Projects validated: ${entries.length}/${projects.length}`;
 
   const report: ExternalValidationReport = {
     capturedAt,
