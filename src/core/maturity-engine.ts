@@ -3,6 +3,13 @@
 
 import fs from 'fs/promises';
 import path from 'path';
+import { createRequire } from 'node:module';
+
+let tsModule: typeof import('typescript') | null = null;
+try {
+  const require = createRequire(import.meta.url);
+  tsModule = require('typescript') as typeof import('typescript');
+} catch { /* typescript not available — fall back to regex */ }
 import type { DanteState } from './state.js';
 import type { ScoreResult, ScoredArtifact } from './pdse.js';
 import { type MaturityLevel, scoreToMaturityLevel, getMaturityLevelName, describeLevelForFounders } from './maturity-levels.js';
@@ -821,48 +828,38 @@ async function defaultCollectFiles(dir: string): Promise<string[]> {
 }
 
 function extractFunctions(content: string): string[] {
-  const functions: string[] = [];
-  const regex = /function\s+\w+\s*\([^)]*\)[^{]*\{|const\s+\w+\s*=\s*\([^)]*\)\s*=>\s*\{|async\s+function\s+\w+\s*\([^)]*\)[^{]*\{/g;
+  if (tsModule) {
+    try {
+      const ts = tsModule;
+      const sf = ts.createSourceFile('temp.ts', content, ts.ScriptTarget.Latest, true, ts.ScriptKind.TS);
+      const results: string[] = [];
+      // Only collect top-level declarations — avoids counting nested callbacks
+      for (const stmt of sf.statements) {
+        if (ts.isFunctionDeclaration(stmt)) {
+          results.push(stmt.getFullText(sf));
+        } else if (ts.isVariableStatement(stmt)) {
+          for (const decl of stmt.declarationList.declarations) {
+            if (decl.initializer && (ts.isArrowFunction(decl.initializer) || ts.isFunctionExpression(decl.initializer))) {
+              results.push(stmt.getFullText(sf));
+            }
+          }
+        }
+      }
+      return results;
+    } catch { /* fall through to regex */ }
+  }
+  // Fallback: top-level declarations only with declaration-distance sizing
+  const regex = /^(?:export\s+)?(?:async\s+)?function\s+\w+\s*\([^)]*\)[^{]*\{|^(?:export\s+)?const\s+\w+\s*=\s*(?:async\s+)?\([^)]*\)\s*=>\s*\{/gm;
+  const lines = content.split('\n');
+  const matchLines: number[] = [];
   let match: RegExpExecArray | null;
-
   while ((match = regex.exec(content)) !== null) {
-    const start = match.index;
-    const end = findClosingBrace(content, start);
-    if (end > start) {
-      functions.push(content.slice(start, end));
-    }
+    matchLines.push(content.slice(0, match.index).split('\n').length - 1);
   }
-
-  return functions;
-}
-
-function findClosingBrace(content: string, start: number): number {
-  let depth = 0;
-  let inString = false;
-  let stringChar = '';
-
-  for (let i = start; i < content.length; i++) {
-    const char = content[i];
-    const prev = content[i - 1];
-
-    if (!inString) {
-      if ((char === '"' || char === "'" || char === '`') && prev !== '\\') {
-        inString = true;
-        stringChar = char;
-      } else if (char === '{') {
-        depth++;
-      } else if (char === '}') {
-        depth--;
-        if (depth === 0) return i + 1;
-      }
-    } else {
-      if (char === stringChar && prev !== '\\') {
-        inString = false;
-      }
-    }
-  }
-
-  return start;
+  return matchLines.map((start, i) => {
+    const end = i + 1 < matchLines.length ? matchLines[i + 1] : lines.length;
+    return lines.slice(start, end).join('\n');
+  });
 }
 
 function capitalize(str: string): string {
