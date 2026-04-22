@@ -231,6 +231,101 @@ async function actionStatus(options: CompeteOptions, cwd: string): Promise<Compe
   };
 }
 
+function logSprintGaps(
+  next: MatrixDimension,
+  selfScore: number,
+  sprintTarget: number,
+  harvestFrom: string,
+  ossLeaderScore: number,
+  csLeaderScore: number,
+  hasOssGap: boolean,
+  hasClosedGap: boolean,
+): void {
+  logger.info(`\nCHL Sprint — ${next.label}`);
+  if (hasClosedGap) {
+    logger.info(`Gold standard gap: ${formatScore(selfScore)} → ${formatScore(csLeaderScore)} (${next.closed_source_leader}) — what users pay for`);
+  }
+  if (hasOssGap) {
+    logger.info(`Harvestable gap:   ${formatScore(selfScore)} → ${formatScore(ossLeaderScore)} (${next.oss_leader}) — what OSS has solved`);
+  }
+  if (!hasOssGap && !hasClosedGap) {
+    const leaderScore = Math.max(
+      ...Object.entries(next.scores).filter(([k]) => k !== 'self').map(([, v]) => v),
+      0,
+    );
+    logger.info(`Gap: ${formatScore(selfScore)} → ${formatScore(leaderScore)} (${next.leader})`);
+  }
+  if (hasOssGap && hasClosedGap) {
+    logger.info(`\nSprint goal: Close harvestable gap first (${formatScore(selfScore)} → ${formatScore(sprintTarget)}).`);
+    logger.info(`Harvest from: ${harvestFrom} (open-source, MIT/Apache licensed).`);
+    logger.info(`Gold standard ceiling: ${next.closed_source_leader} at ${formatScore(csLeaderScore)}.`);
+  }
+}
+
+function buildHarvestBriefPrompt(
+  next: MatrixDimension,
+  selfScore: number,
+  sprintTarget: number,
+  harvestFrom: string,
+  ossSearchContext: string,
+  hasOssGap: boolean,
+  hasClosedGap: boolean,
+  csLeaderScore: number,
+): string {
+  return [
+    `You are helping close a competitive gap in this project using the Competitive Harvest Loop (CHL).`,
+    ossSearchContext ? `\n## Real OSS discovery results (use these — do not hallucinate)\n${ossSearchContext}` : '',
+    ``,
+    `## Dimension to close`,
+    `Name: ${next.label}`,
+    `Current self score: ${formatScore(selfScore)}/10`,
+    hasOssGap ? `OSS leader: ${harvestFrom} at ${formatScore(sprintTarget)}/10 (open-source — harvestable this sprint)` : '',
+    hasClosedGap ? `Gold standard: ${next.closed_source_leader} at ${formatScore(csLeaderScore)}/10 (long-term target)` : '',
+    ``,
+    `## Task`,
+    `1. Identify 2-3 open-source projects (MIT/Apache-2.0 license only) that best implement "${next.label}".`,
+    hasOssGap ? `   Priority: ${harvestFrom} is the known OSS leader — focus on what specific patterns to extract from it.` : '',
+    `2. For each project: one sentence on what SPECIFIC pattern to harvest (not general features).`,
+    `3. Write a concise /inferno masterplan goal: "Close ${next.label} gap from ${formatScore(selfScore)} to ${formatScore(sprintTarget)}. Harvest from: ${harvestFrom}. Key patterns: [X, Y, Z]."`,
+    ``,
+    `Output ONLY: the OSS project bullets, then the masterplan goal line. No preamble.`,
+  ].filter(Boolean).join('\n');
+}
+
+async function displayCoflOperatorPanel(matrix: CompeteMatrix, next: MatrixDimension): Promise<void> {
+  try {
+    const { classifyCompetitorRoles, scoreOperatorLeverage } = await import('../../core/cofl-engine.js');
+    const partition = classifyCompetitorRoles(
+      matrix.competitors_closed_source ?? [],
+      matrix.competitors_oss ?? [],
+    );
+    const entries = scoreOperatorLeverage([{
+      id: next.id,
+      label: next.label,
+      gap_to_closed_source_leader: next.gap_to_closed_source_leader ?? next.gap_to_leader,
+      gap_to_oss_leader: next.gap_to_oss_leader ?? 0,
+      oss_leader: next.oss_leader ?? '',
+      weight: next.weight ?? 1,
+      frequency: (next as unknown as { frequency?: string }).frequency ?? 'medium',
+    }], partition);
+    const entry = entries[0];
+    if (entry) {
+      logger.info('\n## COFL Operator Leverage');
+      logger.info(`Leverage score:    ${entry.leverageScore.toFixed(2)}`);
+      logger.info(`Operator visible:  ${entry.operatorVisibleLift.toFixed(1)}/10`);
+      logger.info(`OSS borrowable:    ${entry.borrowableFromOSS ? '✓ Yes — run /inferno to harvest' : '✗ No direct OSS pattern available'}`);
+      if (partition.referenceTeachers.length > 0 || partition.specialistTeachers.length > 0) {
+        logger.info(`Teacher set:       ${[...partition.referenceTeachers, ...partition.specialistTeachers].join(', ')}`);
+      }
+      if (partition.directPeers.length > 0) {
+        logger.info(`Direct peers:      ${partition.directPeers.join(', ')}`);
+      }
+      logger.info('');
+      logger.info('Run `danteforge cofl --auto` to run the full 10-phase competitive loop.');
+    }
+  } catch { /* best-effort — cofl-engine not available or matrix incomplete */ }
+}
+
 async function actionSprint(options: CompeteOptions, cwd: string): Promise<CompeteResult> {
   const matrixPath = getMatrixPath(cwd);
   const loadFn = options._loadMatrix ?? ((c) => loadMatrix(c));
@@ -252,37 +347,17 @@ async function actionSprint(options: CompeteOptions, cwd: string): Promise<Compe
   const selfScore = next.scores['self'] ?? 0;
 
   // Two-matrix display: closed-source (gold standard) vs OSS (harvestable)
-  const hasOssGap = next.gap_to_oss_leader > 0 && next.oss_leader && next.oss_leader !== 'unknown';
-  const hasClosedGap = next.gap_to_closed_source_leader > 0 && next.closed_source_leader && next.closed_source_leader !== 'unknown';
+  const hasOssGap = !!(next.gap_to_oss_leader > 0 && next.oss_leader && next.oss_leader !== 'unknown');
+  const hasClosedGap = !!(next.gap_to_closed_source_leader > 0 && next.closed_source_leader && next.closed_source_leader !== 'unknown');
 
   const ossLeaderScore = next.scores[next.oss_leader] ?? 0;
   const csLeaderScore = next.scores[next.closed_source_leader] ?? 0;
-
-  logger.info(`\nCHL Sprint — ${next.label}`);
-  if (hasClosedGap) {
-    logger.info(`Gold standard gap: ${formatScore(selfScore)} → ${formatScore(csLeaderScore)} (${next.closed_source_leader}) — what users pay for`);
-  }
-  if (hasOssGap) {
-    logger.info(`Harvestable gap:   ${formatScore(selfScore)} → ${formatScore(ossLeaderScore)} (${next.oss_leader}) — what OSS has solved`);
-  }
-  if (!hasOssGap && !hasClosedGap) {
-    const leaderScore = Math.max(
-      ...Object.entries(next.scores).filter(([k]) => k !== 'self').map(([, v]) => v),
-      0,
-    );
-    logger.info(`Gap: ${formatScore(selfScore)} → ${formatScore(leaderScore)} (${next.leader})`);
-  }
 
   // Sprint goal: harvest from OSS leader first (achievable), gold standard is the ceiling
   const sprintTarget = hasOssGap ? ossLeaderScore : next.next_sprint_target;
   const harvestFrom = hasOssGap ? next.oss_leader : next.leader;
 
-  if (hasOssGap && hasClosedGap) {
-    logger.info(`\nSprint goal: Close harvestable gap first (${formatScore(selfScore)} → ${formatScore(sprintTarget)}).`);
-    logger.info(`Harvest from: ${harvestFrom} (open-source, MIT/Apache licensed).`);
-    logger.info(`Gold standard ceiling: ${next.closed_source_leader} at ${formatScore(csLeaderScore)}.`);
-  }
-
+  logSprintGaps(next, selfScore, sprintTarget, harvestFrom, ossLeaderScore, csLeaderScore, hasOssGap, hasClosedGap);
   logger.info(`\nGenerating harvest brief + /inferno masterplan...`);
 
   // Pre-search for real OSS tools when a search function is available (skill/AI mode)
@@ -294,27 +369,7 @@ async function actionSprint(options: CompeteOptions, cwd: string): Promise<Compe
     } catch { /* best-effort — falls back to LLM-only if search unavailable */ }
   }
 
-  // Generate harvest brief via LLM — structured with two-matrix context
-  const harvestPrompt = [
-    `You are helping close a competitive gap in this project using the Competitive Harvest Loop (CHL).`,
-    ossSearchContext
-      ? `\n## Real OSS discovery results (use these — do not hallucinate)\n${ossSearchContext}`
-      : '',
-    ``,
-    `## Dimension to close`,
-    `Name: ${next.label}`,
-    `Current self score: ${formatScore(selfScore)}/10`,
-    hasOssGap ? `OSS leader: ${harvestFrom} at ${formatScore(sprintTarget)}/10 (open-source — harvestable this sprint)` : '',
-    hasClosedGap ? `Gold standard: ${next.closed_source_leader} at ${formatScore(csLeaderScore)}/10 (long-term target)` : '',
-    ``,
-    `## Task`,
-    `1. Identify 2-3 open-source projects (MIT/Apache-2.0 license only) that best implement "${next.label}".`,
-    hasOssGap ? `   Priority: ${harvestFrom} is the known OSS leader — focus on what specific patterns to extract from it.` : '',
-    `2. For each project: one sentence on what SPECIFIC pattern to harvest (not general features).`,
-    `3. Write a concise /inferno masterplan goal: "Close ${next.label} gap from ${formatScore(selfScore)} to ${formatScore(sprintTarget)}. Harvest from: ${harvestFrom}. Key patterns: [X, Y, Z]."`,
-    ``,
-    `Output ONLY: the OSS project bullets, then the masterplan goal line. No preamble.`,
-  ].filter(Boolean).join('\n');
+  const harvestPrompt = buildHarvestBriefPrompt(next, selfScore, sprintTarget, harvestFrom, ossSearchContext, hasOssGap, hasClosedGap, csLeaderScore);
 
   let harvestBrief = '';
   let masterplanPrompt = '';
@@ -357,37 +412,7 @@ async function actionSprint(options: CompeteOptions, cwd: string): Promise<Compe
   logger.info(`  danteforge compete --rescore "${next.id}=<new_score>[,<commit_sha>]"`);
 
   // ── COFL Operator Leverage panel (best-effort — never blocks sprint) ──────
-  try {
-    const { classifyCompetitorRoles, scoreOperatorLeverage } = await import('../../core/cofl-engine.js');
-    const partition = classifyCompetitorRoles(
-      matrix.competitors_closed_source ?? [],
-      matrix.competitors_oss ?? [],
-    );
-    const entries = scoreOperatorLeverage([{
-      id: next.id,
-      label: next.label,
-      gap_to_closed_source_leader: next.gap_to_closed_source_leader ?? next.gap_to_leader,
-      gap_to_oss_leader: next.gap_to_oss_leader ?? 0,
-      oss_leader: next.oss_leader ?? '',
-      weight: next.weight ?? 1,
-      frequency: (next as unknown as { frequency?: string }).frequency ?? 'medium',
-    }], partition);
-    const entry = entries[0];
-    if (entry) {
-      logger.info('\n## COFL Operator Leverage');
-      logger.info(`Leverage score:    ${entry.leverageScore.toFixed(2)}`);
-      logger.info(`Operator visible:  ${entry.operatorVisibleLift.toFixed(1)}/10`);
-      logger.info(`OSS borrowable:    ${entry.borrowableFromOSS ? '✓ Yes — run /inferno to harvest' : '✗ No direct OSS pattern available'}`);
-      if (partition.referenceTeachers.length > 0 || partition.specialistTeachers.length > 0) {
-        logger.info(`Teacher set:       ${[...partition.referenceTeachers, ...partition.specialistTeachers].join(', ')}`);
-      }
-      if (partition.directPeers.length > 0) {
-        logger.info(`Direct peers:      ${partition.directPeers.join(', ')}`);
-      }
-      logger.info('');
-      logger.info('Run `danteforge cofl --auto` to run the full 10-phase competitive loop.');
-    }
-  } catch { /* best-effort — cofl-engine not available or matrix incomplete */ }
+  await displayCoflOperatorPanel(matrix, next);
 
   return {
     action: 'sprint',
