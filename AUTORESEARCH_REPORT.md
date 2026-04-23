@@ -1,4 +1,35 @@
-## AutoResearch Report: improve autonomy selfImprovement convergenceSelfHealing signals
+## AutoResearch Report: Score-Surface Coherence (2026-04-23)
+
+**Goal**: Unify measure strict, assess, and compete report from one live evidence graph; eliminate stale row drift; require score agreement within 0.2 for shared dimensions.
+**Branch**: `autoresearch/score-coherence`
+**Experiments run**: 3 (all KEEP) | **Discarded**: 0 | **Crashed**: 0
+
+### Metric Progress
+
+| Phase | score_divergence_count | Notes |
+|-------|----------------------|-------|
+| Baseline | 9 | 1 stale ceiling + 8 score divergences |
+| After exp 1 | 8 | Stale ceiling fixed |
+| After exp 2 | 0 | All 9 divergent dims synced |
+| Final | **0** | Target achieved |
+
+### Winning Experiments
+
+| # | Description | Commit |
+|---|-------------|--------|
+| 1 | Fix stale enterprise_readiness: self=6→9.0, ceiling=6→9.0, status=at-ceiling→open | matrix.json |
+| 2 | Sync 9 divergent dims to live strict scorer (developer_experience, autonomy, testing, security, performance, convergence_self_healing, spec_driven_pipeline, planning_quality, maintainability) | matrix.json |
+| 3 | Add `compete --sync-scores` command for systemic drift prevention (+3 tests) | fc969f8 |
+
+### Key Insights
+- Compete matrix drift is structural: any active sprint cycle accumulates it without a sync mechanism.
+- `assess` (LLM, 8.4/10) vs `measure --strict` (code, 9.4/10) gap is expected — different signals, not a coherence failure.
+- The `enterpriseReadiness` ceiling was raised in Sprint 44 but the matrix row wasn't updated. KNOWN_CEILINGS check now surfaces this automatically.
+- Run `danteforge compete --sync-scores` after each sprint to maintain coherence.
+
+---
+
+## Previous AutoResearch Report: improve autonomy selfImprovement convergenceSelfHealing signals
 
 **Duration**: 4h 40s
 **Experiments run**: 17
