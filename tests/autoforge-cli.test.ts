@@ -118,6 +118,7 @@ describe('autoforge CLI — --auto loop mode', () => {
     await autoforge(undefined, {
       scoreOnly: true,
       _runScoreOnlyMode: async () => { called = true; },
+      _policyGate: async () => ({ command: 'autoforge', allowed: true, requiresApproval: false, reason: 'test', bypassActive: false, timestamp: '' }),
     });
     assert.ok(called, 'score-only mode should invoke the injected score runner');
   });
@@ -129,6 +130,7 @@ describe('autoforge CLI — --auto loop mode', () => {
 
     await autoforge('ship it', {
       prompt: true,
+      _policyGate: async () => ({ command: 'autoforge', allowed: true, requiresApproval: false, reason: 'test', bypassActive: false, timestamp: '' }),
       _analyzeProjectState: async () => {
         analyzed = true;
         return {
@@ -168,6 +170,7 @@ describe('autoforge CLI — --auto loop mode', () => {
 
     await autoforge(undefined, {
       dryRun: true,
+      _policyGate: async () => ({ command: 'autoforge', allowed: true, requiresApproval: false, reason: 'test', bypassActive: false, timestamp: '' }),
       _analyzeProjectState: async () => ({
         state: makeLoopCtx().state,
         hasDesignOp: false,
@@ -244,6 +247,7 @@ describe('autoforge CLI — --auto loop mode', () => {
     let verdictLoaded = false;
 
     await autoforge(undefined, {
+      _policyGate: async () => ({ command: 'autoforge', allowed: true, requiresApproval: false, reason: 'test', bypassActive: false, timestamp: '' }),
       _analyzeProjectState: async () => ({
         state: makeLoopCtx().state,
         hasDesignOp: false,
@@ -281,6 +285,7 @@ describe('autoforge CLI — --auto loop mode', () => {
 
   it('reports paused execution without marking the process as failed', async () => {
     await autoforge(undefined, {
+      _policyGate: async () => ({ command: 'autoforge', allowed: true, requiresApproval: false, reason: 'test', bypassActive: false, timestamp: '' }),
       _analyzeProjectState: async () => ({
         state: makeLoopCtx().state,
         hasDesignOp: false,
@@ -311,6 +316,7 @@ describe('autoforge CLI — --auto loop mode', () => {
     let verdictAttempted = false;
 
     await autoforge(undefined, {
+      _policyGate: async () => ({ command: 'autoforge', allowed: true, requiresApproval: false, reason: 'test', bypassActive: false, timestamp: '' }),
       _analyzeProjectState: async () => ({
         state: makeLoopCtx().state,
         hasDesignOp: false,

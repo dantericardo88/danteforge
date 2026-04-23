@@ -1,7 +1,7 @@
 // autoforge --auto flag wiring — tests that runAutoforgeLoop is called when --auto is set,
 // normal flow runs without --auto, and ctx fields are correctly populated.
 
-import { after, describe, it } from 'node:test';
+import { after, beforeEach, describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs/promises';
 import os from 'node:os';
@@ -29,6 +29,8 @@ function makeState(overrides: Partial<DanteState> = {}): DanteState {
 }
 
 const tempDirs: string[] = [];
+
+beforeEach(() => { process.exitCode = undefined; });
 
 async function makeWorkspace(): Promise<string> {
   const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'df-autoforge-auto-'));
