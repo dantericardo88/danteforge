@@ -442,42 +442,59 @@ function parseRescore(rescore: string): { dimensionId: string; score: number; co
   return { dimensionId: idPart.trim(), score, commit: commit?.trim() };
 }
 
+async function runCertifyGate(
+  rescore: string,
+  options: CompeteOptions,
+  cwd: string,
+  matrixPath: string,
+): Promise<{ receipt: VerifyReceipt | null; blocked: boolean; result?: CompeteResult }> {
+  const receiptFn = options._readVerifyReceipt ?? ((c) => readLatestVerifyReceipt(c));
+  if (options.skipVerify) {
+    logger.warn('--skip-verify: CERTIFY gate bypassed. Score recorded without verify receipt.');
+    return { receipt: null, blocked: false };
+  }
+  const receipt = await receiptFn(cwd);
+  if (!receipt) {
+    logger.error('CERTIFY BLOCKED: No verify receipt found.');
+    logger.info('Run `npm run verify` (or `danteforge verify`) first to certify this sprint.');
+    logger.info(`Then re-run: danteforge compete --rescore "${rescore}"`);
+    logger.info(`Override: danteforge compete --rescore "${rescore}" --skip-verify`);
+    return { receipt: null, blocked: true, result: { action: 'rescore', matrixPath } };
+  }
+  if (receipt.status === 'fail') {
+    logger.error(`CERTIFY BLOCKED: Last verify run had failures.`);
+    logger.info(`Verify status: ${receipt.status} | ${receipt.counts.failures} failure(s)`);
+    logger.info('Fix all test/typecheck failures, run `danteforge verify`, then retry.');
+    logger.info(`Override: danteforge compete --rescore "${rescore}" --skip-verify`);
+    return { receipt: null, blocked: true, result: { action: 'rescore', matrixPath } };
+  }
+  if (receipt.status === 'warn') {
+    logger.warn(`Verify has warnings (${receipt.counts.warnings}). Score recorded, but fix warnings before next sprint.`);
+  }
+  return { receipt, blocked: false };
+}
+
+async function writeRescoreEvidence(
+  evidence: CompeteEvidence,
+  cwd: string,
+  writeFn: (record: CompeteEvidence, p: string) => Promise<void>,
+): Promise<void> {
+  const evidencePath = path.join(cwd, '.danteforge', 'evidence', 'compete', `${Date.now()}-${evidence.dimensionId}.json`);
+  try { await writeFn(evidence, evidencePath); } catch { /* best-effort */ }
+}
+
 async function actionRescore(options: CompeteOptions, cwd: string, rescore: string): Promise<CompeteResult> {
   const matrixPath = getMatrixPath(cwd);
   const loadFn = options._loadMatrix ?? ((c) => loadMatrix(c));
   const saveFn = options._saveMatrix ?? ((m, c) => saveMatrix(m, c));
-  const receiptFn = options._readVerifyReceipt ?? ((c) => readLatestVerifyReceipt(c));
   const writeFn = options._writeEvidence ?? (async (record: CompeteEvidence, evidencePath: string) => {
     await fs.mkdir(path.dirname(evidencePath), { recursive: true });
     await fs.writeFile(evidencePath, JSON.stringify(record, null, 2), 'utf8');
   });
 
   const { dimensionId, score, commit } = parseRescore(rescore);
-
-  // ── CERTIFY gate ─────────────────────────────────────────────────────────────
-  let receipt: VerifyReceipt | null = null;
-  if (!options.skipVerify) {
-    receipt = await receiptFn(cwd);
-    if (!receipt) {
-      logger.error('CERTIFY BLOCKED: No verify receipt found.');
-      logger.info('Run `npm run verify` (or `danteforge verify`) first to certify this sprint.');
-      logger.info(`Then re-run: danteforge compete --rescore "${rescore}"`);
-      logger.info(`Override: danteforge compete --rescore "${rescore}" --skip-verify`);
-      return { action: 'rescore', matrixPath };
-    }
-    if (receipt.status === 'fail') {
-      logger.error(`CERTIFY BLOCKED: Last verify run had failures.`);
-      logger.info(`Verify status: ${receipt.status} | ${receipt.counts.failures} failure(s)`);
-      logger.info('Fix all test/typecheck failures, run `danteforge verify`, then retry.');
-      logger.info(`Override: danteforge compete --rescore "${rescore}" --skip-verify`);
-      return { action: 'rescore', matrixPath };
-    }
-    if (receipt.status === 'warn') {
-      logger.warn(`Verify has warnings (${receipt.counts.warnings}). Score recorded, but fix warnings before next sprint.`);
-    }
-  } else {
-    logger.warn('--skip-verify: CERTIFY gate bypassed. Score recorded without verify receipt.');
-  }
+  const { receipt, blocked, result: gateResult } = await runCertifyGate(rescore, options, cwd, matrixPath);
+  if (blocked) return gateResult!;
 
   const matrix = await loadFn(cwd);
   if (!matrix) {
@@ -487,8 +504,7 @@ async function actionRescore(options: CompeteOptions, cwd: string, rescore: stri
 
   const dim = matrix.dimensions.find(d => d.id === dimensionId);
   if (!dim) {
-    const ids = matrix.dimensions.map(d => d.id).join(', ');
-    logger.error(`Dimension "${dimensionId}" not found. Available: ${ids}`);
+    logger.error(`Dimension "${dimensionId}" not found. Available: ${matrix.dimensions.map(d => d.id).join(', ')}`);
     return { action: 'rescore', matrixPath };
   }
 
@@ -497,24 +513,11 @@ async function actionRescore(options: CompeteOptions, cwd: string, rescore: stri
   matrix.overallSelfScore = computeOverallScore(matrix);
   await saveFn(matrix, cwd);
 
-  // ── Write PDSE evidence record ────────────────────────────────────────────────
-  const evidence: CompeteEvidence = {
-    dimensionId,
-    label: dim.label,
-    scoreBefore: before,
-    scoreAfter: score,
-    delta: score - before,
-    verifyStatus: options.skipVerify ? 'skipped' : 'pass',
-    verifyTimestamp: receipt?.timestamp,
-    commit,
-    timestamp: new Date().toISOString(),
-  };
-  const evidencePath = path.join(cwd, '.danteforge', 'evidence', 'compete', `${Date.now()}-${dimensionId}.json`);
-  try {
-    await writeFn(evidence, evidencePath);
-  } catch {
-    // Best-effort — evidence write never blocks the score update
-  }
+  await writeRescoreEvidence({
+    dimensionId, label: dim.label, scoreBefore: before, scoreAfter: score,
+    delta: score - before, verifyStatus: options.skipVerify ? 'skipped' : 'pass',
+    verifyTimestamp: receipt?.timestamp, commit, timestamp: new Date().toISOString(),
+  }, cwd, writeFn);
 
   const delta = score - before;
   const deltaStr = delta >= 0 ? `+${delta.toFixed(1)}` : delta.toFixed(1);
@@ -522,19 +525,10 @@ async function actionRescore(options: CompeteOptions, cwd: string, rescore: stri
   logger.info(`Overall: ${formatScore(matrix.overallSelfScore)}/10`);
   if (commit) logger.info(`Commit: ${commit}`);
   if (dim.status === 'closed') logger.success(`✓ Gap closed on "${dim.label}"!`);
-
   const next = getNextSprintDimension(matrix);
-  if (next) {
-    logger.info(`\nNext sprint: "${next.label}" (gap: ${formatScore(next.gap_to_leader)})`);
-  }
+  if (next) logger.info(`\nNext sprint: "${next.label}" (gap: ${formatScore(next.gap_to_leader)})`);
 
-  return {
-    action: 'rescore',
-    matrixPath,
-    overallScore: matrix.overallSelfScore,
-    nextDimension: next ?? undefined,
-    dimensionsUpdated: 1,
-  };
+  return { action: 'rescore', matrixPath, overallScore: matrix.overallSelfScore, nextDimension: next ?? undefined, dimensionsUpdated: 1 };
 }
 
 async function actionReport(options: CompeteOptions, cwd: string): Promise<CompeteResult> {
