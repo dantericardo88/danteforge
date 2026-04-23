@@ -51,6 +51,84 @@ export interface ScoringContext {
   evidenceDir?: string;
 }
 
+// ── Dimension scoring helpers ─────────────────────────────────────────────────
+
+function scoreClarity(content: string, contentLower: string, artifactName: ScoredArtifact, issues: ScoreIssue[]): { clarity: number; hasCEOReviewBonus: boolean } {
+  let clarity = DIMENSION_WEIGHTS.clarity;
+  const stubHits: string[] = [];
+  // CONSTITUTION is exempt: it documents anti-stub policy by name and legitimately uses "stub"
+  for (const pattern of (artifactName === 'CONSTITUTION' ? [] : ANTI_STUB_PATTERNS)) {
+    if (pattern instanceof RegExp) { if (pattern.test(content)) stubHits.push(pattern.source); }
+    else { if (contentLower.includes(pattern.toLowerCase())) stubHits.push(pattern); }
+  }
+  if (stubHits.length > 0) {
+    clarity = 0;
+    issues.push({ dimension: 'clarity', severity: 'error', message: `Anti-stub violation: found forbidden patterns: ${stubHits.join(', ')}`, evidence: stubHits.join(', ') });
+  } else {
+    let ambiguityCount = 0;
+    const ambiguityHits: string[] = [];
+    for (const word of AMBIGUITY_WORDS) {
+      const matches = content.match(new RegExp(`\\b${escapeRegex(word)}\\b`, 'gi'));
+      if (matches) { ambiguityCount += matches.length; ambiguityHits.push(`"${word}" (${matches.length}x)`); }
+    }
+    if (ambiguityCount > 0) {
+      clarity = Math.max(0, clarity - ambiguityCount);
+      issues.push({ dimension: 'clarity', severity: 'warning', message: `${ambiguityCount} ambiguity signal(s) found: ${ambiguityHits.join(', ')}`, evidence: ambiguityHits.join(', ') });
+    }
+  }
+  if (artifactName === 'SPEC' && !SPEC_REQUIRED_PATTERNS.some(p => p.test(content))) {
+    clarity = Math.min(clarity, 12);
+    issues.push({ dimension: 'clarity', severity: 'error', message: 'SPEC.md is missing acceptance criteria — unmeasurable specs are ambiguous' });
+  }
+  const hasCEOReviewBonus = content.includes('## CEO Review Notes');
+  if (hasCEOReviewBonus) clarity = Math.min(clarity + 5, DIMENSION_WEIGHTS.clarity);
+  return { clarity, hasCEOReviewBonus };
+}
+
+function scoreTestability(content: string, artifactName: ScoredArtifact, isWebProject: boolean, evidenceDir: string | undefined, issues: ScoreIssue[]): number {
+  let testability = DIMENSION_WEIGHTS.testability;
+  if (artifactName === 'SPEC' && !(/acceptance criteria/i.test(content))) {
+    testability = Math.min(testability, 8);
+    issues.push({ dimension: 'testability', severity: 'error', message: 'Missing acceptance criteria section — testability cannot be verified' });
+  }
+  if (artifactName === 'TASKS') {
+    const taskLines = content.split('\n').filter(l => /^[-*]\s/.test(l.trim()));
+    const tasksWithVerify = taskLines.filter(l => /verify|done|acceptance|test|assert/i.test(l));
+    if (taskLines.length > 0) {
+      const ratio = tasksWithVerify.length / taskLines.length;
+      testability = Math.round(ratio * DIMENSION_WEIGHTS.testability);
+      if (ratio < 0.5) issues.push({ dimension: 'testability', severity: 'warning', message: `Only ${tasksWithVerify.length}/${taskLines.length} tasks have explicit done-conditions` });
+    }
+  }
+  if (isWebProject && evidenceDir) testability = Math.min(testability + 2, DIMENSION_WEIGHTS.testability);
+  return testability;
+}
+
+function scoreConstitutionAlignment(contentLower: string, upstreamArtifacts: Partial<Record<ScoredArtifact, string>>, artifactName: ScoredArtifact, issues: ScoreIssue[]): number {
+  const foundKeywords = CONSTITUTION_KEYWORDS.filter(k => contentLower.includes(k.toLowerCase()));
+  let constitutionAlignment = Math.min(foundKeywords.length * 3, DIMENSION_WEIGHTS.constitutionAlignment);
+  const constitutionContent = upstreamArtifacts.CONSTITUTION;
+  if (constitutionContent && artifactName !== 'CONSTITUTION') {
+    const constitutionLower = constitutionContent.toLowerCase();
+    const sharedTerms = CONSTITUTION_KEYWORDS.filter(k => contentLower.includes(k.toLowerCase()) && constitutionLower.includes(k.toLowerCase()));
+    if (sharedTerms.length >= 2) constitutionAlignment = Math.min(constitutionAlignment + 4, DIMENSION_WEIGHTS.constitutionAlignment);
+  }
+  if (constitutionAlignment < 10) issues.push({ dimension: 'constitutionAlignment', severity: 'warning', message: `Low constitution alignment — only ${foundKeywords.length} keyword(s) found` });
+  return constitutionAlignment;
+}
+
+function scoreIntegrationFitness(artifactName: ScoredArtifact, upstreamArtifacts: Partial<Record<ScoredArtifact, string>>, issues: ScoreIssue[]): number {
+  const expectedUpstreams = UPSTREAM_DEPENDENCY_MAP[artifactName] ?? [];
+  if (expectedUpstreams.length === 0) return DIMENSION_WEIGHTS.integrationFitness;
+  const foundUpstreams = expectedUpstreams.filter(up => upstreamArtifacts[up] !== undefined).length;
+  const upstreamScore = Math.round((foundUpstreams / expectedUpstreams.length) * DIMENSION_WEIGHTS.integrationFitness);
+  if (foundUpstreams < expectedUpstreams.length) {
+    const missing = expectedUpstreams.filter(u => upstreamArtifacts[u] === undefined);
+    issues.push({ dimension: 'integrationFitness', severity: 'warning', message: `Missing upstream artifact(s): ${missing.join(', ')}` });
+  }
+  return upstreamScore;
+}
+
 // ── Primary scoring function — pure, deterministic ──────────────────────────
 
 export function scoreArtifact(ctx: ScoringContext): ScoreResult {
@@ -60,28 +138,13 @@ export function scoreArtifact(ctx: ScoringContext): ScoreResult {
 
   // ── Fast path: empty or trivially short artifacts score near zero ──
   if (content.trim().length < 20) {
-    issues.push({
-      dimension: 'completeness',
-      severity: 'error',
-      message: 'Artifact is empty or trivially short',
-    });
+    issues.push({ dimension: 'completeness', severity: 'error', message: 'Artifact is empty or trivially short' });
     const emptyScore = content.trim().length > 0 ? 5 : 0;
     return {
-      artifact: ctx.artifactName,
-      score: emptyScore,
-      dimensions: {
-        completeness: 0,
-        clarity: 0,
-        testability: 0,
-        constitutionAlignment: 0,
-        integrationFitness: 0,
-        freshness: emptyScore,
-      },
-      issues,
-      remediationSuggestions: generateRemediationSuggestions(issues, ctx.artifactName),
-      timestamp: new Date().toISOString(),
-      autoforgeDecision: 'blocked',
-      hasCEOReviewBonus: false,
+      artifact: ctx.artifactName, score: emptyScore,
+      dimensions: { completeness: 0, clarity: 0, testability: 0, constitutionAlignment: 0, integrationFitness: 0, freshness: emptyScore },
+      issues, remediationSuggestions: generateRemediationSuggestions(issues, ctx.artifactName),
+      timestamp: new Date().toISOString(), autoforgeDecision: 'blocked', hasCEOReviewBonus: false,
     };
   }
 
@@ -89,232 +152,35 @@ export function scoreArtifact(ctx: ScoringContext): ScoreResult {
   const checklist = SECTION_CHECKLISTS[ctx.artifactName] ?? [];
   let sectionsFound = 0;
   for (const required of checklist) {
-    if (contentLower.includes(required.toLowerCase())) {
-      sectionsFound++;
-    } else {
-      issues.push({
-        dimension: 'completeness',
-        severity: 'error',
-        message: `Missing required section or keyword: "${required}"`,
-      });
-    }
+    if (contentLower.includes(required.toLowerCase())) { sectionsFound++; }
+    else { issues.push({ dimension: 'completeness', severity: 'error', message: `Missing required section or keyword: "${required}"` }); }
   }
   const completeness = checklist.length > 0
     ? Math.round((sectionsFound / checklist.length) * DIMENSION_WEIGHTS.completeness)
     : (content.trim().length > 0 ? DIMENSION_WEIGHTS.completeness : 0);
 
-  // ── Clarity (0–20) ──
-  let clarity = DIMENSION_WEIGHTS.clarity;
-
-  // Anti-stub scan — floors clarity to 0
-  // Supports both plain string patterns (case-insensitive includes) and RegExp patterns
-  // CONSTITUTION is exempt: it documents anti-stub policy by name and legitimately uses "stub"
-  const stubHits: string[] = [];
-  const skipAntiStub = ctx.artifactName === 'CONSTITUTION';
-  for (const pattern of (skipAntiStub ? [] : ANTI_STUB_PATTERNS)) {
-    if (pattern instanceof RegExp) {
-      if (pattern.test(content)) {
-        stubHits.push(pattern.source);
-      }
-    } else {
-      if (contentLower.includes(pattern.toLowerCase())) {
-        stubHits.push(pattern);
-      }
-    }
-  }
-  if (stubHits.length > 0) {
-    clarity = 0;
-    issues.push({
-      dimension: 'clarity',
-      severity: 'error',
-      message: `Anti-stub violation: found forbidden patterns: ${stubHits.join(', ')}`,
-      evidence: stubHits.join(', '),
-    });
-  } else {
-    // Ambiguity word deductions
-    let ambiguityCount = 0;
-    const ambiguityHits: string[] = [];
-    for (const word of AMBIGUITY_WORDS) {
-      const regex = new RegExp(`\\b${escapeRegex(word)}\\b`, 'gi');
-      const matches = content.match(regex);
-      if (matches) {
-        ambiguityCount += matches.length;
-        ambiguityHits.push(`"${word}" (${matches.length}x)`);
-      }
-    }
-    if (ambiguityCount > 0) {
-      clarity = Math.max(0, clarity - ambiguityCount);
-      issues.push({
-        dimension: 'clarity',
-        severity: 'warning',
-        message: `${ambiguityCount} ambiguity signal(s) found: ${ambiguityHits.join(', ')}`,
-        evidence: ambiguityHits.join(', '),
-      });
-    }
-  }
-
-  // Missing acceptance criteria in SPEC floors clarity
-  if (ctx.artifactName === 'SPEC') {
-    const hasAcceptanceCriteria = SPEC_REQUIRED_PATTERNS.some(p => p.test(content));
-    if (!hasAcceptanceCriteria) {
-      clarity = Math.min(clarity, 12);
-      issues.push({
-        dimension: 'clarity',
-        severity: 'error',
-        message: 'SPEC.md is missing acceptance criteria — unmeasurable specs are ambiguous',
-      });
-    }
-  }
-
-  // CEO Review bonus: +5 for ## CEO Review Notes presence (capped at dimension max)
-  const hasCEOReviewBonus = content.includes('## CEO Review Notes');
-  if (hasCEOReviewBonus) {
-    clarity = Math.min(clarity + 5, DIMENSION_WEIGHTS.clarity);
-  }
-
-  // ── Testability (0–20) ──
-  let testability = DIMENSION_WEIGHTS.testability;
-
-  if (ctx.artifactName === 'SPEC') {
-    // Check for acceptance criteria section
-    if (!(/acceptance criteria/i.test(content))) {
-      testability = Math.min(testability, 8);
-      issues.push({
-        dimension: 'testability',
-        severity: 'error',
-        message: 'Missing acceptance criteria section — testability cannot be verified',
-      });
-    }
-  }
-
-  if (ctx.artifactName === 'TASKS') {
-    // Check for done-conditions / verify fields in tasks
-    const taskLines = content.split('\n').filter(l => /^[-*]\s/.test(l.trim()));
-    const tasksWithVerify = taskLines.filter(l =>
-      /verify|done|acceptance|test|assert/i.test(l),
-    );
-    if (taskLines.length > 0) {
-      const ratio = tasksWithVerify.length / taskLines.length;
-      testability = Math.round(ratio * DIMENSION_WEIGHTS.testability);
-      if (ratio < 0.5) {
-        issues.push({
-          dimension: 'testability',
-          severity: 'warning',
-          message: `Only ${tasksWithVerify.length}/${taskLines.length} tasks have explicit done-conditions`,
-        });
-      }
-    }
-  }
-
-  // Web project evidence bonus
-  if (ctx.isWebProject && ctx.evidenceDir) {
-    // Evidence screenshots improve testability score
-    testability = Math.min(testability + 2, DIMENSION_WEIGHTS.testability);
-  }
-
-  // ── Constitution Alignment (0–20) ──
-  let constitutionAlignment = 0;
-  const foundKeywords: string[] = [];
-  for (const keyword of CONSTITUTION_KEYWORDS) {
-    if (contentLower.includes(keyword.toLowerCase())) {
-      foundKeywords.push(keyword);
-    }
-  }
-  constitutionAlignment = Math.min(
-    foundKeywords.length * 3,
-    DIMENSION_WEIGHTS.constitutionAlignment,
-  );
-
-  // Cross-reference with upstream CONSTITUTION.md
-  const constitutionContent = ctx.upstreamArtifacts.CONSTITUTION;
-  if (constitutionContent && ctx.artifactName !== 'CONSTITUTION') {
-    // Bonus for referencing constitution principles
-    const constitutionLower = constitutionContent.toLowerCase();
-    const sharedTerms = CONSTITUTION_KEYWORDS.filter(
-      k => contentLower.includes(k.toLowerCase()) && constitutionLower.includes(k.toLowerCase()),
-    );
-    if (sharedTerms.length >= 2) {
-      constitutionAlignment = Math.min(
-        constitutionAlignment + 4,
-        DIMENSION_WEIGHTS.constitutionAlignment,
-      );
-    }
-  }
-
-  if (constitutionAlignment < 10) {
-    issues.push({
-      dimension: 'constitutionAlignment',
-      severity: 'warning',
-      message: `Low constitution alignment — only ${foundKeywords.length} keyword(s) found`,
-    });
-  }
-
-  // ── Integration Fitness (0–10) ──
-  const expectedUpstreams = UPSTREAM_DEPENDENCY_MAP[ctx.artifactName] ?? [];
-  let upstreamScore = 0;
-  if (expectedUpstreams.length === 0) {
-    upstreamScore = DIMENSION_WEIGHTS.integrationFitness;
-  } else {
-    let foundUpstreams = 0;
-    for (const up of expectedUpstreams) {
-      if (ctx.upstreamArtifacts[up] !== undefined) {
-        foundUpstreams++;
-      }
-    }
-    upstreamScore = Math.round(
-      (foundUpstreams / expectedUpstreams.length) * DIMENSION_WEIGHTS.integrationFitness,
-    );
-    if (foundUpstreams < expectedUpstreams.length) {
-      const missing = expectedUpstreams.filter(u => ctx.upstreamArtifacts[u] === undefined);
-      issues.push({
-        dimension: 'integrationFitness',
-        severity: 'warning',
-        message: `Missing upstream artifact(s): ${missing.join(', ')}`,
-      });
-    }
-  }
-  const integrationFitness = upstreamScore;
+  const { clarity, hasCEOReviewBonus } = scoreClarity(content, contentLower, ctx.artifactName, issues);
+  const testability = scoreTestability(content, ctx.artifactName, ctx.isWebProject, ctx.evidenceDir, issues);
+  const constitutionAlignment = scoreConstitutionAlignment(contentLower, ctx.upstreamArtifacts, ctx.artifactName, issues);
+  const integrationFitness = scoreIntegrationFitness(ctx.artifactName, ctx.upstreamArtifacts, issues);
 
   // ── Freshness (0–10) ──
   let freshness = DIMENSION_WEIGHTS.freshness;
   for (const marker of FRESHNESS_DEDUCTION_MARKERS) {
-    const regex = new RegExp(`\\b${escapeRegex(marker)}\\b`, 'gi');
-    const matches = content.match(regex);
+    const matches = content.match(new RegExp(`\\b${escapeRegex(marker)}\\b`, 'gi'));
     if (matches) {
       freshness = Math.max(0, freshness - matches.length * 2);
-      issues.push({
-        dimension: 'freshness',
-        severity: 'warning',
-        message: `Freshness marker "${marker}" found ${matches.length} time(s)`,
-        evidence: marker,
-      });
+      issues.push({ dimension: 'freshness', severity: 'warning', message: `Freshness marker "${marker}" found ${matches.length} time(s)`, evidence: marker });
     }
   }
 
-  // ── Aggregate ──
-  const dimensions: ScoreDimensions = {
-    completeness,
-    clarity,
-    testability,
-    constitutionAlignment,
-    integrationFitness,
-    freshness,
-  };
-
-  const score = completeness + clarity + testability +
-    constitutionAlignment + integrationFitness + freshness;
-
-  const autoforgeDecision = computeAutoforgeDecision(score);
-  const remediationSuggestions = generateRemediationSuggestions(issues, ctx.artifactName);
-
+  const dimensions: ScoreDimensions = { completeness, clarity, testability, constitutionAlignment, integrationFitness, freshness };
+  const score = completeness + clarity + testability + constitutionAlignment + integrationFitness + freshness;
   return {
-    artifact: ctx.artifactName,
-    score,
-    dimensions,
-    issues,
-    remediationSuggestions,
+    artifact: ctx.artifactName, score, dimensions, issues,
+    remediationSuggestions: generateRemediationSuggestions(issues, ctx.artifactName),
     timestamp: new Date().toISOString(),
-    autoforgeDecision,
+    autoforgeDecision: computeAutoforgeDecision(score),
     hasCEOReviewBonus,
   };
 }
