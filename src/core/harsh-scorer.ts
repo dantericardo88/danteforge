@@ -146,6 +146,8 @@ export interface HarshScorerOptions {
   _readCoverage?: (cwd: string) => Promise<number | null>;
   /** Injection seam: override integration wiring check for testing */
   _checkIntegrationWiring?: (opts: IntegrationWiringOptions) => Promise<IntegrationWiringResult>;
+  /** Injection seam: override enterprise evidence detection for testing */
+  _readEnterpriseProof?: (cwd: string) => Promise<EnterpriseEvidenceFlags>;
 }
 
 // ── Main scoring function ─────────────────────────────────────────────────────
@@ -154,7 +156,7 @@ async function gatherEvidenceFlags(
   cwd: string,
   options: HarshScorerOptions,
   existsFn: (p: string) => Promise<boolean>,
-): Promise<{ evidenceFlags: PipelineEvidenceFlags; convergenceFlags: ConvergenceEvidenceFlags; errorHandlingFlags: ErrorHandlingEvidenceFlags }> {
+): Promise<{ evidenceFlags: PipelineEvidenceFlags; convergenceFlags: ConvergenceEvidenceFlags; errorHandlingFlags: ErrorHandlingEvidenceFlags; enterpriseFlags: EnterpriseEvidenceFlags }> {
   const pipelineEvidencePaths = [
     path.join(cwd, 'examples', 'todo-app', 'evidence', 'pipeline-run.json'),
     path.join(cwd, '.danteforge', 'evidence', 'pipeline-proof.json'),
@@ -181,7 +183,34 @@ async function gatherEvidenceFlags(
     ? await options._readErrorHandlingProof(cwd)
     : { hasErrorHierarchy, hasCircuitBreaker, hasResilienceModule, hasE2EErrorHandlingTest };
 
-  return { evidenceFlags, convergenceFlags, errorHandlingFlags };
+  let enterpriseFlags: EnterpriseEvidenceFlags;
+  if (options._readEnterpriseProof) {
+    enterpriseFlags = await options._readEnterpriseProof(cwd);
+  } else {
+    const securityPath = path.join(cwd, 'SECURITY.md');
+    const hasSecurityFile = await existsFn(securityPath);
+    let hasSecurityPolicy = false;
+    if (hasSecurityFile) {
+      try {
+        const secContent = await fs.readFile(securityPath, 'utf8');
+        hasSecurityPolicy = secContent.length > 200;
+      } catch { /* best-effort */ }
+    }
+    const changelogPath = path.join(cwd, 'CHANGELOG.md');
+    let hasVersionedChangelog = false;
+    if (await existsFn(changelogPath)) {
+      try {
+        const clContent = await fs.readFile(changelogPath, 'utf8');
+        const versionHeadings = clContent.match(/^## \[?\d+\.\d+/gm) ?? [];
+        hasVersionedChangelog = versionHeadings.length >= 2;
+      } catch { /* best-effort */ }
+    }
+    const hasRunbook = await existsFn(path.join(cwd, 'docs', 'RUNBOOK.md'));
+    const hasContributing = await existsFn(path.join(cwd, 'CONTRIBUTING.md'));
+    enterpriseFlags = { hasSecurityPolicy, hasVersionedChangelog, hasRunbook, hasContributing };
+  }
+
+  return { evidenceFlags, convergenceFlags, errorHandlingFlags, enterpriseFlags };
 }
 
 async function fetchCommunityData(
@@ -322,7 +351,7 @@ export async function computeHarshScore(options: HarshScorerOptions = {}): Promi
   const maturityAssessment = await assessMaturityFn({ cwd, state, pdseScores, targetLevel });
   const completionTracker = computeTrackerFn(state, pdseScores as Record<ScoredArtifact, ScoreResult>);
 
-  const { evidenceFlags, convergenceFlags, errorHandlingFlags } = await gatherEvidenceFlags(cwd, options, existsFn);
+  const { evidenceFlags, convergenceFlags, errorHandlingFlags, enterpriseFlags } = await gatherEvidenceFlags(cwd, options, existsFn);
 
   const wiringResult: IntegrationWiringResult | undefined = options._checkIntegrationWiring
     ? await options._checkIntegrationWiring({ cwd }).catch((): IntegrationWiringResult => ({
@@ -334,7 +363,7 @@ export async function computeHarshScore(options: HarshScorerOptions = {}): Promi
 
   const communityMetrics = await fetchCommunityData(cwd, options, readFileFn);
   const coveragePct = await (options._readCoverage ? options._readCoverage(cwd) : readCoveragePercent(cwd, readFileFn)).catch(() => null);
-  const newDimensions = computeNewDimensions(pdseScores, state, maturityAssessment, cwd, evidenceFlags, convergenceFlags, communityMetrics);
+  const newDimensions = computeNewDimensions(pdseScores, state, maturityAssessment, cwd, evidenceFlags, convergenceFlags, communityMetrics, enterpriseFlags);
 
   const dims = maturityAssessment.dimensions;
   const testingScore = await computeAugmentedTestingScore(dims, coveragePct, cwd, existsFn);
@@ -392,6 +421,17 @@ export interface ErrorHandlingEvidenceFlags {
   hasE2EErrorHandlingTest: boolean;
 }
 
+export interface EnterpriseEvidenceFlags {
+  /** SECURITY.md exists with substantive content (>200 chars) */
+  hasSecurityPolicy: boolean;
+  /** CHANGELOG.md has ≥2 versioned release headings */
+  hasVersionedChangelog: boolean;
+  /** docs/RUNBOOK.md exists (operational readiness documentation) */
+  hasRunbook: boolean;
+  /** CONTRIBUTING.md exists (governance/contribution process) */
+  hasContributing: boolean;
+}
+
 function computeNewDimensions(
   pdseScores: Partial<Record<ScoredArtifact, ScoreResult>>,
   state: DanteState,
@@ -400,6 +440,7 @@ function computeNewDimensions(
   evidenceFlags?: PipelineEvidenceFlags,
   convergenceFlags?: ConvergenceEvidenceFlags,
   communityMetrics?: CommunityMetrics,
+  enterpriseFlags?: EnterpriseEvidenceFlags,
 ): Record<string, number> {
   return {
     planningQuality: computePlanningQualityScore(pdseScores),
@@ -410,7 +451,7 @@ function computeNewDimensions(
     convergenceSelfHealing: computeConvergenceSelfHealingScore(state, convergenceFlags),
     tokenEconomy: computeTokenEconomyScore(state),
     ecosystemMcp: computeEcosystemMcpScore(state, cwd),
-    enterpriseReadiness: computeEnterpriseReadinessScore(state, assessment),
+    enterpriseReadiness: computeEnterpriseReadinessScore(state, assessment, enterpriseFlags),
     communityAdoption: computeCommunityAdoptionScore(communityMetrics ?? {}),
   };
 }
@@ -554,6 +595,7 @@ export function computeEcosystemMcpScore(state: DanteState, _cwd: string): numbe
 export function computeEnterpriseReadinessScore(
   state: DanteState,
   assessment: MaturityAssessment,
+  enterpriseFlags?: EnterpriseEvidenceFlags,
 ): number {
   const s = state as unknown as Record<string, unknown>;
   let score = 15; // base: audit log exists
@@ -564,6 +606,11 @@ export function computeEnterpriseReadinessScore(
   if (assessment.dimensions.security >= 80) score += 20;
   else if (assessment.dimensions.security >= 70) score += 10;
   if (s['lastVerifyReceiptPath']) score += 15;
+  // Filesystem-verifiable enterprise evidence (+23 max)
+  if (enterpriseFlags?.hasSecurityPolicy) score += 10;  // responsible disclosure policy
+  if (enterpriseFlags?.hasVersionedChangelog) score += 5; // versioned release history
+  if (enterpriseFlags?.hasRunbook) score += 5;           // operational runbook
+  if (enterpriseFlags?.hasContributing) score += 3;      // contribution governance
   return Math.max(0, Math.min(100, score));
 }
 
