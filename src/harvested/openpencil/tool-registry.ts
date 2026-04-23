@@ -191,16 +191,10 @@ function wiredExecutor(toolName: string) {
   };
 }
 
-/**
- * The full 86-tool registry organized by domain.
- * Categories: read (11), create (7), modify (20), structure (17),
- * variables (11), vector (14), analysis (6) = 86 total
- */
-function buildToolDefinitions(): OPTool[] {
-  const tools: OPTool[] = [];
+type ToolDef = [string, string, Record<string, OPToolParam>];
 
-  // ── Read Operations (11) ──
-  const readTools: [string, string, Record<string, OPToolParam>][] = [
+// ── Read Operations (11) ──
+const READ_TOOL_DEFS: ToolDef[] = [
     ['get_selection', 'Get the currently selected nodes', {}],
     ['get_page_tree', 'Get the full node tree for a page', { pageId: { type: 'string', description: 'Page ID to query', required: false } }],
     ['get_node', 'Get a specific node by ID', { nodeId: { type: 'string', description: 'Node ID', required: true } }],
@@ -212,14 +206,10 @@ function buildToolDefinitions(): OPTool[] {
     ['get_node_bounds', 'Get bounding box of a node', { nodeId: { type: 'string', description: 'Node ID', required: true } }],
     ['get_document_info', 'Get document metadata', {}],
     ['get_node_children', 'List direct children of a node', { nodeId: { type: 'string', description: 'Node ID', required: true } }],
-  ];
+];
 
-  for (const [name, description, parameters] of readTools) {
-    tools.push({ name, description, category: 'read', parameters, execute: wiredExecutor(name) });
-  }
-
-  // ── Creation Engines (7) ──
-  const createTools: [string, string, Record<string, OPToolParam>][] = [
+// ── Creation Engines (7) ──
+const CREATE_TOOL_DEFS: ToolDef[] = [
     ['createShape', 'Create a new shape node', { type: { type: 'string', description: 'Shape type: rectangle, ellipse, line, vector', required: true, enum: ['rectangle', 'ellipse', 'line', 'vector'] }, parentId: { type: 'string', description: 'Parent node ID', required: false }, name: { type: 'string', description: 'Node name', required: false }, width: { type: 'number', description: 'Width in pixels', required: false }, height: { type: 'number', description: 'Height in pixels', required: false } }],
     ['createFrame', 'Create a new frame (artboard)', { name: { type: 'string', description: 'Frame name', required: false }, width: { type: 'number', description: 'Width', required: false }, height: { type: 'number', description: 'Height', required: false }, parentId: { type: 'string', description: 'Parent ID', required: false } }],
     ['createText', 'Create a text node', { content: { type: 'string', description: 'Text content', required: true }, fontFamily: { type: 'string', description: 'Font family', required: false }, fontSize: { type: 'number', description: 'Font size', required: false }, parentId: { type: 'string', description: 'Parent ID', required: false } }],
@@ -227,14 +217,10 @@ function buildToolDefinitions(): OPTool[] {
     ['createInstance', 'Create an instance of a component', { componentId: { type: 'string', description: 'Source component ID', required: true }, parentId: { type: 'string', description: 'Parent ID', required: false } }],
     ['createPage', 'Create a new page', { name: { type: 'string', description: 'Page name', required: true } }],
     ['render', 'Render the current scene to image', { format: { type: 'string', description: 'Output format: png, svg, pdf', required: false, enum: ['png', 'svg', 'pdf'] }, scale: { type: 'number', description: 'Render scale factor', required: false, default: 1 } }],
-  ];
+];
 
-  for (const [name, description, parameters] of createTools) {
-    tools.push({ name, description, category: 'create', parameters, execute: wiredExecutor(name) });
-  }
-
-  // ── Property Modification (20) ──
-  const modifyTools: [string, string, Record<string, OPToolParam>][] = [
+// ── Property Modification (20) ──
+const MODIFY_TOOL_DEFS: ToolDef[] = [
     ['setFill', 'Set fill color/gradient of a node', { nodeId: { type: 'string', description: 'Node ID', required: true }, color: { type: 'string', description: 'Hex color', required: true }, opacity: { type: 'number', description: 'Opacity 0-1', required: false } }],
     ['setStroke', 'Set stroke properties', { nodeId: { type: 'string', description: 'Node ID', required: true }, color: { type: 'string', description: 'Hex color', required: true }, weight: { type: 'number', description: 'Stroke weight', required: true } }],
     ['setLayout', 'Set auto-layout properties', { nodeId: { type: 'string', description: 'Node ID', required: true }, mode: { type: 'string', description: 'Layout mode: horizontal, vertical, none', required: true, enum: ['horizontal', 'vertical', 'none'] }, gap: { type: 'number', description: 'Gap between items', required: false }, padding: { type: 'number', description: 'Uniform padding', required: false } }],
@@ -255,14 +241,10 @@ function buildToolDefinitions(): OPTool[] {
     ['setRotation', 'Rotate a node', { nodeId: { type: 'string', description: 'Node ID', required: true }, rotation: { type: 'number', description: 'Rotation in degrees', required: true } }],
     ['setEffect', 'Apply an effect', { nodeId: { type: 'string', description: 'Node ID', required: true }, type: { type: 'string', description: 'Effect type', required: true, enum: ['drop-shadow', 'inner-shadow', 'blur', 'background-blur'] }, color: { type: 'string', description: 'Effect color (hex)', required: false }, radius: { type: 'number', description: 'Effect radius', required: false }, offset: { type: 'object', description: 'Offset {x, y}', required: false } }],
     ['setPadding', 'Set padding for auto-layout frames', { nodeId: { type: 'string', description: 'Node ID', required: true }, top: { type: 'number', description: 'Top padding', required: false }, right: { type: 'number', description: 'Right padding', required: false }, bottom: { type: 'number', description: 'Bottom padding', required: false }, left: { type: 'number', description: 'Left padding', required: false } }],
-  ];
+];
 
-  for (const [name, description, parameters] of modifyTools) {
-    tools.push({ name, description, category: 'modify', parameters, execute: wiredExecutor(name) });
-  }
-
-  // ── Structural Logic (17) ──
-  const structureTools: [string, string, Record<string, OPToolParam>][] = [
+// ── Structural Logic (17) ──
+const STRUCTURE_TOOL_DEFS: ToolDef[] = [
     ['deleteNode', 'Delete a node', { nodeId: { type: 'string', description: 'Node ID', required: true } }],
     ['cloneNode', 'Clone a node', { nodeId: { type: 'string', description: 'Node ID to clone', required: true } }],
     ['groupNodes', 'Group multiple nodes', { nodeIds: { type: 'array', description: 'Array of node IDs to group', required: true }, name: { type: 'string', description: 'Group name', required: false } }],
@@ -280,14 +262,10 @@ function buildToolDefinitions(): OPTool[] {
     ['selectNodes', 'Set the current selection', { nodeIds: { type: 'array', description: 'Node IDs to select', required: true } }],
     ['scrollToNode', 'Scroll viewport to a node', { nodeId: { type: 'string', description: 'Node ID', required: true } }],
     ['lockAllChildren', 'Lock all children of a node', { nodeId: { type: 'string', description: 'Parent node ID', required: true } }],
-  ];
+];
 
-  for (const [name, description, parameters] of structureTools) {
-    tools.push({ name, description, category: 'structure', parameters, execute: wiredExecutor(name) });
-  }
-
-  // ── Design Variables / Tokens (11) ──
-  const variableTools: [string, string, Record<string, OPToolParam>][] = [
+// ── Design Variables / Tokens (11) ──
+const VARIABLE_TOOL_DEFS: ToolDef[] = [
     ['createVariable', 'Create a design variable', { name: { type: 'string', description: 'Variable name', required: true }, type: { type: 'string', description: 'Variable type', required: true, enum: ['color', 'number', 'string', 'boolean'] }, value: { type: 'string', description: 'Variable value', required: true }, collectionId: { type: 'string', description: 'Collection ID', required: true } }],
     ['updateVariable', 'Update a variable value', { variableId: { type: 'string', description: 'Variable ID', required: true }, value: { type: 'string', description: 'New value', required: true } }],
     ['deleteVariable', 'Delete a variable', { variableId: { type: 'string', description: 'Variable ID', required: true } }],
@@ -299,14 +277,10 @@ function buildToolDefinitions(): OPTool[] {
     ['deleteCollection', 'Delete a variable collection', { collectionId: { type: 'string', description: 'Collection ID', required: true } }],
     ['renameCollection', 'Rename a variable collection', { collectionId: { type: 'string', description: 'Collection ID', required: true }, name: { type: 'string', description: 'New name', required: true } }],
     ['getVariableBindings', 'List all bindings for a variable', { variableId: { type: 'string', description: 'Variable ID', required: true } }],
-  ];
+];
 
-  for (const [name, description, parameters] of variableTools) {
-    tools.push({ name, description, category: 'variables', parameters, execute: wiredExecutor(name) });
-  }
-
-  // ── Vector & Export (14) ──
-  const vectorTools: [string, string, Record<string, OPToolParam>][] = [
+// ── Vector & Export (14) ──
+const VECTOR_TOOL_DEFS: ToolDef[] = [
     ['booleanUnion', 'Boolean union of shapes', { nodeIds: { type: 'array', description: 'Node IDs', required: true } }],
     ['booleanSubtract', 'Boolean subtract', { nodeIds: { type: 'array', description: 'Node IDs (first minus rest)', required: true } }],
     ['booleanIntersect', 'Boolean intersect', { nodeIds: { type: 'array', description: 'Node IDs', required: true } }],
@@ -321,26 +295,32 @@ function buildToolDefinitions(): OPTool[] {
     ['exportJSX', 'Export node as JSX component', { nodeId: { type: 'string', description: 'Node ID', required: true }, framework: { type: 'string', description: 'Target framework', required: false, enum: ['react', 'vue', 'html'] } }],
     ['exportTailwind', 'Export node with Tailwind classes', { nodeId: { type: 'string', description: 'Node ID', required: true } }],
     ['exportDesignTokens', 'Export all variables as design tokens', { format: { type: 'string', description: 'Token format', required: false, enum: ['css', 'json', 'tailwind', 'scss'] } }],
-  ];
+];
 
-  for (const [name, description, parameters] of vectorTools) {
-    tools.push({ name, description, category: 'vector', parameters, execute: wiredExecutor(name) });
-  }
-
-  // ── Analysis & Diffing (6) ──
-  const analysisTools: [string, string, Record<string, OPToolParam>][] = [
+// ── Analysis & Diffing (6) ──
+const ANALYSIS_TOOL_DEFS: ToolDef[] = [
     ['analyzeColors', 'Analyze all colors in the document', { pageId: { type: 'string', description: 'Page ID (omit for all)', required: false } }],
     ['analyzeTypography', 'Analyze typography usage', { pageId: { type: 'string', description: 'Page ID (omit for all)', required: false } }],
     ['analyzeSpacing', 'Analyze spacing and padding patterns', { pageId: { type: 'string', description: 'Page ID (omit for all)', required: false } }],
     ['analyzeClusters', 'Analyze visual clustering and grouping', { pageId: { type: 'string', description: 'Page ID (omit for all)', required: false } }],
     ['diffCreate', 'Create a visual diff between two states', { beforeSnapshot: { type: 'string', description: 'Before state JSON', required: true }, afterSnapshot: { type: 'string', description: 'After state JSON', required: true } }],
     ['diffShow', 'Display an existing diff', { diffId: { type: 'string', description: 'Diff ID', required: true } }],
-  ];
+];
 
-  for (const [name, description, parameters] of analysisTools) {
-    tools.push({ name, description, category: 'analysis', parameters, execute: wiredExecutor(name) });
-  }
-
+/**
+ * The full 86-tool registry organized by domain.
+ * Categories: read (11), create (7), modify (20), structure (17),
+ * variables (11), vector (14), analysis (6) = 86 total
+ */
+function buildToolDefinitions(): OPTool[] {
+  const tools: OPTool[] = [];
+  for (const [n, d, p] of READ_TOOL_DEFS) tools.push({ name: n, description: d, category: 'read', parameters: p, execute: wiredExecutor(n) });
+  for (const [n, d, p] of CREATE_TOOL_DEFS) tools.push({ name: n, description: d, category: 'create', parameters: p, execute: wiredExecutor(n) });
+  for (const [n, d, p] of MODIFY_TOOL_DEFS) tools.push({ name: n, description: d, category: 'modify', parameters: p, execute: wiredExecutor(n) });
+  for (const [n, d, p] of STRUCTURE_TOOL_DEFS) tools.push({ name: n, description: d, category: 'structure', parameters: p, execute: wiredExecutor(n) });
+  for (const [n, d, p] of VARIABLE_TOOL_DEFS) tools.push({ name: n, description: d, category: 'variables', parameters: p, execute: wiredExecutor(n) });
+  for (const [n, d, p] of VECTOR_TOOL_DEFS) tools.push({ name: n, description: d, category: 'vector', parameters: p, execute: wiredExecutor(n) });
+  for (const [n, d, p] of ANALYSIS_TOOL_DEFS) tools.push({ name: n, description: d, category: 'analysis', parameters: p, execute: wiredExecutor(n) });
   return tools;
 }
 
