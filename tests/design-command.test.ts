@@ -1,5 +1,8 @@
-import { describe, it } from 'node:test';
+import { describe, it, before, after } from 'node:test';
 import assert from 'node:assert';
+import fs from 'node:fs/promises';
+import os from 'node:os';
+import path from 'node:path';
 import {
   createSkeletonOP,
   stringifyOP,
@@ -14,10 +17,58 @@ describe('design command', () => {
   });
 
   it('design module resolves all dependencies', async () => {
-    // Importing the module verifies that all internal imports resolve
     const mod = await import('../src/cli/commands/design.js');
     assert.ok(mod);
     assert.ok(Object.keys(mod).length > 0);
+  });
+});
+
+describe('design --seed', () => {
+  let tmpDir: string;
+  let stateDir: string;
+  const origCwd = process.cwd();
+
+  before(async () => {
+    tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), 'df-design-seed-'));
+    stateDir = path.join(tmpDir, '.danteforge');
+    process.chdir(tmpDir);
+    // Minimal state so loadState doesn't error
+    await fs.mkdir(stateDir, { recursive: true });
+    await fs.writeFile(path.join(stateDir, 'STATE.yaml'), 'workflowStage: plan\nauditLog: []\n');
+  });
+
+  after(async () => {
+    process.chdir(origCwd);
+    await fs.rm(tmpDir, { recursive: true, force: true });
+  });
+
+  it('writes DESIGN.op to state dir when --seed is passed', async () => {
+    const { design } = await import('../src/cli/commands/design.js');
+    await design('My App', {
+      seed: true,
+      _loadState: async () => ({
+        workflowStage: 'plan', auditLog: [], project: 'test',
+        designEnabled: false, designFilePath: '', designFormatVersion: '',
+        constitution: '', spec: '', clarify: '', plan: '', tasks: [],
+        lastVerifyStatus: '', lastVerifyReceiptPath: '', totalTokensUsed: 0,
+      } as never),
+      _saveState: async () => {},
+    });
+    const designPath = path.join(stateDir, 'DESIGN.op');
+    const content = await fs.readFile(designPath, 'utf8');
+    const doc = JSON.parse(content);
+    assert.ok(doc.nodes, 'written doc has nodes');
+    assert.ok(Array.isArray(doc.nodes) && doc.nodes.length > 0);
+    assert.strictEqual(doc.document.name, 'My App');
+  });
+
+  it('seed document passes canvas quality scorer', async () => {
+    const { getCanvasSeedDocument } = await import('../src/core/canvas-defaults.js');
+    const { scoreCanvasQuality } = await import('../src/core/canvas-quality-scorer.js');
+    const doc = getCanvasSeedDocument({ projectName: 'Test' });
+    const result = scoreCanvasQuality(doc);
+    assert.strictEqual(result.gapFromTarget, 0, 'seed scores all 7 canvas quality dims >= 70');
+    assert.ok(result.composite >= 90, `composite should be ≥90, got ${result.composite}`);
   });
 });
 

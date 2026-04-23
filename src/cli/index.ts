@@ -106,6 +106,7 @@ program
   .option('--format <type>', 'Export format: jsx | vue | html', 'jsx')
   .option('--parallel', 'Enable spatial parallel decomposition')
   .option('--worktree', 'Run in isolated git worktree')
+  .option('--seed', 'Write a high-quality canvas seed document to DESIGN.op without LLM (scores 7/7 quality dims)')
   .action((...a: unknown[]) => void C().then(c => (c.design as (...x: unknown[]) => unknown)(...a)));
 
 program
