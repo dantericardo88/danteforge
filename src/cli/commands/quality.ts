@@ -11,6 +11,7 @@ import type { HarshScoreResult, ScoringDimension } from '../../core/harsh-scorer
 
 export interface QualityOptions {
   cwd?: string;
+  json?: boolean;
   // Injection seams
   _computeScore?: (cwd: string) => Promise<HarshScoreResult>;
   _stdout?: (line: string) => void;
@@ -159,6 +160,23 @@ async function defaultComputeScore(cwd: string): Promise<HarshScoreResult> {
 
 // ── Main ──────────────────────────────────────────────────────────────────────
 
+export function buildQualityJson(result: HarshScoreResult): string {
+  const dims = result.displayDimensions ?? {};
+  const p0 = Object.entries(dims)
+    .filter(([, v]) => v < 7.0)
+    .map(([id, v]) => ({ id, score: v, label: DIM_LABELS[id] ?? id }));
+
+  return JSON.stringify({
+    overallScore: result.displayScore,
+    verdict: result.verdict ?? 'unknown',
+    dimensions: dims,
+    p0Gaps: p0,
+    penalties: result.penalties?.length ?? 0,
+    badgeMarkdown: `![DanteForge Quality](https://img.shields.io/badge/quality-${result.displayScore.toFixed(1)}%2F10-${result.displayScore >= 9 ? 'brightgreen' : result.displayScore >= 7 ? 'yellow' : 'red'})`,
+    timestamp: result.timestamp ?? new Date().toISOString(),
+  }, null, 2);
+}
+
 export async function quality(options: QualityOptions = {}): Promise<void> {
   const cwd = options.cwd ?? process.cwd();
   const emit = options._stdout ?? ((line: string) => process.stdout.write(line + '\n'));
@@ -167,7 +185,11 @@ export async function quality(options: QualityOptions = {}): Promise<void> {
 
   try {
     const result = await computeScoreFn(cwd);
-    renderScorecard(result, emit, isTTY);
+    if (options.json) {
+      emit(buildQualityJson(result));
+    } else {
+      renderScorecard(result, emit, isTTY);
+    }
   } catch (err) {
     logger.error(`quality: ${err instanceof Error ? err.message : String(err)}`);
     logger.info('Run `danteforge init` to set up your project first.');

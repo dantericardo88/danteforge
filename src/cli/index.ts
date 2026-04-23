@@ -1545,11 +1545,12 @@ program
 program
   .command('quality')
   .description('Visual quality scorecard: dimension bars, P0 gaps, and automation ceilings')
-  .action(() => {
+  .option('--json', 'Output machine-readable JSON with score, dimensions, P0 gaps, and badge markdown')
+  .action((opts) => {
     void (async () => {
       try {
         const { quality } = await import('./commands/quality.js');
-        await quality();
+        await quality({ json: opts.json as boolean | undefined });
       } catch (err) {
         const { formatAndLogError } = await import('../core/format-error.js');
         formatAndLogError(err, 'quality');
