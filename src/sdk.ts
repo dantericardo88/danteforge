@@ -30,5 +30,13 @@ export { callLLM } from './core/llm.js';
 export { buildFeatureUniverse, scoreProjectAgainstUniverse } from './core/feature-universe.js';
 export type { FeatureUniverseAssessment } from './core/feature-universe.js';
 
+// Canvas quality scoring
+export { scoreCanvasQuality } from './core/canvas-quality-scorer.js';
+export type { CanvasQualityResult, CanvasQualityDimensions } from './core/canvas-quality-scorer.js';
+
+// Canvas seed defaults
+export { getCanvasSeedDocument } from './core/canvas-defaults.js';
+export type { CanvasSeedOptions } from './core/canvas-defaults.js';
+
 // Version
 export const SDK_VERSION = DANTEFORGE_VERSION;

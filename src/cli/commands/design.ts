@@ -69,6 +69,7 @@ export async function design(
     format?: string;
     parallel?: boolean;
     worktree?: boolean;
+    seed?: boolean;
     _llmCaller?: typeof callLLM;
     _isLLMAvailable?: typeof isLLMAvailable;
     _loadState?: typeof loadState;
@@ -82,6 +83,29 @@ export async function design(
 
   return withErrorBoundary('design', async () => {
   logger.info('Design: generating design artifacts from natural language');
+
+  // --seed: write the canvas-defaults high-quality starting point immediately
+  if (options.seed) {
+    const { getCanvasSeedDocument } = await import('../../core/canvas-defaults.js');
+    const { scoreCanvasQuality } = await import('../../core/canvas-quality-scorer.js');
+    const projectName = prompt.trim() || 'App';
+    const doc = getCanvasSeedDocument({ projectName });
+    const result = scoreCanvasQuality(doc);
+    const designPath = path.join(STATE_DIR, 'DESIGN.op');
+    await fs.mkdir(STATE_DIR, { recursive: true });
+    await fs.writeFile(designPath, JSON.stringify(doc, null, 2));
+    logger.success(`Canvas seed written to ${designPath}`);
+    logger.info(`Quality: composite=${result.composite} passing=${result.passingCount}/7 gap=${result.gapFromTarget}`);
+    const state = await loadFn();
+    state.designEnabled = true;
+    state.designFilePath = 'DESIGN.op';
+    state.designFormatVersion = '1.0.0';
+    state.workflowStage = 'design';
+    state.auditLog.push(`${new Date().toISOString()} | design: .op artifact seeded from canvas-defaults (quality=${result.composite})`);
+    await saveFn(state);
+    await handoff('design', { designFile: 'DESIGN.op' });
+    return;
+  }
 
   // Ensure .op intermediate files are gitignored
   await ensureOPIntermediatesIgnored();

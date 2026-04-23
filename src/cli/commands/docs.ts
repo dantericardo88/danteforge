@@ -39,7 +39,7 @@ const COMMAND_REGISTRY: CommandEntry[] = [
   { name: 'autoresearch', args: '<goal>', description: 'Autonomous metric-driven optimization loop', options: ['--metric <metric>', '--measurement-command <command>', '--time <budget>', '--prompt', '--dry-run', '--allow-dirty'], group: 'Automation' },
   { name: 'party', description: 'Launch multi-agent collaboration mode', options: ['--worktree', '--isolation', '--figma', '--skip-ux', '--design', '--no-design'], group: 'Automation' },
 
-  { name: 'design', args: '<prompt>', description: 'Generate design artifacts via OpenPencil Design-as-Code engine', options: ['--prompt', '--light', '--format <type>', '--parallel', '--worktree'], group: 'Design' },
+  { name: 'design', args: '<prompt>', description: 'Generate design artifacts via OpenPencil Design-as-Code engine', options: ['--prompt', '--light', '--format <type>', '--parallel', '--worktree', '--seed'], group: 'Design' },
   { name: 'ux-refine', description: 'Explicit UX refinement via OpenPencil or Figma', options: ['--prompt', '--light', '--host <type>', '--figma-url <url>', '--token-file <path>', '--skip-ux', '--after-forge', '--openpencil', '--lint', '--live', '--url <url>'], group: 'Design' },
   { name: 'browse', args: '<subcommand> [args...]', description: 'Browser automation - navigate, screenshot, inspect live apps', options: ['--url <url>', '--port <port>'], group: 'Design' },
   { name: 'qa', description: 'Structured QA pass with health score on live app', options: ['--url <url> (required)', '--type <mode>', '--baseline <path>', '--save-baseline', '--fail-below <score>'], group: 'Design' },

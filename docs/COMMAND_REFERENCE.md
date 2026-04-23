@@ -240,6 +240,7 @@ Generate design artifacts via OpenPencil Design-as-Code engine
 - `--format <type>`
 - `--parallel`
 - `--worktree`
+- `--seed`
 
 ### `danteforge ux-refine`
 
