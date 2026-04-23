@@ -384,8 +384,8 @@ describe('compete-matrix', () => {
   });
 
   it('T12: bootstrapMatrixFromComparison clamps initial selfScore to ceiling', () => {
-    // enterpriseReadiness has KNOWN_CEILINGS entry: ceiling = 6.0
-    // Our score raw = 90/10 = 9.0, which should be clamped to 6.0
+    // enterpriseReadiness has KNOWN_CEILINGS entry: ceiling = 9.0
+    // Our score raw = 90/10 = 9.0, which equals the ceiling
     const comparison: CompetitorComparison = {
       ourDimensions: { enterpriseReadiness: 90 },
       projectName: 'TestForge',
@@ -403,8 +403,8 @@ describe('compete-matrix', () => {
     const dim = matrix.dimensions.find(d => d.id === 'enterprise_readiness');
     assert.ok(dim, 'enterprise_readiness dimension should exist');
     assert.ok(
-      (dim!.scores['self'] ?? 99) <= 6.0,
-      `enterpriseReadiness self score ${dim!.scores['self']} should be clamped to ceiling 6.0`,
+      (dim!.scores['self'] ?? 99) <= 9.0,
+      `enterpriseReadiness self score ${dim!.scores['self']} should be clamped to ceiling 9.0`,
     );
   });
 });

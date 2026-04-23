@@ -157,8 +157,8 @@ describe('KNOWN_CEILINGS', () => {
     assert.equal(KNOWN_CEILINGS['communityAdoption']?.ceiling, 4.0);
   });
 
-  it('enterpriseReadiness ceiling is 6.0', () => {
-    assert.equal(KNOWN_CEILINGS['enterpriseReadiness']?.ceiling, 6.0);
+  it('enterpriseReadiness ceiling is 9.0', () => {
+    assert.equal(KNOWN_CEILINGS['enterpriseReadiness']?.ceiling, 9.0);
   });
 
   it('each ceiling has a non-empty reason string', () => {
@@ -228,7 +228,7 @@ describe('bootstrapMatrixFromComparison() — ceiling application', () => {
     const matrix = bootstrapMatrixFromComparison(comparison, 'test');
     const entDim = matrix.dimensions.find(d => d.id === 'enterprise_readiness');
     assert.ok(entDim, 'enterpriseReadiness dimension should exist');
-    assert.equal(entDim?.ceiling, 6.0);
+    assert.equal(entDim?.ceiling, 9.0);
   });
 
   it('does not set ceiling on non-ceiling dimensions', () => {
