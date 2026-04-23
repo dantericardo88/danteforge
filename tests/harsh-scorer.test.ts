@@ -516,12 +516,55 @@ describe('computeEnterpriseReadinessScore', () => {
     assert.equal(computeEnterpriseReadinessScore(state, makeAssessment(85)), 45); // 15+10+20
   });
 
-  it('all signals maxed: audit>20 + selfEditPolicy + security≥80 + receipt → 85', () => {
+  it('all original signals maxed: audit>20 + selfEditPolicy + security≥80 + receipt → 85', () => {
     const state = {
       auditLog: Array.from({ length: 25 }, (_, i) => `entry${i}`),
       selfEditPolicy: 'deny',
       lastVerifyReceiptPath: '/path/receipt.json',
     } as DanteState;
     assert.equal(computeEnterpriseReadinessScore(state, makeAssessment(90)), 85); // 15+20+15+20+15
+  });
+
+  it('hasSecurityPolicy flag adds +10', () => {
+    const state = { auditLog: [] } as DanteState;
+    const score = computeEnterpriseReadinessScore(state, makeAssessment(50), { hasSecurityPolicy: true, hasVersionedChangelog: false, hasRunbook: false, hasContributing: false });
+    assert.equal(score, 25); // 15 + 10
+  });
+
+  it('hasVersionedChangelog flag adds +5', () => {
+    const state = { auditLog: [] } as DanteState;
+    const score = computeEnterpriseReadinessScore(state, makeAssessment(50), { hasSecurityPolicy: false, hasVersionedChangelog: true, hasRunbook: false, hasContributing: false });
+    assert.equal(score, 20); // 15 + 5
+  });
+
+  it('hasRunbook flag adds +5', () => {
+    const state = { auditLog: [] } as DanteState;
+    const score = computeEnterpriseReadinessScore(state, makeAssessment(50), { hasSecurityPolicy: false, hasVersionedChangelog: false, hasRunbook: true, hasContributing: false });
+    assert.equal(score, 20); // 15 + 5
+  });
+
+  it('hasContributing flag adds +3', () => {
+    const state = { auditLog: [] } as DanteState;
+    const score = computeEnterpriseReadinessScore(state, makeAssessment(50), { hasSecurityPolicy: false, hasVersionedChangelog: false, hasRunbook: false, hasContributing: true });
+    assert.equal(score, 18); // 15 + 3
+  });
+
+  it('all signals + all enterprise flags → capped at 100', () => {
+    const state = {
+      auditLog: Array.from({ length: 25 }, (_, i) => `entry${i}`),
+      selfEditPolicy: 'deny',
+      lastVerifyReceiptPath: '/path/receipt.json',
+    } as DanteState;
+    const score = computeEnterpriseReadinessScore(state, makeAssessment(90), { hasSecurityPolicy: true, hasVersionedChangelog: true, hasRunbook: true, hasContributing: true });
+    assert.equal(score, 100); // 85 + 10 + 5 + 5 + 3 = 108 → capped at 100
+  });
+
+  it('undefined enterprise flags behave same as no flags (backward compat)', () => {
+    const state = {
+      auditLog: Array.from({ length: 25 }, (_, i) => `entry${i}`),
+      selfEditPolicy: 'deny',
+      lastVerifyReceiptPath: '/path/receipt.json',
+    } as DanteState;
+    assert.equal(computeEnterpriseReadinessScore(state, makeAssessment(90), undefined), 85);
   });
 });
