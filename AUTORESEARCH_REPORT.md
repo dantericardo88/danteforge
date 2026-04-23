@@ -1,59 +1,43 @@
 # AutoResearch Report: reduce large function count
 
-**Goal:** Get large functions (>100 LOC, AST-accurate) below 25
-**Metric:** `90 - current_count` (higher = better)
+**Goal:** Eliminate all functions >100 LOC (AST-accurate measurement)
+**Metric:** `90 - current_count` (higher = better; max = 90)
 **Branch:** `autoresearch/reduce-large-fn-count`
 
 ---
 
 ## Metric Progress
 - **Baseline:** 90 large functions (metric = 0)
-- **Final:** 23 large functions (metric = 67)
-- **Total improvement:** 67 points (74.4% reduction in large functions)
+- **Final:** 0 large functions (metric = **90** — maximum possible)
+- **Total improvement:** 90 points (100% elimination)
 
 ---
 
 ## Winning Experiments (in order applied)
 
-| Experiment | Description | Fn Count | Metric |
-|------------|-------------|----------|--------|
-| baseline | unmodified baseline | 90 | 0 |
-| exp01 | agent-dag buildDagMaps + self-scorer buildDossierDimensions | 88 | 2 |
-| exp02 | report/spend-optimizer/wiki-linter/magic-presets extractions | 84 | 6 |
-| exp03 | scorePerformance, buildTasksPrompt, loadCritiqueContext | 81 | 9 |
-| exp04 | showConfigStatus, computePlanningPhase | 79 | 11 |
-| exp05 | buildRepairCycles, printScoreSummary, buildEvidenceBundle | 76 | 14 |
-| exp06 | buildMissingArtifactResult, applyReplaceOp | 74 | 16 |
-| exp07 | scoreFoundArtifacts, buildColdStartPlan, buildMultiSessionResumePlan | 72 | 18 |
-| exp08 | buildExternalSummary, renderWikiSection, renderMetricGrid | 70 | 20 |
-| exp09 | persistDesignArtifact, runDesignLintCheck, cloneAndLicenseGate | 68 | 22 |
-| exp10 | printDefaultHelp, buildAdoptionPrompt | 66 | 24 |
-| exp11 | handleNewProject, askImprovementChoice | 65 | 25 |
-| exp12 | runMagicPlanStepPipeline/Support, runMaturityGuidedAutoforge | 63 | 27 |
-| exp13 | mergePatternIntoLibrary, absorbRefusedPatterns, applyArtifactHandoff | 61 | 29 |
-| exp14 | hoisted ZSH_CMD_ENTRIES to module level | 60 | 30 |
-| exp15 | handleLessonCorrection extracted from lessons | 59 | 31 |
-| exp16 | showFirstRunCTA, runCompetitorScan, runFeatureUniverseAssessment | 58 | 32 |
-| exp17 | logSprintGaps, buildHarvestBriefPrompt, displayCoflOperatorPanel | 57 | 33 |
-| exp18 | runHarvestSteps, persistHarvestTrack from harvest | 56 | 34 |
-| exp19-29 | 11 more single-function extractions across diverse modules | 40 | 45 |
-| exp30 | executeCycleActions + runSelfImproveLoop from selfImprove | 39 | 51 |
-| exp31 | runCoflHarvestAndPrioritize + persistAndSummarizeCoflCycle from cofl | 38 | 52 |
-| exp32 | loadLibraryPatterns + runWave1QueuePopulation + runDeepHarvestLoop from ossIntel | 37 | 53 |
-| exp33 | helpers from score.ts + review.ts | 35 | 55 |
-| exp34-37 | scoreEvidence, BOOTSTRAP_*_MAP constants, generateAndDisplayUXPrompt, installNativeSkills | 31 | 59 |
-| exp38 | ENTERPRISE_FEATURES const, assembleBenchmarkResult+buildDanteForgePrompt, awaitAgentProcess, handleCallSuccess | 27 | 63 |
-| exp39 | collectAllConcerns, formatPatternsSectionLines, writeHarvestReportFiles, consumeBlockComment | 23 | **67** |
+| Session | Experiments | Description | Fn Count | Metric |
+|---------|-------------|-------------|----------|--------|
+| 1 | exp01–exp09 | dag, dossier, batch helpers, perf, config, proof, pdse, design, oss | 90→68 | 22 |
+| 1 | exp10–exp19 | help, go, magic, import, completion, lessons, assess, compete, harvest | 68→55 | 35 |
+| 1 | exp20–exp29 | localHarvest, harvestPattern, autoforge-cmd, qa, doctor, quickstart, mutate, oss-exec, cost, mcp | 55→40 | 50 |
+| 1 | exp30–exp33 | selfImprove, cofl, ossIntel, score/review | 40→35 | 55 |
+| 1 | exp34–39 | completion-oracle, compete-matrix, ux-refine, installer, enterprise, benchmarks, pattern-scanner | 35→23 | 67 |
+| 1 | exp40–46 | token-extractor, tool-registry, community-adoption, autoforge.ts, pdse, harsh-scorer, executor | 23→9 | 81 |
+| 2 | exp47 | harvest-forge.ts: harvestForge 375L→50L (7 helpers) | 9→4 | 86 |
+| 2 | exp48 | verify.ts: verify 380L→65L (6 helpers) | 4→3 | 87 |
+| 2 | exp49 | magic.ts: runMagicPreset 372L→70L (5 helpers) | 3→2 | 88 |
+| 2 | exp50 | autoforge-loop.ts: runAutoforgeLoop 408L→<100L (7 helpers) | 2→1 | 89 |
+| 2 | exp51 | ascend-engine.ts: runAscend 513L→<100L (10 helpers) | 1→0 | **90** |
 
 ---
 
 ## Key Insights
 
-- **Module-level const extraction** is the easiest technique for data-heavy functions (lookup tables, feature configs, label maps). Zero logic change, instant size reduction.
-- **Sequential extraction strategy**: for 200L+ functions, plan both extractions before implementing — the first extracted helper can itself exceed 100L.
-- **Parameter passing**: context objects/interfaces avoid parameter explosion when extracting from functions with many local variables.
-- **TypeScript strict mode discipline**: every extraction required reading types before writing helpers to avoid incorrect annotations.
-- **Remaining 23 large functions** are genuinely complex: runAscend (513L), runAutoforgeLoop (408L), verify (380L), harvestForge (375L), runMagicPreset (372L), autoResearch (312L), ossDeep (262L), computeHarshScore (275L), computeStrictDimensions (215L), executeAutoForgePlan (213L). Further reduction requires more invasive refactoring.
+- **Pure structural extraction wins every time** — 51/51 experiments kept, 0 discarded, 0 failed.
+- **The 5 largest functions** (runAscend 513L, runAutoforgeLoop 408L, verify 380L, harvestForge 375L, runMagicPreset 372L) required multi-layer extraction: first split the outer function, then sometimes split the extracted helpers if they still exceeded 100L.
+- **Mutable context objects** (e.g. `AscendCycleState`) solve the parameter explosion problem when multiple helpers need to mutate the same variables — pass by reference, mutate in place.
+- **TypeScript strict mode** caught real type bugs in every large extraction: return type widening (`Promise<unknown>` vs `Promise<GoalConfig | null>`), enum type mismatches, interface incompatibilities.
+- **100% keep rate** is achievable when the only change is structural (rename + extract, no logic changes). The AST-accurate metric never lied.
 
 ---
 
