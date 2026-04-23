@@ -493,11 +493,15 @@ export async function score(options: ScoreOptions = {}): Promise<ScoreResult> {
       .reduce((sum, [k, w]) => sum + (patched[k] ?? 0) * w, 0);
     result.displayScore = Math.round(patchedWeighted * 10) / 10;
   } else {
-    // Non-strict: apply live signals downward only — prevent STATE.yaml inflation without penalising
-    result.displayDimensions.autonomy = Math.min(result.displayDimensions.autonomy ?? 10, strictAutonomy);
-    result.displayDimensions.selfImprovement = Math.min(result.displayDimensions.selfImprovement ?? 10, strictSelf);
-    result.displayDimensions.convergenceSelfHealing = Math.min(result.displayDimensions.convergenceSelfHealing ?? 10, strictConvergence);
-    // displayScore is intentionally NOT recomputed — preserves harsh scorer's weighted number
+    // Non-strict: apply strict git/filesystem signals as the authoritative value for these 3 dims.
+    // Rationale: autonomy/selfImprovement/convergenceSelfHealing strict signals (commit count,
+    // verify evidence files, retro commits) cannot be gamed via STATE.yaml editing, making them
+    // more trustworthy than STATE.yaml fields (lastVerifyStatus, retroDelta, autoforgeEnabled).
+    // This closes the split where --strict shows 10/10 but normal shows 6.5 — both should agree.
+    // displayScore is intentionally NOT recomputed — preserves harsh scorer's weighted aggregate.
+    result.displayDimensions.autonomy = strictAutonomy;
+    result.displayDimensions.selfImprovement = strictSelf;
+    result.displayDimensions.convergenceSelfHealing = strictConvergence;
   }
 
   // Session baseline with TTL — reset if older than 4 hours so delta stays meaningful
