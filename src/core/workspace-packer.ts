@@ -315,6 +315,78 @@ function matchesDefaultExclude(relativePath: string): boolean {
   return false;
 }
 
+async function collectFilesRecursively(
+  dirRelative: string,
+  cwd: string,
+  readdir: (p: string, opts: { withFileTypes: true }) => Promise<Array<DirEntry>>,
+  allRelativePaths: string[],
+): Promise<void> {
+  const dirAbsolute = dirRelative ? path.join(cwd, dirRelative) : cwd;
+  let entries: Array<DirEntry>;
+  try {
+    entries = await readdir(dirAbsolute, { withFileTypes: true });
+  } catch {
+    return;
+  }
+  for (const entry of entries) {
+    const relativePath = dirRelative ? `${dirRelative}/${entry.name}` : entry.name;
+    if (matchesDefaultExclude(relativePath)) continue;
+    if (entry.isDirectory()) {
+      await collectFilesRecursively(relativePath, cwd, readdir, allRelativePaths);
+    } else if (entry.isFile()) {
+      allRelativePaths.push(relativePath);
+    }
+  }
+}
+
+function applyFileFilters(allRelativePaths: string[], gitignorePatterns: string[], options?: PackOptions): string[] {
+  const textPaths = allRelativePaths.filter(p => !BINARY_EXTENSIONS.includes(path.extname(p).toLowerCase()));
+  const afterGitignore = gitignorePatterns.length > 0 ? textPaths.filter(p => !matchesGitignore(p, gitignorePatterns)) : textPaths;
+  const afterInclude = options?.include && options.include.length > 0
+    ? afterGitignore.filter(p => {
+        const inc = options.include!;
+        return inc.some(pat => pat.startsWith('*') ? p.endsWith(pat.slice(1)) : p === pat || p.startsWith(pat + '/') || p.includes('/' + pat));
+      })
+    : afterGitignore;
+  return options?.exclude && options.exclude.length > 0
+    ? afterInclude.filter(p => {
+        const exc = options.exclude!;
+        return !exc.some(pat => pat.startsWith('*') ? p.endsWith(pat.slice(1)) : p === pat || p.startsWith(pat + '/') || p.includes('/' + pat));
+      })
+    : afterInclude;
+}
+
+async function processPackEntries(
+  filteredPaths: string[],
+  cwd: string,
+  options: PackOptions | undefined,
+  readFile: (p: string) => Promise<string>,
+  stat: (p: string) => Promise<{ size: number }>,
+): Promise<{ entries: PackFileEntry[]; ignoredFiles: number }> {
+  const entries: PackFileEntry[] = [];
+  let ignoredFiles = 0;
+  for (const relativePath of filteredPaths) {
+    const absolutePath = path.join(cwd, relativePath);
+    let content: string;
+    let sizeBytes: number;
+    try {
+      content = await readFile(absolutePath);
+      const info = await stat(absolutePath);
+      sizeBytes = info.size;
+    } catch {
+      ignoredFiles++;
+      continue;
+    }
+    const tokens = estimateTokens(content);
+    if (options?.maxTokensPerFile !== undefined && tokens > options.maxTokensPerFile) {
+      ignoredFiles++;
+      continue;
+    }
+    entries.push({ relativePath, content, tokens, sizeBytes, language: inferLanguage(relativePath) });
+  }
+  return { entries, ignoredFiles };
+}
+
 export async function packWorkspace(options?: PackOptions): Promise<PackResult> {
   const cwd = options?.cwd ?? process.cwd();
   const format = options?.format ?? 'markdown';
@@ -343,97 +415,15 @@ export async function packWorkspace(options?: PackOptions): Promise<PackResult> 
 
   // Recursively collect all files
   const allRelativePaths: string[] = [];
+  await collectFilesRecursively('', cwd, readdir, allRelativePaths);
 
-  async function collectFiles(dirRelative: string): Promise<void> {
-    const dirAbsolute = dirRelative ? path.join(cwd, dirRelative) : cwd;
-    let entries: Array<DirEntry>;
-    try {
-      entries = await readdir(dirAbsolute, { withFileTypes: true });
-    } catch {
-      return;
-    }
-
-    for (const entry of entries) {
-      const relativePath = dirRelative ? `${dirRelative}/${entry.name}` : entry.name;
-
-      if (matchesDefaultExclude(relativePath)) continue;
-
-      if (entry.isDirectory()) {
-        await collectFiles(relativePath);
-      } else if (entry.isFile()) {
-        allRelativePaths.push(relativePath);
-      }
-    }
-  }
-
-  await collectFiles('');
-
-  // Filter out binary extensions
-  const textPaths = allRelativePaths.filter(p => {
-    const ext = path.extname(p).toLowerCase();
-    return !BINARY_EXTENSIONS.includes(ext);
-  });
-
-  // Apply gitignore
-  const afterGitignore = gitignorePatterns.length > 0
-    ? textPaths.filter(p => !matchesGitignore(p, gitignorePatterns))
-    : textPaths;
-
-  // Apply user include filter
-  const afterInclude = options?.include && options.include.length > 0
-    ? afterGitignore.filter(p => {
-        const inc = options.include!;
-        return inc.some(pattern => {
-          if (pattern.startsWith('*')) {
-            return p.endsWith(pattern.slice(1));
-          }
-          return p === pattern || p.startsWith(pattern + '/') || p.includes('/' + pattern);
-        });
-      })
-    : afterGitignore;
-
-  // Apply user exclude filter
-  const afterExclude = options?.exclude && options.exclude.length > 0
-    ? afterInclude.filter(p => {
-        const exc = options.exclude!;
-        return !exc.some(pattern => {
-          if (pattern.startsWith('*')) {
-            return p.endsWith(pattern.slice(1));
-          }
-          return p === pattern || p.startsWith(pattern + '/') || p.includes('/' + pattern);
-        });
-      })
-    : afterInclude;
+  // Filter (binary, gitignore, include/exclude)
+  const afterExclude = applyFileFilters(allRelativePaths, gitignorePatterns, options);
 
   // Process files
-  const fileEntries: PackFileEntry[] = [];
-  let ignoredFiles = 0;
-
-  for (const relativePath of afterExclude) {
-    const absolutePath = path.join(cwd, relativePath);
-    let content: string;
-    let sizeBytes: number;
-
-    try {
-      content = await readFile(absolutePath);
-      const info = await stat(absolutePath);
-      sizeBytes = info.size;
-    } catch {
-      ignoredFiles++;
-      continue;
-    }
-
-    const tokens = estimateTokens(content);
-
-    if (options?.maxTokensPerFile !== undefined && tokens > options.maxTokensPerFile) {
-      ignoredFiles++;
-      continue;
-    }
-
-    const language = inferLanguage(relativePath);
-
-    fileEntries.push({ relativePath, content, tokens, sizeBytes, language });
-  }
+  const packResult = await processPackEntries(afterExclude, cwd, options, readFile, stat);
+  const fileEntries = packResult.entries;
+  let ignoredFiles = packResult.ignoredFiles;
 
   // Smart priority sort
   let processedEntries = options?.smartPriority ? prioritizeFiles(fileEntries) : fileEntries;

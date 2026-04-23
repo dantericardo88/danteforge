@@ -68,6 +68,28 @@ function buildResult(
   };
 }
 
+/** Consume a block comment starting at `start` (the position after the opening `/*`).
+ *  Returns `{ endIdx, newlines }` where `endIdx` is the index past the closing `* /`
+ *  and `newlines` is the newline characters to preserve for line-number alignment. */
+function consumeBlockComment(content: string, start: number): { endIdx: number; newlines: string } {
+  const len = content.length;
+  let i = start;
+  let newlines = '';
+  while (i < len - 1) {
+    if (content[i] === '*' && content[i + 1] === '/') { i += 2; break; }
+    if (content[i] === '\n') newlines += '\n';
+    i++;
+  }
+  // Handle unclosed block comment at EOF
+  if (i >= len - 1 && !(content[len - 2] === '*' && content[len - 1] === '/')) {
+    while (i < len) {
+      if (content[i] === '\n') newlines += '\n';
+      i++;
+    }
+  }
+  return { endIdx: i, newlines };
+}
+
 /** Strip string literals and comments to avoid false regex matches.
  *  Uses a character-by-character state machine to correctly handle:
  *  - Escaped quotes inside strings
@@ -86,24 +108,9 @@ export function stripStringsAndComments(content: string): string {
 
     // Block comment: /*
     if (ch === '/' && next === '*') {
-      // Skip until closing */
-      i += 2;
-      while (i < len - 1) {
-        if (content[i] === '*' && content[i + 1] === '/') {
-          i += 2;
-          break;
-        }
-        // Preserve newlines so line numbers stay aligned
-        if (content[i] === '\n') result += '\n';
-        i++;
-      }
-      // Handle unclosed block comment at EOF
-      if (i >= len - 1 && !(content[len - 2] === '*' && content[len - 1] === '/')) {
-        while (i < len) {
-          if (content[i] === '\n') result += '\n';
-          i++;
-        }
-      }
+      const { endIdx, newlines } = consumeBlockComment(content, i + 2);
+      result += newlines;
+      i = endIdx;
       continue;
     }
 

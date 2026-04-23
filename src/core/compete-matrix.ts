@@ -408,6 +408,40 @@ export function setDimensionWeight(matrix: CompeteMatrix, id: string, weight: nu
   }
 }
 
+const BOOTSTRAP_FREQUENCY_MAP: Record<string, 'high' | 'medium' | 'low'> = {
+  functionality: 'high', testing: 'high', errorHandling: 'high',
+  security: 'high', uxPolish: 'high', documentation: 'medium',
+  performance: 'high', maintainability: 'medium',
+  developerExperience: 'high', autonomy: 'high',
+  planningQuality: 'medium', selfImprovement: 'medium',
+  specDrivenPipeline: 'medium', convergenceSelfHealing: 'medium',
+  tokenEconomy: 'medium', ecosystemMcp: 'low',
+  enterpriseReadiness: 'low', communityAdoption: 'low',
+};
+
+const BOOTSTRAP_WEIGHT_MAP: Record<string, number> = {
+  functionality: 1.5, testing: 1.5, errorHandling: 1.2,
+  security: 1.3, uxPolish: 1.4, documentation: 1.0,
+  performance: 1.2, maintainability: 1.0,
+  developerExperience: 1.5, autonomy: 1.3,
+  planningQuality: 1.0, selfImprovement: 1.0,
+  specDrivenPipeline: 1.2, convergenceSelfHealing: 1.1,
+  tokenEconomy: 0.9, ecosystemMcp: 0.8,
+  enterpriseReadiness: 0.8, communityAdoption: 0.7,
+};
+
+const BOOTSTRAP_LABEL_MAP: Record<string, string> = {
+  functionality: 'Core Functionality', testing: 'Test Coverage & Quality',
+  errorHandling: 'Error Handling & Recovery', security: 'Security Hardening',
+  uxPolish: 'UX Polish & Onboarding', documentation: 'Documentation Quality',
+  performance: 'Performance', maintainability: 'Code Maintainability',
+  developerExperience: 'Developer Experience', autonomy: 'Autonomy & Self-Direction',
+  planningQuality: 'Planning Quality (PDSE)', selfImprovement: 'Self-Improvement Loop',
+  specDrivenPipeline: 'Spec-Driven Pipeline', convergenceSelfHealing: 'Convergence & Self-Healing',
+  tokenEconomy: 'Token Economy & Budget Control', ecosystemMcp: 'Ecosystem & MCP Integration',
+  enterpriseReadiness: 'Enterprise Readiness', communityAdoption: 'Community Adoption',
+};
+
 /**
  * Convert a CompetitorComparison (from competitor-scanner.ts) into a CompeteMatrix.
  * Scores are in 0-100 in CompetitorComparison; we normalize to 0-10.
@@ -417,40 +451,6 @@ export function bootstrapMatrixFromComparison(
   comparison: CompetitorComparison,
   project: string,
 ): CompeteMatrix {
-  const FREQUENCY_MAP: Record<string, 'high' | 'medium' | 'low'> = {
-    functionality: 'high', testing: 'high', errorHandling: 'high',
-    security: 'high', uxPolish: 'high', documentation: 'medium',
-    performance: 'high', maintainability: 'medium',
-    developerExperience: 'high', autonomy: 'high',
-    planningQuality: 'medium', selfImprovement: 'medium',
-    specDrivenPipeline: 'medium', convergenceSelfHealing: 'medium',
-    tokenEconomy: 'medium', ecosystemMcp: 'low',
-    enterpriseReadiness: 'low', communityAdoption: 'low',
-  };
-
-  const WEIGHT_MAP: Record<string, number> = {
-    functionality: 1.5, testing: 1.5, errorHandling: 1.2,
-    security: 1.3, uxPolish: 1.4, documentation: 1.0,
-    performance: 1.2, maintainability: 1.0,
-    developerExperience: 1.5, autonomy: 1.3,
-    planningQuality: 1.0, selfImprovement: 1.0,
-    specDrivenPipeline: 1.2, convergenceSelfHealing: 1.1,
-    tokenEconomy: 0.9, ecosystemMcp: 0.8,
-    enterpriseReadiness: 0.8, communityAdoption: 0.7,
-  };
-
-  const LABEL_MAP: Record<string, string> = {
-    functionality: 'Core Functionality', testing: 'Test Coverage & Quality',
-    errorHandling: 'Error Handling & Recovery', security: 'Security Hardening',
-    uxPolish: 'UX Polish & Onboarding', documentation: 'Documentation Quality',
-    performance: 'Performance', maintainability: 'Code Maintainability',
-    developerExperience: 'Developer Experience', autonomy: 'Autonomy & Self-Direction',
-    planningQuality: 'Planning Quality (PDSE)', selfImprovement: 'Self-Improvement Loop',
-    specDrivenPipeline: 'Spec-Driven Pipeline', convergenceSelfHealing: 'Convergence & Self-Healing',
-    tokenEconomy: 'Token Economy & Budget Control', ecosystemMcp: 'Ecosystem & MCP Integration',
-    enterpriseReadiness: 'Enterprise Readiness', communityAdoption: 'Community Adoption',
-  };
-
   // Split competitors into OSS vs closed-source
   const allCompetitorNames = comparison.competitors.map(c => c.name);
   const ossNames = allCompetitorNames.filter(isOssTool);
@@ -480,8 +480,8 @@ export function bootstrapMatrixFromComparison(
     const snakeId = id.replace(/([A-Z])/g, '_$1').toLowerCase().replace(/^_/, '');
     return {
       id: snakeId,
-      label: LABEL_MAP[id] ?? id,
-      weight: WEIGHT_MAP[id] ?? 1.0,
+      label: BOOTSTRAP_LABEL_MAP[id] ?? id,
+      weight: BOOTSTRAP_WEIGHT_MAP[id] ?? 1.0,
       category: ['functionality', 'testing', 'errorHandling', 'performance'].includes(id)
         ? 'quality'
         : ['uxPolish', 'developerExperience', 'documentation'].includes(id)
@@ -489,7 +489,7 @@ export function bootstrapMatrixFromComparison(
           : ['security', 'enterpriseReadiness', 'maintainability'].includes(id)
             ? 'reliability'
             : 'features',
-      frequency: FREQUENCY_MAP[id] ?? 'medium',
+      frequency: BOOTSTRAP_FREQUENCY_MAP[id] ?? 'medium',
       scores,
       gap_to_leader: gapToLeader,
       leader: maxEntry[0] || 'unknown',

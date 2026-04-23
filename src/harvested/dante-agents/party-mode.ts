@@ -324,6 +324,139 @@ export async function dispatchAgentWithRetry(
   return lastResult!;
 }
 
+async function setupWorktrees(
+  activeAgents: string[],
+  createWt: (name: string) => Promise<string>,
+  removeWt: (name: string) => Promise<void>,
+): Promise<{ worktreePaths: { agent: string; path: string }[]; success: boolean }> {
+  const worktreePaths: { agent: string; path: string }[] = [];
+  logger.info('Worktree isolation enabled - creating isolated workspaces...');
+  try {
+    for (const agent of activeAgents) {
+      const safeName = agent.toLowerCase().replace(/\s+/g, '-');
+      worktreePaths.push({ agent, path: await createWt(safeName) });
+    }
+    logger.success(`${worktreePaths.length} worktree(s) created for parallel execution`);
+    for (const worktree of worktreePaths) logger.info(`  ${worktree.agent}: ${worktree.path}`);
+    return { worktreePaths, success: true };
+  } catch (err) {
+    logger.error(`Worktree setup failed: ${err instanceof Error ? err.message : String(err)}`);
+    if (worktreePaths.length > 0) await cleanupWorktrees(worktreePaths.map(w => w.agent), removeWt);
+    logger.error('Party mode requires worktree isolation when --worktree is requested. Fix git/worktree setup and re-run.');
+    return { worktreePaths: [], success: false };
+  }
+}
+
+async function dispatchAllAgents(
+  activeAgents: string[],
+  context: string,
+  projectSize: string,
+  profile: string,
+  fullContext: Record<string, string>,
+  isolatedMode: boolean,
+  partyStart: number,
+  options: PartyModeOptions | undefined,
+): Promise<AgentResult[]> {
+  let dagExecutionUsed = false;
+  let results: AgentResult[] = [];
+  try {
+    const { isClaudeCliAvailable } = await import('../../core/headless-spawner.js');
+    const cliAvailable = await isClaudeCliAvailable();
+    if (cliAvailable && !isolatedMode) {
+      const { buildDefaultDAG, computeExecutionLevels, executeDAG, loadCustomDAG, filterDAGToRoles } = await import('../../core/agent-dag.js');
+      const customDag = await loadCustomDAG();
+      const dagNodes = customDag ?? buildDefaultDAG();
+      const filteredNodes = filterDAGToRoles(dagNodes, activeAgents as AgentRole[]);
+      if (filteredNodes.length > 0) {
+        const dagPlan = computeExecutionLevels(filteredNodes);
+        logger.info(`[Party] DAG execution: ${dagPlan.levels.length} levels, max parallelism ${dagPlan.estimatedParallelism}`);
+        const dagResult = await executeDAG<AgentResult>(dagPlan, async (levelAgents) => {
+          const levelResults = new Map<AgentRole, AgentResult>();
+          await Promise.all(levelAgents.map(async (role) => {
+            const agentName = role as string;
+            try {
+              levelResults.set(role, await dispatchAgentWithRetry(agentName, context, projectSize, profile, fullContext, false, { _dispatchAgent: options?._dispatchAgent, _sleep: options?._sleep, _onAgentUpdate: options?._onAgentUpdate }));
+            } catch (err) {
+              levelResults.set(role, { agent: agentName, result: `# ${agentName} Agent Error\n\nFailed to execute: ${err instanceof Error ? err.message : String(err)}`, durationMs: Date.now() - partyStart, success: false, error: err instanceof Error ? err : new Error(String(err)) });
+            }
+          }));
+          return levelResults;
+        });
+        results = Array.from(dagResult.results.values());
+        for (const blockedRole of dagResult.blockedAgents) {
+          results.push({ agent: blockedRole, result: `# ${blockedRole} Agent Blocked\n\nBlocked by upstream DAG dependency failure`, durationMs: 0, success: false, error: new Error('Blocked by upstream DAG dependency failure') });
+        }
+        dagExecutionUsed = true;
+        logger.info(`[Party] DAG execution completed: ${dagResult.results.size} succeeded, ${dagResult.blockedAgents.length} blocked`);
+      }
+    }
+  } catch (err) {
+    logger.info(`[Party] DAG execution unavailable, using standard dispatch: ${err instanceof Error ? err.message : String(err)}`);
+  }
+  if (!dagExecutionUsed) {
+    results = await Promise.all(activeAgents.map((agentName) =>
+      dispatchAgentWithRetry(agentName, context, projectSize, profile, fullContext, isolatedMode, { _dispatchAgent: options?._dispatchAgent, _sleep: options?._sleep, _onAgentUpdate: options?._onAgentUpdate }).catch((err): AgentResult => ({
+        agent: agentName, result: `# ${agentName} Agent Error\n\nFailed to execute: ${err instanceof Error ? err.message : String(err)}`, durationMs: Date.now() - partyStart, success: false, error: err instanceof Error ? err : new Error(String(err)),
+      })),
+    ));
+  }
+  return results;
+}
+
+async function scoreAndReflectResults(results: AgentResult[], reflectFn: typeof reflect): Promise<void> {
+  for (const agentResult of results) {
+    if (!agentResult.success) continue;
+    const qualityScore = computeQualityScore(agentResult.result);
+    (agentResult as AgentResult & { qualityScore?: number }).qualityScore = qualityScore;
+    if (qualityScore < 50) logger.warn(`Agent "${agentResult.agent}" output quality score: ${qualityScore}/100 (below threshold)`);
+    try {
+      const agentTelemetry: ExecutionTelemetry = createTelemetry();
+      recordToolCall(agentTelemetry, `dispatch:${agentResult.agent}`, true);
+      agentTelemetry.duration = agentResult.durationMs;
+      const verdict = await reflectFn(agentResult.agent, agentResult.result, agentTelemetry);
+      const evaluation = evaluateVerdict(verdict);
+      if (!evaluation.complete && evaluation.score < 50) logger.warn(`Reflection: ${agentResult.agent} agent scored ${evaluation.score}/100 — ${evaluation.feedback}`);
+    } catch { /* reflection must not block party mode */ }
+  }
+}
+
+async function reportFailures(failedAgents: AgentResult[], memoryFn: typeof recordMemory): Promise<void> {
+  for (const failedAgent of failedAgents) {
+    logger.warn(`  ${failedAgent.agent}: ${failedAgent.result.split('\n')[2] ?? 'unknown error'}`);
+    await memoryFn({ category: 'error', summary: `Party agent failed: ${failedAgent.agent}`, detail: failedAgent.error?.message ?? failedAgent.result, tags: ['party', 'agent-failure', failedAgent.agent], relatedCommands: ['party'] });
+  }
+  try {
+    const { captureFailureLessons } = await import('../../cli/commands/lessons.js');
+    await captureFailureLessons(failedAgents.map(e => ({ task: `${e.agent} agent`, error: e.result.split('\n')[2] ?? 'unknown error' })), 'party failure');
+  } catch (err) { logger.verbose(`[best-effort] party lessons: ${err instanceof Error ? err.message : String(err)}`); }
+}
+
+function printResultsSummary(results: AgentResult[]): void {
+  logger.info('');
+  logger.info('='.repeat(60));
+  logger.info('  DANTE PARTY MODE - RESULTS SUMMARY');
+  logger.info('='.repeat(60));
+  for (const { agent, result, durationMs, success } of results) {
+    const durationSec = (durationMs / 1000).toFixed(1);
+    const previewLines = result.split('\n').slice(0, 3).join(' | ');
+    const preview = previewLines.length > 120 ? `${previewLines.substring(0, 120)}...` : previewLines;
+    logger.info('');
+    if (success) logger.success(`[${agent.toUpperCase()}] (${durationSec}s)`);
+    else logger.warn(`[${agent.toUpperCase()}] (${durationSec}s)`);
+    logger.info(`  Preview: ${preview}`);
+    logger.info(`  Full response: ${result.length} characters`);
+  }
+  logger.info('');
+  logger.info('-'.repeat(60));
+  for (const { agent, result } of results) {
+    logger.info('');
+    logger.info('='.repeat(60));
+    logger.info(`  ${agent.toUpperCase()} AGENT - FULL REPORT`);
+    logger.info('='.repeat(60));
+    logger.info(result);
+  }
+}
+
 export async function runDanteParty(
   agents?: string[],
   useWorktrees?: boolean,
@@ -357,214 +490,44 @@ export async function runDanteParty(
 
   const fullContext = await buildStructuredContextFromState(state, options?._readArtifact);
   let context = buildContextFromState(state, fullContext);
-
-  // Inject relevant lessons from lessons.md into the agent context (best-effort)
   if (fullContext['lessons']?.trim()) {
     try {
       const { injectRelevantLessons } = await import('../../core/lessons-index.js');
-      const cwd = options?._cwd ?? process.cwd();
-      context = await injectRelevantLessons(context, 5, cwd);
+      context = await injectRelevantLessons(context, 5, options?._cwd ?? process.cwd());
     } catch { /* lessons injection is best-effort — never block party mode */ }
   }
-  const worktreePaths: { agent: string; path: string }[] = [];
 
+  let worktreePaths: { agent: string; path: string }[] = [];
   if (useWorktrees) {
-    logger.info('Worktree isolation enabled - creating isolated workspaces...');
-    try {
-      for (const agent of activeAgents) {
-        const safeName = agent.toLowerCase().replace(/\s+/g, '-');
-        const worktreePath = await createWt(safeName);
-        worktreePaths.push({ agent, path: worktreePath });
-      }
-      logger.success(`${worktreePaths.length} worktree(s) created for parallel execution`);
-      for (const worktree of worktreePaths) {
-        logger.info(`  ${worktree.agent}: ${worktree.path}`);
-      }
-    } catch (err) {
-      logger.error(`Worktree setup failed: ${err instanceof Error ? err.message : String(err)}`);
-      if (worktreePaths.length > 0) {
-        await cleanupWorktrees(worktreePaths.map(worktree => worktree.agent), removeWt);
-        worktreePaths.length = 0;
-      }
-      logger.error('Party mode requires worktree isolation when --worktree is requested. Fix git/worktree setup and re-run.');
-      return { success: false };
-    }
+    const wtResult = await setupWorktrees(activeAgents, createWt, removeWt);
+    if (!wtResult.success) return { success: false };
+    worktreePaths = wtResult.worktreePaths;
   }
 
   logger.info('Dispatching agents...');
   const projectSize = state.lightMode ? 'small' : 'medium';
   const profile = state.profile ?? 'balanced';
+  const results = await dispatchAllAgents(activeAgents, context, projectSize, profile, fullContext, isolatedMode, partyStart, options);
 
-  // v0.9.0 — DAG-based execution when headless CLI is available
-  let dagExecutionUsed = false;
-  let results: AgentResult[] = [];
-  try {
-    const { isClaudeCliAvailable } = await import('../../core/headless-spawner.js');
-    const cliAvailable = await isClaudeCliAvailable();
-    if (cliAvailable && !isolatedMode) {
-      const { buildDefaultDAG, computeExecutionLevels, executeDAG, loadCustomDAG, filterDAGToRoles } = await import('../../core/agent-dag.js');
-      const { spawnParallelAgents } = await import('../../core/headless-spawner.js');
+  await scoreAndReflectResults(results, reflectFn);
 
-      const customDag = await loadCustomDAG();
-      const dagNodes = customDag ?? buildDefaultDAG();
-      const filteredNodes = filterDAGToRoles(dagNodes, activeAgents as AgentRole[]);
+  const failedAgents = results.filter(r => !r.success);
+  if (failedAgents.length === results.length) logger.error(`All ${results.length} agent(s) failed - party mode aborted`);
+  else if (failedAgents.length > 0) logger.warn(`${failedAgents.length}/${results.length} agent(s) failed`);
+  if (failedAgents.length > 0) await reportFailures(failedAgents, memoryFn);
 
-      if (filteredNodes.length > 0) {
-        const dagPlan = computeExecutionLevels(filteredNodes);
-        logger.info(`[Party] DAG execution: ${dagPlan.levels.length} levels, max parallelism ${dagPlan.estimatedParallelism}`);
-
-        const dagResult = await executeDAG<AgentResult>(dagPlan, async (levelAgents) => {
-          const levelResults = new Map<AgentRole, AgentResult>();
-          const levelPromises = levelAgents.map(async (role) => {
-            const agentName = role as string;
-            try {
-              const result = await dispatchAgentWithRetry(agentName, context, projectSize, profile, fullContext, false, { _dispatchAgent: options?._dispatchAgent, _sleep: options?._sleep, _onAgentUpdate: options?._onAgentUpdate });
-              levelResults.set(role, result);
-            } catch (err) {
-              levelResults.set(role, {
-                agent: agentName,
-                result: `# ${agentName} Agent Error\n\nFailed to execute: ${err instanceof Error ? err.message : String(err)}`,
-                durationMs: Date.now() - partyStart,
-                success: false,
-                error: err instanceof Error ? err : new Error(String(err)),
-              });
-            }
-          });
-          await Promise.all(levelPromises);
-          return levelResults;
-        });
-
-        results = Array.from(dagResult.results.values());
-
-        // Add placeholder failures for blocked agents
-        for (const blockedRole of dagResult.blockedAgents) {
-          results.push({
-            agent: blockedRole,
-            result: `# ${blockedRole} Agent Blocked\n\nBlocked by upstream DAG dependency failure`,
-            durationMs: 0,
-            success: false,
-            error: new Error(`Blocked by upstream DAG dependency failure`),
-          });
-        }
-
-        dagExecutionUsed = true;
-        logger.info(`[Party] DAG execution completed: ${dagResult.results.size} succeeded, ${dagResult.blockedAgents.length} blocked`);
-      }
-    }
-  } catch (err) {
-    logger.info(`[Party] DAG execution unavailable, using standard dispatch: ${err instanceof Error ? err.message : String(err)}`);
-  }
-
-  if (!dagExecutionUsed) {
-    results = await Promise.all(activeAgents.map((agentName) =>
-      dispatchAgentWithRetry(agentName, context, projectSize, profile, fullContext, isolatedMode, { _dispatchAgent: options?._dispatchAgent, _sleep: options?._sleep, _onAgentUpdate: options?._onAgentUpdate }).catch((err): AgentResult => ({
-        agent: agentName,
-        result: `# ${agentName} Agent Error\n\nFailed to execute: ${err instanceof Error ? err.message : String(err)}`,
-        durationMs: Date.now() - partyStart,
-        success: false,
-        error: err instanceof Error ? err : new Error(String(err)),
-      })),
-    ));
-  }
-
-  // Score each successful agent's output for quality (PDSE-style length + structure check)
-  for (const agentResult of results) {
-    if (!agentResult.success) continue;
-    const qualityScore = computeQualityScore(agentResult.result);
-    (agentResult as AgentResult & { qualityScore?: number }).qualityScore = qualityScore;
-    if (qualityScore < 50) {
-      logger.warn(`Agent "${agentResult.agent}" output quality score: ${qualityScore}/100 (below threshold)`);
-    }
-
-    // Reflection: structured self-assessment on agent output
-    try {
-      const agentTelemetry: ExecutionTelemetry = createTelemetry();
-      recordToolCall(agentTelemetry, `dispatch:${agentResult.agent}`, true);
-      agentTelemetry.duration = agentResult.durationMs;
-      const verdict = await reflectFn(agentResult.agent, agentResult.result, agentTelemetry);
-      const evaluation = evaluateVerdict(verdict);
-      if (!evaluation.complete && evaluation.score < 50) {
-        logger.warn(`Reflection: ${agentResult.agent} agent scored ${evaluation.score}/100 — ${evaluation.feedback}`);
-      }
-    } catch {
-      // Reflection should not block party mode
-    }
-  }
-
-  const failedAgents = results.filter(result => !result.success);
-  if (failedAgents.length === results.length) {
-    logger.error(`All ${results.length} agent(s) failed - party mode aborted`);
-  } else if (failedAgents.length > 0) {
-    logger.warn(`${failedAgents.length}/${results.length} agent(s) failed`);
-  }
-
-  for (const failedAgent of failedAgents) {
-    logger.warn(`  ${failedAgent.agent}: ${failedAgent.result.split('\n')[2] ?? 'unknown error'}`);
-    await memoryFn({
-      category: 'error',
-      summary: `Party agent failed: ${failedAgent.agent}`,
-      detail: failedAgent.error?.message ?? failedAgent.result,
-      tags: ['party', 'agent-failure', failedAgent.agent],
-      relatedCommands: ['party'],
-    });
-  }
-
-  if (failedAgents.length > 0) {
-    try {
-      const { captureFailureLessons } = await import('../../cli/commands/lessons.js');
-      const failures = failedAgents.map(entry => ({
-        task: `${entry.agent} agent`,
-        error: entry.result.split('\n')[2] ?? 'unknown error',
-      }));
-      await captureFailureLessons(failures, 'party failure');
-    } catch (err) { logger.verbose(`[best-effort] party lessons: ${err instanceof Error ? err.message : String(err)}`); }
-  }
-
-  logger.info('');
-  logger.info('='.repeat(60));
-  logger.info('  DANTE PARTY MODE - RESULTS SUMMARY');
-  logger.info('='.repeat(60));
-
-  for (const { agent, result, durationMs, success } of results) {
-    const durationSec = (durationMs / 1000).toFixed(1);
-    const previewLines = result.split('\n').slice(0, 3).join(' | ');
-    const preview = previewLines.length > 120 ? `${previewLines.substring(0, 120)}...` : previewLines;
-
-    logger.info('');
-    if (success) {
-      logger.success(`[${agent.toUpperCase()}] (${durationSec}s)`);
-    } else {
-      logger.warn(`[${agent.toUpperCase()}] (${durationSec}s)`);
-    }
-    logger.info(`  Preview: ${preview}`);
-    logger.info(`  Full response: ${result.length} characters`);
-  }
-
-  logger.info('');
-  logger.info('-'.repeat(60));
-  for (const { agent, result } of results) {
-    logger.info('');
-    logger.info('='.repeat(60));
-    logger.info(`  ${agent.toUpperCase()} AGENT - FULL REPORT`);
-    logger.info('='.repeat(60));
-    logger.info(result);
-  }
+  printResultsSummary(results);
 
   if (worktreePaths.length > 0) {
     const activeWorktrees = await listWt();
-    if (activeWorktrees.length > 0) {
-      logger.info(`Active DanteForge worktrees: ${activeWorktrees.length}`);
-    }
+    if (activeWorktrees.length > 0) logger.info(`Active DanteForge worktrees: ${activeWorktrees.length}`);
     await cleanupWorktrees(activeAgents, removeWt);
   }
 
   const totalDurationSec = ((Date.now() - partyStart) / 1000).toFixed(1);
   logger.info('');
-  if (failedAgents.length > 0) {
-    logger.warn(`Dante Party Mode completed with failures - ${results.length - failedAgents.length}/${results.length} agent(s) succeeded, ${totalDurationSec}s total`);
-  } else {
-    logger.success(`Dante Party Mode complete - ${results.length} agent(s), ${totalDurationSec}s total`);
-  }
+  if (failedAgents.length > 0) logger.warn(`Dante Party Mode completed with failures - ${results.length - failedAgents.length}/${results.length} agent(s) succeeded, ${totalDurationSec}s total`);
+  else logger.success(`Dante Party Mode complete - ${results.length} agent(s), ${totalDurationSec}s total`);
   return { success: failedAgents.length === 0 };
 }
 

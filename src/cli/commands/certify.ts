@@ -110,6 +110,20 @@ function renderMarkdown(cert: QualityCertificate): string {
   ].join('\n');
 }
 
+// ── Helpers ────────────────────────────────────────────────────────────────────
+
+function buildEvidenceBundle(
+  projectName: string, generatedAt: string, certifiedBy: string,
+  overallScore: number, dimensions: Record<string, number>,
+  testsPassing: boolean, typecheckPassing: boolean,
+): string {
+  return JSON.stringify(
+    { projectName, generatedAt, certifiedBy, overallScore, dimensions, testsPassing, typecheckPassing },
+    Object.keys({ projectName: '', generatedAt: '', certifiedBy: '', overallScore: 0, dimensions: {}, testsPassing: false, typecheckPassing: false }).sort(),
+    2,
+  );
+}
+
 // ── Main export ───────────────────────────────────────────────────────────────
 
 export async function runCertify(options: CertifyOptions = {}): Promise<QualityCertificate> {
@@ -162,30 +176,9 @@ export async function runCertify(options: CertifyOptions = {}): Promise<QualityC
     dimValues.length > 0 ? dimValues.every((s) => s > 0) : false;
   const typecheckPassing = testsPassing; // conservative: assume typecheck mirrors test health
 
-  // Build evidence bundle for hashing (deterministic key order)
-  const evidenceBundle = JSON.stringify(
-    {
-      projectName,
-      generatedAt,
-      certifiedBy,
-      overallScore,
-      dimensions,
-      testsPassing,
-      typecheckPassing,
-    },
-    Object.keys({
-      projectName: '',
-      generatedAt: '',
-      certifiedBy: '',
-      overallScore: 0,
-      dimensions: {},
-      testsPassing: false,
-      typecheckPassing: false,
-    }).sort(),
-    2,
-  );
-
-  const evidenceFingerprint = computeHash(evidenceBundle);
+  const evidenceFingerprint = computeHash(buildEvidenceBundle(
+    projectName, generatedAt, certifiedBy, overallScore, dimensions, testsPassing, typecheckPassing,
+  ));
   const attestation = buildAttestation(projectName, overallScore, certifiedBy);
 
   const cert: QualityCertificate = {

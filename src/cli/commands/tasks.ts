@@ -15,6 +15,29 @@ import { withErrorBoundary } from '../../core/cli-error-boundary.js';
 
 const STATE_DIR = '.danteforge';
 
+function buildTasksPrompt(state: Awaited<ReturnType<typeof loadState>>, planContent: string, specContent: string): string {
+  return `You are a project manager breaking down a software plan into atomic, executable tasks.
+
+${state.constitution ? `Project principles:\n${state.constitution}\n` : ''}
+${planContent ? `Implementation plan:\n${planContent.slice(0, 3000)}\n` : ''}
+${specContent ? `Specification:\n${specContent.slice(0, 2000)}\n` : ''}
+
+Generate a TASKS.md with:
+1. **Task List** - each task as a numbered item with:
+   - Clear action verb (Implement, Create, Configure, Test, etc.)
+   - Files to modify (if known)
+   - Verification criteria
+   - [P] flag for tasks that can run in parallel
+   - Effort estimate (S/M/L)
+2. **Dependencies** - which tasks must complete before others
+3. **Phase Grouping** - group tasks into execution waves (Phase 1, Phase 2, etc.)
+
+Format each task as:
+\`N. [P?] <action> - files: <paths> - verify: <criteria> - effort: <S/M/L>\`
+
+Output ONLY the markdown content - no preamble.`;
+}
+
 export async function tasks(options: {
   prompt?: boolean;
   light?: boolean;
@@ -46,26 +69,7 @@ export async function tasks(options: {
     specContent = await fs.readFile(path.join(STATE_DIR, 'SPEC.md'), 'utf8');
   } catch {}
 
-  const prompt = `You are a project manager breaking down a software plan into atomic, executable tasks.
-
-${state.constitution ? `Project principles:\n${state.constitution}\n` : ''}
-${planContent ? `Implementation plan:\n${planContent.slice(0, 3000)}\n` : ''}
-${specContent ? `Specification:\n${specContent.slice(0, 2000)}\n` : ''}
-
-Generate a TASKS.md with:
-1. **Task List** - each task as a numbered item with:
-   - Clear action verb (Implement, Create, Configure, Test, etc.)
-   - Files to modify (if known)
-   - Verification criteria
-   - [P] flag for tasks that can run in parallel
-   - Effort estimate (S/M/L)
-2. **Dependencies** - which tasks must complete before others
-3. **Phase Grouping** - group tasks into execution waves (Phase 1, Phase 2, etc.)
-
-Format each task as:
-\`N. [P?] <action> - files: <paths> - verify: <criteria> - effort: <S/M/L>\`
-
-Output ONLY the markdown content - no preamble.`;
+  const prompt = buildTasksPrompt(state, planContent, specContent);
 
   if (options.prompt) {
     const savedPath = await savePrompt('tasks', prompt);

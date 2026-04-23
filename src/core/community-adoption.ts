@@ -9,72 +9,48 @@ export interface CommunityAdoptionOptions {
   createShowcase?: boolean;
 }
 
-export async function improveCommunityAdoption(options: CommunityAdoptionOptions = {}) {
-  const cwd = process.cwd();
+async function generateExampleProjects(cwd: string): Promise<string> {
+  const examplesDir = path.join(cwd, 'examples');
+  await fs.mkdir(examplesDir, { recursive: true });
+  const basicExample = {
+    name: 'basic-todo-app',
+    description: 'A simple todo application built with DanteForge',
+    steps: [
+      'danteforge init',
+      'danteforge constitution',
+      'danteforge specify "Create a todo list app with add, complete, and delete features"',
+      'danteforge plan',
+      'danteforge tasks',
+      'danteforge forge',
+      'danteforge verify'
+    ]
+  };
+  await fs.writeFile(path.join(examplesDir, 'basic-todo.json'), JSON.stringify(basicExample, null, 2));
+  return 'Generated example projects';
+}
 
-  logger.info('Improving community adoption features...');
+async function generateProjectTemplates(cwd: string): Promise<string> {
+  const templatesDir = path.join(cwd, 'templates');
+  await fs.mkdir(templatesDir, { recursive: true });
+  const webTemplate = {
+    name: 'web-application',
+    description: 'Template for web applications',
+    constitution: [
+      'Zero ambiguity in requirements',
+      'Progressive enhancement approach',
+      'Accessible by default',
+      'Performance-first development'
+    ],
+    techStack: ['HTML', 'CSS', 'JavaScript', 'Node.js']
+  };
+  await fs.writeFile(path.join(templatesDir, 'web-app.json'), JSON.stringify(webTemplate, null, 2));
+  return 'Generated project templates';
+}
 
-  const improvements = [];
-
-  // Generate example projects
-  if (options.generateExamples) {
-    const examplesDir = path.join(cwd, 'examples');
-    await fs.mkdir(examplesDir, { recursive: true });
-
-    // Create a basic example
-    const basicExample = {
-      name: 'basic-todo-app',
-      description: 'A simple todo application built with DanteForge',
-      steps: [
-        'danteforge init',
-        'danteforge constitution',
-        'danteforge specify "Create a todo list app with add, complete, and delete features"',
-        'danteforge plan',
-        'danteforge tasks',
-        'danteforge forge',
-        'danteforge verify'
-      ]
-    };
-
-    await fs.writeFile(
-      path.join(examplesDir, 'basic-todo.json'),
-      JSON.stringify(basicExample, null, 2)
-    );
-
-    improvements.push('Generated example projects');
-  }
-
-  // Generate project templates
-  if (options.generateTemplates) {
-    const templatesDir = path.join(cwd, 'templates');
-    await fs.mkdir(templatesDir, { recursive: true });
-
-    const webTemplate = {
-      name: 'web-application',
-      description: 'Template for web applications',
-      constitution: [
-        'Zero ambiguity in requirements',
-        'Progressive enhancement approach',
-        'Accessible by default',
-        'Performance-first development'
-      ],
-      techStack: ['HTML', 'CSS', 'JavaScript', 'Node.js']
-    };
-
-    await fs.writeFile(
-      path.join(templatesDir, 'web-app.json'),
-      JSON.stringify(webTemplate, null, 2)
-    );
-
-    improvements.push('Generated project templates');
-  }
-
-  // Improve documentation
-  if (options.improveDocs) {
-    const docsDir = path.join(cwd, 'docs');
-    await fs.mkdir(docsDir, { recursive: true });
-
-    const quickStartGuide = `# DanteForge Quick Start Guide
+async function improveDocumentation(cwd: string): Promise<string> {
+  const docsDir = path.join(cwd, 'docs');
+  await fs.mkdir(docsDir, { recursive: true });
+  const quickStartGuide = `# DanteForge Quick Start Guide
 
 ## Welcome to DanteForge!
 
@@ -133,21 +109,14 @@ danteforge verify
 
 Check out the \`examples/\` directory for sample projects and use cases.
 `;
+  await fs.writeFile(path.join(docsDir, 'QUICKSTART.md'), quickStartGuide);
+  return 'Enhanced documentation';
+}
 
-    await fs.writeFile(
-      path.join(docsDir, 'QUICKSTART.md'),
-      quickStartGuide
-    );
-
-    improvements.push('Enhanced documentation');
-  }
-
-  // Create showcase/demo
-  if (options.createShowcase) {
-    const showcaseDir = path.join(cwd, 'showcase');
-    await fs.mkdir(showcaseDir, { recursive: true });
-
-    const demoScript = `#!/bin/bash
+async function createShowcaseDemo(cwd: string): Promise<string> {
+  const showcaseDir = path.join(cwd, 'showcase');
+  await fs.mkdir(showcaseDir, { recursive: true });
+  const demoScript = `#!/bin/bash
 # DanteForge Showcase Demo
 
 echo "🚀 DanteForge Showcase Demo"
@@ -176,27 +145,27 @@ echo ""
 echo "Demo complete! Check the .danteforge/ directory for generated artifacts."
 echo "Run 'danteforge assess' to see quality scores."
 `;
-
-    await fs.writeFile(
-      path.join(showcaseDir, 'demo.sh'),
-      demoScript
-    );
-
-    // Make executable
-    try {
-      await fs.chmod(path.join(showcaseDir, 'demo.sh'), 0o755);
-    } catch {
-      // chmod may not work on Windows
-    }
-
-    improvements.push('Created showcase demo');
+  await fs.writeFile(path.join(showcaseDir, 'demo.sh'), demoScript);
+  try {
+    await fs.chmod(path.join(showcaseDir, 'demo.sh'), 0o755);
+  } catch {
+    // chmod may not work on Windows
   }
+  return 'Created showcase demo';
+}
 
+export async function improveCommunityAdoption(options: CommunityAdoptionOptions = {}) {
+  const cwd = process.cwd();
+  logger.info('Improving community adoption features...');
+  const improvements: string[] = [];
+  if (options.generateExamples) improvements.push(await generateExampleProjects(cwd));
+  if (options.generateTemplates) improvements.push(await generateProjectTemplates(cwd));
+  if (options.improveDocs) improvements.push(await improveDocumentation(cwd));
+  if (options.createShowcase) improvements.push(await createShowcaseDemo(cwd));
   logger.success(`Community adoption improvements completed:`);
   improvements.forEach(improvement => logger.info(`  ✓ ${improvement}`));
-
   return {
     improvements,
-    score: Math.min(9.0, 2.0 + (improvements.length * 1.5)) // Start at 2.0, +1.5 per improvement, cap at 9.0
+    score: Math.min(9.0, 2.0 + (improvements.length * 1.5))
   };
 }

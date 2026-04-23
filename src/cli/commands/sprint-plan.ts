@@ -250,6 +250,31 @@ ${verificationGates}
 Target dimensions each improve by at least 0.5 points. All verification gates pass. Sprint closes with danteforge certify.`;
 }
 
+// ── Plan generator ────────────────────────────────────────────────────────────
+
+async function generateSprintPlanMarkdown(state: ProjectState, maxCycles: number, opts: SprintPlanOptions): Promise<string> {
+  const isAvailable = opts._isLLMAvailable ?? (async () => {
+    try { const { isLLMAvailable } = await import('../../core/llm.js'); return isLLMAvailable(); } catch { return false; }
+  });
+  const llmAvailable = await isAvailable().catch(() => false);
+  if (!llmAvailable) {
+    logger.info('[sprint-plan] LLM unavailable — generating deterministic plan');
+    return deterministicSprintPlan(state, maxCycles);
+  }
+  try {
+    const llm = opts._llmCaller ?? (async (p: string) => {
+      const { callLLM } = await import('../../core/llm.js');
+      return callLLM(p);
+    });
+    logger.info('[sprint-plan] Generating plan with LLM...');
+    const result = await llm(buildSprintPlanPrompt(state, maxCycles));
+    return result.trim().startsWith('#') ? result : `# Sprint Plan\n\n${result}`;
+  } catch (err) {
+    logger.warn(`[sprint-plan] LLM failed — using deterministic plan: ${err instanceof Error ? err.message : String(err)}`);
+    return deterministicSprintPlan(state, maxCycles);
+  }
+}
+
 // ── Main entry ────────────────────────────────────────────────────────────────
 
 export async function runSprintPlan(opts: SprintPlanOptions = {}): Promise<SprintPlanResult> {
@@ -263,46 +288,12 @@ export async function runSprintPlan(opts: SprintPlanOptions = {}): Promise<Sprin
   const state = await gatherState(opts, cwd);
 
   const focusDimensions = state.openGaps.slice(0, 3).map(g => g.dimension);
-
-  // Estimate cycles to converge
   const largestGap = state.openGaps[0]?.gap ?? 0;
   const estimatedCyclesToConverge = state.avgImprovementPerCycle > 0
     ? Math.ceil(largestGap / state.avgImprovementPerCycle)
-    : (largestGap > 0 ? 10 : 0); // default estimate when no velocity data
+    : (largestGap > 0 ? 10 : 0);
 
-  // Generate plan
-  let planMarkdown: string;
-
-  const isAvailable = opts._isLLMAvailable ?? (async () => {
-    try {
-      const { isLLMAvailable } = await import('../../core/llm.js');
-      return isLLMAvailable();
-    } catch { return false; }
-  });
-
-  const llmAvailable = await isAvailable().catch(() => false);
-
-  if (llmAvailable) {
-    try {
-      const llm = opts._llmCaller ?? (async (p: string) => {
-        const { callLLM } = await import('../../core/llm.js');
-        return callLLM(p);
-      });
-      const prompt = buildSprintPlanPrompt(state, maxCycles);
-      logger.info('[sprint-plan] Generating plan with LLM...');
-      planMarkdown = await llm(prompt);
-      // Ensure it starts with a heading
-      if (!planMarkdown.trim().startsWith('#')) {
-        planMarkdown = `# Sprint Plan\n\n${planMarkdown}`;
-      }
-    } catch (err) {
-      logger.warn(`[sprint-plan] LLM failed — using deterministic plan: ${err instanceof Error ? err.message : String(err)}`);
-      planMarkdown = deterministicSprintPlan(state, maxCycles);
-    }
-  } else {
-    logger.info('[sprint-plan] LLM unavailable — generating deterministic plan');
-    planMarkdown = deterministicSprintPlan(state, maxCycles);
-  }
+  const planMarkdown = await generateSprintPlanMarkdown(state, maxCycles, opts);
 
   // Save plan to file
   const planDir = path.join(cwd, '.danteforge', 'sprint-plans');

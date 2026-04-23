@@ -41,6 +41,74 @@ export interface CodeWriterOptions {
 }
 
 // ---------------------------------------------------------------------------
+// Internal format parsers
+// ---------------------------------------------------------------------------
+
+function parseDiffOps(llmResponse: string): FileOperation[] {
+  const ops: FileOperation[] = [];
+  const diffHeaderRe = /^---[ \t]+(?:a\/)?(.+?)[ \t]*\r?\n\+\+\+[ \t]+(?:b\/)?(.+?)[ \t]*\r?\n((?:(?!---[ \t])(?:@@|[ +\-\\\\])[^\n]*\n?)+)/gm;
+  let d: RegExpExecArray | null;
+  while ((d = diffHeaderRe.exec(llmResponse)) !== null) {
+    const sourcePath = (d[1] ?? '').trim().replace(/\s+\d{4}-\d{2}-\d{2}.*$/, '').trim();
+    const targetPath = (d[2] ?? '').trim().replace(/\s+\d{4}-\d{2}-\d{2}.*$/, '').trim();
+    const filePath = (!sourcePath || sourcePath === '/dev/null' || sourcePath === 'null') ? targetPath : sourcePath;
+    if (!filePath || filePath === '/dev/null' || filePath === 'null') continue;
+    const hunksContent = d[3] ?? '';
+    const hunkBodyRe = /@@[^\n]*@@\n?([\s\S]*?)(?=@@[^\n]*@@|$)/g;
+    let h: RegExpExecArray | null;
+    while ((h = hunkBodyRe.exec(hunksContent)) !== null) {
+      const hunkLines = (h[1] ?? '').split('\n');
+      const searchLines: string[] = [];
+      const replaceLines: string[] = [];
+      let hasRemovals = false;
+      for (const line of hunkLines) {
+        if (line.startsWith('-')) { searchLines.push(line.slice(1)); hasRemovals = true; }
+        else if (line.startsWith('+')) { replaceLines.push(line.slice(1)); }
+        else if (line.startsWith(' ')) { searchLines.push(line.slice(1)); replaceLines.push(line.slice(1)); }
+      }
+      const searchBlock = searchLines.join('\n').replace(/\n+$/, '');
+      const replaceBlock = replaceLines.join('\n').replace(/\n+$/, '');
+      if (replaceBlock) {
+        ops.push(hasRemovals
+          ? { type: 'replace', filePath, searchBlock, replaceBlock }
+          : { type: 'create', filePath, replaceBlock });
+      }
+    }
+  }
+  return ops;
+}
+
+function parseFallbackOps(llmResponse: string): FileOperation[] {
+  const ops: FileOperation[] = [];
+
+  const fenceHeaderRe = /`{3,4}(?:\w+[ \t]+)?([^\s`]+\.[a-zA-Z0-9]{1,10})\n([\s\S]*?)\n`{3,4}/g;
+  let fb: RegExpExecArray | null;
+  while ((fb = fenceHeaderRe.exec(llmResponse)) !== null) {
+    const candidate = (fb[1] ?? '').trim();
+    if (candidate.includes('/') || candidate.includes('\\') || /^[a-z][\w-]*\.[a-zA-Z0-9]{1,10}$/.test(candidate)) {
+      ops.push({ type: 'create', filePath: candidate, replaceBlock: fb[2] ?? '' });
+    }
+  }
+  if (ops.length > 0) return ops;
+
+  const slashCommentRe = /`{3,4}\w*\n(\/\/[ \t]*(?:filepath:[ \t]*)?[^\n]+\.[a-zA-Z0-9]{1,10})\n([\s\S]*?)\n`{3,4}/g;
+  let sc: RegExpExecArray | null;
+  while ((sc = slashCommentRe.exec(llmResponse)) !== null) {
+    const filePath = (sc[1] ?? '').trim().replace(/^\/\/[ \t]*(?:filepath:[ \t]*)?/, '').trim();
+    if (filePath) ops.push({ type: 'create', filePath, replaceBlock: sc[2] ?? '' });
+  }
+  if (ops.length > 0) return ops;
+
+  const hashCommentRe = /`{3,4}\w*\n(#[ \t]*[^\n]+\.[a-zA-Z0-9]{1,10})\n([\s\S]*?)\n`{3,4}/g;
+  let hc: RegExpExecArray | null;
+  while ((hc = hashCommentRe.exec(llmResponse)) !== null) {
+    const filePath = (hc[1] ?? '').trim().replace(/^#[ \t]*/, '').trim();
+    if (filePath) ops.push({ type: 'create', filePath, replaceBlock: hc[2] ?? '' });
+  }
+  return ops;
+}
+
+// ---------------------------------------------------------------------------
 // parseCodeOperations
 // ---------------------------------------------------------------------------
 
@@ -103,58 +171,7 @@ export function parseCodeOperations(llmResponse: string): FileOperation[] {
   }
 
   // Format 3 — Unified diff (--- a/file / +++ b/file with @@ hunks)
-  // Matches the most common LLM deviation from SEARCH/REPLACE format.
-  // Negative lookahead prevents consuming the next --- file header as a hunk line
-  const diffHeaderRe = /^---[ \t]+(?:a\/)?(.+?)[ \t]*\r?\n\+\+\+[ \t]+(?:b\/)?(.+?)[ \t]*\r?\n((?:(?!---[ \t])(?:@@|[ +\-\\\\])[^\n]*\n?)+)/gm;
-  let d: RegExpExecArray | null;
-  while ((d = diffHeaderRe.exec(llmResponse)) !== null) {
-    // Strip optional timestamp suffix (--- src/foo.ts 2024-01-01 ...)
-    const sourcePath = (d[1] ?? '').trim().replace(/\s+\d{4}-\d{2}-\d{2}.*$/, '').trim();
-    const targetPath = (d[2] ?? '').trim().replace(/\s+\d{4}-\d{2}-\d{2}.*$/, '').trim();
-    // When source is /dev/null (new file), use target path instead
-    const filePath = (!sourcePath || sourcePath === '/dev/null' || sourcePath === 'null')
-      ? targetPath
-      : sourcePath;
-    if (!filePath || filePath === '/dev/null' || filePath === 'null') continue;
-    const hunksContent = d[3] ?? '';
-
-    // Split on @@ markers to get individual hunks
-    const hunkBodyRe = /@@[^\n]*@@\n?([\s\S]*?)(?=@@[^\n]*@@|$)/g;
-    let h: RegExpExecArray | null;
-    while ((h = hunkBodyRe.exec(hunksContent)) !== null) {
-      const hunkBody = h[1] ?? '';
-      const hunkLines = hunkBody.split('\n');
-      const searchLines: string[] = [];
-      const replaceLines: string[] = [];
-      let hasRemovals = false;
-
-      for (const line of hunkLines) {
-        if (line.startsWith('-')) {
-          searchLines.push(line.slice(1));
-          hasRemovals = true;
-        } else if (line.startsWith('+')) {
-          replaceLines.push(line.slice(1));
-        } else if (line.startsWith(' ')) {
-          // Context line — appears in both search and replace
-          searchLines.push(line.slice(1));
-          replaceLines.push(line.slice(1));
-        }
-        // Lines starting with '\' (e.g. "\ No newline at end of file") are skipped
-      }
-
-      const searchBlock = searchLines.join('\n').replace(/\n+$/, '');
-      const replaceBlock = replaceLines.join('\n').replace(/\n+$/, '');
-
-      if (replaceBlock) {
-        if (!hasRemovals) {
-          // Pure addition — treat as file creation
-          ops.push({ type: 'create', filePath, replaceBlock });
-        } else {
-          ops.push({ type: 'replace', filePath, searchBlock, replaceBlock });
-        }
-      }
-    }
-  }
+  ops.push(...parseDiffOps(llmResponse));
 
   // Format 4 — Whole-file heading (## FILE: path, === File: path ===, etc.)
   const wholeFileRe =
@@ -167,43 +184,7 @@ export function parseCodeOperations(llmResponse: string): FileOperation[] {
   }
 
   // Fallback — only when no ops found yet: flexible fence detection
-  if (ops.length === 0) {
-    // Pass 1: filepath in fence header (```typescript src/foo.ts or ```ts src/foo.ts)
-    const fenceHeaderRe = /`{3,4}(?:\w+[ \t]+)?([^\s`]+\.[a-zA-Z0-9]{1,10})\n([\s\S]*?)\n`{3,4}/g;
-    let fb: RegExpExecArray | null;
-    while ((fb = fenceHeaderRe.exec(llmResponse)) !== null) {
-      const candidate = (fb[1] ?? '').trim();
-      // Must contain a path separator or look like a real file (not just a word like "json")
-      if (candidate.includes('/') || candidate.includes('\\') || /^[a-z][\w-]*\.[a-zA-Z0-9]{1,10}$/.test(candidate)) {
-        const replaceBlock = fb[2] ?? '';
-        ops.push({ type: 'create', filePath: candidate, replaceBlock });
-      }
-    }
-
-    // Pass 2: // comment style path (original fallback)
-    if (ops.length === 0) {
-      const slashCommentRe = /`{3,4}\w*\n(\/\/[ \t]*(?:filepath:[ \t]*)?[^\n]+\.[a-zA-Z0-9]{1,10})\n([\s\S]*?)\n`{3,4}/g;
-      let sc: RegExpExecArray | null;
-      while ((sc = slashCommentRe.exec(llmResponse)) !== null) {
-        const commentLine = (sc[1] ?? '').trim();
-        const filePath = commentLine.replace(/^\/\/[ \t]*(?:filepath:[ \t]*)?/, '').trim();
-        const replaceBlock = sc[2] ?? '';
-        if (filePath) ops.push({ type: 'create', filePath, replaceBlock });
-      }
-    }
-
-    // Pass 3: # hash comment style path (Python/shell convention)
-    if (ops.length === 0) {
-      const hashCommentRe = /`{3,4}\w*\n(#[ \t]*[^\n]+\.[a-zA-Z0-9]{1,10})\n([\s\S]*?)\n`{3,4}/g;
-      let hc: RegExpExecArray | null;
-      while ((hc = hashCommentRe.exec(llmResponse)) !== null) {
-        const commentLine = (hc[1] ?? '').trim();
-        const filePath = commentLine.replace(/^#[ \t]*/, '').trim();
-        const replaceBlock = hc[2] ?? '';
-        if (filePath) ops.push({ type: 'create', filePath, replaceBlock });
-      }
-    }
-  }
+  if (ops.length === 0) ops.push(...parseFallbackOps(llmResponse));
 
   return ops;
 }
@@ -267,6 +248,52 @@ function normalizeWS(s: string): string {
 /**
  * Apply a single FileOperation using real fs or injected seams.
  */
+async function applyReplaceOp(
+  filePath: string,
+  absPath: string,
+  op: FileOperation,
+  readFile: (p: string) => Promise<string>,
+  writeFile: (p: string, c: string) => Promise<void>,
+  exists: (p: string) => Promise<boolean>,
+): Promise<ApplyResult> {
+  if (!op.searchBlock && op.searchBlock !== '') {
+    return { filePath, success: false, error: 'No searchBlock provided for replace operation' };
+  }
+  if (!(await exists(absPath))) {
+    return { filePath, success: false, error: 'File not found for replace operation' };
+  }
+  let existing: string;
+  try {
+    existing = await readFile(absPath);
+  } catch {
+    return { filePath, success: false, error: 'File not found for replace operation' };
+  }
+  const searchBlock = op.searchBlock ?? '';
+  if (existing.includes(searchBlock)) {
+    await writeFile(absPath, existing.replace(searchBlock, op.replaceBlock));
+    return { filePath, success: true, matchStrategy: 'exact' };
+  }
+  const normExisting = normalizeWS(existing);
+  const normSearch = normalizeWS(searchBlock);
+  if (normSearch.length > 0 && normExisting.includes(normSearch)) {
+    const searchLines = searchBlock.split('\n');
+    const existingLines = existing.split('\n');
+    const firstTrimmed = searchLines[0]?.trim() ?? '';
+    const startIdx = existingLines.findIndex((l) => l.trim() === firstTrimmed);
+    if (startIdx !== -1) {
+      const updated = [...existingLines.slice(0, startIdx), op.replaceBlock, ...existingLines.slice(startIdx + searchLines.length)].join('\n');
+      await writeFile(absPath, updated);
+      return { filePath, success: true, matchStrategy: 'whitespace' };
+    }
+  }
+  const match = findFuzzyMatch(existing, searchBlock);
+  if (match !== null) {
+    await writeFile(absPath, existing.slice(0, match.index) + op.replaceBlock + existing.slice(match.index + searchBlock.length));
+    return { filePath, success: true, matchStrategy: 'fuzzy' };
+  }
+  return { filePath, success: false, error: 'SEARCH block not found in file' };
+}
+
 export async function applyOperation(
   op: FileOperation,
   opts?: CodeWriterOptions,
@@ -320,62 +347,7 @@ export async function applyOperation(
   }
 
   // 'replace' type
-  if (!op.searchBlock && op.searchBlock !== '') {
-    return { filePath: op.filePath, success: false, error: 'No searchBlock provided for replace operation' };
-  }
-
-  const fileExists = await exists(absPath);
-  if (!fileExists) {
-    return { filePath: op.filePath, success: false, error: 'File not found for replace operation' };
-  }
-
-  let existing: string;
-  try {
-    existing = await readFile(absPath);
-  } catch {
-    return { filePath: op.filePath, success: false, error: 'File not found for replace operation' };
-  }
-
-  const searchBlock = op.searchBlock ?? '';
-
-  // Tier 1 — exact match
-  if (existing.includes(searchBlock)) {
-    const updated = existing.replace(searchBlock, op.replaceBlock);
-    await writeFile(absPath, updated);
-    return { filePath: op.filePath, success: true, matchStrategy: 'exact' };
-  }
-
-  // Tier 2 — whitespace normalized
-  const normExisting = normalizeWS(existing);
-  const normSearch = normalizeWS(searchBlock);
-  if (normSearch.length > 0 && normExisting.includes(normSearch)) {
-    const searchLines = searchBlock.split('\n');
-    const existingLines = existing.split('\n');
-    const firstTrimmed = searchLines[0]?.trim() ?? '';
-    const startIdx = existingLines.findIndex((l) => l.trim() === firstTrimmed);
-    if (startIdx !== -1) {
-      const updated = [
-        ...existingLines.slice(0, startIdx),
-        op.replaceBlock,
-        ...existingLines.slice(startIdx + searchLines.length),
-      ].join('\n');
-      await writeFile(absPath, updated);
-      return { filePath: op.filePath, success: true, matchStrategy: 'whitespace' };
-    }
-  }
-
-  // Tier 3 — fuzzy match
-  const match = findFuzzyMatch(existing, searchBlock);
-  if (match !== null) {
-    const updated =
-      existing.slice(0, match.index) +
-      op.replaceBlock +
-      existing.slice(match.index + searchBlock.length);
-    await writeFile(absPath, updated);
-    return { filePath: op.filePath, success: true, matchStrategy: 'fuzzy' };
-  }
-
-  return { filePath: op.filePath, success: false, error: 'SEARCH block not found in file' };
+  return applyReplaceOp(op.filePath, absPath, op, readFile, writeFile, exists);
 }
 
 // ---------------------------------------------------------------------------

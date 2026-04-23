@@ -10,6 +10,69 @@ export interface EnterpriseComplianceOptions {
   includeCompliance?: boolean;
 }
 
+const ENTERPRISE_FEATURES = {
+  auditLogging: {
+    implemented: true,
+    description: 'Complete audit logging for all CLI operations with correlation IDs',
+    compliance: ['SOX', 'GDPR', 'PCI-DSS'],
+    score: 9.0,
+  },
+  circuitBreaker: {
+    implemented: true,
+    description: 'Resilience patterns with configurable circuit breakers',
+    compliance: ['ISO 27001', 'NIST'],
+    score: 8.5,
+  },
+  secureConfiguration: {
+    implemented: true,
+    description: 'Secure configuration with user-level secrets storage',
+    compliance: ['SOX', 'GDPR', 'PCI-DSS'],
+    score: 7.0,
+  },
+  accessControl: {
+    implemented: true,
+    description: 'Role-based access control and permissions',
+    compliance: ['SOX', 'GDPR', 'HIPAA'],
+    score: 8.0,
+  },
+  dataEncryption: {
+    implemented: true,
+    description: 'Data encryption at rest and in transit',
+    compliance: ['GDPR', 'PCI-DSS', 'HIPAA'],
+    score: 7.0,
+  },
+  auditExport: {
+    implemented: true,
+    description: 'Comprehensive audit trail export in multiple formats',
+    compliance: ['SOX', 'GDPR'],
+    score: 8.0,
+  },
+  complianceReporting: {
+    implemented: true,
+    description: 'Automated compliance assessment and reporting framework',
+    compliance: ['SOX', 'ISO 27001'],
+    score: 7.0,
+  },
+  backupRecovery: {
+    implemented: true,
+    description: 'Data backup and disaster recovery procedures',
+    compliance: ['ISO 27001', 'NIST'],
+    score: 7.0,
+  },
+  multiTenancy: {
+    implemented: true,
+    description: 'Multi-tenant architecture support',
+    compliance: ['SOX', 'GDPR'],
+    score: 6.0,
+  },
+  regulatoryCompliance: {
+    implemented: true,
+    description: 'Regulatory compliance frameworks (GDPR, HIPAA, etc.)',
+    compliance: ['GDPR', 'HIPAA', 'CCPA'],
+    score: 7.0,
+  },
+};
+
 export async function generateEnterpriseReadinessReport(options: EnterpriseComplianceOptions = {}) {
   const cwd = process.cwd();
   const outputPath = options.output || path.join(cwd, '.danteforge', 'enterprise-readiness-report.json');
@@ -17,69 +80,7 @@ export async function generateEnterpriseReadinessReport(options: EnterpriseCompl
 
   logger.info('Generating enterprise readiness report...');
 
-  // Check for enterprise features with actual implementation
-  const features = {
-    auditLogging: {
-      implemented: true, // Comprehensive audit logging implemented
-      description: 'Complete audit logging for all CLI operations with correlation IDs',
-      compliance: ['SOX', 'GDPR', 'PCI-DSS'],
-      score: 9.0
-    },
-    circuitBreaker: {
-      implemented: true, // Circuit breaker pattern implemented
-      description: 'Resilience patterns with configurable circuit breakers',
-      compliance: ['ISO 27001', 'NIST'],
-      score: 8.5
-    },
-    secureConfiguration: {
-      implemented: true, // Basic secure config implemented
-      description: 'Secure configuration with user-level secrets storage',
-      compliance: ['SOX', 'GDPR', 'PCI-DSS'],
-      score: 7.0
-    },
-    accessControl: {
-      implemented: true, // RBAC implemented in enterprise-controls.ts
-      description: 'Role-based access control and permissions',
-      compliance: ['SOX', 'GDPR', 'HIPAA'],
-      score: 8.0
-    },
-    dataEncryption: {
-      implemented: true, // Encryption framework implemented
-      description: 'Data encryption at rest and in transit',
-      compliance: ['GDPR', 'PCI-DSS', 'HIPAA'],
-      score: 7.0
-    },
-    auditExport: {
-      implemented: true, // Audit export command implemented
-      description: 'Comprehensive audit trail export in multiple formats',
-      compliance: ['SOX', 'GDPR'],
-      score: 8.0
-    },
-    complianceReporting: {
-      implemented: true, // Basic compliance reporting implemented
-      description: 'Automated compliance assessment and reporting framework',
-      compliance: ['SOX', 'ISO 27001'],
-      score: 7.0
-    },
-    backupRecovery: {
-      implemented: true, // Backup framework implemented in enterprise-controls.ts
-      description: 'Data backup and disaster recovery procedures',
-      compliance: ['ISO 27001', 'NIST'],
-      score: 7.0
-    },
-    multiTenancy: {
-      implemented: true, // Multi-tenant manager implemented
-      description: 'Multi-tenant architecture support',
-      compliance: ['SOX', 'GDPR'],
-      score: 6.0
-    },
-    regulatoryCompliance: {
-      implemented: true, // SOC 2 compliance framework implemented
-      description: 'Regulatory compliance frameworks (GDPR, HIPAA, etc.)',
-      compliance: ['GDPR', 'HIPAA', 'CCPA'],
-      score: 7.0
-    }
-  };
+  const features = ENTERPRISE_FEATURES;
 
   // Calculate overall enterprise readiness score with weighted calculation
   const implementedFeatures = Object.values(features).filter(f => f.implemented);

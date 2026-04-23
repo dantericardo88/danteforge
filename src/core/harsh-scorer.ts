@@ -150,10 +150,161 @@ export interface HarshScorerOptions {
 
 // ── Main scoring function ─────────────────────────────────────────────────────
 
+async function gatherEvidenceFlags(
+  cwd: string,
+  options: HarshScorerOptions,
+  existsFn: (p: string) => Promise<boolean>,
+): Promise<{ evidenceFlags: PipelineEvidenceFlags; convergenceFlags: ConvergenceEvidenceFlags; errorHandlingFlags: ErrorHandlingEvidenceFlags }> {
+  const pipelineEvidencePaths = [
+    path.join(cwd, 'examples', 'todo-app', 'evidence', 'pipeline-run.json'),
+    path.join(cwd, '.danteforge', 'evidence', 'pipeline-proof.json'),
+  ];
+  const hasPipelineEvidence = (await Promise.all(pipelineEvidencePaths.map(existsFn))).some(Boolean);
+  const hasE2ETest = await existsFn(path.join(cwd, 'tests', 'e2e-spec-pipeline.test.ts'));
+  const evidenceFlags: PipelineEvidenceFlags = { hasPipelineEvidence, hasE2ETest };
+
+  const convergenceProofPaths = [
+    path.join(cwd, 'examples', 'todo-app', 'evidence', 'convergence-proof.json'),
+    path.join(cwd, '.danteforge', 'evidence', 'convergence-proof.json'),
+  ];
+  const hasConvergenceProof = (await Promise.all(convergenceProofPaths.map(existsFn))).some(Boolean);
+  const hasE2EConvergenceTest = await existsFn(path.join(cwd, 'tests', 'e2e-convergence.test.ts'));
+  const convergenceFlags: ConvergenceEvidenceFlags = options._readConvergenceProof
+    ? await options._readConvergenceProof(cwd)
+    : { hasConvergenceProof, hasE2EConvergenceTest };
+
+  const hasErrorHierarchy = await existsFn(path.join(cwd, 'src', 'core', 'errors.ts'));
+  const hasCircuitBreaker = await existsFn(path.join(cwd, 'src', 'core', 'circuit-breaker.ts'));
+  const hasResilienceModule = await existsFn(path.join(cwd, 'src', 'core', 'resilience.ts'));
+  const hasE2EErrorHandlingTest = await existsFn(path.join(cwd, 'tests', 'e2e-error-handling.test.ts'));
+  const errorHandlingFlags: ErrorHandlingEvidenceFlags = options._readErrorHandlingProof
+    ? await options._readErrorHandlingProof(cwd)
+    : { hasErrorHierarchy, hasCircuitBreaker, hasResilienceModule, hasE2EErrorHandlingTest };
+
+  return { evidenceFlags, convergenceFlags, errorHandlingFlags };
+}
+
+async function fetchCommunityData(
+  cwd: string,
+  options: HarshScorerOptions,
+  readFileFn: (p: string) => Promise<string>,
+): Promise<CommunityMetrics> {
+  try {
+    const pkgRaw = await readFileFn(path.join(cwd, 'package.json'));
+    const pkg = JSON.parse(pkgRaw) as Record<string, unknown>;
+    const packageName = typeof pkg['name'] === 'string' ? pkg['name'] : '';
+    const repoUrl = typeof pkg['repository'] === 'string'
+      ? pkg['repository']
+      : typeof (pkg['repository'] as Record<string, unknown>)?.['url'] === 'string'
+        ? (pkg['repository'] as Record<string, unknown>)['url'] as string
+        : '';
+    const repoSlug = repoUrl.replace(/^.*github\.com[/:]/, '').replace(/\.git$/, '');
+    if (!packageName) return {};
+    const fetchFn = options._fetchCommunity
+      ? (pn: string, rs: string) => options._fetchCommunity!(pn, rs)
+      : (pn: string, rs: string) => fetchCommunityMetrics(pn, rs);
+    return await fetchFn(packageName, repoSlug).catch(() => ({}));
+  } catch { return {}; }
+}
+
+async function computeAugmentedTestingScore(
+  dims: MaturityDimensions,
+  coveragePct: number | null,
+  cwd: string,
+  existsFn: (p: string) => Promise<boolean>,
+): Promise<number> {
+  let score = coveragePct !== null
+    ? Math.round((dims.testing * 0.4) + (Math.min(coveragePct, 100) * 0.6))
+    : dims.testing;
+  if (await existsFn(path.join(cwd, 'tests', 'mutation-score.test.ts'))) {
+    score = Math.min(100, score + 3);
+  }
+  if (await existsFn(path.join(cwd, 'tests', 'v090-adversarial.test.ts')) ||
+      await existsFn(path.join(cwd, 'tests', 'adversarial-scorer-dim.test.ts'))) {
+    score = Math.min(100, score + 2);
+  }
+  return score;
+}
+
+async function applyAllPenalties(
+  cwd: string,
+  dims: MaturityDimensions,
+  completionTracker: { overall: number },
+  maturityAssessment: MaturityAssessment,
+  targetLevel: MaturityLevel,
+  listFilesFn: (cwd: string) => Promise<string[]>,
+  readFileFn: (p: string) => Promise<string>,
+  readHistoryFn: (cwd: string) => Promise<AssessmentHistoryEntry[]>,
+): Promise<{ penalties: HarshPenalty[]; stubsDetected: string[]; fakeCompletionRisk: 'low' | 'medium' | 'high' }> {
+  const penalties: HarshPenalty[] = [];
+  const stubsDetected: string[] = [];
+
+  const sourceFiles = await listFilesFn(cwd);
+  let stubPenalty = 0;
+  for (const file of sourceFiles.slice(0, 50)) {
+    try {
+      const content = await readFileFn(path.join(cwd, file));
+      if (STUB_PATTERNS.some((p) => p.test(content))) {
+        stubsDetected.push(file);
+        stubPenalty = Math.min(stubPenalty + 10, MAX_STUB_PENALTY);
+      }
+    } catch { /* ignore unreadable files */ }
+  }
+  if (stubPenalty > 0) {
+    penalties.push({ category: 'stub-detection', reason: `Stub/TODO patterns detected in ${stubsDetected.length} file(s)`, deduction: stubPenalty, evidence: stubsDetected.slice(0, 3).join(', ') });
+  }
+
+  const fakeCompletionRisk = computeFakeCompletionRisk(completionTracker.overall, scoreToMaturityLevel(maturityAssessment.overallScore), targetLevel);
+  if (fakeCompletionRisk === 'high') {
+    penalties.push({ category: 'fake-completion', reason: `Completion tracker reports ${completionTracker.overall.toFixed(0)}% but maturity level is below target`, deduction: 20, evidence: `overall=${completionTracker.overall.toFixed(0)}%, maturity=${scoreToMaturityLevel(maturityAssessment.overallScore)}, target=${targetLevel}` });
+  } else if (fakeCompletionRisk === 'medium') {
+    penalties.push({ category: 'fake-completion', reason: `Completion tracker shows ${completionTracker.overall.toFixed(0)}% but maturity is 2+ levels below target`, deduction: 10, evidence: `maturity=${scoreToMaturityLevel(maturityAssessment.overallScore)}, target=${targetLevel}` });
+  }
+
+  if (dims.testing < 70) {
+    penalties.push({ category: 'test-coverage', reason: `Testing dimension at ${dims.testing}/100 (threshold: 70)`, deduction: 15, evidence: `dimensions.testing=${dims.testing}` });
+  }
+
+  try {
+    const history = await readHistoryFn(cwd);
+    if (history.length >= 3) {
+      const lastThree = history.slice(-3).map((e) => e.harshScore);
+      const range = Math.max(...lastThree) - Math.min(...lastThree);
+      if (range <= 2) {
+        penalties.push({ category: 'plateau', reason: `Score plateau: last 3 cycles scored ${lastThree.join(', ')} (range ≤ 2)`, deduction: 5, evidence: `scores=${lastThree.join(',')}` });
+      }
+    }
+  } catch { /* history unavailable — no penalty */ }
+
+  if (dims.errorHandling < 50) {
+    const deduction = Math.min(Math.floor((50 - dims.errorHandling) / 10) * 3, MAX_ERROR_HANDLING_PENALTY);
+    if (deduction > 0) {
+      penalties.push({ category: 'error-handling', reason: `Error handling critically low at ${dims.errorHandling}/100`, deduction, evidence: `dimensions.errorHandling=${dims.errorHandling}` });
+    }
+  }
+
+  return { penalties, stubsDetected, fakeCompletionRisk };
+}
+
+async function persistHarshHistory(
+  cwd: string,
+  harshScore: number,
+  displayScore: number,
+  dimensions: Record<ScoringDimension, number>,
+  penaltyTotal: number,
+  timestamp: string,
+  readHistoryFn: (cwd: string) => Promise<AssessmentHistoryEntry[]>,
+  writeHistoryFn: (cwd: string, entries: AssessmentHistoryEntry[]) => Promise<void>,
+): Promise<void> {
+  try {
+    const history = await readHistoryFn(cwd).catch(() => []);
+    await writeHistoryFn(cwd, [...history, { timestamp, harshScore, displayScore, dimensions, penaltyTotal }]);
+  } catch { /* best-effort */ }
+}
+
 export async function computeHarshScore(options: HarshScorerOptions = {}): Promise<HarshScoreResult> {
   const cwd = options.cwd ?? process.cwd();
   const targetLevel: MaturityLevel = options.targetLevel ?? 5;
-
   const loadStateFn = options._loadState ?? loadState;
   const scoreArtifactsFn = options._scoreAllArtifacts ?? scoreAllArtifacts;
   const assessMaturityFn = options._assessMaturity ?? assessMaturity;
@@ -166,55 +317,13 @@ export async function computeHarshScore(options: HarshScorerOptions = {}): Promi
     try { await fs.access(p); return true; } catch { return false; }
   });
 
-  // Step 1: Load state and compute existing scores
   const state = await loadStateFn({ cwd });
   const pdseScores = await scoreArtifactsFn(cwd, state);
-
-  // Step 2: Run maturity assessment (8-dimension quality scoring)
   const maturityAssessment = await assessMaturityFn({ cwd, state, pdseScores, targetLevel });
+  const completionTracker = computeTrackerFn(state, pdseScores as Record<ScoredArtifact, ScoreResult>);
 
-  // Step 3: Completion tracker (for fake-completion detection)
-  const allArtifacts = pdseScores as Record<ScoredArtifact, ScoreResult>;
-  const completionTracker = computeTrackerFn(state, allArtifacts);
+  const { evidenceFlags, convergenceFlags, errorHandlingFlags } = await gatherEvidenceFlags(cwd, options, existsFn);
 
-  // Step 4: Derive the 10 extended dimensions from existing data
-  // Gather pipeline evidence flags for specDrivenPipeline scoring
-  const pipelineEvidencePaths = [
-    path.join(cwd, 'examples', 'todo-app', 'evidence', 'pipeline-run.json'),
-    path.join(cwd, '.danteforge', 'evidence', 'pipeline-proof.json'),
-  ];
-  const e2eTestPath = path.join(cwd, 'tests', 'e2e-spec-pipeline.test.ts');
-  const hasPipelineEvidence = (await Promise.all(pipelineEvidencePaths.map(existsFn))).some(Boolean);
-  const hasE2ETest = await existsFn(e2eTestPath);
-  const evidenceFlags: PipelineEvidenceFlags = { hasPipelineEvidence, hasE2ETest };
-  // Gather convergence evidence flags for convergenceSelfHealing scoring
-  const convergenceProofPaths = [
-    path.join(cwd, 'examples', 'todo-app', 'evidence', 'convergence-proof.json'),
-    path.join(cwd, '.danteforge', 'evidence', 'convergence-proof.json'),
-  ];
-  const e2eConvergenceTestPath = path.join(cwd, 'tests', 'e2e-convergence.test.ts');
-  const hasConvergenceProof = (await Promise.all(convergenceProofPaths.map(existsFn))).some(Boolean);
-  const hasE2EConvergenceTest = await existsFn(e2eConvergenceTestPath);
-  const convergenceFlags: ConvergenceEvidenceFlags = options._readConvergenceProof
-    ? await options._readConvergenceProof(cwd)
-    : { hasConvergenceProof, hasE2EConvergenceTest };
-  // Gather error handling evidence flags for errorHandling scoring
-  const errHierarchyPath = path.join(cwd, 'src', 'core', 'errors.ts');
-  const circuitBreakerPath = path.join(cwd, 'src', 'core', 'circuit-breaker.ts');
-  const resiliencePath = path.join(cwd, 'src', 'core', 'resilience.ts');
-  const e2eErrorTestPath = path.join(cwd, 'tests', 'e2e-error-handling.test.ts');
-  const hasErrorHierarchy = await existsFn(errHierarchyPath);
-  const hasCircuitBreaker = await existsFn(circuitBreakerPath);
-  const hasResilienceModule = await existsFn(resiliencePath);
-  const hasE2EErrorHandlingTest = await existsFn(e2eErrorTestPath);
-  const errorHandlingFlags: ErrorHandlingEvidenceFlags = options._readErrorHandlingProof
-    ? await options._readErrorHandlingProof(cwd)
-    : { hasErrorHierarchy, hasCircuitBreaker, hasResilienceModule, hasE2EErrorHandlingTest };
-
-  // Integration wiring check — verifies call sites, not just file existence.
-  // Opt-in only: callers must explicitly provide _checkIntegrationWiring to enable
-  // wiring-aware scoring. Default is undefined (backward compatible — full credit
-  // for file existence, same behavior as before this feature was added).
   const wiringResult: IntegrationWiringResult | undefined = options._checkIntegrationWiring
     ? await options._checkIntegrationWiring({ cwd }).catch((): IntegrationWiringResult => ({
         wiringScore: 0,
@@ -223,54 +332,12 @@ export async function computeHarshScore(options: HarshScorerOptions = {}): Promi
       }))
     : undefined;
 
-  // Community adoption — read package.json for name + repo slug, then fetch real metrics
-  let communityMetrics: CommunityMetrics = {};
-  try {
-    const pkgRaw = await readFileFn(path.join(cwd, 'package.json'));
-    const pkg = JSON.parse(pkgRaw) as Record<string, unknown>;
-    const packageName = typeof pkg['name'] === 'string' ? pkg['name'] : '';
-    const repoUrl = typeof pkg['repository'] === 'string'
-      ? pkg['repository']
-      : typeof (pkg['repository'] as Record<string, unknown>)?.['url'] === 'string'
-        ? (pkg['repository'] as Record<string, unknown>)['url'] as string
-        : '';
-    const repoSlug = repoUrl.replace(/^.*github\.com[/:]/, '').replace(/\.git$/, '');
-    if (packageName) {
-      const fetchFn = options._fetchCommunity
-        ? (pn: string, rs: string) => options._fetchCommunity!(pn, rs)
-        : (pn: string, rs: string) => fetchCommunityMetrics(pn, rs);
-      communityMetrics = await fetchFn(packageName, repoSlug).catch(() => ({}));
-    }
-  } catch { /* no package.json — ok */ }
-
-  // Real coverage % — augments the testing dimension
-  const coveragePct = await (options._readCoverage
-    ? options._readCoverage(cwd)
-    : readCoveragePercent(cwd, readFileFn)
-  ).catch(() => null);
-
+  const communityMetrics = await fetchCommunityData(cwd, options, readFileFn);
+  const coveragePct = await (options._readCoverage ? options._readCoverage(cwd) : readCoveragePercent(cwd, readFileFn)).catch(() => null);
   const newDimensions = computeNewDimensions(pdseScores, state, maturityAssessment, cwd, evidenceFlags, convergenceFlags, communityMetrics);
 
-  // Step 5: Combine all 18 dimensions (8 from maturity + 10 extended)
   const dims = maturityAssessment.dimensions;
-  // Augment testing score: blend maturity signals with real coverage %, then add quality bonuses.
-  // Coverage (quantity) is blended with maturity score (structure/CI/thresholds).
-  // Mutation and adversarial testing bonuses reward test QUALITY — they measure whether tests
-  // actually find bugs, not just whether they run.
-  let testingScore = coveragePct !== null
-    ? Math.round((dims.testing * 0.4) + (Math.min(coveragePct, 100) * 0.6))
-    : dims.testing;
-  // Bonus: mutation testing in place (+3) — tests the tests
-  const mutationTestPath = path.join(cwd, 'tests', 'mutation-score.test.ts');
-  if (await existsFn(mutationTestPath)) {
-    testingScore = Math.min(100, testingScore + 3);
-  }
-  // Bonus: adversarial test patterns present (+2) — probes edge cases deliberately
-  const adversarialTestPath = path.join(cwd, 'tests', 'v090-adversarial.test.ts');
-  const adversarialDimTestPath = path.join(cwd, 'tests', 'adversarial-scorer-dim.test.ts');
-  if (await existsFn(adversarialTestPath) || await existsFn(adversarialDimTestPath)) {
-    testingScore = Math.min(100, testingScore + 2);
-  }
+  const testingScore = await computeAugmentedTestingScore(dims, coveragePct, cwd, existsFn);
   const dimensions = {
     functionality: dims.functionality,
     testing: testingScore,
@@ -283,142 +350,26 @@ export async function computeHarshScore(options: HarshScorerOptions = {}): Promi
     ...newDimensions,
   } as Record<ScoringDimension, number>;
 
-  // Step 6: Weighted raw score
   const rawScore = computeWeightedScore(dimensions);
-
-  // Step 7: Apply harsh penalties
-  const penalties: HarshPenalty[] = [];
-  const stubsDetected: string[] = [];
-
-  // Penalty: stub detection in source files
-  const sourceFiles = await listFilesFn(cwd);
-  let stubPenalty = 0;
-  for (const file of sourceFiles.slice(0, 50)) {
-    try {
-      const content = await readFileFn(path.join(cwd, file));
-      const hasStub = STUB_PATTERNS.some((p) => p.test(content));
-      if (hasStub) {
-        stubsDetected.push(file);
-        stubPenalty = Math.min(stubPenalty + 10, MAX_STUB_PENALTY);
-      }
-    } catch { /* ignore unreadable files */ }
-  }
-  if (stubPenalty > 0) {
-    penalties.push({
-      category: 'stub-detection',
-      reason: `Stub/TODO patterns detected in ${stubsDetected.length} file(s)`,
-      deduction: stubPenalty,
-      evidence: stubsDetected.slice(0, 3).join(', '),
-    });
-  }
-
-  // Penalty: fake completion (high completion % but low maturity level)
-  const fakeCompletionRisk = computeFakeCompletionRisk(
-    completionTracker.overall,
-    scoreToMaturityLevel(maturityAssessment.overallScore),
-    targetLevel,
+  const { penalties, stubsDetected, fakeCompletionRisk } = await applyAllPenalties(
+    cwd, dims, completionTracker, maturityAssessment, targetLevel, listFilesFn, readFileFn, readHistoryFn,
   );
-  if (fakeCompletionRisk === 'high') {
-    penalties.push({
-      category: 'fake-completion',
-      reason: `Completion tracker reports ${completionTracker.overall.toFixed(0)}% but maturity level is below target`,
-      deduction: 20,
-      evidence: `overall=${completionTracker.overall.toFixed(0)}%, maturity=${scoreToMaturityLevel(maturityAssessment.overallScore)}, target=${targetLevel}`,
-    });
-  } else if (fakeCompletionRisk === 'medium') {
-    penalties.push({
-      category: 'fake-completion',
-      reason: `Completion tracker shows ${completionTracker.overall.toFixed(0)}% but maturity is 2+ levels below target`,
-      deduction: 10,
-      evidence: `maturity=${scoreToMaturityLevel(maturityAssessment.overallScore)}, target=${targetLevel}`,
-    });
-  }
-
-  // Penalty: low test/coverage score
-  if (dims.testing < 70) {
-    penalties.push({
-      category: 'test-coverage',
-      reason: `Testing dimension at ${dims.testing}/100 (threshold: 70)`,
-      deduction: 15,
-      evidence: `dimensions.testing=${dims.testing}`,
-    });
-  }
-
-  // Penalty: plateau (same score ±2 over last 3 assessments)
-  try {
-    const history = await readHistoryFn(cwd);
-    if (history.length >= 3) {
-      const lastThree = history.slice(-3).map((e) => e.harshScore);
-      const range = Math.max(...lastThree) - Math.min(...lastThree);
-      if (range <= 2) {
-        penalties.push({
-          category: 'plateau',
-          reason: `Score plateau: last 3 cycles scored ${lastThree.join(', ')} (range ≤ 2)`,
-          deduction: 5,
-          evidence: `scores=${lastThree.join(',')}`,
-        });
-      }
-    }
-  } catch { /* history unavailable — no penalty */ }
-
-  // Penalty: critically low error handling
-  if (dims.errorHandling < 50) {
-    const deduction = Math.min(
-      Math.floor((50 - dims.errorHandling) / 10) * 3,
-      MAX_ERROR_HANDLING_PENALTY,
-    );
-    if (deduction > 0) {
-      penalties.push({
-        category: 'error-handling',
-        reason: `Error handling critically low at ${dims.errorHandling}/100`,
-        deduction,
-        evidence: `dimensions.errorHandling=${dims.errorHandling}`,
-      });
-    }
-  }
-
-  // Step 8: Final harsh score
   const totalPenalty = penalties.reduce((sum, p) => sum + p.deduction, 0);
   const harshScore = Math.max(0, Math.round(rawScore - totalPenalty));
   const displayScore = Math.round(harshScore / 10 * 10) / 10;
-
-  // Step 9: Verdict (requires ALL dimensions ≥ 70 for acceptable/excellent)
   const verdict = computeHarshVerdict(harshScore, dimensions);
-
-  // Step 10: Display dimensions (0.0-10.0)
   const displayDimensions = Object.fromEntries(
     Object.entries(dimensions).map(([k, v]) => [k, Math.round(v / 10 * 10) / 10]),
   ) as Record<ScoringDimension, number>;
+  const timestamp = new Date().toISOString();
 
   const result: HarshScoreResult = {
-    rawScore: Math.round(rawScore),
-    harshScore,
-    displayScore,
-    dimensions,
-    displayDimensions,
-    penalties,
-    stubsDetected,
-    fakeCompletionRisk,
-    verdict,
-    maturityAssessment,
-    timestamp: new Date().toISOString(),
-    unwiredModules: wiringResult?.unwiredModules ?? [],
-    wiringResult,
+    rawScore: Math.round(rawScore), harshScore, displayScore, dimensions, displayDimensions,
+    penalties, stubsDetected, fakeCompletionRisk, verdict, maturityAssessment, timestamp,
+    unwiredModules: wiringResult?.unwiredModules ?? [], wiringResult,
   };
 
-  // Step 11: Persist history (best-effort)
-  try {
-    const history = await readHistoryFn(cwd).catch(() => []);
-    const entry: AssessmentHistoryEntry = {
-      timestamp: result.timestamp,
-      harshScore,
-      displayScore,
-      dimensions,
-      penaltyTotal: totalPenalty,
-    };
-    await writeHistoryFn(cwd, [...history, entry]);
-  } catch { /* best-effort */ }
-
+  await persistHarshHistory(cwd, harshScore, displayScore, dimensions, totalPenalty, timestamp, readHistoryFn, writeHistoryFn);
   return result;
 }
 
@@ -863,6 +814,95 @@ type GitLogFn = (args: string[], cwd: string) => Promise<string>;
 type ExistsFn = (p: string) => Promise<boolean>;
 type ListDirFn = (p: string) => Promise<string[]>;
 
+async function strictAutonomy(cwd: string, runGit: GitLogFn, checkExists: ExistsFn, listDir: ListDirFn): Promise<number> {
+  let score = 20;
+  const commitLog = await runGit(['log', '--oneline', '--no-merges'], cwd);
+  const commitCount = commitLog.trim() === '' ? 0 : commitLog.trim().split('\n').length;
+  if (commitCount >= 100) score += 30; else if (commitCount >= 30) score += 20; else if (commitCount >= 10) score += 10; else if (commitCount >= 1) score += 5;
+  const verifyFiles = await listDir(path.join(cwd, '.danteforge', 'evidence', 'verify'));
+  if (verifyFiles.length >= 5) score += 25; else if (verifyFiles.length >= 2) score += 15; else if (verifyFiles.length >= 1) score += 8;
+  if (await checkExists(path.join(cwd, '.danteforge', 'evidence', 'autoforge'))) score += 15;
+  if (await checkExists(path.join(cwd, '.danteforge', 'evidence', 'oss-harvest.json'))) score += 10;
+  return Math.max(0, Math.min(100, score));
+}
+
+async function strictSelfImprovement(cwd: string, runGit: GitLogFn, checkExists: ExistsFn, listDir: ListDirFn): Promise<number> {
+  let score = 20;
+  const retroCount = (await runGit(['log', '--oneline', '--grep=retro', '--no-merges'], cwd)).trim().split('\n').filter(Boolean).length;
+  if (retroCount >= 10) score += 25; else if (retroCount >= 3) score += 15; else if (retroCount >= 1) score += 8;
+  const lessonCount = (await runGit(['log', '--oneline', '--grep=lesson', '--no-merges'], cwd)).trim().split('\n').filter(Boolean).length;
+  if (lessonCount >= 10) score += 20; else if (lessonCount >= 3) score += 12; else if (lessonCount >= 1) score += 5;
+  const retroFiles = await listDir(path.join(cwd, '.danteforge', 'evidence', 'retro'));
+  if (retroFiles.length >= 5) score += 20; else if (retroFiles.length >= 2) score += 12; else if (retroFiles.length >= 1) score += 6;
+  if (await checkExists(path.join(cwd, '.danteforge', 'lessons.md'))) score += 15;
+  // retros/ holds session outputs (different from evidence/retro/ pipeline receipts)
+  const retrosOutputFiles = await listDir(path.join(cwd, '.danteforge', 'retros'));
+  if (retrosOutputFiles.length >= 10) score += 15; else if (retrosOutputFiles.length >= 3) score += 8; else if (retrosOutputFiles.length >= 1) score += 3;
+  return Math.max(0, Math.min(100, score));
+}
+
+async function strictTokenEconomy(cwd: string, checkExists: ExistsFn, listDir: ListDirFn): Promise<number> {
+  let score = 20;
+  if (await checkExists(path.join(cwd, 'src', 'core', 'task-router.ts'))) score += 20;
+  if (await checkExists(path.join(cwd, 'src', 'core', 'circuit-breaker.ts'))) score += 15;
+  const cacheFiles = await listDir(path.join(cwd, '.danteforge', 'cache'));
+  if (cacheFiles.length >= 50) score += 30; else if (cacheFiles.length >= 10) score += 20; else if (cacheFiles.length >= 1) score += 10;
+  if (await checkExists(path.join(cwd, 'src', 'core', 'context-compressor.ts'))) score += 15;
+  return Math.max(0, Math.min(100, score));
+}
+
+async function strictSpecDrivenPipeline(cwd: string, checkExists: ExistsFn, listDir: ListDirFn): Promise<number> {
+  // Capped at 85 — file existence can't fully prove pipeline execution quality.
+  let score = 10;
+  for (const artifact of ['CONSTITUTION.md', 'SPEC.md', 'PLAN.md', 'TASKS.md']) {
+    if (await checkExists(path.join(cwd, artifact)) || await checkExists(path.join(cwd, '.danteforge', artifact))) score += 15;
+  }
+  const evidenceFiles = await listDir(path.join(cwd, '.danteforge', 'evidence'));
+  if (evidenceFiles.length >= 1) score += 10;
+  const testFiles = await listDir(path.join(cwd, 'tests'));
+  if (testFiles.some(f => f.includes('e2e') || f.includes('integration'))) score += 5;
+  return Math.max(0, Math.min(85, score));
+}
+
+async function strictDeveloperExperience(cwd: string, checkExists: ExistsFn, listDir: ListDirFn): Promise<number> {
+  let score = 15;
+  if (await checkExists(path.join(cwd, 'CLAUDE.md'))) score += 20;
+  try {
+    const { readFile } = await import('node:fs/promises');
+    const readmeContent = await readFile(path.join(cwd, 'README.md'), 'utf8').catch(() => '');
+    if (readmeContent.length > 500) score += 15;
+  } catch { /* non-fatal */ }
+  const examplesFiles = await listDir(path.join(cwd, 'examples'));
+  if (examplesFiles.length >= 1) score += 20;
+  const testFiles = await listDir(path.join(cwd, 'tests'));
+  if (testFiles.length >= 100) score += 15; else if (testFiles.length >= 50) score += 10; else if (testFiles.length >= 10) score += 5;
+  return Math.max(0, Math.min(100, score));
+}
+
+async function strictPlanningQuality(cwd: string, runGit: GitLogFn, checkExists: ExistsFn): Promise<number> {
+  let score = 15;
+  for (const [artifact, pts] of [['PLAN.md', 20], ['SPEC.md', 15], ['CONSTITUTION.md', 15], ['CLARIFY.md', 15]] as [string, number][]) {
+    if (await checkExists(path.join(cwd, artifact)) || await checkExists(path.join(cwd, '.danteforge', artifact))) score += pts;
+  }
+  const planCount = (await runGit(['log', '--oneline', '--grep=plan', '--no-merges'], cwd)).trim().split('\n').filter(Boolean).length;
+  if (planCount >= 3) score += 10;
+  const specCount = (await runGit(['log', '--oneline', '--grep=spec', '--no-merges'], cwd)).trim().split('\n').filter(Boolean).length;
+  if (specCount >= 3) score += 10;
+  return Math.max(0, Math.min(100, score));
+}
+
+async function strictConvergenceSelfHealing(cwd: string, checkExists: ExistsFn, listDir: ListDirFn): Promise<number> {
+  let score = 15;
+  if (await checkExists(path.join(cwd, 'src', 'core', 'circuit-breaker.ts'))) score += 25;
+  if (await checkExists(path.join(cwd, 'src', 'core', 'context-compressor.ts'))) score += 20;
+  const autoforgeFiles = await listDir(path.join(cwd, '.danteforge', 'evidence', 'autoforge'));
+  if (autoforgeFiles.length >= 3) score += 15; else if (autoforgeFiles.length >= 1) score += 8;
+  const convergenceProof = await checkExists(path.join(cwd, '.danteforge', 'evidence', 'convergence-proof.json'))
+    || await checkExists(path.join(cwd, 'examples', 'todo-app', 'evidence', 'convergence-proof.json'));
+  if (convergenceProof) score += 10;
+  return Math.max(0, Math.min(100, score));
+}
+
 /**
  * Compute tamper-resistant scores for the three dimensions most vulnerable to
  * STATE.yaml manipulation. Called by `score --strict`.
@@ -878,201 +918,20 @@ export async function computeStrictDimensions(
 ): Promise<StrictDimensions> {
   const runGit: GitLogFn = gitLogFn ?? (async (args, dir) => {
     const { execSync } = await import('node:child_process');
-    try {
-      return execSync(`git ${args.join(' ')}`, {
-        encoding: 'utf8',
-        cwd: dir,
-        stdio: ['pipe', 'pipe', 'pipe'],
-      });
-    } catch {
-      return '';
-    }
+    try { return execSync(`git ${args.join(' ')}`, { encoding: 'utf8', cwd: dir, stdio: ['pipe', 'pipe', 'pipe'] }); } catch { return ''; }
   });
+  const checkExists: ExistsFn = existsFn ?? (async (p) => { try { await fs.access(p); return true; } catch { return false; } });
+  const listDir: ListDirFn = listDirFn ?? (async (p) => { try { return await fs.readdir(p); } catch { return []; } });
 
-  const checkExists: ExistsFn = existsFn ?? (async (p) => {
-    try { await fs.access(p); return true; } catch { return false; }
-  });
-
-  const listDir: ListDirFn = listDirFn ?? (async (p) => {
-    try {
-      const entries = await fs.readdir(p);
-      return entries;
-    } catch { return []; }
-  });
-
-  // ── autonomy ─────────────────────────────────────────────────────────────────
-  // Base: 20. Signals: git commit count (code was actually written), verify evidence.
-  let autonomy = 20;
-
-  const commitLog = await runGit(['log', '--oneline', '--no-merges'], cwd);
-  const commitCount = commitLog.trim() === '' ? 0 : commitLog.trim().split('\n').length;
-  if (commitCount >= 100) autonomy += 30;
-  else if (commitCount >= 30) autonomy += 20;
-  else if (commitCount >= 10) autonomy += 10;
-  else if (commitCount >= 1) autonomy += 5;
-
-  // Evidence: verify receipts written by the test pipeline
-  const verifyEvidenceDir = path.join(cwd, '.danteforge', 'evidence', 'verify');
-  const verifyFiles = await listDir(verifyEvidenceDir);
-  if (verifyFiles.length >= 5) autonomy += 25;
-  else if (verifyFiles.length >= 2) autonomy += 15;
-  else if (verifyFiles.length >= 1) autonomy += 8;
-
-  // Evidence: autoforge loop evidence (state machine ran)
-  const autoforgeEvidenceExists = await checkExists(path.join(cwd, '.danteforge', 'evidence', 'autoforge'));
-  if (autoforgeEvidenceExists) autonomy += 15;
-
-  // Evidence: harvest receipt present (OSS learning occurred)
-  const harvestReceiptExists = await checkExists(path.join(cwd, '.danteforge', 'evidence', 'oss-harvest.json'));
-  if (harvestReceiptExists) autonomy += 10;
-
-  autonomy = Math.max(0, Math.min(100, autonomy));
-
-  // ── selfImprovement ───────────────────────────────────────────────────────────
-  // Base: 20. Signals: retro commits in git log, retro evidence files.
-  let selfImprovement = 20;
-
-  const retroCommits = await runGit(['log', '--oneline', '--grep=retro', '--no-merges'], cwd);
-  const retroCount = retroCommits.trim() === '' ? 0 : retroCommits.trim().split('\n').length;
-  if (retroCount >= 10) selfImprovement += 25;
-  else if (retroCount >= 3) selfImprovement += 15;
-  else if (retroCount >= 1) selfImprovement += 8;
-
-  const lessonCommits = await runGit(['log', '--oneline', '--grep=lesson', '--no-merges'], cwd);
-  const lessonCount = lessonCommits.trim() === '' ? 0 : lessonCommits.trim().split('\n').length;
-  if (lessonCount >= 10) selfImprovement += 20;
-  else if (lessonCount >= 3) selfImprovement += 12;
-  else if (lessonCount >= 1) selfImprovement += 5;
-
-  // Evidence: retro evidence files written by the pipeline
-  const retroEvidenceDir = path.join(cwd, '.danteforge', 'evidence', 'retro');
-  const retroFiles = await listDir(retroEvidenceDir);
-  if (retroFiles.length >= 5) selfImprovement += 20;
-  else if (retroFiles.length >= 2) selfImprovement += 12;
-  else if (retroFiles.length >= 1) selfImprovement += 6;
-
-  // Lessons file exists and has content
-  const lessonsExists = await checkExists(path.join(cwd, '.danteforge', 'lessons.md'));
-  if (lessonsExists) selfImprovement += 15;
-
-  // Evidence: retro session outputs in .danteforge/retros/ — each file = a retrospective was run
-  // (different from evidence/retro/ which holds pipeline-stamped receipts)
-  const retrosOutputDir = path.join(cwd, '.danteforge', 'retros');
-  const retrosOutputFiles = await listDir(retrosOutputDir);
-  if (retrosOutputFiles.length >= 10) selfImprovement += 15;
-  else if (retrosOutputFiles.length >= 3) selfImprovement += 8;
-  else if (retrosOutputFiles.length >= 1) selfImprovement += 3;
-
-  selfImprovement = Math.max(0, Math.min(100, selfImprovement));
-
-  // ── tokenEconomy ──────────────────────────────────────────────────────────────
-  // Base: 20. Signals: LLM cache entry count, task-router source file exists.
-  let tokenEconomy = 20;
-
-  // Task-router source signals routing infrastructure
-  const taskRouterExists = await checkExists(path.join(cwd, 'src', 'core', 'task-router.ts'));
-  if (taskRouterExists) tokenEconomy += 20;
-
-  // Circuit breaker signals budget/reliability controls
-  const circuitBreakerExists = await checkExists(path.join(cwd, 'src', 'core', 'circuit-breaker.ts'));
-  if (circuitBreakerExists) tokenEconomy += 15;
-
-  // LLM cache entries prove real budget-aware calls were made
-  const llmCacheDir = path.join(cwd, '.danteforge', 'cache');
-  const cacheFiles = await listDir(llmCacheDir);
-  if (cacheFiles.length >= 50) tokenEconomy += 30;
-  else if (cacheFiles.length >= 10) tokenEconomy += 20;
-  else if (cacheFiles.length >= 1) tokenEconomy += 10;
-
-  // Context compressor signals token reduction infrastructure
-  const compressorExists = await checkExists(path.join(cwd, 'src', 'core', 'context-compressor.ts'));
-  if (compressorExists) tokenEconomy += 15;
-
-  tokenEconomy = Math.max(0, Math.min(100, tokenEconomy));
-
-  // ── specDrivenPipeline ────────────────────────────────────────────────────────
-  // Base: 10. Signals: PDSE artifact files on disk, pipeline evidence, e2e tests.
-  // Capped at 85 — file existence can't fully prove pipeline execution quality.
-  let specDrivenPipeline = 10;
-
-  const pdseArtifacts = ['CONSTITUTION.md', 'SPEC.md', 'PLAN.md', 'TASKS.md'];
-  for (const artifact of pdseArtifacts) {
-    if (await checkExists(path.join(cwd, artifact))) specDrivenPipeline += 15;
-    else if (await checkExists(path.join(cwd, '.danteforge', artifact))) specDrivenPipeline += 15;
-  }
-
-  const evidenceDir = path.join(cwd, '.danteforge', 'evidence');
-  const evidenceFiles = await listDir(evidenceDir);
-  if (evidenceFiles.length >= 1) specDrivenPipeline += 10;
-
-  const testFiles = await listDir(path.join(cwd, 'tests'));
-  const hasE2ETest = testFiles.some(f => f.includes('e2e') || f.includes('integration'));
-  if (hasE2ETest) specDrivenPipeline += 5;
-
-  specDrivenPipeline = Math.max(0, Math.min(85, specDrivenPipeline));
-
-  // ── developerExperience ───────────────────────────────────────────────────────
-  // Base: 15. Signals: onboarding docs, examples directory, test suite depth.
-  let developerExperience = 15;
-
-  if (await checkExists(path.join(cwd, 'CLAUDE.md'))) developerExperience += 20;
-
-  try {
-    const readmePath = path.join(cwd, 'README.md');
-    const { readFile } = await import('node:fs/promises');
-    const readmeContent = await readFile(readmePath, 'utf8').catch(() => '');
-    if (readmeContent.length > 500) developerExperience += 15;
-  } catch { /* non-fatal */ }
-
-  const examplesFiles = await listDir(path.join(cwd, 'examples'));
-  if (examplesFiles.length >= 1) developerExperience += 20;
-
-  if (testFiles.length >= 100) developerExperience += 15;
-  else if (testFiles.length >= 50) developerExperience += 10;
-  else if (testFiles.length >= 10) developerExperience += 5;
-
-  developerExperience = Math.max(0, Math.min(100, developerExperience));
-
-  // ── planningQuality ───────────────────────────────────────────────────────────
-  // Base: 15. Signals: PDSE planning artifacts + git commits with plan/spec keywords.
-  let planningQuality = 15;
-
-  const planningArtifacts: [string, number][] = [
-    ['PLAN.md', 20], ['SPEC.md', 15], ['CONSTITUTION.md', 15], ['CLARIFY.md', 15],
-  ];
-  for (const [artifact, pts] of planningArtifacts) {
-    const exists = await checkExists(path.join(cwd, artifact))
-      || await checkExists(path.join(cwd, '.danteforge', artifact));
-    if (exists) planningQuality += pts;
-  }
-
-  const planCommits = await runGit(['log', '--oneline', '--grep=plan', '--no-merges'], cwd);
-  const planCount = planCommits.trim() === '' ? 0 : planCommits.trim().split('\n').length;
-  if (planCount >= 3) planningQuality += 10;
-
-  const specCommits = await runGit(['log', '--oneline', '--grep=spec', '--no-merges'], cwd);
-  const specCount = specCommits.trim() === '' ? 0 : specCommits.trim().split('\n').length;
-  if (specCount >= 3) planningQuality += 10;
-
-  planningQuality = Math.max(0, Math.min(100, planningQuality));
-
-  // ── convergenceSelfHealing ────────────────────────────────────────────────────
-  // Base: 15. Signals: circuit-breaker, context-compressor, autoforge evidence.
-  let convergenceSelfHealing = 15;
-
-  if (await checkExists(path.join(cwd, 'src', 'core', 'circuit-breaker.ts'))) convergenceSelfHealing += 25;
-  if (await checkExists(path.join(cwd, 'src', 'core', 'context-compressor.ts'))) convergenceSelfHealing += 20;
-
-  const autoforgeEvidenceDir = path.join(cwd, '.danteforge', 'evidence', 'autoforge');
-  const autoforgeEvidenceFiles = await listDir(autoforgeEvidenceDir);
-  if (autoforgeEvidenceFiles.length >= 3) convergenceSelfHealing += 15;
-  else if (autoforgeEvidenceFiles.length >= 1) convergenceSelfHealing += 8;
-
-  const convergenceProof = await checkExists(path.join(cwd, '.danteforge', 'evidence', 'convergence-proof.json'))
-    || await checkExists(path.join(cwd, 'examples', 'todo-app', 'evidence', 'convergence-proof.json'));
-  if (convergenceProof) convergenceSelfHealing += 10;
-
-  convergenceSelfHealing = Math.max(0, Math.min(100, convergenceSelfHealing));
+  const [autonomy, selfImprovement, tokenEconomy, specDrivenPipeline, developerExperience, planningQuality, convergenceSelfHealing] = await Promise.all([
+    strictAutonomy(cwd, runGit, checkExists, listDir),
+    strictSelfImprovement(cwd, runGit, checkExists, listDir),
+    strictTokenEconomy(cwd, checkExists, listDir),
+    strictSpecDrivenPipeline(cwd, checkExists, listDir),
+    strictDeveloperExperience(cwd, checkExists, listDir),
+    strictPlanningQuality(cwd, runGit, checkExists),
+    strictConvergenceSelfHealing(cwd, checkExists, listDir),
+  ]);
 
   return { autonomy, selfImprovement, tokenEconomy, specDrivenPipeline, developerExperience, planningQuality, convergenceSelfHealing };
 }

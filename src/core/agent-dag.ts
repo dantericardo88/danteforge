@@ -75,6 +75,29 @@ export function buildDefaultDAG(): AgentNode[] {
 // computeExecutionLevels — Kahn's algorithm
 // ---------------------------------------------------------------------------
 
+function buildDagMaps(nodes: AgentNode[]): {
+  nodeMap: Map<AgentRole, AgentNode>;
+  inDegree: Map<AgentRole, number>;
+  dependents: Map<AgentRole, AgentRole[]>;
+} {
+  const nodeMap = new Map<AgentRole, AgentNode>();
+  const inDegree = new Map<AgentRole, number>();
+  const dependents = new Map<AgentRole, AgentRole[]>();
+  for (const node of nodes) {
+    nodeMap.set(node.role, node);
+    inDegree.set(node.role, 0);
+    dependents.set(node.role, []);
+  }
+  for (const node of nodes) {
+    for (const dep of node.dependsOn) {
+      if (!nodeMap.has(dep)) continue;
+      inDegree.set(node.role, (inDegree.get(node.role) ?? 0) + 1);
+      dependents.get(dep)!.push(node.role);
+    }
+  }
+  return { nodeMap, inDegree, dependents };
+}
+
 /**
  * Pure function. Topological sort via Kahn's algorithm.
  *
@@ -92,28 +115,7 @@ export function computeExecutionLevels(nodes: AgentNode[]): DAGPlan {
     };
   }
 
-  // Build adjacency and in-degree maps keyed by role.
-  const nodeMap = new Map<AgentRole, AgentNode>();
-  const inDegree = new Map<AgentRole, number>();
-  const dependents = new Map<AgentRole, AgentRole[]>();
-
-  for (const node of nodes) {
-    nodeMap.set(node.role, node);
-    inDegree.set(node.role, 0);
-    dependents.set(node.role, []);
-  }
-
-  for (const node of nodes) {
-    for (const dep of node.dependsOn) {
-      if (!nodeMap.has(dep)) {
-        // Dependency references a role not in the graph — skip silently
-        // (it may have been filtered out).
-        continue;
-      }
-      inDegree.set(node.role, (inDegree.get(node.role) ?? 0) + 1);
-      dependents.get(dep)!.push(node.role);
-    }
-  }
+  const { nodeMap, inDegree, dependents } = buildDagMaps(nodes);
 
   // Kahn's: peel off zero-in-degree nodes level by level.
   const levels: ExecutionLevel[] = [];

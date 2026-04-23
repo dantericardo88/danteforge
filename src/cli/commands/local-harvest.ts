@@ -35,29 +35,18 @@ interface LocalSourcesConfig {
   sources: LocalSourcesYamlEntry[];
 }
 
-export async function localHarvest(
+async function resolveLocalSources(
   paths: string[],
-  options: LocalHarvestCommandOptions = {},
-): Promise<void> {
-  return withErrorBoundary('local-harvest', async () => {
-  const cwd = options.cwd ?? process.cwd();
-  const depth = (options.depth as HarvestDepth | undefined) ?? 'medium';
-  const harvester = options._harvester ?? harvestLocalSources;
-
-  if (options.prompt) {
-    logger.success('DanteForge Local Harvest - prompt mode');
-    process.stdout.write(buildLocalHarvestPrompt() + '\n');
-    return;
-  }
-
+  options: LocalHarvestCommandOptions,
+  cwd: string,
+  depth: HarvestDepth,
+): Promise<LocalSource[] | null> {
   let sources: LocalSource[] = [];
 
   if (paths.length > 0) {
     sources = paths.map((sourcePath) => ({ path: sourcePath, depth }));
   } else if (options.config) {
-    const configPath = path.isAbsolute(options.config)
-      ? options.config
-      : path.join(cwd, options.config);
+    const configPath = path.isAbsolute(options.config) ? options.config : path.join(cwd, options.config);
     try {
       const raw = await fs.readFile(configPath, 'utf-8');
       const config = yaml.parse(raw) as LocalSourcesConfig;
@@ -67,11 +56,9 @@ export async function localHarvest(
         depth: source.depth ?? depth,
       }));
     } catch (err) {
-      logger.error(
-        `[local-harvest] Failed to load sources config: ${err instanceof Error ? err.message : String(err)}`,
-      );
+      logger.error(`[local-harvest] Failed to load sources config: ${err instanceof Error ? err.message : String(err)}`);
       process.exitCode = 1;
-      return;
+      return null;
     }
   } else {
     const picker = options._pickSourcesInteractive ?? pickSourcesInteractive;
@@ -81,47 +68,20 @@ export async function localHarvest(
 
   const maxSources = options.maxSources ?? 5;
   if (sources.length > maxSources) {
-    logger.warn(
-      `[local-harvest] Limiting to ${maxSources} sources (${sources.length} provided - use --max-sources to increase)`,
-    );
+    logger.warn(`[local-harvest] Limiting to ${maxSources} sources (${sources.length} provided - use --max-sources to increase)`);
     sources = sources.slice(0, maxSources);
   }
 
-  if (sources.length === 0) {
-    logger.warn('[local-harvest] No sources selected - nothing to harvest');
-    return;
-  }
+  return sources;
+}
 
-  if (options.dryRun) {
-    logger.info(`[local-harvest] Dry-run: ${sources.length} source(s) detected`);
-    for (const source of sources) {
-      const absPath = path.isAbsolute(source.path)
-        ? source.path
-        : path.join(cwd, source.path);
-      logger.info(`  ${source.label ?? source.path}  ->  ${absPath}  (depth: ${source.depth})`);
-    }
-    logger.info(`[local-harvest] Would harvest at depth: ${depth}`);
-    logger.info(
-      '[local-harvest] Run without --dry-run to execute, or add --local-sources to /inferno.',
-    );
-    return;
-  }
-
-  logger.success(`[local-harvest] Harvesting ${sources.length} source(s) at depth: ${depth}`);
-  logger.info('');
-
-  const startTime = Date.now();
-  const report = await harvester(sources, { depth, cwd });
-  const durationSeconds = ((Date.now() - startTime) / 1000).toFixed(1);
-
+function printHarvestReport(report: LocalHarvestReport, durationSeconds: string): void {
   logger.info('');
   logger.info('='.repeat(60));
   logger.success('  LOCAL HARVEST COMPLETE');
   logger.info('='.repeat(60));
   logger.info('');
-  logger.success(
-    `Sources: ${report.sources.length}  |  Patterns: ${report.topPatterns.length}  |  Time: ${durationSeconds}s`,
-  );
+  logger.success(`Sources: ${report.sources.length}  |  Patterns: ${report.topPatterns.length}  |  Time: ${durationSeconds}s`);
   logger.info('');
 
   if (report.synthesis) {
@@ -150,6 +110,53 @@ export async function localHarvest(
   logger.info('         .danteforge/local-harvest-summary.json');
   logger.info('');
   logger.info('Next: run /inferno to build from these insights + OSS discovery.');
+}
+
+export async function localHarvest(
+  paths: string[],
+  options: LocalHarvestCommandOptions = {},
+): Promise<void> {
+  return withErrorBoundary('local-harvest', async () => {
+  const cwd = options.cwd ?? process.cwd();
+  const depth = (options.depth as HarvestDepth | undefined) ?? 'medium';
+  const harvester = options._harvester ?? harvestLocalSources;
+
+  if (options.prompt) {
+    logger.success('DanteForge Local Harvest - prompt mode');
+    process.stdout.write(buildLocalHarvestPrompt() + '\n');
+    return;
+  }
+
+  const sources = await resolveLocalSources(paths, options, cwd, depth);
+  if (!sources) return;
+  if (sources.length === 0) {
+    logger.warn('[local-harvest] No sources selected - nothing to harvest');
+    return;
+  }
+
+  if (options.dryRun) {
+    logger.info(`[local-harvest] Dry-run: ${sources.length} source(s) detected`);
+    for (const source of sources) {
+      const absPath = path.isAbsolute(source.path)
+        ? source.path
+        : path.join(cwd, source.path);
+      logger.info(`  ${source.label ?? source.path}  ->  ${absPath}  (depth: ${source.depth})`);
+    }
+    logger.info(`[local-harvest] Would harvest at depth: ${depth}`);
+    logger.info(
+      '[local-harvest] Run without --dry-run to execute, or add --local-sources to /inferno.',
+    );
+    return;
+  }
+
+  logger.success(`[local-harvest] Harvesting ${sources.length} source(s) at depth: ${depth}`);
+  logger.info('');
+
+  const startTime = Date.now();
+  const report = await harvester(sources, { depth, cwd });
+  const durationSeconds = ((Date.now() - startTime) / 1000).toFixed(1);
+
+  printHarvestReport(report, durationSeconds);
 
   try {
     const state = await loadState();

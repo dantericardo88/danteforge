@@ -102,6 +102,23 @@ export async function uxRefine(options: {
     return;
   }
 
+  await generateAndDisplayUXPrompt(state, componentPaths, figmaUrl, tokenFile, capabilities);
+
+  state.mcpHost = host;
+  if (figmaUrl) state.figmaUrl = figmaUrl;
+  state.designTokensPath = tokenFile;
+  state.auditLog.push(`${new Date().toISOString()} | ux-refine: prompt generated (host: ${host}, figma-mcp: ${capabilities.hasFigmaMCP})`);
+  await saveFn(state);
+  });
+}
+
+async function generateAndDisplayUXPrompt(
+  state: Awaited<ReturnType<typeof loadState>>,
+  componentPaths: string[],
+  figmaUrl: string | undefined,
+  tokenFile: string,
+  capabilities: { hasFigmaMCP: boolean; figmaServerName?: string },
+): Promise<void> {
   const designContext = [
     `Project: ${state.project}`,
     `Workflow stage: ${state.workflowStage}`,
@@ -128,13 +145,6 @@ export async function uxRefine(options: {
     'Then run "danteforge verify" to validate the refinement before synthesis.',
     `Prompt saved to: ${savedPath}`,
   ].join('\n'));
-
-  state.mcpHost = host;
-  if (figmaUrl) state.figmaUrl = figmaUrl;
-  state.designTokensPath = tokenFile;
-  state.auditLog.push(`${new Date().toISOString()} | ux-refine: prompt generated (host: ${host}, figma-mcp: ${capabilities.hasFigmaMCP})`);
-  await saveFn(state);
-  });
 }
 
 async function runOpenPencilRefinement(): Promise<void> {

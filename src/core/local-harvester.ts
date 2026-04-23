@@ -320,6 +320,28 @@ export async function extractZipToTemp(zipPath: string, destDir: string): Promis
   }
 }
 
+async function writeHarvestReportFiles(report: LocalHarvestReport, cwd: string): Promise<void> {
+  try {
+    const danteDir = path.join(cwd, '.danteforge');
+    await mkdir(danteDir, { recursive: true });
+    await writeFile(path.join(danteDir, 'LOCAL_HARVEST_REPORT.md'), buildLocalHarvestMarkdown(report), 'utf-8');
+    await writeFile(
+      path.join(danteDir, 'local-harvest-summary.json'),
+      JSON.stringify({
+        synthesis: report.synthesis,
+        topPatterns: report.topPatterns,
+        recommendedOssQueries: report.recommendedOssQueries,
+        generatedAt: report.generatedAt,
+        sourceCount: report.sources.length,
+        totalPatterns: report.topPatterns.length,
+      }, null, 2),
+      'utf-8',
+    );
+  } catch (err) {
+    logger.warn(`[local-harvest] Failed to write report files: ${err instanceof Error ? err.message : String(err)}`);
+  }
+}
+
 export async function harvestLocalSources(
   sources: LocalSource[],
   opts: LocalHarvesterOptions = {},
@@ -409,36 +431,7 @@ export async function harvestLocalSources(
     generatedAt: new Date().toISOString(),
   };
 
-  try {
-    const danteDir = path.join(cwd, '.danteforge');
-    await mkdir(danteDir, { recursive: true });
-    await writeFile(
-      path.join(danteDir, 'LOCAL_HARVEST_REPORT.md'),
-      buildLocalHarvestMarkdown(report),
-      'utf-8',
-    );
-    await writeFile(
-      path.join(danteDir, 'local-harvest-summary.json'),
-      JSON.stringify(
-        {
-          synthesis,
-          topPatterns,
-          recommendedOssQueries,
-          generatedAt: report.generatedAt,
-          sourceCount: results.length,
-          totalPatterns: topPatterns.length,
-        },
-        null,
-        2,
-      ),
-      'utf-8',
-    );
-  } catch (err) {
-    logger.warn(
-      `[local-harvest] Failed to write report files: ${err instanceof Error ? err.message : String(err)}`,
-    );
-  }
-
+  await writeHarvestReportFiles(report, cwd);
   return report;
 }
 

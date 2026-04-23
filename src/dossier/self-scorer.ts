@@ -165,6 +165,36 @@ function computeComposite(dimensions: Record<string, DossierDimension>): number 
   return Math.round((scores.reduce((a, b) => a + b, 0) / scores.length) * 10) / 10;
 }
 
+async function buildDossierDimensions(
+  dimEntries: Array<[string, RubricDimension]>,
+  fileContents: Array<{ filePath: string; content: string }>,
+  extractEvidenceFn: SelfExtractEvidenceFn,
+  scoreDimensionFn: ScoreDimensionFn,
+  displayName: string,
+): Promise<Record<string, DossierDimension>> {
+  const dimensions: Record<string, DossierDimension> = {};
+  for (const [dimKey, dimDef] of dimEntries) {
+    const dimNum = parseInt(dimKey, 10);
+    let allEvidence: EvidenceItem[] = [];
+    for (const { filePath, content } of fileContents) {
+      const evidence = await extractEvidenceFn(content, filePath, dimNum, dimDef);
+      allEvidence = allEvidence.concat(evidence);
+    }
+    const { score, justification } = await scoreDimensionFn(allEvidence, dimNum, dimDef, displayName);
+    const unverified = allEvidence.length === 0 ||
+      allEvidence.every((e) => !e.quote || e.quote.trim() === '');
+    dimensions[dimKey] = {
+      score,
+      scoreJustification: justification,
+      evidence: allEvidence,
+      humanOverride: null,
+      humanOverrideReason: null,
+      unverified,
+    };
+  }
+  return dimensions;
+}
+
 export async function buildSelfDossier(opts: SelfScorerOptions): Promise<Dossier> {
   const { cwd } = opts;
   const competitorId = opts.competitorId ?? DEFAULT_SELF_COMPETITOR_ID;
@@ -203,39 +233,13 @@ export async function buildSelfDossier(opts: SelfScorerOptions): Promise<Dossier
     } catch { /* skip missing files */ }
   }
 
-  // Build dimensions
-  const dimensions: Record<string, DossierDimension> = {};
-  const dimEntries = Object.entries(rubric.dimensions);
-
-  for (const [dimKey, dimDef] of dimEntries) {
-    const dimNum = parseInt(dimKey, 10);
-    let allEvidence: EvidenceItem[] = [];
-
-    // Extract evidence from each key source file
-    for (const { filePath, content } of fileContents) {
-      const evidence = await extractEvidenceFn(content, filePath, dimNum, dimDef);
-      allEvidence = allEvidence.concat(evidence);
-    }
-
-    const { score, justification } = await scoreDimensionFn(
-      allEvidence,
-      dimNum,
-      dimDef,
-      displayName,
-    );
-
-    const unverified = allEvidence.length === 0 ||
-      allEvidence.every((e) => !e.quote || e.quote.trim() === '');
-
-    dimensions[dimKey] = {
-      score,
-      scoreJustification: justification,
-      evidence: allEvidence,
-      humanOverride: null,
-      humanOverrideReason: null,
-      unverified,
-    };
-  }
+  const dimensions = await buildDossierDimensions(
+    Object.entries(rubric.dimensions),
+    fileContents,
+    extractEvidenceFn,
+    scoreDimensionFn,
+    displayName,
+  );
 
   const dossier: Dossier = {
     competitor: competitorId,

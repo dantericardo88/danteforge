@@ -74,80 +74,45 @@ function scanForPattern(
 
 // ── Core scanner ──────────────────────────────────────────────────────────────
 
+function collectAllConcerns(snippet: string): SecurityConcern[] {
+  const concerns: SecurityConcern[] = [];
+  concerns.push(...scanForPattern(snippet, RE_HARDCODED_SECRET, (m, line) => ({
+    severity: 'critical', type: 'hardcoded-secret',
+    description: `Hardcoded credential detected near "${m[1]}" assignment.`, line,
+  })));
+  concerns.push(...scanForPattern(snippet, RE_COMMAND_INJECTION, (_m, line) => ({
+    severity: 'high', type: 'command-injection',
+    description: 'child_process.exec() called with a non-template-literal argument — vulnerable to command injection if input is user-controlled.', line,
+  })));
+  concerns.push(...scanForPattern(snippet, RE_PATH_TRAVERSAL, (_m, line) => ({
+    severity: 'medium', type: 'path-traversal',
+    description: 'Potential path traversal: "../" in a string literal or path.join() with concatenated user input.', line,
+  })));
+  concerns.push(...scanForPattern(snippet, RE_XSS, (m, line) => ({
+    severity: 'high', type: 'xss',
+    description: `Unsafe DOM write via "${m[0].trim()}" — may allow XSS if content is user-controlled.`, line,
+  })));
+  const snippetLines = snippet.split('\n');
+  snippetLines.forEach((lineText, idx) => {
+    RE_INSECURE_RANDOM.lastIndex = 0;
+    if (RE_INSECURE_RANDOM.test(lineText) && RE_SECURITY_CONTEXT.test(lineText)) {
+      concerns.push({ severity: 'medium', type: 'insecure-randomness',
+        description: 'Math.random() used in a security-sensitive context — use crypto.getRandomValues() or crypto.randomBytes() instead.', line: idx + 1 });
+    }
+  });
+  concerns.push(...scanForPattern(snippet, RE_EVAL, (m, line) => ({
+    severity: 'critical', type: 'unsafe-eval',
+    description: `"${m[0].replace(/\s+/g, ' ')}" executes arbitrary code — never use with untrusted input.`, line,
+  })));
+  return concerns;
+}
+
 /**
  * Scans a single pattern snippet for security concerns.
  * Returns a PatternScanResult (advisory only — does not throw).
  */
 export function scanPattern(patternName: string, snippet: string): PatternScanResult {
-  const concerns: SecurityConcern[] = [];
-
-  // 1. Hardcoded secrets → critical
-  concerns.push(
-    ...scanForPattern(snippet, RE_HARDCODED_SECRET, (m, line) => ({
-      severity: 'critical',
-      type: 'hardcoded-secret',
-      description: `Hardcoded credential detected near "${m[1]}" assignment.`,
-      line,
-    })),
-  );
-
-  // 2. Command injection → high
-  concerns.push(
-    ...scanForPattern(snippet, RE_COMMAND_INJECTION, (_m, line) => ({
-      severity: 'high',
-      type: 'command-injection',
-      description:
-        'child_process.exec() called with a non-template-literal argument — vulnerable to command injection if input is user-controlled.',
-      line,
-    })),
-  );
-
-  // 3. Path traversal → medium
-  concerns.push(
-    ...scanForPattern(snippet, RE_PATH_TRAVERSAL, (_m, line) => ({
-      severity: 'medium',
-      type: 'path-traversal',
-      description:
-        'Potential path traversal: "../" in a string literal or path.join() with concatenated user input.',
-      line,
-    })),
-  );
-
-  // 4. XSS → high
-  concerns.push(
-    ...scanForPattern(snippet, RE_XSS, (m, line) => ({
-      severity: 'high',
-      type: 'xss',
-      description: `Unsafe DOM write via "${m[0].trim()}" — may allow XSS if content is user-controlled.`,
-      line,
-    })),
-  );
-
-  // 5. Insecure randomness → medium (only when near security context)
-  const lines = snippet.split('\n');
-  lines.forEach((lineText, idx) => {
-    RE_INSECURE_RANDOM.lastIndex = 0;
-    if (RE_INSECURE_RANDOM.test(lineText) && RE_SECURITY_CONTEXT.test(lineText)) {
-      concerns.push({
-        severity: 'medium',
-        type: 'insecure-randomness',
-        description:
-          'Math.random() used in a security-sensitive context — use crypto.getRandomValues() or crypto.randomBytes() instead.',
-        line: idx + 1,
-      });
-    }
-  });
-
-  // 6. eval / new Function → critical
-  concerns.push(
-    ...scanForPattern(snippet, RE_EVAL, (m, line) => ({
-      severity: 'critical',
-      type: 'unsafe-eval',
-      description: `"${m[0].replace(/\s+/g, ' ')}" executes arbitrary code — never use with untrusted input.`,
-      line,
-    })),
-  );
-
+  const concerns = collectAllConcerns(snippet);
   const hasCritical = concerns.some((c) => c.severity === 'critical');
   const hasHigh = concerns.some((c) => c.severity === 'high');
   const hasMedium = concerns.some((c) => c.severity === 'medium');

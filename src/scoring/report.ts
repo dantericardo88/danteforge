@@ -11,17 +11,56 @@ const RUBRIC_LABELS: Record<RubricId, string> = {
 
 // ── Markdown report ───────────────────────────────────────────────────────────
 
+function appendDimensionScores(snapshot: MatrixSnapshot, lines: string[]): void {
+  lines.push('## Dimension Scores', '');
+  lines.push('| Dimension | Int. Opt. | Pub. Def. | Hostile | Confidence | Next Lift |');
+  lines.push('|-----------|-----------|-----------|---------|-----------|-----------|');
+  const dimIds = [...new Set(snapshot.dimensions.map((d) => d.dimensionId))];
+  for (const dimId of dimIds) {
+    const opt = snapshot.dimensions.find((d) => d.dimensionId === dimId && d.rubricId === 'internal_optimistic');
+    const pub = snapshot.dimensions.find((d) => d.dimensionId === dimId && d.rubricId === 'public_defensible');
+    const hos = snapshot.dimensions.find((d) => d.dimensionId === dimId && d.rubricId === 'hostile_diligence');
+    const conf = hos?.confidence ?? opt?.confidence ?? 'n/a';
+    const nextLift = opt?.nextLift?.slice(0, 60) ?? 'n/a';
+    lines.push(`| ${dimId} | ${opt?.score ?? 0} | ${pub?.score ?? 0} | ${hos?.score ?? 0} | ${conf} | ${nextLift} |`);
+  }
+  lines.push('');
+}
+
+function appendActionSections(snapshot: MatrixSnapshot, lines: string[]): void {
+  const overclaimed = getTopOverclaimed(snapshot);
+  if (overclaimed.length > 0) {
+    lines.push('## Top Overclaimed Dimensions', '_Largest gap between Internal Optimistic and Hostile Diligence:_', '');
+    for (const d of overclaimed) {
+      const hostile = snapshot.dimensions.find((s) => s.dimensionId === d.dimensionId && s.rubricId === 'hostile_diligence');
+      const gap = hostile ? (d.score - hostile.score).toFixed(1) : '?';
+      lines.push(`- **${d.dimensionId}**: internal=${d.score}, hostile=${hostile?.score ?? '?'}, gap=${gap}`);
+      if (d.rationale) lines.push(`  - ${d.rationale}`);
+    }
+    lines.push('');
+  }
+  const underProven = getTopUnderProven(snapshot);
+  if (underProven.length > 0) {
+    lines.push('## Top Under-Proven Dimensions', '_Lowest public-defensible scores:_', '');
+    for (const d of underProven) lines.push(`- **${d.dimensionId}**: public=${d.score} - ${d.rationale}`);
+    lines.push('');
+  }
+  const lifts = getNextLifts(snapshot);
+  if (lifts.length > 0) {
+    lines.push('## Recommended Next Lifts', '_By score impact potential:_', '');
+    for (const d of lifts) lines.push(`- **${d.dimensionId}** (gap: ${d.maxScore - d.score}): ${d.nextLift}`);
+    lines.push('');
+  }
+}
+
 export function formatMarkdownReport(snapshot: MatrixSnapshot): string {
   const lines: string[] = [];
 
   lines.push(`# Scoring Report: ${snapshot.subject}`);
   lines.push(`_Generated: ${snapshot.generatedAt}_`);
-  lines.push(`_Matrix: ${snapshot.matrixId}_`);
-  lines.push('');
+  lines.push(`_Matrix: ${snapshot.matrixId}_`, '');
 
-  // Overview table
-  lines.push('## Overview');
-  lines.push('');
+  lines.push('## Overview', '');
   lines.push('| Rubric | Score | Max | Normalized |');
   lines.push('|--------|-------|-----|-----------|');
   for (const r of snapshot.rubricScores) {
@@ -29,17 +68,13 @@ export function formatMarkdownReport(snapshot: MatrixSnapshot): string {
   }
   lines.push('');
 
-  // Rubric spread explanation
-  lines.push('### Why scores differ by rubric');
-  lines.push('');
+  lines.push('### Why scores differ by rubric', '');
   lines.push('- **Internal Optimistic**: Credits implemented + tested code, even without end-to-end proof.');
   lines.push('- **Public Defensible**: Only counts user-visible, main-path features with sufficient external proof.');
   lines.push('- **Hostile Diligence**: Requires end-to-end proof for scores above 4.5. Benchmarks required for performance dims.');
   lines.push('');
 
-  // Category rollup
-  lines.push('## Category Scores');
-  lines.push('');
+  lines.push('## Category Scores', '');
   const categories = [...new Set(snapshot.categories.map((c) => c.category))];
   lines.push('| Category | Int. Opt. | Pub. Def. | Hostile |');
   lines.push('|----------|-----------|-----------|---------|');
@@ -51,61 +86,8 @@ export function formatMarkdownReport(snapshot: MatrixSnapshot): string {
   }
   lines.push('');
 
-  // Per-dimension triple matrix
-  lines.push('## Dimension Scores');
-  lines.push('');
-  lines.push('| Dimension | Int. Opt. | Pub. Def. | Hostile | Confidence | Next Lift |');
-  lines.push('|-----------|-----------|-----------|---------|-----------|-----------|');
-
-  const dimIds = [...new Set(snapshot.dimensions.map((d) => d.dimensionId))];
-  for (const dimId of dimIds) {
-    const opt = snapshot.dimensions.find((d) => d.dimensionId === dimId && d.rubricId === 'internal_optimistic');
-    const pub = snapshot.dimensions.find((d) => d.dimensionId === dimId && d.rubricId === 'public_defensible');
-    const hos = snapshot.dimensions.find((d) => d.dimensionId === dimId && d.rubricId === 'hostile_diligence');
-    const conf = hos?.confidence ?? opt?.confidence ?? 'n/a';
-    const nextLift = opt?.nextLift?.slice(0, 60) ?? 'n/a';
-    lines.push(`| ${dimId} | ${opt?.score ?? 0} | ${pub?.score ?? 0} | ${hos?.score ?? 0} | ${conf} | ${nextLift} |`);
-  }
-  lines.push('');
-
-  // Top overclaimed
-  const overclaimed = getTopOverclaimed(snapshot);
-  if (overclaimed.length > 0) {
-    lines.push('## Top Overclaimed Dimensions');
-    lines.push('_Largest gap between Internal Optimistic and Hostile Diligence:_');
-    lines.push('');
-    for (const d of overclaimed) {
-      const hostile = snapshot.dimensions.find((s) => s.dimensionId === d.dimensionId && s.rubricId === 'hostile_diligence');
-      const gap = hostile ? (d.score - hostile.score).toFixed(1) : '?';
-      lines.push(`- **${d.dimensionId}**: internal=${d.score}, hostile=${hostile?.score ?? '?'}, gap=${gap}`);
-      if (d.rationale) lines.push(`  - ${d.rationale}`);
-    }
-    lines.push('');
-  }
-
-  // Top under-proven
-  const underProven = getTopUnderProven(snapshot);
-  if (underProven.length > 0) {
-    lines.push('## Top Under-Proven Dimensions');
-    lines.push('_Lowest public-defensible scores:_');
-    lines.push('');
-    for (const d of underProven) {
-      lines.push(`- **${d.dimensionId}**: public=${d.score} - ${d.rationale}`);
-    }
-    lines.push('');
-  }
-
-  // Next lifts
-  const lifts = getNextLifts(snapshot);
-  if (lifts.length > 0) {
-    lines.push('## Recommended Next Lifts');
-    lines.push('_By score impact potential:_');
-    lines.push('');
-    for (const d of lifts) {
-      lines.push(`- **${d.dimensionId}** (gap: ${d.maxScore - d.score}): ${d.nextLift}`);
-    }
-    lines.push('');
-  }
+  appendDimensionScores(snapshot, lines);
+  appendActionSections(snapshot, lines);
 
   return lines.join('\n');
 }

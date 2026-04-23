@@ -2,6 +2,7 @@
 import fs from 'fs/promises';
 import { loadState, saveState, type DanteState } from './state.js';
 import { enforceWorkflow, getNextSteps, isStageComplete, getCommandStageMap } from './workflow-enforcer.js';
+import type { WorkflowStage } from './state.js';
 import { getMemoryBudget, getRecentMemory, recordMemory } from './memory-engine.js';
 import { logger } from './logger.js';
 import { isLLMAvailable } from './llm.js';
@@ -82,6 +83,50 @@ export async function analyzeProjectState(cwd?: string): Promise<AutoForgeInput>
   };
 }
 
+function buildColdStartPlan(hasUI: boolean, maxWaves: number, goal?: string): AutoForgePlan {
+  const steps: AutoForgeStep[] = [
+    { command: 'review', reason: 'Scan the codebase to establish baseline' },
+    { command: 'constitution', reason: 'Set project principles' },
+    { command: 'specify', reason: 'Build the specification' },
+    { command: 'clarify', reason: 'Clarify ambiguities in the spec' },
+    { command: 'plan', reason: 'Create the implementation plan' },
+    { command: 'tasks', reason: 'Break the plan into executable tasks' },
+  ];
+  if (hasUI) {
+    steps.push(
+      { command: 'design', reason: 'Generate Design-as-Code (.op) for UI' },
+      { command: 'forge', reason: 'Execute the task plan' },
+      { command: 'ux-refine', reason: 'Refine UX after forge' },
+      { command: 'verify', reason: 'Verify the implementation' },
+    );
+  } else {
+    steps.push(
+      { command: 'forge', reason: 'Execute the task plan' },
+      { command: 'verify', reason: 'Verify the implementation' },
+    );
+  }
+  return {
+    scenario: 'cold-start',
+    reasoning: goal ? `Fresh project with no artifacts — running full pipeline toward "${goal}".` : 'Fresh project with no artifacts — running full pipeline.',
+    steps, maxWaves, goal,
+  };
+}
+
+function buildMultiSessionResumePlan(
+  lastMemoryAge: number, stage: string, hasDesignOp: boolean, hasUI: boolean,
+  designViolationCount: number, maxWaves: number, goal?: string,
+): AutoForgePlan {
+  const resumeSteps: AutoForgeStep[] = [
+    { command: 'review', reason: `Last session was ${Math.round(lastMemoryAge)}h ago — refresh codebase state` },
+  ];
+  resumeSteps.push(...getMidProjectSteps(stage, hasDesignOp, hasUI, designViolationCount));
+  return {
+    scenario: 'multi-session-resume',
+    reasoning: `Last activity was ${Math.round(lastMemoryAge)}h ago. Refreshing state before continuing.`,
+    steps: resumeSteps, maxWaves, goal,
+  };
+}
+
 /**
  * Pure deterministic function — given project input, return a plan.
  * This is NOT an LLM reasoning loop. It's a priority-ordered decision tree.
@@ -103,38 +148,7 @@ export function planAutoForge(input: AutoForgeInput, maxWaves = 3, goal?: string
 
   // 2. COLD START
   if (stage === 'initialized' && !hasAnyArtifacts(state)) {
-    const steps: AutoForgeStep[] = [
-      { command: 'review', reason: 'Scan the codebase to establish baseline' },
-      { command: 'constitution', reason: 'Set project principles' },
-      { command: 'specify', reason: 'Build the specification' },
-      { command: 'clarify', reason: 'Clarify ambiguities in the spec' },
-      { command: 'plan', reason: 'Create the implementation plan' },
-      { command: 'tasks', reason: 'Break the plan into executable tasks' },
-    ];
-
-    if (hasUI) {
-      steps.push(
-        { command: 'design', reason: 'Generate Design-as-Code (.op) for UI' },
-        { command: 'forge', reason: 'Execute the task plan' },
-        { command: 'ux-refine', reason: 'Refine UX after forge' },
-        { command: 'verify', reason: 'Verify the implementation' },
-      );
-    } else {
-      steps.push(
-        { command: 'forge', reason: 'Execute the task plan' },
-        { command: 'verify', reason: 'Verify the implementation' },
-      );
-    }
-
-    return {
-      scenario: 'cold-start',
-      reasoning: goal
-        ? `Fresh project with no artifacts — running full pipeline toward "${goal}".`
-        : 'Fresh project with no artifacts — running full pipeline.',
-      steps,
-      maxWaves,
-      goal,
-    };
+    return buildColdStartPlan(hasUI, maxWaves, goal);
   }
 
   // 3. TERMINAL STATE
@@ -150,18 +164,7 @@ export function planAutoForge(input: AutoForgeInput, maxWaves = 3, goal?: string
 
   // 4. MULTI-SESSION RESUME
   if (memoryEntryCount > 0 && lastMemoryAge !== null && lastMemoryAge > STALE_SESSION_HOURS) {
-    const resumeSteps: AutoForgeStep[] = [
-      { command: 'review', reason: `Last session was ${Math.round(lastMemoryAge)}h ago — refresh codebase state` },
-    ];
-    // Then fall through to mid-project logic
-    resumeSteps.push(...getMidProjectSteps(stage, hasDesignOp, hasUI, designViolationCount));
-    return {
-      scenario: 'multi-session-resume',
-      reasoning: `Last activity was ${Math.round(lastMemoryAge)}h ago. Refreshing state before continuing.`,
-      steps: resumeSteps,
-      maxWaves,
-      goal,
-    };
+    return buildMultiSessionResumePlan(lastMemoryAge, stage, hasDesignOp, hasUI, designViolationCount, maxWaves, goal);
   }
 
   // 4. STALLED — same stage for too long (would need memory analysis)
@@ -216,6 +219,117 @@ export function planAutoForge(input: AutoForgeInput, maxWaves = 3, goal?: string
   };
 }
 
+async function runPostStepScoring(stepCommand: string, profile: string | undefined, cwd: string | undefined): Promise<void> {
+  const { scoreAllArtifacts, persistScoreResult } = await import('./pdse.js');
+  const { computeCompletionTracker, detectProjectType } = await import('./completion-tracker.js');
+  const postState = await loadState({ cwd });
+  if (!postState.projectType || postState.projectType === 'unknown') {
+    postState.projectType = await detectProjectType(cwd ?? process.cwd());
+  }
+  const scores = await scoreAllArtifacts(cwd ?? process.cwd(), postState);
+  for (const result of Object.values(scores)) {
+    await persistScoreResult(result, cwd ?? process.cwd());
+  }
+  const tracker = computeCompletionTracker(postState, scores);
+  postState.completionTracker = tracker;
+  postState.auditLog.push(`${new Date().toISOString()} | pdse-score | post-${stepCommand} overall: ${tracker.overall}%`);
+  await saveState(postState, { cwd });
+
+  try {
+    const { ModelProfileEngine } = await import('./model-profile-engine.js');
+    const { resolveProvider } = await import('./config.js');
+    const providerInfo = await resolveProvider();
+    const modelKey = `${providerInfo.provider}:${providerInfo.model}`;
+    const profileEngine = new ModelProfileEngine(cwd ?? process.cwd());
+    for (const [artifact, scoreResult] of Object.entries(scores)) {
+      await profileEngine.recordResult({
+        modelKey, providerId: providerInfo.provider, modelId: providerInfo.model,
+        taskDescription: `${artifact} artifact — post-${stepCommand}`,
+        taskCategories: ['configuration'], pdseScore: scoreResult.score,
+        passed: scoreResult.autoforgeDecision === 'advance',
+        antiStubViolations: 0, tokensUsed: 0, retriesNeeded: 0,
+      });
+    }
+  } catch (err) { logger.verbose(`[best-effort] model profile: ${err instanceof Error ? err.message : String(err)}`); }
+
+  try {
+    const { recordComplexityOutcome, assessComplexity: assess, mapScoreToPreset, adjustWeightsFromOutcome, persistComplexityWeights, loadComplexityWeights } = await import('./complexity-classifier.js');
+    const tasks = Object.values(postState.tasks).flat();
+    if (tasks.length > 0) {
+      const assessment = assess(tasks, postState);
+      const validPresets = ['spark', 'ember', 'magic', 'blaze', 'inferno'] as const;
+      const actualPreset = validPresets.includes(profile as typeof validPresets[number])
+        ? (profile as typeof validPresets[number])
+        : mapScoreToPreset(assessment.score);
+      const lesson = recordComplexityOutcome(assessment, actualPreset, assessment.estimatedCostUsd);
+      if (lesson) {
+        logger.info(`[AutoForge] Complexity calibration: ${lesson}`);
+        postState.auditLog.push(`${new Date().toISOString()} | complexity-calibration | ${lesson}`);
+        await saveState(postState, { cwd });
+        const currentWeights = await loadComplexityWeights(cwd);
+        const adjusted = adjustWeightsFromOutcome(currentWeights, assessment.recommendedPreset, actualPreset);
+        if (adjusted) await persistComplexityWeights(adjusted, cwd);
+      }
+    }
+  } catch (err) { logger.verbose(`[best-effort] calibration: ${err instanceof Error ? err.message : String(err)}`); }
+}
+
+type RunStepFn = (command: string, light?: boolean, goal?: string, runtime?: { profile?: string; parallel?: boolean; worktree?: boolean }) => Promise<void>;
+type FailureAnalyzerFn = (stepCommand: string, message: string, reason: string, cwd?: string) => Promise<void>;
+
+async function executeForgeSteps(
+  plan: AutoForgePlan,
+  opts: { cwd?: string; light?: boolean; profile?: string; parallel?: boolean; worktree?: boolean },
+  runStep: RunStepFn,
+  checkStageComplete: (stage: WorkflowStage, cwd?: string) => Promise<boolean>,
+  memoryRecorder: typeof recordMemory,
+  failureAnalyzer: FailureAnalyzerFn,
+): Promise<{ completed: string[]; failed: string[]; paused: boolean }> {
+  const completed: string[] = [];
+  const failed: string[] = [];
+  let wavesExecuted = 0;
+
+  for (const step of plan.steps) {
+    if (wavesExecuted >= plan.maxWaves) {
+      logger.info(`[AutoForge] Checkpoint: completed ${wavesExecuted} waves. Pausing for review.`);
+      return { completed, failed, paused: true };
+    }
+    logger.info(`[AutoForge] Step: ${step.command} — ${step.reason}`);
+    try {
+      const { assessComplexity, formatAssessment } = await import('./complexity-classifier.js');
+      const state = await loadState({ cwd: opts.cwd });
+      const tasks = Object.values(state.tasks).flat();
+      if (tasks.length > 0) logger.info(`[AutoForge] ${formatAssessment(assessComplexity(tasks, state))}`);
+    } catch (err) { logger.verbose(`[best-effort] classifier: ${err instanceof Error ? err.message : String(err)}`); }
+
+    try {
+      // v0.10.0 — removed exitCode save/restore pattern (concurrency bug).
+      await runStep(step.command, opts.light, plan.goal, { profile: opts.profile, parallel: opts.parallel, worktree: opts.worktree });
+      const stageMap = getCommandStageMap();
+      const stepStage = stageMap[step.command];
+      if (stepStage && !await checkStageComplete(stepStage, opts.cwd)) {
+        throw new Error(`${step.command} reported success but its expected artifact is missing from disk`);
+      }
+      completed.push(step.command);
+      wavesExecuted++;
+      logger.success(`[AutoForge] ${step.command} complete`);
+      try { await runPostStepScoring(step.command, opts.profile, opts.cwd); } catch (err) { logger.verbose(`[best-effort] scoring: ${err instanceof Error ? err.message : String(err)}`); }
+      await memoryRecorder({ category: 'command', summary: `AutoForge executed: ${step.command}`, detail: `Scenario: ${plan.scenario}. Reason: ${step.reason}${plan.goal ? `. Goal: ${plan.goal}` : ''}`, tags: ['autoforge', step.command], relatedCommands: [step.command] }, opts.cwd);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      failed.push(step.command);
+      logger.error(`[AutoForge] ${step.command} failed: ${msg}`);
+      await failureAnalyzer(step.command, msg, step.reason, opts.cwd);
+      await memoryRecorder({ category: 'error', summary: `AutoForge failed at: ${step.command}`, detail: `Error: ${msg}. Scenario: ${plan.scenario}${plan.goal ? `. Goal: ${plan.goal}` : ''}`, tags: ['autoforge', 'failure', step.command], relatedCommands: [step.command] }, opts.cwd);
+      const state = await loadState({ cwd: opts.cwd });
+      state.autoforgeFailedAttempts = (state.autoforgeFailedAttempts ?? 0) + 1;
+      await saveState(state, { cwd: opts.cwd });
+      break;
+    }
+  }
+  return { completed, failed, paused: false };
+}
+
 /**
  * Execute an AutoForge plan step by step.
  * Pauses at maxWaves for a human checkpoint.
@@ -241,8 +355,6 @@ export async function executeAutoForgePlan(
     _runFailureAnalysis?: (stepCommand: string, message: string, reason: string, cwd?: string) => Promise<void>;
   } = {},
 ): Promise<{ completed: string[]; failed: string[]; paused: boolean }> {
-  const completed: string[] = [];
-  const failed: string[] = [];
   const runStep = options._runStep ?? runAutoForgeStep;
   const checkStageComplete = options._isStageComplete ?? isStageComplete;
   const llmAvailabilityProbe = options._isLLMAvailable ?? isLLMAvailable;
@@ -256,176 +368,23 @@ export async function executeAutoForgePlan(
   }
 
   const llmReady = await llmAvailabilityProbe();
-  if (!llmReady) {
-    logger.warn('[AutoForge] No LLM provider available. Some steps may fail.');
-  }
+  if (!llmReady) logger.warn('[AutoForge] No LLM provider available. Some steps may fail.');
 
   logger.success(`[AutoForge] Scenario: ${plan.scenario}`);
   logger.info(`[AutoForge] ${plan.reasoning}`);
   logger.info(`[AutoForge] ${plan.steps.length} step(s) planned, max ${plan.maxWaves} waves`);
   logger.info('');
 
-  let wavesExecuted = 0;
+  const result = await executeForgeSteps(plan, options, runStep, checkStageComplete, memoryRecorder, failureAnalyzer);
 
-  for (const step of plan.steps) {
-    if (wavesExecuted >= plan.maxWaves) {
-      logger.info(`[AutoForge] Checkpoint: completed ${wavesExecuted} waves. Pausing for review.`);
-      return { completed, failed, paused: true };
-    }
-
-    logger.info(`[AutoForge] Step: ${step.command} — ${step.reason}`);
-
-    // Best-effort complexity assessment before step execution.
-    try {
-      const { assessComplexity, formatAssessment } = await import('./complexity-classifier.js');
-      const state = await loadState({ cwd: options.cwd });
-      const tasks = Object.values(state.tasks).flat();
-      if (tasks.length > 0) {
-        const assessment = assessComplexity(tasks, state);
-        logger.info(`[AutoForge] ${formatAssessment(assessment)}`);
-      }
-    } catch (err) { logger.verbose(`[best-effort] classifier: ${err instanceof Error ? err.message : String(err)}`); }
-
-    try {
-      // v0.10.0 — removed exitCode save/restore pattern (concurrency bug).
-      // runStep throws on failure; we catch below. Artifact check provides belt-and-suspenders.
-      await runStep(step.command, options.light, plan.goal, {
-        profile: options.profile,
-        parallel: options.parallel,
-        worktree: options.worktree,
-      });
-
-      // Verify the step's expected artifact was actually written to disk
-      const stageMap = getCommandStageMap();
-      const stepStage = stageMap[step.command];
-      if (stepStage) {
-        const artifactExists = await checkStageComplete(stepStage, options.cwd);
-        if (!artifactExists) {
-          throw new Error(`${step.command} reported success but its expected artifact is missing from disk`);
-        }
-      }
-
-      completed.push(step.command);
-      wavesExecuted++;
-      logger.success(`[AutoForge] ${step.command} complete`);
-
-      // Score artifacts and update completion tracker after each step
-      try {
-        const { scoreAllArtifacts, persistScoreResult } = await import('./pdse.js');
-        const { computeCompletionTracker, detectProjectType } = await import('./completion-tracker.js');
-        const postState = await loadState({ cwd: options.cwd });
-        if (!postState.projectType || postState.projectType === 'unknown') {
-          postState.projectType = await detectProjectType(options.cwd ?? process.cwd());
-        }
-        const scores = await scoreAllArtifacts(options.cwd ?? process.cwd(), postState);
-        for (const result of Object.values(scores)) {
-          await persistScoreResult(result, options.cwd ?? process.cwd());
-        }
-        const tracker = computeCompletionTracker(postState, scores);
-        postState.completionTracker = tracker;
-        postState.auditLog.push(
-          `${new Date().toISOString()} | pdse-score | post-${step.command} overall: ${tracker.overall}%`,
-        );
-        await saveState(postState, { cwd: options.cwd });
-
-        // Feed PDSE results to model profile engine (best-effort, non-blocking)
-        try {
-          const { ModelProfileEngine } = await import('./model-profile-engine.js');
-          const { resolveProvider } = await import('./config.js');
-          const providerInfo = await resolveProvider();
-          const modelKey = `${providerInfo.provider}:${providerInfo.model}`;
-          const profileEngine = new ModelProfileEngine(options.cwd ?? process.cwd());
-          for (const [artifact, scoreResult] of Object.entries(scores)) {
-            await profileEngine.recordResult({
-              modelKey,
-              providerId: providerInfo.provider,
-              modelId: providerInfo.model,
-              taskDescription: `${artifact} artifact — post-${step.command}`,
-              taskCategories: ['configuration'],
-              pdseScore: scoreResult.score,
-              passed: scoreResult.autoforgeDecision === 'advance',
-              antiStubViolations: 0,
-              tokensUsed: 0,
-              retriesNeeded: 0,
-            });
-          }
-        } catch (err) { logger.verbose(`[best-effort] model profile: ${err instanceof Error ? err.message : String(err)}`); }
-
-        // Best-effort complexity outcome recording for calibration feedback.
-        try {
-          const { recordComplexityOutcome, assessComplexity: assess, mapScoreToPreset, adjustWeightsFromOutcome, persistComplexityWeights } = await import('./complexity-classifier.js');
-          const tasks = Object.values(postState.tasks).flat();
-          if (tasks.length > 0) {
-            const assessment = assess(tasks, postState);
-            // Determine actual preset: user-specified profile if valid, else classifier recommendation
-            const validPresets = ['spark', 'ember', 'magic', 'blaze', 'inferno'] as const;
-            const actualPreset = validPresets.includes(options.profile as typeof validPresets[number])
-              ? (options.profile as typeof validPresets[number])
-              : mapScoreToPreset(assessment.score);
-            const lesson = recordComplexityOutcome(assessment, actualPreset, assessment.estimatedCostUsd);
-            if (lesson) {
-              logger.info(`[AutoForge] Complexity calibration: ${lesson}`);
-              postState.auditLog.push(
-                `${new Date().toISOString()} | complexity-calibration | ${lesson}`,
-              );
-              await saveState(postState, { cwd: options.cwd });
-              // Close the feedback loop: adjust weights and persist
-              const { loadComplexityWeights } = await import('./complexity-classifier.js');
-              const currentWeights = await loadComplexityWeights(options.cwd);
-              const adjusted = adjustWeightsFromOutcome(
-                currentWeights,
-                assessment.recommendedPreset,
-                actualPreset,
-              );
-              if (adjusted) {
-                await persistComplexityWeights(adjusted, options.cwd);
-              }
-            }
-          }
-        } catch (err) { logger.verbose(`[best-effort] calibration: ${err instanceof Error ? err.message : String(err)}`); }
-      } catch (err) { logger.verbose(`[best-effort] scoring: ${err instanceof Error ? err.message : String(err)}`); }
-
-      await memoryRecorder({
-        category: 'command',
-        summary: `AutoForge executed: ${step.command}`,
-        detail: `Scenario: ${plan.scenario}. Reason: ${step.reason}${plan.goal ? `. Goal: ${plan.goal}` : ''}`,
-        tags: ['autoforge', step.command],
-        relatedCommands: [step.command],
-      }, options.cwd);
-    } catch (err) {
-      const msg = err instanceof Error ? err.message : String(err);
-      failed.push(step.command);
-      logger.error(`[AutoForge] ${step.command} failed: ${msg}`);
-
-      await failureAnalyzer(step.command, msg, step.reason, options.cwd);
-
-      // Record failure
-      await memoryRecorder({
-        category: 'error',
-        summary: `AutoForge failed at: ${step.command}`,
-        detail: `Error: ${msg}. Scenario: ${plan.scenario}${plan.goal ? `. Goal: ${plan.goal}` : ''}`,
-        tags: ['autoforge', 'failure', step.command],
-        relatedCommands: [step.command],
-      }, options.cwd);
-
-      // Increment failed attempts
-      const state = await loadState({ cwd: options.cwd });
-      state.autoforgeFailedAttempts = (state.autoforgeFailedAttempts ?? 0) + 1;
-      await saveState(state, { cwd: options.cwd });
-
-      break; // Stop on first failure
-    }
-  }
-
-  // Reset failed attempts on success
-  if (failed.length === 0) {
+  if (result.failed.length === 0 && !result.paused) {
     const state = await loadState({ cwd: options.cwd });
     state.autoforgeFailedAttempts = 0;
     state.autoforgeLastRunAt = new Date().toISOString();
     await saveState(state, { cwd: options.cwd });
   }
 
-  return { completed, failed, paused: false };
+  return result;
 }
 
 async function runAutoForgeFailureAnalysis(

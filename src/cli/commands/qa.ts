@@ -16,6 +16,30 @@ import {
   type QARunMode,
 } from '../../core/qa-runner.js';
 
+function printQASummary(report: Awaited<ReturnType<typeof runQAPass>>): void {
+  logger.info(`\nQA Health Score: ${report.score}/100`);
+  logger.info(`Issues found: ${report.issues.length}`);
+
+  const critical = report.issues.filter(i => i.severity === 'critical').length;
+  const high = report.issues.filter(i => i.severity === 'high').length;
+  const medium = report.issues.filter(i => i.severity === 'medium').length;
+  const info = report.issues.filter(i => i.severity === 'informational').length;
+
+  if (report.issues.length > 0) {
+    logger.info(`  Critical: ${critical} | High: ${high} | Medium: ${medium} | Info: ${info}`);
+    logger.info('');
+    for (const issue of report.issues.slice(0, 5)) {
+      const icon = issue.severity === 'critical' ? 'x' : issue.severity === 'high' ? '!' : '-';
+      logger.info(`  ${icon} [${issue.severity.toUpperCase()}] ${issue.description}`);
+    }
+    if (report.issues.length > 5) logger.info(`  ... and ${report.issues.length - 5} more issues`);
+  }
+
+  if (report.regressions && report.regressions.length > 0) {
+    logger.warn(`\nRegressions detected: ${report.regressions.length} new issue(s) since baseline`);
+  }
+}
+
 export async function qa(options: {
   url: string;
   type?: string;
@@ -78,31 +102,7 @@ export async function qa(options: {
     logger.info(`Baseline saved: ${baselinePath}`);
   }
 
-  // Print summary
-  logger.info(`\nQA Health Score: ${report.score}/100`);
-  logger.info(`Issues found: ${report.issues.length}`);
-
-  const critical = report.issues.filter(i => i.severity === 'critical').length;
-  const high = report.issues.filter(i => i.severity === 'high').length;
-  const medium = report.issues.filter(i => i.severity === 'medium').length;
-  const info = report.issues.filter(i => i.severity === 'informational').length;
-
-  if (report.issues.length > 0) {
-    logger.info(`  Critical: ${critical} | High: ${high} | Medium: ${medium} | Info: ${info}`);
-    logger.info('');
-    // Print top issues
-    for (const issue of report.issues.slice(0, 5)) {
-      const icon = issue.severity === 'critical' ? 'x' : issue.severity === 'high' ? '!' : '-';
-      logger.info(`  ${icon} [${issue.severity.toUpperCase()}] ${issue.description}`);
-    }
-    if (report.issues.length > 5) {
-      logger.info(`  ... and ${report.issues.length - 5} more issues`);
-    }
-  }
-
-  if (report.regressions && report.regressions.length > 0) {
-    logger.warn(`\nRegressions detected: ${report.regressions.length} new issue(s) since baseline`);
-  }
+  printQASummary(report);
 
   // Update state
   try {

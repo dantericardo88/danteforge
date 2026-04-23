@@ -468,121 +468,78 @@ function scoreDocumentation(ctx: MaturityContext): number {
 
 // ── Performance: Nested loops, select-star queries, await in loops ──────────
 
+function buildPerformancePatterns() {
+  // All patterns use RegExp constructors to prevent self-matching when this file is scanned.
+  return {
+    // Only flag C-style index nested loops (genuine O(n²) anti-patterns; for...of excluded)
+    nestedLoop: new RegExp(
+      'for\\s*\\(\\s*(?:let|var)\\s+\\w+\\s*=\\s*0[^)]*\\)\\s*\\{[^{}]*for\\s*\\(\\s*(?:let|var)\\s+',
+    ),
+    // Direct single-statement N+1: for (...) { await readFile(x) }
+    awaitInLoop: new RegExp(
+      'for\\s*\\([^)]*\\)\\s*\\{[^{};]{0,200}' +
+      'await\\s+[^\\n;]{0,100}(?:fetch|\\.query|\\.find\\(|readFile|readdir|\\.request|\\.load\\()',
+    ),
+    selectStar: new RegExp('SELECT\\s+\\*', 'i'),
+    caching: new RegExp('(?:new\\s+Map<|new\\s+WeakMap<|memoize|_cache\\b)'),
+    parallelism: new RegExp('Promise\\.all(?:Settled)?\\s*\\('),
+    lazyImport: new RegExp('await\\s+import\\s*\\('),
+  };
+}
+
+async function applyPerformanceBonuses(
+  baseScore: number,
+  flags: { hasSelectStar: boolean; hasCaching: boolean; hasParallelism: boolean; lazyImportFiles: number; penaltyFiles: number },
+  cwd: string,
+  fileExists: (path: string) => Promise<boolean>,
+  collectFiles: (dir: string) => Promise<string[]>,
+): Promise<number> {
+  let score = baseScore;
+  score -= Math.min(flags.penaltyFiles, 4) * 5;
+  if (flags.hasSelectStar) score -= 5;
+  if (flags.hasCaching) score += 5;
+  if (flags.hasParallelism) score += 5;
+  if (await fileExists(path.join(cwd, '.danteforge', 'performance-baseline.json'))) score += 10;
+  if (flags.lazyImportFiles >= 3) score += 5;
+  try {
+    const testFiles = await collectFiles(path.join(cwd, 'tests'));
+    if (testFiles.some(f => { const n = path.basename(f).toLowerCase(); return n.includes('timing') || n.includes('benchmark') || n.includes('perf'); })) score += 5;
+  } catch { /* no tests dir */ }
+  return Math.min(100, Math.max(0, score));
+}
+
 async function scorePerformance(
   ctx: MaturityContext,
   readFile: (path: string) => Promise<string>,
   collectFiles: (dir: string) => Promise<string[]>,
   fileExists: (path: string) => Promise<boolean>,
 ): Promise<number> {
-  let score = 70;
-  let penaltyFiles = 0;    // files with genuine anti-patterns — 1 per file, not per occurrence
+  const patterns = buildPerformancePatterns();
+  let penaltyFiles = 0;
   let hasSelectStar = false;
   let hasCaching = false;
   let hasParallelism = false;
-  let lazyImportFiles = 0; // files using dynamic await import() for lazy loading
-
-  // Use RegExp constructors for all scanning patterns — prevents this file from
-  // self-matching when the scanner reads its own source code.
-  //
-  // NARROWED: Only flag C-style numeric index nested loops (genuine O(n²) anti-patterns).
-  // for (let/var i = 0; ...) { ... for (let/var j ...
-  // This avoids false positives from for...of nested over item properties (O(n×m) is fine
-  // when m is bounded, e.g. iterating graph dependencies or dimension keys).
-  const nestedLoopPattern = new RegExp(
-    'for\\s*\\(\\s*(?:let|var)\\s+\\w+\\s*=\\s*0[^)]*\\)\\s*\\{[^{}]*for\\s*\\(\\s*(?:let|var)\\s+',
-  );
-  // [^{};] stops at statement boundaries (;) AND block boundaries ({}) so we don't
-  // cross from one statement's await into the IO call of a later statement.
-  // This catches the direct single-statement N+1: for (...) { await readFile(x) }
-  const awaitInLoopPattern = new RegExp(
-    'for\\s*\\([^)]*\\)\\s*\\{[^{};]{0,200}' +
-    'await\\s+[^\\n;]{0,100}(?:fetch|\\.query|\\.find\\(|readFile|readdir|\\.request|\\.load\\()',
-  );
-  const selectStarPattern = new RegExp('SELECT\\s+\\*', 'i');
-  const cachingPattern = new RegExp('(?:new\\s+Map<|new\\s+WeakMap<|memoize|_cache\\b)');
-  const parallelismPattern = new RegExp('Promise\\.all(?:Settled)?\\s*\\(');
-  // Lazy import: dynamic await import() is a genuine load-time performance technique.
-  // Codebase must use it in ≥3 files to earn the bonus (threshold filters accidental use).
-  const lazyImportPattern = new RegExp('await\\s+import\\s*\\(');
-
-  const srcDir = path.join(ctx.cwd, 'src');
+  let lazyImportFiles = 0;
 
   try {
-    const allFiles = await collectFiles(srcDir);
-    // Exclude test files — sequential awaits are intentional in tests, not N+1 anti-patterns
-    const files = allFiles.filter(
-      (f) => !f.includes('/tests/') && !f.includes('\\tests\\') && !f.endsWith('.test.ts'),
-    );
-    // Read all files in parallel — eliminates sequential I/O in the scorer itself
-    const readResults = await Promise.allSettled(files.map((f) => readFile(f)));
+    const allFiles = await collectFiles(path.join(ctx.cwd, 'src'));
+    const files = allFiles.filter(f => !f.includes('/tests/') && !f.includes('\\tests\\') && !f.endsWith('.test.ts'));
+    const readResults = await Promise.allSettled(files.map(f => readFile(f)));
     for (const result of readResults) {
       if (result.status !== 'fulfilled') continue;
-      // Strip comments before scanning — avoids false positives from comments that
-      // mention "for" and "readFile" in proximity without being actual loop code.
-      // Also strip regex/string literals containing keywords to prevent self-detection.
-      const content = result.value
-        .replace(/\/\/[^\n]*/g, '')
-        .replace(/\/\*[\s\S]*?\*\//g, '');
+      const content = result.value.replace(/\/\/[^\n]*/g, '').replace(/\/\*[\s\S]*?\*\//g, '');
       let fileHasIssue = false;
-
-      // Nested for-loops — boolean per file (not counted per occurrence).
-      // [^{}]* requires no braces between outer loop open and inner for — stays within
-      // the first block level, preventing cross-function matches.
-      if (nestedLoopPattern.test(content)) {
-        fileHasIssue = true;
-      }
-
-      // True N+1 anti-pattern: await on IO directly in loop body (no inner block).
-      // [^{}]{0,300} stops at any brace — excludes try-catch wrappers around sequential
-      // file reads, which are intentional (error isolation per file, not O(n) I/O waste).
-      if (awaitInLoopPattern.test(content)) {
-        fileHasIssue = true;
-      }
-
-      if (selectStarPattern.test(content)) hasSelectStar = true;
-      if (cachingPattern.test(content)) hasCaching = true;
-      if (parallelismPattern.test(content)) hasParallelism = true;
-      if (lazyImportPattern.test(content)) lazyImportFiles++;
-
+      if (patterns.nestedLoop.test(content)) fileHasIssue = true;
+      if (patterns.awaitInLoop.test(content)) fileHasIssue = true;
+      if (patterns.selectStar.test(content)) hasSelectStar = true;
+      if (patterns.caching.test(content)) hasCaching = true;
+      if (patterns.parallelism.test(content)) hasParallelism = true;
+      if (patterns.lazyImport.test(content)) lazyImportFiles++;
       if (fileHasIssue) penaltyFiles++;
     }
-  } catch {
-    // No src directory — keep baseline
-  }
+  } catch { /* No src directory — keep baseline */ }
 
-  // Per-file penalty, capped at 4 files (max -20 from pattern anti-patterns)
-  score -= Math.min(penaltyFiles, 4) * 5;
-
-  // select-star is always bad but deducted only once regardless of file count
-  if (hasSelectStar) score -= 5;
-
-  // Bonus: codebase uses memoization / caching
-  if (hasCaching) score += 5;
-
-  // Bonus: codebase uses Promise.all / Promise.allSettled for parallel I/O
-  if (hasParallelism) score += 5;
-
-  // Bonus: PerformanceMonitor baseline file exists (monitoring is active)
-  const baselinePath = path.join(ctx.cwd, '.danteforge', 'performance-baseline.json');
-  if (await fileExists(baselinePath)) score += 10;
-
-  // Bonus: extensive use of lazy dynamic imports (≥3 files) — genuine load-time optimization
-  if (lazyImportFiles >= 3) score += 5;
-
-  // Bonus: benchmark / timing tests exist — performance regressions are caught by CI
-  const testsDir = path.join(ctx.cwd, 'tests');
-  try {
-    const testFiles = await collectFiles(testsDir);
-    const hasBenchmark = testFiles.some((f) => {
-      const name = path.basename(f).toLowerCase();
-      return name.includes('timing') || name.includes('benchmark') || name.includes('perf');
-    });
-    if (hasBenchmark) score += 5;
-  } catch {
-    // No tests dir — skip bonus
-  }
-
-  return Math.min(100, Math.max(0, score));
+  return applyPerformanceBonuses(70, { hasSelectStar, hasCaching, hasParallelism, lazyImportFiles, penaltyFiles }, ctx.cwd, fileExists, collectFiles);
 }
 
 // ── Maintainability: PDSE testability + constitution + function size ──────
@@ -827,10 +784,17 @@ async function defaultCollectFiles(dir: string): Promise<string[]> {
   return results;
 }
 
+let _tsModule: typeof import('typescript') | null = null;
+try {
+  const { createRequire } = await import('node:module');
+  const require = createRequire(import.meta.url);
+  _tsModule = require('typescript') as typeof import('typescript');
+} catch { /* TypeScript not available — fall back to regex */ }
+
 function extractFunctions(content: string): string[] {
-  if (tsModule) {
+  if (_tsModule) {
     try {
-      const ts = tsModule;
+      const ts = _tsModule;
       const sf = ts.createSourceFile('temp.ts', content, ts.ScriptTarget.Latest, true, ts.ScriptKind.TS);
       const results: string[] = [];
       // Only collect top-level declarations — avoids counting nested callbacks

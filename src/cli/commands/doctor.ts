@@ -433,20 +433,7 @@ async function runRepairs(): Promise<DiagnosticResult> {
   };
 }
 
-export async function doctor(options: {
-  fix?: boolean;
-  live?: boolean;
-  _loadState?: typeof loadState;
-  _saveState?: typeof saveState;
-  _isLLMAvailable?: typeof isLLMAvailable;
-} = {}) {
-  const loadFn = options._loadState ?? loadState;
-  const saveFn = options._saveState ?? saveState;
-  void loadFn; void saveFn; // seams available for test injection
-  return withErrorBoundary('doctor', async () => {
-  logger.success('DanteForge Doctor - System Health Check');
-  logger.info('');
-
+async function runAllDoctorChecks(options: { fix?: boolean; live?: boolean }): Promise<DiagnosticResult[]> {
   const results: DiagnosticResult[] = [];
 
   const nodeVersion = process.version;
@@ -454,42 +441,24 @@ export async function doctor(options: {
   if (major >= 18) {
     results.push({ name: 'Node.js', status: 'ok', message: `${nodeVersion} (ES2022 compatible)` });
   } else {
-    results.push({
-      name: 'Node.js',
-      status: 'fail',
-      message: `${nodeVersion} - requires Node 18+`,
-      fix: 'Install Node.js 18 or later: https://nodejs.org',
-    });
+    results.push({ name: 'Node.js', status: 'fail', message: `${nodeVersion} - requires Node 18+`, fix: 'Install Node.js 18 or later: https://nodejs.org' });
   }
 
   if (options.fix) {
     try {
       results.push(await runRepairs());
     } catch (err) {
-      results.push({
-        name: 'Repairs',
-        status: 'fail',
-        message: err instanceof Error ? err.message : String(err),
-      });
+      results.push({ name: 'Repairs', status: 'fail', message: err instanceof Error ? err.message : String(err) });
     }
   }
 
   let state;
   try {
     state = await loadState();
-    results.push({
-      name: 'State file',
-      status: 'ok',
-      message: `Project: ${state.project}, Workflow stage: ${state.workflowStage}, Phase: ${state.currentPhase}`,
-    });
+    results.push({ name: 'State file', status: 'ok', message: `Project: ${state.project}, Workflow stage: ${state.workflowStage}, Phase: ${state.currentPhase}` });
     results.push(buildVerifyDiagnostic(state));
   } catch {
-    results.push({
-      name: 'State file',
-      status: 'warn',
-      message: 'No state file found',
-      fix: 'Run: danteforge review',
-    });
+    results.push({ name: 'State file', status: 'warn', message: 'No state file found', fix: 'Run: danteforge review' });
     results.push(buildVerifyDiagnostic());
   }
 
@@ -499,12 +468,7 @@ export async function doctor(options: {
     const hasKey = config.providers[provider]?.apiKey ? 'yes' : 'no';
     results.push({ name: 'Config', status: 'ok', message: `Provider: ${provider}, API key: ${hasKey}` });
   } catch {
-    results.push({
-      name: 'Config',
-      status: 'warn',
-      message: 'No config found',
-      fix: 'Run: danteforge config --set-key "openai:<key>"',
-    });
+    results.push({ name: 'Config', status: 'warn', message: 'No config found', fix: 'Run: danteforge config --set-key "openai:<key>"' });
   }
 
   const llmReady = await isLLMAvailable();
@@ -522,13 +486,16 @@ export async function doctor(options: {
     const skills = await discoverSkills();
     results.push({ name: 'Skills', status: 'ok', message: `${skills.length} skills discovered` });
   } catch (err) {
-    results.push({
-      name: 'Skills',
-      status: 'warn',
-      message: err instanceof Error ? err.message : 'Could not discover skills',
-      fix: 'Ensure packaged skills exist under src/harvested/dante-agents/skills',
-    });
+    results.push({ name: 'Skills', status: 'warn', message: err instanceof Error ? err.message : 'Could not discover skills', fix: 'Ensure packaged skills exist under src/harvested/dante-agents/skills' });
   }
+
+  results.push(...await runEnvironmentChecks(options));
+
+  return results;
+}
+
+async function runEnvironmentChecks(options: { live?: boolean }): Promise<DiagnosticResult[]> {
+  const results: DiagnosticResult[] = [];
 
   const homeDir = process.env.DANTEFORGE_HOME ?? process.env.HOME ?? process.env.USERPROFILE ?? '';
   if (homeDir) {
@@ -544,36 +511,17 @@ export async function doctor(options: {
   const capabilities = await detectMCPCapabilities(host);
   const tier = resolveTier(host, capabilities.hasFigmaMCP);
   if (capabilities.hasFigmaMCP) {
-    results.push({
-      name: 'Figma MCP config',
-      status: 'ok',
-      message: `Host: ${host}, Tier: ${tier}, Server: ${capabilities.figmaServerName ?? 'figma'}`,
-    });
+    results.push({ name: 'Figma MCP config', status: 'ok', message: `Host: ${host}, Tier: ${tier}, Server: ${capabilities.figmaServerName ?? 'figma'}` });
   } else if (capabilities.hasMCP) {
-    results.push({
-      name: 'Figma MCP config',
-      status: 'warn',
-      message: `MCP detected (host: ${host}) but no Figma server is configured.`,
-      fix: 'Run: danteforge setup figma',
-    });
+    results.push({ name: 'Figma MCP config', status: 'warn', message: `MCP detected (host: ${host}) but no Figma server is configured.`, fix: 'Run: danteforge setup figma' });
   } else {
-    results.push({
-      name: 'Figma MCP config',
-      status: 'warn',
-      message: `No MCP configuration detected for host: ${host}.`,
-      fix: 'Run: danteforge setup figma',
-    });
+    results.push({ name: 'Figma MCP config', status: 'warn', message: `No MCP configuration detected for host: ${host}.`, fix: 'Run: danteforge setup figma' });
   }
 
   if (await exists(path.join('dist', 'index.js'))) {
     results.push({ name: 'Build', status: 'ok', message: 'dist/index.js exists' });
   } else {
-    results.push({
-      name: 'Build',
-      status: 'warn',
-      message: 'No CLI build artifact found',
-      fix: 'Run: npm run build',
-    });
+    results.push({ name: 'Build', status: 'warn', message: 'No CLI build artifact found', fix: 'Run: npm run build' });
   }
 
   const validLevels: LogLevel[] = ['silent', 'error', 'warn', 'info', 'verbose'];
@@ -587,9 +535,7 @@ export async function doctor(options: {
   const artifacts = ['CURRENT_STATE.md', 'CONSTITUTION.md', 'SPEC.md', 'CLARIFY.md', 'PLAN.md', 'TASKS.md', 'UPR.md'];
   const foundArtifacts: string[] = [];
   for (const artifact of artifacts) {
-    if (await exists(path.join('.danteforge', artifact))) {
-      foundArtifacts.push(artifact);
-    }
+    if (await exists(path.join('.danteforge', artifact))) foundArtifacts.push(artifact);
   }
   results.push({
     name: 'Artifacts',
@@ -601,16 +547,14 @@ export async function doctor(options: {
   if (options.live) {
     results.push(await checkLiveReleaseConfig());
     results.push(await checkAntigravityUpstream());
-
     const mcp = await testMCPConnection();
-    results.push({
-      name: 'Figma MCP endpoint',
-      status: mcp.ok ? 'ok' : 'fail',
-      message: mcp.message,
-      fix: mcp.ok ? undefined : 'Check internet access to https://mcp.figma.com/mcp',
-    });
+    results.push({ name: 'Figma MCP endpoint', status: mcp.ok ? 'ok' : 'fail', message: mcp.message, fix: mcp.ok ? undefined : 'Check internet access to https://mcp.figma.com/mcp' });
   }
 
+  return results;
+}
+
+function displayDoctorResults(results: DiagnosticResult[]): { ok: number; failCount: number; warnCount: number } {
   logger.info('');
   let failCount = 0;
   let warnCount = 0;
@@ -618,25 +562,38 @@ export async function doctor(options: {
     const icon = result.status === 'ok' ? '[OK]  ' : result.status === 'warn' ? '[WARN]' : '[FAIL]';
     const level = result.status === 'ok' ? 'success' : result.status === 'warn' ? 'warn' : 'error';
     logger[level](`${icon} ${result.name}: ${result.message}`);
-    if (result.fix) {
-      logger.info(`         Fix: ${result.fix}`);
-    }
+    if (result.fix) logger.info(`         Fix: ${result.fix}`);
     if (result.status === 'fail') failCount++;
     if (result.status === 'warn') warnCount++;
   }
-
+  const ok = results.length - failCount - warnCount;
   logger.info('');
   const total = results.length;
-  const ok = total - failCount - warnCount;
-  if (failCount > 0) {
-    logger.error(`Health check: ${ok}/${total} passed, ${failCount} failed, ${warnCount} warnings`);
-  } else if (warnCount > 0) {
-    logger.warn(`Health check: ${ok}/${total} passed, ${warnCount} warnings`);
-  } else {
-    logger.success(`Health check: ${total}/${total} passed`);
-  }
+  if (failCount > 0) logger.error(`Health check: ${ok}/${total} passed, ${failCount} failed, ${warnCount} warnings`);
+  else if (warnCount > 0) logger.warn(`Health check: ${ok}/${total} passed, ${warnCount} warnings`);
+  else logger.success(`Health check: ${total}/${total} passed`);
+  return { ok, failCount, warnCount };
+}
+
+export async function doctor(options: {
+  fix?: boolean;
+  live?: boolean;
+  _loadState?: typeof loadState;
+  _saveState?: typeof saveState;
+  _isLLMAvailable?: typeof isLLMAvailable;
+} = {}) {
+  const loadFn = options._loadState ?? loadState;
+  const saveFn = options._saveState ?? saveState;
+  void loadFn; void saveFn; // seams available for test injection
+  return withErrorBoundary('doctor', async () => {
+  logger.success('DanteForge Doctor - System Health Check');
+  logger.info('');
+
+  const results = await runAllDoctorChecks(options);
+  const { ok, failCount, warnCount } = displayDoctorResults(results);
 
   try {
+    const total = results.length;
     const auditState = await loadState();
     auditState.auditLog.push(`${new Date().toISOString()} | doctor: ${ok}/${total} ok, ${failCount} fail, ${warnCount} warn${options.live ? ', live' : ''}${options.fix ? ', fix' : ''}`);
     await saveState(auditState);

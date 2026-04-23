@@ -369,6 +369,52 @@ export async function callLLM(
   return _callLLMInner(prompt, providerOverride, options);
 }
 
+async function handleCallSuccess(
+  result: ProviderCallResult,
+  options: CallLLMOptions,
+  target: Awaited<ReturnType<typeof resolveCallTarget>>,
+  modelUsed: string,
+  enrichedPrompt: string,
+  attempt: number,
+): Promise<string> {
+  if (result.usage && (options.onUsage || options.budgetFence)) {
+    try {
+      const { estimateCost } = await import('./token-estimator.js');
+      const totalTokens = result.usage.inputTokens + result.usage.outputTokens;
+      const costData = estimateCost(totalTokens, target.provider);
+      const usageMeta: LLMUsageMetadata = {
+        inputTokens: result.usage.inputTokens,
+        outputTokens: result.usage.outputTokens,
+        costUsd: costData.totalEstimate,
+        model: modelUsed,
+        provider: target.provider,
+      };
+      if (options.onUsage) {
+        try { options.onUsage(usageMeta); } catch { /* best-effort */ }
+      }
+      if (options.budgetFence) {
+        options.budgetFence.currentSpendUsd += costData.totalEstimate;
+        if (options.budgetFence.currentSpendUsd >= options.budgetFence.maxBudgetUsd) {
+          options.budgetFence.isExceeded = true;
+        }
+      }
+    } catch { /* best-effort usage tracking */ }
+  }
+  const state = await loadState({ cwd: options.cwd });
+  state.auditLog.push(`${new Date().toISOString()} | llm: ${target.provider}/${modelUsed} (${result.text.length} chars returned${attempt > 0 ? `, attempt ${attempt + 1}` : ''})`);
+  await saveState(state, { cwd: options.cwd });
+  if (options.recordMemory !== false) {
+    await recordMemory({
+      category: 'command',
+      summary: `LLM call: ${target.provider}/${modelUsed}`,
+      detail: `Prompt chars: ${enrichedPrompt.length}. Response chars: ${result.text.length}.`,
+      tags: ['llm', target.provider, modelUsed],
+      relatedCommands: ['llm'],
+    }, options.cwd);
+  }
+  return result.text;
+}
+
 async function _callLLMInner(
   prompt: string,
   providerOverride?: LLMProvider,
@@ -434,46 +480,7 @@ async function _callLLMInner(
         }
       }
 
-      // Fire onUsage callback and update budget fence if usage data is available
-      if (result.usage && (options.onUsage || options.budgetFence)) {
-        try {
-          const { estimateCost } = await import('./token-estimator.js');
-          const totalTokens = result.usage.inputTokens + result.usage.outputTokens;
-          const costData = estimateCost(totalTokens, target.provider);
-          const usageMeta: LLMUsageMetadata = {
-            inputTokens: result.usage.inputTokens,
-            outputTokens: result.usage.outputTokens,
-            costUsd: costData.totalEstimate,
-            model: modelUsed,
-            provider: target.provider,
-          };
-          if (options.onUsage) {
-            try { options.onUsage(usageMeta); } catch { /* best-effort */ }
-          }
-          if (options.budgetFence) {
-            options.budgetFence.currentSpendUsd += costData.totalEstimate;
-            if (options.budgetFence.currentSpendUsd >= options.budgetFence.maxBudgetUsd) {
-              options.budgetFence.isExceeded = true;
-            }
-          }
-        } catch { /* best-effort usage tracking */ }
-      }
-
-      const state = await loadState({ cwd: options.cwd });
-      state.auditLog.push(`${new Date().toISOString()} | llm: ${target.provider}/${modelUsed} (${result.text.length} chars returned${attempt > 0 ? `, attempt ${attempt + 1}` : ''})`);
-      await saveState(state, { cwd: options.cwd });
-
-      if (options.recordMemory !== false) {
-        await recordMemory({
-          category: 'command',
-          summary: `LLM call: ${target.provider}/${modelUsed}`,
-          detail: `Prompt chars: ${enrichedPrompt.length}. Response chars: ${result.text.length}.`,
-          tags: ['llm', target.provider, modelUsed],
-          relatedCommands: ['llm'],
-        }, options.cwd);
-      }
-
-      return result.text;
+      return await handleCallSuccess(result, options, target, modelUsed, enrichedPrompt, attempt);
     } catch (err) {
       lastError = err;
       if (attempt < MAX_RETRIES && isRetryableError(err)) {

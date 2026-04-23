@@ -2,7 +2,7 @@
 // Delegates to browse-adapter for browser commands and qa-scorer for scoring.
 import fs from 'fs/promises';
 import path from 'path';
-import type { BrowseAdapterConfig } from './browse-adapter.js';
+import type { BrowseAdapterConfig, BrowseSubcommand } from './browse-adapter.js';
 import { invokeBrowse, detectBrowseBinary, getBrowseInstallInstructions } from './browse-adapter.js';
 import {
   scoreAccessibility,
@@ -54,6 +54,27 @@ export interface QARunOptions {
     readFile: (p: string, encoding: string) => Promise<string>;
     writeFile: (p: string, content: string) => Promise<void>;
   };
+}
+
+// ── Internal helpers ─────────────────────────────────────────────────────────
+
+async function runDeepBrowseChecks(
+  browse: (command: BrowseSubcommand, args: string[], config: BrowseAdapterConfig) => Promise<BrowseResult>,
+  browseConfig: BrowseAdapterConfig,
+  issues: QAIssue[],
+): Promise<void> {
+  const consoleResult = await browse('console', [], browseConfig);
+  if (consoleResult.success) {
+    issues.push(...scoreConsoleErrors(consoleResult.stdout));
+  }
+  const networkResult = await browse('network', [], browseConfig);
+  if (networkResult.success) {
+    issues.push(...scoreNetworkFailures(networkResult.stdout));
+  }
+  const perfResult = await browse('perf', [], browseConfig);
+  if (perfResult.success) {
+    issues.push(...scorePerformance(perfResult.stdout));
+  }
 }
 
 // ── Main QA pass ────────────────────────────────────────────────────────────
@@ -123,23 +144,8 @@ export async function runQAPass(options: QARunOptions): Promise<QAReport> {
     };
   }
 
-  // Step 4: Console errors (full + regression only)
-  const consoleResult = await browse('console', [], browseConfig);
-  if (consoleResult.success) {
-    issues.push(...scoreConsoleErrors(consoleResult.stdout));
-  }
-
-  // Step 5: Network failures (full + regression only)
-  const networkResult = await browse('network', [], browseConfig);
-  if (networkResult.success) {
-    issues.push(...scoreNetworkFailures(networkResult.stdout));
-  }
-
-  // Step 6: Performance (full + regression only)
-  const perfResult = await browse('perf', [], browseConfig);
-  if (perfResult.success) {
-    issues.push(...scorePerformance(perfResult.stdout));
-  }
+  // Steps 4–6: Console errors, network failures, performance (full + regression only)
+  await runDeepBrowseChecks(browse, browseConfig, issues);
 
   const ranked = rankIssues(issues);
   const report: QAReport = {

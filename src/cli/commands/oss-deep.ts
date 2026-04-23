@@ -531,15 +531,8 @@ Return [] if no genuinely new dimensions found. Return ONLY the JSON array.`;
 
 // ── Main entry ─────────────────────────────────────────────────────────────────
 
-export async function ossDeep(urlOrPath: string, opts: OssDeepOptions = {}): Promise<DeepHarvestResult> {
-  try {
-    const cwd = opts.cwd ?? process.cwd();
-    const maxFiles = opts.maxFiles ?? 20;
-    const slug = slugify(urlOrPath);
-
-    // ── Prompt mode ────────────────────────────────────────────────────────
-    if (opts.promptMode) {
-      const plan = `# OSS Deep Extraction Plan: ${slug}
+function buildPromptModePlan(slug: string, urlOrPath: string, maxFiles: number, includeGitLog: boolean): string {
+  return `# OSS Deep Extraction Plan: ${slug}
 
 ## Target
 URL/Path: ${urlOrPath}
@@ -555,7 +548,7 @@ URL/Path: ${urlOrPath}
 - Read full test suite (tests/, spec/, __tests__/)
 - Pass to LLM for pattern extraction with confidence scoring
 
-## Phase 3 — Git Archaeology ${opts.includeGitLog ? '(ENABLED)' : '(disabled — use --include-git-log)'}
+## Phase 3 — Git Archaeology ${includeGitLog ? '(ENABLED)' : '(disabled — use --include-git-log)'}
 - git log --follow --stat -- {critical-file} for top 5 files
 - Extract major refactor commits and design decisions
 
@@ -564,225 +557,165 @@ URL/Path: ${urlOrPath}
 - Output: .danteforge/oss-deep/${slug}/DEEP_HARVEST.md
 - Update: .danteforge/oss-registry.json (status: deep-extracted)
 `;
-      logger.info(plan);
-      return {
-        slug,
-        url: urlOrPath,
-        license: 'unknown',
-        patterns: [],
-        topInnovations: [],
-        immediateAdoptions: [],
-        followUpQuestions: [],
-        harvestPath: getDeepDir(slug, cwd),
-      };
+}
+
+async function locateOrCloneRepo(urlOrPath: string, slug: string, repoDir: string, isUrl: boolean, cwd: string, opts: OssDeepOptions): Promise<void> {
+  if (!isUrl) return;
+  try {
+    await fs.access(repoDir);
+    logger.info(`[oss-deep] Using cached clone at ${repoDir}`);
+  } catch {
+    logger.info(`[oss-deep] Cloning ${urlOrPath} → ${repoDir}`);
+    await fs.mkdir(getOssReposDir(cwd), { recursive: true });
+    if (opts._gitClone) {
+      await opts._gitClone(urlOrPath, repoDir);
+    } else {
+      await execFileAsync('git', ['clone', '--depth', '1', '--single-branch', urlOrPath, repoDir], { timeout: CLONE_TIMEOUT_MS });
+    }
+  }
+}
+
+async function readManifestAndLicense(repoDir: string): Promise<{ manifestContent: string; license: string }> {
+  let manifestContent = '';
+  for (const name of ['package.json', 'Cargo.toml', 'pyproject.toml', 'go.mod']) {
+    try { manifestContent = await fs.readFile(path.join(repoDir, name), 'utf8'); break; } catch { /* try next */ }
+  }
+  let license = 'unknown';
+  for (const name of ['LICENSE', 'LICENSE.md', 'LICENSE.txt', 'LICENCE', 'COPYING']) {
+    try {
+      const licenseText = await fs.readFile(path.join(repoDir, name), 'utf8');
+      if (/\bMIT\b/.test(licenseText)) license = 'MIT';
+      else if (/Apache-2\.0|Apache License/.test(licenseText)) license = 'Apache-2.0';
+      else if (/BSD/.test(licenseText)) license = 'BSD';
+      else if (/ISC/.test(licenseText)) license = 'ISC';
+      else if (/GPL/.test(licenseText)) license = 'GPL';
+      else license = 'other';
+      break;
+    } catch { /* try next */ }
+  }
+  return { manifestContent, license };
+}
+
+async function runGitArchaeology(repoDir: string, criticalEntries: FileEntry[], opts: OssDeepOptions): Promise<string> {
+  if (!opts.includeGitLog) return '';
+  let gitLogContent = '';
+  for (const entry of criticalEntries.slice(0, 5)) {
+    try {
+      const log = opts._gitLog
+        ? await opts._gitLog(repoDir, entry.relativePath)
+        : await execFileAsync('git', ['log', '--follow', '--stat', '-20', '--', entry.relativePath], { cwd: repoDir }).then(r => r.stdout);
+      gitLogContent += `\n=== git log: ${entry.relativePath} ===\n${log.slice(0, 600)}`;
+    } catch { /* skip */ }
+  }
+  try {
+    const prContent = await (opts._runGhPrList ?? defaultRunGhPrList)(repoDir);
+    if (prContent.trim()) gitLogContent += `\n\n=== Merged PR Descriptions (last 20) ===\n${prContent.slice(0, 1_200)}`;
+  } catch { /* gh not installed, private repo, or no merged PRs — non-fatal */ }
+  return gitLogContent;
+}
+
+async function selectExtractionModel(opts: OssDeepOptions): Promise<string | undefined> {
+  if (!opts.enableModelSelection || !opts.modelCandidates?.length) return undefined;
+  try {
+    const perfIndex = await loadPerformanceIndex(opts.cwd);
+    const model = selectBestModel('extraction', opts.modelCandidates, perfIndex) ?? undefined;
+    if (model) logger.info(`[oss-deep] Model selection: using ${model} for extraction (performance-based)`);
+    return model;
+  } catch { return undefined; }
+}
+
+async function extractPatternsWithFallback(
+  slug: string, manifestContent: string, criticalFiles: Array<{ relativePath: string; content: string }>,
+  testContent: string, gitLogContent: string, opts: OssDeepOptions, selectedModel: string | undefined,
+  llmAvailable: boolean,
+): Promise<Pick<DeepHarvestResult, 'patterns' | 'topInnovations' | 'immediateAdoptions' | 'followUpQuestions'>> {
+  if (!llmAvailable) {
+    logger.info('[oss-deep] LLM unavailable — using deterministic extraction');
+    return deterministicExtract(criticalFiles);
+  }
+  try {
+    const prompt = buildExtractionPrompt(slug, manifestContent, criticalFiles, testContent, gitLogContent);
+    const response = opts._llmCaller ? await opts._llmCaller(prompt) : await callLLM(prompt, selectedModel);
+    const jsonMatch = response.match(/```json\s*([\s\S]*?)```/) ?? response.match(/(\{[\s\S]*\})/);
+    const raw = jsonMatch ? jsonMatch[1]! : response;
+    return JSON.parse(raw.trim()) as Pick<DeepHarvestResult, 'patterns' | 'topInnovations' | 'immediateAdoptions' | 'followUpQuestions'>;
+  } catch (err) {
+    logger.warn(`[oss-deep] LLM extraction failed, falling back to deterministic: ${err instanceof Error ? err.message : String(err)}`);
+    return deterministicExtract(criticalFiles);
+  }
+}
+
+async function writeDeepOutputsAndRegistry(
+  result: Omit<DeepHarvestResult, 'harvestPath'>,
+  patterns: DeepPattern[],
+  urlOrPath: string,
+  repoDir: string,
+  cwd: string,
+): Promise<string> {
+  const deepDir = getDeepDir(result.slug, cwd);
+  await fs.mkdir(deepDir, { recursive: true });
+  await fs.writeFile(path.join(deepDir, 'patterns.json'), JSON.stringify(patterns, null, 2), 'utf8');
+  await fs.writeFile(path.join(deepDir, 'DEEP_HARVEST.md'), buildDeepHarvestMd(result), 'utf8');
+  const registry = await loadRegistry(cwd);
+  const now = new Date().toISOString();
+  upsertEntry(registry, { name: result.slug, url: urlOrPath, license: result.license, status: 'active', clonedAt: now, lastLearnedAt: now, patternsCount: patterns.length, storagePath: path.relative(cwd, repoDir), patterns: [] });
+  await saveRegistry(registry, cwd);
+  return deepDir;
+}
+
+export async function ossDeep(urlOrPath: string, opts: OssDeepOptions = {}): Promise<DeepHarvestResult> {
+  try {
+    const cwd = opts.cwd ?? process.cwd();
+    const maxFiles = opts.maxFiles ?? 20;
+    const slug = slugify(urlOrPath);
+
+    if (opts.promptMode) {
+      logger.info(buildPromptModePlan(slug, urlOrPath, maxFiles, opts.includeGitLog ?? false));
+      return { slug, url: urlOrPath, license: 'unknown', patterns: [], topInnovations: [], immediateAdoptions: [], followUpQuestions: [], harvestPath: getDeepDir(slug, cwd) };
     }
 
     logger.info(`[oss-deep] Starting deep extraction: ${slug}`);
-
-    // ── Phase 1: Locate / clone repo ─────────────────────────────────────
     const isUrl = urlOrPath.startsWith('http://') || urlOrPath.startsWith('https://') || urlOrPath.startsWith('git@');
     const repoDir = isUrl ? getRepoDir(slug, cwd) : path.resolve(urlOrPath);
+    await locateOrCloneRepo(urlOrPath, slug, repoDir, isUrl, cwd, opts);
 
-    if (isUrl) {
-      try {
-        await fs.access(repoDir);
-        logger.info(`[oss-deep] Using cached clone at ${repoDir}`);
-      } catch {
-        logger.info(`[oss-deep] Cloning ${urlOrPath} → ${repoDir}`);
-        const ossReposDir = getOssReposDir(cwd);
-        await fs.mkdir(ossReposDir, { recursive: true });
+    const { manifestContent, license } = await readManifestAndLicense(repoDir);
 
-        if (opts._gitClone) {
-          await opts._gitClone(urlOrPath, repoDir);
-        } else {
-          await execFileAsync('git', ['clone', '--depth', '1', '--single-branch', urlOrPath, repoDir], {
-            timeout: CLONE_TIMEOUT_MS,
-          });
-        }
-      }
-    }
-
-    // Read manifest
-    let manifestContent = '';
-    for (const name of ['package.json', 'Cargo.toml', 'pyproject.toml', 'go.mod']) {
-      try {
-        manifestContent = await fs.readFile(path.join(repoDir, name), 'utf8');
-        break;
-      } catch { /* try next */ }
-    }
-
-    // Detect license
-    let license = 'unknown';
-    for (const name of ['LICENSE', 'LICENSE.md', 'LICENSE.txt', 'LICENCE', 'COPYING']) {
-      try {
-        const licenseText = await fs.readFile(path.join(repoDir, name), 'utf8');
-        if (/\bMIT\b/.test(licenseText)) license = 'MIT';
-        else if (/Apache-2\.0|Apache License/.test(licenseText)) license = 'Apache-2.0';
-        else if (/BSD/.test(licenseText)) license = 'BSD';
-        else if (/ISC/.test(licenseText)) license = 'ISC';
-        else if (/GPL/.test(licenseText)) license = 'GPL';
-        else license = 'other';
-        break;
-      } catch { /* try next */ }
-    }
-
-    // Phase 1: map critical files
     logger.info(`[oss-deep] Mapping source files (max ${maxFiles})...`);
     const criticalEntries = await mapSourceFiles(repoDir, maxFiles, opts._fsRead);
     logger.info(`[oss-deep] Found ${criticalEntries.length} critical files`);
 
-    // Phase 2: read critical files in full
     const criticalFiles: Array<{ relativePath: string; content: string }> = [];
     for (const entry of criticalEntries) {
       try {
-        const content = opts._fsRead
-          ? await opts._fsRead(entry.filePath)
-          : await fs.readFile(entry.filePath, 'utf8');
+        const content = opts._fsRead ? await opts._fsRead(entry.filePath) : await fs.readFile(entry.filePath, 'utf8');
         criticalFiles.push({ relativePath: entry.relativePath, content });
       } catch { /* skip unreadable */ }
     }
 
     const testContent = await readTestFiles(repoDir);
-
-    // Phase 3: git archaeology (optional)
-    let gitLogContent = '';
-    if (opts.includeGitLog) {
-      const topFive = criticalEntries.slice(0, 5);
-      for (const entry of topFive) {
-        try {
-          const log = opts._gitLog
-            ? await opts._gitLog(repoDir, entry.relativePath)
-            : await execFileAsync('git', ['log', '--follow', '--stat', '-20', '--', entry.relativePath], {
-                cwd: repoDir,
-              }).then(r => r.stdout);
-          gitLogContent += `\n=== git log: ${entry.relativePath} ===\n${log.slice(0, 600)}`;
-        } catch { /* skip */ }
-      }
-
-      // PR descriptions — best-effort, requires gh CLI and repo access
-      let prContent = '';
-      try {
-        const runPrList = opts._runGhPrList ?? defaultRunGhPrList;
-        prContent = await runPrList(repoDir);
-      } catch { /* gh not installed, private repo, or no merged PRs — non-fatal */ }
-      if (prContent.trim()) {
-        gitLogContent += `\n\n=== Merged PR Descriptions (last 20) ===\n${prContent.slice(0, 1_200)}`;
-      }
-    }
-
-    // Phase 4: LLM synthesis or deterministic fallback
-    const llmAvailable = opts._isLLMAvailable
-      ? await opts._isLLMAvailable()
-      : await isLLMAvailable();
-
-    // Sprint E-4C: Select best model for extraction based on performance history
-    let selectedModel: string | undefined;
-    if (opts.enableModelSelection && opts.modelCandidates && opts.modelCandidates.length > 0) {
-      try {
-        const perfIndex = await loadPerformanceIndex(opts.cwd);
-        selectedModel = selectBestModel('extraction', opts.modelCandidates, perfIndex) ?? undefined;
-        if (selectedModel) {
-          logger.info(`[oss-deep] Model selection: using ${selectedModel} for extraction (performance-based)`);
-        }
-      } catch {
-        // Best-effort model selection
-      }
-    }
-
-    let extracted: Pick<DeepHarvestResult, 'patterns' | 'topInnovations' | 'immediateAdoptions' | 'followUpQuestions'>;
+    const gitLogContent = await runGitArchaeology(repoDir, criticalEntries, opts);
+    const llmAvailable = opts._isLLMAvailable ? await opts._isLLMAvailable() : await isLLMAvailable();
+    const selectedModel = await selectExtractionModel(opts);
     const llm: ((prompt: string) => Promise<string>) | null = llmAvailable ? (opts._llmCaller ?? callLLM) : null;
+    const extracted = await extractPatternsWithFallback(slug, manifestContent, criticalFiles, testContent, gitLogContent, opts, selectedModel, llmAvailable);
 
-    if (llmAvailable) {
-      try {
-        const prompt = buildExtractionPrompt(slug, manifestContent, criticalFiles, testContent, gitLogContent);
-        // When using the injection seam (_llmCaller), honour it as-is.
-        // When using the real callLLM, apply model selection if available.
-        const response = opts._llmCaller
-          ? await opts._llmCaller(prompt)
-          : await callLLM(prompt, selectedModel);
-
-        // Extract JSON from response
-        const jsonMatch = response.match(/```json\s*([\s\S]*?)```/) ?? response.match(/(\{[\s\S]*\})/);
-        const raw = jsonMatch ? jsonMatch[1]! : response;
-        const parsed = JSON.parse(raw.trim()) as {
-          patterns: DeepPattern[];
-          topInnovations: string[];
-          immediateAdoptions: string[];
-          followUpQuestions: string[];
-        };
-        extracted = parsed;
-      } catch (err) {
-        logger.warn(`[oss-deep] LLM extraction failed, falling back to deterministic: ${err instanceof Error ? err.message : String(err)}`);
-        extracted = deterministicExtract(criticalFiles);
-      }
-    } else {
-      logger.info('[oss-deep] LLM unavailable — using deterministic extraction');
-      extracted = deterministicExtract(criticalFiles);
-    }
-
-    // Deduplicate patterns by patternName (merge, keep higher confidence)
     const patternMap = new Map<string, DeepPattern>();
     for (const p of extracted.patterns) {
       const existing = patternMap.get(p.patternName);
-      if (!existing || p.confidence > existing.confidence) {
-        patternMap.set(p.patternName, p);
-      }
+      if (!existing || p.confidence > existing.confidence) patternMap.set(p.patternName, p);
     }
-    const deduped = [...patternMap.values()];
+    const patterns = await adjustConfidenceFromEvidence([...patternMap.values()], repoDir, gitLogContent, opts._grepFn ?? defaultGrepFn);
 
-    // Post-extraction confidence adjustment from actual repo evidence
-    const grepFn = opts._grepFn ?? defaultGrepFn;
-    const patterns = await adjustConfidenceFromEvidence(deduped, repoDir, gitLogContent, grepFn);
-
-    const result: Omit<DeepHarvestResult, 'harvestPath'> = {
-      slug,
-      url: urlOrPath,
-      license,
-      patterns,
-      topInnovations: extracted.topInnovations,
-      immediateAdoptions: extracted.immediateAdoptions,
-      followUpQuestions: extracted.followUpQuestions,
-    };
-
-    // Write outputs
-    const deepDir = getDeepDir(slug, cwd);
-    await fs.mkdir(deepDir, { recursive: true });
-
-    await fs.writeFile(
-      path.join(deepDir, 'patterns.json'),
-      JSON.stringify(patterns, null, 2),
-      'utf8',
-    );
-    await fs.writeFile(
-      path.join(deepDir, 'DEEP_HARVEST.md'),
-      buildDeepHarvestMd(result),
-      'utf8',
-    );
-
-    // Update oss-registry.json
-    const registry = await loadRegistry(cwd);
-    const now = new Date().toISOString();
-    upsertEntry(registry, {
-      name: slug,
-      url: urlOrPath,
-      license,
-      status: 'active',
-      clonedAt: now,
-      lastLearnedAt: now,
-      patternsCount: patterns.length,
-      storagePath: path.relative(cwd, repoDir),
-      patterns: [],  // lightweight registry entry — full patterns in oss-deep/{slug}/patterns.json
-    });
-    await saveRegistry(registry, cwd);
+    const result: Omit<DeepHarvestResult, 'harvestPath'> = { slug, url: urlOrPath, license, patterns, topInnovations: extracted.topInnovations, immediateAdoptions: extracted.immediateAdoptions, followUpQuestions: extracted.followUpQuestions };
+    const deepDir = await writeDeepOutputsAndRegistry(result, patterns, urlOrPath, repoDir, cwd);
 
     logger.info(`[oss-deep] Extracted ${patterns.length} patterns → ${deepDir}`);
     logger.info(`[oss-deep] Top innovations: ${result.topInnovations.join(', ')}`);
 
-    // Sprint B: Detect emergent dimensions from extracted patterns (second LLM call, best-effort)
     const emergentResult = await detectEmergentDimensions(slug, result.patterns, opts.cwd, llm, opts);
     result.emergentDimensions = emergentResult.dimensions;
     result.extractionPromptVersion = EXTRACTION_PROMPT_VERSION;
-
     return { ...result, harvestPath: deepDir };
   } catch (err) {
     logger.error(`[oss-deep] Fatal error: ${err instanceof Error ? err.message : String(err)}`);

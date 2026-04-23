@@ -92,6 +92,78 @@ async function applyMcpUpdates(params: {
   logger.info('If your editor MCP config changed upstream, run: danteforge setup figma');
 }
 
+function buildMcpResearchPrompt(
+  host: string, tier: string,
+  capabilities: Awaited<ReturnType<typeof detectMCPCapabilities>>,
+  conn: Awaited<ReturnType<typeof testMCPConnection>>,
+  currentAdapter: string,
+): string {
+  return `You are a senior engineer reviewing MCP (Model Context Protocol) integration for a development CLI tool.
+
+## Current MCP Configuration
+- Host editor: ${host}
+- Current tier: ${tier} (full | pull-only | prompt-only)
+- Figma MCP detected: ${capabilities.hasFigmaMCP}
+- Remote endpoint: https://mcp.figma.com/mcp
+- Endpoint reachable: ${conn.ok}
+- Figma MCP server name: ${capabilities.figmaServerName ?? 'not configured'}
+
+## Current Adapter Code (summary)
+${currentAdapter.length > 2000 ? currentAdapter.slice(0, 2000) + '\n[truncated]' : currentAdapter}
+
+## Task
+Research and report on the latest MCP ecosystem changes (Feb 2026):
+
+1. **Endpoint Status**: Is https://mcp.figma.com/mcp still the correct remote endpoint? Any new endpoints?
+2. **New MCP Tools**: Are there new Figma MCP tools (e.g., generate_figma_design, batch operations)?
+3. **Protocol Changes**: Any MCP protocol version updates affecting our integration?
+4. **Editor Support Changes**: New editors supporting MCP natively? Changes to existing editor MCP configs?
+5. **Breaking Changes**: Anything that would break our current setup?
+
+For each finding, provide:
+- **What changed**: Brief description
+- **Pros**: Benefits of adopting this change
+- **Cons**: Risks or downsides
+- **Recommendation**: APPLY or SKIP with reasoning
+
+End with a summary: "UPDATES AVAILABLE: X changes found" or "NO UPDATES: Current config is up to date"
+
+Important: Only recommend changes you are confident about. Do not fabricate MCP tools or endpoints.`;
+}
+
+async function runMcpLLMCheck(prompt: string, host: string, tier: string, llmFn: typeof callLLM): Promise<boolean> {
+  logger.info('Researching MCP updates via LLM...');
+  logger.info('(This checks for protocol changes, new tools, and endpoint updates)');
+  logger.info('');
+  try {
+    const result = await llmFn(prompt, undefined, { enrichContext: true });
+    const reportPath = path.join('.danteforge', 'MCP_UPDATE_REPORT.md');
+    await fs.mkdir('.danteforge', { recursive: true });
+    await fs.writeFile(reportPath, `# MCP Update Report\n\n_Generated: ${new Date().toISOString()}_\n_Host: ${host} | Tier: ${tier}_\n\n${result}`);
+    logger.success('MCP update research complete');
+    logger.info(`Report saved to: ${reportPath}`);
+    logger.info('');
+    process.stdout.write(result + '\n');
+    const hasUpdates = result.toUpperCase().includes('UPDATES AVAILABLE');
+    if (hasUpdates) {
+      logger.info('');
+      logger.info('Updates were found. To review and apply:');
+      logger.info('  1. Review the report above carefully');
+      logger.info('  2. Run: danteforge update-mcp --apply');
+      logger.info('  (No changes are made without --apply)');
+    } else {
+      logger.success('Your MCP configuration appears up to date.');
+    }
+    const state = await loadState();
+    state.auditLog.push(`${new Date().toISOString()} | update-mcp: research complete (updates: ${hasUpdates ? 'yes' : 'no'})`);
+    await saveState(state);
+    return true;
+  } catch (err) {
+    logger.warn(`LLM call failed: ${err instanceof Error ? err.message : String(err)}`);
+    return false;
+  }
+}
+
 export async function updateMcp(options: {
   prompt?: boolean;
   apply?: boolean;
@@ -148,39 +220,9 @@ export async function updateMcp(options: {
   }
 
   const config = await loadConfig();
+  void config; // may be used in future for provider context
 
-  // Step 3: Build the research prompt
-  const prompt = `You are a senior engineer reviewing MCP (Model Context Protocol) integration for a development CLI tool.
-
-## Current MCP Configuration
-- Host editor: ${host}
-- Current tier: ${tier} (full | pull-only | prompt-only)
-- Figma MCP detected: ${capabilities.hasFigmaMCP}
-- Remote endpoint: https://mcp.figma.com/mcp
-- Endpoint reachable: ${conn.ok}
-- Figma MCP server name: ${capabilities.figmaServerName ?? 'not configured'}
-
-## Current Adapter Code (summary)
-${currentAdapter.length > 2000 ? currentAdapter.slice(0, 2000) + '\n[truncated]' : currentAdapter}
-
-## Task
-Research and report on the latest MCP ecosystem changes (Feb 2026):
-
-1. **Endpoint Status**: Is https://mcp.figma.com/mcp still the correct remote endpoint? Any new endpoints?
-2. **New MCP Tools**: Are there new Figma MCP tools (e.g., generate_figma_design, batch operations)?
-3. **Protocol Changes**: Any MCP protocol version updates affecting our integration?
-4. **Editor Support Changes**: New editors supporting MCP natively? Changes to existing editor MCP configs?
-5. **Breaking Changes**: Anything that would break our current setup?
-
-For each finding, provide:
-- **What changed**: Brief description
-- **Pros**: Benefits of adopting this change
-- **Cons**: Risks or downsides
-- **Recommendation**: APPLY or SKIP with reasoning
-
-End with a summary: "UPDATES AVAILABLE: X changes found" or "NO UPDATES: Current config is up to date"
-
-Important: Only recommend changes you are confident about. Do not fabricate MCP tools or endpoints.`;
+  const prompt = buildMcpResearchPrompt(host, tier, capabilities, conn, currentAdapter);
 
   // Mode 1: --prompt (copy-paste)
   if (mode === 'prompt') {
@@ -198,45 +240,9 @@ Important: Only recommend changes you are confident about. Do not fabricate MCP 
   }
 
   // Mode 2: --check (default) via LLM API mode
-  const llmAvailable = await llmAvailFn();
-  if (llmAvailable) {
-    logger.info('Researching MCP updates via LLM...');
-    logger.info('(This checks for protocol changes, new tools, and endpoint updates)');
-    logger.info('');
-
-    try {
-      const result = await llmFn(prompt, undefined, { enrichContext: true });
-
-      // Save the research report
-      const reportPath = path.join('.danteforge', 'MCP_UPDATE_REPORT.md');
-      await fs.mkdir('.danteforge', { recursive: true });
-      const report = `# MCP Update Report\n\n_Generated: ${new Date().toISOString()}_\n_Host: ${host} | Tier: ${tier}_\n\n${result}`;
-      await fs.writeFile(reportPath, report);
-
-      logger.success(`MCP update research complete`);
-      logger.info(`Report saved to: ${reportPath}`);
-      logger.info('');
-      process.stdout.write(result + '\n');
-
-      // Check if updates are available
-      const hasUpdates = result.toUpperCase().includes('UPDATES AVAILABLE');
-      if (hasUpdates) {
-        logger.info('');
-        logger.info('Updates were found. To review and apply:');
-        logger.info('  1. Review the report above carefully');
-        logger.info('  2. Run: danteforge update-mcp --apply');
-        logger.info('  (No changes are made without --apply)');
-      } else {
-        logger.success('Your MCP configuration appears up to date.');
-      }
-
-      const state = await loadState();
-      state.auditLog.push(`${new Date().toISOString()} | update-mcp: research complete (updates: ${hasUpdates ? 'yes' : 'no'})`);
-      await saveState(state);
-      return;
-    } catch (err) {
-      logger.warn(`LLM call failed: ${err instanceof Error ? err.message : String(err)}`);
-    }
+  if (await llmAvailFn()) {
+    const handled = await runMcpLLMCheck(prompt, host, tier, llmFn);
+    if (handled) return;
   }
 
   // Mode 3: Fallback — manual guidance

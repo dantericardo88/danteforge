@@ -1,116 +1,46 @@
-# AutoResearch Report: measure P0 recommendation specificity
+# AutoResearch Report: reduce large function count
 
-**Duration**: ~45 minutes
-**Experiments run**: 3 (+ 1 polish cleanup)
-**Kept**: 3 | **Discarded**: 0 | **Crashed**: 0
-**Keep rate**: 100%
+**Goal:** Eliminate all functions >100 LOC (AST-accurate measurement)
+**Metric:** `90 - current_count` (higher = better; max = 90)
+**Branch:** `autoresearch/reduce-large-fn-count`
 
 ---
 
 ## Metric Progress
-
-- **Baseline**: 0/9 — all 3 P0 items fully generic (no file paths, functions, or targeted commands)
-- **Final**: 9/9 — every P0 item has file path + line number + targeted `danteforge ascend --dim X` command
-- **Total improvement**: +9 (from 0 to perfect)
-
-### What the metric measured
-
-For each of the top 3 P0 items in `danteforge measure` output, scored 0-3:
-- +1 if it names a specific file path (e.g., `src/core/ascend-engine.ts`)
-- +1 if it names a specific line number or function (e.g., `:347`)
-- +1 if the action command is targeted (not generic `danteforge improve "X"`)
-
-Max score: 9
+- **Baseline:** 90 large functions (metric = 0)
+- **Final:** 0 large functions (metric = **90** — maximum possible)
+- **Total improvement:** 90 points (100% elimination)
 
 ---
 
 ## Winning Experiments (in order applied)
 
-| # | Description | Metric Delta | Commit |
-|---|-------------|-------------|--------|
-| 1 | Added `buildDimEvidence()` — scans for large functions (>100 LOC) and names worst file | 0→1 | 9822447 |
-| 2 | Added line numbers + signals for functionality + errorHandling | 1→5 | b83f798 |
-| 3 | Added `:line` to errorHandling, replaced generic improve with `ascend --dim X` | 5→9 | e23cda8 |
-
----
-
-## Before vs After
-
-**Before:**
-```
-P0 gaps:
-1. Maintainability       8.2/10  — risky to change — modifications break other things
-                         → danteforge improve "maintainability"
-2. Functionality         8.8/10  — core features are missing, incomplete, or unreliable
-                         → danteforge improve "missing core features"
-3. Error Handling        9.5/10  — code crashes or shows confusing errors when things go wrong
-                         → danteforge improve "error handling"
-```
-
-**After:**
-```
-P0 gaps:
-1. Maintainability       8.2/10  — risky to change — modifications break other things
-                           ↳ 37 large fns >100 LOC — src/core/ascend-engine.ts:347 (509 lines)
-                         → danteforge ascend --dim maintainability
-2. Functionality         8.8/10  — core features are missing, incomplete, or unreliable
-                           ↳ largest fn without tests: src/core/ascend-engine.ts:347 (509 lines)
-                         → danteforge ascend --dim functionality
-3. Error Handling        9.5/10  — code crashes or shows confusing errors when things go wrong
-                           ↳ low try/catch ratio in: src/harvested/openpencil/executors/modify-executors.ts:5 (0 try / 42 fns)
-                         → danteforge ascend --dim errorHandling
-```
-
----
-
-## Technical Implementation
-
-**New code in `src/cli/commands/score.ts`**:
-- `findLargeFunctions(srcDir, threshold)` — walks src/ for TS files, finds function blocks >N LOC with line numbers
-- `extractFunctionBlocks(src)` — brace-depth parser returning `{ loc, name, line }` per function
-- `buildDimEvidence(dim, cwd, harshResult)` — dimension-specific evidence builder:
-  - `maintainability`: finds functions >100 LOC (exact signal from maturity-engine), names worst file + line
-  - `functionality`: prefers unwired modules → stubs → largest function without tests
-  - `errorHandling`: finds files with high function count but low try/catch ratio, with line number
-  - `testing`/`security`: surfaces existing penalty evidence from HarshScoreResult
-- P0 rendering updated: parallel `buildDimEvidence` calls, ↳ evidence line, targeted command when evidence exists
-
-**Key design decision**: When file-specific evidence is available, replace generic `danteforge improve "X"` with `danteforge ascend --dim X` — directly naming the tool that optimizes that dimension.
-
----
-
-## Notable Failures
-
-None — 100% keep rate. Each experiment built directly on the previous.
+| Session | Experiments | Description | Fn Count | Metric |
+|---------|-------------|-------------|----------|--------|
+| 1 | exp01–exp09 | dag, dossier, batch helpers, perf, config, proof, pdse, design, oss | 90→68 | 22 |
+| 1 | exp10–exp19 | help, go, magic, import, completion, lessons, assess, compete, harvest | 68→55 | 35 |
+| 1 | exp20–exp29 | localHarvest, harvestPattern, autoforge-cmd, qa, doctor, quickstart, mutate, oss-exec, cost, mcp | 55→40 | 50 |
+| 1 | exp30–exp33 | selfImprove, cofl, ossIntel, score/review | 40→35 | 55 |
+| 1 | exp34–39 | completion-oracle, compete-matrix, ux-refine, installer, enterprise, benchmarks, pattern-scanner | 35→23 | 67 |
+| 1 | exp40–46 | token-extractor, tool-registry, community-adoption, autoforge.ts, pdse, harsh-scorer, executor | 23→9 | 81 |
+| 2 | exp47 | harvest-forge.ts: harvestForge 375L→50L (7 helpers) | 9→4 | 86 |
+| 2 | exp48 | verify.ts: verify 380L→65L (6 helpers) | 4→3 | 87 |
+| 2 | exp49 | magic.ts: runMagicPreset 372L→70L (5 helpers) | 3→2 | 88 |
+| 2 | exp50 | autoforge-loop.ts: runAutoforgeLoop 408L→<100L (7 helpers) | 2→1 | 89 |
+| 2 | exp51 | ascend-engine.ts: runAscend 513L→<100L (10 helpers) | 1→0 | **90** |
 
 ---
 
 ## Key Insights
 
-1. **Static text is the enemy of actionability.** `DIMENSION_HUMAN_TEXT` and `DIMENSION_ACTIONS` were fully static. Adding a dynamic evidence layer that scans the codebase was the key lever.
-
-2. **Line numbers are the highest-leverage specificity signal.** `src/core/ascend-engine.ts:347` is immediately clickable in VS Code/editors. This converts "go look at maintainability" into "open this file, go to this line."
-
-3. **Targeted commands reduce friction.** `danteforge ascend --dim maintainability` names the exact tool for improvement. Generic `improve` leaves users guessing which command actually helps.
-
-4. **The harsh-scorer already collects evidence — it just didn't surface it.** `stubsDetected`, `penalties[].evidence`, and `unwiredModules` in `HarshScoreResult` could power richer P0 output. For clean projects, additional scans fill the gap.
-
----
-
-## Suggestions for Future Runs
-
-- **Function name extraction**: The brace-counting parser struggles with template literals. TypeScript compiler API would yield real function names instead of falling back to line numbers only.
-- **Coverage-linked evidence**: Cross-reference large functions against `.danteforge/evidence/coverage-summary.json` to name specifically uncovered code paths.
-- **Regression guard**: Add a test that runs `score()` and verifies P0 evidence contains `src/` paths — prevents future changes from reverting to generic output.
+- **Pure structural extraction wins every time** — 51/51 experiments kept, 0 discarded, 0 failed.
+- **The 5 largest functions** (runAscend 513L, runAutoforgeLoop 408L, verify 380L, harvestForge 375L, runMagicPreset 372L) required multi-layer extraction: first split the outer function, then sometimes split the extracted helpers if they still exceeded 100L.
+- **Mutable context objects** (e.g. `AscendCycleState`) solve the parameter explosion problem when multiple helpers need to mutate the same variables — pass by reference, mutate in place.
+- **TypeScript strict mode** caught real type bugs in every large extraction: return type widening (`Promise<unknown>` vs `Promise<GoalConfig | null>`), enum type mismatches, interface incompatibilities.
+- **100% keep rate** is achievable when the only change is structural (rename + extract, no logic changes). The AST-accurate metric never lied.
 
 ---
 
 ## Full Results Log
 
-```
-experiment	metric_value	status	description
-baseline	0	keep	all 3 P0 items generic — no file paths, function names, or targeted commands
-exp1-file-evidence	1	keep	maintainability names largest file: src/core/ascend-engine.ts (38 large fns)
-exp2-line-numbers	5	keep	all 3 items have file paths, items 1+2 have :line numbers
-exp3-targeted-cmds	9	keep	all 3 items: file path + line number + danteforge ascend --dim X — perfect 9/9
-```
+See `results.tsv` for complete experiment history.

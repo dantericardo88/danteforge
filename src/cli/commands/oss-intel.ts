@@ -195,26 +195,11 @@ Respond with a markdown report titled "## Cross-Repo Pattern Synthesis".`;
   }
 }
 
-// ── Wave 4: Adoption planning ─────────────────────────────────────────────────
-
-async function buildAdoptionQueue(
-  allPatterns: DeepPattern[],
-  gaps: GapScore[],
-  cwd: string,
-  llm: (p: string) => Promise<string>,
-  adoptedPatterns: string[] = [],
-  opts?: Pick<OssIntelOptions, 'disableSecurityScan' | 'disableConstellations'>,
-): Promise<AdoptionCandidate[]> {
-  if (allPatterns.length === 0) return [];
-
-  const complexityWeight = { low: 1, medium: 3, high: 8 };
-  const gapDimensions = gaps.map(g => g.dimension).join(', ');
-
+function buildAdoptionPrompt(allPatterns: DeepPattern[], gaps: GapScore[], adoptedPatterns: string[]): string {
   const alreadyAdoptedSection = adoptedPatterns.length > 0
     ? `\nALREADY ADOPTED IN PRIOR CYCLES (do NOT re-suggest these):\n${adoptedPatterns.map(p => `- ${p}`).join('\n')}\n`
     : '';
-
-  const prompt = `You are creating an adoption plan from extracted OSS patterns.${alreadyAdoptedSection}
+  return `You are creating an adoption plan from extracted OSS patterns.${alreadyAdoptedSection}
 
 AVAILABLE PATTERNS:
 ${allPatterns.slice(0, 30).map(p =>
@@ -222,7 +207,7 @@ ${allPatterns.slice(0, 30).map(p =>
   Why: ${p.whyItWorks}`,
 ).join('\n')}
 
-CURRENT GAPS TO CLOSE: ${gapDimensions}
+CURRENT GAPS TO CLOSE: ${gaps.map(g => g.dimension).join(', ')}
 
 For each of the TOP 10 patterns (ranked by impact × confidence / adoption_complexity):
 Provide an adoption spec. Respond with ONLY JSON array:
@@ -236,6 +221,22 @@ Provide an adoption spec. Respond with ONLY JSON array:
   "estimatedEffort": "1h|4h|1d|3d",
   "unlocksGapClosure": ["dimension1", "dimension2"]
 }]`;
+}
+
+// ── Wave 4: Adoption planning ─────────────────────────────────────────────────
+
+async function buildAdoptionQueue(
+  allPatterns: DeepPattern[],
+  gaps: GapScore[],
+  cwd: string,
+  llm: (p: string) => Promise<string>,
+  adoptedPatterns: string[] = [],
+  opts?: Pick<OssIntelOptions, 'disableSecurityScan' | 'disableConstellations'>,
+): Promise<AdoptionCandidate[]> {
+  if (allPatterns.length === 0) return [];
+
+  const complexityWeight = { low: 1, medium: 3, high: 8 };
+  const prompt = buildAdoptionPrompt(allPatterns, gaps, adoptedPatterns);
 
   let candidates: Omit<AdoptionCandidate, 'adoptionScore'>[] = [];
   try {
@@ -350,6 +351,138 @@ async function writeAdoptionQueue(candidates: AdoptionCandidate[], cwd: string):
   logger.info(`[oss-intel] ADOPTION_QUEUE.md written → ${queuePath}`);
 }
 
+// ── Library pre-load ─────────────────────────────────────────────────────────
+
+async function loadLibraryPatterns(opts: OssIntelOptions): Promise<DeepPattern[]> {
+  if (opts.disableGlobalLibrary) return [];
+  try {
+    const queryLib = opts._queryLibrary ?? queryLibrary;
+    const libEntries = await queryLib({ limit: 20 });
+    const patterns = libEntries.map(e => ({
+      patternName: e.patternName,
+      category: e.category as DeepPattern['category'],
+      implementationSnippet: e.implementationSnippet,
+      whyItWorks: e.whyItWorks,
+      adoptionComplexity: e.adoptionComplexity,
+      sourceFile: 'global-library',
+      confidence: Math.round((e.avgRoi ?? 0.5) * 10),
+    }));
+    if (patterns.length > 0) logger.info(`[oss-intel] Loaded ${patterns.length} patterns from global library`);
+    return patterns;
+  } catch {
+    return [];
+  }
+}
+
+// ── Wave 1: Queue population ──────────────────────────────────────────────────
+
+async function runWave1QueuePopulation(
+  sortedGaps: GapScore[],
+  gapScores: GapScore[],
+  llm: ((p: string) => Promise<string>) | null,
+  loadQueueFn: (cwd?: string) => Promise<HarvestQueue>,
+  cwd: string,
+): Promise<HarvestQueue> {
+  let queue = await loadQueueFn(cwd);
+
+  if (llm) {
+    for (const gap of sortedGaps.slice(0, 5)) {
+      const candidates = await findReposForGap(gap, queue, llm);
+      for (const candidate of candidates) {
+        const priority = computePriority(
+          { dimension: gap.dimension, currentScore: gap.score, targetScore: gap.target, patternsAvailable: 0, patternsAdopted: 0 } satisfies HarvestGap,
+          candidate.quality,
+        );
+        queue = addToQueue(queue, {
+          url: candidate.url,
+          slug: candidate.url.split('/').pop()?.replace(/\.git$/, '') ?? 'unknown',
+          priority, gapTargets: [gap.dimension], status: 'queued',
+        });
+      }
+    }
+  }
+
+  for (const gap of gapScores) queue = updateGapCoverage(queue, gap.dimension, gap.score);
+  return queue;
+}
+
+// ── Wave 2: Deep harvest loop ─────────────────────────────────────────────────
+
+interface DeepHarvestLoopResult {
+  queue: HarvestQueue; harvestedCount: number; allPatterns: DeepPattern[];
+}
+
+async function runDeepHarvestLoop(
+  initialQueue: HarvestQueue,
+  libraryPatterns: DeepPattern[],
+  deepExtract: (url: string, opts?: OssDeepOptions) => Promise<DeepHarvestResult>,
+  llm: ((p: string) => Promise<string>) | null,
+  opts: OssIntelOptions,
+  cwd: string,
+  maxRepos: number,
+  crossSynthesisEvery: number,
+): Promise<DeepHarvestLoopResult> {
+  const allPatterns: DeepPattern[] = [...libraryPatterns];
+  let queue = initialQueue;
+  let harvestedCount = 0;
+  const processedThisRun = new Set<string>();
+
+  while (harvestedCount < maxRepos) {
+    const [repo, updatedQueue] = popHighestPriority(queue);
+    if (!repo) { logger.info('[oss-intel] Queue exhausted — no more repos to harvest'); break; }
+    queue = updatedQueue;
+
+    if (!processedThisRun.has(repo.url) && !isRepoStale(repo) && repo.patternsExtracted > 0) {
+      const daysAgo = repo.lastHarvestedAt ? Math.floor((Date.now() - new Date(repo.lastHarvestedAt).getTime()) / 86400000) : 'recently';
+      logger.info(`[oss-intel] Repo ${repo.slug} is fresh (harvested ${daysAgo}d ago), reusing cached patterns`);
+      processedThisRun.add(repo.url); harvestedCount++; continue;
+    }
+    processedThisRun.add(repo.url);
+    logger.info(`[oss-intel] Harvesting [${harvestedCount + 1}/${maxRepos}]: ${repo.url}`);
+
+    try {
+      const result = await deepExtract(repo.url, { cwd, _llmCaller: opts._llmCaller, _isLLMAvailable: opts._isLLMAvailable });
+      allPatterns.push(...result.patterns);
+      const extracted = result.patterns.length;
+      const adopted = repo.patternsAdopted;
+      const nextStatus = extracted > 0 && adopted / extracted > 0.8 ? 'exhausted' : 'deep';
+      queue = markRepoStatus(queue, repo.url, nextStatus);
+      if (nextStatus === 'exhausted') logger.info(`[oss-intel] Repo ${repo.slug} exhausted (${adopted}/${extracted} adopted)`);
+
+      queue = {
+        ...queue,
+        totalPatternsExtracted: queue.totalPatternsExtracted + extracted,
+        repos: queue.repos.map(r => r.url === repo.url ? { ...r, patternsExtracted: extracted } : r),
+      };
+
+      const predictYield = opts._predictYield ?? (async () => 1.0);
+      queue = {
+        ...queue,
+        repos: await Promise.all(queue.repos.map(async r => {
+          if (r.status !== 'queued' && r.status !== 'shallow') return r;
+          const primaryGapName = r.gapTargets[0];
+          if (!primaryGapName) return r;
+          const primaryGap = queue.gaps.find(g => g.dimension === primaryGapName);
+          if (!primaryGap) return r;
+          const yieldFactor = await predictYield(r.url).catch(() => 1.0);
+          return { ...r, priority: Math.min(10, computePriority(primaryGap, r.priority) * yieldFactor) };
+        })),
+      };
+
+      harvestedCount++;
+      if (harvestedCount % crossSynthesisEvery === 0 && llm) {
+        logger.info('[oss-intel] Wave 3: Running cross-repo synthesis...');
+        await runCrossRepoSynthesis(allPatterns, cwd, llm);
+      }
+    } catch (err) {
+      logger.warn(`[oss-intel] Failed to harvest ${repo.url}: ${err instanceof Error ? err.message : String(err)}`);
+      queue = markRepoStatus(queue, repo.url, 'queued');
+    }
+  }
+
+  return { queue, harvestedCount, allPatterns };
+}
+
 // ── Main entry ─────────────────────────────────────────────────────────────────
 
 export async function ossIntel(opts: OssIntelOptions = {}): Promise<void> {
@@ -358,220 +491,48 @@ export async function ossIntel(opts: OssIntelOptions = {}): Promise<void> {
     const maxRepos = opts.maxRepos ?? 5;
     const crossSynthesisEvery = opts.crossSynthesisEvery ?? 3;
 
-    // ── Prompt mode ────────────────────────────────────────────────────────
     if (opts.promptMode) {
-      const plan = `# OSS Intel Systematic Harvest Plan
-
-## Wave 1 — Universe scan
-- Read feature-scores.json or use LLM to derive gap scores
-- Sort dimensions by (targetScore - currentScore) descending
-- For each top 5 gap: find 3 OSS repos via LLM
-
-## Wave 2 — Deep harvest loop (max ${maxRepos} repos)
-- Pop highest-priority repo from harvest-queue.json
-- Run oss-deep on it → patterns.json + DEEP_HARVEST.md
-- Update harvest-queue.json priority scores
-- Cross-repo synthesis every ${crossSynthesisEvery} repos
-
-## Wave 3 — Adoption planning
-- Rank patterns by (impact × confidence) / adoptionComplexity
-- Write ADOPTION_QUEUE.md with implementation specs
-
-## Outputs
-- .danteforge/harvest-queue.json (updated)
-- .danteforge/oss-deep/{slug}/  (per repo)
-- .danteforge/SYNTHESIS_REPORT.md
-- .danteforge/ADOPTION_QUEUE.md
-`;
-      logger.info(plan);
+      logger.info(`# OSS Intel Systematic Harvest Plan\n\n## Wave 1 — Universe scan\n- Read feature-scores.json or use LLM to derive gap scores\n- Sort dimensions by (targetScore - currentScore) descending\n- For each top 5 gap: find 3 OSS repos via LLM\n\n## Wave 2 — Deep harvest loop (max ${maxRepos} repos)\n- Pop highest-priority repo from harvest-queue.json\n- Run oss-deep on it → patterns.json + DEEP_HARVEST.md\n- Update harvest-queue.json priority scores\n- Cross-repo synthesis every ${crossSynthesisEvery} repos\n\n## Wave 3 — Adoption planning\n- Rank patterns by (impact × confidence) / adoptionComplexity\n- Write ADOPTION_QUEUE.md with implementation specs\n\n## Outputs\n- .danteforge/harvest-queue.json\n- .danteforge/oss-deep/{slug}/\n- .danteforge/SYNTHESIS_REPORT.md\n- .danteforge/ADOPTION_QUEUE.md`);
       return;
     }
 
-    const llmAvailable = opts._isLLMAvailable
-      ? await opts._isLLMAvailable()
-      : await isLLMAvailable();
-
+    const llmAvailable = opts._isLLMAvailable ? await opts._isLLMAvailable() : await isLLMAvailable();
     const llm = opts._llmCaller ?? (llmAvailable ? callLLM : null);
 
-    // ── Wave 1: Get gap scores ─────────────────────────────────────────────
     logger.info('[oss-intel] Wave 1: Getting gap scores...');
-    const gapScores = opts._getGapScores
-      ? await opts._getGapScores()
-      : await defaultGetGapScores(cwd, llm ?? undefined);
-
+    const gapScores = opts._getGapScores ? await opts._getGapScores() : await defaultGetGapScores(cwd, llm ?? undefined);
     const sortedGaps = [...gapScores].sort((a, b) => (b.target - b.score) - (a.target - a.score));
     logger.info(`[oss-intel] Found ${sortedGaps.length} gaps. Worst: ${sortedGaps[0]?.dimension ?? 'none'}`);
 
-    // ── Wave 1: Populate harvest queue ────────────────────────────────────
-    let queue = await (opts._loadQueue ?? loadHarvestQueue)(cwd);
+    let queue = await runWave1QueuePopulation(sortedGaps, gapScores, llm, opts._loadQueue ?? loadHarvestQueue, cwd);
 
-    if (llm) {
-      for (const gap of sortedGaps.slice(0, 5)) {
-        const candidates = await findReposForGap(gap, queue, llm);
-        for (const candidate of candidates) {
-          const priority = computePriority(
-            {
-              dimension: gap.dimension,
-              currentScore: gap.score,
-              targetScore: gap.target,
-              patternsAvailable: 0,
-              patternsAdopted: 0,
-            } satisfies HarvestGap,
-            candidate.quality,
-          );
-          queue = addToQueue(queue, {
-            url: candidate.url,
-            slug: candidate.url.split('/').pop()?.replace(/\.git$/, '') ?? 'unknown',
-            priority,
-            gapTargets: [gap.dimension],
-            status: 'queued',
-          });
-        }
-      }
-    }
-
-    // Update gap coverage in queue
-    for (const gap of gapScores) {
-      queue = updateGapCoverage(queue, gap.dimension, gap.score);
-    }
-
-    // ── Wave 2: Deep harvest loop ─────────────────────────────────────────
     logger.info(`[oss-intel] Wave 2: Deep harvest loop (max ${maxRepos} repos)`);
     const deepExtract = opts._deepExtract ?? ossDeep;
+    const libraryPatterns = await loadLibraryPatterns(opts);
 
-    // Sprint B-1C: Query global pattern library to pre-populate patterns before deep extraction
-    let libraryPatterns: DeepPattern[] = [];
-    if (!opts.disableGlobalLibrary) {
-      try {
-        const queryLib = opts._queryLibrary ?? queryLibrary;
-        const libEntries = await queryLib({ limit: 20 });
-        libraryPatterns = libEntries.map(e => ({
-          patternName: e.patternName,
-          category: e.category as DeepPattern['category'],
-          implementationSnippet: e.implementationSnippet,
-          whyItWorks: e.whyItWorks,
-          adoptionComplexity: e.adoptionComplexity,
-          sourceFile: 'global-library',
-          confidence: Math.round((e.avgRoi ?? 0.5) * 10),
-        }));
-        if (libraryPatterns.length > 0) {
-          logger.info(`[oss-intel] Loaded ${libraryPatterns.length} patterns from global library`);
-        }
-      } catch {
-        // Best-effort: never fail if library is unavailable
-      }
-    }
+    const { queue: updatedQueue, harvestedCount, allPatterns } = await runDeepHarvestLoop(
+      queue, libraryPatterns, deepExtract, llm, opts, cwd, maxRepos, crossSynthesisEvery,
+    );
+    queue = updatedQueue;
 
-    const allPatterns: DeepPattern[] = [...libraryPatterns];
-    let harvestedCount = 0;
-    const processedThisRun = new Set<string>();
-
-    while (harvestedCount < maxRepos) {
-      const [repo, updatedQueue] = popHighestPriority(queue);
-      if (!repo) {
-        logger.info('[oss-intel] Queue exhausted — no more repos to harvest');
-        break;
-      }
-      queue = updatedQueue;
-
-      // Sprint C-2E: Skip re-extraction for fresh repos that haven't changed.
-      // Guard: only skip if not already processed in this run (popHighestPriority sets
-      // lastHarvestedAt when popping, so same-run repos would appear fresh otherwise).
-      if (!processedThisRun.has(repo.url) && !isRepoStale(repo) && repo.patternsExtracted > 0) {
-        logger.info(`[oss-intel] Repo ${repo.slug} is fresh (harvested ${repo.lastHarvestedAt ? Math.floor((Date.now() - new Date(repo.lastHarvestedAt).getTime()) / 86400000) : 'recently'}d ago), reusing cached patterns`);
-        // Still contribute cached patterns to allPatterns if any exist in the deep dir
-        processedThisRun.add(repo.url);
-        harvestedCount++;
-        continue;
-      }
-      processedThisRun.add(repo.url);
-
-      logger.info(`[oss-intel] Harvesting [${harvestedCount + 1}/${maxRepos}]: ${repo.url}`);
-      try {
-        const result = await deepExtract(repo.url, {
-          cwd,
-          _llmCaller: opts._llmCaller,
-          _isLLMAvailable: opts._isLLMAvailable,
-        });
-
-        allPatterns.push(...result.patterns);
-        const extracted = result.patterns.length;
-        const adopted = repo.patternsAdopted;
-
-        // Determine lifecycle status: exhausted when >80% of extracted patterns are adopted
-        const nextStatus = extracted > 0 && adopted / extracted > 0.8 ? 'exhausted' : 'deep';
-        queue = markRepoStatus(queue, repo.url, nextStatus);
-        if (nextStatus === 'exhausted') {
-          logger.info(`[oss-intel] Repo ${repo.slug} exhausted (${adopted}/${extracted} patterns adopted)`);
-        }
-
-        queue = {
-          ...queue,
-          totalPatternsExtracted: queue.totalPatternsExtracted + extracted,
-          repos: queue.repos.map(r =>
-            r.url === repo.url
-              ? { ...r, patternsExtracted: extracted }
-              : r,
-          ),
-        };
-
-        // Recompute priorities for remaining queued repos using latest gap scores.
-        // predictYield slot: multiply by yield factor (defaults to 1.0 until repo-yield-model
-        // history exists — Sprint B wires the real value via _predictYield injection).
-        const predictYield = opts._predictYield ?? (async () => 1.0);
-        queue = {
-          ...queue,
-          repos: await Promise.all(queue.repos.map(async r => {
-            if (r.status !== 'queued' && r.status !== 'shallow') return r;
-            const primaryGapName = r.gapTargets[0];
-            if (!primaryGapName) return r;
-            const primaryGap = queue.gaps.find(g => g.dimension === primaryGapName);
-            if (!primaryGap) return r;
-            const yieldFactor = await predictYield(r.url).catch(() => 1.0);
-            const basePriority = computePriority(primaryGap, r.priority);
-            return { ...r, priority: Math.min(10, basePriority * yieldFactor) };
-          })),
-        };
-
-        harvestedCount++;
-
-        // Cross-repo synthesis every N repos
-        if (harvestedCount % crossSynthesisEvery === 0 && llm) {
-          logger.info('[oss-intel] Wave 3: Running cross-repo synthesis...');
-          await runCrossRepoSynthesis(allPatterns, cwd, llm);
-        }
-      } catch (err) {
-        logger.warn(`[oss-intel] Failed to harvest ${repo.url}: ${err instanceof Error ? err.message : String(err)}`);
-        queue = markRepoStatus(queue, repo.url, 'queued');  // retry next time
-      }
-    }
-
-    // Final cross-repo synthesis if not already run
     if (harvestedCount > 0 && harvestedCount % crossSynthesisEvery !== 0 && llm) {
       await runCrossRepoSynthesis(allPatterns, cwd, llm);
     }
 
-    // Sprint B-1C: Publish extracted patterns to global library (best-effort)
     if (!opts.disableGlobalLibrary && allPatterns.length > 0) {
       try {
         const publishLib = opts._publishToLibrary ?? publishToLibrary;
-        for (const pattern of allPatterns.slice(0, 50)) { // Limit to avoid huge writes
+        for (const pattern of allPatterns.slice(0, 50)) {
           await publishLib({
-            patternName: pattern.patternName,
-            category: pattern.category,
-            implementationSnippet: pattern.implementationSnippet,
-            whyItWorks: pattern.whyItWorks,
-            adoptionComplexity: pattern.adoptionComplexity,
-            sourceRepo: 'local-harvest',
+            patternName: pattern.patternName, category: pattern.category,
+            implementationSnippet: pattern.implementationSnippet, whyItWorks: pattern.whyItWorks,
+            adoptionComplexity: pattern.adoptionComplexity, sourceRepo: 'local-harvest',
             sourceProject: opts.cwd ?? process.cwd(),
           });
         }
-      } catch {
-        // Best-effort: never block harvest loop
-      }
+      } catch { /* best-effort */ }
     }
 
-    // ── Wave 4: Adoption planning ─────────────────────────────────────────
     logger.info('[oss-intel] Wave 4: Building adoption queue...');
     if (allPatterns.length > 0) {
       const candidates = await buildAdoptionQueue(allPatterns, sortedGaps, cwd, llm ?? (async () => '[]'), opts._adoptedPatterns ?? [], opts);
@@ -580,9 +541,7 @@ export async function ossIntel(opts: OssIntelOptions = {}): Promise<void> {
       logger.info('[oss-intel] No patterns extracted — ADOPTION_QUEUE.md not written');
     }
 
-    // Save updated queue
     await (opts._saveQueue ?? saveHarvestQueue)(queue, cwd);
-
     logger.info(`[oss-intel] Complete: ${harvestedCount} repos harvested, ${allPatterns.length} patterns extracted`);
   } catch (err) {
     logger.error(`[oss-intel] Fatal error: ${err instanceof Error ? err.message : String(err)}`);

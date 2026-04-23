@@ -208,6 +208,108 @@ async function applyCodePipeline(
   }
 }
 
+type WaveTask = { name: string; files?: string[]; verify?: string };
+type WaveState = Awaited<ReturnType<typeof loadState>>;
+type UsageCb = (usage: { inputTokens: number; outputTokens: number; costUsd: number; model: string }) => void;
+
+async function handlePromptMode(phase: number, tasks: WaveTask[], state: WaveState, profile: string, cwd: string | undefined, options: ExecuteWaveOptions | undefined): Promise<ExecuteWaveResult> {
+  logger.info(`Generating ${tasks.length} task prompt(s) for manual execution...`);
+  for (let i = 0; i < tasks.length; i++) {
+    const task = tasks[i]!;
+    let prompt = buildTaskPrompt(task, profile, state.constitution);
+    try {
+      const designCtx = options?._readDesignContext ? await options._readDesignContext(cwd ?? process.cwd()) : await readDesignContext(cwd ?? process.cwd());
+      if (designCtx) prompt = `${prompt}\n\n${designCtx}`;
+    } catch { /* graceful skip */ }
+    const savedPath = await savePrompt(`forge-phase${phase}-task${i + 1}`, prompt);
+    logger.info('');
+    logger.success(`--- Task ${i + 1}/${tasks.length}: ${task.name} ---`);
+    displayPrompt(prompt, `Paste into Claude Code / ChatGPT, then apply the changes to your codebase.\nPrompt saved to: ${savedPath}`);
+  }
+  logger.info('Apply the generated changes manually, then rerun forge or verify once the code is updated.');
+  state.auditLog.push(`${new Date().toISOString()} | forge: ${tasks.length} task prompts generated for phase ${phase}`);
+  await (options?._stateCaller?.save ?? saveState)(state, { cwd });
+  return { mode: 'prompt', success: true };
+}
+
+async function executeForgeTask(task: WaveTask, index: number, totalTasks: number, state: WaveState, profile: string, cwd: string | undefined, options: ExecuteWaveOptions | undefined, internalOnUsage: UsageCb): Promise<{ task: string; success: boolean; error?: string }> {
+  const taskLabel = `[${index + 1}/${totalTasks}] ${task.name}`;
+  logger.info(`Executing: ${taskLabel}`);
+  emitTaskStart(taskLabel);
+  const telemetry: ExecutionTelemetry = createTelemetry();
+  const taskStart = Date.now();
+  try {
+    recordToolCall(telemetry, 'callLLM', false);
+    let taskPrompt = buildTaskPrompt(task, profile, state.constitution);
+    try {
+      const designCtx = options?._readDesignContext ? await options._readDesignContext(cwd ?? process.cwd()) : await readDesignContext(cwd ?? process.cwd());
+      if (designCtx) taskPrompt = `${taskPrompt}\n\n${designCtx}`;
+    } catch { /* graceful skip — DESIGN.op is optional */ }
+    try {
+      const { injectRelevantLessons } = await import('../../../core/lessons-index.js');
+      taskPrompt = await injectRelevantLessons(taskPrompt, 3, cwd ?? process.cwd());
+    } catch { /* best-effort — never block forge */ }
+    const onChunk = options?._onChunk;
+    const result = options?._llmCaller
+      ? await options._llmCaller(taskPrompt)
+      : onChunk
+        ? await callLLMWithProgress(taskPrompt, onChunk, undefined, { enrichContext: true, cwd, onUsage: internalOnUsage })
+        : await callLLM(taskPrompt, undefined, { enrichContext: true, cwd, onUsage: internalOnUsage });
+    logger.success(`LLM result for "${task.name}" (${result.length} chars)`);
+    await applyCodePipeline(result, task.name, taskPrompt, cwd ?? process.cwd(), options, internalOnUsage, cwd);
+    for (const file of task.files ?? []) recordFileModified(telemetry, file);
+    recordToolCall(telemetry, 'verifyTask', false);
+    const verified = options?._verifier ? await options._verifier(task, result) : await verifyTask(task, result);
+    telemetry.duration = Date.now() - taskStart;
+    try {
+      const reflector = options?._reflector ?? reflect;
+      const verdict = await reflector(task.name, result, telemetry);
+      const evaluation = evaluateVerdict(verdict, DEFAULT_REFLECTION_CONFIG);
+      if (!evaluation.complete) logger.warn(`Reflection: ${task.name} — ${evaluation.feedback}`);
+      state.reflectionScore = evaluation.score;
+      state.reflectionLastVerdict = verdict.timestamp;
+    } catch (err) { logger.verbose(`[best-effort] reflection: ${err instanceof Error ? err.message : String(err)}`); }
+    emitTaskComplete(taskLabel, verified ? 8 : 3);
+    return { task: task.name, success: verified };
+  } catch (err) {
+    const errMsg = err instanceof Error ? err.message : String(err);
+    logger.warn(`LLM failed for task "${task.name}": ${errMsg}`);
+    try { await (options?._memorizer ?? recordMemory)({ category: 'error', summary: `Forge task failed: ${task.name}`, detail: errMsg, tags: ['forge', 'task-failure'], relatedCommands: ['forge'] }, cwd); } catch (memErr) { logger.verbose(`[best-effort] memory recording: ${memErr instanceof Error ? memErr.message : String(memErr)}`); }
+    emitTaskComplete(taskLabel, 0);
+    return { task: task.name, success: false, error: errMsg };
+  }
+}
+
+async function reportAndFinalizeWave(phase: number, profile: string, parallel: boolean, tasks: WaveTask[], results: { task: string; success: boolean; error?: string }[], state: WaveState, cwd: string | undefined, options: ExecuteWaveOptions | undefined, totalInputTokens: number, totalOutputTokens: number, totalCostUsd: number): Promise<ExecuteWaveResult> {
+  const passed = results.filter(r => r.success).length;
+  const failed = results.filter(r => !r.success).length;
+  if (failed > 0) {
+    logger.warn(`Wave ${phase} complete: ${passed} passed, ${failed} failed`);
+    for (const r of results.filter(e => !e.success)) logger.error(`  FAILED: ${r.task}${r.error ? ` - ${r.error}` : ''}`);
+    try {
+      const captureFn = options?._captureFailureLessons ?? (async (ft: { task: string; error?: string }[], ctx: 'forge failure' | 'party failure') => { const { captureFailureLessons: d } = await import('../../../cli/commands/lessons.js'); await d(ft, ctx); });
+      await captureFn(results.filter(r => !r.success).map(r => ({ task: r.task, error: r.error })), 'forge failure');
+    } catch (err) { logger.verbose(`[best-effort] lessons capture: ${err instanceof Error ? err.message : String(err)}`); }
+  } else {
+    logger.success(`Wave ${phase} complete - all ${passed} tasks passed`);
+  }
+  const timestamp = new Date().toISOString();
+  if (failed === 0) { state.currentPhase = phase + 1; recordWorkflowStage(state, 'forge', timestamp); }
+  state.auditLog.push(`${timestamp} | forge: wave ${phase} complete (${passed}/${tasks.length} passed, profile: ${profile}${parallel ? ', parallel' : ''}${failed > 0 ? ', failed' : ''})`);
+  await (options?._stateCaller?.save ?? saveState)(state, { cwd });
+  const totalTokens = totalInputTokens + totalOutputTokens;
+  if (totalTokens > 0) {
+    try {
+      const ls = await (options?._stateCaller?.load ?? loadState)({ cwd });
+      ls.totalTokensUsed = (ls.totalTokensUsed ?? 0) + totalTokens;
+      ls.lastComplexityPreset = profile;
+      await (options?._stateCaller?.save ?? saveState)(ls, { cwd });
+    } catch { /* best-effort — token tracking never blocks forge */ }
+  }
+  if (failed === 0) logger.info('Ready for next wave or party mode');
+  return { mode: 'executed', success: failed === 0, totalTokens: totalTokens || undefined, totalCostUsd: totalCostUsd || undefined };
+}
+
 export async function executeWave(
   phase: number,
   profile: string,
@@ -223,211 +325,37 @@ export async function executeWave(
 
   const tasks = state.tasks[phase] ?? [];
   emitWaveStart(phase, tasks.length);
-  if (tasks.length === 0) {
-    logger.error(`No tasks defined for phase ${phase}. Run "danteforge tasks" before forge.`);
-    return { mode: 'blocked', success: false };
-  }
+  if (tasks.length === 0) { logger.error(`No tasks defined for phase ${phase}. Run "danteforge tasks" before forge.`); return { mode: 'blocked', success: false }; }
 
   const checkLLM = options?._isLLMAvailable ?? isLLMAvailable;
   const llmAvailable = options?._llmCaller != null || await checkLLM();
-  if (!llmAvailable && !promptMode) {
-    logger.error('No verified live LLM provider is configured for forge execution. Re-run with --prompt or configure a provider with working model access.');
-    return { mode: 'blocked', success: false };
-  }
+  if (!llmAvailable && !promptMode) { logger.error('No verified live LLM provider is configured for forge execution. Re-run with --prompt or configure a provider with working model access.'); return { mode: 'blocked', success: false }; }
 
-  if (promptMode) {
-    logger.info(`Generating ${tasks.length} task prompt(s) for manual execution...`);
-    for (let i = 0; i < tasks.length; i++) {
-      const task = tasks[i]!;
-      let prompt = buildTaskPrompt(task, profile, state.constitution);
-      try {
-        const designCtx = options?._readDesignContext
-          ? await options._readDesignContext(cwd ?? process.cwd())
-          : await readDesignContext(cwd ?? process.cwd());
-        if (designCtx) prompt = `${prompt}\n\n${designCtx}`;
-      } catch { /* graceful skip */ }
-      const savedPath = await savePrompt(`forge-phase${phase}-task${i + 1}`, prompt);
-
-      logger.info('');
-      logger.success(`--- Task ${i + 1}/${tasks.length}: ${task.name} ---`);
-      displayPrompt(prompt, [
-        'Paste into Claude Code / ChatGPT, then apply the changes to your codebase.',
-        `Prompt saved to: ${savedPath}`,
-      ].join('\n'));
-    }
-
-    logger.info('Apply the generated changes manually, then rerun forge or verify once the code is updated.');
-    state.auditLog.push(`${new Date().toISOString()} | forge: ${tasks.length} task prompts generated for phase ${phase}`);
-    await (options?._stateCaller?.save ?? saveState)(state, { cwd });
-    return { mode: 'prompt', success: true };
-  }
+  if (promptMode) return handlePromptMode(phase, tasks, state, profile, cwd, options);
 
   let worktreeName: string | undefined;
   if (worktree) {
-    try {
-      worktreeName = `forge-phase-${phase}`;
-      await createAgentWorktree(worktreeName);
-      logger.info(`Worktree created: ${worktreeName}`);
-    } catch (err) {
-      logger.warn(`Worktree creation failed: ${err instanceof Error ? err.message : String(err)} - continuing without isolation`);
-      worktreeName = undefined;
-    }
+    try { worktreeName = `forge-phase-${phase}`; await createAgentWorktree(worktreeName); logger.info(`Worktree created: ${worktreeName}`); }
+    catch (err) { logger.warn(`Worktree creation failed: ${err instanceof Error ? err.message : String(err)} - continuing without isolation`); worktreeName = undefined; }
   }
 
+  let totalInputTokens = 0, totalOutputTokens = 0, totalCostUsd = 0;
+  const internalOnUsage: UsageCb = (usage) => { totalInputTokens += usage.inputTokens; totalOutputTokens += usage.outputTokens; totalCostUsd += usage.costUsd; options?.onUsage?.(usage); };
+
   const results: { task: string; success: boolean; error?: string }[] = [];
-
-  // Token accumulator — driven by onUsage callback, forwarded to caller
-  let totalInputTokens = 0;
-  let totalOutputTokens = 0;
-  let totalCostUsd = 0;
-  const internalOnUsage = (usage: { inputTokens: number; outputTokens: number; costUsd: number; model: string }) => {
-    totalInputTokens += usage.inputTokens;
-    totalOutputTokens += usage.outputTokens;
-    totalCostUsd += usage.costUsd;
-    options?.onUsage?.(usage);
-  };
-
-  const runTask = async (task: { name: string; files?: string[]; verify?: string }, index: number) => {
-    const taskLabel = `[${index + 1}/${tasks.length}] ${task.name}`;
-    logger.info(`Executing: ${taskLabel}`);
-    emitTaskStart(taskLabel);
-
-    const telemetry: ExecutionTelemetry = createTelemetry();
-    const taskStart = Date.now();
-
-    try {
-      recordToolCall(telemetry, 'callLLM', false);
-      let taskPrompt = buildTaskPrompt(task, profile, state.constitution);
-      // Inject design context when DESIGN.op is present (best-effort)
-      try {
-        const designCtx = options?._readDesignContext
-          ? await options._readDesignContext(cwd ?? process.cwd())
-          : await readDesignContext(cwd ?? process.cwd());
-        if (designCtx) taskPrompt = `${taskPrompt}\n\n${designCtx}`;
-      } catch { /* graceful skip — DESIGN.op is optional */ }
-      // Inject relevant lessons into the prompt so past failures inform this forge cycle (best-effort)
-      try {
-        const { injectRelevantLessons } = await import('../../../core/lessons-index.js');
-        taskPrompt = await injectRelevantLessons(taskPrompt, 3, cwd ?? process.cwd());
-      } catch { /* best-effort — never block forge */ }
-      const onChunk = options?._onChunk;
-      const result = options?._llmCaller
-        ? await options._llmCaller(taskPrompt)
-        : onChunk
-          ? await callLLMWithProgress(taskPrompt, onChunk, undefined, { enrichContext: true, cwd, onUsage: internalOnUsage })
-          : await callLLM(taskPrompt, undefined, { enrichContext: true, cwd, onUsage: internalOnUsage });
-      logger.success(`LLM result for "${task.name}" (${result.length} chars)`);
-
-      // Apply LLM-generated code changes with retry on test failure (best-effort)
-      await applyCodePipeline(result, task.name, taskPrompt, cwd ?? process.cwd(), options, internalOnUsage, cwd);
-
-      // Track file modifications from task metadata
-      for (const file of task.files ?? []) {
-        recordFileModified(telemetry, file);
-      }
-
-      recordToolCall(telemetry, 'verifyTask', false);
-      const verified = options?._verifier
-        ? await options._verifier(task, result)
-        : await verifyTask(task, result);
-
-      // Reflection: structured self-assessment (harvested from Reflection-3 + Ralph Loop)
-      telemetry.duration = Date.now() - taskStart;
-      try {
-        const reflector = options?._reflector ?? reflect;
-        const verdict = await reflector(task.name, result, telemetry);
-        const evaluation = evaluateVerdict(verdict, DEFAULT_REFLECTION_CONFIG);
-        if (!evaluation.complete) {
-          logger.warn(`Reflection: ${task.name} — ${evaluation.feedback}`);
-        }
-        // Update state with reflection score
-        state.reflectionScore = evaluation.score;
-        state.reflectionLastVerdict = verdict.timestamp;
-      } catch (err) { logger.verbose(`[best-effort] reflection: ${err instanceof Error ? err.message : String(err)}`); }
-
-      results.push({ task: task.name, success: verified });
-      emitTaskComplete(taskLabel, verified ? 8 : 3);
-    } catch (err) {
-      const errMsg = err instanceof Error ? err.message : String(err);
-      logger.warn(`LLM failed for task "${task.name}": ${errMsg}`);
-      try {
-        await (options?._memorizer ?? recordMemory)({
-          category: 'error',
-          summary: `Forge task failed: ${task.name}`,
-          detail: errMsg,
-          tags: ['forge', 'task-failure'],
-          relatedCommands: ['forge'],
-        }, cwd);
-      } catch (memErr) { logger.verbose(`[best-effort] memory recording: ${memErr instanceof Error ? memErr.message : String(memErr)}`); }
-      results.push({ task: task.name, success: false, error: errMsg });
-      emitTaskComplete(taskLabel, 0);
-    }
-  };
+  const runTask = (task: WaveTask, index: number) => executeForgeTask(task, index, tasks.length, state, profile, cwd, options, internalOnUsage).then(r => { results.push(r); });
 
   if (parallel && tasks.length > 1) {
     logger.info(`Running ${tasks.length} tasks in parallel...`);
     await Promise.all(tasks.map((task, index) => withTimeout(runTask(task, index), timeoutMs, task.name)));
   } else {
-    for (let i = 0; i < tasks.length; i++) {
-      await runTask(tasks[i]!, i);
-    }
+    for (let i = 0; i < tasks.length; i++) await withTimeout(runTask(tasks[i]!, i), timeoutMs, tasks[i]!.name);
   }
 
   if (worktreeName) {
-    try {
-      await removeAgentWorktree(worktreeName);
-      logger.info(`Worktree cleaned up: ${worktreeName}`);
-    } catch (err) {
-      logger.warn(`Worktree cleanup failed: ${err instanceof Error ? err.message : String(err)}`);
-    }
+    try { await removeAgentWorktree(worktreeName); logger.info(`Worktree cleaned up: ${worktreeName}`); }
+    catch (err) { logger.warn(`Worktree cleanup failed: ${err instanceof Error ? err.message : String(err)}`); }
   }
 
-  const passed = results.filter(result => result.success).length;
-  const failed = results.filter(result => !result.success).length;
-  if (failed > 0) {
-    logger.warn(`Wave ${phase} complete: ${passed} passed, ${failed} failed`);
-    for (const result of results.filter(entry => !entry.success)) {
-      logger.error(`  FAILED: ${result.task}${result.error ? ` - ${result.error}` : ''}`);
-    }
-
-    try {
-      const captureFailureLessons = options?._captureFailureLessons ?? (async (
-        failedTasks: { task: string; error?: string }[],
-        context: 'forge failure' | 'party failure',
-      ) => {
-        const { captureFailureLessons: defaultCaptureFailureLessons } = await import('../../../cli/commands/lessons.js');
-        await defaultCaptureFailureLessons(failedTasks, context);
-      });
-      const failedTasks = results
-        .filter(result => !result.success)
-        .map(result => ({ task: result.task, error: result.error }));
-      await captureFailureLessons(failedTasks, 'forge failure');
-    } catch (err) { logger.verbose(`[best-effort] lessons capture: ${err instanceof Error ? err.message : String(err)}`); }
-  } else {
-    logger.success(`Wave ${phase} complete - all ${passed} tasks passed`);
-  }
-
-  const timestamp = new Date().toISOString();
-  if (failed === 0) {
-    state.currentPhase = phase + 1;
-    recordWorkflowStage(state, 'forge', timestamp);
-  }
-  state.auditLog.push(`${timestamp} | forge: wave ${phase} complete (${passed}/${tasks.length} passed, profile: ${profile}${parallel ? ', parallel' : ''}${failed > 0 ? ', failed' : ''})`);
-  await (options?._stateCaller?.save ?? saveState)(state, { cwd });
-
-  // Persist token economy metrics — best-effort, never blocks main path
-  const totalTokens = totalInputTokens + totalOutputTokens;
-  if (totalTokens > 0) {
-    try {
-      const latestState = await (options?._stateCaller?.load ?? loadState)({ cwd });
-      latestState.totalTokensUsed = (latestState.totalTokensUsed ?? 0) + totalTokens;
-      latestState.lastComplexityPreset = profile;
-      await (options?._stateCaller?.save ?? saveState)(latestState, { cwd });
-    } catch { /* best-effort — token tracking never blocks forge */ }
-  }
-
-  if (failed === 0) {
-    logger.info('Ready for next wave or party mode');
-  }
-  return { mode: 'executed', success: failed === 0, totalTokens: totalTokens || undefined, totalCostUsd: totalCostUsd || undefined };
+  return reportAndFinalizeWave(phase, profile, parallel, tasks, results, state, cwd, options, totalInputTokens, totalOutputTokens, totalCostUsd);
 }

@@ -402,69 +402,36 @@ async function buildDimEvidence(
   return null;
 }
 
-// ── Main ──────────────────────────────────────────────────────────────────────
+// ── State bootstrap helper ────────────────────────────────────────────────────
 
-export async function score(options: ScoreOptions = {}): Promise<ScoreResult> {
-  const cwd = options.cwd ?? process.cwd();
-  const emit = options._stdout ?? ((line: string) => logger.info(line));
-  const harshScoreFn = options._harshScore ?? computeHarshScore;
-  const loadStateFn = options._loadState ?? loadState;
-  const saveStateFn = options._saveState ?? saveState;
-  const runPrimeFn = options._runPrime;
-  const getGitSha = options._getGitSha ?? defaultGetGitSha;
-
-  // Load state and bootstrap ecosystem signals BEFORE scoring so harshScore reads current signals
-  const state = await loadStateFn({ cwd });
-  const { skillCount, hasPluginManifest, hasComplexityClassifier, inferredWorkflowStage, hasVerifyEvidence } = await bootstrapEcosystemSignals(cwd, {
-    _listSkillDirs: options._listSkillDirs,
-    _fileExists: options._fileExists,
-  });
-  state.skillCount = skillCount;
-  state.hasPluginManifest = hasPluginManifest;
-  // Seed lastComplexityPreset if state was reset: complexity-classifier.ts existence
-  // proves the routing infrastructure is wired; 'balanced' is the production default.
-  if (!state.lastComplexityPreset && hasComplexityClassifier) {
-    state.lastComplexityPreset = 'balanced';
+async function bootstrapStateSignals(
+  state: Awaited<ReturnType<typeof loadState>>,
+  signals: { skillCount: number; hasPluginManifest: boolean; hasComplexityClassifier: boolean; inferredWorkflowStage: string | null; hasVerifyEvidence: boolean },
+  cwd: string,
+  saveStateFn: typeof saveState,
+): Promise<void> {
+  state.skillCount = signals.skillCount;
+  state.hasPluginManifest = signals.hasPluginManifest;
+  if (!state.lastComplexityPreset && signals.hasComplexityClassifier) state.lastComplexityPreset = 'balanced';
+  if (state.workflowStage === 'initialized' && signals.inferredWorkflowStage) {
+    state.workflowStage = signals.inferredWorkflowStage as typeof state.workflowStage;
   }
-  // Repair workflowStage when stuck at 'initialized' sentinel: infer from PDSE artifacts.
-  // 'initialized' gets written on state reset but masks real progress (TASKS.md → at least 'tasks').
-  if (state.workflowStage === 'initialized' && inferredWorkflowStage) {
-    state.workflowStage = inferredWorkflowStage as typeof state.workflowStage;
-  }
-  // Seed lastVerifyStatus + lastVerifyReceiptPath when state was reset.
-  // .danteforge/evidence/verify/latest.json is written by `danteforge verify` on a real success run.
-  // The receipt path IS this evidence file — writeVerifyReceipt() returns its absolute path.
-  if (!state.lastVerifyStatus && hasVerifyEvidence) {
-    state.lastVerifyStatus = 'pass';
-  }
-  if (!state.lastVerifyReceiptPath && hasVerifyEvidence) {
+  if (!state.lastVerifyStatus && signals.hasVerifyEvidence) state.lastVerifyStatus = 'pass';
+  if (!state.lastVerifyReceiptPath && signals.hasVerifyEvidence) {
     state.lastVerifyReceiptPath = path.join(cwd, '.danteforge', 'evidence', 'verify', 'latest.json');
   }
-  // Seed totalTokensUsed when state was reset: retroDelta > 0 proves autoforge completed at
-  // least one LLM-driven self-improvement cycle (>1000 tokens minimum). Use conservative floor.
-  if (typeof state.totalTokensUsed !== 'number' && (state.retroDelta ?? 0) > 0) {
-    state.totalTokensUsed = 5000;
-  }
+  if (typeof state.totalTokensUsed !== 'number' && (state.retroDelta ?? 0) > 0) state.totalTokensUsed = 5000;
   await saveStateFn(state, { cwd });
+}
 
-  // Score AFTER signals are persisted — harshScore loads state and sees correct skillCount/hasPluginManifest.
-  // Inject empty history stubs to bypass the plateau penalty — score is deterministic,
-  // plateau detection belongs in `assess` (LLM-based contextual sessions) only.
-  const result = await harshScoreFn({
-    cwd,
-    _readHistory: options._readHistory ?? (async () => []),
-    _writeHistory: options._writeHistory ?? (async () => {}),
-  });
+// ── Strict / anti-inflation overlay ──────────────────────────────────────────
 
-  // Always compute live code-derived signals for the 3 dims most vulnerable to STATE.yaml drift.
-  // In non-strict mode: apply downward only (anti-inflation — cap but never raise).
-  // In strict mode: override unconditionally + override 4 more dims + ceilings + recompute score.
-  const strict = await computeStrictDimensions(
-    cwd,
-    options._gitLog,
-    options._fileExistsStrict,
-    options._listDir,
-  );
+function applyStrictOrAntiInflation(
+  options: ScoreOptions,
+  result: Awaited<ReturnType<typeof computeHarshScore>>,
+  strict: Awaited<ReturnType<typeof computeStrictDimensions>>,
+  emit: (line: string) => void,
+): void {
   const strictAutonomy = Math.round(strict.autonomy / 10);
   const strictSelf = Math.round(strict.selfImprovement / 10);
   const strictConvergence = Math.round(strict.convergenceSelfHealing / 10);
@@ -477,17 +444,11 @@ export async function score(options: ScoreOptions = {}): Promise<ScoreResult> {
     result.displayDimensions.specDrivenPipeline = Math.round(strict.specDrivenPipeline / 10);
     result.displayDimensions.developerExperience = Math.round(strict.developerExperience / 10);
     result.displayDimensions.planningQuality = Math.round(strict.planningQuality / 10);
-
     for (const [dimId, { ceiling }] of Object.entries(KNOWN_CEILINGS)) {
       const dim = dimId as ScoringDimension;
-      if (result.displayDimensions[dim] !== undefined) {
-        result.displayDimensions[dim] = Math.min(result.displayDimensions[dim]!, ceiling);
-      }
+      if (result.displayDimensions[dim] !== undefined) result.displayDimensions[dim] = Math.min(result.displayDimensions[dim]!, ceiling);
     }
-
     emit('  [strict mode: 7 dimensions overridden from code signals + automation ceilings enforced]');
-
-    // Recompute displayScore from the patched dimension set (strict mode only)
     const patched = result.displayDimensions;
     const patchedWeighted = (Object.entries(SCORE_DISPLAY_WEIGHTS) as [ScoringDimension, number][])
       .reduce((sum, [k, w]) => sum + (patched[k] ?? 0) * w, 0);
@@ -503,37 +464,16 @@ export async function score(options: ScoreOptions = {}): Promise<ScoreResult> {
     result.displayDimensions.selfImprovement = strictSelf;
     result.displayDimensions.convergenceSelfHealing = strictConvergence;
   }
+}
 
-  // Session baseline with TTL — reset if older than 4 hours so delta stays meaningful
-  const baselineAge = state.sessionBaselineTimestamp
-    ? Date.now() - new Date(state.sessionBaselineTimestamp).getTime()
-    : Infinity;
-  if (baselineAge > BASELINE_TTL_MS) {
-    state.sessionBaselineScore = undefined;
-    state.sessionBaselineTimestamp = undefined;
-  }
+// ── P0 item builder + renderer ────────────────────────────────────────────────
 
-  // Compute session delta
-  let sessionDelta: number | undefined;
-  if (state.sessionBaselineScore !== undefined) {
-    sessionDelta = result.displayScore - state.sessionBaselineScore;
-  } else {
-    // First run of session — set baseline
-    state.sessionBaselineScore = result.displayScore;
-    state.sessionBaselineTimestamp = new Date().toISOString();
-  }
-
-  // Append to score history (lightweight STATE.yaml entry — NOT assessment-history.json)
-  const gitSha = await getGitSha().catch(() => undefined);
-  const entry: ScoreHistoryEntry = {
-    timestamp: new Date().toISOString(),
-    displayScore: result.displayScore,
-    gitSha,
-  };
-  const updatedState = appendScoreHistory(state, entry);
-  await saveStateFn(updatedState, { cwd });
-
-  // Build P0 items — in default mode, prefer builder dimensions over meta dims
+async function buildAndRenderP0Items(
+  emit: (line: string) => void,
+  result: Awaited<ReturnType<typeof computeHarshScore>>,
+  cwd: string,
+  options: ScoreOptions,
+): Promise<P0Item[]> {
   const dims = Object.entries(result.displayDimensions) as [ScoringDimension, number][];
   dims.sort((a, b) => a[1] - b[1]);
   let p0Source = dims;
@@ -543,35 +483,23 @@ export async function score(options: ScoreOptions = {}): Promise<ScoreResult> {
     p0Source = [...builderGaps, ...metaGaps];
   }
   const p0Items: P0Item[] = p0Source.slice(0, 3).map(([dim, sc]) => ({
-    dimension: dim,
-    score: sc,
+    dimension: dim, score: sc,
     action: DIMENSION_ACTIONS[dim] ?? `danteforge improve "${dim}"`,
   }));
 
-  // Render header
-  const deltaStr = sessionDelta !== undefined
-    ? `  (${sessionDelta > 0.05 ? '▲' : sessionDelta < -0.05 ? '▼' : '─'} ${sessionDelta > 0 ? '+' : ''}${sessionDelta.toFixed(1)} today)`
-    : '';
-  emit('');
-  emit(`  ${result.displayScore.toFixed(1)}/10  — ${displayVerdict(result.verdict)}${deltaStr}`);
-  emit('');
   emit('  P0 gaps:');
-  // Build file-grounded evidence for each P0 dim (best-effort, parallel)
   const evidenceMap = new Map<string, string>();
   await Promise.all(p0Items.map(async (item) => {
     const ev = await buildDimEvidence(item.dimension, cwd, result);
     if (ev) evidenceMap.set(item.dimension, ev);
   }));
   for (let i = 0; i < p0Items.length; i++) {
-    const item = p0Items[i];
+    const item = p0Items[i]!;
     const label = item.dimension.replace(/([A-Z])/g, ' $1').trim();
     const humanLabel = label.charAt(0).toUpperCase() + label.slice(1);
     const humanText = DIMENSION_HUMAN_TEXT[item.dimension];
     const evidence = evidenceMap.get(item.dimension);
-    // When we have file-specific evidence, show a targeted command instead of the generic one
-    const action = evidence
-      ? `danteforge ascend --dim ${item.dimension}`
-      : item.action;
+    const action = evidence ? `danteforge ascend --dim ${item.dimension}` : item.action;
     if (humanText) {
       emit(`  ${i + 1}. ${humanLabel.padEnd(22)}${item.score.toFixed(1)}/10  — ${humanText}`);
       if (evidence) emit(`     ${''.padEnd(22)}  ↳ ${evidence}`);
@@ -583,36 +511,26 @@ export async function score(options: ScoreOptions = {}): Promise<ScoreResult> {
   }
   emit('  Unfamiliar with any term? Run: danteforge explain <term>');
   emit('');
+  return p0Items;
+}
 
-  // --full: show all 18 dimensions sorted by score (lowest = biggest gap first)
-  if (options.full) {
-    emit('  All 18 dimensions (worst gaps first):');
-    emit('');
-    const all = [...dims]; // already sorted ascending
-    all.forEach(([dim, sc]) => {
-      const wt = Math.round((SCORE_DISPLAY_WEIGHTS[dim] ?? 0) * 100);
-      const label = dim.padEnd(26);
-      const wtStr = `${wt}%`.padStart(4);
-      emit(`  ${label}${sc.toFixed(1)}  (weight ${wtStr})`);
-    });
-    emit('');
-    emit('  For LLM competitor benchmarking: danteforge assess');
-  } else {
-    emit('  Run with --full for all 18 dimensions.');
-  }
+// ── Post-score actions: adversary + PRIME + landscape ─────────────────────────
 
-  // --adversary: run second-opinion adversarial scoring (opt-in, requires LLM)
-  let adversarialResult: import('../../core/adversarial-scorer-dim.js').AdversarialScoreResult | undefined;
+async function runScorePostActions(
+  options: ScoreOptions,
+  result: Awaited<ReturnType<typeof computeHarshScore>>,
+  emit: (line: string) => void,
+  cwd: string,
+  runPrimeFn: ScoreOptions['_runPrime'],
+): Promise<ScoreResult['adversarialResult']> {
+  let adversarialResult: ScoreResult['adversarialResult'];
+
   if (options.adversary) {
     try {
       const generateFn = options._generateAdversarialScore
         ?? (await import('../../core/adversarial-scorer-dim.js')).generateAdversarialScore;
-      const loadCfgFn = options._loadConfig
-        ?? (await import('../../core/config.js')).loadConfig;
-      adversarialResult = await generateFn(result, {
-        cwd,
-        _loadConfig: loadCfgFn,
-      });
+      const loadCfgFn = options._loadConfig ?? (await import('../../core/config.js')).loadConfig;
+      adversarialResult = await generateFn(result, { cwd, _loadConfig: loadCfgFn });
       renderDualScorePanel(emit, adversarialResult, options.full ?? false);
     } catch (err) {
       emit('  [adversary] Adversarial scoring unavailable — skipping panel.');
@@ -620,7 +538,6 @@ export async function score(options: ScoreOptions = {}): Promise<ScoreResult> {
     }
   }
 
-  // Auto-refresh PRIME.md best-effort
   if (runPrimeFn) {
     await runPrimeFn({ cwd }).catch(() => {});
     emit('  PRIME.md updated.');
@@ -629,34 +546,89 @@ export async function score(options: ScoreOptions = {}): Promise<ScoreResult> {
       const { prime } = await import('./prime.js');
       await prime({ cwd });
       emit('  PRIME.md updated.');
-    } catch {
-      // best-effort — if prime not available yet, skip silently
-    }
+    } catch { /* best-effort */ }
   }
 
-  // Stale landscape warning (best-effort, never blocks score)
   try {
     const landscapePath = path.join(cwd, '.danteforge', 'landscape.json');
     const landscapeRaw = await (options._readFile
       ? options._readFile(landscapePath, 'utf8')
       : (await import('node:fs/promises')).readFile(landscapePath, 'utf8'));
     const lm = JSON.parse(landscapeRaw) as { generatedAt: string };
-    const ageMs = Date.now() - new Date(lm.generatedAt).getTime();
-    if (ageMs > 7 * 24 * 60 * 60 * 1000) {
+    if (Date.now() - new Date(lm.generatedAt).getTime() > 7 * 24 * 60 * 60 * 1000) {
       emit('');
       emit('  ⚠ Competitive landscape is >7 days old. Run: danteforge landscape');
     }
-  } catch { /* no landscape yet — silent */ }
+  } catch { /* no landscape yet */ }
 
   emit('');
-  return {
-    displayScore: result.displayScore,
-    verdict: result.verdict,
-    p0Items,
-    sessionDelta,
-    displayDimensions: result.displayDimensions,
-    adversarialResult,
-  };
+  return adversarialResult;
+}
+
+// ── Main ──────────────────────────────────────────────────────────────────────
+
+export async function score(options: ScoreOptions = {}): Promise<ScoreResult> {
+  const cwd = options.cwd ?? process.cwd();
+  const emit = options._stdout ?? ((line: string) => logger.info(line));
+  const harshScoreFn = options._harshScore ?? computeHarshScore;
+  const loadStateFn = options._loadState ?? loadState;
+  const saveStateFn = options._saveState ?? saveState;
+  const runPrimeFn = options._runPrime;
+  const getGitSha = options._getGitSha ?? defaultGetGitSha;
+
+  const state = await loadStateFn({ cwd });
+  const signals = await bootstrapEcosystemSignals(cwd, { _listSkillDirs: options._listSkillDirs, _fileExists: options._fileExists });
+  await bootstrapStateSignals(state, signals, cwd, saveStateFn);
+
+  const result = await harshScoreFn({
+    cwd,
+    _readHistory: options._readHistory ?? (async () => []),
+    _writeHistory: options._writeHistory ?? (async () => {}),
+  });
+
+  const strict = await computeStrictDimensions(cwd, options._gitLog, options._fileExistsStrict, options._listDir);
+  applyStrictOrAntiInflation(options, result, strict, emit);
+
+  const baselineAge = state.sessionBaselineTimestamp ? Date.now() - new Date(state.sessionBaselineTimestamp).getTime() : Infinity;
+  if (baselineAge > BASELINE_TTL_MS) { state.sessionBaselineScore = undefined; state.sessionBaselineTimestamp = undefined; }
+  let sessionDelta: number | undefined;
+  if (state.sessionBaselineScore !== undefined) {
+    sessionDelta = result.displayScore - state.sessionBaselineScore;
+  } else {
+    state.sessionBaselineScore = result.displayScore;
+    state.sessionBaselineTimestamp = new Date().toISOString();
+  }
+
+  const gitSha = await getGitSha().catch(() => undefined);
+  const updatedState = appendScoreHistory(state, { timestamp: new Date().toISOString(), displayScore: result.displayScore, gitSha });
+  await saveStateFn(updatedState, { cwd });
+
+  const deltaStr = sessionDelta !== undefined
+    ? `  (${sessionDelta > 0.05 ? '▲' : sessionDelta < -0.05 ? '▼' : '─'} ${sessionDelta > 0 ? '+' : ''}${sessionDelta.toFixed(1)} today)`
+    : '';
+  emit('');
+  emit(`  ${result.displayScore.toFixed(1)}/10  — ${displayVerdict(result.verdict)}${deltaStr}`);
+  emit('');
+
+  const p0Items = await buildAndRenderP0Items(emit, result, cwd, options);
+
+  if (options.full) {
+    const dims = (Object.entries(result.displayDimensions) as [ScoringDimension, number][]).sort((a, b) => a[1] - b[1]);
+    emit('  All 18 dimensions (worst gaps first):');
+    emit('');
+    dims.forEach(([dim, sc]) => {
+      const wt = Math.round((SCORE_DISPLAY_WEIGHTS[dim] ?? 0) * 100);
+      emit(`  ${dim.padEnd(26)}${sc.toFixed(1)}  (weight ${`${wt}%`.padStart(4)})`);
+    });
+    emit('');
+    emit('  For LLM competitor benchmarking: danteforge assess');
+  } else {
+    emit('  Run with --full for all 18 dimensions.');
+  }
+
+  const adversarialResult = await runScorePostActions(options, result, emit, cwd, runPrimeFn);
+
+  return { displayScore: result.displayScore, verdict: result.verdict, p0Items, sessionDelta, displayDimensions: result.displayDimensions, adversarialResult };
 }
 
 function renderDualScorePanel(

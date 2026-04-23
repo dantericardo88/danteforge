@@ -73,6 +73,118 @@ function shouldPreferLive(choice: string): boolean {
   return modeNum === 2;
 }
 
+async function runInitInteractive(options: InitOptions, cwd: string): Promise<{ projectDescription: string; preferredLevel: string; preferLive: boolean }> {
+  logger.info('Welcome to DanteForge! Three quick questions to personalize your setup.');
+  logger.info('');
+
+  const projectDescription = await askQuestion('  What are you building? (brief description, Enter to skip)\n  > ', options._readline);
+
+  logger.info('');
+  logger.info('  How do you want to work?');
+  logger.info('    1. Plan first            - light start, no AI required');
+  logger.info('    2. Improve one thing     - recommended for most work');
+  logger.info('    3. Full autonomous push  - deepest automation');
+  const preferredLevel = parsePreferredLevel(await askQuestion('  Enter choice [2]: ', options._readline));
+
+  logger.info('');
+  logger.info('  How do you want to start?');
+  logger.info('    1. Offline first        - score and plan with no API key');
+  logger.info('    2. Live AI is ready     - I already configured a provider');
+  logger.info('    3. Set up AI later      - show me the command after setup');
+  const preferLive = shouldPreferLive(await askQuestion('  Enter choice [1]: ', options._readline));
+
+  if (options.advanced) {
+    if (!options.provider) {
+      logger.info('');
+      logger.info('  Which LLM provider do you want to configure?');
+      logger.info('    1. Ollama (local, free)');
+      logger.info('    2. Claude (Anthropic)');
+      logger.info('    3. OpenAI (GPT-4o)');
+      logger.info('    4. Grok (xAI)');
+      logger.info('    5. Gemini (Google)');
+      const provChoice = await askQuestion('  Enter choice [1]: ', options._readline);
+      const provNum = parseInt(provChoice.trim() || '1', 10);
+      const provMap: Record<number, LLMProvider> = { 1: 'ollama', 2: 'claude', 3: 'openai', 4: 'grok', 5: 'gemini' };
+      const selectedProvider = provMap[provNum] ?? 'ollama';
+      try { await setDefaultProvider(selectedProvider); } catch { /* best effort */ }
+    }
+
+    const detectedIDE = options._detectIDE ? options._detectIDE() : detectRunningIDE();
+    if (detectedIDE && detectedIDE !== 'claude') {
+      logger.info('');
+      logger.info(`Detected editor: ${detectedIDE}`);
+      const ideChoice = await askQuestion(`  Set up DanteForge skills for ${detectedIDE}? [Y/n] `, options._readline);
+      if (ideChoice.trim().toLowerCase() !== 'n') {
+        try {
+          const { setupAssistants } = await import('./setup-assistants.js');
+          await setupAssistants({ assistants: detectedIDE });
+          logger.success(`Skills installed for ${detectedIDE}`);
+        } catch { /* best effort */ }
+      }
+    }
+
+    logger.info('');
+    logger.info('  Adversarial scoring runs a second LLM to challenge your self-score,');
+    logger.info('  catching inflation automatically. Recommended for honest quality tracking.');
+    const advAnswer = await askQuestion('  Enable adversarial scoring? [Y/n] ', options._readline);
+    if (advAnswer.trim().toLowerCase() !== 'n') {
+      try {
+        const loadConfigFn = options._loadConfig ?? loadConfig;
+        const saveConfigFn = options._saveConfig ?? saveConfig;
+        const cfg = await loadConfigFn();
+        cfg.adversary = { enabled: true };
+        await saveConfigFn(cfg);
+        logger.success('  Adversarial scoring enabled. Run `danteforge score --adversary` to try it.');
+      } catch { /* best effort */ }
+    }
+
+    logger.info('');
+    const defineNow = await askQuestion('  Define your competitive universe now? (helps ascend/compete target the right goals) [y/N] ', options._readline);
+    if (defineNow.toLowerCase() === 'y' || defineNow.toLowerCase() === 'yes') {
+      try {
+        const { defineUniverse } = await import('../../core/universe-definer.js');
+        const defineUniverseFn = options._defineUniverse ?? defineUniverse;
+        await defineUniverseFn({ cwd, interactive: true });
+        logger.success('Competitive universe defined! Run `danteforge ascend` to start improving.');
+      } catch (err) {
+        logger.warn(`Universe definition skipped: ${err instanceof Error ? err.message : String(err)}`);
+      }
+    }
+  } else {
+    logger.info('');
+    logger.info('  Tip: run `danteforge init --advanced` to configure editor setup,');
+    logger.info('  provider defaults, adversarial scoring, and competitive targeting.');
+  }
+
+  return { projectDescription, preferredLevel, preferLive };
+}
+
+function printInitComplete(preferredLevel: string, hasConfiguredKey: boolean, preferLive: boolean, idea: string): void {
+  logger.info('');
+  logger.success('Setup complete!');
+  logger.info('');
+  logger.info('Your next command:');
+  logger.info('');
+  logger.info('  danteforge go');
+  logger.info('  Shows your score, your top gap, and one recommended next step.');
+  logger.info('');
+  logger.info('Plain-English shortcuts:');
+  logger.info('  danteforge start');
+  logger.info('  danteforge measure');
+  logger.info('  danteforge improve "your goal"');
+  logger.info('');
+  if (!preferLive || !hasConfiguredKey) {
+    logger.info('  To add a provider: danteforge config --set-key "openai:<key>"');
+    logger.info('');
+  }
+  logger.info('Or jump straight in:');
+  logger.info(`  danteforge ${preferredLevel} "${idea}"`);
+  logger.info('');
+  logger.info('  Help: danteforge help');
+  logger.info('');
+  logger.info('Run "danteforge doctor" for full system diagnostics.');
+}
+
 export async function init(options: InitOptions = {}): Promise<void> {
   return withErrorBoundary('init', async () => {
     const cwd = options.cwd ?? process.cwd();
@@ -90,114 +202,7 @@ export async function init(options: InitOptions = {}): Promise<void> {
     let preferLive = options.preferLive ?? false;
 
     if (isInteractive) {
-      logger.info('Welcome to DanteForge! Three quick questions to personalize your setup.');
-      logger.info('');
-
-      projectDescription = await askQuestion(
-        '  What are you building? (brief description, Enter to skip)\n  > ',
-        options._readline,
-      );
-
-      logger.info('');
-      logger.info('  How do you want to work?');
-      logger.info('    1. Plan first            - light start, no AI required');
-      logger.info('    2. Improve one thing     - recommended for most work');
-      logger.info('    3. Full autonomous push  - deepest automation');
-      preferredLevel = parsePreferredLevel(
-        await askQuestion('  Enter choice [2]: ', options._readline),
-      );
-
-      logger.info('');
-      logger.info('  How do you want to start?');
-      logger.info('    1. Offline first        - score and plan with no API key');
-      logger.info('    2. Live AI is ready     - I already configured a provider');
-      logger.info('    3. Set up AI later      - show me the command after setup');
-      preferLive = shouldPreferLive(
-        await askQuestion('  Enter choice [1]: ', options._readline),
-      );
-
-      if (options.advanced) {
-        if (!options.provider) {
-          logger.info('');
-          logger.info('  Which LLM provider do you want to configure?');
-          logger.info('    1. Ollama (local, free)');
-          logger.info('    2. Claude (Anthropic)');
-          logger.info('    3. OpenAI (GPT-4o)');
-          logger.info('    4. Grok (xAI)');
-          logger.info('    5. Gemini (Google)');
-          const provChoice = await askQuestion('  Enter choice [1]: ', options._readline);
-          const provNum = parseInt(provChoice.trim() || '1', 10);
-          const provMap: Record<number, LLMProvider> = {
-            1: 'ollama',
-            2: 'claude',
-            3: 'openai',
-            4: 'grok',
-            5: 'gemini',
-          };
-          const selectedProvider = provMap[provNum] ?? 'ollama';
-          try {
-            await setDefaultProvider(selectedProvider);
-          } catch {
-            // best effort
-          }
-        }
-
-        const detectedIDE = options._detectIDE ? options._detectIDE() : detectRunningIDE();
-        if (detectedIDE && detectedIDE !== 'claude') {
-          logger.info('');
-          logger.info(`Detected editor: ${detectedIDE}`);
-          const ideChoice = await askQuestion(
-            `  Set up DanteForge skills for ${detectedIDE}? [Y/n] `,
-            options._readline,
-          );
-          if (ideChoice.trim().toLowerCase() !== 'n') {
-            try {
-              const { setupAssistants } = await import('./setup-assistants.js');
-              await setupAssistants({ assistants: detectedIDE });
-              logger.success(`Skills installed for ${detectedIDE}`);
-            } catch {
-              // best effort
-            }
-          }
-        }
-
-        logger.info('');
-        logger.info('  Adversarial scoring runs a second LLM to challenge your self-score,');
-        logger.info('  catching inflation automatically. Recommended for honest quality tracking.');
-        const advAnswer = await askQuestion('  Enable adversarial scoring? [Y/n] ', options._readline);
-        if (advAnswer.trim().toLowerCase() !== 'n') {
-          try {
-            const loadConfigFn = options._loadConfig ?? loadConfig;
-            const saveConfigFn = options._saveConfig ?? saveConfig;
-            const cfg = await loadConfigFn();
-            cfg.adversary = { enabled: true };
-            await saveConfigFn(cfg);
-            logger.success('  Adversarial scoring enabled. Run `danteforge score --adversary` to try it.');
-          } catch {
-            // best effort
-          }
-        }
-
-        logger.info('');
-        const defineNow = await askQuestion(
-          '  Define your competitive universe now? (helps ascend/compete target the right goals) [y/N] ',
-          options._readline,
-        );
-        if (defineNow.toLowerCase() === 'y' || defineNow.toLowerCase() === 'yes') {
-          try {
-            const { defineUniverse } = await import('../../core/universe-definer.js');
-            const defineUniverseFn = options._defineUniverse ?? defineUniverse;
-            await defineUniverseFn({ cwd, interactive: true });
-            logger.success('Competitive universe defined! Run `danteforge ascend` to start improving.');
-          } catch (err) {
-            logger.warn(`Universe definition skipped: ${err instanceof Error ? err.message : String(err)}`);
-          }
-        }
-      } else {
-        logger.info('');
-        logger.info('  Tip: run `danteforge init --advanced` to configure editor setup,');
-        logger.info('  provider defaults, adversarial scoring, and competitive targeting.');
-      }
+      ({ projectDescription, preferredLevel, preferLive } = await runInitInteractive(options, cwd));
     }
 
     const projectType = await detectProjectType(cwd);
@@ -260,29 +265,6 @@ export async function init(options: InitOptions = {}): Promise<void> {
     state.auditLog.push(`${timestamp} | init: type=${projectType}, level=${preferredLevel}, existing=${isExisting}`);
     await saveStateFn(state, { cwd });
 
-    const idea = projectDescription || 'your idea here';
-    logger.info('');
-    logger.success('Setup complete!');
-    logger.info('');
-    logger.info('Your next command:');
-    logger.info('');
-    logger.info('  danteforge go');
-    logger.info('  Shows your score, your top gap, and one recommended next step.');
-    logger.info('');
-    logger.info('Plain-English shortcuts:');
-    logger.info('  danteforge start');
-    logger.info('  danteforge measure');
-    logger.info('  danteforge improve "your goal"');
-    logger.info('');
-    if (!preferLive || !hasConfiguredKey) {
-      logger.info('  To add a provider: danteforge config --set-key "openai:<key>"');
-      logger.info('');
-    }
-    logger.info('Or jump straight in:');
-    logger.info(`  danteforge ${preferredLevel} "${idea}"`);
-    logger.info('');
-    logger.info('  Help: danteforge help');
-    logger.info('');
-    logger.info('Run "danteforge doctor" for full system diagnostics.');
+    printInitComplete(preferredLevel, hasConfiguredKey, preferLive, projectDescription || 'your idea here');
   });
 }

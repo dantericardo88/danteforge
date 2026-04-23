@@ -356,17 +356,9 @@ async function rollbackToSha(cwd: string, sha: string, _gitReset?: (cwd: string,
 
 // ── Main entry ─────────────────────────────────────────────────────────────────
 
-export async function harvestForge(opts: HarvestForgeOptions = {}): Promise<HarvestForgeResult> {
-  try {
-    const cwd = opts.cwd ?? process.cwd();
-    const maxCycles = opts.maxCycles ?? 10;
-    const targetScore = opts.targetScore ?? 9.0;
-    const topAdoptionsPerCycle = opts.topAdoptionsPerCycle ?? 3;
-    const autoApprove = opts.autoApprove ?? false;
-
-    // ── Prompt mode ────────────────────────────────────────────────────────
-    if (opts.promptMode) {
-      const plan = `# Harvest-Forge Compounding Loop Plan
+function buildHarvestForgePlan(opts: HarvestForgeOptions, maxCycles: number, targetScore: number, topAdoptionsPerCycle: number): string {
+  const autoApprove = opts.autoApprove ?? false;
+  return `# Harvest-Forge Compounding Loop Plan
 
 ## Configuration
 - Max cycles: ${maxCycles}
@@ -399,16 +391,194 @@ export async function harvestForge(opts: HarvestForgeOptions = {}): Promise<Harv
 ## State File
   .danteforge/convergence.json (survives process restarts)
 `;
-      logger.info(plan);
-      return {
-        cyclesRun: 0,
-        stopReason: 'max-cycles' as StopReason,
-        finalScores: {},
-        totalPatternsAdopted: 0,
-      };
+}
+
+async function printLeapfrogIfEnabled(opts: HarvestForgeOptions, cwd: string, getScores: (cwd: string) => Promise<Record<string, number>>, readAdoptionQueue: (cwd?: string) => Promise<AdoptionCandidate[]>, cycle: number): Promise<void> {
+  if (!opts.enableLeapfrog || cycle % 3 !== 1) return;
+  try {
+    const scores = await getScores(cwd);
+    if (Object.keys(scores).length > 0) {
+      const planBuilder = opts._buildLeapfrogPlan ?? buildLeapfrogPlan;
+      const plan = await planBuilder(scores, [], await readAdoptionQueue(cwd), opts._llmCaller);
+      if (plan.opportunities.length > 0) {
+        logger.info('[harvest-forge] ── Competitive Leapfrog Opportunities ──');
+        for (const opp of plan.opportunities.slice(0, 3)) {
+          logger.info(`[harvest-forge]   ${opp.urgency.toUpperCase()} ${opp.dimension}: adopt "${opp.adoptionPattern}" to reach score ${opp.leapfrogScore.toFixed(1)}`);
+        }
+        logger.info(`[harvest-forge]   Recommendation: ${plan.topRecommendation}`);
+      }
+    }
+  } catch { /* best-effort — never block the main loop */ }
+}
+
+async function runUniverseSyncIfNeeded(cycle: number, opts: HarvestForgeOptions, cwd: string, runUniverseScan: (opts?: UniverseScanOptions) => Promise<UniverseScan>, lastUniverseScanAt: Date): Promise<Date> {
+  if (cycle % 3 !== 0) return lastUniverseScanAt;
+  const emergentDimsPath = path.join(getDanteforgeDir(cwd), 'emergent-dimensions.json');
+  try {
+    const emergentData = JSON.parse(await fs.readFile(emergentDimsPath, 'utf8')) as { detectedAt?: string; dimensions?: unknown[] };
+    if (emergentData.detectedAt && new Date(emergentData.detectedAt) > lastUniverseScanAt && Array.isArray(emergentData.dimensions) && emergentData.dimensions.length > 0) {
+      logger.info('[harvest-forge] New emergent dimensions detected — triggering universe-scan refresh');
+    }
+  } catch { /* no emergent dims file yet — that's fine */ }
+  logger.info('[harvest-forge] Step 0: Running universe-scan (every 3 cycles)...');
+  try { await runUniverseScan({ cwd, _llmCaller: opts._llmCaller, _isLLMAvailable: opts._isLLMAvailable } as UniverseScanOptions); return new Date(); } catch (err) {
+    logger.warn(`[harvest-forge] universe-scan failed (non-fatal): ${err instanceof Error ? err.message : String(err)}`);
+    return lastUniverseScanAt;
+  }
+}
+
+async function readAndFilterCandidates(cycle: number, cwd: string, readAdoptionQueue: (cwd?: string) => Promise<AdoptionCandidate[]>, getScores: (cwd: string) => Promise<Record<string, number>>, autoApprove: boolean, loadGoalFn: (cwd?: string) => Promise<GoalConfig | null>, topAdoptionsPerCycle: number): Promise<{ adoptions: AdoptionCandidate[]; scoresBefore: Record<string, number>; queueExhausted: boolean; humanStopped: boolean }> {
+  const allAdoptions = await readAdoptionQueue(cwd);
+  const allCandidates = allAdoptions.slice(0, topAdoptionsPerCycle);
+  if (allCandidates.length === 0) return { adoptions: [], scoresBefore: {}, queueExhausted: true, humanStopped: false };
+  const scoresBefore = await getScores(cwd);
+  const effectiveAutoApprove = await resolveEffectiveAutoApprove(allCandidates, autoApprove, loadGoalFn, cwd);
+  const skipIndices = await humanCheckpoint(cycle, allCandidates, scoresBefore, effectiveAutoApprove);
+  if (skipIndices.length === 1 && skipIndices[0] === -1) return { adoptions: [], scoresBefore, queueExhausted: false, humanStopped: true };
+  return { adoptions: allCandidates.filter((_, i) => !skipIndices.includes(i)), scoresBefore, queueExhausted: false, humanStopped: false };
+}
+
+async function forgeAdoptionsSequential(adoptions: AdoptionCandidate[], opts: HarvestForgeOptions, cwd: string, runForge: (goal: string, o: { cwd: string }) => Promise<{ success: boolean }>, runVerify: (o: { cwd: string }) => Promise<void>, getScores: (cwd: string) => Promise<Record<string, number>>): Promise<{ adoptionsSucceeded: number; succeededPatterns: string[] }> {
+  let adoptionsSucceeded = 0;
+  const succeededPatterns: string[] = [];
+  for (const adoption of adoptions) {
+    if (opts.explain) {
+      logger.info(`[harvest-forge] ── Pattern: ${adoption.patternName} ──`);
+      logger.info(`[harvest-forge]   Category: ${adoption.category}`);
+      logger.info(`[harvest-forge]   Why: ${adoption.whatToBuild}`);
+      logger.info(`[harvest-forge]   Effort: ${adoption.estimatedEffort} | Unlocks: ${adoption.unlocksGapClosure.join(', ') || 'general improvement'}`);
+      logger.info(`[harvest-forge]   Score: ${adoption.adoptionScore.toFixed(2)}`);
+    }
+    const rollbackSha = opts.enableRollback ? await captureGitSha(cwd, opts._getGitSha) : undefined;
+    const adoptionScoresBefore = opts.attributionMode ? await getScores(cwd) : undefined;
+    logger.info(`  → Forging: ${adoption.patternName}`);
+    const result = await runForge(`Implement the ${adoption.patternName} pattern. ${adoption.whatToBuild}`, { cwd });
+    if (result.success) { adoptionsSucceeded++; succeededPatterns.push(adoption.patternName); }
+    let verifyPassed = true;
+    if (opts.enableRollback && rollbackSha) {
+      logger.info(`[harvest-forge] Step 5: Running verify for ${adoption.patternName}...`);
+      try { await runVerify({ cwd }); } catch {
+        verifyPassed = false;
+        logger.warn(`[harvest-forge] Verify failed for ${adoption.patternName}, rolling back to ${rollbackSha.slice(0, 8)}`);
+        await rollbackToSha(cwd, rollbackSha, opts._gitReset);
+        if (result.success) { adoptionsSucceeded--; const idx = succeededPatterns.indexOf(adoption.patternName); if (idx !== -1) succeededPatterns.splice(idx, 1); }
+      }
+    }
+    if (opts.attributionMode && adoptionScoresBefore) {
+      try {
+        const adoptionScoresAfter = await getScores(cwd);
+        const avg = (s: Record<string, number>) => Object.values(s).reduce((a, b) => a + b, 0) / Math.max(1, Object.keys(s).length);
+        await recordAdoptionResult({ patternName: adoption.patternName, sourceRepo: adoption.sourceRepo, adoptedAt: new Date().toISOString(), preAdoptionScore: avg(adoptionScoresBefore), postAdoptionScore: avg(adoptionScoresAfter), scoreDelta: avg(adoptionScoresAfter) - avg(adoptionScoresBefore), verifyStatus: verifyPassed ? 'pass' : 'fail', filesModified: adoption.filesToModify }, cwd);
+      } catch { /* best-effort attribution */ }
+    }
+  }
+  return { adoptionsSucceeded, succeededPatterns };
+}
+
+async function checkCycleTermination(state: ConvergenceState, cycle: number, opts: HarvestForgeOptions, cwd: string, startedAt: number, nowFn: () => number, saveConv: (s: ConvergenceState, cwd?: string) => Promise<void>, loadGoalFn: (cwd?: string) => Promise<GoalConfig | null>): Promise<{ shouldBreak: boolean; stopReason: StopReason | null }> {
+  printConvergenceChart(state, cycle);
+  if (isFullyConverged(state)) {
+    logger.info('  ✓ ALL DIMENSIONS CONVERGED — GOAL ACHIEVED');
+    await saveConv(state, cwd);
+    return { shouldBreak: true, stopReason: 'convergence-achieved' };
+  }
+  if (detectPlateau(state, undefined, { attributionMode: opts.attributionMode })) {
+    logger.info('  ⚠  PLATEAU DETECTED — 3 consecutive cycles < 0.5 improvement');
+    logger.info('     Recommendation: run /inferno for fresh OSS discovery or /nova for deeper implementation.');
+    await saveConv(state, cwd);
+    return { shouldBreak: true, stopReason: 'plateau-detected' };
+  }
+  const dailyBudgetUsd = await getDailyBudget(loadGoalFn, cwd);
+  if (dailyBudgetUsd > 0 && state.totalCostUsd > 0 && state.totalCostUsd >= dailyBudgetUsd) {
+    logger.info(`  ⚠  BUDGET EXHAUSTED — $${state.totalCostUsd.toFixed(2)} >= $${dailyBudgetUsd.toFixed(2)} daily limit`);
+    await saveConv(state, cwd);
+    return { shouldBreak: true, stopReason: 'budget-exhausted' };
+  }
+  if (opts.maxHours && (nowFn() - startedAt) / 3_600_000 >= opts.maxHours) {
+    logger.info(`  ⚠  TIME BUDGET EXHAUSTED — ${opts.maxHours}h elapsed`);
+    await saveConv(state, cwd);
+    return { shouldBreak: true, stopReason: 'budget-exhausted' };
+  }
+  return { shouldBreak: false, stopReason: null };
+}
+
+async function runHarvestForgeLoop(
+  initState: ConvergenceState, opts: HarvestForgeOptions, maxCycles: number, topAdoptionsPerCycle: number, autoApprove: boolean, cwd: string,
+  loadConv: (cwd?: string) => Promise<ConvergenceState>, saveConv: (s: ConvergenceState, cwd?: string) => Promise<void>,
+  runOssIntel: (o?: OssIntelOptions) => Promise<void>, runForge: (goal: string, o: { cwd: string }) => Promise<{ success: boolean }>,
+  runVerify: (o: { cwd: string }) => Promise<void>, getScores: (cwd: string) => Promise<Record<string, number>>,
+  readAdoptionQueue: (cwd?: string) => Promise<AdoptionCandidate[]>, runUniverseScan: (opts?: UniverseScanOptions) => Promise<UniverseScan>,
+  getCycleCost: () => number, loadGoalFn: (cwd?: string) => Promise<GoalConfig | null>, doRecordAdoption: (s: ConvergenceState, n: string) => ConvergenceState,
+  nowFn: () => number,
+): Promise<{ state: ConvergenceState; cyclesRun: number; stopReason: StopReason; totalPatternsAdopted: number }> {
+  let state = initState;
+  let cyclesRun = 0;
+  let stopReason: StopReason = 'max-cycles';
+  let totalPatternsAdopted = 0;
+  const startedAt = nowFn();
+  let lastUniverseScanAt = new Date(0);
+  const parallelForge = opts.parallelForge ?? false;
+
+  while (state.lastCycle < maxCycles) {
+    const cycle = state.lastCycle + 1;
+    printCycleHeader(cycle, maxCycles);
+    await printLeapfrogIfEnabled(opts, cwd, getScores, readAdoptionQueue, cycle);
+    lastUniverseScanAt = await runUniverseSyncIfNeeded(cycle, opts, cwd, runUniverseScan, lastUniverseScanAt);
+
+    logger.info('[harvest-forge] Step 1: Running oss-intel...');
+    try { await runOssIntel({ cwd, _llmCaller: opts._llmCaller, _isLLMAvailable: opts._isLLMAvailable, _adoptedPatterns: state.adoptedPatternsSummary } as OssIntelOptions); } catch (err) {
+      logger.warn(`[harvest-forge] oss-intel failed: ${err instanceof Error ? err.message : String(err)}`);
     }
 
-    // ── Resolve dependencies ───────────────────────────────────────────────
+    const { adoptions, scoresBefore, queueExhausted, humanStopped } = await readAndFilterCandidates(cycle, cwd, readAdoptionQueue, getScores, autoApprove, loadGoalFn, topAdoptionsPerCycle);
+    if (queueExhausted) { stopReason = 'queue-exhausted'; break; }
+    if (humanStopped) { logger.info('[harvest-forge] Paused by human. Run harvest-forge again to resume.'); stopReason = 'plateau-detected'; break; }
+    if (adoptions.length === 0) { logger.info('[harvest-forge] All adoptions skipped — moving to next cycle.'); state = { ...state, lastCycle: cycle }; await saveConv(state, cwd); cyclesRun = cycle; continue; }
+
+    logger.info(`[harvest-forge] Step 4: Implementing ${adoptions.length} adoption(s)${parallelForge ? ' (parallel)' : ''}...`);
+    let adoptionsSucceeded = 0;
+    const succeededPatterns: string[] = [];
+    if (parallelForge) {
+      const forgeResults = await Promise.all(adoptions.map(a => { logger.info(`  → Forging (parallel): ${a.patternName}`); return runForge(`Implement the ${a.patternName} pattern. ${a.whatToBuild}`, { cwd }).then(r => ({ result: r, adoption: a })); }));
+      for (const { result, adoption } of forgeResults) { if (result.success) { adoptionsSucceeded++; succeededPatterns.push(adoption.patternName); } }
+    } else {
+      const seqResult = await forgeAdoptionsSequential(adoptions, opts, cwd, runForge, runVerify, getScores);
+      adoptionsSucceeded = seqResult.adoptionsSucceeded;
+      succeededPatterns.push(...seqResult.succeededPatterns);
+    }
+    totalPatternsAdopted += adoptionsSucceeded;
+
+    if (!opts.enableRollback) { logger.info('[harvest-forge] Step 5: Running verify...'); await runVerify({ cwd }); }
+
+    logger.info('[harvest-forge] Step 6: Rescoring dimensions...');
+    const scoresAfter = await getScores(cwd);
+    for (const [dimension, score] of Object.entries(scoresAfter)) state = updateDimension(state, dimension, score);
+    for (const patternName of succeededPatterns) state = doRecordAdoption(state, patternName);
+
+    const cycleCostUsd = getCycleCost();
+    state = { ...state, lastCycle: cycle, totalCostUsd: state.totalCostUsd + cycleCostUsd, cycleHistory: [...state.cycleHistory, { cycle, timestamp: new Date().toISOString(), adoptionsAttempted: adoptions.length, adoptionsSucceeded, scoresBefore, scoresAfter, costUsd: cycleCostUsd } as CycleRecord] };
+
+    const termination = await checkCycleTermination(state, cycle, opts, cwd, startedAt, nowFn, saveConv, loadGoalFn);
+    if (termination.shouldBreak) { cyclesRun = cycle; stopReason = termination.stopReason!; break; }
+    await saveConv(state, cwd);
+    cyclesRun = cycle;
+  }
+  return { state, cyclesRun, stopReason, totalPatternsAdopted };
+}
+
+export async function harvestForge(opts: HarvestForgeOptions = {}): Promise<HarvestForgeResult> {
+  try {
+    const cwd = opts.cwd ?? process.cwd();
+    const maxCycles = opts.maxCycles ?? 10;
+    const targetScore = opts.targetScore ?? 9.0;
+    const topAdoptionsPerCycle = opts.topAdoptionsPerCycle ?? 3;
+    const autoApprove = opts.autoApprove ?? false;
+
+    if (opts.promptMode) {
+      logger.info(buildHarvestForgePlan(opts, maxCycles, targetScore, topAdoptionsPerCycle));
+      return { cyclesRun: 0, stopReason: 'max-cycles' as StopReason, finalScores: {}, totalPatternsAdopted: 0 };
+    }
+
     const loadConv = opts._loadConvergence ?? loadConvergence;
     const saveConv = opts._saveConvergence ?? saveConvergence;
     const runOssIntel = opts._runOssIntel ?? ((o?: OssIntelOptions) => ossIntel({ ...o, cwd }));
@@ -418,12 +588,10 @@ export async function harvestForge(opts: HarvestForgeOptions = {}): Promise<Harv
     const readAdoptionQueue = opts._readAdoptionQueue ?? defaultReadAdoptionQueue;
     const runUniverseScan = opts._runUniverseScan ?? defaultRunUniverseScan;
     const getCycleCost = opts._getCycleCost ?? (() => 0);
-    const parallelForge = opts.parallelForge ?? false;
     const loadGoalFn = opts._loadGoal ?? defaultLoadGoal;
     const doRecordAdoption = opts._recordAdoption ?? recordAdoption;
     const nowFn = opts._now ?? (() => Date.now());
 
-    // ── Load or init convergence state ─────────────────────────────────────
     let state = await loadConv(cwd);
     if (state.lastCycle === 0 && state.dimensions.length === 0) {
       state = initConvergence(targetScore);
@@ -432,295 +600,18 @@ export async function harvestForge(opts: HarvestForgeOptions = {}): Promise<Harv
       logger.info(`[harvest-forge] Resuming from cycle ${state.lastCycle}.`);
     }
 
-    let cyclesRun = 0;
-    let stopReason: StopReason = 'max-cycles';
-    let totalPatternsAdopted = 0;
-    const startedAt = nowFn();
-    let lastUniverseScanAt = new Date(0);
+    const loopResult = await runHarvestForgeLoop(state, opts, maxCycles, topAdoptionsPerCycle, autoApprove, cwd, loadConv, saveConv, runOssIntel, runForge, runVerify, getScores, readAdoptionQueue, runUniverseScan, getCycleCost, loadGoalFn, doRecordAdoption, nowFn);
 
-    // ── Main loop ──────────────────────────────────────────────────────────
-    while (state.lastCycle < maxCycles) {
-      const cycle = state.lastCycle + 1;
-      printCycleHeader(cycle, maxCycles);
-
-      // Sprint B-1E: Print competitive leapfrog opportunities every 3 cycles
-      if (opts.enableLeapfrog && cycle % 3 === 1) {
-        try {
-          const scores = await getScores(cwd);
-          if (Object.keys(scores).length > 0) {
-            const planBuilder = opts._buildLeapfrogPlan ?? buildLeapfrogPlan;
-            const adoptionItems = await readAdoptionQueue(cwd);
-            const plan = await planBuilder(
-              scores,
-              [], // competitors array — populated from universe-scan in full implementation
-              adoptionItems,
-              opts._llmCaller,
-            );
-            if (plan.opportunities.length > 0) {
-              logger.info('[harvest-forge] ── Competitive Leapfrog Opportunities ──');
-              for (const opp of plan.opportunities.slice(0, 3)) {
-                logger.info(`[harvest-forge]   ${opp.urgency.toUpperCase()} ${opp.dimension}: adopt "${opp.adoptionPattern}" to reach score ${opp.leapfrogScore.toFixed(1)}`);
-              }
-              logger.info(`[harvest-forge]   Recommendation: ${plan.topRecommendation}`);
-            }
-          }
-        } catch {
-          // Best-effort: never block the main loop
-        }
-      }
-
-      // Step 0: Universe sync every 3 cycles (refreshes SCORES.json)
-      if (cycle % 3 === 0) {
-        // Sprint B-1F: Check if emergent dimensions discovered since last scan
-        const emergentDimsPath = path.join(getDanteforgeDir(cwd), 'emergent-dimensions.json');
-        let hasNewEmergentDims = false;
-        try {
-          const emergentRaw = await fs.readFile(emergentDimsPath, 'utf8');
-          const emergentData = JSON.parse(emergentRaw) as { detectedAt?: string; dimensions?: unknown[] };
-          if (
-            emergentData.detectedAt &&
-            new Date(emergentData.detectedAt) > lastUniverseScanAt &&
-            Array.isArray(emergentData.dimensions) &&
-            emergentData.dimensions.length > 0
-          ) {
-            hasNewEmergentDims = true;
-            logger.info(`[harvest-forge] New emergent dimensions detected — triggering universe-scan refresh`);
-          }
-        } catch {
-          // No emergent dims file yet — that's fine
-        }
-
-        logger.info('[harvest-forge] Step 0: Running universe-scan (every 3 cycles)...');
-        try {
-          await runUniverseScan({ cwd, _llmCaller: opts._llmCaller, _isLLMAvailable: opts._isLLMAvailable });
-          lastUniverseScanAt = new Date();
-        } catch (err) {
-          logger.warn(`[harvest-forge] universe-scan failed (non-fatal): ${err instanceof Error ? err.message : String(err)}`);
-        }
-      }
-
-      // Step 1: Run oss-intel — pass compounding memory so LLM avoids re-suggestion
-      logger.info('[harvest-forge] Step 1: Running oss-intel...');
-      try {
-        await runOssIntel({
-          cwd,
-          _llmCaller: opts._llmCaller,
-          _isLLMAvailable: opts._isLLMAvailable,
-          _adoptedPatterns: state.adoptedPatternsSummary,
-        });
-      } catch (err) {
-        logger.warn(`[harvest-forge] oss-intel failed: ${err instanceof Error ? err.message : String(err)}`);
-      }
-
-      // Step 2: Read adoption queue
-      const allAdoptions = await readAdoptionQueue(cwd);
-      const allCandidates = allAdoptions.slice(0, topAdoptionsPerCycle);
-
-      if (allCandidates.length === 0) {
-        logger.info('[harvest-forge] No adoptions available — queue exhausted.');
-        stopReason = 'queue-exhausted';
-        break;
-      }
-
-      // Step 3: Human checkpoint (oversight level from GOAL.json)
-      const scoresBefore = await getScores(cwd);
-      const effectiveAutoApprove = await resolveEffectiveAutoApprove(
-        allCandidates, autoApprove, loadGoalFn, cwd,
-      );
-      const skipIndices = await humanCheckpoint(cycle, allCandidates, scoresBefore, effectiveAutoApprove);
-
-      if (skipIndices.length === 1 && skipIndices[0] === -1) {
-        logger.info('[harvest-forge] Paused by human. Run harvest-forge again to resume.');
-        stopReason = 'plateau-detected';
-        break;
-      }
-
-      // Filter out skipped adoptions
-      const adoptions = allCandidates.filter((_, i) => !skipIndices.includes(i));
-      if (adoptions.length === 0) {
-        logger.info('[harvest-forge] All adoptions skipped — moving to next cycle.');
-        state = { ...state, lastCycle: cycle };
-        await saveConv(state, cwd);
-        cyclesRun = cycle;
-        continue;
-      }
-
-      // Step 4: Forge each adoption (sequential by default, parallel when parallelForge=true)
-      logger.info(`[harvest-forge] Step 4: Implementing ${adoptions.length} adoption(s)${parallelForge ? ' (parallel)' : ''}...`);
-      let adoptionsSucceeded = 0;
-      const succeededPatterns: string[] = [];
-
-      if (parallelForge) {
-        const forgeResults = await Promise.all(
-          adoptions.map(a => {
-            const forgeGoal = `Implement the ${a.patternName} pattern. ${a.whatToBuild}`;
-            logger.info(`  → Forging (parallel): ${a.patternName}`);
-            return runForge(forgeGoal, { cwd }).then(r => ({ result: r, adoption: a }));
-          }),
-        );
-        for (const { result, adoption } of forgeResults) {
-          if (result.success) {
-            adoptionsSucceeded++;
-            succeededPatterns.push(adoption.patternName);
-          }
-        }
-      } else {
-        for (const adoption of adoptions) {
-          if (opts.explain) {
-            logger.info(`[harvest-forge] ── Pattern: ${adoption.patternName} ──`);
-            logger.info(`[harvest-forge]   Category: ${adoption.category}`);
-            logger.info(`[harvest-forge]   Why: ${adoption.whatToBuild}`);
-            logger.info(`[harvest-forge]   Effort: ${adoption.estimatedEffort} | Unlocks: ${adoption.unlocksGapClosure.join(', ') || 'general improvement'}`);
-            logger.info(`[harvest-forge]   Score: ${adoption.adoptionScore.toFixed(2)}`);
-          }
-          const rollbackSha = opts.enableRollback
-            ? await captureGitSha(cwd, opts._getGitSha)
-            : undefined;
-          // Attribution: capture scores before forge
-          const adoptionScoresBefore = opts.attributionMode ? await getScores(cwd) : undefined;
-          const forgeGoal = `Implement the ${adoption.patternName} pattern. ${adoption.whatToBuild}`;
-          logger.info(`  → Forging: ${adoption.patternName}`);
-          const result = await runForge(forgeGoal, { cwd });
-          if (result.success) {
-            adoptionsSucceeded++;
-            succeededPatterns.push(adoption.patternName);
-          }
-
-          // Step 5 (per-adoption): Verify and rollback on failure when rollback is enabled
-          let verifyPassed = true;
-          if (opts.enableRollback && rollbackSha) {
-            logger.info(`[harvest-forge] Step 5: Running verify for ${adoption.patternName}...`);
-            try {
-              await runVerify({ cwd });
-            } catch {
-              verifyPassed = false;
-              logger.warn(`[harvest-forge] Verify failed for ${adoption.patternName}, rolling back to ${rollbackSha.slice(0, 8)}`);
-              await rollbackToSha(cwd, rollbackSha, opts._gitReset);
-              // Undo the succeeded count for this adoption since it's being rolled back
-              if (result.success) {
-                adoptionsSucceeded--;
-                const idx = succeededPatterns.indexOf(adoption.patternName);
-                if (idx !== -1) succeededPatterns.splice(idx, 1);
-              }
-            }
-          }
-
-          // Attribution mode: record per-pattern score delta
-          if (opts.attributionMode && adoptionScoresBefore) {
-            try {
-              const adoptionScoresAfter = await getScores(cwd);
-              const avgBefore = Object.values(adoptionScoresBefore).reduce((a, b) => a + b, 0) / Math.max(1, Object.keys(adoptionScoresBefore).length);
-              const avgAfter = Object.values(adoptionScoresAfter).reduce((a, b) => a + b, 0) / Math.max(1, Object.keys(adoptionScoresAfter).length);
-              const record: AttributionRecord = {
-                patternName: adoption.patternName,
-                sourceRepo: adoption.sourceRepo,
-                adoptedAt: new Date().toISOString(),
-                preAdoptionScore: avgBefore,
-                postAdoptionScore: avgAfter,
-                scoreDelta: avgAfter - avgBefore,
-                verifyStatus: verifyPassed ? 'pass' : 'fail',
-                filesModified: adoption.filesToModify,
-              };
-              await recordAdoptionResult(record, cwd);
-            } catch {
-              // Best-effort attribution
-            }
-          }
-        }
-      }
-      totalPatternsAdopted += adoptionsSucceeded;
-
-      // Step 5: Verify (only runs in non-rollback mode; rollback mode verifies per adoption above)
-      if (!opts.enableRollback) {
-        logger.info('[harvest-forge] Step 5: Running verify...');
-        await runVerify({ cwd });
-      }
-
-      // Step 6: Rescore + record adopted patterns into compounding memory
-      logger.info('[harvest-forge] Step 6: Rescoring dimensions...');
-      const scoresAfter = await getScores(cwd);
-      for (const [dimension, score] of Object.entries(scoresAfter)) {
-        state = updateDimension(state, dimension, score);
-      }
-
-      // Record adopted patterns — prevents re-suggestion in future oss-intel calls
-      for (const patternName of succeededPatterns) {
-        state = doRecordAdoption(state, patternName);
-      }
-
-      // Build cycle record (cost wired via _getCycleCost injection)
-      const cycleCostUsd = getCycleCost();
-      const cycleRecord: CycleRecord = {
-        cycle,
-        timestamp: new Date().toISOString(),
-        adoptionsAttempted: adoptions.length,
-        adoptionsSucceeded,
-        scoresBefore,
-        scoresAfter,
-        costUsd: cycleCostUsd,
-      };
-      state = {
-        ...state,
-        lastCycle: cycle,
-        totalCostUsd: state.totalCostUsd + cycleCostUsd,
-        cycleHistory: [...state.cycleHistory, cycleRecord],
-      };
-
-      // Step 7: Print chart + plateau check
-      printConvergenceChart(state, cycle);
-
-      if (isFullyConverged(state)) {
-        logger.info('  ✓ ALL DIMENSIONS CONVERGED — GOAL ACHIEVED');
-        stopReason = 'convergence-achieved';
-        cyclesRun = cycle;
-        await saveConv(state, cwd);
-        break;
-      }
-
-      if (detectPlateau(state, undefined, { attributionMode: opts.attributionMode })) {
-        logger.info('  ⚠  PLATEAU DETECTED — 3 consecutive cycles < 0.5 improvement');
-        logger.info('     Recommendation: run /inferno for fresh OSS discovery or /nova for deeper implementation.');
-        stopReason = 'plateau-detected';
-        cyclesRun = cycle;
-        await saveConv(state, cwd);
-        break;
-      }
-
-      // Budget checks — daily USD and wall-clock hours
-      const dailyBudgetUsd = await getDailyBudget(loadGoalFn, cwd);
-      if (dailyBudgetUsd > 0 && state.totalCostUsd > 0 && state.totalCostUsd >= dailyBudgetUsd) {
-        logger.info(`  ⚠  BUDGET EXHAUSTED — $${state.totalCostUsd.toFixed(2)} >= $${dailyBudgetUsd.toFixed(2)} daily limit`);
-        stopReason = 'budget-exhausted';
-        cyclesRun = cycle;
-        await saveConv(state, cwd);
-        break;
-      }
-
-      if (opts.maxHours && (nowFn() - startedAt) / 3_600_000 >= opts.maxHours) {
-        logger.info(`  ⚠  TIME BUDGET EXHAUSTED — ${opts.maxHours}h elapsed`);
-        stopReason = 'budget-exhausted';
-        cyclesRun = cycle;
-        await saveConv(state, cwd);
-        break;
-      }
-
-      // Step 8: Save state
-      await saveConv(state, cwd);
-      cyclesRun = cycle;
-    }
-
+    let { cyclesRun, stopReason, totalPatternsAdopted } = loopResult;
+    state = loopResult.state;
     if (cyclesRun === 0) cyclesRun = state.lastCycle;
-    if (stopReason === 'max-cycles') {
-      logger.info(`[harvest-forge] Max cycles (${maxCycles}) reached.`);
-    }
+    if (stopReason === 'max-cycles') logger.info(`[harvest-forge] Max cycles (${maxCycles}) reached.`);
 
     const finalScores = Object.fromEntries(state.dimensions.map(d => [d.dimension, d.score]));
-
     logger.info('\n  HARVEST-FORGE COMPLETE');
     logger.info(`  Stop reason: ${stopReason}`);
     logger.info(`  Cycles run: ${cyclesRun}`);
     logger.info(`  Patterns adopted: ${totalPatternsAdopted}`);
-
     return { cyclesRun, stopReason, finalScores, totalPatternsAdopted };
   } catch (err) {
     logger.error(`[harvest-forge] Fatal error: ${err instanceof Error ? err.message : String(err)}`);

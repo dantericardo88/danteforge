@@ -242,6 +242,75 @@ export async function captureVerifyLessons(
 /**
  * Main CLI command handler for `danteforge lessons`.
  */
+async function handleLessonCorrection(
+  correction: string,
+  options: { prompt?: boolean },
+  state: Awaited<ReturnType<typeof loadState>>,
+  saveFn: typeof saveState,
+): Promise<void> {
+  if (options.prompt) {
+    const prompt = `A user provided this correction/feedback:
+
+"${correction}"
+
+Extract a structured lesson from it.
+
+Respond with EXACTLY this format:
+CATEGORY: <one word: Naming|Testing|Workflow|Architecture|Style|Config|Dependencies>
+MISTAKE: <one sentence describing the original mistake>
+RULE: <one sentence rule to prevent this in future>`;
+
+    const savedPath = await savePrompt('lessons-extract', prompt);
+    displayPrompt(prompt, [
+      'Paste into your LLM to extract a structured lesson.',
+      'Then run: danteforge lessons "CATEGORY: ... MISTAKE: ... RULE: ..."',
+      `Prompt saved to: ${savedPath}`,
+    ].join('\n'));
+
+    state.auditLog.push(`${new Date().toISOString()} | lessons: extraction prompt generated`);
+    await saveFn(state);
+    return;
+  }
+
+  const categoryMatch = correction.match(/CATEGORY:\s*(.+)/i);
+  const mistakeMatch = correction.match(/MISTAKE:\s*(.+)/i);
+  const ruleMatch = correction.match(/RULE:\s*(.+)/i);
+
+  if (categoryMatch && mistakeMatch && ruleMatch) {
+    await recordLesson(categoryMatch[1]!.trim(), mistakeMatch[1]!.trim(), ruleMatch[1]!.trim(), 'user correction');
+    return;
+  }
+
+  const llmAvailable = await isLLMAvailable();
+  if (llmAvailable) {
+    const extractPrompt = `A user provided this correction/feedback:
+
+"${correction}"
+
+Extract a structured lesson from it.
+
+Respond with EXACTLY this format (no other text):
+CATEGORY: <one word: Naming|Testing|Workflow|Architecture|Style|Config|Dependencies>
+MISTAKE: <one sentence describing the original mistake>
+RULE: <one sentence rule to prevent this in future>`;
+
+    try {
+      const result = await callLLM(extractPrompt, undefined, { enrichContext: true });
+      const catMatch = result.match(/CATEGORY:\s*(.+)/i);
+      const misMatch = result.match(/MISTAKE:\s*(.+)/i);
+      const rulMatch = result.match(/RULE:\s*(.+)/i);
+      if (catMatch && misMatch && rulMatch) {
+        await recordLesson(catMatch[1]!.trim(), misMatch[1]!.trim(), rulMatch[1]!.trim(), 'user correction');
+        return;
+      }
+    } catch (err) {
+      logger.warn(`LLM extraction failed: ${err instanceof Error ? err.message : String(err)}`);
+    }
+  }
+
+  await recordLesson('General', correction, correction, 'user correction');
+}
+
 export async function lessons(correction?: string, options: {
   prompt?: boolean;
   compact?: boolean;
@@ -259,7 +328,6 @@ export async function lessons(correction?: string, options: {
 
   const state = await loadFn();
 
-  // --compact: force compaction
   if (options.compact) {
     const content = await readLessons();
     if (!content) {
@@ -276,84 +344,8 @@ export async function lessons(correction?: string, options: {
     return;
   }
 
-  // If correction text provided, record it as a user lesson
   if (correction) {
-    // --prompt: generate extraction prompt
-    if (options.prompt) {
-      const prompt = `A user provided this correction/feedback:
-
-"${correction}"
-
-Extract a structured lesson from it.
-
-Respond with EXACTLY this format:
-CATEGORY: <one word: Naming|Testing|Workflow|Architecture|Style|Config|Dependencies>
-MISTAKE: <one sentence describing the original mistake>
-RULE: <one sentence rule to prevent this in future>`;
-
-      const savedPath = await savePrompt('lessons-extract', prompt);
-      displayPrompt(prompt, [
-        'Paste into your LLM to extract a structured lesson.',
-        'Then run: danteforge lessons "CATEGORY: ... MISTAKE: ... RULE: ..."',
-        `Prompt saved to: ${savedPath}`,
-      ].join('\n'));
-
-      state.auditLog.push(`${new Date().toISOString()} | lessons: extraction prompt generated`);
-      await saveFn(state);
-      return;
-    }
-
-    // Try to parse structured input (CATEGORY/MISTAKE/RULE format)
-    const categoryMatch = correction.match(/CATEGORY:\s*(.+)/i);
-    const mistakeMatch = correction.match(/MISTAKE:\s*(.+)/i);
-    const ruleMatch = correction.match(/RULE:\s*(.+)/i);
-
-    if (categoryMatch && mistakeMatch && ruleMatch) {
-      await recordLesson(
-        categoryMatch[1]!.trim(),
-        mistakeMatch[1]!.trim(),
-        ruleMatch[1]!.trim(),
-        'user correction',
-      );
-      return;
-    }
-
-    // Use LLM to extract lesson from free-text correction
-    const llmAvailable = await isLLMAvailable();
-    if (llmAvailable) {
-      const extractPrompt = `A user provided this correction/feedback:
-
-"${correction}"
-
-Extract a structured lesson from it.
-
-Respond with EXACTLY this format (no other text):
-CATEGORY: <one word: Naming|Testing|Workflow|Architecture|Style|Config|Dependencies>
-MISTAKE: <one sentence describing the original mistake>
-RULE: <one sentence rule to prevent this in future>`;
-
-      try {
-        const result = await callLLM(extractPrompt, undefined, { enrichContext: true });
-        const catMatch = result.match(/CATEGORY:\s*(.+)/i);
-        const misMatch = result.match(/MISTAKE:\s*(.+)/i);
-        const rulMatch = result.match(/RULE:\s*(.+)/i);
-
-        if (catMatch && misMatch && rulMatch) {
-          await recordLesson(
-            catMatch[1]!.trim(),
-            misMatch[1]!.trim(),
-            rulMatch[1]!.trim(),
-            'user correction',
-          );
-          return;
-        }
-      } catch (err) {
-        logger.warn(`LLM extraction failed: ${err instanceof Error ? err.message : String(err)}`);
-      }
-    }
-
-    // Fallback: record as-is
-    await recordLesson('General', correction, correction, 'user correction');
+    await handleLessonCorrection(correction, options, state, saveFn);
     return;
   }
 

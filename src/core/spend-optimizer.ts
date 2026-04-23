@@ -182,6 +182,14 @@ export async function chooseSpendOptimizedProviderForReview(
   return undefined;
 }
 
+function ollamaInfo(
+  ollama: OllamaInspectionResult,
+  preferredOllamaModel: string,
+  selectedOllamaModel: string | null,
+) {
+  return { ...ollama, recommendedModel: preferredOllamaModel, selectedModel: selectedOllamaModel };
+}
+
 export async function configureSpendOptimizedDefaults(
   options: SpendOptimizationOptions = {},
 ): Promise<SpendOptimizationResult> {
@@ -207,9 +215,7 @@ export async function configureSpendOptimizedDefaults(
 
   if (hasExplicitCloudDefault(config) && !options.forceLocalFirst) {
     return {
-      host,
-      hostUsesNativeModel,
-      status: 'kept-existing-cloud',
+      host, hostUsesNativeModel, status: 'kept-existing-cloud',
       selectedProvider: config.defaultProvider,
       selectedModel: config.providers[config.defaultProvider]?.model ?? null,
       configUpdated: false,
@@ -217,74 +223,37 @@ export async function configureSpendOptimizedDefaults(
       nextSteps: ollama.available
         ? ['Run `danteforge config --provider ollama` if you want local-first CLI execution as well.']
         : ['Run `danteforge setup ollama --pull` to enable a local spend-saver path for DanteForge CLI.'],
-      ollama: {
-        ...ollama,
-        recommendedModel: preferredOllamaModel,
-        selectedModel: selectedOllamaModel,
-      },
+      ollama: ollamaInfo(ollama, preferredOllamaModel, selectedOllamaModel),
     };
   }
 
   if (ollama.available && selectedOllamaModel) {
     const nextConfig: DanteConfig = {
-      ...config,
-      defaultProvider: 'ollama',
-      ollamaModel: selectedOllamaModel,
-      providers: {
-        ...config.providers,
-        ollama: {
-          ...config.providers.ollama,
-          model: selectedOllamaModel,
-        },
-      },
+      ...config, defaultProvider: 'ollama', ollamaModel: selectedOllamaModel,
+      providers: { ...config.providers, ollama: { ...config.providers.ollama, model: selectedOllamaModel } },
     };
-
     const configUpdated = nextConfig.defaultProvider !== config.defaultProvider
       || nextConfig.ollamaModel !== config.ollamaModel
       || nextConfig.providers.ollama?.model !== config.providers.ollama?.model;
-
-    if (configUpdated) {
-      await save(nextConfig);
-    }
-
+    if (configUpdated) await save(nextConfig);
     return {
-      host,
-      hostUsesNativeModel,
-      status: 'configured-local',
-      selectedProvider: 'ollama',
-      selectedModel: selectedOllamaModel,
-      configUpdated,
+      host, hostUsesNativeModel, status: 'configured-local',
+      selectedProvider: 'ollama', selectedModel: selectedOllamaModel, configUpdated,
       message: `${buildHostModelUsageMessage(host)} Configured DanteForge CLI for local-first execution with Ollama model "${selectedOllamaModel}".`,
-      nextSteps: [
-        'Hosted provider keys remain optional fallback capacity for heavier direct CLI execution.',
-      ],
-      ollama: {
-        ...ollama,
-        recommendedModel: preferredOllamaModel,
-        selectedModel: selectedOllamaModel,
-      },
+      nextSteps: ['Hosted provider keys remain optional fallback capacity for heavier direct CLI execution.'],
+      ollama: ollamaInfo(ollama, preferredOllamaModel, selectedOllamaModel),
     };
   }
 
   return {
-    host,
-    hostUsesNativeModel,
-    status: 'ollama-missing',
+    host, hostUsesNativeModel, status: 'ollama-missing',
     selectedProvider: config.defaultProvider,
     selectedModel: config.providers[config.defaultProvider]?.model ?? null,
     configUpdated: false,
     message: `${buildHostModelUsageMessage(host)} No usable local Ollama model is configured yet for DanteForge CLI.`,
     nextSteps: ollama.available
-      ? [
-          `Run \`danteforge setup ollama --pull --ollama-model ${preferredOllamaModel}\` to install the recommended spend-saver model.`,
-        ]
-      : [
-          'Install Ollama from https://ollama.com/download, then run `danteforge setup ollama --pull`.',
-        ],
-    ollama: {
-      ...ollama,
-      recommendedModel: preferredOllamaModel,
-      selectedModel: selectedOllamaModel,
-    },
+      ? [`Run \`danteforge setup ollama --pull --ollama-model ${preferredOllamaModel}\` to install the recommended spend-saver model.`]
+      : ['Install Ollama from https://ollama.com/download, then run `danteforge setup ollama --pull`.'],
+    ollama: ollamaInfo(ollama, preferredOllamaModel, selectedOllamaModel),
   };
 }

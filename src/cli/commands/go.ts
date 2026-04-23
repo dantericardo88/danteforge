@@ -257,6 +257,55 @@ async function defaultRunSelfImprove(opts: SelfImproveOptions): Promise<SelfImpr
   return selfImprove(opts);
 }
 
+async function handleNewProject(options: GoOptions, cwd: string, emit: (line: string) => void): Promise<void> {
+  showWelcomeBanner(emit);
+  const runWizardFn = options._runWizard ?? runGoWizard;
+  const answers = await runWizardFn({ _isTTY: process.stdout.isTTY, _stdout: emit });
+  if (!answers) return;
+  try {
+    const initFn = options._initFn ?? (async (opts) => {
+      const { init } = await import('./init.js');
+      await init(opts as import('./init.js').InitOptions);
+    });
+    await initFn({ cwd, guided: false, nonInteractive: true, provider: answers.provider, projectDescription: answers.description, preferredLevel: answers.preferredLevel, preferLive: answers.startMode === 'live' });
+  } catch (err) { logger.warn(`[Go] Init failed: ${String(err)}`); }
+  try {
+    if (options._scoreFn) { await options._scoreFn({ cwd, _stdout: emit }); }
+    else if (options._qualityFn) { await options._qualityFn({ cwd, _stdout: emit, _isTTY: false }); }
+    else { const { score } = await import('./score.js'); await score({ cwd, _stdout: emit }); }
+  } catch (err) { logger.warn(`[Go] First score failed: ${String(err)}`); }
+  emit('');
+  emit('  Setup complete. Run ' + chalk.cyan('danteforge go') + ' anytime to see your state again.');
+  emit('  If you want hands-off improvement, run ' + chalk.cyan('danteforge auto-improve') + '.');
+  emit('');
+}
+
+async function askImprovementChoice(
+  options: GoOptions,
+  emit: (line: string) => void,
+  choiceFn: (prompt: string) => Promise<string>,
+): Promise<number | null> {
+  emit('  What would you like to do?');
+  emit('    1. Review only           — see full score details, no changes made');
+  emit('    2. Apply one improvement — targeted cycle, ~2-3 min  (recommended)');
+  emit('    3. Run auto-improve      — autonomous loop, 5-20 min');
+  emit('    Enter to skip');
+  const choice = await choiceFn('  Your choice [2]: ');
+  if (choice === '1' || choice === '') {
+    if (choice === '1') { emit(''); emit('  Full score breakdown: ' + chalk.cyan('danteforge score --full')); }
+    emit('');
+    emit('  When you\'re ready: ' + chalk.cyan('danteforge improve "<goal>"') + ' or ' + chalk.cyan('danteforge auto-improve'));
+    emit('');
+    return null;
+  }
+  if (choice === '3') {
+    emit(''); emit('  Starting autonomous improvement loop — target: 9.0/10, max 3 cycles');
+    return 3;
+  }
+  emit(''); emit('  Applying one targeted improvement cycle...');
+  return 1;
+}
+
 export async function go(options: GoOptions = {}): Promise<void> {
   const emit = options._stdout ?? ((line: string) => process.stdout.write(line + '\n'));
   const cwd = options.cwd ?? process.cwd();
@@ -268,48 +317,7 @@ export async function go(options: GoOptions = {}): Promise<void> {
   const runSelfImproveFn = options._runSelfImprove ?? defaultRunSelfImprove;
 
   const hasState = await stateExistsFn(cwd);
-
-  if (!hasState) {
-    showWelcomeBanner(emit);
-    const runWizardFn = options._runWizard ?? runGoWizard;
-    const answers = await runWizardFn({ _isTTY: process.stdout.isTTY, _stdout: emit });
-    if (answers) {
-      try {
-        const initFn = options._initFn ?? (async (opts) => {
-          const { init } = await import('./init.js');
-          await init(opts as import('./init.js').InitOptions);
-        });
-        await initFn({
-          cwd,
-          guided: false,
-          nonInteractive: true,
-          provider: answers.provider,
-          projectDescription: answers.description,
-          preferredLevel: answers.preferredLevel,
-          preferLive: answers.startMode === 'live',
-        });
-      } catch (err) {
-        logger.warn(`[Go] Init failed: ${String(err)}`);
-      }
-      try {
-        if (options._scoreFn) {
-          await options._scoreFn({ cwd, _stdout: emit });
-        } else if (options._qualityFn) {
-          await options._qualityFn({ cwd, _stdout: emit, _isTTY: false });
-        } else {
-          const { score } = await import('./score.js');
-          await score({ cwd, _stdout: emit });
-        }
-      } catch (err) {
-        logger.warn(`[Go] First score failed: ${String(err)}`);
-      }
-      emit('');
-      emit('  Setup complete. Run ' + chalk.cyan('danteforge go') + ' anytime to see your state again.');
-      emit('  If you want hands-off improvement, run ' + chalk.cyan('danteforge auto-improve') + '.');
-      emit('');
-    }
-    return;
-  }
+  if (!hasState) { await handleNewProject(options, cwd, emit); return; }
 
   let scoreResult: HarshScoreResult;
   try {
@@ -343,34 +351,9 @@ export async function go(options: GoOptions = {}): Promise<void> {
   let maxCycles = 3;
 
   if (!options.yes) {
-    emit('  What would you like to do?');
-    emit('    1. Review only           — see full score details, no changes made');
-    emit('    2. Apply one improvement — targeted cycle, ~2-3 min  (recommended)');
-    emit('    3. Run auto-improve      — autonomous loop, 5-20 min');
-    emit('    Enter to skip');
-    const choice = await choiceFn('  Your choice [2]: ');
-
-    if (choice === '1' || choice === '') {
-      if (choice === '1') {
-        emit('');
-        emit('  Full score breakdown: ' + chalk.cyan('danteforge score --full'));
-      }
-      emit('');
-      emit('  When you\'re ready: ' + chalk.cyan('danteforge improve "<goal>"') +
-           ' or ' + chalk.cyan('danteforge auto-improve'));
-      emit('');
-      return;
-    }
-
-    if (choice === '3') {
-      maxCycles = 3;
-      emit('');
-      emit('  Starting autonomous improvement loop — target: 9.0/10, max 3 cycles');
-    } else {
-      maxCycles = 1;
-      emit('');
-      emit('  Applying one targeted improvement cycle...');
-    }
+    const cycles = await askImprovementChoice(options, emit, choiceFn);
+    if (cycles === null) return;
+    maxCycles = cycles;
     emit('');
   }
 

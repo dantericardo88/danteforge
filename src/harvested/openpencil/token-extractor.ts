@@ -62,123 +62,92 @@ function extractFromCollection(collection: OPVariableCollection, tokens: DesignT
   }
 }
 
+interface NodeWalkAccumulator {
+  colorSet: Set<string>;
+  fontSizes: Set<number>;
+  fontFamilies: Set<string>;
+  fontWeights: Set<number>;
+  radiiSet: Set<number>;
+  spacingSet: Set<number>;
+  shadows: Record<string, string>;
+}
+
+function walkNodeProperties(nodeList: OPNode[], acc: NodeWalkAccumulator): void {
+  for (const node of nodeList) {
+    if (node.fills) {
+      for (const fill of node.fills) {
+        if (fill.color && fill.type === 'solid') acc.colorSet.add(fill.color);
+      }
+    }
+    if (node.strokes) {
+      for (const stroke of node.strokes) {
+        if (stroke.color) acc.colorSet.add(stroke.color);
+      }
+    }
+    if (node.fontSize) acc.fontSizes.add(node.fontSize);
+    if (node.fontFamily) acc.fontFamilies.add(node.fontFamily);
+    if (node.fontWeight) acc.fontWeights.add(node.fontWeight);
+    if (node.cornerRadius && node.cornerRadius > 0) acc.radiiSet.add(node.cornerRadius);
+    if (node.padding) {
+      for (const val of [node.padding.top, node.padding.right, node.padding.bottom, node.padding.left]) {
+        if (val > 0) acc.spacingSet.add(val);
+      }
+    }
+    if (node.layoutGap && node.layoutGap > 0) acc.spacingSet.add(node.layoutGap);
+    if (node.effects) {
+      for (const effect of node.effects) {
+        if (effect.type === 'drop-shadow' || effect.type === 'inner-shadow') {
+          const offsetX = effect.offset?.x ?? 0;
+          const offsetY = effect.offset?.y ?? 0;
+          const radius = effect.radius ?? 0;
+          acc.shadows[`shadow-${radius}`] = `${offsetX}px ${offsetY}px ${radius}px ${effect.spread ?? 0}px ${effect.color ?? '#00000020'}`;
+        }
+      }
+    }
+    if (node.children) walkNodeProperties(node.children, acc);
+  }
+}
+
 /**
  * Extract tokens by analyzing node properties (colors, fonts, spacing patterns).
  */
 function extractFromNodes(nodes: OPNode[], tokens: DesignTokens): void {
-  const colorSet = new Set<string>();
-  const fontSizes = new Set<number>();
-  const fontFamilies = new Set<string>();
-  const fontWeights = new Set<number>();
-  const radiiSet = new Set<number>();
-  const spacingSet = new Set<number>();
+  const acc: NodeWalkAccumulator = {
+    colorSet: new Set<string>(),
+    fontSizes: new Set<number>(),
+    fontFamilies: new Set<string>(),
+    fontWeights: new Set<number>(),
+    radiiSet: new Set<number>(),
+    spacingSet: new Set<number>(),
+    shadows: tokens.shadows,
+  };
+  walkNodeProperties(nodes, acc);
 
-  function walk(nodeList: OPNode[]) {
-    for (const node of nodeList) {
-      // Colors from fills
-      if (node.fills) {
-        for (const fill of node.fills) {
-          if (fill.color && fill.type === 'solid') {
-            colorSet.add(fill.color);
-          }
-        }
-      }
-
-      // Colors from strokes
-      if (node.strokes) {
-        for (const stroke of node.strokes) {
-          if (stroke.color) {
-            colorSet.add(stroke.color);
-          }
-        }
-      }
-
-      // Typography
-      if (node.fontSize) fontSizes.add(node.fontSize);
-      if (node.fontFamily) fontFamilies.add(node.fontFamily);
-      if (node.fontWeight) fontWeights.add(node.fontWeight);
-
-      // Corner radius
-      if (node.cornerRadius && node.cornerRadius > 0) {
-        radiiSet.add(node.cornerRadius);
-      }
-
-      // Spacing from padding
-      if (node.padding) {
-        const { top, right, bottom, left } = node.padding;
-        for (const val of [top, right, bottom, left]) {
-          if (val > 0) spacingSet.add(val);
-        }
-      }
-
-      // Spacing from layout gap
-      if (node.layoutGap && node.layoutGap > 0) {
-        spacingSet.add(node.layoutGap);
-      }
-
-      // Shadows from effects
-      if (node.effects) {
-        for (const effect of node.effects) {
-          if (effect.type === 'drop-shadow' || effect.type === 'inner-shadow') {
-            const offsetX = effect.offset?.x ?? 0;
-            const offsetY = effect.offset?.y ?? 0;
-            const radius = effect.radius ?? 0;
-            const spread = effect.spread ?? 0;
-            const color = effect.color ?? '#00000020';
-            const key = `shadow-${radius}`;
-            tokens.shadows[key] = `${offsetX}px ${offsetY}px ${radius}px ${spread}px ${color}`;
-          }
-        }
-      }
-
-      if (node.children) walk(node.children);
-    }
-  }
-
-  walk(nodes);
-
-  // Merge inferred colors (only if not already defined)
-  for (const color of colorSet) {
+  for (const color of acc.colorSet) {
     const name = colorToTokenName(color);
-    if (!tokens.colors[name]) {
-      tokens.colors[name] = color;
-    }
+    if (!tokens.colors[name]) tokens.colors[name] = color;
   }
 
-  // Build typography tokens from unique combinations
-  const sortedSizes = [...fontSizes].sort((a, b) => a - b);
+  const sortedSizes = [...acc.fontSizes].sort((a, b) => a - b);
   const sizeNames = ['xs', 'sm', 'base', 'lg', 'xl', '2xl', '3xl', '4xl', '5xl'];
   for (let i = 0; i < sortedSizes.length && i < sizeNames.length; i++) {
-    const sizeName = sizeNames[i];
-    const fontSize = sortedSizes[i];
-    const family = [...fontFamilies][0] ?? 'system-ui';
-    const weight = 400;
-    tokens.typography[`text-${sizeName}`] = {
-      family,
-      size: `${fontSize}px`,
-      weight,
-      lineHeight: `${Math.round(fontSize * 1.5)}px`,
-    };
+    const family = [...acc.fontFamilies][0] ?? 'system-ui';
+    const fontSize = sortedSizes[i]!;
+    tokens.typography[`text-${sizeNames[i]}`] = { family, size: `${fontSize}px`, weight: 400, lineHeight: `${Math.round(fontSize * 1.5)}px` };
   }
 
-  // Build spacing tokens
-  const sortedSpacing = [...spacingSet].sort((a, b) => a - b);
+  const sortedSpacing = [...acc.spacingSet].sort((a, b) => a - b);
   const spaceNames = ['xs', 'sm', 'md', 'lg', 'xl', '2xl', '3xl', '4xl'];
   for (let i = 0; i < sortedSpacing.length && i < spaceNames.length; i++) {
     const name = `space-${spaceNames[i]}`;
-    if (!tokens.spacing[name]) {
-      tokens.spacing[name] = `${sortedSpacing[i]}px`;
-    }
+    if (!tokens.spacing[name]) tokens.spacing[name] = `${sortedSpacing[i]}px`;
   }
 
-  // Build radii tokens
-  const sortedRadii = [...radiiSet].sort((a, b) => a - b);
+  const sortedRadii = [...acc.radiiSet].sort((a, b) => a - b);
   const radiiNames = ['sm', 'md', 'lg', 'xl', '2xl', 'full'];
   for (let i = 0; i < sortedRadii.length && i < radiiNames.length; i++) {
     const name = `radius-${radiiNames[i]}`;
-    if (!tokens.radii[name]) {
-      tokens.radii[name] = `${sortedRadii[i]}px`;
-    }
+    if (!tokens.radii[name]) tokens.radii[name] = `${sortedRadii[i]}px`;
   }
 }
 

@@ -14,6 +14,38 @@ import {
 
 const VALID_PROVIDERS = new Set(['grok', 'claude', 'openai', 'gemini', 'ollama']);
 
+function showConfigStatus(
+  config: Awaited<ReturnType<typeof loadConfig>>,
+  paths: ReturnType<typeof resolveConfigPaths>,
+): void {
+  logger.success('=== DanteForge Configuration ===');
+  logger.info(`Config file: ${paths.configFile}`);
+  logger.info('Config scope: shared across Codex, Claude Code, Gemini/Antigravity, OpenCode, Cursor, and direct CLI use.');
+  logger.info('Native assistant slash commands use the host model/session. Direct DanteForge CLI uses this shared config.');
+  logger.info(`Default provider: ${config.defaultProvider}`);
+  logger.info(`Ollama model: ${config.ollamaModel}`);
+  logger.info('');
+  logger.info('Configured providers:');
+
+  const allProviders: LLMProvider[] = ['grok', 'claude', 'openai', 'gemini', 'ollama'];
+  for (const p of allProviders) {
+    const pc = config.providers[p];
+    const hasKey = pc?.apiKey ? maskKey(pc.apiKey) : (p === 'ollama' ? '(local, no key needed)' : 'not set');
+    const model = pc?.model ?? getDefaultModel(p);
+    const isDefault = p === config.defaultProvider ? ' [DEFAULT]' : '';
+    logger.info(`  ${p}${isDefault}: key=${hasKey}, model=${model}`);
+  }
+
+  logger.info('');
+  logger.info('Commands:');
+  logger.info('  danteforge setup ollama --pull');
+  logger.info('  danteforge setup assistants --pull');
+  logger.info('  danteforge config --set-key "grok:<your-api-key>"');
+  logger.info('  danteforge config --delete-key grok');
+  logger.info('  danteforge config --provider claude');
+  logger.info('  danteforge config --model grok:grok-3');
+}
+
 function isValidProvider(p: string): p is LLMProvider {
   return VALID_PROVIDERS.has(p);
 }
@@ -40,32 +72,7 @@ export async function configCmd(options: {
   if (options.show || (!options.setKey && !options.deleteKey && !options.provider && !options.model)) {
     const config = await loadConfigFn();
     const paths = resolveConfigPaths();
-    logger.success('=== DanteForge Configuration ===');
-    logger.info(`Config file: ${paths.configFile}`);
-    logger.info('Config scope: shared across Codex, Claude Code, Gemini/Antigravity, OpenCode, Cursor, and direct CLI use.');
-    logger.info('Native assistant slash commands use the host model/session. Direct DanteForge CLI uses this shared config.');
-    logger.info(`Default provider: ${config.defaultProvider}`);
-    logger.info(`Ollama model: ${config.ollamaModel}`);
-    logger.info('');
-    logger.info('Configured providers:');
-
-    const allProviders: LLMProvider[] = ['grok', 'claude', 'openai', 'gemini', 'ollama'];
-    for (const p of allProviders) {
-      const pc = config.providers[p];
-      const hasKey = pc?.apiKey ? maskKey(pc.apiKey) : (p === 'ollama' ? '(local, no key needed)' : 'not set');
-      const model = pc?.model ?? getDefaultModel(p);
-      const isDefault = p === config.defaultProvider ? ' [DEFAULT]' : '';
-      logger.info(`  ${p}${isDefault}: key=${hasKey}, model=${model}`);
-    }
-
-    logger.info('');
-    logger.info('Commands:');
-    logger.info('  danteforge setup ollama --pull');
-    logger.info('  danteforge setup assistants --pull');
-    logger.info('  danteforge config --set-key "grok:<your-api-key>"');
-    logger.info('  danteforge config --delete-key grok');
-    logger.info('  danteforge config --provider claude');
-    logger.info('  danteforge config --model grok:grok-3');
+    showConfigStatus(config, paths);
     return;
   }
 
