@@ -1,7 +1,7 @@
 // Tests for the danteforge quality scorecard command (Sprint 50)
 import { describe, it } from 'node:test';
 import assert from 'node:assert';
-import { quality } from '../src/cli/commands/quality.js';
+import { quality, buildQualityJson } from '../src/cli/commands/quality.js';
 import type { QualityOptions } from '../src/cli/commands/quality.js';
 import type { HarshScoreResult } from '../src/core/harsh-scorer.js';
 
@@ -84,5 +84,42 @@ describe('quality command', () => {
     });
     const text = lines.join('\n');
     assert.ok(text.includes('7.0+') || text.includes('ascend'), 'should recommend ascend when no P0 gaps');
+  });
+
+  it('--json outputs valid JSON with overallScore, dimensions, and p0Gaps', async () => {
+    const lines: string[] = [];
+    await quality({ ...baseOpts(lines), json: true });
+    const parsed = JSON.parse(lines.join('\n')) as Record<string, unknown>;
+    assert.ok(typeof parsed['overallScore'] === 'number');
+    assert.ok(typeof parsed['dimensions'] === 'object');
+    assert.ok(Array.isArray(parsed['p0Gaps']));
+    assert.ok(typeof parsed['badgeMarkdown'] === 'string');
+  });
+
+  it('--json badge uses brightgreen for scores >= 9.0', () => {
+    const result = makeScore({ developerExperience: 9.5, uxPolish: 9.5 });
+    (result as Record<string, unknown>)['displayScore'] = 9.2;
+    const json = JSON.parse(buildQualityJson(result)) as Record<string, string>;
+    assert.match(json['badgeMarkdown'], /brightgreen/);
+  });
+
+  it('--json badge uses yellow for scores 7.0-8.9', () => {
+    const json = JSON.parse(buildQualityJson(makeScore())) as Record<string, string>;
+    assert.match(json['badgeMarkdown'], /yellow/);
+  });
+
+  it('--json p0Gaps lists dimensions below 7.0', () => {
+    const json = JSON.parse(buildQualityJson(makeScore())) as { p0Gaps: Array<{id: string}> };
+    const p0Ids = json.p0Gaps.map(g => g.id);
+    assert.ok(p0Ids.includes('developerExperience'), 'developerExperience (5.5) should be in P0');
+    assert.ok(p0Ids.includes('uxPolish'), 'uxPolish (6.0) should be in P0');
+  });
+
+  it('--json does not output scorecard bars (remains machine-readable)', async () => {
+    const lines: string[] = [];
+    await quality({ ...baseOpts(lines), json: true });
+    const text = lines.join('\n');
+    // Should not contain CLI bar characters
+    assert.ok(!text.includes('█') && !text.includes('[='), 'JSON output must not contain CLI bar chars');
   });
 });
