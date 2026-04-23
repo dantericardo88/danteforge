@@ -538,6 +538,42 @@ describe('compete command', () => {
     assert.strictEqual(result.action, 'validate');
   });
 
+  // T20: --validate applies strict overrides so autonomy/selfImprovement/convergence use same evidence path as measure --strict
+  it('T20: --validate uses strict overrides — raw harsh values for strict dims are replaced before drift check', async () => {
+    // Matrix has autonomy=7.0 (synced from strict scorer)
+    const matrix = makeMatrix([
+      { id: 'autonomy', label: 'Autonomy & Self-Direction', gap_to_leader: 0, scores: { self: 7.0, cursor: 9.0 }, leader: 'cursor' },
+    ]);
+
+    // Harsh scorer (non-strict) returns autonomy=3.0 — diverges heavily from matrix
+    const rawHarshResult = {
+      score: 30, displayScore: 3.0, verdict: 'needs-work' as const,
+      penalties: [], dimensions: {} as Record<string, number>,
+      displayDimensions: { autonomy: 3.0 } as Record<string, number>,
+      maturityLevel: 2, stubbedFiles: [], analysisTimestamp: new Date().toISOString(),
+    };
+
+    // Strict dims fn returns autonomy=70 (→ 7.0 display), matching the matrix
+    const strictDimsFn = async () => ({
+      autonomy: 70, selfImprovement: 70, tokenEconomy: 70,
+      specDrivenPipeline: 70, developerExperience: 70,
+      planningQuality: 70, convergenceSelfHealing: 70,
+    });
+
+    const result = await compete({
+      validate: true,
+      cwd: tmpDir,
+      _loadMatrix: async () => matrix,
+      _harshScore: async () => rawHarshResult,
+      _computeStrictDims: strictDimsFn,
+    });
+
+    // After strict overrides, autonomy assessed=7.0 matches matrix=7.0 → no drift
+    assert.strictEqual(result.action, 'validate');
+    // The raw harsh value (3.0) was replaced by the strict value (7.0), so no drift surfaced
+    // If strict overrides were NOT applied, drift would be 4.0 and validate would report it
+  });
+
   // T11: --sprint with no OSS competitors falls back to single-gap display
   it('T11: --sprint with no OSS competitors gracefully uses single-gap display', async () => {
     const matrix = makeMatrix(

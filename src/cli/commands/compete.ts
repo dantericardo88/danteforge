@@ -609,6 +609,7 @@ async function actionValidate(options: CompeteOptions, cwd: string): Promise<Com
   const matrixPath = getMatrixPath(cwd);
   const loadFn = options._loadMatrix ?? ((c) => loadMatrix(c));
   const harshScoreFn = options._harshScore ?? computeHarshScore;
+  const strictDimsFn = options._computeStrictDims ?? computeStrictDimensions;
 
   const matrix = await loadFn(cwd);
   if (!matrix) {
@@ -617,9 +618,12 @@ async function actionValidate(options: CompeteOptions, cwd: string): Promise<Com
   }
 
   // Get latest harsh-scorer output for cross-reference (best-effort)
+  // Apply strict overrides so autonomy/selfImprovement/convergence use the same
+  // evidence path as measure --strict and compete --sync-scores.
   let harshDimensions: Record<string, number> | undefined;
   try {
     const result = await harshScoreFn({ cwd });
+    await applyStrictOverrides(result, cwd, strictDimsFn);
     harshDimensions = result.displayDimensions as Record<string, number>;
   } catch { /* harsh score optional — age check still runs */ }
 
