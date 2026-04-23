@@ -36,7 +36,7 @@ function walkTs(dir) {
       if (e.isDirectory()) files.push(...walkTs(full));
       else if (e.name.endsWith('.ts') && !e.name.endsWith('.d.ts')) files.push(full);
     }
-  } catch {}
+  } catch { /* non-fatal */ }
   return files;
 }
 
@@ -50,7 +50,7 @@ for (const f of walkTs('src')) {
       total += large.length;
       byFile.push({ file: f.replace(/\\/g, '/'), count: large.length, max: Math.max(...large.map(x => x.lines)), fns: large });
     }
-  } catch {}
+  } catch { /* non-fatal */ }
 }
 byFile.sort((a, b) => b.count - a.count);
 console.log('Total large fns >100 LOC (AST-based):', total);
