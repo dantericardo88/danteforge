@@ -131,26 +131,35 @@ function buildMainNode(p: SeedPalette): OPNode {
   };
 }
 
-function buildBrandCollection(p: SeedPalette): OPVariableCollection {
-  return {
-    id: 'brand', name: 'Brand',
-    variables: [
-      { id: 'b1', name: 'color-bg-primary', collection: 'brand', type: 'color', value: p.primary },
-      { id: 'b2', name: 'color-accent', collection: 'brand', type: 'color', value: p.accent },
-      { id: 'b3', name: 'color-surface', collection: 'brand', type: 'color', value: p.surface },
-      { id: 'b4', name: 'color-text-primary', collection: 'brand', type: 'color', value: p.textPrimary },
-      { id: 'b5', name: 'color-text-muted', collection: 'brand', type: 'color', value: p.textMuted },
-      { id: 'b6', name: 'color-border', collection: 'brand', type: 'color', value: p.border },
-      { id: 'b7', name: 'color-violet', collection: 'brand', type: 'color', value: p.violet },
-      { id: 'b8', name: 'color-nav-text', collection: 'brand', type: 'color', value: p.navText },
-      { id: 's1', name: 'space-xs', collection: 'brand', type: 'number', value: 4 },
-      { id: 's2', name: 'space-sm', collection: 'brand', type: 'number', value: 8 },
-      { id: 's3', name: 'space-md', collection: 'brand', type: 'number', value: 16 },
-      { id: 's4', name: 'space-lg', collection: 'brand', type: 'number', value: 24 },
-      { id: 's5', name: 'space-xl', collection: 'brand', type: 'number', value: 40 },
-      { id: 's6', name: 'space-2xl', collection: 'brand', type: 'number', value: 48 },
-    ],
-  };
+// Split into two collections so token-extractor.ts maps spacing vars correctly
+// (extractFromCollection checks collection name for 'spacing')
+function buildBrandCollections(p: SeedPalette): OPVariableCollection[] {
+  return [
+    {
+      id: 'brand-colors', name: 'Brand Colors',
+      variables: [
+        { id: 'b1', name: 'bg-primary', collection: 'brand-colors', type: 'color', value: p.primary },
+        { id: 'b2', name: 'accent', collection: 'brand-colors', type: 'color', value: p.accent },
+        { id: 'b3', name: 'surface', collection: 'brand-colors', type: 'color', value: p.surface },
+        { id: 'b4', name: 'text-primary', collection: 'brand-colors', type: 'color', value: p.textPrimary },
+        { id: 'b5', name: 'text-muted', collection: 'brand-colors', type: 'color', value: p.textMuted },
+        { id: 'b6', name: 'border', collection: 'brand-colors', type: 'color', value: p.border },
+        { id: 'b7', name: 'violet', collection: 'brand-colors', type: 'color', value: p.violet },
+        { id: 'b8', name: 'nav-text', collection: 'brand-colors', type: 'color', value: p.navText },
+      ],
+    },
+    {
+      id: 'brand-spacing', name: 'Brand Spacing',
+      variables: [
+        { id: 's1', name: 'space-xs', collection: 'brand-spacing', type: 'number', value: 4 },
+        { id: 's2', name: 'space-sm', collection: 'brand-spacing', type: 'number', value: 8 },
+        { id: 's3', name: 'space-md', collection: 'brand-spacing', type: 'number', value: 16 },
+        { id: 's4', name: 'space-lg', collection: 'brand-spacing', type: 'number', value: 24 },
+        { id: 's5', name: 'space-xl', collection: 'brand-spacing', type: 'number', value: 40 },
+        { id: 's6', name: 'space-2xl', collection: 'brand-spacing', type: 'number', value: 48 },
+      ],
+    },
+  ];
 }
 
 export function getCanvasSeedDocument(options: CanvasSeedOptions = {}): OPDocument {
@@ -181,6 +190,6 @@ export function getCanvasSeedDocument(options: CanvasSeedOptions = {}): OPDocume
       constraints: { horizontal: 'stretch', vertical: 'stretch' },
       children: [buildSidebarNode(projectName, p), buildMainNode(p)],
     }],
-    variableCollections: [buildBrandCollection(p)],
+    variableCollections: buildBrandCollections(p),
   };
 }
