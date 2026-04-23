@@ -60,6 +60,7 @@ export interface CompeteOptions {
   json?: boolean;               // --json: machine-readable output
   skipVerify?: boolean;         // --skip-verify: bypass CERTIFY gate
   validate?: boolean;           // --validate: cross-check matrix vs harsh-scorer
+  syncScores?: boolean;         // --sync-scores: auto-apply live scorer values to matrix self-scores
   cwd?: string;
   // Injection seams for testing
   _loadMatrix?: (cwd: string) => Promise<CompeteMatrix | null>;
@@ -86,7 +87,7 @@ export interface CompeteOptions {
 }
 
 export interface CompeteResult {
-  action: 'status' | 'init' | 'sprint' | 'rescore' | 'report' | 'validate' | 'auto';
+  action: 'status' | 'init' | 'sprint' | 'rescore' | 'report' | 'validate' | 'auto' | 'sync-scores';
   matrixPath: string;
   overallScore?: number;
   nextDimension?: MatrixDimension;
@@ -647,6 +648,48 @@ async function actionValidate(options: CompeteOptions, cwd: string): Promise<Com
   return { action: 'validate', matrixPath, overallScore: matrix.overallSelfScore };
 }
 
+async function actionSyncScores(options: CompeteOptions, cwd: string): Promise<CompeteResult> {
+  const matrixPath = getMatrixPath(cwd);
+  const loadFn = options._loadMatrix ?? ((c) => loadMatrix(c));
+  const saveFn = options._saveMatrix ?? ((m, c) => saveMatrix(m, c));
+  const harshScoreFn = options._harshScore ?? computeHarshScore;
+
+  const matrix = await loadFn(cwd);
+  if (!matrix) {
+    logger.info('No CHL matrix found. Run `danteforge compete --init` first.');
+    return { action: 'validate', matrixPath };
+  }
+
+  let harshDimensions: Record<string, number> | undefined;
+  try {
+    const result = await harshScoreFn({ cwd });
+    harshDimensions = result.dimensions as Record<string, number>;
+  } catch {
+    logger.error('Failed to run harsh scorer — cannot sync scores.');
+    return { action: 'validate', matrixPath };
+  }
+
+  const report = checkMatrixStaleness(matrix, harshDimensions, 999, 0.2);
+  if (report.driftedDimensions.length === 0) {
+    logger.success('✓ All matrix self-scores are within 0.2 of live scorer — no sync needed.');
+    return { action: 'validate', matrixPath, overallScore: matrix.overallSelfScore, dimensionsUpdated: 0 };
+  }
+
+  logger.info(`Syncing ${report.driftedDimensions.length} drifted dimension(s) from live scorer:`);
+  let updated = 0;
+  for (const d of report.driftedDimensions) {
+    const dir = d.matrixScore > d.harshScore ? '↓' : '↑';
+    logger.info(`  ${d.label}: ${formatScore(d.matrixScore)} → ${formatScore(d.harshScore)} (${dir})`);
+    updateDimensionScore(matrix, d.id, d.harshScore);
+    updated++;
+  }
+
+  matrix.lastUpdated = new Date().toISOString();
+  await saveFn(matrix, cwd);
+  logger.success(`Synced ${updated} dimension(s). Overall: ${formatScore(computeOverallScore(matrix))}/10`);
+  return { action: 'validate', matrixPath, overallScore: computeOverallScore(matrix), dimensionsUpdated: updated };
+}
+
 // ── Main Entry ────────────────────────────────────────────────────────────────
 
 export async function actionAutoSprint(options: CompeteOptions, cwd: string): Promise<CompeteResult> {
@@ -786,6 +829,7 @@ export async function compete(options: CompeteOptions = {}): Promise<CompeteResu
     if (options.rescore) return await actionRescore(options, cwd, options.rescore);
     if (options.report) return await actionReport(options, cwd);
     if (options.validate) return await actionValidate(options, cwd);
+    if (options.syncScores) return await actionSyncScores(options, cwd);
     return await actionStatus(options, cwd);
   } catch (err) {
     logger.error(`compete failed: ${err instanceof Error ? err.message : String(err)}`);

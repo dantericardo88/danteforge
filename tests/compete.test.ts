@@ -720,3 +720,71 @@ describe('compete --auto (actionAutoSprint)', () => {
     assert.ok(combined.includes('All gaps closed'), 'should report all gaps closed when loop exits early');
   });
 });
+
+describe('compete --sync-scores', () => {
+  let tmpDir3: string;
+  before(async () => { tmpDir3 = await fs.mkdtemp(path.join(os.tmpdir(), 'compete-sync-')); });
+  after(async () => { await fs.rm(tmpDir3, { recursive: true, force: true }); });
+
+  function makeHarshResult(dims: Record<string, number>): HarshScoreResult {
+    return {
+      score: 70, displayScore: 7.0, verdict: 'good' as const, penalties: [],
+      dimensions: dims as Record<string, number>,
+      displayDimensions: dims as Record<string, number>,
+      maturityLevel: 4, stubbedFiles: [], analysisTimestamp: new Date().toISOString(),
+      rawScores: {}, summary: '', recommendations: [],
+    } as unknown as HarshScoreResult;
+  }
+
+  it('syncs drifted matrix self-scores from live harsh scorer', async () => {
+    const matrix = makeMatrix([
+      { id: 'ux_polish', label: 'UX Polish', scores: { self: 7.0, cursor: 9.0 }, gap_to_leader: 2.0 },
+      { id: 'testing', label: 'Testing', scores: { self: 8.0, cursor: 9.0 }, gap_to_leader: 1.0 },
+    ]);
+    let savedMatrix: CompeteMatrix | null = null;
+
+    const result = await compete({
+      syncScores: true,
+      cwd: tmpDir3,
+      _loadMatrix: async () => JSON.parse(JSON.stringify(matrix)) as CompeteMatrix,
+      _saveMatrix: async (m) => { savedMatrix = m; },
+      // Live scorer returns uxPolish=9.5 (delta 2.5, drifted), testing=8.1 (delta 0.1, within threshold)
+      _harshScore: async () => makeHarshResult({ uxPolish: 9.5, testing: 8.1 }),
+    });
+
+    assert.strictEqual(result.action, 'validate');
+    assert.ok(result.dimensionsUpdated !== undefined);
+    // uxPolish drifted by 2.5 — should be synced
+    const uxDim = (savedMatrix as CompeteMatrix | null)?.dimensions.find(d => d.id === 'ux_polish');
+    assert.ok(uxDim, 'ux_polish dimension should exist');
+    assert.strictEqual(uxDim!.scores['self'], 9.5, 'ux_polish self should be updated to live score');
+  });
+
+  it('does nothing when all scores within 0.2 threshold', async () => {
+    const matrix = makeMatrix([
+      { id: 'ux_polish', label: 'UX Polish', scores: { self: 9.4, cursor: 9.0 }, gap_to_leader: 0 },
+    ]);
+    let saveCalled = false;
+
+    await compete({
+      syncScores: true,
+      cwd: tmpDir3,
+      _loadMatrix: async () => JSON.parse(JSON.stringify(matrix)) as CompeteMatrix,
+      _saveMatrix: async () => { saveCalled = true; },
+      _harshScore: async () => makeHarshResult({ uxPolish: 9.5 }), // delta = 0.1, within 0.2
+    });
+
+    assert.strictEqual(saveCalled, false, 'should not save when no drift detected');
+  });
+
+  it('returns error if no matrix found', async () => {
+    const result = await compete({
+      syncScores: true,
+      cwd: tmpDir3,
+      _loadMatrix: async () => null,
+      _harshScore: async () => makeHarshResult({}),
+    });
+    assert.strictEqual(result.action, 'validate');
+    assert.strictEqual(result.overallScore, undefined);
+  });
+});

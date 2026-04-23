@@ -1379,6 +1379,7 @@ program
   .option('--json', 'Machine-readable output')
   .option('--skip-verify', 'Skip verify receipt check (use when certifying without running verify)')
   .option('--validate', 'Cross-check matrix self-scores against latest harsh-scorer assessment')
+  .option('--sync-scores', 'Sync all matrix self-scores from the live strict scorer (eliminates drift automatically)')
   .option('--auto', 'Run autonomous sprint+rescore loop (up to 5 cycles, stops when all gaps closed)')
   .option('--remove-competitor <name>', 'Remove a competitor from the matrix and recompute gaps')
   .option('--drop-dimension <id>', 'Remove a scoring dimension from the matrix')
@@ -1404,6 +1405,7 @@ program
           json: opts.json as boolean | undefined,
           skipVerify: opts.skipVerify as boolean | undefined,
           validate: opts.validate as boolean | undefined,
+          syncScores: opts.syncScores as boolean | undefined,
           auto: opts.auto as boolean | undefined,
           removeCompetitor: opts.removeCompetitor as string | undefined,
           dropDimension: opts.dropDimension as string | undefined,
