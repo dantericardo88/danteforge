@@ -326,6 +326,77 @@ async function displayCoflOperatorPanel(matrix: CompeteMatrix, next: MatrixDimen
   } catch { /* best-effort — cofl-engine not available or matrix incomplete */ }
 }
 
+interface SprintLeaders {
+  hasOssGap: boolean; hasClosedGap: boolean;
+  ossLeaderScore: number; csLeaderScore: number;
+  sprintTarget: number; harvestFrom: string;
+}
+
+function resolveSprintLeaders(next: ReturnType<typeof getNextSprintDimension> & object): SprintLeaders {
+  const hasOssGap = !!(next.gap_to_oss_leader > 0 && next.oss_leader && next.oss_leader !== 'unknown');
+  const hasClosedGap = !!(next.gap_to_closed_source_leader > 0 && next.closed_source_leader && next.closed_source_leader !== 'unknown');
+  const ossLeaderScore = next.scores[next.oss_leader] ?? 0;
+  const csLeaderScore = next.scores[next.closed_source_leader] ?? 0;
+  const sprintTarget = hasOssGap ? ossLeaderScore : next.next_sprint_target;
+  const harvestFrom = hasOssGap ? next.oss_leader : next.leader;
+  return { hasOssGap, hasClosedGap, ossLeaderScore, csLeaderScore, sprintTarget, harvestFrom };
+}
+
+async function generateSprintBrief(
+  next: ReturnType<typeof getNextSprintDimension> & object,
+  selfScore: number,
+  leaders: SprintLeaders,
+  callLlm: typeof callLLM,
+  webSearch?: (q: string) => Promise<string>,
+): Promise<{ harvestBrief: string; masterplanPrompt: string }> {
+  const { sprintTarget, harvestFrom, hasOssGap, hasClosedGap, csLeaderScore } = leaders;
+  let ossSearchContext = '';
+  if (webSearch) {
+    try { ossSearchContext = await webSearch(`"${next.label}" open source tool MIT Apache github`); } catch { /* best-effort */ }
+  }
+  const harvestPrompt = buildHarvestBriefPrompt(next, selfScore, sprintTarget, harvestFrom, ossSearchContext, hasOssGap, hasClosedGap, csLeaderScore);
+  const fallback = `Close "${next.label}" gap from ${formatScore(selfScore)} to ${formatScore(sprintTarget)}. Harvest from: ${harvestFrom}.`;
+  try {
+    const response = await callLlm(harvestPrompt);
+    const goalLine = response.split('\n').find(l =>
+      (l.toLowerCase().includes('close') && l.toLowerCase().includes('gap')) ||
+      l.toLowerCase().includes('harvest from'),
+    );
+    return { harvestBrief: response, masterplanPrompt: goalLine?.trim() ?? fallback };
+  } catch {
+    return { harvestBrief: '', masterplanPrompt: fallback };
+  }
+}
+
+async function markDimensionInProgress(
+  matrix: Awaited<ReturnType<typeof loadMatrix>>,
+  nextId: string,
+  harvestFrom: string,
+  hasOssGap: boolean,
+  saveFn: (m: NonNullable<typeof matrix>, c: string) => Promise<void>,
+  cwd: string,
+): Promise<void> {
+  if (!matrix) return;
+  const dim = matrix.dimensions.find(d => d.id === nextId);
+  if (dim) {
+    if (dim.status === 'not-started') dim.status = 'in-progress';
+    if (hasOssGap && !dim.harvest_source) dim.harvest_source = harvestFrom;
+    matrix.lastUpdated = new Date().toISOString();
+    await saveFn(matrix, cwd);
+  }
+}
+
+function logSprintOutput(harvestBrief: string, masterplanPrompt: string, nextId: string): void {
+  logger.info('\n## OSS Harvest Brief');
+  if (harvestBrief) logger.info(harvestBrief);
+  logger.info('\n## /inferno Masterplan Goal');
+  logger.info(masterplanPrompt);
+  logger.info('\nRun this with:');
+  logger.info(`  danteforge inferno "${masterplanPrompt}"`);
+  logger.info(`\nAfter the sprint, update the matrix:`);
+  logger.info(`  danteforge compete --rescore "${nextId}=<new_score>[,<commit_sha>]"`);
+}
+
 async function actionSprint(options: CompeteOptions, cwd: string): Promise<CompeteResult> {
   const matrixPath = getMatrixPath(cwd);
   const loadFn = options._loadMatrix ?? ((c) => loadMatrix(c));
@@ -345,82 +416,16 @@ async function actionSprint(options: CompeteOptions, cwd: string): Promise<Compe
   }
 
   const selfScore = next.scores['self'] ?? 0;
-
-  // Two-matrix display: closed-source (gold standard) vs OSS (harvestable)
-  const hasOssGap = !!(next.gap_to_oss_leader > 0 && next.oss_leader && next.oss_leader !== 'unknown');
-  const hasClosedGap = !!(next.gap_to_closed_source_leader > 0 && next.closed_source_leader && next.closed_source_leader !== 'unknown');
-
-  const ossLeaderScore = next.scores[next.oss_leader] ?? 0;
-  const csLeaderScore = next.scores[next.closed_source_leader] ?? 0;
-
-  // Sprint goal: harvest from OSS leader first (achievable), gold standard is the ceiling
-  const sprintTarget = hasOssGap ? ossLeaderScore : next.next_sprint_target;
-  const harvestFrom = hasOssGap ? next.oss_leader : next.leader;
-
-  logSprintGaps(next, selfScore, sprintTarget, harvestFrom, ossLeaderScore, csLeaderScore, hasOssGap, hasClosedGap);
+  const leaders = resolveSprintLeaders(next);
+  logSprintGaps(next, selfScore, leaders.sprintTarget, leaders.harvestFrom, leaders.ossLeaderScore, leaders.csLeaderScore, leaders.hasOssGap, leaders.hasClosedGap);
   logger.info(`\nGenerating harvest brief + /inferno masterplan...`);
 
-  // Pre-search for real OSS tools when a search function is available (skill/AI mode)
-  let ossSearchContext = '';
-  if (options._webSearch) {
-    try {
-      const query = `"${next.label}" open source tool MIT Apache github`;
-      ossSearchContext = await options._webSearch(query);
-    } catch { /* best-effort — falls back to LLM-only if search unavailable */ }
-  }
-
-  const harvestPrompt = buildHarvestBriefPrompt(next, selfScore, sprintTarget, harvestFrom, ossSearchContext, hasOssGap, hasClosedGap, csLeaderScore);
-
-  let harvestBrief = '';
-  let masterplanPrompt = '';
-
-  try {
-    const response = await callLlm(harvestPrompt);
-    harvestBrief = response;
-
-    // Extract goal line or build fallback
-    const goalLine = response.split('\n').find(l =>
-      l.toLowerCase().includes('close') && l.toLowerCase().includes('gap') ||
-      l.toLowerCase().includes('harvest from'),
-    );
-    masterplanPrompt = goalLine?.trim() ??
-      `Close "${next.label}" gap from ${formatScore(selfScore)} to ${formatScore(sprintTarget)}. Harvest from: ${harvestFrom}.`;
-  } catch {
-    masterplanPrompt = `Close "${next.label}" gap from ${formatScore(selfScore)} to ${formatScore(sprintTarget)}. Harvest from: ${harvestFrom}.`;
-  }
-
-  // Mark dimension as in-progress and populate harvest_source
-  const dim = matrix.dimensions.find(d => d.id === next.id);
-  if (dim) {
-    if (dim.status === 'not-started') dim.status = 'in-progress';
-    // Populate harvest_source with the OSS leader (the key CHL insight — where to harvest from)
-    if (hasOssGap && !dim.harvest_source) {
-      dim.harvest_source = harvestFrom;
-    }
-    matrix.lastUpdated = new Date().toISOString();
-    await saveFn(matrix, cwd);
-  }
-
-  logger.info('\n## OSS Harvest Brief');
-  if (harvestBrief) logger.info(harvestBrief);
-
-  logger.info('\n## /inferno Masterplan Goal');
-  logger.info(masterplanPrompt);
-  logger.info('\nRun this with:');
-  logger.info(`  danteforge inferno "${masterplanPrompt}"`);
-  logger.info(`\nAfter the sprint, update the matrix:`);
-  logger.info(`  danteforge compete --rescore "${next.id}=<new_score>[,<commit_sha>]"`);
-
-  // ── COFL Operator Leverage panel (best-effort — never blocks sprint) ──────
+  const { harvestBrief, masterplanPrompt } = await generateSprintBrief(next, selfScore, leaders, callLlm, options._webSearch);
+  await markDimensionInProgress(matrix, next.id, leaders.harvestFrom, leaders.hasOssGap, saveFn, cwd);
+  logSprintOutput(harvestBrief, masterplanPrompt, next.id);
   await displayCoflOperatorPanel(matrix, next);
 
-  return {
-    action: 'sprint',
-    matrixPath,
-    overallScore: matrix.overallSelfScore,
-    nextDimension: next,
-    masterplanPrompt,
-  };
+  return { action: 'sprint', matrixPath, overallScore: matrix.overallSelfScore, nextDimension: next, masterplanPrompt };
 }
 
 function parseRescore(rescore: string): { dimensionId: string; score: number; commit?: string } {
