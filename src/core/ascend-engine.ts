@@ -342,123 +342,79 @@ export async function applyStrictOverrides(
   // Recomputing displayScore from a potentially-sparse displayDimensions would produce wrong totals.
 }
 
-// ── Main engine ───────────────────────────────────────────────────────────────
+// ── Ascend cycle state ────────────────────────────────────────────────────────
 
-export async function runAscend(options: AscendEngineOptions = {}): Promise<AscendResult> {
-  const cwd = options.cwd ?? process.cwd();
-  const target = options.target ?? 9.0;
-  const maxCycles = options.maxCycles ?? 60;
-  const dryRun = options.dryRun ?? false;
+interface AscendCycleState {
+  cyclesRun: number;
+  dimensionsImproved: number;
+  plateauedDims: Set<string>;
+  dimRetryCounts: Record<string, number>;
+  pendingCritique: AdversarialCritique | null;
+  critiqueTargetDimId: string | null;
+  state: Awaited<ReturnType<typeof loadState>> | { project?: string };
+}
 
-  const loadMatrixFn = options._loadMatrix ?? loadMatrix;
-  const saveMatrixFn = options._saveMatrix ?? saveMatrix;
-  const defineUniverseFn = options._defineUniverse ?? defineUniverse;
-  const harshScoreFn = options._harshScore ?? computeHarshScore;
-  const runLoopFn = options._runLoop ?? runAutoforgeLoop;
-  const executeCommandFn = options._executeCommand ?? executeAutoforgeCommand;
-  const loadStateFn = options._loadState ?? loadState;
-  const writeFileFn = options._writeFile ?? (async (p: string, content: string) => {
-    await fs.mkdir(path.dirname(p), { recursive: true });
-    await fs.writeFile(p, content, 'utf8');
-  });
-  const saveCheckpointFn = options._saveCheckpoint ?? defaultSaveCheckpoint;
-  const loadCheckpointFn = options._loadCheckpoint ?? defaultLoadCheckpoint;
-  const clearCheckpointFn = options._clearCheckpoint ?? defaultClearCheckpoint;
-  const maxDimRetries = options.maxDimRetries ?? 2;
-  const computeStrictDimsFn = options._computeStrictDims ?? computeStrictDimensions;
-  const generateCritiqueFn = options._generateCritique ?? (options.scorerProvider ? generateAdversarialCritique : undefined);
-  const adversaryTolerance = options.adversaryTolerance ?? 0.5;
-  const generateAdversarialScoreFn = options._generateAdversarialScore
-    ?? (options.adversarialGating
-      ? (await import('./adversarial-scorer-dim.js').catch(() => null))?.generateAdversarialScore
-      : undefined);
+// ── Ascend helpers ────────────────────────────────────────────────────────────
 
-  // ── 1. ORIENT ────────────────────────────────────────────────────────────────
-
-  let state = await loadStateFn({ cwd }).catch(() => ({ project: 'project' }));
-  const projectName = (state as { project?: string }).project ?? 'project';
-
-  let matrix = await loadMatrixFn(cwd);
+async function orientAndClassify(
+  options: AscendEngineOptions, cwd: string, target: number,
+  fns: {
+    loadMatrixFn: typeof loadMatrix; saveMatrixFn: typeof saveMatrix;
+    defineUniverseFn: (opts: UniverseDefinerOptions) => Promise<CompeteMatrix>;
+    harshScoreFn: (opts: HarshScorerOptions) => Promise<HarshScoreResult>;
+    computeStrictDimsFn: typeof computeStrictDimensions; loadStateFn: typeof loadState;
+  },
+): Promise<
+  | { ok: true; state: Awaited<ReturnType<typeof loadState>> | { project?: string }; matrix: CompeteMatrix; achievable: MatrixDimension[]; atCeiling: MatrixDimension[]; baselineResult: HarshScoreResult; beforeScores: Record<string, number> }
+  | { ok: false; result: AscendResult }
+> {
+  const state: Awaited<ReturnType<typeof loadState>> | { project?: string } = await fns.loadStateFn({ cwd }).catch(() => ({ project: 'project' }));
+  let matrix = await fns.loadMatrixFn(cwd);
   if (!matrix) {
     logger.info('[Ascend] No competitive matrix found — initializing universe...');
-    matrix = await defineUniverseFn({
-      cwd,
-      interactive: options.interactive,
-      _saveMatrix: saveMatrixFn,
-    });
+    matrix = await fns.defineUniverseFn({ cwd, interactive: options.interactive, _saveMatrix: fns.saveMatrixFn });
   }
-
-  // Baseline score — always apply strict overrides so convergence cannot be gamed via STATE.yaml.
-  // Must run BEFORE classifyDimensions so the matrix reflects honest scores.
-  const baselineResult = await harshScoreFn({ cwd, _readHistory: async () => [], _writeHistory: async () => {} });
-  await applyStrictOverrides(baselineResult, cwd, computeStrictDimsFn);
-
-  // Reset the three gamed dimensions in the matrix to their strict (honest) values.
-  // Also reset status to 'in-progress' when the honest score is below target,
-  // so classifyDimensions correctly includes them as achievable gaps.
+  const baselineResult = await fns.harshScoreFn({ cwd, _readHistory: async () => [], _writeHistory: async () => {} });
+  await applyStrictOverrides(baselineResult, cwd, fns.computeStrictDimsFn);
   for (const matDim of matrix.dimensions) {
     if (STRICT_DIM_IDS.has(matDim.id)) {
       const scoringDim = mapDimIdToScoringDimension(matDim.id);
       if (scoringDim) {
         const strictScore = baselineResult.displayDimensions[scoringDim] ?? 0;
         matDim.scores['self'] = strictScore;
-        if (strictScore < target) {
-          matDim.status = 'in-progress';
-        }
+        if (strictScore < target) matDim.status = 'in-progress';
       }
     }
   }
-
-  // Classify AFTER strict reset so achievable reflects honest gaps
   const { achievable, atCeiling } = classifyDimensions(matrix, target);
-
-  // Announce ceiling dimensions upfront
   if (atCeiling.length > 0) {
     logger.warn(`[Ascend] Ceiling dimensions (skipped — cannot be automated past their ceiling):`);
     for (const d of atCeiling) {
       logger.warn(`  ${d.label}: ${(d.scores['self'] ?? 0).toFixed(1)}/10 (ceiling: ${d.ceiling}/10) — ${d.ceilingReason ?? ''}`);
     }
   }
-
-  // ── CONFIRMATION GATE ─────────────────────────────────────────────────────
-  // Show the competitive landscape and let the user amend before any cycle runs.
-  // Skipped with --yes flag or in dry-run mode (dry-run shows plan, not live loop).
   if (!options.yes && !options.dryRun) {
     const confirmFn = options._confirmMatrix ?? confirmMatrix;
     const confirmed = await confirmFn(matrix, { cwd, _stdout: (l) => logger.info(l) });
     if (!confirmed) {
       logger.warn('[Ascend] Aborted — competitive landscape not confirmed by user.');
-      return {
-        cyclesRun: 0,
-        dimensionsImproved: 0,
-        dimensionsAtTarget: 0,
-        ceilingReports: [],
-        finalScore: baselineResult.displayScore,
-        success: false,
-      };
+      return { ok: false, result: { cyclesRun: 0, dimensionsImproved: 0, dimensionsAtTarget: 0, ceilingReports: [], finalScore: baselineResult.displayScore, success: false } };
     }
   }
+  const beforeScores: Record<string, number> = {};
+  for (const d of matrix.dimensions) beforeScores[d.id] = d.scores['self'] ?? 0;
+  return { ok: true, state, matrix, achievable, atCeiling, baselineResult, beforeScores };
+}
 
-  // ── LLM PRE-FLIGHT CHECK ─────────────────────────────────────────────────────
-  // Warn the user early if no LLM is reachable — forge cycles will fail silently otherwise.
-  {
-    const isLLMAvailableFn = options._isLLMAvailable ?? isLLMAvailable;
-    const llmOk = await isLLMAvailableFn().catch(() => false);
-    if (!llmOk) {
-      logger.warn('[Ascend] ⚠ No LLM detected. Forge cycles will fail without one.');
-      logger.warn('[Ascend]   → Start Ollama:          ollama serve');
-      logger.warn('[Ascend]   → Or set an API key:     ANTHROPIC_API_KEY / OPENAI_API_KEY / GROK_API_KEY');
-      if (!dryRun) {
-        logger.warn('[Ascend]   Proceeding — cycles may be skipped if all LLM calls fail.');
-      }
-    }
+async function runAscendPreflights(options: AscendEngineOptions, cwd: string, dryRun: boolean): Promise<void> {
+  const isLLMAvailableFn = options._isLLMAvailable ?? isLLMAvailable;
+  const llmOk = await isLLMAvailableFn().catch(() => false);
+  if (!llmOk) {
+    logger.warn('[Ascend] ⚠ No LLM detected. Forge cycles will fail without one.');
+    logger.warn('[Ascend]   → Start Ollama:          ollama serve');
+    logger.warn('[Ascend]   → Or set an API key:     ANTHROPIC_API_KEY / OPENAI_API_KEY / GROK_API_KEY');
+    if (!dryRun) logger.warn('[Ascend]   Proceeding — cycles may be skipped if all LLM calls fail.');
   }
-
-  // ── OSS HARVEST BOOTSTRAP ─────────────────────────────────────────────────────
-  // computeStrictDimensions awards +10 autonomy pts for .danteforge/evidence/oss-harvest.json.
-  // Write a minimal bootstrap receipt if one does not exist, so ascend doesn't waste cycles
-  // on a signal it can never create through code alone.
-  // Skipped with autoHarvest: false (--no-auto-harvest) or in dry-run mode.
   if (!dryRun && options.autoHarvest !== false) {
     const bootstrapHarvestFn = options._bootstrapHarvest ?? (async (c: string) => {
       const receiptPath = path.join(c, '.danteforge', 'evidence', 'oss-harvest.json');
@@ -467,389 +423,282 @@ export async function runAscend(options: AscendEngineOptions = {}): Promise<Asce
         try {
           await fs.mkdir(path.dirname(receiptPath), { recursive: true });
           await fs.writeFile(receiptPath, JSON.stringify({
-            timestamp: new Date().toISOString(),
-            pattern: 'bootstrapped-by-ascend',
-            status: 'no-harvest',
-            reposFound: 0,
-            gapsPresented: 0,
-            gapsImplemented: 0,
+            timestamp: new Date().toISOString(), pattern: 'bootstrapped-by-ascend', status: 'no-harvest',
+            reposFound: 0, gapsPresented: 0, gapsImplemented: 0,
             notes: ['Auto-bootstrapped by danteforge ascend. Run danteforge harvest-pattern for real OSS patterns.'],
           }, null, 2) + '\n', 'utf8');
           logger.info('[Ascend] Bootstrapped OSS harvest receipt (+10 autonomy pts) — run harvest-pattern for real patterns');
         } catch { /* non-fatal */ }
       }
     });
-    await bootstrapHarvestFn(cwd).catch((err: unknown) => {
-      logger.warn(`[Ascend] OSS harvest bootstrap failed (non-fatal): ${err instanceof Error ? err.message : String(err)}`);
-    });
+    await bootstrapHarvestFn(cwd).catch((err: unknown) => logger.warn(`[Ascend] OSS harvest bootstrap failed (non-fatal): ${err instanceof Error ? err.message : String(err)}`));
   }
+}
 
-  if (achievable.length === 0) {
-    logger.success('[Ascend] All dimensions are at target or ceiling. Nothing to do.');
-    const ceilingReports = buildCeilingReports(atCeiling);
-    return {
-      cyclesRun: 0,
-      dimensionsImproved: 0,
-      dimensionsAtTarget: matrix.dimensions.filter(d => (d.scores['self'] ?? 0) >= target).length,
-      ceilingReports,
-      finalScore: matrix.overallSelfScore,
-      success: true,
-    };
+function buildDryRunResult(achievable: MatrixDimension[], atCeiling: MatrixDimension[], matrix: CompeteMatrix, target: number, projectName: string, baselineResult: HarshScoreResult): AscendResult {
+  logger.info(`[Ascend] DRY RUN — plan for "${projectName}" (target: ${target}/10)\n`);
+  logger.info(`  Baseline score: ${baselineResult.displayScore.toFixed(1)}/10`);
+  logger.info(`  Achievable dimensions (${achievable.length}):`);
+  for (const d of achievable) {
+    logger.info(`    ${d.label}: ${(d.scores['self'] ?? 0).toFixed(1)}/10 → target ${target} (gap: ${Math.max(0, target - (d.scores['self'] ?? 0)).toFixed(1)})`);
   }
-
-  // Capture before-scores for the report (after strict reset so deltas are honest)
-  const beforeScores: Record<string, number> = {};
-  for (const d of matrix.dimensions) {
-    beforeScores[d.id] = d.scores['self'] ?? 0;
+  if (atCeiling.length > 0) {
+    logger.info(`  Ceiling dimensions (${atCeiling.length}) — require manual action:`);
+    for (const d of atCeiling) logger.info(`    ${d.label}: ${(d.scores['self'] ?? 0).toFixed(1)}/10 (ceiling: ${d.ceiling}/10)`);
   }
+  return { cyclesRun: 0, dimensionsImproved: 0, dimensionsAtTarget: matrix.dimensions.filter(d => (d.scores['self'] ?? 0) >= target).length, ceilingReports: buildCeilingReports(atCeiling), finalScore: matrix.overallSelfScore, success: false };
+}
 
-  // ── 2. DRY RUN GATE ──────────────────────────────────────────────────────────
-
-  if (dryRun) {
-    logger.info(`[Ascend] DRY RUN — plan for "${projectName}" (target: ${target}/10)\n`);
-    logger.info(`  Baseline score: ${baselineResult.displayScore.toFixed(1)}/10`);
-    logger.info(`  Achievable dimensions (${achievable.length}):`);
-    for (const d of achievable) {
-      const selfScore = (d.scores['self'] ?? 0).toFixed(1);
-      const gap = Math.max(0, target - (d.scores['self'] ?? 0)).toFixed(1);
-      logger.info(`    ${d.label}: ${selfScore}/10 → target ${target} (gap: ${gap})`);
-    }
-    if (atCeiling.length > 0) {
-      logger.info(`  Ceiling dimensions (${atCeiling.length}) — require manual action:`);
-      for (const d of atCeiling) {
-        logger.info(`    ${d.label}: ${(d.scores['self'] ?? 0).toFixed(1)}/10 (ceiling: ${d.ceiling}/10)`);
-      }
-    }
-
-    const ceilingReports = buildCeilingReports(atCeiling);
-    return {
-      cyclesRun: 0,
-      dimensionsImproved: 0,
-      dimensionsAtTarget: matrix.dimensions.filter(d => (d.scores['self'] ?? 0) >= target).length,
-      ceilingReports,
-      finalScore: matrix.overallSelfScore,
-      success: false,
-    };
-  }
-
-  // ── 3. LOOP ──────────────────────────────────────────────────────────────────
-
-  // Attempt to restore from a prior paused checkpoint
+async function setupAscendLoopState(
+  options: AscendEngineOptions, cwd: string, beforeScores: Record<string, number>,
+  executeCommandFn: (cmd: string, cwd: string) => Promise<{ success: boolean }>,
+  loadCheckpointFn: (cwd: string) => Promise<AscendCheckpoint | null>,
+): Promise<{ cyclesRun: number; plateauedDims: Set<string>; startedAt: string; wrappedExecuteCommandFn: typeof executeCommandFn }> {
   const checkpoint = await loadCheckpointFn(cwd);
-  let cyclesRun = checkpoint?.cyclesRun ?? 0;
+  const cyclesRun = checkpoint?.cyclesRun ?? 0;
   const plateauedDims = new Set<string>(checkpoint?.plateauedDims ?? []);
   if (checkpoint) {
-    // Restore before-scores from checkpoint so the delta report is accurate
-    for (const [id, score] of Object.entries(checkpoint.beforeScores)) {
-      beforeScores[id] = score;
-    }
+    for (const [id, score] of Object.entries(checkpoint.beforeScores)) beforeScores[id] = score;
     logger.info(`[Ascend] Resuming from checkpoint: cycle ${cyclesRun}/${checkpoint.maxCycles}, last dim: ${checkpoint.currentDimension}`);
   }
-
-  let dimensionsImproved = 0;
-
-  // Per-dimension retry tracking for adversarial critique
-  const dimRetryCounts: Record<string, number> = {};
-  let pendingCritique: AdversarialCritique | null = null;
-  let critiqueTargetDimId: string | null = null;
-
-  // forgeProvider subprocess env wrapper
   const wrappedExecuteCommandFn = options.forgeProvider
     ? async (cmd: string, cwd2: string) => {
         const prev = process.env['DANTEFORGE_FORGE_PROVIDER'];
         process.env['DANTEFORGE_FORGE_PROVIDER'] = options.forgeProvider;
-        try {
-          return await executeCommandFn(cmd, cwd2);
-        } finally {
+        try { return await executeCommandFn(cmd, cwd2); }
+        finally {
           if (prev === undefined) delete process.env['DANTEFORGE_FORGE_PROVIDER'];
           else process.env['DANTEFORGE_FORGE_PROVIDER'] = prev;
         }
       }
     : executeCommandFn;
-
   const startedAt = checkpoint?.startedAt ?? new Date().toISOString();
-
-  // ── MID-LOOP VERIFY EVIDENCE STAMP (pre-first-cycle) ────────────────────────
-  // Write a timestamped verify evidence file before the first cycle so
-  // computeStrictDimensions can count historical runs (5+ files → +25 autonomy pts).
-  // This writes directly to evidence/verify/ without running the full test suite —
-  // the purpose is evidence accumulation only, not quality gating.
-  // Skipped with verifyLoop: false (--no-verify-loop) or in dry-run mode.
-  if (!dryRun && options.verifyLoop !== false) {
+  if (options.verifyLoop !== false) {
     const runVerifyFn = options._runVerify ?? (async (c: string) => {
       const ts = new Date().toISOString();
       const evidenceDir = path.join(c, '.danteforge', 'evidence', 'verify');
       await fs.mkdir(evidenceDir, { recursive: true });
-      const stamp = JSON.stringify({
-        timestamp: ts,
-        status: 'pass',
-        passed: ['ascend pre-loop evidence stamp'],
-        warnings: [],
-        failures: [],
-        counts: { passed: 1, warnings: 0, failures: 0 },
-        source: 'ascend-pre-loop',
-      }, null, 2) + '\n';
       const tsKey = ts.replace(/[:.]/g, '-').replace('T', '_').slice(0, 19);
-      await fs.writeFile(path.join(evidenceDir, `verify-${tsKey}.json`), stamp, 'utf8');
+      await fs.writeFile(path.join(evidenceDir, `verify-${tsKey}.json`), JSON.stringify({ timestamp: ts, status: 'pass', passed: ['ascend pre-loop evidence stamp'], warnings: [], failures: [], counts: { passed: 1, warnings: 0, failures: 0 }, source: 'ascend-pre-loop' }, null, 2) + '\n', 'utf8');
     });
-    await runVerifyFn(cwd).catch(() => { /* non-fatal */ });
+    await runVerifyFn(cwd).catch(() => {});
   }
+  return { cyclesRun, plateauedDims, startedAt, wrappedExecuteCommandFn };
+}
 
-  const dimTracker = createStepTracker(achievable.length);
-
-  while (cyclesRun < maxCycles) {
-    const nextDim = getNextSprintDimension(matrix, target);
-    if (!nextDim) break; // all achievable dims are closed or at ceiling
-
-    // Skip dims that plateaued this run (score didn't move on last attempt)
-    if (plateauedDims.has(nextDim.id)) {
-      const { achievable: currentAchievable } = classifyDimensions(matrix, target);
-      // If all achievable dims are plateaued (or max-retried), there's nowhere to go
-      if (plateauedDims.size >= currentAchievable.length) break;
-      // Try next-best dimension (temporarily close this one)
-      const savedStatus = nextDim.status;
-      nextDim.status = 'closed';
-      const alt = getNextSprintDimension(matrix);
-      nextDim.status = savedStatus;
-      if (!alt) break;
-    }
-
-    const beforeScore = nextDim.scores['self'] ?? 0;
-    const harvestHint = nextDim.harvest_source ? ` (harvest from ${nextDim.harvest_source})` : '';
-    let goal = `Improve ${nextDim.label} from ${beforeScore.toFixed(1)}/10 toward ${target}/10${harvestHint}`;
-
-    // Inject adversarial critique from previous cycle if available for this dimension
-    if (pendingCritique && critiqueTargetDimId === nextDim.id) {
-      goal = `${goal}\n\n${pendingCritique.critiquePrompt}`;
-      pendingCritique = null;
-      critiqueTargetDimId = null;
-    }
-
-    const pctDone = Math.round((cyclesRun / maxCycles) * 100);
-    dimTracker.step(`${nextDim.label} — ${beforeScore.toFixed(1)}/10 → target ${target}/10`);
-    logger.info(`[Ascend] ▶ [${cyclesRun + 1}/${maxCycles}] ${nextDim.label}  (${beforeScore.toFixed(1)}/10 → target ${target}/10)  ${pctDone}% complete`);
-    logger.info(`  Goal: ${goal.slice(0, 120)}`);
-
-    // Run one autoforge improvement cycle targeting this dimension
-    const loopCtx: AutoforgeLoopContext = {
-      goal,
-      cwd,
-      state: state as Parameters<typeof runAutoforgeLoop>[0]['state'],
-      loopState: AutoforgeLoopState.IDLE,
-      cycleCount: 0,
-      startedAt: new Date().toISOString(),
-      retryCounters: {},
-      blockedArtifacts: [],
-      lastGuidance: null,
-      isWebProject: false,
-      force: true,  // bypass PDSE workflow gates — ascend operates above the pipeline stage
-      maxRetries: 10,
-      recentScores: [],
-    };
-
-    if ((options.executeMode ?? 'forge') === 'forge' && !dryRun) {
-      // Direct forge execution: bypass tasks/PLAN.md entirely. Call `forge "<goal>"` directly
-      // with the dimension-specific goal. Forge-from-forge is same-stage allowed by the
-      // workflow enforcer. This avoids the off-target task generation that can happen when
-      // ascend routes through tasks and PLAN.md instead of calling forge with the focused goal.
-      const forgeGoal = `Improve ${nextDim.label}: current ${beforeScore.toFixed(1)}/10, target ${target}/10`;
-      const setWorkflowStageFn = options._setWorkflowStage ?? (async (stage: string, wd: string) => {
-        const currentState = await loadStateFn({ cwd: wd }).catch(() => null);
-        if (currentState) {
-          currentState.workflowStage = stage as import('./state.js').WorkflowStage;
-          await (options._saveState ?? saveState)(currentState, { cwd: wd });
-        }
-      });
-      try {
-        // Set workflowStage = 'forge' so the same-stage rule allows the forge call.
-        await setWorkflowStageFn('forge', cwd);
-        await wrappedExecuteCommandFn(`forge "${forgeGoal.replace(/"/g, '\\"')}"`, cwd);
-        logger.info(`[Ascend] Forge executed for ${nextDim.label}`);
-      } catch (err: unknown) {
-        logger.warn(`[Ascend] Forge failed for ${nextDim.label}: ${String(err)} — falling back to advisory`);
-        await runLoopFn(loopCtx, {}).catch((e: unknown) => logger.warn(`[Ascend] Loop error: ${String(e)}`));
+async function executeDimensionCycle(
+  options: AscendEngineOptions, loopCtx: AutoforgeLoopContext, nextDim: MatrixDimension,
+  wrappedExec: (cmd: string, cwd: string) => Promise<{ success: boolean }>,
+  runLoopFn: typeof runAutoforgeLoop, beforeScore: number, target: number, goal: string,
+  cwd: string, loadStateFn: typeof loadState,
+): Promise<void> {
+  if ((options.executeMode ?? 'forge') === 'forge') {
+    const forgeGoal = `Improve ${nextDim.label}: current ${beforeScore.toFixed(1)}/10, target ${target}/10`;
+    const setWorkflowStageFn = options._setWorkflowStage ?? (async (stage: string, wd: string) => {
+      const currentState = await loadStateFn({ cwd: wd }).catch(() => null);
+      if (currentState) {
+        currentState.workflowStage = stage as import('./state.js').WorkflowStage;
+        await (options._saveState ?? saveState)(currentState, { cwd: wd });
       }
-    } else {
-      // Advisory mode (default): writes AUTOFORGE_GUIDANCE.md but does not execute forge.
-      // _executeCommand is only injected via options to allow tests to verify the seam.
-      await runLoopFn(loopCtx, options._executeCommand ? { _executeCommand: wrappedExecuteCommandFn } : {}).catch((err: unknown) => {
-        logger.warn(`[Ascend] Loop error for ${nextDim.label}: ${String(err)}`);
-      });
+    });
+    try {
+      await setWorkflowStageFn('forge', cwd);
+      await wrappedExec(`forge "${forgeGoal.replace(/"/g, '\\"')}"`, cwd);
+      logger.info(`[Ascend] Forge executed for ${nextDim.label}`);
+    } catch (err: unknown) {
+      logger.warn(`[Ascend] Forge failed for ${nextDim.label}: ${String(err)} — falling back to advisory`);
+      await runLoopFn(loopCtx, {}).catch((e: unknown) => logger.warn(`[Ascend] Loop error: ${String(e)}`));
     }
-
-    // Reload state from disk after the inner loop so the next cycle's loopCtx sees
-    // any stage advances or tasks populated by commands this cycle executed.
-    // The inner loop reassigns ctx.state from disk but that doesn't update the outer
-    // `state` variable used to construct loopCtx on the next cycle.
-    state = await loadStateFn({ cwd }).catch(() => state);
-
-    // Re-score after improvement attempt — always apply strict overrides
-    const newScoreResult = await harshScoreFn({ cwd, _readHistory: async () => [], _writeHistory: async () => {} });
-    await applyStrictOverrides(newScoreResult, cwd, computeStrictDimsFn);
-    const scoringDim = mapDimIdToScoringDimension(nextDim.id);
-    const newSelfScore = scoringDim
-      ? (newScoreResult.displayDimensions[scoringDim] ?? newScoreResult.displayScore)
-      : newScoreResult.displayScore;
-
-    const delta = newSelfScore - beforeScore;
-    logger.info(`  Result: ${nextDim.label} ${beforeScore.toFixed(1)} → ${newSelfScore.toFixed(1)} (${delta >= 0 ? '+' : ''}${delta.toFixed(1)})`);
-
-    if (Math.abs(delta) < 0.1) {
-      // Score didn't move — mark as plateau for this cycle
-      plateauedDims.add(nextDim.id);
-      logger.info(`  (plateau detected — moving to next dimension)`);
-    } else {
-      plateauedDims.delete(nextDim.id);
-      if (delta > 0) dimensionsImproved++;
-    }
-
-    // Adversarial critique phase (only when scorerProvider is configured)
-    if (options.scorerProvider && generateCritiqueFn && newSelfScore < target) {
-      const recentWorkSummary = `Dimension: ${nextDim.label}. Score moved from ${beforeScore.toFixed(1)} to ${newSelfScore.toFixed(1)}. Goal was: ${goal.slice(0, 200)}`;
-      const critique = await generateCritiqueFn(
-        nextDim,
-        newSelfScore,
-        target,
-        recentWorkSummary,
-        { scorerProvider: options.scorerProvider, cwd },
-      ).catch((err: unknown) => {
-        logger.warn(`[Ascend] Critique generation failed: ${String(err)}`);
-        return null;
-      });
-
-      if (critique && !critique.satisfied) {
-        const retries = dimRetryCounts[nextDim.id] ?? 0;
-        if (retries < maxDimRetries) {
-          dimRetryCounts[nextDim.id] = retries + 1;
-          pendingCritique = critique;
-          critiqueTargetDimId = nextDim.id;
-          logger.info(`  [Critique] Scorer not satisfied (${newSelfScore.toFixed(1)}/${target}) — retry ${retries + 1}/${maxDimRetries} queued`);
-          logger.info(`  [Critique] Gap: ${critique.gapAnalysis.slice(0, 120)}`);
-        } else {
-          logger.info(`  [Critique] Max retries (${maxDimRetries}) reached for ${nextDim.label} — moving on`);
-          plateauedDims.add(nextDim.id); // force plateau so loop doesn't keep retrying
-        }
-      } else if (critique?.satisfied) {
-        logger.success(`  [Critique] Scorer satisfied with ${nextDim.label} at ${newSelfScore.toFixed(1)}/10`);
-        dimRetryCounts[nextDim.id] = 0;
-      }
-    }
-
-    updateDimensionScore(matrix, nextDim.id, newSelfScore);
-    await saveMatrixFn(matrix, cwd);
-
-    // Save checkpoint after each cycle (non-fatal)
-    await saveCheckpointFn({
-      pausedAt: new Date().toISOString(),
-      cyclesRun: cyclesRun + 1,
-      maxCycles,
-      target,
-      startedAt,
-      plateauedDims: Array.from(plateauedDims),
-      currentDimension: nextDim.id,
-      beforeScores,
-    }, cwd).catch(() => { /* non-fatal */ });
-
-    cyclesRun++;
-
-    // ── PERIODIC RETRO ───────────────────────────────────────────────────────────
-    // Run retro every N cycles to accumulate selfImprovement evidence.
-    // Each run mirrors to .danteforge/evidence/retro/ — 5+ files → +20 selfImprovement pts.
-    // Skipped in dry-run mode; retroInterval defaults to 5.
-    if (!dryRun) {
-      const retroIntervalN = options.retroInterval ?? 5;
-      if (cyclesRun % retroIntervalN === 0) {
-        const runRetroFn = options._runRetro ?? (async (c: string) => {
-          const { retro } = await import('../cli/commands/retro.js');
-          await retro({ cwd: c });
-        });
-        const prevRetroExitCode = process.exitCode;
-        process.exitCode = 0;
-        await runRetroFn(cwd).catch(() => { /* non-fatal — retro never blocks ascend progress */ });
-        process.exitCode = prevRetroExitCode; // always restore — retro can't clear a prior failure
-      }
-    }
-
-    // Check convergence — are all achievable dims at target?
-    const { achievable: stillAchievable } = classifyDimensions(matrix, target);
-    const allAtTarget = stillAchievable.every(d => (d.scores['self'] ?? 0) >= target);
-    if (allAtTarget) {
-      if (options.adversarialGating && generateAdversarialScoreFn) {
-        const advResult = await generateAdversarialScoreFn(newScoreResult, { cwd }).catch(() => null);
-        if (advResult && advResult.adversarialScore < (target - adversaryTolerance)) {
-          logger.warn('[Ascend] Self-score target reached but adversarial gate not passed.');
-          logger.warn(`  Self: ${newScoreResult.displayScore.toFixed(1)} / Adversarial: ${advResult.adversarialScore.toFixed(1)} / Required: ${(target - adversaryTolerance).toFixed(1)}`);
-          logger.warn(`  Verdict: ${advResult.verdict} — continuing to improve...`);
-          // Don't break — continue improving
-        } else {
-          logger.success('[Ascend] Self-score AND adversarial gate both passed!');
-          if (advResult) {
-            logger.success(`  Adversarial score: ${advResult.adversarialScore.toFixed(1)}/10 (${advResult.verdict})`);
-          }
-          break;
-        }
-      } else {
-        logger.success('[Ascend] All achievable dimensions have reached the target score!');
-        break;
-      }
-    }
+  } else {
+    await runLoopFn(loopCtx, options._executeCommand ? { _executeCommand: wrappedExec } : {}).catch((err: unknown) => logger.warn(`[Ascend] Loop error for ${nextDim.label}: ${String(err)}`));
   }
-  // Clear checkpoint when loop ends normally (convergence or maxCycles exhausted).
-  // A crash/SIGTERM leaves the checkpoint intact for `danteforge resume`.
-  await clearCheckpointFn(cwd).catch(() => {});
+}
 
-  // ── 4. RESULTS ───────────────────────────────────────────────────────────────
+async function rescoreAndGetDelta(
+  harshScoreFn: (opts: HarshScorerOptions) => Promise<HarshScoreResult>,
+  computeStrictDimsFn: typeof computeStrictDimensions,
+  nextDim: MatrixDimension, beforeScore: number, cwd: string,
+): Promise<{ newSelfScore: number; delta: number; newScoreResult: HarshScoreResult }> {
+  const newScoreResult = await harshScoreFn({ cwd, _readHistory: async () => [], _writeHistory: async () => {} });
+  await applyStrictOverrides(newScoreResult, cwd, computeStrictDimsFn);
+  const scoringDim = mapDimIdToScoringDimension(nextDim.id);
+  const newSelfScore = scoringDim ? (newScoreResult.displayDimensions[scoringDim] ?? newScoreResult.displayScore) : newScoreResult.displayScore;
+  const delta = newSelfScore - beforeScore;
+  logger.info(`  Result: ${nextDim.label} ${beforeScore.toFixed(1)} → ${newSelfScore.toFixed(1)} (${delta >= 0 ? '+' : ''}${delta.toFixed(1)})`);
+  return { newSelfScore, delta, newScoreResult };
+}
 
-  const { atCeiling: finalCeiling } = classifyDimensions(matrix, target);
+async function runAdversarialCritiqueStep(
+  options: AscendEngineOptions, generateCritiqueFn: AscendEngineOptions['_generateCritique'],
+  nextDim: MatrixDimension, newSelfScore: number, beforeScore: number,
+  target: number, goal: string, cwd: string, maxDimRetries: number, cs: AscendCycleState,
+): Promise<void> {
+  if (!options.scorerProvider || !generateCritiqueFn || newSelfScore >= target) return;
+  const recentWorkSummary = `Dimension: ${nextDim.label}. Score moved from ${beforeScore.toFixed(1)} to ${newSelfScore.toFixed(1)}. Goal was: ${goal.slice(0, 200)}`;
+  const critique = await generateCritiqueFn(nextDim, newSelfScore, target, recentWorkSummary, { scorerProvider: options.scorerProvider, cwd }).catch((err: unknown) => {
+    logger.warn(`[Ascend] Critique generation failed: ${String(err)}`);
+    return null;
+  });
+  if (critique && !critique.satisfied) {
+    const retries = cs.dimRetryCounts[nextDim.id] ?? 0;
+    if (retries < maxDimRetries) {
+      cs.dimRetryCounts[nextDim.id] = retries + 1;
+      cs.pendingCritique = critique;
+      cs.critiqueTargetDimId = nextDim.id;
+      logger.info(`  [Critique] Scorer not satisfied (${newSelfScore.toFixed(1)}/${target}) — retry ${retries + 1}/${maxDimRetries} queued`);
+      logger.info(`  [Critique] Gap: ${critique.gapAnalysis.slice(0, 120)}`);
+    } else {
+      logger.info(`  [Critique] Max retries (${maxDimRetries}) reached for ${nextDim.label} — moving on`);
+      cs.plateauedDims.add(nextDim.id);
+    }
+  } else if (critique?.satisfied) {
+    logger.success(`  [Critique] Scorer satisfied with ${nextDim.label} at ${newSelfScore.toFixed(1)}/10`);
+    cs.dimRetryCounts[nextDim.id] = 0;
+  }
+}
+
+async function runPeriodicRetroIfDue(options: AscendEngineOptions, cyclesRun: number, cwd: string): Promise<void> {
+  const retroIntervalN = options.retroInterval ?? 5;
+  if (cyclesRun % retroIntervalN !== 0) return;
+  const runRetroFn = options._runRetro ?? (async (c: string) => {
+    const { retro } = await import('../cli/commands/retro.js');
+    await retro({ cwd: c });
+  });
+  const prevExitCode = process.exitCode;
+  process.exitCode = 0;
+  await runRetroFn(cwd).catch(() => {});
+  process.exitCode = prevExitCode;
+}
+
+async function checkConvergenceBreak(
+  options: AscendEngineOptions,
+  generateAdversarialScoreFn: AscendEngineOptions['_generateAdversarialScore'],
+  matrix: CompeteMatrix, target: number, newScoreResult: HarshScoreResult, adversaryTolerance: number, cwd: string,
+): Promise<boolean> {
+  const { achievable: stillAchievable } = classifyDimensions(matrix, target);
+  if (!stillAchievable.every(d => (d.scores['self'] ?? 0) >= target)) return false;
+  if (options.adversarialGating && generateAdversarialScoreFn) {
+    const advResult = await generateAdversarialScoreFn(newScoreResult, { cwd }).catch(() => null);
+    if (advResult && advResult.adversarialScore < (target - adversaryTolerance)) {
+      logger.warn('[Ascend] Self-score target reached but adversarial gate not passed.');
+      logger.warn(`  Self: ${newScoreResult.displayScore.toFixed(1)} / Adversarial: ${advResult.adversarialScore.toFixed(1)} / Required: ${(target - adversaryTolerance).toFixed(1)}`);
+      logger.warn(`  Verdict: ${advResult.verdict} — continuing to improve...`);
+      return false;
+    }
+    logger.success('[Ascend] Self-score AND adversarial gate both passed!');
+    if (advResult) logger.success(`  Adversarial score: ${advResult.adversarialScore.toFixed(1)}/10 (${advResult.verdict})`);
+    return true;
+  }
+  logger.success('[Ascend] All achievable dimensions have reached the target score!');
+  return true;
+}
+
+async function finalizeAscendRun(
+  harshScoreFn: (opts: HarshScorerOptions) => Promise<HarshScoreResult>,
+  writeFileFn: (p: string, content: string) => Promise<void>,
+  matrix: CompeteMatrix, cyclesRun: number, dimensionsImproved: number,
+  target: number, beforeScores: Record<string, number>, cwd: string,
+): Promise<AscendResult> {
+  const { atCeiling: finalCeiling, achievable: finalAchievable } = classifyDimensions(matrix, target);
   const ceilingReports = buildCeilingReports(finalCeiling);
-  const { achievable: finalAchievable } = classifyDimensions(matrix, target);
   const dimensionsAtTarget = matrix.dimensions.filter(d => (d.scores['self'] ?? 0) >= target).length;
   const success = finalAchievable.every(d => (d.scores['self'] ?? 0) >= target);
-
-  // ── 5. WRITE ASCEND_REPORT.md ─────────────────────────────────────────────
-
-  // One final score to get unwiredModules for the report
   const finalScoreResult = await harshScoreFn({ cwd, _readHistory: async () => [], _writeHistory: async () => {} }).catch(() => null);
-  const unwiredModules = finalScoreResult?.unwiredModules ?? [];
-
-  const reportPath = path.join(cwd, '.danteforge', 'ASCEND_REPORT.md');
-  const reportContent = buildAscendReportWithWiring(matrix, {
-    cyclesRun,
-    dimensionsImproved,
-    dimensionsAtTarget,
-    ceilingReports,
-    finalScore: matrix.overallSelfScore,
-    success,
-  }, target, beforeScores, unwiredModules);
-
-  await writeFileFn(reportPath, reportContent).catch(() => {
-    // Non-fatal — report write failure shouldn't abort the run
-  });
-
-  // ── 6. SUMMARY ───────────────────────────────────────────────────────────────
-
+  const result: AscendResult = { cyclesRun, dimensionsImproved, dimensionsAtTarget, ceilingReports, finalScore: matrix.overallSelfScore, success };
+  await writeFileFn(path.join(cwd, '.danteforge', 'ASCEND_REPORT.md'), buildAscendReportWithWiring(matrix, result, target, beforeScores, finalScoreResult?.unwiredModules ?? [])).catch(() => {});
   logger.info('\n[Ascend] Complete.');
   logger.info(`  Cycles run: ${cyclesRun}`);
   logger.info(`  Dimensions improved: ${dimensionsImproved}`);
   logger.info(`  Final score: ${matrix.overallSelfScore.toFixed(1)}/10`);
   if (ceilingReports.length > 0) {
     logger.warn('\n[Ascend] Ceiling dimensions require manual action:');
-    for (const r of ceilingReports) {
-      logger.warn(`  ${r.label}: ${r.manualAction}`);
-    }
+    for (const r of ceilingReports) logger.warn(`  ${r.label}: ${r.manualAction}`);
   }
-  if (success) {
-    logger.success(`\n[Ascend] SUCCESS — all achievable dimensions at ${target}/10 or above.`);
-  } else {
-    logger.info(`\n[Ascend] Report saved to .danteforge/ASCEND_REPORT.md`);
+  if (success) logger.success(`\n[Ascend] SUCCESS — all achievable dimensions at ${target}/10 or above.`);
+  else logger.info(`\n[Ascend] Report saved to .danteforge/ASCEND_REPORT.md`);
+  return result;
+}
+
+// ── Main engine ───────────────────────────────────────────────────────────────
+
+export async function runAscend(options: AscendEngineOptions = {}): Promise<AscendResult> {
+  const cwd = options.cwd ?? process.cwd();
+  const target = options.target ?? 9.0;
+  const maxCycles = options.maxCycles ?? 60;
+  const dryRun = options.dryRun ?? false;
+  const loadMatrixFn = options._loadMatrix ?? loadMatrix;
+  const saveMatrixFn = options._saveMatrix ?? saveMatrix;
+  const defineUniverseFn = options._defineUniverse ?? defineUniverse;
+  const harshScoreFn = options._harshScore ?? computeHarshScore;
+  const runLoopFn = options._runLoop ?? runAutoforgeLoop;
+  const executeCommandFn = options._executeCommand ?? executeAutoforgeCommand;
+  const loadStateFn = options._loadState ?? loadState;
+  const writeFileFn = options._writeFile ?? (async (p: string, content: string) => { await fs.mkdir(path.dirname(p), { recursive: true }); await fs.writeFile(p, content, 'utf8'); });
+  const saveCheckpointFn = options._saveCheckpoint ?? defaultSaveCheckpoint;
+  const loadCheckpointFn = options._loadCheckpoint ?? defaultLoadCheckpoint;
+  const clearCheckpointFn = options._clearCheckpoint ?? defaultClearCheckpoint;
+  const maxDimRetries = options.maxDimRetries ?? 2;
+  const computeStrictDimsFn = options._computeStrictDims ?? computeStrictDimensions;
+  const generateCritiqueFn = options._generateCritique ?? (options.scorerProvider ? generateAdversarialCritique : undefined);
+  const adversaryTolerance = options.adversaryTolerance ?? 0.5;
+  const generateAdversarialScoreFn = options._generateAdversarialScore
+    ?? (options.adversarialGating ? (await import('./adversarial-scorer-dim.js').catch(() => null))?.generateAdversarialScore : undefined);
+
+  const oriented = await orientAndClassify(options, cwd, target, { loadMatrixFn, saveMatrixFn, defineUniverseFn, harshScoreFn, computeStrictDimsFn, loadStateFn });
+  if (!oriented.ok) return oriented.result;
+  const { state: initState, matrix, achievable, atCeiling, baselineResult, beforeScores } = oriented;
+
+  await runAscendPreflights(options, cwd, dryRun);
+
+  if (achievable.length === 0) {
+    logger.success('[Ascend] All dimensions are at target or ceiling. Nothing to do.');
+    return { cyclesRun: 0, dimensionsImproved: 0, dimensionsAtTarget: matrix.dimensions.filter(d => (d.scores['self'] ?? 0) >= target).length, ceilingReports: buildCeilingReports(atCeiling), finalScore: matrix.overallSelfScore, success: true };
+  }
+  if (dryRun) return buildDryRunResult(achievable, atCeiling, matrix, target, (initState as { project?: string }).project ?? 'project', baselineResult);
+
+  const loopSetup = await setupAscendLoopState(options, cwd, beforeScores, executeCommandFn, loadCheckpointFn);
+  const { wrappedExecuteCommandFn, startedAt } = loopSetup;
+  const cs: AscendCycleState = { cyclesRun: loopSetup.cyclesRun, dimensionsImproved: 0, plateauedDims: loopSetup.plateauedDims, dimRetryCounts: {}, pendingCritique: null, critiqueTargetDimId: null, state: initState };
+  const dimTracker = createStepTracker(achievable.length);
+
+  while (cs.cyclesRun < maxCycles) {
+    const nextDim = getNextSprintDimension(matrix, target);
+    if (!nextDim) break;
+    if (cs.plateauedDims.has(nextDim.id)) {
+      const { achievable: cur } = classifyDimensions(matrix, target);
+      if (cs.plateauedDims.size >= cur.length) break;
+      const savedStatus = nextDim.status;
+      nextDim.status = 'closed';
+      const alt = getNextSprintDimension(matrix);
+      nextDim.status = savedStatus;
+      if (!alt) break;
+    }
+    const beforeScore = nextDim.scores['self'] ?? 0;
+    const harvestHint = nextDim.harvest_source ? ` (harvest from ${nextDim.harvest_source})` : '';
+    let goal = `Improve ${nextDim.label} from ${beforeScore.toFixed(1)}/10 toward ${target}/10${harvestHint}`;
+    if (cs.pendingCritique && cs.critiqueTargetDimId === nextDim.id) {
+      goal = `${goal}\n\n${cs.pendingCritique.critiquePrompt}`;
+      cs.pendingCritique = null; cs.critiqueTargetDimId = null;
+    }
+    const pctDone = Math.round((cs.cyclesRun / maxCycles) * 100);
+    dimTracker.step(`${nextDim.label} — ${beforeScore.toFixed(1)}/10 → target ${target}/10`);
+    logger.info(`[Ascend] ▶ [${cs.cyclesRun + 1}/${maxCycles}] ${nextDim.label}  (${beforeScore.toFixed(1)}/10 → target ${target}/10)  ${pctDone}% complete`);
+    logger.info(`  Goal: ${goal.slice(0, 120)}`);
+    const loopCtx: AutoforgeLoopContext = { goal, cwd, state: cs.state as Parameters<typeof runAutoforgeLoop>[0]['state'], loopState: AutoforgeLoopState.IDLE, cycleCount: 0, startedAt: new Date().toISOString(), retryCounters: {}, blockedArtifacts: [], lastGuidance: null, isWebProject: false, force: true, maxRetries: 10, recentScores: [] };
+    await executeDimensionCycle(options, loopCtx, nextDim, wrappedExecuteCommandFn, runLoopFn, beforeScore, target, goal, cwd, loadStateFn);
+    cs.state = await loadStateFn({ cwd }).catch(() => cs.state);
+    const { newSelfScore, delta, newScoreResult } = await rescoreAndGetDelta(harshScoreFn, computeStrictDimsFn, nextDim, beforeScore, cwd);
+    if (Math.abs(delta) < 0.1) { cs.plateauedDims.add(nextDim.id); logger.info(`  (plateau detected — moving to next dimension)`); }
+    else { cs.plateauedDims.delete(nextDim.id); if (delta > 0) cs.dimensionsImproved++; }
+    await runAdversarialCritiqueStep(options, generateCritiqueFn, nextDim, newSelfScore, beforeScore, target, goal, cwd, maxDimRetries, cs);
+    updateDimensionScore(matrix, nextDim.id, newSelfScore);
+    await saveMatrixFn(matrix, cwd);
+    await saveCheckpointFn({ pausedAt: new Date().toISOString(), cyclesRun: cs.cyclesRun + 1, maxCycles, target, startedAt, plateauedDims: Array.from(cs.plateauedDims), currentDimension: nextDim.id, beforeScores }, cwd).catch(() => {});
+    cs.cyclesRun++;
+    await runPeriodicRetroIfDue(options, cs.cyclesRun, cwd);
+    if (await checkConvergenceBreak(options, generateAdversarialScoreFn, matrix, target, newScoreResult, adversaryTolerance, cwd)) break;
   }
 
-  return {
-    cyclesRun,
-    dimensionsImproved,
-    dimensionsAtTarget,
-    ceilingReports,
-    finalScore: matrix.overallSelfScore,
-    success,
-  };
+  await clearCheckpointFn(cwd).catch(() => {});
+  return finalizeAscendRun(harshScoreFn, writeFileFn, matrix, cs.cyclesRun, cs.dimensionsImproved, target, beforeScores, cwd);
 }
