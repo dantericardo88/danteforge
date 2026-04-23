@@ -322,6 +322,184 @@ export interface AutoResearchOpts {
   _now?: () => number;
 }
 
+async function handlePromptModeExit(
+  goal: string, metric: string, timeBudgetMinutes: number, displayMeasurementCommand: string, cwd: string,
+  loadStateFn: (opts?: { cwd?: string }) => Promise<import('../../core/state.js').DanteState>,
+  saveStateFn: (state: import('../../core/state.js').DanteState, opts?: { cwd?: string }) => Promise<void>,
+): Promise<void> {
+  const promptText = buildPromptModeOutput(goal, metric, timeBudgetMinutes, displayMeasurementCommand);
+  logger.success('=== COPY-PASTE PROMPT (start) ===');
+  process.stdout.write('\n' + promptText + '\n\n');
+  logger.success('=== COPY-PASTE PROMPT (end) ===');
+  logger.info('');
+  logger.info('Paste this into your LLM interface to run autoresearch manually.');
+  const state = await loadStateFn({ cwd });
+  state.auditLog.push(`${new Date().toISOString()} | autoresearch: prompt mode — goal: ${goal}`);
+  await saveStateFn(state, { cwd });
+}
+
+async function handleDryRunExit(
+  goal: string, timeBudgetMinutes: number, displayMeasurementCommand: string, cwd: string,
+  loadStateFn: (opts?: { cwd?: string }) => Promise<import('../../core/state.js').DanteState>,
+  saveStateFn: (state: import('../../core/state.js').DanteState, opts?: { cwd?: string }) => Promise<void>,
+): Promise<void> {
+  logger.info('--- Dry Run Plan ---');
+  logger.info(`1. Create branch: autoresearch/${slugify(goal)}`);
+  logger.info(`2. Run baseline: ${displayMeasurementCommand}`);
+  logger.info(`3. Enter experiment loop for ${timeBudgetMinutes} minutes`);
+  logger.info('4. On each iteration: generate hypothesis -> apply change -> measure -> keep/discard');
+  logger.info('5. Write AUTORESEARCH_REPORT.md when time expires');
+  logger.info('--- Dry Run Complete (no commands executed) ---');
+  const state = await loadStateFn({ cwd });
+  state.auditLog.push(`${new Date().toISOString()} | autoresearch: dry-run — goal: ${goal}`);
+  await saveStateFn(state, { cwd });
+}
+
+async function initExperimentSetup(
+  goal: string, config: AutoResearchConfig, cwd: string,
+  gitFn: GitFn, runBaselineFn: (c: AutoResearchConfig) => Promise<number>,
+  isLLMAvailableFn: () => Promise<boolean>,
+  writeFileFn: (p: string, c: string) => Promise<void>,
+): Promise<{ branchName: string; baseline: number; allExperiments: ExperimentResult[]; bestValue: number; bestHash: string; tsvPath: string } | null> {
+  const branchName = `autoresearch/${slugify(goal)}`;
+  logger.info(`Creating branch: ${branchName}`);
+  try { await gitCreateBranch(branchName, cwd, gitFn); } catch (err) {
+    logger.error(`Failed to create branch ${branchName}: ${err instanceof Error ? err.message : String(err)}`);
+    logger.info('Continuing on current branch.');
+  }
+  logger.info('Running baseline measurement...');
+  let baseline: number;
+  try {
+    baseline = await runBaselineFn(config);
+    logger.success(`Baseline established at ${baseline}`);
+  } catch (err) {
+    logger.error(`Baseline measurement failed: ${err instanceof Error ? err.message : String(err)}`);
+    logger.error('Cannot start autoresearch without a working measurement command.');
+    process.exitCode = 1;
+    return null;
+  }
+  const baselineResult: ExperimentResult = { id: 0, description: 'unmodified baseline', metricValue: baseline, status: 'keep' };
+  const allExperiments: ExperimentResult[] = [baselineResult];
+  const bestHash = await gitCurrentHash(cwd, gitFn).catch(() => '');
+  const tsvPath = path.join(cwd, 'results.tsv');
+  await writeTsv(tsvPath, [baselineResult], writeFileFn);
+  logger.info(`Beginning experiment loop. Time budget: ${config.timeBudgetMinutes} minutes.`);
+  logger.info('');
+  const llmOk = await isLLMAvailableFn();
+  if (!llmOk) {
+    logger.error('No LLM available — cannot generate hypotheses.');
+    logger.error('Fix: set ANTHROPIC_API_KEY, or start Ollama, or run with --prompt for copy-paste mode.');
+    process.exitCode = 1;
+    return null;
+  }
+  return { branchName, baseline, allExperiments, bestValue: baseline, bestHash, tsvPath };
+}
+
+async function runExperimentLoop(
+  config: AutoResearchConfig, allExperiments: ExperimentResult[], initialBestValue: number, initialBestHash: string,
+  tsvPath: string, noiseMargin: number, startTime: number, budgetMs: number,
+  callLLMFn: CallLLMFn, readFileFn: (p: string) => Promise<string>,
+  runExperimentFn: (c: AutoResearchConfig, id: number, desc: string) => Promise<ExperimentResult>,
+  gitFn: GitFn, isLLMAvailableFn: () => Promise<boolean>,
+  appendFileFn: (p: string, c: string) => Promise<void>,
+  nowFn: () => number, sleepFn: (ms: number) => Promise<void>,
+  cwd: string,
+): Promise<{ bestValue: number; bestHash: string }> {
+  let bestValue = initialBestValue;
+  let bestHash = initialBestHash;
+  let experimentId = 1;
+  let consecutiveLLMFailures = 0;
+  const MAX_LLM_FAILURES = 5;
+
+  while (nowFn() - startTime < budgetMs) {
+    if (budgetMs - (nowFn() - startTime) < 90_000) { logger.info('Time budget nearly exhausted — stopping experiment loop.'); break; }
+    const llmOk = await isLLMAvailableFn();
+    if (!llmOk) {
+      consecutiveLLMFailures++;
+      if (consecutiveLLMFailures >= MAX_LLM_FAILURES) { logger.error(`LLM unavailable for ${MAX_LLM_FAILURES} consecutive checks — stopping experiment loop.`); break; }
+      logger.warn(`LLM temporarily unavailable (${consecutiveLLMFailures}/${MAX_LLM_FAILURES}). Retrying in 30s...`);
+      await sleepFn(30_000); continue;
+    }
+    consecutiveLLMFailures = 0;
+    logger.info(`--- Experiment ${experimentId} ---`);
+    let hypothesis;
+    try {
+      hypothesis = await generateHypothesis(config, experimentId, allExperiments, callLLMFn, readFileFn);
+      logger.info(`Hypothesis: ${hypothesis.description}`);
+    } catch (err) { logger.warn(`Hypothesis generation failed: ${err instanceof Error ? err.message : String(err)}`); experimentId++; continue; }
+    const preExperimentHash = await gitCurrentHash(cwd, gitFn).catch(() => '');
+    const applied = await applyHypothesis(hypothesis, cwd);
+    if (!applied) {
+      logger.warn('Could not apply hypothesis — skipping.');
+      const crashResult: ExperimentResult = { id: experimentId, description: hypothesis.description, metricValue: null, status: 'crash' };
+      allExperiments.push(crashResult); await appendTsv(tsvPath, crashResult, appendFileFn); experimentId++; continue;
+    }
+    let result = await runExperimentFn(config, experimentId, hypothesis.description);
+    if (result.status !== 'crash' && result.metricValue !== null) {
+      result = { ...result, status: shouldKeep(result.metricValue, bestValue, noiseMargin) ? 'keep' : 'discard' };
+    }
+    if (result.status === 'keep' && result.metricValue !== null) {
+      try {
+        const hash = await gitCommitAll(`experiment: ${hypothesis.description}`, cwd, gitFn);
+        result = { ...result, commitHash: hash };
+        bestValue = result.metricValue!; bestHash = hash;
+        logger.success(`Kept! New best: ${bestValue} (was ${bestValue}). Commit: ${hash.slice(0, 8)}`);
+      } catch (err) { logger.warn(`Commit failed: ${err instanceof Error ? err.message : String(err)}`); }
+    } else {
+      const reason = result.status === 'crash' ? 'crashed' : 'did not improve metric';
+      logger.info(`Discarding (${reason}). Rolling back to ${preExperimentHash.slice(0, 8)}.`);
+      try { await gitResetHard(preExperimentHash, cwd, gitFn); } catch (err) { logger.warn(`Rollback failed: ${err instanceof Error ? err.message : String(err)}`); }
+    }
+    allExperiments.push(result); await appendTsv(tsvPath, result, appendFileFn);
+    experimentId++;
+  }
+  return { bestValue, bestHash };
+}
+
+async function generateAndWriteReport(
+  goal: string, metric: string, config: AutoResearchConfig, allExperiments: ExperimentResult[],
+  baseline: number, bestValue: number, branchName: string, tsvPath: string,
+  startTime: number, nowFn: () => number,
+  callLLMFn: CallLLMFn, isLLMAvailableFn: () => Promise<boolean>,
+  writeFileFn: (p: string, c: string) => Promise<void>,
+  loadStateFn: (opts?: { cwd?: string }) => Promise<import('../../core/state.js').DanteState>,
+  saveStateFn: (state: import('../../core/state.js').DanteState, opts?: { cwd?: string }) => Promise<void>,
+  cwd: string,
+): Promise<void> {
+  const durationMs = nowFn() - startTime;
+  const durationStr = formatDuration(durationMs);
+  const kept = allExperiments.filter(e => e.status === 'keep' && e.id > 0).length;
+  const discarded = allExperiments.filter(e => e.status === 'discard').length;
+  const crashed = allExperiments.filter(e => e.status === 'crash').length;
+  const improvement = baseline - bestValue;
+  const improvementPercent = baseline !== 0 ? (improvement / Math.abs(baseline)) * 100 : 0;
+  const nonBaselineExperiments = allExperiments.filter(e => e.id > 0);
+  const insights = await generateInsights(config, nonBaselineExperiments, baseline, bestValue, callLLMFn, isLLMAvailableFn);
+  const report: AutoResearchReport = { goal, metric, duration: durationStr, baseline, final: bestValue, improvement, improvementPercent, experiments: nonBaselineExperiments, kept, discarded, crashed, insights };
+  const reportPath = path.join(cwd, 'AUTORESEARCH_REPORT.md');
+  await writeFileFn(reportPath, formatReport(report));
+  const state = await loadStateFn({ cwd });
+  state.auditLog.push(`${new Date().toISOString()} | autoresearch: complete — goal: ${goal}, metric: ${metric}, experiments: ${nonBaselineExperiments.length}, kept: ${kept}, improvement: ${improvementPercent.toFixed(2)}%`);
+  await saveStateFn(state, { cwd });
+  logger.info('');
+  logger.success('='.repeat(60));
+  logger.success('  AUTORESEARCH COMPLETE');
+  logger.success('='.repeat(60));
+  logger.info('');
+  logger.info(`Duration:    ${durationStr}`);
+  logger.info(`Experiments: ${nonBaselineExperiments.length}`);
+  logger.info(`Kept:        ${kept}  |  Discarded: ${discarded}  |  Crashed: ${crashed}`);
+  logger.info(`Baseline:    ${baseline}`);
+  logger.info(`Final:       ${bestValue}`);
+  logger.info(`Improvement: ${improvement >= 0 ? '+' : ''}${improvement.toFixed(4)} (${improvementPercent >= 0 ? '+' : ''}${improvementPercent.toFixed(2)}%)`);
+  logger.info('');
+  logger.success(`Report written to: ${reportPath}`);
+  logger.info(`Results log:       ${tsvPath}`);
+  logger.info(`Branch:            ${branchName}`);
+  logger.info('');
+  logger.info('Run `danteforge verify` to validate the final state.');
+}
+
 export async function autoResearch(
   goal: string,
   options: {
@@ -338,8 +516,6 @@ export async function autoResearch(
   const metric = options.metric ?? 'metric value';
   const timeBudgetMinutes = parseTimeBudget(options.time ?? '4h');
   const cwd = process.cwd();
-
-  // Resolved seams
   const loadStateFn = _opts._loadState ?? loadState;
   const saveStateFn = _opts._saveState ?? saveState;
   const isLLMAvailableFn = _opts._isLLMAvailable ?? isLLMAvailable;
@@ -353,7 +529,6 @@ export async function autoResearch(
   const sleepFn = _opts._sleep ?? ((ms: number) => new Promise<void>(r => setTimeout(r, ms)));
   const nowFn = _opts._now ?? (() => Date.now());
 
-  // Derive measurement command from metric if not provided.
   const measurementCommand = options.measurementCommand ?? deriveMeasurementCommand(metric);
   const displayMeasurementCommand = measurementCommand ?? '<provide --measurement-command>';
 
@@ -365,271 +540,35 @@ export async function autoResearch(
   logger.info(`Command: ${displayMeasurementCommand}`);
   logger.info('');
 
-  // --prompt mode: generate copy-paste prompt and exit
-  if (options.prompt) {
-    const promptText = buildPromptModeOutput(goal, metric, timeBudgetMinutes, displayMeasurementCommand);
-    logger.success('=== COPY-PASTE PROMPT (start) ===');
-    process.stdout.write('\n' + promptText + '\n\n');
-    logger.success('=== COPY-PASTE PROMPT (end) ===');
-    logger.info('');
-    logger.info('Paste this into your LLM interface to run autoresearch manually.');
-
-    const state = await loadStateFn({ cwd });
-    state.auditLog.push(`${new Date().toISOString()} | autoresearch: prompt mode — goal: ${goal}`);
-    await saveStateFn(state, { cwd });
-    return;
-  }
-
-  // --dry-run mode: display plan without executing
-  if (options.dryRun) {
-    logger.info('--- Dry Run Plan ---');
-    logger.info(`1. Create branch: autoresearch/${slugify(goal)}`);
-    logger.info(`2. Run baseline: ${displayMeasurementCommand}`);
-    logger.info(`3. Enter experiment loop for ${timeBudgetMinutes} minutes`);
-    logger.info('4. On each iteration: generate hypothesis -> apply change -> measure -> keep/discard');
-    logger.info('5. Write AUTORESEARCH_REPORT.md when time expires');
-    logger.info('--- Dry Run Complete (no commands executed) ---');
-
-    const state = await loadStateFn({ cwd });
-    state.auditLog.push(`${new Date().toISOString()} | autoresearch: dry-run — goal: ${goal}`);
-    await saveStateFn(state, { cwd });
-    return;
-  }
-
-  // ── Execute mode ─────────────────────────────────────────────────────────────
+  if (options.prompt) { await handlePromptModeExit(goal, metric, timeBudgetMinutes, displayMeasurementCommand, cwd, loadStateFn, saveStateFn); return; }
+  if (options.dryRun) { await handleDryRunExit(goal, timeBudgetMinutes, displayMeasurementCommand, cwd, loadStateFn, saveStateFn); return; }
 
   if (!measurementCommand) {
     logger.error('AutoResearch needs an explicit measurement command for unknown metrics.');
     logger.error('Provide --measurement-command "<command>" or choose a supported metric like "bundle size KB".');
-    process.exitCode = 1;
-    return;
+    process.exitCode = 1; return;
   }
-
   if (!options.allowDirty && await gitIsDirty(cwd, gitFn)) {
     logger.error('AutoResearch refuses to run on a dirty working tree.');
     logger.error('Commit or stash your changes first, or rerun with --allow-dirty if you intentionally want that risk.');
-    process.exitCode = 1;
-    return;
+    process.exitCode = 1; return;
   }
 
-  const config: AutoResearchConfig = {
-    goal,
-    metric,
-    timeBudgetMinutes,
-    measurementCommand,
-    cwd,
-  };
-
+  const config: AutoResearchConfig = { goal, metric, timeBudgetMinutes, measurementCommand, cwd };
   const noiseMargin = resolveNoiseMargin(metric);
   const startTime = nowFn();
   const budgetMs = timeBudgetMinutes * 60 * 1000;
 
-  // Create the experiment branch
-  const branchName = `autoresearch/${slugify(goal)}`;
-  logger.info(`Creating branch: ${branchName}`);
-  try {
-    await gitCreateBranch(branchName, cwd, gitFn);
-  } catch (err) {
-    logger.error(`Failed to create branch ${branchName}: ${err instanceof Error ? err.message : String(err)}`);
-    logger.info('Continuing on current branch.');
-  }
+  const setup = await initExperimentSetup(goal, config, cwd, gitFn, runBaselineFn, isLLMAvailableFn, writeFileFn);
+  if (!setup) return;
+  const { branchName, baseline, allExperiments, bestValue: initBest, bestHash: initHash, tsvPath } = setup;
 
-  // Phase 0: Baseline
-  logger.info('Running baseline measurement...');
-  let baseline: number;
-  try {
-    baseline = await runBaselineFn(config);
-    logger.success(`Baseline established at ${baseline}`);
-  } catch (err) {
-    logger.error(`Baseline measurement failed: ${err instanceof Error ? err.message : String(err)}`);
-    logger.error('Cannot start autoresearch without a working measurement command.');
-    process.exitCode = 1;
-    return;
-  }
-
-  const baselineResult: ExperimentResult = {
-    id: 0,
-    description: 'unmodified baseline',
-    metricValue: baseline,
-    status: 'keep',
-  };
-
-  const allExperiments: ExperimentResult[] = [baselineResult];
-  let bestValue = baseline;
-  let bestHash = await gitCurrentHash(cwd, gitFn).catch(() => '');
-
-  // Write initial results.tsv (untracked — do not commit)
-  const tsvPath = path.join(cwd, 'results.tsv');
-  await writeTsv(tsvPath, [baselineResult], writeFileFn);
-
-  logger.info(`Beginning experiment loop. Time budget: ${timeBudgetMinutes} minutes.`);
-  logger.info('');
-
-  // Pre-flight LLM check — exit fast with actionable error before wasting time on the loop
-  const llmAvailablePrecheck = await isLLMAvailableFn();
-  if (!llmAvailablePrecheck) {
-    logger.error('No LLM available — cannot generate hypotheses.');
-    logger.error('Fix: set ANTHROPIC_API_KEY, or start Ollama, or run with --prompt for copy-paste mode.');
-    process.exitCode = 1;
-    return;
-  }
-
-  // Phase 1: Experiment loop
-  let experimentId = 1;
-  let consecutiveLLMFailures = 0;
-  const MAX_LLM_FAILURES = 5;
-
-  while (nowFn() - startTime < budgetMs) {
-    const remainingMs = budgetMs - (nowFn() - startTime);
-    // Don't start a new experiment if there are fewer than 90 seconds left
-    if (remainingMs < 90_000) {
-      logger.info('Time budget nearly exhausted — stopping experiment loop.');
-      break;
-    }
-
-    // Per-iteration LLM check — recovers from transient failures (rate limits, restarts)
-    const llmOk = await isLLMAvailableFn();
-    if (!llmOk) {
-      consecutiveLLMFailures++;
-      if (consecutiveLLMFailures >= MAX_LLM_FAILURES) {
-        logger.error(`LLM unavailable for ${MAX_LLM_FAILURES} consecutive checks — stopping experiment loop.`);
-        break;
-      }
-      logger.warn(`LLM temporarily unavailable (${consecutiveLLMFailures}/${MAX_LLM_FAILURES}). Retrying in 30s...`);
-      await sleepFn(30_000);
-      continue;
-    }
-    consecutiveLLMFailures = 0;
-
-    logger.info(`--- Experiment ${experimentId} ---`);
-
-    // 1. PLAN: generate hypothesis
-    let hypothesis;
-    try {
-      hypothesis = await generateHypothesis(config, experimentId, allExperiments, callLLMFn, readFileFn);
-      logger.info(`Hypothesis: ${hypothesis.description}`);
-    } catch (err) {
-      logger.warn(`Hypothesis generation failed: ${err instanceof Error ? err.message : String(err)}`);
-      experimentId++;
-      continue;
-    }
-
-    const preExperimentHash = await gitCurrentHash(cwd, gitFn).catch(() => '');
-
-    // 2. REWRITE: apply the hypothesis
-    const applied = await applyHypothesis(hypothesis, cwd);
-    if (!applied) {
-      logger.warn('Could not apply hypothesis — skipping.');
-      const crashResult: ExperimentResult = {
-        id: experimentId,
-        description: hypothesis.description,
-        metricValue: null,
-        status: 'crash',
-      };
-      allExperiments.push(crashResult);
-      await appendTsv(tsvPath, crashResult, appendFileFn);
-      experimentId++;
-      continue;
-    }
-
-    // 3. EXECUTE: measure
-    let result = await runExperimentFn(config, experimentId, hypothesis.description);
-
-    // 4. EVALUATE + DECIDE
-    if (result.status !== 'crash' && result.metricValue !== null) {
-      const keep = shouldKeep(result.metricValue, bestValue, noiseMargin);
-      result = { ...result, status: keep ? 'keep' : 'discard' };
-    }
-
-    if (result.status === 'keep' && result.metricValue !== null) {
-      // Commit the winning change
-      try {
-        const hash = await gitCommitAll(`experiment: ${hypothesis.description}`, cwd, gitFn);
-        result = { ...result, commitHash: hash };
-        bestValue = result.metricValue!;
-        bestHash = hash;
-        logger.success(`Kept! New best: ${bestValue} (was ${bestValue}). Commit: ${hash.slice(0, 8)}`);
-      } catch (err) {
-        logger.warn(`Commit failed: ${err instanceof Error ? err.message : String(err)}`);
-        // Still record as kept since metric improved; just no commit hash
-      }
-    } else {
-      // Rollback
-      const reason = result.status === 'crash' ? 'crashed' : 'did not improve metric';
-      logger.info(`Discarding (${reason}). Rolling back to ${preExperimentHash.slice(0, 8)}.`);
-      try {
-        await gitResetHard(preExperimentHash, cwd, gitFn);
-      } catch (err) {
-        logger.warn(`Rollback failed: ${err instanceof Error ? err.message : String(err)}`);
-      }
-    }
-
-    // 6. RECORD
-    allExperiments.push(result);
-    await appendTsv(tsvPath, result, appendFileFn);
-
-    experimentId++;
-  }
-
-  // Phase 2: Report
-  const durationMs = nowFn() - startTime;
-  const durationStr = formatDuration(durationMs);
-
-  const kept = allExperiments.filter(e => e.status === 'keep' && e.id > 0).length;
-  const discarded = allExperiments.filter(e => e.status === 'discard').length;
-  const crashed = allExperiments.filter(e => e.status === 'crash').length;
-  const finalValue = bestValue;
-  const improvement = baseline - finalValue;
-  const improvementPercent = baseline !== 0
-    ? (improvement / Math.abs(baseline)) * 100
-    : 0;
-
-  const nonBaselineExperiments = allExperiments.filter(e => e.id > 0);
-  const insights = await generateInsights(config, nonBaselineExperiments, baseline, finalValue, callLLMFn, isLLMAvailableFn);
-
-  const report: AutoResearchReport = {
-    goal,
-    metric,
-    duration: durationStr,
-    baseline,
-    final: finalValue,
-    improvement,
-    improvementPercent,
-    experiments: nonBaselineExperiments,
-    kept,
-    discarded,
-    crashed,
-    insights,
-  };
-
-  const reportMd = formatReport(report);
-  const reportPath = path.join(cwd, 'AUTORESEARCH_REPORT.md');
-  await writeFileFn(reportPath, reportMd);
-
-  // Audit log
-  const state = await loadStateFn({ cwd });
-  state.auditLog.push(
-    `${new Date().toISOString()} | autoresearch: complete — goal: ${goal}, metric: ${metric}, experiments: ${nonBaselineExperiments.length}, kept: ${kept}, improvement: ${improvementPercent.toFixed(2)}%`,
+  const { bestValue, bestHash: _finalHash } = await runExperimentLoop(
+    config, allExperiments, initBest, initHash, tsvPath, noiseMargin, startTime, budgetMs,
+    callLLMFn, readFileFn, runExperimentFn, gitFn, isLLMAvailableFn, appendFileFn, nowFn, sleepFn, cwd,
   );
-  await saveStateFn(state, { cwd });
 
-  logger.info('');
-  logger.success('='.repeat(60));
-  logger.success('  AUTORESEARCH COMPLETE');
-  logger.success('='.repeat(60));
-  logger.info('');
-  logger.info(`Duration:    ${durationStr}`);
-  logger.info(`Experiments: ${nonBaselineExperiments.length}`);
-  logger.info(`Kept:        ${kept}  |  Discarded: ${discarded}  |  Crashed: ${crashed}`);
-  logger.info(`Baseline:    ${baseline}`);
-  logger.info(`Final:       ${finalValue}`);
-  logger.info(`Improvement: ${improvement >= 0 ? '+' : ''}${improvement.toFixed(4)} (${improvementPercent >= 0 ? '+' : ''}${improvementPercent.toFixed(2)}%)`);
-  logger.info('');
-  logger.success(`Report written to: ${reportPath}`);
-  logger.info(`Results log:       ${tsvPath}`);
-  logger.info(`Branch:            ${branchName}`);
-  logger.info('');
-  logger.info('Run `danteforge verify` to validate the final state.');
+  await generateAndWriteReport(goal, metric, config, allExperiments, baseline, bestValue, branchName, tsvPath, startTime, nowFn, callLLMFn, isLLMAvailableFn, writeFileFn, loadStateFn, saveStateFn, cwd);
   });
 }
 
