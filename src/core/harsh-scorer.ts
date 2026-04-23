@@ -150,10 +150,161 @@ export interface HarshScorerOptions {
 
 // ── Main scoring function ─────────────────────────────────────────────────────
 
+async function gatherEvidenceFlags(
+  cwd: string,
+  options: HarshScorerOptions,
+  existsFn: (p: string) => Promise<boolean>,
+): Promise<{ evidenceFlags: PipelineEvidenceFlags; convergenceFlags: ConvergenceEvidenceFlags; errorHandlingFlags: ErrorHandlingEvidenceFlags }> {
+  const pipelineEvidencePaths = [
+    path.join(cwd, 'examples', 'todo-app', 'evidence', 'pipeline-run.json'),
+    path.join(cwd, '.danteforge', 'evidence', 'pipeline-proof.json'),
+  ];
+  const hasPipelineEvidence = (await Promise.all(pipelineEvidencePaths.map(existsFn))).some(Boolean);
+  const hasE2ETest = await existsFn(path.join(cwd, 'tests', 'e2e-spec-pipeline.test.ts'));
+  const evidenceFlags: PipelineEvidenceFlags = { hasPipelineEvidence, hasE2ETest };
+
+  const convergenceProofPaths = [
+    path.join(cwd, 'examples', 'todo-app', 'evidence', 'convergence-proof.json'),
+    path.join(cwd, '.danteforge', 'evidence', 'convergence-proof.json'),
+  ];
+  const hasConvergenceProof = (await Promise.all(convergenceProofPaths.map(existsFn))).some(Boolean);
+  const hasE2EConvergenceTest = await existsFn(path.join(cwd, 'tests', 'e2e-convergence.test.ts'));
+  const convergenceFlags: ConvergenceEvidenceFlags = options._readConvergenceProof
+    ? await options._readConvergenceProof(cwd)
+    : { hasConvergenceProof, hasE2EConvergenceTest };
+
+  const hasErrorHierarchy = await existsFn(path.join(cwd, 'src', 'core', 'errors.ts'));
+  const hasCircuitBreaker = await existsFn(path.join(cwd, 'src', 'core', 'circuit-breaker.ts'));
+  const hasResilienceModule = await existsFn(path.join(cwd, 'src', 'core', 'resilience.ts'));
+  const hasE2EErrorHandlingTest = await existsFn(path.join(cwd, 'tests', 'e2e-error-handling.test.ts'));
+  const errorHandlingFlags: ErrorHandlingEvidenceFlags = options._readErrorHandlingProof
+    ? await options._readErrorHandlingProof(cwd)
+    : { hasErrorHierarchy, hasCircuitBreaker, hasResilienceModule, hasE2EErrorHandlingTest };
+
+  return { evidenceFlags, convergenceFlags, errorHandlingFlags };
+}
+
+async function fetchCommunityData(
+  cwd: string,
+  options: HarshScorerOptions,
+  readFileFn: (p: string) => Promise<string>,
+): Promise<CommunityMetrics> {
+  try {
+    const pkgRaw = await readFileFn(path.join(cwd, 'package.json'));
+    const pkg = JSON.parse(pkgRaw) as Record<string, unknown>;
+    const packageName = typeof pkg['name'] === 'string' ? pkg['name'] : '';
+    const repoUrl = typeof pkg['repository'] === 'string'
+      ? pkg['repository']
+      : typeof (pkg['repository'] as Record<string, unknown>)?.['url'] === 'string'
+        ? (pkg['repository'] as Record<string, unknown>)['url'] as string
+        : '';
+    const repoSlug = repoUrl.replace(/^.*github\.com[/:]/, '').replace(/\.git$/, '');
+    if (!packageName) return {};
+    const fetchFn = options._fetchCommunity
+      ? (pn: string, rs: string) => options._fetchCommunity!(pn, rs)
+      : (pn: string, rs: string) => fetchCommunityMetrics(pn, rs);
+    return await fetchFn(packageName, repoSlug).catch(() => ({}));
+  } catch { return {}; }
+}
+
+async function computeAugmentedTestingScore(
+  dims: MaturityDimensions,
+  coveragePct: number | null,
+  cwd: string,
+  existsFn: (p: string) => Promise<boolean>,
+): Promise<number> {
+  let score = coveragePct !== null
+    ? Math.round((dims.testing * 0.4) + (Math.min(coveragePct, 100) * 0.6))
+    : dims.testing;
+  if (await existsFn(path.join(cwd, 'tests', 'mutation-score.test.ts'))) {
+    score = Math.min(100, score + 3);
+  }
+  if (await existsFn(path.join(cwd, 'tests', 'v090-adversarial.test.ts')) ||
+      await existsFn(path.join(cwd, 'tests', 'adversarial-scorer-dim.test.ts'))) {
+    score = Math.min(100, score + 2);
+  }
+  return score;
+}
+
+async function applyAllPenalties(
+  cwd: string,
+  dims: MaturityDimensions,
+  completionTracker: { overall: number },
+  maturityAssessment: MaturityAssessment,
+  targetLevel: MaturityLevel,
+  listFilesFn: (cwd: string) => Promise<string[]>,
+  readFileFn: (p: string) => Promise<string>,
+  readHistoryFn: (cwd: string) => Promise<AssessmentHistoryEntry[]>,
+): Promise<{ penalties: HarshPenalty[]; stubsDetected: string[]; fakeCompletionRisk: 'low' | 'medium' | 'high' }> {
+  const penalties: HarshPenalty[] = [];
+  const stubsDetected: string[] = [];
+
+  const sourceFiles = await listFilesFn(cwd);
+  let stubPenalty = 0;
+  for (const file of sourceFiles.slice(0, 50)) {
+    try {
+      const content = await readFileFn(path.join(cwd, file));
+      if (STUB_PATTERNS.some((p) => p.test(content))) {
+        stubsDetected.push(file);
+        stubPenalty = Math.min(stubPenalty + 10, MAX_STUB_PENALTY);
+      }
+    } catch { /* ignore unreadable files */ }
+  }
+  if (stubPenalty > 0) {
+    penalties.push({ category: 'stub-detection', reason: `Stub/TODO patterns detected in ${stubsDetected.length} file(s)`, deduction: stubPenalty, evidence: stubsDetected.slice(0, 3).join(', ') });
+  }
+
+  const fakeCompletionRisk = computeFakeCompletionRisk(completionTracker.overall, scoreToMaturityLevel(maturityAssessment.overallScore), targetLevel);
+  if (fakeCompletionRisk === 'high') {
+    penalties.push({ category: 'fake-completion', reason: `Completion tracker reports ${completionTracker.overall.toFixed(0)}% but maturity level is below target`, deduction: 20, evidence: `overall=${completionTracker.overall.toFixed(0)}%, maturity=${scoreToMaturityLevel(maturityAssessment.overallScore)}, target=${targetLevel}` });
+  } else if (fakeCompletionRisk === 'medium') {
+    penalties.push({ category: 'fake-completion', reason: `Completion tracker shows ${completionTracker.overall.toFixed(0)}% but maturity is 2+ levels below target`, deduction: 10, evidence: `maturity=${scoreToMaturityLevel(maturityAssessment.overallScore)}, target=${targetLevel}` });
+  }
+
+  if (dims.testing < 70) {
+    penalties.push({ category: 'test-coverage', reason: `Testing dimension at ${dims.testing}/100 (threshold: 70)`, deduction: 15, evidence: `dimensions.testing=${dims.testing}` });
+  }
+
+  try {
+    const history = await readHistoryFn(cwd);
+    if (history.length >= 3) {
+      const lastThree = history.slice(-3).map((e) => e.harshScore);
+      const range = Math.max(...lastThree) - Math.min(...lastThree);
+      if (range <= 2) {
+        penalties.push({ category: 'plateau', reason: `Score plateau: last 3 cycles scored ${lastThree.join(', ')} (range ≤ 2)`, deduction: 5, evidence: `scores=${lastThree.join(',')}` });
+      }
+    }
+  } catch { /* history unavailable — no penalty */ }
+
+  if (dims.errorHandling < 50) {
+    const deduction = Math.min(Math.floor((50 - dims.errorHandling) / 10) * 3, MAX_ERROR_HANDLING_PENALTY);
+    if (deduction > 0) {
+      penalties.push({ category: 'error-handling', reason: `Error handling critically low at ${dims.errorHandling}/100`, deduction, evidence: `dimensions.errorHandling=${dims.errorHandling}` });
+    }
+  }
+
+  return { penalties, stubsDetected, fakeCompletionRisk };
+}
+
+async function persistHarshHistory(
+  cwd: string,
+  harshScore: number,
+  displayScore: number,
+  dimensions: Record<ScoringDimension, number>,
+  penaltyTotal: number,
+  timestamp: string,
+  readHistoryFn: (cwd: string) => Promise<AssessmentHistoryEntry[]>,
+  writeHistoryFn: (cwd: string, entries: AssessmentHistoryEntry[]) => Promise<void>,
+): Promise<void> {
+  try {
+    const history = await readHistoryFn(cwd).catch(() => []);
+    await writeHistoryFn(cwd, [...history, { timestamp, harshScore, displayScore, dimensions, penaltyTotal }]);
+  } catch { /* best-effort */ }
+}
+
 export async function computeHarshScore(options: HarshScorerOptions = {}): Promise<HarshScoreResult> {
   const cwd = options.cwd ?? process.cwd();
   const targetLevel: MaturityLevel = options.targetLevel ?? 5;
-
   const loadStateFn = options._loadState ?? loadState;
   const scoreArtifactsFn = options._scoreAllArtifacts ?? scoreAllArtifacts;
   const assessMaturityFn = options._assessMaturity ?? assessMaturity;
@@ -166,55 +317,13 @@ export async function computeHarshScore(options: HarshScorerOptions = {}): Promi
     try { await fs.access(p); return true; } catch { return false; }
   });
 
-  // Step 1: Load state and compute existing scores
   const state = await loadStateFn({ cwd });
   const pdseScores = await scoreArtifactsFn(cwd, state);
-
-  // Step 2: Run maturity assessment (8-dimension quality scoring)
   const maturityAssessment = await assessMaturityFn({ cwd, state, pdseScores, targetLevel });
+  const completionTracker = computeTrackerFn(state, pdseScores as Record<ScoredArtifact, ScoreResult>);
 
-  // Step 3: Completion tracker (for fake-completion detection)
-  const allArtifacts = pdseScores as Record<ScoredArtifact, ScoreResult>;
-  const completionTracker = computeTrackerFn(state, allArtifacts);
+  const { evidenceFlags, convergenceFlags, errorHandlingFlags } = await gatherEvidenceFlags(cwd, options, existsFn);
 
-  // Step 4: Derive the 10 extended dimensions from existing data
-  // Gather pipeline evidence flags for specDrivenPipeline scoring
-  const pipelineEvidencePaths = [
-    path.join(cwd, 'examples', 'todo-app', 'evidence', 'pipeline-run.json'),
-    path.join(cwd, '.danteforge', 'evidence', 'pipeline-proof.json'),
-  ];
-  const e2eTestPath = path.join(cwd, 'tests', 'e2e-spec-pipeline.test.ts');
-  const hasPipelineEvidence = (await Promise.all(pipelineEvidencePaths.map(existsFn))).some(Boolean);
-  const hasE2ETest = await existsFn(e2eTestPath);
-  const evidenceFlags: PipelineEvidenceFlags = { hasPipelineEvidence, hasE2ETest };
-  // Gather convergence evidence flags for convergenceSelfHealing scoring
-  const convergenceProofPaths = [
-    path.join(cwd, 'examples', 'todo-app', 'evidence', 'convergence-proof.json'),
-    path.join(cwd, '.danteforge', 'evidence', 'convergence-proof.json'),
-  ];
-  const e2eConvergenceTestPath = path.join(cwd, 'tests', 'e2e-convergence.test.ts');
-  const hasConvergenceProof = (await Promise.all(convergenceProofPaths.map(existsFn))).some(Boolean);
-  const hasE2EConvergenceTest = await existsFn(e2eConvergenceTestPath);
-  const convergenceFlags: ConvergenceEvidenceFlags = options._readConvergenceProof
-    ? await options._readConvergenceProof(cwd)
-    : { hasConvergenceProof, hasE2EConvergenceTest };
-  // Gather error handling evidence flags for errorHandling scoring
-  const errHierarchyPath = path.join(cwd, 'src', 'core', 'errors.ts');
-  const circuitBreakerPath = path.join(cwd, 'src', 'core', 'circuit-breaker.ts');
-  const resiliencePath = path.join(cwd, 'src', 'core', 'resilience.ts');
-  const e2eErrorTestPath = path.join(cwd, 'tests', 'e2e-error-handling.test.ts');
-  const hasErrorHierarchy = await existsFn(errHierarchyPath);
-  const hasCircuitBreaker = await existsFn(circuitBreakerPath);
-  const hasResilienceModule = await existsFn(resiliencePath);
-  const hasE2EErrorHandlingTest = await existsFn(e2eErrorTestPath);
-  const errorHandlingFlags: ErrorHandlingEvidenceFlags = options._readErrorHandlingProof
-    ? await options._readErrorHandlingProof(cwd)
-    : { hasErrorHierarchy, hasCircuitBreaker, hasResilienceModule, hasE2EErrorHandlingTest };
-
-  // Integration wiring check — verifies call sites, not just file existence.
-  // Opt-in only: callers must explicitly provide _checkIntegrationWiring to enable
-  // wiring-aware scoring. Default is undefined (backward compatible — full credit
-  // for file existence, same behavior as before this feature was added).
   const wiringResult: IntegrationWiringResult | undefined = options._checkIntegrationWiring
     ? await options._checkIntegrationWiring({ cwd }).catch((): IntegrationWiringResult => ({
         wiringScore: 0,
@@ -223,54 +332,12 @@ export async function computeHarshScore(options: HarshScorerOptions = {}): Promi
       }))
     : undefined;
 
-  // Community adoption — read package.json for name + repo slug, then fetch real metrics
-  let communityMetrics: CommunityMetrics = {};
-  try {
-    const pkgRaw = await readFileFn(path.join(cwd, 'package.json'));
-    const pkg = JSON.parse(pkgRaw) as Record<string, unknown>;
-    const packageName = typeof pkg['name'] === 'string' ? pkg['name'] : '';
-    const repoUrl = typeof pkg['repository'] === 'string'
-      ? pkg['repository']
-      : typeof (pkg['repository'] as Record<string, unknown>)?.['url'] === 'string'
-        ? (pkg['repository'] as Record<string, unknown>)['url'] as string
-        : '';
-    const repoSlug = repoUrl.replace(/^.*github\.com[/:]/, '').replace(/\.git$/, '');
-    if (packageName) {
-      const fetchFn = options._fetchCommunity
-        ? (pn: string, rs: string) => options._fetchCommunity!(pn, rs)
-        : (pn: string, rs: string) => fetchCommunityMetrics(pn, rs);
-      communityMetrics = await fetchFn(packageName, repoSlug).catch(() => ({}));
-    }
-  } catch { /* no package.json — ok */ }
-
-  // Real coverage % — augments the testing dimension
-  const coveragePct = await (options._readCoverage
-    ? options._readCoverage(cwd)
-    : readCoveragePercent(cwd, readFileFn)
-  ).catch(() => null);
-
+  const communityMetrics = await fetchCommunityData(cwd, options, readFileFn);
+  const coveragePct = await (options._readCoverage ? options._readCoverage(cwd) : readCoveragePercent(cwd, readFileFn)).catch(() => null);
   const newDimensions = computeNewDimensions(pdseScores, state, maturityAssessment, cwd, evidenceFlags, convergenceFlags, communityMetrics);
 
-  // Step 5: Combine all 18 dimensions (8 from maturity + 10 extended)
   const dims = maturityAssessment.dimensions;
-  // Augment testing score: blend maturity signals with real coverage %, then add quality bonuses.
-  // Coverage (quantity) is blended with maturity score (structure/CI/thresholds).
-  // Mutation and adversarial testing bonuses reward test QUALITY — they measure whether tests
-  // actually find bugs, not just whether they run.
-  let testingScore = coveragePct !== null
-    ? Math.round((dims.testing * 0.4) + (Math.min(coveragePct, 100) * 0.6))
-    : dims.testing;
-  // Bonus: mutation testing in place (+3) — tests the tests
-  const mutationTestPath = path.join(cwd, 'tests', 'mutation-score.test.ts');
-  if (await existsFn(mutationTestPath)) {
-    testingScore = Math.min(100, testingScore + 3);
-  }
-  // Bonus: adversarial test patterns present (+2) — probes edge cases deliberately
-  const adversarialTestPath = path.join(cwd, 'tests', 'v090-adversarial.test.ts');
-  const adversarialDimTestPath = path.join(cwd, 'tests', 'adversarial-scorer-dim.test.ts');
-  if (await existsFn(adversarialTestPath) || await existsFn(adversarialDimTestPath)) {
-    testingScore = Math.min(100, testingScore + 2);
-  }
+  const testingScore = await computeAugmentedTestingScore(dims, coveragePct, cwd, existsFn);
   const dimensions = {
     functionality: dims.functionality,
     testing: testingScore,
@@ -283,142 +350,26 @@ export async function computeHarshScore(options: HarshScorerOptions = {}): Promi
     ...newDimensions,
   } as Record<ScoringDimension, number>;
 
-  // Step 6: Weighted raw score
   const rawScore = computeWeightedScore(dimensions);
-
-  // Step 7: Apply harsh penalties
-  const penalties: HarshPenalty[] = [];
-  const stubsDetected: string[] = [];
-
-  // Penalty: stub detection in source files
-  const sourceFiles = await listFilesFn(cwd);
-  let stubPenalty = 0;
-  for (const file of sourceFiles.slice(0, 50)) {
-    try {
-      const content = await readFileFn(path.join(cwd, file));
-      const hasStub = STUB_PATTERNS.some((p) => p.test(content));
-      if (hasStub) {
-        stubsDetected.push(file);
-        stubPenalty = Math.min(stubPenalty + 10, MAX_STUB_PENALTY);
-      }
-    } catch { /* ignore unreadable files */ }
-  }
-  if (stubPenalty > 0) {
-    penalties.push({
-      category: 'stub-detection',
-      reason: `Stub/TODO patterns detected in ${stubsDetected.length} file(s)`,
-      deduction: stubPenalty,
-      evidence: stubsDetected.slice(0, 3).join(', '),
-    });
-  }
-
-  // Penalty: fake completion (high completion % but low maturity level)
-  const fakeCompletionRisk = computeFakeCompletionRisk(
-    completionTracker.overall,
-    scoreToMaturityLevel(maturityAssessment.overallScore),
-    targetLevel,
+  const { penalties, stubsDetected, fakeCompletionRisk } = await applyAllPenalties(
+    cwd, dims, completionTracker, maturityAssessment, targetLevel, listFilesFn, readFileFn, readHistoryFn,
   );
-  if (fakeCompletionRisk === 'high') {
-    penalties.push({
-      category: 'fake-completion',
-      reason: `Completion tracker reports ${completionTracker.overall.toFixed(0)}% but maturity level is below target`,
-      deduction: 20,
-      evidence: `overall=${completionTracker.overall.toFixed(0)}%, maturity=${scoreToMaturityLevel(maturityAssessment.overallScore)}, target=${targetLevel}`,
-    });
-  } else if (fakeCompletionRisk === 'medium') {
-    penalties.push({
-      category: 'fake-completion',
-      reason: `Completion tracker shows ${completionTracker.overall.toFixed(0)}% but maturity is 2+ levels below target`,
-      deduction: 10,
-      evidence: `maturity=${scoreToMaturityLevel(maturityAssessment.overallScore)}, target=${targetLevel}`,
-    });
-  }
-
-  // Penalty: low test/coverage score
-  if (dims.testing < 70) {
-    penalties.push({
-      category: 'test-coverage',
-      reason: `Testing dimension at ${dims.testing}/100 (threshold: 70)`,
-      deduction: 15,
-      evidence: `dimensions.testing=${dims.testing}`,
-    });
-  }
-
-  // Penalty: plateau (same score ±2 over last 3 assessments)
-  try {
-    const history = await readHistoryFn(cwd);
-    if (history.length >= 3) {
-      const lastThree = history.slice(-3).map((e) => e.harshScore);
-      const range = Math.max(...lastThree) - Math.min(...lastThree);
-      if (range <= 2) {
-        penalties.push({
-          category: 'plateau',
-          reason: `Score plateau: last 3 cycles scored ${lastThree.join(', ')} (range ≤ 2)`,
-          deduction: 5,
-          evidence: `scores=${lastThree.join(',')}`,
-        });
-      }
-    }
-  } catch { /* history unavailable — no penalty */ }
-
-  // Penalty: critically low error handling
-  if (dims.errorHandling < 50) {
-    const deduction = Math.min(
-      Math.floor((50 - dims.errorHandling) / 10) * 3,
-      MAX_ERROR_HANDLING_PENALTY,
-    );
-    if (deduction > 0) {
-      penalties.push({
-        category: 'error-handling',
-        reason: `Error handling critically low at ${dims.errorHandling}/100`,
-        deduction,
-        evidence: `dimensions.errorHandling=${dims.errorHandling}`,
-      });
-    }
-  }
-
-  // Step 8: Final harsh score
   const totalPenalty = penalties.reduce((sum, p) => sum + p.deduction, 0);
   const harshScore = Math.max(0, Math.round(rawScore - totalPenalty));
   const displayScore = Math.round(harshScore / 10 * 10) / 10;
-
-  // Step 9: Verdict (requires ALL dimensions ≥ 70 for acceptable/excellent)
   const verdict = computeHarshVerdict(harshScore, dimensions);
-
-  // Step 10: Display dimensions (0.0-10.0)
   const displayDimensions = Object.fromEntries(
     Object.entries(dimensions).map(([k, v]) => [k, Math.round(v / 10 * 10) / 10]),
   ) as Record<ScoringDimension, number>;
+  const timestamp = new Date().toISOString();
 
   const result: HarshScoreResult = {
-    rawScore: Math.round(rawScore),
-    harshScore,
-    displayScore,
-    dimensions,
-    displayDimensions,
-    penalties,
-    stubsDetected,
-    fakeCompletionRisk,
-    verdict,
-    maturityAssessment,
-    timestamp: new Date().toISOString(),
-    unwiredModules: wiringResult?.unwiredModules ?? [],
-    wiringResult,
+    rawScore: Math.round(rawScore), harshScore, displayScore, dimensions, displayDimensions,
+    penalties, stubsDetected, fakeCompletionRisk, verdict, maturityAssessment, timestamp,
+    unwiredModules: wiringResult?.unwiredModules ?? [], wiringResult,
   };
 
-  // Step 11: Persist history (best-effort)
-  try {
-    const history = await readHistoryFn(cwd).catch(() => []);
-    const entry: AssessmentHistoryEntry = {
-      timestamp: result.timestamp,
-      harshScore,
-      displayScore,
-      dimensions,
-      penaltyTotal: totalPenalty,
-    };
-    await writeHistoryFn(cwd, [...history, entry]);
-  } catch { /* best-effort */ }
-
+  await persistHarshHistory(cwd, harshScore, displayScore, dimensions, totalPenalty, timestamp, readHistoryFn, writeHistoryFn);
   return result;
 }
 
