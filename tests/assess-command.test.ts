@@ -230,4 +230,47 @@ describe('assess', () => {
     }));
     assert.equal(capturedTargetLevel, 6, 'inferno should use targetMaturityLevel=6');
   });
+
+  it('_strictDimensions overrides autonomy/selfImprovement/convergenceSelfHealing in result', async () => {
+    const result = await assess(makeOptions({
+      _strictDimensions: async () => ({
+        autonomy: 100,
+        selfImprovement: 100,
+        convergenceSelfHealing: 95,
+        errorHandling: 80,
+        security: 80,
+        enterpriseReadiness: 90,
+        documentation: 80,
+      }),
+    }));
+    assert.equal(result.assessment.displayDimensions.autonomy, 10);
+    assert.equal(result.assessment.displayDimensions.selfImprovement, 10);
+    assert.equal(result.assessment.displayDimensions.convergenceSelfHealing, 10);
+  });
+
+  it('_strictDimensions does not affect other dimensions', async () => {
+    const base = makeHarshResult(7.2);
+    const origSecurity = base.displayDimensions.security;
+    const result = await assess(makeOptions({
+      _harshScore: async () => base,
+      _strictDimensions: async () => ({
+        autonomy: 100,
+        selfImprovement: 100,
+        convergenceSelfHealing: 95,
+        errorHandling: 80,
+        security: 80,
+        enterpriseReadiness: 90,
+        documentation: 80,
+      }),
+    }));
+    assert.equal(result.assessment.displayDimensions.security, origSecurity);
+  });
+
+  it('assess continues normally when _strictDimensions throws', async () => {
+    const result = await assess(makeOptions({
+      _strictDimensions: async () => { throw new Error('strict dims unavailable'); },
+    }));
+    assert.ok(result.overallScore >= 0);
+    assert.ok(result.assessment.displayDimensions.autonomy !== undefined);
+  });
 });
