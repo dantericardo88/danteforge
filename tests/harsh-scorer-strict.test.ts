@@ -124,10 +124,10 @@ describe('applyStrictOverrides — automation ceiling enforcement', () => {
     specDrivenPipeline: 0, developerExperience: 0, planningQuality: 0, convergenceSelfHealing: 0,
   });
 
-  it('clamps enterpriseReadiness to ceiling 6.0 when harsh scorer returns a higher value', async () => {
+  it('clamps enterpriseReadiness to ceiling 9.0 when harsh scorer returns a higher value', async () => {
     const result = {
       displayScore: 9.0,
-      displayDimensions: { enterpriseReadiness: 8.5 } as Record<string, number>,
+      displayDimensions: { enterpriseReadiness: 9.5 } as Record<string, number>,
       rawScores: {},
       summary: '',
       recommendations: [],
@@ -136,8 +136,8 @@ describe('applyStrictOverrides — automation ceiling enforcement', () => {
     await applyStrictOverrides(result, '/tmp', zeroStrict);
 
     assert.ok(
-      result.displayDimensions.enterpriseReadiness <= 6.0,
-      `enterpriseReadiness should be clamped to ≤6.0, got ${result.displayDimensions.enterpriseReadiness}`,
+      result.displayDimensions.enterpriseReadiness <= 9.0,
+      `enterpriseReadiness should be clamped to ≤9.0, got ${result.displayDimensions.enterpriseReadiness}`,
     );
   });
 
