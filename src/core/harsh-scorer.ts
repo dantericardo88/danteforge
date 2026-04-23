@@ -863,6 +863,95 @@ type GitLogFn = (args: string[], cwd: string) => Promise<string>;
 type ExistsFn = (p: string) => Promise<boolean>;
 type ListDirFn = (p: string) => Promise<string[]>;
 
+async function strictAutonomy(cwd: string, runGit: GitLogFn, checkExists: ExistsFn, listDir: ListDirFn): Promise<number> {
+  let score = 20;
+  const commitLog = await runGit(['log', '--oneline', '--no-merges'], cwd);
+  const commitCount = commitLog.trim() === '' ? 0 : commitLog.trim().split('\n').length;
+  if (commitCount >= 100) score += 30; else if (commitCount >= 30) score += 20; else if (commitCount >= 10) score += 10; else if (commitCount >= 1) score += 5;
+  const verifyFiles = await listDir(path.join(cwd, '.danteforge', 'evidence', 'verify'));
+  if (verifyFiles.length >= 5) score += 25; else if (verifyFiles.length >= 2) score += 15; else if (verifyFiles.length >= 1) score += 8;
+  if (await checkExists(path.join(cwd, '.danteforge', 'evidence', 'autoforge'))) score += 15;
+  if (await checkExists(path.join(cwd, '.danteforge', 'evidence', 'oss-harvest.json'))) score += 10;
+  return Math.max(0, Math.min(100, score));
+}
+
+async function strictSelfImprovement(cwd: string, runGit: GitLogFn, checkExists: ExistsFn, listDir: ListDirFn): Promise<number> {
+  let score = 20;
+  const retroCount = (await runGit(['log', '--oneline', '--grep=retro', '--no-merges'], cwd)).trim().split('\n').filter(Boolean).length;
+  if (retroCount >= 10) score += 25; else if (retroCount >= 3) score += 15; else if (retroCount >= 1) score += 8;
+  const lessonCount = (await runGit(['log', '--oneline', '--grep=lesson', '--no-merges'], cwd)).trim().split('\n').filter(Boolean).length;
+  if (lessonCount >= 10) score += 20; else if (lessonCount >= 3) score += 12; else if (lessonCount >= 1) score += 5;
+  const retroFiles = await listDir(path.join(cwd, '.danteforge', 'evidence', 'retro'));
+  if (retroFiles.length >= 5) score += 20; else if (retroFiles.length >= 2) score += 12; else if (retroFiles.length >= 1) score += 6;
+  if (await checkExists(path.join(cwd, '.danteforge', 'lessons.md'))) score += 15;
+  // retros/ holds session outputs (different from evidence/retro/ pipeline receipts)
+  const retrosOutputFiles = await listDir(path.join(cwd, '.danteforge', 'retros'));
+  if (retrosOutputFiles.length >= 10) score += 15; else if (retrosOutputFiles.length >= 3) score += 8; else if (retrosOutputFiles.length >= 1) score += 3;
+  return Math.max(0, Math.min(100, score));
+}
+
+async function strictTokenEconomy(cwd: string, checkExists: ExistsFn, listDir: ListDirFn): Promise<number> {
+  let score = 20;
+  if (await checkExists(path.join(cwd, 'src', 'core', 'task-router.ts'))) score += 20;
+  if (await checkExists(path.join(cwd, 'src', 'core', 'circuit-breaker.ts'))) score += 15;
+  const cacheFiles = await listDir(path.join(cwd, '.danteforge', 'cache'));
+  if (cacheFiles.length >= 50) score += 30; else if (cacheFiles.length >= 10) score += 20; else if (cacheFiles.length >= 1) score += 10;
+  if (await checkExists(path.join(cwd, 'src', 'core', 'context-compressor.ts'))) score += 15;
+  return Math.max(0, Math.min(100, score));
+}
+
+async function strictSpecDrivenPipeline(cwd: string, checkExists: ExistsFn, listDir: ListDirFn): Promise<number> {
+  // Capped at 85 — file existence can't fully prove pipeline execution quality.
+  let score = 10;
+  for (const artifact of ['CONSTITUTION.md', 'SPEC.md', 'PLAN.md', 'TASKS.md']) {
+    if (await checkExists(path.join(cwd, artifact)) || await checkExists(path.join(cwd, '.danteforge', artifact))) score += 15;
+  }
+  const evidenceFiles = await listDir(path.join(cwd, '.danteforge', 'evidence'));
+  if (evidenceFiles.length >= 1) score += 10;
+  const testFiles = await listDir(path.join(cwd, 'tests'));
+  if (testFiles.some(f => f.includes('e2e') || f.includes('integration'))) score += 5;
+  return Math.max(0, Math.min(85, score));
+}
+
+async function strictDeveloperExperience(cwd: string, checkExists: ExistsFn, listDir: ListDirFn): Promise<number> {
+  let score = 15;
+  if (await checkExists(path.join(cwd, 'CLAUDE.md'))) score += 20;
+  try {
+    const { readFile } = await import('node:fs/promises');
+    const readmeContent = await readFile(path.join(cwd, 'README.md'), 'utf8').catch(() => '');
+    if (readmeContent.length > 500) score += 15;
+  } catch { /* non-fatal */ }
+  const examplesFiles = await listDir(path.join(cwd, 'examples'));
+  if (examplesFiles.length >= 1) score += 20;
+  const testFiles = await listDir(path.join(cwd, 'tests'));
+  if (testFiles.length >= 100) score += 15; else if (testFiles.length >= 50) score += 10; else if (testFiles.length >= 10) score += 5;
+  return Math.max(0, Math.min(100, score));
+}
+
+async function strictPlanningQuality(cwd: string, runGit: GitLogFn, checkExists: ExistsFn): Promise<number> {
+  let score = 15;
+  for (const [artifact, pts] of [['PLAN.md', 20], ['SPEC.md', 15], ['CONSTITUTION.md', 15], ['CLARIFY.md', 15]] as [string, number][]) {
+    if (await checkExists(path.join(cwd, artifact)) || await checkExists(path.join(cwd, '.danteforge', artifact))) score += pts;
+  }
+  const planCount = (await runGit(['log', '--oneline', '--grep=plan', '--no-merges'], cwd)).trim().split('\n').filter(Boolean).length;
+  if (planCount >= 3) score += 10;
+  const specCount = (await runGit(['log', '--oneline', '--grep=spec', '--no-merges'], cwd)).trim().split('\n').filter(Boolean).length;
+  if (specCount >= 3) score += 10;
+  return Math.max(0, Math.min(100, score));
+}
+
+async function strictConvergenceSelfHealing(cwd: string, checkExists: ExistsFn, listDir: ListDirFn): Promise<number> {
+  let score = 15;
+  if (await checkExists(path.join(cwd, 'src', 'core', 'circuit-breaker.ts'))) score += 25;
+  if (await checkExists(path.join(cwd, 'src', 'core', 'context-compressor.ts'))) score += 20;
+  const autoforgeFiles = await listDir(path.join(cwd, '.danteforge', 'evidence', 'autoforge'));
+  if (autoforgeFiles.length >= 3) score += 15; else if (autoforgeFiles.length >= 1) score += 8;
+  const convergenceProof = await checkExists(path.join(cwd, '.danteforge', 'evidence', 'convergence-proof.json'))
+    || await checkExists(path.join(cwd, 'examples', 'todo-app', 'evidence', 'convergence-proof.json'));
+  if (convergenceProof) score += 10;
+  return Math.max(0, Math.min(100, score));
+}
+
 /**
  * Compute tamper-resistant scores for the three dimensions most vulnerable to
  * STATE.yaml manipulation. Called by `score --strict`.
@@ -878,201 +967,20 @@ export async function computeStrictDimensions(
 ): Promise<StrictDimensions> {
   const runGit: GitLogFn = gitLogFn ?? (async (args, dir) => {
     const { execSync } = await import('node:child_process');
-    try {
-      return execSync(`git ${args.join(' ')}`, {
-        encoding: 'utf8',
-        cwd: dir,
-        stdio: ['pipe', 'pipe', 'pipe'],
-      });
-    } catch {
-      return '';
-    }
+    try { return execSync(`git ${args.join(' ')}`, { encoding: 'utf8', cwd: dir, stdio: ['pipe', 'pipe', 'pipe'] }); } catch { return ''; }
   });
+  const checkExists: ExistsFn = existsFn ?? (async (p) => { try { await fs.access(p); return true; } catch { return false; } });
+  const listDir: ListDirFn = listDirFn ?? (async (p) => { try { return await fs.readdir(p); } catch { return []; } });
 
-  const checkExists: ExistsFn = existsFn ?? (async (p) => {
-    try { await fs.access(p); return true; } catch { return false; }
-  });
-
-  const listDir: ListDirFn = listDirFn ?? (async (p) => {
-    try {
-      const entries = await fs.readdir(p);
-      return entries;
-    } catch { return []; }
-  });
-
-  // ── autonomy ─────────────────────────────────────────────────────────────────
-  // Base: 20. Signals: git commit count (code was actually written), verify evidence.
-  let autonomy = 20;
-
-  const commitLog = await runGit(['log', '--oneline', '--no-merges'], cwd);
-  const commitCount = commitLog.trim() === '' ? 0 : commitLog.trim().split('\n').length;
-  if (commitCount >= 100) autonomy += 30;
-  else if (commitCount >= 30) autonomy += 20;
-  else if (commitCount >= 10) autonomy += 10;
-  else if (commitCount >= 1) autonomy += 5;
-
-  // Evidence: verify receipts written by the test pipeline
-  const verifyEvidenceDir = path.join(cwd, '.danteforge', 'evidence', 'verify');
-  const verifyFiles = await listDir(verifyEvidenceDir);
-  if (verifyFiles.length >= 5) autonomy += 25;
-  else if (verifyFiles.length >= 2) autonomy += 15;
-  else if (verifyFiles.length >= 1) autonomy += 8;
-
-  // Evidence: autoforge loop evidence (state machine ran)
-  const autoforgeEvidenceExists = await checkExists(path.join(cwd, '.danteforge', 'evidence', 'autoforge'));
-  if (autoforgeEvidenceExists) autonomy += 15;
-
-  // Evidence: harvest receipt present (OSS learning occurred)
-  const harvestReceiptExists = await checkExists(path.join(cwd, '.danteforge', 'evidence', 'oss-harvest.json'));
-  if (harvestReceiptExists) autonomy += 10;
-
-  autonomy = Math.max(0, Math.min(100, autonomy));
-
-  // ── selfImprovement ───────────────────────────────────────────────────────────
-  // Base: 20. Signals: retro commits in git log, retro evidence files.
-  let selfImprovement = 20;
-
-  const retroCommits = await runGit(['log', '--oneline', '--grep=retro', '--no-merges'], cwd);
-  const retroCount = retroCommits.trim() === '' ? 0 : retroCommits.trim().split('\n').length;
-  if (retroCount >= 10) selfImprovement += 25;
-  else if (retroCount >= 3) selfImprovement += 15;
-  else if (retroCount >= 1) selfImprovement += 8;
-
-  const lessonCommits = await runGit(['log', '--oneline', '--grep=lesson', '--no-merges'], cwd);
-  const lessonCount = lessonCommits.trim() === '' ? 0 : lessonCommits.trim().split('\n').length;
-  if (lessonCount >= 10) selfImprovement += 20;
-  else if (lessonCount >= 3) selfImprovement += 12;
-  else if (lessonCount >= 1) selfImprovement += 5;
-
-  // Evidence: retro evidence files written by the pipeline
-  const retroEvidenceDir = path.join(cwd, '.danteforge', 'evidence', 'retro');
-  const retroFiles = await listDir(retroEvidenceDir);
-  if (retroFiles.length >= 5) selfImprovement += 20;
-  else if (retroFiles.length >= 2) selfImprovement += 12;
-  else if (retroFiles.length >= 1) selfImprovement += 6;
-
-  // Lessons file exists and has content
-  const lessonsExists = await checkExists(path.join(cwd, '.danteforge', 'lessons.md'));
-  if (lessonsExists) selfImprovement += 15;
-
-  // Evidence: retro session outputs in .danteforge/retros/ — each file = a retrospective was run
-  // (different from evidence/retro/ which holds pipeline-stamped receipts)
-  const retrosOutputDir = path.join(cwd, '.danteforge', 'retros');
-  const retrosOutputFiles = await listDir(retrosOutputDir);
-  if (retrosOutputFiles.length >= 10) selfImprovement += 15;
-  else if (retrosOutputFiles.length >= 3) selfImprovement += 8;
-  else if (retrosOutputFiles.length >= 1) selfImprovement += 3;
-
-  selfImprovement = Math.max(0, Math.min(100, selfImprovement));
-
-  // ── tokenEconomy ──────────────────────────────────────────────────────────────
-  // Base: 20. Signals: LLM cache entry count, task-router source file exists.
-  let tokenEconomy = 20;
-
-  // Task-router source signals routing infrastructure
-  const taskRouterExists = await checkExists(path.join(cwd, 'src', 'core', 'task-router.ts'));
-  if (taskRouterExists) tokenEconomy += 20;
-
-  // Circuit breaker signals budget/reliability controls
-  const circuitBreakerExists = await checkExists(path.join(cwd, 'src', 'core', 'circuit-breaker.ts'));
-  if (circuitBreakerExists) tokenEconomy += 15;
-
-  // LLM cache entries prove real budget-aware calls were made
-  const llmCacheDir = path.join(cwd, '.danteforge', 'cache');
-  const cacheFiles = await listDir(llmCacheDir);
-  if (cacheFiles.length >= 50) tokenEconomy += 30;
-  else if (cacheFiles.length >= 10) tokenEconomy += 20;
-  else if (cacheFiles.length >= 1) tokenEconomy += 10;
-
-  // Context compressor signals token reduction infrastructure
-  const compressorExists = await checkExists(path.join(cwd, 'src', 'core', 'context-compressor.ts'));
-  if (compressorExists) tokenEconomy += 15;
-
-  tokenEconomy = Math.max(0, Math.min(100, tokenEconomy));
-
-  // ── specDrivenPipeline ────────────────────────────────────────────────────────
-  // Base: 10. Signals: PDSE artifact files on disk, pipeline evidence, e2e tests.
-  // Capped at 85 — file existence can't fully prove pipeline execution quality.
-  let specDrivenPipeline = 10;
-
-  const pdseArtifacts = ['CONSTITUTION.md', 'SPEC.md', 'PLAN.md', 'TASKS.md'];
-  for (const artifact of pdseArtifacts) {
-    if (await checkExists(path.join(cwd, artifact))) specDrivenPipeline += 15;
-    else if (await checkExists(path.join(cwd, '.danteforge', artifact))) specDrivenPipeline += 15;
-  }
-
-  const evidenceDir = path.join(cwd, '.danteforge', 'evidence');
-  const evidenceFiles = await listDir(evidenceDir);
-  if (evidenceFiles.length >= 1) specDrivenPipeline += 10;
-
-  const testFiles = await listDir(path.join(cwd, 'tests'));
-  const hasE2ETest = testFiles.some(f => f.includes('e2e') || f.includes('integration'));
-  if (hasE2ETest) specDrivenPipeline += 5;
-
-  specDrivenPipeline = Math.max(0, Math.min(85, specDrivenPipeline));
-
-  // ── developerExperience ───────────────────────────────────────────────────────
-  // Base: 15. Signals: onboarding docs, examples directory, test suite depth.
-  let developerExperience = 15;
-
-  if (await checkExists(path.join(cwd, 'CLAUDE.md'))) developerExperience += 20;
-
-  try {
-    const readmePath = path.join(cwd, 'README.md');
-    const { readFile } = await import('node:fs/promises');
-    const readmeContent = await readFile(readmePath, 'utf8').catch(() => '');
-    if (readmeContent.length > 500) developerExperience += 15;
-  } catch { /* non-fatal */ }
-
-  const examplesFiles = await listDir(path.join(cwd, 'examples'));
-  if (examplesFiles.length >= 1) developerExperience += 20;
-
-  if (testFiles.length >= 100) developerExperience += 15;
-  else if (testFiles.length >= 50) developerExperience += 10;
-  else if (testFiles.length >= 10) developerExperience += 5;
-
-  developerExperience = Math.max(0, Math.min(100, developerExperience));
-
-  // ── planningQuality ───────────────────────────────────────────────────────────
-  // Base: 15. Signals: PDSE planning artifacts + git commits with plan/spec keywords.
-  let planningQuality = 15;
-
-  const planningArtifacts: [string, number][] = [
-    ['PLAN.md', 20], ['SPEC.md', 15], ['CONSTITUTION.md', 15], ['CLARIFY.md', 15],
-  ];
-  for (const [artifact, pts] of planningArtifacts) {
-    const exists = await checkExists(path.join(cwd, artifact))
-      || await checkExists(path.join(cwd, '.danteforge', artifact));
-    if (exists) planningQuality += pts;
-  }
-
-  const planCommits = await runGit(['log', '--oneline', '--grep=plan', '--no-merges'], cwd);
-  const planCount = planCommits.trim() === '' ? 0 : planCommits.trim().split('\n').length;
-  if (planCount >= 3) planningQuality += 10;
-
-  const specCommits = await runGit(['log', '--oneline', '--grep=spec', '--no-merges'], cwd);
-  const specCount = specCommits.trim() === '' ? 0 : specCommits.trim().split('\n').length;
-  if (specCount >= 3) planningQuality += 10;
-
-  planningQuality = Math.max(0, Math.min(100, planningQuality));
-
-  // ── convergenceSelfHealing ────────────────────────────────────────────────────
-  // Base: 15. Signals: circuit-breaker, context-compressor, autoforge evidence.
-  let convergenceSelfHealing = 15;
-
-  if (await checkExists(path.join(cwd, 'src', 'core', 'circuit-breaker.ts'))) convergenceSelfHealing += 25;
-  if (await checkExists(path.join(cwd, 'src', 'core', 'context-compressor.ts'))) convergenceSelfHealing += 20;
-
-  const autoforgeEvidenceDir = path.join(cwd, '.danteforge', 'evidence', 'autoforge');
-  const autoforgeEvidenceFiles = await listDir(autoforgeEvidenceDir);
-  if (autoforgeEvidenceFiles.length >= 3) convergenceSelfHealing += 15;
-  else if (autoforgeEvidenceFiles.length >= 1) convergenceSelfHealing += 8;
-
-  const convergenceProof = await checkExists(path.join(cwd, '.danteforge', 'evidence', 'convergence-proof.json'))
-    || await checkExists(path.join(cwd, 'examples', 'todo-app', 'evidence', 'convergence-proof.json'));
-  if (convergenceProof) convergenceSelfHealing += 10;
-
-  convergenceSelfHealing = Math.max(0, Math.min(100, convergenceSelfHealing));
+  const [autonomy, selfImprovement, tokenEconomy, specDrivenPipeline, developerExperience, planningQuality, convergenceSelfHealing] = await Promise.all([
+    strictAutonomy(cwd, runGit, checkExists, listDir),
+    strictSelfImprovement(cwd, runGit, checkExists, listDir),
+    strictTokenEconomy(cwd, checkExists, listDir),
+    strictSpecDrivenPipeline(cwd, checkExists, listDir),
+    strictDeveloperExperience(cwd, checkExists, listDir),
+    strictPlanningQuality(cwd, runGit, checkExists),
+    strictConvergenceSelfHealing(cwd, checkExists, listDir),
+  ]);
 
   return { autonomy, selfImprovement, tokenEconomy, specDrivenPipeline, developerExperience, planningQuality, convergenceSelfHealing };
 }
