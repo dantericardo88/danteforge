@@ -109,8 +109,8 @@ export const KNOWN_CEILINGS: Record<string, { ceiling: number; reason: string }>
     reason: 'requires npm downloads, GitHub stars, and external contributors — cannot be automated',
   },
   enterpriseReadiness: {
-    ceiling: 6.0,
-    reason: 'requires real production deployments and customer validation — cannot be automated',
+    ceiling: 9.0,
+    reason: 'filesystem evidence (SECURITY.md, CHANGELOG.md, RUNBOOK.md) is automatable up to 9.0; the final point requires real production deployments and customer validation',
   },
 };
 

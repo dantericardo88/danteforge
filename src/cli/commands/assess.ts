@@ -11,6 +11,7 @@ import { scoreAllArtifacts } from '../../core/pdse.js';
 import { assessMaturity, type MaturityAssessment } from '../../core/maturity-engine.js';
 import {
   computeHarshScore,
+  computeStrictDimensions,
   type HarshScoreResult,
   type HarshScorerOptions,
   type ScoringDimension,
@@ -71,6 +72,8 @@ export interface AssessOptions {
   _saveState?: typeof saveState;
   // Self-dossier refresh (best-effort, never blocks assess)
   _buildSelfDossier?: (opts: { cwd: string }) => Promise<unknown>;
+  // Override for strict dimension parity (replaces autonomy/selfImprovement/convergenceSelfHealing)
+  _strictDimensions?: (cwd: string) => Promise<Awaited<ReturnType<typeof computeStrictDimensions>>>;
 }
 
 export interface AssessResult {
@@ -228,6 +231,15 @@ export async function assess(options: AssessOptions = {}): Promise<AssessResult>
     _scoreAllArtifacts: scoreAllArtifacts,
     _assessMaturity: (ctx) => assessMaturity(ctx),
   });
+
+  // ── Step 1b: Parity override — sync autonomy/selfImprovement/convergence with measure ──
+  try {
+    const strictFn = options._strictDimensions ?? computeStrictDimensions;
+    const strict = await strictFn(cwd);
+    assessment.displayDimensions.autonomy = Math.round(strict.autonomy / 10);
+    assessment.displayDimensions.selfImprovement = Math.round(strict.selfImprovement / 10);
+    assessment.displayDimensions.convergenceSelfHealing = Math.round(strict.convergenceSelfHealing / 10);
+  } catch { /* best-effort: never block assess if strict dims fail */ }
 
   // ── Step 2: Competitor benchmarking ────────────────────────────────────────
   let comparison: CompetitorComparison | undefined;

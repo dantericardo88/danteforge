@@ -35,6 +35,18 @@ describe('LLM smoke tests (Ollama)', () => {
       const probe = await probeLLMProvider('ollama');
       if (!probe.ok) {
         skipReason = `Ollama unavailable: ${probe.message}`;
+      } else {
+        // Pre-warm: on cold start, loading a 4–8 GB model into CPU RAM can take several
+        // minutes — well past the 180 s LLM timeout. One fire-and-hold call here (5 min
+        // budget) ensures the model is resident before the timed test cases run.
+        await fetch('http://127.0.0.1:11434/api/generate', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ model: probe.model, prompt: 'hi', stream: false }),
+          signal: AbortSignal.timeout(300_000),
+        }).catch(() => {
+          // Non-fatal: if warm-up fails the tests may still pass if the model loads quickly.
+        });
       }
     } catch (err) {
       skipReason = `Ollama probe failed: ${err instanceof Error ? err.message : String(err)}`;
