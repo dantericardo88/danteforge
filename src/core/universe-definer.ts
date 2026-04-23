@@ -54,6 +54,35 @@ async function defaultAskQuestion(question: string, defaultValue?: string): Prom
   });
 }
 
+// ── Helpers ───────────────────────────────────────────────────────────────────
+
+async function collectInteractiveInput(
+  askFn: (question: string, defaultValue?: string) => Promise<string>,
+  projectName: string,
+  defaultCompetitors: string[],
+): Promise<{ projectDescription: string; userDefinedCompetitors: string[]; enableWebSearch: boolean }> {
+  logger.info('\n[Ascend] No competitive matrix found. Let\'s define your universe.\n');
+
+  const projectDescription = await askFn('1. What does this project do? (1-2 sentences)', projectName);
+
+  const competitorInput = await askFn(
+    '2. Who are your main competitors? (comma-separated, or "auto" to detect)',
+    defaultCompetitors.length > 0 ? defaultCompetitors.join(', ') : 'auto',
+  );
+  const userDefinedCompetitors = (competitorInput && competitorInput.toLowerCase() !== 'auto')
+    ? competitorInput.split(',').map(s => s.trim()).filter(Boolean)
+    : defaultCompetitors;
+
+  await askFn('3. Which dimensions matter most? (press Enter for all 18)', 'all');
+  await askFn('4. What is your target score? (default: 9.0)', '9.0');
+
+  const searchAnswer = await askFn('5. Search the web for competitor patterns? (y/n)', 'y');
+  const enableWebSearch = searchAnswer.toLowerCase().startsWith('y');
+
+  logger.info('\n[Ascend] Building competitive matrix...\n');
+  return { projectDescription, userDefinedCompetitors, enableWebSearch };
+}
+
 // ── Main export ───────────────────────────────────────────────────────────────
 
 /**
@@ -83,41 +112,7 @@ export async function defineUniverse(options: UniverseDefinerOptions = {}): Prom
   let enableWebSearch = false;
 
   if (isInteractive) {
-    logger.info('\n[Ascend] No competitive matrix found. Let\'s define your universe.\n');
-
-    projectDescription = await askFn(
-      '1. What does this project do? (1-2 sentences)',
-      projectName,
-    );
-
-    const competitorInput = await askFn(
-      '2. Who are your main competitors? (comma-separated, or "auto" to detect)',
-      userDefinedCompetitors.length > 0 ? userDefinedCompetitors.join(', ') : 'auto',
-    );
-    if (competitorInput && competitorInput.toLowerCase() !== 'auto') {
-      userDefinedCompetitors = competitorInput.split(',').map(s => s.trim()).filter(Boolean);
-    }
-
-    await askFn(
-      '3. Which dimensions matter most? (press Enter for all 18)',
-      'all',
-    );
-    // Note: dimension filtering not yet implemented — always uses all 18.
-    // The answer is captured but the full dimension set is always used for completeness.
-
-    await askFn(
-      '4. What is your target score? (default: 9.0)',
-      '9.0',
-    );
-    // Target is handled by ascend-engine, not stored in the matrix.
-
-    const searchAnswer = await askFn(
-      '5. Search the web for competitor patterns? (y/n)',
-      'y',
-    );
-    enableWebSearch = searchAnswer.toLowerCase().startsWith('y');
-
-    logger.info('\n[Ascend] Building competitive matrix...\n');
+    ({ projectDescription, userDefinedCompetitors, enableWebSearch } = await collectInteractiveInput(askFn, projectName, userDefinedCompetitors));
   }
 
   // Build a minimal ourScores record (all zeros — matrix will be updated after first assess)

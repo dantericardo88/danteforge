@@ -141,6 +141,35 @@ function isDossierFresh(dossier: Dossier, sinceMs: number): boolean {
   return age < sinceMs;
 }
 
+async function buildDimensions(
+  fetchedSources: Array<{ url: string; content: string }>,
+  rubric: Rubric,
+  competitor: string,
+  extractEvidenceFn: ExtractEvidenceFn,
+  scoreDimensionFn: ScoreDimensionFn,
+): Promise<Record<string, DossierDimension>> {
+  const dimensions: Record<string, DossierDimension> = {};
+  for (const [dimKey, dimDef] of Object.entries(rubric.dimensions)) {
+    const dimNum = parseInt(dimKey, 10);
+    let allEvidence: EvidenceItem[] = [];
+    for (const { url, content } of fetchedSources) {
+      const evidence = await extractEvidenceFn(content, url, competitor, dimNum, dimDef);
+      allEvidence = allEvidence.concat(evidence);
+    }
+    const { score, justification } = await scoreDimensionFn(allEvidence, dimNum, dimDef, competitor);
+    const unverified = allEvidence.length === 0 || allEvidence.every((e) => !e.quote || e.quote.trim() === '');
+    dimensions[dimKey] = {
+      score,
+      scoreJustification: justification,
+      evidence: allEvidence,
+      humanOverride: null,
+      humanOverrideReason: null,
+      unverified,
+    };
+  }
+  return dimensions;
+}
+
 function computeComposite(dimensions: Record<string, DossierDimension>): number {
   const scores = Object.values(dimensions).map((d) => d.humanOverride ?? d.score);
   if (scores.length === 0) return 0;
@@ -203,34 +232,7 @@ export async function buildDossier(opts: BuildDossierOptions): Promise<Dossier> 
   }
 
   // Build dimensions: for each rubric dim, extract evidence across all sources, then score
-  const dimensions: Record<string, DossierDimension> = {};
-  const dimEntries = Object.entries(rubric.dimensions);
-
-  for (const [dimKey, dimDef] of dimEntries) {
-    const dimNum = parseInt(dimKey, 10);
-
-    // Collect evidence from all sources for this dimension
-    let allEvidence: EvidenceItem[] = [];
-    for (const { url, content } of fetchedSources) {
-      const evidence = await extractEvidenceFn(content, url, competitor, dimNum, dimDef);
-      allEvidence = allEvidence.concat(evidence);
-    }
-
-    // Score from evidence
-    const { score, justification } = await scoreDimensionFn(allEvidence, dimNum, dimDef, competitor);
-
-    const unverified = allEvidence.length === 0 ||
-      allEvidence.every((e) => !e.quote || e.quote.trim() === '');
-
-    dimensions[dimKey] = {
-      score,
-      scoreJustification: justification,
-      evidence: allEvidence,
-      humanOverride: null,
-      humanOverrideReason: null,
-      unverified,
-    };
-  }
+  const dimensions = await buildDimensions(fetchedSources, rubric, competitor, extractEvidenceFn, scoreDimensionFn);
 
   const dossier: Dossier = {
     competitor,
