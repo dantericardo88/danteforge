@@ -386,7 +386,7 @@ async function validateCurrentStateFreshness(result: VerifyResult, stateDir: str
   }
 }
 
-export async function verify(options: {
+export interface VerifyOptions {
   release?: boolean;
   live?: boolean;
   url?: string;
@@ -404,131 +404,41 @@ export async function verify(options: {
   _captureSuccessLessons?: (receipt: VerifyReceipt, cwd: string) => Promise<unknown>;
   /** Injection seam: stage trace hook for root-cause debugging */
   _trace?: (stage: string) => void;
-} = {}) {
-  return withErrorBoundary('verify', async () => {
-  const cwd = options.cwd ?? process.cwd();
-  const stateDir = path.join(cwd, '.danteforge');
+}
 
-  // In JSON mode, redirect all logger output to stderr so stdout is clean JSON
-  if (options.json) {
-    logger.setStderr(true);
-  }
-
-  logger.info('Running verification checks...');
-  traceVerifyStage('start', options._trace);
-
-  const result: VerifyResult = { passed: [], warnings: [], failures: [] };
-  const timestamp = new Date().toISOString();
-
-  if (await fileExists(stateDir)) {
-    result.passed.push('.danteforge/ directory exists');
-  } else {
-    result.failures.push('.danteforge/ directory missing - run "danteforge review" first');
-  }
-
-  let state;
-  try {
-    traceVerifyStage('before-load-state', options._trace);
-    state = await loadState({ cwd });
-    traceVerifyStage('after-load-state', options._trace);
-    result.passed.push('STATE.yaml is valid and loadable');
-  } catch {
-    result.failures.push('STATE.yaml is corrupt or unreadable');
-    reportResults(result);
-    return;
-  }
-
-  if (options.recompute) {
-    state.projectType = await detectProjectType(cwd);
-    logger.info(`Project type re-detected: ${state.projectType}`);
-  }
-
-  result.passed.push(`Workflow stage recorded: ${state.workflowStage}`);
-
-  const hasConstitutionArtifact = await fileExists(path.join(stateDir, 'CONSTITUTION.md'));
-  if (!state.constitution && hasConstitutionArtifact) {
-    state.constitution = 'CONSTITUTION.md';
-    result.passed.push('CONSTITUTION.md is authoritative; repaired the missing constitution pointer in STATE.yaml');
-  } else if (!state.constitution) {
-    result.failures.push('Constitution is not defined');
-  }
-
-  await assertArtifact(result, 'CURRENT_STATE.md', 'Repo review', stateDir);
-  await validateCurrentStateFreshness(result, stateDir, cwd);
-  await assertArtifact(result, 'CONSTITUTION.md', 'Constitution', stateDir);
-  await assertArtifact(result, 'SPEC.md', 'Specification', stateDir);
-  await assertArtifact(result, 'CLARIFY.md', 'Clarification', stateDir);
-  await assertArtifact(result, 'PLAN.md', 'Execution plan', stateDir);
-  await assertArtifact(result, 'TASKS.md', 'Task breakdown', stateDir);
-  traceVerifyStage('after-artifact-checks', options._trace);
-
-  if (state.designEnabled) {
-    await assertArtifact(result, 'DESIGN.op', 'Design-as-Code', stateDir);
-  }
-
+async function runExecutionGateChecks(result: VerifyResult, state: DanteState, options: VerifyOptions, cwd: string): Promise<void> {
   const recordedPhaseOneTasks = hasRecordedPhaseOneTasks(state);
   const forgeWaveCount = getForgeWaveCount(state);
   const receiptBackedExecution = shouldUseObjectiveExecutionGates(state);
 
   if (options.light || receiptBackedExecution) {
-    // Light mode: for CLI tools whose "execution" is their test suite, substitute
-    // the pipeline execution checks (forge waves, workflow stage, task phases) with
-    // direct quality gates — npm test and npm run build.
     const modeLabel = options.light ? 'Light mode' : 'Receipt-backed mode';
-
     traceVerifyStage('before-run-tests', options._trace);
-    const testGate = await runObjectiveExecutionGate(
-      'test',
-      'npm test',
-      cwd,
-      options._runTests,
-      'npm test',
-      (reason) => {
-        logger.info(`${modeLabel}: fresh test proof unavailable (${describeCommandCheckFallback(reason)}); running npm test...`);
-      },
-    );
+    const testGate = await runObjectiveExecutionGate('test', 'npm test', cwd, options._runTests, 'npm test',
+      (reason) => { logger.info(`${modeLabel}: fresh test proof unavailable (${describeCommandCheckFallback(reason)}); running npm test...`); });
     if (testGate.passed) {
-      result.passed.push(
-        testGate.reusedReceipt
-          ? `${modeLabel}: reused fresh test proof for the current worktree`
-          : `${modeLabel}: test suite passes (substitutes execution bookkeeping gates)`,
-      );
+      result.passed.push(testGate.reusedReceipt
+        ? `${modeLabel}: reused fresh test proof for the current worktree`
+        : `${modeLabel}: test suite passes (substitutes execution bookkeeping gates)`);
     } else {
       result.failures.push(`${modeLabel}: test suite failed — fix failing tests before verifying`);
     }
     traceVerifyStage('after-run-tests', options._trace);
-
     traceVerifyStage('before-run-build', options._trace);
     const buildProofCommand = await resolveBuildProofCommand(cwd);
-    const buildGate = await runObjectiveExecutionGate(
-      'build',
-      'npm run build',
-      cwd,
-      options._runBuild,
-      buildProofCommand,
-      (reason) => {
-        logger.info(`${modeLabel}: fresh build proof unavailable (${describeCommandCheckFallback(reason)}); running ${buildProofCommand}...`);
-      },
-    );
+    const buildGate = await runObjectiveExecutionGate('build', 'npm run build', cwd, options._runBuild, buildProofCommand,
+      (reason) => { logger.info(`${modeLabel}: fresh build proof unavailable (${describeCommandCheckFallback(reason)}); running ${buildProofCommand}...`); });
     if (buildGate.passed) {
-      result.passed.push(
-        buildGate.reusedReceipt
-          ? `${modeLabel}: reused fresh build proof for the current worktree`
-          : `${modeLabel}: build succeeds (substitutes execution bookkeeping gates)`,
-      );
+      result.passed.push(buildGate.reusedReceipt
+        ? `${modeLabel}: reused fresh build proof for the current worktree`
+        : `${modeLabel}: build succeeds (substitutes execution bookkeeping gates)`);
     } else {
       result.failures.push(`${modeLabel}: build failed — fix build errors before verifying`);
     }
     traceVerifyStage('after-run-build', options._trace);
-
     if (!options.light) {
-      if (!recordedPhaseOneTasks) {
-        result.passed.push('TASKS.md is authoritative; missing phase-task bookkeeping did not block receipt-backed verification');
-      }
-
-      if (forgeWaveCount === 0) {
-        result.passed.push('Verify receipts are authoritative for execution progress when forge-wave audit entries are missing');
-      }
+      if (!recordedPhaseOneTasks) result.passed.push('TASKS.md is authoritative; missing phase-task bookkeeping did not block receipt-backed verification');
+      if (forgeWaveCount === 0) result.passed.push('Verify receipts are authoritative for execution progress when forge-wave audit entries are missing');
     }
   } else {
     if (recordedPhaseOneTasks) {
@@ -536,7 +446,6 @@ export async function verify(options: {
     } else {
       result.failures.push('No phase 1 tasks are recorded in STATE.yaml');
     }
-
     if (!stageRequiresExecution(state.workflowStage)) {
       result.failures.push(`Workflow stage "${state.workflowStage}" is not execution-complete. Run "danteforge forge 1" before verify.`);
     } else {
@@ -549,12 +458,11 @@ export async function verify(options: {
   }
 
   if (state.workflowStage === 'ux-refine') {
+    const stateDir = path.join(cwd, STATE_DIR);
     const uxArtifacts = ['UX_REFINE.md', 'design-tokens.css', 'design-preview.html'];
     const foundArtifacts: string[] = [];
     for (const artifact of uxArtifacts) {
-      if (await fileExists(path.join(stateDir, artifact))) {
-        foundArtifacts.push(artifact);
-      }
+      if (await fileExists(path.join(stateDir, artifact))) foundArtifacts.push(artifact);
     }
     if (foundArtifacts.length === 0) {
       result.failures.push('UX refinement stage recorded but no UX refinement artifacts were found');
@@ -562,18 +470,17 @@ export async function verify(options: {
       result.passed.push(`UX refinement artifacts present: ${foundArtifacts.join(', ')}`);
     }
   }
+}
 
+async function runDriftAndAuditChecks(result: VerifyResult, state: DanteState, cwd: string, trace?: (s: string) => void): Promise<void> {
   if (state.auditLog.length > 0) {
     result.passed.push(`Audit log has ${state.auditLog.length} entries`);
   } else {
     result.failures.push('Audit log is empty - no actions recorded yet');
   }
-
-  // AI drift detection on source files. Skip it once hard failures already exist:
-  // it cannot change the verdict and can be expensive on large dirty worktrees.
   if (result.failures.length === 0) {
     try {
-      traceVerifyStage('before-drift-detect', options._trace);
+      traceVerifyStage('before-drift-detect', trace);
       const srcDir = path.join(cwd, 'src');
       if (await fileExists(srcDir)) {
         const modifiedFiles = await listDriftScanFiles(cwd);
@@ -581,81 +488,60 @@ export async function verify(options: {
           const driftViolations = await detectAIDrift(modifiedFiles);
           const blockers = driftViolations.filter(v => v.severity === 'BLOCKER');
           const warnings = driftViolations.filter(v => v.severity !== 'BLOCKER');
-
-          if (blockers.length > 0) {
-            for (const v of blockers) {
-              result.failures.push(`Drift: ${v.message}${v.file ? ` (${v.file})` : ''}`);
-            }
-          }
-          if (warnings.length > 0) {
-            for (const v of warnings) {
-              result.warnings.push(`Drift: ${v.message}${v.file ? ` (${v.file})` : ''}`);
-            }
-          }
-          if (driftViolations.length === 0) {
-            result.passed.push(`AI drift scan clean (${modifiedFiles.length} file${modifiedFiles.length === 1 ? '' : 's'} checked)`);
-          }
+          if (blockers.length > 0) { for (const v of blockers) result.failures.push(`Drift: ${v.message}${v.file ? ` (${v.file})` : ''}`); }
+          if (warnings.length > 0) { for (const v of warnings) result.warnings.push(`Drift: ${v.message}${v.file ? ` (${v.file})` : ''}`); }
+          if (driftViolations.length === 0) result.passed.push(`AI drift scan clean (${modifiedFiles.length} file${modifiedFiles.length === 1 ? '' : 's'} checked)`);
         }
       }
-      traceVerifyStage('after-drift-detect', options._trace);
-    } catch {
-      // Drift detection should not block verification
-    }
+      traceVerifyStage('after-drift-detect', trace);
+    } catch { /* Drift detection should not block verification */ }
   }
+}
 
-  // Live browser verification
-  if (options.live && options.url) {
-    try {
-      const { detectBrowseBinary, invokeBrowse, getBrowsePort } = await import('../../core/browse-adapter.js');
-      const binaryPath = await detectBrowseBinary();
-      if (!binaryPath) {
-        result.failures.push('Browse binary not found — cannot run live verification. Install with: danteforge browse --install');
+async function runLiveBrowserVerification(result: VerifyResult, state: DanteState, options: VerifyOptions, stateDir: string, cwd: string, timestamp: string): Promise<void> {
+  if (!options.live || !options.url) return;
+  try {
+    const { detectBrowseBinary, invokeBrowse, getBrowsePort } = await import('../../core/browse-adapter.js');
+    const binaryPath = await detectBrowseBinary();
+    if (!binaryPath) {
+      result.failures.push('Browse binary not found — cannot run live verification. Install with: danteforge browse --install');
+    } else {
+      const port = getBrowsePort();
+      const evidenceDir = path.join(stateDir, 'evidence');
+      const browseConfig = { binaryPath, port, evidenceDir };
+      const gotoResult = await invokeBrowse('goto', [options.url!], browseConfig);
+      if (gotoResult.success) {
+        result.passed.push(`Live navigation to ${options.url} succeeded`);
       } else {
-        const port = getBrowsePort();
-        const evidenceDir = path.join(stateDir, 'evidence');
-        const browseConfig = { binaryPath, port, evidenceDir };
-
-        const gotoResult = await invokeBrowse('goto', [options.url], browseConfig);
-        if (gotoResult.success) {
-          result.passed.push(`Live navigation to ${options.url} succeeded`);
-        } else {
-          result.failures.push(`Live navigation to ${options.url} failed: ${gotoResult.errorMessage ?? 'unknown'}`);
-        }
-
-        const snapshotResult = await invokeBrowse('snapshot', ['--diff'], browseConfig);
-        if (snapshotResult.success) {
-          result.passed.push('Accessibility snapshot captured');
-        } else {
-          result.warnings.push('Could not capture accessibility snapshot');
-        }
-
-        const screenshotResult = await invokeBrowse('screenshot', [], { ...browseConfig, evidenceDir });
-        if (screenshotResult.success && screenshotResult.evidencePath) {
-          result.passed.push(`Screenshot saved: ${screenshotResult.evidencePath}`);
-          state.auditLog.push(`${timestamp} | verify-live: screenshot → ${screenshotResult.evidencePath}`);
-        }
+        result.failures.push(`Live navigation to ${options.url} failed: ${gotoResult.errorMessage ?? 'unknown'}`);
       }
-    } catch (err) {
-      result.warnings.push(`Live verification error: ${err instanceof Error ? err.message : String(err)}`);
+      const snapshotResult = await invokeBrowse('snapshot', ['--diff'], browseConfig);
+      if (snapshotResult.success) {
+        result.passed.push('Accessibility snapshot captured');
+      } else {
+        result.warnings.push('Could not capture accessibility snapshot');
+      }
+      const screenshotResult = await invokeBrowse('screenshot', [], { ...browseConfig, evidenceDir });
+      if (screenshotResult.success && screenshotResult.evidencePath) {
+        result.passed.push(`Screenshot saved: ${screenshotResult.evidencePath}`);
+        state.auditLog.push(`${timestamp} | verify-live: screenshot → ${screenshotResult.evidencePath}`);
+      }
     }
+  } catch (err) {
+    result.warnings.push(`Live verification error: ${err instanceof Error ? err.message : String(err)}`);
   }
+}
 
-  if (options.release) {
-    await runReleaseVerification(result);
-  }
-
+async function saveVerifyStateAndReceipt(state: DanteState, result: VerifyResult, options: VerifyOptions, cwd: string, timestamp: string): Promise<void> {
   if (result.failures.length === 0 && result.warnings.length === 0) {
     state.lastVerifiedAt = timestamp;
     recordWorkflowStage(state, 'verify', timestamp);
   }
-
   state.lastVerifyStatus = computeVerifyStatus(result);
   state.auditLog.push(`${timestamp} | verify: ${result.passed.length} passed, ${result.warnings.length} warnings, ${result.failures.length} failures`);
   traceVerifyStage('before-save-state', options._trace);
   await saveState(state, { cwd });
   traceVerifyStage('after-save-state', options._trace);
-
-  // Write receipt file and persist path for scoring
   try {
     traceVerifyStage('before-write-receipt', options._trace);
     let gitSha: string | null = null;
@@ -663,19 +549,11 @@ export async function verify(options: {
     const pkgVersion = await readWorkspacePackageVersion(cwd) ?? 'unknown';
     const receiptPath = await writeVerifyReceipt({
       status: computeReceiptStatus(result.passed, result.warnings, result.failures),
-      timestamp,
-      project: 'danteforge',
-      version: pkgVersion,
-      gitSha,
-      platform: process.platform,
-      nodeVersion: process.version,
-      cwd,
-      projectType: state.projectType ?? 'unknown',
-      workflowStage: state.workflowStage,
+      timestamp, project: 'danteforge', version: pkgVersion, gitSha,
+      platform: process.platform, nodeVersion: process.version, cwd,
+      projectType: state.projectType ?? 'unknown', workflowStage: state.workflowStage,
       commandMode: { release: options.release ?? false, live: options.live ?? false, recompute: options.recompute ?? false },
-      passed: result.passed,
-      warnings: result.warnings,
-      failures: result.failures,
+      passed: result.passed, warnings: result.warnings, failures: result.failures,
       counts: { passed: result.passed.length, warnings: result.warnings.length, failures: result.failures.length },
       releaseCheckPassed: options.release ? result.failures.every(f => !f.includes('Release')) : null,
       liveCheckPassed: options.live ? result.failures.every(f => !f.includes('Live')) : null,
@@ -685,10 +563,10 @@ export async function verify(options: {
     state.lastVerifyReceiptPath = receiptPath;
     await saveState(state, { cwd });
     traceVerifyStage('after-write-receipt', options._trace);
-  } catch {
-    // Receipt write should not block verification
-  }
+  } catch { /* Receipt write should not block verification */ }
+}
 
+async function captureAllVerifyLessons(result: VerifyResult, options: VerifyOptions, cwd: string): Promise<void> {
   if (!options.json && (result.failures.length > 0 || result.warnings.length > 0)) {
     try {
       traceVerifyStage('before-capture-verify-lessons', options._trace);
@@ -698,70 +576,109 @@ export async function verify(options: {
       });
       await captureVerifyLessons(result.failures, result.warnings);
       traceVerifyStage('after-capture-verify-lessons', options._trace);
-    } catch {
-      // Lessons capture should not block verification.
-    }
+    } catch { /* Lessons capture should not block verification. */ }
   }
-
-  // On pass or warn: fire-and-forget success pattern capture (OpenSpace CAPTURED mode).
-  // Extracts 2-3 reusable patterns from the git diff → lessons.md → feeds next forge.
   if (result.failures.length === 0 && !options.json) {
     const verifyStatus = result.warnings.length > 0 ? 'warn' : 'pass';
     const receipt: VerifyReceipt = {
       status: verifyStatus as 'pass' | 'warn',
-        passed: result.passed,
-        warnings: result.warnings,
-        failures: [],
-        // Minimal receipt — captureSuccessLessons only needs status, passed, warnings
-        project: '', version: '', gitSha: null, platform: '', nodeVersion: '',
-        cwd, projectType: '', workflowStage: '',
-        timestamp: new Date().toISOString(),
-        commandMode: { release: false, live: false, recompute: false },
-        counts: { passed: result.passed.length, warnings: result.warnings.length, failures: 0 },
-        releaseCheckPassed: null, liveCheckPassed: null,
-        currentStateFresh: true, selfEditPolicyEnforced: false,
-      };
+      passed: result.passed, warnings: result.warnings, failures: [],
+      project: '', version: '', gitSha: null, platform: '', nodeVersion: '',
+      cwd, projectType: '', workflowStage: '', timestamp: new Date().toISOString(),
+      commandMode: { release: false, live: false, recompute: false },
+      counts: { passed: result.passed.length, warnings: result.warnings.length, failures: 0 },
+      releaseCheckPassed: null, liveCheckPassed: null, currentStateFresh: true, selfEditPolicyEnforced: false,
+    };
     try {
       traceVerifyStage('before-capture-success-lessons', options._trace);
       const captureSuccessLessons = options._captureSuccessLessons ?? (async (verifyReceipt: VerifyReceipt, verifyCwd: string) => {
         const { captureSuccessLessons: defaultCaptureSuccessLessons } = await import('../../core/auto-lessons.js');
-        await defaultCaptureSuccessLessons(verifyReceipt, verifyCwd, {
-          _isLLMAvailable: async () => false,
-        });
+        await defaultCaptureSuccessLessons(verifyReceipt, verifyCwd, { _isLLMAvailable: async () => false });
       });
       await captureSuccessLessons(receipt, cwd);
       traceVerifyStage('after-capture-success-lessons', options._trace);
-    } catch {
-      // Success-pattern capture should not block verification.
-    }
+    } catch { /* Success-pattern capture should not block verification. */ }
   }
+}
 
+async function outputVerifyResults(result: VerifyResult, options: VerifyOptions): Promise<void> {
   if (options.json) {
     traceVerifyStage('before-json-output', options._trace);
     traceActiveVerifyHandles();
-    const status = result.failures.length > 0 ? 'fail'
-      : result.warnings.length > 0 ? 'warn'
-      : 'pass';
-    const output = {
+    const status = result.failures.length > 0 ? 'fail' : result.warnings.length > 0 ? 'warn' : 'pass';
+    process.stdout.write(JSON.stringify({
       status,
-      counts: {
-        passed: result.passed.length,
-        warnings: result.warnings.length,
-        failures: result.failures.length,
-      },
-      passed: result.passed,
-      warnings: result.warnings,
-      failures: result.failures,
-    };
-    process.stdout.write(JSON.stringify(output) + '\n');
-    // Reset stderr redirect after JSON output
+      counts: { passed: result.passed.length, warnings: result.warnings.length, failures: result.failures.length },
+      passed: result.passed, warnings: result.warnings, failures: result.failures,
+    }) + '\n');
     logger.setStderr(false);
     traceVerifyStage('after-json-output', options._trace);
     return;
   }
-
   traceVerifyStage('before-report-results', options._trace);
   reportResults(result);
+}
+
+export async function verify(options: VerifyOptions = {}) {
+  return withErrorBoundary('verify', async () => {
+    const cwd = options.cwd ?? process.cwd();
+    const stateDir = path.join(cwd, STATE_DIR);
+    if (options.json) logger.setStderr(true);
+    logger.info('Running verification checks...');
+    traceVerifyStage('start', options._trace);
+    const result: VerifyResult = { passed: [], warnings: [], failures: [] };
+    const timestamp = new Date().toISOString();
+
+    if (await fileExists(stateDir)) {
+      result.passed.push('.danteforge/ directory exists');
+    } else {
+      result.failures.push('.danteforge/ directory missing - run "danteforge review" first');
+    }
+
+    let state;
+    try {
+      traceVerifyStage('before-load-state', options._trace);
+      state = await loadState({ cwd });
+      traceVerifyStage('after-load-state', options._trace);
+      result.passed.push('STATE.yaml is valid and loadable');
+    } catch {
+      result.failures.push('STATE.yaml is corrupt or unreadable');
+      reportResults(result);
+      return;
+    }
+
+    if (options.recompute) {
+      state.projectType = await detectProjectType(cwd);
+      logger.info(`Project type re-detected: ${state.projectType}`);
+    }
+
+    result.passed.push(`Workflow stage recorded: ${state.workflowStage}`);
+
+    const hasConstitutionArtifact = await fileExists(path.join(stateDir, 'CONSTITUTION.md'));
+    if (!state.constitution && hasConstitutionArtifact) {
+      state.constitution = 'CONSTITUTION.md';
+      result.passed.push('CONSTITUTION.md is authoritative; repaired the missing constitution pointer in STATE.yaml');
+    } else if (!state.constitution) {
+      result.failures.push('Constitution is not defined');
+    }
+
+    await assertArtifact(result, 'CURRENT_STATE.md', 'Repo review', stateDir);
+    await validateCurrentStateFreshness(result, stateDir, cwd);
+    await assertArtifact(result, 'CONSTITUTION.md', 'Constitution', stateDir);
+    await assertArtifact(result, 'SPEC.md', 'Specification', stateDir);
+    await assertArtifact(result, 'CLARIFY.md', 'Clarification', stateDir);
+    await assertArtifact(result, 'PLAN.md', 'Execution plan', stateDir);
+    await assertArtifact(result, 'TASKS.md', 'Task breakdown', stateDir);
+    traceVerifyStage('after-artifact-checks', options._trace);
+    if (state.designEnabled) await assertArtifact(result, 'DESIGN.op', 'Design-as-Code', stateDir);
+
+    await runExecutionGateChecks(result, state, options, cwd);
+    await runDriftAndAuditChecks(result, state, cwd, options._trace);
+    await runLiveBrowserVerification(result, state, options, stateDir, cwd, timestamp);
+    if (options.release) await runReleaseVerification(result);
+    await saveVerifyStateAndReceipt(state, result, options, cwd, timestamp);
+    await captureAllVerifyLessons(result, options, cwd);
+    await outputVerifyResults(result, options);
   });
 }
 
