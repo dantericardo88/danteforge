@@ -620,7 +620,7 @@ async function actionValidate(options: CompeteOptions, cwd: string): Promise<Com
   let harshDimensions: Record<string, number> | undefined;
   try {
     const result = await harshScoreFn({ cwd });
-    harshDimensions = result.dimensions as Record<string, number>;
+    harshDimensions = result.displayDimensions as Record<string, number>;
   } catch { /* harsh score optional — age check still runs */ }
 
   const report = checkMatrixStaleness(matrix, harshDimensions);
@@ -653,6 +653,7 @@ async function actionSyncScores(options: CompeteOptions, cwd: string): Promise<C
   const loadFn = options._loadMatrix ?? ((c) => loadMatrix(c));
   const saveFn = options._saveMatrix ?? ((m, c) => saveMatrix(m, c));
   const harshScoreFn = options._harshScore ?? computeHarshScore;
+  const strictDimsFn = options._computeStrictDims ?? computeStrictDimensions;
 
   const matrix = await loadFn(cwd);
   if (!matrix) {
@@ -663,7 +664,9 @@ async function actionSyncScores(options: CompeteOptions, cwd: string): Promise<C
   let harshDimensions: Record<string, number> | undefined;
   try {
     const result = await harshScoreFn({ cwd });
-    harshDimensions = result.dimensions as Record<string, number>;
+    // Apply strict overrides so ceilings (e.g. enterpriseReadiness=9.0) are enforced
+    await applyStrictOverrides(result, cwd, strictDimsFn);
+    harshDimensions = result.displayDimensions as Record<string, number>;
   } catch {
     logger.error('Failed to run harsh scorer — cannot sync scores.');
     return { action: 'validate', matrixPath };
