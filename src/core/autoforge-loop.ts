@@ -199,34 +199,369 @@ function buildGapReportFromCtx(ctx: AutoforgeLoopContext, overall: number): Resi
   };
 }
 
+// ── Internal loop helpers ────────────────────────────────────────────────────
+
+async function runCycleScoringAndCompletion(
+  ctx: AutoforgeLoopContext,
+  deps: Partial<AutoforgeLoopDeps>,
+  cwd: string,
+): Promise<{ tracker: CompletionTracker; scores: Record<ScoredArtifact, ScoreResult>; shouldBreak: boolean }> {
+  const _scoreAllArtifacts = deps.scoreAllArtifacts ?? scoreAllArtifacts;
+  const _persistScoreResult = deps.persistScoreResult ?? persistScoreResult;
+  const _detectProjectType = deps.detectProjectType ?? detectProjectType;
+  const _computeCompletionTracker = deps.computeCompletionTracker ?? computeCompletionTracker;
+  const _recordMemory = deps.recordMemory ?? recordMemory;
+  const _saveState = deps.saveState ?? saveState;
+
+  ctx.loopState = AutoforgeLoopState.SCORING;
+  const scores = await _scoreAllArtifacts(cwd, ctx.state);
+  for (const result of Object.values(scores)) {
+    await _persistScoreResult(result, cwd);
+  }
+
+  if (!ctx.state.projectType || ctx.state.projectType === 'unknown') {
+    ctx.state.projectType = await _detectProjectType(cwd);
+  }
+  const tracker = _computeCompletionTracker(ctx.state, scores);
+  ctx.state.completionTracker = tracker;
+
+  ctx.recentScores = ctx.recentScores ?? [];
+  ctx.recentScores.push(tracker.overall);
+  if (ctx.recentScores.length > 10) ctx.recentScores.shift();
+
+  if (ctx.recentScores.length >= 3) {
+    const fakeCycles = ctx.recentScores.slice(1).map((score, i) => ({
+      cycle: i + 1,
+      timestamp: new Date().toISOString(),
+      adoptionsAttempted: 1,
+      adoptionsSucceeded: 1,
+      scoresBefore: { overall: ctx.recentScores[i] / 10 },
+      scoresAfter: { overall: score / 10 },
+      costUsd: 0,
+    }));
+    const plateau = detectPlateau(fakeCycles, { threshold: 0.05 });
+    if (plateau.isPlateaued) {
+      logger.warn(`[Autoforge] ${formatPlateauAnalysis(plateau)}`);
+    }
+  }
+
+  if (tracker.overall >= COMPLETION_THRESHOLD) {
+    ctx.loopState = AutoforgeLoopState.COMPLETE;
+    logger.success(`[Autoforge] Overall completion: ${tracker.overall}% — target reached!`);
+    const guidance = buildGuidance(tracker, scores, ctx);
+    ctx.lastGuidance = guidance;
+    await writeGuidanceFile(guidance, cwd);
+    printSummaryTable(scores);
+    await _recordMemory({
+      category: 'decision',
+      summary: `Autoforge loop completed at ${tracker.overall}% after ${ctx.cycleCount} cycles`,
+      detail: `Goal: ${ctx.goal}. Projected: ${tracker.projectedCompletion}`,
+      tags: ['autoforge-loop', 'complete'],
+      relatedCommands: ['autoforge'],
+    }, cwd);
+    ctx.state.auditLog.push(
+      `${new Date().toISOString()} | autoforge-loop: COMPLETE at ${tracker.overall}% after ${ctx.cycleCount} cycles`,
+    );
+    await _saveState(ctx.state, { cwd });
+    return { tracker, scores, shouldBreak: true };
+  }
+
+  return { tracker, scores, shouldBreak: false };
+}
+
+async function checkTerminationGovernor(
+  ctx: AutoforgeLoopContext,
+  deps: Partial<AutoforgeLoopDeps>,
+  tracker: CompletionTracker,
+  cwd: string,
+): Promise<boolean> {
+  const _saveState = deps.saveState ?? saveState;
+  const currentVerdict = trackerToVerdict(tracker.overall);
+  ctx.previousVerdicts = ctx.previousVerdicts ?? [];
+  const terminationDecision = await (deps._evaluateTermination ?? evaluateTermination)({
+    cycleCount: ctx.cycleCount,
+    maxCycles: ctx.maxRetries * 5,
+    verdict: currentVerdict,
+    gapReport: buildGapReportFromCtx(ctx, tracker.overall),
+    previousVerdicts: ctx.previousVerdicts,
+    startTime: ctx.startedAt,
+    lastProgressTime: ctx.lastProgressTime ?? ctx.startedAt,
+  });
+  if (terminationDecision.terminate) {
+    logger.info(`[Autoforge] Termination: ${terminationDecision.reason} (confidence: ${terminationDecision.confidence.toFixed(2)})`);
+    ctx.loopState = AutoforgeLoopState.BLOCKED;
+    ctx.state.auditLog.push(
+      `${new Date().toISOString()} | autoforge-loop: termination-governor: ${terminationDecision.reason}`,
+    );
+    await _saveState(ctx.state, { cwd });
+    return true;
+  }
+  ctx.previousVerdicts.push(currentVerdict);
+  const prevScore = ctx.recentScores.length >= 2 ? (ctx.recentScores[ctx.recentScores.length - 2] ?? 0) : 0;
+  if (tracker.overall > prevScore) {
+    ctx.lastProgressTime = new Date().toISOString();
+  }
+  return false;
+}
+
+async function handleBlockedArtifacts(
+  ctx: AutoforgeLoopContext,
+  deps: Partial<AutoforgeLoopDeps>,
+  blockedArtifacts: BlockingIssue[],
+  tracker: CompletionTracker,
+  scores: Record<ScoredArtifact, ScoreResult>,
+  cwd: string,
+  consecutiveFailures: number,
+): Promise<{ shouldBreak: boolean; consecutiveFailures: number }> {
+  const _recordMemory = deps.recordMemory ?? recordMemory;
+  const _saveState = deps.saveState ?? saveState;
+  const _setTimeout = deps.setTimeout ?? globalThis.setTimeout;
+
+  if (blockedArtifacts.length === 0) {
+    return { shouldBreak: false, consecutiveFailures: 0 };
+  }
+
+  consecutiveFailures++;
+
+  if (consecutiveFailures >= CIRCUIT_BREAKER_CONSECUTIVE_FAILURE_LIMIT) {
+    ctx.loopState = AutoforgeLoopState.BLOCKED;
+    logger.error(`[Autoforge] Circuit breaker tripped — ${consecutiveFailures} consecutive failures`);
+    ctx.blockedArtifacts = blockedArtifacts.map(a => a.artifact);
+    const guidance = buildGuidance(tracker, scores, ctx);
+    ctx.lastGuidance = guidance;
+    await writeGuidanceFile(guidance, cwd);
+    await _recordMemory({
+      category: 'error',
+      summary: `Autoforge circuit breaker tripped after ${consecutiveFailures} consecutive failures`,
+      detail: guidance.blockingIssues.map(i => `${i.artifact}: ${i.remediation}`).join('\n'),
+      tags: ['autoforge-loop', 'circuit-breaker', 'blocked'],
+      relatedCommands: ['autoforge'],
+    }, cwd);
+    ctx.state.auditLog.push(
+      `${new Date().toISOString()} | autoforge-loop: circuit breaker tripped after ${consecutiveFailures} consecutive failures`,
+    );
+    await _saveState(ctx.state, { cwd });
+    return { shouldBreak: true, consecutiveFailures };
+  }
+
+  if (ctx.force && ctx.cycleCount === 1) {
+    logger.warn(`[Autoforge] --force: overriding BLOCKED artifact(s) for one cycle`);
+    ctx.state.auditLog.push(
+      `${new Date().toISOString()} | autoforge-loop: --force override on ${blockedArtifacts.map(a => a.artifact).join(', ')}`,
+    );
+    return { shouldBreak: false, consecutiveFailures };
+  }
+
+  const permanentlyBlocked: string[] = [];
+  for (const blocked of blockedArtifacts) {
+    const retries = ctx.retryCounters[blocked.artifact] ?? 0;
+    if (retries >= ctx.maxRetries) permanentlyBlocked.push(blocked.artifact);
+  }
+
+  if (permanentlyBlocked.length > 0) {
+    ctx.loopState = AutoforgeLoopState.BLOCKED;
+    ctx.blockedArtifacts = permanentlyBlocked;
+    const guidance = buildGuidance(tracker, scores, ctx);
+    ctx.lastGuidance = guidance;
+    await writeGuidanceFile(guidance, cwd);
+    logger.error(`[Autoforge] BLOCKED: ${permanentlyBlocked.join(', ')} failed after ${MAX_RETRIES} retries`);
+    logger.info('[Autoforge] See .danteforge/AUTOFORGE_GUIDANCE.md for remediation commands');
+    await _recordMemory({
+      category: 'error',
+      summary: `Autoforge BLOCKED on ${permanentlyBlocked.join(', ')}`,
+      detail: guidance.blockingIssues.map(i => `${i.artifact}: ${i.remediation}`).join('\n'),
+      tags: ['autoforge-loop', 'blocked'],
+      relatedCommands: ['autoforge'],
+    }, cwd);
+    ctx.state.auditLog.push(
+      `${new Date().toISOString()} | autoforge-loop: BLOCKED on ${permanentlyBlocked.join(', ')}`,
+    );
+    await _saveState(ctx.state, { cwd });
+    return { shouldBreak: true, consecutiveFailures };
+  }
+
+  ctx.loopState = AutoforgeLoopState.REFINING;
+  for (const blocked of blockedArtifacts) {
+    const retryCount = ctx.retryCounters[blocked.artifact] ?? 0;
+    const backoffMs = computeBackoff(retryCount);
+    logger.info(`[Autoforge] Backing off ${backoffMs}ms before retry...`);
+    await new Promise(resolve => _setTimeout(resolve as () => void, backoffMs));
+    ctx.retryCounters[blocked.artifact] = retryCount + 1;
+    logger.info(`[Autoforge] Refining ${blocked.artifact} (attempt ${ctx.retryCounters[blocked.artifact]}/${ctx.maxRetries})`);
+  }
+
+  return { shouldBreak: false, consecutiveFailures };
+}
+
+async function executeCycleCommand(
+  ctx: AutoforgeLoopContext,
+  deps: Partial<AutoforgeLoopDeps>,
+  nextCommand: string,
+  cwd: string,
+  currentBlockedCount: number,
+  prevBlockedCount: number,
+  consecutiveExecFailures: number,
+): Promise<{ shouldBreak: boolean; consecutiveExecFailures: number; prevBlockedCount: number; shouldResetConsecutiveFailures: boolean }> {
+  const _executeCommand = deps._executeCommand;
+  const _saveState = deps.saveState ?? saveState;
+  const _loadState = deps.loadState ?? loadState;
+
+  if (!_executeCommand) {
+    logger.info('[Autoforge] No executor provided — advisory mode: guidance written, exiting loop');
+    return { shouldBreak: true, consecutiveExecFailures, prevBlockedCount, shouldResetConsecutiveFailures: false };
+  }
+
+  logger.info(`[Autoforge] Executing: ${nextCommand}`);
+  ctx.state.auditLog.push(
+    `${new Date().toISOString()} | autoforge-loop: cycle ${ctx.cycleCount} executing ${nextCommand}`,
+  );
+  await _saveState(ctx.state, { cwd });
+
+  const execResult = await _executeCommand(nextCommand, cwd);
+  let shouldResetConsecutiveFailures = false;
+  if (!execResult.success) {
+    logger.warn(`[Autoforge] ${nextCommand} reported failure — continuing loop`);
+    consecutiveExecFailures++;
+    ctx.state.autoforgeFailedAttempts = (ctx.state.autoforgeFailedAttempts ?? 0) + 1;
+    if (consecutiveExecFailures >= CIRCUIT_BREAKER_CONSECUTIVE_FAILURE_LIMIT) {
+      ctx.loopState = AutoforgeLoopState.BLOCKED;
+      logger.error(`[Autoforge] Circuit breaker tripped after ${consecutiveExecFailures} consecutive command failures`);
+      ctx.state.auditLog.push(
+        `${new Date().toISOString()} | autoforge-loop: circuit breaker tripped on command failures`,
+      );
+      await _saveState(ctx.state, { cwd });
+      return { shouldBreak: true, consecutiveExecFailures, prevBlockedCount: currentBlockedCount, shouldResetConsecutiveFailures: false };
+    }
+  } else {
+    consecutiveExecFailures = 0;
+    ctx.state.autoforgeFailedAttempts = 0;
+    // Signal caller to reset consecutiveFailures only when the blocked set is shrinking
+    if (currentBlockedCount < prevBlockedCount) {
+      shouldResetConsecutiveFailures = true;
+    }
+  }
+  ctx.state = await _loadState({ cwd });
+  return { shouldBreak: false, consecutiveExecFailures, prevBlockedCount: currentBlockedCount, shouldResetConsecutiveFailures };
+}
+
+async function writePostLoopArtifacts(
+  ctx: AutoforgeLoopContext,
+  deps: Partial<AutoforgeLoopDeps>,
+  interrupted: boolean,
+  startScore: number,
+  loopStartMs: number,
+): Promise<void> {
+  const _saveState = deps.saveState ?? saveState;
+  const _writeLoopResult = deps._writeLoopResult ?? writeLoopResult;
+
+  if (interrupted) {
+    logger.info('[Autoforge] Interrupted — progress saved.');
+    ctx.state.auditLog.push(
+      `${new Date().toISOString()} | autoforge-loop: interrupted at cycle ${ctx.cycleCount}`,
+    );
+    await _saveState(ctx.state, { cwd: ctx.cwd });
+  }
+
+  if (interrupted || ctx.loopState === AutoforgeLoopState.BLOCKED) {
+    const pauseSnapshot: AutoforgePauseSnapshot = {
+      pausedAt: new Date().toISOString(),
+      avgScore: Array.isArray(ctx.recentScores) && ctx.recentScores.length > 0
+        ? ctx.recentScores[ctx.recentScores.length - 1]!
+        : startScore,
+      cycleCount: ctx.cycleCount,
+      goal: ctx.goal,
+      retryCounters: ctx.retryCounters,
+      blockedArtifacts: ctx.blockedArtifacts,
+    };
+    try {
+      await fs.writeFile(
+        path.join(ctx.cwd, AUTOFORGE_PAUSE_FILE),
+        JSON.stringify(pauseSnapshot, null, 2),
+        'utf8',
+      );
+      logger.info(`[Autoforge] Pause snapshot saved — run \`danteforge resume\` to continue.`);
+    } catch { /* best-effort */ }
+  }
+
+  const endScore = Array.isArray(ctx.recentScores) && ctx.recentScores.length > 0
+    ? ctx.recentScores[ctx.recentScores.length - 1]
+    : startScore;
+  const terminationReason: LoopTerminationReason =
+    interrupted ? 'interrupted'
+    : ctx.loopState === AutoforgeLoopState.COMPLETE ? 'target-reached'
+    : ctx.loopState === AutoforgeLoopState.BLOCKED ? 'blocked'
+    : !deps._executeCommand ? 'advisory'
+    : 'max-cycles';
+
+  const loopResult: LoopResult = {
+    startScore,
+    endScore,
+    delta: Math.round((endScore - startScore) * 1000) / 1000,
+    cycles: ctx.cycleCount,
+    duration: Date.now() - loopStartMs,
+    terminationReason,
+    timestamp: new Date().toISOString(),
+  };
+  await _writeLoopResult(loopResult, ctx.cwd);
+  logger.info(
+    `[Autoforge] Loop complete — ${ctx.cycleCount} cycle(s) in ${Math.round(loopResult.duration / 1000)}s\n` +
+    `           Score: ${startScore.toFixed(1)} → ${endScore.toFixed(1)} (${loopResult.delta >= 0 ? '+' : ''}${loopResult.delta.toFixed(1)})\n` +
+    `           Reason: ${terminationReason}`,
+  );
+}
+
+async function runLlmPreflight(deps: Partial<AutoforgeLoopDeps>): Promise<void> {
+  try {
+    const isLLMAvailableFn = deps._isLLMAvailable ?? isLLMAvailable;
+    const llmOk = await isLLMAvailableFn().catch(() => false);
+    if (!llmOk) {
+      logger.warn('[Autoforge] ⚠ No LLM detected — forge cycles will fail.');
+      logger.warn('[Autoforge]   Run `danteforge doctor` for diagnostics.');
+      logger.warn('[Autoforge]   Run `danteforge config` to set a provider.');
+    }
+  } catch { /* best-effort — never block the loop */ }
+}
+
+async function checkProtectedPathGate(
+  ctx: AutoforgeLoopContext,
+  deps: Partial<AutoforgeLoopDeps>,
+  nextCommand: string,
+  cwd: string,
+): Promise<boolean> {
+  if (nextCommand !== 'forge') return false;
+  const _checkProtectedPaths = deps._checkProtectedPaths ??
+    ((s: DanteState, o: { cwd?: string }) => checkProtectedTaskPaths(s, o));
+  const _saveState = deps.saveState ?? saveState;
+  const pathCheck = await _checkProtectedPaths(ctx.state, { cwd });
+  if (!pathCheck.approved) {
+    const blockedList = pathCheck.blocked.join(', ');
+    logger.error(`[Autoforge] Blocked: protected path(s) require explicit approval: ${blockedList}`);
+    logger.error('[Autoforge] Set selfEditPolicy in STATE.yaml or run with allow-with-audit to continue.');
+    ctx.state.auditLog.push(
+      `${new Date().toISOString()} | autoforge-loop: cycle ${ctx.cycleCount} BLOCKED by protected path gate: ${blockedList}`,
+    );
+    ctx.loopState = AutoforgeLoopState.BLOCKED;
+    ctx.blockedArtifacts = pathCheck.blocked;
+    await _saveState(ctx.state, { cwd });
+    return true;
+  }
+  return false;
+}
+
 // ── Main loop ───────────────────────────────────────────────────────────────
 
 export async function runAutoforgeLoop(ctx: AutoforgeLoopContext, deps?: Partial<AutoforgeLoopDeps>): Promise<AutoforgeLoopContext> {
-  // Resolve deps with defaults
-  const _scoreAllArtifacts = deps?.scoreAllArtifacts ?? scoreAllArtifacts;
-  const _persistScoreResult = deps?.persistScoreResult ?? persistScoreResult;
-  const _detectProjectType = deps?.detectProjectType ?? detectProjectType;
-  const _computeCompletionTracker = deps?.computeCompletionTracker ?? computeCompletionTracker;
-  const _recordMemory = deps?.recordMemory ?? recordMemory;
-  const _loadState = deps?.loadState ?? loadState;
-  const _saveState = deps?.saveState ?? saveState;
-  const _setTimeout = deps?.setTimeout ?? globalThis.setTimeout;
-  const _checkProtectedPaths = deps?._checkProtectedPaths ??
-    ((s: DanteState, o: { cwd?: string }) => checkProtectedTaskPaths(s, o));
-  const _executeCommand = deps?._executeCommand;
   const _addSignal = deps?._addSignalListener ?? ((s: string, h: () => void) => process.on(s, h));
   const _removeSignal = deps?._removeSignalListener ?? ((s: string, h: () => void) => process.removeListener(s, h));
-  const _writeLoopResult = deps?._writeLoopResult ?? writeLoopResult;
-
   const loopStartMs = Date.now();
   const startScore = Array.isArray(ctx.recentScores) && ctx.recentScores.length > 0 ? ctx.recentScores[0] : 0;
+  const loopDeps: Partial<AutoforgeLoopDeps> = deps ?? {};
 
   let interrupted = false;
   let consecutiveFailures = 0;
   let consecutiveExecFailures = 0;
-  let prevBlockedCount = Infinity; // Track blocked artifact count from previous cycle to detect progress
+  let prevBlockedCount = Infinity;
 
-  // SIGINT handler for graceful shutdown
   const sigintHandler = () => {
     interrupted = true;
     logger.info('\n[Autoforge] Interrupt received — completing current step and saving progress...');
@@ -236,220 +571,25 @@ export async function runAutoforgeLoop(ctx: AutoforgeLoopContext, deps?: Partial
   try {
     ctx.loopState = AutoforgeLoopState.RUNNING;
     ctx.startedAt = new Date().toISOString();
-
-    // LLM pre-flight — warn early before wasting a cycle
-    try {
-      const isLLMAvailableFn = deps?._isLLMAvailable ?? isLLMAvailable;
-      const llmOk = await isLLMAvailableFn().catch(() => false);
-      if (!llmOk) {
-        logger.warn('[Autoforge] ⚠ No LLM detected — forge cycles will fail.');
-        logger.warn('[Autoforge]   Run `danteforge doctor` for diagnostics.');
-        logger.warn('[Autoforge]   Run `danteforge config` to set a provider.');
-      }
-    } catch { /* best-effort — never block the loop */ }
-
+    await runLlmPreflight(loopDeps);
     const cycleTracker = createStepTracker(ctx.maxRetries * 5);
 
     while (!interrupted) {
       ctx.cycleCount++;
       cycleTracker.step(`Cycle ${ctx.cycleCount} — scoring → refining → verifying`);
       logger.info(`[Autoforge] ▶ Cycle ${ctx.cycleCount} — scoring → refining → verifying`);
-
-      // 1. Score all artifacts
-      ctx.loopState = AutoforgeLoopState.SCORING;
       const cwd = ctx.cwd;
-      const scores = await _scoreAllArtifacts(cwd, ctx.state);
-      for (const result of Object.values(scores)) {
-        await _persistScoreResult(result, cwd);
-      }
 
-      // 2. Compute completion
-      if (!ctx.state.projectType || ctx.state.projectType === 'unknown') {
-        ctx.state.projectType = await _detectProjectType(cwd);
-      }
-      const tracker = _computeCompletionTracker(ctx.state, scores);
-      ctx.state.completionTracker = tracker;
+      const { tracker, scores, shouldBreak: scoringBreak } = await runCycleScoringAndCompletion(ctx, loopDeps, cwd);
+      if (scoringBreak) break;
+      if (await checkTerminationGovernor(ctx, loopDeps, tracker, cwd)) break;
 
-      // Track score history for plateau detection
-      ctx.recentScores = ctx.recentScores ?? [];
-      ctx.recentScores.push(tracker.overall);
-      if (ctx.recentScores.length > 10) ctx.recentScores.shift();
-
-      // Plateau detection — convert percentage scores to cycle deltas for the detector
-      if (ctx.recentScores.length >= 3) {
-        const fakeCycles = ctx.recentScores.slice(1).map((score, i) => ({
-          cycle: i + 1,
-          timestamp: new Date().toISOString(),
-          adoptionsAttempted: 1,
-          adoptionsSucceeded: 1,
-          scoresBefore: { overall: ctx.recentScores[i] / 10 },
-          scoresAfter: { overall: score / 10 },
-          costUsd: 0,
-        }));
-        const plateau = detectPlateau(fakeCycles, { threshold: 0.05 });
-        if (plateau.isPlateaued) {
-          logger.warn(`[Autoforge] ${formatPlateauAnalysis(plateau)}`);
-        }
-      }
-
-      // 3. Check completion threshold
-      if (tracker.overall >= COMPLETION_THRESHOLD) {
-        ctx.loopState = AutoforgeLoopState.COMPLETE;
-        logger.success(`[Autoforge] Overall completion: ${tracker.overall}% — target reached!`);
-
-        // Write final guidance
-        const guidance = buildGuidance(tracker, scores, ctx);
-        ctx.lastGuidance = guidance;
-        await writeGuidanceFile(guidance, cwd);
-
-        // Print summary table
-        printSummaryTable(scores);
-
-        // Record to memory
-        await _recordMemory({
-          category: 'decision',
-          summary: `Autoforge loop completed at ${tracker.overall}% after ${ctx.cycleCount} cycles`,
-          detail: `Goal: ${ctx.goal}. Projected: ${tracker.projectedCompletion}`,
-          tags: ['autoforge-loop', 'complete'],
-          relatedCommands: ['autoforge'],
-        }, cwd);
-
-        // Save state
-        ctx.state.auditLog.push(
-          `${new Date().toISOString()} | autoforge-loop: COMPLETE at ${tracker.overall}% after ${ctx.cycleCount} cycles`,
-        );
-        await _saveState(ctx.state, { cwd });
-
-        break;
-      }
-
-      // Termination-governor: evidence-based exit for stall, plateau, and time limit
-      // Runs AFTER the completion threshold so normal completion always wins first.
-      {
-        const currentVerdict = trackerToVerdict(tracker.overall);
-        ctx.previousVerdicts = ctx.previousVerdicts ?? [];
-        const terminationDecision = await (deps?._evaluateTermination ?? evaluateTermination)({
-          cycleCount: ctx.cycleCount,
-          maxCycles: ctx.maxRetries * 5,
-          verdict: currentVerdict,
-          gapReport: buildGapReportFromCtx(ctx, tracker.overall),
-          previousVerdicts: ctx.previousVerdicts,
-          startTime: ctx.startedAt,
-          lastProgressTime: ctx.lastProgressTime ?? ctx.startedAt,
-        });
-        if (terminationDecision.terminate) {
-          logger.info(`[Autoforge] Termination: ${terminationDecision.reason} (confidence: ${terminationDecision.confidence.toFixed(2)})`);
-          ctx.loopState = AutoforgeLoopState.BLOCKED;
-          ctx.state.auditLog.push(
-            `${new Date().toISOString()} | autoforge-loop: termination-governor: ${terminationDecision.reason}`,
-          );
-          await _saveState(ctx.state, { cwd });
-          break;
-        }
-        ctx.previousVerdicts.push(currentVerdict);
-        const prevScore = ctx.recentScores.length >= 2
-          ? (ctx.recentScores[ctx.recentScores.length - 2] ?? 0)
-          : 0;
-        if (tracker.overall > prevScore) {
-          ctx.lastProgressTime = new Date().toISOString();
-        }
-      }
-
-      // 4. Find blocking artifacts
       const blockedArtifacts = findBlockedArtifacts(scores);
       const currentBlockedCount = blockedArtifacts.length;
+      const blockedRes = await handleBlockedArtifacts(ctx, loopDeps, blockedArtifacts, tracker, scores, cwd, consecutiveFailures);
+      consecutiveFailures = blockedRes.consecutiveFailures;
+      if (blockedRes.shouldBreak) break;
 
-      // 5. Handle BLOCKED state
-      if (blockedArtifacts.length > 0) {
-        consecutiveFailures++;
-
-        // Circuit breaker: trip if consecutive failures exceed limit
-        if (consecutiveFailures >= CIRCUIT_BREAKER_CONSECUTIVE_FAILURE_LIMIT) {
-          ctx.loopState = AutoforgeLoopState.BLOCKED;
-          logger.error(`[Autoforge] Circuit breaker tripped — ${consecutiveFailures} consecutive failures`);
-
-          ctx.blockedArtifacts = blockedArtifacts.map(a => a.artifact);
-          const guidance = buildGuidance(tracker, scores, ctx);
-          ctx.lastGuidance = guidance;
-          await writeGuidanceFile(guidance, cwd);
-
-          await _recordMemory({
-            category: 'error',
-            summary: `Autoforge circuit breaker tripped after ${consecutiveFailures} consecutive failures`,
-            detail: guidance.blockingIssues.map(i => `${i.artifact}: ${i.remediation}`).join('\n'),
-            tags: ['autoforge-loop', 'circuit-breaker', 'blocked'],
-            relatedCommands: ['autoforge'],
-          }, cwd);
-
-          ctx.state.auditLog.push(
-            `${new Date().toISOString()} | autoforge-loop: circuit breaker tripped after ${consecutiveFailures} consecutive failures`,
-          );
-          await _saveState(ctx.state, { cwd });
-
-          break;
-        }
-
-        // Check if force flag allows one override
-        if (ctx.force && ctx.cycleCount === 1) {
-          logger.warn(`[Autoforge] --force: overriding BLOCKED artifact(s) for one cycle`);
-          ctx.state.auditLog.push(
-            `${new Date().toISOString()} | autoforge-loop: --force override on ${blockedArtifacts.map(a => a.artifact).join(', ')}`,
-          );
-        } else {
-          // Check retry limits
-          const permanentlyBlocked: string[] = [];
-          for (const blocked of blockedArtifacts) {
-            const retries = ctx.retryCounters[blocked.artifact] ?? 0;
-            if (retries >= ctx.maxRetries) {
-              permanentlyBlocked.push(blocked.artifact);
-            }
-          }
-
-          if (permanentlyBlocked.length > 0) {
-            ctx.loopState = AutoforgeLoopState.BLOCKED;
-            ctx.blockedArtifacts = permanentlyBlocked;
-
-            const guidance = buildGuidance(tracker, scores, ctx);
-            ctx.lastGuidance = guidance;
-            await writeGuidanceFile(guidance, cwd);
-
-            logger.error(`[Autoforge] BLOCKED: ${permanentlyBlocked.join(', ')} failed after ${MAX_RETRIES} retries`);
-            logger.info('[Autoforge] See .danteforge/AUTOFORGE_GUIDANCE.md for remediation commands');
-
-            await _recordMemory({
-              category: 'error',
-              summary: `Autoforge BLOCKED on ${permanentlyBlocked.join(', ')}`,
-              detail: guidance.blockingIssues.map(i => `${i.artifact}: ${i.remediation}`).join('\n'),
-              tags: ['autoforge-loop', 'blocked'],
-              relatedCommands: ['autoforge'],
-            }, cwd);
-
-            ctx.state.auditLog.push(
-              `${new Date().toISOString()} | autoforge-loop: BLOCKED on ${permanentlyBlocked.join(', ')}`,
-            );
-            await _saveState(ctx.state, { cwd });
-
-            break;
-          }
-
-          // Try refining blocked artifacts — apply exponential backoff before retry
-          ctx.loopState = AutoforgeLoopState.REFINING;
-          for (const blocked of blockedArtifacts) {
-            const retryCount = ctx.retryCounters[blocked.artifact] ?? 0;
-            const backoffMs = computeBackoff(retryCount);
-            logger.info(`[Autoforge] Backing off ${backoffMs}ms before retry...`);
-            await new Promise(resolve => _setTimeout(resolve as () => void, backoffMs));
-
-            ctx.retryCounters[blocked.artifact] = retryCount + 1;
-            logger.info(`[Autoforge] Refining ${blocked.artifact} (attempt ${ctx.retryCounters[blocked.artifact]}/${ctx.maxRetries})`);
-          }
-        }
-      } else {
-        // No blocking artifacts — reset consecutive failure counter
-        consecutiveFailures = 0;
-      }
-
-      // Best-effort complexity-based preset recommendation.
       try {
         const { assessComplexity } = await import('./complexity-classifier.js');
         const tasks = Object.values(ctx.state.tasks).flat();
@@ -459,147 +599,33 @@ export async function runAutoforgeLoop(ctx: AutoforgeLoopContext, deps?: Partial
         }
       } catch (err) { logger.verbose(`[best-effort] preset recommendation: ${err instanceof Error ? err.message : String(err)}`); }
 
-      // 6. Determine next command
       let nextCommand = determineNextCommand(ctx.state, tracker, scores);
-      if (!nextCommand) {
-        ctx.loopState = AutoforgeLoopState.COMPLETE;
-        break;
-      }
-      // `specify` requires a positional <idea> argument — inject the loop goal so
-      // the improvement cycle doesn't fail with "missing required argument".
+      if (!nextCommand) { ctx.loopState = AutoforgeLoopState.COMPLETE; break; }
       if (nextCommand === 'specify --refine') {
         const idea = ctx.goal ?? 'Improve and refine the existing specification';
         nextCommand = `specify "${idea.replace(/"/g, '\\"')}" --refine --light`;
       }
 
-      // 7. Write guidance
       const guidance = buildGuidance(tracker, scores, ctx);
       ctx.lastGuidance = guidance;
       await writeGuidanceFile(guidance, cwd);
 
-      // 8. Execute (or dry-run)
       if (ctx.dryRun) {
         logger.info(`[Autoforge] DRY RUN — would execute: ${nextCommand}`);
         logger.info(`[Autoforge] Overall: ${tracker.overall}% | Bottleneck: ${guidance.currentBottleneck}`);
         break;
       }
 
-      // Protected path gate — block forge waves that touch protected files without approval
-      if (nextCommand === 'forge') {
-        const pathCheck = await _checkProtectedPaths(ctx.state, { cwd });
-        if (!pathCheck.approved) {
-          const blockedList = pathCheck.blocked.join(', ');
-          logger.error(`[Autoforge] Blocked: protected path(s) require explicit approval: ${blockedList}`);
-          logger.error('[Autoforge] Set selfEditPolicy in STATE.yaml or run with allow-with-audit to continue.');
-          ctx.state.auditLog.push(
-            `${new Date().toISOString()} | autoforge-loop: cycle ${ctx.cycleCount} BLOCKED by protected path gate: ${blockedList}`,
-          );
-          ctx.loopState = AutoforgeLoopState.BLOCKED;
-          ctx.blockedArtifacts = pathCheck.blocked;
-          await _saveState(ctx.state, { cwd });
-          break;
-        }
-      }
+      if (await checkProtectedPathGate(ctx, loopDeps, nextCommand, cwd)) break;
 
-      // Safety: without an executor and not in dry-run, emit guidance and exit advisory mode
-      if (!_executeCommand) {
-        logger.info('[Autoforge] No executor provided — advisory mode: guidance written, exiting loop');
-        break;
-      }
-
-      logger.info(`[Autoforge] Executing: ${nextCommand}`);
-      ctx.state.auditLog.push(
-        `${new Date().toISOString()} | autoforge-loop: cycle ${ctx.cycleCount} executing ${nextCommand}`,
-      );
-      await _saveState(ctx.state, { cwd });
-
-      const execResult = await _executeCommand(nextCommand, cwd);
-      if (!execResult.success) {
-        logger.warn(`[Autoforge] ${nextCommand} reported failure — continuing loop`);
-        consecutiveExecFailures++;
-        ctx.state.autoforgeFailedAttempts = (ctx.state.autoforgeFailedAttempts ?? 0) + 1;
-        if (consecutiveExecFailures >= CIRCUIT_BREAKER_CONSECUTIVE_FAILURE_LIMIT) {
-          ctx.loopState = AutoforgeLoopState.BLOCKED;
-          logger.error(`[Autoforge] Circuit breaker tripped after ${consecutiveExecFailures} consecutive command failures`);
-          ctx.state.auditLog.push(
-            `${new Date().toISOString()} | autoforge-loop: circuit breaker tripped on command failures`,
-          );
-          await _saveState(ctx.state, { cwd });
-          break;
-        }
-      } else {
-        consecutiveExecFailures = 0;
-        // Reset failure counter on successful execution so the self-improvement score stays clean
-        ctx.state.autoforgeFailedAttempts = 0;
-        // Only reset consecutiveFailures when the blocked set is actually shrinking —
-        // this allows the circuit breaker to still trip when artifacts are genuinely stuck.
-        if (currentBlockedCount < prevBlockedCount) {
-          consecutiveFailures = 0;
-        }
-      }
-      prevBlockedCount = currentBlockedCount;
-
-      // Reload state after execution
-      ctx.state = await _loadState({ cwd });
+      const execRes = await executeCycleCommand(ctx, loopDeps, nextCommand, cwd, currentBlockedCount, prevBlockedCount, consecutiveExecFailures);
+      consecutiveExecFailures = execRes.consecutiveExecFailures;
+      prevBlockedCount = execRes.prevBlockedCount;
+      if (execRes.shouldResetConsecutiveFailures) consecutiveFailures = 0;
+      if (execRes.shouldBreak) break;
     }
 
-    if (interrupted) {
-      logger.info('[Autoforge] Interrupted — progress saved.');
-      ctx.state.auditLog.push(
-        `${new Date().toISOString()} | autoforge-loop: interrupted at cycle ${ctx.cycleCount}`,
-      );
-      await _saveState(ctx.state, { cwd: ctx.cwd });
-    }
-
-    // ── Write pause snapshot (enables `danteforge resume`) ───────────────────
-    if (interrupted || ctx.loopState === AutoforgeLoopState.BLOCKED) {
-      const pauseSnapshot: AutoforgePauseSnapshot = {
-        pausedAt: new Date().toISOString(),
-        avgScore: Array.isArray(ctx.recentScores) && ctx.recentScores.length > 0
-          ? ctx.recentScores[ctx.recentScores.length - 1]!
-          : startScore,
-        cycleCount: ctx.cycleCount,
-        goal: ctx.goal,
-        retryCounters: ctx.retryCounters,
-        blockedArtifacts: ctx.blockedArtifacts,
-      };
-      try {
-        await fs.writeFile(
-          path.join(ctx.cwd, AUTOFORGE_PAUSE_FILE),
-          JSON.stringify(pauseSnapshot, null, 2),
-          'utf8',
-        );
-        logger.info(`[Autoforge] Pause snapshot saved — run \`danteforge resume\` to continue.`);
-      } catch { /* best-effort */ }
-    }
-
-    // ── Write loop-result.json (quality delta proof) ──────────────────────────
-    const endScore = Array.isArray(ctx.recentScores) && ctx.recentScores.length > 0
-      ? ctx.recentScores[ctx.recentScores.length - 1]
-      : startScore;
-    const terminationReason: LoopTerminationReason =
-      interrupted ? 'interrupted'
-      : ctx.loopState === AutoforgeLoopState.COMPLETE ? 'target-reached'
-      : ctx.loopState === AutoforgeLoopState.BLOCKED ? 'blocked'
-      : !deps?._executeCommand ? 'advisory'
-      : 'max-cycles';
-
-    const loopResult: LoopResult = {
-      startScore,
-      endScore,
-      delta: Math.round((endScore - startScore) * 1000) / 1000,
-      cycles: ctx.cycleCount,
-      duration: Date.now() - loopStartMs,
-      terminationReason,
-      timestamp: new Date().toISOString(),
-    };
-    await _writeLoopResult(loopResult, ctx.cwd);
-    logger.info(
-      `[Autoforge] Loop complete — ${ctx.cycleCount} cycle(s) in ${Math.round(loopResult.duration / 1000)}s\n` +
-      `           Score: ${startScore.toFixed(1)} → ${endScore.toFixed(1)} (${loopResult.delta >= 0 ? '+' : ''}${loopResult.delta.toFixed(1)})\n` +
-      `           Reason: ${terminationReason}`,
-    );
-
+    await writePostLoopArtifacts(ctx, loopDeps, interrupted, startScore, loopStartMs);
     return ctx;
   } finally {
     _removeSignal('SIGINT', sigintHandler);
