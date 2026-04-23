@@ -135,6 +135,7 @@ program
   .option('--worktree', 'Run execution in an isolated git worktree')
   .option('--figma', 'Use the prompt-driven Figma refinement path during this wave (requires --prompt)')
   .option('--skip-ux', 'Skip UX refinement even with --figma')
+  .option('--confirm', 'Require explicit human approval via policy gate before executing')
   .action((...a: unknown[]) => void C().then(c => (c.forge as (...x: unknown[]) => unknown)(...a)));
 
 program

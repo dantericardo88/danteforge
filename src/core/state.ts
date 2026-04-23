@@ -142,6 +142,10 @@ export interface DanteState {
   // v0.34.0 — Ecosystem MCP signals (written by score bootstrap)
   skillCount?: number;         // count of skill dirs with SKILL.md under src/harvested/dante-agents/skills/
   hasPluginManifest?: boolean; // true when .claude-plugin/plugin.json exists
+  // v0.18.0 — Enterprise admin (D32)
+  confirmationState?: 'none' | 'awaiting' | 'confirmed' | 'vetoed';
+  policyReceiptPath?: string;  // path to last policy decision receipt
+  teamId?: string | null;      // tenant/team identifier for audit scoping
 }
 
 export interface VerifyEvidence {

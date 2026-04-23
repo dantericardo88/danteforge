@@ -3,10 +3,42 @@ import { runDanteParty } from '../../harvested/dante-agents/party-mode.js';
 import { requirePlan, requireTests, runGate } from '../../core/gates.js';
 import { logger } from '../../core/logger.js';
 import { withErrorBoundary } from '../../core/cli-error-boundary.js';
+import { runPolicyGate } from '../../core/policy-gate.js';
+import { loadState, saveState } from '../../core/state.js';
 import fs from 'fs/promises';
 
-export async function forge(phase = '1', options: { profile?: string; parallel?: boolean; prompt?: boolean; light?: boolean; worktree?: boolean; figma?: boolean; skipUx?: boolean; _isLLMAvailable?: () => Promise<boolean> } = {}) {
+export async function forge(phase = '1', options: {
+  profile?: string; parallel?: boolean; prompt?: boolean; light?: boolean;
+  worktree?: boolean; figma?: boolean; skipUx?: boolean; confirm?: boolean;
+  _isLLMAvailable?: () => Promise<boolean>;
+  _policyGate?: typeof runPolicyGate;
+} = {}) {
   return withErrorBoundary('forge', async () => {
+  // Policy gate — check .danteforge/policy.yaml before execution
+  const gateFn = options._policyGate ?? runPolicyGate;
+  const decision = await gateFn('forge', process.cwd()).catch(() => null);
+  if (decision && !decision.allowed) {
+    logger.error(`[PolicyGate] forge blocked: ${decision.reason}`);
+    process.exitCode = 1;
+    return;
+  }
+  if (decision?.requiresApproval || options.confirm) {
+    const state = await loadState().catch(() => null);
+    if (state) {
+      state.confirmationState = 'awaiting';
+      if (decision?.timestamp) state.policyReceiptPath = decision.timestamp;
+      await saveState(state).catch(() => { /* best-effort */ });
+    }
+    logger.warn('[PolicyGate] forge requires human approval. Set confirmationState=confirmed in .danteforge/STATE.yaml to proceed, or re-run without --confirm.');
+    if (!options.confirm) {
+      // requiresApproval from policy but no --confirm flag: block with guidance
+    } else {
+      // --confirm flag given: pause here for user to manually confirm
+      process.exitCode = 1;
+      return;
+    }
+  }
+
   if (!(await runGate(() => requirePlan(options.light)))) return;
   if (!(await runGate(() => requireTests(options.light)))) return;
 

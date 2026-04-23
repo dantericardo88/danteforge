@@ -38,5 +38,13 @@ export type { CanvasQualityResult, CanvasQualityDimensions } from './core/canvas
 export { getCanvasSeedDocument } from './core/canvas-defaults.js';
 export type { CanvasSeedOptions } from './core/canvas-defaults.js';
 
+// Canvas admin cockpit seed
+export { getAdminCockpitDocument } from './core/canvas-admin-seed.js';
+export type { AdminSeedOptions } from './core/canvas-admin-seed.js';
+
+// Enterprise policy gate
+export { runPolicyGate, loadPolicyConfig, evaluatePolicy, writePolicyReceipt } from './core/policy-gate.js';
+export type { PolicyConfig, PolicyDecision } from './core/policy-gate.js';
+
 // Version
 export const SDK_VERSION = DANTEFORGE_VERSION;
