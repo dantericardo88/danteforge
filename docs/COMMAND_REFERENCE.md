@@ -79,6 +79,7 @@ Execute development waves with agent orchestration
 - `--worktree`
 - `--figma`
 - `--skip-ux`
+- `--confirm`
 
 ### `danteforge verify`
 
@@ -200,6 +201,7 @@ Deterministic auto-orchestration of the full DanteForge pipeline
 - `--score-only`
 - `--auto`
 - `--force`
+- `--confirm`
 
 ### `danteforge autoresearch <goal>`
 

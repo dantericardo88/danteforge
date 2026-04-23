@@ -24,7 +24,7 @@ const COMMAND_REGISTRY: CommandEntry[] = [
   { name: 'clarify', description: 'Run clarification Q&A on current spec', options: ['--prompt', '--light'], group: 'Pipeline' },
   { name: 'plan', description: 'Generate detailed plan from spec', options: ['--prompt', '--light', '--ceo-review', '--refine'], group: 'Pipeline' },
   { name: 'tasks', description: 'Break plan into executable tasks', options: ['--prompt', '--light'], group: 'Pipeline' },
-  { name: 'forge', args: '[phase]', description: 'Execute development waves with agent orchestration', options: ['--parallel', '--profile <type>', '--prompt', '--light', '--worktree', '--figma', '--skip-ux'], group: 'Pipeline' },
+  { name: 'forge', args: '[phase]', description: 'Execute development waves with agent orchestration', options: ['--parallel', '--profile <type>', '--prompt', '--light', '--worktree', '--figma', '--skip-ux', '--confirm'], group: 'Pipeline' },
   { name: 'verify', description: 'Run verification checks on project state and artifacts', options: ['--release', '--live', '--url <url>', '--recompute'], group: 'Pipeline' },
   { name: 'synthesize', description: 'Generate Ultimate Planning Resource (UPR.md) from all artifacts', options: [], group: 'Pipeline' },
 
@@ -35,7 +35,7 @@ const COMMAND_REGISTRY: CommandEntry[] = [
   { name: 'blaze', args: '[goal]', description: 'High-power preset with full party orchestration, synthesis, and retro', options: ['--profile <type>', '--prompt', '--worktree', '--isolation', '--with-design', '--design-prompt <text>'], group: 'Automation' },
   { name: 'nova', args: '[goal]', description: 'Very-high-power preset with planning prefix plus deep execution and polish', options: ['--profile <type>', '--prompt', '--worktree', '--isolation', '--tech-decide', '--with-design', '--design-prompt <text>'], group: 'Automation' },
   { name: 'inferno', args: '[goal]', description: 'Maximum-power preset with OSS discovery, full implementation, and evolution', options: ['--profile <type>', '--prompt', '--worktree', '--isolation', '--max-repos <n>', '--with-design', '--design-prompt <text>', '--local-sources <paths>', '--local-depth <level>', '--local-config <path>'], group: 'Automation' },
-  { name: 'autoforge', args: '[goal]', description: 'Deterministic auto-orchestration of the full DanteForge pipeline', options: ['--dry-run', '--max-waves <n>', '--profile <type>', '--parallel', '--worktree', '--light', '--prompt', '--score-only', '--auto', '--force'], group: 'Automation' },
+  { name: 'autoforge', args: '[goal]', description: 'Deterministic auto-orchestration of the full DanteForge pipeline', options: ['--dry-run', '--max-waves <n>', '--profile <type>', '--parallel', '--worktree', '--light', '--prompt', '--score-only', '--auto', '--force', '--confirm'], group: 'Automation' },
   { name: 'autoresearch', args: '<goal>', description: 'Autonomous metric-driven optimization loop', options: ['--metric <metric>', '--measurement-command <command>', '--time <budget>', '--prompt', '--dry-run', '--allow-dirty'], group: 'Automation' },
   { name: 'party', description: 'Launch multi-agent collaboration mode', options: ['--worktree', '--isolation', '--figma', '--skip-ux', '--design', '--no-design'], group: 'Automation' },
 

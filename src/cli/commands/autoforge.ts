@@ -3,6 +3,7 @@ import fs from 'fs/promises';
 import path from 'path';
 import { logger } from '../../core/logger.js';
 import { loadState, saveState } from '../../core/state.js';
+import { runPolicyGate } from '../../core/policy-gate.js';
 import {
   analyzeProjectState,
   planAutoForge,
@@ -131,6 +132,7 @@ export async function autoforge(goal?: string, options: {
   parallel?: boolean;
   worktree?: boolean;
   cwd?: string;
+  confirm?: boolean;
   /** Pause loop when avg PDSE score reaches this value */
   pauseAt?: number;
   // Injection seams for testing
@@ -143,10 +145,33 @@ export async function autoforge(goal?: string, options: {
   _displayPlan?: typeof displayPlan;
   _executeAutoForgePlan?: typeof executeAutoForgePlan;
   _loadLatestVerdict?: typeof loadLatestVerdict;
+  _policyGate?: typeof runPolicyGate;
 } = {}): Promise<void> {
   return withErrorBoundary('autoforge', async () => {
   const maxWaves = options.maxWaves ?? 3;
   const cwd = options.cwd ?? process.cwd();
+
+  // Policy gate — check .danteforge/policy.yaml before execution
+  const gateFn = options._policyGate ?? runPolicyGate;
+  const decision = await gateFn('autoforge', cwd).catch(() => null);
+  if (decision && !decision.allowed) {
+    logger.error(`[PolicyGate] autoforge blocked: ${decision.reason}`);
+    process.exitCode = 1;
+    return;
+  }
+  if (decision?.requiresApproval || options.confirm) {
+    const state = await loadState().catch(() => null);
+    if (state) {
+      state.confirmationState = 'awaiting';
+      if (decision?.timestamp) state.policyReceiptPath = decision.timestamp;
+      await saveState(state).catch(() => { /* best-effort */ });
+    }
+    logger.warn('[PolicyGate] autoforge requires human approval. Set confirmationState=confirmed in .danteforge/STATE.yaml to proceed.');
+    if (options.confirm) {
+      process.exitCode = 1;
+      return;
+    }
+  }
 
   logger.success('DanteForge AutoForge - Agentic Pipeline Orchestrator');
   logger.info('');
