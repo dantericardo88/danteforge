@@ -190,6 +190,29 @@ async function refreshSelfDossier(cwd: string, dossierFn?: (opts: { cwd: string 
   } catch { /* self-dossier is optional; assess continues without it */ }
 }
 
+// ── Private helpers ───────────────────────────────────────────────────────────
+
+async function runHarshScoringWithParity(
+  harshScoreFn: (opts: HarshScorerOptions) => Promise<HarshScoreResult>,
+  strictFn: (cwd: string) => Promise<Awaited<ReturnType<typeof computeStrictDimensions>>>,
+  cwd: string,
+  targetLevel: 1 | 2 | 3 | 4 | 5 | 6,
+): Promise<HarshScoreResult> {
+  const assessment = await harshScoreFn({
+    cwd, targetLevel,
+    _loadState: async (opts) => loadState(opts),
+    _scoreAllArtifacts: scoreAllArtifacts,
+    _assessMaturity: (ctx) => assessMaturity(ctx),
+  });
+  try {
+    const strict = await strictFn(cwd);
+    assessment.displayDimensions.autonomy = Math.round(strict.autonomy / 10);
+    assessment.displayDimensions.selfImprovement = Math.round(strict.selfImprovement / 10);
+    assessment.displayDimensions.convergenceSelfHealing = Math.round(strict.convergenceSelfHealing / 10);
+  } catch { /* best-effort: never block assess if strict dims fail */ }
+  return assessment;
+}
+
 // ── Main command ──────────────────────────────────────────────────────────────
 
 export async function assess(options: AssessOptions = {}): Promise<AssessResult> {
@@ -212,34 +235,17 @@ export async function assess(options: AssessOptions = {}): Promise<AssessResult>
   const completionTarget = await getTargetFn(cwd);
   const isFirstRun = completionTarget.definedBy === 'default';
   const minScore = options.minScore ?? completionTarget.minScore;
+  const targetLevel = (options.preset
+    ? (MAGIC_PRESETS[options.preset as MagicLevel]?.targetMaturityLevel ?? 5)
+    : 5) as 1 | 2 | 3 | 4 | 5 | 6;
 
   if (isFirstRun) showFirstRunCTA(minScore);
   logger.info(`[assess] Running self-assessment (harsh=${harsh}, mode=${completionTarget.mode}, target=${minScore}/10)...`);
 
-  // Determine target maturity level from preset
-  let targetLevel = 5 as 1 | 2 | 3 | 4 | 5 | 6;
-  if (options.preset) {
-    const preset = MAGIC_PRESETS[options.preset as MagicLevel];
-    if (preset) targetLevel = preset.targetMaturityLevel;
-  }
-
-  // ── Step 1: Run harsh scoring (always runs for maturity tracking) ───────────
-  const assessment = await harshScoreFn({
-    cwd,
-    targetLevel,
-    _loadState: async (opts) => loadState(opts),
-    _scoreAllArtifacts: scoreAllArtifacts,
-    _assessMaturity: (ctx) => assessMaturity(ctx),
-  });
-
-  // ── Step 1b: Parity override — sync autonomy/selfImprovement/convergence with measure ──
-  try {
-    const strictFn = options._strictDimensions ?? computeStrictDimensions;
-    const strict = await strictFn(cwd);
-    assessment.displayDimensions.autonomy = Math.round(strict.autonomy / 10);
-    assessment.displayDimensions.selfImprovement = Math.round(strict.selfImprovement / 10);
-    assessment.displayDimensions.convergenceSelfHealing = Math.round(strict.convergenceSelfHealing / 10);
-  } catch { /* best-effort: never block assess if strict dims fail */ }
+  // ── Steps 1+1b: Harsh scoring + ASC dimension parity override ──────────────
+  const assessment = await runHarshScoringWithParity(
+    harshScoreFn, options._strictDimensions ?? computeStrictDimensions, cwd, targetLevel,
+  );
 
   // ── Step 2: Competitor benchmarking ────────────────────────────────────────
   let comparison: CompetitorComparison | undefined;
@@ -255,30 +261,15 @@ export async function assess(options: AssessOptions = {}): Promise<AssessResult>
     comparison, projectCtx, cwd,
   );
 
-  // ── Step 3: Generate masterplan ─────────────────────────────────────────────
-  // When feature-universe mode: score is from universe; otherwise from harsh scorer
+  // ── Step 3: Generate masterplan + build result ──────────────────────────────
   const effectiveScore = featureAssessment ? featureAssessment.overallScore : assessment.displayScore;
-  const masterplan = await masterplanFn({
-    assessment,
-    comparison,
-    cycleNumber,
-    targetScore: minScore,
-    cwd,
-  });
-
+  const masterplan = await masterplanFn({ assessment, comparison, cycleNumber, targetScore: minScore, cwd });
   const passesThreshold = featureAssessment
     ? checkPassesTarget(effectiveScore, completionTarget, featureAssessment.coveragePercent)
     : effectiveScore >= minScore;
-
   const result: AssessResult = {
-    assessment,
-    comparison,
-    masterplan,
-    featureAssessment,
-    completionTarget,
-    overallScore: effectiveScore,
-    passesThreshold,
-    minScore,
+    assessment, comparison, masterplan, featureAssessment,
+    completionTarget, overallScore: effectiveScore, passesThreshold, minScore,
   };
 
   // ── Step 3b: Session baseline tracking ─────────────────────────────────────
