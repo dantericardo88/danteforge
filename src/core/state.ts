@@ -360,6 +360,78 @@ async function inferWorkflowStage(
   return pickMostAdvancedWorkflowStage(parsed?.workflowStage, inferred);
 }
 
+function buildLoadedState(
+  parsed: Partial<DanteState>,
+  project: string,
+  workflowStage: WorkflowStage,
+  lastVerifyStatus: DanteState['lastVerifyStatus'],
+  constitution: string | undefined,
+  verifyEvidence: VerifyEvidence | undefined,
+): DanteState {
+  return {
+    project,
+    lastHandoff: parsed?.lastHandoff ?? 'initialized',
+    workflowStage,
+    currentPhase: parsed?.currentPhase ?? 0,
+    tasks: parsed?.tasks ?? {},
+    auditLog: Array.isArray(parsed?.auditLog) ? parsed.auditLog : [],
+    profile: parsed?.profile ?? 'balanced',
+    constitution,
+    lastVerifiedAt: parsed?.lastVerifiedAt,
+    tddEnabled: parsed?.tddEnabled,
+    lightMode: parsed?.lightMode,
+    activeWorktrees: parsed?.activeWorktrees,
+    uxRefineEnabled: parsed?.uxRefineEnabled,
+    figmaUrl: parsed?.figmaUrl,
+    designTokensPath: parsed?.designTokensPath,
+    mcpHost: parsed?.mcpHost,
+    designEnabled: parsed?.designEnabled,
+    designFilePath: parsed?.designFilePath,
+    designPreviewPath: parsed?.designPreviewPath,
+    designTokensSyncedAt: parsed?.designTokensSyncedAt,
+    designBackend: parsed?.designBackend,
+    designFormatVersion: parsed?.designFormatVersion,
+    memoryEnabled: parsed?.memoryEnabled,
+    enforcementMode: parsed?.enforcementMode,
+    autoforgeEnabled: parsed?.autoforgeEnabled,
+    autoforgeFailedAttempts: parsed?.autoforgeFailedAttempts,
+    autoforgeLastRunAt: parsed?.autoforgeLastRunAt,
+    projectType: (parsed?.projectType as ProjectType | undefined) ?? 'unknown',
+    qaHealthScore: parsed?.qaHealthScore as number | undefined,
+    qaBaseline: parsed?.qaBaseline as string | undefined,
+    qaLastRun: parsed?.qaLastRun as string | undefined,
+    retroDelta: parsed?.retroDelta as number | undefined,
+    retroLastRun: parsed?.retroLastRun as string | undefined,
+    completionTracker: parsed?.completionTracker as CompletionTracker | undefined,
+    sessionBaselineScore: parsed?.sessionBaselineScore as number | undefined,
+    sessionBaselineTimestamp: parsed?.sessionBaselineTimestamp as string | undefined,
+    scoreHistory: Array.isArray(parsed?.scoreHistory) ? parsed.scoreHistory as ScoreHistoryEntry[] : undefined,
+    reflectionEnabled: parsed?.reflectionEnabled,
+    reflectionAttempts: parsed?.reflectionAttempts,
+    reflectionLastVerdict: parsed?.reflectionLastVerdict,
+    reflectionScore: parsed?.reflectionScore,
+    premiumTier: parsed?.premiumTier as 'free' | 'pro' | 'enterprise' | undefined,
+    premiumLicenseKey: parsed?.premiumLicenseKey,
+    auditTrailEnabled: parsed?.auditTrailEnabled,
+    userId: parsed?.userId,
+    workspaceId: parsed?.workspaceId,
+    selfEditPolicy: parsed?.selfEditPolicy ?? 'deny',
+    lastVerifyStatus,
+    lastVerifyReceiptPath: verifyEvidence?.sourcePath ?? parsed?.lastVerifyReceiptPath,
+    verifyEvidence,
+    competitors: parsed?.competitors,
+    preferredLevel: parsed?.preferredLevel,
+    completionTarget: parsed?.completionTarget,
+    featureUniversePath: parsed?.featureUniversePath,
+    totalTokensUsed: parsed?.totalTokensUsed,
+    maxBudgetUsd: parsed?.maxBudgetUsd ?? 10.0,
+    routingAggressiveness: parsed?.routingAggressiveness ?? 'balanced',
+    lastComplexityPreset: parsed?.lastComplexityPreset,
+    skillCount: parsed?.skillCount as number | undefined,
+    hasPluginManifest: parsed?.hasPluginManifest as boolean | undefined,
+  };
+}
+
 export async function loadState(options: { cwd?: string } = {}): Promise<DanteState> {
   const cwd = options.cwd ?? process.cwd();
   const { stateDir, stateFile } = resolveStatePaths(cwd);
@@ -367,83 +439,13 @@ export async function loadState(options: { cwd?: string } = {}): Promise<DanteSt
     await fs.mkdir(stateDir, { recursive: true });
     const content = await fs.readFile(stateFile, 'utf8');
     const parsed = yaml.parse(content) as Partial<DanteState>;
-    // Validate required fields — fill gaps with defaults
     const project = await deriveProjectName(parsed?.project, cwd);
     const verifyEvidence = await loadVerifyEvidence(cwd, parsed?.lastVerifyReceiptPath);
     const workflowStage = await inferWorkflowStage(cwd, parsed, verifyEvidence);
     const lastVerifyStatus = deriveEffectiveVerifyStatus(parsed?.lastVerifyStatus, verifyEvidence);
     const constitution = parsed?.constitution
       ?? (await fileExists(path.join(stateDir, 'CONSTITUTION.md')) ? 'CONSTITUTION.md' : undefined);
-    return {
-      project,
-      lastHandoff: parsed?.lastHandoff ?? 'initialized',
-      workflowStage,
-      currentPhase: parsed?.currentPhase ?? 0,
-      tasks: parsed?.tasks ?? {},
-      auditLog: Array.isArray(parsed?.auditLog) ? parsed.auditLog : [],
-      profile: parsed?.profile ?? 'balanced',
-      constitution,
-      lastVerifiedAt: parsed?.lastVerifiedAt,
-      tddEnabled: parsed?.tddEnabled,
-      lightMode: parsed?.lightMode,
-      activeWorktrees: parsed?.activeWorktrees,
-      uxRefineEnabled: parsed?.uxRefineEnabled,
-      figmaUrl: parsed?.figmaUrl,
-      designTokensPath: parsed?.designTokensPath,
-      mcpHost: parsed?.mcpHost,
-      designEnabled: parsed?.designEnabled,
-      designFilePath: parsed?.designFilePath,
-      designPreviewPath: parsed?.designPreviewPath,
-      designTokensSyncedAt: parsed?.designTokensSyncedAt,
-      designBackend: parsed?.designBackend,
-      designFormatVersion: parsed?.designFormatVersion,
-      memoryEnabled: parsed?.memoryEnabled,
-      enforcementMode: parsed?.enforcementMode,
-      autoforgeEnabled: parsed?.autoforgeEnabled,
-      autoforgeFailedAttempts: parsed?.autoforgeFailedAttempts,
-      autoforgeLastRunAt: parsed?.autoforgeLastRunAt,
-      // v0.8.0 migration defaults
-      projectType: (parsed?.projectType as ProjectType | undefined) ?? 'unknown',
-      qaHealthScore: parsed?.qaHealthScore as number | undefined,
-      qaBaseline: parsed?.qaBaseline as string | undefined,
-      qaLastRun: parsed?.qaLastRun as string | undefined,
-      retroDelta: parsed?.retroDelta as number | undefined,
-      retroLastRun: parsed?.retroLastRun as string | undefined,
-      completionTracker: parsed?.completionTracker as CompletionTracker | undefined,
-      // v0.10.0+ — score history and session baseline (were missing from loadState mapping)
-      sessionBaselineScore: parsed?.sessionBaselineScore as number | undefined,
-      sessionBaselineTimestamp: parsed?.sessionBaselineTimestamp as string | undefined,
-      scoreHistory: Array.isArray(parsed?.scoreHistory) ? parsed.scoreHistory as ScoreHistoryEntry[] : undefined,
-      // v0.9.0 migration defaults
-      reflectionEnabled: parsed?.reflectionEnabled,
-      reflectionAttempts: parsed?.reflectionAttempts,
-      reflectionLastVerdict: parsed?.reflectionLastVerdict,
-      reflectionScore: parsed?.reflectionScore,
-      premiumTier: parsed?.premiumTier as 'free' | 'pro' | 'enterprise' | undefined,
-      premiumLicenseKey: parsed?.premiumLicenseKey,
-      auditTrailEnabled: parsed?.auditTrailEnabled,
-      // v0.10.0 workspace fields
-      userId: parsed?.userId,
-      workspaceId: parsed?.workspaceId,
-      // Self-edit policy
-      selfEditPolicy: parsed?.selfEditPolicy ?? 'deny',
-      // v0.8.0 verify status
-      lastVerifyStatus,
-      lastVerifyReceiptPath: verifyEvidence?.sourcePath ?? parsed?.lastVerifyReceiptPath,
-      verifyEvidence,
-      // v0.10.0 competitors + targets
-      competitors: parsed?.competitors,
-      preferredLevel: parsed?.preferredLevel,
-      completionTarget: parsed?.completionTarget,
-      featureUniversePath: parsed?.featureUniversePath,
-      // v0.16.0 — token economy defaults applied on every load
-      totalTokensUsed: parsed?.totalTokensUsed,
-      maxBudgetUsd: parsed?.maxBudgetUsd ?? 10.0,
-      routingAggressiveness: parsed?.routingAggressiveness ?? 'balanced',
-      lastComplexityPreset: parsed?.lastComplexityPreset,
-      skillCount: parsed?.skillCount as number | undefined,
-      hasPluginManifest: parsed?.hasPluginManifest as boolean | undefined,
-    };
+    return buildLoadedState(parsed, project, workflowStage, lastVerifyStatus, constitution, verifyEvidence);
   } catch (err) {
     // Only log if this is NOT a "file not found" — real errors should surface
     if (err instanceof Error && !err.message.includes('ENOENT')) {
