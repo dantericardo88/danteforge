@@ -7,6 +7,29 @@ import { runPolicyGate } from '../../core/policy-gate.js';
 import { loadState, saveState } from '../../core/state.js';
 import fs from 'fs/promises';
 
+async function checkLLMPreflight(
+  isLLMAvailableFn?: () => Promise<boolean>,
+): Promise<boolean> {
+  try {
+    const fn = isLLMAvailableFn ?? (async () => {
+      const { isLLMAvailable } = await import('../../core/llm.js');
+      return isLLMAvailable();
+    });
+    const ready = await fn().catch(() => false);
+    if (!ready) {
+      logger.error(
+        '[Forge] No LLM configured. Forge requires an LLM to generate code.\n' +
+        '  → Run: danteforge doctor      (full health check)\n' +
+        '  → Or:  danteforge config      (set API key / provider)\n' +
+        '  → Or:  danteforge forge --prompt  (copy-paste mode, no API needed)',
+      );
+      process.exitCode = 1;
+      return false;
+    }
+  } catch { /* best-effort — never block if check itself fails */ }
+  return true;
+}
+
 export async function forge(phase = '1', options: {
   profile?: string; parallel?: boolean; prompt?: boolean; light?: boolean;
   worktree?: boolean; figma?: boolean; skipUx?: boolean; confirm?: boolean;
@@ -43,25 +66,7 @@ export async function forge(phase = '1', options: {
   if (!(await runGate(() => requireTests(options.light)))) return;
 
   // LLM pre-flight — surface misconfiguration before wasting a full wave
-  if (!options.prompt) {
-    try {
-      const isLLMAvailableFn = options._isLLMAvailable ?? (async () => {
-        const { isLLMAvailable } = await import('../../core/llm.js');
-        return isLLMAvailable();
-      });
-      const llmReady = await isLLMAvailableFn().catch(() => false);
-      if (!llmReady) {
-        logger.error(
-          '[Forge] No LLM configured. Forge requires an LLM to generate code.\n' +
-          '  → Run: danteforge doctor      (full health check)\n' +
-          '  → Or:  danteforge config      (set API key / provider)\n' +
-          '  → Or:  danteforge forge --prompt  (copy-paste mode, no API needed)',
-        );
-        process.exitCode = 1;
-        return;
-      }
-    } catch { /* best-effort — never block if check itself fails */ }
-  }
+  if (!options.prompt && !(await checkLLMPreflight(options._isLLMAvailable))) return;
 
   if (options.figma && !options.skipUx) {
     if (!options.prompt) {

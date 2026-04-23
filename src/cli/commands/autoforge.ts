@@ -120,6 +120,30 @@ async function reportAutoforgeResults(
   } catch { /* reflection not available */ }
 }
 
+async function runAutoforgePolicy(
+  options: { confirm?: boolean; _policyGate?: typeof runPolicyGate },
+  cwd: string,
+): Promise<boolean> {
+  const gateFn = options._policyGate ?? runPolicyGate;
+  const decision = await gateFn('autoforge', cwd).catch(() => null);
+  if (decision && !decision.allowed) {
+    logger.error(`[PolicyGate] autoforge blocked: ${decision.reason}`);
+    process.exitCode = 1;
+    return false;
+  }
+  if (decision?.requiresApproval || options.confirm) {
+    const state = await loadState().catch(() => null);
+    if (state) {
+      state.confirmationState = 'awaiting';
+      if (decision?.timestamp) state.policyReceiptPath = decision.timestamp;
+      await saveState(state).catch(() => { /* best-effort */ });
+    }
+    logger.warn('[PolicyGate] autoforge requires human approval. Set confirmationState=confirmed in .danteforge/STATE.yaml to proceed.');
+    if (options.confirm) { process.exitCode = 1; return false; }
+  }
+  return true;
+}
+
 export async function autoforge(goal?: string, options: {
   dryRun?: boolean;
   maxWaves?: number;
@@ -150,29 +174,7 @@ export async function autoforge(goal?: string, options: {
   return withErrorBoundary('autoforge', async () => {
   const maxWaves = options.maxWaves ?? 3;
   const cwd = options.cwd ?? process.cwd();
-
-  // Policy gate — check .danteforge/policy.yaml before execution
-  const gateFn = options._policyGate ?? runPolicyGate;
-  const decision = await gateFn('autoforge', cwd).catch(() => null);
-  if (decision && !decision.allowed) {
-    logger.error(`[PolicyGate] autoforge blocked: ${decision.reason}`);
-    process.exitCode = 1;
-    return;
-  }
-  if (decision?.requiresApproval || options.confirm) {
-    const state = await loadState().catch(() => null);
-    if (state) {
-      state.confirmationState = 'awaiting';
-      if (decision?.timestamp) state.policyReceiptPath = decision.timestamp;
-      await saveState(state).catch(() => { /* best-effort */ });
-    }
-    logger.warn('[PolicyGate] autoforge requires human approval. Set confirmationState=confirmed in .danteforge/STATE.yaml to proceed.');
-    if (options.confirm) {
-      process.exitCode = 1;
-      return;
-    }
-  }
-
+  if (!(await runAutoforgePolicy(options, cwd))) return;
   logger.success('DanteForge AutoForge - Agentic Pipeline Orchestrator');
   logger.info('');
 

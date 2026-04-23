@@ -61,6 +61,31 @@ async function runDesignLintCheck(parsed: object): Promise<void> {
   }
 }
 
+async function runDesignSeed(
+  prompt: string,
+  loadFn: typeof loadState,
+  saveFn: typeof saveState,
+): Promise<void> {
+  const { getCanvasSeedDocument } = await import('../../core/canvas-defaults.js');
+  const { scoreCanvasQuality } = await import('../../core/canvas-quality-scorer.js');
+  const projectName = prompt.trim() || 'App';
+  const doc = getCanvasSeedDocument({ projectName });
+  const result = scoreCanvasQuality(doc);
+  const designPath = path.join(STATE_DIR, 'DESIGN.op');
+  await fs.mkdir(STATE_DIR, { recursive: true });
+  await fs.writeFile(designPath, JSON.stringify(doc, null, 2));
+  logger.success(`Canvas seed written to ${designPath}`);
+  logger.info(`Quality: composite=${result.composite} passing=${result.passingCount}/7 gap=${result.gapFromTarget}`);
+  const state = await loadFn();
+  state.designEnabled = true;
+  state.designFilePath = 'DESIGN.op';
+  state.designFormatVersion = '1.0.0';
+  state.workflowStage = 'design';
+  state.auditLog.push(`${new Date().toISOString()} | design: .op artifact seeded from canvas-defaults (quality=${result.composite})`);
+  await saveFn(state);
+  await handoff('design', { designFile: 'DESIGN.op' });
+}
+
 export async function design(
   prompt: string,
   options: {
@@ -85,27 +110,7 @@ export async function design(
   logger.info('Design: generating design artifacts from natural language');
 
   // --seed: write the canvas-defaults high-quality starting point immediately
-  if (options.seed) {
-    const { getCanvasSeedDocument } = await import('../../core/canvas-defaults.js');
-    const { scoreCanvasQuality } = await import('../../core/canvas-quality-scorer.js');
-    const projectName = prompt.trim() || 'App';
-    const doc = getCanvasSeedDocument({ projectName });
-    const result = scoreCanvasQuality(doc);
-    const designPath = path.join(STATE_DIR, 'DESIGN.op');
-    await fs.mkdir(STATE_DIR, { recursive: true });
-    await fs.writeFile(designPath, JSON.stringify(doc, null, 2));
-    logger.success(`Canvas seed written to ${designPath}`);
-    logger.info(`Quality: composite=${result.composite} passing=${result.passingCount}/7 gap=${result.gapFromTarget}`);
-    const state = await loadFn();
-    state.designEnabled = true;
-    state.designFilePath = 'DESIGN.op';
-    state.designFormatVersion = '1.0.0';
-    state.workflowStage = 'design';
-    state.auditLog.push(`${new Date().toISOString()} | design: .op artifact seeded from canvas-defaults (quality=${result.composite})`);
-    await saveFn(state);
-    await handoff('design', { designFile: 'DESIGN.op' });
-    return;
-  }
+  if (options.seed) { await runDesignSeed(prompt, loadFn, saveFn); return; }
 
   // Ensure .op intermediate files are gitignored
   await ensureOPIntermediatesIgnored();
