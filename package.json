@@ -71,6 +71,7 @@
     "build": "tsup",
     "build:receipt": "node scripts/run-build.mjs",
     "sync:dantecode": "node scripts/sync-dantecode.mjs",
+    "install:dantecode": "node scripts/install-dantecode.mjs",
     "sync:workflow-surfaces": "tsx scripts/sync-workflow-surfaces.ts",
     "sync:readiness-doc": "tsx scripts/sync-operational-readiness.ts",
     "build:local-sync": "npm run build && npm run sync:dantecode",

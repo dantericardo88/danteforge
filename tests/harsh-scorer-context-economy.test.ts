@@ -15,8 +15,8 @@ describe('contextEconomy dimension (Article XIV)', () => {
     assert.ok(typeof entry.reason === 'string' && entry.reason.length > 0, 'reason must be a non-empty string');
   });
 
-  it('contextEconomy ceiling is 3.0', () => {
-    assert.strictEqual(KNOWN_CEILINGS['contextEconomy']?.ceiling, 3.0);
+  it('contextEconomy ceiling is 9.0 after the PRD-26 implementation ships', () => {
+    assert.strictEqual(KNOWN_CEILINGS['contextEconomy']?.ceiling, 9.0);
   });
 
   it('contextEconomy weight is included in total weight sum (total = 1.0 ± 0.001)', () => {

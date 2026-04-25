@@ -1978,6 +1978,39 @@ rubricScoreGroup
     })();
   });
 
+// ── dantecode ─────────────────────────────────────────────────────────────────
+program
+  .command('dantecode')
+  .description('Install or update DanteCode VS Code extension, wired to the latest DanteForge build (PRD-26 + quality layer)')
+  .option('--dantecode-path <path>', 'Path to DanteCode repo (default: ../DanteCode sibling)')
+  .option('--dry-run', 'Print what would be done without executing')
+  .action(async (opts) => {
+    try {
+      const { spawn } = await import('node:child_process');
+      const { resolve, dirname } = await import('node:path');
+      const { fileURLToPath } = await import('node:url');
+      const scriptDir = dirname(fileURLToPath(import.meta.url));
+      const installerPath = resolve(scriptDir, '..', '..', 'scripts', 'install-dantecode.mjs');
+      const args: string[] = [];
+      if ((opts as { dantecodePath?: string }).dantecodePath) {
+        args.push(`--dantecode-path=${(opts as { dantecodePath: string }).dantecodePath}`);
+      }
+      if ((opts as { dryRun?: boolean }).dryRun) {
+        const { logger } = await import('../core/logger.js');
+        logger.info(`Would run: node ${installerPath} ${args.join(' ')}`);
+        return;
+      }
+      await new Promise<void>((res, rej) => {
+        const child = spawn(process.execPath, [installerPath, ...args], { stdio: 'inherit' });
+        child.on('close', (code) => (code === 0 ? res() : rej(new Error(`installer exited ${code}`))));
+      });
+    } catch (err) {
+      const { formatAndLogError } = await import('../core/format-error.js');
+      formatAndLogError(err, 'dantecode');
+      process.exitCode = 1;
+    }
+  });
+
 loadState().catch(() => { /* state will be created on first write */ });
 
 program.parse(process.argv);
