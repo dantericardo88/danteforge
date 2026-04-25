@@ -33,11 +33,7 @@ const dashboardHasDimBar       = dashboardSrc.includes('dimension') && (dashboar
 // 3. showcase generates a shareable proof artifact
 const showcaseHasMarkdown = existsSync('docs/CASE_STUDY.md') || run('node dist/index.js showcase --help 2>&1').includes('CASE_STUDY');
 
-// 4. go first-run path doesn't require LLM for initial score display
-const goSrc = readFileSync('src/cli/commands/go.ts', 'utf8');
-const goHasLocalFallback = goSrc.includes('_isLLMAvailable') || goSrc.includes('computeScore');
-
-// 5. README has a quick-start mention of the primary command
+// 4. README has a quick-start mention of the primary command
 const readme = readFileSync('README.md', 'utf8');
 const readmeHasQuickStart  = readme.includes('danteforge go') || readme.includes('Quick Start');
 const readmeHasScoreExample = readme.includes('8.') || readme.includes('/10');

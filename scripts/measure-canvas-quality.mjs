@@ -20,8 +20,6 @@ try {
 
 if (!scoreCanvasQuality) {
   // Use the TypeScript source directly (tsx must be in PATH)
-  const { createRequire } = await import('module');
-  const req = createRequire(import.meta.url);
   // tsx registers ts extensions in the current process via --loader
   try {
     scoreCanvasQuality = (await import('../src/core/canvas-quality-scorer.ts')).scoreCanvasQuality;

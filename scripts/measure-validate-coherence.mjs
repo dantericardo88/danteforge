@@ -5,8 +5,6 @@
 
 import { execSync } from 'node:child_process';
 
-const KNOWN_CEILINGS = { communityAdoption: 4.0, enterpriseReadiness: 9.0 };
-
 function run(cmd) {
   try {
     return execSync(cmd, { encoding: 'utf8', stdio: ['pipe', 'pipe', 'pipe'] });
