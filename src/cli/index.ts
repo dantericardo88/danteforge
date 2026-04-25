@@ -715,6 +715,27 @@ program
   }));
 
 program
+  .command('economy')
+  .description('Context Economy report — token savings by filter, top passthroughs, sacred bypasses (Article XIV)')
+  .option('--json', 'Machine-readable JSON output for scripting and scorer')
+  .option('--since <date>', 'Date-windowed report (YYYY-MM-DD)')
+  .option('--organ <organ>', 'Filter by organ (forge|code|agents)')
+  .option('--fail-below <score>', 'Exit non-zero when economy score is below threshold', parseFloat)
+  .action(async (opts) => {
+    const { loadAllLedgerRecords, summarizeLedger, formatLedgerReport } = await import('../core/context-economy/economy-ledger.js');
+    await loadAllLedgerRecords(process.cwd())
+      .then((records) => {
+        const filtered = opts.organ ? records.filter((r: { organ: string }) => r.organ === opts.organ) : records;
+        const summary = summarizeLedger(filtered);
+        const report = formatLedgerReport(summary, opts.json);
+        process.stdout.write(report + '\n');
+        if (opts.failBelow !== undefined && summary.averageSavingsPercent < opts.failBelow) {
+          process.exit(1);
+        }
+      });
+  });
+
+program
   .command('audit-export')
   .description('Export audit trail to JSON, CSV, or Markdown for compliance reporting')
   .option('--format <type>', 'Output format: json, csv, markdown (default: json)', 'json')

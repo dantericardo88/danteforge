@@ -3,6 +3,7 @@
 // and unverified features. Produces a 0-10 display score.
 
 import fs from 'fs/promises';
+import { existsSync, readdirSync } from 'node:fs';
 import path from 'path';
 import { loadState, type DanteState } from './state.js';
 import { scoreAllArtifacts } from './pdse.js';
@@ -581,9 +582,39 @@ export function computeTokenEconomyScore(state: DanteState): number {
   return Math.max(0, Math.min(100, score));
 }
 
-// Returns 0 until PRD-26 ships; ceiling enforced at 3.0/10 (30 raw) in compete-matrix KNOWN_CEILINGS.
-export function computeContextEconomyScore(_cwd: string): number {
-  return 0;
+// Context Economy scorer — reads filesystem evidence from PRD-26 implementation.
+// Sub-metrics: filter coverage, sacred content, ledger, pretool adapter, artifact compressor.
+export function computeContextEconomyScore(cwd: string): number {
+  const base = path.join(cwd, 'src', 'core', 'context-economy');
+
+  // Sub-metric 1: core modules present (sacred-content + ledger) → 20pts
+  const hasSacred = existsSync(path.join(base, 'sacred-content.ts'));
+  const hasLedger = existsSync(path.join(base, 'economy-ledger.ts'));
+  const coreScore = (hasSacred ? 10 : 0) + (hasLedger ? 10 : 0);
+
+  // Sub-metric 2: pretool adapter present → 20pts
+  const hasAdapter = existsSync(path.join(base, 'pretool-adapter.ts'));
+  const adapterScore = hasAdapter ? 20 : 0;
+
+  // Sub-metric 3: filter registry present → 15pts
+  const hasRegistry = existsSync(path.join(base, 'command-filter-registry.ts'));
+  const registryScore = hasRegistry ? 15 : 0;
+
+  // Sub-metric 4: artifact compressor present → 15pts
+  const hasCompressor = existsSync(path.join(base, 'artifact-compressor.ts'));
+  const compressorScore = hasCompressor ? 15 : 0;
+
+  // Sub-metric 5: per-command filter coverage (10 filters = full 30pts)
+  let filterCount = 0;
+  try {
+    const filtersDir = path.join(base, 'filters');
+    if (existsSync(filtersDir)) {
+      filterCount = readdirSync(filtersDir).filter((f) => f.endsWith('.ts')).length;
+    }
+  } catch { /* best-effort */ }
+  const filterScore = Math.min(30, filterCount * 3);
+
+  return Math.max(0, Math.min(100, coreScore + adapterScore + registryScore + compressorScore + filterScore));
 }
 
 export function computeEcosystemMcpScore(state: DanteState, _cwd: string): number {
