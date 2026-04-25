@@ -131,6 +131,11 @@ const DIMENSION_METADATA: Record<ScoringDimension, {
     forgeCommand: 'danteforge forge "Improve token economy: budget fences, task routing, complexity classification" --max-waves 5',
     verifyCondition: 'Budget fence prevents overspend in dry-run mode, task-router routes correctly',
   },
+  contextEconomy: {
+    title: 'Context Economy & Filter Pipeline (Article XIV)',
+    forgeCommand: 'danteforge forge "Implement PRD-26 context filter pipeline: sacred-content preservation, compression, telemetry" --max-waves 8',
+    verifyCondition: 'Filter pipeline wired into forge/party, savings ledger written, sacred content never compressed',
+  },
   ecosystemMcp: {
     title: 'Ecosystem & MCP Integration',
     forgeCommand: 'danteforge forge "Expand ecosystem: MCP tools, skills, plugin manifest, provider support" --max-waves 6',

@@ -40,7 +40,7 @@ const DIM_ORDER: ScoringDimension[] = [
   'uxPolish', 'documentation', 'performance', 'maintainability',
   'developerExperience', 'autonomy', 'planningQuality', 'selfImprovement',
   'specDrivenPipeline', 'convergenceSelfHealing', 'tokenEconomy',
-  'ecosystemMcp', 'enterpriseReadiness', 'communityAdoption',
+  'contextEconomy', 'ecosystemMcp', 'enterpriseReadiness', 'communityAdoption',
 ];
 
 const DIM_LABELS: Record<ScoringDimension, string> = {
@@ -59,6 +59,7 @@ const DIM_LABELS: Record<ScoringDimension, string> = {
   specDrivenPipeline: 'Spec-Driven Pipeline',
   convergenceSelfHealing: 'Convergence / Self-Healing',
   tokenEconomy: 'Token Economy',
+  contextEconomy: 'Context Economy',
   ecosystemMcp: 'Ecosystem / MCP',
   enterpriseReadiness: 'Enterprise Readiness',
   communityAdoption: 'Community Adoption',

@@ -112,6 +112,10 @@ export const KNOWN_CEILINGS: Record<string, { ceiling: number; reason: string }>
     ceiling: 9.0,
     reason: 'filesystem evidence (SECURITY.md, CHANGELOG.md, RUNBOOK.md) is automatable up to 9.0; the final point requires real production deployments and customer validation',
   },
+  contextEconomy: {
+    ceiling: 3.0,
+    reason: 'no production filter pipeline yet — implement PRD-26 (8-stage context compression) to raise this ceiling',
+  },
 };
 
 // ── Path Helpers ──────────────────────────────────────────────────────────────

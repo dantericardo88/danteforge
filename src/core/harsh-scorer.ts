@@ -12,8 +12,8 @@ import { assessMaturity, type MaturityAssessment, type MaturityDimensions } from
 import { scoreToMaturityLevel, type MaturityLevel } from './maturity-levels.js';
 import { checkIntegrationWiring, computeWiringBonus, type IntegrationWiringOptions, type IntegrationWiringResult } from './integration-wiring.js';
 
-// ── 18-Dimension Scoring Type ────────────────────────────────────────────────
-// Extends the 8 existing MaturityDimensions with 10 competitor-facing ones.
+// ── 19-Dimension Scoring Type ────────────────────────────────────────────────
+// Extends the 8 existing MaturityDimensions with 11 competitor-facing ones.
 
 export type ScoringDimension =
   // Existing 8 from maturity-engine.ts (camelCase)
@@ -30,10 +30,11 @@ export type ScoringDimension =
   | 'autonomy'                // Self-correction depth, loop quality, planning
   | 'planningQuality'         // PDSE artifact scores averaged
   | 'selfImprovement'         // Lessons captured, retro delta, convergence quality
-  // 6 strategic differentiation dimensions
+  // 7 strategic differentiation dimensions
   | 'specDrivenPipeline'      // PDSE artifact presence + pipeline stage completeness
   | 'convergenceSelfHealing'  // Verify-repair loops, convergence cycles, auto-recovery
   | 'tokenEconomy'            // Task routing, budget fences, complexity classification
+  | 'contextEconomy'          // Filter pipeline, sacred-content preservation, savings telemetry (Article XIV)
   | 'ecosystemMcp'            // MCP tools, skills, plugin manifest breadth
   | 'enterpriseReadiness'     // Audit trails, safe-self-edit, RBAC, compliance
   | 'communityAdoption';      // npm downloads, GitHub stars, contributor count
@@ -102,7 +103,8 @@ const STUB_PATTERNS = [
 
 // ── Dimension Weights (sum = 1.0) ─────────────────────────────────────────────
 
-// Weights sum exactly to 1.0 (18 dimensions)
+// Weights sum exactly to 1.0 (19 dimensions)
+// contextEconomy 0.03 funded by: ecosystemMcp 0.02→0.01, enterpriseReadiness 0.02→0.01, communityAdoption 0.02→0.01
 const DIMENSION_WEIGHTS: Record<ScoringDimension, number> = {
   functionality: 0.11,
   testing: 0.09,
@@ -119,9 +121,10 @@ const DIMENSION_WEIGHTS: Record<ScoringDimension, number> = {
   specDrivenPipeline: 0.03,
   convergenceSelfHealing: 0.03,
   tokenEconomy: 0.03,
-  ecosystemMcp: 0.02,
-  enterpriseReadiness: 0.02,
-  communityAdoption: 0.02,
+  contextEconomy: 0.03,
+  ecosystemMcp: 0.01,
+  enterpriseReadiness: 0.01,
+  communityAdoption: 0.01,
 };
 
 // ── Options & Injection Seams ────────────────────────────────────────────────
@@ -450,6 +453,7 @@ function computeNewDimensions(
     specDrivenPipeline: computeSpecDrivenPipelineScore(pdseScores, state, evidenceFlags),
     convergenceSelfHealing: computeConvergenceSelfHealingScore(state, convergenceFlags),
     tokenEconomy: computeTokenEconomyScore(state),
+    contextEconomy: computeContextEconomyScore(cwd),
     ecosystemMcp: computeEcosystemMcpScore(state, cwd),
     enterpriseReadiness: computeEnterpriseReadinessScore(state, assessment, enterpriseFlags),
     communityAdoption: computeCommunityAdoptionScore(communityMetrics ?? {}),
@@ -575,6 +579,11 @@ export function computeTokenEconomyScore(state: DanteState): number {
   // autoforgeFailedAttempts are normal during iterative development and should not penalise.
   if (typeof s['totalTokensUsed'] === 'number' && s['totalTokensUsed'] >= 1000) score += 10;
   return Math.max(0, Math.min(100, score));
+}
+
+// Returns 0 until PRD-26 ships; ceiling enforced at 3.0/10 (30 raw) in compete-matrix KNOWN_CEILINGS.
+export function computeContextEconomyScore(_cwd: string): number {
+  return 0;
 }
 
 export function computeEcosystemMcpScore(state: DanteState, _cwd: string): number {

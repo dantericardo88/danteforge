@@ -1,4 +1,4 @@
-// Competitor Scanner — benchmarks the current project against relevant competitors
+﻿// Competitor Scanner â€” benchmarks the current project against relevant competitors
 // The competitor universe is determined by priority:
 //   1. User-defined list (state.competitors)
 //   2. OSS discoveries (from OSS_REPORT.md)
@@ -9,7 +9,7 @@
 import { callLLM } from './llm.js';
 import type { ScoringDimension } from './harsh-scorer.js';
 
-// ── Types ─────────────────────────────────────────────────────────────────────
+// â”€â”€ Types â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 export type DimensionGapSeverity = 'leading' | 'minor' | 'major' | 'critical';
 
@@ -59,7 +59,7 @@ export interface CompetitorScanOptions {
   _now?: () => string;
 }
 
-// ── AI coding tool fallback baseline ─────────────────────────────────────────
+// â”€â”€ AI coding tool fallback baseline â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 // ONLY used when the project being assessed is itself a developer/coding tool.
 // Not shown to projects building SaaS, e-commerce, etc.
 
@@ -75,6 +75,7 @@ const DEV_TOOL_BASELINES: CompetitorProfile[] = [
       developerExperience: 75, autonomy: 92, planningQuality: 78, selfImprovement: 60,
       specDrivenPipeline: 55, convergenceSelfHealing: 85, tokenEconomy: 50,
       ecosystemMcp: 45, enterpriseReadiness: 55, communityAdoption: 72,
+      contextEconomy: 0,
     },
   },
   {
@@ -88,6 +89,7 @@ const DEV_TOOL_BASELINES: CompetitorProfile[] = [
       developerExperience: 88, autonomy: 68, planningQuality: 76, selfImprovement: 55,
       specDrivenPipeline: 60, convergenceSelfHealing: 55, tokenEconomy: 55,
       ecosystemMcp: 80, enterpriseReadiness: 88, communityAdoption: 92,
+      contextEconomy: 0,
     },
   },
   {
@@ -101,6 +103,7 @@ const DEV_TOOL_BASELINES: CompetitorProfile[] = [
       developerExperience: 90, autonomy: 65, planningQuality: 62, selfImprovement: 50,
       specDrivenPipeline: 35, convergenceSelfHealing: 40, tokenEconomy: 70,
       ecosystemMcp: 65, enterpriseReadiness: 60, communityAdoption: 95,
+      contextEconomy: 0,
     },
   },
   {
@@ -114,6 +117,7 @@ const DEV_TOOL_BASELINES: CompetitorProfile[] = [
       developerExperience: 75, autonomy: 70, planningQuality: 60, selfImprovement: 55,
       specDrivenPipeline: 30, convergenceSelfHealing: 50, tokenEconomy: 55,
       ecosystemMcp: 40, enterpriseReadiness: 35, communityAdoption: 82,
+      contextEconomy: 0,
     },
   },
   {
@@ -127,6 +131,7 @@ const DEV_TOOL_BASELINES: CompetitorProfile[] = [
       developerExperience: 62, autonomy: 82, planningQuality: 72, selfImprovement: 58,
       specDrivenPipeline: 45, convergenceSelfHealing: 70, tokenEconomy: 40,
       ecosystemMcp: 35, enterpriseReadiness: 40, communityAdoption: 68,
+      contextEconomy: 0,
     },
   },
   {
@@ -140,6 +145,7 @@ const DEV_TOOL_BASELINES: CompetitorProfile[] = [
       developerExperience: 65, autonomy: 75, planningQuality: 85, selfImprovement: 65,
       specDrivenPipeline: 75, convergenceSelfHealing: 60, tokenEconomy: 45,
       ecosystemMcp: 40, enterpriseReadiness: 35, communityAdoption: 72,
+      contextEconomy: 0,
     },
   },
   {
@@ -153,6 +159,7 @@ const DEV_TOOL_BASELINES: CompetitorProfile[] = [
       developerExperience: 68, autonomy: 65, planningQuality: 70, selfImprovement: 45,
       specDrivenPipeline: 50, convergenceSelfHealing: 45, tokenEconomy: 35,
       ecosystemMcp: 40, enterpriseReadiness: 30, communityAdoption: 55,
+      contextEconomy: 0,
     },
   },
   {
@@ -166,6 +173,7 @@ const DEV_TOOL_BASELINES: CompetitorProfile[] = [
       developerExperience: 88, autonomy: 72, planningQuality: 70, selfImprovement: 60,
       specDrivenPipeline: 40, convergenceSelfHealing: 55, tokenEconomy: 75,
       ecosystemMcp: 90, enterpriseReadiness: 72, communityAdoption: 90,
+      contextEconomy: 0,
     },
   },
   // Multi-agent orchestration frameworks
@@ -180,6 +188,7 @@ const DEV_TOOL_BASELINES: CompetitorProfile[] = [
       developerExperience: 68, autonomy: 85, planningQuality: 78, selfImprovement: 65,
       specDrivenPipeline: 50, convergenceSelfHealing: 65, tokenEconomy: 45,
       ecosystemMcp: 55, enterpriseReadiness: 55, communityAdoption: 78,
+      contextEconomy: 0,
     },
   },
   {
@@ -193,6 +202,7 @@ const DEV_TOOL_BASELINES: CompetitorProfile[] = [
       developerExperience: 72, autonomy: 82, planningQuality: 80, selfImprovement: 68,
       specDrivenPipeline: 55, convergenceSelfHealing: 60, tokenEconomy: 40,
       ecosystemMcp: 50, enterpriseReadiness: 42, communityAdoption: 70,
+      contextEconomy: 0,
     },
   },
   {
@@ -206,6 +216,7 @@ const DEV_TOOL_BASELINES: CompetitorProfile[] = [
       developerExperience: 68, autonomy: 88, planningQuality: 72, selfImprovement: 65,
       specDrivenPipeline: 40, convergenceSelfHealing: 80, tokenEconomy: 45,
       ecosystemMcp: 55, enterpriseReadiness: 50, communityAdoption: 75,
+      contextEconomy: 0,
     },
   },
   // Test generation
@@ -220,6 +231,7 @@ const DEV_TOOL_BASELINES: CompetitorProfile[] = [
       developerExperience: 82, autonomy: 68, planningQuality: 60, selfImprovement: 72,
       specDrivenPipeline: 30, convergenceSelfHealing: 72, tokenEconomy: 50,
       ecosystemMcp: 60, enterpriseReadiness: 65, communityAdoption: 70,
+      contextEconomy: 0,
     },
   },
   // AI code review
@@ -234,6 +246,7 @@ const DEV_TOOL_BASELINES: CompetitorProfile[] = [
       developerExperience: 88, autonomy: 62, planningQuality: 60, selfImprovement: 68,
       specDrivenPipeline: 25, convergenceSelfHealing: 50, tokenEconomy: 45,
       ecosystemMcp: 70, enterpriseReadiness: 78, communityAdoption: 72,
+      contextEconomy: 0,
     },
   },
   // Terminal-native agents
@@ -248,6 +261,7 @@ const DEV_TOOL_BASELINES: CompetitorProfile[] = [
       developerExperience: 88, autonomy: 78, planningQuality: 60, selfImprovement: 55,
       specDrivenPipeline: 25, convergenceSelfHealing: 45, tokenEconomy: 55,
       ecosystemMcp: 85, enterpriseReadiness: 50, communityAdoption: 78,
+      contextEconomy: 0,
     },
   },
   {
@@ -261,6 +275,7 @@ const DEV_TOOL_BASELINES: CompetitorProfile[] = [
       developerExperience: 90, autonomy: 65, planningQuality: 62, selfImprovement: 58,
       specDrivenPipeline: 30, convergenceSelfHealing: 40, tokenEconomy: 50,
       ecosystemMcp: 82, enterpriseReadiness: 48, communityAdoption: 75,
+      contextEconomy: 0,
     },
   },
   // Documentation & specification
@@ -275,6 +290,7 @@ const DEV_TOOL_BASELINES: CompetitorProfile[] = [
       developerExperience: 85, autonomy: 55, planningQuality: 85, selfImprovement: 62,
       specDrivenPipeline: 70, convergenceSelfHealing: 35, tokenEconomy: 30,
       ecosystemMcp: 45, enterpriseReadiness: 55, communityAdoption: 65,
+      contextEconomy: 0,
     },
   },
   // Agent frameworks
@@ -289,9 +305,10 @@ const DEV_TOOL_BASELINES: CompetitorProfile[] = [
       developerExperience: 72, autonomy: 78, planningQuality: 72, selfImprovement: 65,
       specDrivenPipeline: 40, convergenceSelfHealing: 55, tokenEconomy: 50,
       ecosystemMcp: 88, enterpriseReadiness: 50, communityAdoption: 88,
+      contextEconomy: 0,
     },
   },
-  // ── New competitors (2025-2026 wave) ──────────────────────────────────────
+  // â”€â”€ New competitors (2025-2026 wave) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   {
     name: 'Kiro (AWS)',
     url: 'https://kiro.dev',
@@ -303,6 +320,7 @@ const DEV_TOOL_BASELINES: CompetitorProfile[] = [
       developerExperience: 80, autonomy: 72, planningQuality: 82, selfImprovement: 55,
       specDrivenPipeline: 80, convergenceSelfHealing: 55, tokenEconomy: 60,
       ecosystemMcp: 65, enterpriseReadiness: 80, communityAdoption: 62,
+      contextEconomy: 0,
     },
   },
   {
@@ -316,6 +334,7 @@ const DEV_TOOL_BASELINES: CompetitorProfile[] = [
       developerExperience: 82, autonomy: 80, planningQuality: 68, selfImprovement: 55,
       specDrivenPipeline: 35, convergenceSelfHealing: 60, tokenEconomy: 65,
       ecosystemMcp: 78, enterpriseReadiness: 65, communityAdoption: 80,
+      contextEconomy: 0,
     },
   },
   {
@@ -329,6 +348,7 @@ const DEV_TOOL_BASELINES: CompetitorProfile[] = [
       developerExperience: 78, autonomy: 65, planningQuality: 60, selfImprovement: 50,
       specDrivenPipeline: 25, convergenceSelfHealing: 40, tokenEconomy: 72,
       ecosystemMcp: 65, enterpriseReadiness: 68, communityAdoption: 75,
+      contextEconomy: 0,
     },
   },
   {
@@ -342,6 +362,7 @@ const DEV_TOOL_BASELINES: CompetitorProfile[] = [
       developerExperience: 90, autonomy: 75, planningQuality: 78, selfImprovement: 60,
       specDrivenPipeline: 55, convergenceSelfHealing: 60, tokenEconomy: 60,
       ecosystemMcp: 82, enterpriseReadiness: 88, communityAdoption: 95,
+      contextEconomy: 0,
     },
   },
   {
@@ -355,12 +376,13 @@ const DEV_TOOL_BASELINES: CompetitorProfile[] = [
       developerExperience: 75, autonomy: 72, planningQuality: 60, selfImprovement: 55,
       specDrivenPipeline: 30, convergenceSelfHealing: 50, tokenEconomy: 50,
       ecosystemMcp: 85, enterpriseReadiness: 55, communityAdoption: 72,
+      contextEconomy: 0,
     },
   },
   {
     name: 'Replit Agent',
     url: 'https://replit.com',
-    description: 'Most autonomous app builder — continuous generate/test/debug/fix loop with deployment.',
+    description: 'Most autonomous app builder â€” continuous generate/test/debug/fix loop with deployment.',
     source: 'hardcoded',
     scores: {
       functionality: 82, testing: 68, errorHandling: 70, security: 68,
@@ -368,6 +390,7 @@ const DEV_TOOL_BASELINES: CompetitorProfile[] = [
       developerExperience: 88, autonomy: 85, planningQuality: 65, selfImprovement: 60,
       specDrivenPipeline: 45, convergenceSelfHealing: 78, tokenEconomy: 55,
       ecosystemMcp: 60, enterpriseReadiness: 50, communityAdoption: 85,
+      contextEconomy: 0,
     },
   },
   {
@@ -381,6 +404,7 @@ const DEV_TOOL_BASELINES: CompetitorProfile[] = [
       developerExperience: 75, autonomy: 72, planningQuality: 65, selfImprovement: 55,
       specDrivenPipeline: 40, convergenceSelfHealing: 55, tokenEconomy: 55,
       ecosystemMcp: 55, enterpriseReadiness: 90, communityAdoption: 48,
+      contextEconomy: 0,
     },
   },
   {
@@ -394,6 +418,7 @@ const DEV_TOOL_BASELINES: CompetitorProfile[] = [
       developerExperience: 85, autonomy: 72, planningQuality: 62, selfImprovement: 72,
       specDrivenPipeline: 35, convergenceSelfHealing: 72, tokenEconomy: 55,
       ecosystemMcp: 65, enterpriseReadiness: 72, communityAdoption: 72,
+      contextEconomy: 0,
     },
   },
   {
@@ -407,6 +432,7 @@ const DEV_TOOL_BASELINES: CompetitorProfile[] = [
       developerExperience: 78, autonomy: 60, planningQuality: 55, selfImprovement: 45,
       specDrivenPipeline: 30, convergenceSelfHealing: 40, tokenEconomy: 50,
       ecosystemMcp: 80, enterpriseReadiness: 65, communityAdoption: 70,
+      contextEconomy: 0,
     },
   },
   {
@@ -420,17 +446,18 @@ const DEV_TOOL_BASELINES: CompetitorProfile[] = [
       developerExperience: 85, autonomy: 72, planningQuality: 58, selfImprovement: 52,
       specDrivenPipeline: 30, convergenceSelfHealing: 45, tokenEconomy: 55,
       ecosystemMcp: 78, enterpriseReadiness: 48, communityAdoption: 62,
+      contextEconomy: 0,
     },
   },
 ];
 
-// All 18 dimension keys for iteration
+// All 19 dimension keys for iteration
 const ALL_DIMENSIONS: ScoringDimension[] = [
   'functionality', 'testing', 'errorHandling', 'security',
   'uxPolish', 'documentation', 'performance', 'maintainability',
   'developerExperience', 'autonomy', 'planningQuality', 'selfImprovement',
   'specDrivenPipeline', 'convergenceSelfHealing', 'tokenEconomy',
-  'ecosystemMcp', 'enterpriseReadiness', 'communityAdoption',
+  'contextEconomy', 'ecosystemMcp', 'enterpriseReadiness', 'communityAdoption',
 ];
 
 // Keywords that indicate the project is a developer/coding tool
@@ -442,7 +469,7 @@ const DEV_TOOL_KEYWORDS = [
   'autonomous', 'scaffold', 'agentic',
 ];
 
-// ── Main scan function ────────────────────────────────────────────────────────
+// â”€â”€ Main scan function â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 export async function scanCompetitors(opts: CompetitorScanOptions): Promise<CompetitorComparison> {
   const now = opts._now ?? (() => new Date().toISOString());
@@ -454,19 +481,19 @@ export async function scanCompetitors(opts: CompetitorScanOptions): Promise<Comp
   let competitors: CompetitorProfile[] = [];
   let competitorSource: CompetitorComparison['competitorSource'] = 'dev-tool-default';
 
-  // ── Priority 1: User-defined competitor list ────────────────────────────────
+  // â”€â”€ Priority 1: User-defined competitor list â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   if (ctx?.userDefinedCompetitors && ctx.userDefinedCompetitors.length > 0) {
     competitorSource = 'user-defined';
     competitors = await scoreCompetitorsByName(ctx.userDefinedCompetitors, ctx, callLLMFn);
   }
 
-  // ── Priority 2: OSS discoveries from OSS_REPORT.md ─────────────────────────
+  // â”€â”€ Priority 2: OSS discoveries from OSS_REPORT.md â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   else if (ctx?.ossDiscoveries && ctx.ossDiscoveries.length > 0) {
     competitorSource = 'oss-derived';
     competitors = await scoreCompetitorsByName(ctx.ossDiscoveries, ctx, callLLMFn);
   }
 
-  // ── Priority 3: LLM-discovered competitors (web search) ────────────────────
+  // â”€â”€ Priority 3: LLM-discovered competitors (web search) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   else if (enableSearch && ctx) {
     try {
       competitors = await discoverAndScoreCompetitors(ctx, callLLMFn);
@@ -476,7 +503,7 @@ export async function scanCompetitors(opts: CompetitorScanOptions): Promise<Comp
     } catch { /* fall through to default */ }
   }
 
-  // ── Priority 4: Dev-tool fallback — only if project appears to be a coding tool
+  // â”€â”€ Priority 4: Dev-tool fallback â€” only if project appears to be a coding tool
   if (competitors.length === 0) {
     if (isDevToolProject(ctx)) {
       competitors = DEV_TOOL_BASELINES.map((c) => ({ ...c }));
@@ -513,7 +540,7 @@ export async function scanCompetitors(opts: CompetitorScanOptions): Promise<Comp
   };
 }
 
-// ── Project type detection ────────────────────────────────────────────────────
+// â”€â”€ Project type detection â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 export function isDevToolProject(ctx: ProjectCompetitorContext | undefined): boolean {
   if (!ctx) return false;
@@ -521,7 +548,7 @@ export function isDevToolProject(ctx: ProjectCompetitorContext | undefined): boo
   return DEV_TOOL_KEYWORDS.some((kw) => text.includes(kw));
 }
 
-// ── LLM-based competitor discovery for any project type ───────────────────────
+// â”€â”€ LLM-based competitor discovery for any project type â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 async function discoverAndScoreCompetitors(
   ctx: ProjectCompetitorContext,
@@ -536,7 +563,7 @@ async function discoverAndScoreCompetitors(
     '  scores: object with keys: functionality, testing, errorHandling, security, uxPolish,',
     '    documentation, performance, maintainability, developerExperience, autonomy,',
     '    planningQuality, selfImprovement, specDrivenPipeline, convergenceSelfHealing,',
-    '    tokenEconomy, ecosystemMcp, enterpriseReadiness, communityAdoption — each scored 0-100.',
+    '    tokenEconomy, ecosystemMcp, enterpriseReadiness, communityAdoption â€” each scored 0-100.',
     '',
     'Score each competitor honestly based on public reputation and capabilities.',
     'Respond ONLY with valid JSON: [{"name":"...","url":"...","description":"...","scores":{...}}, ...]',
@@ -581,7 +608,7 @@ function parseDiscoveredCompetitors(response: string): CompetitorProfile[] {
   }
 }
 
-// ── Score named competitors via LLM ──────────────────────────────────────────
+// â”€â”€ Score named competitors via LLM â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 async function scoreCompetitorsByName(
   names: string[],
@@ -626,7 +653,7 @@ async function scoreCompetitorsByName(
   });
 }
 
-// ── Dev tool enrichment (existing logic, kept for fallback) ───────────────────
+// â”€â”€ Dev tool enrichment (existing logic, kept for fallback) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 async function enrichDevToolScores(
   competitors: CompetitorProfile[],
@@ -675,7 +702,7 @@ async function enrichDevToolScores(
   });
 }
 
-// ── Score builder from raw LLM output ────────────────────────────────────────
+// â”€â”€ Score builder from raw LLM output â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 function buildScoresFromRaw(raw: Record<string, unknown>): Record<ScoringDimension, number> {
   const defaults: Record<ScoringDimension, number> = {
@@ -684,6 +711,7 @@ function buildScoresFromRaw(raw: Record<string, unknown>): Record<ScoringDimensi
     developerExperience: 70, autonomy: 70, planningQuality: 70, selfImprovement: 70,
     specDrivenPipeline: 40, convergenceSelfHealing: 45, tokenEconomy: 50,
     ecosystemMcp: 50, enterpriseReadiness: 50, communityAdoption: 60,
+    contextEconomy: 0,
   };
   for (const dim of ALL_DIMENSIONS) {
     const val = raw[dim];
@@ -694,7 +722,7 @@ function buildScoresFromRaw(raw: Record<string, unknown>): Record<ScoringDimensi
   return defaults;
 }
 
-// ── OSS Report parser ─────────────────────────────────────────────────────────
+// â”€â”€ OSS Report parser â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 // Extracts tool/repo names from OSS_REPORT.md for use as competitor list.
 
 export function parseOssDiscoveries(ossReportContent: string): string[] {
@@ -729,7 +757,7 @@ export function parseOssDiscoveries(ossReportContent: string): string[] {
   return [...new Set(names)].slice(0, 10); // max 10 competitors
 }
 
-// ── Gap report builder ────────────────────────────────────────────────────────
+// â”€â”€ Gap report builder â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 export function buildGapReport(
   ourScores: Record<ScoringDimension, number>,
@@ -759,7 +787,7 @@ export function buildGapReport(
   });
 }
 
-// ── Leaderboard builder ───────────────────────────────────────────────────────
+// â”€â”€ Leaderboard builder â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 export function buildLeaderboard(
   entries: Array<{ name: string; avgScore: number }>,
@@ -772,7 +800,7 @@ export function buildLeaderboard(
   }));
 }
 
-// ── Report formatter ──────────────────────────────────────────────────────────
+// â”€â”€ Report formatter â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 export function formatCompetitorReport(comparison: CompetitorComparison): string {
   const lines: string[] = [
@@ -784,7 +812,7 @@ export function formatCompetitorReport(comparison: CompetitorComparison): string
   ];
 
   for (const entry of comparison.leaderboard) {
-    const marker = entry.name === comparison.projectName ? ' ◄ (us)' : '';
+    const marker = entry.name === comparison.projectName ? ' â—„ (us)' : '';
     lines.push(`  ${entry.rank}. ${entry.name}: ${(entry.avgScore / 10).toFixed(1)}/10${marker}`);
   }
 
@@ -800,7 +828,7 @@ export function formatCompetitorReport(comparison: CompetitorComparison): string
     const ours = (gap.ourScore / 10).toFixed(1);
     const best = (gap.bestScore / 10).toFixed(1);
     const delta = gap.delta > 0 ? `-${(gap.delta / 10).toFixed(1)}` : `+${(Math.abs(gap.delta) / 10).toFixed(1)}`;
-    const icon = gap.severity === 'leading' ? '✓' : gap.severity === 'critical' ? '⚠' : '△';
+    const icon = gap.severity === 'leading' ? 'âœ“' : gap.severity === 'critical' ? 'âš ' : 'â–³';
     lines.push(`  ${icon} ${gap.dimension.padEnd(22)} us: ${ours}  best: ${best} (${gap.bestCompetitor}) ${delta}`);
   }
 
@@ -816,7 +844,7 @@ function formatSourceLabel(source: CompetitorComparison['competitorSource']): st
   }
 }
 
-// ── Utilities ─────────────────────────────────────────────────────────────────
+// â”€â”€ Utilities â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 function avg(values: number[]): number {
   if (values.length === 0) return 0;

@@ -111,9 +111,10 @@ const SCORE_DISPLAY_WEIGHTS: Record<ScoringDimension, number> = {
   specDrivenPipeline:     0.03,
   convergenceSelfHealing: 0.03,
   tokenEconomy:           0.03,
-  ecosystemMcp:           0.02,
-  enterpriseReadiness:    0.02,
-  communityAdoption:      0.02,
+  contextEconomy:         0.03,
+  ecosystemMcp:           0.01,
+  enterpriseReadiness:    0.01,
+  communityAdoption:      0.01,
 };
 
 // ── Static action lookup (no LLM) ────────────────────────────────────────────
@@ -134,6 +135,7 @@ const DIMENSION_ACTIONS: Record<ScoringDimension, string> = {
   specDrivenPipeline:     'danteforge improve "spec driven pipeline"',
   convergenceSelfHealing: 'danteforge improve "convergence self healing"',
   tokenEconomy:           'danteforge improve "token economy"',
+  contextEconomy:         'danteforge forge "implement PRD-26 context filter pipeline"',
   ecosystemMcp:           'danteforge setup mcp-server',
   enterpriseReadiness:    'danteforge improve "enterprise readiness"',
   communityAdoption:      'danteforge improve "community adoption"',

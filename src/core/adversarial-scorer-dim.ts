@@ -66,9 +66,10 @@ const DIMENSION_WEIGHTS: Record<ScoringDimension, number> = {
   specDrivenPipeline: 0.03,
   convergenceSelfHealing: 0.03,
   tokenEconomy: 0.03,
-  ecosystemMcp: 0.02,
-  enterpriseReadiness: 0.02,
-  communityAdoption: 0.02,
+  contextEconomy: 0.03,
+  ecosystemMcp: 0.01,
+  enterpriseReadiness: 0.01,
+  communityAdoption: 0.01,
 };
 
 // ── Prompt builders ───────────────────────────────────────────────────────────

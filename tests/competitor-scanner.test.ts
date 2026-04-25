@@ -24,7 +24,7 @@ const ALL_DIMS: ScoringDimension[] = [
   'uxPolish', 'documentation', 'performance', 'maintainability',
   'developerExperience', 'autonomy', 'planningQuality', 'selfImprovement',
   'specDrivenPipeline', 'convergenceSelfHealing', 'tokenEconomy',
-  'ecosystemMcp', 'enterpriseReadiness', 'communityAdoption',
+  'contextEconomy', 'ecosystemMcp', 'enterpriseReadiness', 'communityAdoption',
 ];
 
 function makeOurScores(score = 70): Record<ScoringDimension, number> {
@@ -62,9 +62,9 @@ describe('scanCompetitors', () => {
     assert.ok(typeof result.competitorSource === 'string', 'competitorSource is string');
   });
 
-  it('includes all 18 dimensions in gapReport', async () => {
+  it('includes all 19 dimensions in gapReport', async () => {
     const result = await scanCompetitors(makeOptions());
-    assert.equal(result.gapReport.length, 18);
+    assert.equal(result.gapReport.length, 19);
     const dims = result.gapReport.map((g) => g.dimension).sort();
     assert.deepEqual(dims, [...ALL_DIMS].sort());
   });
@@ -263,9 +263,9 @@ _No repositories scanned._
 // ── buildGapReport ────────────────────────────────────────────────────────────
 
 describe('buildGapReport', () => {
-  it('returns 12 gaps, one per dimension', () => {
+  it('returns 19 gaps, one per dimension', () => {
     const gaps = buildGapReport(makeOurScores(70), COMPETITOR_BASELINES);
-    assert.equal(gaps.length, 18);
+    assert.equal(gaps.length, 19);
   });
 
   it('sets severity=leading when we score the highest', () => {
@@ -301,7 +301,7 @@ describe('buildGapReport', () => {
 
   it('returns empty array when no competitors', () => {
     const gaps = buildGapReport(makeOurScores(70), []);
-    assert.equal(gaps.length, 18);
+    assert.equal(gaps.length, 19);
     for (const gap of gaps) {
       assert.equal(gap.severity, 'leading'); // leading ourselves
       assert.equal(gap.delta, 0);

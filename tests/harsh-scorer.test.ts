@@ -352,7 +352,8 @@ describe('computeWeightedScore', () => {
     const dims = Object.fromEntries(
       ['functionality','testing','errorHandling','security','uxPolish','documentation',
        'performance','maintainability','developerExperience','autonomy','planningQuality','selfImprovement',
-       'specDrivenPipeline','convergenceSelfHealing','tokenEconomy','ecosystemMcp','enterpriseReadiness','communityAdoption']
+       'specDrivenPipeline','convergenceSelfHealing','tokenEconomy','contextEconomy',
+       'ecosystemMcp','enterpriseReadiness','communityAdoption']
         .map((k) => [k, 100]),
     ) as Record<ScoringDimension, number>;
     assert.ok(Math.abs(computeWeightedScore(dims) - 100) < 0.01);
@@ -362,7 +363,8 @@ describe('computeWeightedScore', () => {
     const dims = Object.fromEntries(
       ['functionality','testing','errorHandling','security','uxPolish','documentation',
        'performance','maintainability','developerExperience','autonomy','planningQuality','selfImprovement',
-       'specDrivenPipeline','convergenceSelfHealing','tokenEconomy','ecosystemMcp','enterpriseReadiness','communityAdoption']
+       'specDrivenPipeline','convergenceSelfHealing','tokenEconomy','contextEconomy',
+       'ecosystemMcp','enterpriseReadiness','communityAdoption']
         .map((k) => [k, 0]),
     ) as Record<ScoringDimension, number>;
     assert.equal(computeWeightedScore(dims), 0);
