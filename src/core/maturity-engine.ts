@@ -228,6 +228,43 @@ async function scoreTesting(
   return Math.min(100, score);
 }
 
+// ── Monorepo-aware source directory resolution ────────────────────────────
+//
+// Many scoring functions below scan `cwd/src/` for .ts files. Single-package
+// projects have everything there. Monorepos (npm workspaces, pnpm workspaces,
+// turbo) keep code at `cwd/packages/<pkg>/src/`. Without this helper, the
+// scorer scans an empty/sparse cwd/src/ and falls back to base scores —
+// producing artificially low values like 5.0/10 even on mature monorepos
+// with thousands of try/catch blocks across packages/*/src/.
+//
+// Returns ALL source directories that contain .ts files. Empty array if
+// neither layout has any.
+async function getProjectSourceDirs(
+  cwd: string,
+  collectFiles: (dir: string) => Promise<string[]>,
+): Promise<string[]> {
+  const dirs: string[] = [];
+  // Single-package layout: cwd/src/
+  try {
+    const tsFiles = (await collectFiles(path.join(cwd, 'src'))).filter((f) => f.endsWith('.ts'));
+    if (tsFiles.length > 0) dirs.push(path.join(cwd, 'src'));
+  } catch { /* no src/ */ }
+  // Monorepo layout: cwd/packages/<pkg>/src/
+  try {
+    const packagesDir = path.join(cwd, 'packages');
+    const entries = await fs.readdir(packagesDir, { withFileTypes: true }).catch(() => []);
+    for (const entry of entries) {
+      if (!entry.isDirectory()) continue;
+      const pkgSrc = path.join(packagesDir, entry.name, 'src');
+      try {
+        const stat = await fs.stat(pkgSrc).catch(() => null);
+        if (stat && stat.isDirectory()) dirs.push(pkgSrc);
+      } catch { /* skip */ }
+    }
+  } catch { /* no packages/ */ }
+  return dirs;
+}
+
 // ── Error Handling: throw, try/catch, custom error classes ────────────────
 
 async function scoreErrorHandling(
@@ -240,33 +277,50 @@ async function scoreErrorHandling(
   let customErrorCount = 0;
   let functionCount = 0;
 
-  const srcDir = path.join(ctx.cwd, 'src');
-  try {
-    const files = await collectFiles(srcDir);
-    for (const filePath of files) {
-      try {
-        const content = await readFile(filePath);
-        throwCount += (content.match(/throw new/g) || []).length;
-        tryCount += (content.match(/try\s*\{/g) || []).length;
-        customErrorCount += (content.match(/class\s+\w+Error\s+extends\s+Error/g) || []).length;
-        functionCount += (content.match(/function\s+\w+|=>\s*\{|async\s+\w+\(/g) || []).length;
-      } catch {
-        // Unreadable file
+  // Monorepo-aware: scan ALL source dirs (cwd/src and/or cwd/packages/*/src).
+  const srcDirs = await getProjectSourceDirs(ctx.cwd, collectFiles);
+  if (srcDirs.length === 0) return 50;
+
+  for (const srcDir of srcDirs) {
+    try {
+      const files = await collectFiles(srcDir);
+      for (const filePath of files) {
+        if (!filePath.endsWith('.ts') || filePath.endsWith('.test.ts') || filePath.endsWith('.d.ts')) continue;
+        try {
+          const content = await readFile(filePath);
+          throwCount += (content.match(/throw new/g) || []).length;
+          tryCount += (content.match(/try\s*\{/g) || []).length;
+          customErrorCount += (content.match(/class\s+\w+Error\s+extends\s+Error/g) || []).length;
+          functionCount += (content.match(/function\s+\w+|=>\s*\{|async\s+\w+\(/g) || []).length;
+        } catch {
+          // Unreadable file
+        }
       }
+    } catch {
+      // Skip unreadable dir
     }
-  } catch {
-    // No src directory
-    return 50;
   }
 
   if (functionCount === 0) return 50;
 
+  // Realistic try/catch density thresholds. The previous formula `ratio * 100`
+  // assumed every function should have explicit error handling, which is
+  // unrealistic — production projects typically run 10–20% try/catch density
+  // and that's healthy. Calibrated thresholds map real-world ratios onto the
+  // 0-100 scale so a well-engineered codebase can actually reach the high band.
   const ratio = (tryCount + throwCount) / functionCount;
-  let score = Math.round(ratio * 100);
+  let score: number;
+  if (ratio >= 0.20) score = 95;        // exceptional coverage
+  else if (ratio >= 0.15) score = 85;   // strong
+  else if (ratio >= 0.10) score = 75;   // healthy
+  else if (ratio >= 0.07) score = 65;   // adequate
+  else if (ratio >= 0.04) score = 50;   // sparse
+  else if (ratio >= 0.02) score = 35;   // minimal
+  else score = 20;                      // essentially absent
 
-  if (customErrorCount > 0) {
-    score += 10;
-  }
+  // Custom error classes signal disciplined error design; bump the score.
+  if (customErrorCount >= 5) score += 5;
+  else if (customErrorCount > 0) score += 3;
 
   return Math.min(100, Math.max(0, score));
 }
@@ -572,26 +626,29 @@ async function scoreMaintainability(
     }
   }
 
-  // Penalize >100 LOC functions
-  const srcDir = path.join(ctx.cwd, 'src');
+  // Penalize >100 LOC functions. Monorepo-aware: scan all source dirs.
+  const srcDirs = await getProjectSourceDirs(ctx.cwd, collectFiles);
   let largeFunctionPenalty = 0;
 
-  try {
-    const files = await collectFiles(srcDir);
-    for (const filePath of files) {
-      try {
-        const content = await readFile(filePath);
-        const functions = extractFunctions(content);
-        for (const fn of functions) {
-          const loc = fn.split('\n').length;
-          if (loc > 100) largeFunctionPenalty += 2;
+  for (const srcDir of srcDirs) {
+    try {
+      const files = await collectFiles(srcDir);
+      for (const filePath of files) {
+        if (!filePath.endsWith('.ts') || filePath.endsWith('.test.ts') || filePath.endsWith('.d.ts')) continue;
+        try {
+          const content = await readFile(filePath);
+          const functions = extractFunctions(content);
+          for (const fn of functions) {
+            const loc = fn.split('\n').length;
+            if (loc > 100) largeFunctionPenalty += 2;
+          }
+        } catch {
+          // Unreadable file
         }
-      } catch {
-        // Unreadable file
       }
+    } catch {
+      // Skip unreadable dir
     }
-  } catch {
-    // No src directory
   }
 
   // Cap at 50 so score never goes below pdseBase-50; improvement visible when count drops below 25
