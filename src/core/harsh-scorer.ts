@@ -194,10 +194,31 @@ async function gatherEvidenceFlags(
     ? await options._readConvergenceProof(cwd)
     : { hasConvergenceProof, hasE2EConvergenceTest };
 
-  const hasErrorHierarchy = await existsFn(path.join(cwd, 'src', 'core', 'errors.ts'));
-  const hasCircuitBreaker = await existsFn(path.join(cwd, 'src', 'core', 'circuit-breaker.ts'));
-  const hasResilienceModule = await existsFn(path.join(cwd, 'src', 'core', 'resilience.ts'));
-  const hasE2EErrorHandlingTest = await existsFn(path.join(cwd, 'tests', 'e2e-error-handling.test.ts'));
+  // Monorepo-aware: check both src/core/<file>.ts (single-package) and
+  // packages/<pkg>/src/<file>.ts (monorepo). Without this, mature monorepo
+  // projects with full error hierarchies score 0 on these flags.
+  const checkErrFile = async (filename: string): Promise<boolean> => {
+    if (await existsFn(path.join(cwd, 'src', 'core', filename))) return true;
+    // Probe known package src dirs (covers both turbo/npm-workspaces layouts)
+    for (const pkg of ['core', 'cli', 'vscode', 'sandbox', 'mcp']) {
+      if (await existsFn(path.join(cwd, 'packages', pkg, 'src', filename))) return true;
+    }
+    return false;
+  };
+  const checkErrTest = async (filename: string): Promise<boolean> => {
+    if (await existsFn(path.join(cwd, 'tests', filename))) return true;
+    // Monorepo: tests live next to source as packages/<pkg>/src/<...>.test.ts
+    for (const pkg of ['core', 'cli', 'vscode']) {
+      if (await existsFn(path.join(cwd, 'packages', pkg, 'src', filename.replace('.test.ts', '.test.ts')))) return true;
+      if (await existsFn(path.join(cwd, 'packages', pkg, 'src', '__tests__', filename))) return true;
+    }
+    return false;
+  };
+  const hasErrorHierarchy = await checkErrFile('errors.ts');
+  const hasCircuitBreaker = await checkErrFile('circuit-breaker.ts');
+  const hasResilienceModule = await checkErrFile('resilience.ts');
+  const hasE2EErrorHandlingTest = await checkErrTest('e2e-error-handling.test.ts')
+    || await checkErrTest('errors.test.ts');  // monorepo unit test counts as evidence
   const errorHandlingFlags: ErrorHandlingEvidenceFlags = options._readErrorHandlingProof
     ? await options._readErrorHandlingProof(cwd)
     : { hasErrorHierarchy, hasCircuitBreaker, hasResilienceModule, hasE2EErrorHandlingTest };
