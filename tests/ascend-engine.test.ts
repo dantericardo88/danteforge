@@ -54,7 +54,7 @@ function makeComparison(): CompetitorComparison {
     'functionality', 'testing', 'errorHandling', 'security', 'uxPolish',
     'documentation', 'performance', 'maintainability', 'developerExperience',
     'autonomy', 'planningQuality', 'selfImprovement', 'specDrivenPipeline',
-    'convergenceSelfHealing', 'tokenEconomy', 'ecosystemMcp',
+    'convergenceSelfHealing', 'tokenEconomy', 'contextEconomy', 'ecosystemMcp',
     'enterpriseReadiness', 'communityAdoption',
   ];
   const ourDimensions = Object.fromEntries(dims.map(d => [d, 50])) as Record<ScoringDimension, number>;
@@ -198,6 +198,7 @@ describe('mapDimIdToScoringDimension()', () => {
     assert.equal(mapDimIdToScoringDimension('community_adoption'), 'communityAdoption');
     assert.equal(mapDimIdToScoringDimension('ux_polish'), 'uxPolish');
     assert.equal(mapDimIdToScoringDimension('error_handling'), 'errorHandling');
+    assert.equal(mapDimIdToScoringDimension('context_economy'), 'contextEconomy');
   });
 
   it('returns known ScoringDimension as-is when already camelCase', () => {

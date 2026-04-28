@@ -39,6 +39,7 @@ function makeSelfResult(overallScore: number, dimOverrides?: Partial<Record<Scor
     specDrivenPipeline: overallScore,
     convergenceSelfHealing: overallScore,
     tokenEconomy: overallScore,
+    contextEconomy: overallScore,
     ecosystemMcp: overallScore,
     enterpriseReadiness: overallScore,
     communityAdoption: overallScore,

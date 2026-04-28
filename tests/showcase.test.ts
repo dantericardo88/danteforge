@@ -74,7 +74,7 @@ describe('showcase command', () => {
     assert.ok(capturedContent.length > 0, 'should write non-empty content');
   });
 
-  it('T3: Markdown output contains all 18 dimension names', async () => {
+  it('T3: Markdown output contains all 19 dimension names', async () => {
     let capturedContent = '';
     await showcase(makeOpts({
       _writeFile: async (_p, content) => { capturedContent = content; },

@@ -377,7 +377,7 @@ describe('formatCompetitorReport', () => {
 // ── COMPETITOR_BASELINES integrity ────────────────────────────────────────────
 
 describe('COMPETITOR_BASELINES (dev-tool defaults)', () => {
-  it('all competitors have all 18 dimensions', () => {
+  it('all competitors have all 19 dimensions', () => {
     for (const comp of COMPETITOR_BASELINES) {
       for (const dim of ALL_DIMS) {
         assert.ok(dim in comp.scores, `${comp.name} missing dimension ${dim}`);

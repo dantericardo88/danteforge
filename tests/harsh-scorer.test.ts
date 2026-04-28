@@ -127,14 +127,14 @@ describe('computeHarshScore', () => {
     assert.equal(result.displayScore, expected);
   });
 
-  it('has all 18 dimensions', async () => {
+  it('has all 19 dimensions', async () => {
     const result = await computeHarshScore(makeOptions());
     const expected: ScoringDimension[] = [
       'functionality', 'testing', 'errorHandling', 'security',
       'uxPolish', 'documentation', 'performance', 'maintainability',
       'developerExperience', 'autonomy', 'planningQuality', 'selfImprovement',
       'specDrivenPipeline', 'convergenceSelfHealing', 'tokenEconomy',
-      'ecosystemMcp', 'enterpriseReadiness', 'communityAdoption',
+      'contextEconomy', 'ecosystemMcp', 'enterpriseReadiness', 'communityAdoption',
     ];
     for (const dim of expected) {
       assert.ok(dim in result.dimensions, `Missing dimension: ${dim}`);

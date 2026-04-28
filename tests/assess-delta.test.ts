@@ -15,7 +15,7 @@ function makeHarshResult(displayScore: number): HarshScoreResult {
     developerExperience: displayScore * 10, autonomy: displayScore * 10,
     planningQuality: displayScore * 10, selfImprovement: displayScore * 10,
     specDrivenPipeline: displayScore * 10, convergenceSelfHealing: displayScore * 10,
-    tokenEconomy: displayScore * 10, ecosystemMcp: displayScore * 10,
+    tokenEconomy: displayScore * 10, contextEconomy: displayScore * 10, ecosystemMcp: displayScore * 10,
     enterpriseReadiness: displayScore * 10, communityAdoption: displayScore * 10,
   } as HarshScoreResult['dimensions'];
 

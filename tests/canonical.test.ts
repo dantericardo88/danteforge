@@ -218,6 +218,22 @@ describe('canonicalMeasure: light (default)', () => {
   });
 });
 
+describe('canonicalMeasure: full', () => {
+  it('calls score with full output and does not fall back to light warning behavior', async () => {
+    const calls: Array<{ full?: boolean; strict?: boolean; adversary?: boolean }> = [];
+    await canonicalMeasure({
+      level: 'full',
+      _fns: {
+        score: async (full, strict, adversary) => { calls.push({ full, strict, adversary }); },
+        maturity: async () => {},
+        proof: async () => {},
+        verify: async () => {},
+      },
+    });
+    assert.deepEqual(calls, [{ full: true, strict: undefined, adversary: undefined }]);
+  });
+});
+
 describe('canonicalMeasure: standard', () => {
   it('calls score+maturity+proof', async () => {
     const called: string[] = [];

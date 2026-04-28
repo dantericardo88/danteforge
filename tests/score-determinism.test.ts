@@ -52,6 +52,7 @@ function makeHarshResult(overrides: Partial<HarshScoreResult> = {}): HarshScoreR
       specDrivenPipeline: 7.0,
       convergenceSelfHealing: 6.5,
       tokenEconomy: 6.0,
+      contextEconomy: 6.0,
       ecosystemMcp: 10.0,
       enterpriseReadiness: 7.0,
       communityAdoption: 1.5,
@@ -170,14 +171,14 @@ describe('score() determinism — same input → same output', () => {
     );
   });
 
-  it('score --full returns displayDimensions with all 18 keys', async () => {
+  it('score --full returns displayDimensions with all 19 keys', async () => {
     const opts = makeBaseOpts({ full: true });
     const result = await score(opts);
 
     assert.ok(result.displayDimensions, 'displayDimensions should be present when --full');
     const keys = Object.keys(result.displayDimensions);
-    assert.equal(keys.length, 18,
-      `Expected 18 dimension keys, got ${keys.length}: ${keys.join(', ')}`);
+    assert.equal(keys.length, 19,
+      `Expected 19 dimension keys, got ${keys.length}: ${keys.join(', ')}`);
   });
 
   it('score --full emits more output lines than score (basic render coverage)', async () => {

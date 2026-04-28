@@ -23,6 +23,7 @@ function makeHarshResult(overrides: Partial<HarshScoreResult> = {}): HarshScoreR
     specDrivenPipeline: 8.5,
     convergenceSelfHealing: 7.0,
     tokenEconomy: 7.5,
+    contextEconomy: 7.5,
     ecosystemMcp: 6.5,
     enterpriseReadiness: 5.0,
     communityAdoption: 1.5,
@@ -88,7 +89,7 @@ describe('benchmark command', () => {
     assert.ok(typeof json.score === 'number', 'score should be a number');
   });
 
-  it('T2: full run outputs all 18 dimensions', async () => {
+  it('T2: full run outputs all 19 dimensions', async () => {
     const output: string[] = [];
     const origWrite = process.stdout.write.bind(process.stdout);
     process.stdout.write = (chunk: string | Uint8Array) => { output.push(String(chunk)); return true; };
@@ -101,7 +102,7 @@ describe('benchmark command', () => {
       process.stdout.write = origWrite;
     }
 
-    // All 18 dimension names should appear in output
+    // All 19 dimension names should appear in output
     const combined = output.join('');
     const expectedDims: ScoringDimension[] = ['functionality', 'testing', 'security', 'communityAdoption'];
     for (const dim of expectedDims) {

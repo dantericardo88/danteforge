@@ -19,6 +19,8 @@ const ALL_DIMS: ScoringDimension[] = [
   'functionality', 'testing', 'errorHandling', 'security',
   'uxPolish', 'documentation', 'performance', 'maintainability',
   'developerExperience', 'autonomy', 'planningQuality', 'selfImprovement',
+  'specDrivenPipeline', 'convergenceSelfHealing', 'tokenEconomy', 'contextEconomy',
+  'ecosystemMcp', 'enterpriseReadiness', 'communityAdoption',
 ];
 
 function makeDims(score: number): Record<ScoringDimension, number> {
@@ -245,7 +247,7 @@ describe('assess', () => {
     }));
     assert.equal(result.assessment.displayDimensions.autonomy, 10);
     assert.equal(result.assessment.displayDimensions.selfImprovement, 10);
-    assert.equal(result.assessment.displayDimensions.convergenceSelfHealing, 10);
+    assert.equal(result.assessment.displayDimensions.convergenceSelfHealing, 9.5);
   });
 
   it('_strictDimensions does not affect other dimensions', async () => {

@@ -14,7 +14,7 @@ function makeHarshResult(overrides: Partial<HarshScoreResult> = {}): HarshScoreR
     performance: 2.5, maintainability: 8.4, developerExperience: 9.7,
     autonomy: 4.0, planningQuality: 9.4, selfImprovement: 6.5,
     specDrivenPipeline: 9.5, convergenceSelfHealing: 8.0, tokenEconomy: 7.0,
-    ecosystemMcp: 6.0, enterpriseReadiness: 7.5, communityAdoption: 1.5,
+    contextEconomy: 7.0, ecosystemMcp: 6.0, enterpriseReadiness: 7.5, communityAdoption: 1.5,
   };
   return {
     rawScore: 72, harshScore: 72, displayScore: 7.2,
