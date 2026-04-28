@@ -97,6 +97,40 @@ describe('computeStrictDimensions — Sprint 49 new dimensions', () => {
     assert.ok(result.convergenceSelfHealing >= 70, `Expected high convergenceSelfHealing, got ${result.convergenceSelfHealing}`);
   });
 
+  it('tokenEconomy: recognizes feature files in packages/*/src', async () => {
+    const existsInPackage: ExistsFn = async (p) => {
+      const normalized = p.replace(/\\/g, '/');
+      return normalized.includes('packages/core/src/task-complexity-router.ts') ||
+        normalized.includes('packages/core/src/circuit-breaker.ts') ||
+        normalized.includes('packages/core/src/transcript-compaction.ts');
+    };
+    const packageDirs: ListDirFn = async (p) => {
+      if (p.endsWith('packages')) return ['core'];
+      if (p.includes('.danteforge') && p.includes('cache')) return ['a.json'];
+      return [];
+    };
+    const result = await computeStrictDimensions('/tmp/monorepo', noGit, existsInPackage, packageDirs);
+    assert.ok(result.tokenEconomy >= 80, `Expected monorepo tokenEconomy signals, got ${result.tokenEconomy}`);
+  });
+
+  it('convergenceSelfHealing: recognizes recovery files in packages/*/src', async () => {
+    const existsInPackage: ExistsFn = async (p) => {
+      const normalized = p.replace(/\\/g, '/');
+      return normalized.includes('packages/core/src/circuit-breaker.ts') ||
+        normalized.includes('packages/core/src/transcript-compaction.ts') ||
+        normalized.includes('packages/core/src/loop-detector.ts') ||
+        normalized.includes('packages/core/src/recovery-engine.ts') ||
+        normalized.includes('convergence-proof.json');
+    };
+    const packageDirs: ListDirFn = async (p) => {
+      if (p.endsWith('packages')) return ['core'];
+      if (p.includes('autoforge')) return ['run-1.json', 'run-2.json', 'run-3.json'];
+      return [];
+    };
+    const result = await computeStrictDimensions('/tmp/monorepo', noGit, existsInPackage, packageDirs);
+    assert.ok(result.convergenceSelfHealing >= 95, `Expected monorepo convergence signals, got ${result.convergenceSelfHealing}`);
+  });
+
   it('all new strict dims clamp to [0, 100]', async () => {
     const result = await computeStrictDimensions('/tmp/any', noGit, noExists, noDir);
     for (const key of ['specDrivenPipeline', 'developerExperience', 'planningQuality', 'convergenceSelfHealing'] as const) {
