@@ -6,21 +6,9 @@
  */
 
 import type { Artifact, Evidence, NextAction, Verdict } from '../truth_loop/types.js';
+import type { GateResult, ThreeWayGate, GateName, GateStatus } from '../three_way_gate.js';
 
-export type GateName = 'forge_policy' | 'evidence_chain' | 'harsh_score';
-export type GateStatus = 'green' | 'yellow' | 'red';
-
-export interface GateResult {
-  gate: GateName;
-  status: GateStatus;
-  reason: string;
-}
-
-export interface ThreeWayGate {
-  results: GateResult[];
-  overall: GateStatus;
-  blockingReasons: string[];
-}
+export type { GateResult, ThreeWayGate, GateName, GateStatus };
 
 export interface SkillFrontmatter {
   name: string;

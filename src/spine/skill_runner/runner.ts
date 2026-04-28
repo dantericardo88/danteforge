@@ -32,11 +32,10 @@ import { buildNextAction, renderPromptPacket } from '../truth_loop/next-action-w
 import { assertValid } from '../truth_loop/schema-validator.js';
 
 import type {
-  GateResult,
   SkillRunInputs,
-  SkillRunResult,
-  ThreeWayGate
+  SkillRunResult
 } from './types.js';
+import { evaluateThreeWayGate, PRODUCTION_THRESHOLD, type GateResult, type ThreeWayGate } from '../three_way_gate.js';
 
 export interface SkillExecutor {
   (inputs: Record<string, unknown>): Promise<{
@@ -48,7 +47,6 @@ export interface SkillExecutor {
   }>;
 }
 
-const PRODUCTION_THRESHOLD = 9.0;
 
 export async function runSkill(execute: SkillExecutor, inputs: SkillRunInputs): Promise<SkillRunResult> {
   const now = inputs.now ?? new Date();
@@ -204,46 +202,13 @@ interface GateInputs {
 }
 
 function evaluateGate(g: GateInputs): ThreeWayGate {
-  const policyGate = g.inputs.policyGate ?? defaultPolicyGate;
-  const evidenceCheck = g.inputs.evidenceCheck ?? defaultEvidenceCheck;
-
-  const policy = policyGate(g.artifacts[0]);
-  const ev = evidenceCheck(g.artifacts);
-  const harsh = harshScoreGate(g.scores, g.requiredDims);
-
-  const results = [policy, ev, harsh];
-  const blocking: string[] = [];
-  for (const r of results) if (r.status !== 'green') blocking.push(`${r.gate}: ${r.reason}`);
-
-  const overall = results.every(r => r.status === 'green')
-    ? 'green'
-    : results.some(r => r.status === 'red')
-      ? 'red'
-      : 'yellow';
-
-  return { results, overall, blockingReasons: blocking };
-}
-
-function defaultPolicyGate(_: unknown): GateResult {
-  return { gate: 'forge_policy', status: 'green', reason: 'no policy violation detected' };
-}
-
-function defaultEvidenceCheck(artifacts: Artifact[]): GateResult {
-  if (artifacts.length === 0) {
-    return { gate: 'evidence_chain', status: 'red', reason: 'no artifacts emitted' };
-  }
-  return { gate: 'evidence_chain', status: 'green', reason: `${artifacts.length} artifact(s) hashed` };
-}
-
-function harshScoreGate(scores: Record<string, number>, requiredDims: string[]): GateResult {
-  if (requiredDims.length === 0) {
-    return { gate: 'harsh_score', status: 'yellow', reason: 'no required dimensions declared' };
-  }
-  const failing = requiredDims.filter(d => (scores[d] ?? 0) < PRODUCTION_THRESHOLD);
-  if (failing.length === 0) {
-    return { gate: 'harsh_score', status: 'green', reason: `all ${requiredDims.length} dimensions ≥${PRODUCTION_THRESHOLD}` };
-  }
-  return { gate: 'harsh_score', status: 'red', reason: `dimensions below threshold: ${failing.join(', ')}` };
+  return evaluateThreeWayGate({
+    artifacts: g.artifacts,
+    scores: g.scores,
+    requiredDimensions: g.requiredDims,
+    policyGate: g.inputs.policyGate,
+    evidenceCheck: g.inputs.evidenceCheck
+  });
 }
 
 function writeJson(dir: string, name: string, body: unknown): void {

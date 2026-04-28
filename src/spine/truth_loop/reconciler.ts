@@ -122,8 +122,8 @@ function verifyRepo(claim: Claim, ctx: ReconcileContext): { reconciled: Reconcil
     claimSupported: claim.text,
     verificationMethod: 'fs.existsSync + statSync',
     status,
-    location,
-    claimId: claim.claimId
+    claimId: claim.claimId,
+    ...(location !== undefined ? { location } : {})
   };
   return {
     reconciled: { claim, status: mapEvidenceStatus(status), evidenceId: evidence.evidenceId, reasoning },

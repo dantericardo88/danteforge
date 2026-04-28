@@ -216,6 +216,28 @@ for (const skillName of ['dante-to-prd', 'dante-grill-me', 'dante-tdd', 'dante-t
     });
 }
 
+program
+  .command('magic-orchestrate <level>')
+  .description('Run a magic-level skill chain end-to-end (Phase 3 / PRD-MASTER §8). Levels: spark/ember/canvas/magic/blaze/nova/inferno/ascend')
+  .option('--input-file <path>', 'JSON file with workflow inputs')
+  .option('--inputs-json <json>', 'Inline JSON with workflow inputs')
+  .option('--budget-usd <amount>', 'USD budget — orchestration halts on overrun')
+  .option('--budget-minutes <amount>', 'Wall-clock budget in minutes')
+  .option('--max-retries <n>', 'Max convergence retries per step (default 2)')
+  .option('--score-override <pairs>', 'Force scorer output for testing, e.g. "testing=9.5,errorHandling=8.0"')
+  .action(async (level: string, opts) => {
+    const cmds = await C();
+    const r = await cmds.magicOrchestrate(level, {
+      inputFile: opts.inputFile,
+      inputsJson: opts.inputsJson,
+      budgetUsd: opts.budgetUsd,
+      budgetMinutes: opts.budgetMinutes,
+      maxRetries: opts.maxRetries,
+      scoreOverride: opts.scoreOverride
+    });
+    if (r.exitCode !== 0) process.exitCode = r.exitCode;
+  });
+
 const truthLoopCommand = program
   .command('truth-loop')
   .description('Run the truth loop reconciliation pipeline (PRD-26 §5.3)');

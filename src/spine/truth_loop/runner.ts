@@ -64,6 +64,17 @@ export interface RunnerOptions {
   now?: Date;
   /** Inject sequence-known runId for tests. */
   forcedRunId?: string;
+  /**
+   * Cost accumulator the runner consults before each step. If this returns
+   * a value ≥ budgetUsd, the run aborts with `budget_stopped`.
+   * In production, wire to BudgetFence.currentSpendUsd; in tests, inject a stub.
+   */
+  costAccumulator?: () => number;
+  /**
+   * Override the wall-clock time source for budget enforcement. Defaults to Date.now.
+   * Tests inject a function that returns startTime + many minutes to simulate elapsed time.
+   */
+  clock?: () => number;
 }
 
 export interface RunnerResult {
@@ -88,6 +99,24 @@ export async function runTruthLoop(opts: RunnerOptions): Promise<RunnerResult> {
   ensureDir(resolve(runDir, 'evidence'));
   ensureDir(resolve(runDir, 'verdict'));
   ensureDir(resolve(runDir, 'next_action'));
+
+  // Budget enforcement clock + cost accumulator (PRD §5.7 #10)
+  const clock = opts.clock ?? Date.now;
+  const startMs = clock();
+  const budgetMinutes = opts.budgetMinutes ?? 60;
+  const budgetUsd = opts.budgetUsd;
+  const costAcc = opts.costAccumulator ?? (() => 0);
+  const budgetExceeded = (): { exceeded: boolean; reason: string } => {
+    const elapsedMin = (clock() - startMs) / 60_000;
+    if (elapsedMin >= budgetMinutes) {
+      return { exceeded: true, reason: `wall-clock budget exceeded: ${elapsedMin.toFixed(2)}min ≥ ${budgetMinutes}min` };
+    }
+    const spent = costAcc();
+    if (spent >= budgetUsd) {
+      return { exceeded: true, reason: `cost budget exceeded: $${spent.toFixed(2)} ≥ $${budgetUsd.toFixed(2)}` };
+    }
+    return { exceeded: false, reason: '' };
+  };
 
   const budget: BudgetEnvelope = {
     budgetEnvelopeId: newBudgetEnvelopeId(runId),
@@ -114,6 +143,11 @@ export async function runTruthLoop(opts: RunnerOptions): Promise<RunnerResult> {
     budgetEnvelopeId: budget.budgetEnvelopeId,
     status: 'running'
   };
+
+  const earlyBudget = budgetExceeded();
+  if (earlyBudget.exceeded) {
+    return finalizeBudgetStop(opts, runId, runDir, run, budget, earlyBudget.reason, now);
+  }
 
   const repoState = await collectRepoState({
     repo: opts.repo,
@@ -178,12 +212,18 @@ export async function runTruthLoop(opts: RunnerOptions): Promise<RunnerResult> {
     evidenceMissing.push(`${testState.summary.failed} test failure(s) observed`);
   }
 
+  const lateBudget = budgetExceeded();
+
   const verdict = buildVerdict({
     runId,
     reconciled: reconciled.reconciled,
     strictness: opts.strictness,
-    evidenceMissing
+    evidenceMissing,
+    budgetExhausted: lateBudget.exceeded
   });
+  if (lateBudget.exceeded && verdict.blockingGaps) {
+    verdict.blockingGaps.push(lateBudget.reason);
+  }
   assertValid('verdict', verdict);
 
   const promptUri = `file://${resolve(runDir, 'next_action', 'next_action_prompt.md').replace(/\\/g, '/')}`;
@@ -212,7 +252,7 @@ export async function runTruthLoop(opts: RunnerOptions): Promise<RunnerResult> {
   const reportPath = resolve(runDir, 'report.md');
   writeFileSync(reportPath, renderReport({ run, budget, verdict, nextAction, testSummary: testState.summary, repoSnapshot: repoState.snapshot }), 'utf-8');
 
-  updateLatestSymlink(opts.repo, runDir);
+  updateLatestSymlink(runDir);
 
   return {
     runDir,
@@ -224,6 +264,68 @@ export async function runTruthLoop(opts: RunnerOptions): Promise<RunnerResult> {
     nextAction,
     testSummary: testState.summary,
     repoSnapshot: repoState.snapshot,
+    reportPath
+  };
+}
+
+async function finalizeBudgetStop(
+  opts: RunnerOptions,
+  runId: string,
+  runDir: string,
+  run: Run,
+  budget: BudgetEnvelope,
+  reason: string,
+  now: Date
+): Promise<RunnerResult> {
+  // Best-effort minimal artifact set so the run dir is consistent.
+  const stubArtifact: Artifact = {
+    artifactId: 'art_budget_stop',
+    runId,
+    type: 'static_analysis',
+    source: 'repo',
+    createdAt: now.toISOString(),
+    uri: `inline://budget_stop/${runId}`,
+    hash: '0'.repeat(64),
+    label: 'budget_stop_marker'
+  };
+  const verdict = buildVerdict({
+    runId,
+    reconciled: [],
+    strictness: opts.strictness,
+    budgetExhausted: true,
+    evidenceMissing: [reason]
+  });
+  if (verdict.blockingGaps) verdict.blockingGaps.push(reason);
+  const promptUri = `file://${resolve(runDir, 'next_action', 'next_action_prompt.md').replace(/\\/g, '/')}`;
+  const nextAction = buildNextAction({
+    verdict,
+    targetRepo: opts.repo,
+    strictness: opts.strictness,
+    promptUri
+  });
+  run.endedAt = new Date().toISOString();
+  run.status = 'stopped';
+  // Persist
+  ensureDir(resolve(runDir, 'verdict'));
+  ensureDir(resolve(runDir, 'next_action'));
+  writeFile(runDir, 'run.json', run);
+  writeFile(runDir, 'budget.json', budget);
+  writeFile(resolve(runDir, 'verdict'), 'verdict.json', verdict);
+  writeFile(resolve(runDir, 'next_action'), 'next_action.json', nextAction);
+  writeFileSync(resolve(runDir, 'verdict', 'verdict.md'), `# Verdict ${verdict.verdictId}\n\nbudget_stopped: ${reason}\n`, 'utf-8');
+  writeFileSync(resolve(runDir, 'next_action', 'next_action_prompt.md'), renderPromptPacket(nextAction, verdict), 'utf-8');
+  const reportPath = resolve(runDir, 'report.md');
+  writeFileSync(reportPath, `# Truth Loop Report — ${runId}\n\nbudget_stopped: ${reason}\n`, 'utf-8');
+  return {
+    runDir,
+    run,
+    budget,
+    artifacts: [stubArtifact],
+    evidence: [],
+    verdict,
+    nextAction,
+    testSummary: { attempted: false, passed: 0, failed: 0, total: 0, raw: '' },
+    repoSnapshot: { branch: 'unknown', commit: '0000000', dirtyFiles: 0, fileCount: 0 },
     reportPath
   };
 }
@@ -316,15 +418,19 @@ function renderReport(r: ReportInputs): string {
   ].join('\n');
 }
 
-function updateLatestSymlink(repo: string, runDir: string): void {
-  const truthLoopDir = resolve(repo, '.danteforge', 'truth-loop');
-  const latest = resolve(truthLoopDir, 'latest');
+function updateLatestSymlink(runDir: string): void {
+  // Place the LATEST marker in the run's parent directory so explicit outDir
+  // overrides land their pointer alongside the run rather than in the repo's
+  // .danteforge/truth-loop/ directory.
+  const parent = resolve(runDir, '..');
+  if (!existsSync(parent)) return;
+  const latest = resolve(parent, 'latest');
   try {
     if (existsSync(latest)) rmSync(latest, { recursive: true, force: true });
     symlinkSync(basename(runDir), latest, 'junction');
   } catch {
     // Symlink failures are not fatal — Windows requires admin or developer mode.
-    // Write a marker file instead.
-    writeFileSync(resolve(truthLoopDir, 'LATEST'), basename(runDir), 'utf-8');
+    try { writeFileSync(resolve(parent, 'LATEST'), basename(runDir), 'utf-8'); }
+    catch { /* best-effort */ }
   }
 }

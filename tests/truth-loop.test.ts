@@ -213,6 +213,64 @@ test('runner: end-to-end produces a valid run directory layout', async () => {
   assert.match(promptText, /Acceptance criteria/);
 });
 
+test('runner: budget time guardrail triggers — wall-clock minutes exceeded → budget_stopped', async () => {
+  const critique = resolve(workspace, 'budget_test_critique.md');
+  writeFileSync(critique, [
+    '# Critique',
+    '- File `src/example.ts` exists',
+    '- Tests pass'
+  ].join('\n'));
+
+  // Inject a clock that already shows elapsed time > budgetMinutes
+  let firstCall = true;
+  const fakeClock = (): number => {
+    if (firstCall) {
+      firstCall = false;
+      return 0;  // start time
+    }
+    return 60_000;  // first call after start: 60s = 1 minute elapsed
+  };
+
+  const result = await runTruthLoop({
+    repo: workspace,
+    objective: 'budget time guardrail test',
+    critics: ['codex'],
+    critiqueFiles: [{ source: 'codex', path: critique }],
+    budgetUsd: 100,
+    budgetMinutes: 0.5,  // 30 seconds; clock returns 60s elapsed
+    mode: 'sequential',
+    strictness: 'standard',
+    skipTests: true,
+    forcedRunId: 'run_20260428_700',
+    clock: fakeClock
+  });
+
+  assert.equal(result.verdict.finalStatus, 'budget_stopped');
+  assert.ok(result.verdict.blockingGaps && result.verdict.blockingGaps.some(g => /wall-clock/i.test(g)));
+});
+
+test('runner: budget cost guardrail triggers — accumulated USD exceeds maxUsd → budget_stopped', async () => {
+  const critique = resolve(workspace, 'budget_cost_critique.md');
+  writeFileSync(critique, '# Critique\n- File `src/example.ts` exists\n');
+
+  const result = await runTruthLoop({
+    repo: workspace,
+    objective: 'budget cost guardrail test',
+    critics: ['codex'],
+    critiqueFiles: [{ source: 'codex', path: critique }],
+    budgetUsd: 1.0,
+    budgetMinutes: 100,
+    mode: 'sequential',
+    strictness: 'standard',
+    skipTests: true,
+    forcedRunId: 'run_20260428_710',
+    costAccumulator: () => 5.0  // already over the $1 budget
+  });
+
+  assert.equal(result.verdict.finalStatus, 'budget_stopped');
+  assert.ok(result.verdict.blockingGaps && result.verdict.blockingGaps.some(g => /cost budget/i.test(g)));
+});
+
 test('runner: strict mode marks unsupported claims as evidence_insufficient', async () => {
   const critique = resolve(workspace, 'claude_critique_strict.md');
   writeFileSync(critique, [
