@@ -423,30 +423,31 @@ async function scoreUxPolish(
 
   if (isCliProject) {
     let score = 50;
-    const srcDir = path.join(ctx.cwd, 'src');
-    try {
-      const files = await collectFiles(srcDir);
-      let hasLogger = false;
-      let hasJsonFlag = false;
-      let hasExitCode = false;
-      let hasSpinner = false;
-
-      for (const filePath of files) {
-        try {
-          const content = await readFile(filePath);
-          if (/logger\.(info|warn|error|success|debug)\s*\(/.test(content)) hasLogger = true;
-          if (/--json|options\.json\b/.test(content)) hasJsonFlag = true;
-          if (/process\.exitCode\s*=/.test(content)) hasExitCode = true;
-          if (/ora\(|spinner\.|progress\(/.test(content)) hasSpinner = true;
-        } catch { /* unreadable */ }
-      }
-
-      if (hasLogger) score += 15;    // structured logging
-      if (hasJsonFlag) score += 15;  // machine-readable output
-      if (hasSpinner) score += 10;   // progress feedback
-      if (hasExitCode) score += 10;  // exit code discipline
-    } catch { /* no src dir */ }
-
+    // Monorepo-aware: scan all source dirs.
+    const srcDirs = await getProjectSourceDirs(ctx.cwd, collectFiles);
+    let hasLogger = false;
+    let hasJsonFlag = false;
+    let hasExitCode = false;
+    let hasSpinner = false;
+    for (const srcDir of srcDirs) {
+      try {
+        const files = await collectFiles(srcDir);
+        for (const filePath of files) {
+          if (!filePath.endsWith('.ts') || filePath.endsWith('.test.ts') || filePath.endsWith('.d.ts')) continue;
+          try {
+            const content = await readFile(filePath);
+            if (/logger\.(info|warn|error|success|debug)\s*\(/.test(content)) hasLogger = true;
+            if (/--json|options\.json\b/.test(content)) hasJsonFlag = true;
+            if (/process\.exitCode\s*=/.test(content)) hasExitCode = true;
+            if (/ora\(|spinner\.|progress\(/.test(content)) hasSpinner = true;
+          } catch { /* unreadable */ }
+        }
+      } catch { /* no src dir */ }
+    }
+    if (hasLogger) score += 15;
+    if (hasJsonFlag) score += 15;
+    if (hasSpinner) score += 10;
+    if (hasExitCode) score += 10;
     return Math.min(100, Math.max(0, score));
   }
 
@@ -455,31 +456,38 @@ async function scoreUxPolish(
   }
 
   let score = 50;
-  const srcDir = path.join(ctx.cwd, 'src');
+  // Monorepo-aware: scan all source dirs (including .html template strings
+  // embedded in webview-html.ts which is where DanteCode's aria/loading/
+  // spinner patterns live).
+  const srcDirs = await getProjectSourceDirs(ctx.cwd, collectFiles);
+  let loadingStateCount = 0;
+  let ariaCount = 0;
+  let spinnerCount = 0;
 
-  try {
-    const files = await collectFiles(srcDir);
-    let loadingStateCount = 0;
-    let ariaCount = 0;
-    let spinnerCount = 0;
-
-    for (const filePath of files) {
-      try {
-        const content = await readFile(filePath);
-        if (/isLoading|loading\s*:/i.test(content)) loadingStateCount++;
-        if (/aria-/i.test(content)) ariaCount++;
-        if (/<Spinner|<Loading|loading\.\.\.]/i.test(content)) spinnerCount++;
-      } catch {
-        // Unreadable file
+  for (const srcDir of srcDirs) {
+    try {
+      const files = await collectFiles(srcDir);
+      for (const filePath of files) {
+        if (!filePath.endsWith('.ts') || filePath.endsWith('.test.ts') || filePath.endsWith('.d.ts')) continue;
+        try {
+          const content = await readFile(filePath);
+          // Broader match: covers React (isLoading), Vue (loading:), streaming UIs
+          // (isStreaming, isPending), and loading-state booleans by convention.
+          if (/isLoading|loading\s*:|isStreaming|isPending|isFetching|loadingState/i.test(content)) loadingStateCount++;
+          if (/aria-/i.test(content)) ariaCount++;
+          if (/<Spinner|<Loading|loading\.\.\.|spinner|typing-indicator|progress[-_]bar|busyIndicator/i.test(content)) spinnerCount++;
+        } catch {
+          // Unreadable file
+        }
       }
+    } catch {
+      // No src directory
     }
-
-    if (loadingStateCount > 0) score += 15;
-    if (ariaCount > 0) score += 15;
-    if (spinnerCount > 0) score += 10;
-  } catch {
-    // No src directory
   }
+
+  if (loadingStateCount > 0) score += 15;
+  if (ariaCount > 0) score += 15;
+  if (spinnerCount > 0) score += 10;
 
   // Check for Tailwind config
   const tailwindPath = path.join(ctx.cwd, 'tailwind.config.js');
