@@ -52,14 +52,20 @@ describe('captureFailureLessons improved fallback', () => {
     await captureFailureLessons(
       [{ task: 'Build TypeScript module', error: 'Error: Cannot find module "xyz"' }],
       'forge failure',
-      // Override recordLesson to capture output without writing files
-      // We use the injection pattern by spying through the fallback
+      {
+        _isLLMAvailable: async () => false,
+        _recordLesson: async (category, mistake, rule, source) => {
+          captured.push({ category, mistake, rule, source });
+        },
+      },
     );
 
-    // Since we can't easily inject the recordLesson without touching internals,
-    // verify the function completes without throwing
-    assert.ok(true, 'captureFailureLessons should not throw');
-    void captured; // suppress unused variable warning
+    assert.deepEqual(captured, [{
+      category: 'Workflow',
+      mistake: 'Task "Build TypeScript module" failed: Error: Cannot find module "xyz"',
+      rule: 'When encountering "Error: Cannot find module "xyz"", inspect task prerequisites and fix root cause before retrying',
+      source: 'forge failure',
+    }]);
   });
 
   it('handles task failure with multi-line error gracefully', async () => {
@@ -68,6 +74,7 @@ describe('captureFailureLessons improved fallback', () => {
       await captureFailureLessons(
         [{ task: 'Run test suite', error: 'FAIL tests/foo.test.ts\n  Error: Expected 42 got 0\n  at Object.<anonymous>' }],
         'forge failure',
+        { _isLLMAvailable: async () => false, _recordLesson: async () => {} },
       );
     });
   });
@@ -77,6 +84,7 @@ describe('captureFailureLessons improved fallback', () => {
       await captureFailureLessons(
         [{ task: 'Verify build output' }],
         'forge failure',
+        { _isLLMAvailable: async () => false, _recordLesson: async () => {} },
       );
     });
   });
@@ -92,6 +100,7 @@ describe('captureFailureLessons improved fallback', () => {
       await captureFailureLessons(
         [{ task: 'Design review', error: 'Exception: missing design tokens' }],
         'party failure',
+        { _isLLMAvailable: async () => false, _recordLesson: async () => {} },
       );
     });
   });

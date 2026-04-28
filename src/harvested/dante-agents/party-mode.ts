@@ -52,6 +52,10 @@ export interface PartyModeOptions {
   _listWorktrees?: () => Promise<{ path: string; branch: string }[]>;
   _reflect?: typeof reflect;
   _recordMemory?: typeof recordMemory;
+  _captureFailureLessons?: (
+    failures: { task: string; error?: string }[],
+    source: 'forge failure' | 'party failure',
+  ) => Promise<void>;
   _sleep?: (ms: number) => Promise<void>;
   /** Project directory — used for lesson injection. Defaults to process.cwd(). */
   _cwd?: string;
@@ -420,14 +424,28 @@ async function scoreAndReflectResults(results: AgentResult[], reflectFn: typeof 
   }
 }
 
-async function reportFailures(failedAgents: AgentResult[], memoryFn: typeof recordMemory): Promise<void> {
+async function defaultCaptureFailureLessons(
+  failures: { task: string; error?: string }[],
+  source: 'forge failure' | 'party failure',
+): Promise<void> {
+  const { captureFailureLessons } = await import('../../cli/commands/lessons.js');
+  await captureFailureLessons(failures, source);
+}
+
+async function reportFailures(
+  failedAgents: AgentResult[],
+  memoryFn: typeof recordMemory,
+  captureFailureLessons: NonNullable<PartyModeOptions['_captureFailureLessons']>,
+): Promise<void> {
   for (const failedAgent of failedAgents) {
     logger.warn(`  ${failedAgent.agent}: ${failedAgent.result.split('\n')[2] ?? 'unknown error'}`);
     await memoryFn({ category: 'error', summary: `Party agent failed: ${failedAgent.agent}`, detail: failedAgent.error?.message ?? failedAgent.result, tags: ['party', 'agent-failure', failedAgent.agent], relatedCommands: ['party'] });
   }
   try {
-    const { captureFailureLessons } = await import('../../cli/commands/lessons.js');
-    await captureFailureLessons(failedAgents.map(e => ({ task: `${e.agent} agent`, error: e.result.split('\n')[2] ?? 'unknown error' })), 'party failure');
+    await captureFailureLessons(
+      failedAgents.map(e => ({ task: `${e.agent} agent`, error: e.result.split('\n')[2] ?? 'unknown error' })),
+      'party failure',
+    );
   } catch (err) { logger.verbose(`[best-effort] party lessons: ${err instanceof Error ? err.message : String(err)}`); }
 }
 
@@ -474,6 +492,7 @@ export async function runDanteParty(
   const listWt = options?._listWorktrees ?? listWorktrees;
   const reflectFn = options?._reflect ?? reflect;
   const memoryFn = options?._recordMemory ?? recordMemory;
+  const captureFailureLessonsFn = options?._captureFailureLessons ?? defaultCaptureFailureLessons;
 
   logger.success(`Dante Party Mode - ${activeAgents.length} agent(s) assembling`);
   logger.info(`Agents: ${activeAgents.join(', ')}`);
@@ -514,7 +533,7 @@ export async function runDanteParty(
   const failedAgents = results.filter(r => !r.success);
   if (failedAgents.length === results.length) logger.error(`All ${results.length} agent(s) failed - party mode aborted`);
   else if (failedAgents.length > 0) logger.warn(`${failedAgents.length}/${results.length} agent(s) failed`);
-  if (failedAgents.length > 0) await reportFailures(failedAgents, memoryFn);
+  if (failedAgents.length > 0) await reportFailures(failedAgents, memoryFn, captureFailureLessonsFn);
 
   printResultsSummary(results);
 

@@ -2,7 +2,7 @@
 // Installer: builds DanteForge + DanteForgeEngine, syncs to DanteCode, installs VS Code extension.
 // Usage: node scripts/install-dantecode.mjs [--dantecode-path <path>] [--engine-path <path>]
 
-import { execSync, spawn as nodeSpawn } from 'node:child_process';
+import { execSync } from 'node:child_process';
 import { existsSync, copyFileSync, mkdirSync, readdirSync, statSync } from 'node:fs';
 import { join, resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -78,6 +78,18 @@ if (ENGINE_ROOT) {
   if (existsSync(srcCE)) {
     copyDir(srcCE, destCE);
     console.log('  Synced context-economy source');
+    const requiredCEFiles = [
+      'runtime.ts',
+      'pretool-adapter.ts',
+      'economy-ledger.ts',
+      'artifact-compressor.ts',
+      'types.ts',
+    ];
+    const missingCEFiles = requiredCEFiles.filter((file) => !existsSync(join(destCE, file)));
+    if (missingCEFiles.length > 0) {
+      console.error(`  ERROR: Context Economy sync missing: ${missingCEFiles.join(', ')}`);
+      process.exit(1);
+    }
   }
   // Ensure token-estimator shim is present
   const shimSrc = join(ENGINE_ROOT, 'src', 'token-estimator.ts');

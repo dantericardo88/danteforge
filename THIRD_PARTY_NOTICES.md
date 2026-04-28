@@ -78,6 +78,17 @@ This file tracks provenance and license details for harvested/adapted code inclu
   - Spatial decomposer, token extractor, and headless SVG renderer integrated with DanteForge CLI
   - Adapter bridges OpenPencil tools into DanteForge's MCP and prompt-builder infrastructure
 
+## Context Economy pattern source: RTK
+
+- Upstream project: RTK
+- Upstream URL: https://github.com/rtk-ai/rtk
+- License: MIT
+- Source commit reviewed: `80a6fe606f73b19e52b0b330d242e62a6c07be42`
+- Local modifications:
+  - Clean-room TypeScript implementation under `src/core/context-economy/`
+  - Pattern inspiration only: command filter registry, conservative passthroughs, sacred/failure bypasses, token savings ledger, and economy reporting
+  - No RTK code copied, no RTK package installed, no Rust dependency added
+
 ## Notes
 
 - DanteForge also contains original glue/orchestration code outside `src/harvested/`.

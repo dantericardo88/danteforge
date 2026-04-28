@@ -78,6 +78,7 @@ function makePartyOptions(overrides: Partial<PartyModeOptions> = {}): PartyModeO
     _listWorktrees: async () => [],
     _reflect: async () => 'PASS: looks good',
     _recordMemory: async () => {},
+    _captureFailureLessons: async () => {},
     _sleep: async () => {},
     ...overrides,
   };

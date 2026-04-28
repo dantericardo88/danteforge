@@ -3,6 +3,8 @@ import { describe, it } from 'node:test';
 import assert from 'node:assert';
 import { planPhase } from '../src/harvested/gsd/agents/planner.js';
 
+const noLlm = { _isLLMAvailable: async () => false };
+
 // planPhase falls back to buildFallbackPlan when no LLM is configured.
 // The fallback always returns an array beginning with "Review and clarify requirements"
 // and ending with "Verify all acceptance criteria are met".
@@ -11,7 +13,7 @@ import { planPhase } from '../src/harvested/gsd/agents/planner.js';
 
 describe('planPhase — fallback plan structure', () => {
   it('returns a non-empty array for a simple requirement', async () => {
-    const tasks = await planPhase('Add a login page');
+    const tasks = await planPhase('Add a login page', noLlm);
     assert.ok(Array.isArray(tasks), 'Should return an array');
     assert.ok(tasks.length >= 1, 'Should return at least one task');
     for (const task of tasks) {
@@ -22,7 +24,7 @@ describe('planPhase — fallback plan structure', () => {
 
   it('returns a non-empty array for multi-sentence requirements', async () => {
     const requirements = 'Add OAuth2 authentication. Write tests. Deploy to production.';
-    const tasks = await planPhase(requirements);
+    const tasks = await planPhase(requirements, noLlm);
     assert.ok(Array.isArray(tasks));
     assert.ok(tasks.length >= 1);
   });
@@ -33,13 +35,13 @@ describe('planPhase — fallback plan structure', () => {
       'Add email verification',
       'Create password reset flow',
     ].join('\n');
-    const tasks = await planPhase(requirements);
+    const tasks = await planPhase(requirements, noLlm);
     assert.ok(Array.isArray(tasks));
     assert.ok(tasks.length >= 1);
   });
 
   it('handles empty requirements gracefully', async () => {
-    const tasks = await planPhase('');
+    const tasks = await planPhase('', noLlm);
     assert.ok(Array.isArray(tasks));
     assert.ok(tasks.length >= 1);
   });

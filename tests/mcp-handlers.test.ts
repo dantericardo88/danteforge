@@ -390,9 +390,29 @@ describe('TOOL_HANDLERS via _cwd injection', () => {
     await fs.writeFile(path.join(dir, '.danteforge', 'SPEC.md'), '# Test Spec\nContent here.');
 
     const result = await TOOL_HANDLERS.danteforge_artifact_read({ _cwd: dir, name: 'SPEC.md' });
-    const data = parseHandlerResult(result) as { name: string; content: string };
+    const data = parseHandlerResult(result) as { name: string; content: string; contextEconomy: { rawHash: string } };
     assert.equal(data.name, 'SPEC.md');
     assert.ok(data.content.includes('# Test Spec'));
+    assert.ok(data.contextEconomy.rawHash);
+  });
+
+  it('danteforge_artifact_read economizes large artifact context without changing raw file', async () => {
+    const dir = await createTempProject();
+    const raw = Array.from({ length: 900 }, (_, i) => `acceptance detail ${i}`).join('\n');
+    const filePath = path.join(dir, '.danteforge', 'PLAN.md');
+    await fs.writeFile(filePath, raw);
+
+    const result = await TOOL_HANDLERS.danteforge_artifact_read({ _cwd: dir, name: 'PLAN.md' });
+    const data = parseHandlerResult(result) as {
+      name: string;
+      content: string;
+      contextEconomy: { originalSize: number; compressedSize: number; savingsPercent: number };
+    };
+
+    assert.equal(data.name, 'PLAN.md');
+    assert.ok(data.contextEconomy.savingsPercent > 0);
+    assert.ok(data.contextEconomy.compressedSize < data.contextEconomy.originalSize);
+    assert.equal(await fs.readFile(filePath, 'utf8'), raw);
   });
 
   it('danteforge_artifact_read returns error for missing artifact', async () => {

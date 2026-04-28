@@ -5,6 +5,7 @@
 import { exec } from 'node:child_process';
 import path from 'node:path';
 import { ValidationError } from './errors.js';
+import { filterShellResult, type FilterShellResultInput, type FilterShellResultOutput } from './context-economy/runtime.js';
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -21,12 +22,15 @@ export interface TestRunResult {
 export interface TestRunnerOptions {
   cwd?: string;
   timeout?: number;            // default 120_000
+  organ?: string;
+  writeContextEconomyLedger?: boolean;
   _exec?: (
     cmd: string,
     opts: { cwd: string; timeout: number },
   ) => Promise<{ exitCode: number; stdout: string; stderr: string }>;
   _readFile?: (p: string) => Promise<string>;
   _sanitize?: (cmd: string) => void;
+  _filterShellResult?: (input: FilterShellResultInput) => Promise<FilterShellResultOutput>;
 }
 
 // ── Shell injection denylist ──────────────────────────────────────────────────
@@ -130,15 +134,23 @@ export async function runProjectTests(opts?: TestRunnerOptions): Promise<TestRun
   sanitizeShellCommand(testCmd, opts?._sanitize);
   const start = Date.now();
   const { exitCode, stdout, stderr } = await execFn(testCmd, { cwd, timeout });
+  const filtered = await (opts?._filterShellResult ?? filterShellResult)({
+    command: testCmd,
+    stdout,
+    stderr,
+    cwd,
+    organ: opts?.organ ?? 'forge',
+    writeLedger: opts?.writeContextEconomyLedger,
+  });
 
-  const combined = stdout + '\n' + stderr;
+  const combined = filtered.stdout + '\n' + filtered.stderr;
   const failingTests = extractFailingTests(combined);
 
   return {
     passed: exitCode === 0,
     exitCode,
-    stdout,
-    stderr,
+    stdout: filtered.stdout,
+    stderr: filtered.stderr,
     durationMs: Date.now() - start,
     failingTests,
     typecheckErrors: [],
@@ -152,18 +164,27 @@ export async function runTypecheck(opts?: TestRunnerOptions): Promise<TestRunRes
   const cwd = opts?.cwd ?? process.cwd();
   const timeout = opts?.timeout ?? 120_000;
   const execFn = opts?._exec ?? defaultExec;
+  const command = 'npx tsc --noEmit';
 
   const start = Date.now();
-  const { exitCode, stdout, stderr } = await execFn('npx tsc --noEmit', { cwd, timeout });
+  const { exitCode, stdout, stderr } = await execFn(command, { cwd, timeout });
+  const filtered = await (opts?._filterShellResult ?? filterShellResult)({
+    command,
+    stdout,
+    stderr,
+    cwd,
+    organ: opts?.organ ?? 'forge',
+    writeLedger: opts?.writeContextEconomyLedger,
+  });
 
-  const combined = stdout + '\n' + stderr;
+  const combined = filtered.stdout + '\n' + filtered.stderr;
   const typecheckErrors = extractTypecheckErrors(combined);
 
   return {
     passed: exitCode === 0,
     exitCode,
-    stdout,
-    stderr,
+    stdout: filtered.stdout,
+    stderr: filtered.stderr,
     durationMs: Date.now() - start,
     failingTests: [],
     typecheckErrors,

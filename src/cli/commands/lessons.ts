@@ -160,10 +160,17 @@ _Source: ${source}_
 export async function captureFailureLessons(
   failures: { task: string; error?: string }[],
   source: 'forge failure' | 'party failure',
+  options: {
+    _isLLMAvailable?: typeof isLLMAvailable;
+    _callLLM?: typeof callLLM;
+    _recordLesson?: typeof recordLesson;
+  } = {},
 ): Promise<void> {
   if (failures.length === 0) return;
 
-  const llmAvailable = await isLLMAvailable();
+  const llmAvailable = await (options._isLLMAvailable ?? isLLMAvailable)();
+  const callFn = options._callLLM ?? callLLM;
+  const recordFn = options._recordLesson ?? recordLesson;
 
   for (const failure of failures) {
     if (llmAvailable) {
@@ -179,13 +186,13 @@ MISTAKE: <one sentence describing what went wrong>
 RULE: <one sentence rule to prevent this in future>`;
 
       try {
-        const result = await callLLM(extractPrompt, undefined, { enrichContext: true });
+        const result = await callFn(extractPrompt, undefined, { enrichContext: true });
         const categoryMatch = result.match(/CATEGORY:\s*(.+)/i);
         const mistakeMatch = result.match(/MISTAKE:\s*(.+)/i);
         const ruleMatch = result.match(/RULE:\s*(.+)/i);
 
         if (categoryMatch && mistakeMatch && ruleMatch) {
-          await recordLesson(
+          await recordFn(
             categoryMatch[1]!.trim(),
             mistakeMatch[1]!.trim(),
             ruleMatch[1]!.trim(),
@@ -203,7 +210,7 @@ RULE: <one sentence rule to prevent this in future>`;
       ? failure.error.split('\n').find(l => /error:|fail:|exception:/i.test(l))?.trim()
         ?? failure.error.slice(0, 120).trim()
       : undefined;
-    await recordLesson(
+    await recordFn(
       'Workflow',
       `Task "${failure.task}" failed${errSummary ? `: ${errSummary}` : ''}`,
       errSummary

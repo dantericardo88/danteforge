@@ -1,6 +1,6 @@
 # PRD-26: Dante Context Economy Layer
 
-**Status:** Ready for build after Article XIV ratification
+**Status:** Implemented in DanteForge with telemetry-gated scoring; ecosystem sync contracts in progress
 **Owner:** DanteForge ecosystem
 **Constitution:** Article XIV: Context Economy
 **Harsh scorer dimension:** `contextEconomy`
@@ -10,7 +10,7 @@
 
 ## Problem
 
-DanteForge, DanteCode, and DanteAgents already estimate tokens, route work by cost, compact some transcripts, or track budgets. They do not yet share a constitutional economy layer that filters verbose tool output before context entry, compresses evidence at write time, preserves sacred content fail-closed, and emits a common savings ledger. This makes context cost invisible and lets boilerplate compete with signal inside LLM windows.
+DanteForge, DanteCode, and DanteAgents already estimate tokens, route work by cost, compact some transcripts, or track budgets. PRD-26 adds a constitutional economy layer that filters verbose tool output before context entry, compresses safe evidence views, preserves sacred content fail-closed, and emits a common savings ledger. This makes context cost visible and keeps boilerplate from competing with signal inside LLM windows.
 
 ## Goals
 
@@ -41,6 +41,7 @@ Create `src/core/context-economy/` in DanteForge with a packageable TypeScript c
 - `sacred-content.ts`: detects and protects sacred content.
 - `economy-ledger.ts`: writes local JSONL telemetry.
 - `artifact-compressor.ts`: compresses `.danteforge/` artifacts at write time.
+- `runtime.ts`: live facade for shell output filtering, artifact context views, and telemetry-backed scoring.
 - `types.ts`: shared contracts for filters, artifacts, telemetry, and sacred spans.
 
 Python organs receive a thin Python adapter with the same JSON contract. The Python layer calls the shared CLI contract and does not reimplement command logic unless the organ is Python-only.
@@ -74,6 +75,23 @@ Fail-closed rule: if command parsing, filtering, or telemetry fails, the origina
 
 Acceptance for each filter: unit tests with representative noisy output, sacred-output fixtures, passthrough fixture, and at least one telemetry fixture.
 
+## Runtime Integration
+
+The runtime facade is the required integration point for live prompt-entry paths:
+
+- `filterShellResult({ command, stdout, stderr, cwd, organ })` filters command output, writes ledger records, and fails closed to raw output.
+- `getEconomizedArtifactForContext({ path, type, cwd })` returns compressed context text while preserving the canonical raw artifact on disk.
+- `scoreContextEconomy(cwd)` and `scoreContextEconomySync(cwd)` compute score/subscores from real ledger records, filter coverage, artifact compression capability, sacred bypass evidence, and filter failures.
+
+Current DanteForge live paths:
+
+- `runProjectTests` and `runTypecheck` call `filterShellResult` before output reaches forge repair prompts.
+- MCP `danteforge_artifact_read` returns an economized context view plus raw hash/size metadata.
+- The SDK exports the facade and ledger summary types for DanteForgeEngine/DanteCode/DanteAgents consumers.
+- `scripts/install-dantecode.mjs` validates synced Context Economy source includes the runtime facade and public contracts.
+
+Sacred bypass rule: any failed test output, stack trace, warning, security finding, policy violation, gate failure, or rejected patch must enter LLM context byte-preserved and record `sacred-bypass`.
+
 ## Evidence Chain Compression
 
 All new writes to `.danteforge/` must pass through artifact-type rules:
@@ -87,7 +105,7 @@ All new writes to `.danteforge/` must pass through artifact-type rules:
 | UPR/current-state summaries | <= 6 KB injected | 50%+ | top gaps, blockers, verification status |
 | score reports | <= 4 KB injected | 40%+ | any score below threshold, P0 action items |
 
-Evidence compression must be write-time and reversible by reference: compressed artifacts include a hash pointer to the raw artifact when raw retention is required. Sacred content stays in the compressed copy, not only in the raw copy.
+Evidence compression is applied to context-entry views while raw `.danteforge/` artifacts remain canonical on disk. Economized views include a hash pointer to the raw artifact. Sacred content stays visible in the economized copy; sacred failure output bypasses compression entirely.
 
 ## Telemetry
 
@@ -118,17 +136,19 @@ Add `danteforge economy`:
 - `--organ <forge|code|agents|dojo|harvest>`: organ filter.
 - `--fail-below <score>`: exits non-zero when the calculated Context Economy score is below threshold.
 
+`--json` includes `score`, `subscores`, `recordsInWindow`, token totals, top filters, top passthroughs, and the legacy summary object.
+
 ## Harsh Scorer Integration
 
-`computeContextEconomyScore()` must read the telemetry ledger and calculate:
+`computeContextEconomyScore()` reads the runtime score report and no longer awards enterprise scores from file presence alone. The score uses:
 
 1. Filter coverage.
-2. Evidence compression.
+2. Artifact context compression capability.
 3. Telemetry emission.
-4. Fail-closed compression.
-5. Per-type rules.
+4. Savings evidence.
+5. Sacred bypass / failure evidence.
 
-Each sub-metric scores 0-10 and the dimension score is the average. Production-ready threshold is 7.0+.
+Production-ready threshold is 70/100. With no live ledger records, the scorer intentionally remains below enterprise threshold.
 
 ## Work Plan
 
@@ -160,7 +180,7 @@ Each sub-metric scores 0-10 and the dimension score is the average. Production-r
 - `.danteforge/` artifacts compressed by minimum 40% where safe.
 - Zero information loss on sacred content types.
 - `danteforge economy --json` emits complete telemetry.
-- DanteForge, DanteCode, and DanteAgents baseline remediation reports show 7.0+ on Context Economy after PRD-26 ships.
+- DanteForge, DanteCode, and DanteAgents baseline remediation reports show 70/100+ on Context Economy only after live ledger evidence exists.
 - Tests are real fixtures and real assertions, not mocks of success.
 - No RTK dependency and no Rust component.
 

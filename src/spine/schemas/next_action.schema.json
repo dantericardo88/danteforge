@@ -1,0 +1,31 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://danteforge.dev/spine/next_action.schema.json",
+  "title": "NextAction",
+  "description": "Machine-readable continuation step.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["nextActionId", "runId", "priority", "actionType", "targetRepo", "title", "rationale", "acceptanceCriteria", "recommendedExecutor", "promptUri"],
+  "properties": {
+    "nextActionId": { "type": "string", "minLength": 1 },
+    "runId": { "type": "string", "pattern": "^run_[0-9]{8}_[0-9]{3}$" },
+    "priority": { "enum": ["P0", "P1", "P2"] },
+    "actionType": {
+      "enum": [
+        "implementation_prompt",
+        "targeted_test_request",
+        "human_decision_request",
+        "evidence_collection",
+        "budget_extension_request"
+      ]
+    },
+    "targetRepo": { "type": "string", "minLength": 1 },
+    "title": { "type": "string", "minLength": 1 },
+    "rationale": { "type": "string", "minLength": 1 },
+    "acceptanceCriteria": { "type": "array", "items": { "type": "string" }, "minItems": 1 },
+    "recommendedExecutor": {
+      "enum": ["codex", "claude_code", "kilo_code", "human"]
+    },
+    "promptUri": { "type": "string", "minLength": 1 }
+  }
+}

@@ -44,6 +44,7 @@ export { retro } from './retro.js';
 export { ship } from './ship.js';
 export { autoResearch } from './autoresearch.js';
 export { ossResearcher } from './oss.js';
+export { truthLoopRun } from './truth-loop.js';
 export { init } from './init.js';
 export { docs } from './docs.js';
 export { premium } from './premium.js';

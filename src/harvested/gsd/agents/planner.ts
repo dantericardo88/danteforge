@@ -9,7 +9,10 @@ import { logger } from '../../../core/logger.js';
  */
 export async function planPhase(
   requirements: string,
-  options?: { _llmCaller?: (prompt: string) => Promise<string> },
+  options?: {
+    _llmCaller?: (prompt: string) => Promise<string>;
+    _isLLMAvailable?: () => Promise<boolean>;
+  },
 ): Promise<string[]> {
   logger.info('Planning phase from requirements...');
 
@@ -23,7 +26,10 @@ export async function planPhase(
     requirements,
   ].join('');
 
-  if (options?._llmCaller != null || await isLLMAvailable()) {
+  const llmAvailable = options?._llmCaller != null
+    || await (options?._isLLMAvailable ?? isLLMAvailable)();
+
+  if (llmAvailable) {
     try {
       const response = options?._llmCaller
         ? await options._llmCaller(prompt)

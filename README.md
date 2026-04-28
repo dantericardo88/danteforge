@@ -266,7 +266,7 @@ DanteForge is an agent-oriented development workflow for Codex, Claude Code, VS 
 
 > Anti-Stub Doctrine: shipped implementation must not rely on `TODO`, `FIXME`, `TBD`, or placeholder/stub markers. Repo verification enforces this with `npm run check:anti-stub`.
 
-> **5-10x Token Savings**: Local-first planning, scoped wave execution, hard gates, context rot detection, and self-improving lessons mean you can run multiple projects without burning through LLM credits. See [docs/Token-Savings.md](docs/Token-Savings.md) for the full breakdown.
+> **5-10x Token Savings**: Local-first planning, scoped wave execution, hard gates, context rot detection, self-improving lessons, and the RTK-inspired Context Economy runtime reduce prompt bloat without hiding failures. Run `danteforge economy --json` for local ledger-backed evidence, and see [docs/Token-Savings.md](docs/Token-Savings.md) for the full breakdown.
 
 ## Operational Status
 

@@ -276,6 +276,24 @@ async function runPostStepScoring(stepCommand: string, profile: string | undefin
 
 type RunStepFn = (command: string, light?: boolean, goal?: string, runtime?: { profile?: string; parallel?: boolean; worktree?: boolean }) => Promise<void>;
 type FailureAnalyzerFn = (stepCommand: string, message: string, reason: string, cwd?: string) => Promise<void>;
+const FAILURE_ANALYSIS_TIMEOUT_MS = 10_000;
+
+async function withBestEffortTimeout<T>(work: Promise<T>, timeoutMs: number, label: string): Promise<T | undefined> {
+  let timer: NodeJS.Timeout | undefined;
+  try {
+    return await Promise.race([
+      work,
+      new Promise<undefined>((resolve) => {
+        timer = setTimeout(() => {
+          logger.verbose(`[best-effort] ${label} timed out after ${timeoutMs}ms`);
+          resolve(undefined);
+        }, timeoutMs);
+      }),
+    ]);
+  } finally {
+    if (timer) clearTimeout(timer);
+  }
+}
 
 async function executeForgeSteps(
   plan: AutoForgePlan,
@@ -319,7 +337,11 @@ async function executeForgeSteps(
       const msg = err instanceof Error ? err.message : String(err);
       failed.push(step.command);
       logger.error(`[AutoForge] ${step.command} failed: ${msg}`);
-      await failureAnalyzer(step.command, msg, step.reason, opts.cwd);
+      await withBestEffortTimeout(
+        failureAnalyzer(step.command, msg, step.reason, opts.cwd),
+        FAILURE_ANALYSIS_TIMEOUT_MS,
+        `autoforge failure analysis for ${step.command}`,
+      );
       await memoryRecorder({ category: 'error', summary: `AutoForge failed at: ${step.command}`, detail: `Error: ${msg}. Scenario: ${plan.scenario}${plan.goal ? `. Goal: ${plan.goal}` : ''}`, tags: ['autoforge', 'failure', step.command], relatedCommands: [step.command] }, opts.cwd);
       const state = await loadState({ cwd: opts.cwd });
       state.autoforgeFailedAttempts = (state.autoforgeFailedAttempts ?? 0) + 1;

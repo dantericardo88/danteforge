@@ -1,0 +1,32 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://danteforge.dev/spine/evidence.schema.json",
+  "title": "Evidence",
+  "description": "Verifiable proof tied to file/test/hash/log.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["evidenceId", "runId", "artifactId", "kind", "claimSupported", "verificationMethod", "status"],
+  "properties": {
+    "evidenceId": { "type": "string", "minLength": 1 },
+    "runId": { "type": "string", "pattern": "^run_[0-9]{8}_[0-9]{3}$" },
+    "artifactId": { "type": "string", "minLength": 1 },
+    "kind": {
+      "enum": [
+        "test_result",
+        "file_inspection",
+        "static_analysis",
+        "benchmark",
+        "hash_verification",
+        "human_confirmation"
+      ]
+    },
+    "claimSupported": { "type": "string", "minLength": 1 },
+    "verificationMethod": { "type": "string", "minLength": 1 },
+    "status": {
+      "enum": ["passed", "failed", "partial", "missing", "inconclusive", "unsupported"]
+    },
+    "location": { "type": "string" },
+    "hash": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
+    "claimId": { "type": "string" }
+  }
+}

@@ -196,6 +196,48 @@ program
   .option('--auto', 'Send directly to a live provider instead of generating a copy-paste prompt')
   .action((...a: unknown[]) => void C().then(c => (c.feedbackPrompt as (...x: unknown[]) => unknown)(...a)));
 
+const truthLoopCommand = program
+  .command('truth-loop')
+  .description('Run the truth loop reconciliation pipeline (PRD-26 §5.3)');
+
+truthLoopCommand
+  .command('run')
+  .description('Execute one truth-loop run: collect → import critiques → reconcile → verdict → next-action')
+  .option('--repo <path>', 'Repo to evaluate (default: cwd)')
+  .option('--objective <text>', 'Run objective')
+  .option('--critics <list>', 'Comma-separated critic names (codex,claude,grok,gemini,human)')
+  .option('--critique-file <path>', 'Critique file (repeatable; pair-by-position with --critics or use source=path syntax)', (v: string, prev: string[] = []) => prev.concat(v), [] as string[])
+  .option('--budget-usd <amount>', 'Max USD budget for the run', '5')
+  .option('--budget-minutes <amount>', 'Max wall-clock minutes for the run')
+  .option('--mode <mode>', 'sequential | parallel', 'sequential')
+  .option('--strictness <mode>', 'strict | standard | dev', 'standard')
+  .option('--out <path>', 'Output directory (default: .danteforge/truth-loop/<runId>)')
+  .option('--initiator <who>', 'founder | agent | ci', 'founder')
+  .option('--hardware <profile>', 'rtx_4060_laptop | rtx_3090_workstation | cloud_runner | ci_only', 'rtx_4060_laptop')
+  .option('--skip-tests', 'Do not run the test suite during collection')
+  .option('--test-command <cmd>', 'Override the test command')
+  .action(async (opts) => {
+    const cmds = await C();
+    const result = await cmds.truthLoopRun({
+      repo: opts.repo,
+      objective: opts.objective,
+      critics: opts.critics,
+      critiqueFile: opts.critiqueFile,
+      budgetUsd: opts.budgetUsd,
+      budgetMinutes: opts.budgetMinutes,
+      mode: opts.mode,
+      strictness: opts.strictness,
+      out: opts.out,
+      initiator: opts.initiator,
+      hardware: opts.hardware,
+      skipTests: opts.skipTests,
+      testCommand: opts.testCommand
+    });
+    if (result.exitCode !== 0) {
+      process.exitCode = result.exitCode;
+    }
+  });
+
 program
   .command('import <file>')
   .description('Import an LLM-generated file into .danteforge/')
@@ -722,17 +764,31 @@ program
   .option('--organ <organ>', 'Filter by organ (forge|code|agents)')
   .option('--fail-below <score>', 'Exit non-zero when economy score is below threshold', parseFloat)
   .action(async (opts) => {
-    const { loadAllLedgerRecords, summarizeLedger, formatLedgerReport } = await import('../core/context-economy/economy-ledger.js');
-    await loadAllLedgerRecords(process.cwd())
-      .then((records) => {
-        const filtered = opts.organ ? records.filter((r: { organ: string }) => r.organ === opts.organ) : records;
-        const summary = summarizeLedger(filtered);
-        const report = formatLedgerReport(summary, opts.json);
-        process.stdout.write(report + '\n');
-        if (opts.failBelow !== undefined && summary.averageSavingsPercent < opts.failBelow) {
-          process.exit(1);
-        }
-      });
+    const { scoreContextEconomy } = await import('../core/context-economy/runtime.js');
+    const { formatLedgerReport } = await import('../core/context-economy/economy-ledger.js');
+    const report = await scoreContextEconomy(process.cwd(), {
+      since: opts.since,
+      organ: opts.organ,
+    });
+
+    if (opts.json) {
+      process.stdout.write(JSON.stringify({
+        score: report.score,
+        subscores: report.subscores,
+        recordsInWindow: report.recordsInWindow,
+        since: report.since,
+        organ: report.organ,
+        ...report.summary,
+        summary: report.summary,
+      }, null, 2) + '\n');
+    } else {
+      process.stdout.write(`Context Economy Score: ${report.score}/100\n\n`);
+      process.stdout.write(formatLedgerReport(report.summary, false) + '\n');
+    }
+
+    if (opts.failBelow !== undefined && report.score < opts.failBelow) {
+      process.exit(1);
+    }
   });
 
 program
@@ -2011,6 +2067,9 @@ program
     }
   });
 
-loadState().catch(() => { /* state will be created on first write */ });
+const stateWarmupCommand = process.argv.find((arg, index) => index > 1 && !arg.startsWith('-'));
+if (!new Set(['economy', 'mcp-server']).has(stateWarmupCommand ?? '')) {
+  loadState().catch(() => { /* state will be created on first write */ });
+}
 
 program.parse(process.argv);

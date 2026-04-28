@@ -20,6 +20,7 @@ const mockDeps = {
   _scanCompetitors: async () => ({ ok: true }),
   _appendLesson: async () => {},
   _workflow: async () => ({ workflowStage: 'initialized', currentPhase: 1, lastHandoff: '' }),
+  _adversarialScore: async () => ({ selfScore: 9, adversarialScore: 9, verdict: 'trusted' }),
 };
 
 describe('e2e MCP integration', () => {
@@ -45,6 +46,8 @@ describe('e2e MCP integration', () => {
       const args: Record<string, unknown> = {};
       if (tool.name === 'danteforge_specify') args['idea'] = 'test idea';
       if (tool.name === 'danteforge_lessons_add') args['lesson'] = 'test lesson';
+      if (tool.name === 'danteforge_adversarial_score') args['summaryOnly'] = true;
+      if (tool.name === 'danteforge_cofl') args['guards'] = true;
       await assert.doesNotReject(
         () => session.callTool(tool.name, args),
         `Tool ${tool.name} should not throw`,

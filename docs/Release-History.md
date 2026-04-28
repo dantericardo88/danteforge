@@ -5,6 +5,7 @@ This index keeps the current release surface separate from archived readiness sn
 ## Current Release Surface (v0.17.0)
 
 - [Operational-Readiness-v0.17.0.md](Operational-Readiness-v0.17.0.md)
+- [DanteAgents-Context-Economy-Contract.md](DanteAgents-Context-Economy-Contract.md)
 - [RELEASE.md](../RELEASE.md)
 - [CHANGELOG.md](../CHANGELOG.md)
 

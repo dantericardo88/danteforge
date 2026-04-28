@@ -13,6 +13,8 @@ import {
 import { loadState, saveState } from './state.js';
 import type { DanteState, WorkflowStage } from './state.js';
 import { getMcpRateLimiter, type RateLimiter } from './rate-limiter.js';
+import { getEconomizedArtifactForContext } from './context-economy/runtime.js';
+import type { ArtifactType } from './context-economy/artifact-compressor.js';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -63,6 +65,14 @@ async function auditLog(entry: string, cwd?: string): Promise<void> {
 async function readStateFile(filename: string, cwd?: string): Promise<string> {
   const filePath = path.join(cwd ?? process.cwd(), STATE_DIR, filename);
   return fs.readFile(filePath, 'utf8');
+}
+
+function artifactTypeForMcpRead(filename: string): ArtifactType {
+  if (/^(SPEC|PLAN|TASKS|CLARIFY|CONSTITUTION)\.md$/i.test(filename)) return 'prd-spec-plan';
+  if (/^(CURRENT_STATE|UPR)\.md$/i.test(filename)) return 'upr-current-state';
+  if (/verify|receipt/i.test(filename)) return 'verify-output';
+  if (/score|quality/i.test(filename)) return 'score-report';
+  return 'audit-log';
 }
 
 // ---------------------------------------------------------------------------
@@ -796,9 +806,23 @@ async function handleArtifactRead(args: Record<string, unknown>): Promise<ToolRe
   // Prevent path traversal
   const sanitized = path.basename(name);
   try {
-    const content = await readStateFile(sanitized, cwd);
+    const context = await getEconomizedArtifactForContext({
+      path: path.join(STATE_DIR, sanitized),
+      type: artifactTypeForMcpRead(sanitized),
+      cwd,
+    });
     await auditLog(`artifact_read: ${sanitized}`, cwd);
-    return jsonResult({ name: sanitized, content });
+    return jsonResult({
+      name: sanitized,
+      content: context.content,
+      contextEconomy: {
+        rawHash: context.rawHash,
+        originalSize: context.originalSize,
+        compressedSize: context.compressedSize,
+        savingsPercent: context.savingsPercent,
+        sacredSpanCount: context.sacredSpanCount,
+      },
+    });
   } catch {
     return errorResult(`Artifact not found: ${sanitized}`);
   }

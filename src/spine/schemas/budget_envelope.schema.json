@@ -1,0 +1,28 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://danteforge.dev/spine/budget_envelope.schema.json",
+  "title": "BudgetEnvelope",
+  "description": "Cost/time/model/hardware limits for a truth-loop run.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["budgetEnvelopeId", "runId", "maxUsd", "maxMinutes", "maxCritics", "executionMode", "parallelismAllowed", "hardwareProfile", "stopPolicy"],
+  "properties": {
+    "budgetEnvelopeId": { "type": "string", "minLength": 1 },
+    "runId": { "type": "string", "pattern": "^run_[0-9]{8}_[0-9]{3}$" },
+    "maxUsd": { "type": "number", "minimum": 0 },
+    "maxMinutes": { "type": "number", "minimum": 0 },
+    "maxCritics": { "type": "integer", "minimum": 1 },
+    "executionMode": { "enum": ["sequential", "parallel"] },
+    "parallelismAllowed": { "type": "boolean" },
+    "hardwareProfile": {
+      "enum": ["rtx_4060_laptop", "rtx_3090_workstation", "cloud_runner", "ci_only"]
+    },
+    "stopPolicy": {
+      "enum": [
+        "stop_on_budget",
+        "stop_on_unresolved_blocker",
+        "stop_on_budget_or_unresolved_blocker"
+      ]
+    }
+  }
+}

@@ -29,6 +29,13 @@ describe('SDK exports', () => {
     assert.equal(typeof sdk.scanCompetitors, 'function');
   });
 
+  it('exports Context Economy facade functions', async () => {
+    const sdk = await import('../src/sdk.js');
+    assert.equal(typeof sdk.filterShellResult, 'function');
+    assert.equal(typeof sdk.getEconomizedArtifactForContext, 'function');
+    assert.equal(typeof sdk.summarizeLedger, 'function');
+  });
+
   it('keeps SDK_VERSION aligned with package.json', async () => {
     const sdk = await import('../src/sdk.js');
     const pkg = JSON.parse(await fs.readFile('package.json', 'utf8')) as { version: string };

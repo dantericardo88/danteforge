@@ -1,0 +1,31 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://danteforge.dev/spine/verdict.schema.json",
+  "title": "Verdict",
+  "description": "Final Forge judgment for a run.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["verdictId", "runId", "summary", "score", "confidence", "finalStatus"],
+  "properties": {
+    "verdictId": { "type": "string", "minLength": 1 },
+    "runId": { "type": "string", "pattern": "^run_[0-9]{8}_[0-9]{3}$" },
+    "summary": { "type": "string", "minLength": 1 },
+    "score": { "type": "number", "minimum": 0, "maximum": 10 },
+    "confidence": { "enum": ["low", "medium-low", "medium", "medium-high", "high"] },
+    "blockingGaps": { "type": "array", "items": { "type": "string" } },
+    "unsupportedClaims": { "type": "array", "items": { "type": "string" } },
+    "supportedClaims": { "type": "array", "items": { "type": "string" } },
+    "contradictedClaims": { "type": "array", "items": { "type": "string" } },
+    "opinionClaims": { "type": "array", "items": { "type": "string" } },
+    "finalStatus": {
+      "enum": [
+        "complete",
+        "progress_real_but_not_done",
+        "blocked",
+        "escalated_to_human",
+        "budget_stopped",
+        "evidence_insufficient"
+      ]
+    }
+  }
+}

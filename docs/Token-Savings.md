@@ -2,7 +2,7 @@
 
 DanteForge is designed around a simple principle: **never send tokens to an LLM that could have been computed locally.** The result is dramatically lower API costs — real users report running 3-4 projects concurrently without hitting credit limits.
 
-This document explains the seven mechanisms that make this possible.
+This document explains the mechanisms that make this possible and how to verify the Context Economy evidence.
 
 ---
 
@@ -116,7 +116,37 @@ Over time, the lessons file becomes a per-project optimization cache. The LLM ge
 
 ---
 
-## 8. AutoForge Scoring (Targeted Execution, Not Full Rebuilds)
+## 8. Context Economy Runtime (RTK-Inspired, Evidence-Backed)
+
+DanteForge now routes live shell/test/typecheck output through `src/core/context-economy/runtime.ts` before that output is eligible for LLM repair prompts or MCP artifact context. The runtime is inspired by RTK's context economy pattern, credited as an MIT source in `THIRD_PARTY_NOTICES.md`, but DanteForge does not depend on RTK or Rust.
+
+The public facade is:
+
+```ts
+filterShellResult({ command, stdout, stderr, cwd, organ })
+getEconomizedArtifactForContext({ path, type, cwd })
+scoreContextEconomy(cwd)
+```
+
+Key safety rules:
+
+- `stdout` and `stderr` are filtered independently.
+- Sacred content is byte-preserved for failures, stack traces, warnings, security findings, policy violations, gate failures, and rejected patches.
+- Raw artifacts stay canonical on disk. Compression is used for context-entry views and includes a raw-content hash.
+- Every live filter decision writes JSONL evidence under `.danteforge/evidence/context-economy/`.
+
+Verify the evidence with:
+
+```bash
+danteforge economy --json
+danteforge economy --since 2026-04-26 --fail-below 70
+```
+
+The `--fail-below` gate checks the Context Economy score, not average savings percent, so a project cannot claim enterprise adoption from one high-savings sample or from file presence alone.
+
+---
+
+## 9. AutoForge Scoring (Targeted Execution, Not Full Rebuilds)
 
 The autoforge system uses PDSE (artifact quality scoring) to identify **exactly which artifacts need work**. Instead of re-running the entire pipeline:
 

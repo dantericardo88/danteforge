@@ -22,6 +22,12 @@ import { assessComplexity, formatAssessment } from '../src/core/complexity-class
 
 const tempDirs: string[] = [];
 
+const deterministicExecuteOptions = {
+  _isLLMAvailable: async () => false,
+  _recordMemory: async () => {},
+  _runFailureAnalysis: async () => {},
+};
+
 async function createTempProject(overrides?: Partial<DanteState>): Promise<string> {
   const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'df-e2e-'));
   tempDirs.push(dir);
@@ -101,6 +107,7 @@ describe('e2e autoforge pipeline', () => {
     const executedCommands: string[] = [];
     const result = await executeAutoForgePlan(plan, {
       cwd: dir,
+      ...deterministicExecuteOptions,
       _runStep: async (command) => { executedCommands.push(command); },
       _isStageComplete: async () => true,
     });
@@ -131,6 +138,7 @@ describe('e2e autoforge pipeline', () => {
 
     const result = await executeAutoForgePlan(plan, {
       cwd: dir,
+      ...deterministicExecuteOptions,
       _runStep: async (command) => {
         if (command === 'forge') throw new Error('Simulated forge failure');
       },
@@ -163,6 +171,7 @@ describe('e2e autoforge pipeline', () => {
 
     const result = await executeAutoForgePlan(plan, {
       cwd: dir,
+      ...deterministicExecuteOptions,
       _runStep: async () => {},
       _isStageComplete: async () => true,
     });
@@ -204,6 +213,7 @@ describe('e2e autoforge pipeline', () => {
     const result = await executeAutoForgePlan(plan, {
       cwd: dir,
       dryRun: true,
+      ...deterministicExecuteOptions,
       _runStep: async () => { stepCalled = true; },
       _isStageComplete: async () => true,
     });
@@ -253,6 +263,7 @@ describe('e2e autoforge pipeline', () => {
     const executedCommands: string[] = [];
     const result = await executeAutoForgePlan(plan, {
       cwd: dir,
+      ...deterministicExecuteOptions,
       _runStep: async (command) => { executedCommands.push(command); },
       _isStageComplete: async () => true,
     });

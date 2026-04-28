@@ -153,6 +153,24 @@ describe('runProjectTests', () => {
     assert.equal(result.exitCode, 0);
   });
 
+  it('filters passing stdout before returning repair context', async () => {
+    const result = await runProjectTests({
+      _exec: async () => ({ exitCode: 0, stdout: 'PASS noisy suite\nTests: 1 passed', stderr: '' }),
+      _readFile: async () => JSON.stringify({ scripts: { test: 'npm test' } }),
+      _sanitize: () => {},
+      _filterShellResult: async ({ stdout, stderr }) => ({
+        stdout: 'Tests passed',
+        stderr,
+        inputTokens: 12,
+        outputTokens: 3,
+        savedTokens: 9,
+        statuses: ['filtered'],
+      }),
+    });
+
+    assert.equal(result.stdout, 'Tests passed');
+  });
+
   it('returns passed:false when exec returns exitCode 1', async () => {
     const result = await runProjectTests({
       _exec: async () => ({ exitCode: 1, stdout: '', stderr: 'FAIL test1' }),
@@ -161,6 +179,26 @@ describe('runProjectTests', () => {
     });
     assert.ok(!result.passed);
     assert.equal(result.exitCode, 1);
+  });
+
+  it('preserves sacred failure stderr for LLM repair context', async () => {
+    const sacred = 'Error: test failed\n    at Object.<anonymous> (src/foo.test.ts:10:1)';
+    const result = await runProjectTests({
+      _exec: async () => ({ exitCode: 1, stdout: '', stderr: sacred }),
+      _readFile: async () => JSON.stringify({ scripts: { test: 'npm test' } }),
+      _sanitize: () => {},
+      _filterShellResult: async ({ stdout, stderr }) => ({
+        stdout,
+        stderr,
+        inputTokens: 20,
+        outputTokens: 20,
+        savedTokens: 0,
+        statuses: ['sacred-bypass'],
+      }),
+    });
+
+    assert.equal(result.stderr, sacred);
+    assert.ok(formatErrorsForLLM(result).includes('src/foo.test.ts:10:1'));
   });
 
   it('extracts failing test names from output', async () => {
@@ -179,6 +217,27 @@ describe('runTypecheck', () => {
       _exec: async () => ({ exitCode: 0, stdout: '', stderr: '' }),
     });
     assert.ok(result.passed);
+  });
+
+  it('filters typecheck command output through Context Economy facade', async () => {
+    let command = '';
+    const result = await runTypecheck({
+      _exec: async () => ({ exitCode: 0, stdout: 'Found 0 errors. Watching for file changes.', stderr: '' }),
+      _filterShellResult: async (input) => {
+        command = input.command;
+        return {
+          stdout: 'Found 0 errors.',
+          stderr: input.stderr,
+          inputTokens: 11,
+          outputTokens: 4,
+          savedTokens: 7,
+          statuses: ['filtered'],
+        };
+      },
+    });
+
+    assert.equal(command, 'npx tsc --noEmit');
+    assert.equal(result.stdout, 'Found 0 errors.');
   });
 
   it('extracts typecheck errors from output', async () => {

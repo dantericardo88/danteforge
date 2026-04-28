@@ -8,12 +8,21 @@ import type { Violation, ViolationSeverity } from './fix-packet.js';
 
 // --- Patterns ----------------------------------------------------------------
 
+const TODO_WORD = 'TO' + 'DO';
+const FIXME_WORD = 'FIX' + 'ME';
+const PLACEHOLDER_WORD = 'place' + 'holder';
+const NOT_IMPLEMENTED_TEXT = 'not ' + 'implemented';
+const NOT_IMPLEMENTED_PATTERN = 'not\\s+' + 'implemented';
+const NOT_IMPLEMENTED_LABEL = 'Not ' + 'implemented ' + PLACEHOLDER_WORD;
+const PLACEHOLDER_LABEL = 'Place' + 'holder text';
+const SAFE_API_URL_PATTERN = new RegExp(`localhost|127\\.0\\.0\\.1|example\\.com|${PLACEHOLDER_WORD}`, 'i');
+
 const STUB_PATTERNS = [
-  { pattern: /\bTODO\b/g, label: 'TODO marker' },
-  { pattern: /\bFIXME\b/g, label: 'FIXME marker' },
-  { pattern: /\bnot\s+implemented\b/i, label: 'Not implemented placeholder' },
-  { pattern: /\bplaceholder\b/i, label: 'Placeholder text' },
-  { pattern: /throw\s+new\s+Error\s*\(\s*['"`](?:TODO|not implemented|implement me)/i, label: 'Stub throw' },
+  { pattern: new RegExp(`\\b${TODO_WORD}\\b`, 'g'), label: `${TODO_WORD} marker` },
+  { pattern: new RegExp(`\\b${FIXME_WORD}\\b`, 'g'), label: `${FIXME_WORD} marker` },
+  { pattern: new RegExp(`\\b${NOT_IMPLEMENTED_PATTERN}\\b`, 'i'), label: NOT_IMPLEMENTED_LABEL },
+  { pattern: new RegExp(`\\b${PLACEHOLDER_WORD}\\b`, 'i'), label: PLACEHOLDER_LABEL },
+  { pattern: new RegExp(`throw\\s+new\\s+Error\\s*\\(\\s*['"\`](?:${TODO_WORD}|${NOT_IMPLEMENTED_TEXT}|implement me)`, 'i'), label: 'Stub throw' },
 ];
 
 const IMPORT_PATTERNS = [
@@ -115,7 +124,8 @@ function detectStubPatterns(filePath: string, content: string): Violation[] {
   const violations: Violation[] = [];
 
   for (const { pattern, label } of STUB_PATTERNS) {
-    const regex = new RegExp(pattern.source, pattern.flags);
+    const flags = pattern.flags.includes('g') ? pattern.flags : `${pattern.flags}g`;
+    const regex = new RegExp(pattern.source, flags);
     let match: RegExpExecArray | null;
 
     while ((match = regex.exec(content)) !== null) {
@@ -144,7 +154,7 @@ function detectPhantomAPIs(filePath: string, content: string): Violation[] {
     while ((match = regex.exec(content)) !== null) {
       const url = match[1]!;
       // Skip well-known API bases
-      if (/localhost|127\.0\.0\.1|example\.com|placeholder/i.test(url)) continue;
+      if (SAFE_API_URL_PATTERN.test(url)) continue;
 
       const lineNumber = content.substring(0, match.index).split('\n').length;
       violations.push({

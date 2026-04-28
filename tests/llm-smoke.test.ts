@@ -6,15 +6,21 @@ import os from 'node:os';
 import { probeLLMProvider, callLLM, isLLMAvailable } from '../src/core/llm.js';
 import { resetAllCircuits } from '../src/core/circuit-breaker.js';
 
-// These tests only run when Ollama is available locally.
-// They early-return (pass silently) when Ollama is not running.
+// These live smoke tests are opt-in. Default `npm test` must stay deterministic
+// and must not block on local model health, cold starts, or network-like timeouts.
+// Run them explicitly with DANTEFORGE_LIVE_LLM_SMOKE=1.
 
 describe('LLM smoke tests (Ollama)', () => {
   let skipReason: string | undefined;
-  let tempHome: string;
+  let tempHome: string | undefined;
 
   before(async () => {
     resetAllCircuits();
+    if (process.env.DANTEFORGE_LIVE_LLM_SMOKE !== '1') {
+      skipReason = 'Set DANTEFORGE_LIVE_LLM_SMOKE=1 to run live Ollama smoke tests.';
+      return;
+    }
+
     // Create temp home to avoid polluting real state
     tempHome = await fs.mkdtemp(path.join(os.tmpdir(), 'df-smoke-'));
     const dfDir = path.join(tempHome, '.danteforge');
@@ -54,7 +60,7 @@ describe('LLM smoke tests (Ollama)', () => {
   });
 
   after(async () => {
-    await fs.rm(tempHome, { recursive: true, force: true }).catch(() => {});
+    if (tempHome) await fs.rm(tempHome, { recursive: true, force: true }).catch(() => {});
   });
 
   it('probeLLMProvider resolves with ok=true and model name', async () => {
@@ -76,7 +82,7 @@ describe('LLM smoke tests (Ollama)', () => {
     const result = await callLLM(
       'Reply with exactly the word "pong" and nothing else.',
       'ollama',
-      { recordMemory: false, cwd: tempHome },
+      { recordMemory: false, cwd: tempHome! },
     );
     assert.ok(typeof result === 'string', 'Result should be a string');
     assert.ok(result.length > 0, 'Result should be non-empty');

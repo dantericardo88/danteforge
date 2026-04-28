@@ -50,6 +50,23 @@ describe('DriftDetector', () => {
     assert.ok(stubs.some(v => v.message.includes('FIXME')));
   });
 
+  it('detects non-global stub regex patterns without looping forever', async () => {
+    const { detectAIDrift } = await import('../src/core/drift-detector.js');
+    const root = await makeTempProject({
+      'src/service.ts': [
+        'export function doThing() {',
+        '  throw new Error("not implemented");',
+        '}',
+        'export const note = "placeholder implementation";',
+      ].join('\n'),
+    });
+
+    const violations = await detectAIDrift(['src/service.ts'], root);
+    const stubs = violations.filter(v => v.type === 'stub-detected');
+    assert.ok(stubs.some(v => v.message.includes('Not implemented placeholder')));
+    assert.ok(stubs.some(v => v.message.includes('Placeholder text')));
+  });
+
   it('clean file produces no violations', async () => {
     const { detectAIDrift } = await import('../src/core/drift-detector.js');
     const root = await makeTempProject({

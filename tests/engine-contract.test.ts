@@ -69,6 +69,19 @@ describe('Engine Contract', () => {
   });
 
   // ── Test 2: PDSE dimension weights sum to exactly 100 ─────────────────
+  describe('Context Economy source sync contract', () => {
+    it('install-dantecode validates the runtime facade and public types are synced', () => {
+      const installScript = readFileSync(resolve('scripts/install-dantecode.mjs'), 'utf-8');
+      for (const requiredFile of ['runtime.ts', 'pretool-adapter.ts', 'economy-ledger.ts', 'artifact-compressor.ts', 'types.ts']) {
+        assert.ok(
+          installScript.includes(requiredFile),
+          `install-dantecode.mjs must validate ${requiredFile}`,
+        );
+      }
+      assert.ok(installScript.includes('token-estimator.ts'), 'token-estimator shim must remain part of the Engine sync contract');
+    });
+  });
+
   describe('PDSE dimension weights', () => {
     it('sum to exactly 100', () => {
       const sum = Object.values(DIMENSION_WEIGHTS).reduce(

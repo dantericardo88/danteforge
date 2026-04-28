@@ -1,0 +1,46 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://danteforge.dev/spine/artifact.schema.json",
+  "title": "Artifact",
+  "description": "Any input/output of a truth-loop run: commit, report, critique, test result, patch, prompt packet.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["artifactId", "runId", "type", "source", "createdAt", "uri", "hash"],
+  "properties": {
+    "artifactId": { "type": "string", "minLength": 1 },
+    "runId": { "type": "string", "pattern": "^run_[0-9]{8}_[0-9]{3}$" },
+    "type": {
+      "enum": [
+        "repo_snapshot",
+        "commit_diff",
+        "test_result",
+        "external_critique",
+        "static_analysis",
+        "forge_score",
+        "human_note",
+        "prompt_packet",
+        "next_action"
+      ]
+    },
+    "source": {
+      "enum": ["codex", "claude", "grok", "gemini", "repo", "tests", "human"]
+    },
+    "createdAt": { "type": "string", "format": "date-time" },
+    "uri": { "type": "string", "minLength": 1 },
+    "hash": { "type": "string", "pattern": "^[a-f0-9]{64}$", "description": "sha256 hex" },
+    "label": { "type": "string" },
+    "claims": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["claimId", "type", "text"],
+        "properties": {
+          "claimId": { "type": "string" },
+          "type": { "enum": ["mechanical", "repo", "architecture", "prediction", "preference", "strategic"] },
+          "text": { "type": "string" }
+        }
+      }
+    }
+  }
+}

@@ -127,8 +127,8 @@
   },
   "devDependencies": {
     "@types/vscode": "^1.85.0",
-    "@vscode/vsce": "^3.7.1",
-    "ovsx": "^0.10.9",
+    "@vscode/vsce": "2.25.0",
+    "ovsx": "0.9.4",
     "typescript": "^5.7.2"
   },
   "overrides": {

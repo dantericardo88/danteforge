@@ -46,5 +46,25 @@ export type { AdminSeedOptions } from './core/canvas-admin-seed.js';
 export { runPolicyGate, loadPolicyConfig, evaluatePolicy, writePolicyReceipt } from './core/policy-gate.js';
 export type { PolicyConfig, PolicyDecision } from './core/policy-gate.js';
 
+// Context Economy runtime
+export {
+  filterShellResult,
+  getEconomizedArtifactForContext,
+  scoreContextEconomy,
+  scoreContextEconomySync,
+  filterLedgerRecords,
+} from './core/context-economy/runtime.js';
+export { summarizeLedger } from './core/context-economy/economy-ledger.js';
+export type {
+  ContextEconomyScoreOptions,
+  ContextEconomyScoreReport,
+  ContextEconomySubscores,
+  EconomizedArtifactContext,
+  EconomizedArtifactInput,
+  FilterShellResultInput,
+  FilterShellResultOutput,
+} from './core/context-economy/runtime.js';
+export type { FilterResult, FilterStatus, LedgerRecord, LedgerSummary } from './core/context-economy/types.js';
+
 // Version
 export const SDK_VERSION = DANTEFORGE_VERSION;

@@ -1,0 +1,26 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://danteforge.dev/spine/run.schema.json",
+  "title": "Run",
+  "description": "Identifies one truth-loop execution. PRD-26 Truth Loop Foundation.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["runId", "projectId", "repo", "commit", "startedAt", "mode", "initiator", "objective", "budgetEnvelopeId"],
+  "properties": {
+    "runId": {
+      "type": "string",
+      "pattern": "^run_[0-9]{8}_[0-9]{3}$",
+      "description": "Format run_YYYYMMDD_NNN"
+    },
+    "projectId": { "type": "string", "minLength": 1 },
+    "repo": { "type": "string", "minLength": 1 },
+    "commit": { "type": "string", "minLength": 1 },
+    "startedAt": { "type": "string", "format": "date-time" },
+    "mode": { "enum": ["sequential", "parallel"] },
+    "initiator": { "enum": ["founder", "agent", "ci"] },
+    "objective": { "type": "string", "minLength": 1 },
+    "budgetEnvelopeId": { "type": "string", "minLength": 1 },
+    "endedAt": { "type": "string", "format": "date-time" },
+    "status": { "enum": ["running", "complete", "stopped", "failed"] }
+  }
+}
