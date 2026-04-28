@@ -12,6 +12,7 @@ import { assessMaturity, type MaturityAssessment, type MaturityDimensions } from
 import { scoreToMaturityLevel, type MaturityLevel } from './maturity-levels.js';
 import { checkIntegrationWiring, computeWiringBonus, type IntegrationWiringOptions, type IntegrationWiringResult } from './integration-wiring.js';
 import { scoreContextEconomySync } from './context-economy/runtime.js';
+import { KNOWN_CEILINGS } from './compete-matrix.js';
 
 // ── 19-Dimension Scoring Type ────────────────────────────────────────────────
 // Extends the 8 existing MaturityDimensions with 11 competitor-facing ones.
@@ -65,6 +66,19 @@ export interface HarshScoreResult {
   unwiredModules?: string[];
   /** Raw integration wiring result for detailed inspection */
   wiringResult?: IntegrationWiringResult;
+}
+
+export interface CanonicalScore {
+  /** Overall score on the public 0.0-10.0 scale after harsh scoring and strict overrides. */
+  overall: number;
+  /** Per-dimension scores on the public 0.0-10.0 scale after strict overrides. */
+  dimensions: Record<ScoringDimension, number>;
+  /** ISO timestamp for the cache artifact. For git repos this is the HEAD commit date. */
+  computedAt: string;
+  /** Git SHA used as the cache key. */
+  gitSha: string;
+  /** Schema marker for external agents. */
+  source: 'canonical-v1';
 }
 
 // Persisted per-cycle entry for plateau detection
@@ -405,6 +419,185 @@ export async function computeHarshScore(options: HarshScorerOptions = {}): Promi
 
   await persistHarshHistory(cwd, harshScore, displayScore, dimensions, totalPenalty, timestamp, readHistoryFn, writeHistoryFn);
   return result;
+}
+
+function roundDisplayScore(value: number): number {
+  return Math.round(value * 10) / 10;
+}
+
+function allScoringDimensions(): ScoringDimension[] {
+  return Object.keys(DIMENSION_WEIGHTS) as ScoringDimension[];
+}
+
+function scoreCachePath(cwd: string, gitSha: string): string {
+  const safeSha = gitSha.replace(/[^a-zA-Z0-9._-]/g, '_');
+  return path.join(cwd, '.danteforge', 'score-cache', `${safeSha}.json`);
+}
+
+function isCanonicalScore(value: unknown, gitSha: string): value is CanonicalScore {
+  if (!value || typeof value !== 'object') return false;
+  const candidate = value as Partial<CanonicalScore>;
+  if (candidate.source !== 'canonical-v1') return false;
+  if (candidate.gitSha !== gitSha) return false;
+  if (typeof candidate.overall !== 'number') return false;
+  if (typeof candidate.computedAt !== 'string') return false;
+  if (!candidate.dimensions || typeof candidate.dimensions !== 'object') return false;
+  return allScoringDimensions().every((dim) => typeof candidate.dimensions?.[dim] === 'number');
+}
+
+async function readCanonicalCache(cwd: string, gitSha: string): Promise<CanonicalScore | null> {
+  try {
+    const raw = await fs.readFile(scoreCachePath(cwd, gitSha), 'utf8');
+    const parsed = JSON.parse(raw) as unknown;
+    return isCanonicalScore(parsed, gitSha) ? parsed : null;
+  } catch {
+    return null;
+  }
+}
+
+async function writeCanonicalCache(cwd: string, score: CanonicalScore): Promise<void> {
+  const cachePath = scoreCachePath(cwd, score.gitSha);
+  await fs.mkdir(path.dirname(cachePath), { recursive: true });
+  await fs.writeFile(cachePath, JSON.stringify(score, null, 2) + '\n', 'utf8');
+}
+
+async function runGitText(cwd: string, args: string[]): Promise<string> {
+  try {
+    const { execFile } = await import('node:child_process');
+    return await new Promise<string>((resolve) => {
+      execFile('git', args, { cwd, windowsHide: true }, (error, stdout) => {
+        resolve(error ? '' : String(stdout).trim());
+      });
+    });
+  } catch {
+    return '';
+  }
+}
+
+async function getCanonicalGitSha(cwd: string): Promise<string> {
+  return (await runGitText(cwd, ['rev-parse', 'HEAD'])) || 'no-git';
+}
+
+async function getCanonicalComputedAt(cwd: string): Promise<string> {
+  return (await runGitText(cwd, ['show', '-s', '--format=%cI', 'HEAD'])) || new Date().toISOString();
+}
+
+export function applyCanonicalScoreToResult(result: HarshScoreResult, canonical: CanonicalScore): HarshScoreResult {
+  result.displayScore = canonical.overall;
+  result.displayDimensions = { ...canonical.dimensions };
+  result.dimensions = Object.fromEntries(
+    allScoringDimensions().map((dim) => [dim, roundDisplayScore((canonical.dimensions[dim] ?? 0) * 10)]),
+  ) as Record<ScoringDimension, number>;
+  result.rawScore = Math.round(computeWeightedScore(result.dimensions));
+  result.harshScore = Math.round(canonical.overall * 10);
+  result.verdict = computeHarshVerdict(result.harshScore, result.dimensions);
+  return result;
+}
+
+export function canonicalScoreToHarshResult(canonical: CanonicalScore): HarshScoreResult {
+  const dimensions = Object.fromEntries(
+    allScoringDimensions().map((dim) => [dim, roundDisplayScore((canonical.dimensions[dim] ?? 0) * 10)]),
+  ) as Record<ScoringDimension, number>;
+  const maturityDimensions: MaturityDimensions = {
+    functionality: dimensions.functionality,
+    testing: dimensions.testing,
+    errorHandling: dimensions.errorHandling,
+    security: dimensions.security,
+    uxPolish: dimensions.uxPolish,
+    documentation: dimensions.documentation,
+    performance: dimensions.performance,
+    maintainability: dimensions.maintainability,
+  };
+  const maturityAssessment: MaturityAssessment = {
+    currentLevel: scoreToMaturityLevel(canonical.overall * 10),
+    targetLevel: 5,
+    overallScore: canonical.overall * 10,
+    dimensions: maturityDimensions,
+    gaps: [],
+    founderExplanation: 'Canonical cached score.',
+    recommendation: canonical.overall >= 8.5 ? 'proceed' : 'refine',
+    timestamp: canonical.computedAt,
+  };
+  return {
+    rawScore: Math.round(computeWeightedScore(dimensions)),
+    harshScore: Math.round(canonical.overall * 10),
+    displayScore: canonical.overall,
+    dimensions,
+    displayDimensions: { ...canonical.dimensions },
+    penalties: [],
+    stubsDetected: [],
+    fakeCompletionRisk: 'low',
+    verdict: computeHarshVerdict(Math.round(canonical.overall * 10), dimensions),
+    maturityAssessment,
+    timestamp: canonical.computedAt,
+    unwiredModules: [],
+  };
+}
+
+export async function applyStrictOverrides(
+  result: HarshScoreResult,
+  cwd: string,
+  computeStrictDimsFn: typeof computeStrictDimensions = computeStrictDimensions,
+): Promise<HarshScoreResult> {
+  const strict = await computeStrictDimsFn(cwd);
+  const strictDisplay: Partial<Record<ScoringDimension, number>> = {
+    autonomy: roundDisplayScore(strict.autonomy / 10),
+    selfImprovement: roundDisplayScore(strict.selfImprovement / 10),
+    tokenEconomy: roundDisplayScore(strict.tokenEconomy / 10),
+    specDrivenPipeline: roundDisplayScore(strict.specDrivenPipeline / 10),
+    developerExperience: roundDisplayScore(strict.developerExperience / 10),
+    planningQuality: roundDisplayScore(strict.planningQuality / 10),
+    convergenceSelfHealing: roundDisplayScore(strict.convergenceSelfHealing / 10),
+  };
+
+  for (const [dim, value] of Object.entries(strictDisplay) as [ScoringDimension, number][]) {
+    result.displayDimensions[dim] = value;
+  }
+
+  for (const [dimId, { ceiling }] of Object.entries(KNOWN_CEILINGS)) {
+    const dim = dimId as ScoringDimension;
+    if (result.displayDimensions[dim] !== undefined) {
+      result.displayDimensions[dim] = Math.min(result.displayDimensions[dim]!, ceiling);
+    }
+  }
+
+  result.dimensions = Object.fromEntries(
+    allScoringDimensions().map((dim) => [dim, roundDisplayScore((result.displayDimensions[dim] ?? 0) * 10)]),
+  ) as Record<ScoringDimension, number>;
+
+  const weightedRaw = computeWeightedScore(result.dimensions);
+  const penaltyTotal = (result.penalties ?? []).reduce((sum, penalty) => sum + penalty.deduction, 0);
+  result.rawScore = Math.round(weightedRaw);
+  result.harshScore = Math.max(0, Math.round(weightedRaw - penaltyTotal));
+  result.displayScore = roundDisplayScore(result.harshScore / 10);
+  result.verdict = computeHarshVerdict(result.harshScore, result.dimensions);
+  return result;
+}
+
+export async function computeCanonicalScore(cwd: string): Promise<CanonicalScore> {
+  const gitSha = await getCanonicalGitSha(cwd);
+  const cached = await readCanonicalCache(cwd, gitSha);
+  if (cached) return cached;
+
+  const harsh = await computeHarshScore({
+    cwd,
+    _readHistory: async () => [],
+    _writeHistory: async () => {},
+    _fetchCommunity: async () => ({}),
+  });
+  await applyStrictOverrides(harsh, cwd, computeStrictDimensions);
+  const dimensions = Object.fromEntries(
+    allScoringDimensions().map((dim) => [dim, roundDisplayScore(harsh.displayDimensions[dim] ?? 0)]),
+  ) as Record<ScoringDimension, number>;
+  const canonical: CanonicalScore = {
+    overall: roundDisplayScore(harsh.displayScore),
+    dimensions,
+    computedAt: await getCanonicalComputedAt(cwd),
+    gitSha,
+    source: 'canonical-v1',
+  };
+  await writeCanonicalCache(cwd, canonical).catch(() => {});
+  return canonical;
 }
 
 // ── New Dimension Computations ────────────────────────────────────────────────
@@ -872,6 +1065,21 @@ type GitLogFn = (args: string[], cwd: string) => Promise<string>;
 type ExistsFn = (p: string) => Promise<boolean>;
 type ListDirFn = (p: string) => Promise<string[]>;
 
+export async function makeFileChecker(
+  cwd: string,
+  checkExists: ExistsFn,
+  listDir: ListDirFn,
+): Promise<(filename: string) => Promise<boolean>> {
+  const monorepoFiles = await listDir(path.join(cwd, 'packages'));
+  return async (filename: string): Promise<boolean> => {
+    if (await checkExists(path.join(cwd, 'src', 'core', filename))) return true;
+    for (const pkg of monorepoFiles) {
+      if (await checkExists(path.join(cwd, 'packages', pkg, 'src', filename))) return true;
+    }
+    return false;
+  };
+}
+
 async function strictAutonomy(cwd: string, runGit: GitLogFn, checkExists: ExistsFn, listDir: ListDirFn): Promise<number> {
   let score = 20;
   const commitLog = await runGit(['log', '--oneline', '--no-merges'], cwd);
@@ -900,29 +1108,14 @@ async function strictSelfImprovement(cwd: string, runGit: GitLogFn, checkExists:
 }
 
 async function strictTokenEconomy(cwd: string, checkExists: ExistsFn, listDir: ListDirFn): Promise<number> {
-  // Monorepo-aware: check both src/core/<file>.ts (single-package layout) and
-  // packages/*/src/<file>.ts (monorepo layout). Without this, mature monorepo
-  // projects score 0 on these checks even when the features fully exist —
-  // making the strict scorer report e.g. token_economy=2.0 for a project that
-  // has full task routing, circuit breakers, and context compression.
-  const monorepoFiles = await listDir(path.join(cwd, 'packages'));
-  const checkInMonorepo = async (filename: string): Promise<boolean> => {
-    for (const pkg of monorepoFiles) {
-      if (await checkExists(path.join(cwd, 'packages', pkg, 'src', filename))) return true;
-    }
-    return false;
-  };
-  const hasFile = async (filename: string): Promise<boolean> => {
-    if (await checkExists(path.join(cwd, 'src', 'core', filename))) return true;
-    return await checkInMonorepo(filename);
-  };
+  const hasFile = await makeFileChecker(cwd, checkExists, listDir);
 
   let score = 20;
-  if (await hasFile('task-router.ts') || await checkInMonorepo('task-complexity-router.ts')) score += 20;
+  if (await hasFile('task-router.ts') || await hasFile('task-complexity-router.ts')) score += 20;
   if (await hasFile('circuit-breaker.ts')) score += 15;
   const cacheFiles = await listDir(path.join(cwd, '.danteforge', 'cache'));
   if (cacheFiles.length >= 50) score += 30; else if (cacheFiles.length >= 10) score += 20; else if (cacheFiles.length >= 1) score += 10;
-  if (await hasFile('context-compressor.ts') || await checkInMonorepo('context-compactor.ts') || await checkInMonorepo('transcript-compaction.ts')) score += 15;
+  if (await hasFile('context-compressor.ts') || await hasFile('context-compactor.ts') || await hasFile('transcript-compaction.ts')) score += 15;
   return Math.max(0, Math.min(100, score));
 }
 
@@ -967,24 +1160,11 @@ async function strictPlanningQuality(cwd: string, runGit: GitLogFn, checkExists:
 }
 
 async function strictConvergenceSelfHealing(cwd: string, checkExists: ExistsFn, listDir: ListDirFn): Promise<number> {
-  // Monorepo-aware: also accept packages/*/src/<file>.ts. See strictTokenEconomy
-  // for the rationale — single-package layout assumption was hiding mature
-  // monorepo features and producing false 2.0/10 scores on real implementations.
-  const monorepoFiles = await listDir(path.join(cwd, 'packages'));
-  const checkInMonorepo = async (filename: string): Promise<boolean> => {
-    for (const pkg of monorepoFiles) {
-      if (await checkExists(path.join(cwd, 'packages', pkg, 'src', filename))) return true;
-    }
-    return false;
-  };
-  const hasFile = async (filename: string): Promise<boolean> => {
-    if (await checkExists(path.join(cwd, 'src', 'core', filename))) return true;
-    return await checkInMonorepo(filename);
-  };
+  const hasFile = await makeFileChecker(cwd, checkExists, listDir);
 
   let score = 15;
-  if (await hasFile('circuit-breaker.ts') || await checkInMonorepo('task-circuit-breaker.ts')) score += 25;
-  if (await hasFile('context-compressor.ts') || await checkInMonorepo('context-compactor.ts') || await checkInMonorepo('transcript-compaction.ts')) score += 20;
+  if (await hasFile('circuit-breaker.ts') || await hasFile('task-circuit-breaker.ts')) score += 25;
+  if (await hasFile('context-compressor.ts') || await hasFile('context-compactor.ts') || await hasFile('transcript-compaction.ts')) score += 20;
   const autoforgeFiles = await listDir(path.join(cwd, '.danteforge', 'evidence', 'autoforge'));
   if (autoforgeFiles.length >= 3) score += 15; else if (autoforgeFiles.length >= 1) score += 8;
   const convergenceProof = await checkExists(path.join(cwd, '.danteforge', 'evidence', 'convergence-proof.json'))
@@ -993,7 +1173,7 @@ async function strictConvergenceSelfHealing(cwd: string, checkExists: ExistsFn, 
   // ascend-engine.ts = autonomous quality ascent loop. In a monorepo this lives
   // under packages/<core>/src/. We also accept loop-detector.ts as a self-healing
   // signal even without the full ascend engine (DanteCode has both).
-  if (await hasFile('ascend-engine.ts') || await checkInMonorepo('loop-detector.ts') || await checkInMonorepo('recovery-engine.ts')) score += 10;
+  if (await hasFile('ascend-engine.ts') || await hasFile('loop-detector.ts') || await hasFile('recovery-engine.ts')) score += 10;
   return Math.max(0, Math.min(100, score));
 }
 

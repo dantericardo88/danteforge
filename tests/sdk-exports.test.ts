@@ -19,6 +19,11 @@ describe('SDK exports', () => {
     assert.equal(typeof sdk.computeHarshScore, 'function');
   });
 
+  it('exports computeCanonicalScore function', async () => {
+    const sdk = await import('../src/sdk.js');
+    assert.equal(typeof sdk.computeCanonicalScore, 'function');
+  });
+
   it('exports loadState function', async () => {
     const sdk = await import('../src/sdk.js');
     assert.equal(typeof sdk.loadState, 'function');

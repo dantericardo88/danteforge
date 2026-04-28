@@ -6,8 +6,8 @@ import { DANTEFORGE_VERSION } from './core/version.js';
 export { assess } from './cli/commands/assess.js';
 export type { AssessOptions, AssessResult } from './cli/commands/assess.js';
 
-export { computeHarshScore, formatDimensionBar } from './core/harsh-scorer.js';
-export type { HarshScoreResult, HarshScorerOptions, ScoringDimension } from './core/harsh-scorer.js';
+export { computeHarshScore, computeCanonicalScore, formatDimensionBar } from './core/harsh-scorer.js';
+export type { CanonicalScore, HarshScoreResult, HarshScorerOptions, ScoringDimension } from './core/harsh-scorer.js';
 
 export { assessMaturity } from './core/maturity-engine.js';
 export type { MaturityAssessment } from './core/maturity-engine.js';
