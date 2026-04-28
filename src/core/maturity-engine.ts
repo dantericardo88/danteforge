@@ -168,22 +168,57 @@ async function scoreTesting(
     score += 10;
   }
 
-  // Check for test directory
-  const testDir = path.join(ctx.cwd, 'tests');
+  // Check for test directory. Monorepo-aware: also count *.test.ts files
+  // across all packages/<pkg>/src/ — many monorepos colocate tests with source
+  // rather than centralizing under cwd/tests/. Without this the scorer
+  // counts 0 test files even when the project has hundreds.
   let testFileCount = 0;
   try {
-    const entries = await readdir(testDir);
-    testFileCount = entries.filter(e => e.endsWith('.test.ts') || e.endsWith('.test.js')).length;
-    if (testFileCount > 0) {
-      score += Math.min(20, testFileCount * 2);
+    const entries = await readdir(path.join(ctx.cwd, 'tests'));
+    testFileCount += entries.filter(e => e.endsWith('.test.ts') || e.endsWith('.test.js')).length;
+  } catch { /* no top-level tests dir */ }
+  // Walk packages/<pkg>/src/ for colocated *.test.ts files.
+  try {
+    const packagesDir = path.join(ctx.cwd, 'packages');
+    const pkgs = await readdir(packagesDir);
+    for (const pkg of pkgs) {
+      const srcDir = path.join(packagesDir, pkg, 'src');
+      try {
+        const walk = async (dir: string): Promise<number> => {
+          let n = 0;
+          const items = await readdir(dir).catch(() => [] as string[]);
+          for (const item of items) {
+            const full = path.join(dir, item);
+            const stat = await fs.stat(full).catch(() => null);
+            if (!stat) continue;
+            if (stat.isDirectory()) {
+              if (item === 'node_modules' || item === 'dist') continue;
+              n += await walk(full);
+            } else if (item.endsWith('.test.ts') || item.endsWith('.test.js')) {
+              n++;
+            }
+          }
+          return n;
+        };
+        testFileCount += await walk(srcDir);
+      } catch { /* skip pkg */ }
     }
-  } catch {
-    // No test directory
+  } catch { /* no packages dir */ }
+  if (testFileCount > 0) {
+    // Generous scaling: 10+ tests = +12, 50+ = +18, 100+ = +20.
+    if (testFileCount >= 100) score += 20;
+    else if (testFileCount >= 50) score += 18;
+    else if (testFileCount >= 20) score += 15;
+    else if (testFileCount >= 10) score += 12;
+    else score += Math.min(10, testFileCount * 2);
   }
 
-  // Check for coverage summary
+  // Check for coverage summary. Vitest's default location is coverage/<>.
   const evidenceDir = ctx.evidenceDir ?? path.join(ctx.cwd, '.danteforge', 'evidence');
-  const coveragePath = path.join(evidenceDir, 'coverage-summary.json');
+  let coveragePath = path.join(evidenceDir, 'coverage-summary.json');
+  if (!(await fileExists(coveragePath))) {
+    coveragePath = path.join(ctx.cwd, 'coverage', 'coverage-summary.json'); // vitest default
+  }
   if (await fileExists(coveragePath)) {
     try {
       const content = await readFile(coveragePath);
