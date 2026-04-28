@@ -334,9 +334,15 @@ async function scoreErrorHandling(
  * Exported for unit testing.
  */
 export function stripStringLiterals(src: string): string {
-  // Replace single-quoted, double-quoted, and template literal content with spaces
-  // Preserves line structure (no newline stripping) to keep line numbers meaningful
-  return src.replace(/'[^'\n]*'|"[^"\n]*"|`[^`\n]*`/g, (m) => ' '.repeat(m.length));
+  // Replace single-quoted, double-quoted, and template literal content with spaces.
+  // Template literals (backticks) MUST match across newlines because webview HTML
+  // templates and generated SQL queries commonly span hundreds of lines. Without
+  // [\s\S] for backticks, multi-line template literals leak their contents out
+  // and trip security pattern matches (`innerHTML =`, `eval(`) that exist only
+  // inside HTML/JS template strings, not in actual code.
+  // Preserves line structure (replaces with spaces, keeping length) to keep
+  // line numbers meaningful for downstream tooling.
+  return src.replace(/'[^'\n]*'|"[^"\n]*"|`[\s\S]*?`/g, (m) => m.replace(/[^\n]/g, ' '));
 }
 
 async function scoreSecurity(
@@ -347,32 +353,27 @@ async function scoreSecurity(
 ): Promise<number> {
   let score = 70; // Assume decent baseline
 
-  const srcDir = path.join(ctx.cwd, 'src');
+  // Monorepo-aware: scan all source dirs.
+  const srcDirs = await getProjectSourceDirs(ctx.cwd, collectFiles);
   let dangerousPatterns = 0;
 
-  try {
-    const files = await collectFiles(srcDir);
-    for (const filePath of files) {
-      try {
-        const raw = await readFile(filePath);
-        // Strip string literals AND single-line comments before checking code-injection
-        // patterns to avoid false positives from security-analysis files that describe
-        // the patterns they scan for inside strings, regex definitions, OR comments.
-        // SQL check uses raw content intentionally — SQL is always in string literals.
-        const stripped = stripStringLiterals(raw).replace(/\/\/[^\n]*/g, (m) => ' '.repeat(m.length));
-        if (/process\.env\.SECRET/i.test(stripped)) dangerousPatterns++;
-        if (/eval\(/g.test(stripped)) dangerousPatterns++;
-        if (/innerHTML\s*=/g.test(stripped)) dangerousPatterns++;
-        if (/FROM.*WHERE/i.test(raw)) {
-          // SQL query without parameterization check (uses raw — SQL is in strings)
-          if (!/\$\d+|\?/g.test(raw)) dangerousPatterns++;
-        }
-      } catch {
-        // Unreadable file
+  for (const srcDir of srcDirs) {
+    try {
+      const files = await collectFiles(srcDir);
+      for (const filePath of files) {
+        if (!filePath.endsWith('.ts') || filePath.endsWith('.test.ts') || filePath.endsWith('.d.ts')) continue;
+        try {
+          const raw = await readFile(filePath);
+          const stripped = stripStringLiterals(raw).replace(/\/\/[^\n]*/g, (m) => ' '.repeat(m.length));
+          if (/process\.env\.SECRET/i.test(stripped)) dangerousPatterns++;
+          if (/eval\(/g.test(stripped)) dangerousPatterns++;
+          if (/innerHTML\s*=/g.test(stripped)) dangerousPatterns++;
+          if (/FROM.*WHERE/i.test(raw)) {
+            if (!/\$\d+|\?/g.test(raw)) dangerousPatterns++;
+          }
+        } catch { /* unreadable */ }
       }
-    }
-  } catch {
-    // No src directory
+    } catch { /* skip */ }
   }
 
   score -= dangerousPatterns * 10;
@@ -383,15 +384,21 @@ async function scoreSecurity(
     score += 10;
   }
 
-  // Reward genuine security infrastructure modules
-  const inputValidationPath = path.join(ctx.cwd, 'src', 'core', 'input-validation.ts');
-  if (await fileExists(inputValidationPath)) {
-    score += 5; // Input sanitization module — path traversal, provider allowlist
+  // Reward genuine security infrastructure modules. Monorepo-aware: also
+  // accept packages/<pkg>/src/<file>.ts. Without this, mature monorepos miss
+  // credit for modules that exist in a sub-package.
+  const checkInfraFile = async (filename: string): Promise<boolean> => {
+    if (await fileExists(path.join(ctx.cwd, 'src', 'core', filename))) return true;
+    for (const pkg of ['core', 'cli', 'vscode', 'sandbox', 'mcp']) {
+      if (await fileExists(path.join(ctx.cwd, 'packages', pkg, 'src', filename))) return true;
+    }
+    return false;
+  };
+  if (await checkInfraFile('input-validation.ts') || await checkInfraFile('input-sanitizer.ts')) {
+    score += 5; // Input sanitization module
   }
-
-  const rateLimiterPath = path.join(ctx.cwd, 'src', 'core', 'rate-limiter.ts');
-  if (await fileExists(rateLimiterPath)) {
-    score += 5; // Rate limiting module — DoS/abuse prevention
+  if (await checkInfraFile('rate-limiter.ts') || await checkInfraFile('circuit-breaker.ts')) {
+    score += 5; // Rate-limit / abuse-prevention infrastructure
   }
 
   // Security disclosure policy
@@ -583,23 +590,27 @@ async function scorePerformance(
   let hasParallelism = false;
   let lazyImportFiles = 0;
 
-  try {
-    const allFiles = await collectFiles(path.join(ctx.cwd, 'src'));
-    const files = allFiles.filter(f => !f.includes('/tests/') && !f.includes('\\tests\\') && !f.endsWith('.test.ts'));
-    const readResults = await Promise.allSettled(files.map(f => readFile(f)));
-    for (const result of readResults) {
-      if (result.status !== 'fulfilled') continue;
-      const content = result.value.replace(/\/\/[^\n]*/g, '').replace(/\/\*[\s\S]*?\*\//g, '');
-      let fileHasIssue = false;
-      if (patterns.nestedLoop.test(content)) fileHasIssue = true;
-      if (patterns.awaitInLoop.test(content)) fileHasIssue = true;
-      if (patterns.selectStar.test(content)) hasSelectStar = true;
-      if (patterns.caching.test(content)) hasCaching = true;
-      if (patterns.parallelism.test(content)) hasParallelism = true;
-      if (patterns.lazyImport.test(content)) lazyImportFiles++;
-      if (fileHasIssue) penaltyFiles++;
-    }
-  } catch { /* No src directory — keep baseline */ }
+  // Monorepo-aware: scan all source dirs.
+  const srcDirs = await getProjectSourceDirs(ctx.cwd, collectFiles);
+  for (const srcDir of srcDirs) {
+    try {
+      const allFiles = await collectFiles(srcDir);
+      const files = allFiles.filter(f => !f.includes('/tests/') && !f.includes('\\tests\\') && !f.endsWith('.test.ts') && f.endsWith('.ts'));
+      const readResults = await Promise.allSettled(files.map(f => readFile(f)));
+      for (const result of readResults) {
+        if (result.status !== 'fulfilled') continue;
+        const content = result.value.replace(/\/\/[^\n]*/g, '').replace(/\/\*[\s\S]*?\*\//g, '');
+        let fileHasIssue = false;
+        if (patterns.nestedLoop.test(content)) fileHasIssue = true;
+        if (patterns.awaitInLoop.test(content)) fileHasIssue = true;
+        if (patterns.selectStar.test(content)) hasSelectStar = true;
+        if (patterns.caching.test(content)) hasCaching = true;
+        if (patterns.parallelism.test(content)) hasParallelism = true;
+        if (patterns.lazyImport.test(content)) lazyImportFiles++;
+        if (fileHasIssue) penaltyFiles++;
+      }
+    } catch { /* skip dir */ }
+  }
 
   return applyPerformanceBonuses(70, { hasSelectStar, hasCaching, hasParallelism, lazyImportFiles, penaltyFiles }, ctx.cwd, fileExists, collectFiles);
 }
