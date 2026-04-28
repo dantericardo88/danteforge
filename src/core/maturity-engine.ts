@@ -651,9 +651,15 @@ async function scoreMaintainability(
     }
   }
 
-  // Cap at 50 so score never goes below pdseBase-50; improvement visible when count drops below 25
-  const cappedPenalty = Math.min(largeFunctionPenalty, 50);
-  return Math.min(100, Math.max(0, pdseBase - cappedPenalty));
+  // Tiered penalty: linear penalty over-punishes mature codebases that have
+  // legitimate >100-LOC state machines, large switches, comprehensive parsers,
+  // etc. A handful of long-but-justified functions is fine; many is concerning.
+  // Cap is 30 (was 50) — refactor-incentive without floor-trapping mature code.
+  let scaledPenalty: number;
+  if (largeFunctionPenalty <= 6) scaledPenalty = largeFunctionPenalty;        // ≤3 large fns: full penalty
+  else if (largeFunctionPenalty <= 20) scaledPenalty = 6 + (largeFunctionPenalty - 6) * 0.5;  // tail off
+  else scaledPenalty = 13 + Math.min(17, (largeFunctionPenalty - 20) * 0.3);  // hard cap
+  return Math.min(100, Math.max(0, pdseBase - scaledPenalty));
 }
 
 // ── Gap Analysis ───────────────────────────────────────────────────────────
