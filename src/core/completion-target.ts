@@ -94,7 +94,7 @@ export async function promptUserForCompletionTarget(
   logger.info('');
   logger.info('  2. Standard Dimensions');
   logger.info('     Use 18-dimension quality scoring (functionality, testing, security, etc.)');
-  logger.info('     "Done" = all 18 dimensions score 9+/10');
+  logger.info('     "Done" = all 19 dimensions score 9+/10');
   logger.info('');
   logger.info('  3. Custom Criteria');
   logger.info('     You define what "done" looks like in plain text');

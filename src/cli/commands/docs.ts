@@ -62,7 +62,7 @@ const COMMAND_REGISTRY: CommandEntry[] = [
   { name: 'ship', description: 'Paranoid release guidance + version bump plan + changelog draft', options: ['--dry-run', '--skip-review'], group: 'Tools' },
 
   { name: 'measure', args: '', description: 'Answer "How good is the project?" — light=quick score, standard=score+maturity+proof, deep=verify+adversary. Alias: score', options: ['--level light|standard|deep', '--full', '--strict', '--adversary', '--json'], group: 'Self-Assessment' },
-  { name: 'assess', description: 'Harsh self-assessment: score all 18 dimensions, benchmark vs competitors, generate masterplan', options: ['--no-harsh', '--min-score <n>', '--json', '--preset <level>', '--set-baseline', '--cwd <path>'], group: 'Self-Assessment' },
+  { name: 'assess', description: 'Harsh self-assessment: score all 19 dimensions, benchmark vs competitors, generate masterplan', options: ['--no-harsh', '--min-score <n>', '--json', '--preset <level>', '--set-baseline', '--cwd <path>'], group: 'Self-Assessment' },
   { name: 'maturity', description: 'Assess current code maturity level with founder-friendly quality report', options: ['--preset <level>', '--json', '--cwd <path>'], group: 'Self-Assessment' },
   { name: 'quality', description: 'Visual quality scorecard: dimension bars, P0 gaps, and automation ceilings', options: [], group: 'Self-Assessment' },
 

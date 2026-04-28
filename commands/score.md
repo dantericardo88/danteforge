@@ -11,7 +11,7 @@ Run `danteforge score` to get a single quality score + the 3 highest-priority ga
 
 ```
 danteforge score          # quick score + 3 P0 items
-danteforge score --full   # all 18 dimensions (same as assess)
+danteforge score --full   # all 19 dimensions (same as assess)
 ```
 
 ## Output

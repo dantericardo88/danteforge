@@ -11,7 +11,12 @@ import path from 'node:path';
 import { logger } from '../../core/logger.js';
 import { loadState, saveState, appendScoreHistory } from '../../core/state.js';
 import type { DanteState, ScoreHistoryEntry } from '../../core/state.js';
-import { computeHarshScore } from '../../core/harsh-scorer.js';
+import {
+  applyStrictOverrides,
+  canonicalScoreToHarshResult,
+  computeCanonicalScore,
+  computeHarshScore,
+} from '../../core/harsh-scorer.js';
 import type {
   HarshScorerOptions,
   HarshScoreResult,
@@ -19,7 +24,6 @@ import type {
   AssessmentHistoryEntry,
 } from '../../core/harsh-scorer.js';
 import { computeStrictDimensions } from '../../core/harsh-scorer.js';
-import { KNOWN_CEILINGS } from '../../core/compete-matrix.js';
 import type { PrimeOptions } from './prime.js';
 
 // ── Types ─────────────────────────────────────────────────────────────────────
@@ -57,7 +61,7 @@ export interface ScoreResult {
 
 export interface ScoreOptions {
   cwd?: string;
-  full?: boolean;   // --full: show all 18 dimensions with weights
+  full?: boolean;   // --full: show all 19 dimensions with weights
   /**
    * --strict: Override autonomy/selfImprovement/tokenEconomy with tamper-resistant
    * code-derived signals. Excludes mutable STATE.yaml config fields entirely.
@@ -428,43 +432,27 @@ async function bootstrapStateSignals(
 
 // ── Strict / anti-inflation overlay ──────────────────────────────────────────
 
-function applyStrictOrAntiInflation(
+async function applyStrictOrAntiInflation(
   options: ScoreOptions,
   result: Awaited<ReturnType<typeof computeHarshScore>>,
+  cwd: string,
   strict: Awaited<ReturnType<typeof computeStrictDimensions>>,
   emit: (line: string) => void,
-): void {
-  const strictAutonomy = Math.round(strict.autonomy / 10);
-  const strictSelf = Math.round(strict.selfImprovement / 10);
-  const strictConvergence = Math.round(strict.convergenceSelfHealing / 10);
-
+): Promise<void> {
+  const previousSummary = {
+    rawScore: result.rawScore,
+    harshScore: result.harshScore,
+    displayScore: result.displayScore,
+    verdict: result.verdict,
+  };
+  await applyStrictOverrides(result, cwd, async () => strict);
   if (options.strict) {
-    result.displayDimensions.autonomy = strictAutonomy;
-    result.displayDimensions.selfImprovement = strictSelf;
-    result.displayDimensions.convergenceSelfHealing = strictConvergence;
-    result.displayDimensions.tokenEconomy = Math.round(strict.tokenEconomy / 10);
-    result.displayDimensions.specDrivenPipeline = Math.round(strict.specDrivenPipeline / 10);
-    result.displayDimensions.developerExperience = Math.round(strict.developerExperience / 10);
-    result.displayDimensions.planningQuality = Math.round(strict.planningQuality / 10);
-    for (const [dimId, { ceiling }] of Object.entries(KNOWN_CEILINGS)) {
-      const dim = dimId as ScoringDimension;
-      if (result.displayDimensions[dim] !== undefined) result.displayDimensions[dim] = Math.min(result.displayDimensions[dim]!, ceiling);
-    }
-    emit('  [strict mode: 7 dimensions overridden from code signals + automation ceilings enforced]');
-    const patched = result.displayDimensions;
-    const patchedWeighted = (Object.entries(SCORE_DISPLAY_WEIGHTS) as [ScoringDimension, number][])
-      .reduce((sum, [k, w]) => sum + (patched[k] ?? 0) * w, 0);
-    result.displayScore = Math.round(patchedWeighted * 10) / 10;
+    emit('  [strict mode: canonical code signals + automation ceilings enforced]');
   } else {
-    // Non-strict: apply strict git/filesystem signals as the authoritative value for these 3 dims.
-    // Rationale: autonomy/selfImprovement/convergenceSelfHealing strict signals (commit count,
-    // verify evidence files, retro commits) cannot be gamed via STATE.yaml editing, making them
-    // more trustworthy than STATE.yaml fields (lastVerifyStatus, retroDelta, autoforgeEnabled).
-    // This closes the split where --strict shows 10/10 but normal shows 6.5 — both should agree.
-    // displayScore is intentionally NOT recomputed — preserves harsh scorer's weighted aggregate.
-    result.displayDimensions.autonomy = strictAutonomy;
-    result.displayDimensions.selfImprovement = strictSelf;
-    result.displayDimensions.convergenceSelfHealing = strictConvergence;
+    result.rawScore = previousSummary.rawScore;
+    result.harshScore = previousSummary.harshScore;
+    result.displayScore = previousSummary.displayScore;
+    result.verdict = previousSummary.verdict;
   }
 }
 
@@ -572,10 +560,44 @@ async function runScorePostActions(
 export async function score(options: ScoreOptions = {}): Promise<ScoreResult> {
   const cwd = options.cwd ?? process.cwd();
   const emit = options._stdout ?? ((line: string) => logger.info(line));
+  const runPrimeFn = options._runPrime;
+  const useLegacyInjectionPath = Boolean(
+    options._harshScore || options._loadState || options._saveState || options._getGitSha
+    || options._listSkillDirs || options._fileExists || options._readHistory || options._writeHistory
+    || options._gitLog || options._listDir || options._fileExistsStrict,
+  );
+
+  if (!useLegacyInjectionPath) {
+    const canonical = await computeCanonicalScore(cwd);
+    const result = canonicalScoreToHarshResult(canonical);
+
+    emit('');
+    emit(`  ${result.displayScore.toFixed(1)}/10  - ${displayVerdict(result.verdict)}`);
+    emit('');
+
+    const p0Items = await buildAndRenderP0Items(emit, result, cwd, options);
+
+    if (options.full) {
+      const dims = (Object.entries(result.displayDimensions) as [ScoringDimension, number][]).sort((a, b) => a[1] - b[1]);
+      emit('  All 19 dimensions (worst gaps first):');
+      emit('');
+      dims.forEach(([dim, sc]) => {
+        const wt = Math.round((SCORE_DISPLAY_WEIGHTS[dim] ?? 0) * 100);
+        emit(`  ${dim.padEnd(26)}${sc.toFixed(1)}  (weight ${`${wt}%`.padStart(4)})`);
+      });
+      emit('');
+      emit('  For LLM competitor benchmarking: danteforge assess');
+    } else {
+      emit('  Run with --full for all 19 dimensions.');
+    }
+
+    const adversarialResult = await runScorePostActions(options, result, emit, cwd, runPrimeFn);
+    return { displayScore: result.displayScore, verdict: result.verdict, p0Items, displayDimensions: result.displayDimensions, adversarialResult };
+  }
+
   const harshScoreFn = options._harshScore ?? computeHarshScore;
   const loadStateFn = options._loadState ?? loadState;
   const saveStateFn = options._saveState ?? saveState;
-  const runPrimeFn = options._runPrime;
   const getGitSha = options._getGitSha ?? defaultGetGitSha;
 
   const state = await loadStateFn({ cwd });
@@ -589,7 +611,7 @@ export async function score(options: ScoreOptions = {}): Promise<ScoreResult> {
   });
 
   const strict = await computeStrictDimensions(cwd, options._gitLog, options._fileExistsStrict, options._listDir);
-  applyStrictOrAntiInflation(options, result, strict, emit);
+  await applyStrictOrAntiInflation(options, result, cwd, strict, emit);
 
   const baselineAge = state.sessionBaselineTimestamp ? Date.now() - new Date(state.sessionBaselineTimestamp).getTime() : Infinity;
   if (baselineAge > BASELINE_TTL_MS) { state.sessionBaselineScore = undefined; state.sessionBaselineTimestamp = undefined; }
@@ -616,7 +638,7 @@ export async function score(options: ScoreOptions = {}): Promise<ScoreResult> {
 
   if (options.full) {
     const dims = (Object.entries(result.displayDimensions) as [ScoringDimension, number][]).sort((a, b) => a[1] - b[1]);
-    emit('  All 18 dimensions (worst gaps first):');
+    emit('  All 19 dimensions (worst gaps first):');
     emit('');
     dims.forEach(([dim, sc]) => {
       const wt = Math.round((SCORE_DISPLAY_WEIGHTS[dim] ?? 0) * 100);
@@ -625,7 +647,7 @@ export async function score(options: ScoreOptions = {}): Promise<ScoreResult> {
     emit('');
     emit('  For LLM competitor benchmarking: danteforge assess');
   } else {
-    emit('  Run with --full for all 18 dimensions.');
+    emit('  Run with --full for all 19 dimensions.');
   }
 
   const adversarialResult = await runScorePostActions(options, result, emit, cwd, runPrimeFn);
@@ -686,7 +708,7 @@ function renderDualScorePanel(
     }
   } else if (adv.dimensions.length > 1) {
     emit('');
-    emit('  Run `danteforge score --adversary --full` for all 18 dimension scores.');
+    emit('  Run `danteforge score --adversary --full` for all 19 dimension scores.');
   }
 
   if (adv.adversaryResolution.mode === 'self-challenge') {

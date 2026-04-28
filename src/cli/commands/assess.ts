@@ -10,8 +10,12 @@ import { loadState, saveState } from '../../core/state.js';
 import { scoreAllArtifacts } from '../../core/pdse.js';
 import { assessMaturity, type MaturityAssessment } from '../../core/maturity-engine.js';
 import {
+  applyStrictOverrides,
+  canonicalScoreToHarshResult,
+  computeCanonicalScore,
   computeHarshScore,
   computeStrictDimensions,
+  type CanonicalScore,
   type HarshScoreResult,
   type HarshScorerOptions,
   type ScoringDimension,
@@ -70,6 +74,7 @@ export interface AssessOptions {
   _now?: () => string;
   _loadState?: typeof loadState;
   _saveState?: typeof saveState;
+  _canonicalScore?: (cwd: string) => Promise<CanonicalScore>;
   // Self-dossier refresh (best-effort, never blocks assess)
   _buildSelfDossier?: (opts: { cwd: string }) => Promise<unknown>;
   // Override for strict dimension parity (replaces autonomy/selfImprovement/convergenceSelfHealing)
@@ -120,6 +125,32 @@ async function runCompetitorScan(
     logger.warn('[assess] Competitor scan failed — continuing without competitor data');
     return { comparison: undefined, projectCtx: undefined };
   }
+}
+
+function severityFromDelta(delta: number): 'leading' | 'minor' | 'major' | 'critical' {
+  if (delta <= 0) return 'leading';
+  if (delta < 10) return 'minor';
+  if (delta < 20) return 'major';
+  return 'critical';
+}
+
+export function normalizeComparisonToAssessment(
+  comparison: CompetitorComparison | undefined,
+  assessment: HarshScoreResult,
+): CompetitorComparison | undefined {
+  if (!comparison) return undefined;
+  const normalizedGapReport = comparison.gapReport.map((gap) => {
+    const ourScore = assessment.dimensions[gap.dimension] ?? gap.ourScore;
+    const bestScore = Math.max(gap.bestScore, ourScore);
+    const bestCompetitor = bestScore === ourScore ? 'us' : gap.bestCompetitor;
+    const delta = bestScore - ourScore;
+    return { ...gap, ourScore, bestScore, bestCompetitor, delta, severity: severityFromDelta(delta) };
+  });
+  return {
+    ...comparison,
+    ourDimensions: assessment.dimensions,
+    gapReport: normalizedGapReport,
+  };
 }
 
 async function runFeatureUniverseAssessment(
@@ -194,7 +225,7 @@ async function refreshSelfDossier(cwd: string, dossierFn?: (opts: { cwd: string 
 
 async function runHarshScoringWithParity(
   harshScoreFn: (opts: HarshScorerOptions) => Promise<HarshScoreResult>,
-  strictFn: (cwd: string) => Promise<Awaited<ReturnType<typeof computeStrictDimensions>>>,
+  strictFn: ((cwd: string) => Promise<Awaited<ReturnType<typeof computeStrictDimensions>>>) | undefined,
   cwd: string,
   targetLevel: 1 | 2 | 3 | 4 | 5 | 6,
 ): Promise<HarshScoreResult> {
@@ -203,14 +234,47 @@ async function runHarshScoringWithParity(
     _loadState: async (opts) => loadState(opts),
     _scoreAllArtifacts: scoreAllArtifacts,
     _assessMaturity: (ctx) => assessMaturity(ctx),
+    _readHistory: async () => [],
+    _writeHistory: async () => {},
+    _fetchCommunity: async () => ({}),
   });
   try {
-    const strict = await strictFn(cwd);
-    assessment.displayDimensions.autonomy = Math.round(strict.autonomy / 10);
-    assessment.displayDimensions.selfImprovement = Math.round(strict.selfImprovement / 10);
-    assessment.displayDimensions.convergenceSelfHealing = Math.round(strict.convergenceSelfHealing / 10);
+    if (strictFn) await applyStrictOverrides(assessment, cwd, strictFn);
   } catch { /* best-effort: never block assess if strict dims fail */ }
   return assessment;
+}
+
+function makeEmptyMasterplan(score: number, minScore: number, cycleNumber: number): Masterplan {
+  return {
+    generatedAt: new Date().toISOString(),
+    cycleNumber,
+    overallScore: score,
+    targetScore: minScore,
+    gapToTarget: Math.max(0, minScore - score),
+    items: [],
+    criticalCount: 0,
+    majorCount: 0,
+    projectedCycles: 0,
+  };
+}
+
+function canonicalAssessResult(canonical: CanonicalScore, minScore: number, cycleNumber: number): AssessResult {
+  const assessment = canonicalScoreToHarshResult(canonical);
+  const completionTarget: CompletionTarget = {
+    mode: 'dimension-based',
+    minScore,
+    definedBy: 'default',
+    definedAt: canonical.computedAt,
+    description: 'Canonical scoring target',
+  };
+  return {
+    assessment,
+    masterplan: makeEmptyMasterplan(canonical.overall, minScore, cycleNumber),
+    completionTarget,
+    overallScore: canonical.overall,
+    passesThreshold: canonical.overall >= minScore,
+    minScore,
+  };
 }
 
 // ── Main command ──────────────────────────────────────────────────────────────
@@ -221,8 +285,16 @@ export async function assess(options: AssessOptions = {}): Promise<AssessResult>
   const enableCompetitors = options.competitors ?? true;
   const cycleNumber = options.cycleNumber ?? 1;
   const isInteractive = options.interactive ?? false;
+  const canonicalScoreFn = options._canonicalScore ?? computeCanonicalScore;
 
-  await refreshSelfDossier(cwd, options._buildSelfDossier);
+  if (options.json) {
+    const canonical = await canonicalScoreFn(cwd);
+    process.stdout.write(JSON.stringify(canonical) + '\n');
+    return canonicalAssessResult(canonical, options.minScore ?? 9.0, cycleNumber);
+  }
+
+  const useInjectedScoring = Boolean(options._harshScore || options._strictDimensions);
+  if (useInjectedScoring) await refreshSelfDossier(cwd, options._buildSelfDossier);
 
   const harshScoreFn = options._harshScore ?? computeHarshScore;
   const scanFn = options._scanCompetitors ?? scanCompetitors;
@@ -243,15 +315,21 @@ export async function assess(options: AssessOptions = {}): Promise<AssessResult>
   logger.info(`[assess] Running self-assessment (harsh=${harsh}, mode=${completionTarget.mode}, target=${minScore}/10)...`);
 
   // ── Steps 1+1b: Harsh scoring + ASC dimension parity override ──────────────
-  const assessment = await runHarshScoringWithParity(
-    harshScoreFn, options._strictDimensions ?? computeStrictDimensions, cwd, targetLevel,
-  );
+  const assessment = useInjectedScoring
+    ? await runHarshScoringWithParity(
+        harshScoreFn,
+        options._strictDimensions,
+        cwd,
+        targetLevel,
+      )
+    : canonicalScoreToHarshResult(await canonicalScoreFn(cwd));
 
   // ── Step 2: Competitor benchmarking ────────────────────────────────────────
   let comparison: CompetitorComparison | undefined;
   let projectCtx: ProjectCompetitorContext | undefined;
   if (enableCompetitors) {
     ({ comparison, projectCtx } = await runCompetitorScan(scanFn, buildContextFn, assessment, cwd, options._callLLM));
+    comparison = normalizeComparisonToAssessment(comparison, assessment);
   }
 
   // ── Step 2b: Feature universe assessment (when mode=feature-universe) ───────
@@ -273,18 +351,15 @@ export async function assess(options: AssessOptions = {}): Promise<AssessResult>
   };
 
   // ── Step 3b: Session baseline tracking ─────────────────────────────────────
+  const shouldTrackSession = Boolean(options.setBaseline || options._loadState || options._saveState);
   const loadStateFn = options._loadState ?? loadState;
   const saveStateFn = options._saveState ?? saveState;
-  const { sessionDelta, sessionBaseline, sessionBaselineDate } = await trackSessionBaseline(
-    loadStateFn, saveStateFn, effectiveScore, cwd, options.setBaseline,
-  );
+  const { sessionDelta, sessionBaseline, sessionBaselineDate } = shouldTrackSession
+    ? await trackSessionBaseline(loadStateFn, saveStateFn, effectiveScore, cwd, options.setBaseline)
+    : {};
 
   // ── Step 4: Output ──────────────────────────────────────────────────────────
-  if (options.json) {
-    logger.info(JSON.stringify({ ...result, sessionDelta, sessionBaseline }, null, 2));
-  } else {
-    printAssessReport(result, cycleNumber, sessionDelta, sessionBaseline, sessionBaselineDate);
-  }
+  printAssessReport(result, cycleNumber, sessionDelta, sessionBaseline, sessionBaselineDate);
 
   return result;
 }
@@ -349,7 +424,7 @@ function printAssessReport(
     'uxPolish', 'documentation', 'performance', 'maintainability',
     'developerExperience', 'autonomy', 'planningQuality', 'selfImprovement',
     'specDrivenPipeline', 'convergenceSelfHealing', 'tokenEconomy',
-    'ecosystemMcp', 'enterpriseReadiness', 'communityAdoption',
+    'contextEconomy', 'ecosystemMcp', 'enterpriseReadiness', 'communityAdoption',
   ];
   const dimRows: DimRow[] = dimOrder.map((dim) => {
     const score = assessment.displayDimensions[dim] ?? 0;

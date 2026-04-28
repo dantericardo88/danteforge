@@ -11,8 +11,16 @@
 import fs from 'fs/promises';
 import path from 'path';
 import { loadState, saveState, type WorkflowStage } from './state.js';
-import { computeHarshScore, computeStrictDimensions, type HarshScorerOptions, type HarshScoreResult, type ScoringDimension } from './harsh-scorer.js';
-import { loadMatrix, saveMatrix, classifyDimensions, getNextSprintDimension, updateDimensionScore, KNOWN_CEILINGS, type CompeteMatrix, type MatrixDimension } from './compete-matrix.js';
+import {
+  applyStrictOverrides as applyCoreStrictOverrides,
+  canonicalScoreToHarshResult,
+  computeCanonicalScore,
+  computeStrictDimensions,
+  type HarshScorerOptions,
+  type HarshScoreResult,
+  type ScoringDimension,
+} from './harsh-scorer.js';
+import { loadMatrix, saveMatrix, classifyDimensions, getNextSprintDimension, updateDimensionScore, type CompeteMatrix, type MatrixDimension } from './compete-matrix.js';
 import { defineUniverse, type UniverseDefinerOptions } from './universe-definer.js';
 import { runAutoforgeLoop, AutoforgeLoopState, type AutoforgeLoopContext, type AutoforgeLoopDeps } from './autoforge-loop.js';
 import { executeAutoforgeCommand } from './autoforge-executor.js';
@@ -157,7 +165,7 @@ const ALL_SCORING_DIMENSIONS = new Set<string>([
   'functionality', 'testing', 'errorHandling', 'security', 'uxPolish',
   'documentation', 'performance', 'maintainability', 'developerExperience',
   'autonomy', 'planningQuality', 'selfImprovement', 'specDrivenPipeline',
-  'convergenceSelfHealing', 'tokenEconomy', 'ecosystemMcp',
+  'convergenceSelfHealing', 'tokenEconomy', 'contextEconomy', 'ecosystemMcp',
   'enterpriseReadiness', 'communityAdoption',
 ]);
 
@@ -318,28 +326,17 @@ export async function applyStrictOverrides(
   cwd: string,
   computeStrictDimsFn: typeof computeStrictDimensions,
 ): Promise<void> {
-  const strict = await computeStrictDimsFn(cwd);
-  result.displayDimensions.autonomy = Math.round(strict.autonomy / 10);
-  result.displayDimensions.selfImprovement = Math.round(strict.selfImprovement / 10);
-  result.displayDimensions.tokenEconomy = Math.round(strict.tokenEconomy / 10);
-  result.displayDimensions.specDrivenPipeline = Math.round(strict.specDrivenPipeline / 10);
-  result.displayDimensions.developerExperience = Math.round(strict.developerExperience / 10);
-  result.displayDimensions.planningQuality = Math.round(strict.planningQuality / 10);
-  result.displayDimensions.convergenceSelfHealing = Math.round(strict.convergenceSelfHealing / 10);
-
-  // Enforce automation ceilings — a dimension cannot score above its known ceiling
-  // even if the harsh scorer returns a higher value from STATE.yaml signals.
-  for (const [dimId, { ceiling }] of Object.entries(KNOWN_CEILINGS)) {
-    const dim = dimId as ScoringDimension;
-    if (result.displayDimensions[dim] !== undefined) {
-      result.displayDimensions[dim] = Math.min(result.displayDimensions[dim]!, ceiling);
-    }
-  }
-
-  // Note: we intentionally do NOT recompute displayScore here.
-  // Convergence is decided per-dimension via displayDimensions[scoringDim], not displayScore.
-  // The matrix's overallSelfScore is managed by updateDimensionScore() which is authoritative.
-  // Recomputing displayScore from a potentially-sparse displayDimensions would produce wrong totals.
+  const previousSummary = {
+    rawScore: result.rawScore,
+    harshScore: result.harshScore,
+    displayScore: result.displayScore,
+    verdict: result.verdict,
+  };
+  await applyCoreStrictOverrides(result, cwd, computeStrictDimsFn);
+  result.rawScore = previousSummary.rawScore;
+  result.harshScore = previousSummary.harshScore;
+  result.displayScore = previousSummary.displayScore;
+  result.verdict = previousSummary.verdict;
 }
 
 // ── Ascend cycle state ────────────────────────────────────────────────────────
@@ -629,7 +626,8 @@ export async function runAscend(options: AscendEngineOptions = {}): Promise<Asce
   const loadMatrixFn = options._loadMatrix ?? loadMatrix;
   const saveMatrixFn = options._saveMatrix ?? saveMatrix;
   const defineUniverseFn = options._defineUniverse ?? defineUniverse;
-  const harshScoreFn = options._harshScore ?? computeHarshScore;
+  const harshScoreFn = options._harshScore ?? (async (scoreOptions: HarshScorerOptions) =>
+    canonicalScoreToHarshResult(await computeCanonicalScore(scoreOptions.cwd ?? cwd)));
   const runLoopFn = options._runLoop ?? runAutoforgeLoop;
   const executeCommandFn = options._executeCommand ?? executeAutoforgeCommand;
   const loadStateFn = options._loadState ?? loadState;

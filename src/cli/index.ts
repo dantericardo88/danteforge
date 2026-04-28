@@ -196,6 +196,26 @@ program
   .option('--auto', 'Send directly to a live provider instead of generating a copy-paste prompt')
   .action((...a: unknown[]) => void C().then(c => (c.feedbackPrompt as (...x: unknown[]) => unknown)(...a)));
 
+for (const skillName of ['dante-to-prd', 'dante-grill-me', 'dante-tdd', 'dante-triage-issue', 'dante-design-an-interface'] as const) {
+  program
+    .command(skillName)
+    .description(`Run the ${skillName} Dante-native skill (Phase 2 / PRD-MASTER §7).`)
+    .option('--input-file <path>', 'JSON file with skill inputs')
+    .option('--inputs-json <json>', 'Inline JSON with skill inputs')
+    .option('--out-dir <path>', 'Override output dir (default: .danteforge/skill-runs/<skill>/<runId>)')
+    .option('--score-override <pairs>', 'Force scorer output for testing, e.g. "testing=9.5,errorHandling=8.0"')
+    .action(async (opts) => {
+      const cmds = await C();
+      const r = await cmds.runDanteSkill(skillName, {
+        inputFile: opts.inputFile,
+        inputJson: opts.inputsJson,
+        outDir: opts.outDir,
+        scoreOverride: opts.scoreOverride
+      });
+      if (r.exitCode !== 0) process.exitCode = r.exitCode;
+    });
+}
+
 const truthLoopCommand = program
   .command('truth-loop')
   .description('Run the truth loop reconciliation pipeline (PRD-26 §5.3)');
@@ -805,7 +825,7 @@ program
 
 program
   .command('assess')
-  .description('Harsh self-assessment: score all 18 dimensions, benchmark vs 27 competitors, generate masterplan')
+  .description('Harsh self-assessment: score all 19 dimensions, benchmark vs 27 competitors, generate masterplan')
   .option('--no-harsh', 'Use normal PDSE thresholds instead of harsh mode')
   .option('--no-competitors', 'Skip competitor benchmarking')
   .option('--min-score <n>', 'Target score threshold (default: 9.0)', '9.0')
@@ -1587,9 +1607,9 @@ program
 program
   .command('measure')
   .alias('score')
-  .description('Measure project quality. --level selects depth: light=quick score, standard=score+maturity+proof, deep=verify+adversary.')
-  .option('--level <level>', 'Canonical intensity: light | standard | deep')
-  .option('--full', 'Show all 18 dimensions (like assess)')
+  .description('Measure project quality. --level selects depth: light=quick score, full=all dimensions, standard=score+maturity+proof, deep=verify+adversary.')
+  .option('--level <level>', 'Canonical intensity: light | full | standard | deep')
+  .option('--full', 'Show all 19 dimensions (like assess)')
   .option('--strict', 'Use only code-derived signals — excludes mutable STATE.yaml fields for tamper-resistant scoring')
   .option('--adversary', 'Run a second independent LLM to challenge the self-score and detect inflation')
   .option('--json', 'Machine-readable JSON output')

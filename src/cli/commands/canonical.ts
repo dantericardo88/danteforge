@@ -193,7 +193,8 @@ export interface CanonicalMeasureOptions {
 }
 
 export async function canonicalMeasure(options: CanonicalMeasureOptions = {}): Promise<void> {
-  const level = resolveLevel(options.level, 'light');
+  const requestedLevel = options.level?.toLowerCase();
+  const level = requestedLevel === 'full' ? 'full' : resolveLevel(options.level, 'light');
   logger.info(`[measure --level ${level}]`);
 
   const fns: CanonicalMeasureFns = {
@@ -217,6 +218,11 @@ export async function canonicalMeasure(options: CanonicalMeasureOptions = {}): P
 
   if (level === 'light') {
     await fns.score(options.full, options.strict);
+    return;
+  }
+
+  if (level === 'full') {
+    await fns.score(true, options.strict);
     return;
   }
 
