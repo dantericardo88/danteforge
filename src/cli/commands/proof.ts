@@ -94,6 +94,7 @@ export interface ProofCommandOptions {
   verify?: string;
   verifyAll?: string;
   skipGit?: boolean;
+  strictGitBinding?: boolean;
   since?: string;
   cwd?: string;
   semantic?: boolean;
@@ -112,14 +113,14 @@ export async function proof(options: ProofCommandOptions = {}): Promise<void> {
   const cwd = options.cwd ?? process.cwd();
 
   if (options.verify) {
-    const report = await verifyProofFile(options.verify, { cwd, skipGit: options.skipGit });
+    const report = await verifyProofFile(options.verify, { cwd, skipGit: options.skipGit, strictGitBinding: options.strictGitBinding });
     out(JSON.stringify(report, null, 2));
     if (!report.valid && !options._stdout) process.exitCode = 1;
     return;
   }
 
   if (options.verifyAll) {
-    const report = await verifyProofCorpus(options.verifyAll, { cwd, skipGit: options.skipGit });
+    const report = await verifyProofCorpus(options.verifyAll, { cwd, skipGit: options.skipGit, strictGitBinding: options.strictGitBinding });
     out(JSON.stringify(report, null, 2));
     if (report.failed > 0 && !options._stdout) process.exitCode = 1;
     return;
@@ -186,6 +187,7 @@ export async function proof(options: ProofCommandOptions = {}): Promise<void> {
 interface ProofVerifyOptions {
   cwd: string;
   skipGit?: boolean;
+  strictGitBinding?: boolean;
 }
 
 interface GitBindingCheck {
@@ -395,13 +397,31 @@ async function verifyGitBinding(gitShas: Array<string | null | undefined>, optio
   const expected = gitShas.find((sha): sha is string => typeof sha === 'string' && sha.length > 0) ?? null;
   if (!expected) return { valid: true, skipped: true, expected, current: null, reason: 'no gitSha in proof' };
   if (options.skipGit) return { valid: true, skipped: true, expected, current: null, reason: 'git binding skipped' };
+  let current: string | null = null;
   try {
     const { stdout } = await execFileAsync('git', ['rev-parse', 'HEAD'], { cwd: options.cwd, encoding: 'utf8' });
-    const current = stdout.trim();
-    return { valid: current === expected, skipped: false, expected, current };
+    current = stdout.trim();
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
     return { valid: false, skipped: false, expected, current: null, reason: message };
+  }
+  // Strict mode: snapshot equality (release/audit artifacts where the bound commit must equal current HEAD).
+  if (options.strictGitBinding) {
+    return { valid: current === expected, skipped: false, expected, current, reason: current === expected ? undefined : 'strict mode: HEAD !== expected gitSha' };
+  }
+  // Default: continuity. The bound commit must be reachable from current HEAD (ancestor).
+  // Equality is a special case of ancestry; check it first to avoid spawning git for the common case.
+  if (current === expected) return { valid: true, skipped: false, expected, current };
+  try {
+    await execFileAsync('git', ['merge-base', '--is-ancestor', expected, current], { cwd: options.cwd });
+    // Exit 0 means `expected` is an ancestor of `current`. Continuity verified.
+    return { valid: true, skipped: false, expected, current };
+  } catch (err) {
+    // Non-zero exit means `expected` is NOT in `current`'s ancestry. Could mean: parallel branch, deleted commit, or non-existent SHA.
+    const reason = err instanceof Error && /not\s+a\s+valid\s+commit|unknown\s+revision|bad\s+revision/i.test(err.message)
+      ? `expected gitSha ${expected} is not a known commit in this repo`
+      : `expected gitSha ${expected} is not an ancestor of HEAD ${current}`;
+    return { valid: false, skipped: false, expected, current, reason };
   }
 }
 

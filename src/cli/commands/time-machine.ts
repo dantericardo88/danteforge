@@ -28,6 +28,9 @@ export interface TimeMachineCommandOptions {
   delegate52Dataset?: string;
   budgetUsd?: number;
   maxDomains?: number;
+  roundTripsPerDomain?: number;
+  toWorkingTree?: boolean;
+  confirm?: boolean;
   json?: boolean;
   _stdout?: (line: string) => void;
   _now?: () => string;
@@ -73,6 +76,8 @@ export async function timeMachine(options: TimeMachineCommandOptions): Promise<v
       cwd,
       commitId: options.commit,
       outDir: options.out,
+      toWorkingTree: options.toWorkingTree,
+      confirm: options.confirm,
     }), null, 2));
     return;
   }
@@ -87,6 +92,7 @@ export async function timeMachine(options: TimeMachineCommandOptions): Promise<v
       delegate52Dataset: options.delegate52Dataset,
       budgetUsd: options.budgetUsd,
       maxDomains: options.maxDomains,
+      roundTripsPerDomain: options.roundTripsPerDomain,
       now: options._now,
     });
     if (options.json) {

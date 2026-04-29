@@ -80,12 +80,18 @@ export interface RestoreTimeMachineOptions {
   cwd?: string;
   commitId: string;
   outDir?: string;
+  /** Restore to the working tree (cwd) instead of an isolated outDir. Requires confirm=true. */
+  toWorkingTree?: boolean;
+  /** Required when toWorkingTree=true. Refuses to overwrite the working tree without explicit consent. */
+  confirm?: boolean;
 }
 
 export interface RestoreTimeMachineResult {
   commitId: string;
   outDir: string;
   restored: TimeMachineSnapshotEntry[];
+  /** True when the restore wrote to the working tree (cwd) rather than an isolated outDir. */
+  restoredToWorkingTree?: boolean;
 }
 
 export interface QueryTimeMachineOptions {
@@ -225,15 +231,29 @@ export async function restoreTimeMachineCommit(options: RestoreTimeMachineOption
   const errors = await verifyCommit(cwd, commit);
   if (errors.length > 0) throw new Error(`cannot restore invalid time-machine commit: ${errors.slice(0, 3).join('; ')}`);
 
-  const outDir = options.outDir
-    ? path.resolve(options.outDir)
-    : path.resolve(cwd, '.danteforge', 'time-machine', 'restores', commit.commitId);
+  if (options.toWorkingTree && !options.confirm) {
+    throw new Error('refusing to restore to working tree without confirm=true; pass --confirm on the CLI or { confirm: true } in code');
+  }
+  if (options.toWorkingTree && options.outDir) {
+    throw new Error('toWorkingTree and outDir are mutually exclusive');
+  }
+
+  const outDir = options.toWorkingTree
+    ? cwd
+    : options.outDir
+      ? path.resolve(options.outDir)
+      : path.resolve(cwd, '.danteforge', 'time-machine', 'restores', commit.commitId);
   for (const entry of commit.entries) {
     const target = path.resolve(outDir, entry.path);
     await fs.mkdir(path.dirname(target), { recursive: true });
     await fs.copyFile(blobPath(cwd, entry.blobHash), target);
   }
-  return { commitId: commit.commitId, outDir, restored: commit.entries };
+  return {
+    commitId: commit.commitId,
+    outDir,
+    restored: commit.entries,
+    restoredToWorkingTree: options.toWorkingTree === true,
+  };
 }
 
 export async function queryTimeMachine(options: QueryTimeMachineOptions): Promise<QueryTimeMachineResult> {

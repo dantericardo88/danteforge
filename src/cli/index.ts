@@ -798,10 +798,11 @@ program
   .option('--verify <file>', 'Verify an evidence-chain receipt, bundle, chain, or proof-bearing JSON file')
   .option('--verify-all <dir>', 'Recursively verify every receipt under <dir>; report corpus integrity stats')
   .option('--skip-git', 'Skip current git SHA binding check during proof verification')
+  .option('--strict-git-binding', 'Require manifest gitSha to equal HEAD (snapshot mode); default is ancestor continuity')
   .option('--cwd <path>', 'Project directory (defaults to cwd)')
   .option('--semantic', 'LLM-enhanced PDSE scoring')
   .option('--since <date>', 'Score arc since date or git SHA (e.g. "yesterday", "2026-04-01", a commit SHA)')
-  .action(async (opts) => (await C()).proof({ prompt: opts.prompt, pipeline: opts.pipeline, convergence: opts.convergence, verify: opts.verify, verifyAll: opts.verifyAll, skipGit: opts.skipGit, cwd: opts.cwd, semantic: opts.semantic, since: opts.since }));
+  .action(async (opts) => (await C()).proof({ prompt: opts.prompt, pipeline: opts.pipeline, convergence: opts.convergence, verify: opts.verify, verifyAll: opts.verifyAll, skipGit: opts.skipGit, strictGitBinding: opts.strictGitBinding, cwd: opts.cwd, semantic: opts.semantic, since: opts.since }));
 
 const timeMachineCommand = program
   .command('time-machine')
@@ -823,11 +824,13 @@ timeMachineCommand
 
 timeMachineCommand
   .command('restore')
-  .description('Restore a commit into an output directory without touching the working tree')
+  .description('Restore a commit into an output directory or the working tree')
   .requiredOption('--commit <id>', 'Time Machine commit id')
   .option('--out <path>', 'Output directory (default: .danteforge/time-machine/restores/<commit>)')
+  .option('--to-working-tree', 'Restore directly into the working tree (cwd) instead of an isolated outDir')
+  .option('--confirm', 'Required with --to-working-tree to confirm overwriting working tree files')
   .option('--cwd <path>', 'Project directory (defaults to cwd)')
-  .action(async (opts) => (await C()).timeMachine({ action: 'restore', cwd: opts.cwd, commit: opts.commit, out: opts.out }));
+  .action(async (opts) => (await C()).timeMachine({ action: 'restore', cwd: opts.cwd, commit: opts.commit, out: opts.out, toWorkingTree: opts.toWorkingTree, confirm: opts.confirm }));
 
 timeMachineCommand
   .command('query')
@@ -842,12 +845,13 @@ timeMachineCommand
   .command('validate')
   .description('Run Time Machine validation classes A-G and write proof-backed reports')
   .option('--class <classes>', 'Comma-separated validation classes: A,B,C,D,E,F,G')
-  .option('--scale <scale>', 'smoke | prd | benchmark', 'smoke')
+  .option('--scale <scale>', 'smoke | prd | prd-real | benchmark (prd uses logical chains; prd-real uses on-disk fs at PRD scale)', 'smoke')
   .option('--out <path>', 'Output directory (default: .danteforge/time-machine/validation/<runId>)')
   .option('--delegate52-mode <mode>', 'harness | import | live', 'harness')
   .option('--delegate52-dataset <pathOrUrl>', 'Public DELEGATE-52 JSON/JSONL dataset or imported result file')
   .option('--budget-usd <n>', 'Budget ceiling for live DELEGATE-52 runs', parseFloat)
   .option('--max-domains <n>', 'Maximum DELEGATE-52 domains to include', parseInt)
+  .option('--round-trips <n>', 'Round-trips per domain for live DELEGATE-52 (PRD spec: 10)', parseInt)
   .option('--json', 'Output machine-readable JSON')
   .option('--cwd <path>', 'Project directory (defaults to cwd)')
   .action(async (opts) => (await C()).timeMachine({
@@ -860,6 +864,7 @@ timeMachineCommand
     delegate52Dataset: opts.delegate52Dataset,
     budgetUsd: opts.budgetUsd,
     maxDomains: opts.maxDomains,
+    roundTripsPerDomain: opts.roundTrips,
     json: opts.json,
   }));
 

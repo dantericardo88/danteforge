@@ -1,5 +1,5 @@
 {
-  "description": "DanteForge session-start hook that injects workflow guidance and native slash-command context.",
+  "description": "DanteForge session-start hook + post-edit auto-commit (Time Machine snapshot per agent edit).",
   "hooks": {
     "SessionStart": [
       {
@@ -7,6 +7,17 @@
           {
             "type": "command",
             "command": "node \"${CLAUDE_PLUGIN_ROOT}/hooks/run-hook.mjs\" session-start"
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "Edit|Write|MultiEdit|NotebookEdit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"${CLAUDE_PLUGIN_ROOT}/hooks/run-hook.mjs\" post-tool-use"
           }
         ]
       }

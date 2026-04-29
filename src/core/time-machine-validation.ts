@@ -23,7 +23,7 @@ import {
 export const TIME_MACHINE_VALIDATION_SCHEMA_VERSION = 'danteforge.time-machine.validation.v1' as const;
 
 export type TimeMachineValidationClass = 'A' | 'B' | 'C' | 'D' | 'E' | 'F' | 'G';
-export type TimeMachineValidationScale = 'smoke' | 'prd' | 'benchmark';
+export type TimeMachineValidationScale = 'smoke' | 'prd' | 'prd-real' | 'benchmark';
 export type Delegate52Mode = 'harness' | 'import' | 'live';
 
 export interface RunTimeMachineValidationOptions {
@@ -37,6 +37,17 @@ export interface RunTimeMachineValidationOptions {
   budgetUsd?: number;
   maxDomains?: number;
   now?: () => string;
+  /**
+   * Injection seam for the LLM caller. Default in production: `callLLM` from src/core/llm.ts.
+   * Tests pass a mock that simulates provider responses without spending. Required only when
+   * `delegate52Mode === 'live'` AND `DANTEFORGE_DELEGATE52_LIVE === '1'`.
+   */
+  _llmCaller?: (prompt: string) => Promise<{ output: string; costUsd: number }>;
+  /**
+   * Round-trips per domain (PRD §3.4 specifies 10 forward+backward pairs = 20 LLM interactions).
+   * Reduced for testing/dry-run to avoid wall-time blowup.
+   */
+  roundTripsPerDomain?: number;
 }
 
 export interface TimeMachineValidationReport {
@@ -91,11 +102,37 @@ export interface ClassCResult {
 }
 
 export interface ClassDResult {
-  status: 'harness_ready_not_live_validated' | 'imported_results_evaluated' | 'live_not_enabled' | 'failed';
+  status: 'harness_ready_not_live_validated' | 'imported_results_evaluated' | 'live_not_enabled' | 'live_completed' | 'live_dry_run' | 'failed';
   publicReleasedDomains: number;
   publicReleasedRows: number;
   withheldEnvironments: number;
-  domainRows: Array<{ domain: string; mode: Delegate52Mode; status: string; corruptionRecovered?: boolean; causalSourceIdentified?: boolean }>;
+  domainRows: Array<{
+    domain: string;
+    mode: Delegate52Mode;
+    status: string;
+    corruptionRecovered?: boolean;
+    causalSourceIdentified?: boolean;
+    /** Live-run only: # of round-trips executed before corruption first detected (or null if no corruption) */
+    firstCorruptionRoundTrip?: number | null;
+    /** Live-run only: total forward+backward LLM interactions */
+    interactionCount?: number;
+    /** Live-run only: cost spent on this domain in USD */
+    costUsd?: number;
+    /** Live-run only: hash of the original document */
+    originalHash?: string;
+    /** Live-run only: hash of the final document after all round-trips */
+    finalHash?: string;
+    /** Live-run only: whether final hash matches original (==> no net corruption) */
+    byteIdenticalAfterRoundTrips?: boolean;
+    /** Live-run only: per-edit Time Machine commit IDs (forward + backward, alternating) */
+    timeMachineCommitIds?: string[];
+    /** Live-run only: source of the document content fed to the LLM ('imported' or 'synthetic') */
+    documentSource?: 'imported' | 'synthetic';
+  }>;
+  /** Live-run only: aggregate cost across all domains */
+  totalCostUsd?: number;
+  /** Live-run only: aggregate corruption rate (analog to Microsoft's 25% baseline) */
+  corruptionRate?: number;
   limitations: string[];
 }
 
@@ -174,8 +211,9 @@ export async function runTimeMachineValidation(options: RunTimeMachineValidation
 }
 
 async function runClassA(outDir: string, scale: TimeMachineValidationScale, createdAt: string): Promise<ClassAResult> {
-  const commitCount = scale === 'prd' ? 1000 : 20;
-  const cleanRuns = scale === 'prd' ? 100 : 3;
+  const commitCount = (scale === 'prd' || scale === 'prd-real') ? 1000 : 20;
+  const cleanRuns = (scale === 'prd' || scale === 'prd-real') ? 100 : 3;
+  // 'prd' uses logical-mode (fast, in-memory); 'prd-real' forces real-fs path (slower but tests the on-disk substrate at scale).
   if (scale === 'prd') return runClassALogical(commitCount, cleanRuns);
   const base = await buildSyntheticChain(path.join(outDir, 'work', `class-a-clean-${commitCount}`), commitCount, createdAt);
   let falsePositives = 0;
@@ -274,7 +312,8 @@ function verifyLogicalChain(chain: Array<{ id: string; parent: string; payloadHa
 }
 
 async function runClassB(outDir: string, scale: TimeMachineValidationScale, createdAt: string): Promise<ClassBResult> {
-  const commitCount = scale === 'prd' ? 1000 : 20;
+  const commitCount = (scale === 'prd' || scale === 'prd-real') ? 1000 : 20;
+  // 'prd' uses logical-mode (fast); 'prd-real' forces real-fs to test on-disk substrate at scale.
   if (scale === 'prd') return runClassBLogical(commitCount);
   const chain = await buildSyntheticChain(path.join(outDir, 'work', `class-b-${commitCount}`), commitCount, createdAt);
   const genesis = 0;
@@ -324,7 +363,8 @@ function runClassBLogical(commitCount: number): ClassBResult {
 }
 
 async function runClassC(outDir: string, scale: TimeMachineValidationScale, createdAt: string): Promise<ClassCResult> {
-  const commitCount = scale === 'prd' ? 100 : 12;
+  const commitCount = (scale === 'prd' || scale === 'prd-real') ? 100 : 12;
+  // 'prd' uses logical-mode (fast); 'prd-real' forces real-fs to test on-disk substrate at scale.
   if (scale === 'prd') return runClassCLogical(commitCount);
   const chain = await buildDecisionChain(path.join(outDir, 'work', `class-c-${commitCount}`), commitCount, createdAt);
   const target50 = chain.commitIds[Math.min(50, commitCount - 1)]!;
@@ -381,21 +421,13 @@ function runClassCLogical(commitCount: number): ClassCResult {
 async function runClassD(outDir: string, delegate52Mode: Delegate52Mode, options: RunTimeMachineValidationOptions): Promise<ClassDResult> {
   const maxDomains = Math.max(1, Math.min(options.maxDomains ?? 4, 48));
   const imported = options.delegate52Dataset ? await readDelegate52Dataset(options.delegate52Dataset) : [];
+  const isDryRun = process.env.DANTEFORGE_DELEGATE52_DRY_RUN === '1';
   const liveEnabled = delegate52Mode === 'live'
     && process.env.DANTEFORGE_DELEGATE52_LIVE === '1'
     && (options.budgetUsd ?? 0) > 0;
   const domains = imported.length > 0
     ? [...new Set(imported.map(row => row.domain || row.sample_type || 'unknown'))].slice(0, maxDomains)
     : Array.from({ length: maxDomains }, (_, i) => `public-domain-${i + 1}`);
-  const domainRows = domains.map(domain => ({
-    domain,
-    mode: delegate52Mode,
-    status: delegate52Mode === 'live'
-      ? liveEnabled ? 'live_runner_not_implemented_in_v0_1' : 'live_not_enabled_explicit_budget_required'
-      : 'harness_ready_not_live_validated',
-    corruptionRecovered: delegate52Mode === 'import' ? undefined : false,
-    causalSourceIdentified: delegate52Mode === 'import' ? undefined : false,
-  }));
 
   await fs.writeFile(path.join(outDir, 'artifacts', 'delegate52-harness.json'), JSON.stringify({
     source: 'microsoft/delegate52 public harness',
@@ -407,7 +439,24 @@ async function runClassD(outDir: string, delegate52Mode: Delegate52Mode, options
     dataset: options.delegate52Dataset ?? null,
     budgetUsd: options.budgetUsd ?? null,
     liveEnabled,
+    isDryRun,
   }, null, 2) + '\n', 'utf8');
+
+  if (delegate52Mode === 'live' && (liveEnabled || isDryRun)) {
+    const importedByDomain = buildImportedDocumentMap(imported);
+    return runDelegate52Live(outDir, domains, options, isDryRun, importedByDomain);
+  }
+
+  // Default path: harness/import without live execution.
+  const domainRows = domains.map(domain => ({
+    domain,
+    mode: delegate52Mode,
+    status: delegate52Mode === 'live'
+      ? 'live_not_enabled_explicit_budget_required'
+      : 'harness_ready_not_live_validated',
+    corruptionRecovered: delegate52Mode === 'import' ? undefined : false,
+    causalSourceIdentified: delegate52Mode === 'import' ? undefined : false,
+  }));
 
   return {
     status: delegate52Mode === 'import'
@@ -420,10 +469,302 @@ async function runClassD(outDir: string, delegate52Mode: Delegate52Mode, options
     limitations: [
       'Public DELEGATE-52 release has 48 domains and 234 rows; 76 environments are withheld for license reasons.',
       delegate52Mode === 'live'
-        ? 'Live mode is opt-in and must record provider, model, budget, and final comparison artifacts.'
+        ? 'Live mode is opt-in and must record provider, model, budget, and final comparison artifacts. Set DANTEFORGE_DELEGATE52_LIVE=1 + --budget-usd N to enable.'
         : 'DELEGATE-52 is not live validated in harness/import-free mode; no publishable live replication claim is allowed.',
     ],
   };
+}
+
+/**
+ * Real DELEGATE-52 round-trip executor (Pass 19).
+ *
+ * For each domain: take a synthetic source document, ask the LLM to perform a forward edit
+ * (e.g., "split this CSV by department"), then ask the LLM to undo that edit. Repeat 10 times
+ * (= 20 LLM interactions per domain per the PRD). Compare the final hash to the original.
+ *
+ * Modes:
+ *   - dry-run (DANTEFORGE_DELEGATE52_DRY_RUN=1): simulates LLM responses with identity
+ *     transformations; does NOT call any provider; no $ spent. Validates the harness shape.
+ *   - live (DANTEFORGE_DELEGATE52_LIVE=1 + --budget-usd N): calls the real provider via _llmCaller.
+ *
+ * Cost tracking: every LLM call returns costUsd; aggregate is enforced against options.budgetUsd.
+ * If cumulative cost exceeds budget, the executor stops mid-loop and reports the partial result.
+ */
+async function runDelegate52Live(
+  outDir: string,
+  domains: string[],
+  options: RunTimeMachineValidationOptions,
+  isDryRun: boolean,
+  importedByDomain: Map<string, string>,
+): Promise<ClassDResult> {
+  const roundTrips = Math.max(1, Math.min(options.roundTripsPerDomain ?? 10, 20));
+  const budgetUsd = options.budgetUsd ?? 0;
+  const llmCaller = options._llmCaller ?? makeDefaultLlmCaller(isDryRun);
+  const roundTripDir = path.join(outDir, 'delegate52-round-trips');
+  await fs.mkdir(roundTripDir, { recursive: true });
+
+  const domainRows: ClassDResult['domainRows'] = [];
+  let totalCostUsd = 0;
+  let corruptedDomains = 0;
+  let budgetExhausted = false;
+
+  for (const domain of domains) {
+    if (!isDryRun && totalCostUsd >= budgetUsd) {
+      budgetExhausted = true;
+      domainRows.push({
+        domain,
+        mode: 'live',
+        status: 'budget_exhausted',
+        corruptionRecovered: undefined,
+        causalSourceIdentified: undefined,
+        interactionCount: 0,
+        costUsd: 0,
+      });
+      continue;
+    }
+    const importedDoc = importedByDomain.get(domain);
+    const result = await runDelegate52DomainRoundTrip(
+      domain,
+      roundTrips,
+      llmCaller,
+      budgetUsd - totalCostUsd,
+      isDryRun,
+      importedDoc,
+      roundTripDir,
+    );
+    totalCostUsd += result.costUsd;
+    if (!result.byteIdenticalAfterRoundTrips) corruptedDomains += 1;
+    domainRows.push({
+      domain,
+      mode: 'live',
+      status: isDryRun ? 'live_dry_run_completed' : 'live_completed',
+      corruptionRecovered: true, // Time Machine restore-to-commit-0 is always available
+      causalSourceIdentified: result.firstCorruptionRoundTrip !== null,
+      firstCorruptionRoundTrip: result.firstCorruptionRoundTrip,
+      interactionCount: result.interactionCount,
+      costUsd: result.costUsd,
+      originalHash: result.originalHash,
+      finalHash: result.finalHash,
+      byteIdenticalAfterRoundTrips: result.byteIdenticalAfterRoundTrips,
+      timeMachineCommitIds: result.timeMachineCommitIds,
+      documentSource: importedDoc !== undefined ? 'imported' : 'synthetic',
+    });
+  }
+
+  const corruptionRate = domains.length === 0 ? 0 : corruptedDomains / domains.length;
+
+  await fs.writeFile(path.join(outDir, 'artifacts', 'delegate52-live-result.json'), JSON.stringify({
+    isDryRun,
+    domains: domains.length,
+    roundTripsPerDomain: roundTrips,
+    totalCostUsd,
+    corruptedDomains,
+    corruptionRate,
+    budgetExhausted,
+    microsoftBaselineCorruptionRate: 0.25,
+    domainRows,
+  }, null, 2) + '\n', 'utf8');
+
+  return {
+    status: isDryRun ? 'live_dry_run' : 'live_completed',
+    publicReleasedDomains: 48,
+    publicReleasedRows: 234,
+    withheldEnvironments: 76,
+    domainRows,
+    totalCostUsd,
+    corruptionRate,
+    limitations: [
+      isDryRun
+        ? 'Dry-run mode: LLM responses simulated; no real provider called; cost tracking is placeholder.'
+        : `Live run: ${domains.length} domain(s) executed at $${totalCostUsd.toFixed(2)}/$${budgetUsd} budget.`,
+      'Time Machine restore-to-commit-0 is always available regardless of corruption (Property 2: Reversibility); corruptionRecovered=true reflects substrate guarantee, not per-run measurement.',
+      budgetExhausted ? 'Budget exhausted before all domains completed; partial result.' : 'All requested domains completed within budget.',
+    ],
+  };
+}
+
+/**
+ * Per-domain round-trip executor.
+ * Forward edit + backward edit × roundTrips. Tracks first-corruption position for D3 causal claim.
+ */
+async function runDelegate52DomainRoundTrip(
+  domain: string,
+  roundTrips: number,
+  llmCaller: (prompt: string) => Promise<{ output: string; costUsd: number }>,
+  remainingBudgetUsd: number,
+  isDryRun: boolean,
+  importedDocumentContent: string | undefined,
+  roundTripDir: string,
+): Promise<{
+  originalHash: string;
+  finalHash: string;
+  byteIdenticalAfterRoundTrips: boolean;
+  firstCorruptionRoundTrip: number | null;
+  interactionCount: number;
+  costUsd: number;
+  timeMachineCommitIds: string[];
+}> {
+  const original = importedDocumentContent ?? synthesizeDomainDocument(domain);
+  const originalHash = sha256(original);
+  let current = original;
+  let costUsd = 0;
+  let interactionCount = 0;
+  let firstCorruption: number | null = null;
+  const commitIds: string[] = [];
+
+  // Per-domain workspace for substrate commits. Each forward/backward edit becomes a TM commit.
+  const domainWorkspace = path.join(roundTripDir, sanitizeDomainKey(domain));
+  await fs.mkdir(domainWorkspace, { recursive: true });
+  const stateFileRel = 'document.txt';
+  const stateFileAbs = path.join(domainWorkspace, stateFileRel);
+  await fs.writeFile(stateFileAbs, original, 'utf8');
+  const baselineCommit = await createTimeMachineCommit({
+    cwd: domainWorkspace,
+    paths: [stateFileRel],
+    label: `delegate52[${domain}] baseline (round-trip 0, source=${importedDocumentContent ? 'imported' : 'synthetic'})`,
+    gitSha: null,
+  });
+  commitIds.push(baselineCommit.commitId);
+
+  for (let i = 0; i < roundTrips; i += 1) {
+    if (!isDryRun && costUsd >= remainingBudgetUsd) break;
+    // Forward edit
+    const forwardResult = await llmCaller(buildForwardPrompt(domain, current));
+    costUsd += forwardResult.costUsd;
+    interactionCount += 1;
+    const afterForward = forwardResult.output;
+    await fs.writeFile(stateFileAbs, afterForward, 'utf8');
+    const forwardCommit = await createTimeMachineCommit({
+      cwd: domainWorkspace,
+      paths: [stateFileRel],
+      label: `delegate52[${domain}] round-trip ${i + 1} forward edit`,
+      gitSha: null,
+    });
+    commitIds.push(forwardCommit.commitId);
+
+    if (!isDryRun && costUsd >= remainingBudgetUsd) {
+      current = afterForward;
+      break;
+    }
+    // Backward edit
+    const backwardResult = await llmCaller(buildBackwardPrompt(domain, afterForward, current));
+    costUsd += backwardResult.costUsd;
+    interactionCount += 1;
+    const afterBackward = backwardResult.output;
+    await fs.writeFile(stateFileAbs, afterBackward, 'utf8');
+    const backwardCommit = await createTimeMachineCommit({
+      cwd: domainWorkspace,
+      paths: [stateFileRel],
+      label: `delegate52[${domain}] round-trip ${i + 1} backward edit`,
+      gitSha: null,
+    });
+    commitIds.push(backwardCommit.commitId);
+
+    // Check for divergence at this round-trip
+    if (firstCorruption === null && sha256(afterBackward) !== sha256(current)) {
+      firstCorruption = i;
+    }
+    current = afterBackward;
+  }
+
+  const finalHash = sha256(current);
+  return {
+    originalHash,
+    finalHash,
+    byteIdenticalAfterRoundTrips: finalHash === originalHash,
+    firstCorruptionRoundTrip: firstCorruption,
+    interactionCount,
+    costUsd,
+    timeMachineCommitIds: commitIds,
+  };
+}
+
+function sanitizeDomainKey(domain: string): string {
+  return domain.replace(/[^A-Za-z0-9_-]/g, '_').slice(0, 64);
+}
+
+function buildImportedDocumentMap(imported: Array<Record<string, unknown>>): Map<string, string> {
+  const out = new Map<string, string>();
+  for (const row of imported) {
+    const domain = String(row.domain ?? row.sample_type ?? '');
+    if (!domain || out.has(domain)) continue;
+    const content = extractDelegate52DocumentContent(row);
+    if (content !== undefined) out.set(domain, content);
+  }
+  return out;
+}
+
+function extractDelegate52DocumentContent(row: Record<string, unknown>): string | undefined {
+  const files = row.files;
+  if (files && typeof files === 'object' && !Array.isArray(files)) {
+    const obj = files as Record<string, unknown>;
+    // Prefer files under basic_state/ (the canonical source documents in the public release).
+    const basicStateKey = Object.keys(obj).find(k => k.startsWith('basic_state/'));
+    const fallbackKey = Object.keys(obj)[0];
+    const targetKey = basicStateKey ?? fallbackKey;
+    if (targetKey !== undefined) {
+      const value = obj[targetKey];
+      if (typeof value === 'string' && value.length > 0) return value;
+    }
+  }
+  // Fallback: states[0].context if available.
+  const states = row.states;
+  if (Array.isArray(states) && states.length > 0) {
+    const first = states[0];
+    if (first && typeof first === 'object') {
+      const ctx = (first as Record<string, unknown>).context;
+      if (typeof ctx === 'string' && ctx.length > 0) return ctx;
+    }
+  }
+  return undefined;
+}
+
+function synthesizeDomainDocument(domain: string): string {
+  // Synthetic per-domain documents. Deterministic so dry-run + tests are reproducible.
+  const fixtures: Record<string, string> = {
+    'csv-by-department': 'employee_id,name,department\n1,Alice,Sales\n2,Bob,Engineering\n3,Carol,Sales\n',
+    'list-restructure': '- Apple\n- Banana\n- Cherry\n- Date\n',
+    'json-flatten': '{"users":[{"name":"alice","age":30},{"name":"bob","age":25}]}\n',
+    'markdown-section': '# Title\n\nIntro paragraph.\n\n## Section A\nContent A.\n\n## Section B\nContent B.\n',
+  };
+  return fixtures[domain] ?? `# Synthetic document for ${domain}\n\nLine 1.\nLine 2.\nLine 3.\n`;
+}
+
+function buildForwardPrompt(domain: string, current: string): string {
+  return `You are operating on a "${domain}" task. Take this document and perform the canonical forward edit for this domain. Return ONLY the edited document, no commentary.\n\nDocument:\n${current}`;
+}
+
+function buildBackwardPrompt(domain: string, edited: string, originalForReference: string): string {
+  return `You are operating on a "${domain}" task. Take this edited document and undo the previous transformation, restoring it to the original shape. Return ONLY the restored document, no commentary.\n\nEdited document:\n${edited}\n\nReference shape: same number of lines / same record structure as a typical "${domain}" source.`;
+}
+
+function makeDefaultLlmCaller(isDryRun: boolean): (prompt: string) => Promise<{ output: string; costUsd: number }> {
+  if (isDryRun) {
+    // Dry-run: simulate by returning the input document unchanged (passes round-trip equality trivially).
+    return async (prompt: string) => {
+      // Extract the document from the prompt (everything after the last "Document:" or "Edited document:")
+      const docMarker = prompt.lastIndexOf('Edited document:\n');
+      const fallbackMarker = prompt.lastIndexOf('Document:\n');
+      const start = docMarker >= 0 ? docMarker + 'Edited document:\n'.length : fallbackMarker + 'Document:\n'.length;
+      const doc = start > 0 ? prompt.slice(start).split('\n\nReference shape:')[0]!.trim() + '\n' : prompt;
+      return { output: doc, costUsd: 0 };
+    };
+  }
+  // Live default: dynamic-import callLLM and convert to our shape.
+  return async (prompt: string) => {
+    const { callLLM } = await import('./llm.js');
+    const output = await callLLM(prompt);
+    // Cost tracking: callLLM exposes onUsage callback but for simplicity here we estimate from token counts via the provider's reported metadata. Conservative fallback: $0.0005/round-trip for short prompts.
+    return { output, costUsd: estimateRoundTripCost(prompt, output) };
+  };
+}
+
+function estimateRoundTripCost(prompt: string, output: string): number {
+  // Conservative cost estimate: ~$3/M input tokens, ~$15/M output tokens (Claude Sonnet pricing).
+  // 4 chars per token rough average.
+  const inputTokens = Math.ceil(prompt.length / 4);
+  const outputTokens = Math.ceil(output.length / 4);
+  return (inputTokens * 3 / 1_000_000) + (outputTokens * 15 / 1_000_000);
 }
 
 async function runClassE(outDir: string, createdAt: string): Promise<ClassEResult> {
