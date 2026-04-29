@@ -429,6 +429,19 @@ function hardTokenCap(text: string, maxTokens: number): string {
 // Main compression pipeline
 // ---------------------------------------------------------------------------
 
+function applyStep(
+  text: string,
+  enabled: boolean,
+  fn: (s: string) => string,
+  label: string,
+  strategies: string[]
+): string {
+  if (!enabled) return text;
+  const next = fn(text);
+  if (next !== text) strategies.push(label);
+  return next;
+}
+
 /**
  * Apply compression strategies in sequence based on the provided config.
  * Order: whitespace -> comments -> imports -> file truncation -> test bodies -> hard cap.
@@ -441,57 +454,12 @@ export function compressContext(
   const strategies: string[] = [];
   let compressed = context;
 
-  // 1. Whitespace normalization
-  if (config.collapseWhitespace) {
-    const before = compressed;
-    compressed = collapseWhitespace(compressed);
-    if (compressed !== before) {
-      strategies.push('collapseWhitespace');
-    }
-  }
-
-  // 2. Comment stripping
-  if (config.stripComments) {
-    const before = compressed;
-    compressed = stripComments(compressed);
-    if (compressed !== before) {
-      strategies.push('stripComments');
-    }
-  }
-
-  // 3. Import summarization
-  if (config.stripImports) {
-    const before = compressed;
-    compressed = summarizeImports(compressed);
-    if (compressed !== before) {
-      strategies.push('summarizeImports');
-    }
-  }
-
-  // 4. File block truncation
-  if (config.truncateFileContent) {
-    const before = compressed;
-    compressed = truncateFileBlocks(compressed, config.maxFileLines);
-    if (compressed !== before) {
-      strategies.push('truncateFileBlocks');
-    }
-  }
-
-  // 5. Test body summarization
-  if (config.summarizeTests) {
-    const before = compressed;
-    compressed = summarizeTestBodies(compressed);
-    if (compressed !== before) {
-      strategies.push('summarizeTestBodies');
-    }
-  }
-
-  // 6. Hard token cap
-  const beforeCap = compressed;
-  compressed = hardTokenCap(compressed, config.maxContextTokens);
-  if (compressed !== beforeCap) {
-    strategies.push('hardTokenCap');
-  }
+  compressed = applyStep(compressed, config.collapseWhitespace, collapseWhitespace, 'collapseWhitespace', strategies);
+  compressed = applyStep(compressed, config.stripComments, stripComments, 'stripComments', strategies);
+  compressed = applyStep(compressed, config.stripImports, summarizeImports, 'summarizeImports', strategies);
+  compressed = applyStep(compressed, config.truncateFileContent, (s) => truncateFileBlocks(s, config.maxFileLines), 'truncateFileBlocks', strategies);
+  compressed = applyStep(compressed, config.summarizeTests, summarizeTestBodies, 'summarizeTestBodies', strategies);
+  compressed = applyStep(compressed, true, (s) => hardTokenCap(s, config.maxContextTokens), 'hardTokenCap', strategies);
 
   const compressedTokens = estimateTokens(compressed);
   const reductionPercent =

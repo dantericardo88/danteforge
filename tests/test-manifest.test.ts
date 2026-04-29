@@ -23,6 +23,12 @@ describe('test manifest', () => {
     assert.equal(classifyTestFile('tests\\autoforge.test.ts'), 'orchestration-heavy');
   });
 
+  it('isolates e2e orchestration pipeline suites in a single-process lane', () => {
+    assert.equal(classifyTestFile('tests/e2e-autoforge-pipeline.test.ts'), 'orchestration-e2e');
+    assert.equal(classifyTestFile('tests/e2e-spec-pipeline.test.ts'), 'orchestration-e2e');
+    assert.equal(classifyTestFile('tests\\e2e-autoforge-pipeline.test.ts'), 'orchestration-e2e');
+  });
+
   it('keeps ordinary and non-fragile suites in the default lane', () => {
     assert.equal(classifyTestFile('tests/build-isolation.test.ts'), 'default');
     assert.equal(classifyTestFile('tests/init.test.ts'), 'default');
@@ -34,13 +40,15 @@ describe('test manifest', () => {
       'tests/verify-json-e2e.test.ts',
       'tests/doctor.test.ts',
       'tests/autoforge.test.ts',
+      'tests/e2e-autoforge-pipeline.test.ts',
       'tests/build-isolation.test.ts',
     ]);
 
-    assert.deepEqual(plan.map((lane) => lane.id), ['default', 'orchestration-heavy', 'cli-process']);
+    assert.deepEqual(plan.map((lane) => lane.id), ['default', 'orchestration-heavy', 'orchestration-e2e', 'cli-process']);
     assert.equal(plan[0]?.files[0], 'tests/build-isolation.test.ts');
     assert.equal(plan[1]?.files[0], 'tests/autoforge.test.ts');
-    assert.deepEqual(plan[2]?.files, ['tests/doctor.test.ts', 'tests/verify-json-e2e.test.ts']);
+    assert.equal(plan[2]?.files[0], 'tests/e2e-autoforge-pipeline.test.ts');
+    assert.deepEqual(plan[3]?.files, ['tests/doctor.test.ts', 'tests/verify-json-e2e.test.ts']);
     assert.ok(getDefaultTestConcurrency() >= 1);
     assert.ok(getDefaultTestConcurrency() <= 8);
   });

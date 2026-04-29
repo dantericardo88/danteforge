@@ -226,8 +226,8 @@ describe('maturity-engine', () => {
       };
 
       const dimensions = await scoreMaturityDimensions(ctx);
-      // 2 functions, 1 try, 2 throws => ratio 3/2 = 1.5 => 150 => capped at 100
-      assert.equal(dimensions.errorHandling, 100);
+      // 2 functions, 1 try, 2 throws => ratio 3/2 = 1.5 => exceptional coverage band
+      assert.equal(dimensions.errorHandling, 95);
     });
 
     it('adds 10 points for custom error classes', async () => {
@@ -248,8 +248,8 @@ describe('maturity-engine', () => {
       };
 
       const dimensions = await scoreMaturityDimensions(ctx);
-      // 1 function, 0 try/throw => 0 base + 10 custom error bonus = 10
-      assert.equal(dimensions.errorHandling, 10);
+      // 1 function, 0 try/throw => absent-coverage base + custom error bonus
+      assert.equal(dimensions.errorHandling, 23);
     });
 
     it('finds try/catch in nested subdirectory file via _collectFiles injection', async () => {
@@ -261,7 +261,7 @@ describe('maturity-engine', () => {
       });
       const dims = await scoreMaturityDimensions(ctx);
       // 1 function, 1 try, 1 throw → ratio 2/1 = 2.0 → capped 100
-      assert.equal(dims.errorHandling, 100);
+      assert.equal(dims.errorHandling, 95);
     });
 
     it('finds custom error class in deeply nested file via _collectFiles', async () => {
@@ -285,7 +285,7 @@ describe('maturity-engine', () => {
       await fs.writeFile(path.join(coreDir, 'main.ts'), content, 'utf8');
       // No _collectFiles injection — exercises real defaultCollectFiles recursion
       const dims = await scoreMaturityDimensions(makeCtx(tmpDir));
-      assert.equal(dims.errorHandling, 100);
+      assert.equal(dims.errorHandling, 95);
     });
   });
 

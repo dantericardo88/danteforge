@@ -4,11 +4,15 @@
     "module": "NodeNext",
     "moduleResolution": "NodeNext",
     "outDir": "./dist",
-    "rootDir": "./src",
+    "rootDir": ".",
+    "baseUrl": ".",
+    "paths": {
+      "@danteforge/evidence-chain": ["packages/evidence-chain/src/index.ts"]
+    },
     "strict": true,
     "esModuleInterop": true,
     "skipLibCheck": true
   },
-  "include": ["src/**/*"],
-  "exclude": ["node_modules", "dist"]
+  "include": ["src/**/*", "packages/evidence-chain/src/**/*"],
+  "exclude": ["node_modules", "dist", "packages/*/dist"]
 }

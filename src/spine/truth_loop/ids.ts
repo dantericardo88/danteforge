@@ -2,9 +2,10 @@
  * ID generators for truth-loop entities. Deterministic where possible.
  */
 
-import { createHash, randomUUID } from 'node:crypto';
+import { randomUUID } from 'node:crypto';
 import { existsSync, readdirSync } from 'node:fs';
 import { resolve } from 'node:path';
+import { sha256 } from '@danteforge/evidence-chain';
 
 export function nextRunId(rootDir: string, now: Date = new Date()): string {
   const yyyy = now.getUTCFullYear();
@@ -48,6 +49,4 @@ export function newBudgetEnvelopeId(runId: string): string {
   return `bud_${runId.slice(4)}`;
 }
 
-export function sha256(input: string | Buffer): string {
-  return createHash('sha256').update(input).digest('hex');
-}
+export { sha256 };

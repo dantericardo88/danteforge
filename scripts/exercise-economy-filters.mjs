@@ -1,10 +1,11 @@
-// Inferno E — exercise Context Economy filters on real verbose commands
+// Inferno E -- exercise Context Economy filters on real verbose commands
 // and write the resulting savings to the ledger.
 //
 // This script is intentionally a one-shot: it produces real ledger evidence
 // to demonstrate that Article XIV is not just instrumented but earning savings.
 
 import { execFileSync } from 'node:child_process';
+import 'tsx/esm';
 
 const { gitFilter } = await import('../src/core/context-economy/filters/git.js');
 const { npmFilter } = await import('../src/core/context-economy/filters/npm.js');

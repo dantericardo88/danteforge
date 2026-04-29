@@ -5,18 +5,21 @@
  * Discover commands dynamically from the CLI's Commander program.
  * Falls back to the static COMPLETION_COMMANDS list if discovery fails.
  */
+function filterCommandFiles(files: string[]): string[] {
+  return files
+    .filter(f => f.endsWith('.ts') || f.endsWith('.js'))
+    .filter(f => f !== 'index.ts' && f !== 'index.js' && f !== 'completion.ts' && f !== 'completion.js')
+    .map(f => f.replace(/\.(ts|js)$/, ''))
+    .filter(f => !f.startsWith('_'));
+}
+
 export async function discoverCommands(): Promise<string[]> {
   try {
     const { readdirSync } = await import('fs');
-    const { join, dirname } = await import('path');
+    const { dirname } = await import('path');
     const { fileURLToPath } = await import('url');
     const commandsDir = dirname(fileURLToPath(import.meta.url));
-    const files = readdirSync(commandsDir);
-    const commands = files
-      .filter(f => f.endsWith('.ts') || f.endsWith('.js'))
-      .filter(f => f !== 'index.ts' && f !== 'index.js' && f !== 'completion.ts' && f !== 'completion.js')
-      .map(f => f.replace(/\.(ts|js)$/, ''))
-      .filter(f => !f.startsWith('_'));
+    const commands = filterCommandFiles(readdirSync(commandsDir));
     return commands.length > 0 ? commands : [...COMPLETION_COMMANDS];
   } catch {
     return [...COMPLETION_COMMANDS];
@@ -43,7 +46,7 @@ export const COMPLETION_COMMANDS = [
   'commit', 'branch', 'pr',
   // Tools
   'compact', 'import', 'skills', 'feedback', 'update-mcp', 'docs',
-  'ship', 'pack', 'ci-setup', 'proof', 'benchmark', 'benchmark-llm',
+  'ship', 'pack', 'ci-setup', 'proof', 'time-machine', 'benchmark', 'benchmark-llm',
   'explain', 'quickstart', 'plugin', 'demo',
   // Meta
   'help', 'workflow', 'wiki-ingest', 'wiki-lint', 'wiki-query',
@@ -51,6 +54,10 @@ export const COMPLETION_COMMANDS = [
 ] as const;
 
 export type DanteForgeCommand = (typeof COMPLETION_COMMANDS)[number];
+
+function isKnownCommand(name: string): boolean {
+  return (COMPLETION_COMMANDS as readonly string[]).includes(name);
+}
 
 const ZSH_CMD_ENTRIES = [
   ['init', 'Set up a new DanteForge project'],
@@ -115,6 +122,7 @@ const ZSH_CMD_ENTRIES = [
   ['pack', 'Pack project for distribution'],
   ['ci-setup', 'Set up CI configuration'],
   ['proof', 'Generate proof of work'],
+  ['time-machine', 'Snapshot, verify, restore, and query evidence history'],
   ['benchmark', 'Run benchmarks'],
   ['benchmark-llm', 'Benchmark LLM providers'],
   ['explain', 'Explain a term or concept'],

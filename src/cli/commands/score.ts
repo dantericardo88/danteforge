@@ -121,6 +121,10 @@ const SCORE_DISPLAY_WEIGHTS: Record<ScoringDimension, number> = {
   communityAdoption:      0.01,
 };
 
+function getDisplayWeight(dim: ScoringDimension): number {
+  return SCORE_DISPLAY_WEIGHTS[dim] ?? 0;
+}
+
 // ── Static action lookup (no LLM) ────────────────────────────────────────────
 
 const DIMENSION_ACTIONS: Record<ScoringDimension, string> = {
@@ -557,42 +561,61 @@ async function runScorePostActions(
 
 // ── Main ──────────────────────────────────────────────────────────────────────
 
-export async function score(options: ScoreOptions = {}): Promise<ScoreResult> {
-  const cwd = options.cwd ?? process.cwd();
-  const emit = options._stdout ?? ((line: string) => logger.info(line));
-  const runPrimeFn = options._runPrime;
-  const useLegacyInjectionPath = Boolean(
+function shouldUseLegacyInjectionPath(options: ScoreOptions): boolean {
+  return Boolean(
     options._harshScore || options._loadState || options._saveState || options._getGitSha
     || options._listSkillDirs || options._fileExists || options._readHistory || options._writeHistory
     || options._gitLog || options._listDir || options._fileExistsStrict,
   );
+}
 
-  if (!useLegacyInjectionPath) {
-    const canonical = await computeCanonicalScore(cwd);
-    const result = canonicalScoreToHarshResult(canonical);
-
+function renderDimensionsBlock(
+  emit: (line: string) => void,
+  result: { displayDimensions: Record<string, number> },
+  full: boolean | undefined
+): void {
+  if (full) {
+    const dims = (Object.entries(result.displayDimensions) as [ScoringDimension, number][]).sort((a, b) => a[1] - b[1]);
+    emit('  All 19 dimensions (worst gaps first):');
     emit('');
-    emit(`  ${result.displayScore.toFixed(1)}/10  - ${displayVerdict(result.verdict)}`);
+    dims.forEach(([dim, sc]) => {
+      const wt = Math.round((SCORE_DISPLAY_WEIGHTS[dim] ?? 0) * 100);
+      emit(`  ${dim.padEnd(26)}${sc.toFixed(1)}  (weight ${`${wt}%`.padStart(4)})`);
+    });
     emit('');
+    emit('  For LLM competitor benchmarking: danteforge assess');
+  } else {
+    emit('  Run with --full for all 19 dimensions.');
+  }
+}
 
-    const p0Items = await buildAndRenderP0Items(emit, result, cwd, options);
+async function scoreCanonicalPath(options: ScoreOptions, cwd: string, emit: (line: string) => void): Promise<ScoreResult> {
+  const canonical = await computeCanonicalScore(cwd);
+  const result = canonicalScoreToHarshResult(canonical);
+  emit('');
+  emit(`  ${result.displayScore.toFixed(1)}/10  - ${displayVerdict(result.verdict)}`);
+  emit('');
+  const p0Items = await buildAndRenderP0Items(emit, result, cwd, options);
+  renderDimensionsBlock(emit, result, options.full);
+  const adversarialResult = await runScorePostActions(options, result, emit, cwd, options._runPrime);
+  return { displayScore: result.displayScore, verdict: result.verdict, p0Items, displayDimensions: result.displayDimensions, adversarialResult };
+}
 
-    if (options.full) {
-      const dims = (Object.entries(result.displayDimensions) as [ScoringDimension, number][]).sort((a, b) => a[1] - b[1]);
-      emit('  All 19 dimensions (worst gaps first):');
-      emit('');
-      dims.forEach(([dim, sc]) => {
-        const wt = Math.round((SCORE_DISPLAY_WEIGHTS[dim] ?? 0) * 100);
-        emit(`  ${dim.padEnd(26)}${sc.toFixed(1)}  (weight ${`${wt}%`.padStart(4)})`);
-      });
-      emit('');
-      emit('  For LLM competitor benchmarking: danteforge assess');
-    } else {
-      emit('  Run with --full for all 19 dimensions.');
-    }
+function computeSessionDelta(state: import('../../core/state.js').DanteState, displayScore: number): number | undefined {
+  const baselineAge = state.sessionBaselineTimestamp ? Date.now() - new Date(state.sessionBaselineTimestamp).getTime() : Infinity;
+  if (baselineAge > BASELINE_TTL_MS) { state.sessionBaselineScore = undefined; state.sessionBaselineTimestamp = undefined; }
+  if (state.sessionBaselineScore !== undefined) return displayScore - state.sessionBaselineScore;
+  state.sessionBaselineScore = displayScore;
+  state.sessionBaselineTimestamp = new Date().toISOString();
+  return undefined;
+}
 
-    const adversarialResult = await runScorePostActions(options, result, emit, cwd, runPrimeFn);
-    return { displayScore: result.displayScore, verdict: result.verdict, p0Items, displayDimensions: result.displayDimensions, adversarialResult };
+export async function score(options: ScoreOptions = {}): Promise<ScoreResult> {
+  const cwd = options.cwd ?? process.cwd();
+  const emit = options._stdout ?? ((line: string) => logger.info(line));
+
+  if (!shouldUseLegacyInjectionPath(options)) {
+    return scoreCanonicalPath(options, cwd, emit);
   }
 
   const harshScoreFn = options._harshScore ?? computeHarshScore;
@@ -613,16 +636,7 @@ export async function score(options: ScoreOptions = {}): Promise<ScoreResult> {
   const strict = await computeStrictDimensions(cwd, options._gitLog, options._fileExistsStrict, options._listDir);
   await applyStrictOrAntiInflation(options, result, cwd, strict, emit);
 
-  const baselineAge = state.sessionBaselineTimestamp ? Date.now() - new Date(state.sessionBaselineTimestamp).getTime() : Infinity;
-  if (baselineAge > BASELINE_TTL_MS) { state.sessionBaselineScore = undefined; state.sessionBaselineTimestamp = undefined; }
-  let sessionDelta: number | undefined;
-  if (state.sessionBaselineScore !== undefined) {
-    sessionDelta = result.displayScore - state.sessionBaselineScore;
-  } else {
-    state.sessionBaselineScore = result.displayScore;
-    state.sessionBaselineTimestamp = new Date().toISOString();
-  }
-
+  const sessionDelta = computeSessionDelta(state, result.displayScore);
   const gitSha = await getGitSha().catch(() => undefined);
   const updatedState = appendScoreHistory(state, { timestamp: new Date().toISOString(), displayScore: result.displayScore, gitSha });
   await saveStateFn(updatedState, { cwd });
@@ -635,22 +649,8 @@ export async function score(options: ScoreOptions = {}): Promise<ScoreResult> {
   emit('');
 
   const p0Items = await buildAndRenderP0Items(emit, result, cwd, options);
-
-  if (options.full) {
-    const dims = (Object.entries(result.displayDimensions) as [ScoringDimension, number][]).sort((a, b) => a[1] - b[1]);
-    emit('  All 19 dimensions (worst gaps first):');
-    emit('');
-    dims.forEach(([dim, sc]) => {
-      const wt = Math.round((SCORE_DISPLAY_WEIGHTS[dim] ?? 0) * 100);
-      emit(`  ${dim.padEnd(26)}${sc.toFixed(1)}  (weight ${`${wt}%`.padStart(4)})`);
-    });
-    emit('');
-    emit('  For LLM competitor benchmarking: danteforge assess');
-  } else {
-    emit('  Run with --full for all 19 dimensions.');
-  }
-
-  const adversarialResult = await runScorePostActions(options, result, emit, cwd, runPrimeFn);
+  renderDimensionsBlock(emit, result, options.full);
+  const adversarialResult = await runScorePostActions(options, result, emit, cwd, options._runPrime);
 
   return { displayScore: result.displayScore, verdict: result.verdict, p0Items, sessionDelta, displayDimensions: result.displayDimensions, adversarialResult };
 }

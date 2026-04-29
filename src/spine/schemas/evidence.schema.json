@@ -2,7 +2,8 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://danteforge.dev/spine/evidence.schema.json",
   "title": "Evidence",
-  "description": "Verifiable proof tied to file/test/hash/log.",
+  "version": "1.0.0",
+  "description": "Verifiable proof tied to file/test/hash/log. Frozen at v1.0; additive optional fields may ship as 1.x; required-field changes require a 2.0 major bump.",
   "type": "object",
   "additionalProperties": false,
   "required": ["evidenceId", "runId", "artifactId", "kind", "claimSupported", "verificationMethod", "status"],
@@ -27,6 +28,7 @@
     },
     "location": { "type": "string" },
     "hash": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
+    "proof": { "type": "object", "description": "Evidence-chain v1 proof bundle for this evidence record." },
     "claimId": { "type": "string" }
   }
 }

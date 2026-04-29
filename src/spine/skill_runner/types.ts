@@ -6,9 +6,9 @@
  */
 
 import type { Artifact, Evidence, NextAction, Verdict } from '../truth_loop/types.js';
-import type { GateResult, ThreeWayGate, GateName, GateStatus } from '../three_way_gate.js';
+import type { EvidenceCheck, GateResult, ThreeWayGate, GateName, GateStatus } from '../three_way_gate.js';
 
-export type { GateResult, ThreeWayGate, GateName, GateStatus };
+export type { EvidenceCheck, GateResult, ThreeWayGate, GateName, GateStatus };
 
 export interface SkillFrontmatter {
   name: string;
@@ -30,6 +30,8 @@ export interface SkillRunInputs {
   inputs: Record<string, unknown>;
   /** Run identifier from the parent truth-loop (or generated standalone). */
   runId?: string;
+  /** Git SHA to bind proof envelopes to. If omitted, the runner tries to read it from repo. */
+  gitSha?: string | null;
   /** Frontmatter loaded from SKILL.md. */
   frontmatter: SkillFrontmatter;
   /** Pre-flight scorer that returns a 0-10 score per dimension. Inject for tests. */
@@ -37,9 +39,16 @@ export interface SkillRunInputs {
   /** Forge policy gate evaluator (inject for tests). Default: green. */
   policyGate?: (output: unknown) => GateResult;
   /** Evidence chain integrity check (inject for tests). Default: green if Artifact valid. */
-  evidenceCheck?: (artifacts: Artifact[]) => GateResult;
+  evidenceCheck?: EvidenceCheck;
   /** Override the now() clock for deterministic IDs. */
   now?: Date;
+  /**
+   * When true, the runner uses the real harsh-scorer (computeHarshScore + applyStrictOverrides
+   * against `repo`) to grade declared `requiredDimensions`, instead of the injected `scorer`.
+   * Closes PRD-MASTER §7.5 #2 ("each skill scores 9.0+ on the harsh double scoring matrix
+   * on its required dimensions") with real scoring rather than fixture stubs.
+   */
+  useRealScorer?: boolean;
 }
 
 export interface SkillRunResult {

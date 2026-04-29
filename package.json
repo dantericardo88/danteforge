@@ -4,6 +4,9 @@
   "description": "Agentic development CLI - structured specs, execution waves, multi-agent orchestration, skills, gates, TDD, worktrees",
   "license": "MIT",
   "type": "module",
+  "workspaces": [
+    "packages/*"
+  ],
   "engines": {
     "node": ">=18.0.0"
   },
@@ -57,6 +60,7 @@
     ".claude-plugin",
     "dist",
     "src/harvested/dante-agents/skills",
+    "packages/evidence-chain",
     "agents",
     "commands",
     "hooks",
@@ -78,6 +82,7 @@
     "dev": "tsup --watch",
     "typecheck": "tsc --noEmit",
     "test": "node scripts/run-test-suite.mjs",
+    "test:parallel-experimental": "node scripts/run-test-suite-parallel.mjs",
     "test:integration": "tsx --test tests/integration/*.test.ts",
     "test:e2e": "tsx --test tests/e2e/*.test.ts",
     "test:coverage": "c8 tsx --test tests/**/*.test.ts && node scripts/write-coverage-summary.mjs",
@@ -87,10 +92,11 @@
     "lint:fix": "eslint . --fix",
     "check:anti-stub": "node scripts/check-anti-stub.mjs",
     "check:plugin-manifests": "node scripts/check-plugin-manifests.mjs",
+    "check:proof-integrity": "node scripts/check-proof-integrity.mjs",
     "sbom:generate": "node scripts/generate-sbom.mjs",
     "sbom:validate": "node scripts/validate-sbom.mjs",
     "verify": "npm run typecheck && npm run lint && npm run check:anti-stub && npm test",
-    "verify:all": "npm run verify && npm run build && npm --prefix vscode-extension run verify",
+    "verify:all": "npm run verify && npm run check:proof-integrity && npm run build && npm --prefix vscode-extension run verify",
     "verify:live": "node scripts/check-live-integrations.mjs",
     "check:cli-smoke": "node scripts/check-cli-smoke.mjs",
     "check:repo-hygiene": "node scripts/check-repo-hygiene.mjs",

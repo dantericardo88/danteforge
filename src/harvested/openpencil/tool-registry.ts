@@ -244,7 +244,8 @@ const MODIFY_TOOL_DEFS: ToolDef[] = [
 ];
 
 // ── Structural Logic (17) ──
-const STRUCTURE_TOOL_DEFS: ToolDef[] = [
+function structureToolDefs(): ToolDef[] {
+  return [
     ['deleteNode', 'Delete a node', { nodeId: { type: 'string', description: 'Node ID', required: true } }],
     ['cloneNode', 'Clone a node', { nodeId: { type: 'string', description: 'Node ID to clone', required: true } }],
     ['groupNodes', 'Group multiple nodes', { nodeIds: { type: 'array', description: 'Array of node IDs to group', required: true }, name: { type: 'string', description: 'Group name', required: false } }],
@@ -262,7 +263,8 @@ const STRUCTURE_TOOL_DEFS: ToolDef[] = [
     ['selectNodes', 'Set the current selection', { nodeIds: { type: 'array', description: 'Node IDs to select', required: true } }],
     ['scrollToNode', 'Scroll viewport to a node', { nodeId: { type: 'string', description: 'Node ID', required: true } }],
     ['lockAllChildren', 'Lock all children of a node', { nodeId: { type: 'string', description: 'Parent node ID', required: true } }],
-];
+  ];
+}
 
 // ── Design Variables / Tokens (11) ──
 const VARIABLE_TOOL_DEFS: ToolDef[] = [
@@ -317,7 +319,7 @@ function buildToolDefinitions(): OPTool[] {
   for (const [n, d, p] of READ_TOOL_DEFS) tools.push({ name: n, description: d, category: 'read', parameters: p, execute: wiredExecutor(n) });
   for (const [n, d, p] of CREATE_TOOL_DEFS) tools.push({ name: n, description: d, category: 'create', parameters: p, execute: wiredExecutor(n) });
   for (const [n, d, p] of MODIFY_TOOL_DEFS) tools.push({ name: n, description: d, category: 'modify', parameters: p, execute: wiredExecutor(n) });
-  for (const [n, d, p] of STRUCTURE_TOOL_DEFS) tools.push({ name: n, description: d, category: 'structure', parameters: p, execute: wiredExecutor(n) });
+  for (const [n, d, p] of structureToolDefs()) tools.push({ name: n, description: d, category: 'structure', parameters: p, execute: wiredExecutor(n) });
   for (const [n, d, p] of VARIABLE_TOOL_DEFS) tools.push({ name: n, description: d, category: 'variables', parameters: p, execute: wiredExecutor(n) });
   for (const [n, d, p] of VECTOR_TOOL_DEFS) tools.push({ name: n, description: d, category: 'vector', parameters: p, execute: wiredExecutor(n) });
   for (const [n, d, p] of ANALYSIS_TOOL_DEFS) tools.push({ name: n, description: d, category: 'analysis', parameters: p, execute: wiredExecutor(n) });

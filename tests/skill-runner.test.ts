@@ -68,6 +68,27 @@ test('skill runner: green path with all dimensions ≥9.0 emits complete verdict
   assert.ok(existsSync(resolve(result.outputDir, 'next_action_prompt.md')));
 });
 
+test('skill runner: proof-seals artifacts with provided git SHA before promotion', async () => {
+  const executor: SkillExecutor = async () => ({ output: { artifact: 'sealed' } });
+
+  const result = await runSkill(executor, {
+    skillName: 'dante-proofed-skill',
+    repo: workspace,
+    inputs: {},
+    runId: 'run_20260428_711',
+    gitSha: 'abc123',
+    frontmatter: {
+      name: 'dante-proofed-skill',
+      description: 'test',
+      requiredDimensions: ['testing']
+    },
+    scorer: () => ({ testing: 9.5 })
+  });
+
+  assert.equal(result.gate.overall, 'green');
+  assert.ok(result.artifacts.every(a => a.proof?.gitSha === 'abc123'));
+});
+
 test('skill runner: red path when a required dimension scores below 9.0', async () => {
   const executor: SkillExecutor = async () => ({ output: 'meh' });
 
@@ -116,6 +137,65 @@ test('skill runner: writes all artifacts to .danteforge/skill-runs/<skill>/<runI
   assert.ok(existsSync(resolve(result.outputDir, 'evidence.json')));
   const persisted = JSON.parse(readFileSync(resolve(result.outputDir, 'artifacts.json'), 'utf-8'));
   assert.equal(persisted.length, 3);
+});
+
+test('skill runner: cap-aware gate — declared dim at structural cap promotes overall to green when useRealScorer=true', async () => {
+  const executor: SkillExecutor = async () => ({ output: { atCapTest: true } });
+  const result = await runSkill(executor, {
+    skillName: 'dante-to-prd',
+    repo: process.cwd(),
+    inputs: {},
+    runId: 'run_20260428_901',
+    frontmatter: {
+      name: 'dante-to-prd',
+      description: 'cap-aware test',
+      requiredDimensions: ['specDrivenPipeline']
+    },
+    useRealScorer: true
+  });
+  assert.equal(result.gate.overall, 'green', `expected green via cap-aware promotion, got ${result.gate.overall}`);
+});
+
+test('skill runner: cap-aware gate red when dim is below BOTH 9.0 AND its structural cap', async () => {
+  const executor: SkillExecutor = async () => ({ output: { redTest: true } });
+  const result = await runSkill(executor, {
+    skillName: 'dante-to-prd',
+    repo: process.cwd(),
+    inputs: {},
+    runId: 'run_20260428_902',
+    frontmatter: {
+      name: 'dante-to-prd',
+      description: 'cap-aware red test',
+      requiredDimensions: ['specDrivenPipeline']
+    },
+    scorer: () => ({ specDrivenPipeline: 5.0 })
+  });
+  assert.equal(result.gate.overall, 'red');
+});
+
+test('skill runner: useRealScorer pulls dim scores from the real harsh-scorer (PRD-MASTER §7.5 #2)', async () => {
+  // Use the actual DanteForge cwd so the real scorer has a real project to grade.
+  // Required dim is `testing` because it's a stable, non-strict-capped dim that should be ≥9.0.
+  const executor: SkillExecutor = async () => ({ output: { realTask: 'phase-B-test' } });
+
+  const result = await runSkill(executor, {
+    skillName: 'dante-tdd',
+    repo: process.cwd(),
+    inputs: {},
+    runId: 'run_20260428_801',
+    frontmatter: {
+      name: 'dante-tdd',
+      description: 'real-scorer test',
+      requiredDimensions: ['testing']  // testing 9.7 in strict mode — should pass
+    },
+    useRealScorer: true
+  });
+
+  // The score must be a real number (not the injected 9.0 default) and reflect actual project state
+  const testingScore = result.scoresByDimension.testing;
+  assert.ok(typeof testingScore === 'number', 'real-scorer should produce a number');
+  assert.ok(testingScore !== 9.0, `expected real-scorer value, got fallback 9.0 (suggests scorer didn't fire)`);
+  assert.ok(testingScore >= 0 && testingScore <= 10, `score out of range: ${testingScore}`);
 });
 
 test('skill runner: surfacedAssumptions become opinion claims in verdict', async () => {

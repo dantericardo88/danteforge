@@ -69,86 +69,60 @@ function formatEntry(entry: MemoryEntry): string {
  * Tier 2 (if budget): Recent decisions and insights
  * Tier 3 (if budget): Historical command summaries
  */
-export function buildProgressiveContext(
-  memories: MemoryEntry[],
-  lessons: string,
-  budget: number,
-): string {
+function populateTier(tier: ContextTier, memories: MemoryEntry[], categories: MemoryEntry['category'][]): void {
+  for (const m of memories) {
+    if (categories.includes(m.category)) {
+      const formatted = formatEntry(m);
+      tier.entries.push(formatted);
+      tier.tokens += estimateTokens(formatted);
+    }
+  }
+}
+
+function appendLessonsToTier(tier: ContextTier, lessons: string): void {
+  if (lessons.length === 0) return;
+  const lessonLines = lessons.split('\n').filter(l => l.trim().startsWith('-')).slice(0, 10);
+  for (const line of lessonLines) {
+    tier.entries.push(`[LESSON] ${line.trim().slice(2)}`);
+    tier.tokens += estimateTokens(line);
+  }
+}
+
+function packTiersIntoBudget(tiers: ContextTier[], budget: number): string[] {
+  const parts: string[] = [];
+  let remainingBudget = budget;
+  for (const tier of tiers) {
+    if (tier.entries.length === 0) continue;
+    if (remainingBudget <= 0) break;
+    const tierText = tier.entries.join('\n');
+    const tierTokens = estimateTokens(tierText);
+    if (tierTokens <= remainingBudget) {
+      parts.push(`### ${tier.label}\n${tierText}`);
+      remainingBudget -= tierTokens;
+    } else {
+      const partialEntries: string[] = [];
+      for (const entry of tier.entries) {
+        const entryTokens = estimateTokens(entry);
+        if (entryTokens <= remainingBudget) { partialEntries.push(entry); remainingBudget -= entryTokens; }
+        else break;
+      }
+      if (partialEntries.length > 0) parts.push(`### ${tier.label}\n${partialEntries.join('\n')}`);
+    }
+  }
+  return parts;
+}
+
+export function buildProgressiveContext(memories: MemoryEntry[], lessons: string, budget: number): string {
   const tiers: ContextTier[] = [
     { label: 'Critical Corrections', entries: [], tokens: 0 },
     { label: 'Recent Decisions', entries: [], tokens: 0 },
     { label: 'Historical Context', entries: [], tokens: 0 },
   ];
-
-  // Tier 1: Corrections and errors (highest priority)
-  for (const m of memories) {
-    if (m.category === 'correction' || m.category === 'error') {
-      const formatted = formatEntry(m);
-      tiers[0].entries.push(formatted);
-      tiers[0].tokens += estimateTokens(formatted);
-    }
-  }
-
-  // Add lessons to tier 1 if available
-  if (lessons.length > 0) {
-    const lessonLines = lessons.split('\n').filter(l => l.trim().startsWith('-')).slice(0, 10);
-    for (const line of lessonLines) {
-      tiers[0].entries.push(`[LESSON] ${line.trim().slice(2)}`);
-      tiers[0].tokens += estimateTokens(line);
-    }
-  }
-
-  // Tier 2: Recent decisions and insights
-  for (const m of memories) {
-    if (m.category === 'decision' || m.category === 'insight') {
-      const formatted = formatEntry(m);
-      tiers[1].entries.push(formatted);
-      tiers[1].tokens += estimateTokens(formatted);
-    }
-  }
-
-  // Tier 3: Command summaries
-  for (const m of memories) {
-    if (m.category === 'command') {
-      const formatted = formatEntry(m);
-      tiers[2].entries.push(formatted);
-      tiers[2].tokens += estimateTokens(formatted);
-    }
-  }
-
-  // Progressively include tiers within budget
-  const parts: string[] = [];
-  let remainingBudget = budget;
-
-  for (const tier of tiers) {
-    if (tier.entries.length === 0) continue;
-    if (remainingBudget <= 0) break;
-
-    const tierText = tier.entries.join('\n');
-    const tierTokens = estimateTokens(tierText);
-
-    if (tierTokens <= remainingBudget) {
-      parts.push(`### ${tier.label}\n${tierText}`);
-      remainingBudget -= tierTokens;
-    } else {
-      // Partial inclusion: take what fits
-      const partialEntries: string[] = [];
-      for (const entry of tier.entries) {
-        const entryTokens = estimateTokens(entry);
-        if (entryTokens <= remainingBudget) {
-          partialEntries.push(entry);
-          remainingBudget -= entryTokens;
-        } else {
-          break;
-        }
-      }
-      if (partialEntries.length > 0) {
-        parts.push(`### ${tier.label}\n${partialEntries.join('\n')}`);
-      }
-    }
-  }
-
-  return parts.join('\n\n');
+  populateTier(tiers[0]!, memories, ['correction', 'error']);
+  appendLessonsToTier(tiers[0]!, lessons);
+  populateTier(tiers[1]!, memories, ['decision', 'insight']);
+  populateTier(tiers[2]!, memories, ['command']);
+  return packTiersIntoBudget(tiers, budget).join('\n\n');
 }
 
 /**

@@ -97,6 +97,28 @@ after(async () => { await rm(tmpDir, { recursive: true, force: true }); });
 Run all tests: `npm test`
 Run a single test file: `npx tsx --test tests/my-command.test.ts`
 
+## Time Machine Validation
+
+DanteForge's Time Machine stores local, tamper-evident evidence history under `.danteforge/time-machine/`. Restores always write to an output directory in v0.1; they never overwrite the working tree in place.
+
+Common commands:
+
+```bash
+danteforge time-machine commit --path docs --label docs-snapshot
+danteforge time-machine verify
+danteforge time-machine restore --commit <id> --out .danteforge/time-machine/restores/<id>
+danteforge time-machine query --kind file-history --path docs/TIME_MACHINE_VALIDATION_REPORT.md
+danteforge time-machine validate --class A,B,C --scale prd --json
+```
+
+Validation modes:
+
+- `--delegate52-mode harness` is the default and never spends API budget.
+- `--delegate52-mode import` evaluates existing JSON/JSONL artifacts supplied through `--delegate52-dataset`.
+- `--delegate52-mode live` is opt-in only and must not claim a completed DELEGATE-52 replication unless real provider/model/budget/result artifacts are present.
+
+Use `docs/TIME_MACHINE_VALIDATION_REPORT.md` for the current truth boundary: deterministic A/B/C/E/F/G harness evidence exists; live DELEGATE-52 publication evidence is not yet executed.
+
 ## TypeScript Conventions
 
 - **No `as any`** — use type guards (`instanceof`, `typeof`, custom predicates)
@@ -123,8 +145,9 @@ For details on the premium license system and workspace security model, see `doc
 
 ## Quality Gates
 
-- `npm run verify` (fail-closed): `typecheck + lint + tests`
-- `npm run verify:all`: root verify + CLI build + VS Code extension verification
+- `npm run verify` (fail-closed): `typecheck + lint + anti-stub + tests`
+- `npm run verify:all`: root verify + **proof-corpus integrity** + CLI build + VS Code extension verification
+- `npm run check:proof-integrity`: walks `.danteforge/evidence/` recursively and verifies every Pass-11+ proof-anchored receipt; exits non-zero on any tampered or unparseable receipt. Pass `--json` for machine-readable output. Pass a directory argument to verify a different tree.
 - `npm run check:repo-hygiene`: fails if generated/vendor paths are tracked by git
 - `npm run check:repo-hygiene:strict`: also fails if generated/vendor paths merely exist in the checkout (use in fresh CI clones)
 - `npm run check:third-party-notices`: fails if `THIRD_PARTY_NOTICES.md` still has TODO placeholders

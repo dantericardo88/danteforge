@@ -1,3 +1,18 @@
+import { execFile } from 'node:child_process';
+import fs from 'node:fs/promises';
+import { promisify } from 'node:util';
+
+import {
+  HashChain,
+  ReceiptChain,
+  hashDict,
+  verifyBundle,
+  verifyReceipt,
+  type EvidenceBundle,
+  type HashChainEntry,
+  type Receipt,
+  type VerificationResult,
+} from '@danteforge/evidence-chain';
 import { runProof, generateProofReport } from '../../core/proof-engine.js';
 import type { ProofEngineOptions, ProofReport, PipelineProofOptions, PipelineProofReport, ConvergenceProofOptions, ConvergenceProofReport } from '../../core/proof-engine.js';
 import type { SemanticScoringOptions } from '../../core/pdse-semantic.js';
@@ -76,6 +91,9 @@ export interface ProofCommandOptions {
   prompt?: string;
   pipeline?: boolean;
   convergence?: boolean;
+  verify?: string;
+  verifyAll?: string;
+  skipGit?: boolean;
   since?: string;
   cwd?: string;
   semantic?: boolean;
@@ -87,9 +105,25 @@ export interface ProofCommandOptions {
   _semanticOpts?: SemanticScoringOptions;
 }
 
+const execFileAsync = promisify(execFile);
+
 export async function proof(options: ProofCommandOptions = {}): Promise<void> {
   const out = options._stdout ?? console.log;
   const cwd = options.cwd ?? process.cwd();
+
+  if (options.verify) {
+    const report = await verifyProofFile(options.verify, { cwd, skipGit: options.skipGit });
+    out(JSON.stringify(report, null, 2));
+    if (!report.valid && !options._stdout) process.exitCode = 1;
+    return;
+  }
+
+  if (options.verifyAll) {
+    const report = await verifyProofCorpus(options.verifyAll, { cwd, skipGit: options.skipGit });
+    out(JSON.stringify(report, null, 2));
+    if (report.failed > 0 && !options._stdout) process.exitCode = 1;
+    return;
+  }
 
   if (options.since) {
     const loadHistory = options._loadScoreHistory ?? defaultLoadScoreHistory;
@@ -121,11 +155,15 @@ export async function proof(options: ProofCommandOptions = {}): Promise<void> {
     out('Usage: danteforge proof --prompt "Your raw prompt here"');
     out('       danteforge proof --pipeline');
     out('       danteforge proof --convergence');
+    out('       danteforge proof --verify <receipt.json>');
+    out('       danteforge proof --verify-all <directory>');
     out('');
     out('Scores your raw prompt against DanteForge structured artifacts and shows the improvement.');
     out('Flags:');
     out('  --pipeline     Generate structured pipeline execution evidence report');
     out('  --convergence  Generate structured convergence & self-healing evidence report');
+    out('  --verify       Verify an evidence-chain receipt, bundle, or proof-bearing JSON file');
+    out('  --verify-all   Recursively verify every receipt under <directory>; report corpus stats');
     out('  --semantic     Enhance PDSE scoring with LLM semantic assessment (requires LLM connection)');
     return;
   }
@@ -143,6 +181,266 @@ export async function proof(options: ProofCommandOptions = {}): Promise<void> {
   for (const line of reportText.split('\n')) {
     out(line);
   }
+}
+
+interface ProofVerifyOptions {
+  cwd: string;
+  skipGit?: boolean;
+}
+
+interface GitBindingCheck {
+  valid: boolean;
+  skipped: boolean;
+  expected: string | null;
+  current: string | null;
+  reason?: string;
+}
+
+export interface ProofVerifyReport {
+  valid: boolean;
+  target: string;
+  detected: string[];
+  checks: Record<string, VerificationResult | GitBindingCheck>;
+  errors: string[];
+}
+
+export async function verifyProofFile(target: string, options: ProofVerifyOptions): Promise<ProofVerifyReport> {
+  const raw = await fs.readFile(target, 'utf8');
+  const parsed = JSON.parse(raw) as unknown;
+  const checks: Record<string, VerificationResult | GitBindingCheck> = {};
+  const detected: string[] = [];
+  const errors: string[] = [];
+  const gitShas: Array<string | null | undefined> = [];
+
+  if (isReceipt(parsed)) {
+    detected.push('receipt');
+    checks.receiptIntegrity = verifyReceipt(parsed);
+    gitShas.push(parsed.gitSha);
+  }
+
+  if (isEvidenceBundle(parsed)) {
+    detected.push('evidenceBundle');
+    checks.bundleIntegrity = verifyBundle(parsed);
+    gitShas.push(parsed.gitSha);
+  }
+
+  if (isObject(parsed) && isEvidenceBundle(parsed.proof)) {
+    detected.push('proofEnvelope');
+    checks.bundleIntegrity = verifyBundle(parsed.proof);
+    checks.envelopeBinding = verifyEnvelopeBinding(parsed, parsed.proof);
+    gitShas.push(parsed.proof.gitSha);
+  } else if (isObject(parsed) && isReceipt(parsed.proof)) {
+    detected.push('proofReceipt');
+    checks.receiptIntegrity = verifyReceipt(parsed.proof);
+    checks.envelopeBinding = verifyReceiptEnvelopeBinding(parsed, parsed.proof);
+    gitShas.push(parsed.proof.gitSha);
+  }
+
+  if (isObject(parsed) && Array.isArray(parsed.entries) && parsed.entries.every(isHashChainEntry)) {
+    detected.push('hashChain');
+    checks.hashChainContinuity = HashChain.verifyEntries(parsed.entries);
+  }
+
+  if (isObject(parsed) && Array.isArray(parsed.receipts) && parsed.receipts.every(isReceipt)) {
+    detected.push('receiptChain');
+    checks.receiptChainContinuity = ReceiptChain.verifyReceipts(parsed.receipts);
+    gitShas.push(...parsed.receipts.map(receipt => receipt.gitSha));
+  }
+
+  if (Array.isArray(parsed) && parsed.every(isReceipt)) {
+    detected.push('receiptChain');
+    checks.receiptChainContinuity = ReceiptChain.verifyReceipts(parsed);
+    gitShas.push(...parsed.map(receipt => receipt.gitSha));
+  }
+
+  if (detected.length === 0) {
+    checks.format = { valid: false, errors: ['no evidence-chain receipt, bundle, chain, or proof envelope detected'] };
+  }
+
+  checks.gitShaBinding = await verifyGitBinding(gitShas, options);
+
+  for (const [name, check] of Object.entries(checks)) {
+    if (!check.valid) {
+      if ('errors' in check) {
+        errors.push(...check.errors.map((error: string) => `${name}: ${error}`));
+      } else {
+        errors.push(`${name}: ${check.reason ?? 'invalid'}`);
+      }
+    }
+  }
+
+  return {
+    valid: errors.length === 0,
+    target,
+    detected,
+    checks,
+    errors,
+  };
+}
+
+function verifyEnvelopeBinding(container: Record<string, unknown>, proof: EvidenceBundle<unknown>): VerificationResult {
+  const { proof: _proof, ...payload } = container;
+  const expectedPayloadHash = hashDict([payload]);
+  const errors = proof.payloadHash === expectedPayloadHash ? [] : ['proof payloadHash does not match enclosing JSON'];
+  return {
+    valid: errors.length === 0,
+    errors,
+    expectedHash: expectedPayloadHash,
+    actualHash: proof.payloadHash,
+  };
+}
+
+function verifyReceiptEnvelopeBinding(container: Record<string, unknown>, proof: Receipt<unknown>): VerificationResult {
+  const { proof: _proof, ...payload } = container;
+  const expectedPayloadHash = hashDict(payload);
+  const errors = proof.payloadHash === expectedPayloadHash ? [] : ['proof payloadHash does not match enclosing JSON'];
+  return {
+    valid: errors.length === 0,
+    errors,
+    expectedHash: expectedPayloadHash,
+    actualHash: proof.payloadHash,
+  };
+}
+
+// ── Corpus-wide verifier ──────────────────────────────────────────────────────
+
+export interface ProofCorpusEntry {
+  path: string;
+  status: 'verified' | 'failed' | 'skipped' | 'errored';
+  detected: string[];
+  errors: string[];
+}
+
+export interface ProofCorpusReport {
+  root: string;
+  scannedAt: string;
+  totalFiles: number;
+  verified: number;
+  failed: number;
+  skipped: number;       // files without any detected proof envelope
+  errored: number;       // unreadable / unparseable files
+  proofAdoptionRate: number;  // verified / (verified + failed + skipped)
+  failures: ProofCorpusEntry[];
+  errors: ProofCorpusEntry[];
+}
+
+async function listJsonFilesRecursive(dir: string): Promise<string[]> {
+  const out: string[] = [];
+  let entries: import('node:fs').Dirent[];
+  try { entries = await fs.readdir(dir, { withFileTypes: true }); } catch { return out; }
+  for (const entry of entries) {
+    if (entry.name.startsWith('.')) continue;
+    const full = `${dir}/${entry.name}`;
+    if (entry.isDirectory()) {
+      out.push(...(await listJsonFilesRecursive(full)));
+    } else if (entry.isFile() && entry.name.endsWith('.json')) {
+      out.push(full);
+    }
+  }
+  return out;
+}
+
+export async function verifyProofCorpus(rootDir: string, options: ProofVerifyOptions): Promise<ProofCorpusReport> {
+  const files = await listJsonFilesRecursive(rootDir);
+  const failures: ProofCorpusEntry[] = [];
+  const errors: ProofCorpusEntry[] = [];
+  let verified = 0;
+  let failed = 0;
+  let skipped = 0;
+  let errored = 0;
+
+  for (const path of files) {
+    try {
+      const report = await verifyProofFile(path, options);
+      const hasProof = report.detected.some(d => d !== 'format');
+      if (!hasProof) {
+        skipped++;
+        continue;
+      }
+      if (report.valid) {
+        verified++;
+      } else {
+        failed++;
+        failures.push({ path, status: 'failed', detected: report.detected, errors: report.errors });
+      }
+    } catch (err) {
+      errored++;
+      errors.push({
+        path,
+        status: 'errored',
+        detected: [],
+        errors: [err instanceof Error ? err.message : String(err)],
+      });
+    }
+  }
+
+  const proofablePopulation = verified + failed + skipped;
+  const proofAdoptionRate = proofablePopulation === 0 ? 0 : Math.round((verified / proofablePopulation) * 1000) / 1000;
+
+  return {
+    root: rootDir,
+    scannedAt: new Date().toISOString(),
+    totalFiles: files.length,
+    verified,
+    failed,
+    skipped,
+    errored,
+    proofAdoptionRate,
+    failures,
+    errors,
+  };
+}
+
+async function verifyGitBinding(gitShas: Array<string | null | undefined>, options: ProofVerifyOptions): Promise<GitBindingCheck> {
+  const expected = gitShas.find((sha): sha is string => typeof sha === 'string' && sha.length > 0) ?? null;
+  if (!expected) return { valid: true, skipped: true, expected, current: null, reason: 'no gitSha in proof' };
+  if (options.skipGit) return { valid: true, skipped: true, expected, current: null, reason: 'git binding skipped' };
+  try {
+    const { stdout } = await execFileAsync('git', ['rev-parse', 'HEAD'], { cwd: options.cwd, encoding: 'utf8' });
+    const current = stdout.trim();
+    return { valid: current === expected, skipped: false, expected, current };
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    return { valid: false, skipped: false, expected, current: null, reason: message };
+  }
+}
+
+function isObject(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
+function isReceipt(value: unknown): value is Receipt<unknown> {
+  return isObject(value)
+    && value.schemaVersion === 'evidence-chain.v1'
+    && typeof value.receiptId === 'string'
+    && typeof value.action === 'string'
+    && typeof value.payloadHash === 'string'
+    && typeof value.prevHash === 'string'
+    && typeof value.hash === 'string'
+    && Object.prototype.hasOwnProperty.call(value, 'payload');
+}
+
+function isEvidenceBundle(value: unknown): value is EvidenceBundle<unknown> {
+  return isObject(value)
+    && value.schemaVersion === 'evidence-chain.v1'
+    && typeof value.bundleId === 'string'
+    && typeof value.payloadHash === 'string'
+    && typeof value.prevHash === 'string'
+    && typeof value.merkleRoot === 'string'
+    && typeof value.hash === 'string'
+    && Array.isArray(value.evidence)
+    && Array.isArray(value.evidenceHashes)
+    && Array.isArray(value.inclusionProofs);
+}
+
+function isHashChainEntry(value: unknown): value is HashChainEntry<unknown> {
+  return isObject(value)
+    && typeof value.index === 'number'
+    && typeof value.payloadHash === 'string'
+    && typeof value.prevHash === 'string'
+    && typeof value.hash === 'string'
+    && typeof value.createdAt === 'string'
+    && Object.prototype.hasOwnProperty.call(value, 'payload');
 }
 
 async function defaultLoadScoreHistory(cwd: string): Promise<{ history: ScoreHistoryEntry[]; currentScore: number }> {

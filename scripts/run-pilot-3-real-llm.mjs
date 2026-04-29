@@ -1,4 +1,4 @@
-// Phase I — Pilot 3 with real LLM. Probes Ollama; if available, runs the
+// Phase I -- Pilot 3 with real LLM. Probes Ollama; if available, runs the
 // Sean Lippay outreach grilling step against a real model and captures
 // real assumptions surfaced by debate-mode round 2.
 //
@@ -6,6 +6,7 @@
 
 import { writeFileSync, mkdirSync } from 'node:fs';
 import { resolve } from 'node:path';
+import 'tsx/esm';
 
 const OLLAMA_HOST = process.env.OLLAMA_HOST ?? 'http://localhost:11434';
 

@@ -3,6 +3,7 @@
 // and unverified features. Produces a 0-10 display score.
 
 import fs from 'fs/promises';
+import { existsSync, readdirSync, readFileSync } from 'node:fs';
 import path from 'path';
 import { loadState, type DanteState } from './state.js';
 import { scoreAllArtifacts } from './pdse.js';
@@ -802,17 +803,96 @@ export function computeContextEconomyScore(cwd: string): number {
   return scoreContextEconomySync(cwd).score;
 }
 
-export function computeEcosystemMcpScore(state: DanteState, _cwd: string): number {
+// Filesystem detectors for ecosystem signals — used when STATE.yaml hasn't
+// been bootstrapped (e.g., during direct trio scoring). Mirrors the logic of
+// `bootstrapEcosystemSignals` in src/cli/commands/score.ts but synchronous so
+// it can run inline inside the scorer without changing callers.
+const SKILL_DIR_CANDIDATES = [
+  'src/harvested/dante-agents/skills',
+  '.dantecode/skills',
+  'Docs/skills',
+  'skills',
+];
+
+export function detectSkillCountSync(cwd: string): number {
+  let count = 0;
+  for (const rel of SKILL_DIR_CANDIDATES) {
+    const dir = path.join(cwd, rel);
+    if (!existsSync(dir)) continue;
+    try {
+      const entries = readdirSync(dir, { withFileTypes: true });
+      for (const e of entries) {
+        if (!e.isDirectory()) continue;
+        if (existsSync(path.join(dir, e.name, 'SKILL.md'))) count++;
+      }
+    } catch { /* skip */ }
+  }
+  // Also count packages/*/SKILL.md (for monorepo-style sister repos)
+  const pkgsDir = path.join(cwd, 'packages');
+  if (existsSync(pkgsDir)) {
+    try {
+      const entries = readdirSync(pkgsDir, { withFileTypes: true });
+      for (const e of entries) {
+        if (!e.isDirectory()) continue;
+        if (existsSync(path.join(pkgsDir, e.name, 'SKILL.md'))) count++;
+      }
+    } catch { /* skip */ }
+  }
+  return count;
+}
+
+export function detectPluginManifestSync(cwd: string): boolean {
+  return existsSync(path.join(cwd, '.claude-plugin', 'plugin.json'));
+}
+
+export function detectMcpToolCountSync(cwd: string): number {
+  // 1) Explicit signal file (cheapest)
+  const signalFile = path.join(cwd, '.danteforge', 'mcp-tool-count.txt');
+  if (existsSync(signalFile)) {
+    try {
+      const n = parseInt(readFileSync(signalFile, 'utf-8').trim(), 10);
+      if (Number.isFinite(n) && n >= 0) return n;
+    } catch { /* fall through */ }
+  }
+  // 2) Best-effort grep on candidate MCP server files
+  const candidates = [
+    path.join(cwd, 'src', 'core', 'mcp-server.ts'),
+    path.join(cwd, 'packages', 'mcp', 'src', 'server.ts'),
+    path.join(cwd, 'packages', 'mcp-server', 'src', 'index.ts'),
+    path.join(cwd, 'packages', 'mcp-server', 'src', 'mcp-server.ts'),
+  ];
+  for (const c of candidates) {
+    if (!existsSync(c)) continue;
+    try {
+      const text = readFileSync(c, 'utf-8');
+      const matches = text.match(/^\s+name:\s*['"][\w_-]+['"]/gm);
+      if (matches && matches.length > 0) return matches.length;
+      const regMatches = text.match(/registerTool\s*\(/g);
+      if (regMatches && regMatches.length > 0) return regMatches.length;
+    } catch { /* skip */ }
+  }
+  return 0;
+}
+
+export function computeEcosystemMcpScore(state: DanteState, cwd: string): number {
   const s = state as unknown as Record<string, unknown>;
   let score = 30; // base: MCP server + skill system exists
-  const skillCount = typeof s['skillCount'] === 'number' ? s['skillCount'] : 0;
+
+  // Filesystem fallback when state hasn't been bootstrapped (trio scoring
+  // doesn't run the score command's bootstrap path, and not all repos have
+  // state.skillCount populated).
+  const skillCount = typeof s['skillCount'] === 'number' ? s['skillCount'] : detectSkillCountSync(cwd);
   if (skillCount >= 10) score += 25;
   else if (skillCount >= 5) score += 15;
   else if (skillCount > 0) score += 8;
-  const mcpToolCount = typeof s['mcpToolCount'] === 'number' ? s['mcpToolCount'] : 15;
+
+  const mcpToolCount = typeof s['mcpToolCount'] === 'number' ? s['mcpToolCount'] : detectMcpToolCountSync(cwd);
   if (mcpToolCount >= 15) score += 20;
   else if (mcpToolCount >= 5) score += 10;
-  if (s['hasPluginManifest']) score += 15;
+
+  const hasPluginManifest = typeof s['hasPluginManifest'] === 'boolean' ? s['hasPluginManifest'] : detectPluginManifestSync(cwd);
+  if (hasPluginManifest) score += 15;
+
   if ((typeof s['providerCount'] === 'number' ? s['providerCount'] : 5) >= 5) score += 10;
   return Math.max(0, Math.min(100, score));
 }

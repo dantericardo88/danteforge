@@ -1,10 +1,11 @@
-// Phase 0 substrate scoring — runs the harsh-scorer against the current cwd
-// (DanteForge) and extracts the 5 dimensions PRD-MASTER §5.7 #13 requires.
+// Phase 0 substrate scoring -- runs the harsh-scorer against the current cwd
+// (DanteForge) and extracts the 5 dimensions PRD-MASTER Section 5.7 #13 requires.
 //
 // Output: .danteforge/evidence/phase0-substrate-score.json
 
 import { mkdirSync, writeFileSync } from 'node:fs';
 import { resolve } from 'node:path';
+import 'tsx/esm';
 
 const { computeHarshScore } = await import('../src/core/harsh-scorer.js');
 
@@ -20,7 +21,7 @@ for (const k of REQUIRED) {
 const summary = {
   runAt: new Date().toISOString(),
   source: 'phase-0-substrate-scoring',
-  prdReference: 'PRD-MASTER §5.7 #13',
+  prdReference: 'PRD-MASTER Section 5.7 #13',
   required: REQUIRED,
   scores: dims,
   overall: result.displayScore,
@@ -40,5 +41,5 @@ for (const k of REQUIRED) {
   const flag = s >= 9.0 ? 'GREEN' : 'BELOW';
   console.log(`  ${k}: ${s.toFixed(2)} [${flag}]`);
 }
-console.log(`Meets all 5 ≥9.0: ${summary.meetsThreshold}`);
+console.log(`Meets all 5 >=9.0: ${summary.meetsThreshold}`);
 console.log(`Written to ${out}`);

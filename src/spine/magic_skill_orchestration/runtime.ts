@@ -94,96 +94,94 @@ export interface OrchestrationOptions {
   frontmatterByStep?: Partial<Record<DanteSkill, SkillFrontmatter>>;
   /** Hook called when a human_checkpoint gate fires. Tests use this to assert pause behavior. */
   onHumanCheckpoint?: (step: SkillStep, partial: StepResult) => void;
+  /**
+   * When provided, threaded into each step's `inputs._llmCaller` so executors
+   * that support LLM-driven mode (dante-grill-me, dante-design-an-interface,
+   * dante-to-prd, dante-tdd, dante-triage-issue) use real LLM rather than
+   * deterministic fallbacks. Closes PRD-MASTER §15 #3 (skills integrated into
+   * magic levels with real LLM).
+   */
+  llmCaller?: (prompt: string) => Promise<string>;
 }
 
 const DEFAULT_MAX_RETRIES = 2;
 
-export async function runMagicLevelOrchestration(opts: OrchestrationOptions): Promise<OrchestrationResult> {
+interface OrchestrationContext {
+  repo: string; now: Date; runId: string; outDir: string;
+  workflow: SkillStep[]; startedAtMs: number; startedAtIso: string;
+}
+function setupOrchestration(opts: OrchestrationOptions): OrchestrationContext {
   const repo = resolve(opts.repo ?? process.cwd());
   const now = opts.now ?? new Date();
   const runId = opts.forcedRunId ?? nextRunId(repo, now);
   const outDir = resolve(repo, '.danteforge', 'orchestration-runs', runId);
   mkdirSync(outDir, { recursive: true });
-
   const cfg = MAGIC_LEVEL_MAP[opts.level];
   const workflow = opts.workflow ?? cfg.defaultWorkflow;
-  const startedAtMs = now.getTime();
-  const startedAtIso = now.toISOString();
+  return { repo, now, runId, outDir, workflow, startedAtMs: now.getTime(), startedAtIso: now.toISOString() };
+}
+
+function checkBudgetBeforeStep(opts: OrchestrationOptions, ctx: OrchestrationContext, cumulativeBudgetUsd: number, step: SkillStep, steps: StepResult[]): OrchestrationResult | null {
+  if (opts.budgetUsd !== undefined && cumulativeBudgetUsd >= opts.budgetUsd) {
+    steps.push(makeBudgetStoppedStep(step, ctx.runId, ctx.repo));
+    return finalize({ runId: ctx.runId, level: opts.level, outDir: ctx.outDir, steps, overallStatus: 'budget_stopped', startedAtIso: ctx.startedAtIso, now: new Date(), budgetUsdRemaining: 0 });
+  }
+  if (opts.budgetMinutes !== undefined) {
+    const elapsedMin = (Date.now() - ctx.startedAtMs) / 60_000;
+    if (elapsedMin >= opts.budgetMinutes) {
+      steps.push(makeBudgetStoppedStep(step, ctx.runId, ctx.repo));
+      return finalize({ runId: ctx.runId, level: opts.level, outDir: ctx.outDir, steps, overallStatus: 'budget_stopped', startedAtIso: ctx.startedAtIso, now: new Date() });
+    }
+  }
+  return null;
+}
+
+export async function runMagicLevelOrchestration(opts: OrchestrationOptions): Promise<OrchestrationResult> {
+  const ctx = setupOrchestration(opts);
+  const cfg = MAGIC_LEVEL_MAP[opts.level];
 
   if (!cfg.orchestrates) {
-    return finalize({
-      runId,
-      level: opts.level,
-      outDir,
-      steps: [],
-      overallStatus: 'green',
-      startedAtIso,
-      now
-    });
+    return finalize({ runId: ctx.runId, level: opts.level, outDir: ctx.outDir, steps: [], overallStatus: 'green', startedAtIso: ctx.startedAtIso, now: ctx.now });
   }
 
-  // Hardware ceiling check on declared parallel steps
-  const parallelSteps = workflow.filter(s => s.parallel);
-  if (parallelSteps.length > 0) {
-    assertHardwareCeiling(opts.level, parallelSteps.length);
-  }
+  const parallelSteps = ctx.workflow.filter(s => s.parallel);
+  if (parallelSteps.length > 0) assertHardwareCeiling(opts.level, parallelSteps.length);
 
   const steps: StepResult[] = [];
-  let cumulativeBudgetUsd = 0;
-
+  const cumulativeBudgetUsd = 0;
   const executors = opts.executors ?? SKILL_EXECUTORS;
   const skillPath = opts.skillPathResolver ?? ((skill: DanteSkill) => SKILL_PATHS[skill]);
 
-  for (let i = 0; i < workflow.length; i++) {
-    const step = workflow[i]!;
-
-    // Budget check before step
-    if (opts.budgetUsd !== undefined && cumulativeBudgetUsd >= opts.budgetUsd) {
-      steps.push(makeBudgetStoppedStep(step, runId, repo));
-      return finalize({ runId, level: opts.level, outDir, steps, overallStatus: 'budget_stopped', startedAtIso, now: new Date(), budgetUsdRemaining: 0 });
-    }
-    if (opts.budgetMinutes !== undefined) {
-      const elapsedMin = (Date.now() - startedAtMs) / 60_000;
-      if (elapsedMin >= opts.budgetMinutes) {
-        steps.push(makeBudgetStoppedStep(step, runId, repo));
-        return finalize({ runId, level: opts.level, outDir, steps, overallStatus: 'budget_stopped', startedAtIso, now: new Date() });
-      }
-    }
+  for (let i = 0; i < ctx.workflow.length; i++) {
+    const step = ctx.workflow[i]!;
+    const budgetStop = checkBudgetBeforeStep(opts, ctx, cumulativeBudgetUsd, step, steps);
+    if (budgetStop) return budgetStop;
 
     const executor = executors[step.skill];
-    if (!executor) {
-      throw new Error(`No executor registered for skill ${step.skill}`);
-    }
-    const frontmatter = opts.frontmatterByStep?.[step.skill] ?? loadFrontmatter(skillPath(step.skill), step.skill, repo);
+    if (!executor) throw new Error(`No executor registered for skill ${step.skill}`);
+    const frontmatter = opts.frontmatterByStep?.[step.skill] ?? loadFrontmatter(skillPath(step.skill), step.skill, ctx.repo);
 
     const result = await runStepWithConvergence({
-      step,
-      executor,
-      frontmatter,
-      inputs: opts.inputs,
-      repo,
-      runId,
-      stepIndex: i,
-      scorer: opts.scorer,
+      step, executor, frontmatter, inputs: opts.inputs, repo: ctx.repo, runId: ctx.runId,
+      stepIndex: i, scorer: opts.scorer,
       maxRetries: opts.maxConvergenceRetries ?? DEFAULT_MAX_RETRIES,
-      now: opts.now
+      now: opts.now, llmCaller: opts.llmCaller
     });
     steps.push(result);
 
-    // Gate evaluation
     const decision = applyGate(step.gate, result);
     if (decision === 'halt') {
       const overall = result.status === 'budget_stopped' ? 'budget_stopped' : 'failed';
-      return finalize({ runId, level: opts.level, outDir, steps, overallStatus: overall, startedAtIso, now: new Date() });
+      return finalize({ runId: ctx.runId, level: opts.level, outDir: ctx.outDir, steps, overallStatus: overall, startedAtIso: ctx.startedAtIso, now: new Date() });
     }
     if (decision === 'pause') {
       opts.onHumanCheckpoint?.(step, result);
-      return finalize({ runId, level: opts.level, outDir, steps, overallStatus: 'paused', startedAtIso, now: new Date() });
+      return finalize({ runId: ctx.runId, level: opts.level, outDir: ctx.outDir, steps, overallStatus: 'paused', startedAtIso: ctx.startedAtIso, now: new Date() });
     }
     // 'continue' falls through
   }
 
-  return finalize({ runId, level: opts.level, outDir, steps, overallStatus: 'green', startedAtIso, now: new Date() });
+  return finalize({ runId: ctx.runId, level: opts.level, outDir: ctx.outDir, steps, overallStatus: 'green', startedAtIso: ctx.startedAtIso, now: new Date() });
 }
 
 interface ConvergenceArgs {
@@ -197,18 +195,22 @@ interface ConvergenceArgs {
   scorer?: OrchestrationOptions['scorer'];
   maxRetries: number;
   now?: Date;
+  llmCaller?: (prompt: string) => Promise<string>;
 }
 
 async function runStepWithConvergence(c: ConvergenceArgs): Promise<StepResult> {
   let attempts = 0;
   let lastResult;
 
+  // Thread the orchestration-level LLM caller into the step's executor inputs.
+  const stepInputs = c.llmCaller ? { ...c.inputs, _llmCaller: c.llmCaller } : c.inputs;
+
   while (attempts <= c.maxRetries) {
     attempts++;
     lastResult = await runSkill(c.executor, {
       skillName: c.step.skill,
       repo: c.repo,
-      inputs: c.inputs,
+      inputs: stepInputs,
       // Reuse the parent runId so the schema-valid `run_YYYYMMDD_NNN` shape is preserved.
       // Step + attempt are encoded in the per-step output directory path instead.
       runId: c.runId,

@@ -154,112 +154,91 @@ async function scoreFunctionality(
 
 // ── Testing: Coverage files, test files, .c8rc.json ───────────────────────
 
+async function countTestFiles(cwd: string, readdir: (p: string) => Promise<string[]>): Promise<number> {
+  let testFileCount = 0;
+  try {
+    const entries = await readdir(path.join(cwd, 'tests'));
+    testFileCount += entries.filter(e => e.endsWith('.test.ts') || e.endsWith('.test.js')).length;
+  } catch { /* no top-level tests dir */ }
+  try {
+    const packagesDir = path.join(cwd, 'packages');
+    const pkgs = await readdir(packagesDir);
+    for (const pkg of pkgs) {
+      const srcDir = path.join(packagesDir, pkg, 'src');
+      try { testFileCount += await walkTestDir(srcDir, readdir); }
+      catch { /* skip pkg */ }
+    }
+  } catch { /* no packages dir */ }
+  return testFileCount;
+}
+
+async function walkTestDir(dir: string, readdir: (p: string) => Promise<string[]>): Promise<number> {
+  let n = 0;
+  const items = await readdir(dir).catch(() => [] as string[]);
+  for (const item of items) {
+    const full = path.join(dir, item);
+    const stat = await fs.stat(full).catch(() => null);
+    if (!stat) continue;
+    if (stat.isDirectory()) {
+      if (item === 'node_modules' || item === 'dist') continue;
+      n += await walkTestDir(full, readdir);
+    } else if (item.endsWith('.test.ts') || item.endsWith('.test.js')) n++;
+  }
+  return n;
+}
+
+function testCountBonus(testFileCount: number): number {
+  if (testFileCount >= 100) return 20;
+  if (testFileCount >= 50) return 18;
+  if (testFileCount >= 20) return 15;
+  if (testFileCount >= 10) return 12;
+  return Math.min(10, testFileCount * 2);
+}
+
+async function coverageBonus(ctx: MaturityContext, readFile: (p: string) => Promise<string>, fileExists: (p: string) => Promise<boolean>): Promise<number> {
+  const evidenceDir = ctx.evidenceDir ?? path.join(ctx.cwd, '.danteforge', 'evidence');
+  let coveragePath = path.join(evidenceDir, 'coverage-summary.json');
+  if (!(await fileExists(coveragePath))) {
+    coveragePath = path.join(ctx.cwd, 'coverage', 'coverage-summary.json');
+  }
+  if (!(await fileExists(coveragePath))) return 0;
+  try {
+    const summary = JSON.parse(await readFile(coveragePath)) as { total?: { lines?: { pct?: number } } };
+    const lineCoverage = summary.total?.lines?.pct ?? 0;
+    if (lineCoverage >= 90) return 20;
+    if (lineCoverage >= 85) return 15;
+    if (lineCoverage >= 80) return 10;
+    if (lineCoverage >= 70) return 5;
+    return 0;
+  } catch { return 0; }
+}
+
+async function ciAndE2EBonus(cwd: string, readdir: (p: string) => Promise<string[]>, fileExists: (p: string) => Promise<boolean>): Promise<number> {
+  let bonus = 0;
+  try {
+    const workflows = await readdir(path.join(cwd, '.github', 'workflows'));
+    if (workflows.some(f => f.endsWith('.yml') || f.endsWith('.yaml'))) bonus += 10;
+  } catch { /* no CI */ }
+  if (await fileExists(path.join(cwd, 'tests', 'mutation-score.test.ts'))) bonus += 5;
+  try {
+    const testEntries = await readdir(path.join(cwd, 'tests'));
+    if (testEntries.some(f => { const l = f.toLowerCase(); return l.includes('e2e') || l.includes('integration') || l.includes('pipeline'); })) bonus += 5;
+  } catch { /* no tests dir */ }
+  return bonus;
+}
+
 async function scoreTesting(
   ctx: MaturityContext,
   readFile: (path: string) => Promise<string>,
   readdir: (path: string) => Promise<string[]>,
   fileExists: (path: string) => Promise<boolean>,
 ): Promise<number> {
-  let score = 50; // neutral default
-
-  // Check for .c8rc.json
-  const c8Path = path.join(ctx.cwd, '.c8rc.json');
-  if (await fileExists(c8Path)) {
-    score += 10;
-  }
-
-  // Check for test directory. Monorepo-aware: also count *.test.ts files
-  // across all packages/<pkg>/src/ — many monorepos colocate tests with source
-  // rather than centralizing under cwd/tests/. Without this the scorer
-  // counts 0 test files even when the project has hundreds.
-  let testFileCount = 0;
-  try {
-    const entries = await readdir(path.join(ctx.cwd, 'tests'));
-    testFileCount += entries.filter(e => e.endsWith('.test.ts') || e.endsWith('.test.js')).length;
-  } catch { /* no top-level tests dir */ }
-  // Walk packages/<pkg>/src/ for colocated *.test.ts files.
-  try {
-    const packagesDir = path.join(ctx.cwd, 'packages');
-    const pkgs = await readdir(packagesDir);
-    for (const pkg of pkgs) {
-      const srcDir = path.join(packagesDir, pkg, 'src');
-      try {
-        const walk = async (dir: string): Promise<number> => {
-          let n = 0;
-          const items = await readdir(dir).catch(() => [] as string[]);
-          for (const item of items) {
-            const full = path.join(dir, item);
-            const stat = await fs.stat(full).catch(() => null);
-            if (!stat) continue;
-            if (stat.isDirectory()) {
-              if (item === 'node_modules' || item === 'dist') continue;
-              n += await walk(full);
-            } else if (item.endsWith('.test.ts') || item.endsWith('.test.js')) {
-              n++;
-            }
-          }
-          return n;
-        };
-        testFileCount += await walk(srcDir);
-      } catch { /* skip pkg */ }
-    }
-  } catch { /* no packages dir */ }
-  if (testFileCount > 0) {
-    // Generous scaling: 10+ tests = +12, 50+ = +18, 100+ = +20.
-    if (testFileCount >= 100) score += 20;
-    else if (testFileCount >= 50) score += 18;
-    else if (testFileCount >= 20) score += 15;
-    else if (testFileCount >= 10) score += 12;
-    else score += Math.min(10, testFileCount * 2);
-  }
-
-  // Check for coverage summary. Vitest's default location is coverage/<>.
-  const evidenceDir = ctx.evidenceDir ?? path.join(ctx.cwd, '.danteforge', 'evidence');
-  let coveragePath = path.join(evidenceDir, 'coverage-summary.json');
-  if (!(await fileExists(coveragePath))) {
-    coveragePath = path.join(ctx.cwd, 'coverage', 'coverage-summary.json'); // vitest default
-  }
-  if (await fileExists(coveragePath)) {
-    try {
-      const content = await readFile(coveragePath);
-      const summary = JSON.parse(content) as { total?: { lines?: { pct?: number } } };
-      const lineCoverage = summary.total?.lines?.pct ?? 0;
-      if (lineCoverage >= 90) score += 20;
-      else if (lineCoverage >= 85) score += 15;
-      else if (lineCoverage >= 80) score += 10;
-      else if (lineCoverage >= 70) score += 5;
-    } catch {
-      // Invalid JSON or missing fields
-    }
-  }
-
-  // CI pipeline bonus: project has automated test pipeline (e.g. .github/workflows/*.yml)
-  const workflowsDir = path.join(ctx.cwd, '.github', 'workflows');
-  try {
-    const workflows = await readdir(workflowsDir);
-    if (workflows.some((f) => f.endsWith('.yml') || f.endsWith('.yaml'))) {
-      score += 10;
-    }
-  } catch {
-    // No CI configuration
-  }
-
-  // Mutation testing bonus: mutation-score tests exist (tests verify test quality, not just presence)
-  const mutationTestPath = path.join(ctx.cwd, 'tests', 'mutation-score.test.ts');
-  if (await fileExists(mutationTestPath)) score += 5;
-
-  // Integration / E2E test bonus: end-to-end pipeline tests exist
-  try {
-    const testEntries = await readdir(testDir);
-    const hasE2E = testEntries.some((f) => {
-      const lower = f.toLowerCase();
-      return lower.includes('e2e') || lower.includes('integration') || lower.includes('pipeline');
-    });
-    if (hasE2E) score += 5;
-  } catch {
-    // No tests dir
-  }
-
+  let score = 50;
+  if (await fileExists(path.join(ctx.cwd, '.c8rc.json'))) score += 10;
+  const testFileCount = await countTestFiles(ctx.cwd, readdir);
+  if (testFileCount > 0) score += testCountBonus(testFileCount);
+  score += await coverageBonus(ctx, readFile, fileExists);
+  score += await ciAndE2EBonus(ctx.cwd, readdir, fileExists);
   return Math.min(100, score);
 }
 
@@ -281,8 +260,8 @@ async function getProjectSourceDirs(
   const dirs: string[] = [];
   // Single-package layout: cwd/src/
   try {
-    const tsFiles = (await collectFiles(path.join(cwd, 'src'))).filter((f) => f.endsWith('.ts'));
-    if (tsFiles.length > 0) dirs.push(path.join(cwd, 'src'));
+    const sourceFiles = (await collectFiles(path.join(cwd, 'src'))).filter(isScannableSourceFile);
+    if (sourceFiles.length > 0) dirs.push(path.join(cwd, 'src'));
   } catch { /* no src/ */ }
   // Monorepo layout: cwd/packages/<pkg>/src/
   try {
@@ -298,6 +277,12 @@ async function getProjectSourceDirs(
     }
   } catch { /* no packages/ */ }
   return dirs;
+}
+
+function isScannableSourceFile(filePath: string): boolean {
+  return /\.(tsx?|jsx?)$/i.test(filePath)
+    && !/\.d\.ts$/i.test(filePath)
+    && !/\.test\.[tj]sx?$/i.test(filePath);
 }
 
 // ── Error Handling: throw, try/catch, custom error classes ────────────────
@@ -320,7 +305,7 @@ async function scoreErrorHandling(
     try {
       const files = await collectFiles(srcDir);
       for (const filePath of files) {
-        if (!filePath.endsWith('.ts') || filePath.endsWith('.test.ts') || filePath.endsWith('.d.ts')) continue;
+        if (!isScannableSourceFile(filePath)) continue;
         try {
           const content = await readFile(filePath);
           throwCount += (content.match(/throw new/g) || []).length;
@@ -396,7 +381,7 @@ async function scoreSecurity(
     try {
       const files = await collectFiles(srcDir);
       for (const filePath of files) {
-        if (!filePath.endsWith('.ts') || filePath.endsWith('.test.ts') || filePath.endsWith('.d.ts')) continue;
+        if (!isScannableSourceFile(filePath)) continue;
         try {
           const raw = await readFile(filePath);
           const stripped = stripStringLiterals(raw).replace(/\/\/[^\n]*/g, (m) => ' '.repeat(m.length));
@@ -475,7 +460,7 @@ async function scoreUxPolish(
       try {
         const files = await collectFiles(srcDir);
         for (const filePath of files) {
-          if (!filePath.endsWith('.ts') || filePath.endsWith('.test.ts') || filePath.endsWith('.d.ts')) continue;
+          if (!isScannableSourceFile(filePath)) continue;
           try {
             const content = await readFile(filePath);
             if (/logger\.(info|warn|error|success|debug)\s*\(/.test(content)) hasLogger = true;
@@ -510,7 +495,7 @@ async function scoreUxPolish(
     try {
       const files = await collectFiles(srcDir);
       for (const filePath of files) {
-        if (!filePath.endsWith('.ts') || filePath.endsWith('.test.ts') || filePath.endsWith('.d.ts')) continue;
+        if (!isScannableSourceFile(filePath)) continue;
         try {
           const content = await readFile(filePath);
           // Broader match: covers React (isLoading), Vue (loading:), streaming UIs
@@ -630,7 +615,7 @@ async function scorePerformance(
   for (const srcDir of srcDirs) {
     try {
       const allFiles = await collectFiles(srcDir);
-      const files = allFiles.filter(f => !f.includes('/tests/') && !f.includes('\\tests\\') && !f.endsWith('.test.ts') && f.endsWith('.ts'));
+      const files = allFiles.filter(f => !f.includes('/tests/') && !f.includes('\\tests\\') && isScannableSourceFile(f));
       const readResults = await Promise.allSettled(files.map(f => readFile(f)));
       for (const result of readResults) {
         if (result.status !== 'fulfilled') continue;
@@ -688,7 +673,7 @@ async function scoreMaintainability(
     try {
       const files = await collectFiles(srcDir);
       for (const filePath of files) {
-        if (!filePath.endsWith('.ts') || filePath.endsWith('.test.ts') || filePath.endsWith('.d.ts')) continue;
+        if (!isScannableSourceFile(filePath)) continue;
         try {
           const content = await readFile(filePath);
           const functions = extractFunctions(content);

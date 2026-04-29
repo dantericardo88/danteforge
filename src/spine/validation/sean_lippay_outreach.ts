@@ -83,9 +83,23 @@ export async function runOutreachWorkflow(opts: OutreachWorkflowOptions): Promis
   const outDir = resolve(opts.repo, '.danteforge', 'validation', 'sean_lippay_outreach');
   mkdirSync(outDir, { recursive: true });
 
-  // Phase 1: grill-me to refine the brief
+  const grillResult = await runOutreachGrillPhase(opts);
+  const designResult = await runOutreachDesignPhase(opts);
+  const finalEmailDraft = extractFinalEmail(designResult.output);
+  writeFileSync(resolve(outDir, 'final_email_draft.md'), finalEmailDraft, 'utf-8');
+
+  const humanGate = buildOutreachHumanGate(outDir, grillResult.outputDir, designResult.outputDir);
+  writeFileSync(resolve(outDir, 'human_gate.json'), JSON.stringify(humanGate, null, 2) + '\n', 'utf-8');
+
+  const nextAction = buildOutreachNextAction(outDir, opts.repo, humanGate);
+  writeFileSync(resolve(outDir, 'next_action_prompt.md'), renderPromptPacket(nextAction, designResult.verdict), 'utf-8');
+
+  return { outDir, grillVerdict: grillResult.verdict, designVerdict: designResult.verdict, finalEmailDraft, humanGate, nextAction };
+}
+
+async function runOutreachGrillPhase(opts: OutreachWorkflowOptions) {
   const grillExec = opts.grillExecutor ?? defaultGrillExecutor;
-  const grillResult = await runSkill(grillExec, {
+  return runSkill(grillExec, {
     skillName: 'dante-grill-me',
     repo: opts.repo,
     inputs: { brief: opts.brief },
@@ -97,17 +111,14 @@ export async function runOutreachWorkflow(opts: OutreachWorkflowOptions): Promis
     },
     scorer: opts.scorer ?? (() => ({ planningQuality: 9.2, specDrivenPipeline: 9.0 }))
   });
+}
 
-  // Phase 2: design-an-interface in parallel — 3 different email designs
+async function runOutreachDesignPhase(opts: OutreachWorkflowOptions) {
   const designExec = opts.designExecutor ?? defaultDesignExecutor;
-  const designResult = await runSkill(designExec, {
+  return runSkill(designExec, {
     skillName: 'dante-design-an-interface',
     repo: opts.repo,
-    inputs: {
-      brief: opts.brief,
-      roles: ['persuasive', 'concise', 'technically-grounded'],
-      maxParallel: 3
-    },
+    inputs: { brief: opts.brief, roles: ['persuasive', 'concise', 'technically-grounded'], maxParallel: 3 },
     runId: `run_20260428_802`,
     frontmatter: {
       name: 'dante-design-an-interface',
@@ -116,16 +127,15 @@ export async function runOutreachWorkflow(opts: OutreachWorkflowOptions): Promis
     },
     scorer: opts.scorer ?? (() => ({ functionality: 9.3, maintainability: 9.1, developerExperience: 9.0 }))
   });
+}
 
-  const finalEmailDraft = extractFinalEmail(designResult.output);
-  writeFileSync(resolve(outDir, 'final_email_draft.md'), finalEmailDraft, 'utf-8');
-
-  const humanGate: HumanGateState = {
+function buildOutreachHumanGate(outDir: string, grillOutputDir: string, designOutputDir: string): HumanGateState {
+  return {
     status: 'awaiting_founder_review',
     reason: 'Phase 5 acceptance criterion 7 mandates the founder reviews and SENDS the email. The workflow refuses to send autonomously.',
     reviewArtifacts: [
-      { label: 'grill-session evidence', path: grillResult.outputDir },
-      { label: '3 design variants + synthesis', path: designResult.outputDir },
+      { label: 'grill-session evidence', path: grillOutputDir },
+      { label: '3 design variants + synthesis', path: designOutputDir },
       { label: 'final email draft', path: resolve(outDir, 'final_email_draft.md') }
     ],
     founderActions: [
@@ -137,36 +147,20 @@ export async function runOutreachWorkflow(opts: OutreachWorkflowOptions): Promis
       '6. The truth-loop will mark Phase 5 as complete only after the human-confirmation evidence is recorded.'
     ]
   };
+}
 
-  writeFileSync(resolve(outDir, 'human_gate.json'), JSON.stringify(humanGate, null, 2) + '\n', 'utf-8');
-
-  // The terminal NextAction for this workflow IS the human gate; no auto-send is permitted.
-  const nextAction: NextAction = {
+function buildOutreachNextAction(outDir: string, repo: string, humanGate: HumanGateState): NextAction {
+  return {
     nextActionId: 'nax_phase5_human_gate',
     runId: 'run_20260428_802',
     priority: 'P0',
     actionType: 'human_decision_request',
-    targetRepo: opts.repo,
+    targetRepo: repo,
     title: 'Phase 5 validation — founder reviews + sends Sean Lippay outreach email',
     rationale: humanGate.reason,
     acceptanceCriteria: humanGate.founderActions,
     recommendedExecutor: 'human',
     promptUri: `file://${resolve(outDir, 'final_email_draft.md').replace(/\\/g, '/')}`
-  };
-
-  writeFileSync(
-    resolve(outDir, 'next_action_prompt.md'),
-    renderPromptPacket(nextAction, designResult.verdict),
-    'utf-8'
-  );
-
-  return {
-    outDir,
-    grillVerdict: grillResult.verdict,
-    designVerdict: designResult.verdict,
-    finalEmailDraft,
-    humanGate,
-    nextAction
   };
 }
 

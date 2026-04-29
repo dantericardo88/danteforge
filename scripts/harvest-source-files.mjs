@@ -26,8 +26,15 @@ const TARGETS = [
   { owner: 'obra', repo: 'superpowers', path: 'skills/writing-skills/SKILL.md', cacheDir: 'superpowers' },
   { owner: 'obra', repo: 'superpowers', path: 'skills/using-git-worktrees/SKILL.md', cacheDir: 'superpowers' },
   // Fission-AI/OpenSpec
-  { owner: 'Fission-AI', repo: 'OpenSpec', path: 'openspec/AGENTS.md', cacheDir: 'openspec' },
-  // mattpocock/skills (fill in remaining triage; to-prd + tdd + grill-with-docs already have findings recorded)
+  // Addendum-001 names openspec/AGENTS.md; current OpenSpec stores it at repo root.
+  { owner: 'Fission-AI', repo: 'OpenSpec', path: 'AGENTS.md', cacheDir: 'openspec', allowEmpty: true },
+  // mattpocock/skills current-source equivalents for Addendum-001. Several
+  // names in the addendum are stale; cache the live repo files the comparison
+  // docs cite or use as closest analogs.
+  { owner: 'mattpocock', repo: 'skills', path: 'skills/engineering/to-prd/SKILL.md', cacheDir: 'mattpocock' },
+  { owner: 'mattpocock', repo: 'skills', path: 'skills/engineering/tdd/SKILL.md', cacheDir: 'mattpocock' },
+  { owner: 'mattpocock', repo: 'skills', path: 'skills/engineering/grill-with-docs/SKILL.md', cacheDir: 'mattpocock' },
+  { owner: 'mattpocock', repo: 'skills', path: 'skills/engineering/improve-codebase-architecture/SKILL.md', cacheDir: 'mattpocock' },
   { owner: 'mattpocock', repo: 'skills', path: 'skills/engineering/triage/SKILL.md', cacheDir: 'mattpocock' },
   { owner: 'mattpocock', repo: 'skills', path: 'skills/engineering/diagnose/SKILL.md', cacheDir: 'mattpocock' }
 ];
@@ -39,7 +46,7 @@ for (const t of TARGETS) {
   mkdirSync(dirname(cachedPath), { recursive: true });
 
   let body;
-  if (existsSync(cachedPath)) {
+  if (existsSync(cachedPath) && (t.allowEmpty || readFileSync(cachedPath, 'utf-8').trim().length > 0)) {
     body = readFileSync(cachedPath, 'utf-8');
     console.log(`cache hit: ${t.owner}/${t.repo}/${t.path}`);
   } else {

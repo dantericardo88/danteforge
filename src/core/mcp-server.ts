@@ -1004,21 +1004,19 @@ async function handleRouteTask(args: Record<string, unknown>): Promise<ToolResul
   }
 }
 
+function clampAuditCount(raw: unknown): number {
+  const count = typeof raw === 'number' ? raw : 20;
+  return Math.max(1, Math.min(count, 500));
+}
+
 async function handleAuditLog(args: Record<string, unknown>): Promise<ToolResult> {
   const cwd = resolveCwd(args);
-  const count = typeof args['count'] === 'number' ? args['count'] : 20;
-  const safeCount = Math.max(1, Math.min(count, 500));
-
+  const safeCount = clampAuditCount(args['count']);
   const state = await loadState({ cwd });
   const total = state.auditLog.length;
   const entries = state.auditLog.slice(-safeCount);
-
   await auditLog('audit_log read', cwd);
-  return jsonResult({
-    total,
-    returned: entries.length,
-    entries,
-  });
+  return jsonResult({ total, returned: entries.length, entries });
 }
 
 // ---------------------------------------------------------------------------

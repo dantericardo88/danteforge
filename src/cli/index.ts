@@ -280,6 +280,22 @@ truthLoopCommand
     }
   });
 
+truthLoopCommand
+  .command('list')
+  .description('List prior truth-loop runs in .danteforge/truth-loop/')
+  .option('--json', 'Machine-readable JSON output')
+  .option('--repo <path>', 'Repo to inspect (default: cwd)')
+  .option('--limit <n>', 'Show only the most recent N runs')
+  .action(async (opts) => {
+    const cmds = await C();
+    const r = await cmds.truthLoopList({
+      json: opts.json,
+      repo: opts.repo,
+      limit: opts.limit
+    });
+    if (r.exitCode !== 0) process.exitCode = r.exitCode;
+  });
+
 program
   .command('import <file>')
   .description('Import an LLM-generated file into .danteforge/')
@@ -779,10 +795,73 @@ program
   .option('--prompt <text>', 'Raw prompt to compare against structured artifacts')
   .option('--pipeline', 'Generate structured pipeline execution evidence report')
   .option('--convergence', 'Generate structured convergence & self-healing evidence report')
+  .option('--verify <file>', 'Verify an evidence-chain receipt, bundle, chain, or proof-bearing JSON file')
+  .option('--verify-all <dir>', 'Recursively verify every receipt under <dir>; report corpus integrity stats')
+  .option('--skip-git', 'Skip current git SHA binding check during proof verification')
   .option('--cwd <path>', 'Project directory (defaults to cwd)')
   .option('--semantic', 'LLM-enhanced PDSE scoring')
   .option('--since <date>', 'Score arc since date or git SHA (e.g. "yesterday", "2026-04-01", a commit SHA)')
-  .action(async (opts) => (await C()).proof({ prompt: opts.prompt, pipeline: opts.pipeline, convergence: opts.convergence, cwd: opts.cwd, semantic: opts.semantic, since: opts.since }));
+  .action(async (opts) => (await C()).proof({ prompt: opts.prompt, pipeline: opts.pipeline, convergence: opts.convergence, verify: opts.verify, verifyAll: opts.verifyAll, skipGit: opts.skipGit, cwd: opts.cwd, semantic: opts.semantic, since: opts.since }));
+
+const timeMachineCommand = program
+  .command('time-machine')
+  .description('Local tamper-evident, restorable evidence snapshots');
+
+timeMachineCommand
+  .command('commit')
+  .description('Commit one file or directory into the local Time Machine object store')
+  .requiredOption('--path <path>', 'File or directory to snapshot', (v: string, prev: string[] = []) => prev.concat(v), [] as string[])
+  .option('--label <label>', 'Human-readable snapshot label', 'manual')
+  .option('--cwd <path>', 'Project directory (defaults to cwd)')
+  .action(async (opts) => (await C()).timeMachine({ action: 'commit', cwd: opts.cwd, path: opts.path, label: opts.label }));
+
+timeMachineCommand
+  .command('verify')
+  .description('Verify Time Machine commit manifests, blobs, refs, and proof envelopes')
+  .option('--cwd <path>', 'Project directory (defaults to cwd)')
+  .action(async (opts) => (await C()).timeMachine({ action: 'verify', cwd: opts.cwd }));
+
+timeMachineCommand
+  .command('restore')
+  .description('Restore a commit into an output directory without touching the working tree')
+  .requiredOption('--commit <id>', 'Time Machine commit id')
+  .option('--out <path>', 'Output directory (default: .danteforge/time-machine/restores/<commit>)')
+  .option('--cwd <path>', 'Project directory (defaults to cwd)')
+  .action(async (opts) => (await C()).timeMachine({ action: 'restore', cwd: opts.cwd, commit: opts.commit, out: opts.out }));
+
+timeMachineCommand
+  .command('query')
+  .description('Query minimal causal links from Time Machine commits')
+  .requiredOption('--kind <kind>', 'evidence | dependents | file-history | counterfactual')
+  .option('--commit <id>', 'Time Machine commit id (defaults to head where applicable)')
+  .option('--path <path>', 'Path for file-history queries')
+  .option('--cwd <path>', 'Project directory (defaults to cwd)')
+  .action(async (opts) => (await C()).timeMachine({ action: 'query', cwd: opts.cwd, commit: opts.commit, kind: opts.kind, path: opts.path }));
+
+timeMachineCommand
+  .command('validate')
+  .description('Run Time Machine validation classes A-G and write proof-backed reports')
+  .option('--class <classes>', 'Comma-separated validation classes: A,B,C,D,E,F,G')
+  .option('--scale <scale>', 'smoke | prd | benchmark', 'smoke')
+  .option('--out <path>', 'Output directory (default: .danteforge/time-machine/validation/<runId>)')
+  .option('--delegate52-mode <mode>', 'harness | import | live', 'harness')
+  .option('--delegate52-dataset <pathOrUrl>', 'Public DELEGATE-52 JSON/JSONL dataset or imported result file')
+  .option('--budget-usd <n>', 'Budget ceiling for live DELEGATE-52 runs', parseFloat)
+  .option('--max-domains <n>', 'Maximum DELEGATE-52 domains to include', parseInt)
+  .option('--json', 'Output machine-readable JSON')
+  .option('--cwd <path>', 'Project directory (defaults to cwd)')
+  .action(async (opts) => (await C()).timeMachine({
+    action: 'validate',
+    cwd: opts.cwd,
+    classes: opts.class,
+    scale: opts.scale,
+    out: opts.out,
+    delegate52Mode: opts.delegate52Mode,
+    delegate52Dataset: opts.delegate52Dataset,
+    budgetUsd: opts.budgetUsd,
+    maxDomains: opts.maxDomains,
+    json: opts.json,
+  }));
 
 program
   .command('cost')

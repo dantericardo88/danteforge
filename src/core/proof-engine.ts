@@ -277,99 +277,78 @@ function scoreFoundArtifacts(
 
 // ── Main async proof function ──────────────────────────────────────────────────
 
-export async function runProof(rawPrompt: string, opts: ProofEngineOptions = {}): Promise<ProofReport> {
-  const cwd = opts.cwd ?? process.cwd();
-  const stateDir = path.join(cwd, '.danteforge');
+interface ProofIO {
+  readFile: (p: string) => Promise<string>;
+  existsFn: (p: string) => Promise<boolean>;
+}
 
+function buildProofIO(opts: ProofEngineOptions): ProofIO {
   const readFile = opts._readFile ?? (async (p: string) => {
     const fs = await import('fs/promises');
     return fs.readFile(p, 'utf8');
   });
-
   const existsFn = opts._exists ?? (async (p: string) => {
     const fs = await import('fs/promises');
-    try {
-      await fs.access(p);
-      return true;
-    } catch {
-      return false;
-    }
+    try { await fs.access(p); return true; } catch { return false; }
   });
+  return { readFile, existsFn };
+}
 
-  const rawScore = scoreRawPrompt(rawPrompt);
-
-  // Discover and load artifacts
+async function discoverProofArtifacts(stateDir: string, io: ProofIO): Promise<{ foundArtifacts: ArtifactFile[]; artifactContents: Partial<Record<ArtifactFile, string>> }> {
   const foundArtifacts: ArtifactFile[] = [];
   const artifactContents: Partial<Record<ArtifactFile, string>> = {};
-
   for (const filename of ARTIFACT_FILES) {
     const filePath = path.join(stateDir, filename);
-    const exists = await existsFn(filePath);
-    if (exists) {
+    if (await io.existsFn(filePath)) {
       try {
-        const content = await readFile(filePath);
-        artifactContents[filename] = content;
+        artifactContents[filename] = await io.readFile(filePath);
         foundArtifacts.push(filename);
-      } catch {
-        // skip unreadable files
-      }
+      } catch { /* skip unreadable */ }
     }
   }
+  return { foundArtifacts, artifactContents };
+}
 
-  // Load state for scoring context (best-effort)
-  let state: DanteState;
-  try {
-    state = await loadState({ cwd });
-  } catch {
-    state = makeMinimalState();
+async function loadProofState(cwd: string): Promise<DanteState> {
+  try { return await loadState({ cwd }); } catch { return makeMinimalState(); }
+}
+
+function buildProofRecommendation(verdict: ProofReport['verdict'], missing: ArtifactFile[]): string {
+  if (verdict === 'strong') {
+    return 'DanteForge substantially enriches your AI context. Run `danteforge forge` to leverage structured artifacts.';
   }
+  if (verdict === 'moderate') {
+    return missing.length > 0
+      ? `Good start. Generate missing artifacts (${missing.join(', ')}) to unlock full context quality.`
+      : 'Moderate improvement detected. Enrich your raw prompt with more constraints and success criteria.';
+  }
+  return missing.length === ARTIFACT_FILES.length
+    ? 'No DanteForge artifacts found. Run `danteforge specify` to begin structuring your project.'
+    : `Limited improvement. Generate missing artifacts (${missing.join(', ')}) and add more detail to your prompt.`;
+}
 
-  // Build a map keyed by ScoredArtifact name for upstreamArtifacts (used for integration fitness scoring)
+export async function runProof(rawPrompt: string, opts: ProofEngineOptions = {}): Promise<ProofReport> {
+  const cwd = opts.cwd ?? process.cwd();
+  const io = buildProofIO(opts);
+  const rawScore = scoreRawPrompt(rawPrompt);
+  const { foundArtifacts, artifactContents } = await discoverProofArtifacts(path.join(cwd, '.danteforge'), io);
+  const state = await loadProofState(cwd);
+
   const upstreamMap: Partial<Record<ScoredArtifact, string>> = {};
   for (const filename of foundArtifacts) {
-    const artifactName = ARTIFACT_NAME_MAP[filename];
-    upstreamMap[artifactName] = artifactContents[filename] ?? '';
+    upstreamMap[ARTIFACT_NAME_MAP[filename]] = artifactContents[filename] ?? '';
   }
 
   const pdseScore = scoreFoundArtifacts(foundArtifacts, artifactContents, state, upstreamMap);
-
   const improvementPercent = ((pdseScore - rawScore.total) / Math.max(rawScore.total, 1)) * 100;
-
-  const verdict: ProofReport['verdict'] =
-    improvementPercent > 200 ? 'strong' : improvementPercent > 50 ? 'moderate' : 'weak';
-
-  const artifactSummary =
-    foundArtifacts.length > 0
-      ? `Found ${foundArtifacts.join(', ')} (${foundArtifacts.length}/${ARTIFACT_FILES.length} artifacts)`
-      : `No artifacts found (0/${ARTIFACT_FILES.length} artifacts)`;
-
+  const verdict: ProofReport['verdict'] = improvementPercent > 200 ? 'strong' : improvementPercent > 50 ? 'moderate' : 'weak';
+  const artifactSummary = foundArtifacts.length > 0
+    ? `Found ${foundArtifacts.join(', ')} (${foundArtifacts.length}/${ARTIFACT_FILES.length} artifacts)`
+    : `No artifacts found (0/${ARTIFACT_FILES.length} artifacts)`;
   const missingArtifacts = ARTIFACT_FILES.filter((f) => !foundArtifacts.includes(f));
+  const recommendation = buildProofRecommendation(verdict, missingArtifacts);
 
-  let recommendation: string;
-  if (verdict === 'strong') {
-    recommendation =
-      'DanteForge substantially enriches your AI context. Run `danteforge forge` to leverage structured artifacts.';
-  } else if (verdict === 'moderate') {
-    recommendation =
-      missingArtifacts.length > 0
-        ? `Good start. Generate missing artifacts (${missingArtifacts.join(', ')}) to unlock full context quality.`
-        : 'Moderate improvement detected. Enrich your raw prompt with more constraints and success criteria.';
-  } else {
-    recommendation =
-      missingArtifacts.length === ARTIFACT_FILES.length
-        ? 'No DanteForge artifacts found. Run `danteforge specify` to begin structuring your project.'
-        : `Limited improvement. Generate missing artifacts (${missingArtifacts.join(', ')}) and add more detail to your prompt.`;
-  }
-
-  return {
-    rawScore,
-    pdseScore,
-    improvementPercent,
-    rawPrompt,
-    artifactSummary,
-    verdict,
-    recommendation,
-  };
+  return { rawScore, pdseScore, improvementPercent, rawPrompt, artifactSummary, verdict, recommendation };
 }
 
 // ── Pipeline proof types ──────────────────────────────────────────────────────
@@ -415,20 +394,41 @@ const PIPELINE_STAGES = [
  * Scans the project for PDSE artifacts, scores each, checks for generated source files,
  * and writes evidence to .danteforge/evidence/pipeline-proof.json.
  */
-export async function runPipelineProof(opts: PipelineProofOptions = {}): Promise<PipelineProofReport> {
+interface PipelineProofIO {
+  existsFn: (p: string) => Promise<boolean>;
+  readFile: (p: string) => Promise<string>;
+  writeFile: (p: string, c: string) => Promise<void>;
+  mkdir: (p: string, o?: { recursive?: boolean }) => Promise<unknown>;
+}
+
+async function setupProofIO(opts: PipelineProofOptions): Promise<PipelineProofIO> {
   const { default: nodeFs } = await import('node:fs/promises');
+  return {
+    existsFn: opts._exists ?? (async (p: string) => { try { await nodeFs.access(p); return true; } catch { return false; } }),
+    readFile: opts._readFile ?? ((p: string) => nodeFs.readFile(p, 'utf-8')),
+    writeFile: opts._writeFile ?? ((p: string, c: string) => nodeFs.writeFile(p, c, 'utf-8')),
+    mkdir: opts._mkdir ?? ((p: string, o?: { recursive?: boolean }) => nodeFs.mkdir(p, o))
+  };
+}
+
+async function scorePipelineStage(filePath: string, scoreKey: ScoredArtifact, state: DanteState | undefined, io: PipelineProofIO): Promise<number> {
+  try {
+    const content = await io.readFile(filePath);
+    const ctx: ScoringContext = {
+      artifactContent: content, artifactName: scoreKey,
+      stateYaml: state ?? { project: 'unknown', lastHandoff: '', workflowStage: 'initialized', currentPhase: 0, tasks: {}, auditLog: [], profile: 'balanced', lastVerifyStatus: 'unknown' } as DanteState,
+      upstreamArtifacts: {}, isWebProject: false
+    };
+    return scoreArtifact(ctx).score;
+  } catch { return 0; }
+}
+
+export async function runPipelineProof(opts: PipelineProofOptions = {}): Promise<PipelineProofReport> {
   const cwd = opts.cwd ?? process.cwd();
   const start = Date.now();
   const stateDir = path.join(cwd, '.danteforge');
+  const io = await setupProofIO(opts);
 
-  const existsFn = opts._exists ?? (async (p: string) => {
-    try { await nodeFs.access(p); return true; } catch { return false; }
-  });
-  const readFile = opts._readFile ?? ((p: string) => nodeFs.readFile(p, 'utf-8'));
-  const writeFile = opts._writeFile ?? ((p: string, c: string) => nodeFs.writeFile(p, c, 'utf-8'));
-  const mkdir = opts._mkdir ?? ((p: string, o?: { recursive?: boolean }) => nodeFs.mkdir(p, o));
-
-  // Load state for a minimal scoring context
   let state: DanteState | undefined;
   try { state = await loadState({ cwd }); } catch { /* best-effort */ }
 
@@ -437,26 +437,14 @@ export async function runPipelineProof(opts: PipelineProofOptions = {}): Promise
   const artifactPaths: string[] = [];
 
   for (const { stage, artifact, scoreKey } of PIPELINE_STAGES) {
-    // Check both root directory and .danteforge/ subdirectory
     const rootPath = path.join(cwd, artifact);
     const dfPath = path.join(stateDir, artifact);
-    const rootExists = await existsFn(rootPath);
-    const dfExists = !rootExists && await existsFn(dfPath);
+    const rootExists = await io.existsFn(rootPath);
+    const dfExists = !rootExists && await io.existsFn(dfPath);
     const filePath = rootExists ? rootPath : dfExists ? dfPath : null;
 
     if (filePath) {
-      let pdseScore = 0;
-      try {
-        const content = await readFile(filePath);
-        const ctx: ScoringContext = {
-          artifactContent: content,
-          artifactName: scoreKey,
-          stateYaml: state ?? { project: 'unknown', lastHandoff: '', workflowStage: 'initialized', currentPhase: 0, tasks: {}, auditLog: [], profile: 'balanced', lastVerifyStatus: 'unknown' } as DanteState,
-          upstreamArtifacts: {},
-          isWebProject: false,
-        };
-        pdseScore = scoreArtifact(ctx).score;
-      } catch { /* score 0 on unreadable */ }
+      const pdseScore = await scorePipelineStage(filePath, scoreKey, state, io);
       stages.push({ stage, artifact, status: 'present', pdseScore });
       pdseScores[scoreKey] = pdseScore;
       artifactPaths.push(filePath);
@@ -465,14 +453,9 @@ export async function runPipelineProof(opts: PipelineProofOptions = {}): Promise
     }
   }
 
-  // Check for generated source files (forge evidence)
-  const srcDir = path.join(cwd, 'src');
-  const srcExists = await existsFn(srcDir);
+  const srcExists = await io.existsFn(path.join(cwd, 'src'));
   stages.push({ stage: 'forge', artifact: 'src/', status: srcExists ? 'generated' : 'missing' });
-
-  // Check for tests (verify evidence)
-  const testsDir = path.join(cwd, 'tests');
-  const testsExists = await existsFn(testsDir);
+  const testsExists = await io.existsFn(path.join(cwd, 'tests'));
   stages.push({ stage: 'verify', artifact: 'tests/', status: testsExists ? 'generated' : 'missing' });
 
   const missingCount = stages.filter((s) => s.status === 'missing').length;
@@ -489,11 +472,10 @@ export async function runPipelineProof(opts: PipelineProofOptions = {}): Promise
     },
   };
 
-  // Write to .danteforge/evidence/pipeline-proof.json (best-effort)
   try {
     const evidenceDir = path.join(stateDir, 'evidence');
-    await mkdir(evidenceDir, { recursive: true });
-    await writeFile(path.join(evidenceDir, 'pipeline-proof.json'), JSON.stringify(report, null, 2));
+    await io.mkdir(evidenceDir, { recursive: true });
+    await io.writeFile(path.join(evidenceDir, 'pipeline-proof.json'), JSON.stringify(report, null, 2));
   } catch { /* best-effort */ }
 
   return report;

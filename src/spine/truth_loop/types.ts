@@ -3,6 +3,10 @@
  * PRD-26 Truth Loop Foundation.
  */
 
+import type { EvidenceBundle } from '@danteforge/evidence-chain';
+
+export type ProofObject = EvidenceBundle<unknown>;
+
 export type RunMode = 'sequential' | 'parallel';
 export type Initiator = 'founder' | 'agent' | 'ci';
 export type RunStatus = 'running' | 'complete' | 'stopped' | 'failed';
@@ -63,6 +67,7 @@ export interface Artifact {
   createdAt: string;
   uri: string;
   hash: string;
+  proof?: ProofObject;
   label?: string;
   claims?: Claim[];
 }
@@ -93,6 +98,7 @@ export interface Evidence {
   status: EvidenceStatus;
   location?: string;
   hash?: string;
+  proof?: ProofObject;
   claimId?: string;
 }
 
@@ -117,6 +123,7 @@ export interface Verdict {
   supportedClaims?: string[];
   contradictedClaims?: string[];
   opinionClaims?: string[];
+  proof?: ProofObject;
   finalStatus: FinalStatus;
 }
 

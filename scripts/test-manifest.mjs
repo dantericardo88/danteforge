@@ -32,10 +32,18 @@ export const TEST_LANES = [
       /^tests\/ascend.*\.test\.ts$/,
       /^tests\/autoforge.*\.test\.ts$/,
       /^tests\/autonomous-forge\.test\.ts$/,
-      /^tests\/e2e-autoforge-pipeline\.test\.ts$/,
-      /^tests\/e2e-spec-pipeline\.test\.ts$/,
       /^tests\/proof-pack\.test\.ts$/,
       /^tests\/self-improve-loop\.test\.ts$/,
+    ],
+  },
+  {
+    id: 'orchestration-e2e',
+    description: 'End-to-end orchestration pipeline suites that must not be co-scheduled with autonomous loops.',
+    concurrency: 1,
+    nodeArgs: ['--test-isolation=process', '--test-timeout=180000'],
+    patterns: [
+      /^tests\/e2e-autoforge-pipeline\.test\.ts$/,
+      /^tests\/e2e-spec-pipeline\.test\.ts$/,
     ],
   },
   {

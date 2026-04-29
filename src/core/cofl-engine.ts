@@ -228,144 +228,88 @@ export function scoreOperatorLeverage(
 
 // ── Phase: Decision rule filter ───────────────────────────────────────────────
 
-export function runDecisionFilter(
-  pattern: Pick<CoflPattern, 'sourceRole' | 'operatorLeverageScore' | 'affectedDimensions' | 'proofRequirement' | 'implementationScope'>,
-  context: {
-    validTeacherRoles: CompetitorRole[];
-    knownGapDimensions: string[];
-    minOperatorLeverage?: number;
-  },
-): DecisionRuleResult {
-  const minLeverage = context.minOperatorLeverage ?? 3;
-  const checks: DecisionCheck[] = [
-    {
-      question: 'Does it come from a tool we actually want to learn from?',
-      passed: context.validTeacherRoles.includes(pattern.sourceRole),
-      reason: `source role: ${pattern.sourceRole}`,
-    },
-    {
-      question: 'Does it improve operator preference, not just architecture?',
-      passed: pattern.operatorLeverageScore >= minLeverage,
-      reason: `operator leverage: ${pattern.operatorLeverageScore}/${minLeverage}`,
-    },
-    {
-      question: 'Does it map to a real Dante gap?',
-      passed: pattern.affectedDimensions.some(d => context.knownGapDimensions.includes(d)),
-      reason: `affected dims: ${pattern.affectedDimensions.join(', ')}`,
-    },
-    {
-      question: 'Can we prove it harshly?',
-      passed: pattern.proofRequirement.length > 10,
-      reason: `proof: ${pattern.proofRequirement.slice(0, 60)}`,
-    },
-    {
-      question: 'Does it strengthen Dante\'s own identity?',
-      passed: pattern.implementationScope !== 'broad',
-      reason: `scope: ${pattern.implementationScope} (broad risks cargo-culting)`,
-    },
-  ];
+type DecisionPattern = Pick<CoflPattern, 'sourceRole' | 'operatorLeverageScore' | 'affectedDimensions' | 'proofRequirement' | 'implementationScope'>;
+interface DecisionContext { validTeacherRoles: CompetitorRole[]; knownGapDimensions: string[]; minOperatorLeverage?: number }
 
+function buildDecisionChecks(pattern: DecisionPattern, context: DecisionContext): DecisionCheck[] {
+  const minLeverage = context.minOperatorLeverage ?? 3;
+  return [
+    { question: 'Does it come from a tool we actually want to learn from?',
+      passed: context.validTeacherRoles.includes(pattern.sourceRole),
+      reason: `source role: ${pattern.sourceRole}` },
+    { question: 'Does it improve operator preference, not just architecture?',
+      passed: pattern.operatorLeverageScore >= minLeverage,
+      reason: `operator leverage: ${pattern.operatorLeverageScore}/${minLeverage}` },
+    { question: 'Does it map to a real Dante gap?',
+      passed: pattern.affectedDimensions.some(d => context.knownGapDimensions.includes(d)),
+      reason: `affected dims: ${pattern.affectedDimensions.join(', ')}` },
+    { question: 'Can we prove it harshly?',
+      passed: pattern.proofRequirement.length > 10,
+      reason: `proof: ${pattern.proofRequirement.slice(0, 60)}` },
+    { question: 'Does it strengthen Dante\'s own identity?',
+      passed: pattern.implementationScope !== 'broad',
+      reason: `scope: ${pattern.implementationScope} (broad risks cargo-culting)` },
+  ];
+}
+
+export function runDecisionFilter(pattern: DecisionPattern, context: DecisionContext): DecisionRuleResult {
+  const checks = buildDecisionChecks(pattern, context);
   return { passedAll: checks.every(c => c.passed), checks };
 }
 
 // ── Phase: Anti-failure guardrails ────────────────────────────────────────────
 
-const ANTI_FAILURE_RULES: Array<{
-  failureMode: string;
-  guardrail: string;
-  check: (
-    patterns: CoflPattern[],
-    dims: Array<{ id: string; scores: Record<string, number> }>,
-    registry: CoflRegistry,
-  ) => { passed: boolean; violation?: string };
-}> = [
-  {
-    failureMode: 'Drifting back to coding-agent comparisons only',
-    guardrail: 'Registry must preserve operator-first peers',
-    check: (_p, _d, registry) => {
-      const hasOperatorPeers = registry.partition.directPeers.length > 0;
-      return {
-        passed: hasOperatorPeers,
-        violation: hasOperatorPeers ? undefined :
-          'No direct operator peers in registry — add closed-source leaders',
-      };
-    },
-  },
-  {
-    failureMode: 'Harvesting patterns without shipping them',
-    guardrail: 'Every pattern must map to a forgeable task',
-    check: (patterns) => {
-      const unmapped = patterns.filter(p => p.affectedDimensions.length === 0 && p.status === 'extracted');
-      return {
-        passed: unmapped.length === 0,
-        violation: unmapped.length > 0 ?
-          `${unmapped.length} pattern(s) extracted but not mapped to dimensions` : undefined,
-      };
-    },
-  },
-  {
-    failureMode: 'Inflating scores via tests',
-    guardrail: 'Market-adjusted reading stays separate from raw matrix',
-    check: (_p, dims) => {
-      // Check for suspiciously high self-scores that lack evidence
-      const inflated = dims.filter(d => (d.scores['self'] ?? 0) > 8.5 && (d.scores['dantescode'] ?? 0) > 8.5);
-      return {
-        passed: inflated.length < dims.length * 0.5,
-        violation: inflated.length >= dims.length * 0.5 ?
-          'Over 50% of dimensions score >8.5 — possible inflation, run --validate' : undefined,
-      };
-    },
-  },
-  {
-    failureMode: 'Cargo-culting OSS tools',
-    guardrail: 'Extract patterns, not branding or architecture wholesale',
-    check: (patterns) => {
-      const broadScope = patterns.filter(p => p.implementationScope === 'broad' && p.status !== 'verified');
-      return {
-        passed: broadScope.length < 3,
-        violation: broadScope.length >= 3 ?
-          `${broadScope.length} broad-scope patterns pending — risk of cargo-culting` : undefined,
-      };
-    },
-  },
-  {
-    failureMode: 'Building internals instead of product',
-    guardrail: 'Product filter required before prioritization',
-    check: (patterns) => {
-      const lowLeverage = patterns.filter(p => p.operatorLeverageScore < 3 && p.status === 'extracted');
-      return {
-        passed: patterns.length === 0 || lowLeverage.length < patterns.length * 0.4,
-        violation: lowLeverage.length >= patterns.length * 0.4 ?
-          'Too many low-leverage patterns — apply product filter before forging' : undefined,
-      };
-    },
-  },
-  {
-    failureMode: 'Forgetting past competitors',
-    guardrail: 'Canonical registry is the source of truth',
-    check: (_p, _d, registry) => {
-      const total = registry.partition.directPeers.length +
-        registry.partition.specialistTeachers.length +
-        registry.partition.referenceTeachers.length;
-      return {
-        passed: total >= 3,
-        violation: total < 3 ?
-          'Registry has fewer than 3 classified competitors — run cofl --universe to refresh' : undefined,
-      };
-    },
-  },
-  {
-    failureMode: 'Improving rows without improving preference',
-    guardrail: 'Every sprint must state expected operator-visible lift',
-    check: (patterns) => {
-      const missingLift = patterns.filter(p => p.operatorLeverageScore === 0 && p.status === 'extracted');
-      return {
-        passed: missingLift.length === 0,
-        violation: missingLift.length > 0 ?
-          `${missingLift.length} pattern(s) have no operator-leverage score set` : undefined,
-      };
-    },
-  },
+type AntiFailureCheckFn = (
+  patterns: CoflPattern[],
+  dims: Array<{ id: string; scores: Record<string, number> }>,
+  registry: CoflRegistry,
+) => { passed: boolean; violation?: string };
+
+interface AntiFailureRule { failureMode: string; guardrail: string; check: AntiFailureCheckFn }
+
+function checkOperatorPeers(_p: CoflPattern[], _d: Array<{ id: string; scores: Record<string, number> }>, registry: CoflRegistry) {
+  const hasOperatorPeers = registry.partition.directPeers.length > 0;
+  return { passed: hasOperatorPeers, violation: hasOperatorPeers ? undefined : 'No direct operator peers in registry — add closed-source leaders' };
+}
+
+function checkUnmappedPatterns(patterns: CoflPattern[]) {
+  const unmapped = patterns.filter(p => p.affectedDimensions.length === 0 && p.status === 'extracted');
+  return { passed: unmapped.length === 0, violation: unmapped.length > 0 ? `${unmapped.length} pattern(s) extracted but not mapped to dimensions` : undefined };
+}
+
+function checkScoreInflation(_p: CoflPattern[], dims: Array<{ id: string; scores: Record<string, number> }>) {
+  const inflated = dims.filter(d => (d.scores['self'] ?? 0) > 8.5 && (d.scores['dantescode'] ?? 0) > 8.5);
+  return { passed: inflated.length < dims.length * 0.5, violation: inflated.length >= dims.length * 0.5 ? 'Over 50% of dimensions score >8.5 — possible inflation, run --validate' : undefined };
+}
+
+function checkCargoCulting(patterns: CoflPattern[]) {
+  const broadScope = patterns.filter(p => p.implementationScope === 'broad' && p.status !== 'verified');
+  return { passed: broadScope.length < 3, violation: broadScope.length >= 3 ? `${broadScope.length} broad-scope patterns pending — risk of cargo-culting` : undefined };
+}
+
+function checkInternalFocus(patterns: CoflPattern[]) {
+  const lowLeverage = patterns.filter(p => p.operatorLeverageScore < 3 && p.status === 'extracted');
+  return { passed: patterns.length === 0 || lowLeverage.length < patterns.length * 0.4, violation: lowLeverage.length >= patterns.length * 0.4 ? 'Too many low-leverage patterns — apply product filter before forging' : undefined };
+}
+
+function checkForgottenCompetitors(_p: CoflPattern[], _d: Array<{ id: string; scores: Record<string, number> }>, registry: CoflRegistry) {
+  const total = registry.partition.directPeers.length + registry.partition.specialistTeachers.length + registry.partition.referenceTeachers.length;
+  return { passed: total >= 3, violation: total < 3 ? 'Registry has fewer than 3 classified competitors — run cofl --universe to refresh' : undefined };
+}
+
+function checkOperatorLift(patterns: CoflPattern[]) {
+  const missingLift = patterns.filter(p => p.operatorLeverageScore === 0 && p.status === 'extracted');
+  return { passed: missingLift.length === 0, violation: missingLift.length > 0 ? `${missingLift.length} pattern(s) have no operator-leverage score set` : undefined };
+}
+
+const ANTI_FAILURE_RULES: AntiFailureRule[] = [
+  { failureMode: 'Drifting back to coding-agent comparisons only', guardrail: 'Registry must preserve operator-first peers', check: checkOperatorPeers },
+  { failureMode: 'Harvesting patterns without shipping them', guardrail: 'Every pattern must map to a forgeable task', check: checkUnmappedPatterns },
+  { failureMode: 'Inflating scores via tests', guardrail: 'Market-adjusted reading stays separate from raw matrix', check: checkScoreInflation },
+  { failureMode: 'Cargo-culting OSS tools', guardrail: 'Extract patterns, not branding or architecture wholesale', check: checkCargoCulting },
+  { failureMode: 'Building internals instead of product', guardrail: 'Product filter required before prioritization', check: checkInternalFocus },
+  { failureMode: 'Forgetting past competitors', guardrail: 'Canonical registry is the source of truth', check: checkForgottenCompetitors },
+  { failureMode: 'Improving rows without improving preference', guardrail: 'Every sprint must state expected operator-visible lift', check: checkOperatorLift },
 ];
 
 export function runAntiFailureGuards(

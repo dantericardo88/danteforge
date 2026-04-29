@@ -189,6 +189,10 @@ export function truncateCode(code: string, maxChars = MAX_CODE_CHARS): string {
   return code.slice(0, maxChars) + `\n... [truncated — ${code.length - maxChars} additional chars omitted]`;
 }
 
+function isCodeTruncated(code: string, maxChars = MAX_CODE_CHARS): boolean {
+  return code.length > maxChars;
+}
+
 // ─── Engine ───────────────────────────────────────────────────────────────────
 
 export class SevenLevelsEngine {

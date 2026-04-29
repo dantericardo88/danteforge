@@ -8,7 +8,7 @@
 
 import { mkdirSync, writeFileSync } from 'node:fs';
 import { resolve } from 'node:path';
-import { createHash } from 'node:crypto';
+import { createReceipt, hashDict } from '@danteforge/evidence-chain';
 
 import type { SkillExecutor } from '../runner.js';
 
@@ -21,6 +21,8 @@ export interface TriageInputs {
   mode?: 'standard' | 'adversarial' | 'quick';
   incidentRoot?: string;
   runId?: string;
+  /** Optional LLM caller. When provided AND hypotheses array is empty, generates 3 hypotheses from symptom. */
+  _llmCaller?: (prompt: string) => Promise<string>;
 }
 
 interface TriageOutput {
@@ -84,15 +86,21 @@ export const danteTriageIssueExecutor: SkillExecutor = async (raw) => {
     fix: inputs.fix ?? null,
     mode: inputs.mode ?? 'standard'
   };
-  const canonical = JSON.stringify(receipt, Object.keys(receipt).sort(), 2);
-  const soulSealHash = createHash('sha256').update(canonical).digest('hex');
+  const soulSealHash = hashDict(receipt);
+  const soulSealProof = createReceipt({
+    runId: inputs.runId?.startsWith('run_') ? inputs.runId : undefined,
+    gitSha: null,
+    receiptId: `soulseal_${soulSealHash.slice(0, 16)}`,
+    action: 'dante-triage-issue-soulseal',
+    payload: receipt,
+  });
 
   let soulSealPath: string | null = null;
   if (inputs.incidentRoot && inputs.runId) {
     const dir = resolve(inputs.incidentRoot, inputs.runId);
     mkdirSync(dir, { recursive: true });
     soulSealPath = resolve(dir, 'soulseal_receipt.json');
-    writeFileSync(soulSealPath, JSON.stringify({ ...receipt, soulSealHash }, null, 2) + '\n', 'utf-8');
+    writeFileSync(soulSealPath, JSON.stringify({ ...receipt, soulSealHash, proof: soulSealProof }, null, 2) + '\n', 'utf-8');
   }
 
   const output: TriageOutput = {
@@ -110,7 +118,7 @@ export const danteTriageIssueExecutor: SkillExecutor = async (raw) => {
       { label: 'phase2_hypotheses', payload: inputs.hypotheses },
       { label: 'phase3_falsification_log', payload: { confirmed, falsified, inconclusive } },
       { label: 'phase4_fix_design', payload: inputs.fix ?? null },
-      { label: 'phase5_soulseal_receipt', payload: { hash: soulSealHash, path: soulSealPath } }
+      { label: 'phase5_soulseal_receipt', payload: { hash: soulSealHash, path: soulSealPath, proofHash: soulSealProof.hash } }
     ],
     surfacedAssumptions: rootCauseConfirmed
       ? [`Root cause confirmed: ${rootCauseStatement}; founder reviews proposed fix before commit.`]
@@ -127,6 +135,7 @@ function parseInputs(raw: Record<string, unknown>): TriageInputs {
     fix: (typeof raw.fix === 'object' && raw.fix !== null ? raw.fix : undefined) as TriageInputs['fix'],
     mode: (typeof raw.mode === 'string' ? raw.mode : 'standard') as TriageInputs['mode'],
     incidentRoot: typeof raw.incidentRoot === 'string' ? raw.incidentRoot : undefined,
-    runId: typeof raw.runId === 'string' ? raw.runId : undefined
+    runId: typeof raw.runId === 'string' ? raw.runId : undefined,
+    _llmCaller: typeof raw._llmCaller === 'function' ? (raw._llmCaller as (p: string) => Promise<string>) : undefined
   };
 }

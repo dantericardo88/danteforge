@@ -1,6 +1,7 @@
 // Verify Receipts — durable JSON + Markdown artifacts from every verify run
 import fs from 'fs/promises';
 import path from 'path';
+import { createEvidenceBundle, type EvidenceBundle } from '@danteforge/evidence-chain';
 
 const EVIDENCE_DIR = '.danteforge/evidence/verify';
 const LATEST_JSON = path.join(EVIDENCE_DIR, 'latest.json');
@@ -28,6 +29,7 @@ export interface VerifyReceipt {
   currentStateFresh: boolean;
   selfEditPolicyEnforced: boolean;
   status: VerifyStatus;
+  proof?: EvidenceBundle<unknown>;
 }
 
 /**
@@ -128,20 +130,34 @@ export async function writeVerifyReceipt(
   });
 
   await fs.mkdir(evidenceDir, { recursive: true });
-  await fs.writeFile(jsonPath, JSON.stringify(receipt, null, 2) + '\n', 'utf8');
-  await fs.writeFile(mdPath, buildReceiptMarkdown(receipt), 'utf8');
+  const sealedReceipt = sealVerifyReceipt(receipt);
+  await fs.writeFile(jsonPath, JSON.stringify(sealedReceipt, null, 2) + '\n', 'utf8');
+  await fs.writeFile(mdPath, buildReceiptMarkdown(sealedReceipt), 'utf8');
 
   // Also write a timestamped copy so historical runs accumulate in the directory.
   // computeStrictDimensions awards +25 autonomy pts for 5+ files (vs +15 for 2 files).
   try {
     const ts = receipt.timestamp.replace(/[:.]/g, '-').replace('T', '_').slice(0, 19);
     const tsPath = path.join(evidenceDir, `verify-${ts}.json`);
-    await write(tsPath, JSON.stringify(receipt, null, 2) + '\n');
+    await write(tsPath, JSON.stringify(sealedReceipt, null, 2) + '\n');
   } catch {
     // non-fatal — timestamped copy is a bonus signal, not critical output
   }
 
   return jsonPath;
+}
+
+function sealVerifyReceipt(receipt: VerifyReceipt): VerifyReceipt {
+  const { proof: _proof, ...payload } = receipt;
+  return {
+    ...receipt,
+    proof: createEvidenceBundle({
+      bundleId: 'verify_receipt',
+      gitSha: receipt.gitSha,
+      evidence: [payload],
+      createdAt: receipt.timestamp,
+    }),
+  };
 }
 
 /**

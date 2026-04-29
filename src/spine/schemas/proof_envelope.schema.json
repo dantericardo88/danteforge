@@ -1,0 +1,60 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://danteforge.dev/spine/proof_envelope.schema.json",
+  "title": "ProofEnvelope",
+  "version": "1.0.0",
+  "description": "Cryptographic envelope wrapping a payload with content hashes, chain continuity, and optional Merkle root. Produced and verified by @danteforge/evidence-chain. Frozen at v1.0 with schemaVersion literal 'evidence-chain.v1'; breaking changes to required fields require a new schemaVersion literal and a 2.0 major bump.",
+  "type": "object",
+  "additionalProperties": true,
+  "required": ["schemaVersion", "createdAt", "payloadHash", "prevHash", "verificationStatus"],
+  "properties": {
+    "schemaVersion": {
+      "type": "string",
+      "const": "evidence-chain.v1",
+      "description": "Locked literal for the v1.x line. Consumers MUST check this field equals 'evidence-chain.v1' before deserializing."
+    },
+    "runId": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Optional; ties this envelope to a Truth Loop run."
+    },
+    "receiptId": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Optional; identifier for a single receipt within a run."
+    },
+    "bundleId": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Required for EvidenceBundle envelopes; identifies the multi-receipt bundle."
+    },
+    "gitSha": {
+      "type": ["string", "null"],
+      "description": "Optional content-binding to a git commit. When present and non-null, three-way gate verifies the running commit matches."
+    },
+    "createdAt": {
+      "type": "string",
+      "format": "date-time",
+      "description": "ISO 8601 timestamp of envelope creation."
+    },
+    "payloadHash": {
+      "type": "string",
+      "pattern": "^[a-f0-9]{64}$",
+      "description": "sha256 hex of stableJSON(payload). Tampering with the payload invalidates this hash."
+    },
+    "prevHash": {
+      "type": "string",
+      "pattern": "^[a-f0-9]{64}$",
+      "description": "sha256 hex of the previous envelope's hash field, or ZERO_HASH (64 zeros) for the chain root."
+    },
+    "merkleRoot": {
+      "type": "string",
+      "pattern": "^[a-f0-9]{64}$",
+      "description": "sha256 hex Merkle root of evidence leaves; required for EvidenceBundle, omitted for single Receipt."
+    },
+    "verificationStatus": {
+      "enum": ["unverified", "valid", "invalid"],
+      "description": "Status set by verifier; envelopes ship as 'unverified' and consumers update via verifyReceipt/verifyBundle."
+    }
+  }
+}

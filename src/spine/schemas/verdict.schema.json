@@ -2,7 +2,8 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://danteforge.dev/spine/verdict.schema.json",
   "title": "Verdict",
-  "description": "Final Forge judgment for a run.",
+  "version": "1.0.0",
+  "description": "Final Forge judgment for a run. Frozen at v1.0; additive optional fields may ship as 1.x; required-field changes require a 2.0 major bump.",
   "type": "object",
   "additionalProperties": false,
   "required": ["verdictId", "runId", "summary", "score", "confidence", "finalStatus"],
@@ -17,6 +18,7 @@
     "supportedClaims": { "type": "array", "items": { "type": "string" } },
     "contradictedClaims": { "type": "array", "items": { "type": "string" } },
     "opinionClaims": { "type": "array", "items": { "type": "string" } },
+    "proof": { "type": "object", "description": "Evidence-chain v1 proof bundle for this verdict." },
     "finalStatus": {
       "enum": [
         "complete",

@@ -1,0 +1,91 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://danteforge.dev/spine/time_machine_validation.schema.json",
+  "title": "TimeMachineValidationReport",
+  "version": "1.0.0",
+  "description": "Versioned report for DanteForge Time Machine validation classes A-G. Frozen at v1.0 with schemaVersion literal 'danteforge.time-machine.validation.v1'; additive optional fields may ship in 1.x, while required-field changes require a 2.0 major bump.",
+  "type": "object",
+  "additionalProperties": true,
+  "required": [
+    "schemaVersion",
+    "runId",
+    "createdAt",
+    "cwd",
+    "outDir",
+    "scale",
+    "delegate52Mode",
+    "status",
+    "summary",
+    "classes",
+    "proof"
+  ],
+  "properties": {
+    "schemaVersion": {
+      "type": "string",
+      "const": "danteforge.time-machine.validation.v1"
+    },
+    "runId": {
+      "type": "string",
+      "minLength": 1
+    },
+    "createdAt": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "cwd": {
+      "type": "string",
+      "minLength": 1
+    },
+    "outDir": {
+      "type": "string",
+      "minLength": 1
+    },
+    "scale": {
+      "enum": ["smoke", "prd", "benchmark"]
+    },
+    "delegate52Mode": {
+      "enum": ["harness", "import", "live"]
+    },
+    "status": {
+      "enum": ["passed", "partial", "failed"]
+    },
+    "summary": {
+      "type": "object",
+      "additionalProperties": true,
+      "required": ["selectedClasses", "passedClasses", "partialClasses", "failedClasses", "claimsAllowed", "claimsNotAllowed"],
+      "properties": {
+        "selectedClasses": {
+          "type": "array",
+          "items": { "enum": ["A", "B", "C", "D", "E", "F", "G"] }
+        },
+        "passedClasses": {
+          "type": "array",
+          "items": { "enum": ["A", "B", "C", "D", "E", "F", "G"] }
+        },
+        "partialClasses": {
+          "type": "array",
+          "items": { "enum": ["A", "B", "C", "D", "E", "F", "G"] }
+        },
+        "failedClasses": {
+          "type": "array",
+          "items": { "enum": ["A", "B", "C", "D", "E", "F", "G"] }
+        },
+        "claimsAllowed": {
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "claimsNotAllowed": {
+          "type": "array",
+          "items": { "type": "string" }
+        }
+      }
+    },
+    "classes": {
+      "type": "object",
+      "additionalProperties": true
+    },
+    "proof": {
+      "$ref": "proof_envelope.schema.json"
+    }
+  }
+}

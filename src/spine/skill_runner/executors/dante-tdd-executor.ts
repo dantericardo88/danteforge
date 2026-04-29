@@ -27,6 +27,8 @@ export interface TddInputs {
   };
   /** Repo root for KiloCode size checks (default: cwd). */
   repo?: string;
+  /** Optional LLM caller; reserved for future verification-narrative generation. Accepted for orchestration-runtime threading consistency. */
+  _llmCaller?: (prompt: string) => Promise<string>;
 }
 
 interface TddOutput {
@@ -105,7 +107,8 @@ function parseInputs(raw: Record<string, unknown>): TddInputs {
   return {
     taskDescription: typeof raw.taskDescription === 'string' ? raw.taskDescription : '',
     cycle: (typeof raw.cycle === 'object' && raw.cycle !== null ? raw.cycle : {}) as TddInputs['cycle'],
-    repo: typeof raw.repo === 'string' ? raw.repo : undefined
+    repo: typeof raw.repo === 'string' ? raw.repo : undefined,
+    _llmCaller: typeof raw._llmCaller === 'function' ? (raw._llmCaller as (p: string) => Promise<string>) : undefined
   };
 }
 

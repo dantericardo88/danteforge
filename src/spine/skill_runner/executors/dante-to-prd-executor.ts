@@ -25,6 +25,8 @@ export interface ToPrdInputs {
   successMetric?: string;
   knownConstraints?: string[];
   knownNonGoals?: string[];
+  /** Optional LLM caller. Threaded by magic-orchestrate when llmCaller is set. */
+  _llmCaller?: (prompt: string) => Promise<string>;
 }
 
 interface ToPrdOutput {
@@ -86,7 +88,8 @@ function parseInputs(raw: Record<string, unknown>): ToPrdInputs {
     alternatives: Array.isArray(raw.alternatives) ? (raw.alternatives as { name: string; tradeoffs: string[] }[]) : undefined,
     successMetric: typeof raw.successMetric === 'string' ? raw.successMetric : undefined,
     knownConstraints: Array.isArray(raw.knownConstraints) ? (raw.knownConstraints as string[]) : undefined,
-    knownNonGoals: Array.isArray(raw.knownNonGoals) ? (raw.knownNonGoals as string[]) : undefined
+    knownNonGoals: Array.isArray(raw.knownNonGoals) ? (raw.knownNonGoals as string[]) : undefined,
+    _llmCaller: typeof raw._llmCaller === 'function' ? (raw._llmCaller as (p: string) => Promise<string>) : undefined
   };
 }
 

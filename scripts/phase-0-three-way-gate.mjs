@@ -1,11 +1,12 @@
-// Phase 0 three-way gate evaluation — runs the shared evaluator against the
-// truth-loop substrate. PRD-MASTER §5.7 #14 closure.
+// Phase 0 three-way gate evaluation -- runs the shared evaluator against the
+// truth-loop substrate. PRD-MASTER Section 5.7 #14 closure.
 //
 // Output: .danteforge/evidence/phase0-three-way-gate.json
 
 import { mkdirSync, writeFileSync, existsSync, readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { execSync } from 'node:child_process';
+import 'tsx/esm';
 
 const { evaluateThreeWayGate } = await import('../src/spine/three_way_gate.js');
 
@@ -55,14 +56,14 @@ function evidenceChainGate() {
 function harshScoreGate() {
   const path = resolve(cwd, '.danteforge/evidence/phase0-substrate-score.json');
   if (!existsSync(path)) {
-    return { gate: 'harsh_score', status: 'red', reason: 'phase0-substrate-score.json not found — run score-truth-loop-substrate.mjs first' };
+    return { gate: 'harsh_score', status: 'red', reason: 'phase0-substrate-score.json not found -- run score-truth-loop-substrate.mjs first' };
   }
   const raw = JSON.parse(readFileSync(path, 'utf-8'));
   if (!raw.meetsThreshold) {
     const fails = raw.shortfalls.map(s => `${s.dim}=${s.score?.toFixed(2)}`).join(', ');
     return { gate: 'harsh_score', status: 'red', reason: `dimensions below threshold: ${fails}` };
   }
-  return { gate: 'harsh_score', status: 'green', reason: `all 5 dimensions ≥9.0 (overall ${raw.overall?.toFixed(2)})` };
+  return { gate: 'harsh_score', status: 'green', reason: `all 5 dimensions >=9.0 (overall ${raw.overall?.toFixed(2)})` };
 }
 
 // Compose the three-way evaluation. The shared evaluator expects artifacts +
@@ -81,7 +82,7 @@ const overall = results.every(r => r.status === 'green')
 
 const summary = {
   runAt: new Date().toISOString(),
-  prdReference: 'PRD-MASTER §5.7 #14',
+  prdReference: 'PRD-MASTER Section 5.7 #14',
   results,
   overall,
   blockingReasons,
@@ -97,7 +98,7 @@ const out = resolve(evidenceDir, 'phase0-three-way-gate.json');
 writeFileSync(out, JSON.stringify(summary, null, 2) + '\n', 'utf-8');
 
 console.log(`Phase 0 three-way gate: ${overall.toUpperCase()}`);
-for (const r of results) console.log(`  ${r.gate}: ${r.status} — ${r.reason}`);
+for (const r of results) console.log(`  ${r.gate}: ${r.status} -- ${r.reason}`);
 if (blockingReasons.length > 0) {
   console.log('Blocking:');
   for (const b of blockingReasons) console.log(`  - ${b}`);

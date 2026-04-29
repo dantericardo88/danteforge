@@ -147,34 +147,36 @@ export function getUserId(): string | undefined {
  * @param event - Audit event to log
  * @param cwd - Working directory (default: process.cwd())
  */
+function ensureAuditDir(cwd: string): string {
+  const dir = join(cwd, '.danteforge', 'audit');
+  if (!existsSync(dir)) mkdirSync(dir, { recursive: true });
+  return dir;
+}
+
+function fillAuditDefaults(event: AuditEvent): void {
+  if (!event.timestamp) event.timestamp = new Date().toISOString();
+  if (!event.sessionId) event.sessionId = currentSessionId;
+}
+
 export function logAuditEvent(event: AuditEvent, cwd: string = process.cwd()): void {
   try {
-    const auditDir = join(cwd, '.danteforge', 'audit');
-
-    // Ensure audit directory exists
-    if (!existsSync(auditDir)) {
-      mkdirSync(auditDir, { recursive: true });
-    }
-
-    const logFile = join(auditDir, 'detailed.jsonl');
-
-    // Ensure timestamp is ISO 8601
-    if (!event.timestamp) {
-      event.timestamp = new Date().toISOString();
-    }
-
-    // Ensure session ID is set
-    if (!event.sessionId) {
-      event.sessionId = currentSessionId;
-    }
-
-    // Write as single-line JSON
-    const logLine = JSON.stringify(event) + '\n';
-    appendFileSync(logFile, logLine, 'utf8');
+    const logFile = join(ensureAuditDir(cwd), 'detailed.jsonl');
+    fillAuditDefaults(event);
+    appendFileSync(logFile, JSON.stringify(event) + '\n', 'utf8');
   } catch (err) {
-    // Best-effort logging - don't crash if audit fails
     console.error('[Audit] Failed to write audit event:', err);
   }
+}
+
+function createAuditEventDefaults(eventType: AuditEventType): Partial<AuditEvent> {
+  return {
+    timestamp: new Date().toISOString(),
+    eventType,
+    sessionId: currentSessionId,
+    correlationId: generateCorrelationId(),
+    status: 'success',
+    metadata: {},
+  };
 }
 
 /**
@@ -184,14 +186,7 @@ export class AuditEventBuilder {
   private event: Partial<AuditEvent>;
 
   constructor(eventType: AuditEventType) {
-    this.event = {
-      timestamp: new Date().toISOString(),
-      eventType,
-      sessionId: currentSessionId,
-      correlationId: generateCorrelationId(),
-      status: 'success',
-      metadata: {},
-    };
+    this.event = createAuditEventDefaults(eventType);
   }
 
   correlationId(id: string): this {

@@ -55,13 +55,6 @@ const LEGACY_WORKFLOW_STAGE_ALIASES: Record<string, WorkflowStage> = {
   synthesized: 'synthesize',
 };
 
-function resolveStatePaths(cwd = process.cwd()) {
-  const stateDir = path.join(cwd, STATE_DIR);
-  return {
-    stateDir,
-    stateFile: path.join(stateDir, 'STATE.yaml'),
-  };
-}
 
 export interface DanteState {
   project: string;
@@ -139,9 +132,11 @@ export interface DanteState {
   sessionBaselineTimestamp?: string;  // ISO timestamp when baseline was set
   // v0.17.0 — Score history for proof arcs
   scoreHistory?: ScoreHistoryEntry[]; // rolling append, max 90 entries
-  // v0.34.0 — Ecosystem MCP signals (written by score bootstrap)
+  // v0.34.0 — Ecosystem MCP signals (written by score bootstrap or sister-repo SET)
   skillCount?: number;         // count of skill dirs with SKILL.md under src/harvested/dante-agents/skills/
   hasPluginManifest?: boolean; // true when .claude-plugin/plugin.json exists
+  mcpToolCount?: number;       // count of MCP tools registered (15+ → top score band)
+  providerCount?: number;      // count of LLM providers wired (5+ → bonus)
   // v0.18.0 — Enterprise admin (D32)
   confirmationState?: 'none' | 'awaiting' | 'confirmed' | 'vetoed';
   policyReceiptPath?: string;  // path to last policy decision receipt
@@ -433,7 +428,14 @@ function buildLoadedState(
     lastComplexityPreset: parsed?.lastComplexityPreset,
     skillCount: parsed?.skillCount as number | undefined,
     hasPluginManifest: parsed?.hasPluginManifest as boolean | undefined,
-  };
+    mcpToolCount: (parsed as Record<string, unknown> | undefined)?.['mcpToolCount'] as number | undefined,
+    providerCount: (parsed as Record<string, unknown> | undefined)?.['providerCount'] as number | undefined,
+  } as DanteState;
+}
+
+function resolveStatePaths(cwd = process.cwd()) {
+  const stateDir = path.join(cwd, STATE_DIR);
+  return { stateDir, stateFile: path.join(stateDir, 'STATE.yaml') };
 }
 
 export async function loadState(options: { cwd?: string } = {}): Promise<DanteState> {
