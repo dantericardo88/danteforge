@@ -1,7 +1,7 @@
 {
-  "name": "@danteforge/evidence-chain",
-  "version": "1.1.0",
-  "description": "Zero-dependency cryptographic evidence primitives for tamper-evident agent receipts. SHA-256 + stable JSON + hash chain + Merkle tree + receipt/bundle verification. Used by DanteForge as the substrate for its three-way promotion gate; portable to any TypeScript agent runtime.",
+  "name": "@danteforge/three-way-gate",
+  "version": "1.0.0",
+  "description": "DanteForge three-way promotion gate for policy, evidence-chain, and harsh-score checks.",
   "license": "MIT",
   "type": "module",
   "main": "./dist/index.js",
@@ -25,29 +25,28 @@
     "clean": "node -e \"require('node:fs').rmSync('dist',{recursive:true,force:true})\"",
     "prepublishOnly": "npm run clean && npm run build"
   },
+  "dependencies": {
+    "@danteforge/evidence-chain": "^1.1.0",
+    "@danteforge/truth-loop": "^1.0.0"
+  },
   "engines": {
     "node": ">=18.0.0"
   },
   "repository": {
     "type": "git",
     "url": "git+https://github.com/dantericardo88/danteforge.git",
-    "directory": "packages/evidence-chain"
+    "directory": "packages/three-way-gate"
   },
-  "homepage": "https://github.com/dantericardo88/danteforge/tree/main/packages/evidence-chain",
+  "homepage": "https://github.com/dantericardo88/danteforge/tree/main/packages/three-way-gate",
   "bugs": {
     "url": "https://github.com/dantericardo88/danteforge/issues"
   },
   "keywords": [
+    "promotion-gate",
     "evidence-chain",
-    "tamper-evident",
-    "merkle-tree",
-    "hash-chain",
-    "sha-256",
-    "agent-provenance",
-    "verifiable-receipts",
-    "dante",
-    "danteforge",
-    "audit-log"
+    "quality-gate",
+    "agent-verification",
+    "danteforge"
   ],
   "publishConfig": {
     "access": "public"

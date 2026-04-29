@@ -61,6 +61,8 @@
     "dist",
     "src/harvested/dante-agents/skills",
     "packages/evidence-chain",
+    "packages/truth-loop",
+    "packages/three-way-gate",
     "agents",
     "commands",
     "hooks",

@@ -5,7 +5,15 @@ All notable changes to `@danteforge/evidence-chain` will be documented in this f
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [1.0.0] — 2026-04-29
+## [1.1.0] - 2026-04-29
+
+### Added
+
+- `aggregateChildReceipts(runId, children)` for multi-agent and sister-repo parent proofs.
+- Aggregate bundles verify each child receipt before bundling and fail closed when any child receipt is invalid.
+- Aggregate bundles preserve the latest child receipt hash as `prevHash`, making the aggregate usable as a parent proof anchor.
+
+## [1.0.0] - 2026-04-29
 
 First stable release. The package now ships compiled `dist/` output with declaration files; consumers import via the standard `"main"`/`"types"`/`"exports"` resolution.
 
@@ -38,20 +46,21 @@ Additive changes (new optional fields, new helper exports) ship as minor release
 
 The TypeScript source is byte-identical to 0.1.0. No runtime behavior changes.
 
-## [0.1.0] — 2026-04-29
+## [0.1.0] - 2026-04-29
 
-Initial implementation, internal-only release (not published to npm). Shipped as part of DanteForge Pass 11 — Proof Gate Sprint.
+Initial implementation, internal-only release (not published to npm). Shipped as part of DanteForge Pass 11 Proof Gate Sprint.
 
 ### Added
 
-- `stableJSON(value)` — deterministic JSON serialization (sorted keys)
-- `sha256(input)` and `hashDict(value)` — SHA-256 hashing primitives
-- `HashChain<T>` and `ReceiptChain<T>` — append-only chains with head hash + integrity verification
-- `MerkleTree` — root generation + inclusion proof verification
-- `createReceipt`, `verifyReceipt` — single-receipt envelope + verification
-- `createEvidenceBundle`, `verifyBundle` — multi-receipt bundles with Merkle root
+- `stableJSON(value)` deterministic JSON serialization (sorted keys)
+- `sha256(input)` and `hashDict(value)` SHA-256 hashing primitives
+- `HashChain<T>` and `ReceiptChain<T>` append-only chains with head hash and integrity verification
+- `MerkleTree` root generation plus inclusion proof verification
+- `createReceipt`, `verifyReceipt` single-receipt envelope and verification
+- `createEvidenceBundle`, `verifyBundle` multi-receipt bundles with Merkle root
 - `ProofEnvelope` interface as the shared envelope shape
 - `EVIDENCE_CHAIN_SCHEMA_VERSION` constant locked to `'evidence-chain.v1'`
 
+[1.1.0]: https://github.com/dantericardo88/danteforge/tree/main/packages/evidence-chain
 [1.0.0]: https://github.com/dantericardo88/danteforge/tree/main/packages/evidence-chain
 [0.1.0]: https://github.com/dantericardo88/danteforge/tree/main/packages/evidence-chain

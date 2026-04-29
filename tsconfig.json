@@ -7,12 +7,14 @@
     "rootDir": ".",
     "baseUrl": ".",
     "paths": {
-      "@danteforge/evidence-chain": ["packages/evidence-chain/src/index.ts"]
+      "@danteforge/evidence-chain": ["packages/evidence-chain/src/index.ts"],
+      "@danteforge/truth-loop": ["packages/truth-loop/src/index.ts"],
+      "@danteforge/three-way-gate": ["packages/three-way-gate/src/index.ts"]
     },
     "strict": true,
     "esModuleInterop": true,
     "skipLibCheck": true
   },
-  "include": ["src/**/*", "packages/evidence-chain/src/**/*"],
+  "include": ["src/**/*", "packages/*/src/**/*"],
   "exclude": ["node_modules", "dist", "packages/*/dist"]
 }

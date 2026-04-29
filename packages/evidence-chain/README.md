@@ -7,7 +7,7 @@
 
 The substrate behind DanteForge's three-way promotion gate. Use it to produce **mechanically verifiable** receipts for AI agent runs, scoring outputs, harvest evidence, and any other artifact whose provenance must be checkable by an independent party.
 
-**v1.0 scope**: SHA-256 + stable JSON + hash chain + Merkle tree + receipt/bundle verification. **No keys.** No external timestamping. Tamper-evidence without identity-binding. Ed25519 signing arrives in v1.1.
+**v1.x scope**: SHA-256 + stable JSON + hash chain + Merkle tree + receipt/bundle verification. **No keys.** No external timestamping. Tamper-evidence without identity-binding. Ed25519 signing is deferred until the receipt substrate is stable across sister repos.
 
 ## Why this exists
 
@@ -30,6 +30,7 @@ import {
   createReceipt,
   verifyReceipt,
   createEvidenceBundle,
+  aggregateChildReceipts,
   verifyBundle,
   HashChain,
   MerkleTree,
@@ -55,6 +56,13 @@ const bundle = createEvidenceBundle({
   gitSha: 'abc123...',
 });
 const bundleResult = verifyBundle(bundle);
+
+// 2b. Aggregate child receipts from multiple agents/repos into one parent proof
+const aggregate = aggregateChildReceipts('run_42', [
+  createReceipt({ action: 'codex.patch', payload: { repo: 'DanteForge' } }),
+  createReceipt({ action: 'claude.review', payload: { repo: 'DanteCode' } }),
+]);
+const aggregateResult = verifyBundle(aggregate);
 
 // 3. Append-only hash chain
 const chain = new HashChain<{ event: string; ts: string }>();
@@ -85,6 +93,7 @@ const proofValid = MerkleTree.verifyProof('hash2', proof.proof, tree.root);
 
 ### Bundles (multi-receipt with Merkle root)
 - `createEvidenceBundle<T>({ bundleId, evidence: T[], gitSha?, prevHash?, createdAt? })` → `EvidenceBundle<T>`
+- `aggregateChildReceipts(runId, children)` → `EvidenceBundle<Receipt<unknown>>`
 - `verifyBundle(bundle)` → `VerificationResult`
 
 ### Chains (append-only)
@@ -124,12 +133,13 @@ interface ProofEnvelope {
 - **AI agent receipts** — every tool call, decision, or output gets a hash-anchored receipt; chain replay lets auditors verify nothing was inserted out of order.
 - **Score / verification gates** — promotion logic refuses to advance unless the artifact's bundle verifies.
 - **Cross-repo handoffs** — DanteForge → DanteCode → DanteAgents handoffs use the same bundle shape; consumers verify provenance at every hop.
+- **Multi-agent parent proofs** — sibling agents produce child receipts; `aggregateChildReceipts` folds them into one parent bundle for promotion gates.
 - **MCP tool calls** — when an agent host (Cursor, Aider, Claude Code) invokes a DanteForge MCP tool, the response can include a verifiable receipt so the host can prove what it received.
 - **Evidence harvest manifests** — OSS pattern harvest, score snapshots, and any structured output ships with a Merkle-rooted bundle.
 
 ## What this is NOT (yet)
 
-- **Not signed.** Tampering is detectable; identity is not bound. v1.1 adds Ed25519 detached signatures.
+- **Not signed.** Tampering is detectable; identity is not bound. A future v1.x/v2 signing layer can add Ed25519 detached signatures once key management is deliberately designed.
 - **Not externally timestamped.** Self-anchored chain is fine for v1; v2 may add Sigstore / OpenTimestamps integration.
 - **Not post-quantum.** SHA-256 has known weaknesses against future quantum adversaries; v3+ may switch to SHA-3 or hash-based signatures if the threat model demands it.
 

@@ -389,6 +389,46 @@ export function createEvidenceBundle<T = unknown>(input: CreateEvidenceBundleInp
   };
 }
 
+export function aggregateChildReceipts(
+  runId: string,
+  children: Receipt<unknown>[],
+): EvidenceBundle<Receipt<unknown>> {
+  const errors: string[] = [];
+  children.forEach((child, index) => {
+    const check = verifyReceipt(child);
+    if (!check.valid) {
+      errors.push(`child ${index} (${child.receiptId}): ${check.errors.join('; ')}`);
+    }
+  });
+  if (errors.length > 0) {
+    throw new Error(`Cannot aggregate invalid child receipt(s): ${errors.join('; ')}`);
+  }
+
+  const gitShas = new Set(children.map(child => child.gitSha ?? null));
+  const [singleGitSha] = gitShas;
+  const childCopies = children.map(child => ({
+    ...child,
+    payload: cloneStableJson(child.payload),
+  }));
+  const latestCreatedAt = children
+    .map(child => child.createdAt)
+    .sort()
+    .at(-1);
+
+  return createEvidenceBundle({
+    runId,
+    bundleId: `aggregate_${runId}`,
+    evidence: childCopies,
+    prevHash: children.at(-1)?.hash ?? ZERO_HASH,
+    createdAt: latestCreatedAt,
+    gitSha: gitShas.size === 1 ? singleGitSha : null,
+  });
+}
+
+function cloneStableJson<T>(value: T): T {
+  return JSON.parse(stableJSON(value)) as T;
+}
+
 export function verifyBundle(bundle: EvidenceBundle<unknown>): VerificationResult {
   const errors: string[] = [];
   const expectedPayloadHash = hashDict(bundle.evidence);

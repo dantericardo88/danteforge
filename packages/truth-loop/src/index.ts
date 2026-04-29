@@ -1,3 +1,4 @@
+export type * from './types.js';
 export {
   nextRunId,
   newArtifactId,
@@ -7,4 +8,9 @@ export {
   newNextActionId,
   newBudgetEnvelopeId,
   sha256,
-} from '@danteforge/truth-loop';
+} from './ids.js';
+export {
+  proofArtifact,
+  proofEvidence,
+  proofVerdict,
+} from './proof.js';

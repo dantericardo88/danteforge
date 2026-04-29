@@ -8,6 +8,7 @@
 **Discovery Discipline:** Inspect commit f19e1d7 and any subsequent commits to determine current state. Most major substrate is already shipped. This PRD specifies the closure work to v1.0 plus the integration surfaces sister repos consume.
 **Build Window:** 5-7 days at demonstrated build rate
 **Current Baseline:** DanteForge 9.30 overall, 15/19 dimensions at 9+ per Codex Masterplan Closure Stamp 2026-04-29
+**Implementation update 2026-04-29:** Pass 18 package surfaces are locally implemented but not npm-published. `@danteforge/evidence-chain` is bumped to v1.1.0 with `aggregateChildReceipts`; `@danteforge/truth-loop` v1.0.0 and `@danteforge/three-way-gate` v1.0.0 exist as workspace packages; legacy `src/spine/*` imports are compatibility adapters. MCP and sister-repo contracts now live in `docs/MCP_TOOL_SURFACE.md` and `docs/SISTER_REPO_INTEGRATION.md`. Founder-gated publication/adoption items remain pending.
 
 ---
 
@@ -41,7 +42,7 @@ This PRD assumes the following exists per commit f19e1d7. Implementation agents 
 
 **Sean Lippay validation harness.** `src/spine/validation/sean_lippay_outreach.ts` and `sean_lippay_debate.ts`. Founder-gated final send still pending.
 
-**Evidence-chain npm package.** `packages/evidence-chain/` with package.json, LICENSE, README.md, CHANGELOG.md, src/index.ts, tsconfig.json. Currently v1.0.0. v1.1 with aggregateChildReceipts pending per Pass 18.
+**Evidence-chain workspace package.** `packages/evidence-chain/` with package.json, LICENSE, README.md, CHANGELOG.md, src/index.ts, tsconfig.json. Locally bumped to v1.1.0 with `aggregateChildReceipts`; npm publication remains founder-gated.
 
 **Codex Masterplan Closure Stamp.** `docs/CODEX_MASTERPLAN_CLOSURE_STAMP.md` documents canonical scores: DanteForge 9.30 (15/19), DanteCode 7.90 (8/19), DanteAgents 4.60 (0/19). Articulates remaining open items.
 
@@ -211,6 +212,8 @@ Substrate-Claude's recommendation in the document you shared identified this as 
 - Build via tsup matching evidence-chain pattern
 - Publish to npm
 
+Implementation note 2026-04-29: the public package surface now owns `types`, `ids`, and proof helpers. The runtime runner remains under `src/spine/truth_loop/runner.ts` because it depends on DanteForge-local collectors, writers, schema validation, and Time Machine. That keeps the sister-repo contract portable instead of dragging the full CLI runtime into consumers.
+
 **Extract `@danteforge/three-way-gate`:**
 - Move `src/spine/three_way_gate.ts` into `packages/three-way-gate/src/`
 - Same structure as truth-loop package
@@ -222,6 +225,8 @@ Substrate-Claude's recommendation in the document you shared identified this as 
 - Implement: takes N child receipts and produces parent bundle with all child references, parent hash chains all children, supports later byte-identical reconstruction
 - Add tests: parent verifies via verifyBundle, children individually verifiable, time-machine restoration works on aggregated bundle
 - Bump evidence-chain to v1.1.0 and republish
+
+Implementation note 2026-04-29: local v1.1.0 package and tests are complete. Republish is intentionally not executed in this sprint.
 
 **Acceptance:**
 - All three packages published to npm at correct versions
@@ -245,6 +250,8 @@ The 7 quality-gate MCP tools that DanteCode plugin manifest references need form
 
 **Document location:** `docs/MCP_TOOL_SURFACE.md` or update existing MCP server documentation.
 
+Implementation note 2026-04-29: `docs/MCP_TOOL_SURFACE.md` exists and documents the seven quality-gate tools.
+
 **Acceptance:** External developer (or external agent) can implement MCP client against DanteForge using only the documentation, without source code access.
 
 **Effort:** 0.5 days.
@@ -254,6 +261,8 @@ The 7 quality-gate MCP tools that DanteCode plugin manifest references need form
 Document how DanteCode v2 and DanteAgents v1 are expected to consume DanteForge surfaces. This is integration documentation, not new code.
 
 **Document location:** `docs/SISTER_REPO_INTEGRATION.md`.
+
+Implementation note 2026-04-29: `docs/SISTER_REPO_INTEGRATION.md` exists and documents DanteCode/DanteAgents consumption patterns plus founder-gated statuses.
 
 **Content:**
 - DanteCode v2: imports `@danteforge/evidence-chain` for proof-anchored commits. Uses `@danteforge/three-way-gate` for score-claim updates. Dispatches via DanteForge MCP server for verification work. Section showing example imports and usage.

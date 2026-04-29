@@ -1,7 +1,7 @@
 {
-  "name": "@danteforge/evidence-chain",
-  "version": "1.1.0",
-  "description": "Zero-dependency cryptographic evidence primitives for tamper-evident agent receipts. SHA-256 + stable JSON + hash chain + Merkle tree + receipt/bundle verification. Used by DanteForge as the substrate for its three-way promotion gate; portable to any TypeScript agent runtime.",
+  "name": "@danteforge/truth-loop",
+  "version": "1.0.0",
+  "description": "Portable Truth Loop schemas, IDs, and proof helpers for evidence-backed Dante agent workflows.",
   "license": "MIT",
   "type": "module",
   "main": "./dist/index.js",
@@ -25,29 +25,27 @@
     "clean": "node -e \"require('node:fs').rmSync('dist',{recursive:true,force:true})\"",
     "prepublishOnly": "npm run clean && npm run build"
   },
+  "dependencies": {
+    "@danteforge/evidence-chain": "^1.1.0"
+  },
   "engines": {
     "node": ">=18.0.0"
   },
   "repository": {
     "type": "git",
     "url": "git+https://github.com/dantericardo88/danteforge.git",
-    "directory": "packages/evidence-chain"
+    "directory": "packages/truth-loop"
   },
-  "homepage": "https://github.com/dantericardo88/danteforge/tree/main/packages/evidence-chain",
+  "homepage": "https://github.com/dantericardo88/danteforge/tree/main/packages/truth-loop",
   "bugs": {
     "url": "https://github.com/dantericardo88/danteforge/issues"
   },
   "keywords": [
-    "evidence-chain",
-    "tamper-evident",
-    "merkle-tree",
-    "hash-chain",
-    "sha-256",
-    "agent-provenance",
-    "verifiable-receipts",
-    "dante",
-    "danteforge",
-    "audit-log"
+    "truth-loop",
+    "agent-verification",
+    "evidence",
+    "verdicts",
+    "danteforge"
   ],
   "publishConfig": {
     "access": "public"

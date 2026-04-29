@@ -206,14 +206,15 @@ export async function verifyTimeMachine(options: { cwd?: string } = {}): Promise
     if (entry.parent !== expectedParent) errors.push(`reflog ${index}: parent mismatch`);
   });
 
-  for (const commitId of commitIds) {
+  const commitResults = await Promise.all(commitIds.map(async commitId => {
     try {
       const commit = await loadTimeMachineCommit({ cwd, commitId });
-      errors.push(...await verifyCommit(cwd, commit));
+      return await verifyCommit(cwd, commit);
     } catch (err) {
-      errors.push(`${commitId}: ${err instanceof Error ? err.message : String(err)}`);
+      return [`${commitId}: ${err instanceof Error ? err.message : String(err)}`];
     }
-  }
+  }));
+  for (const commitErrors of commitResults) errors.push(...commitErrors);
 
   return {
     valid: errors.length === 0,
