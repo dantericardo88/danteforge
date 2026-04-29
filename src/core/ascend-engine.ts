@@ -21,6 +21,7 @@ import {
   type ScoringDimension,
 } from './harsh-scorer.js';
 import { loadMatrix, saveMatrix, classifyDimensions, getNextSprintDimension, updateDimensionScore, type CompeteMatrix, type MatrixDimension } from './compete-matrix.js';
+import { readSweBenchScore, formatSweBenchGoal, isSweBenchDimension } from './swe-bench-probe.js';
 import { defineUniverse, type UniverseDefinerOptions } from './universe-definer.js';
 import { runAutoforgeLoop, AutoforgeLoopState, type AutoforgeLoopContext, type AutoforgeLoopDeps } from './autoforge-loop.js';
 import { executeAutoforgeCommand } from './autoforge-executor.js';
@@ -382,6 +383,16 @@ async function orientAndClassify(
         if (strictScore < target) matDim.status = 'in-progress';
       }
     }
+    // SWE-bench is not in the harsh-scorer's 19 dimensions — it's a feature-
+    // matrix dim only. Read the current score from the bench-results probe
+    // instead of letting it stay frozen at whatever the matrix author wrote.
+    if (isSweBenchDimension(matDim.id)) {
+      const probe = await readSweBenchScore(cwd).catch(() => null);
+      if (probe) {
+        matDim.scores['self'] = probe.displayScore;
+        if (probe.displayScore < target) matDim.status = 'in-progress';
+      }
+    }
   }
   const { achievable, atCeiling } = classifyDimensions(matrix, target);
   if (atCeiling.length > 0) {
@@ -490,7 +501,14 @@ async function executeDimensionCycle(
   cwd: string, loadStateFn: typeof loadState,
 ): Promise<void> {
   if ((options.executeMode ?? 'forge') === 'forge') {
-    const forgeGoal = `Improve ${nextDim.label}: current ${beforeScore.toFixed(1)}/10, target ${target}/10`;
+    // SWE-bench gets a goal that names specific failure modes from the latest
+    // bench-results.json. Other dimensions stay on the generic improve-goal —
+    // the harsh-scorer for those dims can drive convergence on its own.
+    const forgeGoal = isSweBenchDimension(nextDim.id)
+      ? await formatSweBenchGoal(cwd, target).catch(() =>
+          `Improve ${nextDim.label}: current ${beforeScore.toFixed(1)}/10, target ${target}/10`,
+        )
+      : `Improve ${nextDim.label}: current ${beforeScore.toFixed(1)}/10, target ${target}/10`;
     const setWorkflowStageFn = options._setWorkflowStage ?? (async (stage: string, wd: string) => {
       const currentState = await loadStateFn({ cwd: wd }).catch(() => null);
       if (currentState) {
@@ -518,8 +536,18 @@ async function rescoreAndGetDelta(
 ): Promise<{ newSelfScore: number; delta: number; newScoreResult: HarshScoreResult }> {
   const newScoreResult = await harshScoreFn({ cwd, _readHistory: async () => [], _writeHistory: async () => {} });
   await applyStrictOverrides(newScoreResult, cwd, computeStrictDimsFn);
-  const scoringDim = mapDimIdToScoringDimension(nextDim.id);
-  const newSelfScore = scoringDim ? (newScoreResult.displayDimensions[scoringDim] ?? newScoreResult.displayScore) : newScoreResult.displayScore;
+  let newSelfScore: number;
+  if (isSweBenchDimension(nextDim.id)) {
+    // SWE-bench score lives in bench-results.json, not the harsh-scorer.
+    // If no fresh run since the cycle started, score is unchanged — that's
+    // accurate (a forge cycle that doesn't trigger a rerun produces no
+    // measurable delta until the user reruns `dantecode bench`).
+    const probe = await readSweBenchScore(cwd).catch(() => null);
+    newSelfScore = probe?.displayScore ?? beforeScore;
+  } else {
+    const scoringDim = mapDimIdToScoringDimension(nextDim.id);
+    newSelfScore = scoringDim ? (newScoreResult.displayDimensions[scoringDim] ?? newScoreResult.displayScore) : newScoreResult.displayScore;
+  }
   const delta = newSelfScore - beforeScore;
   logger.info(`  Result: ${nextDim.label} ${beforeScore.toFixed(1)} → ${newSelfScore.toFixed(1)} (${delta >= 0 ? '+' : ''}${delta.toFixed(1)})`);
   return { newSelfScore, delta, newScoreResult };
