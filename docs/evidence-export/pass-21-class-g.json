@@ -1,0 +1,174 @@
+{
+  "schemaVersion": 1,
+  "pass": 21,
+  "passName": "Class G end-to-end + Class F 1M staging",
+  "generatedAt": "2026-04-29T21:20:57.966Z",
+  "gitSha": "f19e1d7d0f86041d32e7e5e1f7407953b38bd463",
+  "classG": {
+    "g1": {
+      "status": "staged_founder_gated",
+      "commitId": "tm_2129c6e36b28d5a1f786f9f9",
+      "filesCommitted": 5,
+      "byteIdenticalCount": 5,
+      "byteIdenticalPct": 100,
+      "isRealOutreach": false,
+      "founderGate": "GATE-6 (per PRD-TIME-MACHINE-PUBLICATION-PLAN.md)",
+      "reportPath": ".danteforge/validation/sean_lippay_outreach/truth-loop-runs/g1_substrate_report.json"
+    },
+    "g2": {
+      "status": "out_of_scope_dojo_paused",
+      "reason": "Dojo bookkeeping integration paused for v1 publication; deferred to post-publication scope"
+    },
+    "g3": {
+      "status": "passed",
+      "source": "Pass 18 evidence"
+    },
+    "g4": {
+      "status": "passed",
+      "ledgerHash": "384bf3df3d039809633aa526eca6c409338772e4722d7b772134a728faa413f9",
+      "ledgerEntries": 10,
+      "recallQueriesRun": 7,
+      "recallGaps": 0,
+      "completenessPct": 100,
+      "fileHistoryStatus": "ok",
+      "fileHistoryHits": 1,
+      "verifyValid": true,
+      "reportPath": ".danteforge/validation/g4_recall_report.json"
+    }
+  },
+  "classF1M": {
+    "status": "gated_gate_3",
+    "overrideCommand": "DANTEFORGE_TIME_MACHINE_VALIDATE_MAX_COMMITS=1000000 forge time-machine validate --class F --scale benchmark --json",
+    "estimatedRuntime": "15-60 min compute",
+    "estimatedDisk": "~5GB",
+    "founderActionRequired": "set env-var override and execute"
+  },
+  "testCoverage": {
+    "file": "tests/g4-conversational-ledger.test.ts",
+    "fileHash": "83371b251c5a7d59488a4c5f0e68efb830df821ad23826d332566dc76ec94b3d",
+    "testCount": 1,
+    "cases": [
+      "G4 ledger anchored to Time Machine + recall returns specific commits + chain verifies clean"
+    ]
+  },
+  "truthBoundary": {
+    "allowedClaim": "Class G's substrate-composability is end-to-end validated against synthetic scenarios; G4 conversational ledger anchors decisions to immutable Time Machine commits with 100% causal recall completeness; F 1M is structurally guaranteed and is one founder env-var away.",
+    "forbiddenClaims": [
+      "The Sean Lippay outreach has been sent (GATE-6 preserved; agent does NOT send)",
+      "Class F's 1M benchmark has been executed (GATE-3 preserved; agent does NOT trigger)",
+      "Dojo bookkeeping is integrated (G2 explicitly out-of-scope)"
+    ]
+  },
+  "unblocks": [
+    "Pass 22 comparison document: Class G result row with G1 commit ID + G4 100%-completeness numbers",
+    "GATE-3 founder action: exact override command + cost envelope captured",
+    "GATE-6 founder action: G1 staged artifacts ready for review"
+  ],
+  "verifyChain": {
+    "typecheck": "pass",
+    "lint": "pass",
+    "antiStub": "pass",
+    "pass21Tests": "pass (1/1)",
+    "g4LedgerEndToEnd": "100% completeness, 0 gaps",
+    "g1SubstrateEndToEnd": "5/5 byte-identical round-trip"
+  },
+  "proof": {
+    "schemaVersion": "evidence-chain.v1",
+    "receiptId": "bundle_411b331b0d9bcd4e",
+    "bundleId": "pass_21_class_g_end_to_end",
+    "gitSha": "f19e1d7d0f86041d32e7e5e1f7407953b38bd463",
+    "createdAt": "2026-04-29T21:20:57.966Z",
+    "payloadHash": "2fc5b2686329e7fb84c19479fac545c114b0ed4bd09558805e5fdc238b1e1413",
+    "prevHash": "0000000000000000000000000000000000000000000000000000000000000000",
+    "merkleRoot": "ecb795eb072480ab084de76f99ed175225644ff41f78161037ce027bf8d2d9f9",
+    "evidenceHashes": [
+      "ecb795eb072480ab084de76f99ed175225644ff41f78161037ce027bf8d2d9f9"
+    ],
+    "verificationStatus": "unverified",
+    "evidence": [
+      {
+        "schemaVersion": 1,
+        "pass": 21,
+        "passName": "Class G end-to-end + Class F 1M staging",
+        "generatedAt": "2026-04-29T21:20:57.966Z",
+        "gitSha": "f19e1d7d0f86041d32e7e5e1f7407953b38bd463",
+        "classG": {
+          "g1": {
+            "status": "staged_founder_gated",
+            "commitId": "tm_2129c6e36b28d5a1f786f9f9",
+            "filesCommitted": 5,
+            "byteIdenticalCount": 5,
+            "byteIdenticalPct": 100,
+            "isRealOutreach": false,
+            "founderGate": "GATE-6 (per PRD-TIME-MACHINE-PUBLICATION-PLAN.md)",
+            "reportPath": ".danteforge/validation/sean_lippay_outreach/truth-loop-runs/g1_substrate_report.json"
+          },
+          "g2": {
+            "status": "out_of_scope_dojo_paused",
+            "reason": "Dojo bookkeeping integration paused for v1 publication; deferred to post-publication scope"
+          },
+          "g3": {
+            "status": "passed",
+            "source": "Pass 18 evidence"
+          },
+          "g4": {
+            "status": "passed",
+            "ledgerHash": "384bf3df3d039809633aa526eca6c409338772e4722d7b772134a728faa413f9",
+            "ledgerEntries": 10,
+            "recallQueriesRun": 7,
+            "recallGaps": 0,
+            "completenessPct": 100,
+            "fileHistoryStatus": "ok",
+            "fileHistoryHits": 1,
+            "verifyValid": true,
+            "reportPath": ".danteforge/validation/g4_recall_report.json"
+          }
+        },
+        "classF1M": {
+          "status": "gated_gate_3",
+          "overrideCommand": "DANTEFORGE_TIME_MACHINE_VALIDATE_MAX_COMMITS=1000000 forge time-machine validate --class F --scale benchmark --json",
+          "estimatedRuntime": "15-60 min compute",
+          "estimatedDisk": "~5GB",
+          "founderActionRequired": "set env-var override and execute"
+        },
+        "testCoverage": {
+          "file": "tests/g4-conversational-ledger.test.ts",
+          "fileHash": "83371b251c5a7d59488a4c5f0e68efb830df821ad23826d332566dc76ec94b3d",
+          "testCount": 1,
+          "cases": [
+            "G4 ledger anchored to Time Machine + recall returns specific commits + chain verifies clean"
+          ]
+        },
+        "truthBoundary": {
+          "allowedClaim": "Class G's substrate-composability is end-to-end validated against synthetic scenarios; G4 conversational ledger anchors decisions to immutable Time Machine commits with 100% causal recall completeness; F 1M is structurally guaranteed and is one founder env-var away.",
+          "forbiddenClaims": [
+            "The Sean Lippay outreach has been sent (GATE-6 preserved; agent does NOT send)",
+            "Class F's 1M benchmark has been executed (GATE-3 preserved; agent does NOT trigger)",
+            "Dojo bookkeeping is integrated (G2 explicitly out-of-scope)"
+          ]
+        },
+        "unblocks": [
+          "Pass 22 comparison document: Class G result row with G1 commit ID + G4 100%-completeness numbers",
+          "GATE-3 founder action: exact override command + cost envelope captured",
+          "GATE-6 founder action: G1 staged artifacts ready for review"
+        ],
+        "verifyChain": {
+          "typecheck": "pass",
+          "lint": "pass",
+          "antiStub": "pass",
+          "pass21Tests": "pass (1/1)",
+          "g4LedgerEndToEnd": "100% completeness, 0 gaps",
+          "g1SubstrateEndToEnd": "5/5 byte-identical round-trip"
+        }
+      }
+    ],
+    "inclusionProofs": [
+      {
+        "index": 0,
+        "leafHash": "ecb795eb072480ab084de76f99ed175225644ff41f78161037ce027bf8d2d9f9",
+        "proof": []
+      }
+    ],
+    "hash": "dfb7c8caa6072c752d10fde6ec4438e1482dcff17da5668ad5ea7ced75bba8f0"
+  }
+}

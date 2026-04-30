@@ -854,6 +854,7 @@ timeMachineCommand
   .option('--round-trips <n>', 'Round-trips per domain for live DELEGATE-52 (PRD spec: 10)', parseInt)
   .option('--mitigate-divergence', 'Restore and retry when a DELEGATE-52 round-trip diverges')
   .option('--retries-on-divergence <n>', 'Retry attempts per divergence when mitigation is enabled', parseInt)
+  .option('--mitigation-strategy <s>', 'substrate-restore-retry (default) | prompt-only-retry | no-mitigation')
   .option('--json', 'Output machine-readable JSON')
   .option('--cwd <path>', 'Project directory (defaults to cwd)')
   .action(async (opts) => (await C()).timeMachine({
@@ -869,6 +870,7 @@ timeMachineCommand
     roundTripsPerDomain: opts.roundTrips,
     mitigateDivergence: opts.mitigateDivergence,
     retriesOnDivergence: opts.retriesOnDivergence,
+    mitigationStrategy: opts.mitigationStrategy,
     json: opts.json,
   }));
 

@@ -1,0 +1,262 @@
+{
+  "schemaVersion": 1,
+  "pass": 15,
+  "passName": "Verify SLO baseline + parallel-lane experiment (Pass 15)",
+  "generatedAt": "2026-04-29T18:07:35.654Z",
+  "gitSha": "542fadaca24986d8c850732984b405c7de4b98ab",
+  "measurementHardware": "8-core developer laptop, Node 24.13.1, Windows 11",
+  "baseline": {
+    "mode": "sequential",
+    "command": "npm test",
+    "totalWallTimeMs": 265900,
+    "totalWallTimeMin": 4.4,
+    "lanes": [
+      {
+        "id": "default",
+        "files": 462,
+        "concurrency": 8,
+        "wallTimeMs": 103900
+      },
+      {
+        "id": "orchestration-heavy",
+        "files": 20,
+        "concurrency": 2,
+        "wallTimeMs": 10100
+      },
+      {
+        "id": "orchestration-e2e",
+        "files": 2,
+        "concurrency": 1,
+        "wallTimeMs": 1700
+      },
+      {
+        "id": "cli-process",
+        "files": 5,
+        "concurrency": 2,
+        "wallTimeMs": 150300
+      }
+    ],
+    "fullVerifyEstimateMs": 280000,
+    "fullVerifyEstimateMin": 4.6
+  },
+  "experiment": {
+    "mode": "parallel-3-lane",
+    "command": "npm run test:parallel-experimental",
+    "hypothesis": "Run default + cli-process + orchestration-heavy concurrently in Phase A, then orchestration-e2e in Phase B; expected ~max(default,cli-process,heavy) + e2e instead of sum.",
+    "totalWallTimeMs": 384400,
+    "totalWallTimeMin": 6.4,
+    "lanes": [
+      {
+        "id": "default",
+        "files": 462,
+        "concurrency": 8,
+        "wallTimeMs": 269300,
+        "note": "2.6x slower than sequential — CPU oversubscription"
+      },
+      {
+        "id": "orchestration-heavy",
+        "files": 20,
+        "concurrency": 2,
+        "wallTimeMs": 31400,
+        "note": "3.1x slower"
+      },
+      {
+        "id": "orchestration-e2e",
+        "files": 2,
+        "concurrency": 1,
+        "wallTimeMs": 1800
+      },
+      {
+        "id": "cli-process",
+        "files": 5,
+        "concurrency": 2,
+        "wallTimeMs": 382400,
+        "note": "2.5x slower; was the wall-time bottleneck"
+      }
+    ],
+    "result": "failed",
+    "deltaPct": 45,
+    "cause": "CPU oversubscription. Default lane runs at concurrency=8, saturating 8 cores. Phase A adds 2+2 more workers = 12 processes for 8 CPUs. Each lane ran 2-3x slower under contention."
+  },
+  "conclusion": "Sequential `npm test` is the production gate. Parallel-lane execution does NOT pay off on CPU-bound machines. Parallel runner retained as `npm run test:parallel-experimental` for future hardware (16+ cores) but explicitly NOT wired into `verify`.",
+  "slo": {
+    "target": "verify <= 5 min wall-time on 8-core dev laptop",
+    "currentBaseline": "verify ~ 4.6 min",
+    "status": "GREEN — within target",
+    "bands": {
+      "green": {
+        "upToMin": 5,
+        "action": "within target"
+      },
+      "yellow": {
+        "upToMin": 7,
+        "action": "investigate before next pass"
+      },
+      "red": {
+        "upToMin": "any-above-yellow",
+        "action": "profile per-lane + per-file before merging more changes"
+      }
+    }
+  },
+  "sloDoc": {
+    "path": ".danteforge/VERIFY_SLO.md",
+    "sha256": "6df0d101d0b7119c1865336a66770519602aa54b80d47b74c81097b30a9a745a"
+  },
+  "futureOptimizationCandidates": [
+    "tests/cli-release-readiness.test.ts (938 LOC, 44 tests, runTsxCli per test)",
+    "tests/cli-stage2-remaining.test.ts (826 LOC, 88 tests)",
+    "tests/autoforge-loop.test.ts (835 LOC, 78 tests, mkdtemp+scaffolding per test)",
+    "tests/e2e-workflow.test.ts (794 LOC, 29 tests, full pipeline traversal)",
+    "tests/autoforge.test.ts (592 LOC, 52 tests, mkdtemp+scaffold per test)",
+    "tests/verify-light.test.ts (434 LOC, 17 tests, execFileSync sync child process)"
+  ],
+  "optimizationPatternsThatPayOff": [
+    "Shared per-suite tmpDir fixture (one mkdtemp per describe, not per test)",
+    "Mock LLM caller via _llmCaller injection seams (already wired in many places)",
+    "Batch related CLI tests into fewer subprocess spawns",
+    "worker_threads instead of process-isolated tsx for non-isolating cases"
+  ],
+  "proof": {
+    "schemaVersion": "evidence-chain.v1",
+    "receiptId": "bundle_091c237cc2dedad6",
+    "bundleId": "pass_15_verify_slo",
+    "gitSha": "542fadaca24986d8c850732984b405c7de4b98ab",
+    "createdAt": "2026-04-29T18:07:35.654Z",
+    "payloadHash": "5f4e6ca04341feacea99b3b3a1aeeeb1701085ce1d687adf4893e02c9c94a771",
+    "prevHash": "0000000000000000000000000000000000000000000000000000000000000000",
+    "merkleRoot": "2965f8e8a81d6f16b937ffbc86fbc95d313ab40123c1ca7fe00daee30ce8dd4c",
+    "evidenceHashes": [
+      "2965f8e8a81d6f16b937ffbc86fbc95d313ab40123c1ca7fe00daee30ce8dd4c"
+    ],
+    "verificationStatus": "unverified",
+    "evidence": [
+      {
+        "schemaVersion": 1,
+        "pass": 15,
+        "passName": "Verify SLO baseline + parallel-lane experiment (Pass 15)",
+        "generatedAt": "2026-04-29T18:07:35.654Z",
+        "gitSha": "542fadaca24986d8c850732984b405c7de4b98ab",
+        "measurementHardware": "8-core developer laptop, Node 24.13.1, Windows 11",
+        "baseline": {
+          "mode": "sequential",
+          "command": "npm test",
+          "totalWallTimeMs": 265900,
+          "totalWallTimeMin": 4.4,
+          "lanes": [
+            {
+              "id": "default",
+              "files": 462,
+              "concurrency": 8,
+              "wallTimeMs": 103900
+            },
+            {
+              "id": "orchestration-heavy",
+              "files": 20,
+              "concurrency": 2,
+              "wallTimeMs": 10100
+            },
+            {
+              "id": "orchestration-e2e",
+              "files": 2,
+              "concurrency": 1,
+              "wallTimeMs": 1700
+            },
+            {
+              "id": "cli-process",
+              "files": 5,
+              "concurrency": 2,
+              "wallTimeMs": 150300
+            }
+          ],
+          "fullVerifyEstimateMs": 280000,
+          "fullVerifyEstimateMin": 4.6
+        },
+        "experiment": {
+          "mode": "parallel-3-lane",
+          "command": "npm run test:parallel-experimental",
+          "hypothesis": "Run default + cli-process + orchestration-heavy concurrently in Phase A, then orchestration-e2e in Phase B; expected ~max(default,cli-process,heavy) + e2e instead of sum.",
+          "totalWallTimeMs": 384400,
+          "totalWallTimeMin": 6.4,
+          "lanes": [
+            {
+              "id": "default",
+              "files": 462,
+              "concurrency": 8,
+              "wallTimeMs": 269300,
+              "note": "2.6x slower than sequential — CPU oversubscription"
+            },
+            {
+              "id": "orchestration-heavy",
+              "files": 20,
+              "concurrency": 2,
+              "wallTimeMs": 31400,
+              "note": "3.1x slower"
+            },
+            {
+              "id": "orchestration-e2e",
+              "files": 2,
+              "concurrency": 1,
+              "wallTimeMs": 1800
+            },
+            {
+              "id": "cli-process",
+              "files": 5,
+              "concurrency": 2,
+              "wallTimeMs": 382400,
+              "note": "2.5x slower; was the wall-time bottleneck"
+            }
+          ],
+          "result": "failed",
+          "deltaPct": 45,
+          "cause": "CPU oversubscription. Default lane runs at concurrency=8, saturating 8 cores. Phase A adds 2+2 more workers = 12 processes for 8 CPUs. Each lane ran 2-3x slower under contention."
+        },
+        "conclusion": "Sequential `npm test` is the production gate. Parallel-lane execution does NOT pay off on CPU-bound machines. Parallel runner retained as `npm run test:parallel-experimental` for future hardware (16+ cores) but explicitly NOT wired into `verify`.",
+        "slo": {
+          "target": "verify <= 5 min wall-time on 8-core dev laptop",
+          "currentBaseline": "verify ~ 4.6 min",
+          "status": "GREEN — within target",
+          "bands": {
+            "green": {
+              "upToMin": 5,
+              "action": "within target"
+            },
+            "yellow": {
+              "upToMin": 7,
+              "action": "investigate before next pass"
+            },
+            "red": {
+              "upToMin": "any-above-yellow",
+              "action": "profile per-lane + per-file before merging more changes"
+            }
+          }
+        },
+        "sloDoc": {
+          "path": ".danteforge/VERIFY_SLO.md",
+          "sha256": "6df0d101d0b7119c1865336a66770519602aa54b80d47b74c81097b30a9a745a"
+        },
+        "futureOptimizationCandidates": [
+          "tests/cli-release-readiness.test.ts (938 LOC, 44 tests, runTsxCli per test)",
+          "tests/cli-stage2-remaining.test.ts (826 LOC, 88 tests)",
+          "tests/autoforge-loop.test.ts (835 LOC, 78 tests, mkdtemp+scaffolding per test)",
+          "tests/e2e-workflow.test.ts (794 LOC, 29 tests, full pipeline traversal)",
+          "tests/autoforge.test.ts (592 LOC, 52 tests, mkdtemp+scaffold per test)",
+          "tests/verify-light.test.ts (434 LOC, 17 tests, execFileSync sync child process)"
+        ],
+        "optimizationPatternsThatPayOff": [
+          "Shared per-suite tmpDir fixture (one mkdtemp per describe, not per test)",
+          "Mock LLM caller via _llmCaller injection seams (already wired in many places)",
+          "Batch related CLI tests into fewer subprocess spawns",
+          "worker_threads instead of process-isolated tsx for non-isolating cases"
+        ]
+      }
+    ],
+    "inclusionProofs": [
+      {
+        "index": 0,
+        "leafHash": "2965f8e8a81d6f16b937ffbc86fbc95d313ab40123c1ca7fe00daee30ce8dd4c",
+        "proof": []
+      }
+    ],
+    "hash": "38980e7e7efe72f6f33870eb26499351858c1b7759a41be35383ea0b8afcea38"
+  }
+}

@@ -29,7 +29,7 @@
 \maketitle
 
 \begin{abstract}
-Laban et al.~(Microsoft Research, 2026) demonstrated that current large language models corrupt 25\% of structured documents when delegated multi-turn editing tasks across the DELEGATE-52 benchmark~\cite{laban2026delegate52}. We present DanteForge, a cryptographic substrate that wraps LLM document edits in a Merkle-anchored~\cite{nakamoto2008bitcoin} commit chain with full reversibility~\cite{loeliger2012git} and causal-source identification. We replicate the DELEGATE-52 methodology on the 48 public-release domains and report results across seven validation classes. Substrate-only properties (Classes~A,~B,~C,~E,~F at 100K, G) all meet PRD minimum-success criteria; live LLM round-trip data (D1, D3, D4) is reported as \texttt{[FOUNDER-GATED]} placeholders pending budget authorization. The full reproducibility appendix and replication CLI are provided.
+Laban et al.~(Microsoft Research, 2026) demonstrated that current large language models corrupt 25\% of structured documents when delegated multi-turn editing tasks across the DELEGATE-52 benchmark~\cite{laban2026delegate52}. We present DanteForge, a cryptographic substrate that wraps LLM document edits in a Merkle-anchored~\cite{nakamoto2008bitcoin} commit chain with full reversibility~\cite{loeliger2012git} and causal-source identification. We replicate the DELEGATE-52 methodology on the 48 public-release domains and report results across seven validation classes. Substrate-only properties (Classes~A,~B,~C,~E,~F at 100K, G) all meet PRD minimum-success criteria; the Pass~36 1M Class~F run timed out after 137{,}218 commits at the 30-minute cap and is not claimed as passed. Live LLM round-trip data (D1, D3, D4) is reported as \texttt{[FOUNDER-GATED]} placeholders pending budget authorization. The full reproducibility appendix and replication CLI are provided.
 \end{abstract}
 
 \section{Background: DELEGATE-52 and the Document-Corruption Finding}
@@ -142,11 +142,11 @@ Tier & verify (ms) & restore (ms) & query (ms) & Threshold? \\
 \midrule
 10K  & 3{,}023  & 3 & 1{,}061 & yes \\
 100K & 140{,}927 & 4 & 7{,}321 & yes (Pass~27) \\
-1M   & --- & --- & --- & gated GATE-3 \\
+1M   & timeout & --- & --- & no; 137{,}218/1{,}000{,}000 commits at 30.48 min \\
 \bottomrule
 \end{tabular}
 
-Pass~27 optimization (\texttt{src/core/time-machine.ts}: blob-hash cache + bounded parallelism + parallel commit loading) reduced 100K verify from 248{,}150~ms to 140{,}927~ms ($-43\%$) and 100K query from 61{,}182~ms to 7{,}321~ms ($-88\%$). All three tiers now meet thresholds.
+Pass~27 optimization (\texttt{src/core/time-machine.ts}: blob-hash cache + bounded parallelism + parallel commit loading) reduced 100K verify from 248{,}150~ms to 140{,}927~ms ($-43\%$) and 100K query from 61{,}182~ms to 7{,}321~ms ($-88\%$). Pass~36 attempted the compute-only 1M tier and timed out at 30.48 minutes after creating 137{,}218 commits; 1M therefore remains unresolved rather than validated.
 
 \subsection{Class G --- Constitutional Integration}
 
@@ -172,7 +172,7 @@ If the live DELEGATE-52 run lands in the expected corridor, then: (i) substrate-
 \item 48 public domains under CDLA Permissive 2.0; 76 enterprise-license-restricted environments are not in the public release and were not tested.
 \item Live LLM round-trip is gated; D1, D3, D4 are placeholders until founder authorization, provider credentials, pinned model, explicit live flag, and budget cap are present. Blocked runs emit machine-readable \texttt{liveBlockers} rather than inferred results. Realistic budget envelope is \$10--160 depending on resolved Sonnet SKU.
 \item G2 Dojo integration is out-of-scope for v1.
-\item F 100K now meets default PRD thresholds after Pass~27 optimization (verify 141 s, query 7.3 s, restore 4 ms). 1M run remains gated behind GATE-3.
+\item F 100K now meets default PRD thresholds after Pass~27 optimization (verify 141 s, query 7.3 s, restore 4 ms). Pass~36 attempted 1M and timed out after 137{,}218 commits at 30.48 minutes, so 1M remains an optimization/re-run target.
 \item Section~5.1's "0 disagreements across 100 verifications" measures verifier determinism on a single chain. Pass~27 adds a 50-chain fresh-construction sample with 0 false positives across independent 100-commit chains; a stronger 100-chain statistical sample remains future work.
 \item Class G still depends on staged substrate artifacts. \texttt{runClassG} reads the G1 and G4 artifact reports when present, so harness output reflects those proofs; G1 founder send and G2 Dojo data remain outside the v1 runtime claim.
 \item \texttt{firstCorruptionRoundTrip} measures byte divergence, not semantic divergence.
@@ -181,7 +181,7 @@ If the live DELEGATE-52 run lands in the expected corridor, then: (i) substrate-
 
 \section{Future Work}
 
-Live DELEGATE-52 run; F 1M scale benchmark; withheld-environments coverage; alternative benchmarks; substrate-cost optimization; pre-edit interception hook (currently harness-dependent).
+Live DELEGATE-52 run; F 1M scale optimization/re-run; withheld-environments coverage; alternative benchmarks; substrate-cost optimization; pre-edit interception hook (currently harness-dependent).
 
 \section{Acknowledgments}
 

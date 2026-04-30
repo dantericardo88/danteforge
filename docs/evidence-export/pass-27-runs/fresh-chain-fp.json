@@ -1,0 +1,27 @@
+{
+  "schemaVersion": 1,
+  "scenario": "F-004 remediation — fresh-chain false-positive measurement (independent chains per iteration)",
+  "generatedAt": "2026-04-30T00:05:32.619Z",
+  "parameters": {
+    "numChains": 1,
+    "commitsPerChain": 100
+  },
+  "aggregate": {
+    "totalChains": 1,
+    "totalFalsePositives": 0,
+    "falsePositiveRate": 0,
+    "totalWallMs": 2357,
+    "averageMsPerChain": 2357
+  },
+  "perIteration": [
+    {
+      "iteration": 0,
+      "cleanChainFalsePositives": 0,
+      "cleanChainFalsePositiveRuns": 3,
+      "adversarialDetected": 7,
+      "adversarialTotal": 7,
+      "maxDetectionMs": 25,
+      "iterationMs": 2212
+    }
+  ]
+}

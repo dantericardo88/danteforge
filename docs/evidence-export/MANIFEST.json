@@ -1,0 +1,194 @@
+{
+  "schemaVersion": 1,
+  "exportedAt": "2026-04-30T12:37:19.549Z",
+  "description": "Snapshot of high-value receipts exported from .danteforge/evidence/ for git-witness anchoring. Once committed, every entry below has a git commit SHA + commit-date as independent witness.",
+  "exportRoot": "docs/evidence-export/",
+  "entries": [
+    {
+      "path": "MANIFEST.json",
+      "sha256": "34f4bab5408678c177210a468c759a3a7c5ca72ab180c503086b4440234028b4",
+      "bytes": 6045
+    },
+    {
+      "path": "pass-14-install-smoke.json",
+      "sha256": "c183a9d08c961a023980354c8c3f2d3ec591c840204eddcd71fd98f29e3d28eb",
+      "bytes": 11549
+    },
+    {
+      "path": "pass-15-verify-slo.json",
+      "sha256": "7455c96e1fb5ef388fe43d3708cbd2f572b820e32f37c655dbbcf100314266b0",
+      "bytes": 9744
+    },
+    {
+      "path": "pass-16-corpus-integrity.json",
+      "sha256": "ff45f18d69f2d63a5a5da82b5583f38b1d01299ab061eb5ab07d5e759f494b9d",
+      "bytes": 3466
+    },
+    {
+      "path": "pass-17-ci-integration.json",
+      "sha256": "2c70d415f0e6bf248617f16fd68b8a0fa52fd42a7f9ae12f0c1034d2d0a8ab31",
+      "bytes": 6604
+    },
+    {
+      "path": "pass-18-5-git-binding.json",
+      "sha256": "73928b0d026797fa3d6daeaf3a2085638ca0ed9c66275cf53e3979442d60c02d",
+      "bytes": 7603
+    },
+    {
+      "path": "pass-18-time-machine-validation.json",
+      "sha256": "bbafb4d3b20577886fc6dcf683b806bd261164f754208bdd831490eac102b932",
+      "bytes": 7623
+    },
+    {
+      "path": "pass-19-live-delegate52.json",
+      "sha256": "ac68fc5c82902d71d557f612c4666ab9571a29dd0981288971e27420cb3359fc",
+      "bytes": 10474
+    },
+    {
+      "path": "pass-20-dataset-and-prd-real.json",
+      "sha256": "74c61b2ac9cb023b98e95b6c842bdf91c0fa52cca4a0771cb5ccdb7f1cd27524",
+      "bytes": 9046
+    },
+    {
+      "path": "pass-20-runs/abc-real-d-import.json",
+      "sha256": "e14ab988101d76bab657ebaf300973f60f080afba0d612aba4f9f99b501d36ce",
+      "bytes": 15414
+    },
+    {
+      "path": "pass-20-runs/abcd-prd-real-import.json",
+      "sha256": "b4eaf05972cfa530fbcfd331fd9845a519358f9bec50eb87edfdc449ed9eedeb",
+      "bytes": 30932
+    },
+    {
+      "path": "pass-21-class-g.json",
+      "sha256": "de48bc55f864992a95c73aa8f95f1ee6756e040f59a5bc9643a7a6f6f16a38cd",
+      "bytes": 7406
+    },
+    {
+      "path": "pass-22-comparison-document.json",
+      "sha256": "14d9afc7f38f751cefaecf3c8471fccd6cfdd78ae2d1508527181c966eac0a49",
+      "bytes": 6020
+    },
+    {
+      "path": "pass-23-adversarial-review.json",
+      "sha256": "22c9ebc42125ac655167c9c369a385219c09bb46be2e46198e91efb3cf267bb8",
+      "bytes": 12006
+    },
+    {
+      "path": "pass-23-runs/f100k-result.json",
+      "sha256": "52489417ff8686af0d059be782da90361dac2dbb10a05bf99e919aed0569912a",
+      "bytes": 4976
+    },
+    {
+      "path": "pass-24-product-polish.json",
+      "sha256": "2ab875358fabc2cddcefe666c58a674fc693bde98c28580a5b6207a7ad33842d",
+      "bytes": 6832
+    },
+    {
+      "path": "pass-25-preprint-prep.json",
+      "sha256": "68b390d0016bcf71265c08f537ef20a63b592f2579ffdcafead2333e8857032c",
+      "bytes": 5218
+    },
+    {
+      "path": "pass-26-outreach-draft.json",
+      "sha256": "53eacd5d51494ac88fecaa0adfa99ff9d4aab9a21f68098a855edd8216983258",
+      "bytes": 4542
+    },
+    {
+      "path": "pass-27-runs/f100k-v2-result.json",
+      "sha256": "8a0ba0e4e16ede3803c27f6907e0565458de56c729524120c778032062eb9e1c",
+      "bytes": 4972
+    },
+    {
+      "path": "pass-27-runs/fresh-chain-fp.json",
+      "sha256": "918d53e682a5e50618e13c704dc479bbe075eb1ff0c2af839c0cf6a7411f2fdf",
+      "bytes": 659
+    },
+    {
+      "path": "pass-27-verify-optimization.json",
+      "sha256": "2a396ac14f900fb88659fbf93ed678bef538257c09115b30c7988e9d73199b47",
+      "bytes": 8659
+    },
+    {
+      "path": "pass-28-v1-1-closure.json",
+      "sha256": "71d9ea7b8ffc65fa602c2fe906ad0c25969219c62790016d89856c5412b8fbc8",
+      "bytes": 8666
+    },
+    {
+      "path": "pass-29-substrate-mitigation.json",
+      "sha256": "ec6a6af5cc4e3006192c13def9aeca31420cb41ac347624b8cb27e55a17da002",
+      "bytes": 9562
+    },
+    {
+      "path": "pass-30-34-combined.json",
+      "sha256": "6ea7b7dfd1544d458f62c10cb8fa9bec2e1f868f276c8cbc682619c0ded46b91",
+      "bytes": 5651
+    },
+    {
+      "path": "pass-30-runs/f100k-v3-result.json",
+      "sha256": "4a91112a25a4c18e71b64806cee8b03a33e7a4bf1f60784b0d9d72caa05eeda7",
+      "bytes": 4968
+    },
+    {
+      "path": "pass-31-32-33-gaps.json",
+      "sha256": "81f2fbb382fbcdb93ea6054be2e23e3a8ff0da803e88870b366f3538597b94d3",
+      "bytes": 7000
+    },
+    {
+      "path": "pass-35-final-consolidation.json",
+      "sha256": "fc73ddc6d8ebbd2d351e49f7a36792ae6f90b99ef7655788df2bf7f16aba0140",
+      "bytes": 6095
+    },
+    {
+      "path": "pass-36-37-38-honest-gap-fix.json",
+      "sha256": "4799dbf46c222a00a6b35c32ebc08d08fa23243be0e89ad73546d217680ef682",
+      "bytes": 10526
+    },
+    {
+      "path": "pass-36-hybrid-compute-closure.json",
+      "sha256": "771ecd073ab10592e90ec83362369b32b118ee20c25bf6d671334c0e1f5b15fe",
+      "bytes": 9810
+    },
+    {
+      "path": "pass-36-runs/delegate52-live-blocked.json",
+      "sha256": "31c4ffa9546c65d569ec4170d2f749b1796638ceb2c12a79ef641ffd948758ed",
+      "bytes": 29966
+    },
+    {
+      "path": "pass-36-runs/f1m-timeout.json",
+      "sha256": "1b85d17d4c72a0b6d11889ded4b4ae40acc44daa7b29018f8aa7e4aeb15163c8",
+      "bytes": 679
+    },
+    {
+      "path": "pass-39-43-odds-improvement.json",
+      "sha256": "71322f662d5d95f57df099581965a5b6a68f1246fba10960b39c4bf248ecc966",
+      "bytes": 13007
+    }
+  ],
+  "countByPattern": [
+    {
+      "pattern": "/^pass-\\d+(\\.\\d+)?-/",
+      "count": 31
+    },
+    {
+      "pattern": "/^pass-\\d+-\\d+-\\d+/",
+      "count": 2
+    },
+    {
+      "pattern": "/^pass-30-runs/",
+      "count": 1
+    },
+    {
+      "pattern": "/^pass-27-runs/",
+      "count": 2
+    },
+    {
+      "pattern": "/^pass-20-runs/",
+      "count": 2
+    },
+    {
+      "pattern": "/^pass-23-runs/",
+      "count": 1
+    }
+  ]
+}

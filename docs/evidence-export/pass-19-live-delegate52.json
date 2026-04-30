@@ -1,0 +1,188 @@
+{
+  "schemaVersion": 1,
+  "pass": 19,
+  "passName": "Live DELEGATE-52 round-trip executor (build only; live run = GATE-1)",
+  "generatedAt": "2026-04-29T20:56:41.623Z",
+  "gitSha": "f19e1d7d0f86041d32e7e5e1f7407953b38bd463",
+  "delivered": {
+    "file": "src/core/time-machine-validation.ts",
+    "fileHash": "3c422d552621f6c0c5294fcd333f49631ac3751756955364ad6aa85de6319dca",
+    "additions": [
+      "runDelegate52Live() — orchestrator looping domains × round-trips × forward+backward edits",
+      "runDelegate52DomainRoundTrip() — per-domain executor with per-call cost tracking + first-corruption detection",
+      "synthesizeDomainDocument() — deterministic per-domain fixtures (CSV by department, list restructure, JSON flatten, markdown section)",
+      "buildForwardPrompt() / buildBackwardPrompt() — round-trip prompt construction",
+      "makeDefaultLlmCaller() — production caller (callLLM) + dry-run identity simulator",
+      "estimateRoundTripCost() — conservative cost model ($3/M input + $15/M output tokens)",
+      "_llmCaller injection seam on RunTimeMachineValidationOptions for tests",
+      "roundTripsPerDomain option (PRD §3.4 specifies 10; capped at 20)"
+    ],
+    "schemaExtension": [
+      "ClassDResult.status now includes live_completed | live_dry_run",
+      "domainRows now include firstCorruptionRoundTrip, interactionCount, costUsd, originalHash, finalHash, byteIdenticalAfterRoundTrips",
+      "totalCostUsd + corruptionRate aggregates added"
+    ]
+  },
+  "modes": {
+    "default": "harness_ready_not_live_validated (no LLM calls, no $ spent)",
+    "dryRun": "live_dry_run via DANTEFORGE_DELEGATE52_DRY_RUN=1 (identity simulator, no LLM calls, no $ spent)",
+    "live": "live_completed via DANTEFORGE_DELEGATE52_LIVE=1 + --budget-usd N (real LLM calls; FOUNDER GATE-1)"
+  },
+  "guards": {
+    "envVar": "DANTEFORGE_DELEGATE52_LIVE === \"1\"",
+    "budgetMin": "--budget-usd > 0",
+    "midRunBudgetEnforcement": "cumulative cost compared against budget before each interaction; mid-loop stop with budget_exhausted status",
+    "fallback": "all guards missing → live_not_enabled (existing Pass 18 behavior preserved)"
+  },
+  "testCoverage": {
+    "file": "tests/time-machine-delegate52-live.test.ts",
+    "fileHash": "c465d602bbbc3218e9fefc0c40c32d588e1ad1bb455cbc310700e8389aeadad2",
+    "testCount": 6,
+    "cases": [
+      "dry-run produces structured plan without spending (status=live_dry_run, costUsd=0)",
+      "live without env-var refuses (live_not_enabled)",
+      "live without --budget-usd refuses (live_not_enabled)",
+      "live with all guards + injected llmCaller executes round-trips and tracks cost",
+      "live mode stops mid-loop when budget exhausted",
+      "live-result.json artifact written for live runs (microsoftBaselineCorruptionRate=0.25 recorded)"
+    ]
+  },
+  "cliDemo": {
+    "command": "DANTEFORGE_DELEGATE52_DRY_RUN=1 node dist/index.js time-machine validate --class D --delegate52-mode live --budget-usd 80 --max-domains 4 --json",
+    "result": "status: live_dry_run, totalCostUsd: 0, all 4 domains byte-identical (identity simulator)"
+  },
+  "truthBoundary": {
+    "builtThisPass": [
+      "Live executor structure",
+      "Dry-run validates harness shape end-to-end",
+      "Cost tracking and budget enforcement",
+      "Per-domain corruption detection (first-divergence round-trip)"
+    ],
+    "notBuiltThisPass": [
+      "Real LLM API run against 48 public domains (GATE-1 founder authorization required)",
+      "Cost reconciliation against actual provider billing (compares only when live run executes)",
+      "Withheld DELEGATE-52 environments (76 environments not in public release)"
+    ],
+    "allowedClaim": "Pass 19 ships the live executor; dry-run validates the structural correctness; live execution awaits founder budget authorization (GATE-1).",
+    "forbiddenClaim": "DanteForge has executed live DELEGATE-52 replication."
+  },
+  "unblocks": [
+    "GATE-1 founder action: `DANTEFORGE_DELEGATE52_LIVE=1 forge time-machine validate --class D --delegate52-mode live --budget-usd 80 --max-domains 48` produces real result table",
+    "Pass 22 comparison document with explicit placeholder for live-D results",
+    "Pass 25 preprint with reproducibility appendix (CLI command + budget + version hashes)"
+  ],
+  "verifyChain": {
+    "typecheck": "pass",
+    "lint": "pass",
+    "antiStub": "pass",
+    "pass19Tests": "pass (6/6)",
+    "timeMachineTests": "pass (11/11 existing tests still pass)",
+    "proofIntegrityCheck": "CLEAN"
+  },
+  "proof": {
+    "schemaVersion": "evidence-chain.v1",
+    "receiptId": "bundle_58e0f0e533098d2e",
+    "bundleId": "pass_19_live_delegate52_executor",
+    "gitSha": "f19e1d7d0f86041d32e7e5e1f7407953b38bd463",
+    "createdAt": "2026-04-29T20:56:41.623Z",
+    "payloadHash": "14d199e735ce47358cf3425e900f47b636252efead7fdff71ebe5ca5e7c1562a",
+    "prevHash": "0000000000000000000000000000000000000000000000000000000000000000",
+    "merkleRoot": "95b2ff0a8ef76f96876f2c96a1897f7e7505c10683b662ffe0c31bc1ff846dd1",
+    "evidenceHashes": [
+      "95b2ff0a8ef76f96876f2c96a1897f7e7505c10683b662ffe0c31bc1ff846dd1"
+    ],
+    "verificationStatus": "unverified",
+    "evidence": [
+      {
+        "schemaVersion": 1,
+        "pass": 19,
+        "passName": "Live DELEGATE-52 round-trip executor (build only; live run = GATE-1)",
+        "generatedAt": "2026-04-29T20:56:41.623Z",
+        "gitSha": "f19e1d7d0f86041d32e7e5e1f7407953b38bd463",
+        "delivered": {
+          "file": "src/core/time-machine-validation.ts",
+          "fileHash": "3c422d552621f6c0c5294fcd333f49631ac3751756955364ad6aa85de6319dca",
+          "additions": [
+            "runDelegate52Live() — orchestrator looping domains × round-trips × forward+backward edits",
+            "runDelegate52DomainRoundTrip() — per-domain executor with per-call cost tracking + first-corruption detection",
+            "synthesizeDomainDocument() — deterministic per-domain fixtures (CSV by department, list restructure, JSON flatten, markdown section)",
+            "buildForwardPrompt() / buildBackwardPrompt() — round-trip prompt construction",
+            "makeDefaultLlmCaller() — production caller (callLLM) + dry-run identity simulator",
+            "estimateRoundTripCost() — conservative cost model ($3/M input + $15/M output tokens)",
+            "_llmCaller injection seam on RunTimeMachineValidationOptions for tests",
+            "roundTripsPerDomain option (PRD §3.4 specifies 10; capped at 20)"
+          ],
+          "schemaExtension": [
+            "ClassDResult.status now includes live_completed | live_dry_run",
+            "domainRows now include firstCorruptionRoundTrip, interactionCount, costUsd, originalHash, finalHash, byteIdenticalAfterRoundTrips",
+            "totalCostUsd + corruptionRate aggregates added"
+          ]
+        },
+        "modes": {
+          "default": "harness_ready_not_live_validated (no LLM calls, no $ spent)",
+          "dryRun": "live_dry_run via DANTEFORGE_DELEGATE52_DRY_RUN=1 (identity simulator, no LLM calls, no $ spent)",
+          "live": "live_completed via DANTEFORGE_DELEGATE52_LIVE=1 + --budget-usd N (real LLM calls; FOUNDER GATE-1)"
+        },
+        "guards": {
+          "envVar": "DANTEFORGE_DELEGATE52_LIVE === \"1\"",
+          "budgetMin": "--budget-usd > 0",
+          "midRunBudgetEnforcement": "cumulative cost compared against budget before each interaction; mid-loop stop with budget_exhausted status",
+          "fallback": "all guards missing → live_not_enabled (existing Pass 18 behavior preserved)"
+        },
+        "testCoverage": {
+          "file": "tests/time-machine-delegate52-live.test.ts",
+          "fileHash": "c465d602bbbc3218e9fefc0c40c32d588e1ad1bb455cbc310700e8389aeadad2",
+          "testCount": 6,
+          "cases": [
+            "dry-run produces structured plan without spending (status=live_dry_run, costUsd=0)",
+            "live without env-var refuses (live_not_enabled)",
+            "live without --budget-usd refuses (live_not_enabled)",
+            "live with all guards + injected llmCaller executes round-trips and tracks cost",
+            "live mode stops mid-loop when budget exhausted",
+            "live-result.json artifact written for live runs (microsoftBaselineCorruptionRate=0.25 recorded)"
+          ]
+        },
+        "cliDemo": {
+          "command": "DANTEFORGE_DELEGATE52_DRY_RUN=1 node dist/index.js time-machine validate --class D --delegate52-mode live --budget-usd 80 --max-domains 4 --json",
+          "result": "status: live_dry_run, totalCostUsd: 0, all 4 domains byte-identical (identity simulator)"
+        },
+        "truthBoundary": {
+          "builtThisPass": [
+            "Live executor structure",
+            "Dry-run validates harness shape end-to-end",
+            "Cost tracking and budget enforcement",
+            "Per-domain corruption detection (first-divergence round-trip)"
+          ],
+          "notBuiltThisPass": [
+            "Real LLM API run against 48 public domains (GATE-1 founder authorization required)",
+            "Cost reconciliation against actual provider billing (compares only when live run executes)",
+            "Withheld DELEGATE-52 environments (76 environments not in public release)"
+          ],
+          "allowedClaim": "Pass 19 ships the live executor; dry-run validates the structural correctness; live execution awaits founder budget authorization (GATE-1).",
+          "forbiddenClaim": "DanteForge has executed live DELEGATE-52 replication."
+        },
+        "unblocks": [
+          "GATE-1 founder action: `DANTEFORGE_DELEGATE52_LIVE=1 forge time-machine validate --class D --delegate52-mode live --budget-usd 80 --max-domains 48` produces real result table",
+          "Pass 22 comparison document with explicit placeholder for live-D results",
+          "Pass 25 preprint with reproducibility appendix (CLI command + budget + version hashes)"
+        ],
+        "verifyChain": {
+          "typecheck": "pass",
+          "lint": "pass",
+          "antiStub": "pass",
+          "pass19Tests": "pass (6/6)",
+          "timeMachineTests": "pass (11/11 existing tests still pass)",
+          "proofIntegrityCheck": "CLEAN"
+        }
+      }
+    ],
+    "inclusionProofs": [
+      {
+        "index": 0,
+        "leafHash": "95b2ff0a8ef76f96876f2c96a1897f7e7505c10683b662ffe0c31bc1ff846dd1",
+        "proof": []
+      }
+    ],
+    "hash": "6c2ba4087aab20c653e07815f467811aa292dde53ca849b6a59968eecc8aa9f5"
+  }
+}

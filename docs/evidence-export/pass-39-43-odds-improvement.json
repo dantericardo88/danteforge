@@ -1,0 +1,248 @@
+{
+  "schemaVersion": 1,
+  "pass": "39-43",
+  "passName": "Improving Our Odds — diff-attribution, strategy comparison, pre-registration, objection playbook",
+  "generatedAt": "2026-04-30T12:37:18.168Z",
+  "gitSha": "dafb93e5117dbe26f8017bfd826c6c2989e3b0ce",
+  "pass39": {
+    "description": "Diff-attribution for D3 (causal-source identification → quantitative)",
+    "file": "src/core/time-machine-validation.ts",
+    "fileHash": "86a28fa4a49608f325f6fdc8ba179ca901324bac3c4dfafe776a2cc0fd065356",
+    "additions": [
+      "computeDiffLocations(original, corrupted, roundTripIndex) helper",
+      "CorruptionLocation interface with line+char ranges + cleanAttribution boolean",
+      "Per-row corruptionLocations[] + causalSourceIdentifiedCount + totalDivergences",
+      "Aggregate causalSourceIdentificationRate + totalDivergencesObserved + totalCausalSourceIdentified"
+    ],
+    "testFile": "tests/time-machine-delegate52-diff-attribution.test.ts",
+    "testFileHash": "afa0295f2cb92b7a276c39c0046fb699701c7aa0f6dd0710310d37fd549557b0",
+    "testCount": 6
+  },
+  "pass40": {
+    "description": "Counter-mitigation strategy comparison (substrate-restore-retry vs prompt-only-retry vs no-mitigation)",
+    "fileHashes": {
+      "validation": "86a28fa4a49608f325f6fdc8ba179ca901324bac3c4dfafe776a2cc0fd065356",
+      "cli": "6eb65b1605e83b6d671d2b449edb0d1ff870a2fc9263b2c77d04ba01fe814a9f",
+      "cliCmd": "10f111e47ec06a91c73f7ab20dd142bd65a327182e25252c991eae5a2b74f53e"
+    },
+    "additions": [
+      "mitigation.strategy field + CLI flag --mitigation-strategy <s>",
+      "prompt-only-retry feeds corrupted state back; substrate-restore-retry feeds clean state",
+      "Graceful-degradation only fires under substrate-restore-retry (substrate-specific guarantee)"
+    ],
+    "testFile": "tests/time-machine-delegate52-strategy-comparison.test.ts",
+    "testFileHash": "ca0fe2e58ceb785e95ed2e2ffa7c4e8520bbf705aea8f36369f0c258b2da63af",
+    "testCount": 3,
+    "keyFinding": "sticky-corruption simulator: substrate keeps workspace clean; prompt-only-retry cascades corruption"
+  },
+  "pass41": {
+    "description": "Pre-registration document — predictions locked before GATE-1",
+    "file": "docs/papers/preregistration.md",
+    "fileHash": "490fc52819e58efd7ed5a77f7a3bdb4973b4d7d838f9fdfb1fc2c948962c8c17",
+    "predictions": {
+      "D1": "5-15% wall-clock overhead (interval 0-30%)",
+      "D2": "48/48 byte-identical (very high confidence)",
+      "D3": "80-95% causal-source identification (medium confidence)",
+      "D4Raw": "20-30% (interval 10-35%)",
+      "D4User": "0-5% (interval 0-15%)",
+      "substrateVsPromptOnlyDelta": "substrate ≥ 50% lower D4-user",
+      "F1MVerify": "120-200 seconds (linear extrapolation from Pass 30)"
+    },
+    "falsificationCriteria": [
+      "D1 > 30% → substrate too expensive",
+      "D2 < 47/48 → reversibility broken",
+      "D3 < 70% → most corruption is multi-region; reframe",
+      "D4-user > 15% → permanent-corruption modes our budget can't escape",
+      "D4-user >= D4-raw → substrate isn't helping; retract strong claim"
+    ]
+  },
+  "pass42": {
+    "description": "Hostile-reviewer objection playbook — 10 anticipated objections + responses",
+    "file": "docs/papers/anticipated-objections.md",
+    "fileHash": "7ae25f6f19acf5203b6b73d14e95cb1cefdef0f4101e1b290ef913d56e67279a",
+    "objectionCount": 10,
+    "objections": [
+      "OBJ-1: thin retry loop → invariant + Pass 40 evidence",
+      "OBJ-2: 48 public are easier than 124 → within-set comparison cancels selection bias",
+      "OBJ-3: simulators ≠ real LLMs → noisy simulator + pre-reg falsification",
+      "OBJ-4: D3 is timestamp not source → Pass 39 fixed this",
+      "OBJ-5: newer Sonnet baseline lower → contribution is delta, not absolute",
+      "OBJ-6: validators are simpler → validators don't check round-trip integrity",
+      "OBJ-7: 1.3-3× cost too high → multiplier scales with raw rate; configurable",
+      "OBJ-8: fan-out is a bug → it's expected substrate behavior; no commits lost",
+      "OBJ-9: this is git → primitives are git; composition is novel",
+      "OBJ-10: graceful degradation hides failure → that's the contract; failure signal preserved"
+    ]
+  },
+  "truthBoundary": {
+    "allowedClaims": [
+      "Pass 39: D3 is quantitative and live-measurable",
+      "Pass 40: substrate-restore-retry materially differs from prompt-only-retry against sticky corruption",
+      "Pass 41: predictions locked before GATE-1; falsification committed",
+      "Pass 42: 10 objections anticipated with cited evidence"
+    ],
+    "forbiddenClaims": [
+      "Pass 39: D3 captures semantic source (it captures structural)",
+      "Pass 40: substrate beats prompt-only by specific factor on real LLM (unknown without GATE-1)",
+      "Pass 41: pre-registration is binding (it's a commitment, not enforceable)",
+      "Pass 42: objection list is exhaustive"
+    ]
+  },
+  "probabilityTracking": {
+    "pass35PSolveStrong": 0.65,
+    "pass38PSolveStrong": 0.7,
+    "pass43PSolveStrongLow": 0.78,
+    "pass43PSolveStrongHigh": 0.82,
+    "pass43PHonestReplication": 0.9,
+    "nextStepFor85Percent": "tiny pre-flight run ($1, 2-3 domains) to validate simulator approximates real Sonnet behavior"
+  },
+  "receipt": {
+    "file": ".danteforge/PASS_39_43_ODDS_IMPROVEMENT_RECEIPT.md",
+    "hash": "84f47d72946fca295774454c7d60183a95ab1627bb9241e05fb5d22884bc41f9"
+  },
+  "verifyChain": {
+    "typecheck": "pass",
+    "lint": "pass",
+    "antiStub": "pass",
+    "pass39DiffTests": "pass (6/6)",
+    "pass40StrategyTests": "pass (3/3)",
+    "fullD52Regression": "pass (23/23 across diff + strategy + mitigation + oscillation + live)",
+    "proofIntegrity": "CLEAN"
+  },
+  "proof": {
+    "schemaVersion": "evidence-chain.v1",
+    "receiptId": "bundle_f5bc7c2d792dccb0",
+    "bundleId": "pass_39_43_odds_improvement",
+    "gitSha": "dafb93e5117dbe26f8017bfd826c6c2989e3b0ce",
+    "createdAt": "2026-04-30T12:37:18.168Z",
+    "payloadHash": "66402db578f109dbcd206678071e33e4f7e4dfc5ea488f72fe7b9f325be664bf",
+    "prevHash": "0000000000000000000000000000000000000000000000000000000000000000",
+    "merkleRoot": "ca3248a0d3a021f42ee18396801b9952cf0b7ebc1b4a36a52f4dc83a74d215d7",
+    "evidenceHashes": [
+      "ca3248a0d3a021f42ee18396801b9952cf0b7ebc1b4a36a52f4dc83a74d215d7"
+    ],
+    "verificationStatus": "unverified",
+    "evidence": [
+      {
+        "schemaVersion": 1,
+        "pass": "39-43",
+        "passName": "Improving Our Odds — diff-attribution, strategy comparison, pre-registration, objection playbook",
+        "generatedAt": "2026-04-30T12:37:18.168Z",
+        "gitSha": "dafb93e5117dbe26f8017bfd826c6c2989e3b0ce",
+        "pass39": {
+          "description": "Diff-attribution for D3 (causal-source identification → quantitative)",
+          "file": "src/core/time-machine-validation.ts",
+          "fileHash": "86a28fa4a49608f325f6fdc8ba179ca901324bac3c4dfafe776a2cc0fd065356",
+          "additions": [
+            "computeDiffLocations(original, corrupted, roundTripIndex) helper",
+            "CorruptionLocation interface with line+char ranges + cleanAttribution boolean",
+            "Per-row corruptionLocations[] + causalSourceIdentifiedCount + totalDivergences",
+            "Aggregate causalSourceIdentificationRate + totalDivergencesObserved + totalCausalSourceIdentified"
+          ],
+          "testFile": "tests/time-machine-delegate52-diff-attribution.test.ts",
+          "testFileHash": "afa0295f2cb92b7a276c39c0046fb699701c7aa0f6dd0710310d37fd549557b0",
+          "testCount": 6
+        },
+        "pass40": {
+          "description": "Counter-mitigation strategy comparison (substrate-restore-retry vs prompt-only-retry vs no-mitigation)",
+          "fileHashes": {
+            "validation": "86a28fa4a49608f325f6fdc8ba179ca901324bac3c4dfafe776a2cc0fd065356",
+            "cli": "6eb65b1605e83b6d671d2b449edb0d1ff870a2fc9263b2c77d04ba01fe814a9f",
+            "cliCmd": "10f111e47ec06a91c73f7ab20dd142bd65a327182e25252c991eae5a2b74f53e"
+          },
+          "additions": [
+            "mitigation.strategy field + CLI flag --mitigation-strategy <s>",
+            "prompt-only-retry feeds corrupted state back; substrate-restore-retry feeds clean state",
+            "Graceful-degradation only fires under substrate-restore-retry (substrate-specific guarantee)"
+          ],
+          "testFile": "tests/time-machine-delegate52-strategy-comparison.test.ts",
+          "testFileHash": "ca0fe2e58ceb785e95ed2e2ffa7c4e8520bbf705aea8f36369f0c258b2da63af",
+          "testCount": 3,
+          "keyFinding": "sticky-corruption simulator: substrate keeps workspace clean; prompt-only-retry cascades corruption"
+        },
+        "pass41": {
+          "description": "Pre-registration document — predictions locked before GATE-1",
+          "file": "docs/papers/preregistration.md",
+          "fileHash": "490fc52819e58efd7ed5a77f7a3bdb4973b4d7d838f9fdfb1fc2c948962c8c17",
+          "predictions": {
+            "D1": "5-15% wall-clock overhead (interval 0-30%)",
+            "D2": "48/48 byte-identical (very high confidence)",
+            "D3": "80-95% causal-source identification (medium confidence)",
+            "D4Raw": "20-30% (interval 10-35%)",
+            "D4User": "0-5% (interval 0-15%)",
+            "substrateVsPromptOnlyDelta": "substrate ≥ 50% lower D4-user",
+            "F1MVerify": "120-200 seconds (linear extrapolation from Pass 30)"
+          },
+          "falsificationCriteria": [
+            "D1 > 30% → substrate too expensive",
+            "D2 < 47/48 → reversibility broken",
+            "D3 < 70% → most corruption is multi-region; reframe",
+            "D4-user > 15% → permanent-corruption modes our budget can't escape",
+            "D4-user >= D4-raw → substrate isn't helping; retract strong claim"
+          ]
+        },
+        "pass42": {
+          "description": "Hostile-reviewer objection playbook — 10 anticipated objections + responses",
+          "file": "docs/papers/anticipated-objections.md",
+          "fileHash": "7ae25f6f19acf5203b6b73d14e95cb1cefdef0f4101e1b290ef913d56e67279a",
+          "objectionCount": 10,
+          "objections": [
+            "OBJ-1: thin retry loop → invariant + Pass 40 evidence",
+            "OBJ-2: 48 public are easier than 124 → within-set comparison cancels selection bias",
+            "OBJ-3: simulators ≠ real LLMs → noisy simulator + pre-reg falsification",
+            "OBJ-4: D3 is timestamp not source → Pass 39 fixed this",
+            "OBJ-5: newer Sonnet baseline lower → contribution is delta, not absolute",
+            "OBJ-6: validators are simpler → validators don't check round-trip integrity",
+            "OBJ-7: 1.3-3× cost too high → multiplier scales with raw rate; configurable",
+            "OBJ-8: fan-out is a bug → it's expected substrate behavior; no commits lost",
+            "OBJ-9: this is git → primitives are git; composition is novel",
+            "OBJ-10: graceful degradation hides failure → that's the contract; failure signal preserved"
+          ]
+        },
+        "truthBoundary": {
+          "allowedClaims": [
+            "Pass 39: D3 is quantitative and live-measurable",
+            "Pass 40: substrate-restore-retry materially differs from prompt-only-retry against sticky corruption",
+            "Pass 41: predictions locked before GATE-1; falsification committed",
+            "Pass 42: 10 objections anticipated with cited evidence"
+          ],
+          "forbiddenClaims": [
+            "Pass 39: D3 captures semantic source (it captures structural)",
+            "Pass 40: substrate beats prompt-only by specific factor on real LLM (unknown without GATE-1)",
+            "Pass 41: pre-registration is binding (it's a commitment, not enforceable)",
+            "Pass 42: objection list is exhaustive"
+          ]
+        },
+        "probabilityTracking": {
+          "pass35PSolveStrong": 0.65,
+          "pass38PSolveStrong": 0.7,
+          "pass43PSolveStrongLow": 0.78,
+          "pass43PSolveStrongHigh": 0.82,
+          "pass43PHonestReplication": 0.9,
+          "nextStepFor85Percent": "tiny pre-flight run ($1, 2-3 domains) to validate simulator approximates real Sonnet behavior"
+        },
+        "receipt": {
+          "file": ".danteforge/PASS_39_43_ODDS_IMPROVEMENT_RECEIPT.md",
+          "hash": "84f47d72946fca295774454c7d60183a95ab1627bb9241e05fb5d22884bc41f9"
+        },
+        "verifyChain": {
+          "typecheck": "pass",
+          "lint": "pass",
+          "antiStub": "pass",
+          "pass39DiffTests": "pass (6/6)",
+          "pass40StrategyTests": "pass (3/3)",
+          "fullD52Regression": "pass (23/23 across diff + strategy + mitigation + oscillation + live)",
+          "proofIntegrity": "CLEAN"
+        }
+      }
+    ],
+    "inclusionProofs": [
+      {
+        "index": 0,
+        "leafHash": "ca3248a0d3a021f42ee18396801b9952cf0b7ebc1b4a36a52f4dc83a74d215d7",
+        "proof": []
+      }
+    ],
+    "hash": "416eb00069de78fe44a24b63eedc48a265c2468b5412458bd38076379494944f"
+  }
+}

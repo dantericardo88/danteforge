@@ -1,0 +1,164 @@
+{
+  "schemaVersion": 1,
+  "pass": "18.5",
+  "passName": "gitSha binding semantic fix (continuity, not equality)",
+  "generatedAt": "2026-04-29T20:44:43.305Z",
+  "gitSha": "f19e1d7d0f86041d32e7e5e1f7407953b38bd463",
+  "problem": "After f19e1d7 commit, all 7 prior proof-anchored manifests showed gitShaBinding: invalid because verifyGitBinding did strict equality (current === expected). Manifests truthfully captured the SHA at receipt-write time; HEAD has since moved. The strict check was the wrong semantic.",
+  "fix": {
+    "file": "src/cli/commands/proof.ts",
+    "fileHash": "8eb51d2038902713954fb59b5aa8cb46bd8e584ff3a84f7a735c29024e3626ac",
+    "function": "verifyGitBinding",
+    "semantic": "Default mode: ancestor continuity via `git merge-base --is-ancestor expected current`. Strict mode (--strict-git-binding flag): snapshot equality (current === expected).",
+    "cliFlag": "--strict-git-binding",
+    "edgeCases": [
+      "equality is short-circuited before spawning merge-base",
+      "non-existent commits return helpful reason (\"not a known commit\")",
+      "parallel-branch SHAs return ancestor-rejection reason",
+      "null gitSha still skipped honestly"
+    ]
+  },
+  "testCoverage": {
+    "file": "tests/proof-git-binding-ancestor.test.ts",
+    "fileHash": "8e5c536d4277dbaeafe111a574c8051bcd86585a2b9f244d535f67cb42b781cd",
+    "testCount": 8,
+    "cases": [
+      "manifest gitSha equals HEAD: valid (default mode)",
+      "manifest gitSha is ancestor of HEAD: valid (default mode)",
+      "manifest gitSha is parallel branch (not ancestor): invalid",
+      "strict mode: requires equality, ancestor is rejected",
+      "strict mode: equality still passes",
+      "non-existent gitSha: invalid with helpful reason",
+      "null gitSha: skipped honestly",
+      "skipGit option overrides everything"
+    ]
+  },
+  "corpusIntegrityResult": {
+    "before": "0 verified / 7 failed (all with gitShaBinding: invalid) / 478 skipped",
+    "after": "7 verified / 0 failed / 478 skipped (CLEAN)",
+    "adoptionRateChange": "0.0% → 1.4%",
+    "failedReceiptsRecovered": [
+      "codex-masterplan-closure.json",
+      "oss-harvest-pass-12.json",
+      "pass-14-install-smoke.json",
+      "pass-15-verify-slo.json",
+      "pass-16-corpus-integrity.json",
+      "pass-17-ci-integration.json",
+      "pass-18-time-machine-validation.json"
+    ]
+  },
+  "verifyChain": {
+    "typecheck": "pass",
+    "lint": "pass",
+    "antiStub": "pass",
+    "proofGitBindingTests": "pass (8/8)",
+    "proofIntegrityCheck": "CLEAN"
+  },
+  "unblocks": [
+    "Pass 19 — live DELEGATE-52 executor (requires verify:all green)",
+    "Pass 20 — dataset import + real-fs PRD-scale runs",
+    "Pass 21 — Class G + Class F 1M staging",
+    "verify:all chain (was blocked by check:proof-integrity failures)"
+  ],
+  "whatThisDoesNotChange": [
+    "Tampered payloads still detected (proof-bundle integrity check unchanged)",
+    "Hash-chain continuity check unchanged",
+    "Merkle inclusion proof check unchanged",
+    "Schema version (evidence-chain.v1) unchanged",
+    "No breaking change to @danteforge/evidence-chain v1.0.0 contract"
+  ],
+  "proof": {
+    "schemaVersion": "evidence-chain.v1",
+    "receiptId": "bundle_224492bc19e8f906",
+    "bundleId": "pass_18_5_git_binding",
+    "gitSha": "f19e1d7d0f86041d32e7e5e1f7407953b38bd463",
+    "createdAt": "2026-04-29T20:44:43.305Z",
+    "payloadHash": "fd9c016f13bd95c0ce541d1354ee7a60ffdd0e3fa78ea47d7ad43bbd0bba0061",
+    "prevHash": "0000000000000000000000000000000000000000000000000000000000000000",
+    "merkleRoot": "906d1731285f4abda1e140c6825b02bf33eeb9e4c7a4e0e9952c38d7c40284b4",
+    "evidenceHashes": [
+      "906d1731285f4abda1e140c6825b02bf33eeb9e4c7a4e0e9952c38d7c40284b4"
+    ],
+    "verificationStatus": "unverified",
+    "evidence": [
+      {
+        "schemaVersion": 1,
+        "pass": "18.5",
+        "passName": "gitSha binding semantic fix (continuity, not equality)",
+        "generatedAt": "2026-04-29T20:44:43.305Z",
+        "gitSha": "f19e1d7d0f86041d32e7e5e1f7407953b38bd463",
+        "problem": "After f19e1d7 commit, all 7 prior proof-anchored manifests showed gitShaBinding: invalid because verifyGitBinding did strict equality (current === expected). Manifests truthfully captured the SHA at receipt-write time; HEAD has since moved. The strict check was the wrong semantic.",
+        "fix": {
+          "file": "src/cli/commands/proof.ts",
+          "fileHash": "8eb51d2038902713954fb59b5aa8cb46bd8e584ff3a84f7a735c29024e3626ac",
+          "function": "verifyGitBinding",
+          "semantic": "Default mode: ancestor continuity via `git merge-base --is-ancestor expected current`. Strict mode (--strict-git-binding flag): snapshot equality (current === expected).",
+          "cliFlag": "--strict-git-binding",
+          "edgeCases": [
+            "equality is short-circuited before spawning merge-base",
+            "non-existent commits return helpful reason (\"not a known commit\")",
+            "parallel-branch SHAs return ancestor-rejection reason",
+            "null gitSha still skipped honestly"
+          ]
+        },
+        "testCoverage": {
+          "file": "tests/proof-git-binding-ancestor.test.ts",
+          "fileHash": "8e5c536d4277dbaeafe111a574c8051bcd86585a2b9f244d535f67cb42b781cd",
+          "testCount": 8,
+          "cases": [
+            "manifest gitSha equals HEAD: valid (default mode)",
+            "manifest gitSha is ancestor of HEAD: valid (default mode)",
+            "manifest gitSha is parallel branch (not ancestor): invalid",
+            "strict mode: requires equality, ancestor is rejected",
+            "strict mode: equality still passes",
+            "non-existent gitSha: invalid with helpful reason",
+            "null gitSha: skipped honestly",
+            "skipGit option overrides everything"
+          ]
+        },
+        "corpusIntegrityResult": {
+          "before": "0 verified / 7 failed (all with gitShaBinding: invalid) / 478 skipped",
+          "after": "7 verified / 0 failed / 478 skipped (CLEAN)",
+          "adoptionRateChange": "0.0% → 1.4%",
+          "failedReceiptsRecovered": [
+            "codex-masterplan-closure.json",
+            "oss-harvest-pass-12.json",
+            "pass-14-install-smoke.json",
+            "pass-15-verify-slo.json",
+            "pass-16-corpus-integrity.json",
+            "pass-17-ci-integration.json",
+            "pass-18-time-machine-validation.json"
+          ]
+        },
+        "verifyChain": {
+          "typecheck": "pass",
+          "lint": "pass",
+          "antiStub": "pass",
+          "proofGitBindingTests": "pass (8/8)",
+          "proofIntegrityCheck": "CLEAN"
+        },
+        "unblocks": [
+          "Pass 19 — live DELEGATE-52 executor (requires verify:all green)",
+          "Pass 20 — dataset import + real-fs PRD-scale runs",
+          "Pass 21 — Class G + Class F 1M staging",
+          "verify:all chain (was blocked by check:proof-integrity failures)"
+        ],
+        "whatThisDoesNotChange": [
+          "Tampered payloads still detected (proof-bundle integrity check unchanged)",
+          "Hash-chain continuity check unchanged",
+          "Merkle inclusion proof check unchanged",
+          "Schema version (evidence-chain.v1) unchanged",
+          "No breaking change to @danteforge/evidence-chain v1.0.0 contract"
+        ]
+      }
+    ],
+    "inclusionProofs": [
+      {
+        "index": 0,
+        "leafHash": "906d1731285f4abda1e140c6825b02bf33eeb9e4c7a4e0e9952c38d7c40284b4",
+        "proof": []
+      }
+    ],
+    "hash": "d6ce75530f8460d921959063080096ea2a61ee10c469d8246051913f64e09a11"
+  }
+}

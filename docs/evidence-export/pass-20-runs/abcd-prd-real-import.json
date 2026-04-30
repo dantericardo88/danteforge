@@ -1,0 +1,966 @@
+{
+  "schemaVersion": "danteforge.time-machine.validation.v1",
+  "runId": "tmval_20260429210703",
+  "createdAt": "2026-04-29T21:07:03.974Z",
+  "cwd": "C:\\Projects\\DanteForge",
+  "outDir": "C:\\Projects\\DanteForge\\.danteforge\\time-machine\\validation\\tmval_20260429210703",
+  "scale": "prd-real",
+  "delegate52Mode": "import",
+  "status": "partial",
+  "summary": {
+    "selectedClasses": [
+      "A",
+      "B",
+      "C",
+      "D"
+    ],
+    "passedClasses": [
+      "A",
+      "B",
+      "C",
+      "D"
+    ],
+    "partialClasses": [],
+    "failedClasses": [],
+    "claimsAllowed": [
+      "Time Machine validation harness can generate deterministic tamper, restore, causal, adversarial, performance, and constitutional evidence.",
+      "DELEGATE-52 harness/import/live paths are wired with public dataset limitations recorded."
+    ],
+    "claimsNotAllowed": [
+      "Do not claim DanteForge has published full DELEGATE-52 live replication until live or imported results are present.",
+      "Do not claim private/withheld DELEGATE-52 environments were validated from the public dataset."
+    ]
+  },
+  "classes": {
+    "A": {
+      "status": "passed",
+      "commitCount": 1000,
+      "cleanChainFalsePositiveRuns": 100,
+      "cleanChainFalsePositives": 0,
+      "adversarialDetections": [
+        {
+          "id": "A1_artifact_middle_rehash",
+          "targetPosition": 500,
+          "detected": true,
+          "detectedPosition": 500,
+          "errors": [
+            "tm_8da087c1da1e7987409d44b3: commitId mismatch",
+            "tm_8da087c1da1e7987409d44b3: proof payloadHash mismatch"
+          ],
+          "verifyMs": 417
+        },
+        {
+          "id": "A2_soulseal_byte",
+          "targetPosition": 250,
+          "detected": true,
+          "detectedPosition": 250,
+          "errors": [
+            "tm_0a33ff976ba0fed136bdfd23: blob hash mismatch for state/document.txt",
+            "tm_0a33ff976ba0fed136bdfd23: byteLength mismatch for state/document.txt"
+          ],
+          "verifyMs": 406
+        },
+        {
+          "id": "A3_delete_commit_relink",
+          "targetPosition": 750,
+          "detected": true,
+          "detectedPosition": 750,
+          "errors": [
+            "reflog references missing commit: tm_f35834669eb065c6fe84db91",
+            "tm_0689d21e7311df03bfdb95ac: missing parent tm_f35834669eb065c6fe84db91"
+          ],
+          "verifyMs": 431
+        },
+        {
+          "id": "A4_reorder_adjacent",
+          "targetPosition": 100,
+          "detected": true,
+          "detectedPosition": 100,
+          "errors": [
+            "reflog 100: parent mismatch",
+            "reflog 101: parent mismatch",
+            "reflog 102: parent mismatch"
+          ],
+          "verifyMs": 423
+        },
+        {
+          "id": "A5_fabricated_commit",
+          "targetPosition": 400,
+          "detected": true,
+          "detectedPosition": 400,
+          "errors": [
+            "tm_bcd5fb61117ea7be3c1baa04: commitId mismatch",
+            "tm_bcd5fb61117ea7be3c1baa04: proof payloadHash mismatch",
+            "tm_bcd5fb61117ea7be3c1baa04: byteLength mismatch for state/document.txt"
+          ],
+          "verifyMs": 408
+        },
+        {
+          "id": "A6_modify_genesis",
+          "targetPosition": 0,
+          "detected": true,
+          "detectedPosition": 0,
+          "errors": [
+            "tm_7551a30a2a2816d1d581c6a8: commitId mismatch",
+            "tm_7551a30a2a2816d1d581c6a8: proof payloadHash mismatch"
+          ],
+          "verifyMs": 444
+        },
+        {
+          "id": "A7_modify_head",
+          "targetPosition": 999,
+          "detected": true,
+          "detectedPosition": 999,
+          "errors": [
+            "tm_887946c9a2c5dc5bc2a3b354: commitId mismatch",
+            "tm_887946c9a2c5dc5bc2a3b354: proof payloadHash mismatch"
+          ],
+          "verifyMs": 395
+        }
+      ],
+      "maxDetectionMs": 617
+    },
+    "B": {
+      "status": "passed",
+      "commitCount": 1000,
+      "restoreScenarios": [
+        {
+          "id": "B1_genesis",
+          "byteIdentical": true,
+          "restoreMs": 3,
+          "details": "restored tm_7551a30a2a2816d1d581c6a8 at index 0"
+        },
+        {
+          "id": "B2_middle",
+          "byteIdentical": true,
+          "restoreMs": 2,
+          "details": "restored tm_8da087c1da1e7987409d44b3 at index 500"
+        },
+        {
+          "id": "B3_head",
+          "byteIdentical": true,
+          "restoreMs": 1,
+          "details": "restored tm_887946c9a2c5dc5bc2a3b354 at index 999"
+        },
+        {
+          "id": "B4_back_to_middle",
+          "byteIdentical": true,
+          "restoreMs": 2,
+          "details": "restored tm_8da087c1da1e7987409d44b3 at index 500"
+        },
+        {
+          "id": "B5_branch_restore_original",
+          "byteIdentical": true,
+          "restoreMs": 2,
+          "details": "restored tm_8da087c1da1e7987409d44b3 at index 500"
+        },
+        {
+          "id": "B6_restore_then_verify_forward",
+          "byteIdentical": true,
+          "restoreMs": 0,
+          "details": "chain verified after restore sequence"
+        }
+      ]
+    },
+    "C": {
+      "status": "passed",
+      "commitCount": 100,
+      "causalQueries": [
+        {
+          "id": "C1_supported_evidence",
+          "passed": true,
+          "resultCount": 1,
+          "message": "evidence linked to verdict"
+        },
+        {
+          "id": "C2_alternatives_considered",
+          "passed": true,
+          "resultCount": 1,
+          "message": "alternatives are preserved"
+        },
+        {
+          "id": "C3_counterfactual_honesty",
+          "passed": true,
+          "resultCount": 0,
+          "message": "Counterfactual reasoning traces are not preserved by Time Machine v0.1."
+        },
+        {
+          "id": "C4_dependents",
+          "passed": true,
+          "resultCount": 1,
+          "message": "dependent commits found"
+        },
+        {
+          "id": "C5_file_history",
+          "passed": true,
+          "resultCount": 100,
+          "message": "file history covers every decision commit"
+        },
+        {
+          "id": "C6_rejected_claim_trace",
+          "passed": true,
+          "resultCount": 1,
+          "message": "unsupported claim rejection preserved"
+        },
+        {
+          "id": "C7_completeness_audit",
+          "passed": true,
+          "resultCount": 100,
+          "message": "all decisions have complete traces"
+        }
+      ],
+      "completenessAudit": {
+        "complete": 100,
+        "gaps": 0,
+        "gapCommitIds": []
+      }
+    },
+    "D": {
+      "status": "imported_results_evaluated",
+      "publicReleasedDomains": 48,
+      "publicReleasedRows": 234,
+      "withheldEnvironments": 76,
+      "domainRows": [
+        {
+          "domain": "accounting",
+          "mode": "import",
+          "status": "harness_ready_not_live_validated"
+        },
+        {
+          "domain": "audiosyn",
+          "mode": "import",
+          "status": "harness_ready_not_live_validated"
+        },
+        {
+          "domain": "calendar",
+          "mode": "import",
+          "status": "harness_ready_not_live_validated"
+        },
+        {
+          "domain": "chess",
+          "mode": "import",
+          "status": "harness_ready_not_live_validated"
+        },
+        {
+          "domain": "circuit",
+          "mode": "import",
+          "status": "harness_ready_not_live_validated"
+        },
+        {
+          "domain": "crystal",
+          "mode": "import",
+          "status": "harness_ready_not_live_validated"
+        },
+        {
+          "domain": "dbschema",
+          "mode": "import",
+          "status": "harness_ready_not_live_validated"
+        },
+        {
+          "domain": "dns",
+          "mode": "import",
+          "status": "harness_ready_not_live_validated"
+        },
+        {
+          "domain": "docker",
+          "mode": "import",
+          "status": "harness_ready_not_live_validated"
+        },
+        {
+          "domain": "earncall",
+          "mode": "import",
+          "status": "harness_ready_not_live_validated"
+        },
+        {
+          "domain": "edifact",
+          "mode": "import",
+          "status": "harness_ready_not_live_validated"
+        },
+        {
+          "domain": "emails",
+          "mode": "import",
+          "status": "harness_ready_not_live_validated"
+        },
+        {
+          "domain": "filesystem",
+          "mode": "import",
+          "status": "harness_ready_not_live_validated"
+        },
+        {
+          "domain": "fonteng",
+          "mode": "import",
+          "status": "harness_ready_not_live_validated"
+        },
+        {
+          "domain": "foodmenu",
+          "mode": "import",
+          "status": "harness_ready_not_live_validated"
+        },
+        {
+          "domain": "genealogy",
+          "mode": "import",
+          "status": "harness_ready_not_live_validated"
+        },
+        {
+          "domain": "geodata",
+          "mode": "import",
+          "status": "harness_ready_not_live_validated"
+        },
+        {
+          "domain": "geotrack",
+          "mode": "import",
+          "status": "harness_ready_not_live_validated"
+        },
+        {
+          "domain": "graphviz",
+          "mode": "import",
+          "status": "harness_ready_not_live_validated"
+        },
+        {
+          "domain": "hamradio",
+          "mode": "import",
+          "status": "harness_ready_not_live_validated"
+        },
+        {
+          "domain": "infra",
+          "mode": "import",
+          "status": "harness_ready_not_live_validated"
+        },
+        {
+          "domain": "jobboard",
+          "mode": "import",
+          "status": "harness_ready_not_live_validated"
+        },
+        {
+          "domain": "json",
+          "mode": "import",
+          "status": "harness_ready_not_live_validated"
+        },
+        {
+          "domain": "landmarks",
+          "mode": "import",
+          "status": "harness_ready_not_live_validated"
+        },
+        {
+          "domain": "latex",
+          "mode": "import",
+          "status": "harness_ready_not_live_validated"
+        },
+        {
+          "domain": "libcatalog",
+          "mode": "import",
+          "status": "harness_ready_not_live_validated"
+        },
+        {
+          "domain": "makefile",
+          "mode": "import",
+          "status": "harness_ready_not_live_validated"
+        },
+        {
+          "domain": "malware",
+          "mode": "import",
+          "status": "harness_ready_not_live_validated"
+        },
+        {
+          "domain": "mathlean",
+          "mode": "import",
+          "status": "harness_ready_not_live_validated"
+        },
+        {
+          "domain": "molecule",
+          "mode": "import",
+          "status": "harness_ready_not_live_validated"
+        },
+        {
+          "domain": "musicsheet",
+          "mode": "import",
+          "status": "harness_ready_not_live_validated"
+        },
+        {
+          "domain": "obj3d",
+          "mode": "import",
+          "status": "harness_ready_not_live_validated"
+        },
+        {
+          "domain": "protein",
+          "mode": "import",
+          "status": "harness_ready_not_live_validated"
+        },
+        {
+          "domain": "python",
+          "mode": "import",
+          "status": "harness_ready_not_live_validated"
+        },
+        {
+          "domain": "quantum",
+          "mode": "import",
+          "status": "harness_ready_not_live_validated"
+        },
+        {
+          "domain": "recipe",
+          "mode": "import",
+          "status": "harness_ready_not_live_validated"
+        },
+        {
+          "domain": "robotics",
+          "mode": "import",
+          "status": "harness_ready_not_live_validated"
+        },
+        {
+          "domain": "satellite",
+          "mode": "import",
+          "status": "harness_ready_not_live_validated"
+        },
+        {
+          "domain": "screenplay",
+          "mode": "import",
+          "status": "harness_ready_not_live_validated"
+        },
+        {
+          "domain": "slides",
+          "mode": "import",
+          "status": "harness_ready_not_live_validated"
+        },
+        {
+          "domain": "spreadsheet",
+          "mode": "import",
+          "status": "harness_ready_not_live_validated"
+        },
+        {
+          "domain": "starcatalog",
+          "mode": "import",
+          "status": "harness_ready_not_live_validated"
+        },
+        {
+          "domain": "subtitles",
+          "mode": "import",
+          "status": "harness_ready_not_live_validated"
+        },
+        {
+          "domain": "transit",
+          "mode": "import",
+          "status": "harness_ready_not_live_validated"
+        },
+        {
+          "domain": "translation",
+          "mode": "import",
+          "status": "harness_ready_not_live_validated"
+        },
+        {
+          "domain": "treebank",
+          "mode": "import",
+          "status": "harness_ready_not_live_validated"
+        },
+        {
+          "domain": "vector",
+          "mode": "import",
+          "status": "harness_ready_not_live_validated"
+        },
+        {
+          "domain": "weather",
+          "mode": "import",
+          "status": "harness_ready_not_live_validated"
+        }
+      ],
+      "limitations": [
+        "Public DELEGATE-52 release has 48 domains and 234 rows; 76 environments are withheld for license reasons.",
+        "DELEGATE-52 is not live validated in harness/import-free mode; no publishable live replication claim is allowed."
+      ]
+    }
+  },
+  "proof": {
+    "schemaVersion": "evidence-chain.v1",
+    "receiptId": "bundle_c636840439cd0184",
+    "bundleId": "time_machine_validation_tmval_20260429210703",
+    "gitSha": null,
+    "createdAt": "2026-04-29T21:07:03.974Z",
+    "payloadHash": "90e0e4ddcd8d5a989f856520818fd01810741b58189bc485d203ecfc481b95fc",
+    "prevHash": "0000000000000000000000000000000000000000000000000000000000000000",
+    "merkleRoot": "9490457db5cafbe196bfe26a4e1c8459d728dec55b5a358466eda72cd80abd4c",
+    "evidenceHashes": [
+      "9490457db5cafbe196bfe26a4e1c8459d728dec55b5a358466eda72cd80abd4c"
+    ],
+    "verificationStatus": "unverified",
+    "evidence": [
+      {
+        "schemaVersion": "danteforge.time-machine.validation.v1",
+        "runId": "tmval_20260429210703",
+        "createdAt": "2026-04-29T21:07:03.974Z",
+        "cwd": "C:\\Projects\\DanteForge",
+        "outDir": "C:\\Projects\\DanteForge\\.danteforge\\time-machine\\validation\\tmval_20260429210703",
+        "scale": "prd-real",
+        "delegate52Mode": "import",
+        "status": "partial",
+        "summary": {
+          "selectedClasses": [
+            "A",
+            "B",
+            "C",
+            "D"
+          ],
+          "passedClasses": [
+            "A",
+            "B",
+            "C",
+            "D"
+          ],
+          "partialClasses": [],
+          "failedClasses": [],
+          "claimsAllowed": [
+            "Time Machine validation harness can generate deterministic tamper, restore, causal, adversarial, performance, and constitutional evidence.",
+            "DELEGATE-52 harness/import/live paths are wired with public dataset limitations recorded."
+          ],
+          "claimsNotAllowed": [
+            "Do not claim DanteForge has published full DELEGATE-52 live replication until live or imported results are present.",
+            "Do not claim private/withheld DELEGATE-52 environments were validated from the public dataset."
+          ]
+        },
+        "classes": {
+          "A": {
+            "status": "passed",
+            "commitCount": 1000,
+            "cleanChainFalsePositiveRuns": 100,
+            "cleanChainFalsePositives": 0,
+            "adversarialDetections": [
+              {
+                "id": "A1_artifact_middle_rehash",
+                "targetPosition": 500,
+                "detected": true,
+                "detectedPosition": 500,
+                "errors": [
+                  "tm_8da087c1da1e7987409d44b3: commitId mismatch",
+                  "tm_8da087c1da1e7987409d44b3: proof payloadHash mismatch"
+                ],
+                "verifyMs": 417
+              },
+              {
+                "id": "A2_soulseal_byte",
+                "targetPosition": 250,
+                "detected": true,
+                "detectedPosition": 250,
+                "errors": [
+                  "tm_0a33ff976ba0fed136bdfd23: blob hash mismatch for state/document.txt",
+                  "tm_0a33ff976ba0fed136bdfd23: byteLength mismatch for state/document.txt"
+                ],
+                "verifyMs": 406
+              },
+              {
+                "id": "A3_delete_commit_relink",
+                "targetPosition": 750,
+                "detected": true,
+                "detectedPosition": 750,
+                "errors": [
+                  "reflog references missing commit: tm_f35834669eb065c6fe84db91",
+                  "tm_0689d21e7311df03bfdb95ac: missing parent tm_f35834669eb065c6fe84db91"
+                ],
+                "verifyMs": 431
+              },
+              {
+                "id": "A4_reorder_adjacent",
+                "targetPosition": 100,
+                "detected": true,
+                "detectedPosition": 100,
+                "errors": [
+                  "reflog 100: parent mismatch",
+                  "reflog 101: parent mismatch",
+                  "reflog 102: parent mismatch"
+                ],
+                "verifyMs": 423
+              },
+              {
+                "id": "A5_fabricated_commit",
+                "targetPosition": 400,
+                "detected": true,
+                "detectedPosition": 400,
+                "errors": [
+                  "tm_bcd5fb61117ea7be3c1baa04: commitId mismatch",
+                  "tm_bcd5fb61117ea7be3c1baa04: proof payloadHash mismatch",
+                  "tm_bcd5fb61117ea7be3c1baa04: byteLength mismatch for state/document.txt"
+                ],
+                "verifyMs": 408
+              },
+              {
+                "id": "A6_modify_genesis",
+                "targetPosition": 0,
+                "detected": true,
+                "detectedPosition": 0,
+                "errors": [
+                  "tm_7551a30a2a2816d1d581c6a8: commitId mismatch",
+                  "tm_7551a30a2a2816d1d581c6a8: proof payloadHash mismatch"
+                ],
+                "verifyMs": 444
+              },
+              {
+                "id": "A7_modify_head",
+                "targetPosition": 999,
+                "detected": true,
+                "detectedPosition": 999,
+                "errors": [
+                  "tm_887946c9a2c5dc5bc2a3b354: commitId mismatch",
+                  "tm_887946c9a2c5dc5bc2a3b354: proof payloadHash mismatch"
+                ],
+                "verifyMs": 395
+              }
+            ],
+            "maxDetectionMs": 617
+          },
+          "B": {
+            "status": "passed",
+            "commitCount": 1000,
+            "restoreScenarios": [
+              {
+                "id": "B1_genesis",
+                "byteIdentical": true,
+                "restoreMs": 3,
+                "details": "restored tm_7551a30a2a2816d1d581c6a8 at index 0"
+              },
+              {
+                "id": "B2_middle",
+                "byteIdentical": true,
+                "restoreMs": 2,
+                "details": "restored tm_8da087c1da1e7987409d44b3 at index 500"
+              },
+              {
+                "id": "B3_head",
+                "byteIdentical": true,
+                "restoreMs": 1,
+                "details": "restored tm_887946c9a2c5dc5bc2a3b354 at index 999"
+              },
+              {
+                "id": "B4_back_to_middle",
+                "byteIdentical": true,
+                "restoreMs": 2,
+                "details": "restored tm_8da087c1da1e7987409d44b3 at index 500"
+              },
+              {
+                "id": "B5_branch_restore_original",
+                "byteIdentical": true,
+                "restoreMs": 2,
+                "details": "restored tm_8da087c1da1e7987409d44b3 at index 500"
+              },
+              {
+                "id": "B6_restore_then_verify_forward",
+                "byteIdentical": true,
+                "restoreMs": 0,
+                "details": "chain verified after restore sequence"
+              }
+            ]
+          },
+          "C": {
+            "status": "passed",
+            "commitCount": 100,
+            "causalQueries": [
+              {
+                "id": "C1_supported_evidence",
+                "passed": true,
+                "resultCount": 1,
+                "message": "evidence linked to verdict"
+              },
+              {
+                "id": "C2_alternatives_considered",
+                "passed": true,
+                "resultCount": 1,
+                "message": "alternatives are preserved"
+              },
+              {
+                "id": "C3_counterfactual_honesty",
+                "passed": true,
+                "resultCount": 0,
+                "message": "Counterfactual reasoning traces are not preserved by Time Machine v0.1."
+              },
+              {
+                "id": "C4_dependents",
+                "passed": true,
+                "resultCount": 1,
+                "message": "dependent commits found"
+              },
+              {
+                "id": "C5_file_history",
+                "passed": true,
+                "resultCount": 100,
+                "message": "file history covers every decision commit"
+              },
+              {
+                "id": "C6_rejected_claim_trace",
+                "passed": true,
+                "resultCount": 1,
+                "message": "unsupported claim rejection preserved"
+              },
+              {
+                "id": "C7_completeness_audit",
+                "passed": true,
+                "resultCount": 100,
+                "message": "all decisions have complete traces"
+              }
+            ],
+            "completenessAudit": {
+              "complete": 100,
+              "gaps": 0,
+              "gapCommitIds": []
+            }
+          },
+          "D": {
+            "status": "imported_results_evaluated",
+            "publicReleasedDomains": 48,
+            "publicReleasedRows": 234,
+            "withheldEnvironments": 76,
+            "domainRows": [
+              {
+                "domain": "accounting",
+                "mode": "import",
+                "status": "harness_ready_not_live_validated"
+              },
+              {
+                "domain": "audiosyn",
+                "mode": "import",
+                "status": "harness_ready_not_live_validated"
+              },
+              {
+                "domain": "calendar",
+                "mode": "import",
+                "status": "harness_ready_not_live_validated"
+              },
+              {
+                "domain": "chess",
+                "mode": "import",
+                "status": "harness_ready_not_live_validated"
+              },
+              {
+                "domain": "circuit",
+                "mode": "import",
+                "status": "harness_ready_not_live_validated"
+              },
+              {
+                "domain": "crystal",
+                "mode": "import",
+                "status": "harness_ready_not_live_validated"
+              },
+              {
+                "domain": "dbschema",
+                "mode": "import",
+                "status": "harness_ready_not_live_validated"
+              },
+              {
+                "domain": "dns",
+                "mode": "import",
+                "status": "harness_ready_not_live_validated"
+              },
+              {
+                "domain": "docker",
+                "mode": "import",
+                "status": "harness_ready_not_live_validated"
+              },
+              {
+                "domain": "earncall",
+                "mode": "import",
+                "status": "harness_ready_not_live_validated"
+              },
+              {
+                "domain": "edifact",
+                "mode": "import",
+                "status": "harness_ready_not_live_validated"
+              },
+              {
+                "domain": "emails",
+                "mode": "import",
+                "status": "harness_ready_not_live_validated"
+              },
+              {
+                "domain": "filesystem",
+                "mode": "import",
+                "status": "harness_ready_not_live_validated"
+              },
+              {
+                "domain": "fonteng",
+                "mode": "import",
+                "status": "harness_ready_not_live_validated"
+              },
+              {
+                "domain": "foodmenu",
+                "mode": "import",
+                "status": "harness_ready_not_live_validated"
+              },
+              {
+                "domain": "genealogy",
+                "mode": "import",
+                "status": "harness_ready_not_live_validated"
+              },
+              {
+                "domain": "geodata",
+                "mode": "import",
+                "status": "harness_ready_not_live_validated"
+              },
+              {
+                "domain": "geotrack",
+                "mode": "import",
+                "status": "harness_ready_not_live_validated"
+              },
+              {
+                "domain": "graphviz",
+                "mode": "import",
+                "status": "harness_ready_not_live_validated"
+              },
+              {
+                "domain": "hamradio",
+                "mode": "import",
+                "status": "harness_ready_not_live_validated"
+              },
+              {
+                "domain": "infra",
+                "mode": "import",
+                "status": "harness_ready_not_live_validated"
+              },
+              {
+                "domain": "jobboard",
+                "mode": "import",
+                "status": "harness_ready_not_live_validated"
+              },
+              {
+                "domain": "json",
+                "mode": "import",
+                "status": "harness_ready_not_live_validated"
+              },
+              {
+                "domain": "landmarks",
+                "mode": "import",
+                "status": "harness_ready_not_live_validated"
+              },
+              {
+                "domain": "latex",
+                "mode": "import",
+                "status": "harness_ready_not_live_validated"
+              },
+              {
+                "domain": "libcatalog",
+                "mode": "import",
+                "status": "harness_ready_not_live_validated"
+              },
+              {
+                "domain": "makefile",
+                "mode": "import",
+                "status": "harness_ready_not_live_validated"
+              },
+              {
+                "domain": "malware",
+                "mode": "import",
+                "status": "harness_ready_not_live_validated"
+              },
+              {
+                "domain": "mathlean",
+                "mode": "import",
+                "status": "harness_ready_not_live_validated"
+              },
+              {
+                "domain": "molecule",
+                "mode": "import",
+                "status": "harness_ready_not_live_validated"
+              },
+              {
+                "domain": "musicsheet",
+                "mode": "import",
+                "status": "harness_ready_not_live_validated"
+              },
+              {
+                "domain": "obj3d",
+                "mode": "import",
+                "status": "harness_ready_not_live_validated"
+              },
+              {
+                "domain": "protein",
+                "mode": "import",
+                "status": "harness_ready_not_live_validated"
+              },
+              {
+                "domain": "python",
+                "mode": "import",
+                "status": "harness_ready_not_live_validated"
+              },
+              {
+                "domain": "quantum",
+                "mode": "import",
+                "status": "harness_ready_not_live_validated"
+              },
+              {
+                "domain": "recipe",
+                "mode": "import",
+                "status": "harness_ready_not_live_validated"
+              },
+              {
+                "domain": "robotics",
+                "mode": "import",
+                "status": "harness_ready_not_live_validated"
+              },
+              {
+                "domain": "satellite",
+                "mode": "import",
+                "status": "harness_ready_not_live_validated"
+              },
+              {
+                "domain": "screenplay",
+                "mode": "import",
+                "status": "harness_ready_not_live_validated"
+              },
+              {
+                "domain": "slides",
+                "mode": "import",
+                "status": "harness_ready_not_live_validated"
+              },
+              {
+                "domain": "spreadsheet",
+                "mode": "import",
+                "status": "harness_ready_not_live_validated"
+              },
+              {
+                "domain": "starcatalog",
+                "mode": "import",
+                "status": "harness_ready_not_live_validated"
+              },
+              {
+                "domain": "subtitles",
+                "mode": "import",
+                "status": "harness_ready_not_live_validated"
+              },
+              {
+                "domain": "transit",
+                "mode": "import",
+                "status": "harness_ready_not_live_validated"
+              },
+              {
+                "domain": "translation",
+                "mode": "import",
+                "status": "harness_ready_not_live_validated"
+              },
+              {
+                "domain": "treebank",
+                "mode": "import",
+                "status": "harness_ready_not_live_validated"
+              },
+              {
+                "domain": "vector",
+                "mode": "import",
+                "status": "harness_ready_not_live_validated"
+              },
+              {
+                "domain": "weather",
+                "mode": "import",
+                "status": "harness_ready_not_live_validated"
+              }
+            ],
+            "limitations": [
+              "Public DELEGATE-52 release has 48 domains and 234 rows; 76 environments are withheld for license reasons.",
+              "DELEGATE-52 is not live validated in harness/import-free mode; no publishable live replication claim is allowed."
+            ]
+          }
+        }
+      }
+    ],
+    "inclusionProofs": [
+      {
+        "index": 0,
+        "leafHash": "9490457db5cafbe196bfe26a4e1c8459d728dec55b5a358466eda72cd80abd4c",
+        "proof": []
+      }
+    ],
+    "hash": "53020527c058472766ad06c060602be1936a22d184d06815541c0b36818bc5b8"
+  }
+}

@@ -1,0 +1,142 @@
+{
+  "schemaVersion": 1,
+  "pass": 17,
+  "passName": "CI integration of proof corpus integrity check (Pass 17)",
+  "generatedAt": "2026-04-29T18:29:33.705Z",
+  "gitSha": "542fadaca24986d8c850732984b405c7de4b98ab",
+  "integration": {
+    "npmScript": "check:proof-integrity",
+    "scriptPath": "scripts/check-proof-integrity.mjs",
+    "scriptHash": "e232f5672569cccbeb9ddcbd407bcf54c737f2082e0933e8741482dd0f6ef97d",
+    "wiredInto": "verify:all",
+    "verifyAllChain": "npm run verify && npm run check:proof-integrity && npm run build && npm --prefix vscode-extension run verify",
+    "placement": "between verify (which runs typecheck/lint/anti-stub/test) and build — fast (~1s) and catches drift before any build artifacts are produced.",
+    "exitContract": {
+      "0": "CLEAN — verified+skipped only",
+      "1": "DEGRADED — at least one failed or errored receipt"
+    },
+    "cliFlags": [
+      "<dir> (positional, defaults to .danteforge/evidence)",
+      "--json (machine-readable output)"
+    ]
+  },
+  "testCoverage": {
+    "file": "tests/check-proof-integrity.test.ts",
+    "fileHash": "eef34fb807ef762275b887062becf06adf057ca52acf3b1117d53f13bbcf8732",
+    "testCount": 7,
+    "cases": [
+      "empty directory exits 0 (CLEAN)",
+      "directory with valid receipt exits 0",
+      "tampered bundle exits 1 (DEGRADED)",
+      "unparseable JSON exits 1 (errored)",
+      "non-proof JSON only is CLEAN (pre-Pass-11 receipts contract)",
+      "--json flag emits machine-readable output",
+      "recurses into subdirectories"
+    ],
+    "spawnsRealSubprocess": true
+  },
+  "liveCheckResult": {
+    "integrityStatus": "CLEAN",
+    "totalFiles": 477,
+    "verified": 5,
+    "failed": 0,
+    "skipped": 472,
+    "errored": 0,
+    "proofAdoptionRate": 0.01
+  },
+  "packageJsonHash": "3c1d25a7a4ac68138a571de4f40b4995384f2e6991d1f976fcfe1a7ce5ccebde",
+  "what_this_changes": [
+    "verify:all chain now refuses to build if any proof-bearing receipt fails verification",
+    "Tampered evidence anywhere under .danteforge/evidence/ becomes a blocking CI failure",
+    "Adoption rate is observable via `npm run check:proof-integrity` for any future score-arc tracking",
+    "Founder/CI can run `node scripts/check-proof-integrity.mjs --json` to get machine-readable status"
+  ],
+  "what_this_does_NOT_change": [
+    "Pre-commit hook (hooks/pre-commit.mjs) untouched — agent does not modify user-owned operational hooks",
+    "Default `npm run verify` chain unchanged — integrity check is in `verify:all`, not `verify`",
+    "Pre-Pass-11 receipts without proof envelopes still pass (skipped, not failed) — backfill is a deferred forensic-provenance feature"
+  ],
+  "proof": {
+    "schemaVersion": "evidence-chain.v1",
+    "receiptId": "bundle_938c177f0739c6a7",
+    "bundleId": "pass_17_ci_integration",
+    "gitSha": "542fadaca24986d8c850732984b405c7de4b98ab",
+    "createdAt": "2026-04-29T18:29:33.705Z",
+    "payloadHash": "9710d6adad023884f170159360c38ac0f4587ce41f7aa359fa4940a08237428d",
+    "prevHash": "0000000000000000000000000000000000000000000000000000000000000000",
+    "merkleRoot": "c983d1ebdadc9dff8282d8e1e3108f4dfa0372aeffe2192677a546cf8d01b7dd",
+    "evidenceHashes": [
+      "c983d1ebdadc9dff8282d8e1e3108f4dfa0372aeffe2192677a546cf8d01b7dd"
+    ],
+    "verificationStatus": "unverified",
+    "evidence": [
+      {
+        "schemaVersion": 1,
+        "pass": 17,
+        "passName": "CI integration of proof corpus integrity check (Pass 17)",
+        "generatedAt": "2026-04-29T18:29:33.705Z",
+        "gitSha": "542fadaca24986d8c850732984b405c7de4b98ab",
+        "integration": {
+          "npmScript": "check:proof-integrity",
+          "scriptPath": "scripts/check-proof-integrity.mjs",
+          "scriptHash": "e232f5672569cccbeb9ddcbd407bcf54c737f2082e0933e8741482dd0f6ef97d",
+          "wiredInto": "verify:all",
+          "verifyAllChain": "npm run verify && npm run check:proof-integrity && npm run build && npm --prefix vscode-extension run verify",
+          "placement": "between verify (which runs typecheck/lint/anti-stub/test) and build — fast (~1s) and catches drift before any build artifacts are produced.",
+          "exitContract": {
+            "0": "CLEAN — verified+skipped only",
+            "1": "DEGRADED — at least one failed or errored receipt"
+          },
+          "cliFlags": [
+            "<dir> (positional, defaults to .danteforge/evidence)",
+            "--json (machine-readable output)"
+          ]
+        },
+        "testCoverage": {
+          "file": "tests/check-proof-integrity.test.ts",
+          "fileHash": "eef34fb807ef762275b887062becf06adf057ca52acf3b1117d53f13bbcf8732",
+          "testCount": 7,
+          "cases": [
+            "empty directory exits 0 (CLEAN)",
+            "directory with valid receipt exits 0",
+            "tampered bundle exits 1 (DEGRADED)",
+            "unparseable JSON exits 1 (errored)",
+            "non-proof JSON only is CLEAN (pre-Pass-11 receipts contract)",
+            "--json flag emits machine-readable output",
+            "recurses into subdirectories"
+          ],
+          "spawnsRealSubprocess": true
+        },
+        "liveCheckResult": {
+          "integrityStatus": "CLEAN",
+          "totalFiles": 477,
+          "verified": 5,
+          "failed": 0,
+          "skipped": 472,
+          "errored": 0,
+          "proofAdoptionRate": 0.01
+        },
+        "packageJsonHash": "3c1d25a7a4ac68138a571de4f40b4995384f2e6991d1f976fcfe1a7ce5ccebde",
+        "what_this_changes": [
+          "verify:all chain now refuses to build if any proof-bearing receipt fails verification",
+          "Tampered evidence anywhere under .danteforge/evidence/ becomes a blocking CI failure",
+          "Adoption rate is observable via `npm run check:proof-integrity` for any future score-arc tracking",
+          "Founder/CI can run `node scripts/check-proof-integrity.mjs --json` to get machine-readable status"
+        ],
+        "what_this_does_NOT_change": [
+          "Pre-commit hook (hooks/pre-commit.mjs) untouched — agent does not modify user-owned operational hooks",
+          "Default `npm run verify` chain unchanged — integrity check is in `verify:all`, not `verify`",
+          "Pre-Pass-11 receipts without proof envelopes still pass (skipped, not failed) — backfill is a deferred forensic-provenance feature"
+        ]
+      }
+    ],
+    "inclusionProofs": [
+      {
+        "index": 0,
+        "leafHash": "c983d1ebdadc9dff8282d8e1e3108f4dfa0372aeffe2192677a546cf8d01b7dd",
+        "proof": []
+      }
+    ],
+    "hash": "8f059efc0fda22dacaa01ad9f52380e14de23514aee35e9de7f208eb817484b5"
+  }
+}

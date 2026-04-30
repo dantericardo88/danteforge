@@ -1,0 +1,124 @@
+{
+  "schemaVersion": 1,
+  "pass": 25,
+  "passName": "Preprint preparation — LaTeX + reproducibility appendix + citations",
+  "generatedAt": "2026-04-29T23:43:39.024Z",
+  "gitSha": "b6d38f0b58c3eb53ce51bbd118b4cb5b24c87992",
+  "artifacts": {
+    "markdownSource": {
+      "path": "docs/papers/time-machine-empirical-validation-v1.md",
+      "hash": "0c3011c5df7560d677f33b5829b9ced01273225dcbc28d3609b2c2333b299e2d",
+      "role": "canonical source of truth"
+    },
+    "latexPreprint": {
+      "path": "docs/papers/time-machine-empirical-validation-v1.tex",
+      "hash": "4eefe4ee0c0df1083e3e8e87a2b50a76bbb0feed3dc3ffcd7f3640bbf4c953b8",
+      "role": "derived from markdown for arXiv compilation"
+    },
+    "bibtex": {
+      "path": "docs/papers/citations.bib",
+      "hash": "e2b66f1d55a7c8e2303ef1aa89a1cdc8b77ded27aae92f2a376fa98a36398077",
+      "role": "5 citation entries (Laban DELEGATE-52, Nakamoto, Loeliger Git, Anthropic Constitutional, evidence-chain)"
+    },
+    "reproducibilityAppendix": {
+      "path": "docs/papers/reproducibility-appendix.md",
+      "hash": "5dea8f43131b8ef47acaed252af3e0aff720fc21694bd10ffc5dd8d52f6661ff",
+      "role": "CLI commands + version hashes + founder-gate summary"
+    }
+  },
+  "pdfBuild": {
+    "available": false,
+    "reason": "pdflatex not in dev environment",
+    "documented": "Pass 25 §A.7 build sequence",
+    "founderActionRequired": "compile + visual review + arXiv submission decision (GATE-5)"
+  },
+  "truthBoundary": {
+    "allowedClaim": "Pass 25 ships LaTeX + BibTeX + reproducibility appendix; all artifacts ready for founder PDF compilation.",
+    "forbiddenClaim": "The PDF has been submitted to arXiv (NO — GATE-5 founder action)."
+  },
+  "unblocks": [
+    "Pass 26 outreach draft references locked LaTeX source",
+    "GATE-5 founder action has all artifacts staged"
+  ],
+  "verifyChain": {
+    "typecheck": "pass",
+    "lint": "pass",
+    "antiStub": "pass",
+    "artifactsExist": "pass",
+    "citationsCount": 5
+  },
+  "proof": {
+    "schemaVersion": "evidence-chain.v1",
+    "receiptId": "bundle_5ce9999b9a7f42d1",
+    "bundleId": "pass_25_preprint_preparation",
+    "gitSha": "b6d38f0b58c3eb53ce51bbd118b4cb5b24c87992",
+    "createdAt": "2026-04-29T23:43:39.024Z",
+    "payloadHash": "53685c9fa0c602e558860ba2883b60a14fa1fcf9048b5964ee820bc18bc4f85f",
+    "prevHash": "0000000000000000000000000000000000000000000000000000000000000000",
+    "merkleRoot": "f1745e02d0ca82447da3916d8e9c126f8502722a65f2e1b37096a52a764e3e0b",
+    "evidenceHashes": [
+      "f1745e02d0ca82447da3916d8e9c126f8502722a65f2e1b37096a52a764e3e0b"
+    ],
+    "verificationStatus": "unverified",
+    "evidence": [
+      {
+        "schemaVersion": 1,
+        "pass": 25,
+        "passName": "Preprint preparation — LaTeX + reproducibility appendix + citations",
+        "generatedAt": "2026-04-29T23:43:39.024Z",
+        "gitSha": "b6d38f0b58c3eb53ce51bbd118b4cb5b24c87992",
+        "artifacts": {
+          "markdownSource": {
+            "path": "docs/papers/time-machine-empirical-validation-v1.md",
+            "hash": "0c3011c5df7560d677f33b5829b9ced01273225dcbc28d3609b2c2333b299e2d",
+            "role": "canonical source of truth"
+          },
+          "latexPreprint": {
+            "path": "docs/papers/time-machine-empirical-validation-v1.tex",
+            "hash": "4eefe4ee0c0df1083e3e8e87a2b50a76bbb0feed3dc3ffcd7f3640bbf4c953b8",
+            "role": "derived from markdown for arXiv compilation"
+          },
+          "bibtex": {
+            "path": "docs/papers/citations.bib",
+            "hash": "e2b66f1d55a7c8e2303ef1aa89a1cdc8b77ded27aae92f2a376fa98a36398077",
+            "role": "5 citation entries (Laban DELEGATE-52, Nakamoto, Loeliger Git, Anthropic Constitutional, evidence-chain)"
+          },
+          "reproducibilityAppendix": {
+            "path": "docs/papers/reproducibility-appendix.md",
+            "hash": "5dea8f43131b8ef47acaed252af3e0aff720fc21694bd10ffc5dd8d52f6661ff",
+            "role": "CLI commands + version hashes + founder-gate summary"
+          }
+        },
+        "pdfBuild": {
+          "available": false,
+          "reason": "pdflatex not in dev environment",
+          "documented": "Pass 25 §A.7 build sequence",
+          "founderActionRequired": "compile + visual review + arXiv submission decision (GATE-5)"
+        },
+        "truthBoundary": {
+          "allowedClaim": "Pass 25 ships LaTeX + BibTeX + reproducibility appendix; all artifacts ready for founder PDF compilation.",
+          "forbiddenClaim": "The PDF has been submitted to arXiv (NO — GATE-5 founder action)."
+        },
+        "unblocks": [
+          "Pass 26 outreach draft references locked LaTeX source",
+          "GATE-5 founder action has all artifacts staged"
+        ],
+        "verifyChain": {
+          "typecheck": "pass",
+          "lint": "pass",
+          "antiStub": "pass",
+          "artifactsExist": "pass",
+          "citationsCount": 5
+        }
+      }
+    ],
+    "inclusionProofs": [
+      {
+        "index": 0,
+        "leafHash": "f1745e02d0ca82447da3916d8e9c126f8502722a65f2e1b37096a52a764e3e0b",
+        "proof": []
+      }
+    ],
+    "hash": "89ee5654c8eaed42b2713dbe03d5dc70f60719340fbb1356daf4599e0220d910"
+  }
+}

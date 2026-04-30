@@ -1,0 +1,40 @@
+{
+  "schemaVersion": 1,
+  "backfilledAt": "2026-04-30T00:39:26.556Z",
+  "anchorsFile": "/.danteforge/evidence/pass-27-runs/fresh-chain-fp.json",
+  "anchorsFileHash": "918d53e682a5e50618e13c704dc479bbe075eb1ff0c2af839c0cf6a7411f2fdf",
+  "gitWitness": null,
+  "gitWitnessNote": "file is not tracked in git history (likely an untracked .danteforge artifact)",
+  "proof": {
+    "schemaVersion": "evidence-chain.v1",
+    "receiptId": "bundle_7e6445127e70ffcf",
+    "bundleId": "backfill_git_witnessed_918d53e682a5e506",
+    "gitSha": null,
+    "createdAt": "2026-04-30T11:53:42.322Z",
+    "payloadHash": "fe9646635550da061663ef710dbc87003db51ce0fbffe4dd5b7a3a3dceefb4a9",
+    "prevHash": "0000000000000000000000000000000000000000000000000000000000000000",
+    "merkleRoot": "e0f39b6faa3f211ee98d1ed586455e982604f9f6e92bca7436195aebdbbc7fa0",
+    "evidenceHashes": [
+      "e0f39b6faa3f211ee98d1ed586455e982604f9f6e92bca7436195aebdbbc7fa0"
+    ],
+    "verificationStatus": "unverified",
+    "evidence": [
+      {
+        "schemaVersion": 1,
+        "backfilledAt": "2026-04-30T00:39:26.556Z",
+        "anchorsFile": "/.danteforge/evidence/pass-27-runs/fresh-chain-fp.json",
+        "anchorsFileHash": "918d53e682a5e50618e13c704dc479bbe075eb1ff0c2af839c0cf6a7411f2fdf",
+        "gitWitness": null,
+        "gitWitnessNote": "file is not tracked in git history (likely an untracked .danteforge artifact)"
+      }
+    ],
+    "inclusionProofs": [
+      {
+        "index": 0,
+        "leafHash": "e0f39b6faa3f211ee98d1ed586455e982604f9f6e92bca7436195aebdbbc7fa0",
+        "proof": []
+      }
+    ],
+    "hash": "bd99aedaddec852803974ca644338b151471eda59aa32aeeaa5502d957a43866"
+  }
+}

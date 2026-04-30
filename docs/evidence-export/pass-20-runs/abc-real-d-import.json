@@ -1,0 +1,458 @@
+{
+  "schemaVersion": "danteforge.time-machine.validation.v1",
+  "runId": "tmval_20260429210551",
+  "createdAt": "2026-04-29T21:05:51.369Z",
+  "cwd": "C:\\Projects\\DanteForge",
+  "outDir": "C:\\Projects\\DanteForge\\.danteforge\\time-machine\\validation\\tmval_20260429210551",
+  "scale": "prd-real",
+  "delegate52Mode": "import",
+  "status": "partial",
+  "summary": {
+    "selectedClasses": [
+      "A",
+      "B",
+      "C"
+    ],
+    "passedClasses": [
+      "A",
+      "B",
+      "C"
+    ],
+    "partialClasses": [],
+    "failedClasses": [],
+    "claimsAllowed": [
+      "Time Machine validation harness can generate deterministic tamper, restore, causal, adversarial, performance, and constitutional evidence.",
+      "DELEGATE-52 harness/import/live paths are wired with public dataset limitations recorded."
+    ],
+    "claimsNotAllowed": [
+      "Do not claim DanteForge has published full DELEGATE-52 live replication until live or imported results are present.",
+      "Do not claim private/withheld DELEGATE-52 environments were validated from the public dataset."
+    ]
+  },
+  "classes": {
+    "A": {
+      "status": "passed",
+      "commitCount": 1000,
+      "cleanChainFalsePositiveRuns": 100,
+      "cleanChainFalsePositives": 0,
+      "adversarialDetections": [
+        {
+          "id": "A1_artifact_middle_rehash",
+          "targetPosition": 500,
+          "detected": true,
+          "detectedPosition": 500,
+          "errors": [
+            "tm_ebb9ac31ca98a4f8cb904ad6: commitId mismatch",
+            "tm_ebb9ac31ca98a4f8cb904ad6: proof payloadHash mismatch"
+          ],
+          "verifyMs": 407
+        },
+        {
+          "id": "A2_soulseal_byte",
+          "targetPosition": 250,
+          "detected": true,
+          "detectedPosition": 250,
+          "errors": [
+            "tm_33539405166b458d6025ca89: blob hash mismatch for state/document.txt",
+            "tm_33539405166b458d6025ca89: byteLength mismatch for state/document.txt"
+          ],
+          "verifyMs": 399
+        },
+        {
+          "id": "A3_delete_commit_relink",
+          "targetPosition": 750,
+          "detected": true,
+          "detectedPosition": 750,
+          "errors": [
+            "reflog references missing commit: tm_4bb6f301166c91a5541019d4",
+            "tm_6d037c916a81c3151494f6df: missing parent tm_4bb6f301166c91a5541019d4"
+          ],
+          "verifyMs": 528
+        },
+        {
+          "id": "A4_reorder_adjacent",
+          "targetPosition": 100,
+          "detected": true,
+          "detectedPosition": 100,
+          "errors": [
+            "reflog 100: parent mismatch",
+            "reflog 101: parent mismatch",
+            "reflog 102: parent mismatch"
+          ],
+          "verifyMs": 369
+        },
+        {
+          "id": "A5_fabricated_commit",
+          "targetPosition": 400,
+          "detected": true,
+          "detectedPosition": 400,
+          "errors": [
+            "tm_629b2bed352845570ea81b38: commitId mismatch",
+            "tm_629b2bed352845570ea81b38: proof payloadHash mismatch",
+            "tm_629b2bed352845570ea81b38: byteLength mismatch for state/document.txt"
+          ],
+          "verifyMs": 412
+        },
+        {
+          "id": "A6_modify_genesis",
+          "targetPosition": 0,
+          "detected": true,
+          "detectedPosition": 0,
+          "errors": [
+            "tm_5fd4123e752de05db9488e3a: commitId mismatch",
+            "tm_5fd4123e752de05db9488e3a: proof payloadHash mismatch"
+          ],
+          "verifyMs": 427
+        },
+        {
+          "id": "A7_modify_head",
+          "targetPosition": 999,
+          "detected": true,
+          "detectedPosition": 999,
+          "errors": [
+            "tm_67872f5eda80390f1ec44aba: commitId mismatch",
+            "tm_67872f5eda80390f1ec44aba: proof payloadHash mismatch"
+          ],
+          "verifyMs": 370
+        }
+      ],
+      "maxDetectionMs": 528
+    },
+    "B": {
+      "status": "passed",
+      "commitCount": 1000,
+      "restoreScenarios": [
+        {
+          "id": "B1_genesis",
+          "byteIdentical": true,
+          "restoreMs": 3,
+          "details": "restored tm_5fd4123e752de05db9488e3a at index 0"
+        },
+        {
+          "id": "B2_middle",
+          "byteIdentical": true,
+          "restoreMs": 3,
+          "details": "restored tm_ebb9ac31ca98a4f8cb904ad6 at index 500"
+        },
+        {
+          "id": "B3_head",
+          "byteIdentical": true,
+          "restoreMs": 1,
+          "details": "restored tm_67872f5eda80390f1ec44aba at index 999"
+        },
+        {
+          "id": "B4_back_to_middle",
+          "byteIdentical": true,
+          "restoreMs": 2,
+          "details": "restored tm_ebb9ac31ca98a4f8cb904ad6 at index 500"
+        },
+        {
+          "id": "B5_branch_restore_original",
+          "byteIdentical": true,
+          "restoreMs": 2,
+          "details": "restored tm_ebb9ac31ca98a4f8cb904ad6 at index 500"
+        },
+        {
+          "id": "B6_restore_then_verify_forward",
+          "byteIdentical": true,
+          "restoreMs": 0,
+          "details": "chain verified after restore sequence"
+        }
+      ]
+    },
+    "C": {
+      "status": "passed",
+      "commitCount": 100,
+      "causalQueries": [
+        {
+          "id": "C1_supported_evidence",
+          "passed": true,
+          "resultCount": 1,
+          "message": "evidence linked to verdict"
+        },
+        {
+          "id": "C2_alternatives_considered",
+          "passed": true,
+          "resultCount": 1,
+          "message": "alternatives are preserved"
+        },
+        {
+          "id": "C3_counterfactual_honesty",
+          "passed": true,
+          "resultCount": 0,
+          "message": "Counterfactual reasoning traces are not preserved by Time Machine v0.1."
+        },
+        {
+          "id": "C4_dependents",
+          "passed": true,
+          "resultCount": 1,
+          "message": "dependent commits found"
+        },
+        {
+          "id": "C5_file_history",
+          "passed": true,
+          "resultCount": 100,
+          "message": "file history covers every decision commit"
+        },
+        {
+          "id": "C6_rejected_claim_trace",
+          "passed": true,
+          "resultCount": 1,
+          "message": "unsupported claim rejection preserved"
+        },
+        {
+          "id": "C7_completeness_audit",
+          "passed": true,
+          "resultCount": 100,
+          "message": "all decisions have complete traces"
+        }
+      ],
+      "completenessAudit": {
+        "complete": 100,
+        "gaps": 0,
+        "gapCommitIds": []
+      }
+    }
+  },
+  "proof": {
+    "schemaVersion": "evidence-chain.v1",
+    "receiptId": "bundle_5ce1fb9f1bc2621d",
+    "bundleId": "time_machine_validation_tmval_20260429210551",
+    "gitSha": null,
+    "createdAt": "2026-04-29T21:05:51.369Z",
+    "payloadHash": "1f238aa726461f574479b7d8fa3247b12f5b67bf8b3c96eeaab7e2a590c04d14",
+    "prevHash": "0000000000000000000000000000000000000000000000000000000000000000",
+    "merkleRoot": "a36f7048f52dd52a5d19d75d1d9ac0b9cd3f3193e48c00d30807a41af7f8c114",
+    "evidenceHashes": [
+      "a36f7048f52dd52a5d19d75d1d9ac0b9cd3f3193e48c00d30807a41af7f8c114"
+    ],
+    "verificationStatus": "unverified",
+    "evidence": [
+      {
+        "schemaVersion": "danteforge.time-machine.validation.v1",
+        "runId": "tmval_20260429210551",
+        "createdAt": "2026-04-29T21:05:51.369Z",
+        "cwd": "C:\\Projects\\DanteForge",
+        "outDir": "C:\\Projects\\DanteForge\\.danteforge\\time-machine\\validation\\tmval_20260429210551",
+        "scale": "prd-real",
+        "delegate52Mode": "import",
+        "status": "partial",
+        "summary": {
+          "selectedClasses": [
+            "A",
+            "B",
+            "C"
+          ],
+          "passedClasses": [
+            "A",
+            "B",
+            "C"
+          ],
+          "partialClasses": [],
+          "failedClasses": [],
+          "claimsAllowed": [
+            "Time Machine validation harness can generate deterministic tamper, restore, causal, adversarial, performance, and constitutional evidence.",
+            "DELEGATE-52 harness/import/live paths are wired with public dataset limitations recorded."
+          ],
+          "claimsNotAllowed": [
+            "Do not claim DanteForge has published full DELEGATE-52 live replication until live or imported results are present.",
+            "Do not claim private/withheld DELEGATE-52 environments were validated from the public dataset."
+          ]
+        },
+        "classes": {
+          "A": {
+            "status": "passed",
+            "commitCount": 1000,
+            "cleanChainFalsePositiveRuns": 100,
+            "cleanChainFalsePositives": 0,
+            "adversarialDetections": [
+              {
+                "id": "A1_artifact_middle_rehash",
+                "targetPosition": 500,
+                "detected": true,
+                "detectedPosition": 500,
+                "errors": [
+                  "tm_ebb9ac31ca98a4f8cb904ad6: commitId mismatch",
+                  "tm_ebb9ac31ca98a4f8cb904ad6: proof payloadHash mismatch"
+                ],
+                "verifyMs": 407
+              },
+              {
+                "id": "A2_soulseal_byte",
+                "targetPosition": 250,
+                "detected": true,
+                "detectedPosition": 250,
+                "errors": [
+                  "tm_33539405166b458d6025ca89: blob hash mismatch for state/document.txt",
+                  "tm_33539405166b458d6025ca89: byteLength mismatch for state/document.txt"
+                ],
+                "verifyMs": 399
+              },
+              {
+                "id": "A3_delete_commit_relink",
+                "targetPosition": 750,
+                "detected": true,
+                "detectedPosition": 750,
+                "errors": [
+                  "reflog references missing commit: tm_4bb6f301166c91a5541019d4",
+                  "tm_6d037c916a81c3151494f6df: missing parent tm_4bb6f301166c91a5541019d4"
+                ],
+                "verifyMs": 528
+              },
+              {
+                "id": "A4_reorder_adjacent",
+                "targetPosition": 100,
+                "detected": true,
+                "detectedPosition": 100,
+                "errors": [
+                  "reflog 100: parent mismatch",
+                  "reflog 101: parent mismatch",
+                  "reflog 102: parent mismatch"
+                ],
+                "verifyMs": 369
+              },
+              {
+                "id": "A5_fabricated_commit",
+                "targetPosition": 400,
+                "detected": true,
+                "detectedPosition": 400,
+                "errors": [
+                  "tm_629b2bed352845570ea81b38: commitId mismatch",
+                  "tm_629b2bed352845570ea81b38: proof payloadHash mismatch",
+                  "tm_629b2bed352845570ea81b38: byteLength mismatch for state/document.txt"
+                ],
+                "verifyMs": 412
+              },
+              {
+                "id": "A6_modify_genesis",
+                "targetPosition": 0,
+                "detected": true,
+                "detectedPosition": 0,
+                "errors": [
+                  "tm_5fd4123e752de05db9488e3a: commitId mismatch",
+                  "tm_5fd4123e752de05db9488e3a: proof payloadHash mismatch"
+                ],
+                "verifyMs": 427
+              },
+              {
+                "id": "A7_modify_head",
+                "targetPosition": 999,
+                "detected": true,
+                "detectedPosition": 999,
+                "errors": [
+                  "tm_67872f5eda80390f1ec44aba: commitId mismatch",
+                  "tm_67872f5eda80390f1ec44aba: proof payloadHash mismatch"
+                ],
+                "verifyMs": 370
+              }
+            ],
+            "maxDetectionMs": 528
+          },
+          "B": {
+            "status": "passed",
+            "commitCount": 1000,
+            "restoreScenarios": [
+              {
+                "id": "B1_genesis",
+                "byteIdentical": true,
+                "restoreMs": 3,
+                "details": "restored tm_5fd4123e752de05db9488e3a at index 0"
+              },
+              {
+                "id": "B2_middle",
+                "byteIdentical": true,
+                "restoreMs": 3,
+                "details": "restored tm_ebb9ac31ca98a4f8cb904ad6 at index 500"
+              },
+              {
+                "id": "B3_head",
+                "byteIdentical": true,
+                "restoreMs": 1,
+                "details": "restored tm_67872f5eda80390f1ec44aba at index 999"
+              },
+              {
+                "id": "B4_back_to_middle",
+                "byteIdentical": true,
+                "restoreMs": 2,
+                "details": "restored tm_ebb9ac31ca98a4f8cb904ad6 at index 500"
+              },
+              {
+                "id": "B5_branch_restore_original",
+                "byteIdentical": true,
+                "restoreMs": 2,
+                "details": "restored tm_ebb9ac31ca98a4f8cb904ad6 at index 500"
+              },
+              {
+                "id": "B6_restore_then_verify_forward",
+                "byteIdentical": true,
+                "restoreMs": 0,
+                "details": "chain verified after restore sequence"
+              }
+            ]
+          },
+          "C": {
+            "status": "passed",
+            "commitCount": 100,
+            "causalQueries": [
+              {
+                "id": "C1_supported_evidence",
+                "passed": true,
+                "resultCount": 1,
+                "message": "evidence linked to verdict"
+              },
+              {
+                "id": "C2_alternatives_considered",
+                "passed": true,
+                "resultCount": 1,
+                "message": "alternatives are preserved"
+              },
+              {
+                "id": "C3_counterfactual_honesty",
+                "passed": true,
+                "resultCount": 0,
+                "message": "Counterfactual reasoning traces are not preserved by Time Machine v0.1."
+              },
+              {
+                "id": "C4_dependents",
+                "passed": true,
+                "resultCount": 1,
+                "message": "dependent commits found"
+              },
+              {
+                "id": "C5_file_history",
+                "passed": true,
+                "resultCount": 100,
+                "message": "file history covers every decision commit"
+              },
+              {
+                "id": "C6_rejected_claim_trace",
+                "passed": true,
+                "resultCount": 1,
+                "message": "unsupported claim rejection preserved"
+              },
+              {
+                "id": "C7_completeness_audit",
+                "passed": true,
+                "resultCount": 100,
+                "message": "all decisions have complete traces"
+              }
+            ],
+            "completenessAudit": {
+              "complete": 100,
+              "gaps": 0,
+              "gapCommitIds": []
+            }
+          }
+        }
+      }
+    ],
+    "inclusionProofs": [
+      {
+        "index": 0,
+        "leafHash": "a36f7048f52dd52a5d19d75d1d9ac0b9cd3f3193e48c00d30807a41af7f8c114",
+        "proof": []
+      }
+    ],
+    "hash": "9442f2bcfa963c46a1555ca0970cd200d62c159de8e1364b284cb270d10eedf3"
+  }
+}

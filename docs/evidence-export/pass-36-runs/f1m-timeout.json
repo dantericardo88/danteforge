@@ -1,0 +1,14 @@
+{
+    "schemaVersion":  "danteforge.time-machine.validation.timeout.v1",
+    "status":  "timeout",
+    "runId":  "pass_36_f1m_compute_gate",
+    "class":  "F",
+    "scale":  "benchmark",
+    "targetCommitCount":  1000000,
+    "elapsedMinutes":  30.48,
+    "commitsCreatedBeforeStop":  137218,
+    "resultBytes":  0,
+    "reason":  "Exceeded 30-minute closure-pass cap before producing Class F 1M result JSON.",
+    "command":  "DANTEFORGE_TIME_MACHINE_VALIDATE_MAX_COMMITS=1000000 node dist/index.js time-machine validate --class F --scale benchmark --out .danteforge/time-machine/validation/pass-36-f1m --json",
+    "recordedAt":  "2026-04-30T12:01:22.2529092Z"
+}

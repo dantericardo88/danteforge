@@ -1,0 +1,150 @@
+{
+  "schemaVersion": 1,
+  "pass": "31-32-33",
+  "passName": "Concurrent-edit safety (31) + runClassG orchestration (32) + corpus integrity backfill (33)",
+  "generatedAt": "2026-04-30T00:40:56.254Z",
+  "gitSha": "b6d38f0b58c3eb53ce51bbd118b4cb5b24c87992",
+  "pass31": {
+    "description": "concurrent-edit safety verified; substrate produces fan-out under unsynchronized concurrent commits without data loss",
+    "testFile": "tests/time-machine-concurrent-commits.test.ts",
+    "testFileHash": "48a144a1b2a8aa67bcfffa04f5f791446a8ff8374de57969b671928bea6d335a",
+    "testCount": 2,
+    "cases": [
+      "8 parallel commits → all commits exist; reflog has 8 entries; HEAD points to real commit",
+      "16 sequential commits → linear reflog parent chain; verify clean"
+    ],
+    "honestFinding": "Unsynchronized concurrent commits produce fan-out (expected substrate behavior; callers need own coordination for linearization)"
+  },
+  "pass32": {
+    "description": "runClassG orchestrates side scripts when reports missing or stale (>1h)",
+    "file": "src/core/time-machine-validation.ts",
+    "fileHash": "dc289a335e8e7689cf527fedc19d56ec6477f48cf53375c9af469c29b2dbcdbf",
+    "additions": [
+      "regenerateGReportIfStale helper",
+      "runClassG invokes scripts/build-g4-truth-loop-ledger.mjs + scripts/build-g1-substrate-validation.mjs as needed",
+      "best-effort: orchestration failures do not block harness"
+    ],
+    "resolvesLimitation": "§7 limitation 7 (Class G computed by side-scripts; harness/paper now agree)"
+  },
+  "pass33": {
+    "description": "corpus integrity backfill via wrapper-anchored sidecar .proof.json files",
+    "script": "scripts/backfill-proof-anchors.mjs",
+    "scriptHash": "32a4ac64703c0846eeb2c22b867e82f3b408bc6783b7a824fae72e7edcf4cec4",
+    "before": {
+      "totalScanned": 510,
+      "verifiedAnchors": 22,
+      "adoption": "4.3%"
+    },
+    "after": {
+      "totalScanned": 1004,
+      "verifiedAnchors": 513,
+      "adoption": "51.1%"
+    },
+    "backfilled": 490,
+    "legacy": 1,
+    "errored": 0,
+    "honestScope": "Backfilled anchors establish anchor-as-of-now only; do not retroactively prove pre-existing content was untampered at write time"
+  },
+  "truthBoundary": {
+    "allowedClaim": "Three mid-priority gaps closed: concurrent-edit safety verified, runClassG orchestrates, corpus integrity 51%.",
+    "forbiddenClaim": "Backfilled anchors prove pre-Pass-11 content was unmodified at write time (they don't)."
+  },
+  "receipt": {
+    "file": ".danteforge/PASS_31_32_33_GAPS_RECEIPT.md",
+    "hash": "d7694919b2f26688a2a74de9fea65a0da0617fa3daa7cad72d28a1a44c6ef2f5"
+  },
+  "verifyChain": {
+    "typecheck": "pass",
+    "lint": "pass",
+    "antiStub": "pass",
+    "proofIntegrity": "CLEAN (513 verified / 0 failed / 491 skipped, 51.1% adoption)",
+    "pass31Tests": "pass (2/2)"
+  },
+  "proof": {
+    "schemaVersion": "evidence-chain.v1",
+    "receiptId": "bundle_b56981c3cffe3aae",
+    "bundleId": "pass_31_32_33_gaps",
+    "gitSha": "b6d38f0b58c3eb53ce51bbd118b4cb5b24c87992",
+    "createdAt": "2026-04-30T00:40:56.254Z",
+    "payloadHash": "d59d0b20e3b47e9d5db66b83bd634fd83da22d2b4911dd4692e7673644b5a76f",
+    "prevHash": "0000000000000000000000000000000000000000000000000000000000000000",
+    "merkleRoot": "3901e01caa4ac9b83a539fa9e996205246ee9364252f0600988766f3dbb3f934",
+    "evidenceHashes": [
+      "3901e01caa4ac9b83a539fa9e996205246ee9364252f0600988766f3dbb3f934"
+    ],
+    "verificationStatus": "unverified",
+    "evidence": [
+      {
+        "schemaVersion": 1,
+        "pass": "31-32-33",
+        "passName": "Concurrent-edit safety (31) + runClassG orchestration (32) + corpus integrity backfill (33)",
+        "generatedAt": "2026-04-30T00:40:56.254Z",
+        "gitSha": "b6d38f0b58c3eb53ce51bbd118b4cb5b24c87992",
+        "pass31": {
+          "description": "concurrent-edit safety verified; substrate produces fan-out under unsynchronized concurrent commits without data loss",
+          "testFile": "tests/time-machine-concurrent-commits.test.ts",
+          "testFileHash": "48a144a1b2a8aa67bcfffa04f5f791446a8ff8374de57969b671928bea6d335a",
+          "testCount": 2,
+          "cases": [
+            "8 parallel commits → all commits exist; reflog has 8 entries; HEAD points to real commit",
+            "16 sequential commits → linear reflog parent chain; verify clean"
+          ],
+          "honestFinding": "Unsynchronized concurrent commits produce fan-out (expected substrate behavior; callers need own coordination for linearization)"
+        },
+        "pass32": {
+          "description": "runClassG orchestrates side scripts when reports missing or stale (>1h)",
+          "file": "src/core/time-machine-validation.ts",
+          "fileHash": "dc289a335e8e7689cf527fedc19d56ec6477f48cf53375c9af469c29b2dbcdbf",
+          "additions": [
+            "regenerateGReportIfStale helper",
+            "runClassG invokes scripts/build-g4-truth-loop-ledger.mjs + scripts/build-g1-substrate-validation.mjs as needed",
+            "best-effort: orchestration failures do not block harness"
+          ],
+          "resolvesLimitation": "§7 limitation 7 (Class G computed by side-scripts; harness/paper now agree)"
+        },
+        "pass33": {
+          "description": "corpus integrity backfill via wrapper-anchored sidecar .proof.json files",
+          "script": "scripts/backfill-proof-anchors.mjs",
+          "scriptHash": "32a4ac64703c0846eeb2c22b867e82f3b408bc6783b7a824fae72e7edcf4cec4",
+          "before": {
+            "totalScanned": 510,
+            "verifiedAnchors": 22,
+            "adoption": "4.3%"
+          },
+          "after": {
+            "totalScanned": 1004,
+            "verifiedAnchors": 513,
+            "adoption": "51.1%"
+          },
+          "backfilled": 490,
+          "legacy": 1,
+          "errored": 0,
+          "honestScope": "Backfilled anchors establish anchor-as-of-now only; do not retroactively prove pre-existing content was untampered at write time"
+        },
+        "truthBoundary": {
+          "allowedClaim": "Three mid-priority gaps closed: concurrent-edit safety verified, runClassG orchestrates, corpus integrity 51%.",
+          "forbiddenClaim": "Backfilled anchors prove pre-Pass-11 content was unmodified at write time (they don't)."
+        },
+        "receipt": {
+          "file": ".danteforge/PASS_31_32_33_GAPS_RECEIPT.md",
+          "hash": "d7694919b2f26688a2a74de9fea65a0da0617fa3daa7cad72d28a1a44c6ef2f5"
+        },
+        "verifyChain": {
+          "typecheck": "pass",
+          "lint": "pass",
+          "antiStub": "pass",
+          "proofIntegrity": "CLEAN (513 verified / 0 failed / 491 skipped, 51.1% adoption)",
+          "pass31Tests": "pass (2/2)"
+        }
+      }
+    ],
+    "inclusionProofs": [
+      {
+        "index": 0,
+        "leafHash": "3901e01caa4ac9b83a539fa9e996205246ee9364252f0600988766f3dbb3f934",
+        "proof": []
+      }
+    ],
+    "hash": "87aa6a9dc07e16fa97e4e3a92ee63c67f4c1ca227bd1df3199b48df666d58dad"
+  }
+}

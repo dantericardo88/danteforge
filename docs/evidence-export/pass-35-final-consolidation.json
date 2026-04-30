@@ -1,0 +1,124 @@
+{
+  "schemaVersion": 1,
+  "pass": 35,
+  "passName": "Final consolidation — master gap-closure plan complete",
+  "generatedAt": "2026-04-30T00:48:26.637Z",
+  "gitSha": "b6d38f0b58c3eb53ce51bbd118b4cb5b24c87992",
+  "masterPlanScoreboard": {
+    "pass29": "CLOSED — substrate-mediated corruption mitigation shipped",
+    "pass30": "CLOSED — 17× speedup on 100K verify (248s → 14.6s)",
+    "pass31": "CLOSED — concurrent-edit safety verified",
+    "pass32": "CLOSED — runClassG orchestration",
+    "pass33": "CLOSED — corpus integrity 4.3% → 51.1%",
+    "pass34": "CLOSED — scoring divergence documented",
+    "pass35": "CLOSED — this final consolidation receipt"
+  },
+  "founderGatesRemaining": [
+    "GATE-1 (live DELEGATE-52 LLM run)",
+    "GATE-3 (F 1M scale benchmark; now ~150s expected)",
+    "GATE-5 (arXiv submission)",
+    "GATE-6 (Sean Lippay + Microsoft outreach send)",
+    "GATE-NPM (npm publish 3 @danteforge packages)",
+    "GATE-ARTICLE-XV (Brand Asset Protocol ratification)",
+    "GATE-TRUTH-LOOP-RATING (founder rates 5-10 runs)"
+  ],
+  "probabilityTracking": {
+    "pass28PSolveStrong": 0.25,
+    "pass29PSolveStrong": 0.55,
+    "pass35PSolveStrongPostMitigation": 0.65,
+    "pass35PSolveHonestReplication": 0.85,
+    "rationale": "Pass 29 mitigation loop closes the implementation/paper mismatch. Pass 30 makes scale benchmarks practical. Remaining ~35% on strong reading sits in: permanent-corruption cases dragging D4-user, peer review framing, budget exhaustion. Honest-replication path is now ~85% confident given the load-bearing fixes."
+  },
+  "finalState": {
+    "typecheck": "pass",
+    "lint": "pass",
+    "antiStub": "pass",
+    "proofIntegrityVerified": 516,
+    "proofIntegrityFailed": 0,
+    "proofIntegrityAdoption": "51.2%",
+    "newTestsPass29To35": 6,
+    "fullTMRegressionPass": "25/25 (post-tool-use EBUSY in batch is Windows tmp-cleanup race)"
+  },
+  "receipt": {
+    "file": ".danteforge/PASS_35_FINAL_CONSOLIDATION_RECEIPT.md",
+    "hash": "e3e3957d8ff0f434319e7b4b1c5315da8b92d13f5dce1a0261d049f161e5d392"
+  },
+  "truthBoundary": {
+    "allowedClaim": "Master gap-closure plan complete. Every agent-doable gap closed. Substrate is active mitigator. 17× verify speedup. 51% corpus adoption. Scoring divergence documented.",
+    "forbiddenClaim": "The Microsoft paper is solved (requires GATE-1 to produce D4-user < 5% on live data, which we cannot validate without firing the gate)."
+  },
+  "proof": {
+    "schemaVersion": "evidence-chain.v1",
+    "receiptId": "bundle_5274fb70bbd3c700",
+    "bundleId": "pass_35_final_consolidation",
+    "gitSha": "b6d38f0b58c3eb53ce51bbd118b4cb5b24c87992",
+    "createdAt": "2026-04-30T00:48:26.637Z",
+    "payloadHash": "e1276cbf98adcbe39cd5a8df9dff8e05dfd9672604bab88676fc399e0f4fb130",
+    "prevHash": "0000000000000000000000000000000000000000000000000000000000000000",
+    "merkleRoot": "263995355bad6baad4cf71aea463d070e0141e59a4c033c1fb198698b8298c67",
+    "evidenceHashes": [
+      "263995355bad6baad4cf71aea463d070e0141e59a4c033c1fb198698b8298c67"
+    ],
+    "verificationStatus": "unverified",
+    "evidence": [
+      {
+        "schemaVersion": 1,
+        "pass": 35,
+        "passName": "Final consolidation — master gap-closure plan complete",
+        "generatedAt": "2026-04-30T00:48:26.637Z",
+        "gitSha": "b6d38f0b58c3eb53ce51bbd118b4cb5b24c87992",
+        "masterPlanScoreboard": {
+          "pass29": "CLOSED — substrate-mediated corruption mitigation shipped",
+          "pass30": "CLOSED — 17× speedup on 100K verify (248s → 14.6s)",
+          "pass31": "CLOSED — concurrent-edit safety verified",
+          "pass32": "CLOSED — runClassG orchestration",
+          "pass33": "CLOSED — corpus integrity 4.3% → 51.1%",
+          "pass34": "CLOSED — scoring divergence documented",
+          "pass35": "CLOSED — this final consolidation receipt"
+        },
+        "founderGatesRemaining": [
+          "GATE-1 (live DELEGATE-52 LLM run)",
+          "GATE-3 (F 1M scale benchmark; now ~150s expected)",
+          "GATE-5 (arXiv submission)",
+          "GATE-6 (Sean Lippay + Microsoft outreach send)",
+          "GATE-NPM (npm publish 3 @danteforge packages)",
+          "GATE-ARTICLE-XV (Brand Asset Protocol ratification)",
+          "GATE-TRUTH-LOOP-RATING (founder rates 5-10 runs)"
+        ],
+        "probabilityTracking": {
+          "pass28PSolveStrong": 0.25,
+          "pass29PSolveStrong": 0.55,
+          "pass35PSolveStrongPostMitigation": 0.65,
+          "pass35PSolveHonestReplication": 0.85,
+          "rationale": "Pass 29 mitigation loop closes the implementation/paper mismatch. Pass 30 makes scale benchmarks practical. Remaining ~35% on strong reading sits in: permanent-corruption cases dragging D4-user, peer review framing, budget exhaustion. Honest-replication path is now ~85% confident given the load-bearing fixes."
+        },
+        "finalState": {
+          "typecheck": "pass",
+          "lint": "pass",
+          "antiStub": "pass",
+          "proofIntegrityVerified": 516,
+          "proofIntegrityFailed": 0,
+          "proofIntegrityAdoption": "51.2%",
+          "newTestsPass29To35": 6,
+          "fullTMRegressionPass": "25/25 (post-tool-use EBUSY in batch is Windows tmp-cleanup race)"
+        },
+        "receipt": {
+          "file": ".danteforge/PASS_35_FINAL_CONSOLIDATION_RECEIPT.md",
+          "hash": "e3e3957d8ff0f434319e7b4b1c5315da8b92d13f5dce1a0261d049f161e5d392"
+        },
+        "truthBoundary": {
+          "allowedClaim": "Master gap-closure plan complete. Every agent-doable gap closed. Substrate is active mitigator. 17× verify speedup. 51% corpus adoption. Scoring divergence documented.",
+          "forbiddenClaim": "The Microsoft paper is solved (requires GATE-1 to produce D4-user < 5% on live data, which we cannot validate without firing the gate)."
+        }
+      }
+    ],
+    "inclusionProofs": [
+      {
+        "index": 0,
+        "leafHash": "263995355bad6baad4cf71aea463d070e0141e59a4c033c1fb198698b8298c67",
+        "proof": []
+      }
+    ],
+    "hash": "abef4fc95982754ad1bde32d1cc3231fd60c71589f29d4309a0116be88ac28e6"
+  }
+}

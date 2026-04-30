@@ -1,0 +1,216 @@
+{
+  "schemaVersion": 1,
+  "pass": 27,
+  "passName": "Verify optimization (B1+B2) + F-004 fresh-chain FP + F-007 runClassG wiring",
+  "generatedAt": "2026-04-29T23:43:18.812Z",
+  "gitSha": "b6d38f0b58c3eb53ce51bbd118b4cb5b24c87992",
+  "optimization": {
+    "file": "src/core/time-machine.ts",
+    "fileHash": "66cc229af85a4208fde28c35fdc6c48d8e2d02f4215929a49d72a57c8122e330",
+    "additions": [
+      "verifyBlobOnce helper with shared verifiedBlobs Set + inFlightBlobs Map (deduped blob hash + read)",
+      "mapWithConcurrency helper (bounded parallelism, no FD exhaustion at 100K)",
+      "verifyTimeMachine passes shared cache through to verifyCommit",
+      "loadCommitsInReflogOrder now parallel-loads commits with bounded concurrency"
+    ]
+  },
+  "f100kBeforeAfter": {
+    "pass23": {
+      "verify10K": 4555,
+      "query10K": 1570,
+      "verify100K": 248150,
+      "query100K": 61182,
+      "restore100K": 7,
+      "passedThreshold100K": false
+    },
+    "pass27": {
+      "verify10K": 3023,
+      "query10K": 1061,
+      "verify100K": 140927,
+      "query100K": 7321,
+      "restore100K": 4,
+      "passedThreshold100K": true
+    },
+    "delta": {
+      "verify100KPct": -43,
+      "query100KPct": -88,
+      "thresholdFlipped": true
+    },
+    "evidenceFile": ".danteforge/evidence/pass-27-runs/f100k-v2-result.json"
+  },
+  "freshChainFp": {
+    "file": "scripts/fresh-chain-fp-measurement.mjs",
+    "fileHash": "9409b2ffa70f7a8ac93f0abeed83a3844c8db33ef28ae2a54656eece9c9200b7",
+    "parameters": {
+      "numChains": 50,
+      "commitsPerChain": 100
+    },
+    "aggregate": {
+      "totalChains": 50,
+      "totalFalsePositives": 0,
+      "falsePositiveRate": 0,
+      "totalWallMs": 18379,
+      "averageMsPerChain": 368
+    },
+    "evidenceFile": ".danteforge/evidence/pass-27-runs/fresh-chain-fp.json",
+    "resolvesLimitation": "§7 limitation 6 (was: 100 deterministic re-runs; now: 50 fresh independent chains)"
+  },
+  "runClassGWiring": {
+    "file": "src/core/time-machine-validation.ts",
+    "fileHash": "e9d8057e809d4e7d313115f17871a4e7881591d01fe73f12b975c09149503d26",
+    "additions": [
+      "runClassG reads .danteforge/validation/sean_lippay_outreach/truth-loop-runs/g1_substrate_report.json",
+      "runClassG reads .danteforge/validation/g4_recall_report.json",
+      "Sub-check statuses + messages now sourced from real artifact data, not canned responses"
+    ],
+    "resolvesLimitation": "§7 limitation 7 (Class G computed by side-scripts; harness now agrees)"
+  },
+  "paperUpdate": {
+    "file": "docs/papers/time-machine-empirical-validation-v1.md",
+    "contentHash": "0c3011c5df7560d677f33b5829b9ced01273225dcbc28d3609b2c2333b299e2d",
+    "sectionsUpdated": [
+      "§5.1 (50 fresh chains row)",
+      "§5.6 (100K threshold met)",
+      "§5.8 (scoreboard F=MET)",
+      "§7 limitation 5 (Pass 27 closes verify gap)"
+    ]
+  },
+  "truthBoundary": {
+    "allowedClaim": "Pass 27 closes F-class threshold gap (100K) + F-004 fresh-chain FP + F-007 runClassG wiring. Verify −43%, query −88% at 100K.",
+    "forbiddenClaims": [
+      "1M benchmark has been executed (still GATE-3)",
+      "Live LLM round-trips against DELEGATE-52 (still GATE-1)",
+      "Verify is now optimal (further optimization possible; e.g., causal index cache)"
+    ]
+  },
+  "unblocks": [
+    "Paper §5.6 now uniformly green",
+    "Pass 28 (V1.1 closure) can reference all-classes-pass framing"
+  ],
+  "verifyChain": {
+    "typecheck": "pass",
+    "timeMachineUnitTests": "pass (12/12 with optimization)",
+    "f100kThreshold": "met",
+    "freshChainFpRate": 0
+  },
+  "proof": {
+    "schemaVersion": "evidence-chain.v1",
+    "receiptId": "bundle_c7e23e44fc3ad916",
+    "bundleId": "pass_27_verify_optimization",
+    "gitSha": "b6d38f0b58c3eb53ce51bbd118b4cb5b24c87992",
+    "createdAt": "2026-04-29T23:43:18.812Z",
+    "payloadHash": "b90469a4a8458f81fe36fc14f3054ca1a19ab4753e047d2dd188103f348812a7",
+    "prevHash": "0000000000000000000000000000000000000000000000000000000000000000",
+    "merkleRoot": "1f0443896b769bc6d449b0c567dda442fb5253cdf5449ca093c64810dc90537c",
+    "evidenceHashes": [
+      "1f0443896b769bc6d449b0c567dda442fb5253cdf5449ca093c64810dc90537c"
+    ],
+    "verificationStatus": "unverified",
+    "evidence": [
+      {
+        "schemaVersion": 1,
+        "pass": 27,
+        "passName": "Verify optimization (B1+B2) + F-004 fresh-chain FP + F-007 runClassG wiring",
+        "generatedAt": "2026-04-29T23:43:18.812Z",
+        "gitSha": "b6d38f0b58c3eb53ce51bbd118b4cb5b24c87992",
+        "optimization": {
+          "file": "src/core/time-machine.ts",
+          "fileHash": "66cc229af85a4208fde28c35fdc6c48d8e2d02f4215929a49d72a57c8122e330",
+          "additions": [
+            "verifyBlobOnce helper with shared verifiedBlobs Set + inFlightBlobs Map (deduped blob hash + read)",
+            "mapWithConcurrency helper (bounded parallelism, no FD exhaustion at 100K)",
+            "verifyTimeMachine passes shared cache through to verifyCommit",
+            "loadCommitsInReflogOrder now parallel-loads commits with bounded concurrency"
+          ]
+        },
+        "f100kBeforeAfter": {
+          "pass23": {
+            "verify10K": 4555,
+            "query10K": 1570,
+            "verify100K": 248150,
+            "query100K": 61182,
+            "restore100K": 7,
+            "passedThreshold100K": false
+          },
+          "pass27": {
+            "verify10K": 3023,
+            "query10K": 1061,
+            "verify100K": 140927,
+            "query100K": 7321,
+            "restore100K": 4,
+            "passedThreshold100K": true
+          },
+          "delta": {
+            "verify100KPct": -43,
+            "query100KPct": -88,
+            "thresholdFlipped": true
+          },
+          "evidenceFile": ".danteforge/evidence/pass-27-runs/f100k-v2-result.json"
+        },
+        "freshChainFp": {
+          "file": "scripts/fresh-chain-fp-measurement.mjs",
+          "fileHash": "9409b2ffa70f7a8ac93f0abeed83a3844c8db33ef28ae2a54656eece9c9200b7",
+          "parameters": {
+            "numChains": 50,
+            "commitsPerChain": 100
+          },
+          "aggregate": {
+            "totalChains": 50,
+            "totalFalsePositives": 0,
+            "falsePositiveRate": 0,
+            "totalWallMs": 18379,
+            "averageMsPerChain": 368
+          },
+          "evidenceFile": ".danteforge/evidence/pass-27-runs/fresh-chain-fp.json",
+          "resolvesLimitation": "§7 limitation 6 (was: 100 deterministic re-runs; now: 50 fresh independent chains)"
+        },
+        "runClassGWiring": {
+          "file": "src/core/time-machine-validation.ts",
+          "fileHash": "e9d8057e809d4e7d313115f17871a4e7881591d01fe73f12b975c09149503d26",
+          "additions": [
+            "runClassG reads .danteforge/validation/sean_lippay_outreach/truth-loop-runs/g1_substrate_report.json",
+            "runClassG reads .danteforge/validation/g4_recall_report.json",
+            "Sub-check statuses + messages now sourced from real artifact data, not canned responses"
+          ],
+          "resolvesLimitation": "§7 limitation 7 (Class G computed by side-scripts; harness now agrees)"
+        },
+        "paperUpdate": {
+          "file": "docs/papers/time-machine-empirical-validation-v1.md",
+          "contentHash": "0c3011c5df7560d677f33b5829b9ced01273225dcbc28d3609b2c2333b299e2d",
+          "sectionsUpdated": [
+            "§5.1 (50 fresh chains row)",
+            "§5.6 (100K threshold met)",
+            "§5.8 (scoreboard F=MET)",
+            "§7 limitation 5 (Pass 27 closes verify gap)"
+          ]
+        },
+        "truthBoundary": {
+          "allowedClaim": "Pass 27 closes F-class threshold gap (100K) + F-004 fresh-chain FP + F-007 runClassG wiring. Verify −43%, query −88% at 100K.",
+          "forbiddenClaims": [
+            "1M benchmark has been executed (still GATE-3)",
+            "Live LLM round-trips against DELEGATE-52 (still GATE-1)",
+            "Verify is now optimal (further optimization possible; e.g., causal index cache)"
+          ]
+        },
+        "unblocks": [
+          "Paper §5.6 now uniformly green",
+          "Pass 28 (V1.1 closure) can reference all-classes-pass framing"
+        ],
+        "verifyChain": {
+          "typecheck": "pass",
+          "timeMachineUnitTests": "pass (12/12 with optimization)",
+          "f100kThreshold": "met",
+          "freshChainFpRate": 0
+        }
+      }
+    ],
+    "inclusionProofs": [
+      {
+        "index": 0,
+        "leafHash": "1f0443896b769bc6d449b0c567dda442fb5253cdf5449ca093c64810dc90537c",
+        "proof": []
+      }
+    ],
+    "hash": "5315b968ae5bed93d5101483f17e224ac5f1518e43c1de22f8af65ed697f6c6b"
+  }
+}

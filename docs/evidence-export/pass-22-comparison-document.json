@@ -1,0 +1,140 @@
+{
+  "schemaVersion": 1,
+  "pass": 22,
+  "passName": "Comparison document v1 draft (replicates DELEGATE-52, founder-gated placeholders for live D)",
+  "generatedAt": "2026-04-29T23:43:38.534Z",
+  "gitSha": "b6d38f0b58c3eb53ce51bbd118b4cb5b24c87992",
+  "document": {
+    "path": "docs/papers/time-machine-empirical-validation-v1.md",
+    "contentHash": "0c3011c5df7560d677f33b5829b9ced01273225dcbc28d3609b2c2333b299e2d",
+    "lines": 280,
+    "words": 3245,
+    "sections": [
+      "Abstract",
+      "§1 Background: DELEGATE-52",
+      "§2 Architectural principles",
+      "§3 DanteForge implementation",
+      "§4 Validation methodology",
+      "§5 Results (with FOUNDER-GATED placeholders for D1/D3/D4)",
+      "§6 Implications",
+      "§7 Limitations",
+      "§8 Future work",
+      "§9 Acknowledgments",
+      "§10 Reproducibility",
+      "§11 Citations"
+    ]
+  },
+  "citedEvidence": [
+    "pass-18-5-git-binding.json (Pass 18.5)",
+    "pass-19-live-delegate52.json (Pass 19)",
+    "pass-20-real-fs-import.json (Pass 20)",
+    "pass-21-class-g.json (Pass 21)"
+  ],
+  "founderGatedPlaceholders": {
+    "D1 cost-of-Time-Machine": "requires GATE-1 live run",
+    "D2 byte-identical (structurally guaranteed)": "documented as 52/52 expected; formal value awaits live run",
+    "D3 causal-source identification rate": "requires GATE-1 live run",
+    "D4 corruption rate with substrate active": "requires GATE-1 live run",
+    "F 1M scale": "requires GATE-3 founder env-var override"
+  },
+  "truthBoundary": {
+    "allowedClaims": [
+      "Time Machine substrate has run at real-fs PRD scale and met Class A/B/C minimum-success criteria",
+      "Public 48-domain DELEGATE-52 dataset imported and harness-validated",
+      "Live executor built and dry-run-validated",
+      "Class G substrate composability end-to-end validated against synthetic scenarios"
+    ],
+    "forbiddenClaims": [
+      "DanteForge has executed live LLM round-trips against DELEGATE-52 (requires GATE-1)",
+      "The Sean Lippay outreach has been sent (this is GATE-6)",
+      "The 1M-commit benchmark has been executed (requires GATE-3)",
+      "The 76 withheld DELEGATE-52 environments have been validated (license)"
+    ]
+  },
+  "unblocks": [
+    "Pass 23 adversarial review can target this exact document hash",
+    "Pass 25 LaTeX preprint conversion has the canonical markdown source"
+  ],
+  "proof": {
+    "schemaVersion": "evidence-chain.v1",
+    "receiptId": "bundle_1f5ee43fe330017e",
+    "bundleId": "pass_22_comparison_document_v1",
+    "gitSha": "b6d38f0b58c3eb53ce51bbd118b4cb5b24c87992",
+    "createdAt": "2026-04-29T23:43:38.534Z",
+    "payloadHash": "25faa6ba1deea76d4ae4bd903685fd61af8d1082865918e210ceb60170ddc269",
+    "prevHash": "0000000000000000000000000000000000000000000000000000000000000000",
+    "merkleRoot": "f3418446acb39811ae78df19c170083ea18af64812abe8a0cbe8bd18fa6a2044",
+    "evidenceHashes": [
+      "f3418446acb39811ae78df19c170083ea18af64812abe8a0cbe8bd18fa6a2044"
+    ],
+    "verificationStatus": "unverified",
+    "evidence": [
+      {
+        "schemaVersion": 1,
+        "pass": 22,
+        "passName": "Comparison document v1 draft (replicates DELEGATE-52, founder-gated placeholders for live D)",
+        "generatedAt": "2026-04-29T23:43:38.534Z",
+        "gitSha": "b6d38f0b58c3eb53ce51bbd118b4cb5b24c87992",
+        "document": {
+          "path": "docs/papers/time-machine-empirical-validation-v1.md",
+          "contentHash": "0c3011c5df7560d677f33b5829b9ced01273225dcbc28d3609b2c2333b299e2d",
+          "lines": 280,
+          "words": 3245,
+          "sections": [
+            "Abstract",
+            "§1 Background: DELEGATE-52",
+            "§2 Architectural principles",
+            "§3 DanteForge implementation",
+            "§4 Validation methodology",
+            "§5 Results (with FOUNDER-GATED placeholders for D1/D3/D4)",
+            "§6 Implications",
+            "§7 Limitations",
+            "§8 Future work",
+            "§9 Acknowledgments",
+            "§10 Reproducibility",
+            "§11 Citations"
+          ]
+        },
+        "citedEvidence": [
+          "pass-18-5-git-binding.json (Pass 18.5)",
+          "pass-19-live-delegate52.json (Pass 19)",
+          "pass-20-real-fs-import.json (Pass 20)",
+          "pass-21-class-g.json (Pass 21)"
+        ],
+        "founderGatedPlaceholders": {
+          "D1 cost-of-Time-Machine": "requires GATE-1 live run",
+          "D2 byte-identical (structurally guaranteed)": "documented as 52/52 expected; formal value awaits live run",
+          "D3 causal-source identification rate": "requires GATE-1 live run",
+          "D4 corruption rate with substrate active": "requires GATE-1 live run",
+          "F 1M scale": "requires GATE-3 founder env-var override"
+        },
+        "truthBoundary": {
+          "allowedClaims": [
+            "Time Machine substrate has run at real-fs PRD scale and met Class A/B/C minimum-success criteria",
+            "Public 48-domain DELEGATE-52 dataset imported and harness-validated",
+            "Live executor built and dry-run-validated",
+            "Class G substrate composability end-to-end validated against synthetic scenarios"
+          ],
+          "forbiddenClaims": [
+            "DanteForge has executed live LLM round-trips against DELEGATE-52 (requires GATE-1)",
+            "The Sean Lippay outreach has been sent (this is GATE-6)",
+            "The 1M-commit benchmark has been executed (requires GATE-3)",
+            "The 76 withheld DELEGATE-52 environments have been validated (license)"
+          ]
+        },
+        "unblocks": [
+          "Pass 23 adversarial review can target this exact document hash",
+          "Pass 25 LaTeX preprint conversion has the canonical markdown source"
+        ]
+      }
+    ],
+    "inclusionProofs": [
+      {
+        "index": 0,
+        "leafHash": "f3418446acb39811ae78df19c170083ea18af64812abe8a0cbe8bd18fa6a2044",
+        "proof": []
+      }
+    ],
+    "hash": "c38e4f82085a67a6497ed79e39946e39884394f41cb2c59381b03fcf7d6075e0"
+  }
+}

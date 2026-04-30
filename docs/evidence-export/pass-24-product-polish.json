@@ -1,0 +1,160 @@
+{
+  "schemaVersion": 1,
+  "pass": 24,
+  "passName": "Product polish — restore --to-working-tree + post-edit auto-commit hook",
+  "generatedAt": "2026-04-29T21:28:45.881Z",
+  "gitSha": "f19e1d7d0f86041d32e7e5e1f7407953b38bd463",
+  "T32": {
+    "description": "forge time-machine restore --to-working-tree --confirm",
+    "coreFile": {
+      "path": "src/core/time-machine.ts",
+      "hash": "ef7fa3a42c6ab7cbee332876c5d394cf487c0528b2006647dc4c1ffc12ddaf7e"
+    },
+    "cliFile": {
+      "path": "src/cli/commands/time-machine.ts",
+      "hash": "60638b482fb7f0f74638429efabe147ed9d3a3e1e7b3582daf9405cd8730dd4f"
+    },
+    "refusals": [
+      "toWorkingTree=true without confirm=true → throws",
+      "toWorkingTree=true + outDir provided → throws"
+    ],
+    "testFile": {
+      "path": "tests/time-machine-restore-working-tree.test.ts",
+      "hash": "f2d7eb12faf3a12c3b889e7ff6cf8dd6ceda06d968071924434b19aa1ca680cb",
+      "count": 4
+    }
+  },
+  "T31": {
+    "description": "Post-edit auto-commit hook (Claude Code PostToolUse, scoped to Edit/Write/MultiEdit/NotebookEdit)",
+    "hookFile": {
+      "path": "hooks/post-tool-use.mjs",
+      "hash": "42fc8f881389aa601d1dd0aa710f70357e237834c32449a9374900dfb536f135"
+    },
+    "manifestFile": {
+      "path": "hooks/hooks.json",
+      "hash": "f3d1621c5917ba4d28bd772b3d15306e5711aff13a9ea4995425cda7a2072436"
+    },
+    "properties": [
+      "Always exits 0; never blocks editor",
+      "Spawns forge time-machine commit detached, non-blocking",
+      "Skips silently when cwd has no .danteforge/STATE.yaml",
+      "Diagnostic output to stderr only"
+    ],
+    "testFile": {
+      "path": "tests/post-tool-use-hook.test.ts",
+      "hash": "73529425ef80358ac89ace4dc26a5f05983c71dba13bed32b43e1fd9b7dfaeb6",
+      "count": 3
+    },
+    "honestScope": "Post-edit only; pre-edit interception requires Claude Code harness extensions deferred to Pass 27"
+  },
+  "T33": {
+    "status": "deferred_to_pass_27",
+    "reason": "Full runtime corruption detector requires pre-edit interception of agent edits, which depends on Claude Code harness primitives not currently exposed"
+  },
+  "truthBoundary": {
+    "allowedClaim": "Pass 24 ships working-tree restore + post-edit auto-commit hook; every agent edit is snapshotted into Time Machine for reversibility.",
+    "forbiddenClaim": "Pre-edit interception is implemented (NO — that is Pass 27, harness-dependent)."
+  },
+  "unblocks": [
+    "Day-2 dogfood: forge time-machine restore --commit <id> --to-working-tree --confirm",
+    "Pass 25 reproducibility appendix can recommend the post-edit hook as part of dev setup"
+  ],
+  "verifyChain": {
+    "typecheck": "pass",
+    "lint": "pass",
+    "antiStub": "pass",
+    "pass24Tests": "pass (7/7)"
+  },
+  "proof": {
+    "schemaVersion": "evidence-chain.v1",
+    "receiptId": "bundle_da81294bf08f4277",
+    "bundleId": "pass_24_product_polish",
+    "gitSha": "f19e1d7d0f86041d32e7e5e1f7407953b38bd463",
+    "createdAt": "2026-04-29T21:28:45.881Z",
+    "payloadHash": "8ead974201dbd375da2da1c09f443a0b40ec1c143793d7fddd311d057e68ce3c",
+    "prevHash": "0000000000000000000000000000000000000000000000000000000000000000",
+    "merkleRoot": "75e01c3381a1ba28013d11a5e3efae66ee1d9c4dae7688c7b90de79a5948056e",
+    "evidenceHashes": [
+      "75e01c3381a1ba28013d11a5e3efae66ee1d9c4dae7688c7b90de79a5948056e"
+    ],
+    "verificationStatus": "unverified",
+    "evidence": [
+      {
+        "schemaVersion": 1,
+        "pass": 24,
+        "passName": "Product polish — restore --to-working-tree + post-edit auto-commit hook",
+        "generatedAt": "2026-04-29T21:28:45.881Z",
+        "gitSha": "f19e1d7d0f86041d32e7e5e1f7407953b38bd463",
+        "T32": {
+          "description": "forge time-machine restore --to-working-tree --confirm",
+          "coreFile": {
+            "path": "src/core/time-machine.ts",
+            "hash": "ef7fa3a42c6ab7cbee332876c5d394cf487c0528b2006647dc4c1ffc12ddaf7e"
+          },
+          "cliFile": {
+            "path": "src/cli/commands/time-machine.ts",
+            "hash": "60638b482fb7f0f74638429efabe147ed9d3a3e1e7b3582daf9405cd8730dd4f"
+          },
+          "refusals": [
+            "toWorkingTree=true without confirm=true → throws",
+            "toWorkingTree=true + outDir provided → throws"
+          ],
+          "testFile": {
+            "path": "tests/time-machine-restore-working-tree.test.ts",
+            "hash": "f2d7eb12faf3a12c3b889e7ff6cf8dd6ceda06d968071924434b19aa1ca680cb",
+            "count": 4
+          }
+        },
+        "T31": {
+          "description": "Post-edit auto-commit hook (Claude Code PostToolUse, scoped to Edit/Write/MultiEdit/NotebookEdit)",
+          "hookFile": {
+            "path": "hooks/post-tool-use.mjs",
+            "hash": "42fc8f881389aa601d1dd0aa710f70357e237834c32449a9374900dfb536f135"
+          },
+          "manifestFile": {
+            "path": "hooks/hooks.json",
+            "hash": "f3d1621c5917ba4d28bd772b3d15306e5711aff13a9ea4995425cda7a2072436"
+          },
+          "properties": [
+            "Always exits 0; never blocks editor",
+            "Spawns forge time-machine commit detached, non-blocking",
+            "Skips silently when cwd has no .danteforge/STATE.yaml",
+            "Diagnostic output to stderr only"
+          ],
+          "testFile": {
+            "path": "tests/post-tool-use-hook.test.ts",
+            "hash": "73529425ef80358ac89ace4dc26a5f05983c71dba13bed32b43e1fd9b7dfaeb6",
+            "count": 3
+          },
+          "honestScope": "Post-edit only; pre-edit interception requires Claude Code harness extensions deferred to Pass 27"
+        },
+        "T33": {
+          "status": "deferred_to_pass_27",
+          "reason": "Full runtime corruption detector requires pre-edit interception of agent edits, which depends on Claude Code harness primitives not currently exposed"
+        },
+        "truthBoundary": {
+          "allowedClaim": "Pass 24 ships working-tree restore + post-edit auto-commit hook; every agent edit is snapshotted into Time Machine for reversibility.",
+          "forbiddenClaim": "Pre-edit interception is implemented (NO — that is Pass 27, harness-dependent)."
+        },
+        "unblocks": [
+          "Day-2 dogfood: forge time-machine restore --commit <id> --to-working-tree --confirm",
+          "Pass 25 reproducibility appendix can recommend the post-edit hook as part of dev setup"
+        ],
+        "verifyChain": {
+          "typecheck": "pass",
+          "lint": "pass",
+          "antiStub": "pass",
+          "pass24Tests": "pass (7/7)"
+        }
+      }
+    ],
+    "inclusionProofs": [
+      {
+        "index": 0,
+        "leafHash": "75e01c3381a1ba28013d11a5e3efae66ee1d9c4dae7688c7b90de79a5948056e",
+        "proof": []
+      }
+    ],
+    "hash": "10717427a7e027a2c3a3d419c62a2f4438316ef54341ca8f5661b618517bcb58"
+  }
+}

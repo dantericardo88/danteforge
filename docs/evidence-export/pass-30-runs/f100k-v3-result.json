@@ -1,0 +1,146 @@
+{
+  "schemaVersion": "danteforge.time-machine.validation.v1",
+  "runId": "tmval_20260430003532",
+  "createdAt": "2026-04-30T00:35:32.779Z",
+  "cwd": "C:\\Projects\\DanteForge",
+  "outDir": "C:\\Projects\\DanteForge\\.danteforge\\time-machine\\validation\\tmval_20260430003532",
+  "scale": "benchmark",
+  "delegate52Mode": "harness",
+  "status": "partial",
+  "summary": {
+    "selectedClasses": [
+      "F"
+    ],
+    "passedClasses": [],
+    "partialClasses": [
+      "F"
+    ],
+    "failedClasses": [],
+    "claimsAllowed": [
+      "Time Machine validation harness can generate deterministic tamper, restore, causal, adversarial, performance, and constitutional evidence.",
+      "DELEGATE-52 harness/import/live paths are wired with public dataset limitations recorded."
+    ],
+    "claimsNotAllowed": [
+      "Do not claim DanteForge has published full DELEGATE-52 live replication until live or imported results are present.",
+      "Do not claim private/withheld DELEGATE-52 environments were validated from the public dataset."
+    ]
+  },
+  "classes": {
+    "F": {
+      "status": "partial",
+      "benchmarks": [
+        {
+          "id": "F_10000",
+          "commitCount": 10000,
+          "verifyMs": 1428,
+          "restoreMs": 5,
+          "queryMs": 896,
+          "passedThreshold": true
+        },
+        {
+          "id": "F_100000",
+          "commitCount": 100000,
+          "verifyMs": 14606,
+          "restoreMs": 3,
+          "queryMs": 9293,
+          "passedThreshold": true
+        },
+        {
+          "id": "F_1000000",
+          "commitCount": 1000000,
+          "verifyMs": 0,
+          "restoreMs": 0,
+          "queryMs": 0,
+          "passedThreshold": false,
+          "skipped": true,
+          "note": "Skipped unless DANTEFORGE_TIME_MACHINE_VALIDATE_MAX_COMMITS >= 1000000"
+        }
+      ]
+    }
+  },
+  "proof": {
+    "schemaVersion": "evidence-chain.v1",
+    "receiptId": "bundle_b6d65a99965bdd3f",
+    "bundleId": "time_machine_validation_tmval_20260430003532",
+    "gitSha": null,
+    "createdAt": "2026-04-30T00:35:32.779Z",
+    "payloadHash": "3db89d606dd16e8cfa2d0350b7c0383b36c698ee3091adf530979e5a76fe2da9",
+    "prevHash": "0000000000000000000000000000000000000000000000000000000000000000",
+    "merkleRoot": "a1712ead223b5545fb78cfe3a656ff1c41c026c4eaff49481a2bffa9847805da",
+    "evidenceHashes": [
+      "a1712ead223b5545fb78cfe3a656ff1c41c026c4eaff49481a2bffa9847805da"
+    ],
+    "verificationStatus": "unverified",
+    "evidence": [
+      {
+        "schemaVersion": "danteforge.time-machine.validation.v1",
+        "runId": "tmval_20260430003532",
+        "createdAt": "2026-04-30T00:35:32.779Z",
+        "cwd": "C:\\Projects\\DanteForge",
+        "outDir": "C:\\Projects\\DanteForge\\.danteforge\\time-machine\\validation\\tmval_20260430003532",
+        "scale": "benchmark",
+        "delegate52Mode": "harness",
+        "status": "partial",
+        "summary": {
+          "selectedClasses": [
+            "F"
+          ],
+          "passedClasses": [],
+          "partialClasses": [
+            "F"
+          ],
+          "failedClasses": [],
+          "claimsAllowed": [
+            "Time Machine validation harness can generate deterministic tamper, restore, causal, adversarial, performance, and constitutional evidence.",
+            "DELEGATE-52 harness/import/live paths are wired with public dataset limitations recorded."
+          ],
+          "claimsNotAllowed": [
+            "Do not claim DanteForge has published full DELEGATE-52 live replication until live or imported results are present.",
+            "Do not claim private/withheld DELEGATE-52 environments were validated from the public dataset."
+          ]
+        },
+        "classes": {
+          "F": {
+            "status": "partial",
+            "benchmarks": [
+              {
+                "id": "F_10000",
+                "commitCount": 10000,
+                "verifyMs": 1428,
+                "restoreMs": 5,
+                "queryMs": 896,
+                "passedThreshold": true
+              },
+              {
+                "id": "F_100000",
+                "commitCount": 100000,
+                "verifyMs": 14606,
+                "restoreMs": 3,
+                "queryMs": 9293,
+                "passedThreshold": true
+              },
+              {
+                "id": "F_1000000",
+                "commitCount": 1000000,
+                "verifyMs": 0,
+                "restoreMs": 0,
+                "queryMs": 0,
+                "passedThreshold": false,
+                "skipped": true,
+                "note": "Skipped unless DANTEFORGE_TIME_MACHINE_VALIDATE_MAX_COMMITS >= 1000000"
+              }
+            ]
+          }
+        }
+      }
+    ],
+    "inclusionProofs": [
+      {
+        "index": 0,
+        "leafHash": "a1712ead223b5545fb78cfe3a656ff1c41c026c4eaff49481a2bffa9847805da",
+        "proof": []
+      }
+    ],
+    "hash": "79a22ed73621dff7a4a56bb1348a61f7b7d08f5067613cffcf1a897641352521"
+  }
+}

@@ -1,0 +1,94 @@
+{
+  "schemaVersion": 1,
+  "pass": 16,
+  "passName": "Corpus-wide proof verification (Pass 16)",
+  "generatedAt": "2026-04-29T18:17:03.690Z",
+  "gitSha": "542fadaca24986d8c850732984b405c7de4b98ab",
+  "cli": "danteforge proof --verify-all .danteforge/evidence",
+  "corpus": {
+    "root": ".danteforge/evidence",
+    "scannedAt": "2026-04-29T18:16:20.957Z",
+    "totalFiles": 476,
+    "verified": 4,
+    "failed": 0,
+    "skipped": 472,
+    "errored": 0,
+    "proofAdoptionRate": 0.008,
+    "failureCount": 0,
+    "errorCount": 0
+  },
+  "interpretation": {
+    "integrityStatus": "CLEAN",
+    "proofAdoptionStage": "early — most evidence predates Pass 11 proof-spine",
+    "nextActions": [
+      "Continue emitting proof-anchored artifacts in every pass (Passes 11-15 already do)",
+      "Optionally back-fill pre-Pass-11 receipts with proof envelopes if forensic provenance becomes important",
+      "Wire `forge proof --verify-all` into CI / pre-commit so the integrity stays CLEAN"
+    ]
+  },
+  "testEvidence": {
+    "unitTestFile": "tests/proof-verify-all.test.ts",
+    "unitTestCount": 10,
+    "cliFlag": "--verify-all <dir>",
+    "exitCodeOnFailure": 1
+  },
+  "proof": {
+    "schemaVersion": "evidence-chain.v1",
+    "receiptId": "bundle_a3713d33dedc97ce",
+    "bundleId": "pass_16_corpus_integrity",
+    "gitSha": "542fadaca24986d8c850732984b405c7de4b98ab",
+    "createdAt": "2026-04-29T18:17:03.690Z",
+    "payloadHash": "d1a3faf4602d0cc3154927504c1838d90cf563afb73c392b3d9c71f648e42190",
+    "prevHash": "0000000000000000000000000000000000000000000000000000000000000000",
+    "merkleRoot": "1e6626bae4d39d25a6e93ba1d87413b7c73916f4fd3906b985694892d789cdfb",
+    "evidenceHashes": [
+      "1e6626bae4d39d25a6e93ba1d87413b7c73916f4fd3906b985694892d789cdfb"
+    ],
+    "verificationStatus": "unverified",
+    "evidence": [
+      {
+        "schemaVersion": 1,
+        "pass": 16,
+        "passName": "Corpus-wide proof verification (Pass 16)",
+        "generatedAt": "2026-04-29T18:17:03.690Z",
+        "gitSha": "542fadaca24986d8c850732984b405c7de4b98ab",
+        "cli": "danteforge proof --verify-all .danteforge/evidence",
+        "corpus": {
+          "root": ".danteforge/evidence",
+          "scannedAt": "2026-04-29T18:16:20.957Z",
+          "totalFiles": 476,
+          "verified": 4,
+          "failed": 0,
+          "skipped": 472,
+          "errored": 0,
+          "proofAdoptionRate": 0.008,
+          "failureCount": 0,
+          "errorCount": 0
+        },
+        "interpretation": {
+          "integrityStatus": "CLEAN",
+          "proofAdoptionStage": "early — most evidence predates Pass 11 proof-spine",
+          "nextActions": [
+            "Continue emitting proof-anchored artifacts in every pass (Passes 11-15 already do)",
+            "Optionally back-fill pre-Pass-11 receipts with proof envelopes if forensic provenance becomes important",
+            "Wire `forge proof --verify-all` into CI / pre-commit so the integrity stays CLEAN"
+          ]
+        },
+        "testEvidence": {
+          "unitTestFile": "tests/proof-verify-all.test.ts",
+          "unitTestCount": 10,
+          "cliFlag": "--verify-all <dir>",
+          "exitCodeOnFailure": 1
+        }
+      }
+    ],
+    "inclusionProofs": [
+      {
+        "index": 0,
+        "leafHash": "1e6626bae4d39d25a6e93ba1d87413b7c73916f4fd3906b985694892d789cdfb",
+        "proof": []
+      }
+    ],
+    "hash": "929c806e1922083c37d1446b4f5844886832a83e5a0ab603a153e9f07cbb3940"
+  }
+}

@@ -63,6 +63,16 @@ export interface RunTimeMachineValidationOptions {
   mitigation?: {
     restoreOnDivergence?: boolean;
     retriesOnDivergence?: number;
+    /**
+     * Pass 40 — strategy selector for the counter-mitigation comparison harness.
+     * - `'substrate-restore-retry'` (default when restoreOnDivergence=true): full Pass 29 behavior;
+     *    on divergence, restore workspace from TM commit + re-prompt
+     * - `'prompt-only-retry'`: re-prompt without restoring; the LLM sees the corrupted state and
+     *    is asked to "fix" it. Tests whether substrate-mediated state recovery is necessary.
+     * - `'no-mitigation'`: substrate-passive baseline (records divergence but doesn't recover).
+     *    Equivalent to setting restoreOnDivergence=false.
+     */
+    strategy?: 'substrate-restore-retry' | 'prompt-only-retry' | 'no-mitigation';
   };
 }
 
@@ -152,6 +162,16 @@ export interface ClassDResult {
     mitigatedDivergences?: number;
     /** Pass 29: divergences where retries were exhausted (substrate-on but mitigation failed) */
     unmitigatedDivergences?: number;
+    /** Pass 36: divergences where retries aborted early due to detected LLM oscillation (cycle of corrupted hashes) */
+    oscillatedDivergences?: number;
+    /** Pass 36: divergences where graceful degradation kicked in (workspace restored to last clean state on retry exhaustion) */
+    gracefullyDegradedDivergences?: number;
+    /** Pass 39: per-divergence diff descriptors — quantitative D3 causal-source identification */
+    corruptionLocations?: CorruptionLocation[];
+    /** Pass 39: of all divergences observed in this domain, how many had a clean single-region attribution */
+    causalSourceIdentifiedCount?: number;
+    /** Pass 39: total divergences observed (raw + retry attempts; denominator for the per-domain D3 rate) */
+    totalDivergences?: number;
   }>;
   /** Live-run only: aggregate cost across all domains */
   totalCostUsd?: number;
@@ -167,6 +187,16 @@ export interface ClassDResult {
   totalMitigatedDivergences?: number;
   /** Pass 29: total unmitigated divergences across all domains (substrate-on failures) */
   totalUnmitigatedDivergences?: number;
+  /** Pass 36: total oscillation-detected divergences across all domains */
+  totalOscillatedDivergences?: number;
+  /** Pass 36: total gracefully-degraded divergences (substrate restored to clean state) */
+  totalGracefullyDegradedDivergences?: number;
+  /** Pass 39: aggregate D3 causal-source identification rate across all domains (0..1) */
+  causalSourceIdentificationRate?: number;
+  /** Pass 39: total divergences across all domains; denominator for causalSourceIdentificationRate */
+  totalDivergencesObserved?: number;
+  /** Pass 39: total divergences with clean single-region attribution; numerator for D3 rate */
+  totalCausalSourceIdentified?: number;
   /** Pass 29: mitigation configuration used for live/dry-run validation */
   mitigation?: {
     restoreOnDivergence: boolean;
@@ -580,9 +610,16 @@ async function runDelegate52Live(
   const llmCaller = options._llmCaller ?? makeDefaultLlmCaller(isDryRun);
   const roundTripDir = path.join(outDir, 'delegate52-round-trips');
   await fs.mkdir(roundTripDir, { recursive: true });
+  // Pass 40 — derive the mitigation strategy. Explicit strategy wins; otherwise infer from restoreOnDivergence.
+  const explicitStrategy = options.mitigation?.strategy;
+  const inferredStrategy: MitigationConfig['strategy'] = options.mitigation?.restoreOnDivergence
+    ? 'substrate-restore-retry'
+    : 'no-mitigation';
+  const strategy = explicitStrategy ?? inferredStrategy;
   const mitigation: MitigationConfig = {
-    restoreOnDivergence: options.mitigation?.restoreOnDivergence === true,
+    restoreOnDivergence: strategy === 'substrate-restore-retry',
     retriesOnDivergence: Math.max(0, Math.min(options.mitigation?.retriesOnDivergence ?? 0, 10)),
+    strategy,
   };
 
   const domainRows: ClassDResult['domainRows'] = [];
@@ -592,6 +629,10 @@ async function runDelegate52Live(
   let totalRetries = 0;
   let totalMitigatedDivergences = 0;
   let totalUnmitigatedDivergences = 0;
+  let totalOscillatedDivergences = 0;
+  let totalGracefullyDegradedDivergences = 0;
+  let totalCausalSourceIdentified = 0;
+  let totalDivergencesObserved = 0;
   let userObservedCorruptedDomains = 0;
 
   for (const domain of domains) {
@@ -625,6 +666,10 @@ async function runDelegate52Live(
     totalRetries += result.retryCount;
     totalMitigatedDivergences += result.mitigatedDivergences;
     totalUnmitigatedDivergences += result.unmitigatedDivergences;
+    totalOscillatedDivergences += result.oscillatedDivergences;
+    totalGracefullyDegradedDivergences += result.gracefullyDegradedDivergences;
+    totalCausalSourceIdentified += result.causalSourceIdentified;
+    totalDivergencesObserved += result.totalDivergences;
     domainRows.push({
       domain,
       mode: 'live',
@@ -642,12 +687,20 @@ async function runDelegate52Live(
       retryCount: result.retryCount,
       mitigatedDivergences: result.mitigatedDivergences,
       unmitigatedDivergences: result.unmitigatedDivergences,
+      oscillatedDivergences: result.oscillatedDivergences,
+      gracefullyDegradedDivergences: result.gracefullyDegradedDivergences,
+      corruptionLocations: result.corruptionLocations,
+      causalSourceIdentifiedCount: result.causalSourceIdentified,
+      totalDivergences: result.totalDivergences,
     });
   }
 
   const corruptionRate = domains.length === 0 ? 0 : corruptedDomains / domains.length;
   const userObservedCorruptionRate = domains.length === 0 ? 0 : userObservedCorruptedDomains / domains.length;
   const rawCorruptionRate = corruptionRate;
+  const causalSourceIdentificationRate = totalDivergencesObserved === 0
+    ? 1.0
+    : totalCausalSourceIdentified / totalDivergencesObserved;
 
   await fs.writeFile(path.join(outDir, 'artifacts', 'delegate52-live-result.json'), JSON.stringify({
     isDryRun,
@@ -661,6 +714,11 @@ async function runDelegate52Live(
     totalRetries,
     totalMitigatedDivergences,
     totalUnmitigatedDivergences,
+    totalOscillatedDivergences,
+    totalGracefullyDegradedDivergences,
+    causalSourceIdentificationRate,
+    totalDivergencesObserved,
+    totalCausalSourceIdentified,
     mitigation,
     budgetExhausted,
     microsoftBaselineCorruptionRate: 0.25,
@@ -680,6 +738,11 @@ async function runDelegate52Live(
     totalRetries,
     totalMitigatedDivergences,
     totalUnmitigatedDivergences,
+    totalOscillatedDivergences,
+    totalGracefullyDegradedDivergences,
+    causalSourceIdentificationRate,
+    totalDivergencesObserved,
+    totalCausalSourceIdentified,
     mitigation,
     limitations: [
       isDryRun
@@ -697,6 +760,7 @@ async function runDelegate52Live(
 interface MitigationConfig {
   restoreOnDivergence: boolean;
   retriesOnDivergence: number;
+  strategy: 'substrate-restore-retry' | 'prompt-only-retry' | 'no-mitigation';
 }
 
 interface DomainRoundTripResult {
@@ -710,6 +774,106 @@ interface DomainRoundTripResult {
   retryCount: number;
   mitigatedDivergences: number;
   unmitigatedDivergences: number;
+  /** Pass 36: divergences where retries exhausted because the LLM oscillated between states (cycle detected) */
+  oscillatedDivergences: number;
+  /** Pass 36: divergences where the user-facing state was the last clean commit (graceful degradation kicked in) */
+  gracefullyDegradedDivergences: number;
+  /** Pass 39: per-divergence diff descriptors — for D3 quantitative causal-source identification */
+  corruptionLocations: CorruptionLocation[];
+  /** Pass 39: of all divergences in this domain, how many had cleanly-identifiable single-region corruption */
+  causalSourceIdentified: number;
+  /** Pass 39: total divergences observed (raw + retry attempts), used as denominator for D3 rate */
+  totalDivergences: number;
+}
+
+/** Pass 39: a single corruption attribution descriptor produced by `computeDiffLocations`. */
+export interface CorruptionLocation {
+  /** Round-trip index where this corruption was observed (0-based). */
+  roundTripIndex: number;
+  /** Number of contiguous regions changed; 1 = clean single-region attribution; >1 = multi-region. */
+  regionCount: number;
+  /** First-region line range (inclusive, 1-based). null if unable to determine. */
+  firstRegionLineStart: number | null;
+  firstRegionLineEnd: number | null;
+  /** First-region character offset range in original document. null if unable to determine. */
+  firstRegionCharStart: number | null;
+  firstRegionCharEnd: number | null;
+  /** Bytes added by the corruption (relative to original). */
+  bytesAdded: number;
+  /** Bytes removed by the corruption (relative to original). */
+  bytesRemoved: number;
+  /** True if the corruption can be cleanly attributed to a single contiguous region. */
+  cleanAttribution: boolean;
+}
+
+/**
+ * Pass 39 — diff-attribution helper. Computes per-line + per-character delta between
+ * `original` and `corrupted`, identifies contiguous changed regions, and reports whether
+ * the corruption maps to a single clean region (the D3 "causal-source identifiable" criterion).
+ */
+export function computeDiffLocations(original: string, corrupted: string, roundTripIndex = 0): CorruptionLocation {
+  if (original === corrupted) {
+    return {
+      roundTripIndex,
+      regionCount: 0,
+      firstRegionLineStart: null,
+      firstRegionLineEnd: null,
+      firstRegionCharStart: null,
+      firstRegionCharEnd: null,
+      bytesAdded: 0,
+      bytesRemoved: 0,
+      cleanAttribution: true,
+    };
+  }
+  // Find contiguous diff regions by comparing line-by-line.
+  const origLines = original.split('\n');
+  const corrLines = corrupted.split('\n');
+  const regions: Array<{ lineStart: number; lineEnd: number; charStart: number; charEnd: number }> = [];
+  let inRegion = false;
+  let regionStart = -1;
+  let charOffset = 0;
+  let regionCharStart = 0;
+  const maxLines = Math.max(origLines.length, corrLines.length);
+  for (let i = 0; i < maxLines; i += 1) {
+    const o = origLines[i] ?? '';
+    const c = corrLines[i] ?? '';
+    if (o !== c) {
+      if (!inRegion) {
+        inRegion = true;
+        regionStart = i;
+        regionCharStart = charOffset;
+      }
+    } else if (inRegion) {
+      regions.push({
+        lineStart: regionStart + 1,
+        lineEnd: i,
+        charStart: regionCharStart,
+        charEnd: charOffset - 1,
+      });
+      inRegion = false;
+    }
+    charOffset += o.length + 1; // +1 for newline
+  }
+  if (inRegion) {
+    regions.push({
+      lineStart: regionStart + 1,
+      lineEnd: origLines.length,
+      charStart: regionCharStart,
+      charEnd: original.length,
+    });
+  }
+  const first = regions[0];
+  return {
+    roundTripIndex,
+    regionCount: regions.length,
+    firstRegionLineStart: first?.lineStart ?? null,
+    firstRegionLineEnd: first?.lineEnd ?? null,
+    firstRegionCharStart: first?.charStart ?? null,
+    firstRegionCharEnd: first?.charEnd ?? null,
+    bytesAdded: Math.max(0, corrupted.length - original.length),
+    bytesRemoved: Math.max(0, original.length - corrupted.length),
+    cleanAttribution: regions.length === 1,
+  };
 }
 
 /**
@@ -737,6 +901,11 @@ async function runDelegate52DomainRoundTrip(
   let retryCount = 0;
   let mitigatedDivergences = 0;
   let unmitigatedDivergences = 0;
+  let oscillatedDivergences = 0;
+  let gracefullyDegradedDivergences = 0;
+  let causalSourceIdentified = 0;
+  let totalDivergences = 0;
+  const corruptionLocations: CorruptionLocation[] = [];
   const commitIds: string[] = [];
 
   // Per-domain workspace for substrate commits. Each forward/backward edit becomes a TM commit.
@@ -796,29 +965,77 @@ async function runDelegate52DomainRoundTrip(
 
     let outcome = await attemptRoundTrip(i, 0, fromState);
     if (!outcome.converged && firstCorruption === null) firstCorruption = i;
+    if (!outcome.converged) {
+      totalDivergences += 1;
+      const loc = computeDiffLocations(fromState, outcome.afterBackward, i);
+      corruptionLocations.push(loc);
+      if (loc.cleanAttribution) causalSourceIdentified += 1;
+    }
 
-    if (!outcome.converged && mitigation.restoreOnDivergence && mitigation.retriesOnDivergence > 0) {
+    // Pass 40 — strategy dispatch. `substrate-restore-retry` does the full Pass 29 dance;
+    // `prompt-only-retry` re-prompts WITHOUT restoring (LLM sees the corrupted state); `no-mitigation` skips.
+    const shouldRetry = !outcome.converged && mitigation.retriesOnDivergence > 0
+      && (mitigation.strategy === 'substrate-restore-retry' || mitigation.strategy === 'prompt-only-retry');
+    if (shouldRetry) {
       let recovered = false;
+      let oscillated = false;
+      // Pass 36: detect oscillation across retries.
+      const seenCorruptedHashes = new Set<string>([sha256(outcome.afterBackward)]);
       for (let attempt = 1; attempt <= mitigation.retriesOnDivergence; attempt += 1) {
         if (budgetExhausted()) break;
-        // Substrate-mediated restore: roll the workspace back to the last clean commit.
-        await restoreTimeMachineCommit({
-          cwd: domainWorkspace,
-          commitId: lastCleanCommitId,
-          toWorkingTree: true,
-          confirm: true,
-        });
+        let retryFromState: string;
+        if (mitigation.strategy === 'substrate-restore-retry') {
+          // Substrate-mediated: restore workspace to last clean commit.
+          await restoreTimeMachineCommit({
+            cwd: domainWorkspace,
+            commitId: lastCleanCommitId,
+            toWorkingTree: true,
+            confirm: true,
+          });
+          retryFromState = lastCleanState;
+        } else {
+          // Pass 40 prompt-only-retry: feed the LAST OBSERVED state (which may be corrupted)
+          // back to the LLM. No substrate restore. Tests whether the substrate's state recovery
+          // is what makes mitigation work, vs just the retry itself.
+          retryFromState = outcome.afterBackward;
+        }
         retryCount += 1;
-        outcome = await attemptRoundTrip(i, attempt, lastCleanState);
+        outcome = await attemptRoundTrip(i, attempt, retryFromState);
         if (outcome.converged) {
           recovered = true;
           break;
         }
+        // Pass 39 — track diff attribution for retry-attempt divergences.
+        totalDivergences += 1;
+        const retryLoc = computeDiffLocations(retryFromState, outcome.afterBackward, i);
+        corruptionLocations.push(retryLoc);
+        if (retryLoc.cleanAttribution) causalSourceIdentified += 1;
+        const corruptedHash = sha256(outcome.afterBackward);
+        if (seenCorruptedHashes.has(corruptedHash)) {
+          oscillated = true;
+          break;
+        }
+        seenCorruptedHashes.add(corruptedHash);
       }
       if (recovered) {
         mitigatedDivergences += 1;
       } else {
         unmitigatedDivergences += 1;
+        if (oscillated) oscillatedDivergences += 1;
+        // Pass 36 + Pass 40: graceful degradation is a substrate-only guarantee.
+        // For `substrate-restore-retry`, we restore on retry-exhaustion to give the user a clean state.
+        // For `prompt-only-retry`, we deliberately do NOT restore — that's the substrate's contribution
+        // we're measuring; if you skip the substrate, the user is left with whatever the LLM emitted last.
+        if (mitigation.strategy === 'substrate-restore-retry') {
+          await restoreTimeMachineCommit({
+            cwd: domainWorkspace,
+            commitId: lastCleanCommitId,
+            toWorkingTree: true,
+            confirm: true,
+          });
+          outcome = { afterBackward: lastCleanState, converged: false };
+          gracefullyDegradedDivergences += 1;
+        }
       }
     } else if (!outcome.converged) {
       // No mitigation requested; record as unmitigated for honest accounting.
@@ -842,6 +1059,11 @@ async function runDelegate52DomainRoundTrip(
     costUsd,
     timeMachineCommitIds: commitIds,
     retryCount,
+    oscillatedDivergences,
+    gracefullyDegradedDivergences,
+    corruptionLocations,
+    causalSourceIdentified,
+    totalDivergences,
     mitigatedDivergences,
     unmitigatedDivergences,
   };

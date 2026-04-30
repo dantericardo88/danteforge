@@ -1,0 +1,402 @@
+{
+  "schemaVersion": 1,
+  "pass": 14,
+  "passName": "External-consumer install/pack smoke test (Pass 14)",
+  "generatedAt": "2026-04-29T17:17:06.744Z",
+  "gitSha": "542fadaca24986d8c850732984b405c7de4b98ab",
+  "tarball": {
+    "path": "C:/tmp/danteforge-evidence-chain-1.0.0.tgz",
+    "sizeBytes": 14458,
+    "sha256": "02d50c69e3ae960c60b3f1f7acd885ec4ab70e03943723221a9c81edec7efe23",
+    "npmName": "@danteforge/evidence-chain",
+    "npmVersion": "1.0.0"
+  },
+  "smokeTest": {
+    "package": "@danteforge/evidence-chain",
+    "version": "1.0.0",
+    "schemaVersion": "evidence-chain.v1",
+    "runAt": "2026-04-29T17:16:55.347Z",
+    "total": 32,
+    "passed": 32,
+    "failed": 0,
+    "status": "pass",
+    "results": [
+      {
+        "name": "EVIDENCE_CHAIN_SCHEMA_VERSION is v1",
+        "ok": true,
+        "detail": "evidence-chain.v1"
+      },
+      {
+        "name": "ZERO_HASH is 64-char hex of zeros",
+        "ok": true,
+        "detail": ""
+      },
+      {
+        "name": "stableJSON produces identical output for differently-ordered keys",
+        "ok": true,
+        "detail": ""
+      },
+      {
+        "name": "sha256 is deterministic",
+        "ok": true,
+        "detail": ""
+      },
+      {
+        "name": "sha256 returns 64-char hex",
+        "ok": true,
+        "detail": ""
+      },
+      {
+        "name": "sha256 differs for different inputs",
+        "ok": true,
+        "detail": ""
+      },
+      {
+        "name": "hashDict returns 64-char hex",
+        "ok": true,
+        "detail": ""
+      },
+      {
+        "name": "hashDict order-independent",
+        "ok": true,
+        "detail": ""
+      },
+      {
+        "name": "createReceipt returns object with hash",
+        "ok": true,
+        "detail": ""
+      },
+      {
+        "name": "receipt has schemaVersion v1",
+        "ok": true,
+        "detail": ""
+      },
+      {
+        "name": "receipt has expected receiptId",
+        "ok": true,
+        "detail": ""
+      },
+      {
+        "name": "receipt has gitSha",
+        "ok": true,
+        "detail": ""
+      },
+      {
+        "name": "verifyReceipt returns valid for unmodified receipt",
+        "ok": true,
+        "detail": ""
+      },
+      {
+        "name": "verifyReceipt errors[] is empty when valid",
+        "ok": true,
+        "detail": ""
+      },
+      {
+        "name": "verifyReceipt detects tampered payload",
+        "ok": true,
+        "detail": ""
+      },
+      {
+        "name": "tampered result has errors[]",
+        "ok": true,
+        "detail": ""
+      },
+      {
+        "name": "bundle has merkleRoot",
+        "ok": true,
+        "detail": ""
+      },
+      {
+        "name": "bundle has 3 evidenceHashes",
+        "ok": true,
+        "detail": ""
+      },
+      {
+        "name": "verifyBundle returns valid for unmodified bundle",
+        "ok": true,
+        "detail": ""
+      },
+      {
+        "name": "verifyBundle detects tampered evidence",
+        "ok": true,
+        "detail": ""
+      },
+      {
+        "name": "HashChain.append produces non-empty headHash",
+        "ok": true,
+        "detail": ""
+      },
+      {
+        "name": "HashChain.toJSON returns 3 entries",
+        "ok": true,
+        "detail": ""
+      },
+      {
+        "name": "HashChain.verifyIntegrity returns valid for honest chain",
+        "ok": true,
+        "detail": ""
+      },
+      {
+        "name": "HashChain.verifyEntries detects tampered payload",
+        "ok": true,
+        "detail": ""
+      },
+      {
+        "name": "MerkleTree.root is non-empty",
+        "ok": true,
+        "detail": ""
+      },
+      {
+        "name": "MerkleTree.getProof returns flat array of proof steps",
+        "ok": true,
+        "detail": ""
+      },
+      {
+        "name": "MerkleTree.verifyProof accepts valid inclusion proof",
+        "ok": true,
+        "detail": ""
+      },
+      {
+        "name": "MerkleTree.verifyProof rejects invalid leaf",
+        "ok": true,
+        "detail": ""
+      },
+      {
+        "name": "bundle.inclusionProofs is an array of MerkleInclusionProof",
+        "ok": true,
+        "detail": ""
+      },
+      {
+        "name": "ReceiptChain.headHash is non-empty",
+        "ok": true,
+        "detail": ""
+      },
+      {
+        "name": "ReceiptChain.verifyIntegrity returns valid",
+        "ok": true,
+        "detail": ""
+      },
+      {
+        "name": "package has no dependencies field or empty",
+        "ok": true,
+        "detail": ""
+      }
+    ]
+  },
+  "consumerProjectPath": "C:/tmp/evidence-chain-consumer-test (outside repo, ESM module project)",
+  "smokeScript": "scripts/smoke-evidence-chain-external.mjs",
+  "conclusion": "External-consumer install + import + tamper-detection all work as documented. Package is consumer-ready.",
+  "proof": {
+    "schemaVersion": "evidence-chain.v1",
+    "receiptId": "bundle_f860ed129aafd053",
+    "bundleId": "pass_14_install_smoke",
+    "gitSha": "542fadaca24986d8c850732984b405c7de4b98ab",
+    "createdAt": "2026-04-29T17:17:06.744Z",
+    "payloadHash": "e2b7a2338a680474c025432d1cde13fea9f1a1295efbff41f5f8748432fca6c5",
+    "prevHash": "0000000000000000000000000000000000000000000000000000000000000000",
+    "merkleRoot": "99a83a8c9749ce9401106994266e3cf71cc365d1499cedaa39b452e392641566",
+    "evidenceHashes": [
+      "99a83a8c9749ce9401106994266e3cf71cc365d1499cedaa39b452e392641566"
+    ],
+    "verificationStatus": "unverified",
+    "evidence": [
+      {
+        "schemaVersion": 1,
+        "pass": 14,
+        "passName": "External-consumer install/pack smoke test (Pass 14)",
+        "generatedAt": "2026-04-29T17:17:06.744Z",
+        "gitSha": "542fadaca24986d8c850732984b405c7de4b98ab",
+        "tarball": {
+          "path": "C:/tmp/danteforge-evidence-chain-1.0.0.tgz",
+          "sizeBytes": 14458,
+          "sha256": "02d50c69e3ae960c60b3f1f7acd885ec4ab70e03943723221a9c81edec7efe23",
+          "npmName": "@danteforge/evidence-chain",
+          "npmVersion": "1.0.0"
+        },
+        "smokeTest": {
+          "package": "@danteforge/evidence-chain",
+          "version": "1.0.0",
+          "schemaVersion": "evidence-chain.v1",
+          "runAt": "2026-04-29T17:16:55.347Z",
+          "total": 32,
+          "passed": 32,
+          "failed": 0,
+          "status": "pass",
+          "results": [
+            {
+              "name": "EVIDENCE_CHAIN_SCHEMA_VERSION is v1",
+              "ok": true,
+              "detail": "evidence-chain.v1"
+            },
+            {
+              "name": "ZERO_HASH is 64-char hex of zeros",
+              "ok": true,
+              "detail": ""
+            },
+            {
+              "name": "stableJSON produces identical output for differently-ordered keys",
+              "ok": true,
+              "detail": ""
+            },
+            {
+              "name": "sha256 is deterministic",
+              "ok": true,
+              "detail": ""
+            },
+            {
+              "name": "sha256 returns 64-char hex",
+              "ok": true,
+              "detail": ""
+            },
+            {
+              "name": "sha256 differs for different inputs",
+              "ok": true,
+              "detail": ""
+            },
+            {
+              "name": "hashDict returns 64-char hex",
+              "ok": true,
+              "detail": ""
+            },
+            {
+              "name": "hashDict order-independent",
+              "ok": true,
+              "detail": ""
+            },
+            {
+              "name": "createReceipt returns object with hash",
+              "ok": true,
+              "detail": ""
+            },
+            {
+              "name": "receipt has schemaVersion v1",
+              "ok": true,
+              "detail": ""
+            },
+            {
+              "name": "receipt has expected receiptId",
+              "ok": true,
+              "detail": ""
+            },
+            {
+              "name": "receipt has gitSha",
+              "ok": true,
+              "detail": ""
+            },
+            {
+              "name": "verifyReceipt returns valid for unmodified receipt",
+              "ok": true,
+              "detail": ""
+            },
+            {
+              "name": "verifyReceipt errors[] is empty when valid",
+              "ok": true,
+              "detail": ""
+            },
+            {
+              "name": "verifyReceipt detects tampered payload",
+              "ok": true,
+              "detail": ""
+            },
+            {
+              "name": "tampered result has errors[]",
+              "ok": true,
+              "detail": ""
+            },
+            {
+              "name": "bundle has merkleRoot",
+              "ok": true,
+              "detail": ""
+            },
+            {
+              "name": "bundle has 3 evidenceHashes",
+              "ok": true,
+              "detail": ""
+            },
+            {
+              "name": "verifyBundle returns valid for unmodified bundle",
+              "ok": true,
+              "detail": ""
+            },
+            {
+              "name": "verifyBundle detects tampered evidence",
+              "ok": true,
+              "detail": ""
+            },
+            {
+              "name": "HashChain.append produces non-empty headHash",
+              "ok": true,
+              "detail": ""
+            },
+            {
+              "name": "HashChain.toJSON returns 3 entries",
+              "ok": true,
+              "detail": ""
+            },
+            {
+              "name": "HashChain.verifyIntegrity returns valid for honest chain",
+              "ok": true,
+              "detail": ""
+            },
+            {
+              "name": "HashChain.verifyEntries detects tampered payload",
+              "ok": true,
+              "detail": ""
+            },
+            {
+              "name": "MerkleTree.root is non-empty",
+              "ok": true,
+              "detail": ""
+            },
+            {
+              "name": "MerkleTree.getProof returns flat array of proof steps",
+              "ok": true,
+              "detail": ""
+            },
+            {
+              "name": "MerkleTree.verifyProof accepts valid inclusion proof",
+              "ok": true,
+              "detail": ""
+            },
+            {
+              "name": "MerkleTree.verifyProof rejects invalid leaf",
+              "ok": true,
+              "detail": ""
+            },
+            {
+              "name": "bundle.inclusionProofs is an array of MerkleInclusionProof",
+              "ok": true,
+              "detail": ""
+            },
+            {
+              "name": "ReceiptChain.headHash is non-empty",
+              "ok": true,
+              "detail": ""
+            },
+            {
+              "name": "ReceiptChain.verifyIntegrity returns valid",
+              "ok": true,
+              "detail": ""
+            },
+            {
+              "name": "package has no dependencies field or empty",
+              "ok": true,
+              "detail": ""
+            }
+          ]
+        },
+        "consumerProjectPath": "C:/tmp/evidence-chain-consumer-test (outside repo, ESM module project)",
+        "smokeScript": "scripts/smoke-evidence-chain-external.mjs",
+        "conclusion": "External-consumer install + import + tamper-detection all work as documented. Package is consumer-ready."
+      }
+    ],
+    "inclusionProofs": [
+      {
+        "index": 0,
+        "leafHash": "99a83a8c9749ce9401106994266e3cf71cc365d1499cedaa39b452e392641566",
+        "proof": []
+      }
+    ],
+    "hash": "b5a5b1cda3c16abbc8422dc67094de3009350380a3a1139173e2e213c90d4201"
+  }
+}

@@ -19,7 +19,7 @@
 
 ---
 
-## 1. Current Status (as of 2026-04-29)
+## 1. Current Status (as of 2026-04-30)
 
 ### What's built and verified
 
@@ -29,12 +29,14 @@
 - Time Machine v0.1 substrate exists: `createTimeMachineCommit`, `verifyTimeMachine`, `restoreTimeMachineCommit`, and `queryTimeMachine`.
 - Time Machine validation harness exists for Classes A/B/C/D/E/F/G, scale modes, DELEGATE-52 harness/import/live modes, and report generation.
 - Real-fs PRD-scale A/B/C, DELEGATE-52 dataset import, dry-run live executor, Class G G1/G4 substrate artifacts, adversarial review, paper draft, reproducibility appendix, restore-to-working-tree flow, and Pass 27 performance optimization are locally implemented and proof-receipted through Pass 28.
+- Pass 36 ran the compute-only Class F 1M gate with `DANTEFORGE_TIME_MACHINE_VALIDATE_MAX_COMMITS=1000000`; the run hit the 30-minute closure cap after 137,218 synthetic commits and emitted a timeout receipt. This is useful negative scale evidence, not a pass.
+- Pass 36 also ran the live DELEGATE-52 command without founder credentials/live flag/model pin; it fail-closed as `live_not_enabled` with explicit blockers.
 - `docs/TIME_MACHINE_VALIDATION_REPORT.md` and `docs/papers/time-machine-empirical-validation-v1.md` are the current human-readable summaries.
 
 ### What's NOT complete (founder-gated or explicitly deferred)
 
 - Live DELEGATE-52 paid run: executor and budget guards exist, but the real API spend requires founder approval.
-- Class F 1M-commit benchmark: staged behind explicit environment override because it consumes significant local time and disk.
+- Class F 1M-commit benchmark: compute-only attempt executed in Pass 36 and timed out at 30.48 minutes after 137,218 commits; 1M remains unpassed until the implementation is optimized or a longer explicit compute window is approved.
 - arXiv submission and Microsoft outreach send: drafts/prep exist, but submission/send are founder-gated.
 - npm publication of package surfaces: local workspace packages exist, but publishing is founder-gated.
 - G2 Dojo bookkeeping integration: intentionally out of v1 publication scope and recorded as `out_of_scope_dojo_paused`.
@@ -64,7 +66,7 @@ Per [PRD-TIME-MACHINE-Validation.md §4](./PRD-TIME-MACHINE-Validation.md), mini
 | C | 7/7 queries + 0 gaps on 100-decision chain | Real-fs PRD-scale complete | None |
 | D | D2 byte-identical restore + D3 causal source identification | Harness/import/dry-run complete for public 48-domain release | **Founder-gated live execution + real result table** |
 | E | 5/5 detected | All 5 covered in deterministic harness | Optional: external multi-agent stress |
-| F | 10K + 100K thresholds met | Pass 27 optimization meets 10K and 100K thresholds; 1M behind env-var | 1M run with founder approval |
+| F | 10K + 100K thresholds met | Pass 27 optimization meets 10K and 100K thresholds; Pass 36 1M attempt timed out after 137,218/1,000,000 commits at 30.48 min | Optimize or rerun 1M with an explicitly longer compute window |
 | G | 4/4 constitutional integrations | G1 staged founder-gated, G3 passed, G4 passed; G2 out of scope for v1 | Founder send/Dojo live data not claimed |
 
 **Publishable trigger:** all rows above show "complete" or "honestly documented limitation."
@@ -86,7 +88,7 @@ Per [PRD-TIME-MACHINE-Validation.md §4](./PRD-TIME-MACHINE-Validation.md), mini
 | # | Gap | Estimated effort | Cost |
 |---|---|---|---|
 | T2.1 | Class G end-to-end runs (G1 Sean Lippay, G4 truth-loop causal recall) | G1/G4 substrate complete; founder send/Dojo data deferred | $0 |
-| T2.2 | Class F 1M-commit benchmark execution (founder env-var approval) | 0.5-1 day | $0 (compute only) |
+| T2.2 | Class F 1M-commit benchmark execution | Attempted Pass 36; timed out at 30.48 min after 137,218 commits | $0 (compute only) |
 | T2.3 | DELEGATE-52 result table generator (auto-emit per-domain + aggregate) | Complete for harness/import/dry-run; live rows await GATE-1 | $0 |
 
 ### Tier 3 — Product polish that strengthens the publication
@@ -202,21 +204,22 @@ Three possible outcomes:
 #### Pass 21 — Class G end-to-end + Class F 1M
 
 - [x] **Status:** completed 2026-04-29 (after Phase 1 decision gate is GREEN or YELLOW)
+- **Pass 36 update:** Class G remains closed as staged substrate evidence. The Class F 1M compute gate was attempted on 2026-04-30 and timed out after 137,218 commits / 30.48 minutes, so the 1M data point remains unresolved rather than complete.
 - **Owner:** Codex (impl) + Claude (verify)
 - **Goal:** Convert `harness_ready` Class G scenarios into actively passed scenarios; produce 1M-commit data point.
 - **Scope:**
   - **G1 Sean Lippay** — stage a synthetic outreach workflow that exercises Truth Loop + three-way gate + Time Machine commit chain end-to-end. Does NOT actually send an email (founder gate). Verifies the substrate composes for a realistic agent task.
   - **G4 truth-loop causal recall** — run a recall query against an actual conversational artifact ledger. Acceptance: query returns specific commits with full context preserved.
   - **G2 Dojo** — explicitly defer; mark `out_of_scope_dojo_paused` and document that the bookkeeping flow is paused per project-memory.
-  - **F 1M** — founder-approved env-var override (`DANTEFORGE_TIME_MACHINE_VALIDATE_MAX_COMMITS=1000000`); single benchmark run.
+  - **F 1M** — compute-only env-var override (`DANTEFORGE_TIME_MACHINE_VALIDATE_MAX_COMMITS=1000000`); Pass 36 attempted this and recorded timeout.
 - **Acceptance criteria:**
   - G1, G3, G4 show `passed` (G2 documented as deferred, not failed)
-  - F 1M produces measured numbers (verify, restore, query) even if outside threshold; document threshold compliance per benchmark
+  - F 1M produces measured numbers (verify, restore, query) even if outside threshold, or records a timeout/failure without claiming success
   - Class G overall status moves from `partial` to `passed` (or honest `partial` with documented exclusion)
 - **Verify chain:** tsc / lint / anti-stub / Time Machine validation tests
 - **Proof anchor:** Pass 21 manifest with G1/G4 result hashes + F 1M timing data
 - **Receipt:** `.danteforge/PASS_21_G_END_TO_END_AND_F_1M_RECEIPT.md`
-- **Founder gate:** approval to run the 1M scale benchmark (compute only, no $ spend)
+- **Founder gate:** future approval to rerun 1M with a longer compute window if optimization does not close the gap
 - **Estimated work:** 1-2 days
 
 #### Pass 22 — Comparison document v1 draft
@@ -373,7 +376,7 @@ Three possible outcomes:
 |---|---|---|---|
 | GATE-1 | Pre-Pass-19 | Approve LLM budget for live DELEGATE-52 run ($30-80) | Pass 18 receipt review; Pass 19 dry-run output |
 | GATE-2 | End of Phase 1 | Proceed / reframe / stop based on actual data | Pass 19 + Pass 20 results; honest assessment |
-| GATE-3 | Pre-Pass-21 | Approve 1M-commit benchmark run | Pass 20 results showing 100K passes cleanly |
+| GATE-3 | Pre-Pass-21 | Approve 1M-commit benchmark run | Pass 36 compute-only attempt timed out at 30.48 min; future gate is optimization or longer compute window |
 | GATE-4 | End of Phase 2 | Approve comparison document direction | Pass 22 v1 draft |
 | GATE-5 | End of Phase 3 | Approve preprint submission | Pass 23 adversarial findings + Pass 24 polish |
 | GATE-6 | End of Phase 4 | Approve outreach to Microsoft authors | Pass 25 PDF + Pass 26 email draft |
@@ -389,7 +392,7 @@ This discipline carries through every pass.
 ### Allowed claims (truthful at each phase)
 
 **After Phase 1:**
-> Time Machine v0.1 substrate + deterministic validation harness are built and proof-anchored. Live DELEGATE-52 replication produced [measured] result on [N] domains. Real-fs PRD-scale validation confirms [or diverges from] logical-mode results.
+> Time Machine v0.1 substrate + deterministic validation harness are built and proof-anchored. Live DELEGATE-52 replication remains founder-gated unless a measured result exists on [N] domains. Real-fs PRD-scale validation confirms [or diverges from] logical-mode results.
 
 **After Phase 2:**
 > Validation passes [X/7] PRD test classes at minimum-success threshold. Comparison document v1 drafts the publishable claim with honest limitations.
@@ -398,7 +401,7 @@ This discipline carries through every pass.
 > Adversarial review by Codex surfaced [N] findings, [M] of which were fixed in code/doc. Remaining limitations are documented in §7 of the comparison document.
 
 **After Phase 4:**
-> arXiv preprint submitted [date]. Substrate is MIT-licensed and reproducible from the included CLI commands.
+> arXiv preprint prepared [date]; submitted only if the founder fires GATE-5. Substrate is MIT-licensed and reproducible from the included CLI commands.
 
 ### Forbidden claims (irrespective of phase)
 
@@ -485,7 +488,7 @@ When this plan is fully executed:
 - Class D runtime corruption detector/mitigation hook exists; standalone product runner may still be deferred
 - The DanteForge repo is in a state where any independent researcher can clone it, run the CLI commands in the reproducibility appendix, and reproduce the result table
 
-That is the publishable end state. Remaining effort is dominated by founder-gated live execution, submission, outreach, npm publication, and optional 1M scale validation.
+That is the publishable end state. Remaining effort is dominated by founder-gated live execution, submission, outreach, npm publication, and unresolved 1M scale validation after the Pass 36 timeout.
 
 ---
 

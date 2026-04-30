@@ -1,0 +1,230 @@
+{
+  "schemaVersion": 1,
+  "pass": 36,
+  "passName": "Hybrid compute closure",
+  "generatedAt": "2026-04-30T12:05:45.128Z",
+  "gitSha": "dafb93e5117dbe26f8017bfd826c6c2989e3b0ce",
+  "closureMode": "compute_only_no_public_or_paid_founder_gates",
+  "classFOneMillion": {
+    "schemaVersion": "danteforge.time-machine.validation.timeout.v1",
+    "status": "timeout",
+    "runId": "pass_36_f1m_compute_gate",
+    "class": "F",
+    "scale": "benchmark",
+    "targetCommitCount": 1000000,
+    "elapsedMinutes": 30.48,
+    "commitsCreatedBeforeStop": 137218,
+    "resultBytes": 0,
+    "reason": "Exceeded 30-minute closure-pass cap before producing Class F 1M result JSON.",
+    "command": "DANTEFORGE_TIME_MACHINE_VALIDATE_MAX_COMMITS=1000000 node dist/index.js time-machine validate --class F --scale benchmark --out .danteforge/time-machine/validation/pass-36-f1m --json",
+    "recordedAt": "2026-04-30T12:01:22.2529092Z"
+  },
+  "delegate52LiveGate": {
+    "status": "live_not_enabled",
+    "liveBlockers": [
+      "blocked_by_missing_live_confirmation",
+      "blocked_by_missing_credentials",
+      "blocked_by_missing_model"
+    ],
+    "publicReleasedDomains": 48,
+    "publicReleasedRows": 234,
+    "limitations": [
+      "Public DELEGATE-52 release has 48 domains and 234 rows; 76 environments are withheld for license reasons.",
+      "Live mode is opt-in and must record provider, model, budget, and final comparison artifacts. Blockers: blocked_by_missing_live_confirmation, blocked_by_missing_credentials, blocked_by_missing_model."
+    ],
+    "runId": "tmval_20260430120144",
+    "outDir": "C:\\Projects\\DanteForge\\.danteforge\\time-machine\\validation\\pass-36-live-blocked"
+  },
+  "founderGatesPreserved": [
+    "GATE-1 live DELEGATE-52 paid/provider run",
+    "GATE-5 arXiv submission",
+    "GATE-6 Microsoft/Sean outreach send",
+    "GATE-NPM package publication",
+    "GATE-ARTICLE-XV ratification",
+    "GATE-TRUTH-LOOP-RATING founder ratings"
+  ],
+  "trackedArtifacts": [
+    {
+      "path": "docs/TRUTH_LOOP_FOUNDER_CLOSURE_CANDIDATES.md",
+      "hash": "ea203426484b94b5d54843ae4c8858186686cac5a4a009ce61e68dddad5bcb1a",
+      "bytes": 5174
+    },
+    {
+      "path": "docs/PRD-TIME-MACHINE-PUBLICATION-PLAN.md",
+      "hash": "27935940d1c71732798dcda430461faba425b73c3bf9fbf926c9de09dd4fc5d5",
+      "bytes": 33751
+    },
+    {
+      "path": "docs/PRD-FORGE-V1.1-Closure.md",
+      "hash": "a4dabb943274d6f6fd8a1c1aaff306ff901efd3c9eb3d724897c506db1b19839",
+      "bytes": 28431
+    },
+    {
+      "path": "docs/papers/time-machine-empirical-validation-v1.md",
+      "hash": "d66fde931f56b7feaf7c3073ef4b3559d054857c17b9fd41d3b29d0bad262652",
+      "bytes": 26969
+    },
+    {
+      "path": "docs/papers/time-machine-empirical-validation-v1.tex",
+      "hash": "21650cf1a327a70d7fa73758d9301c9450cf9670015a01efc6a3756ff2e9d141",
+      "bytes": 12528
+    },
+    {
+      "path": "docs/papers/reproducibility-appendix.md",
+      "hash": "dc6d2d4eadd533d2802b386f270669f82e47fd241d615806925de21883615e8c",
+      "bytes": 9071
+    },
+    {
+      "path": "scripts/proof-anchor-pass-36.mjs",
+      "hash": "b5eb7f51a0eab677b21df473e7026f7ca24d9fa89a16cad80d81352bd4001764",
+      "bytes": 6505
+    }
+  ],
+  "generatedArtifacts": [
+    {
+      "path": ".danteforge/evidence/pass-36-runs/f1m-timeout.json",
+      "hash": "1b85d17d4c72a0b6d11889ded4b4ae40acc44daa7b29018f8aa7e4aeb15163c8",
+      "bytes": 679
+    },
+    {
+      "path": ".danteforge/evidence/pass-36-runs/delegate52-live-blocked.json",
+      "hash": "31c4ffa9546c65d569ec4170d2f749b1796638ceb2c12a79ef641ffd948758ed",
+      "bytes": 29966
+    }
+  ],
+  "truthBoundary": {
+    "allowedClaim": "Hybrid compute closure is documented and proof-anchored; compute-only Class F 1M status is recorded; live DELEGATE-52 remains fail-closed without founder-controlled prerequisites.",
+    "forbiddenClaim": "DanteForge solved or live-validated DELEGATE-52 without a paid/imported live run."
+  },
+  "receipt": {
+    "file": ".danteforge/PASS_36_HYBRID_COMPUTE_CLOSURE_RECEIPT.md",
+    "hash": "3167443d8a2f750a131bdc72560df7f8f50d5e74a7be2d571333c16ab0a60225"
+  },
+  "proof": {
+    "schemaVersion": "evidence-chain.v1",
+    "receiptId": "bundle_26bcc2a229445825",
+    "bundleId": "pass_36_hybrid_compute_closure",
+    "gitSha": "dafb93e5117dbe26f8017bfd826c6c2989e3b0ce",
+    "createdAt": "2026-04-30T12:05:45.128Z",
+    "payloadHash": "abc771e67c663555c8ecb5c012d1b40e3d52f276985c615efa004d97b33e644f",
+    "prevHash": "0000000000000000000000000000000000000000000000000000000000000000",
+    "merkleRoot": "7320cc0558d4b3f8770c2636509a74c8a16777d58dbc23c85b53afa01d7108b9",
+    "evidenceHashes": [
+      "7320cc0558d4b3f8770c2636509a74c8a16777d58dbc23c85b53afa01d7108b9"
+    ],
+    "verificationStatus": "unverified",
+    "evidence": [
+      {
+        "schemaVersion": 1,
+        "pass": 36,
+        "passName": "Hybrid compute closure",
+        "generatedAt": "2026-04-30T12:05:45.128Z",
+        "gitSha": "dafb93e5117dbe26f8017bfd826c6c2989e3b0ce",
+        "closureMode": "compute_only_no_public_or_paid_founder_gates",
+        "classFOneMillion": {
+          "schemaVersion": "danteforge.time-machine.validation.timeout.v1",
+          "status": "timeout",
+          "runId": "pass_36_f1m_compute_gate",
+          "class": "F",
+          "scale": "benchmark",
+          "targetCommitCount": 1000000,
+          "elapsedMinutes": 30.48,
+          "commitsCreatedBeforeStop": 137218,
+          "resultBytes": 0,
+          "reason": "Exceeded 30-minute closure-pass cap before producing Class F 1M result JSON.",
+          "command": "DANTEFORGE_TIME_MACHINE_VALIDATE_MAX_COMMITS=1000000 node dist/index.js time-machine validate --class F --scale benchmark --out .danteforge/time-machine/validation/pass-36-f1m --json",
+          "recordedAt": "2026-04-30T12:01:22.2529092Z"
+        },
+        "delegate52LiveGate": {
+          "status": "live_not_enabled",
+          "liveBlockers": [
+            "blocked_by_missing_live_confirmation",
+            "blocked_by_missing_credentials",
+            "blocked_by_missing_model"
+          ],
+          "publicReleasedDomains": 48,
+          "publicReleasedRows": 234,
+          "limitations": [
+            "Public DELEGATE-52 release has 48 domains and 234 rows; 76 environments are withheld for license reasons.",
+            "Live mode is opt-in and must record provider, model, budget, and final comparison artifacts. Blockers: blocked_by_missing_live_confirmation, blocked_by_missing_credentials, blocked_by_missing_model."
+          ],
+          "runId": "tmval_20260430120144",
+          "outDir": "C:\\Projects\\DanteForge\\.danteforge\\time-machine\\validation\\pass-36-live-blocked"
+        },
+        "founderGatesPreserved": [
+          "GATE-1 live DELEGATE-52 paid/provider run",
+          "GATE-5 arXiv submission",
+          "GATE-6 Microsoft/Sean outreach send",
+          "GATE-NPM package publication",
+          "GATE-ARTICLE-XV ratification",
+          "GATE-TRUTH-LOOP-RATING founder ratings"
+        ],
+        "trackedArtifacts": [
+          {
+            "path": "docs/TRUTH_LOOP_FOUNDER_CLOSURE_CANDIDATES.md",
+            "hash": "ea203426484b94b5d54843ae4c8858186686cac5a4a009ce61e68dddad5bcb1a",
+            "bytes": 5174
+          },
+          {
+            "path": "docs/PRD-TIME-MACHINE-PUBLICATION-PLAN.md",
+            "hash": "27935940d1c71732798dcda430461faba425b73c3bf9fbf926c9de09dd4fc5d5",
+            "bytes": 33751
+          },
+          {
+            "path": "docs/PRD-FORGE-V1.1-Closure.md",
+            "hash": "a4dabb943274d6f6fd8a1c1aaff306ff901efd3c9eb3d724897c506db1b19839",
+            "bytes": 28431
+          },
+          {
+            "path": "docs/papers/time-machine-empirical-validation-v1.md",
+            "hash": "d66fde931f56b7feaf7c3073ef4b3559d054857c17b9fd41d3b29d0bad262652",
+            "bytes": 26969
+          },
+          {
+            "path": "docs/papers/time-machine-empirical-validation-v1.tex",
+            "hash": "21650cf1a327a70d7fa73758d9301c9450cf9670015a01efc6a3756ff2e9d141",
+            "bytes": 12528
+          },
+          {
+            "path": "docs/papers/reproducibility-appendix.md",
+            "hash": "dc6d2d4eadd533d2802b386f270669f82e47fd241d615806925de21883615e8c",
+            "bytes": 9071
+          },
+          {
+            "path": "scripts/proof-anchor-pass-36.mjs",
+            "hash": "b5eb7f51a0eab677b21df473e7026f7ca24d9fa89a16cad80d81352bd4001764",
+            "bytes": 6505
+          }
+        ],
+        "generatedArtifacts": [
+          {
+            "path": ".danteforge/evidence/pass-36-runs/f1m-timeout.json",
+            "hash": "1b85d17d4c72a0b6d11889ded4b4ae40acc44daa7b29018f8aa7e4aeb15163c8",
+            "bytes": 679
+          },
+          {
+            "path": ".danteforge/evidence/pass-36-runs/delegate52-live-blocked.json",
+            "hash": "31c4ffa9546c65d569ec4170d2f749b1796638ceb2c12a79ef641ffd948758ed",
+            "bytes": 29966
+          }
+        ],
+        "truthBoundary": {
+          "allowedClaim": "Hybrid compute closure is documented and proof-anchored; compute-only Class F 1M status is recorded; live DELEGATE-52 remains fail-closed without founder-controlled prerequisites.",
+          "forbiddenClaim": "DanteForge solved or live-validated DELEGATE-52 without a paid/imported live run."
+        },
+        "receipt": {
+          "file": ".danteforge/PASS_36_HYBRID_COMPUTE_CLOSURE_RECEIPT.md",
+          "hash": "3167443d8a2f750a131bdc72560df7f8f50d5e74a7be2d571333c16ab0a60225"
+        }
+      }
+    ],
+    "inclusionProofs": [
+      {
+        "index": 0,
+        "leafHash": "7320cc0558d4b3f8770c2636509a74c8a16777d58dbc23c85b53afa01d7108b9",
+        "proof": []
+      }
+    ],
+    "hash": "d5a610b65dbf3f1138ad9190fe34b80858b988b94e527905dae74303de3b6d27"
+  }
+}

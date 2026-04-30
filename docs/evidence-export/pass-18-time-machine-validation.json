@@ -1,0 +1,194 @@
+{
+  "schemaVersion": 1,
+  "pass": 18,
+  "passName": "Time Machine validation closure harness (Pass 18)",
+  "generatedAt": "2026-04-29T12:00:00.000Z",
+  "gitSha": "542fadaca24986d8c850732984b405c7de4b98ab",
+  "validation": {
+    "schemaVersion": "danteforge.time-machine.validation.v1",
+    "runId": "tmval_pass_18_20260429",
+    "scale": "prd",
+    "delegate52Mode": "harness",
+    "status": "partial",
+    "passedClasses": [
+      "A",
+      "B",
+      "C",
+      "E"
+    ],
+    "partialClasses": [
+      "D",
+      "F",
+      "G"
+    ],
+    "failedClasses": [],
+    "claimsAllowed": [
+      "Time Machine validation harness can generate deterministic tamper, restore, causal, adversarial, performance, and constitutional evidence.",
+      "DELEGATE-52 harness/import/live paths are wired with public dataset limitations recorded."
+    ],
+    "claimsNotAllowed": [
+      "Do not claim DanteForge has published full DELEGATE-52 live replication until live or imported results are present.",
+      "Do not claim private/withheld DELEGATE-52 environments were validated from the public dataset."
+    ]
+  },
+  "classFBenchmark": {
+    "status": "partial",
+    "benchmarks": [
+      {
+        "id": "F_10000",
+        "commitCount": 10000,
+        "verifyMs": 10318,
+        "restoreMs": 5,
+        "queryMs": 3849,
+        "passedThreshold": true
+      },
+      {
+        "id": "F_100000",
+        "commitCount": 100000,
+        "verifyMs": 0,
+        "restoreMs": 0,
+        "queryMs": 0,
+        "passedThreshold": false,
+        "skipped": true,
+        "note": "Skipped unless DANTEFORGE_TIME_MACHINE_VALIDATE_MAX_COMMITS >= 100000"
+      }
+    ]
+  },
+  "artifacts": {
+    "reportJson": ".danteforge/time-machine/validation/pass-18/report.json",
+    "reportJsonHash": "c0b5c12b660d3cde470a2e4a18188d146ffc618d2488faa0432ad524e021db25",
+    "reportMarkdown": ".danteforge/time-machine/validation/pass-18/report.md",
+    "reportMarkdownHash": "120d1529fc3ed28b23613529d25814edeb0e8adf393f50b8f6a3c2bc47cbd605",
+    "docsReport": "docs/TIME_MACHINE_VALIDATION_REPORT.md",
+    "docsReportHash": "883cfdd3a8acfcbf15b97802d1f20175f82b8c0b312cf044a8498e9dfa3407d1",
+    "receiptMarkdown": ".danteforge/PASS_18_TIME_MACHINE_VALIDATION_RECEIPT.md",
+    "receiptMarkdownHash": "434b339d3073eed2a34696e905e46d63a6b4a2c18f550a71191b7c2f2d6f9c09"
+  },
+  "testEvidence": {
+    "targetedSuites": [
+      "tests/time-machine.test.ts",
+      "tests/time-machine-cli.test.ts",
+      "tests/time-machine-validation.test.ts",
+      "tests/time-machine-validation-cli.test.ts"
+    ],
+    "focusedResult": "13/13 Time Machine tests passed",
+    "typecheck": "npm run typecheck passed",
+    "lint": "ESLint passed on touched Time Machine validation surfaces"
+  },
+  "truthBoundary": {
+    "substrateBuilt": true,
+    "deterministicValidationHarnessBuilt": true,
+    "delegate52LiveExecuted": false,
+    "publishableDelegate52ClaimAllowed": false,
+    "allowedClaim": "Time Machine validation harness and deterministic A/B/C/E/F/G evidence exist; DELEGATE-52 live replication is ready but not executed."
+  },
+  "proof": {
+    "schemaVersion": "evidence-chain.v1",
+    "receiptId": "bundle_7f6b1599988feb84",
+    "bundleId": "pass_18_time_machine_validation",
+    "gitSha": "542fadaca24986d8c850732984b405c7de4b98ab",
+    "createdAt": "2026-04-29T12:00:00.000Z",
+    "payloadHash": "8ac9928ae41e86ad93b5d1b2cc9e8cf467b3f935fc9e294c21d163edd77ed801",
+    "prevHash": "0000000000000000000000000000000000000000000000000000000000000000",
+    "merkleRoot": "807f6a2e290302aa7ccc1d2dc41b270ff4bb84d866fe0beccbb4653081894888",
+    "evidenceHashes": [
+      "807f6a2e290302aa7ccc1d2dc41b270ff4bb84d866fe0beccbb4653081894888"
+    ],
+    "verificationStatus": "unverified",
+    "evidence": [
+      {
+        "schemaVersion": 1,
+        "pass": 18,
+        "passName": "Time Machine validation closure harness (Pass 18)",
+        "generatedAt": "2026-04-29T12:00:00.000Z",
+        "gitSha": "542fadaca24986d8c850732984b405c7de4b98ab",
+        "validation": {
+          "schemaVersion": "danteforge.time-machine.validation.v1",
+          "runId": "tmval_pass_18_20260429",
+          "scale": "prd",
+          "delegate52Mode": "harness",
+          "status": "partial",
+          "passedClasses": [
+            "A",
+            "B",
+            "C",
+            "E"
+          ],
+          "partialClasses": [
+            "D",
+            "F",
+            "G"
+          ],
+          "failedClasses": [],
+          "claimsAllowed": [
+            "Time Machine validation harness can generate deterministic tamper, restore, causal, adversarial, performance, and constitutional evidence.",
+            "DELEGATE-52 harness/import/live paths are wired with public dataset limitations recorded."
+          ],
+          "claimsNotAllowed": [
+            "Do not claim DanteForge has published full DELEGATE-52 live replication until live or imported results are present.",
+            "Do not claim private/withheld DELEGATE-52 environments were validated from the public dataset."
+          ]
+        },
+        "classFBenchmark": {
+          "status": "partial",
+          "benchmarks": [
+            {
+              "id": "F_10000",
+              "commitCount": 10000,
+              "verifyMs": 10318,
+              "restoreMs": 5,
+              "queryMs": 3849,
+              "passedThreshold": true
+            },
+            {
+              "id": "F_100000",
+              "commitCount": 100000,
+              "verifyMs": 0,
+              "restoreMs": 0,
+              "queryMs": 0,
+              "passedThreshold": false,
+              "skipped": true,
+              "note": "Skipped unless DANTEFORGE_TIME_MACHINE_VALIDATE_MAX_COMMITS >= 100000"
+            }
+          ]
+        },
+        "artifacts": {
+          "reportJson": ".danteforge/time-machine/validation/pass-18/report.json",
+          "reportJsonHash": "c0b5c12b660d3cde470a2e4a18188d146ffc618d2488faa0432ad524e021db25",
+          "reportMarkdown": ".danteforge/time-machine/validation/pass-18/report.md",
+          "reportMarkdownHash": "120d1529fc3ed28b23613529d25814edeb0e8adf393f50b8f6a3c2bc47cbd605",
+          "docsReport": "docs/TIME_MACHINE_VALIDATION_REPORT.md",
+          "docsReportHash": "883cfdd3a8acfcbf15b97802d1f20175f82b8c0b312cf044a8498e9dfa3407d1",
+          "receiptMarkdown": ".danteforge/PASS_18_TIME_MACHINE_VALIDATION_RECEIPT.md",
+          "receiptMarkdownHash": "434b339d3073eed2a34696e905e46d63a6b4a2c18f550a71191b7c2f2d6f9c09"
+        },
+        "testEvidence": {
+          "targetedSuites": [
+            "tests/time-machine.test.ts",
+            "tests/time-machine-cli.test.ts",
+            "tests/time-machine-validation.test.ts",
+            "tests/time-machine-validation-cli.test.ts"
+          ],
+          "focusedResult": "13/13 Time Machine tests passed",
+          "typecheck": "npm run typecheck passed",
+          "lint": "ESLint passed on touched Time Machine validation surfaces"
+        },
+        "truthBoundary": {
+          "substrateBuilt": true,
+          "deterministicValidationHarnessBuilt": true,
+          "delegate52LiveExecuted": false,
+          "publishableDelegate52ClaimAllowed": false,
+          "allowedClaim": "Time Machine validation harness and deterministic A/B/C/E/F/G evidence exist; DELEGATE-52 live replication is ready but not executed."
+        }
+      }
+    ],
+    "inclusionProofs": [
+      {
+        "index": 0,
+        "leafHash": "807f6a2e290302aa7ccc1d2dc41b270ff4bb84d866fe0beccbb4653081894888",
+        "proof": []
+      }
+    ],
+    "hash": "8e50f8372279c31016dd9ac3080277d7affc2004313f4a34402c90569725fff9"
+  }
+}

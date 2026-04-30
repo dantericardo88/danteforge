@@ -157,7 +157,7 @@ The closure stamp explicitly lists work that requires founder action and cannot 
 - Approve send via human-veto when DanteAgents v1 ships, or manual approval if v1 not yet shipped
 - Verify Sean's reply handling (if any) properly captured in truth loop closure
 
-**Acceptance:** Sean Lippay outreach completed, reply captured, truth loop closed with founder-confirmed verdict.
+**Acceptance:** Sean Lippay outreach is staged for founder review; actual send, reply capture, and founder-confirmed verdict remain founder-gated until the founder fires the send/review action.
 
 **Effort:** Substrate work 0.5 days. Founder review and send separate.
 
@@ -187,12 +187,14 @@ The master-plan references were placeholders for future-product PRDs that were n
 - Verify each run produced founder-facing output and capture founder rating
 - Update truth loop runner to ensure rating capture is mandatory before run-complete state
 
+Implementation note 2026-04-30: `docs/TRUTH_LOOP_FOUNDER_CLOSURE_CANDIDATES.md` now identifies 8 representative candidates, required evidence fields, rating rubric, and explicit `founder_gated_pending` status. This closes the agent-buildable preparation step. It does not fire the founder-rating gate.
+
 **Work for founder:**
 - Review the 5-10 representative truth loop runs
 - Provide ratings 8.5+ on each (or note where lower and why)
 - Confirm the substrate is operating as designed in real use, not just in test scenarios
 
-**Acceptance:** 5-10 founder-rated truth loop runs at 8.5+ average. Substrate operationally validated, not just architecturally validated.
+**Acceptance:** Candidate set is prepared in `docs/TRUTH_LOOP_FOUNDER_CLOSURE_CANDIDATES.md`; 5-10 founder-rated truth loop runs at 8.5+ average remain the founder-gated validation needed to call the substrate operationally validated, not just architecturally validated.
 
 **Effort:** Substrate work 0.5 days. Founder review separate but high-leverage.
 
@@ -326,8 +328,8 @@ DanteForge v1.1 is complete when all of the following are GREEN:
 
 **Constitutional:**
 1. Article XIV Context Economy reconciled and proposed Article XV either ratified or formally deferred with rationale
-2. Sean Lippay outreach completed with founder rating 8.5+
-3. 5-10 truth loop runs founder-validated at 8.5+ average
+2. Sean Lippay outreach staged for founder review; actual send and founder rating remain founder-gated
+3. 5-10 truth loop runs identified for founder validation; ratings at 8.5+ average remain founder-gated
 4. PRD-24 and PRD-25 formally retired with rationale
 
 **Strategic:**

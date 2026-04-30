@@ -1,0 +1,130 @@
+{
+  "schemaVersion": 1,
+  "pass": "30-34",
+  "passName": "Verify perf v3 (10× speedup) + scoring divergence audit",
+  "generatedAt": "2026-04-30T00:45:20.252Z",
+  "gitSha": "b6d38f0b58c3eb53ce51bbd118b4cb5b24c87992",
+  "pass30": {
+    "description": "100K verify 141s → 14.6s via commitIdSet parent-existence cache + concurrency 32→64",
+    "file": "src/core/time-machine.ts",
+    "fileHash": "f88061c79f1981b1470f22209770b30804713699ef1c45e7c03f96bd89911248",
+    "additions": [
+      "VerifyCommitCache.commitIdSet (Set passed to verifyCommit; eliminates 100K existsSync calls)",
+      "VERIFY_CONCURRENCY 32 → 64"
+    ],
+    "benchmarks": {
+      "f100kVerify": 14606,
+      "f100kQuery": 9293,
+      "f100kRestore": 3,
+      "f100kPassedThreshold": true,
+      "f10kVerify": 1428,
+      "f10kQuery": 896
+    },
+    "cumulativeDelta": {
+      "pass23F100kVerifyMs": 248150,
+      "pass27F100kVerifyMs": 140927,
+      "pass30F100kVerifyMs": 14606,
+      "totalSpeedupX": 17
+    },
+    "evidenceFile": ".danteforge/evidence/pass-30-runs/f100k-v3-result.json",
+    "receiptHash": "90d307e895b3810fd917ea1d734924f2f13288f9e54ae0412b3b86ed742f3c35"
+  },
+  "pass34": {
+    "description": "Scoring divergence (maturity 95/100 vs harsh 9.3/10) audited and documented",
+    "docFile": "docs/SCORING-DIVERGENCE.md",
+    "docHash": "1ef142a945627c26292ca23fad4adfb02b058e912c3b695534e4eeab51db621b",
+    "receiptHash": "edee8711a8c61ad9038a3d656b4cf78f102b54dca185bd701f69707b919b6e55",
+    "decision": "Document divergence; both systems remain valid for their own use cases. No code change."
+  },
+  "truthBoundary": {
+    "allowedClaim": "Pass 30: 10× compounded speedup on 100K verify; threshold met with headroom. Pass 34: scoring divergence is documented and intentional.",
+    "forbiddenClaims": [
+      "Pass 30: optimization is \"complete\" (causal-index query cache still possible)",
+      "Pass 30: 1M benchmark has been executed (still GATE-3)",
+      "Pass 34: one scoring system is \"correct\" (both are; for different questions)"
+    ]
+  },
+  "verifyChain": {
+    "typecheck": "pass",
+    "tmCoreTests": "pass (7/7)",
+    "f100kThreshold": "met (10× headroom)",
+    "proofIntegrity": "CLEAN"
+  },
+  "proof": {
+    "schemaVersion": "evidence-chain.v1",
+    "receiptId": "bundle_378cdf0e87e4bdda",
+    "bundleId": "pass_30_34_combined",
+    "gitSha": "b6d38f0b58c3eb53ce51bbd118b4cb5b24c87992",
+    "createdAt": "2026-04-30T00:45:20.252Z",
+    "payloadHash": "398d49ff0799dc50773b5d067974d6cd0b046a4eebc5fb0a635f915a897b7db6",
+    "prevHash": "0000000000000000000000000000000000000000000000000000000000000000",
+    "merkleRoot": "084e48af55671c31e1280325d5fe811dbb236e39c06ac138f1d0c91869c84e04",
+    "evidenceHashes": [
+      "084e48af55671c31e1280325d5fe811dbb236e39c06ac138f1d0c91869c84e04"
+    ],
+    "verificationStatus": "unverified",
+    "evidence": [
+      {
+        "schemaVersion": 1,
+        "pass": "30-34",
+        "passName": "Verify perf v3 (10× speedup) + scoring divergence audit",
+        "generatedAt": "2026-04-30T00:45:20.252Z",
+        "gitSha": "b6d38f0b58c3eb53ce51bbd118b4cb5b24c87992",
+        "pass30": {
+          "description": "100K verify 141s → 14.6s via commitIdSet parent-existence cache + concurrency 32→64",
+          "file": "src/core/time-machine.ts",
+          "fileHash": "f88061c79f1981b1470f22209770b30804713699ef1c45e7c03f96bd89911248",
+          "additions": [
+            "VerifyCommitCache.commitIdSet (Set passed to verifyCommit; eliminates 100K existsSync calls)",
+            "VERIFY_CONCURRENCY 32 → 64"
+          ],
+          "benchmarks": {
+            "f100kVerify": 14606,
+            "f100kQuery": 9293,
+            "f100kRestore": 3,
+            "f100kPassedThreshold": true,
+            "f10kVerify": 1428,
+            "f10kQuery": 896
+          },
+          "cumulativeDelta": {
+            "pass23F100kVerifyMs": 248150,
+            "pass27F100kVerifyMs": 140927,
+            "pass30F100kVerifyMs": 14606,
+            "totalSpeedupX": 17
+          },
+          "evidenceFile": ".danteforge/evidence/pass-30-runs/f100k-v3-result.json",
+          "receiptHash": "90d307e895b3810fd917ea1d734924f2f13288f9e54ae0412b3b86ed742f3c35"
+        },
+        "pass34": {
+          "description": "Scoring divergence (maturity 95/100 vs harsh 9.3/10) audited and documented",
+          "docFile": "docs/SCORING-DIVERGENCE.md",
+          "docHash": "1ef142a945627c26292ca23fad4adfb02b058e912c3b695534e4eeab51db621b",
+          "receiptHash": "edee8711a8c61ad9038a3d656b4cf78f102b54dca185bd701f69707b919b6e55",
+          "decision": "Document divergence; both systems remain valid for their own use cases. No code change."
+        },
+        "truthBoundary": {
+          "allowedClaim": "Pass 30: 10× compounded speedup on 100K verify; threshold met with headroom. Pass 34: scoring divergence is documented and intentional.",
+          "forbiddenClaims": [
+            "Pass 30: optimization is \"complete\" (causal-index query cache still possible)",
+            "Pass 30: 1M benchmark has been executed (still GATE-3)",
+            "Pass 34: one scoring system is \"correct\" (both are; for different questions)"
+          ]
+        },
+        "verifyChain": {
+          "typecheck": "pass",
+          "tmCoreTests": "pass (7/7)",
+          "f100kThreshold": "met (10× headroom)",
+          "proofIntegrity": "CLEAN"
+        }
+      }
+    ],
+    "inclusionProofs": [
+      {
+        "index": 0,
+        "leafHash": "084e48af55671c31e1280325d5fe811dbb236e39c06ac138f1d0c91869c84e04",
+        "proof": []
+      }
+    ],
+    "hash": "6022c4e9a3df111a3f58567c250bd5e6824ba98cc92fd34e3f4c93db2ca262c0"
+  }
+}

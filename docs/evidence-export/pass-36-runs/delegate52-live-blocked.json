@@ -1,0 +1,790 @@
+{
+  "schemaVersion": "danteforge.time-machine.validation.v1",
+  "runId": "tmval_20260430120144",
+  "createdAt": "2026-04-30T12:01:44.595Z",
+  "cwd": "C:\\Projects\\DanteForge",
+  "outDir": "C:\\Projects\\DanteForge\\.danteforge\\time-machine\\validation\\pass-36-live-blocked",
+  "scale": "smoke",
+  "delegate52Mode": "live",
+  "status": "partial",
+  "summary": {
+    "selectedClasses": [
+      "D"
+    ],
+    "passedClasses": [],
+    "partialClasses": [
+      "D"
+    ],
+    "failedClasses": [],
+    "claimsAllowed": [
+      "Time Machine validation harness can generate deterministic tamper, restore, causal, adversarial, performance, and constitutional evidence.",
+      "DELEGATE-52 harness/import/live paths are wired with public dataset limitations recorded."
+    ],
+    "claimsNotAllowed": [
+      "Do not claim DanteForge has published full DELEGATE-52 live replication until live or imported results are present.",
+      "Do not claim private/withheld DELEGATE-52 environments were validated from the public dataset."
+    ]
+  },
+  "classes": {
+    "D": {
+      "status": "live_not_enabled",
+      "publicReleasedDomains": 48,
+      "publicReleasedRows": 234,
+      "withheldEnvironments": 76,
+      "liveBlockers": [
+        "blocked_by_missing_live_confirmation",
+        "blocked_by_missing_credentials",
+        "blocked_by_missing_model"
+      ],
+      "domainRows": [
+        {
+          "domain": "public-domain-1",
+          "mode": "live",
+          "status": "live_not_enabled_explicit_budget_required",
+          "corruptionRecovered": false,
+          "causalSourceIdentified": false
+        },
+        {
+          "domain": "public-domain-2",
+          "mode": "live",
+          "status": "live_not_enabled_explicit_budget_required",
+          "corruptionRecovered": false,
+          "causalSourceIdentified": false
+        },
+        {
+          "domain": "public-domain-3",
+          "mode": "live",
+          "status": "live_not_enabled_explicit_budget_required",
+          "corruptionRecovered": false,
+          "causalSourceIdentified": false
+        },
+        {
+          "domain": "public-domain-4",
+          "mode": "live",
+          "status": "live_not_enabled_explicit_budget_required",
+          "corruptionRecovered": false,
+          "causalSourceIdentified": false
+        },
+        {
+          "domain": "public-domain-5",
+          "mode": "live",
+          "status": "live_not_enabled_explicit_budget_required",
+          "corruptionRecovered": false,
+          "causalSourceIdentified": false
+        },
+        {
+          "domain": "public-domain-6",
+          "mode": "live",
+          "status": "live_not_enabled_explicit_budget_required",
+          "corruptionRecovered": false,
+          "causalSourceIdentified": false
+        },
+        {
+          "domain": "public-domain-7",
+          "mode": "live",
+          "status": "live_not_enabled_explicit_budget_required",
+          "corruptionRecovered": false,
+          "causalSourceIdentified": false
+        },
+        {
+          "domain": "public-domain-8",
+          "mode": "live",
+          "status": "live_not_enabled_explicit_budget_required",
+          "corruptionRecovered": false,
+          "causalSourceIdentified": false
+        },
+        {
+          "domain": "public-domain-9",
+          "mode": "live",
+          "status": "live_not_enabled_explicit_budget_required",
+          "corruptionRecovered": false,
+          "causalSourceIdentified": false
+        },
+        {
+          "domain": "public-domain-10",
+          "mode": "live",
+          "status": "live_not_enabled_explicit_budget_required",
+          "corruptionRecovered": false,
+          "causalSourceIdentified": false
+        },
+        {
+          "domain": "public-domain-11",
+          "mode": "live",
+          "status": "live_not_enabled_explicit_budget_required",
+          "corruptionRecovered": false,
+          "causalSourceIdentified": false
+        },
+        {
+          "domain": "public-domain-12",
+          "mode": "live",
+          "status": "live_not_enabled_explicit_budget_required",
+          "corruptionRecovered": false,
+          "causalSourceIdentified": false
+        },
+        {
+          "domain": "public-domain-13",
+          "mode": "live",
+          "status": "live_not_enabled_explicit_budget_required",
+          "corruptionRecovered": false,
+          "causalSourceIdentified": false
+        },
+        {
+          "domain": "public-domain-14",
+          "mode": "live",
+          "status": "live_not_enabled_explicit_budget_required",
+          "corruptionRecovered": false,
+          "causalSourceIdentified": false
+        },
+        {
+          "domain": "public-domain-15",
+          "mode": "live",
+          "status": "live_not_enabled_explicit_budget_required",
+          "corruptionRecovered": false,
+          "causalSourceIdentified": false
+        },
+        {
+          "domain": "public-domain-16",
+          "mode": "live",
+          "status": "live_not_enabled_explicit_budget_required",
+          "corruptionRecovered": false,
+          "causalSourceIdentified": false
+        },
+        {
+          "domain": "public-domain-17",
+          "mode": "live",
+          "status": "live_not_enabled_explicit_budget_required",
+          "corruptionRecovered": false,
+          "causalSourceIdentified": false
+        },
+        {
+          "domain": "public-domain-18",
+          "mode": "live",
+          "status": "live_not_enabled_explicit_budget_required",
+          "corruptionRecovered": false,
+          "causalSourceIdentified": false
+        },
+        {
+          "domain": "public-domain-19",
+          "mode": "live",
+          "status": "live_not_enabled_explicit_budget_required",
+          "corruptionRecovered": false,
+          "causalSourceIdentified": false
+        },
+        {
+          "domain": "public-domain-20",
+          "mode": "live",
+          "status": "live_not_enabled_explicit_budget_required",
+          "corruptionRecovered": false,
+          "causalSourceIdentified": false
+        },
+        {
+          "domain": "public-domain-21",
+          "mode": "live",
+          "status": "live_not_enabled_explicit_budget_required",
+          "corruptionRecovered": false,
+          "causalSourceIdentified": false
+        },
+        {
+          "domain": "public-domain-22",
+          "mode": "live",
+          "status": "live_not_enabled_explicit_budget_required",
+          "corruptionRecovered": false,
+          "causalSourceIdentified": false
+        },
+        {
+          "domain": "public-domain-23",
+          "mode": "live",
+          "status": "live_not_enabled_explicit_budget_required",
+          "corruptionRecovered": false,
+          "causalSourceIdentified": false
+        },
+        {
+          "domain": "public-domain-24",
+          "mode": "live",
+          "status": "live_not_enabled_explicit_budget_required",
+          "corruptionRecovered": false,
+          "causalSourceIdentified": false
+        },
+        {
+          "domain": "public-domain-25",
+          "mode": "live",
+          "status": "live_not_enabled_explicit_budget_required",
+          "corruptionRecovered": false,
+          "causalSourceIdentified": false
+        },
+        {
+          "domain": "public-domain-26",
+          "mode": "live",
+          "status": "live_not_enabled_explicit_budget_required",
+          "corruptionRecovered": false,
+          "causalSourceIdentified": false
+        },
+        {
+          "domain": "public-domain-27",
+          "mode": "live",
+          "status": "live_not_enabled_explicit_budget_required",
+          "corruptionRecovered": false,
+          "causalSourceIdentified": false
+        },
+        {
+          "domain": "public-domain-28",
+          "mode": "live",
+          "status": "live_not_enabled_explicit_budget_required",
+          "corruptionRecovered": false,
+          "causalSourceIdentified": false
+        },
+        {
+          "domain": "public-domain-29",
+          "mode": "live",
+          "status": "live_not_enabled_explicit_budget_required",
+          "corruptionRecovered": false,
+          "causalSourceIdentified": false
+        },
+        {
+          "domain": "public-domain-30",
+          "mode": "live",
+          "status": "live_not_enabled_explicit_budget_required",
+          "corruptionRecovered": false,
+          "causalSourceIdentified": false
+        },
+        {
+          "domain": "public-domain-31",
+          "mode": "live",
+          "status": "live_not_enabled_explicit_budget_required",
+          "corruptionRecovered": false,
+          "causalSourceIdentified": false
+        },
+        {
+          "domain": "public-domain-32",
+          "mode": "live",
+          "status": "live_not_enabled_explicit_budget_required",
+          "corruptionRecovered": false,
+          "causalSourceIdentified": false
+        },
+        {
+          "domain": "public-domain-33",
+          "mode": "live",
+          "status": "live_not_enabled_explicit_budget_required",
+          "corruptionRecovered": false,
+          "causalSourceIdentified": false
+        },
+        {
+          "domain": "public-domain-34",
+          "mode": "live",
+          "status": "live_not_enabled_explicit_budget_required",
+          "corruptionRecovered": false,
+          "causalSourceIdentified": false
+        },
+        {
+          "domain": "public-domain-35",
+          "mode": "live",
+          "status": "live_not_enabled_explicit_budget_required",
+          "corruptionRecovered": false,
+          "causalSourceIdentified": false
+        },
+        {
+          "domain": "public-domain-36",
+          "mode": "live",
+          "status": "live_not_enabled_explicit_budget_required",
+          "corruptionRecovered": false,
+          "causalSourceIdentified": false
+        },
+        {
+          "domain": "public-domain-37",
+          "mode": "live",
+          "status": "live_not_enabled_explicit_budget_required",
+          "corruptionRecovered": false,
+          "causalSourceIdentified": false
+        },
+        {
+          "domain": "public-domain-38",
+          "mode": "live",
+          "status": "live_not_enabled_explicit_budget_required",
+          "corruptionRecovered": false,
+          "causalSourceIdentified": false
+        },
+        {
+          "domain": "public-domain-39",
+          "mode": "live",
+          "status": "live_not_enabled_explicit_budget_required",
+          "corruptionRecovered": false,
+          "causalSourceIdentified": false
+        },
+        {
+          "domain": "public-domain-40",
+          "mode": "live",
+          "status": "live_not_enabled_explicit_budget_required",
+          "corruptionRecovered": false,
+          "causalSourceIdentified": false
+        },
+        {
+          "domain": "public-domain-41",
+          "mode": "live",
+          "status": "live_not_enabled_explicit_budget_required",
+          "corruptionRecovered": false,
+          "causalSourceIdentified": false
+        },
+        {
+          "domain": "public-domain-42",
+          "mode": "live",
+          "status": "live_not_enabled_explicit_budget_required",
+          "corruptionRecovered": false,
+          "causalSourceIdentified": false
+        },
+        {
+          "domain": "public-domain-43",
+          "mode": "live",
+          "status": "live_not_enabled_explicit_budget_required",
+          "corruptionRecovered": false,
+          "causalSourceIdentified": false
+        },
+        {
+          "domain": "public-domain-44",
+          "mode": "live",
+          "status": "live_not_enabled_explicit_budget_required",
+          "corruptionRecovered": false,
+          "causalSourceIdentified": false
+        },
+        {
+          "domain": "public-domain-45",
+          "mode": "live",
+          "status": "live_not_enabled_explicit_budget_required",
+          "corruptionRecovered": false,
+          "causalSourceIdentified": false
+        },
+        {
+          "domain": "public-domain-46",
+          "mode": "live",
+          "status": "live_not_enabled_explicit_budget_required",
+          "corruptionRecovered": false,
+          "causalSourceIdentified": false
+        },
+        {
+          "domain": "public-domain-47",
+          "mode": "live",
+          "status": "live_not_enabled_explicit_budget_required",
+          "corruptionRecovered": false,
+          "causalSourceIdentified": false
+        },
+        {
+          "domain": "public-domain-48",
+          "mode": "live",
+          "status": "live_not_enabled_explicit_budget_required",
+          "corruptionRecovered": false,
+          "causalSourceIdentified": false
+        }
+      ],
+      "limitations": [
+        "Public DELEGATE-52 release has 48 domains and 234 rows; 76 environments are withheld for license reasons.",
+        "Live mode is opt-in and must record provider, model, budget, and final comparison artifacts. Blockers: blocked_by_missing_live_confirmation, blocked_by_missing_credentials, blocked_by_missing_model."
+      ]
+    }
+  },
+  "proof": {
+    "schemaVersion": "evidence-chain.v1",
+    "receiptId": "bundle_9d5ad02e6770c426",
+    "bundleId": "time_machine_validation_tmval_20260430120144",
+    "gitSha": null,
+    "createdAt": "2026-04-30T12:01:44.595Z",
+    "payloadHash": "76fa120ae3926be8a4f6a513b3bf5ae82ae1f6d5bbc55f2abe8648bda745bc71",
+    "prevHash": "0000000000000000000000000000000000000000000000000000000000000000",
+    "merkleRoot": "5025c346aceb54163d679dfe5bfe50180c74090ce709157a9fdf1654824790f7",
+    "evidenceHashes": [
+      "5025c346aceb54163d679dfe5bfe50180c74090ce709157a9fdf1654824790f7"
+    ],
+    "verificationStatus": "unverified",
+    "evidence": [
+      {
+        "schemaVersion": "danteforge.time-machine.validation.v1",
+        "runId": "tmval_20260430120144",
+        "createdAt": "2026-04-30T12:01:44.595Z",
+        "cwd": "C:\\Projects\\DanteForge",
+        "outDir": "C:\\Projects\\DanteForge\\.danteforge\\time-machine\\validation\\pass-36-live-blocked",
+        "scale": "smoke",
+        "delegate52Mode": "live",
+        "status": "partial",
+        "summary": {
+          "selectedClasses": [
+            "D"
+          ],
+          "passedClasses": [],
+          "partialClasses": [
+            "D"
+          ],
+          "failedClasses": [],
+          "claimsAllowed": [
+            "Time Machine validation harness can generate deterministic tamper, restore, causal, adversarial, performance, and constitutional evidence.",
+            "DELEGATE-52 harness/import/live paths are wired with public dataset limitations recorded."
+          ],
+          "claimsNotAllowed": [
+            "Do not claim DanteForge has published full DELEGATE-52 live replication until live or imported results are present.",
+            "Do not claim private/withheld DELEGATE-52 environments were validated from the public dataset."
+          ]
+        },
+        "classes": {
+          "D": {
+            "status": "live_not_enabled",
+            "publicReleasedDomains": 48,
+            "publicReleasedRows": 234,
+            "withheldEnvironments": 76,
+            "liveBlockers": [
+              "blocked_by_missing_live_confirmation",
+              "blocked_by_missing_credentials",
+              "blocked_by_missing_model"
+            ],
+            "domainRows": [
+              {
+                "domain": "public-domain-1",
+                "mode": "live",
+                "status": "live_not_enabled_explicit_budget_required",
+                "corruptionRecovered": false,
+                "causalSourceIdentified": false
+              },
+              {
+                "domain": "public-domain-2",
+                "mode": "live",
+                "status": "live_not_enabled_explicit_budget_required",
+                "corruptionRecovered": false,
+                "causalSourceIdentified": false
+              },
+              {
+                "domain": "public-domain-3",
+                "mode": "live",
+                "status": "live_not_enabled_explicit_budget_required",
+                "corruptionRecovered": false,
+                "causalSourceIdentified": false
+              },
+              {
+                "domain": "public-domain-4",
+                "mode": "live",
+                "status": "live_not_enabled_explicit_budget_required",
+                "corruptionRecovered": false,
+                "causalSourceIdentified": false
+              },
+              {
+                "domain": "public-domain-5",
+                "mode": "live",
+                "status": "live_not_enabled_explicit_budget_required",
+                "corruptionRecovered": false,
+                "causalSourceIdentified": false
+              },
+              {
+                "domain": "public-domain-6",
+                "mode": "live",
+                "status": "live_not_enabled_explicit_budget_required",
+                "corruptionRecovered": false,
+                "causalSourceIdentified": false
+              },
+              {
+                "domain": "public-domain-7",
+                "mode": "live",
+                "status": "live_not_enabled_explicit_budget_required",
+                "corruptionRecovered": false,
+                "causalSourceIdentified": false
+              },
+              {
+                "domain": "public-domain-8",
+                "mode": "live",
+                "status": "live_not_enabled_explicit_budget_required",
+                "corruptionRecovered": false,
+                "causalSourceIdentified": false
+              },
+              {
+                "domain": "public-domain-9",
+                "mode": "live",
+                "status": "live_not_enabled_explicit_budget_required",
+                "corruptionRecovered": false,
+                "causalSourceIdentified": false
+              },
+              {
+                "domain": "public-domain-10",
+                "mode": "live",
+                "status": "live_not_enabled_explicit_budget_required",
+                "corruptionRecovered": false,
+                "causalSourceIdentified": false
+              },
+              {
+                "domain": "public-domain-11",
+                "mode": "live",
+                "status": "live_not_enabled_explicit_budget_required",
+                "corruptionRecovered": false,
+                "causalSourceIdentified": false
+              },
+              {
+                "domain": "public-domain-12",
+                "mode": "live",
+                "status": "live_not_enabled_explicit_budget_required",
+                "corruptionRecovered": false,
+                "causalSourceIdentified": false
+              },
+              {
+                "domain": "public-domain-13",
+                "mode": "live",
+                "status": "live_not_enabled_explicit_budget_required",
+                "corruptionRecovered": false,
+                "causalSourceIdentified": false
+              },
+              {
+                "domain": "public-domain-14",
+                "mode": "live",
+                "status": "live_not_enabled_explicit_budget_required",
+                "corruptionRecovered": false,
+                "causalSourceIdentified": false
+              },
+              {
+                "domain": "public-domain-15",
+                "mode": "live",
+                "status": "live_not_enabled_explicit_budget_required",
+                "corruptionRecovered": false,
+                "causalSourceIdentified": false
+              },
+              {
+                "domain": "public-domain-16",
+                "mode": "live",
+                "status": "live_not_enabled_explicit_budget_required",
+                "corruptionRecovered": false,
+                "causalSourceIdentified": false
+              },
+              {
+                "domain": "public-domain-17",
+                "mode": "live",
+                "status": "live_not_enabled_explicit_budget_required",
+                "corruptionRecovered": false,
+                "causalSourceIdentified": false
+              },
+              {
+                "domain": "public-domain-18",
+                "mode": "live",
+                "status": "live_not_enabled_explicit_budget_required",
+                "corruptionRecovered": false,
+                "causalSourceIdentified": false
+              },
+              {
+                "domain": "public-domain-19",
+                "mode": "live",
+                "status": "live_not_enabled_explicit_budget_required",
+                "corruptionRecovered": false,
+                "causalSourceIdentified": false
+              },
+              {
+                "domain": "public-domain-20",
+                "mode": "live",
+                "status": "live_not_enabled_explicit_budget_required",
+                "corruptionRecovered": false,
+                "causalSourceIdentified": false
+              },
+              {
+                "domain": "public-domain-21",
+                "mode": "live",
+                "status": "live_not_enabled_explicit_budget_required",
+                "corruptionRecovered": false,
+                "causalSourceIdentified": false
+              },
+              {
+                "domain": "public-domain-22",
+                "mode": "live",
+                "status": "live_not_enabled_explicit_budget_required",
+                "corruptionRecovered": false,
+                "causalSourceIdentified": false
+              },
+              {
+                "domain": "public-domain-23",
+                "mode": "live",
+                "status": "live_not_enabled_explicit_budget_required",
+                "corruptionRecovered": false,
+                "causalSourceIdentified": false
+              },
+              {
+                "domain": "public-domain-24",
+                "mode": "live",
+                "status": "live_not_enabled_explicit_budget_required",
+                "corruptionRecovered": false,
+                "causalSourceIdentified": false
+              },
+              {
+                "domain": "public-domain-25",
+                "mode": "live",
+                "status": "live_not_enabled_explicit_budget_required",
+                "corruptionRecovered": false,
+                "causalSourceIdentified": false
+              },
+              {
+                "domain": "public-domain-26",
+                "mode": "live",
+                "status": "live_not_enabled_explicit_budget_required",
+                "corruptionRecovered": false,
+                "causalSourceIdentified": false
+              },
+              {
+                "domain": "public-domain-27",
+                "mode": "live",
+                "status": "live_not_enabled_explicit_budget_required",
+                "corruptionRecovered": false,
+                "causalSourceIdentified": false
+              },
+              {
+                "domain": "public-domain-28",
+                "mode": "live",
+                "status": "live_not_enabled_explicit_budget_required",
+                "corruptionRecovered": false,
+                "causalSourceIdentified": false
+              },
+              {
+                "domain": "public-domain-29",
+                "mode": "live",
+                "status": "live_not_enabled_explicit_budget_required",
+                "corruptionRecovered": false,
+                "causalSourceIdentified": false
+              },
+              {
+                "domain": "public-domain-30",
+                "mode": "live",
+                "status": "live_not_enabled_explicit_budget_required",
+                "corruptionRecovered": false,
+                "causalSourceIdentified": false
+              },
+              {
+                "domain": "public-domain-31",
+                "mode": "live",
+                "status": "live_not_enabled_explicit_budget_required",
+                "corruptionRecovered": false,
+                "causalSourceIdentified": false
+              },
+              {
+                "domain": "public-domain-32",
+                "mode": "live",
+                "status": "live_not_enabled_explicit_budget_required",
+                "corruptionRecovered": false,
+                "causalSourceIdentified": false
+              },
+              {
+                "domain": "public-domain-33",
+                "mode": "live",
+                "status": "live_not_enabled_explicit_budget_required",
+                "corruptionRecovered": false,
+                "causalSourceIdentified": false
+              },
+              {
+                "domain": "public-domain-34",
+                "mode": "live",
+                "status": "live_not_enabled_explicit_budget_required",
+                "corruptionRecovered": false,
+                "causalSourceIdentified": false
+              },
+              {
+                "domain": "public-domain-35",
+                "mode": "live",
+                "status": "live_not_enabled_explicit_budget_required",
+                "corruptionRecovered": false,
+                "causalSourceIdentified": false
+              },
+              {
+                "domain": "public-domain-36",
+                "mode": "live",
+                "status": "live_not_enabled_explicit_budget_required",
+                "corruptionRecovered": false,
+                "causalSourceIdentified": false
+              },
+              {
+                "domain": "public-domain-37",
+                "mode": "live",
+                "status": "live_not_enabled_explicit_budget_required",
+                "corruptionRecovered": false,
+                "causalSourceIdentified": false
+              },
+              {
+                "domain": "public-domain-38",
+                "mode": "live",
+                "status": "live_not_enabled_explicit_budget_required",
+                "corruptionRecovered": false,
+                "causalSourceIdentified": false
+              },
+              {
+                "domain": "public-domain-39",
+                "mode": "live",
+                "status": "live_not_enabled_explicit_budget_required",
+                "corruptionRecovered": false,
+                "causalSourceIdentified": false
+              },
+              {
+                "domain": "public-domain-40",
+                "mode": "live",
+                "status": "live_not_enabled_explicit_budget_required",
+                "corruptionRecovered": false,
+                "causalSourceIdentified": false
+              },
+              {
+                "domain": "public-domain-41",
+                "mode": "live",
+                "status": "live_not_enabled_explicit_budget_required",
+                "corruptionRecovered": false,
+                "causalSourceIdentified": false
+              },
+              {
+                "domain": "public-domain-42",
+                "mode": "live",
+                "status": "live_not_enabled_explicit_budget_required",
+                "corruptionRecovered": false,
+                "causalSourceIdentified": false
+              },
+              {
+                "domain": "public-domain-43",
+                "mode": "live",
+                "status": "live_not_enabled_explicit_budget_required",
+                "corruptionRecovered": false,
+                "causalSourceIdentified": false
+              },
+              {
+                "domain": "public-domain-44",
+                "mode": "live",
+                "status": "live_not_enabled_explicit_budget_required",
+                "corruptionRecovered": false,
+                "causalSourceIdentified": false
+              },
+              {
+                "domain": "public-domain-45",
+                "mode": "live",
+                "status": "live_not_enabled_explicit_budget_required",
+                "corruptionRecovered": false,
+                "causalSourceIdentified": false
+              },
+              {
+                "domain": "public-domain-46",
+                "mode": "live",
+                "status": "live_not_enabled_explicit_budget_required",
+                "corruptionRecovered": false,
+                "causalSourceIdentified": false
+              },
+              {
+                "domain": "public-domain-47",
+                "mode": "live",
+                "status": "live_not_enabled_explicit_budget_required",
+                "corruptionRecovered": false,
+                "causalSourceIdentified": false
+              },
+              {
+                "domain": "public-domain-48",
+                "mode": "live",
+                "status": "live_not_enabled_explicit_budget_required",
+                "corruptionRecovered": false,
+                "causalSourceIdentified": false
+              }
+            ],
+            "limitations": [
+              "Public DELEGATE-52 release has 48 domains and 234 rows; 76 environments are withheld for license reasons.",
+              "Live mode is opt-in and must record provider, model, budget, and final comparison artifacts. Blockers: blocked_by_missing_live_confirmation, blocked_by_missing_credentials, blocked_by_missing_model."
+            ]
+          }
+        }
+      }
+    ],
+    "inclusionProofs": [
+      {
+        "index": 0,
+        "leafHash": "5025c346aceb54163d679dfe5bfe50180c74090ce709157a9fdf1654824790f7",
+        "proof": []
+      }
+    ],
+    "hash": "b3b2c134aebe11c1874d67be4e48bd40fe333af92cf0419b75c53bf3a95ffbdc"
+  }
+}

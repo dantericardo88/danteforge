@@ -31,6 +31,8 @@ export interface TimeMachineCommandOptions {
   roundTripsPerDomain?: number;
   mitigateDivergence?: boolean;
   retriesOnDivergence?: number;
+  /** Pass 40: 'substrate-restore-retry' (default), 'prompt-only-retry', 'no-mitigation'. */
+  mitigationStrategy?: 'substrate-restore-retry' | 'prompt-only-retry' | 'no-mitigation';
   toWorkingTree?: boolean;
   confirm?: boolean;
   json?: boolean;
@@ -95,10 +97,11 @@ export async function timeMachine(options: TimeMachineCommandOptions): Promise<v
       budgetUsd: options.budgetUsd,
       maxDomains: options.maxDomains,
       roundTripsPerDomain: options.roundTripsPerDomain,
-      mitigation: options.mitigateDivergence || options.retriesOnDivergence !== undefined
+      mitigation: options.mitigateDivergence || options.retriesOnDivergence !== undefined || options.mitigationStrategy !== undefined
         ? {
             restoreOnDivergence: options.mitigateDivergence === true,
             retriesOnDivergence: options.retriesOnDivergence,
+            strategy: options.mitigationStrategy,
           }
         : undefined,
       now: options._now,

@@ -9,7 +9,7 @@
 
 ## Abstract
 
-Laban et al. (Microsoft Research, 2026) demonstrated that current large language models corrupt 25% of structured documents when delegated multi-turn editing tasks across the DELEGATE-52 benchmark. We present DanteForge, a cryptographic substrate that wraps LLM document edits in a Merkle-anchored commit chain with full reversibility and causal-source identification. We replicate the DELEGATE-52 methodology on the 48 public-release domains using DanteForge's Time Machine v0.1 substrate, and we report results across seven validation classes (A–G) that together establish: (A) tamper-evidence is byte-perfect at 1000 commits; (B) reversibility is 100% byte-identical at 1000 commits; (C) causal-source identification is gap-free across 100 decisions; (D) the harness is import-validated against the public dataset and structurally guaranteed to deliver D2 byte-identical restore; (E) adversarial scenarios are fully detected; (F) substrate scales tested to 100K commits with 1M behind a documented founder gate; (G) the substrate composes end-to-end with constitutional gates and conversational ledgers at 100% recall completeness. Live LLM round-trip data (DELEGATE-52 D1 cost-of-Time-Machine, D3 corruption-rate-with-substrate-active) requires a budget-authorized run and is reported as `[FOUNDER-GATED]` placeholders in §5 of this draft. The full reproducibility appendix gives the exact CLI commands and version hashes.
+Laban et al. (Microsoft Research, 2026) demonstrated that current large language models corrupt 25% of structured documents when delegated multi-turn editing tasks across the DELEGATE-52 benchmark. We present DanteForge, a cryptographic substrate that wraps LLM document edits in a Merkle-anchored commit chain with full reversibility and causal-source identification. We replicate the DELEGATE-52 methodology on the 48 public-release domains using DanteForge's Time Machine v0.1 substrate, and we report results across seven validation classes (A–G) that together establish: (A) tamper-evidence is byte-perfect at 1000 commits; (B) reversibility is 100% byte-identical at 1000 commits; (C) causal-source identification is gap-free across 100 decisions; (D) the harness is import-validated against the public dataset and structurally guaranteed to deliver D2 byte-identical restore; (E) adversarial scenarios are fully detected; (F) substrate scale is verified at 10K and 100K commits, while the Pass 36 1M attempt timed out after 137,218 commits at the 30-minute cap; (G) the substrate composes end-to-end with constitutional gates and conversational ledgers at 100% recall completeness. Live LLM round-trip data (DELEGATE-52 D1 cost-of-Time-Machine, D3 corruption-rate-with-substrate-active) requires a budget-authorized run and is reported as `[FOUNDER-GATED]` placeholders in §5 of this draft. The full reproducibility appendix gives the exact CLI commands and version hashes.
 
 ## 1. Background: DELEGATE-52 and the document-corruption finding
 
@@ -62,7 +62,7 @@ We followed the seven-class validation matrix specified in [docs/PRD-TIME-MACHIN
 | C | Causal completeness | 7/7 causal queries return the right commits, 0 completeness gaps over 100 decisions |
 | D | DELEGATE-52 replication | D1 cost ≤ 30% of edit cost, D2 52/52 byte-identical restore, D3 ≥ 90% causal-source identification rate |
 | E | Adversarial scenarios | 5/5 hostile-input scenarios detected |
-| F | Scale | 10K + 100K commit thresholds verified; 1M behind founder gate |
+| F | Scale | 10K + 100K commit thresholds verified; Pass 36 1M attempt recorded as timeout at 137,218 commits / 30.48 min |
 | G | Constitutional integration | 4/4 sub-checks: G1 outreach substrate, G2 Dojo bookkeeping, G3 gates compose with TM, G4 truth-loop causal recall |
 
 For each class, validation runs in two modes: a fast logical-mode shortcut (used in CI) and a real-fs mode (used for publication numbers). The publication numbers throughout §5 are real-fs; logical-mode is used only as a fast corroborating signal.
@@ -165,7 +165,7 @@ Real-fs benchmark numbers from the Pass 30 optimization run (env-var override `D
 |---|---|---|---|---|
 | 10K commits | **1,428** | 5 | 896 | **yes** |
 | 100K commits | **14,606 (14.6 s)** | **3** | **9,293 (9.3 s)** | **yes (Pass 30)** |
-| 1M commits | (not executed; gated GATE-3) | — | — | — |
+| 1M commits | **timeout at 30.48 min** | — | — | no; 137,218/1,000,000 commits created |
 
 **Pass 23 baseline → Pass 27 → Pass 30 (compounded optimization on the same 100K real-fs benchmark):**
 
@@ -182,14 +182,14 @@ Pass 27 added: blob-hash verification cache + bounded parallelism (32-way) + par
 
 Source (Pass 30 numbers): local proof manifest `.danteforge/evidence/pass-30-runs/f100k-v3-result.json`.
 
-The 1M run remains behind founder env-var override:
+Pass 36 executed the compute-only 1M command with the env-var override:
 
 ```bash
 DANTEFORGE_TIME_MACHINE_VALIDATE_MAX_COMMITS=1000000 \
   forge time-machine validate --class F --scale benchmark --json
 ```
 
-Estimated compute: 15-60 min wall-time. Estimated disk: ~5GB. Founder authorization required.
+Result: timed out at the 30-minute closure cap after 137,218 synthetic commits, before final Class F JSON was emitted. The recorded artifact is `.danteforge/evidence/pass-36-runs/f1m-timeout.json`, proof-anchored by `.danteforge/evidence/pass-36-hybrid-compute-closure.json`. This means the 1M claim is not validated; the next step is algorithmic optimization or an explicitly longer compute window.
 
 ### 5.7 Class G — Constitutional integration
 
@@ -211,7 +211,7 @@ G2's `out_of_scope_dojo_paused` is the one honest gap in Class G — Dojo bookke
 | C | 7/7 queries + 0 gaps | ✓ MET |
 | D | D1 ≤ 30%, D2 52/52, D3 ≥ 90%, D4 < 5% | HARNESS + IMPORT MET; live awaits GATE-1 |
 | E | 5/5 detected | ✓ MET |
-| F | 10K + 100K thresholds met (Pass 27 optimization); 1M gated GATE-3 | ✓ MET; 1M gated |
+| F | 10K + 100K thresholds met; Pass 36 1M attempt recorded | ✓ MET at 10K/100K; 1M unresolved after timeout |
 | G | 4/4 integrations | 3/4 PASSED + 1 OUT-OF-SCOPE — substantively MET |
 
 ## 6. Implications
@@ -234,7 +234,7 @@ The architectural contribution is reusable: any LLM-driven document workflow can
 
 4. **G2 Dojo integration is out-of-scope.** This is not a flaw of the substrate; it's a deliberate scope choice for v1. We document it as out-of-scope rather than as a stub-pass.
 
-5. **F 100K threshold now met after Pass 27 optimization.** The 100K benchmark was executed under env-var override during Pass 23 (verify 248 s, query 61 s, did not meet threshold). Pass 27 added blob-hash verification cache + bounded parallelism + parallel commit loading; the same benchmark now runs verify 141 s, query 7.3 s, restore 4 ms — all under default thresholds. The 1M run remains gated behind GATE-3.
+5. **F 100K threshold now met; 1M remains unresolved.** The 100K benchmark was executed under env-var override during Pass 23 (verify 248 s, query 61 s, did not meet threshold). Pass 27 added blob-hash verification cache + bounded parallelism + parallel commit loading; the same benchmark now runs verify 141 s, query 7.3 s, restore 4 ms — all under default thresholds. Pass 36 attempted the 1M benchmark and timed out at 30.48 minutes after creating 137,218 commits, so no 1M pass is claimed.
 
 6. **Verifier-determinism vs FP-rate.** §5.1's "0 disagreements across 100 verifications" measures verifier determinism on a single 1000-commit chain. Pass 27 adds a 50-chain fresh-construction sample with 0 false positives across independent 100-commit chains. A stronger 100-chain statistical sample remains future work.
 
@@ -247,7 +247,7 @@ The architectural contribution is reusable: any LLM-driven document workflow can
 ## 8. Future work
 
 - **Live DELEGATE-52 run** (GATE-1 founder action) — populates D1 / D3 / D4 numbers
-- **F 1M scale benchmark** (GATE-3 founder action) — confirms scale assumption empirically
+- **F 1M scale optimization/re-run** — Pass 36 timed out at 137,218 commits; future work must either optimize the generator/verifier or approve a longer compute window
 - **Withheld-environments coverage** — requires Microsoft Research collaboration to access the 76 enterprise environments
 - **Other multi-turn editing benchmarks** — the substrate should generalize; testing it against alternative benchmarks is open
 - **Cost-of-substrate optimization** — D1 measurement may identify hot paths in `createTimeMachineCommit` that can be further optimized
@@ -286,9 +286,10 @@ All numbers in §5 are derived from local proof-anchored manifests under `.dante
 - The live executor is built and dry-run-validated.
 - Class G's substrate composability is end-to-end validated against synthetic scenarios.
 - The substrate-only properties (tamper-evidence, reversibility, causal completeness) are measured and reported with reproducible artifacts.
+- The 1M Class F benchmark was attempted in Pass 36 and timed out at 137,218 commits / 30.48 minutes.
 
 **Forbidden claims (this draft):**
 - DanteForge has executed live LLM round-trips against DELEGATE-52 (this requires GATE-1).
 - The Sean Lippay outreach has been sent (this is GATE-6).
-- The 1M-commit benchmark has been executed (this requires GATE-3).
+- The 1M-commit benchmark passed. It was attempted and timed out; no 1M pass is claimed.
 - The 76 withheld DELEGATE-52 environments have been validated (license).

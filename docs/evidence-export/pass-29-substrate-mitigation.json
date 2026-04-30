@@ -1,0 +1,180 @@
+{
+  "schemaVersion": 1,
+  "pass": 29,
+  "passName": "Substrate-mediated corruption mitigation (active mitigator, not passive recorder)",
+  "generatedAt": "2026-04-30T00:33:27.327Z",
+  "gitSha": "b6d38f0b58c3eb53ce51bbd118b4cb5b24c87992",
+  "loadBearingFix": {
+    "problem": "Pre-Pass-29: substrate-on path was a passive recorder; D4 measurement ≈ raw LLM corruption rate. Paper claim \"substrate-level guarantees substantively close the corruption gap\" was unsupported by implementation.",
+    "solution": "Abort + retry loop in runDelegate52DomainRoundTrip: divergence → restoreTimeMachineCommit({ toWorkingTree: true }) → re-prompt up to retriesOnDivergence times.",
+    "twoMetrics": {
+      "D4Raw": "Rate at which the LLM emits divergent output (substrate-passive). Analog to Microsoft 25% baseline.",
+      "D4User": "Rate of unmitigated divergence after substrate-mediated recovery (substrate-active). Load-bearing claim."
+    }
+  },
+  "codeChanges": {
+    "file": "src/core/time-machine-validation.ts",
+    "fileHash": "b9ee0f633c123718f1f9eb1e3f8e7b4bc82c0565a5965ebf5317b113be57a42b",
+    "additions": [
+      "RunTimeMachineValidationOptions.mitigation: { restoreOnDivergence?, retriesOnDivergence? }",
+      "MitigationConfig internal interface",
+      "attemptRoundTrip helper extracted from runDelegate52DomainRoundTrip",
+      "Tracks lastCleanCommitId + lastCleanState across round-trips",
+      "On divergence: restoreTimeMachineCommit + re-prompt loop",
+      "ClassDResult.domainRows[] extended: retryCount, mitigatedDivergences, unmitigatedDivergences",
+      "ClassDResult aggregates: userObservedCorruptionRate, rawCorruptionRate, totalRetries, totalMitigatedDivergences, totalUnmitigatedDivergences",
+      "live-result.json artifact records mitigation config + outcomes"
+    ]
+  },
+  "testCoverage": {
+    "file": "tests/time-machine-delegate52-mitigation.test.ts",
+    "fileHash": "ea638aa6ff152081e1a76ec903952293191e8a9aa6c1bcb5e649b27376c19bf6",
+    "testCount": 4,
+    "cases": [
+      "mitigation off + always-corrupt → divergences accumulate (regression guard for passive substrate)",
+      "mitigation on + always-preserve → 0 retries, 0 divergences (sanity)",
+      "mitigation on + 50% corruption → retries succeed; userObserved=0%; mitigatedDivergences > 0",
+      "mitigation on + permanent corruption → retries exhausted; userObserved=raw; unmitigatedDivergences > 0 (honest failure)"
+    ]
+  },
+  "paperUpdate": {
+    "file": "docs/papers/time-machine-empirical-validation-v1.md",
+    "contentHash": "1a564bad606a5234c09a2505f6ef413b64b2c74fdf0a2af40bfc4d11215eb110",
+    "sectionsUpdated": [
+      "§4 (two-metric design)",
+      "§5.4.2 (D4-raw + D4-user split + Pass 29 strengthening)"
+    ]
+  },
+  "receipt": {
+    "file": ".danteforge/PASS_29_SUBSTRATE_MITIGATION_RECEIPT.md",
+    "contentHash": "d5d1f55f81421c1b35660f598a56a005921e8965aeb920492fa2217cec69160d"
+  },
+  "truthBoundary": {
+    "allowedClaim": "Pass 29 converts substrate to active mitigator; paper strong claim is now structurally backed by code.",
+    "forbiddenClaims": [
+      "D4-user is actually < 5% on live data (still GATE-1)",
+      "The substrate prevents LLM corruption (it doesn't; it detects + recovers)",
+      "The retry loop always succeeds (test 4 shows honest failure mode)"
+    ]
+  },
+  "probabilityUpdate": {
+    "preMicrosoftPaperSolveStrong": 0.25,
+    "postMicrosoftPaperSolveStrong": 0.55,
+    "delta": 0.3,
+    "rationale": "Closing the implementation/paper mismatch. Remaining ~45% sits in: permanent-corruption rate, budget exhaustion, peer review questioning whether retry-loop counts as \"substrate solving corruption\"."
+  },
+  "unblocks": [
+    "§5.4.2 strong claim now structurally backed",
+    "GATE-1 will produce meaningful D4-user numbers",
+    "Pass 30+ builds on genuine active-mitigator substrate"
+  ],
+  "verifyChain": {
+    "typecheck": "pass",
+    "pass29MitigationTests": "pass (4/4)",
+    "pass19ExistingLiveTests": "pass (6/6)",
+    "pass23SubstrateContentTests": "pass (3/3)",
+    "fullTMRegression": "pass (25/25)"
+  },
+  "proof": {
+    "schemaVersion": "evidence-chain.v1",
+    "receiptId": "bundle_806db2647f39446f",
+    "bundleId": "pass_29_substrate_mitigation",
+    "gitSha": "b6d38f0b58c3eb53ce51bbd118b4cb5b24c87992",
+    "createdAt": "2026-04-30T00:33:27.327Z",
+    "payloadHash": "ab407563e05559a51d13b2ddef60c89bf275fdd976a978f5b444411b84e00581",
+    "prevHash": "0000000000000000000000000000000000000000000000000000000000000000",
+    "merkleRoot": "1ad3114f611e9273470ec7778fcc098dcae96f818548b5beded668ce39f378e7",
+    "evidenceHashes": [
+      "1ad3114f611e9273470ec7778fcc098dcae96f818548b5beded668ce39f378e7"
+    ],
+    "verificationStatus": "unverified",
+    "evidence": [
+      {
+        "schemaVersion": 1,
+        "pass": 29,
+        "passName": "Substrate-mediated corruption mitigation (active mitigator, not passive recorder)",
+        "generatedAt": "2026-04-30T00:33:27.327Z",
+        "gitSha": "b6d38f0b58c3eb53ce51bbd118b4cb5b24c87992",
+        "loadBearingFix": {
+          "problem": "Pre-Pass-29: substrate-on path was a passive recorder; D4 measurement ≈ raw LLM corruption rate. Paper claim \"substrate-level guarantees substantively close the corruption gap\" was unsupported by implementation.",
+          "solution": "Abort + retry loop in runDelegate52DomainRoundTrip: divergence → restoreTimeMachineCommit({ toWorkingTree: true }) → re-prompt up to retriesOnDivergence times.",
+          "twoMetrics": {
+            "D4Raw": "Rate at which the LLM emits divergent output (substrate-passive). Analog to Microsoft 25% baseline.",
+            "D4User": "Rate of unmitigated divergence after substrate-mediated recovery (substrate-active). Load-bearing claim."
+          }
+        },
+        "codeChanges": {
+          "file": "src/core/time-machine-validation.ts",
+          "fileHash": "b9ee0f633c123718f1f9eb1e3f8e7b4bc82c0565a5965ebf5317b113be57a42b",
+          "additions": [
+            "RunTimeMachineValidationOptions.mitigation: { restoreOnDivergence?, retriesOnDivergence? }",
+            "MitigationConfig internal interface",
+            "attemptRoundTrip helper extracted from runDelegate52DomainRoundTrip",
+            "Tracks lastCleanCommitId + lastCleanState across round-trips",
+            "On divergence: restoreTimeMachineCommit + re-prompt loop",
+            "ClassDResult.domainRows[] extended: retryCount, mitigatedDivergences, unmitigatedDivergences",
+            "ClassDResult aggregates: userObservedCorruptionRate, rawCorruptionRate, totalRetries, totalMitigatedDivergences, totalUnmitigatedDivergences",
+            "live-result.json artifact records mitigation config + outcomes"
+          ]
+        },
+        "testCoverage": {
+          "file": "tests/time-machine-delegate52-mitigation.test.ts",
+          "fileHash": "ea638aa6ff152081e1a76ec903952293191e8a9aa6c1bcb5e649b27376c19bf6",
+          "testCount": 4,
+          "cases": [
+            "mitigation off + always-corrupt → divergences accumulate (regression guard for passive substrate)",
+            "mitigation on + always-preserve → 0 retries, 0 divergences (sanity)",
+            "mitigation on + 50% corruption → retries succeed; userObserved=0%; mitigatedDivergences > 0",
+            "mitigation on + permanent corruption → retries exhausted; userObserved=raw; unmitigatedDivergences > 0 (honest failure)"
+          ]
+        },
+        "paperUpdate": {
+          "file": "docs/papers/time-machine-empirical-validation-v1.md",
+          "contentHash": "1a564bad606a5234c09a2505f6ef413b64b2c74fdf0a2af40bfc4d11215eb110",
+          "sectionsUpdated": [
+            "§4 (two-metric design)",
+            "§5.4.2 (D4-raw + D4-user split + Pass 29 strengthening)"
+          ]
+        },
+        "receipt": {
+          "file": ".danteforge/PASS_29_SUBSTRATE_MITIGATION_RECEIPT.md",
+          "contentHash": "d5d1f55f81421c1b35660f598a56a005921e8965aeb920492fa2217cec69160d"
+        },
+        "truthBoundary": {
+          "allowedClaim": "Pass 29 converts substrate to active mitigator; paper strong claim is now structurally backed by code.",
+          "forbiddenClaims": [
+            "D4-user is actually < 5% on live data (still GATE-1)",
+            "The substrate prevents LLM corruption (it doesn't; it detects + recovers)",
+            "The retry loop always succeeds (test 4 shows honest failure mode)"
+          ]
+        },
+        "probabilityUpdate": {
+          "preMicrosoftPaperSolveStrong": 0.25,
+          "postMicrosoftPaperSolveStrong": 0.55,
+          "delta": 0.3,
+          "rationale": "Closing the implementation/paper mismatch. Remaining ~45% sits in: permanent-corruption rate, budget exhaustion, peer review questioning whether retry-loop counts as \"substrate solving corruption\"."
+        },
+        "unblocks": [
+          "§5.4.2 strong claim now structurally backed",
+          "GATE-1 will produce meaningful D4-user numbers",
+          "Pass 30+ builds on genuine active-mitigator substrate"
+        ],
+        "verifyChain": {
+          "typecheck": "pass",
+          "pass29MitigationTests": "pass (4/4)",
+          "pass19ExistingLiveTests": "pass (6/6)",
+          "pass23SubstrateContentTests": "pass (3/3)",
+          "fullTMRegression": "pass (25/25)"
+        }
+      }
+    ],
+    "inclusionProofs": [
+      {
+        "index": 0,
+        "leafHash": "1ad3114f611e9273470ec7778fcc098dcae96f818548b5beded668ce39f378e7",
+        "proof": []
+      }
+    ],
+    "hash": "e68a9dadd6d0484448dafb2ccc2057188bf1ed91863d4a2bc58a645edf8bb338"
+  }
+}

@@ -115,13 +115,25 @@ DANTEFORGE_DELEGATE52_DRY_RUN=1 \
 
 Expected: `status: live_dry_run`, `totalCostUsd: 0`, `4/4 byte-identical (identity simulator)`.
 
-### §5.6 Class F — Scale (10K, 100K)
+### §5.6 Class F — Scale (10K, 100K, 1M attempt)
 
 ```bash
 node dist/index.js time-machine validate --class F --scale benchmark --json
 ```
 
-Expected: `status: passed at 10K`, `passed at 100K`. The 1M run requires `DANTEFORGE_TIME_MACHINE_VALIDATE_MAX_COMMITS=1000000` env-var override (GATE-3) and is NOT executed by default.
+Expected without overrides: `status: passed at 10K`, `passed at 100K`, 1M skipped.
+
+Pass 36 compute-only 1M attempt:
+
+```bash
+DANTEFORGE_TIME_MACHINE_VALIDATE_MAX_COMMITS=1000000 \
+  node dist/index.js time-machine validate \
+    --class F --scale benchmark \
+    --out .danteforge/time-machine/validation/pass-36-f1m \
+    --json
+```
+
+Observed: timeout at 30.48 minutes after 137,218/1,000,000 commits, before final result JSON. Artifact: `.danteforge/evidence/pass-36-runs/f1m-timeout.json`, anchored by `.danteforge/evidence/pass-36-hybrid-compute-closure.json`. This is not a 1M pass.
 
 ### §5.7 Class G — Constitutional integration
 
@@ -163,6 +175,7 @@ Per-pass proof-anchored manifests:
 | 24 — product polish | `.danteforge/evidence/pass-24-product-polish.json` | n/a |
 | 27 — verify optimization | `.danteforge/evidence/pass-27-verify-optimization.json` | n/a |
 | 28 — v1.1 closure | `.danteforge/evidence/pass-28-v1-1-closure.json` | n/a |
+| 36 — hybrid compute closure | `.danteforge/evidence/pass-36-hybrid-compute-closure.json` | Class F 1M timeout + live DELEGATE blockers |
 
 All manifests use `evidence-chain.v1` schema and are created via `createEvidenceBundle` from `@danteforge/evidence-chain`.
 
@@ -195,7 +208,7 @@ If `pdflatex` is not available locally (publication preparation environment may 
 | Gate | What it controls | How to invoke |
 |---|---|---|
 | GATE-1 | Live DELEGATE-52 LLM run ($30–80 budget) | §A.3 §5.4.2 command |
-| GATE-3 | F 1M scale benchmark (15–60 min compute) | env-var override §5.6 |
+| GATE-3 | F 1M scale benchmark | Pass 36 env-var attempt timed out; future invocation requires optimization or longer compute window |
 | GATE-5 | arXiv submission of preprint PDF | founder action; not in CLI |
 | GATE-6 | Outreach email send to Microsoft authors | founder action; not in CLI |
 

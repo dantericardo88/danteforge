@@ -1,0 +1,210 @@
+{
+  "schemaVersion": 1,
+  "pass": 20,
+  "passName": "DELEGATE-52 dataset import + real-fs PRD-scale validation (Pass 20)",
+  "generatedAt": "2026-04-29T21:09:30.415Z",
+  "gitSha": "f19e1d7d0f86041d32e7e5e1f7407953b38bd463",
+  "partA_dataset": {
+    "name": "Microsoft DELEGATE-52 public release",
+    "source": "https://huggingface.co/datasets/microsoft/delegate52",
+    "paper": "https://arxiv.org/abs/2604.15597",
+    "license": "CDLA Permissive 2.0",
+    "localPath": ".danteforge/datasets/delegate52-public.jsonl",
+    "sizeBytes": 19137584,
+    "sha256": "5618f5ab6394e1d2befde3bc8dd50e247bbc872472999eafd9f075c734b488d4",
+    "rowCount": 234,
+    "distinctDomains": 48,
+    "withheldEnvironments": 76,
+    "importVerified": true
+  },
+  "partB_prdRealRuns": {
+    "runId": "tmval_20260429210703",
+    "scale": "prd-real",
+    "runReportPath": ".danteforge/evidence/pass-20-runs/abcd-prd-real-import.json",
+    "runReportHash": "efc235647c04176191b698e3efc4077f58187d4cb739b57c66ae29dbdb9dfe9f",
+    "classA": {
+      "status": "passed",
+      "commitCount": 1000,
+      "adversarialDetections": 7,
+      "adversarialDetected": 7,
+      "cleanChainFalsePositiveRuns": 100,
+      "cleanChainFalsePositives": 0,
+      "maxDetectionMs": 617
+    },
+    "classB": {
+      "status": "passed",
+      "commitCount": 1000,
+      "restoreScenariosTotal": 6,
+      "restoreScenariosByteIdentical": 6
+    },
+    "classC": {
+      "status": "passed",
+      "commitCount": 100,
+      "causalQueriesTotal": 7,
+      "causalQueriesPassed": 7,
+      "completenessGaps": 0,
+      "completenessComplete": 100
+    },
+    "classD": {
+      "status": "imported_results_evaluated",
+      "domainCount": 48
+    }
+  },
+  "prdMinimumSuccessAchieved": {
+    "A": true,
+    "B": true,
+    "C": true,
+    "D": true
+  },
+  "newFiles": [
+    "src/core/time-machine-validation.ts (modified: prd-real scale added to TimeMachineValidationScale union)",
+    "src/cli/commands/time-machine.ts (modified: roundTripsPerDomain option threading)",
+    "src/cli/index.ts (modified: --round-trips flag, --scale prd-real now accepted)",
+    "tests/time-machine-validation-prd-real.test.ts (new: 3 PRD-scale tests)",
+    ".danteforge/datasets/delegate52-public.jsonl (downloaded from HF)",
+    ".danteforge/evidence/pass-20-runs/abcd-prd-real-import.json (combined run output)"
+  ],
+  "truthBoundary": {
+    "builtThisPass": [
+      "Real-fs Class A/B/C at full PRD scale (1000 commits for A/B, 100 decisions for C)",
+      "Dataset import path validated end-to-end against the canonical 48-domain release",
+      "`prd-real` scale option in the CLI + harness",
+      "`--round-trips` flag on the validate CLI"
+    ],
+    "notBuiltThisPass": [
+      "Live DELEGATE-52 round-trip execution (GATE-1, depends on Pass 19 + founder authorization)",
+      "Validation against the 76 withheld DELEGATE-52 environments (license-restricted)"
+    ],
+    "allowedClaim": "DanteForge has run real-fs PRD-scale Class A/B/C validation; A/B/C all passed minimum-success criteria. The public 48-domain DELEGATE-52 dataset has been imported and validated at the harness level.",
+    "forbiddenClaim": "DanteForge has executed live LLM round-trips against DELEGATE-52 (this requires GATE-1)."
+  },
+  "unblocks": [
+    "Pass 22 comparison document — primary data: real-fs PRD-scale numbers from this pass",
+    "Pass 23 adversarial review — methodology now includes real-fs scale (no logical-only caveat)",
+    "GATE-1 founder action — when ready, dataset is local at .danteforge/datasets/delegate52-public.jsonl"
+  ],
+  "verifyChain": {
+    "typecheck": "pass",
+    "lint": "pass",
+    "antiStub": "pass",
+    "pass20PrdRealTests": "tests authored; full run pending verify-chain integration",
+    "proofIntegrityCheck": "CLEAN"
+  },
+  "proof": {
+    "schemaVersion": "evidence-chain.v1",
+    "receiptId": "bundle_bd68775342892bb5",
+    "bundleId": "pass_20_dataset_and_prd_real",
+    "gitSha": "f19e1d7d0f86041d32e7e5e1f7407953b38bd463",
+    "createdAt": "2026-04-29T21:09:30.415Z",
+    "payloadHash": "81d61f0adac1a254e8043e6579a722a6566b933f17126ebcfd79e3260e4e2662",
+    "prevHash": "0000000000000000000000000000000000000000000000000000000000000000",
+    "merkleRoot": "6ad491b53a2bdc3a94d9dec56ee79cd9fec8822bf909dc2a974a6e62969efe9f",
+    "evidenceHashes": [
+      "6ad491b53a2bdc3a94d9dec56ee79cd9fec8822bf909dc2a974a6e62969efe9f"
+    ],
+    "verificationStatus": "unverified",
+    "evidence": [
+      {
+        "schemaVersion": 1,
+        "pass": 20,
+        "passName": "DELEGATE-52 dataset import + real-fs PRD-scale validation (Pass 20)",
+        "generatedAt": "2026-04-29T21:09:30.415Z",
+        "gitSha": "f19e1d7d0f86041d32e7e5e1f7407953b38bd463",
+        "partA_dataset": {
+          "name": "Microsoft DELEGATE-52 public release",
+          "source": "https://huggingface.co/datasets/microsoft/delegate52",
+          "paper": "https://arxiv.org/abs/2604.15597",
+          "license": "CDLA Permissive 2.0",
+          "localPath": ".danteforge/datasets/delegate52-public.jsonl",
+          "sizeBytes": 19137584,
+          "sha256": "5618f5ab6394e1d2befde3bc8dd50e247bbc872472999eafd9f075c734b488d4",
+          "rowCount": 234,
+          "distinctDomains": 48,
+          "withheldEnvironments": 76,
+          "importVerified": true
+        },
+        "partB_prdRealRuns": {
+          "runId": "tmval_20260429210703",
+          "scale": "prd-real",
+          "runReportPath": ".danteforge/evidence/pass-20-runs/abcd-prd-real-import.json",
+          "runReportHash": "efc235647c04176191b698e3efc4077f58187d4cb739b57c66ae29dbdb9dfe9f",
+          "classA": {
+            "status": "passed",
+            "commitCount": 1000,
+            "adversarialDetections": 7,
+            "adversarialDetected": 7,
+            "cleanChainFalsePositiveRuns": 100,
+            "cleanChainFalsePositives": 0,
+            "maxDetectionMs": 617
+          },
+          "classB": {
+            "status": "passed",
+            "commitCount": 1000,
+            "restoreScenariosTotal": 6,
+            "restoreScenariosByteIdentical": 6
+          },
+          "classC": {
+            "status": "passed",
+            "commitCount": 100,
+            "causalQueriesTotal": 7,
+            "causalQueriesPassed": 7,
+            "completenessGaps": 0,
+            "completenessComplete": 100
+          },
+          "classD": {
+            "status": "imported_results_evaluated",
+            "domainCount": 48
+          }
+        },
+        "prdMinimumSuccessAchieved": {
+          "A": true,
+          "B": true,
+          "C": true,
+          "D": true
+        },
+        "newFiles": [
+          "src/core/time-machine-validation.ts (modified: prd-real scale added to TimeMachineValidationScale union)",
+          "src/cli/commands/time-machine.ts (modified: roundTripsPerDomain option threading)",
+          "src/cli/index.ts (modified: --round-trips flag, --scale prd-real now accepted)",
+          "tests/time-machine-validation-prd-real.test.ts (new: 3 PRD-scale tests)",
+          ".danteforge/datasets/delegate52-public.jsonl (downloaded from HF)",
+          ".danteforge/evidence/pass-20-runs/abcd-prd-real-import.json (combined run output)"
+        ],
+        "truthBoundary": {
+          "builtThisPass": [
+            "Real-fs Class A/B/C at full PRD scale (1000 commits for A/B, 100 decisions for C)",
+            "Dataset import path validated end-to-end against the canonical 48-domain release",
+            "`prd-real` scale option in the CLI + harness",
+            "`--round-trips` flag on the validate CLI"
+          ],
+          "notBuiltThisPass": [
+            "Live DELEGATE-52 round-trip execution (GATE-1, depends on Pass 19 + founder authorization)",
+            "Validation against the 76 withheld DELEGATE-52 environments (license-restricted)"
+          ],
+          "allowedClaim": "DanteForge has run real-fs PRD-scale Class A/B/C validation; A/B/C all passed minimum-success criteria. The public 48-domain DELEGATE-52 dataset has been imported and validated at the harness level.",
+          "forbiddenClaim": "DanteForge has executed live LLM round-trips against DELEGATE-52 (this requires GATE-1)."
+        },
+        "unblocks": [
+          "Pass 22 comparison document — primary data: real-fs PRD-scale numbers from this pass",
+          "Pass 23 adversarial review — methodology now includes real-fs scale (no logical-only caveat)",
+          "GATE-1 founder action — when ready, dataset is local at .danteforge/datasets/delegate52-public.jsonl"
+        ],
+        "verifyChain": {
+          "typecheck": "pass",
+          "lint": "pass",
+          "antiStub": "pass",
+          "pass20PrdRealTests": "tests authored; full run pending verify-chain integration",
+          "proofIntegrityCheck": "CLEAN"
+        }
+      }
+    ],
+    "inclusionProofs": [
+      {
+        "index": 0,
+        "leafHash": "6ad491b53a2bdc3a94d9dec56ee79cd9fec8822bf909dc2a974a6e62969efe9f",
+        "proof": []
+      }
+    ],
+    "hash": "11300433e486d802424f5c559e89062b57c36549618b2ec1cd5fbb595f3ef523"
+  }
+}
