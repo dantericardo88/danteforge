@@ -4,7 +4,7 @@
 **Date:** 2026-04-29
 **Repository:** https://github.com/realempanada/DanteForge
 
-This appendix provides the exact CLI commands, version hashes, and reproducibility artifacts referenced by §10 of the comparison document. Every number in §5 of the paper traces to a proof-anchored manifest under `.danteforge/evidence/` and is independently re-verifiable via `npm run check:proof-integrity`.
+This appendix provides the exact CLI commands, version hashes, and reproducibility artifacts referenced by §10 of the comparison document. Every number in §5 of the paper traces to a local proof-anchored manifest under `.danteforge/evidence/` and is independently re-verifiable via `npm run check:proof-integrity`. Generated `.danteforge` artifacts are not committed to the source tree; selected receipts must be exported into a publication archive before external submission.
 
 ## A.1 Environment
 
@@ -14,7 +14,7 @@ This appendix provides the exact CLI commands, version hashes, and reproducibili
 | npm | ≥ 10.x |
 | OS (publication runs) | Windows 11 24H2 |
 | DanteForge git SHA at run | `f19e1d7d` (Pass 22 anchor; current HEAD will differ) |
-| `@danteforge/evidence-chain` | `v1.0.0` |
+| `@danteforge/evidence-chain` | package `v1.1.0`, schema `evidence-chain.v1` |
 | Time Machine schema | `v0.1` (frozen for v1 publication) |
 | DELEGATE-52 dataset SHA-256 | `5618f5ab6394e1d2…` (full hash in `.danteforge/datasets/delegate52-public.jsonl.sha256`) |
 
@@ -92,11 +92,13 @@ node dist/index.js time-machine validate \
   --budget-usd 160 \
   --max-domains 48 \
   --round-trips 10 \
+  --mitigate-divergence \
+  --retries-on-divergence 3 \
   --delegate52-dataset .danteforge/datasets/delegate52-public.jsonl \
   --json > .danteforge/evidence/delegate52-live-results.json
 ```
 
-Expected wall-time: 4–6 hours for 48 domains × 10 round-trips × 2 interactions = 960 LLM calls.
+Expected wall-time: 4–6 hours for 48 domains × 10 round-trips × 2 interactions = 960 baseline LLM calls, plus retry calls when mitigation detects divergence.
 
 **Cost envelope note (post-Pass-23 review).** The conservative estimator in `src/core/time-machine-validation.ts` uses 4 chars/token and $3/M input + $15/M output. Real Anthropic tokenization averages ~3.5 chars/token in English; 1M-context Sonnet variants price at $6/M input + $22.50/M output. Realistic envelope: **$10–160** depending on (a) the resolved model SKU at run time and (b) document length distribution from the imported dataset. The CLI hard-stops at the `--budget-usd` ceiling, so over-runs are impossible by design — but a half-completed run (24 of 48 domains) is possible if the envelope is too tight. Pin `ANTHROPIC_MODEL` to a non-1M SKU to stay near the lower bound.
 
@@ -159,6 +161,8 @@ Per-pass proof-anchored manifests:
 | 21 — Class G | `.danteforge/evidence/pass-21-class-g.json` | n/a |
 | 22 — comparison doc | `.danteforge/evidence/pass-22-comparison-document.json` | doc hash `239dfad9a3c0f7a9…` |
 | 24 — product polish | `.danteforge/evidence/pass-24-product-polish.json` | n/a |
+| 27 — verify optimization | `.danteforge/evidence/pass-27-verify-optimization.json` | n/a |
+| 28 — v1.1 closure | `.danteforge/evidence/pass-28-v1-1-closure.json` | n/a |
 
 All manifests use `evidence-chain.v1` schema and are created via `createEvidenceBundle` from `@danteforge/evidence-chain`.
 

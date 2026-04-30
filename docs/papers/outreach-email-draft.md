@@ -13,7 +13,7 @@
 Send AFTER:
 1. Live DELEGATE-52 GATE-1 has fired and the comparison document's §5.4.2 placeholders are populated with real D1/D3/D4 numbers
 2. arXiv preprint has been compiled, founder-reviewed, and submitted (GATE-5) — placeholder `[ARXIV_URL]` and `[DOI_URL]` need to be replaced
-3. The repository's MIT license + `@danteforge/evidence-chain` v1.0.0 are tagged + published
+3. The repository's MIT license + `@danteforge/evidence-chain` v1.1.0 are tagged + published
 4. The reproducibility appendix is locked at the version hash being cited
 
 If sending BEFORE the live GATE-1 run, retitle as a "draft replication, request for early read" — the substrate-only version of the paper (Classes A/B/C/E/F/G) is publishable as honest replication, but the framing is "preliminary; live LLM replication awaits budget authorization."
@@ -60,7 +60,7 @@ Honest summary of what we found:
 
 - **Substrate-only properties** (Classes A/B/C/E/G) all meet the PRD minimum-success criteria: byte-perfect tamper-evidence at 1000 commits, byte-identical reversibility, gap-free causal completeness, all five adversarial scenarios detected, and end-to-end integration with our constitutional gates.
 - **Live DELEGATE-52 round-trip** (Class D, against the public 48-domain CDLA Permissive 2.0 release): [INSERT POST-GATE-1 NUMBERS HERE — D1 cost-of-substrate per edit, D3 causal-source identification rate, D4 corruption rate with substrate active vs your 25% baseline].
-- **Scale** (Class F): tamper-evidence verifier scales cleanly to 10K commits within threshold; at 100K, restore stays at 7 ms but verify (~248 s) and query (~61 s) exceed our default thresholds — that's a v2 optimization target we flag honestly in §5.6.
+- **Scale** (Class F): tamper-evidence verifier meets the 10K and 100K thresholds after Pass 27 optimization (100K verify ~141 s, query ~7.3 s, restore ~4 ms). The 1M benchmark remains founder-gated and is not claimed.
 - **What we did NOT test:** the 76 enterprise-license-restricted environments. We honor the license boundary.
 
 We diverged from your findings on [DOMAINS — founder to fill in after GATE-1] — see §7 of the paper for the limitations we know about, and §6 for what we think the substrate-level result implies.

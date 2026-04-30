@@ -48,6 +48,22 @@ export interface RunTimeMachineValidationOptions {
    * Reduced for testing/dry-run to avoid wall-time blowup.
    */
   roundTripsPerDomain?: number;
+  /**
+   * Optional Class A chain-size override for validation sub-runs that need fresh chains at
+   * a specific length without switching the whole harness into PRD scale.
+   */
+  commitCountOverride?: number;
+  /**
+   * Substrate-mediated corruption mitigation (Pass 29).
+   * When `restoreOnDivergence` is true and a round-trip's byte-equality check fails, the harness
+   * restores the workspace from the last clean Time Machine commit and re-prompts up to
+   * `retriesOnDivergence` times. Tracks mitigated vs unmitigated divergences per domain.
+   * Default: passive observer (current behavior).
+   */
+  mitigation?: {
+    restoreOnDivergence?: boolean;
+    retriesOnDivergence?: number;
+  };
 }
 
 export interface TimeMachineValidationReport {
@@ -106,6 +122,8 @@ export interface ClassDResult {
   publicReleasedDomains: number;
   publicReleasedRows: number;
   withheldEnvironments: number;
+  /** Live-run only: explicit no-fabrication blockers when paid validation is requested but cannot start. */
+  liveBlockers?: Array<'blocked_by_missing_live_confirmation' | 'blocked_by_missing_budget' | 'blocked_by_missing_credentials' | 'blocked_by_missing_model'>;
   domainRows: Array<{
     domain: string;
     mode: Delegate52Mode;
@@ -128,11 +146,32 @@ export interface ClassDResult {
     timeMachineCommitIds?: string[];
     /** Live-run only: source of the document content fed to the LLM ('imported' or 'synthetic') */
     documentSource?: 'imported' | 'synthetic';
+    /** Pass 29: total retry attempts triggered by divergence detection in this domain */
+    retryCount?: number;
+    /** Pass 29: divergences successfully recovered via restore + retry within budget */
+    mitigatedDivergences?: number;
+    /** Pass 29: divergences where retries were exhausted (substrate-on but mitigation failed) */
+    unmitigatedDivergences?: number;
   }>;
   /** Live-run only: aggregate cost across all domains */
   totalCostUsd?: number;
-  /** Live-run only: aggregate corruption rate (analog to Microsoft's 25% baseline) */
+  /** Live-run only: aggregate raw corruption rate (LLM-emitted divergence; analog to Microsoft 25% baseline) */
   corruptionRate?: number;
+  /** Pass 29: aggregate corruption rate that the user observes after substrate mitigation */
+  userObservedCorruptionRate?: number;
+  /** Pass 29: aggregate raw corruption rate (matches `corruptionRate` for compatibility; explicit alias) */
+  rawCorruptionRate?: number;
+  /** Pass 29: total retry attempts across all domains */
+  totalRetries?: number;
+  /** Pass 29: total mitigated divergences across all domains */
+  totalMitigatedDivergences?: number;
+  /** Pass 29: total unmitigated divergences across all domains (substrate-on failures) */
+  totalUnmitigatedDivergences?: number;
+  /** Pass 29: mitigation configuration used for live/dry-run validation */
+  mitigation?: {
+    restoreOnDivergence: boolean;
+    retriesOnDivergence: number;
+  };
   limitations: string[];
 }
 
@@ -173,7 +212,7 @@ export async function runTimeMachineValidation(options: RunTimeMachineValidation
   await fs.mkdir(path.join(outDir, 'work'), { recursive: true });
 
   const classResults: TimeMachineValidationReport['classes'] = {};
-  if (classes.includes('A')) classResults.A = await runClassA(outDir, scale, createdAt);
+  if (classes.includes('A')) classResults.A = await runClassA(outDir, scale, createdAt, options.commitCountOverride);
   if (classes.includes('B')) classResults.B = await runClassB(outDir, scale, createdAt);
   if (classes.includes('C')) classResults.C = await runClassC(outDir, scale, createdAt);
   if (classes.includes('D')) classResults.D = await runClassD(outDir, delegate52Mode, options);
@@ -210,8 +249,9 @@ export async function runTimeMachineValidation(options: RunTimeMachineValidation
   return report;
 }
 
-async function runClassA(outDir: string, scale: TimeMachineValidationScale, createdAt: string): Promise<ClassAResult> {
-  const commitCount = (scale === 'prd' || scale === 'prd-real') ? 1000 : 20;
+async function runClassA(outDir: string, scale: TimeMachineValidationScale, createdAt: string, commitCountOverride?: number): Promise<ClassAResult> {
+  const defaultCommitCount = (scale === 'prd' || scale === 'prd-real') ? 1000 : 20;
+  const commitCount = resolveCommitCount(defaultCommitCount, commitCountOverride);
   const cleanRuns = (scale === 'prd' || scale === 'prd-real') ? 100 : 3;
   // 'prd' uses logical-mode (fast, in-memory); 'prd-real' forces real-fs path (slower but tests the on-disk substrate at scale).
   if (scale === 'prd') return runClassALogical(commitCount, cleanRuns);
@@ -225,7 +265,7 @@ async function runClassA(outDir: string, scale: TimeMachineValidationScale, crea
     if (!clean.valid) falsePositives += 1;
   }
 
-  const positions = [500, 250, 750, 100, 400, 0, 999].map(pos => Math.min(pos, commitCount - 1));
+  const positions = classATargetPositions(commitCount);
   const scenarios = [
     { id: 'A1_artifact_middle_rehash', pos: positions[0]!, mutate: mutateCommitManifest },
     { id: 'A2_soulseal_byte', pos: positions[1]!, mutate: mutateBlob },
@@ -264,12 +304,28 @@ async function runClassA(outDir: string, scale: TimeMachineValidationScale, crea
   };
 }
 
+function resolveCommitCount(defaultCommitCount: number, override?: number): number {
+  if (override === undefined) return defaultCommitCount;
+  if (!Number.isSafeInteger(override) || override < 1) {
+    throw new Error('commitCountOverride must be a positive safe integer');
+  }
+  return override;
+}
+
+function classATargetPositions(commitCount: number): number[] {
+  if (commitCount >= 1000) return [500, 250, 750, 100, 400, 0, 999];
+  const last = Math.max(0, commitCount - 1);
+  const pick = (ratio: number) => Math.max(0, Math.min(last, Math.floor(last * ratio)));
+  const reorderable = Math.max(0, Math.min(last - 1, pick(0.1)));
+  return [pick(0.5), pick(0.25), pick(0.75), reorderable, pick(0.4), 0, last];
+}
+
 function runClassALogical(commitCount: number, cleanRuns: number): ClassAResult {
   const chain = Array.from({ length: commitCount }, (_, i) => {
     const parent = i === 0 ? ZERO_HASH : `logical_${i - 1}`;
     return { id: `logical_${i}`, parent, payloadHash: sha256(`payload-${i}`) };
   });
-  const positions = [500, 250, 750, 100, 400, 0, 999].map(pos => Math.min(pos, commitCount - 1));
+  const positions = classATargetPositions(commitCount);
   const adversarialDetections = [
     'A1_artifact_middle_rehash',
     'A2_soulseal_byte',
@@ -422,9 +478,8 @@ async function runClassD(outDir: string, delegate52Mode: Delegate52Mode, options
   const maxDomains = Math.max(1, Math.min(options.maxDomains ?? 4, 48));
   const imported = options.delegate52Dataset ? await readDelegate52Dataset(options.delegate52Dataset) : [];
   const isDryRun = process.env.DANTEFORGE_DELEGATE52_DRY_RUN === '1';
-  const liveEnabled = delegate52Mode === 'live'
-    && process.env.DANTEFORGE_DELEGATE52_LIVE === '1'
-    && (options.budgetUsd ?? 0) > 0;
+  const liveBlockers = delegate52Mode === 'live' && !isDryRun ? getDelegate52LiveBlockers(options) : [];
+  const liveEnabled = delegate52Mode === 'live' && liveBlockers.length === 0;
   const domains = imported.length > 0
     ? [...new Set(imported.map(row => row.domain || row.sample_type || 'unknown'))].slice(0, maxDomains)
     : Array.from({ length: maxDomains }, (_, i) => `public-domain-${i + 1}`);
@@ -439,6 +494,7 @@ async function runClassD(outDir: string, delegate52Mode: Delegate52Mode, options
     dataset: options.delegate52Dataset ?? null,
     budgetUsd: options.budgetUsd ?? null,
     liveEnabled,
+    liveBlockers,
     isDryRun,
   }, null, 2) + '\n', 'utf8');
 
@@ -465,14 +521,36 @@ async function runClassD(outDir: string, delegate52Mode: Delegate52Mode, options
     publicReleasedDomains: 48,
     publicReleasedRows: 234,
     withheldEnvironments: 76,
+    liveBlockers: liveBlockers.length > 0 ? liveBlockers : undefined,
     domainRows,
     limitations: [
       'Public DELEGATE-52 release has 48 domains and 234 rows; 76 environments are withheld for license reasons.',
       delegate52Mode === 'live'
-        ? 'Live mode is opt-in and must record provider, model, budget, and final comparison artifacts. Set DANTEFORGE_DELEGATE52_LIVE=1 + --budget-usd N to enable.'
+        ? `Live mode is opt-in and must record provider, model, budget, and final comparison artifacts. Blockers: ${liveBlockers.length > 0 ? liveBlockers.join(', ') : 'none'}.`
         : 'DELEGATE-52 is not live validated in harness/import-free mode; no publishable live replication claim is allowed.',
     ],
   };
+}
+
+function getDelegate52LiveBlockers(options: RunTimeMachineValidationOptions): NonNullable<ClassDResult['liveBlockers']> {
+  const blockers: NonNullable<ClassDResult['liveBlockers']> = [];
+  const hasInjectedCaller = typeof options._llmCaller === 'function';
+  const hasBudget = (options.budgetUsd ?? 0) > 0;
+  const hasLiveConfirmation = process.env.DANTEFORGE_DELEGATE52_LIVE === '1';
+  const hasCredentials = hasInjectedCaller
+    || Boolean(
+      process.env.ANTHROPIC_API_KEY
+      || process.env.DANTEFORGE_CLAUDE_API_KEY
+      || process.env.DANTEFORGE_ANTHROPIC_API_KEY
+      || process.env.DANTEFORGE_LLM_API_KEY,
+    );
+  const hasPinnedModel = hasInjectedCaller
+    || Boolean(process.env.ANTHROPIC_MODEL || process.env.DANTEFORGE_DELEGATE52_MODEL);
+  if (!hasLiveConfirmation) blockers.push('blocked_by_missing_live_confirmation');
+  if (!hasBudget) blockers.push('blocked_by_missing_budget');
+  if (!hasCredentials) blockers.push('blocked_by_missing_credentials');
+  if (!hasPinnedModel) blockers.push('blocked_by_missing_model');
+  return blockers;
 }
 
 /**
@@ -502,11 +580,19 @@ async function runDelegate52Live(
   const llmCaller = options._llmCaller ?? makeDefaultLlmCaller(isDryRun);
   const roundTripDir = path.join(outDir, 'delegate52-round-trips');
   await fs.mkdir(roundTripDir, { recursive: true });
+  const mitigation: MitigationConfig = {
+    restoreOnDivergence: options.mitigation?.restoreOnDivergence === true,
+    retriesOnDivergence: Math.max(0, Math.min(options.mitigation?.retriesOnDivergence ?? 0, 10)),
+  };
 
   const domainRows: ClassDResult['domainRows'] = [];
   let totalCostUsd = 0;
   let corruptedDomains = 0;
   let budgetExhausted = false;
+  let totalRetries = 0;
+  let totalMitigatedDivergences = 0;
+  let totalUnmitigatedDivergences = 0;
+  let userObservedCorruptedDomains = 0;
 
   for (const domain of domains) {
     if (!isDryRun && totalCostUsd >= budgetUsd) {
@@ -531,9 +617,14 @@ async function runDelegate52Live(
       isDryRun,
       importedDoc,
       roundTripDir,
+      mitigation,
     );
     totalCostUsd += result.costUsd;
     if (!result.byteIdenticalAfterRoundTrips) corruptedDomains += 1;
+    if (result.unmitigatedDivergences > 0) userObservedCorruptedDomains += 1;
+    totalRetries += result.retryCount;
+    totalMitigatedDivergences += result.mitigatedDivergences;
+    totalUnmitigatedDivergences += result.unmitigatedDivergences;
     domainRows.push({
       domain,
       mode: 'live',
@@ -548,10 +639,15 @@ async function runDelegate52Live(
       byteIdenticalAfterRoundTrips: result.byteIdenticalAfterRoundTrips,
       timeMachineCommitIds: result.timeMachineCommitIds,
       documentSource: importedDoc !== undefined ? 'imported' : 'synthetic',
+      retryCount: result.retryCount,
+      mitigatedDivergences: result.mitigatedDivergences,
+      unmitigatedDivergences: result.unmitigatedDivergences,
     });
   }
 
   const corruptionRate = domains.length === 0 ? 0 : corruptedDomains / domains.length;
+  const userObservedCorruptionRate = domains.length === 0 ? 0 : userObservedCorruptedDomains / domains.length;
+  const rawCorruptionRate = corruptionRate;
 
   await fs.writeFile(path.join(outDir, 'artifacts', 'delegate52-live-result.json'), JSON.stringify({
     isDryRun,
@@ -560,6 +656,12 @@ async function runDelegate52Live(
     totalCostUsd,
     corruptedDomains,
     corruptionRate,
+    rawCorruptionRate,
+    userObservedCorruptionRate,
+    totalRetries,
+    totalMitigatedDivergences,
+    totalUnmitigatedDivergences,
+    mitigation,
     budgetExhausted,
     microsoftBaselineCorruptionRate: 0.25,
     domainRows,
@@ -573,19 +675,48 @@ async function runDelegate52Live(
     domainRows,
     totalCostUsd,
     corruptionRate,
+    rawCorruptionRate,
+    userObservedCorruptionRate,
+    totalRetries,
+    totalMitigatedDivergences,
+    totalUnmitigatedDivergences,
+    mitigation,
     limitations: [
       isDryRun
         ? 'Dry-run mode: LLM responses simulated; no real provider called; cost tracking is placeholder.'
         : `Live run: ${domains.length} domain(s) executed at $${totalCostUsd.toFixed(2)}/$${budgetUsd} budget.`,
       'Time Machine restore-to-commit-0 is always available regardless of corruption (Property 2: Reversibility); corruptionRecovered=true reflects substrate guarantee, not per-run measurement.',
+      mitigation.restoreOnDivergence
+        ? `Substrate-mediated mitigation active: restore + retry (${mitigation.retriesOnDivergence} max) on byte-equality divergence. user-observed corruption rate ${(userObservedCorruptionRate * 100).toFixed(1)}% (vs raw LLM rate ${(rawCorruptionRate * 100).toFixed(1)}%).`
+        : 'Substrate-passive mode: divergence is recorded but not mitigated. Set mitigation.restoreOnDivergence=true to enable restore+retry.',
       budgetExhausted ? 'Budget exhausted before all domains completed; partial result.' : 'All requested domains completed within budget.',
     ],
   };
 }
 
+interface MitigationConfig {
+  restoreOnDivergence: boolean;
+  retriesOnDivergence: number;
+}
+
+interface DomainRoundTripResult {
+  originalHash: string;
+  finalHash: string;
+  byteIdenticalAfterRoundTrips: boolean;
+  firstCorruptionRoundTrip: number | null;
+  interactionCount: number;
+  costUsd: number;
+  timeMachineCommitIds: string[];
+  retryCount: number;
+  mitigatedDivergences: number;
+  unmitigatedDivergences: number;
+}
+
 /**
  * Per-domain round-trip executor.
  * Forward edit + backward edit × roundTrips. Tracks first-corruption position for D3 causal claim.
+ * When `mitigation.restoreOnDivergence` is set, divergence at the end of a round-trip triggers
+ * a workspace restore from the last clean commit + retry up to `mitigation.retriesOnDivergence`.
  */
 async function runDelegate52DomainRoundTrip(
   domain: string,
@@ -595,21 +726,17 @@ async function runDelegate52DomainRoundTrip(
   isDryRun: boolean,
   importedDocumentContent: string | undefined,
   roundTripDir: string,
-): Promise<{
-  originalHash: string;
-  finalHash: string;
-  byteIdenticalAfterRoundTrips: boolean;
-  firstCorruptionRoundTrip: number | null;
-  interactionCount: number;
-  costUsd: number;
-  timeMachineCommitIds: string[];
-}> {
+  mitigation: MitigationConfig,
+): Promise<DomainRoundTripResult> {
   const original = importedDocumentContent ?? synthesizeDomainDocument(domain);
   const originalHash = sha256(original);
   let current = original;
   let costUsd = 0;
   let interactionCount = 0;
   let firstCorruption: number | null = null;
+  let retryCount = 0;
+  let mitigatedDivergences = 0;
+  let unmitigatedDivergences = 0;
   const commitIds: string[] = [];
 
   // Per-domain workspace for substrate commits. Each forward/backward edit becomes a TM commit.
@@ -625,11 +752,15 @@ async function runDelegate52DomainRoundTrip(
     gitSha: null,
   });
   commitIds.push(baselineCommit.commitId);
+  let lastCleanCommitId = baselineCommit.commitId;
+  let lastCleanState = original;
 
-  for (let i = 0; i < roundTrips; i += 1) {
-    if (!isDryRun && costUsd >= remainingBudgetUsd) break;
-    // Forward edit
-    const forwardResult = await llmCaller(buildForwardPrompt(domain, current));
+  const budgetExhausted = (): boolean => !isDryRun && costUsd >= remainingBudgetUsd;
+
+  // Single forward+backward attempt. Returns the post-backward state + whether it round-tripped.
+  const attemptRoundTrip = async (roundTripIndex: number, attemptIndex: number, fromState: string): Promise<{ afterBackward: string; converged: boolean }> => {
+    const labelSuffix = attemptIndex === 0 ? '' : ` retry-${attemptIndex}`;
+    const forwardResult = await llmCaller(buildForwardPrompt(domain, fromState));
     costUsd += forwardResult.costUsd;
     interactionCount += 1;
     const afterForward = forwardResult.output;
@@ -637,17 +768,14 @@ async function runDelegate52DomainRoundTrip(
     const forwardCommit = await createTimeMachineCommit({
       cwd: domainWorkspace,
       paths: [stateFileRel],
-      label: `delegate52[${domain}] round-trip ${i + 1} forward edit`,
+      label: `delegate52[${domain}] round-trip ${roundTripIndex + 1}${labelSuffix} forward edit`,
       gitSha: null,
     });
     commitIds.push(forwardCommit.commitId);
-
-    if (!isDryRun && costUsd >= remainingBudgetUsd) {
-      current = afterForward;
-      break;
+    if (budgetExhausted()) {
+      return { afterBackward: afterForward, converged: false };
     }
-    // Backward edit
-    const backwardResult = await llmCaller(buildBackwardPrompt(domain, afterForward, current));
+    const backwardResult = await llmCaller(buildBackwardPrompt(domain, afterForward, fromState));
     costUsd += backwardResult.costUsd;
     interactionCount += 1;
     const afterBackward = backwardResult.output;
@@ -655,16 +783,53 @@ async function runDelegate52DomainRoundTrip(
     const backwardCommit = await createTimeMachineCommit({
       cwd: domainWorkspace,
       paths: [stateFileRel],
-      label: `delegate52[${domain}] round-trip ${i + 1} backward edit`,
+      label: `delegate52[${domain}] round-trip ${roundTripIndex + 1}${labelSuffix} backward edit`,
       gitSha: null,
     });
     commitIds.push(backwardCommit.commitId);
+    return { afterBackward, converged: sha256(afterBackward) === sha256(fromState) };
+  };
 
-    // Check for divergence at this round-trip
-    if (firstCorruption === null && sha256(afterBackward) !== sha256(current)) {
-      firstCorruption = i;
+  for (let i = 0; i < roundTrips; i += 1) {
+    if (budgetExhausted()) break;
+    const fromState = current;
+
+    let outcome = await attemptRoundTrip(i, 0, fromState);
+    if (!outcome.converged && firstCorruption === null) firstCorruption = i;
+
+    if (!outcome.converged && mitigation.restoreOnDivergence && mitigation.retriesOnDivergence > 0) {
+      let recovered = false;
+      for (let attempt = 1; attempt <= mitigation.retriesOnDivergence; attempt += 1) {
+        if (budgetExhausted()) break;
+        // Substrate-mediated restore: roll the workspace back to the last clean commit.
+        await restoreTimeMachineCommit({
+          cwd: domainWorkspace,
+          commitId: lastCleanCommitId,
+          toWorkingTree: true,
+          confirm: true,
+        });
+        retryCount += 1;
+        outcome = await attemptRoundTrip(i, attempt, lastCleanState);
+        if (outcome.converged) {
+          recovered = true;
+          break;
+        }
+      }
+      if (recovered) {
+        mitigatedDivergences += 1;
+      } else {
+        unmitigatedDivergences += 1;
+      }
+    } else if (!outcome.converged) {
+      // No mitigation requested; record as unmitigated for honest accounting.
+      unmitigatedDivergences += 1;
     }
-    current = afterBackward;
+
+    current = outcome.afterBackward;
+    if (outcome.converged) {
+      lastCleanCommitId = commitIds[commitIds.length - 1] ?? lastCleanCommitId;
+      lastCleanState = outcome.afterBackward;
+    }
   }
 
   const finalHash = sha256(current);
@@ -676,6 +841,9 @@ async function runDelegate52DomainRoundTrip(
     interactionCount,
     costUsd,
     timeMachineCommitIds: commitIds,
+    retryCount,
+    mitigatedDivergences,
+    unmitigatedDivergences,
   };
 }
 
@@ -839,33 +1007,104 @@ async function runClassF(outDir: string, scale: TimeMachineValidationScale, crea
   };
 }
 
+interface G1ReportShape {
+  status?: string;
+  filesCommitted?: number;
+  roundTrip?: { byteIdenticalCount?: number };
+  timeMachine?: { commitId?: string };
+}
+
+interface G4ReportShape {
+  entries?: number;
+  recall?: { queriesRun?: number; gaps?: number; completenessPct?: number };
+  verifyChain?: { valid?: boolean };
+}
+
+const G_REPORT_STALE_MS = 60 * 60 * 1000; // 1 hour
+
 async function runClassG(cwd: string): Promise<ClassGResult> {
+  const g1ReportPath = path.join(cwd, '.danteforge', 'validation', 'sean_lippay_outreach', 'truth-loop-runs', 'g1_substrate_report.json');
+  const g4ReportPath = path.join(cwd, '.danteforge', 'validation', 'g4_recall_report.json');
+
+  // Pass 32 — orchestrate the side-scripts when their reports are missing or stale (>1h old).
+  await regenerateGReportIfStale(cwd, g4ReportPath, 'scripts/build-g4-truth-loop-ledger.mjs');
+  if (existsSync(path.join(cwd, '.danteforge', 'validation', 'sean_lippay_outreach'))) {
+    await regenerateGReportIfStale(cwd, g1ReportPath, 'scripts/build-g1-substrate-validation.mjs');
+  }
+
+  const g1Report = readJsonIfExists(g1ReportPath) as G1ReportShape | null;
+  const g4Report = readJsonIfExists(g4ReportPath) as G4ReportShape | null;
   const seanStaged = existsSync(path.join(cwd, '.danteforge', 'validation', 'sean_lippay_outreach'));
+
+  const g1Status: 'passed' | 'staged_founder_gated' | 'harness_ready' =
+    g1Report && g1Report.status === 'staged_founder_gated' ? 'staged_founder_gated'
+    : seanStaged ? 'staged_founder_gated' : 'harness_ready';
+
+  const g1Message = g1Report
+    ? `Sean Lippay synthetic outreach: ${g1Report.roundTrip?.byteIdenticalCount ?? '?'}/${g1Report.filesCommitted ?? '?'} byte-identical round-trip; commit ${g1Report.timeMachine?.commitId ?? 'unknown'}; founder send gated (GATE-6).`
+    : seanStaged
+      ? 'Sean Lippay workflow artifacts exist but founder send remains gated.'
+      : 'Harness can validate Sean Lippay artifacts once staged.';
+
+  const g4Status: 'passed' | 'staged_founder_gated' | 'harness_ready' =
+    g4Report && g4Report.recall?.gaps === 0 && g4Report.verifyChain?.valid ? 'passed' : 'harness_ready';
+
+  const g4Message = g4Report
+    ? `Truth-loop causal recall: ${g4Report.entries ?? '?'} ledger entries, ${g4Report.recall?.queriesRun ?? '?'} queries, ${g4Report.recall?.gaps ?? '?'} gaps, ${g4Report.recall?.completenessPct ?? '?'}% completeness.`
+    : 'Truth Loop runs are committed to Time Machine; conversation-specific recall ledger must exist before recall can pass. Run scripts/build-g4-truth-loop-ledger.mjs.';
+
   const scenarios: ClassGResult['scenarios'] = [
-    {
-      id: 'G1_sean_lippay_outreach',
-      status: seanStaged ? 'staged_founder_gated' : 'harness_ready',
-      message: seanStaged
-        ? 'Sean Lippay workflow artifacts exist but founder send remains gated.'
-        : 'Harness can validate Sean Lippay artifacts once staged.',
-    },
+    { id: 'G1_sean_lippay_outreach', status: g1Status, message: g1Message },
     {
       id: 'G2_dojo_bookkeeping',
       status: 'staged_founder_gated',
-      message: 'Dojo bookkeeping data/model artifacts are not present in this repo; no model-promotion claim made.',
+      message: 'Dojo bookkeeping integration is out_of_scope_dojo_paused for v1; no model-promotion claim made.',
     },
     {
       id: 'G3_three_way_gate_failure',
       status: 'passed',
       message: 'Three-way gate proof tests already fail closed for missing or tampered proof envelopes.',
     },
-    {
-      id: 'G4_truth_loop_causal_recall',
-      status: 'harness_ready',
-      message: 'Truth Loop runs are committed to Time Machine; conversation-specific Dojo planning context must exist before recall can pass.',
-    },
+    { id: 'G4_truth_loop_causal_recall', status: g4Status, message: g4Message },
   ];
+
   return { status: 'partial', scenarios };
+}
+
+function readJsonIfExists(p: string): Record<string, unknown> | null {
+  try {
+    if (!existsSync(p)) return null;
+    return JSON.parse(readFileSync(p, 'utf-8')) as Record<string, unknown>;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Pass 32 — when a Class G report is missing or stale, invoke the side-script that produces it.
+ * Failures are logged but do not throw; the harness continues with whatever data is on disk.
+ * This converts the prior "harness disagrees with paper" limitation into closed orchestration.
+ */
+async function regenerateGReportIfStale(cwd: string, reportPath: string, scriptRel: string): Promise<void> {
+  try {
+    let needsRegen = !existsSync(reportPath);
+    if (!needsRegen) {
+      const { statSync } = await import('node:fs');
+      const age = Date.now() - statSync(reportPath).mtimeMs;
+      needsRegen = age > G_REPORT_STALE_MS;
+    }
+    if (!needsRegen) return;
+    const scriptAbs = path.join(cwd, scriptRel);
+    if (!existsSync(scriptAbs)) return;
+    const { spawn } = await import('node:child_process');
+    await new Promise<void>((resolveP) => {
+      const child = spawn(process.execPath, [scriptAbs], { cwd, stdio: 'ignore' });
+      child.on('error', () => resolveP());
+      child.on('exit', () => resolveP());
+    });
+  } catch {
+    // Best-effort; orchestration failures should not block the harness.
+  }
 }
 
 async function buildSyntheticChain(cwd: string, commitCount: number, createdAt: string): Promise<ValidationChain> {

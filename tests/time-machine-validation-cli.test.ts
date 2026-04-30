@@ -55,4 +55,33 @@ describe('time-machine validate CLI command', () => {
     assert.equal(parsed.classes.D.status, 'harness_ready_not_live_validated');
     assert.match(parsed.summary.claimsNotAllowed.join('\n'), /DELEGATE-52/i);
   });
+
+  it('passes substrate mitigation flags into live/dry-run DELEGATE-52 validation', async () => {
+    const lines: string[] = [];
+    process.env.DANTEFORGE_DELEGATE52_DRY_RUN = '1';
+    try {
+      await timeMachine({
+        action: 'validate',
+        cwd: workspace,
+        classes: 'D',
+        delegate52Mode: 'live',
+        budgetUsd: 5,
+        maxDomains: 1,
+        roundTripsPerDomain: 1,
+        mitigateDivergence: true,
+        retriesOnDivergence: 3,
+        json: true,
+        out: resolve(workspace, 'out'),
+        _stdout: line => lines.push(line),
+        _now: () => '2026-04-29T10:00:00.000Z',
+      });
+    } finally {
+      delete process.env.DANTEFORGE_DELEGATE52_DRY_RUN;
+    }
+
+    const parsed = JSON.parse(lines.join('\n'));
+    assert.equal(parsed.classes.D.status, 'live_dry_run');
+    assert.equal(parsed.classes.D.mitigation.restoreOnDivergence, true);
+    assert.equal(parsed.classes.D.mitigation.retriesOnDivergence, 3);
+  });
 });

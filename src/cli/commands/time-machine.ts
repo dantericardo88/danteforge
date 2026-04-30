@@ -29,6 +29,8 @@ export interface TimeMachineCommandOptions {
   budgetUsd?: number;
   maxDomains?: number;
   roundTripsPerDomain?: number;
+  mitigateDivergence?: boolean;
+  retriesOnDivergence?: number;
   toWorkingTree?: boolean;
   confirm?: boolean;
   json?: boolean;
@@ -93,6 +95,12 @@ export async function timeMachine(options: TimeMachineCommandOptions): Promise<v
       budgetUsd: options.budgetUsd,
       maxDomains: options.maxDomains,
       roundTripsPerDomain: options.roundTripsPerDomain,
+      mitigation: options.mitigateDivergence || options.retriesOnDivergence !== undefined
+        ? {
+            restoreOnDivergence: options.mitigateDivergence === true,
+            retriesOnDivergence: options.retriesOnDivergence,
+          }
+        : undefined,
       now: options._now,
     });
     if (options.json) {

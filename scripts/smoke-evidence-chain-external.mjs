@@ -1,4 +1,4 @@
-// External-consumer smoke test for @danteforge/evidence-chain v1.0.0.
+// External-consumer smoke test for @danteforge/evidence-chain v1.1.0.
 // This file lives OUTSIDE the DanteForge repo. It only uses what npm install
 // gave us. If something works here, it works for any external user.
 

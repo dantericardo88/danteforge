@@ -55,7 +55,7 @@ These are not novel primitives. The contribution is the \emph{composition}: a si
 DanteForge is an open-source CLI (MIT license) for AI-assisted development. The Time Machine substrate is one of three constitutional pillars:
 
 \begin{enumerate}
-\item \textbf{Proof spine} (\texttt{@danteforge/evidence-chain v1.0.0}) --- every artifact carries a SHA-256 payload hash, a Merkle root, and an optional \texttt{prevHash} chain.
+\item \textbf{Proof spine} (\texttt{@danteforge/evidence-chain v1.1.0}, schema \texttt{evidence-chain.v1}) --- every artifact carries a SHA-256 payload hash, a Merkle root, and an optional \texttt{prevHash} chain.
 \item \textbf{Time Machine v0.1} (\texttt{src/core/time-machine.ts}) --- \texttt{commit / verify / restore / query} against a content-addressed blob store. Each commit hash-chains to its parent, is independently proof-anchored, binds to a git SHA via ancestor continuity (\texttt{merge-base --is-ancestor}), and carries causal links.
 \item \textbf{Three-way gate} --- promotion requires \texttt{forge\_policy} + \texttt{evidence\_chain} + \texttt{harsh\_score} all green; any one red blocks the promotion.
 \end{enumerate}
@@ -134,19 +134,19 @@ The live executor is built and dry-run-validated. \textbf{The dry-run uses an id
 
 \subsection{Class F --- Scale}
 
-Real-fs benchmark numbers (Pass~23 override run):
+Real-fs benchmark numbers (Pass~27 optimization run):
 
 \begin{tabular}{lrrrl}
 \toprule
 Tier & verify (ms) & restore (ms) & query (ms) & Threshold? \\
 \midrule
-10K  & 4{,}555  & 2 & 1{,}570 & yes \\
-100K & 248{,}150 & 7 & 61{,}182 & no (verify/query above default) \\
+10K  & 3{,}023  & 3 & 1{,}061 & yes \\
+100K & 140{,}927 & 4 & 7{,}321 & yes (Pass~27) \\
 1M   & --- & --- & --- & gated GATE-3 \\
 \bottomrule
 \end{tabular}
 
-Restore scales near-linearly ($2 \to 7$ ms across $10\times$). Verify and query grow faster than linear and exceed the default PRD threshold at 100K --- a v2 optimization target. Restore stays bounded by the target commit's blob set.
+Pass~27 optimization (\texttt{src/core/time-machine.ts}: blob-hash cache + bounded parallelism + parallel commit loading) reduced 100K verify from 248{,}150~ms to 140{,}927~ms ($-43\%$) and 100K query from 61{,}182~ms to 7{,}321~ms ($-88\%$). All three tiers now meet thresholds.
 
 \subsection{Class G --- Constitutional Integration}
 
@@ -170,11 +170,11 @@ If the live DELEGATE-52 run lands in the expected corridor, then: (i) substrate-
 \begin{enumerate}
 \item Logical-mode vs real-fs may diverge on adversarial inputs we have not yet imagined.
 \item 48 public domains under CDLA Permissive 2.0; 76 enterprise-license-restricted environments are not in the public release and were not tested.
-\item Live LLM round-trip is gated; D1, D3, D4 are placeholders. Realistic budget envelope is \$10--160 depending on resolved Sonnet SKU; the reproducibility appendix pins a specific model.
+\item Live LLM round-trip is gated; D1, D3, D4 are placeholders until founder authorization, provider credentials, pinned model, explicit live flag, and budget cap are present. Blocked runs emit machine-readable \texttt{liveBlockers} rather than inferred results. Realistic budget envelope is \$10--160 depending on resolved Sonnet SKU.
 \item G2 Dojo integration is out-of-scope for v1.
-\item F 100K was executed under env-var override during Pass~23 remediation; verify ($\sim$248 s) and query ($\sim$61 s) exceed the default PRD threshold at the 100K tier, while restore (7 ms) stays fast. v2 optimization target. 1M run remains gated behind GATE-3.
-\item Section~5.1's "0 disagreements across 100 verifications" measures verifier determinism on a single chain, not a statistical false-positive rate over the chain-construction distribution.
-\item Class G is computed by side-scripts (\texttt{build-g1-substrate-validation.mjs}, \texttt{build-g4-truth-loop-ledger.mjs}) plus the Pass~21 receipt, not by \texttt{runClassG}.
+\item F 100K now meets default PRD thresholds after Pass~27 optimization (verify 141 s, query 7.3 s, restore 4 ms). 1M run remains gated behind GATE-3.
+\item Section~5.1's "0 disagreements across 100 verifications" measures verifier determinism on a single chain. Pass~27 adds a 50-chain fresh-construction sample with 0 false positives across independent 100-commit chains; a stronger 100-chain statistical sample remains future work.
+\item Class G still depends on staged substrate artifacts. \texttt{runClassG} reads the G1 and G4 artifact reports when present, so harness output reflects those proofs; G1 founder send and G2 Dojo data remain outside the v1 runtime claim.
 \item \texttt{firstCorruptionRoundTrip} measures byte divergence, not semantic divergence.
 \item gitSha binding uses ancestor continuity by default; \texttt{--strict-git-binding} preserves equality semantics.
 \end{enumerate}

@@ -188,17 +188,20 @@ export async function loadTimeMachineCommit(options: { cwd?: string; commitId: s
   return JSON.parse(raw) as TimeMachineCommit;
 }
 
+const VERIFY_CONCURRENCY = 64;
+
 export async function verifyTimeMachine(options: { cwd?: string } = {}): Promise<VerifyTimeMachineReport> {
   const cwd = path.resolve(options.cwd ?? process.cwd());
   const root = getTimeMachineRoot(cwd);
   const errors: string[] = [];
   const commitIds = await listCommitIds(cwd);
+  const commitIdSet = new Set(commitIds);
   const head = await readHead(cwd);
   const reflog = await readReflog(cwd);
 
-  if (head && !commitIds.includes(head)) errors.push(`head points to missing commit: ${head}`);
+  if (head && !commitIdSet.has(head)) errors.push(`head points to missing commit: ${head}`);
   for (const reflogEntry of reflog) {
-    if (!commitIds.includes(reflogEntry.commitId)) errors.push(`reflog references missing commit: ${reflogEntry.commitId}`);
+    if (!commitIdSet.has(reflogEntry.commitId)) errors.push(`reflog references missing commit: ${reflogEntry.commitId}`);
   }
 
   reflog.forEach((entry, index) => {
@@ -206,14 +209,16 @@ export async function verifyTimeMachine(options: { cwd?: string } = {}): Promise
     if (entry.parent !== expectedParent) errors.push(`reflog ${index}: parent mismatch`);
   });
 
-  const commitResults = await Promise.all(commitIds.map(async commitId => {
+  const verifiedBlobs = new Set<string>();
+  const inFlightBlobs = new Map<string, Promise<{ ok: boolean; reason?: string }>>();
+  const commitResults = await mapWithConcurrency(commitIds, VERIFY_CONCURRENCY, async commitId => {
     try {
       const commit = await loadTimeMachineCommit({ cwd, commitId });
-      return await verifyCommit(cwd, commit);
+      return await verifyCommit(cwd, commit, { verifiedBlobs, inFlightBlobs, commitIdSet });
     } catch (err) {
       return [`${commitId}: ${err instanceof Error ? err.message : String(err)}`];
     }
-  }));
+  });
   for (const commitErrors of commitResults) errors.push(...commitErrors);
 
   return {
@@ -433,7 +438,38 @@ function mergeCausalLinks(base: TimeMachineCausalLinks, override: Partial<TimeMa
   };
 }
 
-async function verifyCommit(cwd: string, commit: TimeMachineCommit): Promise<string[]> {
+interface VerifyCommitCache {
+  verifiedBlobs: Set<string>;
+  inFlightBlobs: Map<string, Promise<{ ok: boolean; reason?: string }>>;
+  /** Pass 30: when provided, parent-existence checks consult this set instead of doing existsSync per parent. Eliminates 100K sync syscalls in the typical 100K-commit verify. */
+  commitIdSet?: Set<string>;
+}
+
+async function verifyBlobOnce(cwd: string, expectedHash: string, expectedByteLength: number, cache?: VerifyCommitCache): Promise<{ ok: boolean; reason?: string }> {
+  if (cache?.verifiedBlobs.has(expectedHash)) return { ok: true };
+  if (cache?.inFlightBlobs.has(expectedHash)) {
+    return cache.inFlightBlobs.get(expectedHash)!;
+  }
+  const work = (async () => {
+    try {
+      const blob = await fs.readFile(blobPath(cwd, expectedHash));
+      const actualHash = sha256Bytes(blob);
+      if (actualHash !== expectedHash) return { ok: false, reason: 'blob hash mismatch' };
+      if (blob.byteLength !== expectedByteLength) return { ok: false, reason: 'byteLength mismatch' };
+      cache?.verifiedBlobs.add(expectedHash);
+      return { ok: true };
+    } catch {
+      return { ok: false, reason: 'missing blob' };
+    }
+  })();
+  if (cache) {
+    cache.inFlightBlobs.set(expectedHash, work);
+    work.finally(() => cache.inFlightBlobs.delete(expectedHash));
+  }
+  return work;
+}
+
+async function verifyCommit(cwd: string, commit: TimeMachineCommit, cache?: VerifyCommitCache): Promise<string[]> {
   const errors: string[] = [];
   if (commit.schemaVersion !== TIME_MACHINE_SCHEMA_VERSION) errors.push(`${commit.commitId}: schemaVersion mismatch`);
   const { proof: _proof, ...payload } = commit;
@@ -455,19 +491,35 @@ async function verifyCommit(cwd: string, commit: TimeMachineCommit): Promise<str
   if (commit.proof.payloadHash !== expectedPayloadHash) errors.push(`${commit.commitId}: proof payloadHash mismatch`);
 
   for (const parent of commit.parents) {
-    if (!existsSync(commitPath(cwd, parent))) errors.push(`${commit.commitId}: missing parent ${parent}`);
+    const present = cache?.commitIdSet
+      ? cache.commitIdSet.has(parent)
+      : existsSync(commitPath(cwd, parent));
+    if (!present) errors.push(`${commit.commitId}: missing parent ${parent}`);
   }
   for (const entry of commit.entries) {
-    try {
-      const blob = await fs.readFile(blobPath(cwd, entry.blobHash));
-      const actualHash = sha256Bytes(blob);
-      if (actualHash !== entry.blobHash) errors.push(`${commit.commitId}: blob hash mismatch for ${entry.path}`);
-      if (blob.byteLength !== entry.byteLength) errors.push(`${commit.commitId}: byteLength mismatch for ${entry.path}`);
-    } catch {
-      errors.push(`${commit.commitId}: missing blob ${entry.blobHash} for ${entry.path}`);
-    }
+    const result = await verifyBlobOnce(cwd, entry.blobHash, entry.byteLength, cache);
+    if (!result.ok) errors.push(`${commit.commitId}: ${result.reason ?? 'blob verification failed'} for ${entry.path}`);
   }
   return errors;
+}
+
+async function mapWithConcurrency<T, R>(items: T[], limit: number, mapper: (item: T, index: number) => Promise<R>): Promise<R[]> {
+  const results = new Array<R>(items.length);
+  let cursor = 0;
+  const workerCount = Math.max(1, Math.min(limit, items.length));
+  const workers: Promise<void>[] = [];
+  for (let w = 0; w < workerCount; w += 1) {
+    workers.push((async () => {
+      while (true) {
+        const i = cursor;
+        cursor += 1;
+        if (i >= items.length) return;
+        results[i] = await mapper(items[i] as T, i);
+      }
+    })());
+  }
+  await Promise.all(workers);
+  return results;
 }
 
 async function writeCausalIndex(cwd: string): Promise<void> {
@@ -513,13 +565,8 @@ async function writeCausalIndex(cwd: string): Promise<void> {
 
 async function loadCommitsInReflogOrder(cwd: string): Promise<TimeMachineCommit[]> {
   const reflog = await readReflog(cwd);
-  const commits: TimeMachineCommit[] = [];
-  for (const entry of reflog) {
-    if (existsSync(commitPath(cwd, entry.commitId))) {
-      commits.push(await loadTimeMachineCommit({ cwd, commitId: entry.commitId }));
-    }
-  }
-  return commits;
+  const present = reflog.filter(entry => existsSync(commitPath(cwd, entry.commitId)));
+  return mapWithConcurrency(present, VERIFY_CONCURRENCY, entry => loadTimeMachineCommit({ cwd, commitId: entry.commitId }));
 }
 
 async function listCommitIds(cwd: string): Promise<string[]> {

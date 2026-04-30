@@ -15,6 +15,12 @@ import { runTimeMachineValidation } from '../src/core/time-machine-validation.js
 let workspace: string;
 const originalDryRun = process.env.DANTEFORGE_DELEGATE52_DRY_RUN;
 const originalLive = process.env.DANTEFORGE_DELEGATE52_LIVE;
+const originalAnthropicKey = process.env.ANTHROPIC_API_KEY;
+const originalClaudeKey = process.env.DANTEFORGE_CLAUDE_API_KEY;
+const originalDanteAnthropicKey = process.env.DANTEFORGE_ANTHROPIC_API_KEY;
+const originalGenericKey = process.env.DANTEFORGE_LLM_API_KEY;
+const originalAnthropicModel = process.env.ANTHROPIC_MODEL;
+const originalDelegateModel = process.env.DANTEFORGE_DELEGATE52_MODEL;
 
 before(() => {
   workspace = mkdtempSync(join(tmpdir(), 'dfg-delegate52-live-'));
@@ -26,6 +32,18 @@ after(() => {
   else process.env.DANTEFORGE_DELEGATE52_DRY_RUN = originalDryRun;
   if (originalLive === undefined) delete process.env.DANTEFORGE_DELEGATE52_LIVE;
   else process.env.DANTEFORGE_DELEGATE52_LIVE = originalLive;
+  if (originalAnthropicKey === undefined) delete process.env.ANTHROPIC_API_KEY;
+  else process.env.ANTHROPIC_API_KEY = originalAnthropicKey;
+  if (originalClaudeKey === undefined) delete process.env.DANTEFORGE_CLAUDE_API_KEY;
+  else process.env.DANTEFORGE_CLAUDE_API_KEY = originalClaudeKey;
+  if (originalDanteAnthropicKey === undefined) delete process.env.DANTEFORGE_ANTHROPIC_API_KEY;
+  else process.env.DANTEFORGE_ANTHROPIC_API_KEY = originalDanteAnthropicKey;
+  if (originalGenericKey === undefined) delete process.env.DANTEFORGE_LLM_API_KEY;
+  else process.env.DANTEFORGE_LLM_API_KEY = originalGenericKey;
+  if (originalAnthropicModel === undefined) delete process.env.ANTHROPIC_MODEL;
+  else process.env.ANTHROPIC_MODEL = originalAnthropicModel;
+  if (originalDelegateModel === undefined) delete process.env.DANTEFORGE_DELEGATE52_MODEL;
+  else process.env.DANTEFORGE_DELEGATE52_MODEL = originalDelegateModel;
 });
 
 test('Pass 19 — dry-run mode produces structured plan without spending', async () => {
@@ -56,6 +74,12 @@ test('Pass 19 — dry-run mode produces structured plan without spending', async
 test('Pass 19 — live mode without DANTEFORGE_DELEGATE52_LIVE env-var refuses (returns live_not_enabled)', async () => {
   delete process.env.DANTEFORGE_DELEGATE52_DRY_RUN;
   delete process.env.DANTEFORGE_DELEGATE52_LIVE;
+  delete process.env.ANTHROPIC_API_KEY;
+  delete process.env.DANTEFORGE_CLAUDE_API_KEY;
+  delete process.env.DANTEFORGE_ANTHROPIC_API_KEY;
+  delete process.env.DANTEFORGE_LLM_API_KEY;
+  delete process.env.ANTHROPIC_MODEL;
+  delete process.env.DANTEFORGE_DELEGATE52_MODEL;
   const report = await runTimeMachineValidation({
     cwd: workspace,
     classes: ['D'],
@@ -67,6 +91,8 @@ test('Pass 19 — live mode without DANTEFORGE_DELEGATE52_LIVE env-var refuses (
     now: () => '2026-04-29T20:00:01.000Z',
   });
   assert.equal(report.classes.D?.status, 'live_not_enabled');
+  assert.ok(report.classes.D?.liveBlockers?.includes('blocked_by_missing_credentials'));
+  assert.ok(report.classes.D?.liveBlockers?.includes('blocked_by_missing_model'));
   for (const row of report.classes.D?.domainRows ?? []) {
     assert.equal(row.status, 'live_not_enabled_explicit_budget_required');
   }
@@ -86,6 +112,7 @@ test('Pass 19 — live mode without --budget-usd refuses (returns live_not_enabl
     now: () => '2026-04-29T20:00:02.000Z',
   });
   assert.equal(report.classes.D?.status, 'live_not_enabled');
+  assert.ok(report.classes.D?.liveBlockers?.includes('blocked_by_missing_budget'));
 });
 
 test('Pass 19 — live mode with all guards + injected llmCaller executes round-trips and tracks cost', async () => {

@@ -852,6 +852,8 @@ timeMachineCommand
   .option('--budget-usd <n>', 'Budget ceiling for live DELEGATE-52 runs', parseFloat)
   .option('--max-domains <n>', 'Maximum DELEGATE-52 domains to include', parseInt)
   .option('--round-trips <n>', 'Round-trips per domain for live DELEGATE-52 (PRD spec: 10)', parseInt)
+  .option('--mitigate-divergence', 'Restore and retry when a DELEGATE-52 round-trip diverges')
+  .option('--retries-on-divergence <n>', 'Retry attempts per divergence when mitigation is enabled', parseInt)
   .option('--json', 'Output machine-readable JSON')
   .option('--cwd <path>', 'Project directory (defaults to cwd)')
   .action(async (opts) => (await C()).timeMachine({
@@ -865,6 +867,8 @@ timeMachineCommand
     budgetUsd: opts.budgetUsd,
     maxDomains: opts.maxDomains,
     roundTripsPerDomain: opts.roundTrips,
+    mitigateDivergence: opts.mitigateDivergence,
+    retriesOnDivergence: opts.retriesOnDivergence,
     json: opts.json,
   }));
 

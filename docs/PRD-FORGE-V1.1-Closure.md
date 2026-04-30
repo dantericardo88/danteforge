@@ -14,12 +14,12 @@
 
 ## 1. Executive Summary
 
-DanteForge is at 9.30 overall with 15 of 19 dimensions at 9.0+. Per the Codex Masterplan Closure Stamp committed 2026-04-29, the substrate is essentially at v1: proof spine sealed (Pass 11-17), Time Machine shipped end-to-end (Pass 17.5 / commit f19e1d7), Truth Loop substrate operational with 6 schemas + proof envelope, three-way gate enforcing constitutional discipline, four of five Dante-native skill executors shipped, magic skill orchestration runtime live, evidence-chain extracted as `@danteforge/evidence-chain` v1.0.0 npm package, Sean Lippay validation harness scaffolded.
+DanteForge is at 9.30 overall with 15 of 19 dimensions at 9.0+. Per the Codex Masterplan Closure Stamp committed 2026-04-29, the substrate is essentially at v1: proof spine sealed (Pass 11-17), Time Machine shipped end-to-end (Pass 17.5 / commit f19e1d7), Truth Loop substrate operational with 6 schemas + proof envelope, three-way gate enforcing constitutional discipline, four of five Dante-native skill executors shipped, magic skill orchestration runtime live, evidence-chain extracted as `@danteforge/evidence-chain` and locally bumped to v1.1.0, Sean Lippay validation harness scaffolded.
 
 This PRD specifies the closure work to formally seal v1.0 plus the explicit integration surfaces that PRD-CODE-V2 (multi-instance Council) and PRD-AGENTS-V1 (WhatsApp orchestrator) require to consume DanteForge cleanly. The work splits into three categories:
 
 1. **Dimension closure** for the four remaining gaps (developerExperience 8.5→9+, specDrivenPipeline 8.5→9+, ecosystemMcp 6→9+, communityAdoption acknowledged as distribution problem requiring external visibility)
-2. **Founder-gated work** that the substrate cannot self-complete (Article XIV ratification, Sean Lippay actual send, truth loop founder-confirmed closure, PRD-24 and PRD-25 authoring)
+2. **Founder-gated work** that the substrate cannot self-complete (proposed Article XV ratification, Sean Lippay actual send, truth loop founder-confirmed closure; PRD-24 and PRD-25 are now formally retired)
 3. **Sister-repo integration surfaces** specifically the `aggregateChildReceipts` helper in evidence-chain v1.1, the `@danteforge/truth-loop` and `@danteforge/three-way-gate` package extractions, and the documented contracts that DanteCode v2 and DanteAgents v1 build against
 
 Total work: 5-7 days at demonstrated rate. Most of it is closure rather than new functionality.
@@ -123,22 +123,21 @@ The four dimensions below 9.0+ per the closure stamp.
 
 The closure stamp explicitly lists work that requires founder action and cannot be substrate-completed.
 
-### 4.1 Article XIV Brand Asset Protocol Formal Ratification
+### 4.1 Article XIV Reconciliation and Proposed Article XV
 
-**Status:** Article XIV identified as constitutional addition from Huashu Design pattern harvest. Substrate-side implementation for entity verification can be built; formal ratification requires founder explicit approval.
+**Status update 2026-04-29:** Article XIV on disk is **Context Economy**, not Brand Asset Protocol. The divergence is reconciled in [Article-XIV-Reconciliation.md](./Article-XIV-Reconciliation.md). Brand Asset Protocol is now proposed as Article XV and remains founder-gated; no runtime enforcement is claimed until ratified.
 
-**Work for substrate-Claude:**
-- Draft Article XIV text matching the pattern of Articles I-XIII (clear principle, scope, enforcement mechanism, examples)
-- Specify the entity verification mechanism: when content generation involves real-world entities (brands, people, companies, products, regulations), verification against authoritative sources is required before generation
-- Implement the pre-flight check in the truth loop runner: any artifact-generation step naming a real-world entity triggers verify_entity step before commit
-- Update CONSTITUTION.md draft section pending founder ratification
+**Work completed by substrate agents:**
+- Documented that Article XIV remains Context Economy because `.danteforge/CONSTITUTION.md` already assigns that article number.
+- Proposed Brand Asset Protocol as Article XV with entity-verification semantics and founder-gated status.
+- Explicitly deferred runtime enforcement rather than silently implementing an unratified constitutional rule.
 
 **Work for founder:**
 - Review Article XIV draft text
 - Approve, revise, or reject
 - If approved, formal ratification (CONSTITUTION.md commit by founder)
 
-**Acceptance:** Article XIV either ratified (founder commit) or formally deferred with explicit reason. The substrate implementation exists either way; the constitutional status depends on founder action.
+**Acceptance:** Article XIV is formally reconciled with explicit reason. Article XV Brand Asset Protocol is prepared but pending founder approval.
 
 **Effort:** Substrate work 0.5 days. Founder review separate.
 
@@ -164,14 +163,18 @@ The closure stamp explicitly lists work that requires founder action and cannot 
 
 ### 4.3 PRD-24 and PRD-25 Authoring
 
-**Status:** Closure stamp references these as not yet existing. Their content is unclear without inspecting the broader DirtyDLite 25-PRD master plan or context that defines what 24 and 25 should cover.
+**Status update 2026-04-29:** Resolved by formal retirement memos:
+- [PRD-24-personal-trainer-RETIRED.md](./PRDs/PRD-24-personal-trainer-RETIRED.md)
+- [PRD-25-lovability-layer-RETIRED.md](./PRDs/PRD-25-lovability-layer-RETIRED.md)
 
-**Work for substrate-Claude:**
-- Inspect the existing PRD numbering and identify what PRD-24 and PRD-25 should cover based on the master plan structure
-- If PRD-24 and PRD-25 represent specific functional gaps, draft their content per the OpenSpec per-change folder format
-- If they're placeholder PRDs that no longer reflect needed work, formally retire them with explanation
+The master-plan references were placeholders for future-product PRDs that were never authored. Context Economy now applies to all future PRDs by Article XIV inheritance, so synthesizing speculative PRD-24/25 content would create documentation debt rather than closure.
 
-**Acceptance:** PRD-24 and PRD-25 either authored as proper PRDs or formally retired with rationale. The closure stamp's reference to them is resolved.
+**Work completed by substrate agents:**
+- Inspected the master-plan references.
+- Chose formal retirement instead of speculative authoring.
+- Added retirement rationale and successor rules for any future personal-trainer or lovability work.
+
+**Acceptance:** PRD-24 and PRD-25 are formally retired with rationale. The closure stamp's reference to them is resolved.
 
 **Effort:** 1 day depending on what they actually need to cover.
 
@@ -229,8 +232,8 @@ Implementation note 2026-04-29: the public package surface now owns `types`, `id
 Implementation note 2026-04-29: local v1.1.0 package and tests are complete. Republish is intentionally not executed in this sprint.
 
 **Acceptance:**
-- All three packages published to npm at correct versions
-- Sister repos can install via `npm install @danteforge/evidence-chain@1.1` etc. and consume the public APIs
+- All three packages are publication-ready at correct versions; npm publish remains founder-gated
+- Sister repos can install from npm after founder publication, or consume workspace/local tarballs before publication
 - Existing DanteForge code still works (extracted packages imported back, not parallel)
 - Tests pass on extracted packages
 
@@ -299,7 +302,7 @@ The closure stamp documents four Dante-native skill executors visible in the com
 | 3 | Dimension closure: developerExperience to 9+, specDrivenPipeline to 9+ |
 | 4 | Dimension closure: ecosystemMcp to 9+ (largest piece) |
 | 5 | Dimension closure: ecosystemMcp continued, MCP tool surface documentation |
-| 6 | Founder-gated work: Article XIV draft, PRD-24/PRD-25 disposition, dante-grill-me verification |
+| 6 | Founder-gated work: Article XIV/Article XV reconciliation, PRD-24/PRD-25 disposition, dante-grill-me verification |
 | 7 | Sister repo integration documentation, final verification, harsh score evaluation |
 
 Total: 5-7 days. Substrate-Claude can execute most of this in parallel with Codex picking up specific package extraction work.
@@ -312,7 +315,7 @@ DanteForge v1.1 is complete when all of the following are GREEN:
 
 **Quantitative:**
 1. Harsh score 9.5+ overall, 18/19 dimensions at 9.0+ (communityAdoption stays low pending distribution)
-2. All three packages (`@danteforge/evidence-chain` v1.1, `@danteforge/truth-loop` v1.0, `@danteforge/three-way-gate` v1.0) published to npm
+2. All three packages (`@danteforge/evidence-chain` v1.1, `@danteforge/truth-loop` v1.0, `@danteforge/three-way-gate` v1.0) are locally packaged and npm-publication-ready; actual npm publish remains founder-gated
 3. MCP tool surface fully documented and externally consumable
 4. Sister repo integration documentation complete
 
@@ -322,10 +325,10 @@ DanteForge v1.1 is complete when all of the following are GREEN:
 3. Spec-driven pipeline traces from spec to implementation cleanly
 
 **Constitutional:**
-1. Article XIV either ratified or formally deferred with rationale
+1. Article XIV Context Economy reconciled and proposed Article XV either ratified or formally deferred with rationale
 2. Sean Lippay outreach completed with founder rating 8.5+
 3. 5-10 truth loop runs founder-validated at 8.5+ average
-4. PRD-24 and PRD-25 either authored or formally retired
+4. PRD-24 and PRD-25 formally retired with rationale
 
 **Strategic:**
 1. PRD-CODE-V2 (multi-instance Council) can build against DanteForge v1.1 surfaces without blockers
@@ -343,7 +346,7 @@ Explicit non-goals to keep scope tight:
 - WhatsApp orchestrator product layer (DanteAgents owns this per PRD-AGENTS-V1)
 - Distribution work for communityAdoption (post-trio-ships work)
 - DELEGATE-52 live mode replication (deferred per Time Machine validation report; harness mode evidence sufficient for v1.1)
-- New constitutional articles beyond XIII and XIV
+- New ratified constitutional articles beyond Article XIV Context Economy; proposed Article XV Brand Asset Protocol remains founder-gated
 - DanteCreative seventh organ scoping (post-trio-ships)
 - Bookkeeping fine-tune integration (Dojo work; DanteForge provides the substrate but doesn't drive Dojo)
 
@@ -355,26 +358,26 @@ Resolve by inspecting current repo state at build time:
 
 1. Has dante-grill-me skill executor shipped? Inspect `src/spine/skill_runner/executors/`.
 2. What are the 7 quality-gate MCP tools currently exposed? Verify current state in `src/core/mcp-server.ts`.
-3. Has Article XIII Context Economy been formally ratified in CONSTITUTION.md? If not, Article XIV ratification waits behind it.
+3. Has the founder approved proposed Article XV Brand Asset Protocol? If not, entity-verification runtime enforcement remains deferred.
 4. What's the current state of `docs/PRDs/`? Is the OpenSpec per-change folder pattern adopted everywhere or only in the two examples (truth-loop-list, truth-loop-diff)?
-5. What's the npm publication status of @danteforge/evidence-chain? Is v1.0.0 actually on the npm registry or only in the local repo?
+5. What's the npm publication status of @danteforge/evidence-chain? Is v1.1.0 actually on the npm registry or only in the local repo?
 6. Have any commits since f19e1d7 changed any of the above? Run `git log --since="2026-04-29"` and check.
 
 ---
 
 ## 11. Constitutional Discipline
 
-This PRD operates under the Dante Constitution. All Articles I-XIII apply. Article XIV applies once ratified.
+This PRD operates under the Dante Constitution. Articles I-XIII apply. Article XIV is Context Economy on disk; proposed Article XV Brand Asset Protocol applies only after founder ratification.
 
 **Article IX KiloCode Discipline:** Files under 500 LOC. Package extractions must respect this; if a file would exceed 500 LOC during extraction, split it.
 
-**Article X OSS Pattern Learning:** OpenSpec per-change folder pattern attributed where used. claude-council debate mode pattern attributed where used. Brand Asset Protocol from Huashu Design attributed when Article XIV ratified.
+**Article X OSS Pattern Learning:** OpenSpec per-change folder pattern attributed where used. claude-council debate mode pattern attributed where used. Brand Asset Protocol from Huashu Design attributed if Article XV is ratified.
 
 **Article XI Production-Ready Criteria:** All 10 criteria met. Verify against existing checklist.
 
 **Article XII Anti-Stub Enforcement:** No stub implementations. Package extractions must include real tests, not skeleton tests.
 
-**Article XIII Context Economy:** Token telemetry continues to emit. Sacred content preserved.
+**Article XIV Context Economy:** Token telemetry continues to emit. Sacred content preserved.
 
 **Three-Way Promotion Gate:** Forge policy + evidence chain integrity + harsh score, all three GREEN, required for any artifact promotion in v1.1 closure work.
 
@@ -411,4 +414,4 @@ Implementation agents must NOT:
 
 **END OF PRD-FORGE-V1.1**
 
-*Closure begins when substrate-Claude is given this PRD plus access to current repo state. Pass 18 package extractions are the immediate critical path. Dimension closure follows. Founder-gated items proceed in parallel with founder review. End state: DanteForge v1 sealed, three sister-repo packages published to npm, MCP tool surface documented, ready for DanteCode v2 and DanteAgents v1 to build against stable contracts.*
+*Closure begins when substrate-Claude is given this PRD plus access to current repo state. Pass 18 package extractions are the immediate critical path. Dimension closure follows. Founder-gated items proceed in parallel with founder review. End state: DanteForge v1 sealed, three sister-repo packages publication-ready, MCP tool surface documented, ready for DanteCode v2 and DanteAgents v1 to build against stable contracts.*

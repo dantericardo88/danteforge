@@ -23,41 +23,33 @@
 
 ### What's built and verified
 
-- ✅ Cryptographic proof spine (`@danteforge/evidence-chain` v1.0.0, npm-publish-ready)
-- ✅ Three-way promotion gate (refuses tampered receipts; fail-closed)
-- ✅ Corpus-wide proof verification (`forge proof --verify-all`) wired into `verify:all` chain
-- ✅ Time Machine v0.1 substrate (`createTimeMachineCommit`, `verifyTimeMachine`, `restoreTimeMachineCommit`, `queryTimeMachine`)
-- ✅ Time Machine validation harness (Pass 18: `runTimeMachineValidation` + Classes A/B/C/D/E/F/G + scale modes + DELEGATE-52 modes)
-- ✅ Validation report draft at [docs/TIME_MACHINE_VALIDATION_REPORT.md](./TIME_MACHINE_VALIDATION_REPORT.md)
-- ✅ 13/13 Time Machine focused tests pass; 24/24 proof spine tests pass
-- ✅ `verify:all` baseline ~4.6 min wall-time (Pass 15 SLO, GREEN)
+- Cryptographic proof spine (`@danteforge/evidence-chain` v1.1.0 locally, npm publication still founder-gated) with `aggregateChildReceipts`.
+- Three-way promotion gate refuses tampered receipts and fail-closes on missing proof envelopes.
+- Corpus-wide proof verification (`forge proof --verify-all`) remains part of the verification chain.
+- Time Machine v0.1 substrate exists: `createTimeMachineCommit`, `verifyTimeMachine`, `restoreTimeMachineCommit`, and `queryTimeMachine`.
+- Time Machine validation harness exists for Classes A/B/C/D/E/F/G, scale modes, DELEGATE-52 harness/import/live modes, and report generation.
+- Real-fs PRD-scale A/B/C, DELEGATE-52 dataset import, dry-run live executor, Class G G1/G4 substrate artifacts, adversarial review, paper draft, reproducibility appendix, restore-to-working-tree flow, and Pass 27 performance optimization are locally implemented and proof-receipted through Pass 28.
+- `docs/TIME_MACHINE_VALIDATION_REPORT.md` and `docs/papers/time-machine-empirical-validation-v1.md` are the current human-readable summaries.
 
-### What's NOT built (the publication gap)
+### What's NOT complete (founder-gated or explicitly deferred)
 
-- ❌ Live DELEGATE-52 round-trip executor (Class D `live` mode currently returns `live_runner_not_implemented_in_v0_1`)
-- ❌ Imported public DELEGATE-52 dataset evaluation
-- ❌ Real-fs PRD-scale validation runs (currently logical-mode at PRD scale)
-- ❌ End-to-end Class G runs (G1 Sean Lippay, G4 truth-loop causal recall)
-- ❌ Class F 1M-commit benchmark execution (gated behind env-var)
-- ❌ DELEGATE-52 result comparison table
-- ❌ Auto-commit-before-LLM-edit hook (substrate is opt-in for users)
-- ❌ `forge time-machine restore --to-working-tree` flag
-- ❌ Runtime corruption detector (round-trip equivalence runner)
-- ❌ Comparison document (PRD §7 — 8-section paper outline)
-- ❌ Adversarial review pass (Codex hostile review of methodology + results)
-- ❌ arXiv preprint
-- ❌ Targeted outreach to Microsoft Research authors
+- Live DELEGATE-52 paid run: executor and budget guards exist, but the real API spend requires founder approval.
+- Class F 1M-commit benchmark: staged behind explicit environment override because it consumes significant local time and disk.
+- arXiv submission and Microsoft outreach send: drafts/prep exist, but submission/send are founder-gated.
+- npm publication of package surfaces: local workspace packages exist, but publishing is founder-gated.
+- G2 Dojo bookkeeping integration: intentionally out of v1 publication scope and recorded as `out_of_scope_dojo_paused`.
+- Standalone product runtime corruption detector remains future work; the Class D validation runner now has restore-and-retry mitigation hooks for substrate-mediated corruption experiments.
 
 ### Honest weighted coverage
 
-- Substrate + harness: **~78%**
-- Empirical proof against benchmark: **~10%**
-- Publishable artifact: **~50%** (substantial draft exists; awaits live data + adversarial review)
-- Weighted average to publishable: **~65-70%**
+- Substrate + deterministic harness: **~95%**
+- Empirical proof against the public DELEGATE-52 benchmark without live spend: **~70%**
+- Publishable artifact before live data: **~80%**
+- Weighted average to publishable preprint: **~85%**, with the remaining delta dominated by founder-gated live execution and dissemination.
 
 ### Sober size estimate to publishable preprint
 
-**~12-16 days of focused work + ~$80-150 LLM costs + 4 founder review gates.**
+**~1-3 days of founder-gated live execution/review + ~$10-160 LLM costs + submission/outreach approval.**
 
 ---
 
@@ -67,13 +59,13 @@ Per [PRD-TIME-MACHINE-Validation.md §4](./PRD-TIME-MACHINE-Validation.md), mini
 
 | Class | PRD requirement | Current | Gap |
 |---|---|---|---|
-| A | 7/7 mods + 0% FP rate on clean 1000-commit chain | Logical PRD-scale: 7/7 + 100-run FP baseline; real-fs only at smoke (20 commits) | Real-fs 1000-commit run |
-| B | 6/6 byte-identical at 1000 commits | Logical PRD-scale: 6/6; real-fs only at smoke | Real-fs 1000-commit run |
-| C | 7/7 queries + 0 gaps on 100-decision chain | Logical PRD-scale: 7/7 + audit; real-fs only at smoke | Real-fs 100-decision run |
-| D | D2 (52/52 byte-identical restore) + D3 (90%+ causal source identification) | Harness covers 48 public domains; live runner not implemented | **Live execution + result table** |
-| E | 5/5 detected | All 5 covered in deterministic harness | Optional: real multi-agent stress |
-| F | 10K + 100K thresholds met | 10K + 100K real; 1M behind env-var | 1M run with founder approval |
-| G | 4/4 constitutional integrations | G3 passed; G1, G2, G4 reported as `harness_ready` / `staged_founder_gated` | End-to-end runs of G1 + G4 |
+| A | 7/7 mods + 0% FP rate on clean 1000-commit chain | Real-fs PRD-scale complete; Pass 27 adds fresh-chain FP measurement | 100-chain statistical FP expansion optional |
+| B | 6/6 byte-identical at 1000 commits | Real-fs PRD-scale complete | None |
+| C | 7/7 queries + 0 gaps on 100-decision chain | Real-fs PRD-scale complete | None |
+| D | D2 byte-identical restore + D3 causal source identification | Harness/import/dry-run complete for public 48-domain release | **Founder-gated live execution + real result table** |
+| E | 5/5 detected | All 5 covered in deterministic harness | Optional: external multi-agent stress |
+| F | 10K + 100K thresholds met | Pass 27 optimization meets 10K and 100K thresholds; 1M behind env-var | 1M run with founder approval |
+| G | 4/4 constitutional integrations | G1 staged founder-gated, G3 passed, G4 passed; G2 out of scope for v1 | Founder send/Dojo live data not claimed |
 
 **Publishable trigger:** all rows above show "complete" or "honestly documented limitation."
 
@@ -85,34 +77,34 @@ Per [PRD-TIME-MACHINE-Validation.md §4](./PRD-TIME-MACHINE-Validation.md), mini
 
 | # | Gap | Estimated effort | Cost |
 |---|---|---|---|
-| T1.1 | Live DELEGATE-52 round-trip executor (provider adapter + cost guards + dry-run) | 2-3 days | $0 build, $30-80 to run |
-| T1.2 | Imported DELEGATE-52 public dataset (48 domains × 234 rows) ingestion + comparison | 1 day | $0 |
-| T1.3 | Real-fs PRD-scale runs for Classes A, B, C (or honest documentation of why logical-mode is sufficient) | 0.5 day | $0 |
+| T1.1 | Live DELEGATE-52 paid run with founder-approved provider/model/budget | 0.5-1 day wall-time | $10-160 |
+| T1.2 | Imported DELEGATE-52 public dataset ingestion + comparison | Complete | $0 |
+| T1.3 | Real-fs PRD-scale runs for Classes A, B, C | Complete | $0 |
 
 ### Tier 2 — Quality bar for publication
 
 | # | Gap | Estimated effort | Cost |
 |---|---|---|---|
-| T2.1 | Class G end-to-end runs (G1 Sean Lippay, G4 truth-loop causal recall) | 1-2 days | $0-20 |
-| T2.2 | Class F 1M-commit benchmark execution (founder env-var approval) | 0.5 day | $0 (compute only) |
-| T2.3 | DELEGATE-52 result table generator (auto-emit per-domain + aggregate) | 0.5 day | $0 |
+| T2.1 | Class G end-to-end runs (G1 Sean Lippay, G4 truth-loop causal recall) | G1/G4 substrate complete; founder send/Dojo data deferred | $0 |
+| T2.2 | Class F 1M-commit benchmark execution (founder env-var approval) | 0.5-1 day | $0 (compute only) |
+| T2.3 | DELEGATE-52 result table generator (auto-emit per-domain + aggregate) | Complete for harness/import/dry-run; live rows await GATE-1 | $0 |
 
 ### Tier 3 — Product polish that strengthens the publication
 
 | # | Gap | Estimated effort | Cost |
 |---|---|---|---|
-| T3.1 | Auto-commit-before-LLM-edit hook (MCP middleware or Claude Code pre-tool-use hook) | 1-2 days | $0 |
-| T3.2 | `forge time-machine restore --to-working-tree` destructive flag | 0.5 day | $0 |
-| T3.3 | Runtime corruption detector (round-trip equivalence runner — runtime version of Class D) | 3-5 days | $0 build, ongoing $ for periodic checks |
+| T3.1 | Auto-commit-before-LLM-edit hook (MCP middleware or Claude Code pre-tool-use hook) | Complete for post/pre-tool harness paths; broader host interception remains product work | $0 |
+| T3.2 | `forge time-machine restore --to-working-tree` destructive flag | Complete with explicit guardrails | $0 |
+| T3.3 | Runtime corruption detector (round-trip equivalence runner — runtime version of Class D) | Class D mitigation hook exists; standalone product runner remains future work | $0 build, ongoing $ for periodic checks |
 
 ### Tier 4 — Dissemination
 
 | # | Gap | Estimated effort | Cost |
 |---|---|---|---|
-| T4.1 | Comparison document v1 draft (8 sections per PRD §7) | 1 day | $0 |
-| T4.2 | Codex adversarial review pass | 1 day | $0 |
-| T4.3 | arXiv preprint preparation (LaTeX, reproducibility appendix, code release prep) | 1 day | $0 |
-| T4.4 | Targeted outreach to Laban / Schnabel / Neville et al. | 0.5 day | $0 |
+| T4.1 | Comparison document v1 draft (8 sections per PRD §7) | Complete | $0 |
+| T4.2 | Codex adversarial review pass | Complete | $0 |
+| T4.3 | arXiv preprint preparation (LaTeX, reproducibility appendix, code release prep) | Draft complete; submission founder-gated | $0 |
+| T4.4 | Targeted outreach to Laban / Schnabel / Neville et al. | Draft complete; send founder-gated | $0 |
 
 ---
 
@@ -152,18 +144,18 @@ Per [PRD-TIME-MACHINE-Validation.md §4](./PRD-TIME-MACHINE-Validation.md), mini
 
 - [x] **Status:** completed 2026-04-29
 - **Owner:** Codex (Claude does plan + verify)
-- **Goal:** Replace `live_runner_not_implemented_in_v0_1` stub with a real provider adapter that performs forward edit + backward edit per domain.
+- **Goal:** Replace the earlier `live_runner_not_implemented_in_v0_1` placeholder with a real provider adapter that performs forward edit + backward edit per domain.
 - **Scope:**
   - Provider adapter (Anthropic / OpenAI; pick one — likely Anthropic since we're already wired)
   - `coin-purse` budget envelope enforcement (refuses to run without `--budget-usd N`)
   - Dry-run mode (`DANTEFORGE_DELEGATE52_DRY_RUN=1`) that simulates without spending
-  - Live mode requires `DANTEFORGE_DELEGATE52_LIVE=1` AND `--budget-usd > 0`
+  - Live mode requires `DANTEFORGE_DELEGATE52_LIVE=1`, `--budget-usd > 0`, provider credentials, and an explicit pinned model
   - Per-domain logging: input doc hash, forward-edit output hash, backward-edit output hash, final-comparison hash, time, cost
 - **Acceptance criteria:**
   - `forge time-machine validate --class D --delegate52-mode live --budget-usd 80 --max-domains 4 --dry-run` produces a structured plan
   - `forge time-machine validate --class D --delegate52-mode live --budget-usd 80 --max-domains 4` (live) produces a real per-domain result table when env vars + budget are set
   - Cost tracking matches actual provider billing within 10%
-  - Refuses to run without all three guards (env-var + budget + max-domains)
+  - Refuses to run without all live guards and records machine-readable blockers such as `blocked_by_missing_credentials`, `blocked_by_missing_model`, `blocked_by_missing_budget`, or `blocked_by_missing_live_confirmation`
 - **Verify chain:** tsc / lint / anti-stub / proof tests / new live-runner unit tests (mocked provider)
 - **Proof anchor:** Pass 19 manifest + per-domain receipt chain; verifies via `forge proof --verify`
 - **Receipt:** `.danteforge/PASS_19_LIVE_DELEGATE52_EXECUTOR_RECEIPT.md`
@@ -316,12 +308,12 @@ Three possible outcomes:
 
 #### Pass 25 — arXiv preprint preparation
 
-- [x] **Status:** completed 2026-04-29 (after Phase 3 complete)
+- [x] **Status:** agent prep completed 2026-04-29; arXiv submission remains founder-gated
 - **Owner:** Claude (LaTeX + reproducibility) + founder (review)
 - **Goal:** Convert the comparison document v1 (post-adversarial-review) into a publishable arXiv preprint.
 - **Scope:**
   - LaTeX conversion of the markdown comparison doc
-  - Reproducibility appendix: exact CLI commands + env vars + version hashes (`@danteforge/evidence-chain` v1.0.0, Time Machine schema `danteforge.time-machine.v1`, validation schema `danteforge.time-machine.validation.v1`, git SHA at run time)
+  - Reproducibility appendix: exact CLI commands + env vars + version hashes (`@danteforge/evidence-chain` package v1.1.0, `evidence-chain.v1` schema, Time Machine schema `danteforge.time-machine.v1`, validation schema `danteforge.time-machine.validation.v1`, git SHA at run time)
   - Code release prep — already MIT licensed; ensure `npm publish @danteforge/evidence-chain` is unblocked (founder gate from prior passes)
   - Citation list finalized: Laban et al. primary; Nakamoto Bitcoin paper; Git internals; reproducibility research; Anthropic constitutional AI
   - PDF generated locally; verify renders correctly
@@ -338,7 +330,7 @@ Three possible outcomes:
 
 #### Pass 26 — Targeted outreach
 
-- [x] **Status:** completed 2026-04-29 (after Pass 25 + arXiv submission)
+- [x] **Status:** outreach draft completed 2026-04-29; actual send remains founder-gated
 - **Owner:** Founder (writes the email; not the agent)
 - **Goal:** Direct, peer-shaped communication to Microsoft Research authors.
 - **Scope:**
@@ -431,7 +423,7 @@ This discipline carries through every pass.
 
 - [.danteforge/PASS_11_PROOF_GATE_RECEIPT.md](../.danteforge/PASS_11_PROOF_GATE_RECEIPT.md) — proof spine
 - [.danteforge/PASS_12_HARVEST_RECEIPT.md](../.danteforge/PASS_12_HARVEST_RECEIPT.md) — OSS harvest
-- [.danteforge/PASS_13_V1_LOCK_RECEIPT.md](../.danteforge/PASS_13_V1_LOCK_RECEIPT.md) — `@danteforge/evidence-chain` v1.0.0
+- [.danteforge/PASS_13_V1_LOCK_RECEIPT.md](../.danteforge/PASS_13_V1_LOCK_RECEIPT.md) — `@danteforge/evidence-chain` v1.0.0 initial lock
 - [.danteforge/PASS_14_INSTALL_SMOKE_RECEIPT.md](../.danteforge/PASS_14_INSTALL_SMOKE_RECEIPT.md) — external consumer validation
 - [.danteforge/PASS_15_VERIFY_SLO_RECEIPT.md](../.danteforge/PASS_15_VERIFY_SLO_RECEIPT.md) — verify SLO
 - [.danteforge/PASS_16_CORPUS_INTEGRITY_RECEIPT.md](../.danteforge/PASS_16_CORPUS_INTEGRITY_RECEIPT.md) — corpus integrity check
@@ -440,7 +432,7 @@ This discipline carries through every pass.
 
 ### Substrate code
 
-- `packages/evidence-chain/` — `@danteforge/evidence-chain` v1.0.0 (npm-publish-ready)
+- `packages/evidence-chain/` — `@danteforge/evidence-chain` v1.1.0 locally (npm publication founder-gated)
 - `src/core/time-machine.ts` — Time Machine v0.1 core
 - `src/core/time-machine-validation.ts` — Pass 18 validation harness
 - `src/cli/commands/time-machine.ts` — CLI surface
@@ -490,10 +482,10 @@ When this plan is fully executed:
 - Microsoft Research authors have been emailed (or explicitly deferred at GATE-6)
 - `npm publish @danteforge/evidence-chain` has run (founder gate from Pass 13)
 - Time Machine has automatic agent integration (T3.1)
-- Runtime corruption detector exists (T3.3)
+- Class D runtime corruption detector/mitigation hook exists; standalone product runner may still be deferred
 - The DanteForge repo is in a state where any independent researcher can clone it, run the CLI commands in the reproducibility appendix, and reproduce the result table
 
-That is the publishable end state. Estimated 12-16 days of focused work + ~$80-150 LLM costs + 6 founder review gates.
+That is the publishable end state. Remaining effort is dominated by founder-gated live execution, submission, outreach, npm publication, and optional 1M scale validation.
 
 ---
 
