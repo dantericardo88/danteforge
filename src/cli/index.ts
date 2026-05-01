@@ -1066,8 +1066,23 @@ program
   });
 
 program
+  .command('causal-status')
+  .description('Show per-dimension prediction accuracy from the causal weight matrix (Article XV)')
+  .option('--json', 'Output raw causal weight matrix as JSON')
+  .option('--cwd <path>', 'Project directory')
+  .action(async (opts) => {
+    try {
+      const { causalStatus } = await import('./commands/causal-status.js');
+      await causalStatus({ json: opts.json, cwd: opts.cwd });
+    } catch (err) {
+      formatAndLogError(err, 'causal-status');
+      process.exitCode = 1;
+    }
+  });
+
+program
   .command('assess')
-  .description('Harsh self-assessment: score all 19 dimensions, benchmark vs 27 competitors, generate masterplan')
+  .description('Harsh self-assessment: score all 20 dimensions, benchmark vs 27 competitors, generate masterplan')
   .option('--no-harsh', 'Use normal PDSE thresholds instead of harsh mode')
   .option('--no-competitors', 'Skip competitor benchmarking')
   .option('--min-score <n>', 'Target score threshold (default: 9.0)', '9.0')

@@ -51,8 +51,8 @@ export interface AdversarialScorerDimOptions {
 // ── Dimension weights (mirrors harsh-scorer.ts) ───────────────────────────────
 
 const DIMENSION_WEIGHTS: Record<ScoringDimension, number> = {
-  functionality: 0.11,
-  testing: 0.09,
+  functionality: 0.09,
+  testing: 0.08,
   errorHandling: 0.08,
   security: 0.08,
   uxPolish: 0.06,
@@ -60,7 +60,7 @@ const DIMENSION_WEIGHTS: Record<ScoringDimension, number> = {
   performance: 0.06,
   maintainability: 0.07,
   developerExperience: 0.08,
-  autonomy: 0.07,
+  autonomy: 0.06,
   planningQuality: 0.05,
   selfImprovement: 0.04,
   specDrivenPipeline: 0.03,
@@ -70,6 +70,7 @@ const DIMENSION_WEIGHTS: Record<ScoringDimension, number> = {
   ecosystemMcp: 0.01,
   enterpriseReadiness: 0.01,
   communityAdoption: 0.01,
+  causalCoherence: 0.05,
 };
 
 // ── Prompt builders ───────────────────────────────────────────────────────────

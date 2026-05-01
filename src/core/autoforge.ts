@@ -8,6 +8,13 @@ import { logger } from './logger.js';
 import { isLLMAvailable } from './llm.js';
 import { getProjectCharacteristicsFor } from './mcp-adapter.js';
 import { recordDecision, getSession } from './decision-node-recorder.js';
+import {
+  loadCausalWeightMatrix,
+  saveCausalWeightMatrix,
+  applyAttributionOutcomes,
+} from './causal-weight-matrix.js';
+import { attributeBatch, extractOutcomes } from './prediction-attribution.js';
+import type { DimensionName } from './causal-weight-matrix.js';
 
 export type AutoForgeScenario =
   | 'cold-start'
@@ -277,6 +284,8 @@ async function runPostStepScoring(stepCommand: string, profile: string | undefin
 
 type RunStepFn = (command: string, light?: boolean, goal?: string, runtime?: { profile?: string; parallel?: boolean; worktree?: boolean }) => Promise<void>;
 type FailureAnalyzerFn = (stepCommand: string, message: string, reason: string, cwd?: string) => Promise<void>;
+/** Injected for testing — given a step command + context, returns predicted score delta and confidence */
+export type PredictStepFn = (command: string, reason: string, currentOverall: number, cwd?: string) => Promise<{ delta: number; confidence: number }>;
 const FAILURE_ANALYSIS_TIMEOUT_MS = 10_000;
 
 async function withBestEffortTimeout<T>(work: Promise<T>, timeoutMs: number, label: string): Promise<T | undefined> {
@@ -305,6 +314,7 @@ async function executeForgeSteps(
   failureAnalyzer: FailureAnalyzerFn,
   decisionRecorderFn: typeof recordDecision,
   planNodeId: string | null,
+  predictFn?: PredictStepFn,
 ): Promise<{ completed: string[]; failed: string[]; paused: boolean }> {
   const completed: string[] = [];
   const failed: string[] = [];
@@ -316,6 +326,21 @@ async function executeForgeSteps(
       return { completed, failed, paused: true };
     }
     logger.info(`[AutoForge] Step: ${step.command} — ${step.reason}`);
+
+    // Capture pre-step score for causal attribution measurement
+    let preStepOverall = 0;
+    let predictedDelta = 0;
+    let predictedConfidence = 0.1;
+    try {
+      const preState = await loadState({ cwd: opts.cwd });
+      preStepOverall = preState.completionTracker?.overall ?? 0;
+      if (predictFn) {
+        const pred = await predictFn(step.command, step.reason, preStepOverall, opts.cwd);
+        predictedDelta = pred.delta;
+        predictedConfidence = pred.confidence;
+      }
+    } catch { /* best-effort */ }
+
     try {
       const { assessComplexity, formatAssessment } = await import('./complexity-classifier.js');
       const state = await loadState({ cwd: opts.cwd });
@@ -350,6 +375,24 @@ async function executeForgeSteps(
         }
       } catch { /* best-effort */ }
       try { await runPostStepScoring(step.command, opts.profile, opts.cwd); } catch (err) { logger.verbose(`[best-effort] scoring: ${err instanceof Error ? err.message : String(err)}`); }
+
+      // Causal attribution: measure actual delta and attribute against prediction
+      try {
+        const postState = await loadState({ cwd: opts.cwd });
+        const postStepOverall = postState.completionTracker?.overall ?? preStepOverall;
+        const measuredDelta = (postStepOverall - preStepOverall) / 10;
+        const matrix = await loadCausalWeightMatrix(opts.cwd);
+        const batch = attributeBatch([{
+          actionType: step.command,
+          dimension: 'functionality' as DimensionName,
+          predictedDelta,
+          measuredDelta,
+          predictedConfidence,
+        }]);
+        const updated = applyAttributionOutcomes(matrix, extractOutcomes(batch));
+        await saveCausalWeightMatrix(updated, opts.cwd);
+        logger.verbose(`[AutoForge] Causal attribution: ${batch.pairs[0]?.classification ?? 'unknown'} (predicted ${predictedDelta > 0 ? '+' : ''}${predictedDelta.toFixed(3)}, measured ${measuredDelta > 0 ? '+' : ''}${measuredDelta.toFixed(3)})`);
+      } catch { /* best-effort — attribution never blocks execution */ }
       await memoryRecorder({ category: 'command', summary: `AutoForge executed: ${step.command}`, detail: `Scenario: ${plan.scenario}. Reason: ${step.reason}${plan.goal ? `. Goal: ${plan.goal}` : ''}`, tags: ['autoforge', step.command], relatedCommands: [step.command] }, opts.cwd);
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
@@ -410,6 +453,8 @@ export async function executeAutoForgePlan(
     _runFailureAnalysis?: (stepCommand: string, message: string, reason: string, cwd?: string) => Promise<void>;
     /** Injected for testing — replaces decision-node recording side effects */
     _recordDecision?: typeof recordDecision;
+    /** Injected for testing — provides forward predictions for causal attribution */
+    _predictFn?: PredictStepFn;
   } = {},
 ): Promise<{ completed: string[]; failed: string[]; paused: boolean }> {
   const runStep = options._runStep ?? runAutoForgeStep;
@@ -448,7 +493,7 @@ export async function executeAutoForgePlan(
     planNodeId = planNode.id;
   } catch { /* best-effort */ }
 
-  const result = await executeForgeSteps(plan, options, runStep, checkStageComplete, memoryRecorder, failureAnalyzer, decisionRecorder, planNodeId);
+  const result = await executeForgeSteps(plan, options, runStep, checkStageComplete, memoryRecorder, failureAnalyzer, decisionRecorder, planNodeId, options._predictFn);
 
   try {
     if (planNodeId) {

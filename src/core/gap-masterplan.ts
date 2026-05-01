@@ -151,6 +151,11 @@ const DIMENSION_METADATA: Record<ScoringDimension, {
     forgeCommand: 'danteforge forge "Improve adoption: landing page, docs site, quickstart guide, contribution guidelines" --max-waves 5',
     verifyCondition: 'README has quickstart section, CONTRIBUTING.md exists, SECURITY.md exists',
   },
+  causalCoherence: {
+    title: 'Causal Coherence (Article XV)',
+    forgeCommand: 'danteforge autoforge && danteforge causal-status',
+    verifyCondition: 'globalCausalCoherence >= 0.7 after >= 20 attributions in causal-weight-matrix.json',
+  },
 };
 
 // ── Main generator ────────────────────────────────────────────────────────────

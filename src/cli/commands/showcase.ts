@@ -41,6 +41,7 @@ const DIM_ORDER: ScoringDimension[] = [
   'developerExperience', 'autonomy', 'planningQuality', 'selfImprovement',
   'specDrivenPipeline', 'convergenceSelfHealing', 'tokenEconomy',
   'contextEconomy', 'ecosystemMcp', 'enterpriseReadiness', 'communityAdoption',
+  'causalCoherence',
 ];
 
 const DIM_LABELS: Record<ScoringDimension, string> = {
@@ -63,6 +64,7 @@ const DIM_LABELS: Record<ScoringDimension, string> = {
   ecosystemMcp: 'Ecosystem / MCP',
   enterpriseReadiness: 'Enterprise Readiness',
   communityAdoption: 'Community Adoption',
+  causalCoherence: 'Causal Coherence',
 };
 
 // Main command

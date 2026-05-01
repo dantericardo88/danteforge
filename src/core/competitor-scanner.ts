@@ -75,7 +75,7 @@ const DEV_TOOL_BASELINES: CompetitorProfile[] = [
       developerExperience: 75, autonomy: 92, planningQuality: 78, selfImprovement: 60,
       specDrivenPipeline: 55, convergenceSelfHealing: 85, tokenEconomy: 50,
       ecosystemMcp: 45, enterpriseReadiness: 55, communityAdoption: 72,
-      contextEconomy: 0,
+      contextEconomy: 0, causalCoherence: 0,
     },
   },
   {
@@ -89,7 +89,7 @@ const DEV_TOOL_BASELINES: CompetitorProfile[] = [
       developerExperience: 88, autonomy: 68, planningQuality: 76, selfImprovement: 55,
       specDrivenPipeline: 60, convergenceSelfHealing: 55, tokenEconomy: 55,
       ecosystemMcp: 80, enterpriseReadiness: 88, communityAdoption: 92,
-      contextEconomy: 0,
+      contextEconomy: 0, causalCoherence: 0,
     },
   },
   {
@@ -103,7 +103,7 @@ const DEV_TOOL_BASELINES: CompetitorProfile[] = [
       developerExperience: 90, autonomy: 65, planningQuality: 62, selfImprovement: 50,
       specDrivenPipeline: 35, convergenceSelfHealing: 40, tokenEconomy: 70,
       ecosystemMcp: 65, enterpriseReadiness: 60, communityAdoption: 95,
-      contextEconomy: 0,
+      contextEconomy: 0, causalCoherence: 0,
     },
   },
   {
@@ -117,7 +117,7 @@ const DEV_TOOL_BASELINES: CompetitorProfile[] = [
       developerExperience: 75, autonomy: 70, planningQuality: 60, selfImprovement: 55,
       specDrivenPipeline: 30, convergenceSelfHealing: 50, tokenEconomy: 55,
       ecosystemMcp: 40, enterpriseReadiness: 35, communityAdoption: 82,
-      contextEconomy: 0,
+      contextEconomy: 0, causalCoherence: 0,
     },
   },
   {
@@ -131,7 +131,7 @@ const DEV_TOOL_BASELINES: CompetitorProfile[] = [
       developerExperience: 62, autonomy: 82, planningQuality: 72, selfImprovement: 58,
       specDrivenPipeline: 45, convergenceSelfHealing: 70, tokenEconomy: 40,
       ecosystemMcp: 35, enterpriseReadiness: 40, communityAdoption: 68,
-      contextEconomy: 0,
+      contextEconomy: 0, causalCoherence: 0,
     },
   },
   {
@@ -145,7 +145,7 @@ const DEV_TOOL_BASELINES: CompetitorProfile[] = [
       developerExperience: 65, autonomy: 75, planningQuality: 85, selfImprovement: 65,
       specDrivenPipeline: 75, convergenceSelfHealing: 60, tokenEconomy: 45,
       ecosystemMcp: 40, enterpriseReadiness: 35, communityAdoption: 72,
-      contextEconomy: 0,
+      contextEconomy: 0, causalCoherence: 0,
     },
   },
   {
@@ -159,7 +159,7 @@ const DEV_TOOL_BASELINES: CompetitorProfile[] = [
       developerExperience: 68, autonomy: 65, planningQuality: 70, selfImprovement: 45,
       specDrivenPipeline: 50, convergenceSelfHealing: 45, tokenEconomy: 35,
       ecosystemMcp: 40, enterpriseReadiness: 30, communityAdoption: 55,
-      contextEconomy: 0,
+      contextEconomy: 0, causalCoherence: 0,
     },
   },
   {
@@ -173,7 +173,7 @@ const DEV_TOOL_BASELINES: CompetitorProfile[] = [
       developerExperience: 88, autonomy: 72, planningQuality: 70, selfImprovement: 60,
       specDrivenPipeline: 40, convergenceSelfHealing: 55, tokenEconomy: 75,
       ecosystemMcp: 90, enterpriseReadiness: 72, communityAdoption: 90,
-      contextEconomy: 0,
+      contextEconomy: 0, causalCoherence: 0,
     },
   },
   // Multi-agent orchestration frameworks
@@ -188,7 +188,7 @@ const DEV_TOOL_BASELINES: CompetitorProfile[] = [
       developerExperience: 68, autonomy: 85, planningQuality: 78, selfImprovement: 65,
       specDrivenPipeline: 50, convergenceSelfHealing: 65, tokenEconomy: 45,
       ecosystemMcp: 55, enterpriseReadiness: 55, communityAdoption: 78,
-      contextEconomy: 0,
+      contextEconomy: 0, causalCoherence: 0,
     },
   },
   {
@@ -202,7 +202,7 @@ const DEV_TOOL_BASELINES: CompetitorProfile[] = [
       developerExperience: 72, autonomy: 82, planningQuality: 80, selfImprovement: 68,
       specDrivenPipeline: 55, convergenceSelfHealing: 60, tokenEconomy: 40,
       ecosystemMcp: 50, enterpriseReadiness: 42, communityAdoption: 70,
-      contextEconomy: 0,
+      contextEconomy: 0, causalCoherence: 0,
     },
   },
   {
@@ -216,7 +216,7 @@ const DEV_TOOL_BASELINES: CompetitorProfile[] = [
       developerExperience: 68, autonomy: 88, planningQuality: 72, selfImprovement: 65,
       specDrivenPipeline: 40, convergenceSelfHealing: 80, tokenEconomy: 45,
       ecosystemMcp: 55, enterpriseReadiness: 50, communityAdoption: 75,
-      contextEconomy: 0,
+      contextEconomy: 0, causalCoherence: 0,
     },
   },
   // Test generation
@@ -231,7 +231,7 @@ const DEV_TOOL_BASELINES: CompetitorProfile[] = [
       developerExperience: 82, autonomy: 68, planningQuality: 60, selfImprovement: 72,
       specDrivenPipeline: 30, convergenceSelfHealing: 72, tokenEconomy: 50,
       ecosystemMcp: 60, enterpriseReadiness: 65, communityAdoption: 70,
-      contextEconomy: 0,
+      contextEconomy: 0, causalCoherence: 0,
     },
   },
   // AI code review
@@ -246,7 +246,7 @@ const DEV_TOOL_BASELINES: CompetitorProfile[] = [
       developerExperience: 88, autonomy: 62, planningQuality: 60, selfImprovement: 68,
       specDrivenPipeline: 25, convergenceSelfHealing: 50, tokenEconomy: 45,
       ecosystemMcp: 70, enterpriseReadiness: 78, communityAdoption: 72,
-      contextEconomy: 0,
+      contextEconomy: 0, causalCoherence: 0,
     },
   },
   // Terminal-native agents
@@ -261,7 +261,7 @@ const DEV_TOOL_BASELINES: CompetitorProfile[] = [
       developerExperience: 88, autonomy: 78, planningQuality: 60, selfImprovement: 55,
       specDrivenPipeline: 25, convergenceSelfHealing: 45, tokenEconomy: 55,
       ecosystemMcp: 85, enterpriseReadiness: 50, communityAdoption: 78,
-      contextEconomy: 0,
+      contextEconomy: 0, causalCoherence: 0,
     },
   },
   {
@@ -275,7 +275,7 @@ const DEV_TOOL_BASELINES: CompetitorProfile[] = [
       developerExperience: 90, autonomy: 65, planningQuality: 62, selfImprovement: 58,
       specDrivenPipeline: 30, convergenceSelfHealing: 40, tokenEconomy: 50,
       ecosystemMcp: 82, enterpriseReadiness: 48, communityAdoption: 75,
-      contextEconomy: 0,
+      contextEconomy: 0, causalCoherence: 0,
     },
   },
   // Documentation & specification
@@ -290,7 +290,7 @@ const DEV_TOOL_BASELINES: CompetitorProfile[] = [
       developerExperience: 85, autonomy: 55, planningQuality: 85, selfImprovement: 62,
       specDrivenPipeline: 70, convergenceSelfHealing: 35, tokenEconomy: 30,
       ecosystemMcp: 45, enterpriseReadiness: 55, communityAdoption: 65,
-      contextEconomy: 0,
+      contextEconomy: 0, causalCoherence: 0,
     },
   },
   // Agent frameworks
@@ -305,7 +305,7 @@ const DEV_TOOL_BASELINES: CompetitorProfile[] = [
       developerExperience: 72, autonomy: 78, planningQuality: 72, selfImprovement: 65,
       specDrivenPipeline: 40, convergenceSelfHealing: 55, tokenEconomy: 50,
       ecosystemMcp: 88, enterpriseReadiness: 50, communityAdoption: 88,
-      contextEconomy: 0,
+      contextEconomy: 0, causalCoherence: 0,
     },
   },
   // â”€â”€ New competitors (2025-2026 wave) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
@@ -320,7 +320,7 @@ const DEV_TOOL_BASELINES: CompetitorProfile[] = [
       developerExperience: 80, autonomy: 72, planningQuality: 82, selfImprovement: 55,
       specDrivenPipeline: 80, convergenceSelfHealing: 55, tokenEconomy: 60,
       ecosystemMcp: 65, enterpriseReadiness: 80, communityAdoption: 62,
-      contextEconomy: 0,
+      contextEconomy: 0, causalCoherence: 0,
     },
   },
   {
@@ -334,7 +334,7 @@ const DEV_TOOL_BASELINES: CompetitorProfile[] = [
       developerExperience: 82, autonomy: 80, planningQuality: 68, selfImprovement: 55,
       specDrivenPipeline: 35, convergenceSelfHealing: 60, tokenEconomy: 65,
       ecosystemMcp: 78, enterpriseReadiness: 65, communityAdoption: 80,
-      contextEconomy: 0,
+      contextEconomy: 0, causalCoherence: 0,
     },
   },
   {
@@ -348,7 +348,7 @@ const DEV_TOOL_BASELINES: CompetitorProfile[] = [
       developerExperience: 78, autonomy: 65, planningQuality: 60, selfImprovement: 50,
       specDrivenPipeline: 25, convergenceSelfHealing: 40, tokenEconomy: 72,
       ecosystemMcp: 65, enterpriseReadiness: 68, communityAdoption: 75,
-      contextEconomy: 0,
+      contextEconomy: 0, causalCoherence: 0,
     },
   },
   {
@@ -362,7 +362,7 @@ const DEV_TOOL_BASELINES: CompetitorProfile[] = [
       developerExperience: 90, autonomy: 75, planningQuality: 78, selfImprovement: 60,
       specDrivenPipeline: 55, convergenceSelfHealing: 60, tokenEconomy: 60,
       ecosystemMcp: 82, enterpriseReadiness: 88, communityAdoption: 95,
-      contextEconomy: 0,
+      contextEconomy: 0, causalCoherence: 0,
     },
   },
   {
@@ -376,7 +376,7 @@ const DEV_TOOL_BASELINES: CompetitorProfile[] = [
       developerExperience: 75, autonomy: 72, planningQuality: 60, selfImprovement: 55,
       specDrivenPipeline: 30, convergenceSelfHealing: 50, tokenEconomy: 50,
       ecosystemMcp: 85, enterpriseReadiness: 55, communityAdoption: 72,
-      contextEconomy: 0,
+      contextEconomy: 0, causalCoherence: 0,
     },
   },
   {
@@ -390,7 +390,7 @@ const DEV_TOOL_BASELINES: CompetitorProfile[] = [
       developerExperience: 88, autonomy: 85, planningQuality: 65, selfImprovement: 60,
       specDrivenPipeline: 45, convergenceSelfHealing: 78, tokenEconomy: 55,
       ecosystemMcp: 60, enterpriseReadiness: 50, communityAdoption: 85,
-      contextEconomy: 0,
+      contextEconomy: 0, causalCoherence: 0,
     },
   },
   {
@@ -404,7 +404,7 @@ const DEV_TOOL_BASELINES: CompetitorProfile[] = [
       developerExperience: 75, autonomy: 72, planningQuality: 65, selfImprovement: 55,
       specDrivenPipeline: 40, convergenceSelfHealing: 55, tokenEconomy: 55,
       ecosystemMcp: 55, enterpriseReadiness: 90, communityAdoption: 48,
-      contextEconomy: 0,
+      contextEconomy: 0, causalCoherence: 0,
     },
   },
   {
@@ -418,7 +418,7 @@ const DEV_TOOL_BASELINES: CompetitorProfile[] = [
       developerExperience: 85, autonomy: 72, planningQuality: 62, selfImprovement: 72,
       specDrivenPipeline: 35, convergenceSelfHealing: 72, tokenEconomy: 55,
       ecosystemMcp: 65, enterpriseReadiness: 72, communityAdoption: 72,
-      contextEconomy: 0,
+      contextEconomy: 0, causalCoherence: 0,
     },
   },
   {
@@ -432,7 +432,7 @@ const DEV_TOOL_BASELINES: CompetitorProfile[] = [
       developerExperience: 78, autonomy: 60, planningQuality: 55, selfImprovement: 45,
       specDrivenPipeline: 30, convergenceSelfHealing: 40, tokenEconomy: 50,
       ecosystemMcp: 80, enterpriseReadiness: 65, communityAdoption: 70,
-      contextEconomy: 0,
+      contextEconomy: 0, causalCoherence: 0,
     },
   },
   {
@@ -446,7 +446,7 @@ const DEV_TOOL_BASELINES: CompetitorProfile[] = [
       developerExperience: 85, autonomy: 72, planningQuality: 58, selfImprovement: 52,
       specDrivenPipeline: 30, convergenceSelfHealing: 45, tokenEconomy: 55,
       ecosystemMcp: 78, enterpriseReadiness: 48, communityAdoption: 62,
-      contextEconomy: 0,
+      contextEconomy: 0, causalCoherence: 0,
     },
   },
 ];
@@ -711,7 +711,7 @@ function buildScoresFromRaw(raw: Record<string, unknown>): Record<ScoringDimensi
     developerExperience: 70, autonomy: 70, planningQuality: 70, selfImprovement: 70,
     specDrivenPipeline: 40, convergenceSelfHealing: 45, tokenEconomy: 50,
     ecosystemMcp: 50, enterpriseReadiness: 50, communityAdoption: 60,
-    contextEconomy: 0,
+    contextEconomy: 0, causalCoherence: 0,
   };
   for (const dim of ALL_DIMENSIONS) {
     const val = raw[dim];

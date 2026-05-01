@@ -100,13 +100,13 @@ export interface ScoreOptions {
 // Kept in sync manually. Used only for --full display; not used in scoring.
 
 const SCORE_DISPLAY_WEIGHTS: Record<ScoringDimension, number> = {
-  functionality:          0.11,
-  testing:                0.09,
+  functionality:          0.09,
+  testing:                0.08,
   errorHandling:          0.08,
   security:               0.08,
   developerExperience:    0.08,
   maintainability:        0.07,
-  autonomy:               0.07,
+  autonomy:               0.06,
   uxPolish:               0.06,
   documentation:          0.06,
   performance:            0.06,
@@ -119,6 +119,7 @@ const SCORE_DISPLAY_WEIGHTS: Record<ScoringDimension, number> = {
   ecosystemMcp:           0.01,
   enterpriseReadiness:    0.01,
   communityAdoption:      0.01,
+  causalCoherence:        0.05,
 };
 
 function getDisplayWeight(dim: ScoringDimension): number {
@@ -147,6 +148,7 @@ const DIMENSION_ACTIONS: Record<ScoringDimension, string> = {
   ecosystemMcp:           'danteforge setup mcp-server',
   enterpriseReadiness:    'danteforge improve "enterprise readiness"',
   communityAdoption:      'danteforge improve "community adoption"',
+  causalCoherence:        'danteforge autoforge && danteforge causal-status',
 };
 
 // ── Session baseline TTL ──────────────────────────────────────────────────────

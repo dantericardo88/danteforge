@@ -1,0 +1,29 @@
+{
+  "name": "@danteforge/predictor",
+  "version": "1.0.0",
+  "description": "LLM-as-predictor for DanteForge convergence loops. Generates expected outcome predictions before each execution wave and stores them in DecisionNodes for causal attribution.",
+  "license": "MIT",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "files": ["dist", "src", "README.md"],
+  "sideEffects": false,
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "clean": "node -e \"require('node:fs').rmSync('dist',{recursive:true,force:true})\"",
+    "prepublishOnly": "npm run clean && npm run build"
+  },
+  "engines": { "node": ">=18.0.0" },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/dantericardo88/danteforge.git",
+    "directory": "packages/predictor"
+  },
+  "publishConfig": { "access": "public" }
+}

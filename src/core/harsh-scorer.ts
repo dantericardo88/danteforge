@@ -15,8 +15,8 @@ import { checkIntegrationWiring, computeWiringBonus, type IntegrationWiringOptio
 import { scoreContextEconomySync } from './context-economy/runtime.js';
 import { KNOWN_CEILINGS } from './compete-matrix.js';
 
-// ── 19-Dimension Scoring Type ────────────────────────────────────────────────
-// Extends the 8 existing MaturityDimensions with 11 competitor-facing ones.
+// ── 20-Dimension Scoring Type ────────────────────────────────────────────────
+// Extends the 8 existing MaturityDimensions with 12 competitor-facing ones.
 
 export type ScoringDimension =
   // Existing 8 from maturity-engine.ts (camelCase)
@@ -33,14 +33,15 @@ export type ScoringDimension =
   | 'autonomy'                // Self-correction depth, loop quality, planning
   | 'planningQuality'         // PDSE artifact scores averaged
   | 'selfImprovement'         // Lessons captured, retro delta, convergence quality
-  // 7 strategic differentiation dimensions
+  // 8 strategic differentiation dimensions
   | 'specDrivenPipeline'      // PDSE artifact presence + pipeline stage completeness
   | 'convergenceSelfHealing'  // Verify-repair loops, convergence cycles, auto-recovery
   | 'tokenEconomy'            // Task routing, budget fences, complexity classification
   | 'contextEconomy'          // Filter pipeline, sacred-content preservation, savings telemetry (Article XIV)
   | 'ecosystemMcp'            // MCP tools, skills, plugin manifest breadth
   | 'enterpriseReadiness'     // Audit trails, safe-self-edit, RBAC, compliance
-  | 'communityAdoption';      // npm downloads, GitHub stars, contributor count
+  | 'communityAdoption'       // npm downloads, GitHub stars, contributor count
+  | 'causalCoherence';        // Prediction accuracy of convergence loop forward model (Article XV)
 
 export type HarshVerdict = 'blocked' | 'needs-work' | 'acceptable' | 'excellent';
 
@@ -120,11 +121,11 @@ const STUB_PATTERNS = [
 
 // ── Dimension Weights (sum = 1.0) ─────────────────────────────────────────────
 
-// Weights sum exactly to 1.0 (19 dimensions)
-// contextEconomy 0.03 funded by: ecosystemMcp 0.02→0.01, enterpriseReadiness 0.02→0.01, communityAdoption 0.02→0.01
+// Weights sum exactly to 1.0 (20 dimensions)
+// causalCoherence 0.05 funded by: functionality 0.11→0.09, testing 0.09→0.08, autonomy 0.07→0.06
 const DIMENSION_WEIGHTS: Record<ScoringDimension, number> = {
-  functionality: 0.11,
-  testing: 0.09,
+  functionality: 0.09,
+  testing: 0.08,
   errorHandling: 0.08,
   security: 0.08,
   uxPolish: 0.06,
@@ -132,7 +133,7 @@ const DIMENSION_WEIGHTS: Record<ScoringDimension, number> = {
   performance: 0.06,
   maintainability: 0.07,
   developerExperience: 0.08,
-  autonomy: 0.07,
+  autonomy: 0.06,
   planningQuality: 0.05,
   selfImprovement: 0.04,
   specDrivenPipeline: 0.03,
@@ -142,6 +143,7 @@ const DIMENSION_WEIGHTS: Record<ScoringDimension, number> = {
   ecosystemMcp: 0.01,
   enterpriseReadiness: 0.01,
   communityAdoption: 0.01,
+  causalCoherence: 0.05,
 };
 
 // ── Options & Injection Seams ────────────────────────────────────────────────
@@ -404,7 +406,17 @@ export async function computeHarshScore(options: HarshScorerOptions = {}): Promi
 
   const communityMetrics = await fetchCommunityData(cwd, options, readFileFn);
   const coveragePct = await (options._readCoverage ? options._readCoverage(cwd) : readCoveragePercent(cwd, readFileFn)).catch(() => null);
-  const newDimensions = computeNewDimensions(pdseScores, state, maturityAssessment, cwd, evidenceFlags, convergenceFlags, communityMetrics, enterpriseFlags);
+
+  let causalGlobalCoherence = 0;
+  let causalTotalAttributions = 0;
+  try {
+    const { loadCausalWeightMatrix } = await import('./causal-weight-matrix.js');
+    const matrix = await loadCausalWeightMatrix(cwd);
+    causalGlobalCoherence = matrix.globalCausalCoherence;
+    causalTotalAttributions = matrix.totalAttributions;
+  } catch { /* best-effort — no matrix yet */ }
+
+  const newDimensions = computeNewDimensions(pdseScores, state, maturityAssessment, cwd, evidenceFlags, convergenceFlags, communityMetrics, enterpriseFlags, causalGlobalCoherence, causalTotalAttributions);
 
   const dims = maturityAssessment.dimensions;
   const testingScore = await computeAugmentedTestingScore(dims, coveragePct, cwd, existsFn);
@@ -661,6 +673,8 @@ function computeNewDimensions(
   convergenceFlags?: ConvergenceEvidenceFlags,
   communityMetrics?: CommunityMetrics,
   enterpriseFlags?: EnterpriseEvidenceFlags,
+  causalGlobalCoherence = 0,
+  causalTotalAttributions = 0,
 ): Record<string, number> {
   return {
     planningQuality: computePlanningQualityScore(pdseScores),
@@ -674,6 +688,7 @@ function computeNewDimensions(
     ecosystemMcp: computeEcosystemMcpScore(state, cwd),
     enterpriseReadiness: computeEnterpriseReadinessScore(state, assessment, enterpriseFlags),
     communityAdoption: computeCommunityAdoptionScore(communityMetrics ?? {}),
+    causalCoherence: computeCausalCoherenceScore(causalGlobalCoherence, causalTotalAttributions),
   };
 }
 
@@ -1020,6 +1035,17 @@ export function computeCommunityAdoptionScore(metrics: CommunityMetrics = {}): n
   else if (contributors >= 2) score += 5;
 
   return Math.max(0, Math.min(100, score));
+}
+
+export function computeCausalCoherenceScore(globalCausalCoherence: number, totalAttributions: number): number {
+  if (totalAttributions === 0) return 20; // no data yet — low but not zero (can't be penalized for lack of history)
+  if (totalAttributions < 5) return 30;  // insufficient samples for reliable signal
+
+  // globalCausalCoherence is 0-1 (fraction of predictions where direction matched)
+  // Map 0→0 score, 0.5→50, 0.7→70, 0.9→90 linearly, with bonus for sample count
+  const baseScore = Math.round(globalCausalCoherence * 100);
+  const sampleBonus = totalAttributions >= 50 ? 10 : totalAttributions >= 20 ? 5 : 0;
+  return Math.max(0, Math.min(100, baseScore + sampleBonus));
 }
 
 // ── Real coverage % reader ────────────────────────────────────────────────────
