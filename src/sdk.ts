@@ -74,6 +74,7 @@ export * from './core/time-machine-replay.js';
 
 // Time Machine causal attribution classifier
 export * from './core/time-machine-causal-attribution.js';
+export * from './core/time-machine-attribution-eval.js';
 
 // Time Machine ecosystem adapter interfaces (Phase 4 integration contract)
 export * from './core/decision-node-adapters.js';

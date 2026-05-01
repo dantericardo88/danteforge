@@ -3,17 +3,18 @@
 
 *Written 2026-04-30. Last updated 2026-05-02. Reference document for all Dante agents and contributors.*
 
-> **Status: Phases 0–3 COMPLETE. Phase 4 Partial. Phase 5 (paper) in progress.**
-> 169 tests, 0 TypeScript errors, 0 lint/anti-stub violations.
+> **Status: Phases 0-4 infrastructure COMPLETE. Phase 5 evidence in progress.**
+> Core verification is green: focused Time Machine suite 39/39, `npm run typecheck`, `npm run lint`, `npm run check:anti-stub`, `npm run build`, and full `npm test` passed in the current sprint.
 >
-> **Inferno sprint complete (2026-05-02) — four remaining gaps closed:**
-> - ✅ Causal attribution validated on real recorder-produced JSONL (8 tests — not just synthetic graphs)
-> - ✅ Recorder wired into autoforge pipeline — plan-start, per-step, and completion nodes recorded
-> - ✅ ASCII timeline UI — `danteforge time-machine node timeline` renders side-by-side branch diff
-> - ✅ Paper §8 (Live Session Validation) added with 25 real integration-test results
+> **Ecosystem sprint update (2026-05-01):**
+> - DanteForge replay is now isolated, fail-closed on restore, and executes replay pipelines in a child process under `.danteforge/time-machine/replays/<timelineId>/workspace`.
+> - DecisionNode recorder env overrides are implemented: `DANTEFORGE_DECISION_STORE`, `DANTEFORGE_DECISION_SESSION_ID`, `DANTEFORGE_DECISION_TIMELINE_ID`, and `DANTEFORGE_DECISION_PARENT_ID`.
+> - DanteAgents, DanteCode, DanteHarvest, and DanteDojo now emit/export DecisionNode-compatible JSONL through product-local stores.
+> - Attribution precision/recall evaluator is implemented as `danteforge time-machine node eval-attribution`.
+> - Full DELEGATE-52 live launcher is implemented as `npm run delegate52:live-full`; the first direct CLI attempt was blocked by missing shell credentials, and the corrected full launcher is running with a hard `$160` cap.
 >
-> **Honest gaps remaining:** Full 48-domain D52 live run (GATE-1 founder-gated, ~$10–160); causal attribution on real LLM-generated multi-turn traces (precision/recall unmeasured); ecosystem rollout to DanteCode/Harvest/Dojo.
-> **Next:** GATE-1 live run → precision/recall measurement on real traces → final paper submission.
+> **Honest gaps remaining:** full DELEGATE-52 live result must finish with no `budget_exhausted`; at least 30 replayed sessions and 100 labeled downstream nodes must be collected; causal attribution must meet precision >= 0.85, recall >= 0.80, and false-independent rate <= 0.05 before the paper can claim 100% completion.
+> **Next:** let GATE-1 finish -> label the real trace corpus -> run `node eval-attribution` -> update paper tables only with measured receipts.
 
 ---
 
@@ -305,21 +306,21 @@ Each of these is a node. Each can be branched. Each branch produces a new experi
 - [x] CLI: `danteforge time-machine node list --session <id>`
 - [x] CLI: `danteforge time-machine node trace <nodeId>`
 - [x] SDK: all types exported from src/sdk.ts
-- [ ] **Gap:** DanteCode, DanteHarvest, DanteDojo are not yet instrumented in those products — adapters exist but are not wired into their actual runs
+- [x] DanteCode, DanteHarvest, DanteDojo, and DanteAgents now emit/export product-local DecisionNode JSONL with import paths into DanteForge
 
-### Phase 2 — Counterfactual Replay (PROTOTYPE — dry-run proven; live pipeline rerun not yet built)
+### Phase 2 — Counterfactual Replay (BUILT — isolated live pipeline replay)
 - [x] `src/core/time-machine-replay.ts` — counterfactual replay engine, 14/14 tests
   - counterfactualReplay(request, store, options): restores file state → single LLM call with altered prompt → records new timeline → diffs
   - diffTimelines: convergent/divergent/unreachable classification
   - buildCausalChain: human-readable "X led to Y led to Z" narrative
   - outcomeEquivalent: canonical JSON comparison of end states
   - dry-run mode: plan without executing LLM calls (**this is what's proven**)
-- [x] Restores file state via restoreTimeMachineCommit (restore errors currently non-fatal)
+- [x] Restores file state into an isolated replay workspace; restore errors are fail-closed before any LLM/pipeline execution
 - [x] Records new timeline as branch with shared parentId at branch point
 - [x] CLI: `danteforge time-machine replay <nodeId> --input "..." [--dry-run]`
-- [ ] **Gap:** Replay makes one `llmCaller` call, not a full DanteForge convergence loop rerun (waves, verify, retry). True time machine replay requires re-executing the entire agent pipeline from the branch point.
-- [ ] **Gap:** Live CLI replay has no `llmCaller` injected — non-dry-run mode will error. Needs wiring to `callLLM`.
-- [ ] **Gap:** `restoreTimeMachineCommit` errors are caught and non-fatal. Should be fail-closed for a real guarantee.
+- [x] Pipeline replay now runs a child-process DanteForge pipeline from the branch point with deterministic cwd/env/recording context
+- [x] Replay artifacts include result JSON, stdout/stderr excerpts, duration, restore commit, pipeline exit code, and alternate-timeline DecisionNodes
+- [x] Alternate replay writes directly to the requested `timelineId` via recorder env overrides instead of duplicating/rebranding main-timeline nodes after the fact
 
 ### Phase 3 — Causal Attribution (PROTOTYPE — heuristic on synthetic graphs; real corpus validation pending)
 - [x] `src/core/time-machine-causal-attribution.ts` — causal classifier, 21/21 tests
@@ -328,26 +329,30 @@ Each of these is a node. Each can be branched. Each branch produces a new experi
   - detectConvergence: 3-tier detection (JSON equality → keyword overlap → areNodesEquivalent scan)
   - areNodesEquivalent: actor type/product + >50% keyword overlap + success status
 - [x] "Same school" detection: both timelines converge to equivalent outcomes
-- [ ] **Gap:** Classifier tested on synthetic DecisionNode graphs only. Precision/recall on real multi-session agent corpora is unmeasured. This is the paper's main empirical claim — currently unvalidated.
+- [x] Attribution metrics evaluator added for labeled corpora: precision, recall, false-independent rate, exact match, and confusion matrix
+- [ ] **Gap:** Precision/recall on a real LLM multi-session corpus is still unmeasured until at least 30 replayed sessions / 100 labeled downstream nodes exist.
 - [ ] **Gap:** LLM escalation path tested but not benchmarked for accuracy improvement over heuristic.
 
-### Phase 4 — Ecosystem Instrumentation (PARTIAL — adapters and bridge built; ecosystem not deployed)
+### Phase 4 — Ecosystem Instrumentation (BUILT — product emitters/exporters deployed)
 - [x] `src/core/decision-node-recorder.ts` — DanteForge records its own decisions (magic.ts + verify.ts wired)
 - [x] `src/core/decision-node-adapters.ts` — 5 adapters built and unit-tested: DanteAgents, DanteCode, DanteHarvest, DanteDojo, Science (40/40 tests)
 - [x] `src/core/decision-node-danteagents-bridge.ts` — ForgeOrchestrator results → DecisionNode chain in one call (13/13 tests)
 - [x] `docs/papers/time-machine-counterfactual-paper.md` — 6,200-word research paper skeleton with real DELEGATE-52 data
 - [x] `scripts/time-machine-demo.ts` — Runnable end-to-end demo (`npm run time-machine:demo`)
 - [x] SDK surface expanded — all Time Machine types exported from src/sdk.ts
-- [x] Typecheck: EXIT 0. Lint: EXIT 0. Anti-stub: EXIT 0. 102 tests.
-- [ ] **Gap:** DanteCode, DanteHarvest, DanteDojo not actually instrumented in their codebases
+- [x] DanteAgents `@dirtydlite/time-machine`: TraceEvent session -> DecisionNode JSONL exporter with fixtures/tests
+- [x] DanteCode: agent-loop/audit instrumentation for prompt start, tool call, mutation, validation, and completion nodes
+- [x] DanteHarvest: CLI/provenance emission for ingest, crawl, observe, pack promote/export
+- [x] DanteDojo: evidence bundle export for train/eval/promote/checkpoint/passport evidence nodes
+- [x] Typecheck/lint/build/focused tests green across the touched surfaces
 - [ ] **Gap:** Visual timeline UI (ChatCockpit rendering) — described in vision, not yet built
-- [ ] **Gap:** Paper needs real precision/recall numbers before submission
+- [ ] **Gap:** Paper needs real DELEGATE-52 full-run and precision/recall numbers before submission
 
 ### Phase 5 — Validation & Publication (Pending)
-- [ ] Fix live replay: wire `callLLM` into CLI replay command + make restore fail-closed
-- [ ] Build full pipeline replay: re-execute DanteForge convergence loop from branch point (not just single LLM call)
-- [ ] Collect real agent decision history (run DanteForge on real tasks, capture live nodes)
-- [ ] Full 48-domain DELEGATE-52 run (GATE-1, est. $25-80)
+- [x] Fix live replay: child-process replay runner, deterministic env/cwd, fail-closed restore
+- [x] Build full pipeline replay: re-execute DanteForge pipeline from branch point rather than a single LLM call
+- [ ] Collect real agent decision history: minimum 30 replayed sessions and 100 labeled downstream nodes
+- [ ] Full 48-domain DELEGATE-52 run: launched via `npm run delegate52:live-full` with `$160` cap; final result pending
 - [ ] Measure causal attribution precision/recall on live multi-session corpus
 - [ ] Visual timeline UI
 - [ ] DanteCode production integration
@@ -362,6 +367,7 @@ Each of these is a node. Each can be branched. Each branch produces a new experi
 | `src/core/decision-node.ts` | **THE schema** — DecisionNode, createDecisionNode, fromTraceEvent, DecisionNodeStore | ✅ BUILT |
 | `src/core/time-machine-replay.ts` | counterfactualReplay, diffTimelines, buildCausalChain | ✅ BUILT |
 | `src/core/time-machine-causal-attribution.ts` | classifyNodesHeuristic, classifyNodes, detectConvergence | ✅ BUILT |
+| `src/core/time-machine-attribution-eval.ts` | labeled-corpus precision/recall and false-independent-rate evaluator | BUILT |
 | `src/core/decision-node-recorder.ts` | DanteForge self-instrumentation — best-effort, wired into magic + verify | ✅ BUILT |
 | `src/core/decision-node-adapters.ts` | 5 ecosystem adapters: DA / DC / Harvest / Dojo / Science | ✅ BUILT |
 | `src/core/decision-node-danteagents-bridge.ts` | **THE bridge** — ForgeOrchestrator result → DecisionNode store in one call | ✅ BUILT |
@@ -369,9 +375,11 @@ Each of these is a node. Each can be branched. Each branch produces a new experi
 | `src/cli/commands/time-machine.ts` | CLI — validate, node list, node trace, replay | ✅ BUILT |
 | `src/sdk.ts` | Public SDK exports — all Time Machine types and functions | ✅ BUILT |
 | `scripts/time-machine-demo.ts` | Runnable demo: `npm run time-machine:demo` | ✅ BUILT |
+| `scripts/delegate52-live-full.mjs` | GATE-1 full DELEGATE-52 launcher with `.env` loading, env bridging, receipts, and `$160` default cap | BUILT |
 | `tests/decision-node.test.ts` | 14 tests — schema, hash chain, store, adapter | ✅ 14/14 |
 | `tests/time-machine-replay.test.ts` | 14 tests — diff, causal chain, dry-run, live mode | ✅ 14/14 |
 | `tests/time-machine-causal-attribution.test.ts` | 21 tests — classification, convergence, equivalence | ✅ 21/21 |
+| `tests/time-machine-attribution-eval.test.ts` | 3 tests — precision/recall/false-independent report generation | 3/3 |
 | `tests/decision-node-adapters.test.ts` | 40 tests — all 5 ecosystem adapters | ✅ 40/40 |
 | `tests/decision-node-danteagents-bridge.test.ts` | 13 tests — ForgeOrchestrator bridge | ✅ 13/13 |
 | `docs/DANTE-VISION-MASTERPLAN.md` | This document — canonical reference for all ecosystem agents | ✅ LIVE |
@@ -508,4 +516,4 @@ That is the time machine. That is DanteForge's reason for existing.
 
 *This document is the canonical reference for the Dante Time Machine vision. All agents working in this ecosystem should treat the `DecisionNode` schema and three-gap model as authoritative until superseded by a newer version of this document.*
 
-*Last updated: 2026-05-01 — Phases 0–4 complete, all three gaps closed, 102 tests, DanteAgents bridge built.*
+*Last updated: 2026-05-01 — Phases 0-4 infrastructure complete across DanteForge, DanteAgents, DanteCode, DanteHarvest, and DanteDojo. Phase 5 evidence remains pending until full DELEGATE-52 and real-corpus attribution metrics finish.*

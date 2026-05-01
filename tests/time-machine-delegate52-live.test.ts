@@ -21,9 +21,11 @@ const originalDanteAnthropicKey = process.env.DANTEFORGE_ANTHROPIC_API_KEY;
 const originalGenericKey = process.env.DANTEFORGE_LLM_API_KEY;
 const originalAnthropicModel = process.env.ANTHROPIC_MODEL;
 const originalDelegateModel = process.env.DANTEFORGE_DELEGATE52_MODEL;
+const originalDanteForgeHome = process.env.DANTEFORGE_HOME;
 
 before(() => {
   workspace = mkdtempSync(join(tmpdir(), 'dfg-delegate52-live-'));
+  process.env.DANTEFORGE_HOME = workspace;
 });
 
 after(() => {
@@ -44,6 +46,8 @@ after(() => {
   else process.env.ANTHROPIC_MODEL = originalAnthropicModel;
   if (originalDelegateModel === undefined) delete process.env.DANTEFORGE_DELEGATE52_MODEL;
   else process.env.DANTEFORGE_DELEGATE52_MODEL = originalDelegateModel;
+  if (originalDanteForgeHome === undefined) delete process.env.DANTEFORGE_HOME;
+  else process.env.DANTEFORGE_HOME = originalDanteForgeHome;
 });
 
 test('Pass 19 — dry-run mode produces structured plan without spending', async () => {
@@ -173,7 +177,8 @@ test('Pass 19 — live mode stops when budget exhausted mid-loop', async () => {
     },
     now: () => '2026-04-29T20:00:04.000Z',
   });
-  assert.equal(report.classes.D?.status, 'live_completed');
+  assert.equal(report.classes.D?.status, 'live_partial');
+  assert.equal(report.classes.D?.budgetExhausted, true);
   // At least one domain should be marked budget_exhausted or have stopped early
   const exhaustedCount = (report.classes.D?.domainRows ?? []).filter(r => r.status === 'budget_exhausted').length;
   const earlyStopCount = (report.classes.D?.domainRows ?? []).filter(r => (r.interactionCount ?? 0) < 6).length;
@@ -201,4 +206,140 @@ test('Pass 19 — live-result.json artifact written for live runs', async () => 
   const artifact = JSON.parse(readFileSync(artifactPath, 'utf8')) as { microsoftBaselineCorruptionRate: number; corruptionRate: number; totalCostUsd: number };
   assert.equal(artifact.microsoftBaselineCorruptionRate, 0.25);
   assert.ok(artifact.totalCostUsd > 0);
+});
+
+test('Pass 49 — live run writes per-domain receipts and aggregate progress after each domain', async () => {
+  delete process.env.DANTEFORGE_DELEGATE52_DRY_RUN;
+  process.env.DANTEFORGE_DELEGATE52_LIVE = '1';
+  const report = await runTimeMachineValidation({
+    cwd: workspace,
+    classes: ['D'],
+    scale: 'smoke',
+    delegate52Mode: 'live',
+    budgetUsd: 1.0,
+    maxDomains: 2,
+    roundTripsPerDomain: 1,
+    runId: 'pass49_receipts_progress',
+    _llmCaller: async (prompt: string) => {
+      const docMarker = prompt.lastIndexOf('Edited document:\n');
+      const fallbackMarker = prompt.lastIndexOf('Document:\n');
+      const start = docMarker >= 0 ? docMarker + 'Edited document:\n'.length : fallbackMarker + 'Document:\n'.length;
+      const doc = start > 0 ? prompt.slice(start).split('\n\nReference shape:')[0]!.trim() + '\n' : prompt;
+      return { output: doc, costUsd: 0.001 };
+    },
+    now: () => '2026-05-01T03:00:00.000Z',
+  });
+  const receiptPath = join(report.outDir, 'artifacts', 'delegate52-domain-results', 'public-domain-1.json');
+  const progressPath = join(report.outDir, 'artifacts', 'delegate52-live-progress.json');
+  assert.equal(existsSync(receiptPath), true, 'domain receipt should exist');
+  assert.equal(existsSync(progressPath), true, 'aggregate progress should exist');
+  const receipt = JSON.parse(readFileSync(receiptPath, 'utf8')) as { complete: boolean; row: { status: string } };
+  const progress = JSON.parse(readFileSync(progressPath, 'utf8')) as { completedDomainCount: number; pendingDomains: string[] };
+  assert.equal(receipt.complete, true);
+  assert.equal(receipt.row.status, 'live_completed');
+  assert.equal(progress.completedDomainCount, 2);
+  assert.deepEqual(progress.pendingDomains, []);
+});
+
+test('Pass 49 — resume skips only domains with complete per-domain receipts', async () => {
+  delete process.env.DANTEFORGE_DELEGATE52_DRY_RUN;
+  process.env.DANTEFORGE_DELEGATE52_LIVE = '1';
+  const identityCaller = async (prompt: string) => {
+    const docMarker = prompt.lastIndexOf('Edited document:\n');
+    const fallbackMarker = prompt.lastIndexOf('Document:\n');
+    const start = docMarker >= 0 ? docMarker + 'Edited document:\n'.length : fallbackMarker + 'Document:\n'.length;
+    const doc = start > 0 ? prompt.slice(start).split('\n\nReference shape:')[0]!.trim() + '\n' : prompt;
+    return { output: doc, costUsd: 0.001 };
+  };
+  const first = await runTimeMachineValidation({
+    cwd: workspace,
+    classes: ['D'],
+    scale: 'smoke',
+    delegate52Mode: 'live',
+    budgetUsd: 1.0,
+    maxDomains: 1,
+    roundTripsPerDomain: 1,
+    runId: 'pass49_resume_seed',
+    _llmCaller: identityCaller,
+    now: () => '2026-05-01T03:00:01.000Z',
+  });
+  let resumedCallCount = 0;
+  const resumed = await runTimeMachineValidation({
+    cwd: workspace,
+    classes: ['D'],
+    scale: 'smoke',
+    delegate52Mode: 'live',
+    budgetUsd: 1.0,
+    maxDomains: 2,
+    roundTripsPerDomain: 1,
+    runId: 'pass49_resume_continue',
+    delegate52ResumeFrom: first.outDir,
+    _llmCaller: async (prompt: string) => {
+      resumedCallCount += 1;
+      return identityCaller(prompt);
+    },
+    now: () => '2026-05-01T03:00:02.000Z',
+  });
+  assert.equal(resumed.classes.D?.status, 'live_completed');
+  assert.equal(resumed.classes.D?.domainRows.length, 2);
+  assert.equal(resumed.classes.D?.domainRows[0]?.resumedFrom, first.outDir);
+  assert.equal(resumedCallCount, 2, 'only the second domain should execute one forward+backward round-trip');
+});
+
+test('Pass 49 — prior spend counts against the active budget and can stop before first domain', async () => {
+  delete process.env.DANTEFORGE_DELEGATE52_DRY_RUN;
+  process.env.DANTEFORGE_DELEGATE52_LIVE = '1';
+  let callCount = 0;
+  const report = await runTimeMachineValidation({
+    cwd: workspace,
+    classes: ['D'],
+    scale: 'smoke',
+    delegate52Mode: 'live',
+    budgetUsd: 1.0,
+    priorSpendUsd: 1.0,
+    maxDomains: 1,
+    roundTripsPerDomain: 1,
+    runId: 'pass49_prior_spend_stop',
+    _llmCaller: async () => {
+      callCount += 1;
+      return { output: 'should not run\n', costUsd: 0.001 };
+    },
+    now: () => '2026-05-01T03:00:03.000Z',
+  });
+  assert.equal(callCount, 0);
+  assert.equal(report.classes.D?.status, 'live_partial');
+  assert.equal(report.classes.D?.budgetExhausted, true);
+  assert.equal(report.classes.D?.priorSpendUsd, 1.0);
+  assert.equal(report.classes.D?.domainRows[0]?.status, 'budget_exhausted');
+});
+
+test('Pass 49 — recoverable timeout writes failed receipt and final live result', async () => {
+  delete process.env.DANTEFORGE_DELEGATE52_DRY_RUN;
+  process.env.DANTEFORGE_DELEGATE52_LIVE = '1';
+  const report = await runTimeMachineValidation({
+    cwd: workspace,
+    classes: ['D'],
+    scale: 'smoke',
+    delegate52Mode: 'live',
+    budgetUsd: 1.0,
+    maxDomains: 1,
+    roundTripsPerDomain: 1,
+    runId: 'pass49_timeout_receipt',
+    _llmCaller: async () => {
+      throw new Error('Anthropic Claude request timed out after 120000ms.');
+    },
+    now: () => '2026-05-01T03:00:04.000Z',
+  });
+  const row = report.classes.D?.domainRows[0];
+  assert.equal(report.classes.D?.status, 'live_partial');
+  assert.equal(row?.status, 'failed_recoverable');
+  assert.equal(row?.recoverable, true);
+  const receiptPath = join(report.outDir, 'artifacts', 'delegate52-domain-results', 'public-domain-1.json');
+  const resultPath = join(report.outDir, 'artifacts', 'delegate52-live-result.json');
+  assert.equal(existsSync(receiptPath), true, 'failed receipt should be durable');
+  assert.equal(existsSync(resultPath), true, 'final aggregate result should still be durable');
+  const receipt = JSON.parse(readFileSync(receiptPath, 'utf8')) as { complete: boolean; row: { status: string; recoverable: boolean } };
+  assert.equal(receipt.complete, false);
+  assert.equal(receipt.row.status, 'failed_recoverable');
+  assert.equal(receipt.row.recoverable, true);
 });

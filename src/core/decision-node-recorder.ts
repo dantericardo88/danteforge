@@ -39,7 +39,7 @@ export function getSession(cwd?: string): RecorderSession {
   if (_session) return _session;
 
   const root = cwd ?? process.cwd();
-  let sessionId: string = randomUUID();
+  let sessionId: string = process.env.DANTEFORGE_DECISION_SESSION_ID ?? randomUUID();
 
   // Best-effort: try to read sessionId from STATE.yaml so nodes can be
   // correlated with the existing project state.
@@ -47,16 +47,16 @@ export function getSession(cwd?: string): RecorderSession {
     const stateFile = path.join(root, '.danteforge', 'STATE.yaml');
     const raw = readFileSync(stateFile, 'utf-8');
     const match = raw.match(/^sessionId:\s*['"]?([a-f0-9-]{36})['"]?/m);
-    if (match?.[1]) sessionId = match[1];
+    if (!process.env.DANTEFORGE_DECISION_SESSION_ID && match?.[1]) sessionId = match[1];
   } catch {
     // STATE.yaml absent or unreadable — use generated UUID
   }
 
   _session = {
     sessionId,
-    timelineId: 'main',
+    timelineId: process.env.DANTEFORGE_DECISION_TIMELINE_ID ?? 'main',
     product: 'danteforge',
-    storePath: path.join(root, '.danteforge', 'decision-nodes.jsonl'),
+    storePath: process.env.DANTEFORGE_DECISION_STORE ?? path.join(root, '.danteforge', 'decision-nodes.jsonl'),
   };
 
   return _session;
@@ -102,10 +102,11 @@ export async function recordDecision(params: {
     // Build a minimal synthetic "parent" so we can wire prevHash without
     // loading the entire chain.
     let parentNode: DecisionNode | null = null;
-    if (params.parentNodeId) {
+    const parentNodeId = params.parentNodeId ?? process.env.DANTEFORGE_DECISION_PARENT_ID;
+    if (parentNodeId) {
       try {
         const store = createDecisionNodeStore(params.session.storePath);
-        parentNode = (await store.getById(params.parentNodeId)) ?? null;
+        parentNode = (await store.getById(parentNodeId)) ?? null;
         await store.close();
       } catch {
         // Parent lookup is best-effort; missing parent just means prevHash = null
@@ -144,7 +145,7 @@ export async function recordDecision(params: {
     // Fallback node — callers can safely read .id without crashing
     return {
       id: randomUUID(),
-      parentId: params.parentNodeId ?? null,
+      parentId: params.parentNodeId ?? process.env.DANTEFORGE_DECISION_PARENT_ID ?? null,
       sessionId: params.session.sessionId,
       timelineId: params.session.timelineId,
       timestamp: new Date().toISOString(),

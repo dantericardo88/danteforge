@@ -56,13 +56,14 @@ export function resolveProviderRequestTimeoutMs(
   return baseTimeout;
 }
 
-function isRetryableError(err: unknown): boolean {
+export function isRetryableError(err: unknown): boolean {
   if (!(err instanceof Error)) return false;
   const msg = err.message.toLowerCase();
   return msg.includes('econnreset')
     || msg.includes('econnrefused')
     || msg.includes('etimedout')
     || msg.includes('socket hang up')
+    || msg.includes('request timed out after')
     || msg.includes('fetch failed')
     || msg.includes('rate limit')
     || msg.includes('429')
@@ -103,6 +104,27 @@ function normalizeBaseUrl(provider: LLMProvider, baseUrl?: string): string {
       const adapter = getRegistryProvider(provider);
       return adapter?.defaultBaseUrl ?? 'https://api.openai.com/v1';
     }
+  }
+}
+
+function resolveStandardProviderApiKey(provider: LLMProvider): string | undefined {
+  switch (provider) {
+    case 'claude':
+      return process.env.ANTHROPIC_API_KEY ?? process.env.DANTEFORGE_ANTHROPIC_API_KEY;
+    case 'openai':
+      return process.env.OPENAI_API_KEY;
+    case 'grok':
+      return process.env.XAI_API_KEY ?? process.env.GROK_API_KEY;
+    case 'gemini':
+      return process.env.GEMINI_API_KEY ?? process.env.GOOGLE_API_KEY;
+    case 'together':
+      return process.env.TOGETHER_API_KEY;
+    case 'groq':
+      return process.env.GROQ_API_KEY;
+    case 'mistral':
+      return process.env.MISTRAL_API_KEY;
+    default:
+      return undefined;
   }
 }
 
@@ -354,6 +376,7 @@ async function resolveCallTarget(providerOverride?: LLMProvider, modelOverride?:
     model: modelOverride ?? providerConfig?.model ?? fallbackModel,
     apiKey: providerConfig?.apiKey
       ?? fallbackApiKey
+      ?? resolveStandardProviderApiKey(provider)
       // CI/CD: DANTEFORGE_LLM_API_KEY (generic) or DANTEFORGE_<PROVIDER>_API_KEY (provider-specific)
       ?? process.env[`DANTEFORGE_${provider.toUpperCase()}_API_KEY`]
       ?? process.env.DANTEFORGE_LLM_API_KEY,

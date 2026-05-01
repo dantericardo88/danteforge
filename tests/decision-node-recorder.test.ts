@@ -43,6 +43,10 @@ describe('decision-node recorder — integration', () => {
   beforeEach(() => {
     // Reset singleton so each test gets a fresh session pointing at workspace
     _resetSession();
+    delete process.env.DANTEFORGE_DECISION_STORE;
+    delete process.env.DANTEFORGE_DECISION_SESSION_ID;
+    delete process.env.DANTEFORGE_DECISION_TIMELINE_ID;
+    delete process.env.DANTEFORGE_DECISION_PARENT_ID;
   });
 
   // -------------------------------------------------------------------------
@@ -259,5 +263,50 @@ describe('decision-node recorder — integration', () => {
     assert.ok(nodeIds.includes(n1.id), 'store.getBySession should return first node');
     assert.ok(nodeIds.includes(n2.id), 'store.getBySession should return second node');
     assert.equal(nodes.length, 2, 'exactly 2 nodes in session');
+  });
+
+  it('getSession honors DecisionNode env overrides for replay runs', () => {
+    _resetSession();
+    const overrideStore = join(workspace, '.danteforge', 'override-nodes.jsonl');
+    process.env.DANTEFORGE_DECISION_STORE = overrideStore;
+    process.env.DANTEFORGE_DECISION_SESSION_ID = 'session-from-env';
+    process.env.DANTEFORGE_DECISION_TIMELINE_ID = 'timeline-from-env';
+
+    const session = getSession(workspace);
+
+    assert.equal(session.storePath, overrideStore);
+    assert.equal(session.sessionId, 'session-from-env');
+    assert.equal(session.timelineId, 'timeline-from-env');
+  });
+
+  it('recordDecision uses DANTEFORGE_DECISION_PARENT_ID when caller omits parentNodeId', async () => {
+    _resetSession();
+    const sp = join(workspace, '.danteforge', 'nodes-env-parent.jsonl');
+    process.env.DANTEFORGE_DECISION_STORE = sp;
+    process.env.DANTEFORGE_DECISION_SESSION_ID = 'env-parent-session';
+    process.env.DANTEFORGE_DECISION_TIMELINE_ID = 'env-parent-timeline';
+
+    const session = getSession(workspace);
+    const parent = await recordDecision({
+      session,
+      actorType: 'agent',
+      prompt: 'branch point',
+      result: 'parent',
+      success: true,
+    });
+
+    process.env.DANTEFORGE_DECISION_PARENT_ID = parent.id;
+    _resetSession();
+    const replaySession = getSession(workspace);
+    const child = await recordDecision({
+      session: replaySession,
+      actorType: 'agent',
+      prompt: 'replayed pipeline start',
+      result: 'child',
+      success: true,
+    });
+
+    assert.equal(child.parentId, parent.id);
+    assert.equal(child.timelineId, 'env-parent-timeline');
   });
 });

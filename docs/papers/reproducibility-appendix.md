@@ -100,6 +100,15 @@ node dist/index.js time-machine validate \
 
 Expected wall-time: 4–6 hours for 48 domains × 10 round-trips × 2 interactions = 960 baseline LLM calls, plus retry calls when mitigation detects divergence.
 
+Preferred local launcher (2026-05-01 update):
+
+```bash
+npm run build
+npm run delegate52:live-full
+```
+
+The launcher is a thin wrapper around the command above. It auto-loads project `.env` for local operation, bridges `ANTHROPIC_API_KEY` to `DANTEFORGE_CLAUDE_API_KEY`, sets `DANTEFORGE_DELEGATE52_LIVE=1`, defaults to `claude-sonnet-4-6`, uses `--mitigation-strategy surgical-patch`, writes a redacted `command.json`, and stores `stdout.json`, `stderr.log`, and `result.json` under `.danteforge/evidence/delegate52-live-full-<timestamp>/`. Override `DANTEFORGE_DELEGATE52_BUDGET_USD`, `DANTEFORGE_DELEGATE52_MAX_DOMAINS`, or `DANTEFORGE_DELEGATE52_ROUND_TRIPS` only for preflight/debug runs; publication GATE-1 remains 48 domains x 10 round-trips.
+
 **Cost envelope note (post-Pass-23 review).** The conservative estimator in `src/core/time-machine-validation.ts` uses 4 chars/token and $3/M input + $15/M output. Real Anthropic tokenization averages ~3.5 chars/token in English; 1M-context Sonnet variants price at $6/M input + $22.50/M output. Realistic envelope: **$10–160** depending on (a) the resolved model SKU at run time and (b) document length distribution from the imported dataset. The CLI hard-stops at the `--budget-usd` ceiling, so over-runs are impossible by design — but a half-completed run (24 of 48 domains) is possible if the envelope is too tight. Pin `ANTHROPIC_MODEL` to a non-1M SKU to stay near the lower bound.
 
 Real billed cost may differ from the `costUsd` field by up to 10%; reconcile against provider billing afterward.

@@ -347,12 +347,13 @@ Available as `danteforge time-machine node timeline --result <file>` or via stor
 The following are **not yet validated** and are recorded here to maintain truth-boundary discipline:
 
 - **Production multi-LLM sessions**: All 8.3 tests use real JSONL but with synthetic prompt content. Causal attribution on real multi-turn LLM traces (where prompts are natural-language agent outputs) has not been measured for precision/recall.
-- **Full DELEGATE-52 D1/D3/D4**: Remains GATE-1 founder-gated as described in §5.4.
-- **Ecosystem rollout**: The recorder is wired into `magic.ts` and `autoforge.ts`. DanteCode, DanteHarvest, and DanteDojo integrations are not yet deployed.
+- **Full DELEGATE-52 D1/D3/D4**: GATE-1 live execution is implemented and launchable via `npm run delegate52:live-full`, but the paper must not report final D1/D3/D4 values until the full result artifact exists and shows no budget exhaustion.
+- **Ecosystem rollout evidence**: DanteAgents, DanteCode, DanteHarvest, and DanteDojo now emit/export DecisionNode-compatible JSONL, but the publication corpus still needs at least 30 replayed sessions and 100 labeled downstream nodes.
 
 ## 9. Future work
 
-- **Live DELEGATE-52 run** (GATE-1 founder action) â€” populates D1 / D3 / D4 numbers
+- **Live DELEGATE-52 run** (GATE-1) — populate D1 / D3 / D4 numbers from `delegate52-live-full-<timestamp>/result.json`
+- **Real attribution corpus** — label at least 100 downstream nodes from at least 30 replayed sessions and run `danteforge time-machine node eval-attribution`
 - **F 1M scale optimization/re-run** â€” Pass 44 reached 748,544 commits in 30 minutes; future work must further optimize the generator/verifier or approve a longer compute window
 - **Withheld-environments coverage** â€” requires Microsoft Research collaboration to access the 76 enterprise environments
 - **Other multi-turn editing benchmarks** â€” the substrate should generalize; testing it against alternative benchmarks is open
@@ -398,9 +399,12 @@ All numbers in Â§5 are derived from local proof-anchored manifests under `.dan
 - Causal attribution (`classifyNodesHeuristic`) runs correctly on recorder-produced JSONL data — independent and incompatible nodes are correctly classified (§8.3, 8 tests, all pass).
 - The ASCII timeline renderer is implemented and tested (§8.4, 6 tests, all pass).
 - The recorder is wired into the autoforge execution pipeline (plan-start, per-step, completion nodes).
+- Ecosystem DecisionNode emitters/exporters exist for DanteAgents, DanteCode, DanteHarvest, and DanteDojo.
+- The full DELEGATE-52 live launcher exists and produces redacted command/result artifacts, but only completed `result.json` metrics may populate the paper.
 
 **Forbidden claims (this draft):**
-- DanteForge has executed live LLM round-trips against DELEGATE-52 (this requires GATE-1).
+- Do not claim DanteForge has completed the full live DELEGATE-52 replication until a non-partial GATE-1 `result.json` exists with no `budget_exhausted`.
+- Do not claim causal attribution meets publication thresholds until the labeled real-trace evaluator reports precision >= 0.85, recall >= 0.80, and false-independent rate <= 0.05.
 - The Sean Lippay outreach has been sent (this is GATE-6).
 - The 1M-commit benchmark passed. It was attempted and returned partial; no 1M pass is claimed.
 - The 76 withheld DELEGATE-52 environments have been validated (license).

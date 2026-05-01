@@ -20,6 +20,7 @@ import { randomUUID } from 'node:crypto';
 import { restoreTimeMachineCommit } from './time-machine.js';
 import { createDecisionNode } from './decision-node.js';
 import type { DecisionNode, DecisionNodeStore } from './decision-node.js';
+import type { RestoreTimeMachineResult } from './time-machine.js';
 
 // ---------------------------------------------------------------------------
 // Public interface types
@@ -38,6 +39,8 @@ export interface CounterfactualReplayRequest {
   preserveIndependent?: boolean;
   /** If true, plan only — don't execute LLM calls */
   dryRun?: boolean;
+  /** Optional caller-provided timeline id for deterministic child-process replay */
+  newTimelineId?: string;
 }
 
 export interface TimelineDiff {
@@ -62,6 +65,28 @@ export interface CounterfactualReplayResult {
   causalChain: string[];
   costUsd: number;
   durationMs: number;
+  artifacts?: ReplayArtifactSummary;
+}
+
+export interface ReplayArtifactSummary {
+  replayDir?: string;
+  workspacePath?: string;
+  restoreCommitId?: string;
+  restoreOutDir?: string;
+  resultPath?: string;
+  stdoutPath?: string;
+  stderrPath?: string;
+  stdoutExcerpt?: string;
+  stderrExcerpt?: string;
+  pipelineExitCode?: number;
+}
+
+export interface PipelineRunContext {
+  sessionId: string;
+  timelineId: string;
+  parentNodeId: string;
+  storePath?: string;
+  workspacePath?: string;
 }
 
 /**
@@ -74,6 +99,9 @@ export interface PipelineRunResult {
   nodes: DecisionNode[];
   /** Aggregate cost in USD across all pipeline nodes */
   costUsd: number;
+  /** True when nodes were already written to the shared DecisionNode store by the pipeline. */
+  nodesAlreadyRecorded?: boolean;
+  artifacts?: ReplayArtifactSummary;
 }
 
 // ---------------------------------------------------------------------------
@@ -100,8 +128,12 @@ export async function counterfactualReplay(
   options?: {
     llmCaller?: (prompt: string) => Promise<string>;
     /** Full DanteForge pipeline rerun. When provided, used instead of llmCaller. */
-    pipelineCaller?: (input: string) => Promise<PipelineRunResult>;
+    pipelineCaller?: (input: string, context: PipelineRunContext) => Promise<PipelineRunResult>;
     workspacePath?: string;
+    /** Restore into this directory instead of the live working tree. */
+    restoreOutDir?: string;
+    replayDir?: string;
+    storePath?: string;
   },
 ): Promise<CounterfactualReplayResult> {
   const startMs = Date.now();
@@ -132,20 +164,24 @@ export async function counterfactualReplay(
         new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime(),
     );
 
-  const newTimelineId = randomUUID();
+  const newTimelineId = request.newTimelineId ?? randomUUID();
   const alternatePath: DecisionNode[] = [];
+  const artifacts: ReplayArtifactSummary = {};
 
   // ------------------------------------------------------------------
   // Optionally restore file state to the branch-point snapshot.
   // ------------------------------------------------------------------
   const fileStateRef = branchPoint.output.fileStateRef;
   if (fileStateRef && options?.workspacePath && !request.dryRun) {
-    await restoreTimeMachineCommit({
+    const restoreResult: RestoreTimeMachineResult = await restoreTimeMachineCommit({
       cwd: options.workspacePath,
       commitId: fileStateRef,
-      toWorkingTree: true,
-      confirm: true,
+      ...(options.restoreOutDir
+        ? { outDir: options.restoreOutDir }
+        : { toWorkingTree: true, confirm: true }),
     });
+    artifacts.restoreCommitId = restoreResult.commitId;
+    artifacts.restoreOutDir = restoreResult.outDir;
   }
 
   // ------------------------------------------------------------------
@@ -166,23 +202,34 @@ export async function counterfactualReplay(
     if (pipelineCaller) {
       // Full pipeline rerun: run the entire DanteForge convergence loop and
       // collect all resulting DecisionNodes as the alternate timeline.
-      const pipelineResult = await pipelineCaller(request.alteredInput);
-      let parentForRebrand: DecisionNode = branchPoint;
-      for (const node of pipelineResult.nodes) {
-        const rebranded = createDecisionNode({
-          parentNode: parentForRebrand,
-          sessionId: request.sessionId,
-          timelineId: newTimelineId,
-          actor: node.actor,
-          input: { prompt: node.input.prompt },
-          output: node.output,
-          causal: { dependentOn: [branchPoint.id], counterfactualOf: branchPoint.id },
-        });
-        await store.append(rebranded);
-        alternatePath.push(rebranded);
-        parentForRebrand = rebranded;
+      const pipelineResult = await pipelineCaller(request.alteredInput, {
+        sessionId: request.sessionId,
+        timelineId: newTimelineId,
+        parentNodeId: branchPoint.id,
+        storePath: options?.storePath,
+        workspacePath: options?.restoreOutDir ?? options?.workspacePath,
+      });
+      if (pipelineResult.nodesAlreadyRecorded) {
+        alternatePath.push(...pipelineResult.nodes);
+      } else {
+        let parentForRebrand: DecisionNode = branchPoint;
+        for (const node of pipelineResult.nodes) {
+          const rebranded = createDecisionNode({
+            parentNode: parentForRebrand,
+            sessionId: request.sessionId,
+            timelineId: newTimelineId,
+            actor: node.actor,
+            input: node.input,
+            output: node.output,
+            causal: { dependentOn: [branchPoint.id], counterfactualOf: branchPoint.id },
+          });
+          await store.append(rebranded);
+          alternatePath.push(rebranded);
+          parentForRebrand = rebranded;
+        }
       }
       costUsd = pipelineResult.costUsd;
+      Object.assign(artifacts, pipelineResult.artifacts);
     } else {
       // Single LLM call: one round-trip with the altered input.
       const depth = Math.max(1, request.replayDepth ?? 50);
@@ -260,6 +307,11 @@ export async function counterfactualReplay(
     causalChain,
     costUsd,
     durationMs: Date.now() - startMs,
+    artifacts: Object.keys(artifacts).length > 0 ? {
+      ...artifacts,
+      ...(options?.replayDir ? { replayDir: options.replayDir } : {}),
+      ...(options?.restoreOutDir ? { workspacePath: options.restoreOutDir } : {}),
+    } : undefined,
   };
 }
 

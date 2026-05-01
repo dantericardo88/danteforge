@@ -850,6 +850,8 @@ timeMachineCommand
   .option('--delegate52-mode <mode>', 'harness | import | live', 'harness')
   .option('--delegate52-dataset <pathOrUrl>', 'Public DELEGATE-52 JSON/JSONL dataset or imported result file')
   .option('--budget-usd <n>', 'Budget ceiling for live DELEGATE-52 runs', parseFloat)
+  .option('--resume-from <path>', 'Resume live DELEGATE-52 from an existing validation output directory')
+  .option('--prior-spend-usd <n>', 'Prior live spend to count against --budget-usd during resumed validation', parseFloat)
   .option('--max-domains <n>', 'Maximum DELEGATE-52 domains to include', parseInt)
   .option('--max-commits <n>', 'Maximum Class F benchmark commits; explicit value overrides DANTEFORGE_TIME_MACHINE_VALIDATE_MAX_COMMITS', parseInt)
   .option('--benchmark-time-budget-minutes <n>', 'Class F benchmark wall-clock budget; exhausted budget emits a partial report', parseFloat)
@@ -868,6 +870,8 @@ timeMachineCommand
     delegate52Mode: opts.delegate52Mode,
     delegate52Dataset: opts.delegate52Dataset,
     budgetUsd: opts.budgetUsd,
+    delegate52ResumeFrom: opts.resumeFrom,
+    priorSpendUsd: opts.priorSpendUsd,
     maxDomains: opts.maxDomains,
     maxCommits: opts.maxCommits,
     benchmarkTimeBudgetMinutes: opts.benchmarkTimeBudgetMinutes,
@@ -944,6 +948,38 @@ timeMachineNodeCommand
     store: opts.store,
     session: opts.session,
     withLlm: opts.withLlm,
+    json: opts.json,
+  }));
+
+timeMachineNodeCommand
+  .command('eval-attribution')
+  .description('Evaluate causal attribution precision/recall against a labeled DecisionNode corpus')
+  .requiredOption('--labels <file>', 'JSON label file with branchPointId and expected classifications')
+  .option('--store <path>', 'Path to decision-nodes JSONL store', '.danteforge/decision-nodes.jsonl')
+  .option('--out <file>', 'Write the evaluation report JSON to this path')
+  .option('--json', 'Output full evaluation report as JSON')
+  .action(async (opts) => (await C()).timeMachine({
+    action: 'node-eval-attribution',
+    labelsFile: opts.labels,
+    store: opts.store,
+    out: opts.out,
+    json: opts.json,
+  }));
+
+timeMachineNodeCommand
+  .command('build-corpus')
+  .description('Build Time Machine replay-session corpus artifacts and human label drafts from DecisionNodes')
+  .option('--store <path>', 'Path to decision-nodes JSONL store', '.danteforge/decision-nodes.jsonl')
+  .option('--out <dir>', 'Output corpus directory (default: .danteforge/evidence/time-machine-corpus/<timestamp>)')
+  .option('--min-sessions <n>', 'Minimum replayed sessions required by the evidence gate', parseInt)
+  .option('--min-labels <n>', 'Minimum downstream labels required by the evidence gate', parseInt)
+  .option('--json', 'Output full corpus manifest as JSON')
+  .action(async (opts) => (await C()).timeMachine({
+    action: 'node-build-corpus',
+    store: opts.store,
+    out: opts.out,
+    minSessions: opts.minSessions,
+    minLabels: opts.minLabels,
     json: opts.json,
   }));
 

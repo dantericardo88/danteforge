@@ -1,3 +1,8 @@
+import { randomUUID } from 'node:crypto';
+import { spawn } from 'node:child_process';
+import fs from 'node:fs/promises';
+import { existsSync } from 'node:fs';
+import path from 'node:path';
 import {
   createTimeMachineCommit,
   queryTimeMachine,
@@ -12,9 +17,15 @@ import {
   type TimeMachineValidationScale,
 } from '../../core/time-machine-validation.js';
 import { createDecisionNodeStore } from '../../core/decision-node.js';
-import { counterfactualReplay, diffTimelines, buildCausalChain, type PipelineRunResult, type CounterfactualReplayResult } from '../../core/time-machine-replay.js';
+import { counterfactualReplay, diffTimelines, buildCausalChain, type PipelineRunContext, type PipelineRunResult, type CounterfactualReplayResult } from '../../core/time-machine-replay.js';
 import { renderAsciiTimeline } from '../../core/time-machine-timeline.js';
 import { classifyNodes } from '../../core/time-machine-causal-attribution.js';
+import {
+  evaluateAttributionLabels,
+  readAttributionLabelFile,
+  writeAttributionEvaluationReport,
+} from '../../core/time-machine-attribution-eval.js';
+import { buildTimeMachineCorpusBundle } from '../../core/time-machine-corpus.js';
 import { callLLM } from '../../core/llm.js';
 import { logger } from '../../core/logger.js';
 
@@ -28,6 +39,8 @@ export type TimeMachineAction =
   | 'node-trace'
   | 'replay'
   | 'node-attribute'
+  | 'node-eval-attribution'
+  | 'node-build-corpus'
   | 'timeline';
 
 export interface TimeMachineCommandOptions {
@@ -43,14 +56,16 @@ export interface TimeMachineCommandOptions {
   delegate52Mode?: Delegate52Mode;
   delegate52Dataset?: string;
   budgetUsd?: number;
+  delegate52ResumeFrom?: string;
+  priorSpendUsd?: number;
   maxDomains?: number;
   maxCommits?: number;
   benchmarkTimeBudgetMinutes?: number;
   roundTripsPerDomain?: number;
   mitigateDivergence?: boolean;
   retriesOnDivergence?: number;
-  /** Pass 40/45: 'substrate-restore-retry' (default), 'prompt-only-retry', 'no-mitigation', 'smart-retry' (diff-guided feedback). */
-  mitigationStrategy?: 'substrate-restore-retry' | 'prompt-only-retry' | 'no-mitigation' | 'smart-retry';
+  /** Pass 40/45/46/47 mitigation strategy. */
+  mitigationStrategy?: 'substrate-restore-retry' | 'prompt-only-retry' | 'no-mitigation' | 'smart-retry' | 'edit-journal' | 'surgical-patch';
   toWorkingTree?: boolean;
   confirm?: boolean;
   json?: boolean;
@@ -72,6 +87,12 @@ export interface TimeMachineCommandOptions {
   branchNodeId?: string;
   /** node-attribute: if true, escalate low-confidence attributions to LLM */
   withLlm?: boolean;
+  /** node-eval-attribution: JSON label file */
+  labelsFile?: string;
+  /** node-build-corpus: minimum replayed sessions required by the evidence gate */
+  minSessions?: number;
+  /** node-build-corpus: minimum downstream labels required by the evidence gate */
+  minLabels?: number;
   /** timeline: path to a stored CounterfactualReplayResult JSON */
   resultFile?: string;
   /** timeline: original timeline id (for store-reconstruction mode) */
@@ -80,6 +101,19 @@ export interface TimeMachineCommandOptions {
   alternateTimeline?: string;
   /** timeline: terminal width for rendering (default 120) */
   timelineWidth?: number;
+  /** test seam: deterministic alternate timeline id */
+  _newTimelineId?: string;
+  /** test seam: injected isolated replay pipeline runner */
+  _runReplayPipeline?: (input: {
+    input: string;
+    cwd: string;
+    env: NodeJS.ProcessEnv;
+    storePath: string;
+    sessionId: string;
+    timelineId: string;
+    parentNodeId: string;
+    replayDir: string;
+  }) => Promise<{ exitCode: number; stdout: string; stderr: string; durationMs: number }>;
   _stdout?: (line: string) => void;
   _now?: () => string;
 }
@@ -142,6 +176,8 @@ export async function timeMachine(options: TimeMachineCommandOptions): Promise<v
       delegate52Mode: options.delegate52Mode,
       delegate52Dataset: options.delegate52Dataset,
       budgetUsd: options.budgetUsd,
+      delegate52ResumeFrom: options.delegate52ResumeFrom,
+      priorSpendUsd: options.priorSpendUsd,
       maxDomains: options.maxDomains,
       maxCommits: options.maxCommits,
       benchmarkTimeBudgetMinutes: options.benchmarkTimeBudgetMinutes,
@@ -222,43 +258,86 @@ export async function timeMachine(options: TimeMachineCommandOptions): Promise<v
   if (options.action === 'replay') {
     if (!options.nodeId) throw new Error('time-machine replay requires a nodeId argument');
     if (!options.alteredInput) throw new Error('time-machine replay requires --input "<altered prompt>"');
-    const storePath = options.store ?? '.danteforge/decision-nodes.jsonl';
+    const storePath = path.resolve(cwd, options.store ?? '.danteforge/decision-nodes.jsonl');
     const sessionId = options.session ?? 'default';
     const store = createDecisionNodeStore(storePath);
 
     const replayLlmCaller = async (prompt: string) => callLLM(prompt);
 
-    let replayPipelineCaller: ((input: string) => Promise<PipelineRunResult>) | undefined;
+    const newTimelineId = options._newTimelineId ?? randomUUID();
+    const replayDir = path.join(cwd, '.danteforge', 'time-machine', 'replays', newTimelineId);
+    const replayWorkspace = path.join(replayDir, 'workspace');
+
+    let replayPipelineCaller: ((input: string, context: PipelineRunContext) => Promise<PipelineRunResult>) | undefined;
     if (options.pipelineMode) {
-      replayPipelineCaller = async (input: string): Promise<PipelineRunResult> => {
-        const { magic } = await import('./magic.js');
+      replayPipelineCaller = async (input: string, context: PipelineRunContext): Promise<PipelineRunResult> => {
         const runStart = Date.now();
-        await magic(input, { yes: true });
+        const env = {
+          ...process.env,
+          DANTEFORGE_DECISION_STORE: storePath,
+          DANTEFORGE_DECISION_SESSION_ID: context.sessionId,
+          DANTEFORGE_DECISION_TIMELINE_ID: context.timelineId,
+          DANTEFORGE_DECISION_PARENT_ID: context.parentNodeId,
+        };
+        const pipeline = await (options._runReplayPipeline ?? runReplayPipelineChild)({
+          input,
+          cwd: replayWorkspace,
+          env,
+          storePath,
+          sessionId: context.sessionId,
+          timelineId: context.timelineId,
+          parentNodeId: context.parentNodeId,
+          replayDir,
+        });
         const runStartIso = new Date(runStart).toISOString();
-        const allNodes = await store.getBySession(sessionId);
-        const newNodes = allNodes.filter(n => n.timestamp >= runStartIso);
+        const replayStore = createDecisionNodeStore(storePath);
+        const timelineNodes = await replayStore.getByTimeline(context.timelineId);
+        await replayStore.close();
+        const newNodes = timelineNodes
+          .filter(n => n.sessionId === context.sessionId && n.timestamp >= runStartIso)
+          .sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
         return {
           nodes: newNodes,
           costUsd: newNodes.reduce((sum, n) => sum + n.output.costUsd, 0),
+          nodesAlreadyRecorded: true,
+          artifacts: {
+            replayDir,
+            workspacePath: replayWorkspace,
+            stdoutPath: await writeReplayArtifact(replayDir, 'pipeline-stdout.txt', pipeline.stdout),
+            stderrPath: await writeReplayArtifact(replayDir, 'pipeline-stderr.txt', pipeline.stderr),
+            stdoutExcerpt: excerpt(pipeline.stdout),
+            stderrExcerpt: excerpt(pipeline.stderr),
+            pipelineExitCode: pipeline.exitCode,
+          },
         };
       };
     }
 
     try {
+      if (options.pipelineMode && options.dryRun !== true) {
+        await prepareReplayWorkspace(cwd, replayWorkspace);
+      }
       const result = await counterfactualReplay(
         {
           branchFromNodeId: options.nodeId,
           alteredInput: options.alteredInput,
           sessionId,
           dryRun: options.dryRun === true,
+          newTimelineId,
         },
         store,
         {
           workspacePath: cwd,
+          restoreOutDir: options.pipelineMode ? replayWorkspace : undefined,
+          replayDir: options.pipelineMode ? replayDir : undefined,
+          storePath,
           llmCaller: replayLlmCaller,
           pipelineCaller: replayPipelineCaller,
         },
       );
+      if (options.pipelineMode && result.artifacts) {
+        result.artifacts.resultPath = await writeReplayArtifact(replayDir, 'counterfactual-result.json', JSON.stringify(result, null, 2));
+      }
       if (options.json) {
         out(JSON.stringify(result, null, 2));
       } else {
@@ -314,6 +393,72 @@ export async function timeMachine(options: TimeMachineCommandOptions): Promise<v
       }
     } finally {
       await store.close();
+    }
+    return;
+  }
+
+  if (options.action === 'node-eval-attribution') {
+    if (!options.labelsFile) throw new Error('time-machine node eval-attribution requires --labels <file>');
+    const labelsFile = path.resolve(cwd, options.labelsFile);
+    const labels = await readAttributionLabelFile(labelsFile);
+    const storePath = path.resolve(cwd, options.store ?? '.danteforge/decision-nodes.jsonl');
+    const store = createDecisionNodeStore(storePath);
+    try {
+      const branchPoint = await store.getById(labels.branchPointId);
+      if (!branchPoint) throw new Error(`node not found: ${labels.branchPointId}`);
+      const originalTimelineId = labels.originalTimelineId ?? branchPoint.timelineId;
+      const alternateTimelineId = labels.alternateTimelineId;
+      const originalTimeline = (await store.getByTimeline(originalTimelineId))
+        .filter(n => n.id !== branchPoint.id)
+        .sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
+      const alternateTimeline = alternateTimelineId
+        ? (await store.getByTimeline(alternateTimelineId))
+          .filter(n => n.id !== branchPoint.id)
+          .sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime())
+        : [];
+      const report = evaluateAttributionLabels({
+        branchPoint,
+        originalTimeline,
+        alternateTimeline,
+        labels: labels.labels,
+      });
+      if (options.out) {
+        await writeAttributionEvaluationReport(path.resolve(cwd, options.out), report);
+      }
+      if (options.json) {
+        out(JSON.stringify(report, null, 2));
+      } else {
+        out(`Attribution evaluation for branch ${report.branchPointId}: ${report.passed ? 'passed' : 'failed'}`);
+        out(`  labels: ${report.labelCount}`);
+        out(`  precision: ${(report.precision * 100).toFixed(1)}%`);
+        out(`  recall: ${(report.recall * 100).toFixed(1)}%`);
+        out(`  false-independent: ${(report.falseIndependentRate * 100).toFixed(1)}%`);
+        if (options.out) out(`  report: ${path.resolve(cwd, options.out)}`);
+      }
+    } finally {
+      await store.close();
+    }
+    return;
+  }
+
+  if (options.action === 'node-build-corpus') {
+    const timestamp = options._now?.() ?? new Date().toISOString();
+    const safeTimestamp = timestamp.replace(/[:.]/g, '-');
+    const outDir = path.resolve(cwd, options.out ?? path.join('.danteforge', 'evidence', 'time-machine-corpus', safeTimestamp));
+    const report = await buildTimeMachineCorpusBundle({
+      storePath: path.resolve(cwd, options.store ?? '.danteforge/decision-nodes.jsonl'),
+      outDir,
+      minSessions: options.minSessions,
+      minLabels: options.minLabels,
+      now: options._now,
+    });
+    if (options.json) {
+      out(JSON.stringify(report, null, 2));
+    } else {
+      out(`Time Machine corpus bundle: ${report.readyForHumanAdjudication ? 'ready for adjudication' : 'insufficient evidence'}`);
+      out(`  replayed sessions: ${report.replayedSessionCount}/${report.minSessions}`);
+      out(`  label candidates:   ${report.labelCandidateCount}/${report.minLabels}`);
+      out(`  out:                ${report.outDir}`);
     }
     return;
   }
@@ -388,4 +533,87 @@ function parseClasses(value: string | string[] | undefined): TimeMachineValidati
       }
       return item as TimeMachineValidationClass;
     });
+}
+
+const REPLAY_COPY_EXCLUDE = new Set([
+  '.git',
+  'node_modules',
+  'dist',
+  'coverage',
+  '.turbo',
+  '.pytest_cache',
+]);
+
+async function prepareReplayWorkspace(sourceRoot: string, replayWorkspace: string): Promise<void> {
+  await fs.mkdir(replayWorkspace, { recursive: true });
+  await copyReplayTree(path.resolve(sourceRoot), path.resolve(replayWorkspace), path.resolve(replayWorkspace));
+}
+
+async function copyReplayTree(source: string, dest: string, replayWorkspace: string): Promise<void> {
+  const relToReplay = path.relative(replayWorkspace, source);
+  if (relToReplay === '' || (!relToReplay.startsWith('..') && !path.isAbsolute(relToReplay))) return;
+
+  const base = path.basename(source);
+  if (REPLAY_COPY_EXCLUDE.has(base)) return;
+
+  const rel = path.relative(process.cwd(), source).replace(/\\/g, '/');
+  if (rel.includes('.danteforge/time-machine/replays')) return;
+
+  const stats = await fs.stat(source);
+  if (stats.isDirectory()) {
+    await fs.mkdir(dest, { recursive: true });
+    const entries = await fs.readdir(source);
+    for (const entry of entries) {
+      await copyReplayTree(path.join(source, entry), path.join(dest, entry), replayWorkspace);
+    }
+    return;
+  }
+  if (stats.isFile()) {
+    await fs.mkdir(path.dirname(dest), { recursive: true });
+    await fs.copyFile(source, dest);
+  }
+}
+
+async function runReplayPipelineChild(input: {
+  input: string;
+  cwd: string;
+  env: NodeJS.ProcessEnv;
+  replayDir: string;
+}): Promise<{ exitCode: number; stdout: string; stderr: string; durationMs: number }> {
+  const cliPath = path.resolve(process.cwd(), 'dist', 'index.js');
+  if (!existsSync(cliPath)) {
+    throw new Error(`pipeline replay requires a built CLI at ${cliPath}; run npm run build first`);
+  }
+
+  const started = Date.now();
+  const result = await new Promise<{ exitCode: number; stdout: string; stderr: string }>((resolveRun, rejectRun) => {
+    const child = spawn(process.execPath, [cliPath, 'magic', input.input, '--yes'], {
+      cwd: input.cwd,
+      env: input.env,
+      stdio: ['ignore', 'pipe', 'pipe'],
+    });
+    let stdout = '';
+    let stderr = '';
+    child.stdout.on('data', chunk => { stdout += chunk.toString(); });
+    child.stderr.on('data', chunk => { stderr += chunk.toString(); });
+    child.on('error', rejectRun);
+    child.on('exit', code => resolveRun({ exitCode: code ?? 1, stdout, stderr }));
+  });
+  const durationMs = Date.now() - started;
+  await writeReplayArtifact(input.replayDir, 'pipeline-run.json', JSON.stringify({ exitCode: result.exitCode, durationMs }, null, 2));
+  if (result.exitCode !== 0) {
+    throw new Error(`pipeline replay failed with exit code ${result.exitCode}; see ${input.replayDir}`);
+  }
+  return { ...result, durationMs };
+}
+
+async function writeReplayArtifact(replayDir: string, name: string, content: string): Promise<string> {
+  await fs.mkdir(replayDir, { recursive: true });
+  const target = path.join(replayDir, name);
+  await fs.writeFile(target, content.endsWith('\n') ? content : `${content}\n`, 'utf8');
+  return target;
+}
+
+function excerpt(value: string, max = 2000): string {
+  return value.length <= max ? value : value.slice(0, max);
 }

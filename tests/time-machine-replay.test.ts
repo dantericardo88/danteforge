@@ -381,8 +381,10 @@ describe('counterfactual replay — live mode', () => {
     await store.append(branch);
 
     const receivedInputs: string[] = [];
-    const pipelineCaller = async (input: string) => {
+    const receivedTimelineIds: string[] = [];
+    const pipelineCaller = async (input: string, context: { timelineId: string }) => {
       receivedInputs.push(input);
+      receivedTimelineIds.push(context.timelineId);
       const n1 = makeNode({ prompt: `step-1: ${input}`, result: 'step1-out', sessionId, timelineId: 'pipeline', parent: branch });
       const n2 = makeNode({ prompt: `step-2: ${input}`, result: 'step2-out', sessionId, timelineId: 'pipeline', parent: n1 });
       return { nodes: [n1, n2], costUsd: 0.02 };
@@ -398,6 +400,7 @@ describe('counterfactual replay — live mode', () => {
 
     assert.equal(receivedInputs.length, 1, 'pipelineCaller called once');
     assert.equal(receivedInputs[0], 'pipeline-input', 'pipelineCaller receives altered input');
+    assert.equal(receivedTimelineIds[0], result.newTimelineId, 'pipelineCaller receives alternate timeline id');
     assert.equal(result.alternatePath.length, 2, 'two alternate nodes from pipeline');
     assert.equal(result.costUsd, 0.02, 'costUsd comes from pipeline result');
     assert.notEqual(result.newTimelineId, branch.timelineId, 'new timeline ID is distinct');
@@ -462,5 +465,84 @@ describe('counterfactual replay — live mode', () => {
 
     assert.equal(pipelineCalled, true, 'pipelineCaller should be used');
     assert.equal(llmCalled, false, 'llmCaller should not be called when pipelineCaller is present');
+  });
+
+  it('pipelineCaller path: uses caller-provided timeline id when supplied', async () => {
+    const storePath = join(workspace, 'nodes-fixed-timeline.jsonl');
+    const store = createDecisionNodeStore(storePath);
+    const sessionId = 'sess-fixed-timeline';
+
+    const branch = makeNode({ prompt: 'fixed-branch', result: 'init', sessionId, timelineId: 'main', parent: null });
+    await store.append(branch);
+
+    const result = await counterfactualReplay(
+      {
+        branchFromNodeId: branch.id,
+        alteredInput: 'fixed-input',
+        sessionId,
+        dryRun: false,
+        newTimelineId: 'tm-fixed-timeline',
+      },
+      store,
+      {
+        pipelineCaller: async (_input, context) => ({
+          nodes: [
+            makeNode({
+              prompt: 'fixed pipeline step',
+              result: 'done',
+              sessionId,
+              timelineId: context.timelineId,
+              parent: branch,
+            }),
+          ],
+          costUsd: 0.01,
+        }),
+      },
+    );
+
+    await store.close();
+
+    assert.equal(result.newTimelineId, 'tm-fixed-timeline');
+    assert.equal(result.alternatePath[0].timelineId, 'tm-fixed-timeline');
+  });
+
+  it('pipelineCaller path: does not duplicate already-recorded alternate timeline nodes', async () => {
+    const storePath = join(workspace, 'nodes-persisted-pipeline.jsonl');
+    const store = createDecisionNodeStore(storePath);
+    const sessionId = 'sess-persisted-pipeline';
+
+    const branch = makeNode({ prompt: 'persisted-branch', result: 'init', sessionId, timelineId: 'main', parent: null });
+    await store.append(branch);
+
+    const result = await counterfactualReplay(
+      {
+        branchFromNodeId: branch.id,
+        alteredInput: 'persisted-input',
+        sessionId,
+        dryRun: false,
+        newTimelineId: 'persisted-alt',
+      },
+      store,
+      {
+        pipelineCaller: async (_input, context) => {
+          const alreadyRecorded = makeNode({
+            prompt: 'already recorded by child process',
+            result: 'ok',
+            sessionId: context.sessionId,
+            timelineId: context.timelineId,
+            parent: branch,
+          });
+          await store.append(alreadyRecorded);
+          return { nodes: [alreadyRecorded], costUsd: 0.03, nodesAlreadyRecorded: true };
+        },
+      },
+    );
+
+    const readBack = await store.getByTimeline('persisted-alt');
+    await store.close();
+
+    assert.equal(result.alternatePath.length, 1);
+    assert.equal(readBack.length, 1, 'already-recorded node should not be duplicated');
+    assert.equal(readBack[0].id, result.alternatePath[0].id);
   });
 });
