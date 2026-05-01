@@ -679,12 +679,19 @@ async function runDelegate52Live(
   // Pass 40 — derive the mitigation strategy. Explicit strategy wins; otherwise infer from restoreOnDivergence.
   const mitigation = resolveDelegate52Mitigation(options);
   const resumedRows = await readResumableDelegate52Rows(resumeFrom, domains, isDryRun);
+  const recoverableFailureLimit = Math.max(
+    1,
+    Number.parseInt(process.env.DANTEFORGE_DELEGATE52_RECOVERABLE_FAILURE_LIMIT ?? '3', 10) || 3,
+  );
 
   const domainRows: ClassDResult['domainRows'] = [];
+  let consecutiveRecoverableFailures = 0;
+  let providerCircuitOpen = false;
 
   for (const domain of domains) {
     const resumedRow = resumedRows.get(domain);
     if (resumedRow) {
+      consecutiveRecoverableFailures = 0;
       domainRows.push(resumedRow);
       await writeDelegate52DomainReceipt(outDir, resumedRow, {
         complete: true,
@@ -743,6 +750,7 @@ async function runDelegate52Live(
         isDryRun ? 'live_dry_run_completed' : 'live_completed',
         importedEntry?.content !== undefined ? 'imported' : 'synthetic',
       );
+      consecutiveRecoverableFailures = 0;
       domainRows.push(row);
       await writeDelegate52DomainReceipt(outDir, row, {
         complete: true,
@@ -753,6 +761,7 @@ async function runDelegate52Live(
     } catch (err) {
       const recoverable = isRecoverableDelegate52Error(err);
       const row = buildFailedDelegate52DomainRow(domain, err, recoverable);
+      consecutiveRecoverableFailures = recoverable ? consecutiveRecoverableFailures + 1 : 0;
       domainRows.push(row);
       await writeDelegate52DomainReceipt(outDir, row, {
         complete: false,
@@ -770,6 +779,11 @@ async function runDelegate52Live(
       mitigation,
       resumeFrom,
     });
+
+    if (consecutiveRecoverableFailures >= recoverableFailureLimit) {
+      providerCircuitOpen = true;
+      break;
+    }
   }
 
   const aggregate = aggregateDelegate52Rows(domainRows, domains.length, priorSpendUsd);
@@ -801,6 +815,8 @@ async function runDelegate52Live(
     domainRows,
     aggregate,
     resumeFrom,
+    providerCircuitOpen,
+    recoverableFailureLimit,
   });
 
   return {
@@ -839,6 +855,9 @@ async function runDelegate52Live(
         : 'Substrate-passive mode: divergence is recorded but not mitigated. Set mitigation.restoreOnDivergence=true to enable restore+retry.',
       budgetExhausted ? 'Budget exhausted before all domains completed; partial result.' : 'All requested domains completed within budget.',
       hasFailedRows ? 'One or more domains failed; recoverable failures are intentionally preserved as receipts and must be resumed or rerun before evidence closure.' : 'No failed domain receipts recorded.',
+      providerCircuitOpen
+        ? `Provider circuit opened after ${recoverableFailureLimit} consecutive recoverable domain failures; remaining domains were left pending for resume.`
+        : 'Provider circuit did not open.',
     ],
   };
 }
@@ -1040,6 +1059,8 @@ async function writeDelegate52LiveResult(
     domainRows: Delegate52DomainRow[];
     aggregate: Delegate52Aggregate;
     resumeFrom?: string;
+    providerCircuitOpen?: boolean;
+    recoverableFailureLimit?: number;
   },
 ): Promise<void> {
   await fs.writeFile(path.join(outDir, 'artifacts', 'delegate52-live-result.json'), JSON.stringify({
@@ -1067,6 +1088,8 @@ async function writeDelegate52LiveResult(
     failedDomainCount: payload.aggregate.failedDomainCount,
     mitigation: payload.mitigation,
     budgetExhausted: payload.budgetExhausted,
+    providerCircuitOpen: payload.providerCircuitOpen ?? false,
+    recoverableFailureLimit: payload.recoverableFailureLimit ?? null,
     microsoftBaselineCorruptionRate: 0.25,
     resumeFrom: payload.resumeFrom ?? null,
     domainRows: payload.domainRows,

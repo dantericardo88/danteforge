@@ -51,6 +51,8 @@ export interface AttributionBatchResult {
     totalPairs: number;
     overallAlignment: number;
   };
+  /** SHA-256 hash of the evidence-chain receipt anchoring this attribution batch (best-effort, omitted if evidence-chain unavailable) */
+  receiptHash?: string;
 }
 
 // ---------------------------------------------------------------------------

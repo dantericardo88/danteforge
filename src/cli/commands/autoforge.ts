@@ -9,6 +9,7 @@ import {
   planAutoForge,
   executeAutoForgePlan,
   displayPlan,
+  buildPredictStepFn,
 } from '../../core/autoforge.js';
 import {
   runAutoforgeLoop,
@@ -157,6 +158,8 @@ export async function autoforge(goal?: string, options: {
   worktree?: boolean;
   cwd?: string;
   confirm?: boolean;
+  /** Disable forward prediction layer (Article XV). Saves ~$0.03/wave but loses causal coherence signal. */
+  noPredictor?: boolean;
   /** Pause loop when avg PDSE score reaches this value */
   pauseAt?: number;
   // Injection seams for testing
@@ -217,8 +220,10 @@ export async function autoforge(goal?: string, options: {
     return;
   }
 
-  // Execute the plan
+  // Execute the plan — wire in prediction layer unless --no-predictor
   const execFn = options._executeAutoForgePlan ?? executeAutoForgePlan;
+  const predictFn = options.noPredictor ? undefined : await buildPredictStepFn(cwd).catch(() => undefined);
+  if (predictFn) logger.verbose('[AutoForge] Prediction layer active (Article XV — use --no-predictor to disable)');
   const result = await withSpinner(
     `Executing autoforge plan (${maxWaves} waves)...`,
     () => execFn(plan, {
@@ -227,6 +232,7 @@ export async function autoforge(goal?: string, options: {
       profile: options.profile,
       parallel: options.parallel,
       worktree: options.worktree,
+      _predictFn: predictFn,
     }),
     'Autoforge waves complete',
   );

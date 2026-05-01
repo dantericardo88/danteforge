@@ -343,3 +343,39 @@ test('Pass 49 — recoverable timeout writes failed receipt and final live resul
   assert.equal(receipt.row.status, 'failed_recoverable');
   assert.equal(receipt.row.recoverable, true);
 });
+
+test('Pass 49 — repeated recoverable transport failures open circuit and leave remaining domains pending', async () => {
+  delete process.env.DANTEFORGE_DELEGATE52_DRY_RUN;
+  process.env.DANTEFORGE_DELEGATE52_LIVE = '1';
+  const originalLimit = process.env.DANTEFORGE_DELEGATE52_RECOVERABLE_FAILURE_LIMIT;
+  process.env.DANTEFORGE_DELEGATE52_RECOVERABLE_FAILURE_LIMIT = '2';
+  try {
+    const report = await runTimeMachineValidation({
+      cwd: workspace,
+      classes: ['D'],
+      scale: 'smoke',
+      delegate52Mode: 'live',
+      budgetUsd: 1.0,
+      maxDomains: 5,
+      roundTripsPerDomain: 1,
+      runId: 'pass49_recoverable_circuit',
+      _llmCaller: async () => {
+        throw new Error('fetch failed');
+      },
+      now: () => '2026-05-01T03:00:05.000Z',
+    });
+    assert.equal(report.classes.D?.status, 'live_partial');
+    assert.equal(report.classes.D?.domainRows.length, 2, 'circuit should stop before marking every remaining domain failed');
+    assert.equal(report.classes.D?.failedDomainCount, 2);
+    const progressPath = join(report.outDir, 'artifacts', 'delegate52-live-progress.json');
+    const resultPath = join(report.outDir, 'artifacts', 'delegate52-live-result.json');
+    const progress = JSON.parse(readFileSync(progressPath, 'utf8')) as { pendingDomains: string[] };
+    const result = JSON.parse(readFileSync(resultPath, 'utf8')) as { providerCircuitOpen: boolean; recoverableFailureLimit: number };
+    assert.equal(progress.pendingDomains.length, 3);
+    assert.equal(result.providerCircuitOpen, true);
+    assert.equal(result.recoverableFailureLimit, 2);
+  } finally {
+    if (originalLimit === undefined) delete process.env.DANTEFORGE_DELEGATE52_RECOVERABLE_FAILURE_LIMIT;
+    else process.env.DANTEFORGE_DELEGATE52_RECOVERABLE_FAILURE_LIMIT = originalLimit;
+  }
+});

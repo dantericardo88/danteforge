@@ -16,6 +16,74 @@ import {
 import { attributeBatch, extractOutcomes } from './prediction-attribution.js';
 import type { DimensionName } from './causal-weight-matrix.js';
 
+// ---------------------------------------------------------------------------
+// Predictor auto-wire factory
+// ---------------------------------------------------------------------------
+
+/**
+ * Build a live PredictStepFn using the configured LLM provider.
+ * Used by executeAutoForgePlan to enable prediction layer in production runs.
+ * Returns undefined when no LLM is available, disabling prediction silently.
+ */
+export async function buildPredictStepFn(cwd?: string): Promise<PredictStepFn | undefined> {
+  try {
+    const { callLLM } = await import('./llm.js');
+    const matrix = await loadCausalWeightMatrix(cwd);
+    const { predict } = await import('../../packages/predictor/src/predictor.js');
+    const { DEFAULT_PREDICTOR_CONFIG } = await import('../../packages/predictor/src/types.js');
+
+    const llmCaller = async (prompt: string) => callLLM(prompt);
+
+    return async (command: string, reason: string, currentOverall: number): Promise<{ delta: number; confidence: number }> => {
+      const causalWeights: Partial<Record<string, number>> = {};
+      for (const [dim, acc] of Object.entries(matrix.perDimensionAccuracy)) {
+        if (acc && acc.sampleCount >= 3) causalWeights[dim] = acc.directionAccuracy;
+      }
+
+      const result = await predict(
+        {
+          proposedAction: { command, reason, estimatedComplexity: 'medium' },
+          currentState: {
+            workflowStage: command,
+            dimensionScores: { functionality: currentOverall / 10 },
+            totalCostUsd: 0,
+            cycleCount: matrix.totalAttributions,
+          },
+          recentHistory: [],
+          causalWeights,
+          budgetEnvelope: { maxUsd: DEFAULT_PREDICTOR_CONFIG.maxBudgetUsd, maxLatencyMs: 30_000 },
+        },
+        llmCaller,
+        DEFAULT_PREDICTOR_CONFIG,
+      );
+
+      const primaryDelta = Object.values(result.predicted.scoreImpact)[0] ?? 0;
+
+      // Emit proof-anchored receipt (best-effort — never blocks prediction)
+      try {
+        const { createReceipt } = await import('../../packages/evidence-chain/src/index.js');
+        const receipt = createReceipt({
+          action: 'autoforge:predict',
+          payload: {
+            command,
+            reason,
+            predictedAt: result.predictedAt,
+            confidence: result.predicted.confidence,
+            scoreImpact: result.predicted.scoreImpact,
+          },
+        });
+        result.receiptHash = receipt.hash;
+      } catch {
+        // evidence-chain unavailable — proceed without receipt
+      }
+
+      return { delta: primaryDelta, confidence: result.predicted.confidence };
+    };
+  } catch {
+    return undefined;
+  }
+}
+
 export type AutoForgeScenario =
   | 'cold-start'
   | 'mid-project'
@@ -391,6 +459,20 @@ async function executeForgeSteps(
         }]);
         const updated = applyAttributionOutcomes(matrix, extractOutcomes(batch));
         await saveCausalWeightMatrix(updated, opts.cwd);
+        try {
+          const { createReceipt } = await import('../../packages/evidence-chain/src/index.js');
+          const receipt = createReceipt({
+            action: 'autoforge:attribute',
+            payload: {
+              actionType: step.command,
+              classification: batch.pairs[0]?.classification ?? 'noise',
+              predictedDelta,
+              measuredDelta,
+              overallAlignment: batch.summary.overallAlignment,
+            },
+          });
+          batch.receiptHash = receipt.hash;
+        } catch { /* evidence-chain unavailable — proceed without receipt */ }
         logger.verbose(`[AutoForge] Causal attribution: ${batch.pairs[0]?.classification ?? 'unknown'} (predicted ${predictedDelta > 0 ? '+' : ''}${predictedDelta.toFixed(3)}, measured ${measuredDelta > 0 ? '+' : ''}${measuredDelta.toFixed(3)})`);
       } catch { /* best-effort — attribution never blocks execution */ }
       await memoryRecorder({ category: 'command', summary: `AutoForge executed: ${step.command}`, detail: `Scenario: ${plan.scenario}. Reason: ${step.reason}${plan.goal ? `. Goal: ${plan.goal}` : ''}`, tags: ['autoforge', step.command], relatedCommands: [step.command] }, opts.cwd);

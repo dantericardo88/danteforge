@@ -59,6 +59,8 @@ export interface PredictionResult {
   predictedAt: string;
   /** Which dimensions this prediction covers */
   coveredDimensions: DimensionName[];
+  /** SHA-256 hash of the evidence-chain receipt anchoring this prediction (best-effort, omitted if evidence-chain unavailable) */
+  receiptHash?: string;
 }
 
 export interface PredictorConfig {

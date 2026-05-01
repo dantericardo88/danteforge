@@ -554,6 +554,7 @@ program
   .option('--force', 'Override one BLOCKED artifact for one cycle (logged to audit trail)')
   .option('--pause-at <score>', 'Pause the loop when average PDSE score reaches this value')
   .option('--confirm', 'Pause for human approval before executing (policy gate)')
+  .option('--no-predictor', 'Disable Article XV forward prediction layer (saves ~$0.03/wave, loses causal coherence signal)')
   .action(async (goal, opts) => (await C()).autoforge(goal, {
     dryRun: opts.dryRun,
     maxWaves: parseInt(opts.maxWaves, 10),
@@ -567,6 +568,7 @@ program
     worktree: opts.worktree,
     pauseAt: opts.pauseAt !== undefined ? parseInt(opts.pauseAt, 10) : undefined,
     confirm: opts.confirm,
+    noPredictor: opts.predictor === false,
   }));
 
 program

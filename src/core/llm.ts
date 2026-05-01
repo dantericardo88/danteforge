@@ -11,8 +11,7 @@ import { injectContext } from './context-injector.js';
 import { recordMemory } from './memory-engine.js';
 import { LLMError } from './errors.js';
 
-const MAX_RETRIES = 2;
-const RETRY_DELAYS_MS = [1000, 3000];
+const DEFAULT_RETRY_DELAYS_MS = [1000, 3000];
 export const DEFAULT_LLM_REQUEST_TIMEOUT_MS = 30_000;
 export const DEFAULT_OLLAMA_REQUEST_TIMEOUT_MS = 180_000;
 
@@ -73,6 +72,22 @@ export function isRetryableError(err: unknown): boolean {
 
 function sleep(ms: number): Promise<void> {
   return new Promise(resolve => setTimeout(resolve, ms));
+}
+
+function parseRetryDelays(rawValue: string | undefined): number[] | undefined {
+  const value = rawValue?.trim();
+  if (!value) return undefined;
+  const delays = value
+    .split(',')
+    .map(part => Number.parseInt(part.trim(), 10))
+    .filter(delay => Number.isFinite(delay) && delay >= 0);
+  return delays.length > 0 ? delays : undefined;
+}
+
+function resolveRetryDelays(options: CallLLMOptions): number[] {
+  return options._retryDelays
+    ?? parseRetryDelays(process.env.DANTEFORGE_LLM_RETRY_DELAYS_MS)
+    ?? DEFAULT_RETRY_DELAYS_MS;
 }
 
 function displayProvider(provider: LLMProvider): string {
@@ -481,8 +496,11 @@ async function _callLLMInner(
 
   let result: ProviderCallResult = { text: '' };
   let lastError: unknown;
+  const retryDelays = resolveRetryDelays(options);
+  const sleeper = options._sleep ?? sleep;
+  const maxRetries = retryDelays.length;
 
-  for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
+  for (let attempt = 0; attempt <= maxRetries; attempt++) {
     try {
       switch (target.provider) {
         case 'grok':
@@ -518,10 +536,10 @@ async function _callLLMInner(
       return await handleCallSuccess(result, options, target, modelUsed, enrichedPrompt, attempt);
     } catch (err) {
       lastError = err;
-      if (attempt < MAX_RETRIES && isRetryableError(err)) {
-        const delay = RETRY_DELAYS_MS[attempt]!;
-        logger.warn(`LLM call failed (attempt ${attempt + 1}/${MAX_RETRIES + 1}): ${err instanceof Error ? err.message : String(err)} - retrying in ${delay}ms`);
-        await sleep(delay);
+      if (attempt < maxRetries && isRetryableError(err)) {
+        const delay = retryDelays[attempt] ?? 0;
+        logger.warn(`LLM call failed (attempt ${attempt + 1}/${maxRetries + 1}): ${err instanceof Error ? err.message : String(err)} - retrying in ${delay}ms`);
+        await sleeper(delay);
         continue;
       }
       throw err;
