@@ -916,6 +916,7 @@ timeMachineCommand
   .option('--store <path>', 'Path to decision-nodes JSONL store', '.danteforge/decision-nodes.jsonl')
   .option('--session <id>', 'Session id for querying the original path (default: "default")')
   .option('--dry-run', 'Print the replay plan without executing LLM calls')
+  .option('--pipeline-mode', 'Run the full DanteForge magic pipeline instead of a single LLM call')
   .option('--json', 'Output full CounterfactualReplayResult as JSON')
   .option('--cwd <path>', 'Project directory (defaults to cwd)')
   .action(async (nodeId: string, opts) => (await C()).timeMachine({
@@ -925,8 +926,25 @@ timeMachineCommand
     store: opts.store,
     session: opts.session,
     dryRun: opts.dryRun,
+    pipelineMode: opts.pipelineMode,
     json: opts.json,
     cwd: opts.cwd,
+  }));
+
+timeMachineNodeCommand
+  .command('attribute <nodeId>')
+  .description('Run causal attribution on a DecisionNode — classify downstream nodes as independent/dependent-adaptable/dependent-incompatible')
+  .option('--store <path>', 'Path to decision-nodes JSONL store', '.danteforge/decision-nodes.jsonl')
+  .option('--session <id>', 'Session id for querying the original timeline (default: "default")')
+  .option('--with-llm', 'Escalate low-confidence attributions to the LLM for a second opinion')
+  .option('--json', 'Output full CausalAttributionResult as JSON')
+  .action(async (nodeId: string, opts) => (await C()).timeMachine({
+    action: 'node-attribute',
+    nodeId,
+    store: opts.store,
+    session: opts.session,
+    withLlm: opts.withLlm,
+    json: opts.json,
   }));
 
 program

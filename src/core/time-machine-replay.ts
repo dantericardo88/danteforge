@@ -64,6 +64,18 @@ export interface CounterfactualReplayResult {
   durationMs: number;
 }
 
+/**
+ * Return type for a full pipeline rerun used by the pipelineCaller injection seam.
+ * The caller runs the complete DanteForge convergence loop (magic) and returns
+ * all DecisionNodes that were recorded during that run.
+ */
+export interface PipelineRunResult {
+  /** Decision nodes produced by the pipeline run, in timestamp order */
+  nodes: DecisionNode[];
+  /** Aggregate cost in USD across all pipeline nodes */
+  costUsd: number;
+}
+
 // ---------------------------------------------------------------------------
 // Core function
 // ---------------------------------------------------------------------------
@@ -87,6 +99,8 @@ export async function counterfactualReplay(
   store: DecisionNodeStore,
   options?: {
     llmCaller?: (prompt: string) => Promise<string>;
+    /** Full DanteForge pipeline rerun. When provided, used instead of llmCaller. */
+    pipelineCaller?: (input: string) => Promise<PipelineRunResult>;
     workspacePath?: string;
   },
 ): Promise<CounterfactualReplayResult> {
@@ -126,17 +140,12 @@ export async function counterfactualReplay(
   // ------------------------------------------------------------------
   const fileStateRef = branchPoint.output.fileStateRef;
   if (fileStateRef && options?.workspacePath && !request.dryRun) {
-    try {
-      await restoreTimeMachineCommit({
-        cwd: options.workspacePath,
-        commitId: fileStateRef,
-        toWorkingTree: true,
-        confirm: true,
-      });
-    } catch {
-      // Non-fatal: if there is no time-machine store at this path the restore
-      // is skipped. The replay continues with the current file state.
-    }
+    await restoreTimeMachineCommit({
+      cwd: options.workspacePath,
+      commitId: fileStateRef,
+      toWorkingTree: true,
+      confirm: true,
+    });
   }
 
   // ------------------------------------------------------------------
@@ -145,66 +154,90 @@ export async function counterfactualReplay(
   let costUsd = 0;
 
   if (!request.dryRun) {
+    const pipelineCaller = options?.pipelineCaller;
     const llmCaller = options?.llmCaller;
-    if (!llmCaller) {
+
+    if (!pipelineCaller && !llmCaller) {
       throw new Error(
-        'counterfactualReplay: llmCaller is required when dryRun is false',
+        'counterfactualReplay: llmCaller or pipelineCaller is required when dryRun is false',
       );
     }
 
-    const depth = Math.max(1, request.replayDepth ?? 50);
-    let currentParent: DecisionNode = branchPoint;
-    let stepsLeft = depth;
-
-    // First step: call the LLM with the altered input.
-    const callStart = Date.now();
-    const response = await llmCaller(request.alteredInput);
-    const latencyMs = Date.now() - callStart;
-
-    const firstNode = createDecisionNode({
-      parentNode: branchPoint,
-      sessionId: request.sessionId,
-      timelineId: newTimelineId,
-      actor: branchPoint.actor,
-      input: { prompt: request.alteredInput },
-      output: {
-        result: response,
-        success: true,
-        costUsd: 0,
-        latencyMs,
-      },
-      causal: { dependentOn: [branchPoint.id], counterfactualOf: branchPoint.id },
-    });
-
-    await store.append(firstNode);
-    alternatePath.push(firstNode);
-    currentParent = firstNode;
-    stepsLeft -= 1;
-
-    // Replay subsequent steps from the original path (if preserveIndependent).
-    const shouldPreserve = request.preserveIndependent !== false;
-    if (shouldPreserve && stepsLeft > 0) {
-      const independentOriginals = originalPath.filter(
-        n => n.causal?.classification === 'independent',
-      );
-      for (const orig of independentOriginals) {
-        if (stepsLeft <= 0) break;
-        const copied = createDecisionNode({
-          parentNode: currentParent,
+    if (pipelineCaller) {
+      // Full pipeline rerun: run the entire DanteForge convergence loop and
+      // collect all resulting DecisionNodes as the alternate timeline.
+      const pipelineResult = await pipelineCaller(request.alteredInput);
+      let parentForRebrand: DecisionNode = branchPoint;
+      for (const node of pipelineResult.nodes) {
+        const rebranded = createDecisionNode({
+          parentNode: parentForRebrand,
           sessionId: request.sessionId,
           timelineId: newTimelineId,
-          actor: orig.actor,
-          input: orig.input,
-          output: orig.output,
-          causal: {
-            dependentOn: [currentParent.id],
-            classification: 'independent',
-          },
+          actor: node.actor,
+          input: { prompt: node.input.prompt },
+          output: node.output,
+          causal: { dependentOn: [branchPoint.id], counterfactualOf: branchPoint.id },
         });
-        await store.append(copied);
-        alternatePath.push(copied);
-        currentParent = copied;
-        stepsLeft -= 1;
+        await store.append(rebranded);
+        alternatePath.push(rebranded);
+        parentForRebrand = rebranded;
+      }
+      costUsd = pipelineResult.costUsd;
+    } else {
+      // Single LLM call: one round-trip with the altered input.
+      const depth = Math.max(1, request.replayDepth ?? 50);
+      let currentParent: DecisionNode = branchPoint;
+      let stepsLeft = depth;
+
+      const callStart = Date.now();
+      const response = await llmCaller!(request.alteredInput);
+      const latencyMs = Date.now() - callStart;
+
+      const firstNode = createDecisionNode({
+        parentNode: branchPoint,
+        sessionId: request.sessionId,
+        timelineId: newTimelineId,
+        actor: branchPoint.actor,
+        input: { prompt: request.alteredInput },
+        output: {
+          result: response,
+          success: true,
+          costUsd: 0,
+          latencyMs,
+        },
+        causal: { dependentOn: [branchPoint.id], counterfactualOf: branchPoint.id },
+      });
+
+      await store.append(firstNode);
+      alternatePath.push(firstNode);
+      currentParent = firstNode;
+      stepsLeft -= 1;
+
+      // Replay subsequent steps from the original path (if preserveIndependent).
+      const shouldPreserve = request.preserveIndependent !== false;
+      if (shouldPreserve && stepsLeft > 0) {
+        const independentOriginals = originalPath.filter(
+          n => n.causal?.classification === 'independent',
+        );
+        for (const orig of independentOriginals) {
+          if (stepsLeft <= 0) break;
+          const copied = createDecisionNode({
+            parentNode: currentParent,
+            sessionId: request.sessionId,
+            timelineId: newTimelineId,
+            actor: orig.actor,
+            input: orig.input,
+            output: orig.output,
+            causal: {
+              dependentOn: [currentParent.id],
+              classification: 'independent',
+            },
+          });
+          await store.append(copied);
+          alternatePath.push(copied);
+          currentParent = copied;
+          stepsLeft -= 1;
+        }
       }
     }
   }

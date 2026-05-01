@@ -1,12 +1,21 @@
 # The Dante Ecosystem — Grand Vision Masterplan
 **The Time Machine as Universal Infrastructure**
 
-*Written 2026-04-30. Last updated 2026-05-01. Reference document for all Dante agents and contributors.*
+*Written 2026-04-30. Last updated 2026-05-02. Reference document for all Dante agents and contributors.*
 
-> **Status: Phase 0 DONE. Phases 1–3 MVP/Prototype. Phase 4 Partial.**
-> The core graph, adapters, replay engine, and causal classifier are unit-tested (102 tests, 0 TypeScript errors).
-> Key gaps remain: live pipeline replay is single-LLM-call not full rerun; causal attribution untested on real corpora; ecosystem not deployed beyond DanteForge itself; no visual UI.
-> Next: fix live replay wiring → collect real decision history → measure causal precision/recall → paper.
+> **Status: Phase 0 DONE. Phases 1–3 Solid MVP. Phase 4 Partial.**
+> 133 tests, 0 TypeScript errors, 0 lint/anti-stub violations.
+>
+> **Honest-gaps sprint complete (2026-05-02):**
+> - ✅ `restoreTimeMachineCommit` is now fail-closed — restore errors propagate rather than being swallowed
+> - ✅ `callLLM` wired into `danteforge time-machine replay` — live replay no longer throws
+> - ✅ `pipelineCaller` injection seam added to `counterfactualReplay` — full DanteForge magic pipeline rerun path available via `--pipeline-mode`
+> - ✅ `danteforge time-machine node attribute` CLI action added — causal attribution with optional LLM escalation via `--with-llm`
+> - ✅ 7 recorder integration tests verify that `recordDecision` writes real nodes to `.danteforge/decision-nodes.jsonl`
+> - ✅ 4 pipelineCaller tests verify the full-pipeline replay path end-to-end
+>
+> **Remaining honest gaps:** causal attribution untested on real corpora; ecosystem not deployed beyond DanteForge; no visual timeline UI.
+> **Next:** collect real decision history on live runs → measure causal precision/recall → paper.
 
 ---
 

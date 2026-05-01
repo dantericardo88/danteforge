@@ -344,7 +344,7 @@ describe('counterfactual replay — live mode', () => {
     await store.close();
   });
 
-  it('throws a clear error when live mode has no llmCaller', async () => {
+  it('throws a clear error when live mode has neither llmCaller nor pipelineCaller', async () => {
     const storePath = join(workspace, 'nodes-nollm.jsonl');
     const store = createDecisionNodeStore(storePath);
     const sessionId = 'sess-nollm';
@@ -357,7 +357,7 @@ describe('counterfactual replay — live mode', () => {
         counterfactualReplay(
           { branchFromNodeId: branch.id, alteredInput: 'x', sessionId, dryRun: false },
           store,
-          // no llmCaller provided
+          // no llmCaller or pipelineCaller provided
         ),
       (err: unknown) => {
         assert.ok(err instanceof Error);
@@ -370,5 +370,97 @@ describe('counterfactual replay — live mode', () => {
     );
 
     await store.close();
+  });
+
+  it('pipelineCaller path: calls pipelineCaller with altered input and records all returned nodes', async () => {
+    const storePath = join(workspace, 'nodes-pipeline.jsonl');
+    const store = createDecisionNodeStore(storePath);
+    const sessionId = 'sess-pipeline-1';
+
+    const branch = makeNode({ prompt: 'pipeline-branch', result: 'init', sessionId, timelineId: 'main', parent: null });
+    await store.append(branch);
+
+    const receivedInputs: string[] = [];
+    const pipelineCaller = async (input: string) => {
+      receivedInputs.push(input);
+      const n1 = makeNode({ prompt: `step-1: ${input}`, result: 'step1-out', sessionId, timelineId: 'pipeline', parent: branch });
+      const n2 = makeNode({ prompt: `step-2: ${input}`, result: 'step2-out', sessionId, timelineId: 'pipeline', parent: n1 });
+      return { nodes: [n1, n2], costUsd: 0.02 };
+    };
+
+    const result = await counterfactualReplay(
+      { branchFromNodeId: branch.id, alteredInput: 'pipeline-input', sessionId, dryRun: false },
+      store,
+      { pipelineCaller },
+    );
+
+    await store.close();
+
+    assert.equal(receivedInputs.length, 1, 'pipelineCaller called once');
+    assert.equal(receivedInputs[0], 'pipeline-input', 'pipelineCaller receives altered input');
+    assert.equal(result.alternatePath.length, 2, 'two alternate nodes from pipeline');
+    assert.equal(result.costUsd, 0.02, 'costUsd comes from pipeline result');
+    assert.notEqual(result.newTimelineId, branch.timelineId, 'new timeline ID is distinct');
+    assert.equal(result.alternatePath[0].timelineId, result.newTimelineId, 'nodes are rebranded with new timeline');
+    assert.equal(result.alternatePath[0].input.prompt, 'step-1: pipeline-input');
+  });
+
+  it('pipelineCaller path: rebranded nodes are persisted to the store', async () => {
+    const storePath = join(workspace, 'nodes-pipeline2.jsonl');
+    const store = createDecisionNodeStore(storePath);
+    const sessionId = 'sess-pipeline-2';
+
+    const branch = makeNode({ prompt: 'pipeline-branch2', result: 'init', sessionId, timelineId: 'main2', parent: null });
+    await store.append(branch);
+
+    const pipelineCaller = async (input: string) => {
+      const n = makeNode({ prompt: `step: ${input}`, result: 'out', sessionId, timelineId: 'ignored', parent: branch });
+      return { nodes: [n], costUsd: 0 };
+    };
+
+    const result = await counterfactualReplay(
+      { branchFromNodeId: branch.id, alteredInput: 'pipeline-input2', sessionId, dryRun: false },
+      store,
+      { pipelineCaller },
+    );
+
+    // Re-open store and verify the rebranded node was written
+    const readStore = createDecisionNodeStore(storePath);
+    const readBack = await readStore.getById(result.alternatePath[0].id);
+    await readStore.close();
+    await store.close();
+
+    assert.ok(readBack, 'rebranded node should be persisted to store');
+    assert.equal(readBack.timelineId, result.newTimelineId, 'persisted node has correct timeline ID');
+  });
+
+  it('pipelineCaller preferred over llmCaller when both provided', async () => {
+    const storePath = join(workspace, 'nodes-prefer-pipeline.jsonl');
+    const store = createDecisionNodeStore(storePath);
+    const sessionId = 'sess-prefer';
+
+    const branch = makeNode({ prompt: 'prefer-branch', result: 'init', sessionId, timelineId: 'main', parent: null });
+    await store.append(branch);
+
+    let llmCalled = false;
+    let pipelineCalled = false;
+
+    const llmCaller = async (_p: string) => { llmCalled = true; return 'llm-response'; };
+    const pipelineCaller = async (input: string) => {
+      pipelineCalled = true;
+      const n = makeNode({ prompt: `pipe: ${input}`, result: 'pipe-out', sessionId, timelineId: 'alt', parent: branch });
+      return { nodes: [n], costUsd: 0 };
+    };
+
+    await counterfactualReplay(
+      { branchFromNodeId: branch.id, alteredInput: 'prefer-input', sessionId, dryRun: false },
+      store,
+      { llmCaller, pipelineCaller },
+    );
+
+    await store.close();
+
+    assert.equal(pipelineCalled, true, 'pipelineCaller should be used');
+    assert.equal(llmCalled, false, 'llmCaller should not be called when pipelineCaller is present');
   });
 });

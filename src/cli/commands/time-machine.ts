@@ -12,7 +12,9 @@ import {
   type TimeMachineValidationScale,
 } from '../../core/time-machine-validation.js';
 import { createDecisionNodeStore } from '../../core/decision-node.js';
-import { counterfactualReplay } from '../../core/time-machine-replay.js';
+import { counterfactualReplay, type PipelineRunResult } from '../../core/time-machine-replay.js';
+import { classifyNodes } from '../../core/time-machine-causal-attribution.js';
+import { callLLM } from '../../core/llm.js';
 import { logger } from '../../core/logger.js';
 
 export type TimeMachineAction =
@@ -23,7 +25,8 @@ export type TimeMachineAction =
   | 'validate'
   | 'node-list'
   | 'node-trace'
-  | 'replay';
+  | 'replay'
+  | 'node-attribute';
 
 export interface TimeMachineCommandOptions {
   action: TimeMachineAction;
@@ -61,6 +64,12 @@ export interface TimeMachineCommandOptions {
   alteredInput?: string;
   /** replay: if true, print the plan without executing */
   dryRun?: boolean;
+  /** replay: if true, run the full DanteForge magic pipeline instead of a single LLM call */
+  pipelineMode?: boolean;
+  /** node-attribute: branch-point node id */
+  branchNodeId?: string;
+  /** node-attribute: if true, escalate low-confidence attributions to LLM */
+  withLlm?: boolean;
   _stdout?: (line: string) => void;
   _now?: () => string;
 }
@@ -206,6 +215,25 @@ export async function timeMachine(options: TimeMachineCommandOptions): Promise<v
     const storePath = options.store ?? '.danteforge/decision-nodes.jsonl';
     const sessionId = options.session ?? 'default';
     const store = createDecisionNodeStore(storePath);
+
+    const replayLlmCaller = async (prompt: string) => callLLM(prompt);
+
+    let replayPipelineCaller: ((input: string) => Promise<PipelineRunResult>) | undefined;
+    if (options.pipelineMode) {
+      replayPipelineCaller = async (input: string): Promise<PipelineRunResult> => {
+        const { magic } = await import('./magic.js');
+        const runStart = Date.now();
+        await magic(input, { yes: true });
+        const runStartIso = new Date(runStart).toISOString();
+        const allNodes = await store.getBySession(sessionId);
+        const newNodes = allNodes.filter(n => n.timestamp >= runStartIso);
+        return {
+          nodes: newNodes,
+          costUsd: newNodes.reduce((sum, n) => sum + n.output.costUsd, 0),
+        };
+      };
+    }
+
     try {
       const result = await counterfactualReplay(
         {
@@ -215,7 +243,11 @@ export async function timeMachine(options: TimeMachineCommandOptions): Promise<v
           dryRun: options.dryRun === true,
         },
         store,
-        { workspacePath: cwd },
+        {
+          workspacePath: cwd,
+          llmCaller: replayLlmCaller,
+          pipelineCaller: replayPipelineCaller,
+        },
       );
       if (options.json) {
         out(JSON.stringify(result, null, 2));
@@ -232,6 +264,43 @@ export async function timeMachine(options: TimeMachineCommandOptions): Promise<v
             out(`  ${line}`);
           }
         }
+      }
+    } finally {
+      await store.close();
+    }
+    return;
+  }
+
+  if (options.action === 'node-attribute') {
+    const nodeId = options.branchNodeId ?? options.nodeId;
+    if (!nodeId) throw new Error('time-machine node-attribute requires a nodeId argument');
+    const attrSession = options.session ?? 'default';
+    const storePath = options.store ?? '.danteforge/decision-nodes.jsonl';
+    const store = createDecisionNodeStore(storePath);
+    try {
+      const branchPoint = await store.getById(nodeId);
+      if (!branchPoint) throw new Error(`node not found: ${nodeId}`);
+      const sessionNodes = await store.getBySession(attrSession);
+      const branchTs = new Date(branchPoint.timestamp).getTime();
+      const originalTimeline = sessionNodes
+        .filter(n => n.timelineId === branchPoint.timelineId && new Date(n.timestamp).getTime() > branchTs)
+        .sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
+      const attrResult = await classifyNodes(
+        branchPoint,
+        originalTimeline,
+        [],
+        options.withLlm ? { llmCaller: async (prompt: string) => callLLM(prompt) } : undefined,
+      );
+      if (options.json) {
+        out(JSON.stringify(attrResult, null, 2));
+      } else {
+        out(`Causal attribution for node ${nodeId}:`);
+        out(`  Branch point: "${branchPoint.input.prompt.slice(0, 80)}"`);
+        out(`  Original timeline: ${originalTimeline.length} node(s)`);
+        for (const n of attrResult.originalNodes) {
+          out(`  [${n.classification}] (conf=${n.confidence.toFixed(2)}) "${n.node.input.prompt.slice(0, 60)}"`);
+        }
+        out(`  Timelines converged: ${attrResult.converged}`);
       }
     } finally {
       await store.close();
