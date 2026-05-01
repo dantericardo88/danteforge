@@ -9,6 +9,75 @@ import {
   type DimensionAccuracy,
 } from '../../core/causal-weight-matrix.js';
 
+// ---------------------------------------------------------------------------
+// Calibration narrative
+// ---------------------------------------------------------------------------
+
+const WELL_CALIBRATED_DIR = 0.75;
+const WELL_CALIBRATED_MAG = 0.60;
+const MAGNITUDE_OFF_MAG = 0.50;
+const WEAK_DIRECTION = 0.50;
+const MIN_SAMPLES = 3;
+
+function formatList(items: string[]): string {
+  if (items.length === 0) return '';
+  if (items.length === 1) return items[0];
+  if (items.length === 2) return `${items[0]} and ${items[1]}`;
+  return `${items.slice(0, -1).join(', ')}, and ${items[items.length - 1]}`;
+}
+
+/**
+ * Generate a human-readable calibration narrative from the causal weight matrix.
+ * Returns an array of display lines (empty if no sufficient data exists).
+ */
+export function computeCalibrationNarrative(matrix: CausalWeightMatrix): string[] {
+  const dimEntries = Object.entries(matrix.perDimensionAccuracy)
+    .filter((e): e is [string, DimensionAccuracy] => e[1] !== undefined && e[1].sampleCount >= MIN_SAMPLES);
+
+  if (dimEntries.length === 0) return [];
+
+  const wellCalibrated = dimEntries
+    .filter(([, a]) => a.directionAccuracy >= WELL_CALIBRATED_DIR && a.magnitudeCalibration >= WELL_CALIBRATED_MAG)
+    .map(([n]) => n);
+
+  const magnitudeOff = dimEntries
+    .filter(([, a]) => a.directionAccuracy >= WELL_CALIBRATED_DIR && a.magnitudeCalibration < MAGNITUDE_OFF_MAG)
+    .map(([n]) => n);
+
+  const directionWeak = dimEntries
+    .filter(([, a]) => a.directionAccuracy < WEAK_DIRECTION)
+    .map(([n]) => n);
+
+  const collectingData = Object.entries(matrix.perDimensionAccuracy)
+    .filter((e): e is [string, DimensionAccuracy] =>
+      e[1] !== undefined && e[1].sampleCount > 0 && e[1].sampleCount < MIN_SAMPLES)
+    .map(([n, a]) => `${n} (n=${a.sampleCount})`);
+
+  const lines: string[] = [];
+
+  if (wellCalibrated.length > 0) {
+    lines.push(`  Calibration: predictor is well-calibrated on ${formatList(wellCalibrated)}.`);
+  }
+  if (magnitudeOff.length > 0) {
+    lines.push(`  Magnitude miscalibrated on: ${formatList(magnitudeOff)} — direction correct but size off.`);
+  }
+  if (directionWeak.length > 0) {
+    lines.push(`  Directional misses on: ${formatList(directionWeak)}.`);
+  }
+  const needsTraining = [...directionWeak, ...magnitudeOff];
+  if (needsTraining.length > 0) {
+    lines.push(`  Recommendation: predictor needs more training data on ${formatList(needsTraining)}.`);
+    lines.push(`  Run 'danteforge dojo train --dimension <name>' if Dojo is configured.`);
+  }
+  if (collectingData.length > 0) {
+    lines.push(`  Still collecting data on: ${collectingData.join(', ')}.`);
+  }
+
+  return lines;
+}
+
+// ---------------------------------------------------------------------------
+
 export interface CausalStatusOptions {
   cwd?: string;
   json?: boolean;
@@ -94,6 +163,12 @@ export async function causalStatus(options: CausalStatusOptions = {}): Promise<v
 
   logger.info(`  Last updated: ${matrix.lastUpdated}`);
   logger.info('');
+
+  const narrative = computeCalibrationNarrative(matrix);
+  if (narrative.length > 0) {
+    for (const line of narrative) logger.info(line);
+    logger.info('');
+  }
 
   if (coherence < 0.5) {
     logger.warn('  Low coherence — the forward model is not yet reliably predicting outcomes.');

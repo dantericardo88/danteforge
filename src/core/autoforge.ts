@@ -88,6 +88,21 @@ export async function buildPredictStepFn(cwd?: string): Promise<PredictStepFn | 
         // evidence-chain unavailable — proceed without receipt
       }
 
+      // Emit cost telemetry to .danteforge/economy/ (PRD §4.1 — best-effort)
+      try {
+        const { writePredictorCostRecord } = await import('./predictor-cost-telemetry.js');
+        await writePredictorCostRecord({
+          predictedAt: result.predictedAt,
+          command,
+          costUsd: result.predicted.costUsd,
+          confidence: result.predicted.confidence,
+          predictorVersion: result.predictorVersion,
+          receiptHash: result.receiptHash,
+        }, cwd);
+      } catch {
+        // economy dir unavailable — proceed without cost record
+      }
+
       return { delta: primaryDelta, confidence: result.predicted.confidence };
     };
   } catch {

@@ -1,6 +1,6 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { causalStatus, type CausalStatusOptions } from '../src/cli/commands/causal-status.js';
+import { causalStatus, computeCalibrationNarrative, type CausalStatusOptions } from '../src/cli/commands/causal-status.js';
 import {
   initCausalWeightMatrix,
   applyAttributionOutcomes,
@@ -68,6 +68,55 @@ describe('causalStatus — json mode', () => {
     const output = await captureStdout(() => causalStatus(opts(m, { json: true })));
     const parsed = JSON.parse(output);
     assert.equal(parsed.totalAttributions, 2);
+  });
+});
+
+describe('computeCalibrationNarrative', () => {
+  it('returns empty array when no dimension has sufficient samples', () => {
+    const m = makeMatrix();
+    assert.deepEqual(computeCalibrationNarrative(m), []);
+  });
+
+  it('identifies well-calibrated dimensions (dir >= 0.75 AND mag >= 0.60)', () => {
+    let m = makeMatrix();
+    // 10 causally-aligned outcomes with matching magnitudes → high dir + high mag
+    for (let i = 0; i < 10; i++) {
+      m = applyAttributionOutcomes(m, [
+        outcome({ dimension: 'functionality', predictedDelta: 0.3, measuredDelta: 0.3 }),
+      ]);
+    }
+    const lines = computeCalibrationNarrative(m);
+    const calibLine = lines.find((l) => l.includes('well-calibrated'));
+    assert.ok(calibLine !== undefined, 'should have a well-calibrated line');
+    assert.ok(calibLine!.includes('functionality'), 'should mention the well-calibrated dimension');
+  });
+
+  it('identifies magnitude-miscalibrated dimensions (good direction, low magnitude calibration)', () => {
+    let m = makeMatrix();
+    // Alternate: predicted 0.5 but measured 0.05 → direction match (both +) but magnitude way off
+    for (let i = 0; i < 5; i++) {
+      m = applyAttributionOutcomes(m, [
+        outcome({ dimension: 'testing', predictedDelta: 0.5, measuredDelta: 0.05, classification: 'correlation-driven' }),
+      ]);
+    }
+    const lines = computeCalibrationNarrative(m);
+    const magLine = lines.find((l) => l.toLowerCase().includes('magnitude'));
+    assert.ok(magLine !== undefined, 'should have a magnitude miscalibration line');
+    assert.ok(magLine!.includes('testing'), 'should mention the miscalibrated dimension');
+  });
+
+  it('includes recommendation line when any dimension needs more training data', () => {
+    let m = makeMatrix();
+    // Low direction accuracy: mixed outcomes
+    for (let i = 0; i < 4; i++) {
+      m = applyAttributionOutcomes(m, [
+        outcome({ dimension: 'security', predictedDelta: 0.2, measuredDelta: -0.1, classification: 'noise' }),
+      ]);
+    }
+    const lines = computeCalibrationNarrative(m);
+    const recLine = lines.find((l) => l.toLowerCase().includes('recommendation'));
+    assert.ok(recLine !== undefined, 'should include a recommendation line');
+    assert.ok(recLine!.includes('security'), 'recommendation should mention the weak dimension');
   });
 });
 
