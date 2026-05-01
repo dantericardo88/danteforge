@@ -31,6 +31,7 @@ export async function buildPredictStepFn(cwd?: string): Promise<PredictStepFn | 
     const matrix = await loadCausalWeightMatrix(cwd);
     const { predict } = await import('../../packages/predictor/src/predictor.js');
     const { DEFAULT_PREDICTOR_CONFIG } = await import('../../packages/predictor/src/types.js');
+    type PriorRecord = import('../../packages/predictor/src/types.js').PriorPredictionRecord;
 
     const llmCaller = async (prompt: string) => callLLM(prompt);
 
@@ -39,6 +40,16 @@ export async function buildPredictStepFn(cwd?: string): Promise<PredictStepFn | 
       for (const [dim, acc] of Object.entries(matrix.perDimensionAccuracy)) {
         if (acc && acc.sampleCount >= 3) causalWeights[dim] = acc.directionAccuracy;
       }
+
+      // Build recentHistory from the rolling attribution window stored in the matrix
+      const recentHistory: PriorRecord[] = (matrix.recentAttributions ?? [])
+        .slice(-DEFAULT_PREDICTOR_CONFIG.contextWindowSize)
+        .map((attr) => ({
+          action: attr.actionType,
+          predictedDelta: { [attr.dimension]: attr.predictedDelta },
+          measuredDelta: { [attr.dimension]: attr.measuredDelta },
+          aligned: attr.classification === 'causally-aligned',
+        }));
 
       const result = await predict(
         {
@@ -49,7 +60,7 @@ export async function buildPredictStepFn(cwd?: string): Promise<PredictStepFn | 
             totalCostUsd: 0,
             cycleCount: matrix.totalAttributions,
           },
-          recentHistory: [],
+          recentHistory,
           causalWeights,
           budgetEnvelope: { maxUsd: DEFAULT_PREDICTOR_CONFIG.maxBudgetUsd, maxLatencyMs: 30_000 },
         },

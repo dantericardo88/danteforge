@@ -45,6 +45,8 @@ export interface CausalWeightMatrix {
   totalAttributions: number;
   lastUpdated: string;
   evidenceRef?: string;
+  /** Rolling window of the last RECENT_ATTRIBUTIONS_LIMIT individual outcomes — used as predictor context */
+  recentAttributions?: AttributionOutcome[];
 }
 
 export interface AttributionOutcome {
@@ -61,6 +63,7 @@ export interface AttributionOutcome {
 // ---------------------------------------------------------------------------
 
 const MATRIX_FILENAME = 'causal-weight-matrix.json';
+const RECENT_ATTRIBUTIONS_LIMIT = 20;
 
 function getMatrixPath(cwd?: string): string {
   return path.join(cwd ?? process.cwd(), '.danteforge', MATRIX_FILENAME);
@@ -182,5 +185,10 @@ export function applyAttributionOutcomes(
   updated.totalAttributions += outcomes.length;
   updated.globalCausalCoherence = computeGlobalCausalCoherence(updated);
   updated.lastUpdated = new Date().toISOString();
+
+  const existing = matrix.recentAttributions ?? [];
+  const appended = [...existing, ...outcomes];
+  updated.recentAttributions = appended.slice(-RECENT_ATTRIBUTIONS_LIMIT);
+
   return updated;
 }
