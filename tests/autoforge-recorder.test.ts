@@ -138,6 +138,40 @@ describe('autoforge decision-node recording', () => {
     assert.ok(failNode !== undefined, 'should have a node with prompt === "forge" and success === false');
   });
 
+  it('pre-execution prediction node recorded when _predictFn is provided', async () => {
+    const captured: RecordDecisionParams[] = [];
+    const mockRecorder = async (params: RecordDecisionParams) => {
+      captured.push(params);
+      return recordDecision(params);
+    };
+
+    const plan = makePlan({
+      scenario: 'mid-project',
+      steps: [{ command: 'forge', reason: 'build it' }],
+    });
+
+    await executeAutoForgePlan(plan, {
+      cwd: tmpDir,
+      _runStep: noopRunStep,
+      _recordMemory: noopMemory,
+      _runFailureAnalysis: noopFailure,
+      _isStageComplete: alwaysComplete,
+      _isLLMAvailable: llmUnavailable,
+      _recordDecision: mockRecorder,
+      _predictFn: async () => ({ delta: 0.3, confidence: 0.8 }),
+    });
+
+    const predNode = captured.find((c) => c.prompt === 'predict: forge');
+    assert.ok(predNode !== undefined, 'should have a prediction node with prompt "predict: forge"');
+    const predResult = predNode!.result as Record<string, unknown>;
+    assert.ok('predicted' in predResult, 'prediction node result should have "predicted" field');
+
+    // Execution node should chain from prediction node
+    const execNode = captured.find((c) => c.prompt === 'forge' && c.success === true);
+    assert.ok(execNode !== undefined, 'should have an execution node for the step');
+    assert.ok(execNode!.parentNodeId !== undefined, 'execution node should have a parentNodeId');
+  });
+
   it('completion node is recorded after all steps', async () => {
     const captured: RecordDecisionParams[] = [];
     const mockRecorder = async (params: RecordDecisionParams) => {

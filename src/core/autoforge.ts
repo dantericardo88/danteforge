@@ -409,6 +409,28 @@ async function executeForgeSteps(
       }
     } catch { /* best-effort */ }
 
+    // Store prediction in pre-execution DecisionNode (PRD §4.3 — predict-execute-measure chain)
+    let predictionNodeId: string | null = null;
+    try {
+      if (planNodeId && predictFn) {
+        const session = getSession(opts.cwd);
+        const predNode = await decisionRecorderFn({
+          session,
+          parentNodeId: planNodeId,
+          actorType: 'agent',
+          prompt: `predict: ${step.command}`,
+          context: { reason: step.reason, preStepOverall },
+          result: {
+            predicted: { scoreImpact: { functionality: predictedDelta }, confidence: predictedConfidence },
+          },
+          success: true,
+          costUsd: 0,
+          latencyMs: 0,
+        });
+        predictionNodeId = predNode.id;
+      }
+    } catch { /* best-effort — prediction node never blocks execution */ }
+
     try {
       const { assessComplexity, formatAssessment } = await import('./complexity-classifier.js');
       const state = await loadState({ cwd: opts.cwd });
@@ -432,7 +454,7 @@ async function executeForgeSteps(
           const session = getSession(opts.cwd);
           await decisionRecorderFn({
             session,
-            parentNodeId: planNodeId,
+            parentNodeId: (predictionNodeId ?? planNodeId) ?? undefined,
             actorType: 'agent',
             prompt: step.command,
             result: { reason: step.reason, scenario: plan.scenario },
@@ -485,7 +507,7 @@ async function executeForgeSteps(
           const session = getSession(opts.cwd);
           await decisionRecorderFn({
             session,
-            parentNodeId: planNodeId,
+            parentNodeId: (predictionNodeId ?? planNodeId) ?? undefined,
             actorType: 'agent',
             prompt: step.command,
             result: { error: msg, reason: step.reason, scenario: plan.scenario },
