@@ -1,0 +1,338 @@
+{
+  "schemaVersion": 1,
+  "pass": 44,
+  "passName": "PRD remainder closure: preflight path and Class F optimized benchmark",
+  "generatedAt": "2026-04-30T13:55:57.700Z",
+  "gitSha": "afecc8556b61a16349123374ebdccf25091afe8d",
+  "closureMode": "agent_buildable_no_paid_or_public_founder_gates",
+  "classFOneMillion": {
+    "reportStatus": "partial",
+    "classStatus": "partial",
+    "runId": "tmval_20260430131458",
+    "outDir": "C:\\Projects\\DanteForge\\.danteforge\\time-machine\\validation\\pass-44-f1m",
+    "benchmarks": [
+      {
+        "id": "F_10000",
+        "commitCount": 10000,
+        "targetCommits": 10000,
+        "completedCommits": 10000,
+        "buildMs": 43159,
+        "verifyMs": 48829,
+        "restoreMs": 166,
+        "queryMs": 203,
+        "buildCompleted": true,
+        "passedThreshold": false
+      },
+      {
+        "id": "F_100000",
+        "commitCount": 100000,
+        "targetCommits": 100000,
+        "completedCommits": 100000,
+        "buildMs": 219912,
+        "verifyMs": 352095,
+        "restoreMs": 384,
+        "queryMs": 1304,
+        "buildCompleted": true,
+        "passedThreshold": false
+      },
+      {
+        "id": "F_1000000",
+        "commitCount": 1000000,
+        "targetCommits": 1000000,
+        "completedCommits": 748544,
+        "buildMs": 1136102,
+        "verifyMs": 0,
+        "restoreMs": 0,
+        "queryMs": 0,
+        "passedThreshold": false,
+        "buildCompleted": false,
+        "failureReason": "Class F time budget exhausted after 748544/1000000 commits"
+      }
+    ]
+  },
+  "delegate52Preflight": {
+    "status": "prepared_not_executed",
+    "command": "npm run delegate52:preflight",
+    "budgetUsd": 2,
+    "domains": 3,
+    "roundTripsPerDomain": 1,
+    "gateBoundary": "not GATE-1; does not update live D1/D3/D4 paper tables"
+  },
+  "founderGatesPreserved": [
+    "GATE-1 full live DELEGATE-52 paid/provider run",
+    "GATE-3 accepted 1M benchmark pass",
+    "GATE-5 arXiv submission",
+    "GATE-6 Microsoft/Sean outreach send",
+    "GATE-NPM package publication",
+    "GATE-ARTICLE-XV ratification",
+    "GATE-TRUTH-LOOP-RATING founder ratings"
+  ],
+  "trackedArtifacts": [
+    {
+      "path": "package.json",
+      "hash": "3bf60186a27a0dd6e5ea0cbba4a9e6f4fbaabb17c656d7468f822f71873cc38d",
+      "bytes": 5585
+    },
+    {
+      "path": "src/core/time-machine-validation.ts",
+      "hash": "706f003edd22d29601bfeed775b0a962f9ef784cb39fa33a3896f3ec1b7876fb",
+      "bytes": 81656
+    },
+    {
+      "path": "src/core/time-machine.ts",
+      "hash": "6b93c6681a69072ca8619749021dfecd229d3b1bcf6bae566c76ed55b3e505a6",
+      "bytes": 25336
+    },
+    {
+      "path": "src/cli/index.ts",
+      "hash": "869967f6045539bbdc93bf40cf9306c42e97fc9bbb5bd77c21605d027366c6be",
+      "bytes": 101597
+    },
+    {
+      "path": "src/cli/commands/time-machine.ts",
+      "hash": "4a11178947021a51315f71ee5c0701f1be4e477c6b0fae9a5c998c5d9f8c5532",
+      "bytes": 4562
+    },
+    {
+      "path": "scripts/preflight-delegate52.mjs",
+      "hash": "da9f6cab57c1689853eb32ecaf611b64d27bf10a5c7b97834a9ce3d7d8a46e80",
+      "bytes": 4725
+    },
+    {
+      "path": "scripts/proof-anchor-pass-44.mjs",
+      "hash": "751b81ed5f1d8d67b14457bd41170a62b04c1cb9543b9eaf025d1f0125759634",
+      "bytes": 5662
+    },
+    {
+      "path": "tests/time-machine-class-f-benchmark.test.ts",
+      "hash": "263941deeb83a94fa43db0d02ebe653fe121ae5ce1900d11365e4f5fce4eebe3",
+      "bytes": 3325
+    },
+    {
+      "path": "tests/delegate52-preflight-script.test.ts",
+      "hash": "2a0a92dacb29a44f2d14db5882a6778a1b154865f398ade0e7d35f4a93eb34be",
+      "bytes": 1081
+    },
+    {
+      "path": "docs/PRD-TIME-MACHINE-PUBLICATION-PLAN.md",
+      "hash": "a5237b9bd03f965b14778081ddad49efd7d954564ecfc36fb917d63744579247",
+      "bytes": 34699
+    },
+    {
+      "path": "docs/PRD-FORGE-V1.1-Closure.md",
+      "hash": "a33edcd8a6295f130e07bb0cfa13fb2dae20fb088c38326163eba0ef23a73881",
+      "bytes": 28887
+    },
+    {
+      "path": "docs/papers/time-machine-empirical-validation-v1.md",
+      "hash": "367b2f788c5222a2bf00281396762a807f6391207559a3987f51cd0538129f80",
+      "bytes": 27660
+    },
+    {
+      "path": "docs/papers/time-machine-empirical-validation-v1.tex",
+      "hash": "856b5286a089ed312909a50c990f2335b24ae4b03038cf167177855004ff9460",
+      "bytes": 12641
+    },
+    {
+      "path": "docs/papers/reproducibility-appendix.md",
+      "hash": "7e66db71217ff1e418f7036f0aa0e088385551cceb68f6d5e67b1ac55837c044",
+      "bytes": 9672
+    }
+  ],
+  "generatedArtifacts": [
+    {
+      "path": ".danteforge/evidence/pass-44-runs/f1m-result.json",
+      "hash": "628f43959b01e5e43da6685bff9759287a384ba0ff7340b9a14f07b8e8a6746b",
+      "bytes": 5788
+    }
+  ],
+  "truthBoundary": {
+    "allowedClaim": "Pass 44 optimized Class F benchmark generation, added graceful benchmark controls, and prepared a tiny DELEGATE-52 preflight path.",
+    "forbiddenClaim": "DanteForge has passed the 1M Class F benchmark or live-validated DELEGATE-52."
+  },
+  "receipt": {
+    "file": ".danteforge/PASS_44_PRD_REMAINDER_CLOSURE_RECEIPT.md",
+    "hash": "45230d6b675a3c1c9a1bbfac9615abb2a60d2f577d26da6a772dd1606e57e933"
+  },
+  "proof": {
+    "schemaVersion": "evidence-chain.v1",
+    "receiptId": "bundle_6d49d8ec5d3ccecc",
+    "bundleId": "pass_44_prd_remainder_closure",
+    "gitSha": "afecc8556b61a16349123374ebdccf25091afe8d",
+    "createdAt": "2026-04-30T13:55:57.700Z",
+    "payloadHash": "874c88cffa5176e86b2992256af2090f7f028b9497c6f7e07654f4eb927ecb77",
+    "prevHash": "0000000000000000000000000000000000000000000000000000000000000000",
+    "merkleRoot": "48063594a9b7b754aa77ca4120eceb5639cb92aa8f1f4ad86830747aea68ee62",
+    "evidenceHashes": [
+      "48063594a9b7b754aa77ca4120eceb5639cb92aa8f1f4ad86830747aea68ee62"
+    ],
+    "verificationStatus": "unverified",
+    "evidence": [
+      {
+        "schemaVersion": 1,
+        "pass": 44,
+        "passName": "PRD remainder closure: preflight path and Class F optimized benchmark",
+        "generatedAt": "2026-04-30T13:55:57.700Z",
+        "gitSha": "afecc8556b61a16349123374ebdccf25091afe8d",
+        "closureMode": "agent_buildable_no_paid_or_public_founder_gates",
+        "classFOneMillion": {
+          "reportStatus": "partial",
+          "classStatus": "partial",
+          "runId": "tmval_20260430131458",
+          "outDir": "C:\\Projects\\DanteForge\\.danteforge\\time-machine\\validation\\pass-44-f1m",
+          "benchmarks": [
+            {
+              "id": "F_10000",
+              "commitCount": 10000,
+              "targetCommits": 10000,
+              "completedCommits": 10000,
+              "buildMs": 43159,
+              "verifyMs": 48829,
+              "restoreMs": 166,
+              "queryMs": 203,
+              "buildCompleted": true,
+              "passedThreshold": false
+            },
+            {
+              "id": "F_100000",
+              "commitCount": 100000,
+              "targetCommits": 100000,
+              "completedCommits": 100000,
+              "buildMs": 219912,
+              "verifyMs": 352095,
+              "restoreMs": 384,
+              "queryMs": 1304,
+              "buildCompleted": true,
+              "passedThreshold": false
+            },
+            {
+              "id": "F_1000000",
+              "commitCount": 1000000,
+              "targetCommits": 1000000,
+              "completedCommits": 748544,
+              "buildMs": 1136102,
+              "verifyMs": 0,
+              "restoreMs": 0,
+              "queryMs": 0,
+              "passedThreshold": false,
+              "buildCompleted": false,
+              "failureReason": "Class F time budget exhausted after 748544/1000000 commits"
+            }
+          ]
+        },
+        "delegate52Preflight": {
+          "status": "prepared_not_executed",
+          "command": "npm run delegate52:preflight",
+          "budgetUsd": 2,
+          "domains": 3,
+          "roundTripsPerDomain": 1,
+          "gateBoundary": "not GATE-1; does not update live D1/D3/D4 paper tables"
+        },
+        "founderGatesPreserved": [
+          "GATE-1 full live DELEGATE-52 paid/provider run",
+          "GATE-3 accepted 1M benchmark pass",
+          "GATE-5 arXiv submission",
+          "GATE-6 Microsoft/Sean outreach send",
+          "GATE-NPM package publication",
+          "GATE-ARTICLE-XV ratification",
+          "GATE-TRUTH-LOOP-RATING founder ratings"
+        ],
+        "trackedArtifacts": [
+          {
+            "path": "package.json",
+            "hash": "3bf60186a27a0dd6e5ea0cbba4a9e6f4fbaabb17c656d7468f822f71873cc38d",
+            "bytes": 5585
+          },
+          {
+            "path": "src/core/time-machine-validation.ts",
+            "hash": "706f003edd22d29601bfeed775b0a962f9ef784cb39fa33a3896f3ec1b7876fb",
+            "bytes": 81656
+          },
+          {
+            "path": "src/core/time-machine.ts",
+            "hash": "6b93c6681a69072ca8619749021dfecd229d3b1bcf6bae566c76ed55b3e505a6",
+            "bytes": 25336
+          },
+          {
+            "path": "src/cli/index.ts",
+            "hash": "869967f6045539bbdc93bf40cf9306c42e97fc9bbb5bd77c21605d027366c6be",
+            "bytes": 101597
+          },
+          {
+            "path": "src/cli/commands/time-machine.ts",
+            "hash": "4a11178947021a51315f71ee5c0701f1be4e477c6b0fae9a5c998c5d9f8c5532",
+            "bytes": 4562
+          },
+          {
+            "path": "scripts/preflight-delegate52.mjs",
+            "hash": "da9f6cab57c1689853eb32ecaf611b64d27bf10a5c7b97834a9ce3d7d8a46e80",
+            "bytes": 4725
+          },
+          {
+            "path": "scripts/proof-anchor-pass-44.mjs",
+            "hash": "751b81ed5f1d8d67b14457bd41170a62b04c1cb9543b9eaf025d1f0125759634",
+            "bytes": 5662
+          },
+          {
+            "path": "tests/time-machine-class-f-benchmark.test.ts",
+            "hash": "263941deeb83a94fa43db0d02ebe653fe121ae5ce1900d11365e4f5fce4eebe3",
+            "bytes": 3325
+          },
+          {
+            "path": "tests/delegate52-preflight-script.test.ts",
+            "hash": "2a0a92dacb29a44f2d14db5882a6778a1b154865f398ade0e7d35f4a93eb34be",
+            "bytes": 1081
+          },
+          {
+            "path": "docs/PRD-TIME-MACHINE-PUBLICATION-PLAN.md",
+            "hash": "a5237b9bd03f965b14778081ddad49efd7d954564ecfc36fb917d63744579247",
+            "bytes": 34699
+          },
+          {
+            "path": "docs/PRD-FORGE-V1.1-Closure.md",
+            "hash": "a33edcd8a6295f130e07bb0cfa13fb2dae20fb088c38326163eba0ef23a73881",
+            "bytes": 28887
+          },
+          {
+            "path": "docs/papers/time-machine-empirical-validation-v1.md",
+            "hash": "367b2f788c5222a2bf00281396762a807f6391207559a3987f51cd0538129f80",
+            "bytes": 27660
+          },
+          {
+            "path": "docs/papers/time-machine-empirical-validation-v1.tex",
+            "hash": "856b5286a089ed312909a50c990f2335b24ae4b03038cf167177855004ff9460",
+            "bytes": 12641
+          },
+          {
+            "path": "docs/papers/reproducibility-appendix.md",
+            "hash": "7e66db71217ff1e418f7036f0aa0e088385551cceb68f6d5e67b1ac55837c044",
+            "bytes": 9672
+          }
+        ],
+        "generatedArtifacts": [
+          {
+            "path": ".danteforge/evidence/pass-44-runs/f1m-result.json",
+            "hash": "628f43959b01e5e43da6685bff9759287a384ba0ff7340b9a14f07b8e8a6746b",
+            "bytes": 5788
+          }
+        ],
+        "truthBoundary": {
+          "allowedClaim": "Pass 44 optimized Class F benchmark generation, added graceful benchmark controls, and prepared a tiny DELEGATE-52 preflight path.",
+          "forbiddenClaim": "DanteForge has passed the 1M Class F benchmark or live-validated DELEGATE-52."
+        },
+        "receipt": {
+          "file": ".danteforge/PASS_44_PRD_REMAINDER_CLOSURE_RECEIPT.md",
+          "hash": "45230d6b675a3c1c9a1bbfac9615abb2a60d2f577d26da6a772dd1606e57e933"
+        }
+      }
+    ],
+    "inclusionProofs": [
+      {
+        "index": 0,
+        "leafHash": "48063594a9b7b754aa77ca4120eceb5639cb92aa8f1f4ad86830747aea68ee62",
+        "proof": []
+      }
+    ],
+    "hash": "25bcbbd68cfd598b1842c2ea66cddea3f9988963690ae072df774bafee370a0e"
+  }
+}
