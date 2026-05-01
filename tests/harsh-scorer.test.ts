@@ -353,7 +353,7 @@ describe('computeWeightedScore', () => {
       ['functionality','testing','errorHandling','security','uxPolish','documentation',
        'performance','maintainability','developerExperience','autonomy','planningQuality','selfImprovement',
        'specDrivenPipeline','convergenceSelfHealing','tokenEconomy','contextEconomy',
-       'ecosystemMcp','enterpriseReadiness','communityAdoption']
+       'ecosystemMcp','enterpriseReadiness','communityAdoption','causalCoherence']
         .map((k) => [k, 100]),
     ) as Record<ScoringDimension, number>;
     assert.ok(Math.abs(computeWeightedScore(dims) - 100) < 0.01);
@@ -364,7 +364,7 @@ describe('computeWeightedScore', () => {
       ['functionality','testing','errorHandling','security','uxPolish','documentation',
        'performance','maintainability','developerExperience','autonomy','planningQuality','selfImprovement',
        'specDrivenPipeline','convergenceSelfHealing','tokenEconomy','contextEconomy',
-       'ecosystemMcp','enterpriseReadiness','communityAdoption']
+       'ecosystemMcp','enterpriseReadiness','communityAdoption','causalCoherence']
         .map((k) => [k, 0]),
     ) as Record<ScoringDimension, number>;
     assert.equal(computeWeightedScore(dims), 0);

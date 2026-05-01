@@ -100,7 +100,7 @@ export interface ScoreOptions {
 // Kept in sync manually. Used only for --full display; not used in scoring.
 
 const SCORE_DISPLAY_WEIGHTS: Record<ScoringDimension, number> = {
-  functionality:          0.09,
+  functionality:          0.08,
   testing:                0.08,
   errorHandling:          0.08,
   security:               0.08,

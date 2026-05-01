@@ -51,7 +51,7 @@ export interface AdversarialScorerDimOptions {
 // ── Dimension weights (mirrors harsh-scorer.ts) ───────────────────────────────
 
 const DIMENSION_WEIGHTS: Record<ScoringDimension, number> = {
-  functionality: 0.09,
+  functionality: 0.08,
   testing: 0.08,
   errorHandling: 0.08,
   security: 0.08,

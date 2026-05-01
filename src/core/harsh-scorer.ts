@@ -124,7 +124,7 @@ const STUB_PATTERNS = [
 // Weights sum exactly to 1.0 (20 dimensions)
 // causalCoherence 0.05 funded by: functionality 0.11→0.09, testing 0.09→0.08, autonomy 0.07→0.06
 const DIMENSION_WEIGHTS: Record<ScoringDimension, number> = {
-  functionality: 0.09,
+  functionality: 0.08,
   testing: 0.08,
   errorHandling: 0.08,
   security: 0.08,
