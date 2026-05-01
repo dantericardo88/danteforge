@@ -115,6 +115,15 @@ DANTEFORGE_DELEGATE52_DRY_RUN=1 \
 
 Expected: `status: live_dry_run`, `totalCostUsd: 0`, `4/4 byte-identical (identity simulator)`.
 
+Tiny live preflight smoke (Pass 44; optional, not GATE-1):
+
+```bash
+npm run build
+npm run delegate52:preflight
+```
+
+Required local inputs: `ANTHROPIC_API_KEY`, optional `ANTHROPIC_MODEL`, and `.danteforge/datasets/delegate52-public.jsonl`. This path caps spend at $2, runs 3 public domains x 1 round-trip, and records only smoke evidence. It must not populate the paper's live D1/D3/D4 table.
+
 ### §5.6 Class F — Scale (10K, 100K, 1M attempt)
 
 ```bash
@@ -123,17 +132,18 @@ node dist/index.js time-machine validate --class F --scale benchmark --json
 
 Expected without overrides: `status: passed at 10K`, `passed at 100K`, 1M skipped.
 
-Pass 36 compute-only 1M attempt:
+Pass 44 compute-only 1M attempt:
 
 ```bash
-DANTEFORGE_TIME_MACHINE_VALIDATE_MAX_COMMITS=1000000 \
-  node dist/index.js time-machine validate \
-    --class F --scale benchmark \
-    --out .danteforge/time-machine/validation/pass-36-f1m \
-    --json
+node dist/index.js time-machine validate \
+  --class F --scale benchmark \
+  --max-commits 1000000 \
+  --benchmark-time-budget-minutes 30 \
+  --out .danteforge/time-machine/validation/pass-44-f1m \
+  --json
 ```
 
-Observed: timeout at 30.48 minutes after 137,218/1,000,000 commits, before final result JSON. Artifact: `.danteforge/evidence/pass-36-runs/f1m-timeout.json`, anchored by `.danteforge/evidence/pass-36-hybrid-compute-closure.json`. This is not a 1M pass.
+Observed: structured partial result after 748,544/1,000,000 commits at the 30-minute budget. Artifact: `.danteforge/evidence/pass-44-runs/f1m-result.json`, anchored by `.danteforge/evidence/pass-44-prd-remainder-closure.json`. This is not a 1M pass.
 
 ### §5.7 Class G — Constitutional integration
 
@@ -176,6 +186,7 @@ Per-pass proof-anchored manifests:
 | 27 — verify optimization | `.danteforge/evidence/pass-27-verify-optimization.json` | n/a |
 | 28 — v1.1 closure | `.danteforge/evidence/pass-28-v1-1-closure.json` | n/a |
 | 36 — hybrid compute closure | `.danteforge/evidence/pass-36-hybrid-compute-closure.json` | Class F 1M timeout + live DELEGATE blockers |
+| 44 — PRD remainder closure | `.danteforge/evidence/pass-44-prd-remainder-closure.json` | Class F optimized partial 1M result + DELEGATE-52 preflight path |
 
 All manifests use `evidence-chain.v1` schema and are created via `createEvidenceBundle` from `@danteforge/evidence-chain`.
 
@@ -208,7 +219,7 @@ If `pdflatex` is not available locally (publication preparation environment may 
 | Gate | What it controls | How to invoke |
 |---|---|---|
 | GATE-1 | Live DELEGATE-52 LLM run ($30–80 budget) | §A.3 §5.4.2 command |
-| GATE-3 | F 1M scale benchmark | Pass 36 env-var attempt timed out; future invocation requires optimization or longer compute window |
+| GATE-3 | F 1M scale benchmark | Pass 44 optimized attempt reached 748,544 commits in 30 min but did not pass; future invocation requires more optimization or longer compute window |
 | GATE-5 | arXiv submission of preprint PDF | founder action; not in CLI |
 | GATE-6 | Outreach email send to Microsoft authors | founder action; not in CLI |
 

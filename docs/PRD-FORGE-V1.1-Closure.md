@@ -10,6 +10,8 @@
 **Current Baseline:** DanteForge 9.30 overall, 15/19 dimensions at 9+ per Codex Masterplan Closure Stamp 2026-04-29
 **Implementation update 2026-04-29:** Pass 18 package surfaces are locally implemented but not npm-published. `@danteforge/evidence-chain` is bumped to v1.1.0 with `aggregateChildReceipts`; `@danteforge/truth-loop` v1.0.0 and `@danteforge/three-way-gate` v1.0.0 exist as workspace packages; legacy `src/spine/*` imports are compatibility adapters. MCP and sister-repo contracts now live in `docs/MCP_TOOL_SURFACE.md` and `docs/SISTER_REPO_INTEGRATION.md`. Founder-gated publication/adoption items remain pending.
 
+**Implementation update 2026-04-30 / Pass 44:** agent-buildable PRD remainder work added a fixed opt-in DELEGATE-52 preflight smoke (`npm run delegate52:preflight`), Class F benchmark controls (`--max-commits`, `--benchmark-time-budget-minutes`), and an optimized benchmark builder. The bounded 1M run reached 748,544/1,000,000 commits in 30 minutes and emitted a proof-anchored partial result; it is not a 1M pass. Founder/public gates remain unchanged.
+
 ---
 
 ## 1. Executive Summary
