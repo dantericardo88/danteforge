@@ -1,9 +1,9 @@
 # The Dante Ecosystem — Grand Vision Masterplan
 **The Time Machine as Universal Infrastructure**
 
-*Written 2026-04-30. Last updated 2026-04-30. Reference document for all Dante agents and contributors.*
+*Written 2026-04-30. Last updated 2026-05-01. Reference document for all Dante agents and contributors.*
 
-> **Status: Phases 0–4 COMPLETE.** Core Time Machine built, tested (89 tests passing), and deployed in one session.
+> **Status: Phases 0–4 COMPLETE.** All three gaps closed. 102 tests passing, zero TypeScript errors, zero lint violations.
 > Next: Phase 5 — real agent data collection + full 48-domain DELEGATE-52 run + paper submission.
 
 ---
@@ -84,39 +84,29 @@ This is not a backup system. This is a **causal reasoning engine for human-AI co
 - **`DeepRecall`** — 4-tier memory (episodic/semantic/procedural/archival)
 - **`CoinPurse`** — per-decision cost attribution
 
-### What This Means
-The two halves of the time machine **already exist separately.** DanteAgents records what the agent decided. DanteForge records what the files became. The missing piece is connecting them into a unified graph and adding the counterfactual replay layer on top.
+### What This Means (Updated 2026-05-01)
+The two halves of the time machine **are now connected.** The `DecisionNode` schema links them: `actor` + `input.prompt` from DanteAgents, `output.fileStateRef` (git commit SHA) from DanteForge. The `decision-node-danteagents-bridge.ts` module converts a ForgeOrchestrator result into a hash-chained DecisionNode sequence in one call. Magic and verify now auto-record nodes on every run.
 
 ---
 
-## The Three Gaps
+## The Three Gaps — ALL CLOSED (2026-05-01)
 
-### Gap 1 — The Unified Decision Node (weeks, engineering)
-Right now a DanteAgents `TraceEvent` and a DanteForge git commit are separate objects with no connection. A human looking at either one cannot answer: "What agent decision produced this file state?" or "What file state was the world in when this decision was made?"
+### Gap 1 — The Unified Decision Node ✅ CLOSED
+~~Right now a DanteAgents `TraceEvent` and a DanteForge git commit are separate objects with no connection.~~
 
-**What's needed:** A `DecisionNode` schema that is the canonical unit across the entire ecosystem — linking agent intent, the git commit it produced, the cost, the quality score, and the parent node it branched from.
+**Built:** `src/core/decision-node.ts` — the canonical DecisionNode schema, JSONL-backed store, SHA-256 hash chain, `fromTraceEvent` adapter, and `createDecisionNodeStore`. Links agent intent (`actor`, `input.prompt`) to file state (`output.fileStateRef` = git commit SHA). 14/14 tests. Exported from SDK.
 
-### Gap 2 — Counterfactual Replay (weeks-months, engineering)
-DanteAgents' `ReplayEngine` can replay a session to *verify* it. It cannot replay from node X with a *different input* and produce a new timeline. This is the core time machine feature.
+### Gap 2 — Counterfactual Replay ✅ CLOSED
+~~DanteAgents' `ReplayEngine` can replay a session to verify it. It cannot replay from node X with a different input.~~
 
-**What's needed:** A `counterfactualReplay(nodeId, alteredInput)` function that:
-1. Restores file state to the git commit at nodeId
-2. Replaces the input at that node with the altered version
-3. Re-runs the agent pipeline forward from that point
-4. Records the new timeline as a branch
-5. Diffs the two timelines to show divergence
+**Built:** `src/core/time-machine-replay.ts` — `counterfactualReplay(request, store, options)` restores file state → replays with altered input → records new timeline → diffs both. `diffTimelines` returns `{ convergent, divergent, unreachable }`. `buildCausalChain` produces human-readable narrative. Dry-run mode for planning without LLM cost. 14/14 tests.
 
-### Gap 3 — Causal Attribution (months, research)
-The hardest problem. Given two timelines that diverged at node X, which downstream changes were *caused by* the decision at X, and which would have happened anyway?
+### Gap 3 — Causal Attribution ✅ CLOSED (heuristic; LLM escalation available)
+~~The hardest problem — which downstream changes were caused by the decision at X, and which would have happened anyway?~~
 
-This is the "same school, different streets" question. It's the thing that tells you whether a decision actually mattered.
+**Built:** `src/core/time-machine-causal-attribution.ts` — `classifyNodesHeuristic` uses Jaccard keyword overlap (>30% = dependent) + structural causal.dependentOn check. `classifyNodes` escalates low-confidence nodes to LLM. `detectConvergence` uses 3-tier detection (JSON equality → keyword overlap → areNodesEquivalent scan). 21/21 tests.
 
-**What's needed:** A causal attribution algorithm that classifies downstream nodes as:
-- **Independent** — would have happened regardless (keep in both timelines)
-- **Dependent-adaptable** — caused by X but has an equivalent in the new timeline (AI re-derives)
-- **Dependent-incompatible** — caused by X with no equivalent (surface to human)
-
-This is the **research contribution.** Gaps 1 and 2 are engineering. Gap 3 is the paper.
+The heuristic precision/recall on a live corpus is Gap 3's remaining research work — that is the paper's novel empirical contribution. The algorithm is built; the evaluation corpus is Phase 5.
 
 ---
 
@@ -328,12 +318,15 @@ Each of these is a node. Each can be branched. Each branch produces a new experi
 - [x] "Same school" detection: both timelines converge to equivalent outcomes
 - [x] Human-readable causal chain narrative built into classifyNodesHeuristic
 
-### Phase 4 — Ecosystem Rollout (DONE 2026-04-30)
+### Phase 4 — Ecosystem Rollout (DONE 2026-05-01)
 - [x] `src/core/decision-node-recorder.ts` — DanteForge records its own decisions (magic.ts + verify.ts wired)
 - [x] `src/core/decision-node-adapters.ts` — 5 adapters: DanteAgents, DanteCode, DanteHarvest, DanteDojo, Science (40/40 tests)
+- [x] `src/core/decision-node-danteagents-bridge.ts` — ForgeOrchestrator results → DecisionNode chain in one call (13/13 tests)
 - [x] `docs/papers/time-machine-counterfactual-paper.md` — Full 6,200-word research paper skeleton with real DELEGATE-52 data
-- [x] SDK surface expanded — all Time Machine types exported from src/sdk.ts (52KB type definitions)
-- [x] Typecheck: EXIT 0. Build: success. 89 new tests total across all phases.
+- [x] `docs/DANTE-VISION-MASTERPLAN.md` — This document, canonical reference for all ecosystem agents
+- [x] `scripts/time-machine-demo.ts` — Runnable end-to-end demo (`npm run time-machine:demo`)
+- [x] SDK surface expanded — all Time Machine types exported from src/sdk.ts
+- [x] Typecheck: EXIT 0. Lint: EXIT 0. Anti-stub: EXIT 0. 102 tests total across all phases.
 
 ### Phase 5 — Validation & Publication (Next)
 - [ ] Collect real agent decision history (run DanteForge on DanteForge, capture nodes)
@@ -352,15 +345,135 @@ Each of these is a node. Each can be branched. Each branch produces a new experi
 | `src/core/decision-node.ts` | **THE schema** — DecisionNode, createDecisionNode, fromTraceEvent, DecisionNodeStore | ✅ BUILT |
 | `src/core/time-machine-replay.ts` | counterfactualReplay, diffTimelines, buildCausalChain | ✅ BUILT |
 | `src/core/time-machine-causal-attribution.ts` | classifyNodesHeuristic, classifyNodes, detectConvergence | ✅ BUILT |
-| `src/core/time-machine-validation.ts` | Substrate layer — surgical patch, diff-merge, git commits, restoreTimeMachineCommit | ✅ BUILT |
+| `src/core/decision-node-recorder.ts` | DanteForge self-instrumentation — best-effort, wired into magic + verify | ✅ BUILT |
+| `src/core/decision-node-adapters.ts` | 5 ecosystem adapters: DA / DC / Harvest / Dojo / Science | ✅ BUILT |
+| `src/core/decision-node-danteagents-bridge.ts` | **THE bridge** — ForgeOrchestrator result → DecisionNode store in one call | ✅ BUILT |
+| `src/core/time-machine-validation.ts` | Substrate layer — surgical patch, diff-merge, restoreTimeMachineCommit | ✅ BUILT |
 | `src/cli/commands/time-machine.ts` | CLI — validate, node list, node trace, replay | ✅ BUILT |
 | `src/sdk.ts` | Public SDK exports — all Time Machine types and functions | ✅ BUILT |
+| `scripts/time-machine-demo.ts` | Runnable demo: `npm run time-machine:demo` | ✅ BUILT |
 | `tests/decision-node.test.ts` | 14 tests — schema, hash chain, store, adapter | ✅ 14/14 |
 | `tests/time-machine-replay.test.ts` | 14 tests — diff, causal chain, dry-run, live mode | ✅ 14/14 |
 | `tests/time-machine-causal-attribution.test.ts` | 21 tests — classification, convergence, equivalence | ✅ 21/21 |
+| `tests/decision-node-adapters.test.ts` | 40 tests — all 5 ecosystem adapters | ✅ 40/40 |
+| `tests/decision-node-danteagents-bridge.test.ts` | 13 tests — ForgeOrchestrator bridge | ✅ 13/13 |
 | `docs/DANTE-VISION-MASTERPLAN.md` | This document — canonical reference for all ecosystem agents | ✅ LIVE |
-| `C:\Projects\DanteAgents\packages\time-machine\src\types.ts` | DanteAgents TraceEvent, ReplayEngine (compatible via TraceEventLike adapter) | Reference |
-| `C:\Projects\DanteAgents\packages\forge-bridge\src\forge-orchestrator.ts` | DanteAgents ↔ DanteForge bridge | Next integration |
+| `C:\Projects\DanteAgents\packages\time-machine\src\types.ts` | DanteAgents TraceEvent types (compatible via TraceEventLike structural adapter) | Reference |
+| `C:\Projects\DanteAgents\packages\forge-bridge\src\forge-orchestrator.ts` | DanteAgents ForgeOrchestrator (bridged via `decision-node-danteagents-bridge.ts`) | ✅ BRIDGED |
+
+---
+
+## Developer Integration Guide
+
+How to use the Time Machine from any Dante product.
+
+### Running the Demo First
+
+```bash
+npm run time-machine:demo
+# or
+npx tsx scripts/time-machine-demo.ts
+```
+
+This runs end-to-end in a temp directory — records nodes, bridges a ForgeOrchestrator result, diffs two timelines, classifies causal dependence, and detects convergence. Takes ~2 seconds, no LLM calls, no real state modified.
+
+### From DanteForge (automatic)
+
+Magic and verify auto-record. Every `danteforge magic` and `danteforge verify` invocation writes a DecisionNode to `.danteforge/decision-nodes.jsonl`. No integration code needed for DanteForge itself.
+
+```bash
+# See the decision history after a magic run:
+danteforge time-machine node list
+
+# Trace the ancestry of a specific node:
+danteforge time-machine node trace <nodeId>
+
+# Plan a counterfactual replay without executing it:
+danteforge time-machine replay <nodeId> --input "what you wish you had said" --dry-run
+```
+
+### From DanteAgents (ForgeOrchestrator)
+
+```typescript
+import { createDanteAgentsBridge } from 'danteforge/sdk';
+
+const bridge = createDanteAgentsBridge('.danteforge/decision-nodes.jsonl');
+
+// After a ForgeOrchestrator.run() completes:
+const nodes = await bridge.recordForgeResult({
+  task: 'Research: JWT validation strategies',
+  result: forgeResult,          // ForgeResult from ForgeOrchestrator.run()
+  sessionId: ctx.sessionId,
+  agentId: 'my-research-agent',
+  fileStateRef: latestGitSha,   // optional: links to the file state
+});
+// nodes[0] = root node (the task), nodes[1..N] = one node per step
+```
+
+### From DanteAgents (individual TraceEvents)
+
+```typescript
+import { createDanteAgentsBridge } from 'danteforge/sdk';
+
+const bridge = createDanteAgentsBridge('.danteforge/decision-nodes.jsonl');
+
+// Record a single TraceEvent as it happens:
+const node = await bridge.recordTraceEvent(traceEvent, gitCommitSha);
+```
+
+### From DanteCode / DanteHarvest / DanteDojo / Science
+
+```typescript
+import { fromDanteCodeEvent, fromDanteHarvestEvent, fromDanteDojoEvent,
+         fromScienceExperimentEvent, createDecisionNodeStore } from 'danteforge/sdk';
+
+const store = createDecisionNodeStore('.danteforge/decision-nodes.jsonl');
+
+// DanteCode: each code generation step
+const node = fromDanteCodeEvent({ gitCommitSha, prompt, result, costUsd, latencyMs, success });
+await store.append(node);
+
+// DanteDojo: each training checkpoint
+const node = fromDanteDojoEvent({ checkpointPath, trainingConfig, metrics, ... });
+await store.append(node);
+
+await store.close();
+```
+
+### Counterfactual Replay (programmatic)
+
+```typescript
+import { counterfactualReplay, createDecisionNodeStore } from 'danteforge/sdk';
+
+const store = createDecisionNodeStore('.danteforge/decision-nodes.jsonl');
+
+const result = await counterfactualReplay({
+  branchFromNodeId: 'the-node-you-want-to-change',
+  alteredInput: 'Use JWT with RS256 and 15-minute expiry instead',
+  sessionId: 'new-session-id',
+  dryRun: true,   // set false to actually execute with LLM
+}, store, {
+  llmCaller: async (prompt) => callLLM(prompt),
+});
+
+console.log('Did both timelines converge?', result.divergence.convergent.length > 0);
+console.log('Causal chain:', result.causalChain);
+```
+
+### Causal Attribution (programmatic)
+
+```typescript
+import { classifyNodesHeuristic, classifyNodes } from 'danteforge/sdk';
+
+// Fast heuristic (no LLM):
+const attribution = classifyNodesHeuristic(branchPointNode, originalNodes, alternateNodes);
+console.log(attribution.summary);
+
+// LLM-escalated (escalates low-confidence nodes):
+const deepAttribution = await classifyNodes(branchPoint, original, alternate, {
+  llmCaller: async (prompt) => callLLM(prompt),
+});
+```
 
 ---
 
@@ -378,4 +491,4 @@ That is the time machine. That is DanteForge's reason for existing.
 
 *This document is the canonical reference for the Dante Time Machine vision. All agents working in this ecosystem should treat the `DecisionNode` schema and three-gap model as authoritative until superseded by a newer version of this document.*
 
-*Last updated: 2026-04-30*
+*Last updated: 2026-05-01 — Phases 0–4 complete, all three gaps closed, 102 tests, DanteAgents bridge built.*
