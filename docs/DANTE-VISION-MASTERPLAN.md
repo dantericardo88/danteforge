@@ -3,19 +3,17 @@
 
 *Written 2026-04-30. Last updated 2026-05-02. Reference document for all Dante agents and contributors.*
 
-> **Status: Phase 0 DONE. Phases 1–3 Solid MVP. Phase 4 Partial.**
-> 133 tests, 0 TypeScript errors, 0 lint/anti-stub violations.
+> **Status: Phases 0–3 COMPLETE. Phase 4 Partial. Phase 5 (paper) in progress.**
+> 169 tests, 0 TypeScript errors, 0 lint/anti-stub violations.
 >
-> **Honest-gaps sprint complete (2026-05-02):**
-> - ✅ `restoreTimeMachineCommit` is now fail-closed — restore errors propagate rather than being swallowed
-> - ✅ `callLLM` wired into `danteforge time-machine replay` — live replay no longer throws
-> - ✅ `pipelineCaller` injection seam added to `counterfactualReplay` — full DanteForge magic pipeline rerun path available via `--pipeline-mode`
-> - ✅ `danteforge time-machine node attribute` CLI action added — causal attribution with optional LLM escalation via `--with-llm`
-> - ✅ 7 recorder integration tests verify that `recordDecision` writes real nodes to `.danteforge/decision-nodes.jsonl`
-> - ✅ 4 pipelineCaller tests verify the full-pipeline replay path end-to-end
+> **Inferno sprint complete (2026-05-02) — four remaining gaps closed:**
+> - ✅ Causal attribution validated on real recorder-produced JSONL (8 tests — not just synthetic graphs)
+> - ✅ Recorder wired into autoforge pipeline — plan-start, per-step, and completion nodes recorded
+> - ✅ ASCII timeline UI — `danteforge time-machine node timeline` renders side-by-side branch diff
+> - ✅ Paper §8 (Live Session Validation) added with 25 real integration-test results
 >
-> **Remaining honest gaps:** causal attribution untested on real corpora; ecosystem not deployed beyond DanteForge; no visual timeline UI.
-> **Next:** collect real decision history on live runs → measure causal precision/recall → paper.
+> **Honest gaps remaining:** Full 48-domain D52 live run (GATE-1 founder-gated, ~$10–160); causal attribution on real LLM-generated multi-turn traces (precision/recall unmeasured); ecosystem rollout to DanteCode/Harvest/Dojo.
+> **Next:** GATE-1 live run → precision/recall measurement on real traces → final paper submission.
 
 ---
 

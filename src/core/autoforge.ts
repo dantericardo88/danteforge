@@ -7,6 +7,7 @@ import { getMemoryBudget, getRecentMemory, recordMemory } from './memory-engine.
 import { logger } from './logger.js';
 import { isLLMAvailable } from './llm.js';
 import { getProjectCharacteristicsFor } from './mcp-adapter.js';
+import { recordDecision, getSession } from './decision-node-recorder.js';
 
 export type AutoForgeScenario =
   | 'cold-start'
@@ -302,6 +303,8 @@ async function executeForgeSteps(
   checkStageComplete: (stage: WorkflowStage, cwd?: string) => Promise<boolean>,
   memoryRecorder: typeof recordMemory,
   failureAnalyzer: FailureAnalyzerFn,
+  decisionRecorderFn: typeof recordDecision,
+  planNodeId: string | null,
 ): Promise<{ completed: string[]; failed: string[]; paused: boolean }> {
   const completed: string[] = [];
   const failed: string[] = [];
@@ -331,12 +334,42 @@ async function executeForgeSteps(
       completed.push(step.command);
       wavesExecuted++;
       logger.success(`[AutoForge] ${step.command} complete`);
+      try {
+        if (planNodeId) {
+          const session = getSession(opts.cwd);
+          await decisionRecorderFn({
+            session,
+            parentNodeId: planNodeId,
+            actorType: 'agent',
+            prompt: step.command,
+            result: { reason: step.reason, scenario: plan.scenario },
+            success: true,
+            costUsd: 0,
+            latencyMs: 0,
+          });
+        }
+      } catch { /* best-effort */ }
       try { await runPostStepScoring(step.command, opts.profile, opts.cwd); } catch (err) { logger.verbose(`[best-effort] scoring: ${err instanceof Error ? err.message : String(err)}`); }
       await memoryRecorder({ category: 'command', summary: `AutoForge executed: ${step.command}`, detail: `Scenario: ${plan.scenario}. Reason: ${step.reason}${plan.goal ? `. Goal: ${plan.goal}` : ''}`, tags: ['autoforge', step.command], relatedCommands: [step.command] }, opts.cwd);
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
       failed.push(step.command);
       logger.error(`[AutoForge] ${step.command} failed: ${msg}`);
+      try {
+        if (planNodeId) {
+          const session = getSession(opts.cwd);
+          await decisionRecorderFn({
+            session,
+            parentNodeId: planNodeId,
+            actorType: 'agent',
+            prompt: step.command,
+            result: { error: msg, reason: step.reason, scenario: plan.scenario },
+            success: false,
+            costUsd: 0,
+            latencyMs: 0,
+          });
+        }
+      } catch { /* best-effort */ }
       await withBestEffortTimeout(
         failureAnalyzer(step.command, msg, step.reason, opts.cwd),
         FAILURE_ANALYSIS_TIMEOUT_MS,
@@ -375,6 +408,8 @@ export async function executeAutoForgePlan(
     _recordMemory?: typeof recordMemory;
     /** Injected for testing — replaces expensive failure analysis */
     _runFailureAnalysis?: (stepCommand: string, message: string, reason: string, cwd?: string) => Promise<void>;
+    /** Injected for testing — replaces decision-node recording side effects */
+    _recordDecision?: typeof recordDecision;
   } = {},
 ): Promise<{ completed: string[]; failed: string[]; paused: boolean }> {
   const runStep = options._runStep ?? runAutoForgeStep;
@@ -382,6 +417,7 @@ export async function executeAutoForgePlan(
   const llmAvailabilityProbe = options._isLLMAvailable ?? isLLMAvailable;
   const memoryRecorder = options._recordMemory ?? recordMemory;
   const failureAnalyzer = options._runFailureAnalysis ?? runAutoForgeFailureAnalysis;
+  const decisionRecorder = options._recordDecision ?? recordDecision;
 
   if (options.dryRun) {
     logger.info('[AutoForge] DRY RUN — no commands will be executed');
@@ -397,7 +433,38 @@ export async function executeAutoForgePlan(
   logger.info(`[AutoForge] ${plan.steps.length} step(s) planned, max ${plan.maxWaves} waves`);
   logger.info('');
 
-  const result = await executeForgeSteps(plan, options, runStep, checkStageComplete, memoryRecorder, failureAnalyzer);
+  let planNodeId: string | null = null;
+  try {
+    const session = getSession(options.cwd);
+    const planNode = await decisionRecorder({
+      session,
+      actorType: 'agent',
+      prompt: `autoforge: ${plan.scenario}${plan.goal ? ` — ${plan.goal}` : ''}`,
+      result: { scenario: plan.scenario, steps: plan.steps.length, maxWaves: plan.maxWaves },
+      success: true,
+      costUsd: 0,
+      latencyMs: 0,
+    });
+    planNodeId = planNode.id;
+  } catch { /* best-effort */ }
+
+  const result = await executeForgeSteps(plan, options, runStep, checkStageComplete, memoryRecorder, failureAnalyzer, decisionRecorder, planNodeId);
+
+  try {
+    if (planNodeId) {
+      const session = getSession(options.cwd);
+      await decisionRecorder({
+        session,
+        parentNodeId: planNodeId,
+        actorType: 'agent',
+        prompt: `autoforge-complete: ${plan.scenario}`,
+        result: { completed: result.completed, failed: result.failed, paused: result.paused },
+        success: result.failed.length === 0,
+        costUsd: 0,
+        latencyMs: 0,
+      });
+    }
+  } catch { /* best-effort */ }
 
   if (result.failed.length === 0 && !result.paused) {
     const state = await loadState({ cwd: options.cwd });

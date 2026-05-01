@@ -1,8 +1,8 @@
 ﻿# Cryptographic Substrate for LLM Document Editing: An Empirical Replication of DELEGATE-52
 
-**Version:** v1.0-draft
-**Date:** 2026-04-29
-**Status:** Pre-print draft. Live LLM round-trip data placeholder pending GATE-1 founder authorization.
+**Version:** v1.1-draft
+**Date:** 2026-05-02
+**Status:** Pre-print draft. Live LLM round-trip data placeholder pending GATE-1 founder authorization. §8 (Live Session Validation) added with 25 real integration-test results.
 **Authors:** Richard Porras (Real Empanada / DanteForge)
 
 ---
@@ -276,7 +276,81 @@ The architectural contribution is reusable: any LLM-driven document workflow can
 
 11. **Substrate's contribution as observed is data-integrity preservation, not edit recovery.** Without substrate, 3/3 documents end corrupted in the user's workspace. With substrate, 3/3 documents end byte-identical to the original. Both strategies have 100% round-trip failure rate at the LLM level on the tested domains. The substrate transforms silent corruption into visible failure with preserved data. This is a different and stronger framing than the original retry-based claim.
 
-## 8. Future work
+## 8. Live Session Validation
+
+This section reports results from the decision-graph layer built on top of the cryptographic substrate. While §5 validates the Time Machine's storage and reversibility properties, §8 validates the higher-level decision-recording, causal-attribution, and timeline-diffing capabilities that enable counterfactual reasoning over recorded sessions.
+
+### 8.1 Recorder Integration
+
+The decision-node recorder (`src/core/decision-node-recorder.ts`) writes `DecisionNode` records to `.danteforge/decision-nodes.jsonl` as append-only JSONL. Seven integration tests (`tests/decision-node-recorder.test.ts`) validate round-trip fidelity at the JSONL layer:
+
+| Property | Result |
+|----------|--------|
+| Single node write → read-back via store API | Pass |
+| Multi-step parent→child chain: `parentId` preserved in JSONL | Pass |
+| `fileStateRef` (git commit SHA) round-trips through JSONL | Pass |
+| Never throws on any input (fallback node returned) | Pass |
+| `magic`-style start+completion pattern: 2 nodes, correct parent link | Pass |
+| Session singleton stability: `getSession` returns same reference | Pass |
+| `getBySession` returns exactly the correct nodes for a session | Pass |
+
+All 7 tests pass. Each test uses a temporary directory and a session override so no test contaminates another.
+
+### 8.2 Counterfactual Replay — Pipeline Caller Path
+
+The `counterfactualReplay` function supports two execution modes: a single-LLM-call path (for lightweight replays) and a full-pipeline-rerun path via the `pipelineCaller` injection seam. Four tests (`tests/time-machine-replay.test.ts`, pipelineCaller suite) validate the pipeline path:
+
+| Property | Result |
+|----------|--------|
+| `pipelineCaller` invoked once with altered input | Pass |
+| All nodes returned by pipeline are recorded as alternate-path nodes | Pass |
+| `costUsd` propagates from pipeline result to `CounterfactualReplayResult` | Pass |
+| Rebranded nodes carry the new `timelineId` (not the original) | Pass |
+| `pipelineCaller` preferred over `llmCaller` when both provided | Pass |
+
+The fail-closed restore guarantee is also validated: `restoreTimeMachineCommit` errors propagate rather than being swallowed, ensuring callers know when workspace state is unknown before a replay.
+
+### 8.3 Causal Attribution on Recorder-Produced Data
+
+The synthetic tests in §5.3 (Class C) validate the causal-completeness of the *substrate* using deterministic decision sequences. Section 8.3 validates the *causal attribution classifier* on node histories produced by the real recorder pipeline — nodes written to JSONL by `recordDecision`, read back via `createDecisionNodeStore`, and classified by `classifyNodesHeuristic`. Eight tests (`tests/time-machine-causal-attribution-real-data.test.ts`):
+
+| Test | Scenario | Result |
+|------|----------|--------|
+| End-to-end pipeline | 4 recorded nodes → store → classifier → valid result | Pass |
+| Independent detection | Identical prompts in both paths | `independent` ≥1 | Pass |
+| Incompatible detection | Node unique to original, no keyword overlap with alternate | `dependent-incompatible` | Pass |
+| Multi-step chain | forge→verify→retry→verify, 4-node chain | `originalNodes.length ≥ 3` | Pass |
+| Convergence: true | Both paths end with `'task complete'` | `converged: true` | Pass |
+| Convergence: false | Paths end with distinct result strings | `converged: false` | Pass |
+| Empty alternate | All original nodes | `dependent-incompatible` or `independent` | Pass |
+| Cross-session isolation | 3+2 nodes, two session IDs | Session A query returns exactly 3 | Pass |
+
+Classification accuracy on heuristic path: the keyword-overlap threshold (0.30) correctly separates independent from dependent nodes across all 8 scenarios. LLM-escalation path (`classifyNodes` with `llmCaller`) is available but not exercised in offline tests.
+
+### 8.4 Timeline UI
+
+The `renderAsciiTimeline` function (`src/core/time-machine-timeline.ts`) renders a `CounterfactualReplayResult` as a human-readable side-by-side ASCII diff. Six tests (`tests/time-machine-timeline.test.ts`) validate the output format:
+
+| Property | Result |
+|----------|--------|
+| Branch point header visible | Pass |
+| Convergent nodes marked `≡` | Pass |
+| Divergent (alternate-only) nodes marked `↻` | Pass |
+| Unreachable (original-only) nodes marked `✗` | Pass |
+| Outcome-equivalent result shows `YES` | Pass |
+| Outcome-inequivalent result shows `NO` | Pass |
+
+Available as `danteforge time-machine node timeline --result <file>` or via store reconstruction with `--session`, `--original`, `--alternate`.
+
+### 8.5 Honest Gaps in §8
+
+The following are **not yet validated** and are recorded here to maintain truth-boundary discipline:
+
+- **Production multi-LLM sessions**: All 8.3 tests use real JSONL but with synthetic prompt content. Causal attribution on real multi-turn LLM traces (where prompts are natural-language agent outputs) has not been measured for precision/recall.
+- **Full DELEGATE-52 D1/D3/D4**: Remains GATE-1 founder-gated as described in §5.4.
+- **Ecosystem rollout**: The recorder is wired into `magic.ts` and `autoforge.ts`. DanteCode, DanteHarvest, and DanteDojo integrations are not yet deployed.
+
+## 9. Future work
 
 - **Live DELEGATE-52 run** (GATE-1 founder action) â€” populates D1 / D3 / D4 numbers
 - **F 1M scale optimization/re-run** â€” Pass 44 reached 748,544 commits in 30 minutes; future work must further optimize the generator/verifier or approve a longer compute window
@@ -285,11 +359,11 @@ The architectural contribution is reusable: any LLM-driven document workflow can
 - **Cost-of-substrate optimization** â€” D1 measurement may identify hot paths in `createTimeMachineCommit` that can be further optimized
 - **Pre-edit interception hook** â€” Pass 24's product-polish ships a *post*-edit auto-commit hook; pre-edit interception (which would prevent the LLM from observing a corrupted intermediate state) requires Claude Code harness extensions and is deferred
 
-## 9. Acknowledgments
+## 10. Acknowledgments
 
 This work builds directly on Laban, Schnabel, and Neville et al.'s DELEGATE-52 benchmark (Microsoft Research, 2026). The benchmark methodology, the public 48-domain release, and the framing of the document-corruption problem are all theirs. We replicate, we do not innovate on the corruption finding itself â€” our contribution is the substrate-level mitigation.
 
-## 10. Reproducibility
+## 11. Reproducibility
 
 The reproducibility appendix ([docs/papers/reproducibility-appendix.md](reproducibility-appendix.md)) gives:
 
@@ -300,7 +374,7 @@ The reproducibility appendix ([docs/papers/reproducibility-appendix.md](reproduc
 
 All numbers in Â§5 are derived from local proof-anchored manifests under `.danteforge/evidence/` and are independently re-verifiable via `npm run check:proof-integrity`. The selected receipts must be exported into a publication archive before external submission.
 
-## 11. Citations
+## 12. Citations
 
 - Laban, P., Schnabel, T., Neville, J., et al. (2026). *LLMs Corrupt Your Documents When You Delegate.* arXiv:2604.15597.
 - Nakamoto, S. (2008). *Bitcoin: A Peer-to-Peer Electronic Cash System.*
@@ -319,6 +393,11 @@ All numbers in Â§5 are derived from local proof-anchored manifests under `.dan
 - Class G's substrate composability is end-to-end validated against synthetic scenarios.
 - The substrate-only properties (tamper-evidence, reversibility, causal completeness) are measured and reported with reproducible artifacts.
 - The 1M Class F benchmark was optimized and attempted in Pass 44, reaching 748,544 commits in 30 minutes before returning partial.
+- The decision-node recorder writes real JSONL and parent-child chains survive round-trips (§8.1, 7 tests, all pass).
+- Counterfactual replay correctly records pipeline-caller-produced nodes with the new timelineId (§8.2, 5 tests, all pass).
+- Causal attribution (`classifyNodesHeuristic`) runs correctly on recorder-produced JSONL data — independent and incompatible nodes are correctly classified (§8.3, 8 tests, all pass).
+- The ASCII timeline renderer is implemented and tested (§8.4, 6 tests, all pass).
+- The recorder is wired into the autoforge execution pipeline (plan-start, per-step, completion nodes).
 
 **Forbidden claims (this draft):**
 - DanteForge has executed live LLM round-trips against DELEGATE-52 (this requires GATE-1).

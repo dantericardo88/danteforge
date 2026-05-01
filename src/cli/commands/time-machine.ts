@@ -12,7 +12,8 @@ import {
   type TimeMachineValidationScale,
 } from '../../core/time-machine-validation.js';
 import { createDecisionNodeStore } from '../../core/decision-node.js';
-import { counterfactualReplay, type PipelineRunResult } from '../../core/time-machine-replay.js';
+import { counterfactualReplay, diffTimelines, buildCausalChain, type PipelineRunResult, type CounterfactualReplayResult } from '../../core/time-machine-replay.js';
+import { renderAsciiTimeline } from '../../core/time-machine-timeline.js';
 import { classifyNodes } from '../../core/time-machine-causal-attribution.js';
 import { callLLM } from '../../core/llm.js';
 import { logger } from '../../core/logger.js';
@@ -26,7 +27,8 @@ export type TimeMachineAction =
   | 'node-list'
   | 'node-trace'
   | 'replay'
-  | 'node-attribute';
+  | 'node-attribute'
+  | 'timeline';
 
 export interface TimeMachineCommandOptions {
   action: TimeMachineAction;
@@ -70,6 +72,14 @@ export interface TimeMachineCommandOptions {
   branchNodeId?: string;
   /** node-attribute: if true, escalate low-confidence attributions to LLM */
   withLlm?: boolean;
+  /** timeline: path to a stored CounterfactualReplayResult JSON */
+  resultFile?: string;
+  /** timeline: original timeline id (for store-reconstruction mode) */
+  originalTimeline?: string;
+  /** timeline: alternate timeline id (for store-reconstruction mode) */
+  alternateTimeline?: string;
+  /** timeline: terminal width for rendering (default 120) */
+  timelineWidth?: number;
   _stdout?: (line: string) => void;
   _now?: () => string;
 }
@@ -306,6 +316,54 @@ export async function timeMachine(options: TimeMachineCommandOptions): Promise<v
       await store.close();
     }
     return;
+  }
+
+  if (options.action === 'timeline') {
+    // Mode 1: load from stored result file
+    if (options.resultFile) {
+      const raw = await import('node:fs/promises').then(fs => fs.readFile(options.resultFile!, 'utf-8'));
+      const result = JSON.parse(raw) as CounterfactualReplayResult;
+      if (options.json) {
+        out(JSON.stringify(result, null, 2));
+      } else {
+        out(renderAsciiTimeline(result, options.timelineWidth ?? 120));
+      }
+      return;
+    }
+    // Mode 2: reconstruct from store
+    if (options.originalTimeline && options.alternateTimeline && options.session) {
+      const storePath = options.store ?? '.danteforge/decision-nodes.jsonl';
+      const store = createDecisionNodeStore(storePath);
+      try {
+        const origNodes = await store.getByTimeline(options.originalTimeline);
+        const altNodes = await store.getByTimeline(options.alternateTimeline);
+        if (origNodes.length === 0) throw new Error(`No nodes found for timeline: ${options.originalTimeline}`);
+        const branchPoint = origNodes[0];
+        const divergence = diffTimelines(origNodes.slice(1), altNodes);
+        const replayResult: CounterfactualReplayResult = {
+          originalTimelineId: options.originalTimeline,
+          newTimelineId: options.alternateTimeline,
+          branchPoint,
+          originalPath: origNodes.slice(1),
+          alternatePath: altNodes,
+          divergence,
+          outcomeEquivalent: origNodes.length > 0 && altNodes.length > 0 &&
+            JSON.stringify(origNodes[origNodes.length - 1].output.result) === JSON.stringify(altNodes[altNodes.length - 1].output.result),
+          causalChain: buildCausalChain(branchPoint, divergence.divergent),
+          costUsd: 0,
+          durationMs: 0,
+        };
+        if (options.json) {
+          out(JSON.stringify(replayResult, null, 2));
+        } else {
+          out(renderAsciiTimeline(replayResult, options.timelineWidth ?? 120));
+        }
+      } finally {
+        await store.close();
+      }
+      return;
+    }
+    throw new Error('time-machine node timeline requires either --result <file> or --session + --original + --alternate');
   }
 
   if (!options.kind) throw new Error('time-machine query requires --kind');

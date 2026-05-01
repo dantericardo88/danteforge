@@ -947,6 +947,27 @@ timeMachineNodeCommand
     json: opts.json,
   }));
 
+timeMachineNodeCommand
+  .command('timeline')
+  .description('Render a side-by-side ASCII timeline diff of two replay branches')
+  .option('--result <file>', 'Path to a stored CounterfactualReplayResult JSON file')
+  .option('--store <path>', 'Path to decision-nodes JSONL store', '.danteforge/decision-nodes.jsonl')
+  .option('--session <id>', 'Session id (for store-reconstruction mode)')
+  .option('--original <timelineId>', 'Original timeline id (for store-reconstruction mode)')
+  .option('--alternate <timelineId>', 'Alternate timeline id (for store-reconstruction mode)')
+  .option('--width <n>', 'Terminal width for rendering', '120')
+  .option('--json', 'Output raw CounterfactualReplayResult JSON instead of ASCII')
+  .action(async (opts) => (await C()).timeMachine({
+    action: 'timeline',
+    resultFile: opts.result,
+    store: opts.store,
+    session: opts.session,
+    originalTimeline: opts.original,
+    alternateTimeline: opts.alternate,
+    timelineWidth: opts.width ? parseInt(opts.width, 10) : 120,
+    json: opts.json,
+  }));
+
 program
   .command('cost')
   .description('Display token usage and cost breakdown from this session')
