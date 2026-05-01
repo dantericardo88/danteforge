@@ -112,6 +112,9 @@
     "release:check:simulated-fresh": "node scripts/check-release-simulated-fresh.mjs",
     "release:proof": "node scripts/check-release-proof.mjs",
     "release:ga": "npm run release:check:strict && npm run verify:live",
+    "delegate52:preflight": "node scripts/preflight-delegate52.mjs",
+    "delegate52:smart-retry": "node scripts/smart-retry-preflight.mjs",
+    "time-machine:demo": "npx tsx scripts/time-machine-demo.ts",
     "prepublishOnly": "npm run verify && npm run build"
   },
   "dependencies": {

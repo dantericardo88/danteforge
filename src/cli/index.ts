@@ -851,10 +851,12 @@ timeMachineCommand
   .option('--delegate52-dataset <pathOrUrl>', 'Public DELEGATE-52 JSON/JSONL dataset or imported result file')
   .option('--budget-usd <n>', 'Budget ceiling for live DELEGATE-52 runs', parseFloat)
   .option('--max-domains <n>', 'Maximum DELEGATE-52 domains to include', parseInt)
+  .option('--max-commits <n>', 'Maximum Class F benchmark commits; explicit value overrides DANTEFORGE_TIME_MACHINE_VALIDATE_MAX_COMMITS', parseInt)
+  .option('--benchmark-time-budget-minutes <n>', 'Class F benchmark wall-clock budget; exhausted budget emits a partial report', parseFloat)
   .option('--round-trips <n>', 'Round-trips per domain for live DELEGATE-52 (PRD spec: 10)', parseInt)
   .option('--mitigate-divergence', 'Restore and retry when a DELEGATE-52 round-trip diverges')
   .option('--retries-on-divergence <n>', 'Retry attempts per divergence when mitigation is enabled', parseInt)
-  .option('--mitigation-strategy <s>', 'substrate-restore-retry (default) | prompt-only-retry | no-mitigation')
+  .option('--mitigation-strategy <s>', 'substrate-restore-retry (default) | prompt-only-retry | no-mitigation | smart-retry | edit-journal | surgical-patch')
   .option('--json', 'Output machine-readable JSON')
   .option('--cwd <path>', 'Project directory (defaults to cwd)')
   .action(async (opts) => (await C()).timeMachine({
@@ -867,11 +869,64 @@ timeMachineCommand
     delegate52Dataset: opts.delegate52Dataset,
     budgetUsd: opts.budgetUsd,
     maxDomains: opts.maxDomains,
+    maxCommits: opts.maxCommits,
+    benchmarkTimeBudgetMinutes: opts.benchmarkTimeBudgetMinutes,
     roundTripsPerDomain: opts.roundTrips,
     mitigateDivergence: opts.mitigateDivergence,
     retriesOnDivergence: opts.retriesOnDivergence,
     mitigationStrategy: opts.mitigationStrategy,
     json: opts.json,
+  }));
+
+const timeMachineNodeCommand = timeMachineCommand
+  .command('node')
+  .description('Inspect and trace DecisionNodes in the JSONL store');
+
+timeMachineNodeCommand
+  .command('list')
+  .description('List DecisionNodes filtered by session or timeline')
+  .option('--session <id>', 'Filter by session id')
+  .option('--timeline <id>', 'Filter by timeline id')
+  .option('--store <path>', 'Path to decision-nodes JSONL store', '.danteforge/decision-nodes.jsonl')
+  .option('--json', 'Output full JSON array')
+  .action(async (opts) => (await C()).timeMachine({
+    action: 'node-list',
+    session: opts.session,
+    timeline: opts.timeline,
+    store: opts.store,
+    json: opts.json,
+  }));
+
+timeMachineNodeCommand
+  .command('trace <nodeId>')
+  .description('Print the full ancestor chain for a DecisionNode (root→leaf)')
+  .option('--store <path>', 'Path to decision-nodes JSONL store', '.danteforge/decision-nodes.jsonl')
+  .option('--json', 'Output full chain as JSON')
+  .action(async (nodeId: string, opts) => (await C()).timeMachine({
+    action: 'node-trace',
+    nodeId,
+    store: opts.store,
+    json: opts.json,
+  }));
+
+timeMachineCommand
+  .command('replay <nodeId>')
+  .description('Run a counterfactual replay from a DecisionNode with an altered prompt')
+  .requiredOption('--input <prompt>', 'The altered prompt to replay from the branch point')
+  .option('--store <path>', 'Path to decision-nodes JSONL store', '.danteforge/decision-nodes.jsonl')
+  .option('--session <id>', 'Session id for querying the original path (default: "default")')
+  .option('--dry-run', 'Print the replay plan without executing LLM calls')
+  .option('--json', 'Output full CounterfactualReplayResult as JSON')
+  .option('--cwd <path>', 'Project directory (defaults to cwd)')
+  .action(async (nodeId: string, opts) => (await C()).timeMachine({
+    action: 'replay',
+    nodeId,
+    alteredInput: opts.input,
+    store: opts.store,
+    session: opts.session,
+    dryRun: opts.dryRun,
+    json: opts.json,
+    cwd: opts.cwd,
   }));
 
 program

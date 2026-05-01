@@ -679,6 +679,22 @@ export async function verify(options: VerifyOptions = {}) {
     await saveVerifyStateAndReceipt(state, result, options, cwd, timestamp);
     await captureAllVerifyLessons(result, options, cwd);
     await outputVerifyResults(result, options);
+
+    // --- Decision-node: record verify completion (best-effort) ---
+    try {
+      const { getSession, recordDecision } = await import('../../core/decision-node-recorder.js');
+      const _dnSession = getSession(cwd);
+      const verifyStatus = computeVerifyStatus(result);
+      await recordDecision({
+        session: _dnSession,
+        actorType: 'agent',
+        prompt: `verify: ${state.project || cwd}`,
+        context: { stage: state.workflowStage, failures: result.failures.length, warnings: result.warnings.length, passed: result.passed.length },
+        result: verifyStatus,
+        success: verifyStatus === 'pass',
+        qualityScore: result.failures.length === 0 ? (result.warnings.length === 0 ? 100 : 75) : 0,
+      });
+    } catch { /* never block verify on recording errors */ }
   });
 }
 

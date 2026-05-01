@@ -66,5 +66,20 @@ export type {
 } from './core/context-economy/runtime.js';
 export type { FilterResult, FilterStatus, LedgerRecord, LedgerSummary } from './core/context-economy/types.js';
 
+// Time Machine decision-node schema and store
+export * from './core/decision-node.js';
+
+// Time Machine counterfactual replay engine
+export * from './core/time-machine-replay.js';
+
+// Time Machine causal attribution classifier
+export * from './core/time-machine-causal-attribution.js';
+
+// Time Machine ecosystem adapter interfaces (Phase 4 integration contract)
+export * from './core/decision-node-adapters.js';
+
+// Time Machine DanteAgents bridge — ForgeOrchestrator → DecisionNode store
+export * from './core/decision-node-danteagents-bridge.js';
+
 // Version
 export const SDK_VERSION = DANTEFORGE_VERSION;

@@ -31,6 +31,7 @@ export interface ConvergenceOptions {
   _getVerifyStatus?: () => Promise<VerifyStatus>;
   _runAutoforge?: (goal: string, waves: number) => Promise<void>;
   _runVerify?: () => Promise<void>;
+  _scoreAllArtifacts?: (cwd: string, state: import('../../core/state.js').DanteState) => Promise<Record<string, unknown>>;
   _assessMaturity?: (ctx: { cwd: string; state: import('../../core/state.js').DanteState; pdseScores: Record<string, unknown>; targetLevel: number }) => Promise<import('../../core/maturity-engine.js').MaturityAssessment>;
 }
 
@@ -47,12 +48,13 @@ async function runMaturityGuidedAutoforge(
 ): Promise<void> {
   try {
     const { assessMaturity: defaultAssessMaturity } = await import("../../core/maturity-engine.js");
-    const { scoreAllArtifacts } = await import("../../core/pdse.js");
     const { MAGIC_PRESETS } = await import("../../core/magic-presets.js");
+    const scoreAllArtifactsFn =
+      opts._scoreAllArtifacts ?? (await import("../../core/pdse.js")).scoreAllArtifacts;
     const assessMaturityFn = opts._assessMaturity ?? defaultAssessMaturity;
     const state = await loadState();
     const cwd = process.cwd();
-    const pdseScores = await scoreAllArtifacts(cwd, state);
+    const pdseScores = await scoreAllArtifactsFn(cwd, state);
     const targetLevel = MAGIC_PRESETS[opts.level]?.targetMaturityLevel ?? 4;
     const assessment = await assessMaturityFn({ cwd, state, pdseScores, targetLevel });
     const criticalGaps = assessment.gaps.filter(g => g.severity === 'critical');
@@ -78,12 +80,13 @@ async function checkMaturityAfterCycle(
 ): Promise<{ achieved: boolean }> {
   try {
     const { assessMaturity: defaultAssessMaturity2 } = await import("../../core/maturity-engine.js");
-    const { scoreAllArtifacts } = await import("../../core/pdse.js");
     const { MAGIC_PRESETS } = await import("../../core/magic-presets.js");
+    const scoreAllArtifactsFn =
+      opts._scoreAllArtifacts ?? (await import("../../core/pdse.js")).scoreAllArtifacts;
     const assessMaturityFn2 = opts._assessMaturity ?? defaultAssessMaturity2;
     const state = await loadState();
     const cwd = process.cwd();
-    const pdseScores = await scoreAllArtifacts(cwd, state);
+    const pdseScores = await scoreAllArtifactsFn(cwd, state);
     const targetLevel = MAGIC_PRESETS[opts.level]?.targetMaturityLevel ?? 4;
     const assessment = await assessMaturityFn2({ cwd, state, pdseScores, targetLevel });
     logger.info('');
@@ -574,6 +577,22 @@ async function printAndFinalizePreset(
 async function runMagicPreset(goal?: string, options: MagicCommandOptions = {}) {
   const magicStart = Date.now();
   const level = normalizeMagicLevel(options.level);
+
+  // --- Decision-node: record start of magic run (best-effort) ---
+  let _dnStartNodeId: string | undefined;
+  try {
+    const { getSession, recordDecision } = await import('../../core/decision-node-recorder.js');
+    const _dnSession = getSession();
+    const _dnStartNode = await recordDecision({
+      session: _dnSession,
+      actorType: 'agent',
+      prompt: `magic: ${goal ?? level}`,
+      context: { level, goal: goal ?? '' },
+      result: 'in-progress',
+      success: false,
+    });
+    _dnStartNodeId = _dnStartNode.id;
+  } catch { /* never block magic on recording errors */ }
   const cpOps = {
     load: options._checkpointOps?.load ?? loadMagicCheckpoint,
     save: options._checkpointOps?.save ?? saveMagicCheckpoint,
@@ -638,6 +657,25 @@ async function runMagicPreset(goal?: string, options: MagicCommandOptions = {}) 
   await runConvergencePhase(plan, effectiveLevel, results, options, stOps);
   await applyStrictDimsUpdate(options, stOps);
   await printAndFinalizePreset(results, pipelineTelemetry, magicStart, effectiveLevel, stOps, cpOps, options);
+
+  // --- Decision-node: record completion of magic run (best-effort) ---
+  try {
+    const { getSession, recordDecision } = await import('../../core/decision-node-recorder.js');
+    const _dnSession = getSession();
+    const failed = results.some((r) => r.status === 'fail');
+    const totalDurMs = Date.now() - magicStart;
+    const summary = results.map(r => `${r.step}:${r.status}`).join(', ');
+    await recordDecision({
+      session: _dnSession,
+      parentNodeId: _dnStartNodeId,
+      actorType: 'agent',
+      prompt: `magic: ${goal ?? effectiveLevel} [complete]`,
+      context: { level: effectiveLevel, steps: results.length, failed },
+      result: summary,
+      success: !failed,
+      latencyMs: totalDurMs,
+    });
+  } catch { /* never block magic on recording errors */ }
 }
 
 export interface MagicStepCommandFns {
