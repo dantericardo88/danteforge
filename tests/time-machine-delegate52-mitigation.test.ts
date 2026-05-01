@@ -149,12 +149,13 @@ test('Pass 29 — mitigation on against permanent corruption: retries exhausted,
     });
     const d = report.classes.D!;
     const row = d.domainRows[0]!;
-    // With 0 preserve prob + 2 retries, every divergence exhausts retries and stays unmitigated.
+    // With 0 preserve prob + 2 retries, every divergence exhausts LLM retries, then the substrate restores clean.
     assert.ok((row.unmitigatedDivergences ?? 0) >= 1, 'always-corrupt LLM should leave unmitigated divergences');
     assert.equal(row.mitigatedDivergences, 0);
     // Total retries should equal roundTrips × retriesPerDivergence (since every round-trip diverges).
     assert.ok((row.retryCount ?? 0) >= (row.unmitigatedDivergences ?? 0));
-    assert.equal(d.userObservedCorruptionRate, 1.0, 'unmitigated divergence keeps user-observed corruption at 100%');
+    assert.equal(d.userObservedCorruptionRate, 0.0, 'graceful degradation keeps user-visible document corruption at 0%');
+    assert.equal(d.rawCorruptionRate, 1.0, 'raw LLM divergence remains visible separately');
   } finally {
     delete process.env.DANTEFORGE_DELEGATE52_LIVE;
     await rm(ws, { recursive: true, force: true });

@@ -132,9 +132,10 @@ test('Pass 36 — graceful degradation: on retry exhaustion, workspace ends in l
     assert.equal(restored.includes('[stuck-corruption]'), false,
       'workspace should NOT contain corrupted state after graceful degradation');
     assert.ok((row.gracefullyDegradedDivergences ?? 0) >= 1);
-    // userObservedCorruption: still 100% because user sees a "round-trip failed" signal,
-    // but the substrate has restored the document so the data isn't lost.
-    assert.equal(d.userObservedCorruptionRate, 1.0);
+    // userObservedCorruption tracks final document bytes. The LLM failed, but the substrate
+    // restored the document before the user can observe corrupted content.
+    assert.equal(d.userObservedCorruptionRate, 0.0);
+    assert.equal(d.rawCorruptionRate, 1.0);
   } finally {
     delete process.env.DANTEFORGE_DELEGATE52_LIVE;
     await rm(ws, { recursive: true, force: true });
