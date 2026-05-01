@@ -23,7 +23,7 @@ after(() => {
   rmSync(workspace, { recursive: true, force: true });
 });
 
-test('Pass 20 — Class A prd-real 1000-commit detects all 7 mods + 0 false positives in 100 runs', { timeout: 300_000 }, async () => {
+test('Pass 20 — Class A prd-real 1000-commit detects all 7 mods + 0 false positives in 100 runs', { timeout: 600_000 }, async () => {
   const report = await runTimeMachineValidation({
     cwd: workspace,
     classes: ['A'],
@@ -41,7 +41,7 @@ test('Pass 20 — Class A prd-real 1000-commit detects all 7 mods + 0 false posi
   assert.ok(a.maxDetectionMs < 5000, `max detection time ${a.maxDetectionMs}ms should be under 5s threshold`);
 });
 
-test('Pass 20 — Class B prd-real 1000-commit B1-B6 byte-identical', { timeout: 300_000 }, async () => {
+test('Pass 20 — Class B prd-real 1000-commit B1-B6 byte-identical', { timeout: 600_000 }, async () => {
   const report = await runTimeMachineValidation({
     cwd: workspace,
     classes: ['B'],
@@ -56,7 +56,7 @@ test('Pass 20 — Class B prd-real 1000-commit B1-B6 byte-identical', { timeout:
   assert.equal(b.restoreScenarios.every(s => s.byteIdentical), true, 'all 6 scenarios byte-identical at PRD scale');
 });
 
-test('Pass 20 — Class C prd-real 100-decision causal queries + completeness audit', { timeout: 300_000 }, async () => {
+test('Pass 20 — Class C prd-real 100-decision causal queries + completeness audit', { timeout: 600_000 }, async () => {
   const report = await runTimeMachineValidation({
     cwd: workspace,
     classes: ['C'],

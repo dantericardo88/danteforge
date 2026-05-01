@@ -17,7 +17,7 @@ afterEach(async () => {
 function runCli(cwd: string, home: string, args: string[]) {
   return runTsxCli(args, {
     cwd,
-    timeout: 60_000,
+    timeout: 120_000,
     env: {
       HOME: home,
       USERPROFILE: home,

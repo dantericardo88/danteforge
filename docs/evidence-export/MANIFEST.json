@@ -1,13 +1,13 @@
 {
   "schemaVersion": 1,
-  "exportedAt": "2026-04-30T12:37:19.549Z",
+  "exportedAt": "2026-04-30T13:55:59.017Z",
   "description": "Snapshot of high-value receipts exported from .danteforge/evidence/ for git-witness anchoring. Once committed, every entry below has a git commit SHA + commit-date as independent witness.",
   "exportRoot": "docs/evidence-export/",
   "entries": [
     {
       "path": "MANIFEST.json",
-      "sha256": "34f4bab5408678c177210a468c759a3a7c5ca72ab180c503086b4440234028b4",
-      "bytes": 6045
+      "sha256": "612ca0c5d2b30288629c3858d3fb1db31a0f407ae20bc4d1ec07bec003340ff5",
+      "bytes": 6378
     },
     {
       "path": "pass-14-install-smoke.json",
@@ -163,12 +163,22 @@
       "path": "pass-39-43-odds-improvement.json",
       "sha256": "71322f662d5d95f57df099581965a5b6a68f1246fba10960b39c4bf248ecc966",
       "bytes": 13007
+    },
+    {
+      "path": "pass-44-prd-remainder-closure.json",
+      "sha256": "271e0df4c7f6deca7e5027ee58e4702c8360a75d9dea3c00d37d6dabfbd50896",
+      "bytes": 12241
+    },
+    {
+      "path": "pass-44-runs/f1m-result.json",
+      "sha256": "628f43959b01e5e43da6685bff9759287a384ba0ff7340b9a14f07b8e8a6746b",
+      "bytes": 5788
     }
   ],
   "countByPattern": [
     {
       "pattern": "/^pass-\\d+(\\.\\d+)?-/",
-      "count": 31
+      "count": 33
     },
     {
       "pattern": "/^pass-\\d+-\\d+-\\d+/",

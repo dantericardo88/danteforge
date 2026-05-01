@@ -1,7 +1,7 @@
 // Multi-provider LLM client - Grok, Claude, OpenAI, Gemini, Ollama + registry providers
 // Uses direct HTTP calls so package installs work without optional provider SDKs.
 import type { CallLLMOptions } from './llm-pipeline.js';
-import { resolveProvider, loadConfig, type LLMProvider } from './config.js';
+import { resolveProvider, loadConfig, getDefaultModel, type LLMProvider } from './config.js';
 import { getProvider as getRegistryProvider, isRegisteredProvider } from './llm-provider.js';
 import { checkContextRot, truncateContext } from '../harvested/gsd/hooks/context-rot.js';
 import { warnIfExpensive } from './token-estimator.js';
@@ -336,21 +336,28 @@ async function resolveOllamaCallableModel(configuredModel: string, baseUrl: stri
   return resolveConfiguredModelName('ollama', configuredModel, payload);
 }
 
-async function resolveCallTarget(providerOverride?: LLMProvider) {
+async function resolveCallTarget(providerOverride?: LLMProvider, modelOverride?: string) {
   const resolved = await resolveProvider();
   const provider = providerOverride ?? resolved.provider;
   const config = await loadConfig();
   const providerConfig = config.providers[provider];
 
+  // When the provider is overridden, fall back to that provider's own defaults rather than
+  // bleeding the default-provider's model/apiKey/baseUrl (e.g. Ollama's URL for a Claude call).
+  const isOverridden = Boolean(providerOverride);
+  const fallbackModel = isOverridden ? getDefaultModel(provider) : resolved.model;
+  const fallbackApiKey = isOverridden ? undefined : resolved.apiKey;
+  const fallbackBaseUrl = isOverridden ? undefined : resolved.baseUrl;
+
   return {
     provider,
-    model: providerConfig?.model ?? resolved.model,
+    model: modelOverride ?? providerConfig?.model ?? fallbackModel,
     apiKey: providerConfig?.apiKey
-      ?? resolved.apiKey
+      ?? fallbackApiKey
       // CI/CD: DANTEFORGE_LLM_API_KEY (generic) or DANTEFORGE_<PROVIDER>_API_KEY (provider-specific)
       ?? process.env[`DANTEFORGE_${provider.toUpperCase()}_API_KEY`]
       ?? process.env.DANTEFORGE_LLM_API_KEY,
-    baseUrl: normalizeBaseUrl(provider, providerConfig?.baseUrl ?? resolved.baseUrl),
+    baseUrl: normalizeBaseUrl(provider, providerConfig?.baseUrl ?? fallbackBaseUrl),
     ollamaModel: config.ollamaModel || resolved.model,
   };
 }
@@ -400,9 +407,14 @@ async function handleCallSuccess(
       }
     } catch { /* best-effort usage tracking */ }
   }
-  const state = await loadState({ cwd: options.cwd });
-  state.auditLog.push(`${new Date().toISOString()} | llm: ${target.provider}/${modelUsed} (${result.text.length} chars returned${attempt > 0 ? `, attempt ${attempt + 1}` : ''})`);
-  await saveState(state, { cwd: options.cwd });
+  // Audit-log the LLM call. Wrapped in try-catch because concurrent CLI processes can
+  // corrupt STATE.yaml via simultaneous read-modify-write; losing one audit entry is
+  // acceptable but crashing the caller is not.
+  try {
+    const state = await loadState({ cwd: options.cwd });
+    state.auditLog.push(`${new Date().toISOString()} | llm: ${target.provider}/${modelUsed} (${result.text.length} chars returned${attempt > 0 ? `, attempt ${attempt + 1}` : ''})`);
+    await saveState(state, { cwd: options.cwd });
+  } catch { /* best-effort audit logging — concurrent writers can corrupt STATE.yaml */ }
   if (options.recordMemory !== false) {
     await recordMemory({
       category: 'command',
@@ -423,7 +435,7 @@ async function _callLLMInner(
   // Resolve the per-call fetch: prefer per-call _fetch, then module-level override, then globalThis
   const perCallFetch: typeof globalThis.fetch | undefined = options._fetch ?? _llmFetchOverride;
 
-  const target = await resolveCallTarget(providerOverride);
+  const target = await resolveCallTarget(providerOverride, options.model);
   let modelUsed = target.model;
   let enrichedPrompt = options.enrichContext
     ? await injectContext(prompt, undefined, options.cwd)

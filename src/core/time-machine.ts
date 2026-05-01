@@ -190,7 +190,7 @@ export async function loadTimeMachineCommit(options: { cwd?: string; commitId: s
 
 const VERIFY_CONCURRENCY = 64;
 
-export async function verifyTimeMachine(options: { cwd?: string } = {}): Promise<VerifyTimeMachineReport> {
+export async function verifyTimeMachine(options: { cwd?: string; stopOnFirstError?: boolean; focusCommitIds?: string[] } = {}): Promise<VerifyTimeMachineReport> {
   const cwd = path.resolve(options.cwd ?? process.cwd());
   const root = getTimeMachineRoot(cwd);
   const errors: string[] = [];
@@ -209,8 +209,62 @@ export async function verifyTimeMachine(options: { cwd?: string } = {}): Promise
     if (entry.parent !== expectedParent) errors.push(`reflog ${index}: parent mismatch`);
   });
 
+  if (options.stopOnFirstError && errors.length > 0) {
+    return {
+      valid: false,
+      checkedAt: new Date().toISOString(),
+      root,
+      head,
+      commitsChecked: 0,
+      errors,
+    };
+  }
+
   const verifiedBlobs = new Set<string>();
   const inFlightBlobs = new Map<string, Promise<{ ok: boolean; reason?: string }>>();
+  if (options.stopOnFirstError) {
+    const orderedIds = options.focusCommitIds && options.focusCommitIds.length > 0
+      ? options.focusCommitIds.filter(commitId => commitIdSet.has(commitId))
+      : reflog.length > 0 ? reflog.map(entry => entry.commitId).filter(commitId => commitIdSet.has(commitId)) : commitIds;
+    let commitsChecked = 0;
+    for (const commitId of orderedIds) {
+      commitsChecked += 1;
+      try {
+        const commit = await loadTimeMachineCommit({ cwd, commitId });
+        const commitErrors = await verifyCommit(cwd, commit, { verifiedBlobs, inFlightBlobs, commitIdSet });
+        if (commitErrors.length > 0) {
+          errors.push(...commitErrors);
+          return {
+            valid: false,
+            checkedAt: new Date().toISOString(),
+            root,
+            head,
+            commitsChecked,
+            errors,
+          };
+        }
+      } catch (err) {
+        errors.push(`${commitId}: ${err instanceof Error ? err.message : String(err)}`);
+        return {
+          valid: false,
+          checkedAt: new Date().toISOString(),
+          root,
+          head,
+          commitsChecked,
+          errors,
+        };
+      }
+    }
+    return {
+      valid: true,
+      checkedAt: new Date().toISOString(),
+      root,
+      head,
+      commitsChecked,
+      errors,
+    };
+  }
+
   const commitResults = await mapWithConcurrency(commitIds, VERIFY_CONCURRENCY, async commitId => {
     try {
       const commit = await loadTimeMachineCommit({ cwd, commitId });
@@ -285,6 +339,24 @@ export async function queryTimeMachine(options: QueryTimeMachineOptions): Promis
   if (options.kind === 'file-history') {
     if (!options.path) throw new Error('file-history query requires --path');
     const normalized = normalizeRelativePath(options.path);
+    const index = await readCausalIndex(cwd);
+    const indexedHistory = index?.fileHistory[normalized];
+    if (indexedHistory) {
+      const reflog = await readReflog(cwd);
+      const reflogById = new Map(reflog.map(entry => [entry.commitId, entry]));
+      return {
+        kind: 'file-history',
+        status: 'ok',
+        results: indexedHistory.map(commitId => {
+          const entry = reflogById.get(commitId);
+          return {
+            commitId,
+            label: entry?.label ?? '',
+            createdAt: entry?.at ?? '',
+          };
+        }),
+      };
+    }
     const commits = await loadCommitsInReflogOrder(cwd);
     return {
       kind: 'file-history',
@@ -574,10 +646,18 @@ async function listCommitIds(cwd: string): Promise<string[]> {
   try {
     return (await fs.readdir(dir))
       .filter(file => file.endsWith('.json'))
-      .map(file => file.replace(/\.json$/, ''))
-      .sort();
+      .map(file => file.replace(/\.json$/, ''));
   } catch {
     return [];
+  }
+}
+
+async function readCausalIndex(cwd: string): Promise<CausalIndex | null> {
+  try {
+    const raw = await fs.readFile(path.join(getTimeMachineRoot(cwd), 'index', 'causal-index.json'), 'utf8');
+    return JSON.parse(raw) as CausalIndex;
+  } catch {
+    return null;
   }
 }
 

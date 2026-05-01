@@ -12,6 +12,8 @@ export interface CallLLMOptions {
   enrichContext?: boolean;
   recordMemory?: boolean;
   cwd?: string;
+  /** Override the model name for this call, bypassing the global config model. */
+  model?: string;
   /** Task signature for routing decisions (v0.9.0 — 3-tier model routing) */
   taskSignature?: import('./task-router.js').TaskSignature;
   /** Budget fence for per-agent cost caps (v0.9.0 — budget fences) */

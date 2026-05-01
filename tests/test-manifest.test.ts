@@ -11,8 +11,10 @@ describe('test manifest', () => {
   it('isolates saturated CLI spawn suites in the process lane', () => {
     assert.equal(classifyTestFile('tests/cli-flags.test.ts'), 'cli-process');
     assert.equal(classifyTestFile('tests/cli-release-readiness.test.ts'), 'cli-process');
+    assert.equal(classifyTestFile('tests/canonical-score-determinism.test.ts'), 'cli-process');
     assert.equal(classifyTestFile('tests/config-cli.test.ts'), 'cli-process');
     assert.equal(classifyTestFile('tests/doctor.test.ts'), 'cli-process');
+    assert.equal(classifyTestFile('tests/init.test.ts'), 'cli-process');
     assert.equal(classifyTestFile('tests/verify-json-e2e.test.ts'), 'cli-process');
     assert.equal(classifyTestFile('tests\\verify-json-e2e.test.ts'), 'cli-process');
   });
@@ -23,6 +25,10 @@ describe('test manifest', () => {
     assert.equal(classifyTestFile('tests\\autoforge.test.ts'), 'orchestration-heavy');
   });
 
+  it('isolates PRD-scale Time Machine validation in its own lane', () => {
+    assert.equal(classifyTestFile('tests/time-machine-validation-prd-real.test.ts'), 'time-machine-prd-real');
+  });
+
   it('isolates e2e orchestration pipeline suites in a single-process lane', () => {
     assert.equal(classifyTestFile('tests/e2e-autoforge-pipeline.test.ts'), 'orchestration-e2e');
     assert.equal(classifyTestFile('tests/e2e-spec-pipeline.test.ts'), 'orchestration-e2e');
@@ -31,7 +37,6 @@ describe('test manifest', () => {
 
   it('keeps ordinary and non-fragile suites in the default lane', () => {
     assert.equal(classifyTestFile('tests/build-isolation.test.ts'), 'default');
-    assert.equal(classifyTestFile('tests/init.test.ts'), 'default');
     assert.equal(classifyTestFile('tests\\showcase.test.ts'), 'default');
   });
 
@@ -40,15 +45,24 @@ describe('test manifest', () => {
       'tests/verify-json-e2e.test.ts',
       'tests/doctor.test.ts',
       'tests/autoforge.test.ts',
+      'tests/time-machine-validation-prd-real.test.ts',
       'tests/e2e-autoforge-pipeline.test.ts',
       'tests/build-isolation.test.ts',
+      'tests/init.test.ts',
+      'tests/canonical-score-determinism.test.ts',
     ]);
 
-    assert.deepEqual(plan.map((lane) => lane.id), ['default', 'orchestration-heavy', 'orchestration-e2e', 'cli-process']);
+    assert.deepEqual(plan.map((lane) => lane.id), ['default', 'orchestration-heavy', 'time-machine-prd-real', 'orchestration-e2e', 'cli-process']);
     assert.equal(plan[0]?.files[0], 'tests/build-isolation.test.ts');
-    assert.equal(plan[1]?.files[0], 'tests/autoforge.test.ts');
-    assert.equal(plan[2]?.files[0], 'tests/e2e-autoforge-pipeline.test.ts');
-    assert.deepEqual(plan[3]?.files, ['tests/doctor.test.ts', 'tests/verify-json-e2e.test.ts']);
+    assert.deepEqual(plan[1]?.files, ['tests/autoforge.test.ts']);
+    assert.deepEqual(plan[2]?.files, ['tests/time-machine-validation-prd-real.test.ts']);
+    assert.equal(plan[3]?.files[0], 'tests/e2e-autoforge-pipeline.test.ts');
+    assert.deepEqual(plan[4]?.files, [
+      'tests/canonical-score-determinism.test.ts',
+      'tests/doctor.test.ts',
+      'tests/init.test.ts',
+      'tests/verify-json-e2e.test.ts',
+    ]);
     assert.ok(getDefaultTestConcurrency() >= 1);
     assert.ok(getDefaultTestConcurrency() <= 8);
   });

@@ -1,6 +1,29 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 
+const fastMaturityDeps = {
+  _scoreAllArtifacts: async () => ({}),
+  _assessMaturity: async ({ targetLevel }: { targetLevel: number }) => ({
+    currentLevel: targetLevel,
+    targetLevel,
+    overallScore: 90,
+    dimensions: {
+      functionality: 90,
+      testing: 90,
+      errorHandling: 90,
+      security: 90,
+      uxPolish: 90,
+      documentation: 90,
+      performance: 90,
+      maintainability: 90,
+    },
+    gaps: [],
+    founderExplanation: 'Synthetic unit-test maturity pass.',
+    recommendation: 'proceed',
+    timestamp: new Date(0).toISOString(),
+  }),
+};
+
 // ── Convergence cycle counts per preset ─────────────────────────────────────
 
 describe('MAGIC_PRESETS convergenceCycles', () => {
@@ -170,6 +193,7 @@ describe('runConvergenceCycles', () => {
       _getVerifyStatus: async () => (calls++ === 0 ? 'fail' : 'pass'),
       _runAutoforge: async () => {},
       _runVerify: async () => {},
+      ...fastMaturityDeps,
     });
     assert.strictEqual(result.cyclesRun, 1);
     assert.strictEqual(result.finalStatus, 'pass');
@@ -185,6 +209,7 @@ describe('runConvergenceCycles', () => {
       _getVerifyStatus: async () => 'fail',
       _runAutoforge: async () => {},
       _runVerify: async () => {},
+      ...fastMaturityDeps,
     });
     assert.strictEqual(result.cyclesRun, 2);
     assert.strictEqual(result.finalStatus, 'fail');
@@ -202,12 +227,7 @@ describe('runConvergenceCycles', () => {
       _getVerifyStatus: async () => (statusCalls++ >= 1 ? 'pass' : 'fail'),
       _runAutoforge: async (goal) => { capturedGoals.push(goal); },
       _runVerify: async () => {},
-      _assessMaturity: async () => ({
-        currentLevel: 4, targetLevel: 4, overallScore: 80,
-        dimensions: { functionality: 80, testing: 80, errorHandling: 80, security: 80, uxPolish: 80, documentation: 80, performance: 80, maintainability: 80 },
-        gaps: [], founderExplanation: 'Good.', recommendation: 'proceed',
-        timestamp: new Date().toISOString(),
-      }),
+      ...fastMaturityDeps,
     });
     assert.strictEqual(capturedGoals.length, 1, 'should call autoforge once');
     assert.ok(capturedGoals[0]!.includes('Build payment flow'), 'goal should reference original goal');
@@ -225,6 +245,7 @@ describe('runConvergenceCycles', () => {
       _getVerifyStatus: async () => (statusCalls++ >= 2 ? 'pass' : 'fail'),
       _runAutoforge: async (_goal, waves) => { capturedWaves.push(waves); },
       _runVerify: async () => {},
+      ...fastMaturityDeps,
     });
     assert.strictEqual(capturedWaves.length, 2);
     assert.ok(capturedWaves.every(w => w === 3), 'each cycle should use exactly 3 waves');
@@ -242,6 +263,7 @@ describe('runConvergenceCycles', () => {
       _getVerifyStatus: async () => (statusCalls++ >= 1 ? 'pass' : 'warn'),
       _runAutoforge: async () => { autoforgeCallCount++; },
       _runVerify: async () => {},
+      ...fastMaturityDeps,
     });
     assert.strictEqual(autoforgeCallCount, 1, 'warn status should trigger repair');
     assert.strictEqual(result.finalStatus, 'pass');

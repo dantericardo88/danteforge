@@ -27,13 +27,22 @@ export const TEST_LANES = [
     id: 'orchestration-heavy',
     description: 'Long-running orchestration and autonomous-loop suites.',
     concurrency: getHeavyLaneConcurrency(),
-    nodeArgs: ['--test-timeout=180000'],
+    nodeArgs: ['--test-timeout=600000'],
     patterns: [
       /^tests\/ascend.*\.test\.ts$/,
       /^tests\/autoforge.*\.test\.ts$/,
       /^tests\/autonomous-forge\.test\.ts$/,
       /^tests\/proof-pack\.test\.ts$/,
       /^tests\/self-improve-loop\.test\.ts$/,
+    ],
+  },
+  {
+    id: 'time-machine-prd-real',
+    description: 'PRD-scale Time Machine validation suites that must run without co-scheduled heavy workflows.',
+    concurrency: 1,
+    nodeArgs: ['--test-isolation=process', '--test-timeout=900000'],
+    patterns: [
+      /^tests\/time-machine-validation-prd-real\.test\.ts$/,
     ],
   },
   {
@@ -54,8 +63,10 @@ export const TEST_LANES = [
     patterns: [
       /^tests\/cli-flags\.test\.ts$/,
       /^tests\/cli-release-readiness\.test\.ts$/,
+      /^tests\/canonical-score-determinism\.test\.ts$/,
       /^tests\/config-cli\.test\.ts$/,
       /^tests\/doctor\.test\.ts$/,
+      /^tests\/init\.test\.ts$/,
       /^tests\/verify-json-e2e\.test\.ts$/,
     ],
   },

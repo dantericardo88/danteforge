@@ -36,7 +36,7 @@ describe('time-machine validation harness', () => {
     });
 
     assert.equal(report.schemaVersion, TIME_MACHINE_VALIDATION_SCHEMA_VERSION);
-    assert.equal(report.status, 'partial');
+    assert.equal(report.status, 'passed');
     assert.equal(report.classes.A?.commitCount, 1000);
     assert.equal(report.classes.A?.adversarialDetections.length, 7);
     assert.equal(report.classes.A?.cleanChainFalsePositiveRuns, 100);
