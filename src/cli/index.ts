@@ -986,6 +986,23 @@ timeMachineNodeCommand
   }));
 
 timeMachineNodeCommand
+  .command('label')
+  .description('Interactively adjudicate causal attribution labels from a label-candidates.json corpus file')
+  .option('--candidates <file>', 'Path to label-candidates.json (from build-corpus). Defaults to .danteforge/evidence/time-machine-corpus/label-candidates.json')
+  .option('--out <file>', 'Output labels.json path (default: .danteforge/labels.json)')
+  .option('--auto', 'Accept all suggested labels automatically without prompting (for automation/testing)')
+  .option('--limit <n>', 'Max candidates to label in this session', parseInt)
+  .option('--json', 'Output result summary as JSON')
+  .action(async (opts) => (await C()).timeMachine({
+    action: 'node-label',
+    candidatesFile: opts.candidates,
+    out: opts.out,
+    autoLabel: opts.auto,
+    labelLimit: opts.limit,
+    json: opts.json,
+  }));
+
+timeMachineNodeCommand
   .command('timeline')
   .description('Render a side-by-side ASCII timeline diff of two replay branches')
   .option('--result <file>', 'Path to a stored CounterfactualReplayResult JSON file')

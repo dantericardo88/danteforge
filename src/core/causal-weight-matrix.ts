@@ -33,6 +33,8 @@ export interface DimensionAccuracy {
   magnitudeCalibration: number;
   /** 0-1: fraction of confidence scores that matched empirical accuracy */
   confidenceCalibration: number;
+  /** Running mean of (predictedDelta - measuredDelta). Positive = overestimates; negative = underestimates. */
+  avgSignedError: number;
   lastUpdated: string;
 }
 
@@ -115,6 +117,7 @@ function updateDimensionAccuracy(
     directionAccuracy: 0,
     magnitudeCalibration: 0,
     confidenceCalibration: 0,
+    avgSignedError: 0,
     lastUpdated: new Date().toISOString(),
   };
 
@@ -130,11 +133,13 @@ function updateDimensionAccuracy(
   const empiricalAccuracy = outcome.classification === 'causally-aligned' ? 1 : 0;
   const confidenceMatch = Math.abs(outcome.predictedConfidence - empiricalAccuracy) <= 0.3 ? 1 : 0;
 
+  const signedError = outcome.predictedDelta - outcome.measuredDelta;
   return {
     sampleCount: newN,
     directionAccuracy: (prev.directionAccuracy * n + directionMatch) / newN,
     magnitudeCalibration: (prev.magnitudeCalibration * n + magnitudeMatch) / newN,
     confidenceCalibration: (prev.confidenceCalibration * n + confidenceMatch) / newN,
+    avgSignedError: ((prev.avgSignedError ?? 0) * n + signedError) / newN,
     lastUpdated: new Date().toISOString(),
   };
 }

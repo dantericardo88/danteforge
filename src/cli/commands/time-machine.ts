@@ -26,6 +26,7 @@ import {
   writeAttributionEvaluationReport,
 } from '../../core/time-machine-attribution-eval.js';
 import { buildTimeMachineCorpusBundle } from '../../core/time-machine-corpus.js';
+import { runLabelSession } from '../../core/time-machine-labeler.js';
 import { callLLM } from '../../core/llm.js';
 import { logger } from '../../core/logger.js';
 
@@ -41,6 +42,7 @@ export type TimeMachineAction =
   | 'node-attribute'
   | 'node-eval-attribution'
   | 'node-build-corpus'
+  | 'node-label'
   | 'timeline';
 
 export interface TimeMachineCommandOptions {
@@ -93,6 +95,12 @@ export interface TimeMachineCommandOptions {
   minSessions?: number;
   /** node-build-corpus: minimum downstream labels required by the evidence gate */
   minLabels?: number;
+  /** node-label: path to label-candidates.json (from build-corpus) */
+  candidatesFile?: string;
+  /** node-label: accept all suggestions automatically without prompting */
+  autoLabel?: boolean;
+  /** node-label: max candidates to label in this session */
+  labelLimit?: number;
   /** timeline: path to a stored CounterfactualReplayResult JSON */
   resultFile?: string;
   /** timeline: original timeline id (for store-reconstruction mode) */
@@ -459,6 +467,26 @@ export async function timeMachine(options: TimeMachineCommandOptions): Promise<v
       out(`  replayed sessions: ${report.replayedSessionCount}/${report.minSessions}`);
       out(`  label candidates:   ${report.labelCandidateCount}/${report.minLabels}`);
       out(`  out:                ${report.outDir}`);
+    }
+    return;
+  }
+
+  if (options.action === 'node-label') {
+    const candidates = options.candidatesFile
+      ? path.resolve(cwd, options.candidatesFile)
+      : path.join(cwd, '.danteforge', 'evidence', 'time-machine-corpus', 'label-candidates.json');
+    const outFile = options.out
+      ? path.resolve(cwd, options.out)
+      : path.join(cwd, '.danteforge', 'labels.json');
+    const result = await runLabelSession({
+      candidatesFile: candidates,
+      outFile,
+      auto: options.autoLabel,
+      limit: options.labelLimit,
+      out: options._stdout,
+    });
+    if (options.json) {
+      out(JSON.stringify(result, null, 2));
     }
     return;
   }

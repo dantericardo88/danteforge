@@ -105,6 +105,20 @@ describe('computeCalibrationNarrative', () => {
     assert.ok(magLine!.includes('testing'), 'should mention the miscalibrated dimension');
   });
 
+  it('magnitude line includes overestimate bias when avgSignedError >= 0.05', () => {
+    let m = makeMatrix();
+    // predicted 0.5, measured 0.05 → avgSignedError ≈ +0.45 (overestimates)
+    for (let i = 0; i < 5; i++) {
+      m = applyAttributionOutcomes(m, [
+        outcome({ dimension: 'performance', predictedDelta: 0.5, measuredDelta: 0.05, classification: 'correlation-driven' }),
+      ]);
+    }
+    const lines = computeCalibrationNarrative(m);
+    const magLine = lines.find((l) => l.includes('performance'));
+    assert.ok(magLine !== undefined, 'should have a line for performance');
+    assert.ok(magLine!.includes('overestimates'), 'should say overestimates when avgSignedError is positive and large');
+  });
+
   it('includes recommendation line when any dimension needs more training data', () => {
     let m = makeMatrix();
     // Low direction accuracy: mixed outcomes

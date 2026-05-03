@@ -42,7 +42,7 @@ export function computeCalibrationNarrative(matrix: CausalWeightMatrix): string[
 
   const magnitudeOff = dimEntries
     .filter(([, a]) => a.directionAccuracy >= WELL_CALIBRATED_DIR && a.magnitudeCalibration < MAGNITUDE_OFF_MAG)
-    .map(([n]) => n);
+    .map(([n, a]) => ({ name: n, avgSignedError: a.avgSignedError ?? 0 }));
 
   const directionWeak = dimEntries
     .filter(([, a]) => a.directionAccuracy < WEAK_DIRECTION)
@@ -59,12 +59,19 @@ export function computeCalibrationNarrative(matrix: CausalWeightMatrix): string[
     lines.push(`  Calibration: predictor is well-calibrated on ${formatList(wellCalibrated)}.`);
   }
   if (magnitudeOff.length > 0) {
-    lines.push(`  Magnitude miscalibrated on: ${formatList(magnitudeOff)} — direction correct but size off.`);
+    for (const { name, avgSignedError } of magnitudeOff) {
+      const bias = Math.abs(avgSignedError) >= 0.05
+        ? avgSignedError > 0
+          ? ` (overestimates by ~${avgSignedError.toFixed(2)} on average)`
+          : ` (underestimates by ~${Math.abs(avgSignedError).toFixed(2)} on average)`
+        : '';
+      lines.push(`  Magnitude miscalibrated on: ${name}${bias} — direction correct but size off.`);
+    }
   }
   if (directionWeak.length > 0) {
     lines.push(`  Directional misses on: ${formatList(directionWeak)}.`);
   }
-  const needsTraining = [...directionWeak, ...magnitudeOff];
+  const needsTraining = [...directionWeak, ...magnitudeOff.map(({ name }) => name)];
   if (needsTraining.length > 0) {
     lines.push(`  Recommendation: predictor needs more training data on ${formatList(needsTraining)}.`);
     lines.push(`  Run 'danteforge dojo train --dimension <name>' if Dojo is configured.`);
