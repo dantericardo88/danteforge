@@ -1402,39 +1402,32 @@ program.hook('preAction', async (_thisCommand, actionCommand) => {
 
 // Command group help for discoverability
 program.addHelpText('after', `
-Canonical Commands (use --level light|standard|deep):
-  plan      "What should we build?"         light=review+specify, standard=full planning, deep=+tech-decide+tasks+critique
-  build     "How do we make progress?"      light=forge, standard=magic, deep=inferno+OSS harvest
-  measure   "How good is the project?"      light=score, standard=score+maturity+proof, deep=verify+adversary
-  compete   "Where do we lag the market?"   light=assess, standard=assess+universe, deep=full CHL loop
-  harvest   "What can we learn from OSS?"   light=focused pattern, standard=OSS pass, deep=OSS+local+universe
+The 7 canonical commands (each takes --level light|standard|deep):
 
-Preset Aliases:
-  spark → plan --level light        (zero-token planning entry)
-  magic → build --level standard    (balanced daily-driver)
-  blaze → build --level deep        (high-power push)
-  nova  → build --level deep --planning-prefix
-  inferno → build --level deep --with-harvest  (maximum power)
+  go          Start here — smart entry point for any project state
+  plan        Spec-to-tasks pipeline: specify → clarify → plan → tasks
+  build       Execute development waves (light=forge, standard=magic, deep=inferno)
+  measure     All quality scores in one consistent view (schema: measure.v1)
+  compete     Competitive intelligence and gap analysis
+  harvest     Learn from OSS patterns
+  autoforge   Autonomous improvement loop
 
-Command Groups:
-  Pipeline:        init, constitution, specify, clarify, tasks, forge, verify, synthesize
-  Automation:      autoforge, autoresearch, party, ascend, self-improve
-  Design:          design, ux-refine, browse, qa
-  Intelligence:    tech-decide, debug, lessons, profile, retro, oss, local-harvest
-  Self-Assessment: assess, maturity, score, quality
-  Tools:           config, setup, doctor, dashboard, compact, import, skills, ship, premium, publish-check, mcp-server
-  Meta:            help, review, feedback, update-mcp, awesome-scan, docs, workflow
-
-Run "danteforge help <command>" for detailed help on any command.
-Run "danteforge init" to set up a new project.
+Quick start:
+  danteforge go              — new project wizard or status panel for existing
+  danteforge measure         — see your project score (standard depth, consistent schema)
+  danteforge measure --json  — machine-readable score for scripting/CI
+  danteforge build           — one improvement wave
+  danteforge autoforge --auto — autonomous loop to 9.0/10
 
 Common flags:
-  --level <l>      Canonical intensity: light | standard | deep
-  --light          Skip hard gates (constitution, spec, plan, tests)
-  --prompt         Generate copy-paste prompt instead of auto-executing
-  --profile <name> Use a specific quality profile
-  --worktree       Run in isolated git worktree
-  --verbose        Show debug output
+  --level light|standard|deep   Select depth (default: standard)
+  --json                         Machine-readable JSON output
+  --prompt                       Generate copy-paste prompt (no API call)
+  --worktree                     Isolated git worktree execution
+  --verbose                      Debug output
+
+Run "danteforge help" for the full command reference.
+Run "danteforge init" to set up a new project.
 `);
 
 program
@@ -1882,37 +1875,26 @@ program
 
 program
   .command('measure')
-  .alias('score')
-  .description('Measure project quality. --level selects depth: light=quick score, full=all dimensions, standard=score+maturity+proof, deep=verify+adversary.')
-  .option('--level <level>', 'Canonical intensity: light | full | standard | deep')
-  .option('--full', 'Show all 20 dimensions (like assess)')
-  .option('--strict', 'Use only code-derived signals — excludes mutable STATE.yaml fields for tamper-resistant scoring')
-  .option('--adversary', 'Run a second independent LLM to challenge the self-score and detect inflation')
-  .option('--json', 'Machine-readable JSON output')
+  .description('Unified quality measurement — all scores in one consistent view. --level selects depth: light=fast metrics, standard=full dashboard (default), deep=+retro+nextStep.')
+  .option('--level <level>', 'Canonical intensity: light | standard | deep', 'standard')
+  .option('--json', 'Machine-readable JSON output (schema: measure.v1 — always the same structure)')
+  .option('--certify', 'Generate tamper-evident certificate hash and save to .danteforge/measure-cert.json')
+  .option('--compare <name>', 'Add a competitor comparison column')
+  .option('--cwd <path>', 'Project directory (defaults to cwd)')
   .action(async (opts) => {
-    if (opts.level) {
-      return (await C()).canonicalMeasure({
-        level: opts.level as string,
-        full: opts.full as boolean | undefined,
-        strict: opts.strict as boolean | undefined,
-        adversary: opts.adversary as boolean | undefined,
+    try {
+      const { measure: measureCmd } = await import('./commands/measure.js');
+      await measureCmd({
+        level: opts.level as 'light' | 'standard' | 'deep',
         json: opts.json as boolean | undefined,
+        certify: opts.certify as boolean | undefined,
+        compare: opts.compare as string | undefined,
+        cwd: opts.cwd as string | undefined,
       });
+    } catch (err) {
+      formatAndLogError(err, 'measure');
+      process.exitCode = 1;
     }
-    void (async () => {
-      try {
-        const { score } = await import('./commands/score.js');
-        await score({
-          full: opts.full as boolean | undefined,
-          strict: opts.strict as boolean | undefined,
-          adversary: opts.adversary as boolean | undefined,
-        });
-      } catch (err) {
-        const { formatAndLogError } = await import('../core/format-error.js');
-        formatAndLogError(err, 'score');
-        process.exitCode = 1;
-      }
-    })();
   });
 
 program
