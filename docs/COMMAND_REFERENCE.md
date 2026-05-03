@@ -442,7 +442,7 @@ Answer "How good is the project?" — light=quick score, standard=score+maturity
 
 ### `danteforge assess`
 
-Harsh self-assessment: score all 19 dimensions, benchmark vs competitors, generate masterplan
+Harsh self-assessment: score all 20 dimensions, benchmark vs competitors, generate masterplan
 
 **Options:**
 

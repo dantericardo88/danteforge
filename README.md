@@ -225,6 +225,8 @@ cd danteforge
 npm ci && npm run verify:all && npm link
 ```
 
+Maintainer-only sibling repo sync is explicit: run `npm run sync:dantecode` after a successful build, or use `npm run build:local-sync` when you intentionally want build plus local sync.
+
 ---
 
 ## Key Commands
@@ -236,6 +238,8 @@ danteforge go                     # smart entry: score + recommended next action
 # The five forge temperatures
 danteforge spark "goal"           # planning only, zero tokens
 danteforge ember "goal"           # light execution
+danteforge canvas "goal"          # design-first frontend work
+danteforge magic "goal"           # balanced daily driver
 danteforge blaze "goal"           # full feature
 danteforge nova "goal"            # major build
 danteforge inferno "goal"         # maximum power + OSS harvest
@@ -244,6 +248,9 @@ danteforge inferno "goal"         # maximum power + OSS harvest
 danteforge score                  # fast 0-10 score
 danteforge verify                 # hard quality gate
 danteforge assess                 # full 8-dimension report vs competitors
+danteforge qa --url <url>         # browser-backed QA report
+danteforge ship                   # release-readiness guidance
+danteforge retro                  # session retrospective
 
 # OSS Harvesting
 danteforge oss                    # discover OSS candidates
@@ -260,7 +267,88 @@ danteforge time-machine node timeline                  # side-by-side diff
 danteforge ascend --target 9.0    # run until all quality dimensions hit target
 danteforge magic "goal"           # balanced daily driver
 danteforge autoforge "goal"       # deterministic pipeline with decision recording
+danteforge browse --url <url>     # browser automation helper
+danteforge init                   # bootstrap a workspace
+danteforge autoresearch "goal"    # measured research loop
+danteforge docs                   # generated documentation surface
 ```
+
+Magic usage rule:
+
+| Need | Command | Status |
+|------|---------|--------|
+| Frontend-heavy feature where design should drive implementation | `/canvas` / `danteforge canvas` | Beta |
+| Daily implementation and follow-up PRD gap closing | `/magic` / `danteforge magic` | Balanced (Default) |
+| First-time new matrix dimension + fresh OSS discovery | `/inferno` / `danteforge inferno` | Experimental |
+
+## Workflow Pipeline
+
+<!-- DANTEFORGE_REPO_PIPELINE:START -->
+```text
+review -> constitution -> specify -> clarify -> tech-decide -> plan -> tasks -> design -> forge -> ux-refine -> verify -> synthesize -> retro -> ship
+```
+<!-- DANTEFORGE_REPO_PIPELINE:END -->
+
+## Release Surface
+
+DanteForge 0.17.0 is the current package line. Local tarball examples use `danteforge-0.17.0.tgz`.
+
+Supported surfaces:
+
+| Surface | Status |
+|---------|--------|
+| Local-first CLI | Stable |
+| Live-provider CLI | Beta |
+| Experimental ecosystem adapters and parallel-universe synthesis | Experimental |
+
+Release and readiness references:
+
+- Active readiness guide: [docs/Operational-Readiness-v0.17.0.md](docs/Operational-Readiness-v0.17.0.md)
+- Proof pack tutorial: [docs/tutorials/first-15-minutes.md](docs/tutorials/first-15-minutes.md)
+- Public proof case study: [docs/case-studies/public-example.md](docs/case-studies/public-example.md)
+- Internal proof case study: [docs/case-studies/internal-self-hosting.md](docs/case-studies/internal-self-hosting.md)
+- Release workflow: `.github/workflows/live-canary.yml`
+- Top-level command docs include `danteforge browse`, `danteforge qa`, `danteforge retro`, and `danteforge ship`.
+- Install smoke gate: `npm run release:check:install-smoke`
+- Built CLI smoke gate: `npm run check:cli-smoke`
+- Live verification: `npm run verify:live`
+- GA chain: `npm run release:ga`
+- Anti-Stub Doctrine gate: `npm run check:anti-stub`
+- Plugin manifest checks: `.claude-plugin` plus `npm run check:plugin-manifests`
+- Strict release hygiene: `npm run check:repo-hygiene:strict`
+- Audit gate: `npm audit --omit=dev`
+- Harvested skill import manifest: `IMPORT_MANIFEST.yaml`
+
+Live verification environment contract:
+
+```bash
+DANTEFORGE_LIVE_PROVIDERS=openai,claude,gemini,grok,ollama
+OPENAI_API_KEY=...
+ANTHROPIC_API_KEY=...
+GEMINI_API_KEY=...
+XAI_API_KEY=...
+OLLAMA_BASE_URL=http://127.0.0.1:11434
+```
+
+Assistant setup is explicit after package installation. Secrets live in `~/.danteforge/config.yaml`.
+
+```bash
+danteforge setup assistants --assistants codex
+danteforge setup assistants --assistants cursor
+```
+
+See [docs/Standalone-Assistant-Setup.md](docs/Standalone-Assistant-Setup.md) and [docs/Codex-Install.md](docs/Codex-Install.md). What Codex can do today depends on local Codex versus hosted Codex limits; hosted Codex cannot mutate your local assistant registry unless you run setup locally.
+
+UX refinement is explicit:
+
+```bash
+danteforge ux-refine --openpencil
+danteforge ux-refine --prompt
+```
+
+## Who This Is For
+
+DanteForge is for operators who want local-first agentic development with receipt-backed gates, OSS harvesting, release discipline, and replayable decision history.
 
 ---
 

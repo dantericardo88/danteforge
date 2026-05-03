@@ -383,7 +383,7 @@ async function orientAndClassify(
         if (strictScore < target) matDim.status = 'in-progress';
       }
     }
-    // SWE-bench is not in the harsh-scorer's 19 dimensions — it's a feature-
+    // SWE-bench is not in the harsh-scorer's 20 dimensions — it's a feature-
     // matrix dim only. Read the current score from the bench-results probe
     // instead of letting it stay frozen at whatever the matrix author wrote.
     if (isSweBenchDimension(matDim.id)) {

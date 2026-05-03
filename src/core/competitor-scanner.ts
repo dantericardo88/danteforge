@@ -451,7 +451,7 @@ const DEV_TOOL_BASELINES: CompetitorProfile[] = [
   },
 ];
 
-// All 19 dimension keys for iteration
+// All 20 dimension keys for iteration
 const ALL_DIMENSIONS: ScoringDimension[] = [
   'functionality', 'testing', 'errorHandling', 'security',
   'uxPolish', 'documentation', 'performance', 'maintainability',

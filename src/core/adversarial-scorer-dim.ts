@@ -175,7 +175,7 @@ async function callLLMFn(
 // ── Public API ────────────────────────────────────────────────────────────────
 
 /**
- * Score all 19 dimensions adversarially, one LLM call per dimension.
+ * Score all 20 dimensions adversarially, one LLM call per dimension.
  * Returns full AdversarialScoreResult with per-dimension breakdown.
  */
 export async function generateAdversarialScore(

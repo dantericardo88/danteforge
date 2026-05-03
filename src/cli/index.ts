@@ -1868,7 +1868,7 @@ program
   .alias('score')
   .description('Measure project quality. --level selects depth: light=quick score, full=all dimensions, standard=score+maturity+proof, deep=verify+adversary.')
   .option('--level <level>', 'Canonical intensity: light | full | standard | deep')
-  .option('--full', 'Show all 19 dimensions (like assess)')
+  .option('--full', 'Show all 20 dimensions (like assess)')
   .option('--strict', 'Use only code-derived signals — excludes mutable STATE.yaml fields for tamper-resistant scoring')
   .option('--adversary', 'Run a second independent LLM to challenge the self-score and detect inflation')
   .option('--json', 'Machine-readable JSON output')

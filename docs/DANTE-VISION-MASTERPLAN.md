@@ -3,18 +3,20 @@
 
 *Written 2026-04-30. Last updated 2026-05-02. Reference document for all Dante agents and contributors.*
 
-> **Status: Phases 0-4 infrastructure COMPLETE. Phase 5 evidence in progress.**
-> Core verification is green: focused Time Machine suite 39/39, `npm run typecheck`, `npm run lint`, `npm run check:anti-stub`, `npm run build`, and full `npm test` passed in the current sprint.
+> **Status: Phases 0-4 infrastructure COMPLETE. Phase 5 GATE-1 COMPLETE; attribution corpus gate still open.**
+> Core verification is green from the infrastructure sprint: focused Time Machine suite 39/39, `npm run typecheck`, `npm run lint`, `npm run check:anti-stub`, `npm run build`, and full `npm test` passed. The latest GATE-1 hardening patch was rechecked with `npm run typecheck`, `node --import tsx --test tests/llm-retryable-timeout.test.ts`, and `npm run build`.
 >
 > **Ecosystem sprint update (2026-05-01):**
 > - DanteForge replay is now isolated, fail-closed on restore, and executes replay pipelines in a child process under `.danteforge/time-machine/replays/<timelineId>/workspace`.
 > - DecisionNode recorder env overrides are implemented: `DANTEFORGE_DECISION_STORE`, `DANTEFORGE_DECISION_SESSION_ID`, `DANTEFORGE_DECISION_TIMELINE_ID`, and `DANTEFORGE_DECISION_PARENT_ID`.
 > - DanteAgents, DanteCode, DanteHarvest, and DanteDojo now emit/export DecisionNode-compatible JSONL through product-local stores.
 > - Attribution precision/recall evaluator is implemented as `danteforge time-machine node eval-attribution`.
-> - Full DELEGATE-52 live launcher is implemented as `npm run delegate52:live-full`; the first direct CLI attempt was blocked by missing shell credentials, and the corrected full launcher is running with a hard `$160` cap.
+> - Full DELEGATE-52 live evidence completed on 2026-05-02 at `.danteforge/evidence/delegate52-live-full-2026-05-01T02-50-35-216Z/result.json`.
+> - GATE-1 result: 48/48 public domains, 10 round-trips/domain, `surgical-patch`, `budgetExhausted=false`, total estimated spend `$89.208207` against the `$160` cap, raw LLM divergence rate `97.9167%`, user-observed corruption rate `0%`, unmitigated divergences `0`, causal-source identification `194/466 = 41.6309%`.
+> - Receipt caveat: the `screenplay` domain used public sample `screenplay4`; Anthropic Claude blocked the first forward output via provider content filtering, then the explicit fallback model `gpt-4o` completed the domain. This is recorded in `artifacts/delegate52-domain-results/screenplay.json` with `providerFallbackUsed=true`.
 >
-> **Honest gaps remaining:** full DELEGATE-52 live result must finish with no `budget_exhausted`; at least 30 replayed sessions and 100 labeled downstream nodes must be collected; causal attribution must meet precision >= 0.85, recall >= 0.80, and false-independent rate <= 0.05 before the paper can claim 100% completion.
-> **Next:** let GATE-1 finish -> label the real trace corpus -> run `node eval-attribution` -> update paper tables only with measured receipts.
+> **Honest gaps remaining:** the default DecisionNode store currently has only 5 nodes. The corpus builder produced `.danteforge/evidence/time-machine-corpus/2026-05-02T00-54-20-488Z/manifest.json` with `0/30` replayed sessions and `0/100` label candidates, so causal attribution precision/recall remains unmeasured. The paper cannot claim 100% completion until at least 30 replayed sessions and 100 human-adjudicated downstream labels exist and `eval-attribution` reports precision >= 0.85, recall >= 0.80, and false-independent rate <= 0.05.
+> **Next:** collect/export the real replay corpus -> human-adjudicate `labels.json` -> run `node eval-attribution` -> update paper tables only with measured receipts.
 
 ---
 
@@ -330,7 +332,7 @@ Each of these is a node. Each can be branched. Each branch produces a new experi
   - areNodesEquivalent: actor type/product + >50% keyword overlap + success status
 - [x] "Same school" detection: both timelines converge to equivalent outcomes
 - [x] Attribution metrics evaluator added for labeled corpora: precision, recall, false-independent rate, exact match, and confusion matrix
-- [ ] **Gap:** Precision/recall on a real LLM multi-session corpus is still unmeasured until at least 30 replayed sessions / 100 labeled downstream nodes exist.
+- [ ] **Gap:** Precision/recall on a real LLM multi-session corpus is still unmeasured. The 2026-05-02 corpus manifest at `.danteforge/evidence/time-machine-corpus/2026-05-02T00-54-20-488Z/manifest.json` records `0/30` replayed sessions and `0/100` label candidates in the current default DecisionNode store.
 - [ ] **Gap:** LLM escalation path tested but not benchmarked for accuracy improvement over heuristic.
 
 ### Phase 4 — Ecosystem Instrumentation (BUILT — product emitters/exporters deployed)
@@ -346,13 +348,17 @@ Each of these is a node. Each can be branched. Each branch produces a new experi
 - [x] DanteDojo: evidence bundle export for train/eval/promote/checkpoint/passport evidence nodes
 - [x] Typecheck/lint/build/focused tests green across the touched surfaces
 - [ ] **Gap:** Visual timeline UI (ChatCockpit rendering) — described in vision, not yet built
-- [ ] **Gap:** Paper needs real DELEGATE-52 full-run and precision/recall numbers before submission
+- [ ] **Gap:** Paper now has real DELEGATE-52 full-run numbers available, but still needs human-adjudicated attribution precision/recall numbers before submission.
 
-### Phase 5 — Validation & Publication (Pending)
+### Phase 5 — Validation & Publication (GATE-1 complete; attribution evidence pending)
 - [x] Fix live replay: child-process replay runner, deterministic env/cwd, fail-closed restore
 - [x] Build full pipeline replay: re-execute DanteForge pipeline from branch point rather than a single LLM call
-- [ ] Collect real agent decision history: minimum 30 replayed sessions and 100 labeled downstream nodes
-- [ ] Full 48-domain DELEGATE-52 run: launched via `npm run delegate52:live-full` with `$160` cap; final result pending
+- [ ] Collect real agent decision history: minimum 30 replayed sessions and 100 human-adjudicated downstream labels
+- [x] Full 48-domain DELEGATE-52 run: completed 2026-05-02 via `npm run delegate52:live-full` with `$160` cap. Receipt: `.danteforge/evidence/delegate52-live-full-2026-05-01T02-50-35-216Z/result.json`.
+  - `status=live_completed`, `completedDomainCount=48`, `failedDomainCount=0`, `budgetExhausted=false`
+  - `totalCostUsd=$89.208207`, `rawCorruptionRate=97.9167%`, `userObservedCorruptionRate=0%`
+  - `totalUnmitigatedDivergences=0`, `totalDivergencesObserved=466`, `totalCausalSourceIdentified=194`, `causalSourceIdentificationRate=41.6309%`
+  - Caveat: `screenplay` completed with explicit fallback `gpt-4o` after Claude content filtering; see `artifacts/delegate52-domain-results/screenplay.json`.
 - [ ] Measure causal attribution precision/recall on live multi-session corpus
 - [ ] Visual timeline UI
 - [ ] DanteCode production integration
@@ -376,6 +382,8 @@ Each of these is a node. Each can be branched. Each branch produces a new experi
 | `src/sdk.ts` | Public SDK exports — all Time Machine types and functions | ✅ BUILT |
 | `scripts/time-machine-demo.ts` | Runnable demo: `npm run time-machine:demo` | ✅ BUILT |
 | `scripts/delegate52-live-full.mjs` | GATE-1 full DELEGATE-52 launcher with `.env` loading, env bridging, receipts, and `$160` default cap | BUILT |
+| `.danteforge/evidence/delegate52-live-full-2026-05-01T02-50-35-216Z/result.json` | Full 48-domain live DELEGATE-52 GATE-1 result | COMPLETE |
+| `.danteforge/evidence/time-machine-corpus/2026-05-02T00-54-20-488Z/manifest.json` | Current corpus gate manifest from default DecisionNode store | BLOCKED: 0/30 sessions, 0/100 labels |
 | `tests/decision-node.test.ts` | 14 tests — schema, hash chain, store, adapter | ✅ 14/14 |
 | `tests/time-machine-replay.test.ts` | 14 tests — diff, causal chain, dry-run, live mode | ✅ 14/14 |
 | `tests/time-machine-causal-attribution.test.ts` | 21 tests — classification, convergence, equivalence | ✅ 21/21 |
@@ -516,4 +524,4 @@ That is the time machine. That is DanteForge's reason for existing.
 
 *This document is the canonical reference for the Dante Time Machine vision. All agents working in this ecosystem should treat the `DecisionNode` schema and three-gap model as authoritative until superseded by a newer version of this document.*
 
-*Last updated: 2026-05-01 — Phases 0-4 infrastructure complete across DanteForge, DanteAgents, DanteCode, DanteHarvest, and DanteDojo. Phase 5 evidence remains pending until full DELEGATE-52 and real-corpus attribution metrics finish.*
+*Last updated: 2026-05-02 — Phases 0-4 infrastructure complete across DanteForge, DanteAgents, DanteCode, DanteHarvest, and DanteDojo. Phase 5 GATE-1 DELEGATE-52 live evidence is complete; Phase 5 is not 100% complete until the real replay corpus is collected, human-adjudicated, and `eval-attribution` passes the precision/recall thresholds.*

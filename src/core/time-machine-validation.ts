@@ -192,6 +192,11 @@ export interface ClassDResult {
     /** Live-run only: recoverability/failure detail for durable partial receipts. */
     recoverable?: boolean;
     errorMessage?: string;
+    primaryErrorMessage?: string;
+    sampleId?: string;
+    model?: string;
+    fallbackModel?: string;
+    providerFallbackUsed?: boolean;
     completedAt?: string;
     resumedFrom?: string;
   }>;
@@ -665,7 +670,7 @@ async function runDelegate52Live(
   domains: string[],
   options: RunTimeMachineValidationOptions,
   isDryRun: boolean,
-  importedByDomain: Map<string, { content: string; forwardInstructions?: string; backwardInstructions?: string }>,
+  importedByDomain: Map<string, { content: string; forwardInstructions?: string; backwardInstructions?: string; sampleId?: string }>,
 ): Promise<ClassDResult> {
   const roundTrips = Math.max(1, Math.min(options.roundTripsPerDomain ?? 10, 20));
   const budgetUsd = options.budgetUsd ?? 0;
@@ -749,6 +754,10 @@ async function runDelegate52Live(
         result,
         isDryRun ? 'live_dry_run_completed' : 'live_completed',
         importedEntry?.content !== undefined ? 'imported' : 'synthetic',
+        {
+          sampleId: importedEntry?.sampleId,
+          model: resolveDelegate52ActiveModel(),
+        },
       );
       consecutiveRecoverableFailures = 0;
       domainRows.push(row);
@@ -759,8 +768,84 @@ async function runDelegate52Live(
         resumeFrom,
       });
     } catch (err) {
+      const fallbackModel = resolveDelegate52FallbackModel(err, isDryRun);
+      if (fallbackModel) {
+        try {
+          const result = await runDelegate52DomainRoundTrip(
+            domain,
+            roundTrips,
+            makeDefaultLlmCaller(false, fallbackModel),
+            Math.max(0, budgetUsd - beforeDomain.totalCostUsd),
+            isDryRun,
+            importedEntry?.content,
+            roundTripDir,
+            mitigation,
+            importedEntry?.forwardInstructions,
+            importedEntry?.backwardInstructions,
+          );
+          const row = buildDelegate52DomainRow(
+            domain,
+            result,
+            'live_completed',
+            importedEntry?.content !== undefined ? 'imported' : 'synthetic',
+            {
+              sampleId: importedEntry?.sampleId,
+              model: resolveDelegate52ActiveModel(),
+              fallbackModel,
+              providerFallbackUsed: true,
+              primaryErrorMessage: errorMessage(err).slice(0, 2000),
+            },
+          );
+          consecutiveRecoverableFailures = 0;
+          domainRows.push(row);
+          await writeDelegate52DomainReceipt(outDir, row, {
+            complete: true,
+            roundTrips,
+            mitigation,
+            resumeFrom,
+          });
+          await writeDelegate52Progress(outDir, domains, domainRows, {
+            isDryRun,
+            roundTrips,
+            budgetUsd,
+            priorSpendUsd,
+            mitigation,
+            resumeFrom,
+          });
+          continue;
+        } catch (fallbackErr) {
+          const recoverable = isRecoverableDelegate52Error(fallbackErr);
+          const row = buildFailedDelegate52DomainRow(domain, fallbackErr, recoverable, {
+            sampleId: importedEntry?.sampleId,
+            model: resolveDelegate52ActiveModel(),
+            fallbackModel,
+            providerFallbackUsed: true,
+            primaryErrorMessage: errorMessage(err).slice(0, 2000),
+          });
+          consecutiveRecoverableFailures = recoverable ? consecutiveRecoverableFailures + 1 : 0;
+          domainRows.push(row);
+          await writeDelegate52DomainReceipt(outDir, row, {
+            complete: false,
+            roundTrips,
+            mitigation,
+            resumeFrom,
+          });
+          await writeDelegate52Progress(outDir, domains, domainRows, {
+            isDryRun,
+            roundTrips,
+            budgetUsd,
+            priorSpendUsd,
+            mitigation,
+            resumeFrom,
+          });
+          continue;
+        }
+      }
       const recoverable = isRecoverableDelegate52Error(err);
-      const row = buildFailedDelegate52DomainRow(domain, err, recoverable);
+      const row = buildFailedDelegate52DomainRow(domain, err, recoverable, {
+        sampleId: importedEntry?.sampleId,
+        model: resolveDelegate52ActiveModel(),
+      });
       consecutiveRecoverableFailures = recoverable ? consecutiveRecoverableFailures + 1 : 0;
       domainRows.push(row);
       await writeDelegate52DomainReceipt(outDir, row, {
@@ -949,6 +1034,8 @@ function isRecoverableDelegate52Error(err: unknown): boolean {
   const msg = err.message.toLowerCase();
   return msg.includes('request timed out after')
     || msg.includes('timed out')
+    || msg.includes('returned an empty response')
+    || msg.includes('content filtering policy')
     || msg.includes('fetch failed')
     || msg.includes('rate limit')
     || msg.includes('429')
@@ -956,6 +1043,20 @@ function isRecoverableDelegate52Error(err: unknown): boolean {
     || msg.includes('503')
     || msg.includes('econnreset')
     || msg.includes('socket hang up');
+}
+
+function isProviderContentFilterError(err: unknown): boolean {
+  return err instanceof Error && err.message.toLowerCase().includes('content filtering policy');
+}
+
+function resolveDelegate52ActiveModel(): string | undefined {
+  return process.env.DANTEFORGE_DELEGATE52_MODEL ?? process.env.ANTHROPIC_MODEL;
+}
+
+function resolveDelegate52FallbackModel(err: unknown, isDryRun: boolean): string | undefined {
+  if (isDryRun || !isProviderContentFilterError(err)) return undefined;
+  const fallbackModel = process.env.DANTEFORGE_DELEGATE52_FALLBACK_MODEL?.trim();
+  return fallbackModel || undefined;
 }
 
 function errorMessage(err: unknown): string {
@@ -1101,6 +1202,13 @@ function buildDelegate52DomainRow(
   result: DomainRoundTripResult,
   status: string,
   documentSource: 'imported' | 'synthetic',
+  options: {
+    sampleId?: string;
+    model?: string;
+    fallbackModel?: string;
+    providerFallbackUsed?: boolean;
+    primaryErrorMessage?: string;
+  } = {},
 ): Delegate52DomainRow {
   return {
     domain,
@@ -1116,6 +1224,11 @@ function buildDelegate52DomainRow(
     byteIdenticalAfterRoundTrips: result.byteIdenticalAfterRoundTrips,
     timeMachineCommitIds: result.timeMachineCommitIds,
     documentSource,
+    ...(options.sampleId ? { sampleId: options.sampleId } : {}),
+    ...(options.model ? { model: options.model } : {}),
+    ...(options.fallbackModel ? { fallbackModel: options.fallbackModel } : {}),
+    ...(options.providerFallbackUsed !== undefined ? { providerFallbackUsed: options.providerFallbackUsed } : {}),
+    ...(options.primaryErrorMessage ? { primaryErrorMessage: options.primaryErrorMessage } : {}),
     retryCount: result.retryCount,
     mitigatedDivergences: result.mitigatedDivergences,
     unmitigatedDivergences: result.unmitigatedDivergences,
@@ -1147,6 +1260,13 @@ function buildFailedDelegate52DomainRow(
   domain: string,
   err: unknown,
   recoverable: boolean,
+  options: {
+    sampleId?: string;
+    model?: string;
+    fallbackModel?: string;
+    providerFallbackUsed?: boolean;
+    primaryErrorMessage?: string;
+  } = {},
 ): Delegate52DomainRow {
   return {
     domain,
@@ -1158,6 +1278,11 @@ function buildFailedDelegate52DomainRow(
     costUsd: 0,
     recoverable,
     errorMessage: errorMessage(err).slice(0, 2000),
+    ...(options.sampleId ? { sampleId: options.sampleId } : {}),
+    ...(options.model ? { model: options.model } : {}),
+    ...(options.fallbackModel ? { fallbackModel: options.fallbackModel } : {}),
+    ...(options.providerFallbackUsed !== undefined ? { providerFallbackUsed: options.providerFallbackUsed } : {}),
+    ...(options.primaryErrorMessage ? { primaryErrorMessage: options.primaryErrorMessage } : {}),
     completedAt: new Date().toISOString(),
   };
 }
@@ -1546,18 +1671,35 @@ interface Delegate52InstructionPair {
   backwardInstructions?: string;
 }
 
-function buildImportedDocumentMap(imported: Array<Record<string, unknown>>): Map<string, { content: string; forwardInstructions?: string; backwardInstructions?: string }> {
-  const out = new Map<string, { content: string; forwardInstructions?: string; backwardInstructions?: string }>();
+const DELEGATE52_SAMPLE_PREFERENCES: Record<string, string[]> = {
+  protein: ['protein5', 'protein2', 'protein1'],
+  screenplay: ['screenplay4', 'screenplay2', 'screenplay5', 'screenplay1'],
+};
+
+function buildImportedDocumentMap(imported: Array<Record<string, unknown>>): Map<string, { content: string; forwardInstructions?: string; backwardInstructions?: string; sampleId?: string }> {
+  const out = new Map<string, { content: string; forwardInstructions?: string; backwardInstructions?: string; sampleId?: string }>();
   for (const row of imported) {
     const domain = String(row.domain ?? row.sample_type ?? '');
-    if (!domain || out.has(domain)) continue;
+    if (!domain) continue;
     const content = extractDelegate52DocumentContent(row);
     if (content !== undefined) {
+      const sampleId = typeof row.sample_id === 'string' ? row.sample_id : undefined;
+      const existing = out.get(domain);
+      if (existing && !shouldPreferDelegate52Sample(domain, sampleId, existing.sampleId)) continue;
       const instructions = extractDelegate52ReversiblePromptPair(row);
-      out.set(domain, { content, ...instructions });
+      out.set(domain, { content, ...instructions, ...(sampleId ? { sampleId } : {}) });
     }
   }
   return out;
+}
+
+function shouldPreferDelegate52Sample(domain: string, candidateSampleId: string | undefined, existingSampleId: string | undefined): boolean {
+  const preferences = DELEGATE52_SAMPLE_PREFERENCES[domain];
+  if (!preferences) return false;
+  const candidateRank = candidateSampleId ? preferences.indexOf(candidateSampleId) : -1;
+  if (candidateRank < 0) return false;
+  const existingRank = existingSampleId ? preferences.indexOf(existingSampleId) : -1;
+  return existingRank < 0 || candidateRank < existingRank;
 }
 
 /**
@@ -1655,7 +1797,11 @@ function buildForwardPrompt(domain: string, current: string, instructions?: stri
   const instruction = instructions
     ? `Apply the following transformation to this document:\n${instructions}`
     : `Perform the canonical forward edit for a "${domain}" document.`;
-  return `${instruction}\n\nReturn ONLY the transformed document, no commentary.\n\nDocument:\n${current}`;
+  return `${delegate52SafetyContext(domain)}\n\n${instruction}\n\nReturn ONLY the transformed document, no commentary.\n\nDocument:\n${current}`;
+}
+
+function delegate52SafetyContext(domain: string): string {
+  return `Context: This is a benign DELEGATE-52 document-transformation benchmark for the "${domain}" domain. The source may include public-domain fictional, historical, or domain-specific text. Do not add new sensitive content or advice; only transform or restore the supplied document exactly as requested.`;
 }
 
 function buildBackwardPrompt(
@@ -1680,12 +1826,12 @@ function buildBackwardPrompt(
   // Detect edit-journal context: it starts with the forward diff header.
   const isEditJournal = feedbackHint?.startsWith('Edit journal');
   if (isEditJournal) {
-    return `${undoInstruction}\n\nThe substrate has recorded the exact line-level changes made:\n\n${feedbackHint}\n\nReturn ONLY the restored document, no commentary.\n\nEdited document:\n${edited}`;
+    return `${delegate52SafetyContext(domain)}\n\n${undoInstruction}\n\nThe substrate has recorded the exact line-level changes made:\n\n${feedbackHint}\n\nReturn ONLY the restored document, no commentary.\n\nEdited document:\n${edited}`;
   }
   const hintBlock = feedbackHint
     ? `\n\nFeedback from previous attempt(s) — your earlier output drifted from the original. Pay specific attention to these regions:\n${feedbackHint}\n`
     : '';
-  return `${undoInstruction} Return ONLY the restored document, no commentary.${hintBlock}\n\nEdited document:\n${edited}`;
+  return `${delegate52SafetyContext(domain)}\n\n${undoInstruction} Return ONLY the restored document, no commentary.${hintBlock}\n\nEdited document:\n${edited}`;
 }
 
 /**
@@ -1873,7 +2019,7 @@ function applySurgicalPatch(llmOutput: string, original: string): { patched: str
   return { patched: patched.join('\n'), patchedLines };
 }
 
-function makeDefaultLlmCaller(isDryRun: boolean): (prompt: string) => Promise<{ output: string; costUsd: number }> {
+function makeDefaultLlmCaller(isDryRun: boolean, modelOverride?: string): (prompt: string) => Promise<{ output: string; costUsd: number }> {
   if (isDryRun) {
     // Dry-run: simulate by returning the input document unchanged (passes round-trip equality trivially).
     return async (prompt: string) => {
@@ -1891,7 +2037,7 @@ function makeDefaultLlmCaller(isDryRun: boolean): (prompt: string) => Promise<{ 
   // gate passes (key/model checks use env vars) but the actual LLM call goes to the wrong target.
   return async (prompt: string) => {
     const { callLLM } = await import('./llm.js');
-    const delegateModel = process.env.DANTEFORGE_DELEGATE52_MODEL ?? '';
+    const delegateModel = modelOverride ?? process.env.DANTEFORGE_DELEGATE52_MODEL ?? '';
     const providerOverride = delegateModel.startsWith('claude') ? 'claude'
       : delegateModel.startsWith('gpt') || delegateModel.startsWith('o1') || delegateModel.startsWith('o3') ? 'openai'
       : delegateModel.startsWith('gemini') ? 'gemini'

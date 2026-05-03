@@ -67,7 +67,7 @@ describe('canonical score determinism', () => {
     }
   });
 
-  it('assess --json emits JSON-only canonical score with all 19 dimensions', () => {
+  it('assess --json emits JSON-only canonical score with all 20 dimensions', () => {
     const result = runTsxCli(['assess', '--json'], { timeout: 180000 });
     assert.equal(result.status, 0, result.error?.message ?? result.stderr);
     assert.equal(result.stderr.trim(), '');
@@ -81,6 +81,6 @@ describe('canonical score determinism', () => {
     assert.equal(typeof parsed.overall, 'number');
     assert.equal(typeof parsed.gitSha, 'string');
     assert.equal(parsed.source, 'canonical-v1');
-    assert.equal(Object.keys(parsed.dimensions).length, 19);
+    assert.equal(Object.keys(parsed.dimensions).length, 20);
   });
 });

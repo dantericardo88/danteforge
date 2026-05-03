@@ -14,6 +14,7 @@ import { LLMError } from './errors.js';
 const DEFAULT_RETRY_DELAYS_MS = [1000, 3000];
 export const DEFAULT_LLM_REQUEST_TIMEOUT_MS = 30_000;
 export const DEFAULT_OLLAMA_REQUEST_TIMEOUT_MS = 180_000;
+export const DEFAULT_LLM_MAX_TOKENS = 4096;
 
 export interface ProbeResult {
   ok: boolean;
@@ -63,6 +64,7 @@ export function isRetryableError(err: unknown): boolean {
     || msg.includes('etimedout')
     || msg.includes('socket hang up')
     || msg.includes('request timed out after')
+    || msg.includes('returned an empty response')
     || msg.includes('fetch failed')
     || msg.includes('rate limit')
     || msg.includes('429')
@@ -88,6 +90,12 @@ function resolveRetryDelays(options: CallLLMOptions): number[] {
   return options._retryDelays
     ?? parseRetryDelays(process.env.DANTEFORGE_LLM_RETRY_DELAYS_MS)
     ?? DEFAULT_RETRY_DELAYS_MS;
+}
+
+function resolveLlmMaxTokens(env: NodeJS.ProcessEnv = process.env): number {
+  const parsed = Number.parseInt(env.DANTEFORGE_LLM_MAX_TOKENS ?? '', 10);
+  if (!Number.isFinite(parsed) || parsed <= 0) return DEFAULT_LLM_MAX_TOKENS;
+  return Math.max(256, Math.min(parsed, 20000));
 }
 
 function displayProvider(provider: LLMProvider): string {
@@ -260,6 +268,19 @@ function extractClaudeText(payload: unknown): string {
     .map(block => block.text)
     .join('')
     .trim();
+}
+
+function describeClaudeEmptyResponse(payload: unknown): string {
+  const response = payload as {
+    stop_reason?: string;
+    stop_sequence?: string | null;
+    content?: Array<{ type?: string; text?: string }>;
+  };
+  const stopReason = response.stop_reason ? ` stop_reason=${response.stop_reason}` : '';
+  const contentTypes = Array.isArray(response.content)
+    ? response.content.map(block => block?.type ?? 'unknown').join(',')
+    : 'none';
+  return `${stopReason} content_types=${contentTypes}`.trim();
 }
 
 function extractGeminiText(payload: unknown): string {
@@ -641,7 +662,7 @@ async function callOpenAICompatible(
     body: JSON.stringify({
       model,
       messages: [{ role: 'user', content: prompt }],
-      max_tokens: 4096,
+      max_tokens: resolveLlmMaxTokens(),
     }),
   }, undefined, fetchFn);
 
@@ -669,14 +690,15 @@ async function callClaude(
     },
     body: JSON.stringify({
       model,
-      max_tokens: 4096,
+      max_tokens: resolveLlmMaxTokens(),
       messages: [{ role: 'user', content: prompt }],
     }),
   }, undefined, fetchFn);
 
   const text = extractClaudeText(payload);
   if (!text) {
-    throw new Error('Anthropic Claude returned an empty response.');
+    const details = describeClaudeEmptyResponse(payload);
+    throw new Error(`Anthropic Claude returned an empty response${details ? ` (${details})` : ''}.`);
   }
   const usage = extractClaudeUsageLocal(payload);
   return { text, ...(usage ? { usage } : {}) };

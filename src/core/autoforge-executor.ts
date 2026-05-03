@@ -15,6 +15,10 @@ export async function executeAutoforgeCommand(
   cwd: string,
 ): Promise<{ success: boolean }> {
   const parts = command.trim().split(/\s+/).filter(Boolean);
+  if (parts.length === 0) {
+    return { success: false };
+  }
+
   const result = spawnSync(process.execPath, [process.argv[1]!, ...parts], {
     cwd,
     stdio: 'inherit',

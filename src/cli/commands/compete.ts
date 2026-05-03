@@ -208,7 +208,7 @@ async function actionStatus(options: CompeteOptions, cwd: string): Promise<Compe
 
   if (!matrix) {
     logger.info('No CHL matrix found. Run `danteforge compete --init` to bootstrap from a competitor scan.');
-    logger.info('The Competitive Harvest Loop (CHL) tracks your gaps against competitors across 19 dimensions.');
+    logger.info('The Competitive Harvest Loop (CHL) tracks your gaps against competitors across 20 dimensions.');
     return { action: 'status', matrixPath };
   }
 

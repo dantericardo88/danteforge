@@ -61,7 +61,7 @@ export interface ScoreResult {
 
 export interface ScoreOptions {
   cwd?: string;
-  full?: boolean;   // --full: show all 19 dimensions with weights
+  full?: boolean;   // --full: show all 20 dimensions with weights
   /**
    * --strict: Override autonomy/selfImprovement/tokenEconomy with tamper-resistant
    * code-derived signals. Excludes mutable STATE.yaml config fields entirely.
@@ -578,7 +578,7 @@ function renderDimensionsBlock(
 ): void {
   if (full) {
     const dims = (Object.entries(result.displayDimensions) as [ScoringDimension, number][]).sort((a, b) => a[1] - b[1]);
-    emit('  All 19 dimensions (worst gaps first):');
+    emit('  All 20 dimensions (worst gaps first):');
     emit('');
     dims.forEach(([dim, sc]) => {
       const wt = Math.round((SCORE_DISPLAY_WEIGHTS[dim] ?? 0) * 100);
@@ -587,7 +587,7 @@ function renderDimensionsBlock(
     emit('');
     emit('  For LLM competitor benchmarking: danteforge assess');
   } else {
-    emit('  Run with --full for all 19 dimensions.');
+    emit('  Run with --full for all 20 dimensions.');
   }
 }
 
@@ -710,7 +710,7 @@ function renderDualScorePanel(
     }
   } else if (adv.dimensions.length > 1) {
     emit('');
-    emit('  Run `danteforge score --adversary --full` for all 19 dimension scores.');
+    emit('  Run `danteforge score --adversary --full` for all 20 dimension scores.');
   }
 
   if (adv.adversaryResolution.mode === 'self-challenge') {
