@@ -2345,6 +2345,19 @@ program
     }
   });
 
+// Hide non-canonical commands from default --help.
+// The 7 canonical commands + 4 utility commands stay visible.
+// All other commands still work — just not shown in the default listing.
+const VISIBLE_COMMANDS = new Set([
+  'go', 'plan', 'build', 'measure', 'compete', 'harvest', 'autoforge',
+  'config', 'doctor', 'init', 'help',
+]);
+for (const cmd of program.commands) {
+  if (!VISIBLE_COMMANDS.has(cmd.name())) {
+    (cmd as unknown as { _hidden: boolean })._hidden = true;
+  }
+}
+
 const stateWarmupCommand = process.argv.find((arg, index) => index > 1 && !arg.startsWith('-'));
 if (!new Set(['economy', 'mcp-server']).has(stateWarmupCommand ?? '')) {
   loadState().catch(() => { /* state will be created on first write */ });
