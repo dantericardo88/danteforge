@@ -162,6 +162,14 @@ export async function autoforge(goal?: string, options: {
   noPredictor?: boolean;
   /** Pause loop when avg PDSE score reaches this value */
   pauseAt?: number;
+  /** Loop until displayScore >= target (from ascend). Default: 9.0 when --auto */
+  target?: number;
+  /** Focus improvement on one dimension (from ascend) */
+  dimension?: string;
+  /** Resume from .danteforge/checkpoint.json */
+  resume?: boolean;
+  /** Enable adversarial score gate between cycles (from ascend) */
+  adversarial?: boolean;
   // Injection seams for testing
   _runLoop?: (ctx: AutoforgeLoopContext, deps?: { _executeCommand?: (command: string, cwd: string) => Promise<{ success: boolean }> }) => Promise<AutoforgeLoopContext>;
   _executeCommand?: (command: string, cwd: string) => Promise<{ success: boolean }>;
@@ -173,6 +181,12 @@ export async function autoforge(goal?: string, options: {
   _executeAutoForgePlan?: typeof executeAutoForgePlan;
   _loadLatestVerdict?: typeof loadLatestVerdict;
   _policyGate?: typeof runPolicyGate;
+  /** Injection seam: plateau escalation — called when < 0.1pt improvement for 3 cycles */
+  _selfImproveFn?: (goal: string | undefined, minScore: number, cwd: string) => Promise<{ finalScore: number; plateauDetected: boolean }>;
+  /** Injection seam: adversarial scorer — called when --adversarial between cycles */
+  _adversarialScoreFn?: (cwd: string) => Promise<boolean>;
+  /** Injection seam: load checkpoint stage for --resume */
+  _loadCheckpointFn?: (cwd: string) => Promise<string | undefined>;
 } = {}): Promise<void> {
   return withErrorBoundary('autoforge', async () => {
   const maxWaves = options.maxWaves ?? 3;
@@ -187,7 +201,46 @@ export async function autoforge(goal?: string, options: {
     return;
   }
 
-  if (options.auto) { await runAutoMode(goal, cwd, options); return; }
+  // --resume: log checkpoint stage before continuing
+  if (options.resume) {
+    const loadCheckpointFn = options._loadCheckpointFn ?? (async (dir: string) => {
+      try {
+        const checkpointRaw = await fs.readFile(path.join(dir, '.danteforge', 'checkpoint.json'), 'utf8');
+        const cp = JSON.parse(checkpointRaw) as { stage?: string };
+        return cp.stage;
+      } catch { return undefined; }
+    });
+    const stage = await loadCheckpointFn(cwd).catch(() => undefined);
+    if (stage) logger.info(`[AutoForge --resume] Resuming from checkpoint stage: ${stage}`);
+    else logger.info('[AutoForge --resume] No checkpoint found — starting fresh');
+  }
+
+  // --dimension: narrow the goal to focus on one scoring dimension
+  const effectiveGoal = options.dimension
+    ? `Improve dimension: ${options.dimension}${goal ? ` (context: ${goal})` : ''}`
+    : goal;
+
+  // --target: run self-improve loop with plateau escalation to reach target score
+  if (options.target !== undefined) {
+    const selfImproveFn = options._selfImproveFn ?? (async (g: string | undefined, minScore: number, dir: string) => {
+      const { selfImprove } = await import('./self-improve.js');
+      const result = await selfImprove({ goal: g, minScore, cwd: dir, maxCycles: 10 });
+      return { finalScore: result.finalScore, plateauDetected: result.plateauDetected };
+    });
+    const adversarialScoreFn = options._adversarialScoreFn ?? (async (dir: string) => {
+      try {
+        const { score } = await import('./score.js');
+        await score({ adversary: true, cwd: dir });
+        return true;
+      } catch { return false; }
+    });
+    const result = await selfImproveFn(effectiveGoal, options.target, cwd);
+    if (options.adversarial) await adversarialScoreFn(cwd);
+    logger.info(`[AutoForge --target ${options.target}] Final: ${result.finalScore.toFixed(1)}${result.plateauDetected ? ' (plateau detected — try --dimension or harvest first)' : ''}`);
+    return;
+  }
+
+  if (options.auto) { await runAutoMode(effectiveGoal, cwd, options); return; }
 
   // Analyze current project state
   const analyzeFn = options._analyzeProjectState ?? analyzeProjectState;

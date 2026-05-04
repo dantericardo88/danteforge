@@ -23,13 +23,7 @@ export { setupAssistants } from './setup-assistants.js';
 export { setupOllama } from './setup-ollama.js';
 export { doctor } from './doctor.js';
 export { dashboard } from './dashboard.js';
-export { magic } from './magic.js';
-export { spark } from './spark.js';
-export { ember } from './ember.js';
-export { canvas } from './canvas.js';
-export { blaze } from './blaze.js';
-export { nova } from './nova.js';
-export { inferno } from './inferno.js';
+export { magic, spark, ember, canvas, blaze, nova, inferno } from './magic.js';
 export { updateMcp } from './update-mcp.js';
 export { techDecide } from './tech-decide.js';
 export { lessons } from './lessons.js';
@@ -99,12 +93,22 @@ export {
   canonicalMeasure,
   canonicalCompete,
   canonicalHarvest,
+  canonicalEvidence,
+  canonicalKnowledge,
+  canonicalShip,
+  canonicalDesign,
+  canonicalConfig,
   type CanonicalLevel,
   type CanonicalPlanOptions,
   type CanonicalBuildOptions,
   type CanonicalMeasureOptions,
   type CanonicalCompeteOptions,
   type CanonicalHarvestOptions,
+  type CanonicalEvidenceOptions,
+  type CanonicalKnowledgeOptions,
+  type CanonicalShipOptions,
+  type CanonicalDesignOptions,
+  type CanonicalConfigOptions,
 } from './canonical.js';
 export { dossierBuild, dossierDiff, dossierShow, dossierList } from './dossier.js';
 export { landscapeBuild, landscapeDiff, landscapeRanking, landscapeGap } from './landscape-cmd.js';

@@ -114,22 +114,22 @@ describe('New Command Exports', () => {
   });
 
   it('spark command exports correctly', async () => {
-    const { spark } = await import('../src/cli/commands/spark.js');
+    const { spark } = await import('../src/cli/commands/magic.js');
     assert.strictEqual(typeof spark, 'function');
   });
 
   it('ember command exports correctly', async () => {
-    const { ember } = await import('../src/cli/commands/ember.js');
+    const { ember } = await import('../src/cli/commands/magic.js');
     assert.strictEqual(typeof ember, 'function');
   });
 
   it('blaze command exports correctly', async () => {
-    const { blaze } = await import('../src/cli/commands/blaze.js');
+    const { blaze } = await import('../src/cli/commands/magic.js');
     assert.strictEqual(typeof blaze, 'function');
   });
 
   it('inferno command exports correctly', async () => {
-    const { inferno } = await import('../src/cli/commands/inferno.js');
+    const { inferno } = await import('../src/cli/commands/magic.js');
     assert.strictEqual(typeof inferno, 'function');
   });
 

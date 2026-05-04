@@ -57,6 +57,7 @@ program
   .command('plan [goal]')
   .description('Plan a goal or generate detailed plan from spec. Use --level to select scope.')
   .option('--level <level>', 'Canonical intensity: light | standard | deep')
+  .option('--mode <mode>', 'sprint | define-done — dispatch to a specialized planning mode')
   .option('--prompt', 'Generate a copy-paste prompt instead of auto-generating')
   .option('--light', 'Skip hard gates for simple changes')
   .option('--ceo-review', 'Apply CEO-level strategic review before writing PLAN.md')
@@ -64,11 +65,13 @@ program
   .option('--skip-critique', 'Skip adversarial critique gate after plan generation')
   .option('--stakes <level>', 'Critique depth: low|medium|high|critical (default: medium)')
   .action(async (goal, opts) => {
-    if (opts.level) {
+    if (opts.level || opts.mode || opts.skipCritique) {
       return (await C()).canonicalPlan(goal as string | undefined, {
-        level: opts.level as string,
+        level: opts.level as string | undefined,
         prompt: opts.prompt as boolean | undefined,
         light: opts.light as boolean | undefined,
+        mode: opts.mode as 'sprint' | 'define-done' | undefined,
+        skipCritique: opts.skipCritique as boolean | undefined,
       });
     }
     return (await C()).plan({
@@ -99,15 +102,45 @@ program
   .action((...a: unknown[]) => void C().then(c => (c.tasks as (...x: unknown[]) => unknown)(...a)));
 
 program
-  .command('design <prompt>')
-  .description('Generate design artifacts from natural language via OpenPencil Design-as-Code engine')
+  .command('design [prompt-or-action]')
+  .description('Design artifacts via OpenPencil. Pass natural language, or use actions: tokens | canvas | diff')
+  .option('--level <level>', 'Depth: light (tokens only) | standard (render+push) | deep (full UX loop)')
   .option('--prompt', 'Generate a copy-paste prompt instead of auto-executing')
   .option('--light', 'Skip hard gates')
   .option('--format <type>', 'Export format: jsx | vue | html', 'jsx')
   .option('--parallel', 'Enable spatial parallel decomposition')
   .option('--worktree', 'Run in isolated git worktree')
   .option('--seed', 'Write a high-quality canvas seed document to DESIGN.op without LLM (scores 7/7 quality dims)')
-  .action((...a: unknown[]) => void C().then(c => (c.design as (...x: unknown[]) => unknown)(...a)));
+  .option('--cwd <path>', 'Working directory')
+  .action((promptOrAction, opts) => {
+    void (async () => {
+      try {
+        const knownActions = new Set(['tokens', 'canvas', 'diff']);
+        if (opts.level || knownActions.has(promptOrAction ?? '')) {
+          const { canonicalDesign } = await import('./commands/canonical.js');
+          return await canonicalDesign({
+            action: (knownActions.has(promptOrAction ?? '') ? promptOrAction : undefined) as 'canvas' | 'diff' | 'tokens' | undefined,
+            level: opts.level as 'light' | 'standard' | 'deep' | undefined,
+            cwd: opts.cwd as string | undefined,
+          });
+        }
+        // Fall through to natural language design command
+        const { design } = await import('./commands/design.js');
+        await design(promptOrAction as string, {
+          prompt: opts.prompt,
+          light: opts.light,
+          format: opts.format,
+          parallel: opts.parallel,
+          worktree: opts.worktree,
+          seed: opts.seed,
+        });
+      } catch (err) {
+        const { formatAndLogError } = await import('../core/format-error.js');
+        formatAndLogError(err, 'design');
+        process.exitCode = 1;
+      }
+    })();
+  });
 
 program
   .command('ux-refine')
@@ -372,26 +405,6 @@ program
   .action((...a: unknown[]) => void C().then(c => (c.dashboard as (...x: unknown[]) => unknown)(...a)));
 
 program
-  .command('spark [goal]')
-  .description(`Alias: plan --level light. Zero-token planning preset: ${SPARK_PLANNING_TEXT}`)
-  .option('--prompt', 'Generate the preset plan without executing')
-  .option('--skip-tech-decide', 'Skip the tech-decide step when the stack is already decided')
-  .action(async (goal, opts) => (await C()).spark(goal, {
-    prompt: opts.prompt,
-    skipTechDecide: opts.skipTechDecide,
-  }));
-
-program
-  .command('ember [goal]')
-  .description('Alias: build --level light. Very low-token preset for quick features and light checkpoints')
-  .option('--profile <type>', 'quality | balanced | budget', 'budget')
-  .option('--prompt', 'Generate the preset plan without executing')
-  .action(async (goal, opts) => (await C()).ember(goal, {
-    profile: opts.profile,
-    prompt: opts.prompt,
-  }));
-
-program
   .command('canvas [goal]')
   .description(`Design-first frontend preset: ${CANVAS_PRESET_TEXT}`)
   .option('--profile <type>', 'quality | balanced | budget', 'budget')
@@ -416,6 +429,9 @@ program
   .option('--isolation', 'Use isolation when a preset escalates into party mode')
   .option('--max-repos <n>', 'Maximum repos for inferno OSS discovery', '12')
   .option('--yes', 'Skip competitive matrix confirmation gate')
+  .option('--skip-tech-decide', 'Skip tech-decide step during planning phase')
+  .option('--with-design', 'Include OpenPencil design phase in this wave')
+  .option('--local-sources <path>', 'Local sources directory for harvest phase')
   .action(async (goal, opts) => (await C()).magic(goal, {
     level: opts.level,
     profile: opts.profile,
@@ -428,75 +444,6 @@ program
     yes: opts.yes,
   }));
 
-program
-  .command('blaze [goal]')
-  .description('Alias: build --level deep. High-power preset: full party + strong autoforge + synthesize + retro + self-improve')
-  .option('--profile <type>', 'quality | balanced | budget', 'budget')
-  .option('--prompt', 'Generate the preset plan without executing')
-  .option('--worktree', 'Run in an isolated git worktree')
-  .option('--isolation', 'Run party with isolation enabled')
-  .option('--with-design', 'Add design + ux-refine steps to the pipeline')
-  .option('--design-prompt <text>', 'Prompt to pass to the design step')
-  .option('--yes', 'Skip competitive matrix confirmation gate')
-  .action(async (goal, opts) => (await C()).blaze(goal, {
-    profile: opts.profile,
-    prompt: opts.prompt,
-    worktree: opts.worktree,
-    isolation: opts.isolation,
-    withDesign: opts.withDesign,
-    designPrompt: opts.designPrompt,
-    yes: opts.yes,
-  }));
-
-program
-  .command('nova [goal]')
-  .description('Alias: build --level deep --planning-prefix. Very-high-power preset: planning prefix + blaze execution + inferno polish (no OSS)')
-  .option('--profile <type>', 'quality | balanced | budget', 'budget')
-  .option('--prompt', 'Generate the preset plan without executing')
-  .option('--worktree', 'Run in an isolated git worktree')
-  .option('--isolation', 'Run party with isolation enabled')
-  .option('--tech-decide', 'Add a tech-decide step after the planning prefix')
-  .option('--with-design', 'Add design + ux-refine steps to the pipeline')
-  .option('--design-prompt <text>', 'Prompt to pass to the design step')
-  .option('--yes', 'Skip competitive matrix confirmation gate')
-  .action(async (goal, opts) => (await C()).nova(goal, {
-    profile: opts.profile,
-    prompt: opts.prompt,
-    worktree: opts.worktree,
-    isolation: opts.isolation,
-    withTechDecide: opts.techDecide,
-    withDesign: opts.withDesign,
-    designPrompt: opts.designPrompt,
-    yes: opts.yes,
-  }));
-
-program
-  .command('inferno [goal]')
-  .description('Alias: build --level deep --with-harvest. Maximum-power preset: OSS mining + full implementation + evolution')
-  .option('--profile <type>', 'quality | balanced | budget', 'budget')
-  .option('--prompt', 'Generate the preset plan without executing')
-  .option('--worktree', 'Run in an isolated git worktree')
-  .option('--isolation', 'Run party with isolation enabled')
-  .option('--max-repos <n>', 'Maximum repos for OSS discovery', '12')
-  .option('--with-design', 'Add design + ux-refine steps to the pipeline')
-  .option('--design-prompt <text>', 'Prompt to pass to the design step')
-  .option('--local-sources <paths>', 'Comma-separated local repo or folder paths to harvest first')
-  .option('--local-depth <level>', 'Harvest depth for local sources: shallow|medium|full', 'medium')
-  .option('--local-config <path>', 'YAML config file listing local sources')
-  .option('--yes', 'Skip competitive matrix confirmation gate')
-  .action(async (goal, opts) => (await C()).inferno(goal, {
-    profile: opts.profile,
-    prompt: opts.prompt,
-    worktree: opts.worktree,
-    isolation: opts.isolation,
-    maxRepos: parseInt(opts.maxRepos, 10),
-    withDesign: opts.withDesign,
-    designPrompt: opts.designPrompt,
-    localSources: opts.localSources?.split(',').map((source: string) => source.trim()).filter(Boolean),
-    localDepth: opts.localDepth,
-    localSourcesConfig: opts.localConfig,
-    yes: opts.yes,
-  }));
 
 program
   .command('workflow')
@@ -555,6 +502,10 @@ program
   .option('--pause-at <score>', 'Pause the loop when average PDSE score reaches this value')
   .option('--confirm', 'Pause for human approval before executing (policy gate)')
   .option('--no-predictor', 'Disable Article XV forward prediction layer (saves ~$0.03/wave, loses causal coherence signal)')
+  .option('--target <score>', 'Loop until displayScore >= target (default: 9.0 when --auto)')
+  .option('--dimension <name>', 'Focus improvement on one scoring dimension')
+  .option('--resume', 'Resume from .danteforge/checkpoint.json')
+  .option('--adversarial', 'Enable adversarial score gate between cycles')
   .action(async (goal, opts) => (await C()).autoforge(goal, {
     dryRun: opts.dryRun,
     maxWaves: parseInt(opts.maxWaves, 10),
@@ -569,6 +520,10 @@ program
     pauseAt: opts.pauseAt !== undefined ? parseInt(opts.pauseAt, 10) : undefined,
     confirm: opts.confirm,
     noPredictor: opts.predictor === false,
+    target: opts.target !== undefined ? parseFloat(opts.target as string) : undefined,
+    dimension: opts.dimension as string | undefined,
+    resume: opts.resume as boolean | undefined,
+    adversarial: opts.adversarial as boolean | undefined,
   }));
 
 program
@@ -611,11 +566,31 @@ program
   }));
 
 program
-  .command('ship')
-  .description('Paranoid release guidance + version bump plan + changelog draft')
-  .option('--dry-run', 'Run checks and generate guidance without changing the audit intent')
+  .command('ship [action]')
+  .description('Release guidance: verify → QA → publish preflight pipeline (action: ci-setup)')
+  .option('--level <level>', 'Depth: light (verify only) | standard (default) | deep (+ publishCheck)')
+  .option('--dry-run', 'Run full pipeline without publishing')
+  .option('--browse', 'Open browser preview during QA')
   .option('--skip-review', 'Skip pre-landing review (emergency only, logged to audit)')
-  .action((...a: unknown[]) => void C().then(c => (c.ship as (...x: unknown[]) => unknown)(...a)));
+  .option('--cwd <path>', 'Working directory')
+  .action((action, opts) => {
+    void (async () => {
+      try {
+        const { canonicalShip } = await import('./commands/canonical.js');
+        await canonicalShip({
+          action: action as 'ci-setup' | undefined,
+          level: opts.level as 'light' | 'standard' | 'deep' | undefined,
+          dryRun: opts.dryRun as boolean | undefined,
+          withBrowse: opts.browse as boolean | undefined,
+          cwd: opts.cwd as string | undefined,
+        });
+      } catch (err) {
+        const { formatAndLogError } = await import('../core/format-error.js');
+        formatAndLogError(err, 'ship');
+        process.exitCode = 1;
+      }
+    })();
+  });
 
 program
   .command('oss')
@@ -754,12 +729,13 @@ program
   .option('--until-saturation', 'deep only: loop OSS cycles until new-feature yield drops (two consecutive lean cycles stops the loop)')
   .option('--max-cycles <n>', 'Max cycles for --until-saturation (default: 5)', '5')
   .option('--saturation-threshold <n>', 'Min new features per cycle before cycle is "lean" (default: 3)', '3')
+  .option('--optimize <metric>', 'Metric-driven mode: run autoresearch targeting this metric (noise-margin aware)')
   .option('--prompt', 'Display the 5-step copy-paste template without calling the LLM')
   .option('--lite', 'Run in SEP-LITE mode (Steps 1-3 + 5 only, 2-3 donors, 2-4 organs)')
   .action(async (goal, opts) => {
-    if (opts.level) {
+    if (opts.level || opts.optimize) {
       return (await C()).canonicalHarvest(goal as string | undefined, {
-        level: opts.level as string,
+        level: opts.level as string | undefined,
         source: opts.source as string | undefined,
         maxRepos: opts.maxRepos ? parseInt(opts.maxRepos as string, 10) : undefined,
         prompt: opts.prompt as boolean | undefined,
@@ -767,6 +743,7 @@ program
         untilSaturation: opts.untilSaturation as boolean | undefined,
         maxCycles: opts.maxCycles ? parseInt(opts.maxCycles as string, 10) : undefined,
         saturationThreshold: opts.saturationThreshold ? parseInt(opts.saturationThreshold as string, 10) : undefined,
+        optimize: opts.optimize as string | undefined,
       });
     }
     return (await C()).harvest(goal as string ?? '', { prompt: opts.prompt as boolean | undefined, lite: opts.lite as boolean | undefined });
@@ -1402,15 +1379,24 @@ program.hook('preAction', async (_thisCommand, actionCommand) => {
 
 // Command group help for discoverability
 program.addHelpText('after', `
-The 7 canonical commands (each takes --level light|standard|deep):
+The 12 canonical commands (each takes --level light|standard|deep where applicable):
 
-  go          Start here — smart entry point for any project state
-  plan        Spec-to-tasks pipeline: specify → clarify → plan → tasks
-  build       Execute development waves (light=forge, standard=magic, deep=inferno)
-  measure     All quality scores in one consistent view (schema: measure.v1)
-  compete     Competitive intelligence and gap analysis
-  harvest     Learn from OSS patterns
-  autoforge   Autonomous improvement loop
+  Start:    go          Smart entry point for any project state
+            config      Configure LLM provider, MCP, skills, premium
+
+  Build:    plan        Spec-to-tasks pipeline: specify → clarify → plan → tasks
+            build       Execute development waves (light=forge, standard=magic, deep=inferno)
+            harvest     Learn from OSS patterns
+
+  Quality:  measure     All quality scores in one consistent view (schema: measure.v1)
+            compete     Competitive intelligence and gap analysis
+            autoforge   Autonomous improvement loop
+
+  Publish:  ship        Verify → QA → publish preflight (--dry-run safe)
+            evidence    Proof chains, Time Machine, causal attribution
+
+  Enhance:  knowledge   Lessons, synthesis, wiki, explain, pattern federation
+            design      OpenPencil design-as-code, UX refinement, Figma push
 
 Quick start:
   danteforge go              — new project wizard or status panel for existing
@@ -1737,6 +1723,9 @@ program
   .command('compete')
   .description('Benchmark against peers and close competitive gaps. --level selects depth: light=assess, standard=assess+universe, deep=full CHL loop.')
   .option('--level <level>', 'Canonical intensity: light | standard | deep')
+  .option('--raise-ready', 'Raise-readiness: skeptic objection scoring + frontier classification')
+  .option('--action <type>', 'Sub-action: add | dossier')
+  .option('--name <name>', 'Competitor name for add/dossier sub-actions')
   .option('--refresh', 'Force rebuild of feature universe after assessment')
   .option('--init', 'Bootstrap CHL matrix from a competitor scan (Phase 1: INVENTORY)')
   .option('--sprint', 'Identify top gap and generate /inferno masterplan (Phase 3: SOURCE)')
@@ -1752,12 +1741,15 @@ program
   .option('--edit', 'Interactive matrix amendment session')
   .option('--yes', 'Skip the confirmation gate in --auto mode')
   .action(async (opts) => {
-    if (opts.level) {
+    if (opts.level || opts.raiseReady || opts.action) {
       return (await C()).canonicalCompete({
-        level: opts.level as string,
+        level: opts.level as string | undefined,
         json: opts.json as boolean | undefined,
         refresh: opts.refresh as boolean | undefined,
         yes: opts.yes as boolean | undefined,
+        raiseReady: opts.raiseReady as boolean | undefined,
+        action: opts.action as 'add' | 'dossier' | undefined,
+        name: opts.name as string | undefined,
       });
     }
     void (async () => {
@@ -1953,11 +1945,23 @@ program
   .description('Smart entry point: shows project state on existing projects, setup wizard on first run')
   .option('--yes', 'Skip confirmation and run immediately')
   .option('--simple', 'Show only core project quality gaps (hides meta/ecosystem dimensions)')
+  .option('--status', 'Show status panel only — no wizard, no improvement offer')
+  .option('--fresh', 'Force full setup wizard even when a project already exists')
+  .option('--journey', 'Show 5 workflow journey templates and exit')
+  .option('--advanced', 'Run init with IDE auto-detection and adversarial scoring setup')
   .action((goal, opts) => {
     void (async () => {
       try {
         const { go } = await import('./commands/go.js');
-        await go({ goal: goal as string | undefined, yes: opts.yes as boolean | undefined, simple: opts.simple as boolean | undefined });
+        await go({
+          goal: goal as string | undefined,
+          yes: opts.yes as boolean | undefined,
+          simple: opts.simple as boolean | undefined,
+          status: opts.status as boolean | undefined,
+          fresh: opts.fresh as boolean | undefined,
+          journey: opts.journey as boolean | undefined,
+          advanced: opts.advanced as boolean | undefined,
+        });
       } catch (err) {
         const { formatAndLogError } = await import('../core/format-error.js');
         formatAndLogError(err, 'go');
@@ -2014,6 +2018,9 @@ program
   .command('build <spec>')
   .description('Execute product work. --level selects depth: light=forge, standard=magic, deep=inferno. Without --level runs the full spec-to-ship wizard.')
   .option('--level <level>', 'Canonical intensity: light | standard | deep')
+  .option('--resume', 'Resume from .danteforge/checkpoint.json')
+  .option('--target <score>', 'Loop until displayScore >= target (self-improve with plateau detection)')
+  .option('--adversarial', 'Enable adversarial score gate between cycles')
   .option('--interactive', 'Confirm before each stage (wizard mode only)')
   .option('--profile <type>', 'quality | balanced | budget', 'balanced')
   .option('--prompt', 'Generate copy-paste prompt instead of executing')
@@ -2022,15 +2029,18 @@ program
   .option('--max-repos <n>', 'Max repos for deep OSS harvest', '12')
   .option('--yes', 'Skip competitive matrix confirmation gate')
   .action(async (spec, opts) => {
-    if (opts.level) {
+    if (opts.level || opts.resume || opts.target !== undefined || opts.adversarial) {
       return (await C()).canonicalBuild(spec as string, {
-        level: opts.level as string,
+        level: opts.level as string | undefined,
         prompt: opts.prompt as boolean | undefined,
         profile: opts.profile as string | undefined,
         worktree: opts.worktree as boolean | undefined,
         isolation: opts.isolation as boolean | undefined,
         maxRepos: opts.maxRepos ? parseInt(opts.maxRepos as string, 10) : undefined,
         yes: opts.yes as boolean | undefined,
+        resume: opts.resume as boolean | undefined,
+        target: opts.target !== undefined ? parseFloat(opts.target as string) : undefined,
+        adversarial: opts.adversarial as boolean | undefined,
       });
     }
     void (async () => {
@@ -2345,12 +2355,63 @@ program
     }
   });
 
+program
+  .command('evidence [action]')
+  .description('Proof chains, Time Machine, causal attribution, evidence export')
+  .option('--node-id <id>', 'Decision node ID for branch action')
+  .option('--cwd <path>', 'Working directory')
+  .action((action, opts) => {
+    void (async () => {
+      try {
+        const { canonicalEvidence } = await import('./commands/canonical.js');
+        await canonicalEvidence({
+          action: action as 'verify' | 'export' | 'certify' | 'timeline' | 'branch' | 'causal' | undefined,
+          nodeId: opts.nodeId as string | undefined,
+          cwd: opts.cwd as string | undefined,
+        });
+      } catch (err) {
+        const { formatAndLogError } = await import('../core/format-error.js');
+        formatAndLogError(err, 'evidence');
+        process.exitCode = 1;
+      }
+    })();
+  });
+
+program
+  .command('knowledge [action]')
+  .description('Lessons, synthesis, wiki, explain, pattern federation')
+  .option('--entry <text>', 'Lesson entry text (for learn action)')
+  .option('--target <path>', 'File or term to explain')
+  .option('--topic <topic>', 'Wiki topic to search')
+  .option('--write', 'Write mode for wiki action')
+  .option('--cwd <path>', 'Working directory')
+  .action((action, opts) => {
+    void (async () => {
+      try {
+        const { canonicalKnowledge } = await import('./commands/canonical.js');
+        await canonicalKnowledge({
+          action: action as 'learn' | 'prime' | 'explain' | 'wiki' | 'synthesize' | 'share' | undefined,
+          entry: opts.entry as string | undefined,
+          target: opts.target as string | undefined,
+          topic: opts.topic as string | undefined,
+          write: opts.write as boolean | undefined,
+          cwd: opts.cwd as string | undefined,
+        });
+      } catch (err) {
+        const { formatAndLogError } = await import('../core/format-error.js');
+        formatAndLogError(err, 'knowledge');
+        process.exitCode = 1;
+      }
+    })();
+  });
+
 // Hide non-canonical commands from default --help.
-// The 7 canonical commands + 4 utility commands stay visible.
+// The 12 canonical commands + utility commands stay visible.
 // All other commands still work — just not shown in the default listing.
 const VISIBLE_COMMANDS = new Set([
   'go', 'plan', 'build', 'measure', 'compete', 'harvest', 'autoforge',
-  'config', 'doctor', 'init', 'help',
+  'evidence', 'knowledge', 'ship', 'design', 'config',
+  'doctor', 'init', 'help',
 ]);
 for (const cmd of program.commands) {
   if (!VISIBLE_COMMANDS.has(cmd.name())) {

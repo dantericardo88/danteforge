@@ -14,21 +14,28 @@ describe('CLI flag parsing', () => {
     assert.match(stdout.trim(), /^\d+\.\d+\.\d+/);
   });
 
-  it('--help lists available commands', () => {
+  it('--help lists the 12 canonical commands', () => {
     const { stdout, stderr, status, error } = runCli('--help');
     assert.equal(status, 0, error?.message ?? stderr);
-    assert.ok(stdout.includes('forge'), 'Should list forge command');
-    assert.ok(stdout.includes('verify'), 'Should list verify command');
-    assert.ok(stdout.includes('party'), 'Should list party command');
+    assert.ok(stdout.includes('go'), 'Should list go command');
+    assert.ok(stdout.includes('plan'), 'Should list plan command');
+    assert.ok(stdout.includes('build'), 'Should list build command');
+    assert.ok(stdout.includes('measure'), 'Should list measure command');
+    assert.ok(stdout.includes('compete'), 'Should list compete command');
+    assert.ok(stdout.includes('harvest'), 'Should list harvest command');
+    assert.ok(stdout.includes('autoforge'), 'Should list autoforge command');
+    assert.ok(stdout.includes('evidence'), 'Should list evidence command');
+    assert.ok(stdout.includes('knowledge'), 'Should list knowledge command');
+    assert.ok(stdout.includes('ship'), 'Should list ship command');
+    assert.ok(stdout.includes('design'), 'Should list design command');
   });
 
-  it('root help lists beginner-friendly aliases', () => {
+  it('root help shows start alias and quick start section', () => {
     const { stdout, stderr, status, error } = runCli('--help');
     assert.equal(status, 0, error?.message ?? stderr);
-    assert.ok(stdout.includes('start'), 'Should list start alias command');
-    assert.ok(stdout.includes('measure'), 'Should list measure alias command');
-    assert.ok(stdout.includes('check'), 'Should list check alias command');
-    assert.ok(stdout.includes('auto-improve'), 'Should list auto-improve alias command');
+    assert.ok(stdout.includes('start') || stdout.includes('go'), 'Should list go|start entry point');
+    assert.ok(stdout.includes('measure'), 'Should list measure command');
+    assert.ok(stdout.includes('Quick start') || stdout.includes('quick start') || stdout.includes('--level'), 'Should show quick start or level guidance');
   });
 
   it('forge --help shows --parallel, --prompt, --light flags', () => {

@@ -13,11 +13,20 @@ import type { SelfImproveOptions, SelfImproveResult } from './self-improve.js';
 import type { HarshScoreResult } from '../../core/harsh-scorer.js';
 import type { ScoreOptions } from './score.js';
 import { BUILDER_DIMENSIONS } from './score.js';
+import type { Workflow } from './flow.js';
 
 export interface GoOptions {
   goal?: string;
   yes?: boolean;
   simple?: boolean;
+  /** Show status panel only — no wizard, no improvement offer */
+  status?: boolean;
+  /** Force full wizard even when STATE.yaml exists */
+  fresh?: boolean;
+  /** Show 5 workflow journey templates (from flow.ts) */
+  journey?: boolean;
+  /** Run init with IDE detection + adversarial scoring setup */
+  advanced?: boolean;
   cwd?: string;
   _runSelfImprove?: (opts: SelfImproveOptions) => Promise<SelfImproveResult>;
   _computeScore?: (cwd: string) => Promise<HarshScoreResult>;
@@ -27,9 +36,11 @@ export interface GoOptions {
   _stdout?: (line: string) => void;
   _runWizard?: (opts: GoWizardOptions) => Promise<WizardAnswers | null>;
   _isLLMAvailable?: () => Promise<boolean>;
-  _initFn?: (opts: { cwd: string; guided: boolean; nonInteractive: boolean; provider: string; projectDescription?: string; preferredLevel?: string; preferLive?: boolean }) => Promise<void>;
+  _initFn?: (opts: { cwd: string; guided: boolean; nonInteractive: boolean; provider: string; projectDescription?: string; preferredLevel?: string; preferLive?: boolean; advanced?: boolean }) => Promise<void>;
   _scoreFn?: (opts: ScoreOptions) => Promise<unknown>;
   _qualityFn?: (opts: { cwd: string; _stdout: (l: string) => void; _isTTY: boolean }) => Promise<void>;
+  /** Injection seam — override workflows list for testing */
+  _journeysFn?: () => Workflow[];
 }
 
 function bar(score: number, width = 10): string {
@@ -119,6 +130,22 @@ const OUTCOME_LANGUAGE: Record<string, { nextMove: string; outcome: string }> = 
     outcome: 'Claude Code and other MCP-compatible tools can invoke your commands directly',
   },
 };
+
+function showJourneys(emit: (l: string) => void, workflows: Workflow[]): void {
+  emit('');
+  emit(chalk.bold('  DanteForge — Workflow Journeys'));
+  emit('  -------------------------------------------------');
+  emit('');
+  for (let i = 0; i < workflows.length; i++) {
+    const w = workflows[i]!;
+    emit(`  ${i + 1}. ${chalk.bold(w.label)}`);
+    emit(`     ${w.useWhen}`);
+    emit(`     ${chalk.dim('->')} ${w.steps.join(' → ')}`);
+    emit('');
+  }
+  emit('  -------------------------------------------------');
+  emit('');
+}
 
 function showWelcomeBanner(emit: (l: string) => void): void {
   emit('');
@@ -267,7 +294,7 @@ async function handleNewProject(options: GoOptions, cwd: string, emit: (line: st
       const { init } = await import('./init.js');
       await init(opts as import('./init.js').InitOptions);
     });
-    await initFn({ cwd, guided: false, nonInteractive: true, provider: answers.provider, projectDescription: answers.description, preferredLevel: answers.preferredLevel, preferLive: answers.startMode === 'live' });
+    await initFn({ cwd, guided: false, nonInteractive: true, provider: answers.provider, projectDescription: answers.description, preferredLevel: answers.preferredLevel, preferLive: answers.startMode === 'live', ...(options.advanced ? { advanced: true } : {}) });
   } catch (err) { logger.warn(`[Go] Init failed: ${String(err)}`); }
   try {
     if (options._scoreFn) { await options._scoreFn({ cwd, _stdout: emit }); }
@@ -316,6 +343,25 @@ export async function go(options: GoOptions = {}): Promise<void> {
   const choiceFn = options._choiceFn ?? defaultChoiceFn;
   const runSelfImproveFn = options._runSelfImprove ?? defaultRunSelfImprove;
 
+  // --journey: show workflow journey templates, then exit
+  if (options.journey) {
+    let workflows: Workflow[];
+    if (options._journeysFn) {
+      workflows = options._journeysFn();
+    } else {
+      const { WORKFLOWS } = await import('./flow.js');
+      workflows = WORKFLOWS;
+    }
+    showJourneys(emit, workflows);
+    return;
+  }
+
+  // --fresh: force new-project wizard regardless of existing state
+  if (options.fresh) {
+    await handleNewProject(options, cwd, emit);
+    return;
+  }
+
   const hasState = await stateExistsFn(cwd);
   if (!hasState) { await handleNewProject(options, cwd, emit); return; }
 
@@ -330,6 +376,9 @@ export async function go(options: GoOptions = {}): Promise<void> {
   }
 
   showStatePanel(scoreResult, emit, options.simple ?? false);
+
+  // --status: show panel only, no improvement offer
+  if (options.status) return;
 
   try {
     const isLLMAvailableFn = options._isLLMAvailable ?? (async () => {

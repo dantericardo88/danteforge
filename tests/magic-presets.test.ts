@@ -113,16 +113,13 @@ describe('magic preset system', () => {
     );
   });
 
-  it('registers the preset commands and level flags in the CLI surface', async () => {
+  it('registers the magic command and level flags in the CLI surface', async () => {
     const cliSrc = await fs.readFile('src/cli/index.ts', 'utf8');
 
-    assert.match(cliSrc, /\.command\('spark \[goal\]'\)/);
-    assert.match(cliSrc, /\.command\('ember \[goal\]'\)/);
-    assert.match(cliSrc, /\.command\('canvas \[goal\]'\)/);
+    // magic is the canonical build command — spark/ember/blaze/nova/inferno are
+    // preset functions in magic.js but no longer separate top-level CLI commands
     assert.match(cliSrc, /\.command\('magic \[goal\]'\)/);
-    assert.match(cliSrc, /\.command\('blaze \[goal\]'\)/);
-    assert.match(cliSrc, /\.command\('nova \[goal\]'\)/);
-    assert.match(cliSrc, /\.command\('inferno \[goal\]'\)/);
+    assert.match(cliSrc, /\.command\('canvas \[goal\]'\)/);
     assert.match(cliSrc, /--skip-tech-decide/);
     assert.match(cliSrc, /--with-design/);
     assert.match(cliSrc, /--local-sources/);
