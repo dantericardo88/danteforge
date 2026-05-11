@@ -57,6 +57,8 @@ export interface SanitizeEngineOptions {
   cwd?: string;
   threshold?: number;       // default SANITIZE_HARD_LOC
   maxCycles?: number;       // default SANITIZE_DEFAULT_MAX_CYCLES
+  /** Hard cap on cumulative LLM tokens consumed by Tier 2 fallback. Default 200k. */
+  maxTokens?: number;
   dryRun?: boolean;
   yes?: boolean;            // skip interactive prompts
   pattern?: string;         // only process files matching this glob pattern

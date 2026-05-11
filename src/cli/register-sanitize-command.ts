@@ -8,6 +8,7 @@ export function registerSanitizeCommand(program: Command): void {
     .option('--cwd <path>', 'Target project directory (default: current directory)')
     .option('--threshold <n>', 'LOC hard limit — files above this are split (default: 750)', parseInt)
     .option('--max-cycles <n>', 'Safety cycle limit (default: 50)', parseInt)
+    .option('--max-tokens <n>', 'Cumulative LLM token budget for Tier 2 fallback (default: 200000)', parseInt)
     .option('--dry-run', 'Show what would be split without writing files')
     .option('--check', 'Report violations and exit 1 if any exist; do not modify anything')
     .option('--undo', 'Restore the most recent backup (best-effort revert of last split)')
@@ -24,6 +25,7 @@ export function registerSanitizeCommand(program: Command): void {
           cwd: opts.cwd as string | undefined,
           threshold: opts.threshold as number | undefined,
           maxCycles: opts.maxCycles as number | undefined,
+          maxTokens: opts.maxTokens as number | undefined,
           dryRun: opts.dryRun as boolean | undefined,
           check: opts.check as boolean | undefined,
           undo: opts.undo as boolean | undefined,

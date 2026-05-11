@@ -14,6 +14,13 @@ import { moveSymbolsViaAst } from './sanitize-ast-mover.js';
 import { validatePostSplit } from './sanitize-validators.js';
 import { withFileLock, loadFrozenFiles, writePlatformKernelNeeded, LockTimeoutError } from './sanitize-locks.js';
 import {
+  TokenBudget,
+  estimateSanitizeCost,
+  writeBudgetSnapshot,
+  writeBudgetExhausted,
+  DEFAULT_MAX_TOKENS_PER_SESSION,
+} from './sanitize-cost.js';
+import {
   SANITIZE_HARD_LOC,
   SANITIZE_DEFAULT_MAX_CYCLES,
   SANITIZE_SESSION_DIR,
@@ -111,7 +118,26 @@ export async function runSanitize(options: SanitizeEngineOptions = {}): Promise<
   const dryRun = options.dryRun ?? false;
   const skipTypecheck = options.skipTypecheck ?? false;
 
-  const llmCaller = options._callLLM ?? ((p: string) => callLLM(p));
+  // Token budget for Tier 2 LLM fallback (Sprint 8)
+  const maxTokens = options.maxTokens ?? DEFAULT_MAX_TOKENS_PER_SESSION;
+  const budget = new TokenBudget(maxTokens);
+
+  // Wrap the LLM caller so every call is metered against the budget.
+  // Heuristic when real token counts unavailable: ~tokens = ~prompt.length/4.
+  const baseCaller = options._callLLM ?? ((p: string) => callLLM(p));
+  const llmCaller = async (prompt: string): Promise<string> => {
+    if (budget.exhausted()) {
+      throw new Error(`Token budget exhausted (${maxTokens} tokens consumed)`);
+    }
+    const before = Date.now();
+    const response = await baseCaller(prompt);
+    // Estimate: prompt + response in tokens (~4 chars per token)
+    const tokens = Math.ceil((prompt.length + response.length) / 4);
+    budget.consume(tokens, 'llm-call');
+    void before;
+    return response;
+  };
+
   const readFile = options._readFile ?? ((p: string) => fs.readFile(p, 'utf8'));
   const writeFile = options._writeFile ?? ((p: string, c: string) => fs.writeFile(p, c, 'utf8'));
   const removeFile = options._removeFile ?? ((p: string) => fs.unlink(p));
@@ -145,6 +171,15 @@ export async function runSanitize(options: SanitizeEngineOptions = {}): Promise<
 
   logger.info(`[Sanitize] Found ${session.queue.length} file(s) above ${threshold} LOC threshold.`);
 
+  // Pre-flight cost estimate (worst-case: every file falls through to LLM Tier 2)
+  const estimate = estimateSanitizeCost({ queueLocs: session.queue.map(i => i.loc) });
+  logger.info(
+    `[Sanitize] Worst-case cost estimate (if Tier 1 AST refuses for all ${estimate.fileCount} file(s)): ` +
+    `~${estimate.estimatedTokens.toLocaleString()} tokens, ` +
+    `$${estimate.estimatedUsdLow.toFixed(2)}–$${estimate.estimatedUsdHigh.toFixed(2)}. ` +
+    `Budget: ${maxTokens.toLocaleString()} tokens.`,
+  );
+
   // Dry run: just report
   if (dryRun) {
     logger.info('[Sanitize] Dry run — no files will be modified.\n');
@@ -161,8 +196,18 @@ export async function runSanitize(options: SanitizeEngineOptions = {}): Promise<
   const frozenFiles = await loadFrozenFiles({ cwd });
 
   while (session.queue.length > 0 && session.cyclesRun < maxCycles) {
+    // Budget exhausted? Stop the loop cleanly with a marker file
+    if (budget.exhausted()) {
+      const markerPath = await writeBudgetExhausted(cwd, budget);
+      logger.error(
+        `[Sanitize] Token budget exhausted (${maxTokens.toLocaleString()} tokens). ` +
+        `${session.queue.length} file(s) remain. See ${markerPath}`,
+      );
+      break;
+    }
+
     const item = session.queue[0]!;
-    logger.info(`[Sanitize] Processing ${item.path} (${item.loc} LOC) — cycle ${session.cyclesRun + 1}`);
+    logger.info(`[Sanitize] Processing ${item.path} (${item.loc} LOC) — cycle ${session.cyclesRun + 1} — budget ${budget.percentUsed().toFixed(0)}% used`);
 
     // Frozen-file guard: defer to platform-kernel workstream
     if (frozenFiles.includes(item.path)) {
@@ -319,6 +364,7 @@ export async function runSanitize(options: SanitizeEngineOptions = {}): Promise<
 
   const remainingViolations = session.queue.length;
   await writeReport(cwd, session);
+  await writeBudgetSnapshot(cwd, budget);
 
   return buildResult(session, remainingViolations, cwd);
 }
