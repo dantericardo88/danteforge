@@ -50,6 +50,16 @@ export async function uxRefine(options: {
   const loadFn = options._loadState ?? loadState;
   const saveFn = options._saveState ?? saveState;
   return withErrorBoundary('ux-refine', async () => {
+  // --- Decision-node: record start (best-effort) ---
+  let _dnStartNodeId: string | undefined;
+  const _dnT0 = Date.now();
+  try {
+    const { getSession, recordDecision } = await import('../../core/decision-node-recorder.js');
+    const _dnSess = getSession();
+    const _dnStart = await recordDecision({ session: _dnSess, actorType: 'agent', prompt: 'ux-refine: UI refinement pass', context: {}, result: 'in-progress', success: false });
+    _dnStartNodeId = _dnStart.id;
+  } catch { /* never block */ }
+
   if (options.skipUx) {
     logger.info('UX refinement skipped (--skip-ux)');
     return;
@@ -109,6 +119,13 @@ export async function uxRefine(options: {
   state.designTokensPath = tokenFile;
   state.auditLog.push(`${new Date().toISOString()} | ux-refine: prompt generated (host: ${host}, figma-mcp: ${capabilities.hasFigmaMCP})`);
   await saveFn(state);
+
+  // --- Decision-node: record completion (best-effort) ---
+  try {
+    const { getSession, recordDecision } = await import('../../core/decision-node-recorder.js');
+    const _dnSess = getSession();
+    await recordDecision({ session: _dnSess, parentNodeId: _dnStartNodeId, actorType: 'agent', prompt: 'ux-refine: UI refinement pass [complete]', result: 'ux-refine complete', success: true, latencyMs: Date.now() - _dnT0 });
+  } catch { /* best-effort */ }
   });
 }
 

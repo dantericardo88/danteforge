@@ -103,11 +103,13 @@ async function applyArtifactHandoff(
 
 export async function importFile(source: string, options: {
   as?: string;
+  cwd?: string;
   _loadState?: typeof loadState;
   _saveState?: typeof saveState;
 } = {}) {
   const loadFn = options._loadState ?? loadState;
   const saveFn = options._saveState ?? saveState;
+  const stateDir = options.cwd ? path.join(options.cwd, STATE_DIR) : STATE_DIR;
 
   return withErrorBoundary('import', async () => {
   // Resolve the source path
@@ -127,13 +129,13 @@ export async function importFile(source: string, options: {
 
   // Determine target filename
   const targetName = options.as ?? path.basename(sourcePath);
-  const targetPath = path.join(STATE_DIR, targetName);
+  const targetPath = path.join(stateDir, targetName);
 
-  await fs.mkdir(STATE_DIR, { recursive: true });
+  await fs.mkdir(stateDir, { recursive: true });
 
   // Check if target exists and warn
   if (await fileExists(targetPath)) {
-    logger.warn(`Overwriting existing ${targetName} in .danteforge/`);
+    logger.warn(`Overwriting existing ${targetName} in ${stateDir}/`);
   }
 
   await fs.writeFile(targetPath, content);

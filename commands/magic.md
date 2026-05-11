@@ -47,6 +47,19 @@ Usage rule:
 
 CLI parity: `danteforge magic [goal]`
 
+## Agent Anti-Bloat Guard
+
+Default `/magic` work should stay inside one workstream from
+`.danteforge/agent-ownership.json`. Create an ephemeral claim in
+`.danteforge/agent-claims/` before editing and run the guard before commit:
+
+```bash
+node scripts/check-agent-guard.mjs --staged --workstream <workstream>
+```
+
+If a fix requires a frozen file, split it into a separate platform-kernel task
+instead of mixing it with dimension work.
+
 ## TOOL SAFETY RULES — All Models Must Follow
 
 **NEVER run** these commands — they destroy all in-progress work:

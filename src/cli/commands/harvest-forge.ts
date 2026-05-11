@@ -567,6 +567,16 @@ async function runHarvestForgeLoop(
 }
 
 export async function harvestForge(opts: HarvestForgeOptions = {}): Promise<HarvestForgeResult> {
+  // --- Decision-node: record start (best-effort) ---
+  let _dnStartNodeId: string | undefined;
+  const _dnT0 = Date.now();
+  try {
+    const { getSession, recordDecision } = await import('../../core/decision-node-recorder.js');
+    const _dnSess = getSession(opts.cwd);
+    const _dnStart = await recordDecision({ session: _dnSess, actorType: 'agent', prompt: 'harvest-forge: OSS intelligence compounding loop', context: { maxCycles: opts.maxCycles, targetScore: opts.targetScore }, result: 'in-progress', success: false });
+    _dnStartNodeId = _dnStart.id;
+  } catch { /* never block */ }
+
   try {
     const cwd = opts.cwd ?? process.cwd();
     const maxCycles = opts.maxCycles ?? 10;
@@ -612,7 +622,16 @@ export async function harvestForge(opts: HarvestForgeOptions = {}): Promise<Harv
     logger.info(`  Stop reason: ${stopReason}`);
     logger.info(`  Cycles run: ${cyclesRun}`);
     logger.info(`  Patterns adopted: ${totalPatternsAdopted}`);
-    return { cyclesRun, stopReason, finalScores, totalPatternsAdopted };
+    const _hfResult: HarvestForgeResult = { cyclesRun, stopReason, finalScores, totalPatternsAdopted };
+
+    // --- Decision-node: record completion (best-effort) ---
+    try {
+      const { getSession, recordDecision } = await import('../../core/decision-node-recorder.js');
+      const _dnSess = getSession(opts.cwd);
+      await recordDecision({ session: _dnSess, parentNodeId: _dnStartNodeId, actorType: 'agent', prompt: 'harvest-forge: OSS intelligence compounding loop [complete]', context: { cyclesRun, stopReason, totalPatternsAdopted }, result: stopReason, success: stopReason === 'convergence-achieved', latencyMs: Date.now() - _dnT0 });
+    } catch { /* best-effort */ }
+
+    return _hfResult;
   } catch (err) {
     logger.error(`[harvest-forge] Fatal error: ${err instanceof Error ? err.message : String(err)}`);
     throw err;

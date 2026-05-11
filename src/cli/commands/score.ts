@@ -70,6 +70,12 @@ export interface ScoreOptions {
   strict?: boolean;
   /** --adversary: Run a second independent LLM to challenge the self-score */
   adversary?: boolean;
+  /** --convergence-check: exit 0 if overall score >= convergenceTarget, exit 1 otherwise */
+  convergenceCheck?: boolean;
+  /** --convergence-target: target score for --convergence-check (default: 9.0) */
+  convergenceTarget?: number;
+  /** --convergence-dim: check a specific dimension instead of overall */
+  convergenceDim?: string;
   // Injection seams
   _harshScore?: (opts: HarshScorerOptions) => Promise<HarshScoreResult>;
   _loadState?: typeof loadState;
@@ -600,7 +606,9 @@ async function scoreCanonicalPath(options: ScoreOptions, cwd: string, emit: (lin
   const p0Items = await buildAndRenderP0Items(emit, result, cwd, options);
   renderDimensionsBlock(emit, result, options.full);
   const adversarialResult = await runScorePostActions(options, result, emit, cwd, options._runPrime);
-  return { displayScore: result.displayScore, verdict: result.verdict, p0Items, displayDimensions: result.displayDimensions, adversarialResult };
+  const canonicalFinalResult = { displayScore: result.displayScore, verdict: result.verdict, p0Items, displayDimensions: result.displayDimensions, adversarialResult };
+  applyConvergenceCheck(options, canonicalFinalResult, emit);
+  return canonicalFinalResult;
 }
 
 function computeSessionDelta(state: import('../../core/state.js').DanteState, displayScore: number): number | undefined {
@@ -617,7 +625,12 @@ export async function score(options: ScoreOptions = {}): Promise<ScoreResult> {
   const emit = options._stdout ?? ((line: string) => logger.info(line));
 
   if (!shouldUseLegacyInjectionPath(options)) {
-    return scoreCanonicalPath(options, cwd, emit);
+    const _scr = await scoreCanonicalPath(options, cwd, emit);
+    try {
+      const { getSession, recordDecision } = await import('../../core/decision-node-recorder.js');
+      await recordDecision({ session: getSession(cwd), actorType: 'agent', prompt: `score: ${cwd}`, result: `score:${_scr.displayScore.toFixed(1)}`, success: true, qualityScore: _scr.displayScore * 10 });
+    } catch { /* best-effort */ }
+    return _scr;
   }
 
   const harshScoreFn = options._harshScore ?? computeHarshScore;
@@ -654,7 +667,16 @@ export async function score(options: ScoreOptions = {}): Promise<ScoreResult> {
   renderDimensionsBlock(emit, result, options.full);
   const adversarialResult = await runScorePostActions(options, result, emit, cwd, options._runPrime);
 
-  return { displayScore: result.displayScore, verdict: result.verdict, p0Items, sessionDelta, displayDimensions: result.displayDimensions, adversarialResult };
+  const finalResult = { displayScore: result.displayScore, verdict: result.verdict, p0Items, sessionDelta, displayDimensions: result.displayDimensions, adversarialResult };
+  applyConvergenceCheck(options, finalResult, emit);
+
+  // --- Decision-node: record score (best-effort) ---
+  try {
+    const { getSession, recordDecision } = await import('../../core/decision-node-recorder.js');
+    await recordDecision({ session: getSession(cwd), actorType: 'agent', prompt: `score: ${cwd}`, result: `score:${finalResult.displayScore.toFixed(1)}`, success: true, qualityScore: finalResult.displayScore * 10 });
+  } catch { /* best-effort */ }
+
+  return finalResult;
 }
 
 function renderDualScorePanel(
@@ -722,6 +744,29 @@ function renderDualScorePanel(
     emit(`  Note: adversary using alternate Ollama model: ${adv.adversaryResolution.model}`);
   }
   emit('');
+}
+
+function applyConvergenceCheck(options: ScoreOptions, result: ScoreResult, emit: (line: string) => void): void {
+  if (!options.convergenceCheck) return;
+  const target = options.convergenceTarget ?? 9.0;
+  const dim = options.convergenceDim;
+  let actualScore: number;
+  let label: string;
+  if (dim && result.displayDimensions) {
+    actualScore = (result.displayDimensions as Record<string, number>)[dim] ?? 0;
+    label = dim;
+  } else {
+    actualScore = result.displayScore;
+    label = 'overall';
+  }
+  const passed = actualScore >= target;
+  const gap = (actualScore - target).toFixed(1);
+  emit('');
+  emit(`[convergence-check] ${label}: ${actualScore.toFixed(1)}/10 — target: ${target}/10 — ${passed ? `PASS (+${gap})` : `FAIL (gap: ${gap})`}`);
+  emit('');
+  // Side-effect: set exit code so the calling process/script can gate on it.
+  // Uses process.exitCode (not process.exit) to allow any remaining output to flush.
+  if (!passed) process.exitCode = 1;
 }
 
 async function defaultGetGitSha(): Promise<string | undefined> {

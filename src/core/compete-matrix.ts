@@ -24,6 +24,7 @@ export const KNOWN_OSS_TOOLS = new Set([
   'MetaGPT', 'AutoGen', 'CrewAI', 'LangChain', 'Cline', 'Goose',
   'GPT-Engineer', 'Tabby', 'CodeGeeX', 'FauxPilot', 'Ollama',
   'Gpt-engineer', 'OpenDevin', 'AgentCoder', 'Plandex',
+  're_gent', 'Regent', 'regent-vcs', 'regent-vcs/re_gent',
 ]);
 
 export function isOssTool(name: string): boolean {
@@ -72,6 +73,20 @@ export interface MatrixDimension {
   // Ceiling classification — max score achievable via automation
   ceiling?: number;           // if set, ascend will not attempt to push self score beyond this
   ceilingReason?: string;     // human-readable explanation (e.g. "requires external users")
+
+  // Closing strategy — how to close this dimension
+  closingStrategy?: 'code' | 'human' | 'ceiling';
+  manualActionHint?: string;  // specific action for 'human' strategy dims
+}
+
+export interface AdversarialCalibration {
+  dimensionId: string;
+  beforeScore: number;
+  afterScore: number;
+  adversarialScore: number;
+  verdict: 'inflated' | 'trusted' | 'watch' | 'underestimated';
+  rationale: string;
+  date: string;
 }
 
 export interface CompeteMatrix {
@@ -87,6 +102,10 @@ export interface CompeteMatrix {
   lastUpdated: string;
   overallSelfScore: number;    // weighted average across all dimensions (0-10)
   dimensions: MatrixDimension[];
+
+  // Adversarial calibration history — records when hostile-review verdicts
+  // were applied to correct inflated self-scores.
+  adversarialCalibrations?: AdversarialCalibration[];
 }
 
 // ── Priority Constants ────────────────────────────────────────────────────────
@@ -115,6 +134,22 @@ export const KNOWN_CEILINGS: Record<string, { ceiling: number; reason: string }>
   contextEconomy: {
     ceiling: 9.0,
     reason: 'PRD-26 filter pipeline shipped — ceiling raised to 9.0; final point requires live telemetry from real command runs',
+  },
+  codeSigning: {
+    ceiling: 3.0,
+    reason: 'requires EV certificate purchase and CA application — human action',
+  },
+  installerDistribution: {
+    ceiling: 5.0,
+    reason: 'requires signed installer build pipeline — human action',
+  },
+  pricingTransparency: {
+    ceiling: 6.0,
+    reason: 'requires real users and public pricing page — human action',
+  },
+  voiceInterface: {
+    ceiling: 4.0,
+    reason: 'limited market demand for CLI voice; ceiling reflects realistic adoption',
   },
 };
 
@@ -320,6 +355,63 @@ export function updateDimensionScore(
   matrix.overallSelfScore = computeOverallScore(matrix);
 }
 
+/**
+ * Apply an adversarial calibration verdict to a dimension's self-score.
+ * For 'inflated' verdicts: consensus = (harshScore + adversarialScore) / 2, clamped to ceiling.
+ * For all other verdicts: no-op (returns false).
+ * Caller must call saveMatrix() afterward.
+ */
+export function applyAdversarialCalibration(
+  matrix: CompeteMatrix,
+  dimensionId: string,
+  harshScore: number,
+  adversarialScore: number,
+  verdict: AdversarialCalibration['verdict'],
+  rationale: string,
+): boolean {
+  if (verdict !== 'inflated') return false;
+
+  const dim = matrix.dimensions.find(d => d.id === dimensionId);
+  if (!dim) return false;
+
+  const before = dim.scores['self'] ?? 0;
+  const consensus = (harshScore + adversarialScore) / 2;
+  const clamped = dim.ceiling !== undefined ? Math.min(consensus, dim.ceiling) : consensus;
+  const after = Math.round(clamped * 10) / 10;
+
+  dim.scores['self'] = after;
+
+  const competitorEntries = Object.entries(dim.scores).filter(([k]) => k !== 'self');
+  const maxEntry = competitorEntries.reduce(
+    (best, [k, v]) => v > best[1] ? [k, v] : best,
+    ['', 0] as [string, number],
+  );
+  dim.gap_to_leader = Math.max(0, maxEntry[1] - after);
+  if (maxEntry[0]) dim.leader = maxEntry[0];
+
+  const twoGaps = computeTwoGaps(dim, matrix.competitors_closed_source ?? [], matrix.competitors_oss ?? []);
+  dim.gap_to_closed_source_leader = twoGaps.gap_to_closed_source_leader;
+  dim.closed_source_leader = twoGaps.closed_source_leader;
+  dim.gap_to_oss_leader = twoGaps.gap_to_oss_leader;
+  dim.oss_leader = twoGaps.oss_leader;
+
+  const calibration: AdversarialCalibration = {
+    dimensionId,
+    beforeScore: before,
+    afterScore: after,
+    adversarialScore,
+    verdict,
+    rationale,
+    date: new Date().toISOString(),
+  };
+  matrix.adversarialCalibrations ??= [];
+  matrix.adversarialCalibrations.push(calibration);
+
+  matrix.lastUpdated = new Date().toISOString();
+  matrix.overallSelfScore = computeOverallScore(matrix);
+  return true;
+}
+
 // ── Matrix Amendment API ──────────────────────────────────────────────────────
 
 function recomputeDimGaps(
@@ -339,13 +431,13 @@ function recomputeDimGaps(
     return;
   }
   const maxEntry = entries.reduce((a, b) => (b[1] > a[1] ? b : a));
-  dim.gap_to_leader = Math.max(0, maxEntry[1] - selfScore);
+  dim.gap_to_leader = roundScore(Math.max(0, maxEntry[1] - selfScore));
   dim.leader = maxEntry[0];
 
   const closedEntries = entries.filter(([k]) => closedSourceCompetitors.includes(k));
   if (closedEntries.length > 0) {
     const best = closedEntries.reduce((a, b) => (b[1] > a[1] ? b : a));
-    dim.gap_to_closed_source_leader = Math.max(0, best[1] - selfScore);
+    dim.gap_to_closed_source_leader = roundScore(Math.max(0, best[1] - selfScore));
     dim.closed_source_leader = best[0];
   } else {
     dim.gap_to_closed_source_leader = 0;
@@ -355,12 +447,85 @@ function recomputeDimGaps(
   const ossEntries = entries.filter(([k]) => ossCompetitors.includes(k));
   if (ossEntries.length > 0) {
     const best = ossEntries.reduce((a, b) => (b[1] > a[1] ? b : a));
-    dim.gap_to_oss_leader = Math.max(0, best[1] - selfScore);
+    dim.gap_to_oss_leader = roundScore(Math.max(0, best[1] - selfScore));
     dim.oss_leader = best[0];
   } else {
     dim.gap_to_oss_leader = 0;
     dim.oss_leader = 'none';
   }
+}
+
+function roundScore(value: number): number {
+  return Math.round(value * 10) / 10;
+}
+
+function uniquePush(items: string[], item: string): void {
+  if (!items.includes(item)) items.push(item);
+}
+
+function refreshHarvestTarget(dim: MatrixDimension): void {
+  const ossScore = dim.scores[dim.oss_leader] ?? 0;
+  if (dim.oss_leader !== 'none' && dim.oss_leader !== 'unknown' && ossScore > (dim.scores['self'] ?? 0)) {
+    dim.harvest_source = dim.oss_leader;
+    dim.next_sprint_target = roundScore(Math.max(dim.next_sprint_target, ossScore));
+  }
+}
+
+/**
+ * Add or update a competitor across all dimensions and recompute strategic gaps.
+ * Missing dimension scores default to 0 so every dimension keeps a complete score row.
+ */
+export function addOrUpdateCompetitor(
+  matrix: CompeteMatrix,
+  name: string,
+  scores: Record<string, number> = {},
+): void {
+  uniquePush(matrix.competitors, name);
+  if (isOssTool(name)) {
+    uniquePush(matrix.competitors_oss, name);
+    matrix.competitors_closed_source = matrix.competitors_closed_source.filter(c => c !== name);
+  } else {
+    uniquePush(matrix.competitors_closed_source, name);
+    matrix.competitors_oss = matrix.competitors_oss.filter(c => c !== name);
+  }
+
+  for (const dim of matrix.dimensions) {
+    dim.scores[name] = scores[dim.id] ?? dim.scores[name] ?? 0;
+    recomputeDimGaps(dim, matrix.competitors_closed_source, matrix.competitors_oss);
+    refreshHarvestTarget(dim);
+  }
+  matrix.lastUpdated = new Date().toISOString();
+  matrix.overallSelfScore = computeOverallScore(matrix);
+}
+
+/**
+ * Add or replace a dimension, then recompute leader/gap fields from current competitors.
+ */
+export function addOrUpdateDimension(
+  matrix: CompeteMatrix,
+  dimension: Omit<MatrixDimension, 'gap_to_leader' | 'leader' | 'gap_to_closed_source_leader' | 'closed_source_leader' | 'gap_to_oss_leader' | 'oss_leader'> &
+    Partial<Pick<MatrixDimension, 'gap_to_leader' | 'leader' | 'gap_to_closed_source_leader' | 'closed_source_leader' | 'gap_to_oss_leader' | 'oss_leader'>>,
+): void {
+  const dim: MatrixDimension = {
+    ...dimension,
+    gap_to_leader: dimension.gap_to_leader ?? 0,
+    leader: dimension.leader ?? 'self',
+    gap_to_closed_source_leader: dimension.gap_to_closed_source_leader ?? 0,
+    closed_source_leader: dimension.closed_source_leader ?? 'none',
+    gap_to_oss_leader: dimension.gap_to_oss_leader ?? 0,
+    oss_leader: dimension.oss_leader ?? 'none',
+  };
+  for (const competitor of matrix.competitors) {
+    dim.scores[competitor] = dim.scores[competitor] ?? 0;
+  }
+  recomputeDimGaps(dim, matrix.competitors_closed_source, matrix.competitors_oss);
+  refreshHarvestTarget(dim);
+
+  const index = matrix.dimensions.findIndex(existing => existing.id === dim.id);
+  if (index >= 0) matrix.dimensions[index] = dim;
+  else matrix.dimensions.push(dim);
+  matrix.lastUpdated = new Date().toISOString();
+  matrix.overallSelfScore = computeOverallScore(matrix);
 }
 
 /**
@@ -421,6 +586,7 @@ const BOOTSTRAP_FREQUENCY_MAP: Record<string, 'high' | 'medium' | 'low'> = {
   specDrivenPipeline: 'medium', convergenceSelfHealing: 'medium',
   tokenEconomy: 'medium', ecosystemMcp: 'low',
   enterpriseReadiness: 'low', communityAdoption: 'low',
+  contextEconomy: 'medium', causalCoherence: 'medium',
 };
 
 const BOOTSTRAP_WEIGHT_MAP: Record<string, number> = {
@@ -432,6 +598,7 @@ const BOOTSTRAP_WEIGHT_MAP: Record<string, number> = {
   specDrivenPipeline: 1.2, convergenceSelfHealing: 1.1,
   tokenEconomy: 0.9, ecosystemMcp: 0.8,
   enterpriseReadiness: 0.8, communityAdoption: 0.7,
+  contextEconomy: 1.0, causalCoherence: 1.0,
 };
 
 const BOOTSTRAP_LABEL_MAP: Record<string, string> = {
@@ -444,6 +611,7 @@ const BOOTSTRAP_LABEL_MAP: Record<string, string> = {
   specDrivenPipeline: 'Spec-Driven Pipeline', convergenceSelfHealing: 'Convergence & Self-Healing',
   tokenEconomy: 'Token Economy & Budget Control', ecosystemMcp: 'Ecosystem & MCP Integration',
   enterpriseReadiness: 'Enterprise Readiness', communityAdoption: 'Community Adoption',
+  contextEconomy: 'Context Economy', causalCoherence: 'Causal Coherence',
 };
 
 /**
@@ -572,4 +740,62 @@ export function checkMatrixStaleness(
   }
 
   return { daysOld, isStale, driftedDimensions };
+}
+
+// ── Closing Strategy ──────────────────────────────────────────────────────────
+//
+// Dimensions are classified into three closing strategies:
+//   code    — closing requires writing or fixing code; forge cycles apply
+//   human   — closing requires human action (cert purchase, publishing, marketing)
+//   ceiling — automation ceiling is below target; stop cycling after ceiling reached
+//
+// The strategy separates "how to close" from "whether to track".
+// Every dimension is tracked and contributes to the composite score.
+// The strategy only determines what ascend does during a cycle.
+
+/** Dimension IDs that require human action to improve (no forge cycle). */
+export const HUMAN_ACTION_DIMENSION_IDS = new Set([
+  'community_adoption',
+  'code_signing',
+  'installer_distribution',
+  'pricing_transparency',
+  'privacy_policy',
+  'enterprise_sla',
+  'external_audit',
+]);
+
+/**
+ * Derive the closing strategy for a dimension.
+ * Priority: ceiling < target → 'ceiling'; explicit closingStrategy field;
+ * known human-action ID → 'human'; default → 'code'.
+ */
+export function getDimensionStrategy(dim: MatrixDimension, target: number): 'code' | 'human' | 'ceiling' {
+  if (dim.ceiling !== undefined && dim.ceiling < target) return 'ceiling';
+  if (dim.closingStrategy) return dim.closingStrategy;
+  if (HUMAN_ACTION_DIMENSION_IDS.has(dim.id)) return 'human';
+  return 'code';
+}
+
+/**
+ * Unweighted mean of all dimension self-scores (0-10).
+ * This is the honest headline number — every dimension counts equally,
+ * including ones that score 0 or 1. Use this for ascend reports.
+ * (computeOverallScore is the weighted mean used for internal strategy.)
+ */
+export function computeUnweightedComposite(matrix: CompeteMatrix): number {
+  if (matrix.dimensions.length === 0) return 0;
+  const sum = matrix.dimensions.reduce((s, d) => s + (d.scores['self'] ?? 0), 0);
+  return Math.round((sum / matrix.dimensions.length) * 10) / 10;
+}
+
+/**
+ * Return the top-N dimensions sorted by gap × importance (highest priority first).
+ * Includes ALL non-closed dimensions — ceiling and human-action dims are included
+ * so the output reflects market priority, not just what ascend can automate.
+ */
+export function getTopGapDimensions(matrix: CompeteMatrix, count = 5): MatrixDimension[] {
+  return [...matrix.dimensions]
+    .filter(d => d.status !== 'closed')
+    .sort((a, b) => computeGapPriority(b) - computeGapPriority(a))
+    .slice(0, count);
 }

@@ -3,6 +3,7 @@
 import { describe, it, beforeEach, afterEach } from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'fs/promises';
+import os from 'os';
 import path from 'path';
 import { assessMaturity, type MaturityContext } from '../src/core/maturity-engine.js';
 import { MAGIC_PRESETS } from '../src/core/magic-presets.js';
@@ -13,7 +14,7 @@ describe('e2e-maturity-pipeline', () => {
   let tmpDir: string;
 
   beforeEach(async () => {
-    tmpDir = await fs.mkdtemp(path.join(await fs.realpath(process.cwd()), '.tmp-e2e-maturity-'));
+    tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), 'df-e2e-maturity-'));
   });
 
   afterEach(async () => {

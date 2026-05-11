@@ -2,6 +2,7 @@
 // Keeps default setup minimal, with advanced options behind --advanced.
 import fs from 'fs/promises';
 import path from 'path';
+import { ensureProjectIgnores } from '../../core/project-ignores.js';
 import readline from 'node:readline';
 import { logger } from '../../core/logger.js';
 import { loadState, saveState } from '../../core/state.js';
@@ -189,6 +190,17 @@ export async function init(options: InitOptions = {}): Promise<void> {
   return withErrorBoundary('init', async () => {
     const cwd = options.cwd ?? process.cwd();
     const timestamp = new Date().toISOString();
+
+    // --- Decision-node: record start (best-effort) ---
+    let _dnStartNodeId: string | undefined;
+    const _dnT0 = Date.now();
+    try {
+      const { getSession, recordDecision } = await import('../../core/decision-node-recorder.js');
+      const _dnSess = getSession(cwd);
+      const _dnStart = await recordDecision({ session: _dnSess, actorType: 'agent', prompt: 'init: first-run project setup', context: {}, result: 'in-progress', success: false });
+      _dnStartNodeId = _dnStart.id;
+    } catch { /* never block */ }
+
     const isInteractive = ((options._isTTY ?? process.stdout.isTTY) || options.guided === true) && !options.nonInteractive;
     const loadStateFn = options._loadState ?? loadState;
     const saveStateFn = options._saveState ?? saveState;
@@ -217,6 +229,11 @@ export async function init(options: InitOptions = {}): Promise<void> {
     } catch {
       logger.info('No existing DanteForge project - starting fresh.');
     }
+
+    // Ensure .claudeignore and .gitignore exclude large generated dirs.
+    // This prevents AI file-walkers (Claude Code, Cursor, DanteCode, Codex…)
+    // from freezing when harvest/compete workflows clone hundreds of repos.
+    try { await ensureProjectIgnores(cwd); } catch { /* best-effort */ }
 
     logger.info('');
     logger.info('Health checks:');
@@ -266,5 +283,12 @@ export async function init(options: InitOptions = {}): Promise<void> {
     await saveStateFn(state, { cwd });
 
     printInitComplete(preferredLevel, hasConfiguredKey, preferLive, projectDescription || 'your idea here');
+
+    // --- Decision-node: record completion (best-effort) ---
+    try {
+      const { getSession, recordDecision } = await import('../../core/decision-node-recorder.js');
+      const _dnSess = getSession(cwd);
+      await recordDecision({ session: _dnSess, parentNodeId: _dnStartNodeId, actorType: 'agent', prompt: 'init: first-run project setup [complete]', result: 'project initialized', success: true, latencyMs: Date.now() - _dnT0 });
+    } catch { /* best-effort */ }
   });
 }

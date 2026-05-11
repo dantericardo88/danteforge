@@ -118,6 +118,17 @@ export async function localHarvest(
 ): Promise<void> {
   return withErrorBoundary('local-harvest', async () => {
   const cwd = options.cwd ?? process.cwd();
+
+  // --- Decision-node: record start (best-effort) ---
+  let _dnStartNodeId: string | undefined;
+  const _dnT0 = Date.now();
+  try {
+    const { getSession, recordDecision } = await import('../../core/decision-node-recorder.js');
+    const _dnSess = getSession(cwd);
+    const _dnStart = await recordDecision({ session: _dnSess, actorType: 'agent', prompt: 'local-harvest: local pattern harvest', context: { cwd }, result: 'in-progress', success: false });
+    _dnStartNodeId = _dnStart.id;
+  } catch { /* never block */ }
+
   const depth = (options.depth as HarvestDepth | undefined) ?? 'medium';
   const harvester = options._harvester ?? harvestLocalSources;
 
@@ -167,6 +178,13 @@ export async function localHarvest(
   } catch {
     // Best-effort audit log only.
   }
+
+  // --- Decision-node: record completion (best-effort) ---
+  try {
+    const { getSession, recordDecision } = await import('../../core/decision-node-recorder.js');
+    const _dnSess = getSession(cwd);
+    await recordDecision({ session: _dnSess, parentNodeId: _dnStartNodeId, actorType: 'agent', prompt: 'local-harvest: local pattern harvest [complete]', result: 'local harvest complete', success: true, latencyMs: Date.now() - _dnT0 });
+  } catch { /* best-effort */ }
   });
 }
 

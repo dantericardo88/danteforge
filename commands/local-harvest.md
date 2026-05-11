@@ -28,3 +28,5 @@ Options:
 - `--max-sources <n>` - Limit sources (default: `5`)
 
 CLI parity: `danteforge local-harvest [paths...]`
+
+Matrix development note: harvested patterns may justify a score proposal, but the canonical matrix changes only through `danteforge matrix merge --policy harsh-min`.

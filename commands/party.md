@@ -29,6 +29,17 @@ When the user invokes `/party`, follow this workflow:
 Use the `subagent-driven-development` skill for dispatch and review.
 Use the `using-git-worktrees` skill for worktree isolation.
 
+## Agent Anti-Bloat Guard
+
+Each party lane must use a different workstream when possible. Every lane writes
+its own ephemeral claim under `.danteforge/agent-claims/` and runs:
+
+```bash
+node scripts/check-agent-guard.mjs --staged --workstream <workstream>
+```
+
+Merge only lanes that pass ownership, frozen-file, atomic-score, and LOC checks.
+
 ## TOOL SAFETY RULES — All Models Must Follow
 
 **NEVER run** these commands — they destroy all in-progress work:

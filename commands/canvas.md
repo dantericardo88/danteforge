@@ -28,3 +28,5 @@ Options:
 - `--design-prompt <text>` - Override the design prompt passed to the design step
 
 CLI parity: `danteforge canvas [goal]`
+
+Matrix development note: UX/design score movement must be queued as a Matrix Development proposal and merged with `harsh-min`; never rewrite `.danteforge/compete/matrix.json` directly.

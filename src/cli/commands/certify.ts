@@ -128,6 +128,17 @@ function buildEvidenceBundle(
 
 export async function runCertify(options: CertifyOptions = {}): Promise<QualityCertificate> {
   const { cwd } = options;
+
+  // --- Decision-node: record start (best-effort) ---
+  let _dnStartNodeId: string | undefined;
+  const _dnT0 = Date.now();
+  try {
+    const { getSession, recordDecision } = await import('../../core/decision-node-recorder.js');
+    const _dnSess = getSession(cwd);
+    const _dnStart = await recordDecision({ session: _dnSess, actorType: 'agent', prompt: 'certify: quality certificate generation', context: { cwd }, result: 'in-progress', success: false });
+    _dnStartNodeId = _dnStart.id;
+  } catch { /* never block */ }
+
   const loadConv = options._loadConvergence ?? loadConvergence;
   const computeHash = options._computeHash ?? sha256;
 
@@ -207,6 +218,13 @@ export async function runCertify(options: CertifyOptions = {}): Promise<QualityC
   logger.info(`Tests Passing: ${testsPassing ? 'yes' : 'no'}`);
   logger.info(`Written to   : ${jsonPath}`);
   logger.info(`             : ${mdPath}`);
+
+  // --- Decision-node: record completion (best-effort) ---
+  try {
+    const { getSession, recordDecision } = await import('../../core/decision-node-recorder.js');
+    const _dnSess = getSession(cwd);
+    await recordDecision({ session: _dnSess, parentNodeId: _dnStartNodeId, actorType: 'agent', prompt: 'certify: quality certificate generation [complete]', result: 'QUALITY_CERTIFICATE written', success: true, latencyMs: Date.now() - _dnT0 });
+  } catch { /* best-effort */ }
 
   return cert;
 }

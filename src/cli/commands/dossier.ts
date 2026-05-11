@@ -32,6 +32,17 @@ export async function dossierBuild(
 ): Promise<void> {
   return withErrorBoundary('dossier build', async () => {
     const cwd = options.cwd ?? process.cwd();
+
+    // --- Decision-node: record start (best-effort) ---
+    let _dnStartNodeId: string | undefined;
+    const _dnT0 = Date.now();
+    try {
+      const { getSession, recordDecision } = await import('../../core/decision-node-recorder.js');
+      const _dnSess = getSession(cwd);
+      const _dnStart = await recordDecision({ session: _dnSess, actorType: 'agent', prompt: 'dossier-build: competitor dossier', context: { competitor: competitorArg }, result: 'in-progress', success: false });
+      _dnStartNodeId = _dnStart.id;
+    } catch { /* never block */ }
+
     const { buildDossier: defaultBuild, buildAllDossiers: defaultBuildAll } = await import('../../dossier/builder.js');
     const buildDossierFn = options._buildDossier ?? defaultBuild;
     const buildAllFn = options._buildAllDossiers ?? defaultBuildAll;
@@ -101,6 +112,13 @@ export async function dossierBuild(
         }
       }
     } catch { /* best-effort — never block dossier output */ }
+
+    // --- Decision-node: record completion (best-effort) ---
+    try {
+      const { getSession, recordDecision } = await import('../../core/decision-node-recorder.js');
+      const _dnSess = getSession(cwd);
+      await recordDecision({ session: _dnSess, parentNodeId: _dnStartNodeId, actorType: 'agent', prompt: 'dossier-build: competitor dossier [complete]', result: 'dossier built', success: true, latencyMs: Date.now() - _dnT0 });
+    } catch { /* best-effort */ }
   });
 }
 
@@ -110,6 +128,17 @@ export async function dossierDiff(
 ): Promise<void> {
   return withErrorBoundary('dossier diff', async () => {
     const cwd = options.cwd ?? process.cwd();
+
+    // --- Decision-node: record start (best-effort) ---
+    let _dnStartNodeId: string | undefined;
+    const _dnT0 = Date.now();
+    try {
+      const { getSession, recordDecision } = await import('../../core/decision-node-recorder.js');
+      const _dnSess = getSession(cwd);
+      const _dnStart = await recordDecision({ session: _dnSess, actorType: 'agent', prompt: 'dossier-diff: compare dossiers', context: { cwd }, result: 'in-progress', success: false });
+      _dnStartNodeId = _dnStart.id;
+    } catch { /* never block */ }
+
     const { loadDossier: defaultLoad, loadPreviousDossier: defaultLoadPrevious } = await import('../../dossier/builder.js');
     const { diffDossiers, formatDeltaReport } = await import('../../dossier/diff.js');
     const loadDossierFn = options._loadDossier ?? defaultLoad;
@@ -131,6 +160,13 @@ export async function dossierDiff(
     }
 
     logger.info(formatDeltaReport(diffDossiers(previous, current)));
+
+    // --- Decision-node: record completion (best-effort) ---
+    try {
+      const { getSession, recordDecision } = await import('../../core/decision-node-recorder.js');
+      const _dnSess = getSession(cwd);
+      await recordDecision({ session: _dnSess, parentNodeId: _dnStartNodeId, actorType: 'agent', prompt: 'dossier-diff: compare dossiers [complete]', result: 'diff complete', success: true, latencyMs: Date.now() - _dnT0 });
+    } catch { /* best-effort */ }
   });
 }
 
@@ -140,6 +176,17 @@ export async function dossierShow(
 ): Promise<void> {
   return withErrorBoundary('dossier show', async () => {
     const cwd = options.cwd ?? process.cwd();
+
+    // --- Decision-node: record start (best-effort) ---
+    let _dnStartNodeId: string | undefined;
+    const _dnT0 = Date.now();
+    try {
+      const { getSession, recordDecision } = await import('../../core/decision-node-recorder.js');
+      const _dnSess = getSession(cwd);
+      const _dnStart = await recordDecision({ session: _dnSess, actorType: 'agent', prompt: 'dossier-show: view dossier', context: { cwd }, result: 'in-progress', success: false });
+      _dnStartNodeId = _dnStart.id;
+    } catch { /* never block */ }
+
     const { loadDossier: defaultLoad } = await import('../../dossier/builder.js');
     const loadDossierFn = options._loadDossier ?? defaultLoad;
 
@@ -174,6 +221,13 @@ export async function dossierShow(
     }
 
     printDossierSummary(dossier);
+
+    // --- Decision-node: record completion (best-effort) ---
+    try {
+      const { getSession, recordDecision } = await import('../../core/decision-node-recorder.js');
+      const _dnSess = getSession(cwd);
+      await recordDecision({ session: _dnSess, parentNodeId: _dnStartNodeId, actorType: 'agent', prompt: 'dossier-show: view dossier [complete]', result: 'dossier shown', success: true, latencyMs: Date.now() - _dnT0 });
+    } catch { /* best-effort */ }
   });
 }
 

@@ -154,6 +154,17 @@ async function mutateSingleFile(
 
 export async function runSelfMutate(opts: SelfMutateOptions = {}): Promise<SelfMutateResult> {
   const cwd = opts.cwd ?? process.cwd();
+
+  // --- Decision-node: record start (best-effort) ---
+  let _dnStartNodeId: string | undefined;
+  const _dnT0 = Date.now();
+  try {
+    const { getSession, recordDecision } = await import('../../core/decision-node-recorder.js');
+    const _dnSess = getSession(cwd);
+    const _dnStart = await recordDecision({ session: _dnSess, actorType: 'agent', prompt: 'self-mutate: code mutation and test', context: { cwd }, result: 'in-progress', success: false });
+    _dnStartNodeId = _dnStart.id;
+  } catch { /* never block */ }
+
   const targets = opts.targets ?? CORE_TARGETS;
   const maxMutantsPerFile = opts.maxMutantsPerFile ?? 10;
   const minMutationScore = opts.minMutationScore ?? 0.6;
@@ -178,6 +189,13 @@ export async function runSelfMutate(opts: SelfMutateOptions = {}): Promise<SelfM
   const gatePass = overallScore >= minMutationScore;
   const reportPath = path.join(cwd, '.danteforge', 'mutation-report.json');
   await writeReport(reportPath, JSON.stringify({ capturedAt: new Date().toISOString(), overallScore, gatePass, minMutationScore, perFile }, null, 2)).catch(() => {});
+
+  // --- Decision-node: record completion (best-effort) ---
+  try {
+    const { getSession, recordDecision } = await import('../../core/decision-node-recorder.js');
+    const _dnSess = getSession(cwd);
+    await recordDecision({ session: _dnSess, parentNodeId: _dnStartNodeId, actorType: 'agent', prompt: 'self-mutate: code mutation and test [complete]', result: 'self-mutate complete', success: true, latencyMs: Date.now() - _dnT0 });
+  } catch { /* best-effort */ }
 
   return { perFile, overallScore, gatePass, minMutationScore, reportPath };
 }

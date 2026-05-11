@@ -107,6 +107,16 @@ export async function design(
   const saveFn = options._saveState ?? saveState;
 
   return withErrorBoundary('design', async () => {
+  // --- Decision-node: record start (best-effort) ---
+  let _dnStartNodeId: string | undefined;
+  const _dnT0 = Date.now();
+  try {
+    const { getSession, recordDecision } = await import('../../core/decision-node-recorder.js');
+    const _dnSess = getSession();
+    const _dnStart = await recordDecision({ session: _dnSess, actorType: 'agent', prompt: 'design: generate design artifact', context: {}, result: 'in-progress', success: false });
+    _dnStartNodeId = _dnStart.id;
+  } catch { /* never block */ }
+
   logger.info('Design: generating design artifacts from natural language');
 
   // --seed: write the canvas-defaults high-quality starting point immediately
@@ -169,5 +179,12 @@ export async function design(
     logger.info('Re-run with --prompt to generate a manual design prompt.');
     process.exitCode = 1;
   }
+
+  // --- Decision-node: record completion (best-effort) ---
+  try {
+    const { getSession, recordDecision } = await import('../../core/decision-node-recorder.js');
+    const _dnSess = getSession();
+    await recordDecision({ session: _dnSess, parentNodeId: _dnStartNodeId, actorType: 'agent', prompt: 'design: generate design artifact [complete]', result: 'DESIGN.op written', success: true, latencyMs: Date.now() - _dnT0 });
+  } catch { /* best-effort */ }
   });
 }

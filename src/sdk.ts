@@ -69,6 +69,11 @@ export type { FilterResult, FilterStatus, LedgerRecord, LedgerSummary } from './
 // Time Machine decision-node schema and store
 export * from './core/decision-node.js';
 
+// Time Machine snapshot, restore, and provenance queries
+export * from './core/time-machine.js';
+// Time Machine line provenance index and session graph
+export * from './core/time-machine-provenance.js';
+
 // Time Machine counterfactual replay engine
 export * from './core/time-machine-replay.js';
 

@@ -148,5 +148,5 @@ try {
 } catch { /* no matrix — ok */ }
 
 const context = buildSessionContext(stateYaml, matrixState);
-const payload = { additional_context: context, hookSpecificOutput: { additionalContext: context } };
+const payload = { hookSpecificOutput: { hookEventName: 'SessionStart', additionalContext: context } };
 process.stdout.write(`${JSON.stringify(payload, null, 2)}\n`);

@@ -1,50 +1,67 @@
-// Git Worktree management — isolated parallel workspaces for agent execution
 import { simpleGit } from 'simple-git';
 import fs from 'fs/promises';
 import path from 'path';
-import { fileURLToPath } from 'url';
 import { logger } from '../core/logger.js';
-
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
-
-// Resolve from the module location, not cwd — works in both dev (src/utils/) and bundled (dist/) mode
-const PROJECT_ROOT = path.resolve(__dirname, '..', '..');
-const WORKTREE_BASE = path.resolve(PROJECT_ROOT, '..', '.danteforge-worktrees');
+import { ensureProjectIgnores } from '../core/project-ignores.js';
 
 const git = simpleGit();
 
-/** Injection seam for git operations — enables testing without real git */
 export interface WorktreeGitFn {
   raw: (args: string[]) => Promise<string>;
 }
 
-/** Injection seam for file system operations — enables testing without real fs */
 export interface WorktreeFsOps {
-  readFile: (p: string, enc: string) => Promise<string>;
+  readFile: (p: string, enc: BufferEncoding) => Promise<string>;
   appendFile: (p: string, data: string) => Promise<void>;
   mkdir: (p: string, opts: { recursive: boolean }) => Promise<string | undefined>;
 }
 
-/** Consolidated injection seam options for worktree testing */
 export interface WorktreeTestOpts {
   _git?: WorktreeGitFn;
   _fs?: WorktreeFsOps;
+  cwd?: string;
+  _ensureProjectIgnores?: typeof ensureProjectIgnores;
 }
 
-/**
- * Create an isolated worktree for an agent
- */
-export async function createAgentWorktree(agentName: string, opts?: WorktreeTestOpts | WorktreeGitFn): Promise<string> {
-  const g = (opts && 'raw' in opts) ? opts : (opts as WorktreeTestOpts | undefined)?._git ?? git;
-  const worktreePath = path.join(WORKTREE_BASE, agentName);
+const nodeFsOps: WorktreeFsOps = {
+  readFile: (p, enc) => fs.readFile(p, enc) as Promise<string>,
+  appendFile: (p, data) => fs.appendFile(p, data),
+  mkdir: (p, opts) => fs.mkdir(p, opts),
+};
+
+function isGitFn(opts: WorktreeTestOpts | WorktreeGitFn | undefined): opts is WorktreeGitFn {
+  return Boolean(opts && 'raw' in opts);
+}
+
+function isFsOps(opts: WorktreeTestOpts | WorktreeFsOps | undefined): opts is WorktreeFsOps {
+  return Boolean(opts && 'readFile' in opts);
+}
+
+function resolveCwd(opts: WorktreeTestOpts | WorktreeGitFn | undefined): string {
+  return isGitFn(opts) ? process.cwd() : opts?.cwd ?? process.cwd();
+}
+
+function resolveWorktreeBase(cwd: string): string {
+  return path.join(cwd, '.danteforge-worktrees');
+}
+
+export async function createAgentWorktree(
+  agentName: string,
+  opts?: WorktreeTestOpts | WorktreeGitFn,
+): Promise<string> {
+  const g = isGitFn(opts) ? opts : opts?._git ?? git;
+  const f = isGitFn(opts) ? nodeFsOps : opts?._fs ?? nodeFsOps;
+  const cwd = resolveCwd(opts);
+  const ensureIgnores = isGitFn(opts) ? null : opts?._ensureProjectIgnores ?? ensureProjectIgnores;
+  const worktreeBase = resolveWorktreeBase(cwd);
+  const worktreePath = path.join(worktreeBase, agentName);
   const branchName = `danteforge/${agentName}`;
 
-  // Ensure the worktrees base directory exists
-  await fs.mkdir(WORKTREE_BASE, { recursive: true });
-
-  // Ensure worktrees directory is gitignored
-  await ensureWorktreesIgnored();
+  await f.mkdir(worktreeBase, { recursive: true });
+  if (ensureIgnores) {
+    try { await ensureIgnores(cwd); } catch { /* best effort */ }
+  }
+  await ensureWorktreesIgnored({ _fs: f, cwd });
 
   logger.info(`Creating worktree for agent "${agentName}" at ${worktreePath}...`);
 
@@ -52,8 +69,7 @@ export async function createAgentWorktree(agentName: string, opts?: WorktreeTest
     await g.raw(['worktree', 'add', worktreePath, '-b', branchName]);
     logger.success(`Worktree created: ${worktreePath} (branch: ${branchName})`);
     return worktreePath;
-  } catch (err) {
-    // Branch may already exist — try without -b
+  } catch {
     try {
       await g.raw(['worktree', 'add', worktreePath, branchName]);
       logger.success(`Worktree created (existing branch): ${worktreePath}`);
@@ -64,12 +80,13 @@ export async function createAgentWorktree(agentName: string, opts?: WorktreeTest
   }
 }
 
-/**
- * Remove an agent's worktree after completion
- */
-export async function removeAgentWorktree(agentName: string, opts?: WorktreeTestOpts | WorktreeGitFn): Promise<void> {
-  const g = (opts && 'raw' in opts) ? opts : (opts as WorktreeTestOpts | undefined)?._git ?? git;
-  const worktreePath = path.join(WORKTREE_BASE, agentName);
+export async function removeAgentWorktree(
+  agentName: string,
+  opts?: WorktreeTestOpts | WorktreeGitFn,
+): Promise<void> {
+  const g = isGitFn(opts) ? opts : opts?._git ?? git;
+  const cwd = resolveCwd(opts);
+  const worktreePath = path.join(resolveWorktreeBase(cwd), agentName);
 
   try {
     await g.raw(['worktree', 'remove', worktreePath, '--force']);
@@ -78,20 +95,16 @@ export async function removeAgentWorktree(agentName: string, opts?: WorktreeTest
     logger.warn(`Could not remove worktree "${agentName}": ${err instanceof Error ? err.message : String(err)}`);
   }
 
-  // Try to delete the branch
   const branchName = `danteforge/${agentName}`;
   try {
     await g.raw(['branch', '-d', branchName]);
   } catch {
-    // Branch may have unmerged changes — leave it
+    // Branch may have unmerged changes; leave it.
   }
 }
 
-/**
- * List all active DanteForge worktrees
- */
 export async function listWorktrees(opts?: WorktreeTestOpts | WorktreeGitFn): Promise<{ path: string; branch: string }[]> {
-  const g = (opts && 'raw' in opts) ? opts : (opts as WorktreeTestOpts | undefined)?._git ?? git;
+  const g = isGitFn(opts) ? opts : opts?._git ?? git;
   try {
     const result = await g.raw(['worktree', 'list', '--porcelain']);
     const worktrees: { path: string; branch: string }[] = [];
@@ -115,17 +128,16 @@ export async function listWorktrees(opts?: WorktreeTestOpts | WorktreeGitFn): Pr
   }
 }
 
-/**
- * Create worktrees for multiple agents in parallel.
- * Returns a map of agent name to worktree path.
- */
-export async function createParallelWorktrees(agentNames: string[], opts?: WorktreeTestOpts | WorktreeGitFn): Promise<Map<string, string>> {
+export async function createParallelWorktrees(
+  agentNames: string[],
+  opts?: WorktreeTestOpts | WorktreeGitFn,
+): Promise<Map<string, string>> {
   const results = new Map<string, string>();
   const settled = await Promise.allSettled(
     agentNames.map(async (name) => {
       const worktreePath = await createAgentWorktree(name, opts);
       return { name, path: worktreePath };
-    })
+    }),
   );
   for (const result of settled) {
     if (result.status === 'fulfilled') {
@@ -137,13 +149,11 @@ export async function createParallelWorktrees(agentNames: string[], opts?: Workt
   return results;
 }
 
-/**
- * Ensure the worktrees directory is in .gitignore
- */
 export async function ensureWorktreesIgnored(opts?: WorktreeTestOpts | WorktreeFsOps): Promise<void> {
-  const f = (opts && 'readFile' in opts) ? opts : (opts as WorktreeTestOpts | undefined)?._fs ?? fs;
-  const gitignorePath = path.join(PROJECT_ROOT, '.gitignore');
-  const ignoreEntry = '../.danteforge-worktrees/';
+  const f = isFsOps(opts) ? opts : opts?._fs ?? nodeFsOps;
+  const cwd = isFsOps(opts) ? process.cwd() : opts?.cwd ?? process.cwd();
+  const gitignorePath = path.join(cwd, '.gitignore');
+  const ignoreEntry = '.danteforge-worktrees/';
 
   try {
     const content = await f.readFile(gitignorePath, 'utf8');
@@ -152,19 +162,14 @@ export async function ensureWorktreesIgnored(opts?: WorktreeTestOpts | WorktreeF
     await f.appendFile(gitignorePath, `\n# DanteForge agent worktrees\n${ignoreEntry}\n`);
     logger.info('Added .danteforge-worktrees/ to .gitignore');
   } catch {
-    // .gitignore doesn't exist or can't be read — skip
+    // .gitignore does not exist or cannot be read; skip.
   }
 }
 
-/**
- * Ensure intermediate .op files from agent worktrees are gitignored.
- * Only the final, verifier-approved DESIGN.op should be committed to main.
- * Intermediate artifacts (*.op.raw, *.op.wip, agent-generated .op files outside
- * .danteforge/) are excluded to prevent repository bloat from large JSON diffs.
- */
 export async function ensureOPIntermediatesIgnored(opts?: WorktreeTestOpts | WorktreeFsOps): Promise<void> {
-  const f = (opts && 'readFile' in opts) ? opts : (opts as WorktreeTestOpts | undefined)?._fs ?? fs;
-  const gitignorePath = path.join(PROJECT_ROOT, '.gitignore');
+  const f = isFsOps(opts) ? opts : opts?._fs ?? nodeFsOps;
+  const cwd = isFsOps(opts) ? process.cwd() : opts?.cwd ?? process.cwd();
+  const gitignorePath = path.join(cwd, '.gitignore');
   const marker = '# DanteForge .op intermediates';
 
   try {
@@ -182,6 +187,6 @@ export async function ensureOPIntermediatesIgnored(opts?: WorktreeTestOpts | Wor
     await f.appendFile(gitignorePath, entries);
     logger.info('Added .op intermediate patterns to .gitignore');
   } catch {
-    // .gitignore doesn't exist or can't be read — skip
+    // .gitignore does not exist or cannot be read; skip.
   }
 }

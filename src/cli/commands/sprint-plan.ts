@@ -279,6 +279,17 @@ async function generateSprintPlanMarkdown(state: ProjectState, maxCycles: number
 
 export async function runSprintPlan(opts: SprintPlanOptions = {}): Promise<SprintPlanResult> {
   const cwd = opts.cwd ?? process.cwd();
+
+  // --- Decision-node: record start (best-effort) ---
+  let _dnStartNodeId: string | undefined;
+  const _dnT0 = Date.now();
+  try {
+    const { getSession, recordDecision } = await import('../../core/decision-node-recorder.js');
+    const _dnSess = getSession(cwd);
+    const _dnStart = await recordDecision({ session: _dnSess, actorType: 'agent', prompt: 'sprint-plan: sprint planning', context: { cwd }, result: 'in-progress', success: false });
+    _dnStartNodeId = _dnStart.id;
+  } catch { /* never block */ }
+
   const maxCycles = opts.maxCycles ?? 5;
   const stakes = opts.stakes ?? 'high';
 
@@ -349,6 +360,13 @@ export async function runSprintPlan(opts: SprintPlanOptions = {}): Promise<Sprin
   logger.info(`  Critique: ${critiquePassed ? '✓ approved' : '✗ blocked'}`);
   logger.info(`  Plan: ${path.relative(cwd, planPath)}`);
   logger.info('═══════════════════════════════════════════════');
+
+  // --- Decision-node: record completion (best-effort) ---
+  try {
+    const { getSession, recordDecision } = await import('../../core/decision-node-recorder.js');
+    const _dnSess = getSession(cwd);
+    await recordDecision({ session: _dnSess, parentNodeId: _dnStartNodeId, actorType: 'agent', prompt: 'sprint-plan: sprint planning [complete]', result: 'sprint plan complete', success: true, latencyMs: Date.now() - _dnT0 });
+  } catch { /* best-effort */ }
 
   return {
     planMarkdown,

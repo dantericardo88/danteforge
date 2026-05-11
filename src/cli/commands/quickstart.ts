@@ -152,6 +152,16 @@ export async function quickstart(options: QuickstartOptions = {}): Promise<void>
   return withErrorBoundary('quickstart', async () => {
     const cwd = options.cwd ?? process.cwd();
 
+    // --- Decision-node: record start (best-effort) ---
+    let _dnStartNodeId: string | undefined;
+    const _dnT0 = Date.now();
+    try {
+      const { getSession, recordDecision } = await import('../../core/decision-node-recorder.js');
+      const _dnSess = getSession(cwd);
+      const _dnStart = await recordDecision({ session: _dnSess, actorType: 'agent', prompt: 'quickstart: guided onboarding flow', context: { cwd }, result: 'in-progress', success: false });
+      _dnStartNodeId = _dnStart.id;
+    } catch { /* never block */ }
+
     if (options.simple) {
       await runSimpleQuickstart(options, cwd);
       return;
@@ -170,6 +180,13 @@ export async function quickstart(options: QuickstartOptions = {}): Promise<void>
     }
 
     await runQuickstartSteps(options, cwd, idea, tracker);
+
+    // --- Decision-node: record completion (best-effort) ---
+    try {
+      const { getSession, recordDecision } = await import('../../core/decision-node-recorder.js');
+      const _dnSess = getSession(cwd);
+      await recordDecision({ session: _dnSess, parentNodeId: _dnStartNodeId, actorType: 'agent', prompt: 'quickstart: guided onboarding flow [complete]', result: 'quickstart complete', success: true, latencyMs: Date.now() - _dnT0 });
+    } catch { /* best-effort */ }
   });
 }
 

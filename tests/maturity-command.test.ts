@@ -3,6 +3,7 @@
 import { describe, it, beforeEach, afterEach } from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'fs/promises';
+import os from 'os';
 import path from 'path';
 import { maturity, type MaturityOptions } from '../src/cli/commands/maturity.js';
 import type { DanteState } from '../src/core/state.js';
@@ -15,7 +16,7 @@ describe('maturity-command', () => {
   let originalStdoutWrite: typeof process.stdout.write;
 
   beforeEach(async () => {
-    tmpDir = await fs.mkdtemp(path.join(await fs.realpath(process.cwd()), '.tmp-maturity-cmd-'));
+    tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), 'df-maturity-cmd-'));
     originalExitCode = process.exitCode;
     process.exitCode = 0;
 

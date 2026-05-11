@@ -15,9 +15,28 @@ danteforge inferno "close the testing coverage gap"
 danteforge inferno "add self-healing convergence loop"
 ```
 
+## Convergence Gate — TypeScript Owns This Decision
+
+After EVERY implementation wave, run:
+```
+danteforge converge --check-only --target 9.0
+```
+- Exit **0** → all dimensions pass, you MAY stop
+- Exit **1** → one or more below target, run `danteforge converge --target 9.0` to continue the loop automatically
+
+Do NOT self-score. Do NOT estimate. Do NOT make the stop/continue decision yourself.
+`converge` reads real filesystem scores with no LLM involvement — it is the only valid termination oracle.
+
+## Code Quality Constraints (enforced — applies to ALL projects)
+
+**File size limit:** Every file you create or modify must stay under **500 non-blank LOC** (ideal) / **750 LOC hard cap**.
+- If a module would exceed 500 LOC, split it: `foo.ts` â†’ `foo.ts` + `foo-types.ts` + `foo-utils.ts`
+- Never write a single file exceeding 750 LOC — LLMs make structural mistakes at this size
+- This applies to TypeScript, JavaScript, Python, and any other source language
+
 ## Pipeline (6 Stages)
 
-1. **OSS Discovery** — Find the top 5–10 open-source repos doing the target thing best. Clone, license-gate, extract patterns.
+1. **OSS Discovery** — Find the top 5â€“10 open-source repos doing the target thing best. Clone, license-gate, extract patterns.
 
 1.5. **Dossier pre-flight** — Before autoforge begins, ensure competitor evidence is current.
      Run: `danteforge dossier build --all --since 7d`
@@ -39,8 +58,8 @@ danteforge inferno "add self-healing convergence loop"
 ## Usage Rule
 
 ```
-First-time new matrix dimension + fresh OSS discovery → /danteforge-inferno
-All follow-up PRD gap closing                         → /danteforge-magic
+First-time new matrix dimension + fresh OSS discovery â†’ /danteforge-inferno
+All follow-up PRD gap closing                         â†’ /danteforge-magic
 ```
 
 ## Options

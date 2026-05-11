@@ -4,6 +4,7 @@
 import { describe, it, beforeEach, afterEach } from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'fs/promises';
+import os from 'os';
 import path from 'path';
 import {
   scoreMaturityDimensions,
@@ -58,7 +59,7 @@ describe('scoreSecurity — false positive prevention', () => {
   let tmpDir: string;
 
   beforeEach(async () => {
-    tmpDir = await fs.mkdtemp(path.join(await fs.realpath(process.cwd()), '.tmp-sec-'));
+    tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), 'df-maturity-security-'));
   });
 
   afterEach(async () => {
@@ -123,7 +124,7 @@ describe('scorePerformance — test file exclusion + bonus', () => {
   let tmpDir: string;
 
   beforeEach(async () => {
-    tmpDir = await fs.mkdtemp(path.join(await fs.realpath(process.cwd()), '.tmp-perf-'));
+    tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), 'df-maturity-performance-'));
   });
 
   afterEach(async () => {

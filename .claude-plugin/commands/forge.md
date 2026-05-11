@@ -7,6 +7,25 @@ description: "Execute GSD waves — build the specified feature or goal using Da
 
 When the user invokes `/danteforge-forge [goal]`, implement the specified goal using the full DanteForge wave pipeline.
 
+## Convergence Gate — TypeScript Owns This Decision
+
+After EVERY implementation wave, run:
+```
+danteforge converge --check-only --target 9.0
+```
+- Exit **0** → all dimensions pass, you MAY stop
+- Exit **1** → one or more below target, run `danteforge converge --target 9.0` to continue the loop automatically
+
+Do NOT self-score. Do NOT estimate. Do NOT make the stop/continue decision yourself.
+`converge` reads real filesystem scores with no LLM involvement — it is the only valid termination oracle.
+
+## Code Quality Constraints (enforced — applies to ALL projects)
+
+**File size limit:** Every file you create or modify must stay under **500 non-blank LOC** (ideal) / **750 LOC hard cap**.
+- If a module would exceed 500 LOC, split it: `foo.ts` â†’ `foo.ts` + `foo-types.ts` + `foo-utils.ts`
+- Never write a single file exceeding 750 LOC — LLMs make structural mistakes (missing imports, wrong scope, stale references) at this size
+- This applies to TypeScript, JavaScript, Python, and any other source language
+
 ## Execution
 
 ```

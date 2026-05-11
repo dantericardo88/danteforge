@@ -7,6 +7,24 @@ description: "Fully autonomous scoring and self-improving loop — drives all ac
 
 When the user invokes `/danteforge-ascend [args]`, run the full autonomous improvement loop.
 
+## Code Quality Constraints (enforced — applies to ALL projects)
+
+**File size limit:** Every file you create or modify must stay under **500 non-blank LOC** (ideal) / **750 LOC hard cap**.
+- If a module would exceed 500 LOC, split it: `foo.ts` â†’ `foo.ts` + `foo-types.ts` + `foo-utils.ts`
+- Never write a single file exceeding 750 LOC — LLMs make structural mistakes at this size
+
+## Convergence Gate — TypeScript Owns This Decision
+
+After EVERY implementation cycle, run:
+```
+danteforge converge --check-only --target 9.0
+```
+- Exit **0** → all dimensions pass, you MAY stop
+- Exit **1** → one or more below target, run `danteforge converge --target 9.0` to continue the loop automatically
+
+Do NOT self-score. Do NOT estimate. Do NOT make the stop/continue decision yourself.
+`converge` reads real filesystem scores with no LLM involvement — it is the only valid termination oracle.
+
 ## What It Does
 
 0. **Dossier intelligence refresh** — Before the autonomous loop begins, ensure competitor evidence is current.
@@ -61,7 +79,7 @@ The command announces these upfront, skips them in the loop, and prints specific
 
 [Ascend] Cycle 1/30 — targeting: Developer Experience
   Goal: Improve Developer Experience from 5.5/10 toward 9.0/10 (harvest from Aider)
-  Result: Developer Experience 5.5 → 6.8 (+1.3)
+  Result: Developer Experience 5.5 â†’ 6.8 (+1.3)
 
 ...
 

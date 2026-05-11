@@ -64,6 +64,17 @@ constitution -> specify -> clarify -> tech-decide -> plan -> tasks -> design -> 
 
 Build first, then refine visually. UX-refine runs after forge because you need live UI to push to Figma.
 
+## File Size Standard (enforced)
+
+**Every TypeScript file you write must stay under 500 non-blank LOC (ideal) / 750 LOC (hard cap).**
+
+- ESLint warns at 500 lines (`max-lines` rule).
+- `npm run check:file-size` **fails** (exits 1) if any `src/` file exceeds 750 LOC. This is wired into `verify:all`.
+- LLM prompts (via `buildTaskPrompt`) include this constraint automatically.
+- The `scoreMaintainability` dimension penalizes files over 500 LOC.
+
+When a file approaches the limit, split it: `foo.ts` → `foo.ts` + `foo-types.ts` + `foo-utils.ts`.
+
 ## Conventions
 
 - `AGENTS.md` is the canonical agent instruction file (Codex/Claude/etc.); this file is adapter/context guidance

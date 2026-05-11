@@ -9,8 +9,11 @@ import {
   saveMatrix,
   loadMatrix,
   KNOWN_CEILINGS,
+  computeTwoGaps,
+  computeOverallScore,
   type CompeteMatrix,
 } from './compete-matrix.js';
+import { MARKET_DIM_SPECS } from './default-market-dims.js';
 import { logger } from './logger.js';
 import type { ScoringDimension } from './harsh-scorer.js';
 
@@ -73,7 +76,7 @@ async function collectInteractiveInput(
     ? competitorInput.split(',').map(s => s.trim()).filter(Boolean)
     : defaultCompetitors;
 
-  await askFn('3. Which dimensions matter most? (press Enter for all 18)', 'all');
+  await askFn('3. Which dimensions matter most? (press Enter for all 20)', 'all');
   await askFn('4. What is your target score? (default: 9.0)', '9.0');
 
   const searchAnswer = await askFn('5. Search the web for competitor patterns? (y/n)', 'y');
@@ -122,6 +125,7 @@ export async function defineUniverse(options: UniverseDefinerOptions = {}): Prom
     'autonomy', 'planningQuality', 'selfImprovement', 'specDrivenPipeline',
     'convergenceSelfHealing', 'tokenEconomy', 'ecosystemMcp',
     'enterpriseReadiness', 'communityAdoption',
+    'contextEconomy', 'causalCoherence',
   ];
   const ourScores = Object.fromEntries(SCORING_DIMS.map(d => [d, 50])) as Record<ScoringDimension, number>;
 
@@ -148,10 +152,41 @@ export async function defineUniverse(options: UniverseDefinerOptions = {}): Prom
     }
   }
 
+  // Append 30 market dimensions (idempotent — skip any already present)
+  for (const spec of MARKET_DIM_SPECS) {
+    if (matrix.dimensions.some(d => d.id === spec.id)) continue;
+    const selfScore = spec.selfDefault;
+    const scores: Record<string, number> = { self: selfScore, ...spec.baselineScores };
+    const baseEntries = Object.entries(spec.baselineScores);
+    const maxEntry = baseEntries.reduce(
+      (b, [k, v]) => v > b[1] ? [k, v] : b,
+      ['', 0] as [string, number],
+    );
+    const twoGaps = computeTwoGaps({ scores }, matrix.competitors_closed_source, matrix.competitors_oss);
+    matrix.dimensions.push({
+      id: spec.id,
+      label: spec.label,
+      weight: spec.weight,
+      frequency: spec.frequency,
+      category: spec.category,
+      scores,
+      gap_to_leader: Math.max(0, maxEntry[1] - selfScore),
+      leader: maxEntry[0] || 'unknown',
+      ...twoGaps,
+      status: 'not-started',
+      sprint_history: [],
+      next_sprint_target: Math.min(10, selfScore + 2.0),
+      ...(spec.closingStrategy !== undefined ? { closingStrategy: spec.closingStrategy } : {}),
+      ...(spec.ceiling !== undefined ? { ceiling: spec.ceiling, ceilingReason: spec.ceilingReason } : {}),
+      ...(spec.manualActionHint !== undefined ? { manualActionHint: spec.manualActionHint } : {}),
+    });
+  }
+  matrix.overallSelfScore = computeOverallScore(matrix);
+
   await saveMatrixFn(matrix, cwd);
 
   if (isInteractive) {
-    logger.success(`[Ascend] Matrix created with ${matrix.dimensions.length} dimensions for "${projectName}".`);
+    logger.success(`[Ascend] Matrix created with ${matrix.dimensions.length} dimensions (20 scored + 30 market) for "${projectName}".`);
   }
 
   return matrix;

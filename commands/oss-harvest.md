@@ -31,3 +31,5 @@ After all steps complete, report:
 - Which dimensions improved
 
 CLI parity: `danteforge harvest-pattern "<pattern>" [--max-repos <n>]`
+
+Matrix development note: after harvest-driven work, update scores only with the Matrix Development Engine proposal/merge path.

@@ -824,3 +824,189 @@ describe('compete --sync-scores', () => {
     assert.strictEqual(result.overallScore, undefined);
   });
 });
+
+describe('compete --amend', () => {
+  let tmpAmend: string;
+  before(async () => { tmpAmend = await fs.mkdtemp(path.join(os.tmpdir(), 'compete-amend-')); });
+  after(async () => { await fs.rm(tmpAmend, { recursive: true, force: true }); });
+
+  function makeAmendMatrix(): CompeteMatrix {
+    const base = makeMatrix([
+      { id: 'semantic_memory', label: 'Semantic Memory', scores: { self: 2.0, Cursor: 7.0 }, gap_to_leader: 5.0 },
+    ]);
+    base.dimensions.push({
+      id: 'code_signing', label: 'Code Signing', weight: 0.7,
+      category: 'reliability', frequency: 'low',
+      scores: { self: 0.0, Cursor: 10.0 }, gap_to_leader: 10.0, leader: 'Cursor',
+      gap_to_closed_source_leader: 10.0, closed_source_leader: 'Cursor',
+      gap_to_oss_leader: 0, oss_leader: 'unknown',
+      status: 'not-started', sprint_history: [], next_sprint_target: 2.0,
+      ceiling: 3.0, ceilingReason: 'requires EV cert — human action',
+    });
+    return base;
+  }
+
+  it('updates dim self-score and returns composite', async () => {
+    let saved: CompeteMatrix | null = null;
+    const result = await compete({
+      amend: 'semantic_memory=5.5',
+      cwd: tmpAmend,
+      _loadMatrix: async () => makeAmendMatrix(),
+      _saveMatrix: async (m) => { saved = m; },
+    });
+    assert.ok(saved, 'matrix should have been saved');
+    const dim = saved!.dimensions.find(d => d.id === 'semantic_memory');
+    assert.ok(dim, 'dim should exist');
+    assert.strictEqual(dim!.scores['self'], 5.5);
+    assert.strictEqual(result.action, 'status');
+  });
+
+  it('clamps score to ceiling when dim has one', async () => {
+    let saved: CompeteMatrix | null = null;
+    await compete({
+      amend: 'code_signing=8.0',
+      cwd: tmpAmend,
+      _loadMatrix: async () => makeAmendMatrix(),
+      _saveMatrix: async (m) => { saved = m; },
+    });
+    const dim = saved!.dimensions.find(d => d.id === 'code_signing');
+    assert.ok(dim!.scores['self']! <= 3.0, 'score must be clamped to ceiling 3.0');
+  });
+
+  it('records sprint history for the amended dim', async () => {
+    let saved: CompeteMatrix | null = null;
+    await compete({
+      amend: 'semantic_memory=6.0',
+      cwd: tmpAmend,
+      _loadMatrix: async () => makeAmendMatrix(),
+      _saveMatrix: async (m) => { saved = m; },
+    });
+    const dim = saved!.dimensions.find(d => d.id === 'semantic_memory');
+    assert.ok(dim!.sprint_history.length > 0, 'sprint history should have one entry');
+    assert.strictEqual(dim!.sprint_history[0]!.before, 2.0);
+    assert.strictEqual(dim!.sprint_history[0]!.after, 6.0);
+  });
+
+  it('exits 1 when format has no = separator', async () => {
+    let exitCode = 0;
+    const origExit = process.exit.bind(process);
+    (process as never as { exit: (c: number) => never }).exit = (c: number) => { exitCode = c; throw new Error('exit'); };
+    try {
+      await compete({ amend: 'semantic_memory5.5', cwd: tmpAmend, _loadMatrix: async () => makeAmendMatrix(), _saveMatrix: async () => {} });
+    } catch { /* swallow */ }
+    (process as never as { exit: typeof origExit }).exit = origExit;
+    assert.strictEqual(exitCode, 1);
+  });
+
+  it('exits 1 when dim id is not found in matrix', async () => {
+    let exitCode = 0;
+    const origExit = process.exit.bind(process);
+    (process as never as { exit: (c: number) => never }).exit = (c: number) => { exitCode = c; throw new Error('exit'); };
+    try {
+      await compete({ amend: 'nonexistent_dim=5.0', cwd: tmpAmend, _loadMatrix: async () => makeAmendMatrix(), _saveMatrix: async () => {} });
+    } catch { /* swallow */ }
+    (process as never as { exit: typeof origExit }).exit = origExit;
+    assert.strictEqual(exitCode, 1);
+  });
+});
+
+describe('compete --amend-file', () => {
+  let tmpAmendFile: string;
+  before(async () => { tmpAmendFile = await fs.mkdtemp(path.join(os.tmpdir(), 'compete-amendfile-')); });
+  after(async () => { await fs.rm(tmpAmendFile, { recursive: true, force: true }); });
+
+  function makeAmendFileMatrix(): CompeteMatrix {
+    const base = makeMatrix([
+      { id: 'semantic_memory', label: 'Semantic Memory', scores: { self: 2.0, Cursor: 7.0 }, gap_to_leader: 5.0 },
+      { id: 'agent_reasoning_loop', label: 'Agent Reasoning Loop', scores: { self: 4.0, Cursor: 8.0 }, gap_to_leader: 4.0 },
+    ]);
+    return base;
+  }
+
+  it('batch-updates multiple dims from valid JSON and saves matrix', async () => {
+    const jsonPath = path.join(tmpAmendFile, 'scores.json');
+    await fs.writeFile(jsonPath, JSON.stringify({ semantic_memory: 5.5, agent_reasoning_loop: 6.0 }), 'utf-8');
+    let saved: CompeteMatrix | null = null;
+    const result = await compete({
+      amendFile: 'scores.json',
+      cwd: tmpAmendFile,
+      _loadMatrix: async () => makeAmendFileMatrix(),
+      _saveMatrix: async (m) => { saved = m; },
+    });
+    assert.ok(saved, 'matrix should have been saved');
+    const sm = saved!.dimensions.find(d => d.id === 'semantic_memory');
+    const ar = saved!.dimensions.find(d => d.id === 'agent_reasoning_loop');
+    assert.strictEqual(sm!.scores['self'], 5.5, 'semantic_memory should be updated');
+    assert.strictEqual(ar!.scores['self'], 6.0, 'agent_reasoning_loop should be updated');
+    assert.strictEqual(result.action, 'status');
+  });
+
+  it('skips unknown dim IDs with a warning but still saves known updates', async () => {
+    const jsonPath = path.join(tmpAmendFile, 'partial.json');
+    await fs.writeFile(jsonPath, JSON.stringify({ semantic_memory: 5.0, nonexistent_dim: 3.0 }), 'utf-8');
+    let saved: CompeteMatrix | null = null;
+    await compete({
+      amendFile: 'partial.json',
+      cwd: tmpAmendFile,
+      _loadMatrix: async () => makeAmendFileMatrix(),
+      _saveMatrix: async (m) => { saved = m; },
+    });
+    assert.ok(saved, 'matrix should have been saved for the known dim');
+    const sm = saved!.dimensions.find(d => d.id === 'semantic_memory');
+    assert.strictEqual(sm!.scores['self'], 5.0);
+  });
+
+  it('skips out-of-range scores with a warning but applies valid ones', async () => {
+    const jsonPath = path.join(tmpAmendFile, 'outofrange.json');
+    await fs.writeFile(jsonPath, JSON.stringify({ semantic_memory: 5.0, agent_reasoning_loop: 15.0 }), 'utf-8');
+    let saved: CompeteMatrix | null = null;
+    await compete({
+      amendFile: 'outofrange.json',
+      cwd: tmpAmendFile,
+      _loadMatrix: async () => makeAmendFileMatrix(),
+      _saveMatrix: async (m) => { saved = m; },
+    });
+    assert.ok(saved, 'matrix should still be saved for the valid dim');
+    const sm = saved!.dimensions.find(d => d.id === 'semantic_memory');
+    assert.strictEqual(sm!.scores['self'], 5.0);
+    const ar = saved!.dimensions.find(d => d.id === 'agent_reasoning_loop');
+    assert.strictEqual(ar!.scores['self'], 4.0, 'out-of-range dim should not be updated');
+  });
+
+  it('exits 1 when file does not exist', async () => {
+    let exitCode = 0;
+    const origExit = process.exit.bind(process);
+    (process as never as { exit: (c: number) => never }).exit = (c: number) => { exitCode = c; throw new Error('exit'); };
+    try {
+      await compete({ amendFile: 'does_not_exist.json', cwd: tmpAmendFile, _loadMatrix: async () => makeAmendFileMatrix(), _saveMatrix: async () => {} });
+    } catch { /* swallow exit */ }
+    (process as never as { exit: typeof origExit }).exit = origExit;
+    assert.strictEqual(exitCode, 1);
+  });
+
+  it('exits 1 when file contains invalid JSON', async () => {
+    const jsonPath = path.join(tmpAmendFile, 'invalid.json');
+    await fs.writeFile(jsonPath, 'this is not json', 'utf-8');
+    let exitCode = 0;
+    const origExit = process.exit.bind(process);
+    (process as never as { exit: (c: number) => never }).exit = (c: number) => { exitCode = c; throw new Error('exit'); };
+    try {
+      await compete({ amendFile: 'invalid.json', cwd: tmpAmendFile, _loadMatrix: async () => makeAmendFileMatrix(), _saveMatrix: async () => {} });
+    } catch { /* swallow exit */ }
+    (process as never as { exit: typeof origExit }).exit = origExit;
+    assert.strictEqual(exitCode, 1);
+  });
+
+  it('exits 1 when file contains a JSON array instead of an object', async () => {
+    const jsonPath = path.join(tmpAmendFile, 'array.json');
+    await fs.writeFile(jsonPath, JSON.stringify([{ semantic_memory: 5.0 }]), 'utf-8');
+    let exitCode = 0;
+    const origExit = process.exit.bind(process);
+    (process as never as { exit: (c: number) => never }).exit = (c: number) => { exitCode = c; throw new Error('exit'); };
+    try {
+      await compete({ amendFile: 'array.json', cwd: tmpAmendFile, _loadMatrix: async () => makeAmendFileMatrix(), _saveMatrix: async () => {} });
+    } catch { /* swallow exit */ }
+    (process as never as { exit: typeof origExit }).exit = origExit;
+    assert.strictEqual(exitCode, 1);
+  });
+});

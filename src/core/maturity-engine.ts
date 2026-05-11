@@ -666,16 +666,38 @@ async function scoreMaintainability(
   }
 
   // Penalize >100 LOC functions. Monorepo-aware: scan all source dirs.
+  // Grandfathered files in .file-size-allowlist are pre-existing — skip them.
   const srcDirs = await getProjectSourceDirs(ctx.cwd, collectFiles);
+  const allowlistedPaths = new Set<string>();
+  try {
+    const allowlistRaw = await readFile(path.join(ctx.cwd, '.file-size-allowlist'));
+    for (const line of allowlistRaw.split('\n')) {
+      const trimmed = line.trim();
+      if (trimmed && !trimmed.startsWith('#')) {
+        allowlistedPaths.add(path.join(ctx.cwd, trimmed.split('/').join(path.sep)));
+      }
+    }
+  } catch { /* no allowlist file — fine */ }
+
   let largeFunctionPenalty = 0;
+  let largeFilePenalty = 0;
+  let totalFilesScanned = 0;
 
   for (const srcDir of srcDirs) {
     try {
       const files = await collectFiles(srcDir);
       for (const filePath of files) {
         if (!isScannableSourceFile(filePath)) continue;
+        if (allowlistedPaths.has(filePath)) continue;
+        totalFilesScanned++;
         try {
           const content = await readFile(filePath);
+
+          // File-level LOC check: files over 500 non-blank lines hurt LLM reasoning.
+          const nonBlankLines = content.split('\n').filter(l => l.trim().length > 0).length;
+          if (nonBlankLines > 750) largeFilePenalty += 6;       // hard-cap violation
+          else if (nonBlankLines > 500) largeFilePenalty += 3;  // ideal-cap violation
+
           const functions = extractFunctions(content);
           for (const fn of functions) {
             const loc = fn.split('\n').length;
@@ -693,12 +715,21 @@ async function scoreMaintainability(
   // Tiered penalty: linear penalty over-punishes mature codebases that have
   // legitimate >100-LOC state machines, large switches, comprehensive parsers,
   // etc. A handful of long-but-justified functions is fine; many is concerning.
-  // Cap is 30 (was 50) — refactor-incentive without floor-trapping mature code.
   let scaledPenalty: number;
-  if (largeFunctionPenalty <= 6) scaledPenalty = largeFunctionPenalty;        // ≤3 large fns: full penalty
-  else if (largeFunctionPenalty <= 20) scaledPenalty = 6 + (largeFunctionPenalty - 6) * 0.5;  // tail off
-  else scaledPenalty = 13 + Math.min(17, (largeFunctionPenalty - 20) * 0.3);  // hard cap
-  return Math.min(100, Math.max(0, pdseBase - scaledPenalty));
+  if (largeFunctionPenalty <= 6) scaledPenalty = largeFunctionPenalty;
+  else if (largeFunctionPenalty <= 20) scaledPenalty = 6 + (largeFunctionPenalty - 6) * 0.5;
+  else scaledPenalty = 13 + Math.min(17, (largeFunctionPenalty - 20) * 0.3);
+
+  // Ratio-based file penalty: penalizes the FRACTION of files over-limit, not
+  // the raw count. A 435-file codebase with 22 over-limit files (5%) should not
+  // score the same as a 50-file codebase with 22 over-limit files (44%).
+  // Formula: penalty = min(25, (rawPenalty / totalFiles) * 50)
+  // At 5% → ~7.5; at 20% → ~25 (capped)
+  const scaledFilePenalty = totalFilesScanned > 0
+    ? Math.min(25, (largeFilePenalty / totalFilesScanned) * 50)
+    : 0;
+
+  return Math.min(100, Math.max(0, pdseBase - scaledPenalty - scaledFilePenalty));
 }
 
 // ── Gap Analysis ───────────────────────────────────────────────────────────

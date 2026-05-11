@@ -27,6 +27,7 @@ export const TEST_LANES = [
     id: 'orchestration-heavy',
     description: 'Long-running orchestration and autonomous-loop suites.',
     concurrency: getHeavyLaneConcurrency(),
+    nodeV8Flags: ['--max-old-space-size=4096'],
     nodeArgs: ['--test-timeout=600000'],
     patterns: [
       /^tests\/ascend.*\.test\.ts$/,

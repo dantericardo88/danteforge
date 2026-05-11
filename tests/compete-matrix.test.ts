@@ -11,7 +11,14 @@ import {
   isOssTool,
   computeTwoGaps,
   checkMatrixStaleness,
+  getDimensionStrategy,
+  computeUnweightedComposite,
+  getTopGapDimensions,
+  HUMAN_ACTION_DIMENSION_IDS,
   FREQUENCY_MULTIPLIERS,
+  addOrUpdateCompetitor,
+  addOrUpdateDimension,
+  applyAdversarialCalibration,
   type MatrixDimension,
   type CompeteMatrix,
 } from '../src/core/compete-matrix.js';
@@ -217,6 +224,9 @@ describe('compete-matrix', () => {
     assert.ok(isOssTool('Tabby'), 'Tabby should be OSS');
     assert.ok(isOssTool('OpenHands'), 'OpenHands should be OSS');
     assert.ok(isOssTool('SWE-Agent (Princeton)'), 'SWE-Agent (Princeton) should be OSS via prefix match');
+    assert.ok(isOssTool('re_gent'), 're_gent should be OSS');
+    assert.ok(isOssTool('Regent'), 'Regent should be OSS');
+    assert.ok(isOssTool('regent-vcs/re_gent'), 'regent-vcs/re_gent should be OSS via prefix match');
 
     // Closed-source tools
     assert.ok(!isOssTool('Cursor'), 'Cursor should NOT be OSS');
@@ -339,6 +349,80 @@ describe('compete-matrix', () => {
       'OSS gap should be smaller than closed-source gap after update');
     assert.ok(updated.gap_to_oss_leader >= 0, 'OSS gap should be non-negative');
     assert.ok(updated.gap_to_closed_source_leader >= 0, 'Closed-source gap should be non-negative');
+  });
+
+  it('T10b: addOrUpdateCompetitor buckets re_gent as OSS and recomputes gaps', () => {
+    const dim = makeDim({
+      id: 'agent_activity_provenance',
+      label: 'Agent Activity Provenance & Time Travel',
+      weight: 1.4,
+      category: 'reliability',
+      frequency: 'high',
+      scores: { self: 8.2, Cursor: 4.0 },
+      gap_to_leader: 0,
+      leader: 'self',
+      gap_to_closed_source_leader: 0,
+      closed_source_leader: 'Cursor',
+      gap_to_oss_leader: 0,
+      oss_leader: 'unknown',
+      next_sprint_target: 8.2,
+    });
+    const matrix: CompeteMatrix = {
+      project: 'TestProject',
+      competitors: ['Cursor'],
+      competitors_closed_source: ['Cursor'],
+      competitors_oss: [],
+      lastUpdated: '2026-05-10T00:00:00.000Z',
+      overallSelfScore: 8.2,
+      dimensions: [dim],
+    };
+
+    addOrUpdateCompetitor(matrix, 're_gent', { agent_activity_provenance: 8.6 });
+
+    const updated = matrix.dimensions[0]!;
+    assert.ok(matrix.competitors.includes('re_gent'), 'flat competitor list should include re_gent');
+    assert.ok(matrix.competitors_oss.includes('re_gent'), 're_gent should be bucketed as OSS');
+    assert.ok(!matrix.competitors_closed_source.includes('re_gent'), 're_gent should not be closed-source');
+    assert.strictEqual(updated.leader, 're_gent');
+    assert.strictEqual(updated.oss_leader, 're_gent');
+    assert.strictEqual(updated.gap_to_leader, 0.4);
+    assert.strictEqual(updated.gap_to_oss_leader, 0.4);
+    assert.strictEqual(updated.gap_to_closed_source_leader, 0);
+    assert.strictEqual(updated.harvest_source, 're_gent');
+    assert.strictEqual(updated.next_sprint_target, 8.6);
+  });
+
+  it('T10c: addOrUpdateDimension adds the re_gent provenance sprint target', () => {
+    const matrix: CompeteMatrix = {
+      project: 'TestProject',
+      competitors: ['Cursor', 're_gent'],
+      competitors_closed_source: ['Cursor'],
+      competitors_oss: ['re_gent'],
+      lastUpdated: '2026-05-10T00:00:00.000Z',
+      overallSelfScore: 9,
+      dimensions: [],
+    };
+
+    addOrUpdateDimension(matrix, {
+      id: 'agent_activity_provenance',
+      label: 'Agent Activity Provenance & Time Travel',
+      weight: 1.4,
+      category: 'reliability',
+      frequency: 'high',
+      scores: { self: 8.2, Cursor: 4.0, re_gent: 8.6 },
+      status: 'not-started',
+      sprint_history: [],
+      next_sprint_target: 8.6,
+      harvest_source: 're_gent',
+    });
+
+    const next = getNextSprintDimension(matrix);
+    const dim = matrix.dimensions[0]!;
+    assert.strictEqual(dim.leader, 're_gent');
+    assert.strictEqual(dim.oss_leader, 're_gent');
+    assert.strictEqual(dim.harvest_source, 're_gent');
+    assert.strictEqual(dim.gap_to_leader, 0.4);
+    assert.strictEqual(next?.id, 'agent_activity_provenance');
   });
 
   // ── T11: ceiling clamp ────────────────────────────────────────────────────────
@@ -464,5 +548,206 @@ describe('checkMatrixStaleness', () => {
     const harshDimensions = { uxPolish: 5.3 }; // drift = 0.3 < 0.5 threshold
     const report = checkMatrixStaleness(matrix, harshDimensions, 7, 0.5);
     assert.strictEqual(report.driftedDimensions.length, 0, 'Drift below threshold should not be flagged');
+  });
+});
+
+// ── getDimensionStrategy ──────────────────────────────────────────────────────
+
+describe('getDimensionStrategy()', () => {
+  it('returns ceiling when dim has a ceiling below target', () => {
+    const dim = makeDim({ id: 'community_adoption', ceiling: 4.0 });
+    assert.strictEqual(getDimensionStrategy(dim, 9.0), 'ceiling');
+  });
+
+  it('returns ceiling when ceiling equals target threshold', () => {
+    // ceiling=8.0 < target=9.0 → still ceiling
+    const dim = makeDim({ id: 'something', ceiling: 8.0 });
+    assert.strictEqual(getDimensionStrategy(dim, 9.0), 'ceiling');
+  });
+
+  it('returns code when ceiling is above target', () => {
+    // ceiling=9.5 >= target=9.0 → achievable via code
+    const dim = makeDim({ id: 'context_economy', ceiling: 9.5 });
+    assert.strictEqual(getDimensionStrategy(dim, 9.0), 'code');
+  });
+
+  it('returns human for known human-action dimension IDs', () => {
+    for (const id of HUMAN_ACTION_DIMENSION_IDS) {
+      const dim = makeDim({ id });
+      assert.strictEqual(getDimensionStrategy(dim, 9.0), 'human', `${id} should be human`);
+    }
+  });
+
+  it('explicit closingStrategy field overrides default lookup (when not ceiling)', () => {
+    const dim = makeDim({ id: 'some_new_dim', closingStrategy: 'human' });
+    assert.strictEqual(getDimensionStrategy(dim, 9.0), 'human');
+  });
+
+  it('ceiling check takes priority over explicit closingStrategy field', () => {
+    // If ceiling < target, strategy is always ceiling regardless of closingStrategy field
+    const dim = makeDim({ id: 'community_adoption', ceiling: 4.0, closingStrategy: 'human' as const });
+    assert.strictEqual(getDimensionStrategy(dim, 9.0), 'ceiling');
+  });
+
+  it('returns code for unknown dimensions with no closingStrategy', () => {
+    const dim = makeDim({ id: 'ocr_text_extraction' });
+    assert.strictEqual(getDimensionStrategy(dim, 9.0), 'code');
+  });
+});
+
+// ── computeUnweightedComposite ────────────────────────────────────────────────
+
+describe('computeUnweightedComposite()', () => {
+  it('returns unweighted mean of all self-scores', () => {
+    const dims = [
+      makeDim({ id: 'a', scores: { self: 8.0 }, weight: 2.0 }),
+      makeDim({ id: 'b', scores: { self: 2.0 }, weight: 0.5 }),
+    ];
+    // unweighted mean = (8.0 + 2.0) / 2 = 5.0
+    // weighted mean = (2.0*8.0 + 0.5*2.0) / 2.5 = (16+1)/2.5 = 6.8
+    const matrix: CompeteMatrix = { project: 'p', competitors: [], competitors_closed_source: [], competitors_oss: [], lastUpdated: '', overallSelfScore: 0, dimensions: dims };
+    const composite = computeUnweightedComposite(matrix);
+    assert.strictEqual(composite, 5.0, 'Must be plain mean, not weighted');
+  });
+
+  it('includes ceiling and human-action dims in the denominator', () => {
+    const dims = [
+      makeDim({ id: 'functionality', scores: { self: 9.0 } }),
+      makeDim({ id: 'community_adoption', scores: { self: 1.0 }, ceiling: 4.0 }),
+      makeDim({ id: 'code_signing', scores: { self: 0.0 } }),
+    ];
+    const matrix: CompeteMatrix = { project: 'p', competitors: [], competitors_closed_source: [], competitors_oss: [], lastUpdated: '', overallSelfScore: 0, dimensions: dims };
+    // (9.0 + 1.0 + 0.0) / 3 = 3.3
+    const composite = computeUnweightedComposite(matrix);
+    assert.strictEqual(composite, 3.3, 'Embarrassing dims must pull down the composite');
+  });
+
+  it('returns 0 for an empty matrix', () => {
+    const matrix: CompeteMatrix = { project: 'p', competitors: [], competitors_closed_source: [], competitors_oss: [], lastUpdated: '', overallSelfScore: 0, dimensions: [] };
+    assert.strictEqual(computeUnweightedComposite(matrix), 0);
+  });
+});
+
+// ── getTopGapDimensions ───────────────────────────────────────────────────────
+
+describe('getTopGapDimensions()', () => {
+  it('returns dims sorted by gap × importance, highest first', () => {
+    const dims = [
+      makeDim({ id: 'low_priority', weight: 0.5, gap_to_leader: 1.0, frequency: 'low', status: 'not-started' }),
+      makeDim({ id: 'high_priority', weight: 1.5, gap_to_leader: 8.0, frequency: 'high', status: 'not-started' }),
+      makeDim({ id: 'mid_priority',  weight: 1.0, gap_to_leader: 4.0, frequency: 'medium', status: 'not-started' }),
+    ];
+    const matrix: CompeteMatrix = { project: 'p', competitors: [], competitors_closed_source: [], competitors_oss: [], lastUpdated: '', overallSelfScore: 0, dimensions: dims };
+    const top = getTopGapDimensions(matrix, 3);
+    assert.strictEqual(top[0]!.id, 'high_priority');
+    assert.strictEqual(top[1]!.id, 'mid_priority');
+    assert.strictEqual(top[2]!.id, 'low_priority');
+  });
+
+  it('includes ceiling and human-action dims (not just code-closable)', () => {
+    const dims = [
+      makeDim({ id: 'code_dim', weight: 1.0, gap_to_leader: 3.0, frequency: 'medium', status: 'not-started' }),
+      makeDim({ id: 'community_adoption', weight: 0.7, gap_to_leader: 8.0, frequency: 'low', ceiling: 4.0, status: 'not-started' }),
+    ];
+    const matrix: CompeteMatrix = { project: 'p', competitors: [], competitors_closed_source: [], competitors_oss: [], lastUpdated: '', overallSelfScore: 0, dimensions: dims };
+    const top = getTopGapDimensions(matrix, 5);
+    const ids = top.map(d => d.id);
+    assert.ok(ids.includes('community_adoption'), 'Ceiling dims must appear in top gaps');
+    assert.ok(ids.includes('code_dim'), 'Code dims must appear in top gaps');
+  });
+
+  it('excludes closed dimensions', () => {
+    const dims = [
+      makeDim({ id: 'done', gap_to_leader: 0.0, status: 'closed' }),
+      makeDim({ id: 'open', gap_to_leader: 5.0, status: 'not-started' }),
+    ];
+    const matrix: CompeteMatrix = { project: 'p', competitors: [], competitors_closed_source: [], competitors_oss: [], lastUpdated: '', overallSelfScore: 0, dimensions: dims };
+    const top = getTopGapDimensions(matrix, 5);
+    assert.ok(!top.some(d => d.id === 'done'), 'Closed dims must be excluded');
+    assert.strictEqual(top.length, 1);
+  });
+
+  it('respects count limit', () => {
+    const dims = Array.from({ length: 10 }, (_, i) =>
+      makeDim({ id: `dim_${i}`, gap_to_leader: i + 1, status: 'not-started' }),
+    );
+    const matrix: CompeteMatrix = { project: 'p', competitors: [], competitors_closed_source: [], competitors_oss: [], lastUpdated: '', overallSelfScore: 0, dimensions: dims };
+    assert.strictEqual(getTopGapDimensions(matrix, 3).length, 3);
+    assert.strictEqual(getTopGapDimensions(matrix, 5).length, 5);
+  });
+});
+
+// ── applyAdversarialCalibration ───────────────────────────────────────────────
+
+describe('applyAdversarialCalibration()', () => {
+  function makeMatrix(selfScore: number): CompeteMatrix {
+    const dim: MatrixDimension = {
+      ...makeDim({ id: 'ux_polish', label: 'UX Polish' }),
+      scores: { self: selfScore, Cursor: 9.2 },
+      gap_to_leader: Math.max(0, 9.2 - selfScore),
+      leader: 'Cursor',
+    };
+    return {
+      project: 'p',
+      competitors: ['Cursor'],
+      competitors_closed_source: ['Cursor'],
+      competitors_oss: [],
+      lastUpdated: '',
+      overallSelfScore: selfScore,
+      dimensions: [dim],
+    };
+  }
+
+  it('T20: reduces inflated self-score to consensus of harsh and adversarial scores', () => {
+    const matrix = makeMatrix(10.0);
+    const applied = applyAdversarialCalibration(matrix, 'ux_polish', 8.0, 7.0, 'inflated', 'UX is aspirational');
+    assert.ok(applied, 'should return true for inflated verdict');
+    assert.strictEqual(matrix.dimensions[0]!.scores['self'], 7.5, 'consensus = (8.0 + 7.0) / 2 = 7.5');
+    assert.ok(matrix.adversarialCalibrations?.length === 1, 'calibration record appended');
+    assert.strictEqual(matrix.adversarialCalibrations![0]!.dimensionId, 'ux_polish');
+    assert.strictEqual(matrix.adversarialCalibrations![0]!.verdict, 'inflated');
+    assert.strictEqual(matrix.adversarialCalibrations![0]!.beforeScore, 10.0);
+    assert.strictEqual(matrix.adversarialCalibrations![0]!.afterScore, 7.5);
+  });
+
+  it('T21: no-op for trusted verdict — returns false, score unchanged', () => {
+    const matrix = makeMatrix(8.0);
+    const applied = applyAdversarialCalibration(matrix, 'ux_polish', 8.0, 8.1, 'trusted', 'score matches');
+    assert.strictEqual(applied, false);
+    assert.strictEqual(matrix.dimensions[0]!.scores['self'], 8.0, 'score unchanged');
+    assert.ok(!matrix.adversarialCalibrations?.length, 'no calibration record added');
+  });
+
+  it('T22: no-op for watch verdict', () => {
+    const matrix = makeMatrix(9.0);
+    const applied = applyAdversarialCalibration(matrix, 'ux_polish', 9.0, 8.0, 'watch', 'minor gap');
+    assert.strictEqual(applied, false);
+  });
+
+  it('T23: no-op for unknown dimension id — returns false', () => {
+    const matrix = makeMatrix(10.0);
+    const applied = applyAdversarialCalibration(matrix, 'nonexistent_dim', 5.0, 4.0, 'inflated', 'x');
+    assert.strictEqual(applied, false);
+  });
+
+  it('T24: respects ceiling — consensus clamped to ceiling', () => {
+    const matrix = makeMatrix(10.0);
+    matrix.dimensions[0]!.ceiling = 8.0;
+    const applied = applyAdversarialCalibration(matrix, 'ux_polish', 9.0, 7.0, 'inflated', 'ceiling test');
+    assert.ok(applied);
+    assert.ok(matrix.dimensions[0]!.scores['self']! <= 8.0, 'score must not exceed ceiling');
+  });
+
+  it('T25: overall score is recomputed after calibration', () => {
+    const matrix = makeMatrix(10.0);
+    applyAdversarialCalibration(matrix, 'ux_polish', 8.0, 7.0, 'inflated', 'recompute test');
+    assert.strictEqual(matrix.overallSelfScore, 7.5, 'overall score recomputed');
+  });
+
+  it('T26: gap_to_leader recomputed upward after score reduction', () => {
+    const matrix = makeMatrix(10.0);
+    applyAdversarialCalibration(matrix, 'ux_polish', 8.0, 7.0, 'inflated', 'gap test');
+    const gap = matrix.dimensions[0]!.gap_to_leader;
+    assert.ok(gap > 0, `gap should now be positive; got ${gap}`);
   });
 });

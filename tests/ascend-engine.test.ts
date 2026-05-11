@@ -7,10 +7,11 @@ import {
   getNextSprintDimension,
   bootstrapMatrixFromComparison,
   KNOWN_CEILINGS,
+  HUMAN_ACTION_DIMENSION_IDS,
   type CompeteMatrix,
   type MatrixDimension,
 } from '../src/core/compete-matrix.js';
-import { mapDimIdToScoringDimension } from '../src/core/ascend-engine.js';
+import { mapDimIdToScoringDimension, buildAscendReport, type AscendResult } from '../src/core/ascend-engine.js';
 import type { CompetitorComparison } from '../src/core/competitor-scanner.js';
 import type { ScoringDimension } from '../src/core/harsh-scorer.js';
 
@@ -371,5 +372,219 @@ describe('AscendEngineOptions — Sprint 49 executeMode', () => {
     const forgeCalls = executeCalls.filter(c => c.startsWith('forge '));
     assert.ok(forgeCalls.length >= 1, `Expected at least one forge call, got: ${JSON.stringify(executeCalls)}`);
     assert.ok(forgeCalls[0]!.includes('Testing'), 'Forge goal should mention dimension label');
+  });
+});
+
+// ── Tests: rescore bug fix — non-harsh-scorer dims keep beforeScore ───────────
+
+describe('market dim guard — non-scorer dims skip forge cycle', () => {
+  it('dim not in harsh-scorer hits the market dim guard: no forge cycle, score stays at beforeScore', async () => {
+    const { runAscend } = await import('../src/core/ascend-engine.js');
+
+    // 'ocr_text_extraction' is not a known ScoringDimension — mapDimIdToScoringDimension returns null.
+    // The market dim guard fires immediately: no forge cycle runs, no score inflation possible.
+    const executeCalls: string[] = [];
+    let matrixAfter: CompeteMatrix | null = null;
+    await runAscend({
+      yes: true,
+      executeMode: 'forge',
+      maxCycles: 2,
+      _loadMatrix: async () => ({
+        project: 'test', competitors: ['Cursor'], competitors_closed_source: ['Cursor'], competitors_oss: [],
+        dimensions: [{
+          id: 'ocr_text_extraction', label: 'OCR Text Extraction', weight: 1.0,
+          category: 'features', frequency: 'medium' as const,
+          scores: { self: 1.0, Cursor: 8.5 }, gap_to_leader: 7.5, leader: 'Cursor',
+          gap_to_closed_source_leader: 7.5, closed_source_leader: 'Cursor',
+          gap_to_oss_leader: 0, oss_leader: 'unknown',
+          status: 'not-started' as const, sprint_history: [], next_sprint_target: 3.0,
+        }],
+        overallSelfScore: 1.0, lastUpdated: new Date().toISOString(),
+      }),
+      _saveMatrix: async (m) => { matrixAfter = m; },
+      _harshScore: async () => ({
+        displayScore: 7.0,
+        displayDimensions: { functionality: 7.0, testing: 7.0 },
+        rawScore: 70, harshScore: 70, dimensions: {}, penalties: [],
+        stubsDetected: [], fakeCompletionRisk: 'low', verdict: 'acceptable',
+        maturityAssessment: {} as never, timestamp: new Date().toISOString(),
+      } as never),
+      _computeStrictDims: async () => ({ autonomy: 50, selfImprovement: 50, tokenEconomy: 50 }),
+      _loadState: async () => ({ project: 'test', workflowStage: 'forge', tasks: {}, auditLog: [] } as never),
+      _saveState: async () => {},
+      _confirmMatrix: async () => true,
+      _isLLMAvailable: async () => true,
+      _bootstrapHarvest: async () => {},
+      _runVerify: async () => {},
+      _setWorkflowStage: async () => {},
+      _executeCommand: async (cmd: string) => { executeCalls.push(cmd); return { success: true }; },
+    });
+
+    // Market dim guard prevents any forge cycle from running for this dim
+    assert.strictEqual(executeCalls.filter(c => c.startsWith('forge')).length, 0,
+      'No forge calls should be made for a market dim with no auto-scorer');
+    // Score in matrix must not be inflated to displayScore (7.0)
+    if (matrixAfter) {
+      const dim = (matrixAfter as CompeteMatrix).dimensions.find(d => d.id === 'ocr_text_extraction');
+      if (dim) {
+        assert.ok((dim.scores['self'] ?? 0) <= 1.5,
+          `Score must not be inflated beyond beforeScore (1.0), got ${dim.scores['self']}`);
+      }
+    }
+  });
+});
+
+// ── Tests: human-action loop branch ──────────────────────────────────────────
+
+describe('runAscend — human-action dims skip forge cycle', () => {
+  it('dims with closingStrategy=human produce no forge calls', async () => {
+    const { runAscend } = await import('../src/core/ascend-engine.js');
+
+    const executeCalls: string[] = [];
+    await runAscend({
+      yes: true,
+      executeMode: 'forge',
+      maxCycles: 2,
+      _loadMatrix: async () => ({
+        project: 'test', competitors: ['Cursor'], competitors_closed_source: ['Cursor'], competitors_oss: [],
+        dimensions: [{
+          id: 'code_signing', label: 'Code Signing', weight: 1.0,
+          category: 'reliability', frequency: 'low' as const,
+          scores: { self: 0.0, Cursor: 9.0 }, gap_to_leader: 9.0, leader: 'Cursor',
+          gap_to_closed_source_leader: 9.0, closed_source_leader: 'Cursor',
+          gap_to_oss_leader: 0, oss_leader: 'unknown',
+          status: 'not-started' as const, sprint_history: [], next_sprint_target: 2.0,
+          closingStrategy: 'human' as const,
+        }],
+        overallSelfScore: 0.0, lastUpdated: new Date().toISOString(),
+      }),
+      _saveMatrix: async () => {},
+      _harshScore: async () => ({
+        displayScore: 5.0, displayDimensions: {},
+        rawScore: 50, harshScore: 50, dimensions: {}, penalties: [],
+        stubsDetected: [], fakeCompletionRisk: 'low', verdict: 'acceptable',
+        maturityAssessment: {} as never, timestamp: new Date().toISOString(),
+      } as never),
+      _computeStrictDims: async () => ({ autonomy: 50, selfImprovement: 50, tokenEconomy: 50 }),
+      _loadState: async () => ({ project: 'test', workflowStage: 'forge', tasks: {}, auditLog: [] } as never),
+      _saveState: async () => {},
+      _confirmMatrix: async () => true,
+      _isLLMAvailable: async () => true,
+      _bootstrapHarvest: async () => {},
+      _runVerify: async () => {},
+      _setWorkflowStage: async () => {},
+      _executeCommand: async (cmd: string) => { executeCalls.push(cmd); return { success: true }; },
+    });
+
+    const forgeCalls = executeCalls.filter(c => c.startsWith('forge '));
+    assert.strictEqual(forgeCalls.length, 0, 'No forge calls for human-action dim');
+  });
+
+  it('known HUMAN_ACTION_DIMENSION_IDS set is non-empty', () => {
+    assert.ok(HUMAN_ACTION_DIMENSION_IDS.size > 0, 'HUMAN_ACTION_DIMENSION_IDS must contain at least one entry');
+    assert.ok(HUMAN_ACTION_DIMENSION_IDS.has('community_adoption'));
+    assert.ok(HUMAN_ACTION_DIMENSION_IDS.has('code_signing'));
+  });
+});
+
+describe('buildManualAction / market dim guard', () => {
+  it('mapDimIdToScoringDimension returns null for a market dim (no harsh-scorer mapping)', () => {
+    assert.strictEqual(mapDimIdToScoringDimension('semantic_memory'), null);
+    assert.strictEqual(mapDimIdToScoringDimension('agent_reasoning_loop'), null);
+    assert.strictEqual(mapDimIdToScoringDimension('ide_integration'), null);
+  });
+
+  it('mapDimIdToScoringDimension returns a value for all 20 harsh-scorer dims', () => {
+    const harshIds = [
+      'functionality', 'testing', 'error_handling', 'security', 'ux_polish',
+      'documentation', 'performance', 'maintainability', 'developer_experience',
+      'autonomy', 'planning_quality', 'self_improvement', 'spec_driven_pipeline',
+      'convergence_self_healing', 'token_economy', 'context_economy', 'causal_coherence',
+      'ecosystem_mcp', 'enterprise_readiness', 'community_adoption',
+    ];
+    for (const id of harshIds) {
+      assert.notStrictEqual(mapDimIdToScoringDimension(id), null, `${id} should map to a ScoringDimension`);
+    }
+  });
+
+  it('causalCoherence is now in ALL_SCORING_DIMENSIONS (regression — was missing)', () => {
+    assert.notStrictEqual(mapDimIdToScoringDimension('causal_coherence'), null);
+  });
+});
+
+describe('buildAscendReport — market dim checklist', () => {
+  function makeAscendResult(overrides: Partial<AscendResult> = {}): AscendResult {
+    return {
+      cyclesRun: 1,
+      dimensionsImproved: 0,
+      dimensionsAtTarget: 0,
+      ceilingReports: [],
+      finalScore: 5.0,
+      success: false,
+      ...overrides,
+    };
+  }
+
+  function makeReportMatrix(dims: Partial<MatrixDimension>[]): CompeteMatrix {
+    return {
+      project: 'TestProject',
+      competitors: ['Cursor'],
+      competitors_closed_source: ['Cursor'],
+      competitors_oss: [],
+      lastUpdated: new Date().toISOString(),
+      overallSelfScore: 5.0,
+      dimensions: dims.map((d, i) => ({
+        id: d.id ?? `dim_${i}`,
+        label: d.label ?? `Dim ${i}`,
+        weight: d.weight ?? 1.0,
+        category: d.category ?? 'quality',
+        frequency: d.frequency ?? 'medium',
+        scores: d.scores ?? { self: 5.0, Cursor: 8.0 },
+        gap_to_leader: d.gap_to_leader ?? 3.0,
+        leader: d.leader ?? 'Cursor',
+        gap_to_closed_source_leader: d.gap_to_closed_source_leader ?? 3.0,
+        closed_source_leader: d.closed_source_leader ?? 'Cursor',
+        gap_to_oss_leader: d.gap_to_oss_leader ?? 0,
+        oss_leader: d.oss_leader ?? 'unknown',
+        status: d.status ?? 'not-started',
+        sprint_history: d.sprint_history ?? [],
+        next_sprint_target: d.next_sprint_target ?? 7.0,
+        ceiling: d.ceiling,
+        ceilingReason: d.ceilingReason,
+      } as MatrixDimension)),
+    };
+  }
+
+  it('includes market dim checklist when market dims are below target', () => {
+    const matrix = makeReportMatrix([
+      // harsh-scorer dim (functionality → in ALL_SCORING_DIMENSIONS)
+      { id: 'functionality', label: 'Functionality', scores: { self: 8.0, Cursor: 9.0 } },
+      // market dim (semantic_memory → NOT in ALL_SCORING_DIMENSIONS, below target)
+      { id: 'semantic_memory', label: 'Semantic Memory', scores: { self: 2.0, Cursor: 7.0 } },
+    ]);
+    const report = buildAscendReport(matrix, makeAscendResult(), 9.0, {});
+    assert.ok(report.includes('Market Dims Needing Manual Update'), 'should include market dim section heading');
+    assert.ok(report.includes('semantic_memory'), 'should list the market dim id');
+    assert.ok(report.includes('--amend semantic_memory=<score>'), 'should include the --amend command');
+    assert.ok(!report.includes('functionality'), 'should not include the auto-scored dim');
+  });
+
+  it('omits market dim section when all market dims are at or above target', () => {
+    const matrix = makeReportMatrix([
+      { id: 'functionality', label: 'Functionality', scores: { self: 8.0, Cursor: 9.0 } },
+      // semantic_memory at 9.0 — already at target
+      { id: 'semantic_memory', label: 'Semantic Memory', scores: { self: 9.0, Cursor: 9.0 } },
+    ]);
+    const report = buildAscendReport(matrix, makeAscendResult(), 9.0, {});
+    assert.ok(!report.includes('Market Dims Needing Manual Update'), 'section should be omitted when all market dims at target');
+  });
+
+  it('omits market dim section when matrix has only harsh-scorer dims', () => {
+    const matrix = makeReportMatrix([
+      { id: 'functionality', label: 'Functionality', scores: { self: 7.0, Cursor: 9.0 } },
+      { id: 'testing', label: 'Testing', scores: { self: 6.0, Cursor: 9.0 } },
+    ]);
+    const report = buildAscendReport(matrix, makeAscendResult(), 9.0, {});
+    assert.ok(!report.includes('Market Dims Needing Manual Update'), 'section should be absent when no market dims');
   });
 });

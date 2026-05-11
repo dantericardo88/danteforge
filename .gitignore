@@ -9,6 +9,22 @@ vscode-extension/.artifacts/
 
 # DanteForge runtime state (per-project, not shared)
 .danteforge/
+!.danteforge/
+.danteforge/*
+!.danteforge/agent-guard.json
+!.danteforge/agent-ownership.json
+!.danteforge/agent-claims/
+!.danteforge/agent-claims/.gitkeep
+.danteforge/agent-claims/*
+!.danteforge/agent-claims/.gitkeep
+!.danteforge/dimension-claims/
+!.danteforge/dimension-claims/.gitkeep
+.danteforge/dimension-claims/*
+!.danteforge/dimension-claims/.gitkeep
+!.danteforge/score-proposals/
+!.danteforge/score-proposals/.gitkeep
+.danteforge/score-proposals/*
+!.danteforge/score-proposals/.gitkeep
 !examples/todo-app/.danteforge/
 examples/todo-app/.danteforge/**
 !examples/todo-app/.danteforge/AUTOFORGE_GUIDANCE.md
@@ -67,3 +83,12 @@ coverage/
 
 # Test temp directories
 .tmp-*/
+
+# DanteForge agent hygiene start
+.danteforge/oss-repos/
+.danteforge/oss-deep/
+.claude/worktrees/
+test_output.*
+test-output.*
+test-run*.log
+# DanteForge agent hygiene end

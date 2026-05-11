@@ -633,7 +633,6 @@ async function syncCodexCommands(homeDir: string): Promise<void> {
 }
 
 async function syncClaudePluginCache(homeDir: string, projectDir: string): Promise<void> {
-  // Read the package.json from the project directory to get the current version
   let pkgJson: { version?: string; files?: string[] };
   try {
     const raw = await fs.readFile(path.join(projectDir, 'package.json'), 'utf8');
@@ -664,16 +663,10 @@ async function syncClaudePluginCache(homeDir: string, projectDir: string): Promi
   if (!entries || entries.length === 0) return;
 
   const entry = entries[0]!;
-  if (entry.version === version) return; // Already at this version
-
-  // Locate the old cache dir to inherit node_modules
   const oldCacheDir = entry.installPath;
-
-  // Build the new cache dir path
   const cacheBaseDir = path.join(pluginsDir, 'cache', 'danteforge-dev', 'danteforge', version);
   await fs.mkdir(cacheBaseDir, { recursive: true });
 
-  // Copy package files from the project dir
   const filesToCopy = pkgJson.files ?? [];
   for (const fileEntry of filesToCopy) {
     const src = path.join(projectDir, fileEntry);
@@ -691,15 +684,13 @@ async function syncClaudePluginCache(homeDir: string, projectDir: string): Promi
     }
   }
 
-  // Always copy package.json
   try {
     await fs.copyFile(path.join(projectDir, 'package.json'), path.join(cacheBaseDir, 'package.json'));
   } catch {
     // Ignore
   }
 
-  // Inherit node_modules from the prior version cache dir
-  if (oldCacheDir) {
+  if (oldCacheDir && oldCacheDir !== cacheBaseDir) {
     const oldNodeModules = path.join(oldCacheDir, 'node_modules');
     try {
       await fs.access(oldNodeModules);
@@ -709,7 +700,6 @@ async function syncClaudePluginCache(homeDir: string, projectDir: string): Promi
     }
   }
 
-  // Update installed_plugins.json
   const now = new Date().toISOString();
   entry.version = version;
   entry.installPath = cacheBaseDir;
@@ -849,7 +839,7 @@ export async function installAssistantSkills(
       continue;
     }
 
-    await installNativeSkills(assistant, skillDirs, skillsDir, targetDir, homeDir, options.projectDir);
+    await installNativeSkills(assistant, skillDirs, skillsDir, targetDir, homeDir, projectDir);
     results.push({ assistant, targetDir, installedSkills: skillDirs, installMode: 'skills' });
   }
 

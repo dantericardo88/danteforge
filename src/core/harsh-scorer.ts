@@ -3,7 +3,6 @@
 // and unverified features. Produces a 0-10 display score.
 
 import fs from 'fs/promises';
-import { existsSync, readdirSync, readFileSync } from 'node:fs';
 import path from 'path';
 import { loadState, type DanteState } from './state.js';
 import { scoreAllArtifacts } from './pdse.js';
@@ -12,8 +11,46 @@ import { computeCompletionTracker } from './completion-tracker.js';
 import { assessMaturity, type MaturityAssessment, type MaturityDimensions } from './maturity-engine.js';
 import { scoreToMaturityLevel, type MaturityLevel } from './maturity-levels.js';
 import { checkIntegrationWiring, computeWiringBonus, type IntegrationWiringOptions, type IntegrationWiringResult } from './integration-wiring.js';
-import { scoreContextEconomySync } from './context-economy/runtime.js';
 import { KNOWN_CEILINGS } from './compete-matrix.js';
+import {
+  computeCausalCoherenceScore,
+  computeCommunityAdoptionScore,
+  fetchCommunityMetrics,
+  listSourceFiles,
+  readAssessmentHistory,
+  readCoveragePercent,
+  writeAssessmentHistory,
+  type CommunityMetrics,
+} from './harsh-scorer-community.js';
+import { computeStrictDimensions, type StrictDimensions } from './harsh-scorer-strict.js';
+import {
+  computeContextEconomyScore,
+  computeEcosystemMcpScore,
+  computeEnterpriseReadinessScore,
+  detectMcpToolCountSync,
+  detectPluginManifestSync,
+  detectSkillCountSync,
+} from './harsh-scorer-ecosystem.js';
+import { computeFakeCompletionRisk } from './harsh-scorer-display.js';
+export {
+  computeCausalCoherenceScore,
+  computeCommunityAdoptionScore,
+  fetchCommunityMetrics,
+  readAssessmentHistory,
+  readCoveragePercent,
+  writeAssessmentHistory,
+  type CommunityMetrics,
+} from './harsh-scorer-community.js';
+export { computeStrictDimensions, makeFileChecker, type StrictDimensions } from './harsh-scorer-strict.js';
+export {
+  computeContextEconomyScore,
+  computeEcosystemMcpScore,
+  computeEnterpriseReadinessScore,
+  detectMcpToolCountSync,
+  detectPluginManifestSync,
+  detectSkillCountSync,
+} from './harsh-scorer-ecosystem.js';
+export { computeFakeCompletionRisk, formatDimensionBar } from './harsh-scorer-display.js';
 
 // ── 20-Dimension Scoring Type ────────────────────────────────────────────────
 // Extends the 8 existing MaturityDimensions with 12 competitor-facing ones.
@@ -814,264 +851,14 @@ export function computeTokenEconomyScore(state: DanteState): number {
 }
 
 // Context Economy scorer - reads telemetry evidence from PRD-26 implementation.
-export function computeContextEconomyScore(cwd: string): number {
-  return scoreContextEconomySync(cwd).score;
-}
-
 // Filesystem detectors for ecosystem signals — used when STATE.yaml hasn't
 // been bootstrapped (e.g., during direct trio scoring). Mirrors the logic of
 // `bootstrapEcosystemSignals` in src/cli/commands/score.ts but synchronous so
 // it can run inline inside the scorer without changing callers.
-const SKILL_DIR_CANDIDATES = [
-  'src/harvested/dante-agents/skills',
-  '.dantecode/skills',
-  'Docs/skills',
-  'skills',
-];
-
-export function detectSkillCountSync(cwd: string): number {
-  let count = 0;
-  for (const rel of SKILL_DIR_CANDIDATES) {
-    const dir = path.join(cwd, rel);
-    if (!existsSync(dir)) continue;
-    try {
-      const entries = readdirSync(dir, { withFileTypes: true });
-      for (const e of entries) {
-        if (!e.isDirectory()) continue;
-        if (existsSync(path.join(dir, e.name, 'SKILL.md'))) count++;
-      }
-    } catch { /* skip */ }
-  }
-  // Also count packages/*/SKILL.md (for monorepo-style sister repos)
-  const pkgsDir = path.join(cwd, 'packages');
-  if (existsSync(pkgsDir)) {
-    try {
-      const entries = readdirSync(pkgsDir, { withFileTypes: true });
-      for (const e of entries) {
-        if (!e.isDirectory()) continue;
-        if (existsSync(path.join(pkgsDir, e.name, 'SKILL.md'))) count++;
-      }
-    } catch { /* skip */ }
-  }
-  return count;
-}
-
-export function detectPluginManifestSync(cwd: string): boolean {
-  return existsSync(path.join(cwd, '.claude-plugin', 'plugin.json'));
-}
-
-export function detectMcpToolCountSync(cwd: string): number {
-  // 1) Explicit signal file (cheapest)
-  const signalFile = path.join(cwd, '.danteforge', 'mcp-tool-count.txt');
-  if (existsSync(signalFile)) {
-    try {
-      const n = parseInt(readFileSync(signalFile, 'utf-8').trim(), 10);
-      if (Number.isFinite(n) && n >= 0) return n;
-    } catch { /* fall through */ }
-  }
-  // 2) Best-effort grep on candidate MCP server files
-  const candidates = [
-    path.join(cwd, 'src', 'core', 'mcp-server.ts'),
-    path.join(cwd, 'packages', 'mcp', 'src', 'server.ts'),
-    path.join(cwd, 'packages', 'mcp-server', 'src', 'index.ts'),
-    path.join(cwd, 'packages', 'mcp-server', 'src', 'mcp-server.ts'),
-  ];
-  for (const c of candidates) {
-    if (!existsSync(c)) continue;
-    try {
-      const text = readFileSync(c, 'utf-8');
-      const matches = text.match(/^\s+name:\s*['"][\w_-]+['"]/gm);
-      if (matches && matches.length > 0) return matches.length;
-      const regMatches = text.match(/registerTool\s*\(/g);
-      if (regMatches && regMatches.length > 0) return regMatches.length;
-    } catch { /* skip */ }
-  }
-  return 0;
-}
-
-export function computeEcosystemMcpScore(state: DanteState, cwd: string): number {
-  const s = state as unknown as Record<string, unknown>;
-  let score = 30; // base: MCP server + skill system exists
-
-  // Filesystem fallback when state hasn't been bootstrapped (trio scoring
-  // doesn't run the score command's bootstrap path, and not all repos have
-  // state.skillCount populated).
-  const skillCount = typeof s['skillCount'] === 'number' ? s['skillCount'] : detectSkillCountSync(cwd);
-  if (skillCount >= 10) score += 25;
-  else if (skillCount >= 5) score += 15;
-  else if (skillCount > 0) score += 8;
-
-  const mcpToolCount = typeof s['mcpToolCount'] === 'number' ? s['mcpToolCount'] : detectMcpToolCountSync(cwd);
-  if (mcpToolCount >= 15) score += 20;
-  else if (mcpToolCount >= 5) score += 10;
-
-  const hasPluginManifest = typeof s['hasPluginManifest'] === 'boolean' ? s['hasPluginManifest'] : detectPluginManifestSync(cwd);
-  if (hasPluginManifest) score += 15;
-
-  if ((typeof s['providerCount'] === 'number' ? s['providerCount'] : 5) >= 5) score += 10;
-  return Math.max(0, Math.min(100, score));
-}
-
-export function computeEnterpriseReadinessScore(
-  state: DanteState,
-  assessment: MaturityAssessment,
-  enterpriseFlags?: EnterpriseEvidenceFlags,
-): number {
-  const s = state as unknown as Record<string, unknown>;
-  let score = 15; // base: audit log exists
-  const auditEntries = state.auditLog?.length ?? 0;
-  if (auditEntries > 20) score += 20;
-  else if (auditEntries > 5) score += 10;
-  if (s['selfEditPolicy'] === 'deny' || s['selfEditPolicy'] === 'prompt') score += 15;
-  if (assessment.dimensions.security >= 80) score += 20;
-  else if (assessment.dimensions.security >= 70) score += 10;
-  if (s['lastVerifyReceiptPath']) score += 15;
-  // Filesystem-verifiable enterprise evidence (+23 max)
-  if (enterpriseFlags?.hasSecurityPolicy) score += 10;  // responsible disclosure policy
-  if (enterpriseFlags?.hasVersionedChangelog) score += 5; // versioned release history
-  if (enterpriseFlags?.hasRunbook) score += 5;           // operational runbook
-  if (enterpriseFlags?.hasContributing) score += 3;      // contribution governance
-  return Math.max(0, Math.min(100, score));
-}
-
 // ── Community Adoption — real GitHub + npm signals ──────────────────────────
 
-export interface CommunityMetrics {
-  npmDownloadsMonthly?: number;
-  githubStars?: number;
-  githubContributors?: number;
-}
-
 /** Fetches real community signals from npm registry and GitHub API. Best-effort — returns {} on any failure. */
-export async function fetchCommunityMetrics(
-  packageName: string,
-  repoSlug: string,
-  opts: { _fetch?: typeof fetch; timeoutMs?: number } = {},
-): Promise<CommunityMetrics> {
-  const fetcher = opts._fetch ?? fetch;
-  const timeout = opts.timeoutMs ?? 5000;
-  const result: CommunityMetrics = {};
-
-  // npm monthly downloads
-  try {
-    const ctrl = new AbortController();
-    const t = setTimeout(() => ctrl.abort(), timeout);
-    const res = await fetcher(
-      `https://api.npmjs.org/downloads/point/last-month/${packageName}`,
-      { signal: ctrl.signal },
-    );
-    clearTimeout(t);
-    if (res.ok) {
-      const data = await res.json() as Record<string, unknown>;
-      if (typeof data['downloads'] === 'number') {
-        result.npmDownloadsMonthly = data['downloads'] as number;
-      }
-    }
-  } catch { /* best-effort */ }
-
-  // GitHub stars + contributors
-  if (repoSlug) {
-    try {
-      const ctrl = new AbortController();
-      const t = setTimeout(() => ctrl.abort(), timeout);
-      const res = await fetcher(
-        `https://api.github.com/repos/${repoSlug}`,
-        { signal: ctrl.signal, headers: { 'User-Agent': 'danteforge-scorer/1.0' } },
-      );
-      clearTimeout(t);
-      if (res.ok) {
-        const data = await res.json() as Record<string, unknown>;
-        if (typeof data['stargazers_count'] === 'number') {
-          result.githubStars = data['stargazers_count'] as number;
-        }
-      }
-    } catch { /* best-effort */ }
-
-    try {
-      const ctrl = new AbortController();
-      const t = setTimeout(() => ctrl.abort(), timeout);
-      const res = await fetcher(
-        `https://api.github.com/repos/${repoSlug}/contributors?per_page=1&anon=false`,
-        { signal: ctrl.signal, headers: { 'User-Agent': 'danteforge-scorer/1.0' } },
-      );
-      clearTimeout(t);
-      if (res.ok) {
-        const link = res.headers.get('link') ?? '';
-        // Extract last page count from Link header: rel="last"
-        const match = link.match(/[?&]page=(\d+)>;\s*rel="last"/);
-        if (match) {
-          result.githubContributors = parseInt(match[1], 10);
-        } else {
-          const data = await res.json() as unknown[];
-          result.githubContributors = Array.isArray(data) ? data.length : undefined;
-        }
-      }
-    } catch { /* best-effort */ }
-  }
-
-  return result;
-}
-
-export function computeCommunityAdoptionScore(metrics: CommunityMetrics = {}): number {
-  let score = 15; // base: project exists with git history
-
-  // GitHub stars (max 60)
-  const stars = metrics.githubStars ?? 0;
-  if (stars >= 1000) score += 60;
-  else if (stars >= 500) score += 40;
-  else if (stars >= 100) score += 20;
-  else if (stars >= 1) score += 10;
-
-  // npm monthly downloads (max 30)
-  const downloads = metrics.npmDownloadsMonthly ?? 0;
-  if (downloads >= 10000) score += 30;
-  else if (downloads >= 1000) score += 25;
-  else if (downloads >= 100) score += 15;
-  else if (downloads >= 1) score += 5;
-
-  // Contributors (max 10)
-  const contributors = metrics.githubContributors ?? 1;
-  if (contributors >= 6) score += 10;
-  else if (contributors >= 2) score += 5;
-
-  return Math.max(0, Math.min(100, score));
-}
-
-export function computeCausalCoherenceScore(globalCausalCoherence: number, totalAttributions: number): number {
-  if (totalAttributions === 0) return 20; // no data yet — low but not zero (can't be penalized for lack of history)
-  if (totalAttributions < 5) return 30;  // insufficient samples for reliable signal
-
-  // globalCausalCoherence is 0-1 (fraction of predictions where direction matched)
-  // Map 0→0 score, 0.5→50, 0.7→70, 0.9→90 linearly, with bonus for sample count
-  const baseScore = Math.round(globalCausalCoherence * 100);
-  const sampleBonus = totalAttributions >= 50 ? 10 : totalAttributions >= 20 ? 5 : 0;
-  return Math.max(0, Math.min(100, baseScore + sampleBonus));
-}
-
 // ── Real coverage % reader ────────────────────────────────────────────────────
-
-/** Reads coverage percentage from c8 summary files. Returns null if not found. */
-export async function readCoveragePercent(
-  cwd: string,
-  _readFile?: (p: string) => Promise<string>,
-): Promise<number | null> {
-  const readFile = _readFile ?? ((p: string) => fs.readFile(p, 'utf-8'));
-  const candidates = [
-    path.join(cwd, '.danteforge', 'coverage-summary.json'),
-    path.join(cwd, 'coverage', 'coverage-summary.json'),
-  ];
-  for (const candidate of candidates) {
-    try {
-      const raw = await readFile(candidate);
-      const data = JSON.parse(raw) as Record<string, unknown>;
-      const total = data['total'] as Record<string, unknown> | undefined;
-      const lines = total?.['lines'] as Record<string, unknown> | undefined;
-      const pct = lines?.['pct'];
-      if (typeof pct === 'number') return pct;
-    } catch { /* try next */ }
-  }
-  return null;
-}
 
 // ── Score helpers ─────────────────────────────────────────────────────────────
 
@@ -1093,74 +880,9 @@ export function computeHarshVerdict(
   return 'needs-work';
 }
 
-export function computeFakeCompletionRisk(
-  overallCompletion: number,
-  currentMaturityLevel: MaturityLevel,
-  targetLevel: MaturityLevel,
-): 'low' | 'medium' | 'high' {
-  if (overallCompletion >= 95 && currentMaturityLevel < targetLevel) return 'high';
-  if (overallCompletion >= 80 && currentMaturityLevel < targetLevel - 1) return 'medium';
-  return 'low';
-}
-
-// ── Progress bar renderer ─────────────────────────────────────────────────────
-
-export function formatDimensionBar(score: number, maxWidth = 10): string {
-  const filled = Math.min(maxWidth, Math.round(Math.max(0, Math.min(100, score)) / 10));
-  return '█'.repeat(filled) + '░'.repeat(maxWidth - filled);
-}
-
 // ── History I/O ───────────────────────────────────────────────────────────────
 
-export async function readAssessmentHistory(cwd: string): Promise<AssessmentHistoryEntry[]> {
-  const historyPath = path.join(cwd, '.danteforge', 'assessment-history.json');
-  try {
-    const content = await fs.readFile(historyPath, 'utf-8');
-    return JSON.parse(content) as AssessmentHistoryEntry[];
-  } catch {
-    return [];
-  }
-}
-
-export async function writeAssessmentHistory(
-  cwd: string,
-  entries: AssessmentHistoryEntry[],
-): Promise<void> {
-  const dir = path.join(cwd, '.danteforge');
-  await fs.mkdir(dir, { recursive: true });
-  await fs.writeFile(path.join(dir, 'assessment-history.json'), JSON.stringify(entries, null, 2));
-}
-
 // ── File listing ──────────────────────────────────────────────────────────────
-
-async function listSourceFiles(cwd: string): Promise<string[]> {
-  const srcDir = path.join(cwd, 'src');
-  try {
-    return await walkDir(srcDir, cwd, '.ts');
-  } catch {
-    return [];
-  }
-}
-
-async function walkDir(dir: string, base: string, ext: string): Promise<string[]> {
-  const results: string[] = [];
-  let entries: { name: string; isDirectory: () => boolean }[] = [];
-  try {
-    entries = await fs.readdir(dir, { withFileTypes: true });
-  } catch {
-    return results;
-  }
-  for (const entry of entries) {
-    const full = path.join(dir, entry.name);
-    if (entry.isDirectory()) {
-      const sub = await walkDir(full, base, ext);
-      results.push(...sub);
-    } else if (entry.name.endsWith(ext)) {
-      results.push(path.relative(base, full));
-    }
-  }
-  return results;
-}
 
 // ── Strict (tamper-resistant) Dimension Scoring ───────────────────────────────
 //
@@ -1171,168 +893,3 @@ async function walkDir(dir: string, base: string, ext: string): Promise<string[]
 // are deliberately excluded — they are mutable and were observed to be
 // manually inflated during ascend/score runs, producing false high scores.
 
-export interface StrictDimensions {
-  /** autonomy: derived from git commit count + verify evidence files */
-  autonomy: number;
-  /** selfImprovement: derived from retro commits in git log + evidence files */
-  selfImprovement: number;
-  /** tokenEconomy: derived from LLM cache entry count + router code presence */
-  tokenEconomy: number;
-  /** specDrivenPipeline: derived from PDSE artifact presence on disk */
-  specDrivenPipeline: number;
-  /** developerExperience: derived from onboarding docs + examples + test count */
-  developerExperience: number;
-  /** planningQuality: derived from planning artifacts + git plan/spec commits */
-  planningQuality: number;
-  /** convergenceSelfHealing: derived from circuit-breaker + autoforge evidence */
-  convergenceSelfHealing: number;
-}
-
-type GitLogFn = (args: string[], cwd: string) => Promise<string>;
-type ExistsFn = (p: string) => Promise<boolean>;
-type ListDirFn = (p: string) => Promise<string[]>;
-
-export async function makeFileChecker(
-  cwd: string,
-  checkExists: ExistsFn,
-  listDir: ListDirFn,
-): Promise<(filename: string) => Promise<boolean>> {
-  const monorepoFiles = await listDir(path.join(cwd, 'packages'));
-  return async (filename: string): Promise<boolean> => {
-    if (await checkExists(path.join(cwd, 'src', 'core', filename))) return true;
-    for (const pkg of monorepoFiles) {
-      if (await checkExists(path.join(cwd, 'packages', pkg, 'src', filename))) return true;
-    }
-    return false;
-  };
-}
-
-async function strictAutonomy(cwd: string, runGit: GitLogFn, checkExists: ExistsFn, listDir: ListDirFn): Promise<number> {
-  let score = 20;
-  const commitLog = await runGit(['log', '--oneline', '--no-merges'], cwd);
-  const commitCount = commitLog.trim() === '' ? 0 : commitLog.trim().split('\n').length;
-  if (commitCount >= 100) score += 30; else if (commitCount >= 30) score += 20; else if (commitCount >= 10) score += 10; else if (commitCount >= 1) score += 5;
-  const verifyFiles = await listDir(path.join(cwd, '.danteforge', 'evidence', 'verify'));
-  if (verifyFiles.length >= 5) score += 25; else if (verifyFiles.length >= 2) score += 15; else if (verifyFiles.length >= 1) score += 8;
-  if (await checkExists(path.join(cwd, '.danteforge', 'evidence', 'autoforge'))) score += 15;
-  if (await checkExists(path.join(cwd, '.danteforge', 'evidence', 'oss-harvest.json'))) score += 10;
-  return Math.max(0, Math.min(100, score));
-}
-
-async function strictSelfImprovement(cwd: string, runGit: GitLogFn, checkExists: ExistsFn, listDir: ListDirFn): Promise<number> {
-  let score = 20;
-  const retroCount = (await runGit(['log', '--oneline', '--grep=retro', '--no-merges'], cwd)).trim().split('\n').filter(Boolean).length;
-  if (retroCount >= 10) score += 25; else if (retroCount >= 3) score += 15; else if (retroCount >= 1) score += 8;
-  const lessonCount = (await runGit(['log', '--oneline', '--grep=lesson', '--no-merges'], cwd)).trim().split('\n').filter(Boolean).length;
-  if (lessonCount >= 10) score += 20; else if (lessonCount >= 3) score += 12; else if (lessonCount >= 1) score += 5;
-  const retroFiles = await listDir(path.join(cwd, '.danteforge', 'evidence', 'retro'));
-  if (retroFiles.length >= 5) score += 20; else if (retroFiles.length >= 2) score += 12; else if (retroFiles.length >= 1) score += 6;
-  if (await checkExists(path.join(cwd, '.danteforge', 'lessons.md'))) score += 15;
-  // retros/ holds session outputs (different from evidence/retro/ pipeline receipts)
-  const retrosOutputFiles = await listDir(path.join(cwd, '.danteforge', 'retros'));
-  if (retrosOutputFiles.length >= 10) score += 15; else if (retrosOutputFiles.length >= 3) score += 8; else if (retrosOutputFiles.length >= 1) score += 3;
-  return Math.max(0, Math.min(100, score));
-}
-
-async function strictTokenEconomy(cwd: string, checkExists: ExistsFn, listDir: ListDirFn): Promise<number> {
-  const hasFile = await makeFileChecker(cwd, checkExists, listDir);
-
-  let score = 20;
-  if (await hasFile('task-router.ts') || await hasFile('task-complexity-router.ts')) score += 20;
-  if (await hasFile('circuit-breaker.ts')) score += 15;
-  const cacheFiles = await listDir(path.join(cwd, '.danteforge', 'cache'));
-  if (cacheFiles.length >= 50) score += 30; else if (cacheFiles.length >= 10) score += 20; else if (cacheFiles.length >= 1) score += 10;
-  if (await hasFile('context-compressor.ts') || await hasFile('context-compactor.ts') || await hasFile('transcript-compaction.ts')) score += 15;
-  return Math.max(0, Math.min(100, score));
-}
-
-async function strictSpecDrivenPipeline(cwd: string, checkExists: ExistsFn, listDir: ListDirFn): Promise<number> {
-  // Capped at 85 — file existence can't fully prove pipeline execution quality.
-  let score = 10;
-  for (const artifact of ['CONSTITUTION.md', 'SPEC.md', 'PLAN.md', 'TASKS.md']) {
-    if (await checkExists(path.join(cwd, artifact)) || await checkExists(path.join(cwd, '.danteforge', artifact))) score += 15;
-  }
-  const evidenceFiles = await listDir(path.join(cwd, '.danteforge', 'evidence'));
-  if (evidenceFiles.length >= 1) score += 10;
-  const testFiles = await listDir(path.join(cwd, 'tests'));
-  if (testFiles.some(f => f.includes('e2e') || f.includes('integration'))) score += 5;
-  return Math.max(0, Math.min(85, score));
-}
-
-async function strictDeveloperExperience(cwd: string, checkExists: ExistsFn, listDir: ListDirFn): Promise<number> {
-  let score = 15;
-  if (await checkExists(path.join(cwd, 'CLAUDE.md'))) score += 20;
-  try {
-    const { readFile } = await import('node:fs/promises');
-    const readmeContent = await readFile(path.join(cwd, 'README.md'), 'utf8').catch(() => '');
-    if (readmeContent.length > 500) score += 15;
-  } catch { /* non-fatal */ }
-  const examplesFiles = await listDir(path.join(cwd, 'examples'));
-  if (examplesFiles.length >= 1) score += 20;
-  const testFiles = await listDir(path.join(cwd, 'tests'));
-  if (testFiles.length >= 100) score += 15; else if (testFiles.length >= 50) score += 10; else if (testFiles.length >= 10) score += 5;
-  return Math.max(0, Math.min(100, score));
-}
-
-async function strictPlanningQuality(cwd: string, runGit: GitLogFn, checkExists: ExistsFn): Promise<number> {
-  let score = 15;
-  for (const [artifact, pts] of [['PLAN.md', 20], ['SPEC.md', 15], ['CONSTITUTION.md', 15], ['CLARIFY.md', 15]] as [string, number][]) {
-    if (await checkExists(path.join(cwd, artifact)) || await checkExists(path.join(cwd, '.danteforge', artifact))) score += pts;
-  }
-  const planCount = (await runGit(['log', '--oneline', '--grep=plan', '--no-merges'], cwd)).trim().split('\n').filter(Boolean).length;
-  if (planCount >= 3) score += 10;
-  const specCount = (await runGit(['log', '--oneline', '--grep=spec', '--no-merges'], cwd)).trim().split('\n').filter(Boolean).length;
-  if (specCount >= 3) score += 10;
-  return Math.max(0, Math.min(100, score));
-}
-
-async function strictConvergenceSelfHealing(cwd: string, checkExists: ExistsFn, listDir: ListDirFn): Promise<number> {
-  const hasFile = await makeFileChecker(cwd, checkExists, listDir);
-
-  let score = 15;
-  if (await hasFile('circuit-breaker.ts') || await hasFile('task-circuit-breaker.ts')) score += 25;
-  if (await hasFile('context-compressor.ts') || await hasFile('context-compactor.ts') || await hasFile('transcript-compaction.ts')) score += 20;
-  const autoforgeFiles = await listDir(path.join(cwd, '.danteforge', 'evidence', 'autoforge'));
-  if (autoforgeFiles.length >= 3) score += 15; else if (autoforgeFiles.length >= 1) score += 8;
-  const convergenceProof = await checkExists(path.join(cwd, '.danteforge', 'evidence', 'convergence-proof.json'))
-    || await checkExists(path.join(cwd, 'examples', 'todo-app', 'evidence', 'convergence-proof.json'));
-  if (convergenceProof) score += 10;
-  // ascend-engine.ts = autonomous quality ascent loop. In a monorepo this lives
-  // under packages/<core>/src/. We also accept loop-detector.ts as a self-healing
-  // signal even without the full ascend engine (DanteCode has both).
-  if (await hasFile('ascend-engine.ts') || await hasFile('loop-detector.ts') || await hasFile('recovery-engine.ts')) score += 10;
-  return Math.max(0, Math.min(100, score));
-}
-
-/**
- * Compute tamper-resistant scores for the three dimensions most vulnerable to
- * STATE.yaml manipulation. Called by `score --strict`.
- *
- * All signals are read-only observations of filesystem/git state.
- * Scores are clamped [0, 100] (display: N/10).
- */
-export async function computeStrictDimensions(
-  cwd: string,
-  gitLogFn?: GitLogFn,
-  existsFn?: ExistsFn,
-  listDirFn?: ListDirFn,
-): Promise<StrictDimensions> {
-  const runGit: GitLogFn = gitLogFn ?? (async (args, dir) => {
-    const { execSync } = await import('node:child_process');
-    try { return execSync(`git ${args.join(' ')}`, { encoding: 'utf8', cwd: dir, stdio: ['pipe', 'pipe', 'pipe'] }); } catch { return ''; }
-  });
-  const checkExists: ExistsFn = existsFn ?? (async (p) => { try { await fs.access(p); return true; } catch { return false; } });
-  const listDir: ListDirFn = listDirFn ?? (async (p) => { try { return await fs.readdir(p); } catch { return []; } });
-
-  const [autonomy, selfImprovement, tokenEconomy, specDrivenPipeline, developerExperience, planningQuality, convergenceSelfHealing] = await Promise.all([
-    strictAutonomy(cwd, runGit, checkExists, listDir),
-    strictSelfImprovement(cwd, runGit, checkExists, listDir),
-    strictTokenEconomy(cwd, checkExists, listDir),
-    strictSpecDrivenPipeline(cwd, checkExists, listDir),
-    strictDeveloperExperience(cwd, checkExists, listDir),
-    strictPlanningQuality(cwd, runGit, checkExists),
-    strictConvergenceSelfHealing(cwd, checkExists, listDir),
-  ]);
-
-  return { autonomy, selfImprovement, tokenEconomy, specDrivenPipeline, developerExperience, planningQuality, convergenceSelfHealing };
-}

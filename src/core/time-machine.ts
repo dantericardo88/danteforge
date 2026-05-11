@@ -12,11 +12,18 @@ import {
   verifyBundle,
   type EvidenceBundle,
 } from '@danteforge/evidence-chain';
+import type { CounterfactualReplayResult } from './time-machine-replay.js';
+import {
+  queryLineProvenance,
+  writeLineProvenanceIndex,
+  buildSessionGraph,
+} from './time-machine-provenance.js';
+import { detectContentType, normalizeRelativePath, sanitizePathSegment } from './time-machine-path-utils.js';
 
 export const TIME_MACHINE_SCHEMA_VERSION = 'danteforge.time-machine.v1' as const;
 
 export type TimeMachineContentType = 'json' | 'markdown' | 'text' | 'binary';
-export type TimeMachineQueryKind = 'evidence' | 'dependents' | 'file-history' | 'counterfactual';
+export type TimeMachineQueryKind = 'evidence' | 'dependents' | 'file-history' | 'counterfactual' | 'line-provenance' | 'session-graph';
 
 export interface TimeMachineSnapshotEntry {
   path: string;
@@ -99,6 +106,9 @@ export interface QueryTimeMachineOptions {
   commitId?: string;
   kind: TimeMachineQueryKind;
   path?: string;
+  line?: number;
+  /** Required for session-graph queries — the session UUID to build the DAG for */
+  session?: string;
 }
 
 export interface QueryTimeMachineResult {
@@ -179,6 +189,7 @@ export async function createTimeMachineCommit(options: CreateTimeMachineCommitOp
   await writeHead(cwd, commitId);
   await appendReflog(cwd, { commitId, parent: parents[0] ?? null, at: createdAt, label: options.label });
   await writeCausalIndex(cwd);
+  await writeLineProvenanceIndexBestEffort(cwd);
   return commit;
 }
 
@@ -316,9 +327,63 @@ export async function restoreTimeMachineCommit(options: RestoreTimeMachineOption
   };
 }
 
+export async function persistCounterfactualReplayTrace(options: {
+  cwd?: string;
+  replayResult: CounterfactualReplayResult;
+  question: string;
+  verdictId?: string;
+  now?: () => string;
+}): Promise<TimeMachineCommit> {
+  const cwd = path.resolve(options.cwd ?? process.cwd());
+  const timelineId = options.replayResult.newTimelineId || 'alternate';
+  const safeTimelineId = sanitizePathSegment(timelineId);
+  const traceDir = path.join(cwd, '.danteforge', 'evidence', 'time-machine-counterfactual-traces', safeTimelineId);
+  await fs.mkdir(traceDir, { recursive: true });
+  const tracePath = path.join(traceDir, 'counterfactual-result.json');
+  await fs.writeFile(tracePath, JSON.stringify(options.replayResult, null, 2) + '\n', 'utf8');
+
+  const traceRelPath = normalizeRelativePath(path.relative(cwd, tracePath));
+  const verdictId = options.verdictId ?? `counterfactual_${safeTimelineId}`;
+  const sourceCommitIds = [
+    options.replayResult.branchPoint.output.fileStateRef,
+    options.replayResult.artifacts?.restoreCommitId,
+  ].filter((value): value is string => typeof value === 'string' && value.length > 0);
+
+  return createTimeMachineCommit({
+    cwd,
+    paths: [traceRelPath],
+    label: `counterfactual replay ${timelineId}`,
+    causalLinks: {
+      materials: sourceCommitIds,
+      products: [traceRelPath],
+      sourceCommitIds,
+      counterfactualTraces: [{
+        verdictId,
+        question: options.question,
+        status: 'preserved',
+        trace: traceRelPath,
+      }],
+    },
+    now: options.now,
+  });
+}
+
 export async function queryTimeMachine(options: QueryTimeMachineOptions): Promise<QueryTimeMachineResult> {
   const cwd = path.resolve(options.cwd ?? process.cwd());
   const commitId = options.commitId ?? await readHead(cwd) ?? undefined;
+
+  if (options.kind === 'session-graph') {
+    if (!options.session) throw new Error('session-graph query requires --session <sessionId>');
+    const { createDecisionNodeStore } = await import('./decision-node.js');
+    const storePath = path.join(cwd, '.danteforge', 'decision-nodes.jsonl');
+    const store = createDecisionNodeStore(storePath);
+    const graph = await buildSessionGraph(options.session, store);
+    return {
+      kind: 'session-graph',
+      status: 'ok',
+      results: [graph as unknown as Record<string, unknown>],
+    };
+  }
 
   if (options.kind === 'counterfactual') {
     if (commitId) {
@@ -365,6 +430,29 @@ export async function queryTimeMachine(options: QueryTimeMachineOptions): Promis
         .filter(commit => commit.entries.some(entry => entry.path === normalized))
         .map(commit => ({ commitId: commit.commitId, label: commit.label, createdAt: commit.createdAt })),
     };
+  }
+
+  if (options.kind === 'line-provenance') {
+    if (!options.path) throw new Error('line-provenance query requires --path');
+    if (!options.line || options.line < 1) throw new Error('line-provenance query requires --line >= 1');
+    if (!commitId) throw new Error('line-provenance query requires a commit');
+    const commits = await loadCommitsInReflogOrder(cwd);
+    const result = await queryLineProvenance({
+      cwd,
+      root: getTimeMachineRoot(cwd),
+      commits,
+      commitId,
+      filePath: options.path,
+      line: options.line,
+    });
+    return result
+      ? { kind: 'line-provenance', status: 'ok', results: [result as unknown as Record<string, unknown>] }
+      : {
+          kind: 'line-provenance',
+          status: 'ok',
+          message: `No line provenance found for ${normalizeRelativePath(options.path)}:${options.line} at ${commitId}.`,
+          results: [],
+        };
   }
 
   if (!commitId) throw new Error(`${options.kind} query requires a commit`);
@@ -635,6 +723,18 @@ async function writeCausalIndex(cwd: string): Promise<void> {
   await fs.writeFile(path.join(getTimeMachineRoot(cwd), 'index', 'causal-index.json'), JSON.stringify(index, null, 2) + '\n', 'utf8');
 }
 
+async function writeLineProvenanceIndexBestEffort(cwd: string): Promise<void> {
+  try {
+    await writeLineProvenanceIndex({
+      cwd,
+      root: getTimeMachineRoot(cwd),
+      commits: await loadCommitsInReflogOrder(cwd),
+    });
+  } catch {
+    // Derived provenance is rebuildable; a failed index write must not break snapshot capture.
+  }
+}
+
 async function loadCommitsInReflogOrder(cwd: string): Promise<TimeMachineCommit[]> {
   const reflog = await readReflog(cwd);
   const present = reflog.filter(entry => existsSync(commitPath(cwd, entry.commitId)));
@@ -709,18 +809,6 @@ function sha256Bytes(bytes: Uint8Array): string {
 
 function toRepoPath(cwd: string, absolute: string): string {
   return normalizeRelativePath(path.relative(cwd, absolute));
-}
-
-function normalizeRelativePath(input: string): string {
-  return input.replace(/\\/g, '/').replace(/^\.\//, '');
-}
-
-function detectContentType(filePath: string): TimeMachineContentType {
-  const ext = path.extname(filePath).toLowerCase();
-  if (ext === '.json') return 'json';
-  if (ext === '.md' || ext === '.mdx') return 'markdown';
-  if (['.txt', '.ts', '.tsx', '.js', '.jsx', '.mjs', '.cjs', '.css', '.html', '.yaml', '.yml', '.xml', '.csv'].includes(ext)) return 'text';
-  return 'binary';
 }
 
 async function readGitSha(cwd: string): Promise<string | null> {

@@ -11,7 +11,12 @@ describe('build isolation', () => {
     assert.strictEqual(pkg.scripts?.build, 'tsup');
     assert.ok(pkg.scripts?.['sync:dantecode'], 'explicit maintainer sync script must exist');
     assert.ok(pkg.scripts?.['build:local-sync'], 'explicit local-sync build script must exist');
-    assert.ok(!('postbuild' in (pkg.scripts ?? {})), 'default builds must not trigger postbuild sync');
+    // postbuild is allowed only for local operations (plugin cache sync); must never call sync:dantecode
+    const postbuild = pkg.scripts?.postbuild ?? '';
+    assert.ok(
+      !postbuild.includes('sync:dantecode') && !postbuild.includes('sync-dantecode'),
+      'default builds must not trigger sibling-repo (DanteCode) sync',
+    );
   });
 
   it('documents sibling-repo sync as an explicit maintainer action instead of default build behavior', async () => {

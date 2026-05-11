@@ -3,6 +3,7 @@
 import { describe, it, beforeEach, afterEach } from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'fs/promises';
+import os from 'os';
 import path from 'path';
 import type { MaturityAssessment } from '../src/core/maturity-engine.js';
 import type { DanteState } from '../src/core/state.js';
@@ -11,7 +12,7 @@ describe('maturity-convergence', () => {
   let tmpDir: string;
 
   beforeEach(async () => {
-    tmpDir = await fs.mkdtemp(path.join(await fs.realpath(process.cwd()), '.tmp-convergence-'));
+    tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), 'df-maturity-convergence-'));
   });
 
   afterEach(async () => {

@@ -23,3 +23,5 @@ Options:
 - `--url <url>` — URL to verify against (requires --live)
 
 CLI fallback: `danteforge verify`
+
+Matrix development note: `/verify` should validate matrix receipts when score files changed. Direct matrix edits without `.danteforge/score-proposals/merge-receipts/*.json` fail `check-agent-guard`.

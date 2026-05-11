@@ -7,15 +7,32 @@ import { isLLMAvailable } from './llm.js';
 import { scoreAllArtifacts, persistScoreResult, computeAutoforgeDecision } from './pdse.js';
 import type { ScoreResult, ScoredArtifact } from './pdse.js';
 import { computeCompletionTracker, detectProjectType, type CompletionTracker, type ProjectType } from './completion-tracker.js';
-import { SCORE_THRESHOLDS, ARTIFACT_COMMAND_MAP, ANTI_STUB_PATTERNS } from './pdse-config.js';
+import { SCORE_THRESHOLDS, ANTI_STUB_PATTERNS } from './pdse-config.js';
 import { logger } from './logger.js';
 import { createStepTracker } from './progress.js';
 import { recordMemory } from './memory-engine.js';
-import { isProtectedPath, requestSelfEditApproval, type SelfEditPolicy } from './safe-self-edit.js';
 import { detectPlateau, formatPlateauAnalysis } from './plateau-detector.js';
 import { evaluateTermination } from './termination-governor.js';
 import type { CompletionVerdict } from './completion-oracle.js';
 import type { ResidualGapReport } from './residual-gap-miner.js';
+import {
+  buildGuidance,
+  checkProtectedTaskPaths,
+  determineNextCommand,
+  findBlockedArtifacts,
+  writeGuidanceFile,
+} from './autoforge-guidance.js';
+export {
+  buildGuidance,
+  checkProtectedTaskPaths,
+  computeEstimatedSteps,
+  determineNextCommand,
+  findBlockedArtifacts,
+  findBottleneck,
+  formatGuidanceMarkdown,
+  getRecommendationReason,
+  writeGuidanceFile,
+} from './autoforge-guidance.js';
 
 // ── State machine ───────────────────────────────────────────────────────────
 
@@ -148,14 +165,17 @@ export interface AutoforgeLoopDeps {
   _evaluateTermination?: typeof evaluateTermination;
   /** Injection seam for LLM pre-flight check (testing). */
   _isLLMAvailable?: () => Promise<boolean>;
+  /** Injection seam for mandatory harsh score verification before COMPLETE. */
+  _harshScore?: (opts: { cwd: string }) => Promise<{ displayScore: number } | null>;
+  /** Minimum harsh score (0-10) required before the loop may exit on PDSE completion (default: 7.5). */
+  harshExitThreshold?: number;
+  /** Injection seam: replaces createTimeMachineCommit for testing auto-capture. */
+  _timeMachineCommit?: (opts: { cwd: string; paths: string[]; label: string }) => Promise<void>;
+  /** Injection seam: replaces postWaveSanitize for testing wave-time LOC enforcement. */
+  _postWaveSanitize?: (opts: { cwd: string }) => Promise<void>;
 }
 
 // ── Pipeline stages in order ────────────────────────────────────────────────
-
-const PIPELINE_STAGES = [
-  'review', 'constitution', 'specify', 'clarify', 'plan', 'tasks',
-  'forge', 'verify', 'synthesize',
-] as const;
 
 const MAX_RETRIES = 3;
 const COMPLETION_THRESHOLD = 95;
@@ -246,6 +266,16 @@ async function runCycleScoringAndCompletion(
   }
 
   if (tracker.overall >= COMPLETION_THRESHOLD) {
+    // Secondary gate: PDSE completion alone is not enough — verify with harsh score.
+    // Prevents premature exit when artifact completion % is high but score quality is low.
+    const harshExitThreshold = deps.harshExitThreshold ?? 7.5;
+    if (deps._harshScore) {
+      const harshResult = await deps._harshScore({ cwd }).catch(() => null);
+      if (harshResult && harshResult.displayScore < harshExitThreshold) {
+        logger.warn(`[Autoforge] PDSE completion (${tracker.overall}%) reached but harsh score (${harshResult.displayScore.toFixed(1)}/10) below gate (${harshExitThreshold}/10) — continuing.`);
+        return { tracker, scores, shouldBreak: false };
+      }
+    }
     ctx.loopState = AutoforgeLoopState.COMPLETE;
     logger.success(`[Autoforge] Overall completion: ${tracker.overall}% — target reached!`);
     const guidance = buildGuidance(tracker, scores, ctx);
@@ -439,6 +469,23 @@ async function executeCycleCommand(
     if (currentBlockedCount < prevBlockedCount) {
       shouldResetConsecutiveFailures = true;
     }
+    // Auto-capture Time Machine snapshot after each successful wave (best-effort)
+    try {
+      const commitFn = deps._timeMachineCommit ?? (async (opts: { cwd: string; paths: string[]; label: string }) => {
+        const { createTimeMachineCommit } = await import('./time-machine.js');
+        await createTimeMachineCommit(opts);
+      });
+      await commitFn({ cwd, paths: ['.danteforge'], label: `auto-forge-loop-cycle-${ctx.cycleCount}` });
+    } catch { /* best-effort; never blocks the loop */ }
+
+    // Wave-time auto-sanitize: catch any file that crossed LOC threshold this wave (best-effort)
+    try {
+      const sanitizeFn = deps._postWaveSanitize ?? (async (opts: { cwd: string }) => {
+        const { postWaveSanitize } = await import('./auto-sanitize.js');
+        await postWaveSanitize(opts);
+      });
+      await sanitizeFn({ cwd });
+    } catch { /* best-effort; never blocks the loop */ }
   }
   ctx.state = await _loadState({ cwd });
   return { shouldBreak: false, consecutiveExecFailures, prevBlockedCount: currentBlockedCount, shouldResetConsecutiveFailures };
@@ -687,242 +734,9 @@ export async function runScoreOnlyPass(cwd: string, deps?: Partial<AutoforgeLoop
 
 // ── Guidance file ───────────────────────────────────────────────────────────
 
-export async function writeGuidanceFile(guidance: AutoforgeGuidance, cwd: string): Promise<void> {
-  const content = formatGuidanceMarkdown(guidance);
-  const filePath = path.join(cwd, '.danteforge', 'AUTOFORGE_GUIDANCE.md');
-  await fs.mkdir(path.dirname(filePath), { recursive: true });
-  await fs.writeFile(filePath, content);
-}
-
-export function formatGuidanceMarkdown(guidance: AutoforgeGuidance): string {
-  const lines: string[] = [
-    '# Autoforge Guidance',
-    '',
-    `**Generated:** ${guidance.timestamp}`,
-    `**Overall Completion:** ${guidance.overallCompletion}%`,
-    `**Current Bottleneck:** ${guidance.currentBottleneck}`,
-    `**Recommended Action:** \`${guidance.recommendedCommand}\``,
-    `**Reason:** ${guidance.recommendedReason}`,
-    `**Auto-Advance Eligible:** ${guidance.autoAdvanceEligible ? 'Yes' : 'No'}`,
-  ];
-
-  if (guidance.autoAdvanceBlockReason) {
-    lines.push(`**Block Reason:** ${guidance.autoAdvanceBlockReason}`);
-  }
-
-  lines.push(`**Estimated Steps to Completion:** ${guidance.estimatedStepsToCompletion}`);
-  lines.push('');
-
-  if (guidance.blockingIssues.length > 0) {
-    lines.push('## Blocking Issues');
-    lines.push('');
-    lines.push('| Artifact | Score | Decision | Remediation |');
-    lines.push('|----------|-------|----------|-------------|');
-    for (const issue of guidance.blockingIssues) {
-      lines.push(`| ${issue.artifact} | ${issue.score} | ${issue.decision} | \`${issue.remediation}\` |`);
-    }
-    lines.push('');
-  }
-
-  lines.push('---');
-  lines.push('*Generated by DanteForge Autoforge v2 IAL*');
-
-  return lines.join('\n');
-}
-
 // ── Helpers ─────────────────────────────────────────────────────────────────
 
-export function findBlockedArtifacts(scores: Record<ScoredArtifact, ScoreResult>): BlockingIssue[] {
-  const blocked: BlockingIssue[] = [];
-  for (const [name, result] of Object.entries(scores)) {
-    if (result.score < SCORE_THRESHOLDS.NEEDS_WORK) {
-      const command = ARTIFACT_COMMAND_MAP[name as ScoredArtifact] ?? name.toLowerCase();
-      blocked.push({
-        artifact: name,
-        score: result.score,
-        decision: result.autoforgeDecision,
-        remediation: `danteforge ${command} --refine`,
-      });
-    }
-  }
-  return blocked;
-}
-
-export function determineNextCommand(
-  state: DanteState,
-  tracker: CompletionTracker,
-  scores: Record<ScoredArtifact, ScoreResult>,
-): string | null {
-  const currentStage = state.workflowStage;
-  // Workflow-stage-aware planning commands: pipeline stages that must run in order.
-  // If the project is already past a stage (e.g. synthesize), skip back-referencing
-  // those commands — running them from an advanced stage would violate the workflow
-  // enforcer. Route to forge for improvement instead.
-  const PIPELINE_ONLY_STAGES = new Set(['synthesize', 'verify', 'forge', 'ux-refine']);
-  const planningBlockedByStage = PIPELINE_ONLY_STAGES.has(currentStage ?? '');
-
-  // Priority 1: Planning phase incomplete — but only if workflow stage allows it
-  if (!tracker.phases.planning.complete && !planningBlockedByStage) {
-    for (const artifact of ['CONSTITUTION', 'SPEC', 'CLARIFY', 'PLAN', 'TASKS'] as ScoredArtifact[]) {
-      const score = scores[artifact];
-      if (score.score < SCORE_THRESHOLDS.ACCEPTABLE) {
-        return ARTIFACT_COMMAND_MAP[artifact];
-      }
-    }
-  }
-
-  // Priority 2: Execution phase
-  if (!tracker.phases.execution.complete) {
-    // `forge` requires workflow stage `tasks` or `design`. If we're at an earlier stage
-    // (e.g. `plan`), we need to advance the workflow first by running `tasks` even if
-    // TASKS.md already scores above the acceptable threshold.
-    const FORGE_PREREQUISITE_STAGES = new Set(['tasks', 'design', 'forge', 'ux-refine', 'verify', 'synthesize']);
-    if (!FORGE_PREREQUISITE_STAGES.has(currentStage ?? '')) {
-      return 'tasks'; // Advance workflow stage so forge can run next cycle
-    }
-    return 'forge';
-  }
-
-  // Priority 3: Verification phase
-  if (!tracker.phases.verification.complete) {
-    return 'verify';
-  }
-
-  // Priority 4: Synthesis phase
-  if (!tracker.phases.synthesis.complete) {
-    return 'synthesize';
-  }
-
-  // Priority 5: Planning still incomplete but pipeline is done — improve via forge
-  if (!tracker.phases.planning.complete && planningBlockedByStage) {
-    return 'forge';
-  }
-
-  return null;
-}
-
-export function computeEstimatedSteps(ctx: AutoforgeLoopContext): number {
-  const tracker = ctx.state.completionTracker;
-  if (!tracker) return PIPELINE_STAGES.length;
-
-  let steps = 0;
-  if (!tracker.phases.planning.complete) {
-    const incomplete = Object.values(tracker.phases.planning.artifacts)
-      .filter(a => !a.complete).length;
-    steps += incomplete;
-  }
-  if (!tracker.phases.execution.complete) {
-    steps += tracker.phases.execution.totalWaves - tracker.phases.execution.wavesComplete;
-  }
-  if (!tracker.phases.verification.complete) steps += 1;
-  if (!tracker.phases.synthesis.complete) steps += 1;
-  return Math.max(1, steps);
-}
-
-export function buildGuidance(
-  tracker: CompletionTracker,
-  scores: Record<ScoredArtifact, ScoreResult>,
-  ctx: AutoforgeLoopContext,
-): AutoforgeGuidance {
-  const blockingIssues = findBlockedArtifacts(scores);
-  const bottleneck = findBottleneck(tracker, scores);
-  const nextCommand = determineNextCommand(ctx.state, tracker, scores) ?? 'ship --dry-run';
-  const estimatedSteps = computeEstimatedSteps(ctx);
-  const autoAdvanceEligible = blockingIssues.length === 0 && tracker.overall < COMPLETION_THRESHOLD;
-
-  return {
-    timestamp: new Date().toISOString(),
-    overallCompletion: tracker.overall,
-    currentBottleneck: bottleneck,
-    blockingIssues,
-    recommendedCommand: `danteforge ${nextCommand}`,
-    recommendedReason: getRecommendationReason(tracker, blockingIssues),
-    autoAdvanceEligible,
-    autoAdvanceBlockReason: !autoAdvanceEligible && blockingIssues.length > 0
-      ? `${blockingIssues.length} artifact(s) below score threshold`
-      : undefined,
-    estimatedStepsToCompletion: estimatedSteps,
-  };
-}
-
-export function findBottleneck(
-  tracker: CompletionTracker,
-  scores: Record<ScoredArtifact, ScoreResult>,
-): string {
-  // Find lowest scoring artifact
-  let lowestArtifact = '';
-  let lowestScore = Infinity;
-  for (const [name, result] of Object.entries(scores)) {
-    if (result.score < lowestScore) {
-      lowestScore = result.score;
-      lowestArtifact = name;
-    }
-  }
-
-  if (lowestScore < SCORE_THRESHOLDS.NEEDS_WORK) {
-    return `${lowestArtifact} (score: ${lowestScore}, blocked)`;
-  }
-  if (!tracker.phases.planning.complete) return 'Planning phase incomplete';
-  if (!tracker.phases.execution.complete) return 'Execution phase incomplete';
-  if (!tracker.phases.verification.complete) return 'Verification phase incomplete';
-  if (!tracker.phases.synthesis.complete) return 'Synthesis phase incomplete';
-  return 'None';
-}
-
 // ── Protected path gate ─────────────────────────────────────────────────────
-
-export interface CheckProtectedTaskPathsOpts {
-  cwd?: string;
-  _requestApproval?: typeof requestSelfEditApproval;
-}
-
-/**
- * Scans tasks for the current phase and checks whether any declared files are
- * protected paths. For each protected file, calls requestSelfEditApproval with
- * the state's selfEditPolicy (defaulting to 'deny').
- *
- * Returns { approved: true, blocked: [] } if all protected paths are approved
- * or if there are no protected paths. Returns { approved: false, blocked: [...] }
- * if any protected path was denied.
- */
-export async function checkProtectedTaskPaths(
-  state: DanteState,
-  opts: CheckProtectedTaskPathsOpts = {},
-): Promise<{ blocked: string[]; approved: boolean }> {
-  const { cwd, _requestApproval = requestSelfEditApproval } = opts;
-  const policy: SelfEditPolicy = state.selfEditPolicy ?? 'deny';
-  const phaseTasks = state.tasks[state.currentPhase ?? 1] ?? [];
-
-  const blocked: string[] = [];
-
-  for (const task of phaseTasks) {
-    const files = task.files ?? [];
-    for (const file of files) {
-      if (!isProtectedPath(file)) continue;
-
-      const approved = await _requestApproval(file, task.name, { cwd, policy });
-      if (!approved) {
-        blocked.push(file);
-      }
-    }
-  }
-
-  return { blocked, approved: blocked.length === 0 };
-}
-
-export function getRecommendationReason(
-  tracker: CompletionTracker,
-  blockingIssues: BlockingIssue[],
-): string {
-  if (blockingIssues.length > 0) {
-    return `${blockingIssues.length} artifact(s) need remediation before advancement`;
-  }
-  if (!tracker.phases.planning.complete) return 'Complete planning artifacts to advance';
-  if (!tracker.phases.execution.complete) return 'Execute remaining forge waves';
-  if (!tracker.phases.verification.complete) return 'Run verification checks';
-  if (!tracker.phases.synthesis.complete) return 'Generate synthesis report';
-  return 'Project ready for ship';
-}
 
 function printSummaryTable(scores: Record<ScoredArtifact, ScoreResult>): void {
   logger.info('\n┌────────────────┬───────┬──────────┐');

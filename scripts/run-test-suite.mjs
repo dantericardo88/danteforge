@@ -78,6 +78,7 @@ function runLane(lane) {
   return new Promise((resolve, reject) => {
     const start = Date.now();
     const args = [
+      ...(lane.nodeV8Flags ?? []),
       tsxCliPath,
       '--test',
       `--test-concurrency=${lane.concurrency}`,

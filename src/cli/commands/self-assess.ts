@@ -51,6 +51,17 @@ export interface SelfAssessResult {
 
 export async function runSelfAssess(opts: SelfAssessOptions = {}): Promise<SelfAssessResult> {
   const cwd = opts.cwd ?? process.cwd();
+
+  // --- Decision-node: record start (best-effort) ---
+  let _dnStartNodeId: string | undefined;
+  const _dnT0 = Date.now();
+  try {
+    const { getSession, recordDecision } = await import('../../core/decision-node-recorder.js');
+    const _dnSess = getSession(cwd);
+    const _dnStart = await recordDecision({ session: _dnSess, actorType: 'agent', prompt: 'self-assess: objective metric capture', context: { cwd }, result: 'in-progress', success: false });
+    _dnStartNodeId = _dnStart.id;
+  } catch { /* never block */ }
+
   const llmScore = opts.llmScore ?? 7.0;
   const compareBaseline = opts.compareBaseline ?? true;
 
@@ -97,6 +108,13 @@ export async function runSelfAssess(opts: SelfAssessOptions = {}): Promise<SelfA
 
   const summary = buildSummary(current, previous, diff);
   logger.info(summary);
+
+  // --- Decision-node: record completion (best-effort) ---
+  try {
+    const { getSession, recordDecision } = await import('../../core/decision-node-recorder.js');
+    const _dnSess = getSession(cwd);
+    await recordDecision({ session: _dnSess, parentNodeId: _dnStartNodeId, actorType: 'agent', prompt: 'self-assess: objective metric capture [complete]', result: 'self-assess complete', success: true, latencyMs: Date.now() - _dnT0 });
+  } catch { /* best-effort */ }
 
   return { current, previous, diff, snapshotPath, improved, summary };
 }

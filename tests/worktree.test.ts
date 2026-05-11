@@ -52,6 +52,26 @@ function makeFsMock(content?: string): WorktreeFsOps & { appendedData: string[];
 // ── createAgentWorktree ─────────────────────────────────────────────────────
 
 describe('createAgentWorktree', () => {
+  it('roots worktrees in the active project cwd when provided', async () => {
+    const mockGit = makeGitMock({});
+    const mockFs = makeFsMock('node_modules\n');
+    const result = await createAgentWorktree('cwd-agent', {
+      _git: mockGit,
+      _fs: mockFs,
+      cwd: 'C:/tmp/project-a',
+      _ensureProjectIgnores: async () => ({
+        cwd: 'C:/tmp/project-a',
+        ignoreFiles: [],
+        cleanupCandidates: [],
+      }),
+    });
+
+    assert.equal(result.replace(/\\/g, '/'), 'C:/tmp/project-a/.danteforge-worktrees/cwd-agent');
+    const addCall = mockGit.calls.find(c => c.includes('worktree') && c.includes('add'));
+    assert.ok(addCall, 'Should call git worktree add');
+    assert.ok(addCall.map(value => value.replace(/\\/g, '/')).includes('C:/tmp/project-a/.danteforge-worktrees/cwd-agent'));
+  });
+
   it('returns worktree path on success', async () => {
     const mockGit = makeGitMock({});
     const result = await createAgentWorktree('test-agent', mockGit);

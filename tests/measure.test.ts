@@ -78,45 +78,21 @@ describe('measure — level light', () => {
 
 describe('measure — level standard JSON', () => {
   it('outputs valid JSON with schemaVersion measure.v1', async () => {
-    const chunks: Buffer[] = [];
-    const origWrite = process.stdout.write.bind(process.stdout);
-    process.stdout.write = (chunk: string | Buffer | Uint8Array) => {
-      chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk as string));
-      return true;
-    };
-    try {
-      await measure({
-        ...baseOpts(),
-        level: 'standard',
-        json: true,
-      });
-    } finally {
-      process.stdout.write = origWrite;
-    }
-    const output = Buffer.concat(chunks).toString('utf8');
-    const parsed = JSON.parse(output);
-    assert.equal(parsed.schemaVersion, MEASURE_SCHEMA_VERSION);
+    const result = await measure({
+      ...baseOpts(),
+      level: 'standard',
+      json: true,
+    });
+    assert.equal(result.schemaVersion, MEASURE_SCHEMA_VERSION);
   });
 
   it('JSON output includes all 8 builder dimension names', async () => {
-    const chunks: Buffer[] = [];
-    const origWrite = process.stdout.write.bind(process.stdout);
-    process.stdout.write = (chunk: string | Buffer | Uint8Array) => {
-      chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk as string));
-      return true;
-    };
-    try {
-      await measure({
-        ...baseOpts(),
-        level: 'standard',
-        json: true,
-      });
-    } finally {
-      process.stdout.write = origWrite;
-    }
-    const output = Buffer.concat(chunks).toString('utf8');
-    const parsed = JSON.parse(output) as { dimensions: Array<{ name: string }> };
-    const names = parsed.dimensions.map((d) => d.name);
+    const result = await measure({
+      ...baseOpts(),
+      level: 'standard',
+      json: true,
+    });
+    const names = result.dimensions.map((d: { name: string }) => d.name);
     for (const dim of ['functionality', 'testing', 'errorHandling', 'security', 'uxPolish', 'documentation', 'performance', 'maintainability']) {
       assert.ok(names.includes(dim), `dimension "${dim}" missing from output`);
     }

@@ -153,6 +153,16 @@ function emitRaiseReadiness(r: RaiseReadinessReport, emit: (l: string) => void):
 export async function frontierGap(options: FrontierGapOptions = {}): Promise<void> {
   return withErrorBoundary('frontier-gap', async () => {
     const cwd = options.cwd ?? process.cwd();
+
+    // --- Decision-node: record start (best-effort) ---
+    let _dnStartNodeId: string | undefined;
+    const _dnT0 = Date.now();
+    try {
+      const { getSession, recordDecision } = await import('../../core/decision-node-recorder.js');
+      const _dnSess = getSession(cwd);
+      const _dnStart = await recordDecision({ session: _dnSess, actorType: 'agent', prompt: 'frontier-gap: gap analysis', context: { cwd }, result: 'in-progress', success: false });
+      _dnStartNodeId = _dnStart.id;
+    } catch { /* never block */ }
     const emit = options._emit ?? logger.info.bind(logger);
     const loadMatrixFn = options._loadMatrix ?? loadMatrix;
 
@@ -207,5 +217,12 @@ export async function frontierGap(options: FrontierGapOptions = {}): Promise<voi
     emit('  Run `danteforge frontier-gap <id>` for a deep-dive on any single dimension.');
     emit('  Run `danteforge frontier-gap --raise-ready` for investor-readiness synthesis.');
     emit('');
+
+    // --- Decision-node: record completion (best-effort) ---
+    try {
+      const { getSession, recordDecision } = await import('../../core/decision-node-recorder.js');
+      const _dnSess = getSession(cwd);
+      await recordDecision({ session: _dnSess, parentNodeId: _dnStartNodeId, actorType: 'agent', prompt: 'frontier-gap: gap analysis [complete]', result: 'frontier gap analysis complete', success: true, latencyMs: Date.now() - _dnT0 });
+    } catch { /* best-effort */ }
   });
 }

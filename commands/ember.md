@@ -18,3 +18,5 @@ Options:
 - `--profile quality|balanced|budget` - Override the default budget profile
 
 CLI parity: `danteforge ember [goal]`
+
+Matrix development note: if this preset changes or judges a competitive dimension, use `danteforge matrix claim -> propose -> merge`; direct matrix edits are blocked by the agent guard.

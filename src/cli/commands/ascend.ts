@@ -41,8 +41,20 @@ export interface AscendOptions {
 export async function ascend(options: AscendOptions = {}): Promise<AscendResult> {
   const cwd = options.cwd ?? process.cwd();
   const runAscendFn = options._runAscend ?? runAscend;
+
+  // --- Decision-node: record start (best-effort) ---
+  let _dnStartNodeId: string | undefined;
+  const _dnT0 = Date.now();
   try {
-    return await runAscendFn({
+    const { getSession, recordDecision } = await import('../../core/decision-node-recorder.js');
+    const _dnSess = getSession(cwd);
+    const _dnStart = await recordDecision({ session: _dnSess, actorType: 'agent', prompt: `ascend: drive to ${options.target ?? 9.0}`, context: { target: options.target, maxCycles: options.maxCycles }, result: 'in-progress', success: false });
+    _dnStartNodeId = _dnStart.id;
+  } catch { /* never block ascend */ }
+
+  let _dnResult: AscendResult | undefined;
+  try {
+    _dnResult = await runAscendFn({
       cwd,
       target: options.target,
       maxCycles: options.maxCycles,
@@ -63,13 +75,14 @@ export async function ascend(options: AscendOptions = {}): Promise<AscendResult>
   } catch (err) {
     formatAndLogError(err, 'ascend');
     logger.error('[ascend] Failed. See above for details.');
-    return {
-      cyclesRun: 0,
-      dimensionsImproved: 0,
-      dimensionsAtTarget: 0,
-      ceilingReports: [],
-      finalScore: 0,
-      success: false,
-    };
+    _dnResult = { cyclesRun: 0, dimensionsImproved: 0, dimensionsAtTarget: 0, ceilingReports: [], finalScore: 0, success: false };
+  } finally {
+    // --- Decision-node: record completion (best-effort) ---
+    try {
+      const { getSession, recordDecision } = await import('../../core/decision-node-recorder.js');
+      const _dnSess = getSession(cwd);
+      await recordDecision({ session: _dnSess, parentNodeId: _dnStartNodeId, actorType: 'agent', prompt: `ascend: drive to ${options.target ?? 9.0} [complete]`, context: { cyclesRun: _dnResult?.cyclesRun, success: _dnResult?.success }, result: _dnResult?.success ? 'target-reached' : 'max-cycles', success: _dnResult?.success ?? false, latencyMs: Date.now() - _dnT0, ...(_dnResult?.finalScore !== undefined ? { qualityScore: _dnResult.finalScore * 10 } : {}) });
+    } catch { /* best-effort */ }
   }
+  return _dnResult ?? { cyclesRun: 0, dimensionsImproved: 0, dimensionsAtTarget: 0, ceilingReports: [], finalScore: 0, success: false };
 }

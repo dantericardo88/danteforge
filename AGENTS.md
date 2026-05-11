@@ -26,12 +26,70 @@ This file is the repo-level source of truth for coding agents (Codex, Claude Cod
 - Keep `.codex/config.toml` free of workflow-command alias collisions so native slash commands win in Codex.
 - Do not commit generated/vendor paths (`node_modules/`, `dist/`, `coverage/`, `./.danteforge/`, `vscode-extension/node_modules/`, `vscode-extension/dist/`).
 
+## File Size Standard (enforced — do not bypass)
+
+Every TypeScript source file in `src/` and `packages/` must stay within these limits:
+
+| Threshold | LOC (non-blank) | Action |
+|-----------|----------------|--------|
+| **Ideal** | ≤ 500 | Target for all new files |
+| **Warning** | 501–750 | ESLint warns; must plan a split |
+| **Hard cap** | > 750 | `npm run check:file-size` exits 1 — CI fails |
+
+**Why this matters for LLMs:** Files over 500 LOC exceed the practical context window where an LLM can reason about the whole file without making structural mistakes (missing imports, wrong function scope, stale variable names). At 750+ LOC, error rates climb significantly.
+
+**How to split:** When a module grows past 500 LOC, extract into focused sub-modules:
+```
+foo.ts          → foo.ts + foo-types.ts + foo-utils.ts
+commands/bar.ts → commands/bar.ts + commands/bar-helpers.ts
+```
+
+Keep the public API surface in the main file; move implementation details to `-utils.ts` or `-helpers.ts` siblings.
+
+## Multi-Agent Anti-Bloat Guard (enforced)
+
+When multiple agents work in parallel, shared runtime files are treated as kernel
+surfaces. Do not add dimension-specific business logic to frozen files listed in
+`.danteforge/agent-guard.json`; add an owned helper, hook, adapter, or registrar
+instead.
+
+Before parallel work, create an ephemeral claim under `.danteforge/agent-claims/`
+and choose a workstream from `.danteforge/agent-ownership.json`. Claim files are
+never committed. Before committing, run:
+
+```
+npm run check:agent-guard -- --staged --workstream <workstream>
+npm run check:file-size
+```
+
+Use `DANTEFORGE_ALLOW_FROZEN=1` only for explicit platform-kernel work that adds
+or repairs extension points. See `docs/AGENT_BLOAT_PREVENTION_SYSTEM.md`.
+
+## Matrix Development Engine (enforced)
+
+Any command or agent that scores, improves, rescales, or reviews competitive
+dimensions must use the Matrix Development Engine:
+
+```
+claim dimension -> run work -> propose score -> locked merge -> Time Machine snapshot -> guard verification
+```
+
+Do not edit `.danteforge/compete/matrix.json` directly after scoring work. Use
+`danteforge matrix status|claim|propose|merge|ascend`, or the compatibility
+wrapper `npm run dimension:ascent`. Default merge policy is `harsh-min`, so
+skeptical downgrades win over optimistic stale writes. The agent guard fails
+direct matrix edits unless a Matrix Development merge receipt is present.
+
+See `docs/MATRIX_DEVELOPMENT_ENGINE.md`.
+
 ## Definition Of Done
 
 - `npm run verify` passes
+- `npm run check:agent-guard` passes for the changed files/workstream
 - `npm run build` passes
 - `npm --prefix vscode-extension run build` passes when extension files changed
 - Tests/docs updated when behavior or operator workflow changes
+- No new file exceeds 500 non-blank LOC (hard limit: 750)
 
 ## Workflow Pipeline
 

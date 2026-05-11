@@ -8,10 +8,20 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
       - uses: actions/setup-node@v4
         with:
           node-version: 22
       - run: node scripts/check-repo-hygiene.mjs --strict-presence
+      - name: Agent anti-bloat guard
+        shell: bash
+        run: |
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            node scripts/check-agent-guard.mjs --base "origin/${{ github.base_ref }}"
+          else
+            node scripts/check-agent-guard.mjs --base "HEAD^"
+          fi
 
   local-cli-golden-path:
     name: Local-only CLI Golden Path

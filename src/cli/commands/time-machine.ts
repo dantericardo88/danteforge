@@ -5,6 +5,7 @@ import { existsSync } from 'node:fs';
 import path from 'node:path';
 import {
   createTimeMachineCommit,
+  persistCounterfactualReplayTrace,
   queryTimeMachine,
   restoreTimeMachineCommit,
   verifyTimeMachine,
@@ -53,6 +54,7 @@ export interface TimeMachineCommandOptions {
   commit?: string;
   out?: string;
   kind?: TimeMachineQueryKind;
+  line?: number;
   classes?: string | string[];
   scale?: TimeMachineValidationScale;
   delegate52Mode?: Delegate52Mode;
@@ -346,6 +348,18 @@ export async function timeMachine(options: TimeMachineCommandOptions): Promise<v
       if (options.pipelineMode && result.artifacts) {
         result.artifacts.resultPath = await writeReplayArtifact(replayDir, 'counterfactual-result.json', JSON.stringify(result, null, 2));
       }
+      if (options.dryRun !== true) {
+        const traceCommit = await persistCounterfactualReplayTrace({
+          cwd,
+          replayResult: result,
+          question: options.alteredInput,
+          now: options._now,
+        });
+        result.artifacts = {
+          ...(result.artifacts ?? {}),
+          timeMachineCommitId: traceCommit.commitId,
+        };
+      }
       if (options.json) {
         out(JSON.stringify(result, null, 2));
       } else {
@@ -545,6 +559,8 @@ export async function timeMachine(options: TimeMachineCommandOptions): Promise<v
     commitId: options.commit,
     kind: options.kind,
     path: Array.isArray(options.path) ? options.path[0] : options.path,
+    line: options.line,
+    session: options.session,
   }), null, 2));
 }
 

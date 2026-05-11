@@ -1,4 +1,4 @@
-// MCP Tool Server — exposes DanteForge as an MCP tool server for Claude Code, Codex, or any MCP client.
+// MCP Tool Server â€” exposes DanteForge as an MCP tool server for Claude Code, Codex, or any MCP client.
 // Uses @modelcontextprotocol/sdk stdio transport. All read-only tools are safe; mutating tools require confirm: true.
 
 import fs from 'fs/promises';
@@ -15,16 +15,29 @@ import type { DanteState, WorkflowStage } from './state.js';
 import { getMcpRateLimiter, type RateLimiter } from './rate-limiter.js';
 import { getEconomizedArtifactForContext } from './context-economy/runtime.js';
 import type { ArtifactType } from './context-economy/artifact-compressor.js';
+import { TOOL_DEFINITIONS } from './mcp-tool-definitions.js';
+export { TOOL_DEFINITIONS } from './mcp-tool-definitions.js';
+import {
+  handleAdoptionQueue,
+  handleQualityCertificate,
+  handlePatternCoverage,
+  handleHarvestNextPattern,
+  handleExplainScore,
+  handleLeapfrogOpportunities,
+  handlePatternSearch,
+  handleCofl,
+  handleDossierBuild,
+  handleDossierGet,
+  handleDossierList,
+  handleLandscapeBuild,
+  handleLandscapeDiff,
+  handleRubricGet,
+  handleScoreCompetitor,
+} from './mcp-extended-handlers.js';
 
 // ---------------------------------------------------------------------------
 // Types
 // ---------------------------------------------------------------------------
-
-interface ToolDefinition {
-  name: string;
-  description: string;
-  inputSchema: Record<string, unknown>;
-}
 
 type ToolResult = CallToolResult;
 
@@ -34,7 +47,7 @@ type ToolResult = CallToolResult;
 
 const STATE_DIR = '.danteforge';
 
-/** Resolve working directory — allows _cwd injection for testing */
+/** Resolve working directory â€” allows _cwd injection for testing */
 export function resolveCwd(args: Record<string, unknown>): string {
   return typeof args._cwd === 'string' ? args._cwd : process.cwd();
 }
@@ -58,7 +71,7 @@ async function auditLog(entry: string, cwd?: string): Promise<void> {
     state.auditLog.push(`${new Date().toISOString()} | mcp: ${entry}`);
     await saveState(state, { cwd });
   } catch {
-    // Best-effort — never block main path
+    // Best-effort â€” never block main path
   }
 }
 
@@ -78,560 +91,6 @@ function artifactTypeForMcpRead(filename: string): ArtifactType {
 // ---------------------------------------------------------------------------
 // Tool definitions (15 tools)
 // ---------------------------------------------------------------------------
-
-export const TOOL_DEFINITIONS: ToolDefinition[] = [
-  {
-    name: 'danteforge_state',
-    description: 'Read current DanteForge project state (workflow stage, phase, project name, configuration).',
-    inputSchema: {
-      type: 'object',
-      properties: {},
-      required: [],
-    },
-  },
-  {
-    name: 'danteforge_score',
-    description: 'Get PDSE quality score for a specific artifact (CONSTITUTION, SPEC, CLARIFY, PLAN, TASKS).',
-    inputSchema: {
-      type: 'object',
-      properties: {
-        artifact: {
-          type: 'string',
-          description: 'Artifact name to score (e.g. CONSTITUTION, SPEC, CLARIFY, PLAN, TASKS)',
-        },
-      },
-      required: ['artifact'],
-    },
-  },
-  {
-    name: 'danteforge_score_all',
-    description: 'Get PDSE quality scores for all artifacts on disk.',
-    inputSchema: {
-      type: 'object',
-      properties: {},
-      required: [],
-    },
-  },
-  {
-    name: 'danteforge_gate_check',
-    description: 'Check whether a specific gate passes (requireConstitution, requireSpec, requireClarify, requirePlan, requireTests, requireDesign).',
-    inputSchema: {
-      type: 'object',
-      properties: {
-        gate: {
-          type: 'string',
-          description: 'Gate name: requireConstitution, requireSpec, requireClarify, requirePlan, requireTests, or requireDesign',
-        },
-      },
-      required: ['gate'],
-    },
-  },
-  {
-    name: 'danteforge_next_steps',
-    description: 'Get recommended next workflow steps based on current project state and the workflow graph.',
-    inputSchema: {
-      type: 'object',
-      properties: {},
-      required: [],
-    },
-  },
-  {
-    name: 'danteforge_task_list',
-    description: 'List tasks for the current execution phase.',
-    inputSchema: {
-      type: 'object',
-      properties: {},
-      required: [],
-    },
-  },
-  {
-    name: 'danteforge_artifact_read',
-    description: 'Read a specific artifact file from .danteforge/ directory.',
-    inputSchema: {
-      type: 'object',
-      properties: {
-        name: {
-          type: 'string',
-          description: 'Filename to read from .danteforge/ (e.g. SPEC.md, PLAN.md, CONSTITUTION.md, TASKS.md)',
-        },
-      },
-      required: ['name'],
-    },
-  },
-  {
-    name: 'danteforge_lessons',
-    description: 'Read accumulated lessons from .danteforge/lessons.md (corrections, failures, insights).',
-    inputSchema: {
-      type: 'object',
-      properties: {},
-      required: [],
-    },
-  },
-  {
-    name: 'danteforge_memory_query',
-    description: 'Search the persistent memory engine for past decisions, corrections, and insights.',
-    inputSchema: {
-      type: 'object',
-      properties: {
-        query: {
-          type: 'string',
-          description: 'Search query for memory entries',
-        },
-      },
-      required: ['query'],
-    },
-  },
-  {
-    name: 'danteforge_verify',
-    description: 'Run project verification (artifact checks, release checks, drift detection). Requires confirm: true.',
-    inputSchema: {
-      type: 'object',
-      properties: {
-        confirm: {
-          type: 'boolean',
-          description: 'Must be true to execute verification',
-        },
-      },
-      required: ['confirm'],
-    },
-  },
-  {
-    name: 'danteforge_handoff',
-    description: 'Trigger a workflow handoff to advance the pipeline to the next stage. Requires confirm: true.',
-    inputSchema: {
-      type: 'object',
-      properties: {
-        stage: {
-          type: 'string',
-          description: 'Source stage for the handoff (constitution, spec, forge, party, review, ux-refine, design)',
-        },
-        confirm: {
-          type: 'boolean',
-          description: 'Must be true to execute the handoff',
-        },
-      },
-      required: ['stage', 'confirm'],
-    },
-  },
-  {
-    name: 'danteforge_budget_status',
-    description: 'Check the latest token cost/budget report from .danteforge/reports/.',
-    inputSchema: {
-      type: 'object',
-      properties: {},
-      required: [],
-    },
-  },
-  {
-    name: 'danteforge_complexity',
-    description: 'Assess task complexity for the current phase and get routing/preset recommendations.',
-    inputSchema: {
-      type: 'object',
-      properties: {},
-      required: [],
-    },
-  },
-  {
-    name: 'danteforge_route_task',
-    description: 'Get routing recommendation (local/light/heavy tier) for a named task.',
-    inputSchema: {
-      type: 'object',
-      properties: {
-        taskName: {
-          type: 'string',
-          description: 'Name of the task to route',
-        },
-      },
-      required: ['taskName'],
-    },
-  },
-  {
-    name: 'danteforge_audit_log',
-    description: 'Read recent entries from the project audit log.',
-    inputSchema: {
-      type: 'object',
-      properties: {
-        count: {
-          type: 'number',
-          description: 'Number of recent entries to return (default: 20)',
-        },
-      },
-      required: [],
-    },
-  },
-  // New tools added for full workflow coverage
-  {
-    name: 'danteforge_assess',
-    description: 'Run a quality assessment of the current project and return an overall score.',
-    inputSchema: {
-      type: 'object',
-      properties: {
-        cwd: { type: 'string', description: 'Project directory (default: process.cwd())' },
-      },
-      required: [],
-    },
-  },
-  {
-    name: 'danteforge_forge',
-    description: 'Execute GSD forge waves to build the next set of features.',
-    inputSchema: {
-      type: 'object',
-      properties: {
-        cwd: { type: 'string', description: 'Project directory' },
-      },
-      required: [],
-    },
-  },
-  {
-    name: 'danteforge_autoforge',
-    description: 'Run the autoforge loop to automatically drive the project to completion.',
-    inputSchema: {
-      type: 'object',
-      properties: {
-        cwd: { type: 'string', description: 'Project directory' },
-      },
-      required: [],
-    },
-  },
-  {
-    name: 'danteforge_plan',
-    description: 'Generate a detailed implementation plan from the project spec.',
-    inputSchema: {
-      type: 'object',
-      properties: {
-        cwd: { type: 'string', description: 'Project directory' },
-      },
-      required: [],
-    },
-  },
-  {
-    name: 'danteforge_tasks',
-    description: 'Break the plan into an executable task list.',
-    inputSchema: {
-      type: 'object',
-      properties: {
-        cwd: { type: 'string', description: 'Project directory' },
-      },
-      required: [],
-    },
-  },
-  {
-    name: 'danteforge_synthesize',
-    description: 'Generate Ultimate Planning Resource (UPR.md) from current project artifacts.',
-    inputSchema: {
-      type: 'object',
-      properties: {
-        cwd: { type: 'string', description: 'Project directory' },
-      },
-      required: [],
-    },
-  },
-  {
-    name: 'danteforge_retro',
-    description: 'Run a retrospective on the current project iteration.',
-    inputSchema: {
-      type: 'object',
-      properties: {
-        cwd: { type: 'string', description: 'Project directory' },
-      },
-      required: [],
-    },
-  },
-  {
-    name: 'danteforge_maturity',
-    description: 'Analyze current code maturity level and provide improvement recommendations.',
-    inputSchema: {
-      type: 'object',
-      properties: {
-        cwd: { type: 'string', description: 'Project directory' },
-      },
-      required: [],
-    },
-  },
-  {
-    name: 'danteforge_specify',
-    description: 'Start the SPEC refinement flow from a high-level idea.',
-    inputSchema: {
-      type: 'object',
-      properties: {
-        cwd: { type: 'string', description: 'Project directory' },
-        idea: { type: 'string', description: 'High-level product idea to specify' },
-      },
-      required: [],
-    },
-  },
-  {
-    name: 'danteforge_constitution',
-    description: 'Generate or update the project constitution.',
-    inputSchema: {
-      type: 'object',
-      properties: {
-        cwd: { type: 'string', description: 'Project directory' },
-      },
-      required: [],
-    },
-  },
-  {
-    name: 'danteforge_state_read',
-    description: 'Read full DanteForge project state as JSON.',
-    inputSchema: {
-      type: 'object',
-      properties: {
-        cwd: { type: 'string', description: 'Project directory' },
-      },
-      required: [],
-    },
-  },
-  {
-    name: 'danteforge_masterplan',
-    description: 'Generate a masterplan from the current project artifacts.',
-    inputSchema: {
-      type: 'object',
-      properties: {
-        cwd: { type: 'string', description: 'Project directory' },
-      },
-      required: [],
-    },
-  },
-  {
-    name: 'danteforge_competitors',
-    description: 'Scan and analyze competitor products in the same space.',
-    inputSchema: {
-      type: 'object',
-      properties: {
-        cwd: { type: 'string', description: 'Project directory' },
-      },
-      required: [],
-    },
-  },
-  {
-    name: 'danteforge_lessons_add',
-    description: 'Append a new lesson or correction to the project lessons log.',
-    inputSchema: {
-      type: 'object',
-      properties: {
-        cwd: { type: 'string', description: 'Project directory' },
-        lesson: { type: 'string', description: 'Lesson text to record' },
-      },
-      required: ['lesson'],
-    },
-  },
-  {
-    name: 'danteforge_workflow',
-    description: 'Get current workflow state: stage, phase, last handoff, verify status.',
-    inputSchema: {
-      type: 'object',
-      properties: {
-        cwd: { type: 'string', description: 'Project directory' },
-      },
-      required: [],
-    },
-  },
-  {
-    name: 'danteforge_adoption_queue',
-    description: 'Read the current OSS adoption queue showing patterns ready to implement. Returns the ADOPTION_QUEUE.md content.',
-    inputSchema: {
-      type: 'object',
-      properties: {
-        cwd: { type: 'string', description: 'Project directory (default: current)' },
-      },
-    },
-  },
-  {
-    name: 'danteforge_quality_certificate',
-    description: 'Generate a tamper-evident quality certificate (evidenceFingerprint) from current convergence state.',
-    inputSchema: {
-      type: 'object',
-      properties: {
-        cwd: { type: 'string', description: 'Project directory (default: current)' },
-      },
-    },
-  },
-  {
-    name: 'danteforge_pattern_coverage',
-    description: 'Show which spec requirements have OSS pattern coverage. Reads PATTERN_COVERAGE.md if present.',
-    inputSchema: {
-      type: 'object',
-      properties: {
-        cwd: { type: 'string', description: 'Project directory (default: current)' },
-      },
-    },
-  },
-  {
-    name: 'danteforge_harvest_next_pattern',
-    description: 'Adopt the highest-priority pattern from ADOPTION_QUEUE.md. Requires human approval (policy: confirm) — writes files and may run tests.',
-    inputSchema: {
-      type: 'object',
-      properties: {
-        cwd: { type: 'string', description: 'Project directory (default: current)' },
-        dryRun: { type: 'boolean', description: 'If true, show what would be adopted without executing (default: true for safety)' },
-      },
-    },
-  },
-  {
-    name: 'danteforge_explain_score',
-    description: 'Explain a maturity score dimension — what it measures, why it matters, and what would improve it.',
-    inputSchema: {
-      type: 'object',
-      properties: {
-        dimension: { type: 'string', description: 'Score dimension name (e.g. "circuit-breaker-reliability")' },
-        score: { type: 'number', description: 'Current score 0-10 (optional — loads from state if omitted)' },
-        cwd: { type: 'string', description: 'Project directory (default: current)' },
-      },
-      required: ['dimension'],
-    },
-  },
-  {
-    name: 'danteforge_leapfrog_opportunities',
-    description: 'List competitive leapfrog opportunities — dimensions where OSS patterns can jump this project ahead of named competitors.',
-    inputSchema: {
-      type: 'object',
-      properties: {
-        cwd: { type: 'string', description: 'Project directory (default: current)' },
-        maxOpportunities: { type: 'number', description: 'Maximum opportunities to return (default: 5)' },
-      },
-    },
-  },
-  {
-    name: 'danteforge_pattern_search',
-    description: 'Search the global OSS pattern library by keyword, category, or complexity. Returns patterns ranked by ROI.',
-    inputSchema: {
-      type: 'object',
-      properties: {
-        keyword: { type: 'string', description: 'Search term matched against pattern name and description' },
-        category: { type: 'string', description: 'Filter by category (e.g. "reliability", "performance")' },
-        maxComplexity: { type: 'string', enum: ['low', 'medium', 'high'], description: 'Maximum adoption complexity' },
-        minAvgRoi: { type: 'number', description: 'Minimum average ROI 0-1 (default: 0)' },
-        limit: { type: 'number', description: 'Maximum results (default: 10)' },
-      },
-    },
-  },
-  {
-    name: 'danteforge_adversarial_score',
-    description: 'Challenge the self-score with an independent adversary LLM. Returns a divergence panel showing selfScore vs adversarialScore, verdict (trusted/watch/inflated/underestimated), and the most inflated dimensions. Use this to catch score inflation before declaring a feature complete.',
-    inputSchema: {
-      type: 'object',
-      properties: {
-        cwd: { type: 'string', description: 'Working directory (defaults to process.cwd())' },
-        summaryOnly: { type: 'boolean', description: 'Use a single LLM call for summary score instead of per-dimension (faster, lower cost)' },
-        dimensions: {
-          type: 'array',
-          items: { type: 'string' },
-          description: 'Specific dimensions to score adversarially. Omit to score all dimensions.',
-        },
-      },
-      required: [],
-    },
-  },
-  // ── Dossier system tools ──────────────────────────────────────────────────
-  {
-    name: 'danteforge_dossier_build',
-    description: 'Build or refresh a competitor dossier with source-backed evidence and rubric scores',
-    inputSchema: {
-      type: 'object',
-      properties: {
-        competitor: { type: 'string', description: 'Competitor id (e.g. "cursor", "aider")' },
-        sources: {
-          type: 'array',
-          items: { type: 'string' },
-          description: 'Override primary source URLs (optional)',
-        },
-        since: { type: 'string', description: 'Skip if dossier built within this duration (e.g. "7d")' },
-        _cwd: { type: 'string', description: 'Working directory override (for testing)' },
-      },
-      required: ['competitor'],
-    },
-  },
-  {
-    name: 'danteforge_dossier_get',
-    description: 'Get a competitor dossier, optionally filtered to a single dimension',
-    inputSchema: {
-      type: 'object',
-      properties: {
-        competitor: { type: 'string', description: 'Competitor id' },
-        dim: { type: 'number', description: 'Dimension number (1–28). Omit for full dossier.' },
-        _cwd: { type: 'string', description: 'Working directory override (for testing)' },
-      },
-      required: ['competitor'],
-    },
-  },
-  {
-    name: 'danteforge_dossier_list',
-    description: 'List all built competitor dossiers with composite scores',
-    inputSchema: {
-      type: 'object',
-      properties: {
-        _cwd: { type: 'string', description: 'Working directory override (for testing)' },
-      },
-      required: [],
-    },
-  },
-  {
-    name: 'danteforge_landscape_build',
-    description: 'Rebuild the full competitive landscape matrix from all dossiers and write COMPETITIVE_LANDSCAPE.md',
-    inputSchema: {
-      type: 'object',
-      properties: {
-        _cwd: { type: 'string', description: 'Working directory override (for testing)' },
-      },
-      required: [],
-    },
-  },
-  {
-    name: 'danteforge_landscape_diff',
-    description: 'Show competitive landscape staleness and metadata since last build',
-    inputSchema: {
-      type: 'object',
-      properties: {
-        _cwd: { type: 'string', description: 'Working directory override (for testing)' },
-      },
-      required: [],
-    },
-  },
-  {
-    name: 'danteforge_rubric_get',
-    description: 'Get the scoring rubric — all dimensions or a single dimension with criteria',
-    inputSchema: {
-      type: 'object',
-      properties: {
-        dim: { type: 'number', description: 'Dimension number (1–28). Omit for full rubric.' },
-        _cwd: { type: 'string', description: 'Working directory override (for testing)' },
-      },
-      required: [],
-    },
-  },
-  {
-    name: 'danteforge_score_competitor',
-    description: 'Get the composite score and dimension breakdown for a specific competitor',
-    inputSchema: {
-      type: 'object',
-      properties: {
-        competitor: { type: 'string', description: 'Competitor id' },
-        _cwd: { type: 'string', description: 'Working directory override (for testing)' },
-      },
-      required: ['competitor'],
-    },
-  },
-  // ── COFL tool ──────────────────────────────────────────────────────────────
-  {
-    name: 'danteforge_cofl',
-    description: 'Run a Competitive Operator Forge Loop (COFL) phase. Partitions competitors into direct_peer/specialist_teacher/reference_teacher roles, scores operator leverage for each matrix dimension, checks 7 anti-failure guardrails, and returns a full cycle result with reframe assessment. Use --auto for a complete end-to-end cycle.',
-    inputSchema: {
-      type: 'object',
-      properties: {
-        universe: { type: 'boolean', description: 'Run universe+partition phase — classify competitors by role' },
-        harvest: { type: 'boolean', description: 'Run harvest phase — extract patterns from OSS teacher set (requires LLM)' },
-        prioritize: { type: 'boolean', description: 'Run prioritize phase — rank dimensions by operator leverage score' },
-        guards: { type: 'boolean', description: 'Run anti-failure guardrail checks (7 codified failure modes)' },
-        reframe: { type: 'boolean', description: 'Run reframe phase — strategic position assessment (inflating rows vs real preference gain)' },
-        report: { type: 'boolean', description: 'Write COFL_REPORT.md to .danteforge/cofl/' },
-        auto: { type: 'boolean', description: 'Run all phases end-to-end (full 10-phase cycle)' },
-        _cwd: { type: 'string', description: 'Working directory override (for testing)' },
-      },
-      required: [],
-    },
-  },
-];
 
 // ---------------------------------------------------------------------------
 // Tool handlers
@@ -835,7 +294,7 @@ async function handleLessons(args: Record<string, unknown>): Promise<ToolResult>
     await auditLog('lessons read', cwd);
     return jsonResult({ content });
   } catch {
-    return jsonResult({ content: '', message: 'No lessons.md found — no lessons recorded yet.' });
+    return jsonResult({ content: '', message: 'No lessons.md found â€” no lessons recorded yet.' });
   }
 }
 
@@ -880,7 +339,7 @@ async function handleVerify(args: Record<string, unknown>): Promise<ToolResult> 
     await auditLog('verify: executed via MCP', cwd);
     return jsonResult({ status: 'completed', message: 'Verification completed. Check console output for details.' });
   } catch (err) {
-    await auditLog(`verify: failed — ${err instanceof Error ? err.message : String(err)}`, cwd);
+    await auditLog(`verify: failed â€” ${err instanceof Error ? err.message : String(err)}`, cwd);
     return errorResult(`Verification failed: ${err instanceof Error ? err.message : String(err)}`);
   }
 }
@@ -919,7 +378,7 @@ async function handleHandoff(args: Record<string, unknown>): Promise<ToolResult>
       lastHandoff: updatedState.lastHandoff,
     });
   } catch (err) {
-    await auditLog(`handoff: ${stage} failed — ${err instanceof Error ? err.message : String(err)}`, cwd);
+    await auditLog(`handoff: ${stage} failed â€” ${err instanceof Error ? err.message : String(err)}`, cwd);
     return errorResult(`Handoff failed: ${err instanceof Error ? err.message : String(err)}`);
   }
 }
@@ -1020,15 +479,15 @@ async function handleAuditLog(args: Record<string, unknown>): Promise<ToolResult
 }
 
 // ---------------------------------------------------------------------------
-// McpServerDeps — injection interface for testing
+// McpServerDeps â€” injection interface for testing
 // ---------------------------------------------------------------------------
 
 export interface McpServerDeps {
-  /** Injected assess function — returns score and threshold result */
+  /** Injected assess function â€” returns score and threshold result */
   _assess?: (opts: { cwd: string }) => Promise<{ overallScore: number; passesThreshold: boolean }>;
-  /** Injected state loader — returns DanteState */
+  /** Injected state loader â€” returns DanteState */
   _loadState?: (opts: { cwd: string }) => Promise<unknown>;
-  /** Injected workflow info — returns workflowStage, currentPhase, lastHandoff, lastVerifyStatus */
+  /** Injected workflow info â€” returns workflowStage, currentPhase, lastHandoff, lastVerifyStatus */
   _workflow?: (opts: { cwd: string }) => Promise<unknown>;
   /** Injected lesson appender */
   _appendLesson?: (entry: string) => Promise<void>;
@@ -1054,9 +513,9 @@ export interface McpServerDeps {
   _generateMasterplan?: (opts: { cwd: string }) => Promise<unknown>;
   /** Injected competitor scanner */
   _scanCompetitors?: (opts: { cwd: string }) => Promise<unknown>;
-  /** Injected rate limiter — defaults to the MCP singleton. Override in tests to bypass. */
+  /** Injected rate limiter â€” defaults to the MCP singleton. Override in tests to bypass. */
   _rateLimiter?: RateLimiter | null;
-  /** Injected adversarial scorer — for testing danteforge_adversarial_score without LLM */
+  /** Injected adversarial scorer â€” for testing danteforge_adversarial_score without LLM */
   _adversarialScore?: (opts: { cwd: string; summaryOnly?: boolean }) => Promise<unknown>;
 }
 
@@ -1204,278 +663,6 @@ async function handleSimpleInjectable(
   return JSON.stringify({ ok: true, message: `${name} not fully wired in this mode` });
 }
 
-async function handleAdoptionQueue(args: Record<string, unknown>): Promise<ToolResult> {
-  const cwd = resolveCwd(args);
-  try {
-    const queuePath = path.join(cwd, '.danteforge', 'ADOPTION_QUEUE.md');
-    const content = await fs.readFile(queuePath, 'utf8');
-    return jsonResult({ content, path: queuePath });
-  } catch {
-    return jsonResult({ content: '# Adoption Queue\n\n_(empty — run oss-intel to populate)_', path: null });
-  }
-}
-
-async function handleQualityCertificate(args: Record<string, unknown>): Promise<ToolResult> {
-  const cwd = resolveCwd(args);
-  try {
-    const certPath = path.join(cwd, '.danteforge', 'QUALITY_CERTIFICATE.json');
-    const content = await fs.readFile(certPath, 'utf8');
-    return jsonResult(JSON.parse(content) as unknown);
-  } catch {
-    return jsonResult({ error: 'No quality certificate found. Run danteforge certify to generate one.' });
-  }
-}
-
-async function handlePatternCoverage(args: Record<string, unknown>): Promise<ToolResult> {
-  const cwd = resolveCwd(args);
-  try {
-    const coveragePath = path.join(cwd, '.danteforge', 'PATTERN_COVERAGE.md');
-    const content = await fs.readFile(coveragePath, 'utf8');
-    return jsonResult({ content, path: coveragePath });
-  } catch {
-    return jsonResult({ content: '# Pattern Coverage\n\n_(not yet generated — run danteforge spec-match to compute)_', path: null });
-  }
-}
-
-async function handleHarvestNextPattern(args: Record<string, unknown>): Promise<ToolResult> {
-  const cwd = resolveCwd(args);
-  // Safety gate: dryRun=true by default — this tool writes files and must not auto-execute
-  const dryRun = args['dryRun'] !== false; // default true unless explicitly set to false
-
-  try {
-    const queuePath = path.join(cwd, '.danteforge', 'ADOPTION_QUEUE.md');
-    const content = await fs.readFile(queuePath, 'utf8');
-
-    // Extract first pattern name from queue
-    const firstPatternMatch = content.match(/^##\s+(.+)$/m);
-    const patternName = firstPatternMatch?.[1] ?? 'unknown';
-
-    if (dryRun) {
-      return jsonResult({
-        dryRun: true,
-        nextPattern: patternName,
-        message: `Would adopt "${patternName}". Set dryRun=false to execute (requires human approval policy).`,
-        policy: 'confirm',
-        warning: 'This tool writes files and may run tests. Human approval required.',
-      });
-    }
-
-    // Non-dry-run: return authorization required message
-    // Full adoption requires safe-self-edit approval flow — not auto-executed via MCP
-    return jsonResult({
-      requiresApproval: true,
-      nextPattern: patternName,
-      message: `Adopting "${patternName}" requires human approval. Use the CLI: danteforge oss-intel --adopt ${patternName}`,
-      policy: 'confirm',
-    });
-  } catch {
-    return jsonResult({ error: 'No adoption queue found. Run oss-intel first.' });
-  }
-}
-
-async function handleExplainScore(args: Record<string, unknown>): Promise<ToolResult> {
-  const dimension = String(args['dimension'] ?? '');
-  if (!dimension) return errorResult('Missing required parameter: dimension');
-
-  const cwd = resolveCwd(args);
-  const score = typeof args['score'] === 'number' ? args['score'] : null;
-
-  // Load score from state if not provided
-  let resolvedScore = score;
-  if (resolvedScore === null) {
-    try {
-      const stateDir = path.join(cwd, '.danteforge');
-      const competitorPath = path.join(stateDir, 'COMPETITOR_MATRIX.md');
-      const maturityPath = path.join(stateDir, 'MATURITY_REPORT.md');
-      for (const p of [maturityPath, competitorPath]) {
-        try {
-          const content = await fs.readFile(p, 'utf8');
-          const match = content.match(new RegExp(`${dimension}[^\\d]*(\\d+\\.?\\d*)\\/10`));
-          if (match) { resolvedScore = parseFloat(match[1]); break; }
-        } catch { /* keep looking */ }
-      }
-    } catch { /* best-effort */ }
-  }
-
-  const scoreLabel = resolvedScore !== null ? `${resolvedScore}/10` : 'unknown';
-
-  const DIMENSION_EXPLANATIONS: Record<string, { what: string; why: string; howToImprove: string }> = {
-    'circuit-breaker-reliability': {
-      what: 'Measures whether external calls (LLM, API, DB) are wrapped in circuit breakers that open on repeated failure and recover gracefully.',
-      why: 'Without it, one flaky provider cascades into full system downtime. Circuit breakers contain blast radius.',
-      howToImprove: 'Add CLOSED/OPEN/HALF_OPEN state machine per provider; wrap callLLM with circuit-breaker check; add backoff strategy.',
-    },
-    'test-injection-discipline': {
-      what: 'Measures whether tests use injected dependencies (_llmCaller, _isLLMAvailable, _readFile etc.) instead of real I/O.',
-      why: 'Real I/O in tests causes 200x+ slowdowns, non-determinism, and CI failures. Injection seams are the antidote.',
-      howToImprove: 'Add _fnName? optional params to all functions that call LLM or FS; use them in tests via stub injection.',
-    },
-  };
-
-  const explanation = DIMENSION_EXPLANATIONS[dimension] ?? {
-    what: `"${dimension}" measures this dimension of software maturity in your codebase.`,
-    why: 'Higher scores on this dimension indicate production-readiness and reduced operational risk.',
-    howToImprove: `Review the ${dimension} section in MATURITY_REPORT.md or run: danteforge assess`,
-  };
-
-  return jsonResult({
-    dimension,
-    score: scoreLabel,
-    what: explanation.what,
-    why: explanation.why,
-    howToImprove: explanation.howToImprove,
-    nextAction: resolvedScore !== null && resolvedScore < 7
-      ? `Run: danteforge oss-intel --focus ${dimension} to find patterns that improve this score`
-      : 'Score looks healthy. Run danteforge assess to see full picture.',
-  });
-}
-
-async function handleLeapfrogOpportunities(args: Record<string, unknown>): Promise<ToolResult> {
-  const cwd = resolveCwd(args);
-  const maxOpportunities = typeof args['maxOpportunities'] === 'number' ? args['maxOpportunities'] : 5;
-
-  try {
-    const stateDir = path.join(cwd, '.danteforge');
-
-    // Read competitor matrix and harvest queue to find leapfrog gaps
-    let competitorContent = '';
-    let queueContent = '';
-    try { competitorContent = await fs.readFile(path.join(stateDir, 'COMPETITOR_MATRIX.md'), 'utf8'); } catch {}
-    try { queueContent = await fs.readFile(path.join(stateDir, 'ADOPTION_QUEUE.md'), 'utf8'); } catch {}
-
-    // Parse dimensions where we score lower than competitors
-    const opportunities: Array<{ dimension: string; ourScore: number; competitorScore: number; gap: number; patternAvailable: boolean }> = [];
-
-    // Extract score comparisons from competitor matrix (format: "| dimension | ourScore | competitorScore |")
-    const tableRows = competitorContent.matchAll(/\|\s*([^|]+)\s*\|\s*(\d+\.?\d*)\s*\|\s*(\d+\.?\d*)\s*\|/g);
-    for (const row of tableRows) {
-      const dimension = row[1].trim();
-      const ourScore = parseFloat(row[2]);
-      const competitorScore = parseFloat(row[3]);
-      if (!isNaN(ourScore) && !isNaN(competitorScore) && competitorScore > ourScore + 1) {
-        const patternAvailable = queueContent.toLowerCase().includes(dimension.toLowerCase());
-        opportunities.push({ dimension, ourScore, competitorScore, gap: competitorScore - ourScore, patternAvailable });
-      }
-    }
-
-    // Sort by gap size (biggest opportunity first)
-    opportunities.sort((a, b) => b.gap - a.gap);
-    const top = opportunities.slice(0, maxOpportunities);
-
-    if (top.length === 0) {
-      return jsonResult({
-        opportunities: [],
-        message: 'No leapfrog opportunities found. Run: danteforge universe-scan to populate competitor data.',
-        nextAction: 'danteforge universe-scan',
-      });
-    }
-
-    return jsonResult({
-      opportunities: top.map(o => ({
-        dimension: o.dimension,
-        ourScore: o.ourScore,
-        competitorAverage: o.competitorScore,
-        gap: Math.round(o.gap * 10) / 10,
-        patternAvailable: o.patternAvailable,
-        action: o.patternAvailable
-          ? `danteforge oss-intel --focus ${o.dimension} (pattern queued)`
-          : `danteforge harvest --focus ${o.dimension} (needs discovery)`,
-      })),
-      totalOpportunities: opportunities.length,
-      nextAction: `danteforge oss-intel --focus ${top[0].dimension}`,
-    });
-  } catch (err) {
-    return jsonResult({
-      opportunities: [],
-      error: err instanceof Error ? err.message : String(err),
-      nextAction: 'danteforge universe-scan',
-    });
-  }
-}
-
-async function handlePatternSearch(args: Record<string, unknown>): Promise<ToolResult> {
-  const keyword = typeof args['keyword'] === 'string' ? args['keyword'].toLowerCase() : '';
-  const category = typeof args['category'] === 'string' ? args['category'] : undefined;
-  const maxComplexity = typeof args['maxComplexity'] === 'string'
-    ? (args['maxComplexity'] as 'low' | 'medium' | 'high')
-    : undefined;
-  const minAvgRoi = typeof args['minAvgRoi'] === 'number' ? args['minAvgRoi'] : 0;
-  const limit = typeof args['limit'] === 'number' ? args['limit'] : 10;
-
-  try {
-    const { queryLibrary } = await import('./global-pattern-library.js');
-    const results = await queryLibrary({ category, maxComplexity, minAvgRoi, limit: limit * 2 });
-
-    // Apply keyword filter client-side
-    const filtered = keyword
-      ? results.filter(e =>
-          e.patternName.toLowerCase().includes(keyword) ||
-          e.whyItWorks.toLowerCase().includes(keyword) ||
-          e.category.toLowerCase().includes(keyword),
-        )
-      : results;
-
-    const top = filtered.slice(0, limit);
-
-    if (top.length === 0) {
-      return jsonResult({
-        patterns: [],
-        message: `No patterns found matching "${keyword || '(all)'}". Run danteforge oss-intel to populate the library.`,
-        totalInLibrary: results.length,
-      });
-    }
-
-    return jsonResult({
-      patterns: top.map(e => ({
-        name: e.patternName,
-        category: e.category,
-        complexity: e.adoptionComplexity,
-        avgRoi: Math.round(e.avgRoi * 100) + '%',
-        useCount: e.useCount,
-        sourceRepo: e.sourceRepo,
-        whyItWorks: e.whyItWorks.slice(0, 200),
-        adoptAction: `danteforge oss-intel --adopt "${e.patternName}"`,
-      })),
-      totalMatched: filtered.length,
-      totalInLibrary: results.length,
-    });
-  } catch (err) {
-    return jsonResult({
-      patterns: [],
-      error: err instanceof Error ? err.message : String(err),
-      message: 'Global pattern library unavailable. Run danteforge oss-intel to populate it.',
-    });
-  }
-}
-
-// ---------------------------------------------------------------------------
-// COFL handler
-// ---------------------------------------------------------------------------
-
-async function handleCofl(args: Record<string, unknown>): Promise<ToolResult> {
-  const cwd = resolveCwd(args);
-  try {
-    const { cofl } = await import('../cli/commands/cofl.js');
-    const hasFlag = (key: string) => args[key] === true;
-    const anyFlagSet = ['universe', 'harvest', 'prioritize', 'guards', 'reframe', 'report'].some(hasFlag);
-    const options = {
-      universe: hasFlag('universe'),
-      harvest: hasFlag('harvest'),
-      prioritize: hasFlag('prioritize'),
-      guards: hasFlag('guards'),
-      reframe: hasFlag('reframe'),
-      report: hasFlag('report'),
-      auto: hasFlag('auto') || !anyFlagSet, // default to auto when no specific phase flag given
-    };
-    const result = await cofl(options, { _cwd: cwd });
-    await auditLog(`cofl: cycle ${result?.cycleNumber ?? '?'}, patterns=${result?.extractedPatterns?.length ?? 0}`, cwd);
-    return jsonResult(result ?? { error: 'COFL returned no result — check matrix and registry' });
-  } catch (err) {
-    return errorResult(`COFL failed: ${err instanceof Error ? err.message : String(err)}`);
-  }
-}
-
-// ---------------------------------------------------------------------------
 // Tool dispatch
 // ---------------------------------------------------------------------------
 
@@ -1484,7 +671,7 @@ async function handleCofl(args: Record<string, unknown>): Promise<ToolResult> {
 export type ToolHandler = (args: Record<string, unknown>, deps?: McpServerDeps) => Promise<ToolResult | string>;
 
 export const TOOL_HANDLERS: Record<string, ToolHandler> = {
-  // Legacy handlers — return ToolResult (backward compat with mcp-handlers.test.ts)
+  // Legacy handlers â€” return ToolResult (backward compat with mcp-handlers.test.ts)
   danteforge_state: (args) => handleState(args),
   danteforge_score: (args) => handleScore(args),
   danteforge_score_all: (args) => handleScoreAll(args),
@@ -1500,7 +687,7 @@ export const TOOL_HANDLERS: Record<string, ToolHandler> = {
   danteforge_complexity: (args) => handleComplexity(args),
   danteforge_route_task: (args) => handleRouteTask(args),
   danteforge_audit_log: (args) => handleAuditLog(args),
-  // New injectable handlers — return string (JSON-serialized result)
+  // New injectable handlers â€” return string (JSON-serialized result)
   danteforge_assess: (args, deps = {}) => handleAssess(args, deps),
   danteforge_state_read: (args, deps = {}) => handleStateRead(args, deps),
   danteforge_workflow: (args, deps = {}) => handleWorkflow(args, deps),
@@ -1538,161 +725,6 @@ export const TOOL_HANDLERS: Record<string, ToolHandler> = {
 // Dossier MCP handlers
 // ---------------------------------------------------------------------------
 
-async function handleDossierBuild(args: Record<string, unknown>): Promise<ToolResult> {
-  const cwd = resolveCwd(args);
-  const competitor = String(args['competitor'] ?? '');
-  if (!competitor) return errorResult('Missing required parameter: competitor');
-  const sources = Array.isArray(args['sources'])
-    ? (args['sources'] as string[])
-    : undefined;
-  const since = args['since'] ? String(args['since']) : undefined;
-  try {
-    const { buildDossier } = await import('../dossier/builder.js');
-    const dossier = await buildDossier({ cwd, competitor, sources, since });
-    return jsonResult({
-      competitor: dossier.competitor,
-      displayName: dossier.displayName,
-      composite: dossier.composite,
-      lastBuilt: dossier.lastBuilt,
-      dimCount: Object.keys(dossier.dimensions).length,
-    });
-  } catch (err) {
-    return errorResult(`dossier build failed: ${String(err)}`);
-  }
-}
-
-async function handleDossierGet(args: Record<string, unknown>): Promise<ToolResult> {
-  const cwd = resolveCwd(args);
-  const competitor = String(args['competitor'] ?? '');
-  if (!competitor) return errorResult('Missing required parameter: competitor');
-  const dim = args['dim'] !== undefined ? Number(args['dim']) : undefined;
-  try {
-    const { loadDossier } = await import('../dossier/builder.js');
-    const dossier = await loadDossier(cwd, competitor);
-    if (!dossier) return errorResult(`No dossier found for "${competitor}"`);
-    if (dim !== undefined) {
-      const dimDef = dossier.dimensions[String(dim)];
-      if (!dimDef) return errorResult(`Dimension ${dim} not found in dossier`);
-      return jsonResult(dimDef);
-    }
-    return jsonResult(dossier);
-  } catch (err) {
-    return errorResult(`dossier get failed: ${String(err)}`);
-  }
-}
-
-async function handleDossierList(args: Record<string, unknown>): Promise<ToolResult> {
-  const cwd = resolveCwd(args);
-  try {
-    const { listDossiers } = await import('../dossier/builder.js');
-    const dossiers = await listDossiers(cwd);
-    const summary = dossiers
-      .sort((a, b) => b.composite - a.composite)
-      .map((d) => ({
-        competitor: d.competitor,
-        displayName: d.displayName,
-        composite: d.composite,
-        type: d.type,
-        lastBuilt: d.lastBuilt,
-      }));
-    return jsonResult({ count: dossiers.length, dossiers: summary });
-  } catch (err) {
-    return errorResult(`dossier list failed: ${String(err)}`);
-  }
-}
-
-async function handleLandscapeBuild(args: Record<string, unknown>): Promise<ToolResult> {
-  const cwd = resolveCwd(args);
-  try {
-    const { buildLandscape } = await import('../dossier/landscape.js');
-    const matrix = await buildLandscape(cwd);
-    return jsonResult({
-      generatedAt: matrix.generatedAt,
-      rubricVersion: matrix.rubricVersion,
-      competitorCount: matrix.competitors.length,
-      topRankings: matrix.rankings.slice(0, 5),
-    });
-  } catch (err) {
-    return errorResult(`landscape build failed: ${String(err)}`);
-  }
-}
-
-async function handleLandscapeDiff(args: Record<string, unknown>): Promise<ToolResult> {
-  const cwd = resolveCwd(args);
-  try {
-    const {
-      diffLandscape,
-      isLandscapeStale,
-      loadLandscape,
-      loadPreviousLandscape,
-    } = await import('../dossier/landscape.js');
-    const landscape = await loadLandscape(cwd);
-    if (!landscape) return jsonResult({ status: 'no_landscape', message: 'Run danteforge landscape to build' });
-    const previous = await loadPreviousLandscape(cwd);
-    if (!previous) {
-      return jsonResult({
-        status: 'no_previous_snapshot',
-        generatedAt: landscape.generatedAt,
-        rubricVersion: landscape.rubricVersion,
-        competitorCount: landscape.competitors.length,
-        stale: isLandscapeStale(landscape),
-      });
-    }
-
-    return jsonResult({
-      status: 'ok',
-      generatedAt: landscape.generatedAt,
-      previousGeneratedAt: previous.generatedAt,
-      stale: isLandscapeStale(landscape),
-      diff: diffLandscape(previous, landscape),
-    });
-  } catch (err) {
-    return errorResult(`landscape diff failed: ${String(err)}`);
-  }
-}
-
-async function handleRubricGet(args: Record<string, unknown>): Promise<ToolResult> {
-  const cwd = resolveCwd(args);
-  const dim = args['dim'] !== undefined ? Number(args['dim']) : undefined;
-  try {
-    const { getRubric, getDimCriteria } = await import('../dossier/rubric.js');
-    const rubric = await getRubric(cwd);
-    if (dim !== undefined) {
-      const dimDef = getDimCriteria(rubric, dim);
-      if (!dimDef) return errorResult(`Dimension ${dim} not found in rubric`);
-      return jsonResult({ dim, ...dimDef });
-    }
-    return jsonResult(rubric);
-  } catch (err) {
-    return errorResult(`rubric get failed: ${String(err)}`);
-  }
-}
-
-async function handleScoreCompetitor(args: Record<string, unknown>): Promise<ToolResult> {
-  const cwd = resolveCwd(args);
-  const competitor = String(args['competitor'] ?? '');
-  if (!competitor) return errorResult('Missing required parameter: competitor');
-  try {
-    const { loadDossier } = await import('../dossier/builder.js');
-    const dossier = await loadDossier(cwd, competitor);
-    if (!dossier) return errorResult(`No dossier found for "${competitor}". Run: danteforge dossier build ${competitor}`);
-    const dimSummary: Record<string, number> = {};
-    for (const [k, v] of Object.entries(dossier.dimensions)) {
-      dimSummary[k] = v.humanOverride ?? v.score;
-    }
-    return jsonResult({
-      competitor: dossier.competitor,
-      displayName: dossier.displayName,
-      composite: dossier.composite,
-      dimensions: dimSummary,
-      lastBuilt: dossier.lastBuilt,
-    });
-  } catch (err) {
-    return errorResult(`score competitor failed: ${String(err)}`);
-  }
-}
-
-// ---------------------------------------------------------------------------
 // Server factory
 // ---------------------------------------------------------------------------
 
@@ -1712,7 +744,7 @@ export async function createAndStartMCPServer(): Promise<void> {
     const { name, arguments: toolArgs } = request.params;
     const args = (toolArgs ?? {}) as Record<string, unknown>;
 
-    // Rate limit per tool name — protects against DoS / tight automation loops
+    // Rate limit per tool name â€” protects against DoS / tight automation loops
     const limiter = getMcpRateLimiter();
     const rateResult = limiter.consume(name);
     if (!rateResult.allowed) {
@@ -1736,7 +768,7 @@ export async function createAndStartMCPServer(): Promise<void> {
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
       try {
-        await auditLog(`tool error: ${name} — ${message}`);
+        await auditLog(`tool error: ${name} â€” ${message}`);
       } catch {
         // Best-effort audit logging
       }
@@ -1846,3 +878,5 @@ export function createMcpServer(sessionDeps: McpServerDeps = {}): ManualMcpServe
     },
   };
 }
+
+

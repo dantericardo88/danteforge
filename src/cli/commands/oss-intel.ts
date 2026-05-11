@@ -488,6 +488,16 @@ async function runDeepHarvestLoop(
 export async function ossIntel(opts: OssIntelOptions = {}): Promise<void> {
   try {
     const cwd = opts.cwd ?? process.cwd();
+
+    // --- Decision-node: record start (best-effort) ---
+    let _dnStartNodeId: string | undefined;
+    const _dnT0 = Date.now();
+    try {
+      const { getSession, recordDecision } = await import('../../core/decision-node-recorder.js');
+      const _dnSess = getSession(cwd);
+      const _dnStart = await recordDecision({ session: _dnSess, actorType: 'agent', prompt: 'oss-intel: OSS pattern discovery', context: { cwd }, result: 'in-progress', success: false });
+      _dnStartNodeId = _dnStart.id;
+    } catch { /* never block */ }
     const maxRepos = opts.maxRepos ?? 5;
     const crossSynthesisEvery = opts.crossSynthesisEvery ?? 3;
 
@@ -543,6 +553,13 @@ export async function ossIntel(opts: OssIntelOptions = {}): Promise<void> {
 
     await (opts._saveQueue ?? saveHarvestQueue)(queue, cwd);
     logger.info(`[oss-intel] Complete: ${harvestedCount} repos harvested, ${allPatterns.length} patterns extracted`);
+
+    // --- Decision-node: record completion (best-effort) ---
+    try {
+      const { getSession, recordDecision } = await import('../../core/decision-node-recorder.js');
+      const _dnSess = getSession(cwd);
+      await recordDecision({ session: _dnSess, parentNodeId: _dnStartNodeId, actorType: 'agent', prompt: 'oss-intel: OSS pattern discovery [complete]', result: 'ADOPTION_QUEUE.md updated', success: true, latencyMs: Date.now() - _dnT0 });
+    } catch { /* best-effort */ }
   } catch (err) {
     logger.error(`[oss-intel] Fatal error: ${err instanceof Error ? err.message : String(err)}`);
     throw err;

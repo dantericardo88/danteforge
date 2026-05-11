@@ -252,6 +252,17 @@ async function runSelfImproveLoop(ctx: SelfImproveLoopCtx): Promise<LoopOutcome>
 
 export async function selfImprove(options: SelfImproveOptions = {}): Promise<SelfImproveResult> {
   const cwd = options.cwd ?? process.cwd();
+
+  // --- Decision-node: record start (best-effort) ---
+  let _dnStartNodeId: string | undefined;
+  const _dnT0 = Date.now();
+  try {
+    const { getSession, recordDecision } = await import('../../core/decision-node-recorder.js');
+    const _dnSess = getSession(cwd);
+    const _dnStart = await recordDecision({ session: _dnSess, actorType: 'agent', prompt: 'self-improve: autonomous self-improvement loop', context: { cwd }, result: 'in-progress', success: false });
+    _dnStartNodeId = _dnStart.id;
+  } catch { /* never block */ }
+
   const goal = options.goal ?? 'Improve overall quality across all dimensions to 9/10';
   const minScore = options.minScore ?? DEFAULT_MIN_SCORE;
   const maxCycles = options.maxCycles ?? DEFAULT_MAX_CYCLES;
@@ -328,6 +339,13 @@ export async function selfImprove(options: SelfImproveOptions = {}): Promise<Sel
       `self-improve: ${cyclesRun} cycles, ${initialScore.toFixed(1)} → ${currentScore.toFixed(1)}/10`,
     ];
     await saveStateFn(state, { cwd });
+  } catch { /* best-effort */ }
+
+  // --- Decision-node: record completion (best-effort) ---
+  try {
+    const { getSession, recordDecision } = await import('../../core/decision-node-recorder.js');
+    const _dnSess = getSession(cwd);
+    await recordDecision({ session: _dnSess, parentNodeId: _dnStartNodeId, actorType: 'agent', prompt: 'self-improve: autonomous self-improvement loop [complete]', result: 'self-improve complete', success: true, latencyMs: Date.now() - _dnT0 });
   } catch { /* best-effort */ }
 
   return {

@@ -54,6 +54,16 @@ export async function tasks(options: {
   const writeFn = options._writeArtifact ?? writeArtifact;
 
   return withErrorBoundary('tasks', async () => {
+  // --- Decision-node: record start (best-effort) ---
+  let _dnStartNodeId: string | undefined;
+  const _dnT0 = Date.now();
+  try {
+    const { getSession, recordDecision } = await import('../../core/decision-node-recorder.js');
+    const _dnSess = getSession();
+    const _dnStart = await recordDecision({ session: _dnSess, actorType: 'agent', prompt: 'tasks: break plan into executable tasks', context: { workflowStage: 'tasks' }, result: 'in-progress', success: false });
+    _dnStartNodeId = _dnStart.id;
+  } catch { /* never block */ }
+
   if (!(await runGate(() => requirePlan(options.light)))) return;
 
   logger.info('Breaking plan into executable tasks...');
@@ -123,5 +133,12 @@ export async function tasks(options: {
   if (!llmAvailable) {
     logger.info('Tip: Set up an API key for richer task breakdowns: danteforge config --set-key "grok:<key>"');
   }
+
+  // --- Decision-node: record completion (best-effort) ---
+  try {
+    const { getSession, recordDecision } = await import('../../core/decision-node-recorder.js');
+    const _dnSess = getSession();
+    await recordDecision({ session: _dnSess, parentNodeId: _dnStartNodeId, actorType: 'agent', prompt: 'tasks: break plan into executable tasks [complete]', result: 'TASKS.md written', success: true, latencyMs: Date.now() - _dnT0 });
+  } catch { /* best-effort */ }
   });
 }

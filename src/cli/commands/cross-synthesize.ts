@@ -28,6 +28,17 @@ export interface CrossSynthesizeResult {
 
 export async function runCrossSynthesize(options: CrossSynthesizeOptions = {}): Promise<CrossSynthesizeResult> {
   const cwd = options.cwd ?? process.cwd();
+
+  // --- Decision-node: record start (best-effort) ---
+  let _dnStartNodeId: string | undefined;
+  const _dnT0 = Date.now();
+  try {
+    const { getSession, recordDecision } = await import('../../core/decision-node-recorder.js');
+    const _dnSess = getSession(cwd);
+    const _dnStart = await recordDecision({ session: _dnSess, actorType: 'agent', prompt: 'cross-synthesize: cross-repo pattern synthesis', context: { cwd }, result: 'in-progress', success: false });
+    _dnStartNodeId = _dnStart.id;
+  } catch { /* never block */ }
+
   const reportPath = path.join(cwd, STATE_DIR, 'CROSS_SYNTHESIS.md');
   const window = options.window ?? 10;
 
@@ -107,6 +118,13 @@ export async function runCrossSynthesize(options: CrossSynthesizeOptions = {}): 
     logger.success(`CROSS_SYNTHESIS.md written (${winnersFound}/${patternsAnalyzed} patterns contributed).`);
     logger.info(`Report: ${reportPath}`);
     logger.info('Next: review the synthesis, then run `danteforge respec` or `danteforge forge` to act on it.');
+
+    // --- Decision-node: record completion (best-effort) ---
+    try {
+      const { getSession, recordDecision } = await import('../../core/decision-node-recorder.js');
+      const _dnSess = getSession(cwd);
+      await recordDecision({ session: _dnSess, parentNodeId: _dnStartNodeId, actorType: 'agent', prompt: 'cross-synthesize: cross-repo pattern synthesis [complete]', result: 'CROSS_SYNTHESIS.md written', success: true, latencyMs: Date.now() - _dnT0 });
+    } catch { /* best-effort */ }
 
     return { written: true, reportPath, patternsAnalyzed, winnersFound };
   } catch (err) {

@@ -281,6 +281,17 @@ function canonicalAssessResult(canonical: CanonicalScore, minScore: number, cycl
 
 export async function assess(options: AssessOptions = {}): Promise<AssessResult> {
   const cwd = options.cwd ?? process.cwd();
+
+  // --- Decision-node: record start (best-effort) ---
+  let _dnStartNodeId: string | undefined;
+  const _dnT0 = Date.now();
+  try {
+    const { getSession, recordDecision } = await import('../../core/decision-node-recorder.js');
+    const _dnSess = getSession(cwd);
+    const _dnStart = await recordDecision({ session: _dnSess, actorType: 'agent', prompt: 'assess: project quality assessment', context: { cwd }, result: 'in-progress', success: false });
+    _dnStartNodeId = _dnStart.id;
+  } catch { /* never block */ }
+
   const harsh = options.harsh ?? true;
   const enableCompetitors = options.competitors ?? true;
   const cycleNumber = options.cycleNumber ?? 1;
@@ -360,6 +371,13 @@ export async function assess(options: AssessOptions = {}): Promise<AssessResult>
 
   // ── Step 4: Output ──────────────────────────────────────────────────────────
   printAssessReport(result, cycleNumber, sessionDelta, sessionBaseline, sessionBaselineDate);
+
+  // --- Decision-node: record completion (best-effort) ---
+  try {
+    const { getSession, recordDecision } = await import('../../core/decision-node-recorder.js');
+    const _dnSess = getSession(cwd);
+    await recordDecision({ session: _dnSess, parentNodeId: _dnStartNodeId, actorType: 'agent', prompt: 'assess: project quality assessment [complete]', result: 'assess complete', success: true, latencyMs: Date.now() - _dnT0 });
+  } catch { /* best-effort */ }
 
   return result;
 }

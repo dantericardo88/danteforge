@@ -337,6 +337,16 @@ export async function go(options: GoOptions = {}): Promise<void> {
   const emit = options._stdout ?? ((line: string) => process.stdout.write(line + '\n'));
   const cwd = options.cwd ?? process.cwd();
 
+  // --- Decision-node: record start (best-effort) ---
+  let _dnStartNodeId: string | undefined;
+  const _dnT0 = Date.now();
+  try {
+    const { getSession, recordDecision } = await import('../../core/decision-node-recorder.js');
+    const _dnSess = getSession(cwd);
+    const _dnStart = await recordDecision({ session: _dnSess, actorType: 'agent', prompt: 'go: daily driver orchestrator', context: { cwd }, result: 'in-progress', success: false });
+    _dnStartNodeId = _dnStart.id;
+  } catch { /* never block */ }
+
   const stateExistsFn = options._stateExists ?? defaultStateExists;
   const computeScoreFn = options._computeScore ?? defaultComputeScore;
   const confirmFn = options._confirm ?? defaultConfirm;
@@ -426,4 +436,11 @@ export async function go(options: GoOptions = {}): Promise<void> {
     emit(`  ${reason}`);
   }
   emit('');
+
+  // --- Decision-node: record completion (best-effort) ---
+  try {
+    const { getSession, recordDecision } = await import('../../core/decision-node-recorder.js');
+    const _dnSess = getSession(cwd);
+    await recordDecision({ session: _dnSess, parentNodeId: _dnStartNodeId, actorType: 'agent', prompt: 'go: daily driver orchestrator [complete]', result: 'go complete', success: true, latencyMs: Date.now() - _dnT0 });
+  } catch { /* best-effort */ }
 }

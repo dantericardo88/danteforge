@@ -5,6 +5,7 @@ import {
   parseGitignore,
   matchesGitignore,
   buildFileTree,
+  packWorkspace,
 } from '../src/core/workspace-packer.js';
 
 describe('workspace-packer: inferLanguage', () => {
@@ -117,5 +118,48 @@ describe('workspace-packer: buildFileTree', () => {
   it('renders directory with trailing slash label', () => {
     const tree = buildFileTree(['src/foo/bar.ts']);
     assert.ok(tree.includes('src/') || tree.includes('src'));
+  });
+});
+
+describe('workspace-packer: agent cache excludes', () => {
+  it('does not recurse into generated agent cache directories by default', async () => {
+    const entries: Record<string, Array<{ name: string; dir?: boolean }>> = {
+      '': [
+        { name: 'src', dir: true },
+        { name: '.claude', dir: true },
+        { name: '.dantecode', dir: true },
+        { name: '.danteforge', dir: true },
+      ],
+      'src': [{ name: 'index.ts' }],
+      '.claude': [{ name: 'worktrees', dir: true }],
+      '.claude/worktrees': [{ name: 'agent-a', dir: true }],
+      '.claude/worktrees/agent-a': [{ name: 'huge.ts' }],
+      '.dantecode': [{ name: 'index.json' }],
+      '.danteforge': [{ name: 'oss-repos', dir: true }],
+      '.danteforge/oss-repos': [{ name: 'repo', dir: true }],
+      '.danteforge/oss-repos/repo': [{ name: 'big.ts' }],
+    };
+    const readDirs: string[] = [];
+
+    const result = await packWorkspace({
+      cwd: '/repo',
+      _exists: async () => false,
+      _stat: async () => ({ size: 12 }),
+      _readFile: async (p) => p.endsWith('src/index.ts') ? 'export const ok = true;\n' : 'generated\n',
+      _readdir: async (p) => {
+        const rel = p.replace(/\\/g, '/').replace('/repo', '').replace(/^\//, '');
+        readDirs.push(rel);
+        return (entries[rel] ?? []).map(entry => ({
+          name: entry.name,
+          isDirectory: () => Boolean(entry.dir),
+          isFile: () => !entry.dir,
+        }));
+      },
+    });
+
+    assert.deepEqual(result.files.map(f => f.relativePath), ['src/index.ts']);
+    assert.ok(!readDirs.includes('.claude/worktrees'));
+    assert.ok(!readDirs.includes('.danteforge/oss-repos'));
+    assert.ok(!readDirs.includes('.dantecode'));
   });
 });

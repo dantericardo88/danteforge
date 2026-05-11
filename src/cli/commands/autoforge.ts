@@ -40,6 +40,16 @@ async function runAutoMode(goal: string | undefined, cwd: string, options: {
   _executeCommand?: (command: string, cwd: string) => Promise<{ success: boolean }>;
 }): Promise<void> {
   logger.info('[AutoForge] Autonomous mode — running convergence loop...');
+
+  // --- Decision-node: record start (best-effort) ---
+  let _dnStartNodeId: string | undefined;
+  const _dnT0 = Date.now();
+  try {
+    const { getSession, recordDecision } = await import('../../core/decision-node-recorder.js');
+    const _dnSess = getSession(cwd);
+    const _dnStart = await recordDecision({ session: _dnSess, actorType: 'agent', prompt: `autoforge: ${goal ?? 'convergence loop'}`, context: { goal, force: options.force, dryRun: options.dryRun }, result: 'in-progress', success: false });
+    _dnStartNodeId = _dnStart.id;
+  } catch { /* never block autoforge */ }
   try {
     await fs.unlink(path.join(cwd, '.danteforge', 'AUTOFORGE_PAUSED'));
   } catch { /* may not exist */ }
@@ -87,6 +97,14 @@ async function runAutoMode(goal: string | undefined, cwd: string, options: {
   const { executeAutoforgeCommand } = await import('../../core/autoforge-executor.js');
   const finalCtx = await loopFn(ctx, { _executeCommand: options._executeCommand ?? executeAutoforgeCommand });
   if (finalCtx.loopState === AutoforgeLoopState.BLOCKED) process.exitCode = 1;
+
+  // --- Decision-node: record completion (best-effort) ---
+  try {
+    const { getSession, recordDecision } = await import('../../core/decision-node-recorder.js');
+    const _dnSess = getSession(cwd);
+    const blocked = finalCtx.loopState === AutoforgeLoopState.BLOCKED;
+    await recordDecision({ session: _dnSess, parentNodeId: _dnStartNodeId, actorType: 'agent', prompt: `autoforge: ${goal ?? 'convergence loop'} [complete]`, context: { cyclesRun: finalCtx.cycleCount, exitReason: finalCtx.loopState }, result: blocked ? 'blocked' : 'completed', success: !blocked, latencyMs: Date.now() - _dnT0 });
+  } catch { /* best-effort */ }
 }
 
 async function reportAutoforgeResults(

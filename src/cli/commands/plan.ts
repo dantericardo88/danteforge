@@ -22,6 +22,16 @@ export interface PlanOptions {
 
 export async function plan(options: PlanOptions = {}) {
   return withErrorBoundary('plan', async () => {
+  // --- Decision-node: record start (best-effort) ---
+  let _dnStartNodeId: string | undefined;
+  const _dnT0 = Date.now();
+  try {
+    const { getSession, recordDecision } = await import('../../core/decision-node-recorder.js');
+    const _dnSess = getSession();
+    const _dnStart = await recordDecision({ session: _dnSess, actorType: 'agent', prompt: 'plan: generate implementation plan', context: { workflowStage: 'plan' }, result: 'in-progress', success: false });
+    _dnStartNodeId = _dnStart.id;
+  } catch { /* never block */ }
+
   if (!(await runGate(() => requireSpec(options.light)))) { process.exitCode = 1; return; }
   if (!(await runGate(() => requireClarify(options.light)))) { process.exitCode = 1; return; }
 
@@ -105,6 +115,13 @@ Output ONLY the markdown content - no preamble.`;
   if (!llmAvailable) {
     logger.info('Tip: Set up an API key for richer plans: danteforge config --set-key "grok:<key>"');
   }
+
+  // --- Decision-node: record completion (best-effort) ---
+  try {
+    const { getSession, recordDecision } = await import('../../core/decision-node-recorder.js');
+    const _dnSess = getSession();
+    await recordDecision({ session: _dnSess, parentNodeId: _dnStartNodeId, actorType: 'agent', prompt: 'plan: generate implementation plan [complete]', result: 'PLAN.md written', success: true, latencyMs: Date.now() - _dnT0 });
+  } catch { /* best-effort */ }
   });
 }
 

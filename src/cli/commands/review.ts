@@ -281,6 +281,16 @@ export async function review(options: {
   const saveFn = options._saveState ?? saveState;
 
   return withErrorBoundary('review', async () => {
+  // --- Decision-node: record start (best-effort) ---
+  let _dnStartNodeId: string | undefined;
+  const _dnT0 = Date.now();
+  try {
+    const { getSession, recordDecision } = await import('../../core/decision-node-recorder.js');
+    const _dnSess = getSession();
+    const _dnStart = await recordDecision({ session: _dnSess, actorType: 'agent', prompt: 'review: generate CURRENT_STATE', context: {}, result: 'in-progress', success: false });
+    _dnStartNodeId = _dnStart.id;
+  } catch { /* never block */ }
+
   logger.success('Reviewing existing project state...');
 
   const git = simpleGit();
@@ -339,5 +349,11 @@ export async function review(options: {
   if (!llmAvailable) logger.info('Tip: Set up an API key for LLM-powered deep reviews: danteforge config --set-key "grok:<key>"');
   logger.info('Run "danteforge constitution" next, then "danteforge specify <goal>" to continue the pipeline');
 
+  // --- Decision-node: record completion (best-effort) ---
+  try {
+    const { getSession, recordDecision } = await import('../../core/decision-node-recorder.js');
+    const _dnSess = getSession();
+    await recordDecision({ session: _dnSess, parentNodeId: _dnStartNodeId, actorType: 'agent', prompt: 'review: generate CURRENT_STATE [complete]', result: 'CURRENT_STATE.md written', success: true, latencyMs: Date.now() - _dnT0 });
+  } catch { /* best-effort */ }
   });
 }

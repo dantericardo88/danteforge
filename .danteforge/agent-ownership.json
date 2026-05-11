@@ -1,0 +1,90 @@
+{
+  "version": 1,
+  "globalAllowed": [
+    ".danteforge/agent-claims/.gitkeep",
+    ".danteforge/evidence/**",
+    "docs/**",
+    "tests/**"
+  ],
+  "workstreams": {
+    "platform-kernel": {
+      "owned": [
+        ".danteforge/agent-guard.json",
+        ".danteforge/agent-ownership.json",
+        "scripts/check-agent-guard.mjs",
+        "scripts/check-file-size.mjs",
+        ".gitignore",
+        "AGENTS.md",
+        "commands/*.md",
+        "scripts/dimension-ascent.mjs",
+        ".danteforge/dimension-claims/.gitkeep",
+        ".danteforge/score-proposals/.gitkeep",
+        ".github/workflows/**",
+        "package.json"
+      ],
+      "shared": []
+    },
+    "workflow-commands": {
+      "owned": [
+        "commands/**",
+        "src/cli/commands/**",
+        "src/cli/register-late-commands.ts",
+        "src/cli/register-dossier-commands.ts"
+      ],
+      "shared": [
+        "src/cli/register-core-commands.ts"
+      ]
+    },
+    "scoring": {
+      "owned": [
+        "src/scoring/**",
+        "src/core/harsh-scorer-*.ts",
+        "src/core/default-market-dims.ts",
+        ".danteforge/score-proposals/.gitkeep",
+        ".danteforge/dimension-claims/.gitkeep",
+        ".danteforge/feature-scores.json",
+        ".danteforge/masterplan.json",
+        ".danteforge/PRIME.md"
+      ],
+      "shared": [
+        "src/core/harsh-scorer.ts"
+      ]
+    },
+    "autonomy-loop": {
+      "owned": [
+        "src/core/autoforge-*.ts",
+        "src/core/ascend-*.ts",
+        "src/core/converge-*.ts",
+        "src/core/termination-*.ts",
+        "src/core/plateau-*.ts"
+      ],
+      "shared": [
+        "src/core/autoforge-loop.ts",
+        "src/core/ascend-engine.ts"
+      ]
+    },
+    "mcp-surface": {
+      "owned": [
+        "src/core/mcp-*.ts",
+        "docs/MCP_TOOL_SURFACE.md",
+        "packages/**/src/**"
+      ],
+      "shared": [
+        "src/core/mcp-server.ts"
+      ]
+    },
+    "docs-truth": {
+      "owned": [
+        "docs/**",
+        "README.md",
+        "CHANGELOG.md",
+        "RELEASE.md",
+        "THIRD_PARTY_NOTICES.md",
+        "NOTICE.md"
+      ],
+      "shared": [
+        "package.json"
+      ]
+    }
+  }
+}

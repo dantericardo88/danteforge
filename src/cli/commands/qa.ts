@@ -57,6 +57,18 @@ export async function qa(options: {
   const runQAFn = options._runQAPass ?? runQAPass;
 
   return withErrorBoundary('qa', async () => {
+  const _cwd = process.cwd();
+
+  // --- Decision-node: record start (best-effort) ---
+  let _dnStartNodeId: string | undefined;
+  const _dnT0 = Date.now();
+  try {
+    const { getSession, recordDecision } = await import('../../core/decision-node-recorder.js');
+    const _dnSess = getSession(_cwd);
+    const _dnStart = await recordDecision({ session: _dnSess, actorType: 'agent', prompt: 'qa: quality assurance pass', context: { cwd: _cwd }, result: 'in-progress', success: false });
+    _dnStartNodeId = _dnStart.id;
+  } catch { /* never block */ }
+
   // Binary detection — fail-closed
   const binaryPath = await detectFn();
   if (!binaryPath) {
@@ -122,5 +134,12 @@ export async function qa(options: {
     logger.error(`\nQA score ${report.score} is below threshold ${failBelow} — failing`);
     process.exitCode = 1;
   }
+
+  // --- Decision-node: record completion (best-effort) ---
+  try {
+    const { getSession, recordDecision } = await import('../../core/decision-node-recorder.js');
+    const _dnSess = getSession(_cwd);
+    await recordDecision({ session: _dnSess, parentNodeId: _dnStartNodeId, actorType: 'agent', prompt: 'qa: quality assurance pass [complete]', result: 'qa complete', success: true, latencyMs: Date.now() - _dnT0 });
+  } catch { /* best-effort */ }
   });
 }

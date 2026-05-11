@@ -42,6 +42,29 @@ Some dimensions cannot reach 9+ via automation:
 
 The command announces these upfront, skips them in the loop, and prints specific manual actions at the end.
 
+## Agent Anti-Bloat Guard
+
+Every autonomous cycle must target one workstream from
+`.danteforge/agent-ownership.json`. Before score updates or code changes, create
+an ephemeral claim under `.danteforge/agent-claims/`. Before accepting a cycle,
+run:
+
+```bash
+node scripts/check-agent-guard.mjs --staged --workstream <workstream>
+```
+
+Score movement must satisfy the atomic groups in `.danteforge/agent-guard.json`.
+If the guard blocks a frozen file, create a separate platform-kernel cycle that
+adds an extension point, then retry the dimension cycle through that extension.
+
+For concurrent score updates, `ascend` must queue a proposal instead of rewriting
+the matrix directly:
+
+```bash
+npm run dimension:ascent -- propose --dimension <id-or-number> --score <n> --agent ascend --rationale "<evidence>"
+npm run dimension:ascent -- merge --policy harsh-min --agent ascend
+```
+
 ## Output
 
 ```

@@ -162,3 +162,80 @@ export async function recordDecision(params: {
     };
   }
 }
+
+// ---------------------------------------------------------------------------
+// withCommandNode — HOF for command-level timeline nodes
+// ---------------------------------------------------------------------------
+
+/**
+ * Wraps an async command with start→completion DecisionNode recording.
+ * Records a start node (result='in-progress', success=false) before fn().
+ * Records a completion (or failure) node after fn() with parentNodeId linking
+ * back to the start. All recording is best-effort — never throws, never blocks.
+ */
+export async function withCommandNode<T>(opts: {
+  cwd?: string;
+  command: string;
+  goal?: string;
+  context?: Record<string, unknown>;
+  fn: () => Promise<T>;
+  toResult?: (t: T) => { result: unknown; success: boolean; qualityScore?: number };
+}): Promise<T> {
+  const session = getSession(opts.cwd);
+  const t0 = Date.now();
+  const prompt = opts.goal ?? `${opts.command}: invoked`;
+  const ctx: Record<string, unknown> = { command: opts.command, ...(opts.context ?? {}) };
+
+  const startNode = await recordDecision({
+    session,
+    actorType: 'agent',
+    prompt,
+    context: ctx,
+    result: 'in-progress',
+    success: false,
+  });
+
+  let value: T;
+  try {
+    value = await opts.fn();
+  } catch (err) {
+    await recordDecision({
+      session,
+      parentNodeId: startNode.id,
+      actorType: 'agent',
+      prompt,
+      context: ctx,
+      result: `error: ${err instanceof Error ? err.message : String(err)}`,
+      success: false,
+      latencyMs: Date.now() - t0,
+    }).catch(() => { /* best-effort */ });
+    throw err;
+  }
+
+  let result: unknown = 'completed';
+  let success = true;
+  let qualityScore: number | undefined;
+
+  if (opts.toResult) {
+    try {
+      const extracted = opts.toResult(value);
+      result = extracted.result;
+      success = extracted.success;
+      qualityScore = extracted.qualityScore;
+    } catch { /* best-effort extraction */ }
+  }
+
+  await recordDecision({
+    session,
+    parentNodeId: startNode.id,
+    actorType: 'agent',
+    prompt,
+    context: ctx,
+    result,
+    success,
+    latencyMs: Date.now() - t0,
+    ...(qualityScore !== undefined ? { qualityScore } : {}),
+  }).catch(() => { /* best-effort */ });
+
+  return value;
+}

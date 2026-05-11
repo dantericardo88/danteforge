@@ -64,6 +64,8 @@ export interface MeasureOptions {
   certify?: boolean;
   compare?: string;
   cwd?: string;
+  /** When true, include all 20 scoring dimensions instead of only the 8 builder dims */
+  full?: boolean;
   /** Injection seam — override scorer for testing */
   _computeScore?: (cwd: string) => Promise<HarshScoreResult>;
   /** Injection seam — override causal narrative for testing */
@@ -93,11 +95,21 @@ function verdictBadge(score: number): string {
 
 // ── Build MeasureResult from HarshScoreResult ─────────────────────────────────
 
+const ALL_DIMS: ScoringDimension[] = [
+  'functionality', 'testing', 'errorHandling', 'security',
+  'uxPolish', 'documentation', 'performance', 'maintainability',
+  'developerExperience', 'autonomy', 'planningQuality', 'selfImprovement',
+  'specDrivenPipeline', 'convergenceSelfHealing', 'tokenEconomy',
+  'contextEconomy', 'ecosystemMcp', 'enterpriseReadiness',
+  'communityAdoption', 'causalCoherence',
+];
+
 function buildResult(
   scoreResult: HarshScoreResult,
   level: 'light' | 'standard' | 'deep',
   nextStep: string | undefined,
   certHash: string | undefined,
+  full = false,
 ): MeasureResult {
   const dims = scoreResult.displayDimensions;
   const maturityLevel = scoreResult.maturityAssessment?.currentLevel;
@@ -105,7 +117,9 @@ function buildResult(
     ? getMaturityLevelName(maturityLevel)
     : 'Unknown';
 
-  const dimensions: MeasureDimension[] = BUILDER_DIMS.map((name) => {
+  const activeDims = full ? ALL_DIMS : BUILDER_DIMS;
+
+  const dimensions: MeasureDimension[] = activeDims.map((name) => {
     const score = dims[name] ?? 0;
     const ceilingEntry = KNOWN_CEILINGS[name as keyof typeof KNOWN_CEILINGS];
     const ceiling = ceilingEntry?.ceiling;
@@ -168,6 +182,16 @@ async function defaultRetroDelta(cwd: string): Promise<string | undefined> {
 export async function measure(options: MeasureOptions = {}): Promise<MeasureResult> {
   const emit = options._stdout ?? ((line: string) => process.stdout.write(line + '\n'));
   const cwd = options.cwd ?? process.cwd();
+
+  // --- Decision-node: record start (best-effort) ---
+  let _dnStartNodeId: string | undefined;
+  const _dnT0 = Date.now();
+  try {
+    const { getSession, recordDecision } = await import('../../core/decision-node-recorder.js');
+    const _dnSess = getSession(cwd);
+    const _dnStart = await recordDecision({ session: _dnSess, actorType: 'agent', prompt: 'measure: project metrics capture', context: { cwd }, result: 'in-progress', success: false });
+    _dnStartNodeId = _dnStart.id;
+  } catch { /* never block */ }
   const level = options.level ?? 'standard';
   const isTTY = process.stdout.isTTY ?? false;
 
@@ -224,7 +248,7 @@ export async function measure(options: MeasureOptions = {}): Promise<MeasureResu
     certHash = crypto.createHash('sha256').update(fingerprint).digest('hex').slice(0, 16);
   }
 
-  const result = buildResult(scoreResult, level, nextStep, certHash);
+  const result = buildResult(scoreResult, level, nextStep, certHash, options.full ?? false);
 
   // ── Output ────────────────────────────────────────────────────────────────
   if (options.json) {
@@ -300,6 +324,13 @@ export async function measure(options: MeasureOptions = {}): Promise<MeasureResu
 
   emit('  ══════════════════════════════════════════════════');
   emit('');
+
+  // --- Decision-node: record completion (best-effort) ---
+  try {
+    const { getSession, recordDecision } = await import('../../core/decision-node-recorder.js');
+    const _dnSess = getSession(cwd);
+    await recordDecision({ session: _dnSess, parentNodeId: _dnStartNodeId, actorType: 'agent', prompt: 'measure: project metrics capture [complete]', result: 'measure complete', success: true, latencyMs: Date.now() - _dnT0 });
+  } catch { /* best-effort */ }
 
   return result;
 }

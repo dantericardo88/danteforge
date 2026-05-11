@@ -129,6 +129,20 @@ Rescore the dimension:
 danteforge compete --rescore "{dimension_id}={new_score},{commit_sha}"
 ```
 
+## Concurrent Agent Scoring Rule
+
+If more than one agent is working or rescoring at once, do not edit
+`.danteforge/compete/matrix.json` directly. Queue proposals and merge once:
+
+```bash
+npm run dimension:ascent -- propose --dimension "{dimension_id}" --score <new_score> --agent <agent> --rationale "<evidence-backed rationale>"
+npm run dimension:ascent -- merge --policy harsh-min --agent matrix-merger
+```
+
+The `harsh-min` policy preserves the lowest credible proposal when several agents
+score the same dimension, so the "is this your best work?" downgrade cannot be
+overwritten by an optimistic sibling agent.
+
 **Scoring rules** — be hyper-critical:
 - 0.0 = not built at all
 - 3.0 = prototype / proof of concept

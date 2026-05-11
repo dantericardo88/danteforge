@@ -166,6 +166,16 @@ function buildPromptModeOutput(ctx: NextContext): string {
 export async function runNext(options: NextOptions = {}): Promise<NextRecommendation> {
   const { cwd, promptMode = false } = options;
 
+  // --- Decision-node: record start (best-effort) ---
+  let _dnStartNodeId: string | undefined;
+  const _dnT0 = Date.now();
+  try {
+    const { getSession, recordDecision } = await import('../../core/decision-node-recorder.js');
+    const _dnSess = getSession(cwd);
+    const _dnStart = await recordDecision({ session: _dnSess, actorType: 'agent', prompt: 'next: strategic advisor', context: { cwd, promptMode }, result: 'in-progress', success: false });
+    _dnStartNodeId = _dnStart.id;
+  } catch { /* never block */ }
+
   const loadConv = options._loadConvergence ?? loadConvergence;
   const loadQueue = options._loadQueue ?? loadHarvestQueue;
   const loadLog = options._loadAttributionLog ?? loadAttributionLog;
@@ -222,6 +232,13 @@ export async function runNext(options: NextOptions = {}): Promise<NextRecommenda
       logger.info(`  • ${alt}`);
     }
   }
+
+  // --- Decision-node: record completion (best-effort) ---
+  try {
+    const { getSession, recordDecision } = await import('../../core/decision-node-recorder.js');
+    const _dnSess = getSession(cwd);
+    await recordDecision({ session: _dnSess, parentNodeId: _dnStartNodeId, actorType: 'agent', prompt: 'next: strategic advisor [complete]', result: recommendation.topAction, success: true, latencyMs: Date.now() - _dnT0 });
+  } catch { /* best-effort */ }
 
   return recommendation;
 }
