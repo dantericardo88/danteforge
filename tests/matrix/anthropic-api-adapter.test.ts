@@ -1,7 +1,7 @@
 // Phase 14d — AnthropicAPIAdapter tests (mocked LLM)
 //
 // Tests the Anthropic API-backed adapter. The subprocess-based
-// AnthropicAPIAdapter has its own test file in claude-code-adapter.test.ts.
+// ClaudeCodeAdapter has its own test file at claude-code-adapter.test.ts.
 // These tests preserve the historical coverage of the API path.
 import { describe, it, after } from 'node:test';
 import assert from 'node:assert/strict';

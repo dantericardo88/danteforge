@@ -108,11 +108,18 @@ function convertDimension(
 }
 
 /**
+ * If the dimension declares `touches: ['src/foo.ts']` explicitly in
+ * compete-matrix.json, honor that as-is. Otherwise fall back to the
+ * heuristic match.
+ *
  * Heuristic match: dimensions touch ProjectGraphNodes whose paths or names
  * mention the dimension's category, label, or id. For MVP this is intentionally
  * shallow; future iterations can refine with an LLM mapping pass.
  */
 function inferTouches(dim: MatrixDimension, projectGraph?: ProjectGraph): string[] {
+  if (Array.isArray(dim.touches) && dim.touches.length > 0) {
+    return [...dim.touches];
+  }
   if (!projectGraph) return [];
   const tokens = new Set<string>([
     dim.id.toLowerCase(),

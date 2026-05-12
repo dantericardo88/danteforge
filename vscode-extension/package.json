@@ -128,7 +128,7 @@
     "package:vsix": "node -e \"require('fs').mkdirSync('.artifacts',{recursive:true})\" && vsce package --no-dependencies --out .artifacts/danteforge.vsix",
     "publish:vsce": "vsce publish",
     "publish:ovsx": "ovsx publish .artifacts/danteforge.vsix",
-    "verify": "npm run build && npm run package:vsix",
+    "verify": "npm run build && npm run test:e2e && npm run package:vsix",
     "test:e2e": "npm run build && node dist/test/runTest.js"
   },
   "devDependencies": {

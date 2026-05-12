@@ -77,6 +77,11 @@ export interface MatrixDimension {
   // Closing strategy — how to close this dimension
   closingStrategy?: 'code' | 'human' | 'ceiling';
   manualActionHint?: string;  // specific action for 'human' strategy dims
+
+  // Explicit touches — file/dir paths this dimension owns. When set, overrides
+  // the dimension-synthesizer's heuristic token-match inference. Use this when
+  // your dimension ID doesn't share tokens with the file paths it should scope.
+  touches?: string[];
 }
 
 export interface AdversarialCalibration {

@@ -3,3 +3,8 @@ node_modules/
 tsconfig.json
 .gitignore
 .artifacts/
+.vscode-test/
+tests/
+dist/test/
+**/*.test.ts
+**/*.test.js

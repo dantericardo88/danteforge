@@ -188,6 +188,31 @@ describe('ClaudeCodeAdapter — failure modes', () => {
   });
 });
 
+describe('ClaudeCodeAdapter — Windows cwd normalization (regression)', () => {
+  // Caught during Phase 14d/f: on Windows, node's spawn ENOENTs on cmd.exe
+  // when cwd contains backslashes. The adapter must normalize to forward
+  // slashes before spawning. This regression test would catch a refactor
+  // that drops normalizeCwd().
+  it('normalizes backslash cwd to forward slash before spawning', async () => {
+    let capturedOpts: { cwd?: string } | null = null;
+    const adapter = dispatchableAdapter({
+      _spawn: ((_c: string, _a: string[], o: { cwd?: string }) => {
+        capturedOpts = o;
+        return fakeChild(0);
+      }) as never,
+      _gitDiff: async () => [],
+    });
+    const lease = fakeLease('C:\\Users\\test\\.danteforge-worktrees\\lease.x');
+    await runAdapter(adapter, { lease, cwd: lease.worktreePath });
+    if (process.platform === 'win32') {
+      assert.ok(capturedOpts !== null, 'spawn was not invoked');
+      const opts = capturedOpts as { cwd?: string };
+      assert.ok(typeof opts.cwd === 'string', 'cwd should be a string');
+      assert.ok(!opts.cwd!.includes('\\'), `cwd should not contain backslash: ${opts.cwd}`);
+    }
+  });
+});
+
 describe('ClaudeCodeAdapter — prompt construction', () => {
   it('embeds the work-packet objective and acceptance criteria', () => {
     const prompt = buildClaudeCodePrompt(fakePacket(), fakeLease('/tmp'));

@@ -88,11 +88,18 @@ export class CodexAdapter implements AgentAdapter {
     if (this.options._isAvailable) return this.options._isAvailable();
     const candidates = candidateBinaries(this.options.binary ?? process.env.CODEX_BIN ?? 'codex');
     for (const candidate of candidates) {
-      const useShell = candidate.endsWith('.cmd') || candidate.endsWith('.bat');
+      const needsShim = candidate.endsWith('.cmd') || candidate.endsWith('.bat');
       try {
-        await execFileAsync(candidate, ['--version'], { timeout: 5000, shell: useShell });
+        // Probe via cmd.exe /c <binary> --version when .cmd/.bat to avoid
+        // the `shell: true` deprecation warning (DEP0190) and the arg-
+        // mangling that comes with it. Identical to the dispatch path.
+        if (needsShim && process.platform === 'win32') {
+          await execFileAsync('cmd.exe', ['/c', candidate, '--version'], { timeout: 5000 });
+        } else {
+          await execFileAsync(candidate, ['--version'], { timeout: 5000 });
+        }
         this._resolvedBinary = candidate;
-        this._resolvedUsesShell = useShell;
+        this._resolvedUsesShell = needsShim;
         return true;
       } catch { /* try next */ }
     }
