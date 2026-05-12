@@ -34,13 +34,16 @@ Read the simulate output: how many waves? how many packets per wave? what's the 
 
 ### Phase 3 — Pick the adapter
 
-Default decision tree (in order):
+**Default is `--adapter auto`** — the kernel detects whether it's running inside a host AI and picks the right mode:
 
-1. **If `--adapter <name>` was in the user's `/matrixdev` invocation**, use that.
-2. **Otherwise, probe what's available**: try `claude --version`, `codex --version`, `ollama list` (via Bash). Pick the FIRST one that works.
-3. **If nothing is available**, use `--adapter fake` so the loop completes without LLM calls. Tell the user clearly.
+- If `CLAUDE_PLUGIN_ROOT` is set (you, the AI reading this, ARE Claude Code) → `embedded` mode.
+- If `CODEX_SESSION` / `CODEX` / `CODEX_ENV` is set (host is Codex) → `embedded` mode.
+- Plain terminal (neither set) → falls back to `fake` for safety, unless the user passed an explicit `--adapter`.
 
-Adapter aliases (most-to-least preferred):
+You only need to choose a non-default adapter when running from a plain terminal AND wanting real execution. In that case probe `claude --version`, `codex --version`, `ollama list` and pick the first available.
+
+Adapter aliases (most-to-least preferred for terminal mode):
+- `embedded` — write a Work Instruction Packet for the host AI to execute inline (no subprocess, no double-billing)
 - `claude` — spawns local Claude Code CLI; uses your Claude Pro/Max subscription
 - `codex` — spawns local Codex CLI; uses your ChatGPT Plus/Pro subscription
 - `ollama` — local + free; uses whatever model is in `~/.danteforge/config.yaml#ollamaModel`
@@ -50,6 +53,23 @@ API-key alternatives (only if user explicitly wants them):
 - `claude-api` (needs `ANTHROPIC_API_KEY`)
 - `codex-api` (needs `OPENAI_API_KEY`)
 - `gemini`, `grok`, `together`, `groq`, `mistral`
+
+### Phase 3.5 — Embedded mode handoff (the key difference when you're a host AI)
+
+If you (the AI reading this slash command) are running inside Claude Code or Codex AND the user did not pass an explicit `--adapter`, the run-wave step will print:
+
+```
+[matrix-kernel] Auto-selected adapter: embedded (host AI: claude)
+```
+
+When that line appears, here is what changes about your job:
+
+1. `run-wave 1 --adapter auto` (or `--adapter embedded`) will write one Work Instruction Packet per lease to `.danteforge/embedded-mode/<leaseId>/work-instruction.md`. It will NOT spawn another Claude Code / Codex subprocess.
+2. **You** then read each instruction packet and execute the lease using your own Edit/Write tools — stay strictly within `ownedPaths`, never touch `forbiddenPaths`. Run any required local checks (typecheck / tests) yourself before declaring complete.
+3. After each lease is done, run `danteforge matrix-kernel embedded-complete <leaseId>` so the kernel captures your diff (via `git diff --name-only HEAD` on the worktree) and queues the lease for verify-court.
+4. Proceed to Phase 5 (courts) as usual.
+
+In embedded mode, you ARE the worker. The kernel is the conductor. The mailbox (`danteforge matrix-kernel mailbox list`) records what's happening across leases so a war-room observer (or a parallel Codex CLI in another terminal) can see your progress.
 
 ### Phase 4 — Dispatch wave 1
 

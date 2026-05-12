@@ -2,10 +2,16 @@
 //
 // Centralizes "read/write the JSON file for graph X" so CLI commands don't
 // re-implement fs.readFile + JSON.parse + path resolution per call.
+//
+// Writes are protected by `withFileLock` (atomic O_EXCL claim with TTL
+// reclaim) so concurrent agents writing the same matrix JSON file — e.g.
+// two parallel adapters appending to `matrix.agent-runs.json` — cannot tear
+// each other's data.
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import { MATRIX_REPORT_PATHS, MATRIX_DIR } from '../types/index.js';
 import type { MatrixReportName } from '../types/index.js';
+import { withFileLock } from '../../core/sanitize-locks.js';
 
 // ── Public API ──────────────────────────────────────────────────────────────
 
@@ -34,7 +40,18 @@ export async function saveGraph<T>(
 ): Promise<string> {
   const filePath = path.join(cwd, MATRIX_REPORT_PATHS[reportName]);
   await fs.mkdir(path.dirname(filePath), { recursive: true });
-  await fs.writeFile(filePath, JSON.stringify(data, null, 2), 'utf8');
+  await withFileLock(
+    {
+      cwd,
+      filePath: MATRIX_REPORT_PATHS[reportName],
+      lockDir: `${MATRIX_DIR}/.locks`,
+      maxWaitMs: 10_000,
+      pollIntervalMs: 100,
+    },
+    async () => {
+      await fs.writeFile(filePath, JSON.stringify(data, null, 2), 'utf8');
+    },
+  );
   return filePath;
 }
 
@@ -49,12 +66,27 @@ export async function appendToCollection<T>(
   collectionKey: string,
   item: T,
 ): Promise<void> {
-  const existing = (await loadGraph<Record<string, unknown>>(cwd, reportName)) ?? {};
-  const arr = (existing[collectionKey] as T[] | undefined) ?? [];
-  arr.push(item);
-  existing[collectionKey] = arr;
-  existing.generatedAt = new Date().toISOString();
-  await saveGraph(cwd, reportName, existing);
+  // Read-modify-write under a single lock so concurrent appenders cannot
+  // each load the same baseline, push their item, and overwrite the other's
+  // commit. The inner saveGraph re-acquires the lock, which is safe because
+  // withFileLock's TTL reclaim only kicks in for stale locks.
+  await withFileLock(
+    {
+      cwd,
+      filePath: `${MATRIX_REPORT_PATHS[reportName]}.collection`,
+      lockDir: `${MATRIX_DIR}/.locks`,
+      maxWaitMs: 10_000,
+      pollIntervalMs: 100,
+    },
+    async () => {
+      const existing = (await loadGraph<Record<string, unknown>>(cwd, reportName)) ?? {};
+      const arr = (existing[collectionKey] as T[] | undefined) ?? [];
+      arr.push(item);
+      existing[collectionKey] = arr;
+      existing.generatedAt = new Date().toISOString();
+      await saveGraph(cwd, reportName, existing);
+    },
+  );
 }
 
 /**

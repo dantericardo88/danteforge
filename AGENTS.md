@@ -132,6 +132,45 @@ contains exactly one packet (single-packet waves are trivially safe). Hard
 blockers (`Blocked packets > 0`, protected-path violations, ownership
 violations) still halt dispatch.
 
+## Three-Role Architecture: Embedded / Orchestrator / Observer
+
+The matrix kernel runs in one of three modes depending on launch context.
+Detection happens via `CLAUDE_PLUGIN_ROOT` / `CODEX_SESSION` env vars
+(`src/core/host-detection.ts:detectHostAI()`).
+
+1. **Embedded mode** (`--adapter embedded`, or `--adapter auto` inside a host AI).
+   The kernel writes Work Instruction Packets to
+   `.danteforge/embedded-mode/<leaseId>/work-instruction.md`. The host AI
+   reads each packet and executes the lease *inline* with its own Edit/Write
+   tools. No subprocess is spawned, so a single Claude Code / Codex
+   subscription is billed once. The host signals completion via
+   `danteforge matrix-kernel embedded-complete <leaseId>` — the kernel
+   captures `git diff --name-only HEAD` and queues the lease for verify-court.
+
+2. **Orchestrator mode** (`--adapter claude|codex|ollama|<api>`, or `auto` in
+   a plain terminal). The kernel spawns real worker subprocesses via the
+   existing adapters in `src/matrix/adapters/`. This is the right mode for
+   headless CI runs and multi-agent parallel work.
+
+3. **Observer mode** (`danteforge war-room`). A read-side terminal TUI that
+   tails the matrix state files via `fs.watchFile()` and renders Plan +
+   Leases + Courts + Mailbox + Retro panels. Works in any TTY (tmux, ssh,
+   integrated terminal). `--once` produces a single render for CI.
+
+The **mailbox bus** at `.danteforge/matrix/matrix.mailbox.json` is the
+shared message log across modes. Any agent (worker or embedded) can post
+via `matrix-kernel mailbox post --from <lease> --to <lease|broadcast>
+--type <type> --summary <text>` and poll via `mailbox poll
+[--lease <id>] [--timeout <ms>] [--types <comma>]`. `matrix-kernel
+mailbox list` shows the full history. Wave dispatch in `run-wave`
+auto-publishes a `merge_ready` / `regression_detected` /
+`human_decision_required` message per completed lease so observers see
+progress without polling git or grep'ing logs.
+
+State writes are protected by `withFileLock` (atomic O_EXCL with TTL
+reclaim, from `src/core/sanitize-locks.ts`) — two parallel agents updating
+`matrix.agent-runs.json` concurrently cannot tear each other's data.
+
 ## Definition Of Done
 
 - `npm run verify` passes

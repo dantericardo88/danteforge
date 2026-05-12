@@ -157,6 +157,15 @@ danteforge setup assistants --assistants all
 
 After this runs, `/matrixdev`, `/inferno`, `/compete`, and the full DanteForge slash-command surface are available natively in each tool. Re-run after a `git pull` to sync updates.
 
+### Mode-aware `/matrixdev`: embedded + orchestrator + war-room
+
+`/matrixdev` adapts to its launch context:
+
+- **Inside Claude Code or Codex** (host AI present) → `--adapter auto` resolves to **embedded mode**. The kernel writes a Work Instruction Packet to `.danteforge/embedded-mode/<leaseId>/work-instruction.md`; the host AI executes the lease inline using its own Edit/Write tools (no nested subprocess, no double-billing the same subscription). When done, it runs `danteforge matrix-kernel embedded-complete <leaseId>` to feed the diff back into verify-court.
+- **Plain terminal** → spawns real worker adapters (`claude` / `codex` / `ollama` / API providers) via subprocess. Same kernel, real subprocesses.
+- **Cross-tool coordination** → the mailbox bus at `.danteforge/matrix/matrix.mailbox.json` carries messages between concurrent agents (Claude Code in one terminal, Codex in another, both contributing to the same matrix run). Post / poll / list via `danteforge matrix-kernel mailbox post|poll|list`.
+- **Monitoring** → `danteforge war-room` renders a live TUI dashboard (waves, leases, courts, merge decisions, pending mailbox) in any terminal — tmux, ssh, integrated terminal. `--once` for one-shot rendering in CI.
+
 ---
 
 ## The Research Foundation

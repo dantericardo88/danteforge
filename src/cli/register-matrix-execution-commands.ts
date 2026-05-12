@@ -15,6 +15,8 @@ export function registerMatrixExecutionCommands(matrix: Command): void {
   registerTasteGate(matrix);
   registerMergeCourt(matrix);
   registerRetrospective(matrix);
+  registerEmbeddedComplete(matrix);
+  registerMailboxCommands(matrix);
 }
 
 // ── run-wave ───────────────────────────────────────────────────────────────
@@ -24,7 +26,7 @@ function registerRunWave(matrix: Command): void {
     .command('run-wave <waveNumber>')
     .description('Execute a planned wave: create leases + worktrees + dispatch agents')
     .option('--cwd <path>', 'Project root')
-    .option('--adapter <kind>', 'Agent adapter: fake | claude | codex | claude-api | codex-api | gemini | grok | dantecode | ollama | together | groq | mistral (default: fake). `claude` and `codex` spawn the local CLI using your subscription. Suffix `-api` for direct API dispatch.')
+    .option('--adapter <kind>', 'Agent adapter: auto | embedded | fake | claude | codex | claude-api | codex-api | gemini | grok | dantecode | ollama | together | groq | mistral (default: auto, which uses `embedded` inside a host AI and falls back to `fake` in a plain terminal). `embedded` writes a Work Instruction Packet for the host AI instead of spawning a subprocess.')
     .option('--max-tokens <n>', 'Per-agent LLM token cap', parseInt)
     .action(async (waveNumber: string, opts) => runSafely('matrix-kernel:run-wave', async () => {
       const { loadGraph, saveGraph, ensureMatrixDir } = await import('../matrix/engines/matrix-state.js');
@@ -39,12 +41,23 @@ function registerRunWave(matrix: Command): void {
       const { GrokAdapter } = await import('../matrix/adapters/grok-adapter.js');
       const { DanteCodeAdapter } = await import('../matrix/adapters/dantecode-adapter.js');
       const { LLMAgentAdapter } = await import('../matrix/adapters/llm-agent-adapter.js');
+      const { EmbeddedAdapter } = await import('../matrix/adapters/embedded-adapter.js');
       const { runAdapter } = await import('../matrix/adapters/adapter-interface.js');
+      const { detectHostAI } = await import('../core/host-detection.js');
+      const { appendMessage, writeMailboxIndex } = await import('../matrix/engines/mailbox.js');
       const path = await import('node:path');
       const fs = await import('node:fs/promises');
 
       const cwd = (opts.cwd as string | undefined) ?? process.cwd();
-      const adapterKind = (opts.adapter as string | undefined) ?? 'fake';
+      const requestedKind = (opts.adapter as string | undefined) ?? 'auto';
+      const detectedHost = detectHostAI();
+      // `auto` is the new default: embedded inside a host AI; fake otherwise.
+      const adapterKind = requestedKind === 'auto'
+        ? (detectedHost ? 'embedded' : 'fake')
+        : requestedKind;
+      if (requestedKind === 'auto') {
+        logger.info(`[matrix-kernel] Auto-selected adapter: ${adapterKind}${detectedHost ? ` (host AI: ${detectedHost})` : ' (no host detected)'}`);
+      }
       const waveIdx = parseInt(waveNumber, 10) - 1;
       await ensureMatrixDir(cwd);
 
@@ -68,6 +81,10 @@ function registerRunWave(matrix: Command): void {
       // the whole wave in parallel via Promise.all without duplicating logic.
       const makeAdapter = (packet: { id: string }) => {
         switch (adapterKind) {
+          case 'embedded': return new EmbeddedAdapter({
+            workPacket: packet as never,
+            hostAI: detectedHost ?? 'unknown',
+          });
           case 'claude': return new ClaudeCodeAdapter({ workPacket: packet as never });
           case 'codex':  return new CodexAdapter({ workPacket: packet as never });
           case 'claude-api': return new AnthropicAPIAdapter({ workPacket: packet as never });
@@ -126,6 +143,33 @@ function registerRunWave(matrix: Command): void {
       await saveGraph(cwd, 'leaseGraph', { generatedAt: new Date().toISOString(), leases: [...existingLeases, ...newLeases] });
       const existingRuns = (await loadGraph<{ runs: unknown[] }>(cwd, 'agentRuns'))?.runs ?? [];
       await saveGraph(cwd, 'agentRuns', { generatedAt: new Date().toISOString(), runs: [...existingRuns, ...agentRuns] });
+
+      // Publish wave-level mailbox messages so other agents (and the war-room
+      // dashboard) see what completed. Use `merge_ready` for successful agent
+      // runs, `regression_detected` for failed/awaiting ones — these are the
+      // most actionable signals for downstream consumers.
+      try {
+        for (const d of dispatched) {
+          if (!d.result) continue;
+          const status = d.result.status;
+          const msgType = status === 'completed' ? 'merge_ready'
+            : status === 'awaiting_input' ? 'human_decision_required'
+            : 'regression_detected';
+          await appendMessage({
+            cwd,
+            type: msgType,
+            fromLease: d.lease.id,
+            toLease: 'broadcast',
+            summary: `Lease ${d.lease.id} finished wave ${waveNumber} as ${status} (${d.result.filesChanged.length} file change(s)).`,
+            impact: status === 'completed' ? 'consumer_update_required' : 'informational',
+            requiresAck: false,
+            metadata: { provider: adapterKind, waveNumber, filesChanged: d.result.filesChanged },
+          });
+        }
+        await writeMailboxIndex(cwd);
+      } catch (err) {
+        logger.warn(`[matrix-kernel] Mailbox publish failed: ${String(err)}`);
+      }
 
       logger.success(`[matrix-kernel] Wave ${waveNumber} complete: ${agentRuns.length} agent run(s)`);
       void path;
@@ -440,6 +484,81 @@ function registerRetrospective(matrix: Command): void {
       });
       const outPath = await writeFinalReport(report, retro as never, cwd);
       logger.success(`[matrix-kernel] Final report written: ${outPath}`);
+    }));
+}
+
+// ── embedded-complete ─────────────────────────────────────────────────────
+
+function registerEmbeddedComplete(matrix: Command): void {
+  matrix
+    .command('embedded-complete <leaseId>')
+    .description('Record the diff produced by a host AI for an embedded-mode lease and mark it ready for verify-court.')
+    .option('--cwd <path>', 'Project root')
+    .action(async (leaseId: string, opts) => runSafely('matrix-kernel:embedded-complete', async () => {
+      const { embeddedComplete } = await import('./commands/matrix-embedded.js');
+      const result = await embeddedComplete(leaseId, { cwd: opts.cwd as string | undefined });
+      logger.info(`[matrix-kernel] Recorded ${result.filesChanged.length} file change(s) for ${result.leaseId}.`);
+      if (result.mailboxId) {
+        logger.info(`[matrix-kernel] Mailbox message: ${result.mailboxId}`);
+      }
+    }));
+}
+
+// ── mailbox post / poll / list ────────────────────────────────────────────
+
+function registerMailboxCommands(matrix: Command): void {
+  const mailbox = matrix.command('mailbox').description('Inter-agent coordination bus (post / poll / list)');
+  mailbox
+    .command('post')
+    .description('Publish a mailbox message between leases (or broadcast)')
+    .requiredOption('--from <leaseId>', 'Lease ID of the sender (or "system" / "human")')
+    .requiredOption('--to <leaseId>', 'Recipient lease ID (or "broadcast")')
+    .requiredOption('--type <type>', 'Message type (merge_ready | conflict_detected | dependency_notice | ...)')
+    .requiredOption('--summary <text>', 'One-line human-readable summary')
+    .option('--impact <kind>', 'informational | consumer_update_required | blocking', 'informational')
+    .option('--requires-ack', 'Recipient must acknowledge before the message expires', false)
+    .option('--cwd <path>', 'Project root')
+    .action(async (opts) => runSafely('matrix-kernel:mailbox:post', async () => {
+      const { mailboxPost } = await import('./commands/matrix-mailbox.js');
+      await mailboxPost({
+        cwd: opts.cwd as string | undefined,
+        from: opts.from as string,
+        to: opts.to as string,
+        type: opts.type as string,
+        summary: opts.summary as string,
+        impact: opts.impact as string,
+        requiresAck: opts.requiresAck as boolean,
+      });
+    }));
+
+  mailbox
+    .command('poll')
+    .description('Wait for pending messages (returns immediately if any exist)')
+    .option('--lease <leaseId>', 'Only return messages addressed to this lease (or broadcast)')
+    .option('--timeout <ms>', 'Max wait time in milliseconds (default 5000)', '5000')
+    .option('--types <comma>', 'Comma-separated list of message types to filter by')
+    .option('--cwd <path>', 'Project root')
+    .action(async (opts) => runSafely('matrix-kernel:mailbox:poll', async () => {
+      const { mailboxPoll } = await import('./commands/matrix-mailbox.js');
+      await mailboxPoll({
+        cwd: opts.cwd as string | undefined,
+        lease: opts.lease as string | undefined,
+        timeoutMs: parseInt(opts.timeout as string, 10),
+        types: opts.types as string | undefined,
+      });
+    }));
+
+  mailbox
+    .command('list')
+    .description('List all messages in the mailbox')
+    .option('--status <status>', 'pending_ack | acked | rejected | expired')
+    .option('--cwd <path>', 'Project root')
+    .action(async (opts) => runSafely('matrix-kernel:mailbox:list', async () => {
+      const { mailboxList } = await import('./commands/matrix-mailbox.js');
+      await mailboxList({
+        cwd: opts.cwd as string | undefined,
+        status: opts.status as string | undefined,
+      });
     }));
 }
 

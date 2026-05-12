@@ -12,7 +12,10 @@ const INSTALLED_JSON = path.join(
   '.claude', 'plugins', 'installed_plugins.json',
 );
 
-const COMMANDS_SRC = path.join(ROOT, '.claude-plugin', 'commands');
+// Canonical slash-command directory. `.claude-plugin/commands/` was retired;
+// Claude Code reads from `commands/` at the plugin root (also packaged for
+// cross-tool export). See AGENTS.md "Cross-Tool Skill + Command Distribution".
+const COMMANDS_SRC = path.join(ROOT, 'commands');
 const PACKAGE_JSON = path.join(ROOT, 'package.json');
 
 async function findCacheDir() {
