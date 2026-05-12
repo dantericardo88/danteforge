@@ -234,37 +234,9 @@ async function defaultReadFile(filePath: string): Promise<string> {
 
 // ── Webview wiring (called from runtime.ts) ────────────────────────────────
 
-interface WarRoomVscodeLike {
-  window: {
-    showInformationMessage(message: string): unknown;
-    showErrorMessage(message: string): unknown;
-    createWebviewPanel?(
-      viewType: string,
-      title: string,
-      column: number,
-      options?: { enableScripts?: boolean; retainContextWhenHidden?: boolean },
-    ): WebviewPanelLike;
-  };
-  workspace: {
-    workspaceFolders?: readonly { uri: { fsPath: string } }[];
-    createFileSystemWatcher?(globPattern: string): FileSystemWatcherLike;
-  };
-}
+import type { VscodeLike } from './runtime.js';
 
-interface WebviewPanelLike {
-  webview: { html: string };
-  reveal(): void;
-  onDidDispose(cb: () => void): void;
-  dispose(): void;
-}
-
-interface FileSystemWatcherLike {
-  onDidChange(cb: () => void): void;
-  onDidCreate(cb: () => void): void;
-  dispose(): void;
-}
-
-export async function openMatrixWarRoom(vscodeApi: WarRoomVscodeLike): Promise<void> {
+export async function openMatrixWarRoom(vscodeApi: VscodeLike): Promise<void> {
   const workspaceRoot = vscodeApi.workspace.workspaceFolders?.[0]?.uri.fsPath;
   if (!workspaceRoot) {
     void vscodeApi.window.showErrorMessage('Open a workspace folder first.');

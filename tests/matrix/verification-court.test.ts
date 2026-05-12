@@ -86,6 +86,21 @@ describe('scanContent', () => {
     const findings = scanContent('src/x.ts', `export function add(a: number, b: number): number {\n  return a + b;\n}`);
     assert.equal(findings.length, 0);
   });
+
+  it('flags "Placeholder content" comment (caught from live-LLM ollama run)', () => {
+    const findings = scanContent('src/x.ts', `// Placeholder content to demonstrate file change\nexport function x() {\n  return 'stub';\n}`);
+    assert.ok(findings.length > 0, 'should detect placeholder marker in comment');
+  });
+
+  it('flags "dummy" marker in comments', () => {
+    const findings = scanContent('src/x.ts', `// dummy impl\nexport const x = 1;`);
+    assert.ok(findings.length > 0);
+  });
+
+  it('flags "coming soon" marker in comments', () => {
+    const findings = scanContent('src/x.ts', `/* feature coming soon */\nexport const x = 1;`);
+    assert.ok(findings.length > 0);
+  });
 });
 
 describe('scanForStubs', () => {

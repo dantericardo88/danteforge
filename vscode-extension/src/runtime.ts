@@ -34,6 +34,7 @@ export interface StatusBarItemLike {
 export interface VscodeLike {
   workspace: {
     workspaceFolders?: readonly WorkspaceFolderLike[];
+    createFileSystemWatcher?(globPattern: string): FileSystemWatcherLike;
   };
   window: {
     terminals: readonly TerminalLike[];
@@ -48,6 +49,12 @@ export interface VscodeLike {
     createStatusBarItem?(idOrAlignment?: string | number, priority?: number): StatusBarItemLike;
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     createTreeView?(viewId: string, options: { treeDataProvider: any }): TreeViewLike;
+    createWebviewPanel?(
+      viewType: string,
+      title: string,
+      column: number,
+      options?: { enableScripts?: boolean; retainContextWhenHidden?: boolean },
+    ): WebviewPanelLike;
   };
   commands: {
     registerCommand(name: string, handler: () => unknown | Promise<unknown>): DisposableLike;
@@ -55,6 +62,19 @@ export interface VscodeLike {
   languages?: {
     createDiagnosticCollection?(name: string): DiagnosticCollectionLike;
   };
+}
+
+export interface FileSystemWatcherLike {
+  onDidChange(cb: () => void): void;
+  onDidCreate(cb: () => void): void;
+  dispose(): void;
+}
+
+export interface WebviewPanelLike {
+  webview: { html: string };
+  reveal(): void;
+  onDidDispose(cb: () => void): void;
+  dispose(): void;
 }
 
 export type InstallationInspector = (workspaceRoot?: string) => DanteForgeInstallation;
@@ -355,8 +375,7 @@ export function registerDanteForgeCommands(
   // ── Matrix War Room webview (Phase 14) ──────────────────────────────────
   disposables.push(
     vscodeApi.commands.registerCommand('danteforge.matrixKernel.warRoom', () =>
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      openMatrixWarRoom(vscodeApi as any),
+      openMatrixWarRoom(vscodeApi),
     ),
   );
 

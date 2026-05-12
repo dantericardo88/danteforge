@@ -70,6 +70,19 @@ export function scanContent(filePath: string, content: string): StubFinding[] {
     }
   }
 
+  // 2b. Placeholder/dummy/stub markers in comments (any line). Caught the
+  // ollama llama3 live-LLM "Placeholder content to demonstrate file change"
+  // stub on agent_activity_provenance that earlier patterns missed. "fake" is
+  // intentionally omitted — it's a legitimate provider/role identifier in
+  // matrix-kernel and would false-positive on FakeAgentAdapter's own outputs.
+  const STUB_MARKER_RE = /(?:\/\/|\/\*|\*)\s*.*\b(?:placeholder|dummy|stub|not\s+implemented|coming\s+soon|demonstrate(?:s)?\s+file\s+change)\b/i;
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i]!;
+    if (STUB_MARKER_RE.test(line)) {
+      findings.push({ filePath, line: i + 1, kind: 'todo-comment', snippet: line.trim() });
+    }
+  }
+
   // 3. empty function bodies: `function name() {}` or `() => {}`
   for (let i = 0; i < lines.length; i++) {
     const line = lines[i]!;

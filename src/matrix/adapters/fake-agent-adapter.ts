@@ -123,6 +123,7 @@ export class FakeAgentAdapter implements AgentAdapter {
       startedAt: state.startedAt,
       completedAt,
       finalMessage: `Fake agent ${state.script.action} completed`,
+      provider: 'fake',
     };
   }
 }

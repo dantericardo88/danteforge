@@ -39,6 +39,7 @@ export const MATRIX_REPORT_PATHS = {
   mergeDecisions:      `${MATRIX_DIR}/matrix.merge-decisions.json`,
   retrospective:       `${MATRIX_DIR}/matrix.retrospective.json`,
   finalReport:         `${MATRIX_DIR}/matrix.final-report.md`,
+  agentMemoryDir:      `${MATRIX_DIR}/agent-memory`,
 } as const;
 
 export type MatrixReportName = keyof typeof MATRIX_REPORT_PATHS;

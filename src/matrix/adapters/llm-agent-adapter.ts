@@ -134,6 +134,8 @@ export class LLMAgentAdapter implements AgentAdapter {
       errorReason: state.errorReason,
       startedAt: state.startedAt,
       completedAt: new Date(state.endMs ?? Date.now()).toISOString(),
+      provider: this.options.provider,
+      events: [...state.events],
     };
   }
 

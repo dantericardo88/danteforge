@@ -50,6 +50,10 @@ export interface AgentRunResult {
   completedAt: string;
   /** Path to the branch's commit SHA after the run, if available. */
   branchSha?: string;
+  /** Provider id for the dispatched adapter (e.g. 'ollama', 'claude'). */
+  provider?: string;
+  /** Events streamed by the adapter, captured for persistence. */
+  events?: AgentRunEvent[];
 }
 
 // ── Structured Mailbox (PRD §15) ────────────────────────────────────────────

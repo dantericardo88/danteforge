@@ -24,7 +24,7 @@ function registerRunWave(matrix: Command): void {
     .command('run-wave <waveNumber>')
     .description('Execute a planned wave: create leases + worktrees + dispatch agents')
     .option('--cwd <path>', 'Project root')
-    .option('--adapter <kind>', 'Agent adapter: fake | claude | codex | gemini | grok | dantecode | ollama (default: fake)')
+    .option('--adapter <kind>', 'Agent adapter: fake | claude | codex | gemini | grok | dantecode | ollama | together | groq | mistral (default: fake)')
     .option('--max-tokens <n>', 'Per-agent LLM token cap', parseInt)
     .action(async (waveNumber: string, opts) => runSafely('matrix-kernel:run-wave', async () => {
       const { loadGraph, saveGraph, ensureMatrixDir } = await import('../matrix/engines/matrix-state.js');
@@ -90,6 +90,9 @@ function registerRunWave(matrix: Command): void {
             case 'grok':   return new GrokAdapter({ workPacket: packet as never });
             case 'dantecode': return new DanteCodeAdapter({ workPacket: packet as never });
             case 'ollama': return new LLMAgentAdapter({ workPacket: packet as never, provider: 'ollama', providerLabel: 'ollama' });
+            case 'together': return new LLMAgentAdapter({ workPacket: packet as never, provider: 'together', providerLabel: 'together' });
+            case 'groq': return new LLMAgentAdapter({ workPacket: packet as never, provider: 'groq', providerLabel: 'groq' });
+            case 'mistral': return new LLMAgentAdapter({ workPacket: packet as never, provider: 'mistral', providerLabel: 'mistral' });
             default:       return new FakeAgentAdapter({ action: 'success' });
           }
         })();
