@@ -1,0 +1,368 @@
+// Matrix Orchestration CLI surface (PRD §8).
+//
+// Wires `danteforge matrix-orchestrate <prd-path>` plus subcommands (read,
+// discover, analyze, synthesize-dimensions, score, detect-capacity,
+// execute-phase-a, execute-phase-b, report, status, logs, learning-state,
+// replay) onto the Commander program.
+//
+// Naming: the bare `matrix` noun is taken by the Matrix Development engine
+// in register-late-commands.ts (claim/propose/merge/ascend for dimensions).
+// We use `matrix-orchestrate` for the orchestration layer to avoid collision
+// while keeping the layering visible: `matrix-kernel` = engine,
+// `matrix-orchestrate` = headline orchestration command, `matrix` = dimension
+// ascent.
+//
+// All heavy modules are imported dynamically inside actions so cold-start
+// cost is paid lazily (mirrors register-matrix-commands.ts).
+
+import type { Command } from 'commander';
+import { logger } from '../core/logger.js';
+import { formatAndLogError } from '../core/format-error.js';
+
+export function registerMatrixOrchestrationCommands(program: Command): void {
+  const matrix = program
+    .command('matrix-orchestrate [prd-path]')
+    .description('PRD → frontier orchestration (the headline command)')
+    .option('--target <target>', 'oss-frontier | closed-source-frontier | category-definer', 'closed-source-frontier')
+    .option('--max-agents <n>', 'Cap parallel agent count', parseInt)
+    .option('--max-cost <n>', 'Cap LLM spend in USD', parseFloat)
+    .option('--providers <list>', 'Comma-separated allowed providers')
+    .option('--skip-approval', 'Bypass user confirmation gates')
+    .option('--social-signal', 'Enable social-signal pass')
+    .option('--prompt', 'Emit prompts to disk and exit (mode=prompt)')
+    .option('--mode <mode>', 'llm | prompt | local', 'llm')
+    .option('--cwd <path>', 'Project root (default: cwd)')
+    .action(async (prdPath: string | undefined, opts: Record<string, unknown>) => {
+      await runSafely('matrix:run', async () => {
+        if (!prdPath) {
+          logger.error('Usage: danteforge matrix <prd-path>');
+          process.exitCode = 1;
+          return;
+        }
+        const { runOrchestration } = await import('../matrix-orchestration/orchestrator.js');
+        const result = await runOrchestration({
+          cwd: parseCwd(opts),
+          prdPath,
+          target: parseTarget(opts.target as string),
+          maxAgents: opts.maxAgents as number | undefined,
+          maxCostUsd: opts.maxCost as number | undefined,
+          providers: parseProviders(opts.providers),
+          skipApproval: Boolean(opts.skipApproval),
+          socialSignalEnabled: Boolean(opts.socialSignal),
+          mode: (opts.prompt ? 'prompt' : (opts.mode as 'llm' | 'prompt' | 'local')) ?? 'llm',
+        });
+        logger.success(`[matrix] Run ${result.runId} finished (stage: ${result.runState.stage})`);
+        if (result.finalReportPath) logger.info(`[matrix] Final report: ${result.finalReportPath}`);
+      });
+    });
+
+  registerRead(matrix);
+  registerDiscover(matrix);
+  registerAnalyze(matrix);
+  registerSynthesize(matrix);
+  registerScore(matrix);
+  registerDetectCapacity(matrix);
+  registerExecutePhases(matrix);
+  registerReport(matrix);
+  registerStatus(matrix);
+  registerLogs(matrix);
+  registerLearningState(matrix);
+  registerReplay(matrix);
+}
+
+// ── Subcommand registrars ───────────────────────────────────────────────────
+
+function registerRead(matrix: Command): void {
+  matrix
+    .command('read <prd-path>')
+    .description('Extract ProjectIntent from a PRD markdown file')
+    .option('--cwd <path>', 'Project root')
+    .option('--mode <mode>', 'llm | prompt | local', 'llm')
+    .action(async (prdPath: string, opts: Record<string, unknown>) => {
+      await runSafely('matrix:read', async () => {
+        const { extractProjectIntent } = await import('../matrix-orchestration/prd-reader.js');
+        const intent = await extractProjectIntent(prdPath, {
+          cwd: parseCwd(opts),
+          mode: (opts.mode as 'llm' | 'prompt' | 'local') ?? 'llm',
+        });
+        logger.success(`[matrix:read] Extracted intent for "${intent.projectName}" (confidence ${intent.confidence.toFixed(2)})`);
+      });
+    });
+}
+
+function registerDiscover(matrix: Command): void {
+  matrix
+    .command('discover')
+    .description('Discover the competitive universe from the saved intent')
+    .option('--cwd <path>', 'Project root')
+    .option('--skip-approval', 'Bypass the universe approval prompt')
+    .action(async (opts: Record<string, unknown>) => {
+      await runSafely('matrix:discover', async () => {
+        const { loadOrch } = await import('../matrix-orchestration/state-io.js');
+        const { discoverUniverse } = await import('../matrix-orchestration/discovery/universe.js');
+        const cwd = parseCwd(opts);
+        const intent = await loadOrch('projectIntent' as never, 'projectIntent' as never)
+          .catch(() => null) as unknown;
+        const intent2 = (await loadOrch(cwd, 'projectIntent')) ?? intent;
+        if (!intent2) throw new Error('No projectIntent saved — run `matrix read <prd>` first');
+        const universe = await discoverUniverse(intent2 as never, {
+          cwd,
+          skipApproval: Boolean(opts.skipApproval),
+        });
+        logger.success(`[matrix:discover] ${universe.entries.length} entries`);
+      });
+    });
+}
+
+function registerAnalyze(matrix: Command): void {
+  matrix
+    .command('analyze')
+    .description('Profile closed-source competitors + collect social signal')
+    .option('--cwd <path>', 'Project root')
+    .action(async (opts: Record<string, unknown>) => {
+      await runSafely('matrix:analyze', async () => {
+        const { loadOrch } = await import('../matrix-orchestration/state-io.js');
+        const { profileClosedSource } = await import('../matrix-orchestration/analysis/closed-source-profiler.js');
+        const cwd = parseCwd(opts);
+        const universe = await loadOrch<{ entries: unknown[] }>(cwd, 'competitiveUniverse');
+        if (!universe) throw new Error('No competitiveUniverse — run `matrix discover` first');
+        const report = await profileClosedSource(universe as never, { cwd });
+        logger.success(`[matrix:analyze] Profiled ${report.profiles.length} closed-source competitor(s)`);
+      });
+    });
+}
+
+function registerSynthesize(matrix: Command): void {
+  matrix
+    .command('synthesize-dimensions')
+    .description('Build the orchestration dimension matrix')
+    .option('--cwd <path>', 'Project root')
+    .action(async (opts: Record<string, unknown>) => {
+      await runSafely('matrix:synthesize-dimensions', async () => {
+        const cwd = parseCwd(opts);
+        logger.info('[matrix:synthesize-dimensions] Track B owns this step; see synthesizer module');
+        void cwd;
+      });
+    });
+}
+
+function registerScore(matrix: Command): void {
+  matrix
+    .command('score')
+    .description('Score current state against the dimension matrix')
+    .option('--cwd <path>', 'Project root')
+    .action(async (opts: Record<string, unknown>) => {
+      await runSafely('matrix:score', async () => {
+        const cwd = parseCwd(opts);
+        logger.info('[matrix:score] Track B owns the scorer; this stub will dispatch to it');
+        void cwd;
+      });
+    });
+}
+
+function registerDetectCapacity(matrix: Command): void {
+  matrix
+    .command('detect-capacity')
+    .description('Probe provider installs and benchmark concurrency')
+    .option('--cwd <path>', 'Project root')
+    .action(async (opts: Record<string, unknown>) => {
+      await runSafely('matrix:detect-capacity', async () => {
+        const cwd = parseCwd(opts);
+        logger.info('[matrix:detect-capacity] Track C owns this step');
+        void cwd;
+      });
+    });
+}
+
+function registerExecutePhases(matrix: Command): void {
+  matrix
+    .command('execute-phase-a')
+    .description('Execute Phase A — close the OSS frontier gap')
+    .option('--cwd <path>', 'Project root')
+    .option('--max-cost <n>', 'Override phase budget in USD', parseFloat)
+    .action(async (opts: Record<string, unknown>) => {
+      await runSafely('matrix:execute-phase-a', async () => {
+        const { loadOrch } = await import('../matrix-orchestration/state-io.js');
+        const { executePhaseA } = await import('../matrix-orchestration/phases/phase-a-runner.js');
+        const cwd = parseCwd(opts);
+        const matrixDoc = await loadOrch(cwd, 'dimensionMatrix');
+        const capacity = await loadOrch(cwd, 'capacityReport');
+        const universe = await loadOrch(cwd, 'competitiveUniverse');
+        if (!matrixDoc || !capacity || !universe) {
+          throw new Error('Missing matrix/capacity/universe — run the earlier stages first');
+        }
+        const result = await executePhaseA(
+          { matrix: matrixDoc as never, capacity: capacity as never, universe: universe as never },
+          { cwd, maxCostUsd: opts.maxCost as number | undefined },
+        );
+        logger.success(`[matrix:execute-phase-a] ${result.attempts.length} attempt(s), ${result.dimensionsClosed.length} dim(s) closed`);
+      });
+    });
+
+  matrix
+    .command('execute-phase-b')
+    .description('Execute Phase B — push toward the closed-source frontier')
+    .option('--cwd <path>', 'Project root')
+    .option('--max-cost <n>', 'Override phase budget in USD', parseFloat)
+    .action(async (opts: Record<string, unknown>) => {
+      await runSafely('matrix:execute-phase-b', async () => {
+        const { loadOrch } = await import('../matrix-orchestration/state-io.js');
+        const { executePhaseB, loadPhaseBArgsFromDisk } = await import('../matrix-orchestration/phases/phase-b-runner.js');
+        const cwd = parseCwd(opts);
+        const matrixDoc = await loadOrch(cwd, 'dimensionMatrix');
+        const capacity = await loadOrch(cwd, 'capacityReport');
+        const universe = await loadOrch(cwd, 'competitiveUniverse');
+        if (!matrixDoc || !capacity || !universe) {
+          throw new Error('Missing matrix/capacity/universe — run earlier stages first');
+        }
+        const extra = await loadPhaseBArgsFromDisk(cwd);
+        const result = await executePhaseB(
+          {
+            matrix: matrixDoc as never,
+            capacity: capacity as never,
+            universe: universe as never,
+            closedSourceProfiles: extra?.closedSourceProfiles ?? null,
+            socialSignal: extra?.socialSignal ?? null,
+          },
+          { cwd, maxCostUsd: opts.maxCost as number | undefined },
+        );
+        logger.success(`[matrix:execute-phase-b] ${result.attempts.length} attempt(s), ${result.dimensionsClosed.length} dim(s) closed`);
+      });
+    });
+}
+
+function registerReport(matrix: Command): void {
+  matrix
+    .command('report')
+    .description('Generate the final orchestration report + THIRD_PARTY_NOTICES')
+    .option('--cwd <path>', 'Project root')
+    .action(async (opts: Record<string, unknown>) => {
+      await runSafely('matrix:report', async () => {
+        const { loadOrch } = await import('../matrix-orchestration/state-io.js');
+        const { generateFinalReport } = await import('../matrix-orchestration/reporting/final-report.js');
+        const cwd = parseCwd(opts);
+        const runState = await loadOrch(cwd, 'runState');
+        const matrixDoc = await loadOrch(cwd, 'dimensionMatrix');
+        if (!runState || !matrixDoc) throw new Error('Missing runState or dimensionMatrix');
+        const phaseA = await loadOrch(cwd, 'phaseAResult');
+        const phaseB = await loadOrch(cwd, 'phaseBResult');
+        const retro = await loadOrch(cwd, 'phaseARetrospective');
+        const result = await generateFinalReport(
+          {
+            runState: runState as never,
+            matrix: matrixDoc as never,
+            phaseAResult: phaseA as never,
+            phaseBResult: phaseB as never,
+            retrospective: retro as never,
+          },
+          { cwd },
+        );
+        logger.success(`[matrix:report] Wrote ${result.markdownPath}`);
+        if (result.noticesPath) logger.info(`[matrix:report] THIRD_PARTY_NOTICES: ${result.noticesPath}`);
+      });
+    });
+}
+
+function registerStatus(matrix: Command): void {
+  matrix
+    .command('status')
+    .description('Print run state summary')
+    .option('--cwd <path>', 'Project root')
+    .action(async (opts: Record<string, unknown>) => {
+      await runSafely('matrix:status', async () => {
+        const { loadOrch } = await import('../matrix-orchestration/state-io.js');
+        const cwd = parseCwd(opts);
+        const state = await loadOrch<{ runId: string; stage: string; completedStages: string[]; costSpentUsd: number }>(cwd, 'runState');
+        if (!state) { logger.info('[matrix:status] no run yet'); return; }
+        logger.info(`[matrix:status] run=${state.runId} stage=${state.stage} cost=$${state.costSpentUsd.toFixed(2)}`);
+        logger.info(`[matrix:status] completed: ${state.completedStages.join(', ') || '(none)'}`);
+      });
+    });
+}
+
+function registerLogs(matrix: Command): void {
+  matrix
+    .command('logs')
+    .description('Tail the orchestration audit log')
+    .option('--cwd <path>', 'Project root')
+    .option('--limit <n>', 'Max entries to show', parseInt)
+    .action(async (opts: Record<string, unknown>) => {
+      await runSafely('matrix:logs', async () => {
+        const { readAuditLog } = await import('../matrix-orchestration/state-io.js');
+        const cwd = parseCwd(opts);
+        const events = await readAuditLog(cwd);
+        const limit = (opts.limit as number | undefined) ?? 50;
+        for (const e of events.slice(-limit)) {
+          logger.info(`${e.ts} ${e.kind.padEnd(24)} ${e.stage ?? ''}`);
+        }
+      });
+    });
+}
+
+function registerLearningState(matrix: Command): void {
+  matrix
+    .command('learning-state')
+    .description('Print the cumulative learning state across runs')
+    .option('--cwd <path>', 'Project root')
+    .action(async (opts: Record<string, unknown>) => {
+      await runSafely('matrix:learning-state', async () => {
+        const { loadLearningState } = await import('../matrix-orchestration/learning/learning-loop.js');
+        const cwd = parseCwd(opts);
+        const state = await loadLearningState(cwd);
+        if (!state) { logger.info('[matrix:learning-state] no learning state yet'); return; }
+        logger.info(`[matrix:learning-state] version=${state.version} updated=${state.updatedAt}`);
+        for (const [pid, p] of Object.entries(state.providerPerformance)) {
+          logger.info(`  ${pid.padEnd(12)} runs=${p.runs} succ=${p.totalSuccesses}/${p.totalAttempts}`);
+        }
+      });
+    });
+}
+
+function registerReplay(matrix: Command): void {
+  matrix
+    .command('replay <run-id>')
+    .description('Re-run from a prior run id (best-effort — reuses prior state)')
+    .option('--cwd <path>', 'Project root')
+    .option('--skip-approval', 'Bypass approval gates')
+    .action(async (runId: string, opts: Record<string, unknown>) => {
+      await runSafely('matrix:replay', async () => {
+        const { loadOrch } = await import('../matrix-orchestration/state-io.js');
+        const { runOrchestration } = await import('../matrix-orchestration/orchestrator.js');
+        const cwd = parseCwd(opts);
+        const state = await loadOrch<{ runId: string; prdPath: string }>(cwd, 'runState');
+        if (!state) throw new Error('no prior run state to replay');
+        if (state.runId !== runId) logger.warn(`[matrix:replay] state runId ${state.runId} ≠ requested ${runId}; continuing`);
+        await runOrchestration({
+          cwd,
+          prdPath: state.prdPath,
+          skipApproval: Boolean(opts.skipApproval),
+        });
+      });
+    });
+}
+
+// ── Common helpers ──────────────────────────────────────────────────────────
+
+function parseCwd(opts: Record<string, unknown>): string {
+  return (opts.cwd as string | undefined) ?? process.cwd();
+}
+
+function parseTarget(t: string | undefined): 'oss_frontier' | 'closed_source_frontier' | 'category_definer' {
+  if (t === 'oss-frontier' || t === 'oss_frontier') return 'oss_frontier';
+  if (t === 'category-definer' || t === 'category_definer') return 'category_definer';
+  return 'closed_source_frontier';
+}
+
+function parseProviders(raw: unknown): ('claude' | 'codex' | 'dantecode' | 'aider' | 'cursor' | 'ollama' | 'fake' | 'shell')[] | undefined {
+  if (typeof raw !== 'string' || raw.length === 0) return undefined;
+  const allowed = new Set(['claude', 'codex', 'dantecode', 'aider', 'cursor', 'ollama', 'fake', 'shell']);
+  return raw.split(',').map(s => s.trim()).filter(s => allowed.has(s)) as never;
+}
+
+async function runSafely(label: string, fn: () => Promise<void>): Promise<void> {
+  try { await fn(); }
+  catch (err) {
+    formatAndLogError(err, label);
+    process.exitCode = 1;
+  }
+}
