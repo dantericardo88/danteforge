@@ -27,14 +27,23 @@ danteforge matrix-kernel status                  # show current report inventory
 danteforge matrix-kernel leases-list             # list current leases
 ```
 
-**Execution loop (test-only for now, exercised by `tests/matrix-golden-flow.test.ts`):**
-- Lease Manager (Phase 5) — frozen-path defense + cross-process locks
-- Conflict Radar (Phase 6) — 7 conflict types, LOW/MEDIUM/HIGH/CRITICAL
-- Worktree Manager + Mailbox + Fake/Shell Adapters (Phase 8)
-- Verification Court (Phase 9) — 6 sequential gate checks
-- Red Team Verifier + Taste Gate (Phase 10) — adversarial LLM + UX-change detector
-- Merge Court (Phase 11) — 10 outcome states, sequential arbitration
-- Retrospective + Final Report (Phase 12)
+**Execution loop (Phase 13a — wired to CLI):**
+```bash
+danteforge matrix-kernel run-wave 1 [--adapter fake|claude]   # dispatch a planned wave
+danteforge matrix-kernel verify <leaseId> [--all]             # Verification Court
+danteforge matrix-kernel red-team <leaseId> [--mock]          # adversarial review (live LLM by default)
+danteforge matrix-kernel taste-gate <leaseId>                 # detect UX-change requiring approval
+danteforge matrix-kernel taste-gate approve <id> [--by N]     # resolve a taste gate
+danteforge matrix-kernel taste-gate reject <id> [--notes T]
+danteforge matrix-kernel merge-court                          # arbitrate all candidates
+danteforge matrix-kernel retrospective                        # generate run retrospective
+danteforge matrix-kernel report                               # render final markdown report
+```
+
+**Live-LLM testing (opt-in, costs real money):**
+```bash
+DANTEFORGE_LIVE_LLM=1 npm run test:matrix-live      # validates Red Team + ClaudeCodeAdapter against real Claude
+```
 
 ## The Constitutional Discipline (PRD §6)
 

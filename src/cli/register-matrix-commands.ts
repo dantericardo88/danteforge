@@ -6,6 +6,7 @@
 import type { Command } from 'commander';
 import { logger } from '../core/logger.js';
 import { formatAndLogError } from '../core/format-error.js';
+import { registerMatrixExecutionCommands } from './register-matrix-execution-commands.js';
 
 export function registerMatrixCommands(program: Command): void {
   const matrix = program
@@ -16,6 +17,7 @@ export function registerMatrixCommands(program: Command): void {
   registerGraphs(matrix);
   registerPlanning(matrix);
   registerLeases(matrix);
+  registerMatrixExecutionCommands(matrix);
 }
 
 // ── Lifecycle ───────────────────────────────────────────────────────────────
