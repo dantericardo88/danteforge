@@ -31,7 +31,11 @@ export function registerMatrixOrchestrationCommands(program: Command): void {
     .option('--social-signal', 'Enable social-signal pass')
     .option('--prompt', 'Emit prompts to disk and exit (mode=prompt)')
     .option('--mode <mode>', 'llm | prompt | local', 'llm')
-    .option('--cwd <path>', 'Project root (default: cwd)')
+    // NOTE: --cwd is NOT defined on the parent intentionally. Defining it
+    // here would shadow each subcommand's own --cwd, leaving subcommand
+    // opts.cwd=undefined at runtime. Users who want a non-default cwd via
+    // the bare `matrix-orchestrate <prd>` form should cd into the project
+    // root first, or invoke a subcommand explicitly.
     .action(async (prdPath: string | undefined, opts: Record<string, unknown>) => {
       await runSafely('matrix:run', async () => {
         if (!prdPath) {
@@ -137,11 +141,23 @@ function registerSynthesize(matrix: Command): void {
     .command('synthesize-dimensions')
     .description('Build the orchestration dimension matrix')
     .option('--cwd <path>', 'Project root')
+    .option('--mode <mode>', 'llm | prompt | local', 'llm')
     .action(async (opts: Record<string, unknown>) => {
       await runSafely('matrix:synthesize-dimensions', async () => {
+        const { loadOrch, saveOrch } = await import('../matrix-orchestration/state-io.js');
+        const { synthesizeOrchestrationDimensions } = await import('../matrix-orchestration/analysis/dimension-synthesizer.js');
         const cwd = parseCwd(opts);
-        logger.info('[matrix:synthesize-dimensions] Track B owns this step; see synthesizer module');
-        void cwd;
+        const intent = await loadOrch(cwd, 'projectIntent');
+        const universe = await loadOrch(cwd, 'competitiveUniverse');
+        if (!intent || !universe) {
+          throw new Error('Run `matrix-orchestrate read` and `matrix-orchestrate discover` first.');
+        }
+        const matrixDoc = await synthesizeOrchestrationDimensions(
+          { intent: intent as never, universe: universe as never },
+          { cwd, mode: (opts.mode as 'llm' | 'prompt' | 'local') ?? 'llm' },
+        );
+        await saveOrch(cwd, 'dimensionMatrix', matrixDoc);
+        logger.success(`[matrix:synthesize-dimensions] ${(matrixDoc as { dimensions?: unknown[] }).dimensions?.length ?? 0} dimension(s)`);
       });
     });
 }
@@ -151,11 +167,23 @@ function registerScore(matrix: Command): void {
     .command('score')
     .description('Score current state against the dimension matrix')
     .option('--cwd <path>', 'Project root')
+    .option('--mode <mode>', 'llm | prompt | local', 'llm')
+    .option('--strict', 'Apply strict scoring rules')
     .action(async (opts: Record<string, unknown>) => {
       await runSafely('matrix:score', async () => {
+        const { loadOrch, saveOrch } = await import('../matrix-orchestration/state-io.js');
+        const { scoreCurrentState } = await import('../matrix-orchestration/analysis/current-state-scorer.js');
         const cwd = parseCwd(opts);
-        logger.info('[matrix:score] Track B owns the scorer; this stub will dispatch to it');
-        void cwd;
+        const matrixDoc = await loadOrch(cwd, 'dimensionMatrix');
+        if (!matrixDoc) {
+          throw new Error('Run `matrix-orchestrate synthesize-dimensions` first.');
+        }
+        const scored = await scoreCurrentState(matrixDoc as never, {
+          cwd, mode: (opts.mode as 'llm' | 'prompt' | 'local') ?? 'llm',
+          strict: Boolean(opts.strict),
+        });
+        await saveOrch(cwd, 'currentStateScore', scored);
+        logger.success(`[matrix:score] Scored ${(scored as { dimensions?: unknown[] }).dimensions?.length ?? 0} dimension(s)`);
       });
     });
 }
@@ -167,9 +195,13 @@ function registerDetectCapacity(matrix: Command): void {
     .option('--cwd <path>', 'Project root')
     .action(async (opts: Record<string, unknown>) => {
       await runSafely('matrix:detect-capacity', async () => {
+        const { saveOrch } = await import('../matrix-orchestration/state-io.js');
+        const { detectCapacity } = await import('../matrix-orchestration/capacity/detector.js');
         const cwd = parseCwd(opts);
-        logger.info('[matrix:detect-capacity] Track C owns this step');
-        void cwd;
+        const report = await detectCapacity({ cwd, runId: `cap.${Date.now()}` });
+        await saveOrch(cwd, 'capacityReport', report);
+        const available = report.providers.filter(p => p.installed).length;
+        logger.success(`[matrix:detect-capacity] ${available}/${report.providers.length} provider(s) installed (total concurrency: ${report.totalPracticalConcurrency})`);
       });
     });
 }
