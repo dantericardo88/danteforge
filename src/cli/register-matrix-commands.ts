@@ -139,7 +139,7 @@ function registerPlanning(matrix: Command): void {
     .action(async (opts) => runSafely('matrix-kernel:simulate', async () => {
       const { buildProjectGraph } = await import('../matrix/engines/project-graph.js');
       const { synthesizeDimensions } = await import('../matrix/engines/dimension-synthesizer.js');
-      const { generateWorkPackets } = await import('../matrix/engines/work-packet-generator.js');
+      const { generateWorkPackets, writeWorkGraph } = await import('../matrix/engines/work-packet-generator.js');
       const { buildDependencyGraph } = await import('../matrix/engines/dependency-graph.js');
       const { loadOwnershipMap } = await import('../matrix/engines/ownership-map.js');
       const { scanConflicts } = await import('../matrix/engines/conflict-radar.js');
@@ -154,6 +154,10 @@ function registerPlanning(matrix: Command): void {
         dimensionGraph, projectGraph,
         globalForbiddenPaths: projectGraph.project.protectedPaths,
       });
+      // Persist the work graph alongside the plan so packet IDs in the plan
+      // resolve against disk. Without this, work-packet IDs (timestamp-keyed)
+      // drift between commands and run-wave reports "packet not found".
+      await writeWorkGraph(workGraph, cwd);
       const dependencyGraph = buildDependencyGraph({ workGraph });
       const ownershipMap = await loadOwnershipMap({ cwd });
       const conflictReport = scanConflicts({
