@@ -30,11 +30,29 @@ export function calculateSafeParallelism(
     n.cannotRunWith.length > 0 && n.canRunInParallelWith.length === 0,
   );
 
-  // 2. Subtract packets blocked by HIGH/CRITICAL conflicts.
+  // 2. Subtract packets that genuinely cannot run.
+  //    A conflict only blocks a packet entirely when it's a SINGLE-packet
+  //    violation (protected_path_violation, ownership_violation, or any HIGH/
+  //    CRITICAL conflict whose recommendedAction is 'block_immediately').
+  //    MULTI-packet conflicts (file_overlap, path_overlap, etc.) are
+  //    co-scheduling constraints — they require packets to run in different
+  //    waves but do not block them from running at all. The wave planner
+  //    already handles wave assignment; safety must not double-count.
   const blockedByConflict = new Set<string>();
+  let coSchedulingConstraints = 0;
   for (const conflict of conflictReport.conflicts) {
     if (!isBlockingConflict(conflict)) continue;
-    for (const id of conflict.workPacketIds ?? []) blockedByConflict.add(id);
+    const ids = conflict.workPacketIds ?? [];
+    const isHardBlock =
+      ids.length === 1 ||
+      conflict.recommendedAction === 'block_immediately' ||
+      conflict.type === 'protected_path_violation' ||
+      conflict.type === 'ownership_violation';
+    if (isHardBlock) {
+      for (const id of ids) blockedByConflict.add(id);
+    } else {
+      coSchedulingConstraints += 1;
+    }
   }
   const highConflictCount = blockedByConflict.size;
 
@@ -49,7 +67,10 @@ export function calculateSafeParallelism(
     reasoning.push(`${blocked.length} work packet(s) blocked by dependencies — wait for upstream merges`);
   }
   if (highConflictCount > 0) {
-    reasoning.push(`${highConflictCount} work packet(s) blocked by HIGH/CRITICAL conflicts`);
+    reasoning.push(`${highConflictCount} work packet(s) blocked by protected-path/ownership violations`);
+  }
+  if (coSchedulingConstraints > 0) {
+    reasoning.push(`${coSchedulingConstraints} pair(s) of packets cannot run together — sequenced across waves`);
   }
   if (conflicting.length > 0) {
     reasoning.push(`${conflicting.length} work packet(s) flagged as CONFLICTING — must sequence`);
@@ -87,10 +108,22 @@ export function selectWaveMembers(
   conflictReport: ConflictReport,
   capacity: number,
 ): string[] {
+  // Same hard-block discrimination as calculateSafeParallelism: only single-
+  // packet violations (or block_immediately recommendations) prevent a packet
+  // from being selected at all. Multi-packet conflicts are sequencing
+  // constraints handled by the wave planner.
   const blockedByConflict = new Set<string>();
   for (const c of conflictReport.conflicts) {
     if (!isBlockingConflict(c)) continue;
-    for (const id of c.workPacketIds ?? []) blockedByConflict.add(id);
+    const ids = c.workPacketIds ?? [];
+    const isHardBlock =
+      ids.length === 1 ||
+      c.recommendedAction === 'block_immediately' ||
+      c.type === 'protected_path_violation' ||
+      c.type === 'ownership_violation';
+    if (isHardBlock) {
+      for (const id of ids) blockedByConflict.add(id);
+    }
   }
   const ready = dependencyGraph.nodes
     .filter(n => n.status === 'READY' && !blockedByConflict.has(n.workPacketId))

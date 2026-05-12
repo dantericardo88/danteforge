@@ -1,5 +1,5 @@
 ---
-name: danteforge-matrix-kernel
+name: matrix-kernel
 description: "Closed-loop verified multi-agent engineering control plane — maps a project, decomposes work, simulates safe parallelism, leases isolated agents, verifies output, and merges only what passed every gate"
 ---
 

@@ -632,6 +632,72 @@ async function syncCodexCommands(homeDir: string): Promise<void> {
   }
 }
 
+/**
+ * Read a command file, peel off the frontmatter header (if any), and return
+ * { name, description, body }. Falls back to filename-derived name and an
+ * empty description if no frontmatter is present.
+ */
+async function parseCommandFile(filePath: string): Promise<{ name: string; description: string; body: string }> {
+  const raw = await fs.readFile(filePath, 'utf8');
+  const fallbackName = path.basename(filePath, '.md');
+  const match = /^---\s*\n([\s\S]*?)\n---\s*\n([\s\S]*)$/.exec(raw);
+  if (!match) {
+    return { name: fallbackName, description: '', body: raw };
+  }
+  const header = match[1] ?? '';
+  const body = match[2] ?? '';
+  const nameMatch = /^name:\s*(.+)$/m.exec(header);
+  const descMatch = /^description:\s*"?(.+?)"?\s*$/m.exec(header);
+  return {
+    name: nameMatch?.[1]?.trim() ?? fallbackName,
+    description: descMatch?.[1]?.trim() ?? '',
+    body,
+  };
+}
+
+/**
+ * Install every slash command in `commands/` into a tool's rule directory,
+ * one file per command. Cursor uses `.mdc` with cursor-specific frontmatter;
+ * Windsurf accepts plain markdown with a name/description header.
+ */
+async function syncToolCommands(targetDir: string, kind: 'cursor' | 'windsurf'): Promise<void> {
+  const commandsDir = resolvePackagedCommandsDir();
+  let entries: string[];
+  try {
+    entries = await fs.readdir(commandsDir);
+  } catch {
+    return;
+  }
+  await fs.mkdir(targetDir, { recursive: true });
+  for (const entry of entries) {
+    if (!entry.endsWith('.md')) continue;
+    const parsed = await parseCommandFile(path.join(commandsDir, entry));
+    const base = path.basename(entry, '.md');
+    if (kind === 'cursor') {
+      const outPath = path.join(targetDir, `danteforge-${base}.mdc`);
+      const frontmatter = [
+        '---',
+        `description: ${JSON.stringify(parsed.description)}`,
+        'globs:',
+        'alwaysApply: false',
+        '---',
+        '',
+      ].join('\n');
+      await fs.writeFile(outPath, frontmatter + parsed.body, 'utf8');
+    } else {
+      const outPath = path.join(targetDir, `danteforge-${base}.md`);
+      const frontmatter = [
+        '---',
+        `name: ${parsed.name}`,
+        `description: ${JSON.stringify(parsed.description)}`,
+        '---',
+        '',
+      ].join('\n');
+      await fs.writeFile(outPath, frontmatter + parsed.body, 'utf8');
+    }
+  }
+}
+
 async function syncClaudePluginCache(homeDir: string, projectDir: string): Promise<void> {
   let pkgJson: { version?: string; files?: string[] };
   try {
@@ -784,10 +850,12 @@ export async function installAssistantSkills(
     if (assistant === 'cursor') {
       const bootstrapPath = path.join(targetDir, 'danteforge.mdc');
       await fs.writeFile(bootstrapPath, buildCursorBootstrapRuleV2(), 'utf8');
+      await syncToolCommands(targetDir, 'cursor');
+      const installed = await fs.readdir(targetDir);
       results.push({
         assistant,
         targetDir,
-        installedSkills: ['danteforge.mdc'],
+        installedSkills: installed.filter(f => f.endsWith('.mdc')),
         installMode: 'cursor-rules',
       });
       continue;
@@ -796,7 +864,14 @@ export async function installAssistantSkills(
     if (assistant === 'windsurf') {
       const filePath = path.join(targetDir, 'danteforge.md');
       await fs.writeFile(filePath, buildWindsurfBootstrapRule(), 'utf8');
-      results.push({ assistant, targetDir, installedSkills: ['danteforge.md'], installMode: 'windsurf-rules' });
+      await syncToolCommands(targetDir, 'windsurf');
+      const installed = await fs.readdir(targetDir);
+      results.push({
+        assistant,
+        targetDir,
+        installedSkills: installed.filter(f => f.endsWith('.md')),
+        installMode: 'windsurf-rules',
+      });
       continue;
     }
 

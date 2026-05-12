@@ -111,6 +111,12 @@ export interface CompeteMatrix {
   // Adversarial calibration history — records when hostile-review verdicts
   // were applied to correct inflated self-scores.
   adversarialCalibrations?: AdversarialCalibration[];
+
+  // Dimensions the user has explicitly de-prioritized. Excluded dimensions
+  // remain in the matrix for scoring continuity but are skipped by sprint
+  // selection, work-packet generation, and gap-report ranking. Reverse with
+  // `danteforge compete --include <id>`.
+  excludedDimensions?: string[];
 }
 
 // ── Priority Constants ────────────────────────────────────────────────────────
@@ -214,7 +220,9 @@ export function computeGapPriority(dim: MatrixDimension): number {
  * Returns null if all dimensions are closed/at-ceiling or the matrix is empty.
  */
 export function getNextSprintDimension(matrix: CompeteMatrix, target = 9.0): MatrixDimension | null {
+  const excluded = new Set(matrix.excludedDimensions ?? []);
   const eligible = matrix.dimensions.filter(d =>
+    !excluded.has(d.id) &&
     d.status !== 'closed' &&
     // exclude dims already at or above target — nothing to improve
     (d.scores['self'] ?? 0) < target &&
@@ -240,14 +248,16 @@ export function classifyDimensions(matrix: CompeteMatrix, target = 9.0): {
   // If ceiling < target, automation can never bring it to target — treat it as blocked immediately,
   // regardless of current score. This prevents infinite retry loops on dims like communityAdoption
   // whose ceiling (4.0) is below any reasonable target.
+  const excluded = new Set(matrix.excludedDimensions ?? []);
   const atCeiling = matrix.dimensions.filter(d =>
+    !excluded.has(d.id) &&
     d.status !== 'closed' &&
     d.ceiling !== undefined &&
     (d.ceiling < target || (d.scores['self'] ?? 0) >= d.ceiling),
   );
   const atCeilingIds = new Set(atCeiling.map(d => d.id));
   const achievable = matrix.dimensions.filter(d =>
-    d.status !== 'closed' && !atCeilingIds.has(d.id),
+    !excluded.has(d.id) && d.status !== 'closed' && !atCeilingIds.has(d.id),
   );
   return { achievable, atCeiling };
 }
@@ -799,8 +809,31 @@ export function computeUnweightedComposite(matrix: CompeteMatrix): number {
  * so the output reflects market priority, not just what ascend can automate.
  */
 export function getTopGapDimensions(matrix: CompeteMatrix, count = 5): MatrixDimension[] {
+  const excluded = new Set(matrix.excludedDimensions ?? []);
   return [...matrix.dimensions]
-    .filter(d => d.status !== 'closed')
+    .filter(d => !excluded.has(d.id) && d.status !== 'closed')
     .sort((a, b) => computeGapPriority(b) - computeGapPriority(a))
     .slice(0, count);
+}
+
+/**
+ * Mark a dimension as de-prioritized. The dimension stays in the matrix
+ * (so scoring continuity is preserved) but is skipped by sprint selection,
+ * work-packet generation, and gap ranking. Idempotent. Caller must call
+ * saveMatrix() afterward.
+ */
+export function excludeDimension(matrix: CompeteMatrix, id: string): void {
+  const list = matrix.excludedDimensions ?? [];
+  if (!list.includes(id)) list.push(id);
+  matrix.excludedDimensions = list;
+  matrix.lastUpdated = new Date().toISOString();
+}
+
+/**
+ * Reverse a previous exclusion. Idempotent. Caller must call saveMatrix()
+ * afterward.
+ */
+export function includeDimension(matrix: CompeteMatrix, id: string): void {
+  matrix.excludedDimensions = (matrix.excludedDimensions ?? []).filter(x => x !== id);
+  matrix.lastUpdated = new Date().toISOString();
 }

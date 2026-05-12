@@ -24,6 +24,8 @@ import {
   checkMatrixStaleness,
   removeCompetitor,
   dropDimension,
+  excludeDimension,
+  includeDimension,
   applyAdversarialCalibration,
   type CompeteMatrix,
   type MatrixDimension,
@@ -90,6 +92,8 @@ export interface CompeteOptions {
   amendFile?: string;        // --amend-file <path>: batch-update market dim scores from JSON
   removeCompetitor?: string;
   dropDimension?: string;
+  excludeDimension?: string;
+  includeDimension?: string;
   edit?: boolean;
   calibrate?: boolean;       // --calibrate: run adversarial scorer and apply inflated-verdict corrections
   // Injection seam for calibrate testing
@@ -824,6 +828,24 @@ export async function compete(options: CompeteOptions = {}): Promise<CompeteResu
       dropDimension(matrix, options.dropDimension);
       await saveFn(matrix, cwd);
       logger.success(`Dropped dimension "${options.dropDimension}" from matrix.`);
+      return { action: 'status', matrixPath: getMatrixPath(cwd), overallScore: matrix.overallSelfScore };
+    }
+
+    if (options.excludeDimension) {
+      const matrix = await loadFn(cwd);
+      if (!matrix) { logger.error('No matrix found. Run `danteforge compete --init` first.'); return { action: 'status', matrixPath: getMatrixPath(cwd) }; }
+      excludeDimension(matrix, options.excludeDimension);
+      await saveFn(matrix, cwd);
+      logger.success(`Excluded dimension "${options.excludeDimension}" — sprint selection, work-packets, and gap ranking will skip it. Reverse with --include "${options.excludeDimension}".`);
+      return { action: 'status', matrixPath: getMatrixPath(cwd), overallScore: matrix.overallSelfScore };
+    }
+
+    if (options.includeDimension) {
+      const matrix = await loadFn(cwd);
+      if (!matrix) { logger.error('No matrix found. Run `danteforge compete --init` first.'); return { action: 'status', matrixPath: getMatrixPath(cwd) }; }
+      includeDimension(matrix, options.includeDimension);
+      await saveFn(matrix, cwd);
+      logger.success(`Included dimension "${options.includeDimension}" — it is once again eligible for sprints and work-packets.`);
       return { action: 'status', matrixPath: getMatrixPath(cwd), overallScore: matrix.overallSelfScore };
     }
 

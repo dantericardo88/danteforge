@@ -14,6 +14,9 @@ import {
   getDimensionStrategy,
   computeUnweightedComposite,
   getTopGapDimensions,
+  classifyDimensions,
+  excludeDimension,
+  includeDimension,
   HUMAN_ACTION_DIMENSION_IDS,
   FREQUENCY_MULTIPLIERS,
   addOrUpdateCompetitor,
@@ -749,5 +752,77 @@ describe('applyAdversarialCalibration()', () => {
     applyAdversarialCalibration(matrix, 'ux_polish', 8.0, 7.0, 'inflated', 'gap test');
     const gap = matrix.dimensions[0]!.gap_to_leader;
     assert.ok(gap > 0, `gap should now be positive; got ${gap}`);
+  });
+});
+
+// ── excludedDimensions filtering ─────────────────────────────────────────────
+
+describe('excludedDimensions', () => {
+  function makeDim(overrides: Partial<MatrixDimension> = {}): MatrixDimension {
+    return {
+      id: 'd', label: 'D', weight: 1.0, category: 'quality', frequency: 'medium',
+      scores: { self: 5.0, cursor: 9.0 },
+      gap_to_leader: 4.0, leader: 'cursor',
+      gap_to_closed_source_leader: 4.0, closed_source_leader: 'cursor',
+      gap_to_oss_leader: 0, oss_leader: 'unknown',
+      status: 'not-started', sprint_history: [], next_sprint_target: 7.0,
+      ...overrides,
+    };
+  }
+  function makeMatrix(dims: MatrixDimension[]): CompeteMatrix {
+    return {
+      project: 'TestProject',
+      competitors: ['cursor'],
+      lastUpdated: '2026-04-13T00:00:00.000Z',
+      overallSelfScore: 5.0,
+      dimensions: dims,
+    };
+  }
+
+  it('getNextSprintDimension skips excluded dimensions', () => {
+    const a = makeDim({ id: 'a', gap_to_leader: 5.0, weight: 2.0 });
+    const b = makeDim({ id: 'b', gap_to_leader: 3.0 });
+    const matrix = makeMatrix([a, b]);
+    matrix.excludedDimensions = ['a'];
+    const next = getNextSprintDimension(matrix);
+    assert.ok(next !== null);
+    assert.strictEqual(next!.id, 'b', 'should pick b because a is excluded');
+  });
+
+  it('getTopGapDimensions skips excluded dimensions', () => {
+    const a = makeDim({ id: 'a', gap_to_leader: 8.0, weight: 2.0, frequency: 'high' });
+    const b = makeDim({ id: 'b', gap_to_leader: 5.0 });
+    const matrix = makeMatrix([a, b]);
+    matrix.excludedDimensions = ['a'];
+    const top = getTopGapDimensions(matrix, 5);
+    assert.strictEqual(top.length, 1);
+    assert.strictEqual(top[0]!.id, 'b');
+  });
+
+  it('classifyDimensions skips excluded dimensions from both buckets', () => {
+    const a = makeDim({ id: 'a' });
+    const b = makeDim({ id: 'b', ceiling: 3.0, ceilingReason: 'human-bounded' });
+    const matrix = makeMatrix([a, b]);
+    matrix.excludedDimensions = ['a', 'b'];
+    const { achievable, atCeiling } = classifyDimensions(matrix, 9.0);
+    assert.strictEqual(achievable.length, 0);
+    assert.strictEqual(atCeiling.length, 0);
+  });
+
+  it('excludeDimension is idempotent and records lastUpdated', async () => {
+    const matrix = makeMatrix([makeDim({ id: 'x' })]);
+    const before = matrix.lastUpdated;
+    await new Promise(r => setTimeout(r, 5));
+    excludeDimension(matrix, 'x');
+    excludeDimension(matrix, 'x');
+    assert.deepStrictEqual(matrix.excludedDimensions, ['x']);
+    assert.notStrictEqual(matrix.lastUpdated, before);
+  });
+
+  it('includeDimension reverses a previous exclude', () => {
+    const matrix = makeMatrix([makeDim({ id: 'x' })]);
+    excludeDimension(matrix, 'x');
+    includeDimension(matrix, 'x');
+    assert.deepStrictEqual(matrix.excludedDimensions, []);
   });
 });

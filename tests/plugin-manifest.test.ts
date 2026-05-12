@@ -2,10 +2,14 @@
 // Ensures:
 //   1. plugin.json is valid JSON with required fields (name, version, mcpServers)
 //   2. mcpServers wires the danteforge MCP server with ${CLAUDE_PLUGIN_ROOT}
-//   3. All 11 core commands exist in .claude-plugin/commands/ with correct frontmatter
-//   4. Every core command has a name: danteforge-<cmd> prefix (namespace safety)
-//   5. Every core command has a non-empty description field
-//   6. CLI parity line present in each core command
+//   3. All 11 core commands exist in commands/ (the canonical Claude Code plugin
+//      command directory at the repo root) with correct frontmatter
+//   4. Every core command has a non-empty description field
+//   5. CLI parity line present in each core command
+//
+// Note: Claude Code namespaces plugin commands automatically (`/danteforge:<cmd>`),
+// so the per-file `name:` field is the BARE command name — no `danteforge-` prefix
+// needed (and adding one would double-namespace the slash command surface).
 
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
@@ -14,7 +18,10 @@ import path from 'node:path';
 
 const PLUGIN_DIR = path.resolve('.claude-plugin');
 const MANIFEST_PATH = path.join(PLUGIN_DIR, 'plugin.json');
-const COMMANDS_DIR = path.join(PLUGIN_DIR, 'commands');
+// Canonical command location — `.claude-plugin/commands/` was retired in favor
+// of repo-root `commands/` for both Claude Code plugin discovery AND cross-tool
+// skill export.
+const COMMANDS_DIR = path.resolve('commands');
 
 // The 11 core commands that MUST exist in .claude-plugin/commands/
 const CORE_PLUGIN_COMMANDS = [
@@ -115,36 +122,25 @@ describe('plugin.json manifest', () => {
 
 // ── Core command file existence ───────────────────────────────────────────────
 
-describe('.claude-plugin/commands/ — core command files', () => {
+describe('commands/ — core command files', () => {
   it('commands directory exists', async () => {
     const stat = await fs.stat(COMMANDS_DIR);
-    assert.ok(stat.isDirectory(), '.claude-plugin/commands/ must be a directory');
+    assert.ok(stat.isDirectory(), 'commands/ must be a directory');
   });
 
   for (const cmd of CORE_PLUGIN_COMMANDS) {
-    it(`${cmd}.md exists in .claude-plugin/commands/`, async () => {
+    it(`${cmd}.md exists in commands/`, async () => {
       const filePath = path.join(COMMANDS_DIR, `${cmd}.md`);
       const exists = await fs.access(filePath).then(() => true).catch(() => false);
-      assert.ok(exists, `.claude-plugin/commands/${cmd}.md must exist`);
+      assert.ok(exists, `commands/${cmd}.md must exist`);
     });
   }
 });
 
 // ── Command frontmatter validation ────────────────────────────────────────────
 
-describe('.claude-plugin/commands/ — frontmatter validation', () => {
+describe('commands/ — frontmatter validation', () => {
   for (const cmd of CORE_PLUGIN_COMMANDS) {
-    it(`${cmd}.md has name: danteforge-${cmd} frontmatter`, async () => {
-      const filePath = path.join(COMMANDS_DIR, `${cmd}.md`);
-      const content = await fs.readFile(filePath, 'utf8').catch(() => '');
-      const fm = parseFrontmatter(content);
-      assert.equal(
-        fm['name'],
-        `danteforge-${cmd}`,
-        `${cmd}.md must have frontmatter name: danteforge-${cmd} (got: ${fm['name']})`,
-      );
-    });
-
     it(`${cmd}.md has a non-empty description in frontmatter`, async () => {
       const filePath = path.join(COMMANDS_DIR, `${cmd}.md`);
       const content = await fs.readFile(filePath, 'utf8').catch(() => '');
@@ -166,30 +162,15 @@ describe('.claude-plugin/commands/ — frontmatter validation', () => {
   }
 });
 
-// ── Namespace safety ──────────────────────────────────────────────────────────
+// ── Coverage ──────────────────────────────────────────────────────────────────
 
-describe('.claude-plugin/commands/ — namespace safety', () => {
-  it('all plugin commands use danteforge- prefix to avoid conflicts', async () => {
-    const files = await fs.readdir(COMMANDS_DIR);
-    const mdFiles = files.filter(f => f.endsWith('.md'));
-
-    for (const file of mdFiles) {
-      const content = await fs.readFile(path.join(COMMANDS_DIR, file), 'utf8');
-      const fm = parseFrontmatter(content);
-      if (!fm['name']) continue; // skip files without frontmatter
-      assert.ok(
-        fm['name'].startsWith('danteforge-'),
-        `${file}: name "${fm['name']}" must start with "danteforge-" to avoid Claude Code namespace collisions`,
-      );
-    }
-  });
-
-  it('plugin command count meets minimum threshold (11 core + existing)', async () => {
+describe('commands/ — coverage', () => {
+  it('command count meets minimum threshold (11 core + existing)', async () => {
     const files = await fs.readdir(COMMANDS_DIR);
     const mdFiles = files.filter(f => f.endsWith('.md'));
     assert.ok(
       mdFiles.length >= 11,
-      `Expected at least 11 plugin commands, found ${mdFiles.length}`,
+      `Expected at least 11 plugin commands in commands/, found ${mdFiles.length}`,
     );
   });
 });

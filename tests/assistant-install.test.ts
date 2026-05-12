@@ -226,6 +226,36 @@ describe('assistant skill install', () => {
     assert.match(cursorRule, /danteforge harvest/);
   });
 
+  it('installs per-command Cursor rules alongside the bootstrap', async () => {
+    const homeDir = await makeTempDir('danteforge-home-');
+    const skillsDir = await makeTempDir('danteforge-skills-');
+    const projectDir = await makeTempDir('danteforge-project-');
+
+    await fs.mkdir(path.join(skillsDir, 'example-skill'), { recursive: true });
+    await fs.writeFile(
+      path.join(skillsDir, 'example-skill', 'SKILL.md'),
+      '---\nname: example-skill\ndescription: Example skill\n---\n\nBody\n',
+      'utf8',
+    );
+
+    const { installAssistantSkills } = await import('../src/core/assistant-installer.js');
+    await installAssistantSkills({
+      homeDir, skillsDir, projectDir, assistants: ['cursor'],
+    });
+
+    const rulesDir = path.join(projectDir, '.cursor', 'rules');
+    const installed = await fs.readdir(rulesDir);
+    assert.ok(installed.includes('danteforge.mdc'), 'bootstrap rule installed');
+    const perCommand = installed.filter(name => name.startsWith('danteforge-') && name.endsWith('.mdc'));
+    assert.ok(perCommand.length > 5, `expected several danteforge-<cmd>.mdc files, got ${perCommand.length}`);
+    // Spot-check one we know exists in commands/ at repo root
+    if (installed.includes('danteforge-matrixdev.mdc')) {
+      const body = await fs.readFile(path.join(rulesDir, 'danteforge-matrixdev.mdc'), 'utf8');
+      assert.match(body, /alwaysApply: false/);
+      assert.match(body, /Matrix Kernel loop/i);
+    }
+  });
+
   it('exports a setupAssistants command', async () => {
     const { setupAssistants } = await import('../src/cli/commands/setup-assistants.js');
     assert.strictEqual(typeof setupAssistants, 'function');

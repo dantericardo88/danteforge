@@ -137,12 +137,25 @@ DanteForge exposes an MCP server that connects to any AI assistant:
 
 - **Claude Code** — full MCP integration + plugin manifest + slash commands
 - **Codex CLI** — native workflow slash commands via `~/.codex/commands`
-- **Cursor** — MCP server + `.cursor/mcp.json` config
-- **Windsurf** — MCP server via stdio
+- **Cursor** — MCP server + `.cursor/mcp.json` config + per-command rule files
+- **Windsurf** — MCP server via stdio + per-command rule files
 
 ```json
 { "danteforge": { "command": "danteforge", "args": ["mcp-server"] } }
 ```
+
+### Use the repo as a cross-tool skills library
+
+Every slash command in `commands/` and every skill in `src/harvested/dante-agents/skills/` installs into your favorite assistant with one call:
+
+```bash
+danteforge setup assistants --assistants all
+# Installs to ~/.claude/skills, ~/.codex/skills + ~/.codex/commands,
+# .cursor/rules/danteforge-<cmd>.mdc, .windsurf/rules/danteforge-<cmd>.md,
+# .openhands/microagents, .github/copilot-instructions.md, and more.
+```
+
+After this runs, `/matrixdev`, `/inferno`, `/compete`, and the full DanteForge slash-command surface are available natively in each tool. Re-run after a `git pull` to sync updates.
 
 ---
 

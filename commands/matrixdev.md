@@ -83,15 +83,24 @@ danteforge matrix-kernel report
 
 Read the final markdown report path from the report command's output and SHOW the path to the user so they can open it.
 
+## Autonomous defaults (no-prompt behavior)
+
+`/matrixdev` defaults to **autonomous mode**: probe → pick adapter → dispatch → run all courts → emit report, without asking the user to confirm anything. Only ask if the user explicitly passed `--ask`.
+
+When the compete-matrix has an `excludedDimensions` list, those dimensions are already filtered out by the engine before work-packet generation reaches you — no manual policing needed. If the user wants to permanently skip a dimension, run `danteforge compete --exclude <dim_id>` once and it sticks across sessions.
+
+Treat `Safe agents now: 0` AS NON-BLOCKING when every wave contains exactly one packet (single-packet waves are trivially safe — the parallelism counter only matters when waves have ≥2 packets). Still bail out if `Blocked packets > 0` because that signals a real protected-path or ownership violation.
+
 ## Argument parsing
 
 The slash command may be invoked with:
 
-- `/matrixdev` — full auto, all defaults
-- `/matrixdev <objective>` — full auto; pass the objective as a one-shot context hint (use it in messages back to the user, not in the kernel CLI since work packets come from the compete-matrix)
+- `/matrixdev` — **full auto, all defaults** (no prompts; pick first available adapter)
+- `/matrixdev <objective>` — full auto; pass the objective as a one-shot context hint
 - `/matrixdev --adapter <name>` — override adapter
 - `/matrixdev --max-agents <n>` — override the simulate count (default 5)
-- `/matrixdev --safe` — use `--adapter fake` no matter what (for dry-run validation of the kernel pipeline without spawning any CLI)
+- `/matrixdev --safe` — use `--adapter fake` no matter what (dry-run validation; no LLM spend)
+- `/matrixdev --ask` — explicitly opt into the old confirmation-per-step flow
 - `/matrixdev --status` — just run `matrix-kernel status` and report; don't dispatch
 
 ## Output format
@@ -126,9 +135,9 @@ Report: .danteforge/matrix/matrix.final-report.md
 Bail out early (and tell the user) if:
 
 - No `compete-matrix.json` exists at `.danteforge/compete/matrix.json` — tell the user to run `danteforge init` or `danteforge compete --calibrate` first
-- The synthesize-dimensions step produced 0 dimensions — same fix
+- The synthesize-dimensions step produced 0 dimensions (which now also happens when *every* dimension is excluded — same fix path: run `danteforge compete --include <dim>` to re-enable one)
 - The user invoked with `--adapter claude` but `claude --version` exits non-zero — tell them to install Claude Code or pick a different adapter
-- Simulate reports `Safe agents now: 0` AND `Blocked packets > 0` — there's a conflict; tell the user and don't dispatch
+- Simulate reports `Blocked packets > 0` — that signals a real protected-path or ownership violation; surface the affected paths and don't dispatch. (Note: `Safe agents now: 0` on its own is not a blocker — single-packet waves can still run sequentially.)
 
 ## What it does NOT do
 

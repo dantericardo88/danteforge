@@ -67,10 +67,36 @@ const WORKFLOW_COMMANDS = [
   // Existing CLI commands that were missing their slash command files
   'proof',
   'ascend',
+  // Migrated from the retired .claude-plugin/commands/ directory (now canonical
+  // in commands/ for both Claude Code plugin discovery and cross-tool export)
+  'ci-report',
+  'dossier',
+  'external-validate',
+  'flow',
+  'guide',
+  'import-patterns',
+  'mutation-score',
+  'outcome-check',
+  'self-assess',
+  'self-mutate',
+  'share-patterns',
+  // Matrix Kernel slash commands
+  'matrix-kernel',
+  'matrixdev',
 ];
 
-// Commands that have slash command files but no CLI equivalent (documentation-only flows).
-const SLASH_ONLY = ['brainstorm', 'daily-driver', 'oss-harvest', 'multi-agent', 'spec-to-ship', 'competitive-leapfrog'];
+// Commands that have slash command files but are auxiliary or slash-only (documentation,
+// reporting, or workflow-meta commands that do not need to be promoted in every
+// cross-tool bootstrap rule). They still must have a commands/*.md file and frontmatter.
+const SLASH_ONLY = [
+  'brainstorm', 'daily-driver', 'oss-harvest', 'multi-agent', 'spec-to-ship', 'competitive-leapfrog',
+  // Auxiliary migrated commands — exist as slash entries, not headline workflow steps:
+  'ci-report', 'dossier', 'external-validate', 'flow', 'guide', 'import-patterns',
+  'mutation-score', 'outcome-check', 'self-assess', 'self-mutate', 'share-patterns',
+  // Matrix Kernel commands — covered by the matrix-kernel section of bootstrap rules
+  // (or invoked autonomously via /matrixdev) rather than listed individually.
+  'matrix-kernel', 'matrixdev',
+];
 
 // Commands intentionally NOT registered as slash commands (utilities/config).
 const UTILITY_COMMANDS = [

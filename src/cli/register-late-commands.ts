@@ -369,6 +369,8 @@ program
   .option('--auto', 'Run autonomous sprint+rescore loop (up to 5 cycles, stops when all gaps closed)')
   .option('--remove-competitor <name>', 'Remove a competitor from the matrix and recompute gaps')
   .option('--drop-dimension <id>', 'Remove a scoring dimension from the matrix')
+  .option('--exclude <id>', 'De-prioritize a dimension: sprint/work-packet/gap-rank engines skip it but scoring continuity is preserved')
+  .option('--include <id>', 'Reverse a previous --exclude: re-enable the dimension for sprints and work-packets')
   .option('--amend <dim_score>', 'Manually set a market dim self-score: dim_id=score (0â€“10), e.g. "semantic_memory=5.5"')
   .option('--amend-file <path>', 'Batch-update market dim scores from a JSON file: { "dim_id": score, ... }')
   .option('--edit', 'Interactive matrix amendment session')
@@ -403,6 +405,8 @@ program
           amendFile: opts.amendFile as string | undefined,
           removeCompetitor: opts.removeCompetitor as string | undefined,
           dropDimension: opts.dropDimension as string | undefined,
+          excludeDimension: opts.exclude as string | undefined,
+          includeDimension: opts.include as string | undefined,
           edit: opts.edit as boolean | undefined,
           calibrate: opts.calibrate as boolean | undefined,
           yes: opts.yes as boolean | undefined,

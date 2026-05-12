@@ -49,9 +49,10 @@ export async function synthesizeDimensions(
     };
   }
 
-  const nodes: DimensionGraphNode[] = matrix.dimensions.map(dim =>
-    convertDimension(dim, targetScore, options.projectGraph),
-  );
+  const excluded = new Set(matrix.excludedDimensions ?? []);
+  const nodes: DimensionGraphNode[] = matrix.dimensions
+    .filter(dim => !excluded.has(dim.id))
+    .map(dim => convertDimension(dim, targetScore, options.projectGraph));
 
   const competitors = buildCompetitorList(matrix);
 

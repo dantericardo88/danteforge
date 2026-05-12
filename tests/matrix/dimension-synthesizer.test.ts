@@ -124,6 +124,14 @@ describe('synthesizeDimensions', () => {
     assert.ok(speed.touches.length >= 1, `expected ≥1 touched node, got ${speed.touches.length}`);
     assert.ok(speed.touches.some(t => t.includes('workflow-speed')));
   });
+
+  it('skips dimensions listed in matrix.excludedDimensions', async () => {
+    const matrix = fixtureMatrix();
+    matrix.excludedDimensions = ['core_feature_x'];
+    const graph = await synthesizeDimensions({ _loadMatrix: async () => matrix });
+    assert.equal(graph.nodes.length, 1, 'one dimension excluded');
+    assert.equal(graph.nodes[0]!.dimensionId, 'workflow_speed');
+  });
 });
 
 // ── writeDimensionGraph ────────────────────────────────────────────────────

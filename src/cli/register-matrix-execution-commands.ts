@@ -166,6 +166,7 @@ function registerVerify(matrix: Command): void {
         return;
       }
 
+      logger.info(`[matrix-kernel] Verifying ${candidates.length} lease(s)...`);
       const gateReports: unknown[] = [];
       for (const lease of candidates) {
         const packet = workGraph.packets.find(p => p.id === lease.workPacketId);
@@ -174,6 +175,7 @@ function registerVerify(matrix: Command): void {
           logger.warn(`[matrix-kernel] Skipping ${lease.id} (missing packet or run)`);
           continue;
         }
+        logger.info(`  → ${lease.id}`);
         const report = await reviewBranch({
           lease: lease as never,
           workPacket: packet as never,
@@ -183,7 +185,7 @@ function registerVerify(matrix: Command): void {
         });
         gateReports.push(report);
         const icon = report.status === 'passed' ? '✓' : report.status === 'failed' ? '✗' : '⚠';
-        logger.info(`  ${icon} ${lease.id} → ${report.status}`);
+        logger.info(`    ${icon} ${report.status}`);
       }
       const existing = (await loadGraph<{ reports: unknown[] }>(cwd, 'gateReports'))?.reports ?? [];
       await saveGraph(cwd, 'gateReports', { generatedAt: new Date().toISOString(), reports: [...existing, ...gateReports] });

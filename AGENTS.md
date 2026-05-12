@@ -80,7 +80,57 @@ wrapper `npm run dimension:ascent`. Default merge policy is `harsh-min`, so
 skeptical downgrades win over optimistic stale writes. The agent guard fails
 direct matrix edits unless a Matrix Development merge receipt is present.
 
+### Dimension exclusion (de-prioritization, not removal)
+
+Per-project user preference to skip a dimension across sprints, work-packet
+generation, and gap-rank reporting:
+
+```bash
+danteforge compete --exclude <dim_id>   # de-prioritize, keep in matrix for scoring
+danteforge compete --include <dim_id>   # reverse
+```
+
+The list is persisted as `excludedDimensions: string[]` in `matrix.json`. The
+`matrix-kernel work-packets` engine, `getNextSprintDimension`, `getTopGapDimensions`,
+and `classifyDimensions` all consult this list. Use `--exclude` (not
+`--drop-dimension`) when the dimension should still count for scoring continuity
+but agents should never auto-target it.
+
 See `docs/MATRIX_DEVELOPMENT_ENGINE.md`.
+
+## Cross-Tool Skill + Command Distribution
+
+This repo doubles as a skills library for Claude Code, Codex, Cursor, Windsurf,
+Aider, OpenHands, Copilot, Continue, and Gemini CLI. Every file under `commands/`
+becomes both a Claude Code slash command (canonical path) AND a per-tool rule
+file when users run `danteforge setup assistants --assistants all`. The
+installer:
+
+- Copies `commands/*.md` to `~/.codex/commands/` (Codex native slash commands)
+- Writes each command as `.cursor/rules/danteforge-<name>.mdc` with
+  `alwaysApply: false`
+- Writes each command as `.windsurf/rules/danteforge-<name>.md` with a derived
+  name/description header
+- Ships every `src/harvested/dante-agents/skills/<name>/SKILL.md` to each tool's
+  skills directory
+
+**Authoring contract:** new slash commands live in `commands/`, NOT in
+`.claude-plugin/commands/` (that directory was retired — Claude Code's plugin
+discovery reads from `commands/` at the plugin root). Every command file must
+carry a frontmatter header with `name:` and `description:` so the per-tool
+exporters can derive correct metadata.
+
+## Autonomous `/matrixdev`
+
+`/matrixdev` defaults to autonomous mode: probe adapter (claude → codex →
+ollama → fake), dispatch wave 1, run all courts, emit report — no per-step
+confirmations. Pass `--ask` to opt into the old prompt-per-step flow, or
+`--safe` to force the fake adapter for a dry-run validation.
+
+The `Safe agents now: 0` warning is treated as non-blocking when each wave
+contains exactly one packet (single-packet waves are trivially safe). Hard
+blockers (`Blocked packets > 0`, protected-path violations, ownership
+violations) still halt dispatch.
 
 ## Definition Of Done
 
