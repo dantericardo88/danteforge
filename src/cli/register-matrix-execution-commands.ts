@@ -63,9 +63,30 @@ function registerRunWave(matrix: Command): void {
       }
 
       const ownershipMap = await loadOwnershipMap({ cwd });
-      const newLeases: unknown[] = [];
-      const agentRuns: unknown[] = [];
 
+      // Build adapter for one work packet. Factored out so we can dispatch
+      // the whole wave in parallel via Promise.all without duplicating logic.
+      const makeAdapter = (packet: { id: string }) => {
+        switch (adapterKind) {
+          case 'claude': return new ClaudeCodeAdapter({ workPacket: packet as never });
+          case 'codex':  return new CodexAdapter({ workPacket: packet as never });
+          case 'claude-api': return new AnthropicAPIAdapter({ workPacket: packet as never });
+          case 'codex-api': return new OpenAIAPIAdapter({ workPacket: packet as never });
+          case 'gemini': return new GeminiAdapter({ workPacket: packet as never });
+          case 'grok':   return new GrokAdapter({ workPacket: packet as never });
+          case 'dantecode': return new DanteCodeAdapter({ workPacket: packet as never });
+          case 'ollama': return new LLMAgentAdapter({ workPacket: packet as never, provider: 'ollama', providerLabel: 'ollama' });
+          case 'together': return new LLMAgentAdapter({ workPacket: packet as never, provider: 'together', providerLabel: 'together' });
+          case 'groq': return new LLMAgentAdapter({ workPacket: packet as never, provider: 'groq', providerLabel: 'groq' });
+          case 'mistral': return new LLMAgentAdapter({ workPacket: packet as never, provider: 'mistral', providerLabel: 'mistral' });
+          default:       return new FakeAgentAdapter({ action: 'success' });
+        }
+      };
+
+      // Pre-create leases sequentially so logs interleave cleanly and so we
+      // surface "packet not found" errors before any subprocess launches.
+      type DispatchEntry = { lease: ReturnType<typeof createLease>; packet: typeof workGraph.packets[number] };
+      const dispatchQueue: DispatchEntry[] = [];
       for (const packetId of wave.workPacketIds) {
         const packet = workGraph.packets.find(p => p.id === packetId);
         if (!packet) {
@@ -79,31 +100,26 @@ function registerRunWave(matrix: Command): void {
           ownershipMap,
           cwd,
         });
-        // Use the worktreePath as a plain directory for MVP (no real git worktree)
         await fs.mkdir(lease.worktreePath, { recursive: true });
-        newLeases.push(lease);
+        dispatchQueue.push({ lease, packet });
         logger.info(`[matrix-kernel] Issued lease ${lease.id} (provider=${adapterKind})`);
-
-        const adapter = (() => {
-          switch (adapterKind) {
-            case 'claude': return new ClaudeCodeAdapter({ workPacket: packet as never });
-            case 'codex':  return new CodexAdapter({ workPacket: packet as never });
-            case 'claude-api': return new AnthropicAPIAdapter({ workPacket: packet as never });
-            case 'codex-api': return new OpenAIAPIAdapter({ workPacket: packet as never });
-            case 'gemini': return new GeminiAdapter({ workPacket: packet as never });
-            case 'grok':   return new GrokAdapter({ workPacket: packet as never });
-            case 'dantecode': return new DanteCodeAdapter({ workPacket: packet as never });
-            case 'ollama': return new LLMAgentAdapter({ workPacket: packet as never, provider: 'ollama', providerLabel: 'ollama' });
-            case 'together': return new LLMAgentAdapter({ workPacket: packet as never, provider: 'together', providerLabel: 'together' });
-            case 'groq': return new LLMAgentAdapter({ workPacket: packet as never, provider: 'groq', providerLabel: 'groq' });
-            case 'mistral': return new LLMAgentAdapter({ workPacket: packet as never, provider: 'mistral', providerLabel: 'mistral' });
-            default:       return new FakeAgentAdapter({ action: 'success' });
-          }
-        })();
-        const result = await runAdapter(adapter, { lease, cwd: lease.worktreePath });
-        agentRuns.push(result);
-        logger.info(`  ${result.status === 'completed' ? '✓' : '✗'} ${lease.id}: ${result.status} (${result.filesChanged.length} file(s))`);
       }
+
+      logger.info(`[matrix-kernel] Dispatching ${dispatchQueue.length} agent(s) in parallel...`);
+      const dispatched = await Promise.all(dispatchQueue.map(async ({ lease, packet }) => {
+        const adapter = makeAdapter(packet);
+        try {
+          const result = await runAdapter(adapter, { lease, cwd: lease.worktreePath });
+          logger.info(`  ${result.status === 'completed' ? '✓' : '✗'} ${lease.id}: ${result.status} (${result.filesChanged.length} file(s))`);
+          return { lease, result };
+        } catch (err) {
+          logger.warn(`  ✗ ${lease.id}: adapter threw ${String(err)}`);
+          return { lease, result: null };
+        }
+      }));
+
+      const newLeases: unknown[] = dispatched.map(d => d.lease);
+      const agentRuns: unknown[] = dispatched.flatMap(d => (d.result ? [d.result] : []));
 
       // Persist leases + agent runs
       const existingLeases = (await loadGraph<{ leases: unknown[] }>(cwd, 'leaseGraph'))?.leases ?? [];
