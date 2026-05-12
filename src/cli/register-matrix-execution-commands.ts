@@ -24,14 +24,17 @@ function registerRunWave(matrix: Command): void {
     .command('run-wave <waveNumber>')
     .description('Execute a planned wave: create leases + worktrees + dispatch agents')
     .option('--cwd <path>', 'Project root')
-    .option('--adapter <kind>', 'Agent adapter: fake | claude (default: fake)')
-    .option('--max-tokens <n>', 'Per-agent LLM token cap for claude adapter', parseInt)
+    .option('--adapter <kind>', 'Agent adapter: fake | claude | codex | gemini | grok (default: fake)')
+    .option('--max-tokens <n>', 'Per-agent LLM token cap', parseInt)
     .action(async (waveNumber: string, opts) => runSafely('matrix-kernel:run-wave', async () => {
       const { loadGraph, saveGraph, ensureMatrixDir } = await import('../matrix/engines/matrix-state.js');
       const { loadOwnershipMap } = await import('../matrix/engines/ownership-map.js');
       const { createLease } = await import('../matrix/engines/lease-manager.js');
       const { FakeAgentAdapter } = await import('../matrix/adapters/fake-agent-adapter.js');
       const { ClaudeCodeAdapter } = await import('../matrix/adapters/claude-code-adapter.js');
+      const { CodexAdapter } = await import('../matrix/adapters/codex-adapter.js');
+      const { GeminiAdapter } = await import('../matrix/adapters/gemini-adapter.js');
+      const { GrokAdapter } = await import('../matrix/adapters/grok-adapter.js');
       const { runAdapter } = await import('../matrix/adapters/adapter-interface.js');
       const path = await import('node:path');
       const fs = await import('node:fs/promises');
@@ -67,7 +70,7 @@ function registerRunWave(matrix: Command): void {
         }
         const lease = createLease({
           workPacket: packet as never,
-          provider: adapterKind === 'claude' ? 'claude' : 'fake',
+          provider: adapterKind,
           agentRole: 'dimension-engineer',
           ownershipMap,
           cwd,
@@ -77,9 +80,15 @@ function registerRunWave(matrix: Command): void {
         newLeases.push(lease);
         logger.info(`[matrix-kernel] Issued lease ${lease.id} (provider=${adapterKind})`);
 
-        const adapter = adapterKind === 'claude'
-          ? new ClaudeCodeAdapter({ workPacket: packet as never })
-          : new FakeAgentAdapter({ action: 'success' });
+        const adapter = (() => {
+          switch (adapterKind) {
+            case 'claude': return new ClaudeCodeAdapter({ workPacket: packet as never });
+            case 'codex':  return new CodexAdapter({ workPacket: packet as never });
+            case 'gemini': return new GeminiAdapter({ workPacket: packet as never });
+            case 'grok':   return new GrokAdapter({ workPacket: packet as never });
+            default:       return new FakeAgentAdapter({ action: 'success' });
+          }
+        })();
         const result = await runAdapter(adapter, { lease, cwd: lease.worktreePath });
         agentRuns.push(result);
         logger.info(`  ${result.status === 'completed' ? '✓' : '✗'} ${lease.id}: ${result.status} (${result.filesChanged.length} file(s))`);

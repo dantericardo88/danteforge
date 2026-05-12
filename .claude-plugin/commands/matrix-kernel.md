@@ -27,9 +27,9 @@ danteforge matrix-kernel status                  # show current report inventory
 danteforge matrix-kernel leases-list             # list current leases
 ```
 
-**Execution loop (Phase 13a — wired to CLI):**
+**Execution loop (Phase 13a + 13b — wired to CLI):**
 ```bash
-danteforge matrix-kernel run-wave 1 [--adapter fake|claude]   # dispatch a planned wave
+danteforge matrix-kernel run-wave 1 [--adapter fake|claude|codex|gemini|grok]   # dispatch a planned wave
 danteforge matrix-kernel verify <leaseId> [--all]             # Verification Court
 danteforge matrix-kernel red-team <leaseId> [--mock]          # adversarial review (live LLM by default)
 danteforge matrix-kernel taste-gate <leaseId>                 # detect UX-change requiring approval
