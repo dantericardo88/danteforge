@@ -230,11 +230,19 @@ export class ClaudeCodeAdapter implements AgentAdapter {
       }
 
       const spawnFn: ClaudeSpawnFn = this.options._spawn ?? ((c, a, o) => spawn(c, a, o));
-      const exitCode = await runChild(spawnFn, state.binaryUsed, args,
+      // On Windows, .cmd shims need cmd.exe wrapping to avoid arg mangling.
+      const usesCmdShim = this._resolvedUsesShell && process.platform === 'win32';
+      const [cmd, finalArgs] = usesCmdShim
+        ? ['cmd.exe', ['/c', state.binaryUsed, ...args]] as const
+        : [state.binaryUsed, args] as const;
+      const exitCode = await runChild(spawnFn, cmd, [...finalArgs],
         {
-          cwd: worktreeRoot,
+          // Normalize backslash → forward-slash on Windows; backslash cwd
+          // breaks node's spawn cmd.exe path resolution (see codex-adapter).
+          cwd: normalizeCwd(worktreeRoot),
           env: { ...process.env, ...(state.input.env ?? {}) },
-          shell: this._resolvedUsesShell,
+          shell: false,
+          stdio: ['ignore', 'pipe', 'pipe'],
         },
         this.options.timeoutMs ?? DEFAULT_TIMEOUT_MS,
       );
@@ -349,6 +357,12 @@ async function defaultRevertFile(cwd: string, file: string): Promise<void> {
 
 // ── Process plumbing ───────────────────────────────────────────────────────
 
+/** Forward-slash a Windows path. Backslash cwd breaks node's spawn
+ *  cmd.exe path resolution on Windows; forward slashes work. */
+function normalizeCwd(p: string): string {
+  return process.platform === 'win32' ? p.replace(/\\/g, '/') : p;
+}
+
 /** Returns a list of binary names to try in order.
  *
  * On Windows, npm-installed CLIs are exposed as `<name>.cmd` shims; node's
@@ -381,6 +395,10 @@ function runChild(
       try { child.kill('SIGTERM'); } catch { /* ignore */ }
       settle(124);
     }, timeoutMs);
+    // Drain stdout/stderr so OS pipe buffers don't fill and deadlock the
+    // child. We don't need the content; git diff is the source of truth.
+    child.stdout?.on('data', () => { /* drain */ });
+    child.stderr?.on('data', () => { /* drain */ });
     child.on('close', (code) => settle((code ?? 1) as number));
     child.on('error', () => settle(1));
   });

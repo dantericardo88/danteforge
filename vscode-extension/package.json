@@ -128,11 +128,16 @@
     "package:vsix": "node -e \"require('fs').mkdirSync('.artifacts',{recursive:true})\" && vsce package --no-dependencies --out .artifacts/danteforge.vsix",
     "publish:vsce": "vsce publish",
     "publish:ovsx": "ovsx publish .artifacts/danteforge.vsix",
-    "verify": "npm run build && npm run package:vsix"
+    "verify": "npm run build && npm run package:vsix",
+    "test:e2e": "npm run build && node dist/test/runTest.js"
   },
   "devDependencies": {
+    "@types/mocha": "^10.0.10",
+    "@types/node": "^25.7.0",
     "@types/vscode": "^1.85.0",
+    "@vscode/test-electron": "^2.4.1",
     "@vscode/vsce": "2.25.0",
+    "mocha": "^11.7.5",
     "ovsx": "0.9.4",
     "typescript": "^5.7.2"
   },

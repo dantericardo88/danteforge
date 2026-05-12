@@ -181,11 +181,23 @@ export class CodexAdapter implements AgentAdapter {
       const prompt = buildCodexPrompt(state.workPacket, lease);
 
       const spawnFn: CodexSpawnFn = this.options._spawn ?? ((c, a, o) => spawn(c, a, o));
-      const exitCode = await runChild(spawnFn, state.binaryUsed, ['exec', prompt],
+      // On Windows, .cmd shims can't be passed long prompts via `shell: true`
+      // because cmd.exe mangles whitespace + special chars in the args. Invoke
+      // through `cmd.exe /c <binary> <args>` so cmd.exe handles quoting itself.
+      const usesCmdShim = this._resolvedUsesShell && process.platform === 'win32';
+      const [cmd, args] = usesCmdShim
+        ? ['cmd.exe', ['/c', state.binaryUsed, 'exec', prompt]] as const
+        : [state.binaryUsed, ['exec', prompt]] as const;
+      const exitCode = await runChild(spawnFn, cmd, [...args],
         {
-          cwd: worktreeRoot,
+          // Normalize backslash → forward-slash on Windows. With a backslash
+          // cwd, node's spawn fails to find cmd.exe (ENOENT on C:\WINDOWS\…
+          // even though the path is correct). Empirically, forward slashes
+          // work. This bit me for hours on Phase 14d smoke.
+          cwd: normalizeCwd(worktreeRoot),
           env: { ...process.env, ...(state.input.env ?? {}) },
-          shell: this._resolvedUsesShell,
+          shell: false,
+          stdio: ['ignore', 'pipe', 'pipe'],
         },
         this.options.timeoutMs ?? DEFAULT_TIMEOUT_MS,
       );
@@ -289,6 +301,13 @@ async function defaultRevertFile(cwd: string, file: string): Promise<void> {
   });
 }
 
+/** Forward-slash a Windows path. Workaround for a node spawn bug where a
+ *  backslash cwd causes `cmd.exe` to be unresolvable (ENOENT on its own
+ *  absolute path). Forward slashes work; same string, different bytes. */
+function normalizeCwd(p: string): string {
+  return process.platform === 'win32' ? p.replace(/\\/g, '/') : p;
+}
+
 /** Returns a list of binary names to try in order.
  *
  * On Windows, npm-installed CLIs are exposed as `<name>.cmd` shims; node's
@@ -321,6 +340,9 @@ function runChild(
       try { child.kill('SIGTERM'); } catch { /* ignore */ }
       settle(124);
     }, timeoutMs);
+    // Drain stdout/stderr so OS pipe buffers don't fill and deadlock the child.
+    child.stdout?.on('data', () => { /* drain */ });
+    child.stderr?.on('data', () => { /* drain */ });
     child.on('close', (code) => settle((code ?? 1) as number));
     child.on('error', () => settle(1));
   });
