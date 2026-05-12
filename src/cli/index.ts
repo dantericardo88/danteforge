@@ -13,6 +13,7 @@ import { enforceWorkflow } from '../core/workflow-enforcer.js';
 import { formatAndLogError } from '../core/format-error.js';
 import { registerLateCommands } from './register-late-commands.js';
 import { registerDossierCommands } from './register-dossier-commands.js';
+import { registerMatrixCommands } from './register-matrix-commands.js';
 import { registerCoreCommands } from './register-core-commands.js';
 
 const program = new Command();
@@ -661,6 +662,7 @@ Run "danteforge init" to set up a new project.
 
 registerLateCommands(program, C);
 registerDossierCommands(program, C);
+registerMatrixCommands(program);
 
 // Hide non-canonical commands from default --help.
 // The 12 canonical commands + utility commands stay visible.
