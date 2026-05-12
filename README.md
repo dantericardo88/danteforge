@@ -25,6 +25,7 @@ A blacksmith doesn't create iron. They source the best ore, understand its prope
 - **Your product is the sword.** Purpose-built, sharp, yours.
 - **The Time Machine is the memory of every strike.** Every decision recorded, every branch preserved, every alternate blade possible.
 - **Ascend is the parallel forge.** Smelt three blades simultaneously from the same ore. Pick the sharpest. Combine the best edges into the optimal fourth.
+- **The Matrix Kernel is the forge of forges.** A closed-loop verified multi-agent engineering control plane: maps the project, decomposes work into packets, simulates safe parallelism, leases isolated agents in worktrees, verifies every claim, and merges only what passed every gate. Run `danteforge matrix-kernel simulate --max-agents 10` to see how many agents could safely work in parallel on your repo.
 
 ---
 

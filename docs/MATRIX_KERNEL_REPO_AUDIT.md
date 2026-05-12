@@ -1,5 +1,13 @@
 # Matrix Kernel — Phase 0 Repo Audit
 
+> **Status: Historical** (May 11, 2026). This audit informed the Matrix Kernel
+> MVP build (Phases 0–12, shipped in PR #2). Some specific reuse claims
+> drifted during implementation — for example, the Dependency Graph builder
+> ended up implementing Kahn's algorithm generically over packet IDs rather
+> than reusing `agent-dag.ts:computeExecutionLevels` (which is `AgentRole`-typed
+> and not directly applicable). Refer to the actual code in `src/matrix/` for
+> ground truth. This document is preserved as the design-time decision log.
+
 > Audit date: 2026-05-11
 > Audited against: DanteForge Matrix Kernel PRD (v1, sections 1–32)
 > Auditor: Claude Code (autonomous /loop pass)

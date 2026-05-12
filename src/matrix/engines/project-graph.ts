@@ -13,6 +13,7 @@ import path from 'node:path';
 import { inspectSourceFileSizes } from '../../core/file-size-hygiene.js';
 import { buildSymbolGraph } from '../../core/sanitize-boundary.js';
 import { loadFrozenFiles } from '../../core/sanitize-locks.js';
+import { matchesAnyGlob } from '../util/glob.js';
 import type {
   ProjectGraph,
   ProjectGraphNode,
@@ -231,20 +232,3 @@ function findOwnerWorkstream(
   return undefined;
 }
 
-function matchesAnyGlob(filePath: string, globs: string[]): boolean {
-  const normalized = filePath.replace(/\\/g, '/');
-  for (const g of globs) {
-    const re = globToRegex(g.replace(/\\/g, '/'));
-    if (re.test(normalized)) return true;
-  }
-  return false;
-}
-
-function globToRegex(glob: string): RegExp {
-  const escaped = glob
-    .replace(/[.+^${}()|[\]\\]/g, '\\$&')
-    .replace(/\*\*/g, '___DOUBLESTAR___')
-    .replace(/\*/g, '[^/]*')
-    .replace(/___DOUBLESTAR___/g, '.*');
-  return new RegExp(`^${escaped}$`);
-}

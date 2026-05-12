@@ -33,6 +33,7 @@ a session-persistent guide file you can load with `@.danteforge/GUIDE.md`.
 
 - `src/cli/` - Commander.js CLI with 103+ commands
 - `src/core/` - State (YAML), config, LLM client, gates, skills, logger, handoff, prompt builder, token estimator, MCP adapter
+- `src/matrix/` - **Matrix Kernel** — closed-loop verified multi-agent engineering control plane (see section below)
 - `src/harvested/gsd/` - Wave executor, context-rot hooks, XML utils
 - `src/harvested/spec/` - Clarify engine, templates
 - `src/harvested/dante-agents/` - 5 agent roles, party mode, skills/, help engine
@@ -42,6 +43,26 @@ a session-persistent guide file you can load with `@.danteforge/GUIDE.md`.
 - `lib/` - JS skill discovery for plugin runtime
 - `vscode-extension/` - VS Code integration (shells out to CLI)
 - `.claude-plugin/` - Claude Code plugin manifest
+
+## Matrix Kernel (`src/matrix/`)
+
+DanteForge's substrate for coordinating many AI agents in parallel without losing truth, architecture, or control. Implements the **Observe → Map → Decompose → Simulate → Lease → Execute → Verify → Merge → Rescore → Learn → Repeat** loop with constitutional discipline: agents propose, DanteForge disposes.
+
+**MVP status:** Phases 0–12 shipped, Golden Flow integration test passing, planning-loop CLI wired. Phase 13 (real Codex/Claude Code/DanteCode adapters) and Phase 14 (VS Code War Room) are follow-up passes.
+
+**Surfaces:**
+- CLI: `danteforge matrix-kernel <init|map-project|synthesize-dimensions|work-packets|simulate|status|leases-list>`
+- Types: `src/matrix/types/*` (six graphs + courts + reports)
+- Engines: `src/matrix/engines/*` (project graph, dimension synth, work packets, dependency graph, ownership, lease, conflict radar, simulation, retrospective, report generator)
+- Courts: `src/matrix/courts/*` (verification, no-stub scan, red-team, taste-gate, merge-court)
+- Adapters: `src/matrix/adapters/*` (interface, fake, generic-shell — real adapters deferred)
+- Util: `src/matrix/util/glob.ts` (shared glob matcher)
+- **Load-bearing test:** `tests/matrix-golden-flow.test.ts` — 18 assertions covering the entire MVP loop
+
+**Reuse map** (per `docs/MATRIX_KERNEL_REPO_AUDIT.md`, marked historical):
+The Matrix Kernel reuses Time Machine + DecisionNode + proof engine + `worktree.ts:createAgentWorktree` + `sanitize-locks.withFileLock` + `compete-matrix.ts:loadMatrix` + `matrix-development-engine.ts` merge logic + `sanitize-boundary.ts:buildSymbolGraph`. Avoid duplicating these primitives.
+
+**Naming note:** The Matrix Kernel CLI parent is `matrix-kernel` (not `matrix`) to avoid colliding with the legacy `matrix` command (claim/propose/merge — exposed by `src/cli/commands/matrix.ts` over `matrix-development-engine.ts`). Resolution of the parent-command collision is deferred to a follow-up pass.
 
 ## Key Patterns
 

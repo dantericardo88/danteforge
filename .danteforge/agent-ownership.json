@@ -85,6 +85,21 @@
       "shared": [
         "package.json"
       ]
+    },
+    "matrix-kernel": {
+      "owned": [
+        "src/matrix/**",
+        "tests/matrix/**",
+        "tests/matrix-golden-flow.test.ts",
+        "src/cli/register-matrix-commands.ts",
+        ".claude-plugin/commands/matrix-kernel.md",
+        "docs/MATRIX_KERNEL_REPO_AUDIT.md"
+      ],
+      "shared": [
+        "src/cli/index.ts",
+        "docs/LOC_ENFORCEMENT_MASTERPLAN.md",
+        "CLAUDE.md"
+      ]
     }
   }
 }

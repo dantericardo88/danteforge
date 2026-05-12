@@ -21,6 +21,7 @@ import type {
 import type { OwnershipMap } from '../types/ownership.js';
 import { isPathFrozen, pathOwner } from './ownership-map.js';
 import { MATRIX_DIR, MATRIX_REPORT_PATHS } from '../types/index.js';
+import { matchesGlob, matchesAnyGlob } from '../util/glob.js';
 
 const DEFAULT_BUDGET: LeaseBudget = {
   maxTokens: 200_000,
@@ -217,21 +218,3 @@ function stamp(iso: string): string {
   return iso.replace(/[:.]/g, '-').slice(0, 19);
 }
 
-function matchesAnyGlob(filePath: string, globs: string[]): boolean {
-  const normalized = filePath.replace(/\\/g, '/');
-  for (const g of globs) if (matchesGlob(normalized, g)) return true;
-  return false;
-}
-
-function matchesGlob(filePath: string, glob: string): boolean {
-  return globToRegex(glob.replace(/\\/g, '/')).test(filePath.replace(/\\/g, '/'));
-}
-
-function globToRegex(glob: string): RegExp {
-  const escaped = glob
-    .replace(/[.+^${}()|[\]\\]/g, '\\$&')
-    .replace(/\*\*/g, '___DOUBLESTAR___')
-    .replace(/\*/g, '[^/]*')
-    .replace(/___DOUBLESTAR___/g, '.*');
-  return new RegExp(`^${escaped}$`);
-}

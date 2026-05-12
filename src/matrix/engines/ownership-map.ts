@@ -7,6 +7,7 @@ import fs from 'node:fs/promises';
 import path from 'node:path';
 import type { OwnershipMap, OwnershipClaim } from '../types/ownership.js';
 import { MATRIX_DIR, MATRIX_REPORT_PATHS } from '../types/index.js';
+import { matchesAnyGlob } from '../util/glob.js';
 
 // ── Public API ──────────────────────────────────────────────────────────────
 
@@ -96,20 +97,3 @@ async function readJsonSafe(
   }
 }
 
-function matchesAnyGlob(filePath: string, globs: string[]): boolean {
-  const normalized = filePath.replace(/\\/g, '/');
-  for (const g of globs) {
-    const re = globToRegex(g.replace(/\\/g, '/'));
-    if (re.test(normalized)) return true;
-  }
-  return false;
-}
-
-function globToRegex(glob: string): RegExp {
-  const escaped = glob
-    .replace(/[.+^${}()|[\]\\]/g, '\\$&')
-    .replace(/\*\*/g, '___DOUBLESTAR___')
-    .replace(/\*/g, '[^/]*')
-    .replace(/___DOUBLESTAR___/g, '.*');
-  return new RegExp(`^${escaped}$`);
-}

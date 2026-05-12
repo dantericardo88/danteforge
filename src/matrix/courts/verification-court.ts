@@ -24,6 +24,7 @@ import { validateChangedFiles } from '../engines/lease-manager.js';
 import { isPathFrozen } from '../engines/ownership-map.js';
 import { scanForStubs } from './no-stub-scanner.js';
 import { MATRIX_DIR, MATRIX_REPORT_PATHS } from '../types/index.js';
+import { matchesGlob } from '../util/glob.js';
 
 // ── Public API ──────────────────────────────────────────────────────────────
 
@@ -172,19 +173,6 @@ async function runCommand(
     child.on('close', (code) => resolve({ exitCode: code ?? 1, stdout, stderr }));
     child.on('error', () => resolve({ exitCode: 1, stdout, stderr }));
   });
-}
-
-// ── Glob matching (shared with engines) ─────────────────────────────────────
-
-function matchesGlob(filePath: string, glob: string): boolean {
-  const normalized = filePath.replace(/\\/g, '/');
-  const normalizedGlob = glob.replace(/\\/g, '/');
-  const escaped = normalizedGlob
-    .replace(/[.+^${}()|[\]\\]/g, '\\$&')
-    .replace(/\*\*/g, '___DOUBLESTAR___')
-    .replace(/\*/g, '[^/]*')
-    .replace(/___DOUBLESTAR___/g, '.*');
-  return new RegExp(`^${escaped}$`).test(normalized);
 }
 
 function stamp(iso: string): string {
