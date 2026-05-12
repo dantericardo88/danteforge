@@ -152,7 +152,11 @@ export class LLMAgentAdapter implements AgentAdapter {
         this.options.maxFilesInPrompt ?? DEFAULT_MAX_FILES,
         this.options.maxLinesPerFile ?? DEFAULT_MAX_LINES,
       );
-      const prompt = buildCodingPrompt(state.workPacket, lease, contextFiles);
+      const { buildRolePromptBlock } = await import('../engines/agent-roles.js');
+      const { buildMemoryPromptBlock } = await import('../engines/agent-memory.js');
+      const roleBlock = buildRolePromptBlock(lease.agentRole);
+      const memoryBlock = await buildMemoryPromptBlock(lease.agentRole, worktreeRoot);
+      const prompt = buildCodingPrompt(state.workPacket, lease, contextFiles, roleBlock, memoryBlock);
 
       const llmCaller = this.options._callLLM ?? makeBudgetedCaller(
         this.options.provider, this.options.model,
@@ -273,6 +277,10 @@ export function buildCodingPrompt(
   workPacket: WorkPacket,
   lease: AgentLease,
   contextFiles: ContextFile[],
+  /** Optional pre-built role block (from buildRolePromptBlock). */
+  roleBlock?: string,
+  /** Optional pre-built memory block (from buildMemoryPromptBlock). */
+  memoryBlock?: string,
 ): string {
   const filesBlock = contextFiles.length === 0
     ? '(no existing files in scope)'
@@ -280,7 +288,10 @@ export function buildCodingPrompt(
       `## ${f.relativePath}${f.truncated ? ' (TRUNCATED)' : ''}\n\`\`\`\n${f.contents}\n\`\`\``,
     ).join('\n\n');
 
-  return `You are a coding agent working on a single Work Packet inside an isolated git worktree.
+  const rolePrefix = roleBlock && roleBlock.length > 0 ? `${roleBlock}\n` : '';
+  const memoryPrefix = memoryBlock && memoryBlock.length > 0 ? `${memoryBlock}\n` : '';
+
+  return `${rolePrefix}${memoryPrefix}You are a coding agent working on a single Work Packet inside an isolated git worktree.
 
 # Work Packet
 - ID: ${workPacket.id}

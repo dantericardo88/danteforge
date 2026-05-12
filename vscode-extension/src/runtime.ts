@@ -5,6 +5,7 @@ import {
 import { buildSpecifySubcommand, sanitizeShellInput } from './shell-safety.js';
 import { DanteForgeTreeProvider as _DanteForgeTreeProvider } from './tree-provider.js';
 import { buildDiagnostics as _buildDiagnostics, scoresToDiagnostics as _scoresToDiagnostics, formatDiagnosticMessage as _formatDiagnosticMessage, type DiagnosticItemLike } from './diagnostics.js';
+import { openMatrixWarRoom } from './war-room.js';
 
 export interface DisposableLike {
   dispose(): void;
@@ -348,6 +349,14 @@ export function registerDanteForgeCommands(
     }),
     vscodeApi.commands.registerCommand('danteforge.showDiagnostics', () =>
       runDanteForgeSubcommand(vscodeApi, 'autoforge --score-only', inspector),
+    ),
+  );
+
+  // ── Matrix War Room webview (Phase 14) ──────────────────────────────────
+  disposables.push(
+    vscodeApi.commands.registerCommand('danteforge.matrixKernel.warRoom', () =>
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      openMatrixWarRoom(vscodeApi as any),
     ),
   );
 

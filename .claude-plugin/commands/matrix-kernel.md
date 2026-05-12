@@ -29,7 +29,7 @@ danteforge matrix-kernel leases-list             # list current leases
 
 **Execution loop (Phase 13a + 13b — wired to CLI):**
 ```bash
-danteforge matrix-kernel run-wave 1 [--adapter fake|claude|codex|gemini|grok|dantecode]   # dispatch a planned wave
+danteforge matrix-kernel run-wave 1 [--adapter fake|claude|codex|gemini|grok|dantecode|ollama]   # dispatch a planned wave
 danteforge matrix-kernel verify <leaseId> [--all]             # Verification Court
 danteforge matrix-kernel red-team <leaseId> [--mock]          # adversarial review (live LLM by default)
 danteforge matrix-kernel taste-gate <leaseId>                 # detect UX-change requiring approval
@@ -75,11 +75,15 @@ DANTEFORGE_LIVE_LLM=1 npm run test:matrix-live      # validates Red Team + Claud
 - **Planning** — run `simulate --max-agents 10` to see how many agents could safely run in parallel + worst-case cost estimate
 - **Verification of the substrate itself** — run `tests/matrix-golden-flow.test.ts` to confirm the entire loop works end-to-end with fake agents
 
-## What's NOT Yet Wired (Phase 13)
+## Shipped in Phase 13 + 14
 
-Real provider adapters (Codex, Claude Code, DanteCode, Ruflo, CrewAI) are deferred to a follow-up pass. The `AgentAdapter` interface in `src/matrix/adapters/adapter-interface.ts` is built and proven with `FakeAgentAdapter` + `GenericShellAdapter`; real-LLM dispatch is integration work, not architectural work.
+**Phase 13 — Real-LLM dispatch:** ClaudeCodeAdapter, CodexAdapter, GeminiAdapter, GrokAdapter, DanteCodeAdapter, and direct Ollama dispatch all wired into `run-wave`. The execution-loop CLI subcommands (`run-wave`, `verify`, `red-team`, `taste-gate`, `merge-court`, `retrospective`, `report`) are live and operationally proven end-to-end against a real Ollama model.
 
-The execution-loop CLI subcommands (`run-wave`, `verify`, `red-team`, `merge-court`) are deferred until the real adapters land.
+**Phase 14 — Harvested patterns + UI:**
+- **Agent roles + memory (harvested from CrewAI, native impl):** six built-in roles (dimension-engineer, verification-court, red-team, taste-gate, merge-court, retro-analyst), each with structured `role`/`goal`/`backstory`. Roles with `persistentMemory: true` (red-team, retro-analyst) accumulate lessons across runs that get injected into the next prompt. See `src/matrix/types/role.ts` + `src/matrix/engines/agent-roles.ts` + `src/matrix/engines/agent-memory.ts`. Harvest receipt: `.danteforge/evidence/oss-harvest-crewai.json`.
+- **VS Code Matrix War Room:** webview dashboard reading `.danteforge/matrix/*.json` with live file-watch refresh. Open via the `DanteForge: Open Matrix War Room` command. See `vscode-extension/src/war-room.ts`.
+
+**Ruflo / CrewAI:** harvested as native patterns rather than wired as external adapters (per project discipline: learn from OSS, build natively).
 
 ## Pointers
 

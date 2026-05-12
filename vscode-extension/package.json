@@ -37,6 +37,7 @@
     "onCommand:danteforge.pauseAt",
     "onCommand:danteforge.refreshTree",
     "onCommand:danteforge.showDiagnostics",
+    "onCommand:danteforge.matrixKernel.warRoom",
     "onView:danteforge.projectState"
   ],
   "main": "./dist/extension.js",
@@ -105,6 +106,10 @@
       {
         "command": "danteforge.showDiagnostics",
         "title": "DanteForge: Show PDSE Diagnostics"
+      },
+      {
+        "command": "danteforge.matrixKernel.warRoom",
+        "title": "DanteForge: Open Matrix War Room"
       }
     ],
     "views": {
