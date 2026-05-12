@@ -216,6 +216,7 @@ function registerExecutePhases(matrix: Command): void {
       await runSafely('matrix:execute-phase-a', async () => {
         const { loadOrch } = await import('../matrix-orchestration/state-io.js');
         const { executePhaseA } = await import('../matrix-orchestration/phases/phase-a-runner.js');
+        const { buildRunAdapter } = await import('./orchestration-adapter-dispatch.js');
         const cwd = parseCwd(opts);
         const matrixDoc = await loadOrch(cwd, 'dimensionMatrix');
         const capacity = await loadOrch(cwd, 'capacityReport');
@@ -225,7 +226,7 @@ function registerExecutePhases(matrix: Command): void {
         }
         const result = await executePhaseA(
           { matrix: matrixDoc as never, capacity: capacity as never, universe: universe as never },
-          { cwd, maxCostUsd: opts.maxCost as number | undefined },
+          { cwd, maxCostUsd: opts.maxCost as number | undefined, _runAdapter: buildRunAdapter() },
         );
         logger.success(`[matrix:execute-phase-a] ${result.attempts.length} attempt(s), ${result.dimensionsClosed.length} dim(s) closed`);
       });
@@ -240,6 +241,7 @@ function registerExecutePhases(matrix: Command): void {
       await runSafely('matrix:execute-phase-b', async () => {
         const { loadOrch } = await import('../matrix-orchestration/state-io.js');
         const { executePhaseB, loadPhaseBArgsFromDisk } = await import('../matrix-orchestration/phases/phase-b-runner.js');
+        const { buildRunAdapter } = await import('./orchestration-adapter-dispatch.js');
         const cwd = parseCwd(opts);
         const matrixDoc = await loadOrch(cwd, 'dimensionMatrix');
         const capacity = await loadOrch(cwd, 'capacityReport');
@@ -256,7 +258,7 @@ function registerExecutePhases(matrix: Command): void {
             closedSourceProfiles: extra?.closedSourceProfiles ?? null,
             socialSignal: extra?.socialSignal ?? null,
           },
-          { cwd, maxCostUsd: opts.maxCost as number | undefined },
+          { cwd, maxCostUsd: opts.maxCost as number | undefined, _runAdapter: buildRunAdapter() },
         );
         logger.success(`[matrix:execute-phase-b] ${result.attempts.length} attempt(s), ${result.dimensionsClosed.length} dim(s) closed`);
       });
