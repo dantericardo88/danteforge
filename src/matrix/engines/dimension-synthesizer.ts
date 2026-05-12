@@ -108,37 +108,83 @@ function convertDimension(
   };
 }
 
+// When the heuristic catches more files than this, we cap the result and
+// emit a warning so the dimension still produces a runnable work-packet
+// instead of a giant scope that the conflict detector will (correctly) flag
+// as a protected-path violation. Dimensions that exceed the cap should
+// declare an explicit `touches` array in compete-matrix.json.
+const MAX_HEURISTIC_TOUCHES = 25;
+
 /**
  * If the dimension declares `touches: ['src/foo.ts']` explicitly in
- * compete-matrix.json, honor that as-is. Otherwise fall back to the
- * heuristic match.
+ * compete-matrix.json, honor that as-is. Otherwise fall back to a path-
+ * segment heuristic.
  *
- * Heuristic match: dimensions touch ProjectGraphNodes whose paths or names
- * mention the dimension's category, label, or id. For MVP this is intentionally
- * shallow; future iterations can refine with an LLM mapping pass.
+ * Heuristic match: tokenize the dimension id/label/category, then match
+ * against path SEGMENTS (split on `/`, `-`, `_`, `.`) rather than substrings.
+ * That prevents a token like "agent" from matching every file in
+ * `src/harvested/dante-agents/**` — which on this repo expanded into a 24+
+ * file work-packet that overlapped protected paths.
+ *
+ * If the heuristic still returns more than `MAX_HEURISTIC_TOUCHES` results,
+ * sort by path depth (deeper = more specific) and keep the top N, while
+ * leaving the broader set discoverable via the diagnostic warning.
  */
 function inferTouches(dim: MatrixDimension, projectGraph?: ProjectGraph): string[] {
   if (Array.isArray(dim.touches) && dim.touches.length > 0) {
     return [...dim.touches];
   }
   if (!projectGraph) return [];
-  const tokens = new Set<string>([
+
+  // Build a stop-word set of common project vocabulary that would over-match.
+  // The dimension's own tokens are filtered against this set after deduping.
+  const stopwords = new Set<string>([
+    'core', 'src', 'test', 'tests', 'lib', 'agent', 'agents', 'dante',
+    'matrix', 'kernel', 'engine', 'cli', 'command', 'commands',
+  ]);
+
+  const rawTokens = new Set<string>([
     dim.id.toLowerCase(),
     dim.label.toLowerCase(),
     dim.category.toLowerCase(),
     ...dim.id.split(/[_-]/).map(s => s.toLowerCase()),
+    ...dim.label.toLowerCase().split(/[\s_-]+/),
   ]);
+  // Keep tokens that are: at least 4 chars long AND not in the generic
+  // project vocabulary stop-words.
+  const tokens = Array.from(rawTokens).filter(t => t.length >= 4 && !stopwords.has(t));
+  if (tokens.length === 0) return [];
+
   const touches: string[] = [];
   for (const node of projectGraph.nodes) {
-    const hay = `${node.nodeId} ${(node.paths ?? []).join(' ')}`.toLowerCase();
-    for (const token of tokens) {
-      if (token.length >= 4 && hay.includes(token)) {
-        touches.push(node.nodeId);
-        break;
-      }
+    // Match path segments — split on / \ - _ . — so "provenance" matches
+    // `time-machine-provenance.ts` but "agent" does NOT match
+    // `dante-agents` (where "agents" is a segment, not "agent").
+    const hayId = (node.nodeId ?? '').toLowerCase();
+    const hayPaths = (node.paths ?? []).join(' ').toLowerCase();
+    const segments = `${hayId} ${hayPaths}`.split(/[\\/\-_.\s]+/).filter(Boolean);
+    if (segments.some(seg => tokens.includes(seg))) {
+      touches.push(node.nodeId);
     }
   }
-  return Array.from(new Set(touches));
+  const unique = Array.from(new Set(touches));
+  if (unique.length <= MAX_HEURISTIC_TOUCHES) return unique;
+
+  // Too many heuristic matches — cap by path-depth specificity. Deeper
+  // paths come first since they're more focused than broad directory hits.
+  const ranked = unique
+    .map(id => ({ id, depth: id.split(/[\\/]/).length }))
+    .sort((a, b) => b.depth - a.depth)
+    .slice(0, MAX_HEURISTIC_TOUCHES)
+    .map(x => x.id);
+  // Caller (synthesizeDimensions) emits no log itself; surface a hint via
+  // process.stderr so operators see it without coupling this helper to the
+  // logger. The cap is non-fatal — the dimension still gets a runnable
+  // packet — but it's an actionable signal to add explicit `touches`.
+  if (process.stderr && typeof process.stderr.write === 'function') {
+    process.stderr.write(`[dimension-synthesizer] WARN dim ${dim.id}: heuristic matched ${unique.length} files; capping at ${MAX_HEURISTIC_TOUCHES}. Add explicit \`touches\` to compete-matrix.json for stable scope.\n`);
+  }
+  return ranked;
 }
 
 function deriveEvidenceRequirements(dim: MatrixDimension): string[] {

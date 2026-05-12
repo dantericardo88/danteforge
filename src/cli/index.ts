@@ -671,15 +671,13 @@ program
   .command('war-room')
   .description('Live terminal dashboard for the matrix kernel run state (any TTY)')
   .option('--cwd <path>', 'Project root')
-  .option('--once', 'Render one snapshot and exit (no live watching)')
-  .option('--no-watch', 'Render once then keep printing on demand (no file watcher)')
+  .option('--once', 'Render one snapshot and exit (no file watcher; suitable for CI)')
   .action(async (opts) => {
     try {
       const { warRoom } = await import('./commands/war-room.js');
       await warRoom({
         cwd: opts.cwd as string | undefined,
         once: opts.once as boolean | undefined,
-        noWatch: opts.watch === false,
       });
     } catch (err) {
       const { formatAndLogError } = await import('../core/format-error.js');

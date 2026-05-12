@@ -40,7 +40,7 @@ describe('DanteSanitize live-LLM E2E (opt-in via DANTEFORGE_LIVE_LLM=1)', () => 
     });
     if (tier1.success) {
       // Tier 1 actually handled it — that's fine, Tier 2 not needed
-      // eslint-disable-next-line no-console
+       
       console.log('  Tier 1 handled the move (no LLM needed)');
       return;
     }
@@ -90,7 +90,7 @@ export function loadConfig(): Config {
     const plan = analyzeBoundariesAst(synth, 'src/synthetic.ts', { minLocPerFile: 1, minSymbolsPerFile: 1 });
     if (!plan.valid) {
       // Plan refused — that's still useful info (boundary selector correctly couldn't split)
-      // eslint-disable-next-line no-console
+       
       console.log(`  Boundary selector refused: ${plan.reason}`);
       return;
     }

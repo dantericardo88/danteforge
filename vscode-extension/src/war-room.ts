@@ -7,6 +7,15 @@
 // Designed to be testable: renderMatrixWarRoomHTML is a pure function over
 // a MatrixDashboardSnapshot. The webview wiring around it is small and
 // uses dependency injection so tests don't need a real VS Code runtime.
+//
+// DUAL-MAINTENANCE NOTE: The `MatrixDashboardSnapshot` type and
+// `loadMatrixDashboardSnapshot` loader are duplicated in
+// `src/matrix/engines/dashboard-snapshot.ts` (CLI war-room TUI). Keep both
+// in sync when adding fields. The CLI version is the canonical source —
+// the VS Code extension lives in a separate npm package and cannot import
+// cross-package without workspaces or a build-time package boundary, both
+// of which are deferred until the extension surface grows. See
+// AGENTS.md "Cross-Tool Skill + Command Distribution".
 
 export interface MatrixDashboardSnapshot {
   /** Workspace root for context paths. */

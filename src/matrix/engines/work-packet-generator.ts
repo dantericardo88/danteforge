@@ -66,11 +66,32 @@ export async function writeWorkGraph(graph: WorkGraph, cwd?: string): Promise<st
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
 function pathsForDimension(dim: DimensionGraphNode, projectGraph: ProjectGraph): string[] {
+  // `dim.touches` can carry either project-graph node IDs (auto-inferred by
+  // the dimension-synthesizer's token heuristic) OR raw file paths declared
+  // directly in compete-matrix.json. Accept both — match each touch entry
+  // against the project-graph nodes by ID first, then by literal path match.
   const paths = new Set<string>();
-  const touchedIds = new Set(dim.touches);
+  const touched = new Set(dim.touches);
+  if (touched.size === 0) return [];
   for (const node of projectGraph.nodes) {
-    if (touchedIds.has(node.nodeId)) {
+    if (touched.has(node.nodeId)) {
       for (const p of node.paths) paths.add(p);
+      continue;
+    }
+    for (const p of node.paths ?? []) {
+      if (touched.has(p)) {
+        for (const q of node.paths) paths.add(q);
+        break;
+      }
+    }
+  }
+  // If still empty (e.g. an explicit `touches` lists a path no project-graph
+  // node maps to), fall back to using the literal path strings directly so
+  // the work-packet is at least scoped, even if not project-graph-tracked.
+  if (paths.size === 0) {
+    for (const t of touched) {
+      // Only include entries that look like a real path (contain `/` or `\`).
+      if (t.includes('/') || t.includes('\\')) paths.add(t);
     }
   }
   return Array.from(paths);

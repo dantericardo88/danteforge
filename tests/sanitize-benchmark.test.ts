@@ -140,10 +140,10 @@ describe('DanteSanitize benchmark — local corpus', () => {
     for (const r of results) {
       const icon = r.pass ? '✓' : '✗';
       const detail = r.reason ? ` — ${r.reason}` : '';
-      // eslint-disable-next-line no-console
+       
       console.log(`  ${icon} ${r.name}${detail}`);
     }
-    // eslint-disable-next-line no-console
+     
     console.log(`\n  Aggregate: ${passed}/${total} (${passRate.toFixed(1)}%)`);
 
     // Quality gate: corpus must pass at 100% on the AST tier

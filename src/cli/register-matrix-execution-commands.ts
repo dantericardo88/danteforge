@@ -51,7 +51,8 @@ function registerRunWave(matrix: Command): void {
       const cwd = (opts.cwd as string | undefined) ?? process.cwd();
       const requestedKind = (opts.adapter as string | undefined) ?? 'auto';
       const detectedHost = detectHostAI();
-      // `auto` is the new default: embedded inside a host AI; fake otherwise.
+      // Default `auto` routing: embedded when invoked from inside a host AI;
+      // dry-run-safe adapter otherwise (no LLM spend without explicit opt-in).
       const adapterKind = requestedKind === 'auto'
         ? (detectedHost ? 'embedded' : 'fake')
         : requestedKind;

@@ -1,13 +1,20 @@
-// Matrix Kernel — Dashboard snapshot loader (shared by VS Code webview + CLI TUI)
+// Matrix Kernel — Dashboard snapshot loader (canonical source for CLI war-room)
 //
 // Reads the canonical matrix state files and assembles a compact
-// MatrixDashboardSnapshot that both the VS Code war-room webview and the
-// terminal `danteforge war-room` command render. Each render surface
-// transforms the same snapshot — they never re-implement the loading logic.
+// MatrixDashboardSnapshot rendered by the terminal `danteforge war-room`
+// command. Designed as a pure data-loading layer: no rendering, no side
+// effects beyond filesystem reads.
 //
 // File-level resilience: every read is best-effort. Missing or malformed
 // files are recorded in `snapshot.errors` so the renderer can warn the user
 // without the whole dashboard going dark.
+//
+// DUAL-MAINTENANCE NOTE: `vscode-extension/src/war-room.ts` keeps its own
+// copy of `MatrixDashboardSnapshot` + a near-identical loader. The
+// extension cannot import this file without workspaces or a build-time
+// package boundary. When adding fields here, mirror them there until the
+// VS Code extension is refactored. See AGENTS.md "Cross-Tool Skill +
+// Command Distribution".
 
 import fs from 'node:fs/promises';
 import path from 'node:path';
