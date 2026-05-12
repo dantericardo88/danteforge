@@ -29,7 +29,13 @@ danteforge matrix-kernel leases-list             # list current leases
 
 **Execution loop (Phase 13a + 13b — wired to CLI):**
 ```bash
-danteforge matrix-kernel run-wave 1 [--adapter fake|claude|codex|gemini|grok|dantecode|ollama]   # dispatch a planned wave
+danteforge matrix-kernel run-wave 1 [--adapter fake|claude|codex|claude-api|codex-api|...]   # dispatch a planned wave
+
+# `claude` and `codex` spawn the local CLI as a subprocess and use YOUR
+#   Claude Pro/Max or ChatGPT Plus/Pro subscription — NO API keys needed.
+# `claude-api`/`codex-api` use the Anthropic/OpenAI API directly (keys required).
+# Full adapter list: fake | claude | codex | claude-api | codex-api | gemini |
+#   grok | dantecode | ollama | together | groq | mistral
 danteforge matrix-kernel verify <leaseId> [--all]             # Verification Court
 danteforge matrix-kernel red-team <leaseId> [--mock]          # adversarial review (live LLM by default)
 danteforge matrix-kernel taste-gate <leaseId>                 # detect UX-change requiring approval

@@ -24,7 +24,7 @@ function registerRunWave(matrix: Command): void {
     .command('run-wave <waveNumber>')
     .description('Execute a planned wave: create leases + worktrees + dispatch agents')
     .option('--cwd <path>', 'Project root')
-    .option('--adapter <kind>', 'Agent adapter: fake | claude | codex | gemini | grok | dantecode | ollama | together | groq | mistral (default: fake)')
+    .option('--adapter <kind>', 'Agent adapter: fake | claude | codex | claude-api | codex-api | gemini | grok | dantecode | ollama | together | groq | mistral (default: fake). `claude` and `codex` spawn the local CLI using your subscription. Suffix `-api` for direct API dispatch.')
     .option('--max-tokens <n>', 'Per-agent LLM token cap', parseInt)
     .action(async (waveNumber: string, opts) => runSafely('matrix-kernel:run-wave', async () => {
       const { loadGraph, saveGraph, ensureMatrixDir } = await import('../matrix/engines/matrix-state.js');
@@ -33,6 +33,8 @@ function registerRunWave(matrix: Command): void {
       const { FakeAgentAdapter } = await import('../matrix/adapters/fake-agent-adapter.js');
       const { ClaudeCodeAdapter } = await import('../matrix/adapters/claude-code-adapter.js');
       const { CodexAdapter } = await import('../matrix/adapters/codex-adapter.js');
+      const { AnthropicAPIAdapter } = await import('../matrix/adapters/anthropic-api-adapter.js');
+      const { OpenAIAPIAdapter } = await import('../matrix/adapters/openai-api-adapter.js');
       const { GeminiAdapter } = await import('../matrix/adapters/gemini-adapter.js');
       const { GrokAdapter } = await import('../matrix/adapters/grok-adapter.js');
       const { DanteCodeAdapter } = await import('../matrix/adapters/dantecode-adapter.js');
@@ -86,6 +88,8 @@ function registerRunWave(matrix: Command): void {
           switch (adapterKind) {
             case 'claude': return new ClaudeCodeAdapter({ workPacket: packet as never });
             case 'codex':  return new CodexAdapter({ workPacket: packet as never });
+            case 'claude-api': return new AnthropicAPIAdapter({ workPacket: packet as never });
+            case 'codex-api': return new OpenAIAPIAdapter({ workPacket: packet as never });
             case 'gemini': return new GeminiAdapter({ workPacket: packet as never });
             case 'grok':   return new GrokAdapter({ workPacket: packet as never });
             case 'dantecode': return new DanteCodeAdapter({ workPacket: packet as never });

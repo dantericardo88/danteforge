@@ -1,22 +1,26 @@
-// Phase 13a — ClaudeCodeAdapter tests (mocked LLM)
+// Phase 14d — ClaudeCodeAdapter tests (subprocess version)
+//
+// Tests the subprocess-managed ClaudeCodeAdapter that spawns the `claude`
+// CLI in the lease's worktree. Uses injected _spawn / _gitDiff / _revertFile
+// / _isAvailable seams so the suite never spawns a real subprocess.
 import { describe, it, after } from 'node:test';
 import assert from 'node:assert/strict';
+import { EventEmitter } from 'node:events';
 import fs from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import {
   ClaudeCodeAdapter,
-  parseEdits,
-  validateEditsAgainstLease,
-  buildCodingPrompt,
-  collectContextFiles,
+  buildClaudeCodePrompt,
+  type ClaudeChildLike,
+  type ClaudeCodeAdapterOptions,
 } from '../../src/matrix/adapters/claude-code-adapter.js';
 import { runAdapter } from '../../src/matrix/adapters/adapter-interface.js';
 import type { AgentLease, WorkPacket } from '../../src/matrix/types/index.js';
 
 const tmpDirs: string[] = [];
 async function makeWorktree(): Promise<string> {
-  const d = await fs.mkdtemp(path.join(os.tmpdir(), 'claude-adapter-'));
+  const d = await fs.mkdtemp(path.join(os.tmpdir(), 'claude-proc-'));
   tmpDirs.push(d);
   return d;
 }
@@ -27,276 +31,182 @@ function fakeLease(worktreePath: string, overrides: Partial<AgentLease> = {}): A
     id: 'lease.test', workPacketId: 'work.test',
     provider: 'claude', agentRole: 'dimension-engineer',
     branch: 'b', worktreePath,
-    allowedWritePaths: ['src/sample.ts'],
+    allowedWritePaths: ['src/sample.ts', 'src/lib/**'],
     allowedReadPaths: ['src/**'],
     forbiddenPaths: ['src/forbidden.ts'],
-    requiredCommands: [], budget: { maxTokens: 200000, maxRuntimeMinutes: 30, maxIterations: 3 },
+    requiredCommands: [],
+    budget: { maxTokens: 200000, maxRuntimeMinutes: 30, maxIterations: 3 },
     status: 'active',
     ...overrides,
   };
 }
 
-function fakePacket(overrides: Partial<WorkPacket> = {}): WorkPacket {
+function fakePacket(): WorkPacket {
   return {
-    id: 'work.test', title: 'Test packet', objective: 'Add a hello function',
+    id: 'work.test', title: 'Test', objective: 'Add helper',
     dimensionId: 'dim.test',
-    paths: {
-      ownedPaths: ['src/sample.ts'],
-      readOnlyPaths: [],
-      forbiddenPaths: ['src/forbidden.ts'],
-    },
+    paths: { ownedPaths: ['src/sample.ts'], readOnlyPaths: [], forbiddenPaths: ['src/forbidden.ts'] },
     dependsOn: [], mayConflictWith: [],
-    acceptanceCriteria: ['hello function exists', 'returns "hello"'],
-    proof: { proofRequired: ['typecheck passes'], requiredCommands: ['npm run typecheck'] },
+    acceptanceCriteria: ['exists'], proof: { proofRequired: ['typecheck'] },
     tasteGateRequired: false, redTeamRequired: false,
-    rollbackPlan: 'remove worktree',
-    riskLevel: 'low',
-    createdAt: '',
-    ...overrides,
+    rollbackPlan: 'rm worktree', riskLevel: 'low', createdAt: '',
   };
 }
 
-// ── parseEdits ──────────────────────────────────────────────────────────────
+// Helper: create a fake child process that exits with the given code.
+function fakeChild(exitCode: number, delayMs = 5): ClaudeChildLike {
+  const emitter = new EventEmitter();
+  setTimeout(() => emitter.emit('close', exitCode), delayMs);
+  return {
+    stdout: null, stderr: null,
+    on(event: string, cb: (...args: unknown[]) => void) { emitter.on(event, cb); return this; },
+    kill() { return true; },
+    pid: 9999,
+  };
+}
 
-describe('parseEdits', () => {
-  it('parses a clean JSON array', () => {
-    const raw = '[{"path":"src/x.ts","action":"write","contents":"export const x=1;"}]';
-    const edits = parseEdits(raw);
-    assert.ok(edits);
-    assert.equal(edits!.length, 1);
-    assert.equal(edits![0]!.action, 'write');
+/** Default seam set used by every dispatch test — only override what each test exercises. */
+function dispatchableAdapter(opts: Partial<ClaudeCodeAdapterOptions> = {}): ClaudeCodeAdapter {
+  return new ClaudeCodeAdapter({
+    workPacket: fakePacket(),
+    _isAvailable: async () => true,
+    _spawn: () => fakeChild(0),
+    _gitDiff: async () => [],
+    _revertFile: async () => { /* no-op */ },
+    ...opts,
+  });
+}
+
+describe('ClaudeCodeAdapter — basic shape', () => {
+  it('has id="claude" and a labeled name', () => {
+    const adapter = new ClaudeCodeAdapter({ workPacket: fakePacket() });
+    assert.equal(adapter.id, 'claude');
+    assert.ok(adapter.name.includes('Claude'));
   });
 
-  it('strips markdown fences', () => {
-    const raw = '```json\n[{"path":"src/x.ts","action":"delete"}]\n```';
-    const edits = parseEdits(raw);
-    assert.ok(edits);
-    assert.equal(edits![0]!.action, 'delete');
-  });
-
-  it('returns null on non-array JSON', () => {
-    assert.equal(parseEdits('{"path":"x","action":"write"}'), null);
-  });
-
-  it('returns null on malformed JSON', () => {
-    assert.equal(parseEdits('not valid'), null);
-  });
-
-  it('returns null when write edit is missing contents', () => {
-    assert.equal(parseEdits('[{"path":"x","action":"write"}]'), null);
-  });
-
-  it('returns null on invalid action', () => {
-    assert.equal(parseEdits('[{"path":"x","action":"frobnicate","contents":""}]'), null);
-  });
-});
-
-// ── validateEditsAgainstLease ──────────────────────────────────────────────
-
-describe('validateEditsAgainstLease', () => {
-  const lease = fakeLease('/tmp');
-
-  it('approves edits within allowed write paths', () => {
-    const r = validateEditsAgainstLease(
-      [{ path: 'src/sample.ts', action: 'write', contents: 'x' }],
-      lease,
-    );
-    assert.equal(r.ok, true);
-  });
-
-  it('rejects edits to forbidden paths', () => {
-    const r = validateEditsAgainstLease(
-      [{ path: 'src/forbidden.ts', action: 'write', contents: 'x' }],
-      lease,
-    );
-    assert.equal(r.ok, false);
-    assert.ok(r.violations[0]!.includes('FORBIDDEN'));
-  });
-
-  it('rejects edits outside allowed write paths', () => {
-    const r = validateEditsAgainstLease(
-      [{ path: 'src/somewhere-else.ts', action: 'write', contents: 'x' }],
-      lease,
-    );
-    assert.equal(r.ok, false);
-    assert.ok(r.violations[0]!.includes('outside'));
-  });
-
-  it('collects multiple violations', () => {
-    const r = validateEditsAgainstLease(
-      [
-        { path: 'src/forbidden.ts', action: 'write', contents: 'x' },
-        { path: 'src/somewhere.ts', action: 'write', contents: 'y' },
-      ],
-      lease,
-    );
-    assert.equal(r.violations.length, 2);
-  });
-});
-
-// ── buildCodingPrompt ──────────────────────────────────────────────────────
-
-describe('buildCodingPrompt', () => {
-  it('includes the objective and acceptance criteria', () => {
-    const prompt = buildCodingPrompt(
-      fakePacket({ objective: 'Build feature X' }),
-      fakeLease('/tmp'),
-      [],
-    );
-    assert.ok(prompt.includes('Build feature X'));
-    assert.ok(prompt.includes('hello function exists'));
-  });
-
-  it('lists owned + forbidden paths', () => {
-    const prompt = buildCodingPrompt(
-      fakePacket(),
-      fakeLease('/tmp', {
-        allowedWritePaths: ['src/foo.ts'],
-        forbiddenPaths: ['src/cli/index.ts'],
-      }),
-      [],
-    );
-    assert.ok(prompt.includes('src/foo.ts'));
-    assert.ok(prompt.includes('src/cli/index.ts'));
-  });
-
-  it('includes context file contents', () => {
-    const prompt = buildCodingPrompt(
-      fakePacket(),
-      fakeLease('/tmp'),
-      [{ relativePath: 'src/existing.ts', contents: 'export const X = 1;', truncated: false }],
-    );
-    assert.ok(prompt.includes('src/existing.ts'));
-    assert.ok(prompt.includes('export const X = 1;'));
-  });
-
-  it('marks truncated files in the prompt', () => {
-    const prompt = buildCodingPrompt(
-      fakePacket(),
-      fakeLease('/tmp'),
-      [{ relativePath: 'src/big.ts', contents: 'partial', truncated: true }],
-    );
-    assert.ok(prompt.includes('TRUNCATED'));
-  });
-});
-
-// ── ClaudeCodeAdapter (with injected LLM) ──────────────────────────────────
-
-describe('ClaudeCodeAdapter', () => {
-  it('writes files when LLM returns valid edits', async () => {
-    const cwd = await makeWorktree();
+  it('isAvailable returns the injected value', async () => {
     const adapter = new ClaudeCodeAdapter({
       workPacket: fakePacket(),
-      _callLLM: async () =>
-        JSON.stringify([{ path: 'src/sample.ts', action: 'write', contents: 'export function hello(): string { return "hello"; }' }]),
+      _isAvailable: async () => false,
     });
+    assert.equal(await adapter.isAvailable(), false);
+  });
+});
+
+describe('ClaudeCodeAdapter — happy path', () => {
+  it('reports changed files when claude exits 0 and git-diff shows a sample edit', async () => {
+    const cwd = await makeWorktree();
+    const adapter = dispatchableAdapter({ _gitDiff: async () => ['src/sample.ts'] });
     const result = await runAdapter(adapter, { lease: fakeLease(cwd), cwd });
     assert.equal(result.status, 'completed');
     assert.deepEqual(result.filesChanged, ['src/sample.ts']);
-    const written = await fs.readFile(path.join(cwd, 'src/sample.ts'), 'utf8');
-    assert.ok(written.includes('function hello'));
+    assert.equal(result.provider, 'claude');
+    assert.ok((result.events ?? []).some(e => e.kind === 'file_changed'));
+    assert.ok((result.events ?? []).some(e => e.kind === 'completed'));
   });
 
-  it('fails when LLM returns malformed JSON', async () => {
+  it('reports 0 file changes when claude judged no edits were needed', async () => {
     const cwd = await makeWorktree();
-    const adapter = new ClaudeCodeAdapter({
-      workPacket: fakePacket(),
-      _callLLM: async () => 'I will not return JSON, ha!',
-    });
+    const adapter = dispatchableAdapter({ _gitDiff: async () => [] });
     const result = await runAdapter(adapter, { lease: fakeLease(cwd), cwd });
-    assert.equal(result.status, 'failed');
-    assert.ok(result.errorReason!.includes('malformed_json'));
+    assert.equal(result.status, 'completed');
     assert.equal(result.filesChanged.length, 0);
   });
 
-  it('fails when LLM tries to edit forbidden paths', async () => {
+  it('handles multi-file diffs with one file_changed event per kept file', async () => {
     const cwd = await makeWorktree();
-    const adapter = new ClaudeCodeAdapter({
-      workPacket: fakePacket(),
-      _callLLM: async () =>
-        JSON.stringify([{ path: 'src/forbidden.ts', action: 'write', contents: 'evil = true;' }]),
+    const adapter = dispatchableAdapter({
+      _gitDiff: async () => ['src/sample.ts', 'src/lib/helper.ts'],
+    });
+    const result = await runAdapter(adapter, { lease: fakeLease(cwd), cwd });
+    assert.equal(result.status, 'completed');
+    assert.deepEqual(result.filesChanged.sort(), ['src/lib/helper.ts', 'src/sample.ts']);
+    const fileEvents = (result.events ?? []).filter(e => e.kind === 'file_changed');
+    assert.equal(fileEvents.length, 2);
+  });
+});
+
+describe('ClaudeCodeAdapter — lease enforcement', () => {
+  it('reverts files outside allowedWritePaths and fails the run', async () => {
+    const cwd = await makeWorktree();
+    const reverted: string[] = [];
+    const adapter = dispatchableAdapter({
+      _gitDiff: async () => ['src/somewhere-unowned.ts'],
+      _revertFile: async (_cwd, f) => { reverted.push(f); },
     });
     const result = await runAdapter(adapter, { lease: fakeLease(cwd), cwd });
     assert.equal(result.status, 'failed');
     assert.ok(result.errorReason!.includes('edit_outside_lease'));
-    // The forbidden file should NOT have been written
-    await assert.rejects(() => fs.access(path.join(cwd, 'src/forbidden.ts')));
-  });
-
-  it('handles delete action', async () => {
-    const cwd = await makeWorktree();
-    await fs.mkdir(path.join(cwd, 'src'), { recursive: true });
-    await fs.writeFile(path.join(cwd, 'src/sample.ts'), 'export const old = 1;');
-    const adapter = new ClaudeCodeAdapter({
-      workPacket: fakePacket(),
-      _callLLM: async () =>
-        JSON.stringify([{ path: 'src/sample.ts', action: 'delete' }]),
-    });
-    const result = await runAdapter(adapter, { lease: fakeLease(cwd), cwd });
-    assert.equal(result.status, 'completed');
-    await assert.rejects(() => fs.access(path.join(cwd, 'src/sample.ts')));
-  });
-
-  it('handles empty edits gracefully (no-op task)', async () => {
-    const cwd = await makeWorktree();
-    const adapter = new ClaudeCodeAdapter({
-      workPacket: fakePacket(),
-      _callLLM: async () => '[]',
-    });
-    const result = await runAdapter(adapter, { lease: fakeLease(cwd), cwd });
-    assert.equal(result.status, 'completed');
+    assert.deepEqual(reverted, ['src/somewhere-unowned.ts']);
     assert.equal(result.filesChanged.length, 0);
   });
 
-  it('streams started + file_changed + completed events', async () => {
+  it('reverts files matching forbiddenPaths even if otherwise allowed', async () => {
     const cwd = await makeWorktree();
-    const adapter = new ClaudeCodeAdapter({
-      workPacket: fakePacket(),
-      _callLLM: async () =>
-        JSON.stringify([{ path: 'src/sample.ts', action: 'write', contents: 'x' }]),
+    const reverted: string[] = [];
+    const adapter = dispatchableAdapter({
+      _gitDiff: async () => ['src/forbidden.ts'],
+      _revertFile: async (_cwd, f) => { reverted.push(f); },
     });
-    const prepared = await adapter.prepareRun({ lease: fakeLease(cwd), cwd });
-    const handle = await adapter.startRun(prepared);
-    const kinds: string[] = [];
-    for await (const event of adapter.streamEvents(handle)) {
-      kinds.push(event.kind);
-    }
-    assert.ok(kinds.includes('started'));
-    assert.ok(kinds.includes('file_changed'));
-    assert.ok(kinds.includes('completed'));
+    const result = await runAdapter(adapter, { lease: fakeLease(cwd), cwd });
+    assert.equal(result.status, 'failed');
+    assert.deepEqual(reverted, ['src/forbidden.ts']);
   });
 
-  it('isAvailable returns true', async () => {
-    const adapter = new ClaudeCodeAdapter({ workPacket: fakePacket() });
-    assert.equal(await adapter.isAvailable(), true);
+  it('keeps allowed-path edits even when another file is reverted (partial diff)', async () => {
+    const cwd = await makeWorktree();
+    const reverted: string[] = [];
+    const adapter = dispatchableAdapter({
+      _gitDiff: async () => ['src/sample.ts', 'src/forbidden.ts'],
+      _revertFile: async (_cwd, f) => { reverted.push(f); },
+    });
+    const result = await runAdapter(adapter, { lease: fakeLease(cwd), cwd });
+    assert.equal(result.status, 'failed');
+    assert.deepEqual(result.filesChanged, ['src/sample.ts']);
+    assert.deepEqual(reverted, ['src/forbidden.ts']);
   });
 });
 
-// ── collectContextFiles ────────────────────────────────────────────────────
-
-describe('collectContextFiles', () => {
-  it('reads files inside allowed paths', async () => {
+describe('ClaudeCodeAdapter — failure modes', () => {
+  it('fails when the claude CLI exits non-zero', async () => {
     const cwd = await makeWorktree();
-    await fs.mkdir(path.join(cwd, 'src'), { recursive: true });
-    await fs.writeFile(path.join(cwd, 'src/a.ts'), 'export const a = 1;');
-    const lease = fakeLease(cwd, { allowedWritePaths: ['src/a.ts'] });
-    const files = await collectContextFiles(
-      cwd, lease, (p) => fs.readFile(p, 'utf8'), 20, 200,
-    );
-    assert.equal(files.length, 1);
-    assert.ok(files[0]!.contents.includes('export const a = 1;'));
+    const adapter = dispatchableAdapter({
+      _spawn: () => fakeChild(1),
+      _gitDiff: async () => { throw new Error('should not be called'); },
+    });
+    const result = await runAdapter(adapter, { lease: fakeLease(cwd), cwd });
+    assert.equal(result.status, 'failed');
+    assert.ok(result.errorReason!.includes('claude_cli_exit_1'));
   });
 
-  it('truncates files longer than maxLines', async () => {
+  it('emits a failed event when the run fails', async () => {
     const cwd = await makeWorktree();
-    await fs.mkdir(path.join(cwd, 'src'), { recursive: true });
-    const longContent = Array(500).fill('const x = 1;').join('\n');
-    await fs.writeFile(path.join(cwd, 'src/big.ts'), longContent);
-    const lease = fakeLease(cwd, { allowedWritePaths: ['src/big.ts'] });
-    const files = await collectContextFiles(
-      cwd, lease, (p) => fs.readFile(p, 'utf8'), 20, 50,
+    const adapter = dispatchableAdapter({ _spawn: () => fakeChild(2) });
+    const result = await runAdapter(adapter, { lease: fakeLease(cwd), cwd });
+    assert.equal(result.status, 'failed');
+    assert.ok((result.events ?? []).some(e => e.kind === 'failed'));
+  });
+});
+
+describe('ClaudeCodeAdapter — prompt construction', () => {
+  it('embeds the work-packet objective and acceptance criteria', () => {
+    const prompt = buildClaudeCodePrompt(fakePacket(), fakeLease('/tmp'));
+    assert.ok(prompt.includes('Add helper'));
+    assert.ok(prompt.includes('exists'));
+  });
+
+  it('lists every allowed + forbidden path so claude can self-respect them', () => {
+    const prompt = buildClaudeCodePrompt(
+      fakePacket(),
+      fakeLease('/tmp', { allowedWritePaths: ['a/x.ts'], forbiddenPaths: ['b/y.ts'] }),
     );
-    assert.equal(files[0]!.truncated, true);
-    assert.ok(files[0]!.contents.length < longContent.length);
+    assert.ok(prompt.includes('a/x.ts'));
+    assert.ok(prompt.includes('b/y.ts'));
+  });
+
+  it('explicitly directs the model NOT to emit JSON (subprocess pattern)', () => {
+    const prompt = buildClaudeCodePrompt(fakePacket(), fakeLease('/tmp'));
+    assert.ok(prompt.includes('do NOT emit JSON'));
+    assert.ok(prompt.includes('via git status'));
   });
 });

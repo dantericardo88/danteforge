@@ -497,8 +497,8 @@ async function _callLLMInner(
   const target = await resolveCallTarget(providerOverride, options.model);
   // Display the model that will ACTUALLY be called: for ollama, that's the
   // user's configured ollamaModel (resolved against /api/tags), not the
-  // DEFAULT_MODELS placeholder. Avoids the misleading "ollama/llama3" log
-  // when the user has e.g. ollamaModel: qwen2.5-coder:latest in config.
+  // generic DEFAULT_MODELS fallback. Avoids the misleading "ollama/llama3"
+  // log line when the user has e.g. ollamaModel: qwen2.5-coder:latest set.
   let modelUsed = target.provider === 'ollama' ? target.ollamaModel : target.model;
   let enrichedPrompt = options.enrichContext
     ? await injectContext(prompt, undefined, options.cwd)
