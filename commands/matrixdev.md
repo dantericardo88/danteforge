@@ -87,25 +87,68 @@ API-key alternatives (only if user explicitly wants them):
 - `codex-api` (needs `OPENAI_API_KEY`)
 - `gemini`, `grok`, `together`, `groq`, `mistral`
 
-### Phase 3.5 — Embedded mode handoff (REQUIRED — this is your job in this context)
+### Phase 3.5 — Embedded mode handoff (REQUIRED — parallel by default)
 
-You invoked `run-wave 1 --adapter embedded` in Phase 4 below. The kernel will print:
+You invoked `run-wave 1 --adapter embedded` in Phase 4 below. The kernel will print one issued-lease line per packet:
 
 ```
 [matrix-kernel] Issued lease <leaseId> (provider=embedded)
 ```
 
-Then for each lease, here is what you (the host AI) MUST do — no exceptions:
+**The whole point of embedded mode in 2026 is real parallel work inside one Claude Code subscription with zero API spend.** You are the conductor for that. Here's how:
 
-1. **Read the work-instruction packet** at `.danteforge/embedded-mode/<leaseId>/work-instruction.md` (and the JSON sibling for machine-readable scope). The packet tells you the objective, owned paths, forbidden paths, acceptance criteria — and `worktreePath`, the real git worktree the kernel created for this lease.
-2. **Execute the lease inline using your own Edit/Write/Read tools, INSIDE the worktreePath** (NOT the main repo checkout). Every owned-path is relative to `<worktreePath>/`. The worktree is on its own branch (e.g. `matrix/<dim>/<provider>-<short>`); edits there don't touch your main branch. Stay strictly within `ownedPaths`. NEVER touch `forbiddenPaths`.
-3. **Run required local checks** (typecheck, tests) **from the worktree directory** before declaring completion. If they fail, fix or back out — do not call embedded-complete with broken state.
-4. **Capture the diff** via `danteforge matrix-kernel embedded-complete <leaseId>`. The kernel reads `git diff --name-only HEAD` inside the lease's worktree and feeds those files into verify-court + merge-court. Because Phase 0 ensured a clean main tree AND because Phase 4 created a real `git worktree add`, the captured diff is strictly the lease's work — no contamination from unrelated WIP.
-5. **Then** proceed to Phase 5 (courts).
+#### Step 1 — Collect each lease's sub-agent prompt
 
-**Critical kernel rule (merge-court v2):** an `embedded-complete` call that captures **zero file changes** will be REJECTED by merge-court. The work-packet generator only emits packets for dimensions with `gapVsTarget > 0`; a 0-change response to a real packet is, semantically, "I did nothing" — and the kernel will tell the user that honestly rather than fake an APPROVED outcome. If a lease's acceptance criteria are genuinely impossible in one shot, return early and tell the user; don't pretend.
+For each `<leaseId>` the kernel printed, gather the agent prompt in one batch of Bash calls (in a single message):
 
-In embedded mode you ARE the worker. The kernel is the conductor. The mailbox (`danteforge matrix-kernel mailbox list`) records what's happening across leases.
+```bash
+danteforge matrix-kernel build-subagent-prompt <leaseId>
+```
+
+That emits a JSON object `{ leaseId, description, prompt }`. The `prompt` is a self-contained instruction body that tells the sub-agent where its worktree is, what paths it owns, what to avoid, and the acceptance criteria.
+
+#### Step 2 — Dispatch all sub-agents IN PARALLEL (single message, multiple Agent calls)
+
+In **one assistant message**, call the `Agent` tool once per lease with:
+- `subagent_type: "general-purpose"`
+- `description`: the `description` field from build-subagent-prompt
+- `prompt`: the `prompt` field from build-subagent-prompt verbatim
+
+The harness runs them concurrently (Promise.all under the hood). This is the entire mechanism that gives the user real parallelism on their single subscription — DO NOT serialize this step. If the wave has N leases, the message must contain N Agent tool calls in one batch.
+
+Cap concurrency at **4** by default. If the wave has more than 4 leases, chunk dispatch into batches of 4 in successive messages. If the user passed `--max-parallel <n>`, use that cap instead (clamp to [1, 8]).
+
+**Single-lease wave?** Just one Agent call. No batching ceremony needed — single-packet waves are common and the parallel flow gracefully degrades to one concurrent call.
+
+**`--serial` opt-out:** if the user passed `/matrixdev --serial`, handle leases one at a time with your own Edit/Write tools (the pre-2026 flow). Use this only for debugging a single lease end-to-end. It is NOT the default.
+
+#### Step 3 — Each sub-agent works in its isolated worktree
+
+The agent prompt itself tells each sub-agent to edit ONLY inside its lease's `worktreePath` (the real `git worktree add` the kernel created), to run local typecheck/tests from there, and to return a structured summary. The branch is `matrix/<dim>/<provider>-<short>`; edits never touch your main branch.
+
+Each sub-agent will return a reply with: status (`completed` / `partial` / `failed`), one-line summary, files modified (relative to worktree root), acceptance criteria check.
+
+#### Step 4 — Batch embedded-complete in parallel
+
+Once all sub-agents have returned, in **one assistant message** call Bash N times in parallel to run:
+
+```bash
+danteforge matrix-kernel embedded-complete <leaseId>
+```
+
+The kernel reads `git diff --name-only HEAD` inside each lease's worktree and feeds the captured diffs into verify-court + merge-court. Because Phase 0 ensured a clean main tree AND Phase 4 created real `git worktree add` branches, the captured diff for each lease is strictly its own work — no cross-lease contamination.
+
+#### Step 5 — Tell the user how the wave went, then proceed to Phase 5
+
+Summarize per lease: `<leaseId>` → `<status>` (`<n>` files modified). Then proceed to Phase 5 (courts).
+
+#### Failure handling
+
+If a sub-agent fails (returns error, edits outside scope, or its embedded-complete captures zero files): **record it as failed and continue with the rest**. Verify-court gates bad leases; merge-court rejects them. Good leases still merge. Do NOT abort the whole wave just because one lease failed — that's why we have courts.
+
+**Critical kernel rule (merge-court v2):** an `embedded-complete` that captures **zero file changes** is REJECTED by merge-court. The work-packet generator only emits packets for dimensions with `gapVsTarget > 0`; a 0-change response is semantically "I did nothing." Don't pad fake diffs. If a sub-agent reports it couldn't satisfy criteria, that's honest and useful — surface it to the user.
+
+In embedded mode you ARE the conductor. The kernel orchestrates lease creation + worktree isolation + courts; you (the host AI) coordinate the parallel sub-agents that execute the actual work. The mailbox (`danteforge matrix-kernel mailbox list`) records what each lease did.
 
 ### Phase 4 — Dispatch wave 1
 
@@ -115,9 +158,9 @@ danteforge matrix-kernel run-wave 1 --adapter embedded
 
 (If the user explicitly overrode the adapter via `/matrixdev --adapter <name>`, substitute that. Otherwise always use `embedded` here because you are inside a slash command body — see Phase 3.)
 
-The kernel will dispatch all packets in wave 1 IN PARALLEL via `Promise.all`. Each agent gets its own lease + worktree. Each is constrained by its lease's `allowedWritePaths`.
+The kernel issues all leases in wave 1 in parallel via `Promise.all` and creates a real `git worktree add` for each (one branch per lease). For the embedded adapter, the kernel does NOT execute work — it writes a Work Instruction Packet to disk and returns `awaiting_input` per lease. The actual parallel execution happens in **Phase 3.5 above** where you (the host AI) dispatch one sub-agent per lease via the Agent tool, all in a single message.
 
-After dispatch, read the agent-run summary. Tell the user how many succeeded vs failed and (if available) the per-lease file-change counts.
+After Phase 3.5 + the batched embedded-complete calls, the kernel's agent-runs.json has the captured per-lease diffs. Tell the user how many succeeded vs failed and the per-lease file-change counts.
 
 ### Phase 5 — Run every court
 
@@ -162,6 +205,8 @@ The slash command may be invoked with:
 - `/matrixdev --status` — just run `matrix-kernel status` and report; don't dispatch
 - `/matrixdev --auto-prune` — auto-run `matrix-kernel prune --older-than 24` during Phase 0 instead of prompting the user about stale worktrees
 - `/matrixdev --force-dirty` — pass through to `run-wave --force-dirty` (only when the user explicitly asks; the dirty-tree refusal is there for a reason)
+- `/matrixdev --serial` — opt out of parallel sub-agent dispatch; handle leases one at a time using your own Edit/Write tools. Slow but easier to debug. Default is parallel.
+- `/matrixdev --max-parallel <n>` — cap the number of concurrent sub-agents in Phase 3.5 (default 4, clamped to [1, 8]). Useful when you'd otherwise blow through Pro/Max rate limits.
 
 ## Output format
 
@@ -195,6 +240,7 @@ Report: .danteforge/matrix/matrix.final-report.md
 Bail out early (and tell the user) if:
 
 - **Phase 0 preflight reports `clean: false`** and the user did not pick commit/stash/`--force-dirty`. Dispatching against a dirty tree contaminates verify-court; refusing is the safer default.
+- **The user invoked `/matrixdev --serial` without saying why.** That flag exists for debugging a single lease's behavior end-to-end. If the wave has more than one lease, ask the user whether they actually want serial — they probably want parallel (the default).
 - No `compete-matrix.json` exists at `.danteforge/compete/matrix.json` — tell the user to run `danteforge init` or `danteforge compete --calibrate` first
 - The synthesize-dimensions step produced 0 dimensions (which now also happens when *every* dimension is excluded — same fix path: run `danteforge compete --include <dim>` to re-enable one)
 - The user invoked with `--adapter claude` but `claude --version` exits non-zero — tell them to install Claude Code or pick a different adapter
