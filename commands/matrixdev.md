@@ -21,14 +21,21 @@ danteforge matrix-kernel preflight --json
 
 Parse the JSON. If `clean: true`, proceed to Phase 1.
 
-If `clean: false`, STOP and surface the modified/untracked file list to the user. The run-wave dispatcher will refuse to dispatch on a dirty tree (it bundles unrelated changes into the captured diff and contaminates verify-court). Offer the user, in this order:
+If `clean: false`, the next step depends on the flags the user passed:
 
-1. **Commit** the uncommitted changes ("they're related to my current work")
-2. **Stash** them (`git stash push -m "before /matrixdev"`) — restore later with `git stash pop`
-3. **Abort** `/matrixdev` and resolve the WIP manually
-4. **`--force-dirty`** — only if the user explicitly insists they understand the risk
+- **`/matrixdev --auto-stash`** — automatically wrap the run. Before Phase 1:
+  ```bash
+  git stash push --include-untracked -m "matrixdev auto-stash $(date -u +%Y-%m-%dT%H-%M-%SZ)"
+  ```
+  Record the resulting stash ref. After Phase 5+6 complete (success OR failure), restore with `git stash pop`. If the pop conflicts, STOP and tell the user — do not auto-resolve. This is the recommended path for projects where /matrixdev runs in the middle of unrelated WIP (e.g. DanteCode at scale).
+- **No `--auto-stash` flag**: STOP and surface the modified/untracked file list. Offer the user, in this order:
+  1. **Commit** the uncommitted changes ("they're related to my current work")
+  2. **Stash** them manually (`git stash push -m "before /matrixdev"`) — restore later with `git stash pop`
+  3. **Re-invoke with `--auto-stash`** — let the slash command handle stash + pop around the run
+  4. **Abort** `/matrixdev` and resolve the WIP manually (default)
+  5. **`--force-dirty`** — only if the user explicitly insists they understand the contamination risk
 
-Default to **(3) abort** unless the user picks one of the others.
+Default to **(4) abort** unless the user picks one of the others.
 
 Also, before Phase 1, check for stale worktrees:
 
@@ -165,6 +172,9 @@ After Phase 3.5 + the batched embedded-complete calls, the kernel's agent-runs.j
 ### Phase 5 — Run every court
 
 ```bash
+# Append --scope-tests-to-diff when the user passed /matrixdev --scope-tests-to-diff
+# (or when .danteforge/test-config.json has scopeToDiff:true). Speeds verify
+# from ~4min to ~30-60s by running only tests touching the lease's diff.
 danteforge matrix-kernel verify --all
 # For any lease whose work packet has redTeamRequired: true OR if user passed --red-team
 danteforge matrix-kernel red-team <leaseId> --mock
@@ -183,6 +193,23 @@ danteforge matrix-kernel report
 ```
 
 Read the final markdown report path from the report command's output and SHOW the path to the user so they can open it.
+
+### Phase 6.5 — Auto-stash restore (only when `--auto-stash` was used in Phase 0)
+
+If you stashed the user's WIP in Phase 0, restore it now:
+
+```bash
+git stash pop
+```
+
+If the pop has merge conflicts, do NOT auto-resolve. Show the conflict list to the user with the original stash ref so they can fix manually:
+
+```bash
+git stash list  # to surface the still-on-stash entry
+git status      # to surface conflict markers
+```
+
+The user's WIP is preserved either way — worst case, `git stash list` shows it as `stash@{N}` and they can pop it themselves.
 
 ## Autonomous defaults (no-prompt behavior)
 
@@ -204,9 +231,11 @@ The slash command may be invoked with:
 - `/matrixdev --ask` — explicitly opt into the old confirmation-per-step flow
 - `/matrixdev --status` — just run `matrix-kernel status` and report; don't dispatch
 - `/matrixdev --auto-prune` — auto-run `matrix-kernel prune --older-than 24` during Phase 0 instead of prompting the user about stale worktrees
+- `/matrixdev --auto-stash` — when the tree is dirty in Phase 0, wrap the whole run in `git stash push --include-untracked` + `git stash pop` automatically (reversible; survives a failed run). Recommended for projects with frequent autonomous-state accumulation.
 - `/matrixdev --force-dirty` — pass through to `run-wave --force-dirty` (only when the user explicitly asks; the dirty-tree refusal is there for a reason)
 - `/matrixdev --serial` — opt out of parallel sub-agent dispatch; handle leases one at a time using your own Edit/Write tools. Slow but easier to debug. Default is parallel.
 - `/matrixdev --max-parallel <n>` — cap the number of concurrent sub-agents in Phase 3.5 (default 4, clamped to [1, 8]). Useful when you'd otherwise blow through Pro/Max rate limits.
+- `/matrixdev --scope-tests-to-diff` — pass through to `matrix-kernel verify --scope-tests-to-diff` (overrides `.danteforge/test-config.json` scopeToDiff). Speeds verify-court from ~4min to ~30-60s.
 
 ## Output format
 
