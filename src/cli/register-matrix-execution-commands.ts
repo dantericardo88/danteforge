@@ -12,6 +12,7 @@ export function registerMatrixExecutionCommands(matrix: Command): void {
   registerRunWave(matrix);
   registerPreflight(matrix);
   registerPrune(matrix);
+  registerBuildSubagentPrompt(matrix);
   registerVerify(matrix);
   registerRedTeam(matrix);
   registerTasteGate(matrix);
@@ -19,6 +20,31 @@ export function registerMatrixExecutionCommands(matrix: Command): void {
   registerRetrospective(matrix);
   registerEmbeddedComplete(matrix);
   registerMailboxCommands(matrix);
+}
+
+// ── build-subagent-prompt ──────────────────────────────────────────────────
+//
+// Reads the lease's work-instruction packet + lease graph and prints a
+// JSON object with `prompt` and `description` fields. The /matrixdev
+// slash command body calls this for each lease in a wave, then dispatches
+// parallel Agent tool calls using the returned prompts. Keeps prompt
+// assembly out of markdown (string interpolation in markdown is fragile).
+
+function registerBuildSubagentPrompt(matrix: Command): void {
+  matrix
+    .command('build-subagent-prompt <leaseId>')
+    .description('Emit a JSON object {prompt, description, leaseId} suitable for piping into the host AI\'s Agent tool')
+    .option('--cwd <path>', 'Project root')
+    .option('--pretty', 'Pretty-print the JSON (default: single line)')
+    .action(async (leaseId: string, opts) => runSafely('matrix-kernel:build-subagent-prompt', async () => {
+      const { buildSubagentPrompt } = await import('./commands/matrix-build-subagent-prompt.js');
+      const cwd = (opts.cwd as string | undefined) ?? process.cwd();
+      const result = await buildSubagentPrompt(leaseId, { cwd });
+      const json = opts.pretty
+        ? JSON.stringify(result, null, 2)
+        : JSON.stringify(result);
+      process.stdout.write(json + '\n');
+    }));
 }
 
 // ── prune ──────────────────────────────────────────────────────────────────
