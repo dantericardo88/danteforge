@@ -61,7 +61,7 @@ export function buildSessionContext(stateYaml, matrixState = null) {
     `\n## Available Commands\n` +
     `**Workflow:** /constitution /specify /clarify /tech-decide /plan /tasks /design /forge /ux-refine /verify /synthesize /review\n` +
     `**Presets:** /spark /ember /canvas /magic /blaze /nova /inferno /autoforge /party\n` +
-    `**Quality:** /qa /retro /ship /debug /brainstorm /assess /maturity /define-done /self-improve /universe\n` +
+    `**Quality:** /qa /retro /ship /debug /brainstorm /assess /maturity /define-done /self-improve /universe /sanitize\n` +
     `**Harvest:** /oss /harvest /local-harvest /awesome-scan /wiki-ingest /wiki-lint /wiki-query /wiki-status /wiki-export\n` +
     `**Other:** /lessons /browse /resume /self-assess /self-mutate /ci-report /share-patterns /import-patterns /flow /guide /dossier /external-validate /mutation-score /outcome-check\n` +
     `**Recovery:** /refused-patterns /respec /cross-synthesize\n` +
