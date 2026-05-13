@@ -180,18 +180,115 @@ function cloneFileMap(files: Map<string, LineProvenanceRecord[]>): Record<string
   return out;
 }
 
+// ── Decision-node lookup cache ─────────────────────────────────────────────
+//
+// `findDecisionNodeForCommit` is on the hot path for line-provenance queries
+// (`queryLineProvenance` calls it once per query, and a typical war-room or
+// time-machine UI emits dozens of queries per session). The naive impl read
+// the entire `decision-nodes.jsonl` store on every call — O(n) per query,
+// where n is the total decision-node history. That scaled badly: a session
+// with 100 line queries against a 5000-node store re-read ~500MB cumulative.
+//
+// This module-level cache builds a `Map<fileStateRef, DecisionNodeSummary>`
+// once per (cwd, store-mtime) pair, then serves all subsequent queries in
+// O(1). The cache invalidates automatically when the JSONL's mtime changes
+// (so a fresh recording isn't masked by a stale cache).
+//
+// Use `clearProvenanceCache()` for explicit invalidation in tests or
+// long-running processes that mutate the store outside the normal append
+// path.
+
+type DecisionNodeSummary = NonNullable<LineProvenanceQueryResult['decisionNode']>;
+
+interface CacheEntry {
+  mtimeMs: number;
+  byFileStateRef: Map<string, DecisionNodeSummary>;
+}
+
+const DECISION_NODE_CACHE: Map<string, CacheEntry> = new Map();
+
+/**
+ * Drop the in-memory decision-node lookup cache. Call between tests, or
+ * after an out-of-band mutation to `<cwd>/.danteforge/decision-nodes.jsonl`
+ * that wouldn't show up in mtime.
+ */
+export function clearProvenanceCache(): void {
+  DECISION_NODE_CACHE.clear();
+}
+
 async function findDecisionNodeForCommit(
   cwd: string,
   commitId: string,
-): Promise<LineProvenanceQueryResult['decisionNode'] | undefined> {
+): Promise<DecisionNodeSummary | undefined> {
   const storePath = path.join(cwd, '.danteforge', 'decision-nodes.jsonl');
   if (!existsSync(storePath)) return undefined;
+
+  // Cache key is the absolute store path; mtime guards staleness.
+  let entry = DECISION_NODE_CACHE.get(storePath);
+  let currentMtime: number;
+  try {
+    const stat = await fs.stat(storePath);
+    currentMtime = stat.mtimeMs;
+  } catch {
+    // If we can't stat, fall back to an uncached read so we never serve
+    // stale data on a removed-then-restored store.
+    return findDecisionNodeUncached(storePath, commitId);
+  }
+
+  if (!entry || entry.mtimeMs !== currentMtime) {
+    entry = await buildDecisionNodeIndex(storePath, currentMtime);
+    DECISION_NODE_CACHE.set(storePath, entry);
+  }
+  return entry.byFileStateRef.get(commitId);
+}
+
+async function buildDecisionNodeIndex(storePath: string, mtimeMs: number): Promise<CacheEntry> {
+  const byFileStateRef = new Map<string, DecisionNodeSummary>();
   const raw = await fs.readFile(storePath, 'utf8');
   for (const line of raw.split(/\r?\n/)) {
     if (!line.trim()) continue;
     try {
       const node = JSON.parse(line) as DecisionNode;
-      if (node.output.fileStateRef === commitId) {
+      const fsRef = node.output?.fileStateRef;
+      if (!fsRef) continue;
+      // Last write wins — JSONL grows append-only, so later entries override
+      // earlier ones for the same fileStateRef (e.g. a re-record of the
+      // same commit).
+      byFileStateRef.set(fsRef, {
+        id: node.id,
+        sessionId: node.sessionId,
+        timelineId: node.timelineId,
+        timestamp: node.timestamp,
+        actor: node.actor,
+        prompt: node.input.prompt,
+      });
+    } catch {
+      // Skip malformed lines; provenance queries should stay best-effort.
+    }
+  }
+  return { mtimeMs, byFileStateRef };
+}
+
+/**
+ * Fallback path used only when `fs.stat` on the store fails. Mirrors the
+ * pre-cache behavior so a transiently-missing stat doesn't return wrong
+ * results — just slower ones.
+ */
+async function findDecisionNodeUncached(
+  storePath: string,
+  commitId: string,
+): Promise<DecisionNodeSummary | undefined> {
+  let raw: string;
+  try {
+    raw = await fs.readFile(storePath, 'utf8');
+  } catch {
+    return undefined;
+  }
+  for (const line of raw.split(/\r?\n/)) {
+    if (!line.trim()) continue;
+    try {
+      const node = JSON.parse(line) as DecisionNode;
+      if (node.output?.fileStateRef === commitId) {
         return {
           id: node.id,
           sessionId: node.sessionId,
@@ -202,7 +299,7 @@ async function findDecisionNodeForCommit(
         };
       }
     } catch {
-      // Ignore malformed decision-node lines; provenance queries should stay best-effort.
+      // skip
     }
   }
   return undefined;

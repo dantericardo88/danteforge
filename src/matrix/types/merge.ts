@@ -32,6 +32,18 @@ export interface MergeCandidate {
   testConfidence?: number;       // 0–1
   riskLevel?: 'low' | 'medium' | 'high' | 'critical';
   scoreDelta?: MergeScoreDelta;
+  /**
+   * Files actually changed by the agent run that produced this candidate.
+   * Sourced from the corresponding `AgentRunResult.filesChanged`. Merge-court
+   * rejects candidates with an empty (or missing) list — a packet that asked
+   * for work should not be approved when no work was done.
+   *
+   * To opt out (e.g. audit-only packets that legitimately produce no diff),
+   * set `allowEmptyDiff: true` on the candidate.
+   */
+  filesChanged?: string[];
+  /** Opt-out flag for the no-diff rejection — reserved for audit-only flows. */
+  allowEmptyDiff?: boolean;
 }
 
 export interface MergeDecision {

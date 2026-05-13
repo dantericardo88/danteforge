@@ -361,11 +361,14 @@ function registerMergeCourt(matrix: Command): void {
       const cwd = (opts.cwd as string | undefined) ?? process.cwd();
 
       const leaseGraph = await loadGraph<{ leases: Array<{ id: string; workPacketId: string; branch: string; allowedWritePaths: string[] }> }>(cwd, 'leaseGraph');
-      const workGraph = await loadGraph<{ packets: Array<{ id: string; dimensionId: string }> }>(cwd, 'workGraph');
+      const workGraph = await loadGraph<{ packets: Array<{ id: string; dimensionId: string; allowEmptyDiff?: boolean }> }>(cwd, 'workGraph');
       const gateReportsFile = await loadGraph<{ reports: Array<{ id: string; leaseId: string; status: string }> }>(cwd, 'gateReports');
       const redTeamFile = await loadGraph<{ reports: Array<{ leaseId: string }> }>(cwd, 'redTeamReports');
       const tasteGatesFile = await loadGraph<{ requests: Array<{ leaseId: string }> }>(cwd, 'tasteGates');
       const conflictFile = await loadGraph<{ conflicts: unknown[]; summary: { low: number; medium: number; high: number; critical: number } }>(cwd, 'conflicts');
+      // agent-runs.json carries the actual filesChanged from each AgentRunResult.
+      // Merge-court reads this to enforce the no-diff rejection rule.
+      const agentRunsFile = await loadGraph<{ runs: Array<{ leaseId: string; filesChanged: string[] }> }>(cwd, 'agentRuns');
 
       if (!leaseGraph || !workGraph || !gateReportsFile) {
         logger.error('[matrix-kernel] Missing required state. Run `verify` and `run-wave` first.');
@@ -373,13 +376,17 @@ function registerMergeCourt(matrix: Command): void {
         return;
       }
 
-      const candidates = [] as Array<{ candidate: { candidateId: string; leaseId: string; workPacketId: string; branch: string; gateReportId: string; blastRadius: number; riskLevel: 'low' | 'medium' }; lease: unknown; workPacket: unknown; gateReport: unknown; redTeamReport?: unknown; tasteGateRequest?: unknown }>;
+      const candidates = [] as Array<{ candidate: { candidateId: string; leaseId: string; workPacketId: string; branch: string; gateReportId: string; blastRadius: number; riskLevel: 'low' | 'medium'; filesChanged: string[]; allowEmptyDiff?: boolean }; lease: unknown; workPacket: unknown; gateReport: unknown; redTeamReport?: unknown; tasteGateRequest?: unknown }>;
       for (const lease of leaseGraph.leases) {
         const packet = workGraph.packets.find(p => p.id === lease.workPacketId);
         const gateReport = gateReportsFile.reports.find(r => r.leaseId === lease.id);
         if (!packet || !gateReport) continue;
         const redTeamReport = redTeamFile?.reports.find(r => r.leaseId === lease.id);
         const tasteGateRequest = tasteGatesFile?.requests.find(r => r.leaseId === lease.id);
+        // Find the latest agent-run for this lease — there may be multiple
+        // (re-runs); take the last one so the embedded-complete update wins.
+        const matchingRuns = (agentRunsFile?.runs ?? []).filter(r => r.leaseId === lease.id);
+        const filesChanged = matchingRuns.length > 0 ? (matchingRuns[matchingRuns.length - 1]?.filesChanged ?? []) : [];
         candidates.push({
           candidate: {
             candidateId: `cand.${lease.id}`,
@@ -389,6 +396,8 @@ function registerMergeCourt(matrix: Command): void {
             gateReportId: gateReport.id,
             blastRadius: lease.allowedWritePaths.length,
             riskLevel: 'low',
+            filesChanged,
+            allowEmptyDiff: packet.allowEmptyDiff === true,
           },
           lease, workPacket: packet, gateReport, redTeamReport, tasteGateRequest,
         });

@@ -133,6 +133,16 @@ function arbitrate(
   conflictReport: ConflictReport,
   approvedPaths: Set<string>,
 ): MergeDecisionOutcome {
+  // No-diff check (kernel discipline rule):
+  // Reject any candidate that produced zero file changes unless the work
+  // packet explicitly opts in to no-diff outcomes via `allowEmptyDiff`.
+  // Without this, an autonomous loop could close gaps with empty
+  // embedded-complete calls — defeating the purpose of merge-court.
+  const filesChanged = input.candidate.filesChanged ?? [];
+  if (!input.candidate.allowEmptyDiff && filesChanged.length === 0) {
+    return 'REJECTED';
+  }
+
   // Gate report status
   if (input.gateReport.status === 'failed') return 'REJECTED';
 
@@ -168,8 +178,13 @@ function arbitrate(
 
 function reasonFor(outcome: MergeDecisionOutcome, input: MergeCourtInput): string {
   switch (outcome) {
-    case 'REJECTED':
+    case 'REJECTED': {
+      const filesChanged = input.candidate.filesChanged ?? [];
+      if (!input.candidate.allowEmptyDiff && filesChanged.length === 0) {
+        return 'No substantive diff — agent produced zero file changes for a packet that requested work.';
+      }
       return `Gate report status: ${input.gateReport.status}`;
+    }
     case 'BLOCKED_BY_RED_TEAM':
       return `Red team blocked: ${input.redTeamReport?.findings.map(f => f.detail).slice(0, 2).join('; ') ?? 'unspecified'}`;
     case 'NEEDS_HUMAN_REVIEW':

@@ -34,13 +34,13 @@ Read the simulate output: how many waves? how many packets per wave? what's the 
 
 ### Phase 3 — Pick the adapter
 
-**Default is `--adapter auto`** — the kernel detects whether it's running inside a host AI and picks the right mode:
+**You are reading this slash command from inside a host AI (Claude Code or Codex).** The right adapter is **always `--adapter embedded`** in this context. Do NOT use `--adapter auto` here.
 
-- If `CLAUDE_PLUGIN_ROOT` is set (you, the AI reading this, ARE Claude Code) → `embedded` mode.
-- If `CODEX_SESSION` / `CODEX` / `CODEX_ENV` is set (host is Codex) → `embedded` mode.
-- Plain terminal (neither set) → falls back to `fake` for safety, unless the user passed an explicit `--adapter`.
+**Why explicit, not auto?** `detectHostAI()` reads `CLAUDE_PLUGIN_ROOT` / `CODEX_SESSION`, but those env vars are injected into plugin scripts, NOT into Bash subprocesses spawned by a slash command. When you call `danteforge matrix-kernel run-wave` via the Bash tool, the kernel's auto-probe sees a clean env → falls back to `fake` → spawns a stub adapter that doesn't do real work. Explicit `--adapter embedded` skips the broken probe and tells the kernel: "the host AI executing this markdown will do the work itself; just write the instruction packet."
 
-You only need to choose a non-default adapter when running from a plain terminal AND wanting real execution. In that case probe `claude --version`, `codex --version`, `ollama list` and pick the first available.
+The `--adapter auto` flag is correct for **plain-terminal invocations** (a human typing `danteforge matrix-kernel run-wave --adapter auto` in their shell). Those processes ARE the host's plugin context and inherit the env vars. From a slash command body, ALWAYS pass `--adapter embedded`.
+
+If the user explicitly overrode adapter on the slash command (`/matrixdev --adapter claude`, `--adapter codex`, etc.), honor that — the override path is the user asking for a real subprocess instead of embedded execution.
 
 Adapter aliases (most-to-least preferred for terminal mode):
 - `embedded` — write a Work Instruction Packet for the host AI to execute inline (no subprocess, no double-billing)
@@ -54,28 +54,33 @@ API-key alternatives (only if user explicitly wants them):
 - `codex-api` (needs `OPENAI_API_KEY`)
 - `gemini`, `grok`, `together`, `groq`, `mistral`
 
-### Phase 3.5 — Embedded mode handoff (the key difference when you're a host AI)
+### Phase 3.5 — Embedded mode handoff (REQUIRED — this is your job in this context)
 
-If you (the AI reading this slash command) are running inside Claude Code or Codex AND the user did not pass an explicit `--adapter`, the run-wave step will print:
+You invoked `run-wave 1 --adapter embedded` in Phase 4 below. The kernel will print:
 
 ```
-[matrix-kernel] Auto-selected adapter: embedded (host AI: claude)
+[matrix-kernel] Issued lease <leaseId> (provider=embedded)
 ```
 
-When that line appears, here is what changes about your job:
+Then for each lease, here is what you (the host AI) MUST do — no exceptions:
 
-1. `run-wave 1 --adapter auto` (or `--adapter embedded`) will write one Work Instruction Packet per lease to `.danteforge/embedded-mode/<leaseId>/work-instruction.md`. It will NOT spawn another Claude Code / Codex subprocess.
-2. **You** then read each instruction packet and execute the lease using your own Edit/Write tools — stay strictly within `ownedPaths`, never touch `forbiddenPaths`. Run any required local checks (typecheck / tests) yourself before declaring complete.
-3. After each lease is done, run `danteforge matrix-kernel embedded-complete <leaseId>` so the kernel captures your diff (via `git diff --name-only HEAD` on the worktree) and queues the lease for verify-court.
-4. Proceed to Phase 5 (courts) as usual.
+1. **Read the work-instruction packet** at `.danteforge/embedded-mode/<leaseId>/work-instruction.md` (and the JSON sibling for machine-readable scope). The packet tells you the objective, owned paths, forbidden paths, and acceptance criteria.
+2. **Execute the lease inline** using your own Edit/Write/Read tools. Stay strictly within `ownedPaths`. NEVER touch `forbiddenPaths`.
+3. **Run required local checks** (typecheck, tests) yourself before declaring completion. If they fail, fix or back out — do not call embedded-complete with broken state.
+4. **Capture the diff** via `danteforge matrix-kernel embedded-complete <leaseId>`. The kernel reads `git diff --name-only HEAD` on the lease worktree and feeds those files into verify-court + merge-court.
+5. **Then** proceed to Phase 5 (courts).
 
-In embedded mode, you ARE the worker. The kernel is the conductor. The mailbox (`danteforge matrix-kernel mailbox list`) records what's happening across leases so a war-room observer (or a parallel Codex CLI in another terminal) can see your progress.
+**Critical kernel rule (merge-court v2):** an `embedded-complete` call that captures **zero file changes** will be REJECTED by merge-court. The work-packet generator only emits packets for dimensions with `gapVsTarget > 0`; a 0-change response to a real packet is, semantically, "I did nothing" — and the kernel will tell the user that honestly rather than fake an APPROVED outcome. If a lease's acceptance criteria are genuinely impossible in one shot, return early and tell the user; don't pretend.
+
+In embedded mode you ARE the worker. The kernel is the conductor. The mailbox (`danteforge matrix-kernel mailbox list`) records what's happening across leases.
 
 ### Phase 4 — Dispatch wave 1
 
 ```bash
-danteforge matrix-kernel run-wave 1 --adapter <chosen>
+danteforge matrix-kernel run-wave 1 --adapter embedded
 ```
+
+(If the user explicitly overrode the adapter via `/matrixdev --adapter <name>`, substitute that. Otherwise always use `embedded` here because you are inside a slash command body — see Phase 3.)
 
 The kernel will dispatch all packets in wave 1 IN PARALLEL via `Promise.all`. Each agent gets its own lease + worktree. Each is constrained by its lease's `allowedWritePaths`.
 

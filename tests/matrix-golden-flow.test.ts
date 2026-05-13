@@ -400,6 +400,7 @@ function candidateFor(
   packet: import('../src/matrix/types/index.js').WorkPacket,
   gateReportId: string,
   scoreAfter: number,
+  filesChanged: string[] = [`src/${packet.dimensionId}.ts`],
 ): MergeCandidate {
   return {
     candidateId: `cand.${lease.id}`,
@@ -410,5 +411,9 @@ function candidateFor(
     blastRadius: lease.allowedWritePaths.length,
     riskLevel: 'medium',
     scoreDelta: { dimensionId: packet.dimensionId, before: 3.0, after: scoreAfter },
+    // Merge-court rejects candidates with no diff (kernel discipline rule).
+    // The golden flow exercises real agent runs that change files, so plumb
+    // the diff through here.
+    filesChanged,
   };
 }

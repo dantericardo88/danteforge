@@ -131,7 +131,10 @@ function buildPacket(
     mayConflictWith: [],
     acceptanceCriteria: [
       ...dim.evidenceRequired,
-      `Score for ${dim.dimensionId} increases by at least 1.0`,
+      // Reflect the actual gap rather than a hardcoded "+1.0" that may
+      // over-shoot the target. Mirrors the deriveEvidenceRequirements
+      // pattern from `dimension-synthesizer.ts`.
+      `Score for ${dim.dimensionId} moves from ${dim.currentScore} to at least ${dim.targetScore} (gap: ${(dim.targetScore - dim.currentScore).toFixed(1)})`,
     ],
     proof: {
       proofRequired: [

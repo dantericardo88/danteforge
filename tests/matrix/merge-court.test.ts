@@ -37,6 +37,10 @@ function candidate(id: string, overrides: Partial<MergeCandidate> = {}): MergeCa
     candidateId: `c.${id}`, leaseId: id, workPacketId: `work.${id}`,
     branch: `branch/${id}`, gateReportId: `g.${id}`,
     blastRadius: 1, riskLevel: 'low',
+    // Default to a non-empty diff so existing tests don't trip the new
+    // no-diff rejection rule. Tests that need the zero-change path should
+    // override explicitly.
+    filesChanged: [`src/${id}.ts`],
     ...overrides,
   };
 }
@@ -175,6 +179,51 @@ describe('Merge Court', () => {
       _runMerge: async () => ({ success: false, error: 'merge conflict in src/a.ts' }),
     });
     assert.equal(result.decisions[0]!.decision, 'NEEDS_REPAIR');
+  });
+
+  it('rejects a candidate with zero file changes (no-diff rule)', async () => {
+    const result = await runMergeCourt({
+      candidates: [{
+        candidate: candidate('a', { filesChanged: [] }),
+        lease: lease('a'),
+        workPacket: packet('a'),
+        gateReport: gateReport('passed'),
+      }],
+      conflictReport: emptyConflicts(),
+    });
+    assert.equal(result.decisions[0]!.decision, 'REJECTED');
+    assert.match(result.decisions[0]!.reason, /no substantive diff/i);
+  });
+
+  it('rejects a candidate with missing filesChanged field (defensive)', async () => {
+    // candidate factory's default fills filesChanged — explicitly drop it.
+    const c = candidate('a');
+    delete (c as { filesChanged?: string[] }).filesChanged;
+    const result = await runMergeCourt({
+      candidates: [{
+        candidate: c,
+        lease: lease('a'),
+        workPacket: packet('a'),
+        gateReport: gateReport('passed'),
+      }],
+      conflictReport: emptyConflicts(),
+    });
+    assert.equal(result.decisions[0]!.decision, 'REJECTED');
+    assert.match(result.decisions[0]!.reason, /no substantive diff/i);
+  });
+
+  it('approves a zero-change candidate when allowEmptyDiff is set (audit flow opt-in)', async () => {
+    const result = await runMergeCourt({
+      candidates: [{
+        candidate: candidate('a', { filesChanged: [], allowEmptyDiff: true }),
+        lease: lease('a'),
+        workPacket: packet('a'),
+        gateReport: gateReport('passed'),
+      }],
+      conflictReport: emptyConflicts(),
+      _runMerge: async () => ({ success: true }),
+    });
+    assert.equal(result.decisions[0]!.decision, 'APPROVED');
   });
 
   it('blocks on HIGH/CRITICAL conflicts touching the packet', async () => {

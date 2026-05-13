@@ -138,4 +138,19 @@ describe('generateWorkPackets', () => {
       assert.ok(packet.rollbackPlan.length > 0, `${packet.id} should have rollback plan`);
     }
   });
+
+  it('acceptance criteria reflect actual current/target scores (not hardcoded +1.0)', () => {
+    const graph = generateWorkPackets({
+      dimensionGraph: fixtureDimensions(),
+      projectGraph: fixtureProject(),
+    });
+    for (const packet of graph.packets) {
+      // No packet should have the legacy hardcoded "+1.0" rule.
+      const hasLegacyRule = packet.acceptanceCriteria.some(c => /increases by at least 1\.0/.test(c));
+      assert.equal(hasLegacyRule, false, `${packet.id} carries the obsolete +1.0 acceptance string: ${packet.acceptanceCriteria.join(' | ')}`);
+      // It should have a "moves from X to at least Y" rule with concrete numbers.
+      const hasGapAware = packet.acceptanceCriteria.some(c => /moves from .+ to at least /.test(c));
+      assert.equal(hasGapAware, true, `${packet.id} should have a gap-aware acceptance criterion`);
+    }
+  });
 });
