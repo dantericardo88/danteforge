@@ -45,17 +45,34 @@ function resolveWorktreeBase(cwd: string): string {
   return path.join(cwd, '.danteforge-worktrees');
 }
 
+export interface CreateAgentWorktreeOptions extends WorktreeTestOpts {
+  /**
+   * Explicit branch name. When omitted, `danteforge/<agentName>` is used.
+   * Matrix-kernel callers pass the lease's branch (e.g. `matrix/<dim>/<provider>-<short>`)
+   * so merge-court can later target the same branch the worktree was created on.
+   */
+  branch?: string;
+  /**
+   * Explicit worktree path. When omitted, `<cwd>/.danteforge-worktrees/<agentName>` is used.
+   * Use this when the caller (e.g. matrix-kernel `createWorktreeForLease`) already has
+   * a stable path for the lease — keeps `lease.worktreePath` and the actual git
+   * worktree in sync.
+   */
+  worktreePath?: string;
+}
+
 export async function createAgentWorktree(
   agentName: string,
-  opts?: WorktreeTestOpts | WorktreeGitFn,
+  opts?: CreateAgentWorktreeOptions | WorktreeGitFn,
 ): Promise<string> {
   const g = isGitFn(opts) ? opts : opts?._git ?? git;
   const f = isGitFn(opts) ? nodeFsOps : opts?._fs ?? nodeFsOps;
   const cwd = resolveCwd(opts);
   const ensureIgnores = isGitFn(opts) ? null : opts?._ensureProjectIgnores ?? ensureProjectIgnores;
   const worktreeBase = resolveWorktreeBase(cwd);
-  const worktreePath = path.join(worktreeBase, agentName);
-  const branchName = `danteforge/${agentName}`;
+  const explicit = !isGitFn(opts) ? opts : undefined;
+  const worktreePath = explicit?.worktreePath ?? path.join(worktreeBase, agentName);
+  const branchName = explicit?.branch ?? `danteforge/${agentName}`;
 
   await f.mkdir(worktreeBase, { recursive: true });
   if (ensureIgnores) {
@@ -63,7 +80,7 @@ export async function createAgentWorktree(
   }
   await ensureWorktreesIgnored({ _fs: f, cwd });
 
-  logger.info(`Creating worktree for agent "${agentName}" at ${worktreePath}...`);
+  logger.info(`Creating worktree for agent "${agentName}" at ${worktreePath} on branch ${branchName}...`);
 
   try {
     await g.raw(['worktree', 'add', worktreePath, '-b', branchName]);
@@ -82,11 +99,13 @@ export async function createAgentWorktree(
 
 export async function removeAgentWorktree(
   agentName: string,
-  opts?: WorktreeTestOpts | WorktreeGitFn,
+  opts?: CreateAgentWorktreeOptions | WorktreeGitFn,
 ): Promise<void> {
   const g = isGitFn(opts) ? opts : opts?._git ?? git;
   const cwd = resolveCwd(opts);
-  const worktreePath = path.join(resolveWorktreeBase(cwd), agentName);
+  const explicit = !isGitFn(opts) ? opts : undefined;
+  const worktreePath = explicit?.worktreePath ?? path.join(resolveWorktreeBase(cwd), agentName);
+  const branchName = explicit?.branch ?? `danteforge/${agentName}`;
 
   try {
     await g.raw(['worktree', 'remove', worktreePath, '--force']);
@@ -95,7 +114,6 @@ export async function removeAgentWorktree(
     logger.warn(`Could not remove worktree "${agentName}": ${err instanceof Error ? err.message : String(err)}`);
   }
 
-  const branchName = `danteforge/${agentName}`;
   try {
     await g.raw(['branch', '-d', branchName]);
   } catch {

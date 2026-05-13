@@ -10,6 +10,8 @@ import { formatAndLogError } from '../core/format-error.js';
 
 export function registerMatrixExecutionCommands(matrix: Command): void {
   registerRunWave(matrix);
+  registerPreflight(matrix);
+  registerPrune(matrix);
   registerVerify(matrix);
   registerRedTeam(matrix);
   registerTasteGate(matrix);
@@ -17,6 +19,65 @@ export function registerMatrixExecutionCommands(matrix: Command): void {
   registerRetrospective(matrix);
   registerEmbeddedComplete(matrix);
   registerMailboxCommands(matrix);
+}
+
+// ── prune ──────────────────────────────────────────────────────────────────
+
+function registerPrune(matrix: Command): void {
+  matrix
+    .command('prune')
+    .description('Remove stale worktrees, embedded-mode dirs, and optionally age out inactive lease records')
+    .option('--cwd <path>', 'Project root')
+    .option('--older-than <hours>', 'Mark non-active lease records older than N hours as revoked', parseFloat)
+    .option('--force', 'Remove worktrees even with uncommitted local changes')
+    .option('--dry-run', 'Print what would happen without mutating anything')
+    .action(async (opts) => runSafely('matrix-kernel:prune', async () => {
+      const { matrixPrune } = await import('./commands/matrix-prune.js');
+      const result = await matrixPrune({
+        cwd: opts.cwd as string | undefined,
+        olderThanHours: opts.olderThan as number | undefined,
+        force: opts.force as boolean | undefined,
+        dryRun: opts.dryRun as boolean | undefined,
+      });
+      const verb = opts.dryRun ? 'Would prune' : 'Pruned';
+      logger.success(
+        `[matrix-kernel:prune] ${verb}: ${result.worktreesRemoved.length} worktree(s), ${result.embeddedDirsRemoved.length} embedded-mode dir(s), ${result.leasesRevoked.length} lease(s) marked revoked. ${result.skipped.length} skipped.`,
+      );
+    }));
+}
+
+// ── preflight ──────────────────────────────────────────────────────────────
+//
+// Read-only pre-dispatch probe. `/matrixdev` calls this in its Phase 0 to
+// surface dirty-tree state to the user BEFORE we issue any leases. Prints a
+// concise JSON object so slash-command bodies can parse it without scraping
+// the human-readable log lines.
+
+function registerPreflight(matrix: Command): void {
+  matrix
+    .command('preflight')
+    .description('Probe whether the main working tree is clean enough to dispatch a matrix run')
+    .option('--cwd <path>', 'Project root')
+    .option('--json', 'Emit machine-readable JSON (default: human-readable)')
+    .action(async (opts) => runSafely('matrix-kernel:preflight', async () => {
+      const { isCleanWorkTree } = await import('../utils/git-clean-check.js');
+      const cwd = (opts.cwd as string | undefined) ?? process.cwd();
+      const report = await isCleanWorkTree(cwd);
+      if (opts.json) {
+        process.stdout.write(JSON.stringify(report) + '\n');
+        if (!report.clean) process.exitCode = 1;
+        return;
+      }
+      if (report.clean) {
+        logger.success(`[matrix-kernel] Working tree clean — safe to dispatch.`);
+        return;
+      }
+      logger.error(`[matrix-kernel] Working tree is dirty:`);
+      report.modified.forEach(f => logger.error(`  M  ${f}`));
+      report.untracked.forEach(f => logger.error(`  ?? ${f}`));
+      logger.error(`Commit, stash, or pass --force-dirty to run-wave.`);
+      process.exitCode = 1;
+    }));
 }
 
 // ── run-wave ───────────────────────────────────────────────────────────────
@@ -28,10 +89,12 @@ function registerRunWave(matrix: Command): void {
     .option('--cwd <path>', 'Project root')
     .option('--adapter <kind>', 'Agent adapter: auto | embedded | fake | claude | codex | claude-api | codex-api | gemini | grok | dantecode | ollama | together | groq | mistral (default: auto, which uses `embedded` inside a host AI and falls back to `fake` in a plain terminal). `embedded` writes a Work Instruction Packet for the host AI instead of spawning a subprocess.')
     .option('--max-tokens <n>', 'Per-agent LLM token cap', parseInt)
+    .option('--force-dirty', 'Dispatch even when the main working tree has uncommitted changes (default: refuse). Use only for CI runs or recovery from a prior failed dispatch.')
     .action(async (waveNumber: string, opts) => runSafely('matrix-kernel:run-wave', async () => {
       const { loadGraph, saveGraph, ensureMatrixDir } = await import('../matrix/engines/matrix-state.js');
       const { loadOwnershipMap } = await import('../matrix/engines/ownership-map.js');
       const { createLease } = await import('../matrix/engines/lease-manager.js');
+      const { createWorktreeForLease } = await import('../matrix/engines/worktree-manager.js');
       const { FakeAgentAdapter } = await import('../matrix/adapters/fake-agent-adapter.js');
       const { ClaudeCodeAdapter } = await import('../matrix/adapters/claude-code-adapter.js');
       const { CodexAdapter } = await import('../matrix/adapters/codex-adapter.js');
@@ -50,6 +113,23 @@ function registerRunWave(matrix: Command): void {
 
       const cwd = (opts.cwd as string | undefined) ?? process.cwd();
       const requestedKind = (opts.adapter as string | undefined) ?? 'auto';
+
+      // Pre-flight: refuse to dispatch on a dirty main tree. Any uncommitted
+      // change would contaminate the captured diff and the verify-court test
+      // run. The escape hatch is `--force-dirty` for CI and recovery flows.
+      if (!(opts.forceDirty as boolean | undefined)) {
+        const { isCleanWorkTree } = await import('../utils/git-clean-check.js');
+        const report = await isCleanWorkTree(cwd);
+        if (!report.clean) {
+          logger.error(`[matrix-kernel] Refusing to dispatch on a dirty working tree:`);
+          report.modified.forEach(f => logger.error(`  M  ${f}`));
+          report.untracked.forEach(f => logger.error(`  ?? ${f}`));
+          logger.error(`Commit, stash, or re-run with --force-dirty.`);
+          process.exitCode = 1;
+          return;
+        }
+      }
+
       const detectedHost = detectHostAI();
       // Default `auto` routing: embedded when invoked from inside a host AI;
       // dry-run-safe adapter otherwise (no LLM spend without explicit opt-in).
@@ -118,7 +198,17 @@ function registerRunWave(matrix: Command): void {
           ownershipMap,
           cwd,
         });
-        await fs.mkdir(lease.worktreePath, { recursive: true });
+        // Wire a real `git worktree add` so the lease has true filesystem +
+        // branch isolation. captureGitDiff and verify-court depend on this:
+        // without it, they would operate on the main repo's dirty tree.
+        try {
+          const handle = await createWorktreeForLease({ lease, cwd });
+          lease.worktreePath = handle.worktreePath;
+        } catch (err) {
+          logger.error(`[matrix-kernel] Worktree creation failed for ${lease.id}: ${err instanceof Error ? err.message : String(err)}`);
+          logger.error(`[matrix-kernel] Skipping this lease — fix the underlying git/branch issue and re-run.`);
+          continue;
+        }
         dispatchQueue.push({ lease, packet });
         logger.info(`[matrix-kernel] Issued lease ${lease.id} (provider=${adapterKind})`);
       }

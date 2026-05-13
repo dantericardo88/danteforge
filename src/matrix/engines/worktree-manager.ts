@@ -10,6 +10,7 @@ import {
   listWorktrees,
   type WorktreeGitFn,
   type WorktreeFsOps,
+  type CreateAgentWorktreeOptions,
 } from '../../utils/worktree.js';
 import type { AgentLease } from '../types/lease.js';
 
@@ -28,8 +29,14 @@ export interface CreateWorktreeOptions {
 }
 
 /**
- * Create a worktree for a lease. The lease's `worktreePath` is honored when
- * present, otherwise a default `.danteforge-worktrees/{leaseId}` is used.
+ * Create a real git worktree for a lease. The actual path and branch are
+ * driven by the lease (not by `agentName`-style normalization) so that
+ * downstream consumers (verify-court, merge-court, embedded-complete) see
+ * the same path/branch the lease records.
+ *
+ * If `lease.worktreePath` already exists as an empty directory (a stale
+ * placeholder from a prior failed run), it's removed before `git worktree
+ * add` so the latter doesn't refuse with "destination already exists".
  */
 export async function createWorktreeForLease(
   options: CreateWorktreeOptions,
@@ -37,7 +44,28 @@ export async function createWorktreeForLease(
   const { lease } = options;
   const agentName = lease.id.replace(/[^a-zA-Z0-9_-]/g, '-');
   const cwd = options.cwd ?? process.cwd();
-  const opts = { cwd, _git: options._git, _fs: options._fs };
+
+  // git worktree add refuses to write into an existing non-empty dir.
+  // Empty placeholder dirs are a common artifact from the old flow; clear them.
+  try {
+    const stat = await fs.stat(lease.worktreePath);
+    if (stat.isDirectory()) {
+      const entries = await fs.readdir(lease.worktreePath);
+      if (entries.length === 0) {
+        await fs.rmdir(lease.worktreePath);
+      }
+    }
+  } catch {
+    // Path doesn't exist — fine, git will create it.
+  }
+
+  const opts: CreateAgentWorktreeOptions = {
+    cwd,
+    _git: options._git,
+    _fs: options._fs,
+    branch: lease.branch,
+    worktreePath: lease.worktreePath,
+  };
   const worktreePath = await createAgentWorktree(agentName, opts);
   return {
     leaseId: lease.id,
@@ -61,7 +89,13 @@ export async function removeWorktreeForLease(
 ): Promise<void> {
   const agentName = options.lease.id.replace(/[^a-zA-Z0-9_-]/g, '-');
   const cwd = options.cwd ?? process.cwd();
-  await removeAgentWorktree(agentName, { cwd, _git: options._git, _fs: options._fs });
+  await removeAgentWorktree(agentName, {
+    cwd,
+    _git: options._git,
+    _fs: options._fs,
+    branch: options.lease.branch,
+    worktreePath: options.lease.worktreePath,
+  });
 }
 
 export interface ListMatrixWorktreesOptions {
