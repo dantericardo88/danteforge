@@ -277,6 +277,7 @@ Usage rule:
 | `danteforge harvest-pattern` | Focused OSS pattern harvest with Y/N confirmation per gap | `--max-repos` |
 | `danteforge build` | Guided spec-to-ship wizard: constitution→specify→clarify→plan→tasks→forge→verify→score | `--interactive` |
 | `danteforge ascend` | Fully autonomous scoring loop: classify ceiling dims, drive all achievable to 9.0/10 | `--target`, `--max-cycles`, `--interactive`, `--dry-run` |
+| `danteforge sanitize` | Break up oversized files via hybrid AST + LLM splitting under safety rails | `--check`, `--dry-run`, `--threshold`, `--max-cycles`, `--max-tokens`, `--yes` |
 | `danteforge danteforge` | Maximum-power all-in-one: harvest + OSS + 10-wave autoforge + party + convergence | |
 
 ### Utilities

@@ -83,6 +83,8 @@ const WORKFLOW_COMMANDS = [
   // Matrix Kernel slash commands
   'matrix-kernel',
   'matrixdev',
+  // Quality discipline — autonomous oversized-file splitter
+  'sanitize',
 ];
 
 // Commands that have slash command files but are auxiliary or slash-only (documentation,
@@ -125,16 +127,23 @@ describe('command-skill-coverage', () => {
     }
   });
 
-  it('has exactly the expected number of command files', async () => {
+  it('commands/ directory matches WORKFLOW_COMMANDS exactly (no orphans, no missing)', async () => {
     const commandsDir = path.resolve('commands');
     const entries = await fs.readdir(commandsDir);
-    const commandFiles = entries.filter(f => f.endsWith('.md'));
+    const onDisk = new Set(entries.filter(f => f.endsWith('.md')).map(f => f.replace('.md', '')));
+    const inArray = new Set(WORKFLOW_COMMANDS);
 
-    assert.strictEqual(
-      commandFiles.length,
-      WORKFLOW_COMMANDS.length,
-      `Expected ${WORKFLOW_COMMANDS.length} command files, found ${commandFiles.length}: ${commandFiles.sort().join(', ')}`,
-    );
+    const missingFiles = [...inArray].filter(c => !onDisk.has(c)).sort();
+    const orphanFiles = [...onDisk].filter(c => !inArray.has(c)).sort();
+
+    const errorParts: string[] = [];
+    if (missingFiles.length > 0) {
+      errorParts.push(`Missing commands/*.md for: ${missingFiles.join(', ')} (add the file, or remove from WORKFLOW_COMMANDS).`);
+    }
+    if (orphanFiles.length > 0) {
+      errorParts.push(`Orphan commands/*.md files not in WORKFLOW_COMMANDS: ${orphanFiles.join(', ')} (add to the array, or delete the file).`);
+    }
+    assert.strictEqual(errorParts.length, 0, errorParts.join('\n'));
   });
 
   it('every commands/*.md file has valid YAML frontmatter with name and description', async () => {
