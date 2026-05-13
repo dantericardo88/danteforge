@@ -43,6 +43,7 @@ import { mergeScoreProposals, writeScoreProposal } from '../../core/matrix-devel
 import { formatScore, formatStatusTable, logSprintGaps, buildHarvestBriefPrompt, logSprintOutput } from './compete-display.js';
 import { handleAmend, handleAmendFile } from './compete-amend.js';
 import { defaultEvidenceWriter, parseRescore, proposeAndMergeScore, runCertifyGate, writeRescoreEvidence } from './compete-score-flow.js';
+import { actionCalibrate } from './compete-calibrate.js';
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -607,122 +608,9 @@ async function actionSyncScores(options: CompeteOptions, cwd: string): Promise<C
   return { action: 'validate', matrixPath, overallScore: computeOverallScore(updatedMatrix), dimensionsUpdated: updated };
 }
 
-// ── Calibrate ─────────────────────────────────────────────────────────────────
-
-/** Map scorer camelCase dimension IDs to matrix snake_case IDs. */
-function scorerDimToMatrixId(scorerDim: string): string {
-  return scorerDim.replace(/([A-Z])/g, '_$1').toLowerCase();
-}
-
-async function actionCalibrate(options: CompeteOptions, cwd: string): Promise<CompeteResult> {
-  const matrixPath = getMatrixPath(cwd);
-  const loadFn = options._loadMatrix ?? ((c) => loadMatrix(c));
-  const saveFn = options._saveMatrix ?? ((m, c) => saveMatrix(m, c));
-  const harshScoreFn = options._harshScore ?? computeHarshScore;
-  const strictDimsFn = options._computeStrictDims ?? computeStrictDimensions;
-  const { generateAdversarialScore } = await import('../../core/adversarial-scorer-dim.js');
-  const adversarialFn = options._generateAdversarialScore ?? generateAdversarialScore;
-
-  const matrix = await loadFn(cwd);
-  if (!matrix) {
-    logger.info('No CHL matrix found. Run `danteforge compete --init` first.');
-    return { action: 'calibrate', matrixPath };
-  }
-
-  logger.info('Running harsh scorer for baseline scores...');
-  let harshResult: import('../../core/harsh-scorer.js').HarshScoreResult;
-  try {
-    harshResult = await harshScoreFn({ cwd });
-    await applyStrictOverrides(harshResult, cwd, strictDimsFn);
-  } catch {
-    logger.error('Harsh scorer failed — cannot calibrate.');
-    return { action: 'calibrate', matrixPath };
-  }
-
-  logger.info('Running adversarial scorer (hostile review)...');
-  let adversarialResult: import('../../core/adversarial-scorer-dim.js').AdversarialScoreResult;
-  try {
-    adversarialResult = await adversarialFn(harshResult, { cwd });
-  } catch {
-    logger.error('Adversarial scorer failed — cannot calibrate.');
-    return { action: 'calibrate', matrixPath };
-  }
-
-  // Build a map: matrixDimId → { harshScore, adversarialScore, verdict, rationale }
-  const adversarialByMatrixId = new Map<string, { harsh: number; adv: number; rationale: string }>();
-  const harshDims = harshResult.displayDimensions as Record<string, number>;
-  for (const dimScore of adversarialResult.dimensions) {
-    const matrixId = scorerDimToMatrixId(dimScore.dimension);
-    const harshScore = harshDims[dimScore.dimension] ?? (harshDims[matrixId] ?? 0);
-    adversarialByMatrixId.set(matrixId, {
-      harsh: harshScore,
-      adv: dimScore.adversarialScore,
-      rationale: dimScore.rationale,
-    });
-  }
-
-  // Collect inflated dimensions
-  const inflated: Array<{ id: string; label: string; before: number; after: number; adv: number }> = [];
-  for (const dim of matrix.dimensions) {
-    const entry = adversarialByMatrixId.get(dim.id);
-    if (!entry) continue;
-    const selfScore = dim.scores['self'] ?? 0;
-    const divergence = entry.adv - selfScore;
-    if (divergence <= -1.5) {
-      const consensus = Math.round(((entry.harsh + entry.adv) / 2) * 10) / 10;
-      inflated.push({ id: dim.id, label: dim.label, before: selfScore, after: consensus, adv: entry.adv });
-    }
-  }
-
-  if (inflated.length === 0) {
-    logger.success('✓ No inflated dimensions found — matrix scores are trusted by adversarial review.');
-    return { action: 'calibrate', matrixPath, overallScore: matrix.overallSelfScore, dimensionsUpdated: 0 };
-  }
-
-  // Show diff table
-  logger.info(`\nAdversarial calibration will adjust ${inflated.length} dimension(s):\n`);
-  logger.info('  Dimension                         Before  Adversary  Consensus');
-  logger.info('  ' + '─'.repeat(66));
-  for (const d of inflated) {
-    const label = d.label.padEnd(34);
-    logger.info(`  ${label}  ${formatScore(d.before).padStart(5)}  ${formatScore(d.adv).padStart(8)}  ${formatScore(d.after).padStart(9)}`);
-  }
-  logger.info('');
-
-  if (!options.yes) {
-    logger.info('Run with --yes to apply these corrections.');
-    return { action: 'calibrate', matrixPath, overallScore: matrix.overallSelfScore, dimensionsUpdated: 0 };
-  }
-
-  // Apply
-  let updated = 0;
-  for (const d of inflated) {
-    const entry = adversarialByMatrixId.get(d.id)!;
-    if (options._loadMatrix || options._saveMatrix) {
-      const applied = applyAdversarialCalibration(matrix, d.id, entry.harsh, entry.adv, 'inflated', entry.rationale);
-      if (applied) updated++;
-    } else {
-      await writeScoreProposal({
-        cwd,
-        dimension: d.id,
-        score: d.after,
-        agent: 'compete-calibrate',
-        rationale: `Adversarial inflated verdict: ${entry.rationale}`,
-      });
-      updated++;
-    }
-  }
-
-  if (options._loadMatrix || options._saveMatrix) {
-    matrix.lastUpdated = new Date().toISOString();
-    await saveFn(matrix, cwd);
-  } else {
-    await mergeScoreProposals({ cwd, policy: 'harsh-min', agent: 'compete-calibrate' });
-  }
-  const updatedMatrix = (options._loadMatrix || options._saveMatrix) ? matrix : await loadMatrix(cwd) ?? matrix;
-  logger.success(`Calibrated ${updated} dimension(s). Overall: ${formatScore(computeOverallScore(updatedMatrix))}/10`);
-  return { action: 'calibrate', matrixPath, overallScore: computeOverallScore(updatedMatrix), dimensionsUpdated: updated };
-}
+// `actionCalibrate` + `scorerDimToMatrixId` were extracted to compete-calibrate.ts
+// to keep this file under the 750 LOC hard cap. See that file for the harsh-scorer
+// + adversarial-scorer + score-proposal pipeline.
 
 // ── Main Entry ────────────────────────────────────────────────────────────────
 
