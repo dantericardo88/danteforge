@@ -216,6 +216,19 @@ export function clearProvenanceCache(): void {
   DECISION_NODE_CACHE.clear();
 }
 
+/**
+ * Cache introspection — used by the war-room dashboard and `danteforge
+ * doctor --live` to surface whether the in-process provenance cache is
+ * doing useful work. Returns the number of distinct decision-node stores
+ * currently indexed plus the total number of decision-node entries the
+ * cache is holding across all stores.
+ */
+export function getProvenanceCacheStats(): { stores: number; entries: number } {
+  let entries = 0;
+  for (const e of DECISION_NODE_CACHE.values()) entries += e.byFileStateRef.size;
+  return { stores: DECISION_NODE_CACHE.size, entries };
+}
+
 async function findDecisionNodeForCommit(
   cwd: string,
   commitId: string,
