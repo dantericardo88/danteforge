@@ -2,7 +2,7 @@ import fs from 'node:fs/promises';
 import { existsSync } from 'node:fs';
 import path from 'node:path';
 
-import type { DecisionNode } from './decision-node.js';
+import type { DecisionNode, DecisionNodeStore } from './decision-node.js';
 import type { TimeMachineCommit, TimeMachineSnapshotEntry } from './time-machine.js';
 
 export interface LineProvenanceRecord {

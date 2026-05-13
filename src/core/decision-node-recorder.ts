@@ -239,3 +239,84 @@ export async function withCommandNode<T>(opts: {
 
   return value;
 }
+
+// ---------------------------------------------------------------------------
+// recordCheckpoint — explicit provenance anchor for time-machine commits
+// ---------------------------------------------------------------------------
+
+/**
+ * Record a "checkpoint" decision node that anchors a time-machine commit to
+ * the current agent activity chain.
+ *
+ * re_gent pattern: every meaningful agent activity that mutated files should
+ * emit a checkpoint receipt so the chain-of-custody verifier can prove the
+ * file state at that moment. The checkpoint links three artifacts:
+ *
+ *  - the agent's activity (actor + prompt)
+ *  - the file state at that moment (fileStateRef = time-machine commit id)
+ *  - the evidence anchor (evidenceRef = cross-ecosystem hash, optional)
+ *
+ * Returns the recorded node. Best-effort: never throws.
+ */
+export async function recordCheckpoint(params: {
+  cwd?: string;
+  actorType: 'human' | 'agent';
+  command: string;
+  goal: string;
+  fileStateRef: string;
+  evidenceRef?: string;
+  parentNodeId?: string;
+  qualityScore?: number;
+  context?: Record<string, unknown>;
+}): Promise<DecisionNode> {
+  const session = getSession(params.cwd);
+  return recordDecision({
+    session,
+    ...(params.parentNodeId ? { parentNodeId: params.parentNodeId } : {}),
+    actorType: params.actorType,
+    prompt: `${params.command}: ${params.goal}`,
+    context: {
+      command: params.command,
+      checkpoint: true,
+      ...(params.context ?? {}),
+    },
+    result: { checkpoint: 'recorded', fileStateRef: params.fileStateRef },
+    success: true,
+    fileStateRef: params.fileStateRef,
+    ...(params.qualityScore !== undefined ? { qualityScore: params.qualityScore } : {}),
+  });
+}
+
+/**
+ * Resolve a previously-recorded checkpoint by walking back through the
+ * agent activity chain. Useful for "what was the file state at the last
+ * verified point?" queries before counterfactual replay or rollback.
+ *
+ * Returns the most recent (by timestamp) checkpoint decision node, or
+ * undefined when none exists in the requested session.
+ */
+export async function findLatestCheckpoint(params: {
+  cwd?: string;
+  sessionId?: string;
+}): Promise<DecisionNode | undefined> {
+  try {
+    const session = getSession(params.cwd);
+    const targetSessionId = params.sessionId ?? session.sessionId;
+    const { createDecisionNodeStore } = await import('./decision-node.js');
+    const store = createDecisionNodeStore(session.storePath);
+    try {
+      const sessionNodes = await store.getBySession(targetSessionId);
+      // Filter to nodes with fileStateRef (i.e. checkpoints) and pick the latest.
+      const checkpoints = sessionNodes.filter(
+        n => typeof n.output.fileStateRef === 'string' && n.output.fileStateRef.length > 0,
+      );
+      if (checkpoints.length === 0) return undefined;
+      checkpoints.sort((a, b) => b.timestamp.localeCompare(a.timestamp));
+      return checkpoints[0]!;
+    } finally {
+      await store.close();
+    }
+  } catch {
+    return undefined;
+  }
+}

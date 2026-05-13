@@ -261,6 +261,33 @@ export interface DecisionNodeStore {
   getByTimeline(timelineId: string): Promise<DecisionNode[]>;
   /** Walk the parentId chain from the given nodeId back to the root. */
   getAncestors(nodeId: string): Promise<DecisionNode[]>;
+  /**
+   * re_gent-pattern query: all decisions made by a specific actor.id
+   * (e.g. all decisions by 'pm' agent, or all by a specific human reviewer).
+   * Useful for per-agent activity replay and chain-of-custody auditing.
+   */
+  getByActor(actorId: string, actorType?: DecisionNode['actor']['type']): Promise<DecisionNode[]>;
+  /**
+   * re_gent-pattern query: all decisions that touched a given file
+   * (where output.fileStateRef refers to a time-machine commit that
+   * contained that file). Lighter version: matches by fileStateRef
+   * equality. For path-level lookup see queryLineProvenance.
+   */
+  getByFileStateRef(fileStateRef: string): Promise<DecisionNode[]>;
+  /**
+   * Return all child nodes of a given node id (one-step descendants
+   * via parentId edge). Used by timeline browsers to walk forward
+   * through forks rather than only backward via getAncestors.
+   */
+  getChildren(parentId: string): Promise<DecisionNode[]>;
+  /**
+   * Re-load the in-memory index from disk. Used when external writers
+   * (other CLI processes, time-machine replays) may have appended to
+   * the JSONL between queries.
+   */
+  reload(): Promise<void>;
+  /** Total node count currently loaded in the index (lazy-loads first). */
+  size(): Promise<number>;
   close(): Promise<void>;
 }
 
@@ -362,6 +389,52 @@ export function createDecisionNodeStore(filePath: string): DecisionNodeStore {
         currentId = node.parentId;
       }
       return ancestors;
+    },
+
+    async getByActor(
+      actorId: string,
+      actorType?: DecisionNode['actor']['type'],
+    ): Promise<DecisionNode[]> {
+      await ensureLoaded();
+      const out: DecisionNode[] = [];
+      for (const node of state.byId.values()) {
+        if (node.actor.id !== actorId) continue;
+        if (actorType !== undefined && node.actor.type !== actorType) continue;
+        out.push(node);
+      }
+      // Sort by timestamp ascending so callers can replay activity in order.
+      out.sort((a, b) => a.timestamp.localeCompare(b.timestamp));
+      return out;
+    },
+
+    async getByFileStateRef(fileStateRef: string): Promise<DecisionNode[]> {
+      await ensureLoaded();
+      const out: DecisionNode[] = [];
+      for (const node of state.byId.values()) {
+        if (node.output.fileStateRef === fileStateRef) out.push(node);
+      }
+      out.sort((a, b) => a.timestamp.localeCompare(b.timestamp));
+      return out;
+    },
+
+    async getChildren(parentId: string): Promise<DecisionNode[]> {
+      await ensureLoaded();
+      const out: DecisionNode[] = [];
+      for (const node of state.byId.values()) {
+        if (node.parentId === parentId) out.push(node);
+      }
+      out.sort((a, b) => a.timestamp.localeCompare(b.timestamp));
+      return out;
+    },
+
+    async reload(): Promise<void> {
+      state.byId = await loadAllNodes(filePath);
+      state.loaded = true;
+    },
+
+    async size(): Promise<number> {
+      await ensureLoaded();
+      return state.byId.size;
     },
 
     async close(): Promise<void> {
