@@ -95,6 +95,8 @@ export interface CompeteOptions {
   excludeDimension?: string;
   includeDimension?: string;
   edit?: boolean;
+  reset?: boolean;           // --reset: replace competitors with --use-canonical seed (backs up the old matrix)
+  useCanonical?: boolean;    // --use-canonical: use the DanteForge-class peer list (spec-kit/BMAD/autoresearch/claude-skills/orchestration peers)
   calibrate?: boolean;       // --calibrate: run adversarial scorer and apply inflated-verdict corrections
   // Injection seam for calibrate testing
   _generateAdversarialScore?: (
@@ -167,6 +169,46 @@ async function actionInit(options: CompeteOptions, cwd: string): Promise<Compete
     overallScore: matrix.overallSelfScore,
     dimensionsUpdated: matrix.dimensions.length,
   };
+}
+
+async function actionReset(options: CompeteOptions, cwd: string): Promise<CompeteResult> {
+  const matrixPath = getMatrixPath(cwd);
+  const loadFn = options._loadMatrix ?? ((c) => loadMatrix(c));
+  const saveFn = options._saveMatrix ?? ((m, c) => saveMatrix(m, c));
+
+  const matrix = await loadFn(cwd);
+  if (!matrix) {
+    logger.error('No matrix found to reset. Run `danteforge compete --init` to bootstrap a fresh one.');
+    return { action: 'status', matrixPath };
+  }
+
+  // Back up the current matrix before mutating
+  try {
+    const stamp = new Date().toISOString().replace(/[:.]/g, '-');
+    const backupPath = path.join(path.dirname(matrixPath), `matrix.pre-${stamp}.json`);
+    await fs.copyFile(matrixPath, backupPath);
+    logger.info(`[compete --reset] Backup written: ${backupPath}`);
+  } catch (err) {
+    logger.warn(`[compete --reset] Backup failed (${err instanceof Error ? err.message : String(err)}). Continuing.`);
+  }
+
+  if (options.useCanonical) {
+    const { getCanonicalDanteForgeCompetitors } = await import('../../core/feature-universe.js');
+    const canonical = getCanonicalDanteForgeCompetitors();
+    matrix.competitors = canonical;
+    // If the matrix splits into closed-source/oss buckets, put everything in OSS
+    // since the canonical list is OSS-flavored peer projects.
+    matrix.competitors_oss = canonical;
+    matrix.competitors_closed_source = [];
+    await saveFn(matrix, cwd);
+    logger.success(`Matrix reset with ${canonical.length} canonical DanteForge peers. Old matrix saved as matrix.pre-*.json.`);
+    logger.info(`  Peers: ${canonical.slice(0, 6).join(', ')}, ...`);
+    logger.info(`  Run \`danteforge universe --refresh\` to rebuild the feature universe against the new peers.`);
+    return { action: 'status', matrixPath, overallScore: matrix.overallSelfScore };
+  }
+
+  logger.warn('[compete --reset] No reset target specified. Use `--use-canonical` to apply the DanteForge peer list.');
+  return { action: 'status', matrixPath, overallScore: matrix.overallSelfScore };
 }
 
 async function actionStatus(options: CompeteOptions, cwd: string): Promise<CompeteResult> {
@@ -857,6 +899,7 @@ export async function compete(options: CompeteOptions = {}): Promise<CompeteResu
       return { action: 'status', matrixPath: getMatrixPath(cwd), overallScore: matrix.overallSelfScore };
     }
 
+    if (options.reset) return await actionReset(options, cwd);
     if (options.init) return await actionInit(options, cwd);
     if (options.calibrate) return await actionCalibrate(options, cwd);
     if (options.auto || (options.sprint && options.auto)) return await actionAutoSprint(options, cwd);

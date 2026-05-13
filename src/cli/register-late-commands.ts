@@ -374,6 +374,8 @@ program
   .option('--amend <dim_score>', 'Manually set a market dim self-score: dim_id=score (0â€“10), e.g. "semantic_memory=5.5"')
   .option('--amend-file <path>', 'Batch-update market dim scores from a JSON file: { "dim_id": score, ... }')
   .option('--edit', 'Interactive matrix amendment session')
+  .option('--reset', 'Replace the competitors array in matrix.json (requires --use-canonical). Backs up the old matrix first.')
+  .option('--use-canonical', 'With --reset: apply the DanteForge-class peer list (spec-kit / BMAD / autoresearch / claude-skills / orchestration peers)')
   .option('--calibrate', 'Run adversarial scorer and apply inflated-verdict corrections to matrix self-scores')
   .option('--yes', 'Skip the confirmation gate in --auto mode and --calibrate')
   .action(async (opts) => {
@@ -408,6 +410,8 @@ program
           excludeDimension: opts.exclude as string | undefined,
           includeDimension: opts.include as string | undefined,
           edit: opts.edit as boolean | undefined,
+          reset: opts.reset as boolean | undefined,
+          useCanonical: opts.useCanonical as boolean | undefined,
           calibrate: opts.calibrate as boolean | undefined,
           yes: opts.yes as boolean | undefined,
         });

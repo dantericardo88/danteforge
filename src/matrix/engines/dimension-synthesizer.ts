@@ -40,6 +40,19 @@ export async function synthesizeDimensions(
   const targetScore = options.targetScore ?? 9.0;
   const loader = options._loadMatrix ?? loadMatrix;
 
+  // Best-effort: ensure feature universe is populated before dimension synthesis.
+  // Matrix-kernel work-packets are driven by dimension gaps, but the universe
+  // is the ground truth for "what features should exist." Building it here
+  // means /matrixdev users see a populated universe in subsequent runs.
+  try {
+    const { ensureUniverseReady } = await import('../../core/feature-universe.js');
+    const universe = await ensureUniverseReady(cwd);
+    if (universe && universe.features.length > 0) {
+      // eslint-disable-next-line no-console
+      console.error(`[dimension-synthesizer] universe ready: ${universe.features.length} features across ${universe.competitors.length} competitors`);
+    }
+  } catch { /* best-effort */ }
+
   const matrix = await loader(cwd);
   if (!matrix) {
     return {

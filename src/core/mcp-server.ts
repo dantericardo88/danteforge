@@ -33,6 +33,10 @@ import {
   handleLandscapeDiff,
   handleRubricGet,
   handleScoreCompetitor,
+  handleUniverse,
+  handleEnsureUniverseReady,
+  handleCanonicalCompetitors,
+  handleCompeteReset,
 } from './mcp-extended-handlers.js';
 
 // ---------------------------------------------------------------------------
@@ -561,6 +565,10 @@ export type ToolName =
   | 'danteforge_explain_score'
   | 'danteforge_leapfrog_opportunities'
   | 'danteforge_pattern_search'
+  | 'danteforge_universe'
+  | 'danteforge_ensure_universe_ready'
+  | 'danteforge_canonical_competitors'
+  | 'danteforge_compete_reset'
   | 'danteforge_adversarial_score';
 
 // ---------------------------------------------------------------------------
@@ -719,6 +727,10 @@ export const TOOL_HANDLERS: Record<string, ToolHandler> = {
   danteforge_rubric_get: (args) => handleRubricGet(args),
   danteforge_score_competitor: (args) => handleScoreCompetitor(args),
   danteforge_cofl: (args) => handleCofl(args),
+  danteforge_universe: (args) => handleUniverse(args),
+  danteforge_ensure_universe_ready: (args) => handleEnsureUniverseReady(args),
+  danteforge_canonical_competitors: (args) => handleCanonicalCompetitors(args),
+  danteforge_compete_reset: (args) => handleCompeteReset(args),
 };
 
 // ---------------------------------------------------------------------------

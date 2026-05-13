@@ -537,6 +537,57 @@ export const TOOL_DEFINITIONS: ToolDefinition[] = [
       required: ['competitor'],
     },
   },
+  // -- Feature Universe tools --------------------------------------------------
+  {
+    name: 'danteforge_universe',
+    description: 'Read the current feature universe (the union of capabilities across competitors that DanteForge scores the project against). Pass refresh=true to rebuild from the canonical DanteForge peer list. Auto-populates when missing — no "run /oss first" dead-end.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        refresh: { type: 'boolean', description: 'Force rebuild of the feature universe (calls extractCompetitorFeatures per competitor — requires LLM)' },
+        _cwd: { type: 'string', description: 'Working directory override (for testing)' },
+      },
+      required: [],
+    },
+  },
+  {
+    name: 'danteforge_ensure_universe_ready',
+    description: 'Idempotent preflight for the feature universe. By default only LOADS the existing universe from disk (no LLM calls) — safe to call from every orchestration entry point (ascend, inferno, matrixdev) without blocking. Pass build: true to also build via LLM when missing/stale. Returns { features, competitors, generatedAt, ready }.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        build: { type: 'boolean', description: 'When true, also calls the LLM to build a missing/stale universe (default false — load-only).' },
+        minFeatures: { type: 'number', description: 'Rebuild if fewer than this many features (default 20)' },
+        maxAgeDays: { type: 'number', description: 'Rebuild if older than this (default 14)' },
+        _cwd: { type: 'string', description: 'Working directory override (for testing)' },
+      },
+      required: [],
+    },
+  },
+  {
+    name: 'danteforge_canonical_competitors',
+    description: 'Returns the canonical 16-peer DanteForge competitor list grouped by category: spec-driven dev kits (spec-kit, BMAD, OpenSpec), skill consolidators (anthropics/claude-skills, cursor.directory), autonomous research loops (Karpathy autoresearch, DSPy), and orchestration peers (MetaGPT, CrewAI, AutoGen, GPT-Engineer, OpenHands, Aider, SWE-Agent, LangChain Agents). DanteForge sits ON TOP OF AI coding assistants — these are its peers, NOT Cursor/Devin/Claude Code itself.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        _cwd: { type: 'string', description: 'Working directory override (for testing)' },
+      },
+      required: [],
+    },
+  },
+  {
+    name: 'danteforge_compete_reset',
+    description: 'Replace the competitors in compete-matrix.json with the canonical DanteForge peer list. Backs up the old matrix to matrix.pre-<timestamp>.json. Mutating — requires confirm: true.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        confirm: { type: 'boolean', description: 'Required: explicit confirmation to mutate the matrix' },
+        useCanonical: { type: 'boolean', description: 'Apply the canonical peer list (default true; other modes reserved)' },
+        _cwd: { type: 'string', description: 'Working directory override (for testing)' },
+      },
+      required: ['confirm'],
+    },
+  },
   // â”€â”€ COFL tool â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   {
     name: 'danteforge_cofl',

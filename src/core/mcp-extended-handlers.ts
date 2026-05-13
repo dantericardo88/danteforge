@@ -453,3 +453,157 @@ export async function handleScoreCompetitor(args: Record<string, unknown>): Prom
 }
 
 // ---------------------------------------------------------------------------
+// Feature Universe MCP handlers
+// ---------------------------------------------------------------------------
+// Expose /universe + /compete --reset --use-canonical to MCP clients
+// (Claude Code, Codex, DanteCode, any MCP-aware AI assistant) so DanteForge
+// is a first-class skill source — not just a CLI.
+
+export interface UniverseHandlerDeps {
+  _loadUniverse?: (cwd: string) => Promise<unknown>;
+  _ensureUniverseReady?: (cwd: string, opts?: Record<string, unknown>) => Promise<unknown>;
+  _getCanonical?: () => string[];
+  _loadMatrix?: (cwd: string) => Promise<unknown>;
+  _saveMatrix?: (matrix: unknown, cwd: string) => Promise<void>;
+  _fs?: { copyFile: (src: string, dst: string) => Promise<void> };
+  _now?: () => Date;
+}
+
+export async function handleUniverse(
+  args: Record<string, unknown>,
+  deps: UniverseHandlerDeps = {},
+): Promise<ToolResult> {
+  const cwd = resolveCwd(args);
+  const refresh = args['refresh'] === true;
+
+  try {
+    if (refresh) {
+      const ensure = deps._ensureUniverseReady
+        ?? (await import('./feature-universe.js')).ensureUniverseReady;
+      // Explicit refresh opts into LLM-side-effect (loadOnly: false)
+      const universe = await ensure(cwd, { loadOnly: false, minFeatures: Number.MAX_SAFE_INTEGER, maxAgeDays: 0 });
+      return jsonResult({ refreshed: true, universe });
+    }
+
+    const loadFn = deps._loadUniverse
+      ?? ((c: string) => import('./feature-universe.js').then(m => m.loadFeatureUniverse(c)));
+    const universe = await loadFn(cwd);
+    if (!universe) {
+      return jsonResult({
+        universe: null,
+        message: 'No feature universe yet. Pass refresh=true or call danteforge_ensure_universe_ready first.',
+      });
+    }
+    return jsonResult({ universe });
+  } catch (err) {
+    return errorResult(`universe failed: ${err instanceof Error ? err.message : String(err)}`);
+  }
+}
+
+export async function handleEnsureUniverseReady(
+  args: Record<string, unknown>,
+  deps: UniverseHandlerDeps = {},
+): Promise<ToolResult> {
+  const cwd = resolveCwd(args);
+  const minFeatures = typeof args['minFeatures'] === 'number' ? args['minFeatures'] : undefined;
+  const maxAgeDays = typeof args['maxAgeDays'] === 'number' ? args['maxAgeDays'] : undefined;
+  // build:true (default false) opts into LLM-side-effect when the universe is missing/stale.
+  // Without it, the handler only LOADS the existing universe — same default as engine wiring.
+  const build = args['build'] === true;
+
+  try {
+    const ensure = deps._ensureUniverseReady
+      ?? (await import('./feature-universe.js')).ensureUniverseReady;
+    const universe = await ensure(cwd, {
+      loadOnly: !build,
+      ...(minFeatures !== undefined ? { minFeatures } : {}),
+      ...(maxAgeDays !== undefined ? { maxAgeDays } : {}),
+    }) as { features?: unknown[]; competitors?: unknown[]; generatedAt?: string } | null;
+    return jsonResult({
+      features: universe?.features?.length ?? 0,
+      competitors: universe?.competitors?.length ?? 0,
+      generatedAt: universe?.generatedAt ?? null,
+      ready: !!universe && (universe.features?.length ?? 0) > 0,
+    });
+  } catch (err) {
+    return errorResult(`ensure_universe_ready failed: ${err instanceof Error ? err.message : String(err)}`);
+  }
+}
+
+export async function handleCanonicalCompetitors(
+  _args: Record<string, unknown>,
+  deps: UniverseHandlerDeps = {},
+): Promise<ToolResult> {
+  try {
+    const getFn = deps._getCanonical
+      ?? (await import('./feature-universe.js')).getCanonicalDanteForgeCompetitors;
+    const competitors = getFn();
+    return jsonResult({
+      count: competitors.length,
+      competitors,
+      categories: {
+        'spec-driven dev kits': competitors.filter(c => /spec-kit|BMad|OpenSpec/i.test(c)),
+        'skill consolidators': competitors.filter(c => /claude-skills|cursor\.directory/i.test(c)),
+        'autonomous research loops': competitors.filter(c => /autoresearch|DSPy/i.test(c)),
+        'orchestration peers': competitors.filter(c => /MetaGPT|CrewAI|AutoGen|GPT-Engineer|OpenHands|Aider|SWE-Agent|LangChain/i.test(c)),
+      },
+    });
+  } catch (err) {
+    return errorResult(`canonical_competitors failed: ${err instanceof Error ? err.message : String(err)}`);
+  }
+}
+
+export async function handleCompeteReset(
+  args: Record<string, unknown>,
+  deps: UniverseHandlerDeps = {},
+): Promise<ToolResult> {
+  const cwd = resolveCwd(args);
+  const useCanonical = args['useCanonical'] !== false; // default true
+  const confirm = args['confirm'] === true;
+
+  if (!confirm) {
+    return errorResult('compete_reset is mutating — pass confirm: true to apply (this rewrites .danteforge/compete/matrix.json after a timestamped backup).');
+  }
+  if (!useCanonical) {
+    return errorResult('compete_reset currently only supports useCanonical: true (other reset modes are reserved).');
+  }
+
+  try {
+    const loadMatrixFn = deps._loadMatrix
+      ?? ((c: string) => import('./compete-matrix.js').then(m => m.loadMatrix(c)));
+    const saveMatrixFn = deps._saveMatrix
+      ?? ((mx: unknown, c: string) => import('./compete-matrix.js').then(m => m.saveMatrix(mx as Parameters<typeof m.saveMatrix>[0], c)));
+    const getCanonicalFn = deps._getCanonical
+      ?? (await import('./feature-universe.js')).getCanonicalDanteForgeCompetitors;
+    const matrix = await loadMatrixFn(cwd) as { competitors?: string[]; competitors_oss?: string[]; competitors_closed_source?: string[] } | null;
+    if (!matrix) return errorResult('No matrix found. Run danteforge_competitors or `danteforge compete --init` first.');
+
+    // Backup current matrix
+    const fsMod = deps._fs ?? fs;
+    const matrixPath = path.join(cwd, '.danteforge', 'compete', 'matrix.json');
+    const stamp = (deps._now ? deps._now() : new Date()).toISOString().replace(/[:.]/g, '-');
+    const backupPath = path.join(cwd, '.danteforge', 'compete', `matrix.pre-${stamp}.json`);
+    try { await fsMod.copyFile(matrixPath, backupPath); } catch { /* best-effort */ }
+
+    const canonical = getCanonicalFn();
+    matrix.competitors = canonical;
+    matrix.competitors_oss = canonical;
+    matrix.competitors_closed_source = [];
+    await saveMatrixFn(matrix, cwd);
+
+    await auditLog(`compete_reset --use-canonical (${canonical.length} peers); backup: ${path.basename(backupPath)}`, cwd);
+
+    return jsonResult({
+      ok: true,
+      mode: 'use-canonical',
+      competitorCount: canonical.length,
+      competitors: canonical,
+      backupPath,
+      nextStep: 'Call danteforge_ensure_universe_ready or danteforge_universe with refresh:true to rebuild against the new peers.',
+    });
+  } catch (err) {
+    return errorResult(`compete_reset failed: ${err instanceof Error ? err.message : String(err)}`);
+  }
+}
+
+// ---------------------------------------------------------------------------

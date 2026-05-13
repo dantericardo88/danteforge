@@ -413,6 +413,16 @@ async function orientAndClassify(
     logger.info('[Ascend] No competitive matrix found — initializing universe...');
     matrix = await fns.defineUniverseFn({ cwd, interactive: options.interactive, _saveMatrix: fns.saveMatrixFn });
   }
+  // Best-effort preflight: ensure the feature universe exists / is fresh so
+  // any downstream code that consults it sees real data, not 0/0.
+  try {
+    const projectName = ((state as { project?: string }).project) ?? 'project';
+    const { ensureUniverseReady } = await import('./feature-universe.js');
+    const universe = await ensureUniverseReady(cwd, { projectName });
+    if (universe && universe.features.length > 0) {
+      logger.info(`[Ascend] Universe ready: ${universe.features.length} features across ${universe.competitors.length} competitors.`);
+    }
+  } catch { /* best-effort */ }
   const baselineResult = await fns.harshScoreFn({ cwd, _readHistory: async () => [], _writeHistory: async () => {} });
   await applyStrictOverrides(baselineResult, cwd, fns.computeStrictDimsFn);
   for (const matDim of matrix.dimensions) {
