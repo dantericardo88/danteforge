@@ -67,12 +67,55 @@ export async function reviewBranch(options: ReviewBranchOptions): Promise<GateRe
 
   // Check 4: required_commands
   if (!options.skipRequiredCommands && lease.requiredCommands.length > 0) {
+    // If scopeToDiff is enabled, replace `npm test` with a focused
+    // `npx tsx --test <files>` invocation. The file selection uses the
+    // lease's filesChanged plus the always-run patterns from test-config.
+    let scopedTestCmd: string | null = null;
+    if (testConfig.scopeToDiff) {
+      const { selectTestsForDiff } = await import('./diff-scoped-tests.js');
+      const selected = await selectTestsForDiff({
+        changedFiles: agentRunResult.filesChanged,
+        cwd: options.cwd,
+        alwaysRun: testConfig.alwaysRun,
+      });
+      if (selected.length > 0) {
+        scopedTestCmd = `npx tsx --test ${selected.join(' ')}`;
+      } else {
+        // Empty selection on a non-empty diff = nothing to test; we still
+        // mark it as a passed check to record the decision.
+        scopedTestCmd = '';
+      }
+    }
+
     for (const cmd of lease.requiredCommands) {
-      // For `npm test`, inject TEST_SKIP_PATTERNS so the test runner skips
-      // known-flaky cases per the project's `.danteforge/test-config.json`.
-      // The pattern is empty when no skips are configured (caller-side env
-      // is preserved untouched in that case).
-      const extraEnv = (cmd.includes('npm test') || cmd.includes('npm run test')) && skipPattern
+      const isTestCmd = cmd.includes('npm test') || cmd.includes('npm run test');
+
+      // If we have a scoped replacement, sub it in. Empty replacement means
+      // "no tests to run for this diff" — skip the spawn and report passed.
+      if (isTestCmd && scopedTestCmd !== null) {
+        if (scopedTestCmd === '') {
+          checks.push({
+            name: `required_command:${cmd}`,
+            status: 'passed',
+            details: 'skipped: diff-scoping selected 0 tests for this lease',
+          });
+          continue;
+        }
+        const extraEnv = skipPattern ? { TEST_SKIP_PATTERNS: skipPattern } : undefined;
+        const result = await runCommand(scopedTestCmd, lease.worktreePath, options._runCommand, extraEnv);
+        checks.push({
+          name: `required_command:${cmd}`,
+          status: result.exitCode === 0 ? 'passed' : 'failed',
+          details: result.exitCode === 0
+            ? `exit 0 (diff-scoped: ${scopedTestCmd.split(' ').length - 3} test file(s))`
+            : `exit ${result.exitCode} (diff-scoped): ${result.stderr.slice(0, 200)}`,
+        });
+        continue;
+      }
+
+      // Default path: full-suite test invocation, with TEST_SKIP_PATTERNS env
+      // if knownFlaky cases are configured.
+      const extraEnv = isTestCmd && skipPattern
         ? { TEST_SKIP_PATTERNS: skipPattern }
         : undefined;
       const result = await runCommand(cmd, lease.worktreePath, options._runCommand, extraEnv);

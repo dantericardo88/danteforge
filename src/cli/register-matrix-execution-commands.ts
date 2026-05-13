@@ -302,6 +302,8 @@ function registerVerify(matrix: Command): void {
     .option('--cwd <path>', 'Project root')
     .option('--all', 'Verify all leases not yet verified')
     .option('--skip-required-commands', 'Skip running lease.requiredCommands')
+    .option('--scope-tests-to-diff', 'Force diff-aware test scoping for this run (overrides .danteforge/test-config.json scopeToDiff)')
+    .option('--no-scope-tests-to-diff', 'Force full-suite test mode for this run (overrides .danteforge/test-config.json scopeToDiff)')
     .action(async (leaseId: string | undefined, opts) => runSafely('matrix-kernel:verify', async () => {
       const { loadGraph, saveGraph } = await import('../matrix/engines/matrix-state.js');
       const { loadOwnershipMap } = await import('../matrix/engines/ownership-map.js');
@@ -337,12 +339,24 @@ function registerVerify(matrix: Command): void {
           continue;
         }
         logger.info(`  → ${lease.id}`);
+        // CLI flag --scope-tests-to-diff / --no-scope-tests-to-diff overrides
+        // .danteforge/test-config.json scopeToDiff for this invocation. When
+        // the flag isn't set either way, fall through to the config default.
+        const cliScope = opts.scopeTestsToDiff as boolean | undefined;
+        let testConfigOverride: import('../matrix/courts/verify-test-config.js').VerifyTestConfig | undefined;
+        if (cliScope !== undefined) {
+          const { loadVerifyTestConfig } = await import('../matrix/courts/verify-test-config.js');
+          const baseConfig = await loadVerifyTestConfig({ cwd });
+          testConfigOverride = { ...baseConfig, scopeToDiff: cliScope };
+        }
         const report = await reviewBranch({
           lease: lease as never,
           workPacket: packet as never,
           ownershipMap,
           agentRunResult: run as never,
           skipRequiredCommands: opts.skipRequiredCommands as boolean | undefined,
+          cwd,
+          _testConfig: testConfigOverride,
         });
         gateReports.push(report);
         const icon = report.status === 'passed' ? '✓' : report.status === 'failed' ? '✗' : '⚠';
