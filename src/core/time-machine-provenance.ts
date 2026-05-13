@@ -202,31 +202,114 @@ type DecisionNodeSummary = NonNullable<LineProvenanceQueryResult['decisionNode']
 
 interface CacheEntry {
   mtimeMs: number;
+  /** Last time this entry was read (hit or build). Drives LRU eviction. */
+  lastAccessMs: number;
   byFileStateRef: Map<string, DecisionNodeSummary>;
 }
 
 const DECISION_NODE_CACHE: Map<string, CacheEntry> = new Map();
 
+interface CacheCounters {
+  hits: number;
+  misses: number;
+  rebuilds: number;
+  evictions: number;
+}
+
+const CACHE_COUNTERS: CacheCounters = { hits: 0, misses: 0, rebuilds: 0, evictions: 0 };
+
 /**
  * Drop the in-memory decision-node lookup cache. Call between tests, or
  * after an out-of-band mutation to `<cwd>/.danteforge/decision-nodes.jsonl`
  * that wouldn't show up in mtime.
+ *
+ * Counters survive a `clearProvenanceCache()` so a TUI can show
+ * "cache reset; lifetime hits=N" — use `resetProvenanceCacheStats()` to
+ * zero them out explicitly.
  */
 export function clearProvenanceCache(): void {
   DECISION_NODE_CACHE.clear();
 }
 
+export interface ProvenanceCacheStats {
+  /** Number of distinct decision-node stores currently indexed. */
+  stores: number;
+  /** Total decision-node entries the cache is holding across all stores. */
+  entries: number;
+  /** Cumulative hits since process start or last `resetProvenanceCacheStats()`. */
+  hits: number;
+  /** Cumulative misses since process start or last `resetProvenanceCacheStats()`. */
+  misses: number;
+  /** How many times the cache rebuilt an entry due to mtime change. */
+  rebuilds: number;
+  /** How many entries were evicted by `pruneProvenanceCache`. */
+  evictions: number;
+  /** Hit rate in [0, 1], or `null` when no lookups have happened yet. */
+  hitRate: number | null;
+}
+
 /**
  * Cache introspection — used by the war-room dashboard and `danteforge
  * doctor --live` to surface whether the in-process provenance cache is
- * doing useful work. Returns the number of distinct decision-node stores
- * currently indexed plus the total number of decision-node entries the
- * cache is holding across all stores.
+ * doing useful work. Returns store counts, entry counts, and lifetime
+ * hit/miss counters so an operator can verify the cache is actually
+ * serving lookups (not just sitting unused).
  */
-export function getProvenanceCacheStats(): { stores: number; entries: number } {
+export function getProvenanceCacheStats(): ProvenanceCacheStats {
   let entries = 0;
   for (const e of DECISION_NODE_CACHE.values()) entries += e.byFileStateRef.size;
-  return { stores: DECISION_NODE_CACHE.size, entries };
+  const total = CACHE_COUNTERS.hits + CACHE_COUNTERS.misses;
+  return {
+    stores: DECISION_NODE_CACHE.size,
+    entries,
+    hits: CACHE_COUNTERS.hits,
+    misses: CACHE_COUNTERS.misses,
+    rebuilds: CACHE_COUNTERS.rebuilds,
+    evictions: CACHE_COUNTERS.evictions,
+    hitRate: total === 0 ? null : CACHE_COUNTERS.hits / total,
+  };
+}
+
+/**
+ * Zero the cache hit/miss/rebuild/eviction counters without touching the
+ * entries themselves. Useful when a long-running session wants to measure
+ * cache performance for a specific time window (e.g. one war-room render).
+ */
+export function resetProvenanceCacheStats(): void {
+  CACHE_COUNTERS.hits = 0;
+  CACHE_COUNTERS.misses = 0;
+  CACHE_COUNTERS.rebuilds = 0;
+  CACHE_COUNTERS.evictions = 0;
+}
+
+/**
+ * Evict cache entries down to `maxStores` using LRU order (least recently
+ * accessed first). A no-op when the cache is already at or below the cap.
+ *
+ * Long-running TUI sessions can call this once per render tick to keep
+ * the cache bounded — without it, the decision-node cache grows linearly
+ * with the number of distinct projects visited in a single process.
+ *
+ * Returns the number of entries actually evicted.
+ */
+export function pruneProvenanceCache(maxStores: number): number {
+  if (!Number.isFinite(maxStores) || maxStores < 0) {
+    throw new TypeError(`pruneProvenanceCache: maxStores must be a non-negative finite number, got ${maxStores}`);
+  }
+  if (DECISION_NODE_CACHE.size <= maxStores) return 0;
+
+  // Sort entries oldest-access first; evict the head until we're at the cap.
+  const ordered = [...DECISION_NODE_CACHE.entries()].sort(
+    (a, b) => a[1].lastAccessMs - b[1].lastAccessMs,
+  );
+  let evicted = 0;
+  for (const [key] of ordered) {
+    if (DECISION_NODE_CACHE.size <= maxStores) break;
+    DECISION_NODE_CACHE.delete(key);
+    evicted += 1;
+  }
+  CACHE_COUNTERS.evictions += evicted;
+  return evicted;
 }
 
 async function findDecisionNodeForCommit(
@@ -249,14 +332,20 @@ async function findDecisionNodeForCommit(
   }
 
   if (!entry || entry.mtimeMs !== currentMtime) {
+    CACHE_COUNTERS.misses += 1;
+    if (entry) CACHE_COUNTERS.rebuilds += 1;
     entry = await buildDecisionNodeIndex(storePath, currentMtime);
     DECISION_NODE_CACHE.set(storePath, entry);
+  } else {
+    CACHE_COUNTERS.hits += 1;
+    entry.lastAccessMs = Date.now();
   }
   return entry.byFileStateRef.get(commitId);
 }
 
 async function buildDecisionNodeIndex(storePath: string, mtimeMs: number): Promise<CacheEntry> {
   const byFileStateRef = new Map<string, DecisionNodeSummary>();
+  const lastAccessMs = Date.now();
   const raw = await fs.readFile(storePath, 'utf8');
   for (const line of raw.split(/\r?\n/)) {
     if (!line.trim()) continue;
@@ -279,7 +368,7 @@ async function buildDecisionNodeIndex(storePath: string, mtimeMs: number): Promi
       // Skip malformed lines; provenance queries should stay best-effort.
     }
   }
-  return { mtimeMs, byFileStateRef };
+  return { mtimeMs, lastAccessMs, byFileStateRef };
 }
 
 /**
@@ -399,5 +488,71 @@ export async function buildSessionGraph(
     nodes: nodeMap,
     roots,
     timelines: [...timelinesSet],
+  };
+}
+
+export interface SessionGraphMetrics {
+  /** Total node count. */
+  nodeCount: number;
+  /** Nodes with no children — terminal states of each branch. */
+  leafCount: number;
+  /** Nodes with more than one child — divergence points where the
+   *  agent forked into multiple timelines. */
+  branchPointCount: number;
+  /** Distinct timeline IDs present in the session. */
+  timelineCount: number;
+  /** Longest root-to-leaf depth, 1-indexed (a session with one node
+   *  reports `maxDepth = 1`). Returns 0 for an empty graph. */
+  maxDepth: number;
+}
+
+/**
+ * Derive summary metrics from a session graph. Purely additive — does not
+ * mutate the input. Designed for war-room headers and `danteforge time-
+ * machine session` --metrics, where the dashboard wants a one-glance
+ * verdict (e.g. "12 nodes, 3 branches, depth 5") before drilling in.
+ */
+export function computeSessionGraphMetrics(graph: SessionGraph): SessionGraphMetrics {
+  const nodes = Object.values(graph.nodes);
+  if (nodes.length === 0) {
+    return { nodeCount: 0, leafCount: 0, branchPointCount: 0, timelineCount: graph.timelines.length, maxDepth: 0 };
+  }
+
+  let leafCount = 0;
+  let branchPointCount = 0;
+  for (const node of nodes) {
+    if (node.children.length === 0) leafCount += 1;
+    if (node.children.length > 1) branchPointCount += 1;
+  }
+
+  // Depth: BFS from each root; track max distance. A node is visited at most
+  // once per BFS to avoid runaway cost on cyclic data (the schema disallows
+  // cycles, but defensive code keeps this safe in the face of corrupt input).
+  let maxDepth = 0;
+  for (const rootId of graph.roots) {
+    const root = graph.nodes[rootId];
+    if (!root) continue;
+    const queue: Array<{ id: string; depth: number }> = [{ id: rootId, depth: 1 }];
+    const seen = new Set<string>([rootId]);
+    while (queue.length > 0) {
+      const head = queue.shift();
+      if (!head) break;
+      if (head.depth > maxDepth) maxDepth = head.depth;
+      const current = graph.nodes[head.id];
+      if (!current) continue;
+      for (const childId of current.children) {
+        if (seen.has(childId)) continue;
+        seen.add(childId);
+        queue.push({ id: childId, depth: head.depth + 1 });
+      }
+    }
+  }
+
+  return {
+    nodeCount: nodes.length,
+    leafCount,
+    branchPointCount,
+    timelineCount: graph.timelines.length,
+    maxDepth,
   };
 }
