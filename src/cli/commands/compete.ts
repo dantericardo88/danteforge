@@ -96,8 +96,9 @@ export interface CompeteOptions {
   excludeDimension?: string;
   includeDimension?: string;
   edit?: boolean;
-  reset?: boolean;           // --reset: replace competitors with --use-canonical seed (backs up the old matrix)
-  useCanonical?: boolean;    // --use-canonical: use the DanteForge-class peer list (spec-kit/BMAD/autoresearch/claude-skills/orchestration peers)
+  reset?: boolean;           // --reset: replace competitors in the matrix (requires --preset or --use-canonical)
+  useCanonical?: boolean;    // --use-canonical: resolve the project's preset automatically (coding-assistant for DanteCode, dev-tool-optimizer for DanteForge, etc.)
+  preset?: string;           // --preset <name>: explicit preset (coding-assistant | dev-tool-optimizer | agent-framework)
   calibrate?: boolean;       // --calibrate: run adversarial scorer and apply inflated-verdict corrections
   // Injection seam for calibrate testing
   _generateAdversarialScore?: (
@@ -183,6 +184,36 @@ async function actionReset(options: CompeteOptions, cwd: string): Promise<Compet
     return { action: 'status', matrixPath };
   }
 
+  // Resolve the target preset:
+  //   1. --preset <name> (explicit, highest priority)
+  //   2. --use-canonical → resolve via project identity (package.json / state.project)
+  //   3. Neither → reject with a hint
+  const { resolveProjectPreset, getPeerPreset, isPeerPreset } = await import('../../core/peer-presets.js');
+  let presetName: string | null = null;
+  let presetReason = '';
+
+  if (options.preset) {
+    if (!isPeerPreset(options.preset)) {
+      logger.error(`Unknown preset: "${options.preset}". Valid presets: coding-assistant, dev-tool-optimizer, agent-framework.`);
+      return { action: 'status', matrixPath };
+    }
+    presetName = options.preset;
+    presetReason = `explicit --preset ${options.preset}`;
+  } else if (options.useCanonical) {
+    const state = await loadState({ cwd }).catch(() => null);
+    const resolution = await resolveProjectPreset(cwd, state ?? undefined);
+    if (!resolution.preset) {
+      logger.error(`[compete --reset] Could not resolve a preset for this project. ${resolution.reason}`);
+      logger.info('  Pass --preset <name> explicitly (coding-assistant | dev-tool-optimizer | agent-framework).');
+      return { action: 'status', matrixPath };
+    }
+    presetName = resolution.preset;
+    presetReason = `auto-resolved via ${resolution.reason}`;
+  } else {
+    logger.warn('[compete --reset] No reset target. Pass --preset <name> or --use-canonical (auto-detects).');
+    return { action: 'status', matrixPath, overallScore: matrix.overallSelfScore };
+  }
+
   // Back up the current matrix before mutating
   try {
     const stamp = new Date().toISOString().replace(/[:.]/g, '-');
@@ -193,22 +224,15 @@ async function actionReset(options: CompeteOptions, cwd: string): Promise<Compet
     logger.warn(`[compete --reset] Backup failed (${err instanceof Error ? err.message : String(err)}). Continuing.`);
   }
 
-  if (options.useCanonical) {
-    const { getCanonicalDanteForgeCompetitors } = await import('../../core/feature-universe.js');
-    const canonical = getCanonicalDanteForgeCompetitors();
-    matrix.competitors = canonical;
-    // If the matrix splits into closed-source/oss buckets, put everything in OSS
-    // since the canonical list is OSS-flavored peer projects.
-    matrix.competitors_oss = canonical;
-    matrix.competitors_closed_source = [];
-    await saveFn(matrix, cwd);
-    logger.success(`Matrix reset with ${canonical.length} canonical DanteForge peers. Old matrix saved as matrix.pre-*.json.`);
-    logger.info(`  Peers: ${canonical.slice(0, 6).join(', ')}, ...`);
-    logger.info(`  Run \`danteforge universe --refresh\` to rebuild the feature universe against the new peers.`);
-    return { action: 'status', matrixPath, overallScore: matrix.overallSelfScore };
-  }
+  const peers = getPeerPreset(presetName as Parameters<typeof getPeerPreset>[0]);
+  matrix.competitors = peers;
+  matrix.competitors_oss = peers;
+  matrix.competitors_closed_source = [];
+  await saveFn(matrix, cwd);
 
-  logger.warn('[compete --reset] No reset target specified. Use `--use-canonical` to apply the DanteForge peer list.');
+  logger.success(`Matrix reset with ${peers.length} peers from "${presetName}" preset (${presetReason}). Old matrix saved as matrix.pre-*.json.`);
+  logger.info(`  Peers: ${peers.slice(0, 6).join(', ')}${peers.length > 6 ? ', ...' : ''}`);
+  logger.info(`  Run \`danteforge universe --refresh\` to rebuild the feature universe against the new peers.`);
   return { action: 'status', matrixPath, overallScore: matrix.overallSelfScore };
 }
 

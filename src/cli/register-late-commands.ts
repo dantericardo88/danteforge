@@ -374,8 +374,9 @@ program
   .option('--amend <dim_score>', 'Manually set a market dim self-score: dim_id=score (0â€“10), e.g. "semantic_memory=5.5"')
   .option('--amend-file <path>', 'Batch-update market dim scores from a JSON file: { "dim_id": score, ... }')
   .option('--edit', 'Interactive matrix amendment session')
-  .option('--reset', 'Replace the competitors array in matrix.json (requires --use-canonical). Backs up the old matrix first.')
-  .option('--use-canonical', 'With --reset: apply the DanteForge-class peer list (spec-kit / BMAD / autoresearch / claude-skills / orchestration peers)')
+  .option('--reset', 'Replace the competitors array in matrix.json (requires --preset or --use-canonical). Backs up the old matrix first.')
+  .option('--use-canonical', 'With --reset: auto-resolve the project preset from package.json / state.project (DanteForge → dev-tool-optimizer; DanteCode → coding-assistant; etc.)')
+  .option('--preset <name>', 'With --reset: apply a specific preset. Values: coding-assistant | dev-tool-optimizer | agent-framework')
   .option('--calibrate', 'Run adversarial scorer and apply inflated-verdict corrections to matrix self-scores')
   .option('--yes', 'Skip the confirmation gate in --auto mode and --calibrate')
   .action(async (opts) => {
@@ -412,6 +413,7 @@ program
           edit: opts.edit as boolean | undefined,
           reset: opts.reset as boolean | undefined,
           useCanonical: opts.useCanonical as boolean | undefined,
+          preset: opts.preset as string | undefined,
           calibrate: opts.calibrate as boolean | undefined,
           yes: opts.yes as boolean | undefined,
         });

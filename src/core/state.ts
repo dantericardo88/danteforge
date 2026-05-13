@@ -101,6 +101,7 @@ export interface DanteState {
   completionTracker?: CompletionTracker;
   // v0.10.0 — Self-Assessment & Onboarding
   competitors?: string[];       // user-defined competitor list for `danteforge assess`
+  peerPreset?: 'coding-assistant' | 'dev-tool-optimizer' | 'agent-framework'; // optional explicit peer preset (overrides identity heuristic in peer-presets.ts)
   preferredLevel?: string;      // preferred magic level set during init wizard (e.g., 'magic', 'inferno')
   completionTarget?: {        // persisted completion target (mode + minScore + coverage)
     mode: 'feature-universe' | 'dimension-based' | 'custom';

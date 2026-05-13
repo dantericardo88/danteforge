@@ -566,10 +566,11 @@ export const TOOL_DEFINITIONS: ToolDefinition[] = [
   },
   {
     name: 'danteforge_canonical_competitors',
-    description: 'Returns the canonical 16-peer DanteForge competitor list grouped by category: spec-driven dev kits (spec-kit, BMAD, OpenSpec), skill consolidators (anthropics/claude-skills, cursor.directory), autonomous research loops (Karpathy autoresearch, DSPy), and orchestration peers (MetaGPT, CrewAI, AutoGen, GPT-Engineer, OpenHands, Aider, SWE-Agent, LangChain Agents). DanteForge sits ON TOP OF AI coding assistants — these are its peers, NOT Cursor/Devin/Claude Code itself.',
+    description: 'Returns the peer-preset list for the current project (or a specific preset if passed). DanteForge ships three named presets: "coding-assistant" (Cursor / Cline / Aider / OpenHands / etc. — for projects like DanteCode that directly compete with AI coding assistants), "dev-tool-optimizer" (spec-kit / BMAD / claude-skills / DSPy / orchestration peers — for projects like DanteForge that sit on top of coding assistants), and "agent-framework" (MetaGPT / CrewAI / AutoGen / etc.). Without `preset`, the tool resolves the project\'s preset via package.json#name, state.project, or .danteforge/peers.json.',
     inputSchema: {
       type: 'object',
       properties: {
+        preset: { type: 'string', description: 'Explicit preset name. Values: coding-assistant | dev-tool-optimizer | agent-framework. Omit to auto-resolve from project identity.' },
         _cwd: { type: 'string', description: 'Working directory override (for testing)' },
       },
       required: [],
@@ -577,12 +578,13 @@ export const TOOL_DEFINITIONS: ToolDefinition[] = [
   },
   {
     name: 'danteforge_compete_reset',
-    description: 'Replace the competitors in compete-matrix.json with the canonical DanteForge peer list. Backs up the old matrix to matrix.pre-<timestamp>.json. Mutating — requires confirm: true.',
+    description: 'Replace the competitors in compete-matrix.json with a preset peer list. Pass preset:"<name>" for explicit selection, or useCanonical:true (default) to auto-resolve via project identity. Backs up the old matrix to matrix.pre-<timestamp>.json. Mutating — requires confirm: true.',
     inputSchema: {
       type: 'object',
       properties: {
         confirm: { type: 'boolean', description: 'Required: explicit confirmation to mutate the matrix' },
-        useCanonical: { type: 'boolean', description: 'Apply the canonical peer list (default true; other modes reserved)' },
+        preset: { type: 'string', description: 'Explicit preset name. Values: coding-assistant | dev-tool-optimizer | agent-framework. Wins over useCanonical when both are passed.' },
+        useCanonical: { type: 'boolean', description: 'Auto-resolve the preset from project identity (default true). Set to false only if you want to require explicit preset.' },
         _cwd: { type: 'string', description: 'Working directory override (for testing)' },
       },
       required: ['confirm'],

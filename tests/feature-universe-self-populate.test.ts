@@ -61,8 +61,10 @@ test('canonical seed includes 16 DanteForge peers across four categories', () =>
   assert.ok(!seed.some(s => /^Cursor$/i.test(s)), 'canonical seed should NOT include Cursor');
 });
 
-test('universe() falls back to canonical seed on a fresh project with no matrix', async () => {
+test('universe() falls back to project-preset competitors when state/matrix are empty', async () => {
+  // Seed a package.json so the preset resolver picks dev-tool-optimizer
   const dir = mkTmpProject();
+  writeFileSync(join(dir, 'package.json'), JSON.stringify({ name: 'danteforge' }));
   const fakeBuilder = async (competitors: string[]): Promise<FeatureUniverse> => {
     return {
       features: competitors.slice(0, 3).map((_c, i) => ({
@@ -93,8 +95,11 @@ test('universe() falls back to canonical seed on a fresh project with no matrix'
     _getTarget: async () => ({ minScore: 9, featureCoverage: 90 }),
   });
   assert.ok(result, 'universe() should return a non-null assessment');
-  assert.ok(result.universe.competitors.length >= 14, 'should use canonical seed when no matrix/state exists');
-  assert.ok(result.universe.features.length > 0, 'should produce some features from canonical seed');
+  assert.ok(result.universe.competitors.length >= 14, 'should use dev-tool-optimizer preset when project is danteforge');
+  // dev-tool-optimizer should include spec-kit
+  assert.ok(result.universe.competitors.some(c => /spec-kit/i.test(c)),
+    'expected spec-kit in dev-tool-optimizer-derived universe');
+  assert.ok(result.universe.features.length > 0, 'should produce some features from preset');
 });
 
 test('universe() reads competitors from matrix.json when state.competitors is empty', async () => {

@@ -9,6 +9,7 @@
 import fs from 'fs/promises';
 import path from 'path';
 import { callLLM } from './llm.js';
+import { resolveProjectCompetitors, getPeerPreset } from './peer-presets.js';
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -595,37 +596,18 @@ export async function loadFeatureScores(
   }
 }
 
-// ── Canonical competitor seed for DanteForge-class projects ───────────────────
+// ── Project-aware competitor resolution ───────────────────────────────────────
+// Peer presets live in `peer-presets.ts`. This module routes through the
+// resolver so each project gets its OWN peer list (DanteForge → dev-tool-
+// optimizer preset; DanteCode → coding-assistant preset; etc.). The previous
+// hardcoded "canonical DanteForge competitors" leaked one project's
+// positioning into every other project using the CLI — removed.
 
-// The CANONICAL DanteForge peer list. Kept in sync with
-// `DEV_TOOL_BASELINES` in competitor-scanner.ts and with the project_positioning
-// memory note. Used as the last-resort fallback so `/universe` on a fresh
-// project always produces a meaningful universe instead of empty output.
-const CANONICAL_DANTEFORGE_COMPETITORS: readonly string[] = Object.freeze([
-  // Spec-driven dev kits
-  'spec-kit (GitHub)',
-  'BMad-METHOD',
-  'OpenSpec',
-  // Claude Code / agent skill consolidators
-  'anthropics/claude-skills',
-  'awesome-claude-code-skills',
-  'cursor.directory',
-  // Autonomous research / improvement loops
-  'Karpathy autoresearch',
-  'DSPy (Stanford)',
-  // Pattern donors: orchestration peers
-  'MetaGPT',
-  'CrewAI',
-  'AutoGen (Microsoft)',
-  'GPT-Engineer',
-  'OpenHands (All-Hands AI)',
-  'Aider',
-  'SWE-Agent (Princeton)',
-  'LangChain Agents',
-]);
-
+// Deprecated re-export for v0.17.0 short-lived API. Forwards to peer-presets
+// so the dev-tool-optimizer preset still resolves for any in-flight callers.
+// Prefer `resolveProjectCompetitors(cwd, state)` from peer-presets.ts.
 export function getCanonicalDanteForgeCompetitors(): string[] {
-  return [...CANONICAL_DANTEFORGE_COMPETITORS];
+  return getPeerPreset('dev-tool-optimizer');
 }
 
 // ── ensureUniverseReady: idempotent preflight ─────────────────────────────────
@@ -655,27 +637,30 @@ const DEFAULT_MIN_FEATURES = 20;
 const DEFAULT_MAX_AGE_DAYS = 14;
 
 async function defaultResolveCompetitors(cwd: string): Promise<string[]> {
-  // 1. STATE.yaml competitors
+  // 1. STATE.yaml explicit competitors (highest priority — user-defined)
+  let state: { competitors?: string[]; project?: string; peerPreset?: import('./peer-presets.js').PeerPreset } | null = null;
   try {
     const { loadState } = await import('./state.js');
-    const state = await loadState({ cwd });
+    state = await loadState({ cwd });
     if (state.competitors && state.competitors.length > 0) return state.competitors;
   } catch { /* no state */ }
 
-  // 2. compete-matrix.json competitors
+  // 2. compete-matrix.json competitors (calibrated list)
   try {
     const { loadMatrix } = await import('./compete-matrix.js');
     const matrix = await loadMatrix(cwd);
     if (matrix?.competitors && Array.isArray(matrix.competitors) && matrix.competitors.length > 0) {
-      // matrix.competitors may be string[] or object[] — normalize to names
       return matrix.competitors.map((c: unknown) =>
         typeof c === 'string' ? c : (c as { name?: string })?.name ?? String(c),
       ).filter(Boolean);
     }
   } catch { /* no matrix */ }
 
-  // 3. canonical fallback
-  return getCanonicalDanteForgeCompetitors();
+  // 3. Project-aware preset fallback (per-project; replaces the old single
+  //    "canonical" list that was DanteForge-specific). Returns an empty list
+  //    if the project type is unknown — caller surfaces a config hint.
+  const { competitors } = await resolveProjectCompetitors(cwd, state ?? undefined);
+  return competitors;
 }
 
 /**
@@ -713,10 +698,14 @@ export async function ensureUniverseReady(
   try {
     competitors = await resolveFn(cwd);
   } catch {
-    competitors = getCanonicalDanteForgeCompetitors();
+    competitors = [];
   }
   if (competitors.length === 0) {
-    competitors = getCanonicalDanteForgeCompetitors();
+    // The project-aware resolver already tried preset-based fallback inside
+    // defaultResolveCompetitors. An empty result here means the project type
+    // is genuinely unknown — return what we had (possibly null) rather than
+    // building against the wrong peer list.
+    return existing;
   }
 
   const projectName = opts.projectName ?? 'this project';
