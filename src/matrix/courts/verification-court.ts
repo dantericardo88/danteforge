@@ -35,8 +35,12 @@ export interface ReviewBranchOptions {
   agentRunResult: AgentRunResult;
   /** Skip running requiredCommands (used in tests). */
   skipRequiredCommands?: boolean;
+  /** Project root used to load `.danteforge/test-config.json`. Defaults to process.cwd(). */
+  cwd?: string;
   /** Injection seam: replaces command runner for tests. */
-  _runCommand?: (cmd: string, cwd: string) => Promise<{ exitCode: number; stdout: string; stderr: string }>;
+  _runCommand?: (cmd: string, cwd: string, env?: Record<string, string>) => Promise<{ exitCode: number; stdout: string; stderr: string }>;
+  /** Injection seam: override loaded test config (skips file read). */
+  _testConfig?: import('./verify-test-config.js').VerifyTestConfig;
   _now?: () => string;
 }
 
@@ -44,6 +48,13 @@ export async function reviewBranch(options: ReviewBranchOptions): Promise<GateRe
   const now = options._now ?? (() => new Date().toISOString());
   const { lease, workPacket, ownershipMap, agentRunResult } = options;
   const checks: GateCheckResult[] = [];
+
+  // Load test-config (knownFlaky skips, alwaysRun overrides) once. Missing
+  // file is non-fatal — defaults apply. The host project's repo root drives
+  // the lookup, not the lease worktree, because the config is project-wide.
+  const { loadVerifyTestConfig, buildSkipPatternEnv } = await import('./verify-test-config.js');
+  const testConfig = options._testConfig ?? await loadVerifyTestConfig({ cwd: options.cwd });
+  const skipPattern = buildSkipPatternEnv(testConfig);
 
   // Check 1: forbidden_paths
   checks.push(checkForbiddenPaths(lease, agentRunResult.filesChanged));
@@ -57,11 +68,19 @@ export async function reviewBranch(options: ReviewBranchOptions): Promise<GateRe
   // Check 4: required_commands
   if (!options.skipRequiredCommands && lease.requiredCommands.length > 0) {
     for (const cmd of lease.requiredCommands) {
-      const result = await runCommand(cmd, lease.worktreePath, options._runCommand);
+      // For `npm test`, inject TEST_SKIP_PATTERNS so the test runner skips
+      // known-flaky cases per the project's `.danteforge/test-config.json`.
+      // The pattern is empty when no skips are configured (caller-side env
+      // is preserved untouched in that case).
+      const extraEnv = (cmd.includes('npm test') || cmd.includes('npm run test')) && skipPattern
+        ? { TEST_SKIP_PATTERNS: skipPattern }
+        : undefined;
+      const result = await runCommand(cmd, lease.worktreePath, options._runCommand, extraEnv);
+      const skippedNote = extraEnv ? ` (skip-patterns: ${skipPattern})` : '';
       checks.push({
         name: `required_command:${cmd}`,
         status: result.exitCode === 0 ? 'passed' : 'failed',
-        details: result.exitCode === 0 ? 'exit 0' : `exit ${result.exitCode}: ${result.stderr.slice(0, 200)}`,
+        details: result.exitCode === 0 ? `exit 0${skippedNote}` : `exit ${result.exitCode}${skippedNote}: ${result.stderr.slice(0, 200)}`,
       });
     }
   }
@@ -159,12 +178,14 @@ function checkLeaseCompliance(
 async function runCommand(
   cmd: string,
   cwd: string,
-  injected?: (cmd: string, cwd: string) => Promise<{ exitCode: number; stdout: string; stderr: string }>,
+  injected?: (cmd: string, cwd: string, env?: Record<string, string>) => Promise<{ exitCode: number; stdout: string; stderr: string }>,
+  extraEnv?: Record<string, string>,
 ): Promise<{ exitCode: number; stdout: string; stderr: string }> {
-  if (injected) return injected(cmd, cwd);
+  if (injected) return injected(cmd, cwd, extraEnv);
   return new Promise((resolve) => {
     const parts = cmd.split(/\s+/);
-    const child = spawn(parts[0]!, parts.slice(1), { cwd, shell: true });
+    const env = extraEnv ? { ...process.env, ...extraEnv } : process.env;
+    const child = spawn(parts[0]!, parts.slice(1), { cwd, shell: true, env });
     let stdout = '', stderr = '';
     child.stdout?.setEncoding('utf8');
     child.stdout?.on('data', (c: string) => { stdout += c; });
