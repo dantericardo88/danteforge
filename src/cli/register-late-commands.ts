@@ -429,6 +429,31 @@ program
   });
 
 program
+  .command('peers')
+  .description('Diagnose which peer preset is resolved for the current project (and the competitor list /universe + /compete will use). Helps verify scoping when running DanteForge in sibling projects.')
+  .option('--preset <name>', 'Print a specific preset\'s list (coding-assistant | dev-tool-optimizer | agent-framework)')
+  .option('--all', 'Print every preset\'s list')
+  .option('--json', 'Machine-readable JSON output')
+  .option('--cwd <path>', 'Project directory override (default: current dir)')
+  .action((opts) => {
+    void (async () => {
+      try {
+        const { peers } = await import('./commands/peers.js');
+        await peers({
+          cwd: opts.cwd as string | undefined,
+          preset: opts.preset as string | undefined,
+          showAll: opts.all as boolean | undefined,
+          json: opts.json as boolean | undefined,
+        });
+      } catch (err) {
+        const { formatAndLogError } = await import('../core/format-error.js');
+        formatAndLogError(err, 'peers');
+        process.exitCode = 1;
+      }
+    })();
+  });
+
+program
   .command('cofl')
   .description('Competitive Operator Forge Loop: 10-phase disciplined system to learn from OSS operator tools, forge improvements, and prove progress vs closed-source leaders')
   .option('--universe', 'Phases 1-2: refresh + partition competitor universe into roles (direct_peer / specialist_teacher / reference_teacher)')

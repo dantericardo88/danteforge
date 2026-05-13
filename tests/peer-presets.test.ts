@@ -107,6 +107,32 @@ test('resolveProjectPreset: state.project="my-ide-agent" → coding-assistant (k
   assert.equal(result.preset, 'coding-assistant');
 });
 
+test('resolveProjectPreset: package.json name="danteagents" → agent-framework (sibling)', async () => {
+  const dir = mkTmpProject({ packageName: 'danteagents' });
+  const result = await resolveProjectPreset(dir);
+  assert.equal(result.preset, 'agent-framework');
+});
+
+test('resolveProjectPreset: package.json name="@danteagents/core" → agent-framework', async () => {
+  const dir = mkTmpProject({ packageName: '@danteagents/core' });
+  const result = await resolveProjectPreset(dir);
+  assert.equal(result.preset, 'agent-framework');
+});
+
+test('resolveProjectPreset: state.project="my-multi-agent-framework" → agent-framework (multi-word keyword)', async () => {
+  const dir = mkTmpProject();
+  const result = await resolveProjectPreset(dir, { project: 'my-multi-agent-framework' });
+  assert.equal(result.preset, 'agent-framework');
+});
+
+test('resolveProjectPreset: bare "agent" alone is NOT enough to classify as coding-assistant (false-positive guard)', async () => {
+  const dir = mkTmpProject();
+  // "user-agent-tracker" contains "agent" but isn't a coding tool. The
+  // tightened heuristic should return null, NOT coding-assistant.
+  const result = await resolveProjectPreset(dir, { project: 'user-agent-tracker' });
+  assert.equal(result.preset, null, 'bare "agent" should not auto-resolve');
+});
+
 test('resolveProjectPreset: nothing matches → null with configuration hint', async () => {
   const dir = mkTmpProject();
   const result = await resolveProjectPreset(dir);

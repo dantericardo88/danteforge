@@ -160,12 +160,29 @@ const CODING_ASSISTANT_SIBLINGS = new Set<string>([
   'dantecode', '@dantecode/core', '@dantecode/vscode',
 ]);
 
-// Generic dev-tool keywords (broader bucket). When matched without
-// DanteForge identity, defaults to coding-assistant since that's the more
-// common sibling-project category.
+// Known sibling projects that compete in the agent-framework category
+// (multi-agent orchestration frameworks, NOT IDE assistants or optimizers).
+const AGENT_FRAMEWORK_SIBLINGS = new Set<string>([
+  'danteagents', '@danteagents/core',
+]);
+
+// Keywords that strongly suggest agent-framework category. Conservative — must
+// be a multi-word match or specific term so we don't false-positive on the
+// loose word "agent" (which appears in everything from "code agent" to
+// "user agent" to "AI agent CLI").
+const AGENT_FRAMEWORK_KEYWORDS = [
+  'multi-agent', 'multi agent', 'agent framework', 'agent orchestrat',
+  'autonomous agent', 'agent swarm', 'agent crew', 'crewai',
+];
+
+// Generic dev-tool keywords (broader bucket). When matched without a more
+// specific sibling registration, defaults to coding-assistant since that's
+// the more common sibling-project category. Note: bare "agent" was removed
+// here because it's too aggressive — see AGENT_FRAMEWORK_KEYWORDS for the
+// more specific multi-word match that routes to agent-framework instead.
 const GENERIC_DEV_TOOL_KEYWORDS = [
-  'cli', 'agent', 'coding', 'devtool', 'dev tool',
-  'workflow', 'orchestrat', 'agentic',
+  'cli', 'coding', 'devtool', 'dev tool',
+  'workflow', 'agentic',
   'programming', 'software engineer',
 ];
 
@@ -194,15 +211,26 @@ async function readPackageName(cwd: string): Promise<string | null> {
 function presetForName(name: string | null | undefined): PeerPreset | null {
   if (!name) return null;
   const lower = name.toLowerCase();
+  // 1. Exact-name sibling registrations (highest specificity)
   if (DANTEFORGE_PROJECT_NAMES.has(lower) || lower.startsWith('@danteforge/')) {
     return 'dev-tool-optimizer';
   }
   if (CODING_ASSISTANT_SIBLINGS.has(lower) || lower.startsWith('@dantecode/')) {
     return 'coding-assistant';
   }
+  if (AGENT_FRAMEWORK_SIBLINGS.has(lower) || lower.startsWith('@danteagents/')) {
+    return 'agent-framework';
+  }
+  // 2. Agent-framework specific keywords (multi-word, more selective —
+  //    checked before coding-assistant keywords to win the bare "agent" case)
+  if (AGENT_FRAMEWORK_KEYWORDS.some((kw) => lower.includes(kw))) {
+    return 'agent-framework';
+  }
+  // 3. Coding-assistant specific keywords
   if (CODING_ASSISTANT_KEYWORDS.some((kw) => lower.includes(kw))) {
     return 'coding-assistant';
   }
+  // 4. Generic dev-tool keywords → default to coding-assistant
   if (GENERIC_DEV_TOOL_KEYWORDS.some((kw) => lower.includes(kw))) {
     return 'coding-assistant';
   }
