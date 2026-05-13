@@ -265,6 +265,10 @@ export function explain(options?: ExplainOptions): void {
     if (exact) {
       out(formatEntry(exact));
       out('');
+      import('../../core/decision-node-recorder.js').then(async ({ getSession, recordDecision }) => {
+        const sess = getSession();
+        await recordDecision({ session: sess, actorType: 'agent', prompt: `explain: ${options.term}`, context: { term: options.term }, result: `explained: ${options.term}`, success: true });
+      }).catch(() => {});
       return;
     }
 
@@ -275,6 +279,10 @@ export function explain(options?: ExplainOptions): void {
       out(`  Did you mean: ${closest.term}?`);
       out(formatEntry(closest));
       out('');
+      import('../../core/decision-node-recorder.js').then(async ({ getSession, recordDecision }) => {
+        const sess = getSession();
+        await recordDecision({ session: sess, actorType: 'agent', prompt: `explain: ${options.term}`, context: { term: options.term }, result: `fuzzy-match: ${closest.term}`, success: true });
+      }).catch(() => {});
       return;
     }
 

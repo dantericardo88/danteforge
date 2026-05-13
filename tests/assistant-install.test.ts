@@ -129,6 +129,75 @@ describe('assistant skill install', () => {
     assert.equal(install?.installPath, nextCacheDir);
   });
 
+  it('refreshes same-version Claude plugin cache files during assistant setup', async () => {
+    const homeDir = await makeTempDir('danteforge-home-');
+    const skillsDir = await makeTempDir('danteforge-skills-');
+    const projectDir = await makeTempDir('danteforge-project-');
+
+    await fs.mkdir(path.join(skillsDir, 'example-skill'), { recursive: true });
+    await fs.writeFile(
+      path.join(skillsDir, 'example-skill', 'SKILL.md'),
+      '---\nname: example-skill\ndescription: Example skill\n---\n\nBody\n',
+      'utf8',
+    );
+
+    await fs.mkdir(path.join(projectDir, 'dist'), { recursive: true });
+    await fs.mkdir(path.join(projectDir, 'commands'), { recursive: true });
+    await fs.mkdir(path.join(projectDir, 'hooks'), { recursive: true });
+    await fs.mkdir(path.join(projectDir, '.claude-plugin'), { recursive: true });
+    await fs.writeFile(path.join(projectDir, 'dist', 'index.js'), 'console.log("new dist");\n', 'utf8');
+    await fs.writeFile(path.join(projectDir, 'commands', 'autoforge.md'), 'new command\n', 'utf8');
+    await fs.writeFile(path.join(projectDir, 'hooks', 'session-start.mjs'), 'new hook\n', 'utf8');
+    await fs.writeFile(path.join(projectDir, '.claude-plugin', 'plugin.json'), '{"version":"1.2.3"}\n', 'utf8');
+    await fs.writeFile(path.join(projectDir, '.claude-plugin', 'marketplace.json'), '{"plugins":[{"version":"1.2.3"}]}\n', 'utf8');
+    await fs.writeFile(
+      path.join(projectDir, 'package.json'),
+      JSON.stringify({
+        name: 'danteforge',
+        version: '1.2.3',
+        files: ['dist', 'commands', 'hooks', '.claude-plugin'],
+      }, null, 2),
+      'utf8',
+    );
+
+    const cacheDir = path.join(homeDir, '.claude', 'plugins', 'cache', 'danteforge-dev', 'danteforge', '1.2.3');
+    await fs.mkdir(path.join(cacheDir, 'commands'), { recursive: true });
+    await fs.mkdir(path.join(cacheDir, 'hooks'), { recursive: true });
+    await fs.writeFile(path.join(cacheDir, 'commands', 'autoforge.md'), 'old command\n', 'utf8');
+    await fs.writeFile(path.join(cacheDir, 'hooks', 'session-start.mjs'), 'old hook\n', 'utf8');
+    await fs.mkdir(path.join(homeDir, '.claude', 'plugins'), { recursive: true });
+    await fs.writeFile(
+      path.join(homeDir, '.claude', 'plugins', 'installed_plugins.json'),
+      JSON.stringify({
+        version: 2,
+        plugins: {
+          'danteforge@danteforge-dev': [
+            {
+              scope: 'user',
+              installPath: cacheDir,
+              version: '1.2.3',
+              installedAt: '2026-03-25T00:00:00.000Z',
+              lastUpdated: '2026-03-25T00:00:00.000Z',
+            },
+          ],
+        },
+      }, null, 2),
+      'utf8',
+    );
+
+    const { installAssistantSkills } = await import('../src/core/assistant-installer.js');
+    await installAssistantSkills({
+      homeDir,
+      skillsDir,
+      projectDir,
+      assistants: ['claude'],
+    });
+
+    assert.equal(await fs.readFile(path.join(cacheDir, 'commands', 'autoforge.md'), 'utf8'), 'new command\n');
+    assert.equal(await fs.readFile(path.join(cacheDir, 'hooks', 'session-start.mjs'), 'utf8'), 'new hook\n');
+    await fs.access(path.join(cacheDir, 'dist', 'index.js'));
+  });
+
   it('can install a Cursor bootstrap rule into the current project', async () => {
     const homeDir = await makeTempDir('danteforge-home-');
     const skillsDir = await makeTempDir('danteforge-skills-');
@@ -155,6 +224,36 @@ describe('assistant skill install', () => {
     const cursorRule = await fs.readFile(cursorRulePath, 'utf8');
     assert.match(cursorRule, /danteforge inferno/);
     assert.match(cursorRule, /danteforge harvest/);
+  });
+
+  it('installs per-command Cursor rules alongside the bootstrap', async () => {
+    const homeDir = await makeTempDir('danteforge-home-');
+    const skillsDir = await makeTempDir('danteforge-skills-');
+    const projectDir = await makeTempDir('danteforge-project-');
+
+    await fs.mkdir(path.join(skillsDir, 'example-skill'), { recursive: true });
+    await fs.writeFile(
+      path.join(skillsDir, 'example-skill', 'SKILL.md'),
+      '---\nname: example-skill\ndescription: Example skill\n---\n\nBody\n',
+      'utf8',
+    );
+
+    const { installAssistantSkills } = await import('../src/core/assistant-installer.js');
+    await installAssistantSkills({
+      homeDir, skillsDir, projectDir, assistants: ['cursor'],
+    });
+
+    const rulesDir = path.join(projectDir, '.cursor', 'rules');
+    const installed = await fs.readdir(rulesDir);
+    assert.ok(installed.includes('danteforge.mdc'), 'bootstrap rule installed');
+    const perCommand = installed.filter(name => name.startsWith('danteforge-') && name.endsWith('.mdc'));
+    assert.ok(perCommand.length > 5, `expected several danteforge-<cmd>.mdc files, got ${perCommand.length}`);
+    // Spot-check one we know exists in commands/ at repo root
+    if (installed.includes('danteforge-matrixdev.mdc')) {
+      const body = await fs.readFile(path.join(rulesDir, 'danteforge-matrixdev.mdc'), 'utf8');
+      assert.match(body, /alwaysApply: false/);
+      assert.match(body, /Matrix Kernel loop/i);
+    }
   });
 
   it('exports a setupAssistants command', async () => {

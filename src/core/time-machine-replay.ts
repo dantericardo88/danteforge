@@ -79,6 +79,7 @@ export interface ReplayArtifactSummary {
   stdoutExcerpt?: string;
   stderrExcerpt?: string;
   pipelineExitCode?: number;
+  timeMachineCommitId?: string;
 }
 
 export interface PipelineRunContext {

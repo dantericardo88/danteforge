@@ -35,6 +35,8 @@ export async function forge(phase = '1', options: {
   worktree?: boolean; figma?: boolean; skipUx?: boolean; confirm?: boolean;
   _isLLMAvailable?: () => Promise<boolean>;
   _policyGate?: typeof runPolicyGate;
+  /** Injection seam: replaces createTimeMachineCommit for testing */
+  _timeMachineCommit?: (opts: { cwd: string; paths: string[]; label: string; runId?: string }) => Promise<void>;
 } = {}) {
   return withErrorBoundary('forge', async () => {
   // Policy gate — check .danteforge/policy.yaml before execution
@@ -68,6 +70,16 @@ export async function forge(phase = '1', options: {
   // LLM pre-flight — surface misconfiguration before wasting a full wave
   if (!options.prompt && !(await checkLLMPreflight(options._isLLMAvailable))) return;
 
+  // --- Decision-node: record start (best-effort) ---
+  let _dnStartNodeId: string | undefined;
+  const _dnT0 = Date.now();
+  try {
+    const { getSession, recordDecision } = await import('../../core/decision-node-recorder.js');
+    const _dnSess = getSession();
+    const _dnStart = await recordDecision({ session: _dnSess, actorType: 'agent', prompt: `forge: phase ${phase}`, context: { phase, profile: options.profile ?? 'balanced', parallel: options.parallel }, result: 'in-progress', success: false });
+    _dnStartNodeId = _dnStart.id;
+  } catch { /* never block forge */ }
+
   if (options.figma && !options.skipUx) {
     if (!options.prompt) {
       logger.error('Automatic Figma apply is not available as a direct execution path. Re-run with --figma --prompt or use "danteforge ux-refine --openpencil".');
@@ -86,6 +98,18 @@ export async function forge(phase = '1', options: {
   if (!result.success) {
     process.exitCode = 1;
     return;
+  }
+
+  if (result.success && result.mode === 'executed') {
+    try {
+      const cwd = process.cwd();
+      const commitFn = options._timeMachineCommit ?? (async (opts) => {
+        const { createTimeMachineCommit } = await import('../../core/time-machine.js');
+        await createTimeMachineCommit(opts);
+      });
+      await commitFn({ cwd, paths: ['.danteforge'], label: `auto-forge-phase-${phase}-${profile}`, runId: _dnStartNodeId });
+      logger.info('[TimeMachine] Post-forge snapshot captured');
+    } catch { /* best-effort; never blocks forge */ }
   }
 
   if (profile === 'quality' && result.mode === 'executed') {
@@ -111,5 +135,12 @@ export async function forge(phase = '1', options: {
   } catch {
     // No DESIGN.op - skip token extraction for non-design projects.
   }
+
+  // --- Decision-node: record completion (best-effort) ---
+  try {
+    const { getSession, recordDecision } = await import('../../core/decision-node-recorder.js');
+    const _dnSess = getSession();
+    await recordDecision({ session: _dnSess, parentNodeId: _dnStartNodeId, actorType: 'agent', prompt: `forge: phase ${phase} [complete]`, context: { phase, profile: options.profile ?? 'balanced' }, result: 'completed', success: true, latencyMs: Date.now() - _dnT0 });
+  } catch { /* best-effort */ }
   });
 }

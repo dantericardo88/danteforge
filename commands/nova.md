@@ -33,3 +33,5 @@ Options:
 - `--profile quality|balanced|budget` - Override the default budget profile
 
 CLI parity: `danteforge nova [goal]`
+
+Matrix development note: when nova closes a matrix gap, write evidence and a score proposal, then merge through the Matrix Development Engine so Time Machine can link the score transition.

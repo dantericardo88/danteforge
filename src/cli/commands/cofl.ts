@@ -363,6 +363,16 @@ export async function cofl(
   let result: CoflCycleResult | null = null;
   await withErrorBoundary('cofl', async () => {
     const cwd = _opts._cwd ?? process.cwd();
+
+    // --- Decision-node: record start (best-effort) ---
+    let _dnStartNodeId: string | undefined;
+    const _dnT0 = Date.now();
+    try {
+      const { getSession, recordDecision } = await import('../../core/decision-node-recorder.js');
+      const _dnSess = getSession(cwd);
+      const _dnStart = await recordDecision({ session: _dnSess, actorType: 'agent', prompt: 'cofl: competitive optimization loop', context: { auto: options.auto, dryRun: options.dryRun }, result: 'in-progress', success: false });
+      _dnStartNodeId = _dnStart.id;
+    } catch { /* never block */ }
     const now = _opts._now ?? (() => new Date().toISOString());
     const loadStateFn = _opts._loadState ?? loadState;
     const saveStateFn = _opts._saveState ?? saveState;
@@ -440,6 +450,13 @@ export async function cofl(
     await saveStateFn(state, { cwd });
 
     result = cycleResult;
+
+    // --- Decision-node: record completion (best-effort) ---
+    try {
+      const { getSession, recordDecision } = await import('../../core/decision-node-recorder.js');
+      const _dnSess = getSession(cwd);
+      await recordDecision({ session: _dnSess, parentNodeId: _dnStartNodeId, actorType: 'agent', prompt: 'cofl: competitive optimization loop [complete]', result: 'cofl complete', success: true, latencyMs: Date.now() - _dnT0 });
+    } catch { /* best-effort */ }
   });
   return result;
 }

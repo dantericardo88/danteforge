@@ -35,6 +35,19 @@ Usage rule:
 
 CLI parity: `danteforge inferno [goal]`
 
+## Agent Anti-Bloat Guard
+
+Sprint 0 may add extension points. After Sprint 0, each parallel lane must own a
+single workstream from `.danteforge/agent-ownership.json`, write an ephemeral
+claim under `.danteforge/agent-claims/`, and run:
+
+```bash
+node scripts/check-agent-guard.mjs --staged --workstream <workstream>
+```
+
+Do not let `/inferno` turn kernel files into feature files. Frozen files are for
+extension points only; dimension behavior belongs in owned modules.
+
 ## TOOL SAFETY RULES — All Models Must Follow
 
 **NEVER run these commands** — they destroy all in-progress work:

@@ -98,3 +98,5 @@ Use `/oss-learn` to re-extract patterns from all cached repos.
 Use `/oss-clean` to remove repos from storage.
 
 CLI fallback: `danteforge oss`
+
+Matrix development note: OSS findings are evidence, not direct scores. Queue any score movement with `danteforge matrix propose --evidence <path>` and merge with `harsh-min`.

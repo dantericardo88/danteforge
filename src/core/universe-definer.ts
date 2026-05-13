@@ -9,10 +9,19 @@ import {
   saveMatrix,
   loadMatrix,
   KNOWN_CEILINGS,
+  computeTwoGaps,
+  computeOverallScore,
   type CompeteMatrix,
 } from './compete-matrix.js';
+import { MARKET_DIM_SPECS } from './default-market-dims.js';
 import { logger } from './logger.js';
 import type { ScoringDimension } from './harsh-scorer.js';
+import {
+  buildFeatureUniverse,
+  saveFeatureUniverse,
+  getCanonicalDanteForgeCompetitors,
+  type FeatureUniverse,
+} from './feature-universe.js';
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -31,6 +40,10 @@ export interface UniverseDefinerOptions {
   _saveMatrix?: typeof saveMatrix;
   /** Injection seam: load state */
   _loadState?: typeof loadState;
+  /** Injection seam: build feature universe (called after matrix save) */
+  _buildFeatureUniverse?: typeof buildFeatureUniverse;
+  /** Injection seam: persist feature universe */
+  _saveFeatureUniverse?: typeof saveFeatureUniverse;
 }
 
 // ── Default ask function (reads from stdin TTY) ───────────────────────────────
@@ -73,7 +86,7 @@ async function collectInteractiveInput(
     ? competitorInput.split(',').map(s => s.trim()).filter(Boolean)
     : defaultCompetitors;
 
-  await askFn('3. Which dimensions matter most? (press Enter for all 18)', 'all');
+  await askFn('3. Which dimensions matter most? (press Enter for all 20)', 'all');
   await askFn('4. What is your target score? (default: 9.0)', '9.0');
 
   const searchAnswer = await askFn('5. Search the web for competitor patterns? (y/n)', 'y');
@@ -122,6 +135,7 @@ export async function defineUniverse(options: UniverseDefinerOptions = {}): Prom
     'autonomy', 'planningQuality', 'selfImprovement', 'specDrivenPipeline',
     'convergenceSelfHealing', 'tokenEconomy', 'ecosystemMcp',
     'enterpriseReadiness', 'communityAdoption',
+    'contextEconomy', 'causalCoherence',
   ];
   const ourScores = Object.fromEntries(SCORING_DIMS.map(d => [d, 50])) as Record<ScoringDimension, number>;
 
@@ -148,10 +162,63 @@ export async function defineUniverse(options: UniverseDefinerOptions = {}): Prom
     }
   }
 
+  // Append 30 market dimensions (idempotent — skip any already present)
+  for (const spec of MARKET_DIM_SPECS) {
+    if (matrix.dimensions.some(d => d.id === spec.id)) continue;
+    const selfScore = spec.selfDefault;
+    const scores: Record<string, number> = { self: selfScore, ...spec.baselineScores };
+    const baseEntries = Object.entries(spec.baselineScores);
+    const maxEntry = baseEntries.reduce(
+      (b, [k, v]) => v > b[1] ? [k, v] : b,
+      ['', 0] as [string, number],
+    );
+    const twoGaps = computeTwoGaps({ scores }, matrix.competitors_closed_source, matrix.competitors_oss);
+    matrix.dimensions.push({
+      id: spec.id,
+      label: spec.label,
+      weight: spec.weight,
+      frequency: spec.frequency,
+      category: spec.category,
+      scores,
+      gap_to_leader: Math.max(0, maxEntry[1] - selfScore),
+      leader: maxEntry[0] || 'unknown',
+      ...twoGaps,
+      status: 'not-started',
+      sprint_history: [],
+      next_sprint_target: Math.min(10, selfScore + 2.0),
+      ...(spec.closingStrategy !== undefined ? { closingStrategy: spec.closingStrategy } : {}),
+      ...(spec.ceiling !== undefined ? { ceiling: spec.ceiling, ceilingReason: spec.ceilingReason } : {}),
+      ...(spec.manualActionHint !== undefined ? { manualActionHint: spec.manualActionHint } : {}),
+    });
+  }
+  matrix.overallSelfScore = computeOverallScore(matrix);
+
   await saveMatrixFn(matrix, cwd);
 
+  // Best-effort: also build the feature universe so /universe (and ensureUniverseReady)
+  // have something to score against on the very first run. Never blocks matrix creation.
+  const buildFeatureUniverseFn = options._buildFeatureUniverse ?? buildFeatureUniverse;
+  const saveFeatureUniverseFn = options._saveFeatureUniverse ?? saveFeatureUniverse;
+  try {
+    const competitorNames: string[] = matrix.competitors && matrix.competitors.length > 0
+      ? matrix.competitors.map((c: unknown) =>
+          typeof c === 'string' ? c : (c as { name?: string })?.name ?? String(c),
+        ).filter(Boolean)
+      : getCanonicalDanteForgeCompetitors();
+    const universe: FeatureUniverse = await buildFeatureUniverseFn(competitorNames, {
+      projectName,
+      projectDescription: projectDescription || projectName,
+    });
+    if (universe.features.length > 0) {
+      await saveFeatureUniverseFn(universe, cwd);
+      logger.info(`[Ascend] Feature universe built: ${universe.features.length} features across ${universe.competitors.length} competitors.`);
+    }
+  } catch (err) {
+    logger.warn(`[Ascend] Feature universe build skipped (${err instanceof Error ? err.message : String(err)}). Run \`danteforge universe\` to build it manually.`);
+  }
+
   if (isInteractive) {
-    logger.success(`[Ascend] Matrix created with ${matrix.dimensions.length} dimensions for "${projectName}".`);
+    logger.success(`[Ascend] Matrix created with ${matrix.dimensions.length} dimensions (20 scored + 30 market) for "${projectName}".`);
   }
 
   return matrix;

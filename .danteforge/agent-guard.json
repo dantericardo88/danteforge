@@ -1,0 +1,70 @@
+{
+  "version": 1,
+  "claims": {
+    "dir": ".danteforge/agent-claims",
+    "ttlHours": 4
+  },
+  "matrixUpdates": {
+    "canonicalMatrix": ".danteforge/compete/matrix.json",
+    "proposalDir": ".danteforge/score-proposals",
+    "mergeLock": ".danteforge/score-merge.lock",
+    "policy": "harsh-min"
+  },
+  "sanitize": {
+    "enabled": true,
+    "autoFixOnForge": true,
+    "autoFixOnAscend": true,
+    "checkOnCommit": true,
+    "respectFrozenFiles": true,
+    "maxFilesPerWave": 3,
+    "claimDir": ".danteforge/sanitize/claims",
+    "claimTtlMinutes": 15,
+    "backupRetentionDays": 7,
+    "skipPatterns": ["**/*.test.ts", "**/*.spec.ts", "**/*.d.ts"]
+  },
+  "size": {
+    "warn": 500,
+    "hard": 750,
+    "ignore": [
+      "**/*.d.ts",
+      "**/*.test.ts",
+      "**/*.spec.ts",
+      "dist/**",
+      "coverage/**",
+      "node_modules/**",
+      "vscode-extension/dist/**",
+      "vscode-extension/node_modules/**"
+    ],
+    "allowlist": [
+      "src/cli/index.ts",
+      "src/core/mcp-server.ts",
+      "src/core/harsh-scorer.ts",
+      "src/core/autoforge-loop.ts"
+    ]
+  },
+  "frozenFiles": [
+    "src/cli/index.ts",
+    "src/cli/register-core-commands.ts",
+    "src/core/autoforge-loop.ts",
+    "src/core/ascend-engine.ts",
+    "src/core/harsh-scorer.ts",
+    "src/core/mcp-server.ts"
+  ],
+  "atomicGroups": [
+    {
+      "id": "competitive-score-surface",
+      "files": [
+        ".danteforge/feature-scores.json",
+        ".danteforge/masterplan.json",
+        ".danteforge/PRIME.md"
+      ]
+    },
+    {
+      "id": "compete-matrix-score-surface",
+      "files": [
+        ".danteforge/compete/matrix.json",
+        ".danteforge/compete/COMPETE_REPORT.md"
+      ]
+    }
+  ]
+}

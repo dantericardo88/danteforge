@@ -5,6 +5,7 @@ import {
 import { buildSpecifySubcommand, sanitizeShellInput } from './shell-safety.js';
 import { DanteForgeTreeProvider as _DanteForgeTreeProvider } from './tree-provider.js';
 import { buildDiagnostics as _buildDiagnostics, scoresToDiagnostics as _scoresToDiagnostics, formatDiagnosticMessage as _formatDiagnosticMessage, type DiagnosticItemLike } from './diagnostics.js';
+import { openMatrixWarRoom } from './war-room.js';
 
 export interface DisposableLike {
   dispose(): void;
@@ -33,6 +34,7 @@ export interface StatusBarItemLike {
 export interface VscodeLike {
   workspace: {
     workspaceFolders?: readonly WorkspaceFolderLike[];
+    createFileSystemWatcher?(globPattern: string): FileSystemWatcherLike;
   };
   window: {
     terminals: readonly TerminalLike[];
@@ -47,6 +49,12 @@ export interface VscodeLike {
     createStatusBarItem?(idOrAlignment?: string | number, priority?: number): StatusBarItemLike;
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     createTreeView?(viewId: string, options: { treeDataProvider: any }): TreeViewLike;
+    createWebviewPanel?(
+      viewType: string,
+      title: string,
+      column: number,
+      options?: { enableScripts?: boolean; retainContextWhenHidden?: boolean },
+    ): WebviewPanelLike;
   };
   commands: {
     registerCommand(name: string, handler: () => unknown | Promise<unknown>): DisposableLike;
@@ -54,6 +62,19 @@ export interface VscodeLike {
   languages?: {
     createDiagnosticCollection?(name: string): DiagnosticCollectionLike;
   };
+}
+
+export interface FileSystemWatcherLike {
+  onDidChange(cb: () => void): void;
+  onDidCreate(cb: () => void): void;
+  dispose(): void;
+}
+
+export interface WebviewPanelLike {
+  webview: { html: string };
+  reveal(): void;
+  onDidDispose(cb: () => void): void;
+  dispose(): void;
 }
 
 export type InstallationInspector = (workspaceRoot?: string) => DanteForgeInstallation;
@@ -348,6 +369,13 @@ export function registerDanteForgeCommands(
     }),
     vscodeApi.commands.registerCommand('danteforge.showDiagnostics', () =>
       runDanteForgeSubcommand(vscodeApi, 'autoforge --score-only', inspector),
+    ),
+  );
+
+  // ── Matrix War Room webview (Phase 14) ──────────────────────────────────
+  disposables.push(
+    vscodeApi.commands.registerCommand('danteforge.matrixKernel.warRoom', () =>
+      openMatrixWarRoom(vscodeApi),
     ),
   );
 

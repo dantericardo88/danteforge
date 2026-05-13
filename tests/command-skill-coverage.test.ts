@@ -67,10 +67,38 @@ const WORKFLOW_COMMANDS = [
   // Existing CLI commands that were missing their slash command files
   'proof',
   'ascend',
+  // Migrated from the retired .claude-plugin/commands/ directory (now canonical
+  // in commands/ for both Claude Code plugin discovery and cross-tool export)
+  'ci-report',
+  'dossier',
+  'external-validate',
+  'flow',
+  'guide',
+  'import-patterns',
+  'mutation-score',
+  'outcome-check',
+  'self-assess',
+  'self-mutate',
+  'share-patterns',
+  // Matrix Kernel slash commands
+  'matrix-kernel',
+  'matrixdev',
+  // Quality discipline — autonomous oversized-file splitter
+  'sanitize',
 ];
 
-// Commands that have slash command files but no CLI equivalent (documentation-only flows).
-const SLASH_ONLY = ['brainstorm', 'daily-driver', 'oss-harvest', 'multi-agent', 'spec-to-ship', 'competitive-leapfrog'];
+// Commands that have slash command files but are auxiliary or slash-only (documentation,
+// reporting, or workflow-meta commands that do not need to be promoted in every
+// cross-tool bootstrap rule). They still must have a commands/*.md file and frontmatter.
+const SLASH_ONLY = [
+  'brainstorm', 'daily-driver', 'oss-harvest', 'multi-agent', 'spec-to-ship', 'competitive-leapfrog',
+  // Auxiliary migrated commands — exist as slash entries, not headline workflow steps:
+  'ci-report', 'dossier', 'external-validate', 'flow', 'guide', 'import-patterns',
+  'mutation-score', 'outcome-check', 'self-assess', 'self-mutate', 'share-patterns',
+  // Matrix Kernel commands — covered by the matrix-kernel section of bootstrap rules
+  // (or invoked autonomously via /matrixdev) rather than listed individually.
+  'matrix-kernel', 'matrixdev',
+];
 
 // Commands intentionally NOT registered as slash commands (utilities/config).
 const UTILITY_COMMANDS = [
@@ -99,16 +127,23 @@ describe('command-skill-coverage', () => {
     }
   });
 
-  it('has exactly the expected number of command files', async () => {
+  it('commands/ directory matches WORKFLOW_COMMANDS exactly (no orphans, no missing)', async () => {
     const commandsDir = path.resolve('commands');
     const entries = await fs.readdir(commandsDir);
-    const commandFiles = entries.filter(f => f.endsWith('.md'));
+    const onDisk = new Set(entries.filter(f => f.endsWith('.md')).map(f => f.replace('.md', '')));
+    const inArray = new Set(WORKFLOW_COMMANDS);
 
-    assert.strictEqual(
-      commandFiles.length,
-      WORKFLOW_COMMANDS.length,
-      `Expected ${WORKFLOW_COMMANDS.length} command files, found ${commandFiles.length}: ${commandFiles.sort().join(', ')}`,
-    );
+    const missingFiles = [...inArray].filter(c => !onDisk.has(c)).sort();
+    const orphanFiles = [...onDisk].filter(c => !inArray.has(c)).sort();
+
+    const errorParts: string[] = [];
+    if (missingFiles.length > 0) {
+      errorParts.push(`Missing commands/*.md for: ${missingFiles.join(', ')} (add the file, or remove from WORKFLOW_COMMANDS).`);
+    }
+    if (orphanFiles.length > 0) {
+      errorParts.push(`Orphan commands/*.md files not in WORKFLOW_COMMANDS: ${orphanFiles.join(', ')} (add to the array, or delete the file).`);
+    }
+    assert.strictEqual(errorParts.length, 0, errorParts.join('\n'));
   });
 
   it('every commands/*.md file has valid YAML frontmatter with name and description', async () => {

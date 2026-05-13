@@ -2,6 +2,7 @@ import { logger } from '../../core/logger.js';
 import { withErrorBoundary } from '../../core/cli-error-boundary.js';
 import { installAssistantSkills, type AssistantRegistry } from '../../core/assistant-installer.js';
 import { resolveConfigPaths } from '../../core/config.js';
+import { ensureProjectIgnores } from '../../core/project-ignores.js';
 
 const DEFAULT_ASSISTANTS: AssistantRegistry[] = ['claude', 'codex', 'antigravity', 'opencode'];
 const ALL_ASSISTANTS: AssistantRegistry[] = [
@@ -80,6 +81,9 @@ export async function setupAssistants(options: {
     const assistants = parseAssistants(options.assistants);
     const result = await installFn({ assistants });
     const paths = resolvePathsFn();
+    if (!options._installSkills) {
+      try { await ensureProjectIgnores(process.cwd()); } catch { /* best effort */ }
+    }
 
     logger.success('Installed DanteForge skills for local coding assistants');
     for (const entry of result.assistants) {

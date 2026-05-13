@@ -16,6 +16,16 @@ export async function ship(options: {
   const cwd = process.cwd();
   const timestamp = new Date().toISOString();
 
+  // --- Decision-node: record start (best-effort) ---
+  let _dnStartNodeId: string | undefined;
+  const _dnT0 = Date.now();
+  try {
+    const { getSession, recordDecision } = await import('../../core/decision-node-recorder.js');
+    const _dnSess = getSession(cwd);
+    const _dnStart = await recordDecision({ session: _dnSess, actorType: 'agent', prompt: 'ship: release readiness check', context: { dryRun: options.dryRun }, result: 'in-progress', success: false });
+    _dnStartNodeId = _dnStart.id;
+  } catch { /* never block */ }
+
   logger.info('Building release guidance...');
 
   const planFn = options._buildShipPlan ?? buildShipPlan;
@@ -67,5 +77,12 @@ export async function ship(options: {
   } catch {
     // State save is best-effort
   }
+
+  // --- Decision-node: record completion (best-effort) ---
+  try {
+    const { getSession, recordDecision } = await import('../../core/decision-node-recorder.js');
+    const _dnSess = getSession(cwd);
+    await recordDecision({ session: _dnSess, parentNodeId: _dnStartNodeId, actorType: 'agent', prompt: 'ship: release readiness check [complete]', result: 'ship complete', success: true, latencyMs: Date.now() - _dnT0 });
+  } catch { /* best-effort */ }
   });
 }

@@ -330,6 +330,18 @@ export async function lessons(correction?: string, options: {
   const saveFn = options._saveState ?? saveState;
 
   return withErrorBoundary('lessons', async () => {
+  const _cwd = process.cwd();
+
+  // --- Decision-node: record start (best-effort) ---
+  let _dnStartNodeId: string | undefined;
+  const _dnT0 = Date.now();
+  try {
+    const { getSession, recordDecision } = await import('../../core/decision-node-recorder.js');
+    const _dnSess = getSession(_cwd);
+    const _dnStart = await recordDecision({ session: _dnSess, actorType: 'agent', prompt: 'lessons: self-improving knowledge base', context: { cwd: _cwd }, result: 'in-progress', success: false });
+    _dnStartNodeId = _dnStart.id;
+  } catch { /* never block */ }
+
   logger.success('DanteForge Lessons — Self-Improving Knowledge Base');
   logger.info('');
 
@@ -390,5 +402,12 @@ export async function lessons(correction?: string, options: {
 
   state.auditLog.push(`${new Date().toISOString()} | lessons: viewed (${(content.match(/^## \[/gm) || []).length} lessons)`);
   await saveFn(state);
+
+  // --- Decision-node: record completion (best-effort) ---
+  try {
+    const { getSession, recordDecision } = await import('../../core/decision-node-recorder.js');
+    const _dnSess = getSession(_cwd);
+    await recordDecision({ session: _dnSess, parentNodeId: _dnStartNodeId, actorType: 'agent', prompt: 'lessons: self-improving knowledge base [complete]', result: 'lessons complete', success: true, latencyMs: Date.now() - _dnT0 });
+  } catch { /* best-effort */ }
   });
 }

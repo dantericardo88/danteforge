@@ -10,9 +10,11 @@ import {
   saveFeatureUniverse,
   saveFeatureScores,
   loadFeatureScores,
+  getCanonicalDanteForgeCompetitors,
   type FeatureUniverse,
   type FeatureUniverseAssessment,
 } from '../../core/feature-universe.js';
+import { loadMatrix } from '../../core/compete-matrix.js';
 import { formatDimensionBar } from '../../core/harsh-scorer.js';
 import { buildProjectContext } from './assess.js';
 import {
@@ -68,11 +70,15 @@ export async function universe(options: UniverseOptions = {}): Promise<FeatureUn
       ?? await resolveCompetitorNames(cwd, ctx);
 
     if (competitorNames.length === 0 && !options._buildUniverse) {
-      logger.warn('[universe] No competitors found. Run `/oss` first or set state.competitors.');
-      logger.info('  Example: add "competitors: [Shopify, WooCommerce]" to .danteforge/STATE.yaml');
+      // Should be unreachable now that resolveCompetitorNames falls back to the
+      // canonical DanteForge peer list, but kept as a defensive safety net.
+      logger.warn('[universe] No competitors resolved and canonical seed empty — aborting.');
       return null;
     }
 
+    if (competitorNames !== options._competitorNames) {
+      logger.info(`[universe] Resolved ${competitorNames.length} competitor(s) for universe build.`);
+    }
     featureUniverse = await buildUniverseFn(competitorNames, ctx, cwd);
     await saveFeatureUniverse(featureUniverse, cwd).catch(() => {});
     logger.success(`[universe] Built universe: ${featureUniverse.features.length} features from ${featureUniverse.competitors.length} competitors`);
@@ -177,7 +183,21 @@ async function resolveCompetitorNames(cwd: string, ctx: { userDefinedCompetitors
     const state = await loadState({ cwd });
     if (state.competitors?.length) return state.competitors;
   } catch { /* no state */ }
-  return [];
+  // Read competitors from compete-matrix.json (the 28-name seed that
+  // /compete --calibrate writes). Bare strings flow straight into
+  // buildFeatureUniverse — no normalization needed.
+  try {
+    const matrix = await loadMatrix(cwd);
+    if (matrix?.competitors && Array.isArray(matrix.competitors) && matrix.competitors.length > 0) {
+      const names = matrix.competitors
+        .map((c: unknown) => typeof c === 'string' ? c : (c as { name?: string })?.name ?? String(c))
+        .filter((n: string) => n && n !== 'undefined' && n !== 'null');
+      if (names.length > 0) return names;
+    }
+  } catch { /* no matrix */ }
+  // Last-resort: canonical DanteForge peer list so /universe never returns 0
+  // features on a fresh project. Users can override with state.competitors.
+  return getCanonicalDanteForgeCompetitors();
 }
 
 async function defaultBuildUniverse(

@@ -20,7 +20,7 @@ import {
   type HarshScoreResult,
   type ScoringDimension,
 } from './harsh-scorer.js';
-import { loadMatrix, saveMatrix, classifyDimensions, getNextSprintDimension, updateDimensionScore, type CompeteMatrix, type MatrixDimension } from './compete-matrix.js';
+import { loadMatrix, saveMatrix, classifyDimensions, getNextSprintDimension, updateDimensionScore, getDimensionStrategy, computeUnweightedComposite, getTopGapDimensions, type CompeteMatrix, type MatrixDimension, type AdversarialCalibration } from './compete-matrix.js';
 import { readSweBenchScore, formatSweBenchGoal, isSweBenchDimension } from './swe-bench-probe.js';
 import { defineUniverse, type UniverseDefinerOptions } from './universe-definer.js';
 import { runAutoforgeLoop, AutoforgeLoopState, type AutoforgeLoopContext, type AutoforgeLoopDeps } from './autoforge-loop.js';
@@ -30,6 +30,7 @@ import { logger } from './logger.js';
 import { createStepTracker } from './progress.js';
 import { confirmMatrix } from './matrix-confirm.js';
 import { isLLMAvailable } from './llm.js';
+import { mergeScoreProposals, writeScoreProposal } from './matrix-development-engine.js';
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -112,6 +113,14 @@ export interface AscendEngineOptions {
   executeMode?: 'advisory' | 'forge';
   /** Injection seam: set workflowStage in STATE.yaml before forge execution. */
   _setWorkflowStage?: (stage: string, cwd: string) => Promise<void>;
+
+  // Harsh verification gate
+  /** When false, skip the mandatory harsh-score re-run before convergence (default: true). */
+  requireHarshVerification?: boolean;
+  /** How many points (0-10 scale) below target the harsh score may be and still pass (default: 0.5). */
+  harshTolerance?: number;
+  /** When true, allow sprinting on dimensions flagged as inflated by adversarial calibration. Default: false. */
+  forceInflated?: boolean;
 }
 
 export interface CeilingReport {
@@ -166,7 +175,7 @@ const ALL_SCORING_DIMENSIONS = new Set<string>([
   'functionality', 'testing', 'errorHandling', 'security', 'uxPolish',
   'documentation', 'performance', 'maintainability', 'developerExperience',
   'autonomy', 'planningQuality', 'selfImprovement', 'specDrivenPipeline',
-  'convergenceSelfHealing', 'tokenEconomy', 'contextEconomy', 'ecosystemMcp',
+  'convergenceSelfHealing', 'tokenEconomy', 'contextEconomy', 'causalCoherence', 'ecosystemMcp',
   'enterpriseReadiness', 'communityAdoption',
 ]);
 
@@ -179,9 +188,25 @@ export function mapDimIdToScoringDimension(id: string): ScoringDimension | null 
   return ALL_SCORING_DIMENSIONS.has(camel) ? (camel as ScoringDimension) : null;
 }
 
+/**
+ * Returns true if the matrix has an adversarial calibration for this dimension
+ * with verdict 'inflated' that was applied within the last 24 hours.
+ * Used to skip dimensions that were just corrected — prevents immediately re-inflating them.
+ */
+function isDimensionRecentlyInflated(matrix: CompeteMatrix, dimensionId: string): boolean {
+  const calibrations: AdversarialCalibration[] = matrix.adversarialCalibrations ?? [];
+  const cutoff = Date.now() - 24 * 60 * 60 * 1000;
+  return calibrations.some(
+    c => c.dimensionId === dimensionId &&
+      c.verdict === 'inflated' &&
+      new Date(c.date).getTime() > cutoff,
+  );
+}
+
 // ── Ceiling report builder ────────────────────────────────────────────────────
 
 function buildManualAction(dim: MatrixDimension): string {
+  if (dim.manualActionHint) return dim.manualActionHint;
   const reason = dim.ceilingReason ?? '';
   if (reason.includes('npm downloads') || reason.includes('GitHub stars')) {
     return 'Publish to npm, promote the project, and attract contributors via README + examples.';
@@ -189,7 +214,9 @@ function buildManualAction(dim: MatrixDimension): string {
   if (reason.includes('production deployments') || reason.includes('customer validation')) {
     return 'Deploy to real production environments and collect customer feedback/case studies.';
   }
-  return `Manual effort required: ${reason}`;
+  return reason
+    ? `Manual effort required: ${reason}`
+    : `Update manually: danteforge compete --amend ${dim.id}=<score>`;
 }
 
 function buildCeilingReports(dims: MatrixDimension[]): CeilingReport[] {
@@ -205,16 +232,18 @@ function buildCeilingReports(dims: MatrixDimension[]): CeilingReport[] {
 
 // ── ASCEND_REPORT.md writer ───────────────────────────────────────────────────
 
-function buildAscendReport(
+export function buildAscendReport(
   matrix: CompeteMatrix,
   result: AscendResult,
   target: number,
   beforeScores: Record<string, number>,
 ): string {
+  const unweighted = computeUnweightedComposite(matrix);
   const lines: string[] = [
     '# Ascend Report',
     '',
-    `**Overall score:** ${result.finalScore.toFixed(1)}/10`,
+    `**Composite score (${matrix.dimensions.length}-dim, unweighted):** ${unweighted.toFixed(1)}/10`,
+    `**Weighted strategy score:** ${result.finalScore.toFixed(1)}/10`,
     `**Cycles run:** ${result.cyclesRun}`,
     `**Dimensions improved:** ${result.dimensionsImproved}`,
     `**Dimensions at target (${target}/10):** ${result.dimensionsAtTarget}`,
@@ -251,6 +280,18 @@ function buildAscendReport(
         '',
       );
     }
+  }
+
+  const marketDimsNeeded = matrix.dimensions
+    .filter(d => mapDimIdToScoringDimension(d.id) === null && (d.scores['self'] ?? 0) < target);
+  if (marketDimsNeeded.length > 0) {
+    lines.push('', '## Market Dims Needing Manual Update', '');
+    lines.push(`These ${marketDimsNeeded.length} dim(s) have no auto-scorer. Run \`danteforge compete --amend <id>=<score>\` when ready:`, '');
+    for (const d of marketDimsNeeded) {
+      const self = (d.scores['self'] ?? 0).toFixed(1);
+      lines.push(`- **${d.label}** (${self}/${target}) → \`danteforge compete --amend ${d.id}=<score>\``);
+    }
+    lines.push('');
   }
 
   lines.push(
@@ -372,6 +413,16 @@ async function orientAndClassify(
     logger.info('[Ascend] No competitive matrix found — initializing universe...');
     matrix = await fns.defineUniverseFn({ cwd, interactive: options.interactive, _saveMatrix: fns.saveMatrixFn });
   }
+  // Best-effort preflight: ensure the feature universe exists / is fresh so
+  // any downstream code that consults it sees real data, not 0/0.
+  try {
+    const projectName = ((state as { project?: string }).project) ?? 'project';
+    const { ensureUniverseReady } = await import('./feature-universe.js');
+    const universe = await ensureUniverseReady(cwd, { projectName });
+    if (universe && universe.features.length > 0) {
+      logger.info(`[Ascend] Universe ready: ${universe.features.length} features across ${universe.competitors.length} competitors.`);
+    }
+  } catch { /* best-effort */ }
   const baselineResult = await fns.harshScoreFn({ cwd, _readHistory: async () => [], _writeHistory: async () => {} });
   await applyStrictOverrides(baselineResult, cwd, fns.computeStrictDimsFn);
   for (const matDim of matrix.dimensions) {
@@ -395,8 +446,29 @@ async function orientAndClassify(
     }
   }
   const { achievable, atCeiling } = classifyDimensions(matrix, target);
+
+  // Announce all dimensions + honest composite before any cycle runs.
+  const unweightedBaseline = computeUnweightedComposite(matrix);
+  logger.info(`[Ascend] Scoring ${matrix.dimensions.length} dimensions from competitive matrix...`);
+  logger.info(`[Ascend] Composite (${matrix.dimensions.length}-dim, unweighted): ${unweightedBaseline.toFixed(1)}/10`);
+  const topGaps = getTopGapDimensions(matrix, 5);
+  if (topGaps.length > 0) {
+    logger.info('[Ascend] Top gaps (gap × importance):');
+    topGaps.forEach((d, i) => {
+      const self = (d.scores['self'] ?? 0).toFixed(1);
+      const leader = d.gap_to_leader > 0 ? ((d.scores['self'] ?? 0) + d.gap_to_leader).toFixed(1) : self;
+      const strategy = getDimensionStrategy(d, target);
+      const hint = strategy === 'human'
+        ? `human: ${buildManualAction(d).slice(0, 60)}`
+        : strategy === 'ceiling'
+          ? `ceiling ${d.ceiling}/10 — ${(d.ceilingReason ?? '').slice(0, 50)}`
+          : 'code';
+      logger.info(`  ${i + 1}. ${d.id.padEnd(28)} self=${self}  leader=${leader}  gap=${d.gap_to_leader.toFixed(1)}  → ${hint}`);
+    });
+  }
+
   if (atCeiling.length > 0) {
-    logger.warn(`[Ascend] Ceiling dimensions (skipped — cannot be automated past their ceiling):`);
+    logger.warn('[Ascend] Ceiling dimensions (score tracked; forge cycles stop at ceiling):');
     for (const d of atCeiling) {
       logger.warn(`  ${d.label}: ${(d.scores['self'] ?? 0).toFixed(1)}/10 (ceiling: ${d.ceiling}/10) — ${d.ceilingReason ?? ''}`);
     }
@@ -444,15 +516,24 @@ async function runAscendPreflights(options: AscendEngineOptions, cwd: string, dr
 }
 
 function buildDryRunResult(achievable: MatrixDimension[], atCeiling: MatrixDimension[], matrix: CompeteMatrix, target: number, projectName: string, baselineResult: HarshScoreResult): AscendResult {
+  const unweighted = computeUnweightedComposite(matrix);
   logger.info(`[Ascend] DRY RUN — plan for "${projectName}" (target: ${target}/10)\n`);
-  logger.info(`  Baseline score: ${baselineResult.displayScore.toFixed(1)}/10`);
-  logger.info(`  Achievable dimensions (${achievable.length}):`);
-  for (const d of achievable) {
-    logger.info(`    ${d.label}: ${(d.scores['self'] ?? 0).toFixed(1)}/10 → target ${target} (gap: ${Math.max(0, target - (d.scores['self'] ?? 0)).toFixed(1)})`);
-  }
-  if (atCeiling.length > 0) {
-    logger.info(`  Ceiling dimensions (${atCeiling.length}) — require manual action:`);
-    for (const d of atCeiling) logger.info(`    ${d.label}: ${(d.scores['self'] ?? 0).toFixed(1)}/10 (ceiling: ${d.ceiling}/10)`);
+  logger.info(`  Baseline (harsh-scorer): ${baselineResult.displayScore.toFixed(1)}/10`);
+  logger.info(`  Composite (${matrix.dimensions.length}-dim, unweighted): ${unweighted.toFixed(1)}/10`);
+  logger.info(`  Achievable: ${achievable.length}  Ceiling: ${atCeiling.length}  Total: ${matrix.dimensions.length}`);
+  const topGaps = getTopGapDimensions(matrix, 5);
+  if (topGaps.length > 0) {
+    logger.info('\n  Top gaps (gap × importance):');
+    topGaps.forEach((d, i) => {
+      const self = (d.scores['self'] ?? 0).toFixed(1);
+      const strategy = getDimensionStrategy(d, target);
+      const hint = strategy === 'human'
+        ? `human: ${buildManualAction(d).slice(0, 60)}`
+        : strategy === 'ceiling'
+          ? `ceiling ${d.ceiling}/10`
+          : 'code';
+      logger.info(`    ${i + 1}. ${d.id.padEnd(28)} self=${self}  gap=${d.gap_to_leader.toFixed(1)}  → ${hint}`);
+    });
   }
   return { cyclesRun: 0, dimensionsImproved: 0, dimensionsAtTarget: matrix.dimensions.filter(d => (d.scores['self'] ?? 0) >= target).length, ceilingReports: buildCeilingReports(atCeiling), finalScore: matrix.overallSelfScore, success: false };
 }
@@ -546,7 +627,12 @@ async function rescoreAndGetDelta(
     newSelfScore = probe?.displayScore ?? beforeScore;
   } else {
     const scoringDim = mapDimIdToScoringDimension(nextDim.id);
-    newSelfScore = scoringDim ? (newScoreResult.displayDimensions[scoringDim] ?? newScoreResult.displayScore) : newScoreResult.displayScore;
+    // For dims not in the harsh-scorer, keep the matrix score unchanged.
+    // Using displayScore as a proxy was a bug: it credited overall project
+    // improvement to an unrelated dimension (e.g. a forge cycle improving
+    // tests would falsely boost ocr_extraction's score). The plateau detector
+    // will fire after 1 cycle, and ascend moves on — the code was still written.
+    newSelfScore = scoringDim ? (newScoreResult.displayDimensions[scoringDim] ?? newScoreResult.displayScore) : beforeScore;
   }
   const delta = newSelfScore - beforeScore;
   logger.info(`  Result: ${nextDim.label} ${beforeScore.toFixed(1)} → ${newSelfScore.toFixed(1)} (${delta >= 0 ? '+' : ''}${delta.toFixed(1)})`);
@@ -598,10 +684,34 @@ async function runPeriodicRetroIfDue(options: AscendEngineOptions, cyclesRun: nu
 async function checkConvergenceBreak(
   options: AscendEngineOptions,
   generateAdversarialScoreFn: AscendEngineOptions['_generateAdversarialScore'],
+  harshScoreFn: (opts: HarshScorerOptions) => Promise<HarshScoreResult>,
   matrix: CompeteMatrix, target: number, newScoreResult: HarshScoreResult, adversaryTolerance: number, cwd: string,
 ): Promise<boolean> {
   const { achievable: stillAchievable } = classifyDimensions(matrix, target);
   if (!stillAchievable.every(d => (d.scores['self'] ?? 0) >= target)) return false;
+
+  // Mandatory harsh verification — runs before any convergence, even without adversarialGating.
+  // Prevents premature loop exit when LLM self-score hits target but harsh score is still low.
+  if (options.requireHarshVerification !== false) {
+    logger.info('[Ascend] Self-score target reached — running mandatory harsh verification...');
+    const verificationScore = await harshScoreFn({ cwd, _readHistory: async () => [], _writeHistory: async () => {} }).catch(() => null);
+    if (verificationScore) {
+      const harshTolerance = options.harshTolerance ?? 0.5;
+      const failingDims = stillAchievable.filter(d => {
+        const dimScore = (verificationScore.displayDimensions as Record<string, number>)[d.id as ScoringDimension] ?? 0;
+        return dimScore < (target - harshTolerance);
+      });
+      if (failingDims.length > 0) {
+        logger.warn(`[Ascend] Self-score target reached but harsh verification failed on: ${failingDims.map(d => d.label).join(', ')}`);
+        logger.warn(`  Harsh score: ${verificationScore.displayScore.toFixed(1)}/10 — loop must continue.`);
+        return false;
+      }
+      logger.success(`[Ascend] Self-score AND harsh verification both passed! (${verificationScore.displayScore.toFixed(1)}/10)`);
+    } else {
+      logger.warn('[Ascend] Harsh verification unavailable — proceeding with self-score only.');
+    }
+  }
+
   if (options.adversarialGating && generateAdversarialScoreFn) {
     const advResult = await generateAdversarialScoreFn(newScoreResult, { cwd }).catch(() => null);
     if (advResult && advResult.adversarialScore < (target - adversaryTolerance)) {
@@ -631,10 +741,12 @@ async function finalizeAscendRun(
   const finalScoreResult = await harshScoreFn({ cwd, _readHistory: async () => [], _writeHistory: async () => {} }).catch(() => null);
   const result: AscendResult = { cyclesRun, dimensionsImproved, dimensionsAtTarget, ceilingReports, finalScore: matrix.overallSelfScore, success };
   await writeFileFn(path.join(cwd, '.danteforge', 'ASCEND_REPORT.md'), buildAscendReportWithWiring(matrix, result, target, beforeScores, finalScoreResult?.unwiredModules ?? [])).catch(() => {});
+  const finalUnweighted = computeUnweightedComposite(matrix);
   logger.info('\n[Ascend] Complete.');
   logger.info(`  Cycles run: ${cyclesRun}`);
   logger.info(`  Dimensions improved: ${dimensionsImproved}`);
-  logger.info(`  Final score: ${matrix.overallSelfScore.toFixed(1)}/10`);
+  logger.info(`  Final composite (${matrix.dimensions.length}-dim, unweighted): ${finalUnweighted.toFixed(1)}/10`);
+  logger.info(`  Final score (weighted): ${matrix.overallSelfScore.toFixed(1)}/10`);
   if (ceilingReports.length > 0) {
     logger.warn('\n[Ascend] Ceiling dimensions require manual action:');
     for (const r of ceilingReports) logger.warn(`  ${r.label}: ${r.manualAction}`);
@@ -672,7 +784,8 @@ export async function runAscend(options: AscendEngineOptions = {}): Promise<Asce
 
   const oriented = await orientAndClassify(options, cwd, target, { loadMatrixFn, saveMatrixFn, defineUniverseFn, harshScoreFn, computeStrictDimsFn, loadStateFn });
   if (!oriented.ok) return oriented.result;
-  const { state: initState, matrix, achievable, atCeiling, baselineResult, beforeScores } = oriented;
+  const { state: initState, achievable, atCeiling, baselineResult, beforeScores } = oriented;
+  let matrix = oriented.matrix;
 
   await runAscendPreflights(options, cwd, dryRun);
 
@@ -690,14 +803,44 @@ export async function runAscend(options: AscendEngineOptions = {}): Promise<Asce
   while (cs.cyclesRun < maxCycles) {
     const nextDim = getNextSprintDimension(matrix, target);
     if (!nextDim) break;
+    if (isDimensionRecentlyInflated(matrix, nextDim.id) && !options.forceInflated) {
+      logger.warn(`[Ascend] Skipping "${nextDim.id}" — flagged as inflated by adversarial calibration within the last 24h. Re-run with --force-inflated to override, or run \`danteforge compete --calibrate\` to recalibrate.`);
+      cs.plateauedDims.add(nextDim.id);
+      cs.cyclesRun++;
+      continue;
+    }
     if (cs.plateauedDims.has(nextDim.id)) {
       const { achievable: cur } = classifyDimensions(matrix, target);
-      if (cs.plateauedDims.size >= cur.length) break;
+      if (cs.plateauedDims.size >= cur.length) {
+        // If every plateaued dim has already exhausted its retry budget, there is
+        // nothing more to try — stop rather than burning cycles in party mode forever.
+        const retryBudgetRemaining = [...cs.plateauedDims]
+          .some(id => (cs.dimRetryCounts[id] ?? 0) < maxDimRetries);
+        if (!retryBudgetRemaining) break;
+        // All achievable dims plateaued but retries remain — escalate worst to party mode
+        const worstId = [...cs.plateauedDims]
+          .filter(id => cur.some(d => d.id === id))
+          .sort((a, b) => (matrix.dimensions.find(d => d.id === a)?.scores['self'] ?? 0)
+                        - (matrix.dimensions.find(d => d.id === b)?.scores['self'] ?? 0))[0];
+        if (!worstId) break; // safety: no mappable plateau dim
+        logger.info(`[Ascend] All dims plateaued — escalating ${worstId} to party mode`);
+        await wrappedExecuteCommandFn('party', cwd);
+        cs.plateauedDims.clear();
+        cs.cyclesRun++;
+        continue;
+      }
       const savedStatus = nextDim.status;
       nextDim.status = 'closed';
       const alt = getNextSprintDimension(matrix);
       nextDim.status = savedStatus;
-      if (!alt) break;
+      if (!alt) {
+        // No alt dim available — escalate to party mode and clear plateau state
+        logger.info(`[Ascend] No alt dim available — escalating ${nextDim.id} to party mode`);
+        await wrappedExecuteCommandFn('party', cwd);
+        cs.plateauedDims.delete(nextDim.id);
+        cs.cyclesRun++;
+        continue;
+      }
     }
     const beforeScore = nextDim.scores['self'] ?? 0;
     const harvestHint = nextDim.harvest_source ? ` (harvest from ${nextDim.harvest_source})` : '';
@@ -709,6 +852,32 @@ export async function runAscend(options: AscendEngineOptions = {}): Promise<Asce
     const pctDone = Math.round((cs.cyclesRun / maxCycles) * 100);
     dimTracker.step(`${nextDim.label} — ${beforeScore.toFixed(1)}/10 → target ${target}/10`);
     logger.info(`[Ascend] ▶ [${cs.cyclesRun + 1}/${maxCycles}] ${nextDim.label}  (${beforeScore.toFixed(1)}/10 → target ${target}/10)  ${pctDone}% complete`);
+
+    // Human-action dimensions: skip forge cycle, print the manual action, move on.
+    // Forge cycles cannot close these — they require human steps (certs, publishing, etc.).
+    const dimStrategy = getDimensionStrategy(nextDim, target);
+    if (dimStrategy === 'human') {
+      const action = buildManualAction(nextDim);
+      logger.info(`  [Ascend] ⚠ Human action required for ${nextDim.label}`);
+      logger.info(`  [Ascend] → ${action}`);
+      cs.plateauedDims.add(nextDim.id);
+      cs.cyclesRun++;
+      await saveCheckpointFn({ pausedAt: new Date().toISOString(), cyclesRun: cs.cyclesRun, maxCycles, target, startedAt, plateauedDims: Array.from(cs.plateauedDims), currentDimension: nextDim.id, beforeScores }, cwd).catch(() => {});
+      continue;
+    }
+
+    // Market dim guard: dims with no harsh-scorer mapping cannot be auto-scored.
+    // Skip the forge cycle and surface the --amend command instead of burning a cycle.
+    const scoringDimKey = mapDimIdToScoringDimension(nextDim.id);
+    if (scoringDimKey === null && dimStrategy === 'code') {
+      logger.info(`  [Ascend] ⚡ "${nextDim.label}" is a market dim with no auto-scorer`);
+      logger.info(`  [Ascend] → Update manually: danteforge compete --amend ${nextDim.id}=<score>`);
+      cs.plateauedDims.add(nextDim.id);
+      cs.cyclesRun++;
+      await saveCheckpointFn({ pausedAt: new Date().toISOString(), cyclesRun: cs.cyclesRun, maxCycles, target, startedAt, plateauedDims: Array.from(cs.plateauedDims), currentDimension: nextDim.id, beforeScores }, cwd).catch(() => {});
+      continue;
+    }
+
     logger.info(`  Goal: ${goal.slice(0, 120)}`);
     const loopCtx: AutoforgeLoopContext = { goal, cwd, state: cs.state as Parameters<typeof runAutoforgeLoop>[0]['state'], loopState: AutoforgeLoopState.IDLE, cycleCount: 0, startedAt: new Date().toISOString(), retryCounters: {}, blockedArtifacts: [], lastGuidance: null, isWebProject: false, force: true, maxRetries: 10, recentScores: [] };
     await executeDimensionCycle(options, loopCtx, nextDim, wrappedExecuteCommandFn, runLoopFn, beforeScore, target, goal, cwd, loadStateFn);
@@ -717,12 +886,24 @@ export async function runAscend(options: AscendEngineOptions = {}): Promise<Asce
     if (Math.abs(delta) < 0.1) { cs.plateauedDims.add(nextDim.id); logger.info(`  (plateau detected — moving to next dimension)`); }
     else { cs.plateauedDims.delete(nextDim.id); if (delta > 0) cs.dimensionsImproved++; }
     await runAdversarialCritiqueStep(options, generateCritiqueFn, nextDim, newSelfScore, beforeScore, target, goal, cwd, maxDimRetries, cs);
-    updateDimensionScore(matrix, nextDim.id, newSelfScore);
-    await saveMatrixFn(matrix, cwd);
+    if (options._loadMatrix || options._saveMatrix) {
+      updateDimensionScore(matrix, nextDim.id, newSelfScore);
+      await saveMatrixFn(matrix, cwd);
+    } else {
+      await writeScoreProposal({
+        cwd,
+        dimension: nextDim.id,
+        score: newSelfScore,
+        agent: 'ascend',
+        rationale: `Ascend cycle ${cs.cyclesRun + 1} strict rescore for "${nextDim.label}" after autoforge loop.`,
+      });
+      await mergeScoreProposals({ cwd, policy: 'harsh-min', agent: 'ascend' });
+      matrix = await loadMatrixFn(cwd) ?? matrix;
+    }
     await saveCheckpointFn({ pausedAt: new Date().toISOString(), cyclesRun: cs.cyclesRun + 1, maxCycles, target, startedAt, plateauedDims: Array.from(cs.plateauedDims), currentDimension: nextDim.id, beforeScores }, cwd).catch(() => {});
     cs.cyclesRun++;
     await runPeriodicRetroIfDue(options, cs.cyclesRun, cwd);
-    if (await checkConvergenceBreak(options, generateAdversarialScoreFn, matrix, target, newScoreResult, adversaryTolerance, cwd)) break;
+    if (await checkConvergenceBreak(options, generateAdversarialScoreFn, harshScoreFn, matrix, target, newScoreResult, adversaryTolerance, cwd)) break;
   }
 
   await clearCheckpointFn(cwd).catch(() => {});

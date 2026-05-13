@@ -4,6 +4,17 @@ import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { REPO_PIPELINE_TEXT } from './workflow-surface.js';
+import {
+  buildCursorBootstrapRule,
+  buildCursorBootstrapRuleV2,
+  buildWindsurfBootstrapRule,
+  buildAiderConfig,
+  buildAiderConventions,
+  buildOpenHandsMicroagent,
+  buildCopilotInstructions,
+  buildGeminiMd,
+  CONTINUE_RULES,
+} from './assistant-bootstrap-rules.js';
 
 export type AssistantRegistry =
   | 'claude'
@@ -196,278 +207,6 @@ function resolveAssistantTargetDir(homeDir: string, assistant: AssistantRegistry
   }
 }
 
-function buildCursorBootstrapRule(): string {
-  return [
-    '---',
-    'description: Follow DanteForge workflow and repo instructions when working in this project',
-    'alwaysApply: true',
-    '---',
-    '',
-    'Use `AGENTS.md` as the canonical instruction file when it exists.',
-    '',
-    'When working in this repository:',
-    '- Prefer the DanteForge workflow artifacts under `.danteforge/`.',
-    '- Follow the pipeline order:',
-    `  \`${REPO_PIPELINE_TEXT}\``,
-    '- Use `danteforge <command>` for any workflow step. Key commands:',
-    '  - `danteforge review` - Scan repo, generate CURRENT_STATE.md',
-    '  - `danteforge constitution` - Define project principles',
-    '  - `danteforge specify <idea>` - Idea to spec artifacts',
-    '  - `danteforge clarify` - Q&A on spec, identify gaps',
-    '  - `danteforge tech-decide` - Guided tech stack selection',
-    '  - `danteforge plan` - Spec to implementation plan',
-    '  - `danteforge tasks` - Plan to executable task list',
-    '  - `danteforge design <prompt>` - Design artifacts via OpenPencil',
-    '  - `danteforge forge` - Execute development waves',
-    '  - `danteforge ux-refine` - Refine UI/UX after forge',
-    '  - `danteforge verify` - Run all verification checks',
-    '  - `danteforge synthesize` - Generate UPR.md',
-    '  - `danteforge party --isolation` - Multi-agent collaboration',
-    '  - `danteforge autoforge [goal] --dry-run` - Inspect deterministic next steps',
-    '  - `danteforge magic <idea>` - One-click full pipeline',
-    '  - `danteforge qa --url <url>` - Structured QA pass',
-    '  - `danteforge ship` - Release review and planning guidance',
-    '  - `danteforge retro` - Project retrospective',
-    '  - `danteforge lessons` - Capture corrections as rules',
-    '  - `danteforge debug <issue>` - 4-phase debugging',
-    '  - `danteforge browse` - Browser automation',
-    '  - `danteforge awesome-scan` - Discover and import skills',
-    '- Use `--light` to bypass gates for simple changes.',
-    '- Before claiming release readiness, run `npm run verify`, `npm run check:cli-smoke`, and `npm run release:check`.',
-    '- For design-heavy work, use `danteforge design` and `danteforge ux-refine --openpencil`.',
-    '',
-    'If Figma MCP is needed in Cursor, configure `.cursor/mcp.json` via `danteforge setup figma`.',
-    '',
-  ].join('\n');
-}
-
-function buildCursorBootstrapRuleV2(): string {
-  return [
-    '---',
-    'description: Follow DanteForge workflow and repo instructions when working in this project',
-    'alwaysApply: true',
-    '---',
-    '',
-    'Use `AGENTS.md` as the canonical instruction file when it exists.',
-    '',
-    'When working in this repository:',
-    '- Prefer the DanteForge workflow artifacts under `.danteforge/`.',
-    '- Follow the pipeline order:',
-    `  \`${REPO_PIPELINE_TEXT}\``,
-    '- Use `danteforge <command>` for any workflow step. Key commands:',
-    '  - `danteforge review` - Scan repo, generate CURRENT_STATE.md',
-    '  - `danteforge constitution` - Define project principles',
-    '  - `danteforge specify <idea>` - Idea to spec artifacts',
-    '  - `danteforge clarify` - Q&A on spec, identify gaps',
-    '  - `danteforge tech-decide` - Guided tech stack selection',
-    '  - `danteforge plan` - Spec to implementation plan',
-    '  - `danteforge tasks` - Plan to executable task list',
-    '  - `danteforge design <prompt>` - Design artifacts via OpenPencil',
-    '  - `danteforge forge` - Execute development waves',
-    '  - `danteforge ux-refine` - Refine UI/UX after forge',
-    '  - `danteforge verify` - Run all verification checks',
-    '  - `danteforge synthesize` - Generate UPR.md',
-    '  - `danteforge spark [goal]` - Zero-token planning preset',
-    '  - `danteforge ember [goal]` - Very low-token preset for quick follow-up work',
-    '  - `danteforge canvas [goal]` - Design-first frontend preset',
-    '  - `danteforge magic [goal]` - Balanced default preset for daily gap-closing',
-    '  - `danteforge blaze [goal]` - High-power preset with full party escalation',
-    '  - `danteforge nova [goal]` - Very-high-power preset: planning prefix + deep execution (no OSS)',
-    '  - `danteforge inferno [goal]` - Maximum-power preset with OSS discovery and evolution',
-    '  - `danteforge party --isolation` - Multi-agent collaboration',
-    '  - `danteforge autoforge [goal] --dry-run` - Inspect deterministic next steps',
-    '  - `danteforge local-harvest [paths...]` - Harvest patterns from local repos and folders',
-    '  - `danteforge qa --url <url>` - Structured QA pass',
-    '  - `danteforge ship` - Release review and planning guidance',
-    '  - `danteforge retro` - Project retrospective',
-    '  - `danteforge lessons` - Capture corrections as rules',
-    '  - `danteforge debug <issue>` - 4-phase debugging',
-    '  - `danteforge browse` - Browser automation',
-    '  - `danteforge oss` - Discover OSS patterns with license gates',
-    '  - `danteforge harvest <system>` - Titan Harvest V2 pattern extraction',
-    '  - `danteforge awesome-scan` - Discover and import skills',
-    '- Preset usage rule:',
-    '  `danteforge inferno [goal]` for first-pass matrix expansion, `danteforge magic [goal]` for follow-up gap closing.',
-    '- Use `--light` to bypass gates for simple changes.',
-    '- Before claiming release readiness, run `npm run verify`, `npm run check:cli-smoke`, and `npm run release:check`.',
-    '- For design-heavy work, use `danteforge design` and `danteforge ux-refine --openpencil`.',
-    '',
-    'If Figma MCP is needed in Cursor, configure `.cursor/mcp.json` via `danteforge setup figma`.',
-    '',
-  ].join('\n');
-}
-
-function buildWindsurfBootstrapRule(): string {
-  return [
-    '## DanteForge Workflow Framework',
-    '',
-    'You are assisting with a project that uses DanteForge - a structured spec-driven pipeline.',
-    '',
-    '## Pipeline Stages (in order)',
-    'Each stage has a hard gate. You cannot skip stages.',
-    '',
-    '1. `danteforge constitution` - Define project vision, principles, stack',
-    '2. `danteforge specify` - Generate SPEC.md from constitution',
-    '3. `danteforge clarify` - Review spec for gaps',
-    '4. `danteforge plan` - Break spec into implementation plan',
-    '5. `danteforge tasks` - Break plan into executable tasks per phase',
-    '6. `danteforge forge <phase>` - Implement tasks for a phase',
-    '7. `danteforge verify` - **Always run this after forge to validate**',
-    '8. `danteforge synthesize` - Consolidate learnings',
-    '',
-    '## Your Role',
-    '- Read `.danteforge/STATE.yaml` to know the current phase and tasks',
-    '- Implement tasks using your native file editing tools',
-    '- Run tests using your terminal access',
-    '- Always call `danteforge verify` when your implementation is complete',
-    '- Never skip the verify step - it updates STATE.yaml and unlocks the next stage',
-    '',
-  ].join('\n');
-}
-
-function buildAiderConfig(): string {
-  return [
-    '# DanteForge workflow integration',
-    '# Read CONVENTIONS.md for project conventions and pipeline stages',
-    'read:',
-    '  - CONVENTIONS.md',
-    '',
-  ].join('\n');
-}
-
-function buildAiderConventions(): string {
-  return [
-    '# Project Conventions',
-    '',
-    '## DanteForge Workflow Framework',
-    '',
-    'This project uses DanteForge for structured development.',
-    '',
-    '### Pipeline Stages',
-    '1. **constitution** - Vision, principles, stack (`danteforge constitution`)',
-    '2. **specify** - SPEC.md generation (`danteforge specify`)',
-    '3. **clarify** - Gap review (`danteforge clarify`)',
-    '4. **plan** - Implementation plan (`danteforge plan`)',
-    '5. **tasks** - Executable task breakdown (`danteforge tasks`)',
-    '6. **forge** - Implementation (`danteforge forge <phase>`)',
-    '7. **verify** - **Always run after forge**: `danteforge verify`',
-    '8. **synthesize** - Learnings (`danteforge synthesize`)',
-    '',
-    '### Your Role',
-    '- Read `.danteforge/STATE.yaml` to know the current phase and tasks',
-    '- Implement code changes for the current phase\'s tasks',
-    '- After completing work, run: `danteforge verify`',
-    '- The verify step updates state and gates progression to the next stage',
-    '',
-  ].join('\n');
-}
-
-function buildOpenHandsMicroagent(): string {
-  return [
-    '# DanteForge Workflow Framework',
-    '',
-    'This repository uses DanteForge for structured, spec-driven development.',
-    '',
-    '## Setup',
-    '```bash',
-    'npm install -g danteforge',
-    'danteforge doctor',
-    '```',
-    '',
-    '## Current State',
-    'Read `.danteforge/STATE.yaml` to see:',
-    '- `workflowStage` — current pipeline stage',
-    '- `currentPhase` — active forge phase',
-    '- `tasks` — tasks by phase',
-    '',
-    '## Pipeline Stages',
-    'Run these commands in order (each has a hard gate):',
-    '',
-    '1. `danteforge constitution` - Define vision and principles',
-    '2. `danteforge specify` - Generate SPEC.md',
-    '3. `danteforge clarify` - Review spec for gaps',
-    '4. `danteforge plan` - Create implementation plan',
-    '5. `danteforge tasks` - Break plan into tasks',
-    '6. `danteforge forge <phase>` - Implement tasks',
-    '7. `danteforge verify` - **Run after every forge** - validates and unlocks next stage',
-    '8. `danteforge synthesize` - Consolidate learnings',
-    '',
-    '## Your Role',
-    '- Use your file editing and terminal tools to implement the tasks for the current phase',
-    '- Check `.danteforge/STATE.yaml` before starting',
-    '- Always run `danteforge verify` when you finish implementing',
-    '',
-  ].join('\n');
-}
-
-function buildCopilotInstructions(): string {
-  return [
-    '# DanteForge Workflow Framework',
-    '',
-    'This project uses DanteForge for structured, spec-driven development.',
-    '',
-    '## Pipeline',
-    'DanteForge enforces a strict pipeline. Read `.danteforge/STATE.yaml` to know the current stage.',
-    '',
-    'Stages (in order):',
-    '1. **constitution** (`danteforge constitution`) - Vision, principles, tech stack',
-    '2. **specify** (`danteforge specify`) - Detailed spec generation',
-    '3. **clarify** (`danteforge clarify`) - Spec gap review',
-    '4. **plan** (`danteforge plan`) - Implementation plan',
-    '5. **tasks** (`danteforge tasks`) - Task breakdown by phase',
-    '6. **forge** (`danteforge forge <phase>`) - Code implementation',
-    '7. **verify** (`danteforge verify`) - **Always run after implementing**',
-    '8. **synthesize** (`danteforge synthesize`) - Learning consolidation',
-    '',
-    '## When Implementing',
-    '- Check `STATE.yaml` for current phase and tasks before starting',
-    '- Implement code using standard file operations and terminal',
-    '- Run `danteforge verify` when complete - this is mandatory before the next stage',
-    '',
-  ].join('\n');
-}
-
-function buildGeminiMd(): string {
-  return [
-    '# DanteForge Workflow Framework',
-    '',
-    '@AGENTS.md',
-    '',
-    '## Pipeline Stages',
-    '',
-    'This project uses DanteForge for structured, spec-driven development.',
-    '',
-    'Run commands in order (hard gates enforce sequence):',
-    '',
-    '1. `danteforge constitution` - Vision, principles, tech stack',
-    '2. `danteforge specify` - SPEC.md generation',
-    '3. `danteforge clarify` - Spec gap review',
-    '4. `danteforge plan` - Implementation plan',
-    '5. `danteforge tasks` - Task breakdown by phase',
-    '6. `danteforge forge <phase>` - Implement tasks for phase',
-    '7. `danteforge verify` - **Always run after forge**',
-    '8. `danteforge synthesize` - Learnings consolidation',
-    '',
-    '## Current Project State',
-    'Read `.danteforge/STATE.yaml` to know:',
-    '- Current workflow stage',
-    '- Active phase number',
-    '- Tasks for the current phase',
-    '',
-    '## Your Role',
-    'Implement the tasks for the current phase using your file and terminal tools.',
-    'Always run `danteforge verify` when you finish - this updates state and unlocks the next stage.',
-    '',
-  ].join('\n');
-}
-
-const CONTINUE_RULES = [
-  'This project uses DanteForge workflow framework. Read .danteforge/STATE.yaml to see current phase and tasks.',
-  'DanteForge pipeline: constitution -> specify -> clarify -> plan -> tasks -> forge -> verify -> synthesize',
-  'After completing forge work, always run: danteforge verify',
-  'Never skip the verify step - it gates progression to the next stage',
-];
-
 async function syncContinueConfig(targetDir: string): Promise<void> {
   const configPath = path.join(targetDir, 'config.yaml');
   let existingContent = '';
@@ -632,8 +371,73 @@ async function syncCodexCommands(homeDir: string): Promise<void> {
   }
 }
 
+/**
+ * Read a command file, peel off the frontmatter header (if any), and return
+ * { name, description, body }. Falls back to filename-derived name and an
+ * empty description if no frontmatter is present.
+ */
+async function parseCommandFile(filePath: string): Promise<{ name: string; description: string; body: string }> {
+  const raw = await fs.readFile(filePath, 'utf8');
+  const fallbackName = path.basename(filePath, '.md');
+  const match = /^---\s*\n([\s\S]*?)\n---\s*\n([\s\S]*)$/.exec(raw);
+  if (!match) {
+    return { name: fallbackName, description: '', body: raw };
+  }
+  const header = match[1] ?? '';
+  const body = match[2] ?? '';
+  const nameMatch = /^name:\s*(.+)$/m.exec(header);
+  const descMatch = /^description:\s*"?(.+?)"?\s*$/m.exec(header);
+  return {
+    name: nameMatch?.[1]?.trim() ?? fallbackName,
+    description: descMatch?.[1]?.trim() ?? '',
+    body,
+  };
+}
+
+/**
+ * Install every slash command in `commands/` into a tool's rule directory,
+ * one file per command. Cursor uses `.mdc` with cursor-specific frontmatter;
+ * Windsurf accepts plain markdown with a name/description header.
+ */
+async function syncToolCommands(targetDir: string, kind: 'cursor' | 'windsurf'): Promise<void> {
+  const commandsDir = resolvePackagedCommandsDir();
+  let entries: string[];
+  try {
+    entries = await fs.readdir(commandsDir);
+  } catch {
+    return;
+  }
+  await fs.mkdir(targetDir, { recursive: true });
+  for (const entry of entries) {
+    if (!entry.endsWith('.md')) continue;
+    const parsed = await parseCommandFile(path.join(commandsDir, entry));
+    const base = path.basename(entry, '.md');
+    if (kind === 'cursor') {
+      const outPath = path.join(targetDir, `danteforge-${base}.mdc`);
+      const frontmatter = [
+        '---',
+        `description: ${JSON.stringify(parsed.description)}`,
+        'globs:',
+        'alwaysApply: false',
+        '---',
+        '',
+      ].join('\n');
+      await fs.writeFile(outPath, frontmatter + parsed.body, 'utf8');
+    } else {
+      const outPath = path.join(targetDir, `danteforge-${base}.md`);
+      const frontmatter = [
+        '---',
+        `name: ${parsed.name}`,
+        `description: ${JSON.stringify(parsed.description)}`,
+        '---',
+        '',
+      ].join('\n');
+      await fs.writeFile(outPath, frontmatter + parsed.body, 'utf8');
+    }
+  }
+}
+
 async function syncClaudePluginCache(homeDir: string, projectDir: string): Promise<void> {
-  // Read the package.json from the project directory to get the current version
   let pkgJson: { version?: string; files?: string[] };
   try {
     const raw = await fs.readFile(path.join(projectDir, 'package.json'), 'utf8');
@@ -664,16 +468,10 @@ async function syncClaudePluginCache(homeDir: string, projectDir: string): Promi
   if (!entries || entries.length === 0) return;
 
   const entry = entries[0]!;
-  if (entry.version === version) return; // Already at this version
-
-  // Locate the old cache dir to inherit node_modules
   const oldCacheDir = entry.installPath;
-
-  // Build the new cache dir path
   const cacheBaseDir = path.join(pluginsDir, 'cache', 'danteforge-dev', 'danteforge', version);
   await fs.mkdir(cacheBaseDir, { recursive: true });
 
-  // Copy package files from the project dir
   const filesToCopy = pkgJson.files ?? [];
   for (const fileEntry of filesToCopy) {
     const src = path.join(projectDir, fileEntry);
@@ -691,15 +489,13 @@ async function syncClaudePluginCache(homeDir: string, projectDir: string): Promi
     }
   }
 
-  // Always copy package.json
   try {
     await fs.copyFile(path.join(projectDir, 'package.json'), path.join(cacheBaseDir, 'package.json'));
   } catch {
     // Ignore
   }
 
-  // Inherit node_modules from the prior version cache dir
-  if (oldCacheDir) {
+  if (oldCacheDir && oldCacheDir !== cacheBaseDir) {
     const oldNodeModules = path.join(oldCacheDir, 'node_modules');
     try {
       await fs.access(oldNodeModules);
@@ -709,7 +505,6 @@ async function syncClaudePluginCache(homeDir: string, projectDir: string): Promi
     }
   }
 
-  // Update installed_plugins.json
   const now = new Date().toISOString();
   entry.version = version;
   entry.installPath = cacheBaseDir;
@@ -794,10 +589,12 @@ export async function installAssistantSkills(
     if (assistant === 'cursor') {
       const bootstrapPath = path.join(targetDir, 'danteforge.mdc');
       await fs.writeFile(bootstrapPath, buildCursorBootstrapRuleV2(), 'utf8');
+      await syncToolCommands(targetDir, 'cursor');
+      const installed = await fs.readdir(targetDir);
       results.push({
         assistant,
         targetDir,
-        installedSkills: ['danteforge.mdc'],
+        installedSkills: installed.filter(f => f.endsWith('.mdc')),
         installMode: 'cursor-rules',
       });
       continue;
@@ -806,7 +603,14 @@ export async function installAssistantSkills(
     if (assistant === 'windsurf') {
       const filePath = path.join(targetDir, 'danteforge.md');
       await fs.writeFile(filePath, buildWindsurfBootstrapRule(), 'utf8');
-      results.push({ assistant, targetDir, installedSkills: ['danteforge.md'], installMode: 'windsurf-rules' });
+      await syncToolCommands(targetDir, 'windsurf');
+      const installed = await fs.readdir(targetDir);
+      results.push({
+        assistant,
+        targetDir,
+        installedSkills: installed.filter(f => f.endsWith('.md')),
+        installMode: 'windsurf-rules',
+      });
       continue;
     }
 
@@ -849,7 +653,7 @@ export async function installAssistantSkills(
       continue;
     }
 
-    await installNativeSkills(assistant, skillDirs, skillsDir, targetDir, homeDir, options.projectDir);
+    await installNativeSkills(assistant, skillDirs, skillsDir, targetDir, homeDir, projectDir);
     results.push({ assistant, targetDir, installedSkills: skillDirs, installMode: 'skills' });
   }
 

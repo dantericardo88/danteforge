@@ -48,6 +48,17 @@ export interface OutcomeCheckResult {
 
 export async function runOutcomeCheck(opts: OutcomeCheckOptions = {}): Promise<OutcomeCheckResult> {
   const cwd = opts.cwd;
+
+  // --- Decision-node: record start (best-effort) ---
+  let _dnStartNodeId: string | undefined;
+  const _dnT0 = Date.now();
+  try {
+    const { getSession, recordDecision } = await import('../../core/decision-node-recorder.js');
+    const _dnSess = getSession(cwd);
+    const _dnStart = await recordDecision({ session: _dnSess, actorType: 'agent', prompt: 'outcome-check: validate attribution outcomes', context: { cwd }, result: 'in-progress', success: false });
+    _dnStartNodeId = _dnStart.id;
+  } catch { /* never block */ }
+
   const daysThreshold = opts.daysThreshold ?? 7;
 
   const loadLog = opts._loadAttributionLog ?? loadAttributionLog;
@@ -137,6 +148,13 @@ export async function runOutcomeCheck(opts: OutcomeCheckOptions = {}): Promise<O
 
   logger.info(`[outcome-check] Results: ${improved} improved, ${neutral} neutral, ${regressed} regressed`);
   logger.info(`[outcome-check] Average ${daysThreshold}-day delta: ${result.avgDelta7Day.toFixed(2)}`);
+
+  // --- Decision-node: record completion (best-effort) ---
+  try {
+    const { getSession, recordDecision } = await import('../../core/decision-node-recorder.js');
+    const _dnSess = getSession(cwd);
+    await recordDecision({ session: _dnSess, parentNodeId: _dnStartNodeId, actorType: 'agent', prompt: 'outcome-check: validate attribution outcomes [complete]', result: 'outcome check complete', success: true, latencyMs: Date.now() - _dnT0 });
+  } catch { /* best-effort */ }
 
   return result;
 }

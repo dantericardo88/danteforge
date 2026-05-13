@@ -20,3 +20,5 @@ Options:
 - `--prompt` - Show the preset plan without executing it
 
 CLI parity: `danteforge spark [goal]`
+
+Matrix development note: if planning identifies competitive score movement, do not edit `.danteforge/compete/matrix.json`. Hand off to `danteforge matrix claim -> propose -> merge` as described in `docs/MATRIX_DEVELOPMENT_ENGINE.md`.

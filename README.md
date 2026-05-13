@@ -1,8 +1,13 @@
 # DanteForge
 
 [![npm version](https://img.shields.io/badge/npm-0.17.0-blue)](https://www.npmjs.com/package/danteforge)
+[![CI](https://github.com/your-org/danteforge/actions/workflows/ci.yml/badge.svg)](https://github.com/your-org/danteforge/actions/workflows/ci.yml)
 [![license](https://img.shields.io/badge/license-MIT-green)](LICENSE)
 [![node](https://img.shields.io/badge/node-%3E%3D18-brightgreen)](package.json)
+
+```bash
+npm install -g danteforge   # then: danteforge go
+```
 
 > **The forge that turns OSS ore into your sword — and the Time Machine that lets you smelt three different blades and pick the sharpest edge.**
 
@@ -20,6 +25,7 @@ A blacksmith doesn't create iron. They source the best ore, understand its prope
 - **Your product is the sword.** Purpose-built, sharp, yours.
 - **The Time Machine is the memory of every strike.** Every decision recorded, every branch preserved, every alternate blade possible.
 - **Ascend is the parallel forge.** Smelt three blades simultaneously from the same ore. Pick the sharpest. Combine the best edges into the optimal fourth.
+- **The Matrix Kernel is the forge of forges.** A closed-loop verified multi-agent engineering control plane: maps the project, decomposes work into packets, simulates safe parallelism, leases isolated agents in worktrees, verifies every claim, and merges only what passed every gate. Run `danteforge matrix-kernel simulate --max-agents 10` to see how many agents could safely work in parallel on your repo.
 
 ---
 
@@ -131,12 +137,34 @@ DanteForge exposes an MCP server that connects to any AI assistant:
 
 - **Claude Code** — full MCP integration + plugin manifest + slash commands
 - **Codex CLI** — native workflow slash commands via `~/.codex/commands`
-- **Cursor** — MCP server + `.cursor/mcp.json` config
-- **Windsurf** — MCP server via stdio
+- **Cursor** — MCP server + `.cursor/mcp.json` config + per-command rule files
+- **Windsurf** — MCP server via stdio + per-command rule files
 
 ```json
 { "danteforge": { "command": "danteforge", "args": ["mcp-server"] } }
 ```
+
+### Use the repo as a cross-tool skills library
+
+Every slash command in `commands/` and every skill in `src/harvested/dante-agents/skills/` installs into your favorite assistant with one call:
+
+```bash
+danteforge setup assistants --assistants all
+# Installs to ~/.claude/skills, ~/.codex/skills + ~/.codex/commands,
+# .cursor/rules/danteforge-<cmd>.mdc, .windsurf/rules/danteforge-<cmd>.md,
+# .openhands/microagents, .github/copilot-instructions.md, and more.
+```
+
+After this runs, `/matrixdev`, `/inferno`, `/compete`, and the full DanteForge slash-command surface are available natively in each tool. Re-run after a `git pull` to sync updates.
+
+### Mode-aware `/matrixdev`: embedded + orchestrator + war-room
+
+`/matrixdev` adapts to its launch context:
+
+- **Inside Claude Code or Codex** (host AI present) → `--adapter auto` resolves to **embedded mode**. The kernel writes a Work Instruction Packet to `.danteforge/embedded-mode/<leaseId>/work-instruction.md`; the host AI executes the lease inline using its own Edit/Write tools (no nested subprocess, no double-billing the same subscription). When done, it runs `danteforge matrix-kernel embedded-complete <leaseId>` to feed the diff back into verify-court.
+- **Plain terminal** → spawns real worker adapters (`claude` / `codex` / `ollama` / API providers) via subprocess. Same kernel, real subprocesses.
+- **Cross-tool coordination** → the mailbox bus at `.danteforge/matrix/matrix.mailbox.json` carries messages between concurrent agents (Claude Code in one terminal, Codex in another, both contributing to the same matrix run). Post / poll / list via `danteforge matrix-kernel mailbox post|poll|list`.
+- **Monitoring** → `danteforge war-room` renders a live TUI dashboard (waves, leases, courts, merge decisions, pending mailbox) in any terminal — tmux, ssh, integrated terminal. `--once` for one-shot rendering in CI.
 
 ---
 

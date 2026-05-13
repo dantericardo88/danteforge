@@ -90,6 +90,17 @@ async function defaultReadLine(promptText: string): Promise<string> {
 
 export async function setGoal(opts: SetGoalOptions = {}): Promise<GoalConfig> {
   const cwd = opts.cwd;
+
+  // --- Decision-node: record start (best-effort) ---
+  let _dnStartNodeId: string | undefined;
+  const _dnT0 = Date.now();
+  try {
+    const { getSession, recordDecision } = await import('../../core/decision-node-recorder.js');
+    const _dnSess = getSession(cwd);
+    const _dnStart = await recordDecision({ session: _dnSess, actorType: 'agent', prompt: 'set-goal: convergence goal configuration', context: { cwd }, result: 'in-progress', success: false });
+    _dnStartNodeId = _dnStart.id;
+  } catch { /* never block */ }
+
   const autoScan = opts.autoScan ?? true;
   const readLine = opts._readLine ?? defaultReadLine;
 
@@ -173,6 +184,13 @@ or pass them directly via --fields in programmatic usage.
       logger.warn(`[set-goal] universe-scan failed (non-fatal): ${err instanceof Error ? err.message : String(err)}`);
     }
   }
+
+  // --- Decision-node: record completion (best-effort) ---
+  try {
+    const { getSession, recordDecision } = await import('../../core/decision-node-recorder.js');
+    const _dnSess = getSession(cwd);
+    await recordDecision({ session: _dnSess, parentNodeId: _dnStartNodeId, actorType: 'agent', prompt: 'set-goal: convergence goal configuration [complete]', result: 'GOAL.json written', success: true, latencyMs: Date.now() - _dnT0 });
+  } catch { /* best-effort */ }
 
   return goal;
 }

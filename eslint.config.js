@@ -38,6 +38,9 @@ export default [
     },
     rules: {
       'no-undef': 'off',
+      // Files over 500 LOC become hard to reason about for both humans and LLMs.
+      // Warn at 500 (ideal cap); check:file-size script enforces the 750 hard cap.
+      'max-lines': ['warn', { max: 500, skipBlankLines: true, skipComments: true }],
     },
   },
 ];

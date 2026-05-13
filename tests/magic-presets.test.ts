@@ -114,7 +114,7 @@ describe('magic preset system', () => {
   });
 
   it('registers the magic command and level flags in the CLI surface', async () => {
-    const cliSrc = await fs.readFile('src/cli/index.ts', 'utf8');
+    const cliSrc = await fs.readFile('src/cli/register-core-commands.ts', 'utf8');
 
     // magic is the canonical build command — spark/ember/blaze/nova/inferno are
     // preset functions in magic.js but no longer separate top-level CLI commands

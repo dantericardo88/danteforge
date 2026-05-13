@@ -224,6 +224,18 @@ export async function techDecide(options: {
   const saveFn = options._saveState ?? saveState;
 
   return withErrorBoundary('tech-decide', async () => {
+  const _cwd = process.cwd();
+
+  // --- Decision-node: record start (best-effort) ---
+  let _dnStartNodeId: string | undefined;
+  const _dnT0 = Date.now();
+  try {
+    const { getSession, recordDecision } = await import('../../core/decision-node-recorder.js');
+    const _dnSess = getSession(_cwd);
+    const _dnStart = await recordDecision({ session: _dnSess, actorType: 'agent', prompt: 'tech-decide: technology selection', context: { cwd: _cwd }, result: 'in-progress', success: false });
+    _dnStartNodeId = _dnStart.id;
+  } catch { /* never block */ }
+
   logger.success('DanteForge Tech Decide — Guided Tech Stack Selection');
   logger.info('');
 
@@ -298,5 +310,12 @@ export async function techDecide(options: {
 
   state.auditLog.push(`${new Date().toISOString()} | tech-decide: manual guidance displayed`);
   await saveFn(state);
+
+  // --- Decision-node: record completion (best-effort) ---
+  try {
+    const { getSession, recordDecision } = await import('../../core/decision-node-recorder.js');
+    const _dnSess = getSession(_cwd);
+    await recordDecision({ session: _dnSess, parentNodeId: _dnStartNodeId, actorType: 'agent', prompt: 'tech-decide: technology selection [complete]', result: 'tech decision recorded', success: true, latencyMs: Date.now() - _dnT0 });
+  } catch { /* best-effort */ }
   });
 }

@@ -10,6 +10,7 @@ import { logger } from '../../core/logger.js';
 import { isLLMAvailable, callLLM } from '../../core/llm.js';
 import { selectBestModel, loadPerformanceIndex } from '../../core/model-selector.js';
 import { loadRegistry, saveRegistry, upsertEntry, getOssReposDir } from '../../core/oss-registry.js';
+import { ensureProjectIgnores } from '../../core/project-ignores.js';
 
 const execFileAsync = promisify(execFile);
 const CLONE_TIMEOUT_MS = 180_000;
@@ -567,6 +568,7 @@ async function locateOrCloneRepo(urlOrPath: string, slug: string, repoDir: strin
   } catch {
     logger.info(`[oss-deep] Cloning ${urlOrPath} → ${repoDir}`);
     await fs.mkdir(getOssReposDir(cwd), { recursive: true });
+    try { await ensureProjectIgnores(cwd); } catch { /* best-effort */ }
     if (opts._gitClone) {
       await opts._gitClone(urlOrPath, repoDir);
     } else {

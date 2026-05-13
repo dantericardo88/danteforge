@@ -1,0 +1,10 @@
+{
+  "knownFlaky": [
+    "cap-aware gate"
+  ],
+  "alwaysRun": [
+    "tests/matrix-golden-flow.test.ts",
+    "tests/command-skill-coverage.test.ts"
+  ],
+  "scopeToDiff": false
+}

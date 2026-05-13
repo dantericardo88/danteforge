@@ -91,6 +91,7 @@ Requirements:
 - Follow existing patterns in the codebase
 - Make atomic, focused changes
 - Include verification that the criteria are met
+- FILE SIZE LIMIT: Every file you create or modify must stay under 500 non-blank lines of code. If a module would exceed 500 LOC, split it into focused sub-modules (e.g. foo.ts + foo-utils.ts + foo-types.ts). Never write a file exceeding 750 LOC under any circumstances — the CI gate will reject it.
 
 Code Output Format — you MUST use one of these exact formats for every file change:
 

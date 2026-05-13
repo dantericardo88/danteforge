@@ -595,6 +595,162 @@ export async function loadFeatureScores(
   }
 }
 
+// ── Canonical competitor seed for DanteForge-class projects ───────────────────
+
+// The CANONICAL DanteForge peer list. Kept in sync with
+// `DEV_TOOL_BASELINES` in competitor-scanner.ts and with the project_positioning
+// memory note. Used as the last-resort fallback so `/universe` on a fresh
+// project always produces a meaningful universe instead of empty output.
+const CANONICAL_DANTEFORGE_COMPETITORS: readonly string[] = Object.freeze([
+  // Spec-driven dev kits
+  'spec-kit (GitHub)',
+  'BMad-METHOD',
+  'OpenSpec',
+  // Claude Code / agent skill consolidators
+  'anthropics/claude-skills',
+  'awesome-claude-code-skills',
+  'cursor.directory',
+  // Autonomous research / improvement loops
+  'Karpathy autoresearch',
+  'DSPy (Stanford)',
+  // Pattern donors: orchestration peers
+  'MetaGPT',
+  'CrewAI',
+  'AutoGen (Microsoft)',
+  'GPT-Engineer',
+  'OpenHands (All-Hands AI)',
+  'Aider',
+  'SWE-Agent (Princeton)',
+  'LangChain Agents',
+]);
+
+export function getCanonicalDanteForgeCompetitors(): string[] {
+  return [...CANONICAL_DANTEFORGE_COMPETITORS];
+}
+
+// ── ensureUniverseReady: idempotent preflight ─────────────────────────────────
+
+export interface EnsureUniverseReadyOptions {
+  minFeatures?: number;          // Rebuild if fewer than this (default 20)
+  maxAgeDays?: number;           // Rebuild if older than this (default 14)
+  /**
+   * When true (default), only attempts to LOAD the existing universe from
+   * disk. When false, also builds (calls LLM) if missing/stale. The engine
+   * wiring (ascend, dimension-synthesizer) keeps this true so we never block
+   * on LLM during a deep call — explicit `/universe` and `/universe --refresh`
+   * pass false to opt in. */
+  loadOnly?: boolean;
+  projectName?: string;
+  projectDescription?: string;
+  /** Override the competitor resolution chain (defaults to state.competitors -> matrix.competitors -> canonical). */
+  _resolveCompetitors?: (cwd: string) => Promise<string[]>;
+  _loadUniverse?: typeof loadFeatureUniverse;
+  _saveUniverse?: typeof saveFeatureUniverse;
+  _buildUniverse?: typeof buildFeatureUniverse;
+  _callLLM?: (prompt: string) => Promise<string>;
+  _now?: () => Date;
+}
+
+const DEFAULT_MIN_FEATURES = 20;
+const DEFAULT_MAX_AGE_DAYS = 14;
+
+async function defaultResolveCompetitors(cwd: string): Promise<string[]> {
+  // 1. STATE.yaml competitors
+  try {
+    const { loadState } = await import('./state.js');
+    const state = await loadState({ cwd });
+    if (state.competitors && state.competitors.length > 0) return state.competitors;
+  } catch { /* no state */ }
+
+  // 2. compete-matrix.json competitors
+  try {
+    const { loadMatrix } = await import('./compete-matrix.js');
+    const matrix = await loadMatrix(cwd);
+    if (matrix?.competitors && Array.isArray(matrix.competitors) && matrix.competitors.length > 0) {
+      // matrix.competitors may be string[] or object[] — normalize to names
+      return matrix.competitors.map((c: unknown) =>
+        typeof c === 'string' ? c : (c as { name?: string })?.name ?? String(c),
+      ).filter(Boolean);
+    }
+  } catch { /* no matrix */ }
+
+  // 3. canonical fallback
+  return getCanonicalDanteForgeCompetitors();
+}
+
+/**
+ * Idempotent preflight. Loads the feature universe if present; rebuilds it
+ * when missing, undersized, or stale. Safe to call from every orchestration
+ * entry point (ascend, inferno, matrixdev, universe) — best-effort by
+ * design, so a transient LLM failure logs a warning instead of throwing.
+ */
+export async function ensureUniverseReady(
+  cwd: string,
+  opts: EnsureUniverseReadyOptions = {},
+): Promise<FeatureUniverse | null> {
+  const minFeatures = opts.minFeatures ?? DEFAULT_MIN_FEATURES;
+  const maxAgeDays = opts.maxAgeDays ?? DEFAULT_MAX_AGE_DAYS;
+  const loadOnly = opts.loadOnly ?? true;        // default to no-LLM-side-effect
+  const now = opts._now ?? (() => new Date());
+  const loadFn = opts._loadUniverse ?? loadFeatureUniverse;
+  const saveFn = opts._saveUniverse ?? saveFeatureUniverse;
+  const buildFn = opts._buildUniverse ?? buildFeatureUniverse;
+  const resolveFn = opts._resolveCompetitors ?? defaultResolveCompetitors;
+
+  const existing = await loadFn(cwd).catch(() => null);
+  if (existing && isUniverseFresh(existing, minFeatures, maxAgeDays, now())) {
+    return existing;
+  }
+
+  // Engine-side callers (ascend, dimension-synthesizer) default to loadOnly:true
+  // and return whatever's on disk (possibly null). Only /universe and explicit
+  // refresh paths set loadOnly:false to actually call the LLM and rebuild.
+  if (loadOnly) {
+    return existing;
+  }
+
+  let competitors: string[] = [];
+  try {
+    competitors = await resolveFn(cwd);
+  } catch {
+    competitors = getCanonicalDanteForgeCompetitors();
+  }
+  if (competitors.length === 0) {
+    competitors = getCanonicalDanteForgeCompetitors();
+  }
+
+  const projectName = opts.projectName ?? 'this project';
+  const ctx = { projectName, projectDescription: opts.projectDescription };
+
+  try {
+    const universe = await buildFn(
+      competitors,
+      ctx,
+      opts._callLLM ? { _callLLM: opts._callLLM } : {},
+    );
+    if (universe.features.length > 0) {
+      await saveFn(universe, cwd).catch(() => {});
+    }
+    return universe;
+  } catch {
+    return existing; // fall back to whatever we had (possibly null)
+  }
+}
+
+function isUniverseFresh(
+  universe: FeatureUniverse,
+  minFeatures: number,
+  maxAgeDays: number,
+  nowDate: Date,
+): boolean {
+  if (universe.features.length < minFeatures) return false;
+  const generated = Date.parse(universe.generatedAt);
+  if (!Number.isFinite(generated)) return true; // bad timestamp — accept as-is
+  const ageMs = nowDate.getTime() - generated;
+  const maxAgeMs = maxAgeDays * 24 * 60 * 60 * 1000;
+  return ageMs <= maxAgeMs;
+}
+
 // ── Forge prompt builder for missing/partial features ─────────────────────────
 
 export function buildFeatureForgePrompt(

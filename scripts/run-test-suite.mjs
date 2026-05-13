@@ -77,10 +77,18 @@ try {
 function runLane(lane) {
   return new Promise((resolve, reject) => {
     const start = Date.now();
+    // `.danteforge/test-config.json` knownFlaky entries flow through verify-court
+    // as TEST_SKIP_PATTERNS (pipe-joined regex). Pass them to the underlying
+    // Node test runner via --test-skip-pattern so individual `test()` calls
+    // matching the regex are skipped without failing the lane. Empty/unset
+    // env var = no skips (default behavior).
+    const skipPatterns = (process.env.TEST_SKIP_PATTERNS ?? '').trim();
     const args = [
+      ...(lane.nodeV8Flags ?? []),
       tsxCliPath,
       '--test',
       `--test-concurrency=${lane.concurrency}`,
+      ...(skipPatterns ? [`--test-skip-pattern=${skipPatterns}`] : []),
       ...lane.nodeArgs,
       ...lane.files,
     ];

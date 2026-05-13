@@ -516,6 +516,16 @@ export async function autoResearch(
   const metric = options.metric ?? 'metric value';
   const timeBudgetMinutes = parseTimeBudget(options.time ?? '4h');
   const cwd = process.cwd();
+
+  // --- Decision-node: record start (best-effort) ---
+  let _dnStartNodeId: string | undefined;
+  const _dnT0 = Date.now();
+  try {
+    const { getSession, recordDecision } = await import('../../core/decision-node-recorder.js');
+    const _dnSess = getSession(cwd);
+    const _dnStart = await recordDecision({ session: _dnSess, actorType: 'agent', prompt: 'autoresearch: autonomous research', context: { cwd }, result: 'in-progress', success: false });
+    _dnStartNodeId = _dnStart.id;
+  } catch { /* never block */ }
   const loadStateFn = _opts._loadState ?? loadState;
   const saveStateFn = _opts._saveState ?? saveState;
   const isLLMAvailableFn = _opts._isLLMAvailable ?? isLLMAvailable;
@@ -569,6 +579,13 @@ export async function autoResearch(
   );
 
   await generateAndWriteReport(goal, metric, config, allExperiments, baseline, bestValue, branchName, tsvPath, startTime, nowFn, callLLMFn, isLLMAvailableFn, writeFileFn, loadStateFn, saveStateFn, cwd);
+
+  // --- Decision-node: record completion (best-effort) ---
+  try {
+    const { getSession, recordDecision } = await import('../../core/decision-node-recorder.js');
+    const _dnSess = getSession(cwd);
+    await recordDecision({ session: _dnSess, parentNodeId: _dnStartNodeId, actorType: 'agent', prompt: 'autoresearch: autonomous research [complete]', result: 'research report written', success: true, latencyMs: Date.now() - _dnT0 });
+  } catch { /* best-effort */ }
   });
 }
 

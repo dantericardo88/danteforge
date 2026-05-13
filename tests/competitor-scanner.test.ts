@@ -172,15 +172,17 @@ describe('scanCompetitors', () => {
   });
 
   it('uses enriched dev-tool scores when web search enabled', async () => {
-    const enrichedJson = JSON.stringify({ 'Devin (Cognition AI)': { autonomy: 95 } });
+    // Updated 2026-05-13: baseline taxonomy was replaced with DanteForge peer list.
+    // spec-kit is now in the canonical seed instead of Devin.
+    const enrichedJson = JSON.stringify({ 'spec-kit (GitHub)': { specDrivenPipeline: 95 } });
     const result = await scanCompetitors(makeOptions({
       enableWebSearch: true,
       _callLLM: async () => enrichedJson,
     }));
-    const devin = result.competitors.find((c) => c.name === 'Devin (Cognition AI)');
-    assert.ok(devin, 'Devin found');
-    assert.equal(devin!.scores.autonomy, 95);
-    assert.equal(devin!.source, 'web-enriched');
+    const specKit = result.competitors.find((c) => c.name === 'spec-kit (GitHub)');
+    assert.ok(specKit, 'spec-kit found');
+    assert.equal(specKit!.scores.specDrivenPipeline, 95);
+    assert.equal(specKit!.source, 'web-enriched');
   });
 });
 
@@ -387,7 +389,26 @@ describe('COMPETITOR_BASELINES (dev-tool defaults)', () => {
     }
   });
 
-  it('has at least 17 competitors (8 original + 9 new categories)', () => {
-    assert.ok(COMPETITOR_BASELINES.length >= 27);
+  it('has at least 14 competitors (canonical DanteForge peer list)', () => {
+    // Updated 2026-05-13: baseline taxonomy was replaced. DanteForge is an
+    // agnostic optimizer that sits ON TOP OF AI coding assistants, so its
+    // peers are spec/skill optimizers + orchestration peers + research loops,
+    // NOT the assistants themselves (Cursor / Devin / Claude Code etc).
+    // See ~/.claude/projects/c--Projects-DanteForge/memory/project_positioning.md.
+    assert.ok(COMPETITOR_BASELINES.length >= 14,
+      `expected >= 14 canonical peers, got ${COMPETITOR_BASELINES.length}`);
+  });
+
+  it('canonical baseline includes spec-driven kits and orchestration peers', () => {
+    const names = COMPETITOR_BASELINES.map(c => c.name);
+    assert.ok(names.some(n => /spec-kit/i.test(n)), 'expected spec-kit in baselines');
+    assert.ok(names.some(n => /BMad/i.test(n)), 'expected BMad-METHOD in baselines');
+    assert.ok(names.some(n => /MetaGPT/i.test(n)), 'expected MetaGPT in baselines');
+    assert.ok(names.some(n => /CrewAI/i.test(n)), 'expected CrewAI in baselines');
+    // Anti-test: must NOT include platforms DanteForge sits on top of
+    assert.ok(!names.some(n => /^Devin/i.test(n)),
+      'baseline should NOT include Devin (it is a platform DanteForge sits on top of)');
+    assert.ok(!names.some(n => /^Cursor$/i.test(n)),
+      'baseline should NOT include Cursor (it is a platform DanteForge sits on top of)');
   });
 });

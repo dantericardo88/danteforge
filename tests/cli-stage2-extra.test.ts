@@ -301,10 +301,12 @@ describe('importFile: source validation', () => {
 
 describe('importFile: unknown target type', () => {
   let tmpFile: string;
+  let tmpCwd: string;
 
   beforeEach(async () => {
-    // Create a temp file to use as import source
+    // Create isolated temp dirs — source file AND cwd so writes never touch .danteforge/
     const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'df-import-test-'));
+    tmpCwd = await fs.mkdtemp(path.join(os.tmpdir(), 'df-import-cwd-'));
     tmpFile = path.join(dir, 'test-artifact.md');
     await fs.writeFile(tmpFile, '# Test Content\n\nSome content here.');
   });
@@ -314,6 +316,7 @@ describe('importFile: unknown target type', () => {
     const state = makeState();
     await importFile(tmpFile, {
       as: 'UNKNOWN_TYPE.md',
+      cwd: tmpCwd,
       _loadState: async () => state,
       _saveState,
     });
@@ -326,6 +329,7 @@ describe('importFile: unknown target type', () => {
     const state = makeState();
     await importFile(tmpFile, {
       as: 'CUSTOM_NOTES.md',
+      cwd: tmpCwd,
       _loadState: async () => state,
       _saveState,
     });
@@ -339,6 +343,7 @@ describe('importFile: unknown target type', () => {
     const state = makeState({ lastVerifiedAt: '2024-01-01T00:00:00Z' });
     await importFile(tmpFile, {
       as: 'PLAN.md',
+      cwd: tmpCwd,
       _loadState: async () => state,
       _saveState,
     });
@@ -353,6 +358,7 @@ describe('importFile: unknown target type', () => {
     const state = makeState({ lastVerifiedAt: '2024-01-01T00:00:00Z' });
     await importFile(tmpFile, {
       as: 'NOTES.md',
+      cwd: tmpCwd,
       _loadState: async () => state,
       _saveState,
     });

@@ -27,6 +27,8 @@ function makeStateCaller(state: ReturnType<typeof makeState>) {
   };
 }
 
+const skipFailureLessons = async () => undefined;
+
 describe('executeWave — _stateCaller injection', () => {
   it('state loaded and saved via injected _stateCaller', async () => {
     const state = makeState();
@@ -67,6 +69,7 @@ describe('executeWave — _stateCaller injection', () => {
       _verifier: async () => false,
       _reflector: async () => { throw new Error('skip'); },
       _stateCaller: sc,
+      _captureFailureLessons: skipFailureLessons,
     });
 
     assert.strictEqual(sc.calls.lastSavedState!.currentPhase, 1, 'phase should remain at 1 when task fails verification');
@@ -89,6 +92,7 @@ describe('executeWave — _stateCaller injection', () => {
       _verifier: async () => { callNum++; return callNum === 1; },
       _reflector: async () => { throw new Error('skip'); },
       _stateCaller: sc,
+      _captureFailureLessons: skipFailureLessons,
     });
 
     const lastLog = sc.calls.lastSavedState!.auditLog.at(-1)!;
@@ -109,6 +113,7 @@ describe('executeWave — _memorizer injection', () => {
       _reflector: async () => { throw new Error('skip'); },
       _stateCaller: sc,
       _memorizer: async (entry) => { memoryCalled = true; memoryCategory = entry.category; },
+      _captureFailureLessons: skipFailureLessons,
     });
 
     assert.ok(memoryCalled, '_memorizer should have been called on LLM failure');
@@ -125,6 +130,7 @@ describe('executeWave — _memorizer injection', () => {
       _reflector: async () => { throw new Error('skip'); },
       _stateCaller: sc,
       _memorizer: async () => { throw new Error('Memory write failed'); },
+      _captureFailureLessons: skipFailureLessons,
     });
 
     // Should still complete (success=false because LLM threw, but did not crash)

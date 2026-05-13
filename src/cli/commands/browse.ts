@@ -30,6 +30,16 @@ export async function browse(
   const saveFn = options._saveState ?? saveState;
 
   return withErrorBoundary('browse', async () => {
+  // --- Decision-node: record start (best-effort) ---
+  let _dnStartNodeId: string | undefined;
+  const _dnT0 = Date.now();
+  try {
+    const { getSession, recordDecision } = await import('../../core/decision-node-recorder.js');
+    const _dnSess = getSession();
+    const _dnStart = await recordDecision({ session: _dnSess, actorType: 'agent', prompt: 'browse: browser automation', context: { subcommand }, result: 'in-progress', success: false });
+    _dnStartNodeId = _dnStart.id;
+  } catch { /* never block */ }
+
   // Binary detection — fail-closed
   const binaryPath = await detectFn();
   if (!binaryPath) {
@@ -85,5 +95,12 @@ export async function browse(
   } catch {
     // State save is best-effort for browse
   }
+
+  // --- Decision-node: record completion (best-effort) ---
+  try {
+    const { getSession, recordDecision } = await import('../../core/decision-node-recorder.js');
+    const _dnSess = getSession();
+    await recordDecision({ session: _dnSess, parentNodeId: _dnStartNodeId, actorType: 'agent', prompt: 'browse: browser automation [complete]', result: 'browse complete', success: true, latencyMs: Date.now() - _dnT0 });
+  } catch { /* best-effort */ }
   });
 }

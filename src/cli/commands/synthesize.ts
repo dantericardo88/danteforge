@@ -104,6 +104,16 @@ export async function synthesize(options: {
   const saveFn = options._saveState ?? saveState;
 
   return withErrorBoundary('synthesize', async () => {
+  // --- Decision-node: record start (best-effort) ---
+  let _dnStartNodeId: string | undefined;
+  const _dnT0 = Date.now();
+  try {
+    const { getSession, recordDecision } = await import('../../core/decision-node-recorder.js');
+    const _dnSess = getSession();
+    const _dnStart = await recordDecision({ session: _dnSess, actorType: 'agent', prompt: 'synthesize: merge all artifacts', context: {}, result: 'in-progress', success: false });
+    _dnStartNodeId = _dnStart.id;
+  } catch { /* never block */ }
+
   logger.info('Synthesizing Ultimate Planning Resource (UPR.md)...');
 
   const state = await loadFn();
@@ -187,5 +197,12 @@ export async function synthesize(options: {
 
   logger.success(`UPR.md generated — ${docs.length} artifacts merged into Ultimate Planning Resource`);
   logger.info('Find it at .danteforge/UPR.md');
+
+  // --- Decision-node: record completion (best-effort) ---
+  try {
+    const { getSession, recordDecision } = await import('../../core/decision-node-recorder.js');
+    const _dnSess = getSession();
+    await recordDecision({ session: _dnSess, parentNodeId: _dnStartNodeId, actorType: 'agent', prompt: 'synthesize: merge all artifacts [complete]', result: 'synthesis complete', success: true, latencyMs: Date.now() - _dnT0 });
+  } catch { /* best-effort */ }
   });
 }

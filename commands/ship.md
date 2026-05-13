@@ -26,3 +26,5 @@ Use the `requesting-code-review` skill for pre-merge quality gate.
 Use the `finishing-a-development-branch` skill for merge/PR decisions.
 
 CLI fallback: `danteforge ship`
+
+Matrix development note: release guidance must include `npm run check:agent-guard` and `npm run check:file-size`; do not ship direct canonical matrix edits without a merge receipt.

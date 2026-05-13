@@ -28,3 +28,5 @@ Options:
 - `--profile quality|balanced|budget` - Override the default budget profile
 
 CLI parity: `danteforge blaze [goal]`
+
+Matrix development note: high-power lanes may work in parallel, but score changes must go through `danteforge matrix propose` and `danteforge matrix merge --policy harsh-min`.

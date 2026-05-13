@@ -3,6 +3,7 @@
 import { describe, it, beforeEach, afterEach } from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'fs/promises';
+import os from 'os';
 import path from 'path';
 import {
   analyzeGaps,
@@ -18,7 +19,7 @@ describe('maturity-assessment', () => {
   let tmpDir: string;
 
   beforeEach(async () => {
-    tmpDir = await fs.mkdtemp(path.join(await fs.realpath(process.cwd()), '.tmp-assessment-'));
+    tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), 'df-maturity-assessment-'));
   });
 
   afterEach(async () => {

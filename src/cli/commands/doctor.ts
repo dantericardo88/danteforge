@@ -10,6 +10,7 @@ import { detectHost, detectMCPCapabilities } from '../../core/mcp.js';
 import { resolveTier, testMCPConnection } from '../../core/mcp-adapter.js';
 import { installAssistantSkills } from '../../core/assistant-installer.js';
 import { withErrorBoundary } from '../../core/cli-error-boundary.js';
+import { ensureProjectIgnores, inspectProjectHygiene } from '../../core/project-ignores.js';
 
 const ANTIGRAVITY_BUNDLES_URL = process.env.ANTIGRAVITY_BUNDLES_URL ?? 'https://raw.githubusercontent.com/sickn33/antigravity-awesome-skills/main/docs/BUNDLES.md';
 const LIVE_PROVIDER_VALUES = ['openai', 'claude', 'gemini', 'grok', 'ollama'];
@@ -418,6 +419,8 @@ async function checkLiveReleaseConfig(): Promise<DiagnosticResult> {
 async function runRepairs(): Promise<DiagnosticResult> {
   const state = await loadState();
   await saveState(state);
+  await ensureProjectIgnores(process.cwd(), { configureGit: true });
+  const hygiene = await inspectProjectHygiene(process.cwd());
 
   const homeDir = process.env.DANTEFORGE_HOME;
   const installResult = await installAssistantSkills({
@@ -429,7 +432,7 @@ async function runRepairs(): Promise<DiagnosticResult> {
   return {
     name: 'Repairs',
     status: 'ok',
-    message: `State initialized and user-level assistant registries synced (${installed}).`,
+    message: `State initialized, agent hygiene repaired, and user-level assistant registries synced (${installed}). Cleanup candidates: ${hygiene.cleanupCandidates.length}.`,
   };
 }
 
@@ -586,6 +589,18 @@ export async function doctor(options: {
   const saveFn = options._saveState ?? saveState;
   void loadFn; void saveFn; // seams available for test injection
   return withErrorBoundary('doctor', async () => {
+  const _cwd = process.cwd();
+
+  // --- Decision-node: record start (best-effort) ---
+  let _dnStartNodeId: string | undefined;
+  const _dnT0 = Date.now();
+  try {
+    const { getSession, recordDecision } = await import('../../core/decision-node-recorder.js');
+    const _dnSess = getSession(_cwd);
+    const _dnStart = await recordDecision({ session: _dnSess, actorType: 'agent', prompt: 'doctor: project health check', context: { cwd: _cwd }, result: 'in-progress', success: false });
+    _dnStartNodeId = _dnStart.id;
+  } catch { /* never block */ }
+
   logger.success('DanteForge Doctor - System Health Check');
   logger.info('');
 
@@ -604,5 +619,12 @@ export async function doctor(options: {
   if (failCount > 0) {
     process.exitCode = 1;
   }
+
+  // --- Decision-node: record completion (best-effort) ---
+  try {
+    const { getSession, recordDecision } = await import('../../core/decision-node-recorder.js');
+    const _dnSess = getSession(_cwd);
+    await recordDecision({ session: _dnSess, parentNodeId: _dnStartNodeId, actorType: 'agent', prompt: 'doctor: project health check [complete]', result: 'doctor complete', success: true, latencyMs: Date.now() - _dnT0 });
+  } catch { /* best-effort */ }
   });
 }

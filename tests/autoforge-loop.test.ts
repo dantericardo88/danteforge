@@ -632,6 +632,10 @@ function makeMockDeps(overrides: Partial<AutoforgeLoopDeps> = {}): AutoforgeLoop
     saveState: async () => {},
     setTimeout: (fn, _ms) => { fn(); return 0 as unknown as ReturnType<typeof globalThis.setTimeout>; },
     _checkProtectedPaths: async () => ({ approved: true, blocked: [] }),
+    // Prevent dynamic import of time-machine.js (large module) in unit tests
+    _timeMachineCommit: async () => {},
+    // Prevent dynamic import of auto-sanitize.js (and its transitive imports) in unit tests
+    _postWaveSanitize: async () => {},
     ...overrides,
   };
 }

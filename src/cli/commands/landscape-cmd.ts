@@ -15,6 +15,17 @@ export interface LandscapeOptions {
 export async function landscapeBuild(options: LandscapeOptions = {}): Promise<void> {
   return withErrorBoundary('landscape', async () => {
     const cwd = options.cwd ?? process.cwd();
+
+    // --- Decision-node: record start (best-effort) ---
+    let _dnStartNodeId: string | undefined;
+    const _dnT0 = Date.now();
+    try {
+      const { getSession, recordDecision } = await import('../../core/decision-node-recorder.js');
+      const _dnSess = getSession(cwd);
+      const _dnStart = await recordDecision({ session: _dnSess, actorType: 'agent', prompt: 'landscape-build: competitive matrix', context: { cwd }, result: 'in-progress', success: false });
+      _dnStartNodeId = _dnStart.id;
+    } catch { /* never block */ }
+
     const { buildLandscape: defaultBuild } = await import('../../dossier/landscape.js');
     const buildFn = options._buildLandscape ?? defaultBuild;
 
@@ -22,12 +33,30 @@ export async function landscapeBuild(options: LandscapeOptions = {}): Promise<vo
     const matrix = await buildFn(cwd, {}, options.selfId ?? 'dantescode');
     printLandscapeSummary(matrix);
     logger.success('[Landscape] Saved to .danteforge/COMPETITIVE_LANDSCAPE.md');
+
+    // --- Decision-node: record completion (best-effort) ---
+    try {
+      const { getSession, recordDecision } = await import('../../core/decision-node-recorder.js');
+      const _dnSess = getSession(cwd);
+      await recordDecision({ session: _dnSess, parentNodeId: _dnStartNodeId, actorType: 'agent', prompt: 'landscape-build: competitive matrix [complete]', result: 'landscape built', success: true, latencyMs: Date.now() - _dnT0 });
+    } catch { /* best-effort */ }
   });
 }
 
 export async function landscapeDiff(options: LandscapeOptions = {}): Promise<void> {
   return withErrorBoundary('landscape diff', async () => {
     const cwd = options.cwd ?? process.cwd();
+
+    // --- Decision-node: record start (best-effort) ---
+    let _dnStartNodeId: string | undefined;
+    const _dnT0 = Date.now();
+    try {
+      const { getSession, recordDecision } = await import('../../core/decision-node-recorder.js');
+      const _dnSess = getSession(cwd);
+      const _dnStart = await recordDecision({ session: _dnSess, actorType: 'agent', prompt: 'landscape-diff: compare landscapes', context: { cwd }, result: 'in-progress', success: false });
+      _dnStartNodeId = _dnStart.id;
+    } catch { /* never block */ }
+
     const {
       diffLandscape,
       loadLandscape: defaultLoad,
@@ -78,6 +107,13 @@ export async function landscapeDiff(options: LandscapeOptions = {}): Promise<voi
         `  ${change.displayName}: ${beforeRank} -> ${afterRank} | composite ${compositeDelta}`,
       );
     }
+
+    // --- Decision-node: record completion (best-effort) ---
+    try {
+      const { getSession, recordDecision } = await import('../../core/decision-node-recorder.js');
+      const _dnSess = getSession(cwd);
+      await recordDecision({ session: _dnSess, parentNodeId: _dnStartNodeId, actorType: 'agent', prompt: 'landscape-diff: compare landscapes [complete]', result: 'diff complete', success: true, latencyMs: Date.now() - _dnT0 });
+    } catch { /* best-effort */ }
   });
 }
 

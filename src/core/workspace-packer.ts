@@ -44,6 +44,8 @@ type DirEntry = { name: string; isDirectory(): boolean; isFile(): boolean };
 
 const DEFAULT_EXCLUDES = [
   'node_modules', '.git', 'dist', 'coverage', '.danteforge/plugin-modules',
+  '.danteforge/oss-repos', '.danteforge/oss-deep', '.danteforge-worktrees',
+  '.claude/worktrees', '.dantecode', '.tmp-*',
   '.nyc_output', '.cache', 'build', '*.min.js', '*.map',
 ];
 
@@ -306,6 +308,10 @@ function matchesDefaultExclude(relativePath: string): boolean {
       const base = path.basename(normalizedPath);
       if (base.endsWith(suffix)) return true;
     } else {
+      if (exclude.endsWith('*')) {
+        const prefix = exclude.slice(0, -1);
+        if (normalizedPath.split('/').some(part => part.startsWith(prefix))) return true;
+      }
       // Check if any path component matches
       if (parts.includes(exclude)) return true;
       // Also check path prefix for multi-segment excludes like '.danteforge/plugin-modules'

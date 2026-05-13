@@ -27,6 +27,16 @@ export async function specify(idea: string, options: {
   const writeFn = options._writeArtifact ?? writeArtifact;
 
   return withErrorBoundary('specify', async () => {
+  // --- Decision-node: record start (best-effort) ---
+  let _dnStartNodeId: string | undefined;
+  const _dnT0 = Date.now();
+  try {
+    const { getSession, recordDecision } = await import('../../core/decision-node-recorder.js');
+    const _dnSess = getSession();
+    const _dnStart = await recordDecision({ session: _dnSess, actorType: 'agent', prompt: `specify: ${idea}`, context: { idea }, result: 'in-progress', success: false });
+    _dnStartNodeId = _dnStart.id;
+  } catch { /* never block */ }
+
   if (!(await runGate(() => requireConstitution(options.light)))) return;
 
   logger.info(`Specifying: ${idea}`);
@@ -100,5 +110,12 @@ Output ONLY the markdown content - no preamble.`;
   if (!llmAvailable) {
     logger.info('Tip: Set up an API key for richer specs: danteforge config --set-key "grok:<key>"');
   }
+
+  // --- Decision-node: record completion (best-effort) ---
+  try {
+    const { getSession, recordDecision } = await import('../../core/decision-node-recorder.js');
+    const _dnSess = getSession();
+    await recordDecision({ session: _dnSess, parentNodeId: _dnStartNodeId, actorType: 'agent', prompt: `specify: ${idea} [complete]`, result: 'SPEC.md written', success: true, latencyMs: Date.now() - _dnT0 });
+  } catch { /* best-effort */ }
   });
 }

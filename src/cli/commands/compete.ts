@@ -11,7 +11,7 @@ import fs from 'fs/promises';
 import path from 'path';
 import { logger } from '../../core/logger.js';
 import { loadState } from '../../core/state.js';
-import { readLatestVerifyReceipt, type VerifyReceipt } from '../../core/verify-receipts.js';
+import type { VerifyReceipt } from '../../core/verify-receipts.js';
 import {
   loadMatrix,
   saveMatrix,
@@ -24,6 +24,9 @@ import {
   checkMatrixStaleness,
   removeCompetitor,
   dropDimension,
+  excludeDimension,
+  includeDimension,
+  applyAdversarialCalibration,
   type CompeteMatrix,
   type MatrixDimension,
 } from '../../core/compete-matrix.js';
@@ -36,6 +39,10 @@ import { computeHarshScore, computeStrictDimensions, type HarshScorerOptions } f
 import { callLLM } from '../../core/llm.js';
 import { applyStrictOverrides } from '../../core/ascend-engine.js';
 import { confirmMatrix } from '../../core/matrix-confirm.js';
+import { mergeScoreProposals, writeScoreProposal } from '../../core/matrix-development-engine.js';
+import { formatScore, formatStatusTable, logSprintGaps, buildHarvestBriefPrompt, logSprintOutput } from './compete-display.js';
+import { handleAmend, handleAmendFile } from './compete-amend.js';
+import { defaultEvidenceWriter, parseRescore, proposeAndMergeScore, runCertifyGate, writeRescoreEvidence } from './compete-score-flow.js';
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -81,67 +88,31 @@ export interface CompeteOptions {
   _computeStrictDims?: typeof computeStrictDimensions;
   yes?: boolean;
   _confirmMatrix?: typeof import('../../core/matrix-confirm.js').confirmMatrix;
+  amend?: string;            // --amend "dim_id=score": manually set a market dim self-score
+  amendFile?: string;        // --amend-file <path>: batch-update market dim scores from JSON
   removeCompetitor?: string;
   dropDimension?: string;
+  excludeDimension?: string;
+  includeDimension?: string;
   edit?: boolean;
+  reset?: boolean;           // --reset: replace competitors with --use-canonical seed (backs up the old matrix)
+  useCanonical?: boolean;    // --use-canonical: use the DanteForge-class peer list (spec-kit/BMAD/autoresearch/claude-skills/orchestration peers)
+  calibrate?: boolean;       // --calibrate: run adversarial scorer and apply inflated-verdict corrections
+  // Injection seam for calibrate testing
+  _generateAdversarialScore?: (
+    selfResult: import('../../core/harsh-scorer.js').HarshScoreResult,
+    opts: import('../../core/adversarial-scorer-dim.js').AdversarialScorerDimOptions,
+  ) => Promise<import('../../core/adversarial-scorer-dim.js').AdversarialScoreResult>;
 }
 
 export interface CompeteResult {
-  action: 'status' | 'init' | 'sprint' | 'rescore' | 'report' | 'validate' | 'auto' | 'sync-scores';
+  action: 'status' | 'init' | 'sprint' | 'rescore' | 'report' | 'validate' | 'auto' | 'sync-scores' | 'calibrate';
   matrixPath: string;
   overallScore?: number;
   nextDimension?: MatrixDimension;
   masterplanPrompt?: string;
   dimensionsUpdated?: number;
   victoryMessage?: string;
-}
-
-// ── Helpers ───────────────────────────────────────────────────────────────────
-
-function formatScore(score: number): string {
-  return score.toFixed(1);
-}
-
-function gapBar(gap: number, maxGap = 10): string {
-  const filled = Math.round((gap / maxGap) * 10);
-  return '█'.repeat(filled) + '░'.repeat(10 - filled);
-}
-
-function formatTrend(dim: MatrixDimension): string {
-  if (dim.sprint_history.length === 0) return '·';
-  const last = dim.sprint_history[dim.sprint_history.length - 1]!;
-  const delta = last.after - last.before;
-  if (delta > 0) return `+${delta.toFixed(1)}↑`;
-  if (delta < 0) return `${delta.toFixed(1)}↓`;
-  return '→';
-}
-
-function formatStatusTable(matrix: CompeteMatrix): string {
-  const lines: string[] = [
-    `\n## Competitive Matrix — ${matrix.project}`,
-    `Overall self score: ${formatScore(matrix.overallSelfScore)}/10  |  Last updated: ${matrix.lastUpdated.slice(0, 10)}`,
-    `\n${'Dimension'.padEnd(32)} ${'Self'.padEnd(6)} ${'Leader'.padEnd(8)} ${'Gap'.padEnd(6)} ${'Priority'.padEnd(10)} ${'Trend'.padEnd(8)} Status`,
-    '─'.repeat(88),
-  ];
-
-  const sorted = [...matrix.dimensions].sort(
-    (a, b) => computeGapPriority(b) - computeGapPriority(a),
-  );
-
-  for (const dim of sorted) {
-    const leaderScore = Math.max(
-      ...Object.entries(dim.scores).filter(([k]) => k !== 'self').map(([, v]) => v),
-      0,
-    );
-    const priority = computeGapPriority(dim).toFixed(1);
-    const statusIcon = dim.status === 'closed' ? '✓' : dim.status === 'in-progress' ? '⚡' : '·';
-    const trend = formatTrend(dim);
-    lines.push(
-      `${(dim.label).slice(0, 31).padEnd(32)} ${formatScore(dim.scores['self'] ?? 0).padEnd(6)} ${formatScore(leaderScore).padEnd(8)} ${formatScore(dim.gap_to_leader).padEnd(6)} ${priority.padEnd(10)} ${trend.padEnd(8)} ${statusIcon} ${dim.status}`,
-    );
-  }
-
-  return lines.join('\n');
 }
 
 // ── Actions ───────────────────────────────────────────────────────────────────
@@ -200,11 +171,51 @@ async function actionInit(options: CompeteOptions, cwd: string): Promise<Compete
   };
 }
 
+async function actionReset(options: CompeteOptions, cwd: string): Promise<CompeteResult> {
+  const matrixPath = getMatrixPath(cwd);
+  const loadFn = options._loadMatrix ?? ((c) => loadMatrix(c));
+  const saveFn = options._saveMatrix ?? ((m, c) => saveMatrix(m, c));
+
+  const matrix = await loadFn(cwd);
+  if (!matrix) {
+    logger.error('No matrix found to reset. Run `danteforge compete --init` to bootstrap a fresh one.');
+    return { action: 'status', matrixPath };
+  }
+
+  // Back up the current matrix before mutating
+  try {
+    const stamp = new Date().toISOString().replace(/[:.]/g, '-');
+    const backupPath = path.join(path.dirname(matrixPath), `matrix.pre-${stamp}.json`);
+    await fs.copyFile(matrixPath, backupPath);
+    logger.info(`[compete --reset] Backup written: ${backupPath}`);
+  } catch (err) {
+    logger.warn(`[compete --reset] Backup failed (${err instanceof Error ? err.message : String(err)}). Continuing.`);
+  }
+
+  if (options.useCanonical) {
+    const { getCanonicalDanteForgeCompetitors } = await import('../../core/feature-universe.js');
+    const canonical = getCanonicalDanteForgeCompetitors();
+    matrix.competitors = canonical;
+    // If the matrix splits into closed-source/oss buckets, put everything in OSS
+    // since the canonical list is OSS-flavored peer projects.
+    matrix.competitors_oss = canonical;
+    matrix.competitors_closed_source = [];
+    await saveFn(matrix, cwd);
+    logger.success(`Matrix reset with ${canonical.length} canonical DanteForge peers. Old matrix saved as matrix.pre-*.json.`);
+    logger.info(`  Peers: ${canonical.slice(0, 6).join(', ')}, ...`);
+    logger.info(`  Run \`danteforge universe --refresh\` to rebuild the feature universe against the new peers.`);
+    return { action: 'status', matrixPath, overallScore: matrix.overallSelfScore };
+  }
+
+  logger.warn('[compete --reset] No reset target specified. Use `--use-canonical` to apply the DanteForge peer list.');
+  return { action: 'status', matrixPath, overallScore: matrix.overallSelfScore };
+}
+
 async function actionStatus(options: CompeteOptions, cwd: string): Promise<CompeteResult> {
   const matrixPath = getMatrixPath(cwd);
   const loadFn = options._loadMatrix ?? ((c) => loadMatrix(c));
 
-  const matrix = await loadFn(cwd);
+  let matrix = await loadFn(cwd);
 
   if (!matrix) {
     logger.info('No CHL matrix found. Run `danteforge compete --init` to bootstrap from a competitor scan.');
@@ -230,67 +241,6 @@ async function actionStatus(options: CompeteOptions, cwd: string): Promise<Compe
     overallScore: matrix.overallSelfScore,
     nextDimension: next ?? undefined,
   };
-}
-
-function logSprintGaps(
-  next: MatrixDimension,
-  selfScore: number,
-  sprintTarget: number,
-  harvestFrom: string,
-  ossLeaderScore: number,
-  csLeaderScore: number,
-  hasOssGap: boolean,
-  hasClosedGap: boolean,
-): void {
-  logger.info(`\nCHL Sprint — ${next.label}`);
-  if (hasClosedGap) {
-    logger.info(`Gold standard gap: ${formatScore(selfScore)} → ${formatScore(csLeaderScore)} (${next.closed_source_leader}) — what users pay for`);
-  }
-  if (hasOssGap) {
-    logger.info(`Harvestable gap:   ${formatScore(selfScore)} → ${formatScore(ossLeaderScore)} (${next.oss_leader}) — what OSS has solved`);
-  }
-  if (!hasOssGap && !hasClosedGap) {
-    const leaderScore = Math.max(
-      ...Object.entries(next.scores).filter(([k]) => k !== 'self').map(([, v]) => v),
-      0,
-    );
-    logger.info(`Gap: ${formatScore(selfScore)} → ${formatScore(leaderScore)} (${next.leader})`);
-  }
-  if (hasOssGap && hasClosedGap) {
-    logger.info(`\nSprint goal: Close harvestable gap first (${formatScore(selfScore)} → ${formatScore(sprintTarget)}).`);
-    logger.info(`Harvest from: ${harvestFrom} (open-source, MIT/Apache licensed).`);
-    logger.info(`Gold standard ceiling: ${next.closed_source_leader} at ${formatScore(csLeaderScore)}.`);
-  }
-}
-
-function buildHarvestBriefPrompt(
-  next: MatrixDimension,
-  selfScore: number,
-  sprintTarget: number,
-  harvestFrom: string,
-  ossSearchContext: string,
-  hasOssGap: boolean,
-  hasClosedGap: boolean,
-  csLeaderScore: number,
-): string {
-  return [
-    `You are helping close a competitive gap in this project using the Competitive Harvest Loop (CHL).`,
-    ossSearchContext ? `\n## Real OSS discovery results (use these — do not hallucinate)\n${ossSearchContext}` : '',
-    ``,
-    `## Dimension to close`,
-    `Name: ${next.label}`,
-    `Current self score: ${formatScore(selfScore)}/10`,
-    hasOssGap ? `OSS leader: ${harvestFrom} at ${formatScore(sprintTarget)}/10 (open-source — harvestable this sprint)` : '',
-    hasClosedGap ? `Gold standard: ${next.closed_source_leader} at ${formatScore(csLeaderScore)}/10 (long-term target)` : '',
-    ``,
-    `## Task`,
-    `1. Identify 2-3 open-source projects (MIT/Apache-2.0 license only) that best implement "${next.label}".`,
-    hasOssGap ? `   Priority: ${harvestFrom} is the known OSS leader — focus on what specific patterns to extract from it.` : '',
-    `2. For each project: one sentence on what SPECIFIC pattern to harvest (not general features).`,
-    `3. Write a concise /inferno masterplan goal: "Close ${next.label} gap from ${formatScore(selfScore)} to ${formatScore(sprintTarget)}. Harvest from: ${harvestFrom}. Key patterns: [X, Y, Z]."`,
-    ``,
-    `Output ONLY: the OSS project bullets, then the masterplan goal line. No preamble.`,
-  ].filter(Boolean).join('\n');
 }
 
 async function displayCoflOperatorPanel(matrix: CompeteMatrix, next: MatrixDimension): Promise<void> {
@@ -387,24 +337,13 @@ async function markDimensionInProgress(
   }
 }
 
-function logSprintOutput(harvestBrief: string, masterplanPrompt: string, nextId: string): void {
-  logger.info('\n## OSS Harvest Brief');
-  if (harvestBrief) logger.info(harvestBrief);
-  logger.info('\n## /inferno Masterplan Goal');
-  logger.info(masterplanPrompt);
-  logger.info('\nRun this with:');
-  logger.info(`  danteforge inferno "${masterplanPrompt}"`);
-  logger.info(`\nAfter the sprint, update the matrix:`);
-  logger.info(`  danteforge compete --rescore "${nextId}=<new_score>[,<commit_sha>]"`);
-}
-
 async function actionSprint(options: CompeteOptions, cwd: string): Promise<CompeteResult> {
   const matrixPath = getMatrixPath(cwd);
   const loadFn = options._loadMatrix ?? ((c) => loadMatrix(c));
   const saveFn = options._saveMatrix ?? ((m, c) => saveMatrix(m, c));
   const callLlm = options._callLLM ?? callLLM;
 
-  const matrix = await loadFn(cwd);
+  let matrix = await loadFn(cwd);
   if (!matrix) {
     logger.info('No CHL matrix found. Run `danteforge compete --init` first.');
     return { action: 'sprint', matrixPath };
@@ -429,69 +368,11 @@ async function actionSprint(options: CompeteOptions, cwd: string): Promise<Compe
   return { action: 'sprint', matrixPath, overallScore: matrix.overallSelfScore, nextDimension: next, masterplanPrompt };
 }
 
-function parseRescore(rescore: string): { dimensionId: string; score: number; commit?: string } {
-  // Format: "dim_id=7.5" or "dim_id=7.5,abc123sha"
-  const [idPart, rest] = rescore.split('=');
-  if (!idPart || !rest) {
-    throw new Error(`Invalid --rescore format. Use: "dimension_id=score" or "dimension_id=score,commit_sha"`);
-  }
-  const [scorePart, commit] = rest.split(',');
-  const score = parseFloat(scorePart ?? '');
-  if (isNaN(score) || score < 0 || score > 10) {
-    throw new Error(`Score must be a number between 0 and 10, got: "${scorePart}"`);
-  }
-  return { dimensionId: idPart.trim(), score, commit: commit?.trim() };
-}
-
-async function runCertifyGate(
-  rescore: string,
-  options: CompeteOptions,
-  cwd: string,
-  matrixPath: string,
-): Promise<{ receipt: VerifyReceipt | null; blocked: boolean; result?: CompeteResult }> {
-  const receiptFn = options._readVerifyReceipt ?? ((c) => readLatestVerifyReceipt(c));
-  if (options.skipVerify) {
-    logger.warn('--skip-verify: CERTIFY gate bypassed. Score recorded without verify receipt.');
-    return { receipt: null, blocked: false };
-  }
-  const receipt = await receiptFn(cwd);
-  if (!receipt) {
-    logger.error('CERTIFY BLOCKED: No verify receipt found.');
-    logger.info('Run `npm run verify` (or `danteforge verify`) first to certify this sprint.');
-    logger.info(`Then re-run: danteforge compete --rescore "${rescore}"`);
-    logger.info(`Override: danteforge compete --rescore "${rescore}" --skip-verify`);
-    return { receipt: null, blocked: true, result: { action: 'rescore', matrixPath } };
-  }
-  if (receipt.status === 'fail') {
-    logger.error(`CERTIFY BLOCKED: Last verify run had failures.`);
-    logger.info(`Verify status: ${receipt.status} | ${receipt.counts.failures} failure(s)`);
-    logger.info('Fix all test/typecheck failures, run `danteforge verify`, then retry.');
-    logger.info(`Override: danteforge compete --rescore "${rescore}" --skip-verify`);
-    return { receipt: null, blocked: true, result: { action: 'rescore', matrixPath } };
-  }
-  if (receipt.status === 'warn') {
-    logger.warn(`Verify has warnings (${receipt.counts.warnings}). Score recorded, but fix warnings before next sprint.`);
-  }
-  return { receipt, blocked: false };
-}
-
-async function writeRescoreEvidence(
-  evidence: CompeteEvidence,
-  cwd: string,
-  writeFn: (record: CompeteEvidence, p: string) => Promise<void>,
-): Promise<void> {
-  const evidencePath = path.join(cwd, '.danteforge', 'evidence', 'compete', `${Date.now()}-${evidence.dimensionId}.json`);
-  try { await writeFn(evidence, evidencePath); } catch { /* best-effort */ }
-}
-
 async function actionRescore(options: CompeteOptions, cwd: string, rescore: string): Promise<CompeteResult> {
   const matrixPath = getMatrixPath(cwd);
   const loadFn = options._loadMatrix ?? ((c) => loadMatrix(c));
   const saveFn = options._saveMatrix ?? ((m, c) => saveMatrix(m, c));
-  const writeFn = options._writeEvidence ?? (async (record: CompeteEvidence, evidencePath: string) => {
-    await fs.mkdir(path.dirname(evidencePath), { recursive: true });
-    await fs.writeFile(evidencePath, JSON.stringify(record, null, 2), 'utf8');
-  });
+  const writeFn = options._writeEvidence ?? defaultEvidenceWriter;
 
   const { dimensionId, score, commit } = parseRescore(rescore);
   const { receipt, blocked, result: gateResult } = await runCertifyGate(rescore, options, cwd, matrixPath);
@@ -510,26 +391,40 @@ async function actionRescore(options: CompeteOptions, cwd: string, rescore: stri
   }
 
   const before = dim.scores['self'] ?? 0;
-  updateDimensionScore(matrix, dimensionId, score, commit);
-  matrix.overallSelfScore = computeOverallScore(matrix);
-  await saveFn(matrix, cwd);
-
-  await writeRescoreEvidence({
+  const evidenceRel = await writeRescoreEvidence({
     dimensionId, label: dim.label, scoreBefore: before, scoreAfter: score,
     delta: score - before, verifyStatus: options.skipVerify ? 'skipped' : 'pass',
     verifyTimestamp: receipt?.timestamp, commit, timestamp: new Date().toISOString(),
   }, cwd, writeFn);
+  if (options._loadMatrix || options._saveMatrix) {
+    updateDimensionScore(matrix, dimensionId, score, commit);
+    matrix.overallSelfScore = computeOverallScore(matrix);
+    await saveFn(matrix, cwd);
+  } else {
+    await proposeAndMergeScore({
+      cwd,
+      dimensionId,
+      score,
+      agent: 'compete-rescore',
+      rationale: `compete --rescore ${dimensionId}=${score}`,
+      evidence: evidenceRel,
+      commit,
+    });
+  }
+
+  const updatedMatrix = (options._loadMatrix || options._saveMatrix) ? matrix : await loadMatrix(cwd) ?? matrix;
+  const updatedDim = updatedMatrix.dimensions.find(d => d.id === dimensionId) ?? dim;
 
   const delta = score - before;
   const deltaStr = delta >= 0 ? `+${delta.toFixed(1)}` : delta.toFixed(1);
   logger.success(`${dim.label}: ${formatScore(before)} → ${formatScore(score)} (${deltaStr})`);
-  logger.info(`Overall: ${formatScore(matrix.overallSelfScore)}/10`);
+  logger.info(`Overall: ${formatScore(updatedMatrix.overallSelfScore)}/10`);
   if (commit) logger.info(`Commit: ${commit}`);
   if (dim.status === 'closed') logger.success(`✓ Gap closed on "${dim.label}"!`);
-  const next = getNextSprintDimension(matrix);
+  const next = getNextSprintDimension(updatedMatrix);
   if (next) logger.info(`\nNext sprint: "${next.label}" (gap: ${formatScore(next.gap_to_leader)})`);
 
-  return { action: 'rescore', matrixPath, overallScore: matrix.overallSelfScore, nextDimension: next ?? undefined, dimensionsUpdated: 1 };
+  return { action: 'rescore', matrixPath, overallScore: updatedMatrix.overallSelfScore, nextDimension: next ?? undefined, dimensionsUpdated: 1 };
 }
 
 async function actionReport(options: CompeteOptions, cwd: string): Promise<CompeteResult> {
@@ -687,14 +582,146 @@ async function actionSyncScores(options: CompeteOptions, cwd: string): Promise<C
   for (const d of report.driftedDimensions) {
     const dir = d.matrixScore > d.harshScore ? '↓' : '↑';
     logger.info(`  ${d.label}: ${formatScore(d.matrixScore)} → ${formatScore(d.harshScore)} (${dir})`);
-    updateDimensionScore(matrix, d.id, d.harshScore);
+    if (options._loadMatrix || options._saveMatrix) {
+      updateDimensionScore(matrix, d.id, d.harshScore);
+    } else {
+      await writeScoreProposal({
+        cwd,
+        dimension: d.id,
+        score: d.harshScore,
+        agent: 'compete-sync-scores',
+        rationale: `Live strict scorer drift correction from ${formatScore(d.matrixScore)} to ${formatScore(d.harshScore)}.`,
+      });
+    }
     updated++;
   }
 
-  matrix.lastUpdated = new Date().toISOString();
-  await saveFn(matrix, cwd);
-  logger.success(`Synced ${updated} dimension(s). Overall: ${formatScore(computeOverallScore(matrix))}/10`);
-  return { action: 'validate', matrixPath, overallScore: computeOverallScore(matrix), dimensionsUpdated: updated };
+  if (options._loadMatrix || options._saveMatrix) {
+    matrix.lastUpdated = new Date().toISOString();
+    await saveFn(matrix, cwd);
+  } else {
+    await mergeScoreProposals({ cwd, policy: 'harsh-min', agent: 'compete-sync-scores' });
+  }
+  const updatedMatrix = (options._loadMatrix || options._saveMatrix) ? matrix : await loadMatrix(cwd) ?? matrix;
+  logger.success(`Synced ${updated} dimension(s). Overall: ${formatScore(computeOverallScore(updatedMatrix))}/10`);
+  return { action: 'validate', matrixPath, overallScore: computeOverallScore(updatedMatrix), dimensionsUpdated: updated };
+}
+
+// ── Calibrate ─────────────────────────────────────────────────────────────────
+
+/** Map scorer camelCase dimension IDs to matrix snake_case IDs. */
+function scorerDimToMatrixId(scorerDim: string): string {
+  return scorerDim.replace(/([A-Z])/g, '_$1').toLowerCase();
+}
+
+async function actionCalibrate(options: CompeteOptions, cwd: string): Promise<CompeteResult> {
+  const matrixPath = getMatrixPath(cwd);
+  const loadFn = options._loadMatrix ?? ((c) => loadMatrix(c));
+  const saveFn = options._saveMatrix ?? ((m, c) => saveMatrix(m, c));
+  const harshScoreFn = options._harshScore ?? computeHarshScore;
+  const strictDimsFn = options._computeStrictDims ?? computeStrictDimensions;
+  const { generateAdversarialScore } = await import('../../core/adversarial-scorer-dim.js');
+  const adversarialFn = options._generateAdversarialScore ?? generateAdversarialScore;
+
+  const matrix = await loadFn(cwd);
+  if (!matrix) {
+    logger.info('No CHL matrix found. Run `danteforge compete --init` first.');
+    return { action: 'calibrate', matrixPath };
+  }
+
+  logger.info('Running harsh scorer for baseline scores...');
+  let harshResult: import('../../core/harsh-scorer.js').HarshScoreResult;
+  try {
+    harshResult = await harshScoreFn({ cwd });
+    await applyStrictOverrides(harshResult, cwd, strictDimsFn);
+  } catch {
+    logger.error('Harsh scorer failed — cannot calibrate.');
+    return { action: 'calibrate', matrixPath };
+  }
+
+  logger.info('Running adversarial scorer (hostile review)...');
+  let adversarialResult: import('../../core/adversarial-scorer-dim.js').AdversarialScoreResult;
+  try {
+    adversarialResult = await adversarialFn(harshResult, { cwd });
+  } catch {
+    logger.error('Adversarial scorer failed — cannot calibrate.');
+    return { action: 'calibrate', matrixPath };
+  }
+
+  // Build a map: matrixDimId → { harshScore, adversarialScore, verdict, rationale }
+  const adversarialByMatrixId = new Map<string, { harsh: number; adv: number; rationale: string }>();
+  const harshDims = harshResult.displayDimensions as Record<string, number>;
+  for (const dimScore of adversarialResult.dimensions) {
+    const matrixId = scorerDimToMatrixId(dimScore.dimension);
+    const harshScore = harshDims[dimScore.dimension] ?? (harshDims[matrixId] ?? 0);
+    adversarialByMatrixId.set(matrixId, {
+      harsh: harshScore,
+      adv: dimScore.adversarialScore,
+      rationale: dimScore.rationale,
+    });
+  }
+
+  // Collect inflated dimensions
+  const inflated: Array<{ id: string; label: string; before: number; after: number; adv: number }> = [];
+  for (const dim of matrix.dimensions) {
+    const entry = adversarialByMatrixId.get(dim.id);
+    if (!entry) continue;
+    const selfScore = dim.scores['self'] ?? 0;
+    const divergence = entry.adv - selfScore;
+    if (divergence <= -1.5) {
+      const consensus = Math.round(((entry.harsh + entry.adv) / 2) * 10) / 10;
+      inflated.push({ id: dim.id, label: dim.label, before: selfScore, after: consensus, adv: entry.adv });
+    }
+  }
+
+  if (inflated.length === 0) {
+    logger.success('✓ No inflated dimensions found — matrix scores are trusted by adversarial review.');
+    return { action: 'calibrate', matrixPath, overallScore: matrix.overallSelfScore, dimensionsUpdated: 0 };
+  }
+
+  // Show diff table
+  logger.info(`\nAdversarial calibration will adjust ${inflated.length} dimension(s):\n`);
+  logger.info('  Dimension                         Before  Adversary  Consensus');
+  logger.info('  ' + '─'.repeat(66));
+  for (const d of inflated) {
+    const label = d.label.padEnd(34);
+    logger.info(`  ${label}  ${formatScore(d.before).padStart(5)}  ${formatScore(d.adv).padStart(8)}  ${formatScore(d.after).padStart(9)}`);
+  }
+  logger.info('');
+
+  if (!options.yes) {
+    logger.info('Run with --yes to apply these corrections.');
+    return { action: 'calibrate', matrixPath, overallScore: matrix.overallSelfScore, dimensionsUpdated: 0 };
+  }
+
+  // Apply
+  let updated = 0;
+  for (const d of inflated) {
+    const entry = adversarialByMatrixId.get(d.id)!;
+    if (options._loadMatrix || options._saveMatrix) {
+      const applied = applyAdversarialCalibration(matrix, d.id, entry.harsh, entry.adv, 'inflated', entry.rationale);
+      if (applied) updated++;
+    } else {
+      await writeScoreProposal({
+        cwd,
+        dimension: d.id,
+        score: d.after,
+        agent: 'compete-calibrate',
+        rationale: `Adversarial inflated verdict: ${entry.rationale}`,
+      });
+      updated++;
+    }
+  }
+
+  if (options._loadMatrix || options._saveMatrix) {
+    matrix.lastUpdated = new Date().toISOString();
+    await saveFn(matrix, cwd);
+  } else {
+    await mergeScoreProposals({ cwd, policy: 'harsh-min', agent: 'compete-calibrate' });
+  }
+  const updatedMatrix = (options._loadMatrix || options._saveMatrix) ? matrix : await loadMatrix(cwd) ?? matrix;
+  logger.success(`Calibrated ${updated} dimension(s). Overall: ${formatScore(computeOverallScore(updatedMatrix))}/10`);
+  return { action: 'calibrate', matrixPath, overallScore: computeOverallScore(updatedMatrix), dimensionsUpdated: updated };
 }
 
 // ── Main Entry ────────────────────────────────────────────────────────────────
@@ -709,7 +736,7 @@ export async function actionAutoSprint(options: CompeteOptions, cwd: string): Pr
   const runInferno = options._runInferno ?? defaultRunInferno;
   const postSprintScoreFn = options._postSprintScore ?? (options._harshScore ?? computeHarshScore);
 
-  const matrix = await loadFn(cwd);
+  let matrix = await loadFn(cwd);
   if (!matrix) {
     emit('No CHL matrix found. Run `danteforge compete --init` first.');
     return { action: 'auto', matrixPath };
@@ -751,10 +778,20 @@ export async function actionAutoSprint(options: CompeteOptions, cwd: string): Pr
       await applyStrictOverrides(postResult, cwd, options._computeStrictDims ?? computeStrictDimensions);
       const newSelfScore = postResult.displayScore;
 
-      // Update matrix dimension score (mutates in place, scores are 0-10 scale)
-      updateDimensionScore(matrix, next.id, newSelfScore);
-      matrix.overallSelfScore = computeOverallScore(matrix);
-      await saveFn(matrix, cwd);
+      if (options._loadMatrix || options._saveMatrix) {
+        updateDimensionScore(matrix, next.id, newSelfScore);
+        matrix.overallSelfScore = computeOverallScore(matrix);
+        await saveFn(matrix, cwd);
+      } else {
+        await proposeAndMergeScore({
+          cwd,
+          dimensionId: next.id,
+          score: newSelfScore,
+          agent: 'compete-auto',
+          rationale: `Post-inferno strict scorer for "${next.label}" returned ${newSelfScore.toFixed(1)}.`,
+        });
+        matrix = await loadMatrix(cwd) ?? matrix;
+      }
 
       if (newSelfScore >= topScore) {
         victoryMessage = `Victory — ${next.label} now ahead of ${topCompetitor} (${newSelfScore.toFixed(1)} vs ${topScore.toFixed(1)})`;
@@ -800,10 +837,24 @@ async function defaultRunInferno(goal: string, _cwd: string): Promise<void> {
 
 export async function compete(options: CompeteOptions = {}): Promise<CompeteResult> {
   const cwd = options.cwd ?? process.cwd();
+
+  // --- Decision-node: record start (best-effort) ---
+  let _dnStartNodeId: string | undefined;
+  const _dnT0 = Date.now();
+  try {
+    const { getSession, recordDecision } = await import('../../core/decision-node-recorder.js');
+    const _dnSess = getSession(cwd);
+    const _dnStart = await recordDecision({ session: _dnSess, actorType: 'agent', prompt: 'compete: competitive matrix management', context: { cwd }, result: 'in-progress', success: false });
+    _dnStartNodeId = _dnStart.id;
+  } catch { /* never block */ }
+
   const loadFn = options._loadMatrix ?? ((c) => loadMatrix(c));
   const saveFn = options._saveMatrix ?? ((m, c) => saveMatrix(m, c));
 
   try {
+    if (options.amend) return await handleAmend(options.amend, loadFn, saveFn, cwd);
+    if (options.amendFile) return await handleAmendFile(options.amendFile, loadFn, saveFn, cwd);
+
     if (options.removeCompetitor) {
       const matrix = await loadFn(cwd);
       if (!matrix) { logger.error('No matrix found. Run `danteforge compete --init` first.'); return { action: 'status', matrixPath: getMatrixPath(cwd) }; }
@@ -822,6 +873,24 @@ export async function compete(options: CompeteOptions = {}): Promise<CompeteResu
       return { action: 'status', matrixPath: getMatrixPath(cwd), overallScore: matrix.overallSelfScore };
     }
 
+    if (options.excludeDimension) {
+      const matrix = await loadFn(cwd);
+      if (!matrix) { logger.error('No matrix found. Run `danteforge compete --init` first.'); return { action: 'status', matrixPath: getMatrixPath(cwd) }; }
+      excludeDimension(matrix, options.excludeDimension);
+      await saveFn(matrix, cwd);
+      logger.success(`Excluded dimension "${options.excludeDimension}" — sprint selection, work-packets, and gap ranking will skip it. Reverse with --include "${options.excludeDimension}".`);
+      return { action: 'status', matrixPath: getMatrixPath(cwd), overallScore: matrix.overallSelfScore };
+    }
+
+    if (options.includeDimension) {
+      const matrix = await loadFn(cwd);
+      if (!matrix) { logger.error('No matrix found. Run `danteforge compete --init` first.'); return { action: 'status', matrixPath: getMatrixPath(cwd) }; }
+      includeDimension(matrix, options.includeDimension);
+      await saveFn(matrix, cwd);
+      logger.success(`Included dimension "${options.includeDimension}" — it is once again eligible for sprints and work-packets.`);
+      return { action: 'status', matrixPath: getMatrixPath(cwd), overallScore: matrix.overallSelfScore };
+    }
+
     if (options.edit) {
       const matrix = await loadFn(cwd);
       if (!matrix) { logger.error('No matrix found. Run `danteforge compete --init` first.'); return { action: 'status', matrixPath: getMatrixPath(cwd) }; }
@@ -830,14 +899,23 @@ export async function compete(options: CompeteOptions = {}): Promise<CompeteResu
       return { action: 'status', matrixPath: getMatrixPath(cwd), overallScore: matrix.overallSelfScore };
     }
 
+    if (options.reset) return await actionReset(options, cwd);
     if (options.init) return await actionInit(options, cwd);
+    if (options.calibrate) return await actionCalibrate(options, cwd);
     if (options.auto || (options.sprint && options.auto)) return await actionAutoSprint(options, cwd);
     if (options.sprint) return await actionSprint(options, cwd);
     if (options.rescore) return await actionRescore(options, cwd, options.rescore);
     if (options.report) return await actionReport(options, cwd);
     if (options.validate) return await actionValidate(options, cwd);
     if (options.syncScores) return await actionSyncScores(options, cwd);
-    return await actionStatus(options, cwd);
+    const result = await actionStatus(options, cwd);
+    // --- Decision-node: record completion (best-effort) ---
+    try {
+      const { getSession, recordDecision } = await import('../../core/decision-node-recorder.js');
+      const _dnSess = getSession(cwd);
+      await recordDecision({ session: _dnSess, parentNodeId: _dnStartNodeId, actorType: 'agent', prompt: 'compete: competitive matrix management [complete]', result: 'compete complete', success: true, latencyMs: Date.now() - _dnT0 });
+    } catch { /* best-effort */ }
+    return result;
   } catch (err) {
     logger.error(`compete failed: ${err instanceof Error ? err.message : String(err)}`);
     throw err;

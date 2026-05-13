@@ -37,6 +37,20 @@ Options:
 
 CLI fallback only on explicit request: `danteforge autoforge [goal]`
 
+## Agent Anti-Bloat Guard
+
+Before executing code changes, choose one workstream from `.danteforge/agent-ownership.json`
+and create an ephemeral `.danteforge/agent-claims/<workstream>-<agent>.lock`.
+Do not commit claim files. Before every checkpoint/commit, run:
+
+```bash
+node scripts/check-agent-guard.mjs --staged --workstream <workstream>
+```
+
+If the guard reports `FROZEN_FILE_CHANGED`, move the change into an owned module
+and use an extension point. Only explicit platform-kernel sprints may use
+`DANTEFORGE_ALLOW_FROZEN=1`.
+
 ## TOOL SAFETY RULES — All Models Must Follow
 
 **NEVER run** these commands — they destroy all in-progress work:

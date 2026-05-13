@@ -357,6 +357,17 @@ async function logEmergentDimensions(cwd: string | undefined): Promise<void> {
 
 export async function universeScan(opts: UniverseScanOptions = {}): Promise<UniverseScan> {
   const cwd = opts.cwd ?? process.cwd();
+
+  // --- Decision-node: record start (best-effort) ---
+  let _dnStartNodeId: string | undefined;
+  const _dnT0 = Date.now();
+  try {
+    const { getSession, recordDecision } = await import('../../core/decision-node-recorder.js');
+    const _dnSess = getSession(cwd);
+    const _dnStart = await recordDecision({ session: _dnSess, actorType: 'agent', prompt: 'universe-scan: OSS universe discovery', context: { cwd }, result: 'in-progress', success: false });
+    _dnStartNodeId = _dnStart.id;
+  } catch { /* never block */ }
+
   const llmCaller = opts._llmCaller ?? callLLM;
   const isLLMAvailableFn = opts._isLLMAvailable ?? isLLMAvailable;
   const readGoal = opts._readGoal ?? defaultReadGoal;
@@ -446,6 +457,14 @@ export async function universeScan(opts: UniverseScanOptions = {}): Promise<Univ
   await logEmergentDimensions(cwd);
 
   logger.info(`[universe-scan] Complete. ${dimensions.length} dimensions scored. Written to .danteforge/.`);
+
+  // --- Decision-node: record completion (best-effort) ---
+  try {
+    const { getSession, recordDecision } = await import('../../core/decision-node-recorder.js');
+    const _dnSess = getSession(cwd);
+    await recordDecision({ session: _dnSess, parentNodeId: _dnStartNodeId, actorType: 'agent', prompt: 'universe-scan: OSS universe discovery [complete]', result: 'universe scan complete', success: true, latencyMs: Date.now() - _dnT0 });
+  } catch { /* best-effort */ }
+
   return scan;
 }
 

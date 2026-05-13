@@ -26,12 +26,159 @@ This file is the repo-level source of truth for coding agents (Codex, Claude Cod
 - Keep `.codex/config.toml` free of workflow-command alias collisions so native slash commands win in Codex.
 - Do not commit generated/vendor paths (`node_modules/`, `dist/`, `coverage/`, `./.danteforge/`, `vscode-extension/node_modules/`, `vscode-extension/dist/`).
 
+## File Size Standard (enforced — do not bypass)
+
+Every TypeScript source file in `src/` and `packages/` must stay within these limits:
+
+| Threshold | LOC (non-blank) | Action |
+|-----------|----------------|--------|
+| **Ideal** | ≤ 500 | Target for all new files |
+| **Warning** | 501–750 | ESLint warns; must plan a split |
+| **Hard cap** | > 750 | `npm run check:file-size` exits 1 — CI fails |
+
+**Why this matters for LLMs:** Files over 500 LOC exceed the practical context window where an LLM can reason about the whole file without making structural mistakes (missing imports, wrong function scope, stale variable names). At 750+ LOC, error rates climb significantly.
+
+**How to split:** When a module grows past 500 LOC, extract into focused sub-modules:
+```
+foo.ts          → foo.ts + foo-types.ts + foo-utils.ts
+commands/bar.ts → commands/bar.ts + commands/bar-helpers.ts
+```
+
+Keep the public API surface in the main file; move implementation details to `-utils.ts` or `-helpers.ts` siblings.
+
+## Multi-Agent Anti-Bloat Guard (enforced)
+
+When multiple agents work in parallel, shared runtime files are treated as kernel
+surfaces. Do not add dimension-specific business logic to frozen files listed in
+`.danteforge/agent-guard.json`; add an owned helper, hook, adapter, or registrar
+instead.
+
+Before parallel work, create an ephemeral claim under `.danteforge/agent-claims/`
+and choose a workstream from `.danteforge/agent-ownership.json`. Claim files are
+never committed. Before committing, run:
+
+```
+npm run check:agent-guard -- --staged --workstream <workstream>
+npm run check:file-size
+```
+
+Use `DANTEFORGE_ALLOW_FROZEN=1` only for explicit platform-kernel work that adds
+or repairs extension points. See `docs/AGENT_BLOAT_PREVENTION_SYSTEM.md`.
+
+## Matrix Development Engine (enforced)
+
+Any command or agent that scores, improves, rescales, or reviews competitive
+dimensions must use the Matrix Development Engine:
+
+```
+claim dimension -> run work -> propose score -> locked merge -> Time Machine snapshot -> guard verification
+```
+
+Do not edit `.danteforge/compete/matrix.json` directly after scoring work. Use
+`danteforge matrix status|claim|propose|merge|ascend`, or the compatibility
+wrapper `npm run dimension:ascent`. Default merge policy is `harsh-min`, so
+skeptical downgrades win over optimistic stale writes. The agent guard fails
+direct matrix edits unless a Matrix Development merge receipt is present.
+
+### Dimension exclusion (de-prioritization, not removal)
+
+Per-project user preference to skip a dimension across sprints, work-packet
+generation, and gap-rank reporting:
+
+```bash
+danteforge compete --exclude <dim_id>   # de-prioritize, keep in matrix for scoring
+danteforge compete --include <dim_id>   # reverse
+```
+
+The list is persisted as `excludedDimensions: string[]` in `matrix.json`. The
+`matrix-kernel work-packets` engine, `getNextSprintDimension`, `getTopGapDimensions`,
+and `classifyDimensions` all consult this list. Use `--exclude` (not
+`--drop-dimension`) when the dimension should still count for scoring continuity
+but agents should never auto-target it.
+
+See `docs/MATRIX_DEVELOPMENT_ENGINE.md`.
+
+## Cross-Tool Skill + Command Distribution
+
+This repo doubles as a skills library for Claude Code, Codex, Cursor, Windsurf,
+Aider, OpenHands, Copilot, Continue, and Gemini CLI. Every file under `commands/`
+becomes both a Claude Code slash command (canonical path) AND a per-tool rule
+file when users run `danteforge setup assistants --assistants all`. The
+installer:
+
+- Copies `commands/*.md` to `~/.codex/commands/` (Codex native slash commands)
+- Writes each command as `.cursor/rules/danteforge-<name>.mdc` with
+  `alwaysApply: false`
+- Writes each command as `.windsurf/rules/danteforge-<name>.md` with a derived
+  name/description header
+- Ships every `src/harvested/dante-agents/skills/<name>/SKILL.md` to each tool's
+  skills directory
+
+**Authoring contract:** new slash commands live in `commands/`, NOT in
+`.claude-plugin/commands/` (that directory was retired — Claude Code's plugin
+discovery reads from `commands/` at the plugin root). Every command file must
+carry a frontmatter header with `name:` and `description:` so the per-tool
+exporters can derive correct metadata.
+
+## Autonomous `/matrixdev`
+
+`/matrixdev` defaults to autonomous mode: probe adapter (claude → codex →
+ollama → fake), dispatch wave 1, run all courts, emit report — no per-step
+confirmations. Pass `--ask` to opt into the old prompt-per-step flow, or
+`--safe` to force the fake adapter for a dry-run validation.
+
+The `Safe agents now: 0` warning is treated as non-blocking when each wave
+contains exactly one packet (single-packet waves are trivially safe). Hard
+blockers (`Blocked packets > 0`, protected-path violations, ownership
+violations) still halt dispatch.
+
+## Three-Role Architecture: Embedded / Orchestrator / Observer
+
+The matrix kernel runs in one of three modes depending on launch context.
+Detection happens via `CLAUDE_PLUGIN_ROOT` / `CODEX_SESSION` env vars
+(`src/core/host-detection.ts:detectHostAI()`).
+
+1. **Embedded mode** (`--adapter embedded`, or `--adapter auto` inside a host AI).
+   The kernel writes Work Instruction Packets to
+   `.danteforge/embedded-mode/<leaseId>/work-instruction.md`. The host AI
+   reads each packet and executes the lease *inline* with its own Edit/Write
+   tools. No subprocess is spawned, so a single Claude Code / Codex
+   subscription is billed once. The host signals completion via
+   `danteforge matrix-kernel embedded-complete <leaseId>` — the kernel
+   captures `git diff --name-only HEAD` and queues the lease for verify-court.
+
+2. **Orchestrator mode** (`--adapter claude|codex|ollama|<api>`, or `auto` in
+   a plain terminal). The kernel spawns real worker subprocesses via the
+   existing adapters in `src/matrix/adapters/`. This is the right mode for
+   headless CI runs and multi-agent parallel work.
+
+3. **Observer mode** (`danteforge war-room`). A read-side terminal TUI that
+   tails the matrix state files via `fs.watchFile()` and renders Plan +
+   Leases + Courts + Mailbox + Retro panels. Works in any TTY (tmux, ssh,
+   integrated terminal). `--once` produces a single render for CI.
+
+The **mailbox bus** at `.danteforge/matrix/matrix.mailbox.json` is the
+shared message log across modes. Any agent (worker or embedded) can post
+via `matrix-kernel mailbox post --from <lease> --to <lease|broadcast>
+--type <type> --summary <text>` and poll via `mailbox poll
+[--lease <id>] [--timeout <ms>] [--types <comma>]`. `matrix-kernel
+mailbox list` shows the full history. Wave dispatch in `run-wave`
+auto-publishes a `merge_ready` / `regression_detected` /
+`human_decision_required` message per completed lease so observers see
+progress without polling git or grep'ing logs.
+
+State writes are protected by `withFileLock` (atomic O_EXCL with TTL
+reclaim, from `src/core/sanitize-locks.ts`) — two parallel agents updating
+`matrix.agent-runs.json` concurrently cannot tear each other's data.
+
 ## Definition Of Done
 
 - `npm run verify` passes
+- `npm run check:agent-guard` passes for the changed files/workstream
 - `npm run build` passes
 - `npm --prefix vscode-extension run build` passes when extension files changed
 - Tests/docs updated when behavior or operator workflow changes
+- No new file exceeds 500 non-blank LOC (hard limit: 750)
 
 ## Workflow Pipeline
 
@@ -130,6 +277,7 @@ Usage rule:
 | `danteforge harvest-pattern` | Focused OSS pattern harvest with Y/N confirmation per gap | `--max-repos` |
 | `danteforge build` | Guided spec-to-ship wizard: constitution→specify→clarify→plan→tasks→forge→verify→score | `--interactive` |
 | `danteforge ascend` | Fully autonomous scoring loop: classify ceiling dims, drive all achievable to 9.0/10 | `--target`, `--max-cycles`, `--interactive`, `--dry-run` |
+| `danteforge sanitize` | Break up oversized files via hybrid AST + LLM splitting under safety rails | `--check`, `--dry-run`, `--threshold`, `--max-cycles`, `--max-tokens`, `--yes` |
 | `danteforge danteforge` | Maximum-power all-in-one: harvest + OSS + 10-wave autoforge + party + convergence | |
 
 ### Utilities

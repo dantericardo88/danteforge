@@ -25,6 +25,16 @@ export async function maturity(options: MaturityOptions = {}): Promise<void> {
   return withErrorBoundary('maturity', async () => {
     const cwd = options.cwd ?? process.cwd();
 
+    // --- Decision-node: record start (best-effort) ---
+    let _dnStartNodeId: string | undefined;
+    const _dnT0 = Date.now();
+    try {
+      const { getSession, recordDecision } = await import('../../core/decision-node-recorder.js');
+      const _dnSess = getSession(cwd);
+      const _dnStart = await recordDecision({ session: _dnSess, actorType: 'agent', prompt: 'maturity: project maturity assessment', context: { cwd }, result: 'in-progress', success: false });
+      _dnStartNodeId = _dnStart.id;
+    } catch { /* never block */ }
+
     const loadStateFn = options._loadState ?? loadState;
     const scoreArtifactsFn = options._scoreArtifacts ?? scoreAllArtifacts;
     const assessMaturityFn = options._assessMaturity ?? assessMaturity;
@@ -73,6 +83,13 @@ export async function maturity(options: MaturityOptions = {}): Promise<void> {
     if (assessment.recommendation === 'blocked') {
       process.exitCode = 1;
     }
+
+    // --- Decision-node: record completion (best-effort) ---
+    try {
+      const { getSession, recordDecision } = await import('../../core/decision-node-recorder.js');
+      const _dnSess = getSession(cwd);
+      await recordDecision({ session: _dnSess, parentNodeId: _dnStartNodeId, actorType: 'agent', prompt: 'maturity: project maturity assessment [complete]', result: 'maturity report written', success: true, latencyMs: Date.now() - _dnT0 });
+    } catch { /* best-effort */ }
   });
 }
 
