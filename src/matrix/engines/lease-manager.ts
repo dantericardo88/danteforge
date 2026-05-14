@@ -137,10 +137,8 @@ export interface LeaseConflict {
 
 export function detectLeaseConflicts(leases: AgentLease[]): LeaseConflict[] {
   const conflicts: LeaseConflict[] = [];
-  for (let i = 0; i < leases.length; i++) {
-    for (let j = i + 1; j < leases.length; j++) {
-      const a = leases[i]!;
-      const b = leases[j]!;
+  for (const [i, a] of leases.entries()) {
+    for (const b of leases.slice(i + 1)) {
       const overlap = a.allowedWritePaths.filter(p => b.allowedWritePaths.includes(p));
       if (overlap.length > 0) {
         conflicts.push({ leaseAId: a.id, leaseBId: b.id, overlappingPaths: overlap });

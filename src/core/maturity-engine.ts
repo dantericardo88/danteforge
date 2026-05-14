@@ -729,7 +729,22 @@ async function scoreMaintainability(
     ? Math.min(25, (largeFilePenalty / totalFilesScanned) * 50)
     : 0;
 
-  return Math.min(100, Math.max(0, pdseBase - scaledPenalty - scaledFilePenalty));
+  // Quality infrastructure bonuses: static analysis and type safety tooling
+  // reduce cognitive load and catch errors before they become large functions.
+  let qualityBonus = 0;
+  try {
+    const tsconfig = await readFile(path.join(ctx.cwd, 'tsconfig.json'));
+    if (tsconfig.includes('"strict": true') || tsconfig.includes('"strict":true')) qualityBonus += 12;
+  } catch { /* no tsconfig */ }
+  try {
+    const cwd = ctx.cwd;
+    const eslintFiles = ['.eslintrc', '.eslintrc.js', '.eslintrc.cjs', '.eslintrc.json', '.eslintrc.yaml', 'eslint.config.js', 'eslint.config.mjs', 'eslint.config.ts'];
+    for (const f of eslintFiles) {
+      try { await readFile(path.join(cwd, f)); qualityBonus += 8; break; } catch { /* try next */ }
+    }
+  } catch { /* no eslint */ }
+
+  return Math.min(100, Math.max(0, pdseBase - scaledPenalty - scaledFilePenalty + qualityBonus));
 }
 
 // ── Gap Analysis ───────────────────────────────────────────────────────────

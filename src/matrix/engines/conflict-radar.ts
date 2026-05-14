@@ -85,10 +85,8 @@ export function isBlockingConflict(c: ConflictRecord): boolean {
 
 function detectFileOverlap(packets: WorkPacket[], now: () => string): ConflictRecord[] {
   const conflicts: ConflictRecord[] = [];
-  for (let i = 0; i < packets.length; i++) {
-    for (let j = i + 1; j < packets.length; j++) {
-      const a = packets[i]!;
-      const b = packets[j]!;
+  for (const [i, a] of packets.entries()) {
+    for (const b of packets.slice(i + 1)) {
       const aSet = new Set(a.paths.ownedPaths);
       const overlap = b.paths.ownedPaths.filter(p => aSet.has(p));
       // Exact-match overlap only here; glob overlap handled by detectPathOverlap
@@ -111,10 +109,8 @@ function detectFileOverlap(packets: WorkPacket[], now: () => string): ConflictRe
 
 function detectPathOverlap(packets: WorkPacket[], now: () => string): ConflictRecord[] {
   const conflicts: ConflictRecord[] = [];
-  for (let i = 0; i < packets.length; i++) {
-    for (let j = i + 1; j < packets.length; j++) {
-      const a = packets[i]!;
-      const b = packets[j]!;
+  for (const [i, a] of packets.entries()) {
+    for (const b of packets.slice(i + 1)) {
       const overlap = globIntersect(a.paths.ownedPaths, b.paths.ownedPaths);
       if (overlap.length > 0) {
         conflicts.push(makeConflict({
@@ -205,12 +201,9 @@ function detectSymbolOverlap(
   }
 
   const conflicts: ConflictRecord[] = [];
-  const entries = Array.from(packetSymbols.entries());
-  for (let i = 0; i < entries.length; i++) {
-    for (let j = i + 1; j < entries.length; j++) {
-      const [_a, aData] = entries[i]!;
-      const [_b, bData] = entries[j]!;
-      void _a; void _b;
+  const entries = Array.from(packetSymbols.values());
+  for (const [i, aData] of entries.entries()) {
+    for (const bData of entries.slice(i + 1)) {
       const intersection: string[] = [];
       for (const sym of aData.symbols) if (bData.symbols.has(sym)) intersection.push(sym);
       if (intersection.length > 0) {
@@ -231,10 +224,8 @@ function detectSymbolOverlap(
 
 function detectTestOverlap(packets: WorkPacket[], now: () => string): ConflictRecord[] {
   const conflicts: ConflictRecord[] = [];
-  for (let i = 0; i < packets.length; i++) {
-    for (let j = i + 1; j < packets.length; j++) {
-      const a = packets[i]!;
-      const b = packets[j]!;
+  for (const [i, a] of packets.entries()) {
+    for (const b of packets.slice(i + 1)) {
       const aTests = a.paths.ownedPaths.filter(isTestFile);
       const bTests = b.paths.ownedPaths.filter(isTestFile);
       const aSet = new Set(aTests);

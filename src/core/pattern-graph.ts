@@ -181,11 +181,11 @@ export function buildGraphFromPatterns(
   }
 
   for (const [, members] of byCategory.entries()) {
-    for (let i = 0; i < members.length; i++) {
-      for (let j = i + 1; j < members.length; j++) {
+    for (const [i, from] of members.entries()) {
+      for (const to of members.slice(i + 1)) {
         graph = addEdge(graph, {
-          from: members[i],
-          to: members[j],
+          from,
+          to,
           type: 'strengthens',
           weight: 0.5,
         });

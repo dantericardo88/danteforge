@@ -299,9 +299,10 @@ export async function runSelfMutate(opts: SelfMutateOptions = {}): Promise<SelfM
   const runTests = opts._runTests ?? runTestFileDefault;
   const writeReport = opts._writeReport ?? ((p: string, c: string) => fs.writeFile(p, c, 'utf8'));
 
+  const mutate = (t: typeof targets[number]) => mutateSingleFile(t, cwd, maxMutantsPerFile, readFile, writeFile, restoreFile, runTests);
   const perFile: PerFileResult[] = [];
   for (const target of targets) {
-    perFile.push(await mutateSingleFile(target, cwd, maxMutantsPerFile, readFile, writeFile, restoreFile, runTests));
+    perFile.push(await mutate(target));
   }
 
   const filesWithMutants = perFile.filter(f => f.total > 0);

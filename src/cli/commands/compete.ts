@@ -847,6 +847,12 @@ export async function actionCheckAllNine(options: CompeteOptions, cwd: string): 
   let harshDims: Record<string, number> | undefined;
   try {
     const harshResult = await harshScoreFn({ cwd });
+    // Apply strict dimension overrides when using the real scorer or an explicit test inject.
+    // Skip when _harshScore is mocked without _computeStrictDims — the mock already has correct dims.
+    if (!options._harshScore || options._computeStrictDims) {
+      const strictDimsFn = options._computeStrictDims ?? computeStrictDimensions;
+      await applyStrictOverrides(harshResult, cwd, strictDimsFn);
+    }
     harshDims = harshResult.displayDimensions as Record<string, number>;
   } catch { /* best-effort — fall back to matrix self-scores */ }
 
