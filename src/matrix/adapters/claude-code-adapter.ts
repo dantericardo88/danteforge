@@ -114,6 +114,33 @@ interface ClaudeRunState {
 
 const RUN_STATE = new Map<string, ClaudeRunState>();
 
+// ── Spawn helpers (extracted for testability + readability) ────────────────
+
+/**
+ * Build the argument list for the `claude` CLI invocation given the
+ * options and a pre-built prompt string.
+ */
+function buildClaudeArgs(prompt: string, allowedTools: string[], skipPermissions: boolean): string[] {
+  const args = ['-p', prompt, '--allowedTools', allowedTools.join(' ')];
+  if (skipPermissions) args.push('--dangerously-skip-permissions');
+  return args;
+}
+
+/**
+ * Resolve the final [cmd, args] pair to pass to the spawn function.
+ * On Windows, `.cmd` shims require wrapping via `cmd.exe /c`.
+ */
+function resolveSpawnTarget(
+  binaryUsed: string,
+  args: string[],
+  usesShell: boolean,
+): [string, string[]] {
+  if (usesShell && process.platform === 'win32') {
+    return ['cmd.exe', ['/c', binaryUsed, ...args]];
+  }
+  return [binaryUsed, args];
+}
+
 // ── Adapter implementation ─────────────────────────────────────────────────
 
 export class ClaudeCodeAdapter implements AgentAdapter {
@@ -218,31 +245,7 @@ export class ClaudeCodeAdapter implements AgentAdapter {
     });
 
     try {
-      const prompt = buildClaudeCodePrompt(state.workPacket, lease);
-
-      const allowedTools = this.options.allowedTools ?? DEFAULT_ALLOWED_TOOLS;
-      const args = ['-p', prompt, '--allowedTools', allowedTools.join(' ')];
-      if (this.options.skipPermissions !== false) {
-        args.push('--dangerously-skip-permissions');
-      }
-
-      const spawnFn: ClaudeSpawnFn = this.options._spawn ?? ((c, a, o) => spawn(c, a, o));
-      // On Windows, .cmd shims need cmd.exe wrapping to avoid arg mangling.
-      const usesCmdShim = this._resolvedUsesShell && process.platform === 'win32';
-      const [cmd, finalArgs] = usesCmdShim
-        ? ['cmd.exe', ['/c', state.binaryUsed, ...args]] as const
-        : [state.binaryUsed, args] as const;
-      const exitCode = await runChild(spawnFn, cmd, [...finalArgs],
-        {
-          // Normalize backslash → forward-slash on Windows; backslash cwd
-          // breaks node's spawn cmd.exe path resolution (see codex-adapter).
-          cwd: normalizeCwd(worktreeRoot),
-          env: { ...process.env, ...(state.input.env ?? {}) },
-          shell: false,
-          stdio: ['ignore', 'pipe', 'pipe'],
-        },
-        this.options.timeoutMs ?? DEFAULT_TIMEOUT_MS,
-      );
+      const exitCode = await this.spawnClaudeCli(state, worktreeRoot, lease);
       state.exitCode = exitCode;
 
       if (exitCode !== 0) {
@@ -252,11 +255,7 @@ export class ClaudeCodeAdapter implements AgentAdapter {
         return;
       }
 
-      // Detect what claude actually changed via git status.
-      const gitDiff = this.options._gitDiff ?? defaultGitDiff;
-      const changedPaths = await gitDiff(worktreeRoot);
-
-      // Validate changes against lease boundaries, reverting any violations.
+      const changedPaths = await (this.options._gitDiff ?? defaultGitDiff)(worktreeRoot);
       const revertFile = this.options._revertFile ?? defaultRevertFile;
       const hadViolations = await this.applyLeaseValidation(
         runId, state, changedPaths, worktreeRoot, lease, revertFile,
@@ -276,6 +275,39 @@ export class ClaudeCodeAdapter implements AgentAdapter {
       finalize(state, runId);
       logger.warn(`[ClaudeCodeAdapter] ${runId} failed: ${state.errorReason}`);
     }
+  }
+
+  /**
+   * Spawn the `claude` CLI subprocess and return its exit code.
+   * Handles argument construction, Windows .cmd shim wrapping, and cwd normalization.
+   */
+  private async spawnClaudeCli(
+    state: ClaudeRunState,
+    worktreeRoot: string,
+    lease: AgentLease,
+  ): Promise<number> {
+    const prompt = buildClaudeCodePrompt(state.workPacket, lease);
+    const allowedTools = this.options.allowedTools ?? DEFAULT_ALLOWED_TOOLS;
+    const skipPermissions = this.options.skipPermissions !== false;
+    const args = buildClaudeArgs(prompt, allowedTools, skipPermissions);
+
+    const [cmd, finalArgs] = resolveSpawnTarget(state.binaryUsed, args, this._resolvedUsesShell);
+    const spawnFn: ClaudeSpawnFn = this.options._spawn ?? ((c, a, o) => spawn(c, a, o));
+
+    return runChild(
+      spawnFn,
+      cmd,
+      [...finalArgs],
+      {
+        // Normalize backslash → forward-slash on Windows; backslash cwd
+        // breaks node's spawn cmd.exe path resolution (see codex-adapter).
+        cwd: normalizeCwd(worktreeRoot),
+        env: { ...process.env, ...(state.input.env ?? {}) },
+        shell: false,
+        stdio: ['ignore', 'pipe', 'pipe'],
+      },
+      this.options.timeoutMs ?? DEFAULT_TIMEOUT_MS,
+    );
   }
 
   /**
@@ -327,6 +359,11 @@ export class ClaudeCodeAdapter implements AgentAdapter {
 
 // ── Prompt builder ─────────────────────────────────────────────────────────
 
+/**
+ * Build the natural-language prompt that instructs Claude Code to fulfil a
+ * work packet inside its isolated worktree. The prompt encodes hard path
+ * constraints so the agent self-enforces the lease boundary.
+ */
 export function buildClaudeCodePrompt(workPacket: WorkPacket, lease: AgentLease): string {
   return `You are a coding agent working on a Work Packet inside an isolated git worktree. Use your native tools (Read, Edit, Write) to make the changes — do NOT emit JSON.
 
