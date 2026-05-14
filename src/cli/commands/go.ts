@@ -149,26 +149,27 @@ function showJourneys(emit: (l: string) => void, workflows: Workflow[]): void {
 
 function showWelcomeBanner(emit: (l: string) => void): void {
   emit('');
-  emit(chalk.bold('  Welcome to DanteForge'));
+  emit(chalk.bold('  Welcome to DanteForge') + chalk.dim('  — AI coding workflow optimizer'));
   emit('  -------------------------------------------------');
   emit('');
-  emit('  No project found in this directory.');
+  emit('  No project state found in this directory.');
   emit('');
-  emit('  We will ask 3 quick questions, save your setup, and show your first score.');
+  emit(chalk.bold('  Quick start') + chalk.dim(' (30 seconds to first score):'));
   emit('');
-  emit('  Prefer to start manually?');
+  emit('    ' + chalk.cyan('danteforge go') + '              - answer 3 questions → first score');
+  emit('    ' + chalk.cyan('danteforge init') + '            - guided setup with provider selection');
+  emit('    ' + chalk.cyan('danteforge doctor') + '          - diagnose config and LLM connectivity');
   emit('');
-  emit(chalk.cyan('    danteforge init') + '    - guided setup');
+  emit(chalk.bold('  Explore first:'));
   emit('');
-  emit('  Or see what improvement looks like:');
+  emit('    ' + chalk.cyan('danteforge demo') + '            - before/after quality demo (no setup needed)');
+  emit('    ' + chalk.cyan('danteforge --help') + '          - full command reference');
+  emit('    ' + chalk.cyan('danteforge flow') + '            - pick a workflow for your situation');
   emit('');
-  emit(chalk.cyan('    danteforge demo') + '    - before/after quality demo (no setup needed)');
-  emit('');
-  emit('  Or see a live example:');
-  emit('');
-  emit(chalk.cyan('    cd examples/todo-app && danteforge dashboard'));
+  emit('  Config lives at ' + chalk.dim('~/.danteforge/config.yaml') + '  |  State at ' + chalk.dim('.danteforge/STATE.yaml'));
   emit('');
   emit('  -------------------------------------------------');
+  emit('  Answering the 3 quick questions now...');
   emit('');
 }
 
@@ -237,6 +238,7 @@ function showStatePanel(result: HarshScoreResult, emit: (l: string) => void, sim
   }
 
   emit(`  ${chalk.dim('Unfamiliar with a term?')}  ${chalk.cyan('danteforge explain <term>')}`);
+  emit(`  ${chalk.dim('Something broken?')}        ${chalk.cyan('danteforge doctor')}`);
   emit('  -------------------------------------------------');
   emit('');
 }
@@ -380,7 +382,9 @@ export async function go(options: GoOptions = {}): Promise<void> {
     scoreResult = await computeScoreFn(cwd);
   } catch {
     emit('');
-    emit('  Project found. Run ' + chalk.cyan('danteforge score') + ' to see your score.');
+    emit('  ' + chalk.yellow('Could not compute score.'));
+    emit('  Run ' + chalk.cyan('danteforge score') + ' to see your score, or');
+    emit('  Run ' + chalk.cyan('danteforge doctor') + ' to diagnose the issue.');
     emit('');
     return;
   }

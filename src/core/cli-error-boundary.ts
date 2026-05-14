@@ -4,7 +4,7 @@
 import { logger } from './logger.js';
 import { DanteError } from './errors.js';
 import { GateError } from './gates.js';
-import { formatAndLogError } from './format-error.js';
+import { formatAndLogError, suggestNextStep } from './format-error.js';
 
 export interface ErrorBoundaryOptions {
   _logger?: typeof logger;
@@ -33,6 +33,8 @@ export async function withErrorBoundary(
       } else if (err instanceof Error) {
         log.error(`Unexpected error in "${commandName}": ${err.message}`);
         if (verbose && err.stack) log.verbose(err.stack);
+        const suggestion = suggestNextStep(err.message);
+        if (suggestion) log.error(`  Suggestion: ${suggestion}`);
       } else {
         log.error(`Unexpected error in "${commandName}": ${String(err)}`);
       }
