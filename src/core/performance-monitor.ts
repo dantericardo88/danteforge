@@ -2,6 +2,23 @@ import fs from 'fs/promises';
 import path from 'path';
 import { logger } from '../core/logger.js';
 
+// ── Budget types ──────────────────────────────────────────────────────────────
+
+/** Per-operation time budgets in milliseconds. */
+export interface PerformanceBudget {
+  /** Budgets keyed by operation name (e.g. 'forge', 'verify', 'startup'). */
+  operations: Record<string, number>;
+  /** Default budget applied when no operation-specific entry exists. */
+  defaultBudgetMs: number;
+}
+
+export interface BudgetCheckResult {
+  ok: boolean;
+  budget: number;
+  elapsed: number;
+  overageMs: number;
+}
+
 export interface PerformanceMetrics {
   startupTime: number;
   memoryUsage: number;
@@ -120,11 +137,44 @@ export class PerformanceMonitor {
   private cacheHits = 0;
   private cacheMisses = 0;
   private readonly baselinePath: string;
+  private budget: PerformanceBudget | null = null;
+  private budgetViolationCallback: ((result: BudgetCheckResult & { operation: string }) => void) | null = null;
 
   constructor(cwd: string = process.cwd()) {
     this.baselinePath = path.join(cwd, '.danteforge', 'performance-baseline.json');
     // Fire-and-forget — constructor must stay sync
     this.loadBaseline().catch(() => { /* best-effort */ });
+  }
+
+  // ── Budget API ────────────────────────────────────────────────────────────
+
+  /** Set the active budget. Pass null to clear. */
+  setBudget(budget: PerformanceBudget | null): void {
+    this.budget = budget;
+  }
+
+  /**
+   * Check whether `elapsed` is within budget for the given operation.
+   * Returns a {@link BudgetCheckResult} with ok=false and overageMs>0 when exceeded.
+   */
+  checkBudget(operation: string, elapsed: number): BudgetCheckResult {
+    const budgetMs = this.budget
+      ? (this.budget.operations[operation] ?? this.budget.defaultBudgetMs)
+      : Infinity;
+    const overageMs = Math.max(0, elapsed - budgetMs);
+    return { ok: overageMs === 0, budget: budgetMs, elapsed, overageMs };
+  }
+
+  /**
+   * Register a callback that fires whenever a budget violation is detected.
+   * Pass null to remove the callback.
+   * Violations are evaluated inside {@link recordStartupTime} automatically
+   * when an operation label is provided and a budget is active.
+   */
+  alertOnBudgetViolation(
+    callback: ((result: BudgetCheckResult & { operation: string }) => void) | null,
+  ): void {
+    this.budgetViolationCallback = callback;
   }
 
   // ── Public recording API ──────────────────────────────────────────────────
@@ -147,6 +197,14 @@ export class PerformanceMonitor {
 
     await this.saveMetrics();
     this.checkAndLogRegressions(metrics);
+
+    // Fire budget violation callback when an operation label is provided
+    if (operation && this.budget && this.budgetViolationCallback) {
+      const budgetResult = this.checkBudget(operation, duration);
+      if (!budgetResult.ok) {
+        this.budgetViolationCallback({ ...budgetResult, operation });
+      }
+    }
   }
 
   /** Record a cache hit (for cacheHitRate tracking). */
