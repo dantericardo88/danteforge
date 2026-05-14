@@ -4,35 +4,16 @@
 import { DanteError } from './errors.js';
 import { GateError } from './gates.js';
 import { logger } from './logger.js';
+import { enrichError } from './actionable-errors.js';
 
 /**
  * Map common error message patterns to a concrete actionable next step.
- * Returns undefined when no specific suggestion applies.
+ * Delegates to enrichError for a unified, richer suggestion map.
+ * Returns undefined only for truly unrecognized patterns.
  */
 export function suggestNextStep(message: string): string | undefined {
-  const m = message.toLowerCase();
-  if (m.includes('api key') || m.includes('apikey') || m.includes('unauthorized') || m.includes('authentication')) {
-    return 'Check your provider credentials with `danteforge config` or at ~/.danteforge/config.yaml';
-  }
-  if (m.includes('enoent') || m.includes('no such file') || m.includes('cannot find')) {
-    return 'Run `danteforge doctor` to verify your project structure is intact';
-  }
-  if (m.includes('eacces') || m.includes('permission denied')) {
-    return 'Check file permissions; run `danteforge doctor` if the issue persists';
-  }
-  if (m.includes('network') || m.includes('fetch') || m.includes('econnrefused') || m.includes('timeout')) {
-    return 'Check your network connection, then run `danteforge doctor` to confirm provider reachability';
-  }
-  if (m.includes('rate limit') || m.includes('429') || m.includes('too many requests')) {
-    return 'Rate limit hit — wait a moment, or switch providers with `danteforge config --provider`';
-  }
-  if (m.includes('state') || m.includes('yaml') || m.includes('parse')) {
-    return 'Project state may be corrupted. Run `danteforge doctor` or restore from `.danteforge/backups/`';
-  }
-  if (m.includes('gate') || m.includes('constitution') || m.includes('spec') || m.includes('plan')) {
-    return 'Run `danteforge status` to see which workflow gates need attention, or add `--light` to bypass';
-  }
-  return undefined;
+  const ae = enrichError(new Error(message));
+  return ae.code !== 'ERR_UNKNOWN' ? ae.suggestion : undefined;
 }
 
 /**
@@ -62,10 +43,10 @@ export function formatAndLogError(err: unknown, context?: string): void {
     if (logger.getLevel() === 'verbose' && err.stack) {
       logger.verbose(err.stack);
     }
-    // Surface a concrete next step for common failure patterns
-    const suggestion = suggestNextStep(err.message);
-    if (suggestion) {
-      logger.error(`  Suggestion: ${suggestion}`);
+    const ae = enrichError(err, { command: context });
+    if (ae.code !== 'ERR_UNKNOWN') {
+      logger.error(`  → ${ae.suggestion}`);
+      if (ae.docsRef) logger.error(`  Docs: ${ae.docsRef}`);
     }
     return;
   }
@@ -87,12 +68,13 @@ export function errorToJson(err: unknown): Record<string, unknown> {
     };
   }
   if (err instanceof Error) {
-    const suggestion = suggestNextStep(err.message);
+    const ae = enrichError(err);
     return {
       error: true,
+      code: ae.code !== 'ERR_UNKNOWN' ? ae.code : undefined,
       message: err.message,
       name: err.name,
-      ...(suggestion ? { suggestion } : {}),
+      ...(ae.code !== 'ERR_UNKNOWN' ? { suggestion: ae.suggestion } : {}),
     };
   }
   return { error: true, message: String(err) };

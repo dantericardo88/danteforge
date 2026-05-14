@@ -243,7 +243,7 @@ function buildBudgetRows(
   const rows: BudgetComplianceRow[] = [];
   const allOps = Object.keys(budget.operations);
 
-  // For each budgeted operation, fake an elapsed using avg startup time if no real op data
+  // For each budgeted operation, use avg startup time as elapsed when no real op data exists
   for (const op of allOps) {
     const elapsed = savedStartupTimes.length > 0
       ? savedStartupTimes.reduce((s, v) => s + v, 0) / savedStartupTimes.length

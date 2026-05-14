@@ -11,6 +11,7 @@ import { loadState } from '../core/state.js';
 import { logger } from '../core/logger.js';
 import { enforceWorkflow } from '../core/workflow-enforcer.js';
 import { formatAndLogError } from '../core/format-error.js';
+import { findClosestCommand, formatCommandSuggestion } from '../core/command-suggest.js';
 import { registerLateCommands } from './register-late-commands.js';
 import { registerDossierCommands } from './register-dossier-commands.js';
 import { registerMatrixCommands } from './register-matrix-commands.js';
@@ -704,5 +705,18 @@ const stateWarmupCommand = process.argv.find((arg, index) => index > 1 && !arg.s
 if (!new Set(['economy', 'mcp-server']).has(stateWarmupCommand ?? '')) {
   loadState().catch(() => { /* state will be created on first write */ });
 }
+
+// "Did you mean?" handler for unknown top-level commands
+program.on('command:*', (operands: string[]) => {
+  const unknown = operands[0] ?? '';
+  const knownNames = program.commands.map(c => c.name());
+  const suggestion = findClosestCommand(unknown, knownNames);
+  if (suggestion) {
+    logger.error(formatCommandSuggestion(unknown, suggestion));
+  } else {
+    logger.error(`Unknown command "${unknown}". Run "danteforge --help" for available commands.`);
+  }
+  process.exitCode = 1;
+});
 
 program.parse(process.argv);

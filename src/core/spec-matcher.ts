@@ -377,7 +377,7 @@ export function parseSpecRequirements(spec: string): string[] {
       }
     }
 
-    // REQ-XXX identifier lines
+    // REQ-NNN format requirement identifier lines (e.g. "REQ-001: description")
     const reqIdMatch = /^(REQ-\d+)[:\s]+(.+)/i.exec(line);
     if (reqIdMatch) {
       const text = reqIdMatch[2]!.trim();
