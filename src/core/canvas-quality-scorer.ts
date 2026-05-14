@@ -1,6 +1,7 @@
 // canvas-quality-scorer — 7-dimension quality scorer for .op design artifacts
 // Operates purely over an OPDocument; no filesystem I/O or LLM calls required.
 
+import { createHash } from 'node:crypto';
 import type { OPDocument, OPNode, OPVariableCollection } from '../harvested/openpencil/op-codec.js';
 
 // ── Public API ─────────────────────────────────────────────────────────────────
@@ -276,3 +277,52 @@ function contrastRatio(hex1: string, hex2: string): number {
   const l2 = relativeLuminance(hex2);
   return (Math.max(l1, l2) + 0.05) / (Math.min(l1, l2) + 0.05);
 }
+
+// ── Memoization ───────────────────────────────────────────────────────────────
+
+/**
+ * Wrap any pure function so that results are cached by a content hash.
+ *
+ * @param fn        - Pure function to wrap.
+ * @param keyFn     - Maps the argument to a cache key string (defaults to
+ *                    SHA-256 of `JSON.stringify(arg)`).
+ * @param maxSize   - Maximum number of cache entries (LRU eviction; default 128).
+ * @returns Wrapped function with an additional `.cache` Map property.
+ */
+export function memoize<T, R>(
+  fn: (arg: T) => R,
+  keyFn: (arg: T) => string = (arg) => createHash('sha256').update(JSON.stringify(arg)).digest('hex'),
+  maxSize = 128,
+): ((arg: T) => R) & { cache: Map<string, R> } {
+  const cache = new Map<string, R>();
+
+  const wrapper = (arg: T): R => {
+    const key = keyFn(arg);
+    if (cache.has(key)) return cache.get(key)!;
+
+    // LRU eviction: remove oldest entry when at capacity
+    if (cache.size >= maxSize) {
+      const firstKey = cache.keys().next().value;
+      if (firstKey !== undefined) cache.delete(firstKey);
+    }
+
+    const result = fn(arg);
+    cache.set(key, result);
+    return result;
+  };
+
+  wrapper.cache = cache;
+  return wrapper;
+}
+
+// ── Cached scorer ─────────────────────────────────────────────────────────────
+
+/**
+ * Memoized variant of {@link scoreCanvasQuality}.
+ * Re-scoring identical {@link OPDocument} content returns the cached result
+ * immediately (keyed by SHA-256 of the serialized document).
+ *
+ * The underlying cache is exposed on `.cache` for inspection / clearing.
+ */
+export const scoreWithCache: ((doc: OPDocument) => CanvasQualityResult) & { cache: Map<string, CanvasQualityResult> } =
+  memoize(scoreCanvasQuality);
