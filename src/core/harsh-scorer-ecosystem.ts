@@ -1,4 +1,4 @@
-import { existsSync, readdirSync, readFileSync } from 'node:fs';
+import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs';
 import path from 'path';
 
 import type { DanteState } from './state.js';
@@ -139,6 +139,23 @@ export function detectMcpToolCountSync(cwd: string): number {
   return 0;
 }
 
+/**
+ * Check if a fresh integration-health.json exists in .danteforge/ (written by
+ * `danteforge integration-health` or the `danteforge_health` MCP tool).
+ * A file written within the last 24 hours counts as an active ecosystem signal.
+ */
+export function detectActiveIntegrationHealthSync(cwd: string): boolean {
+  const healthFile = path.join(cwd, '.danteforge', 'integration-health.json');
+  if (!existsSync(healthFile)) return false;
+  try {
+    const { mtimeMs } = statSync(healthFile);
+    const ONE_DAY_MS = 24 * 60 * 60 * 1000;
+    return Date.now() - mtimeMs < ONE_DAY_MS;
+  } catch {
+    return false;
+  }
+}
+
 export function computeEcosystemMcpScore(state: DanteState, cwd: string): number {
   const s = state as unknown as Record<string, unknown>;
   let score = 30;
@@ -155,6 +172,10 @@ export function computeEcosystemMcpScore(state: DanteState, cwd: string): number
   if (hasPluginManifest) score += 15;
 
   if ((typeof s['providerCount'] === 'number' ? s['providerCount'] : 5) >= 5) score += 10;
+
+  // Active integration health signal: +5 if integration-health.json was written in the last 24h
+  if (detectActiveIntegrationHealthSync(cwd)) score += 5;
+
   return Math.max(0, Math.min(100, score));
 }
 

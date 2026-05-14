@@ -230,3 +230,154 @@ async function defaultCheckAllNine(projectPath: string, target: number): Promise
 }
 
 export { getMatrixPath };
+
+// ── Unattended goal loop ──────────────────────────────────────────────────────
+
+export interface GoalLoopUnattendedOptions {
+  /** Plain-text description of the goal (used for logging). */
+  goal: string;
+  /** Maximum number of autoforge cycles to run. Default: 20 */
+  maxCycles?: number;
+  /** Stop when overall score >= this value. Default: 9.0 */
+  targetScore?: number;
+  /** Project working directory. Default: process.cwd() */
+  cwd?: string;
+  /** Path to the log file (appended). Default: .danteforge/goal-loop.log */
+  logFile?: string;
+  /**
+   * Injectable stage runner for testing.
+   * Receives the cwd and returns whether the run succeeded and the current overall score.
+   */
+  _runStage?: (cwd: string) => Promise<{ success: boolean; overallScore: number }>;
+  /** Injectable file appender for testing. */
+  _appendLog?: (logFile: string, line: string) => Promise<void>;
+}
+
+export interface GoalLoopUnattendedResult {
+  cyclesRun: number;
+  goalMet: boolean;
+  finalScore: number;
+  stopReason: 'goal-met' | 'max-cycles' | 'consecutive-failures';
+}
+
+const MAX_CONSECUTIVE_FAILURES = 3;
+
+async function appendGoalLog(
+  logFile: string,
+  line: string,
+  _appendLog?: (logFile: string, line: string) => Promise<void>,
+): Promise<void> {
+  if (_appendLog) {
+    await _appendLog(logFile, line);
+    return;
+  }
+  try {
+    const { default: fs } = await import('node:fs/promises');
+    const { default: path } = await import('node:path');
+    await fs.mkdir(path.dirname(logFile), { recursive: true });
+    await fs.appendFile(logFile, line + '\n', 'utf8');
+  } catch {
+    // best-effort — log write never stops the loop
+  }
+}
+
+async function defaultStageRunner(cwd: string): Promise<{ success: boolean; overallScore: number }> {
+  try {
+    const { compete } = await import('../cli/commands/compete.js');
+    const result = await compete({ auto: true, target: 9.0, yes: true, maxCycles: 3, cwd });
+    return { success: true, overallScore: result.overallScore ?? 0 };
+  } catch {
+    return { success: false, overallScore: 0 };
+  }
+}
+
+/**
+ * Run the goal loop in fully unattended mode.
+ *
+ * - Reads the goal from the `goal` parameter (never prompts for input).
+ * - Runs autoforge cycles and checks progress after each one.
+ * - Stops when the goal score is met, max cycles are reached, or 3 consecutive failures occur.
+ * - Appends structured log entries to `logFile`.
+ * - Never throws: errors are logged and counted.
+ *
+ * @param options - Configuration for the unattended run.
+ */
+export async function runGoalLoopUnattended(
+  options: GoalLoopUnattendedOptions,
+): Promise<GoalLoopUnattendedResult> {
+  const cwd = options.cwd ?? process.cwd();
+  const maxCycles = options.maxCycles ?? 20;
+  const targetScore = options.targetScore ?? 9.0;
+  const logFile = options.logFile ??
+    (await import('node:path')).default.join(cwd, '.danteforge', 'goal-loop.log');
+  const runStage = options._runStage ?? defaultStageRunner;
+
+  let cyclesRun = 0;
+  let consecutiveFailures = 0;
+  let finalScore = 0;
+  let goalMet = false;
+  let stopReason: GoalLoopUnattendedResult['stopReason'] = 'max-cycles';
+
+  const startMsg =
+    `[goal-loop-unattended] START goal="${options.goal}" target=${targetScore} maxCycles=${maxCycles} at=${new Date().toISOString()}`;
+  await appendGoalLog(logFile, startMsg, options._appendLog);
+
+  while (cyclesRun < maxCycles) {
+    cyclesRun++;
+    const cycleStart = new Date().toISOString();
+
+    let success = false;
+    let overallScore = 0;
+
+    try {
+      const result = await runStage(cwd);
+      success = result.success;
+      overallScore = result.overallScore;
+    } catch (err) {
+      success = false;
+      overallScore = 0;
+      const msg = err instanceof Error ? err.message : String(err);
+      await appendGoalLog(
+        logFile,
+        `[goal-loop-unattended] cycle=${cyclesRun} ERROR: ${msg} at=${cycleStart}`,
+        options._appendLog,
+      );
+    }
+
+    finalScore = overallScore;
+
+    await appendGoalLog(
+      logFile,
+      `[goal-loop-unattended] cycle=${cyclesRun}/${maxCycles} success=${success} score=${overallScore.toFixed(2)} target=${targetScore} at=${cycleStart}`,
+      options._appendLog,
+    );
+
+    if (success) {
+      consecutiveFailures = 0;
+    } else {
+      consecutiveFailures++;
+    }
+
+    if (overallScore >= targetScore) {
+      goalMet = true;
+      stopReason = 'goal-met';
+      break;
+    }
+
+    if (consecutiveFailures >= MAX_CONSECUTIVE_FAILURES) {
+      stopReason = 'consecutive-failures';
+      await appendGoalLog(
+        logFile,
+        `[goal-loop-unattended] STOP: ${MAX_CONSECUTIVE_FAILURES} consecutive failures — aborting at=${new Date().toISOString()}`,
+        options._appendLog,
+      );
+      break;
+    }
+  }
+
+  const endMsg =
+    `[goal-loop-unattended] END goalMet=${goalMet} finalScore=${finalScore.toFixed(2)} cycles=${cyclesRun} reason=${stopReason} at=${new Date().toISOString()}`;
+  await appendGoalLog(logFile, endMsg, options._appendLog);
+
+  return { cyclesRun, goalMet, finalScore, stopReason };
+}

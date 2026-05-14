@@ -11,6 +11,16 @@ export interface ErrorBoundaryOptions {
   _verbose?: boolean;
 }
 
+/**
+ * Emit a recovery hint when not in verbose mode.
+ * Guides users toward --verbose for deeper diagnosis.
+ */
+function emitRecoveryHint(log: typeof logger, verbose: boolean): void {
+  if (!verbose && !process.env.DANTEFORGE_VERBOSE) {
+    log.error('  Run with --verbose for the full stack trace, or --help for usage.');
+  }
+}
+
 export async function withErrorBoundary(
   commandName: string,
   fn: () => Promise<void>,
@@ -35,11 +45,14 @@ export async function withErrorBoundary(
         if (verbose && err.stack) log.verbose(err.stack);
         const suggestion = suggestNextStep(err.message);
         if (suggestion) log.error(`  Suggestion: ${suggestion}`);
+        emitRecoveryHint(log, verbose);
       } else {
         log.error(`Unexpected error in "${commandName}": ${String(err)}`);
+        emitRecoveryHint(log, verbose);
       }
     } else {
       formatAndLogError(err, commandName);
+      emitRecoveryHint(log, verbose);
     }
     process.exitCode = 1;
   }

@@ -609,4 +609,44 @@ export const TOOL_DEFINITIONS: ToolDefinition[] = [
       required: [],
     },
   },
+  // ── Ecosystem / health tools ─────────────────────────────────────────────────
+  {
+    name: 'danteforge_convergence_status',
+    description:
+      'Returns the current score trend by reading the last 3 assessment snapshots from .danteforge/. ' +
+      'Reports whether the project is improving, stalled, or regressing plus the numeric score delta.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        _cwd: { type: 'string', description: 'Working directory override (for testing)' },
+      },
+      required: [],
+    },
+  },
+  {
+    name: 'danteforge_git_activity',
+    description:
+      'Returns local branch activity: branch names, commit counts ahead of main/master, and last commit message. ' +
+      'Uses pure local git — no GitHub API token required.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        _cwd: { type: 'string', description: 'Working directory override (for testing)' },
+      },
+      required: [],
+    },
+  },
+  {
+    name: 'danteforge_health',
+    description:
+      'Run integration health checks (git remote, LLM provider reachability, STATE.yaml freshness, MCP server surface) ' +
+      'and return structured JSON results. Writes .danteforge/integration-health.json as a side-effect.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        _cwd: { type: 'string', description: 'Working directory override (for testing)' },
+      },
+      required: [],
+    },
+  },
 ];

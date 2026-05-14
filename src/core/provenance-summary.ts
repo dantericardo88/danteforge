@@ -95,6 +95,28 @@ async function safeReadFile(
 
 // ── Core builder ──────────────────────────────────────────────────────────────
 
+/**
+ * Build a provenance summary for the given project root.
+ *
+ * Reads three data sources (best-effort — any missing source is skipped):
+ * 1. `.danteforge/evidence/*.json` — evidence files to count and integrity-check
+ * 2. `.danteforge/time-machine/commits/*.json` — Time Machine commit snapshots
+ * 3. `.danteforge/audit/detailed.jsonl` — structured audit log entries
+ *
+ * Integrity is reported as `CLEAN` when all evidence files parse as valid JSON,
+ * `TAMPERED` when any file fails JSON parsing.
+ *
+ * @param cwd     - Absolute path to the project root directory.
+ * @param options - Optional I/O injection seams:
+ *   - `_readDir` — override directory listing (for testing)
+ *   - `_readFile` — override file reading (for testing)
+ * @returns A `ProvenanceSummary` describing evidence counts, session history,
+ *   the 10 most recent agent actions, and the integrity verdict.
+ *
+ * @example
+ * const summary = await buildProvenanceSummary(process.cwd());
+ * console.log(formatProvenanceSummary(summary));
+ */
 export async function buildProvenanceSummary(
   cwd: string,
   options: ProvenanceSummaryDeps = {},
@@ -192,6 +214,15 @@ export async function buildProvenanceSummary(
 
 // ── Formatter ─────────────────────────────────────────────────────────────────
 
+/**
+ * Format a `ProvenanceSummary` as a human-readable plain-text report.
+ *
+ * Outputs a fixed-width table with project metadata, recent agent actions,
+ * and an integrity verdict line. Suitable for `danteforge proof --summary`.
+ *
+ * @param summary - The provenance summary to format (from `buildProvenanceSummary`).
+ * @returns Multi-line plain-text string suitable for console output.
+ */
 export function formatProvenanceSummary(summary: ProvenanceSummary): string {
   const lines: string[] = [];
 

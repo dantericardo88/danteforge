@@ -569,7 +569,10 @@ export type ToolName =
   | 'danteforge_ensure_universe_ready'
   | 'danteforge_canonical_competitors'
   | 'danteforge_compete_reset'
-  | 'danteforge_adversarial_score';
+  | 'danteforge_adversarial_score'
+  | 'danteforge_convergence_status'
+  | 'danteforge_git_activity'
+  | 'danteforge_health';
 
 // ---------------------------------------------------------------------------
 // New injectable tool handlers
@@ -671,6 +674,75 @@ async function handleSimpleInjectable(
   return JSON.stringify({ ok: true, message: `${name} not fully wired in this mode` });
 }
 
+// ── Ecosystem / health tool handlers ─────────────────────────────────────────
+
+async function handleConvergenceStatus(args: Record<string, unknown>): Promise<ToolResult> {
+  const cwd = resolveCwd(args);
+  const reportsDir = path.join(cwd, STATE_DIR, 'reports');
+  try {
+    const entries = await fs.readdir(reportsDir);
+    const scoreFiles = entries
+      .filter(e => e.startsWith('score-') && e.endsWith('.json'))
+      .sort()
+      .slice(-3);
+
+    if (scoreFiles.length === 0) {
+      return jsonResult({ trend: 'unknown', reason: 'No score snapshots found', delta: 0, snapshots: [] });
+    }
+
+    const snapshots: Array<{ file: string; score: number; timestamp: string }> = [];
+    for (const file of scoreFiles) {
+      try {
+        const raw = await fs.readFile(path.join(reportsDir, file), 'utf8');
+        const data = JSON.parse(raw) as Record<string, unknown>;
+        const score =
+          typeof data['overallScore'] === 'number' ? data['overallScore'] :
+          typeof data['score'] === 'number' ? data['score'] : 0;
+        const timestamp = typeof data['timestamp'] === 'string' ? data['timestamp'] : file;
+        snapshots.push({ file, score, timestamp });
+      } catch {
+        // Skip unparseable snapshots
+      }
+    }
+
+    if (snapshots.length < 2) {
+      const latest = snapshots[0];
+      return jsonResult({ trend: 'unknown', reason: 'Fewer than 2 snapshots', delta: 0, snapshots, latest });
+    }
+
+    const first = snapshots[0].score;
+    const last = snapshots[snapshots.length - 1].score;
+    const delta = Math.round((last - first) * 100) / 100;
+    const trend = delta > 0.05 ? 'improving' : delta < -0.05 ? 'regressing' : 'stalled';
+
+    return jsonResult({ trend, delta, snapshots, latest: snapshots[snapshots.length - 1] });
+  } catch {
+    return jsonResult({ trend: 'unknown', reason: 'No reports directory', delta: 0, snapshots: [] });
+  }
+}
+
+async function handleGitActivity(args: Record<string, unknown>): Promise<ToolResult> {
+  const cwd = resolveCwd(args);
+  try {
+    const { getRecentPRActivity } = await import('./git-integration.js');
+    const activity = await getRecentPRActivity(cwd);
+    return jsonResult({ branchCount: activity.length, branches: activity });
+  } catch (err) {
+    return errorResult(`git activity failed: ${err instanceof Error ? err.message : String(err)}`);
+  }
+}
+
+async function handleHealth(args: Record<string, unknown>): Promise<ToolResult> {
+  const cwd = resolveCwd(args);
+  try {
+    const { runIntegrationHealth } = await import('../cli/commands/integration-health.js');
+    const result = await runIntegrationHealth({ cwd });
+    return jsonResult(result);
+  } catch (err) {
+    return errorResult(`health check failed: ${err instanceof Error ? err.message : String(err)}`);
+  }
+}
+
 // Tool dispatch
 // ---------------------------------------------------------------------------
 
@@ -731,6 +803,9 @@ export const TOOL_HANDLERS: Record<string, ToolHandler> = {
   danteforge_ensure_universe_ready: (args) => handleEnsureUniverseReady(args),
   danteforge_canonical_competitors: (args) => handleCanonicalCompetitors(args),
   danteforge_compete_reset: (args) => handleCompeteReset(args),
+  danteforge_convergence_status: (args) => handleConvergenceStatus(args),
+  danteforge_git_activity: (args) => handleGitActivity(args),
+  danteforge_health: (args) => handleHealth(args),
 };
 
 // ---------------------------------------------------------------------------

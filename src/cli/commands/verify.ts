@@ -13,6 +13,7 @@ import { detectProjectType, type ProjectType } from '../../core/completion-track
 import { logger } from '../../core/logger.js';
 import { detectAIDrift } from '../../core/drift-detector.js';
 import { withErrorBoundary } from '../../core/cli-error-boundary.js';
+import { recordStage } from '../../core/pipeline-tracker.js';
 
 const execAsync = promisify(exec);
 const execFileAsync = promisify(execFile);
@@ -394,6 +395,8 @@ export interface VerifyOptions {
   json?: boolean;
   light?: boolean;
   cwd?: string;
+  /** Retry verify up to N times on failure, waiting 2s between attempts (default: 0). Commander passes this as a string, so both types are accepted. */
+  retry?: number | string;
   /** Injection seam: override test runner for light-mode (returns true = passed) */
   _runTests?: (cwd: string) => Promise<boolean>;
   /** Injection seam: override build runner for light-mode (returns true = passed) */
@@ -404,6 +407,8 @@ export interface VerifyOptions {
   _captureSuccessLessons?: (receipt: VerifyReceipt, cwd: string) => Promise<unknown>;
   /** Injection seam: stage trace hook for root-cause debugging */
   _trace?: (stage: string) => void;
+  /** Injection seam: override sleep between retries (ms), default 2000 */
+  _retrySleepMs?: number;
 }
 
 async function runExecutionGateChecks(result: VerifyResult, state: DanteState, options: VerifyOptions, cwd: string): Promise<void> {
@@ -537,6 +542,8 @@ async function saveVerifyStateAndReceipt(state: DanteState, result: VerifyResult
     state.lastVerifiedAt = timestamp;
     recordWorkflowStage(state, 'verify', timestamp);
   }
+  // Record pipeline stage (best-effort)
+  try { await recordStage('verify', cwd); } catch { /* best-effort */ }
   state.lastVerifyStatus = computeVerifyStatus(result);
   state.auditLog.push(`${timestamp} | verify: ${result.passed.length} passed, ${result.warnings.length} warnings, ${result.failures.length} failures`);
   traceVerifyStage('before-save-state', options._trace);
@@ -620,6 +627,55 @@ async function outputVerifyResults(result: VerifyResult, options: VerifyOptions)
 }
 
 export async function verify(options: VerifyOptions = {}) {
+  // Commander may pass `retry` as a string (from --retry <n>); normalise to number.
+  const retryRaw = options.retry;
+  const retryN = typeof retryRaw === 'string' ? parseInt(retryRaw, 10) : (retryRaw ?? 0);
+  const maxRetries = Math.max(0, Number.isNaN(retryN) ? 0 : retryN);
+  if (maxRetries > 0) {
+    return runVerifyWithRetry(options, maxRetries);
+  }
+  return runVerifyOnce(options);
+}
+
+async function runVerifyWithRetry(options: VerifyOptions, maxRetries: number): Promise<void> {
+  const sleepMs = options._retrySleepMs ?? 2000;
+  let lastRetryCount = 0;
+  for (let attempt = 0; attempt <= maxRetries; attempt++) {
+    if (attempt > 0) {
+      logger.info(`Retry ${attempt}/${maxRetries}...`);
+      await new Promise<void>(resolve => setTimeout(resolve, sleepMs));
+    }
+    lastRetryCount = attempt;
+    // We run the inner verify and capture the exit code change via a flag.
+    // Detect failure by temporarily intercepting process.exitCode.
+    const prevExitCode = process.exitCode;
+    process.exitCode = undefined;
+    await runVerifyOnce(options);
+    if (!process.exitCode || process.exitCode === 0) {
+      // Persist retry count in state (best-effort).
+      try {
+        const cwd = options.cwd ?? process.cwd();
+        const stateModule = await import('../../core/state.js');
+        const state = await stateModule.loadState({ cwd });
+        const extended = state as typeof state & { lastVerifyRetries?: number };
+        extended.lastVerifyRetries = lastRetryCount;
+        await stateModule.saveState(extended, { cwd });
+      } catch { /* best-effort */ }
+      return;
+    }
+  }
+  // Persist final retry count on final failure.
+  try {
+    const cwd = options.cwd ?? process.cwd();
+    const stateModule = await import('../../core/state.js');
+    const state = await stateModule.loadState({ cwd });
+    const extended = state as typeof state & { lastVerifyRetries?: number };
+    extended.lastVerifyRetries = lastRetryCount;
+    await stateModule.saveState(extended, { cwd });
+  } catch { /* best-effort */ }
+}
+
+async function runVerifyOnce(options: VerifyOptions = {}) {
   return withErrorBoundary('verify', async () => {
     const cwd = options.cwd ?? process.cwd();
     const stateDir = path.join(cwd, STATE_DIR);

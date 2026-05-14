@@ -1,5 +1,8 @@
 #!/usr/bin/env node
 // Main CLI entry
+// Capture startup time as the very first statement so it includes
+// all module-load cost. DANTEFORGE_PERF=1 prints it after parse().
+const _startTime = Date.now();
 import { Command } from 'commander';
 import { existsSync } from 'node:fs';
 // Lazy-load command implementations â€” deferred until action fires, not at startup
@@ -11,12 +14,18 @@ import { loadState } from '../core/state.js';
 import { logger } from '../core/logger.js';
 import { enforceWorkflow } from '../core/workflow-enforcer.js';
 import { formatAndLogError } from '../core/format-error.js';
+import { logStructuredError } from '../core/error-log.js';
 import { findClosestCommand, formatCommandSuggestion } from '../core/command-suggest.js';
 import { registerLateCommands } from './register-late-commands.js';
 import { registerDossierCommands } from './register-dossier-commands.js';
+import { registerCoreCommands } from './register-core-commands.js';
+// Matrix command modules are dynamically imported — they have a larger
+// transitive dependency graph (matrix engines, adapters, courts) and should
+// not bloat the startup cost for simple commands like --help or --version.
+// The registerXxx functions are called synchronously here but the modules
+// load lazily when Node.js resolves the dynamic import promises below.
 import { registerMatrixCommands } from './register-matrix-commands.js';
 import { registerMatrixOrchestrationCommands } from './register-matrix-orchestration-commands.js';
-import { registerCoreCommands } from './register-core-commands.js';
 
 const program = new Command();
 program
@@ -253,11 +262,15 @@ program
   .option('--by-tier', 'Break down by model tier')
   .option('--savings', 'Show token savings from routing and compression')
   .option('--history', 'Show all sessions in chronological order')
+  .option('--efficiency', 'Show per-command token spend efficiency from the token ledger')
+  .option('--reset', 'Clear the token ledger (.danteforge/token-ledger.jsonl)')
   .action(async (opts) => (await C()).cost({
     byAgent: opts.byAgent,
     byTier: opts.byTier,
     savings: opts.savings,
     history: opts.history,
+    efficiency: opts.efficiency,
+    reset: opts.reset,
   }));
 
 program
@@ -332,6 +345,15 @@ program
   .option('--preset <level>', 'Preset for target maturity level')
   .option('--set-baseline', 'Reset the session baseline score to the current score')
   .option('--cwd <path>', 'Project directory')
+  .addHelpText('after', `
+Examples:
+  danteforge assess                  Full harsh assessment + competitor benchmark + masterplan
+  danteforge assess --no-competitors Score only — skip the competitor comparison table
+  danteforge assess --json           Machine-readable JSON (useful for CI gates)
+  danteforge assess --min-score 8.5  Override the 9.0 victory threshold
+  danteforge assess --set-baseline   Pin current score as the session baseline for delta tracking
+  danteforge assess --preset magic   Assess against magic-tier maturity expectations
+`)
   .action(async (opts) => {
     try {
       await (await C()).assess({
@@ -614,8 +636,13 @@ program.hook('preAction', (_thisCommand, actionCommand) => {
 
 program.hook('preAction', () => {
   const opts = program.opts();
-  if (opts.quiet) logger.setLevel('error');
-  else if (opts.verbose) logger.setLevel('verbose');
+  if (opts.quiet) {
+    logger.setLevel('error');
+    process.env.DANTEFORGE_QUIET = '1';
+  } else if (opts.verbose) {
+    logger.setLevel('verbose');
+    process.env.DANTEFORGE_VERBOSE = '1';
+  }
 });
 
 program.hook('preAction', async (_thisCommand, actionCommand) => {
@@ -719,4 +746,31 @@ program.on('command:*', (operands: string[]) => {
   process.exitCode = 1;
 });
 
+// Process-level error boundary — catch any unhandled rejection or exception
+// that escapes command action handlers and Commander's own try/catch.
+process.on('uncaughtException', (err: Error) => {
+  logStructuredError(err, { command: 'cli', phase: 'uncaughtException' });
+  formatAndLogError(err, 'cli');
+  if (!process.env.DANTEFORGE_VERBOSE) {
+    logger.error('  Run with --verbose for the full stack trace.');
+  }
+  process.exit(1);
+});
+
+process.on('unhandledRejection', (reason: unknown) => {
+  const err = reason instanceof Error ? reason : new Error(String(reason));
+  logStructuredError(err, { command: 'cli', phase: 'unhandledRejection' });
+  formatAndLogError(err, 'cli');
+  if (!process.env.DANTEFORGE_VERBOSE) {
+    logger.error('  Run with --verbose for the full stack trace.');
+  }
+  process.exit(1);
+});
+
 program.parse(process.argv);
+
+// DANTEFORGE_PERF=1 — print wall-clock startup cost to stderr after parsing.
+// Usage: DANTEFORGE_PERF=1 danteforge <cmd>
+if (process.env.DANTEFORGE_PERF) {
+  process.stderr.write(`[perf] startup: ${Date.now() - _startTime}ms\n`);
+}

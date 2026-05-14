@@ -7,6 +7,8 @@ import { runPolicyGate } from '../../core/policy-gate.js';
 import { loadState, saveState } from '../../core/state.js';
 import { withProgress } from '../../core/progress-indicator.js';
 import fs from 'fs/promises';
+import { checkSpecDrift } from '../../core/spec-drift-detector.js';
+import { recordStage } from '../../core/pipeline-tracker.js';
 
 async function checkLLMPreflight(
   isLLMAvailableFn?: () => Promise<boolean>,
@@ -68,6 +70,18 @@ export async function forge(phase = '1', options: {
   if (!(await runGate(() => requirePlan(options.light)))) return;
   if (!(await runGate(() => requireTests(options.light)))) return;
 
+  // Spec drift check — warn if spec changed since last plan (best-effort)
+  try {
+    const drift = await checkSpecDrift(process.cwd());
+    if (drift.drifted) {
+      logger.warn(`[forge] ${drift.message}`);
+      logger.warn('[forge] The plan may be stale. Run "danteforge clarify" and "danteforge plan" to realign before forging.');
+    }
+  } catch { /* best-effort — never block forge */ }
+
+  // Record pipeline stage (best-effort)
+  try { await recordStage('forge', process.cwd()); } catch { /* best-effort */ }
+
   // LLM pre-flight — surface misconfiguration before wasting a full wave
   if (!options.prompt && !(await checkLLMPreflight(options._isLLMAvailable))) return;
 
@@ -103,6 +117,12 @@ export async function forge(phase = '1', options: {
     process.exitCode = 1;
     return;
   }
+
+  // Post-wave auto-sanitize: split any file that crossed the 750-LOC threshold (best-effort)
+  try {
+    const { postWaveSanitize } = await import('../../core/auto-sanitize.js');
+    await postWaveSanitize({ cwd: process.cwd() });
+  } catch { /* best-effort; never blocks forge */ }
 
   if (result.success && result.mode === 'executed') {
     try {

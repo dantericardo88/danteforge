@@ -2,50 +2,45 @@ import type { Command } from 'commander';
 import { logger } from '../core/logger.js';
 import { formatAndLogError } from '../core/format-error.js';
 import { registerSanitizeCommand } from './register-sanitize-command.js';
+import { addCwdOption, addJsonOption } from './shared-options.js';
 
 type Commands = Awaited<typeof import('./commands/index.js')>;
 
 export function registerLateCommands(program: Command, C: () => Promise<Commands>): void {
-program
+addCwdOption(program
   .command('wiki-ingest')
   .description('Ingest raw source files into compiled wiki entity pages')
   .option('--bootstrap', 'Seed wiki from existing .danteforge/ artifacts')
-  .option('--prompt', 'Show the command without executing')
-  .option('--cwd <path>', 'Project directory')
+  .option('--prompt', 'Show the command without executing'))
   .action(async (opts) => { void (await C()).wikiIngestCommand({
     bootstrap: opts.bootstrap,
     prompt: opts.prompt,
     cwd: opts.cwd,
   }); });
 
-program
+addCwdOption(program
   .command('wiki-lint')
   .description('Run self-evolution scan: contradictions, staleness, link integrity, pattern synthesis')
   .option('--heuristic-only', 'Skip LLM calls (zero-cost mode)')
-  .option('--prompt', 'Show the command without executing')
-  .option('--cwd <path>', 'Project directory')
+  .option('--prompt', 'Show the command without executing'))
   .action(async (opts) => { void (await C()).wikiLintCommand({
     heuristicOnly: opts.heuristicOnly,
     prompt: opts.prompt,
     cwd: opts.cwd,
   }); });
 
-program
+addCwdOption(addJsonOption(program
   .command('wiki-query <topic>')
-  .description('Search wiki for entity pages, decisions, and patterns relevant to a topic')
-  .option('--json', 'Output machine-readable JSON')
-  .option('--cwd <path>', 'Project directory')
+  .description('Search wiki for entity pages, decisions, and patterns relevant to a topic')))
   .action(async (topic, opts) => { void (await C()).wikiQueryCommand({
     topic,
     json: opts.json,
     cwd: opts.cwd,
   }); });
 
-program
+addCwdOption(addJsonOption(program
   .command('wiki-status')
-  .description('Display wiki health metrics: pages, link density, staleness, lint pass rate, anomalies')
-  .option('--json', 'Output machine-readable JSON')
-  .option('--cwd <path>', 'Project directory')
+  .description('Display wiki health metrics: pages, link density, staleness, lint pass rate, anomalies')))
   .action(async (opts) => { void (await C()).wikiStatusCommand({
     json: opts.json,
     cwd: opts.cwd,
@@ -382,6 +377,17 @@ program
   .option('--next-dims <n>', 'Output JSON of N weakest dimensions below target — used by /goal-loop-matrix to feed /matrixdev', parseInt)
   .option('--target <score>', 'Override 9.0 victory threshold for --check-all-nine, --auto, and --next-dims', parseFloat)
   .option('--yes', 'Skip the confirmation gate in --auto mode and --calibrate')
+  .addHelpText('after', `
+Examples:
+  danteforge compete                           Show ranked gap table vs competitors
+  danteforge compete --init                    Bootstrap competitor matrix from a scan
+  danteforge compete --sprint                  Generate /inferno masterplan for top gap
+  danteforge compete --rescore "ux_polish=8.5" Update score after a sprint
+  danteforge compete --auto                    Autonomous sprint+rescore loop (5 cycles)
+  danteforge compete --check-all-nine          Machine-readable 9.0 victory check (for CI)
+  danteforge compete --level deep              Full CHL: assess + universe + sprint loop
+  danteforge compete --json                    Machine-readable gap table for scripting
+`)
   .action(async (opts) => {
     if (opts.level || opts.raiseReady || opts.action) {
       return (await C()).canonicalCompete({
@@ -576,15 +582,13 @@ program
     }
   });
 
-program
+addCwdOption(addJsonOption(program
   .command('measure')
   .description('Unified quality measurement â€” all scores in one consistent view. --level selects depth: light=fast metrics, standard=full dashboard (default), deep=+retro+nextStep.')
   .option('--level <level>', 'Canonical intensity: light | standard | deep', 'standard')
-  .option('--json', 'Machine-readable JSON output (schema: measure.v1 â€” always the same structure)')
   .option('--full', 'Show all 20 scoring dimensions (default: 8 builder dims only)')
   .option('--certify', 'Generate tamper-evident certificate hash and save to .danteforge/measure-cert.json')
-  .option('--compare <name>', 'Add a competitor comparison column')
-  .option('--cwd <path>', 'Project directory (defaults to cwd)')
+  .option('--compare <name>', 'Add a competitor comparison column')))
   .action(async (opts) => {
     try {
       const { measure: measureCmd } = await import('./commands/measure.js');
@@ -610,6 +614,15 @@ program
   .option('--json', 'Machine-readable JSON output')
   .option('--certify', 'Generate tamper-evident certificate hash and save to .danteforge/measure-cert.json')
   .option('--cwd <path>', 'Project directory (defaults to cwd)')
+  .addHelpText('after', `
+Examples:
+  danteforge score                  Fast score (< 5 seconds, no LLM)
+  danteforge score --full           Show all 20 quality dimensions
+  danteforge score --json           Machine-readable JSON for CI/scripting
+  danteforge score --level deep     Deep analysis with LLM-enhanced scoring
+  danteforge score --certify        Pin score with a tamper-evident certificate hash
+  danteforge score --cwd ./my-app   Score a different project directory
+`)
   .action(async (opts) => {
     try {
       const { measure: measureCmd } = await import('./commands/measure.js');
@@ -682,10 +695,20 @@ program
   .description('Smart entry point: shows project state on existing projects, setup wizard on first run')
   .option('--yes', 'Skip confirmation and run immediately')
   .option('--simple', 'Show only core project quality gaps (hides meta/ecosystem dimensions)')
-  .option('--status', 'Show status panel only â€” no wizard, no improvement offer')
+  .option('--status', 'Show status panel only — no wizard, no improvement offer')
   .option('--fresh', 'Force full setup wizard even when a project already exists')
   .option('--journey', 'Show 5 workflow journey templates and exit')
   .option('--advanced', 'Run init with IDE auto-detection and adversarial scoring setup')
+  .addHelpText('after', `
+Examples:
+  danteforge go                     Show current project state (score, gaps, next step)
+  danteforge go --status            State panel only — no improvement offer
+  danteforge go --yes               Skip confirmation, run one improvement cycle immediately
+  danteforge go “improve security”  Target a specific dimension in the improvement cycle
+  danteforge go --simple            Show only core quality gaps (no meta/ecosystem noise)
+  danteforge go --fresh             Re-run first-time setup wizard
+  danteforge go --journey           Show 5 workflow templates to pick the right flow
+`)
   .action((goal, opts) => {
     void (async () => {
       try {

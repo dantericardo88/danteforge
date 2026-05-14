@@ -97,8 +97,19 @@ function withImprovement(impact: LessonImpact): LessonImpact {
 // ── Public API ────────────────────────────────────────────────────────────────
 
 /**
- * Record a new lesson application. Appends one line to the JSONL file.
- * Injection seam: pass `_readFile` / `_writeFile` for testing.
+ * Record a new lesson application. Appends one entry to the JSONL file.
+ *
+ * The `improvement` field is computed automatically from `scoreBeforeApply`
+ * and `scoreAfterApply` (set to `null` when `scoreAfterApply` is not yet known).
+ *
+ * @param cwd     - Project root directory containing `.danteforge/`.
+ * @param impact  - Lesson application details (all fields except `improvement`,
+ *   which is derived automatically). `scoreAfterApply` may be `null` when the
+ *   outcome has not been measured yet.
+ * @param options - Optional injection seams:
+ *   - `_readFile` — override file reading for testing
+ *   - `_writeFile` — override file writing for testing
+ *   - `_now` — override `Date.now()` for deterministic timestamps in tests
  */
 export async function recordLessonApplication(
   cwd: string,
@@ -121,7 +132,15 @@ export async function recordLessonApplication(
 
 /**
  * Update an existing impact entry with a measured score outcome.
- * Matches by `lessonId`. If multiple entries share the same ID, the most recent is updated.
+ *
+ * Finds the most-recent entry matching `lessonId` and sets its
+ * `scoreAfterApply` and re-computes `improvement`. If no matching entry
+ * exists the call is a no-op (silently skipped).
+ *
+ * @param cwd        - Project root directory.
+ * @param lessonId   - Identifier of the lesson to update.
+ * @param scoreAfter - The score measured after the lesson was applied (0–10).
+ * @param options    - Optional injection seams for `_readFile` / `_writeFile`.
  */
 export async function measureLessonOutcome(
   cwd: string,
@@ -155,6 +174,19 @@ export async function measureLessonOutcome(
 
 /**
  * Compute an impact report over all recorded lesson applications.
+ *
+ * Aggregates metrics from the JSONL file:
+ * - `totalLessons` — all recorded applications
+ * - `measuredLessons` — applications where `scoreAfterApply` is set
+ * - `avgImprovement` — mean delta for measured lessons (null if none)
+ * - `topLessons` — top 5 by improvement delta
+ * - `staleLessons` — applied > 7 days ago but not yet measured
+ *
+ * @param cwd     - Project root directory.
+ * @param options - Optional injection seams:
+ *   - `_readFile` — override file reading for testing
+ *   - `_now` — override `Date.now()` for deterministic stale-detection in tests
+ * @returns An `ImpactReport` with aggregated metrics and ranked lesson lists.
  */
 export async function computeImpactReport(
   cwd: string,
@@ -194,7 +226,13 @@ export async function computeImpactReport(
 }
 
 /**
- * Format an impact report as a Markdown string.
+ * Format an `ImpactReport` as a Markdown string.
+ *
+ * Renders a summary table, a top-lessons leaderboard, and a stale-lessons
+ * section. Suitable for printing to the terminal or embedding in PRIME.md.
+ *
+ * @param report - The impact report to render (from `computeImpactReport`).
+ * @returns Markdown string with `##` section headers and pipe tables.
  */
 export function formatImpactReport(report: ImpactReport): string {
   const lines: string[] = [

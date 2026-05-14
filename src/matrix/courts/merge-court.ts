@@ -36,10 +36,14 @@ export interface MergeCourtInput {
 export interface RunMergeCourtOptions {
   candidates: MergeCourtInput[];
   conflictReport: ConflictReport;
+  /** Base path for resolving relative filesChanged paths. Defaults to process.cwd(). */
+  cwd?: string;
   /** Injection seam: replaces git-merge command runner for tests. */
   _runMerge?: (input: MergeCourtInput) => Promise<{ success: boolean; error?: string }>;
   /** Injection seam: replaces Time Machine commit creation. */
   _createTimeMachineCommit?: (input: MergeCourtInput) => Promise<{ eventId: string }>;
+  /** Injection seam: replaces LOC violation check for tests. */
+  _checkLocViolations?: (filesChanged: string[], cwd: string) => Promise<{ file: string; loc: number }[]>;
   _now?: () => string;
 }
 
@@ -64,7 +68,24 @@ export async function runMergeCourt(
   const ranked = rankCandidates(options.candidates);
   const approvedPaths = new Set<string>();
 
+  const locCheckFn = options._checkLocViolations ?? checkLocViolations;
+  const baseCwd = options.cwd ?? process.cwd();
+
   for (const candidate of ranked) {
+    // LOC gate: block any candidate that introduced a .ts/.tsx file exceeding 750 lines
+    const locViolations = await locCheckFn(candidate.candidate.filesChanged ?? [], baseCwd);
+    if (locViolations.length > 0) {
+      const detail = locViolations.map(v => `${v.file} (${v.loc} lines)`).join(', ');
+      decisions.push(buildDecision(
+        candidate,
+        'BLOCKED_BY_POLICY',
+        `LOC limit exceeded — split before merging: ${detail}`,
+        undefined,
+        now,
+      ));
+      continue;
+    }
+
     const outcome = arbitrate(candidate, options.conflictReport, approvedPaths);
     if (outcome === 'APPROVED') {
       const mergeResult = await (options._runMerge ?? defaultRunMerge)(candidate);
@@ -106,6 +127,27 @@ export async function writeMergeDecisions(
   await fs.mkdir(path.join(root, MATRIX_DIR), { recursive: true });
   await fs.writeFile(outPath, JSON.stringify({ generatedAt: new Date().toISOString(), decisions }, null, 2), 'utf8');
   return outPath;
+}
+
+// ── LOC gate ────────────────────────────────────────────────────────────────
+
+const LOC_HARD_CAP = 750;
+
+async function checkLocViolations(
+  filesChanged: string[],
+  cwd: string,
+): Promise<{ file: string; loc: number }[]> {
+  const violations: { file: string; loc: number }[] = [];
+  for (const f of filesChanged) {
+    if (!f.endsWith('.ts') && !f.endsWith('.tsx')) continue;
+    try {
+      const abs = path.isAbsolute(f) ? f : path.join(cwd, f);
+      const content = await fs.readFile(abs, 'utf8');
+      const loc = content.split('\n').length;
+      if (loc > LOC_HARD_CAP) violations.push({ file: f, loc });
+    } catch { /* best-effort — skip unreadable or missing files */ }
+  }
+  return violations;
 }
 
 // ── Ranking + arbitration ───────────────────────────────────────────────────

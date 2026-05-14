@@ -60,6 +60,7 @@ const expandedExemptFiles = [
   'AGENTS.md',
   'CLAUDE.md',
   'paranoid-review.ts',    // code review tool that describes code smells (references "hack", etc.)
+  'spec-validator.ts',     // validates specs by checking for incomplete-spec markers by design
   'llm-stream.ts',         // legitimate `as any` type cast for provider override
   'prompt-builder.ts',     // CSS example templates contain `#xxx` placeholders
 ];

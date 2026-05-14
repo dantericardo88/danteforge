@@ -6,5 +6,6 @@
     "tests/matrix-golden-flow.test.ts",
     "tests/command-skill-coverage.test.ts"
   ],
-  "scopeToDiff": true
+  "scopeToDiff": true,
+  "parallelTestWorkers": 4
 }

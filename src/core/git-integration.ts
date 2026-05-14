@@ -3,6 +3,133 @@ import path from 'path';
 import type { DanteState } from './state.js';
 import { logGitOperation, generateCorrelationId } from './structured-audit.js';
 
+// ─── PR Activity & Issue Detection ────────────────────────────────────────────
+
+export interface PRActivityEntry {
+  branch: string;
+  commits: number;
+  lastCommit: string;
+}
+
+export interface ReferencedIssue {
+  issueNumber: number;
+  commitHash: string;
+  commitMessage: string;
+}
+
+type ExecFn = (cmd: string, args: string[], cwd: string) => Promise<string>;
+
+async function defaultExec(cmd: string, args: string[], cwd: string): Promise<string> {
+  const { execFile } = await import('node:child_process');
+  const { promisify } = await import('node:util');
+  const execFileAsync = promisify(execFile);
+  try {
+    const { stdout } = await execFileAsync(cmd, args, { cwd });
+    return stdout.trim();
+  } catch {
+    return '';
+  }
+}
+
+/**
+ * Read local branch activity by inspecting recent git log entries per branch.
+ * Uses pure local git — no GitHub API key required.
+ * @param repoPath - directory to run git commands in (defaults to cwd)
+ * @param _exec - injection seam for testing
+ */
+export async function getRecentPRActivity(
+  repoPath?: string,
+  _exec?: ExecFn,
+): Promise<PRActivityEntry[]> {
+  const dir = repoPath ?? process.cwd();
+  const exec = _exec ?? defaultExec;
+
+  // List all local branches
+  const branchOutput = await exec('git', ['branch', '--format=%(refname:short)'], dir);
+  if (!branchOutput) return [];
+
+  const branches = branchOutput
+    .split('\n')
+    .map(b => b.trim())
+    .filter(Boolean);
+
+  const results: PRActivityEntry[] = [];
+
+  for (const branch of branches) {
+    // Count commits on this branch not on main/master
+    const countOutput = await exec(
+      'git',
+      ['rev-list', '--count', `main..${branch}`, '--'],
+      dir,
+    ).catch(() => '');
+
+    const altCountOutput = countOutput
+      ? countOutput
+      : await exec('git', ['rev-list', '--count', `master..${branch}`, '--'], dir).catch(() => '');
+
+    const commits = parseInt(altCountOutput || '0', 10);
+
+    // Get the last commit message on this branch
+    const lastCommit = await exec(
+      'git',
+      ['log', '-1', '--format=%s', branch, '--'],
+      dir,
+    ).catch(() => '');
+
+    results.push({
+      branch,
+      commits: Number.isFinite(commits) ? commits : 0,
+      lastCommit: lastCommit || '',
+    });
+  }
+
+  return results;
+}
+
+/**
+ * Detect GitHub issue references in recent commits using git log.
+ * Parses "Fixes #NNN", "Closes #NNN", "Refs #NNN" patterns from commit messages.
+ * @param repoPath - directory to run git commands in (defaults to cwd)
+ * @param _exec - injection seam for testing
+ */
+export async function getOpenIssues(
+  repoPath?: string,
+  _exec?: ExecFn,
+): Promise<ReferencedIssue[]> {
+  const dir = repoPath ?? process.cwd();
+  const exec = _exec ?? defaultExec;
+
+  // Read last 20 commits that mention issue references
+  const logOutput = await exec(
+    'git',
+    ['log', '--oneline', '-n', '20', '--'],
+    dir,
+  );
+
+  if (!logOutput) return [];
+
+  const lines = logOutput.split('\n').filter(Boolean);
+  const issuePattern = /(?:fixes?|closes?|refs?)\s+#(\d+)/gi;
+  const results: ReferencedIssue[] = [];
+
+  for (const line of lines) {
+    const parts = line.split(' ');
+    const commitHash = parts[0] ?? '';
+    const commitMessage = parts.slice(1).join(' ');
+
+    let match: RegExpExecArray | null;
+    issuePattern.lastIndex = 0;
+    while ((match = issuePattern.exec(commitMessage)) !== null) {
+      const issueNumber = parseInt(match[1], 10);
+      if (Number.isFinite(issueNumber)) {
+        results.push({ issueNumber, commitHash, commitMessage });
+      }
+    }
+  }
+
+  return results;
+}
+
 // ─── Git Stats & Health ────────────────────────────────────────────────────────
 
 export interface GitIntegrationStats {

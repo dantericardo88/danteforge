@@ -83,6 +83,11 @@ export async function ascend(options: AscendOptions = {}): Promise<AscendResult>
       const _dnSess = getSession(cwd);
       await recordDecision({ session: _dnSess, parentNodeId: _dnStartNodeId, actorType: 'agent', prompt: `ascend: drive to ${options.target ?? 9.0} [complete]`, context: { cyclesRun: _dnResult?.cyclesRun, success: _dnResult?.success }, result: _dnResult?.success ? 'target-reached' : 'max-cycles', success: _dnResult?.success ?? false, latencyMs: Date.now() - _dnT0, ...(_dnResult?.finalScore !== undefined ? { qualityScore: _dnResult.finalScore * 10 } : {}) });
     } catch { /* best-effort */ }
+    // Post-ascend auto-sanitize: split any file that crossed the 750-LOC threshold (best-effort)
+    try {
+      const { postWaveSanitize } = await import('../../core/auto-sanitize.js');
+      await postWaveSanitize({ cwd });
+    } catch { /* best-effort */ }
   }
   return _dnResult ?? { cyclesRun: 0, dimensionsImproved: 0, dimensionsAtTarget: 0, ceilingReports: [], finalScore: 0, success: false };
 }
