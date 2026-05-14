@@ -6,6 +6,7 @@
 // This closes the "self-validation" gap: the system that improves others must
 // also improve itself, with machine-verifiable evidence — not LLM self-praise.
 
+import fs from 'node:fs/promises';
 import path from 'node:path';
 import { logger } from '../../core/logger.js';
 import {
@@ -46,12 +47,21 @@ export interface SelfAssessOptions {
   llmScore?: number;
   /** Compare against previous baseline and report diff. Default true. */
   compareBaseline?: boolean;
+  /**
+   * When true, write a structured JSON assessment to
+   * `.danteforge/assessments/<timestamp>.json` in addition to the normal snapshot.
+   * The JSON file is machine-readable and suitable for programmatic consumption
+   * by CI pipelines, the Matrix Kernel, or external tooling.
+   */
+  outputJson?: boolean;
   /** Inject for testing — replaces captureObjectiveMetrics */
   _captureMetrics?: (opts: ObjectiveMetricsOptions) => Promise<ObjectiveMetrics>;
   /** Inject for testing — replaces loadLatestSnapshot */
   _loadBaseline?: (cwd?: string) => Promise<QualitySnapshot | null>;
   /** Inject for testing — replaces saveSnapshot */
   _saveSnapshot?: (snapshot: QualitySnapshot, cwd?: string) => Promise<string>;
+  /** Inject for testing — replaces fs.writeFile for JSON output */
+  _writeJsonOutput?: (filePath: string, content: string) => Promise<void>;
 }
 
 export interface SelfAssessResult {
@@ -64,6 +74,11 @@ export interface SelfAssessResult {
   summary: string;
   /** Concrete, prioritized improvement proposals derived from objective metrics. */
   improvementProposals: ImprovementProposal[];
+  /**
+   * Path to the structured JSON assessment file, if `outputJson` was enabled.
+   * Undefined if `outputJson` was false or the write failed.
+   */
+  jsonOutputPath?: string;
 }
 
 // ── Main command ──────────────────────────────────────────────────────────────
@@ -87,6 +102,11 @@ export async function runSelfAssess(opts: SelfAssessOptions = {}): Promise<SelfA
   const captureMetrics = opts._captureMetrics ?? captureObjectiveMetrics;
   const loadBaseline = opts._loadBaseline ?? loadLatestSnapshot;
   const saveFn = opts._saveSnapshot ?? saveSnapshot;
+  const writeJsonOutputFn = opts._writeJsonOutput
+    ?? (async (filePath: string, content: string) => {
+      await fs.mkdir(path.dirname(filePath), { recursive: true });
+      await fs.writeFile(filePath, content, 'utf8');
+    });
 
   logger.info('[self-assess] Capturing objective quality metrics for DanteForge...');
 
@@ -144,7 +164,39 @@ export async function runSelfAssess(opts: SelfAssessOptions = {}): Promise<SelfA
     await recordDecision({ session: _dnSess, parentNodeId: _dnStartNodeId, actorType: 'agent', prompt: 'self-assess: objective metric capture [complete]', result: 'self-assess complete', success: true, latencyMs: Date.now() - _dnT0 });
   } catch { /* best-effort */ }
 
-  return { current, previous, diff, snapshotPath, improved, summary, improvementProposals };
+  // ── Structured JSON output (--output-json) ────────────────────────────────
+  let jsonOutputPath: string | undefined;
+  if (opts.outputJson) {
+    try {
+      const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+      const assessmentsDir = path.join(cwd, '.danteforge', 'assessments');
+      const jsonPath = path.join(assessmentsDir, `${timestamp}.json`);
+
+      const jsonPayload = {
+        generatedAt: new Date().toISOString(),
+        objectiveScore: current.objectiveScore,
+        hybridScore: current.hybridScore,
+        eslintErrors: current.metrics.eslintErrors,
+        typescriptErrors: current.metrics.typescriptErrors,
+        testPassRate: current.metrics.testPassRate,
+        testCount: current.metrics.testCount,
+        bundleSizeBytes: current.metrics.bundleSizeBytes,
+        improved,
+        regressions: diff?.regressions ?? [],
+        deltaHybridScore: diff?.deltaHybridScore ?? null,
+        improvementProposals,
+        snapshotPath,
+      };
+
+      await writeJsonOutputFn(jsonPath, JSON.stringify(jsonPayload, null, 2));
+      jsonOutputPath = jsonPath;
+      logger.info(`[self-assess] JSON assessment written: ${path.relative(cwd, jsonPath)}`);
+    } catch (jsonErr) {
+      logger.warn(`[self-assess] Failed to write JSON output: ${jsonErr instanceof Error ? jsonErr.message : String(jsonErr)}`);
+    }
+  }
+
+  return { current, previous, diff, snapshotPath, improved, summary, improvementProposals, jsonOutputPath };
 }
 
 // ── Improvement Proposal Generator ────────────────────────────────────────────

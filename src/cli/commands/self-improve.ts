@@ -43,6 +43,14 @@ export interface StructuredProposal {
   acceptanceCriteria: string;
   /** Which cycle generated this proposal. */
   cycle: number;
+  /**
+   * Estimated score delta this proposal would contribute to the overall score
+   * if successfully implemented. Computed as:
+   *   (targetScore - currentScore) * dimensionWeight
+   * where dimensionWeight is 1/totalDimensions (uniform weighting).
+   * A positive value indicates an expected improvement.
+   */
+  estimatedImpact: number;
 }
 
 export interface SelfImproveOptions {
@@ -446,8 +454,17 @@ function selectFeatureFocusItems(
  * Convert a MasterplanItem into a StructuredProposal.
  * Maps the item's dimension and description into machine-readable fields.
  * File path heuristic: try to resolve the most likely file for the dimension.
+ *
+ * @param item           The masterplan item to convert.
+ * @param cycle          Which improvement cycle produced this proposal.
+ * @param totalDimensions  Total number of scoring dimensions (used to compute
+ *                       `estimatedImpact` via uniform weighting). Defaults to 9.
  */
-export function masterplanItemToProposal(item: MasterplanItem, cycle: number): StructuredProposal {
+export function masterplanItemToProposal(
+  item: MasterplanItem,
+  cycle: number,
+  totalDimensions: number = 9,
+): StructuredProposal {
   const priority: StructuredProposal['priority'] =
     item.priority === 'P0' ? 'P0'
     : item.priority === 'P1' ? 'P1'
@@ -455,6 +472,12 @@ export function masterplanItemToProposal(item: MasterplanItem, cycle: number): S
 
   // Best-effort file path heuristic based on dimension name
   const filePath = resolveFilepathHeuristic(item.dimension);
+
+  // estimatedImpact: contribution to the composite score if this dim reaches target
+  // Formula: (targetScore - currentScore) / totalDimensions
+  // Rounded to 3 decimal places for readability.
+  const rawImpact = (item.targetScore - item.currentScore) / Math.max(1, totalDimensions);
+  const estimatedImpact = Math.round(rawImpact * 1000) / 1000;
 
   return {
     dimension: item.dimension,
@@ -467,7 +490,24 @@ export function masterplanItemToProposal(item: MasterplanItem, cycle: number): S
     targetScore: item.targetScore,
     acceptanceCriteria: item.verifyCondition,
     cycle,
+    estimatedImpact,
   };
+}
+
+/**
+ * Sort proposals by estimated impact descending (highest value first),
+ * with priority as a secondary sort (P0 > P1 > P2).
+ * Returns a new array — does not mutate the input.
+ */
+export function rankProposalsByImpact(proposals: StructuredProposal[]): StructuredProposal[] {
+  const priorityOrder: Record<string, number> = { P0: 0, P1: 1, P2: 2 };
+  return [...proposals].sort((a, b) => {
+    // Primary: highest estimatedImpact first
+    const impactDiff = b.estimatedImpact - a.estimatedImpact;
+    if (Math.abs(impactDiff) > 0.0001) return impactDiff;
+    // Secondary: priority order
+    return (priorityOrder[a.priority] ?? 3) - (priorityOrder[b.priority] ?? 3);
+  });
 }
 
 /**
@@ -577,24 +617,26 @@ export function buildImprovementReport(
     lines.push(`| ${label} | ${entry.score.toFixed(1)} / 10 | ${deltaLabel} |`);
   }
 
-  // Include structured proposals if provided
+  // Include structured proposals if provided (ranked by estimated impact)
   if (structuredProposals && structuredProposals.length > 0) {
+    const ranked = rankProposalsByImpact(structuredProposals);
     lines.push(
       '',
-      '## Structured Improvement Proposals',
+      '## Structured Improvement Proposals (ranked by estimated impact)',
       '',
-      '| Priority | Dimension | File | Score | Acceptance Criteria |',
-      '|----------|-----------|------|-------|---------------------|',
+      '| Priority | Est. Impact | Dimension | File | Score | Acceptance Criteria |',
+      '|----------|-------------|-----------|------|-------|---------------------|',
     );
     // Deduplicate by dimension+file, keep highest-priority occurrence
     const seen = new Set<string>();
-    for (const p of structuredProposals) {
+    for (const p of ranked) {
       const key = `${p.dimension}|${p.filePath}`;
       if (seen.has(key)) continue;
       seen.add(key);
       const scoreLabel = `${p.currentScore}/10 → ${p.targetScore}/10`;
       const fileLabel = p.filePath || '(unknown)';
-      lines.push(`| ${p.priority} | ${p.dimension} | \`${fileLabel}\` | ${scoreLabel} | ${p.acceptanceCriteria} |`);
+      const impactLabel = `+${p.estimatedImpact.toFixed(3)}`;
+      lines.push(`| ${p.priority} | ${impactLabel} | ${p.dimension} | \`${fileLabel}\` | ${scoreLabel} | ${p.acceptanceCriteria} |`);
     }
   }
 
