@@ -68,6 +68,34 @@ export interface CompressionResult {
   originalSize: number;
   compressedSize: number;
   savingsPercent: number;
+  /** Ratio of compressedSize to originalSize (0.0–1.0). Lower is better. 1.0 = no compression. */
+  compressionRatio: number;
   sacredSpans: string[];
   rawHash?: string;
+}
+
+/** Per-command token cost entry for spend reporting. */
+export interface CommandCostRecord {
+  timestamp: string;
+  command: string;
+  tokensIn: number;
+  tokensOut: number;
+  totalTokens: number;
+  outcomeQuality?: number;
+}
+
+/** Aggregated spend report keyed by command name. */
+export interface CommandSpendReport {
+  generatedAt: string;
+  commands: Array<{
+    command: string;
+    callCount: number;
+    totalTokensIn: number;
+    totalTokensOut: number;
+    totalTokens: number;
+    avgOutcomeQuality?: number;
+  }>;
+  grandTotalTokensIn: number;
+  grandTotalTokensOut: number;
+  grandTotalTokens: number;
 }

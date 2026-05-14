@@ -127,6 +127,47 @@ export function chunkForProvider(text: string, provider: LLMProvider): string[] 
   return chunks;
 }
 
+/**
+ * Hard-cap status for a given provider.
+ * Reports how much of the provider's token limit has been consumed
+ * by an accumulated token count, and whether the cap has been exceeded.
+ */
+export interface HardCapStatus {
+  provider: LLMProvider;
+  cap: number;
+  used: number;
+  remaining: number;
+  percentUsed: number;
+  exceeded: boolean;
+}
+
+/**
+ * Returns the hard-cap status for the provider given accumulated token usage.
+ * @param used   Tokens consumed so far in the current session/call.
+ * @param provider LLM provider key.
+ */
+export function hardCapStatus(used: number, provider: LLMProvider): HardCapStatus {
+  const cap = getTokenLimit(provider);
+  const remaining = Math.max(0, cap - used);
+  const percentUsed = cap > 0 ? Math.round((used / cap) * 100) : 0;
+  return {
+    provider,
+    cap,
+    used,
+    remaining,
+    percentUsed,
+    exceeded: used > cap,
+  };
+}
+
+/**
+ * Returns true when accumulated token usage has reached or exceeded the
+ * provider's hard context-window cap.  Use this as a gate before any LLM call.
+ */
+export function isHardCapExceeded(used: number, provider: LLMProvider): boolean {
+  return used >= getTokenLimit(provider);
+}
+
 // Backward-compat alias — some commands use chunkText (char-based)
 export function chunkText(text: string, maxChars: number): string[] {
   if (text.length <= maxChars) return [text];
