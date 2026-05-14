@@ -44,28 +44,51 @@ export interface CodeWriterOptions {
 // Internal format parsers
 // ---------------------------------------------------------------------------
 
+interface HunkClassification {
+  searchLines: string[];
+  replaceLines: string[];
+  hasRemovals: boolean;
+}
+
+/** Classify each line in a unified-diff hunk into search/replace buckets. */
+function classifyHunkLines(hunkLines: string[]): HunkClassification {
+  const searchLines: string[] = [];
+  const replaceLines: string[] = [];
+  let hasRemovals = false;
+  for (const line of hunkLines) {
+    if (line.startsWith('-')) {
+      searchLines.push(line.slice(1));
+      hasRemovals = true;
+    } else if (line.startsWith('+')) {
+      replaceLines.push(line.slice(1));
+    } else if (line.startsWith(' ')) {
+      searchLines.push(line.slice(1));
+      replaceLines.push(line.slice(1));
+    }
+  }
+  return { searchLines, replaceLines, hasRemovals };
+}
+
+/** Resolve the canonical file path from a unified diff header pair. */
+function resolveDiffFilePath(rawSource: string, rawTarget: string): string {
+  const sourcePath = rawSource.trim().replace(/\s+\d{4}-\d{2}-\d{2}.*$/, '').trim();
+  const targetPath = rawTarget.trim().replace(/\s+\d{4}-\d{2}-\d{2}.*$/, '').trim();
+  const isDevNull = (p: string): boolean => !p || p === '/dev/null' || p === 'null';
+  return isDevNull(sourcePath) ? targetPath : sourcePath;
+}
+
 function parseDiffOps(llmResponse: string): FileOperation[] {
   const ops: FileOperation[] = [];
   const diffHeaderRe = /^---[ \t]+(?:a\/)?(.+?)[ \t]*\r?\n\+\+\+[ \t]+(?:b\/)?(.+?)[ \t]*\r?\n((?:(?!---[ \t])(?:@@|[ +\-\\\\])[^\n]*\n?)+)/gm;
   let d: RegExpExecArray | null;
   while ((d = diffHeaderRe.exec(llmResponse)) !== null) {
-    const sourcePath = (d[1] ?? '').trim().replace(/\s+\d{4}-\d{2}-\d{2}.*$/, '').trim();
-    const targetPath = (d[2] ?? '').trim().replace(/\s+\d{4}-\d{2}-\d{2}.*$/, '').trim();
-    const filePath = (!sourcePath || sourcePath === '/dev/null' || sourcePath === 'null') ? targetPath : sourcePath;
+    const filePath = resolveDiffFilePath(d[1] ?? '', d[2] ?? '');
     if (!filePath || filePath === '/dev/null' || filePath === 'null') continue;
     const hunksContent = d[3] ?? '';
     const hunkBodyRe = /@@[^\n]*@@\n?([\s\S]*?)(?=@@[^\n]*@@|$)/g;
     let h: RegExpExecArray | null;
     while ((h = hunkBodyRe.exec(hunksContent)) !== null) {
-      const hunkLines = (h[1] ?? '').split('\n');
-      const searchLines: string[] = [];
-      const replaceLines: string[] = [];
-      let hasRemovals = false;
-      for (const line of hunkLines) {
-        if (line.startsWith('-')) { searchLines.push(line.slice(1)); hasRemovals = true; }
-        else if (line.startsWith('+')) { replaceLines.push(line.slice(1)); }
-        else if (line.startsWith(' ')) { searchLines.push(line.slice(1)); replaceLines.push(line.slice(1)); }
-      }
+      const { searchLines, replaceLines, hasRemovals } = classifyHunkLines((h[1] ?? '').split('\n'));
       const searchBlock = searchLines.join('\n').replace(/\n+$/, '');
       const replaceBlock = replaceLines.join('\n').replace(/\n+$/, '');
       if (replaceBlock) {
@@ -109,6 +132,42 @@ function parseFallbackOps(llmResponse: string): FileOperation[] {
 }
 
 // ---------------------------------------------------------------------------
+// parseCodeOperations helpers
+// ---------------------------------------------------------------------------
+
+/**
+ * When a filepath: comment appears BEFORE a SEARCH block (rather than after
+ * REPLACE), extract the operation and append it to ops — unless already captured
+ * by the primary regex.
+ */
+function parseSearchBlockWithPrecedingFilepath(
+  lines: string[],
+  searchLineIndex: number,
+  ops: FileOperation[],
+): void {
+  // Look backwards up to 5 lines for a filepath: or // filepath:
+  for (let j = Math.max(0, searchLineIndex - 5); j < searchLineIndex; j++) {
+    const fpMatch = lines[j]?.match(/^(?:\/\/\s*)?filepath:\s*(.+)/);
+    if (!fpMatch) continue;
+
+    const fp = fpMatch[1]?.trim() ?? '';
+    const eqIdx = lines.indexOf('=======', searchLineIndex);
+    const repEndIdx = lines.indexOf('>>>>>>> REPLACE', eqIdx);
+    if (eqIdx === -1 || repEndIdx === -1) break;
+
+    const searchBlock = lines.slice(searchLineIndex + 1, eqIdx).join('\n');
+    const replaceBlock = lines.slice(eqIdx + 1, repEndIdx).join('\n');
+    const alreadyCaptured = ops.some(
+      (o) => o.filePath === fp && o.searchBlock === searchBlock,
+    );
+    if (!alreadyCaptured) {
+      ops.push({ type: 'replace', filePath: fp, searchBlock, replaceBlock });
+    }
+    break;
+  }
+}
+
+// ---------------------------------------------------------------------------
 // parseCodeOperations
 // ---------------------------------------------------------------------------
 
@@ -136,28 +195,7 @@ export function parseCodeOperations(llmResponse: string): FileOperation[] {
   const lines = llmResponse.split('\n');
   for (let i = 0; i < lines.length; i++) {
     if (lines[i] === '<<<<<<< SEARCH') {
-      // Look backwards up to 5 lines for a filepath: or // filepath:
-      for (let j = Math.max(0, i - 5); j < i; j++) {
-        const fpMatch = lines[j]?.match(/^(?:\/\/\s*)?filepath:\s*(.+)/);
-        if (fpMatch) {
-          const fp = fpMatch[1]?.trim() ?? '';
-          // Find the corresponding REPLACE block end to get content
-          const eqIdx = lines.indexOf('=======', i);
-          const repEndIdx = lines.indexOf('>>>>>>> REPLACE', eqIdx);
-          if (eqIdx !== -1 && repEndIdx !== -1) {
-            // Check if this filepath is already captured by the main regex
-            const alreadyCaptured = ops.some(
-              (o) => o.filePath === fp && o.searchBlock === lines.slice(i + 1, eqIdx).join('\n'),
-            );
-            if (!alreadyCaptured) {
-              const searchBlock = lines.slice(i + 1, eqIdx).join('\n');
-              const replaceBlock = lines.slice(eqIdx + 1, repEndIdx).join('\n');
-              ops.push({ type: 'replace', filePath: fp, searchBlock, replaceBlock });
-            }
-          }
-          break;
-        }
-      }
+      parseSearchBlockWithPrecedingFilepath(lines, i, ops);
     }
   }
 
