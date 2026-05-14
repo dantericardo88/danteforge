@@ -440,16 +440,101 @@ RULE: <one sentence rule to prevent this in future>`;
   await recordLesson('General', correction, correction, 'user correction');
 }
 
+/**
+ * Handle --velocity flag: compute and display improvement velocity from matrix history.
+ */
+async function handleVelocity(
+  opts: { _matrixPath?: string },
+): Promise<void> {
+  const cwd = process.cwd();
+  const matrixPath =
+    opts._matrixPath ?? path.join(cwd, '.danteforge', 'compete', 'matrix.json');
+
+  let matrixRaw: string;
+  try {
+    matrixRaw = await fs.readFile(matrixPath, 'utf8');
+  } catch {
+    logger.warn('No matrix.json found — run `danteforge compete` first.');
+    return;
+  }
+
+  type SprintHistoryEntry = { dimensionId?: string; before: number; after: number; date: string };
+  type MatrixDimension = { id: string; sprint_history?: SprintHistoryEntry[] };
+
+  const matrix = JSON.parse(matrixRaw) as { dimensions: MatrixDimension[] };
+  const dims: MatrixDimension[] = Array.isArray(matrix.dimensions) ? matrix.dimensions : [];
+
+  const { computeVelocityReport, formatVelocityReport } = await import(
+    '../../core/improvement-velocity.js'
+  );
+
+  // Flatten sprint_history across all dimensions into a unified SprintEntry[].
+  type SprintEntry = { dimension: string; before: number; after: number; date: string };
+  const sprints: SprintEntry[] = [];
+  for (const dim of dims) {
+    for (const entry of dim.sprint_history ?? []) {
+      sprints.push({
+        dimension: entry.dimensionId ?? dim.id,
+        before: entry.before,
+        after: entry.after,
+        date: entry.date,
+      });
+    }
+  }
+
+  const report = computeVelocityReport(sprints);
+  process.stdout.write(formatVelocityReport(report) + '\n');
+}
+
+/**
+ * Handle --dedupe flag: deduplicate lessons in the .danteforge/lessons.md file.
+ */
+async function handleDedupe(opts: { _cwd?: string } = {}): Promise<void> {
+  const cwd = opts._cwd ?? process.cwd();
+  const lessonsPath = path.join(cwd, '.danteforge', 'lessons.md');
+
+  let content: string;
+  try {
+    content = await fs.readFile(lessonsPath, 'utf8');
+  } catch {
+    logger.info('No lessons.md found — nothing to deduplicate.');
+    return;
+  }
+
+  const { classifyLesson, deduplicateLessons } = await import(
+    '../../core/lesson-classifier.js'
+  );
+
+  // Split by ## blocks preserving each block's content.
+  const blocks = content.split(/^(?=## )/m).filter(b => b.trim().length > 0);
+
+  const classified = blocks.map(block => classifyLesson(block));
+  const before = classified.length;
+
+  const deduplicated = deduplicateLessons(classified);
+  const after = deduplicated.length;
+  const removed = before - after;
+
+  const newContent = deduplicated.map(l => l.content).join('\n');
+  await fs.writeFile(lessonsPath, newContent, 'utf8');
+
+  logger.success(`Removed ${removed} duplicate lesson(s). ${after} remaining.`);
+}
+
 export async function lessons(correction?: string, options: {
   prompt?: boolean;
   compact?: boolean;
   export?: boolean;
   stats?: boolean;
   search?: string;
+  velocity?: boolean;
+  dedupe?: boolean;
   _loadState?: typeof loadState;
   _saveState?: typeof saveState;
   _llmCaller?: typeof callLLM;
   _isLLMAvailable?: typeof isLLMAvailable;
+  _matrixPath?: string;
+  _cwd?: string;
 } = {}) {
   const loadFn = options._loadState ?? loadState;
   const saveFn = options._saveState ?? saveState;
@@ -483,6 +568,16 @@ export async function lessons(correction?: string, options: {
 
   if (options.search) {
     await handleSearch(options.search);
+    return;
+  }
+
+  if (options.velocity) {
+    await handleVelocity({ _matrixPath: options._matrixPath });
+    return;
+  }
+
+  if (options.dedupe) {
+    await handleDedupe({ _cwd: options._cwd });
     return;
   }
 

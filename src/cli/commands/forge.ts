@@ -5,6 +5,7 @@ import { logger } from '../../core/logger.js';
 import { withErrorBoundary } from '../../core/cli-error-boundary.js';
 import { runPolicyGate } from '../../core/policy-gate.js';
 import { loadState, saveState } from '../../core/state.js';
+import { withProgress } from '../../core/progress-indicator.js';
 import fs from 'fs/promises';
 
 async function checkLLMPreflight(
@@ -94,7 +95,10 @@ export async function forge(phase = '1', options: {
 
   const profile = options.profile ?? 'balanced';
   const onChunk = process.stdout.isTTY ? (chunk: string) => { process.stdout.write(chunk); } : undefined;
-  const result = await executeWave(parseInt(phase, 10), profile, options.parallel, options.prompt, options.worktree, undefined, { _onChunk: onChunk });
+  const result = await withProgress(`Forging phase ${phase} [${profile}]`, async (handle) => {
+    handle.update('running wave executor...');
+    return executeWave(parseInt(phase, 10), profile, options.parallel, options.prompt, options.worktree, undefined, { _onChunk: onChunk });
+  });
   if (!result.success) {
     process.exitCode = 1;
     return;

@@ -730,6 +730,24 @@ program
   });
 
 program
+  .command('compliance-report')
+  .description('Generate a tamper-evident compliance report — audit trail, RBAC, evidence chain')
+  .option('--format <fmt>', 'Output format: markdown or json', 'markdown')
+  .option('--since <date>', 'Only include events since this date (YYYY-MM-DD)')
+  .option('--out <file>', 'Write report to file (default: stdout)')
+  .option('--cwd <path>', 'Project directory')
+  .action(async (opts) => {
+    try {
+      const { runComplianceReport } = await import('./commands/compliance-report.js');
+      await runComplianceReport({ format: opts.format, since: opts.since, out: opts.out, cwd: opts.cwd });
+    } catch (err) {
+      const { formatAndLogError } = await import('../core/format-error.js');
+      formatAndLogError(err, 'compliance-report');
+      process.exitCode = 1;
+    }
+  });
+
+program
   .command('harvest-pattern <pattern>')
   .description('Focused OSS pattern harvest with Y/N confirmation per gap')
   .option('--max-repos <n>', 'Max repos to search (default: 5)', '5')

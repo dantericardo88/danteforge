@@ -11,6 +11,7 @@ import { isLLMAvailable } from '../../core/llm.js';
 import { loadConfig, saveConfig, setDefaultProvider, type LLMProvider, type DanteConfig } from '../../core/config.js';
 import { withErrorBoundary } from '../../core/cli-error-boundary.js';
 import type { AssistantRegistry } from '../../core/assistant-installer.js';
+import { runOnboardingWizard } from '../../core/onboarding-wizard.js';
 
 type BasicReadline = {
   question: (prompt: string, cb: (answer: string) => void) => void;
@@ -36,6 +37,8 @@ export interface InitOptions {
   _loadConfig?: () => Promise<DanteConfig>;
   _saveConfig?: (config: DanteConfig) => Promise<void>;
   _defineUniverse?: (opts: { cwd: string; interactive: boolean }) => Promise<unknown>;
+  /** Injection seam for onboarding wizard — defaults to runOnboardingWizard */
+  _runOnboardingWizard?: typeof runOnboardingWizard;
 }
 
 export function detectRunningIDE(): AssistantRegistry | null {
@@ -208,6 +211,23 @@ export async function init(options: InitOptions = {}): Promise<void> {
 
     logger.success('DanteForge Init - Project Setup Wizard');
     logger.info('');
+
+    // Run onboarding wizard for genuinely fresh projects (no .danteforge/ yet) or --guided.
+    // The wizard exits immediately if already initialized, so it is safe to call unconditionally.
+    try {
+      const wizardFn = options._runOnboardingWizard ?? runOnboardingWizard;
+      const stateDir = path.join(cwd, '.danteforge');
+      let danteforgeExists = false;
+      try { await fs.access(stateDir); danteforgeExists = true; } catch { /* not present */ }
+      if (!danteforgeExists || options.guided) {
+        const rl = options._readline;
+        await wizardFn(cwd, {
+          _readlineFn: rl
+            ? (prompt: string) => new Promise<string>((resolve) => rl.question(prompt, resolve))
+            : undefined,
+        });
+      }
+    } catch { /* best-effort — onboarding wizard must never block init */ }
 
     let projectDescription = options.projectDescription ?? '';
     let preferredLevel: string = options.preferredLevel ?? 'magic';

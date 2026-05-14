@@ -478,6 +478,8 @@ program
   .description('Self-improving lessons - capture corrections, view rules, auto-compact')
   .option('--prompt', 'Generate a copy-paste prompt instead of auto-executing')
   .option('--compact', 'Force compaction of lessons file')
+  .option('--velocity', 'Show improvement velocity trend across sprint history')
+  .option('--dedupe', 'Remove near-duplicate lessons from lessons.md')
   .action((...a: unknown[]) => void C().then(c => (c.lessons as (...x: unknown[]) => unknown)(...a)));
 
 program
@@ -804,6 +806,7 @@ program
   .option('--strict-git-binding', 'Require manifest gitSha to equal HEAD (snapshot mode); default is ancestor continuity')
   .option('--cwd <path>', 'Project directory (defaults to cwd)')
   .option('--semantic', 'LLM-enhanced PDSE scoring')
-  .option('--since <date>', 'Score arc since date or git SHA (e.g. "yesterday", "2026-04-01", a commit SHA)')
-  .action(async (opts) => (await C()).proof({ prompt: opts.prompt, pipeline: opts.pipeline, convergence: opts.convergence, verify: opts.verify, verifyAll: opts.verifyAll, skipGit: opts.skipGit, strictGitBinding: opts.strictGitBinding, cwd: opts.cwd, semantic: opts.semantic, since: opts.since }));
+  .option('--since <date>', 'Score arc since date or git SHA (e.g. “yesterday”, “2026-04-01”, a commit SHA)')
+  .option('--summary', 'Human-readable agent activity provenance summary')
+  .action(async (opts) => (await C()).proof({ prompt: opts.prompt, pipeline: opts.pipeline, convergence: opts.convergence, verify: opts.verify, verifyAll: opts.verifyAll, skipGit: opts.skipGit, strictGitBinding: opts.strictGitBinding, cwd: opts.cwd, semantic: opts.semantic, since: opts.since, summary: opts.summary }));
 }
