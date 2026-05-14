@@ -372,6 +372,131 @@ export async function calibrationScore(
   };
 }
 
+// ── Score plateau detection ────────────────────────────────────────────────────
+
+/**
+ * Describes a dimension that has failed to improve over consecutive dossier builds.
+ */
+export interface PlateauReport {
+  /** Dimension key (e.g. "1", "7"). */
+  dimKey: string;
+  /** Human-readable dimension name from the most recent snapshot. */
+  dimName: string;
+  /** Number of consecutive builds with no improvement (>= 3). */
+  staleBuildCount: number;
+  /** Score value that has been stuck. */
+  staleScore: number;
+  /** ISO timestamp of the oldest build in the stale window. */
+  since: string;
+}
+
+/**
+ * Read all dossier snapshots from `.danteforge/dossiers/history/<id>/` and
+ * identify dimensions that have not improved across 3 or more consecutive builds.
+ *
+ * A dimension is considered "stale" when each consecutive delta is <= 0.0
+ * (i.e. the score never increased) for at least `minStaleBuildCount` builds.
+ *
+ * @param cwd              Project root.
+ * @param id               Competitor / dossier identifier (default: "dantescode").
+ * @param minStaleBuildCount  Minimum number of consecutive non-improving builds (default: 3).
+ * @param readFileFn       Optional injection seam.
+ * @param listDirFn        Optional injection seam — returns filenames in a directory.
+ */
+export async function detectScorePlateaus(
+  cwd: string,
+  id: string = DEFAULT_SELF_COMPETITOR_ID,
+  minStaleBuildCount = 3,
+  readFileFn: ReadFileFn = (p, e) => fs.readFile(p, e as BufferEncoding),
+  listDirFn: (dir: string) => Promise<string[]> = async (dir) => {
+    const entries = await fs.readdir(dir, { withFileTypes: true });
+    return entries.filter(e => e.isFile()).map(e => e.name);
+  },
+): Promise<PlateauReport[]> {
+  const histDir = dossierHistoryDir(cwd, id);
+
+  // Collect snapshot file names
+  let fileNames: string[];
+  try {
+    fileNames = await listDirFn(histDir);
+  } catch {
+    // History directory doesn't exist yet — no plateaus to report
+    return [];
+  }
+
+  // Filter to *.json snapshot files, sort chronologically (oldest first)
+  const snapshotFiles = fileNames
+    .filter(f => f.endsWith('.json') && f !== 'accuracy.jsonl')
+    .sort();
+
+  if (snapshotFiles.length === 0) return [];
+
+  // Load snapshots in order
+  const snapshots: Dossier[] = [];
+  for (const fileName of snapshotFiles) {
+    const filePath = path.join(histDir, fileName);
+    try {
+      const raw = await readFileFn(filePath, 'utf8');
+      snapshots.push(JSON.parse(raw) as Dossier);
+    } catch { /* skip unreadable snapshots */ }
+  }
+
+  if (snapshots.length < minStaleBuildCount) return [];
+
+  // Gather all known dimension keys
+  const allDimKeys = new Set<string>();
+  for (const snap of snapshots) {
+    for (const k of Object.keys(snap.dimensions)) {
+      allDimKeys.add(k);
+    }
+  }
+
+  const plateaus: PlateauReport[] = [];
+
+  for (const dimKey of allDimKeys) {
+    // Build ordered list of (timestamp, score) pairs for this dimension
+    const history: Array<{ ts: string; score: number; dimName: string }> = [];
+    for (const snap of snapshots) {
+      const dim = snap.dimensions[dimKey];
+      if (dim !== undefined) {
+        history.push({
+          ts: snap.lastBuilt,
+          score: dim.humanOverride ?? dim.score,
+          dimName: (snap.dimensions[dimKey] as DossierDimension & { name?: string }).name ??
+            `dimension-${dimKey}`,
+        });
+      }
+    }
+
+    if (history.length < minStaleBuildCount) continue;
+
+    // Walk the history from the end and count consecutive non-improving builds
+    let staleBuildCount = 0;
+    for (let i = history.length - 1; i >= 1; i--) {
+      const curr = history[i]!;
+      const prev = history[i - 1]!;
+      if (curr.score <= prev.score) {
+        staleBuildCount += 1;
+      } else {
+        break; // improvement found — streak broken
+      }
+    }
+
+    if (staleBuildCount >= minStaleBuildCount) {
+      const staleEntry = history[history.length - staleBuildCount - 1]!;
+      plateaus.push({
+        dimKey,
+        dimName: history[history.length - 1]!.dimName,
+        staleBuildCount,
+        staleScore: history[history.length - 1]!.score,
+        since: staleEntry.ts,
+      });
+    }
+  }
+
+  return plateaus;
+}
+
 export async function buildSelfDossier(opts: SelfScorerOptions): Promise<Dossier> {
   const { cwd } = opts;
   const competitorId = opts.competitorId ?? DEFAULT_SELF_COMPETITOR_ID;

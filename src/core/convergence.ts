@@ -274,3 +274,150 @@ function isConvergedDimension(
   const prev = scoreHistory[scoreHistory.length - 2]!;
   return Math.abs(latestScore - prev) <= 0.1;
 }
+
+// ── ConvergenceTracker ────────────────────────────────────────────────────────
+
+/**
+ * Summary returned by `ConvergenceTracker.getSummary()`.
+ */
+export interface ConvergenceSummary {
+  /** All score observations recorded so far (oldest first). */
+  observations: number[];
+  /** True when the last N observations are within the convergence threshold. */
+  converged: boolean;
+  /** True when scores alternate up/down more than 3 times in recent history. */
+  oscillating: boolean;
+  /** "rising" | "falling" | "flat" — determined from the last two observations. */
+  trend: 'rising' | 'falling' | 'flat';
+  /** How many consecutive rounds have passed without any meaningful progress. */
+  roundsWithoutProgress: number;
+}
+
+/**
+ * Stateful tracker for a single convergence signal.
+ *
+ * Records score observations and provides:
+ *   - `isConverged()` — detects stable plateau at or above target
+ *   - `isOscillating()` — detects thrashing (alternating up/down > 3 times)
+ *   - `resetIfStuck()` — fires a callback and resets state when progress stalls
+ *   - `getSummary()` — structured snapshot of current tracker state
+ *
+ * Designed to be lightweight and injection-friendly for testing —
+ * no filesystem I/O; callers own persistence if needed.
+ */
+export class ConvergenceTracker {
+  private observations: number[] = [];
+  private roundsWithoutProgress = 0;
+
+  /**
+   * @param windowSize     Number of recent observations used for convergence
+   *                       and oscillation checks (default: 5).
+   * @param stuckThreshold Number of consecutive rounds without progress before
+   *                       `resetIfStuck` fires its callback (default: 5).
+   * @param progressMin    Minimum score improvement per round counted as
+   *                       "progress" (default: 0.05).
+   */
+  constructor(
+    private readonly windowSize: number = 5,
+    private readonly stuckThreshold: number = 5,
+    private readonly progressMin: number = 0.05,
+  ) {}
+
+  /**
+   * Record a score observation.
+   * Updates the internal rounds-without-progress counter.
+   */
+  record(score: number): void {
+    this.observations.push(score);
+
+    const len = this.observations.length;
+    if (len >= 2) {
+      const prev = this.observations[len - 2]!;
+      const improvement = score - prev;
+      if (improvement >= this.progressMin) {
+        this.roundsWithoutProgress = 0;
+      } else {
+        this.roundsWithoutProgress += 1;
+      }
+    }
+  }
+
+  /**
+   * Returns true when the last `windowSize` observations are all within
+   * `threshold` of one another (default threshold: 0.05).
+   *
+   * Requires at least `windowSize` observations — returns false otherwise.
+   */
+  isConverged(threshold: number = 0.05): boolean {
+    const obs = this.observations;
+    if (obs.length < this.windowSize) return false;
+    const window = obs.slice(-this.windowSize);
+    const min = Math.min(...window);
+    const max = Math.max(...window);
+    return (max - min) <= threshold;
+  }
+
+  /**
+   * Returns true when scores have alternated direction (up → down or down → up)
+   * more than 3 times within the last `windowSize` observations.
+   *
+   * A direction change is counted each time the sign of (obs[i] - obs[i-1])
+   * flips relative to the previous step.
+   */
+  isOscillating(): boolean {
+    const window = this.observations.slice(-this.windowSize);
+    if (window.length < 3) return false;
+
+    let directionChanges = 0;
+    let prevDirection = 0; // -1, 0, +1
+
+    for (let i = 1; i < window.length; i++) {
+      const diff = (window[i] ?? 0) - (window[i - 1] ?? 0);
+      const dir = diff > 0 ? 1 : diff < 0 ? -1 : 0;
+      if (dir !== 0 && prevDirection !== 0 && dir !== prevDirection) {
+        directionChanges += 1;
+      }
+      if (dir !== 0) prevDirection = dir;
+    }
+
+    return directionChanges > 3;
+  }
+
+  /**
+   * If no meaningful progress has been made for `stuckThreshold` consecutive
+   * rounds, fires `callback` and resets all observations and the counter.
+   *
+   * Returns true when the stuck condition was triggered (and reset occurred).
+   */
+  resetIfStuck(callback: () => void): boolean {
+    if (this.roundsWithoutProgress >= this.stuckThreshold) {
+      callback();
+      this.observations = [];
+      this.roundsWithoutProgress = 0;
+      return true;
+    }
+    return false;
+  }
+
+  /**
+   * Returns a structured snapshot of the current tracker state.
+   */
+  getSummary(): ConvergenceSummary {
+    const obs = this.observations;
+    const len = obs.length;
+    let trend: 'rising' | 'falling' | 'flat' = 'flat';
+    if (len >= 2) {
+      const delta = (obs[len - 1] ?? 0) - (obs[len - 2] ?? 0);
+      if (delta > 0) trend = 'rising';
+      else if (delta < 0) trend = 'falling';
+    }
+
+    return {
+      observations: [...obs],
+      converged: this.isConverged(),
+      oscillating: this.isOscillating(),
+      trend,
+      roundsWithoutProgress: this.roundsWithoutProgress,
+    };
+  }
+}
