@@ -4,11 +4,13 @@
 import fs from 'fs/promises';
 import path from 'path';
 import crypto from 'crypto';
-import type { LedgerRecord, LedgerSummary, FilterStatus } from './types.js';
+import type { LedgerRecord, LedgerSummary, FilterStatus, CommandCostRecord, CommandSpendReport } from './types.js';
 
 export type { LedgerRecord } from './types.js';
+export type { CommandCostRecord, CommandSpendReport } from './types.js';
 
 const LEDGER_DIR = '.danteforge/evidence/context-economy';
+const COMMAND_COST_FILE = '.danteforge/evidence/command-costs.jsonl';
 
 function ledgerPath(cwd: string, date?: string): string {
   const d = date ?? new Date().toISOString().slice(0, 10);
@@ -181,4 +183,115 @@ export function formatLedgerReport(summary: LedgerSummary, json?: boolean): stri
   }
 
   return lines.join('\n');
+}
+
+// ── Command Cost Tracking ─────────────────────────────────────────────────────
+
+/**
+ * Append a per-command token cost record so callers can correlate
+ * token spend with specific CLI commands and outcome quality.
+ *
+ * @param command        The CLI command name (e.g. "forge", "verify").
+ * @param tokensIn       Input tokens consumed by the LLM call.
+ * @param tokensOut      Output tokens produced by the LLM call.
+ * @param outcomeQuality Optional 0–10 quality score for the outcome (used for ROI).
+ * @param cwd            Project root directory. Defaults to process.cwd().
+ */
+export async function trackCommandCost(
+  command: string,
+  tokensIn: number,
+  tokensOut: number,
+  outcomeQuality?: number,
+  cwd: string = process.cwd(),
+): Promise<void> {
+  const record: CommandCostRecord = {
+    timestamp: new Date().toISOString(),
+    command,
+    tokensIn,
+    tokensOut,
+    totalTokens: tokensIn + tokensOut,
+    ...(outcomeQuality !== undefined ? { outcomeQuality } : {}),
+  };
+  const file = path.join(cwd, COMMAND_COST_FILE);
+  await fs.mkdir(path.dirname(file), { recursive: true });
+  await fs.appendFile(file, JSON.stringify(record) + '\n', 'utf8');
+}
+
+/**
+ * Load all command cost records and return an aggregated spend report
+ * broken down by command name.
+ *
+ * @param cwd Project root directory. Defaults to process.cwd().
+ */
+export async function getSpendReport(cwd: string = process.cwd()): Promise<CommandSpendReport> {
+  const file = path.join(cwd, COMMAND_COST_FILE);
+  let records: CommandCostRecord[] = [];
+  try {
+    const raw = await fs.readFile(file, 'utf8');
+    records = raw
+      .split('\n')
+      .filter(Boolean)
+      .map((line) => JSON.parse(line) as CommandCostRecord);
+  } catch {
+    // No cost file yet — return empty report.
+  }
+
+  const byCommand = new Map<string, {
+    callCount: number;
+    totalTokensIn: number;
+    totalTokensOut: number;
+    totalTokens: number;
+    qualitySum: number;
+    qualityCount: number;
+  }>();
+
+  for (const r of records) {
+    const entry = byCommand.get(r.command) ?? {
+      callCount: 0,
+      totalTokensIn: 0,
+      totalTokensOut: 0,
+      totalTokens: 0,
+      qualitySum: 0,
+      qualityCount: 0,
+    };
+    entry.callCount++;
+    entry.totalTokensIn += r.tokensIn;
+    entry.totalTokensOut += r.tokensOut;
+    entry.totalTokens += r.totalTokens;
+    if (r.outcomeQuality !== undefined) {
+      entry.qualitySum += r.outcomeQuality;
+      entry.qualityCount++;
+    }
+    byCommand.set(r.command, entry);
+  }
+
+  let grandTotalTokensIn = 0;
+  let grandTotalTokensOut = 0;
+  let grandTotalTokens = 0;
+
+  const commands = [...byCommand.entries()]
+    .sort((a, b) => b[1].totalTokens - a[1].totalTokens)
+    .map(([command, entry]) => {
+      grandTotalTokensIn += entry.totalTokensIn;
+      grandTotalTokensOut += entry.totalTokensOut;
+      grandTotalTokens += entry.totalTokens;
+      return {
+        command,
+        callCount: entry.callCount,
+        totalTokensIn: entry.totalTokensIn,
+        totalTokensOut: entry.totalTokensOut,
+        totalTokens: entry.totalTokens,
+        ...(entry.qualityCount > 0
+          ? { avgOutcomeQuality: Math.round((entry.qualitySum / entry.qualityCount) * 100) / 100 }
+          : {}),
+      };
+    });
+
+  return {
+    generatedAt: new Date().toISOString(),
+    commands,
+    grandTotalTokensIn,
+    grandTotalTokensOut,
+    grandTotalTokens,
+  };
 }
