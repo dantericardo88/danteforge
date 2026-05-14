@@ -88,7 +88,7 @@ export async function reviewBranch(options: ReviewBranchOptions): Promise<GateRe
     }
 
     for (const cmd of lease.requiredCommands) {
-      const isTestCmd = cmd.includes('npm test') || cmd.includes('npm run test');
+      const isTestCmd = cmd.includes('npm test') || cmd.includes('npm run test') || cmd.includes('pnpm test') || cmd.includes('pnpm run test');
 
       // If we have a scoped replacement, sub it in. Empty replacement means
       // "no tests to run for this diff" — skip the spawn and report passed.
