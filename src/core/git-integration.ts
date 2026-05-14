@@ -3,6 +3,84 @@ import path from 'path';
 import type { DanteState } from './state.js';
 import { logGitOperation, generateCorrelationId } from './structured-audit.js';
 
+// ─── Git Stats & Health ────────────────────────────────────────────────────────
+
+export interface GitIntegrationStats {
+  remoteUrl: string;
+  branch: string;
+  hasUncommittedChanges: boolean;
+  commitCount: number;
+  lastCommitHash: string;
+  lastCommitDate: string;
+}
+
+/**
+ * Gather repository statistics by shelling out to git.
+ * Returns safe defaults when git is unavailable or cwd is not a repository.
+ */
+export async function getGitStats(cwd?: string): Promise<GitIntegrationStats> {
+  const { execFile } = await import('node:child_process');
+  const { promisify } = await import('node:util');
+  const execFileAsync = promisify(execFile);
+  const dir = cwd ?? process.cwd();
+
+  const run = async (args: string[]): Promise<string> => {
+    try {
+      const { stdout } = await execFileAsync('git', args, { cwd: dir });
+      return stdout.trim();
+    } catch {
+      return '';
+    }
+  };
+
+  const [remoteUrl, branch, statusOutput, countOutput, hashOutput, dateOutput] =
+    await Promise.all([
+      run(['remote', 'get-url', 'origin']),
+      run(['rev-parse', '--abbrev-ref', 'HEAD']),
+      run(['status', '--porcelain']),
+      run(['rev-list', '--count', 'HEAD']),
+      run(['rev-parse', '--short', 'HEAD']),
+      run(['log', '-1', '--format=%cI']),
+    ]);
+
+  const commitCount = countOutput ? parseInt(countOutput, 10) : 0;
+
+  return {
+    remoteUrl: remoteUrl || '',
+    branch: branch || 'unknown',
+    hasUncommittedChanges: statusOutput.length > 0,
+    commitCount: Number.isFinite(commitCount) ? commitCount : 0,
+    lastCommitHash: hashOutput || '',
+    lastCommitDate: dateOutput || '',
+  };
+}
+
+/**
+ * Validate that the repository is in a healthy state for integration purposes.
+ * Checks for: clean working tree, remote configured, and recent commits.
+ */
+export async function validateGitHealth(
+  cwd?: string,
+): Promise<{ ok: boolean; issues: string[] }> {
+  const stats = await getGitStats(cwd);
+  const issues: string[] = [];
+
+  if (stats.hasUncommittedChanges) {
+    issues.push('Working tree has uncommitted changes');
+  }
+  if (!stats.remoteUrl) {
+    issues.push('No remote "origin" configured');
+  }
+  if (stats.commitCount === 0) {
+    issues.push('Repository has no commits');
+  }
+  if (stats.branch === 'unknown' || stats.branch === 'HEAD') {
+    issues.push('Not on a named branch (detached HEAD or unborn branch)');
+  }
+
+  return { ok: issues.length === 0, issues };
+}
+
 export interface CommitMessageOptions {
   state: DanteState;
   changedFiles?: string[];
