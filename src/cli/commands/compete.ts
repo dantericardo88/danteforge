@@ -786,7 +786,13 @@ export async function actionNextDims(options: CompeteOptions, cwd: string): Prom
   }
 
   // Use live harsh scores so inflated matrix self-scores don't hide real gaps.
+  // Apply strict dimension overrides (autonomy, selfImprovement, etc.) the same
+  // way check-all-nine does — otherwise next-dims underreports fixed dimensions.
   const harshResult = await harshScoreFn({ cwd });
+  if (!options._harshScore || options._computeStrictDims) {
+    const strictDimsFn = options._computeStrictDims ?? computeStrictDimensions;
+    await applyStrictOverrides(harshResult, cwd, strictDimsFn);
+  }
   const dimKey = (id: string) => id as import('../../core/harsh-scorer.js').ScoringDimension;
 
   const entries: NextDimEntry[] = matrix.dimensions
