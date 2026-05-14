@@ -44,7 +44,7 @@ import type {
 
 const execFileAsync = promisify(execFile);
 
-// ── Child process abstraction (so tests can stub) ──────────────────────────
+// ── Child process abstraction (injectable for tests) ─────────────────────────
 
 export interface ClaudeChildLike {
   stdout?: NodeJS.ReadableStream | null;
@@ -191,22 +191,13 @@ export class ClaudeCodeAdapter implements AgentAdapter {
   async collectResult(handle: AgentRunHandle): Promise<AgentRunResult> {
     const state = RUN_STATE.get(handle.runId);
     if (!state) throw new Error(`Run ${handle.runId} not found`);
-    const violationCount = state.filesReverted.length;
-    const finalMessage = state.finalMessage
-      ?? (violationCount > 0
-        ? `Claude Code ran; ${state.filesChanged.length} file(s) kept, ${violationCount} reverted (lease violation)`
-        : `Claude Code ran; ${state.filesChanged.length} file(s) changed`);
     return {
       runId: handle.runId,
       leaseId: handle.leaseId,
       status: state.status,
       filesChanged: state.filesChanged,
-      commandsExecuted: state.exitCode === null ? [] : [{
-        command: state.binaryUsed,
-        exitCode: state.exitCode,
-        durationMs: (state.endMs ?? Date.now()) - state.startMs,
-      }],
-      finalMessage,
+      commandsExecuted: buildCommandsExecuted(state),
+      finalMessage: resolveFinalMessage(state),
       errorReason: state.errorReason,
       startedAt: state.startedAt,
       completedAt: new Date((state.endMs ?? Date.now())).toISOString(),
@@ -265,31 +256,13 @@ export class ClaudeCodeAdapter implements AgentAdapter {
       const gitDiff = this.options._gitDiff ?? defaultGitDiff;
       const changedPaths = await gitDiff(worktreeRoot);
 
-      // Validate against lease. Revert any violations.
-      const violations: string[] = [];
-      const kept: string[] = [];
+      // Validate changes against lease boundaries, reverting any violations.
       const revertFile = this.options._revertFile ?? defaultRevertFile;
+      const hadViolations = await this.applyLeaseValidation(
+        runId, state, changedPaths, worktreeRoot, lease, revertFile,
+      );
 
-      for (const file of changedPaths) {
-        const forbidden = matchesAnyGlob(file, lease.forbiddenPaths);
-        const allowed = matchesAnyGlob(file, lease.allowedWritePaths);
-        if (forbidden || !allowed) {
-          violations.push(file);
-          try { await revertFile(worktreeRoot, file); state.filesReverted.push(file); }
-          catch (err) { logger.warn(`[ClaudeCodeAdapter] could not revert ${file}: ${String(err)}`); }
-        } else {
-          kept.push(file);
-          state.events.push({
-            eventId: `${runId}.file.${file}`, runId, ts: now(), kind: 'file_changed',
-            payload: { path: file, action: 'write' },
-          });
-        }
-      }
-      state.filesChanged = kept;
-
-      if (violations.length > 0) {
-        state.status = 'failed';
-        state.errorReason = `edit_outside_lease: ${violations.join('; ')}`;
+      if (hadViolations) {
         finalize(state, runId);
         return;
       }
@@ -303,6 +276,52 @@ export class ClaudeCodeAdapter implements AgentAdapter {
       finalize(state, runId);
       logger.warn(`[ClaudeCodeAdapter] ${runId} failed: ${state.errorReason}`);
     }
+  }
+
+  /**
+   * Validate each changed file against the lease's allowed/forbidden paths.
+   * Reverts any file that violates the lease.
+   * Returns true if violations were found (caller should finalize + return).
+   */
+  private async applyLeaseValidation(
+    runId: string,
+    state: ClaudeRunState,
+    changedPaths: string[],
+    worktreeRoot: string,
+    lease: AgentLease,
+    revertFile: (cwd: string, file: string) => Promise<void>,
+  ): Promise<boolean> {
+    const violations: string[] = [];
+    const kept: string[] = [];
+
+    for (const file of changedPaths) {
+      const forbidden = matchesAnyGlob(file, lease.forbiddenPaths);
+      const allowed = matchesAnyGlob(file, lease.allowedWritePaths);
+      if (forbidden || !allowed) {
+        violations.push(file);
+        try {
+          await revertFile(worktreeRoot, file);
+          state.filesReverted.push(file);
+        } catch (err) {
+          logger.warn(`[ClaudeCodeAdapter] could not revert ${file}: ${String(err)}`);
+        }
+      } else {
+        kept.push(file);
+        state.events.push({
+          eventId: `${runId}.file.${file}`, runId, ts: now(), kind: 'file_changed',
+          payload: { path: file, action: 'write' },
+        });
+      }
+    }
+
+    state.filesChanged = kept;
+
+    if (violations.length > 0) {
+      state.status = 'failed';
+      state.errorReason = `edit_outside_lease: ${violations.join('; ')}`;
+      return true;
+    }
+    return false;
   }
 }
 
@@ -408,6 +427,28 @@ function runChild(
     child.on('close', (code) => settle((code ?? 1) as number));
     child.on('error', () => settle(1));
   });
+}
+
+/** Build the human-readable completion message for a run. */
+function resolveFinalMessage(state: ClaudeRunState): string {
+  if (state.finalMessage) return state.finalMessage;
+  const violationCount = state.filesReverted.length;
+  if (violationCount > 0) {
+    return `Claude Code ran; ${state.filesChanged.length} file(s) kept, ${violationCount} reverted (lease violation)`;
+  }
+  return `Claude Code ran; ${state.filesChanged.length} file(s) changed`;
+}
+
+/** Build the commands-executed log entry from run state. */
+function buildCommandsExecuted(
+  state: ClaudeRunState,
+): AgentRunResult['commandsExecuted'] {
+  if (state.exitCode === null) return [];
+  return [{
+    command: state.binaryUsed,
+    exitCode: state.exitCode,
+    durationMs: (state.endMs ?? Date.now()) - state.startMs,
+  }];
 }
 
 function finalize(state: ClaudeRunState, runId: string): void {
