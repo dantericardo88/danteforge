@@ -348,16 +348,19 @@ export function updateDimensionScore(
   dim.gap_to_oss_leader = twoGaps.gap_to_oss_leader;
   dim.oss_leader = twoGaps.oss_leader;
 
-  // Record sprint
-  const record: SprintRecord = {
-    dimensionId,
-    before,
-    after: clamped,
-    date: new Date().toISOString().slice(0, 10),
-    ...(commit ? { commit } : {}),
-    ...(harvestSource ? { harvestSource } : {}),
-  };
-  dim.sprint_history.push(record);
+  // Only record sprint when the score actually changed; cap history at 20.
+  if (clamped !== before) {
+    const record: SprintRecord = {
+      dimensionId,
+      before,
+      after: clamped,
+      date: new Date().toISOString().slice(0, 10),
+      ...(commit ? { commit } : {}),
+      ...(harvestSource ? { harvestSource } : {}),
+    };
+    dim.sprint_history.push(record);
+    if (dim.sprint_history.length > 20) dim.sprint_history.splice(0, dim.sprint_history.length - 20);
+  }
 
   // Update status
   if (dim.gap_to_leader <= 0) {
