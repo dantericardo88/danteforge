@@ -99,3 +99,31 @@ export interface CommandSpendReport {
   grandTotalTokensOut: number;
   grandTotalTokens: number;
 }
+
+/** A single entry in the economy ledger (alias for LedgerRecord). */
+export type LedgerEntry = LedgerRecord;
+
+/**
+ * In-memory economy ledger — a collection of ledger entries for the current
+ * session / analysis window plus optional metadata.
+ */
+export interface EconomyLedger {
+  /** Ordered list of filter outcome entries (oldest first). */
+  entries: LedgerEntry[];
+  /** ISO timestamp of ledger creation (for age-based pruning). */
+  createdAt: string;
+  /** ISO timestamp of last modification. */
+  updatedAt: string;
+}
+
+/** Computed stats derived from an EconomyLedger. */
+export interface LedgerStats {
+  /** Total number of ledger entries. */
+  entryCount: number;
+  /** Total tokens filtered (saved) across all entries. */
+  totalFiltered: number;
+  /** Average savings percentage across all entries (0–100). */
+  avgSavingsPct: number;
+  /** Top filter IDs ordered by total tokens saved (descending), up to 5. */
+  topFilters: string[];
+}

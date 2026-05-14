@@ -731,16 +731,18 @@ async function scoreMaintainability(
 
   // Quality infrastructure bonuses: static analysis and type safety tooling
   // reduce cognitive load and catch errors before they become large functions.
+  // Uses fs.readFile directly (not ctx._readFile) — infrastructure detection must
+  // always probe the real filesystem, never a test-injected content mock.
   let qualityBonus = 0;
   try {
-    const tsconfig = await readFile(path.join(ctx.cwd, 'tsconfig.json'));
+    const tsconfig = await fs.readFile(path.join(ctx.cwd, 'tsconfig.json'), 'utf8');
     if (tsconfig.includes('"strict": true') || tsconfig.includes('"strict":true')) qualityBonus += 12;
   } catch { /* no tsconfig */ }
   try {
     const cwd = ctx.cwd;
     const eslintFiles = ['.eslintrc', '.eslintrc.js', '.eslintrc.cjs', '.eslintrc.json', '.eslintrc.yaml', 'eslint.config.js', 'eslint.config.mjs', 'eslint.config.ts'];
     for (const f of eslintFiles) {
-      try { await readFile(path.join(cwd, f)); qualityBonus += 8; break; } catch { /* try next */ }
+      try { await fs.readFile(path.join(cwd, f), 'utf8'); qualityBonus += 8; break; } catch { /* try next */ }
     }
   } catch { /* no eslint */ }
 

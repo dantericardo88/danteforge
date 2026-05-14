@@ -19,6 +19,39 @@ export interface PatternScanResult {
   // adopt: 0 critical/high; review: 1+ medium (no critical); reject: 1+ critical
 }
 
+// ── Comment detection ─────────────────────────────────────────────────────────
+
+/**
+ * Returns a Set of character indices that fall inside a line comment (//)
+ * or block comment (/* ... *\/) within the snippet.
+ * Used to suppress false positives for patterns that appear in comments.
+ */
+function buildCommentIndex(snippet: string): Set<number> {
+  const inComment = new Set<number>();
+  let i = 0;
+  const len = snippet.length;
+  while (i < len) {
+    // Line comment
+    if (snippet[i] === '/' && snippet[i + 1] === '/') {
+      const start = i;
+      while (i < len && snippet[i] !== '\n') i++;
+      for (let j = start; j < i; j++) inComment.add(j);
+      continue;
+    }
+    // Block comment
+    if (snippet[i] === '/' && snippet[i + 1] === '*') {
+      const start = i;
+      i += 2;
+      while (i < len && !(snippet[i] === '*' && snippet[i + 1] === '/')) i++;
+      i += 2; // skip closing */
+      for (let j = start; j < i; j++) inComment.add(j);
+      continue;
+    }
+    i++;
+  }
+  return inComment;
+}
+
 // ── Regex definitions ─────────────────────────────────────────────────────────
 
 // 1. Hardcoded secrets: password/secret/apikey/api_key/token = 'longvalue'
@@ -26,12 +59,10 @@ const RE_HARDCODED_SECRET = /(password|secret|apikey|api_key|token)\s*=\s*['"][^
 
 // 2. Command injection: child_process.exec( with a non-template-literal argument
 //    Catches exec("..."), exec('...'), exec(variable) but NOT exec(`...`)
-//    Use RegExp constructor to avoid backtick syntax issues in template-literal context.
 const RE_COMMAND_INJECTION = new RegExp('child_process\\.exec\\s*\\(\\s*(?![`])', 'g');
 
 // 3. Path traversal: ../ appearing in string concatenation or path.join with user input
 //    We flag any occurrence of ../ inside a quoted string or adjacent to +
-//    Use RegExp constructor to avoid backtick syntax issues in template-literal context.
 const RE_PATH_TRAVERSAL = new RegExp("(?:['\"`][^'\"`]*\\.\\./|path\\.join\\s*\\([^)]*\\+[^)]*\\))", 'g');
 
 // 4. XSS: innerHTML = or document.write(
@@ -44,6 +75,17 @@ const RE_SECURITY_CONTEXT = /\b(token|password|secret|key|nonce|salt|csrf)\b/i;
 
 // 6. eval or new Function
 const RE_EVAL = /\beval\s*\(|new\s+Function\s*\(/g;
+
+// 7. Prototype pollution: __proto__, constructor.prototype, Object.assign with user input
+const RE_PROTOTYPE_POLLUTION = /(__proto__|constructor\.prototype|Object\.assign\s*\(\s*\{\s*\}\s*,\s*\w+\s*\))/g;
+
+// 8. ReDoS: catastrophic backtracking — nested quantifiers on variable-length groups
+//    Matches patterns like /(a+)+$/, /(\w+\s*)+/, /(x*)*/, etc.
+const RE_REDOS = /\/[^/]*\([^)]*[+*][^)]*\)[+*][^/]*/g;
+
+// 9. SSRF: fetch or axios.get called with a variable (not a string literal)
+//    Flags fetch(variable), axios.get(variable) — not fetch('https://...')
+const RE_SSRF = /(?:fetch|axios\.get|axios\.post|axios\.request|http\.get|https\.get)\s*\(\s*(?!['"`])\w/g;
 
 // ── Internal helpers ──────────────────────────────────────────────────────────
 
@@ -60,12 +102,15 @@ function scanForPattern(
   snippet: string,
   regex: RegExp,
   buildConcern: (match: RegExpExecArray, lineNum: number) => SecurityConcern,
+  commentIndex?: Set<number>,
 ): SecurityConcern[] {
   const concerns: SecurityConcern[] = [];
   // Reset lastIndex to support re-use of global regexes
   regex.lastIndex = 0;
   let match: RegExpExecArray | null;
   while ((match = regex.exec(snippet)) !== null) {
+    // Skip if the match starts inside a comment
+    if (commentIndex && commentIndex.has(match.index)) continue;
     const lineNum = findLineNumber(snippet, match.index);
     concerns.push(buildConcern(match, lineNum));
   }
@@ -76,34 +121,60 @@ function scanForPattern(
 
 function collectAllConcerns(snippet: string): SecurityConcern[] {
   const concerns: SecurityConcern[] = [];
+  const commentIndex = buildCommentIndex(snippet);
+
   concerns.push(...scanForPattern(snippet, RE_HARDCODED_SECRET, (m, line) => ({
     severity: 'critical', type: 'hardcoded-secret',
     description: `Hardcoded credential detected near "${m[1]}" assignment.`, line,
-  })));
+  }), commentIndex));
+
   concerns.push(...scanForPattern(snippet, RE_COMMAND_INJECTION, (_m, line) => ({
     severity: 'high', type: 'command-injection',
     description: 'child_process.exec() called with a non-template-literal argument — vulnerable to command injection if input is user-controlled.', line,
-  })));
+  }), commentIndex));
+
   concerns.push(...scanForPattern(snippet, RE_PATH_TRAVERSAL, (_m, line) => ({
     severity: 'medium', type: 'path-traversal',
     description: 'Potential path traversal: "../" in a string literal or path.join() with concatenated user input.', line,
-  })));
+  }), commentIndex));
+
   concerns.push(...scanForPattern(snippet, RE_XSS, (m, line) => ({
     severity: 'high', type: 'xss',
     description: `Unsafe DOM write via "${m[0].trim()}" — may allow XSS if content is user-controlled.`, line,
-  })));
+  }), commentIndex));
+
+  concerns.push(...scanForPattern(snippet, RE_PROTOTYPE_POLLUTION, (m, line) => ({
+    severity: 'high', type: 'prototype-pollution',
+    description: `Potential prototype pollution via "${m[0].trim()}" — merging untrusted objects into prototype chain can corrupt global state.`, line,
+  }), commentIndex));
+
+  concerns.push(...scanForPattern(snippet, RE_REDOS, (m, line) => ({
+    severity: 'medium', type: 'redos',
+    description: `Potential ReDoS vulnerability: regex "${m[0].trim()}" contains nested quantifiers that may cause catastrophic backtracking on crafted input.`, line,
+  }), commentIndex));
+
+  concerns.push(...scanForPattern(snippet, RE_SSRF, (m, line) => ({
+    severity: 'high', type: 'ssrf',
+    description: `Potential SSRF: "${m[0].trim()}" passes a variable URL directly to an HTTP client without visible validation — validate and allowlist URLs before making outbound requests.`, line,
+  }), commentIndex));
+
   const snippetLines = snippet.split('\n');
   snippetLines.forEach((lineText, idx) => {
+    // Skip lines that are entirely in a comment
+    const lineStart = snippet.split('\n').slice(0, idx).join('\n').length + (idx > 0 ? 1 : 0);
+    if (commentIndex.has(lineStart)) return;
     RE_INSECURE_RANDOM.lastIndex = 0;
     if (RE_INSECURE_RANDOM.test(lineText) && RE_SECURITY_CONTEXT.test(lineText)) {
       concerns.push({ severity: 'medium', type: 'insecure-randomness',
         description: 'Math.random() used in a security-sensitive context — use crypto.getRandomValues() or crypto.randomBytes() instead.', line: idx + 1 });
     }
   });
+
   concerns.push(...scanForPattern(snippet, RE_EVAL, (m, line) => ({
     severity: 'critical', type: 'unsafe-eval',
     description: `"${m[0].replace(/\s+/g, ' ')}" executes arbitrary code — never use with untrusted input.`, line,
-  })));
+  }), commentIndex));
+
   return concerns;
 }
 

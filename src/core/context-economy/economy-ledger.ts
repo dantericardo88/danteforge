@@ -4,10 +4,10 @@
 import fs from 'fs/promises';
 import path from 'path';
 import crypto from 'crypto';
-import type { LedgerRecord, LedgerSummary, FilterStatus, CommandCostRecord, CommandSpendReport } from './types.js';
+import type { LedgerRecord, LedgerSummary, FilterStatus, CommandCostRecord, CommandSpendReport, EconomyLedger, LedgerStats } from './types.js';
 
 export type { LedgerRecord } from './types.js';
-export type { CommandCostRecord, CommandSpendReport } from './types.js';
+export type { CommandCostRecord, CommandSpendReport, EconomyLedger, LedgerStats } from './types.js';
 
 const LEDGER_DIR = '.danteforge/evidence/context-economy';
 const COMMAND_COST_FILE = '.danteforge/evidence/command-costs.jsonl';
@@ -294,4 +294,77 @@ export async function getSpendReport(cwd: string = process.cwd()): Promise<Comma
     grandTotalTokensOut,
     grandTotalTokens,
   };
+}
+
+// ── EconomyLedger helpers ─────────────────────────────────────────────────────
+
+const ECONOMY_LEDGER_FILE = '.danteforge/economy-ledger.json';
+
+/**
+ * Compute aggregate statistics from an EconomyLedger.
+ * Returns topFilters sorted by total tokens saved (descending), up to 5 entries.
+ */
+export function getLedgerStats(ledger: EconomyLedger): LedgerStats {
+  const { entries } = ledger;
+  if (entries.length === 0) {
+    return { entryCount: 0, totalFiltered: 0, avgSavingsPct: 0, topFilters: [] };
+  }
+
+  let totalFiltered = 0;
+  let savingsPctSum = 0;
+  const filterSavings = new Map<string, number>();
+
+  for (const e of entries) {
+    totalFiltered += e.savedTokens;
+    savingsPctSum += e.savingsPercent;
+    if (e.savedTokens > 0) {
+      filterSavings.set(e.filterId, (filterSavings.get(e.filterId) ?? 0) + e.savedTokens);
+    }
+  }
+
+  const avgSavingsPct = Math.round(savingsPctSum / entries.length);
+
+  const topFilters = [...filterSavings.entries()]
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, 5)
+    .map(([filterId]) => filterId);
+
+  return { entryCount: entries.length, totalFiltered, avgSavingsPct, topFilters };
+}
+
+/**
+ * Prune an EconomyLedger to keep only the most recent `keepLastN` entries.
+ * Returns a new EconomyLedger; the original is not mutated.
+ */
+export function pruneLedger(ledger: EconomyLedger, keepLastN: number): EconomyLedger {
+  const kept = keepLastN <= 0 ? [] : ledger.entries.slice(-keepLastN);
+  return {
+    entries: kept,
+    createdAt: ledger.createdAt,
+    updatedAt: new Date().toISOString(),
+  };
+}
+
+/**
+ * Persist an EconomyLedger to `.danteforge/economy-ledger.json` inside `cwd`.
+ */
+export async function saveLedger(cwd: string, ledger: EconomyLedger): Promise<void> {
+  const file = path.join(cwd, ECONOMY_LEDGER_FILE);
+  await fs.mkdir(path.dirname(file), { recursive: true });
+  await fs.writeFile(file, JSON.stringify(ledger, null, 2), 'utf8');
+}
+
+/**
+ * Load an EconomyLedger from `.danteforge/economy-ledger.json` inside `cwd`.
+ * Returns an empty ledger if the file does not exist or is corrupt.
+ */
+export async function loadLedger(cwd: string): Promise<EconomyLedger> {
+  const file = path.join(cwd, ECONOMY_LEDGER_FILE);
+  try {
+    const raw = await fs.readFile(file, 'utf8');
+    return JSON.parse(raw) as EconomyLedger;
+  } catch {
+    const now = new Date().toISOString();
+    return { entries: [], createdAt: now, updatedAt: now };
+  }
 }

@@ -7,6 +7,23 @@ import type { LLMProvider } from './config.js';
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
+/**
+ * Aggregated ROI summary across all recorded sessions/waves.
+ * Provides a high-level view of token spend efficiency.
+ */
+export interface RoiSummary {
+  /** Total input tokens spent across all recorded waves. */
+  totalInputTokens: number;
+  /** Total tokens filtered/saved by the context economy layer. */
+  filteredTokens: number;
+  /** Percentage of tokens saved relative to totalInputTokens (0–100). */
+  savingsPercent: number;
+  /** Estimated USD saved by not sending filtered tokens to the LLM. */
+  estimatedUsdSaved: number;
+  /** Number of wave sessions (ROI entries) included in this summary. */
+  sessionCount: number;
+}
+
 export interface WaveROIEntry {
   wave: number;
   tokensSpent: number;
@@ -111,6 +128,74 @@ export async function loadROIHistory(
 }
 
 // ── Format ────────────────────────────────────────────────────────────────────
+
+// ── RoiSummary helpers ────────────────────────────────────────────────────────
+
+/**
+ * Aggregate ROI data from a list of WaveROIEntry records (e.g. loaded from the
+ * JSONL file) together with optional pre-computed filter savings information.
+ *
+ * @param entries        Wave ROI entries from `loadROIHistory`.
+ * @param filteredTokens Total tokens saved by context economy filters (optional).
+ *                       When omitted, defaults to 0.
+ * @param provider       Provider used for cost estimation of saved tokens.
+ */
+export function computeRoiSummary(
+  entries: WaveROIEntry[],
+  filteredTokens = 0,
+  provider: LLMProvider = 'claude',
+): RoiSummary {
+  const sessionCount = entries.length;
+  const totalInputTokens = entries.reduce((s, e) => s + e.tokensSpent, 0);
+
+  const savingsPercent =
+    totalInputTokens + filteredTokens > 0
+      ? Math.round((filteredTokens / (totalInputTokens + filteredTokens)) * 100)
+      : 0;
+
+  const { totalEstimate: estimatedUsdSaved } = estimateCost(filteredTokens, provider);
+
+  return {
+    totalInputTokens,
+    filteredTokens,
+    savingsPercent,
+    estimatedUsdSaved,
+    sessionCount,
+  };
+}
+
+/**
+ * Render a human-readable text report from a `RoiSummary`.
+ * Suitable for direct CLI output.
+ */
+export function formatRoiReport(summary: RoiSummary): string {
+  const lines: string[] = [
+    'Token Economy ROI Report',
+    '────────────────────────',
+    `Sessions tracked:   ${summary.sessionCount}`,
+    `Total tokens spent: ${summary.totalInputTokens.toLocaleString()}`,
+    `Tokens filtered:    ${summary.filteredTokens.toLocaleString()} (${summary.savingsPercent}% savings)`,
+    `Est. USD saved:     $${summary.estimatedUsdSaved.toFixed(4)}`,
+  ];
+  if (summary.sessionCount === 0) {
+    lines.push('', 'No ROI data recorded yet. Run autoforge waves to start tracking.');
+  }
+  return lines.join('\n');
+}
+
+/**
+ * Compute quality-per-dollar: how much output quality was obtained per USD spent.
+ * Returns 0 if inputCost is 0 to avoid division by zero.
+ *
+ * @param inputCost      Total USD cost for the LLM calls.
+ * @param outputQuality  Quality score (0–10 scale) for the resulting output.
+ */
+export function computePaybackRatio(inputCost: number, outputQuality: number): number {
+  if (inputCost <= 0) return 0;
+  return outputQuality / inputCost;
+}
+
+// ── Format (legacy table) ─────────────────────────────────────────────────────
 
 /** Render ROI history as a markdown table with totals footer. */
 export function formatROISummary(entries: WaveROIEntry[]): string {
