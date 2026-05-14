@@ -320,3 +320,321 @@ export async function findLatestCheckpoint(params: {
     return undefined;
   }
 }
+
+// ---------------------------------------------------------------------------
+// withAgentRunNode — HOF for agent role execution within party/multi-agent runs
+// ---------------------------------------------------------------------------
+
+/**
+ * Wraps an agent role execution with start→completion DecisionNode recording.
+ *
+ * Unlike `withCommandNode` (which is designed for CLI-level commands and uses
+ * the actor.id `'danteforge-cli'`), `withAgentRunNode` sets the actor.id to
+ * the agent role name so provenance queries can filter per-agent activity
+ * using `store.getByActor(role)`. This is the re_gent pattern for multi-agent
+ * orchestration: every agent in a party/swarm gets its own provenance lane.
+ *
+ * All recording is best-effort — never throws, never blocks the agent run.
+ */
+export async function withAgentRunNode<T>(opts: {
+  cwd?: string;
+  /** The agent role id (e.g. 'pm', 'architect', 'dev', 'ux') */
+  role: string;
+  goal?: string;
+  context?: Record<string, unknown>;
+  fn: () => Promise<T>;
+  toResult?: (t: T) => { result: unknown; success: boolean; qualityScore?: number; fileStateRef?: string };
+}): Promise<T> {
+  const session = getSession(opts.cwd);
+  const t0 = Date.now();
+  const prompt = opts.goal ?? `${opts.role}: agent run`;
+  const ctx: Record<string, unknown> = { role: opts.role, ...(opts.context ?? {}) };
+
+  // Record start node with actor.id = role for per-agent provenance filtering
+  let startNodeId: string | undefined;
+  try {
+    const { createDecisionNodeStore, createDecisionNode } = await import('./decision-node.js');
+    const { mkdir } = await import('node:fs/promises');
+    await mkdir(path.dirname(session.storePath), { recursive: true });
+    const startNode = createDecisionNode({
+      parentNode: null,
+      sessionId: session.sessionId,
+      timelineId: session.timelineId,
+      actor: { type: 'agent', id: opts.role, product: session.product },
+      input: { prompt, context: ctx },
+      output: { result: 'in-progress', success: false, costUsd: 0, latencyMs: 0 },
+    });
+    const store = createDecisionNodeStore(session.storePath);
+    await store.append(startNode);
+    await store.close();
+    startNodeId = startNode.id;
+  } catch { /* best-effort */ }
+
+  let value: T;
+  try {
+    value = await opts.fn();
+  } catch (err) {
+    // Record failure node
+    try {
+      const { createDecisionNodeStore, createDecisionNode } = await import('./decision-node.js');
+      let parentNode: DecisionNode | null = null;
+      if (startNodeId) {
+        const store = createDecisionNodeStore(session.storePath);
+        parentNode = (await store.getById(startNodeId)) ?? null;
+        await store.close();
+      }
+      const failNode = createDecisionNode({
+        parentNode,
+        sessionId: session.sessionId,
+        timelineId: session.timelineId,
+        actor: { type: 'agent', id: opts.role, product: session.product },
+        input: { prompt, context: ctx },
+        output: {
+          result: `error: ${err instanceof Error ? err.message : String(err)}`,
+          success: false,
+          costUsd: 0,
+          latencyMs: Date.now() - t0,
+        },
+      });
+      const store = createDecisionNodeStore(session.storePath);
+      await store.append(failNode);
+      await store.close();
+    } catch { /* best-effort */ }
+    throw err;
+  }
+
+  // Record completion node
+  try {
+    const { createDecisionNodeStore, createDecisionNode } = await import('./decision-node.js');
+    let parentNode: DecisionNode | null = null;
+    if (startNodeId) {
+      const store = createDecisionNodeStore(session.storePath);
+      parentNode = (await store.getById(startNodeId)) ?? null;
+      await store.close();
+    }
+
+    let result: unknown = 'completed';
+    let success = true;
+    let qualityScore: number | undefined;
+    let fileStateRef: string | undefined;
+
+    if (opts.toResult) {
+      try {
+        const extracted = opts.toResult(value);
+        result = extracted.result;
+        success = extracted.success;
+        qualityScore = extracted.qualityScore;
+        fileStateRef = extracted.fileStateRef;
+      } catch { /* best-effort extraction */ }
+    }
+
+    const endNode = createDecisionNode({
+      parentNode,
+      sessionId: session.sessionId,
+      timelineId: session.timelineId,
+      actor: { type: 'agent', id: opts.role, product: session.product },
+      input: { prompt, context: ctx },
+      output: {
+        result,
+        success,
+        costUsd: 0,
+        latencyMs: Date.now() - t0,
+        ...(qualityScore !== undefined ? { qualityScore } : {}),
+        ...(fileStateRef !== undefined ? { fileStateRef } : {}),
+      },
+    });
+    const store = createDecisionNodeStore(session.storePath);
+    await store.append(endNode);
+    await store.close();
+  } catch { /* best-effort */ }
+
+  return value;
+}
+
+// ---------------------------------------------------------------------------
+// exportProvenanceGraph — serialize the full provenance graph to a portable format
+// ---------------------------------------------------------------------------
+
+export interface ProvenanceGraphExport {
+  schemaVersion: 'danteforge.provenance-graph.v1';
+  exportedAt: string;
+  sessionId?: string;
+  /** All nodes in the export, in chronological order. */
+  nodes: DecisionNode[];
+  /** Adjacency edges: parentId → child id (forward-traversal index). */
+  edges: Array<{ from: string; to: string }>;
+  /** Summary metadata. */
+  summary: {
+    totalNodes: number;
+    uniqueActors: string[];
+    timelines: string[];
+    sessions: string[];
+    dateRange: { earliest: string; latest: string } | null;
+  };
+}
+
+/**
+ * Export the full provenance graph from a DecisionNodeStore as a portable,
+ * structured object suitable for JSON serialization, war-room display, or
+ * external audit tools.
+ *
+ * Filter options (compose with AND):
+ *  - `sessionId` — only export nodes in that session
+ *  - `actorId`   — only export nodes by that actor
+ *
+ * All I/O is read-only on the store. Best-effort: returns an empty export
+ * when the store is unavailable.
+ */
+export async function exportProvenanceGraph(
+  cwd?: string,
+  filter?: { sessionId?: string; actorId?: string },
+): Promise<ProvenanceGraphExport> {
+  const session = getSession(cwd);
+  const emptyExport = (): ProvenanceGraphExport => ({
+    schemaVersion: 'danteforge.provenance-graph.v1',
+    exportedAt: new Date().toISOString(),
+    ...(filter?.sessionId ? { sessionId: filter.sessionId } : {}),
+    nodes: [],
+    edges: [],
+    summary: { totalNodes: 0, uniqueActors: [], timelines: [], sessions: [], dateRange: null },
+  });
+
+  try {
+    const { createDecisionNodeStore } = await import('./decision-node.js');
+    const store = createDecisionNodeStore(session.storePath);
+    try {
+      let nodes: DecisionNode[];
+      if (filter?.sessionId) {
+        nodes = await store.getBySession(filter.sessionId);
+      } else if (filter?.actorId) {
+        nodes = await store.getByActor(filter.actorId);
+      } else {
+        // Collect all nodes via timeline scan
+        const mainTimeline = await store.getByTimeline('main');
+        const seenSessions = new Set(mainTimeline.map(n => n.sessionId));
+        const allById = new Map<string, DecisionNode>(mainTimeline.map(n => [n.id, n]));
+        for (const sessionId of seenSessions) {
+          const sessionNodes = await store.getBySession(sessionId);
+          for (const node of sessionNodes) allById.set(node.id, node);
+        }
+        nodes = [...allById.values()];
+      }
+      if (filter?.actorId) nodes = nodes.filter(n => n.actor.id === filter.actorId);
+
+      // Sort chronologically
+      nodes.sort((a, b) => a.timestamp.localeCompare(b.timestamp));
+
+      // Build forward-edge adjacency list
+      const edges: Array<{ from: string; to: string }> = [];
+      for (const node of nodes) {
+        if (node.parentId) edges.push({ from: node.parentId, to: node.id });
+      }
+
+      // Summary
+      const actors = new Set(nodes.map(n => `${n.actor.type}:${n.actor.id}`));
+      const timelines = new Set(nodes.map(n => n.timelineId));
+      const sessions = new Set(nodes.map(n => n.sessionId));
+      const timestamps = nodes.map(n => n.timestamp).filter(Boolean).sort();
+      const dateRange = timestamps.length > 0
+        ? { earliest: timestamps[0]!, latest: timestamps[timestamps.length - 1]! }
+        : null;
+
+      return {
+        schemaVersion: 'danteforge.provenance-graph.v1',
+        exportedAt: new Date().toISOString(),
+        ...(filter?.sessionId ? { sessionId: filter.sessionId } : {}),
+        nodes,
+        edges,
+        summary: {
+          totalNodes: nodes.length,
+          uniqueActors: [...actors].sort(),
+          timelines: [...timelines].sort(),
+          sessions: [...sessions].sort(),
+          dateRange,
+        },
+      };
+    } finally {
+      await store.close();
+    }
+  } catch {
+    return emptyExport();
+  }
+}
+
+// ---------------------------------------------------------------------------
+// exportDecisionChain — serialize the ancestor chain for a given node
+// ---------------------------------------------------------------------------
+
+export interface DecisionChainExport {
+  schemaVersion: 'danteforge.decision-chain.v1';
+  exportedAt: string;
+  headNodeId: string;
+  /** Ancestor chain from genesis → head (inclusive, chronological order). */
+  chain: DecisionNode[];
+  /** True when the chain is contiguous (no missing parent links). */
+  complete: boolean;
+  chainLength: number;
+}
+
+/**
+ * Export the ancestor chain for a given node id (genesis → head, inclusive).
+ *
+ * This is a portable snapshot of the "decision lineage" leading to a specific
+ * decision — suitable for audit, replay, and causal attribution tooling.
+ *
+ * Returns `complete: false` when any parent link is missing (e.g. store was
+ * pruned or the chain crosses session boundaries that aren't in the store).
+ *
+ * Best-effort: returns a minimal export when the store is unavailable or the
+ * head node is not found.
+ */
+export async function exportDecisionChain(
+  headNodeId: string,
+  cwd?: string,
+): Promise<DecisionChainExport> {
+  const session = getSession(cwd);
+  const emptyExport = (): DecisionChainExport => ({
+    schemaVersion: 'danteforge.decision-chain.v1',
+    exportedAt: new Date().toISOString(),
+    headNodeId,
+    chain: [],
+    complete: false,
+    chainLength: 0,
+  });
+
+  try {
+    const { createDecisionNodeStore } = await import('./decision-node.js');
+    const store = createDecisionNodeStore(session.storePath);
+    try {
+      const head = await store.getById(headNodeId);
+      if (!head) return emptyExport();
+
+      const ancestors = await store.getAncestors(headNodeId);
+      // getAncestors returns oldest-first (walking back), then we need genesis→head
+      const chain = [...ancestors.reverse(), head];
+
+      // Check completeness: every non-root node must find its parent in the chain
+      const chainIds = new Set(chain.map(n => n.id));
+      let complete = true;
+      for (const node of chain) {
+        if (node.parentId !== null && !chainIds.has(node.parentId)) {
+          complete = false;
+          break;
+        }
+      }
+
+      return {
+        schemaVersion: 'danteforge.decision-chain.v1',
+        exportedAt: new Date().toISOString(),
+        headNodeId,
+        chain,
+        complete,
+        chainLength: chain.length,
+      };
+    } finally {
+      await store.close();
+    }
+  } catch {
+    return emptyExport();
+  }
+}
