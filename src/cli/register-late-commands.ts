@@ -378,6 +378,9 @@ program
   .option('--use-canonical', 'With --reset: auto-resolve the project preset from package.json / state.project (DanteForge → dev-tool-optimizer; DanteCode → coding-assistant; etc.)')
   .option('--preset <name>', 'With --reset: apply a specific preset. Values: coding-assistant | dev-tool-optimizer | agent-framework')
   .option('--calibrate', 'Run adversarial scorer and apply inflated-verdict corrections to matrix self-scores')
+  .option('--check-all-nine', 'Check if all dimensions ≥ target (default 9.0); exits 0=all green, 1=gaps remain. Writes .danteforge/GOAL_STATUS.json for /goal integration.')
+  .option('--next-dims <n>', 'Output JSON of N weakest dimensions below target — used by /goal-loop-matrix to feed /matrixdev', parseInt)
+  .option('--target <score>', 'Override 9.0 victory threshold for --check-all-nine, --auto, and --next-dims', parseFloat)
   .option('--yes', 'Skip the confirmation gate in --auto mode and --calibrate')
   .action(async (opts) => {
     if (opts.level || opts.raiseReady || opts.action) {
@@ -415,6 +418,9 @@ program
           useCanonical: opts.useCanonical as boolean | undefined,
           preset: opts.preset as string | undefined,
           calibrate: opts.calibrate as boolean | undefined,
+          checkAllNine: opts.checkAllNine as boolean | undefined,
+          nextDims: opts.nextDims as number | undefined,
+          target: opts.target as number | undefined,
           yes: opts.yes as boolean | undefined,
         });
         if (opts.json) {

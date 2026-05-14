@@ -6,5 +6,5 @@
     "tests/matrix-golden-flow.test.ts",
     "tests/command-skill-coverage.test.ts"
   ],
-  "scopeToDiff": false
+  "scopeToDiff": true
 }

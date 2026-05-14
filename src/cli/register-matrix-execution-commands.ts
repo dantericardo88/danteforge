@@ -509,7 +509,9 @@ function registerMergeCourt(matrix: Command): void {
       const candidates = [] as Array<{ candidate: { candidateId: string; leaseId: string; workPacketId: string; branch: string; gateReportId: string; blastRadius: number; riskLevel: 'low' | 'medium'; filesChanged: string[]; allowEmptyDiff?: boolean }; lease: unknown; workPacket: unknown; gateReport: unknown; redTeamReport?: unknown; tasteGateRequest?: unknown }>;
       for (const lease of leaseGraph.leases) {
         const packet = workGraph.packets.find(p => p.id === lease.workPacketId);
-        const gateReport = gateReportsFile.reports.find(r => r.leaseId === lease.id);
+        // Use the LATEST gate report for each lease — multiple verify runs accumulate
+        // reports in order; .find() would return the first (possibly failed) one.
+        const gateReport = gateReportsFile.reports.filter(r => r.leaseId === lease.id).at(-1);
         if (!packet || !gateReport) continue;
         const redTeamReport = redTeamFile?.reports.find(r => r.leaseId === lease.id);
         const tasteGateRequest = tasteGatesFile?.requests.find(r => r.leaseId === lease.id);

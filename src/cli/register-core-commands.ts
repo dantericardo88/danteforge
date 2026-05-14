@@ -671,6 +671,36 @@ program
   });
 
 program
+  .command('goal-loop')
+  .description('Autonomous cross-project loop: runs compete --auto on each project until all dimensions reach target (9.0). Pairs with Claude Code /goal for fully automated builds.')
+  .option('--projects <paths>', 'Comma-separated project paths (defaults to registered projects)')
+  .option('--target <score>', 'Victory threshold per dimension (default: 9.0)', parseFloat)
+  .option('--max-cycles <n>', 'Total cycle limit across all projects (default: 120)', parseInt)
+  .option('--max-cycles-per-project <n>', 'Max cycles on one project before rotating (default: 15)', parseInt)
+  .option('--rotation <mode>', 'round-robin | greedy (default: greedy — most gaps first)', 'greedy')
+  .option('--yes', 'Skip all confirmation gates (fully autonomous)')
+  .option('--prompt', 'Show usage and /goal integration instructions')
+  .action(async (opts) => {
+    try {
+      const { goalLoop } = await import('./commands/goal-loop.js');
+      const projects = opts.projects ? (opts.projects as string).split(',').map((p: string) => p.trim()) : [];
+      await goalLoop({
+        projects,
+        target: opts.target as number | undefined,
+        maxCycles: opts.maxCycles as number | undefined,
+        maxCyclesPerProject: opts.maxCyclesPerProject as number | undefined,
+        rotationMode: (opts.rotation as 'round-robin' | 'greedy' | undefined) ?? 'greedy',
+        yes: opts.yes as boolean | undefined,
+        promptMode: opts.prompt as boolean | undefined,
+      });
+    } catch (err) {
+      const { formatAndLogError } = await import('../core/format-error.js');
+      formatAndLogError(err, 'goal-loop');
+      process.exitCode = 1;
+    }
+  });
+
+program
   .command('status')
   .description('Show convergence dashboard: dimensions, cost, OSS harvest stats, next cycle plan')
   .action(async () => {

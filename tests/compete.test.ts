@@ -676,10 +676,12 @@ describe('compete --auto (actionAutoSprint)', () => {
     const result = await actionAutoSprint({
       cwd: tmpDir2,
       maxCycles: 1,
+      yes: true,
       _loadMatrix: async () => makeAutoMatrix(5.0, 8.0),
       _saveMatrix: async () => {},
       _runInferno: async () => {},
       _postSprintScore: async () => makeScoreResult(9.0),
+      _computeStrictDims: async () => ({ autonomy: 0, selfImprovement: 0, tokenEconomy: 0, specDrivenPipeline: 0, developerExperience: 0, planningQuality: 0, convergenceSelfHealing: 0 }) as never,
       _stdout: () => {},
     }, tmpDir2);
     assert.ok(result.victoryMessage !== undefined, 'should have a victory message');

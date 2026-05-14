@@ -66,7 +66,7 @@ export function buildSessionContext(stateYaml, matrixState = null) {
     `**Other:** /lessons /browse /resume /self-assess /self-mutate /ci-report /share-patterns /import-patterns /flow /guide /dossier /external-validate /mutation-score /outcome-check\n` +
     `**Recovery:** /refused-patterns /respec /cross-synthesize\n` +
     `**Compete:** /compete /ascend\n` +
-    `**Matrix:** /matrixdev /matrix-kernel\n` +
+    `**Matrix:** /matrixdev /matrix-kernel /goal-loop-matrix\n` +
     `**Daily Flow:** /score /prime /teach /go /harvest-pattern /build /proof\n` +
     `**Flows:** /daily-driver /oss-harvest /multi-agent /spec-to-ship /competitive-leapfrog\n` +
     `\nHelp: /danteforge-flow (all workflows) | danteforge help <command>\n`

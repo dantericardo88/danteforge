@@ -100,6 +100,9 @@ export interface CompeteOptions {
   useCanonical?: boolean;    // --use-canonical: resolve the project's preset automatically (coding-assistant for DanteCode, dev-tool-optimizer for DanteForge, etc.)
   preset?: string;           // --preset <name>: explicit preset (coding-assistant | dev-tool-optimizer | agent-framework)
   calibrate?: boolean;       // --calibrate: run adversarial scorer and apply inflated-verdict corrections
+  checkAllNine?: boolean;    // --check-all-nine: exit 0 if all dims ≥ target, else exit 1
+  nextDims?: number;         // --next-dims <n>: output JSON of n weakest dimensions below target
+  target?: number;           // --target <n>: override 9.0 threshold for check-all-nine, auto-sprint, and next-dims
   // Injection seam for calibrate testing
   _generateAdversarialScore?: (
     selfResult: import('../../core/harsh-scorer.js').HarshScoreResult,
@@ -108,13 +111,24 @@ export interface CompeteOptions {
 }
 
 export interface CompeteResult {
-  action: 'status' | 'init' | 'sprint' | 'rescore' | 'report' | 'validate' | 'auto' | 'sync-scores' | 'calibrate';
+  action: 'status' | 'init' | 'sprint' | 'rescore' | 'report' | 'validate' | 'auto' | 'sync-scores' | 'calibrate' | 'check-all-nine' | 'next-dims';
   matrixPath: string;
   overallScore?: number;
   nextDimension?: MatrixDimension;
   masterplanPrompt?: string;
   dimensionsUpdated?: number;
   victoryMessage?: string;
+  allGreen?: boolean;
+  nextDims?: NextDimEntry[];
+}
+
+export interface NextDimEntry {
+  id: string;
+  label: string;
+  selfScore: number;
+  target: number;
+  gap: number;
+  touches?: string[];
 }
 
 // ── Actions ───────────────────────────────────────────────────────────────────
@@ -688,7 +702,10 @@ export async function actionAutoSprint(options: CompeteOptions, cwd: string): Pr
 
       const postResult = await postSprintScoreFn({ cwd });
       await applyStrictOverrides(postResult, cwd, options._computeStrictDims ?? computeStrictDimensions);
-      const newSelfScore = postResult.displayScore;
+      // Bug A fix: prefer dimension-specific score over overall project score
+      const toCamelCase = (s: string) => s.replace(/_([a-z])/g, (_: string, c: string) => c.toUpperCase());
+      const dimKey = toCamelCase(next.id) as import('../../core/harsh-scorer.js').ScoringDimension;
+      const newSelfScore = postResult.displayDimensions?.[dimKey] ?? postResult.displayScore;
 
       if (options._loadMatrix || options._saveMatrix) {
         updateDimensionScore(matrix, next.id, newSelfScore);
@@ -700,17 +717,20 @@ export async function actionAutoSprint(options: CompeteOptions, cwd: string): Pr
           dimensionId: next.id,
           score: newSelfScore,
           agent: 'compete-auto',
-          rationale: `Post-inferno strict scorer for "${next.label}" returned ${newSelfScore.toFixed(1)}.`,
+          rationale: `Post-inferno strict scorer for "${next.label}" (dim: ${dimKey}) returned ${newSelfScore.toFixed(1)}.`,
         });
         matrix = await loadMatrix(cwd) ?? matrix;
       }
 
-      if (newSelfScore >= topScore) {
-        victoryMessage = `Victory — ${next.label} now ahead of ${topCompetitor} (${newSelfScore.toFixed(1)} vs ${topScore.toFixed(1)})`;
+      // Bug B fix: never declare victory below target (default 9.0) even if competitor ceiling is lower
+      const autoTarget = options.target ?? 9.0;
+      const victoryThreshold = Math.max(topScore, autoTarget);
+      if (newSelfScore >= victoryThreshold) {
+        victoryMessage = `Victory — ${next.label} now leads ${topCompetitor} (${newSelfScore.toFixed(1)} ≥ ${victoryThreshold.toFixed(1)})`;
         emit(`  ${victoryMessage}`);
       } else {
-        const remaining = topScore - newSelfScore;
-        emit(`  Progress: ${selfScoreBefore.toFixed(1)} → ${newSelfScore.toFixed(1)}  (${remaining.toFixed(1)} to close gap)`);
+        const remaining = victoryThreshold - newSelfScore;
+        emit(`  Progress: ${selfScoreBefore.toFixed(1)} → ${newSelfScore.toFixed(1)}  (${remaining.toFixed(1)} to ${victoryThreshold.toFixed(1)} target)`);
       }
     } catch (err) {
       emit(`  Cycle failed (${next.label}): ${err instanceof Error ? err.message : String(err)} — continuing to next dimension`);
@@ -745,6 +765,140 @@ export async function actionAutoSprint(options: CompeteOptions, cwd: string): Pr
 async function defaultRunInferno(goal: string, _cwd: string): Promise<void> {
   const { inferno } = await import('./magic.js');
   await inferno(goal);
+}
+
+// ── next-dims ─────────────────────────────────────────────────────────────────
+// Outputs JSON of the N weakest dimensions below target, sorted by gap descending.
+// Used by the goal-loop-matrix skill to know which dimensions to feed into /matrixdev.
+
+export async function actionNextDims(options: CompeteOptions, cwd: string): Promise<CompeteResult> {
+  const loadFn = options._loadMatrix ?? ((c: string) => loadMatrix(c));
+  const harshScoreFn = options._harshScore ?? computeHarshScore;
+  const matrixPath = getMatrixPath(cwd);
+  const target = options.target ?? 9.0;
+  const n = options.nextDims ?? 3;
+
+  const matrix = await loadFn(cwd);
+  if (!matrix) {
+    logger.error('No matrix found. Run `danteforge compete --init` first.');
+    process.exitCode = 1;
+    return { action: 'next-dims', matrixPath, nextDims: [] };
+  }
+
+  // Use live harsh scores so inflated matrix self-scores don't hide real gaps.
+  const harshResult = await harshScoreFn({ cwd });
+  const dimKey = (id: string) => id as import('../../core/harsh-scorer.js').ScoringDimension;
+
+  const entries: NextDimEntry[] = matrix.dimensions
+    .filter(dim => {
+      if (dim.ceiling !== undefined && dim.ceiling < target) return false;
+      const score = harshResult.displayDimensions?.[dimKey(dim.id)] ?? dim.scores['self'] ?? 0;
+      return score < target;
+    })
+    .map(dim => {
+      const selfScore = harshResult.displayDimensions?.[dimKey(dim.id)] ?? dim.scores['self'] ?? 0;
+      return {
+        id: dim.id,
+        label: dim.label ?? dim.id,
+        selfScore,
+        target,
+        gap: target - selfScore,
+        touches: dim.touches,
+      };
+    })
+    .sort((a, b) => b.gap - a.gap)
+    .slice(0, n);
+
+  if (options.json) {
+    process.stdout.write(JSON.stringify(entries, null, 2) + '\n');
+  } else {
+    if (entries.length === 0) {
+      logger.success(`All reachable dimensions are at ${target}+`);
+    } else {
+      logger.info(`Next ${entries.length} dimension(s) below ${target} (sorted by gap):`);
+      for (const e of entries) {
+        logger.info(`  ${e.label.padEnd(32)} self=${e.selfScore.toFixed(1)}  gap=${e.gap.toFixed(1)}`);
+      }
+    }
+  }
+
+  return { action: 'next-dims', matrixPath, overallScore: matrix.overallSelfScore, nextDims: entries };
+}
+
+// ── check-all-nine ─────────────────────────────────────────────────────────────
+// Machine-readable verdict for Claude Code /goal integration.
+// Exits 0 when all reachable dimensions are at or above target (default 9.0).
+// Writes .danteforge/GOAL_STATUS.json so the /goal evaluator reads a file,
+// not an LLM opinion.
+
+export async function actionCheckAllNine(options: CompeteOptions, cwd: string): Promise<CompeteResult> {
+  const loadFn = options._loadMatrix ?? ((c: string) => loadMatrix(c));
+  const harshScoreFn = options._harshScore ?? computeHarshScore;
+  const matrixPath = getMatrixPath(cwd);
+  const target = options.target ?? 9.0;
+
+  const matrix = await loadFn(cwd);
+  if (!matrix) {
+    logger.error('No matrix found. Run `danteforge compete --init` first.');
+    process.exitCode = 1;
+    return { action: 'check-all-nine', matrixPath, allGreen: false };
+  }
+
+  let harshDims: Record<string, number> | undefined;
+  try {
+    const harshResult = await harshScoreFn({ cwd });
+    harshDims = harshResult.displayDimensions as Record<string, number>;
+  } catch { /* best-effort — fall back to matrix self-scores */ }
+
+  const toCamelCase = (s: string) => s.replace(/_([a-z])/g, (_: string, c: string) => c.toUpperCase());
+
+  const failing: string[] = [];
+  const blocked: string[] = [];
+  const passing: string[] = [];
+
+  for (const dim of matrix.dimensions) {
+    if (dim.ceiling !== undefined && dim.ceiling < target) {
+      blocked.push(`${dim.label ?? dim.id} (ceiling: ${dim.ceiling})`);
+      continue;
+    }
+    const camelKey = toCamelCase(dim.id);
+    const harshScore = harshDims?.[camelKey] ?? harshDims?.[dim.id];
+    const selfScore = dim.scores['self'] ?? 0;
+    const effectiveScore = harshScore ?? selfScore;
+    if (effectiveScore >= target) {
+      passing.push(dim.label ?? dim.id);
+    } else {
+      failing.push(`${dim.label ?? dim.id}: ${effectiveScore.toFixed(1)}`);
+    }
+  }
+
+  const allGreen = failing.length === 0;
+  try {
+    const statusPath = path.join(cwd, '.danteforge', 'GOAL_STATUS.json');
+    await fs.writeFile(statusPath, JSON.stringify({
+      allGreen,
+      target,
+      passing: passing.length,
+      failing: failing.length,
+      blocked: blocked.length,
+      total: matrix.dimensions.length,
+      failingDimensions: failing,
+      blockedDimensions: blocked,
+      checkedAt: new Date().toISOString(),
+    }, null, 2), 'utf8');
+  } catch { /* best-effort */ }
+
+  if (allGreen) {
+    logger.success(`✓ All ${passing.length} reachable dimensions at ${target}+ (${blocked.length} blocked by ceiling)`);
+    process.exitCode = 0;
+  } else {
+    logger.warn(`✗ ${failing.length} dimension(s) below ${target}: ${failing.slice(0, 4).join(', ')}${failing.length > 4 ? ` (+${failing.length - 4} more)` : ''}`);
+    if (blocked.length > 0) logger.info(`  Ceiling-blocked (excluded from check): ${blocked.length}`);
+    logger.info('  Run `danteforge compete --auto --target 9.0` to close gaps.');
+    logger.info('  Status written: .danteforge/GOAL_STATUS.json');
+    process.exitCode = 1;
+  }
+  return { action: 'check-all-nine', matrixPath, overallScore: matrix.overallSelfScore, allGreen };
 }
 
 export async function compete(options: CompeteOptions = {}): Promise<CompeteResult> {
@@ -813,6 +967,8 @@ export async function compete(options: CompeteOptions = {}): Promise<CompeteResu
 
     if (options.reset) return await actionReset(options, cwd);
     if (options.init) return await actionInit(options, cwd);
+    if (options.checkAllNine) return await actionCheckAllNine(options, cwd);
+    if (options.nextDims !== undefined) return await actionNextDims(options, cwd);
     if (options.calibrate) return await actionCalibrate(options, cwd);
     if (options.auto || (options.sprint && options.auto)) return await actionAutoSprint(options, cwd);
     if (options.sprint) return await actionSprint(options, cwd);

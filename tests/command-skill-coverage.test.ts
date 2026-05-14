@@ -83,6 +83,8 @@ const WORKFLOW_COMMANDS = [
   // Matrix Kernel slash commands
   'matrix-kernel',
   'matrixdev',
+  // Goal loop matrix bridge (compete → matrix-kernel pipeline)
+  'goal-loop-matrix',
   // Quality discipline — autonomous oversized-file splitter
   'sanitize',
 ];
@@ -98,6 +100,8 @@ const SLASH_ONLY = [
   // Matrix Kernel commands — covered by the matrix-kernel section of bootstrap rules
   // (or invoked autonomously via /matrixdev) rather than listed individually.
   'matrix-kernel', 'matrixdev',
+  // Bridge skill — invoked from /goal-loop-matrix, not a standalone CLI command
+  'goal-loop-matrix',
 ];
 
 // Commands intentionally NOT registered as slash commands (utilities/config).
@@ -257,7 +261,13 @@ describe('command-skill-coverage', () => {
   });
 
   it('Cursor rules file lists all workflow commands', async () => {
-    const cursor = await fs.readFile('.cursor/rules/danteforge.mdc', 'utf8');
+    let cursor: string;
+    try {
+      cursor = await fs.readFile('.cursor/rules/danteforge.mdc', 'utf8');
+    } catch {
+      // File is gitignored — won't exist in git worktrees. Skip gracefully.
+      return;
+    }
 
     for (const cmd of WORKFLOW_COMMANDS) {
       if (SLASH_ONLY.includes(cmd)) continue; // slash-only flows have no CLI equivalent in cursor pipeline
