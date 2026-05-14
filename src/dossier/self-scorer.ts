@@ -1,4 +1,6 @@
 // src/dossier/self-scorer.ts — Scores DanteForge itself using source files as evidence
+// Includes historicalAccuracy tracking: each build compares the prior dossier's composite
+// score against the actual score achieved, building a calibration signal over time.
 
 import fs from 'node:fs/promises';
 import path from 'node:path';
@@ -12,6 +14,26 @@ export type WriteFileFn = (p: string, d: string) => Promise<void>;
 export type MkdirFn = (p: string, opts: { recursive: boolean }) => Promise<unknown>;
 export type GlobFn = (pattern: string, opts: { cwd: string }) => Promise<string[]>;
 export type GetRubricFn = (cwd: string) => Promise<Rubric>;
+
+/**
+ * Tracks whether a dossier's composite score prediction was accurate.
+ * Written to `.danteforge/dossiers/history/<id>/accuracy.jsonl`.
+ * Used to calibrate future self-scoring and detect scoring drift.
+ */
+export interface HistoricalAccuracyRecord {
+  /** ISO timestamp of this measurement. */
+  measuredAt: string;
+  /** Composite score from the *previous* dossier build (the prediction). */
+  predictedScore: number;
+  /** Composite score from the *current* dossier build (the ground truth). */
+  actualScore: number;
+  /** Absolute delta: actual - predicted. Positive = improvement. */
+  delta: number;
+  /** Number of dossier builds observed so far (including this one). */
+  buildCount: number;
+  /** Rolling mean absolute error across all observed deltas. */
+  meanAbsoluteError: number;
+}
 
 export type SelfExtractEvidenceFn = (
   fileContent: string,
@@ -195,6 +217,79 @@ async function buildDossierDimensions(
   return dimensions;
 }
 
+// ── Historical Accuracy Tracking ───────────────────────────────────────────────
+
+function accuracyLogPath(cwd: string, id: string): string {
+  return path.join(dossierHistoryDir(cwd, id), 'accuracy.jsonl');
+}
+
+/**
+ * Load all prior accuracy records for a competitor dossier.
+ * Returns [] if none exist yet.
+ */
+export async function loadAccuracyLog(
+  cwd: string,
+  id: string,
+  readFileFn: ReadFileFn = (p, e) => fs.readFile(p, e as BufferEncoding),
+): Promise<HistoricalAccuracyRecord[]> {
+  const logPath = accuracyLogPath(cwd, id);
+  let raw: string;
+  try {
+    raw = await readFileFn(logPath, 'utf8');
+  } catch {
+    return [];
+  }
+  const records: HistoricalAccuracyRecord[] = [];
+  for (const line of raw.split('\n')) {
+    const trimmed = line.trim();
+    if (!trimmed) continue;
+    try {
+      records.push(JSON.parse(trimmed) as HistoricalAccuracyRecord);
+    } catch { /* skip malformed lines */ }
+  }
+  return records;
+}
+
+/**
+ * Append a new accuracy record to the log and return it.
+ * The MAE is computed over all records including the new one.
+ */
+export async function appendAccuracyRecord(
+  cwd: string,
+  id: string,
+  predictedScore: number,
+  actualScore: number,
+  mkdirFn: MkdirFn,
+  writeFileFn: WriteFileFn,
+  readFileFn: ReadFileFn,
+): Promise<HistoricalAccuracyRecord> {
+  const priorRecords = await loadAccuracyLog(cwd, id, readFileFn);
+  const delta = actualScore - predictedScore;
+  const allDeltas = [...priorRecords.map(r => Math.abs(r.delta)), Math.abs(delta)];
+  const meanAbsoluteError = allDeltas.reduce((s, d) => s + d, 0) / allDeltas.length;
+
+  const record: HistoricalAccuracyRecord = {
+    measuredAt: new Date().toISOString(),
+    predictedScore,
+    actualScore,
+    delta,
+    buildCount: priorRecords.length + 1,
+    meanAbsoluteError: Math.round(meanAbsoluteError * 1000) / 1000,
+  };
+
+  const logPath = accuracyLogPath(cwd, id);
+  await mkdirFn(path.dirname(logPath), { recursive: true });
+  // Append as JSONL (read existing + append)
+  let existing = '';
+  try {
+    existing = await readFileFn(logPath, 'utf8');
+  } catch { /* first entry */ }
+  const newContent = (existing ? existing.trimEnd() + '\n' : '') + JSON.stringify(record) + '\n';
+  await writeFileFn(logPath, newContent);
+
+  return record;
+}
+
 export async function buildSelfDossier(opts: SelfScorerOptions): Promise<Dossier> {
   const { cwd } = opts;
   const competitorId = opts.competitorId ?? DEFAULT_SELF_COMPETITOR_ID;
@@ -265,6 +360,22 @@ export async function buildSelfDossier(opts: SelfScorerOptions): Promise<Dossier
       dossierSnapshotPath(cwd, competitorId, existing.lastBuilt),
       JSON.stringify(existing, null, 2),
     );
+
+    // Track historical accuracy: the prior dossier's composite is the "prediction"
+    // and the newly computed composite is the "actual". Best-effort — never blocks.
+    try {
+      const accuracyRecord = await appendAccuracyRecord(
+        cwd,
+        competitorId,
+        existing.composite,
+        dossier.composite,
+        mkdirFn,
+        writeFileFn,
+        readFileFn,
+      );
+      // Attach accuracy metadata to dossier for downstream consumers
+      (dossier as Dossier & { historicalAccuracy?: HistoricalAccuracyRecord }).historicalAccuracy = accuracyRecord;
+    } catch { /* best-effort */ }
   }
   await writeFileFn(dossierPath(cwd, competitorId), JSON.stringify(dossier, null, 2));
 
