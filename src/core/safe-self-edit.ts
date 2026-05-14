@@ -1,4 +1,7 @@
 // Safe Self-Edit Gate — Protected file guard + audit log for DanteForge self-modifications
+// Includes rollback-on-failure support: callers can wrap an edit operation with
+// `withRollback` to guarantee the original file content is restored if the operation
+// fails or if the post-edit validation step does not pass.
 import crypto from 'node:crypto';
 import fs from 'fs/promises';
 import path from 'path';
@@ -239,4 +242,115 @@ export async function auditPostForgeProtectedMutations(
   }
 
   return { violations };
+}
+
+// ── Rollback-on-failure support ────────────────────────────────────────────────
+
+export interface RollbackContext {
+  filePath: string;
+  originalContent: string;
+}
+
+export interface WithRollbackOptions {
+  /** Inject for testing */
+  _readFile?: (p: string) => Promise<string>;
+  /** Inject for testing */
+  _writeFile?: (p: string, content: string) => Promise<void>;
+  /** Optional post-edit validation. If it returns false, rollback is triggered. */
+  validate?: (filePath: string) => Promise<boolean>;
+}
+
+export interface WithRollbackResult<T> {
+  result: T | null;
+  rolledBack: boolean;
+  rollbackReason?: string;
+  beforeHash: string;
+  afterHash: string | null;
+}
+
+/**
+ * Wrap a file edit operation with automatic rollback on failure.
+ *
+ * Flow:
+ *   1. Snapshot the original file content (compute SHA-256).
+ *   2. Run the edit operation (callback).
+ *   3. If `validate` is provided, call it. If it returns false → rollback.
+ *   4. If the edit operation throws → rollback.
+ *   5. Write an audit log entry recording the before/after hashes.
+ *
+ * The function NEVER throws — errors are captured in the result so callers
+ * can decide how to surface them.
+ */
+export async function withRollback<T>(
+  filePath: string,
+  reason: string,
+  editFn: (filePath: string, originalContent: string) => Promise<T>,
+  opts: WithRollbackOptions = {},
+  cwd?: string,
+): Promise<WithRollbackResult<T>> {
+  const readFileFn = opts._readFile ?? ((p: string) => fs.readFile(p, 'utf8'));
+  const writeFileFn = opts._writeFile ?? ((p: string, c: string) => fs.writeFile(p, c, 'utf8'));
+
+  // Step 1: snapshot original
+  let originalContent: string;
+  try {
+    originalContent = await readFileFn(filePath);
+  } catch (err) {
+    logger.warn(`[safe-self-edit] withRollback: cannot read ${filePath} — ${String(err)}`);
+    return { result: null, rolledBack: false, rollbackReason: 'file-read-error', beforeHash: '', afterHash: null };
+  }
+
+  const beforeHash = computeFileHash(originalContent);
+
+  // Step 2: run edit operation
+  let editResult: T;
+  try {
+    editResult = await editFn(filePath, originalContent);
+  } catch (err) {
+    const rollbackReason = `edit-threw: ${err instanceof Error ? err.message : String(err)}`;
+    logger.warn(`[safe-self-edit] Edit failed on ${filePath} — rolling back. Reason: ${rollbackReason}`);
+    try {
+      await writeFileFn(filePath, originalContent);
+    } catch (restoreErr) {
+      logger.error(`[safe-self-edit] ROLLBACK FAILED for ${filePath}: ${String(restoreErr)}`);
+    }
+    await auditSelfEdit({ timestamp: new Date().toISOString(), filePath, action: 'write', reason, approved: false, policy: 'deny', beforeHash, afterHash: undefined }, cwd).catch(() => {});
+    return { result: null, rolledBack: true, rollbackReason, beforeHash, afterHash: null };
+  }
+
+  // Step 3: read post-edit content and hash
+  let afterContent: string;
+  try {
+    afterContent = await readFileFn(filePath);
+  } catch {
+    afterContent = originalContent; // treat as no-op
+  }
+  const afterHash = computeFileHash(afterContent);
+
+  // Step 4: optional validation
+  if (opts.validate) {
+    let valid = false;
+    try {
+      valid = await opts.validate(filePath);
+    } catch (vErr) {
+      valid = false;
+      logger.warn(`[safe-self-edit] Validation threw for ${filePath}: ${String(vErr)}`);
+    }
+
+    if (!valid) {
+      const rollbackReason = 'validation-failed';
+      logger.warn(`[safe-self-edit] Validation failed for ${filePath} — rolling back`);
+      try {
+        await writeFileFn(filePath, originalContent);
+      } catch (restoreErr) {
+        logger.error(`[safe-self-edit] ROLLBACK FAILED for ${filePath}: ${String(restoreErr)}`);
+      }
+      await auditSelfEdit({ timestamp: new Date().toISOString(), filePath, action: 'write', reason, approved: false, policy: 'deny', beforeHash, afterHash }, cwd).catch(() => {});
+      return { result: null, rolledBack: true, rollbackReason, beforeHash, afterHash };
+    }
+  }
+
+  // Step 5: audit successful edit
+  await auditSelfEdit({ timestamp: new Date().toISOString(), filePath, action: 'write', reason, approved: true, policy: 'allow-with-audit', beforeHash, afterHash }, cwd).catch(() => {});
+  return { result: editResult, rolledBack: false, beforeHash, afterHash };
 }
