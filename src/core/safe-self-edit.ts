@@ -344,6 +344,98 @@ export async function withCheckpoint<T>(
   }
 }
 
+// ── Retry + healing-loop support ──────────────────────────────────────────────
+
+/**
+ * Retry an async operation up to `maxAttempts` times.
+ *
+ * On each failure the error is logged and (if `delayMs > 0`) execution pauses
+ * before the next attempt.  After all attempts are exhausted the final error
+ * is re-thrown so callers can decide how to handle it.
+ *
+ * @param fn           The operation to retry.
+ * @param maxAttempts  Maximum number of attempts (minimum 1).
+ * @param delayMs      Milliseconds to wait between attempts (default 0).
+ * @param _sleep       Injection seam for testing (overrides the real delay).
+ */
+export async function withRetry<T>(
+  fn: () => Promise<T>,
+  maxAttempts: number,
+  delayMs = 0,
+  _sleep: (ms: number) => Promise<void> = (ms) => new Promise<void>(r => setTimeout(r, ms)),
+): Promise<T> {
+  const attempts = Math.max(1, maxAttempts);
+  let lastError: unknown;
+
+  for (let attempt = 1; attempt <= attempts; attempt++) {
+    try {
+      return await fn();
+    } catch (err) {
+      lastError = err;
+      const remaining = attempts - attempt;
+      logger.warn(
+        `[safe-self-edit] withRetry: attempt ${attempt}/${attempts} failed — ` +
+        `${err instanceof Error ? err.message : String(err)}` +
+        (remaining > 0 ? ` — ${remaining} attempt(s) remaining` : ''),
+      );
+      if (remaining > 0 && delayMs > 0) {
+        await _sleep(delayMs);
+      }
+    }
+  }
+
+  throw lastError;
+}
+
+/**
+ * Healing loop: run `fn`. If it fails, run `healFn` to attempt remediation,
+ * then retry `fn`. Repeats up to `maxRounds` times.
+ *
+ * On success returns the result. If all rounds are exhausted the last error
+ * from `fn` is re-thrown.
+ *
+ * Use this pattern when failures have known repair procedures (e.g. reset
+ * local state, clear a cache, restore a file) that should be applied before
+ * each retry rather than just re-running the same operation blindly.
+ *
+ * @param fn        The primary operation.
+ * @param healFn    Remediation step called before each retry.
+ * @param maxRounds Maximum number of rounds (initial attempt + retries; min 1).
+ */
+export async function withHealingLoop<T>(
+  fn: () => Promise<T>,
+  healFn: (attempt: number, err: unknown) => Promise<void>,
+  maxRounds: number,
+): Promise<T> {
+  const rounds = Math.max(1, maxRounds);
+  let lastError: unknown;
+
+  for (let round = 1; round <= rounds; round++) {
+    try {
+      return await fn();
+    } catch (err) {
+      lastError = err;
+      const remaining = rounds - round;
+      logger.warn(
+        `[safe-self-edit] withHealingLoop: round ${round}/${rounds} failed — ` +
+        `${err instanceof Error ? err.message : String(err)}` +
+        (remaining > 0 ? ' — running heal step' : ''),
+      );
+      if (remaining > 0) {
+        try {
+          await healFn(round, err);
+        } catch (healErr) {
+          logger.error(
+            `[safe-self-edit] withHealingLoop: healFn threw on round ${round}: ${String(healErr)}`,
+          );
+        }
+      }
+    }
+  }
+
+  throw lastError;
+}
+
 // ── Rollback-on-failure support ────────────────────────────────────────────────
 
 export interface RollbackContext {
