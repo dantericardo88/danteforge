@@ -244,6 +244,106 @@ export async function auditPostForgeProtectedMutations(
   return { violations };
 }
 
+// ── Checkpoint / restore-point support ────────────────────────────────────────
+
+/**
+ * A restore point created before applying edits. Can be used to roll back
+ * an arbitrary sequence of changes applied after `withCheckpoint` was called.
+ */
+export interface Checkpoint {
+  /** ISO timestamp when the checkpoint was taken. */
+  createdAt: string;
+  /** Map of absolute file path → original content at checkpoint time. */
+  snapshots: Map<string, string>;
+}
+
+export interface WithCheckpointOptions {
+  /** File paths (absolute) to snapshot before the operation. */
+  filePaths: string[];
+  /** Inject for testing — override fs.readFile */
+  _readFile?: (p: string) => Promise<string>;
+  /** Inject for testing — override fs.writeFile */
+  _writeFile?: (p: string, content: string) => Promise<void>;
+}
+
+export interface WithCheckpointResult<T> {
+  result: T | null;
+  rolledBack: boolean;
+  rollbackReason?: string;
+  checkpoint: Checkpoint;
+}
+
+/**
+ * Creates a restore point for the listed files, runs `editFn`, and automatically
+ * rolls back ALL snapshotted files if `editFn` throws.
+ *
+ * Unlike `withRollback` (which handles a single file), `withCheckpoint` handles
+ * an arbitrary set of files atomically — useful when a forge wave may touch
+ * multiple files and you want a single rollback to undo all changes.
+ *
+ * Flow:
+ *   1. Snapshot each listed file (skip files that don't exist yet).
+ *   2. Run `editFn(checkpoint)`.
+ *   3. On success → return result.
+ *   4. On throw → restore all snapshotted files, return rolledBack=true.
+ */
+export async function withCheckpoint<T>(
+  opts: WithCheckpointOptions,
+  editFn: (checkpoint: Checkpoint) => Promise<T>,
+  cwd?: string,
+): Promise<WithCheckpointResult<T>> {
+  const readFileFn = opts._readFile ?? ((p: string) => fs.readFile(p, 'utf8'));
+  const writeFileFn = opts._writeFile ?? ((p: string, c: string) => fs.writeFile(p, c, 'utf8'));
+
+  const checkpoint: Checkpoint = {
+    createdAt: new Date().toISOString(),
+    snapshots: new Map(),
+  };
+
+  // Step 1: snapshot all listed files
+  for (const filePath of opts.filePaths) {
+    try {
+      const content = await readFileFn(filePath);
+      checkpoint.snapshots.set(filePath, content);
+    } catch {
+      // File may not exist yet — skip; there is nothing to restore for it
+    }
+  }
+
+  // Step 2: run the edit operation
+  try {
+    const result = await editFn(checkpoint);
+    return { result, rolledBack: false, checkpoint };
+  } catch (err) {
+    const rollbackReason = `edit-threw: ${err instanceof Error ? err.message : String(err)}`;
+    logger.warn(`[safe-self-edit] withCheckpoint: edit failed — rolling back ${checkpoint.snapshots.size} file(s). Reason: ${rollbackReason}`);
+
+    // Step 3: restore all snapshotted files
+    for (const [filePath, originalContent] of checkpoint.snapshots) {
+      try {
+        await writeFileFn(filePath, originalContent);
+        logger.verbose(`[safe-self-edit] Restored: ${filePath}`);
+      } catch (restoreErr) {
+        logger.error(`[safe-self-edit] ROLLBACK FAILED for ${filePath}: ${String(restoreErr)}`);
+      }
+    }
+
+    // Audit the rollback (best-effort)
+    for (const filePath of checkpoint.snapshots.keys()) {
+      await auditSelfEdit({
+        timestamp: new Date().toISOString(),
+        filePath,
+        action: 'write',
+        reason: `checkpoint rollback: ${rollbackReason}`,
+        approved: false,
+        policy: 'deny',
+      }, cwd).catch(() => {});
+    }
+
+    return { result: null, rolledBack: true, rollbackReason, checkpoint };
+  }
+}
+
 // ── Rollback-on-failure support ────────────────────────────────────────────────
 
 export interface RollbackContext {

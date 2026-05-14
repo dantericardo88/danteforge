@@ -290,6 +290,88 @@ export async function appendAccuracyRecord(
   return record;
 }
 
+// ── Calibration score ──────────────────────────────────────────────────────────
+
+/**
+ * Summary of historical scoring accuracy computed from JSONL records.
+ */
+export interface CalibrationSummary {
+  /** Competitor / dossier id the records belong to. */
+  competitorId: string;
+  /** Total number of accuracy records observed. */
+  totalBuilds: number;
+  /** Mean absolute error across all observed deltas (lower is better). */
+  meanAbsoluteError: number;
+  /** Median absolute error. */
+  medianAbsoluteError: number;
+  /**
+   * Calibration confidence on a 0–1 scale.
+   * Defined as max(0, 1 - MAE/5) so a MAE of 0 = perfect (1.0)
+   * and a MAE of 5 or above = no confidence (0.0).
+   */
+  confidence: number;
+  /** Positive if we consistently under-predict; negative if we over-predict. */
+  meanBias: number;
+  /** The most recent accuracy record, or null if no records exist. */
+  latestRecord: HistoricalAccuracyRecord | null;
+}
+
+/**
+ * Compute calibration statistics from the historical accuracy JSONL log.
+ *
+ * This gives the autonomous quality loop a quantitative signal for how well
+ * DanteForge's self-scoring predictions match actual outcomes over time,
+ * enabling adaptive confidence weighting and drift detection.
+ *
+ * @param cwd  Project root (where `.danteforge/` lives).
+ * @param id   Competitor / dossier identifier (default: "dantescode").
+ * @param readFileFn  Optional injection seam for testing.
+ */
+export async function calibrationScore(
+  cwd: string,
+  id: string = DEFAULT_SELF_COMPETITOR_ID,
+  readFileFn: ReadFileFn = (p, e) => fs.readFile(p, e as BufferEncoding),
+): Promise<CalibrationSummary> {
+  const records = await loadAccuracyLog(cwd, id, readFileFn);
+
+  if (records.length === 0) {
+    return {
+      competitorId: id,
+      totalBuilds: 0,
+      meanAbsoluteError: 0,
+      medianAbsoluteError: 0,
+      confidence: 1.0,   // no evidence of inaccuracy yet
+      meanBias: 0,
+      latestRecord: null,
+    };
+  }
+
+  const absDeltas = records.map(r => Math.abs(r.delta));
+  const biasDeltas = records.map(r => r.delta);
+
+  const mae = absDeltas.reduce((s, v) => s + v, 0) / absDeltas.length;
+  const meanBias = biasDeltas.reduce((s, v) => s + v, 0) / biasDeltas.length;
+
+  // Median: sort ascending, pick middle element
+  const sorted = [...absDeltas].sort((a, b) => a - b);
+  const mid = Math.floor(sorted.length / 2);
+  const medianAbsoluteError = sorted.length % 2 === 1
+    ? (sorted[mid] ?? 0)
+    : ((sorted[mid - 1] ?? 0) + (sorted[mid] ?? 0)) / 2;
+
+  const confidence = Math.max(0, Math.min(1, 1 - mae / 5));
+
+  return {
+    competitorId: id,
+    totalBuilds: records.length,
+    meanAbsoluteError: Math.round(mae * 1000) / 1000,
+    medianAbsoluteError: Math.round(medianAbsoluteError * 1000) / 1000,
+    confidence: Math.round(confidence * 1000) / 1000,
+    meanBias: Math.round(meanBias * 1000) / 1000,
+    latestRecord: records[records.length - 1] ?? null,
+  };
+}
+
 export async function buildSelfDossier(opts: SelfScorerOptions): Promise<Dossier> {
   const { cwd } = opts;
   const competitorId = opts.competitorId ?? DEFAULT_SELF_COMPETITOR_ID;
