@@ -171,6 +171,120 @@ export async function handleUsage(
   return metadata;
 }
 
+// ---------------------------------------------------------------------------
+// Pipeline stage tracking (spec-driven pipeline completeness)
+// ---------------------------------------------------------------------------
+
+/**
+ * The ordered stages of the DanteForge spec-driven pipeline.
+ * Matches the `workflowStage` field in STATE.yaml / WorkflowStage in state.ts.
+ */
+export type PipelineStage =
+  | 'constitution'
+  | 'spec'
+  | 'clarify'
+  | 'plan'
+  | 'tasks'
+  | 'forge'
+  | 'verify';
+
+/** Ordered pipeline sequence — earlier index = earlier stage */
+const PIPELINE_ORDER: PipelineStage[] = [
+  'constitution',
+  'spec',
+  'clarify',
+  'plan',
+  'tasks',
+  'forge',
+  'verify',
+];
+
+/**
+ * Maps STATE.yaml `workflowStage` values to our canonical PipelineStage.
+ * STATE.yaml may use "specify" (the command name) for the spec stage.
+ */
+const STAGE_ALIASES: Record<string, PipelineStage> = {
+  specify: 'spec',
+  specified: 'spec',
+  spec: 'spec',
+  clarify: 'clarify',
+  clarified: 'clarify',
+  plan: 'plan',
+  planned: 'plan',
+  tasks: 'tasks',
+  tasked: 'tasks',
+  forge: 'forge',
+  forged: 'forge',
+  verify: 'verify',
+  verified: 'verify',
+  constitution: 'constitution',
+};
+
+/**
+ * Reads `workflowStage` from STATE.yaml and returns the canonical PipelineStage.
+ * Falls back to 'constitution' when the file is missing or the stage is unrecognised.
+ */
+export async function getPipelineStage(cwd: string): Promise<PipelineStage> {
+  try {
+    const { cachedLoadState } = await import('./state-cache.js');
+    const state = await cachedLoadState({ cwd });
+    const raw: string = (state as unknown as Record<string, unknown>).workflowStage as string ?? '';
+    return STAGE_ALIASES[raw.toLowerCase()] ?? 'constitution';
+  } catch {
+    return 'constitution';
+  }
+}
+
+/**
+ * Returns the next stage in the pipeline, or null if `current` is the last stage.
+ * Pure function — no I/O.
+ */
+export function advancePipelineStage(current: PipelineStage): PipelineStage | null {
+  const idx = PIPELINE_ORDER.indexOf(current);
+  if (idx === -1 || idx >= PIPELINE_ORDER.length - 1) return null;
+  return PIPELINE_ORDER[idx + 1] ?? null;
+}
+
+/**
+ * Validates whether a transition from `from` to `to` is legal.
+ * Rules:
+ *   - Forward transitions are allowed only if no stage is skipped.
+ *   - Staying at the same stage is allowed (idempotent re-entry).
+ *   - Backward transitions are allowed (re-running a previous stage).
+ *   - Skipping stages (e.g., spec → forge, skipping plan+tasks) is rejected.
+ */
+export function validatePipelineTransition(
+  from: PipelineStage,
+  to: PipelineStage,
+): { valid: boolean; reason?: string } {
+  const fromIdx = PIPELINE_ORDER.indexOf(from);
+  const toIdx = PIPELINE_ORDER.indexOf(to);
+
+  if (fromIdx === -1) {
+    return { valid: false, reason: `Unknown source stage: '${from}'` };
+  }
+  if (toIdx === -1) {
+    return { valid: false, reason: `Unknown target stage: '${to}'` };
+  }
+
+  // Backward or same stage — always allowed
+  if (toIdx <= fromIdx) {
+    return { valid: true };
+  }
+
+  // Forward — must be exactly one step
+  if (toIdx === fromIdx + 1) {
+    return { valid: true };
+  }
+
+  // Skipping — compute which stages would be skipped
+  const skipped = PIPELINE_ORDER.slice(fromIdx + 1, toIdx);
+  return {
+    valid: false,
+    reason: `Cannot skip pipeline stages: ${skipped.join(', ')} must run before '${to}'`,
+  };
+}
+
 /** Stage 6: Persist audit log + memory entry */
 export async function persistAudit(
   output: string,

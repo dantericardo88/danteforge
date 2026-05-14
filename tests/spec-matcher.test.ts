@@ -6,8 +6,11 @@ import {
   matchPatternsToRequirements,
   computeSpecMatch,
   formatCoverageReport,
+  parseSpecRequirements,
+  computeRequirementCoverage,
   type OssPattern,
   type SpecRequirement,
+  type RequirementCoverage,
 } from '../src/core/spec-matcher.ts';
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -280,5 +283,143 @@ describe('formatCoverageReport', () => {
     assert.ok(!report.includes('## Covered Requirements'), 'Should NOT have Covered section');
     assert.ok(!report.includes('## Partially Covered Requirements'), 'Should NOT have Partial section');
     assert.ok(report.includes('## Open Requirements'), 'Should have Open section');
+  });
+});
+
+// ── parseSpecRequirements ─────────────────────────────────────────────────────
+
+describe('parseSpecRequirements', () => {
+  it('PS1: parses numbered requirements (1. format)', () => {
+    const spec = '1. Authenticate users via OAuth.\n2. Encrypt all data at rest.';
+    const reqs = parseSpecRequirements(spec);
+    assert.equal(reqs.length, 2);
+    assert.equal(reqs[0], 'Authenticate users via OAuth.');
+    assert.equal(reqs[1], 'Encrypt all data at rest.');
+  });
+
+  it('PS2: parses checkbox requirements (- [ ] format)', () => {
+    const spec = '- [ ] Support pagination\n- [x] Provide JSON responses';
+    const reqs = parseSpecRequirements(spec);
+    assert.equal(reqs.length, 2);
+    assert.equal(reqs[0], 'Support pagination');
+    assert.equal(reqs[1], 'Provide JSON responses');
+  });
+
+  it('PS3: parses **Must** and **Should** bold markers', () => {
+    const spec = '**Must** expose a REST API\n**Should** return JSON by default';
+    const reqs = parseSpecRequirements(spec);
+    assert.equal(reqs.length, 2);
+    assert.equal(reqs[0], 'expose a REST API');
+    assert.equal(reqs[1], 'return JSON by default');
+  });
+
+  it('PS4: parses REQ-XXX identifier lines', () => {
+    const spec = 'REQ-010: The system must support retry logic.\nREQ-011: Log all errors.';
+    const reqs = parseSpecRequirements(spec);
+    assert.equal(reqs.length, 2);
+    assert.equal(reqs[0], 'The system must support retry logic.');
+    assert.equal(reqs[1], 'Log all errors.');
+  });
+
+  it('PS5: parses acceptance-criteria block bullets', () => {
+    const spec = '## Acceptance Criteria\n- Users can log in with email\n- Session expires after 30 min';
+    const reqs = parseSpecRequirements(spec);
+    assert.ok(reqs.includes('Users can log in with email'));
+    assert.ok(reqs.includes('Session expires after 30 min'));
+  });
+
+  it('PS6: returns [] on empty spec', () => {
+    assert.deepEqual(parseSpecRequirements(''), []);
+  });
+
+  it('PS7: ignores plain prose that is not a requirement marker', () => {
+    const spec = 'This document describes the system.\nSome background context here.';
+    const reqs = parseSpecRequirements(spec);
+    assert.equal(reqs.length, 0);
+  });
+
+  it('PS8: mixed format spec returns all requirements', () => {
+    const spec = [
+      '1. Must authenticate users.',
+      '- [ ] Must encrypt passwords.',
+      '**Must** store audit logs.',
+      'REQ-099: Must comply with GDPR.',
+    ].join('\n');
+    const reqs = parseSpecRequirements(spec);
+    assert.equal(reqs.length, 4);
+  });
+
+  it('PS9: numbered requirements with ) delimiter are parsed', () => {
+    const spec = '1) Support pagination.\n2) Support filtering.';
+    const reqs = parseSpecRequirements(spec);
+    assert.equal(reqs.length, 2);
+    assert.equal(reqs[0], 'Support pagination.');
+  });
+});
+
+// ── computeRequirementCoverage ────────────────────────────────────────────────
+
+describe('computeRequirementCoverage', () => {
+  it('RC1: matched=0, coveragePercent=0 when forge output is empty', () => {
+    const spec = '1. Authenticate users.\n2. Encrypt tokens.';
+    const result: RequirementCoverage = computeRequirementCoverage(spec, '');
+    assert.equal(result.total, 2);
+    assert.equal(result.matched, 0);
+    assert.equal(result.coveragePercent, 0);
+    assert.equal(result.unmatched.length, 2);
+  });
+
+  it('RC2: total=0, coveragePercent=0 when spec has no requirements', () => {
+    const result: RequirementCoverage = computeRequirementCoverage('', 'function authenticate() {}');
+    assert.equal(result.total, 0);
+    assert.equal(result.matched, 0);
+    assert.equal(result.coveragePercent, 0);
+    assert.deepEqual(result.unmatched, []);
+  });
+
+  it('RC3: computes coveragePercent correctly for partial match', () => {
+    const spec = '1. Authenticate users.\n2. Encrypt passwords.\n3. Log all requests.';
+    // "authenticate" keyword will match first requirement; "encrypt" will match second
+    const forge = 'function authenticate(user) { encryptPassword(user.pass); }';
+    const result = computeRequirementCoverage(spec, forge);
+    assert.ok(result.total === 3);
+    assert.ok(result.matched >= 1);
+    assert.ok(result.coveragePercent > 0 && result.coveragePercent <= 100);
+  });
+
+  it('RC4: unmatched list contains only unmatched requirement texts', () => {
+    const spec = '1. Validate email format.\n2. Implement dark mode UI.';
+    // Only email-related output
+    const forge = 'function validateEmail(email) { return /\\./.test(email); }';
+    const result = computeRequirementCoverage(spec, forge);
+    assert.ok(result.unmatched.some((u: string) => u.toLowerCase().includes('dark') || u.toLowerCase().includes('mode')));
+  });
+
+  it('RC5: 100% coverage when all requirements are present in output', () => {
+    // Keywords extracted from requirements must appear verbatim in forge output
+    // "authentication" (14 chars) and "caching" (7 chars) should both match
+    const spec = '1. Support authentication flow.\n2. Support caching layer.';
+    const forge = 'function authentication() {} function caching() {}';
+    const result = computeRequirementCoverage(spec, forge);
+    assert.equal(result.total, 2);
+    assert.equal(result.matched, 2);
+    assert.equal(result.coveragePercent, 100);
+    assert.equal(result.unmatched.length, 0);
+  });
+
+  it('RC6: coveragePercent is an integer (rounded)', () => {
+    // 2 out of 3 matched = 66.67 → rounds to 67
+    const spec = '1. Authenticate users.\n2. Encrypt data.\n3. Implement logging framework.';
+    const forge = 'authenticate(); encrypt();';
+    const result = computeRequirementCoverage(spec, forge);
+    assert.equal(typeof result.coveragePercent, 'number');
+    assert.equal(result.coveragePercent, Math.round(result.coveragePercent));
+  });
+
+  it('RC7: matched + unmatched.length === total', () => {
+    const spec = '1. Support pagination.\n2. Support sorting.\n3. Support filtering.\n4. Support export.';
+    const forge = 'paginate(); sort();';
+    const result = computeRequirementCoverage(spec, forge);
+    assert.equal(result.matched + result.unmatched.length, result.total);
   });
 });
