@@ -921,7 +921,7 @@
         "Continue.dev": 3,
         "Swimm": 7,
         "LangChain Agents": 4,
-        "Kiro (AWS)": 8,
+        "Kiro (AWS)": 6.2,
         "Codex CLI (OpenAI)": 3.5,
         "Gemini CLI (Google)": 2.5,
         "GitHub Copilot CLI": 5.5,
@@ -994,7 +994,7 @@
         "Continue.dev": 6.2,
         "Swimm": 8.5,
         "LangChain Agents": 7.2,
-        "Kiro (AWS)": 8.2,
+        "Kiro (AWS)": 6,
         "Codex CLI (OpenAI)": 6.8,
         "Gemini CLI (Google)": 6,
         "GitHub Copilot CLI": 7.8,
@@ -1597,7 +1597,7 @@
         "Qodo 2.0": 2,
         "Dagger": 1.5,
         "Kilo Code": 2,
-        "re_gent": 8.6
+        "re_gent": 3.8
       },
       "status": "closed",
       "sprint_history": [
