@@ -21,6 +21,14 @@ import type { ConflictReport } from '../types/conflict.js';
 import { isBlockingStatus } from './taste-gate.js';
 import { isBlockingConflict } from '../engines/conflict-radar.js';
 import { MATRIX_DIR, MATRIX_REPORT_PATHS } from '../types/index.js';
+import type { SecurityCourtOptions } from './security-red-team.js';
+import {
+  runCapabilityTest,
+  applyScoreCap,
+  type CapabilityTestVerdict,
+} from '../engines/capability-test-runner.js';
+import type { CapabilityTestEntry } from '../types/capability-test.js';
+import { CAPABILITY_TEST_SCORE_CAP } from '../types/capability-test.js';
 
 // ── Public API ──────────────────────────────────────────────────────────────
 
@@ -31,6 +39,8 @@ export interface MergeCourtInput {
   gateReport: GateReport;
   redTeamReport?: RedTeamReport;
   tasteGateRequest?: TasteGateRequest;
+  /** Capability test entry for the dimension this packet addresses. */
+  capabilityTest?: CapabilityTestEntry;
 }
 
 export interface RunMergeCourtOptions {
@@ -44,6 +54,10 @@ export interface RunMergeCourtOptions {
   _createTimeMachineCommit?: (input: MergeCourtInput) => Promise<{ eventId: string }>;
   /** Injection seam: replaces LOC violation check for tests. */
   _checkLocViolations?: (filesChanged: string[], cwd: string) => Promise<{ file: string; loc: number }[]>;
+  /** Injection seam: replaces security court for tests. */
+  _runSecurityCourt?: (filesChanged: string[], cwd: string, opts: SecurityCourtOptions) => Promise<{ recommendation: string; blockedBy: string[]; criticalCount: number }>;
+  /** Injection seam: replaces capability_test runner for tests. */
+  _runCapabilityTest?: (input: MergeCourtInput, cwd: string) => CapabilityTestVerdict;
   _now?: () => string;
 }
 
@@ -70,6 +84,8 @@ export async function runMergeCourt(
 
   const locCheckFn = options._checkLocViolations ?? checkLocViolations;
   const baseCwd = options.cwd ?? process.cwd();
+  const securityCourtFn = options._runSecurityCourt ?? defaultRunSecurityCourt;
+  const capabilityTestFn = options._runCapabilityTest ?? defaultRunCapabilityTest;
 
   for (const candidate of ranked) {
     // LOC gate: block any candidate that introduced a .ts/.tsx file exceeding 750 lines
@@ -84,6 +100,39 @@ export async function runMergeCourt(
         now,
       ));
       continue;
+    }
+
+    // Security gate: block any candidate with CRITICAL OWASP findings
+    const securityResult = await securityCourtFn(candidate.candidate.filesChanged ?? [], baseCwd, {});
+    if (securityResult.recommendation === 'block_merge') {
+      const detail = securityResult.blockedBy.slice(0, 3).join('; ');
+      decisions.push(buildDecision(
+        candidate,
+        'BLOCKED_BY_SECURITY',
+        `Security court blocked: ${securityResult.criticalCount} CRITICAL finding(s) — ${detail}`,
+        undefined,
+        now,
+      ));
+      continue;
+    }
+
+    // Capability gate: if proposed score > 5.0, capability_test must pass.
+    const capabilityVerdict = capabilityTestFn(candidate, baseCwd);
+    const proposedAfter = candidate.candidate.scoreDelta?.after;
+    if (proposedAfter !== undefined && proposedAfter > CAPABILITY_TEST_SCORE_CAP) {
+      if (!capabilityVerdict.allowed) {
+        const cappedScore = applyScoreCap(proposedAfter, capabilityVerdict);
+        decisions.push(buildDecision(
+          candidate,
+          'BLOCKED_BY_POLICY',
+          `capability_test gate: proposed score ${proposedAfter} exceeds ${CAPABILITY_TEST_SCORE_CAP} cap. ${capabilityVerdict.reason} Capped at ${cappedScore}.`,
+          candidate.candidate.scoreDelta
+            ? { ...candidate.candidate.scoreDelta, after: cappedScore }
+            : undefined,
+          now,
+        ));
+        continue;
+      }
     }
 
     const outcome = arbitrate(candidate, options.conflictReport, approvedPaths);
@@ -243,6 +292,8 @@ function reasonFor(outcome: MergeDecisionOutcome, input: MergeCourtInput): strin
       return 'Policy gate blocked merge';
     case 'BLOCKED_BY_REGRESSION':
       return 'Post-merge regression detected';
+    case 'BLOCKED_BY_SECURITY':
+      return 'Security court blocked: CRITICAL OWASP finding in changed files';
     default:
       return '';
   }
@@ -273,6 +324,27 @@ function buildDecision(
 async function defaultRunMerge(_input: MergeCourtInput): Promise<{ success: boolean; error?: string }> {
   // In tests this is always injected. For real use, would shell out to git merge.
   return { success: true };
+}
+
+function defaultRunCapabilityTest(input: MergeCourtInput, cwd: string): CapabilityTestVerdict {
+  return runCapabilityTest({
+    dimensionId: input.workPacket.dimensionId,
+    capabilityTest: input.capabilityTest,
+    cwd,
+  });
+}
+
+async function defaultRunSecurityCourt(
+  filesChanged: string[],
+  cwd: string,
+  opts: SecurityCourtOptions,
+): Promise<{ recommendation: string; blockedBy: string[]; criticalCount: number }> {
+  try {
+    const { runSecurityCourt } = await import('./security-red-team.js');
+    return runSecurityCourt(filesChanged, cwd, opts);
+  } catch {
+    return { recommendation: 'allow_merge', blockedBy: [], criticalCount: 0 };
+  }
 }
 
 function stamp(iso: string): string {

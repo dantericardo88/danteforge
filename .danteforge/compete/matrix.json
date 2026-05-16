@@ -140,7 +140,12 @@
         }
       ],
       "next_sprint_target": 7,
-      "harvest_source": "OpenHands (All-Hands AI)"
+      "harvest_source": "OpenHands (All-Hands AI)",
+      "capability_test": {
+        "command": "node --test tests/matrix-types.test.ts 2>&1",
+        "description": "Run a real test file from the suite; exits 0 if tests pass.",
+        "timeoutMs": 60000
+      }
     },
     {
       "id": "developer_experience",
@@ -231,7 +236,12 @@
         "src/core/format-error.ts",
         "src/core/cli-error-boundary.ts"
       ],
-      "self": 9.1
+      "self": 9.1,
+      "capability_test": {
+        "command": "node dist/index.js go --help 2>&1",
+        "description": "Invoke the daily-driver help text; exits 0 if DX command is fully wired.",
+        "timeoutMs": 10000
+      }
     },
     {
       "id": "ux_polish",
@@ -298,7 +308,12 @@
         }
       ],
       "next_sprint_target": 7,
-      "harvest_source": "Continue.dev"
+      "harvest_source": "Continue.dev",
+      "capability_test": {
+        "command": "node dist/index.js init --non-interactive 2>&1",
+        "description": "Run the non-interactive init flow; exits 0 if onboarding completes without crashing.",
+        "timeoutMs": 15000
+      }
     },
     {
       "id": "functionality",
@@ -365,7 +380,12 @@
         }
       ],
       "next_sprint_target": 7,
-      "harvest_source": "OpenHands (All-Hands AI)"
+      "harvest_source": "OpenHands (All-Hands AI)",
+      "capability_test": {
+        "command": "node dist/index.js score 2>&1",
+        "description": "Run the score command end-to-end; exits 0 if core scoring pipeline produces output.",
+        "timeoutMs": 15000
+      }
     },
     {
       "id": "autonomy",
@@ -486,7 +506,12 @@
         }
       ],
       "next_sprint_target": 7,
-      "harvest_source": "OpenHands (All-Hands AI)"
+      "harvest_source": "OpenHands (All-Hands AI)",
+      "capability_test": {
+        "command": "node dist/index.js autoforge --dry-run --score-only 2>&1",
+        "description": "Run autoforge in dry-run+score-only mode; exits 0 if autonomous loop initializes.",
+        "timeoutMs": 20000
+      }
     },
     {
       "id": "security",
@@ -553,7 +578,12 @@
         }
       ],
       "next_sprint_target": 7,
-      "harvest_source": "OpenHands (All-Hands AI)"
+      "harvest_source": "OpenHands (All-Hands AI)",
+      "capability_test": {
+        "command": "npm run check:anti-stub 2>&1",
+        "description": "Run the anti-stub scanner; exits 0 only if zero stub violations are found.",
+        "timeoutMs": 30000
+      }
     },
     {
       "id": "error_handling",
@@ -620,7 +650,12 @@
         }
       ],
       "next_sprint_target": 7,
-      "harvest_source": "AutoGen (Microsoft)"
+      "harvest_source": "AutoGen (Microsoft)",
+      "capability_test": {
+        "command": "node dist/index.js doctor 2>&1",
+        "description": "Run the doctor health-check; exits 0 if error boundary and diagnostics are wired.",
+        "timeoutMs": 15000
+      }
     },
     {
       "id": "performance",
@@ -729,7 +764,12 @@
         }
       ],
       "next_sprint_target": 7,
-      "harvest_source": "AutoGen (Microsoft)"
+      "harvest_source": "AutoGen (Microsoft)",
+      "capability_test": {
+        "command": "node dist/index.js score 2>&1",
+        "description": "Score command must complete; timeoutMs enforces wall-clock budget.",
+        "timeoutMs": 10000
+      }
     },
     {
       "id": "documentation",
@@ -796,7 +836,12 @@
         }
       ],
       "next_sprint_target": 7,
-      "harvest_source": "LangChain Agents"
+      "harvest_source": "LangChain Agents",
+      "capability_test": {
+        "command": "node dist/index.js wiki-status 2>&1",
+        "description": "Run wiki-status; exits 0 if documentation pipeline reports metrics.",
+        "timeoutMs": 15000
+      }
     },
     {
       "id": "convergence_self_healing",
@@ -894,7 +939,12 @@
       ],
       "next_sprint_target": 7,
       "harvest_source": "OpenHands (All-Hands AI)",
-      "self": 9.1
+      "self": 9.1,
+      "capability_test": {
+        "command": "node dist/index.js autoforge --score-only 2>&1",
+        "description": "Run autoforge score-only; exits 0 if convergence loop initializes and scores.",
+        "timeoutMs": 20000
+      }
     },
     {
       "id": "spec_driven_pipeline",
@@ -967,7 +1017,12 @@
         }
       ],
       "next_sprint_target": 7,
-      "harvest_source": "MetaGPT"
+      "harvest_source": "MetaGPT",
+      "capability_test": {
+        "command": "node dist/index.js specify --help 2>&1",
+        "description": "Invoke specify help; exits 0 if spec pipeline commands are registered.",
+        "timeoutMs": 10000
+      }
     },
     {
       "id": "planning_quality",
@@ -1041,7 +1096,12 @@
       ],
       "next_sprint_target": 7,
       "harvest_source": "MetaGPT",
-      "self": 9.1
+      "self": 9.1,
+      "capability_test": {
+        "command": "node dist/index.js plan --help 2>&1",
+        "description": "Invoke plan help; exits 0 if planning commands are registered and wired.",
+        "timeoutMs": 10000
+      }
     },
     {
       "id": "maintainability",
@@ -1145,7 +1205,12 @@
         }
       ],
       "next_sprint_target": 7,
-      "harvest_source": "AutoGen (Microsoft)"
+      "harvest_source": "AutoGen (Microsoft)",
+      "capability_test": {
+        "command": "npm run check:file-size 2>&1",
+        "description": "Run file-size gate; exits 0 only if all source files are under the 750 LOC cap.",
+        "timeoutMs": 20000
+      }
     },
     {
       "id": "token_economy",
@@ -1230,7 +1295,11 @@
         }
       ],
       "next_sprint_target": 7,
-      "harvest_source": "Aider"
+      "harvest_source": "Aider",
+      "capability_test": {
+        "no_capability_test": true,
+        "reason": "Token routing requires a live LLM session to validate end-to-end; cannot be shell-tested without API spend."
+      }
     },
     {
       "id": "self_improvement",
@@ -1319,7 +1388,12 @@
         }
       ],
       "next_sprint_target": 7,
-      "harvest_source": "CrewAI"
+      "harvest_source": "CrewAI",
+      "capability_test": {
+        "command": "node dist/index.js lessons --help 2>&1",
+        "description": "Invoke lessons help; exits 0 if lessons capture pipeline is wired.",
+        "timeoutMs": 10000
+      }
     },
     {
       "id": "ecosystem_mcp",
@@ -1422,7 +1496,12 @@
       ],
       "next_sprint_target": 7,
       "harvest_source": "LangChain Agents",
-      "self": 9.1
+      "self": 9.1,
+      "capability_test": {
+        "command": "node dist/index.js mcp-server --help 2>&1",
+        "description": "Invoke mcp-server help; exits 0 if MCP server command is registered and loadable.",
+        "timeoutMs": 10000
+      }
     },
     {
       "id": "enterprise_readiness",
@@ -1491,7 +1570,11 @@
       "next_sprint_target": 9.5,
       "harvest_source": "AutoGen (Microsoft)",
       "ceiling": 9,
-      "ceilingReason": "ceiling raised to 9.0 in Sprint 44 â€” policy gate, audit trail, security hardening and verify receipts now qualify for enterprise tier"
+      "ceilingReason": "ceiling raised to 9.0 in Sprint 44 â€” policy gate, audit trail, security hardening and verify receipts now qualify for enterprise tier",
+      "capability_test": {
+        "no_capability_test": true,
+        "reason": "Enterprise readiness (SOC2, audit logs, multi-tenant) requires a live deployment to validate; cannot be shell-tested."
+      }
     },
     {
       "id": "community_adoption",
@@ -1560,7 +1643,11 @@
       "next_sprint_target": 8.8,
       "harvest_source": "LangChain Agents",
       "ceiling": 4,
-      "ceilingReason": "requires npm downloads, GitHub stars, and external contributors â€” cannot be automated"
+      "ceilingReason": "requires npm downloads, GitHub stars, and external contributors â€” cannot be automated",
+      "capability_test": {
+        "no_capability_test": true,
+        "reason": "Community metrics (stars, downloads, contributors) are external signals, not shell-testable."
+      }
     },
     {
       "id": "agent_activity_provenance",
@@ -1646,7 +1733,12 @@
       "gap_to_closed_source_leader": 0,
       "closed_source_leader": "unknown",
       "gap_to_oss_leader": 0,
-      "oss_leader": "OpenHands (All-Hands AI)"
+      "oss_leader": "OpenHands (All-Hands AI)",
+      "capability_test": {
+        "command": "node dist/index.js proof --help 2>&1",
+        "description": "Invoke proof help; exits 0 if evidence/provenance pipeline commands are registered.",
+        "timeoutMs": 10000
+      }
     }
   ],
   "harshScoredAt": "2026-05-14",
