@@ -12,6 +12,7 @@ import type {
 import type { ProjectGraph } from '../types/project-graph.js';
 import type { WorkPacket, WorkGraph } from '../types/work-graph.js';
 import { MATRIX_DIR, MATRIX_REPORT_PATHS } from '../types/index.js';
+import { MATRIX_SCORE_SURFACE_PATTERNS } from '../types/agent-evidence.js';
 
 // ── Public API ──────────────────────────────────────────────────────────────
 
@@ -30,7 +31,13 @@ export function generateWorkPackets(options: GenerateWorkPacketsOptions): WorkGr
   const { dimensionGraph, projectGraph } = options;
   const now = options._now ?? (() => new Date().toISOString());
   const frozenFromProject = projectGraph.project.protectedPaths ?? [];
-  const globalForbidden = [...(options.globalForbiddenPaths ?? []), ...frozenFromProject];
+  // Fix B: matrix score surface is always forbidden for worker agents.
+  // The kernel's score-merge flow (not workers) writes these files.
+  const globalForbidden = [
+    ...MATRIX_SCORE_SURFACE_PATTERNS,
+    ...(options.globalForbiddenPaths ?? []),
+    ...frozenFromProject,
+  ];
 
   // Build a "paths owned by each dimension" map for cross-dimension forbidden inference.
   const dimensionOwnedPaths = new Map<string, string[]>();
