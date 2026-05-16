@@ -1,0 +1,1 @@
+﻿{"version":1,"description":"Protected line ranges — recorded when a capability_test passes. Agents must not regress these lines without --touches-protected in the commit message.","protections":[]}
