@@ -32,7 +32,7 @@ export async function readProtectedLines(cwd?: string): Promise<ProtectedLinesFi
   const root = cwd ?? process.cwd();
   const fullPath = path.join(root, PROTECTED_LINES_PATH);
   try {
-    const raw = await fs.readFile(fullPath, 'utf8');
+    const raw = (await fs.readFile(fullPath, 'utf8')).replace(/^﻿/, '');
     const data = JSON.parse(raw) as ProtectedLinesFile;
     return { version: data.version ?? 1, description: data.description ?? '', protections: data.protections ?? [] };
   } catch {
