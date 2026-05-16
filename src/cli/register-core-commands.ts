@@ -1073,6 +1073,42 @@ program
   });
 
 program
+  .command('crusade')
+  .description('Multi-pass OSS harvest + goal-gated forge loop — runs until score target is reached or max cycles exhausted')
+  .requiredOption('--goal <text>', 'The goal to pursue each forge wave')
+  .option('--domains <csv>', 'Comma-separated OSS domains to harvest (default: dimension name)')
+  .option('--dimension <name>', 'Score dimension to track (default: security)', 'security')
+  .option('--target <n>', 'Target score to reach (default: 9.0)', parseFloat)
+  .option('--max-cycles <n>', 'Maximum cycles before stopping (default: 10)', parseInt)
+  .option('--max-oss-passes <n>', 'Maximum OSS harvest passes per cycle (default: 5)', parseInt)
+  .option('--cwd <path>', 'Working directory (defaults to cwd)')
+  .addHelpText('after', `
+Examples:
+  danteforge crusade --goal "security hardening" --dimension security --target 9.5
+  danteforge crusade --goal "performance optimization" --domains "perf,caching,benchmarks" --dimension performance --target 9.0 --max-cycles 5
+`)
+  .action(async (opts) => {
+    try {
+      const { runCrusade } = await import('./commands/crusade.js');
+      const result = await runCrusade({
+        goal: opts.goal as string,
+        domains: opts.domains as string | undefined,
+        dimension: opts.dimension as string | undefined,
+        target: opts.target as number | undefined,
+        maxCycles: opts.maxCycles as number | undefined,
+        maxOssPasses: opts.maxOssPasses as number | undefined,
+        cwd: opts.cwd as string | undefined,
+      });
+      if (result.status === 'CRUSADE_COMPLETE') process.exitCode = 0;
+      else if (result.status === 'CRUSADE_MAX_CYCLES') process.exitCode = 2;
+      else process.exitCode = 1;
+    } catch (err) {
+      formatAndLogError(err, 'crusade');
+      process.exitCode = 1;
+    }
+  });
+
+program
   .command('security-scan')
   .description('Scan src/**/*.ts for risky patterns: eval, exec, innerHTML, hardcoded keys, Math.random in security contexts')
   .option('--json', 'Output machine-readable JSON')

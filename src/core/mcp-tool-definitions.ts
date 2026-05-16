@@ -649,4 +649,32 @@ export const TOOL_DEFINITIONS: ToolDefinition[] = [
       required: [],
     },
   },
+  {
+    name: 'danteforge_security_scan',
+    description: 'Scan TypeScript/JavaScript source files for OWASP Top 10 vulnerability patterns. Returns findings with risk levels (CRITICAL/HIGH/MEDIUM). CRITICAL findings block the merge court.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        cwd: { type: 'string', description: 'Project root to scan (defaults to cwd)' },
+        json: { type: 'boolean', description: 'Return JSON output instead of formatted text' },
+      },
+      required: [],
+    },
+  },
+  {
+    name: 'danteforge_crusade',
+    description: 'Run a sustained improvement campaign: multi-pass OSS harvest + forge waves until a score target is reached. Combines exhaustive OSS learning with goal-gated execution loops.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        goal: { type: 'string', description: 'The improvement goal to pursue each forge wave' },
+        domains: { type: 'string', description: 'Comma-separated OSS domains to harvest (e.g. "security,owasp,semgrep")' },
+        dimension: { type: 'string', description: 'Score dimension to track (default: security)' },
+        target: { type: 'number', description: 'Target score to reach (default: 9.0)' },
+        maxCycles: { type: 'number', description: 'Maximum cycles before stopping (default: 10)' },
+        cwd: { type: 'string', description: 'Working directory (defaults to cwd)' },
+      },
+      required: ['goal'],
+    },
+  },
 ];

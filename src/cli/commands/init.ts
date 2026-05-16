@@ -255,6 +255,15 @@ export async function init(options: InitOptions = {}): Promise<void> {
     // from freezing when harvest/compete workflows clone hundreds of repos.
     try { await ensureProjectIgnores(cwd); } catch { /* best-effort */ }
 
+    // Install LOC pre-commit hook into the target project (best-effort)
+    try {
+      const { installLocHook } = await import('../../core/install-git-hooks.js');
+      const hookResult = await installLocHook(cwd);
+      if (hookResult.installed) logger.success('[init] LOC pre-commit hook installed (.git/hooks/pre-commit)');
+      else if (hookResult.updated) logger.info('[init] LOC pre-commit hook added to existing pre-commit hook');
+      else if (hookResult.skipped) logger.info('[init] LOC pre-commit hook already present — skipped');
+    } catch { /* best-effort */ }
+
     logger.info('');
     logger.info('Health checks:');
 

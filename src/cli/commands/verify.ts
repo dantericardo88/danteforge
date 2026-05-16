@@ -409,6 +409,8 @@ export interface VerifyOptions {
   _trace?: (stage: string) => void;
   /** Injection seam: override sleep between retries (ms), default 2000 */
   _retrySleepMs?: number;
+  /** Injection seam: override security scan for tests */
+  _runSecurityScan?: (cwd: string) => Promise<{ criticalCount: number; highCount: number }>;
 }
 
 async function runExecutionGateChecks(result: VerifyResult, state: DanteState, options: VerifyOptions, cwd: string): Promise<void> {
@@ -501,6 +503,24 @@ async function runDriftAndAuditChecks(result: VerifyResult, state: DanteState, c
       traceVerifyStage('after-drift-detect', trace);
     } catch { /* Drift detection should not block verification */ }
   }
+}
+
+async function runSecurityGateCheck(result: VerifyResult, cwd: string, options: VerifyOptions): Promise<void> {
+  try {
+    const scanFn = options._runSecurityScan ?? (async (dir: string) => {
+      const { securityScan } = await import('./security-scan.js');
+      const r = await securityScan({ cwd: dir, _stdout: () => { /* suppress output */ } });
+      return { criticalCount: r.criticalCount, highCount: r.highCount };
+    });
+    const scan = await scanFn(cwd);
+    if (scan.criticalCount > 0) {
+      result.failures.push(`Security scan: ${scan.criticalCount} CRITICAL finding(s) — run "danteforge security-scan" for details`);
+    } else if (scan.highCount > 0) {
+      result.warnings.push(`Security scan: ${scan.highCount} HIGH finding(s) — run "danteforge security-scan" to review`);
+    } else {
+      result.passed.push('Security scan: no CRITICAL findings');
+    }
+  } catch { /* best-effort — never block verify */ }
 }
 
 async function runLiveBrowserVerification(result: VerifyResult, state: DanteState, options: VerifyOptions, stateDir: string, cwd: string, timestamp: string): Promise<void> {
@@ -730,6 +750,7 @@ async function runVerifyOnce(options: VerifyOptions = {}) {
 
     await runExecutionGateChecks(result, state, options, cwd);
     await runDriftAndAuditChecks(result, state, cwd, options._trace);
+    await runSecurityGateCheck(result, cwd, options);
     await runLiveBrowserVerification(result, state, options, stateDir, cwd, timestamp);
     if (options.release) await runReleaseVerification(result);
     await saveVerifyStateAndReceipt(state, result, options, cwd, timestamp);

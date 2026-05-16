@@ -511,4 +511,10 @@ Discover, classify, and import skills across all sources
 
 ### `danteforge docs`
 
-Generate or update the command reference documentation
+Generate or update the command reference and API documentation
+
+**Options:**
+
+- `--output <path>`
+- `--format <md|json>`
+- `--coverage`
