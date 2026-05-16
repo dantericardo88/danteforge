@@ -142,7 +142,7 @@
       "next_sprint_target": 7,
       "harvest_source": "OpenHands (All-Hands AI)",
       "capability_test": {
-        "command": "node --test tests/matrix-types.test.ts 2>&1",
+        "command": "npx tsx --test tests/matrix-types.test.ts 2>&1",
         "description": "Run a real test file from the suite; exits 0 if tests pass.",
         "timeoutMs": 60000
       }
