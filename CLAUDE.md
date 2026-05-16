@@ -48,16 +48,24 @@ a session-persistent guide file you can load with `@.danteforge/GUIDE.md`.
 
 DanteForge's substrate for coordinating many AI agents in parallel without losing truth, architecture, or control. Implements the **Observe → Map → Decompose → Simulate → Lease → Execute → Verify → Merge → Rescore → Learn → Repeat** loop with constitutional discipline: agents propose, DanteForge disposes.
 
-**MVP status:** Phases 0–12 shipped, Golden Flow integration test passing, planning-loop CLI wired. Phase 13 (real Codex/Claude Code/DanteCode adapters) and Phase 14 (VS Code War Room) are follow-up passes.
+**MVP status:** Phases 0–12 shipped, Golden Flow integration test passing, planning-loop CLI wired. Fixes A/B/C (self-scoring elimination, kernel-owned score writes, protected-line provenance) shipped on branch `matrix-kernel-phase-1`. Phase 13 (real Codex/Claude Code/DanteCode adapters) and Phase 14 (VS Code War Room) are follow-up passes.
 
 **Surfaces:**
-- CLI: `danteforge matrix-kernel <init|map-project|synthesize-dimensions|work-packets|simulate|status|leases-list>`
-- Types: `src/matrix/types/*` (six graphs + courts + reports)
-- Engines: `src/matrix/engines/*` (project graph, dimension synth, work packets, dependency graph, ownership, lease, conflict radar, simulation, retrospective, report generator)
+- CLI: `danteforge matrix-kernel <init|map-project|synthesize-dimensions|work-packets|simulate|status|leases-list|verify-capability|protect|protected-lines|unprotect>`
+- Types: `src/matrix/types/*` (six graphs + courts + reports + capability-test + agent-evidence)
+- Engines: `src/matrix/engines/*` (project graph, dimension synth, work packets, dependency graph, ownership, lease, conflict radar, simulation, retrospective, report generator, **capability-test-runner**, **protected-lines**)
 - Courts: `src/matrix/courts/*` (verification, no-stub scan, red-team, taste-gate, merge-court)
 - Adapters: `src/matrix/adapters/*` (interface, fake, generic-shell — real adapters deferred)
 - Util: `src/matrix/util/glob.ts` (shared glob matcher)
 - **Load-bearing test:** `tests/matrix-golden-flow.test.ts` — 18 assertions covering the entire MVP loop
+
+**Self-scoring elimination (three enforced constraints):**
+
+1. **capability_test gate (Fix A)** — Every dimension in matrix.json must carry a `capability_test` shell command (or `no_capability_test: true` marker). The merge court enforces: if `proposedAfter > 5.0` and the shell test exits non-zero, the merge is `BLOCKED_BY_POLICY` and the score is clamped to 5.0. Verify any dimension: `danteforge matrix-kernel verify-capability <dimensionId>`. Three meta-dimensions (`token_economy`, `enterprise_readiness`, `community_adoption`) are permanently capped at 5.0.
+
+2. **Kernel-owned score writes (Fix B)** — Worker agents are structurally forbidden from committing `matrix.json` or anything under `score-proposals/`. `MATRIX_SCORE_SURFACE_PATTERNS` is prepended to every work packet's `globalForbidden` list. The pre-commit hook (`hooks/pre-commit.mjs`) additionally rejects any commit touching those paths unless `DANTEFORGE_MATRIX_MERGE_RECEIPT` is set in the environment (kernel-only). Agents produce `agent-evidence.json` — kernel reads evidence and writes scores.
+
+3. **Protected line provenance (Fix C)** — When a capability_test passes, the responsible file:line ranges are recorded in `.danteforge/protected-lines.json`. The pre-commit hook rejects any commit that touches protected lines unless the commit message contains `--touches-protected`. Manage via: `danteforge matrix-kernel protect <file:start-end> <dimensionId>`, `danteforge matrix-kernel protected-lines`, `danteforge matrix-kernel unprotect <file:start-end>`.
 
 **Reuse map** (per `docs/MATRIX_KERNEL_REPO_AUDIT.md`, marked historical):
 The Matrix Kernel reuses Time Machine + DecisionNode + proof engine + `worktree.ts:createAgentWorktree` + `sanitize-locks.withFileLock` + `compete-matrix.ts:loadMatrix` + `matrix-development-engine.ts` merge logic + `sanitize-boundary.ts:buildSymbolGraph`. Avoid duplicating these primitives.

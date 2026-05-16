@@ -806,6 +806,57 @@ export const TOOL_HANDLERS: Record<string, ToolHandler> = {
   danteforge_convergence_status: (args) => handleConvergenceStatus(args),
   danteforge_git_activity: (args) => handleGitActivity(args),
   danteforge_health: (args) => handleHealth(args),
+  danteforge_security_scan: async (args) => {
+    try {
+      const { runSecurityCourt } = await import('../matrix/courts/security-red-team.js');
+      const fsNode = await import('node:fs/promises');
+      const pathNode = await import('node:path');
+      const cwd = typeof args.cwd === 'string' ? args.cwd : process.cwd();
+      const srcDir = pathNode.join(cwd, 'src');
+      const files: string[] = [];
+      async function collect(dir: string): Promise<void> {
+        let entries: Awaited<ReturnType<typeof fsNode.readdir>>;
+        try { entries = await fsNode.readdir(dir, { withFileTypes: true }); } catch { return; }
+        for (const e of entries) {
+          const full = pathNode.join(dir, e.name);
+          if (e.isDirectory()) { await collect(full); }
+          else if (e.name.endsWith('.ts') || e.name.endsWith('.tsx')) {
+            files.push(pathNode.relative(cwd, full));
+          }
+        }
+      }
+      await collect(srcDir);
+      const report = await runSecurityCourt(files, cwd, {});
+      if (args.json) return JSON.stringify(report, null, 2);
+      const lines: string[] = [
+        `Security scan: ${report.filesChecked} file(s) checked`,
+        `  CRITICAL: ${report.criticalCount}  HIGH: ${report.highCount}  MEDIUM: ${report.mediumCount}`,
+        `  Recommendation: ${report.recommendation}`,
+      ];
+      for (const f of report.findings.slice(0, 10)) {
+        lines.push(`  [${f.riskLevel}] ${f.file}:${f.line} — ${f.description}`);
+      }
+      return lines.join('\n');
+    } catch (err) {
+      return `security_scan error: ${err instanceof Error ? err.message : String(err)}`;
+    }
+  },
+  danteforge_crusade: async (args) => {
+    try {
+      const { runCrusade } = await import('../cli/commands/crusade.js');
+      const result = await runCrusade({
+        goal: String(args.goal ?? ''),
+        domains: typeof args.domains === 'string' ? args.domains : undefined,
+        dimension: typeof args.dimension === 'string' ? args.dimension : undefined,
+        target: typeof args.target === 'number' ? args.target : undefined,
+        maxCycles: typeof args.maxCycles === 'number' ? args.maxCycles : undefined,
+        cwd: typeof args.cwd === 'string' ? args.cwd : undefined,
+      });
+      return JSON.stringify(result, null, 2);
+    } catch (err) {
+      return `crusade error: ${err instanceof Error ? err.message : String(err)}`;
+    }
+  },
 };
 
 // ---------------------------------------------------------------------------

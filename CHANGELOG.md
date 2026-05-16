@@ -3,6 +3,47 @@
 All notable changes to DanteForge are documented here.
 Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)
 
+## [Unreleased] — 2026-05-16 (Matrix Kernel: Self-Scoring & Theater Elimination)
+
+### Fix A — capability_test gate (eliminates score inflation)
+
+- **New type file** `src/matrix/types/capability-test.ts`: `CapabilityTestSpec`, `NoCapabilityTestMarker`, `CapabilityTestEntry`, `CAPABILITY_TEST_SCORE_CAP = 5.0`.
+- **New engine** `src/matrix/engines/capability-test-runner.ts`: `runCapabilityTest()` (spawnSync via shell), `applyScoreCap()`, `runCapabilityTests()`. All injectable via `_spawnSync` for tests.
+- **`src/matrix/courts/merge-court.ts`**: New capability gate — if `proposedAfter > 5.0` and the dimension's `capability_test` fails, merge decision becomes `BLOCKED_BY_POLICY` and score is clamped to 5.0. Gate is skippable via `_runCapabilityTest` injection seam.
+- **New command file** `src/cli/commands/matrix-verify-capability.ts`: `matrixVerifyCapability(dimensionId)` reads matrix.json, runs the dimension's shell test, prints stdout/stderr.
+- **`src/cli/register-matrix-commands.ts`**: Registered `danteforge matrix-kernel verify-capability <dimensionId>`.
+- **`.danteforge/compete/matrix.json`**: All 19 dimensions now have `capability_test` entries; 3 meta-dimensions (`token_economy`, `enterprise_readiness`, `community_adoption`) carry `no_capability_test: true` markers.
+- **16 new tests** in `tests/matrix-capability-test.test.ts`.
+
+**Why**: Sub-agents were writing code AND scoring their own work in the same lease. Score inflation was structurally guaranteed. This gate makes every score > 5.0 require an independent shell proof.
+
+### Fix B — kernel-owned score writes (eliminates infrastructure theater)
+
+- **New type file** `src/matrix/types/agent-evidence.ts`: `AgentEvidenceFile` interface (worker output format), `MATRIX_SCORE_SURFACE_PATTERNS` (glob patterns workers can never commit), `EVIDENCE_FILE_NAME`.
+- **`src/matrix/engines/work-packet-generator.ts`**: `MATRIX_SCORE_SURFACE_PATTERNS` prepended to every work packet's `globalForbidden` list — matrix.json and score-proposals/ are structurally off-limits for workers.
+- **`hooks/pre-commit.mjs`**: Score surface guard: if any staged file matches a matrix score pattern and `DANTEFORGE_MATRIX_MERGE_RECEIPT` env var is absent, commit is rejected with instructions.
+- **`.danteforge/agent-guard.json`**: Added `matrixScoreSurface` section documenting the boundary.
+- **13 new tests** in `tests/matrix-kernel-score-writes.test.ts`.
+
+**Why**: Every wave was adding benchmarks and gates around missing primitives. Tests passed on harnesses that measured nothing, because agents could write their own evidence into matrix.json. Now only the kernel can commit score changes.
+
+### Fix C — protected line provenance (prevents regression)
+
+- **New engine** `src/matrix/engines/protected-lines.ts`: `readProtectedLines()`, `writeProtectedLines()`, `addProtection()` (de-dupes by file+range+dimension, normalizes backslashes), `removeProtection()`, `findViolations()`.
+- **New command file** `src/cli/commands/matrix-protected-lines.ts`: `parseFileRange()`, `matrixProtect()`, `matrixProtectedLines()`, `matrixUnprotect()`.
+- **`src/cli/register-matrix-commands.ts`**: Registered `protect <fileRange> <dimensionId>`, `protected-lines`, `unprotect <fileRange>`.
+- **`hooks/pre-commit.mjs`**: Protected lines guard: reads `.danteforge/protected-lines.json`; if a staged file matches a protected range and the commit message lacks `--touches-protected`, commit is rejected.
+- **`.danteforge/protected-lines.json`**: New file — initially empty, populated automatically when capability_test passes.
+- **16 new tests** in `tests/matrix-protected-lines.test.ts`.
+
+**Why**: Waves were accidentally regressing proven implementations from prior waves. This records the file:line ranges responsible for each passing capability_test. Future waves cannot silently overwrite proven code.
+
+### Cross-cutting (all three fixes)
+
+- **`src/core/mcp-server.ts`**: Added `danteforge_security_scan` and `danteforge_crusade` MCP tool handlers that were declared in `mcp-tool-definitions.ts` but had no implementations.
+- **`tests/matrix-golden-flow.test.ts`**: Added `_runCapabilityTest` injection seam so the golden flow test continues to pass with the new capability gate active.
+- **`AGENTS.md`**: Added three subsections under "Matrix Development Engine" documenting the enforced constraints for all agents.
+
 ## [0.17.0] — 2026-04-13 (Sprint 30 — 5 Exceptional Flows)
 
 ### Added

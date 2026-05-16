@@ -80,6 +80,50 @@ wrapper `npm run dimension:ascent`. Default merge policy is `harsh-min`, so
 skeptical downgrades win over optimistic stale writes. The agent guard fails
 direct matrix edits unless a Matrix Development merge receipt is present.
 
+### capability_test requirement (Fix A — enforced)
+
+Every dimension in `matrix.json` must carry a `capability_test` field. Scores
+above **5.0** are blocked by merge-court unless the `capability_test` shell command
+exits 0 in the same wave. Dimensions that cannot be shell-tested carry
+`no_capability_test: true` and are permanently capped at 5.0.
+
+To run a single capability test for diagnosis:
+```bash
+danteforge matrix-kernel verify-capability <dimensionId>
+```
+
+Do NOT define capability_tests that rewrap harness checks (export existence, file
+existence). The command must invoke the real underlying capability.
+
+### Kernel-owned score writes (Fix B — enforced)
+
+Worker agents dispatched by `matrix-kernel run-wave` are **structurally incapable**
+of writing to `matrix.json` or any score-surface file. The lease contract includes
+these paths in `forbiddenPaths`. If a worker attempts to stage `matrix.json`, the
+pre-commit hook exits 1 and the lease fails loudly.
+
+The kernel (not agents) runs the adversarial scorer on each evidence file and
+writes the resulting score through the locked merge flow.
+
+Each worker must produce `.danteforge/matrix/leases/<leaseId>/agent-evidence.json`
+describing files touched, tests added, and capability_test exit codes. Workers
+must NOT self-score.
+
+### Protected line provenance (Fix C — enforced)
+
+When a `capability_test` passes for a dimension, the kernel records the responsible
+implementation into `.danteforge/protected-lines.json`. Future waves that touch
+those lines must:
+1. Include `--touches-protected` in the commit message
+2. Re-run the affected `capability_test` and confirm it passes
+
+Commands:
+```bash
+danteforge matrix-kernel protect <file:start-end> <dimensionId>   # record protection
+danteforge matrix-kernel protected-lines                           # list current protections
+danteforge matrix-kernel unprotect <file:start-end>               # explicit removal (requires reason)
+```
+
 ### Dimension exclusion (de-prioritization, not removal)
 
 Per-project user preference to skip a dimension across sprints, work-packet
