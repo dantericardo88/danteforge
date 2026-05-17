@@ -1081,27 +1081,46 @@ program
   .option('--target <n>', 'Target score to reach (default: 9.0)', parseFloat)
   .option('--max-cycles <n>', 'Maximum cycles before stopping (default: 10)', parseInt)
   .option('--max-oss-passes <n>', 'Maximum OSS harvest passes per cycle (default: 5)', parseInt)
+  .option('--frontier', 'Frontier mode: push N dimensions in parallel to 9+ with autoresearch on stall')
+  .option('--parallel <n>', 'Number of parallel dimensions in frontier mode (default: 4)', parseInt)
+  .option('--max-dim-cycles <n>', 'Per-dimension cycle cap in frontier mode (default: 15)', parseInt)
+  .option('--loop', 'Keep re-ranking and repeating passes until every dimension hits 9+ (fully autonomous)')
+  .option('--verify-cap', 'Run capability_test before declaring a dimension done (governed mode)')
   .option('--cwd <path>', 'Working directory (defaults to cwd)')
   .addHelpText('after', `
 Examples:
   danteforge crusade --goal "security hardening" --dimension security --target 9.5
-  danteforge crusade --goal "performance optimization" --domains "perf,caching,benchmarks" --dimension performance --target 9.0 --max-cycles 5
+  danteforge crusade --frontier --parallel 4 --loop --verify-cap --goal "Push all dimensions to 9+"
 `)
   .action(async (opts) => {
     try {
-      const { runCrusade } = await import('./commands/crusade.js');
-      const result = await runCrusade({
-        goal: opts.goal as string,
-        domains: opts.domains as string | undefined,
-        dimension: opts.dimension as string | undefined,
-        target: opts.target as number | undefined,
-        maxCycles: opts.maxCycles as number | undefined,
-        maxOssPasses: opts.maxOssPasses as number | undefined,
-        cwd: opts.cwd as string | undefined,
-      });
-      if (result.status === 'CRUSADE_COMPLETE') process.exitCode = 0;
-      else if (result.status === 'CRUSADE_MAX_CYCLES') process.exitCode = 2;
-      else process.exitCode = 1;
+      if (opts.frontier) {
+        const { runFrontierCrusade } = await import('./commands/crusade.js');
+        const result = await runFrontierCrusade({
+          goal: opts.goal as string,
+          parallel: opts.parallel as number | undefined,
+          target: opts.target as number | undefined,
+          maxDimCycles: opts.maxDimCycles as number | undefined,
+          loop: opts.loop as boolean | undefined,
+          verifyCap: opts.verifyCap as boolean | undefined,
+          cwd: opts.cwd as string | undefined,
+        });
+        process.exitCode = result.status === 'ALL_DONE' ? 0 : 2;
+      } else {
+        const { runCrusade } = await import('./commands/crusade.js');
+        const result = await runCrusade({
+          goal: opts.goal as string,
+          domains: opts.domains as string | undefined,
+          dimension: opts.dimension as string | undefined,
+          target: opts.target as number | undefined,
+          maxCycles: opts.maxCycles as number | undefined,
+          maxOssPasses: opts.maxOssPasses as number | undefined,
+          cwd: opts.cwd as string | undefined,
+        });
+        if (result.status === 'CRUSADE_COMPLETE') process.exitCode = 0;
+        else if (result.status === 'CRUSADE_MAX_CYCLES') process.exitCode = 2;
+        else process.exitCode = 1;
+      }
     } catch (err) {
       formatAndLogError(err, 'crusade');
       process.exitCode = 1;

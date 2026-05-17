@@ -1,7 +1,7 @@
 ---
 name: danteforge-crusade
-description: Sustained multi-pass OSS harvest + goal-gated forge loop that runs until a score target is reached. Combines /oss exhaustive harvesting with /inferno execution power. Does not stop until the dimension score hits the target or max cycles are exhausted.
-version: 1.0.0
+description: Sustained multi-pass OSS harvest + goal-gated forge loop that runs until a score target is reached. Frontier mode pushes N dimensions simultaneously to 9+ with autoresearch triggered on stall. Does not stop until every dimension hits the target or its natural ceiling.
+version: 2.0.0
 risk: medium
 source: danteforge-native
 importDate: 2026-05-15
@@ -83,3 +83,53 @@ danteforge crusade \
 - Each cycle is idempotent — if interrupted, start a new crusade (it rescores from current state)
 - The OSS plateau detection prevents infinite harvesting loops
 - `--max-oss-passes` caps passes per cycle (default: 5); `--max-cycles` caps total cycles (default: 10)
+
+---
+
+## Frontier Mode
+
+Frontier mode is the recommended approach when you want ALL dimensions driven to 9+ rather than a single dimension. Instead of the gap-greedy re-ranking that `compete --auto` uses, frontier mode **locks each selected dimension into its own loop** until it reaches the target or its natural ceiling.
+
+### How It Works
+
+1. Selects the top N dimensions with the largest gap-to-frontier (sorted by `computeGapPriority`)
+2. Runs all N dimension loops **in parallel** via `Promise.all`
+3. Each dimension loop:
+   - Runs `/inferno` toward the dimension's goal
+   - Rescores the dimension
+   - Detects stall: 3 consecutive cycles with delta < 0.1 → triggers `/autoresearch`
+   - Stops when: score >= 9.0 (`FRONTIER_REACHED`) OR score >= ceiling (`AT_CEILING`) OR max cycles exhausted
+
+### Stall → Autoresearch
+
+When inferno stops making progress on a dimension, frontier mode automatically triggers a 30-minute `/autoresearch` run (Karpathy-style hypothesis loop) targeted at that dimension. If the research finds a better approach, it applies it and resets the stall counter.
+
+### Command
+
+```bash
+# Push top 4 dimensions to 9+ in parallel
+danteforge crusade \
+  --frontier \
+  --parallel 4 \
+  --goal "Push all dimensions to the frontier (9+)" \
+  --target 9.0
+
+# Tighter per-dimension budget
+danteforge crusade \
+  --frontier \
+  --parallel 2 \
+  --max-dim-cycles 8 \
+  --goal "Security and testing to 9.0+"
+```
+
+### Stopping Conditions (Frontier Mode)
+
+| Condition | Dimension Status | Overall |
+|-----------|-----------------|---------|
+| score >= target | FRONTIER_REACHED | ALL_DONE if all done |
+| score >= ceiling | AT_CEILING | ALL_DONE if all done |
+| maxDimCycles reached | MAX_CYCLES | PARTIAL |
+
+### Report
+
+`FRONTIER_CRUSADE_REPORT.md` is written on completion showing per-dimension: initial→final score, cycles run, autoresearch invocations, and final status.

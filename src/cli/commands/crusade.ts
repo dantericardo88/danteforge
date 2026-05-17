@@ -1,10 +1,12 @@
 // crusade.ts — `danteforge crusade`
 // Meta-loop orchestrator: multi-pass OSS harvest + inferno waves until a score target is reached.
 // Combines goal-loop discipline with exhaustive OSS universe harvesting.
+// Frontier mode: drives N dimensions in parallel to 9+ with autoresearch on stall.
 
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import { logger } from '../../core/logger.js';
+import { loadMatrix, computeGapPriority, type MatrixDimension, type CompeteMatrix } from '../../core/compete-matrix.js';
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -263,4 +265,232 @@ export async function runCrusade(options: CrusadeOptions): Promise<CrusadeResult
     reportPath: path.join(cwd, 'CRUSADE_REPORT.md'),
   };
   return finalResult;
+}
+
+// ── Frontier Crusade ──────────────────────────────────────────────────────────
+// Pushes N dimensions in parallel to the target score, with autoresearch on stall.
+
+export interface FrontierCrusadeOptions {
+  goal: string;
+  parallel?: number;       // number of dimensions to push simultaneously (default 4)
+  target?: number;         // score target per dimension (default 9.0)
+  maxDimCycles?: number;   // per-dimension cycle cap (default 15)
+  stallThreshold?: number; // consecutive no-progress cycles before autoresearch (default 3)
+  stallDelta?: number;     // min delta to count as progress (default 0.1)
+  loop?: boolean;          // keep re-ranking and re-running passes until ALL_DONE (default false)
+  verifyCap?: boolean;     // run capability_test before declaring FRONTIER_REACHED (default false)
+  cwd?: string;
+  _runInferno?: (goal: string, cwd: string) => Promise<void>;
+  _getScore?: (dimension: string, cwd: string) => Promise<number>;
+  _runAutoResearch?: (dimensionId: string, goal: string, cwd: string) => Promise<void>;
+  _runVerifyCap?: (dimensionId: string, cwd: string) => Promise<boolean>;
+  _loadMatrix?: (cwd: string) => Promise<CompeteMatrix | null>;
+  _writeFile?: (p: string, content: string) => Promise<void>;
+}
+
+export interface DimFrontierResult {
+  dimensionId: string;
+  label: string;
+  initialScore: number;
+  finalScore: number;
+  cyclesRun: number;
+  autoresearchRuns: number;
+  status: 'FRONTIER_REACHED' | 'AT_CEILING' | 'MAX_CYCLES' | 'FAILED';
+}
+
+export interface FrontierCrusadeResult {
+  status: 'ALL_DONE' | 'PARTIAL';
+  dimensions: DimFrontierResult[];
+  reportPath?: string;
+}
+
+async function defaultRunInferno(goal: string, _cwd: string): Promise<void> {
+  const { inferno } = await import('./magic.js');
+  await inferno(goal);
+}
+
+async function defaultRunAutoResearch(dimensionId: string, goal: string, cwd: string): Promise<void> {
+  const { execFile } = await import('node:child_process');
+  const { promisify } = await import('node:util');
+  const execFileAsync = promisify(execFile);
+  // 30-minute budget; allow-dirty because inferno may have staged files
+  await execFileAsync(
+    'danteforge',
+    ['autoresearch', '--goal', goal, '--metric', dimensionId, '--time', '30', '--allow-dirty'],
+    { cwd, timeout: 1_900_000 },
+  );
+}
+
+async function defaultRunVerifyCap(dimensionId: string, cwd: string): Promise<boolean> {
+  const { execFile } = await import('node:child_process');
+  const { promisify } = await import('node:util');
+  const execFileAsync = promisify(execFile);
+  try {
+    await execFileAsync(
+      'danteforge', ['matrix-kernel', 'verify-capability', dimensionId],
+      { cwd, timeout: 120_000 },
+    );
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+function buildFrontierReport(results: DimFrontierResult[], goal: string): string {
+  const lines: string[] = [
+    '# FRONTIER_CRUSADE_REPORT.md',
+    '',
+    `**Goal:** ${goal}`,
+    `**Timestamp:** ${new Date().toISOString()}`,
+    '',
+    '## Dimension Results',
+    '',
+  ];
+  for (const r of results) {
+    const delta = r.finalScore - r.initialScore;
+    lines.push(`### ${r.label} (\`${r.dimensionId}\`)`);
+    lines.push(`- Status: **${r.status}**`);
+    lines.push(`- Score: ${r.initialScore.toFixed(2)} → ${r.finalScore.toFixed(2)} (Δ${delta >= 0 ? '+' : ''}${delta.toFixed(2)})`);
+    lines.push(`- Cycles: ${r.cyclesRun} | Autoresearch runs: ${r.autoresearchRuns}`);
+    lines.push('');
+  }
+  const reached = results.filter(r => r.status === 'FRONTIER_REACHED').length;
+  lines.push(`## Summary: ${reached}/${results.length} dimensions reached the frontier.`);
+  return lines.join('\n');
+}
+
+async function runDimensionFrontierLoop(
+  dim: MatrixDimension,
+  options: FrontierCrusadeOptions,
+): Promise<DimFrontierResult> {
+  const cwd = options.cwd ?? process.cwd();
+  const target = options.target ?? DEFAULT_TARGET;
+  const maxDimCycles = options.maxDimCycles ?? 15;
+  const stallThreshold = options.stallThreshold ?? 3;
+  const stallDelta = options.stallDelta ?? 0.1;
+  const runInferno = options._runInferno ?? defaultRunInferno;
+  const getScore = options._getScore ?? defaultGetScore;
+  const runAutoResearch = options._runAutoResearch ?? defaultRunAutoResearch;
+  const runVerifyCap = options._runVerifyCap ?? defaultRunVerifyCap;
+
+  const initialScore = dim.scores['self'] ?? 0;
+  let score = initialScore;
+  let consecutiveNoProgress = 0;
+  let autoresearchRuns = 0;
+  let cycle = 0;
+
+  logger.info(`[frontier:${dim.id}] Start ${score.toFixed(2)} → target ${target}`);
+
+  while (cycle < maxDimCycles) {
+    cycle++;
+    const dimGoal = `Improve "${dim.label}" from ${score.toFixed(2)} to ${target}`;
+    try { await runInferno(dimGoal, cwd); } catch (err) {
+      logger.warn(`[frontier:${dim.id}] Inferno failed cycle ${cycle}: ${err}`);
+    }
+
+    const newScore = await getScore(dim.id, cwd);
+    const delta = newScore - score;
+    const prev = score;
+    score = newScore;
+    logger.info(`[frontier:${dim.id}] Cycle ${cycle}: ${prev.toFixed(2)} → ${score.toFixed(2)} (Δ${delta >= 0 ? '+' : ''}${delta.toFixed(2)})`);
+
+    if (delta < stallDelta) {
+      consecutiveNoProgress++;
+    } else {
+      consecutiveNoProgress = 0;
+    }
+
+    if (consecutiveNoProgress >= stallThreshold) {
+      logger.info(`[frontier:${dim.id}] Stalled — triggering autoresearch`);
+      try {
+        await runAutoResearch(dim.id, dimGoal, cwd);
+        autoresearchRuns++;
+      } catch (err) {
+        logger.warn(`[frontier:${dim.id}] Autoresearch failed: ${err}`);
+      }
+      consecutiveNoProgress = 0;
+    }
+
+    // Ceiling check before target: dims capped below target report AT_CEILING, not FRONTIER_REACHED
+    if (dim.ceiling !== undefined && score >= dim.ceiling) {
+      logger.info(`[frontier:${dim.id}] At natural ceiling (${score.toFixed(2)} >= ${dim.ceiling})`);
+      return { dimensionId: dim.id, label: dim.label, initialScore, finalScore: score, cyclesRun: cycle, autoresearchRuns, status: 'AT_CEILING' };
+    }
+
+    if (score >= target) {
+      if (options.verifyCap) {
+        const capOk = await runVerifyCap(dim.id, cwd);
+        if (!capOk) {
+          logger.warn(`[frontier:${dim.id}] Score ${score.toFixed(2)} >= target but capability_test failed — continuing`);
+          consecutiveNoProgress++;
+          continue;
+        }
+        logger.success(`[frontier:${dim.id}] Frontier reached and capability verified! ${score.toFixed(2)}`);
+      } else {
+        logger.success(`[frontier:${dim.id}] Frontier reached! ${score.toFixed(2)} >= ${target}`);
+      }
+      return { dimensionId: dim.id, label: dim.label, initialScore, finalScore: score, cyclesRun: cycle, autoresearchRuns, status: 'FRONTIER_REACHED' };
+    }
+  }
+
+  logger.warn(`[frontier:${dim.id}] Max cycles (${maxDimCycles}) reached. Final: ${score.toFixed(2)}`);
+  return { dimensionId: dim.id, label: dim.label, initialScore, finalScore: score, cyclesRun: cycle, autoresearchRuns, status: 'MAX_CYCLES' };
+}
+
+async function runFrontierPass(options: FrontierCrusadeOptions): Promise<FrontierCrusadeResult> {
+  const cwd = options.cwd ?? process.cwd();
+  const parallel = options.parallel ?? 4;
+  const target = options.target ?? DEFAULT_TARGET;
+  const loadFn = options._loadMatrix ?? loadMatrix;
+  const writeFile = options._writeFile ?? ((p: string, c: string) => fs.writeFile(p, c, 'utf8'));
+
+  const matrix = await loadFn(cwd);
+  if (!matrix) throw new Error('No compete matrix found. Run `danteforge compete --init` first.');
+
+  const excluded = new Set(matrix.excludedDimensions ?? []);
+  const eligible = matrix.dimensions
+    .filter(d =>
+      !excluded.has(d.id) &&
+      d.status !== 'closed' &&
+      (d.scores['self'] ?? 0) < target &&
+      (d.ceiling === undefined || (d.scores['self'] ?? 0) < d.ceiling),
+    )
+    .sort((a, b) => computeGapPriority(b) - computeGapPriority(a))
+    .slice(0, parallel);
+
+  if (eligible.length === 0) {
+    logger.success('[frontier] All dimensions already at target or ceiling.');
+    return { status: 'ALL_DONE', dimensions: [] };
+  }
+
+  logger.info(`[frontier] Pushing ${eligible.length} dimension(s) in parallel: ${eligible.map(d => d.label).join(', ')}`);
+
+  const results = await Promise.all(eligible.map(dim => runDimensionFrontierLoop(dim, options)));
+
+  const allDone = results.every(r => r.status === 'FRONTIER_REACHED' || r.status === 'AT_CEILING');
+  const reportPath = path.join(cwd, 'FRONTIER_CRUSADE_REPORT.md');
+  try { await writeFile(reportPath, buildFrontierReport(results, options.goal)); } catch { /* best-effort */ }
+
+  return { status: allDone ? 'ALL_DONE' : 'PARTIAL', dimensions: results, reportPath };
+}
+
+export async function runFrontierCrusade(options: FrontierCrusadeOptions): Promise<FrontierCrusadeResult> {
+  if (!options.loop) {
+    return runFrontierPass(options);
+  }
+
+  let pass = 0;
+  let result: FrontierCrusadeResult;
+  do {
+    pass++;
+    logger.info(`[frontier] ── Pass ${pass} ──────────────────────────────────────`);
+    result = await runFrontierPass(options);
+    if (result.status === 'PARTIAL') {
+      const summary = result.dimensions.map(d => `${d.label}=${d.finalScore.toFixed(1)}`).join(' ');
+      logger.info(`[frontier] Pass ${pass} complete (${summary}) — re-ranking next batch`);
+    }
+  } while (result.status === 'PARTIAL');
+
+  logger.success(`[frontier] ALL_DONE after ${pass} pass(es). Every dimension at target or ceiling.`);
+  return result;
 }
