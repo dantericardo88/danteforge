@@ -11,6 +11,14 @@ import {
   type MatrixDimension,
 } from './compete-matrix.js';
 import { createTimeMachineCommit, type CreateTimeMachineCommitOptions } from './time-machine.js';
+import { logger } from './logger.js';
+import {
+  runCapabilityTest,
+  applyScoreCap,
+  type RunCapabilityTestOptions,
+} from '../matrix/engines/capability-test-runner.js';
+import type { CapabilityTestEntry } from '../matrix/types/capability-test.js';
+import { CAPABILITY_TEST_SCORE_CAP } from '../matrix/types/capability-test.js';
 
 export type MatrixMergePolicy = 'harsh-min' | 'latest' | 'manual';
 
@@ -303,6 +311,8 @@ export async function writeScoreProposal(options: MatrixDevelopmentEngineOptions
 export async function mergeScoreProposals(options: MatrixDevelopmentEngineOptions & {
   policy?: MatrixMergePolicy;
   agent?: string;
+  /** Injection seam: replaces capability_test runner for tests. */
+  _runCapabilityTest?: (opts: RunCapabilityTestOptions) => ReturnType<typeof runCapabilityTest>;
 } = {}): Promise<MatrixDevelopmentMergeReceipt> {
   const cwd = path.resolve(options.cwd ?? process.cwd());
   return withMergeLock(cwd, async () => {
@@ -350,7 +360,22 @@ export async function mergeScoreProposals(options: MatrixDevelopmentEngineOption
       const dim = matrix.dimensions.find(d => d.id === dimensionId);
       if (!dim) continue;
       const before = getScore(dim);
-      updateDimensionScore(matrix, dimensionId, proposal.proposedScore, proposal.commit);
+
+      // capability_test gate: clamp scores > 5.0 if test absent or fails
+      let finalScore = proposal.proposedScore;
+      if (finalScore > CAPABILITY_TEST_SCORE_CAP) {
+        const capTest = (dim as unknown as Record<string, unknown>).capability_test as CapabilityTestEntry | undefined;
+        const capRunFn = options._runCapabilityTest ?? runCapabilityTest;
+        const verdict = capRunFn({ dimensionId, capabilityTest: capTest, cwd });
+        finalScore = applyScoreCap(finalScore, verdict);
+        if (!verdict.allowed) {
+          logger.warn(`[score-gate] ${dimensionId}: ${verdict.reason}`);
+        } else {
+          logger.success(`[score-gate] ${dimensionId}: capability_test passed ✓ — score ${proposal.proposedScore} accepted`);
+        }
+      }
+
+      updateDimensionScore(matrix, dimensionId, finalScore, proposal.commit);
       const after = getScore(dim);
       const last = dim.sprint_history[dim.sprint_history.length - 1] as unknown as Record<string, unknown> | undefined;
       if (last) {
@@ -363,7 +388,7 @@ export async function mergeScoreProposals(options: MatrixDevelopmentEngineOption
         before,
         after,
         selectedProposalId: proposal.id,
-        clampedByCeiling: after !== proposal.proposedScore,
+        clampedByCeiling: after !== finalScore || finalScore !== proposal.proposedScore,
       });
     }
     matrix.lastUpdated = new Date().toISOString();

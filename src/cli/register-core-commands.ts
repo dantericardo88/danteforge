@@ -1128,6 +1128,56 @@ Examples:
   });
 
 program
+  .command('evidence-scaffold')
+  .description('Auto-populate capability_test blocks in matrix.json so scores above 5.0 are provable')
+  .option('--dry-run', 'Print what would change without writing')
+  .option('--project-type <type>', 'Project type: npm (default), go, python, custom')
+  .option('--cwd <path>', 'Working directory (defaults to cwd)')
+  .addHelpText('after', `
+Examples:
+  danteforge evidence-scaffold
+  danteforge evidence-scaffold --dry-run
+  danteforge evidence-scaffold --project-type go
+`)
+  .action(async (opts) => {
+    try {
+      const { runEvidenceScaffold } = await import('./commands/evidence-scaffold.js');
+      await runEvidenceScaffold({
+        dryRun: opts.dryRun as boolean | undefined,
+        projectType: opts.projectType as 'npm' | 'go' | 'python' | 'custom' | undefined,
+        cwd: opts.cwd as string | undefined,
+      });
+    } catch (err) {
+      formatAndLogError(err, 'evidence-scaffold');
+      process.exitCode = 1;
+    }
+  });
+
+program
+  .command('evidence-audit')
+  .description('Show honest score vs evidence picture across all compete-matrix dimensions')
+  .option('--run-tests', 'Execute each capability_test live and show real pass/fail')
+  .option('--cwd <path>', 'Working directory (defaults to cwd)')
+  .addHelpText('after', `
+Examples:
+  danteforge evidence-audit
+  danteforge evidence-audit --run-tests
+`)
+  .action(async (opts) => {
+    try {
+      const { runEvidenceAudit } = await import('./commands/evidence-audit.js');
+      const result = await runEvidenceAudit({
+        runTests: opts.runTests as boolean | undefined,
+        cwd: opts.cwd as string | undefined,
+      });
+      process.exitCode = result.wouldBeCapped > 0 ? 1 : 0;
+    } catch (err) {
+      formatAndLogError(err, 'evidence-audit');
+      process.exitCode = 1;
+    }
+  });
+
+program
   .command('security-scan')
   .description('Scan src/**/*.ts for risky patterns: eval, exec, innerHTML, hardcoded keys, Math.random in security contexts')
   .option('--json', 'Output machine-readable JSON')
