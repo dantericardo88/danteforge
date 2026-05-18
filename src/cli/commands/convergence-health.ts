@@ -3,6 +3,7 @@
 // stale lock files, and verify-status consistency.
 import fs from 'fs/promises';
 import path from 'path';
+import chalk from 'chalk';
 import { logger } from '../../core/logger.js';
 
 const STATE_DIR = '.danteforge';
@@ -25,11 +26,14 @@ export interface ConvergenceHealthResult {
   checks: HealthCheck[];
   overallStatus: CheckStatus;
   timestamp: string;
+  repairs?: RepairAction[];
 }
 
 export interface ConvergenceHealthOptions {
   cwd?: string;
   json?: boolean;
+  /** When true, automatically fix detected issues (stale locks, failed verify status) */
+  autoRepair?: boolean;
   /** Injection seam: override fs.stat for testing */
   _stat?: (p: string) => Promise<{ mtimeMs: number }>;
   /** Injection seam: override Date.now for testing */
@@ -38,6 +42,17 @@ export interface ConvergenceHealthOptions {
   _readdir?: (p: string) => Promise<string[]>;
   /** Injection seam: override readFile for deterministic tests */
   _readFile?: (p: string, enc: string) => Promise<string>;
+  /** Injection seam: override unlink for testing */
+  _unlink?: (p: string) => Promise<void>;
+  /** Injection seam: override writeFile for testing */
+  _writeFile?: (p: string, data: string) => Promise<void>;
+}
+
+export interface RepairAction {
+  type: string;
+  description: string;
+  success: boolean;
+  error?: string;
 }
 
 // ── Score snapshot shape (minimal) ──────────────────────────────────────────
@@ -256,6 +271,50 @@ async function checkVerifyConsistency(
   }
 }
 
+// ── Auto-repair ──────────────────────────────────────────────────────────────
+
+async function autoRepair(
+  lockPath: string,
+  stateFilePath: string,
+  checks: HealthCheck[],
+  opts: ConvergenceHealthOptions,
+): Promise<RepairAction[]> {
+  const unlinkFn = opts._unlink ?? ((p: string) => fs.unlink(p));
+  const readFile = opts._readFile ?? ((p: string, enc: string) => fs.readFile(p, enc as BufferEncoding));
+  const writeFn = opts._writeFile ?? ((p: string, data: string) => fs.writeFile(p, data, 'utf8'));
+  const repairs: RepairAction[] = [];
+
+  // Repair: clear stale lock file
+  const lockCheck = checks.find(c => c.name === 'Lock File' && c.status === 'fail');
+  if (lockCheck) {
+    try {
+      await unlinkFn(lockPath);
+      repairs.push({ type: 'clear-stale-lock', description: 'Removed stale lock file', success: true });
+    } catch (err) {
+      repairs.push({ type: 'clear-stale-lock', description: 'Failed to remove stale lock file', success: false, error: err instanceof Error ? err.message : String(err) });
+    }
+  }
+
+  // Repair: reset failed verify status in STATE.yaml
+  const verifyCheck = checks.find(c => c.name === 'Verify Status' && c.status === 'fail');
+  if (verifyCheck) {
+    try {
+      const raw = await readFile(stateFilePath, 'utf8').catch(() => '');
+      if (raw) {
+        const updated = raw
+          .replace(/^(lastVerifyStatus:\s*).*$/m, '$1unknown')
+          .replace(/^(lastVerifyMessage:\s*).*$/m, '$1auto-repaired by convergence-health');
+        await writeFn(stateFilePath, updated);
+        repairs.push({ type: 'reset-verify-status', description: 'Reset lastVerifyStatus to unknown (was fail)', success: true });
+      }
+    } catch (err) {
+      repairs.push({ type: 'reset-verify-status', description: 'Failed to reset verify status', success: false, error: err instanceof Error ? err.message : String(err) });
+    }
+  }
+
+  return repairs;
+}
+
 // ── Orchestrator ─────────────────────────────────────────────────────────────
 
 export async function convergenceHealthCheck(
@@ -279,42 +338,54 @@ export async function convergenceHealthCheck(
     : checks.some(c => c.status === 'warn') ? 'warn'
     : 'ok';
 
+  const repairs = opts.autoRepair && overallStatus !== 'ok'
+    ? await autoRepair(lockPath, stateFilePath, checks, opts)
+    : undefined;
+
   return {
     checks,
     overallStatus,
     timestamp: new Date().toISOString(),
+    repairs,
   };
 }
 
 // ── CLI command ──────────────────────────────────────────────────────────────
 
-const STATUS_ICONS: Record<CheckStatus, string> = {
-  ok: '[ok]',
-  warn: '[warn]',
-  fail: '[FAIL]',
-};
-
 function printHealthTable(result: ConvergenceHealthResult): void {
-  logger.info('\n=== Convergence Health Report ===\n');
+  process.stdout.write('\n' + chalk.bold('  ╔══ Convergence Health ══╗') + '\n\n');
   for (const check of result.checks) {
-    const icon = STATUS_ICONS[check.status];
-    const padded = check.name.padEnd(24);
+    const padded = check.name.padEnd(26);
     if (check.status === 'fail') {
-      logger.error(`  ${icon}  ${padded} ${check.detail}`);
+      process.stdout.write(`  ${chalk.red('✗')}  ${chalk.red(padded)} ${chalk.dim(check.detail)}\n`);
     } else if (check.status === 'warn') {
-      logger.warn(`  ${icon} ${padded} ${check.detail}`);
+      process.stdout.write(`  ${chalk.yellow('⚠')}  ${chalk.yellow(padded)} ${chalk.dim(check.detail)}\n`);
     } else {
-      logger.success(`  ${icon}   ${padded} ${check.detail}`);
+      process.stdout.write(`  ${chalk.green('✔')}  ${chalk.green(padded)} ${chalk.dim(check.detail)}\n`);
     }
   }
 
-  logger.info('');
+  process.stdout.write('\n');
+  if (result.repairs && result.repairs.length > 0) {
+    process.stdout.write(chalk.bold('  ── Auto-Repair ──') + '\n');
+    for (const r of result.repairs) {
+      if (r.success) {
+        process.stdout.write(`  ${chalk.green('↺')}  ${chalk.green(r.description)}\n`);
+      } else {
+        process.stdout.write(`  ${chalk.red('✗')}  ${chalk.red(r.description)}: ${r.error ?? 'unknown error'}\n`);
+      }
+    }
+    process.stdout.write('\n');
+  }
+
   if (result.overallStatus === 'ok') {
-    logger.success(`Overall: HEALTHY`);
+    process.stdout.write('  ' + chalk.bold.green('● HEALTHY') + '\n\n');
   } else if (result.overallStatus === 'warn') {
-    logger.warn(`Overall: DEGRADED — review warnings above`);
+    process.stdout.write('  ' + chalk.bold.yellow('● DEGRADED') + chalk.dim(' — review warnings above') + '\n\n');
+  } else if (result.repairs && result.repairs.some(r => r.success)) {
+    process.stdout.write('  ' + chalk.bold.yellow('● REPAIRED') + chalk.dim(' — re-run to confirm health') + '\n\n');
   } else {
-    logger.error(`Overall: UNHEALTHY — fix failures above`);
+    process.stdout.write('  ' + chalk.bold.red('● UNHEALTHY') + chalk.dim(' — fix failures above') + '\n\n');
     process.exitCode = 1;
   }
 }

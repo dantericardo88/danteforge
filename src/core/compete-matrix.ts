@@ -173,15 +173,36 @@ export function getMatrixPath(cwd?: string): string {
 
 // ── Persistence ───────────────────────────────────────────────────────────────
 
+// In-memory TTL cache: avoids re-parsing the matrix JSON on every call
+// within a single process (e.g. crusade frontier loop calling loadMatrix per cycle).
+const MATRIX_CACHE_TTL_MS = 5_000; // 5 s — short enough to pick up saves
+interface MatrixCacheEntry { matrix: CompeteMatrix; expiresAt: number; path: string }
+let _matrixCache: MatrixCacheEntry | null = null;
+
+/** Invalidate the in-process matrix cache (called by saveMatrix). */
+export function invalidateMatrixCache(): void {
+  _matrixCache = null;
+}
+
 export async function loadMatrix(
   cwd?: string,
   _fsRead?: (p: string) => Promise<string>,
 ): Promise<CompeteMatrix | null> {
   const matrixPath = getMatrixPath(cwd);
+
+  // Return cached value if still valid and no injection override is active
+  if (!_fsRead && _matrixCache && _matrixCache.path === matrixPath && Date.now() < _matrixCache.expiresAt) {
+    return _matrixCache.matrix;
+  }
+
   const read = _fsRead ?? ((p: string) => fs.readFile(p, 'utf8'));
   try {
     const raw = await read(matrixPath);
-    return JSON.parse(raw) as CompeteMatrix;
+    const matrix = JSON.parse(raw) as CompeteMatrix;
+    if (!_fsRead) {
+      _matrixCache = { matrix, expiresAt: Date.now() + MATRIX_CACHE_TTL_MS, path: matrixPath };
+    }
+    return matrix;
   } catch {
     return null;
   }
@@ -198,6 +219,8 @@ export async function saveMatrix(
     await fs.writeFile(p, content, 'utf8');
   });
   await write(matrixPath, JSON.stringify(matrix, null, 2));
+  // Bust the in-process cache so the next loadMatrix reads the saved value
+  invalidateMatrixCache();
 }
 
 // ── Core Computations ─────────────────────────────────────────────────────────

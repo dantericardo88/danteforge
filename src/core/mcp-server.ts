@@ -815,12 +815,12 @@ export const TOOL_HANDLERS: Record<string, ToolHandler> = {
       const srcDir = pathNode.join(cwd, 'src');
       const files: string[] = [];
       async function collect(dir: string): Promise<void> {
-        let entries: Awaited<ReturnType<typeof fsNode.readdir>>;
-        try { entries = await fsNode.readdir(dir, { withFileTypes: true }); } catch { return; }
+        let entries: { name: string | Buffer; isDirectory(): boolean }[];
+        try { entries = await fsNode.readdir(dir, { withFileTypes: true, encoding: 'utf8' }) as typeof entries; } catch { return; }
         for (const e of entries) {
-          const full = pathNode.join(dir, e.name);
+          const full = pathNode.join(dir, String(e.name));
           if (e.isDirectory()) { await collect(full); }
-          else if (e.name.endsWith('.ts') || e.name.endsWith('.tsx')) {
+          else if (String(e.name).endsWith('.ts') || String(e.name).endsWith('.tsx')) {
             files.push(pathNode.relative(cwd, full));
           }
         }

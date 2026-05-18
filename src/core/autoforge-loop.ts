@@ -466,6 +466,16 @@ async function executeCycleCommand(
     logger.warn(`[Autoforge] ${nextCommand} reported failure — continuing loop`);
     consecutiveExecFailures++;
     ctx.state.autoforgeFailedAttempts = (ctx.state.autoforgeFailedAttempts ?? 0) + 1;
+    // Capture failure as lesson so injectContext includes it in the next LLM call (best-effort)
+    try {
+      const { appendLesson } = await import('../cli/commands/lessons.js');
+      await appendLesson(
+        `[autoforge failure] Command "${nextCommand}" failed at cycle ${ctx.cycleCount}. ` +
+        `Consecutive failures: ${consecutiveExecFailures}. ` +
+        `Try a different approach or decompose the task further.`,
+        cwd,
+      );
+    } catch { /* best-effort — never block retry */ }
     if (consecutiveExecFailures >= CIRCUIT_BREAKER_CONSECUTIVE_FAILURE_LIMIT) {
       ctx.loopState = AutoforgeLoopState.BLOCKED;
       logger.error(`[Autoforge] Circuit breaker tripped after ${consecutiveExecFailures} consecutive command failures`);

@@ -105,16 +105,13 @@ async function defaultRunForgeWave(goal: string, cwd: string): Promise<ForgeWave
 }
 
 async function defaultGetScore(dimension: string, cwd: string): Promise<number> {
+  // Read the competitive matrix self score for this dimension — authoritative source for crusade progress.
+  // Falls back to 0 if the matrix or dimension is not found.
   try {
-    const { execFile } = await import('node:child_process');
-    const { promisify } = await import('node:util');
-    const execFileAsync = promisify(execFile);
-    const { stdout } = await execFileAsync(
-      'danteforge', ['score', '--dimension', dimension, '--json'],
-      { cwd, timeout: 60_000 },
-    );
-    const parsed = JSON.parse(stdout.trim()) as { score?: number };
-    return parsed.score ?? 0;
+    const matrix = await loadMatrix(cwd);
+    if (!matrix) return 0;
+    const dim = matrix.dimensions.find(d => d.id === dimension);
+    return dim?.scores['self'] ?? 0;
   } catch {
     return 0;
   }
@@ -279,6 +276,7 @@ export interface FrontierCrusadeOptions {
   stallDelta?: number;     // min delta to count as progress (default 0.1)
   loop?: boolean;          // keep re-ranking and re-running passes until ALL_DONE (default false)
   verifyCap?: boolean;     // run capability_test before declaring FRONTIER_REACHED (default false)
+  skipLLMCheck?: boolean;  // skip pre-flight LLM availability check (for testing)
   cwd?: string;
   _runInferno?: (goal: string, cwd: string) => Promise<void>;
   _getScore?: (dimension: string, cwd: string) => Promise<number>;
@@ -475,6 +473,23 @@ async function runFrontierPass(options: FrontierCrusadeOptions): Promise<Frontie
 }
 
 export async function runFrontierCrusade(options: FrontierCrusadeOptions): Promise<FrontierCrusadeResult> {
+  // Pre-flight: verify LLM is reachable before spawning parallel waves.
+  // Without this, all dimensions time out after 180s each before failing gracefully.
+  if (!options.skipLLMCheck) {
+    try {
+      const { isLLMAvailable } = await import('../../core/llm.js');
+      const available = await isLLMAvailable();
+      if (!available) {
+        logger.error('[frontier] LLM provider is not reachable. Configure a provider with `danteforge config` before running the crusade.');
+        logger.error('[frontier] Tip: set ANTHROPIC_API_KEY for Claude, or start Ollama locally.');
+        return { status: 'PARTIAL', dimensions: [] };
+      }
+      logger.info('[frontier] LLM pre-flight check: OK');
+    } catch {
+      logger.warn('[frontier] LLM pre-flight check failed — proceeding anyway (some dimensions may fail)');
+    }
+  }
+
   if (!options.loop) {
     return runFrontierPass(options);
   }

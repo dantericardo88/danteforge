@@ -62,8 +62,8 @@
     "Kilo Code",
     "Dagger"
   ],
-  "lastUpdated": "2026-05-14T16:41:56.333Z",
-  "overallSelfScore": 7.7,
+  "lastUpdated": "2026-05-18T09:00:00.000Z",
+  "overallSelfScore": 7.02,
   "excludedDimensions": [
     "community_adoption",
     "communityAdoption"
@@ -106,13 +106,13 @@
         "Kilo Code": 6.8,
         "re_gent": 8
       },
-      "gap_to_leader": 0,
+      "gap_to_leader": 1.7,
       "leader": "Qodo 2.0",
-      "gap_to_closed_source_leader": 0,
+      "gap_to_closed_source_leader": 1.7,
       "closed_source_leader": "Qodo 2.0",
-      "gap_to_oss_leader": 0,
+      "gap_to_oss_leader": 0.5,
       "oss_leader": "OpenHands (All-Hands AI)",
-      "status": "closed",
+      "status": "in-progress",
       "sprint_history": [
         {
           "dimensionId": "testing",
@@ -137,6 +137,13 @@
           "before": 97,
           "after": 9.7,
           "date": "2026-04-23"
+        },
+        {
+          "dimensionId": "testing",
+          "before": 7,
+          "after": 7.5,
+          "date": "2026-05-18",
+          "note": "Added danteforge snapshot command for CLI output snapshot testing"
         }
       ],
       "next_sprint_target": 7,
@@ -154,7 +161,7 @@
       "category": "ux",
       "frequency": "high",
       "scores": {
-        "self": 7.5,
+        "self": 7,
         "Devin (Cognition AI)": 7.5,
         "GitHub Copilot Workspace": 8.8,
         "Cursor": 9,
@@ -184,13 +191,13 @@
         "Kilo Code": 8.5,
         "re_gent": 8.8
       },
-      "gap_to_leader": 0.1999999999999993,
+      "gap_to_leader": 2,
       "leader": "Cursor",
-      "gap_to_closed_source_leader": 0,
-      "closed_source_leader": "unknown",
-      "gap_to_oss_leader": 0,
-      "oss_leader": "Aider",
-      "status": "closed",
+      "gap_to_closed_source_leader": 2,
+      "closed_source_leader": "Cursor",
+      "gap_to_oss_leader": 2,
+      "oss_leader": "Continue.dev",
+      "status": "in-progress",
       "sprint_history": [
         {
           "dimensionId": "developer_experience",
@@ -250,7 +257,7 @@
       "category": "ux",
       "frequency": "high",
       "scores": {
-        "self": 6.8,
+        "self": 7.5,
         "Devin (Cognition AI)": 6.5,
         "GitHub Copilot Workspace": 8.5,
         "Cursor": 9.2,
@@ -280,13 +287,13 @@
         "Kilo Code": 8.2,
         "re_gent": 8
       },
-      "gap_to_leader": 0,
+      "gap_to_leader": 1.7,
       "leader": "Cursor",
-      "gap_to_closed_source_leader": 0,
+      "gap_to_closed_source_leader": 1.7,
       "closed_source_leader": "Cursor",
-      "gap_to_oss_leader": 0,
+      "gap_to_oss_leader": 1.3,
       "oss_leader": "Continue.dev",
-      "status": "closed",
+      "status": "in-progress",
       "sprint_history": [
         {
           "dimensionId": "ux_polish",
@@ -305,6 +312,13 @@
           "before": 100,
           "after": 10,
           "date": "2026-04-23"
+        },
+        {
+          "dimensionId": "ux_polish",
+          "before": 6.5,
+          "after": 7.5,
+          "date": "2026-05-18",
+          "note": "Chalk colorization: compete table, convergence-health, doctor, score command"
         }
       ],
       "next_sprint_target": 7,
@@ -322,7 +336,7 @@
       "category": "quality",
       "frequency": "high",
       "scores": {
-        "self": 8,
+        "self": 7,
         "Devin (Cognition AI)": 8.8,
         "GitHub Copilot Workspace": 8.2,
         "Cursor": 8.5,
@@ -352,11 +366,11 @@
         "Kilo Code": 7.8,
         "re_gent": 7.2
       },
-      "gap_to_leader": 0,
+      "gap_to_leader": 1.8,
       "leader": "Devin (Cognition AI)",
-      "gap_to_closed_source_leader": 0,
+      "gap_to_closed_source_leader": 1.8,
       "closed_source_leader": "Devin (Cognition AI)",
-      "gap_to_oss_leader": 0,
+      "gap_to_oss_leader": 1.5,
       "oss_leader": "OpenHands (All-Hands AI)",
       "status": "closed",
       "sprint_history": [
@@ -394,7 +408,7 @@
       "category": "features",
       "frequency": "high",
       "scores": {
-        "self": 7.8,
+        "self": 7.5,
         "Devin (Cognition AI)": 9.2,
         "GitHub Copilot Workspace": 6.8,
         "Cursor": 6.5,
@@ -424,13 +438,13 @@
         "Kilo Code": 7.2,
         "re_gent": 5.5
       },
-      "gap_to_leader": 1.6999999999999993,
+      "gap_to_leader": 1.7,
       "leader": "Devin (Cognition AI)",
-      "gap_to_closed_source_leader": 0,
-      "closed_source_leader": "unknown",
-      "gap_to_oss_leader": 1.3000000000000007,
+      "gap_to_closed_source_leader": 1.7,
+      "closed_source_leader": "Devin (Cognition AI)",
+      "gap_to_oss_leader": 1.3,
       "oss_leader": "OpenHands (All-Hands AI)",
-      "status": "closed",
+      "status": "in-progress",
       "sprint_history": [
         {
           "dimensionId": "autonomy",
@@ -503,9 +517,16 @@
           "selectedProposalId": "proposal_1778763045019_ebc75480",
           "mergeReceipt": ".danteforge/score-proposals/merge-receipts/merge_1778763118257_33189025.json",
           "timeMachineCommitId": "tm_1b303d2c2b24558c6b6dd120"
+        },
+        {
+          "dimensionId": "autonomy",
+          "before": 7,
+          "after": 7.5,
+          "date": "2026-05-18",
+          "note": "Crusade preflight LLM health-check; lesson injection on autoforge failures"
         }
       ],
-      "next_sprint_target": 7,
+      "next_sprint_target": 8,
       "harvest_source": "OpenHands (All-Hands AI)",
       "capability_test": {
         "command": "node dist/index.js autoforge --dry-run --score-only 2>&1",
@@ -520,7 +541,7 @@
       "category": "reliability",
       "frequency": "high",
       "scores": {
-        "self": 7.5,
+        "self": 7,
         "Devin (Cognition AI)": 7,
         "GitHub Copilot Workspace": 8,
         "Cursor": 7.2,
@@ -550,11 +571,11 @@
         "Kilo Code": 7,
         "re_gent": 7.2
       },
-      "gap_to_leader": 0,
+      "gap_to_leader": 1.5,
       "leader": "Zencoder",
-      "gap_to_closed_source_leader": 0,
+      "gap_to_closed_source_leader": 1.5,
       "closed_source_leader": "Zencoder",
-      "gap_to_oss_leader": 0,
+      "gap_to_oss_leader": 1,
       "oss_leader": "OpenHands (All-Hands AI)",
       "status": "closed",
       "sprint_history": [
@@ -592,7 +613,7 @@
       "category": "quality",
       "frequency": "high",
       "scores": {
-        "self": 8,
+        "self": 6.5,
         "Devin (Cognition AI)": 7.5,
         "GitHub Copilot Workspace": 7.2,
         "Cursor": 6.8,
@@ -622,13 +643,13 @@
         "Kilo Code": 6.8,
         "re_gent": 6.8
       },
-      "gap_to_leader": 0,
+      "gap_to_leader": 1.5,
       "leader": "CodeRabbit",
-      "gap_to_closed_source_leader": 0,
+      "gap_to_closed_source_leader": 1.5,
       "closed_source_leader": "CodeRabbit",
-      "gap_to_oss_leader": 0,
+      "gap_to_oss_leader": 1.3,
       "oss_leader": "AutoGen (Microsoft)",
-      "status": "closed",
+      "status": "in-progress",
       "sprint_history": [
         {
           "dimensionId": "error_handling",
@@ -664,7 +685,7 @@
       "category": "quality",
       "frequency": "high",
       "scores": {
-        "self": 6.5,
+        "self": 7,
         "Devin (Cognition AI)": 7.2,
         "GitHub Copilot Workspace": 7,
         "Cursor": 7.4,
@@ -694,13 +715,13 @@
         "Kilo Code": 7.2,
         "re_gent": 7.6
       },
-      "gap_to_leader": 0,
+      "gap_to_leader": 1,
       "leader": "Codex CLI (OpenAI)",
-      "gap_to_closed_source_leader": 0,
-      "closed_source_leader": "unknown",
-      "gap_to_oss_leader": 0,
+      "gap_to_closed_source_leader": 1,
+      "closed_source_leader": "Codex CLI (OpenAI)",
+      "gap_to_oss_leader": 0.6,
       "oss_leader": "AutoGen (Microsoft)",
-      "status": "closed",
+      "status": "in-progress",
       "sprint_history": [
         {
           "dimensionId": "performance",
@@ -761,9 +782,16 @@
           "selectedProposalId": "proposal_1778763093494_fe26add4",
           "mergeReceipt": ".danteforge/score-proposals/merge-receipts/merge_1778763118257_33189025.json",
           "timeMachineCommitId": "tm_1b303d2c2b24558c6b6dd120"
+        },
+        {
+          "dimensionId": "performance",
+          "before": 6,
+          "after": 7,
+          "date": "2026-05-18",
+          "note": "Score command cache fix: 7-12s → 1.6s warm via computeCanonicalScore in measure.ts"
         }
       ],
-      "next_sprint_target": 7,
+      "next_sprint_target": 8,
       "harvest_source": "AutoGen (Microsoft)",
       "capability_test": {
         "command": "node dist/index.js score 2>&1",
@@ -808,13 +836,13 @@
         "Kilo Code": 6.8,
         "re_gent": 8.7
       },
-      "gap_to_leader": 0,
+      "gap_to_leader": 2.2,
       "leader": "Swimm",
-      "gap_to_closed_source_leader": 0,
+      "gap_to_closed_source_leader": 2.2,
       "closed_source_leader": "Swimm",
-      "gap_to_oss_leader": 0,
-      "oss_leader": "re_gent",
-      "status": "closed",
+      "gap_to_oss_leader": 1,
+      "oss_leader": "LangChain Agents",
+      "status": "in-progress",
       "sprint_history": [
         {
           "dimensionId": "documentation",
@@ -850,7 +878,7 @@
       "category": "features",
       "frequency": "medium",
       "scores": {
-        "self": 7.2,
+        "self": 7,
         "Devin (Cognition AI)": 8.5,
         "GitHub Copilot Workspace": 5.5,
         "Cursor": 4,
@@ -880,13 +908,13 @@
         "Kilo Code": 4.5,
         "re_gent": 5
       },
-      "gap_to_leader": 0.5,
+      "gap_to_leader": 1.5,
       "leader": "Devin (Cognition AI)",
-      "gap_to_closed_source_leader": 0,
-      "closed_source_leader": "unknown",
-      "gap_to_oss_leader": 0,
+      "gap_to_closed_source_leader": 1.5,
+      "closed_source_leader": "Devin (Cognition AI)",
+      "gap_to_oss_leader": 1,
       "oss_leader": "OpenHands (All-Hands AI)",
-      "status": "closed",
+      "status": "in-progress",
       "sprint_history": [
         {
           "dimensionId": "convergence_self_healing",
@@ -1031,7 +1059,7 @@
       "category": "features",
       "frequency": "medium",
       "scores": {
-        "self": 7.8,
+        "self": 7.5,
         "Devin (Cognition AI)": 7.8,
         "GitHub Copilot Workspace": 7.6,
         "Cursor": 6.2,
@@ -1061,11 +1089,11 @@
         "Kilo Code": 5.8,
         "re_gent": 6
       },
-      "gap_to_leader": 0,
+      "gap_to_leader": 1,
       "leader": "MetaGPT",
-      "gap_to_closed_source_leader": 0,
+      "gap_to_closed_source_leader": 1,
       "closed_source_leader": "Swimm",
-      "gap_to_oss_leader": 0,
+      "gap_to_oss_leader": 1,
       "oss_leader": "MetaGPT",
       "status": "closed",
       "sprint_history": [
@@ -1110,7 +1138,7 @@
       "category": "reliability",
       "frequency": "medium",
       "scores": {
-        "self": 6.5,
+        "self": 6,
         "Devin (Cognition AI)": 7,
         "GitHub Copilot Workspace": 7.4,
         "Cursor": 7.6,
@@ -1140,11 +1168,11 @@
         "Kilo Code": 7,
         "re_gent": 7.5
       },
-      "gap_to_leader": 1.5,
+      "gap_to_leader": 2,
       "leader": "Claude Code",
-      "gap_to_closed_source_leader": 0,
-      "closed_source_leader": "unknown",
-      "gap_to_oss_leader": 1.2999999999999998,
+      "gap_to_closed_source_leader": 2,
+      "closed_source_leader": "Claude Code",
+      "gap_to_oss_leader": 1.8,
       "oss_leader": "AutoGen (Microsoft)",
       "status": "closed",
       "sprint_history": [
@@ -1219,7 +1247,7 @@
       "category": "features",
       "frequency": "medium",
       "scores": {
-        "self": 7.5,
+        "self": 6.5,
         "Devin (Cognition AI)": 5,
         "GitHub Copilot Workspace": 5.5,
         "Cursor": 7,
@@ -1249,10 +1277,10 @@
         "Kilo Code": 5.5,
         "re_gent": 6.5
       },
-      "gap_to_leader": 0,
+      "gap_to_leader": 1,
       "leader": "Claude Code",
-      "gap_to_closed_source_leader": 0,
-      "closed_source_leader": "unknown",
+      "gap_to_closed_source_leader": 1,
+      "closed_source_leader": "Claude Code",
       "gap_to_oss_leader": 0,
       "oss_leader": "Aider",
       "status": "closed",
@@ -1312,7 +1340,7 @@
       ],
       "frequency": "medium",
       "scores": {
-        "self": 7.2,
+        "self": 6.5,
         "Devin (Cognition AI)": 6,
         "GitHub Copilot Workspace": 5.5,
         "Cursor": 5,
@@ -1342,11 +1370,11 @@
         "Kilo Code": 5.2,
         "re_gent": 4
       },
-      "gap_to_leader": 0.7000000000000002,
+      "gap_to_leader": 0.7,
       "leader": "CodiumAI / Qodo",
-      "gap_to_closed_source_leader": 0,
-      "closed_source_leader": "unknown",
-      "gap_to_oss_leader": 0.2999999999999998,
+      "gap_to_closed_source_leader": 0.7,
+      "closed_source_leader": "CodiumAI / Qodo",
+      "gap_to_oss_leader": 0.3,
       "oss_leader": "CrewAI",
       "status": "closed",
       "sprint_history": [
@@ -1407,7 +1435,7 @@
         "src/core/integration-wiring.ts"
       ],
       "scores": {
-        "self": 7.5,
+        "self": 7,
         "Devin (Cognition AI)": 4.5,
         "GitHub Copilot Workspace": 8,
         "Cursor": 6.5,
@@ -1437,11 +1465,11 @@
         "Kilo Code": 7.8,
         "re_gent": 4
       },
-      "gap_to_leader": 1,
+      "gap_to_leader": 2,
       "leader": "Claude Code",
-      "gap_to_closed_source_leader": 0,
-      "closed_source_leader": "unknown",
-      "gap_to_oss_leader": 0.8000000000000007,
+      "gap_to_closed_source_leader": 2,
+      "closed_source_leader": "Claude Code",
+      "gap_to_oss_leader": 1.8,
       "oss_leader": "LangChain Agents",
       "status": "closed",
       "sprint_history": [
@@ -1510,7 +1538,7 @@
       "category": "reliability",
       "frequency": "low",
       "scores": {
-        "self": 6.8,
+        "self": 6,
         "Devin (Cognition AI)": 5.5,
         "GitHub Copilot Workspace": 8.8,
         "Cursor": 6,
@@ -1540,13 +1568,13 @@
         "Kilo Code": 4.8,
         "re_gent": 4
       },
-      "gap_to_leader": 0,
+      "gap_to_leader": 3,
       "leader": "Zencoder",
-      "gap_to_closed_source_leader": 0,
+      "gap_to_closed_source_leader": 3,
       "closed_source_leader": "Zencoder",
-      "gap_to_oss_leader": 0,
-      "oss_leader": "AutoGen (Microsoft)",
-      "status": "closed",
+      "gap_to_oss_leader": 0.5,
+      "oss_leader": "Dagger",
+      "status": "in-progress",
       "sprint_history": [
         {
           "dimensionId": "enterprise_readiness",
@@ -1656,7 +1684,7 @@
       "category": "reliability",
       "frequency": "high",
       "scores": {
-        "self": 7.8,
+        "self": 7.5,
         "Devin (Cognition AI)": 2.5,
         "GitHub Copilot Workspace": 3,
         "Cursor": 4,
@@ -1741,7 +1769,7 @@
       }
     }
   ],
-  "harshScoredAt": "2026-05-14",
-  "harshScoredBy": "adversarial-self-review",
-  "overallHarshScore": "7.38"
+  "harshScoredAt": "2026-05-18",
+  "harshScoredBy": "independent-code-inspection-wave2",
+  "overallHarshScore": "6.86"
 }

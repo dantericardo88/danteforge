@@ -14,6 +14,7 @@ import { logger } from '../../core/logger.js';
 import { detectAIDrift } from '../../core/drift-detector.js';
 import { withErrorBoundary } from '../../core/cli-error-boundary.js';
 import { recordStage } from '../../core/pipeline-tracker.js';
+import { withProgress } from '../../core/progress-indicator.js';
 
 const execAsync = promisify(exec);
 const execFileAsync = promisify(execFile);
@@ -421,8 +422,11 @@ async function runExecutionGateChecks(result: VerifyResult, state: DanteState, o
   if (options.light || receiptBackedExecution) {
     const modeLabel = options.light ? 'Light mode' : 'Receipt-backed mode';
     traceVerifyStage('before-run-tests', options._trace);
-    const testGate = await runObjectiveExecutionGate('test', 'npm test', cwd, options._runTests, 'npm test',
-      (reason) => { logger.info(`${modeLabel}: fresh test proof unavailable (${describeCommandCheckFallback(reason)}); running npm test...`); });
+    const testGate = await withProgress('Running test suite', async (handle) => {
+      handle.update('checking for fresh receipt...');
+      return runObjectiveExecutionGate('test', 'npm test', cwd, options._runTests, 'npm test',
+        (reason) => { handle.update(`running npm test (${describeCommandCheckFallback(reason)})...`); });
+    });
     if (testGate.passed) {
       result.passed.push(testGate.reusedReceipt
         ? `${modeLabel}: reused fresh test proof for the current worktree`
@@ -433,8 +437,11 @@ async function runExecutionGateChecks(result: VerifyResult, state: DanteState, o
     traceVerifyStage('after-run-tests', options._trace);
     traceVerifyStage('before-run-build', options._trace);
     const buildProofCommand = await resolveBuildProofCommand(cwd);
-    const buildGate = await runObjectiveExecutionGate('build', 'npm run build', cwd, options._runBuild, buildProofCommand,
-      (reason) => { logger.info(`${modeLabel}: fresh build proof unavailable (${describeCommandCheckFallback(reason)}); running ${buildProofCommand}...`); });
+    const buildGate = await withProgress('Running build', async (handle) => {
+      handle.update('checking for fresh receipt...');
+      return runObjectiveExecutionGate('build', 'npm run build', cwd, options._runBuild, buildProofCommand,
+        (reason) => { handle.update(`running ${buildProofCommand} (${describeCommandCheckFallback(reason)})...`); });
+    });
     if (buildGate.passed) {
       result.passed.push(buildGate.reusedReceipt
         ? `${modeLabel}: reused fresh build proof for the current worktree`

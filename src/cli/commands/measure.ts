@@ -196,8 +196,8 @@ export async function measure(options: MeasureOptions = {}): Promise<MeasureResu
   const isTTY = process.stdout.isTTY ?? false;
 
   const computeScoreFn = options._computeScore ?? (async (dir: string) => {
-    const { computeHarshScore } = await import('../../core/harsh-scorer.js');
-    return computeHarshScore({ cwd: dir });
+    const { computeCanonicalScore, canonicalScoreToHarshResult } = await import('../../core/harsh-scorer.js');
+    return canonicalScoreToHarshResult(await computeCanonicalScore(dir));
   });
 
   // ── Score ──────────────────────────────────────────────────────────────────

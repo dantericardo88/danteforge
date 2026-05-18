@@ -36,6 +36,7 @@ async function checkLLMPreflight(
 export async function forge(phase = '1', options: {
   profile?: string; parallel?: boolean; prompt?: boolean; light?: boolean;
   worktree?: boolean; figma?: boolean; skipUx?: boolean; confirm?: boolean;
+  dryRun?: boolean;
   _isLLMAvailable?: () => Promise<boolean>;
   _policyGate?: typeof runPolicyGate;
   /** Injection seam: replaces createTimeMachineCommit for testing */
@@ -81,6 +82,26 @@ export async function forge(phase = '1', options: {
 
   // Record pipeline stage (best-effort)
   try { await recordStage('forge', process.cwd()); } catch { /* best-effort */ }
+
+  // Dry-run mode: show what would execute without side effects
+  if (options.dryRun) {
+    const profile = options.profile ?? 'balanced';
+    logger.info(`[forge --dry-run] Phase: ${phase} | Profile: ${profile} | Parallel: ${!!options.parallel}`);
+    logger.info('[forge --dry-run] Gates: PLAN ✓, TESTS ✓');
+    try {
+      const tasksRaw = await fs.readFile('.danteforge/TASKS.md', 'utf8');
+      const taskLines = tasksRaw.split('\n').filter(l => /^[-*]|\d+\./.test(l.trim())).slice(0, 10);
+      if (taskLines.length) {
+        logger.info('[forge --dry-run] Tasks that would be executed:');
+        taskLines.forEach(l => logger.info(`  ${l.trim()}`));
+        if (tasksRaw.split('\n').filter(l => /^[-*]|\d+\./.test(l.trim())).length > 10) {
+          logger.info('  ... (truncated, see .danteforge/TASKS.md for full list)');
+        }
+      }
+    } catch { /* TASKS.md may not exist yet */ }
+    logger.info('[forge --dry-run] No files modified. Re-run without --dry-run to execute.');
+    return;
+  }
 
   // LLM pre-flight — surface misconfiguration before wasting a full wave
   if (!options.prompt && !(await checkLLMPreflight(options._isLLMAvailable))) return;

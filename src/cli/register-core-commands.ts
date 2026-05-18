@@ -26,6 +26,12 @@ program
   .option('--light', 'Skip hard gates for simple changes')
   .option('--ceo-review', 'Apply founder/CEO intent elevation before writing SPEC.md')
   .option('--refine', 'Inject PDSE score as context for iterative improvement')
+  .addHelpText('after', `
+Examples:
+  danteforge specify "build a REST API with auth"
+  danteforge specify "refactor auth module" --light
+  danteforge specify "add payment flow" --prompt   # copy-paste prompt only
+  danteforge specify "user dashboard" --ceo-review # CEO-intent elevation`)
   .action((...a: unknown[]) => void C().then(c => (c.specify as (...x: unknown[]) => unknown)(...a)));
 
 program
@@ -39,7 +45,7 @@ program
   .command('plan [goal]')
   .description('Plan a goal or generate detailed plan from spec. Use --level to select scope.')
   .option('--level <level>', 'Canonical intensity: light | standard | deep')
-  .option('--mode <mode>', 'sprint | define-done â€” dispatch to a specialized planning mode')
+  .option('--mode <mode>', 'sprint | define-done — dispatch to a specialized planning mode')
   .option('--prompt', 'Generate a copy-paste prompt instead of auto-generating')
   .option('--light', 'Skip hard gates for simple changes')
   .option('--ceo-review', 'Apply CEO-level strategic review before writing PLAN.md')
@@ -47,6 +53,14 @@ program
   .option('--skip-critique', 'Skip adversarial critique gate after plan generation')
   .option('--no-score', 'Skip plan quality scoring (faster, for light/CI mode)')
   .option('--stakes <level>', 'Critique depth: low|medium|high|critical (default: medium)')
+  .addHelpText('after', `
+Examples:
+  danteforge plan                       Generate plan from current SPEC.md
+  danteforge plan “add oauth login”     Plan for a specific goal (creates SPEC if needed)
+  danteforge plan --level deep          Deep planning with adversarial critique
+  danteforge plan --mode sprint         Sprint planning mode (produces sprint tasks)
+  danteforge plan --prompt              Generate copy-paste prompt (no API key needed)
+  danteforge plan --light               Skip gates for quick prototyping`)
   .action(async (goal, opts) => {
     if (opts.level || opts.mode || opts.skipCritique) {
       return (await C()).canonicalPlan(goal as string | undefined, {
@@ -171,6 +185,7 @@ program
   .option('--figma', 'Use the prompt-driven Figma refinement path during this wave (requires --prompt)')
   .option('--skip-ux', 'Skip UX refinement even with --figma')
   .option('--confirm', 'Require explicit human approval via policy gate before executing')
+  .option('--dry-run', 'Preview what would be executed without making any changes')
   .addHelpText('after', `
 Examples:
   danteforge forge                  Execute wave 1 with balanced profile
@@ -180,13 +195,24 @@ Examples:
   danteforge forge --parallel       Run wave steps in parallel (faster, needs more RAM)
   danteforge forge --worktree       Isolated git worktree — safe to run on dirty branches
   danteforge forge --confirm        Pause for human review before executing each step
+  danteforge forge --dry-run        Preview tasks without executing (safe for CI checks)
 `)
-  .action((...a: unknown[]) => {
+  .action((phase: unknown, opts: Record<string, unknown>) => {
     // Direct dynamic import: forge loads the full GSD wave executor and
     // context-compression pipeline — expensive at startup, cheap to defer.
     void (async () => {
       const { forge } = await import('./commands/forge.js');
-      return (forge as (...x: unknown[]) => unknown)(...a);
+      return forge(typeof phase === 'string' ? phase : '1', {
+        profile: opts['profile'] as string | undefined,
+        parallel: opts['parallel'] as boolean | undefined,
+        prompt: opts['prompt'] as boolean | undefined,
+        light: opts['light'] as boolean | undefined,
+        worktree: opts['worktree'] as boolean | undefined,
+        figma: opts['figma'] as boolean | undefined,
+        skipUx: opts['skipUx'] as boolean | undefined,
+        confirm: opts['confirm'] as boolean | undefined,
+        dryRun: opts['dryRun'] as boolean | undefined,
+      });
     })();
   });
 
@@ -243,6 +269,13 @@ program
   .option('--light', 'Skip pipeline execution checks; substitute npm test + build (for CLI projects or early-stage pipelines)')
   .option('--cwd <path>', 'Working directory for verification (defaults to current directory)')
   .option('--retry <n>', 'Retry verify up to N times on failure (waits 2s between attempts)', '0')
+  .addHelpText('after', `
+Examples:
+  danteforge verify                 Full verification pass
+  danteforge verify --light         Quick check (npm test + build only)
+  danteforge verify --release       Include release/package checks
+  danteforge verify --json          Machine-readable JSON output
+  danteforge verify --retry 3       Retry up to 3 times on transient failures`)
   .action((...a: unknown[]) => void C().then(c => (c.verify as (...x: unknown[]) => unknown)(...a)));
 
 program
@@ -250,7 +283,13 @@ program
   .description('Check convergence and self-healing health — detects stalls, stale locks, corrupt STATE.yaml')
   .option('--cwd <path>', 'Working directory (defaults to current directory)')
   .option('--json', 'Output machine-readable JSON')
-  .action(async (opts) => (await C()).convergenceHealth({ cwd: opts.cwd, json: opts.json }));
+  .option('--auto-repair', 'Automatically fix detected issues (stale locks, failed verify status)')
+  .addHelpText('after', `
+Examples:
+  danteforge convergence-health                     Detect convergence issues
+  danteforge convergence-health --auto-repair       Auto-fix stale locks and reset failed verify
+  danteforge convergence-health --json              Machine-readable JSON for CI monitoring`)
+  .action(async (opts) => (await C()).convergenceHealth({ cwd: opts.cwd, json: opts.json, autoRepair: opts.autoRepair }));
 
 program
   .command('synthesize')
@@ -1013,6 +1052,12 @@ program
   .option('--min-score <n>', 'Exit 1 if any file scores below N (0-10)', parseFloat)
   .option('--json', 'Output machine-readable JSON')
   .option('--cwd <path>', 'Project root directory (defaults to cwd)')
+  .addHelpText('after', `
+Examples:
+  danteforge batch-check                          # scan all src/**/*.ts
+  danteforge batch-check --min-score 7            # fail if any file scores below 7
+  danteforge batch-check --pattern "tests/**/*.ts" --json
+  danteforge batch-check --cwd /path/to/project`)
   .action(async (opts) => {
     try {
       const { batchCheck } = await import('./commands/batch-check.js');

@@ -51,7 +51,7 @@ const PROTECTED_LINES_PATH = path.join(process.cwd(), '.danteforge', 'protected-
 if (fs.existsSync(PROTECTED_LINES_PATH)) {
   let protectedLines;
   try {
-    const raw = fs.readFileSync(PROTECTED_LINES_PATH, 'utf8').replace(/^﻿/, '');
+    const raw = fs.readFileSync(PROTECTED_LINES_PATH, 'utf8').replace(/^\uFEFF/, '');
     protectedLines = JSON.parse(raw);
   } catch {
     protectedLines = { protections: [] };

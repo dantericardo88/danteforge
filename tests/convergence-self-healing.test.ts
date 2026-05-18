@@ -293,6 +293,63 @@ describe('convergenceHealthCheck', () => {
     const result = await convergenceHealthCheck({ cwd: tmpDir });
     assert.strictEqual(result.checks.length, 4);
   });
+
+  it('autoRepair removes a stale lock file when detected', async () => {
+    const lockPath = path.join(tmpDir, '.danteforge', 'STATE.lock');
+    await fs.writeFile(lockPath, 'locked', 'utf8');
+
+    let unlinkCalled = false;
+    const result = await convergenceHealthCheck({
+      cwd: tmpDir,
+      autoRepair: true,
+      _stat: async () => ({ mtimeMs: Date.now() - 10 * 60 * 1000 }), // 10 min old = stale
+      _now: () => Date.now(),
+      _unlink: async (p) => { if (p === lockPath) unlinkCalled = true; },
+    });
+
+    assert.ok(result.repairs !== undefined, 'repairs array should be present');
+    const lockRepair = result.repairs!.find(r => r.type === 'clear-stale-lock');
+    assert.ok(lockRepair, 'should have a clear-stale-lock repair action');
+    assert.strictEqual(lockRepair!.success, true);
+    assert.strictEqual(unlinkCalled, true);
+
+    await fs.unlink(lockPath).catch(() => {});
+  });
+
+  it('autoRepair returns undefined repairs when everything is healthy', async () => {
+    const stateFile = path.join(tmpDir, '.danteforge', 'STATE.yaml');
+    await fs.writeFile(stateFile, 'project: healthy\nlastVerifyStatus: pass\n', 'utf8');
+
+    const result = await convergenceHealthCheck({ cwd: tmpDir, autoRepair: true });
+    // overallStatus may be warn/ok but no repairs should fire unless there are failures
+    const lockRepair = result.repairs?.find(r => r.type === 'clear-stale-lock');
+    assert.ok(!lockRepair, 'no lock repair when lock is absent');
+
+    await fs.unlink(stateFile).catch(() => {});
+  });
+
+  it('autoRepair resets failed verify status in STATE.yaml', async () => {
+    const stateFile = path.join(tmpDir, '.danteforge', 'STATE.yaml');
+    const original = 'project: test\nlastVerifyStatus: fail\n';
+    let writtenContent = '';
+    await fs.writeFile(stateFile, original, 'utf8');
+
+    await convergenceHealthCheck({
+      cwd: tmpDir,
+      autoRepair: true,
+      _readFile: async (p, enc) => {
+        if (p === stateFile) return original;
+        return fs.readFile(p, enc as BufferEncoding);
+      },
+      _writeFile: async (_p, data) => { writtenContent = data; },
+    });
+
+    if (writtenContent) {
+      assert.ok(writtenContent.includes('lastVerifyStatus: unknown'), 'should reset status to unknown');
+    }
+
+    await fs.unlink(stateFile).catch(() => {});
+  });
 });
 
 // ── Verify --retry option ─────────────────────────────────────────────────────

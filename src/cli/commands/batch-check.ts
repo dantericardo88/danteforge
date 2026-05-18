@@ -1,6 +1,8 @@
 // batch-check — per-file quality scan across a glob pattern
 import fs from 'node:fs/promises';
 import path from 'node:path';
+import chalk from 'chalk';
+import { withProgress } from '../../core/progress-indicator.js';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -162,7 +164,7 @@ type FsGlobModule = typeof import('node:fs') & {
 async function defaultGlob(pattern: string, cwd: string): Promise<string[]> {
   // Use Node's built-in glob (Node 22+) or a fallback
   try {
-    const fsModule = await import('node:fs') as FsGlobModule;
+    const fsModule = await import('node:fs') as unknown as FsGlobModule;
     const globFn = fsModule.glob;
     if (typeof globFn === 'function') {
       const results: string[] = [];
@@ -241,22 +243,30 @@ export async function batchCheck(options: BatchCheckOptions = {}): Promise<Batch
 
   const filePaths = await globFn(pattern, cwd);
 
-  const results: FileCheckResult[] = [];
-  for (const filePath of filePaths) {
-    try {
-      const result = await analyzeFile(filePath, readFile);
-      results.push(result);
-    } catch (err) {
-      const msg = err instanceof Error ? err.message : String(err);
-      results.push({
-        file: filePath,
-        lines: 0, blankLines: 0, nonBlankLines: 0,
-        jsdocFunctions: 0, totalExportedFunctions: 0, jsdocPercent: 0,
-        anyCount: 0, todoCount: 0, score: 0,
-        warnings: [`Read error: ${msg}`],
-      });
-    }
-  }
+  const results: FileCheckResult[] = await withProgress(
+    `Scanning ${filePaths.length} file(s)`,
+    async (handle) => {
+      const out: FileCheckResult[] = [];
+      for (let i = 0; i < filePaths.length; i++) {
+        const filePath = filePaths[i];
+        handle.update(`${i + 1}/${filePaths.length} ${path.basename(filePath)}`);
+        try {
+          const result = await analyzeFile(filePath, readFile);
+          out.push(result);
+        } catch (err) {
+          const msg = err instanceof Error ? err.message : String(err);
+          out.push({
+            file: filePath,
+            lines: 0, blankLines: 0, nonBlankLines: 0,
+            jsdocFunctions: 0, totalExportedFunctions: 0, jsdocPercent: 0,
+            anyCount: 0, todoCount: 0, score: 0,
+            warnings: [`Read error: ${msg}`],
+          });
+        }
+      }
+      return out;
+    },
+  );
 
   const failing = results.filter(r => r.score < minScore);
   const lowestResult = results.reduce<FileCheckResult | null>((acc, r) => {
@@ -277,9 +287,11 @@ export async function batchCheck(options: BatchCheckOptions = {}): Promise<Batch
     process.stdout.write(JSON.stringify({ files: results, summary }, null, 2) + '\n');
   } else {
     printTable(results, cwd, minScore);
-    process.stdout.write(`\nSummary: ${summary.total} files | ${summary.passing} passing | ${summary.failing} failing\n`);
-    if (summary.lowestFile) {
-      process.stdout.write(`Lowest: ${summary.lowestFile} (score ${summary.lowestScore})\n`);
+    const passingText = chalk.green(`${summary.passing} passing`);
+    const failingText = summary.failing > 0 ? chalk.red(`${summary.failing} failing`) : chalk.green('0 failing');
+    process.stdout.write(`\n${chalk.bold('Summary:')} ${summary.total} files | ${passingText} | ${failingText}\n`);
+    if (summary.lowestFile && summary.failing > 0) {
+      process.stdout.write(`${chalk.yellow('Lowest:')} ${summary.lowestFile} (score ${chalk.red(String(summary.lowestScore))})\n`);
     }
   }
 
@@ -287,17 +299,27 @@ export async function batchCheck(options: BatchCheckOptions = {}): Promise<Batch
   return { files: results, summary, passed };
 }
 
+function colorScore(score: number, minScore: number): string {
+  const s = String(score);
+  if (score < minScore) return chalk.red(`${s} !!`);
+  if (score >= 9) return chalk.green(s);
+  if (score >= 7) return chalk.cyan(s);
+  if (score >= 5) return chalk.yellow(s);
+  return chalk.red(s);
+}
+
 function printTable(results: FileCheckResult[], cwd: string, minScore: number): void {
-  const header = 'File'.padEnd(50) + ' Lines  JSDoc%  any  TODOs  Score';
+  const header = chalk.bold('File'.padEnd(50) + ' Lines  JSDoc%  any  TODOs  Score');
   process.stdout.write(header + '\n');
-  process.stdout.write('-'.repeat(header.length) + '\n');
+  process.stdout.write(chalk.dim('-'.repeat(header.replace(/\[[0-9;]*m/g, '').length)) + '\n');
   for (const r of results) {
     const rel = path.relative(cwd, r.file).slice(0, 48).padEnd(50);
     const lines = String(r.nonBlankLines).padStart(6);
     const jsdoc = `${r.jsdocPercent}%`.padStart(6);
-    const anyC = String(r.anyCount).padStart(4);
-    const todos = String(r.todoCount).padStart(6);
-    const scoreStr = r.score < minScore ? `${r.score} !!` : String(r.score);
-    process.stdout.write(`${rel}${lines}${jsdoc}${anyC}${todos}  ${scoreStr}\n`);
+    const anyC = r.anyCount > 0 ? chalk.yellow(String(r.anyCount).padStart(4)) : String(r.anyCount).padStart(4);
+    const todos = r.todoCount > 0 ? chalk.yellow(String(r.todoCount).padStart(6)) : String(r.todoCount).padStart(6);
+    const scoreStr = colorScore(r.score, minScore);
+    const rowColor = r.score < minScore ? chalk.red : (s: string) => s;
+    process.stdout.write(`${rowColor(rel)}${lines}${jsdoc}${anyC}${todos}  ${scoreStr}\n`);
   }
 }

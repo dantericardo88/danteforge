@@ -1,5 +1,6 @@
 import fs from 'fs/promises';
 import path from 'path';
+import chalk from 'chalk';
 import { logger } from '../../core/logger.js';
 import type { LogLevel } from '../../core/logger.js';
 import { loadState, saveState, type DanteState, type VerifyEvidence } from '../../core/state.js';
@@ -558,23 +559,32 @@ async function runEnvironmentChecks(options: { live?: boolean }): Promise<Diagno
 }
 
 function displayDoctorResults(results: DiagnosticResult[]): { ok: number; failCount: number; warnCount: number } {
-  logger.info('');
+  process.stdout.write('\n');
   let failCount = 0;
   let warnCount = 0;
   for (const result of results) {
-    const icon = result.status === 'ok' ? '[OK]  ' : result.status === 'warn' ? '[WARN]' : '[FAIL]';
-    const level = result.status === 'ok' ? 'success' : result.status === 'warn' ? 'warn' : 'error';
-    logger[level](`${icon} ${result.name}: ${result.message}`);
-    if (result.fix) logger.info(`         Fix: ${result.fix}`);
-    if (result.status === 'fail') failCount++;
-    if (result.status === 'warn') warnCount++;
+    if (result.status === 'ok') {
+      process.stdout.write(`  ${chalk.green('✔')}  ${chalk.green(result.name.padEnd(30))} ${chalk.dim(result.message)}\n`);
+    } else if (result.status === 'warn') {
+      process.stdout.write(`  ${chalk.yellow('⚠')}  ${chalk.yellow(result.name.padEnd(30))} ${result.message}\n`);
+      if (result.fix) process.stdout.write(`     ${chalk.dim('→ ' + result.fix)}\n`);
+      warnCount++;
+    } else {
+      process.stdout.write(`  ${chalk.red('✗')}  ${chalk.red(result.name.padEnd(30))} ${result.message}\n`);
+      if (result.fix) process.stdout.write(`     ${chalk.yellow('→ ' + result.fix)}\n`);
+      failCount++;
+    }
   }
   const ok = results.length - failCount - warnCount;
-  logger.info('');
+  process.stdout.write('\n');
   const total = results.length;
-  if (failCount > 0) logger.error(`Health check: ${ok}/${total} passed, ${failCount} failed, ${warnCount} warnings`);
-  else if (warnCount > 0) logger.warn(`Health check: ${ok}/${total} passed, ${warnCount} warnings`);
-  else logger.success(`Health check: ${total}/${total} passed`);
+  if (failCount > 0) {
+    process.stdout.write(`  ${chalk.bold.red('✗')} Health: ${chalk.red(`${ok}/${total} passed`)}, ${failCount} failed, ${warnCount} warnings\n\n`);
+  } else if (warnCount > 0) {
+    process.stdout.write(`  ${chalk.bold.yellow('⚠')} Health: ${chalk.yellow(`${ok}/${total} passed`)}, ${warnCount} warnings\n\n`);
+  } else {
+    process.stdout.write(`  ${chalk.bold.green('✔')} Health: ${chalk.green(`${total}/${total} passed`)}\n\n`);
+  }
   return { ok, failCount, warnCount };
 }
 

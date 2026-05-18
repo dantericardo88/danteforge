@@ -657,6 +657,38 @@ program
   });
 
 program
+  .command('snapshot [name]')
+  .description('CLI output snapshot testing — capture and compare command output. Store in .danteforge/snapshots/.')
+  .option('--command <cmd>', 'Shell command whose output to snapshot')
+  .option('--update', 'Overwrite existing snapshot with current output')
+  .option('--timeout <ms>', 'Command timeout in ms (default: 30000)', '30000')
+  .option('--list', 'List all saved snapshots')
+  .option('--cwd <path>', 'Project directory (defaults to cwd)')
+  .addHelpText('after', `
+Examples:
+  danteforge snapshot score-json --command “danteforge score --json”
+  danteforge snapshot score-json --command “danteforge score --json” --update
+  danteforge snapshot --list
+`)
+  .action((name: string | undefined, opts) => {
+    void (async () => {
+      try {
+        const { runCliSnapshot } = await import('./commands/cli-snapshot.js');
+        await runCliSnapshot(name ?? '', opts.command as string ?? '', {
+          update: opts.update as boolean | undefined,
+          timeout: opts.timeout ? parseInt(opts.timeout as string, 10) : undefined,
+          list: opts.list as boolean | undefined,
+          cwd: opts.cwd as string | undefined,
+        });
+      } catch (err) {
+        const { formatAndLogError } = await import('../core/format-error.js');
+        formatAndLogError(err, 'snapshot');
+        process.exitCode = 1;
+      }
+    })();
+  });
+
+program
   .command('prime')
   .description('Generate .danteforge/PRIME.md â€” 200-word session brief for Claude Code')
   .option('--copy', 'Show clipboard copy hint after writing')
