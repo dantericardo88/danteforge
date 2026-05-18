@@ -689,6 +689,93 @@ Examples:
   });
 
 program
+  .command('error-lookup [code]')
+  .description('Look up DanteForge error codes (DF-SETUP-001, etc.) and their remedies. List all codes with no argument.')
+  .option('--json', 'Output machine-readable JSON')
+  .option('--category <name>', 'Filter by category: setup | config | workflow | execution | verification')
+  .addHelpText('after', `
+Examples:
+  danteforge error-lookup                         List all known DF-* error codes
+  danteforge error-lookup DF-SETUP-002            Show details for a specific code
+  danteforge error-lookup --category workflow     Filter by category
+  danteforge error-lookup DF-SETUP-002 --json     Machine-readable output
+`)
+  .action((code: string | undefined, opts) => {
+    void (async () => {
+      try {
+        const { runErrorLookup } = await import('./commands/error-lookup.js');
+        await runErrorLookup(code, {
+          json: opts.json as boolean | undefined,
+          category: opts.category as string | undefined,
+        });
+      } catch (err) {
+        const { formatAndLogError } = await import('../core/format-error.js');
+        formatAndLogError(err, 'error-lookup');
+        process.exitCode = 1;
+      }
+    })();
+  });
+
+program
+  .command('code-health')
+  .description('Maintainability report — LOC, JSDoc coverage, TODO markers. Exits 1 on hard-cap or coverage violations.')
+  .option('--json', 'Output machine-readable JSON')
+  .option('--cwd <path>', 'Project directory (defaults to cwd)')
+  .addHelpText('after', `
+Examples:
+  danteforge code-health                Show maintainability report
+  danteforge code-health --json         Machine-readable for CI
+`)
+  .action((opts) => {
+    void (async () => {
+      try {
+        const { runCodeHealth } = await import('./commands/code-health.js');
+        await runCodeHealth({
+          json: opts.json as boolean | undefined,
+          cwd: opts.cwd as string | undefined,
+        });
+      } catch (err) {
+        const { formatAndLogError } = await import('../core/format-error.js');
+        formatAndLogError(err, 'code-health');
+        process.exitCode = 1;
+      }
+    })();
+  });
+
+program
+  .command('harness [subcommand]')
+  .description('AI coding assistant harness — detect Claude Code/Codex/DanteCode and generate per-assistant briefs')
+  .option('--for <name>', 'Target assistant for brief: claude-code | codex | dantecode')
+  .option('--output <path>', 'Write brief to file instead of stdout')
+  .option('--cwd <path>', 'Project directory (defaults to cwd)')
+  .addHelpText('after', `
+Subcommands:
+  status                          Show detected assistants and harness state (default)
+  brief                           Generate a session brief for the receiving assistant
+
+Examples:
+  danteforge harness                          Show which assistants are detected
+  danteforge harness brief --for claude-code  Print a Claude Code session brief
+  danteforge harness brief --for codex --output .codex/BRIEF.md
+`)
+  .action((subcommand: string | undefined, opts) => {
+    void (async () => {
+      try {
+        const { runHarness } = await import('./commands/harness.js');
+        await runHarness(subcommand, {
+          for: opts.for as 'claude-code' | 'codex' | 'dantecode' | undefined,
+          output: opts.output as string | undefined,
+          cwd: opts.cwd as string | undefined,
+        });
+      } catch (err) {
+        const { formatAndLogError } = await import('../core/format-error.js');
+        formatAndLogError(err, 'harness');
+        process.exitCode = 1;
+      }
+    })();
+  });
+
+program
   .command('changelog')
   .description('Auto-generate CHANGELOG entries from git conventional commits')
   .option('--from <ref>', 'Starting git ref (default: last tag)')

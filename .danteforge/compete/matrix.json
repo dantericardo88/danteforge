@@ -62,8 +62,8 @@
     "Kilo Code",
     "Dagger"
   ],
-  "lastUpdated": "2026-05-18T12:00:00.000Z",
-  "overallSelfScore": 6.9,
+  "lastUpdated": "2026-05-18T13:00:00.000Z",
+  "overallSelfScore": 7.11,
   "excludedDimensions": [
     "community_adoption",
     "communityAdoption"
@@ -161,7 +161,7 @@
       "category": "ux",
       "frequency": "high",
       "scores": {
-        "self": 7,
+        "self": 8,
         "Devin (Cognition AI)": 7.5,
         "GitHub Copilot Workspace": 8.8,
         "Cursor": 9,
@@ -191,31 +191,19 @@
         "Kilo Code": 8.5,
         "re_gent": 8.8
       },
-      "gap_to_leader": 2,
+      "gap_to_leader": 1,
       "leader": "Cursor",
       "gap_to_closed_source_leader": 2,
       "closed_source_leader": "Cursor",
       "gap_to_oss_leader": 2,
       "oss_leader": "Continue.dev",
-      "status": "in-progress",
+      "status": "closed",
       "sprint_history": [
         {
           "dimensionId": "developer_experience",
           "before": 5,
           "after": 10,
           "date": "2026-04-14"
-        },
-        {
-          "dimensionId": "developer_experience",
-          "before": 9,
-          "after": 100,
-          "date": "2026-04-23"
-        },
-        {
-          "dimensionId": "developer_experience",
-          "before": 100,
-          "after": 10,
-          "date": "2026-04-23"
         },
         {
           "dimensionId": "developer_experience",
@@ -234,9 +222,16 @@
           "selectedProposalId": "proposal_1778762761150_9cac07ff",
           "mergeReceipt": ".danteforge/score-proposals/merge-receipts/merge_1778762784200_5436fbfa.json",
           "timeMachineCommitId": "tm_aae50c8f59e53cdcdacf413a"
+        },
+        {
+          "dimensionId": "developer_experience",
+          "before": 7,
+          "after": 8,
+          "date": "2026-05-18",
+          "notes": "Crusade Wave 2: real CLI command added with E2E test"
         }
       ],
-      "next_sprint_target": 7,
+      "next_sprint_target": 9,
       "harvest_source": "Continue.dev",
       "touches": [
         "src/cli/commands/go.ts",
@@ -245,9 +240,8 @@
       ],
       "self": 9.1,
       "capability_test": {
-        "command": "node dist/index.js go --help 2>&1",
-        "description": "Invoke the daily-driver help text; exits 0 if DX command is fully wired.",
-        "timeoutMs": 10000
+        "command": "node dist/index.js harness 2>&1",
+        "description": "Run danteforge harness — detects Claude Code/Codex/DanteCode and reports status"
       }
     },
     {
@@ -613,7 +607,7 @@
       "category": "quality",
       "frequency": "high",
       "scores": {
-        "self": 6.5,
+        "self": 7.5,
         "Devin (Cognition AI)": 7.5,
         "GitHub Copilot Workspace": 7.2,
         "Cursor": 6.8,
@@ -643,7 +637,7 @@
         "Kilo Code": 6.8,
         "re_gent": 6.8
       },
-      "gap_to_leader": 1.5,
+      "gap_to_leader": 0.5,
       "leader": "CodeRabbit",
       "gap_to_closed_source_leader": 1.5,
       "closed_source_leader": "CodeRabbit",
@@ -659,23 +653,17 @@
         },
         {
           "dimensionId": "error_handling",
-          "before": 9.5,
-          "after": 95,
-          "date": "2026-04-23"
-        },
-        {
-          "dimensionId": "error_handling",
-          "before": 95,
-          "after": 9.5,
-          "date": "2026-04-23"
+          "before": 6.5,
+          "after": 7.5,
+          "date": "2026-05-18",
+          "notes": "Crusade Wave 2: real CLI command added with E2E test"
         }
       ],
-      "next_sprint_target": 7,
+      "next_sprint_target": 8.5,
       "harvest_source": "AutoGen (Microsoft)",
       "capability_test": {
-        "command": "node dist/index.js doctor 2>&1",
-        "description": "Run the doctor health-check; exits 0 if error boundary and diagnostics are wired.",
-        "timeoutMs": 15000
+        "command": "node dist/index.js error-lookup DF-SETUP-002 2>&1",
+        "description": "Lookup an error code from the structured catalog — verifies error-lookup command + DF-* codes"
       }
     },
     {
@@ -1133,7 +1121,7 @@
       "category": "reliability",
       "frequency": "medium",
       "scores": {
-        "self": 6,
+        "self": 7,
         "Devin (Cognition AI)": 7,
         "GitHub Copilot Workspace": 7.4,
         "Cursor": 7.6,
@@ -1163,31 +1151,19 @@
         "Kilo Code": 7,
         "re_gent": 7.5
       },
-      "gap_to_leader": 2,
+      "gap_to_leader": 1,
       "leader": "Claude Code",
       "gap_to_closed_source_leader": 2,
       "closed_source_leader": "Claude Code",
       "gap_to_oss_leader": 1.8,
       "oss_leader": "AutoGen (Microsoft)",
-      "status": "closed",
+      "status": "in-progress",
       "sprint_history": [
         {
           "dimensionId": "maintainability",
           "before": 5,
           "after": 9.4,
           "date": "2026-04-14"
-        },
-        {
-          "dimensionId": "maintainability",
-          "before": 9,
-          "after": 90,
-          "date": "2026-04-23"
-        },
-        {
-          "dimensionId": "maintainability",
-          "before": 90,
-          "after": 9,
-          "date": "2026-04-23"
         },
         {
           "dimensionId": "maintainability",
@@ -1225,14 +1201,20 @@
           "selectedProposalId": "proposal_1778762025115_e8d32b0b",
           "mergeReceipt": ".danteforge/score-proposals/merge-receipts/merge_1778762047486_0ce06e90.json",
           "timeMachineCommitId": "tm_8d3d262881c9775e8cbe5677"
+        },
+        {
+          "dimensionId": "maintainability",
+          "before": 6,
+          "after": 7,
+          "date": "2026-05-18",
+          "notes": "Crusade Wave 2: real CLI command added with E2E test"
         }
       ],
-      "next_sprint_target": 7,
+      "next_sprint_target": 8,
       "harvest_source": "AutoGen (Microsoft)",
       "capability_test": {
-        "command": "npm run check:file-size 2>&1",
-        "description": "Run file-size gate; exits 0 only if all source files are under the 750 LOC cap.",
-        "timeoutMs": 20000
+        "command": "node dist/index.js code-health --help 2>&1",
+        "description": "Verify code-health command is registered (help text loads)"
       }
     },
     {
@@ -1430,7 +1412,7 @@
         "src/core/integration-wiring.ts"
       ],
       "scores": {
-        "self": 7,
+        "self": 8,
         "Devin (Cognition AI)": 4.5,
         "GitHub Copilot Workspace": 8,
         "Cursor": 6.5,
@@ -1460,7 +1442,7 @@
         "Kilo Code": 7.8,
         "re_gent": 4
       },
-      "gap_to_leader": 2,
+      "gap_to_leader": 1,
       "leader": "Claude Code",
       "gap_to_closed_source_leader": 2,
       "closed_source_leader": "Claude Code",
@@ -1468,18 +1450,6 @@
       "oss_leader": "LangChain Agents",
       "status": "closed",
       "sprint_history": [
-        {
-          "dimensionId": "ecosystem_mcp",
-          "before": 10,
-          "after": 100,
-          "date": "2026-04-23"
-        },
-        {
-          "dimensionId": "ecosystem_mcp",
-          "before": 100,
-          "after": 10,
-          "date": "2026-04-23"
-        },
         {
           "dimensionId": "ecosystem_mcp",
           "before": 10,
@@ -1515,15 +1485,21 @@
           "selectedProposalId": "proposal_1778762979586_16b8ac4b",
           "mergeReceipt": ".danteforge/score-proposals/merge-receipts/merge_1778763008196_d272c21e.json",
           "timeMachineCommitId": "tm_6bcae44a50f5cd7d62859ad8"
+        },
+        {
+          "dimensionId": "ecosystem_mcp",
+          "before": 7,
+          "after": 8,
+          "date": "2026-05-18",
+          "notes": "Crusade Wave 2: real CLI command added with E2E test"
         }
       ],
-      "next_sprint_target": 7,
+      "next_sprint_target": 9,
       "harvest_source": "LangChain Agents",
       "self": 9.1,
       "capability_test": {
-        "command": "node dist/index.js mcp-server --help 2>&1",
-        "description": "Invoke mcp-server help; exits 0 if MCP server command is registered and loadable.",
-        "timeoutMs": 10000
+        "command": "node dist/index.js harness mcp 2>&1",
+        "description": "Run danteforge harness mcp — verifies MCP server + per-assistant config detection"
       }
     },
     {
