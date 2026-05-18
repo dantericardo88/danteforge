@@ -19,10 +19,12 @@ const TARGET = path.join(ROOT, '.danteforge', 'compete', 'matrix.json');
 const ANNOTATIONS = {
   testing: {
     ceiling: 'T2',
-    captest: { command: 'npm test 2>&1 | tail -5', description: 'Full test suite passes' },
+    captest: { command: 'npm test 2>&1 | tail -5', description: 'Full test suite passes', timeoutMs: 1500000 },
     outcomes: [
       { id: 't_smoke', tier: 'T1', kind: 'shell', description: 'Smoke tests pass', command: 'npx tsx --test tests/smoke.test.ts 2>&1 | tail -3' },
-      { id: 't_full', tier: 'T2', kind: 'shell', description: 'Full test suite passes', command: 'npm test 2>&1 | tail -5' },
+      // npm test takes ~10-25 min on DanteForge; bump timeout to 25min to allow
+      // legitimate full-suite runs to complete instead of timing out.
+      { id: 't_full', tier: 'T2', kind: 'shell', description: 'Full test suite passes', command: 'npm test 2>&1 | tail -5', timeout_ms: 1500000 },
     ],
   },
   documentation: {
