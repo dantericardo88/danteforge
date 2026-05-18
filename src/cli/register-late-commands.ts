@@ -688,6 +688,50 @@ Examples:
     })();
   });
 
+program
+  .command('outcomes')
+  .description('Run declared outcomes per dimension. Score = derived from evidence (Phase F+G). Replaces writable scores entirely once dims migrate.')
+  .option('--dim <id>', 'Run only on this dimension')
+  .option('--tier <name>', 'Run only outcomes of this tier (T0..T6)')
+  .option('--force-cold', 'Force re-execution even when cached evidence exists for this SHA')
+  .option('--status', 'Report current evidence + derived scores without re-running')
+  .option('--json', 'Machine-readable JSON output')
+  .option('--cwd <path>', 'Project directory (defaults to cwd)')
+  .addHelpText('after', `
+The outcome system replaces writable scores. Each dim declares outcomes — shell
+commands that must exit 0 to "prove" a tier. The derived score is computed from
+which outcomes pass, never written. Inflation becomes structurally impossible.
+
+Examples:
+  danteforge outcomes                Run all outcomes across all dims
+  danteforge outcomes --status       Show current derived scores from cached evidence
+  danteforge outcomes --dim security Run only the security dim
+  danteforge outcomes --tier T1      Run only T1 (compiles-cold) outcomes
+  danteforge outcomes --force-cold   Bypass gitSha cache
+
+Evidence is written to .danteforge/outcome-evidence/<sha>-<dim>-<outcome>.json.
+See ~/.claude/plans/dapper-hatching-aurora.md for the design.
+`)
+  .action((opts) => {
+    void (async () => {
+      try {
+        const { runOutcomesCli } = await import('./commands/outcomes.js');
+        await runOutcomesCli({
+          dim: opts.dim as string | undefined,
+          tier: opts.tier as string | undefined,
+          forceCold: opts.forceCold as boolean | undefined,
+          status: opts.status as boolean | undefined,
+          json: opts.json as boolean | undefined,
+          cwd: opts.cwd as string | undefined,
+        });
+      } catch (err) {
+        const { formatAndLogError } = await import('../core/format-error.js');
+        formatAndLogError(err, 'outcomes');
+        process.exitCode = 1;
+      }
+    })();
+  });
+
 const hardenCmd = program
   .command('harden')
   .description('Deterministic hardening checks (Phase C of Capability Ladder). Catches orphan modules, claim/reality mismatches, hardcoded fallbacks. Cannot be gamed by LLM agents.')

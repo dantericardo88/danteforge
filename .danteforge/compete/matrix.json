@@ -146,7 +146,24 @@
       "capability_test": {
         "command": "node dist/index.js snapshot --list 2>&1",
         "description": "Run snapshot --list — verifies snapshot testing infrastructure"
-      }
+      },
+      "declared_ceiling": "T2",
+      "outcomes": [
+        {
+          "id": "compiles-cold",
+          "tier": "T1",
+          "description": "TypeScript compiles cold without errors",
+          "command": "npx tsc --noEmit",
+          "expected_exit": 0
+        },
+        {
+          "id": "unit-tests-pass",
+          "tier": "T2",
+          "description": "Hardener tests pass (representative unit test surface)",
+          "command": "npx tsx --test tests/derived-score.test.ts",
+          "expected_exit": 0
+        }
+      ]
     },
     {
       "id": "developer_experience",

@@ -199,12 +199,60 @@ export async function loadMatrix(
   try {
     const raw = await read(matrixPath);
     const matrix = JSON.parse(raw) as CompeteMatrix;
+
+    // Phase F: outcome-derived scoring. For any dim that declares `outcomes`,
+    // replace `scores.self` with the score computed from the current outcome
+    // evidence on disk. The original writable value is preserved at
+    // `legacy_score` for transition diff display. This is the read-time
+    // honesty enforcement — every consumer of loadMatrix sees the derived
+    // value, never the agent-written one.
     if (!_fsRead) {
+      await applyOutcomeDerivedScores(matrix, cwd ?? process.cwd());
       _matrixCache = { matrix, expiresAt: Date.now() + MATRIX_CACHE_TTL_MS, path: matrixPath };
     }
     return matrix;
   } catch {
     return null;
+  }
+}
+
+/**
+ * Phase F: walk the matrix, and for every dim that declares outcomes, replace
+ * `scores.self` with the derived value. Preserves the original at `legacy_score`.
+ * Best-effort — if evidence cannot be loaded, the legacy score is preserved unchanged.
+ */
+async function applyOutcomeDerivedScores(matrix: CompeteMatrix, cwd: string): Promise<void> {
+  let evidence: import('../matrix/types/outcome.js').OutcomeEvidence | null = null;
+  for (const dim of matrix.dimensions) {
+    const outcomes = (dim as unknown as Record<string, unknown>)['outcomes'];
+    if (!Array.isArray(outcomes) || outcomes.length === 0) continue;
+
+    // Lazy-load evidence only when at least one dim declares outcomes.
+    if (evidence === null) {
+      try {
+        const { loadOutcomeEvidence } = await import('../matrix/engines/outcome-runner.js');
+        evidence = await loadOutcomeEvidence(cwd);
+      } catch {
+        return; // best-effort
+      }
+    }
+
+    try {
+      const { computeDerivedScore } = await import('./derived-score.js');
+      const dfs = {
+        id: dim.id,
+        outcomes: outcomes as import('../matrix/types/outcome.js').Outcome[],
+        declared_ceiling: (dim as unknown as Record<string, unknown>)['declared_ceiling'] as 'T0'|'T1'|'T2'|'T3'|'T4'|'T5'|'T6'|undefined,
+        legacy_score: dim.scores.self,
+        scores: dim.scores,
+      };
+      const derived = computeDerivedScore(dfs, evidence);
+      // Preserve the original (agent-written) value for diff displays.
+      (dim as unknown as Record<string, unknown>)['legacy_score'] = dim.scores.self;
+      dim.scores.self = derived;
+    } catch {
+      // best-effort; if scoring fails, leave the legacy value
+    }
   }
 }
 
