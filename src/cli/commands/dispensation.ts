@@ -7,12 +7,22 @@
 // them before the substrate resumes autonomous work.
 //
 // Subcommands:
-//   list                          show all (active + cleared) dispensations
+//   list                          show all (active + cleared + expired) dispensations
 //   create <dimId> <reason>       open a new dispensation against a dimension
+//                                 --ttl <duration> sets an expiration (e.g. "7d", "24h", "30m")
 //   clear <id>                    mark a dispensation cleared (autonomy can resume)
 //
 // File format: .danteforge/score-proposals/dispensations/<id>.json
-//   { id, dimensionId, reason, createdAt, createdBy, cleared?: true, clearedAt?: string }
+//   { id, dimensionId, reason, createdAt, createdBy, expiresAt?, cleared?: true, clearedAt?: string }
+//
+// Status is COMPUTED at read time:
+//   - cleared: true                    → inactive (explicitly cleared by operator)
+//   - expiresAt && now > expiresAt    → inactive (TTL elapsed; equivalent to cleared)
+//   - otherwise                       → active (pauses autonomy)
+//
+// TTL is a defense against the "dispensation graveyard" anti-pattern: forgotten
+// open dispensations that silently pause autonomy forever. The operator must
+// either clear them OR set a TTL up front.
 
 import fs from 'node:fs/promises';
 import path from 'node:path';
@@ -30,6 +40,8 @@ export interface Dispensation {
   reason: string;
   createdAt: string;
   createdBy?: string;
+  /** ISO date — when set, dispensation is treated as cleared once now > expiresAt. */
+  expiresAt?: string;
   cleared?: boolean;
   clearedAt?: string;
   clearedBy?: string;
@@ -42,6 +54,8 @@ export interface DispensationCommandOptions {
   reason?: string;
   dispensationId?: string;
   user?: string;
+  /** TTL string (e.g. "7d", "24h", "30m"). Sets expiresAt on create. */
+  ttl?: string;
   json?: boolean;
   // Injection seams
   _readdir?: (p: string) => Promise<string[]>;
@@ -50,6 +64,37 @@ export interface DispensationCommandOptions {
   _exists?: (p: string) => Promise<boolean>;
   _mkdir?: (p: string) => Promise<void>;
   _stdout?: (line: string) => void;
+  /** Injection seam for tests — overrides `Date.now()` everywhere. */
+  _now?: () => Date;
+}
+
+/**
+ * Parse a TTL duration string like "7d", "24h", "30m", "120s".
+ * Returns the duration in milliseconds, or throws if the string is malformed.
+ * Supported units: s (seconds), m (minutes), h (hours), d (days).
+ */
+export function parseTtl(ttl: string): number {
+  const match = ttl.trim().match(/^(\d+(?:\.\d+)?)\s*([smhd])$/i);
+  if (!match) throw new Error(`Invalid TTL "${ttl}". Use a number + unit (s, m, h, d), e.g. "7d", "24h", "30m".`);
+  const n = parseFloat(match[1]!);
+  const unit = match[2]!.toLowerCase();
+  const multipliers: Record<string, number> = {
+    s: 1000,
+    m: 60 * 1000,
+    h: 60 * 60 * 1000,
+    d: 24 * 60 * 60 * 1000,
+  };
+  return n * multipliers[unit]!;
+}
+
+/** Returns true when the dispensation is no longer active (cleared OR expired). */
+export function isDispensationInactive(disp: Dispensation, now: Date = new Date()): boolean {
+  if (disp.cleared) return true;
+  if (disp.expiresAt) {
+    const expiry = new Date(disp.expiresAt).getTime();
+    if (Number.isFinite(expiry) && now.getTime() > expiry) return true;
+  }
+  return false;
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -119,6 +164,7 @@ export async function dispensationList(options: DispensationCommandOptions = {})
     exists: options._exists ?? defaultIO().exists,
     mkdir: options._mkdir ?? defaultIO().mkdir,
   };
+  const now = (options._now ?? (() => new Date()))();
   const dispensations = await listDispensations(cwd, io);
 
   if (options.json) {
@@ -131,7 +177,8 @@ export async function dispensationList(options: DispensationCommandOptions = {})
   logger.info(chalk.dim('─'.repeat(60)));
   logger.info('');
 
-  const active = dispensations.filter(d => !d.cleared);
+  const expired = dispensations.filter(d => !d.cleared && d.expiresAt && now.getTime() > new Date(d.expiresAt).getTime());
+  const active = dispensations.filter(d => !isDispensationInactive(d, now));
   const cleared = dispensations.filter(d => d.cleared);
 
   if (active.length === 0) {
@@ -141,8 +188,19 @@ export async function dispensationList(options: DispensationCommandOptions = {})
     for (const d of active) {
       logger.info(`    ${chalk.yellow('●')} ${chalk.cyan(d.id)}  ${chalk.bold(d.dimensionId)}`);
       logger.info(`      ${chalk.dim(d.reason)}`);
-      logger.info(`      ${chalk.dim(`created ${d.createdAt}${d.createdBy ? ' by ' + d.createdBy : ''}`)}`);
+      const ttlLine = d.expiresAt
+        ? ` (expires ${d.expiresAt})`
+        : '';
+      logger.info(`      ${chalk.dim(`created ${d.createdAt}${d.createdBy ? ' by ' + d.createdBy : ''}${ttlLine}`)}`);
     }
+  }
+  if (expired.length > 0) {
+    logger.info('');
+    logger.info(chalk.dim(`  Expired (${expired.length}) — TTL elapsed, treated as cleared:`));
+    for (const d of expired.slice(0, 10)) {
+      logger.info(`    ${chalk.dim('◌')} ${chalk.dim(d.id)}  ${chalk.dim(d.dimensionId)}  ${chalk.dim('expired ' + (d.expiresAt ?? '?'))}`);
+    }
+    if (expired.length > 10) logger.info(chalk.dim(`    … and ${expired.length - 10} more`));
   }
   if (cleared.length > 0) {
     logger.info('');
@@ -171,13 +229,18 @@ export async function dispensationCreate(options: DispensationCommandOptions = {
     exists: options._exists ?? defaultIO().exists,
     mkdir: options._mkdir ?? defaultIO().mkdir,
   };
+  const now = (options._now ?? (() => new Date()))();
   const disp: Dispensation = {
     id: genDispensationId(),
     dimensionId: options.dimensionId,
     reason: options.reason,
-    createdAt: new Date().toISOString(),
+    createdAt: now.toISOString(),
     createdBy: options.user,
   };
+  if (options.ttl) {
+    const ms = parseTtl(options.ttl);
+    disp.expiresAt = new Date(now.getTime() + ms).toISOString();
+  }
   const filePath = path.join(cwd, DISPENSATION_DIR, `${disp.id}.json`);
   await io.writeFile(filePath, JSON.stringify(disp, null, 2));
 
@@ -185,7 +248,12 @@ export async function dispensationCreate(options: DispensationCommandOptions = {
     process.stdout.write(JSON.stringify(disp, null, 2) + '\n');
   } else {
     logger.warn(`Created dispensation ${disp.id} for ${disp.dimensionId}.`);
-    logger.warn(`Autonomy is now paused globally. Clear with: danteforge dispensation clear ${disp.id}`);
+    if (disp.expiresAt) {
+      logger.warn(`TTL: expires ${disp.expiresAt}. After that, the dispensation auto-clears and autonomy resumes.`);
+    } else {
+      logger.warn(`No TTL set. Operator must clear it: danteforge dispensation clear ${disp.id}`);
+    }
+    logger.warn(`Autonomy is now paused globally.`);
   }
   return disp;
 }

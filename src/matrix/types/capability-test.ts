@@ -62,6 +62,53 @@ export const TIER_SCORE_CAPS: Record<CapabilityTier, number> = {
   T0: 1.0, T1: 4.0, T2: 5.0, T3: 6.0, T4: 7.0, T5: 8.0, T6: 8.5,
 };
 
+/**
+ * Per-tier evidence freshness windows in milliseconds. When cached evidence is
+ * older than this, the outcome runner treats it as stale and re-executes.
+ *
+ * Why graded: higher tiers represent stronger claims about production behavior,
+ * so their evidence must be more recent to remain trustworthy. T0/T1 are
+ * spec-level (long-lived); T6 is a live-prod claim (must be fresh).
+ *
+ *   T0: indefinite (file-existence checks rarely decay)
+ *   T1: 90 days   (typecheck / lint; fine to cache for a sprint cycle)
+ *   T2: 60 days   (unit tests; weekly rerun is typical)
+ *   T3: 30 days   (production-usage-fresh; one calendar month)
+ *   T4: 14 days   (integration; bi-weekly cadence)
+ *   T5: 7 days    (smoke against real env; weekly minimum)
+ *   T6: 24 hours  (live telemetry; same-day evidence only)
+ *
+ * Note: SHA-based eviction already invalidates evidence on any commit. This
+ * layer adds time-based decay for the case where the SHA hasn't moved but
+ * the claim has aged.
+ */
+export const TIER_FRESHNESS_MS: Record<CapabilityTier, number> = {
+  T0: Number.POSITIVE_INFINITY,
+  T1: 90 * 24 * 60 * 60 * 1000,
+  T2: 60 * 24 * 60 * 60 * 1000,
+  T3: 30 * 24 * 60 * 60 * 1000,
+  T4: 14 * 24 * 60 * 60 * 1000,
+  T5: 7 * 24 * 60 * 60 * 1000,
+  T6: 24 * 60 * 60 * 1000,
+};
+
+/**
+ * Returns true when the evidence is older than its tier's freshness window.
+ * Cached evidence beyond this age should be treated as a cache miss and the
+ * outcome re-executed.
+ */
+export function isEvidenceStale(
+  tier: CapabilityTier,
+  ranAtISO: string,
+  now: Date = new Date(),
+): boolean {
+  const limit = TIER_FRESHNESS_MS[tier];
+  if (!Number.isFinite(limit)) return false;
+  const ranAt = new Date(ranAtISO).getTime();
+  if (!Number.isFinite(ranAt)) return false; // Malformed timestamps are not stale; let the cache decide.
+  return now.getTime() - ranAt > limit;
+}
+
 export interface TierProbe {
   /** Shell command run from REPO ROOT. Exit 0 = tier proven. */
   command: string;

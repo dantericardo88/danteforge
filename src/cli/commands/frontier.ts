@@ -18,6 +18,12 @@ import {
 import type { Outcome } from '../../matrix/types/outcome.js';
 import type { CapabilityTier } from '../../matrix/types/capability-test.js';
 
+export type FrontierTerminal =
+  | 'frontier-reached'
+  | 'progressing'
+  | 'stuck-on-dims'
+  | 'blocked-by-dispensations';
+
 export interface RunFrontierOptions {
   cwd?: string;
   json?: boolean;
@@ -25,6 +31,12 @@ export interface RunFrontierOptions {
   dim?: string;
   /** Custom waves-threshold for stuck detection (default 3). */
   stuckThreshold?: number;
+  /**
+   * CI gate: require the project to be in exactly this terminal state. If
+   * provided and the actual state does not match, exit with code 1. When
+   * absent, the default behavior is preserved (exit 0 only on frontier-reached).
+   */
+  requireState?: FrontierTerminal;
   _loadMatrix?: typeof loadMatrix;
 }
 
@@ -58,11 +70,17 @@ async function loadDispensations(cwd: string): Promise<Record<string, string[]>>
   let entries: string[];
   try { entries = await fs.readdir(dir); } catch { return {}; }
   const map: Record<string, string[]> = {};
+  const now = Date.now();
   for (const f of entries.filter(n => n.endsWith('.json'))) {
     try {
       const raw = await fs.readFile(path.join(dir, f), 'utf8');
-      const parsed = JSON.parse(raw) as { dimensionId?: string; receiptId?: string; cleared?: boolean };
+      const parsed = JSON.parse(raw) as { dimensionId?: string; receiptId?: string; cleared?: boolean; expiresAt?: string };
       if (parsed.cleared) continue;
+      // TTL: treat expired dispensations as cleared (do not block autonomy).
+      if (parsed.expiresAt) {
+        const expiry = new Date(parsed.expiresAt).getTime();
+        if (Number.isFinite(expiry) && now > expiry) continue;
+      }
       const dimId = parsed.dimensionId;
       if (!dimId) continue;
       const list = map[dimId] ?? [];
@@ -123,10 +141,16 @@ export async function runFrontierCommand(options: RunFrontierOptions = {}): Prom
   // after recording. Best-effort — TM failures don't change the report.
   await recordFrontierTransition(cwd, state.terminal, state.summary);
 
+  // Exit-code policy:
+  // - `requireState` (CI gate): exit 0 iff actual terminal matches the required state.
+  // - default: exit 0 iff terminal is 'frontier-reached', else 1.
+  const matchesRequired = options.requireState
+    ? state.terminal === options.requireState
+    : state.terminal === 'frontier-reached';
+
   if (options.json) {
     process.stdout.write(JSON.stringify(state, null, 2) + '\n');
-    if (state.terminal === 'frontier-reached') process.exitCode = 0;
-    else process.exitCode = 1;
+    process.exitCode = matchesRequired ? 0 : 1;
     return;
   }
 
@@ -169,5 +193,8 @@ export async function runFrontierCommand(options: RunFrontierOptions = {}): Prom
   }
   logger.info('');
 
-  if (state.terminal !== 'frontier-reached') process.exitCode = 1;
+  process.exitCode = matchesRequired ? 0 : 1;
+  if (options.requireState && !matchesRequired) {
+    logger.warn(`  CI gate: required state "${options.requireState}", got "${state.terminal}". Exit 1.`);
+  }
 }

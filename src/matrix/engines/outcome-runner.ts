@@ -18,6 +18,7 @@ import {
   type OutcomeEvidence,
   type OutcomeEvidenceEntry,
 } from '../types/outcome.js';
+import { isEvidenceStale } from '../types/capability-test.js';
 
 const execFileAsync = promisify(execFile);
 const OUTCOME_EVIDENCE_DIR = path.join('.danteforge', 'outcome-evidence');
@@ -135,12 +136,20 @@ export async function runOneOutcome(options: RunOutcomeOptions): Promise<Outcome
   const gitSha = await gitFn(cwd);
   const evidencePath = evidencePathFor(cwd, gitSha, options.dimensionId, outcome.id);
 
-  // Cache hit: same SHA, evidence exists, not forced cold
+  // Cache hit: same SHA, evidence exists, not forced cold, AND not stale per
+  // the tier's freshness window. Stale evidence falls through to re-execute,
+  // auto-healing freshness without operator intervention.
   if (!options.forceCold && gitSha && (await existsFn(evidencePath))) {
     try {
       const raw = await readFn(evidencePath);
       const cached = JSON.parse(raw) as OutcomeEvidenceEntry;
-      if (cached.gitSha === gitSha) return cached;
+      if (cached.gitSha === gitSha) {
+        if (!isEvidenceStale(cached.tier, cached.ranAt)) {
+          return cached;
+        }
+        // Stale → drop through to re-run. Subsequent runs will replace this
+        // evidence file with fresh ranAt + identical SHA.
+      }
     } catch { /* fall through to re-run */ }
   }
 

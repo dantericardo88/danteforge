@@ -729,6 +729,7 @@ dispensationCmd
   .command('create <dimensionId> <reason>')
   .description('Create a dispensation against a dimension (pauses autonomy globally until cleared)')
   .option('--user <name>', 'Operator id for audit trail')
+  .option('--ttl <duration>', 'Auto-expiry duration (e.g. "7d", "24h", "30m"). After expiry the dispensation auto-clears.')
   .option('--json', 'Machine-readable JSON output')
   .option('--cwd <path>', 'Project directory (defaults to cwd)')
   .action((dimensionId: string, reason: string, opts) => {
@@ -739,6 +740,7 @@ dispensationCmd
           subcommand: 'create',
           dimensionId, reason,
           user: opts.user as string | undefined,
+          ttl: opts.ttl as string | undefined,
           json: opts.json as boolean | undefined,
           cwd: opts.cwd as string | undefined,
         });
@@ -780,6 +782,7 @@ program
   .description('Report project frontier state: per-dim status + terminal verdict (frontier-reached | stuck-on-dims | blocked-by-dispensations | progressing). Phase H Slice 4.')
   .option('--dim <id>', 'Show only one dimension')
   .option('--stuck-threshold <n>', 'Waves-without-progress before a dim is marked stuck (default 3)', '3')
+  .option('--require <state>', 'CI gate: exit 0 iff terminal state matches (frontier-reached|progressing|stuck-on-dims|blocked-by-dispensations)')
   .option('--json', 'Machine-readable JSON output')
   .option('--cwd <path>', 'Project directory (defaults to cwd)')
   .addHelpText('after', `
@@ -794,15 +797,25 @@ The project's terminal state is one of:
   blocked-by-dispensations operator overrides outstanding (exit 1)
   progressing              still working (exit 1)
 
+CI gate examples:
+  danteforge frontier --require frontier-reached --json   release-blocker
+  danteforge frontier --require progressing --json        sanity check the loop isn't stuck
+
 See docs/CAPABILITY-TIERS.md for the per-tier contracts.
 `)
   .action((opts) => {
     void (async () => {
       try {
         const { runFrontierCommand } = await import('./commands/frontier.js');
+        const requireState = opts.require as string | undefined;
+        const valid = ['frontier-reached', 'progressing', 'stuck-on-dims', 'blocked-by-dispensations'];
+        if (requireState && !valid.includes(requireState)) {
+          throw new Error(`--require: unknown state "${requireState}". Use one of: ${valid.join(', ')}`);
+        }
         await runFrontierCommand({
           dim: opts.dim as string | undefined,
           stuckThreshold: opts.stuckThreshold ? parseInt(opts.stuckThreshold as string, 10) : undefined,
+          requireState: requireState as 'frontier-reached' | 'progressing' | 'stuck-on-dims' | 'blocked-by-dispensations' | undefined,
           json: opts.json as boolean | undefined,
           cwd: opts.cwd as string | undefined,
         });
