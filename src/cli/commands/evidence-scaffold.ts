@@ -13,6 +13,14 @@ export interface EvidenceScaffoldOptions {
   _loadMatrix?: (cwd: string) => Promise<CompeteMatrix | null>;
   _writeFile?: (p: string, content: string) => Promise<void>;
   _writeMatrix?: (m: CompeteMatrix, p: string) => Promise<void>;
+  /**
+   * Time Machine integration seam. Tri-state:
+   *   undefined → lazy-import the real createTimeMachineCommit (production)
+   *   null      → disable
+   *   function  → injected mock
+   * Best-effort: TM failures never block the scaffold write.
+   */
+  _createTimeMachineCommit?: ((opts: import('../../core/time-machine.js').CreateTimeMachineCommitOptions) => Promise<unknown>) | null;
 }
 
 export interface ScaffoldResult {
@@ -156,6 +164,8 @@ export async function runEvidenceScaffold(options: EvidenceScaffoldOptions = {})
   if (!dryRun && matrixDirty) {
     await writeMatrix(matrix, matrixPath);
     logger.success('[evidence-scaffold] matrix.json updated.');
+    const touchedCount = result.autoDetected.length + result.stubGenerated.length;
+    await recordScaffoldCommit(matrixPath, touchedCount, cwd, options._createTimeMachineCommit);
   }
 
   logger.info('');
@@ -171,4 +181,33 @@ export async function runEvidenceScaffold(options: EvidenceScaffoldOptions = {})
   }
 
   return result;
+}
+
+/**
+ * Phase H Time Machine integration: record the matrix.json mutation as a
+ * causal commit. Mirrors outcome-runner.ts:recordOutcomeEvidenceCommit pattern.
+ * Best-effort — TM failures never block the scaffold work.
+ */
+async function recordScaffoldCommit(
+  matrixPath: string,
+  dimsTouched: number,
+  cwd: string,
+  override?: EvidenceScaffoldOptions['_createTimeMachineCommit'],
+): Promise<void> {
+  if (override === null) return;
+  try {
+    const createFn = override
+      ?? (await import('../../core/time-machine.js')).createTimeMachineCommit;
+    await createFn({
+      cwd,
+      paths: [matrixPath],
+      label: `outcome-scaffold/${dimsTouched}-dims`,
+      causalLinks: {
+        materials: [matrixPath],
+        inputDependencies: [],
+      },
+    });
+  } catch {
+    // best-effort
+  }
 }

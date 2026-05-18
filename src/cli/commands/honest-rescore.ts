@@ -74,6 +74,16 @@ export interface HonestRescoreOptions {
   _exists?: (p: string) => Promise<boolean>;
   _readdir?: (p: string) => Promise<string[]>;
   _stdout?: (line: string) => void;
+  /**
+   * Time Machine integration seam. Tri-state:
+   *   undefined → lazy-import the real createTimeMachineCommit (production)
+   *   null      → disable (test/no-write paths)
+   *   function  → injected mock
+   * Best-effort: TM failures never block the rescore.
+   */
+  _createTimeMachineCommit?: ((opts: import('../../core/time-machine.js').CreateTimeMachineCommitOptions) => Promise<unknown>) | null;
+  /** Skip durable writes (honest matrix + diff + TM). */
+  _noWrite?: boolean;
 }
 
 // ── Probe evidence collection ─────────────────────────────────────────────────
@@ -334,10 +344,43 @@ export async function runHonestRescore(options: HonestRescoreOptions = {}): Prom
   honestMatrix.overallSelfScore = honestOverall;
   honestMatrix.honestRescoredAt = new Date().toISOString();
 
-  await writeFn(result.honestMatrixPath, JSON.stringify(honestMatrix, null, 2));
-  await writeFn(result.diffReportPath, renderDiffMarkdown(result));
+  if (!options._noWrite) {
+    await writeFn(result.honestMatrixPath, JSON.stringify(honestMatrix, null, 2));
+    await writeFn(result.diffReportPath, renderDiffMarkdown(result));
+    await recordHonestRescoreCommit(result, cwd, options._createTimeMachineCommit);
+  }
 
   return result;
+}
+
+/**
+ * Phase H Time Machine integration: record the honest-rescore as a causal commit.
+ * Mirrors src/matrix/engines/outcome-runner.ts:recordOutcomeEvidenceCommit pattern.
+ * Best-effort — TM failures never block honest-rescore work.
+ */
+async function recordHonestRescoreCommit(
+  result: HonestRescoreResult,
+  cwd: string,
+  override?: HonestRescoreOptions['_createTimeMachineCommit'],
+): Promise<void> {
+  if (override === null) return;
+  try {
+    const createFn = override
+      ?? (await import('../../core/time-machine.js')).createTimeMachineCommit;
+    const r = result.reportedOverall.toFixed(2);
+    const h = result.honestOverall.toFixed(2);
+    await createFn({
+      cwd,
+      paths: [result.honestMatrixPath, result.diffReportPath],
+      label: `honest-rescore/reported=${r}->honest=${h}`,
+      causalLinks: {
+        materials: [result.honestMatrixPath, result.diffReportPath],
+        inputDependencies: [],
+      },
+    });
+  } catch {
+    // best-effort
+  }
 }
 
 // ── Regrade mode ──────────────────────────────────────────────────────────────

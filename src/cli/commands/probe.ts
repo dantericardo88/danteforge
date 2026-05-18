@@ -55,6 +55,16 @@ export interface ProbeOptions {
   _mkdir?: (p: string) => Promise<void>;
   _exists?: (p: string) => Promise<boolean>;
   _stdout?: (line: string) => void;
+  /**
+   * Time Machine integration seam. Tri-state:
+   *   undefined → lazy-import the real createTimeMachineCommit (production)
+   *   null      → disable Time Machine for this run (test/no-write paths)
+   *   function  → injected mock (tests can count calls / assert label format)
+   * Best-effort: TM failures never block probe completion.
+   */
+  _createTimeMachineCommit?: ((opts: import('../../core/time-machine.js').CreateTimeMachineCommitOptions) => Promise<unknown>) | null;
+  /** Skip ALL durable writes (evidence file + Time Machine commit). Used by `--dry-run` style flows. */
+  _noWrite?: boolean;
 }
 
 interface SpawnOpts {
@@ -297,10 +307,41 @@ export async function runProbe(options: ProbeOptions = {}): Promise<ProbeResult>
     cachedHit: false,
   };
 
-  await mkdirFn(path.dirname(evidencePath));
-  await writeFn(evidencePath, JSON.stringify(result, null, 2));
+  if (!options._noWrite) {
+    await mkdirFn(path.dirname(evidencePath));
+    await writeFn(evidencePath, JSON.stringify(result, null, 2));
+    await recordProbeEvidenceCommit(result, cwd, options._createTimeMachineCommit);
+  }
 
   return result;
+}
+
+/**
+ * Phase H Time Machine integration: record the cold-build probe evidence as a
+ * causal commit. Mirrors src/matrix/engines/outcome-runner.ts:recordOutcomeEvidenceCommit.
+ * Best-effort — TM failures never block probe completion.
+ */
+async function recordProbeEvidenceCommit(
+  result: ProbeResult,
+  cwd: string,
+  override?: ProbeOptions['_createTimeMachineCommit'],
+): Promise<void> {
+  if (override === null) return;
+  try {
+    const createFn = override
+      ?? (await import('../../core/time-machine.js')).createTimeMachineCommit;
+    await createFn({
+      cwd,
+      paths: [result.evidencePath],
+      label: `probe-evidence/${result.tier}/${result.runner}/${result.passed ? 'pass' : 'fail'}`,
+      causalLinks: {
+        materials: [result.evidencePath],
+        inputDependencies: [],
+      },
+    });
+  } catch {
+    // best-effort — TM crash never blocks the probe
+  }
 }
 
 // ── CLI entry ─────────────────────────────────────────────────────────────────

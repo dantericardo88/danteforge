@@ -66,6 +66,14 @@ export interface DispensationCommandOptions {
   _stdout?: (line: string) => void;
   /** Injection seam for tests — overrides `Date.now()` everywhere. */
   _now?: () => Date;
+  /**
+   * Time Machine integration seam. Tri-state:
+   *   undefined → lazy-import the real createTimeMachineCommit (production)
+   *   null      → disable (test paths)
+   *   function  → injected mock
+   * Best-effort: TM failures never block the dispensation write.
+   */
+  _createTimeMachineCommit?: ((opts: import('../../core/time-machine.js').CreateTimeMachineCommitOptions) => Promise<unknown>) | null;
 }
 
 /**
@@ -243,6 +251,7 @@ export async function dispensationCreate(options: DispensationCommandOptions = {
   }
   const filePath = path.join(cwd, DISPENSATION_DIR, `${disp.id}.json`);
   await io.writeFile(filePath, JSON.stringify(disp, null, 2));
+  await recordDispensationCommit(disp, filePath, cwd, 'created', options._createTimeMachineCommit);
 
   if (options.json) {
     process.stdout.write(JSON.stringify(disp, null, 2) + '\n');
@@ -279,6 +288,7 @@ export async function dispensationClear(options: DispensationCommandOptions = {}
     clearedBy: options.user,
   };
   await io.writeFile(found.path, JSON.stringify(cleared, null, 2));
+  await recordDispensationCommit(cleared, found.path, cwd, 'cleared', options._createTimeMachineCommit);
 
   if (options.json) {
     process.stdout.write(JSON.stringify(cleared, null, 2) + '\n');
@@ -286,6 +296,38 @@ export async function dispensationClear(options: DispensationCommandOptions = {}
     logger.success(`Cleared dispensation ${cleared.id} for ${cleared.dimensionId}.`);
   }
   return cleared;
+}
+
+/**
+ * Phase H Time Machine integration: record dispensation state changes
+ * (create / clear) as causal commits. Each event matters for autonomy audit
+ * because a dispensation pauses the substrate globally. Mirrors the
+ * outcome-runner.ts:recordOutcomeEvidenceCommit pattern.
+ * Best-effort — TM failures never block the dispensation write.
+ */
+async function recordDispensationCommit(
+  disp: Dispensation,
+  filePath: string,
+  cwd: string,
+  kind: 'created' | 'cleared',
+  override?: DispensationCommandOptions['_createTimeMachineCommit'],
+): Promise<void> {
+  if (override === null) return;
+  try {
+    const createFn = override
+      ?? (await import('../../core/time-machine.js')).createTimeMachineCommit;
+    await createFn({
+      cwd,
+      paths: [filePath],
+      label: `dispensation-${kind}/${disp.dimensionId}/${disp.id}`,
+      causalLinks: {
+        materials: [filePath],
+        inputDependencies: [],
+      },
+    });
+  } catch {
+    // best-effort
+  }
 }
 
 // ── CLI entry ─────────────────────────────────────────────────────────────────
