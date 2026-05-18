@@ -689,6 +689,45 @@ Examples:
   });
 
 program
+  .command('frontier')
+  .description('Report project frontier state: per-dim status + terminal verdict (frontier-reached | stuck-on-dims | blocked-by-dispensations | progressing). Phase H Slice 4.')
+  .option('--dim <id>', 'Show only one dimension')
+  .option('--stuck-threshold <n>', 'Waves-without-progress before a dim is marked stuck (default 3)', '3')
+  .option('--json', 'Machine-readable JSON output')
+  .option('--cwd <path>', 'Project directory (defaults to cwd)')
+  .addHelpText('after', `
+A dim is at frontier iff THREE conjunction conditions hold:
+  1. All outcomes at declared_ceiling pass
+  2. No active dispensation against the dim
+  3. production-usage-fresh passes (or declared_ceiling < T3)
+
+The project's terminal state is one of:
+  frontier-reached         all eligible dims at frontier (exit 0)
+  stuck-on-dims            >=1 dim halted after N waves (exit 1)
+  blocked-by-dispensations operator overrides outstanding (exit 1)
+  progressing              still working (exit 1)
+
+See docs/CAPABILITY-TIERS.md for the per-tier contracts.
+`)
+  .action((opts) => {
+    void (async () => {
+      try {
+        const { runFrontierCommand } = await import('./commands/frontier.js');
+        await runFrontierCommand({
+          dim: opts.dim as string | undefined,
+          stuckThreshold: opts.stuckThreshold ? parseInt(opts.stuckThreshold as string, 10) : undefined,
+          json: opts.json as boolean | undefined,
+          cwd: opts.cwd as string | undefined,
+        });
+      } catch (err) {
+        const { formatAndLogError } = await import('../core/format-error.js');
+        formatAndLogError(err, 'frontier');
+        process.exitCode = 1;
+      }
+    })();
+  });
+
+program
   .command('outcomes')
   .description('Run declared outcomes per dimension. Score = derived from evidence (Phase F+G). Replaces writable scores entirely once dims migrate.')
   .option('--dim <id>', 'Run only on this dimension')

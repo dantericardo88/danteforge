@@ -135,11 +135,30 @@ export async function runOneOutcome(options: RunOutcomeOptions): Promise<Outcome
     } catch { /* fall through to re-run */ }
   }
 
+  // Kind dispatch: built-in checks bypass the shell runner.
+  const kind = outcome.kind ?? 'shell';
+  if (kind === 'production-usage-fresh') {
+    const start = Date.now();
+    const { runProductionUsageFresh, freshResultToEvidence } = await import('./production-usage-fresh.js');
+    const freshOutcome = outcome as import('../types/outcome.js').ProductionUsageFreshOutcome;
+    const result = await runProductionUsageFresh(freshOutcome, cwd);
+    const entry = freshResultToEvidence(freshOutcome, options.dimensionId, result, gitSha, evidencePath, Date.now() - start);
+    await writeFn(evidencePath, JSON.stringify(entry, null, 2));
+    return entry;
+  }
+  // 'external-benchmark' and 'telemetry' fall through to shell mode for now (Phase H Slice 2 follow-up).
+
+  // Shell mode: the default — spawn the outcome's shell command.
+  const shellOutcome = outcome as import('../types/outcome.js').ShellOutcome;
+  if (!shellOutcome.command) {
+    throw new Error(`Outcome ${outcome.id} (kind=${kind}) has no command field but the substrate fell through to shell mode`);
+  }
+
   const start = Date.now();
   const timeout = outcome.timeout_ms ?? 60_000;
   let result: SpawnResult;
   try {
-    result = spawn(outcome.command, { shell: true, cwd, timeout, encoding: 'utf8' });
+    result = spawn(shellOutcome.command, { shell: true, cwd, timeout, encoding: 'utf8' });
   } catch (err) {
     result = {
       status: -1, stdout: '',
@@ -148,15 +167,15 @@ export async function runOneOutcome(options: RunOutcomeOptions): Promise<Outcome
   }
   const durationMs = Date.now() - start;
 
-  const expectedExit = outcome.expected_exit ?? 0;
+  const expectedExit = shellOutcome.expected_exit ?? 0;
   const actualExit = result.status ?? 1;
   let passed = actualExit === expectedExit;
 
   // Check output pattern if declared
   let failureReason: string | undefined;
-  if (passed && outcome.expected_output_pattern) {
+  if (passed && shellOutcome.expected_output_pattern) {
     try {
-      const re = new RegExp(outcome.expected_output_pattern);
+      const re = new RegExp(shellOutcome.expected_output_pattern);
       const combined = `${result.stdout}\n${result.stderr}`;
       if (!re.test(combined)) {
         passed = false;
