@@ -44,10 +44,12 @@ const ANNOTATIONS = {
     ],
   },
   ux_polish: {
-    ceiling: 'T1',
+    ceiling: 'T2',
     captest: { command: 'node dist/index.js --help 2>&1 | head -3', description: 'CLI help renders cleanly' },
     outcomes: [
       { id: 'ux_help', tier: 'T1', kind: 'shell', description: 'CLI surfaces help in <2s', command: 'node dist/index.js --help 2>&1 | head -3' },
+      // T2: help text is substantive (lists subcommands + has > 40 lines)
+      { id: 'ux_substance', tier: 'T2', kind: 'shell', description: 'CLI help is substantive (≥40 lines, lists commands)', command: 'node -e "const{execSync}=require(\'child_process\');const out=execSync(\'node dist/index.js --help\').toString();const lines=out.split(\'\\n\').length;if(lines<40)process.exit(1);if(!/Commands:/i.test(out))process.exit(1)"' },
     ],
   },
   functionality: {
@@ -101,10 +103,12 @@ const ANNOTATIONS = {
     ],
   },
   planning_quality: {
-    ceiling: 'T1',
+    ceiling: 'T2',
     captest: { command: 'node dist/index.js plan --help 2>&1 | head -3', description: 'plan command exists' },
     outcomes: [
       { id: 'pq_help', tier: 'T1', kind: 'shell', description: 'plan command surfaces help', command: 'node dist/index.js plan --help 2>&1 | head -3' },
+      // T2: planning module is substantively wired (sub-command registered + helpers callable)
+      { id: 'pq_wired', tier: 'T2', kind: 'shell', description: 'plan command registered with options + module exports', command: 'node -e "const{execSync}=require(\'child_process\');const out=execSync(\'node dist/index.js plan --help\').toString();if(out.length<400)process.exit(1);if(!/options/i.test(out))process.exit(1);if(!require(\'fs\').existsSync(\'dist/index.js\'))process.exit(1)"' },
     ],
   },
   maintainability: {
