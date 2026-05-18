@@ -28,10 +28,11 @@ const ANNOTATIONS = {
     ],
   },
   documentation: {
-    ceiling: 'T1',
+    ceiling: 'T2',
     captest: { command: 'node -e "require(\'fs\').accessSync(\'docs/CAPABILITY-TIERS.md\')"', description: 'CAPABILITY-TIERS.md exists' },
     outcomes: [
       { id: 'd_tiers', tier: 'T1', kind: 'shell', description: 'CAPABILITY-TIERS.md is present', command: 'node -e "require(\'fs\').accessSync(\'docs/CAPABILITY-TIERS.md\')"' },
+      { id: 'd_content', tier: 'T2', kind: 'shell', description: 'Core docs exist with real content (CAPABILITY-TIERS, AUTONOMY-BOUNDARIES, RUNBOOK each ≥2KB)', command: 'node -e "const fs=require(\'fs\');for(const f of [\'docs/CAPABILITY-TIERS.md\',\'docs/AUTONOMY-BOUNDARIES.md\',\'RUNBOOK.md\']){fs.accessSync(f);if(fs.readFileSync(f,\'utf8\').length<2000)process.exit(1)}"' },
     ],
   },
   developer_experience: {
@@ -135,10 +136,11 @@ const ANNOTATIONS = {
     ],
   },
   enterprise_readiness: {
-    ceiling: 'T1',
-    captest: { command: 'node -e "[\'SECURITY.md\',\'CHANGELOG.md\'].forEach(f=>require(\'fs\').accessSync(f))"', description: 'SECURITY + CHANGELOG present (ceilinged at 9.0)' },
+    ceiling: 'T2',
+    captest: { command: 'node -e "[\'SECURITY.md\',\'CHANGELOG.md\',\'RUNBOOK.md\'].forEach(f=>require(\'fs\').accessSync(f))"', description: 'SECURITY + CHANGELOG + RUNBOOK present (ceilinged at 9.0)' },
     outcomes: [
       { id: 'er_files', tier: 'T1', kind: 'shell', description: 'SECURITY.md + CHANGELOG.md exist', command: 'node -e "[\'SECURITY.md\',\'CHANGELOG.md\'].forEach(f=>require(\'fs\').accessSync(f))"' },
+      { id: 'er_runbook', tier: 'T2', kind: 'shell', description: 'RUNBOOK.md exists with operator-facing content', command: 'node -e "const fs=require(\'fs\');fs.accessSync(\'RUNBOOK.md\');const c=fs.readFileSync(\'RUNBOOK.md\',\'utf8\');if(c.length<2000||!/operator/i.test(c))process.exit(1)"' },
     ],
   },
   community_adoption: {
