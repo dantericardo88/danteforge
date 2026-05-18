@@ -65,7 +65,11 @@ node dist/index.js search imports <symbol> --json | jq '.[0]' >/dev/null
 
 ## Constraints
 
-- Use SearchEngine.findImports (via MCP) — don't grep+read across the repo
+- **Use Search MCP tools — DO NOT grep+read across the repo:**
+  - `mcp__danteforge__search_find_imports` — primary tool for orphan-risk assessment
+  - `mcp__danteforge__search_find_symbol` — confirm the proposed callsite exists
+  - `mcp__danteforge__search_find_pattern` — for edge-case import patterns
+- grep+read is ~10× more expensive in tokens; the wave's budget assumes you use search MCP
 - Be specific: every "no production importer" claim must cite the SearchEngine query you ran
 - Wiring is binary: either a production file imports the proposed callsite or it doesn't. No "likely will be imported" verdicts.
 - Stay within your 60-minute time budget

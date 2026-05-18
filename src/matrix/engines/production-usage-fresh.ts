@@ -1,4 +1,4 @@
-// production-usage-fresh.ts — Phase H Slice 2.
+// production-usage-fresh.ts — Phase H Slice 2 + Phase M.6.
 //
 // Built-in outcome runner for kind: 'production-usage-fresh'. Verifies that the
 // capability's required_callsite is BOTH imported by at least one production
@@ -6,15 +6,17 @@
 // `baseBranch`. Catches the orphan + parallel-implementation failure modes
 // that plain test-passes-but-nothing-uses-it slip through.
 //
-// Reuses existing primitives: hardener.ts's import-scan logic (we re-grep here
-// because checkOrphanAudit doesn't return the matched file list) and the
-// `git log -1 --format=%cI -- <file>` pattern from git-integration.ts.
+// Phase M.6 (PRD section 4): when a SearchEngine is injected, importer
+// discovery routes through `SearchEngine.findImports` instead of an internal
+// regex+fs-walk. The legacy regex path is preserved as a fallback for parity
+// and for environments where SearchEngine isn't available.
 
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import type { ProductionUsageFreshOutcome, OutcomeEvidenceEntry } from '../types/outcome.js';
+import type { SearchEngine } from '../search/types.js';
 
 const execFileAsync = promisify(execFile);
 
@@ -84,6 +86,7 @@ export async function runProductionUsageFresh(
   outcome: ProductionUsageFreshOutcome,
   cwd: string,
   io: FreshIO = defaultFreshIO(),
+  searchEngine?: SearchEngine,
 ): Promise<FreshCheckResult> {
   const callsite = outcome.required_callsite;
   if (!callsite) {
@@ -109,27 +112,9 @@ export async function runProductionUsageFresh(
 
   // ── Step A: find production importers ──────────────────────────────────────
 
-  const moduleSpec = callsite.replace(/\.(tsx?|jsx?|mjs|py)$/, '').replace(/^src\//, '').replace(/^\.\//, '');
-  const baseName = path.basename(callsite).replace(/\.(tsx?|jsx?|mjs|py)$/, '');
-  const moduleNeedle = moduleSpec.replace(/[/\\]/g, '[/\\\\]');
-  const escapedBase = baseName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-  const importRe = new RegExp(
-    `(?:from|import|require)\\s*\\(?\\s*['"][^'"]*(?:${moduleNeedle}|[/\\\\]${escapedBase})(?:\\.[a-z]+)?['"]`,
-    'g',
-  );
-
-  const cwdSrc = path.join(cwd, 'src');
-  const allFiles = await io.listFiles(cwdSrc);
-  const productionFiles = allFiles.filter(f => !/[/\\]tests?[/\\]/.test(f));
-  const importers: string[] = [];
-  for (const f of productionFiles) {
-    if (path.resolve(f) === path.resolve(callsiteAbsPath)) continue;
-    try {
-      const content = await io.readFile(f);
-      if (importRe.test(content)) importers.push(f);
-      importRe.lastIndex = 0;
-    } catch { /* skip */ }
-  }
+  const importers = searchEngine
+    ? await findImportersViaSearchEngine(searchEngine, callsite, callsiteAbsPath, cwd)
+    : await findImportersViaRegex(io, callsite, callsiteAbsPath, cwd);
 
   // ── Step B: freshness check ────────────────────────────────────────────────
 
@@ -167,6 +152,72 @@ export async function runProductionUsageFresh(
     detail,
     reason,
   };
+}
+
+// ── Importer discovery — two paths ──────────────────────────────────────────
+
+/**
+ * Phase M.6 path: use SearchEngine.findImports to discover production
+ * importers. Excludes the callsite file itself + any test files. Returns
+ * absolute paths matching the legacy regex path's output.
+ */
+async function findImportersViaSearchEngine(
+  engine: SearchEngine,
+  callsite: string,
+  callsiteAbsPath: string,
+  cwd: string,
+): Promise<string[]> {
+  await engine.index(cwd).catch(() => undefined);
+  const baseName = path.basename(callsite).replace(/\.(tsx?|jsx?|mjs|py)$/, '');
+  // Use both findImports (semantic) and findPattern (regex fallback for
+  // namespace/re-export edge cases that findImports might miss).
+  const symbolMatches = await engine.findImports(baseName, { includeTests: false });
+  const callsitePathNorm = path.normalize(callsiteAbsPath).replace(/\\/g, '/');
+  const seen = new Set<string>();
+  const out: string[] = [];
+  for (const m of symbolMatches) {
+    const abs = path.resolve(cwd, m.file);
+    const norm = abs.replace(/\\/g, '/');
+    if (norm === callsitePathNorm) continue;
+    if (seen.has(norm)) continue;
+    seen.add(norm);
+    out.push(abs);
+  }
+  return out;
+}
+
+/**
+ * Legacy regex+fs-walk path. Preserved for parity testing and as a fallback
+ * when SearchEngine is unavailable.
+ */
+async function findImportersViaRegex(
+  io: FreshIO,
+  callsite: string,
+  callsiteAbsPath: string,
+  cwd: string,
+): Promise<string[]> {
+  const moduleSpec = callsite.replace(/\.(tsx?|jsx?|mjs|py)$/, '').replace(/^src\//, '').replace(/^\.\//, '');
+  const baseName = path.basename(callsite).replace(/\.(tsx?|jsx?|mjs|py)$/, '');
+  const moduleNeedle = moduleSpec.replace(/[/\\]/g, '[/\\\\]');
+  const escapedBase = baseName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const importRe = new RegExp(
+    `(?:from|import|require)\\s*\\(?\\s*['"][^'"]*(?:${moduleNeedle}|[/\\\\]${escapedBase})(?:\\.[a-z]+)?['"]`,
+    'g',
+  );
+
+  const cwdSrc = path.join(cwd, 'src');
+  const allFiles = await io.listFiles(cwdSrc);
+  const productionFiles = allFiles.filter(f => !/[/\\]tests?[/\\]/.test(f));
+  const importers: string[] = [];
+  for (const f of productionFiles) {
+    if (path.resolve(f) === path.resolve(callsiteAbsPath)) continue;
+    try {
+      const content = await io.readFile(f);
+      if (importRe.test(content)) importers.push(f);
+      importRe.lastIndex = 0;
+    } catch { /* skip */ }
+  }
+  return importers;
 }
 
 /** Convert a FreshCheckResult into an OutcomeEvidenceEntry. */

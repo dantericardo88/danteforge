@@ -80,8 +80,15 @@ export interface RunResearchWaveOptions {
   /** Force activation even when criteria fail (audit-logged). */
   force?: boolean;
   /**
-   * Agent runner. See `RunAgentFn`. By default uses the substrate's
-   * `spawnHeadlessAgent`. Tests inject a mock.
+   * When true, dispatch real Claude Code subprocesses per role instead of the
+   * mocked default. Consumes operator LLM quota. Logs a loud warning before
+   * each wave run. Ignored when `_runAgent` is provided (tests).
+   */
+  useRealAgents?: boolean;
+  /**
+   * Agent runner. See `RunAgentFn`. By default uses the mocked fixture
+   * implementation (or createRealAgentRunner when useRealAgents=true).
+   * Tests inject a mock directly via this seam.
    */
   _runAgent?: RunAgentFn | null;
   /** Test-only seam: override the wave-id (default: timestamp-random). */
@@ -224,9 +231,18 @@ export async function runResearchWave(options: RunResearchWaveOptions): Promise<
   await writeSharedContext(options.cwd, waveDir, options.dimensionId);
 
   // ── Step 4: benchmark-designer first and alone ───────────────────────────
-  const runAgent = options._runAgent === null
-    ? null
-    : (options._runAgent ?? defaultRunAgent);
+  let runAgent: RunAgentFn | null;
+  if (options._runAgent === null) {
+    runAgent = null;
+  } else if (options._runAgent) {
+    runAgent = options._runAgent;
+  } else if (options.useRealAgents) {
+    logger.warn('[research-wave] real-agent mode enabled — operator LLM quota WILL be consumed for each role in the council');
+    const { createRealAgentRunner } = await import('./real-agent-runner.js');
+    runAgent = createRealAgentRunner();
+  } else {
+    runAgent = defaultRunAgent;
+  }
   if (runAgent === null) {
     // null = disable (test path that wants to skip dispatch entirely)
     return {

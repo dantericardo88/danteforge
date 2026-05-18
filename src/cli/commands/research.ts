@@ -95,6 +95,8 @@ export async function runResearchCaps(opts: ResearchCommandOptions = {}): Promis
 export interface ResearchStartOptions extends ResearchCommandOptions {
   /** Force activation even when criteria fail (audit-logged). */
   force?: boolean;
+  /** Dispatch real Claude Code subprocesses instead of mocked agents. Consumes operator LLM quota. */
+  realAgents?: boolean;
 }
 
 export async function runResearchStart(dimensionId: string, opts: ResearchStartOptions = {}): Promise<void> {
@@ -138,6 +140,7 @@ export async function runResearchStart(dimensionId: string, opts: ResearchStartO
         | undefined) ?? { research_waves_completed: 0, consecutive_stuck_waves: 0, last_wave_outcome: null },
     },
     ...(opts.force !== undefined ? { force: opts.force } : {}),
+    ...(opts.realAgents !== undefined ? { useRealAgents: opts.realAgents } : {}),
   });
 
   if (opts.json) {

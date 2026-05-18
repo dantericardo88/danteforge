@@ -1064,6 +1064,7 @@ researchCmd.command('caps')
 researchCmd.command('start <dimensionId>')
   .description('Run a research wave for a dimension (Phase O parallel-agent dispatch).')
   .option('--force', 'Force activation even when criteria fail (audit-logged)')
+  .option('--real-agents', 'Dispatch real Claude Code subprocesses per role (consumes operator LLM quota). Default: mocked-by-default fixture outputs')
   .option('--json', 'Machine-readable JSON output')
   .option('--cwd <path>', 'Project directory (defaults to cwd)')
   .action((dimensionId: string, opts) => {
@@ -1072,6 +1073,7 @@ researchCmd.command('start <dimensionId>')
         const { runResearchStart } = await import('./commands/research.js');
         await runResearchStart(dimensionId, {
           force: opts.force as boolean | undefined,
+          realAgents: opts.realAgents as boolean | undefined,
           json: opts.json as boolean | undefined,
           cwd: opts.cwd as string | undefined,
         });

@@ -15,7 +15,13 @@ You are the **frontier-reverse-engineer**. You read the leader competitor's impl
 - `shared/frontier-definition.md`
 - `shared/competitor-repo/` — the leader OSS competitor cloned read-only
 - `shared/prior-research-summary.md`
-- SearchEngine MCP tools for both repos
+- **Search MCP tools for both repos (PREFER over grep+read):**
+  - `mcp__danteforge__search_find_pattern` — regex across project + competitor repo
+  - `mcp__danteforge__search_find_symbol` — find where leader implements a capability
+  - `mcp__danteforge__search_find_imports` — see what the leader's code depends on
+- Reading the leader's implementation via search MCP costs ~10× fewer tokens
+  than grep+read. Use search MCP first; fall back to read only when you need
+  to study a specific block in full.
 
 ## Required outputs
 

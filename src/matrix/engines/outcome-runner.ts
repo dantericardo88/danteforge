@@ -159,7 +159,10 @@ export async function runOneOutcome(options: RunOutcomeOptions): Promise<Outcome
     const start = Date.now();
     const { runProductionUsageFresh, freshResultToEvidence } = await import('./production-usage-fresh.js');
     const freshOutcome = outcome as import('../types/outcome.js').ProductionUsageFreshOutcome;
-    const result = await runProductionUsageFresh(freshOutcome, cwd);
+    // Phase M.6: pass a SearchEngine so importer discovery routes through findImports.
+    const { createSearchEngine } = await import('../search/factory.js');
+    const engine = createSearchEngine();
+    const result = await runProductionUsageFresh(freshOutcome, cwd, undefined, engine);
     const entry = freshResultToEvidence(freshOutcome, options.dimensionId, result, gitSha, evidencePath, Date.now() - start);
     await writeFn(evidencePath, JSON.stringify(entry, null, 2));
     await recordOutcomeEvidenceCommit(entry, cwd, options._createTimeMachineCommit);

@@ -18,13 +18,13 @@ const TARGET = path.join(ROOT, '.danteforge', 'compete', 'matrix.json');
 // Commands are REAL — they exit 0 only when the capability is genuinely present.
 const ANNOTATIONS = {
   testing: {
-    ceiling: 'T2',
+    ceiling: 'T3',
     captest: { command: 'npm test 2>&1 | tail -5', description: 'Full test suite passes', timeoutMs: 1500000 },
     outcomes: [
       { id: 't_smoke', tier: 'T1', kind: 'shell', description: 'Smoke tests pass', command: 'npx tsx --test tests/smoke.test.ts 2>&1 | tail -3' },
-      // npm test takes ~10-25 min on DanteForge; bump timeout to 25min to allow
-      // legitimate full-suite runs to complete instead of timing out.
       { id: 't_full', tier: 'T2', kind: 'shell', description: 'Full test suite passes', command: 'npm test 2>&1 | tail -5', timeout_ms: 1500000 },
+      // T3: harden-check module is imported by production code recently
+      { id: 't_wired', tier: 'T3', kind: 'production-usage-fresh', description: 'Hardener is imported by production + modified within 30d', required_callsite: 'src/matrix/engines/hardener.ts', freshnessDays: 30 },
     ],
   },
   documentation: {
@@ -36,11 +36,12 @@ const ANNOTATIONS = {
     ],
   },
   developer_experience: {
-    ceiling: 'T2',
+    ceiling: 'T3',
     captest: { command: 'node dist/index.js --help 2>&1 | head -3', description: 'CLI --help responds' },
     outcomes: [
       { id: 'dx_help', tier: 'T1', kind: 'shell', description: 'CLI help renders', command: 'node dist/index.js --help 2>&1 | head -3' },
       { id: 'dx_go', tier: 'T2', kind: 'shell', description: '`go` entry-point command exists', command: 'node dist/index.js go --help 2>&1 | head -3' },
+      { id: 'dx_wired', tier: 'T3', kind: 'production-usage-fresh', description: 'go-wizard is imported by production + modified within 30d', required_callsite: 'src/cli/commands/go.ts', freshnessDays: 30 },
     ],
   },
   ux_polish: {
@@ -53,53 +54,60 @@ const ANNOTATIONS = {
     ],
   },
   functionality: {
-    ceiling: 'T2',
+    ceiling: 'T3',
     captest: { command: 'npx tsx --test tests/smoke.test.ts 2>&1 | tail -3', description: 'Smoke tests pass' },
     outcomes: [
       { id: 'f_smoke', tier: 'T2', kind: 'shell', description: 'Smoke tests cover the golden path', command: 'npx tsx --test tests/smoke.test.ts 2>&1 | tail -3' },
+      { id: 'f_llm_wired', tier: 'T3', kind: 'production-usage-fresh', description: 'LLM router is imported by production + modified within 30d', required_callsite: 'src/core/llm.ts', freshnessDays: 30 },
     ],
   },
   autonomy: {
-    ceiling: 'T2',
+    ceiling: 'T3',
     captest: { command: 'node dist/index.js ascend --dry-run 2>&1 | tail -3', description: 'ascend --dry-run completes without error' },
     outcomes: [
       { id: 'a_dryrun', tier: 'T2', kind: 'shell', description: '`ascend --dry-run` executes', command: 'node dist/index.js ascend --dry-run 2>&1 | tail -3' },
+      { id: 'a_engine_wired', tier: 'T3', kind: 'production-usage-fresh', description: 'ascend-engine is imported by production + modified within 30d', required_callsite: 'src/core/ascend-engine.ts', freshnessDays: 30 },
     ],
   },
   security: {
-    ceiling: 'T2',
+    ceiling: 'T3',
     captest: { command: 'npm run check:anti-stub 2>&1 | tail -5', description: 'Anti-stub scan finds no stubs' },
     outcomes: [
       { id: 's_antistub', tier: 'T2', kind: 'shell', description: 'No anti-stub findings', command: 'npm run check:anti-stub 2>&1 | tail -5' },
       { id: 's_audit', tier: 'T2', kind: 'shell', description: 'npm audit clean at high severity', command: 'npm audit --audit-level=high --omit=dev 2>&1 | tail -5' },
+      { id: 's_sanitize_wired', tier: 'T3', kind: 'production-usage-fresh', description: 'sanitize-boundary is imported by production + modified within 30d', required_callsite: 'src/core/sanitize-boundary.ts', freshnessDays: 30 },
     ],
   },
   error_handling: {
-    ceiling: 'T2',
+    ceiling: 'T3',
     captest: { command: 'npx tsx --test tests/error-boundary-coverage.test.ts 2>&1 | tail -3', description: 'Error boundary tests pass' },
     outcomes: [
       { id: 'eh_boundary', tier: 'T2', kind: 'shell', description: 'Error boundary tests pass', command: 'npx tsx --test tests/error-boundary-coverage.test.ts 2>&1 | tail -3' },
+      { id: 'eh_errors_wired', tier: 'T3', kind: 'production-usage-fresh', description: 'errors module is imported by production + modified within 30d', required_callsite: 'src/core/errors.ts', freshnessDays: 30 },
     ],
   },
   performance: {
-    ceiling: 'T2',
+    ceiling: 'T3',
     captest: { command: 'npm run build 2>&1 | tail -3', description: 'Build completes' },
     outcomes: [
       { id: 'p_build', tier: 'T2', kind: 'shell', description: 'Build completes (compile baseline)', command: 'npm run build 2>&1 | tail -3' },
+      { id: 'p_cache_wired', tier: 'T3', kind: 'production-usage-fresh', description: 'llm-cache is imported by production + modified within 30d', required_callsite: 'src/core/llm-cache.ts', freshnessDays: 30 },
     ],
   },
   convergence_self_healing: {
-    ceiling: 'T2',
+    ceiling: 'T3',
     captest: { command: 'npx tsx --test tests/loop-detector.test.ts tests/reflection-gates.test.ts 2>&1 | tail -3', description: 'Loop detector + reflection gate tests pass' },
     outcomes: [
       { id: 'csh_loop', tier: 'T2', kind: 'shell', description: 'Loop detector + reflection gate tests pass', command: 'npx tsx --test tests/loop-detector.test.ts tests/reflection-gates.test.ts 2>&1 | tail -3' },
+      { id: 'csh_detector_wired', tier: 'T3', kind: 'production-usage-fresh', description: 'loop-detector is imported by production + modified within 30d', required_callsite: 'src/core/loop-detector.ts', freshnessDays: 30 },
     ],
   },
   spec_driven_pipeline: {
-    ceiling: 'T2',
+    ceiling: 'T3',
     captest: { command: 'npx tsx --test tests/workflow-enforcer.test.ts 2>&1 | tail -3', description: 'Workflow enforcer tests pass' },
     outcomes: [
       { id: 'sdp_workflow', tier: 'T2', kind: 'shell', description: 'Workflow enforcer tests pass', command: 'npx tsx --test tests/workflow-enforcer.test.ts 2>&1 | tail -3' },
+      { id: 'sdp_specify_wired', tier: 'T3', kind: 'production-usage-fresh', description: 'specify command is imported by production + modified within 30d', required_callsite: 'src/cli/commands/specify.ts', freshnessDays: 30 },
     ],
   },
   planning_quality: {
@@ -126,17 +134,19 @@ const ANNOTATIONS = {
     ],
   },
   self_improvement: {
-    ceiling: 'T2',
+    ceiling: 'T3',
     captest: { command: 'npx tsx --test tests/lessons-index.test.ts tests/self-improve-loop.test.ts 2>&1 | tail -3', description: 'Lessons + self-improve loop tests pass' },
     outcomes: [
       { id: 'si_lessons', tier: 'T2', kind: 'shell', description: 'Lessons + self-improve loop tests pass', command: 'npx tsx --test tests/lessons-index.test.ts tests/self-improve-loop.test.ts 2>&1 | tail -3' },
+      { id: 'si_cmd_wired', tier: 'T3', kind: 'production-usage-fresh', description: 'lessons command is imported by production + modified within 30d', required_callsite: 'src/cli/commands/lessons.ts', freshnessDays: 30 },
     ],
   },
   ecosystem_mcp: {
-    ceiling: 'T2',
+    ceiling: 'T3',
     captest: { command: 'node dist/index.js mcp-tools --json 2>&1 | tail -3', description: 'MCP tool list materializes' },
     outcomes: [
       { id: 'em_tools', tier: 'T2', kind: 'shell', description: 'MCP tool registry materializes', command: 'node dist/index.js mcp-tools --json 2>&1 | tail -3' },
+      { id: 'em_server_wired', tier: 'T3', kind: 'production-usage-fresh', description: 'mcp-server is imported by production + modified within 30d', required_callsite: 'src/core/mcp-server.ts', freshnessDays: 30 },
     ],
   },
   enterprise_readiness: {
@@ -153,10 +163,11 @@ const ANNOTATIONS = {
     outcomes: [],
   },
   agent_activity_provenance: {
-    ceiling: 'T2',
+    ceiling: 'T3',
     captest: { command: 'node -e "import(\'./dist/sdk.js\').then(m=>{if(!m.createTimeMachineCommit)process.exit(1)})"', description: 'Time Machine entry-point loads from dist/sdk.js' },
     outcomes: [
       { id: 'aap_sdk', tier: 'T2', kind: 'shell', description: 'Time Machine entry-point loads', command: 'node -e "import(\'./dist/sdk.js\').then(m=>{if(!m.createTimeMachineCommit)process.exit(1)})"' },
+      { id: 'aap_tm_wired', tier: 'T3', kind: 'production-usage-fresh', description: 'time-machine module is imported by production + modified within 30d', required_callsite: 'src/core/time-machine.ts', freshnessDays: 30 },
     ],
   },
 };

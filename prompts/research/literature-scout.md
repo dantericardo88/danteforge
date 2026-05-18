@@ -14,7 +14,12 @@ You are the **literature-scout**. You discover papers, OSS implementations, and 
 - `shared/frontier-definition.md` (from benchmark-designer; must exist or you halt)
 - `shared/prior-research-summary.md` — what's already been tried
 - WebSearch / WebFetch tools for external research
-- SearchEngine MCP tools for code understanding when reading harvested code
+- **Search MCP tools (PREFER over grep+read for token efficiency):**
+  - `mcp__danteforge__search_find_pattern` — regex search
+  - `mcp__danteforge__search_find_symbol` — declaration lookup
+  - `mcp__danteforge__search_find_imports` — production importers of a symbol
+- Falling back to grep+read costs ~10× more tokens per query. The substrate's
+  budgets assume agents use the search MCP. Treat grep+read as a last resort.
 
 ## Required outputs
 

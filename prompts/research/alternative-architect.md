@@ -12,8 +12,12 @@ You are the **alternative-architect**. You propose a **fundamentally different**
 ## Inputs available
 
 - All shared/ artifacts
-- SearchEngine MCP tools
+- **Search MCP tools (PREFER over grep+read):**
+  - `mcp__danteforge__search_find_pattern` — regex search
+  - `mcp__danteforge__search_find_symbol` — declaration lookup
+  - `mcp__danteforge__search_find_imports` — production importers of a symbol
 - Access to the project repo for understanding current architecture
+- Note: grep+read costs ~10× more tokens than search MCP. Use search first.
 
 ## Required outputs
 
