@@ -24,6 +24,9 @@
 
 import fs from 'node:fs/promises';
 import path from 'node:path';
+import crypto from 'node:crypto';
+import { execFile } from 'node:child_process';
+import { promisify } from 'node:util';
 import { buildSymbolGraph } from '../../core/sanitize-boundary.js';
 import { RipgrepFallback } from './ripgrep-fallback.js';
 import type {
@@ -35,6 +38,9 @@ import type {
   SearchOpts,
   SymbolMatch,
 } from './types.js';
+
+const execFileAsync = promisify(execFile);
+const INDEX_DIR = path.join('.danteforge', 'search-index');
 
 const SKIP_DIRS = new Set(['node_modules', 'dist', '.git', '.danteforge', 'coverage', 'build', '.next']);
 const TS_EXTENSIONS = new Set(['.ts', '.tsx', '.mts', '.cts']);
@@ -85,7 +91,7 @@ export class MinimalNativeEngine implements SearchEngine {
     const start = Date.now();
     const forceCold = options?.forceCold ?? false;
     if (this.indexedRoot === repoRoot && !forceCold) {
-      // Already indexed; return a fresh handle without re-walking.
+      // Already indexed in-memory; return a fresh handle without re-walking.
       return {
         engine: 'native',
         repoRoot,
@@ -95,6 +101,24 @@ export class MinimalNativeEngine implements SearchEngine {
           ? new Set(Array.from(this.symbolIndex.values()).flat().map(e => e.file)).size
           : 0,
       };
+    }
+
+    // Phase L.4: on-disk per-SHA index persistence. Try to load from disk
+    // when forceCold is false; rebuild and persist when missing or stale.
+    const gitSha = await readGitSha(repoRoot);
+    if (!forceCold && gitSha) {
+      const loaded = await loadIndexFromDisk(repoRoot, gitSha);
+      if (loaded) {
+        this.symbolIndex = loaded.symbolIndex;
+        this.indexedRoot = repoRoot;
+        return {
+          engine: 'native',
+          repoRoot,
+          gitSha,
+          indexedMs: Date.now() - start,
+          fileCount: loaded.fileCount,
+        };
+      }
     }
 
     this.symbolIndex.clear();
@@ -121,10 +145,14 @@ export class MinimalNativeEngine implements SearchEngine {
     }
 
     this.indexedRoot = repoRoot;
+    // Persist to disk for next cold-start (Phase L.4).
+    if (gitSha) {
+      void saveIndexToDisk(repoRoot, gitSha, this.symbolIndex, files.length);
+    }
     return {
       engine: 'native',
       repoRoot,
-      gitSha: null,
+      gitSha,
       indexedMs: Date.now() - start,
       fileCount: files.length,
     };
@@ -168,6 +196,99 @@ export class MinimalNativeEngine implements SearchEngine {
     this.symbolIndex.clear();
     this.indexedRoot = null;
   }
+}
+
+// ── Phase L.4: on-disk index persistence ────────────────────────────────────
+
+async function readGitSha(cwd: string): Promise<string | null> {
+  try {
+    const { stdout } = await execFileAsync('git', ['rev-parse', 'HEAD'], { cwd, timeout: 2000 });
+    return stdout.trim() || null;
+  } catch {
+    return null;
+  }
+}
+
+function repoHash(repoRoot: string): string {
+  return crypto.createHash('sha256').update(path.resolve(repoRoot)).digest('hex').slice(0, 16);
+}
+
+function indexPathFor(repoRoot: string, gitSha: string): string {
+  return path.join(repoRoot, INDEX_DIR, repoHash(repoRoot), gitSha, 'symbol-index.json');
+}
+
+interface SerializedIndex {
+  version: 1;
+  gitSha: string;
+  fileCount: number;
+  symbolIndex: Array<[string, SymbolEntry[]]>;
+  builtAt: string;
+}
+
+async function loadIndexFromDisk(
+  repoRoot: string,
+  gitSha: string,
+): Promise<{ symbolIndex: Map<string, SymbolEntry[]>; fileCount: number } | null> {
+  const p = indexPathFor(repoRoot, gitSha);
+  try {
+    const raw = await fs.readFile(p, 'utf8');
+    const parsed = JSON.parse(raw) as SerializedIndex;
+    if (parsed.version !== 1 || parsed.gitSha !== gitSha) return null;
+    return {
+      symbolIndex: new Map(parsed.symbolIndex),
+      fileCount: parsed.fileCount,
+    };
+  } catch {
+    return null;
+  }
+}
+
+async function saveIndexToDisk(
+  repoRoot: string,
+  gitSha: string,
+  symbolIndex: Map<string, SymbolEntry[]>,
+  fileCount: number,
+): Promise<void> {
+  const p = indexPathFor(repoRoot, gitSha);
+  const payload: SerializedIndex = {
+    version: 1,
+    gitSha,
+    fileCount,
+    symbolIndex: Array.from(symbolIndex.entries()),
+    builtAt: new Date().toISOString(),
+  };
+  try {
+    await fs.mkdir(path.dirname(p), { recursive: true });
+    await fs.writeFile(p, JSON.stringify(payload), 'utf8');
+    // TTL cleanup: keep last 10 indexes per repo per docs/CAPABILITY-TIERS R2.
+    await pruneOldIndexes(repoRoot, gitSha);
+  } catch {
+    // Persistence failure is non-fatal — in-memory index still works.
+  }
+}
+
+async function pruneOldIndexes(repoRoot: string, currentSha: string): Promise<void> {
+  const root = path.join(repoRoot, INDEX_DIR, repoHash(repoRoot));
+  try {
+    const entries = await fs.readdir(root, { withFileTypes: true });
+    const dirs = entries.filter(e => e.isDirectory()).map(e => e.name);
+    if (dirs.length <= 10) return;
+    // Sort by mtime — keep the 10 most recent.
+    const stats = await Promise.all(dirs.map(async d => {
+      try {
+        const st = await fs.stat(path.join(root, d));
+        return { name: d, mtimeMs: st.mtimeMs };
+      } catch {
+        return { name: d, mtimeMs: 0 };
+      }
+    }));
+    stats.sort((a, b) => b.mtimeMs - a.mtimeMs);
+    const toRemove = stats.slice(10).map(s => s.name).filter(n => n !== currentSha);
+    for (const name of toRemove) {
+      try { await fs.rm(path.join(root, name), { recursive: true, force: true }); }
+      catch { /* skip */ }
+    }
+  } catch { /* skip */ }
 }
 
 function matchesGlob(rel: string, glob: string): boolean {

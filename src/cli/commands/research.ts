@@ -199,6 +199,32 @@ export async function runResearchResolve(waveId: string, opts: ResearchCommandOp
     }
   }
 
+  // Read manifest to identify the target dim
+  let manifest: { dimensionId?: string; council?: Array<{ id: string }> };
+  try {
+    manifest = JSON.parse(await fs.readFile(path.join(waveDir, 'manifest.json'), 'utf8'));
+  } catch {
+    manifest = {};
+  }
+  const dimensionId = manifest.dimensionId;
+
+  // Phase P.4: when PROMOTE, append the promoted outcome to the dim's
+  // outcomes[] in matrix.json. The promoted agent's capability_test.sh (if
+  // present in their workdir) becomes the new outcome's command. When absent,
+  // a placeholder T3 production-usage-fresh outcome is added pointing at
+  // the dim's existing required_callsite (if known).
+  let promotedOutcomeAdded = false;
+  let promotedOutcomeId: string | undefined;
+  if (verdict === 'PROMOTE' && dimensionId) {
+    const winnerMatch = synthesis.match(/Winning proposal[\s\S]*?Agent\*\*:\s*([\w-]+)/);
+    const winnerAgentId = winnerMatch?.[1];
+    if (winnerAgentId) {
+      const result = await appendPromotedOutcomeToMatrix(cwd, dimensionId, waveDir, waveId, winnerAgentId);
+      promotedOutcomeAdded = result.added;
+      promotedOutcomeId = result.outcomeId;
+    }
+  }
+
   // Write resolution timestamp
   const resolvedAt = new Date().toISOString();
   await fs.writeFile(
@@ -208,15 +234,90 @@ export async function runResearchResolve(waveId: string, opts: ResearchCommandOp
   );
 
   if (opts.json) {
-    process.stdout.write(JSON.stringify({ waveId, verdict, resolvedAt }, null, 2) + '\n');
+    process.stdout.write(JSON.stringify({
+      waveId, verdict, resolvedAt,
+      ...(promotedOutcomeAdded ? { promotedOutcomeId } : {}),
+    }, null, 2) + '\n');
     return;
   }
   logger.success(`Resolved wave ${waveId} (verdict: ${verdict ?? 'unknown'}) at ${resolvedAt}`);
   if (verdict === 'PROMOTE') {
-    logger.info(chalk.dim('  Operator: land the proposal on a feature branch and run harden gate.'));
+    if (promotedOutcomeAdded) {
+      logger.info(chalk.green(`  Promoted outcome ${promotedOutcomeId} appended to ${dimensionId}.outcomes`));
+      logger.info(chalk.dim('  Substrate: re-run `danteforge outcomes --force-cold` to see the new outcome execute.'));
+    } else {
+      logger.info(chalk.dim('  Operator: land the proposal on a feature branch and run harden gate.'));
+    }
   } else if (verdict === 'CAP') {
     logger.info(chalk.dim('  Substrate: dim is marked architecturally capped; excluded from future research.'));
   }
+}
+
+/**
+ * Phase P.4: append a new outcome to the dim's outcomes[] array in matrix.json.
+ * The new outcome is derived from the promoted agent's outputs:
+ *   - If the agent wrote capability_test.sh, use it as a shell outcome
+ *   - Otherwise, generate a production-usage-fresh outcome pointing at the
+ *     dim's existing capability_callsite (if declared)
+ * Returns {added, outcomeId} indicating what landed.
+ */
+async function appendPromotedOutcomeToMatrix(
+  cwd: string,
+  dimensionId: string,
+  waveDir: string,
+  waveId: string,
+  winnerAgentId: string,
+): Promise<{ added: boolean; outcomeId?: string }> {
+  const fs = await import('node:fs/promises');
+  const path = await import('node:path');
+  const matrixPath = path.join(cwd, '.danteforge', 'compete', 'matrix.json');
+  let matrix: { dimensions: Array<Record<string, unknown>> };
+  try {
+    const raw = await fs.readFile(matrixPath, 'utf8');
+    matrix = JSON.parse(raw);
+  } catch {
+    return { added: false };
+  }
+  const dim = matrix.dimensions.find(d => d['id'] === dimensionId);
+  if (!dim) return { added: false };
+
+  const outcomeId = `promoted_${waveId.replace(/^wave_/, '').slice(0, 12)}_${winnerAgentId.slice(0, 16)}`;
+  const existing = (dim['outcomes'] as Array<{ id: string }> | undefined) ?? [];
+  if (existing.some(o => o.id === outcomeId)) return { added: false, outcomeId };
+
+  // Look for the agent's capability_test.sh
+  let outcome: Record<string, unknown> | null = null;
+  try {
+    const testPath = path.join(waveDir, winnerAgentId, 'capability_test.sh');
+    await fs.access(testPath);
+    outcome = {
+      id: outcomeId,
+      tier: 'T3',
+      kind: 'shell',
+      description: `Promoted from wave ${waveId} (agent: ${winnerAgentId})`,
+      command: `bash ${path.relative(cwd, testPath).replace(/\\/g, '/')} 2>&1`,
+    };
+  } catch {
+    // No capability_test.sh — fall back to production-usage-fresh on existing callsite.
+    const callsite = (dim['capability_callsite'] as { file?: string } | undefined)?.file;
+    if (callsite) {
+      outcome = {
+        id: outcomeId,
+        tier: 'T3',
+        kind: 'production-usage-fresh',
+        description: `Promoted from wave ${waveId} (production-usage-fresh on ${callsite})`,
+        required_callsite: callsite,
+        freshnessDays: 30,
+      };
+    }
+  }
+
+  if (!outcome) return { added: false };
+
+  const updatedOutcomes = [...existing, outcome];
+  dim['outcomes'] = updatedOutcomes;
+  await fs.writeFile(matrixPath, JSON.stringify(matrix, null, 2));
+  return { added: true, outcomeId };
 }
 
 // ── replay <wave-id> — re-run synthesis on existing artifacts ───────────────

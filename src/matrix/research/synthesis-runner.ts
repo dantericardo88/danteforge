@@ -39,6 +39,17 @@ export interface SynthesisInput {
   waveDir: string;
   /** Role IDs that participated in the wave (for verdict counting). */
   roleIds: string[];
+  /**
+   * Phase P.2: when set, the substrate runs the harden gate against the
+   * dimension after a PROMOTE verdict. If the gate fails, the verdict is
+   * downgraded to CONFLICT (operator must decide) — never silently dropped
+   * to CAP. Pass `null` to disable (tests).
+   */
+  hardenGateOptions?: {
+    dimensionId: string;
+    dim: import('../../core/compete-matrix.js').MatrixDimension;
+    cwd: string;
+  } | null;
 }
 
 export interface SynthesisRecommendation {
@@ -52,6 +63,13 @@ export interface SynthesisRecommendation {
   capReason?: string;
   /** Markdown ready to write to synthesis-recommendation.md. */
   markdown: string;
+  /**
+   * Phase P.2 result: when PROMOTE survived the post-synthesis harden gate,
+   * `null` indicates not-run; otherwise the verdict outcome.
+   */
+  hardenGateVerdict?: 'allowed' | 'blocked' | 'not-run';
+  /** When blocked, list of failed harden checks. */
+  hardenGateFailedChecks?: string[];
 }
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
@@ -223,29 +241,61 @@ export async function runDeterministicSynthesis(input: SynthesisInput): Promise<
 
   // PROMOTE: exactly one survivor OR one clear top-rank
   const ranked = passed.filter(s => s.costRank !== undefined).sort((a, b) => (a.costRank ?? 99) - (b.costRank ?? 99));
+  let promotedWinner: SurvivorRecord | null = null;
+  let promoteReason = '';
   if (passed.length === 1) {
-    const winner = passed[0]!;
-    return {
-      outcome: 'promote',
-      reason: `Single survivor: ${winner.agentId}`,
-      winningAgentId: winner.agentId,
-      markdown: renderPromote(winner, passed),
-    };
-  }
-  if (ranked.length > 0 && ranked[0]!.costRank === 1) {
-    // Check the gap between #1 and #2.
+    promotedWinner = passed[0]!;
+    promoteReason = `Single survivor: ${promotedWinner.agentId}`;
+  } else if (ranked.length > 0 && ranked[0]!.costRank === 1) {
     const second = ranked.find(s => s.costRank === 2);
     const firstConf = ranked[0]!.costConfidence ?? 0.5;
     const secondConf = second?.costConfidence ?? 0.5;
     if (!second || firstConf - secondConf > 0.2) {
-      const winner = ranked[0]!;
+      promotedWinner = ranked[0]!;
+      promoteReason = `Clear cost-complexity winner: ${promotedWinner.agentId} (conf ${firstConf.toFixed(2)} vs runner-up ${secondConf.toFixed(2)})`;
+    }
+  }
+
+  if (promotedWinner) {
+    // Phase P.2: run harden gate against the dim after the synthesis says PROMOTE.
+    // If the gate blocks, downgrade to CONFLICT (operator must decide) per PRD invariant I7.
+    if (input.hardenGateOptions && input.hardenGateOptions !== null) {
+      const { runHardenGate } = await import('../engines/hardener.js');
+      const verdict = await runHardenGate({
+        dimensionId: input.hardenGateOptions.dimensionId,
+        dim: input.hardenGateOptions.dim,
+        cwd: input.hardenGateOptions.cwd,
+        _noWrite: true,
+      });
+      if (!verdict.allowed) {
+        const failedChecks = verdict.checks.filter(c => !c.passed && !c.skipped).map(c => c.check);
+        const conflictIds = passed.map(s => s.agentId);
+        const blockReason = `Post-synthesis harden gate BLOCKED promotion of ${promotedWinner.agentId}: ${failedChecks.join(', ')}. Downgraded to CONFLICT per PRD P.2 — operator must decide whether to revise the proposal or accept the gate failure.`;
+        return {
+          outcome: 'conflict',
+          reason: blockReason,
+          conflictingAgentIds: conflictIds,
+          markdown: renderHardenBlocked(promotedWinner, failedChecks, passed),
+          hardenGateVerdict: 'blocked',
+          hardenGateFailedChecks: failedChecks,
+        };
+      }
+      // Gate allowed — promotion stands. Record verdict in recommendation.
       return {
         outcome: 'promote',
-        reason: `Clear cost-complexity winner: ${winner.agentId} (conf ${firstConf.toFixed(2)} vs runner-up ${secondConf.toFixed(2)})`,
-        winningAgentId: winner.agentId,
-        markdown: renderPromote(winner, passed),
+        reason: promoteReason + ' (post-synthesis harden gate passed)',
+        winningAgentId: promotedWinner.agentId,
+        markdown: renderPromote(promotedWinner, passed),
+        hardenGateVerdict: 'allowed',
       };
     }
+    return {
+      outcome: 'promote',
+      reason: promoteReason,
+      winningAgentId: promotedWinner.agentId,
+      markdown: renderPromote(promotedWinner, passed),
+      hardenGateVerdict: 'not-run',
+    };
   }
 
   // CONFLICT: 2+ survivors with no clear cost-complexity winner
@@ -311,6 +361,49 @@ The dimension is now marked \`human_review_pending\`. Further research is refuse
 2. Write a resolution decision to \`.danteforge/research/<wave-id>/operator-resolution.md\`
 3. Run \`danteforge research resolve <wave-id>\` with the chosen agent
 4. The substrate proceeds based on the resolution
+`;
+}
+
+function renderHardenBlocked(
+  winner: SurvivorRecord,
+  failedChecks: string[],
+  all: SurvivorRecord[],
+): string {
+  return `# Synthesis recommendation
+
+## Verdict: CONFLICT (post-synthesis harden gate blocked promotion)
+
+## Originally-selected proposal
+- **Agent**: ${winner.agentId}
+- **Cost rank**: ${winner.costRank ?? 'unranked'}
+- **Why selected**: would have been PROMOTE — clear cost-complexity winner among survivors
+
+## Why downgraded to CONFLICT
+
+Phase P.2 of the PRD invariant: a proposal that passes the council's gates
+(constitutional review, sovereignty audit, wiring validator) is still
+subject to the substrate's harden gate before it can land. This proposal
+failed the harden gate post-synthesis:
+
+**Failed checks**: ${failedChecks.join(', ')}
+
+Per PRD invariant I7 (stop conditions are mandatory, not silently worked
+around), the substrate does NOT promote a proposal that fails any harden
+check. It also does NOT silently drop to CAP — the council found this
+proposal viable, so the operator gets the final say.
+
+## Survivor list (all passed council gates but ${winner.agentId} hit harden gate)
+${all.map(s => `- ${s.agentId}`).join('\n')}
+
+## Next steps
+
+1. Read \`hypothesis.md\` for ${winner.agentId}
+2. Run \`danteforge harden --dim <dim> --json\` to see the specific gate failures
+3. Either:
+   - Revise the proposal to address the harden failures, then re-run wave
+   - Write resolution to \`operator-resolution.md\` accepting the failures
+     (e.g. with a documented harden_override) and run \`research resolve\`
+   - Mark dim CAP if the failures represent architectural ceiling
 `;
 }
 

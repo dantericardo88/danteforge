@@ -201,6 +201,38 @@ export async function runResearchWave(options: RunResearchWaveOptions): Promise<
       refusalReason: activation.blockingReason ?? 'unknown',
     };
   }
+
+  // Phase Q.3: refuse waves that would re-attempt a hypothesis tried 2+ times.
+  // Reads getFailedHypotheses for this dim and counts duplicates. Operator can
+  // override via force. The "hypothesis identity" is the failureReason — when
+  // 2+ prior waves failed for the same reason, the substrate refuses (the dim
+  // needs a genuinely different approach or operator escalation).
+  if (!options.force) {
+    try {
+      const { getFailedHypotheses } = await import('./research-history.js');
+      const failed = await getFailedHypotheses(options.cwd, options.dimensionId);
+      const byReason = new Map<string, number>();
+      for (const fh of failed) {
+        const count = (byReason.get(fh.failureReason) ?? 0) + 1;
+        byReason.set(fh.failureReason, count);
+      }
+      const repeated = Array.from(byReason.entries()).find(([, n]) => n >= 2);
+      if (repeated) {
+        const reason = `Phase Q.3 refusal: hypothesis "${repeated[0]}" has been tried ${repeated[1]} times without success. Operator must escalate (--force to override + audit-log).`;
+        logger.warn(`[research-wave] ${reason}`);
+        return {
+          waveId,
+          dimensionId: options.dimensionId,
+          outcome: null,
+          startedAt,
+          completedAt: new Date().toISOString(),
+          waveDir: path.join(RESEARCH_ROOT, waveId),
+          agents: [],
+          refusalReason: reason,
+        };
+      }
+    } catch { /* best-effort */ }
+  }
   const council = activation.council ?? [];
   if (council.length === 0) {
     return {
@@ -287,16 +319,43 @@ export async function runResearchWave(options: RunResearchWaveOptions): Promise<
     } catch { /* best-effort */ }
   }
 
-  // ── Step 5: parallel phase ───────────────────────────────────────────────
+  // ── Step 5: TRUE parallel phase (Phase O.1 + O.6) ────────────────────────
+  // The middle-priority roles run concurrently via Promise.allSettled. Each
+  // agent gets its own subdirectory under waveDir/<role-id>/ (the "worktree"
+  // — for mocked agents this is just an output dir; the real-agent-runner
+  // uses spawnHeadlessAgent which can be wired to createAgentWorktree for
+  // true git isolation when needed). Per PRD section 6: "if the operator's
+  // Claude Max plan supports concurrent sessions, run agents as separate
+  // Claude Code sessions in separate processes" — this is the path.
+  //
+  // Partial failures don't block synthesis. Each agent has its own time
+  // budget; total wave budget is enforced by Promise.race + AbortController
+  // in a future hardening pass.
   const parallelRoles = council.filter(r => r.id !== 'benchmark-designer' && r.id !== 'hybrid-synthesizer');
+  const parallelStart = Date.now();
+  const settled = await Promise.allSettled(
+    parallelRoles.map(role =>
+      spawnSingleAgent(runAgent, role, waveDir, options.cwd, waveId, options.dimensionId, promptsDir),
+    ),
+  );
   const parallelResults: RunAgentResult[] = [];
-  for (const role of parallelRoles) {
-    // For now: sequential dispatch (pseudo-parallel per PRD section 6) since
-    // mocked _runAgent returns instantly anyway. Real parallel via the
-    // substrate's existing spawnParallelAgents is a follow-up wire-up.
-    const r = await spawnSingleAgent(runAgent, role, waveDir, options.cwd, waveId, options.dimensionId, promptsDir);
-    parallelResults.push(r);
+  for (let i = 0; i < settled.length; i++) {
+    const s = settled[i]!;
+    const role = parallelRoles[i]!;
+    if (s.status === 'fulfilled') {
+      parallelResults.push(s.value);
+    } else {
+      logger.warn(`[research-wave] agent ${role.id} threw: ${String(s.reason)} (continuing wave; partial-failure tolerant)`);
+      parallelResults.push({
+        roleId: role.id,
+        exitCode: 1,
+        durationMs: 0,
+        producedRequiredOutputs: false,
+        outputDir: path.join(waveDir, role.id),
+      });
+    }
   }
+  logger.verbose(`[research-wave] parallel phase: ${parallelRoles.length} agents in ${Date.now() - parallelStart}ms`);
 
   // ── Step 6: hybrid-synthesizer (if present) ──────────────────────────────
   const synthRole = council.find(r => r.id === 'hybrid-synthesizer');
@@ -305,11 +364,23 @@ export async function runResearchWave(options: RunResearchWaveOptions): Promise<
     synthResult = await spawnSingleAgent(runAgent, synthRole, waveDir, options.cwd, waveId, options.dimensionId, promptsDir);
   }
 
-  // ── Step 7: deterministic synthesis fallback ─────────────────────────────
+  // ── Step 7: deterministic synthesis fallback + Phase P.2 harden gate ─────
+  // Load the dim from matrix.json so the synthesis runner can run the harden
+  // gate against it post-PROMOTE. Best-effort — if matrix.json is missing we
+  // skip the harden gate but the synthesis still runs.
+  let hardenGateOptions: import('./synthesis-runner.js').SynthesisInput['hardenGateOptions'] = null;
+  try {
+    const { loadMatrix } = await import('../../core/compete-matrix.js');
+    const matrix = await loadMatrix(options.cwd);
+    const dim = matrix?.dimensions.find(d => d.id === options.dimensionId);
+    if (dim) hardenGateOptions = { dimensionId: options.dimensionId, dim, cwd: options.cwd };
+  } catch { /* best-effort */ }
+
   const { runDeterministicSynthesis } = await import('./synthesis-runner.js');
   const recommendation = await runDeterministicSynthesis({
     waveDir,
     roleIds: council.map(r => r.id),
+    hardenGateOptions,
   });
 
   // ── Step 8: write synthesis-recommendation.md ────────────────────────────

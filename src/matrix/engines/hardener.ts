@@ -309,16 +309,11 @@ export async function checkClaimAuditor(
   const leading = content.match(/^(?:\/\/[^\n]*\n)+/);
   const haystack = docBlocks.join('\n') + (leading ? '\n' + leading[0] : '');
 
-  // Count code "things" by category.
-  const counts: Record<string, number> = {
-    tools: (content.match(/\b(?:server|app|this|self)\.tool\s*\(/g) ?? []).length
-        + (content.match(/_reg\s*\(/g) ?? []).length,
-    markets: (content.match(/^\s*['\"][A-Z]{2,4}['\"]\s*[,:]/gm) ?? []).length,
-    tests: (content.match(/\b(?:it|test|describe)\s*\(\s*['\"`]/g) ?? []).length,
-    integrations: (content.match(/^\s*(?:export\s+)?(?:const|class|function)\s+\w+(?:Provider|Adapter|Connector|Integration)\b/gm) ?? []).length,
-    commands: (content.match(/\.command\s*\(/g) ?? []).length,
-    skills: (content.match(/skill_name|skillName|SKILL_/g) ?? []).length,
-  };
+  // Phase M.2: count code "things" PROJECT-WIDE (PRD design), not just within
+  // the callsite file. Catches the DanteFinance dim_059 case: docstring in
+  // mcp-server.ts claimed "131 MCP tools" but project-wide count was 74.
+  // Falls back to single-file count if the project-wide walk fails.
+  const counts: Record<string, number> = await countProjectWidePatterns(cwd, content, io);
 
   const findings: HardenFinding[] = [];
   for (const { re, thingNoun } of CLAIM_PATTERNS) {
@@ -353,6 +348,61 @@ export async function checkClaimAuditor(
     findings,
     scoreCap: HARDEN_CHECK_CAPS['claim-auditor'],
   };
+}
+
+/**
+ * Phase M.2: count claim patterns project-wide (not just within the callsite
+ * file). The PRD calls this out — "tools: 131" claimed in a docstring should
+ * be measured against the project's actual count of `tool()` registrations,
+ * not just registrations in the file the docstring lives in.
+ *
+ * Falls back to single-file count when the project walk fails (network FS,
+ * cross-project boundaries, etc).
+ */
+async function countProjectWidePatterns(
+  cwd: string,
+  callsiteContent: string,
+  io: CheckIO,
+): Promise<Record<string, number>> {
+  const patterns = {
+    tools: { regs: [/\b(?:server|app|this|self)\.tool\s*\(/g, /_reg\s*\(/g] },
+    markets: { regs: [/^\s*['\"][A-Z]{2,4}['\"]\s*[,:]/gm] },
+    tests: { regs: [/\b(?:it|test|describe)\s*\(\s*['\"`]/g] },
+    integrations: { regs: [/^\s*(?:export\s+)?(?:const|class|function)\s+\w+(?:Provider|Adapter|Connector|Integration)\b/gm] },
+    commands: { regs: [/\.command\s*\(/g] },
+    skills: { regs: [/skill_name|skillName|SKILL_/g] },
+  };
+
+  const counts: Record<string, number> = { tools: 0, markets: 0, tests: 0, integrations: 0, commands: 0, skills: 0 };
+
+  try {
+    const cwdSrc = path.join(cwd, 'src');
+    const allFiles = await io.listFiles(cwdSrc, /\.tsx?$/);
+    // Production files only — exclude tests/.
+    const productionFiles = allFiles.filter(f => !/[/\\]tests?[/\\]/.test(f));
+    for (const f of productionFiles) {
+      let content: string;
+      try { content = await io.readFile(f); } catch { continue; }
+      for (const [key, p] of Object.entries(patterns)) {
+        for (const re of p.regs) {
+          re.lastIndex = 0;
+          const matches = content.match(re);
+          if (matches) counts[key] = (counts[key] ?? 0) + matches.length;
+        }
+      }
+    }
+    return counts;
+  } catch {
+    // Project walk failed — fall back to single-file count for the callsite.
+    for (const [key, p] of Object.entries(patterns)) {
+      for (const re of p.regs) {
+        re.lastIndex = 0;
+        const matches = callsiteContent.match(re);
+        if (matches) counts[key] = (counts[key] ?? 0) + matches.length;
+      }
+    }
+    return counts;
+  }
 }
 
 // ── Check 3: hardcoded-fallback ──────────────────────────────────────────────
