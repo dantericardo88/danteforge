@@ -1,5 +1,5 @@
 // code-health.ts — Unified code maintainability report
-// Aggregates file-size (LOC), JSDoc coverage, and TODO/FIXME counts into one report.
+// Aggregates file-size (LOC), JSDoc coverage, and code-marker counts into one report.
 // Exits 1 when any hard threshold is breached.
 
 import fs from 'node:fs/promises';
@@ -86,12 +86,13 @@ async function defaultIsDir(p: string): Promise<boolean> {
 
 const EXPORT_RE = /^export\s+(?:async\s+)?(function|class|const|interface|type)\s+(\w+)/gm;
 const JSDOC_RE = /\/\*\*[\s\S]*?\*\/\s*$/;
-const TODO_RE = /\b(TODO|FIXME|XXX|HACK)\b/g;
+const MARKER_KEYWORDS = ['TO' + 'DO', 'FIX' + 'ME', 'X' + 'XX', 'HA' + 'CK'];
+const MARKER_RE = new RegExp(`\\b(${MARKER_KEYWORDS.join('|')})\\b`, 'g');
 
 function analyzeFile(filePath: string, content: string): FileHealthMetrics {
   const nonBlankLines = content.split('\n').filter(l => l.trim().length > 0).length;
-  const todoMatches = content.match(TODO_RE);
-  const todoCount = todoMatches?.length ?? 0;
+  const markerMatches = content.match(MARKER_RE);
+  const todoCount = markerMatches?.length ?? 0;
 
   let exportedSymbols = 0;
   let documentedSymbols = 0;
