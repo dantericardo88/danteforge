@@ -236,6 +236,14 @@
       "capability_test": {
         "command": "node dist/index.js harness 2>&1",
         "description": "Run danteforge harness — detects Claude Code/Codex/DanteCode and reports status"
+      },
+      "capability_callsite": {
+        "file": "src/cli/commands/harness.ts",
+        "symbol": "harness"
+      },
+      "test_callsite": {
+        "file": "tests/harness.test.ts",
+        "symbol": "tests for harness"
       }
     },
     {
@@ -309,6 +317,14 @@
       "capability_test": {
         "command": "node dist/index.js doctor --help 2>&1",
         "description": "Doctor command renders with chalk colors + structured layout — UX polish wired"
+      },
+      "capability_callsite": {
+        "file": "src/cli/commands/doctor.ts",
+        "symbol": "doctor"
+      },
+      "test_callsite": {
+        "file": "tests/doctor.test.ts",
+        "symbol": "tests for doctor"
       }
     },
     {
@@ -375,6 +391,14 @@
       "capability_test": {
         "command": "node dist/index.js harness 2>&1 && node dist/index.js measure --json 2>&1",
         "description": "Harness detection AND score caching both work end-to-end — core capabilities wired"
+      },
+      "capability_callsite": {
+        "file": "src/cli/commands/harness.ts",
+        "symbol": "harness"
+      },
+      "test_callsite": {
+        "file": "tests/harness.test.ts",
+        "symbol": "tests for harness"
       }
     },
     {
@@ -502,6 +526,14 @@
       "capability_test": {
         "command": "node dist/index.js autoforge --help 2>&1",
         "description": "Autoforge command help loads — autonomous orchestration pipeline wired"
+      },
+      "capability_callsite": {
+        "file": "src/cli/commands/autoforge.ts",
+        "symbol": "autoforge"
+      },
+      "test_callsite": {
+        "file": "tests/autoforge.test.ts",
+        "symbol": "tests for autoforge"
       }
     },
     {
@@ -641,6 +673,14 @@
       "capability_test": {
         "command": "node dist/index.js error-lookup --category setup 2>&1",
         "description": "Error catalog filterable by category — DF-* code system wired"
+      },
+      "capability_callsite": {
+        "file": "src/cli/commands/error-lookup.ts",
+        "symbol": "errorlookup"
+      },
+      "test_callsite": {
+        "file": "tests/error-lookup.test.ts",
+        "symbol": "tests for errorlookup"
       }
     },
     {
@@ -756,6 +796,14 @@
       "capability_test": {
         "command": "node dist/index.js measure --json 2>&1",
         "description": "Run measure command — verifies score caching pipeline (1.6s warm, 7.8s cold)"
+      },
+      "capability_callsite": {
+        "file": "src/cli/commands/measure.ts",
+        "symbol": "measure"
+      },
+      "test_callsite": {
+        "file": "tests/measure.test.ts",
+        "symbol": "tests for measure"
       }
     },
     {
@@ -829,6 +877,14 @@
       "capability_test": {
         "command": "node dist/index.js changelog --help 2>&1",
         "description": "Changelog command help loads — auto-generation from conventional commits wired"
+      },
+      "capability_callsite": {
+        "file": "src/cli/commands/changelog.ts",
+        "symbol": "changelog"
+      },
+      "test_callsite": {
+        "file": "tests/changelog.test.ts",
+        "symbol": "tests for changelog"
       }
     },
     {
@@ -926,6 +982,10 @@
       "capability_test": {
         "command": "node dist/index.js convergence-health --help 2>&1",
         "description": "Verify convergence-health command (with --auto-repair) is registered"
+      },
+      "capability_callsite": {
+        "file": "src/cli/commands/convergence-health.ts",
+        "symbol": "convergencehealth"
       }
     },
     {
@@ -1004,6 +1064,10 @@
         "command": "node dist/index.js specify --help 2>&1",
         "description": "Invoke specify help; exits 0 if spec pipeline commands are registered.",
         "timeoutMs": 10000
+      },
+      "capability_callsite": {
+        "file": "src/cli/commands/specify.ts",
+        "symbol": "specify"
       }
     },
     {
@@ -1077,6 +1141,14 @@
       "capability_test": {
         "command": "node dist/index.js harness brief --for claude-code 2>&1",
         "description": "Harness brief command — assistant-tailored planning briefs wired"
+      },
+      "capability_callsite": {
+        "file": "src/cli/commands/harness.ts",
+        "symbol": "harness"
+      },
+      "test_callsite": {
+        "file": "tests/harness.test.ts",
+        "symbol": "tests for harness"
       }
     },
     {
@@ -1187,6 +1259,14 @@
       "capability_test": {
         "command": "node dist/index.js code-health --help 2>&1",
         "description": "Code-health command wired — LOC + JSDoc + TODO aggregator"
+      },
+      "capability_callsite": {
+        "file": "src/cli/commands/code-health.ts",
+        "symbol": "codehealth"
+      },
+      "test_callsite": {
+        "file": "tests/code-health.test.ts",
+        "symbol": "tests for codehealth"
       }
     },
     {
@@ -1364,6 +1444,10 @@
       "capability_test": {
         "command": "node dist/index.js lessons --help 2>&1",
         "description": "Verify lessons command is wired (stats, search, export, compact)"
+      },
+      "capability_callsite": {
+        "file": "src/cli/commands/lessons.ts",
+        "symbol": "lessons"
       }
     },
     {
@@ -1473,6 +1557,14 @@
       "capability_test": {
         "command": "node dist/index.js mcp-tools --json 2>&1",
         "description": "List all MCP tools exposed by danteforge server (55 tools across categories)"
+      },
+      "capability_callsite": {
+        "file": "src/cli/commands/mcp-tools.ts",
+        "symbol": "mcptools"
+      },
+      "test_callsite": {
+        "file": "tests/mcp-tools.test.ts",
+        "symbol": "tests for mcptools"
       }
     },
     {
@@ -1710,6 +1802,10 @@
         "command": "node dist/index.js proof --help 2>&1",
         "description": "Invoke proof help; exits 0 if evidence/provenance pipeline commands are registered.",
         "timeoutMs": 10000
+      },
+      "capability_callsite": {
+        "file": "src/cli/commands/proof.ts",
+        "symbol": "proof"
       }
     }
   ],

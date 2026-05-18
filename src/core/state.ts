@@ -142,6 +142,11 @@ export interface DanteState {
   confirmationState?: 'none' | 'awaiting' | 'confirmed' | 'vetoed';
   policyReceiptPath?: string;  // path to last policy decision receipt
   teamId?: string | null;      // tenant/team identifier for audit scoping
+  // Phase D — Capability Ladder regrade cadence
+  /** Counter incremented per crusade wave. Reset to 0 by `honest-rescore --regrade`. */
+  wavesSinceLastRegrade?: number;
+  /** ISO timestamp of the last skeptic-subagent regrade. */
+  lastRegradeAt?: string;
 }
 
 export interface VerifyEvidence {
@@ -431,6 +436,8 @@ function buildLoadedState(
     hasPluginManifest: parsed?.hasPluginManifest as boolean | undefined,
     mcpToolCount: (parsed as Record<string, unknown> | undefined)?.['mcpToolCount'] as number | undefined,
     providerCount: (parsed as Record<string, unknown> | undefined)?.['providerCount'] as number | undefined,
+    wavesSinceLastRegrade: typeof parsed?.wavesSinceLastRegrade === 'number' ? parsed.wavesSinceLastRegrade : 0,
+    lastRegradeAt: typeof parsed?.lastRegradeAt === 'string' ? parsed.lastRegradeAt : undefined,
   } as DanteState;
 }
 

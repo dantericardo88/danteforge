@@ -469,10 +469,42 @@ async function runFrontierPass(options: FrontierCrusadeOptions): Promise<Frontie
   const reportPath = path.join(cwd, 'FRONTIER_CRUSADE_REPORT.md');
   try { await writeFile(reportPath, buildFrontierReport(results, options.goal)); } catch { /* best-effort */ }
 
+  // Phase D: increment regrade-cadence counter so the next crusade enforces
+  // the skeptic-regrade cadence. Best-effort — never blocks the wave.
+  try {
+    const { loadState, saveState } = await import('../../core/state.js');
+    const state = await loadState({ cwd });
+    state.wavesSinceLastRegrade = (state.wavesSinceLastRegrade ?? 0) + 1;
+    await saveState(state, { cwd });
+  } catch { /* best-effort */ }
+
   return { status: allDone ? 'ALL_DONE' : 'PARTIAL', dimensions: results, reportPath };
 }
 
+const MAX_WAVES_WITHOUT_REGRADE = 3;
+
 export async function runFrontierCrusade(options: FrontierCrusadeOptions): Promise<FrontierCrusadeResult> {
+  // Mandatory regrade cadence (Phase D): if more than MAX_WAVES_WITHOUT_REGRADE
+  // crusade waves have run since the last skeptic regrade, the crusade refuses
+  // to start. The operator must run `danteforge honest-rescore --regrade` to
+  // re-baseline. This is the structural insurance against score drift between
+  // honest audits.
+  try {
+    const { loadState } = await import('../../core/state.js');
+    const state = await loadState({ cwd: options.cwd });
+    const waves = state.wavesSinceLastRegrade ?? 0;
+    if (waves > MAX_WAVES_WITHOUT_REGRADE) {
+      logger.error(`[frontier] BLOCKED: ${waves} crusade waves since last regrade (max: ${MAX_WAVES_WITHOUT_REGRADE}).`);
+      logger.error(`[frontier] Run: danteforge honest-rescore --regrade`);
+      logger.error(`[frontier] Then re-run the crusade. The skeptic regrade is mandatory to prevent silent score drift.`);
+      return { status: 'PARTIAL', dimensions: [] };
+    }
+    logger.info(`[frontier] Regrade cadence: ${waves}/${MAX_WAVES_WITHOUT_REGRADE} waves since last skeptic pass.`);
+  } catch (err) {
+    // Best-effort — if state can't be loaded, do not block the crusade.
+    logger.warn(`[frontier] could not load state for regrade-cadence check: ${err instanceof Error ? err.message : String(err)}`);
+  }
+
   // Pre-flight: verify LLM is reachable before spawning parallel waves.
   // Without this, all dimensions time out after 180s each before failing gracefully.
   if (!options.skipLLMCheck) {

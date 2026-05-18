@@ -688,7 +688,7 @@ Examples:
     })();
   });
 
-program
+const hardenCmd = program
   .command('harden')
   .description('Deterministic hardening checks (Phase C of Capability Ladder). Catches orphan modules, claim/reality mismatches, hardcoded fallbacks. Cannot be gamed by LLM agents.')
   .option('--dim <id>', 'Run only on this dimension')
@@ -702,7 +702,8 @@ Examples:
   danteforge harden --dim security               One dim only
   danteforge harden --check orphan-audit         One check across all dims
   danteforge harden --gate                       CI mode — exits 1 on any fail
-  danteforge harden --json > harden-report.json  Machine-readable
+  danteforge harden migrate                      Dry-run: infer capability_callsite per dim
+  danteforge harden migrate --apply              Write inferred callsites to matrix.json
 
 The harden gate fires automatically inside mergeScoreProposals at score ≥ 7.0.
 This command is the operator-facing entry point and the CI gate.
@@ -721,6 +722,34 @@ This command is the operator-facing entry point and the CI gate.
       } catch (err) {
         const { formatAndLogError } = await import('../core/format-error.js');
         formatAndLogError(err, 'harden');
+        process.exitCode = 1;
+      }
+    })();
+  });
+
+hardenCmd
+  .command('migrate')
+  .description('Infer capability_callsite + test_callsite for each dim from its capability_test command. Dry-run by default; use --apply to write.')
+  .option('--apply', 'Write inferred callsites to matrix.json (default: dry-run only)')
+  .option('--accept-low', 'Also apply low-confidence inferences (default: high+medium only)')
+  .option('--json', 'Machine-readable JSON output')
+  .option('--cwd <path>', 'Project directory (defaults to cwd)')
+  .action((opts) => {
+    void (async () => {
+      try {
+        const { runHardenMigrateCommand } = await import('./commands/harden.js');
+        const acceptConfidence: Array<'high' | 'medium' | 'low'> = opts.acceptLow
+          ? ['high', 'medium', 'low']
+          : ['high', 'medium'];
+        await runHardenMigrateCommand({
+          apply: opts.apply as boolean | undefined,
+          acceptConfidence,
+          json: opts.json as boolean | undefined,
+          cwd: opts.cwd as string | undefined,
+        });
+      } catch (err) {
+        const { formatAndLogError } = await import('../core/format-error.js');
+        formatAndLogError(err, 'harden migrate');
         process.exitCode = 1;
       }
     })();
@@ -769,6 +798,7 @@ program
   .command('honest-rescore')
   .description('Reality-check the competitive matrix against runtime evidence. Writes a .honest.json file, never mutates matrix.json.')
   .option('--json', 'Machine-readable JSON output')
+  .option('--regrade', 'Mandatory skeptic regrade: run harden gate against every dim, reset wavesSinceLastRegrade')
   .option('--cwd <path>', 'Project directory (defaults to cwd)')
   .addHelpText('after', `
 Examples:
@@ -789,6 +819,7 @@ matrix.json itself is NEVER modified. Operator must copy if satisfied.
         const { runHonestRescoreCommand } = await import('./commands/honest-rescore.js');
         await runHonestRescoreCommand({
           json: opts.json as boolean | undefined,
+          regrade: opts.regrade as boolean | undefined,
           cwd: opts.cwd as string | undefined,
         });
       } catch (err) {

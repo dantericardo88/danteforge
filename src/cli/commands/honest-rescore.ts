@@ -340,6 +340,92 @@ export async function runHonestRescore(options: HonestRescoreOptions = {}): Prom
   return result;
 }
 
+// ── Regrade mode ──────────────────────────────────────────────────────────────
+
+/**
+ * Mandatory skeptic-regrade cadence (Phase D).
+ *
+ * Runs the harden gate against EVERY dimension (regardless of current score —
+ * unlike the production gate which only fires at >= 7.0) and surfaces any
+ * dimension where the harden verdict would clamp the current score. Resets
+ * state.wavesSinceLastRegrade to 0 on completion.
+ *
+ * Why not spawn a real LLM subagent? Two reasons:
+ *  1. We already have a deterministic skeptic — the hardener. Running it across
+ *     all dims with no exemption is the same as a "fresh skeptic re-reads code"
+ *     pass, except deterministic and free.
+ *  2. Real LLM regrades drift over time (model updates, prompt churn). Our
+ *     code-inspection regrade is reproducible.
+ *
+ * The cadence enforcement happens elsewhere: `runFrontierCrusade` reads
+ * state.wavesSinceLastRegrade and refuses to start when >3 unless the operator
+ * runs this command.
+ */
+async function runRegradeMode(opts: { json?: boolean; cwd?: string }): Promise<void> {
+  const cwd = opts.cwd ?? process.cwd();
+  const { loadMatrix } = await import('../../core/compete-matrix.js');
+  const { loadState, saveState } = await import('../../core/state.js');
+  const { runHardenGate } = await import('../../matrix/engines/hardener.js');
+
+  const matrix = await loadMatrix(cwd);
+  if (!matrix) throw new Error(`No matrix.json at ${cwd}/.danteforge/compete/matrix.json`);
+
+  const state = await loadState({ cwd });
+  const reportRows: Array<{ id: string; current: number; allowed: boolean; cappedAt: number; failedChecks: string[] }> = [];
+
+  for (const dim of matrix.dimensions) {
+    const verdict = await runHardenGate({ dimensionId: dim.id, dim, cwd, _noWrite: true });
+    const failedChecks = verdict.checks.filter(c => !c.passed && !c.skipped).map(c => c.check);
+    reportRows.push({
+      id: dim.id,
+      current: dim.scores.self,
+      allowed: verdict.allowed,
+      cappedAt: verdict.allowed ? dim.scores.self : Math.min(dim.scores.self, verdict.scoreCap),
+      failedChecks,
+    });
+  }
+
+  const clamped = reportRows.filter(r => r.cappedAt < r.current - 0.01);
+
+  state.wavesSinceLastRegrade = 0;
+  state.lastRegradeAt = new Date().toISOString();
+  await saveState(state, { cwd });
+
+  if (opts.json) {
+    process.stdout.write(JSON.stringify({
+      mode: 'regrade',
+      cwd, ranAt: state.lastRegradeAt,
+      totalDimensions: matrix.dimensions.length,
+      wouldClamp: clamped.length,
+      perDimension: reportRows,
+    }, null, 2) + '\n');
+    return;
+  }
+
+  logger.info('');
+  logger.info(chalk.bold('Honest Rescore — Mandatory Skeptic Regrade'));
+  logger.info(chalk.dim('─'.repeat(60)));
+  logger.info('');
+  logger.info(`  ${chalk.bold('Dimensions scanned:')}  ${matrix.dimensions.length}`);
+  logger.info(`  ${chalk.bold('Would clamp:')}         ${clamped.length}`);
+  logger.info(`  ${chalk.bold('Counter reset to:')}    0  (${chalk.dim(state.lastRegradeAt)})`);
+  logger.info('');
+
+  if (clamped.length === 0) {
+    logger.success('  All dimensions hold against the harden gate ✓');
+  } else {
+    logger.info(chalk.bold('  Dimensions that would clamp:'));
+    for (const r of clamped.slice(0, 25)) {
+      const delta = (r.cappedAt - r.current).toFixed(2);
+      logger.info(`    ${chalk.red('↓')} ${r.id.padEnd(30)} ${r.current.toFixed(1)} → ${chalk.yellow(r.cappedAt.toFixed(1))}  (${chalk.red(delta)})  ${chalk.dim(r.failedChecks.join(', '))}`);
+    }
+    if (clamped.length > 25) logger.info(chalk.dim(`    … and ${clamped.length - 25} more`));
+  }
+  logger.info('');
+  logger.info(chalk.dim('  matrix.json was NOT modified. Run `danteforge harden migrate --apply` if callsites are needed.'));
+  logger.info('');
+}
+
 // ── CLI entry ─────────────────────────────────────────────────────────────────
 
 function pct(n: number): string {
@@ -348,7 +434,12 @@ function pct(n: number): string {
   return chalk.red(n.toFixed(2));
 }
 
-export async function runHonestRescoreCommand(opts: { json?: boolean; cwd?: string } = {}): Promise<void> {
+export async function runHonestRescoreCommand(opts: { json?: boolean; cwd?: string; regrade?: boolean } = {}): Promise<void> {
+  if (opts.regrade) {
+    await runRegradeMode(opts);
+    return;
+  }
+
   const result = await runHonestRescore({ cwd: opts.cwd });
 
   if (opts.json) {

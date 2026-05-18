@@ -13,6 +13,12 @@ import { logger } from '../../core/logger.js';
 import { loadMatrix } from '../../core/compete-matrix.js';
 import { runHardenGate } from '../../matrix/engines/hardener.js';
 import {
+  buildMigrationProposals,
+  applyMigrationProposals,
+  type MigrationResult,
+  type Confidence,
+} from '../../matrix/engines/harden-migrate.js';
+import {
   HARDEN_GATE_THRESHOLD,
   type HardenCheckId,
   type HardenVerdict,
@@ -166,6 +172,97 @@ export function formatHardenReport(report: HardenReport): string {
   lines.push(chalk.dim(`  Report written to ${path.relative(process.cwd(), path.join(report.cwd, HARDEN_REPORT_PATH))}`));
   lines.push('');
   return lines.join('\n');
+}
+
+// ── Migrate subcommand ────────────────────────────────────────────────────────
+
+export interface RunMigrateOptions {
+  cwd?: string;
+  apply?: boolean;             // write inferred callsites to matrix.json
+  acceptConfidence?: Array<'high' | 'medium' | 'low'>;
+  json?: boolean;
+  _loadMatrix?: typeof loadMatrix;
+  _writeMatrix?: (cwd: string, m: unknown) => Promise<void>;
+}
+
+export function formatMigrationReport(result: MigrationResult): string {
+  const lines: string[] = [];
+  lines.push(chalk.bold('\nDanteForge Harden Migration Proposal'));
+  lines.push(chalk.dim('─'.repeat(60)));
+  lines.push('');
+  lines.push(`  ${chalk.bold('Total dimensions:')}     ${result.totalDimensions}`);
+  lines.push(`  ${chalk.green('Already declared:')}    ${result.alreadyDeclared}`);
+  lines.push(`  ${chalk.green('Inferred (high):')}     ${result.inferredHigh}`);
+  lines.push(`  ${chalk.yellow('Inferred (medium):')}   ${result.inferredMedium}`);
+  lines.push(`  ${chalk.yellow('Inferred (low):')}      ${result.inferredLow}`);
+  lines.push(`  ${chalk.red('Unable to infer:')}     ${result.unableToInfer}`);
+  lines.push('');
+
+  const grouped = new Map<Confidence | 'declared' | 'none', typeof result.proposals>();
+  for (const p of result.proposals) {
+    const key = p.alreadyDeclared ? 'declared' : (p.inferred ? p.confidence : 'none');
+    const list = grouped.get(key) ?? [];
+    list.push(p);
+    grouped.set(key, list);
+  }
+
+  const order: Array<{ key: Confidence | 'declared' | 'none'; label: string; color: typeof chalk.green }> = [
+    { key: 'high', label: 'HIGH CONFIDENCE — safe to --apply', color: chalk.green },
+    { key: 'medium', label: 'MEDIUM CONFIDENCE — review then --apply', color: chalk.yellow },
+    { key: 'low', label: 'LOW CONFIDENCE — manual review recommended', color: chalk.yellow },
+    { key: 'none', label: 'NO INFERENCE — declare manually', color: chalk.red },
+    { key: 'declared', label: 'ALREADY DECLARED — skipped', color: chalk.dim },
+  ];
+
+  for (const { key, label, color } of order) {
+    const items = grouped.get(key);
+    if (!items || items.length === 0) continue;
+    lines.push(color(`  ${label} (${items.length}):`));
+    for (const p of items.slice(0, 25)) {
+      const tail = p.inferred ? `${p.inferred.file}::${p.inferred.symbol}` : chalk.red('(no proposal)');
+      lines.push(`    ${chalk.cyan(p.dimensionId.padEnd(30))} → ${tail}`);
+      lines.push(`      ${chalk.dim(p.reason)}`);
+    }
+    if (items.length > 25) lines.push(chalk.dim(`    … and ${items.length - 25} more`));
+    lines.push('');
+  }
+  return lines.join('\n');
+}
+
+export async function runHardenMigrateCommand(opts: RunMigrateOptions = {}): Promise<void> {
+  const cwd = opts.cwd ?? process.cwd();
+  const loadMatrixFn = opts._loadMatrix ?? loadMatrix;
+  const matrix = await loadMatrixFn(cwd);
+  if (!matrix) throw new Error(`No matrix.json at ${cwd}/.danteforge/compete/matrix.json`);
+
+  const result = await buildMigrationProposals(matrix as unknown as { dimensions: import('../../core/compete-matrix.js').MatrixDimension[] }, { cwd });
+
+  if (opts.json) {
+    process.stdout.write(JSON.stringify(result, null, 2) + '\n');
+  } else {
+    logger.info(formatMigrationReport(result));
+  }
+
+  if (opts.apply) {
+    const accept = opts.acceptConfidence ?? ['high', 'medium'];
+    const count = applyMigrationProposals(
+      matrix as unknown as { dimensions: import('../../core/compete-matrix.js').MatrixDimension[] },
+      result,
+      accept,
+    );
+    if (count > 0) {
+      const writeMatrix = opts._writeMatrix ?? (async (cwd: string, m: unknown) => {
+        const matrixPath = path.join(cwd, '.danteforge', 'compete', 'matrix.json');
+        await fs.writeFile(matrixPath, JSON.stringify(m, null, 2), 'utf8');
+      });
+      await writeMatrix(cwd, matrix);
+      logger.success(`Applied ${count} callsite declaration(s) to matrix.json (confidence: ${accept.join(', ')}).`);
+    } else {
+      logger.info('No changes to apply.');
+    }
+  } else if (!opts.json) {
+    logger.info(chalk.dim('  Dry-run: matrix.json was NOT modified. Use --apply to write.'));
+  }
 }
 
 // ── CLI entry ─────────────────────────────────────────────────────────────────
