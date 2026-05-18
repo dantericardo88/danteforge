@@ -1061,14 +1061,40 @@ researchCmd.command('caps')
     })();
   });
 
+researchCmd.command('start <dimensionId>')
+  .description('Run a research wave for a dimension (Phase O parallel-agent dispatch).')
+  .option('--force', 'Force activation even when criteria fail (audit-logged)')
+  .option('--json', 'Machine-readable JSON output')
+  .option('--cwd <path>', 'Project directory (defaults to cwd)')
+  .action((dimensionId: string, opts) => {
+    void (async () => {
+      try {
+        const { runResearchStart } = await import('./commands/research.js');
+        await runResearchStart(dimensionId, {
+          force: opts.force as boolean | undefined,
+          json: opts.json as boolean | undefined,
+          cwd: opts.cwd as string | undefined,
+        });
+      } catch (err) {
+        const { formatAndLogError } = await import('../core/format-error.js');
+        formatAndLogError(err, 'research start');
+        process.exitCode = 1;
+      }
+    })();
+  });
+
 researchCmd.command('resolve <waveId>')
-  .description('Operator resolution of a conflict recommendation (Phase P; not yet shipped)')
+  .description('Operator resolution of a wave verdict (PROMOTE | CONFLICT | CAP)')
+  .option('--json', 'Machine-readable JSON output')
   .option('--cwd <path>', 'Project directory (defaults to cwd)')
   .action((waveId: string, opts) => {
     void (async () => {
       try {
         const { runResearchResolve } = await import('./commands/research.js');
-        await runResearchResolve(waveId, { cwd: opts.cwd as string | undefined });
+        await runResearchResolve(waveId, {
+          json: opts.json as boolean | undefined,
+          cwd: opts.cwd as string | undefined,
+        });
       } catch (err) {
         const { formatAndLogError } = await import('../core/format-error.js');
         formatAndLogError(err, 'research resolve');
@@ -1078,7 +1104,7 @@ researchCmd.command('resolve <waveId>')
   });
 
 researchCmd.command('replay <waveId>')
-  .description('Replay a research wave from artifacts (Phase O; not yet shipped)')
+  .description('Re-run deterministic synthesis on an existing wave\'s artifacts')
   .option('--cwd <path>', 'Project directory (defaults to cwd)')
   .action((waveId: string, opts) => {
     void (async () => {
