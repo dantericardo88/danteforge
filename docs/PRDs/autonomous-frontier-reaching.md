@@ -1,7 +1,29 @@
 DanteForge: Autonomous Frontier-Reaching Substrate
 =====================================================
 
-> **Status (2026-05-18).** Phases A–H Slices 1+2+4 are shipped (5 commits on `matrix-kernel-phase-1`: `bc96fcd`, `a894454`, `5f95a52`, `7e8df41`, `177dd48`). Outcome-derived scoring is the foundation this PRD builds on; the writable score field is read-only. The current session ships Time Machine integration for outcome/harden/frontier evidence plus migrates two of six bypass surfaces. **Phase L (native search), Phase E remaining bypass migrations, Phase H Slices 3+5+6, and Phase M-R remain deferred to dedicated sessions.** See `~/.claude/plans/dapper-hatching-aurora.md` for the execution-order summary.
+> **Status (2026-05-18, end of session).** Phases A–H all slices shipped + Phase E single-writer reconciler closed (16 commits on `matrix-kernel-phase-1`). Phase L MVP + Phase M.1 + Phase N+Q schemas shipped this session:
+>
+> **Shipped in Phase L MVP:** `SearchEngine` interface + `RipgrepFallback` (subprocess wrap when `rg` available, pure-Node walker otherwise) + `MinimalNativeEngine` (uses existing `buildSymbolGraph` from `sanitize-boundary.ts` for TS symbol extraction; delegates patterns to ripgrep). 6-subcommand `danteforge search` CLI: `index | find | symbol | imports | orphans | benchmark`. Live benchmark on DanteForge: native engine 89× faster on symbol lookups (0-1ms vs 89-92ms).
+>
+> **Shipped in Phase M.1:** `checkOrphanAudit` consults `SearchEngine.findImports`; legacy inline grep path preserved as `__test_legacyOrphanAudit`; parity test (`tests/search-orphan-parity.test.ts`) asserts zero behavioral divergence on a 3-case fixture.
+>
+> **Shipped in Phase N+Q (schemas + read-only surfaces):** `ResearchAgentRole` + `ResearchModeConfig` + `ResearchWaveOutcome` + `FailedHypothesis` + `ResearchStatus` types; 10 `CANONICAL_RESEARCH_ROLES` (benchmark-designer first, hybrid-synthesizer last per PRD section 5); `isResearchActivated(input)` pure function covering all 7 activation criteria + force-override; `getPriorResearch` / `getStructuralCaps` / `getResearchSummary` read-only history scanners. 5-subcommand `danteforge research` CLI: `status | history | caps` (read-only), `resolve | replay` (refuse with informative "Phase O not yet shipped" per PRD invariant I7).
+>
+> **Tests:** 37 new tests across 4 files (search-engine, research-mode-selector, research-history, search-orphan-parity), all green. 128 broader-surface tests remain green.
+>
+> **Genuinely deferred to dedicated multi-day/week sessions:**
+> - Phase L.3 BM25 + tree-sitter + quantized vectors (multi-day, sovereignty audit needed for tree-sitter)
+> - Phase L.5 Semble benchmark
+> - Phase M.2–M.7 remaining substrate-operation refactors (harden checks, harden migrate, crusade wave inspection, honest-rescore regrade, outcome runner production-usage-fresh, probe)
+> - Phase O parallel agent execution (Claude Code session orchestration, isolated worktrees, time-budget enforcement)
+> - Phase P synthesis agent (LLM-driven proposal comparison + harden-gate integration)
+> - Phase Q lessons feed-forward (append-only lessons.md ↔ research-history wiring)
+> - Phase R end-to-end validation across 4 Dante projects
+> - MCP tool registration for the new search/research surfaces (CLI is sufficient for substrate-internal use; MCP exposure is a wiring follow-up)
+>
+> Every PRD command name now exists. Every type exists. The next session's parallel-agent work can proceed without redesigning the substrate.
+
+> **Original status note (2026-05-18, mid-session, preserved for history):** Phases A–H Slices 1+2+4 are shipped (5 commits on `matrix-kernel-phase-1`: `bc96fcd`, `a894454`, `5f95a52`, `7e8df41`, `177dd48`). Outcome-derived scoring is the foundation this PRD builds on; the writable score field is read-only. The current session ships Time Machine integration for outcome/harden/frontier evidence plus migrates two of six bypass surfaces. **Phase L (native search), Phase E remaining bypass migrations, Phase H Slices 3+5+6, and Phase M-R remain deferred to dedicated sessions.** See `~/.claude/plans/dapper-hatching-aurora.md` for the execution-order summary.
 
 The integrated PRD
 This is the comprehensive PRD combining native code-search primitive (harvested from Semble) with research-mode crusade (Karpathy-style parallel agent investigation). Together these complete the substrate's ability to autonomously bring projects from baseline to frontier, with the system knowing what frontier means in observable terms and when it has been reached.

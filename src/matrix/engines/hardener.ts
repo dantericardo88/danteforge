@@ -78,7 +78,7 @@ function shouldSkipCheck(dim: MatrixDimension, check: HardenCheckId): { skip: bo
 /**
  * Is the dim's capability_callsite actually imported by production code?
  *
- * For each declared callsite (capability_callsite.file), grep the source tree
+ * For each declared callsite (capability_callsite.file), search the source tree
  * for `from <module>` or `import <module>` outside tests/. Zero matches means
  * the module exists but nothing reaches it — it's an orphan.
  *
@@ -86,11 +86,17 @@ function shouldSkipCheck(dim: MatrixDimension, check: HardenCheckId): { skip: bo
  * SKIPPED (not failed) because the dim's author hasn't promised a specific
  * production path yet. This is the migration-friendly default. Once the
  * `danteforge harden migrate` walkthrough runs, every dim will have one.
+ *
+ * Phase M.1 (docs/PRDs/autonomous-frontier-reaching.md section 4): the check
+ * now consults SearchEngine.findImports(symbol). The legacy inline grep+readFile
+ * path is preserved as `_legacyOrphanAudit` and exercised by the parity test
+ * `tests/search-orphan-parity.test.ts` to verify zero behavioral divergence.
  */
 export async function checkOrphanAudit(
   dim: MatrixDimension,
   cwd: string,
   io: CheckIO = defaultIO(),
+  searchEngine?: import('../search/types.js').SearchEngine,
 ): Promise<HardenCheckResult> {
   const start = Date.now();
   const skip = shouldSkipCheck(dim, 'orphan-audit');
@@ -110,23 +116,97 @@ export async function checkOrphanAudit(
     };
   }
 
+  // Phase M.1 path: use SearchEngine if injected; otherwise fall back to the
+  // legacy inline grep path. Both produce identical findings (enforced by parity test).
+  if (searchEngine && callsite.symbol) {
+    const findings = await _searchEngineOrphanAudit(callsite, cwd, searchEngine);
+    return {
+      check: 'orphan-audit',
+      passed: findings.length === 0,
+      durationMs: Date.now() - start,
+      findings,
+      scoreCap: HARDEN_CHECK_CAPS['orphan-audit'],
+    };
+  }
+
+  const findings = await _legacyOrphanAudit(callsite, cwd, io);
+  return {
+    check: 'orphan-audit',
+    passed: findings.length === 0,
+    durationMs: Date.now() - start,
+    findings,
+    scoreCap: HARDEN_CHECK_CAPS['orphan-audit'],
+  };
+}
+
+/**
+ * SearchEngine-backed orphan audit (Phase M.1). Uses findImports to locate
+ * production import sites of the callsite module. Identical semantics to
+ * `_legacyOrphanAudit`; the parity test asserts findings match.
+ */
+async function _searchEngineOrphanAudit(
+  callsite: { file: string; symbol: string; lineHint?: number },
+  cwd: string,
+  engine: import('../search/types.js').SearchEngine,
+): Promise<HardenFinding[]> {
+  const baseName = path.basename(callsite.file).replace(/\.tsx?$/, '');
+  // Find every production-code import of the symbol. The SearchEngine excludes
+  // test files by default (matches legacy behavior).
+  await engine.index(cwd).catch(() => undefined); // best-effort, idempotent
+  const importsOfSymbol = await engine.findImports(callsite.symbol);
+  // Also find imports of the module (basename match) — covers re-export or
+  // namespace imports where the symbol name doesn't appear in the import statement.
+  const importsOfModule = await engine.findPattern(
+    `(?:from|import)\\s*\\(?\\s*['\"][^'\"]*[/\\\\]${escapeForRegex(baseName)}(?:\\.[a-z]+)?['\"]`,
+  );
+  // Exclude the callsite file itself (a module trivially "imports" its own exports).
+  const callsitePath = path.normalize(callsite.file).replace(/\\/g, '/');
+  const importHits = importsOfModule.filter(m => normalizeRel(m.file) !== callsitePath);
+  const symbolHits = importsOfSymbol.filter(m => normalizeRel(m.file) !== callsitePath);
+
+  if (importHits.length === 0 && symbolHits.length === 0) {
+    return [{
+      file: callsite.file,
+      line: callsite.lineHint ?? 1,
+      snippet: `${callsite.file}::${callsite.symbol}`,
+      reason: `Orphan module: 0 production files import this callsite. Tests pass but nothing reaches the code.`,
+    }];
+  }
+  return [];
+}
+
+function escapeForRegex(s: string): string {
+  return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+function normalizeRel(p: string): string {
+  return p.replace(/\\/g, '/').replace(/^\.\//, '').replace(/^src\//, 'src/');
+}
+
+/**
+ * Legacy orphan audit — inline grep + readFile path. Preserved for the
+ * parity test (`tests/search-orphan-parity.test.ts`) which verifies the new
+ * SearchEngine path produces identical findings on a fixture repo.
+ *
+ * Do not remove without updating the parity test; the legacy path is the
+ * ground truth that the new path must match.
+ */
+async function _legacyOrphanAudit(
+  callsite: { file: string; symbol: string; lineHint?: number },
+  cwd: string,
+  io: CheckIO,
+): Promise<HardenFinding[]> {
   const findings: HardenFinding[] = [];
   const moduleSpec = callsite.file
     .replace(/\.tsx?$/, '')
     .replace(/^src\//, '')
     .replace(/^\.\//, '');
 
-  // grep the source tree for any production import of this module/symbol.
-  // We accept either `from '...<moduleSpec>...'` or `import('...<moduleSpec>...')`.
   const cwdSrc = path.join(cwd, 'src');
   const allFiles = await io.listFiles(cwdSrc, /\.tsx?$/);
-  // Cross-platform tests/ filter: accept both forward and backslash separators.
   const productionFiles = allFiles.filter(f => !/[/\\]tests[/\\]/.test(f));
 
   const moduleNeedle = moduleSpec.replace(/[/\\]/g, '[/\\\\]');
-  // The file's basename (e.g. `error-lookup` for `src/cli/commands/error-lookup.ts`)
-  // is a secondary needle so relative imports from sibling files match
-  // (e.g. `await import('./commands/error-lookup.js')` from register-late-commands.ts).
   const baseName = path.basename(callsite.file).replace(/\.tsx?$/, '');
   const escapedBase = baseName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
   const importRe = new RegExp(
@@ -140,7 +220,6 @@ export async function checkOrphanAudit(
   let importHits = 0;
   let symbolHits = 0;
   for (const f of productionFiles) {
-    // Skip the callsite file itself (a module always "imports" its own exports).
     if (path.resolve(f) === path.resolve(path.join(cwd, callsite.file))) continue;
     try {
       const content = await io.readFile(f);
@@ -158,15 +237,11 @@ export async function checkOrphanAudit(
       reason: `Orphan module: 0 production files import this callsite. Tests pass but nothing reaches the code.`,
     });
   }
-
-  return {
-    check: 'orphan-audit',
-    passed: findings.length === 0,
-    durationMs: Date.now() - start,
-    findings,
-    scoreCap: HARDEN_CHECK_CAPS['orphan-audit'],
-  };
+  return findings;
 }
+
+/** Exposed for parity testing only. Not for production use. */
+export const __test_legacyOrphanAudit = _legacyOrphanAudit;
 
 // ── Check 2: claim-auditor ───────────────────────────────────────────────────
 
