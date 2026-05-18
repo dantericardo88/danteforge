@@ -689,6 +689,36 @@ Examples:
   });
 
 program
+  .command('mcp-tools [name]')
+  .description('List MCP tools exposed by the DanteForge server. Used by Claude Code / Codex / DanteCode.')
+  .option('--json', 'Machine-readable JSON output')
+  .option('--category <name>', 'Filter by category (Scoring, Gates, Workflow, etc.)')
+  .option('--query <text>', 'Filter by name/description substring')
+  .addHelpText('after', `
+Examples:
+  danteforge mcp-tools                              List all tools grouped by category
+  danteforge mcp-tools --category Scoring           Filter by category
+  danteforge mcp-tools --query lessons              Substring filter
+  danteforge mcp-tools danteforge_score --json      Detailed schema for one tool
+`)
+  .action((name: string | undefined, opts) => {
+    void (async () => {
+      try {
+        const { runMcpTools } = await import('./commands/mcp-tools.js');
+        await runMcpTools(name, {
+          json: opts.json as boolean | undefined,
+          category: opts.category as string | undefined,
+          query: opts.query as string | undefined,
+        });
+      } catch (err) {
+        const { formatAndLogError } = await import('../core/format-error.js');
+        formatAndLogError(err, 'mcp-tools');
+        process.exitCode = 1;
+      }
+    })();
+  });
+
+program
   .command('error-lookup [code]')
   .description('Look up DanteForge error codes (DF-SETUP-001, etc.) and their remedies. List all codes with no argument.')
   .option('--json', 'Output machine-readable JSON')
