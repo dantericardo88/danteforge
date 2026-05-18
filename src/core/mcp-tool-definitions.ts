@@ -677,4 +677,82 @@ export const TOOL_DEFINITIONS: ToolDefinition[] = [
       required: ['goal'],
     },
   },
+  // ── Phase L: search primitive ─────────────────────────────────────────────
+  {
+    name: 'danteforge_search_find_pattern',
+    description: 'Free-form regex pattern search across the project. Returns every matching line. Used by substrate gates (claim-auditor, hardcoded-fallback) and agent code inspection.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        pattern: { type: 'string', description: 'Regular expression to search for' },
+        glob: { type: 'string', description: 'Optional file glob filter (e.g. "src/**/*.ts")' },
+        includeTests: { type: 'boolean', description: 'Include test files in results (default false)' },
+        maxResults: { type: 'number', description: 'Maximum matches to return (default 1000)' },
+        cwd: { type: 'string', description: 'Working directory (defaults to cwd)' },
+      },
+      required: ['pattern'],
+    },
+  },
+  {
+    name: 'danteforge_search_find_symbol',
+    description: 'Find declarations of a symbol (function, class, interface, etc) across the project. Returns file + line + kind + exported status.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        symbol: { type: 'string', description: 'Symbol name to locate declarations of' },
+        glob: { type: 'string', description: 'Optional file glob filter' },
+        includeTests: { type: 'boolean', description: 'Include test files (default false)' },
+        cwd: { type: 'string', description: 'Working directory (defaults to cwd)' },
+      },
+      required: ['symbol'],
+    },
+  },
+  {
+    name: 'danteforge_search_find_imports',
+    description: 'Find production-code imports of a symbol. Excludes test files by default. Used by orphan-audit and import-resolves harden checks.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        symbol: { type: 'string', description: 'Symbol name to find imports of' },
+        includeTests: { type: 'boolean', description: 'Include test files (default false)' },
+        cwd: { type: 'string', description: 'Working directory (defaults to cwd)' },
+      },
+      required: ['symbol'],
+    },
+  },
+  // ── Phase N-Q: research mode (read-only) ──────────────────────────────────
+  {
+    name: 'danteforge_research_get_status',
+    description: 'Project-wide research-mode summary: total waves, outcomes by kind, capped dims, pending conflicts, in-progress waves.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        cwd: { type: 'string', description: 'Working directory (defaults to cwd)' },
+      },
+      required: [],
+    },
+  },
+  {
+    name: 'danteforge_research_get_history',
+    description: 'Prior research waves for a specific dimension, in chronological order. Includes outcome (promote/conflict/cap) and reason per wave.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        dimensionId: { type: 'string', description: 'Dimension id to fetch history for' },
+        cwd: { type: 'string', description: 'Working directory (defaults to cwd)' },
+      },
+      required: ['dimensionId'],
+    },
+  },
+  {
+    name: 'danteforge_research_get_caps',
+    description: 'List dimensions marked architecturally capped via research wave outcome. Returns dimensionId + structural cap reason.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        cwd: { type: 'string', description: 'Working directory (defaults to cwd)' },
+      },
+      required: [],
+    },
+  },
 ];

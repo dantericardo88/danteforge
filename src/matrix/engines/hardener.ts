@@ -819,9 +819,10 @@ const DEFAULT_CHECKS: HardenCheckId[] = [
 
 async function runOneCheck(
   id: HardenCheckId, dim: MatrixDimension, cwd: string, io: CheckIO,
+  searchEngine?: import('../search/types.js').SearchEngine,
 ): Promise<HardenCheckResult> {
   switch (id) {
-    case 'orphan-audit': return checkOrphanAudit(dim, cwd, io);
+    case 'orphan-audit': return checkOrphanAudit(dim, cwd, io, searchEngine);
     case 'claim-auditor': return checkClaimAuditor(dim, cwd, io);
     case 'hardcoded-fallback': return checkHardcodedFallback(dim, cwd, io);
     case 'import-resolves': return checkImportResolves(dim, cwd, io);
@@ -838,7 +839,7 @@ export async function runHardenGate(options: RunHardenGateOptions): Promise<Hard
   const results: HardenCheckResult[] = [];
   for (const id of checksToRun) {
     const override = options._check?.[id];
-    const result = override ? await override(dim, cwd) : await runOneCheck(id, dim, cwd, io);
+    const result = override ? await override(dim, cwd) : await runOneCheck(id, dim, cwd, io, options._searchEngine);
     results.push(result);
   }
 

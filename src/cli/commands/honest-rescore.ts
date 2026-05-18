@@ -404,7 +404,7 @@ async function recordHonestRescoreCommit(
  * state.wavesSinceLastRegrade and refuses to start when >3 unless the operator
  * runs this command.
  */
-async function runRegradeMode(opts: { json?: boolean; cwd?: string }): Promise<void> {
+async function runRegradeMode(opts: { json?: boolean; cwd?: string; indexFresh?: boolean }): Promise<void> {
   const cwd = opts.cwd ?? process.cwd();
   const { loadMatrix } = await import('../../core/compete-matrix.js');
   const { loadState, saveState } = await import('../../core/state.js');
@@ -416,8 +416,24 @@ async function runRegradeMode(opts: { json?: boolean; cwd?: string }): Promise<v
   const state = await loadState({ cwd });
   const reportRows: Array<{ id: string; current: number; allowed: boolean; cappedAt: number; failedChecks: string[] }> = [];
 
+  // Phase M.5 (PRD section 4): --regrade rebuilds the search index fresh on
+  // every run. Default behavior is now index-fresh because regrade IS the
+  // skeptic look — caching a stale view of the codebase defeats the purpose.
+  // Pass --no-index-fresh to opt out (e.g. for forensic replay against a
+  // historical SHA where the index would have been built fresh anyway).
+  const indexFresh = opts.indexFresh ?? true;
+  let searchEngine: import('../../matrix/search/types.js').SearchEngine | undefined;
+  if (indexFresh) {
+    const { createSearchEngine } = await import('../../matrix/search/factory.js');
+    searchEngine = createSearchEngine();
+    await searchEngine.index(cwd, { forceCold: true });
+  }
+
   for (const dim of matrix.dimensions) {
-    const verdict = await runHardenGate({ dimensionId: dim.id, dim, cwd, _noWrite: true });
+    const verdict = await runHardenGate({
+      dimensionId: dim.id, dim, cwd, _noWrite: true,
+      ...(searchEngine ? { _searchEngine: searchEngine } : {}),
+    });
     const failedChecks = verdict.checks.filter(c => !c.passed && !c.skipped).map(c => c.check);
     reportRows.push({
       id: dim.id,
@@ -477,9 +493,15 @@ function pct(n: number): string {
   return chalk.red(n.toFixed(2));
 }
 
-export async function runHonestRescoreCommand(opts: { json?: boolean; cwd?: string; regrade?: boolean } = {}): Promise<void> {
+export async function runHonestRescoreCommand(
+  opts: { json?: boolean; cwd?: string; regrade?: boolean; indexFresh?: boolean } = {},
+): Promise<void> {
   if (opts.regrade) {
-    await runRegradeMode(opts);
+    await runRegradeMode({
+      ...(opts.json !== undefined ? { json: opts.json } : {}),
+      ...(opts.cwd !== undefined ? { cwd: opts.cwd } : {}),
+      ...(opts.indexFresh !== undefined ? { indexFresh: opts.indexFresh } : {}),
+    });
     return;
   }
 

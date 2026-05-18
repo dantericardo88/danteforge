@@ -1248,17 +1248,26 @@ program
   .description('Reality-check the competitive matrix against runtime evidence. Writes a .honest.json file, never mutates matrix.json.')
   .option('--json', 'Machine-readable JSON output')
   .option('--regrade', 'Mandatory skeptic regrade: run harden gate against every dim, reset wavesSinceLastRegrade')
+  .option('--index-fresh', 'Force fresh search index for regrade (Phase M.5; default: true)', true)
+  .option('--no-index-fresh', 'Skip fresh-indexing for forensic replay against historical SHA')
   .option('--cwd <path>', 'Project directory (defaults to cwd)')
   .addHelpText('after', `
 Examples:
-  danteforge honest-rescore                Reality-check the current matrix
-  danteforge honest-rescore --json         Machine-readable output for CI
+  danteforge honest-rescore                          Reality-check the current matrix
+  danteforge honest-rescore --json                   Machine-readable output for CI
+  danteforge honest-rescore --regrade                Skeptic regrade (default index-fresh)
+  danteforge honest-rescore --regrade --no-index-fresh   Skip fresh index (forensic replay)
   danteforge honest-rescore --cwd ../DanteAgents
 
 Reads .danteforge/runtime-evidence/<sha>-<tier>.json files (run danteforge probe
 first) and applies the Capability Ladder tier caps. Writes:
   .danteforge/compete/matrix.honest.json    Copy with self scores clamped
   .danteforge/compete/matrix.honest.diff.md Per-dimension diff report
+
+--regrade (Phase M.5): rebuilds the SearchEngine index fresh on every run so
+the skeptic regrade sees the current SHA's code without cached lookups from
+prior waves. The whole point of regrade is a skeptic look — caching is
+hostile to that.
 
 matrix.json itself is NEVER modified. Operator must copy if satisfied.
 `)
@@ -1269,6 +1278,7 @@ matrix.json itself is NEVER modified. Operator must copy if satisfied.
         await runHonestRescoreCommand({
           json: opts.json as boolean | undefined,
           regrade: opts.regrade as boolean | undefined,
+          indexFresh: opts.indexFresh as boolean | undefined,
           cwd: opts.cwd as string | undefined,
         });
       } catch (err) {

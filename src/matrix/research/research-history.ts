@@ -144,6 +144,72 @@ export async function getFailedHypotheses(
 }
 
 /**
+ * Phase Q.4 (PRD section 8.4): append a research lesson to `.danteforge/lessons.md`.
+ * Tagged with `[Research]` so future agents can filter feed-forward.
+ *
+ * Idempotent within a wave: re-appending the same lesson is OK (lessons.md is
+ * an audit log, not a deduplicated store). Operator review tooling can dedup
+ * if needed.
+ */
+export async function appendResearchLesson(
+  cwd: string,
+  waveId: string,
+  dimensionId: string,
+  outcome: ResearchWaveOutcome,
+  lesson: string,
+): Promise<void> {
+  const ts = new Date().toISOString();
+  const entry = `\n## [Research] ${ts} — ${dimensionId} — wave ${waveId} (${outcome ?? 'unknown'})\n\n${lesson.trim()}\n`;
+  const lessonsPath = path.join(cwd, '.danteforge', 'lessons.md');
+  try {
+    await fs.mkdir(path.dirname(lessonsPath), { recursive: true });
+    // Append; create the file if it doesn't exist.
+    await fs.appendFile(lessonsPath, entry, 'utf8');
+  } catch {
+    // best-effort; lessons append never blocks the wave
+  }
+}
+
+/**
+ * Phase Q.2 (PRD section 8.2): produce a feed-forward summary for the NEXT
+ * wave on this dim. The wave's coordinator includes this in the shared
+ * context so every agent sees what's been tried.
+ *
+ * Returns a markdown string ready to write to `shared/prior-research-summary.md`.
+ * Safe-empty: returns an "(no prior research)" stub when no waves exist.
+ */
+export async function buildPriorResearchSummary(
+  cwd: string,
+  dimensionId: string,
+): Promise<string> {
+  const waves = await getPriorResearch(cwd, dimensionId);
+  if (waves.length === 0) {
+    return `# Prior research on ${dimensionId}\n\n(no prior research waves)\n`;
+  }
+  const lines: string[] = [
+    `# Prior research on ${dimensionId}`,
+    '',
+    `${waves.length} prior wave(s):`,
+    '',
+  ];
+  for (const w of waves) {
+    lines.push(`## Wave ${w.waveId} — ${w.startedAt} — outcome: ${w.outcome ?? 'unknown'}`);
+    if (w.reason) lines.push('', w.reason);
+    lines.push('');
+  }
+  const failedHypotheses = await getFailedHypotheses(cwd, dimensionId);
+  if (failedHypotheses.length > 0) {
+    lines.push('## Failed hypotheses (DO NOT re-attempt without operator override)');
+    lines.push('');
+    for (const fh of failedHypotheses) {
+      lines.push(`- **${fh.description}** (wave ${fh.waveId}, ${fh.failedAt}): ${fh.failureReason}`);
+    }
+    lines.push('');
+  }
+  return lines.join('\n');
+}
+
+/**
  * Project-wide research summary. Aggregates wave counts and current state.
  */
 export async function getResearchSummary(cwd: string): Promise<ResearchProjectSummary> {

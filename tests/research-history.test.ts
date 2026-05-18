@@ -7,6 +7,8 @@ import os from 'node:os';
 import path from 'node:path';
 import fs from 'node:fs/promises';
 import {
+  appendResearchLesson,
+  buildPriorResearchSummary,
   getPriorResearch,
   getStructuralCaps,
   getResearchSummary,
@@ -90,6 +92,62 @@ describe('research-history — populated state', () => {
       assert.equal(caps.length, 1);
       assert.equal(caps[0]!.dimensionId, 'community_adoption');
       assert.match(caps[0]!.reason, /external users/);
+    } finally {
+      await fs.rm(cwd, { recursive: true, force: true });
+    }
+  });
+
+  it('appendResearchLesson writes to .danteforge/lessons.md with [Research] prefix', async () => {
+    const cwd = await mkCwd();
+    try {
+      await appendResearchLesson(cwd, 'w1', 'testing', 'cap', 'Cannot reach T4 without exchange-licensed feeds.');
+      const lessonsPath = path.join(cwd, '.danteforge', 'lessons.md');
+      const content = await fs.readFile(lessonsPath, 'utf8');
+      assert.match(content, /\[Research\] /);
+      assert.match(content, /testing/);
+      assert.match(content, /wave w1/);
+      assert.match(content, /\(cap\)/);
+      assert.match(content, /Cannot reach T4/);
+    } finally {
+      await fs.rm(cwd, { recursive: true, force: true });
+    }
+  });
+
+  it('appendResearchLesson is append-only (does not overwrite)', async () => {
+    const cwd = await mkCwd();
+    try {
+      await appendResearchLesson(cwd, 'w1', 'testing', 'cap', 'First lesson.');
+      await appendResearchLesson(cwd, 'w2', 'testing', 'promote', 'Second lesson.');
+      const content = await fs.readFile(path.join(cwd, '.danteforge', 'lessons.md'), 'utf8');
+      assert.match(content, /First lesson/);
+      assert.match(content, /Second lesson/);
+    } finally {
+      await fs.rm(cwd, { recursive: true, force: true });
+    }
+  });
+
+  it('buildPriorResearchSummary returns safe-empty when no waves exist', async () => {
+    const cwd = await mkCwd();
+    try {
+      const md = await buildPriorResearchSummary(cwd, 'testing');
+      assert.match(md, /no prior research waves/);
+    } finally {
+      await fs.rm(cwd, { recursive: true, force: true });
+    }
+  });
+
+  it('buildPriorResearchSummary surfaces wave history when waves exist', async () => {
+    const cwd = await mkCwd();
+    try {
+      await seedWave(cwd, 'wave-prior', {
+        dimensionId: 'testing',
+        startedAt: '2026-05-18T00:00:00Z',
+        outcome: 'cap',
+        reason: 'requires real users',
+      });
+      const md = await buildPriorResearchSummary(cwd, 'testing');
+      assert.match(md, /wave-prior/);
+      assert.match(md, /requires real users/);
     } finally {
       await fs.rm(cwd, { recursive: true, force: true });
     }

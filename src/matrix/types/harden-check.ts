@@ -126,6 +126,13 @@ export interface RunHardenGateOptions {
    * disable in tests; undefined (the default) lazy-imports the real function.
    */
   _createTimeMachineCommit?: ((opts: import('../../core/time-machine.js').CreateTimeMachineCommitOptions) => Promise<unknown>) | null;
+  /**
+   * Phase M.1 / M.5: when provided, the orphan-audit check uses
+   * SearchEngine.findImports for its symbol lookup. Honest-rescore --regrade
+   * passes a fresh-index engine here so the regrade sees the current SHA's
+   * code without cached lookups from a previous wave.
+   */
+  _searchEngine?: import('../search/types.js').SearchEngine;
 }
 
 // ── Helpers ──────────────────────────────────────────────────────────────────

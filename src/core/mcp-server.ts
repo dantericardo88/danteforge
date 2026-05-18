@@ -37,6 +37,12 @@ import {
   handleEnsureUniverseReady,
   handleCanonicalCompetitors,
   handleCompeteReset,
+  handleSearchFindPattern,
+  handleSearchFindSymbol,
+  handleSearchFindImports,
+  handleResearchGetStatus,
+  handleResearchGetHistory,
+  handleResearchGetCaps,
 } from './mcp-extended-handlers.js';
 
 // ---------------------------------------------------------------------------
@@ -572,7 +578,13 @@ export type ToolName =
   | 'danteforge_adversarial_score'
   | 'danteforge_convergence_status'
   | 'danteforge_git_activity'
-  | 'danteforge_health';
+  | 'danteforge_health'
+  | 'danteforge_search_find_pattern'
+  | 'danteforge_search_find_symbol'
+  | 'danteforge_search_find_imports'
+  | 'danteforge_research_get_status'
+  | 'danteforge_research_get_history'
+  | 'danteforge_research_get_caps';
 
 // ---------------------------------------------------------------------------
 // New injectable tool handlers
@@ -806,6 +818,14 @@ export const TOOL_HANDLERS: Record<string, ToolHandler> = {
   danteforge_convergence_status: (args) => handleConvergenceStatus(args),
   danteforge_git_activity: (args) => handleGitActivity(args),
   danteforge_health: (args) => handleHealth(args),
+  // Phase L: search primitive
+  danteforge_search_find_pattern: (args) => handleSearchFindPattern(args),
+  danteforge_search_find_symbol: (args) => handleSearchFindSymbol(args),
+  danteforge_search_find_imports: (args) => handleSearchFindImports(args),
+  // Phase N-Q: research mode (read-only)
+  danteforge_research_get_status: (args) => handleResearchGetStatus(args),
+  danteforge_research_get_history: (args) => handleResearchGetHistory(args),
+  danteforge_research_get_caps: (args) => handleResearchGetCaps(args),
   danteforge_security_scan: async (args) => {
     try {
       const { runSecurityCourt } = await import('../matrix/courts/security-red-team.js');

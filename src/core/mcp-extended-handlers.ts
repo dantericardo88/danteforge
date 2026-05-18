@@ -663,4 +663,97 @@ export async function handleCompeteReset(
   }
 }
 
+// ─── Phase L: search primitive handlers ─────────────────────────────────────
+
+export async function handleSearchFindPattern(args: Record<string, unknown>): Promise<ToolResult> {
+  const cwd = resolveCwd(args);
+  try {
+    const pattern = args.pattern as string;
+    if (!pattern) return errorResult('search_find_pattern: pattern is required');
+    const { createSearchEngine } = await import('../matrix/search/factory.js');
+    const engine = createSearchEngine();
+    await engine.index(cwd).catch(() => undefined);
+    const opts: Record<string, unknown> = {};
+    if (typeof args.glob === 'string') opts.glob = args.glob;
+    if (typeof args.includeTests === 'boolean') opts.includeTests = args.includeTests;
+    if (typeof args.maxResults === 'number') opts.maxResults = args.maxResults;
+    const matches = await engine.findPattern(pattern, opts);
+    return jsonResult({ pattern, matches, count: matches.length });
+  } catch (err) {
+    return errorResult(`search_find_pattern failed: ${err instanceof Error ? err.message : String(err)}`);
+  }
+}
+
+export async function handleSearchFindSymbol(args: Record<string, unknown>): Promise<ToolResult> {
+  const cwd = resolveCwd(args);
+  try {
+    const symbol = args.symbol as string;
+    if (!symbol) return errorResult('search_find_symbol: symbol is required');
+    const { createSearchEngine } = await import('../matrix/search/factory.js');
+    const engine = createSearchEngine();
+    await engine.index(cwd).catch(() => undefined);
+    const opts: Record<string, unknown> = {};
+    if (typeof args.glob === 'string') opts.glob = args.glob;
+    if (typeof args.includeTests === 'boolean') opts.includeTests = args.includeTests;
+    const matches = await engine.findSymbol(symbol, opts);
+    return jsonResult({ symbol, matches, count: matches.length });
+  } catch (err) {
+    return errorResult(`search_find_symbol failed: ${err instanceof Error ? err.message : String(err)}`);
+  }
+}
+
+export async function handleSearchFindImports(args: Record<string, unknown>): Promise<ToolResult> {
+  const cwd = resolveCwd(args);
+  try {
+    const symbol = args.symbol as string;
+    if (!symbol) return errorResult('search_find_imports: symbol is required');
+    const { createSearchEngine } = await import('../matrix/search/factory.js');
+    const engine = createSearchEngine();
+    await engine.index(cwd).catch(() => undefined);
+    const opts: Record<string, unknown> = {};
+    if (typeof args.includeTests === 'boolean') opts.includeTests = args.includeTests;
+    const matches = await engine.findImports(symbol, opts);
+    return jsonResult({ symbol, matches, count: matches.length });
+  } catch (err) {
+    return errorResult(`search_find_imports failed: ${err instanceof Error ? err.message : String(err)}`);
+  }
+}
+
+// ─── Phase N-Q: research mode handlers (read-only) ──────────────────────────
+
+export async function handleResearchGetStatus(args: Record<string, unknown>): Promise<ToolResult> {
+  const cwd = resolveCwd(args);
+  try {
+    const { getResearchSummary } = await import('../matrix/research/research-history.js');
+    const summary = await getResearchSummary(cwd);
+    return jsonResult(summary);
+  } catch (err) {
+    return errorResult(`research_get_status failed: ${err instanceof Error ? err.message : String(err)}`);
+  }
+}
+
+export async function handleResearchGetHistory(args: Record<string, unknown>): Promise<ToolResult> {
+  const cwd = resolveCwd(args);
+  try {
+    const dimensionId = args.dimensionId as string;
+    if (!dimensionId) return errorResult('research_get_history: dimensionId is required');
+    const { getPriorResearch } = await import('../matrix/research/research-history.js');
+    const waves = await getPriorResearch(cwd, dimensionId);
+    return jsonResult({ dimensionId, waves, count: waves.length });
+  } catch (err) {
+    return errorResult(`research_get_history failed: ${err instanceof Error ? err.message : String(err)}`);
+  }
+}
+
+export async function handleResearchGetCaps(args: Record<string, unknown>): Promise<ToolResult> {
+  const cwd = resolveCwd(args);
+  try {
+    const { getStructuralCaps } = await import('../matrix/research/research-history.js');
+    const caps = await getStructuralCaps(cwd);
+    return jsonResult({ caps, count: caps.length });
+  } catch (err) {
+    return errorResult(`research_get_caps failed: ${err instanceof Error ? err.message : String(err)}`);
+  }
+}
+
 // ---------------------------------------------------------------------------
