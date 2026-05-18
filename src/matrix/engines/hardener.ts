@@ -659,7 +659,38 @@ export async function runHardenGate(options: RunHardenGateOptions): Promise<Hard
     }
   }
 
+  // Phase H Time Machine integration: record the verdict as a causal node.
+  // Best-effort — TM failures never block harden-gate work. Mirrors the
+  // matrix-development-engine.ts:333-345 pattern.
+  await recordHardenVerdictCommit(verdict, cwd, options._createTimeMachineCommit, options._noWrite);
+
   return verdict;
+}
+
+async function recordHardenVerdictCommit(
+  verdict: HardenVerdict,
+  cwd: string,
+  override: RunHardenGateOptions['_createTimeMachineCommit'],
+  noWrite?: boolean,
+): Promise<void> {
+  if (override === null) return;
+  if (noWrite) return; // suppress when we're not writing receipts (test path)
+  try {
+    const createFn = override
+      ?? (await import('../../core/time-machine.js')).createTimeMachineCommit;
+    const failed = verdict.checks.filter(c => !c.passed && !c.skipped).map(c => c.check);
+    await createFn({
+      cwd,
+      paths: verdict.evidencePath ? [verdict.evidencePath] : [],
+      label: `harden-verdict/${verdict.dimensionId}/${verdict.allowed ? 'allowed' : `blocked-by-${failed.join('+')}`}`,
+      causalLinks: {
+        materials: verdict.evidencePath ? [verdict.evidencePath] : [],
+        inputDependencies: [],
+      },
+    });
+  } catch {
+    // best-effort
+  }
 }
 
 async function currentGitSha(cwd: string): Promise<string | null> {

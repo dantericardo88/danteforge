@@ -30,6 +30,29 @@ export interface RunFrontierOptions {
 
 const DISPENSATION_DIR = path.join('.danteforge', 'score-proposals', 'dispensations');
 
+async function recordFrontierTransition(cwd: string, newTerminal: string, summary: string): Promise<void> {
+  try {
+    const { loadState, saveState } = await import('../../core/state.js');
+    const state = await loadState({ cwd });
+    const prior = (state as unknown as Record<string, unknown>)['lastFrontierTerminal'] as string | undefined;
+    if (prior === newTerminal) return; // No transition.
+    (state as unknown as Record<string, unknown>)['lastFrontierTerminal'] = newTerminal;
+    await saveState(state, { cwd });
+    if (prior) {
+      try {
+        const { createTimeMachineCommit } = await import('../../core/time-machine.js');
+        await createTimeMachineCommit({
+          cwd,
+          paths: [],
+          label: `frontier-transition/${prior}->${newTerminal}`,
+          causalLinks: { materials: [], inputDependencies: [] },
+        });
+      } catch { /* best-effort */ }
+    }
+    void summary;
+  } catch { /* best-effort — state errors don't change the report */ }
+}
+
 async function loadDispensations(cwd: string): Promise<Record<string, string[]>> {
   const dir = path.join(cwd, DISPENSATION_DIR);
   let entries: string[];
@@ -94,6 +117,11 @@ export async function runFrontierCommand(options: RunFrontierOptions = {}): Prom
     dispensations,
     stuckThreshold: options.stuckThreshold,
   });
+
+  // Phase H Time Machine integration: record terminal-state transitions as
+  // causal commits. Reads the prior terminal from DanteState; updates it
+  // after recording. Best-effort — TM failures don't change the report.
+  await recordFrontierTransition(cwd, state.terminal, state.summary);
 
   if (options.json) {
     process.stdout.write(JSON.stringify(state, null, 2) + '\n');

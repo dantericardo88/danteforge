@@ -147,6 +147,9 @@ export interface DanteState {
   wavesSinceLastRegrade?: number;
   /** ISO timestamp of the last skeptic-subagent regrade. */
   lastRegradeAt?: string;
+  // Phase H — Outcome-derived substrate
+  /** Last project-level frontier terminal seen. Drives Time Machine transition commits. */
+  lastFrontierTerminal?: 'frontier-reached' | 'stuck-on-dims' | 'blocked-by-dispensations' | 'progressing';
 }
 
 export interface VerifyEvidence {
@@ -438,6 +441,9 @@ function buildLoadedState(
     providerCount: (parsed as Record<string, unknown> | undefined)?.['providerCount'] as number | undefined,
     wavesSinceLastRegrade: typeof parsed?.wavesSinceLastRegrade === 'number' ? parsed.wavesSinceLastRegrade : 0,
     lastRegradeAt: typeof parsed?.lastRegradeAt === 'string' ? parsed.lastRegradeAt : undefined,
+    lastFrontierTerminal: typeof parsed?.lastFrontierTerminal === 'string'
+      ? (parsed.lastFrontierTerminal as DanteState['lastFrontierTerminal'])
+      : undefined,
   } as DanteState;
 }
 

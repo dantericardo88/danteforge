@@ -621,27 +621,21 @@ async function actionSyncScores(options: CompeteOptions, cwd: string): Promise<C
   for (const d of report.driftedDimensions) {
     const dir = d.matrixScore > d.harshScore ? '↓' : '↑';
     logger.info(`  ${d.label}: ${formatScore(d.matrixScore)} → ${formatScore(d.harshScore)} (${dir})`);
-    if (options._loadMatrix || options._saveMatrix) {
-      updateDimensionScore(matrix, d.id, d.harshScore);
-    } else {
-      await writeScoreProposal({
-        cwd,
-        dimension: d.id,
-        score: d.harshScore,
-        agent: 'compete-sync-scores',
-        rationale: `Live strict scorer drift correction from ${formatScore(d.matrixScore)} to ${formatScore(d.harshScore)}.`,
-      });
-    }
+    // Always emit a proposal — the direct-write injection-seam branch was removed
+    // as part of closing the six bypasses (Phase E). Under outcome-derived scoring
+    // the score field is read-only at the storage layer.
+    await writeScoreProposal({
+      cwd,
+      dimension: d.id,
+      score: d.harshScore,
+      agent: 'compete-sync-scores',
+      rationale: `Live strict scorer drift correction from ${formatScore(d.matrixScore)} to ${formatScore(d.harshScore)}.`,
+    });
     updated++;
   }
 
-  if (options._loadMatrix || options._saveMatrix) {
-    matrix.lastUpdated = new Date().toISOString();
-    await saveFn(matrix, cwd);
-  } else {
-    await mergeScoreProposals({ cwd, policy: 'harsh-min', agent: 'compete-sync-scores' });
-  }
-  const updatedMatrix = (options._loadMatrix || options._saveMatrix) ? matrix : await loadMatrix(cwd) ?? matrix;
+  await mergeScoreProposals({ cwd, policy: 'harsh-min', agent: 'compete-sync-scores' });
+  const updatedMatrix = await loadMatrix(cwd) ?? matrix;
   logger.success(`Synced ${updated} dimension(s). Overall: ${formatScore(computeOverallScore(updatedMatrix))}/10`);
   return { action: 'validate', matrixPath, overallScore: computeOverallScore(updatedMatrix), dimensionsUpdated: updated };
 }

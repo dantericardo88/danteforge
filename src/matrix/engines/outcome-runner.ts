@@ -37,6 +37,14 @@ export interface RunOutcomeOptions {
   _writeFile?: (p: string, data: string) => Promise<void>;
   _mkdir?: (p: string) => Promise<void>;
   _exists?: (p: string) => Promise<boolean>;
+  /**
+   * Phase H Time Machine integration: injection seam for tests.
+   * Called best-effort after evidence is written. Production code uses the
+   * default `createTimeMachineCommit` from src/core/time-machine.ts.
+   * If undefined (the default), the runner lazy-imports the real function.
+   * A null/no-op function disables the integration (for tests).
+   */
+  _createTimeMachineCommit?: ((opts: import('../../core/time-machine.js').CreateTimeMachineCommitOptions) => Promise<unknown>) | null;
 }
 
 interface SpawnOpts {
@@ -67,6 +75,7 @@ export interface RunAllOutcomesOptions {
   _writeFile?: RunOutcomeOptions['_writeFile'];
   _mkdir?: RunOutcomeOptions['_mkdir'];
   _exists?: RunOutcomeOptions['_exists'];
+  _createTimeMachineCommit?: RunOutcomeOptions['_createTimeMachineCommit'];
   _onProgress?: (msg: string) => void;
 }
 
@@ -144,6 +153,7 @@ export async function runOneOutcome(options: RunOutcomeOptions): Promise<Outcome
     const result = await runProductionUsageFresh(freshOutcome, cwd);
     const entry = freshResultToEvidence(freshOutcome, options.dimensionId, result, gitSha, evidencePath, Date.now() - start);
     await writeFn(evidencePath, JSON.stringify(entry, null, 2));
+    await recordOutcomeEvidenceCommit(entry, cwd, options._createTimeMachineCommit);
     return entry;
   }
   // 'external-benchmark' and 'telemetry' fall through to shell mode for now (Phase H Slice 2 follow-up).
@@ -206,7 +216,40 @@ export async function runOneOutcome(options: RunOutcomeOptions): Promise<Outcome
   };
 
   await writeFn(evidencePath, JSON.stringify(entry, null, 2));
+  await recordOutcomeEvidenceCommit(entry, cwd, options._createTimeMachineCommit);
   return entry;
+}
+
+/**
+ * Best-effort Time Machine commit recording an outcome's evidence file.
+ * Mirrors the pattern from `matrix-development-engine.ts:333-345`. Crashes
+ * are swallowed — the substrate's score/outcome work must never block on the
+ * causal substrate. The integration is purely for traceability: future
+ * audits can reconstruct which evidence supported which derived-score
+ * computation by walking the Time Machine commit graph.
+ */
+async function recordOutcomeEvidenceCommit(
+  entry: OutcomeEvidenceEntry,
+  cwd: string,
+  override?: RunOutcomeOptions['_createTimeMachineCommit'],
+): Promise<void> {
+  // Explicit null disables (test seam); undefined falls through to real import.
+  if (override === null) return;
+  try {
+    const createFn = override
+      ?? (await import('../../core/time-machine.js')).createTimeMachineCommit;
+    await createFn({
+      cwd,
+      paths: [entry.evidencePath],
+      label: `outcome-evidence/${entry.dimensionId}/${entry.outcomeId}/${entry.tier}/${entry.passed ? 'pass' : 'fail'}`,
+      causalLinks: {
+        materials: [entry.evidencePath],
+        inputDependencies: [],
+      },
+    });
+  } catch {
+    // best-effort — TM failures never block outcome execution
+  }
 }
 
 // ── Run all outcomes across a set of dims ────────────────────────────────────
@@ -240,6 +283,7 @@ export async function runAllOutcomes(options: RunAllOutcomesOptions): Promise<Ru
         _writeFile: options._writeFile,
         _mkdir: options._mkdir,
         _exists: options._exists,
+        _createTimeMachineCommit: options._createTimeMachineCommit,
       });
       evidence.set(makeEvidenceKey(dim.id, outcome.id), entry);
       totalOutcomes++;

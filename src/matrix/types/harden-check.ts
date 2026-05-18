@@ -118,6 +118,12 @@ export interface RunHardenGateOptions {
   _check?: Partial<Record<HardenCheckId, (dim: MatrixDimension, cwd: string) => Promise<HardenCheckResult>>>;
   /** Skip writing the receipt file. */
   _noWrite?: boolean;
+  /**
+   * Phase H Time Machine integration injection seam. Best-effort commit on
+   * every verdict so audits can reconstruct gate decisions. Pass `null` to
+   * disable in tests; undefined (the default) lazy-imports the real function.
+   */
+  _createTimeMachineCommit?: ((opts: import('../../core/time-machine.js').CreateTimeMachineCommitOptions) => Promise<unknown>) | null;
 }
 
 // ── Helpers ──────────────────────────────────────────────────────────────────

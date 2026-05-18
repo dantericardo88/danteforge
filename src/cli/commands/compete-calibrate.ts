@@ -105,32 +105,26 @@ export async function actionCalibrate(options: CompeteOptions, cwd: string): Pro
     return { action: 'calibrate', matrixPath, overallScore: matrix.overallSelfScore, dimensionsUpdated: 0 };
   }
 
-  // Apply
+  // Apply via proposal-only path. The injection-seam branch that mutated matrix
+  // directly via applyAdversarialCalibration + saveMatrix was removed as part of
+  // closing the six bypass surfaces (Phase E). Under outcome-derived scoring
+  // the score field is read-only at the storage layer; all changes flow through
+  // proposals so they emit Time Machine commits and pass the harden gate.
   let updated = 0;
   for (const d of inflated) {
     const entry = adversarialByMatrixId.get(d.id)!;
-    if (options._loadMatrix || options._saveMatrix) {
-      const applied = applyAdversarialCalibration(matrix, d.id, entry.harsh, entry.adv, 'inflated', entry.rationale);
-      if (applied) updated++;
-    } else {
-      await writeScoreProposal({
-        cwd,
-        dimension: d.id,
-        score: d.after,
-        agent: 'compete-calibrate',
-        rationale: `Adversarial inflated verdict: ${entry.rationale}`,
-      });
-      updated++;
-    }
+    await writeScoreProposal({
+      cwd,
+      dimension: d.id,
+      score: d.after,
+      agent: 'compete-calibrate',
+      rationale: `Adversarial inflated verdict: ${entry.rationale}`,
+    });
+    updated++;
   }
 
-  if (options._loadMatrix || options._saveMatrix) {
-    matrix.lastUpdated = new Date().toISOString();
-    await saveFn(matrix, cwd);
-  } else {
-    await mergeScoreProposals({ cwd, policy: 'harsh-min', agent: 'compete-calibrate' });
-  }
-  const updatedMatrix = (options._loadMatrix || options._saveMatrix) ? matrix : await loadMatrix(cwd) ?? matrix;
+  await mergeScoreProposals({ cwd, policy: 'harsh-min', agent: 'compete-calibrate' });
+  const updatedMatrix = await loadMatrix(cwd) ?? matrix;
   logger.success(`Calibrated ${updated} dimension(s). Overall: ${formatScore(computeOverallScore(updatedMatrix))}/10`);
   return { action: 'calibrate', matrixPath, overallScore: computeOverallScore(updatedMatrix), dimensionsUpdated: updated };
 }
