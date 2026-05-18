@@ -62,8 +62,8 @@
     "Kilo Code",
     "Dagger"
   ],
-  "lastUpdated": "2026-05-18T09:00:00.000Z",
-  "overallSelfScore": 7.02,
+  "lastUpdated": "2026-05-18T12:00:00.000Z",
+  "overallSelfScore": 6.9,
   "excludedDimensions": [
     "community_adoption",
     "communityAdoption"
@@ -806,7 +806,7 @@
       "category": "ux",
       "frequency": "medium",
       "scores": {
-        "self": 7,
+        "self": 7.5,
         "Devin (Cognition AI)": 6.8,
         "GitHub Copilot Workspace": 7.5,
         "Cursor": 7.2,
@@ -836,7 +836,7 @@
         "Kilo Code": 6.8,
         "re_gent": 8.7
       },
-      "gap_to_leader": 2.2,
+      "gap_to_leader": 1.7,
       "leader": "Swimm",
       "gap_to_closed_source_leader": 2.2,
       "closed_source_leader": "Swimm",
@@ -852,18 +852,13 @@
         },
         {
           "dimensionId": "documentation",
-          "before": 9.9,
-          "after": 100,
-          "date": "2026-04-23"
-        },
-        {
-          "dimensionId": "documentation",
-          "before": 100,
-          "after": 10,
-          "date": "2026-04-23"
+          "before": 7,
+          "after": 7.5,
+          "date": "2026-05-18",
+          "notes": "Added changelog command (conventional commit → CHANGELOG.md) + 9 tests"
         }
       ],
-      "next_sprint_target": 7,
+      "next_sprint_target": 8,
       "harvest_source": "LangChain Agents",
       "capability_test": {
         "command": "node dist/index.js wiki-status 2>&1",

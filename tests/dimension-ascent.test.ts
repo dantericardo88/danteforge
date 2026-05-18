@@ -44,6 +44,10 @@ async function makeRepo(): Promise<string> {
       status: 'in-progress',
       sprint_history: [],
       next_sprint_target: 8,
+      capability_test: {
+        command: 'node -e "process.exit(0)"',
+        description: 'Test capability — always passes for ascent test fixture',
+      },
     }],
   };
   await fs.writeFile(path.join(root, '.danteforge', 'compete', 'matrix.json'), JSON.stringify(matrix, null, 2));

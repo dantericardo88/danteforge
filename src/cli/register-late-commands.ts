@@ -689,6 +689,41 @@ Examples:
   });
 
 program
+  .command('changelog')
+  .description('Auto-generate CHANGELOG entries from git conventional commits')
+  .option('--from <ref>', 'Starting git ref (default: last tag)')
+  .option('--to <ref>', 'Ending git ref (default: HEAD)', 'HEAD')
+  .option('--version <label>', 'Version label for the entry (default: YYYY-MM-DD-next)')
+  .option('--append', 'Append to CHANGELOG.md instead of showing dry-run')
+  .option('--dry', 'Print the entry without writing (default)', true)
+  .option('--cwd <path>', 'Project directory (defaults to cwd)')
+  .addHelpText('after', `
+Examples:
+  danteforge changelog                     Show what would be added (dry-run)
+  danteforge changelog --version 0.6.0 --append   Append to CHANGELOG.md
+  danteforge changelog --from v0.5.0 --to v0.6.0  Specific range
+`)
+  .action((opts) => {
+    void (async () => {
+      try {
+        const { runChangelog } = await import('./commands/changelog.js');
+        await runChangelog({
+          from: opts.from as string | undefined,
+          to: opts.to as string | undefined,
+          version: opts.version as string | undefined,
+          append: opts.append as boolean | undefined,
+          dry: !opts.append,
+          cwd: opts.cwd as string | undefined,
+        });
+      } catch (err) {
+        const { formatAndLogError } = await import('../core/format-error.js');
+        formatAndLogError(err, 'changelog');
+        process.exitCode = 1;
+      }
+    })();
+  });
+
+program
   .command('prime')
   .description('Generate .danteforge/PRIME.md â€” 200-word session brief for Claude Code')
   .option('--copy', 'Show clipboard copy hint after writing')
