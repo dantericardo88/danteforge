@@ -689,6 +689,79 @@ Examples:
   });
 
 program
+  .command('probe')
+  .description('Cold-build runtime probe — the T1 gate of the Capability Ladder. Auto-detects turbo/pnpm/lerna/npm.')
+  .option('--tier <name>', 'Probe tier (T0|T1|T2|T3-T6). Default T1 (cold compile).', 'T1')
+  .option('--json', 'Machine-readable JSON output')
+  .option('--no-cache', 'Force cold run even if cached evidence exists for this SHA', true)
+  .option('--timeout-ms <n>', 'Probe timeout (default 15 min)')
+  .option('--cwd <path>', 'Project directory (defaults to cwd)')
+  .addHelpText('after', `
+Examples:
+  danteforge probe                             Cold T1 build at repo root
+  danteforge probe --tier T2                   Run tests cold
+  danteforge probe --json > probe.json         Machine-readable output
+  danteforge probe --cwd ../DanteAgents        Probe a sibling project
+
+Evidence is written to .danteforge/runtime-evidence/<sha>-<tier>.json.
+The Capability Ladder gate caps any dimension score above:
+  T0=1.0  T1=4.0  T2=5.0  T3=6.0  T4=7.0  T5=8.0  T6=8.5
+`)
+  .action((opts) => {
+    void (async () => {
+      try {
+        const { runProbeCommand } = await import('./commands/probe.js');
+        await runProbeCommand({
+          tier: opts.tier as string | undefined,
+          json: opts.json as boolean | undefined,
+          forceCold: opts.noCache !== false,
+          noCache: opts.noCache !== false,
+          cwd: opts.cwd as string | undefined,
+          timeoutMs: opts.timeoutMs ? parseInt(opts.timeoutMs as string, 10) : undefined,
+        });
+      } catch (err) {
+        const { formatAndLogError } = await import('../core/format-error.js');
+        formatAndLogError(err, 'probe');
+        process.exitCode = 1;
+      }
+    })();
+  });
+
+program
+  .command('honest-rescore')
+  .description('Reality-check the competitive matrix against runtime evidence. Writes a .honest.json file, never mutates matrix.json.')
+  .option('--json', 'Machine-readable JSON output')
+  .option('--cwd <path>', 'Project directory (defaults to cwd)')
+  .addHelpText('after', `
+Examples:
+  danteforge honest-rescore                Reality-check the current matrix
+  danteforge honest-rescore --json         Machine-readable output for CI
+  danteforge honest-rescore --cwd ../DanteAgents
+
+Reads .danteforge/runtime-evidence/<sha>-<tier>.json files (run danteforge probe
+first) and applies the Capability Ladder tier caps. Writes:
+  .danteforge/compete/matrix.honest.json    Copy with self scores clamped
+  .danteforge/compete/matrix.honest.diff.md Per-dimension diff report
+
+matrix.json itself is NEVER modified. Operator must copy if satisfied.
+`)
+  .action((opts) => {
+    void (async () => {
+      try {
+        const { runHonestRescoreCommand } = await import('./commands/honest-rescore.js');
+        await runHonestRescoreCommand({
+          json: opts.json as boolean | undefined,
+          cwd: opts.cwd as string | undefined,
+        });
+      } catch (err) {
+        const { formatAndLogError } = await import('../core/format-error.js');
+        formatAndLogError(err, 'honest-rescore');
+        process.exitCode = 1;
+      }
+    })();
+  });
+
+program
   .command('mcp-tools [name]')
   .description('List MCP tools exposed by the DanteForge server. Used by Claude Code / Codex / DanteCode.')
   .option('--json', 'Machine-readable JSON output')

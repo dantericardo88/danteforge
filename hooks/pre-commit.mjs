@@ -43,6 +43,48 @@ if (matrixViolations.length > 0 && !process.env.DANTEFORGE_MATRIX_MERGE_RECEIPT)
   process.exit(1);
 }
 
+// ── Phase A: Runtime-evidence guard for matrix.json writes ──────────────────
+// If a kernel-authorized commit touches matrix.json, require fresh build evidence
+// no older than the matrix change. This blocks score inflation even when the
+// merge-receipt env is set, because the merge-receipt itself must be backed by
+// an honest probe. See plan §"Phase A — Project-local safety net".
+const matrixStaged = allStaged.some(f => f === '.danteforge/compete/matrix.json');
+if (matrixStaged && process.env.DANTEFORGE_MATRIX_MERGE_RECEIPT) {
+  const evidenceDir = path.join(process.cwd(), '.danteforge', 'runtime-evidence');
+  if (!fs.existsSync(evidenceDir)) {
+    console.error('[pre-commit] BLOCKED: matrix.json staged but no .danteforge/runtime-evidence/ directory.');
+    console.error('[pre-commit] Run `danteforge probe` first to produce build evidence.');
+    process.exit(1);
+  }
+  let stagedMatrixMtime;
+  try {
+    const matrixAbs = path.join(process.cwd(), '.danteforge', 'compete', 'matrix.json');
+    stagedMatrixMtime = fs.statSync(matrixAbs).mtimeMs;
+  } catch {
+    stagedMatrixMtime = Date.now();
+  }
+  let evidenceFiles = [];
+  try {
+    evidenceFiles = fs.readdirSync(evidenceDir).filter(f => f.endsWith('.json'));
+  } catch {
+    evidenceFiles = [];
+  }
+  const freshEvidence = evidenceFiles.some(f => {
+    try {
+      const mtime = fs.statSync(path.join(evidenceDir, f)).mtimeMs;
+      return mtime >= stagedMatrixMtime - 1000;
+    } catch {
+      return false;
+    }
+  });
+  if (!freshEvidence) {
+    console.error('[pre-commit] BLOCKED: matrix.json staged but no runtime-evidence file is newer than the matrix.');
+    console.error('[pre-commit] Run `danteforge probe --tier T1` to refresh build evidence before committing.');
+    console.error(`[pre-commit] Evidence dir: ${evidenceDir}`);
+    process.exit(1);
+  }
+}
+
 // ── Fix C: Protected-line guard ───────────────────────────────────────────────
 // If a staged file intersects a protected line range recorded in
 // .danteforge/protected-lines.json, the commit requires --touches-protected
