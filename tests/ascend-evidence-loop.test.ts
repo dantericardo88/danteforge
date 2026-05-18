@@ -1,5 +1,5 @@
 // ascend-evidence-loop.test.ts — tests for harvest bootstrap, periodic retro, mid-loop verify
-import { describe, it, before, after } from 'node:test';
+import { describe, it, beforeEach, afterEach } from 'node:test';
 import assert from 'node:assert/strict';
 import os from 'node:os';
 import path from 'node:path';
@@ -8,10 +8,11 @@ import { runAscend, type AscendEngineOptions } from '../src/core/ascend-engine.j
 import type { CompeteMatrix } from '../src/core/compete-matrix.js';
 import type { HarshScoreResult } from '../src/core/harsh-scorer.js';
 
-// Shared tmpDir so dryRun runs don't pollute the project's matrix.json.
+// Per-test tmpDir so dryRun runs don't pollute the project's matrix.json AND
+// each test gets a fresh .danteforge/score-proposals/ free of stale merge.lock.
 let tmpDir = '';
-before(async () => { tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), 'ascend-ev-')); });
-after(async () => { await fs.rm(tmpDir, { recursive: true, force: true }); });
+beforeEach(async () => { tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), 'ascend-ev-')); });
+afterEach(async () => { await fs.rm(tmpDir, { recursive: true, force: true }); });
 
 // ── Helpers ────────────────────────────────────────────────────────────────────
 
@@ -101,6 +102,7 @@ function makeLoopOpts(extra: Partial<AscendEngineOptions> = {}): AscendEngineOpt
 /** Real-loop opts with one achievable dimension that plateaus immediately */
 function makeActiveLoopOpts(extra: Partial<AscendEngineOptions> = {}): AscendEngineOptions {
   return {
+    cwd: tmpDir,
     dryRun: false,
     yes: true,
     maxCycles: 6,

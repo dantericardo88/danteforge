@@ -1,5 +1,5 @@
 // ascend-llm-check.test.ts — tests for the LLM pre-flight check in runAscend
-import { describe, it, before, after } from 'node:test';
+import { describe, it, beforeEach, afterEach } from 'node:test';
 import assert from 'node:assert/strict';
 import os from 'node:os';
 import path from 'node:path';
@@ -8,12 +8,13 @@ import { runAscend, type AscendEngineOptions } from '../src/core/ascend-engine.j
 import type { CompeteMatrix } from '../src/core/compete-matrix.js';
 import type { HarshScoreResult } from '../src/core/harsh-scorer.js';
 
-// Shared tmpDir so dryRun runs don't pollute the project's matrix.json
+// Per-test tmpDir so dryRun runs don't pollute the project's matrix.json
 // (the substrate's ensureMatrixOnDisk writes to options.cwd; without a cwd
 // override that defaults to process.cwd() which is the project root).
+// Per-test (not shared) so each test starts with a clean .danteforge/.
 let tmpDir = '';
-before(async () => { tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), 'ascend-llm-')); });
-after(async () => { await fs.rm(tmpDir, { recursive: true, force: true }); });
+beforeEach(async () => { tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), 'ascend-llm-')); });
+afterEach(async () => { await fs.rm(tmpDir, { recursive: true, force: true }); });
 
 // ── Minimal stubs ──────────────────────────────────────────────────────────────
 
