@@ -313,6 +313,10 @@ export async function mergeScoreProposals(options: MatrixDevelopmentEngineOption
   agent?: string;
   /** Injection seam: replaces capability_test runner for tests. */
   _runCapabilityTest?: (opts: RunCapabilityTestOptions) => ReturnType<typeof runCapabilityTest>;
+  /** Injection seam: replaces harden gate for tests. */
+  _runHardenGate?: (opts: import('../matrix/types/harden-check.js').RunHardenGateOptions) => Promise<import('../matrix/types/harden-check.js').HardenVerdict>;
+  /** Operator-only: bypasses the harden gate. Should NEVER be set in production crusades. */
+  _skipHardenGate?: boolean;
 } = {}): Promise<MatrixDevelopmentMergeReceipt> {
   const cwd = path.resolve(options.cwd ?? process.cwd());
   return withMergeLock(cwd, async () => {
@@ -372,6 +376,28 @@ export async function mergeScoreProposals(options: MatrixDevelopmentEngineOption
           logger.warn(`[score-gate] ${dimensionId}: ${verdict.reason}`);
         } else {
           logger.success(`[score-gate] ${dimensionId}: capability_test passed ✓ — score ${proposal.proposedScore} accepted`);
+        }
+      }
+
+      // Phase C harden gate: sibling check that fires at score ≥ 7.0.
+      // Verifies the code is actually reached by production, claims match reality,
+      // and there are no hidden hardcoded fallbacks. Deterministic — no LLM judgment.
+      const { HARDEN_GATE_THRESHOLD, applyHardenCap: applyHCap } = await import('../matrix/types/harden-check.js');
+      if (finalScore >= HARDEN_GATE_THRESHOLD && !options._skipHardenGate) {
+        const { runHardenGate: defaultHardenGate } = await import('../matrix/engines/hardener.js');
+        const hardenFn = options._runHardenGate ?? defaultHardenGate;
+        try {
+          const hVerdict = await hardenFn({ dimensionId, dim, cwd });
+          finalScore = applyHCap(finalScore, hVerdict);
+          if (!hVerdict.allowed) {
+            const failed = hVerdict.checks.filter(c => !c.passed && !c.skipped).map(c => c.check).join(', ');
+            logger.warn(`[harden-gate] ${dimensionId}: capped at ${finalScore} — failed: ${failed}`);
+          } else {
+            logger.success(`[harden-gate] ${dimensionId}: all checks passed ✓ — score ${proposal.proposedScore} stands at ${finalScore}`);
+          }
+        } catch (err) {
+          // Best-effort: if the gate itself crashes, do not block the merge but log loudly.
+          logger.warn(`[harden-gate] ${dimensionId}: gate threw — ${err instanceof Error ? err.message : String(err)}; proceeding without harden cap`);
         }
       }
 

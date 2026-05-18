@@ -689,6 +689,44 @@ Examples:
   });
 
 program
+  .command('harden')
+  .description('Deterministic hardening checks (Phase C of Capability Ladder). Catches orphan modules, claim/reality mismatches, hardcoded fallbacks. Cannot be gamed by LLM agents.')
+  .option('--dim <id>', 'Run only on this dimension')
+  .option('--check <id>', 'Run only this check: orphan-audit | claim-auditor | hardcoded-fallback | import-resolves | functional-diff')
+  .option('--gate', 'Exit 1 if any dimension above the 7.0 threshold fails (CI mode)')
+  .option('--json', 'Machine-readable JSON output')
+  .option('--cwd <path>', 'Project directory (defaults to cwd)')
+  .addHelpText('after', `
+Examples:
+  danteforge harden                              All checks, all dims above 7.0
+  danteforge harden --dim security               One dim only
+  danteforge harden --check orphan-audit         One check across all dims
+  danteforge harden --gate                       CI mode — exits 1 on any fail
+  danteforge harden --json > harden-report.json  Machine-readable
+
+The harden gate fires automatically inside mergeScoreProposals at score ≥ 7.0.
+This command is the operator-facing entry point and the CI gate.
+`)
+  .action((opts) => {
+    void (async () => {
+      try {
+        const { runHardenCommand } = await import('./commands/harden.js');
+        await runHardenCommand({
+          dim: opts.dim as string | undefined,
+          check: opts.check as undefined,
+          gate: opts.gate as boolean | undefined,
+          json: opts.json as boolean | undefined,
+          cwd: opts.cwd as string | undefined,
+        });
+      } catch (err) {
+        const { formatAndLogError } = await import('../core/format-error.js');
+        formatAndLogError(err, 'harden');
+        process.exitCode = 1;
+      }
+    })();
+  });
+
+program
   .command('probe')
   .description('Cold-build runtime probe — the T1 gate of the Capability Ladder. Auto-detects turbo/pnpm/lerna/npm.')
   .option('--tier <name>', 'Probe tier (T0|T1|T2|T3-T6). Default T1 (cold compile).', 'T1')
