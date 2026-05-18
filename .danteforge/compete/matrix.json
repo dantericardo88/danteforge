@@ -152,16 +152,15 @@
         {
           "id": "compiles-cold",
           "tier": "T1",
-          "description": "TypeScript compiles cold without errors",
-          "command": "npx tsc --noEmit",
-          "expected_exit": 0
+          "description": "TypeScript compiles cold",
+          "command": "npx tsc --noEmit"
         },
         {
-          "id": "unit-tests-pass",
+          "id": "derived-score-tests",
           "tier": "T2",
-          "description": "Hardener tests pass (representative unit test surface)",
+          "description": "Derived-score test suite passes",
           "command": "npx tsx --test tests/derived-score.test.ts",
-          "expected_exit": 0
+          "required_callsite": "src/core/derived-score.ts"
         }
       ]
     },
@@ -261,7 +260,24 @@
       "test_callsite": {
         "file": "tests/harness.test.ts",
         "symbol": "tests for harness"
-      }
+      },
+      "declared_ceiling": "T2",
+      "outcomes": [
+        {
+          "id": "harness-help",
+          "tier": "T1",
+          "description": "harness command loads",
+          "command": "node dist/index.js harness --help",
+          "required_callsite": "src/cli/commands/harness.ts"
+        },
+        {
+          "id": "harness-tests",
+          "tier": "T2",
+          "description": "harness unit tests pass",
+          "command": "npx tsx --test tests/harness.test.ts",
+          "required_callsite": "src/cli/commands/harness.ts"
+        }
+      ]
     },
     {
       "id": "ux_polish",
@@ -902,7 +918,23 @@
       "test_callsite": {
         "file": "tests/changelog.test.ts",
         "symbol": "tests for changelog"
-      }
+      },
+      "declared_ceiling": "T2",
+      "outcomes": [
+        {
+          "id": "capability-tiers-doc-exists",
+          "tier": "T0",
+          "description": "docs/CAPABILITY-TIERS.md exists",
+          "command": "node -e \"const fs=require('fs');fs.accessSync('docs/CAPABILITY-TIERS.md')\""
+        },
+        {
+          "id": "changelog-help",
+          "tier": "T2",
+          "description": "Changelog generator help loads",
+          "command": "node dist/index.js changelog --help",
+          "required_callsite": "src/cli/commands/changelog.ts"
+        }
+      ]
     },
     {
       "id": "convergence_self_healing",
@@ -1284,7 +1316,24 @@
       "test_callsite": {
         "file": "tests/code-health.test.ts",
         "symbol": "tests for codehealth"
-      }
+      },
+      "declared_ceiling": "T2",
+      "outcomes": [
+        {
+          "id": "code-health-help",
+          "tier": "T1",
+          "description": "code-health analyzer help loads",
+          "command": "node dist/index.js code-health --help",
+          "required_callsite": "src/cli/commands/code-health.ts"
+        },
+        {
+          "id": "code-health-tests",
+          "tier": "T2",
+          "description": "code-health unit tests pass",
+          "command": "npx tsx --test tests/code-health.test.ts",
+          "required_callsite": "src/cli/commands/code-health.ts"
+        }
+      ]
     },
     {
       "id": "token_economy",
@@ -1582,7 +1631,24 @@
       "test_callsite": {
         "file": "tests/mcp-tools.test.ts",
         "symbol": "tests for mcptools"
-      }
+      },
+      "declared_ceiling": "T2",
+      "outcomes": [
+        {
+          "id": "mcp-tools-json",
+          "tier": "T1",
+          "description": "mcp-tools enumeration runs",
+          "command": "node dist/index.js mcp-tools --json",
+          "required_callsite": "src/cli/commands/mcp-tools.ts"
+        },
+        {
+          "id": "mcp-tools-tests",
+          "tier": "T2",
+          "description": "mcp-tools unit tests pass",
+          "command": "npx tsx --test tests/mcp-tools.test.ts",
+          "required_callsite": "src/cli/commands/mcp-tools.ts"
+        }
+      ]
     },
     {
       "id": "enterprise_readiness",

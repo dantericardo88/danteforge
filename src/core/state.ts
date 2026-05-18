@@ -150,6 +150,19 @@ export interface DanteState {
   // Phase H — Outcome-derived substrate
   /** Last project-level frontier terminal seen. Drives Time Machine transition commits. */
   lastFrontierTerminal?: 'frontier-reached' | 'stuck-on-dims' | 'blocked-by-dispensations' | 'progressing';
+  /**
+   * Phase H Slice 5 — per-dim wave counter (crusade waves without a new passing outcome).
+   * When this exceeds MAX_STUCK_WAVES (default 3), the autonomous-crusade rule halts
+   * that dim for operator review.
+   */
+  wavesSinceProgress?: Record<string, number>;
+  /**
+   * Per-outcome refinement counter (how many times an outcome's command has been
+   * rewritten without ever passing). When this exceeds MAX_REFINEMENTS (default 3),
+   * the autonomous-crusade rule halts and surfaces.
+   * Keys are `${dimId}/${outcomeId}`.
+   */
+  outcomeRefinementCounts?: Record<string, number>;
 }
 
 export interface VerifyEvidence {
@@ -443,6 +456,12 @@ function buildLoadedState(
     lastRegradeAt: typeof parsed?.lastRegradeAt === 'string' ? parsed.lastRegradeAt : undefined,
     lastFrontierTerminal: typeof parsed?.lastFrontierTerminal === 'string'
       ? (parsed.lastFrontierTerminal as DanteState['lastFrontierTerminal'])
+      : undefined,
+    wavesSinceProgress: parsed?.wavesSinceProgress && typeof parsed.wavesSinceProgress === 'object'
+      ? parsed.wavesSinceProgress
+      : undefined,
+    outcomeRefinementCounts: parsed?.outcomeRefinementCounts && typeof parsed.outcomeRefinementCounts === 'object'
+      ? parsed.outcomeRefinementCounts
       : undefined,
   } as DanteState;
 }

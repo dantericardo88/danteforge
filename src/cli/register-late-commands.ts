@@ -688,6 +688,93 @@ Examples:
     })();
   });
 
+const dispensationCmd = program
+  .command('dispensation')
+  .description('Manage operator-approved score dispensations. While any dispensation is active, autonomy is paused globally.')
+  .addHelpText('after', `
+Subcommands:
+  list                              List all dispensations (active + cleared)
+  create <dim-id> <reason>          Open a new dispensation against a dimension
+  clear <id>                        Mark a dispensation cleared (resume autonomy)
+
+Examples:
+  danteforge dispensation list
+  danteforge dispensation create security "operator approves T3 cap until external audit closes"
+  danteforge dispensation clear disp_1736700000000_abc123
+`);
+
+dispensationCmd
+  .command('list')
+  .description('List all dispensations (active block autonomy)')
+  .option('--json', 'Machine-readable JSON output')
+  .option('--cwd <path>', 'Project directory (defaults to cwd)')
+  .action((opts) => {
+    void (async () => {
+      try {
+        const { runDispensationCommand } = await import('./commands/dispensation.js');
+        await runDispensationCommand({
+          subcommand: 'list',
+          json: opts.json as boolean | undefined,
+          cwd: opts.cwd as string | undefined,
+        });
+      } catch (err) {
+        const { formatAndLogError } = await import('../core/format-error.js');
+        formatAndLogError(err, 'dispensation list');
+        process.exitCode = 1;
+      }
+    })();
+  });
+
+dispensationCmd
+  .command('create <dimensionId> <reason>')
+  .description('Create a dispensation against a dimension (pauses autonomy globally until cleared)')
+  .option('--user <name>', 'Operator id for audit trail')
+  .option('--json', 'Machine-readable JSON output')
+  .option('--cwd <path>', 'Project directory (defaults to cwd)')
+  .action((dimensionId: string, reason: string, opts) => {
+    void (async () => {
+      try {
+        const { runDispensationCommand } = await import('./commands/dispensation.js');
+        await runDispensationCommand({
+          subcommand: 'create',
+          dimensionId, reason,
+          user: opts.user as string | undefined,
+          json: opts.json as boolean | undefined,
+          cwd: opts.cwd as string | undefined,
+        });
+      } catch (err) {
+        const { formatAndLogError } = await import('../core/format-error.js');
+        formatAndLogError(err, 'dispensation create');
+        process.exitCode = 1;
+      }
+    })();
+  });
+
+dispensationCmd
+  .command('clear <id>')
+  .description('Clear a dispensation (resumes autonomy if this was the last active one)')
+  .option('--user <name>', 'Operator id for audit trail')
+  .option('--json', 'Machine-readable JSON output')
+  .option('--cwd <path>', 'Project directory (defaults to cwd)')
+  .action((id: string, opts) => {
+    void (async () => {
+      try {
+        const { runDispensationCommand } = await import('./commands/dispensation.js');
+        await runDispensationCommand({
+          subcommand: 'clear',
+          dispensationId: id,
+          user: opts.user as string | undefined,
+          json: opts.json as boolean | undefined,
+          cwd: opts.cwd as string | undefined,
+        });
+      } catch (err) {
+        const { formatAndLogError } = await import('../core/format-error.js');
+        formatAndLogError(err, 'dispensation clear');
+        process.exitCode = 1;
+      }
+    })();
+  });
+
 program
   .command('frontier')
   .description('Report project frontier state: per-dim status + terminal verdict (frontier-reached | stuck-on-dims | blocked-by-dispensations | progressing). Phase H Slice 4.')

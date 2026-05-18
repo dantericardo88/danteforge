@@ -483,6 +483,58 @@ async function runFrontierPass(options: FrontierCrusadeOptions): Promise<Frontie
 
 const MAX_WAVES_WITHOUT_REGRADE = 3;
 
+/**
+ * Phase H Slice 5 helper: run the autonomy rule chain.
+ * Returns the first halting verdict, the frontier-reached verdict, or "proceed".
+ * Best-effort caller wraps in try/catch — a rule-engine crash should not block
+ * the crusade (we still want forward progress on the load-bearing work).
+ */
+async function checkAutonomyRules(cwd?: string): Promise<import('../../matrix/engines/crusade-autonomy.js').AutonomyVerdict> {
+  const { applyAutonomyRules } = await import('../../matrix/engines/crusade-autonomy.js');
+  const { loadState } = await import('../../core/state.js');
+  const { loadMatrix } = await import('../../core/compete-matrix.js');
+  const { computeProjectFrontierState } = await import('../../core/frontier-state.js');
+  const { loadOutcomeEvidence } = await import('../../matrix/engines/outcome-runner.js');
+  const stateCwd = cwd ?? process.cwd();
+  const state = await loadState({ cwd: stateCwd });
+  const matrix = await loadMatrix(stateCwd);
+  if (!matrix) return { kind: 'proceed' };
+
+  // Load active dispensations (filter cleared)
+  const dispensationsByDim: Record<string, string[]> = {};
+  try {
+    const dispDir = path.join(stateCwd, '.danteforge', 'score-proposals', 'dispensations');
+    const files = await fs.readdir(dispDir).catch(() => []);
+    for (const f of files.filter(n => n.endsWith('.json'))) {
+      try {
+        const raw = await fs.readFile(path.join(dispDir, f), 'utf8');
+        const parsed = JSON.parse(raw) as { dimensionId?: string; id?: string; cleared?: boolean };
+        if (parsed.cleared) continue;
+        if (parsed.dimensionId && parsed.id) {
+          (dispensationsByDim[parsed.dimensionId] ??= []).push(parsed.id);
+        }
+      } catch { /* skip */ }
+    }
+  } catch { /* no dispensations dir */ }
+
+  const evidence = await loadOutcomeEvidence(stateCwd);
+  const frontier = computeProjectFrontierState({
+    dimensions: matrix.dimensions.map(d => ({
+      id: d.id,
+      outcomes: (d as unknown as Record<string, unknown>)['outcomes'] as never,
+      declared_ceiling: (d as unknown as Record<string, unknown>)['declared_ceiling'] as never,
+      scores: d.scores,
+      legacy_score: (d as unknown as Record<string, unknown>)['legacy_score'] as number | undefined,
+    })),
+    evidence,
+    wavesSinceProgress: state.wavesSinceProgress,
+    dispensations: dispensationsByDim,
+  });
+
+  const result = applyAutonomyRules({ state, frontier, cwd: stateCwd });
+  return result.verdict;
+}
+
 export async function runFrontierCrusade(options: FrontierCrusadeOptions): Promise<FrontierCrusadeResult> {
   // Mandatory regrade cadence (Phase D): if more than MAX_WAVES_WITHOUT_REGRADE
   // crusade waves have run since the last skeptic regrade, the crusade refuses
@@ -503,6 +555,29 @@ export async function runFrontierCrusade(options: FrontierCrusadeOptions): Promi
   } catch (err) {
     // Best-effort — if state can't be loaded, do not block the crusade.
     logger.warn(`[frontier] could not load state for regrade-cadence check: ${err instanceof Error ? err.message : String(err)}`);
+  }
+
+  // Phase H Slice 5: autonomous-crusade rules. Apply all rules BEFORE the wave
+  // and again AFTER it. If any rule halts, surface the terminal state and stop.
+  // This is what makes "run crusade and DanteForge knows when done" a true
+  // statement — the substrate stops itself honestly instead of grinding.
+  try {
+    const autonomyVerdict = await checkAutonomyRules(options.cwd);
+    if (autonomyVerdict.kind === 'halt') {
+      logger.error(`[frontier] AUTONOMY HALT: ${autonomyVerdict.reason}`);
+      if (autonomyVerdict.affectedDims && autonomyVerdict.affectedDims.length > 0) {
+        logger.error(`[frontier] Affected dim(s): ${autonomyVerdict.affectedDims.join(', ')}`);
+      }
+      logger.error(`[frontier] Rule fired: ${autonomyVerdict.rule}`);
+      return { status: 'PARTIAL', dimensions: [] };
+    }
+    if (autonomyVerdict.kind === 'frontier-reached') {
+      logger.success(`[frontier] FRONTIER REACHED: ${autonomyVerdict.reason}`);
+      return { status: 'ALL_DONE', dimensions: [] };
+    }
+  } catch (err) {
+    // Best-effort — do not block the crusade on an autonomy-rule error.
+    logger.warn(`[frontier] autonomy-rules check failed: ${err instanceof Error ? err.message : String(err)}`);
   }
 
   // Pre-flight: verify LLM is reachable before spawning parallel waves.
