@@ -1,16 +1,26 @@
 // compete-amend.ts — manual score amendment handlers extracted from compete.ts
-// Handles --amend (single dim) and --amend-file (batch JSON) mutations.
+// Handles --amend (single dim) and --amend-file (batch JSON) operations.
+//
+// Phase E migration (final): both handlers write score PROPOSALS only. The
+// historical loadFn/saveFn injection seams are preserved in the signature for
+// backward compatibility but saveFn is no longer invoked. The proposal flow
+// (writeScoreProposal → mergeScoreProposals) is the single source of score
+// change events. Under outcome-derived scoring (Phase F+G), the score field
+// on dims with outcomes is computed at loadMatrix time anyway — any direct
+// write would be overwritten on the next read.
 
 import fs from 'fs/promises';
 import path from 'path';
 import { logger } from '../../core/logger.js';
 import {
-  updateDimensionScore,
   computeOverallScore,
   computeUnweightedComposite,
   getMatrixPath,
+  loadMatrix,
   type CompeteMatrix,
 } from '../../core/compete-matrix.js';
+import { writeScoreProposal, mergeScoreProposals } from '../../core/matrix-development-engine.js';
+import { ensureMatrixOnDisk } from './compete-score-flow.js';
 
 type LoadFn = (cwd: string) => Promise<CompeteMatrix | null>;
 type SaveFn = (matrix: CompeteMatrix, cwd: string) => Promise<void>;
@@ -22,6 +32,7 @@ export async function handleAmend(
   saveFn: SaveFn,
   cwd: string,
 ): Promise<AmendResult> {
+  void saveFn; // preserved for backward-compatible signature; not invoked under proposal-only flow
   const eqIdx = rawArg.indexOf('=');
   if (eqIdx === -1) {
     logger.error('--amend format: dim_id=score e.g. "semantic_memory=5.5"');
@@ -41,12 +52,21 @@ export async function handleAmend(
     process.exit(1);
   }
   const before = dim.scores['self'] ?? 0;
-  updateDimensionScore(matrix, dimId, score);
-  matrix.overallSelfScore = computeOverallScore(matrix);
-  await saveFn(matrix, cwd);
-  const composite = computeUnweightedComposite(matrix);
-  logger.success(`[compete] ${dimId}: ${before} → ${dim.scores['self']} | Composite: ${composite}/10`);
-  return { action: 'status', matrixPath: getMatrixPath(cwd), overallScore: matrix.overallSelfScore };
+
+  await ensureMatrixOnDisk(matrix, cwd);
+  await writeScoreProposal({
+    cwd, dimension: dimId, score,
+    agent: 'compete-amend',
+    rationale: `Manual amendment via --amend ${dimId}=${score}`,
+  });
+  await mergeScoreProposals({ cwd, policy: 'harsh-min', agent: 'compete-amend' });
+
+  // Reload matrix to surface the final (possibly clamped-by-gate) score.
+  const merged = (await loadMatrix(cwd)) ?? matrix;
+  const after = merged.dimensions.find(d => d.id === dimId)?.scores['self'] ?? before;
+  const composite = computeUnweightedComposite(merged);
+  logger.success(`[compete] ${dimId}: ${before} → ${after} | Composite: ${composite}/10`);
+  return { action: 'status', matrixPath: getMatrixPath(cwd), overallScore: computeOverallScore(merged) };
 }
 
 export async function handleAmendFile(
@@ -55,6 +75,7 @@ export async function handleAmendFile(
   saveFn: SaveFn,
   cwd: string,
 ): Promise<AmendResult> {
+  void saveFn; // preserved for backward-compatible signature
   let raw: string;
   try {
     raw = await fs.readFile(path.resolve(cwd, filePath), 'utf-8');
@@ -76,6 +97,8 @@ export async function handleAmendFile(
   const matrix = await loadFn(cwd);
   if (!matrix) { logger.error('No matrix. Run: danteforge compete --init'); process.exit(1); }
 
+  await ensureMatrixOnDisk(matrix, cwd);
+
   let updated = 0;
   let skipped = 0;
   for (const [dimId, rawScore] of Object.entries(entries)) {
@@ -92,16 +115,21 @@ export async function handleAmendFile(
       continue;
     }
     const before = dim.scores['self'] ?? 0;
-    updateDimensionScore(matrix, dimId, score);
-    logger.info(`  [amend-file] ${dimId}: ${before} → ${dim.scores['self']}`);
+    await writeScoreProposal({
+      cwd, dimension: dimId, score,
+      agent: 'compete-amend-file',
+      rationale: `Batch amendment from ${filePath}: ${dimId}=${score}`,
+    });
+    logger.info(`  [amend-file] ${dimId}: ${before} → ${score} (proposed)`);
     updated++;
   }
 
   if (updated > 0) {
-    matrix.overallSelfScore = computeOverallScore(matrix);
-    await saveFn(matrix, cwd);
-    const composite = computeUnweightedComposite(matrix);
-    logger.success(`[compete] ${updated} dim(s) updated, ${skipped} skipped | Composite: ${composite}/10`);
+    await mergeScoreProposals({ cwd, policy: 'harsh-min', agent: 'compete-amend-file' });
+    const merged = (await loadMatrix(cwd)) ?? matrix;
+    const composite = computeUnweightedComposite(merged);
+    logger.success(`[compete] ${updated} dim(s) proposed, ${skipped} skipped | Composite: ${composite}/10`);
+    return { action: 'status', matrixPath: getMatrixPath(cwd), overallScore: computeOverallScore(merged) };
   } else {
     logger.warn('[compete] No dims updated');
   }

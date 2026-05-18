@@ -31,6 +31,7 @@ import { createStepTracker } from './progress.js';
 import { confirmMatrix } from './matrix-confirm.js';
 import { isLLMAvailable } from './llm.js';
 import { mergeScoreProposals, writeScoreProposal } from './matrix-development-engine.js';
+import { ensureMatrixOnDisk } from '../cli/commands/compete-score-flow.js';
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -886,20 +887,18 @@ export async function runAscend(options: AscendEngineOptions = {}): Promise<Asce
     if (Math.abs(delta) < 0.1) { cs.plateauedDims.add(nextDim.id); logger.info(`  (plateau detected — moving to next dimension)`); }
     else { cs.plateauedDims.delete(nextDim.id); if (delta > 0) cs.dimensionsImproved++; }
     await runAdversarialCritiqueStep(options, generateCritiqueFn, nextDim, newSelfScore, beforeScore, target, goal, cwd, maxDimRetries, cs);
-    if (options._loadMatrix || options._saveMatrix) {
-      updateDimensionScore(matrix, nextDim.id, newSelfScore);
-      await saveMatrixFn(matrix, cwd);
-    } else {
-      await writeScoreProposal({
-        cwd,
-        dimension: nextDim.id,
-        score: newSelfScore,
-        agent: 'ascend',
-        rationale: `Ascend cycle ${cs.cyclesRun + 1} strict rescore for "${nextDim.label}" after autoforge loop.`,
-      });
-      await mergeScoreProposals({ cwd, policy: 'harsh-min', agent: 'ascend' });
-      matrix = await loadMatrixFn(cwd) ?? matrix;
-    }
+    // Phase E final migration: proposal flow is the single writer.
+    void saveMatrixFn;
+    await ensureMatrixOnDisk(matrix, cwd);
+    await writeScoreProposal({
+      cwd,
+      dimension: nextDim.id,
+      score: newSelfScore,
+      agent: 'ascend',
+      rationale: `Ascend cycle ${cs.cyclesRun + 1} strict rescore for "${nextDim.label}" after autoforge loop.`,
+    });
+    await mergeScoreProposals({ cwd, policy: 'harsh-min', agent: 'ascend' });
+    matrix = await loadMatrixFn(cwd) ?? matrix;
     await saveCheckpointFn({ pausedAt: new Date().toISOString(), cyclesRun: cs.cyclesRun + 1, maxCycles, target, startedAt, plateauedDims: Array.from(cs.plateauedDims), currentDimension: nextDim.id, beforeScores }, cwd).catch(() => {});
     cs.cyclesRun++;
     await runPeriodicRetroIfDue(options, cs.cyclesRun, cwd);

@@ -42,7 +42,7 @@ import { confirmMatrix } from '../../core/matrix-confirm.js';
 import { mergeScoreProposals, writeScoreProposal } from '../../core/matrix-development-engine.js';
 import { formatScore, formatStatusTable, logSprintGaps, buildHarvestBriefPrompt, logSprintOutput } from './compete-display.js';
 import { handleAmend, handleAmendFile } from './compete-amend.js';
-import { defaultEvidenceWriter, parseRescore, proposeAndMergeScore, runCertifyGate, writeRescoreEvidence } from './compete-score-flow.js';
+import { defaultEvidenceWriter, ensureMatrixOnDisk, parseRescore, proposeAndMergeScore, runCertifyGate, writeRescoreEvidence } from './compete-score-flow.js';
 import { actionCalibrate } from './compete-calibrate.js';
 
 // ── Types ─────────────────────────────────────────────────────────────────────
@@ -435,23 +435,22 @@ async function actionRescore(options: CompeteOptions, cwd: string, rescore: stri
     delta: score - before, verifyStatus: options.skipVerify ? 'skipped' : 'pass',
     verifyTimestamp: receipt?.timestamp, commit, timestamp: new Date().toISOString(),
   }, cwd, writeFn);
-  if (options._loadMatrix || options._saveMatrix) {
-    updateDimensionScore(matrix, dimensionId, score, commit);
-    matrix.overallSelfScore = computeOverallScore(matrix);
-    await saveFn(matrix, cwd);
-  } else {
-    await proposeAndMergeScore({
-      cwd,
-      dimensionId,
-      score,
-      agent: 'compete-rescore',
-      rationale: `compete --rescore ${dimensionId}=${score}`,
-      evidence: evidenceRel,
-      commit,
-    });
-  }
+  // Phase E final migration: proposal flow is the single source of score
+  // change events. The injection-seam branch was the last conditional bypass
+  // on this surface.
+  void saveFn;
+  await ensureMatrixOnDisk(matrix, cwd);
+  await proposeAndMergeScore({
+    cwd,
+    dimensionId,
+    score,
+    agent: 'compete-rescore',
+    rationale: `compete --rescore ${dimensionId}=${score}`,
+    evidence: evidenceRel,
+    commit,
+  });
 
-  const updatedMatrix = (options._loadMatrix || options._saveMatrix) ? matrix : await loadMatrix(cwd) ?? matrix;
+  const updatedMatrix = await loadMatrix(cwd) ?? matrix;
   const updatedDim = updatedMatrix.dimensions.find(d => d.id === dimensionId) ?? dim;
 
   const delta = score - before;
@@ -617,6 +616,7 @@ async function actionSyncScores(options: CompeteOptions, cwd: string): Promise<C
   }
 
   logger.info(`Syncing ${report.driftedDimensions.length} drifted dimension(s) from live scorer:`);
+  await ensureMatrixOnDisk(matrix, cwd);
   let updated = 0;
   for (const d of report.driftedDimensions) {
     const dir = d.matrixScore > d.harshScore ? '↓' : '↑';
@@ -701,20 +701,16 @@ export async function actionAutoSprint(options: CompeteOptions, cwd: string): Pr
       const dimKey = toCamelCase(next.id) as import('../../core/harsh-scorer.js').ScoringDimension;
       const newSelfScore = postResult.displayDimensions?.[dimKey] ?? postResult.displayScore;
 
-      if (options._loadMatrix || options._saveMatrix) {
-        updateDimensionScore(matrix, next.id, newSelfScore);
-        matrix.overallSelfScore = computeOverallScore(matrix);
-        await saveFn(matrix, cwd);
-      } else {
-        await proposeAndMergeScore({
-          cwd,
-          dimensionId: next.id,
-          score: newSelfScore,
-          agent: 'compete-auto',
-          rationale: `Post-inferno strict scorer for "${next.label}" (dim: ${dimKey}) returned ${newSelfScore.toFixed(1)}.`,
-        });
-        matrix = await loadMatrix(cwd) ?? matrix;
-      }
+      // Phase E final migration: proposal flow is the single writer.
+      await ensureMatrixOnDisk(matrix, cwd);
+      await proposeAndMergeScore({
+        cwd,
+        dimensionId: next.id,
+        score: newSelfScore,
+        agent: 'compete-auto',
+        rationale: `Post-inferno strict scorer for "${next.label}" (dim: ${dimKey}) returned ${newSelfScore.toFixed(1)}.`,
+      });
+      matrix = await loadMatrix(cwd) ?? matrix;
 
       // Bug B fix: never declare victory below target (default 9.0) even if competitor ceiling is lower
       const autoTarget = options.target ?? 9.0;

@@ -15,6 +15,8 @@ async function makeTmpMatrix(dir: string, overrides: Partial<{ selfScores: numbe
   await fs.mkdir(competeDir, { recursive: true });
 
   const selfScores = overrides.selfScores ?? [6.0, 7.0];
+  // capability_test fixture so the merge gate accepts scores > 5.0 in tests.
+  const capabilityTest = { command: 'node -e ""', description: 'test fixture' };
   const matrix = {
     project: 'test',
     competitors: ['Cursor'],
@@ -39,6 +41,7 @@ async function makeTmpMatrix(dir: string, overrides: Partial<{ selfScores: numbe
         status: 'in-progress',
         sprint_history: [],
         next_sprint_target: 9.0,
+        capability_test: capabilityTest,
       },
       {
         id: 'testing',
@@ -56,6 +59,7 @@ async function makeTmpMatrix(dir: string, overrides: Partial<{ selfScores: numbe
         status: 'in-progress',
         sprint_history: [],
         next_sprint_target: 9.0,
+        capability_test: capabilityTest,
       },
     ],
   };
@@ -229,8 +233,6 @@ describe('compete --auto Bug A: dimension-specific post-sprint score', () => {
     try {
       await makeTmpMatrix(tmpDir, { selfScores: [6.0, 7.0] });
 
-      const updatedScores: Record<string, number> = {};
-
       await compete({
         auto: true,
         target: 9.0,
@@ -240,11 +242,6 @@ describe('compete --auto Bug A: dimension-specific post-sprint score', () => {
         _loadMatrix: async () => {
           const raw = await fs.readFile(path.join(tmpDir, '.danteforge', 'compete', 'matrix.json'), 'utf8');
           return JSON.parse(raw);
-        },
-        _saveMatrix: async (matrix) => {
-          for (const dim of matrix.dimensions) {
-            updatedScores[dim.id] = dim.scores['self'] ?? 0;
-          }
         },
         _runInferno: async () => { /* no-op */ },
         // Post-sprint scorer: overall=7.0 but autonomy-specific=8.5
@@ -270,8 +267,12 @@ describe('compete --auto Bug A: dimension-specific post-sprint score', () => {
       });
 
       // With Bug A fix: dimension-specific displayDimensions.autonomy=8.5 is used (not displayScore).
-      // Without fix: displayScore (weighted avg, ≠ 8.5) would be used instead.
-      assert.equal(updatedScores['autonomy'], 8.5, 'Should use dimension-specific score 8.5, not overall displayScore');
+      // Without fix: displayScore (weighted avg, ≠ 8.5) would be used instead. Proposal flow
+      // writes the resulting score to matrix.json on disk via mergeScoreProposals.
+      const finalRaw = await fs.readFile(path.join(tmpDir, '.danteforge', 'compete', 'matrix.json'), 'utf8');
+      const final = JSON.parse(finalRaw) as { dimensions: Array<{ id: string; scores: Record<string, number> }> };
+      const autonomyDim = final.dimensions.find(d => d.id === 'autonomy');
+      assert.equal(autonomyDim?.scores['self'], 8.5, 'Should use dimension-specific score 8.5, not overall displayScore');
     } finally {
       await fs.rm(tmpDir, { recursive: true, force: true });
     }
@@ -310,11 +311,11 @@ describe('compete --auto Bug B: victory threshold never below 9.0', () => {
           status: 'in-progress',
           sprint_history: [],
           next_sprint_target: 9.0,
+          capability_test: { command: 'node -e ""', description: 'test fixture' },
         }],
       };
       await fs.writeFile(path.join(competeDir, 'matrix.json'), JSON.stringify(matrix, null, 2));
 
-      const updates: number[] = [];
       await compete({
         auto: true,
         target: 9.0,
@@ -322,7 +323,6 @@ describe('compete --auto Bug B: victory threshold never below 9.0', () => {
         yes: true,
         cwd: tmpDir,
         _loadMatrix: async () => matrix,
-        _saveMatrix: async (m) => { updates.push(m.dimensions[0].scores['self'] ?? 0); },
         _runInferno: async () => { /* no-op */ },
         // Post-sprint: score of 8.0 — above competitor (7.5) but below target (9.0)
         _postSprintScore: async () => ({
@@ -341,12 +341,13 @@ describe('compete --auto Bug B: victory threshold never below 9.0', () => {
         _computeStrictDims: async () => ({}) as never,
       });
 
-      // Score updated to 8.0 — but it should NOT have been marked as victory (still < 9.0)
-      // The dimension should still be 'in-progress' after the cycle, not 'closed'
-      assert.equal(updates.length > 0, true, 'Matrix should have been saved');
-      // The loop should continue (next cycle would be needed to reach 9.0)
-      // We verify this by checking the stored score is 8.0, not a "done" marker
-      assert.ok(updates.some(s => s === 8.0), `Expected 8.0 update, got: ${updates.join(', ')}`);
+      // Score updated to 8.0 — but it should NOT have been marked as victory (still < 9.0).
+      // The dimension should still be 'in-progress' after the cycle, not 'closed'.
+      // The proposal flow persists the score on disk via mergeScoreProposals.
+      const finalRaw = await fs.readFile(path.join(competeDir, 'matrix.json'), 'utf8');
+      const final = JSON.parse(finalRaw) as { dimensions: Array<{ id: string; scores: Record<string, number> }> };
+      const testingDim = final.dimensions.find(d => d.id === 'testing');
+      assert.equal(testingDim?.scores['self'], 8.0, 'matrix should reflect the 8.0 score (not victory)');
     } finally {
       await fs.rm(tmpDir, { recursive: true, force: true });
     }
