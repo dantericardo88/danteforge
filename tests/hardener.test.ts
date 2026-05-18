@@ -7,6 +7,7 @@ import {
   checkHardcodedFallback,
   checkImportResolves,
   checkFunctionalDiff,
+  checkPrimaryNotParallel,
   runHardenGate,
 } from '../src/matrix/engines/hardener.js';
 import type { MatrixDimension } from '../src/core/compete-matrix.js';
@@ -378,6 +379,97 @@ describe('checkFunctionalDiff', () => {
   // E2E harden command run in the live verification step.
 });
 
+// ── checkPrimaryNotParallel ───────────────────────────────────────────────────
+
+describe('checkPrimaryNotParallel', () => {
+  it('skipped when no capability_callsite', async () => {
+    const r = await checkPrimaryNotParallel(makeDim(), '/p', fakeIo({}));
+    assert.equal(r.skipped, true);
+  });
+
+  it('skipped when capability_callsite.symbol is empty', async () => {
+    const dim = makeDim({ capability_callsite: { file: 'src/foo.ts', symbol: '' } });
+    const r = await checkPrimaryNotParallel(dim, '/p', fakeIo({
+      [path.join('/p', 'src', 'foo.ts')]: 'export const foo = 1;',
+    }));
+    assert.equal(r.skipped, true);
+    assert.match(r.skipReason ?? '', /symbol not declared/);
+  });
+
+  it('passes when only the declared file exports the symbol', async () => {
+    const dim = makeDim({ capability_callsite: { file: 'src/foo.ts', symbol: 'doStuff' } });
+    const io = fakeIo({
+      [path.join('/p', 'src', 'foo.ts')]: 'export function doStuff() { return 1; }',
+      [path.join('/p', 'src', 'caller.ts')]: 'import { doStuff } from "./foo.js";',
+    });
+    const r = await checkPrimaryNotParallel(dim, '/p', io);
+    assert.equal(r.passed, true);
+  });
+
+  it('passes when declared callsite has MORE importers than any parallel implementation', async () => {
+    const dim = makeDim({ capability_callsite: { file: 'src/foo-new.ts', symbol: 'doStuff' } });
+    const io = fakeIo({
+      [path.join('/p', 'src', 'foo-new.ts')]: 'export function doStuff() { return 1; }',
+      [path.join('/p', 'src', 'foo-legacy.ts')]: 'export function doStuff() { return 0; }',
+      // 2 importers of foo-new, 1 importer of foo-legacy → declared wins
+      [path.join('/p', 'src', 'caller-a.ts')]: 'import { doStuff } from "./foo-new.js";',
+      [path.join('/p', 'src', 'caller-b.ts')]: 'import { doStuff } from "./foo-new.js";',
+      [path.join('/p', 'src', 'caller-legacy.ts')]: 'import { doStuff } from "./foo-legacy.js";',
+    });
+    const r = await checkPrimaryNotParallel(dim, '/p', io);
+    assert.equal(r.passed, true);
+  });
+
+  it('fails when a parallel implementation has MORE production importers', async () => {
+    const dim = makeDim({ capability_callsite: { file: 'src/foo-new.ts', symbol: 'doStuff' } });
+    const io = fakeIo({
+      [path.join('/p', 'src', 'foo-new.ts')]: 'export function doStuff() { return 1; }',
+      [path.join('/p', 'src', 'foo-legacy.ts')]: 'export function doStuff() { return 0; }',
+      // 0 importers of foo-new, 3 importers of foo-legacy → legacy is primary
+      [path.join('/p', 'src', 'caller-a.ts')]: 'import { doStuff } from "./foo-legacy.js";',
+      [path.join('/p', 'src', 'caller-b.ts')]: 'import { doStuff } from "./foo-legacy.js";',
+      [path.join('/p', 'src', 'caller-c.ts')]: 'import { doStuff } from "./foo-legacy.js";',
+    });
+    const r = await checkPrimaryNotParallel(dim, '/p', io);
+    assert.equal(r.passed, false);
+    assert.equal(r.scoreCap, 5.5);
+    assert.equal(r.findings.length, 1);
+    assert.match(r.findings[0]!.reason, /Parallel implementation found/);
+    assert.match(r.findings[0]!.reason, /foo-legacy/);
+  });
+
+  it('respects export default function patterns', async () => {
+    const dim = makeDim({ capability_callsite: { file: 'src/foo-new.ts', symbol: 'doStuff' } });
+    const io = fakeIo({
+      [path.join('/p', 'src', 'foo-new.ts')]: 'export function doStuff() { return 1; }',
+      [path.join('/p', 'src', 'foo-default.ts')]: 'export default function doStuff() { return 0; }',
+      // Multiple importers of the default-export legacy
+      [path.join('/p', 'src', 'caller-a.ts')]: 'import doStuff from "./foo-default.js";',
+      [path.join('/p', 'src', 'caller-b.ts')]: 'import doStuff from "./foo-default.js";',
+    });
+    const r = await checkPrimaryNotParallel(dim, '/p', io);
+    assert.equal(r.passed, false, 'export default function with more importers should fail');
+  });
+
+  it('honors harden_overrides', async () => {
+    const dim = makeDim({
+      capability_callsite: { file: 'src/foo-new.ts', symbol: 'doStuff' },
+      harden_overrides: [{
+        check: 'primary-not-parallel',
+        reason: 'intentional shadow during cutover',
+        approvedAt: '2026-05-18', approvedBy: 'op',
+      }],
+    });
+    const io = fakeIo({
+      [path.join('/p', 'src', 'foo-new.ts')]: 'export function doStuff() { return 1; }',
+      [path.join('/p', 'src', 'foo-legacy.ts')]: 'export function doStuff() { return 0; }',
+      [path.join('/p', 'src', 'caller.ts')]: 'import { doStuff } from "./foo-legacy.js";',
+    });
+    const r = await checkPrimaryNotParallel(dim, '/p', io);
+    assert.equal(r.skipped, true);
+  });
+});
+
 describe('computeHardenScoreCap', () => {
   it('returns 10.0 when every check passes', () => {
     const v = {
@@ -436,12 +528,12 @@ describe('applyHardenCap', () => {
 // ── runHardenGate (aggregator) ────────────────────────────────────────────────
 
 describe('runHardenGate', () => {
-  it('runs all 5 checks; stubs return skipped', async () => {
+  it('runs all 6 checks; without capability_callsite all skip', async () => {
     const dim = makeDim();
     const verdict = await runHardenGate({
       dimensionId: dim.id, dim, cwd: '/p', _noWrite: true,
     });
-    assert.equal(verdict.checks.length, 5);
+    assert.equal(verdict.checks.length, 6, 'all 6 checks ran (orphan + claim + hardcoded + import + functional + primary-not-parallel)');
     assert.equal(verdict.allowed, true, 'all skipped → allowed');
     assert.equal(verdict.scoreCap, 10.0);
   });

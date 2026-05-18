@@ -20,7 +20,8 @@ export type HardenCheckId =
   | 'claim-auditor'       // do numeric/textual claims in docstrings match code reality?
   | 'hardcoded-fallback'  // illustrative-data literals (e.g. return ['DIS','PFE']) in non-test code?
   | 'import-resolves'     // does every import in an except-ImportError / catch block exist?
-  | 'functional-diff';    // two distinct inputs → byte-identical output (hardcoded behavior)?
+  | 'functional-diff'     // two distinct inputs → byte-identical output (hardcoded behavior)?
+  | 'primary-not-parallel'; // is the declared callsite the primary, or parallel to a legacy implementation?
 
 /** Per-check score caps applied when the check fails. min wins across failed checks. */
 export const HARDEN_CHECK_CAPS: Record<HardenCheckId, number> = {
@@ -29,6 +30,7 @@ export const HARDEN_CHECK_CAPS: Record<HardenCheckId, number> = {
   'hardcoded-fallback': 6.5,
   'import-resolves': 4.0,
   'functional-diff': 5.5,
+  'primary-not-parallel': 5.5,
 };
 
 /** Harden gate only fires for proposed scores at or above this threshold. */

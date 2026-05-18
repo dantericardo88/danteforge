@@ -602,10 +602,144 @@ export async function checkFunctionalDiff(
   };
 }
 
+// ── Check 6: primary-not-parallel ────────────────────────────────────────────
+
+/**
+ * Verify that `capability_callsite.file` is THE primary implementation of its
+ * capability, not a parallel implementation alongside a more-active legacy file.
+ *
+ * Heuristic (since full symbol-resolution is deferred):
+ *   1. Find all production files under src/ that export the same `symbol` name
+ *      as the declared callsite.
+ *   2. For each candidate (other than the declared callsite), count how many
+ *      production files import it.
+ *   3. If a non-declared candidate has MORE production importers than the
+ *      declared callsite, it is the primary. Fail with the offending file +
+ *      its importer count so the operator can decide whether to:
+ *        (a) move the declaration to the actual primary, or
+ *        (b) wire the new callsite into production and let it become primary.
+ *
+ * Catches the DanteHarvest "27 dims at 7" pattern (replaced-not-supplemented
+ * legacy) where the new module passes tests but the old module is the one
+ * actually called by production.
+ *
+ * Score cap on fail: 5.5 (a parallel implementation is a real semantic gap).
+ * Skip conditions: no `capability_callsite`, dim has explicit override.
+ */
+export async function checkPrimaryNotParallel(
+  dim: MatrixDimension,
+  cwd: string,
+  io: CheckIO = defaultIO(),
+): Promise<HardenCheckResult> {
+  const start = Date.now();
+  const skip = shouldSkipCheck(dim, 'primary-not-parallel');
+  if (skip.skip) {
+    return {
+      check: 'primary-not-parallel', passed: true, durationMs: Date.now() - start,
+      findings: [], scoreCap: HARDEN_CHECK_CAPS['primary-not-parallel'],
+      skipped: true, skipReason: skip.reason,
+    };
+  }
+  const callsite = (dim as unknown as Record<string, unknown>)['capability_callsite'] as
+    | { file: string; symbol: string; lineHint?: number } | undefined;
+  if (!callsite) {
+    return {
+      check: 'primary-not-parallel', passed: true, durationMs: Date.now() - start,
+      findings: [], scoreCap: HARDEN_CHECK_CAPS['primary-not-parallel'],
+      skipped: true, skipReason: 'no capability_callsite declared',
+    };
+  }
+  if (!callsite.symbol) {
+    return {
+      check: 'primary-not-parallel', passed: true, durationMs: Date.now() - start,
+      findings: [], scoreCap: HARDEN_CHECK_CAPS['primary-not-parallel'],
+      skipped: true, skipReason: 'capability_callsite.symbol not declared (cannot compare implementations)',
+    };
+  }
+
+  const cwdSrc = path.join(cwd, 'src');
+  const allFiles = await io.listFiles(cwdSrc, /\.tsx?$/);
+  const productionFiles = allFiles.filter(f => !/[/\\]tests?[/\\]/.test(f));
+  const declaredAbs = path.resolve(path.join(cwd, callsite.file));
+
+  // Step 1: find candidate files that export the same symbol.
+  // Heuristic regex — covers `export function X`, `export const X`, `export class X`,
+  // `export { X }`, `export default function X`.
+  const escSym = callsite.symbol.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const exportRe = new RegExp(
+    `^(?:export\\s+(?:async\\s+)?(?:function|class|const|let|var)\\s+${escSym}\\b` +
+    `|^export\\s*\\{[^}]*\\b${escSym}\\b[^}]*\\}` +
+    `|^export\\s+default\\s+(?:async\\s+)?function\\s+${escSym}\\b)`,
+    'm',
+  );
+  const candidates: string[] = [];
+  for (const f of productionFiles) {
+    try {
+      const content = await io.readFile(f);
+      if (exportRe.test(content)) candidates.push(f);
+    } catch { /* skip */ }
+  }
+
+  // Only the declared file exports the symbol → no parallel implementation.
+  if (candidates.length <= 1) {
+    return {
+      check: 'primary-not-parallel', passed: true, durationMs: Date.now() - start,
+      findings: [], scoreCap: HARDEN_CHECK_CAPS['primary-not-parallel'],
+    };
+  }
+
+  // Step 2: for each candidate, count production importers using the same
+  // basename-or-modulespec heuristic as the orphan check.
+  const importerCount = async (candidateAbs: string): Promise<number> => {
+    const rel = path.relative(cwd, candidateAbs).replace(/\.(tsx?|jsx?|mjs)$/, '');
+    const moduleSpec = rel.replace(/^src[/\\]/, '').replace(/^\.\//, '');
+    const baseName = path.basename(candidateAbs).replace(/\.(tsx?|jsx?|mjs)$/, '');
+    const moduleNeedle = moduleSpec.replace(/[/\\]/g, '[/\\\\]');
+    const escapedBase = baseName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const importRe = new RegExp(
+      `(?:from|import)\\s*\\(?\\s*['"][^'"]*(?:${moduleNeedle}|[/\\\\]${escapedBase})(?:\\.[a-z]+)?['"]`,
+      'g',
+    );
+    let hits = 0;
+    for (const f of productionFiles) {
+      if (path.resolve(f) === candidateAbs) continue;
+      try {
+        const content = await io.readFile(f);
+        if (importRe.test(content)) hits++;
+        importRe.lastIndex = 0;
+      } catch { /* skip */ }
+    }
+    return hits;
+  };
+
+  const declaredImporters = await importerCount(declaredAbs);
+  const findings: HardenFinding[] = [];
+  for (const candidate of candidates) {
+    if (path.resolve(candidate) === declaredAbs) continue;
+    const candidateImporters = await importerCount(candidate);
+    if (candidateImporters > declaredImporters) {
+      findings.push({
+        file: path.relative(cwd, candidate),
+        line: 1,
+        snippet: `export ... ${callsite.symbol} ...`,
+        reason: `Parallel implementation found: "${path.relative(cwd, candidate)}" exports the same symbol "${callsite.symbol}" and has ${candidateImporters} production importer(s) vs ${declaredImporters} for the declared callsite "${callsite.file}". Either move the callsite to the actual primary or wire the new implementation into production.`,
+      });
+    }
+  }
+
+  return {
+    check: 'primary-not-parallel',
+    passed: findings.length === 0,
+    durationMs: Date.now() - start,
+    findings,
+    scoreCap: HARDEN_CHECK_CAPS['primary-not-parallel'],
+  };
+}
+
 // ── Aggregator ───────────────────────────────────────────────────────────────
 
 const DEFAULT_CHECKS: HardenCheckId[] = [
-  'orphan-audit', 'claim-auditor', 'hardcoded-fallback', 'import-resolves', 'functional-diff',
+  'orphan-audit', 'claim-auditor', 'hardcoded-fallback', 'import-resolves', 'functional-diff', 'primary-not-parallel',
 ];
 
 async function runOneCheck(
@@ -617,6 +751,7 @@ async function runOneCheck(
     case 'hardcoded-fallback': return checkHardcodedFallback(dim, cwd, io);
     case 'import-resolves': return checkImportResolves(dim, cwd, io);
     case 'functional-diff': return checkFunctionalDiff(dim, cwd, io);
+    case 'primary-not-parallel': return checkPrimaryNotParallel(dim, cwd, io);
   }
 }
 
