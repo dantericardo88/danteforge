@@ -172,10 +172,20 @@ async function findImportersViaSearchEngine(
   // Use both findImports (semantic) and findPattern (regex fallback for
   // namespace/re-export edge cases that findImports might miss).
   const symbolMatches = await engine.findImports(baseName, { includeTests: false });
+
+  // Also scan for module-path references to catch dynamic imports like
+  // `await import('./commands/go.js')` that symbol-based findImports misses.
+  const moduleSpec = callsite.replace(/\.(tsx?|jsx?|mjs|py)$/, '').replace(/\\/g, '/');
+  const escapedBase = baseName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const pathPattern =
+    `(?:from|import|require)\\s*\\(?\\s*['"][^'"]*[/\\\\]${escapedBase}(?:\\.[a-z]+)?['"]`;
+  const pathMatches = await engine.findPattern(pathPattern, { includeTests: false }).catch(() => []);
+  void moduleSpec;
+
   const callsitePathNorm = path.normalize(callsiteAbsPath).replace(/\\/g, '/');
   const seen = new Set<string>();
   const out: string[] = [];
-  for (const m of symbolMatches) {
+  for (const m of [...symbolMatches, ...pathMatches]) {
     const abs = path.resolve(cwd, m.file);
     const norm = abs.replace(/\\/g, '/');
     if (norm === callsitePathNorm) continue;

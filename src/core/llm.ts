@@ -12,6 +12,7 @@ import { injectContext } from './context-injector.js';
 import { recordMemory } from './memory-engine.js';
 import { LLMError } from './errors.js';
 import { TokenLedger, checkPreflightBudget, BudgetExceededError } from './token-ledger.js';
+import { getCachedResponse, cacheResponse } from './llm-cache.js';
 
 /**
  * Module-level singleton ledger — shared across all callLLM invocations in a
@@ -573,6 +574,13 @@ async function _callLLMInner(
     return `[DRY RUN] LLM call skipped. Estimated ~${estimatedTok} tokens for ${target.provider}/${modelUsed}.`;
   }
 
+  // ── LLM response cache (DANTEFORGE_LLM_CACHE=1) ──────────────────────────
+  const cachingEnabled = process.env.DANTEFORGE_LLM_CACHE === '1';
+  if (cachingEnabled) {
+    const hit = await getCachedResponse(enrichedPrompt).catch(() => null);
+    if (hit !== null) return hit;
+  }
+
   // Enforce budget fence before making any API call
   if (options.budgetFence) {
     const fence = options.budgetFence;
@@ -620,7 +628,11 @@ async function _callLLMInner(
         }
       }
 
-      return await handleCallSuccess(result, options, target, modelUsed, enrichedPrompt, attempt);
+      const responseText = await handleCallSuccess(result, options, target, modelUsed, enrichedPrompt, attempt);
+      if (cachingEnabled) {
+        await cacheResponse(enrichedPrompt, responseText, target.provider).catch(() => {});
+      }
+      return responseText;
     } catch (err) {
       lastError = err;
       if (attempt < maxRetries && isRetryableError(err)) {
