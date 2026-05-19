@@ -44,10 +44,35 @@ function baseOpts(overrides: Partial<HardenCrusadeOptions> = {}): HardenCrusadeO
     loop: false,
     _loadState: null,
     _runAutoResearch: async () => { /* no-op */ },
+    _runOutcomesForDim: async () => { /* no-op */ },
     _writeFile: async () => { /* no-op */ },
     ...overrides,
   };
 }
+
+// ── Outcomes refresh seam ─────────────────────────────────────────────────────
+
+describe('runHardenCrusade — outcomes refresh', () => {
+  it('calls _runOutcomesForDim once per cycle after autoresearch', async () => {
+    const dim = makeDim('security', 5.0);
+    const matrix = makeMatrix([dim]);
+    let outcomesRefreshCalls = 0;
+    let autoresearchCalls = 0;
+
+    await runHardenCrusade(baseOpts({
+      _loadMatrix: async () => matrix,
+      _getScore: async () => 9.5,
+      _runAutoResearch: async () => { autoresearchCalls++; },
+      _runOutcomesForDim: async () => { outcomesRefreshCalls++; },
+      _runHardenForDim: async () => gatePass,
+      maxDimCycles: 2,
+    }));
+
+    // Should have refreshed outcomes at least once (one cycle ran before FRONTIER_REACHED)
+    assert.ok(outcomesRefreshCalls >= 1, 'outcomes refresh should run after autoresearch');
+    assert.equal(outcomesRefreshCalls, autoresearchCalls, 'one refresh per autoresearch run');
+  });
+});
 
 // ── pickWeakestDims behavior (tested indirectly through runHardenCrusade) ──────
 

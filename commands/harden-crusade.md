@@ -30,6 +30,7 @@ danteforge harden-crusade --parallel 4 --loop --target 9 --time 30
 Pass 1: pick 4 weakest dims (where score < target AND ceiling cap >= target)
   Each dim, up to 6 cycles:
     1. danteforge autoresearch --metric <dim> --time 30m --allow-dirty
+    1b. danteforge outcomes --dim <dim> --force-cold  (refresh SHA-keyed evidence)
     2. Re-score the dim
     3. Run 7-check harden gate in-process for that dim
     4. FRONTIER_REACHED  if score >= target AND gate clean

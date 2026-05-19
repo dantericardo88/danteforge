@@ -44,6 +44,8 @@ export interface HardenCrusadeOptions {
   skipLLMCheck?: boolean;
   // Injection seams
   _runAutoResearch?: (dimensionId: string, goal: string, cwd: string, timeMinutes: number) => Promise<void>;
+  /** After autoresearch commits, refresh outcome evidence for this dim before re-scoring. */
+  _runOutcomesForDim?: (dimensionId: string, cwd: string) => Promise<void>;
   _getScore?: (dimensionId: string, cwd: string) => Promise<number>;
   _runHardenForDim?: (dimensionId: string, cwd: string) => Promise<HardenDimResult>;
   _loadMatrix?: (cwd: string) => Promise<CompeteMatrix | null>;
@@ -96,6 +98,24 @@ async function defaultRunAutoResearch(
   );
 }
 
+async function defaultRunOutcomesForDim(dimensionId: string, cwd: string): Promise<void> {
+  // After autoresearch commits code, the SHA changes and prior SHA-pinned evidence
+  // is stale. Re-run only this dim's outcomes so getScore returns an honest value.
+  // Times out in 10 min (most dims have 1–3 outcomes; T1=compile is fastest).
+  const { execFile } = await import('node:child_process');
+  const { promisify } = await import('node:util');
+  const execFileAsync = promisify(execFile);
+  try {
+    await execFileAsync(
+      'danteforge',
+      ['outcomes', '--dim', dimensionId, '--force-cold'],
+      { cwd, timeout: 10 * 60 * 1000 },
+    );
+  } catch (err) {
+    logger.warn(`[harden-crusade:${dimensionId}] outcomes refresh failed: ${err instanceof Error ? err.message : String(err)}`);
+  }
+}
+
 async function defaultGetScore(dimensionId: string, cwd: string): Promise<number> {
   const matrix = await loadMatrix(cwd);
   if (!matrix) return 0;
@@ -134,6 +154,7 @@ async function runDimensionLoop(
   const maxDimCycles = options.maxDimCycles ?? DEFAULT_MAX_CYCLES;
   const timeMinutes = options.timeMinutes ?? DEFAULT_TIME_MIN;
   const runAutoResearch = options._runAutoResearch ?? defaultRunAutoResearch;
+  const runOutcomesForDim = options._runOutcomesForDim ?? defaultRunOutcomesForDim;
   const getScore = options._getScore ?? defaultGetScore;
   const runHardenForDim = options._runHardenForDim ?? defaultRunHardenForDim;
 
@@ -157,6 +178,10 @@ async function runDimensionLoop(
     } catch (err) {
       logger.warn(`[harden-crusade:${dim.id}] Autoresearch cycle ${cycle} failed: ${err instanceof Error ? err.message : String(err)}`);
     }
+
+    // 1b. Refresh outcome evidence — autoresearch may have committed, changing the SHA
+    //     and invalidating any prior SHA-keyed evidence. Run outcomes for just this dim.
+    await runOutcomesForDim(dim.id, cwd);
 
     // 2. Re-score
     const newScore = await getScore(dim.id, cwd);
