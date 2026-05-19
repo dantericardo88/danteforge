@@ -299,22 +299,42 @@ export async function runAllOutcomes(options: RunAllOutcomesOptions): Promise<Ru
 
     for (const outcome of outcomes) {
       onProgress(`Running ${dim.id}/${outcome.id} (${outcome.tier})…`);
-      const entry = await runOneOutcome({
-        dimensionId: dim.id,
-        outcome,
-        cwd: options.cwd,
-        forceCold: options.forceCold,
-        _spawn: options._spawn,
-        _readGitSha: options._readGitSha,
-        _readFile: options._readFile,
-        _writeFile: options._writeFile,
-        _mkdir: options._mkdir,
-        _exists: options._exists,
-        _createTimeMachineCommit: options._createTimeMachineCommit,
-      });
-      evidence.set(makeEvidenceKey(dim.id, outcome.id), entry);
+      let entry: OutcomeEvidenceEntry;
+      try {
+        entry = await runOneOutcome({
+          dimensionId: dim.id,
+          outcome,
+          cwd: options.cwd,
+          forceCold: options.forceCold,
+          _spawn: options._spawn,
+          _readGitSha: options._readGitSha,
+          _readFile: options._readFile,
+          _writeFile: options._writeFile,
+          _mkdir: options._mkdir,
+          _exists: options._exists,
+          _createTimeMachineCommit: options._createTimeMachineCommit,
+        });
+      } catch (err) {
+        // One crashing outcome must not abort the entire dim loop.
+        const gitSha = await (options._readGitSha ?? defaultReadGitSha)(options.cwd);
+        const evidencePath = evidencePathFor(options.cwd, gitSha, dim.id, outcome.id);
+        entry = {
+          dimensionId: dim.id, outcomeId: outcome.id, tier: outcome.tier,
+          gitSha: gitSha ?? 'nogit', passed: false, exitCode: -1, durationMs: 0,
+          stdoutTail: '', stderrTail: '',
+          failureReason: `outcome threw: ${err instanceof Error ? err.message : String(err)}`,
+          ranAt: new Date().toISOString(), evidencePath,
+        };
+        const writeFn = options._writeFile ?? (async (p: string, d: string) => {
+          await fs.mkdir(path.dirname(p), { recursive: true });
+          await fs.writeFile(p, d, 'utf8');
+        });
+        await writeFn(evidencePath, JSON.stringify(entry, null, 2)).catch(() => {});
+        onProgress(`  ⚠ ${dim.id}/${outcome.id} threw: ${entry.failureReason}`);
+      }
+      evidence.set(makeEvidenceKey(dim.id, outcome.id), entry!);
       totalOutcomes++;
-      if (entry.passed) {
+      if (entry!.passed) {
         passingOutcomes++;
         dimPassing++;
       } else {
