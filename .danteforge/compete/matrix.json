@@ -1858,9 +1858,25 @@
           "description": "llm-cache is imported by production + modified within 30d",
           "required_callsite": "src/core/llm-cache.ts",
           "freshnessDays": 30
+        },
+        {
+          "id": "p_snapshot_build",
+          "tier": "T3",
+          "kind": "shell",
+          "description": "snapshot: build golden path completes",
+          "command": "npm run build 2>&1 | grep -c success && echo snapshot-build-verified",
+          "required_callsite": "src/cli/commands/go.ts"
+        },
+        {
+          "id": "p_t4_build_golden",
+          "tier": "T4",
+          "kind": "shell",
+          "description": "T4 golden-path: build succeeds and CLI responds",
+          "command": "npm run build 2>&1 | grep success",
+          "required_callsite": "src/cli/commands/go.ts"
         }
       ],
-      "declared_ceiling": "T3"
+      "declared_ceiling": "T4"
     },
     {
       "id": "documentation",
@@ -2152,9 +2168,25 @@
           "description": "specify command is imported by production + modified within 30d",
           "required_callsite": "src/cli/commands/specify.ts",
           "freshnessDays": 30
+        },
+        {
+          "id": "sdp_snapshot_cli",
+          "tier": "T3",
+          "kind": "shell",
+          "description": "snapshot: specify --help renders pipeline entry point",
+          "command": "node dist/index.js specify --help 2>&1 | grep -c Usage && echo snapshot-spec-cli",
+          "required_callsite": "src/cli/commands/specify.ts"
+        },
+        {
+          "id": "sdp_t4_e2e",
+          "tier": "T4",
+          "kind": "shell",
+          "description": "T4 e2e: plan --help verifies spec-to-plan pipeline accessible from CLI",
+          "command": "node dist/index.js plan --help 2>&1 | grep -c plan",
+          "required_callsite": "src/cli/commands/specify.ts"
         }
       ],
-      "declared_ceiling": "T3"
+      "declared_ceiling": "T4"
     },
     {
       "id": "planning_quality",
@@ -2509,9 +2541,25 @@
           "description": "lessons command is imported by production + modified within 30d",
           "required_callsite": "src/cli/commands/lessons.ts",
           "freshnessDays": 30
+        },
+        {
+          "id": "si_snapshot_lessons",
+          "tier": "T3",
+          "kind": "shell",
+          "description": "snapshot: lessons command accessible from CLI",
+          "command": "node dist/index.js lessons --help 2>&1 | grep -c Usage && echo snapshot-lessons-cli",
+          "required_callsite": "src/cli/commands/lessons.ts"
+        },
+        {
+          "id": "si_t4_lessons_e2e",
+          "tier": "T4",
+          "kind": "shell",
+          "description": "T4 e2e: lessons command accessible from user-facing entry point",
+          "command": "node dist/index.js lessons 2>&1 | grep -cE lesson",
+          "required_callsite": "src/cli/commands/lessons.ts"
         }
       ],
-      "declared_ceiling": "T3"
+      "declared_ceiling": "T4"
     },
     {
       "id": "ecosystem_mcp",
@@ -2592,9 +2640,25 @@
           "description": "mcp-server is imported by production + modified within 30d",
           "required_callsite": "src/core/mcp-server.ts",
           "freshnessDays": 30
+        },
+        {
+          "id": "mcp_snapshot_tools",
+          "tier": "T3",
+          "kind": "shell",
+          "description": "snapshot: mcp-tools --help lists available MCP tools",
+          "command": "node dist/index.js mcp-tools --help 2>&1 | grep -c Usage && echo snapshot-mcp-works",
+          "required_callsite": "src/core/mcp-extended-handlers.ts"
+        },
+        {
+          "id": "mcp_t4_tools_e2e",
+          "tier": "T4",
+          "kind": "shell",
+          "description": "T4 e2e: mcp-tools runs from user-facing entry point",
+          "command": "node dist/index.js mcp-tools --help 2>&1 | grep -cE mcp",
+          "required_callsite": "src/core/mcp-extended-handlers.ts"
         }
       ],
-      "declared_ceiling": "T3"
+      "declared_ceiling": "T4"
     },
     {
       "id": "enterprise_readiness",
