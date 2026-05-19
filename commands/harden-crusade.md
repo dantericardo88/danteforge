@@ -69,7 +69,7 @@ Pass 2: re-read matrix → re-rank → pick next 4 → repeat
 
 ## Eligibility filter
 
-Dims are EXCLUDED from the push when `declared_ceiling`'s cap is below `--target`. Example: a dim at T3 (cap 6.0) when targeting 9.0 is honestly unreachable — the loop skips it instead of grinding. Operator can either bump the ceiling or lower the target.
+Dims are EXCLUDED from the push only when their score has already reached their numeric `ceiling` (i.e., `score >= d.ceiling`). A dim with `ceiling=4` and `score=0` is still eligible — it hasn't hit its ceiling yet, and the harden gate will classify it `AT_CEILING` when it does. The `declared_ceiling` tier string (T0–T6) is informational only; the 7-check harden gate is the true arbiter of what score the substrate can defend.
 
 ## Honored autonomy rules
 

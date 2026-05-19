@@ -214,15 +214,16 @@ async function runDimensionLoop(
 // ── Outer crusade loop ──────────────────────────────────────────────────────
 
 function pickWeakestDims(matrix: CompeteMatrix, target: number, parallel: number): MatrixDimension[] {
+  const excluded = new Set((matrix as unknown as Record<string, unknown>)['excludedDimensions'] as string[] ?? []);
   const candidates = matrix.dimensions
-    .filter(d => (d.scores['self'] ?? 0) < target)
-    .filter(d => {
-      const ceiling = (d as unknown as Record<string, unknown>)['declared_ceiling'] as string | undefined;
-      // Exclude dims whose declared ceiling cap is below target (those will never reach 9+ honestly).
-      const tierCaps: Record<string, number> = { T0: 1, T1: 4, T2: 5, T3: 6, T4: 7, T5: 8, T6: 8.5 };
-      if (ceiling && tierCaps[ceiling] !== undefined && tierCaps[ceiling] < target) return false;
-      return true;
-    });
+    .filter(d =>
+      !excluded.has(d.id) &&
+      (d as unknown as Record<string, unknown>)['status'] !== 'closed' &&
+      (d.scores['self'] ?? 0) < target &&
+      // Use the numeric d.ceiling field (operator-set cap), not declared_ceiling tier.
+      // declared_ceiling is informational; the harden gate is the true arbiter.
+      (d.ceiling === undefined || (d.scores['self'] ?? 0) < d.ceiling),
+    );
   candidates.sort((a, b) => (a.scores['self'] ?? 0) - (b.scores['self'] ?? 0));
   return candidates.slice(0, parallel);
 }
