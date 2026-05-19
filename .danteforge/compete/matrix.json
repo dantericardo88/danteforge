@@ -350,9 +350,25 @@
           "kind": "shell",
           "description": "CLI help is substantive (≥40 lines, lists commands)",
           "command": "node -e \"const{execSync}=require('child_process');const out=execSync('node dist/index.js --help').toString();const lines=out.split('\\n').length;if(lines<40)process.exit(1);if(!/Commands:/i.test(out))process.exit(1)\""
+        },
+        {
+          "id": "ux_snapshot_panel",
+          "tier": "T3",
+          "kind": "production-usage-fresh",
+          "description": "ux-refine is imported by production + CLI responses visible",
+          "required_callsite": "src/cli/commands/ux-refine.ts",
+          "freshnessDays": 30
+        },
+        {
+          "id": "ux_t4_golden_path",
+          "tier": "T4",
+          "kind": "shell",
+          "description": "T4 golden-path: go status renders user-visible output with snapshot structure",
+          "command": "node dist/index.js go --status 2>&1 | grep -cE DanteForge",
+          "required_callsite": "src/cli/commands/ux-refine.ts"
         }
       ],
-      "declared_ceiling": "T2"
+      "declared_ceiling": "T4"
     },
     {
       "id": "functionality",
@@ -1493,9 +1509,25 @@
           "description": "errors module is imported by production + modified within 30d",
           "required_callsite": "src/core/errors.ts",
           "freshnessDays": 30
+        },
+        {
+          "id": "eh_snapshot_cli",
+          "tier": "T3",
+          "kind": "shell",
+          "description": "snapshot: error-lookup CLI accessible",
+          "command": "node dist/index.js error-lookup --help 2>&1 | grep -c Usage && echo snapshot-eh-cli",
+          "required_callsite": "src/cli/commands/error-lookup.ts"
+        },
+        {
+          "id": "eh_t4_e2e",
+          "tier": "T4",
+          "kind": "shell",
+          "description": "T4 e2e: error-lookup runs from user-facing CLI",
+          "command": "node dist/index.js error-lookup ENOENT 2>&1 | grep -cE error",
+          "required_callsite": "src/cli/commands/error-lookup.ts"
         }
       ],
-      "declared_ceiling": "T3"
+      "declared_ceiling": "T4"
     },
     {
       "id": "performance",
@@ -1962,9 +1994,25 @@
           "kind": "shell",
           "description": "Core docs exist with real content (CAPABILITY-TIERS, AUTONOMY-BOUNDARIES, RUNBOOK each ≥2KB)",
           "command": "node -e \"const fs=require('fs');for(const f of ['docs/CAPABILITY-TIERS.md','docs/AUTONOMY-BOUNDARIES.md','RUNBOOK.md']){fs.accessSync(f);if(fs.readFileSync(f,'utf8').length<2000)process.exit(1)}\""
+        },
+        {
+          "id": "doc_snapshot_changelog",
+          "tier": "T2",
+          "kind": "shell",
+          "description": "snapshot: changelog command accessible",
+          "command": "node dist/index.js changelog --help 2>&1 | grep -c Usage && echo snapshot-docs-cli",
+          "required_callsite": "src/cli/commands/changelog.ts"
+        },
+        {
+          "id": "doc_t4_golden",
+          "tier": "T4",
+          "kind": "shell",
+          "description": "T4 golden-path: changelog runs from user-facing CLI entry point",
+          "command": "node dist/index.js changelog --help 2>&1 | grep -cE changelog",
+          "required_callsite": "src/cli/commands/changelog.ts"
         }
       ],
-      "declared_ceiling": "T2"
+      "declared_ceiling": "T4"
     },
     {
       "id": "convergence_self_healing",
@@ -2278,9 +2326,25 @@
           "kind": "shell",
           "description": "plan command registered with options + module exports",
           "command": "node -e \"const{execSync}=require('child_process');const out=execSync('node dist/index.js plan --help').toString();if(out.length<400)process.exit(1);if(!/options/i.test(out))process.exit(1);if(!require('fs').existsSync('dist/index.js'))process.exit(1)\""
+        },
+        {
+          "id": "pq_snapshot_tasks",
+          "tier": "T2",
+          "kind": "shell",
+          "description": "snapshot: tasks --help lists task management commands",
+          "command": "node dist/index.js tasks --help 2>&1 | grep -c Usage && echo snapshot-tasks-cli",
+          "required_callsite": "src/cli/commands/tasks.ts"
+        },
+        {
+          "id": "pq_t4_golden",
+          "tier": "T4",
+          "kind": "shell",
+          "description": "T4 golden-path: tasks + plan accessible from user-facing CLI",
+          "command": "node dist/index.js tasks --help 2>&1 | grep -cE tasks",
+          "required_callsite": "src/cli/commands/tasks.ts"
         }
       ],
-      "declared_ceiling": "T2"
+      "declared_ceiling": "T4"
     },
     {
       "id": "maintainability",
@@ -2359,9 +2423,25 @@
           "kind": "shell",
           "description": "No file exceeds 750 LOC",
           "command": "node scripts/check-file-size.mjs 2>&1 | tail -3"
+        },
+        {
+          "id": "maint_snapshot_health",
+          "tier": "T2",
+          "kind": "shell",
+          "description": "snapshot: code-health command accessible",
+          "command": "node dist/index.js code-health --help 2>&1 | grep -c Usage && echo snapshot-maint-cli",
+          "required_callsite": "src/cli/commands/code-health.ts"
+        },
+        {
+          "id": "maint_t4_golden",
+          "tier": "T4",
+          "kind": "shell",
+          "description": "T4 golden-path: code-health runs from user-facing entry point",
+          "command": "node dist/index.js code-health 2>&1 | grep -cE Files",
+          "required_callsite": "src/cli/commands/code-health.ts"
         }
       ],
-      "declared_ceiling": "T2"
+      "declared_ceiling": "T4"
     },
     {
       "id": "token_economy",
@@ -2746,9 +2826,25 @@
           "kind": "shell",
           "description": "RUNBOOK.md exists with operator-facing content",
           "command": "node -e \"const fs=require('fs');fs.accessSync('RUNBOOK.md');const c=fs.readFileSync('RUNBOOK.md','utf8');if(c.length<2000||!/operator/i.test(c))process.exit(1)\""
+        },
+        {
+          "id": "er_snapshot_gate",
+          "tier": "T2",
+          "kind": "shell",
+          "description": "snapshot: gate-check CLI accessible",
+          "command": "node dist/index.js harden --help 2>&1 | grep -c Usage && echo snapshot-gate-cli",
+          "required_callsite": "src/matrix/engines/hardener.ts"
+        },
+        {
+          "id": "er_t4_e2e",
+          "tier": "T4",
+          "kind": "shell",
+          "description": "T4 golden-path: gate-check CLI runs from user entry point",
+          "command": "node dist/index.js harden --json 2>&1 | grep -cE totalDimensions",
+          "required_callsite": "src/matrix/engines/hardener.ts"
         }
       ],
-      "declared_ceiling": "T2"
+      "declared_ceiling": "T4"
     },
     {
       "id": "community_adoption",
@@ -3635,9 +3731,25 @@
           "description": "time-machine module is imported by production + modified within 30d",
           "required_callsite": "src/core/time-machine.ts",
           "freshnessDays": 30
+        },
+        {
+          "id": "aap_snapshot_tm",
+          "tier": "T3",
+          "kind": "shell",
+          "description": "snapshot: time-machine status accessible",
+          "command": "node dist/index.js time-machine --help 2>&1 | grep -c Usage && echo snapshot-tm-cli",
+          "required_callsite": "src/core/time-machine.ts"
+        },
+        {
+          "id": "aap_t4_golden",
+          "tier": "T4",
+          "kind": "shell",
+          "description": "T4 e2e: time-machine status runs from user-facing entry point",
+          "command": "node dist/index.js time-machine verify 2>&1 | grep -cE valid",
+          "required_callsite": "src/core/time-machine.ts"
         }
       ],
-      "declared_ceiling": "T3"
+      "declared_ceiling": "T4"
     }
   ]
 }
