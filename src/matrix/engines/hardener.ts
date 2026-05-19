@@ -1003,7 +1003,10 @@ export async function checkRecencyCheck(
   let bestImporter: string | null = null;
   let hasFreshAndTraceable = false;
   for (const importer of importers) {
-    const normalized = importer.replace(/\\/g, '/');
+    // SearchEngine returns paths with backslashes on Windows + sometimes a `./`
+    // prefix; normalize both so glob matching against entry-point patterns works.
+    let normalized = importer.replace(/\\/g, '/');
+    if (normalized.startsWith('./')) normalized = normalized.slice(2);
     if (config.exclusions.some(e => matchesGlob(normalized, e))) continue;
     const fileInfo = await getLastMainCommitDate(normalized, cwd);
     if (!fileInfo) continue;

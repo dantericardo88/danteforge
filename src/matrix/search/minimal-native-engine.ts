@@ -91,7 +91,8 @@ export class MinimalNativeEngine implements SearchEngine {
     const start = Date.now();
     const forceCold = options?.forceCold ?? false;
     if (this.indexedRoot === repoRoot && !forceCold) {
-      // Already indexed in-memory; return a fresh handle without re-walking.
+      // Already indexed in-memory; ensure ripgrep is also pointed at the same root.
+      await this.ripgrep.index(repoRoot).catch(() => undefined);
       return {
         engine: 'native',
         repoRoot,
@@ -111,6 +112,8 @@ export class MinimalNativeEngine implements SearchEngine {
       if (loaded) {
         this.symbolIndex = loaded.symbolIndex;
         this.indexedRoot = repoRoot;
+        // Propagate to internal RipgrepFallback so pattern scans honor --cwd.
+        await this.ripgrep.index(repoRoot).catch(() => undefined);
         return {
           engine: 'native',
           repoRoot,
@@ -145,6 +148,10 @@ export class MinimalNativeEngine implements SearchEngine {
     }
 
     this.indexedRoot = repoRoot;
+    // Propagate the indexed root to the internal RipgrepFallback so findPattern
+    // (and through it findImports/findSymbol patterns) scope to the same dir
+    // instead of bleeding into process.cwd().
+    await this.ripgrep.index(repoRoot).catch(() => undefined);
     // Persist to disk for next cold-start (Phase L.4).
     if (gitSha) {
       void saveIndexToDisk(repoRoot, gitSha, this.symbolIndex, files.length);
