@@ -175,8 +175,9 @@ export async function runOneOutcome(options: RunOutcomeOptions): Promise<Outcome
     const { runProductionUsageFresh, freshResultToEvidence } = await import('./production-usage-fresh.js');
     const freshOutcome = outcome as import('../types/outcome.js').ProductionUsageFreshOutcome;
     // Phase M.6: pass a SearchEngine so importer discovery routes through findImports.
-    const { createSearchEngine } = await import('../search/factory.js');
-    const engine = createSearchEngine();
+    // Use RipgrepFallback — it starts in <1s vs 60s for MinimalNativeEngine (no index build).
+    const { RipgrepFallback } = await import('../search/ripgrep-fallback.js');
+    const engine = new RipgrepFallback();
     const result = await runProductionUsageFresh(freshOutcome, cwd, undefined, engine);
     const entry = freshResultToEvidence(freshOutcome, options.dimensionId, result, gitSha, evidencePath, Date.now() - start);
     await writeFn(evidencePath, JSON.stringify(entry, null, 2));
@@ -316,8 +317,8 @@ export async function runAllOutcomes(options: RunAllOutcomesOptions): Promise<Ru
         });
       } catch (err) {
         // Outcome threw — treat as failed rather than crashing the whole dim loop.
-        const gitSha = await (options._readGitSha ?? readGitSha)(options.cwd);
-        const evidencePath = path.join(options.cwd, EVIDENCE_DIR, `${gitSha}-${dim.id}-${outcome.id}.json`);
+        const gitSha = await (options._readGitSha ?? defaultReadGitSha)(options.cwd);
+        const evidencePath = path.join(options.cwd, OUTCOME_EVIDENCE_DIR, `${gitSha}-${dim.id}-${outcome.id}.json`);
         entry = {
           dimensionId: dim.id, outcomeId: outcome.id, tier: outcome.tier,
           gitSha, passed: false, exitCode: -1, durationMs: 0,
