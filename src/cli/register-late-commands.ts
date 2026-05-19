@@ -1303,6 +1303,68 @@ hardenCmd
     })();
   });
 
+// ── harden-crusade ───────────────────────────────────────────────────────────
+//
+// Crusade variant: autoresearch per-dim + the 7-check harden gate as verifier.
+// Differs from /crusade in that autoresearch is the PRIMARY driver (not a
+// stall fallback). Useful when inferno's Ollama-dependent OSS-harvest sub-step
+// is unreliable. The harden gate caps any honestly-unsupportable score.
+
+program
+  .command('harden-crusade')
+  .description('Autonomous crusade-like loop: autoresearch per dim + 7-check harden gate verification. Reaches target or the natural ceiling honestly.')
+  .option('--goal <goal>', 'Mission statement passed to each autoresearch wave', 'Push every dim toward its honest ceiling')
+  .option('--parallel <n>', 'Number of dimensions to push simultaneously (default 4)', '4')
+  .option('--target <n>', 'Score target per dimension (default 9.0)', '9')
+  .option('--max-dim-cycles <n>', 'Per-dim cycle cap (default 6)', '6')
+  .option('--time <m>', 'Autoresearch time budget per cycle in minutes (default 30)', '30')
+  .option('--loop', 'Outer loop: re-rank + re-run until ALL_DONE (max 10 passes)', false)
+  .option('--json', 'Machine-readable JSON output')
+  .option('--cwd <path>', 'Project directory (defaults to cwd)')
+  .addHelpText('after', `
+Examples:
+  danteforge harden-crusade                                Single pass, 4 weakest dims, 30m autoresearch each
+  danteforge harden-crusade --loop                         Re-rank + repeat until ALL_DONE
+  danteforge harden-crusade --time 60 --parallel 2         Longer budget, fewer parallel dims
+  danteforge harden-crusade --target 8 --goal "stability"  Custom target + goal
+
+Per dim per cycle:
+  1. danteforge autoresearch --metric <dim> --time Nm
+  2. Re-score the dim
+  3. danteforge harden --dim <dim> (in-process)
+  4. FRONTIER_REACHED if score >= target AND gate clean
+  5. AT_CEILING if gate caps below target (legitimate)
+  6. GATE_BLOCKED / MAX_CYCLES otherwise
+
+Honors regrade-cadence + autonomy rules (R1-R6) like /crusade.
+Excludes dims whose declared_ceiling cap is below target.
+Writes report to HARDEN_CRUSADE_REPORT.md.
+`)
+  .action((opts) => {
+    void (async () => {
+      try {
+        const { runHardenCrusade } = await import('./commands/harden-crusade.js');
+        const result = await runHardenCrusade({
+          goal: opts.goal as string,
+          parallel: parseInt(opts.parallel as string, 10),
+          target: parseFloat(opts.target as string),
+          maxDimCycles: parseInt(opts.maxDimCycles as string, 10),
+          timeMinutes: parseInt(opts.time as string, 10),
+          loop: opts.loop as boolean,
+          cwd: opts.cwd as string | undefined,
+        });
+        if (opts.json) {
+          process.stdout.write(JSON.stringify(result, null, 2) + '\n');
+        }
+        if (result.status !== 'ALL_DONE') process.exitCode = 1;
+      } catch (err) {
+        const { formatAndLogError } = await import('../core/format-error.js');
+        formatAndLogError(err, 'harden-crusade');
+        process.exitCode = 1;
+      }
+    })();
+  });
+
 program
   .command('probe')
   .description('Cold-build runtime probe — the T1 gate of the Capability Ladder. Auto-detects turbo/pnpm/lerna/npm.')

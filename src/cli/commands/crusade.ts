@@ -496,7 +496,7 @@ const MAX_WAVES_WITHOUT_REGRADE = 3;
  * Best-effort caller wraps in try/catch — a rule-engine crash should not block
  * the crusade (we still want forward progress on the load-bearing work).
  */
-async function checkAutonomyRules(cwd?: string): Promise<import('../../matrix/engines/crusade-autonomy.js').AutonomyVerdict> {
+export async function checkAutonomyRules(cwd?: string): Promise<import('../../matrix/engines/crusade-autonomy.js').AutonomyVerdict> {
   const { applyAutonomyRules } = await import('../../matrix/engines/crusade-autonomy.js');
   const { loadState } = await import('../../core/state.js');
   const { loadMatrix } = await import('../../core/compete-matrix.js');
