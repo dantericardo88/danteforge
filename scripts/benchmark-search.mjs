@@ -69,6 +69,7 @@ async function detectSemble() {
   });
 }
 
+// eslint-disable-next-line no-unused-vars
 async function timeSembleEngine(_kind, _query) {
   // Harvest discipline (PRD I2): we do not vendor Semble's API. The harness
   // skips Semble timing entirely when not installed. When Semble IS present,

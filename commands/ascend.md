@@ -31,6 +31,34 @@ danteforge ascend --dry-run            # show plan and ceiling report without ex
 - **After a sprint** — run to continue until all achievable dimensions hit target, then stop
 - **Cross-project** — run on DanteAgents, DanteCode, or any project that has a `.danteforge/compete/matrix.json`
 
+## Depth Doctrine — Wave Rhythm (MANDATORY)
+
+Ascend cycles MUST alternate breadth and depth waves:
+
+- **Odd cycles (1, 3, 5…): BREADTH WAVE**
+  - Goal: write new modules + unit tests
+  - Score ceiling for this wave: **6**
+  - Every new module MUST answer before completing:
+    1. What production `src/` function calls this? (not a test)
+    2. What is the observable output artifact?
+    3. What breaks silently if this fails?
+  - If answer 1 is "nothing yet" → `orphan-pending`, ceiling 5
+
+- **Even cycles (2, 4, 6…): DEPTH WAVE**
+  - Goal: run outcomes to produce receipts, lift score ceiling
+  - Command: `danteforge validate <dimId>` (or `--all`)
+  - Score unlocked: up to 9 (via OutcomeEvidenceEntry passed=true)
+  - No new production code in depth waves — run things, write receipts
+
+**Zero tolerance: No mocks. No stubs. No TODOs in `src/` files.**
+The pre-commit hook blocks these patterns. Implement real code or leave it unimplemented.
+
+**Score tiers (structurally enforced, cannot be gamed):**
+- ≤5.0: code exists, tests pass
+- ≤7.0: production callsite wired (harden orphan check)
+- ≤8.5: receipt on disk (`danteforge validate` passed)
+- ≤9.5: receipt fresh ≤ 7 days
+
 ## Ceiling Behavior
 
 Some dimensions cannot reach 9+ via automation:

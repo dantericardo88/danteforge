@@ -52,6 +52,7 @@ const fullyExemptFiles = [
   'premium.ts',                         // license validation stub is intentional (future implementation)
   'harsh-scorer.ts',                   // stub detection engine — references patterns by design
   'matrix-build-subagent-prompt.ts',   // generates sub-agent prompts that describe anti-patterns by design
+  'pre-commit.mjs',                    // depth-doctrine guard — defines the patterns it enforces
 ];
 
 // Files exempt from expanded pattern checks only (config, doctrine, docs, code-review tools)

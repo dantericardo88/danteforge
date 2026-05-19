@@ -238,7 +238,8 @@ async function applyOutcomeDerivedScores(matrix: CompeteMatrix, cwd: string): Pr
     }
 
     try {
-      const { computeDerivedScore } = await import('./derived-score.js');
+      const { computeDerivedScoreWithBreakdown } = await import('./derived-score.js');
+      const { applyLegacyReceiptCeiling } = await import('../matrix/engines/receipt-ceiling.js');
       const dfs = {
         id: dim.id,
         outcomes: outcomes as import('../matrix/types/outcome.js').Outcome[],
@@ -246,7 +247,10 @@ async function applyOutcomeDerivedScores(matrix: CompeteMatrix, cwd: string): Pr
         legacy_score: dim.scores.self,
         scores: dim.scores,
       };
-      const derived = computeDerivedScore(dfs, evidence);
+      const breakdown = computeDerivedScoreWithBreakdown(dfs, evidence);
+      // Depth doctrine: dims with no outcomes declared cannot exceed 7.0.
+      // Code without a receipt is a hypothesis, not a feature.
+      const derived = applyLegacyReceiptCeiling(breakdown.score, breakdown);
       // Preserve the original (agent-written) value for diff displays.
       (dim as unknown as Record<string, unknown>)['legacy_score'] = dim.scores.self;
       dim.scores.self = derived;

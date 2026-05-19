@@ -23,18 +23,50 @@ ${state.constitution ? `Project principles:\n${state.constitution}\n` : ''}
 ${planContent ? `Implementation plan:\n${planContent.slice(0, 3000)}\n` : ''}
 ${specContent ? `Specification:\n${specContent.slice(0, 2000)}\n` : ''}
 
-Generate a TASKS.md with:
-1. **Task List** - each task as a numbered item with:
-   - Clear action verb (Implement, Create, Configure, Test, etc.)
+## DEPTH DOCTRINE — MANDATORY
+
+Every task must have a TYPE. Use exactly two types:
+
+**FORGE TASK** — writes new modules + unit tests. Score ceiling: 6.
+Every forge task MUST answer before it is considered complete:
+1. Callsite: What production function calls this module? (not a test — the real entry point)
+2. Artifact: What is the observable output? (file path, log line, CLI output)
+3. Silent failure: What breaks silently if this module fails?
+If answer 1 is "nothing yet" → mark as orphan-pending. Score ceiling: 5.
+
+**VALIDATE TASK** — runs outcomes on existing code to produce receipts. Unlocks scores 7-9.
+No new production code. Run danteforge validate <dim>. Output: OutcomeEvidenceEntry file.
+
+**Zero Tolerance:** No mocks, no stubs, no TODOs in any code. Implement the real thing.
+Code without a receipt is a hypothesis, not a feature.
+
+## Generate TASKS.md with:
+
+1. **Task List** — each task as a numbered item with:
+   - Type: [FORGE] or [VALIDATE]
+   - Clear action verb (Implement, Create, Configure, Validate, etc.)
    - Files to modify (if known)
    - Verification criteria
    - [P] flag for tasks that can run in parallel
    - Effort estimate (S/M/L)
-2. **Dependencies** - which tasks must complete before others
-3. **Phase Grouping** - group tasks into execution waves (Phase 1, Phase 2, etc.)
+   - For FORGE tasks: answer the 3 callsite questions
+   - For VALIDATE tasks: include receipt path and expected artifact
+
+2. **Dependencies** — which tasks must complete before others
+   (VALIDATE tasks always depend on the corresponding FORGE task)
+
+3. **Phase Grouping** — alternate waves:
+   - Phase 1: FORGE wave (build modules, ceiling 6)
+   - Phase 2: VALIDATE wave (run outcomes, unlock 7-9)
+   - Phase 3: FORGE wave (new modules for remaining gaps)
+   - Phase 4: VALIDATE wave (validate new modules)
 
 Format each task as:
-\`N. [P?] <action> - files: <paths> - verify: <criteria> - effort: <S/M/L>\`
+\`N. [P?] [FORGE|VALIDATE] <action> - files: <paths> - verify: <criteria> - effort: <S/M/L>\`
+
+For VALIDATE tasks, add:
+\`   receipt: .danteforge/outcome-evidence/<dim>_<outcome>.json\`
+\`   command: danteforge validate <dimId>\`
 
 Output ONLY the markdown content - no preamble.`;
 }

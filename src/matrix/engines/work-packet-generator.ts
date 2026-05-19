@@ -25,6 +25,12 @@ export interface GenerateWorkPacketsOptions {
   globalForbiddenPaths?: string[];
   /** Override deterministic packet IDs. */
   _now?: () => string;
+  /**
+   * Depth doctrine: when set, ALL packets in this batch share this wave type.
+   * Breadth waves (odd): write modules + tests, ceiling 6.
+   * Depth waves (even): run outcomes on existing code, unlock 7-9 via receipts.
+   */
+  waveType?: 'breadth' | 'depth';
 }
 
 export function generateWorkPackets(options: GenerateWorkPacketsOptions): WorkGraph {
@@ -56,7 +62,7 @@ export function generateWorkPackets(options: GenerateWorkPacketsOptions): WorkGr
         if (!owned.includes(p)) forbiddenFromOtherDims.push(p);
       }
     }
-    packets.push(buildPacket(dim, owned, [...forbiddenFromOtherDims, ...globalForbidden], now));
+    packets.push(buildPacket(dim, owned, [...forbiddenFromOtherDims, ...globalForbidden], now, options.waveType));
   }
 
   return { generatedAt: now(), packets };
@@ -109,6 +115,7 @@ function buildPacket(
   ownedPaths: string[],
   forbiddenPaths: string[],
   now: () => string,
+  waveType?: 'breadth' | 'depth',
 ): WorkPacket {
   // Risk classification
   const dimRiskMultiplier = dim.gapVsTarget > 4 ? 2 : 1;
@@ -124,10 +131,33 @@ function buildPacket(
 
   const redTeamRequired = riskLevel === 'high' || riskLevel === 'critical' || dim.gapVsTarget > 3;
 
+  const isDepthWave = waveType === 'depth';
+  const scoreCeiling = isDepthWave ? 9 : waveType === 'breadth' ? 6 : undefined;
+
+  const depthCriteria = isDepthWave
+    ? [
+        'Run `danteforge validate` for this dimension — all outcomes must pass',
+        'OutcomeEvidenceEntry with passed=true written to .danteforge/outcome-evidence/',
+        'No new production code added — depth waves validate existing code only',
+      ]
+    : [];
+
+  const breadthCriteria = waveType === 'breadth'
+    ? [
+        'Score ceiling for this wave: 6. Do NOT claim completion above 6 — depth validation comes next wave.',
+        'Every new module must answer: (1) What production function calls this? (2) What is the output artifact? (3) What breaks silently if this fails?',
+        'No mocks, no stubs, no TODOs — implement the real thing or leave it unimplemented.',
+      ]
+    : [];
+
   return {
     id: `work.${dim.dimensionId}.${stamp(now())}`,
-    title: `Close gap on ${dim.name}`,
-    objective: `Move "${dim.name}" from current score ${dim.currentScore} toward target ${dim.targetScore}.`,
+    title: isDepthWave
+      ? `Validate (depth wave): ${dim.name}`
+      : `Close gap on ${dim.name}`,
+    objective: isDepthWave
+      ? `Run outcomes for "${dim.name}" to prove execution and lift score ceiling above 7.0. No new code — run things, write receipts.`
+      : `Move "${dim.name}" from current score ${dim.currentScore} toward target ${dim.targetScore}.`,
     dimensionId: dim.dimensionId,
     paths: {
       ownedPaths,
@@ -138,28 +168,37 @@ function buildPacket(
     mayConflictWith: [],
     acceptanceCriteria: [
       ...dim.evidenceRequired,
-      // Reflect the actual gap rather than a hardcoded "+1.0" that may
-      // over-shoot the target. Mirrors the deriveEvidenceRequirements
-      // pattern from `dimension-synthesizer.ts`.
+      ...depthCriteria,
+      ...breadthCriteria,
       `Score for ${dim.dimensionId} moves from ${dim.currentScore} to at least ${dim.targetScore} (gap: ${(dim.targetScore - dim.currentScore).toFixed(1)})`,
     ],
     proof: {
-      proofRequired: [
-        'typecheck exits 0',
-        'tests pass',
-        'no forbidden files changed',
-        'dimension score moves verifiably',
-      ],
-      requiredCommands: ['npm run typecheck', 'npm test'],
+      proofRequired: isDepthWave
+        ? [
+            'danteforge validate exits 0 for this dimension',
+            'outcome evidence files present in .danteforge/outcome-evidence/',
+            'no forbidden files changed',
+          ]
+        : [
+            'typecheck exits 0',
+            'tests pass',
+            'no forbidden files changed',
+            'dimension score moves verifiably',
+          ],
+      requiredCommands: isDepthWave
+        ? [`danteforge validate ${dim.dimensionId}`]
+        : ['npm run typecheck', 'npm test'],
     },
     tasteGateRequired,
     redTeamRequired,
     rollbackPlan: 'Remove worktree, discard branch, restore from Time Machine snapshot.',
     riskLevel,
-    estimatedLoc: 200 * dimRiskMultiplier,
-    estimatedMinutes: 30 * dimRiskMultiplier,
+    estimatedLoc: isDepthWave ? 0 : 200 * dimRiskMultiplier,
+    estimatedMinutes: isDepthWave ? 15 : 30 * dimRiskMultiplier,
     createdAt: now(),
     createdBy: 'matrix-kernel',
+    waveType,
+    scoreCeiling,
   };
 }
 

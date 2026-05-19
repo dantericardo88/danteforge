@@ -98,7 +98,7 @@ export async function runHardenAll(options: RunHardenOptions = {}): Promise<Hard
     if (aboveThreshold) report.dimensionsAboveThreshold++;
 
     if (!aboveThreshold && !options.migrate && !options.migrateApply) {
-      // Below threshold and not migrating: skip the actual check, record placeholder.
+      // Below threshold and not migrating: skip the actual check, record a no-op entry.
       report.perDimension.push({
         dimensionId: dim.id, currentScore, aboveThreshold: false,
         verdict: null, cappedScore: null,

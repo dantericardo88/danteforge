@@ -12,6 +12,20 @@ verification_required: true
 
 # /inferno - Maximum-Power Preset
 
+## Depth Doctrine (MANDATORY)
+
+**Breadth wave first, depth wave second — alternating.**
+
+- Odd passes (1, 3, 5…): BREADTH — forge modules + tests, ceiling 6. Answer 3 callsite questions.
+- Even passes (2, 4, 6…): DEPTH — run `danteforge validate` to produce receipts, unlock 7-9.
+
+**Score ceiling reminder per wave type:**
+- Breadth wave: max claimable score = 6
+- Depth wave: max claimable score = 9 (requires passing `danteforge validate`)
+
+**Zero tolerance: No mocks. No stubs. No TODOs.**
+The pre-commit hook will BLOCK any `jest.mock(`, `vi.mock(`, `sinon.stub(`, `// TODO` in `src/` files.
+
 When the user invokes `/inferno`, execute the maximum preset in the workspace:
 
 1. Run fresh OSS discovery first

@@ -12,6 +12,12 @@ verification_required: true
 
 # /nova - Very-High-Power Preset
 
+## Depth Doctrine (MANDATORY)
+
+Alternate waves: odd = BREADTH (forge, ceiling 6), even = DEPTH (validate, unlock 7-9).
+No mocks, no stubs, no TODOs in any `src/` code. Answer 3 callsite questions per module.
+Run `danteforge validate <dim>` after each breadth pass to produce receipts.
+
 When the user invokes `/nova`, execute the nova preset in the workspace:
 
 1. Run constitution to establish or refresh project principles.

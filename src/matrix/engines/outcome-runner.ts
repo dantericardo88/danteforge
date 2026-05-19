@@ -315,26 +315,22 @@ export async function runAllOutcomes(options: RunAllOutcomesOptions): Promise<Ru
           _createTimeMachineCommit: options._createTimeMachineCommit,
         });
       } catch (err) {
-        // One crashing outcome must not abort the entire dim loop.
-        const gitSha = await (options._readGitSha ?? defaultReadGitSha)(options.cwd);
-        const evidencePath = evidencePathFor(options.cwd, gitSha, dim.id, outcome.id);
+        // Outcome threw — treat as failed rather than crashing the whole dim loop.
+        const gitSha = await (options._readGitSha ?? readGitSha)(options.cwd);
+        const evidencePath = path.join(options.cwd, EVIDENCE_DIR, `${gitSha}-${dim.id}-${outcome.id}.json`);
         entry = {
           dimensionId: dim.id, outcomeId: outcome.id, tier: outcome.tier,
-          gitSha: gitSha ?? 'nogit', passed: false, exitCode: -1, durationMs: 0,
+          gitSha, passed: false, exitCode: -1, durationMs: 0,
           stdoutTail: '', stderrTail: '',
           failureReason: `outcome threw: ${err instanceof Error ? err.message : String(err)}`,
           ranAt: new Date().toISOString(), evidencePath,
         };
-        const writeFn = options._writeFile ?? (async (p: string, d: string) => {
-          await fs.mkdir(path.dirname(p), { recursive: true });
-          await fs.writeFile(p, d, 'utf8');
-        });
-        await writeFn(evidencePath, JSON.stringify(entry, null, 2)).catch(() => {});
+        try { await (options._writeFile ?? fs.writeFile)(evidencePath, JSON.stringify(entry, null, 2)); } catch { /* best-effort */ }
         onProgress(`  ⚠ ${dim.id}/${outcome.id} threw: ${entry.failureReason}`);
       }
-      evidence.set(makeEvidenceKey(dim.id, outcome.id), entry!);
+      evidence.set(makeEvidenceKey(dim.id, outcome.id), entry);
       totalOutcomes++;
-      if (entry!.passed) {
+      if (entry.passed) {
         passingOutcomes++;
         dimPassing++;
       } else {

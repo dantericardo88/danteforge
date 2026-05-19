@@ -104,6 +104,56 @@ Build first, then refine visually. UX-refine runs after forge because you need l
 
 When a file approaches the limit, split it: `foo.ts` → `foo.ts` + `foo-types.ts` + `foo-utils.ts`.
 
+## Definition of Done (Depth Doctrine)
+
+A dimension is not complete until it has produced an observable artifact on the target hardware.
+**Code without a receipt is a hypothesis, not a feature.**
+
+### Score tiers (structurally enforced by `receipt-ceiling.ts` + `derived-score.ts`):
+
+| Score | What it means | How to unlock |
+|---|---|---|
+| ≤5.0 | Code exists, unit tests pass | Module + tests (no outcomes needed) |
+| ≤7.0 | Production callsite wired | Orphan check passes (harden gate) |
+| ≤8.5 | Receipt on disk, ≤30 days | `danteforge validate <dim>` passes |
+| ≤9.5 | Fresh receipt, ≤7 days | Outcome evidence fresh (T5 tier) |
+| ≤10.0 | Multi-receipt + live verify | 3+ outcomes + VerifyReceipt.liveCheckPassed |
+
+### Every forged module must answer before the wave closes:
+1. **Callsite**: What production function calls this module? (not a test — the real `src/` entry point)
+2. **Artifact**: What is the observable output? (file path, log line, CLI output — something you can point to)
+3. **Silent failure**: What breaks if this module silently fails?
+
+If answer 1 is "nothing yet" → mark as `orphan-pending`. Score ceiling: 5. Do not claim higher.
+
+### Wave rhythm (enforced in harden-crusade, matrixdev):
+- **Breadth waves** (odd): write modules + unit tests → score ceiling 6
+- **Depth waves** (even): run `danteforge validate` → unlock 7-9 via receipts
+- Depth waves write zero new production code. They run things.
+
+### `danteforge validate <dim>` — the depth-doctrine receipt runner:
+Runs declared outcomes, writes `OutcomeEvidenceEntry` receipts, reports before/after score.
+Until this passes, the dimension is structurally capped at 7.0.
+
+---
+
+## Zero Tolerance (Non-Negotiable, Pre-Commit Enforced)
+
+**No mocks. No stubs. No TODOs. In any code DanteForge agents write.**
+
+The pre-commit hook (Pillar 2) blocks:
+- `jest.mock(`, `vi.mock(`, `sinon.stub(`, `sinon.mock(` in `src/` files
+- `// TODO`, `// FIXME` comments in `src/` files
+- `throw new Error('not implemented')` or variants in `src/` files
+
+The merge court (no-stub-scanner gate) blocks any work packet with these patterns.
+Every wave prompt prepends this constraint.
+
+If you cannot implement the real thing, write a `capability_test` that fails cleanly.
+Never write a stub that passes silently — that is breadth masquerading as depth.
+
+---
+
 ## Conventions
 
 - `AGENTS.md` is the canonical agent instruction file (Codex/Claude/etc.); this file is adapter/context guidance

@@ -20,6 +20,7 @@ import type { GateReport, RedTeamReport, TasteGateRequest } from '../types/gate.
 import type { ConflictReport } from '../types/conflict.js';
 import { isBlockingStatus } from './taste-gate.js';
 import { isBlockingConflict } from '../engines/conflict-radar.js';
+import { scanForStubs, type StubScanResult } from './no-stub-scanner.js';
 import { MATRIX_DIR, MATRIX_REPORT_PATHS } from '../types/index.js';
 import type { SecurityCourtOptions } from './security-red-team.js';
 import {
@@ -58,6 +59,8 @@ export interface RunMergeCourtOptions {
   _runSecurityCourt?: (filesChanged: string[], cwd: string, opts: SecurityCourtOptions) => Promise<{ recommendation: string; blockedBy: string[]; criticalCount: number }>;
   /** Injection seam: replaces capability_test runner for tests. */
   _runCapabilityTest?: (input: MergeCourtInput, cwd: string) => CapabilityTestVerdict;
+  /** Injection seam: replaces stub scanner for tests. */
+  _scanForStubs?: (files: string[], worktreeRoot: string) => Promise<StubScanResult>;
   _now?: () => string;
 }
 
@@ -86,6 +89,7 @@ export async function runMergeCourt(
   const baseCwd = options.cwd ?? process.cwd();
   const securityCourtFn = options._runSecurityCourt ?? defaultRunSecurityCourt;
   const capabilityTestFn = options._runCapabilityTest ?? defaultRunCapabilityTest;
+  const stubScanFn = options._scanForStubs ?? defaultScanForStubs;
 
   for (const candidate of ranked) {
     // LOC gate: block any candidate that introduced a .ts/.tsx file exceeding 750 lines
@@ -96,6 +100,24 @@ export async function runMergeCourt(
         candidate,
         'BLOCKED_BY_POLICY',
         `LOC limit exceeded — split before merging: ${detail}`,
+        undefined,
+        now,
+      ));
+      continue;
+    }
+
+    // Zero-tolerance stub gate: block any candidate with TODO/stub/mock/not-implemented patterns.
+    // No mocks. No stubs. No TODOs. Code without receipts is a hypothesis.
+    const stubResult = await stubScanFn(candidate.candidate.filesChanged ?? [], baseCwd);
+    if (!stubResult.ok) {
+      const detail = stubResult.findings.slice(0, 3)
+        .map(f => `${f.filePath}:${f.line} (${f.kind})`)
+        .join('; ');
+      const more = stubResult.findings.length > 3 ? ` + ${stubResult.findings.length - 3} more` : '';
+      decisions.push(buildDecision(
+        candidate,
+        'BLOCKED_BY_POLICY',
+        `Zero-tolerance: stub/TODO/mock patterns found — ${detail}${more}. Remove all stubs and implement real code.`,
         undefined,
         now,
       ));
@@ -332,6 +354,14 @@ function defaultRunCapabilityTest(input: MergeCourtInput, cwd: string): Capabili
     capabilityTest: input.capabilityTest,
     cwd,
   });
+}
+
+async function defaultScanForStubs(files: string[], worktreeRoot: string): Promise<StubScanResult> {
+  try {
+    return scanForStubs({ files, worktreeRoot });
+  } catch {
+    return { ok: true, findings: [] }; // best-effort — never block on scanner error
+  }
 }
 
 async function defaultRunSecurityCourt(

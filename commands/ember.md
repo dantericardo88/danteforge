@@ -5,6 +5,11 @@ description: "Very low-token preset - budget autoforge with light checkpoints an
 
 # /ember - Light Preset
 
+## Depth Doctrine (MANDATORY)
+
+BREADTH wave (budget mode): write modules + tests, ceiling 6.
+No mocks, no stubs, no TODOs. Answer callsite questions before marking complete.
+
 When the user invokes `/ember`, execute the light preset in the workspace:
 
 1. Run budget-oriented autoforge with light checkpoints

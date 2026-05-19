@@ -1189,6 +1189,52 @@ See ~/.claude/plans/dapper-hatching-aurora.md for the design.
     })();
   });
 
+program
+  .command('validate [dimId]')
+  .description('Depth Doctrine: run dimension outcomes and report whether the score ceiling was lifted. Code without a receipt is a hypothesis, not a feature.')
+  .option('--all', 'Run outcomes for all dimensions (ignores [dimId])')
+  .option('--quick', 'Run only T1/T2 outcomes (fast checks only)')
+  .option('--force-cold', 'Bypass gitSha cache and re-execute all outcomes')
+  .option('--json', 'Machine-readable JSON output')
+  .option('--cwd <path>', 'Project directory (defaults to cwd)')
+  .addHelpText('after', `
+Depth doctrine: dims without passing outcomes are structurally capped at 7.0.
+Run \`danteforge validate <dim>\` to lift the ceiling by providing execution receipts.
+
+Score tiers:
+  ≤7.0  no outcomes declared or no outcome passing (legacy ceiling)
+  ≤8.5  outcome evidence exists, passed=true (T6 tier cap)
+  ≤9.5  fresh evidence ≤7 days
+
+Examples:
+  danteforge validate testing              Run outcomes for the testing dimension
+  danteforge validate testing --quick      Only T1/T2 (typecheck + unit tests)
+  danteforge validate --all                Run all dims with declared outcomes
+  danteforge validate --all --json         Machine-readable result for CI
+
+This command exits 1 if any outcome fails (CI gate).
+`)
+  .action((dimId: string | undefined, opts) => {
+    void (async () => {
+      try {
+        const { runValidateCli } = await import('./commands/validate.js');
+        const result = await runValidateCli({
+          dimId,
+          all: opts.all as boolean | undefined,
+          quick: opts.quick as boolean | undefined,
+          forceCold: opts.forceCold as boolean | undefined,
+          json: opts.json as boolean | undefined,
+          cwd: opts.cwd as string | undefined,
+        });
+        if (!result.allPassed) process.exitCode = 1;
+      } catch (err) {
+        const { formatAndLogError } = await import('../core/format-error.js');
+        formatAndLogError(err, 'validate');
+        process.exitCode = 1;
+      }
+    })();
+  });
+
 const hardenCmd = program
   .command('harden')
   .description('Deterministic hardening checks (Phase C of Capability Ladder). Catches orphan modules, claim/reality mismatches, hardcoded fallbacks. Cannot be gamed by LLM agents.')

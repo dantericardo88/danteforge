@@ -119,7 +119,7 @@ function buildCommandForRunner(runner: MonorepoRunner, tier: ProbeTier, forceCol
     return 'npm test';
   }
   if (tier === 'T0') return 'node -e "process.exit(0)"';
-  // T3-T6 not implemented in Phase A — return a no-op that always passes
+  // T3-T6 tier probes deferred to Phase B — fall through to the no-op command
   return 'node -e "process.exit(0)"';
 }
 

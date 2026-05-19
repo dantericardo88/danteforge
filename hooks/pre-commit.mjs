@@ -156,6 +156,51 @@ if (scoreViolations.length > 0) {
   process.exit(1);
 }
 
+// ── Pillar 2: Zero-tolerance stub/mock/TODO guard ──────────────────────────────
+// Depth doctrine: No mocks. No stubs. No TODOs. Code without receipts is a
+// hypothesis, not a feature. Blocks any commit that introduces these patterns
+// into src/ TypeScript files. Tests may use mocking frameworks in test files
+// (*.test.ts) — but production src/ files must not.
+const STUB_PATTERNS = [
+  { re: /\/\/\s*(TODO|FIXME|XXX)(\b|:)/i, label: 'TODO/FIXME comment' },
+  { re: /throw\s+new\s+Error\s*\(\s*['"`].*not\s+implemented.*['"`]\s*\)/i, label: 'not-implemented throw' },
+  { re: /throw\s+new\s+Error\s*\(\s*['"`]\s*TODO\b/i, label: 'TODO throw' },
+  { re: /\bjest\.mock\s*\(/, label: 'jest.mock() in production code' },
+  { re: /\bvi\.mock\s*\(/, label: 'vi.mock() in production code' },
+  { re: /\bsinon\.stub\s*\(/, label: 'sinon.stub() in production code' },
+  { re: /\bsinon\.mock\s*\(/, label: 'sinon.mock() in production code' },
+];
+
+// Only scan production src/ files, not test files
+const stagedSrcTs = stagedTs.filter(f => {
+  const norm = f.replace(/\\/g, '/');
+  return norm.startsWith('src/') && !norm.endsWith('.test.ts') && !norm.endsWith('.spec.ts') && !norm.includes('/test/');
+});
+
+const stubViolations = [];
+for (const f of stagedSrcTs) {
+  let content = '';
+  try { content = fs.readFileSync(path.join(process.cwd(), f), 'utf8'); } catch { continue; }
+  const lines = content.split('\n');
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i];
+    for (const { re, label } of STUB_PATTERNS) {
+      if (re.test(line)) {
+        stubViolations.push(`  ${f.replace(/\\/g, '/')}:${i + 1}  [${label}]  ${line.trim()}`);
+        break;
+      }
+    }
+  }
+}
+if (stubViolations.length > 0) {
+  console.error('[pre-commit] BLOCKED (zero-tolerance): stub/mock/TODO patterns in production src/ files.');
+  console.error('[pre-commit] No mocks. No stubs. No TODOs. Code without receipts is a hypothesis.');
+  console.error('[pre-commit] Violations:');
+  for (const v of stubViolations) console.error(v);
+  console.error('[pre-commit] Fix: implement the real thing, or write a capability_test that fails cleanly.');
+  process.exit(1);
+}
+
 // ── TypeScript typecheck ──────────────────────────────────────────────────────
 
 if (stagedTs.length === 0) {

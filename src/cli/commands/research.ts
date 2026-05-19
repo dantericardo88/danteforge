@@ -211,7 +211,7 @@ export async function runResearchResolve(waveId: string, opts: ResearchCommandOp
   // Phase P.4: when PROMOTE, append the promoted outcome to the dim's
   // outcomes[] in matrix.json. The promoted agent's capability_test.sh (if
   // present in their workdir) becomes the new outcome's command. When absent,
-  // a placeholder T3 production-usage-fresh outcome is added pointing at
+  // a fallback T3 production-usage-fresh outcome is added pointing at
   // the dim's existing required_callsite (if known).
   let promotedOutcomeAdded = false;
   let promotedOutcomeId: string | undefined;

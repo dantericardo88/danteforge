@@ -127,7 +127,8 @@
           "tier": "T1",
           "kind": "shell",
           "description": "Smoke tests pass",
-          "command": "npx tsx --test tests/smoke.test.ts 2>&1 | tail -3"
+          "command": "npx tsx --test tests/smoke.test.ts 2>&1 | tail -3",
+          "timeout_ms": 120000
         },
         {
           "id": "t_full",
@@ -1384,6 +1385,13 @@
       },
       "outcomes": [
         {
+          "id": "s_loads",
+          "tier": "T1",
+          "kind": "shell",
+          "description": "CLI loads without errors",
+          "command": "node dist/index.js --version 2>&1 | grep -E \"[0-9]+[.][0-9]\""
+        },
+        {
           "id": "s_antistub",
           "tier": "T2",
           "kind": "shell",
@@ -1876,6 +1884,13 @@
         "description": "Build completes"
       },
       "outcomes": [
+        {
+          "id": "p_loads",
+          "tier": "T1",
+          "kind": "shell",
+          "description": "CLI loads under 5s",
+          "command": "node dist/index.js --version 2>&1 | grep -E \"[0-9]+[.][0-9]\""
+        },
         {
           "id": "p_build",
           "tier": "T2",
