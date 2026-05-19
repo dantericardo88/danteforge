@@ -296,23 +296,35 @@ export interface AuditOrphansResult {
 }
 
 export async function runHardenAuditOrphans(opts: RunHardenOptions = {}): Promise<AuditOrphansResult> {
-  const report = await runHardenAll({ ...opts, check: 'orphan-audit' });
+  // Audit subcommands run the check on EVERY dim regardless of the 7.0 harden
+  // gate threshold — the gate matters for proposal-acceptance, the audit is a
+  // standalone "show me every orphan" inspection. Call the engine directly.
+  const cwd = opts.cwd ?? process.cwd();
+  const matrix = await loadMatrix(cwd);
+  if (!matrix) throw new Error(`No matrix.json at ${cwd}/.danteforge/compete/matrix.json`);
+  const dims = opts.dim
+    ? matrix.dimensions.filter(d => d.id === opts.dim)
+    : matrix.dimensions;
+  const { checkOrphanAudit } = await import('../../matrix/engines/hardener.js');
   const result: AuditOrphansResult = {
-    cwd: report.cwd,
-    totalDimensions: report.totalDimensions,
+    cwd,
+    totalDimensions: dims.length,
     orphans: [],
     clean: 0,
   };
-  for (const row of report.perDimension) {
-    if (!row.verdict) continue;
-    const orphanFinding = row.verdict.checks?.find(r => r.check === 'orphan-audit' && !r.passed);
-    if (orphanFinding) {
-      const dim = (await loadMatrix(opts.cwd ?? process.cwd()))?.dimensions.find(d => d.id === row.dimensionId);
-      const callsite = (dim as unknown as Record<string, unknown> | undefined)?.['capability_callsite'] as { file: string; symbol: string } | undefined;
+  for (const dim of dims) {
+    const checkResult = await checkOrphanAudit(dim, cwd);
+    if (checkResult.skipped) {
+      // No callsite declared — nothing to audit.
+      result.clean++;
+      continue;
+    }
+    if (!checkResult.passed) {
+      const callsite = (dim as unknown as Record<string, unknown>)['capability_callsite'] as { file: string; symbol: string } | undefined;
       result.orphans.push({
-        dimensionId: row.dimensionId,
-        cap: orphanFinding.scoreCap,
-        reason: orphanFinding.findings[0]?.reason ?? 'orphan: no production imports',
+        dimensionId: dim.id,
+        cap: checkResult.scoreCap,
+        reason: checkResult.findings[0]?.reason ?? 'orphan: no production imports',
         ...(callsite ? { callsite } : {}),
       });
     } else {
@@ -352,27 +364,38 @@ export interface AuditRecencyResult {
 
 export async function runHardenAuditRecency(opts: RunHardenOptions & { thresholdDays?: number } = {}): Promise<AuditRecencyResult> {
   const thresholdDays = opts.thresholdDays ?? 30;
-  const report = await runHardenAll({ ...opts, check: 'recency-check' });
+  const cwd = opts.cwd ?? process.cwd();
+  const matrix = await loadMatrix(cwd);
+  if (!matrix) throw new Error(`No matrix.json at ${cwd}/.danteforge/compete/matrix.json`);
+  const dims = opts.dim
+    ? matrix.dimensions.filter(d => d.id === opts.dim)
+    : matrix.dimensions;
+  const { checkRecencyCheck } = await import('../../matrix/engines/hardener.js');
+  const { createSearchEngine } = await import('../../matrix/search/factory.js');
+  const engine = createSearchEngine({ preference: 'native' });
+  await engine.index(cwd).catch(() => undefined);
+
   const result: AuditRecencyResult = {
-    cwd: report.cwd,
-    totalDimensions: report.totalDimensions,
+    cwd,
+    totalDimensions: dims.length,
     stale: [],
     fresh: 0,
     thresholdDays,
   };
-  for (const row of report.perDimension) {
-    if (!row.verdict) continue;
-    const staleFinding = row.verdict.checks?.find(r => r.check === 'recency-check' && !r.passed);
-    if (staleFinding) {
-      const dim = (await loadMatrix(opts.cwd ?? process.cwd()))?.dimensions.find(d => d.id === row.dimensionId);
-      const callsite = (dim as unknown as Record<string, unknown> | undefined)?.['capability_callsite'] as { file: string; symbol: string } | undefined;
-      // Read daysSinceFreshest off the finding's reason if encoded there; otherwise default to thresholdDays+1.
-      const daysMatch = staleFinding.findings[0]?.reason.match(/(\d+) days/);
+  for (const dim of dims) {
+    const checkResult = await checkRecencyCheck(dim, cwd, undefined, engine);
+    if (checkResult.skipped) {
+      result.fresh++;
+      continue;
+    }
+    if (!checkResult.passed) {
+      const callsite = (dim as unknown as Record<string, unknown>)['capability_callsite'] as { file: string; symbol: string } | undefined;
+      const daysMatch = checkResult.findings[0]?.reason.match(/(\d+) days/);
       const daysSinceFreshest = daysMatch ? parseInt(daysMatch[1]!, 10) : thresholdDays + 1;
       result.stale.push({
-        dimensionId: row.dimensionId,
-        cap: staleFinding.scoreCap,
-        reason: staleFinding.findings[0]?.reason ?? 'stale: no fresh production import',
+        dimensionId: dim.id,
+        cap: checkResult.scoreCap,
+        reason: checkResult.findings[0]?.reason ?? 'stale: no fresh production import',
         daysSinceFreshest,
         ...(callsite ? { callsite } : {}),
       });

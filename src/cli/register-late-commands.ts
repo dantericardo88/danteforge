@@ -1233,7 +1233,9 @@ hardenCmd
   .description('Three Pillars P2: list every dimension whose capability_callsite is only imported by tests. Caps each at 6.0.')
   .option('--json', 'Machine-readable JSON output')
   .option('--cwd <path>', 'Project directory (defaults to cwd)')
-  .action((opts) => {
+  .action((_opts, cmd) => {
+    // optsWithGlobals merges parent `harden` flags (--json, --cwd) with this subcommand's own.
+    const opts = cmd.optsWithGlobals();
     void (async () => {
       try {
         const { runHardenAuditOrphans } = await import('./commands/harden.js');
@@ -1255,7 +1257,8 @@ hardenCmd
   .option('--threshold-days <n>', 'Days threshold (default 30; can be overridden in .danteforge/config/entry-points.json)', '30')
   .option('--json', 'Machine-readable JSON output')
   .option('--cwd <path>', 'Project directory (defaults to cwd)')
-  .action((opts) => {
+  .action((_opts, cmd) => {
+    const opts = cmd.optsWithGlobals();
     void (async () => {
       try {
         const { runHardenAuditRecency } = await import('./commands/harden.js');
