@@ -118,6 +118,44 @@ if (fs.existsSync(PROTECTED_LINES_PATH)) {
   }
 }
 
+// ── Pillar 1: Symbol-level score-write guard ──────────────────────────────────
+// Catches any new code path that writes `dim.scores.self = ...` outside the
+// modules architecturally permitted to do so. The file-level guard above stops
+// matrix.json commits; this catches the upstream bug — writing the in-memory
+// matrix without going through the writeScoreProposal → mergeScoreProposals
+// chokepoint. Exempt modules:
+//   - src/core/compete-matrix.ts: owns the matrix API (derived-score writeback
+//     in loadMatrix, legacy applyAdversarialCalibration retained for tests)
+//   - src/cli/commands/honest-rescore.ts: writes a CLONE to matrix.honest.json,
+//     never to matrix.json
+const SCORE_WRITE_RE = /\bdim\.scores(\['?self'?\]|\.self)\s*=/;
+const SCORE_WRITE_EXEMPT = new Set([
+  'src/core/compete-matrix.ts',
+  'src/cli/commands/honest-rescore.ts',
+]);
+const stagedNonTestTs = stagedTs.filter(f => !f.startsWith('tests/') && !f.includes('/test/') && !/\.test\.ts$/.test(f));
+const scoreViolations = [];
+for (const f of stagedNonTestTs) {
+  const normalized = f.replace(/\\/g, '/');
+  if (SCORE_WRITE_EXEMPT.has(normalized)) continue;
+  let content = '';
+  try { content = fs.readFileSync(path.join(process.cwd(), f), 'utf8'); } catch { continue; }
+  const lines = content.split('\n');
+  for (let i = 0; i < lines.length; i++) {
+    if (SCORE_WRITE_RE.test(lines[i])) {
+      scoreViolations.push(`  ${normalized}:${i + 1}  ${lines[i].trim()}`);
+    }
+  }
+}
+if (scoreViolations.length > 0) {
+  console.error('[pre-commit] BLOCKED: direct writes to dim.scores.self outside the reconciler.');
+  console.error('[pre-commit] Score changes must flow through writeScoreProposal → mergeScoreProposals.');
+  console.error('[pre-commit] Violations:');
+  for (const v of scoreViolations) console.error(v);
+  console.error('[pre-commit] Exempt files: src/core/compete-matrix.ts (matrix API), src/cli/commands/honest-rescore.ts (clone-only).');
+  process.exit(1);
+}
+
 // ── TypeScript typecheck ──────────────────────────────────────────────────────
 
 if (stagedTs.length === 0) {

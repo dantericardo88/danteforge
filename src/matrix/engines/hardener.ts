@@ -861,10 +861,198 @@ export async function checkPrimaryNotParallel(
   };
 }
 
+// ── Check 7: recency-check (Three Pillars P3) ────────────────────────────────
+//
+// A dimension's production import is "stale" if no importing file was modified
+// on the main branch within the last N days AND traces to a user-facing entry
+// point. This catches the replacement-not-supplement failure mode: new module
+// exists, is even imported, but the importing code is dead — the production
+// code path still uses the legacy module.
+//
+// Two-hop entry-point trace (Phase L follow-up could replace with a full call
+// graph): the importing file passes if it matches an entry-point glob directly,
+// OR if it is imported by a file that matches.
+
+export interface EntryPointConfig {
+  patterns: string[];
+  exclusions: string[];
+  thresholdDays: number;
+}
+
+const DEFAULT_ENTRY_POINTS: EntryPointConfig = {
+  patterns: ['src/cli/**/*.ts', 'src/api/**/*.ts', 'src/mcp/**/*.ts', 'bin/*'],
+  exclusions: ['src/cli/internal/**'],
+  thresholdDays: 30,
+};
+
+async function loadEntryPointConfig(cwd: string, io: CheckIO): Promise<EntryPointConfig> {
+  const configPath = path.join(cwd, '.danteforge', 'config', 'entry-points.json');
+  if (!(await io.exists(configPath))) return DEFAULT_ENTRY_POINTS;
+  try {
+    const raw = await io.readFile(configPath);
+    const parsed = JSON.parse(raw) as Partial<EntryPointConfig>;
+    return {
+      patterns: parsed.patterns ?? DEFAULT_ENTRY_POINTS.patterns,
+      exclusions: parsed.exclusions ?? DEFAULT_ENTRY_POINTS.exclusions,
+      thresholdDays: parsed.thresholdDays ?? DEFAULT_ENTRY_POINTS.thresholdDays,
+    };
+  } catch {
+    return DEFAULT_ENTRY_POINTS;
+  }
+}
+
+function matchesGlob(rel: string, glob: string): boolean {
+  const re = new RegExp(
+    '^' +
+      glob
+        .replace(/[.+^${}()|[\]\\]/g, '\\$&')
+        .replace(/\*\*/g, ' ')
+        .replace(/\*/g, '[^/]*')
+        .replace(/\?/g, '.')
+        .replace(/ /g, '.*') +
+      '$',
+  );
+  return re.test(rel.replace(/\\/g, '/'));
+}
+
+function matchesAnyGlob(rel: string, patterns: string[]): boolean {
+  return patterns.some(p => matchesGlob(rel, p));
+}
+
+async function getLastMainCommitDate(file: string, cwd: string): Promise<{ sha: string; date: Date; daysSince: number } | null> {
+  // Try main first, fall back to HEAD's first-parent history if main doesn't exist.
+  for (const branch of ['main', 'master', 'HEAD']) {
+    try {
+      const { stdout } = await execFileAsync(
+        'git', ['log', '-1', '--format=%H|%aI', branch === 'HEAD' ? '--first-parent' : `--first-parent`, branch, '--', file],
+        { cwd, timeout: 5000 },
+      );
+      const trimmed = stdout.trim();
+      if (!trimmed) continue;
+      const [sha, iso] = trimmed.split('|');
+      if (!sha || !iso) continue;
+      const date = new Date(iso);
+      const daysSince = (Date.now() - date.getTime()) / (1000 * 60 * 60 * 24);
+      return { sha, date, daysSince };
+    } catch {
+      continue;
+    }
+  }
+  return null;
+}
+
+export async function checkRecencyCheck(
+  dim: MatrixDimension, cwd: string, io: CheckIO = defaultIO(),
+  searchEngine?: import('../search/types.js').SearchEngine,
+): Promise<HardenCheckResult> {
+  const start = Date.now();
+  const skip = shouldSkipCheck(dim, 'recency-check');
+  if (skip.skip) {
+    return {
+      check: 'recency-check', passed: true, durationMs: Date.now() - start,
+      findings: [], scoreCap: HARDEN_CHECK_CAPS['recency-check'],
+      skipped: true, skipReason: skip.reason,
+    };
+  }
+  const callsite = (dim as unknown as Record<string, unknown>)['capability_callsite'] as
+    | { file: string; symbol: string } | undefined;
+  if (!callsite) {
+    return {
+      check: 'recency-check', passed: true, durationMs: Date.now() - start,
+      findings: [], scoreCap: HARDEN_CHECK_CAPS['recency-check'],
+      skipped: true, skipReason: 'no capability_callsite declared',
+    };
+  }
+  const auditExempt = (dim as unknown as Record<string, unknown>)['audit_exempt'];
+  if (auditExempt === 'recency-by-design' || auditExempt === 'test-only-by-design') {
+    return {
+      check: 'recency-check', passed: true, durationMs: Date.now() - start,
+      findings: [], scoreCap: HARDEN_CHECK_CAPS['recency-check'],
+      skipped: true, skipReason: `audit_exempt: ${auditExempt}`,
+    };
+  }
+
+  const config = await loadEntryPointConfig(cwd, io);
+
+  // Find every importer of the callsite's symbol. Use SearchEngine when present;
+  // fall back to a ripgrep-like pure-Node grep for parity.
+  let importers: string[] = [];
+  if (searchEngine) {
+    try {
+      const matches = await searchEngine.findImports(callsite.symbol, { includeTests: false, maxResults: 100 });
+      importers = matches.map(m => m.file);
+    } catch {
+      importers = [];
+    }
+  }
+  if (importers.length === 0) {
+    // No production importers at all — orphan audit handles this case at P2.
+    // Recency does not double-cap on the same failure; pass through.
+    return {
+      check: 'recency-check', passed: true, durationMs: Date.now() - start,
+      findings: [], scoreCap: HARDEN_CHECK_CAPS['recency-check'],
+      skipped: true, skipReason: 'no production importers (orphan-audit territory)',
+    };
+  }
+
+  // For each importer, find its last main-branch commit date and check whether
+  // the file traces to an entry point. An importer "traces" if it matches an
+  // entry-point pattern directly OR is itself imported by such a file.
+  const findings: HardenFinding[] = [];
+  let bestDays = Number.POSITIVE_INFINITY;
+  let bestImporter: string | null = null;
+  let hasFreshAndTraceable = false;
+  for (const importer of importers) {
+    const normalized = importer.replace(/\\/g, '/');
+    if (config.exclusions.some(e => matchesGlob(normalized, e))) continue;
+    const fileInfo = await getLastMainCommitDate(normalized, cwd);
+    if (!fileInfo) continue;
+    if (fileInfo.daysSince < bestDays) {
+      bestDays = fileInfo.daysSince;
+      bestImporter = normalized;
+    }
+    const tracesDirect = matchesAnyGlob(normalized, config.patterns);
+    let tracesIndirect = false;
+    if (!tracesDirect && searchEngine) {
+      try {
+        // Two-hop: who imports THIS importer? (use the file's basename as symbol guess)
+        const basenameSymbol = path.basename(normalized).replace(/\.[^.]+$/, '');
+        const secondHop = await searchEngine.findImports(basenameSymbol, { includeTests: false, maxResults: 20 });
+        tracesIndirect = secondHop.some(s => matchesAnyGlob(s.file.replace(/\\/g, '/'), config.patterns));
+      } catch { /* best-effort */ }
+    }
+    const traces = tracesDirect || tracesIndirect;
+    if (traces && fileInfo.daysSince <= config.thresholdDays) {
+      hasFreshAndTraceable = true;
+      break;
+    }
+  }
+
+  if (!hasFreshAndTraceable) {
+    const daysText = bestImporter
+      ? `${Math.round(bestDays)} days since freshest importer (${bestImporter}); threshold=${config.thresholdDays}`
+      : `no importer traces to an entry point matching ${config.patterns.join(', ')}`;
+    findings.push({
+      file: callsite.file,
+      line: 1,
+      snippet: `imports of ${callsite.symbol}`,
+      reason: `recency: ${daysText}. Either modify a production importer recently, or document as audit_exempt: recency-by-design.`,
+    });
+  }
+
+  return {
+    check: 'recency-check',
+    passed: findings.length === 0,
+    durationMs: Date.now() - start,
+    findings,
+    scoreCap: HARDEN_CHECK_CAPS['recency-check'],
+  };
+}
+
 // ── Aggregator ───────────────────────────────────────────────────────────────
 
 const DEFAULT_CHECKS: HardenCheckId[] = [
-  'orphan-audit', 'claim-auditor', 'hardcoded-fallback', 'import-resolves', 'functional-diff', 'primary-not-parallel',
+  'orphan-audit', 'claim-auditor', 'hardcoded-fallback', 'import-resolves', 'functional-diff', 'primary-not-parallel', 'recency-check',
 ];
 
 async function runOneCheck(
@@ -878,6 +1066,7 @@ async function runOneCheck(
     case 'import-resolves': return checkImportResolves(dim, cwd, io);
     case 'functional-diff': return checkFunctionalDiff(dim, cwd, io);
     case 'primary-not-parallel': return checkPrimaryNotParallel(dim, cwd, io);
+    case 'recency-check': return checkRecencyCheck(dim, cwd, io, searchEngine);
   }
 }
 

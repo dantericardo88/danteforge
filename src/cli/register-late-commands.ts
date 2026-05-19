@@ -1229,6 +1229,50 @@ This command is the operator-facing entry point and the CI gate.
   });
 
 hardenCmd
+  .command('audit-orphans')
+  .description('Three Pillars P2: list every dimension whose capability_callsite is only imported by tests. Caps each at 6.0.')
+  .option('--json', 'Machine-readable JSON output')
+  .option('--cwd <path>', 'Project directory (defaults to cwd)')
+  .action((opts) => {
+    void (async () => {
+      try {
+        const { runHardenAuditOrphans } = await import('./commands/harden.js');
+        await runHardenAuditOrphans({
+          json: opts.json as boolean | undefined,
+          cwd: opts.cwd as string | undefined,
+        });
+      } catch (err) {
+        const { formatAndLogError } = await import('../core/format-error.js');
+        formatAndLogError(err, 'harden audit-orphans');
+        process.exitCode = 1;
+      }
+    })();
+  });
+
+hardenCmd
+  .command('audit-recency')
+  .description('Three Pillars P3: list every dimension whose production importer is older than N days OR does not trace to an entry point. Caps each at 7.0.')
+  .option('--threshold-days <n>', 'Days threshold (default 30; can be overridden in .danteforge/config/entry-points.json)', '30')
+  .option('--json', 'Machine-readable JSON output')
+  .option('--cwd <path>', 'Project directory (defaults to cwd)')
+  .action((opts) => {
+    void (async () => {
+      try {
+        const { runHardenAuditRecency } = await import('./commands/harden.js');
+        await runHardenAuditRecency({
+          thresholdDays: parseInt(opts.thresholdDays as string, 10),
+          json: opts.json as boolean | undefined,
+          cwd: opts.cwd as string | undefined,
+        });
+      } catch (err) {
+        const { formatAndLogError } = await import('../core/format-error.js');
+        formatAndLogError(err, 'harden audit-recency');
+        process.exitCode = 1;
+      }
+    })();
+  });
+
+hardenCmd
   .command('migrate')
   .description('Infer capability_callsite + test_callsite for each dim from its capability_test command. Dry-run by default; use --apply to write.')
   .option('--apply', 'Write inferred callsites to matrix.json (default: dry-run only)')

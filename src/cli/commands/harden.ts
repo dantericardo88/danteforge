@@ -281,3 +281,122 @@ export async function runHardenCommand(opts: RunHardenOptions = {}): Promise<voi
     process.exitCode = 1;
   }
 }
+
+// ── audit-orphans (Three Pillars Pillar 2) ───────────────────────────────────
+//
+// Wraps the orphan-audit harden check as a dedicated subcommand. Produces a
+// structured report of every dim whose capability_callsite is only imported
+// from test/spec files, capped at score 6.0 per the substrate gate.
+
+export interface AuditOrphansResult {
+  cwd: string;
+  totalDimensions: number;
+  orphans: Array<{ dimensionId: string; cap: number; reason: string; callsite?: { file: string; symbol: string } }>;
+  clean: number;
+}
+
+export async function runHardenAuditOrphans(opts: RunHardenOptions = {}): Promise<AuditOrphansResult> {
+  const report = await runHardenAll({ ...opts, check: 'orphan-audit' });
+  const result: AuditOrphansResult = {
+    cwd: report.cwd,
+    totalDimensions: report.totalDimensions,
+    orphans: [],
+    clean: 0,
+  };
+  for (const row of report.perDimension) {
+    if (!row.verdict) continue;
+    const orphanFinding = row.verdict.checks?.find(r => r.check === 'orphan-audit' && !r.passed);
+    if (orphanFinding) {
+      const dim = (await loadMatrix(opts.cwd ?? process.cwd()))?.dimensions.find(d => d.id === row.dimensionId);
+      const callsite = (dim as unknown as Record<string, unknown> | undefined)?.['capability_callsite'] as { file: string; symbol: string } | undefined;
+      result.orphans.push({
+        dimensionId: row.dimensionId,
+        cap: orphanFinding.scoreCap,
+        reason: orphanFinding.findings[0]?.reason ?? 'orphan: no production imports',
+        ...(callsite ? { callsite } : {}),
+      });
+    } else {
+      result.clean++;
+    }
+  }
+  if (opts.json) {
+    process.stdout.write(JSON.stringify(result, null, 2) + '\n');
+  } else {
+    logger.info('');
+    logger.info(chalk.bold('Orphan Audit (Three Pillars P2)'));
+    logger.info(chalk.dim('─'.repeat(60)));
+    if (result.orphans.length === 0) {
+      logger.success(`All ${result.totalDimensions} dimension(s) are wired into production.`);
+    } else {
+      logger.warn(`${result.orphans.length} orphan dim(s) found (capped at 6.0):`);
+      for (const o of result.orphans) {
+        const loc = o.callsite ? `${chalk.cyan(o.callsite.file)}::${chalk.bold(o.callsite.symbol)}` : chalk.dim('(no callsite declared)');
+        logger.info(`  ${chalk.red('●')} ${o.dimensionId}  ${loc}  ${chalk.dim(`cap=${o.cap}`)}`);
+        logger.info(`     ${chalk.dim(o.reason)}`);
+      }
+    }
+    logger.info('');
+  }
+  return result;
+}
+
+// ── audit-recency (Three Pillars Pillar 3) ───────────────────────────────────
+
+export interface AuditRecencyResult {
+  cwd: string;
+  totalDimensions: number;
+  stale: Array<{ dimensionId: string; cap: number; reason: string; daysSinceFreshest: number; callsite?: { file: string; symbol: string } }>;
+  fresh: number;
+  thresholdDays: number;
+}
+
+export async function runHardenAuditRecency(opts: RunHardenOptions & { thresholdDays?: number } = {}): Promise<AuditRecencyResult> {
+  const thresholdDays = opts.thresholdDays ?? 30;
+  const report = await runHardenAll({ ...opts, check: 'recency-check' });
+  const result: AuditRecencyResult = {
+    cwd: report.cwd,
+    totalDimensions: report.totalDimensions,
+    stale: [],
+    fresh: 0,
+    thresholdDays,
+  };
+  for (const row of report.perDimension) {
+    if (!row.verdict) continue;
+    const staleFinding = row.verdict.checks?.find(r => r.check === 'recency-check' && !r.passed);
+    if (staleFinding) {
+      const dim = (await loadMatrix(opts.cwd ?? process.cwd()))?.dimensions.find(d => d.id === row.dimensionId);
+      const callsite = (dim as unknown as Record<string, unknown> | undefined)?.['capability_callsite'] as { file: string; symbol: string } | undefined;
+      // Read daysSinceFreshest off the finding's reason if encoded there; otherwise default to thresholdDays+1.
+      const daysMatch = staleFinding.findings[0]?.reason.match(/(\d+) days/);
+      const daysSinceFreshest = daysMatch ? parseInt(daysMatch[1]!, 10) : thresholdDays + 1;
+      result.stale.push({
+        dimensionId: row.dimensionId,
+        cap: staleFinding.scoreCap,
+        reason: staleFinding.findings[0]?.reason ?? 'stale: no fresh production import',
+        daysSinceFreshest,
+        ...(callsite ? { callsite } : {}),
+      });
+    } else {
+      result.fresh++;
+    }
+  }
+  if (opts.json) {
+    process.stdout.write(JSON.stringify(result, null, 2) + '\n');
+  } else {
+    logger.info('');
+    logger.info(chalk.bold(`Recency Audit (Three Pillars P3, threshold=${thresholdDays}d)`));
+    logger.info(chalk.dim('─'.repeat(60)));
+    if (result.stale.length === 0) {
+      logger.success(`All ${result.totalDimensions} dimension(s) have fresh production imports.`);
+    } else {
+      logger.warn(`${result.stale.length} stale dim(s) found (capped at 7.0):`);
+      for (const s of result.stale) {
+        const loc = s.callsite ? `${chalk.cyan(s.callsite.file)}::${chalk.bold(s.callsite.symbol)}` : chalk.dim('(no callsite declared)');
+        logger.info(`  ${chalk.yellow('●')} ${s.dimensionId}  ${loc}  ${chalk.dim(`cap=${s.cap}  ${s.daysSinceFreshest}d`)}`);
+        logger.info(`     ${chalk.dim(s.reason)}`);
+      }
+    }
+    logger.info('');
+  }
+  return result;
+}

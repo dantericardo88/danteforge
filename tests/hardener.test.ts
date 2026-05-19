@@ -528,12 +528,12 @@ describe('applyHardenCap', () => {
 // ── runHardenGate (aggregator) ────────────────────────────────────────────────
 
 describe('runHardenGate', () => {
-  it('runs all 6 checks; without capability_callsite all skip', async () => {
+  it('runs all 7 checks; without capability_callsite all skip', async () => {
     const dim = makeDim();
     const verdict = await runHardenGate({
       dimensionId: dim.id, dim, cwd: '/p', _noWrite: true,
     });
-    assert.equal(verdict.checks.length, 6, 'all 6 checks ran (orphan + claim + hardcoded + import + functional + primary-not-parallel)');
+    assert.equal(verdict.checks.length, 7, 'all 7 checks ran (orphan + claim + hardcoded + import + functional + primary-not-parallel + recency-check)');
     assert.equal(verdict.allowed, true, 'all skipped → allowed');
     assert.equal(verdict.scoreCap, 10.0);
   });
