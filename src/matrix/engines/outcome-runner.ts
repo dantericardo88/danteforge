@@ -7,6 +7,7 @@
 // no monorepo detection, no per-package mapping (outcomes are dim-scoped).
 
 import fs from 'node:fs/promises';
+import { existsSync } from 'node:fs';
 import path from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { execFile } from 'node:child_process';
@@ -49,10 +50,24 @@ export interface RunOutcomeOptions {
 }
 
 interface SpawnOpts {
-  shell: boolean;
+  shell: boolean | string;
   cwd: string;
   timeout: number;
   encoding: 'utf8';
+}
+
+// On Windows, cmd.exe doesn't support Unix pipe idioms (tail, 2>&1 pipes).
+// Use Git Bash when available so outcome commands written for POSIX shells work.
+function resolveShell(): boolean | string {
+  if (process.platform !== 'win32') return true;
+  const candidates = [
+    'C:\\Program Files\\Git\\bin\\bash.exe',
+    'C:\\Program Files (x86)\\Git\\bin\\bash.exe',
+  ];
+  for (const c of candidates) {
+    if (existsSync(c)) return c;
+  }
+  return true; // fallback to cmd.exe if Git Bash not found
 }
 
 interface SpawnResult {
@@ -180,7 +195,7 @@ export async function runOneOutcome(options: RunOutcomeOptions): Promise<Outcome
   const timeout = outcome.timeout_ms ?? 60_000;
   let result: SpawnResult;
   try {
-    result = spawn(shellOutcome.command, { shell: true, cwd, timeout, encoding: 'utf8' });
+    result = spawn(shellOutcome.command, { shell: resolveShell(), cwd, timeout, encoding: 'utf8' });
   } catch (err) {
     result = {
       status: -1, stdout: '',
