@@ -126,16 +126,32 @@ describe('runHardenCrusade — eligibility', () => {
     assert.equal(autoResearchCalled, true, 'dim with score < numeric ceiling should be eligible');
   });
 
-  it('excludes dims with status=closed', async () => {
-    const dim = makeDim('closed_dim', 0.0, { status: 'closed' } as Partial<MatrixDimension>);
+  it('excludes dims with status=closed when score is near target (already at frontier)', async () => {
+    // A closed dim at score=9.0 (>= 80% of target 9.0=7.2) should be excluded.
+    const dim = makeDim('closed_dim', 9.0, { status: 'closed' } as Partial<MatrixDimension>);
     const matrix = makeMatrix([dim]);
     let called = false;
     await runHardenCrusade(baseOpts({
       _loadMatrix: async () => matrix,
+      _getScore: async () => 9.0,
       _runAutoResearch: async () => { called = true; },
       _runHardenForDim: async () => gatePass,
     }));
     assert.equal(called, false);
+  });
+
+  it('reopens dims with status=closed when derived score dropped below 80% of target', async () => {
+    // A closed dim at score=0 (evidence expired after commit) should be reopened.
+    const dim = makeDim('stale_closed', 0.0, { status: 'closed' } as Partial<MatrixDimension>);
+    const matrix = makeMatrix([dim]);
+    let called = false;
+    await runHardenCrusade(baseOpts({
+      _loadMatrix: async () => matrix,
+      _getScore: async () => 0.0,
+      _runAutoResearch: async () => { called = true; },
+      _runHardenForDim: async () => gatePass,
+    }));
+    assert.equal(called, true, 'stale closed dim should be reopened for crusade');
   });
 });
 

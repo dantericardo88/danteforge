@@ -143,6 +143,54 @@ async function defaultRunHardenForDim(dimensionId: string, cwd: string): Promise
   };
 }
 
+// ── Depth wave: run outcomes to produce receipts ────────────────────────────
+
+async function runDepthWave(
+  dim: MatrixDimension,
+  cwd: string,
+): Promise<DimHardenCrusadeResult> {
+  const initialScore = dim.scores['self'] ?? 0;
+  const hasOutcomes = Array.isArray((dim as unknown as Record<string, unknown>)['outcomes']) &&
+    ((dim as unknown as Record<string, unknown>)['outcomes'] as unknown[]).length > 0;
+
+  if (!hasOutcomes) {
+    logger.info(chalk.dim(`[harden-crusade:${dim.id}] depth wave: no outcomes declared — skipping (add outcomes to unlock 7-9)`));
+    return {
+      dimensionId: dim.id, label: dim.label, initialScore, finalScore: initialScore,
+      cyclesRun: 1, autoresearchRuns: 0,
+      hardenPassed: false, finalCap: 7,
+      status: 'AT_CEILING',
+      reason: 'depth wave: no outcomes declared. Add outcomes to matrix.json to lift ceiling above 7.0.',
+    };
+  }
+
+  logger.info(`[harden-crusade:${dim.id}] depth wave: running validate to produce receipts`);
+  try {
+    const { execFile } = await import('node:child_process');
+    const { promisify } = await import('node:util');
+    const execFileAsync = promisify(execFile);
+    await execFileAsync('danteforge', ['validate', dim.id, '--force-cold'], { cwd, timeout: 15 * 60 * 1000 });
+  } catch (err) {
+    logger.warn(`[harden-crusade:${dim.id}] depth wave validate failed: ${err instanceof Error ? err.message : String(err)}`);
+  }
+
+  // Re-score after validation run (outcomes refresh automatically updates derived score)
+  const { loadMatrix: lm } = await import('../../core/compete-matrix.js');
+  const matrix = await lm(cwd);
+  const updatedDim = matrix?.dimensions.find(d => d.id === dim.id);
+  const finalScore = updatedDim?.scores['self'] ?? initialScore;
+
+  logger.info(`[harden-crusade:${dim.id}] depth wave: ${initialScore.toFixed(2)} → ${finalScore.toFixed(2)}`);
+  return {
+    dimensionId: dim.id, label: dim.label, initialScore, finalScore,
+    cyclesRun: 1, autoresearchRuns: 0,
+    hardenPassed: finalScore > 7,
+    finalCap: 10,
+    status: finalScore >= 7 ? 'FRONTIER_REACHED' : 'GATE_BLOCKED',
+    reason: `depth wave: validated outcomes, score ${initialScore.toFixed(2)} → ${finalScore.toFixed(2)}`,
+  };
+}
+
 // ── Per-dim loop ────────────────────────────────────────────────────────────
 
 async function runDimensionLoop(
@@ -241,14 +289,21 @@ async function runDimensionLoop(
 function pickWeakestDims(matrix: CompeteMatrix, target: number, parallel: number): MatrixDimension[] {
   const excluded = new Set((matrix as unknown as Record<string, unknown>)['excludedDimensions'] as string[] ?? []);
   const candidates = matrix.dimensions
-    .filter(d =>
-      !excluded.has(d.id) &&
-      (d as unknown as Record<string, unknown>)['status'] !== 'closed' &&
-      (d.scores['self'] ?? 0) < target &&
+    .filter(d => {
+      if (excluded.has(d.id)) return false;
+      const score = d.scores['self'] ?? 0;
+      const isClosed = (d as unknown as Record<string, unknown>)['status'] === 'closed';
+      // Reopen "closed" dims whose derived score dropped significantly below target.
+      // "Closed" was set by the old crusade against inflated writable scores. With
+      // outcome-derived scoring, a dim at derived=0 is not at frontier regardless
+      // of its historical status. Threshold: if derived < 80% of target, reopen.
+      const reopenClosed = isClosed && score < target * 0.8;
+      if (isClosed && !reopenClosed) return false;
+      if (score >= target) return false;
       // Use the numeric d.ceiling field (operator-set cap), not declared_ceiling tier.
-      // declared_ceiling is informational; the harden gate is the true arbiter.
-      (d.ceiling === undefined || (d.scores['self'] ?? 0) < d.ceiling),
-    );
+      if (d.ceiling !== undefined && score >= d.ceiling) return false;
+      return true;
+    });
   candidates.sort((a, b) => (a.scores['self'] ?? 0) - (b.scores['self'] ?? 0));
   return candidates.slice(0, parallel);
 }
@@ -306,6 +361,10 @@ export async function runHardenCrusade(options: HardenCrusadeOptions): Promise<H
 
   while (pass < maxPasses) {
     pass++;
+    // Depth doctrine: odd passes = breadth (write new code, ceiling 6),
+    // even passes = depth (run outcomes on existing code, lift ceiling to 7-9).
+    const waveType: 'breadth' | 'depth' = pass % 2 === 0 ? 'depth' : 'breadth';
+
     const matrix = await loadMatrixFn(cwd);
     if (!matrix) {
       logger.error('[harden-crusade] No matrix.json found.');
@@ -319,23 +378,44 @@ export async function runHardenCrusade(options: HardenCrusadeOptions): Promise<H
     }
 
     logger.info('');
-    logger.info(chalk.bold(`[harden-crusade] Pass ${pass}/${maxPasses}: pushing ${todo.length} dim(s):`));
+    logger.info(
+      chalk.bold(`[harden-crusade] Pass ${pass}/${maxPasses} [${waveType.toUpperCase()} WAVE]: pushing ${todo.length} dim(s):`) +
+      (waveType === 'depth'
+        ? chalk.dim(' — running outcomes to lift score ceiling')
+        : chalk.dim(' — autoresearch to forge new capabilities (ceiling 6)')),
+    );
     for (const d of todo) {
       logger.info(`  • ${d.id.padEnd(28)} self=${(d.scores['self'] ?? 0).toFixed(2)} target=${target}`);
     }
 
-    // Run all dims in this pass in parallel
-    const passResults = await Promise.all(
-      todo.map(d => runDimensionLoop(d, options).catch(err => ({
-        dimensionId: d.id, label: d.label,
-        initialScore: d.scores['self'] ?? 0, finalScore: d.scores['self'] ?? 0,
-        cyclesRun: 0, autoresearchRuns: 0,
-        hardenPassed: false, finalCap: 0,
-        status: 'FAILED' as const,
-        reason: err instanceof Error ? err.message : String(err),
-      }))),
-    );
-    allResults.push(...passResults);
+    if (waveType === 'depth') {
+      // Depth wave: run `danteforge validate` for each dim to produce receipts.
+      // Dims without outcomes are skipped (not yet ready for depth validation).
+      const depthPassResults = await Promise.all(
+        todo.map(d => runDepthWave(d, cwd).catch(err => ({
+          dimensionId: d.id, label: d.label,
+          initialScore: d.scores['self'] ?? 0, finalScore: d.scores['self'] ?? 0,
+          cyclesRun: 1, autoresearchRuns: 0,
+          hardenPassed: false, finalCap: 0,
+          status: 'FAILED' as const,
+          reason: `depth wave error: ${err instanceof Error ? err.message : String(err)}`,
+        }))),
+      );
+      allResults.push(...depthPassResults);
+    } else {
+      // Breadth wave: run autoresearch to forge new capabilities.
+      const passResults = await Promise.all(
+        todo.map(d => runDimensionLoop(d, options).catch(err => ({
+          dimensionId: d.id, label: d.label,
+          initialScore: d.scores['self'] ?? 0, finalScore: d.scores['self'] ?? 0,
+          cyclesRun: 0, autoresearchRuns: 0,
+          hardenPassed: false, finalCap: 0,
+          status: 'FAILED' as const,
+          reason: err instanceof Error ? err.message : String(err),
+        }))),
+      );
+      allResults.push(...passResults);
+    }
 
     if (!options.loop) break;
   }
