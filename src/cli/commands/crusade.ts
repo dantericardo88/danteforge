@@ -507,16 +507,24 @@ async function checkAutonomyRules(cwd?: string): Promise<import('../../matrix/en
   const matrix = await loadMatrix(stateCwd);
   if (!matrix) return { kind: 'proceed' };
 
-  // Load active dispensations (filter cleared)
+  // Load active dispensations (filter cleared + expired TTL).
+  // Parity with src/cli/commands/frontier.ts:loadDispensations — both readers
+  // must agree on what "active" means, otherwise the crusade halts on
+  // dispensations that `danteforge dispensation list` correctly reports as cleared.
   const dispensationsByDim: Record<string, string[]> = {};
   try {
     const dispDir = path.join(stateCwd, '.danteforge', 'score-proposals', 'dispensations');
     const files = await fs.readdir(dispDir).catch(() => []);
+    const now = Date.now();
     for (const f of files.filter(n => n.endsWith('.json'))) {
       try {
         const raw = await fs.readFile(path.join(dispDir, f), 'utf8');
-        const parsed = JSON.parse(raw) as { dimensionId?: string; id?: string; cleared?: boolean };
+        const parsed = JSON.parse(raw) as { dimensionId?: string; id?: string; cleared?: boolean; expiresAt?: string };
         if (parsed.cleared) continue;
+        if (parsed.expiresAt) {
+          const expiry = new Date(parsed.expiresAt).getTime();
+          if (Number.isFinite(expiry) && now > expiry) continue;
+        }
         if (parsed.dimensionId && parsed.id) {
           (dispensationsByDim[parsed.dimensionId] ??= []).push(parsed.id);
         }
