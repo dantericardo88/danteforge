@@ -1240,10 +1240,12 @@ program
   .option('--no-cache', 'Force cold run even if cached evidence exists for this SHA', true)
   .option('--timeout-ms <n>', 'Probe timeout (default 15 min)')
   .option('--cwd <path>', 'Project directory (defaults to cwd)')
+  .option('--quick-check', 'M.7 fast-fail: scan src/ for broken relative imports in <1s. Skips the full build.')
   .addHelpText('after', `
 Examples:
   danteforge probe                             Cold T1 build at repo root
   danteforge probe --tier T2                   Run tests cold
+  danteforge probe --quick-check               Fast import-resolves pre-scan (no build)
   danteforge probe --json > probe.json         Machine-readable output
   danteforge probe --cwd ../DanteAgents        Probe a sibling project
 
@@ -1262,6 +1264,7 @@ The Capability Ladder gate caps any dimension score above:
           noCache: opts.noCache !== false,
           cwd: opts.cwd as string | undefined,
           timeoutMs: opts.timeoutMs ? parseInt(opts.timeoutMs as string, 10) : undefined,
+          quickCheck: opts.quickCheck as boolean | undefined,
         });
       } catch (err) {
         const { formatAndLogError } = await import('../core/format-error.js');

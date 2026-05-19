@@ -18,6 +18,8 @@
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import type { MatrixDimension } from '../../core/compete-matrix.js';
+import { createSearchEngine } from '../search/factory.js';
+import type { SearchEngine } from '../search/types.js';
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -55,6 +57,13 @@ export interface MigrateOptions {
   _readFile?: (p: string) => Promise<string>;
   _exists?: (p: string) => Promise<boolean>;
   _readdir?: (p: string) => Promise<string[]>;
+  /**
+   * Tri-state SearchEngine seam (Rule 0):
+   *   undefined → create a real native engine on first use
+   *   null      → disable Rule 0 entirely (skip to Rule 1)
+   *   instance  → use the supplied engine (test injection)
+   */
+  _searchEngine?: SearchEngine | null;
 }
 
 // ── Inference rules ──────────────────────────────────────────────────────────
@@ -85,11 +94,22 @@ async function findFirstMatch(
   return null;
 }
 
+/**
+ * Convert a dim.id to candidate exported symbol names. E.g.:
+ *   "security"           → ["security", "runSecurity", "securityScan", "runSecurityScan"]
+ *   "convergence_health" → ["convergenceHealth", "runConvergenceHealth", "convergenceHealthCheck", "runConvergenceHealthCheck"]
+ */
+function dimIdToSymbolCandidates(dimId: string): string[] {
+  const camel = dimId.replace(/[-_]([a-z])/g, (_, c: string) => c.toUpperCase());
+  const titleCamel = camel.charAt(0).toUpperCase() + camel.slice(1);
+  return [camel, `run${titleCamel}`, `${camel}Scan`, `run${titleCamel}Scan`, `${camel}Check`, `run${titleCamel}Check`];
+}
+
 /** Infer the callsite for a single dimension. */
 export async function inferCallsite(
   dim: MatrixDimension,
   cwd: string,
-  io: { exists: (p: string) => Promise<boolean>; readFile: (p: string) => Promise<string> },
+  io: { exists: (p: string) => Promise<boolean>; readFile: (p: string) => Promise<string>; searchEngine?: SearchEngine | null },
 ): Promise<{ inferred: InferredCallsite | null; confidence: Confidence; reason: string }> {
   const capTest = (dim as unknown as Record<string, unknown>)['capability_test'] as
     | { command?: string; no_capability_test?: boolean } | undefined;
@@ -99,6 +119,28 @@ export async function inferCallsite(
   }
 
   const command = capTest.command ?? '';
+
+  // Rule 0: SearchEngine.findSymbol for the dim's canonical symbol names.
+  // Skipped when caller disables (io.searchEngine === null) or when the engine
+  // throws (best-effort: never block migration when search isn't ready).
+  if (io.searchEngine !== null && io.searchEngine !== undefined) {
+    try {
+      const candidates = dimIdToSymbolCandidates(dim.id);
+      for (const cand of candidates) {
+        const matches = await io.searchEngine.findSymbol(cand, { includeTests: false, maxResults: 5 });
+        // Prefer a unique exported match in src/.
+        const exportedHits = matches.filter(m => m.exported && m.file.startsWith('src/'));
+        if (exportedHits.length === 1) {
+          const hit = exportedHits[0]!;
+          return {
+            inferred: { file: hit.file, symbol: hit.symbol, lineHint: hit.line },
+            confidence: 'high',
+            reason: `SearchEngine.findSymbol("${cand}") → unique exported hit ${hit.file}:${hit.line}`,
+          };
+        }
+      }
+    } catch { /* search engine not ready — fall through to legacy rules */ }
+  }
 
   // Rule 1: explicit file path in the command
   const fileMatches = [...command.matchAll(FILE_PATH_RE)];
@@ -200,11 +242,26 @@ export async function buildMigrationProposals(
   options: MigrateOptions = {},
 ): Promise<MigrationResult> {
   const cwd = options.cwd ?? process.cwd();
+  // Tri-state seam: undefined→auto-create, null→disabled, instance→injected.
+  let searchEngine: SearchEngine | null;
+  if (options._searchEngine === null) {
+    searchEngine = null;
+  } else if (options._searchEngine !== undefined) {
+    searchEngine = options._searchEngine;
+  } else {
+    try {
+      searchEngine = createSearchEngine({ preference: 'native' });
+      await searchEngine.index(cwd);
+    } catch {
+      searchEngine = null; // Indexing failed — fall back to legacy rules.
+    }
+  }
   const io = {
     exists: options._exists ?? (async (p: string) => {
       try { await fs.access(p); return true; } catch { return false; }
     }),
     readFile: options._readFile ?? ((p: string) => fs.readFile(p, 'utf8')),
+    searchEngine,
   };
 
   const result: MigrationResult = {

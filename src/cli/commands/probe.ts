@@ -344,6 +344,119 @@ async function recordProbeEvidenceCommit(
   }
 }
 
+// ── Quick import-resolves pre-check (M.7) ────────────────────────────────────
+//
+// Walks src/ for TS files, extracts relative imports, and verifies the target
+// file resolves on disk. Catches the most common class of build failures
+// (renamed/deleted modules) in milliseconds instead of waiting for tsc.
+//
+// HONEST SCOPE: This is module-level resolution only, not symbol-level. tsc
+// still catches "imported X but X isn't exported" — that's a slower full-build
+// concern. The quick-check covers the fast-fail surface: "the file isn't even
+// there." Bare-module specifiers (e.g. `import 'react'`) are skipped — those
+// would need a node_modules walk we don't gain much from.
+
+export interface QuickImportCheckResult {
+  scannedFiles: number;
+  brokenImports: Array<{ file: string; line: number; specifier: string; reason: string }>;
+  durationMs: number;
+}
+
+const IMPORT_RE = /^\s*(?:import|export)(?:\s+[\s\S]*?)?\s+from\s+['"]([^'"]+)['"]/gm;
+
+/**
+ * Strip JSDoc/block comments and line comments before regex-matching imports.
+ * Without this we get false positives for docstring example imports (the most
+ * common one: ` *   import { X } from './module.js';` in a JSDoc block).
+ */
+function stripCommentsForImportScan(src: string): string {
+  // Block comments: replace with same length of spaces so line numbers stay stable.
+  let out = src.replace(/\/\*[\s\S]*?\*\//g, (m) => m.replace(/[^\n]/g, ' '));
+  // Single-line comments at start-of-line or after non-string content.
+  // Heuristic: match `//` not inside a string literal. Naive but correct enough
+  // for the import-scan use case — we just need to avoid matching `from './x'`
+  // inside a `// foo` comment.
+  out = out.replace(/(^|[^\\:"'])\/\/[^\n]*/g, (_, prefix) => prefix);
+  return out;
+}
+
+async function walkTsFilesForCheck(root: string): Promise<string[]> {
+  const out: string[] = [];
+  const skip = new Set(['node_modules', 'dist', '.git', '.danteforge', 'coverage', 'build']);
+  async function recurse(dir: string): Promise<void> {
+    let entries: import('node:fs').Dirent[];
+    try { entries = await fs.readdir(dir, { withFileTypes: true }); }
+    catch { return; }
+    for (const ent of entries) {
+      const full = path.join(dir, ent.name);
+      if (ent.isDirectory()) {
+        if (skip.has(ent.name)) continue;
+        await recurse(full);
+      } else if (ent.isFile() && /\.(?:m?ts|c?ts|tsx)$/.test(ent.name)) {
+        out.push(full);
+      }
+    }
+  }
+  await recurse(root);
+  return out;
+}
+
+async function resolveRelativeImport(fromFile: string, specifier: string): Promise<string | null> {
+  // Map .js → .ts (project uses TS sources with .js extension in imports).
+  const baseDir = path.dirname(fromFile);
+  let target = path.resolve(baseDir, specifier);
+  if (target.endsWith('.js')) target = target.slice(0, -3) + '.ts';
+  else if (target.endsWith('.mjs')) target = target.slice(0, -4) + '.mts';
+
+  // Direct file
+  try { await fs.access(target); return target; } catch { /* keep trying */ }
+  // .ts
+  try { await fs.access(target + '.ts'); return target + '.ts'; } catch { /* keep trying */ }
+  // .tsx
+  try { await fs.access(target + '.tsx'); return target + '.tsx'; } catch { /* keep trying */ }
+  // /index.ts
+  try { await fs.access(path.join(target, 'index.ts')); return path.join(target, 'index.ts'); } catch { /* keep trying */ }
+  return null;
+}
+
+export async function runQuickImportCheck(cwd: string = process.cwd()): Promise<QuickImportCheckResult> {
+  const start = Date.now();
+  const srcRoot = path.join(cwd, 'src');
+  const files = await walkTsFilesForCheck(srcRoot);
+  const broken: QuickImportCheckResult['brokenImports'] = [];
+
+  for (const file of files) {
+    let content: string;
+    try { content = await fs.readFile(file, 'utf8'); }
+    catch { continue; }
+    const stripped = stripCommentsForImportScan(content);
+    IMPORT_RE.lastIndex = 0;
+    let m: RegExpExecArray | null;
+    while ((m = IMPORT_RE.exec(stripped)) !== null) {
+      const specifier = m[1]!;
+      // Skip bare-module imports (node_modules) and node: scheme.
+      if (!specifier.startsWith('.') && !specifier.startsWith('/')) continue;
+      const resolved = await resolveRelativeImport(file, specifier);
+      if (resolved === null) {
+        // Compute line number from the match index (stripped preserves line breaks).
+        const line = stripped.slice(0, m.index).split('\n').length;
+        broken.push({
+          file: path.relative(cwd, file).replace(/\\/g, '/'),
+          line,
+          specifier,
+          reason: 'module file not found on disk',
+        });
+      }
+    }
+  }
+
+  return {
+    scannedFiles: files.length,
+    brokenImports: broken,
+    durationMs: Date.now() - start,
+  };
+}
+
 // ── CLI entry ─────────────────────────────────────────────────────────────────
 
 export async function runProbeCommand(opts: {
@@ -353,7 +466,41 @@ export async function runProbeCommand(opts: {
   noCache?: boolean;
   cwd?: string;
   timeoutMs?: number;
+  quickCheck?: boolean;
 }): Promise<void> {
+  // M.7: `--quick-check` runs the import-resolves pre-scan only. No build invoked.
+  // Useful as a pre-commit/CI gate: fails in milliseconds when a relative import
+  // points to a missing file. Operators who want full type-checking still run
+  // tsc separately.
+  if (opts.quickCheck) {
+    const cwd = opts.cwd ?? process.cwd();
+    const result = await runQuickImportCheck(cwd);
+    if (opts.json) {
+      process.stdout.write(JSON.stringify(result, null, 2) + '\n');
+    } else {
+      const passed = result.brokenImports.length === 0;
+      const icon = passed ? chalk.green('✓') : chalk.red('✗');
+      const status = passed ? chalk.green('PASS') : chalk.red('FAIL');
+      logger.info('');
+      logger.info(chalk.bold('Quick Import Check (M.7)'));
+      logger.info(chalk.dim('─'.repeat(50)));
+      logger.info(`  ${icon} ${status}   ${chalk.dim('scanned:')} ${result.scannedFiles} files in ${result.durationMs}ms`);
+      if (!passed) {
+        logger.info('');
+        logger.info(chalk.red(`  Broken imports (${result.brokenImports.length}):`));
+        for (const b of result.brokenImports.slice(0, 25)) {
+          logger.info(`    ${chalk.red('✗')} ${chalk.cyan(b.file)}:${b.line}  ${chalk.dim('→')} ${b.specifier}`);
+        }
+        if (result.brokenImports.length > 25) {
+          logger.info(chalk.dim(`    … and ${result.brokenImports.length - 25} more`));
+        }
+      }
+      logger.info('');
+    }
+    if (result.brokenImports.length > 0) process.exitCode = 1;
+    return;
+  }
+
   const tier = (opts.tier as ProbeTier) ?? 'T1';
   const result = await runProbe({
     cwd: opts.cwd,

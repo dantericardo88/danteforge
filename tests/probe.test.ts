@@ -1,8 +1,11 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import path from 'node:path';
+import fs from 'node:fs/promises';
+import os from 'node:os';
 import {
   runProbe,
+  runQuickImportCheck,
   detectMonorepoRunner,
   parseFailedPackages,
   type ProbeResult,
@@ -208,5 +211,43 @@ describe('runProbe', () => {
     });
     const stdoutLines = result.stdoutTail.split('\n').length;
     assert.ok(stdoutLines <= 100, `stdout tail should be <=100 lines, got ${stdoutLines}`);
+  });
+});
+
+// ── runQuickImportCheck (M.7) ────────────────────────────────────────────────
+
+describe('runQuickImportCheck', () => {
+  it('returns empty brokenImports when all relative imports resolve', async () => {
+    const tmp = await fs.mkdtemp(path.join(os.tmpdir(), 'df-qc-'));
+    const srcDir = path.join(tmp, 'src');
+    await fs.mkdir(srcDir, { recursive: true });
+    await fs.writeFile(path.join(srcDir, 'a.ts'), `import { x } from './b.js';\nexport const a = 1;\n`);
+    await fs.writeFile(path.join(srcDir, 'b.ts'), `export const x = 2;\n`);
+    const result = await runQuickImportCheck(tmp);
+    assert.equal(result.brokenImports.length, 0);
+    assert.equal(result.scannedFiles, 2);
+    await fs.rm(tmp, { recursive: true, force: true });
+  });
+
+  it('catches a relative import pointing at a missing file', async () => {
+    const tmp = await fs.mkdtemp(path.join(os.tmpdir(), 'df-qc-'));
+    const srcDir = path.join(tmp, 'src');
+    await fs.mkdir(srcDir, { recursive: true });
+    await fs.writeFile(path.join(srcDir, 'broken.ts'), `import { gone } from './missing.js';\nexport const v = gone;\n`);
+    const result = await runQuickImportCheck(tmp);
+    assert.equal(result.brokenImports.length, 1);
+    assert.equal(result.brokenImports[0]!.specifier, './missing.js');
+    assert.ok(result.brokenImports[0]!.file.endsWith('broken.ts'));
+    await fs.rm(tmp, { recursive: true, force: true });
+  });
+
+  it('skips bare-module specifiers (node_modules) entirely', async () => {
+    const tmp = await fs.mkdtemp(path.join(os.tmpdir(), 'df-qc-'));
+    const srcDir = path.join(tmp, 'src');
+    await fs.mkdir(srcDir, { recursive: true });
+    await fs.writeFile(path.join(srcDir, 'a.ts'), `import path from 'node:path';\nimport chalk from 'chalk';\nexport const z = 1;\n`);
+    const result = await runQuickImportCheck(tmp);
+    assert.equal(result.brokenImports.length, 0);
+    await fs.rm(tmp, { recursive: true, force: true });
   });
 });
