@@ -989,6 +989,30 @@ searchCmd.command('benchmark')
     })();
   });
 
+searchCmd.command('hybrid <query...>')
+  .description('Phase L.3 hybrid retrieval: BM25 candidates → transformer-embedding rerank (downloads ~80MB on first run).')
+  .option('--top-k <n>', 'Number of final hits to return (default 10)', '10')
+  .option('--candidate-k <n>', 'BM25 candidate pool size (default 50)', '50')
+  .option('--json', 'Machine-readable JSON output')
+  .option('--cwd <path>', 'Project directory (defaults to cwd)')
+  .action((queryParts: string[], opts) => {
+    void (async () => {
+      try {
+        const { runSearchHybrid } = await import('./commands/search.js');
+        await runSearchHybrid(queryParts.join(' '), {
+          topK: parseInt(opts.topK as string, 10),
+          candidateK: parseInt(opts.candidateK as string, 10),
+          json: opts.json as boolean | undefined,
+          cwd: opts.cwd as string | undefined,
+        });
+      } catch (err) {
+        const { formatAndLogError } = await import('../core/format-error.js');
+        formatAndLogError(err, 'search hybrid');
+        process.exitCode = 1;
+      }
+    })();
+  });
+
 // ── research (Phase N-Q) ────────────────────────────────────────────────────
 
 const researchCmd = program
