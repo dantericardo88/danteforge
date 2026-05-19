@@ -284,6 +284,13 @@ export interface FrontierCrusadeOptions {
   _runVerifyCap?: (dimensionId: string, cwd: string) => Promise<boolean>;
   _loadMatrix?: (cwd: string) => Promise<CompeteMatrix | null>;
   _writeFile?: (p: string, content: string) => Promise<void>;
+  /**
+   * Tri-state seam for the regrade-cadence guard:
+   *   undefined → load real state.yaml from cwd (production path)
+   *   null      → disable the regrade-cadence guard entirely (test isolation)
+   *   function  → injected loader for tests that want to drive specific wave counts
+   */
+  _loadState?: ((opts: { cwd?: string }) => Promise<{ wavesSinceLastRegrade?: number }>) | null;
 }
 
 export interface DimFrontierResult {
@@ -541,20 +548,29 @@ export async function runFrontierCrusade(options: FrontierCrusadeOptions): Promi
   // to start. The operator must run `danteforge honest-rescore --regrade` to
   // re-baseline. This is the structural insurance against score drift between
   // honest audits.
-  try {
-    const { loadState } = await import('../../core/state.js');
-    const state = await loadState({ cwd: options.cwd });
-    const waves = state.wavesSinceLastRegrade ?? 0;
-    if (waves > MAX_WAVES_WITHOUT_REGRADE) {
-      logger.error(`[frontier] BLOCKED: ${waves} crusade waves since last regrade (max: ${MAX_WAVES_WITHOUT_REGRADE}).`);
-      logger.error(`[frontier] Run: danteforge honest-rescore --regrade`);
-      logger.error(`[frontier] Then re-run the crusade. The skeptic regrade is mandatory to prevent silent score drift.`);
-      return { status: 'PARTIAL', dimensions: [] };
+  // Tri-state seam: null disables the guard, function overrides the loader,
+  // undefined uses the real state.yaml. Tests that don't care about regrade
+  // cadence pass `_loadState: null` and skip this gate entirely.
+  if (options._loadState !== null) {
+    try {
+      const loadStateFn = options._loadState
+        ?? (async (o: { cwd?: string }) => {
+          const { loadState } = await import('../../core/state.js');
+          return loadState(o);
+        });
+      const state = await loadStateFn({ cwd: options.cwd });
+      const waves = state.wavesSinceLastRegrade ?? 0;
+      if (waves > MAX_WAVES_WITHOUT_REGRADE) {
+        logger.error(`[frontier] BLOCKED: ${waves} crusade waves since last regrade (max: ${MAX_WAVES_WITHOUT_REGRADE}).`);
+        logger.error(`[frontier] Run: danteforge honest-rescore --regrade`);
+        logger.error(`[frontier] Then re-run the crusade. The skeptic regrade is mandatory to prevent silent score drift.`);
+        return { status: 'PARTIAL', dimensions: [] };
+      }
+      logger.info(`[frontier] Regrade cadence: ${waves}/${MAX_WAVES_WITHOUT_REGRADE} waves since last skeptic pass.`);
+    } catch (err) {
+      // Best-effort — if state can't be loaded, do not block the crusade.
+      logger.warn(`[frontier] could not load state for regrade-cadence check: ${err instanceof Error ? err.message : String(err)}`);
     }
-    logger.info(`[frontier] Regrade cadence: ${waves}/${MAX_WAVES_WITHOUT_REGRADE} waves since last skeptic pass.`);
-  } catch (err) {
-    // Best-effort — if state can't be loaded, do not block the crusade.
-    logger.warn(`[frontier] could not load state for regrade-cadence check: ${err instanceof Error ? err.message : String(err)}`);
   }
 
   // Phase H Slice 5: autonomous-crusade rules. Apply all rules BEFORE the wave

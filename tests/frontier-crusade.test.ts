@@ -61,6 +61,7 @@ function makeOptions(overrides: Partial<FrontierCrusadeOptions> & {
     _runInferno: async () => { /* no-op */ },
     _getScore: getScore,
     _runAutoResearch: async () => { /* no-op */ },
+    _loadState: null,  // disable regrade-cadence guard (DanteForge's real STATE.yaml otherwise leaks in)
     ...rest,
   };
 }
@@ -120,6 +121,7 @@ describe('runFrontierCrusade', () => {
         return async (_dimId: string) => { const v = seq[call] ?? seq[seq.length - 1] ?? 4.0; call++; return v; };
       })(),
       _runAutoResearch: async () => { /* no-op */ },
+      _loadState: null,
     };
     const result = await runFrontierCrusade(opts);
     const d = result.dimensions[0];
@@ -143,6 +145,7 @@ describe('runFrontierCrusade', () => {
       _writeFile: async () => { /* no-op */ },
       _runInferno: async () => { /* no-op */ },
       _runAutoResearch: async () => { autoresearchCalled++; },
+      _loadState: null,
       _getScore: (() => {
         let call = 0;
         const seq = [7.0, 7.0, 7.0, 7.0, 9.0]; // flat for 3 cycles then jump
@@ -240,6 +243,7 @@ describe('runFrontierCrusade', () => {
         return dimId === 'a' ? 9.0 : dimId === 'b' ? 9.0 : 9.0;
       },
       _runAutoResearch: async () => { /* no-op */ },
+      _loadState: null,
     };
     const result = await runFrontierCrusade(opts);
     assert.equal(result.dimensions.length, 3);
@@ -258,6 +262,7 @@ describe('runFrontierCrusade', () => {
       _runInferno: async () => { /* no-op */ },
       _getScore: async () => 9.0,
       _runAutoResearch: async () => { /* no-op */ },
+      _loadState: null,
     };
     await runFrontierCrusade(opts);
     assert.ok(writtenPath.includes('FRONTIER_CRUSADE_REPORT.md'), `Expected report path, got: ${writtenPath}`);
@@ -281,6 +286,7 @@ describe('runFrontierCrusade', () => {
       _runInferno: async () => { /* no-op */ },
       _getScore: async (dimId) => dimId === 'a' ? 9.0 : 7.0,
       _runAutoResearch: async () => { /* no-op */ },
+      _loadState: null,
     };
     const result = await runFrontierCrusade(opts);
     assert.equal(result.status, 'PARTIAL');
@@ -331,6 +337,7 @@ describe('runFrontierCrusade', () => {
         return seq[idx] ?? seq[seq.length - 1] ?? 7.0;
       },
       _runAutoResearch: async () => { /* no-op */ },
+      _loadState: null,
     };
     const result = await runFrontierCrusade(opts);
     assert.equal(result.status, 'ALL_DONE');
@@ -355,6 +362,7 @@ describe('runFrontierCrusade', () => {
         return capCallCount >= 2; // fails first call, passes second
       },
       _runAutoResearch: async () => { /* no-op */ },
+      _loadState: null,
     };
     const result = await runFrontierCrusade(opts);
     const dim = result.dimensions[0];
@@ -379,6 +387,7 @@ describe('runFrontierCrusade', () => {
       _getScore: async () => 9.0,
       _runVerifyCap: async () => { capCallCount++; return true; },
       _runAutoResearch: async () => { /* no-op */ },
+      _loadState: null,
     };
     const result = await runFrontierCrusade(opts);
     assert.equal(result.dimensions[0]?.status, 'FRONTIER_REACHED');
