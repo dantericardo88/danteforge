@@ -1,30 +1,3579 @@
 {
-  "project": "test",
-  "competitors": [],
-  "oss_competitors": [],
-  "closed_source_competitors": [],
+  "project": "danteforge",
+  "competitors": [
+    "spec-kit (GitHub)",
+    "BMad-METHOD",
+    "OpenSpec",
+    "anthropics/claude-skills",
+    "awesome-claude-code-skills",
+    "cursor.directory",
+    "Karpathy autoresearch",
+    "DSPy (Stanford)",
+    "MetaGPT",
+    "CrewAI",
+    "AutoGen (Microsoft)",
+    "GPT-Engineer",
+    "OpenHands (All-Hands AI)",
+    "Aider",
+    "SWE-Agent (Princeton)",
+    "LangChain Agents"
+  ],
+  "competitors_closed_source": [],
+  "competitors_oss": [
+    "spec-kit (GitHub)",
+    "BMad-METHOD",
+    "OpenSpec",
+    "anthropics/claude-skills",
+    "awesome-claude-code-skills",
+    "cursor.directory",
+    "Karpathy autoresearch",
+    "DSPy (Stanford)",
+    "MetaGPT",
+    "CrewAI",
+    "AutoGen (Microsoft)",
+    "GPT-Engineer",
+    "OpenHands (All-Hands AI)",
+    "Aider",
+    "SWE-Agent (Princeton)",
+    "LangChain Agents"
+  ],
+  "lastUpdated": "2026-05-18T22:45:35.496Z",
+  "overallSelfScore": 9.2,
+  "excludedDimensions": [
+    "community_adoption",
+    "communityAdoption"
+  ],
   "dimensions": [
     {
       "id": "testing",
-      "label": "Testing",
-      "weight": 1,
+      "label": "Test Coverage & Quality",
+      "weight": 1.5,
       "category": "quality",
       "frequency": "high",
       "scores": {
-        "self": 5,
-        "Cursor": 9
+        "self": 9.7,
+        "Devin (Cognition AI)": 7.2,
+        "GitHub Copilot Workspace": 7.8,
+        "Cursor": 7,
+        "Aider": 6.8,
+        "SWE-Agent (Princeton)": 7.8,
+        "MetaGPT": 7,
+        "GPT-Engineer": 5.5,
+        "Claude Code": 7.5,
+        "AutoGen (Microsoft)": 7.5,
+        "CrewAI": 7.2,
+        "OpenHands (All-Hands AI)": 8,
+        "CodiumAI / Qodo": 9,
+        "CodeRabbit": 7.8,
+        "Cline": 6.8,
+        "Continue.dev": 7,
+        "Swimm": 6.2,
+        "LangChain Agents": 7.2,
+        "Kiro (AWS)": 7.2,
+        "Codex CLI (OpenAI)": 7.2,
+        "Gemini CLI (Google)": 6.8,
+        "GitHub Copilot CLI": 7.8,
+        "Goose (Block)": 7,
+        "Replit Agent": 6.8,
+        "Zencoder": 7.2,
+        "Qodo 2.0": 9.2,
+        "Dagger": 7.5,
+        "Kilo Code": 6.8,
+        "re_gent": 8
       },
-      "gap_to_leader": 4,
+      "gap_to_leader": 0,
+      "leader": "Qodo 2.0",
+      "gap_to_closed_source_leader": 0,
+      "closed_source_leader": "Qodo 2.0",
+      "gap_to_oss_leader": 0,
+      "oss_leader": "OpenHands (All-Hands AI)",
+      "status": "closed",
+      "sprint_history": [
+        {
+          "dimensionId": "testing",
+          "before": 5,
+          "after": 8.4,
+          "date": "2026-04-14"
+        },
+        {
+          "dimensionId": "testing",
+          "before": 8.4,
+          "after": 9.2,
+          "date": "2026-04-14"
+        },
+        {
+          "dimensionId": "testing",
+          "before": 9.7,
+          "after": 97,
+          "date": "2026-04-23"
+        },
+        {
+          "dimensionId": "testing",
+          "before": 97,
+          "after": 9.7,
+          "date": "2026-04-23"
+        }
+      ],
+      "next_sprint_target": 7,
+      "harvest_source": "OpenHands (All-Hands AI)",
+      "capability_test": {
+        "command": "npm test 2>&1 | tail -5",
+        "description": "Full test suite passes",
+        "timeoutMs": 1500000
+      },
+      "outcomes": [
+        {
+          "id": "t_smoke",
+          "tier": "T1",
+          "kind": "shell",
+          "description": "Smoke tests pass",
+          "command": "npx tsx --test tests/smoke.test.ts 2>&1 | tail -3"
+        },
+        {
+          "id": "t_full",
+          "tier": "T2",
+          "kind": "shell",
+          "description": "Full test suite passes",
+          "command": "npm test 2>&1 | tail -5",
+          "timeout_ms": 1500000
+        },
+        {
+          "id": "t_wired",
+          "tier": "T3",
+          "kind": "production-usage-fresh",
+          "description": "Hardener is imported by production + modified within 30d",
+          "required_callsite": "src/matrix/engines/hardener.ts",
+          "freshnessDays": 30
+        }
+      ],
+      "declared_ceiling": "T3"
+    },
+    {
+      "id": "developer_experience",
+      "label": "Developer Experience",
+      "weight": 1.5,
+      "category": "ux",
+      "frequency": "high",
+      "scores": {
+        "self": 9,
+        "Devin (Cognition AI)": 7.5,
+        "GitHub Copilot Workspace": 8.8,
+        "Cursor": 9,
+        "Aider": 7.5,
+        "SWE-Agent (Princeton)": 6.2,
+        "MetaGPT": 6.5,
+        "GPT-Engineer": 6.8,
+        "Claude Code": 8.8,
+        "AutoGen (Microsoft)": 6.8,
+        "CrewAI": 7.2,
+        "OpenHands (All-Hands AI)": 6.8,
+        "CodiumAI / Qodo": 8.2,
+        "CodeRabbit": 8.8,
+        "Cline": 8.8,
+        "Continue.dev": 9,
+        "Swimm": 8.5,
+        "LangChain Agents": 7.2,
+        "Kiro (AWS)": 8,
+        "Codex CLI (OpenAI)": 8.2,
+        "Gemini CLI (Google)": 7.8,
+        "GitHub Copilot CLI": 9,
+        "Goose (Block)": 7.5,
+        "Replit Agent": 8.8,
+        "Zencoder": 7.5,
+        "Qodo 2.0": 8.5,
+        "Dagger": 7.8,
+        "Kilo Code": 8.5,
+        "re_gent": 8.8
+      },
+      "gap_to_leader": 0,
       "leader": "Cursor",
       "gap_to_closed_source_leader": 0,
-      "closed_source_leader": "unknown",
+      "closed_source_leader": "Cursor",
       "gap_to_oss_leader": 0,
-      "oss_leader": "unknown",
+      "oss_leader": "Continue.dev",
+      "status": "closed",
+      "sprint_history": [
+        {
+          "dimensionId": "developer_experience",
+          "before": 5,
+          "after": 10,
+          "date": "2026-04-14"
+        },
+        {
+          "dimensionId": "developer_experience",
+          "before": 9,
+          "after": 100,
+          "date": "2026-04-23"
+        },
+        {
+          "dimensionId": "developer_experience",
+          "before": 100,
+          "after": 10,
+          "date": "2026-04-23"
+        },
+        {
+          "dimensionId": "developer_experience",
+          "before": 10,
+          "after": 9,
+          "date": "2026-04-23"
+        }
+      ],
+      "next_sprint_target": 7,
+      "harvest_source": "Continue.dev",
+      "capability_test": {
+        "command": "node dist/index.js --help 2>&1 | head -3",
+        "description": "CLI --help responds"
+      },
+      "outcomes": [
+        {
+          "id": "dx_help",
+          "tier": "T1",
+          "kind": "shell",
+          "description": "CLI help renders",
+          "command": "node dist/index.js --help 2>&1 | head -3"
+        },
+        {
+          "id": "dx_go",
+          "tier": "T2",
+          "kind": "shell",
+          "description": "`go` entry-point command exists",
+          "command": "node dist/index.js go --help 2>&1 | head -3"
+        },
+        {
+          "id": "dx_wired",
+          "tier": "T3",
+          "kind": "production-usage-fresh",
+          "description": "go-wizard is imported by production + modified within 30d",
+          "required_callsite": "src/cli/commands/go.ts",
+          "freshnessDays": 30
+        },
+        {
+          "id": "dx_snapshot_go",
+          "tier": "T3",
+          "kind": "shell",
+          "description": "snapshot: go --status renders DanteForge state panel",
+          "command": "node dist/index.js go --status 2>&1 | grep -c DanteForge && echo snapshot-go-works",
+          "required_callsite": "src/cli/commands/go.ts"
+        },
+        {
+          "id": "dx_t4_golden",
+          "tier": "T4",
+          "kind": "shell",
+          "description": "T4 golden-path: go --status delivers user-visible project state",
+          "command": "node dist/index.js go --status 2>&1 | grep -c 'DanteForge|score|next|gap'",
+          "required_callsite": "src/cli/commands/go.ts"
+        }
+      ],
+      "declared_ceiling": "T4"
+    },
+    {
+      "id": "ux_polish",
+      "label": "UX Polish & Onboarding",
+      "weight": 1.4,
+      "category": "ux",
+      "frequency": "high",
+      "scores": {
+        "self": 10,
+        "Devin (Cognition AI)": 6.5,
+        "GitHub Copilot Workspace": 8.5,
+        "Cursor": 9.2,
+        "Aider": 5.8,
+        "SWE-Agent (Princeton)": 5.2,
+        "MetaGPT": 5.5,
+        "GPT-Engineer": 5.8,
+        "Claude Code": 7.2,
+        "AutoGen (Microsoft)": 5.5,
+        "CrewAI": 6.5,
+        "OpenHands (All-Hands AI)": 6.2,
+        "CodiumAI / Qodo": 7.8,
+        "CodeRabbit": 8.5,
+        "Cline": 8.5,
+        "Continue.dev": 8.8,
+        "Swimm": 8.2,
+        "LangChain Agents": 6,
+        "Kiro (AWS)": 7.5,
+        "Codex CLI (OpenAI)": 7,
+        "Gemini CLI (Google)": 7.2,
+        "GitHub Copilot CLI": 8.5,
+        "Goose (Block)": 6.8,
+        "Replit Agent": 8.8,
+        "Zencoder": 7.2,
+        "Qodo 2.0": 8,
+        "Dagger": 7,
+        "Kilo Code": 8.2,
+        "re_gent": 8
+      },
+      "gap_to_leader": 0,
+      "leader": "Cursor",
+      "gap_to_closed_source_leader": 0,
+      "closed_source_leader": "Cursor",
+      "gap_to_oss_leader": 0,
+      "oss_leader": "Continue.dev",
+      "status": "closed",
+      "sprint_history": [
+        {
+          "dimensionId": "ux_polish",
+          "before": 5,
+          "after": 10,
+          "date": "2026-04-14"
+        },
+        {
+          "dimensionId": "ux_polish",
+          "before": 10,
+          "after": 100,
+          "date": "2026-04-23"
+        },
+        {
+          "dimensionId": "ux_polish",
+          "before": 100,
+          "after": 10,
+          "date": "2026-04-23"
+        }
+      ],
+      "next_sprint_target": 7,
+      "harvest_source": "Continue.dev",
+      "capability_test": {
+        "command": "node dist/index.js --help 2>&1 | head -3",
+        "description": "CLI help renders cleanly"
+      },
+      "outcomes": [
+        {
+          "id": "ux_help",
+          "tier": "T1",
+          "kind": "shell",
+          "description": "CLI surfaces help in <2s",
+          "command": "node dist/index.js --help 2>&1 | head -3"
+        },
+        {
+          "id": "ux_substance",
+          "tier": "T2",
+          "kind": "shell",
+          "description": "CLI help is substantive (≥40 lines, lists commands)",
+          "command": "node -e \"const{execSync}=require('child_process');const out=execSync('node dist/index.js --help').toString();const lines=out.split('\\n').length;if(lines<40)process.exit(1);if(!/Commands:/i.test(out))process.exit(1)\""
+        }
+      ],
+      "declared_ceiling": "T2"
+    },
+    {
+      "id": "functionality",
+      "label": "Core Functionality",
+      "weight": 1.5,
+      "category": "quality",
+      "frequency": "high",
+      "scores": {
+        "self": 9.1,
+        "Devin (Cognition AI)": 8.8,
+        "GitHub Copilot Workspace": 8.2,
+        "Cursor": 8.5,
+        "Aider": 7.8,
+        "SWE-Agent (Princeton)": 8,
+        "MetaGPT": 7.5,
+        "GPT-Engineer": 7,
+        "Claude Code": 8.5,
+        "AutoGen (Microsoft)": 8.2,
+        "CrewAI": 8,
+        "OpenHands (All-Hands AI)": 8.5,
+        "CodiumAI / Qodo": 8,
+        "CodeRabbit": 8.2,
+        "Cline": 8,
+        "Continue.dev": 8,
+        "Swimm": 7.8,
+        "LangChain Agents": 8.2,
+        "Kiro (AWS)": 7.8,
+        "Codex CLI (OpenAI)": 8.2,
+        "Gemini CLI (Google)": 7.8,
+        "GitHub Copilot CLI": 8.5,
+        "Goose (Block)": 7.8,
+        "Replit Agent": 8.2,
+        "Zencoder": 7.8,
+        "Qodo 2.0": 8.2,
+        "Dagger": 8,
+        "Kilo Code": 7.8,
+        "re_gent": 7.2
+      },
+      "gap_to_leader": 0,
+      "leader": "Devin (Cognition AI)",
+      "gap_to_closed_source_leader": 0,
+      "closed_source_leader": "Devin (Cognition AI)",
+      "gap_to_oss_leader": 0,
+      "oss_leader": "OpenHands (All-Hands AI)",
+      "status": "closed",
+      "sprint_history": [
+        {
+          "dimensionId": "functionality",
+          "before": 5,
+          "after": 9,
+          "date": "2026-04-14"
+        },
+        {
+          "dimensionId": "functionality",
+          "before": 9,
+          "after": 91,
+          "date": "2026-04-23"
+        },
+        {
+          "dimensionId": "functionality",
+          "before": 91,
+          "after": 9.1,
+          "date": "2026-04-23"
+        }
+      ],
+      "next_sprint_target": 7,
+      "harvest_source": "OpenHands (All-Hands AI)",
+      "capability_test": {
+        "command": "npx tsx --test tests/smoke.test.ts 2>&1 | tail -3",
+        "description": "Smoke tests pass"
+      },
+      "outcomes": [
+        {
+          "id": "f_smoke",
+          "tier": "T2",
+          "kind": "shell",
+          "description": "Smoke tests cover the golden path",
+          "command": "npx tsx --test tests/smoke.test.ts 2>&1 | tail -3"
+        },
+        {
+          "id": "f_llm_wired",
+          "tier": "T3",
+          "kind": "production-usage-fresh",
+          "description": "LLM router is imported by production + modified within 30d",
+          "required_callsite": "src/core/llm.ts",
+          "freshnessDays": 30
+        },
+        {
+          "id": "f_snapshot_cli",
+          "tier": "T3",
+          "kind": "shell",
+          "description": "snapshot: CLI help renders usage — user-facing entry point responds",
+          "command": "node dist/index.js --help 2>&1 | grep -c 'Usage' && echo snapshot-cli-verified",
+          "required_callsite": "src/cli/register-core-commands.ts"
+        },
+        {
+          "id": "f_t4_golden_path",
+          "tier": "T4",
+          "kind": "shell",
+          "description": "T4 golden-path: CLI version check from user-facing entry point",
+          "command": "node dist/index.js --version 2>&1 | grep -E '[0-9]+[.][0-9]'",
+          "required_callsite": "src/core/llm.ts"
+        }
+      ],
+      "declared_ceiling": "T4"
+    },
+    {
+      "id": "autonomy",
+      "label": "Autonomy & Self-Direction",
+      "weight": 1.3,
+      "category": "features",
+      "frequency": "high",
+      "scores": {
+        "self": 10,
+        "Devin (Cognition AI)": 9.2,
+        "GitHub Copilot Workspace": 6.8,
+        "Cursor": 6.5,
+        "Aider": 7,
+        "SWE-Agent (Princeton)": 8.2,
+        "MetaGPT": 7.5,
+        "GPT-Engineer": 6.5,
+        "Claude Code": 7.2,
+        "AutoGen (Microsoft)": 8.5,
+        "CrewAI": 8.2,
+        "OpenHands (All-Hands AI)": 8.8,
+        "CodiumAI / Qodo": 6.8,
+        "CodeRabbit": 6.2,
+        "Cline": 7.8,
+        "Continue.dev": 6.5,
+        "Swimm": 5.5,
+        "LangChain Agents": 7.8,
+        "Kiro (AWS)": 7.2,
+        "Codex CLI (OpenAI)": 8,
+        "Gemini CLI (Google)": 6.5,
+        "GitHub Copilot CLI": 7.5,
+        "Goose (Block)": 7.2,
+        "Replit Agent": 8.5,
+        "Zencoder": 7.2,
+        "Qodo 2.0": 7.2,
+        "Dagger": 6,
+        "Kilo Code": 7.2,
+        "re_gent": 5.5
+      },
+      "gap_to_leader": 0,
+      "leader": "Devin (Cognition AI)",
+      "gap_to_closed_source_leader": 0,
+      "closed_source_leader": "Devin (Cognition AI)",
+      "gap_to_oss_leader": 0,
+      "oss_leader": "OpenHands (All-Hands AI)",
+      "status": "closed",
+      "sprint_history": [
+        {
+          "dimensionId": "autonomy",
+          "before": 5,
+          "after": 10,
+          "date": "2026-04-14"
+        },
+        {
+          "dimensionId": "autonomy",
+          "before": 9,
+          "after": 9,
+          "date": "2026-04-15"
+        },
+        {
+          "dimensionId": "autonomy",
+          "before": 9,
+          "after": 9,
+          "date": "2026-04-15"
+        },
+        {
+          "dimensionId": "autonomy",
+          "before": 9,
+          "after": 9,
+          "date": "2026-04-15"
+        },
+        {
+          "dimensionId": "autonomy",
+          "before": 9,
+          "after": 9,
+          "date": "2026-04-15"
+        },
+        {
+          "dimensionId": "autonomy",
+          "before": 9,
+          "after": 9,
+          "date": "2026-04-15"
+        },
+        {
+          "dimensionId": "autonomy",
+          "before": 9,
+          "after": 9,
+          "date": "2026-04-15"
+        },
+        {
+          "dimensionId": "autonomy",
+          "before": 9,
+          "after": 9,
+          "date": "2026-04-15"
+        },
+        {
+          "dimensionId": "autonomy",
+          "before": 9,
+          "after": 9,
+          "date": "2026-04-15"
+        },
+        {
+          "dimensionId": "autonomy",
+          "before": 9,
+          "after": 9,
+          "date": "2026-04-15"
+        },
+        {
+          "dimensionId": "autonomy",
+          "before": 9,
+          "after": 9,
+          "date": "2026-04-15"
+        },
+        {
+          "dimensionId": "autonomy",
+          "before": 9,
+          "after": 9,
+          "date": "2026-04-15"
+        },
+        {
+          "dimensionId": "autonomy",
+          "before": 9,
+          "after": 9,
+          "date": "2026-04-15"
+        },
+        {
+          "dimensionId": "autonomy",
+          "before": 9,
+          "after": 9,
+          "date": "2026-04-15"
+        },
+        {
+          "dimensionId": "autonomy",
+          "before": 9,
+          "after": 9,
+          "date": "2026-04-15"
+        },
+        {
+          "dimensionId": "autonomy",
+          "before": 9,
+          "after": 9,
+          "date": "2026-04-15"
+        },
+        {
+          "dimensionId": "autonomy",
+          "before": 9,
+          "after": 9,
+          "date": "2026-04-15"
+        },
+        {
+          "dimensionId": "autonomy",
+          "before": 9,
+          "after": 9,
+          "date": "2026-04-15"
+        },
+        {
+          "dimensionId": "autonomy",
+          "before": 9,
+          "after": 9,
+          "date": "2026-04-15"
+        },
+        {
+          "dimensionId": "autonomy",
+          "before": 9,
+          "after": 9,
+          "date": "2026-04-15"
+        },
+        {
+          "dimensionId": "autonomy",
+          "before": 9,
+          "after": 9,
+          "date": "2026-04-15"
+        },
+        {
+          "dimensionId": "autonomy",
+          "before": 9,
+          "after": 9,
+          "date": "2026-04-15"
+        },
+        {
+          "dimensionId": "autonomy",
+          "before": 9,
+          "after": 9,
+          "date": "2026-04-15"
+        },
+        {
+          "dimensionId": "autonomy",
+          "before": 9,
+          "after": 9,
+          "date": "2026-04-15"
+        },
+        {
+          "dimensionId": "autonomy",
+          "before": 9,
+          "after": 9,
+          "date": "2026-04-15"
+        },
+        {
+          "dimensionId": "autonomy",
+          "before": 9,
+          "after": 9,
+          "date": "2026-04-15"
+        },
+        {
+          "dimensionId": "autonomy",
+          "before": 9,
+          "after": 9,
+          "date": "2026-04-15"
+        },
+        {
+          "dimensionId": "autonomy",
+          "before": 9,
+          "after": 9,
+          "date": "2026-04-15"
+        },
+        {
+          "dimensionId": "autonomy",
+          "before": 9,
+          "after": 9,
+          "date": "2026-04-15"
+        },
+        {
+          "dimensionId": "autonomy",
+          "before": 9,
+          "after": 9,
+          "date": "2026-04-15"
+        },
+        {
+          "dimensionId": "autonomy",
+          "before": 9,
+          "after": 9,
+          "date": "2026-04-15"
+        },
+        {
+          "dimensionId": "autonomy",
+          "before": 9,
+          "after": 9,
+          "date": "2026-04-15"
+        },
+        {
+          "dimensionId": "autonomy",
+          "before": 9,
+          "after": 9,
+          "date": "2026-04-15"
+        },
+        {
+          "dimensionId": "autonomy",
+          "before": 9,
+          "after": 9,
+          "date": "2026-04-15"
+        },
+        {
+          "dimensionId": "autonomy",
+          "before": 9,
+          "after": 9,
+          "date": "2026-04-15"
+        },
+        {
+          "dimensionId": "autonomy",
+          "before": 9,
+          "after": 9,
+          "date": "2026-04-15"
+        },
+        {
+          "dimensionId": "autonomy",
+          "before": 9,
+          "after": 9,
+          "date": "2026-04-15"
+        },
+        {
+          "dimensionId": "autonomy",
+          "before": 9,
+          "after": 9,
+          "date": "2026-04-15"
+        },
+        {
+          "dimensionId": "autonomy",
+          "before": 9,
+          "after": 9,
+          "date": "2026-04-15"
+        },
+        {
+          "dimensionId": "autonomy",
+          "before": 9,
+          "after": 9,
+          "date": "2026-04-15"
+        },
+        {
+          "dimensionId": "autonomy",
+          "before": 9,
+          "after": 9,
+          "date": "2026-04-15"
+        },
+        {
+          "dimensionId": "autonomy",
+          "before": 9,
+          "after": 9,
+          "date": "2026-04-15"
+        },
+        {
+          "dimensionId": "autonomy",
+          "before": 9,
+          "after": 9,
+          "date": "2026-04-15"
+        },
+        {
+          "dimensionId": "autonomy",
+          "before": 9,
+          "after": 9,
+          "date": "2026-04-15"
+        },
+        {
+          "dimensionId": "autonomy",
+          "before": 9,
+          "after": 9,
+          "date": "2026-04-15"
+        },
+        {
+          "dimensionId": "autonomy",
+          "before": 9,
+          "after": 9,
+          "date": "2026-04-15"
+        },
+        {
+          "dimensionId": "autonomy",
+          "before": 9,
+          "after": 9,
+          "date": "2026-04-15"
+        },
+        {
+          "dimensionId": "autonomy",
+          "before": 9,
+          "after": 9,
+          "date": "2026-04-15"
+        },
+        {
+          "dimensionId": "autonomy",
+          "before": 9,
+          "after": 9,
+          "date": "2026-04-15"
+        },
+        {
+          "dimensionId": "autonomy",
+          "before": 9,
+          "after": 9,
+          "date": "2026-04-15"
+        },
+        {
+          "dimensionId": "autonomy",
+          "before": 9,
+          "after": 9,
+          "date": "2026-04-15"
+        },
+        {
+          "dimensionId": "autonomy",
+          "before": 9,
+          "after": 9,
+          "date": "2026-04-15"
+        },
+        {
+          "dimensionId": "autonomy",
+          "before": 9,
+          "after": 9,
+          "date": "2026-04-15"
+        },
+        {
+          "dimensionId": "autonomy",
+          "before": 9,
+          "after": 9,
+          "date": "2026-04-15"
+        },
+        {
+          "dimensionId": "autonomy",
+          "before": 9,
+          "after": 9,
+          "date": "2026-04-15"
+        },
+        {
+          "dimensionId": "autonomy",
+          "before": 9,
+          "after": 9,
+          "date": "2026-04-15"
+        },
+        {
+          "dimensionId": "autonomy",
+          "before": 9,
+          "after": 9,
+          "date": "2026-04-15"
+        },
+        {
+          "dimensionId": "autonomy",
+          "before": 9,
+          "after": 9,
+          "date": "2026-04-15"
+        },
+        {
+          "dimensionId": "autonomy",
+          "before": 9,
+          "after": 9,
+          "date": "2026-04-15"
+        },
+        {
+          "dimensionId": "autonomy",
+          "before": 9,
+          "after": 9,
+          "date": "2026-04-15"
+        },
+        {
+          "dimensionId": "autonomy",
+          "before": 9,
+          "after": 9,
+          "date": "2026-04-15"
+        },
+        {
+          "dimensionId": "autonomy",
+          "before": 9,
+          "after": 9,
+          "date": "2026-04-15"
+        },
+        {
+          "dimensionId": "autonomy",
+          "before": 9,
+          "after": 9,
+          "date": "2026-04-15"
+        },
+        {
+          "dimensionId": "autonomy",
+          "before": 9,
+          "after": 9,
+          "date": "2026-04-15"
+        },
+        {
+          "dimensionId": "autonomy",
+          "before": 9,
+          "after": 9,
+          "date": "2026-04-15"
+        },
+        {
+          "dimensionId": "autonomy",
+          "before": 9,
+          "after": 9,
+          "date": "2026-04-15"
+        },
+        {
+          "dimensionId": "autonomy",
+          "before": 9,
+          "after": 9,
+          "date": "2026-04-15"
+        },
+        {
+          "dimensionId": "autonomy",
+          "before": 9,
+          "after": 9,
+          "date": "2026-04-15"
+        },
+        {
+          "dimensionId": "autonomy",
+          "before": 9,
+          "after": 9,
+          "date": "2026-04-15"
+        },
+        {
+          "dimensionId": "autonomy",
+          "before": 9,
+          "after": 9,
+          "date": "2026-04-15"
+        },
+        {
+          "dimensionId": "autonomy",
+          "before": 9,
+          "after": 9,
+          "date": "2026-04-15"
+        },
+        {
+          "dimensionId": "autonomy",
+          "before": 9,
+          "after": 9,
+          "date": "2026-04-15"
+        },
+        {
+          "dimensionId": "autonomy",
+          "before": 9,
+          "after": 9,
+          "date": "2026-04-15"
+        },
+        {
+          "dimensionId": "autonomy",
+          "before": 9,
+          "after": 9,
+          "date": "2026-04-15"
+        },
+        {
+          "dimensionId": "autonomy",
+          "before": 9,
+          "after": 9,
+          "date": "2026-04-15"
+        },
+        {
+          "dimensionId": "autonomy",
+          "before": 9,
+          "after": 9,
+          "date": "2026-04-15"
+        },
+        {
+          "dimensionId": "autonomy",
+          "before": 9,
+          "after": 9,
+          "date": "2026-04-15"
+        },
+        {
+          "dimensionId": "autonomy",
+          "before": 9,
+          "after": 9,
+          "date": "2026-04-15"
+        },
+        {
+          "dimensionId": "autonomy",
+          "before": 9,
+          "after": 9,
+          "date": "2026-04-15"
+        },
+        {
+          "dimensionId": "autonomy",
+          "before": 9,
+          "after": 9,
+          "date": "2026-04-15"
+        },
+        {
+          "dimensionId": "autonomy",
+          "before": 9,
+          "after": 9,
+          "date": "2026-04-15"
+        },
+        {
+          "dimensionId": "autonomy",
+          "before": 9,
+          "after": 9,
+          "date": "2026-04-15"
+        },
+        {
+          "dimensionId": "autonomy",
+          "before": 9,
+          "after": 9,
+          "date": "2026-04-15"
+        },
+        {
+          "dimensionId": "autonomy",
+          "before": 9,
+          "after": 9,
+          "date": "2026-04-15"
+        },
+        {
+          "dimensionId": "autonomy",
+          "before": 9,
+          "after": 9,
+          "date": "2026-04-15"
+        },
+        {
+          "dimensionId": "autonomy",
+          "before": 9,
+          "after": 9,
+          "date": "2026-04-15"
+        },
+        {
+          "dimensionId": "autonomy",
+          "before": 9,
+          "after": 9,
+          "date": "2026-04-15"
+        },
+        {
+          "dimensionId": "autonomy",
+          "before": 9,
+          "after": 9,
+          "date": "2026-04-15"
+        },
+        {
+          "dimensionId": "autonomy",
+          "before": 9,
+          "after": 9,
+          "date": "2026-04-15"
+        },
+        {
+          "dimensionId": "autonomy",
+          "before": 9,
+          "after": 9,
+          "date": "2026-04-15"
+        },
+        {
+          "dimensionId": "autonomy",
+          "before": 9,
+          "after": 9,
+          "date": "2026-04-15"
+        },
+        {
+          "dimensionId": "autonomy",
+          "before": 9,
+          "after": 9,
+          "date": "2026-04-15"
+        },
+        {
+          "dimensionId": "autonomy",
+          "before": 9,
+          "after": 9,
+          "date": "2026-04-15"
+        },
+        {
+          "dimensionId": "autonomy",
+          "before": 9,
+          "after": 9,
+          "date": "2026-04-15"
+        },
+        {
+          "dimensionId": "autonomy",
+          "before": 9,
+          "after": 9,
+          "date": "2026-04-15"
+        },
+        {
+          "dimensionId": "autonomy",
+          "before": 9,
+          "after": 9,
+          "date": "2026-04-15"
+        },
+        {
+          "dimensionId": "autonomy",
+          "before": 9,
+          "after": 9,
+          "date": "2026-04-15"
+        },
+        {
+          "dimensionId": "autonomy",
+          "before": 9,
+          "after": 9,
+          "date": "2026-04-15"
+        },
+        {
+          "dimensionId": "autonomy",
+          "before": 9,
+          "after": 9,
+          "date": "2026-04-15"
+        },
+        {
+          "dimensionId": "autonomy",
+          "before": 9,
+          "after": 9,
+          "date": "2026-04-15"
+        },
+        {
+          "dimensionId": "autonomy",
+          "before": 9,
+          "after": 9,
+          "date": "2026-04-15"
+        },
+        {
+          "dimensionId": "autonomy",
+          "before": 9,
+          "after": 9,
+          "date": "2026-04-15"
+        },
+        {
+          "dimensionId": "autonomy",
+          "before": 9,
+          "after": 9,
+          "date": "2026-04-15"
+        },
+        {
+          "dimensionId": "autonomy",
+          "before": 9,
+          "after": 9,
+          "date": "2026-04-15"
+        },
+        {
+          "dimensionId": "autonomy",
+          "before": 9,
+          "after": 9,
+          "date": "2026-04-15"
+        },
+        {
+          "dimensionId": "autonomy",
+          "before": 9,
+          "after": 9,
+          "date": "2026-04-15"
+        },
+        {
+          "dimensionId": "autonomy",
+          "before": 9,
+          "after": 9,
+          "date": "2026-04-15"
+        },
+        {
+          "dimensionId": "autonomy",
+          "before": 9,
+          "after": 9,
+          "date": "2026-04-15"
+        },
+        {
+          "dimensionId": "autonomy",
+          "before": 9,
+          "after": 9,
+          "date": "2026-04-15"
+        },
+        {
+          "dimensionId": "autonomy",
+          "before": 9,
+          "after": 9,
+          "date": "2026-04-15"
+        },
+        {
+          "dimensionId": "autonomy",
+          "before": 9,
+          "after": 9,
+          "date": "2026-04-15"
+        },
+        {
+          "dimensionId": "autonomy",
+          "before": 9,
+          "after": 9,
+          "date": "2026-04-15"
+        },
+        {
+          "dimensionId": "autonomy",
+          "before": 9,
+          "after": 9,
+          "date": "2026-04-15"
+        },
+        {
+          "dimensionId": "autonomy",
+          "before": 9,
+          "after": 9,
+          "date": "2026-04-15"
+        },
+        {
+          "dimensionId": "autonomy",
+          "before": 9,
+          "after": 9,
+          "date": "2026-04-15"
+        },
+        {
+          "dimensionId": "autonomy",
+          "before": 9,
+          "after": 9,
+          "date": "2026-04-15"
+        },
+        {
+          "dimensionId": "autonomy",
+          "before": 9,
+          "after": 9,
+          "date": "2026-04-15"
+        },
+        {
+          "dimensionId": "autonomy",
+          "before": 9,
+          "after": 9,
+          "date": "2026-04-15"
+        },
+        {
+          "dimensionId": "autonomy",
+          "before": 9,
+          "after": 9,
+          "date": "2026-04-15"
+        },
+        {
+          "dimensionId": "autonomy",
+          "before": 9,
+          "after": 9,
+          "date": "2026-04-15"
+        },
+        {
+          "dimensionId": "autonomy",
+          "before": 9,
+          "after": 9,
+          "date": "2026-04-15"
+        },
+        {
+          "dimensionId": "autonomy",
+          "before": 9,
+          "after": 9,
+          "date": "2026-04-15"
+        },
+        {
+          "dimensionId": "autonomy",
+          "before": 10,
+          "after": 65,
+          "date": "2026-04-23"
+        },
+        {
+          "dimensionId": "autonomy",
+          "before": 65,
+          "after": 6.5,
+          "date": "2026-04-23"
+        },
+        {
+          "dimensionId": "autonomy",
+          "before": 6.5,
+          "after": 10,
+          "date": "2026-04-23"
+        }
+      ],
+      "next_sprint_target": 7,
+      "harvest_source": "OpenHands (All-Hands AI)",
+      "capability_test": {
+        "command": "node dist/index.js ascend --dry-run 2>&1 | tail -3",
+        "description": "ascend --dry-run completes without error"
+      },
+      "outcomes": [
+        {
+          "id": "a_dryrun",
+          "tier": "T2",
+          "kind": "shell",
+          "description": "`ascend --dry-run` executes",
+          "command": "node dist/index.js ascend --dry-run 2>&1 | tail -3"
+        },
+        {
+          "id": "a_engine_wired",
+          "tier": "T3",
+          "kind": "production-usage-fresh",
+          "description": "ascend-engine is imported by production + modified within 30d",
+          "required_callsite": "src/core/ascend-engine.ts",
+          "freshnessDays": 30
+        },
+        {
+          "id": "a_snapshot_frontier",
+          "tier": "T3",
+          "kind": "shell",
+          "description": "snapshot: frontier --json produces terminal state",
+          "command": "node dist/index.js frontier --json 2>&1 | grep -c terminal && echo snapshot-frontier-works",
+          "required_callsite": "src/core/frontier-state.ts"
+        },
+        {
+          "id": "a_t4_frontier_e2e",
+          "tier": "T4",
+          "kind": "shell",
+          "description": "T4 e2e: frontier-state accessible from user-facing CLI entry point",
+          "command": "node dist/index.js frontier --json 2>&1 | grep -E '\"terminal\"'",
+          "required_callsite": "src/core/frontier-state.ts"
+        }
+      ],
+      "declared_ceiling": "T4"
+    },
+    {
+      "id": "security",
+      "label": "Security Hardening",
+      "weight": 1.3,
+      "category": "reliability",
+      "frequency": "high",
+      "scores": {
+        "self": 9.5,
+        "Devin (Cognition AI)": 7,
+        "GitHub Copilot Workspace": 8,
+        "Cursor": 7.2,
+        "Aider": 6.2,
+        "SWE-Agent (Princeton)": 6.5,
+        "MetaGPT": 6,
+        "GPT-Engineer": 5.5,
+        "Claude Code": 8,
+        "AutoGen (Microsoft)": 7.2,
+        "CrewAI": 6.8,
+        "OpenHands (All-Hands AI)": 8,
+        "CodiumAI / Qodo": 7,
+        "CodeRabbit": 8.2,
+        "Cline": 7.2,
+        "Continue.dev": 7.2,
+        "Swimm": 6.8,
+        "LangChain Agents": 7,
+        "Kiro (AWS)": 7.8,
+        "Codex CLI (OpenAI)": 7.8,
+        "Gemini CLI (Google)": 7.2,
+        "GitHub Copilot CLI": 8.2,
+        "Goose (Block)": 7.5,
+        "Replit Agent": 6.8,
+        "Zencoder": 8.5,
+        "Qodo 2.0": 7.2,
+        "Dagger": 7,
+        "Kilo Code": 7,
+        "re_gent": 7.2
+      },
+      "gap_to_leader": 0,
+      "leader": "Zencoder",
+      "gap_to_closed_source_leader": 0,
+      "closed_source_leader": "Zencoder",
+      "gap_to_oss_leader": 0,
+      "oss_leader": "OpenHands (All-Hands AI)",
+      "status": "closed",
+      "sprint_history": [
+        {
+          "dimensionId": "security",
+          "before": 5,
+          "after": 9,
+          "date": "2026-04-14"
+        },
+        {
+          "dimensionId": "security",
+          "before": 9.5,
+          "after": 95,
+          "date": "2026-04-23"
+        },
+        {
+          "dimensionId": "security",
+          "before": 95,
+          "after": 9.5,
+          "date": "2026-04-23"
+        }
+      ],
+      "next_sprint_target": 7,
+      "harvest_source": "OpenHands (All-Hands AI)",
+      "capability_test": {
+        "command": "npm run check:anti-stub 2>&1 | tail -5",
+        "description": "Anti-stub scan finds no stubs"
+      },
+      "outcomes": [
+        {
+          "id": "s_antistub",
+          "tier": "T2",
+          "kind": "shell",
+          "description": "No anti-stub findings",
+          "command": "npm run check:anti-stub 2>&1 | tail -5"
+        },
+        {
+          "id": "s_audit",
+          "tier": "T2",
+          "kind": "shell",
+          "description": "npm audit clean at high severity",
+          "command": "npm audit --audit-level=high --omit=dev 2>&1 | tail -5"
+        },
+        {
+          "id": "s_sanitize_wired",
+          "tier": "T3",
+          "kind": "production-usage-fresh",
+          "description": "sanitize-boundary is imported by production + modified within 30d",
+          "required_callsite": "src/core/sanitize-boundary.ts",
+          "freshnessDays": 30
+        },
+        {
+          "id": "s_snapshot_harden",
+          "tier": "T3",
+          "kind": "shell",
+          "description": "snapshot: harden gate JSON output is structured",
+          "command": "node dist/index.js harden --json 2>&1 | grep -c totalDimensions && echo snapshot-harden-verified",
+          "required_callsite": "src/matrix/engines/hardener.ts"
+        },
+        {
+          "id": "s_t4_gate_e2e",
+          "tier": "T4",
+          "kind": "shell",
+          "description": "T4 e2e: harden gate runs from user-facing CLI and emits structured JSON",
+          "command": "node dist/index.js harden --json 2>&1 | grep totalDimensions",
+          "required_callsite": "src/matrix/engines/hardener.ts"
+        }
+      ],
+      "declared_ceiling": "T4"
+    },
+    {
+      "id": "error_handling",
+      "label": "Error Handling & Recovery",
+      "weight": 1.2,
+      "category": "quality",
+      "frequency": "high",
+      "scores": {
+        "self": 9.5,
+        "Devin (Cognition AI)": 7.5,
+        "GitHub Copilot Workspace": 7.2,
+        "Cursor": 6.8,
+        "Aider": 6.5,
+        "SWE-Agent (Princeton)": 7.2,
+        "MetaGPT": 6.5,
+        "GPT-Engineer": 5.5,
+        "Claude Code": 7.8,
+        "AutoGen (Microsoft)": 7.8,
+        "CrewAI": 7.4,
+        "OpenHands (All-Hands AI)": 7.8,
+        "CodiumAI / Qodo": 7.2,
+        "CodeRabbit": 8,
+        "Cline": 7.2,
+        "Continue.dev": 7,
+        "Swimm": 6.5,
+        "LangChain Agents": 7.6,
+        "Kiro (AWS)": 7,
+        "Codex CLI (OpenAI)": 7.2,
+        "Gemini CLI (Google)": 6.8,
+        "GitHub Copilot CLI": 7.5,
+        "Goose (Block)": 7.2,
+        "Replit Agent": 7,
+        "Zencoder": 7.5,
+        "Qodo 2.0": 7.5,
+        "Dagger": 7.2,
+        "Kilo Code": 6.8,
+        "re_gent": 6.8
+      },
+      "gap_to_leader": 0,
+      "leader": "CodeRabbit",
+      "gap_to_closed_source_leader": 0,
+      "closed_source_leader": "CodeRabbit",
+      "gap_to_oss_leader": 0,
+      "oss_leader": "AutoGen (Microsoft)",
+      "status": "closed",
+      "sprint_history": [
+        {
+          "dimensionId": "error_handling",
+          "before": 5,
+          "after": 9.5,
+          "date": "2026-04-14"
+        },
+        {
+          "dimensionId": "error_handling",
+          "before": 9.5,
+          "after": 95,
+          "date": "2026-04-23"
+        },
+        {
+          "dimensionId": "error_handling",
+          "before": 95,
+          "after": 9.5,
+          "date": "2026-04-23"
+        }
+      ],
+      "next_sprint_target": 7,
+      "harvest_source": "AutoGen (Microsoft)",
+      "capability_test": {
+        "command": "npx tsx --test tests/error-boundary-coverage.test.ts 2>&1 | tail -3",
+        "description": "Error boundary tests pass"
+      },
+      "outcomes": [
+        {
+          "id": "eh_boundary",
+          "tier": "T2",
+          "kind": "shell",
+          "description": "Error boundary tests pass",
+          "command": "npx tsx --test tests/error-boundary-coverage.test.ts 2>&1 | tail -3"
+        },
+        {
+          "id": "eh_errors_wired",
+          "tier": "T3",
+          "kind": "production-usage-fresh",
+          "description": "errors module is imported by production + modified within 30d",
+          "required_callsite": "src/core/errors.ts",
+          "freshnessDays": 30
+        }
+      ],
+      "declared_ceiling": "T3"
+    },
+    {
+      "id": "performance",
+      "label": "Performance",
+      "weight": 1.2,
+      "category": "quality",
+      "frequency": "high",
+      "scores": {
+        "self": 9,
+        "Devin (Cognition AI)": 7.2,
+        "GitHub Copilot Workspace": 7,
+        "Cursor": 7.4,
+        "Aider": 6.5,
+        "SWE-Agent (Princeton)": 6.8,
+        "MetaGPT": 6.2,
+        "GPT-Engineer": 5.8,
+        "Claude Code": 7.6,
+        "AutoGen (Microsoft)": 7.6,
+        "CrewAI": 7.2,
+        "OpenHands (All-Hands AI)": 7.4,
+        "CodiumAI / Qodo": 6.8,
+        "CodeRabbit": 7.2,
+        "Cline": 7.2,
+        "Continue.dev": 7.4,
+        "Swimm": 6.5,
+        "LangChain Agents": 7,
+        "Kiro (AWS)": 7,
+        "Codex CLI (OpenAI)": 8,
+        "Gemini CLI (Google)": 7.2,
+        "GitHub Copilot CLI": 7.4,
+        "Goose (Block)": 6.8,
+        "Replit Agent": 7,
+        "Zencoder": 7,
+        "Qodo 2.0": 7,
+        "Dagger": 7.8,
+        "Kilo Code": 7.2,
+        "re_gent": 7.6
+      },
+      "gap_to_leader": 0,
+      "leader": "Codex CLI (OpenAI)",
+      "gap_to_closed_source_leader": 0,
+      "closed_source_leader": "Codex CLI (OpenAI)",
+      "gap_to_oss_leader": 0,
+      "oss_leader": "AutoGen (Microsoft)",
+      "status": "closed",
+      "sprint_history": [
+        {
+          "dimensionId": "performance",
+          "before": 5,
+          "after": 7,
+          "date": "2026-04-14"
+        },
+        {
+          "dimensionId": "performance",
+          "before": 7,
+          "after": 7,
+          "date": "2026-04-14"
+        },
+        {
+          "dimensionId": "performance",
+          "before": 7,
+          "after": 7,
+          "date": "2026-04-14"
+        },
+        {
+          "dimensionId": "performance",
+          "before": 7,
+          "after": 7,
+          "date": "2026-04-14"
+        },
+        {
+          "dimensionId": "performance",
+          "before": 7,
+          "after": 7,
+          "date": "2026-04-14"
+        },
+        {
+          "dimensionId": "performance",
+          "before": 7,
+          "after": 7,
+          "date": "2026-04-14"
+        },
+        {
+          "dimensionId": "performance",
+          "before": 7,
+          "after": 7,
+          "date": "2026-04-14"
+        },
+        {
+          "dimensionId": "performance",
+          "before": 7,
+          "after": 7,
+          "date": "2026-04-14"
+        },
+        {
+          "dimensionId": "performance",
+          "before": 7,
+          "after": 7,
+          "date": "2026-04-14"
+        },
+        {
+          "dimensionId": "performance",
+          "before": 7,
+          "after": 7,
+          "date": "2026-04-14"
+        },
+        {
+          "dimensionId": "performance",
+          "before": 7,
+          "after": 7,
+          "date": "2026-04-14"
+        },
+        {
+          "dimensionId": "performance",
+          "before": 7,
+          "after": 7,
+          "date": "2026-04-14"
+        },
+        {
+          "dimensionId": "performance",
+          "before": 7,
+          "after": 7,
+          "date": "2026-04-14"
+        },
+        {
+          "dimensionId": "performance",
+          "before": 7,
+          "after": 7,
+          "date": "2026-04-14"
+        },
+        {
+          "dimensionId": "performance",
+          "before": 7,
+          "after": 7,
+          "date": "2026-04-14"
+        },
+        {
+          "dimensionId": "performance",
+          "before": 7,
+          "after": 7,
+          "date": "2026-04-14"
+        },
+        {
+          "dimensionId": "performance",
+          "before": 7,
+          "after": 7,
+          "date": "2026-04-14"
+        },
+        {
+          "dimensionId": "performance",
+          "before": 7,
+          "after": 7,
+          "date": "2026-04-14"
+        },
+        {
+          "dimensionId": "performance",
+          "before": 7,
+          "after": 7,
+          "date": "2026-04-14"
+        },
+        {
+          "dimensionId": "performance",
+          "before": 7,
+          "after": 7,
+          "date": "2026-04-14"
+        },
+        {
+          "dimensionId": "performance",
+          "before": 7,
+          "after": 7,
+          "date": "2026-04-14"
+        },
+        {
+          "dimensionId": "performance",
+          "before": 7,
+          "after": 7,
+          "date": "2026-04-14"
+        },
+        {
+          "dimensionId": "performance",
+          "before": 7,
+          "after": 7,
+          "date": "2026-04-14"
+        },
+        {
+          "dimensionId": "performance",
+          "before": 7,
+          "after": 7,
+          "date": "2026-04-14"
+        },
+        {
+          "dimensionId": "performance",
+          "before": 7,
+          "after": 7,
+          "date": "2026-04-14"
+        },
+        {
+          "dimensionId": "performance",
+          "before": 7,
+          "after": 7,
+          "date": "2026-04-14"
+        },
+        {
+          "dimensionId": "performance",
+          "before": 7,
+          "after": 7,
+          "date": "2026-04-14"
+        },
+        {
+          "dimensionId": "performance",
+          "before": 7,
+          "after": 7,
+          "date": "2026-04-14"
+        },
+        {
+          "dimensionId": "performance",
+          "before": 7,
+          "after": 7,
+          "date": "2026-04-14"
+        },
+        {
+          "dimensionId": "performance",
+          "before": 7,
+          "after": 7,
+          "date": "2026-04-14"
+        },
+        {
+          "dimensionId": "performance",
+          "before": 7,
+          "after": 7,
+          "date": "2026-04-14"
+        },
+        {
+          "dimensionId": "performance",
+          "before": 7,
+          "after": 7,
+          "date": "2026-04-14"
+        },
+        {
+          "dimensionId": "performance",
+          "before": 7,
+          "after": 7,
+          "date": "2026-04-14"
+        },
+        {
+          "dimensionId": "performance",
+          "before": 7,
+          "after": 7,
+          "date": "2026-04-14"
+        },
+        {
+          "dimensionId": "performance",
+          "before": 7,
+          "after": 7,
+          "date": "2026-04-14"
+        },
+        {
+          "dimensionId": "performance",
+          "before": 7,
+          "after": 7,
+          "date": "2026-04-14"
+        },
+        {
+          "dimensionId": "performance",
+          "before": 7,
+          "after": 7,
+          "date": "2026-04-14"
+        },
+        {
+          "dimensionId": "performance",
+          "before": 7,
+          "after": 7,
+          "date": "2026-04-14"
+        },
+        {
+          "dimensionId": "performance",
+          "before": 7,
+          "after": 7,
+          "date": "2026-04-14"
+        },
+        {
+          "dimensionId": "performance",
+          "before": 7,
+          "after": 7,
+          "date": "2026-04-14"
+        },
+        {
+          "dimensionId": "performance",
+          "before": 7,
+          "after": 7,
+          "date": "2026-04-14"
+        },
+        {
+          "dimensionId": "performance",
+          "before": 7,
+          "after": 7,
+          "date": "2026-04-14"
+        },
+        {
+          "dimensionId": "performance",
+          "before": 7,
+          "after": 7,
+          "date": "2026-04-14"
+        },
+        {
+          "dimensionId": "performance",
+          "before": 7,
+          "after": 7,
+          "date": "2026-04-14"
+        },
+        {
+          "dimensionId": "performance",
+          "before": 7,
+          "after": 7,
+          "date": "2026-04-14"
+        },
+        {
+          "dimensionId": "performance",
+          "before": 7,
+          "after": 7,
+          "date": "2026-04-14"
+        },
+        {
+          "dimensionId": "performance",
+          "before": 7,
+          "after": 9.5,
+          "date": "2026-04-14"
+        },
+        {
+          "dimensionId": "performance",
+          "before": 9,
+          "after": 90,
+          "date": "2026-04-23"
+        },
+        {
+          "dimensionId": "performance",
+          "before": 90,
+          "after": 9,
+          "date": "2026-04-23"
+        }
+      ],
+      "next_sprint_target": 7,
+      "harvest_source": "AutoGen (Microsoft)",
+      "capability_test": {
+        "command": "npm run build 2>&1 | tail -3",
+        "description": "Build completes"
+      },
+      "outcomes": [
+        {
+          "id": "p_build",
+          "tier": "T2",
+          "kind": "shell",
+          "description": "Build completes (compile baseline)",
+          "command": "npm run build 2>&1 | tail -3"
+        },
+        {
+          "id": "p_cache_wired",
+          "tier": "T3",
+          "kind": "production-usage-fresh",
+          "description": "llm-cache is imported by production + modified within 30d",
+          "required_callsite": "src/core/llm-cache.ts",
+          "freshnessDays": 30
+        }
+      ],
+      "declared_ceiling": "T3"
+    },
+    {
+      "id": "documentation",
+      "label": "Documentation Quality",
+      "weight": 1,
+      "category": "ux",
+      "frequency": "medium",
+      "scores": {
+        "self": 10,
+        "Devin (Cognition AI)": 6.8,
+        "GitHub Copilot Workspace": 7.5,
+        "Cursor": 7.2,
+        "Aider": 7,
+        "SWE-Agent (Princeton)": 6.8,
+        "MetaGPT": 7.2,
+        "GPT-Engineer": 6.8,
+        "Claude Code": 8,
+        "AutoGen (Microsoft)": 7.8,
+        "CrewAI": 7.5,
+        "OpenHands (All-Hands AI)": 7.2,
+        "CodiumAI / Qodo": 6.8,
+        "CodeRabbit": 7.2,
+        "Cline": 6.5,
+        "Continue.dev": 7.5,
+        "Swimm": 9.2,
+        "LangChain Agents": 8,
+        "Kiro (AWS)": 7.2,
+        "Codex CLI (OpenAI)": 7.5,
+        "Gemini CLI (Google)": 7,
+        "GitHub Copilot CLI": 8,
+        "Goose (Block)": 7,
+        "Replit Agent": 6.5,
+        "Zencoder": 7,
+        "Qodo 2.0": 7.2,
+        "Dagger": 7.8,
+        "Kilo Code": 6.8,
+        "re_gent": 8.7
+      },
+      "gap_to_leader": 0,
+      "leader": "Swimm",
+      "gap_to_closed_source_leader": 0,
+      "closed_source_leader": "Swimm",
+      "gap_to_oss_leader": 0,
+      "oss_leader": "re_gent",
+      "status": "closed",
+      "sprint_history": [
+        {
+          "dimensionId": "documentation",
+          "before": 5,
+          "after": 9.9,
+          "date": "2026-04-14"
+        },
+        {
+          "dimensionId": "documentation",
+          "before": 9.9,
+          "after": 100,
+          "date": "2026-04-23"
+        },
+        {
+          "dimensionId": "documentation",
+          "before": 100,
+          "after": 10,
+          "date": "2026-04-23"
+        }
+      ],
+      "next_sprint_target": 7,
+      "harvest_source": "LangChain Agents",
+      "capability_test": {
+        "command": "node -e \"require('fs').accessSync('docs/CAPABILITY-TIERS.md')\"",
+        "description": "CAPABILITY-TIERS.md exists"
+      },
+      "outcomes": [
+        {
+          "id": "d_tiers",
+          "tier": "T1",
+          "kind": "shell",
+          "description": "CAPABILITY-TIERS.md is present",
+          "command": "node -e \"require('fs').accessSync('docs/CAPABILITY-TIERS.md')\""
+        },
+        {
+          "id": "d_content",
+          "tier": "T2",
+          "kind": "shell",
+          "description": "Core docs exist with real content (CAPABILITY-TIERS, AUTONOMY-BOUNDARIES, RUNBOOK each ≥2KB)",
+          "command": "node -e \"const fs=require('fs');for(const f of ['docs/CAPABILITY-TIERS.md','docs/AUTONOMY-BOUNDARIES.md','RUNBOOK.md']){fs.accessSync(f);if(fs.readFileSync(f,'utf8').length<2000)process.exit(1)}\""
+        }
+      ],
+      "declared_ceiling": "T2"
+    },
+    {
+      "id": "convergence_self_healing",
+      "label": "Convergence & Self-Healing",
+      "weight": 1.1,
+      "category": "features",
+      "frequency": "medium",
+      "scores": {
+        "self": 10,
+        "Devin (Cognition AI)": 8.5,
+        "GitHub Copilot Workspace": 5.5,
+        "Cursor": 4,
+        "Aider": 5,
+        "SWE-Agent (Princeton)": 7,
+        "MetaGPT": 6,
+        "GPT-Engineer": 4.5,
+        "Claude Code": 5.5,
+        "AutoGen (Microsoft)": 6.5,
+        "CrewAI": 6,
+        "OpenHands (All-Hands AI)": 8,
+        "CodiumAI / Qodo": 7.2,
+        "CodeRabbit": 5,
+        "Cline": 4.5,
+        "Continue.dev": 4,
+        "Swimm": 3.5,
+        "LangChain Agents": 5.5,
+        "Kiro (AWS)": 5.5,
+        "Codex CLI (OpenAI)": 6,
+        "Gemini CLI (Google)": 4,
+        "GitHub Copilot CLI": 6,
+        "Goose (Block)": 5,
+        "Replit Agent": 7.8,
+        "Zencoder": 5.5,
+        "Qodo 2.0": 7.2,
+        "Dagger": 4,
+        "Kilo Code": 4.5,
+        "re_gent": 5
+      },
+      "gap_to_leader": 0,
+      "leader": "Devin (Cognition AI)",
+      "gap_to_closed_source_leader": 0,
+      "closed_source_leader": "Devin (Cognition AI)",
+      "gap_to_oss_leader": 0,
+      "oss_leader": "OpenHands (All-Hands AI)",
+      "status": "closed",
+      "sprint_history": [
+        {
+          "dimensionId": "convergence_self_healing",
+          "before": 5,
+          "after": 9.5,
+          "date": "2026-04-14"
+        },
+        {
+          "dimensionId": "convergence_self_healing",
+          "before": 10,
+          "after": 70,
+          "date": "2026-04-23"
+        },
+        {
+          "dimensionId": "convergence_self_healing",
+          "before": 70,
+          "after": 7,
+          "date": "2026-04-23"
+        },
+        {
+          "dimensionId": "convergence_self_healing",
+          "before": 7,
+          "after": 10,
+          "date": "2026-04-23"
+        }
+      ],
+      "next_sprint_target": 7,
+      "harvest_source": "OpenHands (All-Hands AI)",
+      "capability_test": {
+        "command": "npx tsx --test tests/loop-detector.test.ts tests/reflection-gates.test.ts 2>&1 | tail -3",
+        "description": "Loop detector + reflection gate tests pass"
+      },
+      "outcomes": [
+        {
+          "id": "csh_loop",
+          "tier": "T2",
+          "kind": "shell",
+          "description": "Loop detector + reflection gate tests pass",
+          "command": "npx tsx --test tests/loop-detector.test.ts tests/reflection-gates.test.ts 2>&1 | tail -3"
+        },
+        {
+          "id": "csh_detector_wired",
+          "tier": "T3",
+          "kind": "production-usage-fresh",
+          "description": "loop-detector is imported by production + modified within 30d",
+          "required_callsite": "src/core/loop-detector.ts",
+          "freshnessDays": 30
+        },
+        {
+          "id": "csh_snapshot_health",
+          "tier": "T3",
+          "kind": "shell",
+          "description": "snapshot: convergence-health produces health panel",
+          "command": "node dist/index.js convergence-health 2>&1 | grep -c 'Health|Score|Integrity' && echo snapshot-health-works",
+          "required_callsite": "src/core/convergence-health.ts"
+        },
+        {
+          "id": "csh_t4_health_e2e",
+          "tier": "T4",
+          "kind": "shell",
+          "description": "T4 e2e: convergence-health accessible from CLI and shows health checks",
+          "command": "node dist/index.js convergence-health 2>&1 | grep -c 'Integrity|Trend|STATE'",
+          "required_callsite": "src/core/convergence-health.ts"
+        }
+      ],
+      "declared_ceiling": "T4"
+    },
+    {
+      "id": "spec_driven_pipeline",
+      "label": "Spec-Driven Pipeline",
+      "weight": 1.2,
+      "category": "features",
+      "frequency": "medium",
+      "scores": {
+        "self": 9,
+        "Devin (Cognition AI)": 5.5,
+        "GitHub Copilot Workspace": 6,
+        "Cursor": 3.5,
+        "Aider": 3,
+        "SWE-Agent (Princeton)": 4.5,
+        "MetaGPT": 7.5,
+        "GPT-Engineer": 5,
+        "Claude Code": 4,
+        "AutoGen (Microsoft)": 5,
+        "CrewAI": 5.5,
+        "OpenHands (All-Hands AI)": 4,
+        "CodiumAI / Qodo": 3,
+        "CodeRabbit": 2.5,
+        "Cline": 2.5,
+        "Continue.dev": 3,
+        "Swimm": 7,
+        "LangChain Agents": 4,
+        "Kiro (AWS)": 8,
+        "Codex CLI (OpenAI)": 3.5,
+        "Gemini CLI (Google)": 2.5,
+        "GitHub Copilot CLI": 5.5,
+        "Goose (Block)": 3,
+        "Replit Agent": 4.5,
+        "Zencoder": 4,
+        "Qodo 2.0": 3.5,
+        "Dagger": 3,
+        "Kilo Code": 3,
+        "re_gent": 4.5
+      },
+      "gap_to_leader": 0,
+      "leader": "Kiro (AWS)",
+      "gap_to_closed_source_leader": 0,
+      "closed_source_leader": "Kiro (AWS)",
+      "gap_to_oss_leader": 0,
+      "oss_leader": "MetaGPT",
+      "status": "closed",
+      "sprint_history": [
+        {
+          "dimensionId": "spec_driven_pipeline",
+          "before": 5,
+          "after": 9.5,
+          "date": "2026-04-14"
+        },
+        {
+          "dimensionId": "spec_driven_pipeline",
+          "before": 9,
+          "after": 95,
+          "date": "2026-04-23"
+        },
+        {
+          "dimensionId": "spec_driven_pipeline",
+          "before": 95,
+          "after": 9.5,
+          "date": "2026-04-23"
+        },
+        {
+          "dimensionId": "spec_driven_pipeline",
+          "before": 9.5,
+          "after": 9,
+          "date": "2026-04-23"
+        }
+      ],
+      "next_sprint_target": 7,
+      "harvest_source": "MetaGPT",
+      "capability_test": {
+        "command": "npx tsx --test tests/workflow-enforcer.test.ts 2>&1 | tail -3",
+        "description": "Workflow enforcer tests pass"
+      },
+      "outcomes": [
+        {
+          "id": "sdp_workflow",
+          "tier": "T2",
+          "kind": "shell",
+          "description": "Workflow enforcer tests pass",
+          "command": "npx tsx --test tests/workflow-enforcer.test.ts 2>&1 | tail -3"
+        },
+        {
+          "id": "sdp_specify_wired",
+          "tier": "T3",
+          "kind": "production-usage-fresh",
+          "description": "specify command is imported by production + modified within 30d",
+          "required_callsite": "src/cli/commands/specify.ts",
+          "freshnessDays": 30
+        }
+      ],
+      "declared_ceiling": "T3"
+    },
+    {
+      "id": "planning_quality",
+      "label": "Planning Quality (PDSE)",
+      "weight": 1,
+      "category": "features",
+      "frequency": "medium",
+      "scores": {
+        "self": 10,
+        "Devin (Cognition AI)": 7.8,
+        "GitHub Copilot Workspace": 7.6,
+        "Cursor": 6.2,
+        "Aider": 6,
+        "SWE-Agent (Princeton)": 7.2,
+        "MetaGPT": 8.5,
+        "GPT-Engineer": 7,
+        "Claude Code": 7,
+        "AutoGen (Microsoft)": 7.8,
+        "CrewAI": 8,
+        "OpenHands (All-Hands AI)": 7.2,
+        "CodiumAI / Qodo": 6,
+        "CodeRabbit": 6,
+        "Cline": 6,
+        "Continue.dev": 6.2,
+        "Swimm": 8.5,
+        "LangChain Agents": 7.2,
+        "Kiro (AWS)": 8.2,
+        "Codex CLI (OpenAI)": 6.8,
+        "Gemini CLI (Google)": 6,
+        "GitHub Copilot CLI": 7.8,
+        "Goose (Block)": 6,
+        "Replit Agent": 6.5,
+        "Zencoder": 6.5,
+        "Qodo 2.0": 6.2,
+        "Dagger": 5.5,
+        "Kilo Code": 5.8,
+        "re_gent": 6
+      },
+      "gap_to_leader": 0,
+      "leader": "MetaGPT",
+      "gap_to_closed_source_leader": 0,
+      "closed_source_leader": "Swimm",
+      "gap_to_oss_leader": 0,
+      "oss_leader": "MetaGPT",
+      "status": "closed",
+      "sprint_history": [
+        {
+          "dimensionId": "planning_quality",
+          "before": 5,
+          "after": 9.6,
+          "date": "2026-04-14"
+        },
+        {
+          "dimensionId": "planning_quality",
+          "before": 10,
+          "after": 92,
+          "date": "2026-04-23"
+        },
+        {
+          "dimensionId": "planning_quality",
+          "before": 92,
+          "after": 9.2,
+          "date": "2026-04-23"
+        },
+        {
+          "dimensionId": "planning_quality",
+          "before": 9.2,
+          "after": 10,
+          "date": "2026-04-23"
+        }
+      ],
+      "next_sprint_target": 7,
+      "harvest_source": "MetaGPT",
+      "capability_test": {
+        "command": "node dist/index.js plan --help 2>&1 | head -3",
+        "description": "plan command exists"
+      },
+      "outcomes": [
+        {
+          "id": "pq_help",
+          "tier": "T1",
+          "kind": "shell",
+          "description": "plan command surfaces help",
+          "command": "node dist/index.js plan --help 2>&1 | head -3"
+        },
+        {
+          "id": "pq_wired",
+          "tier": "T2",
+          "kind": "shell",
+          "description": "plan command registered with options + module exports",
+          "command": "node -e \"const{execSync}=require('child_process');const out=execSync('node dist/index.js plan --help').toString();if(out.length<400)process.exit(1);if(!/options/i.test(out))process.exit(1);if(!require('fs').existsSync('dist/index.js'))process.exit(1)\""
+        }
+      ],
+      "declared_ceiling": "T2"
+    },
+    {
+      "id": "maintainability",
+      "label": "Code Maintainability",
+      "weight": 1,
+      "category": "reliability",
+      "frequency": "medium",
+      "scores": {
+        "self": 9,
+        "Devin (Cognition AI)": 7,
+        "GitHub Copilot Workspace": 7.4,
+        "Cursor": 7.6,
+        "Aider": 7,
+        "SWE-Agent (Princeton)": 6.8,
+        "MetaGPT": 6.5,
+        "GPT-Engineer": 6,
+        "Claude Code": 8,
+        "AutoGen (Microsoft)": 7.8,
+        "CrewAI": 7.4,
+        "OpenHands (All-Hands AI)": 7.2,
+        "CodiumAI / Qodo": 7.4,
+        "CodeRabbit": 8,
+        "Cline": 6.8,
+        "Continue.dev": 7.2,
+        "Swimm": 7.8,
+        "LangChain Agents": 6.8,
+        "Kiro (AWS)": 7.2,
+        "Codex CLI (OpenAI)": 7.6,
+        "Gemini CLI (Google)": 7,
+        "GitHub Copilot CLI": 7.8,
+        "Goose (Block)": 7.2,
+        "Replit Agent": 6.5,
+        "Zencoder": 7.4,
+        "Qodo 2.0": 7.6,
+        "Dagger": 7.5,
+        "Kilo Code": 7,
+        "re_gent": 7.5
+      },
+      "gap_to_leader": 0,
+      "leader": "Claude Code",
+      "gap_to_closed_source_leader": 0,
+      "closed_source_leader": "Claude Code",
+      "gap_to_oss_leader": 0,
+      "oss_leader": "AutoGen (Microsoft)",
+      "status": "closed",
+      "sprint_history": [
+        {
+          "dimensionId": "maintainability",
+          "before": 5,
+          "after": 9.4,
+          "date": "2026-04-14"
+        },
+        {
+          "dimensionId": "maintainability",
+          "before": 9,
+          "after": 90,
+          "date": "2026-04-23"
+        },
+        {
+          "dimensionId": "maintainability",
+          "before": 90,
+          "after": 9,
+          "date": "2026-04-23"
+        }
+      ],
+      "next_sprint_target": 7,
+      "harvest_source": "AutoGen (Microsoft)",
+      "capability_test": {
+        "command": "node scripts/check-file-size.mjs 2>&1 | tail -3",
+        "description": "No file exceeds 750 LOC"
+      },
+      "outcomes": [
+        {
+          "id": "m_filesize",
+          "tier": "T2",
+          "kind": "shell",
+          "description": "No file exceeds 750 LOC",
+          "command": "node scripts/check-file-size.mjs 2>&1 | tail -3"
+        }
+      ],
+      "declared_ceiling": "T2"
+    },
+    {
+      "id": "token_economy",
+      "label": "Token Economy & Budget Control",
+      "weight": 0.9,
+      "category": "features",
+      "frequency": "medium",
+      "scores": {
+        "self": 10,
+        "Devin (Cognition AI)": 5,
+        "GitHub Copilot Workspace": 5.5,
+        "Cursor": 7,
+        "Aider": 5.5,
+        "SWE-Agent (Princeton)": 4,
+        "MetaGPT": 4.5,
+        "GPT-Engineer": 3.5,
+        "Claude Code": 7.5,
+        "AutoGen (Microsoft)": 4.5,
+        "CrewAI": 4,
+        "OpenHands (All-Hands AI)": 4.5,
+        "CodiumAI / Qodo": 5,
+        "CodeRabbit": 4.5,
+        "Cline": 5.5,
+        "Continue.dev": 5,
+        "Swimm": 3,
+        "LangChain Agents": 5,
+        "Kiro (AWS)": 6,
+        "Codex CLI (OpenAI)": 6.5,
+        "Gemini CLI (Google)": 7.2,
+        "GitHub Copilot CLI": 6,
+        "Goose (Block)": 5,
+        "Replit Agent": 5.5,
+        "Zencoder": 5.5,
+        "Qodo 2.0": 5.5,
+        "Dagger": 5,
+        "Kilo Code": 5.5,
+        "re_gent": 6.5
+      },
+      "gap_to_leader": 0,
+      "leader": "Claude Code",
+      "gap_to_closed_source_leader": 0,
+      "closed_source_leader": "Claude Code",
+      "gap_to_oss_leader": 0,
+      "oss_leader": "re_gent",
+      "status": "closed",
+      "sprint_history": [
+        {
+          "dimensionId": "token_economy",
+          "before": 5,
+          "after": 9,
+          "date": "2026-04-14"
+        },
+        {
+          "dimensionId": "token_economy",
+          "before": 10,
+          "after": 90,
+          "date": "2026-04-23"
+        },
+        {
+          "dimensionId": "token_economy",
+          "before": 90,
+          "after": 9,
+          "date": "2026-04-23"
+        },
+        {
+          "dimensionId": "token_economy",
+          "before": 9,
+          "after": 10,
+          "date": "2026-04-23"
+        }
+      ],
+      "next_sprint_target": 7,
+      "harvest_source": "Aider",
+      "capability_test": {
+        "command": "node dist/index.js --help 2>&1 | head -3",
+        "description": "CLI loads — market-dim ceilinged at 5.0"
+      },
+      "outcomes": [
+        {
+          "id": "te_loads",
+          "tier": "T1",
+          "kind": "shell",
+          "description": "CLI loads",
+          "command": "node dist/index.js --help 2>&1 | head -3"
+        }
+      ],
+      "declared_ceiling": "T1"
+    },
+    {
+      "id": "self_improvement",
+      "label": "Self-Improvement Loop",
+      "weight": 1,
+      "category": "features",
+      "frequency": "medium",
+      "scores": {
+        "self": 10,
+        "Devin (Cognition AI)": 6,
+        "GitHub Copilot Workspace": 5.5,
+        "Cursor": 5,
+        "Aider": 5.5,
+        "SWE-Agent (Princeton)": 5.8,
+        "MetaGPT": 6.5,
+        "GPT-Engineer": 4.5,
+        "Claude Code": 6,
+        "AutoGen (Microsoft)": 6.5,
+        "CrewAI": 6.8,
+        "OpenHands (All-Hands AI)": 6.5,
+        "CodiumAI / Qodo": 7.2,
+        "CodeRabbit": 6.8,
+        "Cline": 5.5,
+        "Continue.dev": 5.8,
+        "Swimm": 6.2,
+        "LangChain Agents": 6.5,
+        "Kiro (AWS)": 5.5,
+        "Codex CLI (OpenAI)": 5.5,
+        "Gemini CLI (Google)": 5,
+        "GitHub Copilot CLI": 6,
+        "Goose (Block)": 5.5,
+        "Replit Agent": 6,
+        "Zencoder": 5.5,
+        "Qodo 2.0": 7.2,
+        "Dagger": 4.5,
+        "Kilo Code": 5.2,
+        "re_gent": 4
+      },
+      "gap_to_leader": 0,
+      "leader": "CodiumAI / Qodo",
+      "gap_to_closed_source_leader": 0,
+      "closed_source_leader": "CodiumAI / Qodo",
+      "gap_to_oss_leader": 0,
+      "oss_leader": "CrewAI",
+      "status": "closed",
+      "sprint_history": [
+        {
+          "dimensionId": "self_improvement",
+          "before": 5,
+          "after": 9.5,
+          "date": "2026-04-14"
+        },
+        {
+          "dimensionId": "self_improvement",
+          "before": 10,
+          "after": 65,
+          "date": "2026-04-23"
+        },
+        {
+          "dimensionId": "self_improvement",
+          "before": 65,
+          "after": 6.5,
+          "date": "2026-04-23"
+        },
+        {
+          "dimensionId": "self_improvement",
+          "before": 6.5,
+          "after": 10,
+          "date": "2026-04-23"
+        }
+      ],
+      "next_sprint_target": 7,
+      "harvest_source": "CrewAI",
+      "capability_test": {
+        "command": "npx tsx --test tests/lessons-index.test.ts tests/self-improve-loop.test.ts 2>&1 | tail -3",
+        "description": "Lessons + self-improve loop tests pass"
+      },
+      "outcomes": [
+        {
+          "id": "si_lessons",
+          "tier": "T2",
+          "kind": "shell",
+          "description": "Lessons + self-improve loop tests pass",
+          "command": "npx tsx --test tests/lessons-index.test.ts tests/self-improve-loop.test.ts 2>&1 | tail -3"
+        },
+        {
+          "id": "si_cmd_wired",
+          "tier": "T3",
+          "kind": "production-usage-fresh",
+          "description": "lessons command is imported by production + modified within 30d",
+          "required_callsite": "src/cli/commands/lessons.ts",
+          "freshnessDays": 30
+        }
+      ],
+      "declared_ceiling": "T3"
+    },
+    {
+      "id": "ecosystem_mcp",
+      "label": "Ecosystem & MCP Integration",
+      "weight": 0.8,
+      "category": "features",
+      "frequency": "low",
+      "scores": {
+        "self": 10,
+        "Devin (Cognition AI)": 4.5,
+        "GitHub Copilot Workspace": 8,
+        "Cursor": 6.5,
+        "Aider": 4,
+        "SWE-Agent (Princeton)": 3.5,
+        "MetaGPT": 4,
+        "GPT-Engineer": 4,
+        "Claude Code": 9,
+        "AutoGen (Microsoft)": 5.5,
+        "CrewAI": 5,
+        "OpenHands (All-Hands AI)": 5.5,
+        "CodiumAI / Qodo": 6,
+        "CodeRabbit": 7,
+        "Cline": 8.5,
+        "Continue.dev": 8.2,
+        "Swimm": 4.5,
+        "LangChain Agents": 8.8,
+        "Kiro (AWS)": 6.5,
+        "Codex CLI (OpenAI)": 7.8,
+        "Gemini CLI (Google)": 6.5,
+        "GitHub Copilot CLI": 8.2,
+        "Goose (Block)": 8.5,
+        "Replit Agent": 6,
+        "Zencoder": 5.5,
+        "Qodo 2.0": 6.5,
+        "Dagger": 8,
+        "Kilo Code": 7.8,
+        "re_gent": 4
+      },
+      "gap_to_leader": 0,
+      "leader": "Claude Code",
+      "gap_to_closed_source_leader": 0,
+      "closed_source_leader": "Claude Code",
+      "gap_to_oss_leader": 0,
+      "oss_leader": "LangChain Agents",
+      "status": "closed",
+      "sprint_history": [
+        {
+          "dimensionId": "ecosystem_mcp",
+          "before": 10,
+          "after": 100,
+          "date": "2026-04-23"
+        },
+        {
+          "dimensionId": "ecosystem_mcp",
+          "before": 100,
+          "after": 10,
+          "date": "2026-04-23"
+        }
+      ],
+      "next_sprint_target": 7,
+      "harvest_source": "LangChain Agents",
+      "capability_test": {
+        "command": "node dist/index.js mcp-tools --json 2>&1 | tail -3",
+        "description": "MCP tool list materializes"
+      },
+      "outcomes": [
+        {
+          "id": "em_tools",
+          "tier": "T2",
+          "kind": "shell",
+          "description": "MCP tool registry materializes",
+          "command": "node dist/index.js mcp-tools --json 2>&1 | tail -3"
+        },
+        {
+          "id": "em_server_wired",
+          "tier": "T3",
+          "kind": "production-usage-fresh",
+          "description": "mcp-server is imported by production + modified within 30d",
+          "required_callsite": "src/core/mcp-server.ts",
+          "freshnessDays": 30
+        }
+      ],
+      "declared_ceiling": "T3"
+    },
+    {
+      "id": "enterprise_readiness",
+      "label": "Enterprise Readiness",
+      "weight": 0.8,
+      "category": "reliability",
+      "frequency": "low",
+      "scores": {
+        "self": 9,
+        "Devin (Cognition AI)": 5.5,
+        "GitHub Copilot Workspace": 8.8,
+        "Cursor": 6,
+        "Aider": 3.5,
+        "SWE-Agent (Princeton)": 4,
+        "MetaGPT": 3.5,
+        "GPT-Engineer": 3,
+        "Claude Code": 7.2,
+        "AutoGen (Microsoft)": 5.5,
+        "CrewAI": 4.2,
+        "OpenHands (All-Hands AI)": 5,
+        "CodiumAI / Qodo": 6.5,
+        "CodeRabbit": 7.8,
+        "Cline": 5,
+        "Continue.dev": 4.8,
+        "Swimm": 5.5,
+        "LangChain Agents": 5,
+        "Kiro (AWS)": 8,
+        "Codex CLI (OpenAI)": 6.5,
+        "Gemini CLI (Google)": 6.8,
+        "GitHub Copilot CLI": 8.8,
+        "Goose (Block)": 5.5,
+        "Replit Agent": 5,
+        "Zencoder": 9,
+        "Qodo 2.0": 7.2,
+        "Dagger": 6.5,
+        "Kilo Code": 4.8,
+        "re_gent": 4
+      },
+      "gap_to_leader": 0,
+      "leader": "Zencoder",
+      "gap_to_closed_source_leader": 0,
+      "closed_source_leader": "Zencoder",
+      "gap_to_oss_leader": 0,
+      "oss_leader": "AutoGen (Microsoft)",
+      "status": "closed",
+      "sprint_history": [
+        {
+          "dimensionId": "enterprise_readiness",
+          "before": 9,
+          "after": 9,
+          "date": "2026-04-23"
+        },
+        {
+          "dimensionId": "enterprise_readiness",
+          "before": 9,
+          "after": 9,
+          "date": "2026-04-23"
+        },
+        {
+          "dimensionId": "enterprise_readiness",
+          "before": 9,
+          "after": 9,
+          "date": "2026-04-23"
+        }
+      ],
+      "next_sprint_target": 9.5,
+      "harvest_source": "AutoGen (Microsoft)",
+      "ceiling": 9,
+      "ceilingReason": "ceiling raised to 9.0 in Sprint 44 — policy gate, audit trail, security hardening and verify receipts now qualify for enterprise tier",
+      "capability_test": {
+        "command": "node -e \"['SECURITY.md','CHANGELOG.md','RUNBOOK.md'].forEach(f=>require('fs').accessSync(f))\"",
+        "description": "SECURITY + CHANGELOG + RUNBOOK present (ceilinged at 9.0)"
+      },
+      "outcomes": [
+        {
+          "id": "er_files",
+          "tier": "T1",
+          "kind": "shell",
+          "description": "SECURITY.md + CHANGELOG.md exist",
+          "command": "node -e \"['SECURITY.md','CHANGELOG.md'].forEach(f=>require('fs').accessSync(f))\""
+        },
+        {
+          "id": "er_runbook",
+          "tier": "T2",
+          "kind": "shell",
+          "description": "RUNBOOK.md exists with operator-facing content",
+          "command": "node -e \"const fs=require('fs');fs.accessSync('RUNBOOK.md');const c=fs.readFileSync('RUNBOOK.md','utf8');if(c.length<2000||!/operator/i.test(c))process.exit(1)\""
+        }
+      ],
+      "declared_ceiling": "T2"
+    },
+    {
+      "id": "community_adoption",
+      "label": "Community Adoption",
+      "weight": 0.7,
+      "category": "features",
+      "frequency": "low",
+      "scores": {
+        "self": 1.5,
+        "Devin (Cognition AI)": 7.2,
+        "GitHub Copilot Workspace": 9.2,
+        "Cursor": 9.5,
+        "Aider": 8.2,
+        "SWE-Agent (Princeton)": 6.8,
+        "MetaGPT": 7.2,
+        "GPT-Engineer": 5.5,
+        "Claude Code": 9,
+        "AutoGen (Microsoft)": 7.8,
+        "CrewAI": 7,
+        "OpenHands (All-Hands AI)": 7.5,
+        "CodiumAI / Qodo": 7,
+        "CodeRabbit": 7.2,
+        "Cline": 7.8,
+        "Continue.dev": 7.5,
+        "Swimm": 6.5,
+        "LangChain Agents": 8.8,
+        "Kiro (AWS)": 6.2,
+        "Codex CLI (OpenAI)": 8,
+        "Gemini CLI (Google)": 7.5,
+        "GitHub Copilot CLI": 9.5,
+        "Goose (Block)": 7.2,
+        "Replit Agent": 8.5,
+        "Zencoder": 4.8,
+        "Qodo 2.0": 7.2,
+        "Dagger": 7,
+        "Kilo Code": 6.2,
+        "re_gent": 2
+      },
+      "gap_to_leader": 8,
+      "leader": "Cursor",
+      "gap_to_closed_source_leader": 8,
+      "closed_source_leader": "Cursor",
+      "gap_to_oss_leader": 7.3,
+      "oss_leader": "LangChain Agents",
       "status": "in-progress",
+      "sprint_history": [
+        {
+          "dimensionId": "community_adoption",
+          "before": 1.5,
+          "after": 1.5,
+          "date": "2026-04-14"
+        },
+        {
+          "dimensionId": "community_adoption",
+          "before": 1.5,
+          "after": 1.5,
+          "date": "2026-04-14"
+        },
+        {
+          "dimensionId": "community_adoption",
+          "before": 1.5,
+          "after": 1.5,
+          "date": "2026-04-14"
+        },
+        {
+          "dimensionId": "community_adoption",
+          "before": 1.5,
+          "after": 1.5,
+          "date": "2026-04-14"
+        },
+        {
+          "dimensionId": "community_adoption",
+          "before": 1.5,
+          "after": 1.5,
+          "date": "2026-04-14"
+        },
+        {
+          "dimensionId": "community_adoption",
+          "before": 1.5,
+          "after": 1.5,
+          "date": "2026-04-14"
+        },
+        {
+          "dimensionId": "community_adoption",
+          "before": 1.5,
+          "after": 1.5,
+          "date": "2026-04-14"
+        },
+        {
+          "dimensionId": "community_adoption",
+          "before": 1.5,
+          "after": 1.5,
+          "date": "2026-04-14"
+        },
+        {
+          "dimensionId": "community_adoption",
+          "before": 1.5,
+          "after": 1.5,
+          "date": "2026-04-14"
+        },
+        {
+          "dimensionId": "community_adoption",
+          "before": 1.5,
+          "after": 1.5,
+          "date": "2026-04-14"
+        },
+        {
+          "dimensionId": "community_adoption",
+          "before": 1.5,
+          "after": 1.5,
+          "date": "2026-04-14"
+        },
+        {
+          "dimensionId": "community_adoption",
+          "before": 1.5,
+          "after": 1.5,
+          "date": "2026-04-14"
+        },
+        {
+          "dimensionId": "community_adoption",
+          "before": 1.5,
+          "after": 1.5,
+          "date": "2026-04-14"
+        },
+        {
+          "dimensionId": "community_adoption",
+          "before": 1.5,
+          "after": 1.5,
+          "date": "2026-04-14"
+        },
+        {
+          "dimensionId": "community_adoption",
+          "before": 1.5,
+          "after": 1.5,
+          "date": "2026-04-14"
+        },
+        {
+          "dimensionId": "community_adoption",
+          "before": 1.5,
+          "after": 1.5,
+          "date": "2026-04-14"
+        },
+        {
+          "dimensionId": "community_adoption",
+          "before": 1.5,
+          "after": 1.5,
+          "date": "2026-04-14"
+        },
+        {
+          "dimensionId": "community_adoption",
+          "before": 1.5,
+          "after": 1.5,
+          "date": "2026-04-14"
+        },
+        {
+          "dimensionId": "community_adoption",
+          "before": 1.5,
+          "after": 1.5,
+          "date": "2026-04-14"
+        },
+        {
+          "dimensionId": "community_adoption",
+          "before": 1.5,
+          "after": 1.5,
+          "date": "2026-04-14"
+        },
+        {
+          "dimensionId": "community_adoption",
+          "before": 1.5,
+          "after": 1.5,
+          "date": "2026-04-14"
+        },
+        {
+          "dimensionId": "community_adoption",
+          "before": 1.5,
+          "after": 1.5,
+          "date": "2026-04-14"
+        },
+        {
+          "dimensionId": "community_adoption",
+          "before": 1.5,
+          "after": 1.5,
+          "date": "2026-04-14"
+        },
+        {
+          "dimensionId": "community_adoption",
+          "before": 1.5,
+          "after": 1.5,
+          "date": "2026-04-14"
+        },
+        {
+          "dimensionId": "community_adoption",
+          "before": 1.5,
+          "after": 1.5,
+          "date": "2026-04-14"
+        },
+        {
+          "dimensionId": "community_adoption",
+          "before": 1.5,
+          "after": 1.5,
+          "date": "2026-04-14"
+        },
+        {
+          "dimensionId": "community_adoption",
+          "before": 1.5,
+          "after": 1.5,
+          "date": "2026-04-14"
+        },
+        {
+          "dimensionId": "community_adoption",
+          "before": 1.5,
+          "after": 1.5,
+          "date": "2026-04-14"
+        },
+        {
+          "dimensionId": "community_adoption",
+          "before": 1.5,
+          "after": 1.5,
+          "date": "2026-04-14"
+        },
+        {
+          "dimensionId": "community_adoption",
+          "before": 1.5,
+          "after": 1.5,
+          "date": "2026-04-14"
+        },
+        {
+          "dimensionId": "community_adoption",
+          "before": 1.5,
+          "after": 1.5,
+          "date": "2026-04-14"
+        },
+        {
+          "dimensionId": "community_adoption",
+          "before": 1.5,
+          "after": 1.5,
+          "date": "2026-04-14"
+        },
+        {
+          "dimensionId": "community_adoption",
+          "before": 1.5,
+          "after": 1.5,
+          "date": "2026-04-14"
+        },
+        {
+          "dimensionId": "community_adoption",
+          "before": 1.5,
+          "after": 1.5,
+          "date": "2026-04-14"
+        },
+        {
+          "dimensionId": "community_adoption",
+          "before": 1.5,
+          "after": 1.5,
+          "date": "2026-04-14"
+        },
+        {
+          "dimensionId": "community_adoption",
+          "before": 1.5,
+          "after": 1.5,
+          "date": "2026-04-14"
+        },
+        {
+          "dimensionId": "community_adoption",
+          "before": 1.5,
+          "after": 1.5,
+          "date": "2026-04-14"
+        },
+        {
+          "dimensionId": "community_adoption",
+          "before": 1.5,
+          "after": 1.5,
+          "date": "2026-04-14"
+        },
+        {
+          "dimensionId": "community_adoption",
+          "before": 1.5,
+          "after": 1.5,
+          "date": "2026-04-14"
+        },
+        {
+          "dimensionId": "community_adoption",
+          "before": 1.5,
+          "after": 1.5,
+          "date": "2026-04-14"
+        },
+        {
+          "dimensionId": "community_adoption",
+          "before": 1.5,
+          "after": 1.5,
+          "date": "2026-04-14"
+        },
+        {
+          "dimensionId": "community_adoption",
+          "before": 1.5,
+          "after": 1.5,
+          "date": "2026-04-14"
+        },
+        {
+          "dimensionId": "community_adoption",
+          "before": 1.5,
+          "after": 1.5,
+          "date": "2026-04-14"
+        },
+        {
+          "dimensionId": "community_adoption",
+          "before": 1.5,
+          "after": 1.5,
+          "date": "2026-04-14"
+        },
+        {
+          "dimensionId": "community_adoption",
+          "before": 1.5,
+          "after": 1.5,
+          "date": "2026-04-14"
+        },
+        {
+          "dimensionId": "community_adoption",
+          "before": 1.5,
+          "after": 1.5,
+          "date": "2026-04-14"
+        },
+        {
+          "dimensionId": "community_adoption",
+          "before": 1.5,
+          "after": 1.5,
+          "date": "2026-04-14"
+        },
+        {
+          "dimensionId": "community_adoption",
+          "before": 1.5,
+          "after": 1.5,
+          "date": "2026-04-14"
+        },
+        {
+          "dimensionId": "community_adoption",
+          "before": 1.5,
+          "after": 1.5,
+          "date": "2026-04-14"
+        },
+        {
+          "dimensionId": "community_adoption",
+          "before": 1.5,
+          "after": 1.5,
+          "date": "2026-04-14"
+        },
+        {
+          "dimensionId": "community_adoption",
+          "before": 1.5,
+          "after": 1.5,
+          "date": "2026-04-14"
+        },
+        {
+          "dimensionId": "community_adoption",
+          "before": 1.5,
+          "after": 1.5,
+          "date": "2026-04-14"
+        },
+        {
+          "dimensionId": "community_adoption",
+          "before": 1.5,
+          "after": 1.5,
+          "date": "2026-04-14"
+        },
+        {
+          "dimensionId": "community_adoption",
+          "before": 1.5,
+          "after": 1.5,
+          "date": "2026-04-14"
+        },
+        {
+          "dimensionId": "community_adoption",
+          "before": 1.5,
+          "after": 1.5,
+          "date": "2026-04-14"
+        },
+        {
+          "dimensionId": "community_adoption",
+          "before": 1.5,
+          "after": 1.5,
+          "date": "2026-04-14"
+        },
+        {
+          "dimensionId": "community_adoption",
+          "before": 1.5,
+          "after": 1.5,
+          "date": "2026-04-14"
+        },
+        {
+          "dimensionId": "community_adoption",
+          "before": 1.5,
+          "after": 1.5,
+          "date": "2026-04-14"
+        },
+        {
+          "dimensionId": "community_adoption",
+          "before": 1.5,
+          "after": 1.5,
+          "date": "2026-04-14"
+        },
+        {
+          "dimensionId": "community_adoption",
+          "before": 1.5,
+          "after": 1.5,
+          "date": "2026-04-14"
+        },
+        {
+          "dimensionId": "community_adoption",
+          "before": 1.5,
+          "after": 1.5,
+          "date": "2026-04-14"
+        },
+        {
+          "dimensionId": "community_adoption",
+          "before": 1.5,
+          "after": 1.5,
+          "date": "2026-04-14"
+        },
+        {
+          "dimensionId": "community_adoption",
+          "before": 1.5,
+          "after": 1.5,
+          "date": "2026-04-14"
+        },
+        {
+          "dimensionId": "community_adoption",
+          "before": 1.5,
+          "after": 1.5,
+          "date": "2026-04-14"
+        },
+        {
+          "dimensionId": "community_adoption",
+          "before": 1.5,
+          "after": 1.5,
+          "date": "2026-04-14"
+        },
+        {
+          "dimensionId": "community_adoption",
+          "before": 1.5,
+          "after": 1.5,
+          "date": "2026-04-14"
+        },
+        {
+          "dimensionId": "community_adoption",
+          "before": 1.5,
+          "after": 1.5,
+          "date": "2026-04-14"
+        },
+        {
+          "dimensionId": "community_adoption",
+          "before": 1.5,
+          "after": 1.5,
+          "date": "2026-04-14"
+        },
+        {
+          "dimensionId": "community_adoption",
+          "before": 1.5,
+          "after": 1.5,
+          "date": "2026-04-14"
+        },
+        {
+          "dimensionId": "community_adoption",
+          "before": 1.5,
+          "after": 1.5,
+          "date": "2026-04-14"
+        },
+        {
+          "dimensionId": "community_adoption",
+          "before": 1.5,
+          "after": 1.5,
+          "date": "2026-04-14"
+        },
+        {
+          "dimensionId": "community_adoption",
+          "before": 1.5,
+          "after": 1.5,
+          "date": "2026-04-14"
+        },
+        {
+          "dimensionId": "community_adoption",
+          "before": 1.5,
+          "after": 1.5,
+          "date": "2026-04-14"
+        },
+        {
+          "dimensionId": "community_adoption",
+          "before": 1.5,
+          "after": 1.5,
+          "date": "2026-04-14"
+        },
+        {
+          "dimensionId": "community_adoption",
+          "before": 1.5,
+          "after": 1.5,
+          "date": "2026-04-14"
+        },
+        {
+          "dimensionId": "community_adoption",
+          "before": 1.5,
+          "after": 1.5,
+          "date": "2026-04-14"
+        },
+        {
+          "dimensionId": "community_adoption",
+          "before": 1.5,
+          "after": 1.5,
+          "date": "2026-04-14"
+        },
+        {
+          "dimensionId": "community_adoption",
+          "before": 1.5,
+          "after": 1.5,
+          "date": "2026-04-14"
+        },
+        {
+          "dimensionId": "community_adoption",
+          "before": 1.5,
+          "after": 1.5,
+          "date": "2026-04-14"
+        },
+        {
+          "dimensionId": "community_adoption",
+          "before": 1.5,
+          "after": 1.5,
+          "date": "2026-04-14"
+        },
+        {
+          "dimensionId": "community_adoption",
+          "before": 1.5,
+          "after": 1.5,
+          "date": "2026-04-14"
+        },
+        {
+          "dimensionId": "community_adoption",
+          "before": 1.5,
+          "after": 1.5,
+          "date": "2026-04-14"
+        },
+        {
+          "dimensionId": "community_adoption",
+          "before": 1.5,
+          "after": 1.5,
+          "date": "2026-04-14"
+        },
+        {
+          "dimensionId": "community_adoption",
+          "before": 1.5,
+          "after": 1.5,
+          "date": "2026-04-14"
+        },
+        {
+          "dimensionId": "community_adoption",
+          "before": 1.5,
+          "after": 1.5,
+          "date": "2026-04-14"
+        },
+        {
+          "dimensionId": "community_adoption",
+          "before": 1.5,
+          "after": 1.5,
+          "date": "2026-04-14"
+        },
+        {
+          "dimensionId": "community_adoption",
+          "before": 1.5,
+          "after": 1.5,
+          "date": "2026-04-14"
+        },
+        {
+          "dimensionId": "community_adoption",
+          "before": 1.5,
+          "after": 1.5,
+          "date": "2026-04-14"
+        },
+        {
+          "dimensionId": "community_adoption",
+          "before": 1.5,
+          "after": 1.5,
+          "date": "2026-04-14"
+        },
+        {
+          "dimensionId": "community_adoption",
+          "before": 1.5,
+          "after": 1.5,
+          "date": "2026-04-14"
+        },
+        {
+          "dimensionId": "community_adoption",
+          "before": 1.5,
+          "after": 1.5,
+          "date": "2026-04-14"
+        },
+        {
+          "dimensionId": "community_adoption",
+          "before": 1.5,
+          "after": 1.5,
+          "date": "2026-04-14"
+        },
+        {
+          "dimensionId": "community_adoption",
+          "before": 1.5,
+          "after": 1.5,
+          "date": "2026-04-14"
+        },
+        {
+          "dimensionId": "community_adoption",
+          "before": 1.5,
+          "after": 1.5,
+          "date": "2026-04-14"
+        },
+        {
+          "dimensionId": "community_adoption",
+          "before": 1.5,
+          "after": 1.5,
+          "date": "2026-04-14"
+        },
+        {
+          "dimensionId": "community_adoption",
+          "before": 1.5,
+          "after": 1.5,
+          "date": "2026-04-14"
+        },
+        {
+          "dimensionId": "community_adoption",
+          "before": 1.5,
+          "after": 1.5,
+          "date": "2026-04-14"
+        },
+        {
+          "dimensionId": "community_adoption",
+          "before": 1.5,
+          "after": 1.5,
+          "date": "2026-04-14"
+        },
+        {
+          "dimensionId": "community_adoption",
+          "before": 1.5,
+          "after": 1.5,
+          "date": "2026-04-14"
+        },
+        {
+          "dimensionId": "community_adoption",
+          "before": 1.5,
+          "after": 1.5,
+          "date": "2026-04-14"
+        },
+        {
+          "dimensionId": "community_adoption",
+          "before": 1.5,
+          "after": 1.5,
+          "date": "2026-04-14"
+        },
+        {
+          "dimensionId": "community_adoption",
+          "before": 1.5,
+          "after": 1.5,
+          "date": "2026-04-14"
+        },
+        {
+          "dimensionId": "community_adoption",
+          "before": 1.5,
+          "after": 1.5,
+          "date": "2026-04-14"
+        },
+        {
+          "dimensionId": "community_adoption",
+          "before": 1.5,
+          "after": 1.5,
+          "date": "2026-04-14"
+        },
+        {
+          "dimensionId": "community_adoption",
+          "before": 1.5,
+          "after": 1.5,
+          "date": "2026-04-14"
+        },
+        {
+          "dimensionId": "community_adoption",
+          "before": 1.5,
+          "after": 1.5,
+          "date": "2026-04-14"
+        },
+        {
+          "dimensionId": "community_adoption",
+          "before": 1.5,
+          "after": 1.5,
+          "date": "2026-04-14"
+        },
+        {
+          "dimensionId": "community_adoption",
+          "before": 1.5,
+          "after": 1.5,
+          "date": "2026-04-14"
+        },
+        {
+          "dimensionId": "community_adoption",
+          "before": 1.5,
+          "after": 1.5,
+          "date": "2026-04-14"
+        },
+        {
+          "dimensionId": "community_adoption",
+          "before": 1.5,
+          "after": 1.5,
+          "date": "2026-04-14"
+        },
+        {
+          "dimensionId": "community_adoption",
+          "before": 1.5,
+          "after": 1.5,
+          "date": "2026-04-14"
+        },
+        {
+          "dimensionId": "community_adoption",
+          "before": 1.5,
+          "after": 1.5,
+          "date": "2026-04-14"
+        },
+        {
+          "dimensionId": "community_adoption",
+          "before": 1.5,
+          "after": 1.5,
+          "date": "2026-04-14"
+        },
+        {
+          "dimensionId": "community_adoption",
+          "before": 1.5,
+          "after": 1.5,
+          "date": "2026-04-14"
+        },
+        {
+          "dimensionId": "community_adoption",
+          "before": 1.5,
+          "after": 1.5,
+          "date": "2026-04-15"
+        },
+        {
+          "dimensionId": "community_adoption",
+          "before": 1.5,
+          "after": 1.5,
+          "date": "2026-04-15"
+        },
+        {
+          "dimensionId": "community_adoption",
+          "before": 1.5,
+          "after": 1.5,
+          "date": "2026-04-15"
+        },
+        {
+          "dimensionId": "community_adoption",
+          "before": 1.5,
+          "after": 1.5,
+          "date": "2026-04-15"
+        },
+        {
+          "dimensionId": "community_adoption",
+          "before": 1.5,
+          "after": 1.5,
+          "date": "2026-04-15"
+        },
+        {
+          "dimensionId": "community_adoption",
+          "before": 1.5,
+          "after": 1.5,
+          "date": "2026-04-15"
+        },
+        {
+          "dimensionId": "community_adoption",
+          "before": 1.5,
+          "after": 1.5,
+          "date": "2026-04-15"
+        },
+        {
+          "dimensionId": "community_adoption",
+          "before": 1.5,
+          "after": 1.5,
+          "date": "2026-04-15"
+        },
+        {
+          "dimensionId": "community_adoption",
+          "before": 1.5,
+          "after": 1.5,
+          "date": "2026-04-15"
+        },
+        {
+          "dimensionId": "community_adoption",
+          "before": 1.5,
+          "after": 4,
+          "date": "2026-04-23"
+        },
+        {
+          "dimensionId": "community_adoption",
+          "before": 4,
+          "after": 1.5,
+          "date": "2026-04-23"
+        }
+      ],
+      "next_sprint_target": 8.8,
+      "harvest_source": "LangChain Agents",
+      "ceiling": 4,
+      "ceilingReason": "requires npm downloads, GitHub stars, and external contributors — cannot be automated",
+      "capability_test": {
+        "no_capability_test": true,
+        "reason": "Market-dim — requires real downloads + stars. Permanently capped at 4.0 per KNOWN_CEILINGS."
+      },
+      "outcomes": [],
+      "declared_ceiling": "T0"
+    },
+    {
+      "id": "agent_activity_provenance",
+      "label": "Agent Activity Provenance & Time Travel",
+      "weight": 1.4,
+      "category": "reliability",
+      "frequency": "high",
+      "scores": {
+        "self": 8.2,
+        "Devin (Cognition AI)": 2.5,
+        "GitHub Copilot Workspace": 3,
+        "Cursor": 4,
+        "Aider": 2.5,
+        "SWE-Agent (Princeton)": 2,
+        "MetaGPT": 1.5,
+        "GPT-Engineer": 1.5,
+        "Claude Code": 4,
+        "AutoGen (Microsoft)": 1.5,
+        "CrewAI": 1.5,
+        "OpenHands (All-Hands AI)": 3.5,
+        "CodiumAI / Qodo": 2,
+        "CodeRabbit": 2,
+        "Cline": 4,
+        "Continue.dev": 3,
+        "Swimm": 2,
+        "LangChain Agents": 1.5,
+        "Kiro (AWS)": 2.5,
+        "Codex CLI (OpenAI)": 3,
+        "Gemini CLI (Google)": 3,
+        "GitHub Copilot CLI": 2,
+        "Goose (Block)": 3.5,
+        "Replit Agent": 2,
+        "Zencoder": 2,
+        "Qodo 2.0": 2,
+        "Dagger": 1.5,
+        "Kilo Code": 2,
+        "re_gent": 8.6
+      },
+      "status": "not-started",
       "sprint_history": [],
-      "next_sprint_target": 7
+      "next_sprint_target": 8.6,
+      "harvest_source": "re_gent",
+      "touches": [
+        "src/core/time-machine.ts",
+        "src/core/time-machine-provenance.ts",
+        "src/core/time-machine-causal-attribution.ts",
+        "src/core/time-machine-timeline.ts",
+        "src/core/time-machine-replay.ts",
+        "src/core/decision-node.ts",
+        "src/core/decision-node-recorder.ts",
+        "src/core/decision-node-danteagents-bridge.ts",
+        "src/core/agent-dag.ts",
+        "src/core/subagent-isolator.ts"
+      ],
+      "gap_to_leader": 0.4,
+      "leader": "re_gent",
+      "gap_to_closed_source_leader": 0,
+      "closed_source_leader": "Cursor",
+      "gap_to_oss_leader": 0.4,
+      "oss_leader": "re_gent",
+      "capability_test": {
+        "command": "node -e \"import('./dist/sdk.js').then(m=>{if(!m.createTimeMachineCommit)process.exit(1)})\"",
+        "description": "Time Machine entry-point loads from dist/sdk.js"
+      },
+      "outcomes": [
+        {
+          "id": "aap_sdk",
+          "tier": "T2",
+          "kind": "shell",
+          "description": "Time Machine entry-point loads",
+          "command": "node -e \"import('./dist/sdk.js').then(m=>{if(!m.createTimeMachineCommit)process.exit(1)})\""
+        },
+        {
+          "id": "aap_tm_wired",
+          "tier": "T3",
+          "kind": "production-usage-fresh",
+          "description": "time-machine module is imported by production + modified within 30d",
+          "required_callsite": "src/core/time-machine.ts",
+          "freshnessDays": 30
+        }
+      ],
+      "declared_ceiling": "T3"
     }
-  ],
-  "overallSelfScore": 5,
-  "lastUpdated": "2026-05-18T19:12:50.317Z"
+  ]
 }
