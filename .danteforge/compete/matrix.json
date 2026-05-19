@@ -18,27 +18,40 @@
     "SWE-Agent (Princeton)",
     "LangChain Agents"
   ],
-  "competitors_closed_source": [],
+  "competitors_closed_source": [
+    "Devin (Cognition AI)",
+    "GitHub Copilot Workspace",
+    "Cursor",
+    "Replit Agent",
+    "Kiro (AWS)",
+    "Codex CLI (OpenAI)",
+    "Gemini CLI (Google)",
+    "GitHub Copilot CLI",
+    "Qodo 2.0",
+    "CodiumAI / Qodo",
+    "CodeRabbit",
+    "Zencoder"
+  ],
   "competitors_oss": [
-    "spec-kit (GitHub)",
-    "BMad-METHOD",
-    "OpenSpec",
-    "anthropics/claude-skills",
-    "awesome-claude-code-skills",
-    "cursor.directory",
-    "Karpathy autoresearch",
-    "DSPy (Stanford)",
+    "Claude Code",
+    "Aider",
+    "SWE-Agent (Princeton)",
     "MetaGPT",
     "CrewAI",
     "AutoGen (Microsoft)",
     "GPT-Engineer",
     "OpenHands (All-Hands AI)",
-    "Aider",
-    "SWE-Agent (Princeton)",
-    "LangChain Agents"
+    "LangChain Agents",
+    "Cline",
+    "Continue.dev",
+    "Goose (Block)",
+    "Kilo Code",
+    "re_gent",
+    "Dagger",
+    "Swimm"
   ],
-  "lastUpdated": "2026-05-18T22:45:35.496Z",
-  "overallSelfScore": 9.2,
+  "lastUpdated": "2026-05-19T22:49:31.542Z",
+  "overallSelfScore": 6.5,
   "excludedDimensions": [
     "community_adoption",
     "communityAdoption"
@@ -51,7 +64,7 @@
       "category": "quality",
       "frequency": "high",
       "scores": {
-        "self": 9.7,
+        "self": 4,
         "Devin (Cognition AI)": 7.2,
         "GitHub Copilot Workspace": 7.8,
         "Cursor": 7,
@@ -81,7 +94,7 @@
         "Kilo Code": 6.8,
         "re_gent": 8
       },
-      "gap_to_leader": 0,
+      "gap_to_leader": 5.2,
       "leader": "Qodo 2.0",
       "gap_to_closed_source_leader": 0,
       "closed_source_leader": "Qodo 2.0",
@@ -156,7 +169,7 @@
       "category": "ux",
       "frequency": "high",
       "scores": {
-        "self": 9,
+        "self": 7,
         "Devin (Cognition AI)": 7.5,
         "GitHub Copilot Workspace": 8.8,
         "Cursor": 9,
@@ -186,7 +199,7 @@
         "Kilo Code": 8.5,
         "re_gent": 8.8
       },
-      "gap_to_leader": 0,
+      "gap_to_leader": 2,
       "leader": "Cursor",
       "gap_to_closed_source_leader": 0,
       "closed_source_leader": "Cursor",
@@ -275,7 +288,7 @@
       "category": "ux",
       "frequency": "high",
       "scores": {
-        "self": 10,
+        "self": 7,
         "Devin (Cognition AI)": 6.5,
         "GitHub Copilot Workspace": 8.5,
         "Cursor": 9.2,
@@ -305,7 +318,7 @@
         "Kilo Code": 8.2,
         "re_gent": 8
       },
-      "gap_to_leader": 0,
+      "gap_to_leader": 2.2,
       "leader": "Cursor",
       "gap_to_closed_source_leader": 0,
       "closed_source_leader": "Cursor",
@@ -379,7 +392,7 @@
       "category": "quality",
       "frequency": "high",
       "scores": {
-        "self": 9.1,
+        "self": 7,
         "Devin (Cognition AI)": 8.8,
         "GitHub Copilot Workspace": 8.2,
         "Cursor": 8.5,
@@ -409,7 +422,7 @@
         "Kilo Code": 7.8,
         "re_gent": 7.2
       },
-      "gap_to_leader": 0,
+      "gap_to_leader": 1.8,
       "leader": "Devin (Cognition AI)",
       "gap_to_closed_source_leader": 0,
       "closed_source_leader": "Devin (Cognition AI)",
@@ -484,7 +497,7 @@
       "category": "features",
       "frequency": "high",
       "scores": {
-        "self": 10,
+        "self": 7,
         "Devin (Cognition AI)": 9.2,
         "GitHub Copilot Workspace": 6.8,
         "Cursor": 6.5,
@@ -514,7 +527,7 @@
         "Kilo Code": 7.2,
         "re_gent": 5.5
       },
-      "gap_to_leader": 0,
+      "gap_to_leader": 2.2,
       "leader": "Devin (Cognition AI)",
       "gap_to_closed_source_leader": 0,
       "closed_source_leader": "Devin (Cognition AI)",
@@ -1321,7 +1334,7 @@
       "category": "reliability",
       "frequency": "high",
       "scores": {
-        "self": 9.5,
+        "self": 7,
         "Devin (Cognition AI)": 7,
         "GitHub Copilot Workspace": 8,
         "Cursor": 7.2,
@@ -1351,7 +1364,7 @@
         "Kilo Code": 7,
         "re_gent": 7.2
       },
-      "gap_to_leader": 0,
+      "gap_to_leader": 1.5,
       "leader": "Zencoder",
       "gap_to_closed_source_leader": 0,
       "closed_source_leader": "Zencoder",
@@ -1442,7 +1455,7 @@
       "category": "quality",
       "frequency": "high",
       "scores": {
-        "self": 9.5,
+        "self": 7,
         "Devin (Cognition AI)": 7.5,
         "GitHub Copilot Workspace": 7.2,
         "Cursor": 6.8,
@@ -1472,7 +1485,7 @@
         "Kilo Code": 6.8,
         "re_gent": 6.8
       },
-      "gap_to_leader": 0,
+      "gap_to_leader": 1,
       "leader": "CodeRabbit",
       "gap_to_closed_source_leader": 0,
       "closed_source_leader": "CodeRabbit",
@@ -1547,7 +1560,7 @@
       "category": "quality",
       "frequency": "high",
       "scores": {
-        "self": 9,
+        "self": 7,
         "Devin (Cognition AI)": 7.2,
         "GitHub Copilot Workspace": 7,
         "Cursor": 7.4,
@@ -1577,7 +1590,7 @@
         "Kilo Code": 7.2,
         "re_gent": 7.6
       },
-      "gap_to_leader": 0,
+      "gap_to_leader": 1,
       "leader": "Codex CLI (OpenAI)",
       "gap_to_closed_source_leader": 0,
       "closed_source_leader": "Codex CLI (OpenAI)",
@@ -1936,7 +1949,7 @@
       "category": "ux",
       "frequency": "medium",
       "scores": {
-        "self": 10,
+        "self": 7,
         "Devin (Cognition AI)": 6.8,
         "GitHub Copilot Workspace": 7.5,
         "Cursor": 7.2,
@@ -1966,7 +1979,7 @@
         "Kilo Code": 6.8,
         "re_gent": 8.7
       },
-      "gap_to_leader": 0,
+      "gap_to_leader": 2.2,
       "leader": "Swimm",
       "gap_to_closed_source_leader": 0,
       "closed_source_leader": "Swimm",
@@ -2040,7 +2053,7 @@
       "category": "features",
       "frequency": "medium",
       "scores": {
-        "self": 10,
+        "self": 7,
         "Devin (Cognition AI)": 8.5,
         "GitHub Copilot Workspace": 5.5,
         "Cursor": 4,
@@ -2070,7 +2083,7 @@
         "Kilo Code": 4.5,
         "re_gent": 5
       },
-      "gap_to_leader": 0,
+      "gap_to_leader": 1.5,
       "leader": "Devin (Cognition AI)",
       "gap_to_closed_source_leader": 0,
       "closed_source_leader": "Devin (Cognition AI)",
@@ -2153,7 +2166,7 @@
       "category": "features",
       "frequency": "medium",
       "scores": {
-        "self": 9,
+        "self": 7,
         "Devin (Cognition AI)": 5.5,
         "GitHub Copilot Workspace": 6,
         "Cursor": 3.5,
@@ -2183,7 +2196,7 @@
         "Kilo Code": 3,
         "re_gent": 4.5
       },
-      "gap_to_leader": 0,
+      "gap_to_leader": 1,
       "leader": "Kiro (AWS)",
       "gap_to_closed_source_leader": 0,
       "closed_source_leader": "Kiro (AWS)",
@@ -2264,7 +2277,7 @@
       "category": "features",
       "frequency": "medium",
       "scores": {
-        "self": 10,
+        "self": 7,
         "Devin (Cognition AI)": 7.8,
         "GitHub Copilot Workspace": 7.6,
         "Cursor": 6.2,
@@ -2294,7 +2307,7 @@
         "Kilo Code": 5.8,
         "re_gent": 6
       },
-      "gap_to_leader": 0,
+      "gap_to_leader": 1.5,
       "leader": "MetaGPT",
       "gap_to_closed_source_leader": 0,
       "closed_source_leader": "Swimm",
@@ -2374,7 +2387,7 @@
       "category": "reliability",
       "frequency": "medium",
       "scores": {
-        "self": 9,
+        "self": 7,
         "Devin (Cognition AI)": 7,
         "GitHub Copilot Workspace": 7.4,
         "Cursor": 7.6,
@@ -2404,7 +2417,7 @@
         "Kilo Code": 7,
         "re_gent": 7.5
       },
-      "gap_to_leader": 0,
+      "gap_to_leader": 1,
       "leader": "Claude Code",
       "gap_to_closed_source_leader": 0,
       "closed_source_leader": "Claude Code",
@@ -2471,7 +2484,7 @@
       "category": "features",
       "frequency": "medium",
       "scores": {
-        "self": 10,
+        "self": 4,
         "Devin (Cognition AI)": 5,
         "GitHub Copilot Workspace": 5.5,
         "Cursor": 7,
@@ -2501,7 +2514,7 @@
         "Kilo Code": 5.5,
         "re_gent": 6.5
       },
-      "gap_to_leader": 0,
+      "gap_to_leader": 3.5,
       "leader": "Claude Code",
       "gap_to_closed_source_leader": 0,
       "closed_source_leader": "Claude Code",
@@ -2558,7 +2571,7 @@
       "category": "features",
       "frequency": "medium",
       "scores": {
-        "self": 10,
+        "self": 7,
         "Devin (Cognition AI)": 6,
         "GitHub Copilot Workspace": 5.5,
         "Cursor": 5,
@@ -2588,7 +2601,7 @@
         "Kilo Code": 5.2,
         "re_gent": 4
       },
-      "gap_to_leader": 0,
+      "gap_to_leader": 0.2,
       "leader": "CodiumAI / Qodo",
       "gap_to_closed_source_leader": 0,
       "closed_source_leader": "CodiumAI / Qodo",
@@ -2669,7 +2682,7 @@
       "category": "features",
       "frequency": "low",
       "scores": {
-        "self": 10,
+        "self": 7,
         "Devin (Cognition AI)": 4.5,
         "GitHub Copilot Workspace": 8,
         "Cursor": 6.5,
@@ -2699,7 +2712,7 @@
         "Kilo Code": 7.8,
         "re_gent": 4
       },
-      "gap_to_leader": 0,
+      "gap_to_leader": 2,
       "leader": "Claude Code",
       "gap_to_closed_source_leader": 0,
       "closed_source_leader": "Claude Code",
@@ -2768,7 +2781,7 @@
       "category": "reliability",
       "frequency": "low",
       "scores": {
-        "self": 9,
+        "self": 7,
         "Devin (Cognition AI)": 5.5,
         "GitHub Copilot Workspace": 8.8,
         "Cursor": 6,
@@ -2798,7 +2811,7 @@
         "Kilo Code": 4.8,
         "re_gent": 4
       },
-      "gap_to_leader": 0,
+      "gap_to_leader": 2,
       "leader": "Zencoder",
       "gap_to_closed_source_leader": 0,
       "closed_source_leader": "Zencoder",
@@ -3682,7 +3695,7 @@
       "category": "reliability",
       "frequency": "high",
       "scores": {
-        "self": 8.2,
+        "self": 7,
         "Devin (Cognition AI)": 2.5,
         "GitHub Copilot Workspace": 3,
         "Cursor": 4,
@@ -3728,7 +3741,7 @@
         "src/core/agent-dag.ts",
         "src/core/subagent-isolator.ts"
       ],
-      "gap_to_leader": 0.4,
+      "gap_to_leader": 1.6,
       "leader": "re_gent",
       "gap_to_closed_source_leader": 0,
       "closed_source_leader": "Cursor",
