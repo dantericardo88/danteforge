@@ -738,7 +738,17 @@ export async function runAutoforgeLoop(ctx: AutoforgeLoopContext, deps?: Partial
         }
       } catch (err) { logger.verbose(`[best-effort] preset recommendation: ${err instanceof Error ? err.message : String(err)}`); }
 
-      let nextCommand = determineNextCommand(ctx.state, tracker, scores);
+      // Depth Doctrine: alternate breadth/depth waves.
+      const { getWaveGuard } = await import('./wave-alternation.js');
+      const waveGuard = getWaveGuard(ctx.cycleCount);
+
+      let nextCommand: string | null;
+      if (waveGuard.type === 'depth') {
+        logger.info(`[Autoforge] DEPTH WAVE (cycle ${ctx.cycleCount}): running validate instead of forge`);
+        nextCommand = 'validate --all --force-cold';
+      } else {
+        nextCommand = determineNextCommand(ctx.state, tracker, scores);
+      }
       if (!nextCommand) { ctx.loopState = AutoforgeLoopState.COMPLETE; break; }
       if (nextCommand === 'specify --refine') {
         const idea = ctx.goal ?? 'Improve and refine the existing specification';

@@ -143,8 +143,8 @@ export interface DimensionOutcomeStatus {
 
 // ── Validators (pattern matches isCapabilityTestSpec) ────────────────────────
 
-const TIER_NAMES: ReadonlyArray<CapabilityTier> = ['T0', 'T1', 'T2', 'T3', 'T4', 'T5', 'T6'];
-const TIER_RANK: Record<CapabilityTier, number> = { T0: 0, T1: 1, T2: 2, T3: 3, T4: 4, T5: 5, T6: 6 };
+const TIER_NAMES: ReadonlyArray<CapabilityTier> = ['T0', 'T1', 'T2', 'T3', 'T4', 'T5', 'T6', 'T7', 'T8'];
+const TIER_RANK: Record<CapabilityTier, number> = { T0: 0, T1: 1, T2: 2, T3: 3, T4: 4, T5: 5, T6: 6, T7: 7, T8: 8 };
 
 function isTier(v: unknown): v is CapabilityTier {
   return typeof v === 'string' && (TIER_NAMES as ReadonlyArray<string>).includes(v);
@@ -253,6 +253,34 @@ export function validateOutcomeForTier(
         tier: outcome.tier,
         reason: `T6 outcomes must use kind="telemetry" with a registered source`,
         remedy: `Change "kind" to "telemetry" and declare "source" + "min_users". T6 requires real production telemetry`,
+      });
+    }
+  }
+
+  // T7 (multi-receipt consensus): dim must declare 3+ outcomes at T5+ to merit 9.0.
+  if (rank >= TIER_RANK.T7 && context.siblingOutcomes) {
+    const highTierCount = context.siblingOutcomes.filter(
+      s => TIER_RANK[s.tier] >= TIER_RANK.T5,
+    ).length;
+    if (highTierCount < 3) {
+      errors.push({
+        outcomeId: outcome.id,
+        tier: outcome.tier,
+        reason: `T7 (multi-receipt consensus) requires 3+ sibling outcomes at T5+. Found ${highTierCount}.`,
+        remedy: `Declare at least 3 outcomes at T5 or higher before adding T7. Multi-receipt consensus proves breadth of depth.`,
+      });
+    }
+  }
+
+  // T8 (live verification): outcome must be telemetry kind or declare a live-check flag.
+  if (rank >= TIER_RANK.T8) {
+    const kind = outcome.kind ?? 'shell';
+    if (kind !== 'telemetry') {
+      errors.push({
+        outcomeId: outcome.id,
+        tier: outcome.tier,
+        reason: `T8 (live verification) requires kind="telemetry" with live production evidence`,
+        remedy: `Change "kind" to "telemetry". T8 represents same-day live verification.`,
       });
     }
   }

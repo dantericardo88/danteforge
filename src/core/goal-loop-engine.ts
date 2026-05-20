@@ -182,10 +182,20 @@ export async function runGoalLoopEngine(opts: GoalLoopEngineOptions): Promise<Go
     cycleCount[next.name] = (cycleCount[next.name] ?? 0) + 1;
     totalCycles++;
 
-    emit(`\n  [${'='.repeat(Math.min(totalCycles, 20))}] Cycle ${totalCycles}/${maxCycles} — ${next.name} (${next.failing} gaps)`);
+    // Depth Doctrine: alternate breadth/depth per project cycle.
+    const { getWaveGuard } = await import('./wave-alternation.js');
+    const waveGuard = getWaveGuard(cycleCount[next.name]! - 1);
+
+    emit(`\n  [${'='.repeat(Math.min(totalCycles, 20))}] Cycle ${totalCycles}/${maxCycles} — ${next.name} (${next.failing} gaps) [${waveGuard.type}]`);
 
     try {
-      await runAuto(next.path, target, yes);
+      if (waveGuard.type === 'depth') {
+        emit(`  DEPTH WAVE: running validate --all for ${next.name}`);
+        const { runValidateCli } = await import('../cli/commands/validate.js');
+        await runValidateCli({ all: true, forceCold: true, cwd: next.path }).catch(() => {});
+      } else {
+        await runAuto(next.path, target, yes);
+      }
       const updated = await checkFn(next.path, target);
       statuses = statuses.map(s => s.name === next.name ? updated : s);
       emit(renderProgressTable(statuses, target));

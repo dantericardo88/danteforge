@@ -1055,8 +1055,64 @@ export async function checkRecencyCheck(
 // ── Aggregator ───────────────────────────────────────────────────────────────
 
 const DEFAULT_CHECKS: HardenCheckId[] = [
-  'orphan-audit', 'claim-auditor', 'hardcoded-fallback', 'import-resolves', 'functional-diff', 'primary-not-parallel', 'recency-check',
+  'orphan-audit', 'claim-auditor', 'hardcoded-fallback', 'import-resolves', 'functional-diff', 'primary-not-parallel', 'recency-check', 'stale-at-ceiling',
 ];
+
+// ── Stale-at-ceiling check ──────────────────────────────────────────────────
+
+/** Threshold: warn after this many waves without outcomes declared. */
+const STALE_WARN_WAVES = 3;
+/** Threshold: fail after this many waves without outcomes declared. */
+const STALE_FAIL_WAVES = 5;
+
+async function checkStaleAtCeiling(
+  dim: MatrixDimension, _cwd: string, _io: CheckIO,
+): Promise<HardenCheckResult> {
+  const start = Date.now();
+  const d = dim as unknown as Record<string, unknown>;
+  const outcomes = Array.isArray(d['outcomes']) ? d['outcomes'] as unknown[] : [];
+
+  // If dim declares outcomes, this check passes (outcomes exist, depth path is available).
+  if (outcomes.length > 0) {
+    return {
+      check: 'stale-at-ceiling', passed: true, skipped: false,
+      durationMs: Date.now() - start, findings: [],
+      scoreCap: HARDEN_CHECK_CAPS['stale-at-ceiling'],
+    };
+  }
+
+  // Count waves since last score change using sprint_history length.
+  const sprintHistory = Array.isArray(dim.sprint_history) ? dim.sprint_history : [];
+  const wavesSinceChange = sprintHistory.length;
+
+  if (wavesSinceChange >= STALE_FAIL_WAVES) {
+    return {
+      check: 'stale-at-ceiling', passed: false, skipped: false,
+      durationMs: Date.now() - start,
+      findings: [{
+        file: 'matrix.json', line: 1, snippet: dim.id,
+        reason: `Dim "${dim.id}" has been stale for ${wavesSinceChange} waves with no outcomes declared. ` +
+          `Add outcomes to unlock scores above 7.0: danteforge gap ${dim.id}`,
+      }],
+      scoreCap: HARDEN_CHECK_CAPS['stale-at-ceiling'],
+    };
+  }
+
+  const findings: import('../types/harden-check.js').HardenFinding[] = [];
+  if (wavesSinceChange >= STALE_WARN_WAVES) {
+    findings.push({
+      file: 'matrix.json', line: 1, snippet: dim.id,
+      reason: `WARNING: Dim "${dim.id}" has been stale for ${wavesSinceChange} waves. ` +
+        `Will block at ${STALE_FAIL_WAVES} waves. Add outcomes to prevent score cap.`,
+    });
+  }
+
+  return {
+    check: 'stale-at-ceiling', passed: true, skipped: false,
+    durationMs: Date.now() - start, findings,
+    scoreCap: HARDEN_CHECK_CAPS['stale-at-ceiling'],
+  };
+}
 
 async function runOneCheck(
   id: HardenCheckId, dim: MatrixDimension, cwd: string, io: CheckIO,
@@ -1070,6 +1126,7 @@ async function runOneCheck(
     case 'functional-diff': return checkFunctionalDiff(dim, cwd, io);
     case 'primary-not-parallel': return checkPrimaryNotParallel(dim, cwd, io);
     case 'recency-check': return checkRecencyCheck(dim, cwd, io, searchEngine);
+    case 'stale-at-ceiling': return checkStaleAtCeiling(dim, cwd, io);
   }
 }
 

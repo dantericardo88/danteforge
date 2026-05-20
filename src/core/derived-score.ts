@@ -29,11 +29,20 @@ export interface DimensionForScoring {
   scores?: { self?: number };
 }
 
-const TIER_ORDER: CapabilityTier[] = ['T0', 'T1', 'T2', 'T3', 'T4', 'T5', 'T6'];
+const TIER_ORDER: CapabilityTier[] = ['T0', 'T1', 'T2', 'T3', 'T4', 'T5', 'T6', 'T7', 'T8'];
 
 const TIER_INDEX: Record<CapabilityTier, number> = {
-  T0: 0, T1: 1, T2: 2, T3: 3, T4: 4, T5: 5, T6: 6,
+  T0: 0, T1: 1, T2: 2, T3: 3, T4: 4, T5: 5, T6: 6, T7: 7, T8: 8,
 };
+
+/**
+ * T7 (multi-receipt consensus) requires 3+ outcomes at T5+ all passing.
+ * If dim has fewer than MIN_T7_OUTCOMES at T5+, T7 outcomes are treated as
+ * not-all-passing even if the T7 outcome itself passes. This prevents a
+ * single T7 outcome from unlocking 9.0 — the dim must demonstrate breadth
+ * of depth evidence first.
+ */
+const MIN_T7_HIGH_TIER_OUTCOMES = 3;
 
 // ── Breakdown for diagnostics ────────────────────────────────────────────────
 
@@ -122,7 +131,20 @@ export function computeDerivedScoreWithBreakdown(
       if (isOutcomePassing(outcome, entry)) passing++;
     }
 
-    const allPassing = passing === tierOutcomes.length;
+    let allPassing = passing === tierOutcomes.length;
+
+    // T7 multi-receipt consensus: even if this tier's outcomes pass, the dim
+    // must have 3+ outcomes at T5+ all passing to claim T7. Without broad
+    // depth evidence, a lone T7 outcome cannot unlock 9.0.
+    if (allPassing && tier === 'T7') {
+      const highTierPassCount = perTier
+        .filter(pt => TIER_INDEX[pt.tier] >= TIER_INDEX.T5 && pt.allPassing)
+        .reduce((sum, pt) => sum + pt.declared, 0);
+      if (highTierPassCount + tierOutcomes.length < MIN_T7_HIGH_TIER_OUTCOMES) {
+        allPassing = false;
+      }
+    }
+
     perTier.push({ tier, declared: tierOutcomes.length, passing, allPassing });
 
     if (allPassing) {

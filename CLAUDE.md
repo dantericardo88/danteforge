@@ -111,13 +111,17 @@ A dimension is not complete until it has produced an observable artifact on the 
 
 ### Score tiers (structurally enforced by `receipt-ceiling.ts` + `derived-score.ts`):
 
-| Score | What it means | How to unlock |
-|---|---|---|
-| ≤5.0 | Code exists, unit tests pass | Module + tests (no outcomes needed) |
-| ≤7.0 | Production callsite wired | Orphan check passes (harden gate) |
-| ≤8.5 | Receipt on disk, ≤30 days | `danteforge validate <dim>` passes |
-| ≤9.5 | Fresh receipt, ≤7 days | Outcome evidence fresh (T5 tier) |
-| ≤10.0 | Multi-receipt + live verify | 3+ outcomes + VerifyReceipt.liveCheckPassed |
+| Score | Tier | What it means | How to unlock |
+|---|---|---|---|
+| ≤5.0 | T2 | Code exists, unit tests pass | Module + tests (no outcomes needed) |
+| ≤7.0 | T4 | Production callsite wired | Orphan check passes (harden gate) |
+| ≤8.0 | T5 | Smoke test passes, ≤7 days | `danteforge validate <dim>` with T5 outcome |
+| ≤8.5 | T6 | Live telemetry, ≤24 hours | T6 telemetry outcome passes |
+| ≤9.0 | T7 | Multi-receipt consensus | 3+ outcomes at T5+, ALL passing, ≤7 days |
+| ≤9.5 | T8 | Live verification, ≤24 hours | All outcomes fresh + live verify |
+| 10.0 | — | Human-curated excellence | Sustained multi-receipt + external benchmark |
+
+Run `danteforge gap <dim>` to see exactly what's needed to reach the next tier.
 
 ### Every forged module must answer before the wave closes:
 1. **Callsite**: What production function calls this module? (not a test — the real `src/` entry point)

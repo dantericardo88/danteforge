@@ -1235,6 +1235,30 @@ This command exits 1 if any outcome fails (CI gate).
     })();
   });
 
+program
+  .command('gap [dimId]')
+  .description('Gap analyzer — shows exactly what\'s needed to reach the next score tier. The depth doctrine roadmap for any dimension.')
+  .option('--all', 'Analyze all dimensions')
+  .option('--json', 'Machine-readable JSON output')
+  .option('--cwd <path>', 'Project directory (defaults to cwd)')
+  .action((dimId: string | undefined, opts) => {
+    void (async () => {
+      try {
+        const { runGapCli } = await import('./commands/gap.js');
+        await runGapCli({
+          dimId,
+          all: opts.all as boolean | undefined,
+          json: opts.json as boolean | undefined,
+          cwd: opts.cwd as string | undefined,
+        });
+      } catch (err) {
+        const { formatAndLogError } = await import('../core/format-error.js');
+        formatAndLogError(err, 'gap');
+        process.exitCode = 1;
+      }
+    })();
+  });
+
 const hardenCmd = program
   .command('harden')
   .description('Deterministic hardening checks (Phase C of Capability Ladder). Catches orphan modules, claim/reality mismatches, hardcoded fallbacks. Cannot be gamed by LLM agents.')

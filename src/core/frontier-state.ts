@@ -84,7 +84,7 @@ export interface ProjectFrontierInputs {
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
-const TIER_ORDER: Record<CapabilityTier, number> = { T0: 0, T1: 1, T2: 2, T3: 3, T4: 4, T5: 5, T6: 6 };
+const TIER_ORDER: Record<CapabilityTier, number> = { T0: 0, T1: 1, T2: 2, T3: 3, T4: 4, T5: 5, T6: 6, T7: 7, T8: 8 };
 
 function tierAtLeast(a: CapabilityTier, b: CapabilityTier): boolean {
   return TIER_ORDER[a] >= TIER_ORDER[b];

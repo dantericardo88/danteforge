@@ -880,8 +880,20 @@ export async function runAscend(options: AscendEngineOptions = {}): Promise<Asce
     }
 
     logger.info(`  Goal: ${goal.slice(0, 120)}`);
-    const loopCtx: AutoforgeLoopContext = { goal, cwd, state: cs.state as Parameters<typeof runAutoforgeLoop>[0]['state'], loopState: AutoforgeLoopState.IDLE, cycleCount: 0, startedAt: new Date().toISOString(), retryCounters: {}, blockedArtifacts: [], lastGuidance: null, isWebProject: false, force: true, maxRetries: 10, recentScores: [] };
-    await executeDimensionCycle(options, loopCtx, nextDim, wrappedExecuteCommandFn, runLoopFn, beforeScore, target, goal, cwd, loadStateFn);
+
+    // Depth Doctrine: alternate breadth/depth waves.
+    const { getWaveGuard } = await import('./wave-alternation.js');
+    const waveGuard = getWaveGuard(cs.cyclesRun);
+
+    if (waveGuard.type === 'depth') {
+      // Depth wave: run outcomes for this dim instead of forging new code.
+      logger.info(`  [Ascend] DEPTH WAVE: running outcomes for ${nextDim.label}`);
+      await wrappedExecuteCommandFn(`validate ${nextDim.id} --force-cold`, cwd);
+    } else {
+      // Breadth wave: forge new code (existing behavior).
+      const loopCtx: AutoforgeLoopContext = { goal, cwd, state: cs.state as Parameters<typeof runAutoforgeLoop>[0]['state'], loopState: AutoforgeLoopState.IDLE, cycleCount: 0, startedAt: new Date().toISOString(), retryCounters: {}, blockedArtifacts: [], lastGuidance: null, isWebProject: false, force: true, maxRetries: 10, recentScores: [] };
+      await executeDimensionCycle(options, loopCtx, nextDim, wrappedExecuteCommandFn, runLoopFn, beforeScore, target, goal, cwd, loadStateFn);
+    }
     cs.state = await loadStateFn({ cwd }).catch(() => cs.state);
     const { newSelfScore, delta, newScoreResult } = await rescoreAndGetDelta(harshScoreFn, computeStrictDimsFn, nextDim, beforeScore, cwd);
     if (Math.abs(delta) < 0.1) { cs.plateauedDims.add(nextDim.id); logger.info(`  (plateau detected — moving to next dimension)`); }
@@ -899,6 +911,18 @@ export async function runAscend(options: AscendEngineOptions = {}): Promise<Asce
     });
     await mergeScoreProposals({ cwd, policy: 'harsh-min', agent: 'ascend' });
     matrix = await loadMatrixFn(cwd) ?? matrix;
+
+    // Time Machine: record each ascend cycle for audit trail.
+    try {
+      const { createTimeMachineCommit } = await import('./time-machine.js');
+      const delta2 = newSelfScore - beforeScore;
+      await createTimeMachineCommit({
+        cwd,
+        paths: ['.danteforge/compete/matrix.json', '.danteforge/outcome-evidence'],
+        label: `ascend/cycle-${cs.cyclesRun + 1}/${nextDim.id}/${delta2 >= 0 ? '+' : ''}${delta2.toFixed(1)}`,
+      });
+    } catch { /* best-effort — TM never blocks ascend */ }
+
     await saveCheckpointFn({ pausedAt: new Date().toISOString(), cyclesRun: cs.cyclesRun + 1, maxCycles, target, startedAt, plateauedDims: Array.from(cs.plateauedDims), currentDimension: nextDim.id, beforeScores }, cwd).catch(() => {});
     cs.cyclesRun++;
     await runPeriodicRetroIfDue(options, cs.cyclesRun, cwd);

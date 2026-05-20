@@ -690,9 +690,19 @@ export async function actionAutoSprint(options: CompeteOptions, cwd: string): Pr
     emit(`  Self: ${selfScoreBefore.toFixed(1)}  |  Target: ${topScore.toFixed(1)} (${topCompetitor})`);
     emit('');
 
+    // Depth Doctrine: alternate breadth (inferno) and depth (validate) waves.
+    const { getWaveGuard } = await import('../../core/wave-alternation.js');
+    const waveGuard = getWaveGuard(cyclesDone);
+
     const goal = `Improve "${next.label}" dimension to match or exceed ${topCompetitor} (${topScore.toFixed(1)}/10)`;
     try {
-      await runInferno(goal, cwd);
+      if (waveGuard.type === 'depth') {
+        emit(`  DEPTH WAVE: running validate for ${next.label} instead of inferno`);
+        const { runValidateCli } = await import('./validate.js');
+        await runValidateCli({ dimId: next.id, forceCold: true, cwd }).catch(() => {});
+      } else {
+        await runInferno(goal, cwd);
+      }
 
       const postResult = await postSprintScoreFn({ cwd });
       await applyStrictOverrides(postResult, cwd, options._computeStrictDims ?? computeStrictDimensions);

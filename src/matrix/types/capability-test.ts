@@ -55,11 +55,11 @@ export const CAPABILITY_TEST_SCORE_CAP = 5.0;
 
 // ── Phase B: Capability Ladder ───────────────────────────────────────────────
 
-export type CapabilityTier = 'T0' | 'T1' | 'T2' | 'T3' | 'T4' | 'T5' | 'T6';
+export type CapabilityTier = 'T0' | 'T1' | 'T2' | 'T3' | 'T4' | 'T5' | 'T6' | 'T7' | 'T8';
 
 /** Per-tier score caps. T2 = legacy capability_test cap (5.0). */
 export const TIER_SCORE_CAPS: Record<CapabilityTier, number> = {
-  T0: 1.0, T1: 4.0, T2: 5.0, T3: 6.0, T4: 7.0, T5: 8.0, T6: 8.5,
+  T0: 1.0, T1: 4.0, T2: 5.0, T3: 6.0, T4: 7.0, T5: 8.0, T6: 8.5, T7: 9.0, T8: 9.5,
 };
 
 /**
@@ -90,6 +90,8 @@ export const TIER_FRESHNESS_MS: Record<CapabilityTier, number> = {
   T4: 14 * 24 * 60 * 60 * 1000,
   T5: 7 * 24 * 60 * 60 * 1000,
   T6: 24 * 60 * 60 * 1000,
+  T7: 7 * 24 * 60 * 60 * 1000,   // multi-receipt consensus: weekly freshness
+  T8: 24 * 60 * 60 * 1000,        // live verification: same-day evidence
 };
 
 /**

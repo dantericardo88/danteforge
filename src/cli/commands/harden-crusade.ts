@@ -417,6 +417,16 @@ export async function runHardenCrusade(options: HardenCrusadeOptions): Promise<H
       allResults.push(...passResults);
     }
 
+    // Time Machine: record each wave for audit trail.
+    try {
+      const { createTimeMachineCommit } = await import('../../core/time-machine.js');
+      await createTimeMachineCommit({
+        cwd,
+        paths: ['.danteforge/outcome-evidence', '.danteforge/harden-report.json'],
+        label: `harden-crusade/pass-${pass}/${waveType}`,
+      });
+    } catch { /* best-effort */ }
+
     if (!options.loop) break;
   }
 

@@ -243,6 +243,16 @@ export async function runOneOutcome(options: RunOutcomeOptions): Promise<Outcome
     evidencePath,
   };
 
+  // Outcome quality gate: reject trivial outcomes at high tiers even if exit code was 0.
+  if (entry.passed) {
+    const { validateOutcomeQuality } = await import('./outcome-quality.js');
+    const qualityErrors = validateOutcomeQuality(outcome, entry);
+    if (qualityErrors.length > 0) {
+      entry.passed = false;
+      entry.failureReason = `quality gate: ${qualityErrors.map(e => e.reason).join('; ')}`;
+    }
+  }
+
   await writeFn(evidencePath, JSON.stringify(entry, null, 2));
   await recordOutcomeEvidenceCommit(entry, cwd, options._createTimeMachineCommit);
   return entry;
