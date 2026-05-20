@@ -22,7 +22,9 @@ import type { CapabilityTier } from './capability-test.js';
  * with everything already declared. `production-usage-fresh` and `telemetry`
  * are substrate-built-in checks that don't run an arbitrary shell command.
  */
-export type OutcomeKind = 'shell' | 'production-usage-fresh' | 'external-benchmark' | 'telemetry';
+export type OutcomeKind =
+  | 'shell' | 'production-usage-fresh' | 'external-benchmark' | 'telemetry'
+  | 'cli-smoke' | 'runtime-exec' | 'e2e-workflow';
 
 /** Common fields shared by all outcome kinds. */
 interface BaseOutcome {
@@ -96,8 +98,64 @@ export interface TelemetryOutcome extends BaseOutcome {
   min_users: number;
 }
 
+/**
+ * CLI smoke outcome: spawns the real CLI binary as a subprocess and validates
+ * exit code + stdout patterns. Proves the feature RUNS, not just EXISTS.
+ */
+export interface CliSmokeOutcome extends BaseOutcome {
+  kind: 'cli-smoke';
+  /** CLI args passed after the binary (e.g. ['--help'] or ['validate', 'testing']). */
+  cli_args: string[];
+  /** Expected exit code. Default 0. */
+  expected_exit?: number;
+  /** Regex patterns that stdout must match (all must match). */
+  expected_stdout_patterns?: string[];
+  /** Regex patterns that indicate failure (any match = fail). */
+  forbidden_stdout_patterns?: string[];
+  /** Where to run: 'project-root' (default) or 'temp' for isolated runs. */
+  cwd_strategy?: 'temp' | 'project-root';
+}
+
+/**
+ * Runtime execution outcome: runs a real command (tests, builds) and enforces
+ * minimum duration to reject trivial file checks masquerading as runtime.
+ */
+export interface RuntimeExecOutcome extends BaseOutcome {
+  kind: 'runtime-exec';
+  /** Shell command that exercises real runtime behavior. */
+  command: string;
+  /** Expected exit code. Default 0. */
+  expected_exit?: number;
+  /** Regex pattern stdout must match. */
+  expected_output_pattern?: string;
+  /** Minimum duration in ms — rejects instant file checks. Default 0 (no minimum). */
+  min_duration_ms?: number;
+}
+
+/**
+ * End-to-end workflow outcome: runs a multi-step CLI workflow and validates
+ * artifacts after each step. The ultimate runtime quality proof.
+ */
+export interface E2eWorkflowOutcome extends BaseOutcome {
+  kind: 'e2e-workflow';
+  /** Ordered steps to execute. Each step is a CLI invocation + validation. */
+  steps: Array<{
+    cli_args: string[];
+    expected_exit?: number;
+    expected_stdout_patterns?: string[];
+    /** Artifact paths (relative to cwd) that must exist after this step. */
+    expected_artifacts?: string[];
+  }>;
+  /** If true, run the generated project's build+test after all steps. */
+  verify_generated_project?: boolean;
+  /** Where to run: 'project-root' (default) or 'temp' for isolated runs. */
+  cwd_strategy?: 'temp' | 'project-root';
+}
+
 /** Discriminated union — every outcome is one of these. */
-export type Outcome = ShellOutcome | ProductionUsageFreshOutcome | ExternalBenchmarkOutcome | TelemetryOutcome;
+export type Outcome =
+  | ShellOutcome | ProductionUsageFreshOutcome | ExternalBenchmarkOutcome | TelemetryOutcome
+  | CliSmokeOutcome | RuntimeExecOutcome | E2eWorkflowOutcome;
 
 // ── Evidence ─────────────────────────────────────────────────────────────────
 
@@ -167,6 +225,12 @@ export function isValidOutcome(v: unknown): v is Outcome {
     if (typeof o.min_pass_rate !== 'number') return false;
   } else if (kind === 'telemetry') {
     if (typeof o.source !== 'string' || typeof o.min_users !== 'number') return false;
+  } else if (kind === 'cli-smoke') {
+    if (!Array.isArray(o.cli_args)) return false;
+  } else if (kind === 'runtime-exec') {
+    if (typeof o.command !== 'string' || o.command.length === 0) return false;
+  } else if (kind === 'e2e-workflow') {
+    if (!Array.isArray(o.steps) || o.steps.length === 0) return false;
   }
   return true;
 }
@@ -233,15 +297,17 @@ export function validateOutcomeForTier(
 
   if (rank >= TIER_RANK.T5) {
     const kind = outcome.kind ?? 'shell';
-    const isBenchmarkKind = kind === 'external-benchmark';
+    const runtimeKinds = new Set(['external-benchmark', 'cli-smoke', 'runtime-exec', 'e2e-workflow']);
+    const isRuntimeKind = runtimeKinds.has(kind);
     const cmd = kind === 'shell' ? (outcome as ShellOutcome).command ?? '' : '';
     const refsBenchmark = /\b(swe[-_]?bench|humaneval|mbpp|mmlu)\b/i.test(cmd);
-    if (!isBenchmarkKind && !refsBenchmark) {
+    const refsRealExec = /\b(npx|tsx|node\s+dist|npm\s+run\s+(test|build)|spawn|exec)\b/i.test(cmd);
+    if (!isRuntimeKind && !refsBenchmark && !refsRealExec) {
       errors.push({
         outcomeId: outcome.id,
         tier: outcome.tier,
-        reason: `T5+ outcomes must use kind="external-benchmark" OR reference a recognized benchmark in the command`,
-        remedy: `Either change "kind" to "external-benchmark" with a "benchmark" id, or invoke a public benchmark (swe-bench, humaneval, etc.)`,
+        reason: `T5+ outcomes must use a runtime kind (cli-smoke, runtime-exec, e2e-workflow, external-benchmark) OR execute real code`,
+        remedy: `Change kind to 'cli-smoke', 'runtime-exec', or 'e2e-workflow', or rewrite the command to exercise real behavior`,
       });
     }
   }
@@ -322,9 +388,21 @@ export function isOutcomePassing(
   if (!entry) return false;
   if (!entry.passed) return false;
 
-  // For non-shell kinds the runner has already encoded the pass/fail. Trust it.
   const kind = outcome.kind ?? 'shell';
-  if (kind !== 'shell') return entry.passed;
+  // Non-shell kinds: the runner has already encoded pass/fail. Trust it.
+  if (kind !== 'shell' && kind !== 'runtime-exec') return entry.passed;
+  // runtime-exec uses same exit+pattern check as shell.
+  if (kind === 'runtime-exec') {
+    const rt = outcome as RuntimeExecOutcome;
+    const expectedExit = rt.expected_exit ?? 0;
+    if (entry.exitCode !== expectedExit) return false;
+    if (rt.expected_output_pattern) {
+      try {
+        if (!new RegExp(rt.expected_output_pattern).test(`${entry.stdoutTail}\n${entry.stderrTail}`)) return false;
+      } catch { return false; }
+    }
+    return true;
+  }
 
   // Shell outcomes get the additional exit + pattern checks.
   const shell = outcome as ShellOutcome;

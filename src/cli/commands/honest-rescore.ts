@@ -10,6 +10,7 @@ import fs from 'node:fs/promises';
 import path from 'node:path';
 import chalk from 'chalk';
 import { logger } from '../../core/logger.js';
+import { SCORING_DOCTRINE_SHORT } from '../../core/scoring-doctrine.js';
 import type { ProbeResult, ProbeTier } from './probe.js';
 
 const EVIDENCE_DIR = path.join('.danteforge', 'runtime-evidence');
@@ -289,6 +290,7 @@ function recomputeOverall(matrix: MatrixForOverall, rescores: Map<string, number
 // ── Main ─────────────────────────────────────────────────────────────────────
 
 export async function runHonestRescore(options: HonestRescoreOptions = {}): Promise<HonestRescoreResult> {
+  logger.info(`[scoring-doctrine] ${SCORING_DOCTRINE_SHORT}`);
   const cwd = options.cwd ?? process.cwd();
   const readFn = options._readFile ?? ((p: string) => fs.readFile(p, 'utf8'));
   const writeFn = options._writeFile ?? (async (p: string, d: string) => {

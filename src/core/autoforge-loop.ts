@@ -22,6 +22,7 @@ import {
   findBlockedArtifacts,
   writeGuidanceFile,
 } from './autoforge-guidance.js';
+import { SCORING_DOCTRINE_SHORT } from './scoring-doctrine.js';
 export {
   buildGuidance,
   checkProtectedTaskPaths,
@@ -687,6 +688,7 @@ async function checkProtectedPathGate(
 // ── Main loop ───────────────────────────────────────────────────────────────
 
 export async function runAutoforgeLoop(ctx: AutoforgeLoopContext, deps?: Partial<AutoforgeLoopDeps>): Promise<AutoforgeLoopContext> {
+  logger.info(`[scoring-doctrine] ${SCORING_DOCTRINE_SHORT}`);
   const _addSignal = deps?._addSignalListener ?? ((s: string, h: () => void) => process.on(s, h));
   const _removeSignal = deps?._removeSignalListener ?? ((s: string, h: () => void) => process.removeListener(s, h));
   const loopStartMs = Date.now();

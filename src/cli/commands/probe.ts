@@ -14,6 +14,7 @@ import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import chalk from 'chalk';
 import { logger } from '../../core/logger.js';
+import { SCORING_DOCTRINE_SHORT } from '../../core/scoring-doctrine.js';
 
 const execFileAsync = promisify(execFile);
 const EVIDENCE_DIR = path.join('.danteforge', 'runtime-evidence');
@@ -467,7 +468,10 @@ export async function runProbeCommand(opts: {
   cwd?: string;
   timeoutMs?: number;
   quickCheck?: boolean;
+  /** Run all cli-smoke + runtime-exec outcomes across every dimension. */
+  runtime?: boolean;
 }): Promise<void> {
+  logger.info(`[scoring-doctrine] ${SCORING_DOCTRINE_SHORT}`);
   // M.7: `--quick-check` runs the import-resolves pre-scan only. No build invoked.
   // Useful as a pre-commit/CI gate: fails in milliseconds when a relative import
   // points to a missing file. Operators who want full type-checking still run
@@ -498,6 +502,66 @@ export async function runProbeCommand(opts: {
       logger.info('');
     }
     if (result.brokenImports.length > 0) process.exitCode = 1;
+    return;
+  }
+
+  // --runtime: run all runtime outcome kinds (cli-smoke, runtime-exec, e2e-workflow)
+  // across every dimension in the matrix. A "runtime smoke sweep."
+  if (opts.runtime) {
+    const { loadMatrix } = await import('../../core/compete-matrix.js');
+    const { runAllOutcomes } = await import('../../matrix/engines/outcome-runner.js');
+    type Outcome = import('../../matrix/types/outcome.js').Outcome;
+    const cwd = opts.cwd ?? process.cwd();
+    const matrix = await loadMatrix(cwd);
+    if (!matrix) {
+      logger.error('No matrix.json found. Run `danteforge compete --init` first.');
+      process.exitCode = 1;
+      return;
+    }
+
+    const RUNTIME_KINDS = new Set(['cli-smoke', 'runtime-exec', 'e2e-workflow']);
+    const dims: Array<{ id: string; outcomes: Outcome[] }> = [];
+    for (const d of matrix.dimensions) {
+      const raw = (d as unknown as Record<string, unknown>)['outcomes'];
+      if (!Array.isArray(raw)) continue;
+      const runtimeOutcomes = (raw as Outcome[]).filter(
+        o => RUNTIME_KINDS.has(o.kind ?? 'shell'),
+      );
+      if (runtimeOutcomes.length > 0) {
+        dims.push({ id: d.id, outcomes: runtimeOutcomes });
+      }
+    }
+
+    if (dims.length === 0) {
+      logger.warn('No runtime outcomes found. Add cli-smoke/runtime-exec/e2e-workflow outcomes to matrix.json.');
+      return;
+    }
+
+    const totalRuntimeOutcomes = dims.reduce((n, d) => n + d.outcomes.length, 0);
+    logger.info('');
+    logger.info(chalk.bold('Runtime Smoke Sweep'));
+    logger.info(chalk.dim('─'.repeat(50)));
+    logger.info(chalk.dim(`Running ${totalRuntimeOutcomes} runtime outcomes across ${dims.length} dimensions…`));
+    logger.info('');
+
+    const result = await runAllOutcomes({
+      cwd,
+      dimensions: dims,
+      forceCold: true,
+      _onProgress: (msg: string) => logger.info(chalk.dim(msg)),
+    });
+
+    const icon = result.failingOutcomes === 0 ? chalk.green('✓') : chalk.red('✗');
+    const status = result.failingOutcomes === 0 ? chalk.green('PASS') : chalk.red('FAIL');
+    logger.info('');
+    logger.info(`  ${icon} ${status}   ${result.passingOutcomes}/${result.totalOutcomes} runtime outcomes passed`);
+    for (const dim of result.perDimension) {
+      const dimIcon = dim.failing === 0 ? chalk.green('✓') : chalk.red('✗');
+      logger.info(`    ${dimIcon} ${dim.dimensionId}: ${dim.passing}/${dim.total}`);
+    }
+    logger.info('');
+
+    if (result.failingOutcomes > 0) process.exitCode = 1;
     return;
   }
 

@@ -10,6 +10,7 @@ import fs from 'node:fs/promises';
 import path from 'node:path';
 import chalk from 'chalk';
 import { logger } from '../../core/logger.js';
+import { SCORING_DOCTRINE_SHORT } from '../../core/scoring-doctrine.js';
 import { loadState, saveState, appendScoreHistory } from '../../core/state.js';
 import type { DanteState, ScoreHistoryEntry } from '../../core/state.js';
 import {
@@ -638,6 +639,7 @@ function computeSessionDelta(state: import('../../core/state.js').DanteState, di
 export async function score(options: ScoreOptions = {}): Promise<ScoreResult> {
   const cwd = options.cwd ?? process.cwd();
   const emit = options._stdout ?? ((line: string) => logger.info(line));
+  emit(`[scoring-doctrine] ${SCORING_DOCTRINE_SHORT}`);
 
   if (!shouldUseLegacyInjectionPath(options)) {
     const _scr = await scoreCanonicalPath(options, cwd, emit);

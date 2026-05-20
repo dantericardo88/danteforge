@@ -8,6 +8,7 @@ import path from 'node:path';
 import { logger } from './logger.js';
 import { loadMatrix, getMatrixPath } from './compete-matrix.js';
 import { loadProjectsManifest, type ProjectRegistryEntry } from './project-registry.js';
+import { SCORING_DOCTRINE_SHORT } from './scoring-doctrine.js';
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -160,6 +161,7 @@ export async function runGoalLoopEngine(opts: GoalLoopEngineOptions): Promise<Go
   const rotationMode = opts.rotationMode ?? 'greedy';
   const yes = opts.yes ?? false;
   const emit = opts._stdout ?? ((l: string) => logger.info(l));
+  emit(`[scoring-doctrine] ${SCORING_DOCTRINE_SHORT}`);
 
   const runAuto = opts._runCompeteAuto ?? defaultRunCompeteAuto;
   const checkFn = opts._checkAllNine ?? ((p: string, t: number) => defaultCheckAllNine(p, t));

@@ -30,6 +30,7 @@ import {
 } from '../../core/completion-tracker.js';
 import { SCORE_THRESHOLDS, ARTIFACT_COMMAND_MAP } from '../../core/pdse-config.js';
 import { loadLatestVerdict } from '../../core/reflection-engine.js';
+import { SCORING_DOCTRINE_SHORT } from '../../core/scoring-doctrine.js';
 
 async function runAutoMode(goal: string | undefined, cwd: string, options: {
   force?: boolean;
@@ -39,6 +40,7 @@ async function runAutoMode(goal: string | undefined, cwd: string, options: {
   _runLoop?: (ctx: AutoforgeLoopContext, deps?: { _executeCommand?: (command: string, cwd: string) => Promise<{ success: boolean }> }) => Promise<AutoforgeLoopContext>;
   _executeCommand?: (command: string, cwd: string) => Promise<{ success: boolean }>;
 }): Promise<void> {
+  logger.info(`[scoring-doctrine] ${SCORING_DOCTRINE_SHORT}`);
   logger.info('[AutoForge] Autonomous mode — running convergence loop...');
 
   // --- Decision-node: record start (best-effort) ---

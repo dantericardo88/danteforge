@@ -44,6 +44,7 @@ import { formatScore, formatStatusTable, logSprintGaps, buildHarvestBriefPrompt,
 import { handleAmend, handleAmendFile } from './compete-amend.js';
 import { defaultEvidenceWriter, ensureMatrixOnDisk, parseRescore, proposeAndMergeScore, runCertifyGate, writeRescoreEvidence } from './compete-score-flow.js';
 import { actionCalibrate } from './compete-calibrate.js';
+import { SCORING_DOCTRINE_SHORT } from '../../core/scoring-doctrine.js';
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -173,11 +174,11 @@ async function actionInit(options: CompeteOptions, cwd: string): Promise<Compete
   }
   logger.info(`Matrix: ${matrixPath}`);
   logger.info(`Next: run \`danteforge compete\` to see the gap table, then \`danteforge compete --sprint\` to start closing gaps.`);
-  logger.warn(`\n⚠  Score yourself harshly. If these gaps feel small, they're wrong.`);
-  logger.info(`   Generous scores produce roadmaps. Hyper-critical scores produce urgency.`);
-  logger.info(`   Cursor users are paying $20+/mo — they need a real reason to switch.`);
-  logger.info(`   Adjust scores in .danteforge/compete/matrix.json before running --sprint.`);
-  logger.info(`   0.0 = not built at all. 9.0 = Cursor-level execution. 5.0 = basic/functional.`);
+  logger.warn(`\n⚠  Score rigorously from evidence. If these gaps feel small, audit the evidence.`);
+  logger.info(`   Scores must come from outcome evidence, not opinions.`);
+  logger.info(`   Compare only against actual competitors per positioning.md.`);
+  logger.info(`   The gap IS the value — finding real gaps means finding what to build next.`);
+  logger.info(`   Run \`node scripts/evidence-rescore.mjs\` to derive scores from evidence.`);
 
   return {
     action: 'init',
@@ -648,6 +649,7 @@ async function actionSyncScores(options: CompeteOptions, cwd: string): Promise<C
 
 export async function actionAutoSprint(options: CompeteOptions, cwd: string): Promise<CompeteResult> {
   const emit = options._stdout ?? ((line: string) => logger.info(line));
+  emit(`[scoring-doctrine] ${SCORING_DOCTRINE_SHORT}`);
   const loadFn = options._loadMatrix ?? ((c) => loadMatrix(c));
   const saveFn = options._saveMatrix ?? ((m, c) => saveMatrix(m, c));
   const matrixPath = getMatrixPath(cwd);

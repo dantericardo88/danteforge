@@ -29,6 +29,7 @@ import {
 } from '../../core/derived-score.js';
 import { applyLegacyReceiptCeiling, LEGACY_NO_RECEIPT_CEILING } from '../../matrix/engines/receipt-ceiling.js';
 import type { Outcome } from '../../matrix/types/outcome.js';
+import { SCORING_DOCTRINE_SHORT } from '../../core/scoring-doctrine.js';
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -39,6 +40,8 @@ export interface ValidateCliOptions {
   json?: boolean;
   cwd?: string;
   forceCold?: boolean;
+  /** Filter to runtime-only outcome kinds (cli-smoke, runtime-exec, e2e-workflow). */
+  runtimeOnly?: boolean;
   // Injection seams for tests
   _loadMatrix?: typeof loadMatrix;
   _onProgress?: (msg: string) => void;
@@ -65,9 +68,12 @@ export interface ValidateCliResult {
 
 // ── Main entry point ─────────────────────────────────────────────────────────
 
+const RUNTIME_KINDS = new Set(['cli-smoke', 'runtime-exec', 'e2e-workflow']);
+
 export async function runValidateCli(options: ValidateCliOptions): Promise<ValidateCliResult> {
   const cwd = options.cwd ?? process.cwd();
   const loadMatrixFn = options._loadMatrix ?? loadMatrix;
+  logger.info(`[scoring-doctrine] ${SCORING_DOCTRINE_SHORT}`);
 
   const matrix = await loadMatrixFn(cwd);
   if (!matrix) {
@@ -125,12 +131,17 @@ export async function runValidateCli(options: ValidateCliOptions): Promise<Valid
     logger.info('');
   }
 
-  // Run outcomes
+  // Run outcomes — optionally filter to runtime-only kinds
+  const filterOutcomes = (outcomes: Outcome[] | undefined): Outcome[] | undefined => {
+    if (!options.runtimeOnly || !outcomes) return outcomes;
+    return outcomes.filter(o => RUNTIME_KINDS.has(o.kind ?? 'shell'));
+  };
+
   const runResult = await runAllOutcomes({
     cwd,
     dimensions: dimsWithOutcomes.map(d => ({
       id: d.id,
-      outcomes: (d as unknown as Record<string, unknown>)['outcomes'] as Outcome[] | undefined,
+      outcomes: filterOutcomes((d as unknown as Record<string, unknown>)['outcomes'] as Outcome[] | undefined),
     })),
     forceCold: options.forceCold ?? true,
     _onProgress: onProgress,

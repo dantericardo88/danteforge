@@ -24,6 +24,7 @@ import path from 'node:path';
 import chalk from 'chalk';
 import { logger } from '../../core/logger.js';
 import { loadMatrix, type CompeteMatrix, type MatrixDimension } from '../../core/compete-matrix.js';
+import { SCORING_DOCTRINE_SHORT } from '../../core/scoring-doctrine.js';
 
 const MAX_WAVES_WITHOUT_REGRADE = 3;
 const DEFAULT_TARGET = 9.0;
@@ -336,6 +337,8 @@ export async function runHardenCrusade(options: HardenCrusadeOptions): Promise<H
   const target = options.target ?? DEFAULT_TARGET;
   const loadMatrixFn = options._loadMatrix ?? loadMatrix;
   const writeFile = options._writeFile ?? ((p: string, c: string) => fs.writeFile(p, c, 'utf8'));
+
+  logger.info(`[scoring-doctrine] ${SCORING_DOCTRINE_SHORT}`);
 
   // Pre-flight: regrade cadence (mirrors /crusade)
   const cadence = await checkRegradeCadence(options);

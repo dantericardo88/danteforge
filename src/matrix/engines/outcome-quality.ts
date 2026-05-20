@@ -81,5 +81,22 @@ export function validateOutcomeQuality(
     }
   }
 
+  // T5+ shell outcomes: reject structural-only file checks (readFileSync pattern).
+  // Runtime verification requires cli-smoke, runtime-exec, or e2e-workflow kinds.
+  if (rank >= RANK.T5) {
+    const kind = outcome.kind ?? 'shell';
+    if (kind === 'shell') {
+      const cmd = (outcome as { command?: string }).command ?? '';
+      if (/readFileSync|readFile|existsSync/.test(cmd) && !/spawn|exec(?:Sync)?|(?:npm|npx)\s+(?:run\s+)?(?:test|build)|tsx\s+--test/.test(cmd)) {
+        errors.push({
+          outcomeId: outcome.id,
+          tier: outcome.tier,
+          reason: `T5+ shell outcome is a structural file check, not runtime execution.`,
+          remedy: `Change kind to 'cli-smoke', 'runtime-exec', or 'e2e-workflow'. Structural checks cap at T4/7.0.`,
+        });
+      }
+    }
+  }
+
   return errors;
 }

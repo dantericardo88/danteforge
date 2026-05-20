@@ -19,6 +19,7 @@ import { applyStrictOverrides } from '../../core/ascend-engine.js';
 import { mergeScoreProposals, writeScoreProposal } from '../../core/matrix-development-engine.js';
 import { formatScore } from './compete-display.js';
 import type { CompeteOptions, CompeteResult } from './compete.js';
+import { SCORING_DOCTRINE_SHORT } from '../../core/scoring-doctrine.js';
 
 /** Map scorer camelCase dimension IDs to matrix snake_case IDs. */
 export function scorerDimToMatrixId(scorerDim: string): string {
@@ -26,6 +27,7 @@ export function scorerDimToMatrixId(scorerDim: string): string {
 }
 
 export async function actionCalibrate(options: CompeteOptions, cwd: string): Promise<CompeteResult> {
+  logger.info(`[scoring-doctrine] ${SCORING_DOCTRINE_SHORT}`);
   const matrixPath = getMatrixPath(cwd);
   const loadFn = options._loadMatrix ?? ((c) => loadMatrix(c));
   const saveFn = options._saveMatrix ?? ((m, c) => saveMatrix(m, c));

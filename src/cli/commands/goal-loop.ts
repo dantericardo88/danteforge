@@ -14,6 +14,7 @@
 
 import path from 'node:path';
 import { logger } from '../../core/logger.js';
+import { SCORING_DOCTRINE_SHORT } from '../../core/scoring-doctrine.js';
 import {
   runGoalLoopEngine,
   resolveProjects,
@@ -55,6 +56,7 @@ export interface GoalLoopResult {
 export async function goalLoop(opts: GoalLoopOptions = {}): Promise<GoalLoopResult> {
   const cwd = opts.cwd ?? process.cwd();
   const emit = opts._stdout ?? ((l: string) => logger.info(l));
+  emit(`[scoring-doctrine] ${SCORING_DOCTRINE_SHORT}`);
 
   if (opts.promptMode) {
     emit(`

@@ -186,6 +186,45 @@ export async function runOneOutcome(options: RunOutcomeOptions): Promise<Outcome
   }
   // 'external-benchmark' and 'telemetry' fall through to shell mode for now (Phase H Slice 2 follow-up).
 
+  // Runtime quality outcome kinds — spawn real CLI, run real tests, exercise real workflows.
+  if (kind === 'cli-smoke') {
+    const { runCliSmokeOutcome } = await import('./cli-smoke-runner.js');
+    const smokeOutcome = outcome as import('../types/outcome.js').CliSmokeOutcome;
+    const start = Date.now();
+    const entry = await runCliSmokeOutcome(smokeOutcome, options.dimensionId, cwd, {
+      _readGitSha: async () => gitSha,
+    });
+    entry.evidencePath = evidencePath;
+    await writeFn(evidencePath, JSON.stringify(entry, null, 2));
+    await recordOutcomeEvidenceCommit(entry, cwd, options._createTimeMachineCommit);
+    return entry;
+  }
+
+  if (kind === 'runtime-exec') {
+    const { runRuntimeExecOutcome } = await import('./runtime-exec-runner.js');
+    const rtOutcome = outcome as import('../types/outcome.js').RuntimeExecOutcome;
+    const entry = await runRuntimeExecOutcome(rtOutcome, options.dimensionId, cwd, {
+      _spawn: options._spawn ? (cmd, opts) => options._spawn!(cmd, opts) : undefined,
+      _readGitSha: async () => gitSha,
+    });
+    entry.evidencePath = evidencePath;
+    await writeFn(evidencePath, JSON.stringify(entry, null, 2));
+    await recordOutcomeEvidenceCommit(entry, cwd, options._createTimeMachineCommit);
+    return entry;
+  }
+
+  if (kind === 'e2e-workflow') {
+    const { runE2eWorkflowOutcome } = await import('./e2e-workflow-runner.js');
+    const e2eOutcome = outcome as import('../types/outcome.js').E2eWorkflowOutcome;
+    const entry = await runE2eWorkflowOutcome(e2eOutcome, options.dimensionId, cwd, {
+      _readGitSha: async () => gitSha,
+    });
+    entry.evidencePath = evidencePath;
+    await writeFn(evidencePath, JSON.stringify(entry, null, 2));
+    await recordOutcomeEvidenceCommit(entry, cwd, options._createTimeMachineCommit);
+    return entry;
+  }
+
   // Shell mode: the default — spawn the outcome's shell command.
   const shellOutcome = outcome as import('../types/outcome.js').ShellOutcome;
   if (!shellOutcome.command) {

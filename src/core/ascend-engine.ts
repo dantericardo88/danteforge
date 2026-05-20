@@ -27,6 +27,7 @@ import { runAutoforgeLoop, AutoforgeLoopState, type AutoforgeLoopContext, type A
 import { executeAutoforgeCommand } from './autoforge-executor.js';
 import { generateAdversarialCritique } from './adversarial-critique.js';
 import { logger } from './logger.js';
+import { SCORING_DOCTRINE_SHORT } from './scoring-doctrine.js';
 import { createStepTracker } from './progress.js';
 import { confirmMatrix } from './matrix-confirm.js';
 import { isLLMAvailable } from './llm.js';
@@ -782,6 +783,8 @@ export async function runAscend(options: AscendEngineOptions = {}): Promise<Asce
   const adversaryTolerance = options.adversaryTolerance ?? 0.5;
   const generateAdversarialScoreFn = options._generateAdversarialScore
     ?? (options.adversarialGating ? (await import('./adversarial-scorer-dim.js').catch(() => null))?.generateAdversarialScore : undefined);
+
+  logger.info(`[scoring-doctrine] ${SCORING_DOCTRINE_SHORT}`);
 
   const oriented = await orientAndClassify(options, cwd, target, { loadMatrixFn, saveMatrixFn, defineUniverseFn, harshScoreFn, computeStrictDimsFn, loadStateFn });
   if (!oriented.ok) return oriented.result;
