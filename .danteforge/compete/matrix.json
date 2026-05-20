@@ -158,9 +158,29 @@
           "description": "Hardener is imported by production + modified within 30d",
           "required_callsite": "src/matrix/engines/hardener.ts",
           "freshnessDays": 30
+        },
+        {
+          "id": "t_golden_flow",
+          "tier": "T4",
+          "kind": "shell",
+          "description": "Matrix golden flow integration test (18-step MVP loop) passes",
+          "command": "npx tsx --test tests/matrix-golden-flow.test.ts 2>&1 | tail -5",
+          "expected_exit": 0,
+          "timeout_ms": 120000,
+          "required_callsite": "src/matrix/engines/hardener.ts"
+        },
+        {
+          "id": "t_depth_e2e",
+          "tier": "T5",
+          "kind": "shell",
+          "description": "Depth doctrine e2e: validate -> receipt -> score rises above 7.0",
+          "command": "npx tsx --test tests/depth-doctrine-e2e.test.ts 2>&1 | tail -5",
+          "expected_exit": 0,
+          "timeout_ms": 60000,
+          "required_callsite": "src/core/derived-score.ts"
         }
       ],
-      "declared_ceiling": "T3"
+      "declared_ceiling": "T5"
     },
     {
       "id": "developer_experience",

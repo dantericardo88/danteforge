@@ -361,9 +361,9 @@ export async function runHardenCrusade(options: HardenCrusadeOptions): Promise<H
 
   while (pass < maxPasses) {
     pass++;
-    // Depth doctrine: odd passes = breadth (write new code, ceiling 6),
-    // even passes = depth (run outcomes on existing code, lift ceiling to 7-9).
-    const waveType: 'breadth' | 'depth' = pass % 2 === 0 ? 'depth' : 'breadth';
+    // Depth doctrine: use shared wave guard (pass is 1-indexed, guard is 0-indexed).
+    const { getWaveGuard } = await import('../../core/wave-alternation.js');
+    const waveType = getWaveGuard(pass - 1).type;
 
     const matrix = await loadMatrixFn(cwd);
     if (!matrix) {

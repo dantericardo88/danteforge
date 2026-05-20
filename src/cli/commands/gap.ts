@@ -19,6 +19,7 @@ import {
 } from '../../core/derived-score.js';
 import { TIER_SCORE_CAPS, type CapabilityTier } from '../../matrix/types/capability-test.js';
 import { applyLegacyReceiptCeiling, LEGACY_NO_RECEIPT_CEILING } from '../../matrix/engines/receipt-ceiling.js';
+import { runHardenGate } from '../../matrix/engines/hardener.js';
 import type { Outcome, OutcomeEvidence } from '../../matrix/types/outcome.js';
 
 // ── Types ─────────────────────────────────────────────────────────────────────
@@ -84,7 +85,7 @@ export async function runGapCli(options: GapCliOptions): Promise<GapCliResult> {
   const analyses: GapAnalysis[] = [];
 
   for (const dim of targetDims) {
-    const analysis = analyzeDimension(dim, evidence);
+    const analysis = await analyzeDimension(dim, evidence, cwd);
     analyses.push(analysis);
   }
 
@@ -99,10 +100,11 @@ export async function runGapCli(options: GapCliOptions): Promise<GapCliResult> {
 
 // ── Per-dimension analysis ───────────────────────────────────────────────────
 
-function analyzeDimension(
+async function analyzeDimension(
   dim: { id: string; label: string; scores: Record<string, number>; sprint_history?: unknown[] },
   evidence: OutcomeEvidence,
-): GapAnalysis {
+  cwd: string,
+): Promise<GapAnalysis> {
   const d = dim as unknown as Record<string, unknown>;
   const outcomes = Array.isArray(d['outcomes']) ? d['outcomes'] as Outcome[] : [];
 
@@ -195,6 +197,24 @@ function analyzeDimension(
       });
     }
   }
+
+  // 6. Harden gate check — surface any failing structural checks
+  try {
+    const hardenVerdict = await runHardenGate({
+      dimensionId: dim.id, dim: dim as never, cwd, _noWrite: true,
+    });
+    for (const check of hardenVerdict.checks) {
+      if (!check.passed && !check.skipped) {
+        for (const finding of check.findings) {
+          blockers.push({
+            kind: 'harden-check',
+            detail: `harden/${check.check} failing (cap ${check.scoreCap}): ${finding.reason.slice(0, 120)}`,
+            remedy: `Fix the ${check.check} finding to lift the ${check.scoreCap} cap`,
+          });
+        }
+      }
+    }
+  } catch { /* best-effort — harden gate crash should not block gap analysis */ }
 
   // Compute next action (most impactful single thing)
   let nextAction = 'All clear — dimension is at maximum achievable score';

@@ -21,8 +21,10 @@ When in doubt about what tier an outcome belongs to, find the lowest tier whose 
 | T4 | 7.0 | The capability is invoked from a user-facing entry point AND has a snapshot test asserting observable output that a human user would see. |
 | T5 | 8.0 | The capability passes a declared external benchmark suite (SWE-bench, HumanEval, custom suite committed to the repo). |
 | T6 | 8.5 | The capability has been exercised by N distinct production users in the last 30 days, verifiable from telemetry. |
+| T7 | 9.0 | Multi-receipt consensus: 3+ outcomes at T5+ all passing with ≤7 day freshness. |
+| T8 | 9.5 | Live verification: all outcomes fresh ≤24h with telemetry-kind evidence. |
 
-> The tier ladder caps at T6 in the current substrate. Telemetry-backed and external-benchmark tiers (T5+, T6) require integrations the operator declares per-project — they're not free.
+> 10.0 is human-curated. No tier unlocks it. T7/T8 require sustained multi-angle validation — they're earned, not declared.
 
 ---
 
@@ -116,6 +118,36 @@ When in doubt about what tier an outcome belongs to, find the lowest tier whose 
 
 ---
 
+## Tier T7 — Multi-receipt consensus
+
+**Contract**: the dimension has 3 or more outcomes at T5 or higher, and ALL of them currently pass with evidence fresher than 7 days.
+
+**What proves it**: the derived-score engine walks the tier ladder. At T7, it checks that the perTier counts show 3+ outcomes at T5+ with `allPassing: true`. A single T7 outcome declaration is necessary but not sufficient — the breadth of depth evidence must exist.
+
+**What an agent can fake**: nothing. The outcomes must execute and produce real evidence files. The 3-outcome minimum prevents gaming with one trivial test.
+
+**Practical use**: this is the "9.0" tier. A dim at T7 has been proven from multiple angles — smoke tests, benchmarks, and integration tests all pass, all fresh. Most well-maintained dims should be able to reach T7 with sustained effort.
+
+**Score cap**: 9.0. **Freshness window**: 7 days.
+
+---
+
+## Tier T8 — Live verification
+
+**Contract**: all outcomes are fresh (≤24 hours) AND the outcome uses `kind: 'telemetry'` with live production evidence. This is the "ran it today" tier.
+
+**What proves it**: T8 outcomes must use `kind: 'telemetry'`. The evidence freshness window is 24 hours — if you didn't run validation today, T8 evidence is stale and the score decays.
+
+**What an agent can fake**: nothing, if the telemetry source is external.
+
+**Practical use**: this is the "9.5" tier. Reserved for dims with genuine live production verification. Most dims will cap at T7. T8 is for mission-critical capabilities where same-day validation matters.
+
+**Score cap**: 9.5. **Freshness window**: 24 hours.
+
+> **10.0** remains human-curated. No tier unlocks it. It represents sustained excellence across multi-receipt + live verification + external benchmark success, confirmed by the project owner.
+
+---
+
 ## What the substrate enforces automatically (the gates)
 
 The substrate does not trust outcome declarations. It runs harden checks on every outcome at declaration time:
@@ -125,6 +157,8 @@ The substrate does not trust outcome declarations. It runs harden checks on ever
 3. **T4+ outcomes** must coexist with at least one snapshot-test outcome on the same dim.
 4. **T5+ outcomes** must use `kind: 'shell'` with a command that invokes a recognized external benchmark, OR `kind: 'external-benchmark'` (registered).
 5. **T6 outcomes** must use `kind: 'telemetry'` with a registered telemetry source.
+6. **T7 outcomes** require 3+ sibling outcomes at T5+ declared on the same dim (`validateOutcomeForTier`).
+7. **T8 outcomes** must use `kind: 'telemetry'` (live verification requires real production evidence).
 
 These gates are deterministic. An agent cannot game them by writing words; only by writing code that satisfies them.
 
