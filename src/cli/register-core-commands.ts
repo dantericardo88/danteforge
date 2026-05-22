@@ -874,8 +874,25 @@ program
   });
 
 program
+  .command('score-audit')
+  .description('Completion integrity audit: independently verify every dimension score against real evidence, apply 10-tier caps')
+  .option('--dimension <id>', 'Audit only this dimension id')
+  .option('--apply', 'Write capped scores back to matrix.json (default: dry-run)')
+  .option('--skip-cap-tests', 'Skip running capability_test commands (faster, less reliable)')
+  .option('--json', 'Emit JSON summary')
+  .action(async (opts) => {
+    const { runScoreAudit } = await import('./commands/score-audit.js');
+    await runScoreAudit({
+      dimension: opts.dimension,
+      apply: opts.apply ?? false,
+      skipCapTests: opts.skipCapTests ?? false,
+      json: opts.json ?? false,
+    });
+  });
+
+program
   .command('harvest-forge')
-  .description('Compounding OSS intelligence loop: discover â†’ extract â†’ implement â†’ verify â†’ repeat')
+  .description('Compounding OSS intelligence loop: discover -> extract -> implement -> verify -> repeat')
   .option('--max-cycles <n>', 'Max iteration cycles (default: 10)', '10')
   .option('--target <score>', 'Target convergence score 0-10 (default: 9.0)', '9.0')
   .option('--auto', 'Auto-approve all cycles without human checkpoint')
