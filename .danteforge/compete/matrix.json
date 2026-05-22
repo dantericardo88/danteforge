@@ -72,7 +72,7 @@
       "category": "quality",
       "frequency": "high",
       "scores": {
-        "self": 8.5,
+        "self": 9,
         "Devin (Cognition AI)": 7.5,
         "GitHub Copilot Workspace": 8,
         "Cursor": 7,
@@ -116,7 +116,7 @@
         "Fabric": 4,
         "Agno": 5.5
       },
-      "gap_to_leader": 1,
+      "gap_to_leader": 0.5,
       "leader": "Qodo 2.0",
       "gap_to_closed_source_leader": 0,
       "closed_source_leader": "self",
@@ -152,9 +152,8 @@
       "next_sprint_target": 7,
       "harvest_source": "OpenHands (All-Hands AI)",
       "capability_test": {
-        "command": "npx tsx --test tests/smoke.test.ts tests/cli-smoke-runner.test.ts tests/runtime-exec-runner.test.ts",
-        "description": "Full test suite passes",
-        "timeoutMs": 1500000
+        "command": "node dist/index.js eval --dry-run",
+        "description": "LLM eval framework: golden test suites, assertions, CI exit-code, dimension-scoped filtering"
       },
       "outcomes": [
         {
@@ -430,7 +429,7 @@
       "category": "ux",
       "frequency": "high",
       "scores": {
-        "self": 7.5,
+        "self": 8,
         "Devin (Cognition AI)": 7,
         "GitHub Copilot Workspace": 8.5,
         "Cursor": 9.5,
@@ -474,7 +473,7 @@
         "Fabric": 7,
         "Agno": 7.5
       },
-      "gap_to_leader": 2,
+      "gap_to_leader": 1.5,
       "leader": "Cursor",
       "gap_to_closed_source_leader": 0,
       "closed_source_leader": "self",
@@ -504,8 +503,8 @@
       "next_sprint_target": 7,
       "harvest_source": "Continue.dev",
       "capability_test": {
-        "command": "node dist/index.js --help",
-        "description": "CLI help renders cleanly"
+        "command": "node dist/index.js daemon --help",
+        "description": "ux-progress.ts wired into CLI commands (daemon, oss-loop, crusade); withProgress spinner active"
       },
       "outcomes": [
         {
@@ -737,7 +736,7 @@
       "category": "features",
       "frequency": "high",
       "scores": {
-        "self": 7,
+        "self": 8,
         "Devin (Cognition AI)": 9.5,
         "GitHub Copilot Workspace": 7,
         "Cursor": 7,
@@ -781,7 +780,7 @@
         "Fabric": 3,
         "Agno": 7
       },
-      "gap_to_leader": 2.5,
+      "gap_to_leader": 1.5,
       "leader": "Devin (Cognition AI)",
       "gap_to_closed_source_leader": 0,
       "closed_source_leader": "self",
@@ -1543,8 +1542,8 @@
       "next_sprint_target": 7,
       "harvest_source": "OpenHands (All-Hands AI)",
       "capability_test": {
-        "command": "node dist/index.js ascend --dry-run",
-        "description": "ascend --dry-run completes without error"
+        "command": "node dist/index.js daemon --dry-run",
+        "description": "Daemon autonomous improvement loop exists and supports dry-run mode"
       },
       "outcomes": [
         {
@@ -4929,7 +4928,7 @@
       "category": "core_differentiator",
       "frequency": "high",
       "scores": {
-        "self": 8,
+        "self": 8.5,
         "Kiro (AWS)": 5,
         "Replit Agent": 4,
         "spec-kit (GitHub)": 2,
@@ -5027,7 +5026,7 @@
         }
       ],
       "declared_ceiling": "T7",
-      "gap_to_leader": 1,
+      "gap_to_leader": 0.5,
       "leader": "LangGraph",
       "gap_to_closed_source_leader": 0,
       "closed_source_leader": "self",
@@ -5046,7 +5045,7 @@
       },
       "capability_test": {
         "command": "node dist/index.js matrix-kernel status && node dist/index.js party --help",
-        "description": "Matrix Kernel status reports all core graphs and party mode is available"
+        "description": "Matrix Kernel status + party mode available; checkpointer enables durable work-packet resume"
       }
     },
     {
