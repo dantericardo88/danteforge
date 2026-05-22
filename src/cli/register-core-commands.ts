@@ -843,6 +843,37 @@ program
   });
 
 program
+  .command('eval')
+  .description('LLM output evaluation — run a golden test suite against the configured LLM, exit 1 on failure (CI-ready)')
+  .option('--suite <file>', 'Path to eval suite JSON file (default: built-in smoke suite)')
+  .option('--dim <id>', 'Filter cases to a specific matrix dimension')
+  .option('--ci', 'Exit 1 if any test fails (for CI pipelines)')
+  .option('--dry-run', 'Show plan without calling LLM')
+  .action(async (opts) => {
+    const { runEval } = await import('./commands/eval.js');
+    await runEval({ suiteFile: opts.suite, dimension: opts.dim, ci: opts.ci, dryRun: opts.dryRun });
+  });
+
+program
+  .command('daemon')
+  .description('Autonomous improvement daemon — runs crusade/autoresearch continuously until score target reached or time limit hit')
+  .option('--strategy <s>', 'crusade | autoresearch | adaptive (default: adaptive)', 'adaptive')
+  .option('--target <n>', 'Score target to stop at (default: 9.0)', '9.0')
+  .option('--time <m>', 'Wall-clock time limit in minutes (default: 240)', '240')
+  .option('--interval <m>', 'Minutes between passes (default: 5)', '5')
+  .option('--dry-run', 'Show plan without executing')
+  .action(async (opts) => {
+    const { runDaemon } = await import('./commands/daemon.js');
+    await runDaemon({
+      strategy: opts.strategy,
+      target: parseFloat(opts.target),
+      timeLimitMinutes: parseInt(opts.time, 10),
+      intervalMinutes: parseInt(opts.interval, 10),
+      dryRun: opts.dryRun,
+    });
+  });
+
+program
   .command('harvest-forge')
   .description('Compounding OSS intelligence loop: discover â†’ extract â†’ implement â†’ verify â†’ repeat')
   .option('--max-cycles <n>', 'Max iteration cycles (default: 10)', '10')

@@ -9,6 +9,7 @@ import path from 'node:path';
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import { logger } from '../../core/logger.js';
+import { withProgress } from '../../core/ux-progress.js';
 import { loadMatrix, computeGapPriority } from '../../core/compete-matrix.js';
 import {
   loadRegistry,
@@ -305,7 +306,7 @@ export async function ossLoop(options: OssLoopOptions = {}): Promise<OssLoopResu
       }
 
       if (!onDisk) {
-        const ok = await clone(candidate.url, dest);
+        const ok = await withProgress(`Cloning ${candidate.name}`, () => clone(candidate.url, dest));
         if (!ok) {
           passResult.failed.push(candidate.name);
           continue;

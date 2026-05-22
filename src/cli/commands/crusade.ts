@@ -6,6 +6,7 @@
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import { logger } from '../../core/logger.js';
+import { withProgress } from '../../core/ux-progress.js';
 import { loadMatrix, computeGapPriority, type MatrixDimension, type CompeteMatrix } from '../../core/compete-matrix.js';
 
 // ── Types ─────────────────────────────────────────────────────────────────────
@@ -207,7 +208,7 @@ export async function runCrusade(options: CrusadeOptions): Promise<CrusadeResult
 
     // Phase B: Forge wave toward goal
     logger.info(`[crusade]   Running forge wave...`);
-    const forgeResult = await runForgeWave(options.goal, cwd);
+    const forgeResult = await withProgress('forge wave', () => runForgeWave(options.goal, cwd));
     if (!forgeResult.success) {
       logger.warn(`[crusade]   Forge wave failed: ${forgeResult.error ?? 'unknown'}`);
     }
@@ -282,6 +283,12 @@ export interface FrontierCrusadeOptions {
   _getScore?: (dimension: string, cwd: string) => Promise<number>;
   _runAutoResearch?: (dimensionId: string, goal: string, cwd: string) => Promise<void>;
   _runVerifyCap?: (dimensionId: string, cwd: string) => Promise<boolean>;
+  /** Run `danteforge validate <dimId> --force-cold` to write OutcomeEvidenceEntry receipts. */
+  _runValidate?: (dimId: string, cwd: string) => Promise<void>;
+  /** Run `node scripts/evidence-rescore.mjs` to update matrix.json from evidence files. */
+  _runEvidenceRescore?: (cwd: string) => Promise<void>;
+  /** Emit a Time Machine causal commit. null disables (test isolation). */
+  _createTimeMachineCommit?: ((opts: { cwd: string; paths: string[]; label: string }) => Promise<unknown>) | null;
   _loadMatrix?: (cwd: string) => Promise<CompeteMatrix | null>;
   _writeFile?: (p: string, content: string) => Promise<void>;
   /**
@@ -300,7 +307,8 @@ export interface DimFrontierResult {
   finalScore: number;
   cyclesRun: number;
   autoresearchRuns: number;
-  status: 'FRONTIER_REACHED' | 'AT_CEILING' | 'MAX_CYCLES' | 'FAILED';
+  capabilityTestResult?: 'PASS' | 'FAIL' | 'NOT_DECLARED';
+  status: 'FRONTIER_REACHED' | 'AT_CEILING' | 'MAX_CYCLES' | 'FAILED' | 'CAPABILITY_TEST_BLOCKED';
 }
 
 export interface FrontierCrusadeResult {
@@ -341,6 +349,40 @@ async function defaultRunVerifyCap(dimensionId: string, cwd: string): Promise<bo
   }
 }
 
+async function defaultRunValidate(dimId: string, cwd: string): Promise<void> {
+  const { execFile } = await import('node:child_process');
+  const { promisify } = await import('node:util');
+  await promisify(execFile)('danteforge', ['validate', dimId, '--force-cold'], { cwd, timeout: 120_000 });
+}
+
+async function defaultRunEvidenceRescore(cwd: string): Promise<void> {
+  const { execFile } = await import('node:child_process');
+  const { promisify } = await import('node:util');
+  await promisify(execFile)('node', ['scripts/evidence-rescore.mjs'], { cwd, timeout: 60_000 });
+}
+
+// Fix A gate (Scoring Doctrine Rule 10): runs the dimension's capability_test command.
+// If it exits non-zero AND the evidence-derived score > 5.0, the score is clamped to 5.0.
+// This cannot be overridden by outcomes — structural code correctness is the gate.
+async function runFixAGate(
+  dim: MatrixDimension,
+  score: number,
+  cwd: string,
+): Promise<{ score: number; result: 'PASS' | 'FAIL' | 'NOT_DECLARED' }> {
+  const dimAny = dim as unknown as Record<string, unknown>;
+  const capTest = dimAny['capability_test'] as { command?: string } | undefined;
+  const noCapTest = dimAny['no_capability_test'] as boolean | undefined;
+  if (noCapTest || !capTest?.command) return { score, result: 'NOT_DECLARED' };
+  try {
+    const { exec } = await import('node:child_process');
+    const { promisify } = await import('node:util');
+    await promisify(exec)(capTest.command, { cwd, timeout: 60_000 });
+    return { score, result: 'PASS' };
+  } catch {
+    return { score: Math.min(score, 5.0), result: 'FAIL' };
+  }
+}
+
 function buildFrontierReport(results: DimFrontierResult[], goal: string): string {
   const lines: string[] = [
     '# FRONTIER_CRUSADE_REPORT.md',
@@ -357,6 +399,7 @@ function buildFrontierReport(results: DimFrontierResult[], goal: string): string
     lines.push(`- Status: **${r.status}**`);
     lines.push(`- Score: ${r.initialScore.toFixed(2)} → ${r.finalScore.toFixed(2)} (Δ${delta >= 0 ? '+' : ''}${delta.toFixed(2)})`);
     lines.push(`- Cycles: ${r.cyclesRun} | Autoresearch runs: ${r.autoresearchRuns}`);
+    if (r.capabilityTestResult) lines.push(`- Fix A (capability_test): ${r.capabilityTestResult}`);
     lines.push('');
   }
   const reached = results.filter(r => r.status === 'FRONTIER_REACHED').length;
@@ -378,11 +421,16 @@ async function runDimensionFrontierLoop(
   const runAutoResearch = options._runAutoResearch ?? defaultRunAutoResearch;
   const runVerifyCap = options._runVerifyCap ?? defaultRunVerifyCap;
 
+  const runValidate = options._runValidate ?? defaultRunValidate;
+  const runEvidenceRescore = options._runEvidenceRescore ?? defaultRunEvidenceRescore;
+
   const initialScore = dim.scores['self'] ?? 0;
   let score = initialScore;
   let consecutiveNoProgress = 0;
+  let consecutiveCapTestFail = 0;
   let autoresearchRuns = 0;
   let cycle = 0;
+  let lastCapResult: 'PASS' | 'FAIL' | 'NOT_DECLARED' = 'NOT_DECLARED';
 
   logger.info(`[frontier:${dim.id}] Start ${score.toFixed(2)} → target ${target}`);
 
@@ -393,11 +441,51 @@ async function runDimensionFrontierLoop(
       logger.warn(`[frontier:${dim.id}] Inferno failed cycle ${cycle}: ${err}`);
     }
 
-    const newScore = await getScore(dim.id, cwd);
+    // Evidence pipeline (Scoring Doctrine Rules 9–13):
+    // validate writes receipts → evidence-rescore updates matrix → Fix A gate clamps if needed.
+    try { await runValidate(dim.id, cwd); } catch (err) {
+      logger.warn(`[frontier:${dim.id}] validate failed cycle ${cycle}: ${err}`);
+    }
+    try { await runEvidenceRescore(cwd); } catch (err) {
+      logger.warn(`[frontier:${dim.id}] evidence-rescore failed cycle ${cycle}: ${err}`);
+    }
+
+    const rawScore = await getScore(dim.id, cwd);
+    const { score: cappedScore, result: capResult } = await runFixAGate(dim, rawScore, cwd);
+    lastCapResult = capResult;
+
+    if (capResult === 'FAIL') {
+      logger.warn(`[frontier:${dim.id}] Fix A: capability_test FAIL — clamping ${rawScore.toFixed(2)} → ${cappedScore.toFixed(2)}`);
+      consecutiveCapTestFail++;
+      if (consecutiveCapTestFail >= 2) {
+        logger.error(`[frontier:${dim.id}] CAPABILITY_TEST_BLOCKED — 2 consecutive Fix A failures. Fix the code, not the score.`);
+        return { dimensionId: dim.id, label: dim.label, initialScore, finalScore: cappedScore, cyclesRun: cycle, autoresearchRuns, capabilityTestResult: 'FAIL', status: 'CAPABILITY_TEST_BLOCKED' };
+      }
+    } else {
+      consecutiveCapTestFail = 0;
+    }
+
+    // Time Machine commit — mandatory before accepting any score (Rule 13).
+    try {
+      const tmFn = options._createTimeMachineCommit === null ? null
+        : options._createTimeMachineCommit
+        ?? (await import('../../core/time-machine.js')).createTimeMachineCommit;
+      if (tmFn) {
+        await tmFn({
+          cwd,
+          paths: ['.danteforge/outcome-evidence', '.danteforge/harden-receipts'],
+          label: `crusade/cycle-${cycle}/${dim.id}`,
+        });
+      }
+    } catch (err) {
+      logger.warn(`[frontier:${dim.id}] Time Machine commit failed cycle ${cycle}: ${err}`);
+    }
+
+    const newScore = cappedScore;
     const delta = newScore - score;
     const prev = score;
     score = newScore;
-    logger.info(`[frontier:${dim.id}] Cycle ${cycle}: ${prev.toFixed(2)} → ${score.toFixed(2)} (Δ${delta >= 0 ? '+' : ''}${delta.toFixed(2)})`);
+    logger.info(`[frontier:${dim.id}] Cycle ${cycle}: ${prev.toFixed(2)} → ${score.toFixed(2)} (Δ${delta >= 0 ? '+' : ''}${delta.toFixed(2)}) cap=${capResult}`);
 
     if (delta < stallDelta) {
       consecutiveNoProgress++;
@@ -419,27 +507,30 @@ async function runDimensionFrontierLoop(
     // Ceiling check before target: dims capped below target report AT_CEILING, not FRONTIER_REACHED
     if (dim.ceiling !== undefined && score >= dim.ceiling) {
       logger.info(`[frontier:${dim.id}] At natural ceiling (${score.toFixed(2)} >= ${dim.ceiling})`);
-      return { dimensionId: dim.id, label: dim.label, initialScore, finalScore: score, cyclesRun: cycle, autoresearchRuns, status: 'AT_CEILING' };
+      return { dimensionId: dim.id, label: dim.label, initialScore, finalScore: score, cyclesRun: cycle, autoresearchRuns, capabilityTestResult: lastCapResult, status: 'AT_CEILING' };
     }
 
     if (score >= target) {
+      // Fix A must be PASS (or NOT_DECLARED) before declaring FRONTIER_REACHED
+      if (capResult === 'FAIL') {
+        logger.warn(`[frontier:${dim.id}] Score ${score.toFixed(2)} >= target but capability_test FAIL — not declaring frontier`);
+        continue;
+      }
       if (options.verifyCap) {
         const capOk = await runVerifyCap(dim.id, cwd);
         if (!capOk) {
-          logger.warn(`[frontier:${dim.id}] Score ${score.toFixed(2)} >= target but capability_test failed — continuing`);
+          logger.warn(`[frontier:${dim.id}] Score ${score.toFixed(2)} >= target but matrix-kernel verify-capability failed — continuing`);
           consecutiveNoProgress++;
           continue;
         }
-        logger.success(`[frontier:${dim.id}] Frontier reached and capability verified! ${score.toFixed(2)}`);
-      } else {
-        logger.success(`[frontier:${dim.id}] Frontier reached! ${score.toFixed(2)} >= ${target}`);
       }
-      return { dimensionId: dim.id, label: dim.label, initialScore, finalScore: score, cyclesRun: cycle, autoresearchRuns, status: 'FRONTIER_REACHED' };
+      logger.success(`[frontier:${dim.id}] FRONTIER_REACHED — ${score.toFixed(2)} evidence-verified`);
+      return { dimensionId: dim.id, label: dim.label, initialScore, finalScore: score, cyclesRun: cycle, autoresearchRuns, capabilityTestResult: lastCapResult, status: 'FRONTIER_REACHED' };
     }
   }
 
   logger.warn(`[frontier:${dim.id}] Max cycles (${maxDimCycles}) reached. Final: ${score.toFixed(2)}`);
-  return { dimensionId: dim.id, label: dim.label, initialScore, finalScore: score, cyclesRun: cycle, autoresearchRuns, status: 'MAX_CYCLES' };
+  return { dimensionId: dim.id, label: dim.label, initialScore, finalScore: score, cyclesRun: cycle, autoresearchRuns, capabilityTestResult: lastCapResult, status: 'MAX_CYCLES' };
 }
 
 async function runFrontierPass(options: FrontierCrusadeOptions): Promise<FrontierCrusadeResult> {
