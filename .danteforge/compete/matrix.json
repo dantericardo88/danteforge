@@ -14,7 +14,19 @@
     "SWE-Agent (Princeton)",
     "LangChain Agents",
     "Dagger",
-    "re_gent"
+    "re_gent",
+    "LangGraph",
+    "Pydantic-AI",
+    "SmolaGents",
+    "Browser-use",
+    "DSPy",
+    "AgentOps",
+    "Helicone",
+    "Composio",
+    "LiteLLM",
+    "Promptfoo",
+    "Fabric",
+    "Agno"
   ],
   "competitors_closed_source": [
     "Kiro (AWS)",
@@ -32,7 +44,19 @@
     "SWE-Agent (Princeton)",
     "LangChain Agents",
     "Dagger",
-    "re_gent"
+    "re_gent",
+    "LangGraph",
+    "Pydantic-AI",
+    "SmolaGents",
+    "Browser-use",
+    "DSPy",
+    "AgentOps",
+    "Helicone",
+    "Composio",
+    "LiteLLM",
+    "Promptfoo",
+    "Fabric",
+    "Agno"
   ],
   "lastUpdated": "2026-05-22T02:16:19.381Z",
   "overallSelfScore": 9,
@@ -48,7 +72,7 @@
       "category": "quality",
       "frequency": "high",
       "scores": {
-        "self": 9,
+        "self": 8.5,
         "Devin (Cognition AI)": 7.5,
         "GitHub Copilot Workspace": 8,
         "Cursor": 7,
@@ -78,14 +102,26 @@
         "Kilo Code": 6.5,
         "re_gent": 8,
         "spec-kit (GitHub)": 5,
-        "BMad-METHOD": 5
+        "BMad-METHOD": 5,
+        "LangGraph": 7,
+        "Pydantic-AI": 8,
+        "SmolaGents": 6,
+        "Browser-use": 7,
+        "DSPy": 7.5,
+        "AgentOps": 5,
+        "Helicone": 4,
+        "Composio": 4,
+        "LiteLLM": 4,
+        "Promptfoo": 9.5,
+        "Fabric": 4,
+        "Agno": 5.5
       },
-      "gap_to_leader": 0,
-      "leader": "self",
+      "gap_to_leader": 1,
+      "leader": "Qodo 2.0",
       "gap_to_closed_source_leader": 0,
       "closed_source_leader": "self",
-      "gap_to_oss_leader": 0,
-      "oss_leader": "self",
+      "gap_to_oss_leader": 1,
+      "oss_leader": "Promptfoo",
       "status": "partially-verified-capability",
       "sprint_history": [
         {
@@ -258,14 +294,15 @@
         "Kilo Code": 7.5,
         "re_gent": 7,
         "spec-kit (GitHub)": 5.5,
-        "BMad-METHOD": 5
+        "BMad-METHOD": 5,
+        "Pydantic-AI": 8.5
       },
-      "gap_to_leader": 0,
-      "leader": "self",
+      "gap_to_leader": 0.5,
+      "leader": "Cursor",
       "gap_to_closed_source_leader": 0,
       "closed_source_leader": "self",
-      "gap_to_oss_leader": 0,
-      "oss_leader": "self",
+      "gap_to_oss_leader": -0.5,
+      "oss_leader": "Pydantic-AI",
       "status": "partially-verified-capability",
       "sprint_history": [
         {
@@ -393,7 +430,7 @@
       "category": "ux",
       "frequency": "high",
       "scores": {
-        "self": 9,
+        "self": 7.5,
         "Devin (Cognition AI)": 7,
         "GitHub Copilot Workspace": 8.5,
         "Cursor": 9.5,
@@ -423,14 +460,26 @@
         "Kilo Code": 7.5,
         "re_gent": 6,
         "spec-kit (GitHub)": 4.5,
-        "BMad-METHOD": 4
+        "BMad-METHOD": 4,
+        "LangGraph": 7.5,
+        "Pydantic-AI": 8.5,
+        "SmolaGents": 7.5,
+        "Browser-use": 7,
+        "DSPy": 6,
+        "AgentOps": 8,
+        "Helicone": 7.5,
+        "Composio": 7.5,
+        "LiteLLM": 7,
+        "Promptfoo": 8,
+        "Fabric": 7,
+        "Agno": 7.5
       },
-      "gap_to_leader": 0,
-      "leader": "self",
+      "gap_to_leader": 2,
+      "leader": "Cursor",
       "gap_to_closed_source_leader": 0,
       "closed_source_leader": "self",
-      "gap_to_oss_leader": 0,
-      "oss_leader": "self",
+      "gap_to_oss_leader": 1,
+      "oss_leader": "Pydantic-AI",
       "status": "partially-verified-capability",
       "sprint_history": [
         {
@@ -530,7 +579,7 @@
       "category": "quality",
       "frequency": "high",
       "scores": {
-        "self": 9,
+        "self": 8.5,
         "Devin (Cognition AI)": 9,
         "GitHub Copilot Workspace": 8,
         "Cursor": 8.5,
@@ -560,14 +609,18 @@
         "Kilo Code": 7,
         "re_gent": 7.5,
         "spec-kit (GitHub)": 5,
-        "BMad-METHOD": 5.5
+        "BMad-METHOD": 5.5,
+        "LangGraph": 8,
+        "Pydantic-AI": 7.5,
+        "Browser-use": 6.5,
+        "Agno": 7
       },
-      "gap_to_leader": 0,
-      "leader": "self",
+      "gap_to_leader": 0.5,
+      "leader": "Devin (Cognition AI)",
       "gap_to_closed_source_leader": 0,
       "closed_source_leader": "self",
       "gap_to_oss_leader": 0,
-      "oss_leader": "self",
+      "oss_leader": "OpenHands (All-Hands AI)",
       "status": "partially-verified-capability",
       "sprint_history": [
         {
@@ -684,7 +737,7 @@
       "category": "features",
       "frequency": "high",
       "scores": {
-        "self": 9,
+        "self": 7,
         "Devin (Cognition AI)": 9.5,
         "GitHub Copilot Workspace": 7,
         "Cursor": 7,
@@ -714,14 +767,26 @@
         "Kilo Code": 6.5,
         "re_gent": 7.5,
         "spec-kit (GitHub)": 3,
-        "BMad-METHOD": 4.5
+        "BMad-METHOD": 4.5,
+        "LangGraph": 7.5,
+        "Pydantic-AI": 7,
+        "SmolaGents": 8.5,
+        "Browser-use": 8,
+        "DSPy": 5,
+        "AgentOps": 2,
+        "Helicone": 2,
+        "Composio": 6,
+        "LiteLLM": 2,
+        "Promptfoo": 2,
+        "Fabric": 3,
+        "Agno": 7
       },
-      "gap_to_leader": 0,
-      "leader": "self",
+      "gap_to_leader": 2.5,
+      "leader": "Devin (Cognition AI)",
       "gap_to_closed_source_leader": 0,
       "closed_source_leader": "self",
-      "gap_to_oss_leader": 0,
-      "oss_leader": "self",
+      "gap_to_oss_leader": 2,
+      "oss_leader": "OpenHands (All-Hands AI)",
       "status": "partially-verified-capability",
       "sprint_history": [
         {
@@ -1589,8 +1654,8 @@
       "leader": "self",
       "gap_to_closed_source_leader": 0,
       "closed_source_leader": "self",
-      "gap_to_oss_leader": 0,
-      "oss_leader": "self",
+      "gap_to_oss_leader": -1,
+      "oss_leader": "OpenHands (All-Hands AI)",
       "status": "partially-verified-capability",
       "sprint_history": [
         {
@@ -1738,8 +1803,8 @@
       "leader": "self",
       "gap_to_closed_source_leader": 0,
       "closed_source_leader": "self",
-      "gap_to_oss_leader": 0,
-      "oss_leader": "self",
+      "gap_to_oss_leader": -1,
+      "oss_leader": "OpenHands (All-Hands AI)",
       "status": "partially-verified-capability",
       "sprint_history": [
         {
@@ -1875,8 +1940,8 @@
       "leader": "self",
       "gap_to_closed_source_leader": 0,
       "closed_source_leader": "self",
-      "gap_to_oss_leader": 0,
-      "oss_leader": "self",
+      "gap_to_oss_leader": -1.5,
+      "oss_leader": "OpenHands (All-Hands AI)",
       "status": "partially-verified-capability",
       "sprint_history": [
         {
@@ -2294,8 +2359,8 @@
       "leader": "self",
       "gap_to_closed_source_leader": 0,
       "closed_source_leader": "self",
-      "gap_to_oss_leader": 0,
-      "oss_leader": "self",
+      "gap_to_oss_leader": -1,
+      "oss_leader": "LangChain Agents",
       "status": "partially-verified-capability",
       "sprint_history": [
         {
@@ -2401,7 +2466,7 @@
       "category": "features",
       "frequency": "medium",
       "scores": {
-        "self": 9,
+        "self": 8,
         "Devin (Cognition AI)": 8.5,
         "GitHub Copilot Workspace": 5,
         "Cursor": 4.5,
@@ -2433,12 +2498,12 @@
         "spec-kit (GitHub)": 3,
         "BMad-METHOD": 3.5
       },
-      "gap_to_leader": 0,
-      "leader": "self",
+      "gap_to_leader": 0.5,
+      "leader": "Devin (Cognition AI)",
       "gap_to_closed_source_leader": 0,
       "closed_source_leader": "self",
       "gap_to_oss_leader": 0,
-      "oss_leader": "self",
+      "oss_leader": "OpenHands (All-Hands AI)",
       "status": "partially-verified-capability",
       "sprint_history": [
         {
@@ -2574,14 +2639,15 @@
         "Kilo Code": 3.5,
         "re_gent": 4.5,
         "spec-kit (GitHub)": 7,
-        "BMad-METHOD": 6.5
+        "BMad-METHOD": 6.5,
+        "LangGraph": 7.5
       },
       "gap_to_leader": 0,
       "leader": "self",
       "gap_to_closed_source_leader": 0,
       "closed_source_leader": "self",
-      "gap_to_oss_leader": 0,
-      "oss_leader": "self",
+      "gap_to_oss_leader": -1.5,
+      "oss_leader": "LangGraph",
       "status": "partially-verified-capability",
       "sprint_history": [
         {
@@ -2717,14 +2783,15 @@
         "Kilo Code": 5.5,
         "re_gent": 6.5,
         "spec-kit (GitHub)": 6,
-        "BMad-METHOD": 6
+        "BMad-METHOD": 6,
+        "LangGraph": 8
       },
       "gap_to_leader": 0,
       "leader": "self",
       "gap_to_closed_source_leader": 0,
       "closed_source_leader": "self",
-      "gap_to_oss_leader": 0,
-      "oss_leader": "self",
+      "gap_to_oss_leader": -1,
+      "oss_leader": "LangGraph",
       "status": "partially-verified-capability",
       "sprint_history": [
         {
@@ -2872,8 +2939,8 @@
       "leader": "self",
       "gap_to_closed_source_leader": 0,
       "closed_source_leader": "self",
-      "gap_to_oss_leader": 0,
-      "oss_leader": "self",
+      "gap_to_oss_leader": -1.5,
+      "oss_leader": "Aider",
       "status": "partially-verified-capability",
       "sprint_history": [
         {
@@ -2973,7 +3040,7 @@
       "category": "features",
       "frequency": "medium",
       "scores": {
-        "self": 9,
+        "self": 8.5,
         "Devin (Cognition AI)": 5.5,
         "GitHub Copilot Workspace": 7.5,
         "Cursor": 7.5,
@@ -3003,14 +3070,25 @@
         "Kilo Code": 6,
         "re_gent": 5.5,
         "spec-kit (GitHub)": 3,
-        "BMad-METHOD": 3
+        "BMad-METHOD": 3,
+        "LangGraph": 5,
+        "Pydantic-AI": 5.5,
+        "SmolaGents": 4,
+        "DSPy": 3,
+        "AgentOps": 8.5,
+        "Helicone": 9,
+        "Composio": 2,
+        "LiteLLM": 8.5,
+        "Promptfoo": 4,
+        "Fabric": 3,
+        "Agno": 4
       },
-      "gap_to_leader": 0,
-      "leader": "self",
+      "gap_to_leader": 0.5,
+      "leader": "Helicone",
       "gap_to_closed_source_leader": 0,
       "closed_source_leader": "self",
-      "gap_to_oss_leader": 0,
-      "oss_leader": "self",
+      "gap_to_oss_leader": 0.5,
+      "oss_leader": "Helicone",
       "status": "partially-verified-capability",
       "sprint_history": [
         {
@@ -3122,7 +3200,7 @@
       "category": "features",
       "frequency": "medium",
       "scores": {
-        "self": 9,
+        "self": 8.5,
         "Devin (Cognition AI)": 6.5,
         "GitHub Copilot Workspace": 5,
         "Cursor": 5.5,
@@ -3152,14 +3230,25 @@
         "Kilo Code": 5,
         "re_gent": 6,
         "spec-kit (GitHub)": 3,
-        "BMad-METHOD": 3.5
+        "BMad-METHOD": 3.5,
+        "LangGraph": 3,
+        "Pydantic-AI": 3.5,
+        "SmolaGents": 2,
+        "DSPy": 8.5,
+        "AgentOps": 4,
+        "Helicone": 2,
+        "Composio": 2,
+        "LiteLLM": 2,
+        "Promptfoo": 5.5,
+        "Fabric": 2,
+        "Agno": 3
       },
       "gap_to_leader": 0,
       "leader": "self",
       "gap_to_closed_source_leader": 0,
       "closed_source_leader": "self",
       "gap_to_oss_leader": 0,
-      "oss_leader": "self",
+      "oss_leader": "DSPy",
       "status": "partially-verified-capability",
       "sprint_history": [
         {
@@ -3265,7 +3354,7 @@
       "category": "features",
       "frequency": "low",
       "scores": {
-        "self": 9,
+        "self": 8.5,
         "Devin (Cognition AI)": 5,
         "GitHub Copilot Workspace": 8,
         "Cursor": 7,
@@ -3295,14 +3384,26 @@
         "Kilo Code": 6.5,
         "re_gent": 5.5,
         "spec-kit (GitHub)": 4,
-        "BMad-METHOD": 3.5
+        "BMad-METHOD": 3.5,
+        "LangGraph": 4,
+        "Pydantic-AI": 7.5,
+        "SmolaGents": 7,
+        "Browser-use": 6,
+        "DSPy": 2,
+        "AgentOps": 3,
+        "Helicone": 3,
+        "Composio": 9,
+        "LiteLLM": 6,
+        "Promptfoo": 2,
+        "Fabric": 2,
+        "Agno": 8
       },
-      "gap_to_leader": 0,
-      "leader": "self",
+      "gap_to_leader": 1,
+      "leader": "Claude Code",
       "gap_to_closed_source_leader": 0,
       "closed_source_leader": "self",
-      "gap_to_oss_leader": 0,
-      "oss_leader": "self",
+      "gap_to_oss_leader": 0.5,
+      "oss_leader": "Composio",
       "status": "partially-verified-capability",
       "sprint_history": [
         {
@@ -3432,8 +3533,8 @@
       "leader": "self",
       "gap_to_closed_source_leader": 0,
       "closed_source_leader": "self",
-      "gap_to_oss_leader": 0,
-      "oss_leader": "self",
+      "gap_to_oss_leader": -2,
+      "oss_leader": "AutoGen (Microsoft)",
       "status": "structural-implementation",
       "sprint_history": [
         {
@@ -3571,8 +3672,8 @@
         "Kilo Code": 6,
         "re_gent": 6
       },
-      "gap_to_leader": 7.5,
-      "leader": "Aider",
+      "gap_to_leader": 8.5,
+      "leader": "Cursor",
       "gap_to_closed_source_leader": 7,
       "closed_source_leader": "Replit Agent",
       "gap_to_oss_leader": 7.5,
@@ -4357,7 +4458,7 @@
       "category": "reliability",
       "frequency": "high",
       "scores": {
-        "self": 9,
+        "self": 8.5,
         "Devin (Cognition AI)": 3,
         "GitHub Copilot Workspace": 3.5,
         "Cursor": 4,
@@ -4387,7 +4488,19 @@
         "Kilo Code": 2.5,
         "re_gent": 6.5,
         "spec-kit (GitHub)": 2,
-        "BMad-METHOD": 2.5
+        "BMad-METHOD": 2.5,
+        "LangGraph": 8,
+        "Pydantic-AI": 8.5,
+        "SmolaGents": 6,
+        "Browser-use": 7.5,
+        "DSPy": 5,
+        "AgentOps": 9,
+        "Helicone": 8,
+        "Composio": 5,
+        "LiteLLM": 7.5,
+        "Promptfoo": 6,
+        "Fabric": 4,
+        "Agno": 8.5
       },
       "status": "partially-verified-capability",
       "sprint_history": [],
@@ -4405,12 +4518,12 @@
         "src/core/agent-dag.ts",
         "src/core/subagent-isolator.ts"
       ],
-      "gap_to_leader": 0,
-      "leader": "self",
+      "gap_to_leader": 0.5,
+      "leader": "AgentOps",
       "gap_to_closed_source_leader": 0,
       "closed_source_leader": "self",
-      "gap_to_oss_leader": 0,
-      "oss_leader": "self",
+      "gap_to_oss_leader": 0.5,
+      "oss_leader": "AgentOps",
       "capability_test": {
         "command": "node -e \"import('./dist/sdk.js').then(m=>{if(!m.createTimeMachineCommit)process.exit(1)})\"",
         "description": "Time Machine entry-point loads from dist/sdk.js"
@@ -4508,7 +4621,14 @@
         "GitHub Copilot Workspace": 3,
         "GitHub Copilot CLI": 2,
         "Codex CLI (OpenAI)": 2.5,
-        "Gemini CLI (Google)": 2
+        "Gemini CLI (Google)": 2,
+        "LangGraph": 8.5,
+        "Pydantic-AI": 8.5,
+        "SmolaGents": 3,
+        "DSPy": 6.5,
+        "Promptfoo": 3,
+        "Fabric": 4,
+        "Agno": 7
       },
       "outcomes": [
         {
@@ -4568,8 +4688,8 @@
       "leader": "self",
       "gap_to_closed_source_leader": 0,
       "closed_source_leader": "self",
-      "gap_to_oss_leader": 0,
-      "oss_leader": "self",
+      "gap_to_oss_leader": -0.5,
+      "oss_leader": "LangGraph",
       "legacy_score": 0,
       "status": "partially-verified-capability",
       "evidence_integrity": {
@@ -4682,8 +4802,8 @@
       "leader": "self",
       "gap_to_closed_source_leader": 0,
       "closed_source_leader": "self",
-      "gap_to_oss_leader": 0,
-      "oss_leader": "self",
+      "gap_to_oss_leader": -5.5,
+      "oss_leader": "SWE-Agent (Princeton)",
       "legacy_score": 0,
       "status": "partially-verified-capability",
       "evidence_integrity": {
@@ -4784,8 +4904,8 @@
       "leader": "self",
       "gap_to_closed_source_leader": 0,
       "closed_source_leader": "self",
-      "gap_to_oss_leader": 0,
-      "oss_leader": "self",
+      "gap_to_oss_leader": -5,
+      "oss_leader": "BMad-METHOD",
       "legacy_score": 0,
       "status": "partially-verified-capability",
       "evidence_integrity": {
@@ -4809,7 +4929,7 @@
       "category": "core_differentiator",
       "frequency": "high",
       "scores": {
-        "self": 9,
+        "self": 8,
         "Kiro (AWS)": 5,
         "Replit Agent": 4,
         "spec-kit (GitHub)": 2,
@@ -4826,7 +4946,18 @@
         "re_gent": 5,
         "Devin (Cognition AI)": 6,
         "Cursor": 2,
-        "Claude Code": 3.5
+        "Claude Code": 3.5,
+        "LangGraph": 9,
+        "Pydantic-AI": 8,
+        "SmolaGents": 4,
+        "DSPy": 4,
+        "AgentOps": 3,
+        "Helicone": 2,
+        "Composio": 4,
+        "LiteLLM": 3,
+        "Promptfoo": 2,
+        "Fabric": 2,
+        "Agno": 8.5
       },
       "outcomes": [
         {
@@ -4896,12 +5027,12 @@
         }
       ],
       "declared_ceiling": "T7",
-      "gap_to_leader": 0,
-      "leader": "self",
+      "gap_to_leader": 1,
+      "leader": "LangGraph",
       "gap_to_closed_source_leader": 0,
       "closed_source_leader": "self",
-      "gap_to_oss_leader": 0,
-      "oss_leader": "self",
+      "gap_to_oss_leader": 1,
+      "oss_leader": "LangGraph",
       "legacy_score": 0,
       "status": "partially-verified-capability",
       "evidence_integrity": {
@@ -5002,8 +5133,8 @@
       "leader": "self",
       "gap_to_closed_source_leader": 0,
       "closed_source_leader": "self",
-      "gap_to_oss_leader": 0,
-      "oss_leader": "self",
+      "gap_to_oss_leader": -5.5,
+      "oss_leader": "OpenHands (All-Hands AI)",
       "legacy_score": 0,
       "status": "partially-verified-capability",
       "evidence_integrity": {
