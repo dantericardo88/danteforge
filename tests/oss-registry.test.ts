@@ -28,14 +28,14 @@ function makeRegistry(repos: Partial<OSSRegistryEntry>[] = []): OSSRegistry {
 }
 
 describe('getOssReposDir', () => {
-  it('returns a path ending with oss-repos directory name', () => {
+  it('returns a path under the shared OSSHarvest cache root', () => {
     const dir = getOssReposDir('/tmp/project');
-    assert.ok(dir.includes('oss-repos'));
+    assert.ok(dir.includes('OSSHarvest'));
   });
 
-  it('is rooted under .danteforge', () => {
+  it('is a sibling of the project root, not inside .danteforge', () => {
     const dir = getOssReposDir('/tmp/project');
-    assert.ok(dir.includes('.danteforge'));
+    assert.ok(!dir.includes('.danteforge'));
   });
 });
 
@@ -52,9 +52,9 @@ describe('getRepoStoragePath', () => {
     assert.ok(!safeName.includes('/'));
   });
 
-  it('is contained in oss-repos directory', () => {
+  it('is contained in the shared OSSHarvest cache root', () => {
     const p = getRepoStoragePath('my-repo', '/tmp');
-    assert.ok(p.includes('oss-repos'));
+    assert.ok(p.includes('OSSHarvest'));
   });
 });
 

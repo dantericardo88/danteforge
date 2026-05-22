@@ -794,6 +794,55 @@ program
   });
 
 program
+  .command('oss-sync')
+  .description('Matrix-aware OSS restore — re-clones any missing repos, optionally pulls updates on stale ones')
+  .option('--update', 'Also git-pull repos already on disk that are older than --stale-days')
+  .option('--stale-days <n>', 'Days before a repo is considered stale for --update (default: 7)', '7')
+  .option('--dry-run', 'Show what would happen without cloning or pulling')
+  .action(async (opts) => {
+    const { ossSync } = await import('./commands/oss-sync.js');
+    await ossSync({
+      update: opts.update,
+      staleDays: opts.staleDays ? parseInt(opts.staleDays, 10) : undefined,
+      dryRun: opts.dryRun,
+    });
+  });
+
+program
+  .command('oss-loop')
+  .description('Competitive landscape discovery loop — runs until no new OSS repos found (plateau), then oss-sync to restore all')
+  .option('--plateau-passes <n>', 'Consecutive empty passes before stopping (default: 3)', '3')
+  .option('--max-passes <n>', 'Hard pass cap regardless of plateau (default: 20)', '20')
+  .option('--max-repos-per-pass <n>', 'New repos to clone per pass (default: 5)', '5')
+  .option('--discovery-file <path>', 'Host-generated JSON candidate repo file; skips configured CLI LLM calls')
+  .option('--no-sync', 'Skip final oss-sync after discovery completes')
+  .option('--dry-run', 'Show discovery plan without cloning')
+  .action(async (opts) => {
+    const { ossLoop } = await import('./commands/oss-loop.js');
+    await ossLoop({
+      discoveryFile: opts.discoveryFile,
+      plateauPasses: parseInt(opts.plateauPasses, 10),
+      maxPasses: parseInt(opts.maxPasses, 10),
+      maxReposPerPass: parseInt(opts.maxReposPerPass, 10),
+      syncAtEnd: opts.sync !== false,
+      dryRun: opts.dryRun,
+    });
+  });
+
+program
+  .command('titan-harvest-loop')
+  .description('Clean-room harvest loop — analyzes GPL/AGPL repos queued by oss-loop, extracts patterns via LLM without copying code')
+  .option('--max-repos <n>', 'Max repos to analyze per run (default: 10)', '10')
+  .option('--dry-run', 'Show plan without cloning or calling LLM')
+  .action(async (opts) => {
+    const { titanHarvestLoop } = await import('./commands/titan-harvest-loop.js');
+    await titanHarvestLoop({
+      maxReposPerRun: parseInt(opts.maxRepos, 10),
+      dryRun: opts.dryRun,
+    });
+  });
+
+program
   .command('harvest-forge')
   .description('Compounding OSS intelligence loop: discover â†’ extract â†’ implement â†’ verify â†’ repeat')
   .option('--max-cycles <n>', 'Max iteration cycles (default: 10)', '10')

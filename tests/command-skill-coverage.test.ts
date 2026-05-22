@@ -67,6 +67,14 @@ const WORKFLOW_COMMANDS = [
   // Existing CLI commands that were missing their slash command files
   'proof',
   'ascend',
+  'crusade',
+  'gap',
+  'harden',
+  'harden-crusade',
+  'oss-loop',
+  'oss-sync',
+  'titan-harvest-loop',
+  'validate',
   // Migrated from the retired .claude-plugin/commands/ directory (now canonical
   // in commands/ for both Claude Code plugin discovery and cross-tool export)
   'ci-report',
@@ -247,6 +255,14 @@ describe('command-skill-coverage', () => {
     assert.match(config, /setup-assistants = "npx danteforge setup assistants --assistants codex"/);
     assert.match(config, /doctor-live = "npx danteforge doctor --live"/);
     assert.match(config, /df-verify = "npx danteforge verify"/);
+  });
+
+  it('assistant installer generates Codex skill wrappers for every command file', async () => {
+    const installer = await fs.readFile('src/core/assistant-installer.ts', 'utf8');
+
+    assert.match(installer, /syncCodexCommandSkills/, 'Codex installer must generate skill wrappers from commands/*.md');
+    assert.match(installer, /danteforge-\$\{commandName\}/, 'generated skill names must follow danteforge-<command>');
+    assert.match(installer, /syncCodexPrompts/, 'Codex installer must mirror commands to ~/.codex/prompts');
   });
 
   it('Codex config.toml includes the latest verification and release aliases', async () => {
