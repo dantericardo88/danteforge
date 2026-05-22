@@ -54,18 +54,24 @@ async function getGitSha(cwd: string): Promise<string> {
   }
 }
 
-async function getPassingOutcomeCount(dim: string, cwd: string): Promise<{ total: number; passing: number }> {
-  // Read outcome evidence from the outcome-runner's evidence store
-  try {
-    const { loadOutcomeEvidence } = await import('../../matrix/engines/outcome-runner.js');
-    const evidence = await loadOutcomeEvidence(cwd);
-    const results = Object.values(evidence?.results ?? {}).filter(
-      (r: unknown) => (r as { dimensionId?: string }).dimensionId === dim,
-    ) as Array<{ passed: boolean }>;
-    return { total: results.length, passing: results.filter(r => r.passed).length };
-  } catch {
-    return { total: 0, passing: 0 };
+async function runDeclaredOutcomes(
+  outcomes: Array<{ id: string; command?: string }>,
+  cwd: string,
+): Promise<{ total: number; passing: number }> {
+  if (!outcomes || outcomes.length === 0) return { total: 0, passing: 0 };
+  let passing = 0;
+  for (const outcome of outcomes) {
+    if (!outcome.command) continue;
+    try {
+      const shell = process.platform === 'win32' ? 'cmd' : 'sh';
+      const args = process.platform === 'win32' ? ['/c', outcome.command] : ['-c', outcome.command];
+      await execFileAsync(shell, args, { cwd, timeout: 30_000 });
+      passing++;
+    } catch {
+      // outcome failed — counts against the score
+    }
   }
+  return { total: outcomes.length, passing };
 }
 
 async function hasSrcImplementation(dimId: string, cwd: string): Promise<boolean> {
@@ -130,9 +136,22 @@ export async function runScoreAudit(options: ScoreAuditOptions = {}): Promise<In
   }
   logger.info('[score-audit] ════════════════════════════════════════════════════\n');
 
-  const matrix = await _loadMatrix(cwd);
-  if (!matrix) {
+  // Load raw matrix.json — do NOT use loadMatrix() here because it calls
+  // applyOutcomeDerivedScores() which overrides scores.self with derived values.
+  // The audit must start from the raw stored scores (which agents wrote), then
+  // independently verify them. Using loadMatrix would pre-contaminate our audit
+  // with the very derived values we're trying to validate.
+  const matrixPath = path.join(cwd, '.danteforge', 'compete', 'matrix.json');
+  let matrix: Awaited<ReturnType<typeof _loadMatrix>>;
+  try {
+    const raw = await fs.readFile(matrixPath, 'utf8');
+    matrix = JSON.parse(raw) as NonNullable<typeof matrix>;
+  } catch {
     logger.error('[score-audit] No competitive matrix found. Run `danteforge compete` first.');
+    throw new Error('Matrix not found');
+  }
+  if (!matrix) {
+    logger.error('[score-audit] Matrix is null.');
     throw new Error('Matrix not found');
   }
 
@@ -186,8 +205,9 @@ export async function runScoreAudit(options: ScoreAuditOptions = {}): Promise<In
       logger.info(`  capability_test: ${skipCapTests ? 'skipped' : 'none declared'}`);
     }
 
-    // b) Outcome evidence
-    const { total: outcomeCount, passing: passingOutcomes } = await getPassingOutcomeCount(dim.id, cwd);
+    // b) Run declared outcome commands directly — do not trust stored evidence
+    const rawOutcomes = (dim as unknown as Record<string, unknown>)['outcomes'] as Array<{ id: string; command?: string }> | undefined;
+    const { total: outcomeCount, passing: passingOutcomes } = await runDeclaredOutcomes(rawOutcomes ?? [], cwd);
     logger.info(`  outcomes: ${passingOutcomes}/${outcomeCount} passing`);
 
     // c) Stubs in critical path
