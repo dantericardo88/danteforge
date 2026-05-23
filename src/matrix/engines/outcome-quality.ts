@@ -20,6 +20,53 @@ export interface OutcomeQualityError {
   remedy: string;
 }
 
+export interface OutcomeKindClassification {
+  /** Evidence-supported max score this outcome can unlock (0–9.5). */
+  maxScore: number;
+  /** Short label for display. */
+  evidenceTier: 'file-existence' | 'unit-test' | 'cli-smoke' | 'e2e' | 'external-benchmark';
+  /** Human-readable justification. */
+  reason: string;
+}
+
+// ── Outcome kind classifier ───────────────────────────────────────────────────
+// Maps an outcome to the highest score tier its evidence can support.
+// This is separate from whether the outcome passes — it caps the ceiling
+// regardless of pass rate, preventing file-existence checks from claiming T7.
+
+export function classifyOutcomeKind(outcome: Outcome): OutcomeKindClassification {
+  const kind = outcome.kind ?? 'shell';
+  const cmd = (outcome as { command?: string }).command ?? '';
+
+  // External benchmark outcomes unlock T8 (9.5) — independently reproducible
+  if (kind === 'external-benchmark' || /swe.bench|exercism|benchmark.*--suite/i.test(cmd)) {
+    return { maxScore: 9.5, evidenceTier: 'external-benchmark', reason: 'External benchmark — independently reproducible' };
+  }
+
+  // Full E2E workflow or runtime-exec with meaningful output → T7 (9.0)
+  if (kind === 'e2e-workflow' || kind === 'runtime-exec') {
+    return { maxScore: 9.0, evidenceTier: 'e2e', reason: 'Runtime execution with observable E2E output' };
+  }
+
+  // CLI smoke: invokes the real CLI and checks stdout → T6 (8.5)
+  if (kind === 'cli-smoke') {
+    return { maxScore: 8.5, evidenceTier: 'cli-smoke', reason: 'CLI smoke — real invocation, pattern-checked output' };
+  }
+
+  // Shell command running a real test suite (npx tsx, npm test, jest, vitest) → T5 (8.0)
+  if (kind === 'shell' && /npx\s+tsx\s+--test|npm\s+(?:run\s+)?test|jest|vitest|mocha/.test(cmd)) {
+    return { maxScore: 8.0, evidenceTier: 'unit-test', reason: 'Unit/integration test suite — internal runtime verification' };
+  }
+
+  // Shell: structural file checks (readFileSync, existsSync, file contains string) → T4 (7.0)
+  if (kind === 'shell' && /readFileSync|readFile\b|existsSync|statSync/.test(cmd)) {
+    return { maxScore: 7.0, evidenceTier: 'file-existence', reason: 'Structural file check — proves code exists, not that it runs' };
+  }
+
+  // Default for unknown shell commands: treat as unit-test level (8.0) — benefit of the doubt
+  return { maxScore: 8.0, evidenceTier: 'unit-test', reason: 'Shell command — assumed runtime execution' };
+}
+
 // ── Tier rank lookup (local, avoids circular import) ──────────────────────────
 
 const RANK: Record<string, number> = {

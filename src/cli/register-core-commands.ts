@@ -785,6 +785,29 @@ program
   });
 
 program
+  .command('intel')
+  .description('Real-time competitor weakness intelligence from GitHub, HN, and Reddit')
+  .option('--competitor <name>', 'Fetch intelligence for one competitor only (partial match)')
+  .option('--opportunities', 'Show ranked opportunity table (default: on)')
+  .option('--github-only', 'Skip HackerNews and Reddit fetchers (faster)')
+  .option('--save', 'Write report to .danteforge/compete/weakness-intelligence.json')
+  .option('--watch', 'Poll every 6 hours continuously')
+  .option('--top <n>', 'Number of top signals/opportunities to display (default: 10)', '10')
+  .option('--timeout <ms>', 'Per-source timeout in milliseconds (default: 20000)', '20000')
+  .action(async (opts) => {
+    const { intelCommand } = await import('./commands/intel.js');
+    await intelCommand({
+      competitor: opts.competitor,
+      opportunities: opts.opportunities !== false,
+      githubOnly: opts.githubOnly,
+      save: opts.save,
+      watch: opts.watch,
+      topN: parseInt(opts.top, 10),
+      timeoutMs: parseInt(opts.timeout, 10),
+    });
+  });
+
+program
   .command('oss-clean')
   .description('Purge OSS clone cache (.danteforge/oss-repos/ and oss-deep/)')
   .option('--dry-run', 'Show what would be deleted without deleting')
@@ -861,6 +884,7 @@ program
   .option('--target <n>', 'Score target to stop at (default: 9.0)', '9.0')
   .option('--time <m>', 'Wall-clock time limit in minutes (default: 240)', '240')
   .option('--interval <m>', 'Minutes between passes (default: 5)', '5')
+  .option('--intel-cycle <n>', 'Run competitor intel cycle every N improvements (0=off, default: 3)', '3')
   .option('--dry-run', 'Show plan without executing')
   .action(async (opts) => {
     const { runDaemon } = await import('./commands/daemon.js');
@@ -869,6 +893,7 @@ program
       target: parseFloat(opts.target),
       timeLimitMinutes: parseInt(opts.time, 10),
       intervalMinutes: parseInt(opts.interval, 10),
+      intelCycleEvery: parseInt(opts.intelCycle, 10),
       dryRun: opts.dryRun,
     });
   });

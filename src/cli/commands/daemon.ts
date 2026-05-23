@@ -30,6 +30,8 @@ export interface DaemonOptions {
   intervalMinutes?: number;
   cwd?: string;
   dryRun?: boolean;
+  /** Run the intel cycle every N improvement passes (0 = disabled, default: 3) */
+  intelCycleEvery?: number;
   _runPass?: (strategy: DaemonStrategy, cwd: string) => Promise<DaemonPassResult>;
   _getCurrentScore?: (cwd: string) => Promise<number>;
   _now?: () => number;
@@ -138,6 +140,53 @@ async function appendLog(cwd: string, entry: object): Promise<void> {
   await fs.appendFile(logPath, line, 'utf8');
 }
 
+// ── Intel cycle ───────────────────────────────────────────────────────────────
+// Runs competitor intelligence, then applies the findings to the matrix.
+// Runs every `intelCycleEvery` improvement passes — not on every pass (expensive).
+
+async function runIntelCycle(cwd: string): Promise<void> {
+  logger.info('[daemon] ── Intel cycle ─────────────────────────────────────────');
+
+  try {
+    const { fetchCompetitorIntel, scoreOpportunities, COMPETITOR_REPOS } = await import('../../core/competitor-intel-fetcher.js');
+    const { loadMatrix, applyIntelLeaderScores, saveMatrix } = await import('../../core/compete-matrix.js');
+    const intelPath = path.join(cwd, '.danteforge', 'compete', 'weakness-intelligence.json');
+    const { writeFile, mkdir } = await import('node:fs/promises');
+
+    const toolNames = Object.keys(COMPETITOR_REPOS);
+    logger.info(`[daemon] Intel: fetching signals for ${toolNames.length} competitors...`);
+
+    const signals = await fetchCompetitorIntel(toolNames, { githubOnly: true, timeoutMs: 20_000 });
+    logger.info(`[daemon] Intel: ${signals.length} signals collected`);
+
+    if (signals.length > 0) {
+      const matrix = await loadMatrix(cwd);
+      const gaps: Record<string, number> = {};
+      for (const dim of matrix?.dimensions ?? []) gaps[dim.id] = dim.gap_to_leader ?? 0;
+
+      const opportunities = scoreOpportunities(signals, gaps);
+
+      const report = { generatedAt: new Date().toISOString(), signals, opportunities };
+      await mkdir(path.dirname(intelPath), { recursive: true });
+      await writeFile(intelPath, JSON.stringify(report, null, 2), 'utf-8');
+
+      if (matrix) {
+        const adjustments = await applyIntelLeaderScores(matrix, intelPath);
+        if (adjustments > 0) {
+          await saveMatrix(matrix, cwd);
+          logger.info(`[daemon] Intel: ${adjustments} leader score(s) evidence-adjusted`);
+        }
+      }
+
+      if (opportunities[0]) {
+        logger.info(`[daemon] Top opportunity: ${opportunities[0].category} (${opportunities[0].dimensionId}) — score ${opportunities[0].opportunityScore.toFixed(1)}`);
+      }
+    }
+  } catch (err) {
+    logger.warn(`[daemon] Intel cycle failed (non-fatal): ${(err as Error).message}`);
+  }
+}
+
 // ── Main function ─────────────────────────────────────────────────────────────
 
 export async function runDaemon(options: DaemonOptions = {}): Promise<DaemonResult> {
@@ -149,10 +198,12 @@ export async function runDaemon(options: DaemonOptions = {}): Promise<DaemonResu
   const runPass = options._runPass ?? defaultRunPass;
   const now = options._now ?? Date.now;
 
+  const intelCycleEvery = options.intelCycleEvery ?? 3;
   const startMs = now();
   const passes: DaemonPassResult[] = [];
   let consecutivePlateau = 0;
   let consecutiveErrors = 0;
+  let improvementsSinceIntel = 0;
   let pass = 1;
 
   logger.info(`[daemon] Starting autonomous improvement loop`);
@@ -206,7 +257,14 @@ export async function runDaemon(options: DaemonOptions = {}): Promise<DaemonResu
       logger.info(`[daemon] Plateau ${consecutivePlateau}/3 — score stayed at ${result.scoreAfterPass}`);
     } else if (result.outcome === 'improved') {
       consecutivePlateau = 0;
+      improvementsSinceIntel++;
       logger.info(`[daemon] Score: ${result.scoreBeforePass} → ${result.scoreAfterPass} (+${(result.scoreAfterPass - result.scoreBeforePass).toFixed(2)})`);
+    }
+
+    // Run intel cycle every N improvements to refresh competitor weakness data
+    if (intelCycleEvery > 0 && improvementsSinceIntel > 0 && improvementsSinceIntel % intelCycleEvery === 0) {
+      await runIntelCycle(cwd);
+      improvementsSinceIntel = 0;
     }
 
     if (result.scoreAfterPass >= target) {

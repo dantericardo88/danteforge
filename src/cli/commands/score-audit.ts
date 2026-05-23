@@ -19,6 +19,7 @@ import {
   buildAuditRecord,
   auditScoringScript,
 } from '../../core/integrity-audit.js';
+import { classifyOutcomeKind } from '../../matrix/engines/outcome-quality.js';
 import type { IntegrityAuditRecord, IntegrityAuditSummary } from '../../matrix/types/integrity.js';
 
 const execFileAsync = promisify(execFile);
@@ -279,7 +280,7 @@ export async function runScoreAudit(options: ScoreAuditOptions = {}): Promise<In
     // d) Implementation existence check
     const hasImpl = await hasSrcImplementation(dim.id, cwd);
 
-    // e) Score cap
+    // e) Score cap — pass/fail based
     const capResult = computeScoreCap({
       capabilityTestResult: capTestResult,
       outcomeCount,
@@ -289,8 +290,24 @@ export async function runScoreAudit(options: ScoreAuditOptions = {}): Promise<In
       hasSrcImplementation: hasImpl,
     });
 
-    // Evidence-supported score: never exceeds cap, never exceeds 9 (T7 max without human curation)
-    const evidenceScore = Math.min(capResult.cap, 9);
+    // e2) Outcome quality ceiling — caps score by the weakest evidence kind in the dim.
+    // File-existence checks max at 7.0; unit tests at 8.0; E2E at 9.0; benchmarks at 9.5.
+    // This prevents dims where all outcomes are file checks from claiming 9.0.
+    const outcomesToClassify = (rawOutcomes ?? []) as Parameters<typeof classifyOutcomeKind>[0][];
+    const qualityCeiling = outcomesToClassify.length > 0
+      ? Math.min(...outcomesToClassify.map(o => classifyOutcomeKind(o).maxScore))
+      : 9.0; // no outcomes → rely on cap rubric alone
+
+    if (qualityCeiling < capResult.cap && outcomesToClassify.length > 0) {
+      const weakestKind = outcomesToClassify
+        .map(o => classifyOutcomeKind(o))
+        .sort((a, b) => a.maxScore - b.maxScore)[0];
+      logger.info(`  quality ceiling: ${qualityCeiling} (${weakestKind?.reason ?? 'weakest outcome kind'})`);
+    }
+
+    // Evidence-supported score: bounded by both pass-rate cap and quality ceiling.
+    // Never exceeds 9.5 (T8); 9.0 is max for E2E without external benchmark.
+    const evidenceScore = Math.min(capResult.cap, qualityCeiling, 9.5);
     const adjScore = evidenceScore;
     const capped = adjScore < priorScore;
     const raised = adjScore > priorScore;

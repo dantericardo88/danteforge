@@ -373,18 +373,25 @@ Examples:
 
 program
   .command('benchmark')
-  .description('18-dimension scorecard â€” real scores across all quality dimensions with optional competitor comparison')
+  .description('18-dimension scorecard, or external benchmark suite (SWE-bench / Exercism)')
   .option('--dimension <dim>', 'Score only one named dimension')
   .option('--compare', 'Show gap vs CHL matrix competitor scores')
+  .option('--compare-tool <name>', 'Compare external benchmark result vs a competitor (e.g. aider)')
   .option('--format <fmt>', 'Output format: table or json (default: table)', 'table')
+  .option('--suite <suite>', 'External benchmark suite: swe-bench or exercism')
+  .option('--instances <n>', 'Max tasks to run for external suite (default: 10)', '10')
+  .option('--assert-min-passrate <rate>', 'Exit 1 if pass rate < this threshold (0–1)')
   .option('--cwd <path>', 'Project directory')
   .action(async (opts) => {
     try {
       await (await C()).benchmark({
         dimension: opts.dimension,
-        compare: opts.compare,
+        compare: opts.compareTool ?? opts.compare,
         format: opts.format,
         cwd: opts.cwd,
+        suite: opts.suite,
+        instances: opts.instances ? parseInt(opts.instances, 10) : undefined,
+        assertMinPassRate: opts.assertMinPassrate ? parseFloat(opts.assertMinPassrate) : undefined,
       });
     } catch (err) {
       formatAndLogError(err, 'benchmark');

@@ -82,6 +82,12 @@ export interface MatrixDimension {
   // the dimension-synthesizer's heuristic token-match inference. Use this when
   // your dimension ID doesn't share tokens with the file paths it should scope.
   touches?: string[];
+
+  // Evidence provenance for competitor leader scores.
+  // 'llm-baseline': initial score was an LLM estimate
+  // 'github-evidence': adjusted down from real open-issue counts
+  // 'benchmark': set from a published benchmark result
+  leaderScoreSource?: Record<string, 'llm-baseline' | 'github-evidence' | 'benchmark'>;
 }
 
 export interface AdversarialCalibration {
@@ -238,6 +244,20 @@ async function applyOutcomeDerivedScores(matrix: CompeteMatrix, cwd: string): Pr
     }
 
     try {
+      // Staleness guard: only override scores.self when at least one evidence entry
+      // for this dimension was recorded in the last 24 hours. Stale evidence causes
+      // the derived score to compute as 0.0, which is worse than the stored value.
+      const EVIDENCE_MAX_AGE_MS = 86_400_000; // 24 hours
+      const now = Date.now();
+      const { makeEvidenceKey } = await import('../matrix/types/outcome.js');
+      const dimOutcomes = outcomes as Array<{ id: string }>;
+      const hasFreshEvidence = dimOutcomes.some(o => {
+        const entry = evidence!.get(makeEvidenceKey(dim.id, o.id));
+        if (!entry?.ranAt) return false;
+        return (now - new Date(entry.ranAt).getTime()) < EVIDENCE_MAX_AGE_MS;
+      });
+      if (!hasFreshEvidence) continue; // keep stored scores.self — evidence is stale
+
       const { computeDerivedScoreWithBreakdown } = await import('./derived-score.js');
       const { applyLegacyReceiptCeiling } = await import('../matrix/engines/receipt-ceiling.js');
       const dfs = {
@@ -247,9 +267,8 @@ async function applyOutcomeDerivedScores(matrix: CompeteMatrix, cwd: string): Pr
         legacy_score: dim.scores.self,
         scores: dim.scores,
       };
-      const breakdown = computeDerivedScoreWithBreakdown(dfs, evidence);
+      const breakdown = computeDerivedScoreWithBreakdown(dfs, evidence!);
       // Depth doctrine: dims with no outcomes declared cannot exceed 7.0.
-      // Code without a receipt is a hypothesis, not a feature.
       const derived = applyLegacyReceiptCeiling(breakdown.score, breakdown);
       // Preserve the original (agent-written) value for diff displays.
       (dim as unknown as Record<string, unknown>)['legacy_score'] = dim.scores.self;
@@ -446,6 +465,110 @@ export function updateDimensionScore(
 
   matrix.lastUpdated = new Date().toISOString();
   matrix.overallSelfScore = computeOverallScore(matrix);
+}
+
+/**
+ * Apply competitor weakness intelligence to leader scores.
+ *
+ * When a competitor has >10 open GitHub issues in a dimension category, reduce
+ * their score for that dimension by 0.5 per 10 issues (max reduction: 2.0).
+ * Records leaderScoreSource='github-evidence' so callers can distinguish
+ * evidence-adjusted scores from the original LLM baseline.
+ *
+ * @param matrix - matrix to mutate (caller must saveMatrix() afterward)
+ * @param intelPath - path to weakness-intelligence.json (if it exists)
+ */
+export async function applyIntelLeaderScores(
+  matrix: CompeteMatrix,
+  intelPath: string,
+): Promise<number> {
+  let adjustmentsApplied = 0;
+  let intelData: { signals: Array<{ tool: string; category: string }> } | null = null;
+
+  try {
+    const raw = await (await import('fs/promises')).readFile(intelPath, 'utf-8');
+    intelData = JSON.parse(raw) as { signals: Array<{ tool: string; category: string }> };
+  } catch {
+    return 0; // no intel file yet — no-op
+  }
+
+  // Count issues per (competitor, category) pair
+  const issueCounts = new Map<string, number>();
+  for (const signal of intelData.signals ?? []) {
+    const key = `${signal.tool}::${signal.category}`;
+    issueCounts.set(key, (issueCounts.get(key) ?? 0) + 1);
+  }
+
+  for (const dim of matrix.dimensions) {
+    const competitors = Object.keys(dim.scores).filter(k => k !== 'self');
+    for (const competitor of competitors) {
+      // Match competitor name to category — category label may not match dim.id exactly;
+      // use a loose substring check across all signals for this competitor in this dimension.
+      const dimSignals = (intelData.signals ?? []).filter(
+        s => s.tool === competitor && matchesDimension(s.category, dim.id),
+      );
+      if (dimSignals.length < 10) continue;
+
+      const reduction = Math.min(2.0, Math.floor(dimSignals.length / 10) * 0.5);
+      const currentScore = dim.scores[competitor] ?? 0;
+      const adjusted = Math.max(0, currentScore - reduction);
+
+      if (adjusted !== currentScore) {
+        dim.scores[competitor] = adjusted;
+        if (!dim.leaderScoreSource) dim.leaderScoreSource = {};
+        dim.leaderScoreSource[competitor] = 'github-evidence';
+        adjustmentsApplied++;
+      }
+    }
+
+    // Re-derive gap fields after any competitor score adjustments
+    if (adjustmentsApplied > 0) {
+      const competitorEntries = Object.entries(dim.scores).filter(([k]) => k !== 'self');
+      const maxEntry = competitorEntries.reduce(
+        (best, [k, v]) => v > best[1] ? [k, v] : best,
+        ['', 0] as [string, number],
+      );
+      const selfScore = dim.scores['self'] ?? 0;
+      dim.gap_to_leader = Math.max(0, maxEntry[1] - selfScore);
+      if (maxEntry[0]) dim.leader = maxEntry[0];
+      const twoGaps = computeTwoGaps(dim, matrix.competitors_closed_source ?? [], matrix.competitors_oss ?? []);
+      dim.gap_to_closed_source_leader = twoGaps.gap_to_closed_source_leader;
+      dim.closed_source_leader = twoGaps.closed_source_leader;
+      dim.gap_to_oss_leader = twoGaps.gap_to_oss_leader;
+      dim.oss_leader = twoGaps.oss_leader;
+    }
+  }
+
+  if (adjustmentsApplied > 0) {
+    matrix.lastUpdated = new Date().toISOString();
+    matrix.overallSelfScore = computeOverallScore(matrix);
+  }
+
+  return adjustmentsApplied;
+}
+
+// Loose match: check if an intel category label corresponds to a matrix dimension id.
+function matchesDimension(categoryLabel: string, dimensionId: string): boolean {
+  const label = categoryLabel.toLowerCase().replace(/[^a-z]/g, '');
+  const id = dimensionId.toLowerCase().replace(/[^a-z]/g, '');
+  if (label.includes(id) || id.includes(label)) return true;
+  // Common label→id mappings that don't share tokens
+  const LABEL_MAP: Record<string, string> = {
+    'windowssupport': 'developerexperience',
+    'performance': 'performance',
+    'testquality': 'testing',
+    'documentation': 'documentation',
+    'autonomy': 'autonomy',
+    'multiagent': 'multiagentor chestration',
+    'security': 'security',
+    'uxclipolish': 'uxpolish',
+    'tokencontextmanagement': 'tokeneconomy',
+    'enterprisefeatures': 'enterprisereadiness',
+    'specplanningpipeline': 'specdrivenpipeline',
+    'errorhandling': 'errorhandling',
+  };
+  const mappedId = LABEL_MAP[label];
+  return mappedId !== undefined && (mappedId.includes(id) || id.includes(mappedId));
 }
 
 /**
