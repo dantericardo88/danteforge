@@ -56,6 +56,8 @@ export type DeclaredOutcome = {
   expected_exit?: number;
   expected_stdout_patterns?: string[];
   timeout_ms?: number;
+  /** Explicit outcome kind — drives quality ceiling. Defaults to 'shell' if omitted. */
+  kind?: 'file-existence' | 'unit-test' | 'cli-smoke' | 'e2e' | 'e2e-workflow' | 'benchmark' | 'external-benchmark';
 };
 
 // ── Helpers ───────────────────────────────────────────────────────────────────

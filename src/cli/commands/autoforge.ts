@@ -121,6 +121,27 @@ async function runAutoMode(goal: string | undefined, cwd: string, options: {
           for (const r of cipBlocked) {
             logger.warn(`  ${r.dimensionId}: ${r.cipClass} — ${r.gaps.slice(0, 2).join('; ')}`);
           }
+          try {
+            const gapLines = cipBlocked.map(r => [
+              `### ${r.dimensionId} (${r.cipClass})`,
+              ...r.gaps.map(g => `- ${g}`),
+              '',
+            ].join('\n')).join('\n');
+            const gapReport = [
+              '# CIP Gaps — Action Required',
+              '',
+              `Generated: ${new Date().toISOString()}`,
+              '',
+              '## Blocked Dimensions',
+              '',
+              gapLines,
+              'Run `danteforge score-audit --dimension <id>` for full evidence breakdown.',
+              'Run `danteforge validate <id>` to add outcome receipts.',
+            ].join('\n');
+            await fs.mkdir(path.join(cwd, '.danteforge'), { recursive: true });
+            await fs.writeFile(path.join(cwd, '.danteforge', 'CIP_GAPS.md'), gapReport, 'utf8');
+            logger.info('[autoforge] Gap report written to .danteforge/CIP_GAPS.md');
+          } catch { /* best-effort */ }
           process.exitCode = 1;
         } else {
           logger.success(`[autoforge] CIP confirmed — all ${activeDims.length} matrix dim(s) have end-to-end evidence`);

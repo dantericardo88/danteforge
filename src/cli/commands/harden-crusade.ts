@@ -25,7 +25,7 @@ import chalk from 'chalk';
 import { logger } from '../../core/logger.js';
 import { loadMatrix, type CompeteMatrix, type MatrixDimension } from '../../core/compete-matrix.js';
 import { SCORING_DOCTRINE_SHORT } from '../../core/scoring-doctrine.js';
-import { runCIPCheck } from '../../core/completion-integrity.js';
+import { runCIPCheck, type CIPOptions, type CIPResult } from '../../core/completion-integrity.js';
 
 const MAX_WAVES_WITHOUT_REGRADE = 3;
 const DEFAULT_TARGET = 9.0;
@@ -57,6 +57,8 @@ export interface HardenCrusadeOptions {
   focusDimension?: string;
   /** Skip CIP verification before FRONTIER_REACHED (development escape hatch — never default). */
   skipCIP?: boolean;
+  /** Injection seam: override runCIPCheck for tests. */
+  _cipCheck?: (dimensionId: string, options: CIPOptions) => Promise<CIPResult>;
 }
 
 export interface HardenDimResult {
@@ -271,7 +273,8 @@ async function runDimensionLoop(
     // 4. Frontier check: score >= target AND gate allows — then CIP gate (Rule 14)
     if (score >= target && lastHarden.allowed) {
       if (!options.skipCIP) {
-        const cip = await runCIPCheck(dim.id, { cwd, target });
+        const cipFn = options._cipCheck ?? runCIPCheck;
+        const cip = await cipFn(dim.id, { cwd, target });
         if (cip.blocksFrontierReached) {
           logger.warn(`[harden-crusade:${dim.id}] CIP blocked FRONTIER_REACHED — ${cip.gaps.join('; ')}`);
           // Treat as non-plateau so the loop tries another autoresearch cycle
@@ -288,6 +291,13 @@ async function runDimensionLoop(
         };
       }
       logger.warn(`[harden-crusade:${dim.id}] --skip-cip active — CIP gate bypassed (dev mode only)`);
+      // Audit trail — append bypass record so ops can detect misuse
+      fs.mkdir(path.join(cwd, '.danteforge', 'integrity-audit'), { recursive: true })
+        .then(() => fs.appendFile(
+          path.join(cwd, '.danteforge', 'integrity-audit', 'bypass.log'),
+          `${new Date().toISOString()} skip-cip harden-crusade ${dim.id}\n`,
+          'utf8',
+        )).catch(() => { /* best-effort */ });
       return {
         dimensionId: dim.id, label: dim.label, initialScore, finalScore: score,
         cyclesRun: cycle, autoresearchRuns,

@@ -8,7 +8,7 @@ import path from 'node:path';
 import { logger } from '../../core/logger.js';
 import { withProgress } from '../../core/ux-progress.js';
 import { loadMatrix, computeGapPriority, type MatrixDimension, type CompeteMatrix } from '../../core/compete-matrix.js';
-import { runCIPCheck } from '../../core/completion-integrity.js';
+import { runCIPCheck, type CIPOptions, type CIPResult } from '../../core/completion-integrity.js';
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -281,6 +281,8 @@ export interface FrontierCrusadeOptions {
   skipLLMCheck?: boolean;  // skip pre-flight LLM availability check (for testing)
   /** Skip CIP verification before FRONTIER_REACHED (development escape hatch — never default). */
   skipCIP?: boolean;
+  /** Injection seam: override runCIPCheck for tests. */
+  _cipCheck?: (dimensionId: string, options: CIPOptions) => Promise<CIPResult>;
   cwd?: string;
   _runInferno?: (goal: string, cwd: string) => Promise<void>;
   _getScore?: (dimension: string, cwd: string) => Promise<number>;
@@ -530,7 +532,8 @@ async function runDimensionFrontierLoop(
       // CIP gate (Scoring Doctrine Rule 14): verify end-to-end evidence before
       // declaring FRONTIER_REACHED. Self-reported scores are untrusted.
       if (!options.skipCIP) {
-        const cip = await runCIPCheck(dim.id, { cwd, target });
+        const cipFn = options._cipCheck ?? runCIPCheck;
+        const cip = await cipFn(dim.id, { cwd, target });
         if (cip.blocksFrontierReached) {
           logger.warn(`[frontier:${dim.id}] CIP blocked FRONTIER_REACHED — ${cip.gaps.join('; ')}`);
           consecutiveNoProgress = 0; // treat as non-plateau so the loop continues
@@ -539,6 +542,13 @@ async function runDimensionFrontierLoop(
         logger.success(`[frontier:${dim.id}] FRONTIER_REACHED — ${score.toFixed(2)} evidence-verified, CIP confirmed (cipScore=${cip.cipScore.toFixed(2)})`);
       } else {
         logger.warn(`[frontier:${dim.id}] --skip-cip active — CIP gate bypassed (dev mode only)`);
+        // Audit trail — append bypass record so ops can detect misuse
+        fs.mkdir(path.join(cwd, '.danteforge', 'integrity-audit'), { recursive: true })
+          .then(() => fs.appendFile(
+            path.join(cwd, '.danteforge', 'integrity-audit', 'bypass.log'),
+            `${new Date().toISOString()} skip-cip frontier-crusade ${dim.id}\n`,
+            'utf8',
+          )).catch(() => { /* best-effort */ });
         logger.success(`[frontier:${dim.id}] FRONTIER_REACHED — ${score.toFixed(2)} evidence-verified`);
       }
       return { dimensionId: dim.id, label: dim.label, initialScore, finalScore: score, cyclesRun: cycle, autoresearchRuns, capabilityTestResult: lastCapResult, status: 'FRONTIER_REACHED' };

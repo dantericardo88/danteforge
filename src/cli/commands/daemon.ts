@@ -14,7 +14,7 @@ import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import { logger } from '../../core/logger.js';
 import { loadMatrix } from '../../core/compete-matrix.js';
-import { runCIPCheck } from '../../core/completion-integrity.js';
+import { runCIPCheck, type CIPOptions, type CIPResult } from '../../core/completion-integrity.js';
 
 const execFileAsync = promisify(execFile);
 const DAEMON_LOG_FILE = '.danteforge/daemon-log.jsonl';
@@ -36,6 +36,8 @@ export interface DaemonOptions {
   _runPass?: (strategy: DaemonStrategy, cwd: string) => Promise<DaemonPassResult>;
   _getCurrentScore?: (cwd: string) => Promise<number>;
   _now?: () => number;
+  /** Injection seam: override runCIPCheck for tests. */
+  _cipCheck?: (dimensionId: string, options: CIPOptions) => Promise<CIPResult>;
 }
 
 export interface DaemonPassResult {
@@ -312,8 +314,9 @@ export async function runDaemon(options: DaemonOptions = {}): Promise<DaemonResu
       const activeDims = (matrix?.dimensions ?? []).filter(
         d => !excluded.has(d.id) && (d as unknown as Record<string, unknown>)['status'] !== 'closed',
       );
+      const cipFn = options._cipCheck ?? runCIPCheck;
       const cipResults = await Promise.all(
-        activeDims.map(d => runCIPCheck(d.id, { cwd, target })),
+        activeDims.map(d => cipFn(d.id, { cwd, target })),
       );
       const cipBlocked = cipResults.filter(r => r.blocksFrontierReached);
       if (cipBlocked.length > 0) {
