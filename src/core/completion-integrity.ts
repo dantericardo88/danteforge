@@ -49,7 +49,7 @@ export interface CIPOptions {
   timeout?: number;
 }
 
-type DeclaredOutcome = {
+export type DeclaredOutcome = {
   id?: string;
   command?: string;
   cli_args?: string[];
@@ -63,13 +63,13 @@ type DeclaredOutcome = {
 // On Windows, cmd.exe wraps the /c argument in extra quotes when Node.js spawns
 // it, corrupting nested double-quotes in `node -e "..."` commands. Parse those
 // and run node directly (no shell) to avoid the quoting issue.
-function parseNodeECommand(cmd: string): [string, string[]] | null {
+export function parseNodeECommand(cmd: string): [string, string[]] | null {
   const m = cmd.match(/^node\s+-e\s+"([\s\S]+)"$/);
   if (m) return ['node', ['-e', m[1]!]];
   return null;
 }
 
-async function runDeclaredOutcomes(
+export async function runDeclaredOutcomes(
   outcomes: DeclaredOutcome[],
   cwd: string,
   timeoutMs: number,
@@ -119,21 +119,28 @@ async function runDeclaredOutcomes(
   return { total: outcomes.length, passing };
 }
 
-async function hasSrcImplementation(dimId: string, cwd: string): Promise<boolean> {
+export async function hasSrcImplementation(dimId: string, cwd: string): Promise<boolean> {
   const srcDir = path.join(cwd, 'src');
   const words = dimId.split('_').filter(w => w.length >= 4);
-  for (const word of words) {
-    try {
-      const { stdout } = await execFileAsync(
-        'grep', ['-rl', '--include=*.ts', word, srcDir],
-        { cwd, timeout: 5000 },
-      ).catch(() => ({ stdout: '' }));
-      if (stdout.trim()) return true;
-    } catch {
-      return true; // grep failed — assume exists to avoid false floors
+  if (words.length === 0) return false;
+  async function searchDir(dir: string): Promise<boolean> {
+    let entries: import('node:fs').Dirent[];
+    try { entries = await fs.readdir(dir, { withFileTypes: true }); }
+    catch { return false; }
+    for (const entry of entries) {
+      const full = path.join(dir, entry.name);
+      if (entry.isDirectory()) {
+        if (await searchDir(full)) return true;
+      } else if (entry.isFile() && entry.name.endsWith('.ts')) {
+        try {
+          const content = await fs.readFile(full, 'utf8');
+          if (words.some(w => content.includes(w))) return true;
+        } catch { /* skip unreadable files */ }
+      }
     }
+    return false;
   }
-  return false;
+  return searchDir(srcDir);
 }
 
 function makeMissingResult(dimensionId: string, storedScore: number, gaps: string[]): CIPResult {

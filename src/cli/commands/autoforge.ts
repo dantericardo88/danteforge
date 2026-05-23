@@ -36,6 +36,7 @@ async function runAutoMode(goal: string | undefined, cwd: string, options: {
   force?: boolean;
   dryRun?: boolean;
   pauseAt?: number;
+  skipCIP?: boolean;
   _computeRetroScore?: boolean;
   _runLoop?: (ctx: AutoforgeLoopContext, deps?: { _executeCommand?: (command: string, cwd: string) => Promise<{ success: boolean }> }) => Promise<AutoforgeLoopContext>;
   _executeCommand?: (command: string, cwd: string) => Promise<{ success: boolean }>;
@@ -99,6 +100,36 @@ async function runAutoMode(goal: string | undefined, cwd: string, options: {
   const { executeAutoforgeCommand } = await import('../../core/autoforge-executor.js');
   const finalCtx = await loopFn(ctx, { _executeCommand: options._executeCommand ?? executeAutoforgeCommand });
   if (finalCtx.loopState === AutoforgeLoopState.BLOCKED) process.exitCode = 1;
+
+  // CIP gate — Rule 14: verify matrix dims have end-to-end evidence before declaring done
+  if (finalCtx.loopState !== AutoforgeLoopState.BLOCKED && !options.skipCIP) {
+    try {
+      const { loadMatrix } = await import('../../core/compete-matrix.js');
+      const { runCIPCheck } = await import('../../core/completion-integrity.js');
+      const matrix = await loadMatrix(cwd).catch(() => null);
+      const excluded = new Set(matrix?.excludedDimensions ?? []);
+      const activeDims = (matrix?.dimensions ?? []).filter(
+        d => !excluded.has(d.id) && (d as unknown as Record<string, unknown>)['status'] !== 'closed',
+      );
+      if (activeDims.length > 0) {
+        const cipResults = await Promise.all(
+          activeDims.map(d => runCIPCheck(d.id, { cwd, target: 9.0, skipStubScan: false })),
+        );
+        const cipBlocked = cipResults.filter(r => r.blocksFrontierReached);
+        if (cipBlocked.length > 0) {
+          logger.warn(`[autoforge] CIP blocked completion — ${cipBlocked.length} dim(s) lack end-to-end evidence`);
+          for (const r of cipBlocked) {
+            logger.warn(`  ${r.dimensionId}: ${r.cipClass} — ${r.gaps.slice(0, 2).join('; ')}`);
+          }
+          process.exitCode = 1;
+        } else {
+          logger.success(`[autoforge] CIP confirmed — all ${activeDims.length} matrix dim(s) have end-to-end evidence`);
+        }
+      }
+    } catch (err) {
+      logger.warn(`[autoforge] CIP sweep non-fatal error: ${String(err)}`);
+    }
+  }
 
   // --- Decision-node: record completion (best-effort) ---
   try {
@@ -207,6 +238,8 @@ export async function autoforge(goal?: string, options: {
   _adversarialScoreFn?: (cwd: string) => Promise<boolean>;
   /** Injection seam: load checkpoint stage for --resume */
   _loadCheckpointFn?: (cwd: string) => Promise<string | undefined>;
+  /** Skip CIP gate after --auto loop (dev mode only — never a default) */
+  skipCIP?: boolean;
 } = {}): Promise<void> {
   return withErrorBoundary('autoforge', async () => {
   const maxWaves = options.maxWaves ?? 3;

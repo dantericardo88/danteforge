@@ -21,6 +21,11 @@ import {
 } from '../../core/integrity-audit.js';
 import { classifyOutcomeKind } from '../../matrix/engines/outcome-quality.js';
 import type { IntegrityAuditRecord, IntegrityAuditSummary } from '../../matrix/types/integrity.js';
+import {
+  runDeclaredOutcomes,
+  hasSrcImplementation,
+  type DeclaredOutcome,
+} from '../../core/completion-integrity.js';
 
 const execFileAsync = promisify(execFile);
 const AUDIT_DIR = '.danteforge/integrity-audit';
@@ -53,92 +58,6 @@ async function getGitSha(cwd: string): Promise<string> {
   } catch {
     return 'unknown';
   }
-}
-
-type DeclaredOutcome = {
-  id?: string;
-  command?: string;
-  cli_args?: string[];
-  expected_exit?: number;
-  expected_stdout_patterns?: string[];
-  timeout_ms?: number;
-};
-
-// On Windows, cmd.exe wraps the /c argument in extra quotes when Node.js spawns it,
-// which corrupts nested double-quotes in `node -e "..."` commands. Parse those
-// commands and run node directly (no shell) to avoid the quoting issue.
-// npx/npm commands don't have inner quotes so they go through the shell normally.
-function parseNodeECommand(cmd: string): [string, string[]] | null {
-  const nodeE = cmd.match(/^node\s+-e\s+"([\s\S]+)"$/);
-  if (nodeE) return ['node', ['-e', nodeE[1]]];
-  return null;
-}
-
-async function runDeclaredOutcomes(
-  outcomes: DeclaredOutcome[],
-  cwd: string,
-): Promise<{ total: number; passing: number }> {
-  if (!outcomes || outcomes.length === 0) return { total: 0, passing: 0 };
-  let passing = 0;
-  for (const outcome of outcomes) {
-    try {
-      if (outcome.command) {
-        const timeout = outcome.timeout_ms ?? 30_000;
-        const direct = parseNodeECommand(outcome.command);
-        if (direct) {
-          const [exe, args] = direct;
-          await execFileAsync(exe, args, { cwd, timeout });
-        } else {
-          const shell = process.platform === 'win32' ? 'cmd' : 'sh';
-          const args = process.platform === 'win32' ? ['/c', outcome.command] : ['-c', outcome.command];
-          await execFileAsync(shell, args, { cwd, timeout });
-        }
-        passing++;
-      } else if (outcome.cli_args && outcome.cli_args.length > 0) {
-        const expectedExit = outcome.expected_exit ?? 0;
-        let stdout = '';
-        let exitCode = 0;
-        try {
-          const result = await execFileAsync('node', ['dist/index.js', ...outcome.cli_args], {
-            cwd, timeout: outcome.timeout_ms ?? 30_000,
-          });
-          stdout = result.stdout;
-        } catch (err: unknown) {
-          const e = err as { code?: number; stdout?: string };
-          exitCode = e.code ?? 1;
-          stdout = e.stdout ?? '';
-        }
-        if (exitCode !== expectedExit) continue;
-        const patterns = outcome.expected_stdout_patterns ?? [];
-        if (patterns.some(p => !stdout.includes(p))) continue;
-        passing++;
-      }
-      // outcomes with neither command nor cli_args count as failing (total++ below)
-    } catch {
-      // outcome threw — counts as failing
-    }
-  }
-  return { total: outcomes.length, passing };
-}
-
-async function hasSrcImplementation(dimId: string, cwd: string): Promise<boolean> {
-  const srcDir = path.join(cwd, 'src');
-  const words = dimId.split('_');
-  for (const word of words) {
-    if (word.length < 4) continue;
-    try {
-      const { stdout } = await execFileAsync(
-        'grep',
-        ['-rl', '--include=*.ts', word, srcDir],
-        { cwd, timeout: 5000 },
-      ).catch(() => ({ stdout: '' }));
-      if (stdout.trim()) return true;
-    } catch {
-      // grep failed — assume exists to avoid false floors
-      return true;
-    }
-  }
-  return false;
 }
 
 async function saveAuditRecord(record: IntegrityAuditRecord, cwd: string): Promise<void> {
@@ -258,7 +177,7 @@ export async function runScoreAudit(options: ScoreAuditOptions = {}): Promise<In
 
     // b) Run declared outcome commands directly — do not trust stored evidence
     const rawOutcomes = (dim as unknown as Record<string, unknown>)['outcomes'] as Array<{ id: string; command?: string }> | undefined;
-    const { total: outcomeCount, passing: passingOutcomes } = await runDeclaredOutcomes(rawOutcomes ?? [], cwd);
+    const { total: outcomeCount, passing: passingOutcomes } = await runDeclaredOutcomes(rawOutcomes ?? [], cwd, 30_000);
     logger.info(`  outcomes: ${passingOutcomes}/${outcomeCount} passing`);
 
     // c) Stubs in critical path

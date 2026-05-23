@@ -538,6 +538,7 @@ async function runDimensionFrontierLoop(
         }
         logger.success(`[frontier:${dim.id}] FRONTIER_REACHED — ${score.toFixed(2)} evidence-verified, CIP confirmed (cipScore=${cip.cipScore.toFixed(2)})`);
       } else {
+        logger.warn(`[frontier:${dim.id}] --skip-cip active — CIP gate bypassed (dev mode only)`);
         logger.success(`[frontier:${dim.id}] FRONTIER_REACHED — ${score.toFixed(2)} evidence-verified`);
       }
       return { dimensionId: dim.id, label: dim.label, initialScore, finalScore: score, cyclesRun: cycle, autoresearchRuns, capabilityTestResult: lastCapResult, status: 'FRONTIER_REACHED' };

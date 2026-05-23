@@ -287,6 +287,7 @@ async function runDimensionLoop(
           cipScore: cip.cipScore,
         };
       }
+      logger.warn(`[harden-crusade:${dim.id}] --skip-cip active — CIP gate bypassed (dev mode only)`);
       return {
         dimensionId: dim.id, label: dim.label, initialScore, finalScore: score,
         cyclesRun: cycle, autoresearchRuns,
