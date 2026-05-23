@@ -26,7 +26,7 @@ function getGitSha() {
   } catch { return null; }
 }
 
-function loadEvidence(gitSha) {
+function loadEvidence() {
   const evidence = new Map();
   const dir = path.join(CWD, EVIDENCE_DIR);
   if (!fs.existsSync(dir)) return evidence;
@@ -384,7 +384,7 @@ const WEIGHT_OVERRIDES = {
 
 const m = JSON.parse(fs.readFileSync(MATRIX_PATH, 'utf8'));
 const gitSha = getGitSha();
-const evidence = loadEvidence(gitSha);
+const evidence = loadEvidence();
 
 console.log(`Git SHA: ${gitSha?.slice(0, 8) ?? 'unknown'}`);
 console.log(`Evidence entries: ${evidence.size}`);

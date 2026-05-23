@@ -84,17 +84,35 @@ export interface HardenCrusadeResult {
 
 // ── Default subprocess drivers ──────────────────────────────────────────────
 
+async function resolveDanteForgeExec(cwd: string): Promise<{ file: string; argsPrefix: string[] }> {
+  const localDistEntry = path.join(cwd, 'dist', 'index.js');
+  try {
+    await fs.access(localDistEntry);
+    return { file: process.execPath, argsPrefix: [localDistEntry] };
+  } catch {
+    // Fall through to the currently executing CLI entry, then finally PATH.
+  }
+
+  const currentEntry = process.argv[1];
+  if (currentEntry && currentEntry.endsWith('index.js')) {
+    return { file: process.execPath, argsPrefix: [currentEntry] };
+  }
+
+  return { file: 'danteforge', argsPrefix: [] };
+}
+
 async function defaultRunAutoResearch(
   dimensionId: string, goal: string, cwd: string, timeMinutes: number,
 ): Promise<void> {
   const { execFile } = await import('node:child_process');
   const { promisify } = await import('node:util');
   const execFileAsync = promisify(execFile);
+  const cli = await resolveDanteForgeExec(cwd);
   // timeMinutes + 1 min slack on the subprocess timeout (in ms).
   const timeoutMs = (timeMinutes + 1) * 60 * 1000;
   await execFileAsync(
-    'danteforge',
-    ['autoresearch', goal, '--metric', dimensionId, '--time', `${timeMinutes}m`, '--allow-dirty'],
+    cli.file,
+    [...cli.argsPrefix, 'autoresearch', goal, '--metric', dimensionId, '--time', `${timeMinutes}m`, '--allow-dirty'],
     { cwd, timeout: timeoutMs },
   );
 }
@@ -106,10 +124,11 @@ async function defaultRunOutcomesForDim(dimensionId: string, cwd: string): Promi
   const { execFile } = await import('node:child_process');
   const { promisify } = await import('node:util');
   const execFileAsync = promisify(execFile);
+  const cli = await resolveDanteForgeExec(cwd);
   try {
     await execFileAsync(
-      'danteforge',
-      ['outcomes', '--dim', dimensionId, '--force-cold'],
+      cli.file,
+      [...cli.argsPrefix, 'outcomes', '--dim', dimensionId, '--force-cold'],
       { cwd, timeout: 10 * 60 * 1000 },
     );
   } catch (err) {
@@ -170,7 +189,8 @@ async function runDepthWave(
     const { execFile } = await import('node:child_process');
     const { promisify } = await import('node:util');
     const execFileAsync = promisify(execFile);
-    await execFileAsync('danteforge', ['validate', dim.id, '--force-cold'], { cwd, timeout: 15 * 60 * 1000 });
+    const cli = await resolveDanteForgeExec(cwd);
+    await execFileAsync(cli.file, [...cli.argsPrefix, 'validate', dim.id, '--force-cold'], { cwd, timeout: 15 * 60 * 1000 });
   } catch (err) {
     logger.warn(`[harden-crusade:${dim.id}] depth wave validate failed: ${err instanceof Error ? err.message : String(err)}`);
   }

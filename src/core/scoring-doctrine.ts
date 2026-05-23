@@ -54,9 +54,49 @@ SCORING DOCTRINE — MANDATORY RULES FOR ALL SCORING
    (cli-smoke), the real tests run (runtime-exec), or a multi-step workflow
    exercised (e2e-workflow). A 9.0 means "this feature works when you use it,"
    not just "the code is there."
+
+9. ZERO-EVIDENCE FALLBACK — If the evidence-rescore script runs but reports 0
+   evidence entries (because .danteforge/outcome-evidence/ is empty or absent),
+   do NOT accept the existing matrix scores as valid. Fall back to executing
+   every outcome command directly and computing tier-based scores from raw
+   pass/fail results. Report that the evidence pipeline has never run end-to-end.
+   This is itself a real finding: scores above 5.0 are not defensible until
+   danteforge validate has produced at least one receipt per dimension.
+
+10. FIX A — CAPABILITY_TEST GATE — For every dimension with a declared
+    capability_test field: run it as part of any scoring pass. If the command
+    exits non-zero AND the outcome-derived score exceeds 5.0, the reported score
+    is clamped to 5.0. Outcomes passing does NOT override a failing
+    capability_test. Record both the outcome-derived score and the capped score,
+    with the capability_test command and its output as the receipt. A loop MUST
+    NOT declare FRONTIER_REACHED on a dimension whose capability_test is failing.
+
+11. OUTCOME TRIAGE — When an outcome command fails, determine root cause before
+    scoring: (a) genuine capability gap — code or integration is missing/broken;
+    (b) outcome definition bug — wrong file path, wrong keyword, wrong
+    expectation in the check itself. Only genuine capability gaps reduce the
+    score and appear in the priority ranking. Outcome definition bugs are test
+    maintenance issues — flag them in a separate OUTCOME_BUGS section and do NOT
+    penalize the dimension score for them. Fix the outcome definition, re-run,
+    then score.
+
+12. BOOTSTRAPPING DEPENDENCY FLAG — If an outcome checks for artifacts only
+    produced by the scoring system itself (e.g., verifying that
+    outcome-evidence/ contains files), flag it as a bootstrapping dependency.
+    Report it in a separate BOOTSTRAP_DEPS section, not in the gap list. The fix
+    is to run danteforge validate, not to write new code. Score the dimension
+    on all other passing outcomes and note the bootstrap gap explicitly.
+
+13. TIME MACHINE — Every scoring pass, crusade cycle, validate run, and harden
+    verdict MUST emit a Time Machine causal commit via createTimeMachineCommit.
+    The commit must record: gitSha, dimensionId, scoreBefore, scoreAfter,
+    outcomesPassed, capabilityTestResult, and the loop name as the agent label.
+    This creates an immutable audit trail. A loop that does not record Time
+    Machine commits is operating without provenance and MUST NOT write final
+    scores to matrix.json.
 `.trim();
 
-export const SCORING_DOCTRINE_SHORT = `Evidence-based scoring only. Compare against actual competitors (not downstream consumers). No adoption penalties on pre-release tools. The gap is the value. "Harsh" = evidence-based, not opinion-based. Scores above 7.0 require runtime execution evidence.`;
+export const SCORING_DOCTRINE_SHORT = `Evidence-based scoring only. Compare against actual competitors (not downstream consumers). No adoption penalties on pre-release tools. The gap is the value. "Harsh" = evidence-based, not opinion-based. Scores above 7.0 require runtime execution evidence. Zero-evidence = run outcomes manually. Fix A caps at 5.0 if capability_test fails. Triage outcome failures before scoring. Flag bootstrapping deps separately. Every scoring pass emits a Time Machine commit.`;
 
 export const SCORING_RULES_FOR_LLM_PROMPT = `
 MANDATORY SCORING RULES (violating these produces invalid scores):

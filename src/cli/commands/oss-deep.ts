@@ -660,7 +660,7 @@ async function writeDeepOutputsAndRegistry(
   await fs.writeFile(path.join(deepDir, 'DEEP_HARVEST.md'), buildDeepHarvestMd(result), 'utf8');
   const registry = await loadRegistry(cwd);
   const now = new Date().toISOString();
-  upsertEntry(registry, { name: result.slug, url: urlOrPath, license: result.license, status: 'active', clonedAt: now, lastLearnedAt: now, patternsCount: patterns.length, storagePath: path.relative(cwd, repoDir), patterns: [] });
+  upsertEntry(registry, { name: result.slug, url: urlOrPath, license: result.license, status: 'active', clonedAt: now, lastLearnedAt: now, patternsCount: patterns.length, storagePath: repoDir, patterns: [] });
   await saveRegistry(registry, cwd);
   return deepDir;
 }

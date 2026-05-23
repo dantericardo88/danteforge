@@ -172,6 +172,40 @@ If pop has conflicts: DO NOT auto-resolve. Show the stash ref and conflict list.
 
 ---
 
+## Phase 7b — Evidence rescore + Fix A gate (Rules 9, 10)
+
+Before the adversarial rescore, run the evidence pipeline:
+
+```bash
+node scripts/evidence-rescore.mjs --dry-run 2>&1 | grep "evidence entries:"
+```
+
+If 0 evidence entries: report "Evidence pipeline has never run. Running outcome commands directly." Then:
+```bash
+danteforge validate --all --force-cold
+node scripts/evidence-rescore.mjs
+```
+
+For each dimension with a `capability_test`, run Fix A gate:
+- Execute `<capability_test.command>`
+- If exit ≠ 0 AND evidence-derived score > 5.0 → **clamp to 5.0**, verdict = `CAPABILITY_TEST_BLOCKED`
+- NEVER declare FRONTIER_REACHED on a dim whose `capability_test` exits non-zero
+
+Perform outcome triage (Rule 11) for each failing outcome before reducing scores:
+- `GENUINE_GAP` → reduces score
+- `OUTCOME_BUG` → flag, no penalty, fix definition
+- `BOOTSTRAP_DEP` → flag, score on other outcomes, fix = run validate
+
+Emit Time Machine commit (Rule 13, MANDATORY) for each dim scored:
+```typescript
+await createTimeMachineCommit({
+  gitSha, dimensionId, scoreBefore, scoreAfter,
+  outcomesPassed, capabilityTestResult,
+  agentLabel: 'goal-loop-matrix',
+});
+```
+If Time Machine commit fails → do NOT write scores for that dimension.
+
 ## Phase 8 — Adversarial rescore
 
 This is the critical anti-inflation gate. Run:
@@ -181,7 +215,9 @@ danteforge compete --calibrate
 
 The adversarial scorer runs in a fresh context with a hostile reviewer prompt. It can only lower scores from what agents self-reported — never inflate them. Any dimension where the adversarial score is ≥1.5 points below the self-reported score gets corrected.
 
-Show the user which dimensions were corrected and by how much.
+Note: this runs AFTER evidence-rescore and Fix A gate (Phase 7b). The adversarial scorer sees evidence-derived scores, not self-reported ones.
+
+Show the user which dimensions were corrected and by how much. Surface any `CAPABILITY_TEST_BLOCKED` verdicts prominently — these are genuine code defects, not scoring issues.
 
 ---
 
@@ -212,12 +248,21 @@ If no `/goal` is active: offer to run another cycle or suggest setting `/goal` f
 
 ---
 
+## Scoring doctrine reference
+
+Key rules from `src/core/scoring-doctrine.ts` enforced by this loop:
+- **Rule 9**: Zero-evidence fallback — run outcomes manually if evidence-rescore finds 0 entries (Phase 7b)
+- **Rule 10**: Fix A — capability_test failure hard-caps at 5.0 (Phase 7b, before adversarial rescore)
+- **Rule 11**: Outcome triage — genuine gaps vs. definition bugs vs. bootstrapping deps (Phase 7b)
+- **Rule 13**: Time Machine commit MANDATORY per dim per cycle (Phase 7b)
+
 ## What this does NOT do
 
 - Does NOT call `/inferno` — matrixdev with courts is strictly more rigorous
-- Does NOT self-report scores — all scoring goes through `compete --calibrate` (adversarial)
+- Does NOT self-report scores — all scoring goes through evidence-rescore + Fix A gate + `compete --calibrate`
 - Does NOT touch `main` directly — every agent works in an isolated worktree; merge-court approves
 - Does NOT skip courts — verify-court + merge-court run every cycle; zero-diff completions are rejected
+- Does NOT accept scores without Time Machine provenance — `PROVENANCE_MISSING` cycles do not write scores
 
 ---
 

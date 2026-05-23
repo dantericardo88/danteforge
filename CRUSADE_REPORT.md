@@ -4,61 +4,61 @@
 **Status:** CRUSADE_MAX_CYCLES
 **Dimension:** security
 **Target Score:** 9
-**Final Score:** 0.00
+**Final Score:** 4.00
 **Cycles Run:** 10
 **Total Patterns Harvested:** 0
 
 ## Cycle Log
 
-### Cycle 1 — 2026-05-19T18:12:01.228Z
+### Cycle 1 — 2026-05-22T12:44:27.199Z
 - OSS passes: 2, patterns harvested: 0
 - Forge wave: FAILED
-- Score: 0.00 → 0.00 (Δ+0.00)
+- Score: 4.00 → 4.00 (Δ+0.00)
 
-### Cycle 2 — 2026-05-19T18:12:02.537Z
+### Cycle 2 — 2026-05-22T12:44:27.548Z
 - OSS passes: 2, patterns harvested: 0
 - Forge wave: FAILED
-- Score: 0.00 → 0.00 (Δ+0.00)
+- Score: 4.00 → 4.00 (Δ+0.00)
 
-### Cycle 3 — 2026-05-19T18:12:04.081Z
+### Cycle 3 — 2026-05-22T12:44:27.836Z
 - OSS passes: 2, patterns harvested: 0
 - Forge wave: FAILED
-- Score: 0.00 → 0.00 (Δ+0.00)
+- Score: 4.00 → 4.00 (Δ+0.00)
 
-### Cycle 4 — 2026-05-19T18:12:05.024Z
+### Cycle 4 — 2026-05-22T12:44:28.089Z
 - OSS passes: 2, patterns harvested: 0
 - Forge wave: FAILED
-- Score: 0.00 → 0.00 (Δ+0.00)
+- Score: 4.00 → 4.00 (Δ+0.00)
 
-### Cycle 5 — 2026-05-19T18:12:13.591Z
+### Cycle 5 — 2026-05-22T12:44:28.367Z
 - OSS passes: 2, patterns harvested: 0
 - Forge wave: FAILED
-- Score: 0.00 → 0.00 (Δ+0.00)
+- Score: 4.00 → 4.00 (Δ+0.00)
 
-### Cycle 6 — 2026-05-19T18:12:15.178Z
+### Cycle 6 — 2026-05-22T12:44:28.540Z
 - OSS passes: 2, patterns harvested: 0
 - Forge wave: FAILED
-- Score: 0.00 → 0.00 (Δ+0.00)
+- Score: 4.00 → 4.00 (Δ+0.00)
 
-### Cycle 7 — 2026-05-19T18:12:17.757Z
+### Cycle 7 — 2026-05-22T12:44:28.703Z
 - OSS passes: 2, patterns harvested: 0
 - Forge wave: FAILED
-- Score: 0.00 → 0.00 (Δ+0.00)
+- Score: 4.00 → 4.00 (Δ+0.00)
 
-### Cycle 8 — 2026-05-19T18:12:28.594Z
+### Cycle 8 — 2026-05-22T12:44:28.856Z
 - OSS passes: 2, patterns harvested: 0
 - Forge wave: FAILED
-- Score: 0.00 → 0.00 (Δ+0.00)
+- Score: 4.00 → 4.00 (Δ+0.00)
 
-### Cycle 9 — 2026-05-19T18:12:30.020Z
+### Cycle 9 — 2026-05-22T12:44:29.040Z
 - OSS passes: 2, patterns harvested: 0
 - Forge wave: FAILED
-- Score: 0.00 → 0.00 (Δ+0.00)
+- Score: 4.00 → 4.00 (Δ+0.00)
 
-### Cycle 10 — 2026-05-19T18:12:32.047Z
+### Cycle 10 — 2026-05-22T12:44:29.205Z
 - OSS passes: 2, patterns harvested: 0
 - Forge wave: FAILED
-- Score: 0.00 → 0.00 (Δ+0.00)
+- Score: 4.00 → 4.00 (Δ+0.00)
 
 ## Result
-Max cycles (10) reached. Score 0.00 did not reach target 9. Run another crusade to continue.
+Max cycles (10) reached. Score 4.00 did not reach target 9. Run another crusade to continue.

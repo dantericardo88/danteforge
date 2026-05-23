@@ -1,0 +1,31 @@
+---
+name: spark
+description: "Zero-token planning preset - review through tasks for new ideas and project starts"
+---
+# /spark - Zero-Token Planning Preset
+
+## Depth Doctrine (MANDATORY — for planning output)
+
+When generating tasks, use TWO task types:
+- **[FORGE]**: implement module + test, ceiling 6. Include 3 callsite answers.
+- **[VALIDATE]**: run `danteforge validate <dim>`, ceiling 9. Include receipt path.
+
+No mocks, no stubs, no TODOs in any planned work.
+
+When the user invokes `/spark`, execute the planning-only preset in the workspace:
+
+1. `review`
+2. `constitution`
+3. `specify`
+4. `clarify`
+5. `plan`
+6. `tasks`
+
+Use this for every new idea or project start when the goal is to produce real planning artifacts without paying execution-token costs yet.
+
+Options:
+- `--prompt` - Show the preset plan without executing it
+
+CLI parity: `danteforge spark [goal]`
+
+Matrix development note: if planning identifies competitive score movement, do not edit `.danteforge/compete/matrix.json`. Hand off to `danteforge matrix claim -> propose -> merge` as described in `docs/MATRIX_DEVELOPMENT_ENGINE.md`.

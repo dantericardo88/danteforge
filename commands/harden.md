@@ -18,7 +18,7 @@ When the user invokes `/harden`, run the deterministic harden gate against every
 
 | Check                     | Cap when failed | Catches |
 |---------------------------|-----------------|---------|
-| `capability_test`         | (implicit 5.0)  | The dim's declared capability_test command exits non-zero. |
+| `capability_test`         | **5.0 (FIX A — HARD)**  | The dim's declared capability_test command exits non-zero. Score clamped to 5.0 regardless of outcome evidence. |
 | `orphan-audit`            | 6.0             | capability_callsite is only imported by test/spec files. |
 | `claim-auditor`           | 7.0             | Numeric/textual claims in docstrings don't match code reality. |
 | `hardcoded-fallback`      | 6.5             | Illustrative-data literals (e.g. `return ['DIS','PFE']`) in non-test code. |
@@ -26,6 +26,30 @@ When the user invokes `/harden`, run the deterministic harden gate against every
 | `functional-diff`         | 5.5             | Two distinct inputs produce byte-identical output (hardcoded behavior). |
 | `primary-not-parallel`    | 5.5             | The declared callsite has fewer production importers than a legacy parallel implementation. |
 | `recency-check`           | 7.0             | No production importer modified on `main` within 30 days AND traces to a user-facing entry point. |
+
+### Fix A — capability_test gate (Rule 10, MANDATORY)
+
+Fix A is the strongest cap in the system — it overrides all other evidence:
+
+1. Run `<capability_test.command>` as a shell command
+2. If exit code ≠ 0 AND the dimension's evidence-derived score > 5.0:
+   - **Clamp score to 5.0, unconditionally**
+   - Record: `{ outcome_derived: N, capped: 5.0, capability_test_command, capability_test_output, reason: "FIX_A" }`
+   - The loop MUST NOT declare `FRONTIER_REACHED` on this dimension
+   - Outcomes passing does NOT override a failing `capability_test`
+3. If exit code = 0: record as PASS receipt, accept evidence-derived score
+
+**Example**: `maintainability` — capability_test checks LOC limit. `hardener.ts` at 904 LOC fails. Even if all outcomes pass, the score is clamped to 5.0 until `hardener.ts` is split below 750 LOC.
+
+### Outcome triage before scoring (Rule 11)
+
+Before applying any score reduction, classify each failing outcome:
+
+**(a) Genuine capability gap** — code or integration missing/broken → reduces score, appears in gap list
+
+**(b) Outcome definition bug** — wrong file path, wrong keyword, wrong expectation in the check itself → flag in `OUTCOME_BUGS` section, no score penalty, fix the outcome definition
+
+**(c) Bootstrapping dependency** — outcome checks for artifacts the scoring system itself produces (e.g., `outcome-evidence/` files) → flag in `BOOTSTRAP_DEPS`, score on all other outcomes, fix = run `danteforge validate`, not write new code
 
 ## Default flow (all dims, all checks)
 
@@ -78,7 +102,11 @@ bash .danteforge/capability-tests/recency_check.sh   # PASS expected
 
 - `.danteforge/harden-receipts/<sha>-<dim>.json` — per-dim verdict with all checks + caps
 - `.danteforge/harden-report.json` — roll-up report with per-dim and overall verdict
-- Time Machine causal commit per verdict
+- `OUTCOME_BUGS` section — outcome definition failures that were NOT scored as gaps
+- `BOOTSTRAP_DEPS` section — outcomes requiring `danteforge validate` before they can pass
+- Time Machine causal commit per verdict: `.danteforge/time-machine/<sha>.json`
+  - Records: `gitSha`, `dimensionId`, `scoreBefore`, `scoreAfter`, `outcomesPassed`, `capabilityTestResult`, `agentLabel: "harden"`
+  - **MANDATORY**: if Time Machine commit fails, score is NOT written
 - Score caps applied to the matrix via the reconciler (single-writer guarantee)
 
 Read `docs/harden-checks.md` for the full check spec including remediation steps.

@@ -23,11 +23,11 @@ function fileExists(path) {
 }
 
 function multiFileCheck(checks) {
-  const parts = checks.map(([path, str], i) => {
+  const parts = checks.map(([filePath], i) => {
     const v = String.fromCharCode(97 + i);
-    return `const ${v}=fs.readFileSync('${path}','utf8')`;
+    return `const ${v}=fs.readFileSync('${filePath}','utf8')`;
   });
-  const conds = checks.map(([path, str], i) => {
+  const conds = checks.map(([, str], i) => {
     const v = String.fromCharCode(97 + i);
     return `!${v}.includes('${str}')`;
   });

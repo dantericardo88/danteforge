@@ -142,6 +142,75 @@ but agents should never auto-target it.
 
 See `docs/MATRIX_DEVELOPMENT_ENGINE.md`.
 
+## Scoring Doctrine — All Loops (mandatory for every agent on every surface)
+
+Every command, loop, agent, and tool that produces or influences a score MUST follow these rules. They are enforced by `src/core/scoring-doctrine.ts` (full text) and propagated to every LLM prompt via `wrapPromptWithDoctrine()`. Violating these rules produces invalid scores that deceive the project owner.
+
+### The 13 rules
+
+**1. EVIDENCE ONLY** — Scores come from outcome evidence (receipts, passing tests, CLI runs). Never from opinions, gut feel, or hardcoded numbers.
+
+**2. CORRECT COMPETITOR TAXONOMY** — Compare ONLY against actual competitors in `positioning.md`. Downstream consumers, adjacent tools, different-category products → reference tier only. Excluded from gap and priority calculations.
+
+**3. GAP-TO-LEADER** — Show gap-to-leader against actual competitors for every dimension. A zero gap must be audited — do not hand-wave it.
+
+**4. NO ADOPTION PENALTY** — NEVER penalize for adoption metrics (users, downloads, stars) on a pre-release product. Score what the tool CAN DO.
+
+**5. THE GAP IS THE VALUE** — Surface where competitors genuinely beat us. Inflating scores or hiding gaps helps no one.
+
+**6. "HARSH" MEANS EVIDENCE-BASED** — Not "penalize for no public users." If the evidence says 9.0, the score is 9.0. If it says 4.0, it's 4.0.
+
+**7. RECEIPTS REQUIRED** — Every score must trace to a specific artifact: file that exists, test that passes, command that runs.
+
+**8. RUNTIME VERIFICATION ABOVE 7.0** — Structural checks (file exists, string present) are capped at T4/7.0. Scores above 7.0 require runtime execution: cli-smoke, runtime-exec, or e2e-workflow.
+
+**9. ZERO-EVIDENCE FALLBACK** — If `node scripts/evidence-rescore.mjs` reports 0 evidence entries, do NOT accept existing matrix scores. Run every outcome command directly and compute tier-based scores from raw pass/fail. Scores above 5.0 are not defensible until `danteforge validate` has produced at least one receipt per dimension.
+
+**10. FIX A — CAPABILITY_TEST GATE** — For every dimension with a declared `capability_test` field: run it as part of any scoring pass. If it exits non-zero AND the evidence-derived score > 5.0, the score is **clamped to 5.0** regardless of outcomes. NEVER declare `FRONTIER_REACHED` on a dimension whose `capability_test` is failing. Record the command and output as the receipt.
+
+**11. OUTCOME TRIAGE** — When an outcome command fails, determine root cause before scoring:
+- **(a) Genuine capability gap** — code is missing/broken → reduces score, appears in gap list
+- **(b) Outcome definition bug** — wrong path/keyword/expectation → flag in `OUTCOME_BUGS`, no score penalty, fix the definition
+- **(c) Bootstrapping dependency** — checks for artifacts the scoring system itself produces → flag in `BOOTSTRAP_DEPS`, score on other outcomes, fix = run `danteforge validate`
+
+**12. BOOTSTRAPPING DEPENDENCY FLAG** — Outcomes that check for `outcome-evidence/` files or other scoring artifacts are bootstrapping dependencies. Report in `BOOTSTRAP_DEPS`. The fix is `danteforge validate`, not new code.
+
+**13. TIME MACHINE** — Every scoring pass, crusade cycle, validate run, and harden verdict MUST emit a Time Machine causal commit via `createTimeMachineCommit`. Record: `gitSha`, `dimensionId`, `scoreBefore`, `scoreAfter`, `outcomesPassed`, `capabilityTestResult`, and the loop name. A loop that does not record Time Machine commits MUST NOT write final scores to `matrix.json`.
+
+### Per-cycle scoring sequence for ANY autonomous loop
+
+```
+1. danteforge validate <dimId> --force-cold   → write OutcomeEvidenceEntry receipts
+2. node scripts/evidence-rescore.mjs           → update matrix.json from evidence
+3. Run capability_test.command                 → Fix A: clamp to 5.0 if exit ≠ 0
+4. createTimeMachineCommit(...)                → audit trail (mandatory before score write)
+5. npm run dimension:ascent -- propose/merge   → single-writer score commit
+```
+
+Steps 1–4 must complete before any score is accepted. If step 4 (Time Machine) fails, do NOT write the score — log `PROVENANCE_MISSING`.
+
+### Frontier definition for each dimension
+
+Every dimension in matrix.json declares its competitive universe:
+- `oss_leader` + `gap_to_oss_leader` — the OSS tool to harvest from (harvestable patterns)
+- `closed_source_leader` + `gap_to_closed_source_leader` — the closed-source gold standard
+- `scores` map — one entry per actual competitor (14 total: 2 closed-source + 12 OSS)
+
+`FRONTIER_REACHED` = score ≥ target AND `capability_test` PASS AND all T7 receipts present (≥3 T5+ outcomes, ≤7 days old).
+
+### What "set it and forget it" means operationally
+
+Run `/crusade`, `/ascend`, or `/harden-crusade` in Claude Code. The loop will:
+1. Auto-detect the competitive universe from matrix.json
+2. Harvest OSS patterns from `oss_leader` via `danteforge inferno --dim <id>`
+3. Validate with receipts via `danteforge validate <id> --force-cold`
+4. Rescore from evidence via `node scripts/evidence-rescore.mjs`
+5. Apply Fix A gate (hard 5.0 cap on capability_test failure)
+6. Emit Time Machine commit for every accepted score
+7. Re-rank by gap-to-leader and repeat until `ALL_DONE`
+
+The loop stops honestly when every dimension is `FRONTIER_REACHED` or `AT_CEILING` — not when self-reported scores look good.
+
 ## Cross-Tool Skill + Command Distribution
 
 This repo doubles as a skills library for Claude Code, Codex, Cursor, Windsurf,
@@ -277,6 +346,7 @@ Usage rule:
 | `danteforge canvas [goal]` | Design-first frontend preset | `--profile`, `--prompt`, `--design-prompt` |
 | `danteforge party` | Multi-agent collaboration mode | `--worktree`, `--isolation`, `--design` |
 | `danteforge autoforge [goal]` | Deterministic auto-orchestration | `--dry-run`, `--auto`, `--score-only`, `--max-waves`, `--profile`, `--parallel`, `--force` |
+| `danteforge crusade` | Frontier crusade across competitive dimensions | `--frontier`, `--parallel`, `--loop`, `--verify-cap`, `--target` |
 | `danteforge magic [goal]` | Balanced default preset for daily gap-closing | `--level`, `--profile`, `--prompt`, `--worktree`, `--isolation` |
 | `danteforge blaze [goal]` | High-power preset with full party escalation | `--profile`, `--prompt`, `--worktree`, `--isolation`, `--with-design`, `--design-prompt` |
 | `danteforge nova [goal]` | Very-high-power preset with planning prefix and deep execution | `--profile`, `--prompt`, `--worktree`, `--isolation`, `--tech-decide`, `--with-design`, `--design-prompt` |
@@ -291,6 +361,9 @@ Usage rule:
 | `danteforge retro` | Project retrospective with trends | `--summary`, `--cwd` |
 | `danteforge lessons [correction]` | Self-improving rules from corrections | `--compact`, `--prompt` |
 | `danteforge proof` | Score-arc evidence report: before/after delta since a date or git SHA | `--since` |
+| `danteforge validate` | Produce outcome receipts and evidence for scoring | `--force-cold`, `--all` |
+| `danteforge harden` | Run harden gate checks for a dimension | `--dim` |
+| `danteforge harden-crusade` | Autoresearch hardening loop with harden-gate verification | `--loop`, `--target`, `--parallel` |
 
 ### Exploration & Discovery
 
@@ -300,10 +373,13 @@ Usage rule:
 | `danteforge browse <subcommand>` | Browser automation (navigate, screenshot, inspect) | `--url`, `--port` |
 | `danteforge awesome-scan` | Discover and classify skills across sources | `--source`, `--domain`, `--install` |
 | `danteforge oss` | Auto-detect project, search OSS, clone, license-gate, extract patterns | `--prompt`, `--dry-run`, `--max-repos` |
+| `danteforge oss-loop` | Competitive landscape discovery loop until plateau | `--plateau-passes`, `--max-passes`, `--discovery-file` |
+| `danteforge oss-sync` | Restore and update matrix-required OSS repos from registry | `--update`, `--stale-days`, `--dry-run` |
 | `danteforge oss-clean` | Remove cached OSS repos from .danteforge/oss-repos/ | `--dry-run` |
 | `danteforge oss-learn` | Re-extract patterns from cached OSS repos and regenerate OSS_REPORT.md | `--prompt` |
 | `danteforge local-harvest [paths...]` | Harvest patterns from local private repos, folders, and zip archives | `--config`, `--depth`, `--prompt`, `--dry-run`, `--max-sources` |
 | `danteforge harvest` | Titan Harvest V2: 5-step constitutional harvest of OSS patterns | `--prompt`, `--lite` |
+| `danteforge titan-harvest-loop` | Clean-room harvest loop for GPL/AGPL repos queued by oss-loop | `--max-repos`, `--dry-run` |
 | `danteforge wiki-ingest` | Ingest source files into the three-tier knowledge wiki | `--bootstrap`, `--prompt` |
 | `danteforge wiki-lint` | Run lint cycle on wiki: contradictions, staleness, link integrity | `--heuristic-only` |
 | `danteforge wiki-query <topic>` | Query the wiki for relevant knowledge | `--json` |
@@ -314,6 +390,7 @@ Usage rule:
 | `danteforge respec` | Re-run specification with lessons learned and refused patterns injected | |
 | `danteforge cross-synthesize` | Synthesize winning patterns from attribution history to escape a plateau | `--window` |
 | `danteforge compete` | Competitive Harvest Loop: score gaps, sprint to close them (6-phase CHL) | `--init`, `--sprint`, `--rescore`, `--report`, `--auto` |
+| `danteforge gap` | Gap report and next actions | |
 | `danteforge score` | Fast pure-fs score: one number + 3 P0 action items in <5 seconds (no LLM) | `--full` |
 | `danteforge prime` | Generate .danteforge/PRIME.md session brief for Claude Code | `--copy` |
 | `danteforge teach` | Capture an AI correction into lessons.md and auto-update PRIME.md | |

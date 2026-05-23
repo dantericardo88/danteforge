@@ -171,6 +171,8 @@ async function checkCodexBootstrap(homeDir: string, strict = false): Promise<Dia
 
 async function checkCodexCommandFiles(homeDir: string, strict = false): Promise<DiagnosticResult> {
   const commandsDir = path.join(homeDir, '.codex', 'commands');
+  const promptsDir = path.join(homeDir, '.codex', 'prompts');
+  const skillsDir = path.join(homeDir, '.codex', 'skills');
   const expectedFiles = [
     'autoforge.md',
     'spark.md',
@@ -180,6 +182,12 @@ async function checkCodexCommandFiles(homeDir: string, strict = false): Promise<
     'blaze.md',
     'nova.md',
     'inferno.md',
+    'crusade.md',
+    'party.md',
+    'oss.md',
+    'oss-harvest.md',
+    'oss-loop.md',
+    'oss-sync.md',
     'verify.md',
     'local-harvest.md',
   ];
@@ -187,7 +195,14 @@ async function checkCodexCommandFiles(homeDir: string, strict = false): Promise<
 
   for (const file of expectedFiles) {
     if (!await exists(path.join(commandsDir, file))) {
-      missing.push(file);
+      missing.push(`commands/${file}`);
+    }
+    if (!await exists(path.join(promptsDir, file))) {
+      missing.push(`prompts/${file}`);
+    }
+    const commandName = file.replace(/\.md$/, '');
+    if (!await exists(path.join(skillsDir, `danteforge-${commandName}`, 'SKILL.md'))) {
+      missing.push(`skills/danteforge-${commandName}`);
     }
   }
 
@@ -195,14 +210,14 @@ async function checkCodexCommandFiles(homeDir: string, strict = false): Promise<
     return {
       name: 'Codex native commands',
       status: 'ok',
-      message: `Native Codex command files are present in ${commandsDir}`,
+      message: `Codex command, prompt, and generated skill files are present under ${path.join(homeDir, '.codex')}`,
     };
   }
 
   return {
     name: 'Codex native commands',
     status: strict ? 'fail' : 'warn',
-    message: `Missing Codex command files: ${missing.join(', ')}`,
+    message: `Missing Codex command/prompt/skill files: ${missing.join(', ')}`,
     fix: 'Run: danteforge setup assistants --assistants codex',
   };
 }
