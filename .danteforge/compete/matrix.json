@@ -3308,6 +3308,15 @@
           "timeout_ms": 120000,
           "required_callsite": "tests/auto-lessons.test.ts",
           "description": "Auto-lessons and lessons command tests execute."
+        },
+        {
+          "id": "singularity_30pct",
+          "tier": "T7",
+          "kind": "runtime-exec",
+          "command": "node scripts/measure-singularity.mjs --assert-min=30",
+          "description": ">=30% of recent commits were DanteForge-assisted (Singularity Score)",
+          "timeout_ms": 15000,
+          "required_callsite": "scripts/measure-singularity.mjs"
         }
       ],
       "declared_ceiling": "T7",
