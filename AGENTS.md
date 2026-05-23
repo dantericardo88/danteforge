@@ -196,7 +196,19 @@ Every dimension in matrix.json declares its competitive universe:
 - `closed_source_leader` + `gap_to_closed_source_leader` — the closed-source gold standard
 - `scores` map — one entry per actual competitor (14 total: 2 closed-source + 12 OSS)
 
-`FRONTIER_REACHED` = score ≥ target AND `capability_test` PASS AND all T7 receipts present (≥3 T5+ outcomes, ≤7 days old).
+`FRONTIER_REACHED` = ALL of the following must be true simultaneously:
+1. score ≥ target (evidence-rescore derived, not self-reported)
+2. `capability_test` PASS (Fix A — exit code 0)
+3. ≥3 T5+ outcomes from the past 7 days
+4. **CIP PASS** — `runCIPCheck()` from `src/core/completion-integrity.ts` returns `blocksFrontierReached: false`:
+   - `cipScore` within 0.5 of target
+   - `cipClass` is `'verified'` or `'partially-verified'`
+   - Zero stubs/mocks/TODOs in the dimension's critical path
+   - All declared outcomes pass when re-executed cold
+   - At least one outcome declared (zero outcomes = Rule 9 zero-evidence fallback)
+
+If ANY condition fails, the loop continues. **FRONTIER_REACHED is never self-declared by an agent.**
+Bypassing CIP requires explicit `--skip-cip` (development escape hatch — never a default).
 
 ### What "set it and forget it" means operationally
 

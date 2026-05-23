@@ -94,9 +94,19 @@ SCORING DOCTRINE — MANDATORY RULES FOR ALL SCORING
     This creates an immutable audit trail. A loop that does not record Time
     Machine commits is operating without provenance and MUST NOT write final
     scores to matrix.json.
+
+14. CIP MANDATORY BEFORE FRONTIER_REACHED — Before any command surface emits
+    FRONTIER_REACHED, ALL_DONE, or target-reached, it MUST call runCIPCheck()
+    from src/core/completion-integrity.ts for every dimension involved. A
+    CIPResult with blocksFrontierReached=true PREVENTS the termination signal —
+    the loop continues and works the gaps. This rule overrides self-reported
+    scores, agent verdicts, and stored evidence. The only bypass is --skip-cip
+    (development mode only; never a default). Stubs in the critical path, zero
+    outcomes declared, failing capability_test, or cipScore ≥0.5 below stored
+    score all independently block FRONTIER_REACHED.
 `.trim();
 
-export const SCORING_DOCTRINE_SHORT = `Evidence-based scoring only. Compare against actual competitors (not downstream consumers). No adoption penalties on pre-release tools. The gap is the value. "Harsh" = evidence-based, not opinion-based. Scores above 7.0 require runtime execution evidence. Zero-evidence = run outcomes manually. Fix A caps at 5.0 if capability_test fails. Triage outcome failures before scoring. Flag bootstrapping deps separately. Every scoring pass emits a Time Machine commit.`;
+export const SCORING_DOCTRINE_SHORT = `Evidence-based scoring only. Compare against actual competitors (not downstream consumers). No adoption penalties on pre-release tools. The gap is the value. "Harsh" = evidence-based, not opinion-based. Scores above 7.0 require runtime execution evidence. Zero-evidence = run outcomes manually. Fix A caps at 5.0 if capability_test fails. Triage outcome failures before scoring. Flag bootstrapping deps separately. Every scoring pass emits a Time Machine commit. CIP (runCIPCheck) is mandatory before FRONTIER_REACHED — stubs, zero outcomes, failing capability_test, or cipScore ≥0.5 below stored score all block it.`;
 
 export const SCORING_RULES_FOR_LLM_PROMPT = `
 MANDATORY SCORING RULES (violating these produces invalid scores):
@@ -110,6 +120,8 @@ MANDATORY SCORING RULES (violating these produces invalid scores):
 - Every score must trace to an artifact (file, test, command, integration)
 - Scores above 7.0 require RUNTIME evidence (cli-smoke, runtime-exec, e2e-workflow)
 - Structural file checks (readFileSync/includes) cap at T4/7.0 regardless of declared tier
+- CIP mandatory before FRONTIER_REACHED: runCIPCheck() must return blocksFrontierReached=false
+- Stubs/mocks in critical path, zero outcomes, failing capability_test = CIP blocks frontier
 `.trim();
 
 export function buildScoringDoctrineHeader(): string {

@@ -8,6 +8,7 @@ import path from 'node:path';
 import { logger } from '../../core/logger.js';
 import { withProgress } from '../../core/ux-progress.js';
 import { loadMatrix, computeGapPriority, type MatrixDimension, type CompeteMatrix } from '../../core/compete-matrix.js';
+import { runCIPCheck } from '../../core/completion-integrity.js';
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -278,6 +279,8 @@ export interface FrontierCrusadeOptions {
   loop?: boolean;          // keep re-ranking and re-running passes until ALL_DONE (default false)
   verifyCap?: boolean;     // run capability_test before declaring FRONTIER_REACHED (default false)
   skipLLMCheck?: boolean;  // skip pre-flight LLM availability check (for testing)
+  /** Skip CIP verification before FRONTIER_REACHED (development escape hatch — never default). */
+  skipCIP?: boolean;
   cwd?: string;
   _runInferno?: (goal: string, cwd: string) => Promise<void>;
   _getScore?: (dimension: string, cwd: string) => Promise<number>;
@@ -524,7 +527,19 @@ async function runDimensionFrontierLoop(
           continue;
         }
       }
-      logger.success(`[frontier:${dim.id}] FRONTIER_REACHED — ${score.toFixed(2)} evidence-verified`);
+      // CIP gate (Scoring Doctrine Rule 14): verify end-to-end evidence before
+      // declaring FRONTIER_REACHED. Self-reported scores are untrusted.
+      if (!options.skipCIP) {
+        const cip = await runCIPCheck(dim.id, { cwd, target });
+        if (cip.blocksFrontierReached) {
+          logger.warn(`[frontier:${dim.id}] CIP blocked FRONTIER_REACHED — ${cip.gaps.join('; ')}`);
+          consecutiveNoProgress = 0; // treat as non-plateau so the loop continues
+          continue;
+        }
+        logger.success(`[frontier:${dim.id}] FRONTIER_REACHED — ${score.toFixed(2)} evidence-verified, CIP confirmed (cipScore=${cip.cipScore.toFixed(2)})`);
+      } else {
+        logger.success(`[frontier:${dim.id}] FRONTIER_REACHED — ${score.toFixed(2)} evidence-verified`);
+      }
       return { dimensionId: dim.id, label: dim.label, initialScore, finalScore: score, cyclesRun: cycle, autoresearchRuns, capabilityTestResult: lastCapResult, status: 'FRONTIER_REACHED' };
     }
   }

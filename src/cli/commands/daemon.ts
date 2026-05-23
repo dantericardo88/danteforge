@@ -14,6 +14,7 @@ import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import { logger } from '../../core/logger.js';
 import { loadMatrix } from '../../core/compete-matrix.js';
+import { runCIPCheck } from '../../core/completion-integrity.js';
 
 const execFileAsync = promisify(execFile);
 const DAEMON_LOG_FILE = '.danteforge/daemon-log.jsonl';
@@ -304,9 +305,30 @@ export async function runDaemon(options: DaemonOptions = {}): Promise<DaemonResu
     }
 
     if (result.scoreAfterPass >= target) {
-      logger.info(`[daemon] TARGET REACHED: ${result.scoreAfterPass} >= ${target}`);
-      await appendLog(cwd, { event: 'stop', reason: 'target-reached', finalScore: result.scoreAfterPass, passes: passes.length });
-      return { passes, finalScore: result.scoreAfterPass, targetReached: true, timeLimitReached: false, reason: 'target-reached' };
+      // CIP gate (Scoring Doctrine Rule 14): before accepting target-reached,
+      // verify all active dimensions have end-to-end evidence backing their scores.
+      const matrix = await loadMatrix(cwd);
+      const excluded = new Set(matrix?.excludedDimensions ?? []);
+      const activeDims = (matrix?.dimensions ?? []).filter(
+        d => !excluded.has(d.id) && (d as unknown as Record<string, unknown>)['status'] !== 'closed',
+      );
+      const cipResults = await Promise.all(
+        activeDims.map(d => runCIPCheck(d.id, { cwd, target })),
+      );
+      const cipBlocked = cipResults.filter(r => r.blocksFrontierReached);
+      if (cipBlocked.length > 0) {
+        logger.warn(`[daemon] CIP blocked target-reached: ${cipBlocked.length} dim(s) lack end-to-end evidence`);
+        for (const r of cipBlocked) {
+          logger.warn(`  ${r.dimensionId}: ${r.cipClass} — ${r.gaps.join('; ')}`);
+        }
+        // Reset plateau counter so the next pass works on fixing the gaps
+        consecutivePlateau = 0;
+        // Fall through — do NOT return target-reached; next pass continues
+      } else {
+        logger.info(`[daemon] TARGET REACHED: ${result.scoreAfterPass} >= ${target} (CIP confirmed all dims)`);
+        await appendLog(cwd, { event: 'stop', reason: 'target-reached', finalScore: result.scoreAfterPass, passes: passes.length });
+        return { passes, finalScore: result.scoreAfterPass, targetReached: true, timeLimitReached: false, reason: 'target-reached' };
+      }
     }
 
     pass++;

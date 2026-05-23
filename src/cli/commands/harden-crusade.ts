@@ -25,6 +25,7 @@ import chalk from 'chalk';
 import { logger } from '../../core/logger.js';
 import { loadMatrix, type CompeteMatrix, type MatrixDimension } from '../../core/compete-matrix.js';
 import { SCORING_DOCTRINE_SHORT } from '../../core/scoring-doctrine.js';
+import { runCIPCheck } from '../../core/completion-integrity.js';
 
 const MAX_WAVES_WITHOUT_REGRADE = 3;
 const DEFAULT_TARGET = 9.0;
@@ -54,6 +55,8 @@ export interface HardenCrusadeOptions {
   _loadState?: ((opts: { cwd?: string }) => Promise<{ wavesSinceLastRegrade?: number }>) | null;
   /** If set, promote this dimension to the front of each work queue (intel-driven targeting). */
   focusDimension?: string;
+  /** Skip CIP verification before FRONTIER_REACHED (development escape hatch — never default). */
+  skipCIP?: boolean;
 }
 
 export interface HardenDimResult {
@@ -74,8 +77,9 @@ export interface DimHardenCrusadeResult {
   autoresearchRuns: number;
   hardenPassed: boolean;
   finalCap: number;
-  status: 'FRONTIER_REACHED' | 'AT_CEILING' | 'GATE_BLOCKED' | 'MAX_CYCLES' | 'FAILED';
+  status: 'FRONTIER_REACHED' | 'AT_CEILING' | 'GATE_BLOCKED' | 'MAX_CYCLES' | 'FAILED' | 'CIP_BLOCKED';
   reason: string;
+  cipScore?: number;
 }
 
 export interface HardenCrusadeResult {
@@ -264,8 +268,25 @@ async function runDimensionLoop(
     // 3. Harden gate
     lastHarden = await runHardenForDim(dim.id, cwd);
 
-    // 4. Frontier check: score >= target AND gate allows
+    // 4. Frontier check: score >= target AND gate allows — then CIP gate (Rule 14)
     if (score >= target && lastHarden.allowed) {
+      if (!options.skipCIP) {
+        const cip = await runCIPCheck(dim.id, { cwd, target });
+        if (cip.blocksFrontierReached) {
+          logger.warn(`[harden-crusade:${dim.id}] CIP blocked FRONTIER_REACHED — ${cip.gaps.join('; ')}`);
+          // Treat as non-plateau so the loop tries another autoresearch cycle
+          // to fix the gaps (stubs, missing E2E outcomes, failing capability_test).
+          continue;
+        }
+        return {
+          dimensionId: dim.id, label: dim.label, initialScore, finalScore: score,
+          cyclesRun: cycle, autoresearchRuns,
+          hardenPassed: true, finalCap: 10,
+          status: 'FRONTIER_REACHED',
+          reason: `score ${score.toFixed(2)} >= ${target}, harden gate clean, CIP verified (cipScore=${cip.cipScore.toFixed(2)})`,
+          cipScore: cip.cipScore,
+        };
+      }
       return {
         dimensionId: dim.id, label: dim.label, initialScore, finalScore: score,
         cyclesRun: cycle, autoresearchRuns,
