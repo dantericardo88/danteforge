@@ -28,8 +28,8 @@ const AUDIT_DIR = '.danteforge/integrity-audit';
 
 export interface ScoreAuditOptions {
   cwd?: string;
-  /** Only audit this dimension id */
-  dimension?: string;
+  /** Only audit these dimension ids (one or more) */
+  dimension?: string | string[];
   /** Apply score caps and write back to matrix.json */
   apply?: boolean;
   /** Emit JSON summary instead of human-readable output */
@@ -54,21 +54,67 @@ async function getGitSha(cwd: string): Promise<string> {
   }
 }
 
+type DeclaredOutcome = {
+  id?: string;
+  command?: string;
+  cli_args?: string[];
+  expected_exit?: number;
+  expected_stdout_patterns?: string[];
+  timeout_ms?: number;
+};
+
+// On Windows, cmd.exe wraps the /c argument in extra quotes when Node.js spawns it,
+// which corrupts nested double-quotes in `node -e "..."` commands. Parse those
+// commands and run node directly (no shell) to avoid the quoting issue.
+// npx/npm commands don't have inner quotes so they go through the shell normally.
+function parseNodeECommand(cmd: string): [string, string[]] | null {
+  const nodeE = cmd.match(/^node\s+-e\s+"([\s\S]+)"$/);
+  if (nodeE) return ['node', ['-e', nodeE[1]]];
+  return null;
+}
+
 async function runDeclaredOutcomes(
-  outcomes: Array<{ id: string; command?: string }>,
+  outcomes: DeclaredOutcome[],
   cwd: string,
 ): Promise<{ total: number; passing: number }> {
   if (!outcomes || outcomes.length === 0) return { total: 0, passing: 0 };
   let passing = 0;
   for (const outcome of outcomes) {
-    if (!outcome.command) continue;
     try {
-      const shell = process.platform === 'win32' ? 'cmd' : 'sh';
-      const args = process.platform === 'win32' ? ['/c', outcome.command] : ['-c', outcome.command];
-      await execFileAsync(shell, args, { cwd, timeout: 30_000 });
-      passing++;
+      if (outcome.command) {
+        const timeout = outcome.timeout_ms ?? 30_000;
+        const direct = parseNodeECommand(outcome.command);
+        if (direct) {
+          const [exe, args] = direct;
+          await execFileAsync(exe, args, { cwd, timeout });
+        } else {
+          const shell = process.platform === 'win32' ? 'cmd' : 'sh';
+          const args = process.platform === 'win32' ? ['/c', outcome.command] : ['-c', outcome.command];
+          await execFileAsync(shell, args, { cwd, timeout });
+        }
+        passing++;
+      } else if (outcome.cli_args && outcome.cli_args.length > 0) {
+        const expectedExit = outcome.expected_exit ?? 0;
+        let stdout = '';
+        let exitCode = 0;
+        try {
+          const result = await execFileAsync('node', ['dist/index.js', ...outcome.cli_args], {
+            cwd, timeout: outcome.timeout_ms ?? 30_000,
+          });
+          stdout = result.stdout;
+        } catch (err: unknown) {
+          const e = err as { code?: number; stdout?: string };
+          exitCode = e.code ?? 1;
+          stdout = e.stdout ?? '';
+        }
+        if (exitCode !== expectedExit) continue;
+        const patterns = outcome.expected_stdout_patterns ?? [];
+        if (patterns.some(p => !stdout.includes(p))) continue;
+        passing++;
+      }
+      // outcomes with neither command nor cli_args count as failing (total++ below)
     } catch {
-      // outcome failed — counts against the score
+      // outcome threw — counts as failing
     }
   }
   return { total: outcomes.length, passing };
@@ -182,7 +228,10 @@ export async function runScoreAudit(options: ScoreAuditOptions = {}): Promise<In
   const dims = matrix.dimensions.filter(d => {
     if (excl.has(d.id)) return false;
     if (d.status === 'closed') return false;
-    if (options.dimension && d.id !== options.dimension) return false;
+    if (options.dimension) {
+      const filter = Array.isArray(options.dimension) ? options.dimension : [options.dimension];
+      if (!filter.includes(d.id)) return false;
+    }
     return true;
   });
 
@@ -190,6 +239,7 @@ export async function runScoreAudit(options: ScoreAuditOptions = {}): Promise<In
 
   const records: IntegrityAuditRecord[] = [];
   let scoresCapped = 0;
+  let scoresRaised = 0;
   let totalBefore = 0;
   let totalAfter = 0;
 
@@ -239,12 +289,18 @@ export async function runScoreAudit(options: ScoreAuditOptions = {}): Promise<In
       hasSrcImplementation: hasImpl,
     });
 
-    const adjScore = Math.min(priorScore, capResult.cap);
+    // Evidence-supported score: never exceeds cap, never exceeds 9 (T7 max without human curation)
+    const evidenceScore = Math.min(capResult.cap, 9);
+    const adjScore = evidenceScore;
     const capped = adjScore < priorScore;
+    const raised = adjScore > priorScore;
 
     if (capped) {
       scoresCapped++;
       logger.warn(`  → CAPPED: ${priorScore} → ${adjScore}  (${capResult.reason})`);
+    } else if (raised) {
+      scoresRaised++;
+      logger.info(`  → RAISED: ${priorScore} → ${adjScore}  (${capResult.reason})`);
     } else {
       logger.info(`  → CONFIRMED: ${adjScore}  (${capResult.reason})`);
     }
@@ -256,8 +312,8 @@ export async function runScoreAudit(options: ScoreAuditOptions = {}): Promise<In
     records.push(record);
     await saveAuditRecord(record, cwd);
 
-    // g) Apply cap to matrix (if --apply)
-    if (apply && capped) {
+    // g) Apply evidence-supported score to matrix (if --apply)
+    if (apply && (capped || raised)) {
       dim.scores['self'] = adjScore;
       dim.gap_to_leader = Math.max(0, record.leaderScore - adjScore);
     }
@@ -267,9 +323,9 @@ export async function runScoreAudit(options: ScoreAuditOptions = {}): Promise<In
   }
 
   // Step 4: Write back if --apply
-  if (apply && scoresCapped > 0) {
+  if (apply && (scoresCapped > 0 || scoresRaised > 0)) {
     await _saveMatrix(matrix, cwd);
-    logger.info(`\n[score-audit] Wrote ${scoresCapped} capped score(s) to matrix.json`);
+    logger.info(`\n[score-audit] Wrote ${scoresCapped} capped + ${scoresRaised} raised score(s) to matrix.json`);
   }
 
   const summary: IntegrityAuditSummary = {

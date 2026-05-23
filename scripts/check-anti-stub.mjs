@@ -51,6 +51,7 @@ const fullyExemptFiles = [
   'drift-detector.ts',                 // defines stub-detection regex patterns by design
   'premium.ts',                         // license validation stub is intentional (future implementation)
   'harsh-scorer.ts',                   // stub detection engine — references patterns by design
+  'integrity-audit.ts',               // score integrity auditor — stores stub patterns as detection data
   'matrix-build-subagent-prompt.ts',   // generates sub-agent prompts that describe anti-patterns by design
   'pre-commit.mjs',                    // depth-doctrine guard — defines the patterns it enforces
 ];

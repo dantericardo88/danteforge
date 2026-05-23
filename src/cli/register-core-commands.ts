@@ -876,7 +876,7 @@ program
 program
   .command('score-audit')
   .description('Completion integrity audit: independently verify every dimension score against real evidence, apply 10-tier caps')
-  .option('--dimension <id>', 'Audit only this dimension id')
+  .option('--dimension [ids...]', 'Audit only these dimension ids (repeatable)')
   .option('--apply', 'Write capped scores back to matrix.json (default: dry-run)')
   .option('--skip-cap-tests', 'Skip running capability_test commands (faster, less reliable)')
   .option('--json', 'Emit JSON summary')

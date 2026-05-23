@@ -34,7 +34,7 @@
     "Dagger",
     "re_gent"
   ],
-  "lastUpdated": "2026-05-22T12:38:43.007Z",
+  "lastUpdated": "2026-05-22T22:06:14.116Z",
   "overallSelfScore": 9,
   "excludedDimensions": [
     "community_adoption",
@@ -92,7 +92,7 @@
         "Fabric": 4,
         "Agno": 5.5
       },
-      "gap_to_leader": 0,
+      "gap_to_leader": 0.5,
       "leader": "self",
       "gap_to_closed_source_leader": 0,
       "closed_source_leader": "self",
@@ -272,7 +272,7 @@
         "BMad-METHOD": 5,
         "Pydantic-AI": 8.5
       },
-      "gap_to_leader": 0,
+      "gap_to_leader": 0.5,
       "leader": "self",
       "gap_to_closed_source_leader": 0,
       "closed_source_leader": "self",
@@ -449,7 +449,7 @@
         "Fabric": 7,
         "Agno": 7.5
       },
-      "gap_to_leader": 0,
+      "gap_to_leader": 0.5,
       "leader": "self",
       "gap_to_closed_source_leader": 0,
       "closed_source_leader": "self",
@@ -756,7 +756,7 @@
         "Fabric": 3,
         "Agno": 7
       },
-      "gap_to_leader": 0,
+      "gap_to_leader": 0.5,
       "leader": "self",
       "gap_to_closed_source_leader": 0,
       "closed_source_leader": "self",
@@ -3373,7 +3373,7 @@
         "Fabric": 2,
         "Agno": 8
       },
-      "gap_to_leader": 0,
+      "gap_to_leader": 0.5,
       "leader": "self",
       "gap_to_closed_source_leader": 0,
       "closed_source_leader": "self",
