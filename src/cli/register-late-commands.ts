@@ -1389,6 +1389,7 @@ program
   .option('--max-dim-cycles <n>', 'Per-dim cycle cap (default 6)', '6')
   .option('--time <m>', 'Autoresearch time budget per cycle in minutes (default 30)', '30')
   .option('--loop', 'Outer loop: re-rank + re-run until ALL_DONE (max 10 passes)', false)
+  .option('--dimension <id>', 'Promote this dimension to the front of every work queue (intel-driven targeting)')
   .option('--json', 'Machine-readable JSON output')
   .option('--cwd <path>', 'Project directory (defaults to cwd)')
   .addHelpText('after', `
@@ -1422,6 +1423,7 @@ Writes report to HARDEN_CRUSADE_REPORT.md.
           timeMinutes: parseInt(opts.time as string, 10),
           loop: opts.loop as boolean,
           cwd: opts.cwd as string | undefined,
+          focusDimension: opts.dimension as string | undefined,
         });
         if (opts.json) {
           process.stdout.write(JSON.stringify(result, null, 2) + '\n');

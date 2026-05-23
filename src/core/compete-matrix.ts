@@ -559,7 +559,7 @@ function matchesDimension(categoryLabel: string, dimensionId: string): boolean {
     'testquality': 'testing',
     'documentation': 'documentation',
     'autonomy': 'autonomy',
-    'multiagent': 'multiagentor chestration',
+    'multiagent': 'multiagentorchestration',
     'security': 'security',
     'uxclipolish': 'uxpolish',
     'tokencontextmanagement': 'tokeneconomy',

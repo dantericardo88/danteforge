@@ -48,7 +48,7 @@
       "category": "quality",
       "frequency": "high",
       "scores": {
-        "self": 9,
+        "self": 7,
         "Devin (Cognition AI)": 7.5,
         "GitHub Copilot Workspace": 8,
         "Cursor": 7,
@@ -92,7 +92,7 @@
         "Fabric": 4,
         "Agno": 5.5
       },
-      "gap_to_leader": 0.5,
+      "gap_to_leader": 2.5,
       "leader": "self",
       "gap_to_closed_source_leader": 0,
       "closed_source_leader": "self",
@@ -239,7 +239,7 @@
       "category": "ux",
       "frequency": "high",
       "scores": {
-        "self": 9,
+        "self": 7,
         "Devin (Cognition AI)": 7.5,
         "GitHub Copilot Workspace": 9,
         "Cursor": 9.5,
@@ -272,7 +272,7 @@
         "BMad-METHOD": 5,
         "Pydantic-AI": 8.5
       },
-      "gap_to_leader": 0.5,
+      "gap_to_leader": 2.5,
       "leader": "self",
       "gap_to_closed_source_leader": 0,
       "closed_source_leader": "self",
@@ -405,7 +405,7 @@
       "category": "ux",
       "frequency": "high",
       "scores": {
-        "self": 9,
+        "self": 7,
         "Devin (Cognition AI)": 7,
         "GitHub Copilot Workspace": 8.5,
         "Cursor": 9.5,
@@ -449,7 +449,7 @@
         "Fabric": 7,
         "Agno": 7.5
       },
-      "gap_to_leader": 0.5,
+      "gap_to_leader": 2.5,
       "leader": "self",
       "gap_to_closed_source_leader": 0,
       "closed_source_leader": "self",
@@ -554,7 +554,7 @@
       "category": "quality",
       "frequency": "high",
       "scores": {
-        "self": 9,
+        "self": 4,
         "Devin (Cognition AI)": 9,
         "GitHub Copilot Workspace": 8,
         "Cursor": 8.5,
@@ -590,7 +590,7 @@
         "Browser-use": 6.5,
         "Agno": 7
       },
-      "gap_to_leader": 0,
+      "gap_to_leader": 5,
       "leader": "self",
       "gap_to_closed_source_leader": 0,
       "closed_source_leader": "self",
@@ -712,7 +712,7 @@
       "category": "features",
       "frequency": "high",
       "scores": {
-        "self": 9,
+        "self": 7,
         "Devin (Cognition AI)": 9.5,
         "GitHub Copilot Workspace": 7,
         "Cursor": 7,
@@ -756,7 +756,7 @@
         "Fabric": 3,
         "Agno": 7
       },
-      "gap_to_leader": 0.5,
+      "gap_to_leader": 2.5,
       "leader": "self",
       "gap_to_closed_source_leader": 0,
       "closed_source_leader": "self",
@@ -1593,7 +1593,7 @@
       "category": "reliability",
       "frequency": "high",
       "scores": {
-        "self": 9,
+        "self": 7,
         "Devin (Cognition AI)": 7,
         "GitHub Copilot Workspace": 8,
         "Cursor": 7.5,
@@ -1625,7 +1625,7 @@
         "spec-kit (GitHub)": 4,
         "BMad-METHOD": 3.5
       },
-      "gap_to_leader": 0,
+      "gap_to_leader": 1,
       "leader": "self",
       "gap_to_closed_source_leader": 0,
       "closed_source_leader": "self",
@@ -1742,7 +1742,7 @@
       "category": "quality",
       "frequency": "high",
       "scores": {
-        "self": 9,
+        "self": 7,
         "Devin (Cognition AI)": 7.5,
         "GitHub Copilot Workspace": 7.5,
         "Cursor": 7,
@@ -1774,7 +1774,7 @@
         "spec-kit (GitHub)": 4,
         "BMad-METHOD": 4
       },
-      "gap_to_leader": 0,
+      "gap_to_leader": 1,
       "leader": "self",
       "gap_to_closed_source_leader": 0,
       "closed_source_leader": "self",
@@ -1879,7 +1879,7 @@
       "category": "quality",
       "frequency": "high",
       "scores": {
-        "self": 9,
+        "self": 4,
         "Devin (Cognition AI)": 7.5,
         "GitHub Copilot Workspace": 8.5,
         "Cursor": 8,
@@ -1911,7 +1911,7 @@
         "spec-kit (GitHub)": 5,
         "BMad-METHOD": 4.5
       },
-      "gap_to_leader": 0,
+      "gap_to_leader": 4.5,
       "leader": "self",
       "gap_to_closed_source_leader": 0,
       "closed_source_leader": "self",
@@ -2298,7 +2298,7 @@
       "category": "ux",
       "frequency": "medium",
       "scores": {
-        "self": 9,
+        "self": 7,
         "Devin (Cognition AI)": 7,
         "GitHub Copilot Workspace": 8,
         "Cursor": 7.5,
@@ -2330,7 +2330,7 @@
         "spec-kit (GitHub)": 6,
         "BMad-METHOD": 5.5
       },
-      "gap_to_leader": 0,
+      "gap_to_leader": 2,
       "leader": "self",
       "gap_to_closed_source_leader": 0,
       "closed_source_leader": "self",
@@ -2441,7 +2441,7 @@
       "category": "features",
       "frequency": "medium",
       "scores": {
-        "self": 9,
+        "self": 7,
         "Devin (Cognition AI)": 8.5,
         "GitHub Copilot Workspace": 5,
         "Cursor": 4.5,
@@ -2473,7 +2473,7 @@
         "spec-kit (GitHub)": 3,
         "BMad-METHOD": 3.5
       },
-      "gap_to_leader": 0,
+      "gap_to_leader": 1.5,
       "leader": "self",
       "gap_to_closed_source_leader": 0,
       "closed_source_leader": "self",
@@ -2584,7 +2584,7 @@
       "category": "features",
       "frequency": "medium",
       "scores": {
-        "self": 9,
+        "self": 7,
         "Devin (Cognition AI)": 6,
         "GitHub Copilot Workspace": 5.5,
         "Cursor": 4,
@@ -2617,7 +2617,7 @@
         "BMad-METHOD": 6.5,
         "LangGraph": 7.5
       },
-      "gap_to_leader": 0,
+      "gap_to_leader": 1.5,
       "leader": "self",
       "gap_to_closed_source_leader": 0,
       "closed_source_leader": "self",
@@ -2728,7 +2728,7 @@
       "category": "features",
       "frequency": "medium",
       "scores": {
-        "self": 9,
+        "self": 7,
         "Devin (Cognition AI)": 8,
         "GitHub Copilot Workspace": 7.5,
         "Cursor": 6.5,
@@ -2761,7 +2761,7 @@
         "BMad-METHOD": 6,
         "LangGraph": 8
       },
-      "gap_to_leader": 0,
+      "gap_to_leader": 1.5,
       "leader": "self",
       "gap_to_closed_source_leader": 0,
       "closed_source_leader": "self",
@@ -2878,7 +2878,7 @@
       "category": "reliability",
       "frequency": "medium",
       "scores": {
-        "self": 9,
+        "self": 7,
         "Devin (Cognition AI)": 7,
         "GitHub Copilot Workspace": 8,
         "Cursor": 8,
@@ -2910,7 +2910,7 @@
         "spec-kit (GitHub)": 5.5,
         "BMad-METHOD": 5
       },
-      "gap_to_leader": 0,
+      "gap_to_leader": 1.5,
       "leader": "self",
       "gap_to_closed_source_leader": 0,
       "closed_source_leader": "self",
@@ -3015,7 +3015,7 @@
       "category": "features",
       "frequency": "medium",
       "scores": {
-        "self": 9,
+        "self": 7,
         "Devin (Cognition AI)": 5.5,
         "GitHub Copilot Workspace": 7.5,
         "Cursor": 7.5,
@@ -3058,7 +3058,7 @@
         "Fabric": 3,
         "Agno": 4
       },
-      "gap_to_leader": 0,
+      "gap_to_leader": 2,
       "leader": "self",
       "gap_to_closed_source_leader": 0,
       "closed_source_leader": "self",
@@ -3175,7 +3175,7 @@
       "category": "features",
       "frequency": "medium",
       "scores": {
-        "self": 9,
+        "self": 7,
         "Devin (Cognition AI)": 6.5,
         "GitHub Copilot Workspace": 5,
         "Cursor": 5.5,
@@ -3218,7 +3218,7 @@
         "Fabric": 2,
         "Agno": 3
       },
-      "gap_to_leader": 0,
+      "gap_to_leader": 1.5,
       "leader": "self",
       "gap_to_closed_source_leader": 0,
       "closed_source_leader": "self",
@@ -3338,7 +3338,7 @@
       "category": "features",
       "frequency": "low",
       "scores": {
-        "self": 9,
+        "self": 7,
         "Devin (Cognition AI)": 5,
         "GitHub Copilot Workspace": 8,
         "Cursor": 7,
@@ -3382,7 +3382,7 @@
         "Fabric": 2,
         "Agno": 8
       },
-      "gap_to_leader": 0.5,
+      "gap_to_leader": 2.5,
       "leader": "self",
       "gap_to_closed_source_leader": 0,
       "closed_source_leader": "self",
@@ -3481,7 +3481,7 @@
       "category": "reliability",
       "frequency": "low",
       "scores": {
-        "self": 9,
+        "self": 7,
         "Devin (Cognition AI)": 6,
         "GitHub Copilot Workspace": 8.5,
         "Cursor": 6.5,
@@ -3513,7 +3513,7 @@
         "spec-kit (GitHub)": 4,
         "BMad-METHOD": 3.5
       },
-      "gap_to_leader": 0,
+      "gap_to_leader": 1.5,
       "leader": "self",
       "gap_to_closed_source_leader": 0,
       "closed_source_leader": "self",
@@ -4442,7 +4442,7 @@
       "category": "reliability",
       "frequency": "high",
       "scores": {
-        "self": 9,
+        "self": 7,
         "Devin (Cognition AI)": 3,
         "GitHub Copilot Workspace": 3.5,
         "Cursor": 4,
@@ -4502,7 +4502,7 @@
         "src/core/agent-dag.ts",
         "src/core/subagent-isolator.ts"
       ],
-      "gap_to_leader": 0,
+      "gap_to_leader": 2,
       "leader": "self",
       "gap_to_closed_source_leader": 0,
       "closed_source_leader": "self",
@@ -4584,7 +4584,7 @@
       "category": "core_differentiator",
       "frequency": "high",
       "scores": {
-        "self": 9,
+        "self": 7,
         "Kiro (AWS)": 7.5,
         "Replit Agent": 3,
         "spec-kit (GitHub)": 7,
@@ -4668,7 +4668,7 @@
         }
       ],
       "declared_ceiling": "T7",
-      "gap_to_leader": 0,
+      "gap_to_leader": 1.5,
       "leader": "self",
       "gap_to_closed_source_leader": 0,
       "closed_source_leader": "self",
@@ -4697,7 +4697,7 @@
       "category": "core_differentiator",
       "frequency": "high",
       "scores": {
-        "self": 9,
+        "self": 7,
         "Kiro (AWS)": 3,
         "Replit Agent": 2,
         "spec-kit (GitHub)": 2,
@@ -4811,7 +4811,7 @@
       "category": "core_differentiator",
       "frequency": "high",
       "scores": {
-        "self": 9,
+        "self": 7,
         "Kiro (AWS)": 4,
         "Replit Agent": 2,
         "spec-kit (GitHub)": 3.5,
@@ -4913,7 +4913,7 @@
       "category": "core_differentiator",
       "frequency": "high",
       "scores": {
-        "self": 9,
+        "self": 7,
         "Kiro (AWS)": 5,
         "Replit Agent": 4,
         "spec-kit (GitHub)": 2,
@@ -5011,7 +5011,7 @@
         }
       ],
       "declared_ceiling": "T7",
-      "gap_to_leader": 0,
+      "gap_to_leader": 2,
       "leader": "self",
       "gap_to_closed_source_leader": 0,
       "closed_source_leader": "self",
@@ -5040,7 +5040,7 @@
       "category": "core_differentiator",
       "frequency": "high",
       "scores": {
-        "self": 9,
+        "self": 7,
         "Kiro (AWS)": 2,
         "Replit Agent": 1.5,
         "spec-kit (GitHub)": 1.5,

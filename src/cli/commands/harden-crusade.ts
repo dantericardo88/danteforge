@@ -52,6 +52,8 @@ export interface HardenCrusadeOptions {
   _loadMatrix?: (cwd: string) => Promise<CompeteMatrix | null>;
   _writeFile?: (p: string, content: string) => Promise<void>;
   _loadState?: ((opts: { cwd?: string }) => Promise<{ wavesSinceLastRegrade?: number }>) | null;
+  /** If set, promote this dimension to the front of each work queue (intel-driven targeting). */
+  focusDimension?: string;
 }
 
 export interface HardenDimResult {
@@ -307,7 +309,12 @@ async function runDimensionLoop(
 
 // ── Outer crusade loop ──────────────────────────────────────────────────────
 
-function pickWeakestDims(matrix: CompeteMatrix, target: number, parallel: number): MatrixDimension[] {
+function pickWeakestDims(
+  matrix: CompeteMatrix,
+  target: number,
+  parallel: number,
+  focusDimension?: string,
+): MatrixDimension[] {
   const excluded = new Set((matrix as unknown as Record<string, unknown>)['excludedDimensions'] as string[] ?? []);
   const candidates = matrix.dimensions
     .filter(d => {
@@ -326,7 +333,26 @@ function pickWeakestDims(matrix: CompeteMatrix, target: number, parallel: number
       return true;
     });
   candidates.sort((a, b) => (a.scores['self'] ?? 0) - (b.scores['self'] ?? 0));
-  return candidates.slice(0, parallel);
+  const selected = candidates.slice(0, parallel);
+
+  // Intel-driven targeting: promote focusDimension to the front slot if it's eligible.
+  if (focusDimension) {
+    const focusIdx = selected.findIndex(d => d.id === focusDimension);
+    if (focusIdx > 0) {
+      // Already in list but not first — move it to front.
+      const [focusDim] = selected.splice(focusIdx, 1);
+      selected.unshift(focusDim);
+    } else if (focusIdx === -1) {
+      // Not in list — check if it's eligible and inject at front, dropping the weakest.
+      const focusDim = candidates.find(d => d.id === focusDimension);
+      if (focusDim) {
+        selected.unshift(focusDim);
+        if (selected.length > parallel) selected.pop();
+      }
+    }
+  }
+
+  return selected;
 }
 
 async function checkRegradeCadence(
@@ -394,7 +420,7 @@ export async function runHardenCrusade(options: HardenCrusadeOptions): Promise<H
       return { status: 'PARTIAL', dimensions: allResults };
     }
 
-    const todo = pickWeakestDims(matrix, target, parallel);
+    const todo = pickWeakestDims(matrix, target, parallel, options.focusDimension);
     if (todo.length === 0) {
       logger.success(`[harden-crusade] All dims at target ${target} or at-ceiling. ALL_DONE.`);
       break;

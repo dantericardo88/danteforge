@@ -197,46 +197,70 @@ export async function fetchHackerNewsMentions(toolName: string, timeoutMs = 15_0
 
 const SUBREDDITS = ['LocalLLaMA', 'MachineLearning', 'programming', 'SideProject', 'learnprogramming'];
 const REDDIT_NEGATIVE = /broken|doesn.t work|not work|bug|crash|missing|wish|want|annoying|frustrat|problem|fail/i;
+const REDDIT_UA = 'Mozilla/5.0 (compatible; DanteForge-Intel/1.0; +https://github.com/dantericardo88/danteforge)';
 
-export async function fetchRedditMentions(toolName: string, timeoutMs = 15_000): Promise<WeaknessSignal[]> {
-  const signals: WeaknessSignal[] = [];
-  const encodedQuery = encodeURIComponent(toolName);
+function sleep(ms: number): Promise<void> {
+  return new Promise(resolve => setTimeout(resolve, ms));
+}
 
-  for (const subreddit of SUBREDDITS.slice(0, 3)) { // limit to 3 to avoid rate limits
-    const url = `https://www.reddit.com/r/${subreddit}/search.json?q=${encodedQuery}&sort=new&limit=15&t=month&restrict_sr=1`;
+async function fetchRedditSubreddit(
+  subreddit: string,
+  encodedQuery: string,
+  timeoutMs: number,
+): Promise<Array<{ title: string; selftext: string; score: number; permalink: string }>> {
+  const url = `https://www.reddit.com/r/${subreddit}/search.json?q=${encodedQuery}&sort=new&limit=15&t=month&restrict_sr=1`;
+  const MAX_RETRIES = 2;
+
+  for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
     try {
       const promise = fetchJson<{
-        data: {
-          children: Array<{
-            data: { title: string; selftext: string; score: number; permalink: string; url: string };
-          }>;
-        };
-      }>(url);
+        data: { children: Array<{ data: { title: string; selftext: string; score: number; permalink: string } }> };
+      }>(url, { 'User-Agent': REDDIT_UA });
 
       const data = await (timeoutMs > 0
         ? Promise.race([promise, new Promise<never>((_, r) => setTimeout(() => r(new Error('timeout')), timeoutMs))])
         : promise);
 
-      for (const child of data.data.children) {
-        const post = child.data;
-        const text = `${post.title} ${post.selftext?.slice(0, 200) ?? ''}`;
-        if (!REDDIT_NEGATIVE.test(text)) continue;
-
-        const { dimensionId, label } = classifyText(text);
-        signals.push({
-          tool: toolName,
-          source: 'reddit',
-          title: post.title,
-          snippet: post.selftext?.slice(0, 200) ?? '',
-          url: `https://reddit.com${post.permalink}`,
-          demandScore: Math.max(post.score, 1),
-          category: label,
-          foundAt: new Date().toISOString(),
-        });
+      return data.data.children.map(c => c.data);
+    } catch (err) {
+      const msg = (err as Error).message ?? '';
+      const is429 = msg.includes('429') || msg.includes('403');
+      if (attempt < MAX_RETRIES && is429) {
+        // Exponential backoff: 2s, 4s + jitter
+        const delay = 2000 * Math.pow(2, attempt) + Math.random() * 500;
+        await sleep(delay);
+        continue;
       }
-    } catch {
-      // Reddit rate-limits aggressively — skip on error
+      return []; // non-retryable or exhausted retries
     }
+  }
+  return [];
+}
+
+export async function fetchRedditMentions(toolName: string, timeoutMs = 15_000): Promise<WeaknessSignal[]> {
+  const signals: WeaknessSignal[] = [];
+  const encodedQuery = encodeURIComponent(toolName);
+
+  for (const subreddit of SUBREDDITS.slice(0, 3)) {
+    const posts = await fetchRedditSubreddit(subreddit, encodedQuery, timeoutMs);
+    for (const post of posts) {
+      const text = `${post.title} ${post.selftext?.slice(0, 200) ?? ''}`;
+      if (!REDDIT_NEGATIVE.test(text)) continue;
+
+      const { dimensionId: _dim, label } = classifyText(text);
+      signals.push({
+        tool: toolName,
+        source: 'reddit',
+        title: post.title,
+        snippet: post.selftext?.slice(0, 200) ?? '',
+        url: `https://reddit.com${post.permalink}`,
+        demandScore: Math.max(post.score, 1),
+        category: label,
+        foundAt: new Date().toISOString(),
+      });
+    }
+    // Brief inter-subreddit pause to be a polite client
+    if (SUBREDDITS.indexOf(subreddit) < 2) await sleep(1000 + Math.random() * 500);
   }
   return signals;
 }

@@ -70,6 +70,33 @@ danteforge matrix-kernel prune --older-than 24
 
 ---
 
+## Phase 2.5 — Intel Refresh (every 3rd iteration)
+
+Skip this phase if fewer than 3 iterations have completed since the last intel refresh (check
+`.danteforge/compete/weakness-intelligence.json` — skip if `generatedAt` is within 6 hours).
+
+```bash
+danteforge intel --github-only --save
+```
+
+This fetches live competitor weakness signals from GitHub Issues for all 10 tracked competitors
+and updates `.danteforge/compete/weakness-intelligence.json`. The daemon automatically
+evidence-adjusts competitor leader scores based on open-issue counts (each 10 issues in a
+dimension reduces that competitor's score by 0.5, max -2.0).
+
+**Effect on dimension prioritization:**
+After intel refresh, the top-opportunity dimension (highest `demand × gap` score from
+`scoreOpportunities()`) is promoted to the **front slot** of the next harden-crusade work queue
+via `--dimension <id>`. If that dimension is already at target (≥9.0), standard weakest-first
+selection applies.
+
+To manually check current opportunities:
+```bash
+danteforge intel --github-only --opportunities
+```
+
+---
+
 ## Phase 3 — Bootstrap matrix kernel (skip if already initialized)
 
 Check whether `.danteforge/matrix/` exists. If not:
@@ -98,6 +125,11 @@ Read the simulate output: waves, packets, USD estimate. Show the user a 2-line p
 ---
 
 ## Phase 5 — Dispatch wave (embedded adapter — parallel agents)
+
+**If Phase 2.5 ran:** The top intel-opportunity dimension is automatically front-queued via
+`harden-crusade --dimension <id>` — it occupies the first parallel slot regardless of its raw
+score rank. This ensures competitor weaknesses (high external demand) drive the work queue, not
+just our own score gaps.
 
 **ALWAYS use `--adapter embedded` here.** You are inside Claude Code; the embedded adapter writes Work Instruction Packets for you to dispatch as sub-agents. Never use `--adapter auto` from a skill body (env vars are not inherited by subprocesses).
 

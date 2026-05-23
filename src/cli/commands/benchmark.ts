@@ -82,13 +82,24 @@ async function loadSweBenchInstances(cwd: string, count: number) {
   return (data.instances ?? []).slice(0, count);
 }
 
+// Path to the dedicated swe-bench-runner package (lives in the DanteCode monorepo).
+const SWE_BENCH_RUNNER = path.join('X:\\Projects\\DanteCode\\packages\\swe-bench-runner\\dist\\index.js');
+
+async function resolveSweBenchRunner(): Promise<string | null> {
+  try {
+    await fs.access(SWE_BENCH_RUNNER);
+    return SWE_BENCH_RUNNER;
+  } catch {
+    return null;
+  }
+}
+
 async function runSweBenchTask(
   inst: { instance_id: string; repo: string; problem_statement: string },
-  cwd: string,
+  runnerPath: string,
   timeoutMs: number,
 ): Promise<TaskResult> {
   const t0 = Date.now();
-  const distPath = path.join(cwd, 'dist', 'index.js');
   try {
     const env = {
       ...process.env,
@@ -96,8 +107,10 @@ async function runSweBenchTask(
       SWEBENCH_REPO: inst.repo,
       SWEBENCH_PROBLEM: inst.problem_statement.slice(0, 2000),
     };
-    await execFileAsync(process.execPath, [distPath, 'benchmark', '--instance', inst.instance_id], {
-      cwd, timeout: timeoutMs, env,
+    // Delegate to the dedicated swe-bench-runner — NOT a self-call into benchmark.
+    // The runner handles: repo clone at base_commit, patch application, test execution.
+    await execFileAsync(process.execPath, [runnerPath, '--instance', inst.instance_id], {
+      timeout: timeoutMs, env,
     });
     return { instanceId: inst.instance_id, repo: inst.repo, passed: true, durationMs: Date.now() - t0 };
   } catch (err) {
@@ -107,16 +120,25 @@ async function runSweBenchTask(
 }
 
 async function runSweBench(cwd: string, instances: number, timeoutPerTask: number): Promise<ExternalBenchmarkReport> {
+  // Pre-flight: verify the dedicated runner is built before loading any tasks.
+  const runnerPath = await resolveSweBenchRunner();
+  if (!runnerPath) {
+    logger.warn('[benchmark] swe-bench-runner not built.');
+    logger.warn('[benchmark] To enable SWE-bench: cd X:\\Projects\\DanteCode\\packages\\swe-bench-runner && npm ci && npm run build');
+    logger.warn('[benchmark] Then re-run: danteforge benchmark --suite swe-bench');
+    return buildExternalReport('swe-bench', []);
+  }
+
   const insts = await loadSweBenchInstances(cwd, instances);
   if (insts.length === 0) {
     logger.warn('[benchmark] No SWE-bench data found. Run `node scripts/download-swe-bench.mjs` first.');
     return buildExternalReport('swe-bench', []);
   }
-  logger.info(`[benchmark] Running ${insts.length} SWE-bench tasks...`);
+  logger.info(`[benchmark] Running ${insts.length} SWE-bench tasks via swe-bench-runner...`);
   const results: TaskResult[] = [];
   for (const inst of insts) {
     logger.info(`[benchmark]   ${results.length + 1}/${insts.length}: ${inst.instance_id}`);
-    const r = await runSweBenchTask(inst, cwd, timeoutPerTask);
+    const r = await runSweBenchTask(inst, runnerPath, timeoutPerTask);
     results.push(r);
     logger.info(`[benchmark]   ${r.passed ? 'PASS' : 'FAIL'} (${r.durationMs}ms)`);
   }

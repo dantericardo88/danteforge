@@ -70,9 +70,11 @@ async function getWeightedScore(cwd: string): Promise<number> {
 
 // ── Pass runners ──────────────────────────────────────────────────────────────
 
-async function runHardenCrusadePass(cwd: string): Promise<void> {
+async function runHardenCrusadePass(cwd: string, focusDimension?: string): Promise<void> {
   const distPath = path.join(cwd, 'dist', 'index.js');
-  await execFileAsync(NODE_BIN, [distPath, 'harden-crusade', '--target', '9', '--parallel', '2'], {
+  const args = [distPath, 'harden-crusade', '--target', '9', '--parallel', '2'];
+  if (focusDimension) args.push('--dimension', focusDimension);
+  await execFileAsync(NODE_BIN, args, {
     cwd,
     timeout: 30 * 60 * 1000, // 30 min
     env: { ...process.env, DANTEFORGE_DAEMON: '1' },
@@ -144,7 +146,9 @@ async function appendLog(cwd: string, entry: object): Promise<void> {
 // Runs competitor intelligence, then applies the findings to the matrix.
 // Runs every `intelCycleEvery` improvement passes — not on every pass (expensive).
 
-async function runIntelCycle(cwd: string): Promise<void> {
+// Returns the top opportunity dimension ID so the daemon can steer the next
+// harden-crusade pass toward the highest-value competitor weakness.
+async function runIntelCycle(cwd: string): Promise<string | null> {
   logger.info('[daemon] ── Intel cycle ─────────────────────────────────────────');
 
   try {
@@ -159,32 +163,36 @@ async function runIntelCycle(cwd: string): Promise<void> {
     const signals = await fetchCompetitorIntel(toolNames, { githubOnly: true, timeoutMs: 20_000 });
     logger.info(`[daemon] Intel: ${signals.length} signals collected`);
 
-    if (signals.length > 0) {
-      const matrix = await loadMatrix(cwd);
-      const gaps: Record<string, number> = {};
-      for (const dim of matrix?.dimensions ?? []) gaps[dim.id] = dim.gap_to_leader ?? 0;
+    if (signals.length === 0) return null;
 
-      const opportunities = scoreOpportunities(signals, gaps);
+    const matrix = await loadMatrix(cwd);
+    const gaps: Record<string, number> = {};
+    for (const dim of matrix?.dimensions ?? []) gaps[dim.id] = dim.gap_to_leader ?? 0;
 
-      const report = { generatedAt: new Date().toISOString(), signals, opportunities };
-      await mkdir(path.dirname(intelPath), { recursive: true });
-      await writeFile(intelPath, JSON.stringify(report, null, 2), 'utf-8');
+    const opportunities = scoreOpportunities(signals, gaps);
 
-      if (matrix) {
-        const adjustments = await applyIntelLeaderScores(matrix, intelPath);
-        if (adjustments > 0) {
-          await saveMatrix(matrix, cwd);
-          logger.info(`[daemon] Intel: ${adjustments} leader score(s) evidence-adjusted`);
-        }
+    const report = { generatedAt: new Date().toISOString(), signals, opportunities };
+    await mkdir(path.dirname(intelPath), { recursive: true });
+    await writeFile(intelPath, JSON.stringify(report, null, 2), 'utf-8');
+
+    if (matrix) {
+      const adjustments = await applyIntelLeaderScores(matrix, intelPath);
+      if (adjustments > 0) {
+        await saveMatrix(matrix, cwd);
+        logger.info(`[daemon] Intel: ${adjustments} leader score(s) evidence-adjusted`);
       }
+    }
 
-      if (opportunities[0]) {
-        logger.info(`[daemon] Top opportunity: ${opportunities[0].category} (${opportunities[0].dimensionId}) — score ${opportunities[0].opportunityScore.toFixed(1)}`);
-      }
+    const topOpp = opportunities[0];
+    if (topOpp) {
+      logger.info(`[daemon] Intel top opportunity: ${topOpp.category} (${topOpp.dimensionId}) — score ${topOpp.opportunityScore.toFixed(1)}`);
+      logger.info(`[daemon] Next crusade pass will focus on: ${topOpp.dimensionId}`);
+      return topOpp.dimensionId;
     }
   } catch (err) {
     logger.warn(`[daemon] Intel cycle failed (non-fatal): ${(err as Error).message}`);
   }
+  return null;
 }
 
 // ── Main function ─────────────────────────────────────────────────────────────
@@ -204,6 +212,7 @@ export async function runDaemon(options: DaemonOptions = {}): Promise<DaemonResu
   let consecutivePlateau = 0;
   let consecutiveErrors = 0;
   let improvementsSinceIntel = 0;
+  let intelFocusDim: string | undefined; // set by intel cycle, consumed by next crusade pass
   let pass = 1;
 
   logger.info(`[daemon] Starting autonomous improvement loop`);
@@ -233,8 +242,33 @@ export async function runDaemon(options: DaemonOptions = {}): Promise<DaemonResu
         ? (consecutivePlateau >= 2 ? 'autoresearch' : 'crusade')
         : strategy;
 
-    logger.info(`\n[daemon] ── Pass ${pass} (${activeStrategy}) ──────────────────`);
-    const result = await runPass(activeStrategy, cwd);
+    if (intelFocusDim && activeStrategy !== 'autoresearch') {
+      logger.info(`\n[daemon] ── Pass ${pass} (${activeStrategy}, intel focus: ${intelFocusDim}) ──────────────────`);
+    } else {
+      logger.info(`\n[daemon] ── Pass ${pass} (${activeStrategy}) ──────────────────`);
+    }
+
+    // When a crusade pass has an intel-driven focus dim, call runHardenCrusadePass
+    // directly so we can pass the --dimension flag. Autoresearch ignores focus dim.
+    let result: DaemonPassResult;
+    if (intelFocusDim && activeStrategy !== 'autoresearch' && runPass === defaultRunPass) {
+      const t0 = Date.now();
+      const scoreBefore = await getWeightedScore(cwd);
+      let outcome: DaemonPassResult['outcome'] = 'improved';
+      let error: string | undefined;
+      try {
+        await runHardenCrusadePass(cwd, intelFocusDim);
+      } catch (err) {
+        error = err instanceof Error ? err.message : String(err);
+        outcome = 'error';
+      }
+      const scoreAfter = await getWeightedScore(cwd);
+      if (outcome !== 'error') outcome = scoreAfter > scoreBefore ? 'improved' : 'plateau';
+      result = { strategy: activeStrategy, pass: 0, scoreBeforePass: scoreBefore, scoreAfterPass: scoreAfter, durationMs: Date.now() - t0, outcome, error };
+      intelFocusDim = undefined; // consume after one pass
+    } else {
+      result = await runPass(activeStrategy, cwd);
+    }
     result.pass = pass;
     passes.push(result);
 
@@ -261,9 +295,11 @@ export async function runDaemon(options: DaemonOptions = {}): Promise<DaemonResu
       logger.info(`[daemon] Score: ${result.scoreBeforePass} → ${result.scoreAfterPass} (+${(result.scoreAfterPass - result.scoreBeforePass).toFixed(2)})`);
     }
 
-    // Run intel cycle every N improvements to refresh competitor weakness data
+    // Run intel cycle every N improvements to refresh competitor weakness data.
+    // The cycle returns the top-opportunity dimension which steers the next crusade pass.
     if (intelCycleEvery > 0 && improvementsSinceIntel > 0 && improvementsSinceIntel % intelCycleEvery === 0) {
-      await runIntelCycle(cwd);
+      const topDim = await runIntelCycle(cwd);
+      if (topDim) intelFocusDim = topDim;
       improvementsSinceIntel = 0;
     }
 
