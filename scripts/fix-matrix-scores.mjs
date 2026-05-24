@@ -54,5 +54,15 @@ for (const dim of matrix.dimensions) {
   }
 }
 
+// Recalculate overallSelfScore as weighted average of active dimensions
+const excluded = new Set(matrix.excludedDimensions ?? []);
+const activeDims = matrix.dimensions.filter(d => !excluded.has(d.id));
+const totalWeight = activeDims.reduce((sum, d) => sum + (d.weight ?? 1), 0);
+const weightedSum = activeDims.reduce((sum, d) => sum + (Number(d.scores?.['self']) || 0) * (d.weight ?? 1), 0);
+const newOverall = +(weightedSum / totalWeight).toFixed(2);
+const oldOverall = matrix.overallSelfScore;
+matrix.overallSelfScore = newOverall;
+console.log(`  [overall] overallSelfScore: ${oldOverall} → ${newOverall}`);
+
 await fs.writeFile(matrixPath, JSON.stringify(matrix, null, 2) + '\n', 'utf8');
 console.log(`\nDone. ${changed} dimension(s) had self-score corrected.`);

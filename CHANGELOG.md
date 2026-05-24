@@ -3,6 +3,31 @@
 All notable changes to DanteForge are documented here.
 Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)
 
+## [0.18.0] — 2026-05-24 (Matrix Kernel Phase 1 — CIP Gates + Honest Scores + Phase 13 Adapters)
+
+### Added
+- **CIP (Completion Integrity Protocol)** gates on all 4 loop surfaces: daemon, crusade,
+  harden-crusade, autoforge. 25 tests covering all gate paths.
+- **Outcome relevance check (3-layer)**: dim ID keywords + label keywords + `touches[]` path
+  segments; `skip_relevance_check` escape hatch on `DeclaredOutcome`.
+- **Evidence freshness gate**: dims with storedScore ≥9.0 must have receipts ≤7 days old.
+- **Autoforge CIP retry loop**: up to 3 re-entries when CIP blocks frontier-reached.
+- **`test:fast` / `test:heavy` / `test:prd-real` lane selector** (`--lanes=<csv>` flag in
+  `scripts/run-test-suite.mjs`).
+- **`_checkAutonomyRules` injection seam** on `FrontierCrusadeOptions` and `HardenCrusadeOptions`.
+- **`_cipCheck` and `_cipSweep` injection seams** for deterministic integration tests.
+- **Phase 13 adapters**: `ClaudeCodeAdapter` and `CodexAdapter` — real subprocess dispatch to
+  `claude` CLI and `codex` CLI, with lease path validation and Windows .cmd shim support.
+
+### Fixed
+- **Honest score reset**: all 23 active dims reset from inflated 9.0 to
+  `evidence_integrity.auditedSelfScore` (6.0–7.5 range).
+- **`overallSelfScore`** recalculated as weighted average of honest per-dim scores → 7.01.
+- **300+ corrupted sprint_history entries** purged (autonomy: 122, community_adoption: 121,
+  performance: 46) from runaway logging bug.
+- **Keyword case-sensitivity bug**: `dimensionId.split('_')` and `touches[]` path segments now
+  lowercased before comparison with lowercased outcome text.
+
 ## [Unreleased] — 2026-05-16 (Matrix Kernel: Self-Scoring & Theater Elimination)
 
 ### Fix A — capability_test gate (eliminates score inflation)
