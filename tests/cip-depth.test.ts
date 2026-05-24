@@ -75,6 +75,40 @@ describe('outcome relevance check', () => {
 
     assert.equal(result.irrelevantOutcomes, 0, 'keyword found in command — not irrelevant');
   });
+
+  it('T2b: dim with short ID but descriptive label — label keyword match counts as relevant', async () => {
+    const root = await makeWorkspace();
+    // dim id "ux" — only 2 chars, filtered out by ≥4 rule
+    // label "UX Polish Feedback" — "poli" and "feed" are ≥4 chars and extracted from label
+    // outcome command "node test-polish.ts" — contains "poli" → relevant via label keyword
+    await writeMatrix(root, [{
+      id: 'ux',
+      label: 'UX Polish Feedback',
+      scores: { self: 5.0 },
+      outcomes: [{ id: 'o1', command: 'node test-polish.ts' }],
+      critical_path_files: [],
+    }]);
+
+    const result = await runCIPCheck('ux', { cwd: root, skipStubScan: true });
+
+    assert.equal(result.irrelevantOutcomes, 0, 'label keyword "poli" found in command — not irrelevant');
+  });
+
+  it('T2c: skip_relevance_check=true exempts an outcome from the relevance count', async () => {
+    const root = await makeWorkspace();
+    // No dim keywords overlap with the generic command, but skip_relevance_check=true
+    await writeMatrix(root, [{
+      id: 'daemon_core',
+      label: 'Daemon Core',
+      scores: { self: 5.0 },
+      outcomes: [{ id: 'o1', command: 'npm run benchmark', skip_relevance_check: true }],
+      critical_path_files: [],
+    }]);
+
+    const result = await runCIPCheck('daemon_core', { cwd: root, skipStubScan: true });
+
+    assert.equal(result.irrelevantOutcomes, 0, 'skip_relevance_check=true must exempt the outcome');
+  });
 });
 
 describe('evidence freshness gate', () => {

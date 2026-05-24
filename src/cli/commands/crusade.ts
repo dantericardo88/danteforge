@@ -303,6 +303,13 @@ export interface FrontierCrusadeOptions {
    *   function  → injected loader for tests that want to drive specific wave counts
    */
   _loadState?: ((opts: { cwd?: string }) => Promise<{ wavesSinceLastRegrade?: number }>) | null;
+  /**
+   * Injection seam: override the autonomy-rules check.
+   *   undefined → run real checkAutonomyRules (production path)
+   *   null      → skip check entirely — returns { kind: 'proceed' } (test isolation)
+   *   function  → injected checker returning a custom verdict
+   */
+  _checkAutonomyRules?: ((cwd?: string) => Promise<{ kind: string; reason?: string; rule?: string; affectedDims?: string[] }>) | null;
 }
 
 export interface DimFrontierResult {
@@ -703,7 +710,10 @@ export async function runFrontierCrusade(options: FrontierCrusadeOptions): Promi
   // This is what makes "run crusade and DanteForge knows when done" a true
   // statement — the substrate stops itself honestly instead of grinding.
   try {
-    const autonomyVerdict = await checkAutonomyRules(options.cwd);
+    const checkFn = options._checkAutonomyRules === null
+      ? async () => ({ kind: 'proceed' as const })
+      : options._checkAutonomyRules ?? checkAutonomyRules;
+    const autonomyVerdict = await checkFn(options.cwd);
     if (autonomyVerdict.kind === 'halt') {
       logger.error(`[frontier] AUTONOMY HALT: ${autonomyVerdict.reason}`);
       if (autonomyVerdict.affectedDims && autonomyVerdict.affectedDims.length > 0) {

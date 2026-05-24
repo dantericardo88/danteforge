@@ -62,6 +62,9 @@ export type DeclaredOutcome = {
   timeout_ms?: number;
   /** Explicit outcome kind — drives quality ceiling. Defaults to 'shell' if omitted. */
   kind?: 'file-existence' | 'unit-test' | 'cli-smoke' | 'e2e' | 'e2e-workflow' | 'benchmark' | 'external-benchmark';
+  /** When true, skip the relevance keyword check for this outcome (use when the command is
+   *  unambiguously relevant but doesn't contain dim keywords, e.g. a generic benchmark harness). */
+  skip_relevance_check?: boolean;
 };
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -271,17 +274,27 @@ export async function runCIPCheck(
     ? Math.min(...outcomesToClassify.map(o => classifyOutcomeKind(o).maxScore))
     : 9.0;
 
-  // Step 6a: Outcome relevance check — all outcomes must share at least one keyword with
-  // the dimension ID. If none do, the ceiling drops to 7.0 (structural-only tier).
-  const dimKeywords = dimensionId.split('_').filter(w => w.length >= 4);
-  const irrelevantCount = (rawOutcomes ?? []).filter(o => {
-    const text = `${o.command ?? ''} ${o.id ?? ''}`.toLowerCase();
-    return dimKeywords.length > 0 && !dimKeywords.some(kw => text.includes(kw));
+  // Step 6a: Outcome relevance check — all outcomes (that don't opt out) must share at least
+  // one keyword with the dimension. Three keyword sources are unioned:
+  //   A. dim ID split on '_'  B. dim label split on whitespace  C. touches[] path segments
+  // If ALL non-opted-out outcomes have zero overlap, the ceiling drops to 7.0.
+  const labelRaw = (dimRaw['label'] as string | undefined) ?? '';
+  const touchesPaths = (dimRaw['touches'] as string[] | undefined) ?? [];
+  const allKeywords = [
+    ...dimensionId.split('_'),
+    ...labelRaw.toLowerCase().split(/[\s_\-]+/),
+    ...touchesPaths.flatMap(p => p.split(/[/\\]/)),
+  ].filter((w, i, arr) => w.length >= 4 && arr.indexOf(w) === i);
+
+  const relevanceOutcomes = (rawOutcomes ?? []).filter(o => !o.skip_relevance_check);
+  const irrelevantCount = relevanceOutcomes.filter(o => {
+    const text = `${o.command ?? ''} ${o.id ?? ''} ${(o.cli_args ?? []).join(' ')}`.toLowerCase();
+    return allKeywords.length > 0 && !allKeywords.some(kw => text.includes(kw));
   }).length;
-  const allOutcomesIrrelevant = (rawOutcomes ?? []).length > 0 && irrelevantCount === (rawOutcomes ?? []).length;
+  const allOutcomesIrrelevant = relevanceOutcomes.length > 0 && irrelevantCount === relevanceOutcomes.length;
   if (allOutcomesIrrelevant) {
     qualityCeiling = Math.min(qualityCeiling, 7.0);
-    gaps.push(`all ${irrelevantCount} outcome(s) may not exercise this dimension — scope command or add explicit kind field`);
+    gaps.push(`all ${irrelevantCount} outcome(s) may not exercise this dimension — scope command, add skip_relevance_check, or add explicit kind field`);
   }
 
   // Step 6b: Evidence freshness gate — T7 (≥9.0) requires receipts ≤7 days old.

@@ -59,6 +59,13 @@ export interface HardenCrusadeOptions {
   skipCIP?: boolean;
   /** Injection seam: override runCIPCheck for tests. */
   _cipCheck?: (dimensionId: string, options: CIPOptions) => Promise<CIPResult>;
+  /**
+   * Injection seam: override the autonomy-rules check.
+   *   undefined → run real checkAutonomyRules (production path)
+   *   null      → skip check entirely — returns { kind: 'proceed' } (test isolation)
+   *   function  → injected checker returning a custom verdict
+   */
+  _checkAutonomyRules?: ((cwd?: string) => Promise<{ kind: string; reason?: string }>) | null;
 }
 
 export interface HardenDimResult {
@@ -428,8 +435,13 @@ export async function runHardenCrusade(options: HardenCrusadeOptions): Promise<H
   // Pre-flight: autonomy rules (R2 dispensation, etc.) via the shared engine.
   // Best-effort — failure here doesn't block, just logs.
   try {
-    const { checkAutonomyRules } = await import('./crusade.js');
-    const verdict = await checkAutonomyRules(cwd);
+    const checkFn = options._checkAutonomyRules === null
+      ? async () => ({ kind: 'proceed' as const })
+      : options._checkAutonomyRules ?? (async (c?: string) => {
+          const { checkAutonomyRules } = await import('./crusade.js');
+          return checkAutonomyRules(c);
+        });
+    const verdict = await checkFn(cwd);
     if (verdict.kind === 'halt') {
       logger.error(`[harden-crusade] AUTONOMY HALT: ${('reason' in verdict ? verdict.reason : '')}`);
       return { status: 'PARTIAL', dimensions: [] };
