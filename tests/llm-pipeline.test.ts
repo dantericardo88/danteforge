@@ -11,6 +11,9 @@ import {
   dispatchWithRetry,
   handleUsage,
   persistAudit,
+  advancePipelineStage,
+  validatePipelineTransition,
+  type PipelineStage,
 } from '../src/core/llm-pipeline.js';
 import { BudgetError, isRetryableError, DanteError, LLMError } from '../src/core/errors.js';
 import { resetAllCircuits, recordFailure as cbRecordFailure, getCircuitState } from '../src/core/circuit-breaker.js';
@@ -360,6 +363,98 @@ describe('dispatchWithRetry — circuit breaker integration', () => {
   it('LLM_CIRCUIT_OPEN error is not retryable', () => {
     const err = new LLMError('circuit open', 'LLM_CIRCUIT_OPEN', 'openai', undefined, false);
     assert.equal(isRetryableError(err), false);
+  });
+});
+
+// ── advancePipelineStage ──────────────────────────────────────────────────────
+
+describe('advancePipelineStage', () => {
+  it('PS-A1: constitution → spec', () => {
+    assert.equal(advancePipelineStage('constitution'), 'spec');
+  });
+
+  it('PS-A2: spec → clarify', () => {
+    assert.equal(advancePipelineStage('spec'), 'clarify');
+  });
+
+  it('PS-A3: clarify → plan', () => {
+    assert.equal(advancePipelineStage('clarify'), 'plan');
+  });
+
+  it('PS-A4: plan → tasks', () => {
+    assert.equal(advancePipelineStage('plan'), 'tasks');
+  });
+
+  it('PS-A5: tasks → forge', () => {
+    assert.equal(advancePipelineStage('tasks'), 'forge');
+  });
+
+  it('PS-A6: forge → verify', () => {
+    assert.equal(advancePipelineStage('forge'), 'verify');
+  });
+
+  it('PS-A7: verify is the last stage — returns null', () => {
+    assert.equal(advancePipelineStage('verify'), null);
+  });
+
+  it('PS-A8: full pipeline sequence produces correct chain', () => {
+    const stages: PipelineStage[] = ['constitution'];
+    let current: PipelineStage | null = 'constitution';
+    while (current !== null) {
+      current = advancePipelineStage(current);
+      if (current !== null) stages.push(current);
+    }
+    assert.deepEqual(stages, ['constitution', 'spec', 'clarify', 'plan', 'tasks', 'forge', 'verify']);
+  });
+});
+
+// ── validatePipelineTransition ────────────────────────────────────────────────
+
+describe('validatePipelineTransition', () => {
+  it('PT-V1: forward one step is valid (constitution → spec)', () => {
+    const result = validatePipelineTransition('constitution', 'spec');
+    assert.equal(result.valid, true);
+  });
+
+  it('PT-V2: forward one step is valid (tasks → forge)', () => {
+    const result = validatePipelineTransition('tasks', 'forge');
+    assert.equal(result.valid, true);
+  });
+
+  it('PT-V3: same stage is valid (idempotent re-entry)', () => {
+    const result = validatePipelineTransition('plan', 'plan');
+    assert.equal(result.valid, true);
+  });
+
+  it('PT-V4: backward transition is valid (re-running spec from plan)', () => {
+    const result = validatePipelineTransition('plan', 'spec');
+    assert.equal(result.valid, true);
+  });
+
+  it('PT-V5: skipping spec and clarify from constitution is invalid', () => {
+    const result = validatePipelineTransition('constitution', 'plan');
+    assert.equal(result.valid, false);
+    assert.ok(result.reason && result.reason.includes('spec'));
+  });
+
+  it('PT-V6: skipping plan and tasks from spec is invalid', () => {
+    const result = validatePipelineTransition('spec', 'forge');
+    assert.equal(result.valid, false);
+    assert.ok(result.reason && result.reason.includes('plan'));
+  });
+
+  it('PT-V7: jumping from constitution to verify is invalid', () => {
+    const result = validatePipelineTransition('constitution', 'verify');
+    assert.equal(result.valid, false);
+    assert.ok(result.reason && result.reason.includes('spec'));
+  });
+
+  it('PT-V8: full forward-one-step sequence is all valid', () => {
+    const ordered: PipelineStage[] = ['constitution', 'spec', 'clarify', 'plan', 'tasks', 'forge', 'verify'];
+    for (let i = 0; i < ordered.length - 1; i++) {
+      const result = validatePipelineTransition(ordered[i]!, ordered[i + 1]!);
+      assert.equal(result.valid, true, `Expected valid transition: ${ordered[i]} → ${ordered[i + 1]}`);
+    }
   });
 });
 

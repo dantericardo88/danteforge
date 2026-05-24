@@ -44,7 +44,7 @@ import type {
 
 const execFileAsync = promisify(execFile);
 
-// ── Child process abstraction (so tests can stub) ──────────────────────────
+// ── Child process abstraction (injectable for tests) ─────────────────────────
 
 export interface ClaudeChildLike {
   stdout?: NodeJS.ReadableStream | null;
@@ -113,6 +113,33 @@ interface ClaudeRunState {
 }
 
 const RUN_STATE = new Map<string, ClaudeRunState>();
+
+// ── Spawn helpers (extracted for testability + readability) ────────────────
+
+/**
+ * Build the argument list for the `claude` CLI invocation given the
+ * options and a pre-built prompt string.
+ */
+function buildClaudeArgs(prompt: string, allowedTools: string[], skipPermissions: boolean): string[] {
+  const args = ['-p', prompt, '--allowedTools', allowedTools.join(' ')];
+  if (skipPermissions) args.push('--dangerously-skip-permissions');
+  return args;
+}
+
+/**
+ * Resolve the final [cmd, args] pair to pass to the spawn function.
+ * On Windows, `.cmd` shims require wrapping via `cmd.exe /c`.
+ */
+function resolveSpawnTarget(
+  binaryUsed: string,
+  args: string[],
+  usesShell: boolean,
+): [string, string[]] {
+  if (usesShell && process.platform === 'win32') {
+    return ['cmd.exe', ['/c', binaryUsed, ...args]];
+  }
+  return [binaryUsed, args];
+}
 
 // ── Adapter implementation ─────────────────────────────────────────────────
 
@@ -191,22 +218,13 @@ export class ClaudeCodeAdapter implements AgentAdapter {
   async collectResult(handle: AgentRunHandle): Promise<AgentRunResult> {
     const state = RUN_STATE.get(handle.runId);
     if (!state) throw new Error(`Run ${handle.runId} not found`);
-    const violationCount = state.filesReverted.length;
-    const finalMessage = state.finalMessage
-      ?? (violationCount > 0
-        ? `Claude Code ran; ${state.filesChanged.length} file(s) kept, ${violationCount} reverted (lease violation)`
-        : `Claude Code ran; ${state.filesChanged.length} file(s) changed`);
     return {
       runId: handle.runId,
       leaseId: handle.leaseId,
       status: state.status,
       filesChanged: state.filesChanged,
-      commandsExecuted: state.exitCode === null ? [] : [{
-        command: state.binaryUsed,
-        exitCode: state.exitCode,
-        durationMs: (state.endMs ?? Date.now()) - state.startMs,
-      }],
-      finalMessage,
+      commandsExecuted: buildCommandsExecuted(state),
+      finalMessage: resolveFinalMessage(state),
       errorReason: state.errorReason,
       startedAt: state.startedAt,
       completedAt: new Date((state.endMs ?? Date.now())).toISOString(),
@@ -227,31 +245,7 @@ export class ClaudeCodeAdapter implements AgentAdapter {
     });
 
     try {
-      const prompt = buildClaudeCodePrompt(state.workPacket, lease);
-
-      const allowedTools = this.options.allowedTools ?? DEFAULT_ALLOWED_TOOLS;
-      const args = ['-p', prompt, '--allowedTools', allowedTools.join(' ')];
-      if (this.options.skipPermissions !== false) {
-        args.push('--dangerously-skip-permissions');
-      }
-
-      const spawnFn: ClaudeSpawnFn = this.options._spawn ?? ((c, a, o) => spawn(c, a, o));
-      // On Windows, .cmd shims need cmd.exe wrapping to avoid arg mangling.
-      const usesCmdShim = this._resolvedUsesShell && process.platform === 'win32';
-      const [cmd, finalArgs] = usesCmdShim
-        ? ['cmd.exe', ['/c', state.binaryUsed, ...args]] as const
-        : [state.binaryUsed, args] as const;
-      const exitCode = await runChild(spawnFn, cmd, [...finalArgs],
-        {
-          // Normalize backslash → forward-slash on Windows; backslash cwd
-          // breaks node's spawn cmd.exe path resolution (see codex-adapter).
-          cwd: normalizeCwd(worktreeRoot),
-          env: { ...process.env, ...(state.input.env ?? {}) },
-          shell: false,
-          stdio: ['ignore', 'pipe', 'pipe'],
-        },
-        this.options.timeoutMs ?? DEFAULT_TIMEOUT_MS,
-      );
+      const exitCode = await this.spawnClaudeCli(state, worktreeRoot, lease);
       state.exitCode = exitCode;
 
       if (exitCode !== 0) {
@@ -261,35 +255,13 @@ export class ClaudeCodeAdapter implements AgentAdapter {
         return;
       }
 
-      // Detect what claude actually changed via git status.
-      const gitDiff = this.options._gitDiff ?? defaultGitDiff;
-      const changedPaths = await gitDiff(worktreeRoot);
-
-      // Validate against lease. Revert any violations.
-      const violations: string[] = [];
-      const kept: string[] = [];
+      const changedPaths = await (this.options._gitDiff ?? defaultGitDiff)(worktreeRoot);
       const revertFile = this.options._revertFile ?? defaultRevertFile;
+      const hadViolations = await this.applyLeaseValidation(
+        runId, state, changedPaths, worktreeRoot, lease, revertFile,
+      );
 
-      for (const file of changedPaths) {
-        const forbidden = matchesAnyGlob(file, lease.forbiddenPaths);
-        const allowed = matchesAnyGlob(file, lease.allowedWritePaths);
-        if (forbidden || !allowed) {
-          violations.push(file);
-          try { await revertFile(worktreeRoot, file); state.filesReverted.push(file); }
-          catch (err) { logger.warn(`[ClaudeCodeAdapter] could not revert ${file}: ${String(err)}`); }
-        } else {
-          kept.push(file);
-          state.events.push({
-            eventId: `${runId}.file.${file}`, runId, ts: now(), kind: 'file_changed',
-            payload: { path: file, action: 'write' },
-          });
-        }
-      }
-      state.filesChanged = kept;
-
-      if (violations.length > 0) {
-        state.status = 'failed';
-        state.errorReason = `edit_outside_lease: ${violations.join('; ')}`;
+      if (hadViolations) {
         finalize(state, runId);
         return;
       }
@@ -304,10 +276,94 @@ export class ClaudeCodeAdapter implements AgentAdapter {
       logger.warn(`[ClaudeCodeAdapter] ${runId} failed: ${state.errorReason}`);
     }
   }
+
+  /**
+   * Spawn the `claude` CLI subprocess and return its exit code.
+   * Handles argument construction, Windows .cmd shim wrapping, and cwd normalization.
+   */
+  private async spawnClaudeCli(
+    state: ClaudeRunState,
+    worktreeRoot: string,
+    lease: AgentLease,
+  ): Promise<number> {
+    const prompt = buildClaudeCodePrompt(state.workPacket, lease);
+    const allowedTools = this.options.allowedTools ?? DEFAULT_ALLOWED_TOOLS;
+    const skipPermissions = this.options.skipPermissions !== false;
+    const args = buildClaudeArgs(prompt, allowedTools, skipPermissions);
+
+    const [cmd, finalArgs] = resolveSpawnTarget(state.binaryUsed, args, this._resolvedUsesShell);
+    const spawnFn: ClaudeSpawnFn = this.options._spawn ?? ((c, a, o) => spawn(c, a, o));
+
+    return runChild(
+      spawnFn,
+      cmd,
+      [...finalArgs],
+      {
+        // Normalize backslash → forward-slash on Windows; backslash cwd
+        // breaks node's spawn cmd.exe path resolution (see codex-adapter).
+        cwd: normalizeCwd(worktreeRoot),
+        env: { ...process.env, ...(state.input.env ?? {}) },
+        shell: false,
+        stdio: ['ignore', 'pipe', 'pipe'],
+      },
+      this.options.timeoutMs ?? DEFAULT_TIMEOUT_MS,
+    );
+  }
+
+  /**
+   * Validate each changed file against the lease's allowed/forbidden paths.
+   * Reverts any file that violates the lease.
+   * Returns true if violations were found (caller should finalize + return).
+   */
+  private async applyLeaseValidation(
+    runId: string,
+    state: ClaudeRunState,
+    changedPaths: string[],
+    worktreeRoot: string,
+    lease: AgentLease,
+    revertFile: (cwd: string, file: string) => Promise<void>,
+  ): Promise<boolean> {
+    const violations: string[] = [];
+    const kept: string[] = [];
+
+    for (const file of changedPaths) {
+      const forbidden = matchesAnyGlob(file, lease.forbiddenPaths);
+      const allowed = matchesAnyGlob(file, lease.allowedWritePaths);
+      if (forbidden || !allowed) {
+        violations.push(file);
+        try {
+          await revertFile(worktreeRoot, file);
+          state.filesReverted.push(file);
+        } catch (err) {
+          logger.warn(`[ClaudeCodeAdapter] could not revert ${file}: ${String(err)}`);
+        }
+      } else {
+        kept.push(file);
+        state.events.push({
+          eventId: `${runId}.file.${file}`, runId, ts: now(), kind: 'file_changed',
+          payload: { path: file, action: 'write' },
+        });
+      }
+    }
+
+    state.filesChanged = kept;
+
+    if (violations.length > 0) {
+      state.status = 'failed';
+      state.errorReason = `edit_outside_lease: ${violations.join('; ')}`;
+      return true;
+    }
+    return false;
+  }
 }
 
 // ── Prompt builder ─────────────────────────────────────────────────────────
 
+/**
+ * Build the natural-language prompt that instructs Claude Code to fulfil a
+ * work packet inside its isolated worktree. The prompt encodes hard path
+ * constraints so the agent self-enforces the lease boundary.
+ */
 export function buildClaudeCodePrompt(workPacket: WorkPacket, lease: AgentLease): string {
   return `You are a coding agent working on a Work Packet inside an isolated git worktree. Use your native tools (Read, Edit, Write) to make the changes — do NOT emit JSON.
 
@@ -408,6 +464,28 @@ function runChild(
     child.on('close', (code) => settle((code ?? 1) as number));
     child.on('error', () => settle(1));
   });
+}
+
+/** Build the human-readable completion message for a run. */
+function resolveFinalMessage(state: ClaudeRunState): string {
+  if (state.finalMessage) return state.finalMessage;
+  const violationCount = state.filesReverted.length;
+  if (violationCount > 0) {
+    return `Claude Code ran; ${state.filesChanged.length} file(s) kept, ${violationCount} reverted (lease violation)`;
+  }
+  return `Claude Code ran; ${state.filesChanged.length} file(s) changed`;
+}
+
+/** Build the commands-executed log entry from run state. */
+function buildCommandsExecuted(
+  state: ClaudeRunState,
+): AgentRunResult['commandsExecuted'] {
+  if (state.exitCode === null) return [];
+  return [{
+    command: state.binaryUsed,
+    exitCode: state.exitCode,
+    durationMs: (state.endMs ?? Date.now()) - state.startMs,
+  }];
 }
 
 function finalize(state: ClaudeRunState, runId: string): void {

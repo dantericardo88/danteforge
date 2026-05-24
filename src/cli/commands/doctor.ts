@@ -1,5 +1,6 @@
 import fs from 'fs/promises';
 import path from 'path';
+import chalk from 'chalk';
 import { logger } from '../../core/logger.js';
 import type { LogLevel } from '../../core/logger.js';
 import { loadState, saveState, type DanteState, type VerifyEvidence } from '../../core/state.js';
@@ -170,6 +171,8 @@ async function checkCodexBootstrap(homeDir: string, strict = false): Promise<Dia
 
 async function checkCodexCommandFiles(homeDir: string, strict = false): Promise<DiagnosticResult> {
   const commandsDir = path.join(homeDir, '.codex', 'commands');
+  const promptsDir = path.join(homeDir, '.codex', 'prompts');
+  const skillsDir = path.join(homeDir, '.codex', 'skills');
   const expectedFiles = [
     'autoforge.md',
     'spark.md',
@@ -179,6 +182,12 @@ async function checkCodexCommandFiles(homeDir: string, strict = false): Promise<
     'blaze.md',
     'nova.md',
     'inferno.md',
+    'crusade.md',
+    'party.md',
+    'oss.md',
+    'oss-harvest.md',
+    'oss-loop.md',
+    'oss-sync.md',
     'verify.md',
     'local-harvest.md',
   ];
@@ -186,7 +195,14 @@ async function checkCodexCommandFiles(homeDir: string, strict = false): Promise<
 
   for (const file of expectedFiles) {
     if (!await exists(path.join(commandsDir, file))) {
-      missing.push(file);
+      missing.push(`commands/${file}`);
+    }
+    if (!await exists(path.join(promptsDir, file))) {
+      missing.push(`prompts/${file}`);
+    }
+    const commandName = file.replace(/\.md$/, '');
+    if (!await exists(path.join(skillsDir, `danteforge-${commandName}`, 'SKILL.md'))) {
+      missing.push(`skills/danteforge-${commandName}`);
     }
   }
 
@@ -194,14 +210,14 @@ async function checkCodexCommandFiles(homeDir: string, strict = false): Promise<
     return {
       name: 'Codex native commands',
       status: 'ok',
-      message: `Native Codex command files are present in ${commandsDir}`,
+      message: `Codex command, prompt, and generated skill files are present under ${path.join(homeDir, '.codex')}`,
     };
   }
 
   return {
     name: 'Codex native commands',
     status: strict ? 'fail' : 'warn',
-    message: `Missing Codex command files: ${missing.join(', ')}`,
+    message: `Missing Codex command/prompt/skill files: ${missing.join(', ')}`,
     fix: 'Run: danteforge setup assistants --assistants codex',
   };
 }
@@ -558,23 +574,32 @@ async function runEnvironmentChecks(options: { live?: boolean }): Promise<Diagno
 }
 
 function displayDoctorResults(results: DiagnosticResult[]): { ok: number; failCount: number; warnCount: number } {
-  logger.info('');
+  process.stdout.write('\n');
   let failCount = 0;
   let warnCount = 0;
   for (const result of results) {
-    const icon = result.status === 'ok' ? '[OK]  ' : result.status === 'warn' ? '[WARN]' : '[FAIL]';
-    const level = result.status === 'ok' ? 'success' : result.status === 'warn' ? 'warn' : 'error';
-    logger[level](`${icon} ${result.name}: ${result.message}`);
-    if (result.fix) logger.info(`         Fix: ${result.fix}`);
-    if (result.status === 'fail') failCount++;
-    if (result.status === 'warn') warnCount++;
+    if (result.status === 'ok') {
+      process.stdout.write(`  ${chalk.green('✔')}  ${chalk.green(result.name.padEnd(30))} ${chalk.dim(result.message)}\n`);
+    } else if (result.status === 'warn') {
+      process.stdout.write(`  ${chalk.yellow('⚠')}  ${chalk.yellow(result.name.padEnd(30))} ${result.message}\n`);
+      if (result.fix) process.stdout.write(`     ${chalk.dim('→ ' + result.fix)}\n`);
+      warnCount++;
+    } else {
+      process.stdout.write(`  ${chalk.red('✗')}  ${chalk.red(result.name.padEnd(30))} ${result.message}\n`);
+      if (result.fix) process.stdout.write(`     ${chalk.yellow('→ ' + result.fix)}\n`);
+      failCount++;
+    }
   }
   const ok = results.length - failCount - warnCount;
-  logger.info('');
+  process.stdout.write('\n');
   const total = results.length;
-  if (failCount > 0) logger.error(`Health check: ${ok}/${total} passed, ${failCount} failed, ${warnCount} warnings`);
-  else if (warnCount > 0) logger.warn(`Health check: ${ok}/${total} passed, ${warnCount} warnings`);
-  else logger.success(`Health check: ${total}/${total} passed`);
+  if (failCount > 0) {
+    process.stdout.write(`  ${chalk.bold.red('✗')} Health: ${chalk.red(`${ok}/${total} passed`)}, ${failCount} failed, ${warnCount} warnings\n\n`);
+  } else if (warnCount > 0) {
+    process.stdout.write(`  ${chalk.bold.yellow('⚠')} Health: ${chalk.yellow(`${ok}/${total} passed`)}, ${warnCount} warnings\n\n`);
+  } else {
+    process.stdout.write(`  ${chalk.bold.green('✔')} Health: ${chalk.green(`${total}/${total} passed`)}\n\n`);
+  }
   return { ok, failCount, warnCount };
 }
 

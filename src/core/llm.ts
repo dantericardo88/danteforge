@@ -1,15 +1,41 @@
 // Multi-provider LLM client - Grok, Claude, OpenAI, Gemini, Ollama + registry providers
 // Uses direct HTTP calls so package installs work without optional provider SDKs.
+import path from 'node:path';
 import type { CallLLMOptions } from './llm-pipeline.js';
 import { resolveProvider, loadConfig, getDefaultModel, type LLMProvider } from './config.js';
 import { getProvider as getRegistryProvider, isRegisteredProvider } from './llm-provider.js';
 import { checkContextRot, truncateContext } from '../harvested/gsd/hooks/context-rot.js';
-import { warnIfExpensive } from './token-estimator.js';
+import { warnIfExpensive, estimateTokens } from './token-estimator.js';
 import { logger } from './logger.js';
 import { loadState, saveState } from './state.js';
 import { injectContext } from './context-injector.js';
 import { recordMemory } from './memory-engine.js';
 import { LLMError } from './errors.js';
+import { TokenLedger, checkPreflightBudget, BudgetExceededError } from './token-ledger.js';
+import { getCachedResponse, cacheResponse } from './llm-cache.js';
+
+/**
+ * Module-level singleton ledger — shared across all callLLM invocations in a
+ * single process.  Lazily initialised on the first LLM call.
+ */
+let _sessionLedger: TokenLedger | null = null;
+
+function getSessionLedger(cwd: string): TokenLedger {
+  if (!_sessionLedger) {
+    _sessionLedger = new TokenLedger(cwd);
+  }
+  return _sessionLedger;
+}
+
+/** Reset the session ledger (used in tests). */
+export function resetSessionLedger(): void {
+  _sessionLedger = null;
+}
+
+/** Get the current session ledger (may be null if no calls made yet). */
+export function getActiveLedger(): TokenLedger | null {
+  return _sessionLedger;
+}
 
 const DEFAULT_RETRY_DELAYS_MS = [1000, 3000];
 export const DEFAULT_LLM_REQUEST_TIMEOUT_MS = 30_000;
@@ -483,6 +509,18 @@ async function handleCallSuccess(
       relatedCommands: ['llm'],
     }, options.cwd);
   }
+
+  // Record to per-session token ledger (best-effort — never blocks the call)
+  try {
+    const inputTok = result.usage?.inputTokens ?? estimateTokens(enrichedPrompt);
+    const outputTok = result.usage?.outputTokens ?? estimateTokens(result.text);
+    const command = options.cwd
+      ? path.basename(options.cwd)
+      : (process.argv[2] ?? 'unknown');
+    const ledger = getSessionLedger(options.cwd ?? process.cwd());
+    await ledger.record(command, inputTok, outputTok, modelUsed);
+  } catch { /* best-effort — never throws */ }
+
   return result.text;
 }
 
@@ -510,6 +548,38 @@ async function _callLLMInner(
   }
   await warnIfExpensive(enrichedPrompt, target.provider);
   logger.info(`LLM call: ${target.provider}/${modelUsed} (${enrichedPrompt.length} chars)`);
+
+  // ── Pre-flight budget check (DANTEFORGE_BUDGET_USD) ──────────────────────
+  const envBudgetUsd = parseFloat(process.env.DANTEFORGE_BUDGET_USD ?? '');
+  if (!isNaN(envBudgetUsd) && envBudgetUsd > 0) {
+    const estimatedInputTok = estimateTokens(enrichedPrompt);
+    const estimatedOutputTok = Math.ceil(estimatedInputTok * 0.25);
+    const ledger = getSessionLedger(options.cwd ?? process.cwd());
+    const { estimatedCostUsd: spentSoFar } = ledger.getSessionTotal();
+    try {
+      checkPreflightBudget(estimatedInputTok, estimatedOutputTok, modelUsed, spentSoFar, envBudgetUsd);
+    } catch (err) {
+      if (err instanceof BudgetExceededError) {
+        throw err;
+      }
+      // Unknown error from checkPreflightBudget — still rethrow
+      throw err;
+    }
+  }
+
+  // ── Dry-run mode (DANTEFORGE_DRY_RUN) ────────────────────────────────────
+  if (process.env.DANTEFORGE_DRY_RUN === '1' || process.env.DANTEFORGE_DRY_RUN === 'true') {
+    const estimatedTok = estimateTokens(enrichedPrompt);
+    logger.info(`[DRY RUN] Skipping LLM call. Estimated tokens: ${estimatedTok}. Provider: ${target.provider}/${modelUsed}.`);
+    return `[DRY RUN] LLM call skipped. Estimated ~${estimatedTok} tokens for ${target.provider}/${modelUsed}.`;
+  }
+
+  // ── LLM response cache (DANTEFORGE_LLM_CACHE=1) ──────────────────────────
+  const cachingEnabled = process.env.DANTEFORGE_LLM_CACHE === '1';
+  if (cachingEnabled) {
+    const hit = await getCachedResponse(enrichedPrompt).catch(() => null);
+    if (hit !== null) return hit;
+  }
 
   // Enforce budget fence before making any API call
   if (options.budgetFence) {
@@ -558,7 +628,11 @@ async function _callLLMInner(
         }
       }
 
-      return await handleCallSuccess(result, options, target, modelUsed, enrichedPrompt, attempt);
+      const responseText = await handleCallSuccess(result, options, target, modelUsed, enrichedPrompt, attempt);
+      if (cachingEnabled) {
+        await cacheResponse(enrichedPrompt, responseText, target.provider).catch(() => {});
+      }
+      return responseText;
     } catch (err) {
       lastError = err;
       if (attempt < maxRetries && isRetryableError(err)) {

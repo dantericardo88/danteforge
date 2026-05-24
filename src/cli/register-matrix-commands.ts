@@ -17,6 +17,8 @@ export function registerMatrixCommands(program: Command): void {
   registerGraphs(matrix);
   registerPlanning(matrix);
   registerLeases(matrix);
+  registerCapabilityGate(matrix);
+  registerProtectedLines(matrix);
   registerMatrixExecutionCommands(matrix);
 }
 
@@ -215,6 +217,62 @@ function registerLeases(matrix: Command): void {
       } catch {
         logger.info('[matrix-kernel] No lease graph found. Run `matrix-kernel simulate` to generate one.');
       }
+    }));
+}
+
+// ── Protected lines (Fix C) ───────────────────────────────────────────────────
+
+function registerProtectedLines(matrix: Command): void {
+  matrix
+    .command('protect <fileRange> <dimensionId>')
+    .description('Record a protected line range after a capability_test passes (format: file.ts:start-end)')
+    .option('--cwd <path>', 'Project root')
+    .option('--reason <text>', 'Why these lines are protected')
+    .option('--capability-test <cmd>', 'The capability_test command that proved this range')
+    .action(async (fileRange: string, dimensionId: string, opts) => runSafely('matrix-kernel:protect', async () => {
+      const { matrixProtect } = await import('./commands/matrix-protected-lines.js');
+      await matrixProtect(fileRange, dimensionId, {
+        cwd: opts.cwd as string | undefined,
+        reason: opts.reason as string | undefined,
+        capabilityTest: opts.capabilityTest as string | undefined,
+      });
+    }));
+
+  matrix
+    .command('protected-lines')
+    .description('List all current protected line ranges')
+    .option('--cwd <path>', 'Project root')
+    .action(async (opts) => runSafely('matrix-kernel:protected-lines', async () => {
+      const { matrixProtectedLines } = await import('./commands/matrix-protected-lines.js');
+      await matrixProtectedLines({ cwd: opts.cwd as string | undefined });
+    }));
+
+  matrix
+    .command('unprotect <fileRange>')
+    .description('Remove a protected line range (requires a reason in your next commit)')
+    .option('--cwd <path>', 'Project root')
+    .option('--reason <text>', 'Why this range no longer needs protection')
+    .action(async (fileRange: string, opts) => runSafely('matrix-kernel:unprotect', async () => {
+      const { matrixUnprotect } = await import('./commands/matrix-protected-lines.js');
+      await matrixUnprotect(fileRange, {
+        cwd: opts.cwd as string | undefined,
+        reason: opts.reason as string | undefined,
+      });
+    }));
+}
+
+// ── Capability gate ──────────────────────────────────────────────────────────
+
+function registerCapabilityGate(matrix: Command): void {
+  matrix
+    .command('verify-capability <dimensionId>')
+    .description('Run the capability_test for a dimension; exits 0 if capability is present, 1 if absent or capped')
+    .option('--cwd <path>', 'Project root')
+    .action(async (dimensionId: string, opts) => runSafely('matrix-kernel:verify-capability', async () => {
+      const { matrixVerifyCapability } = await import('./commands/matrix-verify-capability.js');
+      const cwd = (opts.cwd as string | undefined) ?? process.cwd();
+      const result = await matrixVerifyCapability(dimensionId, { cwd });
+      if (!result.passed) process.exitCode = result.exitCode;
     }));
 }
 

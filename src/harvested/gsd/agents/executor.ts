@@ -122,6 +122,9 @@ export interface ExecuteWaveOptions {
     failedTasks: { task: string; error?: string }[],
     context: 'forge failure' | 'party failure',
   ) => Promise<void>;
+  /** Depth Doctrine: wave type override. When 'depth', executeWave runs
+   *  `danteforge validate --all` instead of forge tasks. */
+  waveType?: 'breadth' | 'depth';
 }
 
 // ── Code Application Pipeline ─────────────────────────────────────────────────
@@ -321,6 +324,19 @@ export async function executeWave(
 ): Promise<ExecuteWaveResult> {
   const cwd = options?.cwd;
   const state = await (options?._stateCaller?.load ?? loadState)({ cwd });
+
+  // Depth Doctrine: when waveType is 'depth', run validate instead of forge tasks.
+  if (options?.waveType === 'depth') {
+    logger.success(`Wave ${phase} DEPTH: running outcome validation instead of forge tasks`);
+    try {
+      const { runValidateCli } = await import('../../../cli/commands/validate.js');
+      const result = await runValidateCli({ all: true, forceCold: true, cwd: cwd ?? process.cwd() });
+      return { mode: 'executed', success: result.allPassed };
+    } catch {
+      return { mode: 'executed', success: false };
+    }
+  }
+
   logger.success(`Wave ${phase} starting (${profile} profile${parallel ? ', parallel' : ''}${promptMode ? ', prompt mode' : ''}${worktree ? ', worktree isolation' : ''})`);
 
   const tasks = state.tasks[phase] ?? [];

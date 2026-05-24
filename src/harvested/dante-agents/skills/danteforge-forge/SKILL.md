@@ -62,6 +62,22 @@ Follow the task `name` as your specification. If a `verify` criterion is present
 
 After implementing each task, move directly to the next one. Do not call `danteforge verify` between individual tasks — verify once after all tasks in the phase are complete.
 
+### 2d. LOC Gate — mandatory after implementing all tasks
+
+Before calling verify, check every file you created or modified for the 750-LOC hard cap:
+
+```bash
+git diff --name-only HEAD | grep -E '\.(ts|tsx|js|mjs)$' | xargs wc -l 2>/dev/null | sort -rn | awk '$1 > 750 {print $1, $2}'
+```
+
+If any file appears in the output:
+1. Split it immediately: `foo.ts` → `foo.ts` + `foo-types.ts` + `foo-utils.ts`
+2. Keep each resulting file under 500 non-blank lines (ideal) / 750 lines (hard cap)
+3. Update all import paths in files that reference the split module
+4. Run the LOC check again until the output is empty
+
+**Never commit a file exceeding 750 LOC.** The CI gate (`npm run check:file-size`) blocks it, and the auto-sanitize hook will split it after the next wave anyway — better to do it deliberately now.
+
 ## Step 3 — Verify the Phase
 
 After all tasks are implemented, stage your changes and verify:

@@ -89,6 +89,7 @@ export function compressArtifact(content: string, type: ArtifactType): Compressi
       originalSize,
       compressedSize: originalSize,
       savingsPercent: 0,
+      compressionRatio: 1.0,
       sacredSpans,
     };
   }
@@ -100,8 +101,9 @@ export function compressArtifact(content: string, type: ArtifactType): Compressi
   const compressedSize = Buffer.byteLength(compressed, 'utf8');
   const savedBytes = Math.max(0, originalSize - compressedSize);
   const savingsPercent = originalSize > 0 ? Math.round((savedBytes / originalSize) * 100) : 0;
+  const compressionRatio = originalSize > 0 ? compressedSize / originalSize : 1.0;
 
-  return { compressed, originalSize, compressedSize, savingsPercent, sacredSpans };
+  return { compressed, originalSize, compressedSize, savingsPercent, compressionRatio, sacredSpans };
 }
 
 export function estimateCompressionTokenSavings(content: string, type: ArtifactType): number {

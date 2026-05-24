@@ -50,6 +50,16 @@
     "src/core/harsh-scorer.ts",
     "src/core/mcp-server.ts"
   ],
+  "matrixScoreSurface": {
+    "description": "Worker agents (dimension-engineer role) may NOT stage or commit these files. Only the matrix kernel's score-merge flow may write them. See Fix B in CHANGELOG.md.",
+    "workerForbidden": [
+      ".danteforge/compete/matrix.json",
+      ".danteforge/compete/matrix-*.json",
+      ".danteforge/compete/COMPETE_REPORT.md",
+      ".danteforge/scores/**",
+      ".danteforge/score-proposals/**"
+    ]
+  },
   "atomicGroups": [
     {
       "id": "competitive-score-surface",

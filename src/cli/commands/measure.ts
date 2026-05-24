@@ -196,8 +196,8 @@ export async function measure(options: MeasureOptions = {}): Promise<MeasureResu
   const isTTY = process.stdout.isTTY ?? false;
 
   const computeScoreFn = options._computeScore ?? (async (dir: string) => {
-    const { computeHarshScore } = await import('../../core/harsh-scorer.js');
-    return computeHarshScore({ cwd: dir });
+    const { computeCanonicalScore, canonicalScoreToHarshResult } = await import('../../core/harsh-scorer.js');
+    return canonicalScoreToHarshResult(await computeCanonicalScore(dir));
   });
 
   // ── Score ──────────────────────────────────────────────────────────────────
@@ -259,12 +259,19 @@ export async function measure(options: MeasureOptions = {}): Promise<MeasureResu
   // Text output
   emit('');
   emit(chalk.bold('  ══════════════════════════════════════════════════'));
-  emit(chalk.bold('    DanteForge — Quality Measurement'));
+  emit(chalk.bold('    DanteForge — Builder Quality Score'));
   emit(chalk.bold('  ══════════════════════════════════════════════════'));
   emit('');
   emit(`  Level:   ${level}`);
   emit(`  Score:   ${chalk.bold(result.overallScore.toFixed(1) + '/10')}  ${verdictBadge(result.overallScore)}`);
   emit(`  Maturity: ${result.maturity}`);
+  try {
+    const mxRaw = await fs.readFile(path.join(cwd, '.danteforge/compete/matrix.json'), 'utf8');
+    const mx = JSON.parse(mxRaw) as { overallSelfScore?: number };
+    if (typeof mx.overallSelfScore === 'number') {
+      emit(chalk.dim(`  Competitive: ${mx.overallSelfScore.toFixed(1)}/10  (vs OSS leaders — run: danteforge compete)`));
+    }
+  } catch { /* matrix not present — no-op */ }
   emit('');
 
   // Dimension bars

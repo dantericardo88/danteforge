@@ -11,6 +11,7 @@ import { isLLMAvailable } from '../../core/llm.js';
 import { loadConfig, saveConfig, setDefaultProvider, type LLMProvider, type DanteConfig } from '../../core/config.js';
 import { withErrorBoundary } from '../../core/cli-error-boundary.js';
 import type { AssistantRegistry } from '../../core/assistant-installer.js';
+import { runOnboardingWizard } from '../../core/onboarding-wizard.js';
 
 type BasicReadline = {
   question: (prompt: string, cb: (answer: string) => void) => void;
@@ -36,6 +37,8 @@ export interface InitOptions {
   _loadConfig?: () => Promise<DanteConfig>;
   _saveConfig?: (config: DanteConfig) => Promise<void>;
   _defineUniverse?: (opts: { cwd: string; interactive: boolean }) => Promise<unknown>;
+  /** Injection seam for onboarding wizard — defaults to runOnboardingWizard */
+  _runOnboardingWizard?: typeof runOnboardingWizard;
 }
 
 export function detectRunningIDE(): AssistantRegistry | null {
@@ -209,6 +212,23 @@ export async function init(options: InitOptions = {}): Promise<void> {
     logger.success('DanteForge Init - Project Setup Wizard');
     logger.info('');
 
+    // Run onboarding wizard for genuinely fresh projects (no .danteforge/ yet) or --guided.
+    // The wizard exits immediately if already initialized, so it is safe to call unconditionally.
+    try {
+      const wizardFn = options._runOnboardingWizard ?? runOnboardingWizard;
+      const stateDir = path.join(cwd, '.danteforge');
+      let danteforgeExists = false;
+      try { await fs.access(stateDir); danteforgeExists = true; } catch { /* not present */ }
+      if (!danteforgeExists || options.guided) {
+        const rl = options._readline;
+        await wizardFn(cwd, {
+          _readlineFn: rl
+            ? (prompt: string) => new Promise<string>((resolve) => rl.question(prompt, resolve))
+            : undefined,
+        });
+      }
+    } catch { /* best-effort — onboarding wizard must never block init */ }
+
     let projectDescription = options.projectDescription ?? '';
     let preferredLevel: string = options.preferredLevel ?? 'magic';
     let preferLive = options.preferLive ?? false;
@@ -234,6 +254,15 @@ export async function init(options: InitOptions = {}): Promise<void> {
     // This prevents AI file-walkers (Claude Code, Cursor, DanteCode, Codex…)
     // from freezing when harvest/compete workflows clone hundreds of repos.
     try { await ensureProjectIgnores(cwd); } catch { /* best-effort */ }
+
+    // Install LOC pre-commit hook into the target project (best-effort)
+    try {
+      const { installLocHook } = await import('../../core/install-git-hooks.js');
+      const hookResult = await installLocHook(cwd);
+      if (hookResult.installed) logger.success('[init] LOC pre-commit hook installed (.git/hooks/pre-commit)');
+      else if (hookResult.updated) logger.info('[init] LOC pre-commit hook added to existing pre-commit hook');
+      else if (hookResult.skipped) logger.info('[init] LOC pre-commit hook already present — skipped');
+    } catch { /* best-effort */ }
 
     logger.info('');
     logger.info('Health checks:');

@@ -162,3 +162,129 @@ export function computeWiringBonus(wiringResult: IntegrationWiringResult): numbe
   if (wiringResult.flags.rateLimiterInvoked) bonus += 10;
   return bonus;
 }
+
+// ── Integration Health Report ─────────────────────────────────────────────────
+
+export interface IntegrationHealthReport {
+  /** Git repository statistics and health flags */
+  git: {
+    remoteUrl: string;
+    branch: string;
+    hasUncommittedChanges: boolean;
+    commitCount: number;
+    lastCommitHash: string;
+    lastCommitDate: string;
+    ok: boolean;
+    issues: string[];
+  };
+  /** Ecosystem and MCP tool signals */
+  ecosystem: {
+    hasPluginManifest: boolean;
+    hasMcpTools: boolean;
+    hasSkills: boolean;
+    skillCount: number;
+    mcpToolCount: number;
+    integrationScore: number;
+    grade: 'A' | 'B' | 'C' | 'D' | 'F';
+  };
+  /** Overall letter grade (worst of git health + ecosystem grade) */
+  overallGrade: 'A' | 'B' | 'C' | 'D' | 'F';
+  /** Actionable improvement suggestions */
+  recommendations: string[];
+}
+
+function gradeToRank(grade: 'A' | 'B' | 'C' | 'D' | 'F'): number {
+  return { A: 4, B: 3, C: 2, D: 1, F: 0 }[grade];
+}
+
+function rankToGrade(rank: number): 'A' | 'B' | 'C' | 'D' | 'F' {
+  const map: Array<'A' | 'B' | 'C' | 'D' | 'F'> = ['F', 'D', 'C', 'B', 'A'];
+  return map[Math.max(0, Math.min(4, rank))] ?? 'F';
+}
+
+/**
+ * Aggregate git stats and ecosystem signals into a single unified health report.
+ */
+export async function generateIntegrationReport(cwd?: string): Promise<IntegrationHealthReport> {
+  // Lazy imports to keep the module lightweight and avoid circular deps at load time
+  const [{ getGitStats, validateGitHealth }, { computeEcosystemCheck, getIntegrationGrade }] =
+    await Promise.all([
+      import('./git-integration.js'),
+      import('./harsh-scorer-ecosystem.js'),
+    ]);
+
+  const [gitStats, gitHealth, ecosystemCheck] = await Promise.all([
+    getGitStats(cwd),
+    validateGitHealth(cwd),
+    computeEcosystemCheck(cwd),
+  ]);
+
+  const ecosystemGrade = getIntegrationGrade(ecosystemCheck.integrationScore);
+  const gitGrade: 'A' | 'B' | 'C' | 'D' | 'F' = gitHealth.ok ? 'A' : (gitHealth.issues.length <= 1 ? 'B' : 'C');
+
+  const overallRank = Math.min(gradeToRank(gitGrade), gradeToRank(ecosystemGrade));
+  const overallGrade = rankToGrade(overallRank);
+
+  const recommendations: string[] = [];
+  if (gitHealth.issues.length > 0) {
+    recommendations.push(...gitHealth.issues.map(i => `[git] ${i}`));
+  }
+  if (!ecosystemCheck.hasPluginManifest) {
+    recommendations.push('[ecosystem] Add a .claude-plugin/plugin.json manifest to enable Claude Code integration');
+  }
+  if (!ecosystemCheck.hasMcpTools) {
+    recommendations.push('[ecosystem] Wire MCP tools in src/core/mcp-server.ts to increase tool surface');
+  }
+  if (!ecosystemCheck.hasSkills) {
+    recommendations.push('[ecosystem] Add SKILL.md files under src/harvested/dante-agents/skills/ to boost skill count');
+  } else if (ecosystemCheck.skillCount < 5) {
+    recommendations.push(`[ecosystem] Skill count is ${ecosystemCheck.skillCount} — target 5+ for full credit`);
+  }
+
+  return {
+    git: { ...gitStats, ...gitHealth },
+    ecosystem: { ...ecosystemCheck, grade: ecosystemGrade },
+    overallGrade,
+    recommendations,
+  };
+}
+
+/**
+ * Render an `IntegrationHealthReport` as a compact markdown table summary.
+ */
+export function formatIntegrationReport(report: IntegrationHealthReport): string {
+  const gitStatus = report.git.ok ? 'HEALTHY' : `ISSUES (${report.git.issues.length})`;
+  const lines: string[] = [
+    '## Integration Health Report',
+    '',
+    '| Dimension | Value |',
+    '|-----------|-------|',
+    `| Git branch | \`${report.git.branch}\` |`,
+    `| Git remote | ${report.git.remoteUrl || '(none)'} |`,
+    `| Uncommitted changes | ${report.git.hasUncommittedChanges ? 'YES' : 'No'} |`,
+    `| Commit count | ${report.git.commitCount} |`,
+    `| Last commit | ${report.git.lastCommitHash || '(none)'} |`,
+    `| Git health | ${gitStatus} |`,
+    `| Plugin manifest | ${report.ecosystem.hasPluginManifest ? 'YES' : 'No'} |`,
+    `| MCP tools | ${report.ecosystem.mcpToolCount} |`,
+    `| Skills | ${report.ecosystem.skillCount} |`,
+    `| Integration score | ${report.ecosystem.integrationScore}/100 (${report.ecosystem.grade}) |`,
+    `| **Overall grade** | **${report.overallGrade}** |`,
+  ];
+
+  if (report.recommendations.length > 0) {
+    lines.push('', '### Recommendations', '');
+    for (const rec of report.recommendations) {
+      lines.push(`- ${rec}`);
+    }
+  }
+
+  if (report.git.issues.length > 0) {
+    lines.push('', '### Git Issues', '');
+    for (const issue of report.git.issues) {
+      lines.push(`- ${issue}`);
+    }
+  }
+
+  return lines.join('\n');
+}

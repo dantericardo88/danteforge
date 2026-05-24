@@ -32,19 +32,30 @@ function parseToolResult(result: { content: { text: string }[]; isError?: boolea
   };
 }
 
-test('handleCanonicalCompetitors returns the 16 canonical DanteForge peers grouped by category', async () => {
-  const result = await handleCanonicalCompetitors({});
+test('handleCanonicalCompetitors with explicit preset:"dev-tool-optimizer" returns DanteForge peers', async () => {
+  const result = await handleCanonicalCompetitors({ preset: 'dev-tool-optimizer' });
   const { data, isError } = parseToolResult(result);
   assert.equal(isError, false);
-  assert.ok((data.count as number) >= 14, `expected >= 14 canonical peers, got ${data.count}`);
-  assert.ok(Array.isArray(data.competitors));
-  const cats = data.categories as Record<string, string[]>;
-  assert.ok(cats['spec-driven dev kits'].length >= 2, 'spec-driven category should include spec-kit + BMAD + OpenSpec');
-  assert.ok(cats['skill consolidators'].length >= 1, 'skill consolidator category should include claude-skills');
-  assert.ok(cats['orchestration peers'].length >= 5, 'orchestration peers should include MetaGPT/CrewAI/AutoGen/etc.');
+  assert.equal(data.preset, 'dev-tool-optimizer');
+  assert.ok((data.count as number) >= 14, `expected >= 14 peers, got ${data.count}`);
+  const competitors = data.competitors as string[];
+  assert.ok(competitors.some(c => /spec-kit/i.test(c)), 'spec-kit in dev-tool-optimizer');
+  assert.ok(competitors.some(c => /BMad/i.test(c)), 'BMad in dev-tool-optimizer');
   // Anti-test: must NOT include platforms DanteForge sits on top of
-  assert.ok(!(data.competitors as string[]).some(c => /^Devin/i.test(c)), 'canonical seed should NOT include Devin');
-  assert.ok(!(data.competitors as string[]).some(c => /^Cursor$/i.test(c)), 'canonical seed should NOT include Cursor');
+  assert.ok(!competitors.some(c => /^Devin/i.test(c)), 'dev-tool-optimizer should NOT include Devin');
+  assert.ok(!competitors.some(c => /^Cursor$/i.test(c)), 'dev-tool-optimizer should NOT include Cursor');
+});
+
+test('handleCanonicalCompetitors with explicit preset:"coding-assistant" returns AI assistant peers', async () => {
+  const result = await handleCanonicalCompetitors({ preset: 'coding-assistant' });
+  const { data, isError } = parseToolResult(result);
+  assert.equal(isError, false);
+  assert.equal(data.preset, 'coding-assistant');
+  const competitors = data.competitors as string[];
+  assert.ok(competitors.some(c => /^Cursor$/i.test(c)), 'Cursor in coding-assistant');
+  assert.ok(competitors.some(c => /Aider/i.test(c)), 'Aider in coding-assistant');
+  // Anti-test: must NOT include DanteForge-specific peers
+  assert.ok(!competitors.some(c => /spec-kit/i.test(c)), 'coding-assistant should NOT include spec-kit');
 });
 
 test('handleUniverse returns null universe when none exists, with helpful hint', async () => {
@@ -99,9 +110,8 @@ test('handleCompeteReset requires explicit confirm:true (default rejects)', asyn
   assert.match(String(data.error), /confirm: true/);
 });
 
-test('handleCompeteReset rewrites competitors with canonical seed when confirm:true', async () => {
+test('handleCompeteReset with explicit preset writes that preset to matrix.json', async () => {
   const dir = mkTmpProject();
-  // Seed a matrix with junk competitors
   writeFileSync(join(dir, '.danteforge', 'compete', 'matrix.json'), JSON.stringify({
     project: 'test',
     competitors: ['JunkA', 'JunkB', 'JunkC'],
@@ -110,29 +120,29 @@ test('handleCompeteReset rewrites competitors with canonical seed when confirm:t
     dimensions: [],
     overallSelfScore: 5,
   }));
-  const result = await handleCompeteReset({ _cwd: dir, confirm: true });
+  const result = await handleCompeteReset({ _cwd: dir, confirm: true, preset: 'dev-tool-optimizer' });
   const { data, isError } = parseToolResult(result);
   assert.equal(isError, false);
   assert.equal(data.ok, true);
-  assert.equal(data.mode, 'use-canonical');
+  assert.equal(data.preset, 'dev-tool-optimizer');
   const count = data.competitorCount as number;
-  assert.ok(count >= 14, `expected >= 14 canonical peers, got ${count}`);
+  assert.ok(count >= 14, `expected >= 14 peers, got ${count}`);
   assert.match(String(data.nextStep), /ensure_universe_ready|refresh:true/);
-  // Verify the matrix on disk actually changed
   const { readFileSync } = await import('node:fs');
   const matrixOnDisk = JSON.parse(readFileSync(join(dir, '.danteforge', 'compete', 'matrix.json'), 'utf8')) as { competitors: string[] };
   assert.ok(matrixOnDisk.competitors.some(c => /spec-kit/i.test(c)), 'matrix.json should now contain spec-kit');
   assert.ok(!matrixOnDisk.competitors.includes('JunkA'), 'matrix.json should no longer contain JunkA');
 });
 
-test('handleCompeteReset rejects useCanonical:false (no other modes wired yet)', async () => {
+test('handleCompeteReset rejects useCanonical:false without explicit preset', async () => {
   const dir = mkTmpProject();
   writeFileSync(join(dir, '.danteforge', 'compete', 'matrix.json'), JSON.stringify({
     project: 'test', competitors: ['x'], dimensions: [], overallSelfScore: 5,
   }));
   const result = await handleCompeteReset({ _cwd: dir, confirm: true, useCanonical: false });
-  const { isError } = parseToolResult(result);
+  const { data, isError } = parseToolResult(result);
   assert.equal(isError, true);
+  assert.match(String(data.error), /preset|useCanonical/);
 });
 
 test('all 4 universe MCP tools are registered in TOOL_HANDLERS + TOOL_DEFINITIONS', async () => {

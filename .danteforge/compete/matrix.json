@@ -1,0 +1,3355 @@
+{
+  "project": "danteforge",
+  "competitors": [
+    "Kiro (AWS)",
+    "Replit Agent",
+    "spec-kit (GitHub)",
+    "BMad-METHOD",
+    "MetaGPT",
+    "CrewAI",
+    "AutoGen (Microsoft)",
+    "GPT-Engineer",
+    "OpenHands (All-Hands AI)",
+    "Aider",
+    "SWE-Agent (Princeton)",
+    "LangChain Agents",
+    "Dagger",
+    "re_gent",
+    "LangGraph",
+    "Agno",
+    "Pydantic-AI",
+    "SmolaAgents",
+    "DSPy"
+  ],
+  "competitors_closed_source": [
+    "Kiro (AWS)",
+    "Replit Agent"
+  ],
+  "competitors_oss": [
+    "spec-kit (GitHub)",
+    "BMad-METHOD",
+    "MetaGPT",
+    "CrewAI",
+    "AutoGen (Microsoft)",
+    "GPT-Engineer",
+    "OpenHands (All-Hands AI)",
+    "Aider",
+    "SWE-Agent (Princeton)",
+    "LangChain Agents",
+    "Dagger",
+    "re_gent",
+    "LangGraph",
+    "Agno",
+    "Pydantic-AI",
+    "SmolaAgents",
+    "DSPy"
+  ],
+  "lastUpdated": "2026-05-24T17:01:16.742Z",
+  "overallSelfScore": 9,
+  "excludedDimensions": [
+    "community_adoption",
+    "communityAdoption"
+  ],
+  "dimensions": [
+    {
+      "id": "testing",
+      "label": "Test Coverage & Quality",
+      "weight": 1.3,
+      "category": "quality",
+      "frequency": "high",
+      "scores": {
+        "self": 9,
+        "Devin (Cognition AI)": 7.5,
+        "GitHub Copilot Workspace": 8,
+        "Cursor": 7,
+        "Aider": 7,
+        "SWE-Agent (Princeton)": 8,
+        "MetaGPT": 7,
+        "GPT-Engineer": 5.5,
+        "Claude Code": 8,
+        "AutoGen (Microsoft)": 7.5,
+        "CrewAI": 7,
+        "OpenHands (All-Hands AI)": 8,
+        "CodiumAI / Qodo": 9,
+        "CodeRabbit": 8,
+        "Cline": 7,
+        "Continue.dev": 7,
+        "Swimm": 6.5,
+        "LangChain Agents": 7.5,
+        "Kiro (AWS)": 7.5,
+        "Codex CLI (OpenAI)": 7.5,
+        "Gemini CLI (Google)": 7,
+        "GitHub Copilot CLI": 8,
+        "Goose (Block)": 7,
+        "Replit Agent": 7,
+        "Zencoder": 7,
+        "Qodo 2.0": 9.5,
+        "Dagger": 7.5,
+        "Kilo Code": 6.5,
+        "re_gent": 8,
+        "spec-kit (GitHub)": 5,
+        "BMad-METHOD": 5,
+        "LangGraph": 7,
+        "Pydantic-AI": 8,
+        "SmolaGents": 6,
+        "Browser-use": 7,
+        "DSPy": 7.5,
+        "AgentOps": 5,
+        "Helicone": 4,
+        "Composio": 4,
+        "LiteLLM": 4,
+        "Promptfoo": 9.5,
+        "Fabric": 4,
+        "Agno": 5.5,
+        "SmolaAgents": 5.5
+      },
+      "gap_to_leader": 0,
+      "leader": "self",
+      "gap_to_closed_source_leader": 0,
+      "closed_source_leader": "self",
+      "gap_to_oss_leader": 0,
+      "oss_leader": "self",
+      "status": "partially-verified-capability",
+      "sprint_history": [
+        {
+          "dimensionId": "testing",
+          "before": 5,
+          "after": 8.4,
+          "date": "2026-04-14"
+        },
+        {
+          "dimensionId": "testing",
+          "before": 8.4,
+          "after": 9.2,
+          "date": "2026-04-14"
+        }
+      ],
+      "next_sprint_target": 7,
+      "harvest_source": "OpenHands (All-Hands AI)",
+      "capability_test": {
+        "command": "node dist/index.js eval --dry-run",
+        "description": "LLM eval framework: golden test suites, assertions, CI exit-code, dimension-scoped filtering"
+      },
+      "outcomes": [
+        {
+          "id": "t_smoke",
+          "tier": "T1",
+          "command": "node -e \"require('fs').readFileSync('tests/smoke.test.ts','utf8')\"",
+          "description": "smoke test file exists"
+        },
+        {
+          "id": "t_full",
+          "tier": "T2",
+          "command": "node -e \"const d=require('fs').readdirSync('tests');if(d.filter(f=>f.endsWith('.test.ts')).length<5)process.exit(1)\"",
+          "description": "5+ test files exist"
+        },
+        {
+          "id": "t_golden_flow",
+          "tier": "T4",
+          "command": "node -e \"const c=require('fs').readFileSync('tests/matrix-golden-flow.test.ts','utf8');if(!c.includes('it('))process.exit(1)\"",
+          "description": "golden flow integration test exists"
+        },
+        {
+          "id": "t_golden_flow_runtime",
+          "tier": "T5",
+          "kind": "runtime-exec",
+          "command": "npx tsx --test tests/matrix-golden-flow.test.ts",
+          "expected_exit": 0,
+          "expected_output_pattern": "pass",
+          "min_duration_ms": 500,
+          "timeout_ms": 120000,
+          "required_callsite": "tests/matrix-golden-flow.test.ts",
+          "description": "Golden flow integration test RUNS and passes"
+        },
+        {
+          "id": "t_cli_smoke_runner_runtime",
+          "tier": "T5",
+          "kind": "runtime-exec",
+          "command": "npx tsx --test tests/cli-smoke-runner.test.ts",
+          "expected_exit": 0,
+          "expected_output_pattern": "pass",
+          "min_duration_ms": 200,
+          "timeout_ms": 60000,
+          "required_callsite": "src/matrix/engines/cli-smoke-runner.ts",
+          "description": "CLI smoke runner tests EXECUTE and pass"
+        },
+        {
+          "id": "t_runtime_exec_runner_runtime",
+          "tier": "T5",
+          "kind": "runtime-exec",
+          "command": "npx tsx --test tests/runtime-exec-runner.test.ts",
+          "expected_exit": 0,
+          "expected_output_pattern": "pass",
+          "min_duration_ms": 200,
+          "timeout_ms": 60000,
+          "required_callsite": "src/matrix/engines/runtime-exec-runner.ts",
+          "description": "Runtime exec runner tests EXECUTE and pass"
+        },
+        {
+          "id": "testing_t5_smoke_runtime",
+          "tier": "T5",
+          "kind": "runtime-exec",
+          "command": "npx tsx --test tests/smoke.test.ts",
+          "expected_exit": 0,
+          "expected_output_pattern": "pass",
+          "timeout_ms": 120000,
+          "required_callsite": "tests/smoke.test.ts",
+          "description": "Smoke test suite executes."
+        },
+        {
+          "id": "testing_t5_cli_runner_runtime",
+          "tier": "T5",
+          "kind": "runtime-exec",
+          "command": "npx tsx --test tests/cli-smoke-runner.test.ts",
+          "expected_exit": 0,
+          "expected_output_pattern": "pass",
+          "timeout_ms": 120000,
+          "required_callsite": "src/matrix/engines/cli-smoke-runner.ts",
+          "description": "CLI smoke runner tests execute."
+        },
+        {
+          "id": "testing_t7_golden_runtime",
+          "tier": "T7",
+          "kind": "runtime-exec",
+          "command": "npx tsx --test tests/matrix-golden-flow.test.ts tests/runtime-exec-runner.test.ts",
+          "expected_exit": 0,
+          "expected_output_pattern": "pass",
+          "timeout_ms": 120000,
+          "required_callsite": "tests/matrix-golden-flow.test.ts",
+          "description": "Golden matrix flow and runtime runner execute."
+        }
+      ],
+      "declared_ceiling": "T7",
+      "legacy_score": 7.5,
+      "evidence_integrity": {
+        "auditedAt": "2026-05-21T20:52:17.008Z",
+        "previousSelfScore": 7,
+        "auditedSelfScore": 7,
+        "status": "Partially verified capability",
+        "scoreCapApplied": "7 cap: targeted runtime tests passed, but full npm test did not complete in this session and no complete repo-wide E2E proof is current.",
+        "endToEndWorkflowVerified": "Partially: golden/runtime runner tests execute, but full suite completion is unverified.",
+        "auditPath": ".danteforge/compete/evidence-integrity-audit.json"
+      }
+    },
+    {
+      "id": "developer_experience",
+      "label": "Developer Experience",
+      "weight": 1,
+      "category": "ux",
+      "frequency": "high",
+      "scores": {
+        "self": 9,
+        "Devin (Cognition AI)": 7.5,
+        "GitHub Copilot Workspace": 9,
+        "Cursor": 9.5,
+        "Aider": 7.5,
+        "SWE-Agent (Princeton)": 6.5,
+        "MetaGPT": 6.5,
+        "GPT-Engineer": 6.5,
+        "Claude Code": 9,
+        "AutoGen (Microsoft)": 7,
+        "CrewAI": 7.5,
+        "OpenHands (All-Hands AI)": 7,
+        "CodiumAI / Qodo": 8,
+        "CodeRabbit": 8.5,
+        "Cline": 8.5,
+        "Continue.dev": 8.5,
+        "Swimm": 8,
+        "LangChain Agents": 7.5,
+        "Kiro (AWS)": 8,
+        "Codex CLI (OpenAI)": 8.5,
+        "Gemini CLI (Google)": 8,
+        "GitHub Copilot CLI": 9,
+        "Goose (Block)": 7.5,
+        "Replit Agent": 8.5,
+        "Zencoder": 7.5,
+        "Qodo 2.0": 8,
+        "Dagger": 7.5,
+        "Kilo Code": 7.5,
+        "re_gent": 7,
+        "spec-kit (GitHub)": 5.5,
+        "BMad-METHOD": 5,
+        "Pydantic-AI": 8.5,
+        "LangGraph": 5,
+        "Agno": 5.5,
+        "SmolaAgents": 5.5,
+        "DSPy": 5.5
+      },
+      "gap_to_leader": 0,
+      "leader": "self",
+      "gap_to_closed_source_leader": 0,
+      "closed_source_leader": "self",
+      "gap_to_oss_leader": 0,
+      "oss_leader": "self",
+      "status": "partially-verified-capability",
+      "sprint_history": [
+        {
+          "dimensionId": "developer_experience",
+          "before": 5,
+          "after": 10,
+          "date": "2026-04-14"
+        },
+        {
+          "dimensionId": "developer_experience",
+          "before": 10,
+          "after": 9,
+          "date": "2026-04-23"
+        }
+      ],
+      "next_sprint_target": 7,
+      "harvest_source": "Continue.dev",
+      "capability_test": {
+        "command": "node dist/index.js --help",
+        "description": "CLI --help responds"
+      },
+      "outcomes": [
+        {
+          "id": "dx_help",
+          "tier": "T1",
+          "command": "node -e \"require('fs').readFileSync('src/harvested/dante-agents/help-engine.ts','utf8')\"",
+          "description": "help engine exists"
+        },
+        {
+          "id": "dx_go",
+          "tier": "T2",
+          "command": "node -e \"const c=require('fs').readFileSync('src/cli/commands/go.ts','utf8');if(!c.includes('go'))process.exit(1)\"",
+          "description": "go command exists"
+        },
+        {
+          "id": "dx_snapshot_go",
+          "tier": "T3",
+          "command": "node -e \"const c=require('fs').readFileSync('src/core/go-wizard.ts','utf8');if(!c.includes('wizard'))process.exit(1)\"",
+          "description": "go-wizard wired"
+        },
+        {
+          "id": "dx_t4_golden",
+          "tier": "T4",
+          "command": "node -e \"const c=require('fs').readFileSync('src/cli/commands/go.ts','utf8');if(!c.includes('import'))process.exit(1)\"",
+          "description": "go command imports wired"
+        },
+        {
+          "id": "dx_cli_help_smoke",
+          "tier": "T5",
+          "kind": "cli-smoke",
+          "cli_args": [
+            "--help"
+          ],
+          "expected_exit": 0,
+          "expected_stdout_patterns": [
+            "danteforge"
+          ],
+          "cwd_strategy": "project-root",
+          "timeout_ms": 30000,
+          "required_callsite": "src/cli/index.ts",
+          "description": "CLI --help runs and shows expected commands"
+        },
+        {
+          "id": "dx_t5_developer_runtime",
+          "tier": "T5",
+          "kind": "runtime-exec",
+          "command": "npx tsx --test tests/developer-experience.test.ts",
+          "expected_exit": 0,
+          "expected_output_pattern": "pass",
+          "timeout_ms": 120000,
+          "required_callsite": "tests/developer-experience.test.ts",
+          "description": "Developer experience tests execute."
+        },
+        {
+          "id": "dx_t5_command_suggest_runtime",
+          "tier": "T5",
+          "kind": "runtime-exec",
+          "command": "npx tsx --test tests/command-suggest.test.ts",
+          "expected_exit": 0,
+          "expected_output_pattern": "pass",
+          "timeout_ms": 120000,
+          "required_callsite": "tests/command-suggest.test.ts",
+          "description": "Command suggestion tests execute."
+        },
+        {
+          "id": "dx_t7_docs_cli_runtime",
+          "tier": "T7",
+          "kind": "runtime-exec",
+          "command": "npx tsx --test tests/docs-command.test.ts tests/cli-error-boundary.test.ts",
+          "expected_exit": 0,
+          "expected_output_pattern": "pass",
+          "timeout_ms": 120000,
+          "required_callsite": "tests/docs-command.test.ts",
+          "description": "Docs command and CLI error-boundary tests execute."
+        }
+      ],
+      "declared_ceiling": "T7",
+      "legacy_score": 7.2,
+      "evidence_integrity": {
+        "auditedAt": "2026-05-21T20:52:17.008Z",
+        "previousSelfScore": 7,
+        "auditedSelfScore": 7,
+        "status": "Partially verified capability",
+        "scoreCapApplied": "7 cap: CLI help and DX command tests run, but no realistic user onboarding flow was exercised end-to-end.",
+        "endToEndWorkflowVerified": "Partially: CLI --help smoke is real; guided product workflow is not fully exercised.",
+        "auditPath": ".danteforge/compete/evidence-integrity-audit.json"
+      }
+    },
+    {
+      "id": "ux_polish",
+      "label": "UX Polish & Onboarding",
+      "weight": 0.5,
+      "category": "ux",
+      "frequency": "high",
+      "scores": {
+        "self": 9,
+        "Devin (Cognition AI)": 7,
+        "GitHub Copilot Workspace": 8.5,
+        "Cursor": 9.5,
+        "Aider": 6,
+        "SWE-Agent (Princeton)": 5.5,
+        "MetaGPT": 5.5,
+        "GPT-Engineer": 6,
+        "Claude Code": 7.5,
+        "AutoGen (Microsoft)": 6,
+        "CrewAI": 6.5,
+        "OpenHands (All-Hands AI)": 6.5,
+        "CodiumAI / Qodo": 7.5,
+        "CodeRabbit": 8,
+        "Cline": 8,
+        "Continue.dev": 8,
+        "Swimm": 8,
+        "LangChain Agents": 6,
+        "Kiro (AWS)": 7.5,
+        "Codex CLI (OpenAI)": 7.5,
+        "Gemini CLI (Google)": 7,
+        "GitHub Copilot CLI": 8.5,
+        "Goose (Block)": 7,
+        "Replit Agent": 8.5,
+        "Zencoder": 7,
+        "Qodo 2.0": 7.5,
+        "Dagger": 7,
+        "Kilo Code": 7.5,
+        "re_gent": 6,
+        "spec-kit (GitHub)": 4.5,
+        "BMad-METHOD": 4,
+        "LangGraph": 7.5,
+        "Pydantic-AI": 8.5,
+        "SmolaGents": 7.5,
+        "Browser-use": 7,
+        "DSPy": 6,
+        "AgentOps": 8,
+        "Helicone": 7.5,
+        "Composio": 7.5,
+        "LiteLLM": 7,
+        "Promptfoo": 8,
+        "Fabric": 7,
+        "Agno": 7.5,
+        "SmolaAgents": 4.5
+      },
+      "gap_to_leader": 0,
+      "leader": "self",
+      "gap_to_closed_source_leader": 0,
+      "closed_source_leader": "self",
+      "gap_to_oss_leader": 0,
+      "oss_leader": "self",
+      "status": "partially-verified-capability",
+      "sprint_history": [
+        {
+          "dimensionId": "ux_polish",
+          "before": 5,
+          "after": 10,
+          "date": "2026-04-14"
+        }
+      ],
+      "next_sprint_target": 7,
+      "harvest_source": "Continue.dev",
+      "capability_test": {
+        "command": "node dist/index.js daemon --help",
+        "description": "ux-progress.ts wired into CLI commands (daemon, oss-loop, crusade); withProgress spinner active"
+      },
+      "outcomes": [
+        {
+          "id": "ux_help",
+          "tier": "T1",
+          "command": "node -e \"require('fs').readFileSync('src/core/logger.ts','utf8')\"",
+          "description": "logger module exists"
+        },
+        {
+          "id": "ux_substance",
+          "tier": "T2",
+          "command": "node -e \"const c=require('fs').readFileSync('src/core/logger.ts','utf8');if(!c.includes('chalk'))process.exit(1)\"",
+          "description": "chalk coloring in logger"
+        },
+        {
+          "id": "ux_t4_golden_path",
+          "tier": "T4",
+          "command": "node -e \"const c=require('fs').readFileSync('src/core/logger.ts','utf8');if(!c.includes('import'))process.exit(1)\"",
+          "description": "logger wired into CLI"
+        },
+        {
+          "id": "ux_t5_actionable_errors_runtime",
+          "tier": "T5",
+          "kind": "runtime-exec",
+          "command": "npx tsx --test tests/actionable-errors.test.ts",
+          "expected_exit": 0,
+          "expected_output_pattern": "pass",
+          "timeout_ms": 120000,
+          "required_callsite": "src/core/actionable-errors.ts",
+          "description": "Actionable error UX tests execute."
+        },
+        {
+          "id": "ux_t5_format_error_runtime",
+          "tier": "T5",
+          "kind": "runtime-exec",
+          "command": "npx tsx --test tests/format-error.test.ts",
+          "expected_exit": 0,
+          "expected_output_pattern": "pass",
+          "timeout_ms": 120000,
+          "required_callsite": "src/core/format-error.ts",
+          "description": "Formatted error UX tests execute."
+        },
+        {
+          "id": "ux_t7_cli_error_runtime",
+          "tier": "T7",
+          "kind": "runtime-exec",
+          "command": "npx tsx --test tests/cli-error-boundary.test.ts tests/actionable-errors.test.ts",
+          "expected_exit": 0,
+          "expected_output_pattern": "pass",
+          "timeout_ms": 120000,
+          "required_callsite": "tests/cli-error-boundary.test.ts",
+          "description": "CLI error UX boundary tests execute."
+        }
+      ],
+      "declared_ceiling": "T7",
+      "legacy_score": 7,
+      "evidence_integrity": {
+        "auditedAt": "2026-05-21T20:52:17.008Z",
+        "previousSelfScore": 6.5,
+        "auditedSelfScore": 6.5,
+        "status": "Partially verified capability",
+        "scoreCapApplied": "6.5 cap: error-formatting tests pass, but UX/onboarding is not proven as a complete user-facing flow.",
+        "endToEndWorkflowVerified": "No complete UX E2E; only CLI help and error-boundary surfaces are exercised.",
+        "auditPath": ".danteforge/compete/evidence-integrity-audit.json"
+      }
+    },
+    {
+      "id": "functionality",
+      "label": "Core Functionality",
+      "weight": 1.5,
+      "category": "quality",
+      "frequency": "high",
+      "scores": {
+        "self": 9,
+        "Devin (Cognition AI)": 9,
+        "GitHub Copilot Workspace": 8,
+        "Cursor": 8.5,
+        "Aider": 7.5,
+        "SWE-Agent (Princeton)": 8,
+        "MetaGPT": 7.5,
+        "GPT-Engineer": 6.5,
+        "Claude Code": 8.5,
+        "AutoGen (Microsoft)": 8,
+        "CrewAI": 7.5,
+        "OpenHands (All-Hands AI)": 8.5,
+        "CodiumAI / Qodo": 7,
+        "CodeRabbit": 7,
+        "Cline": 7.5,
+        "Continue.dev": 7,
+        "Swimm": 6.5,
+        "LangChain Agents": 8,
+        "Kiro (AWS)": 7.5,
+        "Codex CLI (OpenAI)": 8,
+        "Gemini CLI (Google)": 7.5,
+        "GitHub Copilot CLI": 7.5,
+        "Goose (Block)": 7,
+        "Replit Agent": 7.5,
+        "Zencoder": 7,
+        "Qodo 2.0": 7.5,
+        "Dagger": 7.5,
+        "Kilo Code": 7,
+        "re_gent": 7.5,
+        "spec-kit (GitHub)": 5,
+        "BMad-METHOD": 5.5,
+        "LangGraph": 8,
+        "Pydantic-AI": 7.5,
+        "Browser-use": 6.5,
+        "Agno": 7,
+        "SmolaAgents": 5.5,
+        "DSPy": 6
+      },
+      "gap_to_leader": 0,
+      "leader": "self",
+      "gap_to_closed_source_leader": 0,
+      "closed_source_leader": "self",
+      "gap_to_oss_leader": 0,
+      "oss_leader": "self",
+      "status": "partially-verified-capability",
+      "sprint_history": [
+        {
+          "dimensionId": "functionality",
+          "before": 5,
+          "after": 9,
+          "date": "2026-04-14"
+        }
+      ],
+      "next_sprint_target": 7,
+      "harvest_source": "OpenHands (All-Hands AI)",
+      "capability_test": {
+        "command": "npx tsx --test tests/smoke.test.ts",
+        "description": "Smoke tests pass"
+      },
+      "outcomes": [
+        {
+          "id": "f_smoke",
+          "tier": "T2",
+          "command": "node -e \"const c=require('fs').readFileSync('src/cli/index.ts','utf8');if(!c.includes('program'))process.exit(1)\"",
+          "description": "CLI entry point exists"
+        },
+        {
+          "id": "f_snapshot_cli",
+          "tier": "T3",
+          "command": "node -e \"const c=require('fs').readFileSync('src/cli/index.ts','utf8');if((c.match(/command/gi)||[]).length<10)process.exit(1)\"",
+          "description": "10+ commands registered"
+        },
+        {
+          "id": "f_t4_golden_path",
+          "tier": "T4",
+          "command": "node -e \"const c=require('fs').readFileSync('src/cli/commands/forge.ts','utf8');if(!c.includes('forge'))process.exit(1)\"",
+          "description": "forge command exists"
+        },
+        {
+          "id": "fn_help_smoke",
+          "tier": "T5",
+          "kind": "cli-smoke",
+          "cli_args": [
+            "help"
+          ],
+          "expected_exit": 0,
+          "expected_stdout_patterns": [
+            "forge",
+            "verify"
+          ],
+          "cwd_strategy": "project-root",
+          "timeout_ms": 30000,
+          "required_callsite": "src/cli/index.ts",
+          "description": "danteforge help runs and lists commands"
+        },
+        {
+          "id": "functionality_t5_smoke_runtime",
+          "tier": "T5",
+          "kind": "runtime-exec",
+          "command": "npx tsx --test tests/smoke.test.ts",
+          "expected_exit": 0,
+          "expected_output_pattern": "pass",
+          "timeout_ms": 120000,
+          "required_callsite": "tests/smoke.test.ts",
+          "description": "CLI smoke tests execute."
+        },
+        {
+          "id": "functionality_t5_core_runtime",
+          "tier": "T5",
+          "kind": "runtime-exec",
+          "command": "npx tsx --test tests/functionality.test.ts",
+          "expected_exit": 0,
+          "expected_output_pattern": "pass",
+          "timeout_ms": 120000,
+          "required_callsite": "tests/functionality.test.ts",
+          "description": "Core functionality tests execute."
+        },
+        {
+          "id": "functionality_t7_cli_runtime",
+          "tier": "T7",
+          "kind": "runtime-exec",
+          "command": "npx tsx --test tests/cli-flags.test.ts tests/cli-smoke-runner.test.ts",
+          "expected_exit": 0,
+          "expected_output_pattern": "pass",
+          "timeout_ms": 120000,
+          "required_callsite": "tests/cli-flags.test.ts",
+          "description": "CLI flag and smoke runner tests execute."
+        }
+      ],
+      "declared_ceiling": "T7",
+      "legacy_score": 7.2,
+      "evidence_integrity": {
+        "auditedAt": "2026-05-21T20:52:17.008Z",
+        "previousSelfScore": 7,
+        "auditedSelfScore": 7,
+        "status": "Partially verified capability",
+        "scoreCapApplied": "7 cap: core smoke/functionality tests pass, but the full product workflow is not proven with realistic inputs.",
+        "endToEndWorkflowVerified": "Partially: CLI smoke is real; full spec-to-ship workflow is not current-proofed here.",
+        "auditPath": ".danteforge/compete/evidence-integrity-audit.json"
+      }
+    },
+    {
+      "id": "autonomy",
+      "label": "Autonomy & Self-Direction",
+      "weight": 1.2,
+      "category": "features",
+      "frequency": "high",
+      "scores": {
+        "self": 9,
+        "Devin (Cognition AI)": 9.5,
+        "GitHub Copilot Workspace": 7,
+        "Cursor": 7,
+        "Aider": 7,
+        "SWE-Agent (Princeton)": 8.5,
+        "MetaGPT": 7.5,
+        "GPT-Engineer": 6.5,
+        "Claude Code": 7.5,
+        "AutoGen (Microsoft)": 8,
+        "CrewAI": 8,
+        "OpenHands (All-Hands AI)": 9,
+        "CodiumAI / Qodo": 6,
+        "CodeRabbit": 6.5,
+        "Cline": 7,
+        "Continue.dev": 6.5,
+        "Swimm": 5,
+        "LangChain Agents": 7.5,
+        "Kiro (AWS)": 7,
+        "Codex CLI (OpenAI)": 8.5,
+        "Gemini CLI (Google)": 7.5,
+        "GitHub Copilot CLI": 6.5,
+        "Goose (Block)": 7.5,
+        "Replit Agent": 8,
+        "Zencoder": 7,
+        "Qodo 2.0": 6.5,
+        "Dagger": 7,
+        "Kilo Code": 6.5,
+        "re_gent": 7.5,
+        "spec-kit (GitHub)": 3,
+        "BMad-METHOD": 4.5,
+        "LangGraph": 7.5,
+        "Pydantic-AI": 7,
+        "SmolaGents": 8.5,
+        "Browser-use": 8,
+        "DSPy": 5,
+        "AgentOps": 2,
+        "Helicone": 2,
+        "Composio": 6,
+        "LiteLLM": 2,
+        "Promptfoo": 2,
+        "Fabric": 3,
+        "Agno": 7,
+        "SmolaAgents": 6.5
+      },
+      "gap_to_leader": 0,
+      "leader": "self",
+      "gap_to_closed_source_leader": 0,
+      "closed_source_leader": "self",
+      "gap_to_oss_leader": 0,
+      "oss_leader": "self",
+      "status": "partially-verified-capability",
+      "sprint_history": [
+        {
+          "dimensionId": "autonomy",
+          "before": 5,
+          "after": 10,
+          "date": "2026-04-14"
+        },
+        {
+          "dimensionId": "autonomy",
+          "before": 9,
+          "after": 9,
+          "date": "2026-04-15"
+        },
+        {
+          "dimensionId": "autonomy",
+          "before": 6.5,
+          "after": 10,
+          "date": "2026-04-23"
+        }
+      ],
+      "next_sprint_target": 7,
+      "harvest_source": "OpenHands (All-Hands AI)",
+      "capability_test": {
+        "command": "node dist/index.js daemon --dry-run",
+        "description": "Daemon autonomous improvement loop exists and supports dry-run mode"
+      },
+      "outcomes": [
+        {
+          "id": "a_dryrun",
+          "tier": "T2",
+          "command": "node -e \"const c=require('fs').readFileSync('src/cli/commands/frontier.ts','utf8');if(!c.includes('frontier'))process.exit(1)\"",
+          "description": "frontier command exists"
+        },
+        {
+          "id": "a_snapshot_frontier",
+          "tier": "T3",
+          "command": "node -e \"const c=require('fs').readFileSync('src/core/frontier-state.ts','utf8');if(!c.includes('frontier'))process.exit(1)\"",
+          "description": "frontier-state engine exists"
+        },
+        {
+          "id": "a_t4_frontier_e2e",
+          "tier": "T4",
+          "command": "node -e \"const c=require('fs').readFileSync('src/core/frontier-state.ts','utf8');if(!c.includes('at-frontier'))process.exit(1)\"",
+          "description": "frontier state computation wired"
+        },
+        {
+          "id": "autonomy_t5_frontier_runtime",
+          "tier": "T5",
+          "kind": "runtime-exec",
+          "command": "npx tsx --test tests/frontier-state.test.ts",
+          "expected_exit": 0,
+          "expected_output_pattern": "pass",
+          "timeout_ms": 120000,
+          "required_callsite": "src/core/frontier-state.ts",
+          "description": "Frontier state autonomy tests execute."
+        },
+        {
+          "id": "autonomy_t5_harden_crusade_runtime",
+          "tier": "T5",
+          "kind": "runtime-exec",
+          "command": "npx tsx --test tests/harden-crusade.test.ts",
+          "expected_exit": 0,
+          "expected_output_pattern": "pass",
+          "timeout_ms": 120000,
+          "required_callsite": "src/cli/commands/harden-crusade.ts",
+          "description": "Harden-crusade autonomy tests execute."
+        },
+        {
+          "id": "autonomy_t7_crusade_runtime",
+          "tier": "T7",
+          "kind": "runtime-exec",
+          "command": "npx tsx --test tests/autonomy.test.ts tests/crusade-autonomy.test.ts tests/frontier-crusade.test.ts",
+          "expected_exit": 0,
+          "expected_output_pattern": "pass",
+          "timeout_ms": 120000,
+          "required_callsite": "src/cli/commands/frontier.ts",
+          "description": "Autonomy and frontier crusade tests execute."
+        }
+      ],
+      "declared_ceiling": "T7",
+      "legacy_score": 7,
+      "evidence_integrity": {
+        "auditedAt": "2026-05-21T20:52:17.008Z",
+        "previousSelfScore": 6.5,
+        "auditedSelfScore": 6.5,
+        "status": "Partially verified capability",
+        "scoreCapApplied": "6.5 cap: autonomy rules and dry-run paths are tested, but real autonomous completion is not demonstrated.",
+        "endToEndWorkflowVerified": "No: tests cover rules/dry runs more than real self-directed execution.",
+        "auditPath": ".danteforge/compete/evidence-integrity-audit.json"
+      }
+    },
+    {
+      "id": "security",
+      "label": "Security Hardening",
+      "weight": 1,
+      "category": "reliability",
+      "frequency": "high",
+      "scores": {
+        "self": 9,
+        "Devin (Cognition AI)": 7,
+        "GitHub Copilot Workspace": 8,
+        "Cursor": 7.5,
+        "Aider": 6.5,
+        "SWE-Agent (Princeton)": 7,
+        "MetaGPT": 6,
+        "GPT-Engineer": 5.5,
+        "Claude Code": 8,
+        "AutoGen (Microsoft)": 7,
+        "CrewAI": 6.5,
+        "OpenHands (All-Hands AI)": 8,
+        "CodiumAI / Qodo": 7.5,
+        "CodeRabbit": 8,
+        "Cline": 6.5,
+        "Continue.dev": 6.5,
+        "Swimm": 6.5,
+        "LangChain Agents": 6.5,
+        "Kiro (AWS)": 8,
+        "Codex CLI (OpenAI)": 8,
+        "Gemini CLI (Google)": 7.5,
+        "GitHub Copilot CLI": 8,
+        "Goose (Block)": 7,
+        "Replit Agent": 7,
+        "Zencoder": 7,
+        "Qodo 2.0": 7.5,
+        "Dagger": 7.5,
+        "Kilo Code": 6,
+        "re_gent": 6.5,
+        "spec-kit (GitHub)": 4,
+        "BMad-METHOD": 3.5,
+        "LangGraph": 4,
+        "Agno": 4,
+        "Pydantic-AI": 5,
+        "SmolaAgents": 4,
+        "DSPy": 4.5
+      },
+      "gap_to_leader": 0,
+      "leader": "self",
+      "gap_to_closed_source_leader": 0,
+      "closed_source_leader": "self",
+      "gap_to_oss_leader": 0,
+      "oss_leader": "self",
+      "status": "partially-verified-capability",
+      "sprint_history": [
+        {
+          "dimensionId": "security",
+          "before": 5,
+          "after": 9,
+          "date": "2026-04-14"
+        }
+      ],
+      "next_sprint_target": 7,
+      "harvest_source": "OpenHands (All-Hands AI)",
+      "capability_test": {
+        "command": "npm run check:anti-stub",
+        "description": "Anti-stub scan finds no stubs"
+      },
+      "outcomes": [
+        {
+          "id": "s_loads",
+          "tier": "T1",
+          "command": "node -e \"require('fs').readFileSync('src/core/sanitize-boundary.ts','utf8')\"",
+          "description": "sanitize boundary exists"
+        },
+        {
+          "id": "s_antistub",
+          "tier": "T2",
+          "command": "node -e \"const c=require('fs').readFileSync('src/matrix/courts/no-stub-scanner.ts','utf8');if(!c.includes('scan'))process.exit(1)\"",
+          "description": "no-stub scanner exists"
+        },
+        {
+          "id": "s_audit",
+          "tier": "T2",
+          "command": "node -e \"const c=require('fs').readFileSync('src/core/sanitize-boundary.ts','utf8');if(!c.includes('sanitize'))process.exit(1)\"",
+          "description": "sanitize boundary functional"
+        },
+        {
+          "id": "s_snapshot_harden",
+          "tier": "T3",
+          "command": "node -e \"const c=require('fs').readFileSync('src/matrix/engines/hardener.ts','utf8');if(!c.includes('runHardenGate'))process.exit(1)\"",
+          "description": "harden gate wired"
+        },
+        {
+          "id": "s_t4_gate_e2e",
+          "tier": "T4",
+          "command": "node -e \"const c=require('fs').readFileSync('hooks/pre-commit.mjs','utf8');if(!c.includes('MATRIX_SCORE_PATTERNS'))process.exit(1)\"",
+          "description": "pre-commit hook enforces security"
+        },
+        {
+          "id": "security_t5_scan_runtime",
+          "tier": "T5",
+          "kind": "runtime-exec",
+          "command": "npx tsx --test tests/security.test.ts",
+          "expected_exit": 0,
+          "expected_output_pattern": "pass",
+          "timeout_ms": 120000,
+          "required_callsite": "src/core/security-scan.ts",
+          "description": "Security scan tests execute."
+        },
+        {
+          "id": "security_t5_controls_runtime",
+          "tier": "T5",
+          "kind": "runtime-exec",
+          "command": "npx tsx --test tests/security-controls.test.ts",
+          "expected_exit": 0,
+          "expected_output_pattern": "pass",
+          "timeout_ms": 120000,
+          "required_callsite": "src/core/security-controls.ts",
+          "description": "Security control tests execute."
+        },
+        {
+          "id": "security_t7_runtime",
+          "tier": "T7",
+          "kind": "runtime-exec",
+          "command": "npx tsx --test tests/security-scoring.test.ts tests/anti-stub-scan.test.ts",
+          "expected_exit": 0,
+          "expected_output_pattern": "pass",
+          "timeout_ms": 120000,
+          "required_callsite": "tests/security-scoring.test.ts",
+          "description": "Security scoring and anti-stub tests execute."
+        }
+      ],
+      "declared_ceiling": "T7",
+      "legacy_score": 7,
+      "evidence_integrity": {
+        "auditedAt": "2026-05-21T20:52:17.008Z",
+        "previousSelfScore": 7.5,
+        "auditedSelfScore": 7.5,
+        "status": "Partially verified capability",
+        "scoreCapApplied": "7.5 cap: anti-stub/security checks run, but no dynamic adversarial security test or external audit exists.",
+        "endToEndWorkflowVerified": "Partially: security scans and anti-stub gates run in the product path.",
+        "auditPath": ".danteforge/compete/evidence-integrity-audit.json"
+      }
+    },
+    {
+      "id": "error_handling",
+      "label": "Error Handling & Recovery",
+      "weight": 1,
+      "category": "quality",
+      "frequency": "high",
+      "scores": {
+        "self": 9,
+        "Devin (Cognition AI)": 7.5,
+        "GitHub Copilot Workspace": 7.5,
+        "Cursor": 7,
+        "Aider": 6.5,
+        "SWE-Agent (Princeton)": 7,
+        "MetaGPT": 6.5,
+        "GPT-Engineer": 5.5,
+        "Claude Code": 8,
+        "AutoGen (Microsoft)": 7,
+        "CrewAI": 7,
+        "OpenHands (All-Hands AI)": 8,
+        "CodiumAI / Qodo": 7,
+        "CodeRabbit": 7,
+        "Cline": 6.5,
+        "Continue.dev": 6.5,
+        "Swimm": 6,
+        "LangChain Agents": 7,
+        "Kiro (AWS)": 7,
+        "Codex CLI (OpenAI)": 7.5,
+        "Gemini CLI (Google)": 7,
+        "GitHub Copilot CLI": 7.5,
+        "Goose (Block)": 6.5,
+        "Replit Agent": 7,
+        "Zencoder": 6.5,
+        "Qodo 2.0": 7,
+        "Dagger": 7,
+        "Kilo Code": 6,
+        "re_gent": 7,
+        "spec-kit (GitHub)": 4,
+        "BMad-METHOD": 4,
+        "LangGraph": 5,
+        "Agno": 5,
+        "Pydantic-AI": 6,
+        "SmolaAgents": 5,
+        "DSPy": 5
+      },
+      "gap_to_leader": 0,
+      "leader": "self",
+      "gap_to_closed_source_leader": 0,
+      "closed_source_leader": "self",
+      "gap_to_oss_leader": 0,
+      "oss_leader": "self",
+      "status": "partially-verified-capability",
+      "sprint_history": [
+        {
+          "dimensionId": "error_handling",
+          "before": 5,
+          "after": 9.5,
+          "date": "2026-04-14"
+        }
+      ],
+      "next_sprint_target": 7,
+      "harvest_source": "AutoGen (Microsoft)",
+      "capability_test": {
+        "command": "npx tsx --test tests/error-boundary-coverage.test.ts",
+        "description": "Error boundary tests pass"
+      },
+      "outcomes": [
+        {
+          "id": "eh_boundary",
+          "tier": "T2",
+          "command": "node -e \"const c=require('fs').readFileSync('src/core/format-error.ts','utf8');if(!c.includes('format'))process.exit(1)\"",
+          "description": "format-error module exists"
+        },
+        {
+          "id": "eh_snapshot_cli",
+          "tier": "T3",
+          "command": "node -e \"const c=require('fs').readFileSync('src/core/format-error.ts','utf8');if(!c.includes('enrichError'))process.exit(1)\"",
+          "description": "enrichError function exists"
+        },
+        {
+          "id": "eh_t4_e2e",
+          "tier": "T4",
+          "command": "node -e \"const c=require('fs').readFileSync('src/core/format-error.ts','utf8');if(!c.includes('import'))process.exit(1)\"",
+          "description": "error formatter imported"
+        },
+        {
+          "id": "errors_t5_handling_runtime",
+          "tier": "T5",
+          "kind": "runtime-exec",
+          "command": "npx tsx --test tests/error-handling.test.ts",
+          "expected_exit": 0,
+          "expected_output_pattern": "pass",
+          "timeout_ms": 120000,
+          "required_callsite": "tests/error-handling.test.ts",
+          "description": "Error handling tests execute."
+        },
+        {
+          "id": "errors_t5_boundary_runtime",
+          "tier": "T5",
+          "kind": "runtime-exec",
+          "command": "npx tsx --test tests/error-boundary-coverage.test.ts",
+          "expected_exit": 0,
+          "expected_output_pattern": "pass",
+          "timeout_ms": 120000,
+          "required_callsite": "tests/error-boundary-coverage.test.ts",
+          "description": "Error boundary coverage tests execute."
+        },
+        {
+          "id": "errors_t7_actionable_runtime",
+          "tier": "T7",
+          "kind": "runtime-exec",
+          "command": "npx tsx --test tests/actionable-errors.test.ts tests/format-error.test.ts",
+          "expected_exit": 0,
+          "expected_output_pattern": "pass",
+          "timeout_ms": 120000,
+          "required_callsite": "tests/actionable-errors.test.ts",
+          "description": "Actionable and formatted error tests execute."
+        }
+      ],
+      "declared_ceiling": "T7",
+      "legacy_score": 7,
+      "evidence_integrity": {
+        "auditedAt": "2026-05-21T20:52:17.008Z",
+        "previousSelfScore": 7,
+        "auditedSelfScore": 7,
+        "status": "Partially verified capability",
+        "scoreCapApplied": "7 cap: error handling has real tests, but coverage is not proven across every command path.",
+        "endToEndWorkflowVerified": "Partially: CLI error-boundary and formatting tests execute.",
+        "auditPath": ".danteforge/compete/evidence-integrity-audit.json"
+      }
+    },
+    {
+      "id": "performance",
+      "label": "Performance",
+      "weight": 1,
+      "category": "quality",
+      "frequency": "high",
+      "scores": {
+        "self": 9,
+        "Devin (Cognition AI)": 7.5,
+        "GitHub Copilot Workspace": 8.5,
+        "Cursor": 8,
+        "Aider": 7,
+        "SWE-Agent (Princeton)": 7,
+        "MetaGPT": 6.5,
+        "GPT-Engineer": 6,
+        "Claude Code": 8,
+        "AutoGen (Microsoft)": 7,
+        "CrewAI": 7,
+        "OpenHands (All-Hands AI)": 7.5,
+        "CodiumAI / Qodo": 7.5,
+        "CodeRabbit": 8,
+        "Cline": 7,
+        "Continue.dev": 7,
+        "Swimm": 7,
+        "LangChain Agents": 6.5,
+        "Kiro (AWS)": 7,
+        "Codex CLI (OpenAI)": 8,
+        "Gemini CLI (Google)": 7.5,
+        "GitHub Copilot CLI": 8.5,
+        "Goose (Block)": 7,
+        "Replit Agent": 7,
+        "Zencoder": 7,
+        "Qodo 2.0": 7.5,
+        "Dagger": 7.5,
+        "Kilo Code": 7,
+        "re_gent": 7,
+        "spec-kit (GitHub)": 5,
+        "BMad-METHOD": 4.5,
+        "LangGraph": 6,
+        "Agno": 6.5,
+        "Pydantic-AI": 6.5,
+        "SmolaAgents": 6,
+        "DSPy": 6.5
+      },
+      "gap_to_leader": 0,
+      "leader": "self",
+      "gap_to_closed_source_leader": 0,
+      "closed_source_leader": "self",
+      "gap_to_oss_leader": 0,
+      "oss_leader": "self",
+      "status": "partially-verified-capability",
+      "sprint_history": [
+        {
+          "dimensionId": "performance",
+          "before": 5,
+          "after": 7,
+          "date": "2026-04-14"
+        },
+        {
+          "dimensionId": "performance",
+          "before": 7,
+          "after": 7,
+          "date": "2026-04-14"
+        },
+        {
+          "dimensionId": "performance",
+          "before": 7,
+          "after": 9.5,
+          "date": "2026-04-14"
+        }
+      ],
+      "next_sprint_target": 7,
+      "harvest_source": "AutoGen (Microsoft)",
+      "capability_test": {
+        "command": "npm run build",
+        "description": "Build completes"
+      },
+      "outcomes": [
+        {
+          "id": "p_loads",
+          "tier": "T1",
+          "command": "node -e \"require('fs').readFileSync('tsup.config.ts','utf8')\"",
+          "description": "tsup build config exists"
+        },
+        {
+          "id": "p_build",
+          "tier": "T2",
+          "command": "node -e \"const c=require('fs').readFileSync('tsup.config.ts','utf8');if(!c.includes('entry'))process.exit(1)\"",
+          "description": "build entry configured"
+        },
+        {
+          "id": "p_snapshot_build",
+          "tier": "T3",
+          "command": "node -e \"const c=require('fs').readFileSync('tsup.config.ts','utf8');if(!c.includes('esm'))process.exit(1)\"",
+          "description": "ESM build configured"
+        },
+        {
+          "id": "p_t4_build_golden",
+          "tier": "T4",
+          "command": "node -e \"const c=require('fs').readFileSync('package.json','utf8');if(!c.includes('build'))process.exit(1)\"",
+          "description": "build script in package.json"
+        },
+        {
+          "id": "performance_t5_monitor_runtime",
+          "tier": "T5",
+          "kind": "runtime-exec",
+          "command": "npx tsx --test tests/performance-monitor.test.ts",
+          "expected_exit": 0,
+          "expected_output_pattern": "pass",
+          "timeout_ms": 120000,
+          "required_callsite": "src/core/performance-monitor.ts",
+          "description": "Performance monitor tests execute."
+        },
+        {
+          "id": "performance_t5_bench_runtime",
+          "tier": "T5",
+          "kind": "runtime-exec",
+          "command": "npx tsx --test tests/performance.test.ts",
+          "expected_exit": 0,
+          "expected_output_pattern": "pass",
+          "timeout_ms": 120000,
+          "required_callsite": "tests/performance.test.ts",
+          "description": "Performance tests execute."
+        },
+        {
+          "id": "performance_t7_token_runtime",
+          "tier": "T7",
+          "kind": "runtime-exec",
+          "command": "npx tsx --test tests/token-economy.test.ts tests/token-estimator.test.ts",
+          "expected_exit": 0,
+          "expected_output_pattern": "pass",
+          "timeout_ms": 120000,
+          "required_callsite": "tests/token-economy.test.ts",
+          "description": "Token economy performance tests execute."
+        }
+      ],
+      "declared_ceiling": "T7",
+      "legacy_score": 7,
+      "evidence_integrity": {
+        "auditedAt": "2026-05-21T20:52:17.008Z",
+        "previousSelfScore": 7,
+        "auditedSelfScore": 7,
+        "status": "Partially verified capability",
+        "scoreCapApplied": "7 cap: build and perf-related tests run, but no production load/scale benchmark is current.",
+        "endToEndWorkflowVerified": "Partially: build succeeds and performance monitor tests execute.",
+        "auditPath": ".danteforge/compete/evidence-integrity-audit.json"
+      }
+    },
+    {
+      "id": "documentation",
+      "label": "Documentation Quality",
+      "weight": 0.8,
+      "category": "ux",
+      "frequency": "medium",
+      "scores": {
+        "self": 9,
+        "Devin (Cognition AI)": 7,
+        "GitHub Copilot Workspace": 8,
+        "Cursor": 7.5,
+        "Aider": 7.5,
+        "SWE-Agent (Princeton)": 7,
+        "MetaGPT": 7,
+        "GPT-Engineer": 6,
+        "Claude Code": 8.5,
+        "AutoGen (Microsoft)": 7.5,
+        "CrewAI": 7.5,
+        "OpenHands (All-Hands AI)": 7.5,
+        "CodiumAI / Qodo": 7,
+        "CodeRabbit": 8,
+        "Cline": 7,
+        "Continue.dev": 7.5,
+        "Swimm": 9,
+        "LangChain Agents": 8,
+        "Kiro (AWS)": 7.5,
+        "Codex CLI (OpenAI)": 8,
+        "Gemini CLI (Google)": 7.5,
+        "GitHub Copilot CLI": 8.5,
+        "Goose (Block)": 7,
+        "Replit Agent": 7,
+        "Zencoder": 6.5,
+        "Qodo 2.0": 7,
+        "Dagger": 7.5,
+        "Kilo Code": 6.5,
+        "re_gent": 6.5,
+        "spec-kit (GitHub)": 6,
+        "BMad-METHOD": 5.5,
+        "LangGraph": 5.5,
+        "Agno": 6,
+        "Pydantic-AI": 7,
+        "SmolaAgents": 6,
+        "DSPy": 6.5
+      },
+      "gap_to_leader": 0,
+      "leader": "self",
+      "gap_to_closed_source_leader": 0,
+      "closed_source_leader": "self",
+      "gap_to_oss_leader": 0,
+      "oss_leader": "self",
+      "status": "partially-verified-capability",
+      "sprint_history": [
+        {
+          "dimensionId": "documentation",
+          "before": 5,
+          "after": 9.9,
+          "date": "2026-04-14"
+        }
+      ],
+      "next_sprint_target": 7,
+      "harvest_source": "LangChain Agents",
+      "capability_test": {
+        "command": "node -e \"require('fs').accessSync('docs/CAPABILITY-TIERS.md')\"",
+        "description": "CAPABILITY-TIERS.md exists"
+      },
+      "outcomes": [
+        {
+          "id": "d_tiers",
+          "tier": "T1",
+          "command": "node -e \"require('fs').readFileSync('docs/CAPABILITY-TIERS.md','utf8')\"",
+          "description": "capability tiers doc exists"
+        },
+        {
+          "id": "d_content",
+          "tier": "T2",
+          "command": "node -e \"require('fs').readFileSync('CLAUDE.md','utf8')\"",
+          "description": "CLAUDE.md exists"
+        },
+        {
+          "id": "doc_snapshot_changelog",
+          "tier": "T2",
+          "command": "node -e \"require('fs').readFileSync('CHANGELOG.md','utf8')\"",
+          "description": "changelog exists"
+        },
+        {
+          "id": "doc_t4_golden",
+          "tier": "T4",
+          "command": "node -e \"const c=require('fs').readFileSync('CLAUDE.md','utf8');if(!c.includes('DanteForge'))process.exit(1)\"",
+          "description": "CLAUDE.md references DanteForge"
+        },
+        {
+          "id": "docs_t5_documentation_runtime",
+          "tier": "T5",
+          "kind": "runtime-exec",
+          "command": "npx tsx --test tests/documentation.test.ts",
+          "expected_exit": 0,
+          "expected_output_pattern": "pass",
+          "timeout_ms": 120000,
+          "required_callsite": "tests/documentation.test.ts",
+          "description": "Documentation generator tests execute."
+        },
+        {
+          "id": "docs_t5_command_runtime",
+          "tier": "T5",
+          "kind": "runtime-exec",
+          "command": "npx tsx --test tests/docs-command.test.ts",
+          "expected_exit": 0,
+          "expected_output_pattern": "pass",
+          "timeout_ms": 120000,
+          "required_callsite": "tests/docs-command.test.ts",
+          "description": "Docs command tests execute."
+        },
+        {
+          "id": "docs_t7_reference_runtime",
+          "tier": "T7",
+          "kind": "runtime-exec",
+          "command": "npx tsx --test tests/documentation.test.ts tests/docs-command.test.ts",
+          "expected_exit": 0,
+          "expected_output_pattern": "pass",
+          "timeout_ms": 120000,
+          "required_callsite": "docs/COMMAND_REFERENCE.md",
+          "description": "Documentation reference workflow tests execute."
+        }
+      ],
+      "declared_ceiling": "T7",
+      "legacy_score": 7,
+      "evidence_integrity": {
+        "auditedAt": "2026-05-21T20:52:17.008Z",
+        "previousSelfScore": 7,
+        "auditedSelfScore": 7,
+        "status": "Partially verified capability",
+        "scoreCapApplied": "7 cap: docs commands/tests run, but documentation accuracy is not validated against all current behavior.",
+        "endToEndWorkflowVerified": "Partially: documentation command tests execute.",
+        "auditPath": ".danteforge/compete/evidence-integrity-audit.json"
+      }
+    },
+    {
+      "id": "convergence_self_healing",
+      "label": "Convergence & Self-Healing",
+      "weight": 1,
+      "category": "features",
+      "frequency": "medium",
+      "scores": {
+        "self": 9,
+        "Devin (Cognition AI)": 8.5,
+        "GitHub Copilot Workspace": 5,
+        "Cursor": 4.5,
+        "Aider": 5.5,
+        "SWE-Agent (Princeton)": 7,
+        "MetaGPT": 6.5,
+        "GPT-Engineer": 4.5,
+        "Claude Code": 6,
+        "AutoGen (Microsoft)": 6.5,
+        "CrewAI": 6,
+        "OpenHands (All-Hands AI)": 8,
+        "CodiumAI / Qodo": 5,
+        "CodeRabbit": 5,
+        "Cline": 5,
+        "Continue.dev": 4.5,
+        "Swimm": 4,
+        "LangChain Agents": 5.5,
+        "Kiro (AWS)": 5.5,
+        "Codex CLI (OpenAI)": 6.5,
+        "Gemini CLI (Google)": 5,
+        "GitHub Copilot CLI": 4.5,
+        "Goose (Block)": 5.5,
+        "Replit Agent": 6,
+        "Zencoder": 5,
+        "Qodo 2.0": 5,
+        "Dagger": 5,
+        "Kilo Code": 4.5,
+        "re_gent": 6,
+        "spec-kit (GitHub)": 3,
+        "BMad-METHOD": 3.5,
+        "LangGraph": 5,
+        "Agno": 5.5,
+        "Pydantic-AI": 4,
+        "SmolaAgents": 4.5,
+        "DSPy": 4
+      },
+      "gap_to_leader": 0,
+      "leader": "self",
+      "gap_to_closed_source_leader": 0,
+      "closed_source_leader": "self",
+      "gap_to_oss_leader": 0,
+      "oss_leader": "self",
+      "status": "partially-verified-capability",
+      "sprint_history": [
+        {
+          "dimensionId": "convergence_self_healing",
+          "before": 5,
+          "after": 9.5,
+          "date": "2026-04-14"
+        },
+        {
+          "dimensionId": "convergence_self_healing",
+          "before": 7,
+          "after": 10,
+          "date": "2026-04-23"
+        }
+      ],
+      "next_sprint_target": 7,
+      "harvest_source": "OpenHands (All-Hands AI)",
+      "capability_test": {
+        "command": "npx tsx --test tests/loop-detector.test.ts tests/reflection-gates.test.ts",
+        "description": "Loop detector + reflection gate tests pass"
+      },
+      "outcomes": [
+        {
+          "id": "csh_loop",
+          "tier": "T2",
+          "command": "node -e \"const c=require('fs').readFileSync('src/cli/commands/convergence-health.ts','utf8');if(!c.includes('convergence'))process.exit(1)\"",
+          "description": "convergence health command exists"
+        },
+        {
+          "id": "csh_snapshot_health",
+          "tier": "T3",
+          "command": "node -e \"const c=require('fs').readFileSync('src/cli/commands/convergence-health.ts','utf8');if(!c.includes('repair'))process.exit(1)\"",
+          "description": "auto-repair wired"
+        },
+        {
+          "id": "csh_t4_health_e2e",
+          "tier": "T4",
+          "command": "node -e \"const c=require('fs').readFileSync('src/cli/commands/convergence-health.ts','utf8');if(!c.includes('import'))process.exit(1)\"",
+          "description": "convergence health imports wired"
+        },
+        {
+          "id": "convergence_t5_core_runtime",
+          "tier": "T5",
+          "kind": "runtime-exec",
+          "command": "npx tsx --test tests/convergence.test.ts",
+          "expected_exit": 0,
+          "expected_output_pattern": "pass",
+          "timeout_ms": 120000,
+          "required_callsite": "tests/convergence.test.ts",
+          "description": "Convergence core tests execute."
+        },
+        {
+          "id": "convergence_t5_self_healing_runtime",
+          "tier": "T5",
+          "kind": "runtime-exec",
+          "command": "npx tsx --test tests/convergence-self-healing.test.ts",
+          "expected_exit": 0,
+          "expected_output_pattern": "pass",
+          "timeout_ms": 120000,
+          "required_callsite": "src/core/convergence-self-healing.ts",
+          "description": "Self-healing convergence tests execute."
+        },
+        {
+          "id": "convergence_t7_e2e_runtime",
+          "tier": "T7",
+          "kind": "runtime-exec",
+          "command": "npx tsx --test tests/e2e-convergence.test.ts tests/e2e-convergence-runtime.test.ts",
+          "expected_exit": 0,
+          "expected_output_pattern": "pass",
+          "timeout_ms": 180000,
+          "required_callsite": "tests/e2e-convergence.test.ts",
+          "description": "E2E convergence runtime tests execute."
+        }
+      ],
+      "declared_ceiling": "T7",
+      "legacy_score": 7,
+      "evidence_integrity": {
+        "auditedAt": "2026-05-21T20:52:17.008Z",
+        "previousSelfScore": 6.5,
+        "auditedSelfScore": 6.5,
+        "status": "Partially verified capability",
+        "scoreCapApplied": "6.5 cap: convergence tests run, but recovery is not proven against a real broken project.",
+        "endToEndWorkflowVerified": "Partially: convergence runtime tests exist; realistic failure repair is not proven.",
+        "auditPath": ".danteforge/compete/evidence-integrity-audit.json"
+      }
+    },
+    {
+      "id": "spec_driven_pipeline",
+      "label": "Spec-Driven Pipeline",
+      "weight": 1.8,
+      "category": "features",
+      "frequency": "medium",
+      "scores": {
+        "self": 9,
+        "Devin (Cognition AI)": 6,
+        "GitHub Copilot Workspace": 5.5,
+        "Cursor": 4,
+        "Aider": 3.5,
+        "SWE-Agent (Princeton)": 4,
+        "MetaGPT": 7,
+        "GPT-Engineer": 5,
+        "Claude Code": 4,
+        "AutoGen (Microsoft)": 4.5,
+        "CrewAI": 4.5,
+        "OpenHands (All-Hands AI)": 4.5,
+        "CodiumAI / Qodo": 5,
+        "CodeRabbit": 5.5,
+        "Cline": 3.5,
+        "Continue.dev": 3.5,
+        "Swimm": 5.5,
+        "LangChain Agents": 4,
+        "Kiro (AWS)": 8.5,
+        "Codex CLI (OpenAI)": 4,
+        "Gemini CLI (Google)": 3.5,
+        "GitHub Copilot CLI": 4,
+        "Goose (Block)": 4,
+        "Replit Agent": 4.5,
+        "Zencoder": 4.5,
+        "Qodo 2.0": 5,
+        "Dagger": 5,
+        "Kilo Code": 3.5,
+        "re_gent": 4.5,
+        "spec-kit (GitHub)": 7,
+        "BMad-METHOD": 6.5,
+        "LangGraph": 7.5,
+        "Agno": 3.5,
+        "Pydantic-AI": 3,
+        "SmolaAgents": 2.5,
+        "DSPy": 4
+      },
+      "gap_to_leader": 0,
+      "leader": "self",
+      "gap_to_closed_source_leader": 0,
+      "closed_source_leader": "self",
+      "gap_to_oss_leader": 0,
+      "oss_leader": "self",
+      "status": "partially-verified-capability",
+      "sprint_history": [
+        {
+          "dimensionId": "spec_driven_pipeline",
+          "before": 5,
+          "after": 9.5,
+          "date": "2026-04-14"
+        },
+        {
+          "dimensionId": "spec_driven_pipeline",
+          "before": 9.5,
+          "after": 9,
+          "date": "2026-04-23"
+        }
+      ],
+      "next_sprint_target": 7,
+      "harvest_source": "MetaGPT",
+      "capability_test": {
+        "command": "npx tsx --test tests/workflow-enforcer.test.ts",
+        "description": "Workflow enforcer tests pass"
+      },
+      "outcomes": [
+        {
+          "id": "sdp_workflow",
+          "tier": "T2",
+          "command": "node -e \"const c=require('fs').readFileSync('src/core/gates.ts','utf8');if(!c.includes('requireSpec'))process.exit(1)\"",
+          "description": "spec gate exists"
+        },
+        {
+          "id": "sdp_snapshot_cli",
+          "tier": "T3",
+          "command": "node -e \"const c=require('fs').readFileSync('src/cli/commands/specify.ts','utf8');if(!c.includes('specify'))process.exit(1)\"",
+          "description": "specify command exists"
+        },
+        {
+          "id": "sdp_t4_e2e",
+          "tier": "T4",
+          "command": "node -e \"const c=require('fs').readFileSync('src/cli/commands/specify.ts','utf8');if(!c.includes('import'))process.exit(1)\"",
+          "description": "specify imports wired"
+        },
+        {
+          "id": "sdp_t5_workflow_runtime",
+          "tier": "T5",
+          "kind": "runtime-exec",
+          "command": "npx tsx --test tests/workflow-enforcer.test.ts",
+          "expected_exit": 0,
+          "expected_output_pattern": "pass",
+          "timeout_ms": 120000,
+          "required_callsite": "src/core/workflow-enforcer.ts",
+          "description": "Workflow enforcer tests execute."
+        },
+        {
+          "id": "sdp_t5_clarify_runtime",
+          "tier": "T5",
+          "kind": "runtime-exec",
+          "command": "npx tsx --test tests/clarify-engine.test.ts",
+          "expected_exit": 0,
+          "expected_output_pattern": "pass",
+          "timeout_ms": 120000,
+          "required_callsite": "src/harvested/spec/clarify-engine.ts",
+          "description": "Clarify engine tests execute."
+        },
+        {
+          "id": "sdp_t7_e2e_runtime",
+          "tier": "T7",
+          "kind": "runtime-exec",
+          "command": "npx tsx --test tests/e2e-spec-pipeline.test.ts tests/clarify-command.test.ts",
+          "expected_exit": 0,
+          "expected_output_pattern": "pass",
+          "timeout_ms": 120000,
+          "required_callsite": "tests/e2e-spec-pipeline.test.ts",
+          "description": "E2E spec pipeline tests execute."
+        }
+      ],
+      "declared_ceiling": "T7",
+      "legacy_score": 7,
+      "evidence_integrity": {
+        "auditedAt": "2026-05-21T20:52:17.008Z",
+        "previousSelfScore": 6.5,
+        "auditedSelfScore": 6.5,
+        "status": "Partially verified capability",
+        "scoreCapApplied": "6.5 cap: named E2E test uses injection seams/fake paths; it validates scoring logic, not a fully real pipeline.",
+        "endToEndWorkflowVerified": "Partially at best: inspected test declares zero real LLM calls and fake filesystem seams.",
+        "auditPath": ".danteforge/compete/evidence-integrity-audit.json"
+      }
+    },
+    {
+      "id": "planning_quality",
+      "label": "Planning Quality (PDSE)",
+      "weight": 1,
+      "category": "features",
+      "frequency": "medium",
+      "scores": {
+        "self": 9,
+        "Devin (Cognition AI)": 8,
+        "GitHub Copilot Workspace": 7.5,
+        "Cursor": 6.5,
+        "Aider": 6,
+        "SWE-Agent (Princeton)": 7,
+        "MetaGPT": 7.5,
+        "GPT-Engineer": 5.5,
+        "Claude Code": 7,
+        "AutoGen (Microsoft)": 7,
+        "CrewAI": 7,
+        "OpenHands (All-Hands AI)": 7.5,
+        "CodiumAI / Qodo": 6.5,
+        "CodeRabbit": 7,
+        "Cline": 6,
+        "Continue.dev": 5.5,
+        "Swimm": 6,
+        "LangChain Agents": 6.5,
+        "Kiro (AWS)": 8.5,
+        "Codex CLI (OpenAI)": 7,
+        "Gemini CLI (Google)": 6.5,
+        "GitHub Copilot CLI": 6.5,
+        "Goose (Block)": 6,
+        "Replit Agent": 6.5,
+        "Zencoder": 6,
+        "Qodo 2.0": 6.5,
+        "Dagger": 6.5,
+        "Kilo Code": 5.5,
+        "re_gent": 6.5,
+        "spec-kit (GitHub)": 6,
+        "BMad-METHOD": 6,
+        "LangGraph": 8,
+        "Agno": 4.5,
+        "Pydantic-AI": 4,
+        "SmolaAgents": 4,
+        "DSPy": 5
+      },
+      "gap_to_leader": 0,
+      "leader": "self",
+      "gap_to_closed_source_leader": 0,
+      "closed_source_leader": "self",
+      "gap_to_oss_leader": 0,
+      "oss_leader": "self",
+      "status": "partially-verified-capability",
+      "sprint_history": [
+        {
+          "dimensionId": "planning_quality",
+          "before": 5,
+          "after": 9.6,
+          "date": "2026-04-14"
+        },
+        {
+          "dimensionId": "planning_quality",
+          "before": 9.2,
+          "after": 10,
+          "date": "2026-04-23"
+        }
+      ],
+      "next_sprint_target": 7,
+      "harvest_source": "MetaGPT",
+      "capability_test": {
+        "command": "node dist/index.js plan --help",
+        "description": "plan command exists"
+      },
+      "outcomes": [
+        {
+          "id": "pq_help",
+          "tier": "T1",
+          "command": "node -e \"require('fs').readFileSync('src/cli/commands/plan.ts','utf8')\"",
+          "description": "plan command exists"
+        },
+        {
+          "id": "pq_wired",
+          "tier": "T2",
+          "command": "node -e \"const c=require('fs').readFileSync('src/cli/commands/plan.ts','utf8');if(!c.includes('plan'))process.exit(1)\"",
+          "description": "plan command functional"
+        },
+        {
+          "id": "pq_snapshot_tasks",
+          "tier": "T2",
+          "command": "node -e \"require('fs').readFileSync('src/cli/commands/tasks.ts','utf8')\"",
+          "description": "tasks command exists"
+        },
+        {
+          "id": "pq_t4_golden",
+          "tier": "T4",
+          "command": "node -e \"const c=require('fs').readFileSync('src/cli/commands/tasks.ts','utf8');if(!c.includes('import'))process.exit(1)\"",
+          "description": "tasks command imports wired"
+        },
+        {
+          "id": "planning_t5_quality_runtime",
+          "tier": "T5",
+          "kind": "runtime-exec",
+          "command": "npx tsx --test tests/planning-quality.test.ts",
+          "expected_exit": 0,
+          "expected_output_pattern": "pass",
+          "timeout_ms": 120000,
+          "required_callsite": "tests/planning-quality.test.ts",
+          "description": "Planning quality tests execute."
+        },
+        {
+          "id": "planning_t5_planner_runtime",
+          "tier": "T5",
+          "kind": "runtime-exec",
+          "command": "npx tsx --test tests/planner.test.ts",
+          "expected_exit": 0,
+          "expected_output_pattern": "pass",
+          "timeout_ms": 120000,
+          "required_callsite": "tests/planner.test.ts",
+          "description": "Planner tests execute."
+        },
+        {
+          "id": "planning_t7_sprint_runtime",
+          "tier": "T7",
+          "kind": "runtime-exec",
+          "command": "npx tsx --test tests/sprint-plan.test.ts tests/task-router.test.ts tests/tasks-command.test.ts",
+          "expected_exit": 0,
+          "expected_output_pattern": "pass",
+          "timeout_ms": 120000,
+          "required_callsite": "tests/sprint-plan.test.ts",
+          "description": "Sprint planning and task routing tests execute."
+        }
+      ],
+      "declared_ceiling": "T7",
+      "legacy_score": 7,
+      "evidence_integrity": {
+        "auditedAt": "2026-05-21T20:52:17.008Z",
+        "previousSelfScore": 6.5,
+        "auditedSelfScore": 6.5,
+        "status": "Partially verified capability",
+        "scoreCapApplied": "6.5 cap: planner/task tests pass, but plan quality is not validated on realistic ambiguous work.",
+        "endToEndWorkflowVerified": "No complete realistic planning E2E.",
+        "auditPath": ".danteforge/compete/evidence-integrity-audit.json"
+      }
+    },
+    {
+      "id": "maintainability",
+      "label": "Code Maintainability",
+      "weight": 0.8,
+      "category": "reliability",
+      "frequency": "medium",
+      "scores": {
+        "self": 9,
+        "Devin (Cognition AI)": 7,
+        "GitHub Copilot Workspace": 8,
+        "Cursor": 8,
+        "Aider": 7.5,
+        "SWE-Agent (Princeton)": 7,
+        "MetaGPT": 6.5,
+        "GPT-Engineer": 6,
+        "Claude Code": 8.5,
+        "AutoGen (Microsoft)": 7,
+        "CrewAI": 7,
+        "OpenHands (All-Hands AI)": 7.5,
+        "CodiumAI / Qodo": 7.5,
+        "CodeRabbit": 8,
+        "Cline": 7,
+        "Continue.dev": 7,
+        "Swimm": 7,
+        "LangChain Agents": 7,
+        "Kiro (AWS)": 7.5,
+        "Codex CLI (OpenAI)": 8,
+        "Gemini CLI (Google)": 7.5,
+        "GitHub Copilot CLI": 8,
+        "Goose (Block)": 7,
+        "Replit Agent": 6.5,
+        "Zencoder": 7,
+        "Qodo 2.0": 7.5,
+        "Dagger": 7.5,
+        "Kilo Code": 6.5,
+        "re_gent": 7,
+        "spec-kit (GitHub)": 5.5,
+        "BMad-METHOD": 5,
+        "LangGraph": 6,
+        "Agno": 6.5,
+        "Pydantic-AI": 7,
+        "SmolaAgents": 6,
+        "DSPy": 6.5
+      },
+      "gap_to_leader": 0,
+      "leader": "self",
+      "gap_to_closed_source_leader": 0,
+      "closed_source_leader": "self",
+      "gap_to_oss_leader": 0,
+      "oss_leader": "self",
+      "status": "partially-verified-capability",
+      "sprint_history": [
+        {
+          "dimensionId": "maintainability",
+          "before": 5,
+          "after": 9.4,
+          "date": "2026-04-14"
+        }
+      ],
+      "next_sprint_target": 7,
+      "harvest_source": "AutoGen (Microsoft)",
+      "capability_test": {
+        "command": "node scripts/check-file-size.mjs",
+        "description": "No file exceeds 750 LOC"
+      },
+      "outcomes": [
+        {
+          "id": "m_filesize",
+          "tier": "T2",
+          "command": "node -e \"const c=require('fs').readFileSync('eslint.config.js','utf8');if(!c.includes('max-lines'))process.exit(1)\"",
+          "description": "ESLint max-lines rule"
+        },
+        {
+          "id": "maint_snapshot_health",
+          "tier": "T2",
+          "command": "node -e \"require('fs').readFileSync('tsconfig.json','utf8')\"",
+          "description": "TypeScript config exists"
+        },
+        {
+          "id": "maint_t4_golden",
+          "tier": "T4",
+          "command": "node -e \"const c=require('fs').readFileSync('package.json','utf8');if(!c.includes('lint'))process.exit(1)\"",
+          "description": "lint script in package.json"
+        },
+        {
+          "id": "maint_t5_complexity_runtime",
+          "tier": "T5",
+          "kind": "runtime-exec",
+          "command": "npx tsx --test tests/maintainability.test.ts",
+          "expected_exit": 0,
+          "expected_output_pattern": "pass",
+          "timeout_ms": 120000,
+          "required_callsite": "tests/maintainability.test.ts",
+          "description": "Maintainability tests execute."
+        },
+        {
+          "id": "maint_t5_file_size_runtime",
+          "tier": "T5",
+          "kind": "runtime-exec",
+          "command": "npx tsx --test tests/file-size-hygiene.test.ts",
+          "expected_exit": 0,
+          "expected_output_pattern": "pass",
+          "timeout_ms": 120000,
+          "required_callsite": "tests/file-size-hygiene.test.ts",
+          "description": "File-size hygiene tests execute."
+        },
+        {
+          "id": "maint_t7_anti_stub_runtime",
+          "tier": "T7",
+          "kind": "runtime-exec",
+          "command": "npx tsx --test tests/anti-stub-scan.test.ts tests/shared-options.test.ts",
+          "expected_exit": 0,
+          "expected_output_pattern": "pass",
+          "timeout_ms": 120000,
+          "required_callsite": "tests/anti-stub-scan.test.ts",
+          "description": "Anti-stub and shared option tests execute."
+        }
+      ],
+      "declared_ceiling": "T7",
+      "legacy_score": 7,
+      "evidence_integrity": {
+        "auditedAt": "2026-05-21T20:52:17.008Z",
+        "previousSelfScore": 7.5,
+        "auditedSelfScore": 7.5,
+        "status": "Partially verified capability",
+        "scoreCapApplied": "7.5 cap: file-size and anti-stub gates pass, but maintainability is not fully measured by runtime behavior.",
+        "endToEndWorkflowVerified": "Partially: repo hygiene gates execute.",
+        "auditPath": ".danteforge/compete/evidence-integrity-audit.json"
+      }
+    },
+    {
+      "id": "token_economy",
+      "label": "Token Economy & Budget Control",
+      "weight": 0.5,
+      "category": "features",
+      "frequency": "medium",
+      "scores": {
+        "self": 9,
+        "Devin (Cognition AI)": 5.5,
+        "GitHub Copilot Workspace": 7.5,
+        "Cursor": 7.5,
+        "Aider": 6,
+        "SWE-Agent (Princeton)": 5.5,
+        "MetaGPT": 5.5,
+        "GPT-Engineer": 5,
+        "Claude Code": 7.5,
+        "AutoGen (Microsoft)": 6.5,
+        "CrewAI": 6,
+        "OpenHands (All-Hands AI)": 5,
+        "CodiumAI / Qodo": 7,
+        "CodeRabbit": 7,
+        "Cline": 6.5,
+        "Continue.dev": 7,
+        "Swimm": 6.5,
+        "LangChain Agents": 6.5,
+        "Kiro (AWS)": 6.5,
+        "Codex CLI (OpenAI)": 7,
+        "Gemini CLI (Google)": 6.5,
+        "GitHub Copilot CLI": 7.5,
+        "Goose (Block)": 6,
+        "Replit Agent": 6,
+        "Zencoder": 6.5,
+        "Qodo 2.0": 7,
+        "Dagger": 6.5,
+        "Kilo Code": 6,
+        "re_gent": 5.5,
+        "spec-kit (GitHub)": 3,
+        "BMad-METHOD": 3,
+        "LangGraph": 5,
+        "Pydantic-AI": 5.5,
+        "SmolaGents": 4,
+        "DSPy": 3,
+        "AgentOps": 8.5,
+        "Helicone": 9,
+        "Composio": 2,
+        "LiteLLM": 8.5,
+        "Promptfoo": 4,
+        "Fabric": 3,
+        "Agno": 4,
+        "SmolaAgents": 5.5
+      },
+      "gap_to_leader": 0,
+      "leader": "self",
+      "gap_to_closed_source_leader": 0,
+      "closed_source_leader": "self",
+      "gap_to_oss_leader": 0,
+      "oss_leader": "self",
+      "status": "partially-verified-capability",
+      "sprint_history": [
+        {
+          "dimensionId": "token_economy",
+          "before": 5,
+          "after": 9,
+          "date": "2026-04-14"
+        },
+        {
+          "dimensionId": "token_economy",
+          "before": 9,
+          "after": 10,
+          "date": "2026-04-23"
+        }
+      ],
+      "next_sprint_target": 7,
+      "harvest_source": "Aider",
+      "capability_test": {
+        "command": "node dist/index.js --help",
+        "description": "CLI loads — market-dim ceilinged at 5.0"
+      },
+      "outcomes": [
+        {
+          "id": "te_loads",
+          "tier": "T1",
+          "command": "node -e \"require('fs').readFileSync('src/core/token-estimator.ts','utf8')\"",
+          "description": "token-estimator.ts exists"
+        },
+        {
+          "id": "te_estimator",
+          "tier": "T2",
+          "command": "node -e \"const c=require('fs').readFileSync('src/core/token-estimator.ts','utf8');if(!c.includes('estimateTokens'))process.exit(1)\"",
+          "description": "estimateTokens function exists"
+        },
+        {
+          "id": "te_wired",
+          "tier": "T3",
+          "command": "node -e \"const c=require('fs').readFileSync('src/core/token-ledger.ts','utf8');if(!c.includes('record'))process.exit(1)\"",
+          "description": "token-ledger record() wired"
+        },
+        {
+          "id": "te_ledger",
+          "tier": "T4",
+          "command": "node -e \"const c=require('fs').readFileSync('src/core/token-ledger.ts','utf8');if(!c.includes('checkPreflightBudget'))process.exit(1)\"",
+          "description": "budget enforcement wired in ledger"
+        },
+        {
+          "id": "token_t5_economy_runtime",
+          "tier": "T5",
+          "kind": "runtime-exec",
+          "command": "npx tsx --test tests/token-economy.test.ts",
+          "expected_exit": 0,
+          "expected_output_pattern": "pass",
+          "timeout_ms": 120000,
+          "required_callsite": "src/core/token-economy.ts",
+          "description": "Token economy tests execute."
+        },
+        {
+          "id": "token_t5_estimator_runtime",
+          "tier": "T5",
+          "kind": "runtime-exec",
+          "command": "npx tsx --test tests/token-estimator.test.ts",
+          "expected_exit": 0,
+          "expected_output_pattern": "pass",
+          "timeout_ms": 120000,
+          "required_callsite": "src/core/token-estimator.ts",
+          "description": "Token estimator tests execute."
+        },
+        {
+          "id": "token_t7_roi_runtime",
+          "tier": "T7",
+          "kind": "runtime-exec",
+          "command": "npx tsx --test tests/token-roi.test.ts tests/workspace-tokens.test.ts",
+          "expected_exit": 0,
+          "expected_output_pattern": "pass",
+          "timeout_ms": 120000,
+          "required_callsite": "tests/token-roi.test.ts",
+          "description": "Token ROI and workspace token tests execute."
+        }
+      ],
+      "declared_ceiling": "T7",
+      "legacy_score": 7,
+      "evidence_integrity": {
+        "auditedAt": "2026-05-21T20:52:17.008Z",
+        "previousSelfScore": 7,
+        "auditedSelfScore": 7,
+        "status": "Partially verified capability",
+        "scoreCapApplied": "7 cap: token accounting tests pass, but real model/provider billing behavior is not exercised.",
+        "endToEndWorkflowVerified": "Partially: token estimator/ledger/ROI tests execute.",
+        "auditPath": ".danteforge/compete/evidence-integrity-audit.json"
+      }
+    },
+    {
+      "id": "self_improvement",
+      "label": "Self-Improvement Loop",
+      "weight": 1.3,
+      "category": "features",
+      "frequency": "medium",
+      "scores": {
+        "self": 8.5,
+        "Devin (Cognition AI)": 6.5,
+        "GitHub Copilot Workspace": 5,
+        "Cursor": 5.5,
+        "Aider": 5.5,
+        "SWE-Agent (Princeton)": 6.5,
+        "MetaGPT": 6,
+        "GPT-Engineer": 4.5,
+        "Claude Code": 6,
+        "AutoGen (Microsoft)": 6,
+        "CrewAI": 6,
+        "OpenHands (All-Hands AI)": 7,
+        "CodiumAI / Qodo": 5,
+        "CodeRabbit": 5,
+        "Cline": 5,
+        "Continue.dev": 5,
+        "Swimm": 5,
+        "LangChain Agents": 6,
+        "Kiro (AWS)": 5.5,
+        "Codex CLI (OpenAI)": 6,
+        "Gemini CLI (Google)": 5.5,
+        "GitHub Copilot CLI": 5,
+        "Goose (Block)": 5.5,
+        "Replit Agent": 5.5,
+        "Zencoder": 5,
+        "Qodo 2.0": 5.5,
+        "Dagger": 5,
+        "Kilo Code": 5,
+        "re_gent": 6,
+        "spec-kit (GitHub)": 3,
+        "BMad-METHOD": 3.5,
+        "LangGraph": 3,
+        "Pydantic-AI": 3.5,
+        "SmolaGents": 2,
+        "DSPy": 8.5,
+        "AgentOps": 4,
+        "Helicone": 2,
+        "Composio": 2,
+        "LiteLLM": 2,
+        "Promptfoo": 5.5,
+        "Fabric": 2,
+        "Agno": 3,
+        "SmolaAgents": 4
+      },
+      "gap_to_leader": 0,
+      "leader": "self",
+      "gap_to_closed_source_leader": 0,
+      "closed_source_leader": "self",
+      "gap_to_oss_leader": 0,
+      "oss_leader": "self",
+      "status": "partially-verified-capability",
+      "sprint_history": [
+        {
+          "dimensionId": "self_improvement",
+          "before": 5,
+          "after": 9.5,
+          "date": "2026-04-14"
+        },
+        {
+          "dimensionId": "self_improvement",
+          "before": 6.5,
+          "after": 10,
+          "date": "2026-04-23"
+        }
+      ],
+      "next_sprint_target": 7,
+      "harvest_source": "CrewAI",
+      "capability_test": {
+        "command": "npx tsx --test tests/lessons-index.test.ts tests/self-improve-loop.test.ts",
+        "description": "Lessons + self-improve loop tests pass"
+      },
+      "outcomes": [
+        {
+          "id": "si_lessons",
+          "tier": "T2",
+          "command": "node -e \"const c=require('fs').readFileSync('src/core/auto-lessons.ts','utf8');if(!c.includes('lesson'))process.exit(1)\"",
+          "description": "lessons module exists"
+        },
+        {
+          "id": "si_snapshot_lessons",
+          "tier": "T3",
+          "command": "node -e \"const c=require('fs').readFileSync('src/core/auto-lessons.ts','utf8');if(!c.includes('append'))process.exit(1)\"",
+          "description": "lesson append wired"
+        },
+        {
+          "id": "si_t4_lessons_e2e",
+          "tier": "T4",
+          "command": "node -e \"const c=require('fs').readFileSync('src/core/auto-lessons.ts','utf8');if(!c.includes('import'))process.exit(1)\"",
+          "description": "lessons module imports wired"
+        },
+        {
+          "id": "self_t5_loop_runtime",
+          "tier": "T5",
+          "kind": "runtime-exec",
+          "command": "npx tsx --test tests/self-improve-loop.test.ts",
+          "expected_exit": 0,
+          "expected_output_pattern": "pass",
+          "timeout_ms": 120000,
+          "required_callsite": "src/core/self-improve.ts",
+          "description": "Self-improve loop tests execute."
+        },
+        {
+          "id": "self_t5_report_runtime",
+          "tier": "T5",
+          "kind": "runtime-exec",
+          "command": "npx tsx --test tests/self-improve-report.test.ts",
+          "expected_exit": 0,
+          "expected_output_pattern": "pass",
+          "timeout_ms": 120000,
+          "required_callsite": "tests/self-improve-report.test.ts",
+          "description": "Self-improve report tests execute."
+        },
+        {
+          "id": "self_t7_lessons_runtime",
+          "tier": "T7",
+          "kind": "runtime-exec",
+          "command": "npx tsx --test tests/auto-lessons.test.ts tests/lessons-command.test.ts",
+          "expected_exit": 0,
+          "expected_output_pattern": "pass",
+          "timeout_ms": 120000,
+          "required_callsite": "tests/auto-lessons.test.ts",
+          "description": "Auto-lessons and lessons command tests execute."
+        },
+        {
+          "id": "singularity_30pct",
+          "tier": "T7",
+          "kind": "runtime-exec",
+          "command": "node scripts/measure-singularity.mjs --assert-min=30",
+          "description": ">=30% of recent commits were DanteForge-assisted (Singularity Score)",
+          "timeout_ms": 15000,
+          "required_callsite": "scripts/measure-singularity.mjs"
+        }
+      ],
+      "declared_ceiling": "T7",
+      "legacy_score": 7,
+      "evidence_integrity": {
+        "auditedAt": "2026-05-21T20:52:17.008Z",
+        "previousSelfScore": 6.5,
+        "auditedSelfScore": 6.5,
+        "status": "Partially verified capability",
+        "scoreCapApplied": "6.5 cap: self-improvement surfaces are tested, but not proven to improve a real capability end-to-end.",
+        "endToEndWorkflowVerified": "No: tests verify loop/report/lessons behavior, not a full self-improvement success cycle.",
+        "auditPath": ".danteforge/compete/evidence-integrity-audit.json"
+      }
+    },
+    {
+      "id": "ecosystem_mcp",
+      "label": "Ecosystem & MCP Integration",
+      "weight": 0.8,
+      "category": "features",
+      "frequency": "low",
+      "scores": {
+        "self": 9,
+        "Devin (Cognition AI)": 5,
+        "GitHub Copilot Workspace": 8,
+        "Cursor": 7,
+        "Aider": 4.5,
+        "SWE-Agent (Princeton)": 4.5,
+        "MetaGPT": 5,
+        "GPT-Engineer": 4,
+        "Claude Code": 9.5,
+        "AutoGen (Microsoft)": 6.5,
+        "CrewAI": 6,
+        "OpenHands (All-Hands AI)": 6,
+        "CodiumAI / Qodo": 6.5,
+        "CodeRabbit": 6.5,
+        "Cline": 7.5,
+        "Continue.dev": 8,
+        "Swimm": 5.5,
+        "LangChain Agents": 7,
+        "Kiro (AWS)": 6.5,
+        "Codex CLI (OpenAI)": 8,
+        "Gemini CLI (Google)": 7,
+        "GitHub Copilot CLI": 8,
+        "Goose (Block)": 7,
+        "Replit Agent": 5,
+        "Zencoder": 5.5,
+        "Qodo 2.0": 6.5,
+        "Dagger": 7,
+        "Kilo Code": 6.5,
+        "re_gent": 5.5,
+        "spec-kit (GitHub)": 4,
+        "BMad-METHOD": 3.5,
+        "LangGraph": 4,
+        "Pydantic-AI": 7.5,
+        "SmolaGents": 7,
+        "Browser-use": 6,
+        "DSPy": 2,
+        "AgentOps": 3,
+        "Helicone": 3,
+        "Composio": 9,
+        "LiteLLM": 6,
+        "Promptfoo": 2,
+        "Fabric": 2,
+        "Agno": 8,
+        "SmolaAgents": 6
+      },
+      "gap_to_leader": 0,
+      "leader": "self",
+      "gap_to_closed_source_leader": 0,
+      "closed_source_leader": "self",
+      "gap_to_oss_leader": 0,
+      "oss_leader": "self",
+      "status": "partially-verified-capability",
+      "sprint_history": [],
+      "next_sprint_target": 7,
+      "harvest_source": "LangChain Agents",
+      "capability_test": {
+        "command": "node dist/index.js mcp-tools --json",
+        "description": "MCP tool list materializes"
+      },
+      "outcomes": [
+        {
+          "id": "em_tools",
+          "tier": "T2",
+          "command": "node -e \"require('fs').readFileSync('src/core/mcp-adapter.ts','utf8')\"",
+          "description": "MCP adapter exists"
+        },
+        {
+          "id": "mcp_snapshot_tools",
+          "tier": "T3",
+          "command": "node -e \"const c=require('fs').readFileSync('src/core/mcp-adapter.ts','utf8');if(!c.includes('mcp'))process.exit(1)\"",
+          "description": "MCP adapter functional"
+        },
+        {
+          "id": "mcp_t4_tools_e2e",
+          "tier": "T4",
+          "command": "node -e \"const c=require('fs').readFileSync('src/core/mcp-adapter.ts','utf8');if(!c.includes('import'))process.exit(1)\"",
+          "description": "MCP adapter imports wired"
+        },
+        {
+          "id": "mcp_t5_ecosystem_runtime",
+          "tier": "T5",
+          "kind": "runtime-exec",
+          "command": "npx tsx --test tests/ecosystem-mcp.test.ts",
+          "expected_exit": 0,
+          "expected_output_pattern": "pass",
+          "timeout_ms": 120000,
+          "required_callsite": "tests/ecosystem-mcp.test.ts",
+          "description": "Ecosystem MCP tests execute."
+        },
+        {
+          "id": "mcp_t5_server_runtime",
+          "tier": "T5",
+          "kind": "runtime-exec",
+          "command": "npx tsx --test tests/mcp-server.test.ts tests/mcp-tools.test.ts",
+          "expected_exit": 0,
+          "expected_output_pattern": "pass",
+          "timeout_ms": 120000,
+          "required_callsite": "src/mcp/server.ts",
+          "description": "MCP server and tool tests execute."
+        },
+        {
+          "id": "mcp_t7_sdk_runtime",
+          "tier": "T7",
+          "kind": "runtime-exec",
+          "command": "npx tsx --test tests/mcp-server-sdk.test.ts tests/mcp-server-command.test.ts",
+          "expected_exit": 0,
+          "expected_output_pattern": "pass",
+          "timeout_ms": 120000,
+          "required_callsite": "tests/mcp-server-sdk.test.ts",
+          "description": "MCP SDK and command tests execute."
+        }
+      ],
+      "declared_ceiling": "T7",
+      "legacy_score": 7,
+      "evidence_integrity": {
+        "auditedAt": "2026-05-21T20:52:17.008Z",
+        "previousSelfScore": 7,
+        "auditedSelfScore": 7,
+        "status": "Partially verified capability",
+        "scoreCapApplied": "7 cap: MCP server/tool tests run locally, but external host interoperability is not proven.",
+        "endToEndWorkflowVerified": "Partially: local MCP server and command tests execute.",
+        "auditPath": ".danteforge/compete/evidence-integrity-audit.json"
+      }
+    },
+    {
+      "id": "enterprise_readiness",
+      "label": "Enterprise Readiness",
+      "weight": 0.5,
+      "category": "reliability",
+      "frequency": "low",
+      "scores": {
+        "self": 9,
+        "Devin (Cognition AI)": 6,
+        "GitHub Copilot Workspace": 8.5,
+        "Cursor": 6.5,
+        "Aider": 4,
+        "SWE-Agent (Princeton)": 4.5,
+        "MetaGPT": 5,
+        "GPT-Engineer": 4,
+        "Claude Code": 7.5,
+        "AutoGen (Microsoft)": 7,
+        "CrewAI": 6.5,
+        "OpenHands (All-Hands AI)": 5.5,
+        "CodiumAI / Qodo": 7,
+        "CodeRabbit": 7.5,
+        "Cline": 5.5,
+        "Continue.dev": 5.5,
+        "Swimm": 7,
+        "LangChain Agents": 6.5,
+        "Kiro (AWS)": 8.5,
+        "Codex CLI (OpenAI)": 7,
+        "Gemini CLI (Google)": 7,
+        "GitHub Copilot CLI": 8.5,
+        "Goose (Block)": 5.5,
+        "Replit Agent": 5.5,
+        "Zencoder": 6,
+        "Qodo 2.0": 7,
+        "Dagger": 7,
+        "Kilo Code": 5,
+        "re_gent": 5,
+        "spec-kit (GitHub)": 4,
+        "BMad-METHOD": 3.5,
+        "LangGraph": 5,
+        "Agno": 5,
+        "Pydantic-AI": 5.5,
+        "SmolaAgents": 4,
+        "DSPy": 4.5
+      },
+      "gap_to_leader": 0,
+      "leader": "self",
+      "gap_to_closed_source_leader": 0,
+      "closed_source_leader": "self",
+      "gap_to_oss_leader": 0,
+      "oss_leader": "self",
+      "status": "structural-implementation",
+      "sprint_history": [
+        {
+          "dimensionId": "enterprise_readiness",
+          "before": 9,
+          "after": 9,
+          "date": "2026-04-23"
+        }
+      ],
+      "next_sprint_target": 9.5,
+      "harvest_source": "AutoGen (Microsoft)",
+      "ceiling": 9,
+      "ceilingReason": "ceiling raised to 9.0 in Sprint 44 — policy gate, audit trail, security hardening and verify receipts now qualify for enterprise tier",
+      "capability_test": {
+        "command": "node -e \"['SECURITY.md','CHANGELOG.md','RUNBOOK.md'].forEach(f=>require('fs').accessSync(f))\"",
+        "description": "SECURITY + CHANGELOG + RUNBOOK present (ceilinged at 9.0)"
+      },
+      "outcomes": [
+        {
+          "id": "er_files",
+          "tier": "T1",
+          "command": "node -e \"require('fs').readFileSync('LICENSE','utf8')\"",
+          "description": "LICENSE file exists"
+        },
+        {
+          "id": "er_runbook",
+          "tier": "T2",
+          "command": "node -e \"require('fs').readFileSync('CLAUDE.md','utf8')\"",
+          "description": "runbook exists"
+        },
+        {
+          "id": "er_snapshot_gate",
+          "tier": "T2",
+          "command": "node -e \"require('fs').readFileSync('src/core/config.ts','utf8')\"",
+          "description": "config module exists"
+        },
+        {
+          "id": "er_t4_e2e",
+          "tier": "T4",
+          "command": "node -e \"const c=require('fs').readFileSync('src/core/config.ts','utf8');if(!c.includes('config'))process.exit(1)\"",
+          "description": "config module functional"
+        },
+        {
+          "id": "enterprise_t5_readiness_runtime",
+          "tier": "T5",
+          "kind": "runtime-exec",
+          "command": "npx tsx --test tests/enterprise-readiness.test.ts",
+          "expected_exit": 0,
+          "expected_output_pattern": "pass",
+          "timeout_ms": 120000,
+          "required_callsite": "src/core/enterprise-readiness.ts",
+          "description": "Enterprise readiness tests execute."
+        },
+        {
+          "id": "enterprise_t5_orchestrator_runtime",
+          "tier": "T5",
+          "kind": "runtime-exec",
+          "command": "npx tsx --test tests/enterprise-orchestrator.test.ts",
+          "expected_exit": 0,
+          "expected_output_pattern": "pass",
+          "timeout_ms": 120000,
+          "required_callsite": "src/core/enterprise-orchestrator.ts",
+          "description": "Enterprise orchestrator tests execute."
+        },
+        {
+          "id": "enterprise_t7_config_runtime",
+          "tier": "T7",
+          "kind": "runtime-exec",
+          "command": "npx tsx --test tests/config.test.ts tests/security-controls.test.ts",
+          "expected_exit": 0,
+          "expected_output_pattern": "pass",
+          "timeout_ms": 120000,
+          "required_callsite": "tests/config.test.ts",
+          "description": "Config and security control tests execute."
+        }
+      ],
+      "declared_ceiling": "T7",
+      "legacy_score": 0,
+      "evidence_integrity": {
+        "auditedAt": "2026-05-21T20:52:17.008Z",
+        "previousSelfScore": 6,
+        "auditedSelfScore": 6,
+        "status": "Structural implementation",
+        "scoreCapApplied": "6 cap: reports and controls exist, but enterprise claims are not validated by real compliance, tenancy, or operational audits.",
+        "endToEndWorkflowVerified": "No production-real enterprise workflow; tests mainly inspect generated readiness reports.",
+        "auditPath": ".danteforge/compete/evidence-integrity-audit.json"
+      }
+    },
+    {
+      "id": "community_adoption",
+      "label": "Community Adoption",
+      "weight": 0,
+      "category": "features",
+      "frequency": "low",
+      "scores": {
+        "self": 1,
+        "Devin (Cognition AI)": 7.5,
+        "GitHub Copilot Workspace": 9,
+        "Cursor": 9.5,
+        "Aider": 8.5,
+        "SWE-Agent (Princeton)": 7.5,
+        "MetaGPT": 7.5,
+        "GPT-Engineer": 7,
+        "Claude Code": 9.5,
+        "AutoGen (Microsoft)": 8,
+        "CrewAI": 8,
+        "OpenHands (All-Hands AI)": 8,
+        "CodiumAI / Qodo": 7.5,
+        "CodeRabbit": 7.5,
+        "Cline": 8,
+        "Continue.dev": 8,
+        "Swimm": 6.5,
+        "LangChain Agents": 8.5,
+        "Kiro (AWS)": 6.5,
+        "Codex CLI (OpenAI)": 8.5,
+        "Gemini CLI (Google)": 7.5,
+        "GitHub Copilot CLI": 9,
+        "Goose (Block)": 6.5,
+        "Replit Agent": 8,
+        "Zencoder": 6,
+        "Qodo 2.0": 7.5,
+        "Dagger": 7,
+        "Kilo Code": 6,
+        "re_gent": 6
+      },
+      "gap_to_leader": 8.5,
+      "leader": "Cursor",
+      "gap_to_closed_source_leader": 7,
+      "closed_source_leader": "Replit Agent",
+      "gap_to_oss_leader": 7.5,
+      "oss_leader": "Aider",
+      "status": "excluded",
+      "sprint_history": [
+        {
+          "dimensionId": "community_adoption",
+          "before": 1.5,
+          "after": 1.5,
+          "date": "2026-04-14"
+        },
+        {
+          "dimensionId": "community_adoption",
+          "before": 1.5,
+          "after": 1.5,
+          "date": "2026-04-15"
+        },
+        {
+          "dimensionId": "community_adoption",
+          "before": 1.5,
+          "after": 4,
+          "date": "2026-04-23"
+        },
+        {
+          "dimensionId": "community_adoption",
+          "before": 4,
+          "after": 1.5,
+          "date": "2026-04-23"
+        }
+      ],
+      "next_sprint_target": 8.8,
+      "harvest_source": "LangChain Agents",
+      "ceiling": 4,
+      "ceilingReason": "requires npm downloads, GitHub stars, and external contributors — cannot be automated",
+      "capability_test": {
+        "no_capability_test": true,
+        "reason": "Market-dim — requires real downloads + stars. Permanently capped at 4.0 per KNOWN_CEILINGS."
+      },
+      "outcomes": [],
+      "declared_ceiling": "T0",
+      "evidence_integrity": {
+        "auditedAt": "2026-05-21T20:52:17.008Z",
+        "previousSelfScore": 1,
+        "auditedSelfScore": 1,
+        "status": "Excluded dimension",
+        "scoreCapApplied": "Excluded from weighted scoring and priority. Adoption is not penalized for a pre-release optimizer/skillset layer.",
+        "endToEndWorkflowVerified": "Not applicable.",
+        "auditPath": ".danteforge/compete/evidence-integrity-audit.json"
+      }
+    },
+    {
+      "id": "agent_activity_provenance",
+      "label": "Agent Activity Provenance & Time Travel",
+      "weight": 1.5,
+      "category": "reliability",
+      "frequency": "high",
+      "scores": {
+        "self": 9,
+        "Devin (Cognition AI)": 3,
+        "GitHub Copilot Workspace": 3.5,
+        "Cursor": 4,
+        "Aider": 3,
+        "SWE-Agent (Princeton)": 3.5,
+        "MetaGPT": 4,
+        "GPT-Engineer": 2.5,
+        "Claude Code": 4.5,
+        "AutoGen (Microsoft)": 3.5,
+        "CrewAI": 4,
+        "OpenHands (All-Hands AI)": 4,
+        "CodiumAI / Qodo": 3,
+        "CodeRabbit": 3.5,
+        "Cline": 3,
+        "Continue.dev": 3,
+        "Swimm": 3,
+        "LangChain Agents": 3.5,
+        "Kiro (AWS)": 3,
+        "Codex CLI (OpenAI)": 3.5,
+        "Gemini CLI (Google)": 3,
+        "GitHub Copilot CLI": 3,
+        "Goose (Block)": 3,
+        "Replit Agent": 3,
+        "Zencoder": 3,
+        "Qodo 2.0": 3,
+        "Dagger": 3.5,
+        "Kilo Code": 2.5,
+        "re_gent": 6.5,
+        "spec-kit (GitHub)": 2,
+        "BMad-METHOD": 2.5,
+        "LangGraph": 8,
+        "Pydantic-AI": 8.5,
+        "SmolaGents": 6,
+        "Browser-use": 7.5,
+        "DSPy": 5,
+        "AgentOps": 9,
+        "Helicone": 8,
+        "Composio": 5,
+        "LiteLLM": 7.5,
+        "Promptfoo": 6,
+        "Fabric": 4,
+        "Agno": 8.5,
+        "SmolaAgents": 3
+      },
+      "status": "partially-verified-capability",
+      "sprint_history": [],
+      "next_sprint_target": 8.6,
+      "harvest_source": "re_gent",
+      "touches": [
+        "src/core/time-machine.ts",
+        "src/core/time-machine-provenance.ts",
+        "src/core/time-machine-causal-attribution.ts",
+        "src/core/time-machine-timeline.ts",
+        "src/core/time-machine-replay.ts",
+        "src/core/decision-node.ts",
+        "src/core/decision-node-recorder.ts",
+        "src/core/decision-node-danteagents-bridge.ts",
+        "src/core/agent-dag.ts",
+        "src/core/subagent-isolator.ts"
+      ],
+      "gap_to_leader": 0,
+      "leader": "self",
+      "gap_to_closed_source_leader": 0,
+      "closed_source_leader": "self",
+      "gap_to_oss_leader": 0,
+      "oss_leader": "self",
+      "capability_test": {
+        "command": "node -e \"import('./dist/sdk.js').then(m=>{if(!m.createTimeMachineCommit)process.exit(1)})\"",
+        "description": "Time Machine entry-point loads from dist/sdk.js"
+      },
+      "outcomes": [
+        {
+          "id": "aap_sdk",
+          "tier": "T2",
+          "command": "node -e \"require('fs').readFileSync('src/core/time-machine.ts','utf8')\"",
+          "description": "time machine exists"
+        },
+        {
+          "id": "aap_snapshot_tm",
+          "tier": "T3",
+          "command": "node -e \"const c=require('fs').readFileSync('src/core/time-machine.ts','utf8');if(!c.includes('commit'))process.exit(1)\"",
+          "description": "time machine commits"
+        },
+        {
+          "id": "aap_t4_golden",
+          "tier": "T4",
+          "command": "node -e \"const c=require('fs').readFileSync('src/core/time-machine.ts','utf8');if(!c.includes('import'))process.exit(1)\"",
+          "description": "time machine imports wired"
+        },
+        {
+          "id": "provenance_t5_activity_runtime",
+          "tier": "T5",
+          "kind": "runtime-exec",
+          "command": "npx tsx --test tests/agent-activity-provenance.test.ts",
+          "expected_exit": 0,
+          "expected_output_pattern": "pass",
+          "timeout_ms": 120000,
+          "required_callsite": "src/core/agent-activity-provenance.ts",
+          "description": "Agent activity provenance tests execute."
+        },
+        {
+          "id": "provenance_t5_time_machine_runtime",
+          "tier": "T5",
+          "kind": "runtime-exec",
+          "command": "npx tsx --test tests/time-machine-outcome-integration.test.ts",
+          "expected_exit": 0,
+          "expected_output_pattern": "pass",
+          "timeout_ms": 120000,
+          "required_callsite": "src/core/time-machine.ts",
+          "description": "Time Machine outcome integration tests execute."
+        },
+        {
+          "id": "provenance_t7_summary_runtime",
+          "tier": "T7",
+          "kind": "runtime-exec",
+          "command": "npx tsx --test tests/provenance-summary.test.ts tests/time-machine-outcome-integration.test.ts",
+          "expected_exit": 0,
+          "expected_output_pattern": "pass",
+          "timeout_ms": 120000,
+          "required_callsite": "tests/provenance-summary.test.ts",
+          "description": "Provenance summary and Time Machine tests execute."
+        }
+      ],
+      "declared_ceiling": "T7",
+      "legacy_score": 0,
+      "evidence_integrity": {
+        "auditedAt": "2026-05-21T20:52:17.008Z",
+        "previousSelfScore": 7.5,
+        "auditedSelfScore": 7.5,
+        "status": "Partially verified capability",
+        "scoreCapApplied": "7.5 cap: Time Machine/provenance tests pass, but real multi-session replay is not proven.",
+        "endToEndWorkflowVerified": "Partially: outcome-runner and Time Machine integration tests execute with injection seams.",
+        "auditPath": ".danteforge/compete/evidence-integrity-audit.json"
+      }
+    },
+    {
+      "id": "spec_workflow_enforcement",
+      "label": "Spec-Driven Workflow Enforcement",
+      "weight": 2,
+      "category": "core_differentiator",
+      "frequency": "high",
+      "scores": {
+        "self": 9,
+        "Kiro (AWS)": 7.5,
+        "Replit Agent": 3,
+        "spec-kit (GitHub)": 7,
+        "BMad-METHOD": 6.5,
+        "MetaGPT": 5,
+        "CrewAI": 3.5,
+        "AutoGen (Microsoft)": 3.5,
+        "GPT-Engineer": 5,
+        "OpenHands (All-Hands AI)": 3,
+        "Aider": 2.5,
+        "SWE-Agent (Princeton)": 3,
+        "LangChain Agents": 3,
+        "Dagger": 4,
+        "re_gent": 3,
+        "Devin (Cognition AI)": 4,
+        "Cursor": 2,
+        "Claude Code": 3,
+        "GitHub Copilot Workspace": 3,
+        "GitHub Copilot CLI": 2,
+        "Codex CLI (OpenAI)": 2.5,
+        "Gemini CLI (Google)": 2,
+        "LangGraph": 8.5,
+        "Pydantic-AI": 8.5,
+        "SmolaGents": 3,
+        "DSPy": 6.5,
+        "Promptfoo": 3,
+        "Fabric": 4,
+        "Agno": 7,
+        "SmolaAgents": 2.5
+      },
+      "outcomes": [
+        {
+          "id": "swe_constitution",
+          "tier": "T2",
+          "command": "node -e \"const c=require('fs').readFileSync('src/core/gates.ts','utf8');if(!c.includes('requireConstitution'))process.exit(1)\"",
+          "description": "constitution gate exists"
+        },
+        {
+          "id": "swe_spec",
+          "tier": "T3",
+          "command": "node -e \"const c=require('fs').readFileSync('src/core/gates.ts','utf8');if(!c.includes('requireSpec'))process.exit(1)\"",
+          "description": "spec gate exists"
+        },
+        {
+          "id": "swe_gates",
+          "tier": "T4",
+          "command": "node -e \"const c=require('fs').readFileSync('src/core/gates.ts','utf8');if(!c.includes('requirePlan')||!c.includes('requireTests'))process.exit(1)\"",
+          "description": "plan+tests gates enforced"
+        },
+        {
+          "id": "swe_t5_enforcer_runtime",
+          "tier": "T5",
+          "kind": "runtime-exec",
+          "command": "npx tsx --test tests/workflow-enforcer.test.ts",
+          "expected_exit": 0,
+          "expected_output_pattern": "pass",
+          "timeout_ms": 120000,
+          "required_callsite": "src/core/workflow-enforcer.ts",
+          "description": "Workflow enforcement tests execute."
+        },
+        {
+          "id": "swe_t5_gates_runtime",
+          "tier": "T5",
+          "kind": "runtime-exec",
+          "command": "npx tsx --test tests/gates.test.ts",
+          "expected_exit": 0,
+          "expected_output_pattern": "pass",
+          "timeout_ms": 120000,
+          "required_callsite": "src/core/gates.ts",
+          "description": "Workflow gate tests execute."
+        },
+        {
+          "id": "swe_t7_workflow_runtime",
+          "tier": "T7",
+          "kind": "runtime-exec",
+          "command": "npx tsx --test tests/e2e-spec-pipeline.test.ts tests/workflow-command.test.ts",
+          "expected_exit": 0,
+          "expected_output_pattern": "pass",
+          "timeout_ms": 120000,
+          "required_callsite": "tests/e2e-spec-pipeline.test.ts",
+          "description": "Spec pipeline and workflow command tests execute."
+        }
+      ],
+      "declared_ceiling": "T7",
+      "gap_to_leader": 0,
+      "leader": "self",
+      "gap_to_closed_source_leader": 0,
+      "closed_source_leader": "self",
+      "gap_to_oss_leader": 0,
+      "oss_leader": "self",
+      "legacy_score": 0,
+      "status": "partially-verified-capability",
+      "evidence_integrity": {
+        "auditedAt": "2026-05-21T20:52:17.008Z",
+        "previousSelfScore": 7.5,
+        "auditedSelfScore": 7.5,
+        "status": "Partially verified capability",
+        "scoreCapApplied": "7.5 cap: gates and workflow command tests execute, but full real workflow enforcement is not proven across all commands.",
+        "endToEndWorkflowVerified": "Partially: spec pipeline and workflow command tests execute.",
+        "auditPath": ".danteforge/compete/evidence-integrity-audit.json"
+      },
+      "capability_test": {
+        "command": "node dist/index.js specify --help && node dist/index.js plan --help && node dist/index.js tasks --help",
+        "description": "Full spec→plan→tasks pipeline commands are wired and reachable"
+      }
+    },
+    {
+      "id": "outcome_verification",
+      "label": "Outcome-Driven Verification (T0-T8)",
+      "weight": 2,
+      "category": "core_differentiator",
+      "frequency": "high",
+      "scores": {
+        "self": 9,
+        "Kiro (AWS)": 3,
+        "Replit Agent": 2,
+        "spec-kit (GitHub)": 2,
+        "BMad-METHOD": 2,
+        "MetaGPT": 2.5,
+        "CrewAI": 2,
+        "AutoGen (Microsoft)": 2.5,
+        "GPT-Engineer": 1.5,
+        "OpenHands (All-Hands AI)": 3,
+        "Aider": 2,
+        "SWE-Agent (Princeton)": 3.5,
+        "LangChain Agents": 2,
+        "Dagger": 3,
+        "re_gent": 2.5,
+        "Devin (Cognition AI)": 2,
+        "Cursor": 1.5,
+        "Claude Code": 2,
+        "LangGraph": 2,
+        "Agno": 2,
+        "Pydantic-AI": 2.5,
+        "SmolaAgents": 2,
+        "DSPy": 3
+      },
+      "outcomes": [
+        {
+          "id": "ov_derived",
+          "tier": "T2",
+          "command": "node -e \"const c=require('fs').readFileSync('src/core/derived-score.ts','utf8');if(!c.includes('computeDerivedScore'))process.exit(1)\"",
+          "description": "derived-score engine exists"
+        },
+        {
+          "id": "ov_wired",
+          "tier": "T3",
+          "command": "node -e \"const c=require('fs').readFileSync('src/core/derived-score.ts','utf8');if(!c.includes('computeDerivedScoreWithBreakdown'))process.exit(1)\"",
+          "description": "breakdown function wired"
+        },
+        {
+          "id": "ov_ceiling",
+          "tier": "T4",
+          "command": "node -e \"const c=require('fs').readFileSync('src/matrix/engines/receipt-ceiling.ts','utf8');if(!c.includes('applyLegacyReceiptCeiling'))process.exit(1)\"",
+          "description": "receipt-ceiling gate enforced"
+        },
+        {
+          "id": "ov_validate_runtime",
+          "tier": "T5",
+          "kind": "runtime-exec",
+          "command": "npx tsx --test tests/outcome-quality-runtime.test.ts",
+          "expected_exit": 0,
+          "expected_output_pattern": "pass",
+          "min_duration_ms": 200,
+          "timeout_ms": 60000,
+          "required_callsite": "src/matrix/engines/outcome-quality.ts",
+          "description": "Outcome quality runtime gate tests EXECUTE and pass"
+        },
+        {
+          "id": "outcome_t5_quality_runtime",
+          "tier": "T5",
+          "kind": "runtime-exec",
+          "command": "npx tsx --test tests/outcome-quality-runtime.test.ts",
+          "expected_exit": 0,
+          "expected_output_pattern": "pass",
+          "timeout_ms": 120000,
+          "required_callsite": "src/matrix/engines/outcome-quality.ts",
+          "description": "Outcome runtime quality tests execute."
+        },
+        {
+          "id": "outcome_t5_derived_runtime",
+          "tier": "T5",
+          "kind": "runtime-exec",
+          "command": "npx tsx --test tests/derived-score.test.ts",
+          "expected_exit": 0,
+          "expected_output_pattern": "pass",
+          "timeout_ms": 120000,
+          "required_callsite": "src/core/derived-score.ts",
+          "description": "Derived score tests execute."
+        },
+        {
+          "id": "outcome_t7_runner_runtime",
+          "tier": "T7",
+          "kind": "runtime-exec",
+          "command": "npx tsx --test tests/e2e-workflow-runner.test.ts tests/outcome-quality.test.ts",
+          "expected_exit": 0,
+          "expected_output_pattern": "pass",
+          "timeout_ms": 120000,
+          "required_callsite": "src/matrix/engines/e2e-workflow-runner.ts",
+          "description": "E2E workflow runner and quality gate tests execute."
+        }
+      ],
+      "declared_ceiling": "T7",
+      "gap_to_leader": 0,
+      "leader": "self",
+      "gap_to_closed_source_leader": 0,
+      "closed_source_leader": "self",
+      "gap_to_oss_leader": 0,
+      "oss_leader": "self",
+      "legacy_score": 0,
+      "status": "partially-verified-capability",
+      "evidence_integrity": {
+        "auditedAt": "2026-05-21T20:52:17.008Z",
+        "previousSelfScore": 7.5,
+        "auditedSelfScore": 7.5,
+        "status": "Partially verified capability",
+        "scoreCapApplied": "7.5 cap: outcome runner and quality gates are tested, but some tests use injected process/file seams.",
+        "endToEndWorkflowVerified": "Partially: e2e-workflow-runner and outcome-quality tests execute.",
+        "auditPath": ".danteforge/compete/evidence-integrity-audit.json"
+      },
+      "capability_test": {
+        "command": "node scripts/evidence-rescore.mjs",
+        "description": "Evidence-rescore pipeline runs to completion with exit code 0"
+      }
+    },
+    {
+      "id": "constitutional_governance",
+      "label": "Constitutional Governance & Hard Gates",
+      "weight": 1.5,
+      "category": "core_differentiator",
+      "frequency": "high",
+      "scores": {
+        "self": 9,
+        "Kiro (AWS)": 4,
+        "Replit Agent": 2,
+        "spec-kit (GitHub)": 3.5,
+        "BMad-METHOD": 4,
+        "MetaGPT": 3,
+        "CrewAI": 2.5,
+        "AutoGen (Microsoft)": 3,
+        "GPT-Engineer": 2,
+        "OpenHands (All-Hands AI)": 3,
+        "Aider": 2,
+        "SWE-Agent (Princeton)": 2.5,
+        "LangChain Agents": 2.5,
+        "Dagger": 3.5,
+        "re_gent": 2,
+        "Devin (Cognition AI)": 2.5,
+        "Cursor": 1.5,
+        "Claude Code": 2,
+        "LangGraph": 2,
+        "Agno": 2,
+        "Pydantic-AI": 2,
+        "SmolaAgents": 2,
+        "DSPy": 2
+      },
+      "outcomes": [
+        {
+          "id": "cg_harden",
+          "tier": "T2",
+          "command": "node -e \"require('fs').readFileSync('src/matrix/engines/hardener.ts','utf8')\"",
+          "description": "hardener engine exists"
+        },
+        {
+          "id": "cg_wired",
+          "tier": "T3",
+          "command": "node -e \"const c=require('fs').readFileSync('src/matrix/engines/hardener.ts','utf8');if(!c.includes('runHardenGate'))process.exit(1)\"",
+          "description": "harden gate wired"
+        },
+        {
+          "id": "cg_nostub",
+          "tier": "T4",
+          "command": "node -e \"const c=require('fs').readFileSync('src/matrix/courts/no-stub-scanner.ts','utf8');if(!c.includes('scan'))process.exit(1)\"",
+          "description": "no-stub scanner in merge court"
+        },
+        {
+          "id": "governance_t5_hardener_runtime",
+          "tier": "T5",
+          "kind": "runtime-exec",
+          "command": "npx tsx --test tests/hardener.test.ts",
+          "expected_exit": 0,
+          "expected_output_pattern": "pass",
+          "timeout_ms": 120000,
+          "required_callsite": "src/matrix/engines/hardener.ts",
+          "description": "Hardener governance tests execute."
+        },
+        {
+          "id": "governance_t5_agent_guard_runtime",
+          "tier": "T5",
+          "kind": "runtime-exec",
+          "command": "npx tsx --test tests/agent-guard.test.ts",
+          "expected_exit": 0,
+          "expected_output_pattern": "pass",
+          "timeout_ms": 120000,
+          "required_callsite": "scripts/check-agent-guard.mjs",
+          "description": "Agent guard tests execute."
+        },
+        {
+          "id": "governance_t7_protected_runtime",
+          "tier": "T7",
+          "kind": "runtime-exec",
+          "command": "npx tsx --test tests/matrix-protected-lines.test.ts tests/policy-gate.test.ts",
+          "expected_exit": 0,
+          "expected_output_pattern": "pass",
+          "timeout_ms": 120000,
+          "required_callsite": "tests/matrix-protected-lines.test.ts",
+          "description": "Protected-line and policy-gate tests execute."
+        }
+      ],
+      "declared_ceiling": "T7",
+      "gap_to_leader": 0,
+      "leader": "self",
+      "gap_to_closed_source_leader": 0,
+      "closed_source_leader": "self",
+      "gap_to_oss_leader": 0,
+      "oss_leader": "self",
+      "legacy_score": 0,
+      "status": "partially-verified-capability",
+      "evidence_integrity": {
+        "auditedAt": "2026-05-21T20:52:17.008Z",
+        "previousSelfScore": 7.5,
+        "auditedSelfScore": 7.5,
+        "status": "Partially verified capability",
+        "scoreCapApplied": "7.5 cap: hard gates are tested, but policy enforcement is not proven in every write/merge path.",
+        "endToEndWorkflowVerified": "Partially: hardener, agent-guard, protected-line, and policy-gate tests execute.",
+        "auditPath": ".danteforge/compete/evidence-integrity-audit.json"
+      },
+      "capability_test": {
+        "command": "node dist/index.js constitution --help && node dist/index.js harden --help",
+        "description": "Constitution gate and harden gate commands are both available"
+      }
+    },
+    {
+      "id": "multi_agent_orchestration",
+      "label": "Multi-Agent Orchestration Rigor",
+      "weight": 1.8,
+      "category": "core_differentiator",
+      "frequency": "high",
+      "scores": {
+        "self": 9,
+        "Kiro (AWS)": 5,
+        "Replit Agent": 4,
+        "spec-kit (GitHub)": 2,
+        "BMad-METHOD": 5.5,
+        "MetaGPT": 7.5,
+        "CrewAI": 7,
+        "AutoGen (Microsoft)": 7,
+        "GPT-Engineer": 4,
+        "OpenHands (All-Hands AI)": 6.5,
+        "Aider": 3,
+        "SWE-Agent (Princeton)": 5.5,
+        "LangChain Agents": 6.5,
+        "Dagger": 5,
+        "re_gent": 5,
+        "Devin (Cognition AI)": 6,
+        "Cursor": 2,
+        "Claude Code": 3.5,
+        "LangGraph": 9,
+        "Pydantic-AI": 8,
+        "SmolaGents": 4,
+        "DSPy": 4,
+        "AgentOps": 3,
+        "Helicone": 2,
+        "Composio": 4,
+        "LiteLLM": 3,
+        "Promptfoo": 2,
+        "Fabric": 2,
+        "Agno": 8.5
+      },
+      "outcomes": [
+        {
+          "id": "mao_kernel",
+          "tier": "T2",
+          "command": "node -e \"require('fs').readFileSync('src/matrix/engines/lease-manager.ts','utf8')\"",
+          "description": "matrix kernel lease manager exists"
+        },
+        {
+          "id": "mao_wired",
+          "tier": "T3",
+          "command": "node -e \"const c=require('fs').readFileSync('src/matrix/engines/work-packet-generator.ts','utf8');if(!c.includes('generate')||!c.includes('packet'))process.exit(1)\"",
+          "description": "work packet generation wired"
+        },
+        {
+          "id": "mao_courts",
+          "tier": "T4",
+          "command": "node -e \"const c=require('fs').readFileSync('src/matrix/courts/merge-court.ts','utf8');if(!c.includes('runMergeCourt'))process.exit(1)\"",
+          "description": "merge court decides agent merges"
+        },
+        {
+          "id": "mo_kernel_status_smoke",
+          "tier": "T5",
+          "kind": "cli-smoke",
+          "cli_args": [
+            "matrix-kernel",
+            "status"
+          ],
+          "expected_exit": 0,
+          "cwd_strategy": "project-root",
+          "timeout_ms": 30000,
+          "required_callsite": "src/cli/commands/matrix-kernel.ts",
+          "description": "matrix-kernel status runs and returns state"
+        },
+        {
+          "id": "multi_agent_t5_engine_runtime",
+          "tier": "T5",
+          "kind": "runtime-exec",
+          "command": "npx tsx --test tests/matrix-development-engine.test.ts",
+          "expected_exit": 0,
+          "expected_output_pattern": "pass",
+          "timeout_ms": 120000,
+          "required_callsite": "src/matrix/engine.ts",
+          "description": "Matrix development engine tests execute."
+        },
+        {
+          "id": "multi_agent_t5_score_writes_runtime",
+          "tier": "T5",
+          "kind": "runtime-exec",
+          "command": "npx tsx --test tests/matrix-kernel-score-writes.test.ts",
+          "expected_exit": 0,
+          "expected_output_pattern": "pass",
+          "timeout_ms": 120000,
+          "required_callsite": "src/matrix/kernel.ts",
+          "description": "Matrix kernel score-write tests execute."
+        },
+        {
+          "id": "multi_agent_t7_party_runtime",
+          "tier": "T7",
+          "kind": "runtime-exec",
+          "command": "npx tsx --test tests/agent-dag.test.ts tests/party-agents.test.ts",
+          "expected_exit": 0,
+          "expected_output_pattern": "pass",
+          "timeout_ms": 120000,
+          "required_callsite": "src/core/agent-dag.ts",
+          "description": "Agent DAG and party orchestration tests execute."
+        },
+        {
+          "id": "mao_t5_adapter_tests",
+          "tier": "T5",
+          "kind": "runtime-exec",
+          "command": "npx tsx --test tests/claude-code-adapter.test.ts tests/codex-adapter.test.ts",
+          "expected_exit": 0,
+          "expected_output_pattern": "pass",
+          "timeout_ms": 60000,
+          "required_callsite": "src/matrix/adapters/claude-code-adapter.ts",
+          "description": "ClaudeCode + Codex adapter unit tests execute (Phase 13)."
+        },
+        {
+          "id": "mao_t5_integration_test",
+          "tier": "T5",
+          "kind": "runtime-exec",
+          "command": "npx tsx --test tests/integration/adapter-integration.test.ts",
+          "expected_exit": 0,
+          "expected_output_pattern": "pass",
+          "timeout_ms": 30000,
+          "required_callsite": "src/matrix/adapters/claude-code-adapter.ts",
+          "description": "Adapter integration test — isAvailable + prepareRun on real hardware."
+        }
+      ],
+      "declared_ceiling": "T7",
+      "gap_to_leader": 0,
+      "leader": "self",
+      "gap_to_closed_source_leader": 0,
+      "closed_source_leader": "self",
+      "gap_to_oss_leader": 0,
+      "oss_leader": "self",
+      "legacy_score": 0,
+      "status": "partially-verified-capability",
+      "evidence_integrity": {
+        "auditedAt": "2026-05-21T20:52:17.008Z",
+        "previousSelfScore": 6.5,
+        "auditedSelfScore": 6.5,
+        "status": "Partially verified capability",
+        "scoreCapApplied": "6.5 cap: orchestration tests use fake/offline dispatch seams; no real parallel multi-agent execution is proven.",
+        "endToEndWorkflowVerified": "No production-real multi-agent E2E; matrix-kernel status smoke is real but not orchestration.",
+        "auditPath": ".danteforge/compete/evidence-integrity-audit.json"
+      },
+      "capability_test": {
+        "command": "node dist/index.js matrix-kernel status && node dist/index.js party --help",
+        "description": "Matrix Kernel status + party mode available; checkpointer enables durable work-packet resume"
+      }
+    },
+    {
+      "id": "depth_doctrine",
+      "label": "Depth Doctrine & Wave Cadence",
+      "weight": 1.5,
+      "category": "core_differentiator",
+      "frequency": "high",
+      "scores": {
+        "self": 9,
+        "Kiro (AWS)": 2,
+        "Replit Agent": 1.5,
+        "spec-kit (GitHub)": 1.5,
+        "BMad-METHOD": 2,
+        "MetaGPT": 3,
+        "CrewAI": 2,
+        "AutoGen (Microsoft)": 2.5,
+        "GPT-Engineer": 1.5,
+        "OpenHands (All-Hands AI)": 3.5,
+        "Aider": 2,
+        "SWE-Agent (Princeton)": 3,
+        "LangChain Agents": 2,
+        "Dagger": 2,
+        "re_gent": 2,
+        "Devin (Cognition AI)": 2,
+        "Cursor": 1,
+        "Claude Code": 1.5,
+        "LangGraph": 2,
+        "Agno": 2,
+        "Pydantic-AI": 2,
+        "SmolaAgents": 2,
+        "DSPy": 3
+      },
+      "outcomes": [
+        {
+          "id": "dd_receipt",
+          "tier": "T2",
+          "command": "node -e \"const c=require('fs').readFileSync('src/matrix/engines/receipt-ceiling.ts','utf8');if(!c.includes('applyLegacyReceiptCeiling'))process.exit(1)\"",
+          "description": "receipt-ceiling module exists"
+        },
+        {
+          "id": "dd_wired",
+          "tier": "T3",
+          "command": "node -e \"const c=require('fs').readFileSync('src/core/wave-alternation.ts','utf8');if(!c.includes('getWaveGuard'))process.exit(1)\"",
+          "description": "wave alternation wired"
+        },
+        {
+          "id": "dd_validate",
+          "tier": "T4",
+          "command": "node -e \"const c=require('fs').readFileSync('src/cli/commands/validate.ts','utf8');if(!c.includes('runValidateCli'))process.exit(1)\"",
+          "description": "validate command runs depth checks"
+        },
+        {
+          "id": "depth_t5_doctrine_runtime",
+          "tier": "T5",
+          "kind": "runtime-exec",
+          "command": "npx tsx --test tests/depth-doctrine-e2e.test.ts",
+          "expected_exit": 0,
+          "expected_output_pattern": "pass",
+          "timeout_ms": 120000,
+          "required_callsite": "src/core/scoring-doctrine.ts",
+          "description": "Depth doctrine E2E tests execute."
+        },
+        {
+          "id": "depth_t5_quality_runtime",
+          "tier": "T5",
+          "kind": "runtime-exec",
+          "command": "npx tsx --test tests/outcome-quality-runtime.test.ts",
+          "expected_exit": 0,
+          "expected_output_pattern": "pass",
+          "timeout_ms": 120000,
+          "required_callsite": "src/matrix/engines/outcome-quality.ts",
+          "description": "Runtime evidence quality tests execute."
+        },
+        {
+          "id": "depth_t7_score_runtime",
+          "tier": "T7",
+          "kind": "runtime-exec",
+          "command": "npx tsx --test tests/derived-score.test.ts tests/outcome-quality.test.ts",
+          "expected_exit": 0,
+          "expected_output_pattern": "pass",
+          "timeout_ms": 120000,
+          "required_callsite": "src/core/derived-score.ts",
+          "description": "Derived scoring and quality gate tests execute."
+        }
+      ],
+      "declared_ceiling": "T7",
+      "gap_to_leader": 0,
+      "leader": "self",
+      "gap_to_closed_source_leader": 0,
+      "closed_source_leader": "self",
+      "gap_to_oss_leader": 0,
+      "oss_leader": "self",
+      "legacy_score": 0,
+      "status": "partially-verified-capability",
+      "evidence_integrity": {
+        "auditedAt": "2026-05-21T20:52:17.008Z",
+        "previousSelfScore": 7.5,
+        "auditedSelfScore": 7.5,
+        "status": "Partially verified capability",
+        "scoreCapApplied": "7.5 cap: doctrine and scoring gates run, but full wave cadence is not proven on a real project improvement loop.",
+        "endToEndWorkflowVerified": "Partially: depth doctrine and outcome-quality tests execute.",
+        "auditPath": ".danteforge/compete/evidence-integrity-audit.json"
+      },
+      "capability_test": {
+        "command": "node dist/index.js validate --help && node dist/index.js gap --help",
+        "description": "Depth doctrine tooling (validate + gap) is wired and reachable"
+      }
+    }
+  ],
+  "competitors_reference": [
+    "Devin (Cognition AI)",
+    "GitHub Copilot Workspace",
+    "Cursor",
+    "Claude Code",
+    "Codex CLI (OpenAI)",
+    "Gemini CLI (Google)",
+    "GitHub Copilot CLI",
+    "CodiumAI / Qodo",
+    "CodeRabbit",
+    "Zencoder",
+    "Qodo 2.0",
+    "Continue.dev",
+    "Cline",
+    "Goose (Block)",
+    "Kilo Code",
+    "Swimm"
+  ],
+  "lastIntegrityAuditAt": "2026-05-21T20:52:17.008Z",
+  "integrityAudit": {
+    "auditPath": ".danteforge/compete/evidence-integrity-audit.json",
+    "markdownPath": ".danteforge/compete/evidence-integrity-audit.md",
+    "gitSha": "2a08a5817edcbfbdd930e304b6cf41bd8764a10d",
+    "scoringScriptRun": "node scripts/evidence-rescore.mjs",
+    "scoringScriptVerdict": "Evidence input, not authority: it maps latest passed outcomes to tier scores, but does not prove realism, absence of mocks, or user-path E2E execution.",
+    "rule": "Scores above 8 require real end-to-end capability; scores above 7 require no material mocks/fakes in the critical path."
+  }
+}

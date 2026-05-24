@@ -8,6 +8,8 @@ import { displayPrompt, savePrompt } from '../../core/prompt-builder.js';
 import { requireConstitution, runGate } from '../../core/gates.js';
 import { buildLocalSpec, extractNumberedTasks, writeArtifact } from '../../core/local-artifacts.js';
 import { withErrorBoundary } from '../../core/cli-error-boundary.js';
+import { validateSpec } from '../../core/spec-validator.js';
+import { recordStage } from '../../core/pipeline-tracker.js';
 
 const STATE_DIR = '.danteforge';
 
@@ -95,6 +97,22 @@ Output ONLY the markdown content - no preamble.`;
       await handoff('spec', { constitution: state.constitution, tasks: normalizedTasks });
       logger.success(`SPEC.md generated for "${idea}" - ${normalizedTasks.length} tasks identified`);
       logger.info('Run "danteforge clarify" next, then continue with "danteforge plan" and "danteforge tasks" before forge.');
+
+      // Validate spec quality (best-effort)
+      try {
+        const validation = validateSpec(specMd);
+        if (validation.score < 6.0) {
+          logger.warn(`[specify] Spec quality score: ${validation.score.toFixed(1)}/10 (below 6.0 threshold)`);
+          for (const issue of validation.issues.slice(0, 3)) {
+            logger.warn(`  - ${issue}`);
+          }
+        } else {
+          logger.info(`[specify] Spec quality score: ${validation.score.toFixed(1)}/10`);
+        }
+      } catch { /* best-effort */ }
+
+      // Record pipeline stage (best-effort)
+      try { await recordStage('specify'); } catch { /* best-effort */ }
       return;
     } catch (err) {
       logger.warn(`API call failed: ${err instanceof Error ? err.message : String(err)}`);
@@ -110,6 +128,20 @@ Output ONLY the markdown content - no preamble.`;
   if (!llmAvailable) {
     logger.info('Tip: Set up an API key for richer specs: danteforge config --set-key "grok:<key>"');
   }
+
+  // Validate spec quality (best-effort)
+  try {
+    const validation = validateSpec(localSpec.markdown);
+    if (validation.score < 6.0) {
+      logger.warn(`[specify] Spec quality score: ${validation.score.toFixed(1)}/10 (below 6.0 threshold)`);
+      for (const issue of validation.issues.slice(0, 3)) {
+        logger.warn(`  - ${issue}`);
+      }
+    }
+  } catch { /* best-effort */ }
+
+  // Record pipeline stage (best-effort)
+  try { await recordStage('specify'); } catch { /* best-effort */ }
 
   // --- Decision-node: record completion (best-effort) ---
   try {

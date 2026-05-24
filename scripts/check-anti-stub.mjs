@@ -46,11 +46,14 @@ const expandedPatterns = [
 
 // Files fully exempt from ALL anti-stub checks (they define or reference patterns by design)
 const fullyExemptFiles = [
-  'pdse-config.ts',        // defines the anti-stub patterns themselves
-  'check-anti-stub.mjs',   // this script references patterns by design
-  'drift-detector.ts',     // defines stub-detection regex patterns by design
-  'premium.ts',            // license validation stub is intentional (future implementation)
-  'harsh-scorer.ts',       // stub detection engine — references patterns by design
+  'pdse-config.ts',                     // defines the anti-stub patterns themselves
+  'check-anti-stub.mjs',               // this script references patterns by design
+  'drift-detector.ts',                 // defines stub-detection regex patterns by design
+  'premium.ts',                         // license validation stub is intentional (future implementation)
+  'harsh-scorer.ts',                   // stub detection engine — references patterns by design
+  'integrity-audit.ts',               // score integrity auditor — stores stub patterns as detection data
+  'matrix-build-subagent-prompt.ts',   // generates sub-agent prompts that describe anti-patterns by design
+  'pre-commit.mjs',                    // depth-doctrine guard — defines the patterns it enforces
 ];
 
 // Files exempt from expanded pattern checks only (config, doctrine, docs, code-review tools)
@@ -59,6 +62,7 @@ const expandedExemptFiles = [
   'AGENTS.md',
   'CLAUDE.md',
   'paranoid-review.ts',    // code review tool that describes code smells (references "hack", etc.)
+  'spec-validator.ts',     // validates specs by checking for incomplete-spec markers by design
   'llm-stream.ts',         // legitimate `as any` type cast for provider override
   'prompt-builder.ts',     // CSS example templates contain `#xxx` placeholders
 ];

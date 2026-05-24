@@ -298,6 +298,9 @@ describe('Matrix Kernel — Golden Flow (PRD §28 MVP)', () => {
       conflictReport,
       _runMerge: async () => ({ success: true }),
       _createTimeMachineCommit: async (input) => ({ eventId: `tm.${input.candidate.candidateId}` }),
+      _checkLocViolations: async () => [],
+      _runSecurityCourt: async () => ({ recommendation: 'allow_merge', blockedBy: [], criticalCount: 0 }),
+      _runCapabilityTest: () => ({ dimensionId: 'test', allowed: true, scoreCap: 10, reason: 'injected pass' }),
     });
     await writeMergeDecisions(mergeResult.decisions, cwd);
     await assertReportExists(cwd, MATRIX_REPORT_PATHS.mergeDecisions);

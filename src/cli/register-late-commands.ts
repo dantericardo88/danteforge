@@ -2,50 +2,45 @@ import type { Command } from 'commander';
 import { logger } from '../core/logger.js';
 import { formatAndLogError } from '../core/format-error.js';
 import { registerSanitizeCommand } from './register-sanitize-command.js';
+import { addCwdOption, addJsonOption } from './shared-options.js';
 
 type Commands = Awaited<typeof import('./commands/index.js')>;
 
 export function registerLateCommands(program: Command, C: () => Promise<Commands>): void {
-program
+addCwdOption(program
   .command('wiki-ingest')
   .description('Ingest raw source files into compiled wiki entity pages')
   .option('--bootstrap', 'Seed wiki from existing .danteforge/ artifacts')
-  .option('--prompt', 'Show the command without executing')
-  .option('--cwd <path>', 'Project directory')
+  .option('--prompt', 'Show the command without executing'))
   .action(async (opts) => { void (await C()).wikiIngestCommand({
     bootstrap: opts.bootstrap,
     prompt: opts.prompt,
     cwd: opts.cwd,
   }); });
 
-program
+addCwdOption(program
   .command('wiki-lint')
   .description('Run self-evolution scan: contradictions, staleness, link integrity, pattern synthesis')
   .option('--heuristic-only', 'Skip LLM calls (zero-cost mode)')
-  .option('--prompt', 'Show the command without executing')
-  .option('--cwd <path>', 'Project directory')
+  .option('--prompt', 'Show the command without executing'))
   .action(async (opts) => { void (await C()).wikiLintCommand({
     heuristicOnly: opts.heuristicOnly,
     prompt: opts.prompt,
     cwd: opts.cwd,
   }); });
 
-program
+addCwdOption(addJsonOption(program
   .command('wiki-query <topic>')
-  .description('Search wiki for entity pages, decisions, and patterns relevant to a topic')
-  .option('--json', 'Output machine-readable JSON')
-  .option('--cwd <path>', 'Project directory')
+  .description('Search wiki for entity pages, decisions, and patterns relevant to a topic')))
   .action(async (topic, opts) => { void (await C()).wikiQueryCommand({
     topic,
     json: opts.json,
     cwd: opts.cwd,
   }); });
 
-program
+addCwdOption(addJsonOption(program
   .command('wiki-status')
-  .description('Display wiki health metrics: pages, link density, staleness, lint pass rate, anomalies')
-  .option('--json', 'Output machine-readable JSON')
-  .option('--cwd <path>', 'Project directory')
+  .description('Display wiki health metrics: pages, link density, staleness, lint pass rate, anomalies')))
   .action(async (opts) => { void (await C()).wikiStatusCommand({
     json: opts.json,
     cwd: opts.cwd,
@@ -374,10 +369,25 @@ program
   .option('--amend <dim_score>', 'Manually set a market dim self-score: dim_id=score (0â€“10), e.g. "semantic_memory=5.5"')
   .option('--amend-file <path>', 'Batch-update market dim scores from a JSON file: { "dim_id": score, ... }')
   .option('--edit', 'Interactive matrix amendment session')
-  .option('--reset', 'Replace the competitors array in matrix.json (requires --use-canonical). Backs up the old matrix first.')
-  .option('--use-canonical', 'With --reset: apply the DanteForge-class peer list (spec-kit / BMAD / autoresearch / claude-skills / orchestration peers)')
+  .option('--reset', 'Replace the competitors array in matrix.json (requires --preset or --use-canonical). Backs up the old matrix first.')
+  .option('--use-canonical', 'With --reset: auto-resolve the project preset from package.json / state.project (DanteForge → dev-tool-optimizer; DanteCode → coding-assistant; etc.)')
+  .option('--preset <name>', 'With --reset: apply a specific preset. Values: coding-assistant | dev-tool-optimizer | agent-framework')
   .option('--calibrate', 'Run adversarial scorer and apply inflated-verdict corrections to matrix self-scores')
+  .option('--check-all-nine', 'Check if all dimensions ≥ target (default 9.0); exits 0=all green, 1=gaps remain. Writes .danteforge/GOAL_STATUS.json for /goal integration.')
+  .option('--next-dims <n>', 'Output JSON of N weakest dimensions below target — used by /goal-loop-matrix to feed /matrixdev', parseInt)
+  .option('--target <score>', 'Override 9.0 victory threshold for --check-all-nine, --auto, and --next-dims', parseFloat)
   .option('--yes', 'Skip the confirmation gate in --auto mode and --calibrate')
+  .addHelpText('after', `
+Examples:
+  danteforge compete                           Show ranked gap table vs competitors
+  danteforge compete --init                    Bootstrap competitor matrix from a scan
+  danteforge compete --sprint                  Generate /inferno masterplan for top gap
+  danteforge compete --rescore "ux_polish=8.5" Update score after a sprint
+  danteforge compete --auto                    Autonomous sprint+rescore loop (5 cycles)
+  danteforge compete --check-all-nine          Machine-readable 9.0 victory check (for CI)
+  danteforge compete --level deep              Full CHL: assess + universe + sprint loop
+  danteforge compete --json                    Machine-readable gap table for scripting
+`)
   .action(async (opts) => {
     if (opts.level || opts.raiseReady || opts.action) {
       return (await C()).canonicalCompete({
@@ -412,7 +422,11 @@ program
           edit: opts.edit as boolean | undefined,
           reset: opts.reset as boolean | undefined,
           useCanonical: opts.useCanonical as boolean | undefined,
+          preset: opts.preset as string | undefined,
           calibrate: opts.calibrate as boolean | undefined,
+          checkAllNine: opts.checkAllNine as boolean | undefined,
+          nextDims: opts.nextDims as number | undefined,
+          target: opts.target as number | undefined,
           yes: opts.yes as boolean | undefined,
         });
         if (opts.json) {
@@ -421,6 +435,31 @@ program
       } catch (err) {
         const { formatAndLogError } = await import('../core/format-error.js');
         formatAndLogError(err, 'compete');
+        process.exitCode = 1;
+      }
+    })();
+  });
+
+program
+  .command('peers')
+  .description('Diagnose which peer preset is resolved for the current project (and the competitor list /universe + /compete will use). Helps verify scoping when running DanteForge in sibling projects.')
+  .option('--preset <name>', 'Print a specific preset\'s list (coding-assistant | dev-tool-optimizer | agent-framework)')
+  .option('--all', 'Print every preset\'s list')
+  .option('--json', 'Machine-readable JSON output')
+  .option('--cwd <path>', 'Project directory override (default: current dir)')
+  .action((opts) => {
+    void (async () => {
+      try {
+        const { peers } = await import('./commands/peers.js');
+        await peers({
+          cwd: opts.cwd as string | undefined,
+          preset: opts.preset as string | undefined,
+          showAll: opts.all as boolean | undefined,
+          json: opts.json as boolean | undefined,
+        });
+      } catch (err) {
+        const { formatAndLogError } = await import('../core/format-error.js');
+        formatAndLogError(err, 'peers');
         process.exitCode = 1;
       }
     })();
@@ -543,15 +582,13 @@ program
     }
   });
 
-program
+addCwdOption(addJsonOption(program
   .command('measure')
   .description('Unified quality measurement â€” all scores in one consistent view. --level selects depth: light=fast metrics, standard=full dashboard (default), deep=+retro+nextStep.')
   .option('--level <level>', 'Canonical intensity: light | standard | deep', 'standard')
-  .option('--json', 'Machine-readable JSON output (schema: measure.v1 â€” always the same structure)')
   .option('--full', 'Show all 20 scoring dimensions (default: 8 builder dims only)')
   .option('--certify', 'Generate tamper-evident certificate hash and save to .danteforge/measure-cert.json')
-  .option('--compare <name>', 'Add a competitor comparison column')
-  .option('--cwd <path>', 'Project directory (defaults to cwd)')
+  .option('--compare <name>', 'Add a competitor comparison column')))
   .action(async (opts) => {
     try {
       const { measure: measureCmd } = await import('./commands/measure.js');
@@ -577,6 +614,15 @@ program
   .option('--json', 'Machine-readable JSON output')
   .option('--certify', 'Generate tamper-evident certificate hash and save to .danteforge/measure-cert.json')
   .option('--cwd <path>', 'Project directory (defaults to cwd)')
+  .addHelpText('after', `
+Examples:
+  danteforge score                  Fast score (< 5 seconds, no LLM)
+  danteforge score --full           Show all 20 quality dimensions
+  danteforge score --json           Machine-readable JSON for CI/scripting
+  danteforge score --level deep     Deep analysis with LLM-enhanced scoring
+  danteforge score --certify        Pin score with a tamper-evident certificate hash
+  danteforge score --cwd ./my-app   Score a different project directory
+`)
   .action(async (opts) => {
     try {
       const { measure: measureCmd } = await import('./commands/measure.js');
@@ -605,6 +651,1027 @@ program
       } catch (err) {
         const { formatAndLogError } = await import('../core/format-error.js');
         formatAndLogError(err, 'quality');
+        process.exitCode = 1;
+      }
+    })();
+  });
+
+program
+  .command('snapshot [name]')
+  .description('CLI output snapshot testing — capture and compare command output. Store in .danteforge/snapshots/.')
+  .option('--command <cmd>', 'Shell command whose output to snapshot')
+  .option('--update', 'Overwrite existing snapshot with current output')
+  .option('--timeout <ms>', 'Command timeout in ms (default: 30000)', '30000')
+  .option('--list', 'List all saved snapshots')
+  .option('--cwd <path>', 'Project directory (defaults to cwd)')
+  .addHelpText('after', `
+Examples:
+  danteforge snapshot score-json --command “danteforge score --json”
+  danteforge snapshot score-json --command “danteforge score --json” --update
+  danteforge snapshot --list
+`)
+  .action((name: string | undefined, opts) => {
+    void (async () => {
+      try {
+        const { runCliSnapshot } = await import('./commands/cli-snapshot.js');
+        await runCliSnapshot(name ?? '', opts.command as string ?? '', {
+          update: opts.update as boolean | undefined,
+          timeout: opts.timeout ? parseInt(opts.timeout as string, 10) : undefined,
+          list: opts.list as boolean | undefined,
+          cwd: opts.cwd as string | undefined,
+        });
+      } catch (err) {
+        const { formatAndLogError } = await import('../core/format-error.js');
+        formatAndLogError(err, 'snapshot');
+        process.exitCode = 1;
+      }
+    })();
+  });
+
+const dispensationCmd = program
+  .command('dispensation')
+  .description('Manage operator-approved score dispensations. While any dispensation is active, autonomy is paused globally.')
+  .addHelpText('after', `
+Subcommands:
+  list                              List all dispensations (active + cleared)
+  create <dim-id> <reason>          Open a new dispensation against a dimension
+  clear <id>                        Mark a dispensation cleared (resume autonomy)
+
+Examples:
+  danteforge dispensation list
+  danteforge dispensation create security "operator approves T3 cap until external audit closes"
+  danteforge dispensation clear disp_1736700000000_abc123
+`);
+
+dispensationCmd
+  .command('list')
+  .description('List all dispensations (active block autonomy)')
+  .option('--json', 'Machine-readable JSON output')
+  .option('--cwd <path>', 'Project directory (defaults to cwd)')
+  .action((opts) => {
+    void (async () => {
+      try {
+        const { runDispensationCommand } = await import('./commands/dispensation.js');
+        await runDispensationCommand({
+          subcommand: 'list',
+          json: opts.json as boolean | undefined,
+          cwd: opts.cwd as string | undefined,
+        });
+      } catch (err) {
+        const { formatAndLogError } = await import('../core/format-error.js');
+        formatAndLogError(err, 'dispensation list');
+        process.exitCode = 1;
+      }
+    })();
+  });
+
+dispensationCmd
+  .command('create <dimensionId> <reason>')
+  .description('Create a dispensation against a dimension (pauses autonomy globally until cleared)')
+  .option('--user <name>', 'Operator id for audit trail')
+  .option('--ttl <duration>', 'Auto-expiry duration (e.g. "7d", "24h", "30m"). After expiry the dispensation auto-clears.')
+  .option('--json', 'Machine-readable JSON output')
+  .option('--cwd <path>', 'Project directory (defaults to cwd)')
+  .action((dimensionId: string, reason: string, opts) => {
+    void (async () => {
+      try {
+        const { runDispensationCommand } = await import('./commands/dispensation.js');
+        await runDispensationCommand({
+          subcommand: 'create',
+          dimensionId, reason,
+          user: opts.user as string | undefined,
+          ttl: opts.ttl as string | undefined,
+          json: opts.json as boolean | undefined,
+          cwd: opts.cwd as string | undefined,
+        });
+      } catch (err) {
+        const { formatAndLogError } = await import('../core/format-error.js');
+        formatAndLogError(err, 'dispensation create');
+        process.exitCode = 1;
+      }
+    })();
+  });
+
+dispensationCmd
+  .command('clear <id>')
+  .description('Clear a dispensation (resumes autonomy if this was the last active one)')
+  .option('--user <name>', 'Operator id for audit trail')
+  .option('--json', 'Machine-readable JSON output')
+  .option('--cwd <path>', 'Project directory (defaults to cwd)')
+  .action((id: string, opts) => {
+    void (async () => {
+      try {
+        const { runDispensationCommand } = await import('./commands/dispensation.js');
+        await runDispensationCommand({
+          subcommand: 'clear',
+          dispensationId: id,
+          user: opts.user as string | undefined,
+          json: opts.json as boolean | undefined,
+          cwd: opts.cwd as string | undefined,
+        });
+      } catch (err) {
+        const { formatAndLogError } = await import('../core/format-error.js');
+        formatAndLogError(err, 'dispensation clear');
+        process.exitCode = 1;
+      }
+    })();
+  });
+
+program
+  .command('frontier')
+  .description('Report project frontier state: per-dim status + terminal verdict (frontier-reached | stuck-on-dims | blocked-by-dispensations | progressing). Phase H Slice 4.')
+  .option('--dim <id>', 'Show only one dimension')
+  .option('--stuck-threshold <n>', 'Waves-without-progress before a dim is marked stuck (default 3)', '3')
+  .option('--require <state>', 'CI gate: exit 0 iff terminal state matches (frontier-reached|progressing|stuck-on-dims|blocked-by-dispensations)')
+  .option('--json', 'Machine-readable JSON output')
+  .option('--cwd <path>', 'Project directory (defaults to cwd)')
+  .addHelpText('after', `
+A dim is at frontier iff THREE conjunction conditions hold:
+  1. All outcomes at declared_ceiling pass
+  2. No active dispensation against the dim
+  3. production-usage-fresh passes (or declared_ceiling < T3)
+
+The project's terminal state is one of:
+  frontier-reached         all eligible dims at frontier (exit 0)
+  stuck-on-dims            >=1 dim halted after N waves (exit 1)
+  blocked-by-dispensations operator overrides outstanding (exit 1)
+  progressing              still working (exit 1)
+
+CI gate examples:
+  danteforge frontier --require frontier-reached --json   release-blocker
+  danteforge frontier --require progressing --json        sanity check the loop isn't stuck
+
+See docs/CAPABILITY-TIERS.md for the per-tier contracts.
+`)
+  .action((opts) => {
+    void (async () => {
+      try {
+        const { runFrontierCommand } = await import('./commands/frontier.js');
+        const requireState = opts.require as string | undefined;
+        const valid = ['frontier-reached', 'progressing', 'stuck-on-dims', 'blocked-by-dispensations'];
+        if (requireState && !valid.includes(requireState)) {
+          throw new Error(`--require: unknown state "${requireState}". Use one of: ${valid.join(', ')}`);
+        }
+        await runFrontierCommand({
+          dim: opts.dim as string | undefined,
+          stuckThreshold: opts.stuckThreshold ? parseInt(opts.stuckThreshold as string, 10) : undefined,
+          requireState: requireState as 'frontier-reached' | 'progressing' | 'stuck-on-dims' | 'blocked-by-dispensations' | undefined,
+          json: opts.json as boolean | undefined,
+          cwd: opts.cwd as string | undefined,
+        });
+      } catch (err) {
+        const { formatAndLogError } = await import('../core/format-error.js');
+        formatAndLogError(err, 'frontier');
+        process.exitCode = 1;
+      }
+    })();
+  });
+
+// ── search (Phase L) ────────────────────────────────────────────────────────
+
+const searchCmd = program
+  .command('search')
+  .description('Native code-search primitive (Phase L of docs/PRDs/autonomous-frontier-reaching.md).')
+  .addHelpText('after', `
+Subcommands:
+  index                       Build or refresh the code-search index
+  find <regex>                Pattern search
+  symbol <name>               Symbol declaration lookup
+  imports <symbol>            Find production imports of a symbol
+  orphans                     Wraps orphan-audit using SearchEngine
+  benchmark                   Compare native vs ripgrep engines
+
+Examples:
+  danteforge search find "TODO"
+  danteforge search symbol createSearchEngine
+  danteforge search imports loadMatrix
+  danteforge search orphans --json
+`);
+
+searchCmd.command('index')
+  .description('Build or refresh the search index')
+  .option('--json', 'Machine-readable JSON output')
+  .option('--cwd <path>', 'Project directory (defaults to cwd)')
+  .option('--engine <name>', 'auto | native | ripgrep')
+  .action((opts) => {
+    void (async () => {
+      try {
+        const { runSearchIndex } = await import('./commands/search.js');
+        await runSearchIndex({
+          json: opts.json as boolean | undefined,
+          cwd: opts.cwd as string | undefined,
+          engine: opts.engine as 'auto' | 'native' | 'ripgrep' | undefined,
+        });
+      } catch (err) {
+        const { formatAndLogError } = await import('../core/format-error.js');
+        formatAndLogError(err, 'search index');
+        process.exitCode = 1;
+      }
+    })();
+  });
+
+searchCmd.command('find <pattern>')
+  .description('Pattern (regex) search')
+  .option('--glob <g>', 'Restrict to a file glob')
+  .option('--include-tests', 'Include test files in results')
+  .option('--max-results <n>', 'Maximum matches to return', '1000')
+  .option('--json', 'Machine-readable JSON output')
+  .option('--cwd <path>', 'Project directory (defaults to cwd)')
+  .option('--engine <name>', 'auto | native | ripgrep')
+  .action((pattern: string, opts) => {
+    void (async () => {
+      try {
+        const { runSearchFind } = await import('./commands/search.js');
+        await runSearchFind(pattern, {
+          glob: opts.glob as string | undefined,
+          includeTests: opts.includeTests as boolean | undefined,
+          maxResults: opts.maxResults ? parseInt(opts.maxResults as string, 10) : undefined,
+          json: opts.json as boolean | undefined,
+          cwd: opts.cwd as string | undefined,
+          engine: opts.engine as 'auto' | 'native' | 'ripgrep' | undefined,
+        });
+      } catch (err) {
+        const { formatAndLogError } = await import('../core/format-error.js');
+        formatAndLogError(err, 'search find');
+        process.exitCode = 1;
+      }
+    })();
+  });
+
+searchCmd.command('symbol <name>')
+  .description('Find declarations of a symbol')
+  .option('--glob <g>', 'Restrict to a file glob')
+  .option('--include-tests', 'Include test files in results')
+  .option('--json', 'Machine-readable JSON output')
+  .option('--cwd <path>', 'Project directory (defaults to cwd)')
+  .option('--engine <name>', 'auto | native | ripgrep')
+  .action((name: string, opts) => {
+    void (async () => {
+      try {
+        const { runSearchSymbol } = await import('./commands/search.js');
+        await runSearchSymbol(name, {
+          glob: opts.glob as string | undefined,
+          includeTests: opts.includeTests as boolean | undefined,
+          json: opts.json as boolean | undefined,
+          cwd: opts.cwd as string | undefined,
+          engine: opts.engine as 'auto' | 'native' | 'ripgrep' | undefined,
+        });
+      } catch (err) {
+        const { formatAndLogError } = await import('../core/format-error.js');
+        formatAndLogError(err, 'search symbol');
+        process.exitCode = 1;
+      }
+    })();
+  });
+
+searchCmd.command('imports <symbol>')
+  .description('Find production imports of a symbol')
+  .option('--include-tests', 'Include test files in results')
+  .option('--json', 'Machine-readable JSON output')
+  .option('--cwd <path>', 'Project directory (defaults to cwd)')
+  .option('--engine <name>', 'auto | native | ripgrep')
+  .action((symbol: string, opts) => {
+    void (async () => {
+      try {
+        const { runSearchImports } = await import('./commands/search.js');
+        await runSearchImports(symbol, {
+          includeTests: opts.includeTests as boolean | undefined,
+          json: opts.json as boolean | undefined,
+          cwd: opts.cwd as string | undefined,
+          engine: opts.engine as 'auto' | 'native' | 'ripgrep' | undefined,
+        });
+      } catch (err) {
+        const { formatAndLogError } = await import('../core/format-error.js');
+        formatAndLogError(err, 'search imports');
+        process.exitCode = 1;
+      }
+    })();
+  });
+
+searchCmd.command('orphans')
+  .description('Wraps orphan-audit using SearchEngine')
+  .option('--json', 'Machine-readable JSON output')
+  .option('--cwd <path>', 'Project directory (defaults to cwd)')
+  .action((opts) => {
+    void (async () => {
+      try {
+        const { runSearchOrphans } = await import('./commands/search.js');
+        const result = await runSearchOrphans({
+          json: opts.json as boolean | undefined,
+          cwd: opts.cwd as string | undefined,
+        });
+        if (result.orphans.length > 0) process.exitCode = 1;
+      } catch (err) {
+        const { formatAndLogError } = await import('../core/format-error.js');
+        formatAndLogError(err, 'search orphans');
+        process.exitCode = 1;
+      }
+    })();
+  });
+
+searchCmd.command('benchmark')
+  .description('Compare native vs ripgrep engine performance')
+  .option('--json', 'Machine-readable JSON output')
+  .option('--cwd <path>', 'Project directory (defaults to cwd)')
+  .action((opts) => {
+    void (async () => {
+      try {
+        const { runSearchBenchmark } = await import('./commands/search.js');
+        await runSearchBenchmark({
+          json: opts.json as boolean | undefined,
+          cwd: opts.cwd as string | undefined,
+        });
+      } catch (err) {
+        const { formatAndLogError } = await import('../core/format-error.js');
+        formatAndLogError(err, 'search benchmark');
+        process.exitCode = 1;
+      }
+    })();
+  });
+
+searchCmd.command('hybrid <query...>')
+  .description('Phase L.3 hybrid retrieval: BM25 candidates → transformer-embedding rerank (downloads ~80MB on first run).')
+  .option('--top-k <n>', 'Number of final hits to return (default 10)', '10')
+  .option('--candidate-k <n>', 'BM25 candidate pool size (default 50)', '50')
+  .option('--json', 'Machine-readable JSON output')
+  .option('--cwd <path>', 'Project directory (defaults to cwd)')
+  .action((queryParts: string[], opts) => {
+    void (async () => {
+      try {
+        const { runSearchHybrid } = await import('./commands/search.js');
+        await runSearchHybrid(queryParts.join(' '), {
+          topK: parseInt(opts.topK as string, 10),
+          candidateK: parseInt(opts.candidateK as string, 10),
+          json: opts.json as boolean | undefined,
+          cwd: opts.cwd as string | undefined,
+        });
+      } catch (err) {
+        const { formatAndLogError } = await import('../core/format-error.js');
+        formatAndLogError(err, 'search hybrid');
+        process.exitCode = 1;
+      }
+    })();
+  });
+
+// ── research (Phase N-Q) ────────────────────────────────────────────────────
+
+const researchCmd = program
+  .command('research')
+  .description('Research-mode crusade infrastructure (Phase N-Q of docs/PRDs/autonomous-frontier-reaching.md).')
+  .addHelpText('after', `
+Subcommands (read-only):
+  status                      Show project-wide research summary
+  history <dim>               Show prior research waves for a dim
+  caps                        List dims marked architecturally capped
+
+Subcommands (deferred to Phase O):
+  resolve <wave-id>           Operator resolution of a conflict (refuses until Phase O)
+  replay <wave-id>            Replay a wave from artifacts (refuses until Phase O)
+
+Examples:
+  danteforge research status --json
+  danteforge research history testing
+  danteforge research caps
+`);
+
+researchCmd.command('status')
+  .description('Show research summary')
+  .option('--json', 'Machine-readable JSON output')
+  .option('--cwd <path>', 'Project directory (defaults to cwd)')
+  .action((opts) => {
+    void (async () => {
+      try {
+        const { runResearchStatus } = await import('./commands/research.js');
+        await runResearchStatus({ json: opts.json as boolean | undefined, cwd: opts.cwd as string | undefined });
+      } catch (err) {
+        const { formatAndLogError } = await import('../core/format-error.js');
+        formatAndLogError(err, 'research status');
+        process.exitCode = 1;
+      }
+    })();
+  });
+
+researchCmd.command('history <dimensionId>')
+  .description('Show prior research waves for a dimension')
+  .option('--json', 'Machine-readable JSON output')
+  .option('--cwd <path>', 'Project directory (defaults to cwd)')
+  .action((dimensionId: string, opts) => {
+    void (async () => {
+      try {
+        const { runResearchHistory } = await import('./commands/research.js');
+        await runResearchHistory(dimensionId, { json: opts.json as boolean | undefined, cwd: opts.cwd as string | undefined });
+      } catch (err) {
+        const { formatAndLogError } = await import('../core/format-error.js');
+        formatAndLogError(err, 'research history');
+        process.exitCode = 1;
+      }
+    })();
+  });
+
+researchCmd.command('caps')
+  .description('List dims marked architecturally capped')
+  .option('--json', 'Machine-readable JSON output')
+  .option('--cwd <path>', 'Project directory (defaults to cwd)')
+  .action((opts) => {
+    void (async () => {
+      try {
+        const { runResearchCaps } = await import('./commands/research.js');
+        await runResearchCaps({ json: opts.json as boolean | undefined, cwd: opts.cwd as string | undefined });
+      } catch (err) {
+        const { formatAndLogError } = await import('../core/format-error.js');
+        formatAndLogError(err, 'research caps');
+        process.exitCode = 1;
+      }
+    })();
+  });
+
+researchCmd.command('start <dimensionId>')
+  .description('Run a research wave for a dimension (Phase O parallel-agent dispatch).')
+  .option('--force', 'Force activation even when criteria fail (audit-logged)')
+  .option('--real-agents', 'Dispatch real Claude Code subprocesses per role (consumes operator LLM quota). Default: mocked-by-default fixture outputs')
+  .option('--json', 'Machine-readable JSON output')
+  .option('--cwd <path>', 'Project directory (defaults to cwd)')
+  .action((dimensionId: string, opts) => {
+    void (async () => {
+      try {
+        const { runResearchStart } = await import('./commands/research.js');
+        await runResearchStart(dimensionId, {
+          force: opts.force as boolean | undefined,
+          realAgents: opts.realAgents as boolean | undefined,
+          json: opts.json as boolean | undefined,
+          cwd: opts.cwd as string | undefined,
+        });
+      } catch (err) {
+        const { formatAndLogError } = await import('../core/format-error.js');
+        formatAndLogError(err, 'research start');
+        process.exitCode = 1;
+      }
+    })();
+  });
+
+researchCmd.command('resolve <waveId>')
+  .description('Operator resolution of a wave verdict (PROMOTE | CONFLICT | CAP)')
+  .option('--json', 'Machine-readable JSON output')
+  .option('--cwd <path>', 'Project directory (defaults to cwd)')
+  .action((waveId: string, opts) => {
+    void (async () => {
+      try {
+        const { runResearchResolve } = await import('./commands/research.js');
+        await runResearchResolve(waveId, {
+          json: opts.json as boolean | undefined,
+          cwd: opts.cwd as string | undefined,
+        });
+      } catch (err) {
+        const { formatAndLogError } = await import('../core/format-error.js');
+        formatAndLogError(err, 'research resolve');
+        process.exitCode = 1;
+      }
+    })();
+  });
+
+researchCmd.command('replay <waveId>')
+  .description('Re-run deterministic synthesis on an existing wave\'s artifacts')
+  .option('--cwd <path>', 'Project directory (defaults to cwd)')
+  .action((waveId: string, opts) => {
+    void (async () => {
+      try {
+        const { runResearchReplay } = await import('./commands/research.js');
+        await runResearchReplay(waveId, { cwd: opts.cwd as string | undefined });
+      } catch (err) {
+        const { formatAndLogError } = await import('../core/format-error.js');
+        formatAndLogError(err, 'research replay');
+        process.exitCode = 1;
+      }
+    })();
+  });
+
+program
+  .command('outcomes')
+  .description('Run declared outcomes per dimension. Score = derived from evidence (Phase F+G). Replaces writable scores entirely once dims migrate.')
+  .option('--dim <id>', 'Run only on this dimension')
+  .option('--tier <name>', 'Run only outcomes of this tier (T0..T6)')
+  .option('--force-cold', 'Force re-execution even when cached evidence exists for this SHA')
+  .option('--status', 'Report current evidence + derived scores without re-running')
+  .option('--json', 'Machine-readable JSON output')
+  .option('--cwd <path>', 'Project directory (defaults to cwd)')
+  .addHelpText('after', `
+The outcome system replaces writable scores. Each dim declares outcomes — shell
+commands that must exit 0 to "prove" a tier. The derived score is computed from
+which outcomes pass, never written. Inflation becomes structurally impossible.
+
+Examples:
+  danteforge outcomes                Run all outcomes across all dims
+  danteforge outcomes --status       Show current derived scores from cached evidence
+  danteforge outcomes --dim security Run only the security dim
+  danteforge outcomes --tier T1      Run only T1 (compiles-cold) outcomes
+  danteforge outcomes --force-cold   Bypass gitSha cache
+
+Evidence is written to .danteforge/outcome-evidence/<sha>-<dim>-<outcome>.json.
+See ~/.claude/plans/dapper-hatching-aurora.md for the design.
+`)
+  .action((opts) => {
+    void (async () => {
+      try {
+        const { runOutcomesCli } = await import('./commands/outcomes.js');
+        await runOutcomesCli({
+          dim: opts.dim as string | undefined,
+          tier: opts.tier as string | undefined,
+          forceCold: opts.forceCold as boolean | undefined,
+          status: opts.status as boolean | undefined,
+          json: opts.json as boolean | undefined,
+          cwd: opts.cwd as string | undefined,
+        });
+      } catch (err) {
+        const { formatAndLogError } = await import('../core/format-error.js');
+        formatAndLogError(err, 'outcomes');
+        process.exitCode = 1;
+      }
+    })();
+  });
+
+program
+  .command('validate [dimId]')
+  .description('Depth Doctrine: run dimension outcomes and report whether the score ceiling was lifted. Code without a receipt is a hypothesis, not a feature.')
+  .option('--all', 'Run outcomes for all dimensions (ignores [dimId])')
+  .option('--quick', 'Run only T1/T2 outcomes (fast checks only)')
+  .option('--force-cold', 'Bypass gitSha cache and re-execute all outcomes')
+  .option('--json', 'Machine-readable JSON output')
+  .option('--cwd <path>', 'Project directory (defaults to cwd)')
+  .addHelpText('after', `
+Depth doctrine: dims without passing outcomes are structurally capped at 7.0.
+Run \`danteforge validate <dim>\` to lift the ceiling by providing execution receipts.
+
+Score tiers:
+  ≤7.0  no outcomes declared or no outcome passing (legacy ceiling)
+  ≤8.5  outcome evidence exists, passed=true (T6 tier cap)
+  ≤9.5  fresh evidence ≤7 days
+
+Examples:
+  danteforge validate testing              Run outcomes for the testing dimension
+  danteforge validate testing --quick      Only T1/T2 (typecheck + unit tests)
+  danteforge validate --all                Run all dims with declared outcomes
+  danteforge validate --all --json         Machine-readable result for CI
+
+This command exits 1 if any outcome fails (CI gate).
+`)
+  .action((dimId: string | undefined, opts) => {
+    void (async () => {
+      try {
+        const { runValidateCli } = await import('./commands/validate.js');
+        const result = await runValidateCli({
+          dimId,
+          all: opts.all as boolean | undefined,
+          quick: opts.quick as boolean | undefined,
+          forceCold: opts.forceCold as boolean | undefined,
+          json: opts.json as boolean | undefined,
+          cwd: opts.cwd as string | undefined,
+        });
+        if (!result.allPassed) process.exitCode = 1;
+      } catch (err) {
+        const { formatAndLogError } = await import('../core/format-error.js');
+        formatAndLogError(err, 'validate');
+        process.exitCode = 1;
+      }
+    })();
+  });
+
+program
+  .command('gap [dimId]')
+  .description('Gap analyzer — shows exactly what\'s needed to reach the next score tier. The depth doctrine roadmap for any dimension.')
+  .option('--all', 'Analyze all dimensions')
+  .option('--json', 'Machine-readable JSON output')
+  .option('--cwd <path>', 'Project directory (defaults to cwd)')
+  .action((dimId: string | undefined, opts) => {
+    void (async () => {
+      try {
+        const { runGapCli } = await import('./commands/gap.js');
+        await runGapCli({
+          dimId,
+          all: opts.all as boolean | undefined,
+          json: opts.json as boolean | undefined,
+          cwd: opts.cwd as string | undefined,
+        });
+      } catch (err) {
+        const { formatAndLogError } = await import('../core/format-error.js');
+        formatAndLogError(err, 'gap');
+        process.exitCode = 1;
+      }
+    })();
+  });
+
+const hardenCmd = program
+  .command('harden')
+  .description('Deterministic hardening checks (Phase C of Capability Ladder). Catches orphan modules, claim/reality mismatches, hardcoded fallbacks. Cannot be gamed by LLM agents.')
+  .option('--dim <id>', 'Run only on this dimension')
+  .option('--check <id>', 'Run only this check: orphan-audit | claim-auditor | hardcoded-fallback | import-resolves | functional-diff')
+  .option('--gate', 'Exit 1 if any dimension above the 7.0 threshold fails (CI mode)')
+  .option('--json', 'Machine-readable JSON output')
+  .option('--cwd <path>', 'Project directory (defaults to cwd)')
+  .addHelpText('after', `
+Examples:
+  danteforge harden                              All checks, all dims above 7.0
+  danteforge harden --dim security               One dim only
+  danteforge harden --check orphan-audit         One check across all dims
+  danteforge harden --gate                       CI mode — exits 1 on any fail
+  danteforge harden migrate                      Dry-run: infer capability_callsite per dim
+  danteforge harden migrate --apply              Write inferred callsites to matrix.json
+
+The harden gate fires automatically inside mergeScoreProposals at score ≥ 7.0.
+This command is the operator-facing entry point and the CI gate.
+`)
+  .action((opts) => {
+    void (async () => {
+      try {
+        const { runHardenCommand } = await import('./commands/harden.js');
+        await runHardenCommand({
+          dim: opts.dim as string | undefined,
+          check: opts.check as undefined,
+          gate: opts.gate as boolean | undefined,
+          json: opts.json as boolean | undefined,
+          cwd: opts.cwd as string | undefined,
+        });
+      } catch (err) {
+        const { formatAndLogError } = await import('../core/format-error.js');
+        formatAndLogError(err, 'harden');
+        process.exitCode = 1;
+      }
+    })();
+  });
+
+hardenCmd
+  .command('audit-orphans')
+  .description('Three Pillars P2: list every dimension whose capability_callsite is only imported by tests. Caps each at 6.0.')
+  .option('--json', 'Machine-readable JSON output')
+  .option('--cwd <path>', 'Project directory (defaults to cwd)')
+  .action((_opts, cmd) => {
+    // optsWithGlobals merges parent `harden` flags (--json, --cwd) with this subcommand's own.
+    const opts = cmd.optsWithGlobals();
+    void (async () => {
+      try {
+        const { runHardenAuditOrphans } = await import('./commands/harden.js');
+        await runHardenAuditOrphans({
+          json: opts.json as boolean | undefined,
+          cwd: opts.cwd as string | undefined,
+        });
+      } catch (err) {
+        const { formatAndLogError } = await import('../core/format-error.js');
+        formatAndLogError(err, 'harden audit-orphans');
+        process.exitCode = 1;
+      }
+    })();
+  });
+
+hardenCmd
+  .command('audit-recency')
+  .description('Three Pillars P3: list every dimension whose production importer is older than N days OR does not trace to an entry point. Caps each at 7.0.')
+  .option('--threshold-days <n>', 'Days threshold (default 30; can be overridden in .danteforge/config/entry-points.json)', '30')
+  .option('--json', 'Machine-readable JSON output')
+  .option('--cwd <path>', 'Project directory (defaults to cwd)')
+  .action((_opts, cmd) => {
+    const opts = cmd.optsWithGlobals();
+    void (async () => {
+      try {
+        const { runHardenAuditRecency } = await import('./commands/harden.js');
+        await runHardenAuditRecency({
+          thresholdDays: parseInt(opts.thresholdDays as string, 10),
+          json: opts.json as boolean | undefined,
+          cwd: opts.cwd as string | undefined,
+        });
+      } catch (err) {
+        const { formatAndLogError } = await import('../core/format-error.js');
+        formatAndLogError(err, 'harden audit-recency');
+        process.exitCode = 1;
+      }
+    })();
+  });
+
+hardenCmd
+  .command('migrate')
+  .description('Infer capability_callsite + test_callsite for each dim from its capability_test command. Dry-run by default; use --apply to write.')
+  .option('--apply', 'Write inferred callsites to matrix.json (default: dry-run only)')
+  .option('--accept-low', 'Also apply low-confidence inferences (default: high+medium only)')
+  .option('--json', 'Machine-readable JSON output')
+  .option('--cwd <path>', 'Project directory (defaults to cwd)')
+  .action((opts) => {
+    void (async () => {
+      try {
+        const { runHardenMigrateCommand } = await import('./commands/harden.js');
+        const acceptConfidence: Array<'high' | 'medium' | 'low'> = opts.acceptLow
+          ? ['high', 'medium', 'low']
+          : ['high', 'medium'];
+        await runHardenMigrateCommand({
+          apply: opts.apply as boolean | undefined,
+          acceptConfidence,
+          json: opts.json as boolean | undefined,
+          cwd: opts.cwd as string | undefined,
+        });
+      } catch (err) {
+        const { formatAndLogError } = await import('../core/format-error.js');
+        formatAndLogError(err, 'harden migrate');
+        process.exitCode = 1;
+      }
+    })();
+  });
+
+// ── harden-crusade ───────────────────────────────────────────────────────────
+//
+// Crusade variant: autoresearch per-dim + the 7-check harden gate as verifier.
+// Differs from /crusade in that autoresearch is the PRIMARY driver (not a
+// stall fallback). Useful when inferno's Ollama-dependent OSS-harvest sub-step
+// is unreliable. The harden gate caps any honestly-unsupportable score.
+
+program
+  .command('harden-crusade')
+  .description('Autonomous crusade-like loop: autoresearch per dim + 7-check harden gate verification. Reaches target or the natural ceiling honestly.')
+  .option('--goal <goal>', 'Mission statement passed to each autoresearch wave', 'Push every dim toward its honest ceiling')
+  .option('--parallel <n>', 'Number of dimensions to push simultaneously (default 4)', '4')
+  .option('--target <n>', 'Score target per dimension (default 9.0)', '9')
+  .option('--max-dim-cycles <n>', 'Per-dim cycle cap (default 6)', '6')
+  .option('--time <m>', 'Autoresearch time budget per cycle in minutes (default 30)', '30')
+  .option('--loop', 'Outer loop: re-rank + re-run until ALL_DONE (max 10 passes)', false)
+  .option('--dimension <id>', 'Promote this dimension to the front of every work queue (intel-driven targeting)')
+  .option('--json', 'Machine-readable JSON output')
+  .option('--cwd <path>', 'Project directory (defaults to cwd)')
+  .addHelpText('after', `
+Examples:
+  danteforge harden-crusade                                Single pass, 4 weakest dims, 30m autoresearch each
+  danteforge harden-crusade --loop                         Re-rank + repeat until ALL_DONE
+  danteforge harden-crusade --time 60 --parallel 2         Longer budget, fewer parallel dims
+  danteforge harden-crusade --target 8 --goal "stability"  Custom target + goal
+
+Per dim per cycle:
+  1. danteforge autoresearch --metric <dim> --time Nm
+  2. Re-score the dim
+  3. danteforge harden --dim <dim> (in-process)
+  4. FRONTIER_REACHED if score >= target AND gate clean
+  5. AT_CEILING if gate caps below target (legitimate)
+  6. GATE_BLOCKED / MAX_CYCLES otherwise
+
+Honors regrade-cadence + autonomy rules (R1-R6) like /crusade.
+Excludes dims whose declared_ceiling cap is below target.
+Writes report to HARDEN_CRUSADE_REPORT.md.
+`)
+  .action((opts) => {
+    void (async () => {
+      try {
+        const { runHardenCrusade } = await import('./commands/harden-crusade.js');
+        const result = await runHardenCrusade({
+          goal: opts.goal as string,
+          parallel: parseInt(opts.parallel as string, 10),
+          target: parseFloat(opts.target as string),
+          maxDimCycles: parseInt(opts.maxDimCycles as string, 10),
+          timeMinutes: parseInt(opts.time as string, 10),
+          loop: opts.loop as boolean,
+          cwd: opts.cwd as string | undefined,
+          focusDimension: opts.dimension as string | undefined,
+        });
+        if (opts.json) {
+          process.stdout.write(JSON.stringify(result, null, 2) + '\n');
+        }
+        if (result.status !== 'ALL_DONE') process.exitCode = 1;
+      } catch (err) {
+        const { formatAndLogError } = await import('../core/format-error.js');
+        formatAndLogError(err, 'harden-crusade');
+        process.exitCode = 1;
+      }
+    })();
+  });
+
+program
+  .command('probe')
+  .description('Cold-build runtime probe — the T1 gate of the Capability Ladder. Auto-detects turbo/pnpm/lerna/npm.')
+  .option('--tier <name>', 'Probe tier (T0|T1|T2|T3-T6). Default T1 (cold compile).', 'T1')
+  .option('--json', 'Machine-readable JSON output')
+  .option('--no-cache', 'Force cold run even if cached evidence exists for this SHA', true)
+  .option('--timeout-ms <n>', 'Probe timeout (default 15 min)')
+  .option('--cwd <path>', 'Project directory (defaults to cwd)')
+  .option('--quick-check', 'M.7 fast-fail: scan src/ for broken relative imports in <1s. Skips the full build.')
+  .addHelpText('after', `
+Examples:
+  danteforge probe                             Cold T1 build at repo root
+  danteforge probe --tier T2                   Run tests cold
+  danteforge probe --quick-check               Fast import-resolves pre-scan (no build)
+  danteforge probe --json > probe.json         Machine-readable output
+  danteforge probe --cwd ../DanteAgents        Probe a sibling project
+
+Evidence is written to .danteforge/runtime-evidence/<sha>-<tier>.json.
+The Capability Ladder gate caps any dimension score above:
+  T0=1.0  T1=4.0  T2=5.0  T3=6.0  T4=7.0  T5=8.0  T6=8.5
+`)
+  .action((opts) => {
+    void (async () => {
+      try {
+        const { runProbeCommand } = await import('./commands/probe.js');
+        await runProbeCommand({
+          tier: opts.tier as string | undefined,
+          json: opts.json as boolean | undefined,
+          forceCold: opts.noCache !== false,
+          noCache: opts.noCache !== false,
+          cwd: opts.cwd as string | undefined,
+          timeoutMs: opts.timeoutMs ? parseInt(opts.timeoutMs as string, 10) : undefined,
+          quickCheck: opts.quickCheck as boolean | undefined,
+        });
+      } catch (err) {
+        const { formatAndLogError } = await import('../core/format-error.js');
+        formatAndLogError(err, 'probe');
+        process.exitCode = 1;
+      }
+    })();
+  });
+
+program
+  .command('honest-rescore')
+  .description('Reality-check the competitive matrix against runtime evidence. Writes a .honest.json file, never mutates matrix.json.')
+  .option('--json', 'Machine-readable JSON output')
+  .option('--regrade', 'Mandatory skeptic regrade: run harden gate against every dim, reset wavesSinceLastRegrade')
+  .option('--index-fresh', 'Force fresh search index for regrade (Phase M.5; default: true)', true)
+  .option('--no-index-fresh', 'Skip fresh-indexing for forensic replay against historical SHA')
+  .option('--cwd <path>', 'Project directory (defaults to cwd)')
+  .addHelpText('after', `
+Examples:
+  danteforge honest-rescore                          Reality-check the current matrix
+  danteforge honest-rescore --json                   Machine-readable output for CI
+  danteforge honest-rescore --regrade                Skeptic regrade (default index-fresh)
+  danteforge honest-rescore --regrade --no-index-fresh   Skip fresh index (forensic replay)
+  danteforge honest-rescore --cwd ../DanteAgents
+
+Reads .danteforge/runtime-evidence/<sha>-<tier>.json files (run danteforge probe
+first) and applies the Capability Ladder tier caps. Writes:
+  .danteforge/compete/matrix.honest.json    Copy with self scores clamped
+  .danteforge/compete/matrix.honest.diff.md Per-dimension diff report
+
+--regrade (Phase M.5): rebuilds the SearchEngine index fresh on every run so
+the skeptic regrade sees the current SHA's code without cached lookups from
+prior waves. The whole point of regrade is a skeptic look — caching is
+hostile to that.
+
+matrix.json itself is NEVER modified. Operator must copy if satisfied.
+`)
+  .action((opts) => {
+    void (async () => {
+      try {
+        const { runHonestRescoreCommand } = await import('./commands/honest-rescore.js');
+        await runHonestRescoreCommand({
+          json: opts.json as boolean | undefined,
+          regrade: opts.regrade as boolean | undefined,
+          indexFresh: opts.indexFresh as boolean | undefined,
+          cwd: opts.cwd as string | undefined,
+        });
+      } catch (err) {
+        const { formatAndLogError } = await import('../core/format-error.js');
+        formatAndLogError(err, 'honest-rescore');
+        process.exitCode = 1;
+      }
+    })();
+  });
+
+program
+  .command('mcp-tools [name]')
+  .description('List MCP tools exposed by the DanteForge server. Used by Claude Code / Codex / DanteCode.')
+  .option('--json', 'Machine-readable JSON output')
+  .option('--category <name>', 'Filter by category (Scoring, Gates, Workflow, etc.)')
+  .option('--query <text>', 'Filter by name/description substring')
+  .addHelpText('after', `
+Examples:
+  danteforge mcp-tools                              List all tools grouped by category
+  danteforge mcp-tools --category Scoring           Filter by category
+  danteforge mcp-tools --query lessons              Substring filter
+  danteforge mcp-tools danteforge_score --json      Detailed schema for one tool
+`)
+  .action((name: string | undefined, opts) => {
+    void (async () => {
+      try {
+        const { runMcpTools } = await import('./commands/mcp-tools.js');
+        await runMcpTools(name, {
+          json: opts.json as boolean | undefined,
+          category: opts.category as string | undefined,
+          query: opts.query as string | undefined,
+        });
+      } catch (err) {
+        const { formatAndLogError } = await import('../core/format-error.js');
+        formatAndLogError(err, 'mcp-tools');
+        process.exitCode = 1;
+      }
+    })();
+  });
+
+program
+  .command('error-lookup [code]')
+  .description('Look up DanteForge error codes (DF-SETUP-001, etc.) and their remedies. List all codes with no argument.')
+  .option('--json', 'Output machine-readable JSON')
+  .option('--category <name>', 'Filter by category: setup | config | workflow | execution | verification')
+  .addHelpText('after', `
+Examples:
+  danteforge error-lookup                         List all known DF-* error codes
+  danteforge error-lookup DF-SETUP-002            Show details for a specific code
+  danteforge error-lookup --category workflow     Filter by category
+  danteforge error-lookup DF-SETUP-002 --json     Machine-readable output
+`)
+  .action((code: string | undefined, opts) => {
+    void (async () => {
+      try {
+        const { runErrorLookup } = await import('./commands/error-lookup.js');
+        await runErrorLookup(code, {
+          json: opts.json as boolean | undefined,
+          category: opts.category as string | undefined,
+        });
+      } catch (err) {
+        const { formatAndLogError } = await import('../core/format-error.js');
+        formatAndLogError(err, 'error-lookup');
+        process.exitCode = 1;
+      }
+    })();
+  });
+
+program
+  .command('code-health')
+  .description('Maintainability report — LOC, JSDoc coverage, TODO markers. Exits 1 on hard-cap or coverage violations.')
+  .option('--json', 'Output machine-readable JSON')
+  .option('--cwd <path>', 'Project directory (defaults to cwd)')
+  .addHelpText('after', `
+Examples:
+  danteforge code-health                Show maintainability report
+  danteforge code-health --json         Machine-readable for CI
+`)
+  .action((opts) => {
+    void (async () => {
+      try {
+        const { runCodeHealth } = await import('./commands/code-health.js');
+        await runCodeHealth({
+          json: opts.json as boolean | undefined,
+          cwd: opts.cwd as string | undefined,
+        });
+      } catch (err) {
+        const { formatAndLogError } = await import('../core/format-error.js');
+        formatAndLogError(err, 'code-health');
+        process.exitCode = 1;
+      }
+    })();
+  });
+
+program
+  .command('harness [subcommand]')
+  .description('AI coding assistant harness — detect Claude Code/Codex/DanteCode and generate per-assistant briefs')
+  .option('--for <name>', 'Target assistant for brief: claude-code | codex | dantecode')
+  .option('--output <path>', 'Write brief to file instead of stdout')
+  .option('--cwd <path>', 'Project directory (defaults to cwd)')
+  .addHelpText('after', `
+Subcommands:
+  status                          Show detected assistants and harness state (default)
+  brief                           Generate a session brief for the receiving assistant
+
+Examples:
+  danteforge harness                          Show which assistants are detected
+  danteforge harness brief --for claude-code  Print a Claude Code session brief
+  danteforge harness brief --for codex --output .codex/BRIEF.md
+`)
+  .action((subcommand: string | undefined, opts) => {
+    void (async () => {
+      try {
+        const { runHarness } = await import('./commands/harness.js');
+        await runHarness(subcommand, {
+          for: opts.for as 'claude-code' | 'codex' | 'dantecode' | undefined,
+          output: opts.output as string | undefined,
+          cwd: opts.cwd as string | undefined,
+        });
+      } catch (err) {
+        const { formatAndLogError } = await import('../core/format-error.js');
+        formatAndLogError(err, 'harness');
+        process.exitCode = 1;
+      }
+    })();
+  });
+
+program
+  .command('changelog')
+  .description('Auto-generate CHANGELOG entries from git conventional commits')
+  .option('--from <ref>', 'Starting git ref (default: last tag)')
+  .option('--to <ref>', 'Ending git ref (default: HEAD)', 'HEAD')
+  .option('--version <label>', 'Version label for the entry (default: YYYY-MM-DD-next)')
+  .option('--append', 'Append to CHANGELOG.md instead of showing dry-run')
+  .option('--dry', 'Print the entry without writing (default)', true)
+  .option('--cwd <path>', 'Project directory (defaults to cwd)')
+  .addHelpText('after', `
+Examples:
+  danteforge changelog                     Show what would be added (dry-run)
+  danteforge changelog --version 0.6.0 --append   Append to CHANGELOG.md
+  danteforge changelog --from v0.5.0 --to v0.6.0  Specific range
+`)
+  .action((opts) => {
+    void (async () => {
+      try {
+        const { runChangelog } = await import('./commands/changelog.js');
+        await runChangelog({
+          from: opts.from as string | undefined,
+          to: opts.to as string | undefined,
+          version: opts.version as string | undefined,
+          append: opts.append as boolean | undefined,
+          dry: !opts.append,
+          cwd: opts.cwd as string | undefined,
+        });
+      } catch (err) {
+        const { formatAndLogError } = await import('../core/format-error.js');
+        formatAndLogError(err, 'changelog');
         process.exitCode = 1;
       }
     })();
@@ -649,10 +1716,20 @@ program
   .description('Smart entry point: shows project state on existing projects, setup wizard on first run')
   .option('--yes', 'Skip confirmation and run immediately')
   .option('--simple', 'Show only core project quality gaps (hides meta/ecosystem dimensions)')
-  .option('--status', 'Show status panel only â€” no wizard, no improvement offer')
+  .option('--status', 'Show status panel only — no wizard, no improvement offer')
   .option('--fresh', 'Force full setup wizard even when a project already exists')
   .option('--journey', 'Show 5 workflow journey templates and exit')
   .option('--advanced', 'Run init with IDE auto-detection and adversarial scoring setup')
+  .addHelpText('after', `
+Examples:
+  danteforge go                     Show current project state (score, gaps, next step)
+  danteforge go --status            State panel only — no improvement offer
+  danteforge go --yes               Skip confirmation, run one improvement cycle immediately
+  danteforge go “improve security”  Target a specific dimension in the improvement cycle
+  danteforge go --simple            Show only core quality gaps (no meta/ecosystem noise)
+  danteforge go --fresh             Re-run first-time setup wizard
+  danteforge go --journey           Show 5 workflow templates to pick the right flow
+`)
   .action((goal, opts) => {
     void (async () => {
       try {
@@ -694,6 +1771,24 @@ program
         process.exitCode = 1;
       }
     })();
+  });
+
+program
+  .command('compliance-report')
+  .description('Generate a tamper-evident compliance report — audit trail, RBAC, evidence chain')
+  .option('--format <fmt>', 'Output format: markdown or json', 'markdown')
+  .option('--since <date>', 'Only include events since this date (YYYY-MM-DD)')
+  .option('--out <file>', 'Write report to file (default: stdout)')
+  .option('--cwd <path>', 'Project directory')
+  .action(async (opts) => {
+    try {
+      const { runComplianceReport } = await import('./commands/compliance-report.js');
+      await runComplianceReport({ format: opts.format, since: opts.since, out: opts.out, cwd: opts.cwd });
+    } catch (err) {
+      const { formatAndLogError } = await import('../core/format-error.js');
+      formatAndLogError(err, 'compliance-report');
+      process.exitCode = 1;
+    }
   });
 
 program

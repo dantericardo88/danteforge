@@ -11,8 +11,20 @@ import { recordMemory } from '../../core/memory-engine.js';
 import { savePrompt, displayPrompt } from '../../core/prompt-builder.js';
 import { resolveSkill } from '../../core/skills.js';
 import { withErrorBoundary } from '../../core/cli-error-boundary.js';
+import { getLessonStats, searchLessons as searchLessonsIndex } from '../../core/lessons-index.js';
 
 const LESSONS_FILE = path.join('.danteforge', 'lessons.md');
+
+/**
+ * A flat, export-friendly representation of a single lesson entry.
+ * Used by --export, --stats, and --search flags.
+ */
+export interface LessonEntry {
+  id: string;
+  category: string;
+  content: string;
+  timestamp: string;
+}
 const MAX_LESSONS_LINES = 2000;
 
 /**
@@ -246,6 +258,116 @@ export async function captureVerifyLessons(
   }
 }
 
+// ---------------------------------------------------------------------------
+// Helpers for --export, --stats, --search
+// ---------------------------------------------------------------------------
+
+/**
+ * Parse lessons.md into an array of LessonEntry objects suitable for JSON export.
+ * Reuses the block-splitting logic already used in lessons-index.ts parseLessons().
+ */
+function parseLessonEntries(content: string): LessonEntry[] {
+  const entries: LessonEntry[] = [];
+  const blocks = content.split(/^## /m).filter(Boolean);
+
+  for (let i = 0; i < blocks.length; i++) {
+    const block = blocks[i]!;
+    const lines = block.trim().split('\n');
+    const headerLine = lines[0] ?? '';
+
+    // Header may be "[Category] Rule title" or "YYYY-MM-DD | category | severity"
+    const categoryBracket = headerLine.match(/^\[([^\]]+)\]/);
+    const pipeHeader = headerLine.split('|').map(p => p.trim());
+
+    let category = 'General';
+    let timestamp = new Date().toISOString();
+
+    if (categoryBracket) {
+      category = categoryBracket[1] ?? 'General';
+    } else if (pipeHeader.length >= 2) {
+      // Format: "YYYY-MM-DD | category | severity"
+      const maybeDate = pipeHeader[0] ?? '';
+      const d = new Date(maybeDate);
+      if (!isNaN(d.getTime())) timestamp = d.toISOString();
+      category = pipeHeader[1] ?? 'General';
+    }
+
+    // Look for _Added: <ISO> to override timestamp
+    for (const line of lines) {
+      const addedMatch = line.match(/_Added:\s*(\S+)/);
+      if (addedMatch) {
+        const d = new Date(addedMatch[1] ?? '');
+        if (!isNaN(d.getTime())) timestamp = d.toISOString();
+      }
+    }
+
+    // Collect content: Rule line or Mistake+Rule combo
+    let content = '';
+    for (const line of lines.slice(1)) {
+      if (line.startsWith('**Rule:**') || line.startsWith('Rule:')) {
+        content += (content ? ' ' : '') + line.replace(/^\*?\*?Rule:\*?\*?/, '').trim();
+      } else if (line.startsWith('**Mistake:**') || line.startsWith('Mistake:')) {
+        content += (content ? ' | Mistake: ' : 'Mistake: ') + line.replace(/^\*?\*?Mistake:\*?\*?/, '').trim();
+      }
+    }
+    // Fallback: use the header line as content if nothing else extracted
+    if (!content) content = headerLine;
+
+    entries.push({ id: `lesson-${i}`, category, content, timestamp });
+  }
+
+  return entries;
+}
+
+/**
+ * Handle --export flag: write all lessons to .danteforge/lessons-export.json.
+ */
+async function handleExport(): Promise<void> {
+  const content = await readLessons();
+  const entries = parseLessonEntries(content);
+  const exportPath = path.join('.danteforge', 'lessons-export.json');
+  await fs.mkdir('.danteforge', { recursive: true });
+  await fs.writeFile(exportPath, JSON.stringify(entries, null, 2), 'utf8');
+  logger.success(`Exported ${entries.length} lesson(s) to ${exportPath}`);
+}
+
+/**
+ * Handle --stats flag: display summary statistics about lessons.
+ */
+async function handleStats(): Promise<void> {
+  const stats = await getLessonStats();
+  logger.info('Lessons Knowledge Base — Statistics');
+  logger.info('');
+  logger.info(`Total lessons:        ${stats.totalCount}`);
+  logger.info('');
+  logger.info('By category:');
+  for (const [cat, count] of Object.entries(stats.byCategory).sort((a, b) => b[1] - a[1])) {
+    logger.info(`  ${cat.padEnd(20)} ${count}`);
+  }
+  logger.info('');
+  logger.info(`Oldest lesson:        ${stats.oldestDate ?? 'N/A'}`);
+  logger.info(`Most recent lesson:   ${stats.newestDate ?? 'N/A'}`);
+  logger.info(`Estimated rate:       ${stats.estimatedWeeklyRate} lesson(s)/week`);
+}
+
+/**
+ * Handle --search <query> flag: full-text search across lessons.
+ */
+async function handleSearch(query: string): Promise<void> {
+  const results = await searchLessonsIndex(query);
+  if (results.length === 0) {
+    logger.info(`No lessons matched "${query}".`);
+    return;
+  }
+  logger.info(`Found ${results.length} lesson(s) matching "${query}":`);
+  logger.info('');
+  for (const entry of results) {
+    logger.info(`[${entry.id}] [${entry.category}] ${entry.timestamp}`);
+    logger.info(`  ${entry.content}`);
+    logger.info('');
+  }
+}
+
 /**
  * Main CLI command handler for `danteforge lessons`.
  */
@@ -318,13 +440,101 @@ RULE: <one sentence rule to prevent this in future>`;
   await recordLesson('General', correction, correction, 'user correction');
 }
 
+/**
+ * Handle --velocity flag: compute and display improvement velocity from matrix history.
+ */
+async function handleVelocity(
+  opts: { _matrixPath?: string },
+): Promise<void> {
+  const cwd = process.cwd();
+  const matrixPath =
+    opts._matrixPath ?? path.join(cwd, '.danteforge', 'compete', 'matrix.json');
+
+  let matrixRaw: string;
+  try {
+    matrixRaw = await fs.readFile(matrixPath, 'utf8');
+  } catch {
+    logger.warn('No matrix.json found — run `danteforge compete` first.');
+    return;
+  }
+
+  type SprintHistoryEntry = { dimensionId?: string; before: number; after: number; date: string };
+  type MatrixDimension = { id: string; sprint_history?: SprintHistoryEntry[] };
+
+  const matrix = JSON.parse(matrixRaw) as { dimensions: MatrixDimension[] };
+  const dims: MatrixDimension[] = Array.isArray(matrix.dimensions) ? matrix.dimensions : [];
+
+  const { computeVelocityReport, formatVelocityReport } = await import(
+    '../../core/improvement-velocity.js'
+  );
+
+  // Flatten sprint_history across all dimensions into a unified SprintEntry[].
+  type SprintEntry = { dimension: string; before: number; after: number; date: string };
+  const sprints: SprintEntry[] = [];
+  for (const dim of dims) {
+    for (const entry of dim.sprint_history ?? []) {
+      sprints.push({
+        dimension: entry.dimensionId ?? dim.id,
+        before: entry.before,
+        after: entry.after,
+        date: entry.date,
+      });
+    }
+  }
+
+  const report = computeVelocityReport(sprints);
+  process.stdout.write(formatVelocityReport(report) + '\n');
+}
+
+/**
+ * Handle --dedupe flag: deduplicate lessons in the .danteforge/lessons.md file.
+ */
+async function handleDedupe(opts: { _cwd?: string } = {}): Promise<void> {
+  const cwd = opts._cwd ?? process.cwd();
+  const lessonsPath = path.join(cwd, '.danteforge', 'lessons.md');
+
+  let content: string;
+  try {
+    content = await fs.readFile(lessonsPath, 'utf8');
+  } catch {
+    logger.info('No lessons.md found — nothing to deduplicate.');
+    return;
+  }
+
+  const { classifyLesson, deduplicateLessons } = await import(
+    '../../core/lesson-classifier.js'
+  );
+
+  // Split by ## blocks preserving each block's content.
+  const blocks = content.split(/^(?=## )/m).filter(b => b.trim().length > 0);
+
+  const classified = blocks.map(block => classifyLesson(block));
+  const before = classified.length;
+
+  const deduplicated = deduplicateLessons(classified);
+  const after = deduplicated.length;
+  const removed = before - after;
+
+  const newContent = deduplicated.map(l => l.content).join('\n');
+  await fs.writeFile(lessonsPath, newContent, 'utf8');
+
+  logger.success(`Removed ${removed} duplicate lesson(s). ${after} remaining.`);
+}
+
 export async function lessons(correction?: string, options: {
   prompt?: boolean;
   compact?: boolean;
+  export?: boolean;
+  stats?: boolean;
+  search?: string;
+  velocity?: boolean;
+  dedupe?: boolean;
   _loadState?: typeof loadState;
   _saveState?: typeof saveState;
   _llmCaller?: typeof callLLM;
   _isLLMAvailable?: typeof isLLMAvailable;
+  _matrixPath?: string;
+  _cwd?: string;
 } = {}) {
   const loadFn = options._loadState ?? loadState;
   const saveFn = options._saveState ?? saveState;
@@ -344,6 +554,32 @@ export async function lessons(correction?: string, options: {
 
   logger.success('DanteForge Lessons — Self-Improving Knowledge Base');
   logger.info('');
+
+  // --- New flags: export / stats / search ---
+  if (options.export) {
+    await handleExport();
+    return;
+  }
+
+  if (options.stats) {
+    await handleStats();
+    return;
+  }
+
+  if (options.search) {
+    await handleSearch(options.search);
+    return;
+  }
+
+  if (options.velocity) {
+    await handleVelocity({ _matrixPath: options._matrixPath });
+    return;
+  }
+
+  if (options.dedupe) {
+    await handleDedupe({ _cwd: options._cwd });
+    return;
+  }
 
   const state = await loadFn();
 

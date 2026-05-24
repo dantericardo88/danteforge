@@ -240,7 +240,6 @@ describe('ascend() — engine integration via injection', () => {
 
     let defineUniverseCalled = false;
     let loopCalled = false;
-    let saveMatrixCalled = false;
     let writeFileCalled = false;
 
     const result = await runAscend({
@@ -263,7 +262,6 @@ describe('ascend() — engine integration via injection', () => {
         maturityAssessment: {} as never,
       }),
       _runLoop: async (ctx) => { loopCalled = true; return ctx; },
-      _saveMatrix: async () => { saveMatrixCalled = true; },
       _loadState: async () => ({ project: 'test', workflowStage: 'initialized', currentPhase: 1, tasks: {}, lastHandoff: '', profile: 'balanced', auditLog: [] } as never),
       _writeFile: async () => { writeFileCalled = true; },
       _computeStrictDims: async () => makeStrictDims(),
@@ -271,7 +269,15 @@ describe('ascend() — engine integration via injection', () => {
 
     assert.ok(defineUniverseCalled, 'defineUniverse should be called when no matrix exists');
     assert.ok(loopCalled, 'runLoop should be called for improvement cycle');
-    assert.ok(saveMatrixCalled, 'matrix should be saved after improvement');
+    // Phase E migration: scores flow through proposal+reconcile, which writes
+    // matrix.json on disk via the real saveMatrix (not the _saveMatrix seam).
+    // Verify the matrix landed on disk instead of asserting on captured saveFn.
+    const fs = await import('node:fs/promises');
+    const path = await import('node:path');
+    const matrixPath = path.join(cwd, '.danteforge', 'compete', 'matrix.json');
+    let onDiskExists = false;
+    try { await fs.access(matrixPath); onDiskExists = true; } catch { /* none */ }
+    assert.ok(onDiskExists, 'matrix.json should exist on disk after the run (proposal flow ensures this)');
     assert.ok(writeFileCalled, 'ASCEND_REPORT.md should be written');
     assert.ok(result.cyclesRun >= 1, 'at least 1 cycle should have run');
   });

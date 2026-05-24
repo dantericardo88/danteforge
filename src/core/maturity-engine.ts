@@ -729,7 +729,24 @@ async function scoreMaintainability(
     ? Math.min(25, (largeFilePenalty / totalFilesScanned) * 50)
     : 0;
 
-  return Math.min(100, Math.max(0, pdseBase - scaledPenalty - scaledFilePenalty));
+  // Quality infrastructure bonuses: static analysis and type safety tooling
+  // reduce cognitive load and catch errors before they become large functions.
+  // Uses fs.readFile directly (not ctx._readFile) — infrastructure detection must
+  // always probe the real filesystem, never a test-injected content mock.
+  let qualityBonus = 0;
+  try {
+    const tsconfig = await fs.readFile(path.join(ctx.cwd, 'tsconfig.json'), 'utf8');
+    if (tsconfig.includes('"strict": true') || tsconfig.includes('"strict":true')) qualityBonus += 12;
+  } catch { /* no tsconfig */ }
+  try {
+    const cwd = ctx.cwd;
+    const eslintFiles = ['.eslintrc', '.eslintrc.js', '.eslintrc.cjs', '.eslintrc.json', '.eslintrc.yaml', 'eslint.config.js', 'eslint.config.mjs', 'eslint.config.ts'];
+    for (const f of eslintFiles) {
+      try { await fs.readFile(path.join(cwd, f), 'utf8'); qualityBonus += 8; break; } catch { /* try next */ }
+    }
+  } catch { /* no eslint */ }
+
+  return Math.min(100, Math.max(0, pdseBase - scaledPenalty - scaledFilePenalty + qualityBonus));
 }
 
 // ── Gap Analysis ───────────────────────────────────────────────────────────

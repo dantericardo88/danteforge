@@ -46,39 +46,6 @@ export interface InstallAssistantSkillsOptions {
 const CODEX_BOOTSTRAP_START = '<!-- DANTEFORGE CODEX BOOTSTRAP START -->';
 const CODEX_BOOTSTRAP_END = '<!-- DANTEFORGE CODEX BOOTSTRAP END -->';
 
-const CODEX_NATIVE_WORKFLOW_COMMANDS = [
-  'spark',
-  'ember',
-  'canvas',
-  'blaze',
-  'nova',
-  'inferno',
-  'review',
-  'constitution',
-  'specify',
-  'clarify',
-  'tech-decide',
-  'plan',
-  'tasks',
-  'design',
-  'forge',
-  'ux-refine',
-  'party',
-  'autoforge',
-  'magic',
-  'qa',
-  'ship',
-  'retro',
-  'lessons',
-  'debug',
-  'browse',
-  'oss',
-  'local-harvest',
-  'harvest',
-  'awesome-scan',
-  'synthesize',
-] as const;
-
 const CODEX_GLOBAL_COMMANDS: Array<[string, string]> = [
   ['setup-assistants', 'npx danteforge setup assistants --assistants codex'],
   ['doctor', 'npx danteforge doctor'],
@@ -267,7 +234,7 @@ function isCommandAssignment(line: string, command: string): boolean {
   return new RegExp(`^\\s*${command.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\s*=`).test(line);
 }
 
-function mergeCodexCommandsConfig(existingContent: string): string {
+function mergeCodexCommandsConfig(existingContent: string, nativeWorkflowCommands: readonly string[]): string {
   const newline = existingContent.includes('\r\n') ? '\r\n' : '\n';
   const normalized = existingContent.replace(/\r\n/g, '\n');
   const lines = normalized.length > 0 ? normalized.split('\n') : [];
@@ -306,7 +273,7 @@ function mergeCodexCommandsConfig(existingContent: string): string {
       continue;
     }
 
-    if (CODEX_NATIVE_WORKFLOW_COMMANDS.some(command => isCommandAssignment(line, command))) {
+    if (nativeWorkflowCommands.some(command => isCommandAssignment(line, command))) {
       continue;
     }
 
@@ -333,6 +300,19 @@ function mergeCodexCommandsConfig(existingContent: string): string {
   return mergedLines.join(newline);
 }
 
+async function readPackagedCommandNames(): Promise<string[]> {
+  const commandsDir = resolvePackagedCommandsDir();
+  try {
+    const entries = await fs.readdir(commandsDir);
+    return entries
+      .filter(entry => entry.endsWith('.md'))
+      .map(entry => path.basename(entry, '.md'))
+      .sort();
+  } catch {
+    return [];
+  }
+}
+
 async function syncCodexConfig(homeDir: string): Promise<void> {
   const codexDir = path.join(homeDir, '.codex');
   const configPath = path.join(codexDir, 'config.toml');
@@ -348,13 +328,14 @@ async function syncCodexConfig(homeDir: string): Promise<void> {
     }
   }
 
-  const mergedContent = mergeCodexCommandsConfig(existingContent);
+  const nativeWorkflowCommands = await readPackagedCommandNames();
+  const mergedContent = mergeCodexCommandsConfig(existingContent, nativeWorkflowCommands);
   await fs.writeFile(configPath, mergedContent, 'utf8');
 }
 
-async function syncCodexCommands(homeDir: string): Promise<void> {
+async function copyCommandMarkdownTo(homeDir: string, relativeTargetDir: string): Promise<void> {
   const commandsDir = resolvePackagedCommandsDir();
-  const targetDir = path.join(homeDir, '.codex', 'commands');
+  const targetDir = path.join(homeDir, relativeTargetDir);
   let entries: string[];
 
   try {
@@ -369,6 +350,14 @@ async function syncCodexCommands(homeDir: string): Promise<void> {
     if (!entry.endsWith('.md')) continue;
     await fs.copyFile(path.join(commandsDir, entry), path.join(targetDir, entry));
   }
+}
+
+async function syncCodexCommands(homeDir: string): Promise<void> {
+  await copyCommandMarkdownTo(homeDir, path.join('.codex', 'commands'));
+}
+
+async function syncCodexPrompts(homeDir: string): Promise<void> {
+  await copyCommandMarkdownTo(homeDir, path.join('.codex', 'prompts'));
 }
 
 /**
@@ -434,6 +423,63 @@ async function syncToolCommands(targetDir: string, kind: 'cursor' | 'windsurf'):
       ].join('\n');
       await fs.writeFile(outPath, frontmatter + parsed.body, 'utf8');
     }
+  }
+}
+
+function escapeYamlScalar(value: string): string {
+  return JSON.stringify(value);
+}
+
+function buildCodexCommandSkill(commandName: string, description: string, body: string): string {
+  const title = commandName
+    .split('-')
+    .map(part => part.length > 0 ? part[0]!.toUpperCase() + part.slice(1) : part)
+    .join(' ');
+  return [
+    '---',
+    `name: danteforge-${commandName}`,
+    `description: ${escapeYamlScalar(`Native DanteForge /${commandName} workflow command for Codex. ${description}`.trim())}`,
+    'source: danteforge-command',
+    '---',
+    '',
+    `# DanteForge /${commandName}`,
+    '',
+    `Use this skill when the user invokes \`/${commandName}\`, asks for \`danteforge ${commandName}\`, or refers to the DanteForge ${title} workflow.`,
+    '',
+    '## Codex Execution Rule',
+    '',
+    'Execute this as a native Codex workflow using the current Codex model/session for reasoning. Prefer the workflow instructions below over shelling out to a configured CLI LLM provider. Use the `danteforge` CLI only for deterministic repo actions, verification, parity tests, or when the user explicitly asks for terminal execution.',
+    '',
+    '## Command Instructions',
+    '',
+    body.trim(),
+    '',
+  ].join('\n');
+}
+
+async function syncCodexCommandSkills(homeDir: string): Promise<void> {
+  const commandsDir = resolvePackagedCommandsDir();
+  const targetRoot = path.join(homeDir, '.codex', 'skills');
+  let entries: string[];
+  try {
+    entries = await fs.readdir(commandsDir);
+  } catch {
+    return;
+  }
+
+  await fs.mkdir(targetRoot, { recursive: true });
+
+  for (const entry of entries) {
+    if (!entry.endsWith('.md')) continue;
+    const commandName = path.basename(entry, '.md');
+    const skillDir = path.join(targetRoot, `danteforge-${commandName}`);
+    const parsed = await parseCommandFile(path.join(commandsDir, entry));
+    await fs.mkdir(skillDir, { recursive: true });
+    await fs.writeFile(
+      path.join(skillDir, 'SKILL.md'),
+      buildCodexCommandSkill(commandName, parsed.description, parsed.body),
+      'utf8',
+    );
   }
 }
 
@@ -555,6 +601,8 @@ async function installNativeSkills(
   if (assistant === 'codex') {
     await syncCodexConfig(homeDir);
     await syncCodexCommands(homeDir);
+    await syncCodexPrompts(homeDir);
+    await syncCodexCommandSkills(homeDir);
     await syncCodexBootstrap(homeDir);
   }
 
@@ -654,7 +702,10 @@ export async function installAssistantSkills(
     }
 
     await installNativeSkills(assistant, skillDirs, skillsDir, targetDir, homeDir, projectDir);
-    results.push({ assistant, targetDir, installedSkills: skillDirs, installMode: 'skills' });
+    const installedSkills = assistant === 'codex'
+      ? (await fs.readdir(targetDir)).filter(entry => !entry.startsWith('.')).sort()
+      : skillDirs;
+    results.push({ assistant, targetDir, installedSkills, installMode: 'skills' });
   }
 
   return { homeDir, assistants: results };

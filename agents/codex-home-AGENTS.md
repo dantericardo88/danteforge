@@ -1,6 +1,6 @@
 # DanteForge Codex Bootstrap
 
-If the user invokes a DanteForge workflow slash command such as `/autoforge`, `/party`, `/magic`, or another command provided by repo `commands/*.md` or `~/.codex/commands/*.md`, treat it as a native Codex workflow command and execute the workflow in the workspace.
+If the user invokes a DanteForge workflow slash command such as `/autoforge`, `/party`, `/magic`, `/inferno`, `/crusade`, `/oss`, `/oss-harvest`, or another command provided by repo `commands/*.md`, `~/.codex/commands/*.md`, `~/.codex/prompts/*.md`, or a generated `danteforge-<command>` skill, treat it as a native Codex workflow command and execute the workflow in the workspace.
 
 Only prefer the installed `danteforge` CLI when the user explicitly asks for terminal/CLI execution, when you are validating CLI behavior, or when no native command file is available.
 
@@ -33,7 +33,10 @@ CLI equivalents when explicit terminal execution is requested:
 - `danteforge lessons`
 - `danteforge awesome-scan`
 
-Command markdown is also synced under `~/.codex/commands` for workflow commands such as `/autoforge`, `/party`, `/magic`, `/brainstorm`, `/qa`, `/ship`, `/retro`, `/browse`, and `/verify`.
+Every command in `commands/*.md` is synced for Codex in three forms:
+- `~/.codex/commands/<command>.md` for native command-file readers
+- `~/.codex/prompts/<command>.md` for clients that enumerate custom prompts
+- `~/.codex/skills/danteforge-<command>/SKILL.md` for `/skills` and `$danteforge-<command>` suggestions
 
 Relevant bundled skills include:
 - `danteforge-cli`

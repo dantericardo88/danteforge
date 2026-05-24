@@ -78,10 +78,6 @@ describe('compete --auto strict scoring', () => {
     const tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), 'compete-strict2-'));
     await makeTmpMatrix(tmpDir);
 
-    let capturedScore: number | null = null;
-    const { updateDimensionScore: _orig, ...rest } = await import('../src/core/compete-matrix.js');
-    void rest;
-
     await compete({
       auto: true,
       maxCycles: 1,
@@ -91,7 +87,6 @@ describe('compete --auto strict scoring', () => {
         const raw = await fs.readFile(path.join(tmpDir, '.danteforge', 'compete', 'matrix.json'), 'utf8');
         return JSON.parse(raw);
       },
-      _saveMatrix: async (m) => { capturedScore = m.overallSelfScore; },
       _postSprintScore: async () => ({
         displayScore: 8.5, // inflated
         displayDimensions: { autonomy: 9, selfImprovement: 9, tokenEconomy: 9 },
@@ -104,9 +99,11 @@ describe('compete --auto strict scoring', () => {
       _stdout: () => {},
     });
 
-    // After strict override, autonomy dim gets patched to 2.0 (20/10), pulling score down
-    // The matrix update uses the patched displayScore
-    assert.ok(capturedScore !== null, 'matrix must be saved after cycle');
+    // After strict override, autonomy dim gets patched to 2.0 (20/10), pulling score down.
+    // The proposal flow writes the patched score to matrix.json via mergeScoreProposals.
+    const finalRaw = await fs.readFile(path.join(tmpDir, '.danteforge', 'compete', 'matrix.json'), 'utf8');
+    const final = JSON.parse(finalRaw) as { overallSelfScore: number };
+    assert.ok(typeof final.overallSelfScore === 'number', 'matrix must persist overallSelfScore on disk after cycle');
   });
 
   it('--yes flag skips the confirmation gate', async () => {

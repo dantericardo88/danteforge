@@ -19,9 +19,9 @@ import type { ScoringDimension } from './harsh-scorer.js';
 import {
   buildFeatureUniverse,
   saveFeatureUniverse,
-  getCanonicalDanteForgeCompetitors,
   type FeatureUniverse,
 } from './feature-universe.js';
+import { resolveProjectCompetitors } from './peer-presets.js';
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -200,11 +200,20 @@ export async function defineUniverse(options: UniverseDefinerOptions = {}): Prom
   const buildFeatureUniverseFn = options._buildFeatureUniverse ?? buildFeatureUniverse;
   const saveFeatureUniverseFn = options._saveFeatureUniverse ?? saveFeatureUniverse;
   try {
-    const competitorNames: string[] = matrix.competitors && matrix.competitors.length > 0
-      ? matrix.competitors.map((c: unknown) =>
-          typeof c === 'string' ? c : (c as { name?: string })?.name ?? String(c),
-        ).filter(Boolean)
-      : getCanonicalDanteForgeCompetitors();
+    let competitorNames: string[];
+    if (matrix.competitors && matrix.competitors.length > 0) {
+      competitorNames = matrix.competitors.map((c: unknown) =>
+        typeof c === 'string' ? c : (c as { name?: string })?.name ?? String(c),
+      ).filter(Boolean);
+    } else {
+      // Project-aware preset fallback (DanteForge → dev-tool-optimizer,
+      // DanteCode et al → coding-assistant). Empty if project is unknown.
+      const resolved = await resolveProjectCompetitors(cwd, { project: projectName });
+      competitorNames = resolved.competitors;
+    }
+    if (competitorNames.length === 0) {
+      logger.info(`[Ascend] Feature universe build skipped — no peer preset resolved for "${projectName}". Run \`danteforge compete --reset --preset <name>\` to seed.`);
+    } else {
     const universe: FeatureUniverse = await buildFeatureUniverseFn(competitorNames, {
       projectName,
       projectDescription: projectDescription || projectName,
@@ -212,6 +221,7 @@ export async function defineUniverse(options: UniverseDefinerOptions = {}): Prom
     if (universe.features.length > 0) {
       await saveFeatureUniverseFn(universe, cwd);
       logger.info(`[Ascend] Feature universe built: ${universe.features.length} features across ${universe.competitors.length} competitors.`);
+    }
     }
   } catch (err) {
     logger.warn(`[Ascend] Feature universe build skipped (${err instanceof Error ? err.message : String(err)}). Run \`danteforge universe\` to build it manually.`);

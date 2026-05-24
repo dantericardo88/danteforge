@@ -26,6 +26,12 @@ program
   .option('--light', 'Skip hard gates for simple changes')
   .option('--ceo-review', 'Apply founder/CEO intent elevation before writing SPEC.md')
   .option('--refine', 'Inject PDSE score as context for iterative improvement')
+  .addHelpText('after', `
+Examples:
+  danteforge specify "build a REST API with auth"
+  danteforge specify "refactor auth module" --light
+  danteforge specify "add payment flow" --prompt   # copy-paste prompt only
+  danteforge specify "user dashboard" --ceo-review # CEO-intent elevation`)
   .action((...a: unknown[]) => void C().then(c => (c.specify as (...x: unknown[]) => unknown)(...a)));
 
 program
@@ -39,13 +45,22 @@ program
   .command('plan [goal]')
   .description('Plan a goal or generate detailed plan from spec. Use --level to select scope.')
   .option('--level <level>', 'Canonical intensity: light | standard | deep')
-  .option('--mode <mode>', 'sprint | define-done â€” dispatch to a specialized planning mode')
+  .option('--mode <mode>', 'sprint | define-done — dispatch to a specialized planning mode')
   .option('--prompt', 'Generate a copy-paste prompt instead of auto-generating')
   .option('--light', 'Skip hard gates for simple changes')
   .option('--ceo-review', 'Apply CEO-level strategic review before writing PLAN.md')
   .option('--refine', 'Inject PDSE score as context for iterative improvement')
   .option('--skip-critique', 'Skip adversarial critique gate after plan generation')
+  .option('--no-score', 'Skip plan quality scoring (faster, for light/CI mode)')
   .option('--stakes <level>', 'Critique depth: low|medium|high|critical (default: medium)')
+  .addHelpText('after', `
+Examples:
+  danteforge plan                       Generate plan from current SPEC.md
+  danteforge plan “add oauth login”     Plan for a specific goal (creates SPEC if needed)
+  danteforge plan --level deep          Deep planning with adversarial critique
+  danteforge plan --mode sprint         Sprint planning mode (produces sprint tasks)
+  danteforge plan --prompt              Generate copy-paste prompt (no API key needed)
+  danteforge plan --light               Skip gates for quick prototyping`)
   .action(async (goal, opts) => {
     if (opts.level || opts.mode || opts.skipCritique) {
       return (await C()).canonicalPlan(goal as string | undefined, {
@@ -60,6 +75,7 @@ program
       prompt: opts.prompt as boolean | undefined,
       light: opts.light as boolean | undefined,
       skipCritique: opts.skipCritique as boolean | undefined,
+      noScore: opts.score === false,
       stakes: opts.stakes as string | undefined,
     });
   });
@@ -81,7 +97,25 @@ program
   .description('Break plan into executable tasks')
   .option('--prompt', 'Generate a copy-paste prompt instead of auto-generating')
   .option('--light', 'Skip hard gates for simple changes')
+  .option('--validate', 'Validate dependency graph: check for cycles and dangling references')
   .action((...a: unknown[]) => void C().then(c => (c.tasks as (...x: unknown[]) => unknown)(...a)));
+
+program
+  .command('traceability')
+  .description('Show spec-to-plan traceability matrix — which tasks cover which requirements')
+  .option('--json', 'Machine-readable JSON output')
+  .option('--spec <path>', 'Path to spec file (default: .danteforge/SPEC.md)')
+  .option('--plan <path>', 'Path to plan/tasks file (default: .danteforge/TASKS.md)')
+  .option('--cwd <path>', 'Working directory')
+  .action(async (opts) => {
+    const cmds = await C();
+    await (cmds.traceability as (o: unknown) => Promise<void>)({
+      json: opts.json as boolean | undefined,
+      specFile: opts.spec as string | undefined,
+      planFile: opts.plan as string | undefined,
+      cwd: opts.cwd as string | undefined,
+    });
+  });
 
 program
   .command('design [prompt-or-action]')
@@ -151,7 +185,36 @@ program
   .option('--figma', 'Use the prompt-driven Figma refinement path during this wave (requires --prompt)')
   .option('--skip-ux', 'Skip UX refinement even with --figma')
   .option('--confirm', 'Require explicit human approval via policy gate before executing')
-  .action((...a: unknown[]) => void C().then(c => (c.forge as (...x: unknown[]) => unknown)(...a)));
+  .option('--dry-run', 'Preview what would be executed without making any changes')
+  .addHelpText('after', `
+Examples:
+  danteforge forge                  Execute wave 1 with balanced profile
+  danteforge forge --profile quality  Slower but higher-quality output
+  danteforge forge --prompt         Generate copy-paste prompt (no API key needed)
+  danteforge forge --light          Skip hard gates for quick iteration
+  danteforge forge --parallel       Run wave steps in parallel (faster, needs more RAM)
+  danteforge forge --worktree       Isolated git worktree — safe to run on dirty branches
+  danteforge forge --confirm        Pause for human review before executing each step
+  danteforge forge --dry-run        Preview tasks without executing (safe for CI checks)
+`)
+  .action((phase: unknown, opts: Record<string, unknown>) => {
+    // Direct dynamic import: forge loads the full GSD wave executor and
+    // context-compression pipeline — expensive at startup, cheap to defer.
+    void (async () => {
+      const { forge } = await import('./commands/forge.js');
+      return forge(typeof phase === 'string' ? phase : '1', {
+        profile: opts['profile'] as string | undefined,
+        parallel: opts['parallel'] as boolean | undefined,
+        prompt: opts['prompt'] as boolean | undefined,
+        light: opts['light'] as boolean | undefined,
+        worktree: opts['worktree'] as boolean | undefined,
+        figma: opts['figma'] as boolean | undefined,
+        skipUx: opts['skipUx'] as boolean | undefined,
+        confirm: opts['confirm'] as boolean | undefined,
+        dryRun: opts['dryRun'] as boolean | undefined,
+      });
+    })();
+  });
 
 program
   .command('party')
@@ -162,7 +225,14 @@ program
   .option('--skip-ux', 'Skip UX refinement even with --figma')
   .option('--design', 'Activate Design Agent for UI generation via OpenPencil')
   .option('--no-design', 'Exclude Design Agent from party mode')
-  .action((...a: unknown[]) => void C().then(c => (c.party as (...x: unknown[]) => unknown)(...a)));
+  .action((...a: unknown[]) => {
+    // Direct dynamic import: party-mode loads agent-dag, headless-spawner,
+    // and all agent roles — a large transitive graph not needed at startup.
+    void (async () => {
+      const { party } = await import('./commands/party.js');
+      return (party as (...x: unknown[]) => unknown)(...a);
+    })();
+  });
 
 program
   .command('review')
@@ -198,7 +268,28 @@ program
   .option('--json', 'Output results as JSON to stdout (logs go to stderr)')
   .option('--light', 'Skip pipeline execution checks; substitute npm test + build (for CLI projects or early-stage pipelines)')
   .option('--cwd <path>', 'Working directory for verification (defaults to current directory)')
+  .option('--retry <n>', 'Retry verify up to N times on failure (waits 2s between attempts)', '0')
+  .addHelpText('after', `
+Examples:
+  danteforge verify                 Full verification pass
+  danteforge verify --light         Quick check (npm test + build only)
+  danteforge verify --release       Include release/package checks
+  danteforge verify --json          Machine-readable JSON output
+  danteforge verify --retry 3       Retry up to 3 times on transient failures`)
   .action((...a: unknown[]) => void C().then(c => (c.verify as (...x: unknown[]) => unknown)(...a)));
+
+program
+  .command('convergence-health')
+  .description('Check convergence and self-healing health — detects stalls, stale locks, corrupt STATE.yaml')
+  .option('--cwd <path>', 'Working directory (defaults to current directory)')
+  .option('--json', 'Output machine-readable JSON')
+  .option('--auto-repair', 'Automatically fix detected issues (stale locks, failed verify status)')
+  .addHelpText('after', `
+Examples:
+  danteforge convergence-health                     Detect convergence issues
+  danteforge convergence-health --auto-repair       Auto-fix stale locks and reset failed verify
+  danteforge convergence-health --json              Machine-readable JSON for CI monitoring`)
+  .action(async (opts) => (await C()).convergenceHealth({ cwd: opts.cwd, json: opts.json, autoRepair: opts.autoRepair }));
 
 program
   .command('synthesize')
@@ -393,6 +484,46 @@ program
   .action((...a: unknown[]) => void C().then(c => (c.hygiene as (...x: unknown[]) => unknown)(...a)));
 
 program
+  .command('complexity')
+  .description('Analyze cyclomatic complexity and LOC metrics across src/ — exits 1 if any file exceeds --threshold')
+  .option('--threshold <score>', 'Exit 1 if any file complexity score exceeds this value', '20')
+  .option('--json', 'Output machine-readable JSON')
+  .option('--watch', 'Re-run analysis every 5 seconds (poll mode)')
+  .option('--cwd <path>', 'Working directory')
+  .action(async (opts) => {
+    try {
+      const { complexity } = await import('./commands/complexity.js');
+      await complexity({
+        threshold: opts.threshold !== undefined ? parseFloat(opts.threshold as string) : undefined,
+        json: opts.json as boolean | undefined,
+        watch: opts.watch as boolean | undefined,
+        cwd: opts.cwd as string | undefined,
+      });
+    } catch (err) {
+      formatAndLogError(err, 'complexity');
+      process.exitCode = 1;
+    }
+  });
+
+program
+  .command('test-coverage')
+  .description('Detect uncovered src/core modules and report mutation scores')
+  .option('--json', 'Output machine-readable JSON')
+  .option('--fail-below <percent>', 'Exit 1 if coverage % is below this value (default: 70)', '70')
+  .action(async (opts) => {
+    try {
+      const { testCoverage } = await import('./commands/test-coverage.js');
+      await testCoverage({
+        json: opts.json as boolean | undefined,
+        failBelow: opts.failBelow !== undefined ? parseFloat(opts.failBelow as string) : undefined,
+      });
+    } catch (err) {
+      formatAndLogError(err, 'test-coverage');
+      process.exitCode = 1;
+    }
+  });
+
+program
   .command('dashboard')
   .description('Launch progress dashboard (local HTML, auto-closes in 5 min)')
   .option('--port <number>', 'Port to serve on', '4242')
@@ -426,17 +557,22 @@ program
   .option('--skip-tech-decide', 'Skip tech-decide step during planning phase')
   .option('--with-design', 'Include OpenPencil design phase in this wave')
   .option('--local-sources <path>', 'Local sources directory for harvest phase')
-  .action(async (goal, opts) => (await C()).magic(goal, {
-    level: opts.level,
-    profile: opts.profile,
-    skipUx: opts.skipUx,
-    host: opts.host,
-    prompt: opts.prompt,
-    worktree: opts.worktree,
-    isolation: opts.isolation,
-    maxRepos: parseInt(opts.maxRepos, 10),
-    yes: opts.yes,
-  }));
+  .action(async (goal, opts) => {
+    // Direct dynamic import: magic.ts pulls in all preset levels (spark through
+    // inferno) and the magic-presets configuration — not needed for other cmds.
+    const { magic } = await import('./commands/magic.js');
+    return magic(goal, {
+      level: opts.level,
+      profile: opts.profile,
+      skipUx: opts.skipUx,
+      host: opts.host,
+      prompt: opts.prompt,
+      worktree: opts.worktree,
+      isolation: opts.isolation,
+      maxRepos: parseInt(opts.maxRepos, 10),
+      yes: opts.yes,
+    });
+  });
 
 
 program
@@ -455,8 +591,25 @@ program
 
 program
   .command('docs')
-  .description('Generate or update the command reference documentation')
-  .action((...a: unknown[]) => void C().then(c => (c.docs as (...x: unknown[]) => unknown)(...a)));
+  .description('Generate or update the command reference and API documentation')
+  .option('--output <path>', 'Output file path (default: docs/API.md or docs/api.json)')
+  .option('--format <fmt>', 'Output format: md (default) or json', 'md')
+  .option('--coverage', 'Report JSDoc coverage for src/core/ exports; exits 1 if below 60%')
+  .addHelpText('after', `
+Examples:
+  danteforge docs                     Generate docs/COMMAND_REFERENCE.md + docs/API.md
+  danteforge docs --coverage          Report JSDoc coverage percentage for src/core/
+  danteforge docs --format json       Generate docs/api.json (machine-readable)
+  danteforge docs --output docs/REF.md  Write to a custom path
+`)
+  .action(async (opts) => {
+    const { docs: docsCmd } = await import('./commands/docs.js');
+    await docsCmd({
+      output: opts.output as string | undefined,
+      format: opts.format as 'md' | 'json' | undefined,
+      coverage: opts.coverage as boolean | undefined,
+    });
+  });
 
 program
   .command('update-mcp')
@@ -478,6 +631,8 @@ program
   .description('Self-improving lessons - capture corrections, view rules, auto-compact')
   .option('--prompt', 'Generate a copy-paste prompt instead of auto-executing')
   .option('--compact', 'Force compaction of lessons file')
+  .option('--velocity', 'Show improvement velocity trend across sprint history')
+  .option('--dedupe', 'Remove near-duplicate lessons from lessons.md')
   .action((...a: unknown[]) => void C().then(c => (c.lessons as (...x: unknown[]) => unknown)(...a)));
 
 program
@@ -490,7 +645,7 @@ program
   .option('--worktree', 'Run forge steps in an isolated git worktree')
   .option('--light', 'Skip hard gates')
   .option('--prompt', 'Generate copy-paste prompt describing what autoforge would do')
-  .option('--score-only', 'Score existing artifacts and write AUTOFORGE_GUIDANCE.md â€” no execution')
+  .option('--score-only', 'Score existing artifacts and write AUTOFORGE_GUIDANCE.md — no execution')
   .option('--auto', 'Run autonomous loop until 95% completion or BLOCKED state')
   .option('--force', 'Override one BLOCKED artifact for one cycle (logged to audit trail)')
   .option('--pause-at <score>', 'Pause the loop when average PDSE score reaches this value')
@@ -500,25 +655,31 @@ program
   .option('--dimension <name>', 'Focus improvement on one scoring dimension')
   .option('--resume', 'Resume from .danteforge/checkpoint.json')
   .option('--adversarial', 'Enable adversarial score gate between cycles')
-  .action(async (goal, opts) => (await C()).autoforge(goal, {
-    dryRun: opts.dryRun,
-    maxWaves: parseInt(opts.maxWaves, 10),
-    light: opts.light,
-    prompt: opts.prompt,
-    scoreOnly: opts.scoreOnly,
-    auto: opts.auto,
-    force: opts.force,
-    profile: opts.profile,
-    parallel: opts.parallel,
-    worktree: opts.worktree,
-    pauseAt: opts.pauseAt !== undefined ? parseInt(opts.pauseAt, 10) : undefined,
-    confirm: opts.confirm,
-    noPredictor: opts.predictor === false,
-    target: opts.target !== undefined ? parseFloat(opts.target as string) : undefined,
-    dimension: opts.dimension as string | undefined,
-    resume: opts.resume as boolean | undefined,
-    adversarial: opts.adversarial as boolean | undefined,
-  }));
+  .action(async (goal, opts) => {
+    // Direct dynamic import: autoforge loads the full pipeline engine
+    // (autoforge-loop, complexity-classifier, convergence engine). Deferring
+    // this import keeps all non-autoforge commands at minimal startup cost.
+    const { autoforge } = await import('./commands/autoforge.js');
+    return autoforge(goal, {
+      dryRun: opts.dryRun,
+      maxWaves: parseInt(opts.maxWaves, 10),
+      light: opts.light,
+      prompt: opts.prompt,
+      scoreOnly: opts.scoreOnly,
+      auto: opts.auto,
+      force: opts.force,
+      profile: opts.profile,
+      parallel: opts.parallel,
+      worktree: opts.worktree,
+      pauseAt: opts.pauseAt !== undefined ? parseInt(opts.pauseAt, 10) : undefined,
+      confirm: opts.confirm,
+      noPredictor: opts.predictor === false,
+      target: opts.target !== undefined ? parseFloat(opts.target as string) : undefined,
+      dimension: opts.dimension as string | undefined,
+      resume: opts.resume as boolean | undefined,
+      adversarial: opts.adversarial as boolean | undefined,
+    });
+  });
 
 program
   .command('resume')
@@ -624,6 +785,29 @@ program
   });
 
 program
+  .command('intel')
+  .description('Real-time competitor weakness intelligence from GitHub, HN, and Reddit')
+  .option('--competitor <name>', 'Fetch intelligence for one competitor only (partial match)')
+  .option('--opportunities', 'Show ranked opportunity table (default: on)')
+  .option('--github-only', 'Skip HackerNews and Reddit fetchers (faster)')
+  .option('--save', 'Write report to .danteforge/compete/weakness-intelligence.json')
+  .option('--watch', 'Poll every 6 hours continuously')
+  .option('--top <n>', 'Number of top signals/opportunities to display (default: 10)', '10')
+  .option('--timeout <ms>', 'Per-source timeout in milliseconds (default: 20000)', '20000')
+  .action(async (opts) => {
+    const { intelCommand } = await import('./commands/intel.js');
+    await intelCommand({
+      competitor: opts.competitor,
+      opportunities: opts.opportunities !== false,
+      githubOnly: opts.githubOnly,
+      save: opts.save,
+      watch: opts.watch,
+      topN: parseInt(opts.top, 10),
+      timeoutMs: parseInt(opts.timeout, 10),
+    });
+  });
+
+program
   .command('oss-clean')
   .description('Purge OSS clone cache (.danteforge/oss-repos/ and oss-deep/)')
   .option('--dry-run', 'Show what would be deleted without deleting')
@@ -633,8 +817,107 @@ program
   });
 
 program
+  .command('oss-sync')
+  .description('Matrix-aware OSS restore — re-clones any missing repos, optionally pulls updates on stale ones')
+  .option('--update', 'Also git-pull repos already on disk that are older than --stale-days')
+  .option('--stale-days <n>', 'Days before a repo is considered stale for --update (default: 7)', '7')
+  .option('--dry-run', 'Show what would happen without cloning or pulling')
+  .action(async (opts) => {
+    const { ossSync } = await import('./commands/oss-sync.js');
+    await ossSync({
+      update: opts.update,
+      staleDays: opts.staleDays ? parseInt(opts.staleDays, 10) : undefined,
+      dryRun: opts.dryRun,
+    });
+  });
+
+program
+  .command('oss-loop')
+  .description('Competitive landscape discovery loop — runs until no new OSS repos found (plateau), then oss-sync to restore all')
+  .option('--plateau-passes <n>', 'Consecutive empty passes before stopping (default: 3)', '3')
+  .option('--max-passes <n>', 'Hard pass cap regardless of plateau (default: 20)', '20')
+  .option('--max-repos-per-pass <n>', 'New repos to clone per pass (default: 5)', '5')
+  .option('--discovery-file <path>', 'Host-generated JSON candidate repo file; skips configured CLI LLM calls')
+  .option('--no-sync', 'Skip final oss-sync after discovery completes')
+  .option('--dry-run', 'Show discovery plan without cloning')
+  .action(async (opts) => {
+    const { ossLoop } = await import('./commands/oss-loop.js');
+    await ossLoop({
+      discoveryFile: opts.discoveryFile,
+      plateauPasses: parseInt(opts.plateauPasses, 10),
+      maxPasses: parseInt(opts.maxPasses, 10),
+      maxReposPerPass: parseInt(opts.maxReposPerPass, 10),
+      syncAtEnd: opts.sync !== false,
+      dryRun: opts.dryRun,
+    });
+  });
+
+program
+  .command('titan-harvest-loop')
+  .description('Clean-room harvest loop — analyzes GPL/AGPL repos queued by oss-loop, extracts patterns via LLM without copying code')
+  .option('--max-repos <n>', 'Max repos to analyze per run (default: 10)', '10')
+  .option('--dry-run', 'Show plan without cloning or calling LLM')
+  .action(async (opts) => {
+    const { titanHarvestLoop } = await import('./commands/titan-harvest-loop.js');
+    await titanHarvestLoop({
+      maxReposPerRun: parseInt(opts.maxRepos, 10),
+      dryRun: opts.dryRun,
+    });
+  });
+
+program
+  .command('eval')
+  .description('LLM output evaluation — run a golden test suite against the configured LLM, exit 1 on failure (CI-ready)')
+  .option('--suite <file>', 'Path to eval suite JSON file (default: built-in smoke suite)')
+  .option('--dim <id>', 'Filter cases to a specific matrix dimension')
+  .option('--ci', 'Exit 1 if any test fails (for CI pipelines)')
+  .option('--dry-run', 'Show plan without calling LLM')
+  .action(async (opts) => {
+    const { runEval } = await import('./commands/eval.js');
+    await runEval({ suiteFile: opts.suite, dimension: opts.dim, ci: opts.ci, dryRun: opts.dryRun });
+  });
+
+program
+  .command('daemon')
+  .description('Autonomous improvement daemon — runs crusade/autoresearch continuously until score target reached or time limit hit')
+  .option('--strategy <s>', 'crusade | autoresearch | adaptive (default: adaptive)', 'adaptive')
+  .option('--target <n>', 'Score target to stop at (default: 9.0)', '9.0')
+  .option('--time <m>', 'Wall-clock time limit in minutes (default: 240)', '240')
+  .option('--interval <m>', 'Minutes between passes (default: 5)', '5')
+  .option('--intel-cycle <n>', 'Run competitor intel cycle every N improvements (0=off, default: 3)', '3')
+  .option('--dry-run', 'Show plan without executing')
+  .action(async (opts) => {
+    const { runDaemon } = await import('./commands/daemon.js');
+    await runDaemon({
+      strategy: opts.strategy,
+      target: parseFloat(opts.target),
+      timeLimitMinutes: parseInt(opts.time, 10),
+      intervalMinutes: parseInt(opts.interval, 10),
+      intelCycleEvery: parseInt(opts.intelCycle, 10),
+      dryRun: opts.dryRun,
+    });
+  });
+
+program
+  .command('score-audit')
+  .description('Completion integrity audit: independently verify every dimension score against real evidence, apply 10-tier caps')
+  .option('--dimension [ids...]', 'Audit only these dimension ids (repeatable)')
+  .option('--apply', 'Write capped scores back to matrix.json (default: dry-run)')
+  .option('--skip-cap-tests', 'Skip running capability_test commands (faster, less reliable)')
+  .option('--json', 'Emit JSON summary')
+  .action(async (opts) => {
+    const { runScoreAudit } = await import('./commands/score-audit.js');
+    await runScoreAudit({
+      dimension: opts.dimension,
+      apply: opts.apply ?? false,
+      skipCapTests: opts.skipCapTests ?? false,
+      json: opts.json ?? false,
+    });
+  });
+
+program
   .command('harvest-forge')
-  .description('Compounding OSS intelligence loop: discover â†’ extract â†’ implement â†’ verify â†’ repeat')
+  .description('Compounding OSS intelligence loop: discover -> extract -> implement -> verify -> repeat')
   .option('--max-cycles <n>', 'Max iteration cycles (default: 10)', '10')
   .option('--target <score>', 'Target convergence score 0-10 (default: 9.0)', '9.0')
   .option('--auto', 'Auto-approve all cycles without human checkpoint')
@@ -668,6 +951,36 @@ program
   .action(async (opts) => {
     const { setGoal } = await import('./commands/set-goal.js');
     await setGoal({ promptMode: opts.prompt, autoScan: opts.scan !== false });
+  });
+
+program
+  .command('goal-loop')
+  .description('Autonomous cross-project loop: runs compete --auto on each project until all dimensions reach target (9.0). Pairs with Claude Code /goal for fully automated builds.')
+  .option('--projects <paths>', 'Comma-separated project paths (defaults to registered projects)')
+  .option('--target <score>', 'Victory threshold per dimension (default: 9.0)', parseFloat)
+  .option('--max-cycles <n>', 'Total cycle limit across all projects (default: 120)', parseInt)
+  .option('--max-cycles-per-project <n>', 'Max cycles on one project before rotating (default: 15)', parseInt)
+  .option('--rotation <mode>', 'round-robin | greedy (default: greedy — most gaps first)', 'greedy')
+  .option('--yes', 'Skip all confirmation gates (fully autonomous)')
+  .option('--prompt', 'Show usage and /goal integration instructions')
+  .action(async (opts) => {
+    try {
+      const { goalLoop } = await import('./commands/goal-loop.js');
+      const projects = opts.projects ? (opts.projects as string).split(',').map((p: string) => p.trim()) : [];
+      await goalLoop({
+        projects,
+        target: opts.target as number | undefined,
+        maxCycles: opts.maxCycles as number | undefined,
+        maxCyclesPerProject: opts.maxCyclesPerProject as number | undefined,
+        rotationMode: (opts.rotation as 'round-robin' | 'greedy' | undefined) ?? 'greedy',
+        yes: opts.yes as boolean | undefined,
+        promptMode: opts.prompt as boolean | undefined,
+      });
+    } catch (err) {
+      const { formatAndLogError } = await import('../core/format-error.js');
+      formatAndLogError(err, 'goal-loop');
+      process.exitCode = 1;
+    }
   });
 
 program
@@ -753,8 +1066,14 @@ program
 
 program
   .command('mcp-server')
-  .description('Start DanteForge MCP server over stdio â€” for Claude Code, Codex, Cursor')
-  .action(async () => (await C()).mcpServer());
+  .description('Start DanteForge MCP server over stdio — for Claude Code, Codex, Cursor')
+  .action(async () => {
+    // Direct dynamic import: MCP server has a large dependency graph (SDK,
+    // all MCP tool handlers). Importing it only when explicitly invoked
+    // keeps --help / --version / score at minimal startup cost.
+    const { mcpServer } = await import('./commands/mcp-server.js');
+    await mcpServer();
+  });
 
 program
   .command('publish-check')
@@ -774,6 +1093,311 @@ program
   .option('--strict-git-binding', 'Require manifest gitSha to equal HEAD (snapshot mode); default is ancestor continuity')
   .option('--cwd <path>', 'Project directory (defaults to cwd)')
   .option('--semantic', 'LLM-enhanced PDSE scoring')
-  .option('--since <date>', 'Score arc since date or git SHA (e.g. "yesterday", "2026-04-01", a commit SHA)')
-  .action(async (opts) => (await C()).proof({ prompt: opts.prompt, pipeline: opts.pipeline, convergence: opts.convergence, verify: opts.verify, verifyAll: opts.verifyAll, skipGit: opts.skipGit, strictGitBinding: opts.strictGitBinding, cwd: opts.cwd, semantic: opts.semantic, since: opts.since }));
+  .option('--since <date>', 'Score arc since date or git SHA (e.g. “yesterday”, “2026-04-01”, a commit SHA)')
+  .option('--summary', 'Human-readable agent activity provenance summary')
+  .action(async (opts) => (await C()).proof({ prompt: opts.prompt, pipeline: opts.pipeline, convergence: opts.convergence, verify: opts.verify, verifyAll: opts.verifyAll, skipGit: opts.skipGit, strictGitBinding: opts.strictGitBinding, cwd: opts.cwd, semantic: opts.semantic, since: opts.since, summary: opts.summary }));
+
+program
+  .command('integration-health')
+  .description('Check integration health: git remote, LLM provider, STATE.yaml freshness, MCP surface')
+  .option('--json', 'Output results as JSON to stdout')
+  .option('--cwd <path>', 'Project directory (defaults to cwd)')
+  .action(async (opts) => (await C()).integrationHealth({ json: opts.json, cwd: opts.cwd }));
+
+program
+  .command('error-rate')
+  .description('Show error frequency from .danteforge/error-log.jsonl — total, top codes, most-failing commands')
+  .option('--window <minutes>', 'Time window in minutes (default: 60)', parseInt)
+  .option('--json', 'Output machine-readable JSON')
+  .option('--clear', 'Clear the error log')
+  .option('--watch', 'Tail the log live — polls every 2 seconds, prints new entries')
+  .addHelpText('after', `
+Examples:
+  danteforge error-rate                 Show errors from the last 60 minutes
+  danteforge error-rate --window 1440   Show last 24 hours
+  danteforge error-rate --json          Machine-readable JSON output
+  danteforge error-rate --clear         Reset the error log
+  danteforge error-rate --watch         Live tail (Ctrl+C to stop)
+`)
+  .action(async (opts) => {
+    try {
+      const { errorRate } = await import('./commands/error-rate.js');
+      await errorRate({
+        window: opts.window as number | undefined,
+        json: opts.json as boolean | undefined,
+        clear: opts.clear as boolean | undefined,
+        watch: opts.watch as boolean | undefined,
+      });
+    } catch (err) {
+      const { formatAndLogError } = await import('../core/format-error.js');
+      formatAndLogError(err, 'error-rate');
+      process.exitCode = 1;
+    }
+  });
+
+program
+  .command('pipeline-status')
+  .description('Show spec-driven pipeline health: stage timeline, spec drift, and spec quality score')
+  .option('--json', 'Output machine-readable JSON')
+  .option('--cwd <path>', 'Project root directory (defaults to cwd)')
+  .action(async (opts) => { await (await C()).pipelineStatus({ json: opts.json as boolean | undefined, cwd: opts.cwd as string | undefined }); });
+
+program
+  .command('startup-bench')
+  .description('Measure CLI startup latency — runs --version N times, reports min/max/mean/p95, saves .danteforge/startup-bench.json')
+  .option('--iterations <n>', 'Number of timed runs (default: 10)', '10')
+  .option('--cwd <path>', 'Project directory (defaults to cwd)')
+  .addHelpText('after', `
+Examples:
+  danteforge startup-bench                  Run 10 iterations and show results
+  danteforge startup-bench --iterations 5   Run 5 iterations (faster, less stable)
+  DANTEFORGE_PERF=1 danteforge --version    Print startup time for a single run
+`)
+  .action(async (opts) => {
+    try {
+      const { runStartupBench } = await import('./commands/startup-bench.js');
+      const result = await runStartupBench({
+        iterations: parseInt(opts.iterations as string, 10),
+        cwd: opts.cwd as string | undefined,
+      });
+      process.exitCode = result.exitCode;
+    } catch (err) {
+      formatAndLogError(err, 'startup-bench');
+      process.exitCode = 1;
+    }
+  });
+
+program
+  .command('batch-check')
+  .description('Per-file quality scan: lines, JSDoc coverage, any-type usage, TODO count')
+  .option('--pattern <glob>', 'Glob pattern for files to check (default: src/**/*.ts)')
+  .option('--min-score <n>', 'Exit 1 if any file scores below N (0-10)', parseFloat)
+  .option('--json', 'Output machine-readable JSON')
+  .option('--cwd <path>', 'Project root directory (defaults to cwd)')
+  .addHelpText('after', `
+Examples:
+  danteforge batch-check                          # scan all src/**/*.ts
+  danteforge batch-check --min-score 7            # fail if any file scores below 7
+  danteforge batch-check --pattern "tests/**/*.ts" --json
+  danteforge batch-check --cwd /path/to/project`)
+  .action(async (opts) => {
+    try {
+      const { batchCheck } = await import('./commands/batch-check.js');
+      const result = await batchCheck({
+        pattern: opts.pattern as string | undefined,
+        minScore: opts.minScore as number | undefined,
+        json: opts.json as boolean | undefined,
+        cwd: opts.cwd as string | undefined,
+      });
+      if (!result.passed) process.exitCode = 1;
+    } catch (err) {
+      formatAndLogError(err, 'batch-check');
+      process.exitCode = 1;
+    }
+  });
+
+program
+  .command('run-pipeline')
+  .description('Full unattended pipeline: specify, clarify, plan, tasks, forge, verify')
+  .option('--spec <idea>', 'Idea or path to seed the specify stage')
+  .option('--yes', 'Skip all confirmation prompts (fully unattended)')
+  .option('--max-phases <n>', 'Maximum forge phases to run (default: 3)', parseInt)
+  .option('--cwd <path>', 'Project root directory (defaults to cwd)')
+  .action(async (opts) => {
+    try {
+      const { runPipeline } = await import('./commands/run-pipeline.js');
+      const result = await runPipeline({
+        spec: opts.spec as string | undefined,
+        yes: opts.yes as boolean | undefined,
+        maxPhases: opts.maxPhases as number | undefined,
+        cwd: opts.cwd as string | undefined,
+      });
+      if (result.stagesFailed.length > 0) process.exitCode = 1;
+    } catch (err) {
+      formatAndLogError(err, 'run-pipeline');
+      process.exitCode = 1;
+    }
+  });
+
+program
+  .command('export')
+  .description('Export project state as a JSON bundle for sharing or backup')
+  .option('--output <path>', 'Output file path (default: .danteforge/export-<timestamp>.json)')
+  .option('--include-history', 'Include last 3 .danteforge/snapshots/ entries')
+  .option('--cwd <path>', 'Project root directory (defaults to cwd)')
+  .action(async (opts) => {
+    try {
+      const { exportState } = await import('./commands/export.js');
+      await exportState({
+        output: opts.output as string | undefined,
+        includeHistory: opts.includeHistory as boolean | undefined,
+        cwd: opts.cwd as string | undefined,
+      });
+    } catch (err) {
+      formatAndLogError(err, 'export');
+      process.exitCode = 1;
+    }
+  });
+
+program
+  .command('crusade')
+  .description('Multi-pass OSS harvest + goal-gated forge loop — runs until score target is reached or max cycles exhausted')
+  .requiredOption('--goal <text>', 'The goal to pursue each forge wave')
+  .option('--domains <csv>', 'Comma-separated OSS domains to harvest (default: dimension name)')
+  .option('--dimension <name>', 'Score dimension to track (default: security)', 'security')
+  .option('--target <n>', 'Target score to reach (default: 9.0)', parseFloat)
+  .option('--max-cycles <n>', 'Maximum cycles before stopping (default: 10)', parseInt)
+  .option('--max-oss-passes <n>', 'Maximum OSS harvest passes per cycle (default: 5)', parseInt)
+  .option('--frontier', 'Frontier mode: push N dimensions in parallel to 9+ with autoresearch on stall')
+  .option('--parallel <n>', 'Number of parallel dimensions in frontier mode (default: 4)', parseInt)
+  .option('--max-dim-cycles <n>', 'Per-dimension cycle cap in frontier mode (default: 15)', parseInt)
+  .option('--loop', 'Keep re-ranking and repeating passes until every dimension hits 9+ (fully autonomous)')
+  .option('--verify-cap', 'Run capability_test before declaring a dimension done (governed mode)')
+  .option('--cwd <path>', 'Working directory (defaults to cwd)')
+  .addHelpText('after', `
+Examples:
+  danteforge crusade --goal "security hardening" --dimension security --target 9.5
+  danteforge crusade --frontier --parallel 4 --loop --verify-cap --goal "Push all dimensions to 9+"
+`)
+  .action(async (opts) => {
+    try {
+      if (opts.frontier) {
+        const { runFrontierCrusade } = await import('./commands/crusade.js');
+        const result = await runFrontierCrusade({
+          goal: opts.goal as string,
+          parallel: opts.parallel as number | undefined,
+          target: opts.target as number | undefined,
+          maxDimCycles: opts.maxDimCycles as number | undefined,
+          loop: opts.loop as boolean | undefined,
+          verifyCap: opts.verifyCap as boolean | undefined,
+          cwd: opts.cwd as string | undefined,
+        });
+        process.exitCode = result.status === 'ALL_DONE' ? 0 : 2;
+      } else {
+        const { runCrusade } = await import('./commands/crusade.js');
+        const result = await runCrusade({
+          goal: opts.goal as string,
+          domains: opts.domains as string | undefined,
+          dimension: opts.dimension as string | undefined,
+          target: opts.target as number | undefined,
+          maxCycles: opts.maxCycles as number | undefined,
+          maxOssPasses: opts.maxOssPasses as number | undefined,
+          cwd: opts.cwd as string | undefined,
+        });
+        if (result.status === 'CRUSADE_COMPLETE') process.exitCode = 0;
+        else if (result.status === 'CRUSADE_MAX_CYCLES') process.exitCode = 2;
+        else process.exitCode = 1;
+      }
+    } catch (err) {
+      formatAndLogError(err, 'crusade');
+      process.exitCode = 1;
+    }
+  });
+
+program
+  .command('evidence-scaffold')
+  .description('Auto-populate capability_test blocks in matrix.json so scores above 5.0 are provable')
+  .option('--dry-run', 'Print what would change without writing')
+  .option('--project-type <type>', 'Project type: npm (default), go, python, custom')
+  .option('--cwd <path>', 'Working directory (defaults to cwd)')
+  .addHelpText('after', `
+Examples:
+  danteforge evidence-scaffold
+  danteforge evidence-scaffold --dry-run
+  danteforge evidence-scaffold --project-type go
+`)
+  .action(async (opts) => {
+    try {
+      const { runEvidenceScaffold } = await import('./commands/evidence-scaffold.js');
+      await runEvidenceScaffold({
+        dryRun: opts.dryRun as boolean | undefined,
+        projectType: opts.projectType as 'npm' | 'go' | 'python' | 'custom' | undefined,
+        cwd: opts.cwd as string | undefined,
+      });
+    } catch (err) {
+      formatAndLogError(err, 'evidence-scaffold');
+      process.exitCode = 1;
+    }
+  });
+
+program
+  .command('evidence-audit')
+  .description('Show honest score vs evidence picture across all compete-matrix dimensions')
+  .option('--run-tests', 'Execute each capability_test live and show real pass/fail')
+  .option('--cwd <path>', 'Working directory (defaults to cwd)')
+  .addHelpText('after', `
+Examples:
+  danteforge evidence-audit
+  danteforge evidence-audit --run-tests
+`)
+  .action(async (opts) => {
+    try {
+      const { runEvidenceAudit } = await import('./commands/evidence-audit.js');
+      const result = await runEvidenceAudit({
+        runTests: opts.runTests as boolean | undefined,
+        cwd: opts.cwd as string | undefined,
+      });
+      process.exitCode = result.wouldBeCapped > 0 ? 1 : 0;
+    } catch (err) {
+      formatAndLogError(err, 'evidence-audit');
+      process.exitCode = 1;
+    }
+  });
+
+program
+  .command('security-scan')
+  .description('Scan src/**/*.ts for risky patterns: eval, exec, innerHTML, hardcoded keys, Math.random in security contexts')
+  .option('--json', 'Output machine-readable JSON')
+  .option('--cwd <path>', 'Project root directory (defaults to cwd)')
+  .addHelpText('after', `
+Examples:
+  danteforge security-scan               Human-readable findings report
+  danteforge security-scan --json        Machine-readable JSON output
+  danteforge security-scan --cwd /my/project  Scan a specific project
+`)
+  .action(async (opts) => {
+    try {
+      const { securityScan } = await import('./commands/security-scan.js');
+      await securityScan({
+        json: opts.json as boolean | undefined,
+        cwd: opts.cwd as string | undefined,
+      });
+    } catch (err) {
+      formatAndLogError(err, 'security-scan');
+      process.exitCode = 1;
+    }
+  });
+
+program
+  .command('schedule <command>')
+  .description(
+    'Run a danteforge command on a recurring interval (foreground, Ctrl+C to stop). ' +
+    'Example: danteforge schedule "compete --calibrate" --interval 60 --max-runs 24',
+  )
+  .requiredOption('--interval <minutes>', 'Minutes between each run', parseFloat)
+  .option('--max-runs <n>', 'Maximum number of runs (default: unlimited)', parseInt)
+  .option('--log <path>', 'Log file path (default: .danteforge/schedule.log)')
+  .option('--cwd <path>', 'Working directory (defaults to cwd)')
+  .addHelpText('after', `
+Examples:
+  danteforge schedule "compete --calibrate" --interval 60 --max-runs 24
+  danteforge schedule "autoforge --auto" --interval 30 --log /tmp/forge.log
+`)
+  .action(async (command: string, opts) => {
+    try {
+      const { schedule } = await import('./commands/schedule.js');
+      const result = await schedule(command, {
+        intervalMinutes: opts.interval as number,
+        maxRuns: opts.maxRuns as number | undefined,
+        logFile: opts.log as string | undefined,
+        cwd: opts.cwd as string | undefined,
+      });
+      if (result.runsFailed > 0 && result.runsCompleted === result.runsFailed) {
+        process.exitCode = 1;
+      }
+    } catch (err) {
+      formatAndLogError(err, 'schedule');
+      process.exitCode = 1;
+    }
+  });
 }

@@ -50,6 +50,7 @@ async function makeRepo(): Promise<string> {
       status: 'in-progress',
       sprint_history: [],
       next_sprint_target: 8,
+      capability_test: { command: 'node -e "process.exit(0)"', description: 'always-pass gate for ceiling/merge test', timeoutMs: 5000 },
     }],
   }, null, 2));
   return root;

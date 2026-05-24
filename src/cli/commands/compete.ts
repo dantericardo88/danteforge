@@ -42,8 +42,9 @@ import { confirmMatrix } from '../../core/matrix-confirm.js';
 import { mergeScoreProposals, writeScoreProposal } from '../../core/matrix-development-engine.js';
 import { formatScore, formatStatusTable, logSprintGaps, buildHarvestBriefPrompt, logSprintOutput } from './compete-display.js';
 import { handleAmend, handleAmendFile } from './compete-amend.js';
-import { defaultEvidenceWriter, parseRescore, proposeAndMergeScore, runCertifyGate, writeRescoreEvidence } from './compete-score-flow.js';
+import { defaultEvidenceWriter, ensureMatrixOnDisk, parseRescore, proposeAndMergeScore, runCertifyGate, writeRescoreEvidence } from './compete-score-flow.js';
 import { actionCalibrate } from './compete-calibrate.js';
+import { SCORING_DOCTRINE_SHORT } from '../../core/scoring-doctrine.js';
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -96,9 +97,13 @@ export interface CompeteOptions {
   excludeDimension?: string;
   includeDimension?: string;
   edit?: boolean;
-  reset?: boolean;           // --reset: replace competitors with --use-canonical seed (backs up the old matrix)
-  useCanonical?: boolean;    // --use-canonical: use the DanteForge-class peer list (spec-kit/BMAD/autoresearch/claude-skills/orchestration peers)
+  reset?: boolean;           // --reset: replace competitors in the matrix (requires --preset or --use-canonical)
+  useCanonical?: boolean;    // --use-canonical: resolve the project's preset automatically (coding-assistant for DanteCode, dev-tool-optimizer for DanteForge, etc.)
+  preset?: string;           // --preset <name>: explicit preset (coding-assistant | dev-tool-optimizer | agent-framework)
   calibrate?: boolean;       // --calibrate: run adversarial scorer and apply inflated-verdict corrections
+  checkAllNine?: boolean;    // --check-all-nine: exit 0 if all dims ≥ target, else exit 1
+  nextDims?: number;         // --next-dims <n>: output JSON of n weakest dimensions below target
+  target?: number;           // --target <n>: override 9.0 threshold for check-all-nine, auto-sprint, and next-dims
   // Injection seam for calibrate testing
   _generateAdversarialScore?: (
     selfResult: import('../../core/harsh-scorer.js').HarshScoreResult,
@@ -107,13 +112,24 @@ export interface CompeteOptions {
 }
 
 export interface CompeteResult {
-  action: 'status' | 'init' | 'sprint' | 'rescore' | 'report' | 'validate' | 'auto' | 'sync-scores' | 'calibrate';
+  action: 'status' | 'init' | 'sprint' | 'rescore' | 'report' | 'validate' | 'auto' | 'sync-scores' | 'calibrate' | 'check-all-nine' | 'next-dims';
   matrixPath: string;
   overallScore?: number;
   nextDimension?: MatrixDimension;
   masterplanPrompt?: string;
   dimensionsUpdated?: number;
   victoryMessage?: string;
+  allGreen?: boolean;
+  nextDims?: NextDimEntry[];
+}
+
+export interface NextDimEntry {
+  id: string;
+  label: string;
+  selfScore: number;
+  target: number;
+  gap: number;
+  touches?: string[];
 }
 
 // ── Actions ───────────────────────────────────────────────────────────────────
@@ -158,11 +174,11 @@ async function actionInit(options: CompeteOptions, cwd: string): Promise<Compete
   }
   logger.info(`Matrix: ${matrixPath}`);
   logger.info(`Next: run \`danteforge compete\` to see the gap table, then \`danteforge compete --sprint\` to start closing gaps.`);
-  logger.warn(`\n⚠  Score yourself harshly. If these gaps feel small, they're wrong.`);
-  logger.info(`   Generous scores produce roadmaps. Hyper-critical scores produce urgency.`);
-  logger.info(`   Cursor users are paying $20+/mo — they need a real reason to switch.`);
-  logger.info(`   Adjust scores in .danteforge/compete/matrix.json before running --sprint.`);
-  logger.info(`   0.0 = not built at all. 9.0 = Cursor-level execution. 5.0 = basic/functional.`);
+  logger.warn(`\n⚠  Score rigorously from evidence. If these gaps feel small, audit the evidence.`);
+  logger.info(`   Scores must come from outcome evidence, not opinions.`);
+  logger.info(`   Compare only against actual competitors per positioning.md.`);
+  logger.info(`   The gap IS the value — finding real gaps means finding what to build next.`);
+  logger.info(`   Run \`node scripts/evidence-rescore.mjs\` to derive scores from evidence.`);
 
   return {
     action: 'init',
@@ -183,6 +199,36 @@ async function actionReset(options: CompeteOptions, cwd: string): Promise<Compet
     return { action: 'status', matrixPath };
   }
 
+  // Resolve the target preset:
+  //   1. --preset <name> (explicit, highest priority)
+  //   2. --use-canonical → resolve via project identity (package.json / state.project)
+  //   3. Neither → reject with a hint
+  const { resolveProjectPreset, getPeerPreset, isPeerPreset } = await import('../../core/peer-presets.js');
+  let presetName: string | null = null;
+  let presetReason = '';
+
+  if (options.preset) {
+    if (!isPeerPreset(options.preset)) {
+      logger.error(`Unknown preset: "${options.preset}". Valid presets: coding-assistant, dev-tool-optimizer, agent-framework.`);
+      return { action: 'status', matrixPath };
+    }
+    presetName = options.preset;
+    presetReason = `explicit --preset ${options.preset}`;
+  } else if (options.useCanonical) {
+    const state = await loadState({ cwd }).catch(() => null);
+    const resolution = await resolveProjectPreset(cwd, state ?? undefined);
+    if (!resolution.preset) {
+      logger.error(`[compete --reset] Could not resolve a preset for this project. ${resolution.reason}`);
+      logger.info('  Pass --preset <name> explicitly (coding-assistant | dev-tool-optimizer | agent-framework).');
+      return { action: 'status', matrixPath };
+    }
+    presetName = resolution.preset;
+    presetReason = `auto-resolved via ${resolution.reason}`;
+  } else {
+    logger.warn('[compete --reset] No reset target. Pass --preset <name> or --use-canonical (auto-detects).');
+    return { action: 'status', matrixPath, overallScore: matrix.overallSelfScore };
+  }
+
   // Back up the current matrix before mutating
   try {
     const stamp = new Date().toISOString().replace(/[:.]/g, '-');
@@ -193,22 +239,15 @@ async function actionReset(options: CompeteOptions, cwd: string): Promise<Compet
     logger.warn(`[compete --reset] Backup failed (${err instanceof Error ? err.message : String(err)}). Continuing.`);
   }
 
-  if (options.useCanonical) {
-    const { getCanonicalDanteForgeCompetitors } = await import('../../core/feature-universe.js');
-    const canonical = getCanonicalDanteForgeCompetitors();
-    matrix.competitors = canonical;
-    // If the matrix splits into closed-source/oss buckets, put everything in OSS
-    // since the canonical list is OSS-flavored peer projects.
-    matrix.competitors_oss = canonical;
-    matrix.competitors_closed_source = [];
-    await saveFn(matrix, cwd);
-    logger.success(`Matrix reset with ${canonical.length} canonical DanteForge peers. Old matrix saved as matrix.pre-*.json.`);
-    logger.info(`  Peers: ${canonical.slice(0, 6).join(', ')}, ...`);
-    logger.info(`  Run \`danteforge universe --refresh\` to rebuild the feature universe against the new peers.`);
-    return { action: 'status', matrixPath, overallScore: matrix.overallSelfScore };
-  }
+  const peers = getPeerPreset(presetName as Parameters<typeof getPeerPreset>[0]);
+  matrix.competitors = peers;
+  matrix.competitors_oss = peers;
+  matrix.competitors_closed_source = [];
+  await saveFn(matrix, cwd);
 
-  logger.warn('[compete --reset] No reset target specified. Use `--use-canonical` to apply the DanteForge peer list.');
+  logger.success(`Matrix reset with ${peers.length} peers from "${presetName}" preset (${presetReason}). Old matrix saved as matrix.pre-*.json.`);
+  logger.info(`  Peers: ${peers.slice(0, 6).join(', ')}${peers.length > 6 ? ', ...' : ''}`);
+  logger.info(`  Run \`danteforge universe --refresh\` to rebuild the feature universe against the new peers.`);
   return { action: 'status', matrixPath, overallScore: matrix.overallSelfScore };
 }
 
@@ -397,23 +436,22 @@ async function actionRescore(options: CompeteOptions, cwd: string, rescore: stri
     delta: score - before, verifyStatus: options.skipVerify ? 'skipped' : 'pass',
     verifyTimestamp: receipt?.timestamp, commit, timestamp: new Date().toISOString(),
   }, cwd, writeFn);
-  if (options._loadMatrix || options._saveMatrix) {
-    updateDimensionScore(matrix, dimensionId, score, commit);
-    matrix.overallSelfScore = computeOverallScore(matrix);
-    await saveFn(matrix, cwd);
-  } else {
-    await proposeAndMergeScore({
-      cwd,
-      dimensionId,
-      score,
-      agent: 'compete-rescore',
-      rationale: `compete --rescore ${dimensionId}=${score}`,
-      evidence: evidenceRel,
-      commit,
-    });
-  }
+  // Phase E final migration: proposal flow is the single source of score
+  // change events. The injection-seam branch was the last conditional bypass
+  // on this surface.
+  void saveFn;
+  await ensureMatrixOnDisk(matrix, cwd);
+  await proposeAndMergeScore({
+    cwd,
+    dimensionId,
+    score,
+    agent: 'compete-rescore',
+    rationale: `compete --rescore ${dimensionId}=${score}`,
+    evidence: evidenceRel,
+    commit,
+  });
 
-  const updatedMatrix = (options._loadMatrix || options._saveMatrix) ? matrix : await loadMatrix(cwd) ?? matrix;
+  const updatedMatrix = await loadMatrix(cwd) ?? matrix;
   const updatedDim = updatedMatrix.dimensions.find(d => d.id === dimensionId) ?? dim;
 
   const delta = score - before;
@@ -579,31 +617,26 @@ async function actionSyncScores(options: CompeteOptions, cwd: string): Promise<C
   }
 
   logger.info(`Syncing ${report.driftedDimensions.length} drifted dimension(s) from live scorer:`);
+  await ensureMatrixOnDisk(matrix, cwd);
   let updated = 0;
   for (const d of report.driftedDimensions) {
     const dir = d.matrixScore > d.harshScore ? '↓' : '↑';
     logger.info(`  ${d.label}: ${formatScore(d.matrixScore)} → ${formatScore(d.harshScore)} (${dir})`);
-    if (options._loadMatrix || options._saveMatrix) {
-      updateDimensionScore(matrix, d.id, d.harshScore);
-    } else {
-      await writeScoreProposal({
-        cwd,
-        dimension: d.id,
-        score: d.harshScore,
-        agent: 'compete-sync-scores',
-        rationale: `Live strict scorer drift correction from ${formatScore(d.matrixScore)} to ${formatScore(d.harshScore)}.`,
-      });
-    }
+    // Always emit a proposal — the direct-write injection-seam branch was removed
+    // as part of closing the six bypasses (Phase E). Under outcome-derived scoring
+    // the score field is read-only at the storage layer.
+    await writeScoreProposal({
+      cwd,
+      dimension: d.id,
+      score: d.harshScore,
+      agent: 'compete-sync-scores',
+      rationale: `Live strict scorer drift correction from ${formatScore(d.matrixScore)} to ${formatScore(d.harshScore)}.`,
+    });
     updated++;
   }
 
-  if (options._loadMatrix || options._saveMatrix) {
-    matrix.lastUpdated = new Date().toISOString();
-    await saveFn(matrix, cwd);
-  } else {
-    await mergeScoreProposals({ cwd, policy: 'harsh-min', agent: 'compete-sync-scores' });
-  }
-  const updatedMatrix = (options._loadMatrix || options._saveMatrix) ? matrix : await loadMatrix(cwd) ?? matrix;
+  await mergeScoreProposals({ cwd, policy: 'harsh-min', agent: 'compete-sync-scores' });
+  const updatedMatrix = await loadMatrix(cwd) ?? matrix;
   logger.success(`Synced ${updated} dimension(s). Overall: ${formatScore(computeOverallScore(updatedMatrix))}/10`);
   return { action: 'validate', matrixPath, overallScore: computeOverallScore(updatedMatrix), dimensionsUpdated: updated };
 }
@@ -616,6 +649,7 @@ async function actionSyncScores(options: CompeteOptions, cwd: string): Promise<C
 
 export async function actionAutoSprint(options: CompeteOptions, cwd: string): Promise<CompeteResult> {
   const emit = options._stdout ?? ((line: string) => logger.info(line));
+  emit(`[scoring-doctrine] ${SCORING_DOCTRINE_SHORT}`);
   const loadFn = options._loadMatrix ?? ((c) => loadMatrix(c));
   const saveFn = options._saveMatrix ?? ((m, c) => saveMatrix(m, c));
   const matrixPath = getMatrixPath(cwd);
@@ -658,35 +692,47 @@ export async function actionAutoSprint(options: CompeteOptions, cwd: string): Pr
     emit(`  Self: ${selfScoreBefore.toFixed(1)}  |  Target: ${topScore.toFixed(1)} (${topCompetitor})`);
     emit('');
 
+    // Depth Doctrine: alternate breadth (inferno) and depth (validate) waves.
+    const { getWaveGuard } = await import('../../core/wave-alternation.js');
+    const waveGuard = getWaveGuard(cyclesDone);
+
     const goal = `Improve "${next.label}" dimension to match or exceed ${topCompetitor} (${topScore.toFixed(1)}/10)`;
     try {
-      await runInferno(goal, cwd);
+      if (waveGuard.type === 'depth') {
+        emit(`  DEPTH WAVE: running validate for ${next.label} instead of inferno`);
+        const { runValidateCli } = await import('./validate.js');
+        await runValidateCli({ dimId: next.id, forceCold: true, cwd }).catch(() => {});
+      } else {
+        await runInferno(goal, cwd);
+      }
 
       const postResult = await postSprintScoreFn({ cwd });
       await applyStrictOverrides(postResult, cwd, options._computeStrictDims ?? computeStrictDimensions);
-      const newSelfScore = postResult.displayScore;
+      // Bug A fix: prefer dimension-specific score over overall project score
+      const toCamelCase = (s: string) => s.replace(/_([a-z])/g, (_: string, c: string) => c.toUpperCase());
+      const dimKey = toCamelCase(next.id) as import('../../core/harsh-scorer.js').ScoringDimension;
+      const newSelfScore = postResult.displayDimensions?.[dimKey] ?? postResult.displayScore;
 
-      if (options._loadMatrix || options._saveMatrix) {
-        updateDimensionScore(matrix, next.id, newSelfScore);
-        matrix.overallSelfScore = computeOverallScore(matrix);
-        await saveFn(matrix, cwd);
-      } else {
-        await proposeAndMergeScore({
-          cwd,
-          dimensionId: next.id,
-          score: newSelfScore,
-          agent: 'compete-auto',
-          rationale: `Post-inferno strict scorer for "${next.label}" returned ${newSelfScore.toFixed(1)}.`,
-        });
-        matrix = await loadMatrix(cwd) ?? matrix;
-      }
+      // Phase E final migration: proposal flow is the single writer.
+      await ensureMatrixOnDisk(matrix, cwd);
+      await proposeAndMergeScore({
+        cwd,
+        dimensionId: next.id,
+        score: newSelfScore,
+        agent: 'compete-auto',
+        rationale: `Post-inferno strict scorer for "${next.label}" (dim: ${dimKey}) returned ${newSelfScore.toFixed(1)}.`,
+      });
+      matrix = await loadMatrix(cwd) ?? matrix;
 
-      if (newSelfScore >= topScore) {
-        victoryMessage = `Victory — ${next.label} now ahead of ${topCompetitor} (${newSelfScore.toFixed(1)} vs ${topScore.toFixed(1)})`;
+      // Bug B fix: never declare victory below target (default 9.0) even if competitor ceiling is lower
+      const autoTarget = options.target ?? 9.0;
+      const victoryThreshold = Math.max(topScore, autoTarget);
+      if (newSelfScore >= victoryThreshold) {
+        victoryMessage = `Victory — ${next.label} now leads ${topCompetitor} (${newSelfScore.toFixed(1)} ≥ ${victoryThreshold.toFixed(1)})`;
         emit(`  ${victoryMessage}`);
       } else {
-        const remaining = topScore - newSelfScore;
-        emit(`  Progress: ${selfScoreBefore.toFixed(1)} → ${newSelfScore.toFixed(1)}  (${remaining.toFixed(1)} to close gap)`);
+        const remaining = victoryThreshold - newSelfScore;
+        emit(`  Progress: ${selfScoreBefore.toFixed(1)} → ${newSelfScore.toFixed(1)}  (${remaining.toFixed(1)} to ${victoryThreshold.toFixed(1)} target)`);
       }
     } catch (err) {
       emit(`  Cycle failed (${next.label}): ${err instanceof Error ? err.message : String(err)} — continuing to next dimension`);
@@ -721,6 +767,152 @@ export async function actionAutoSprint(options: CompeteOptions, cwd: string): Pr
 async function defaultRunInferno(goal: string, _cwd: string): Promise<void> {
   const { inferno } = await import('./magic.js');
   await inferno(goal);
+}
+
+// ── next-dims ─────────────────────────────────────────────────────────────────
+// Outputs JSON of the N weakest dimensions below target, sorted by gap descending.
+// Used by the goal-loop-matrix skill to know which dimensions to feed into /matrixdev.
+
+export async function actionNextDims(options: CompeteOptions, cwd: string): Promise<CompeteResult> {
+  const loadFn = options._loadMatrix ?? ((c: string) => loadMatrix(c));
+  const harshScoreFn = options._harshScore ?? computeHarshScore;
+  const matrixPath = getMatrixPath(cwd);
+  const target = options.target ?? 9.0;
+  const n = options.nextDims ?? 3;
+
+  const matrix = await loadFn(cwd);
+  if (!matrix) {
+    logger.error('No matrix found. Run `danteforge compete --init` first.');
+    process.exitCode = 1;
+    return { action: 'next-dims', matrixPath, nextDims: [] };
+  }
+
+  // Use live harsh scores so inflated matrix self-scores don't hide real gaps.
+  // Apply strict dimension overrides (autonomy, selfImprovement, etc.) the same
+  // way check-all-nine does — otherwise next-dims underreports fixed dimensions.
+  const harshResult = await harshScoreFn({ cwd });
+  if (!options._harshScore || options._computeStrictDims) {
+    const strictDimsFn = options._computeStrictDims ?? computeStrictDimensions;
+    await applyStrictOverrides(harshResult, cwd, strictDimsFn);
+  }
+  const dimKey = (id: string) => id as import('../../core/harsh-scorer.js').ScoringDimension;
+
+  const entries: NextDimEntry[] = matrix.dimensions
+    .filter(dim => {
+      if (dim.ceiling !== undefined && dim.ceiling < target) return false;
+      const score = harshResult.displayDimensions?.[dimKey(dim.id)] ?? dim.scores['self'] ?? 0;
+      return score < target;
+    })
+    .map(dim => {
+      const selfScore = harshResult.displayDimensions?.[dimKey(dim.id)] ?? dim.scores['self'] ?? 0;
+      return {
+        id: dim.id,
+        label: dim.label ?? dim.id,
+        selfScore,
+        target,
+        gap: target - selfScore,
+        touches: dim.touches,
+      };
+    })
+    .sort((a, b) => b.gap - a.gap)
+    .slice(0, n);
+
+  if (options.json) {
+    process.stdout.write(JSON.stringify(entries, null, 2) + '\n');
+  } else {
+    if (entries.length === 0) {
+      logger.success(`All reachable dimensions are at ${target}+`);
+    } else {
+      logger.info(`Next ${entries.length} dimension(s) below ${target} (sorted by gap):`);
+      for (const e of entries) {
+        logger.info(`  ${e.label.padEnd(32)} self=${e.selfScore.toFixed(1)}  gap=${e.gap.toFixed(1)}`);
+      }
+    }
+  }
+
+  return { action: 'next-dims', matrixPath, overallScore: matrix.overallSelfScore, nextDims: entries };
+}
+
+// ── check-all-nine ─────────────────────────────────────────────────────────────
+// Machine-readable verdict for Claude Code /goal integration.
+// Exits 0 when all reachable dimensions are at or above target (default 9.0).
+// Writes .danteforge/GOAL_STATUS.json so the /goal evaluator reads a file,
+// not an LLM opinion.
+
+export async function actionCheckAllNine(options: CompeteOptions, cwd: string): Promise<CompeteResult> {
+  const loadFn = options._loadMatrix ?? ((c: string) => loadMatrix(c));
+  const harshScoreFn = options._harshScore ?? computeHarshScore;
+  const matrixPath = getMatrixPath(cwd);
+  const target = options.target ?? 9.0;
+
+  const matrix = await loadFn(cwd);
+  if (!matrix) {
+    logger.error('No matrix found. Run `danteforge compete --init` first.');
+    process.exitCode = 1;
+    return { action: 'check-all-nine', matrixPath, allGreen: false };
+  }
+
+  let harshDims: Record<string, number> | undefined;
+  try {
+    const harshResult = await harshScoreFn({ cwd });
+    // Apply strict dimension overrides when using the real scorer or an explicit test inject.
+    // Skip when _harshScore is mocked without _computeStrictDims — the mock already has correct dims.
+    if (!options._harshScore || options._computeStrictDims) {
+      const strictDimsFn = options._computeStrictDims ?? computeStrictDimensions;
+      await applyStrictOverrides(harshResult, cwd, strictDimsFn);
+    }
+    harshDims = harshResult.displayDimensions as Record<string, number>;
+  } catch { /* best-effort — fall back to matrix self-scores */ }
+
+  const toCamelCase = (s: string) => s.replace(/_([a-z])/g, (_: string, c: string) => c.toUpperCase());
+
+  const failing: string[] = [];
+  const blocked: string[] = [];
+  const passing: string[] = [];
+
+  for (const dim of matrix.dimensions) {
+    if (dim.ceiling !== undefined && dim.ceiling < target) {
+      blocked.push(`${dim.label ?? dim.id} (ceiling: ${dim.ceiling})`);
+      continue;
+    }
+    const camelKey = toCamelCase(dim.id);
+    const harshScore = harshDims?.[camelKey] ?? harshDims?.[dim.id];
+    const selfScore = dim.scores['self'] ?? 0;
+    const effectiveScore = harshScore ?? selfScore;
+    if (effectiveScore >= target) {
+      passing.push(dim.label ?? dim.id);
+    } else {
+      failing.push(`${dim.label ?? dim.id}: ${effectiveScore.toFixed(1)}`);
+    }
+  }
+
+  const allGreen = failing.length === 0;
+  try {
+    const statusPath = path.join(cwd, '.danteforge', 'GOAL_STATUS.json');
+    await fs.writeFile(statusPath, JSON.stringify({
+      allGreen,
+      target,
+      passing: passing.length,
+      failing: failing.length,
+      blocked: blocked.length,
+      total: matrix.dimensions.length,
+      failingDimensions: failing,
+      blockedDimensions: blocked,
+      checkedAt: new Date().toISOString(),
+    }, null, 2), 'utf8');
+  } catch { /* best-effort */ }
+
+  if (allGreen) {
+    logger.success(`✓ All ${passing.length} reachable dimensions at ${target}+ (${blocked.length} blocked by ceiling)`);
+    process.exitCode = 0;
+  } else {
+    logger.warn(`✗ ${failing.length} dimension(s) below ${target}: ${failing.slice(0, 4).join(', ')}${failing.length > 4 ? ` (+${failing.length - 4} more)` : ''}`);
+    if (blocked.length > 0) logger.info(`  Ceiling-blocked (excluded from check): ${blocked.length}`);
+    logger.info('  Run `danteforge compete --auto --target 9.0` to close gaps.');
+    logger.info('  Status written: .danteforge/GOAL_STATUS.json');
+    process.exitCode = 1;
+  }
+  return { action: 'check-all-nine', matrixPath, overallScore: matrix.overallSelfScore, allGreen };
 }
 
 export async function compete(options: CompeteOptions = {}): Promise<CompeteResult> {
@@ -789,6 +981,8 @@ export async function compete(options: CompeteOptions = {}): Promise<CompeteResu
 
     if (options.reset) return await actionReset(options, cwd);
     if (options.init) return await actionInit(options, cwd);
+    if (options.checkAllNine) return await actionCheckAllNine(options, cwd);
+    if (options.nextDims !== undefined) return await actionNextDims(options, cwd);
     if (options.calibrate) return await actionCalibrate(options, cwd);
     if (options.auto || (options.sprint && options.auto)) return await actionAutoSprint(options, cwd);
     if (options.sprint) return await actionSprint(options, cwd);

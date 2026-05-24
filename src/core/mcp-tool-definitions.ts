@@ -566,10 +566,11 @@ export const TOOL_DEFINITIONS: ToolDefinition[] = [
   },
   {
     name: 'danteforge_canonical_competitors',
-    description: 'Returns the canonical 16-peer DanteForge competitor list grouped by category: spec-driven dev kits (spec-kit, BMAD, OpenSpec), skill consolidators (anthropics/claude-skills, cursor.directory), autonomous research loops (Karpathy autoresearch, DSPy), and orchestration peers (MetaGPT, CrewAI, AutoGen, GPT-Engineer, OpenHands, Aider, SWE-Agent, LangChain Agents). DanteForge sits ON TOP OF AI coding assistants — these are its peers, NOT Cursor/Devin/Claude Code itself.',
+    description: 'Returns the peer-preset list for the current project (or a specific preset if passed). DanteForge ships three named presets: "coding-assistant" (Cursor / Cline / Aider / OpenHands / etc. — for projects like DanteCode that directly compete with AI coding assistants), "dev-tool-optimizer" (spec-kit / BMAD / claude-skills / DSPy / orchestration peers — for projects like DanteForge that sit on top of coding assistants), and "agent-framework" (MetaGPT / CrewAI / AutoGen / etc.). Without `preset`, the tool resolves the project\'s preset via package.json#name, state.project, or .danteforge/peers.json.',
     inputSchema: {
       type: 'object',
       properties: {
+        preset: { type: 'string', description: 'Explicit preset name. Values: coding-assistant | dev-tool-optimizer | agent-framework. Omit to auto-resolve from project identity.' },
         _cwd: { type: 'string', description: 'Working directory override (for testing)' },
       },
       required: [],
@@ -577,12 +578,13 @@ export const TOOL_DEFINITIONS: ToolDefinition[] = [
   },
   {
     name: 'danteforge_compete_reset',
-    description: 'Replace the competitors in compete-matrix.json with the canonical DanteForge peer list. Backs up the old matrix to matrix.pre-<timestamp>.json. Mutating — requires confirm: true.',
+    description: 'Replace the competitors in compete-matrix.json with a preset peer list. Pass preset:"<name>" for explicit selection, or useCanonical:true (default) to auto-resolve via project identity. Backs up the old matrix to matrix.pre-<timestamp>.json. Mutating — requires confirm: true.',
     inputSchema: {
       type: 'object',
       properties: {
         confirm: { type: 'boolean', description: 'Required: explicit confirmation to mutate the matrix' },
-        useCanonical: { type: 'boolean', description: 'Apply the canonical peer list (default true; other modes reserved)' },
+        preset: { type: 'string', description: 'Explicit preset name. Values: coding-assistant | dev-tool-optimizer | agent-framework. Wins over useCanonical when both are passed.' },
+        useCanonical: { type: 'boolean', description: 'Auto-resolve the preset from project identity (default true). Set to false only if you want to require explicit preset.' },
         _cwd: { type: 'string', description: 'Working directory override (for testing)' },
       },
       required: ['confirm'],
@@ -603,6 +605,152 @@ export const TOOL_DEFINITIONS: ToolDefinition[] = [
         report: { type: 'boolean', description: 'Write COFL_REPORT.md to .danteforge/cofl/' },
         auto: { type: 'boolean', description: 'Run all phases end-to-end (full 10-phase cycle)' },
         _cwd: { type: 'string', description: 'Working directory override (for testing)' },
+      },
+      required: [],
+    },
+  },
+  // ── Ecosystem / health tools ─────────────────────────────────────────────────
+  {
+    name: 'danteforge_convergence_status',
+    description:
+      'Returns the current score trend by reading the last 3 assessment snapshots from .danteforge/. ' +
+      'Reports whether the project is improving, stalled, or regressing plus the numeric score delta.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        _cwd: { type: 'string', description: 'Working directory override (for testing)' },
+      },
+      required: [],
+    },
+  },
+  {
+    name: 'danteforge_git_activity',
+    description:
+      'Returns local branch activity: branch names, commit counts ahead of main/master, and last commit message. ' +
+      'Uses pure local git — no GitHub API token required.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        _cwd: { type: 'string', description: 'Working directory override (for testing)' },
+      },
+      required: [],
+    },
+  },
+  {
+    name: 'danteforge_health',
+    description:
+      'Run integration health checks (git remote, LLM provider reachability, STATE.yaml freshness, MCP server surface) ' +
+      'and return structured JSON results. Writes .danteforge/integration-health.json as a side-effect.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        _cwd: { type: 'string', description: 'Working directory override (for testing)' },
+      },
+      required: [],
+    },
+  },
+  {
+    name: 'danteforge_security_scan',
+    description: 'Scan TypeScript/JavaScript source files for OWASP Top 10 vulnerability patterns. Returns findings with risk levels (CRITICAL/HIGH/MEDIUM). CRITICAL findings block the merge court.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        cwd: { type: 'string', description: 'Project root to scan (defaults to cwd)' },
+        json: { type: 'boolean', description: 'Return JSON output instead of formatted text' },
+      },
+      required: [],
+    },
+  },
+  {
+    name: 'danteforge_crusade',
+    description: 'Run a sustained improvement campaign: multi-pass OSS harvest + forge waves until a score target is reached. Combines exhaustive OSS learning with goal-gated execution loops.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        goal: { type: 'string', description: 'The improvement goal to pursue each forge wave' },
+        domains: { type: 'string', description: 'Comma-separated OSS domains to harvest (e.g. "security,owasp,semgrep")' },
+        dimension: { type: 'string', description: 'Score dimension to track (default: security)' },
+        target: { type: 'number', description: 'Target score to reach (default: 9.0)' },
+        maxCycles: { type: 'number', description: 'Maximum cycles before stopping (default: 10)' },
+        cwd: { type: 'string', description: 'Working directory (defaults to cwd)' },
+      },
+      required: ['goal'],
+    },
+  },
+  // ── Phase L: search primitive ─────────────────────────────────────────────
+  {
+    name: 'danteforge_search_find_pattern',
+    description: 'Free-form regex pattern search across the project. Returns every matching line. Used by substrate gates (claim-auditor, hardcoded-fallback) and agent code inspection.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        pattern: { type: 'string', description: 'Regular expression to search for' },
+        glob: { type: 'string', description: 'Optional file glob filter (e.g. "src/**/*.ts")' },
+        includeTests: { type: 'boolean', description: 'Include test files in results (default false)' },
+        maxResults: { type: 'number', description: 'Maximum matches to return (default 1000)' },
+        cwd: { type: 'string', description: 'Working directory (defaults to cwd)' },
+      },
+      required: ['pattern'],
+    },
+  },
+  {
+    name: 'danteforge_search_find_symbol',
+    description: 'Find declarations of a symbol (function, class, interface, etc) across the project. Returns file + line + kind + exported status.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        symbol: { type: 'string', description: 'Symbol name to locate declarations of' },
+        glob: { type: 'string', description: 'Optional file glob filter' },
+        includeTests: { type: 'boolean', description: 'Include test files (default false)' },
+        cwd: { type: 'string', description: 'Working directory (defaults to cwd)' },
+      },
+      required: ['symbol'],
+    },
+  },
+  {
+    name: 'danteforge_search_find_imports',
+    description: 'Find production-code imports of a symbol. Excludes test files by default. Used by orphan-audit and import-resolves harden checks.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        symbol: { type: 'string', description: 'Symbol name to find imports of' },
+        includeTests: { type: 'boolean', description: 'Include test files (default false)' },
+        cwd: { type: 'string', description: 'Working directory (defaults to cwd)' },
+      },
+      required: ['symbol'],
+    },
+  },
+  // ── Phase N-Q: research mode (read-only) ──────────────────────────────────
+  {
+    name: 'danteforge_research_get_status',
+    description: 'Project-wide research-mode summary: total waves, outcomes by kind, capped dims, pending conflicts, in-progress waves.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        cwd: { type: 'string', description: 'Working directory (defaults to cwd)' },
+      },
+      required: [],
+    },
+  },
+  {
+    name: 'danteforge_research_get_history',
+    description: 'Prior research waves for a specific dimension, in chronological order. Includes outcome (promote/conflict/cap) and reason per wave.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        dimensionId: { type: 'string', description: 'Dimension id to fetch history for' },
+        cwd: { type: 'string', description: 'Working directory (defaults to cwd)' },
+      },
+      required: ['dimensionId'],
+    },
+  },
+  {
+    name: 'danteforge_research_get_caps',
+    description: 'List dimensions marked architecturally capped via research wave outcome. Returns dimensionId + structural cap reason.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        cwd: { type: 'string', description: 'Working directory (defaults to cwd)' },
       },
       required: [],
     },

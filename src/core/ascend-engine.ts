@@ -27,10 +27,12 @@ import { runAutoforgeLoop, AutoforgeLoopState, type AutoforgeLoopContext, type A
 import { executeAutoforgeCommand } from './autoforge-executor.js';
 import { generateAdversarialCritique } from './adversarial-critique.js';
 import { logger } from './logger.js';
+import { SCORING_DOCTRINE_SHORT } from './scoring-doctrine.js';
 import { createStepTracker } from './progress.js';
 import { confirmMatrix } from './matrix-confirm.js';
 import { isLLMAvailable } from './llm.js';
 import { mergeScoreProposals, writeScoreProposal } from './matrix-development-engine.js';
+import { ensureMatrixOnDisk } from '../cli/commands/compete-score-flow.js';
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -782,6 +784,8 @@ export async function runAscend(options: AscendEngineOptions = {}): Promise<Asce
   const generateAdversarialScoreFn = options._generateAdversarialScore
     ?? (options.adversarialGating ? (await import('./adversarial-scorer-dim.js').catch(() => null))?.generateAdversarialScore : undefined);
 
+  logger.info(`[scoring-doctrine] ${SCORING_DOCTRINE_SHORT}`);
+
   const oriented = await orientAndClassify(options, cwd, target, { loadMatrixFn, saveMatrixFn, defineUniverseFn, harshScoreFn, computeStrictDimsFn, loadStateFn });
   if (!oriented.ok) return oriented.result;
   const { state: initState, achievable, atCeiling, baselineResult, beforeScores } = oriented;
@@ -879,27 +883,49 @@ export async function runAscend(options: AscendEngineOptions = {}): Promise<Asce
     }
 
     logger.info(`  Goal: ${goal.slice(0, 120)}`);
-    const loopCtx: AutoforgeLoopContext = { goal, cwd, state: cs.state as Parameters<typeof runAutoforgeLoop>[0]['state'], loopState: AutoforgeLoopState.IDLE, cycleCount: 0, startedAt: new Date().toISOString(), retryCounters: {}, blockedArtifacts: [], lastGuidance: null, isWebProject: false, force: true, maxRetries: 10, recentScores: [] };
-    await executeDimensionCycle(options, loopCtx, nextDim, wrappedExecuteCommandFn, runLoopFn, beforeScore, target, goal, cwd, loadStateFn);
+
+    // Depth Doctrine: alternate breadth/depth waves.
+    const { getWaveGuard } = await import('./wave-alternation.js');
+    const waveGuard = getWaveGuard(cs.cyclesRun);
+
+    if (waveGuard.type === 'depth') {
+      // Depth wave: run outcomes for this dim instead of forging new code.
+      logger.info(`  [Ascend] DEPTH WAVE: running outcomes for ${nextDim.label}`);
+      await wrappedExecuteCommandFn(`validate ${nextDim.id} --force-cold`, cwd);
+    } else {
+      // Breadth wave: forge new code (existing behavior).
+      const loopCtx: AutoforgeLoopContext = { goal, cwd, state: cs.state as Parameters<typeof runAutoforgeLoop>[0]['state'], loopState: AutoforgeLoopState.IDLE, cycleCount: 0, startedAt: new Date().toISOString(), retryCounters: {}, blockedArtifacts: [], lastGuidance: null, isWebProject: false, force: true, maxRetries: 10, recentScores: [] };
+      await executeDimensionCycle(options, loopCtx, nextDim, wrappedExecuteCommandFn, runLoopFn, beforeScore, target, goal, cwd, loadStateFn);
+    }
     cs.state = await loadStateFn({ cwd }).catch(() => cs.state);
     const { newSelfScore, delta, newScoreResult } = await rescoreAndGetDelta(harshScoreFn, computeStrictDimsFn, nextDim, beforeScore, cwd);
     if (Math.abs(delta) < 0.1) { cs.plateauedDims.add(nextDim.id); logger.info(`  (plateau detected — moving to next dimension)`); }
     else { cs.plateauedDims.delete(nextDim.id); if (delta > 0) cs.dimensionsImproved++; }
     await runAdversarialCritiqueStep(options, generateCritiqueFn, nextDim, newSelfScore, beforeScore, target, goal, cwd, maxDimRetries, cs);
-    if (options._loadMatrix || options._saveMatrix) {
-      updateDimensionScore(matrix, nextDim.id, newSelfScore);
-      await saveMatrixFn(matrix, cwd);
-    } else {
-      await writeScoreProposal({
+    // Phase E final migration: proposal flow is the single writer.
+    void saveMatrixFn;
+    await ensureMatrixOnDisk(matrix, cwd);
+    await writeScoreProposal({
+      cwd,
+      dimension: nextDim.id,
+      score: newSelfScore,
+      agent: 'ascend',
+      rationale: `Ascend cycle ${cs.cyclesRun + 1} strict rescore for "${nextDim.label}" after autoforge loop.`,
+    });
+    await mergeScoreProposals({ cwd, policy: 'harsh-min', agent: 'ascend' });
+    matrix = await loadMatrixFn(cwd) ?? matrix;
+
+    // Time Machine: record each ascend cycle for audit trail.
+    try {
+      const { createTimeMachineCommit } = await import('./time-machine.js');
+      const delta2 = newSelfScore - beforeScore;
+      await createTimeMachineCommit({
         cwd,
-        dimension: nextDim.id,
-        score: newSelfScore,
-        agent: 'ascend',
-        rationale: `Ascend cycle ${cs.cyclesRun + 1} strict rescore for "${nextDim.label}" after autoforge loop.`,
+        paths: ['.danteforge/compete/matrix.json', '.danteforge/outcome-evidence'],
+        label: `ascend/cycle-${cs.cyclesRun + 1}/${nextDim.id}/${delta2 >= 0 ? '+' : ''}${delta2.toFixed(1)}`,
       });
-      await mergeScoreProposals({ cwd, policy: 'harsh-min', agent: 'ascend' });
-      matrix = await loadMatrixFn(cwd) ?? matrix;
-    }
+    } catch { /* best-effort — TM never blocks ascend */ }
+
     await saveCheckpointFn({ pausedAt: new Date().toISOString(), cyclesRun: cs.cyclesRun + 1, maxCycles, target, startedAt, plateauedDims: Array.from(cs.plateauedDims), currentDimension: nextDim.id, beforeScores }, cwd).catch(() => {});
     cs.cyclesRun++;
     await runPeriodicRetroIfDue(options, cs.cyclesRun, cwd);

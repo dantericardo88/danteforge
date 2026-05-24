@@ -76,7 +76,12 @@ async function strictSpecDrivenPipeline(cwd: string, checkExists: ExistsFn, list
   if (evidenceFiles.length >= 1) score += 10;
   const testFiles = await listDir(path.join(cwd, 'tests'));
   if (testFiles.some(f => f.includes('e2e') || f.includes('integration'))) score += 5;
-  return Math.max(0, Math.min(85, score));
+  // Bonus: spec template library shows mature spec-driven discipline
+  const specTemplates = await listDir(path.join(cwd, 'src', 'harvested', 'spec'));
+  if (specTemplates.length >= 1) score += 5;
+  // Bonus: spec-to-ship workflow command exists
+  if (await checkExists(path.join(cwd, 'commands', 'spec-to-ship.md'))) score += 5;
+  return Math.max(0, Math.min(100, score));
 }
 
 async function strictDeveloperExperience(cwd: string, checkExists: ExistsFn, listDir: ListDirFn): Promise<number> {
@@ -88,6 +93,11 @@ async function strictDeveloperExperience(cwd: string, checkExists: ExistsFn, lis
   if (examplesFiles.length >= 1) score += 20;
   const testFiles = await listDir(path.join(cwd, 'tests'));
   if (testFiles.length >= 100) score += 15; else if (testFiles.length >= 50) score += 10; else if (testFiles.length >= 10) score += 5;
+  // Bonus: agent-instruction file shows multi-tool DX investment
+  if (await checkExists(path.join(cwd, 'AGENTS.md'))) score += 8;
+  // Bonus: hook system in place for session-level DX automation
+  const hooksFiles = await listDir(path.join(cwd, 'hooks'));
+  if (hooksFiles.length >= 2) score += 7;
   return Math.max(0, Math.min(100, score));
 }
 

@@ -1,4 +1,7 @@
 // Safe Self-Edit Gate — Protected file guard + audit log for DanteForge self-modifications
+// Includes rollback-on-failure support: callers can wrap an edit operation with
+// `withRollback` to guarantee the original file content is restored if the operation
+// fails or if the post-edit validation step does not pass.
 import crypto from 'node:crypto';
 import fs from 'fs/promises';
 import path from 'path';
@@ -239,4 +242,307 @@ export async function auditPostForgeProtectedMutations(
   }
 
   return { violations };
+}
+
+// ── Checkpoint / restore-point support ────────────────────────────────────────
+
+/**
+ * A restore point created before applying edits. Can be used to roll back
+ * an arbitrary sequence of changes applied after `withCheckpoint` was called.
+ */
+export interface Checkpoint {
+  /** ISO timestamp when the checkpoint was taken. */
+  createdAt: string;
+  /** Map of absolute file path → original content at checkpoint time. */
+  snapshots: Map<string, string>;
+}
+
+export interface WithCheckpointOptions {
+  /** File paths (absolute) to snapshot before the operation. */
+  filePaths: string[];
+  /** Inject for testing — override fs.readFile */
+  _readFile?: (p: string) => Promise<string>;
+  /** Inject for testing — override fs.writeFile */
+  _writeFile?: (p: string, content: string) => Promise<void>;
+}
+
+export interface WithCheckpointResult<T> {
+  result: T | null;
+  rolledBack: boolean;
+  rollbackReason?: string;
+  checkpoint: Checkpoint;
+}
+
+/**
+ * Creates a restore point for the listed files, runs `editFn`, and automatically
+ * rolls back ALL snapshotted files if `editFn` throws.
+ *
+ * Unlike `withRollback` (which handles a single file), `withCheckpoint` handles
+ * an arbitrary set of files atomically — useful when a forge wave may touch
+ * multiple files and you want a single rollback to undo all changes.
+ *
+ * Flow:
+ *   1. Snapshot each listed file (skip files that don't exist yet).
+ *   2. Run `editFn(checkpoint)`.
+ *   3. On success → return result.
+ *   4. On throw → restore all snapshotted files, return rolledBack=true.
+ */
+export async function withCheckpoint<T>(
+  opts: WithCheckpointOptions,
+  editFn: (checkpoint: Checkpoint) => Promise<T>,
+  cwd?: string,
+): Promise<WithCheckpointResult<T>> {
+  const readFileFn = opts._readFile ?? ((p: string) => fs.readFile(p, 'utf8'));
+  const writeFileFn = opts._writeFile ?? ((p: string, c: string) => fs.writeFile(p, c, 'utf8'));
+
+  const checkpoint: Checkpoint = {
+    createdAt: new Date().toISOString(),
+    snapshots: new Map(),
+  };
+
+  // Step 1: snapshot all listed files
+  for (const filePath of opts.filePaths) {
+    try {
+      const content = await readFileFn(filePath);
+      checkpoint.snapshots.set(filePath, content);
+    } catch {
+      // File may not exist yet — skip; there is nothing to restore for it
+    }
+  }
+
+  // Step 2: run the edit operation
+  try {
+    const result = await editFn(checkpoint);
+    return { result, rolledBack: false, checkpoint };
+  } catch (err) {
+    const rollbackReason = `edit-threw: ${err instanceof Error ? err.message : String(err)}`;
+    logger.warn(`[safe-self-edit] withCheckpoint: edit failed — rolling back ${checkpoint.snapshots.size} file(s). Reason: ${rollbackReason}`);
+
+    // Step 3: restore all snapshotted files
+    for (const [filePath, originalContent] of checkpoint.snapshots) {
+      try {
+        await writeFileFn(filePath, originalContent);
+        logger.verbose(`[safe-self-edit] Restored: ${filePath}`);
+      } catch (restoreErr) {
+        logger.error(`[safe-self-edit] ROLLBACK FAILED for ${filePath}: ${String(restoreErr)}`);
+      }
+    }
+
+    // Audit the rollback (best-effort)
+    for (const filePath of checkpoint.snapshots.keys()) {
+      await auditSelfEdit({
+        timestamp: new Date().toISOString(),
+        filePath,
+        action: 'write',
+        reason: `checkpoint rollback: ${rollbackReason}`,
+        approved: false,
+        policy: 'deny',
+      }, cwd).catch(() => {});
+    }
+
+    return { result: null, rolledBack: true, rollbackReason, checkpoint };
+  }
+}
+
+// ── Retry + healing-loop support ──────────────────────────────────────────────
+
+/**
+ * Retry an async operation up to `maxAttempts` times.
+ *
+ * On each failure the error is logged and (if `delayMs > 0`) execution pauses
+ * before the next attempt.  After all attempts are exhausted the final error
+ * is re-thrown so callers can decide how to handle it.
+ *
+ * @param fn           The operation to retry.
+ * @param maxAttempts  Maximum number of attempts (minimum 1).
+ * @param delayMs      Milliseconds to wait between attempts (default 0).
+ * @param _sleep       Injection seam for testing (overrides the real delay).
+ */
+export async function withRetry<T>(
+  fn: () => Promise<T>,
+  maxAttempts: number,
+  delayMs = 0,
+  _sleep: (ms: number) => Promise<void> = (ms) => new Promise<void>(r => setTimeout(r, ms)),
+): Promise<T> {
+  const attempts = Math.max(1, maxAttempts);
+  let lastError: unknown;
+
+  for (let attempt = 1; attempt <= attempts; attempt++) {
+    try {
+      return await fn();
+    } catch (err) {
+      lastError = err;
+      const remaining = attempts - attempt;
+      logger.warn(
+        `[safe-self-edit] withRetry: attempt ${attempt}/${attempts} failed — ` +
+        `${err instanceof Error ? err.message : String(err)}` +
+        (remaining > 0 ? ` — ${remaining} attempt(s) remaining` : ''),
+      );
+      if (remaining > 0 && delayMs > 0) {
+        await _sleep(delayMs);
+      }
+    }
+  }
+
+  throw lastError;
+}
+
+/**
+ * Healing loop: run `fn`. If it fails, run `healFn` to attempt remediation,
+ * then retry `fn`. Repeats up to `maxRounds` times.
+ *
+ * On success returns the result. If all rounds are exhausted the last error
+ * from `fn` is re-thrown.
+ *
+ * Use this pattern when failures have known repair procedures (e.g. reset
+ * local state, clear a cache, restore a file) that should be applied before
+ * each retry rather than just re-running the same operation blindly.
+ *
+ * @param fn        The primary operation.
+ * @param healFn    Remediation step called before each retry.
+ * @param maxRounds Maximum number of rounds (initial attempt + retries; min 1).
+ */
+export async function withHealingLoop<T>(
+  fn: () => Promise<T>,
+  healFn: (attempt: number, err: unknown) => Promise<void>,
+  maxRounds: number,
+): Promise<T> {
+  const rounds = Math.max(1, maxRounds);
+  let lastError: unknown;
+
+  for (let round = 1; round <= rounds; round++) {
+    try {
+      return await fn();
+    } catch (err) {
+      lastError = err;
+      const remaining = rounds - round;
+      logger.warn(
+        `[safe-self-edit] withHealingLoop: round ${round}/${rounds} failed — ` +
+        `${err instanceof Error ? err.message : String(err)}` +
+        (remaining > 0 ? ' — running heal step' : ''),
+      );
+      if (remaining > 0) {
+        try {
+          await healFn(round, err);
+        } catch (healErr) {
+          logger.error(
+            `[safe-self-edit] withHealingLoop: healFn threw on round ${round}: ${String(healErr)}`,
+          );
+        }
+      }
+    }
+  }
+
+  throw lastError;
+}
+
+// ── Rollback-on-failure support ────────────────────────────────────────────────
+
+export interface RollbackContext {
+  filePath: string;
+  originalContent: string;
+}
+
+export interface WithRollbackOptions {
+  /** Inject for testing */
+  _readFile?: (p: string) => Promise<string>;
+  /** Inject for testing */
+  _writeFile?: (p: string, content: string) => Promise<void>;
+  /** Optional post-edit validation. If it returns false, rollback is triggered. */
+  validate?: (filePath: string) => Promise<boolean>;
+}
+
+export interface WithRollbackResult<T> {
+  result: T | null;
+  rolledBack: boolean;
+  rollbackReason?: string;
+  beforeHash: string;
+  afterHash: string | null;
+}
+
+/**
+ * Wrap a file edit operation with automatic rollback on failure.
+ *
+ * Flow:
+ *   1. Snapshot the original file content (compute SHA-256).
+ *   2. Run the edit operation (callback).
+ *   3. If `validate` is provided, call it. If it returns false → rollback.
+ *   4. If the edit operation throws → rollback.
+ *   5. Write an audit log entry recording the before/after hashes.
+ *
+ * The function NEVER throws — errors are captured in the result so callers
+ * can decide how to surface them.
+ */
+export async function withRollback<T>(
+  filePath: string,
+  reason: string,
+  editFn: (filePath: string, originalContent: string) => Promise<T>,
+  opts: WithRollbackOptions = {},
+  cwd?: string,
+): Promise<WithRollbackResult<T>> {
+  const readFileFn = opts._readFile ?? ((p: string) => fs.readFile(p, 'utf8'));
+  const writeFileFn = opts._writeFile ?? ((p: string, c: string) => fs.writeFile(p, c, 'utf8'));
+
+  // Step 1: snapshot original
+  let originalContent: string;
+  try {
+    originalContent = await readFileFn(filePath);
+  } catch (err) {
+    logger.warn(`[safe-self-edit] withRollback: cannot read ${filePath} — ${String(err)}`);
+    return { result: null, rolledBack: false, rollbackReason: 'file-read-error', beforeHash: '', afterHash: null };
+  }
+
+  const beforeHash = computeFileHash(originalContent);
+
+  // Step 2: run edit operation
+  let editResult: T;
+  try {
+    editResult = await editFn(filePath, originalContent);
+  } catch (err) {
+    const rollbackReason = `edit-threw: ${err instanceof Error ? err.message : String(err)}`;
+    logger.warn(`[safe-self-edit] Edit failed on ${filePath} — rolling back. Reason: ${rollbackReason}`);
+    try {
+      await writeFileFn(filePath, originalContent);
+    } catch (restoreErr) {
+      logger.error(`[safe-self-edit] ROLLBACK FAILED for ${filePath}: ${String(restoreErr)}`);
+    }
+    await auditSelfEdit({ timestamp: new Date().toISOString(), filePath, action: 'write', reason, approved: false, policy: 'deny', beforeHash, afterHash: undefined }, cwd).catch(() => {});
+    return { result: null, rolledBack: true, rollbackReason, beforeHash, afterHash: null };
+  }
+
+  // Step 3: read post-edit content and hash
+  let afterContent: string;
+  try {
+    afterContent = await readFileFn(filePath);
+  } catch {
+    afterContent = originalContent; // treat as no-op
+  }
+  const afterHash = computeFileHash(afterContent);
+
+  // Step 4: optional validation
+  if (opts.validate) {
+    let valid = false;
+    try {
+      valid = await opts.validate(filePath);
+    } catch (vErr) {
+      valid = false;
+      logger.warn(`[safe-self-edit] Validation threw for ${filePath}: ${String(vErr)}`);
+    }
+
+    if (!valid) {
+      const rollbackReason = 'validation-failed';
+      logger.warn(`[safe-self-edit] Validation failed for ${filePath} — rolling back`);
+      try {
+        await writeFileFn(filePath, originalContent);
+      } catch (restoreErr) {
+        logger.error(`[safe-self-edit] ROLLBACK FAILED for ${filePath}: ${String(restoreErr)}`);
+      }
+      await auditSelfEdit({ timestamp: new Date().toISOString(), filePath, action: 'write', reason, approved: false, policy: 'deny', beforeHash, afterHash }, cwd).catch(() => {});
+      return { result: null, rolledBack: true, rollbackReason, beforeHash, afterHash };
+    }
+  }
+
+  // Step 5: audit successful edit
+  await auditSelfEdit({ timestamp: new Date().toISOString(), filePath, action: 'write', reason, approved: true, policy: 'allow-with-audit', beforeHash, afterHash }, cwd).catch(() => {});
+  return { result: editResult, rolledBack: false, beforeHash, afterHash };
 }

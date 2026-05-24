@@ -4,6 +4,7 @@ import fs from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import { compete, actionAutoSprint } from '../src/cli/commands/compete.js';
+import { loadMatrix, saveMatrix } from '../src/core/compete-matrix.js';
 import type { CompeteMatrix, MatrixDimension } from '../src/core/compete-matrix.js';
 import type { CompetitorComparison, CompetitorScanOptions } from '../src/core/competitor-scanner.js';
 import type { VerifyReceipt } from '../src/core/verify-receipts.js';
@@ -13,24 +14,35 @@ import type { HarshScoreResult } from '../src/core/harsh-scorer.js';
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
 function makeMatrix(dims: Partial<MatrixDimension>[] = [], ossNames: string[] = [], csNames: string[] = []): CompeteMatrix {
-  const base: MatrixDimension[] = dims.map((d, i) => ({
-    id: d.id ?? `dim_${i}`,
-    label: d.label ?? `Dimension ${i}`,
-    weight: d.weight ?? 1.0,
-    category: d.category ?? 'quality',
-    frequency: d.frequency ?? 'medium',
-    scores: d.scores ?? { self: 5.0, cursor: 8.0 },
-    gap_to_leader: d.gap_to_leader ?? 3.0,
-    leader: d.leader ?? 'cursor',
-    gap_to_closed_source_leader: d.gap_to_closed_source_leader ?? d.gap_to_leader ?? 3.0,
-    closed_source_leader: d.closed_source_leader ?? d.leader ?? 'cursor',
-    gap_to_oss_leader: d.gap_to_oss_leader ?? 0,
-    oss_leader: d.oss_leader ?? 'unknown',
-    status: d.status ?? 'not-started',
-    sprint_history: d.sprint_history ?? [],
-    next_sprint_target: d.next_sprint_target ?? 7.0,
-    harvest_source: d.harvest_source,
-  }));
+  const base: MatrixDimension[] = dims.map((d, i) => {
+    const dim = {
+      id: d.id ?? `dim_${i}`,
+      label: d.label ?? `Dimension ${i}`,
+      weight: d.weight ?? 1.0,
+      category: d.category ?? 'quality',
+      frequency: d.frequency ?? 'medium',
+      scores: d.scores ?? { self: 5.0, cursor: 8.0 },
+      gap_to_leader: d.gap_to_leader ?? 3.0,
+      leader: d.leader ?? 'cursor',
+      gap_to_closed_source_leader: d.gap_to_closed_source_leader ?? d.gap_to_leader ?? 3.0,
+      closed_source_leader: d.closed_source_leader ?? d.leader ?? 'cursor',
+      gap_to_oss_leader: d.gap_to_oss_leader ?? 0,
+      oss_leader: d.oss_leader ?? 'unknown',
+      status: d.status ?? 'not-started',
+      sprint_history: d.sprint_history ?? [],
+      next_sprint_target: d.next_sprint_target ?? 7.0,
+      harvest_source: d.harvest_source,
+    } as MatrixDimension;
+    // Default capability_test for test fixtures so the merge gate accepts
+    // scores > 5.0. Tests can override by including capability_test in their
+    // partial dim spec. Uses `node -e ""` (cross-platform, exits 0 quickly).
+    const fromPartial = (d as Record<string, unknown>).capability_test;
+    (dim as Record<string, unknown>).capability_test = fromPartial ?? {
+      command: 'node -e ""',
+      description: 'test fixture — always passes',
+    };
+    return dim;
+  });
 
   return {
     project: 'TestProject',
@@ -198,20 +210,19 @@ describe('compete command', () => {
     const matrix = makeMatrix([
       { id: 'ux_polish', label: 'UX Polish', gap_to_leader: 4.7, frequency: 'high', weight: 1.4, scores: { self: 4.5, cursor: 9.2 }, leader: 'cursor', status: 'in-progress' },
     ]);
-
-    let savedMatrix: CompeteMatrix | null = null;
+    await saveMatrix(matrix, tmpDir);
 
     const result = await compete({
       rescore: 'ux_polish=7.5',
       skipVerify: true,
       cwd: tmpDir,
       _loadMatrix: async () => matrix,
-      _saveMatrix: async (m: CompeteMatrix) => { savedMatrix = m; },
     });
 
     assert.strictEqual(result.action, 'rescore');
-    assert.ok(savedMatrix !== null);
-    const dim = (savedMatrix as CompeteMatrix).dimensions[0]!;
+    const final = await loadMatrix(tmpDir);
+    assert.ok(final !== null);
+    const dim = final!.dimensions[0]!;
     assert.strictEqual(dim.scores['self'], 7.5);
     assert.strictEqual(dim.sprint_history.length, 1);
     assert.strictEqual(dim.sprint_history[0]!.before, 4.5);
@@ -224,19 +235,18 @@ describe('compete command', () => {
     const matrix = makeMatrix([
       { id: 'testing', label: 'Testing', gap_to_leader: 2.0, scores: { self: 6.0, cursor: 8.0 }, leader: 'cursor', status: 'in-progress' },
     ]);
-
-    let savedMatrix: CompeteMatrix | null = null;
+    await saveMatrix(matrix, tmpDir);
 
     await compete({
       rescore: 'testing=7.8,abc123def456',
       skipVerify: true,
       cwd: tmpDir,
       _loadMatrix: async () => matrix,
-      _saveMatrix: async (m: CompeteMatrix) => { savedMatrix = m; },
     });
 
-    assert.ok(savedMatrix !== null);
-    const sprint = (savedMatrix as CompeteMatrix).dimensions[0]!.sprint_history[0]!;
+    const final = await loadMatrix(tmpDir);
+    assert.ok(final !== null);
+    const sprint = final!.dimensions[0]!.sprint_history[0]!;
     assert.strictEqual(sprint.after, 7.8);
     assert.strictEqual(sprint.commit, 'abc123def456');
   });
@@ -384,8 +394,8 @@ describe('compete command', () => {
     const matrix = makeMatrix([
       { id: 'ux_polish', label: 'UX Polish', gap_to_leader: 4.7, scores: { self: 4.5, cursor: 9.2 }, leader: 'cursor', status: 'in-progress' },
     ]);
+    await saveMatrix(matrix, tmpDir);
 
-    let savedMatrix: CompeteMatrix | null = null;
     let writtenEvidence: CompeteEvidence | null = null;
     const passReceipt: Partial<VerifyReceipt> = {
       status: 'pass',
@@ -397,14 +407,14 @@ describe('compete command', () => {
       rescore: 'ux_polish=7.5',
       cwd: tmpDir,
       _loadMatrix: async () => matrix,
-      _saveMatrix: async (m: CompeteMatrix) => { savedMatrix = m; },
       _readVerifyReceipt: async () => passReceipt as VerifyReceipt,
       _writeEvidence: async (record: CompeteEvidence) => { writtenEvidence = record; },
     });
 
     assert.strictEqual(result.action, 'rescore');
-    assert.ok(savedMatrix !== null, 'Matrix should be saved on pass');
-    assert.strictEqual((savedMatrix as CompeteMatrix).dimensions[0]!.scores['self'], 7.5);
+    const final = await loadMatrix(tmpDir);
+    assert.ok(final !== null, 'Matrix should be on disk after merge');
+    assert.strictEqual(final!.dimensions[0]!.scores['self'], 7.5);
     assert.ok(writtenEvidence !== null, 'Evidence record should be written');
     assert.strictEqual((writtenEvidence as CompeteEvidence).verifyStatus, 'pass');
     assert.strictEqual((writtenEvidence as CompeteEvidence).scoreBefore, 4.5);
@@ -417,8 +427,8 @@ describe('compete command', () => {
     const matrix = makeMatrix([
       { id: 'ux_polish', label: 'UX Polish', gap_to_leader: 4.7, scores: { self: 4.5, cursor: 9.2 }, leader: 'cursor', status: 'in-progress' },
     ]);
+    await saveMatrix(matrix, tmpDir);
 
-    let savedMatrix: CompeteMatrix | null = null;
     let writtenEvidence: CompeteEvidence | null = null;
 
     const result = await compete({
@@ -426,14 +436,14 @@ describe('compete command', () => {
       skipVerify: true,
       cwd: tmpDir,
       _loadMatrix: async () => matrix,
-      _saveMatrix: async (m: CompeteMatrix) => { savedMatrix = m; },
       _readVerifyReceipt: async () => null,
       _writeEvidence: async (record: CompeteEvidence) => { writtenEvidence = record; },
     });
 
     assert.strictEqual(result.action, 'rescore');
-    assert.ok(savedMatrix !== null, 'Matrix should be saved with --skip-verify');
-    assert.strictEqual((savedMatrix as CompeteMatrix).dimensions[0]!.scores['self'], 7.5);
+    const final = await loadMatrix(tmpDir);
+    assert.ok(final !== null, 'Matrix should be on disk with --skip-verify');
+    assert.strictEqual(final!.dimensions[0]!.scores['self'], 7.5);
     assert.ok(writtenEvidence !== null, 'Evidence record should still be written');
     assert.strictEqual((writtenEvidence as CompeteEvidence).verifyStatus, 'skipped');
   });
@@ -676,10 +686,12 @@ describe('compete --auto (actionAutoSprint)', () => {
     const result = await actionAutoSprint({
       cwd: tmpDir2,
       maxCycles: 1,
+      yes: true,
       _loadMatrix: async () => makeAutoMatrix(5.0, 8.0),
       _saveMatrix: async () => {},
       _runInferno: async () => {},
       _postSprintScore: async () => makeScoreResult(9.0),
+      _computeStrictDims: async () => ({ autonomy: 0, selfImprovement: 0, tokenEconomy: 0, specDrivenPipeline: 0, developerExperience: 0, planningQuality: 0, convergenceSelfHealing: 0 }) as never,
       _stdout: () => {},
     }, tmpDir2);
     assert.ok(result.victoryMessage !== undefined, 'should have a victory message');
@@ -777,13 +789,12 @@ describe('compete --sync-scores', () => {
       { id: 'ux_polish', label: 'UX Polish', scores: { self: 7.0, cursor: 9.0 }, gap_to_leader: 2.0 },
       { id: 'testing', label: 'Testing', scores: { self: 8.0, cursor: 9.0 }, gap_to_leader: 1.0 },
     ]);
-    let savedMatrix: CompeteMatrix | null = null;
+    await saveMatrix(matrix, tmpDir3);
 
     const result = await compete({
       syncScores: true,
       cwd: tmpDir3,
       _loadMatrix: async () => JSON.parse(JSON.stringify(matrix)) as CompeteMatrix,
-      _saveMatrix: async (m) => { savedMatrix = m; },
       // Live scorer returns uxPolish=9.5 (delta 2.5, drifted), testing=8.1 (delta 0.1, within threshold)
       _harshScore: async () => makeHarshResult({ uxPolish: 9.5, testing: 8.1 }),
     });
@@ -791,7 +802,8 @@ describe('compete --sync-scores', () => {
     assert.strictEqual(result.action, 'validate');
     assert.ok(result.dimensionsUpdated !== undefined);
     // uxPolish drifted by 2.5 — should be synced
-    const uxDim = (savedMatrix as CompeteMatrix | null)?.dimensions.find(d => d.id === 'ux_polish');
+    const final = await loadMatrix(tmpDir3);
+    const uxDim = final?.dimensions.find(d => d.id === 'ux_polish');
     assert.ok(uxDim, 'ux_polish dimension should exist');
     assert.strictEqual(uxDim!.scores['self'], 9.5, 'ux_polish self should be updated to live score');
   });
@@ -834,54 +846,61 @@ describe('compete --amend', () => {
     const base = makeMatrix([
       { id: 'semantic_memory', label: 'Semantic Memory', scores: { self: 2.0, Cursor: 7.0 }, gap_to_leader: 5.0 },
     ]);
-    base.dimensions.push({
+    const codeSigningDim = {
       id: 'code_signing', label: 'Code Signing', weight: 0.7,
-      category: 'reliability', frequency: 'low',
+      category: 'reliability', frequency: 'low' as const,
       scores: { self: 0.0, Cursor: 10.0 }, gap_to_leader: 10.0, leader: 'Cursor',
       gap_to_closed_source_leader: 10.0, closed_source_leader: 'Cursor',
       gap_to_oss_leader: 0, oss_leader: 'unknown',
-      status: 'not-started', sprint_history: [], next_sprint_target: 2.0,
+      status: 'not-started' as const, sprint_history: [], next_sprint_target: 2.0,
       ceiling: 3.0, ceilingReason: 'requires EV cert — human action',
-    });
+    } as MatrixDimension;
+    (codeSigningDim as Record<string, unknown>).capability_test = {
+      command: 'node -e ""', description: 'test fixture',
+    };
+    base.dimensions.push(codeSigningDim);
     return base;
   }
 
   it('updates dim self-score and returns composite', async () => {
-    let saved: CompeteMatrix | null = null;
+    const matrix = makeAmendMatrix();
+    await saveMatrix(matrix, tmpAmend);
     const result = await compete({
       amend: 'semantic_memory=5.5',
       cwd: tmpAmend,
-      _loadMatrix: async () => makeAmendMatrix(),
-      _saveMatrix: async (m) => { saved = m; },
+      _loadMatrix: async () => matrix,
     });
-    assert.ok(saved, 'matrix should have been saved');
-    const dim = saved!.dimensions.find(d => d.id === 'semantic_memory');
+    const final = await loadMatrix(tmpAmend);
+    assert.ok(final, 'matrix should be on disk after merge');
+    const dim = final!.dimensions.find(d => d.id === 'semantic_memory');
     assert.ok(dim, 'dim should exist');
     assert.strictEqual(dim!.scores['self'], 5.5);
     assert.strictEqual(result.action, 'status');
   });
 
   it('clamps score to ceiling when dim has one', async () => {
-    let saved: CompeteMatrix | null = null;
+    const matrix = makeAmendMatrix();
+    await saveMatrix(matrix, tmpAmend);
     await compete({
       amend: 'code_signing=8.0',
       cwd: tmpAmend,
-      _loadMatrix: async () => makeAmendMatrix(),
-      _saveMatrix: async (m) => { saved = m; },
+      _loadMatrix: async () => matrix,
     });
-    const dim = saved!.dimensions.find(d => d.id === 'code_signing');
+    const final = await loadMatrix(tmpAmend);
+    const dim = final!.dimensions.find(d => d.id === 'code_signing');
     assert.ok(dim!.scores['self']! <= 3.0, 'score must be clamped to ceiling 3.0');
   });
 
   it('records sprint history for the amended dim', async () => {
-    let saved: CompeteMatrix | null = null;
+    const matrix = makeAmendMatrix();
+    await saveMatrix(matrix, tmpAmend);
     await compete({
       amend: 'semantic_memory=6.0',
       cwd: tmpAmend,
-      _loadMatrix: async () => makeAmendMatrix(),
-      _saveMatrix: async (m) => { saved = m; },
+      _loadMatrix: async () => matrix,
     });
-    const dim = saved!.dimensions.find(d => d.id === 'semantic_memory');
+    const final = await loadMatrix(tmpAmend);
+    const dim = final!.dimensions.find(d => d.id === 'semantic_memory');
     assert.ok(dim!.sprint_history.length > 0, 'sprint history should have one entry');
     assert.strictEqual(dim!.sprint_history[0]!.before, 2.0);
     assert.strictEqual(dim!.sprint_history[0]!.after, 6.0);
@@ -926,16 +945,17 @@ describe('compete --amend-file', () => {
   it('batch-updates multiple dims from valid JSON and saves matrix', async () => {
     const jsonPath = path.join(tmpAmendFile, 'scores.json');
     await fs.writeFile(jsonPath, JSON.stringify({ semantic_memory: 5.5, agent_reasoning_loop: 6.0 }), 'utf-8');
-    let saved: CompeteMatrix | null = null;
+    const matrix = makeAmendFileMatrix();
+    await saveMatrix(matrix, tmpAmendFile);
     const result = await compete({
       amendFile: 'scores.json',
       cwd: tmpAmendFile,
-      _loadMatrix: async () => makeAmendFileMatrix(),
-      _saveMatrix: async (m) => { saved = m; },
+      _loadMatrix: async () => matrix,
     });
-    assert.ok(saved, 'matrix should have been saved');
-    const sm = saved!.dimensions.find(d => d.id === 'semantic_memory');
-    const ar = saved!.dimensions.find(d => d.id === 'agent_reasoning_loop');
+    const final = await loadMatrix(tmpAmendFile);
+    assert.ok(final, 'matrix should be on disk after merge');
+    const sm = final!.dimensions.find(d => d.id === 'semantic_memory');
+    const ar = final!.dimensions.find(d => d.id === 'agent_reasoning_loop');
     assert.strictEqual(sm!.scores['self'], 5.5, 'semantic_memory should be updated');
     assert.strictEqual(ar!.scores['self'], 6.0, 'agent_reasoning_loop should be updated');
     assert.strictEqual(result.action, 'status');
@@ -944,32 +964,34 @@ describe('compete --amend-file', () => {
   it('skips unknown dim IDs with a warning but still saves known updates', async () => {
     const jsonPath = path.join(tmpAmendFile, 'partial.json');
     await fs.writeFile(jsonPath, JSON.stringify({ semantic_memory: 5.0, nonexistent_dim: 3.0 }), 'utf-8');
-    let saved: CompeteMatrix | null = null;
+    const matrix = makeAmendFileMatrix();
+    await saveMatrix(matrix, tmpAmendFile);
     await compete({
       amendFile: 'partial.json',
       cwd: tmpAmendFile,
-      _loadMatrix: async () => makeAmendFileMatrix(),
-      _saveMatrix: async (m) => { saved = m; },
+      _loadMatrix: async () => matrix,
     });
-    assert.ok(saved, 'matrix should have been saved for the known dim');
-    const sm = saved!.dimensions.find(d => d.id === 'semantic_memory');
+    const final = await loadMatrix(tmpAmendFile);
+    assert.ok(final, 'matrix should be on disk for the known dim');
+    const sm = final!.dimensions.find(d => d.id === 'semantic_memory');
     assert.strictEqual(sm!.scores['self'], 5.0);
   });
 
   it('skips out-of-range scores with a warning but applies valid ones', async () => {
     const jsonPath = path.join(tmpAmendFile, 'outofrange.json');
     await fs.writeFile(jsonPath, JSON.stringify({ semantic_memory: 5.0, agent_reasoning_loop: 15.0 }), 'utf-8');
-    let saved: CompeteMatrix | null = null;
+    const matrix = makeAmendFileMatrix();
+    await saveMatrix(matrix, tmpAmendFile);
     await compete({
       amendFile: 'outofrange.json',
       cwd: tmpAmendFile,
-      _loadMatrix: async () => makeAmendFileMatrix(),
-      _saveMatrix: async (m) => { saved = m; },
+      _loadMatrix: async () => matrix,
     });
-    assert.ok(saved, 'matrix should still be saved for the valid dim');
-    const sm = saved!.dimensions.find(d => d.id === 'semantic_memory');
+    const final = await loadMatrix(tmpAmendFile);
+    assert.ok(final, 'matrix should be on disk for the valid dim');
+    const sm = final!.dimensions.find(d => d.id === 'semantic_memory');
     assert.strictEqual(sm!.scores['self'], 5.0);
-    const ar = saved!.dimensions.find(d => d.id === 'agent_reasoning_loop');
+    const ar = final!.dimensions.find(d => d.id === 'agent_reasoning_loop');
     assert.strictEqual(ar!.scores['self'], 4.0, 'out-of-range dim should not be updated');
   });
 

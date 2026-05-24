@@ -531,22 +531,54 @@ export async function handleEnsureUniverseReady(
 }
 
 export async function handleCanonicalCompetitors(
-  _args: Record<string, unknown>,
+  args: Record<string, unknown>,
   deps: UniverseHandlerDeps = {},
 ): Promise<ToolResult> {
+  const cwd = resolveCwd(args);
+  const explicitPreset = typeof args['preset'] === 'string' ? args['preset'] : undefined;
+
   try {
-    const getFn = deps._getCanonical
-      ?? (await import('./feature-universe.js')).getCanonicalDanteForgeCompetitors;
-    const competitors = getFn();
+    const { resolveProjectPreset, getPeerPreset, isPeerPreset, listAvailablePresets } =
+      await import('./peer-presets.js');
+
+    let presetName: string | null = null;
+    let reason: string;
+
+    if (explicitPreset) {
+      if (!isPeerPreset(explicitPreset)) {
+        return errorResult(`Unknown preset "${explicitPreset}". Valid: ${listAvailablePresets().join(', ')}.`);
+      }
+      presetName = explicitPreset;
+      reason = `explicit preset argument`;
+    } else {
+      // Resolve via project identity
+      let state: Parameters<typeof resolveProjectPreset>[1] = undefined;
+      try {
+        const { loadState } = await import('./state.js');
+        state = await loadState({ cwd });
+      } catch { /* no state */ }
+      const resolution = await resolveProjectPreset(cwd, state);
+      presetName = resolution.preset;
+      reason = resolution.reason;
+    }
+
+    if (!presetName) {
+      return jsonResult({
+        preset: null,
+        competitors: [],
+        reason,
+        availablePresets: listAvailablePresets(),
+        hint: 'Pass preset: "<name>" or create .danteforge/peers.json',
+      });
+    }
+
+    const competitors = getPeerPreset(presetName as Parameters<typeof getPeerPreset>[0]);
     return jsonResult({
+      preset: presetName,
+      reason,
       count: competitors.length,
       competitors,
-      categories: {
-        'spec-driven dev kits': competitors.filter(c => /spec-kit|BMad|OpenSpec/i.test(c)),
-        'skill consolidators': competitors.filter(c => /claude-skills|cursor\.directory/i.test(c)),
-        'autonomous research loops': competitors.filter(c => /autoresearch|DSPy/i.test(c)),
-        'orchestration peers': competitors.filter(c => /MetaGPT|CrewAI|AutoGen|GPT-Engineer|OpenHands|Aider|SWE-Agent|LangChain/i.test(c)),
-      },
+      availablePresets: listAvailablePresets(),
     });
   } catch (err) {
     return errorResult(`canonical_competitors failed: ${err instanceof Error ? err.message : String(err)}`);
@@ -558,23 +590,47 @@ export async function handleCompeteReset(
   deps: UniverseHandlerDeps = {},
 ): Promise<ToolResult> {
   const cwd = resolveCwd(args);
-  const useCanonical = args['useCanonical'] !== false; // default true
+  const explicitPreset = typeof args['preset'] === 'string' ? args['preset'] : undefined;
+  const useCanonical = args['useCanonical'] !== false; // default true (auto-resolve project preset)
   const confirm = args['confirm'] === true;
 
   if (!confirm) {
     return errorResult('compete_reset is mutating — pass confirm: true to apply (this rewrites .danteforge/compete/matrix.json after a timestamped backup).');
   }
-  if (!useCanonical) {
-    return errorResult('compete_reset currently only supports useCanonical: true (other reset modes are reserved).');
-  }
 
   try {
+    const { resolveProjectPreset, getPeerPreset, isPeerPreset, listAvailablePresets } =
+      await import('./peer-presets.js');
+
+    // Resolve preset: explicit > auto-resolved via project identity.
+    let presetName: string | null = null;
+    let reason: string;
+    if (explicitPreset) {
+      if (!isPeerPreset(explicitPreset)) {
+        return errorResult(`Unknown preset "${explicitPreset}". Valid: ${listAvailablePresets().join(', ')}.`);
+      }
+      presetName = explicitPreset;
+      reason = 'explicit preset argument';
+    } else if (useCanonical) {
+      let state: Parameters<typeof resolveProjectPreset>[1] = undefined;
+      try {
+        const { loadState } = await import('./state.js');
+        state = await loadState({ cwd });
+      } catch { /* no state */ }
+      const resolution = await resolveProjectPreset(cwd, state);
+      if (!resolution.preset) {
+        return errorResult(`Could not auto-resolve preset for this project. ${resolution.reason}. Pass preset: "<name>" explicitly. Valid: ${listAvailablePresets().join(', ')}.`);
+      }
+      presetName = resolution.preset;
+      reason = `auto-resolved via ${resolution.reason}`;
+    } else {
+      return errorResult('Pass either preset: "<name>" or useCanonical: true (auto-resolve).');
+    }
+
     const loadMatrixFn = deps._loadMatrix
       ?? ((c: string) => import('./compete-matrix.js').then(m => m.loadMatrix(c)));
     const saveMatrixFn = deps._saveMatrix
       ?? ((mx: unknown, c: string) => import('./compete-matrix.js').then(m => m.saveMatrix(mx as Parameters<typeof m.saveMatrix>[0], c)));
-    const getCanonicalFn = deps._getCanonical
-      ?? (await import('./feature-universe.js')).getCanonicalDanteForgeCompetitors;
     const matrix = await loadMatrixFn(cwd) as { competitors?: string[]; competitors_oss?: string[]; competitors_closed_source?: string[] } | null;
     if (!matrix) return errorResult('No matrix found. Run danteforge_competitors or `danteforge compete --init` first.');
 
@@ -585,24 +641,118 @@ export async function handleCompeteReset(
     const backupPath = path.join(cwd, '.danteforge', 'compete', `matrix.pre-${stamp}.json`);
     try { await fsMod.copyFile(matrixPath, backupPath); } catch { /* best-effort */ }
 
-    const canonical = getCanonicalFn();
-    matrix.competitors = canonical;
-    matrix.competitors_oss = canonical;
+    const peers = getPeerPreset(presetName as Parameters<typeof getPeerPreset>[0]);
+    matrix.competitors = peers;
+    matrix.competitors_oss = peers;
     matrix.competitors_closed_source = [];
     await saveMatrixFn(matrix, cwd);
 
-    await auditLog(`compete_reset --use-canonical (${canonical.length} peers); backup: ${path.basename(backupPath)}`, cwd);
+    await auditLog(`compete_reset preset=${presetName} (${peers.length} peers); backup: ${path.basename(backupPath)}`, cwd);
 
     return jsonResult({
       ok: true,
-      mode: 'use-canonical',
-      competitorCount: canonical.length,
-      competitors: canonical,
+      preset: presetName,
+      reason,
+      competitorCount: peers.length,
+      competitors: peers,
       backupPath,
-      nextStep: 'Call danteforge_ensure_universe_ready or danteforge_universe with refresh:true to rebuild against the new peers.',
+      nextStep: 'Call danteforge_ensure_universe_ready with build:true (or danteforge_universe with refresh:true) to rebuild against the new peers.',
     });
   } catch (err) {
     return errorResult(`compete_reset failed: ${err instanceof Error ? err.message : String(err)}`);
+  }
+}
+
+// ─── Phase L: search primitive handlers ─────────────────────────────────────
+
+export async function handleSearchFindPattern(args: Record<string, unknown>): Promise<ToolResult> {
+  const cwd = resolveCwd(args);
+  try {
+    const pattern = args.pattern as string;
+    if (!pattern) return errorResult('search_find_pattern: pattern is required');
+    const { createSearchEngine } = await import('../matrix/search/factory.js');
+    const engine = createSearchEngine();
+    await engine.index(cwd).catch(() => undefined);
+    const opts: Record<string, unknown> = {};
+    if (typeof args.glob === 'string') opts.glob = args.glob;
+    if (typeof args.includeTests === 'boolean') opts.includeTests = args.includeTests;
+    if (typeof args.maxResults === 'number') opts.maxResults = args.maxResults;
+    const matches = await engine.findPattern(pattern, opts);
+    return jsonResult({ pattern, matches, count: matches.length });
+  } catch (err) {
+    return errorResult(`search_find_pattern failed: ${err instanceof Error ? err.message : String(err)}`);
+  }
+}
+
+export async function handleSearchFindSymbol(args: Record<string, unknown>): Promise<ToolResult> {
+  const cwd = resolveCwd(args);
+  try {
+    const symbol = args.symbol as string;
+    if (!symbol) return errorResult('search_find_symbol: symbol is required');
+    const { createSearchEngine } = await import('../matrix/search/factory.js');
+    const engine = createSearchEngine();
+    await engine.index(cwd).catch(() => undefined);
+    const opts: Record<string, unknown> = {};
+    if (typeof args.glob === 'string') opts.glob = args.glob;
+    if (typeof args.includeTests === 'boolean') opts.includeTests = args.includeTests;
+    const matches = await engine.findSymbol(symbol, opts);
+    return jsonResult({ symbol, matches, count: matches.length });
+  } catch (err) {
+    return errorResult(`search_find_symbol failed: ${err instanceof Error ? err.message : String(err)}`);
+  }
+}
+
+export async function handleSearchFindImports(args: Record<string, unknown>): Promise<ToolResult> {
+  const cwd = resolveCwd(args);
+  try {
+    const symbol = args.symbol as string;
+    if (!symbol) return errorResult('search_find_imports: symbol is required');
+    const { createSearchEngine } = await import('../matrix/search/factory.js');
+    const engine = createSearchEngine();
+    await engine.index(cwd).catch(() => undefined);
+    const opts: Record<string, unknown> = {};
+    if (typeof args.includeTests === 'boolean') opts.includeTests = args.includeTests;
+    const matches = await engine.findImports(symbol, opts);
+    return jsonResult({ symbol, matches, count: matches.length });
+  } catch (err) {
+    return errorResult(`search_find_imports failed: ${err instanceof Error ? err.message : String(err)}`);
+  }
+}
+
+// ─── Phase N-Q: research mode handlers (read-only) ──────────────────────────
+
+export async function handleResearchGetStatus(args: Record<string, unknown>): Promise<ToolResult> {
+  const cwd = resolveCwd(args);
+  try {
+    const { getResearchSummary } = await import('../matrix/research/research-history.js');
+    const summary = await getResearchSummary(cwd);
+    return jsonResult(summary);
+  } catch (err) {
+    return errorResult(`research_get_status failed: ${err instanceof Error ? err.message : String(err)}`);
+  }
+}
+
+export async function handleResearchGetHistory(args: Record<string, unknown>): Promise<ToolResult> {
+  const cwd = resolveCwd(args);
+  try {
+    const dimensionId = args.dimensionId as string;
+    if (!dimensionId) return errorResult('research_get_history: dimensionId is required');
+    const { getPriorResearch } = await import('../matrix/research/research-history.js');
+    const waves = await getPriorResearch(cwd, dimensionId);
+    return jsonResult({ dimensionId, waves, count: waves.length });
+  } catch (err) {
+    return errorResult(`research_get_history failed: ${err instanceof Error ? err.message : String(err)}`);
+  }
+}
+
+export async function handleResearchGetCaps(args: Record<string, unknown>): Promise<ToolResult> {
+  const cwd = resolveCwd(args);
+  try {
+    const { getStructuralCaps } = await import('../matrix/research/research-history.js');
+    const caps = await getStructuralCaps(cwd);
+    return jsonResult({ caps, count: caps.length });
+  } catch (err) {
+    return errorResult(`research_get_caps failed: ${err instanceof Error ? err.message : String(err)}`);
   }
 }
 

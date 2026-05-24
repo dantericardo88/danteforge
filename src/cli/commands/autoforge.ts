@@ -30,15 +30,60 @@ import {
 } from '../../core/completion-tracker.js';
 import { SCORE_THRESHOLDS, ARTIFACT_COMMAND_MAP } from '../../core/pdse-config.js';
 import { loadLatestVerdict } from '../../core/reflection-engine.js';
+import { SCORING_DOCTRINE_SHORT } from '../../core/scoring-doctrine.js';
+import type { CIPResult } from '../../core/completion-integrity.js';
+
+// ── CIP helpers ───────────────────────────────────────────────────────────────
+
+async function runCIPSweep(cwd: string, target = 9.0): Promise<CIPResult[]> {
+  const { loadMatrix } = await import('../../core/compete-matrix.js');
+  const { runCIPCheck } = await import('../../core/completion-integrity.js');
+  const matrix = await loadMatrix(cwd).catch(() => null);
+  const excluded = new Set(matrix?.excludedDimensions ?? []);
+  const activeDims = (matrix?.dimensions ?? []).filter(
+    d => !excluded.has(d.id) && (d as unknown as Record<string, unknown>)['status'] !== 'closed',
+  );
+  if (activeDims.length === 0) return [];
+  const results = await Promise.all(activeDims.map(d => runCIPCheck(d.id, { cwd, target })));
+  return results.filter(r => r.blocksFrontierReached);
+}
+
+async function writeCIPGapsReport(cwd: string, blocked: CIPResult[]): Promise<void> {
+  try {
+    const gapLines = blocked.map(r => [
+      `### ${r.dimensionId} (${r.cipClass})`,
+      ...r.gaps.map(g => `- ${g}`),
+      '',
+    ].join('\n')).join('\n');
+    const report = [
+      '# CIP Gaps — Action Required',
+      '',
+      `Generated: ${new Date().toISOString()}`,
+      '',
+      '## Blocked Dimensions',
+      '',
+      gapLines,
+      'Run `danteforge score-audit --dimension <id>` for full evidence breakdown.',
+      'Run `danteforge validate <id>` to add outcome receipts.',
+    ].join('\n');
+    await fs.mkdir(path.join(cwd, '.danteforge'), { recursive: true });
+    await fs.writeFile(path.join(cwd, '.danteforge', 'CIP_GAPS.md'), report, 'utf8');
+    logger.info('[autoforge] Gap report written to .danteforge/CIP_GAPS.md');
+  } catch { /* best-effort */ }
+}
 
 async function runAutoMode(goal: string | undefined, cwd: string, options: {
   force?: boolean;
   dryRun?: boolean;
   pauseAt?: number;
+  skipCIP?: boolean;
   _computeRetroScore?: boolean;
   _runLoop?: (ctx: AutoforgeLoopContext, deps?: { _executeCommand?: (command: string, cwd: string) => Promise<{ success: boolean }> }) => Promise<AutoforgeLoopContext>;
   _executeCommand?: (command: string, cwd: string) => Promise<{ success: boolean }>;
+  /** Injection seam: override runCIPSweep for tests (skips real matrix load + CIP checks). */
+  _cipSweep?: (cwd: string) => Promise<CIPResult[]>;
 }): Promise<void> {
+  logger.info(`[scoring-doctrine] ${SCORING_DOCTRINE_SHORT}`);
   logger.info('[AutoForge] Autonomous mode — running convergence loop...');
 
   // --- Decision-node: record start (best-effort) ---
@@ -95,8 +140,35 @@ async function runAutoMode(goal: string | undefined, cwd: string, options: {
   };
   const loopFn = options._runLoop ?? runAutoforgeLoop;
   const { executeAutoforgeCommand } = await import('../../core/autoforge-executor.js');
-  const finalCtx = await loopFn(ctx, { _executeCommand: options._executeCommand ?? executeAutoforgeCommand });
-  if (finalCtx.loopState === AutoforgeLoopState.BLOCKED) process.exitCode = 1;
+  let finalCtx = await loopFn(ctx, { _executeCommand: options._executeCommand ?? executeAutoforgeCommand });
+  if (finalCtx.loopState === AutoforgeLoopState.BLOCKED) { process.exitCode = 1; }
+  else if (!options.skipCIP) {
+    // CIP retry loop — Rule 14. Re-enters the loop up to 3 times feeding gap info back as goal.
+    const MAX_CIP_RETRIES = 3;
+    for (let attempt = 1; attempt <= MAX_CIP_RETRIES; attempt++) {
+      try {
+        const blocked = await (options._cipSweep ?? runCIPSweep)(cwd);
+        if (blocked.length === 0) {
+          logger.success(`[autoforge] CIP confirmed — all matrix dim(s) have end-to-end evidence`);
+          break;
+        }
+        logger.warn(`[autoforge] CIP blocked — ${blocked.length} dim(s) lack evidence`);
+        for (const r of blocked) {
+          logger.warn(`  ${r.dimensionId}: ${r.cipClass} — ${r.gaps.slice(0, 2).join('; ')}`);
+        }
+        await writeCIPGapsReport(cwd, blocked);
+        if (attempt >= MAX_CIP_RETRIES) { process.exitCode = 1; break; }
+        logger.warn(`[autoforge] CIP re-entry ${attempt}/${MAX_CIP_RETRIES} — focusing loop on evidence gaps`);
+        const cipGoal = `Add E2E evidence for: ${blocked.map(r => r.dimensionId).join(', ')}`;
+        const retryCtx = { ...finalCtx, goal: cipGoal, cycleCount: 0, loopState: AutoforgeLoopState.RUNNING };
+        finalCtx = await loopFn(retryCtx, { _executeCommand: options._executeCommand ?? executeAutoforgeCommand });
+        if (finalCtx.loopState === AutoforgeLoopState.BLOCKED) { process.exitCode = 1; break; }
+      } catch (err) {
+        logger.warn(`[autoforge] CIP sweep non-fatal error: ${String(err)}`);
+        break;
+      }
+    }
+  }
 
   // --- Decision-node: record completion (best-effort) ---
   try {
@@ -205,6 +277,10 @@ export async function autoforge(goal?: string, options: {
   _adversarialScoreFn?: (cwd: string) => Promise<boolean>;
   /** Injection seam: load checkpoint stage for --resume */
   _loadCheckpointFn?: (cwd: string) => Promise<string | undefined>;
+  /** Skip CIP gate after --auto loop (dev mode only — never a default) */
+  skipCIP?: boolean;
+  /** Injection seam: override runCIPSweep for tests (skips real matrix load + CIP checks). */
+  _cipSweep?: (cwd: string) => Promise<CIPResult[]>;
 } = {}): Promise<void> {
   return withErrorBoundary('autoforge', async () => {
   const maxWaves = options.maxWaves ?? 3;

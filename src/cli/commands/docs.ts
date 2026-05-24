@@ -1,4 +1,5 @@
-// docs - auto-generate command reference documentation from the declarative registry
+// docs - auto-generate command reference documentation and JSDoc coverage reports.
+// Supports --output, --format (md|json), and --coverage flags.
 import fs from 'fs/promises';
 import path from 'path';
 import { logger } from '../../core/logger.js';
@@ -9,6 +10,10 @@ import {
   SPARK_PLANNING_TEXT,
 } from '../../core/workflow-surface.js';
 
+// ---------------------------------------------------------------------------
+// Types
+// ---------------------------------------------------------------------------
+
 interface CommandEntry {
   name: string;
   args?: string;
@@ -16,6 +21,60 @@ interface CommandEntry {
   options: string[];
   group: string;
 }
+
+/** A documented symbol found in src/core/ */
+export interface DocumentedSymbol {
+  /** Source file path relative to project root */
+  file: string;
+  /** Exported symbol name */
+  name: string;
+  /** Kind: function, class, or const */
+  kind: 'function' | 'class' | 'const';
+  /** First line of the JSDoc block above the symbol */
+  summary: string;
+  /** Whether a JSDoc block was found */
+  hasJsDoc: boolean;
+}
+
+/** Result of the documentation coverage scan */
+export interface DocCoverageResult {
+  /** Total exported symbols found */
+  total: number;
+  /** Symbols that have a JSDoc block */
+  documented: number;
+  /** Percentage 0–100 */
+  coveragePercent: number;
+  /** All symbols with documentation status */
+  symbols: DocumentedSymbol[];
+  /** Up to 10 symbols missing JSDoc, ordered by file */
+  undocumentedTop10: DocumentedSymbol[];
+}
+
+/** Options for the `docs` command */
+export interface DocsOptions {
+  /** Path to write the output (default: docs/API.md or docs/api.json) */
+  output?: string;
+  /** Output format: 'md' for Markdown, 'json' for JSON (default: 'md') */
+  format?: 'md' | 'json';
+  /** If true, run coverage analysis and exit 1 if below 60% */
+  coverage?: boolean;
+  /** Injection seam: override loadState for testing */
+  _loadState?: typeof loadState;
+  /** Injection seam: override saveState for testing */
+  _saveState?: typeof saveState;
+  /** Injection seam: override fs.readdir for testing */
+  _readdir?: (p: string) => Promise<string[]>;
+  /** Injection seam: override fs.readFile for testing */
+  _readFile?: (p: string, enc: BufferEncoding) => Promise<string>;
+  /** Injection seam: override fs.mkdir for testing */
+  _mkdir?: (p: string, opts?: { recursive?: boolean }) => Promise<string | undefined>;
+  /** Injection seam: override fs.writeFile for testing */
+  _writeFile?: (p: string, data: string) => Promise<void>;
+}
+
+// ---------------------------------------------------------------------------
+// Command registry — declarative list used to generate COMMAND_REFERENCE.md
+// ---------------------------------------------------------------------------
 
 const COMMAND_REGISTRY: CommandEntry[] = [
   { name: 'init', description: 'Interactive first-run wizard - detect project, check health, show next steps', options: ['--prompt'], group: 'Pipeline' },
@@ -71,9 +130,21 @@ const COMMAND_REGISTRY: CommandEntry[] = [
   { name: 'feedback', description: 'Generate prompt from UPR.md for LLM refinement', options: ['--auto'], group: 'Meta' },
   { name: 'update-mcp', description: 'Manual MCP self-healing - check for protocol updates', options: ['--prompt', '--apply', '--check'], group: 'Meta' },
   { name: 'awesome-scan', description: 'Discover, classify, and import skills across all sources', options: ['--source <path>', '--domain <type>', '--install'], group: 'Meta' },
-  { name: 'docs', description: 'Generate or update the command reference documentation', options: [], group: 'Meta' },
+  { name: 'docs', description: 'Generate or update the command reference and API documentation', options: ['--output <path>', '--format <md|json>', '--coverage'], group: 'Meta' },
 ];
 
+// ---------------------------------------------------------------------------
+// Command reference formatter (existing functionality)
+// ---------------------------------------------------------------------------
+
+/**
+ * Format the command registry as a Markdown reference document.
+ *
+ * Groups commands by category, includes a table of contents, and renders
+ * each command with its usage pattern, description, and options.
+ *
+ * @returns Multi-line Markdown string suitable for writing to `docs/API.md`.
+ */
 export function formatCommandReference(): string {
   const groups = new Map<string, CommandEntry[]>();
   for (const cmd of COMMAND_REGISTRY) {
@@ -117,36 +188,302 @@ export function formatCommandReference(): string {
   return lines.join('\n');
 }
 
-export async function docs(options: {
-  _loadState?: typeof loadState;
-  _saveState?: typeof saveState;
-} = {}): Promise<void> {
+// ---------------------------------------------------------------------------
+// JSDoc coverage scanner
+// ---------------------------------------------------------------------------
+
+/** Regex matching an exported function, class, or const declaration */
+const EXPORT_RE = /^export\s+(?:async\s+)?(function|class|const)\s+(\w+)/m;
+
+/** Regex matching a JSDoc block ending just before the export */
+const JSDOC_BEFORE_RE = /\/\*\*[\s\S]*?\*\/\s*$/;
+
+/**
+ * Scan a single TypeScript source file and extract all exported symbols
+ * along with whether they have a JSDoc block above them.
+ *
+ * Uses regex-based scanning (not AST) to stay lightweight and dependency-free.
+ *
+ * @param filePath    - Absolute path to the TypeScript file.
+ * @param relPath     - Path relative to the project root for display purposes.
+ * @param _readFile   - Optional injection seam for testing.
+ * @returns Array of `DocumentedSymbol` objects, one per exported symbol.
+ */
+export async function scanFileForExports(
+  filePath: string,
+  relPath: string,
+  _readFile?: (p: string, enc: BufferEncoding) => Promise<string>,
+): Promise<DocumentedSymbol[]> {
+  const readFn = _readFile ?? fs.readFile;
+  let source: string;
+  try {
+    source = await readFn(filePath, 'utf8');
+  } catch {
+    return [];
+  }
+
+  const results: DocumentedSymbol[] = [];
+  const lines = source.split('\n');
+
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i] ?? '';
+    const exportMatch = line.match(/^export\s+(?:async\s+)?(function|class|const)\s+(\w+)/);
+    if (!exportMatch) continue;
+
+    const kind = exportMatch[1] as 'function' | 'class' | 'const';
+    const name = exportMatch[2] ?? '';
+
+    // Look backward for a JSDoc block
+    let hasJsDoc = false;
+    let summary = '';
+
+    // Scan up to 30 lines back for /** ... */ block
+    const contextLines = lines.slice(Math.max(0, i - 30), i).join('\n');
+    const jsDocMatch = contextLines.match(JSDOC_BEFORE_RE);
+    if (jsDocMatch) {
+      hasJsDoc = true;
+      // Extract the first text line from the JSDoc block
+      const docLines = jsDocMatch[0].split('\n');
+      for (const dl of docLines) {
+        const stripped = dl.replace(/^\s*\*\s?/, '').trim();
+        if (stripped && stripped !== '/**' && stripped !== '*/' && !stripped.startsWith('@')) {
+          summary = stripped;
+          break;
+        }
+      }
+    }
+
+    results.push({ file: relPath, name, kind, summary, hasJsDoc });
+  }
+
+  return results;
+}
+
+/**
+ * Scan all TypeScript files in `src/core/` for exported symbols and report
+ * JSDoc coverage.
+ *
+ * @param coreDir   - Absolute path to the `src/core/` directory.
+ * @param _readdir  - Optional injection seam for directory listing.
+ * @param _readFile - Optional injection seam for file reading.
+ * @returns A `DocCoverageResult` with coverage stats and symbol lists.
+ */
+export async function scanDocCoverage(
+  coreDir: string,
+  _readdir?: (p: string) => Promise<string[]>,
+  _readFile?: (p: string, enc: BufferEncoding) => Promise<string>,
+): Promise<DocCoverageResult> {
+  const readdirFn = _readdir ?? fs.readdir;
+
+  let files: string[];
+  try {
+    files = await readdirFn(coreDir);
+  } catch {
+    files = [];
+  }
+
+  const tsFiles = files.filter(f => f.endsWith('.ts') && !f.endsWith('.d.ts'));
+
+  const allSymbols: DocumentedSymbol[] = [];
+  for (const file of tsFiles) {
+    const filePath = path.join(coreDir, file);
+    const relPath = path.join('src', 'core', file);
+    const symbols = await scanFileForExports(filePath, relPath, _readFile);
+    allSymbols.push(...symbols);
+  }
+
+  const documented = allSymbols.filter(s => s.hasJsDoc).length;
+  const total = allSymbols.length;
+  const coveragePercent = total > 0 ? Math.round((documented / total) * 100) : 100;
+
+  const undocumented = allSymbols.filter(s => !s.hasJsDoc);
+  const undocumentedTop10 = undocumented.slice(0, 10);
+
+  return { total, documented, coveragePercent, symbols: allSymbols, undocumentedTop10 };
+}
+
+/**
+ * Format a `DocCoverageResult` as a human-readable report string.
+ *
+ * @param result - Coverage result from `scanDocCoverage`.
+ * @returns Multi-line string suitable for console output.
+ */
+export function formatCoverageReport(result: DocCoverageResult): string {
+  const lines: string[] = [
+    `Documentation Coverage: ${result.documented}/${result.total} symbols (${result.coveragePercent}%)`,
+    '',
+  ];
+
+  if (result.undocumentedTop10.length > 0) {
+    lines.push('Top undocumented exports (add JSDoc to fix):');
+    for (const sym of result.undocumentedTop10) {
+      lines.push(`  - ${sym.file}: export ${sym.kind} ${sym.name}`);
+    }
+  } else {
+    lines.push('All scanned exports are documented.');
+  }
+
+  lines.push('');
+  if (result.coveragePercent < 60) {
+    lines.push('FAIL: Coverage below 60% threshold. Add JSDoc to exported functions.');
+  } else {
+    lines.push(`PASS: Coverage ${result.coveragePercent}% meets minimum threshold.`);
+  }
+
+  return lines.join('\n');
+}
+
+/**
+ * Format a `DocCoverageResult` as a JSON-serialisable object for `--format json`.
+ *
+ * @param result - Coverage result from `scanDocCoverage`.
+ * @returns Plain object safe to pass to `JSON.stringify`.
+ */
+export function formatCoverageJson(result: DocCoverageResult): Record<string, unknown> {
+  return {
+    total: result.total,
+    documented: result.documented,
+    coveragePercent: result.coveragePercent,
+    pass: result.coveragePercent >= 60,
+    undocumentedTop10: result.undocumentedTop10.map(s => ({
+      file: s.file,
+      name: s.name,
+      kind: s.kind,
+    })),
+  };
+}
+
+// ---------------------------------------------------------------------------
+// API reference generator (--format md|json output from core scan)
+// ---------------------------------------------------------------------------
+
+/**
+ * Generate an API reference markdown document from scanned `src/core/` exports.
+ *
+ * Groups symbols by source file and renders each documented symbol with its
+ * summary. Undocumented symbols are listed without descriptions.
+ *
+ * @param result - Coverage result from `scanDocCoverage`.
+ * @returns Markdown string suitable for writing to `docs/API.md`.
+ */
+export function generateApiMarkdown(result: DocCoverageResult): string {
+  const byFile = new Map<string, DocumentedSymbol[]>();
+  for (const sym of result.symbols) {
+    const list = byFile.get(sym.file) ?? [];
+    list.push(sym);
+    byFile.set(sym.file, list);
+  }
+
+  const lines: string[] = [
+    '# DanteForge Core API Reference',
+    '',
+    `> Auto-generated by \`danteforge docs\`. ${result.total} exported symbols across ${byFile.size} files.`,
+    `> Coverage: ${result.documented}/${result.total} (${result.coveragePercent}%) symbols documented.`,
+    '',
+  ];
+
+  for (const [file, symbols] of byFile) {
+    lines.push(`## \`${file}\``, '');
+    for (const sym of symbols) {
+      lines.push(`### \`${sym.name}\` *(${sym.kind})*`);
+      if (sym.summary) {
+        lines.push('', sym.summary);
+      } else {
+        lines.push('', '_No documentation. Add a JSDoc block above this export._');
+      }
+      lines.push('');
+    }
+  }
+
+  return lines.join('\n');
+}
+
+// ---------------------------------------------------------------------------
+// Main command entry point
+// ---------------------------------------------------------------------------
+
+/**
+ * Execute the `danteforge docs` command.
+ *
+ * Depending on options, either:
+ * - Generates a Markdown command reference (`docs/COMMAND_REFERENCE.md`)
+ * - Generates an API reference from `src/core/` JSDoc (`docs/API.md`)
+ * - Reports documentation coverage and exits 1 when below 60%
+ * - Outputs JSON instead of Markdown (`--format json`)
+ *
+ * @param options - Command options with optional injection seams for testing.
+ */
+export async function docs(options: DocsOptions = {}): Promise<void> {
   const loadFn = options._loadState ?? loadState;
   const saveFn = options._saveState ?? saveState;
+  const readdirFn = options._readdir ?? fs.readdir;
+  const readFileFn = options._readFile ?? ((p: string, enc: BufferEncoding) => fs.readFile(p, enc));
+  const mkdirFn = options._mkdir ?? ((p: string, opts?: { recursive?: boolean }) => fs.mkdir(p, opts));
+  const writeFileFn = options._writeFile ?? fs.writeFile;
 
   return withErrorBoundary('docs', async () => {
-  const cwd = process.cwd();
-  const timestamp = new Date().toISOString();
+    const cwd = process.cwd();
+    const timestamp = new Date().toISOString();
+    const format = options.format ?? 'md';
+    const coreDir = path.join(cwd, 'src', 'core');
 
-  logger.info('Generating command reference...');
+    // ── Coverage mode ────────────────────────────────────────────────────────
+    if (options.coverage) {
+      logger.info('Scanning src/core/ for JSDoc coverage...');
+      const result = await scanDocCoverage(coreDir, readdirFn, readFileFn);
 
-  const markdown = formatCommandReference();
-  const docsDir = path.join(cwd, 'docs');
-  await fs.mkdir(docsDir, { recursive: true });
-  const outputPath = path.join(docsDir, 'COMMAND_REFERENCE.md');
-  await fs.writeFile(outputPath, markdown);
+      if (format === 'json') {
+        process.stdout.write(JSON.stringify(formatCoverageJson(result), null, 2) + '\n');
+      } else {
+        logger.info(formatCoverageReport(result));
+      }
 
-  logger.success(`Command reference written to: ${outputPath}`);
-  logger.info(`${COMMAND_REGISTRY.length} commands documented.`);
+      if (result.coveragePercent < 60) {
+        process.exitCode = 1;
+      }
+      return;
+    }
 
-  try {
-    const state = await loadFn();
-    state.auditLog.push(
-      `${timestamp} | docs: generated COMMAND_REFERENCE.md (${COMMAND_REGISTRY.length} commands)`,
-    );
-    await saveFn(state);
-  } catch {
-    // Best-effort audit log only.
-  }
+    // ── API reference mode ───────────────────────────────────────────────────
+    logger.info('Scanning src/core/ for exported symbols...');
+    const coverageResult = await scanDocCoverage(coreDir, readdirFn, readFileFn);
+
+    const docsDir = path.join(cwd, 'docs');
+    await mkdirFn(docsDir, { recursive: true });
+
+    if (format === 'json') {
+      const defaultOut = options.output ?? path.join(docsDir, 'api.json');
+      const jsonData = {
+        generatedAt: timestamp,
+        commandReference: COMMAND_REGISTRY,
+        apiCoverage: formatCoverageJson(coverageResult),
+        symbols: coverageResult.symbols,
+      };
+      await writeFileFn(defaultOut, JSON.stringify(jsonData, null, 2));
+      logger.success(`API JSON written to: ${defaultOut}`);
+    } else {
+      // Write command reference
+      const cmdRefPath = path.join(docsDir, 'COMMAND_REFERENCE.md');
+      await writeFileFn(cmdRefPath, formatCommandReference());
+      logger.success(`Command reference written to: ${cmdRefPath}`);
+      logger.info(`${COMMAND_REGISTRY.length} commands documented.`);
+
+      // Write API reference
+      const apiPath = options.output ?? path.join(docsDir, 'API.md');
+      await writeFileFn(apiPath, generateApiMarkdown(coverageResult));
+      logger.success(`API reference written to: ${apiPath}`);
+      logger.info(`${coverageResult.documented}/${coverageResult.total} symbols documented (${coverageResult.coveragePercent}%).`);
+    }
+
+    // ── Audit log ────────────────────────────────────────────────────────────
+    try {
+      const state = await loadFn();
+      state.auditLog.push(
+        `${timestamp} | docs: generated API reference (${coverageResult.documented}/${coverageResult.total} symbols documented)`,
+      );
+      await saveFn(state);
+    } catch {
+      // Best-effort audit log only.
+    }
   });
 }

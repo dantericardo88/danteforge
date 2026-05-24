@@ -10,6 +10,7 @@ import type {
   OrchestrationDimensionMatrix,
 } from '../types.js';
 import { saveOrch, appendAudit } from '../state-io.js';
+import { SCORING_RULES_FOR_LLM_PROMPT } from '../../core/scoring-doctrine.js';
 
 // ── Options ─────────────────────────────────────────────────────────────────
 
@@ -136,7 +137,9 @@ export async function scoreCurrentState(
 // ── Internals ───────────────────────────────────────────────────────────────
 
 function buildScorePrompt(dim: OrchestrationDimension): string {
-  return `You are scoring the user's project against this rubric.
+  return `${SCORING_RULES_FOR_LLM_PROMPT}
+
+You are scoring the user's project against this rubric.
 
 Dimension: ${dim.name}
 Category: ${dim.category}

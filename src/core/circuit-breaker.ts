@@ -1,5 +1,8 @@
 // Per-provider circuit breaker — prevents hammering dead providers
 // State machine: CLOSED → (failures ≥ threshold) → OPEN → (after resetTimeout) → HALF_OPEN → (success) → CLOSED
+// Trips and resets are logged to the structured error log for rate tracking.
+
+import { logStructuredError } from './error-log.js';
 
 export type CircuitState = 'closed' | 'open' | 'half_open';
 
@@ -67,6 +70,7 @@ export function shouldAllowRequest(
 /** Record a successful request — may transition half_open → closed */
 export function recordSuccess(provider: string, config: CircuitBreakerConfig = DEFAULT_CONFIG): void {
   const entry = getOrCreateEntry(provider);
+  const wasHalfOpen = entry.state === 'half_open';
 
   if (entry.state === 'half_open') {
     entry.halfOpenSuccessCount++;
@@ -79,11 +83,24 @@ export function recordSuccess(provider: string, config: CircuitBreakerConfig = D
     // Reset failure count on success in closed state
     entry.failureCount = 0;
   }
+
+  // Log circuit reset when transitioning from half_open → closed.
+  // Deferred via setImmediate so logging never blocks the circuit-breaker hot path.
+  if (wasHalfOpen && entry.state === 'closed') {
+    setImmediate(() => {
+      logStructuredError(
+        new Error(`Circuit breaker reset for provider: ${provider}`),
+        { command: 'circuit-breaker', phase: 'reset' },
+      );
+    });
+  }
 }
 
 /** Record a failed request — may transition closed → open or half_open → open */
 export function recordFailure(provider: string, config: CircuitBreakerConfig = DEFAULT_CONFIG): void {
   const entry = getOrCreateEntry(provider);
+  const wasClosed = entry.state === 'closed';
+  const wasHalfOpen = entry.state === 'half_open';
   entry.failureCount++;
   entry.lastFailureAt = Date.now();
 
@@ -93,6 +110,20 @@ export function recordFailure(provider: string, config: CircuitBreakerConfig = D
     entry.halfOpenSuccessCount = 0;
   } else if (entry.state === 'closed' && entry.failureCount >= config.failureThreshold) {
     entry.state = 'open';
+  }
+
+  // Log circuit trip when transitioning to OPEN.
+  // Deferred via setImmediate so logging never blocks the circuit-breaker hot path.
+  const tripped =
+    (wasClosed && entry.state === 'open') ||
+    (wasHalfOpen && entry.state === 'open');
+  if (tripped) {
+    setImmediate(() => {
+      logStructuredError(
+        new Error(`Circuit breaker open for provider: ${provider} after ${entry.failureCount} failure(s)`),
+        { command: 'circuit-breaker', phase: 'open' },
+      );
+    });
   }
 }
 

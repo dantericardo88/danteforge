@@ -12,6 +12,18 @@ verification_required: true
 
 # /autoforge — Autonomous Pipeline Orchestration
 
+## Depth Doctrine (MANDATORY)
+
+**Wave type: BREADTH.** Score ceiling this wave: 6.
+
+Every implemented module MUST answer before marking complete:
+1. What production `src/` function calls this? (not a test)
+2. What is the observable output artifact?
+3. What breaks silently if this fails?
+
+No mocks, no stubs, no TODOs. The pre-commit hook blocks these in `src/` files.
+After this autoforge wave, queue a DEPTH wave: `danteforge validate --all`.
+
 When the user invokes `/autoforge`, follow this workflow:
 
 Execute the workflow yourself inside Codex and the current workspace. Do not default to `danteforge autoforge` unless the user explicitly asks for the CLI or native execution is blocked.
