@@ -281,9 +281,9 @@ export async function runCIPCheck(
   const labelRaw = (dimRaw['label'] as string | undefined) ?? '';
   const touchesPaths = (dimRaw['touches'] as string[] | undefined) ?? [];
   const allKeywords = [
-    ...dimensionId.split('_'),
+    ...dimensionId.toLowerCase().split('_'),
     ...labelRaw.toLowerCase().split(/[\s_\-]+/),
-    ...touchesPaths.flatMap(p => p.split(/[/\\]/)),
+    ...touchesPaths.flatMap(p => p.split(/[/\\]/).map(s => s.toLowerCase())),
   ].filter((w, i, arr) => w.length >= 4 && arr.indexOf(w) === i);
 
   const relevanceOutcomes = (rawOutcomes ?? []).filter(o => !o.skip_relevance_check);

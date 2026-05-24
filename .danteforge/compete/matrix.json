@@ -34,7 +34,7 @@
     "Dagger",
     "re_gent"
   ],
-  "lastUpdated": "2026-05-22T22:06:14.116Z",
+  "lastUpdated": "2026-05-24T13:31:26.776Z",
   "overallSelfScore": 9,
   "excludedDimensions": [
     "community_adoption",
@@ -48,7 +48,7 @@
       "category": "quality",
       "frequency": "high",
       "scores": {
-        "self": 7,
+        "self": 9,
         "Devin (Cognition AI)": 7.5,
         "GitHub Copilot Workspace": 8,
         "Cursor": 7,
@@ -92,7 +92,7 @@
         "Fabric": 4,
         "Agno": 5.5
       },
-      "gap_to_leader": 2.5,
+      "gap_to_leader": 0,
       "leader": "self",
       "gap_to_closed_source_leader": 0,
       "closed_source_leader": "self",
@@ -111,18 +111,6 @@
           "before": 8.4,
           "after": 9.2,
           "date": "2026-04-14"
-        },
-        {
-          "dimensionId": "testing",
-          "before": 9.7,
-          "after": 97,
-          "date": "2026-04-23"
-        },
-        {
-          "dimensionId": "testing",
-          "before": 97,
-          "after": 9.7,
-          "date": "2026-04-23"
         }
       ],
       "next_sprint_target": 7,
@@ -239,7 +227,7 @@
       "category": "ux",
       "frequency": "high",
       "scores": {
-        "self": 7,
+        "self": 9,
         "Devin (Cognition AI)": 7.5,
         "GitHub Copilot Workspace": 9,
         "Cursor": 9.5,
@@ -272,7 +260,7 @@
         "BMad-METHOD": 5,
         "Pydantic-AI": 8.5
       },
-      "gap_to_leader": 2.5,
+      "gap_to_leader": 0,
       "leader": "self",
       "gap_to_closed_source_leader": 0,
       "closed_source_leader": "self",
@@ -285,18 +273,6 @@
           "before": 5,
           "after": 10,
           "date": "2026-04-14"
-        },
-        {
-          "dimensionId": "developer_experience",
-          "before": 9,
-          "after": 100,
-          "date": "2026-04-23"
-        },
-        {
-          "dimensionId": "developer_experience",
-          "before": 100,
-          "after": 10,
-          "date": "2026-04-23"
         },
         {
           "dimensionId": "developer_experience",
@@ -405,7 +381,7 @@
       "category": "ux",
       "frequency": "high",
       "scores": {
-        "self": 7,
+        "self": 9,
         "Devin (Cognition AI)": 7,
         "GitHub Copilot Workspace": 8.5,
         "Cursor": 9.5,
@@ -449,7 +425,7 @@
         "Fabric": 7,
         "Agno": 7.5
       },
-      "gap_to_leader": 2.5,
+      "gap_to_leader": 0,
       "leader": "self",
       "gap_to_closed_source_leader": 0,
       "closed_source_leader": "self",
@@ -462,18 +438,6 @@
           "before": 5,
           "after": 10,
           "date": "2026-04-14"
-        },
-        {
-          "dimensionId": "ux_polish",
-          "before": 10,
-          "after": 100,
-          "date": "2026-04-23"
-        },
-        {
-          "dimensionId": "ux_polish",
-          "before": 100,
-          "after": 10,
-          "date": "2026-04-23"
         }
       ],
       "next_sprint_target": 7,
@@ -554,7 +518,7 @@
       "category": "quality",
       "frequency": "high",
       "scores": {
-        "self": 4,
+        "self": 9,
         "Devin (Cognition AI)": 9,
         "GitHub Copilot Workspace": 8,
         "Cursor": 8.5,
@@ -590,7 +554,7 @@
         "Browser-use": 6.5,
         "Agno": 7
       },
-      "gap_to_leader": 5,
+      "gap_to_leader": 0,
       "leader": "self",
       "gap_to_closed_source_leader": 0,
       "closed_source_leader": "self",
@@ -603,18 +567,6 @@
           "before": 5,
           "after": 9,
           "date": "2026-04-14"
-        },
-        {
-          "dimensionId": "functionality",
-          "before": 9,
-          "after": 91,
-          "date": "2026-04-23"
-        },
-        {
-          "dimensionId": "functionality",
-          "before": 91,
-          "after": 9.1,
-          "date": "2026-04-23"
         }
       ],
       "next_sprint_target": 7,
@@ -712,7 +664,7 @@
       "category": "features",
       "frequency": "high",
       "scores": {
-        "self": 7,
+        "self": 9,
         "Devin (Cognition AI)": 9.5,
         "GitHub Copilot Workspace": 7,
         "Cursor": 7,
@@ -756,7 +708,7 @@
         "Fabric": 3,
         "Agno": 7
       },
-      "gap_to_leader": 2.5,
+      "gap_to_leader": 0,
       "leader": "self",
       "gap_to_closed_source_leader": 0,
       "closed_source_leader": "self",
@@ -775,738 +727,6 @@
           "before": 9,
           "after": 9,
           "date": "2026-04-15"
-        },
-        {
-          "dimensionId": "autonomy",
-          "before": 9,
-          "after": 9,
-          "date": "2026-04-15"
-        },
-        {
-          "dimensionId": "autonomy",
-          "before": 9,
-          "after": 9,
-          "date": "2026-04-15"
-        },
-        {
-          "dimensionId": "autonomy",
-          "before": 9,
-          "after": 9,
-          "date": "2026-04-15"
-        },
-        {
-          "dimensionId": "autonomy",
-          "before": 9,
-          "after": 9,
-          "date": "2026-04-15"
-        },
-        {
-          "dimensionId": "autonomy",
-          "before": 9,
-          "after": 9,
-          "date": "2026-04-15"
-        },
-        {
-          "dimensionId": "autonomy",
-          "before": 9,
-          "after": 9,
-          "date": "2026-04-15"
-        },
-        {
-          "dimensionId": "autonomy",
-          "before": 9,
-          "after": 9,
-          "date": "2026-04-15"
-        },
-        {
-          "dimensionId": "autonomy",
-          "before": 9,
-          "after": 9,
-          "date": "2026-04-15"
-        },
-        {
-          "dimensionId": "autonomy",
-          "before": 9,
-          "after": 9,
-          "date": "2026-04-15"
-        },
-        {
-          "dimensionId": "autonomy",
-          "before": 9,
-          "after": 9,
-          "date": "2026-04-15"
-        },
-        {
-          "dimensionId": "autonomy",
-          "before": 9,
-          "after": 9,
-          "date": "2026-04-15"
-        },
-        {
-          "dimensionId": "autonomy",
-          "before": 9,
-          "after": 9,
-          "date": "2026-04-15"
-        },
-        {
-          "dimensionId": "autonomy",
-          "before": 9,
-          "after": 9,
-          "date": "2026-04-15"
-        },
-        {
-          "dimensionId": "autonomy",
-          "before": 9,
-          "after": 9,
-          "date": "2026-04-15"
-        },
-        {
-          "dimensionId": "autonomy",
-          "before": 9,
-          "after": 9,
-          "date": "2026-04-15"
-        },
-        {
-          "dimensionId": "autonomy",
-          "before": 9,
-          "after": 9,
-          "date": "2026-04-15"
-        },
-        {
-          "dimensionId": "autonomy",
-          "before": 9,
-          "after": 9,
-          "date": "2026-04-15"
-        },
-        {
-          "dimensionId": "autonomy",
-          "before": 9,
-          "after": 9,
-          "date": "2026-04-15"
-        },
-        {
-          "dimensionId": "autonomy",
-          "before": 9,
-          "after": 9,
-          "date": "2026-04-15"
-        },
-        {
-          "dimensionId": "autonomy",
-          "before": 9,
-          "after": 9,
-          "date": "2026-04-15"
-        },
-        {
-          "dimensionId": "autonomy",
-          "before": 9,
-          "after": 9,
-          "date": "2026-04-15"
-        },
-        {
-          "dimensionId": "autonomy",
-          "before": 9,
-          "after": 9,
-          "date": "2026-04-15"
-        },
-        {
-          "dimensionId": "autonomy",
-          "before": 9,
-          "after": 9,
-          "date": "2026-04-15"
-        },
-        {
-          "dimensionId": "autonomy",
-          "before": 9,
-          "after": 9,
-          "date": "2026-04-15"
-        },
-        {
-          "dimensionId": "autonomy",
-          "before": 9,
-          "after": 9,
-          "date": "2026-04-15"
-        },
-        {
-          "dimensionId": "autonomy",
-          "before": 9,
-          "after": 9,
-          "date": "2026-04-15"
-        },
-        {
-          "dimensionId": "autonomy",
-          "before": 9,
-          "after": 9,
-          "date": "2026-04-15"
-        },
-        {
-          "dimensionId": "autonomy",
-          "before": 9,
-          "after": 9,
-          "date": "2026-04-15"
-        },
-        {
-          "dimensionId": "autonomy",
-          "before": 9,
-          "after": 9,
-          "date": "2026-04-15"
-        },
-        {
-          "dimensionId": "autonomy",
-          "before": 9,
-          "after": 9,
-          "date": "2026-04-15"
-        },
-        {
-          "dimensionId": "autonomy",
-          "before": 9,
-          "after": 9,
-          "date": "2026-04-15"
-        },
-        {
-          "dimensionId": "autonomy",
-          "before": 9,
-          "after": 9,
-          "date": "2026-04-15"
-        },
-        {
-          "dimensionId": "autonomy",
-          "before": 9,
-          "after": 9,
-          "date": "2026-04-15"
-        },
-        {
-          "dimensionId": "autonomy",
-          "before": 9,
-          "after": 9,
-          "date": "2026-04-15"
-        },
-        {
-          "dimensionId": "autonomy",
-          "before": 9,
-          "after": 9,
-          "date": "2026-04-15"
-        },
-        {
-          "dimensionId": "autonomy",
-          "before": 9,
-          "after": 9,
-          "date": "2026-04-15"
-        },
-        {
-          "dimensionId": "autonomy",
-          "before": 9,
-          "after": 9,
-          "date": "2026-04-15"
-        },
-        {
-          "dimensionId": "autonomy",
-          "before": 9,
-          "after": 9,
-          "date": "2026-04-15"
-        },
-        {
-          "dimensionId": "autonomy",
-          "before": 9,
-          "after": 9,
-          "date": "2026-04-15"
-        },
-        {
-          "dimensionId": "autonomy",
-          "before": 9,
-          "after": 9,
-          "date": "2026-04-15"
-        },
-        {
-          "dimensionId": "autonomy",
-          "before": 9,
-          "after": 9,
-          "date": "2026-04-15"
-        },
-        {
-          "dimensionId": "autonomy",
-          "before": 9,
-          "after": 9,
-          "date": "2026-04-15"
-        },
-        {
-          "dimensionId": "autonomy",
-          "before": 9,
-          "after": 9,
-          "date": "2026-04-15"
-        },
-        {
-          "dimensionId": "autonomy",
-          "before": 9,
-          "after": 9,
-          "date": "2026-04-15"
-        },
-        {
-          "dimensionId": "autonomy",
-          "before": 9,
-          "after": 9,
-          "date": "2026-04-15"
-        },
-        {
-          "dimensionId": "autonomy",
-          "before": 9,
-          "after": 9,
-          "date": "2026-04-15"
-        },
-        {
-          "dimensionId": "autonomy",
-          "before": 9,
-          "after": 9,
-          "date": "2026-04-15"
-        },
-        {
-          "dimensionId": "autonomy",
-          "before": 9,
-          "after": 9,
-          "date": "2026-04-15"
-        },
-        {
-          "dimensionId": "autonomy",
-          "before": 9,
-          "after": 9,
-          "date": "2026-04-15"
-        },
-        {
-          "dimensionId": "autonomy",
-          "before": 9,
-          "after": 9,
-          "date": "2026-04-15"
-        },
-        {
-          "dimensionId": "autonomy",
-          "before": 9,
-          "after": 9,
-          "date": "2026-04-15"
-        },
-        {
-          "dimensionId": "autonomy",
-          "before": 9,
-          "after": 9,
-          "date": "2026-04-15"
-        },
-        {
-          "dimensionId": "autonomy",
-          "before": 9,
-          "after": 9,
-          "date": "2026-04-15"
-        },
-        {
-          "dimensionId": "autonomy",
-          "before": 9,
-          "after": 9,
-          "date": "2026-04-15"
-        },
-        {
-          "dimensionId": "autonomy",
-          "before": 9,
-          "after": 9,
-          "date": "2026-04-15"
-        },
-        {
-          "dimensionId": "autonomy",
-          "before": 9,
-          "after": 9,
-          "date": "2026-04-15"
-        },
-        {
-          "dimensionId": "autonomy",
-          "before": 9,
-          "after": 9,
-          "date": "2026-04-15"
-        },
-        {
-          "dimensionId": "autonomy",
-          "before": 9,
-          "after": 9,
-          "date": "2026-04-15"
-        },
-        {
-          "dimensionId": "autonomy",
-          "before": 9,
-          "after": 9,
-          "date": "2026-04-15"
-        },
-        {
-          "dimensionId": "autonomy",
-          "before": 9,
-          "after": 9,
-          "date": "2026-04-15"
-        },
-        {
-          "dimensionId": "autonomy",
-          "before": 9,
-          "after": 9,
-          "date": "2026-04-15"
-        },
-        {
-          "dimensionId": "autonomy",
-          "before": 9,
-          "after": 9,
-          "date": "2026-04-15"
-        },
-        {
-          "dimensionId": "autonomy",
-          "before": 9,
-          "after": 9,
-          "date": "2026-04-15"
-        },
-        {
-          "dimensionId": "autonomy",
-          "before": 9,
-          "after": 9,
-          "date": "2026-04-15"
-        },
-        {
-          "dimensionId": "autonomy",
-          "before": 9,
-          "after": 9,
-          "date": "2026-04-15"
-        },
-        {
-          "dimensionId": "autonomy",
-          "before": 9,
-          "after": 9,
-          "date": "2026-04-15"
-        },
-        {
-          "dimensionId": "autonomy",
-          "before": 9,
-          "after": 9,
-          "date": "2026-04-15"
-        },
-        {
-          "dimensionId": "autonomy",
-          "before": 9,
-          "after": 9,
-          "date": "2026-04-15"
-        },
-        {
-          "dimensionId": "autonomy",
-          "before": 9,
-          "after": 9,
-          "date": "2026-04-15"
-        },
-        {
-          "dimensionId": "autonomy",
-          "before": 9,
-          "after": 9,
-          "date": "2026-04-15"
-        },
-        {
-          "dimensionId": "autonomy",
-          "before": 9,
-          "after": 9,
-          "date": "2026-04-15"
-        },
-        {
-          "dimensionId": "autonomy",
-          "before": 9,
-          "after": 9,
-          "date": "2026-04-15"
-        },
-        {
-          "dimensionId": "autonomy",
-          "before": 9,
-          "after": 9,
-          "date": "2026-04-15"
-        },
-        {
-          "dimensionId": "autonomy",
-          "before": 9,
-          "after": 9,
-          "date": "2026-04-15"
-        },
-        {
-          "dimensionId": "autonomy",
-          "before": 9,
-          "after": 9,
-          "date": "2026-04-15"
-        },
-        {
-          "dimensionId": "autonomy",
-          "before": 9,
-          "after": 9,
-          "date": "2026-04-15"
-        },
-        {
-          "dimensionId": "autonomy",
-          "before": 9,
-          "after": 9,
-          "date": "2026-04-15"
-        },
-        {
-          "dimensionId": "autonomy",
-          "before": 9,
-          "after": 9,
-          "date": "2026-04-15"
-        },
-        {
-          "dimensionId": "autonomy",
-          "before": 9,
-          "after": 9,
-          "date": "2026-04-15"
-        },
-        {
-          "dimensionId": "autonomy",
-          "before": 9,
-          "after": 9,
-          "date": "2026-04-15"
-        },
-        {
-          "dimensionId": "autonomy",
-          "before": 9,
-          "after": 9,
-          "date": "2026-04-15"
-        },
-        {
-          "dimensionId": "autonomy",
-          "before": 9,
-          "after": 9,
-          "date": "2026-04-15"
-        },
-        {
-          "dimensionId": "autonomy",
-          "before": 9,
-          "after": 9,
-          "date": "2026-04-15"
-        },
-        {
-          "dimensionId": "autonomy",
-          "before": 9,
-          "after": 9,
-          "date": "2026-04-15"
-        },
-        {
-          "dimensionId": "autonomy",
-          "before": 9,
-          "after": 9,
-          "date": "2026-04-15"
-        },
-        {
-          "dimensionId": "autonomy",
-          "before": 9,
-          "after": 9,
-          "date": "2026-04-15"
-        },
-        {
-          "dimensionId": "autonomy",
-          "before": 9,
-          "after": 9,
-          "date": "2026-04-15"
-        },
-        {
-          "dimensionId": "autonomy",
-          "before": 9,
-          "after": 9,
-          "date": "2026-04-15"
-        },
-        {
-          "dimensionId": "autonomy",
-          "before": 9,
-          "after": 9,
-          "date": "2026-04-15"
-        },
-        {
-          "dimensionId": "autonomy",
-          "before": 9,
-          "after": 9,
-          "date": "2026-04-15"
-        },
-        {
-          "dimensionId": "autonomy",
-          "before": 9,
-          "after": 9,
-          "date": "2026-04-15"
-        },
-        {
-          "dimensionId": "autonomy",
-          "before": 9,
-          "after": 9,
-          "date": "2026-04-15"
-        },
-        {
-          "dimensionId": "autonomy",
-          "before": 9,
-          "after": 9,
-          "date": "2026-04-15"
-        },
-        {
-          "dimensionId": "autonomy",
-          "before": 9,
-          "after": 9,
-          "date": "2026-04-15"
-        },
-        {
-          "dimensionId": "autonomy",
-          "before": 9,
-          "after": 9,
-          "date": "2026-04-15"
-        },
-        {
-          "dimensionId": "autonomy",
-          "before": 9,
-          "after": 9,
-          "date": "2026-04-15"
-        },
-        {
-          "dimensionId": "autonomy",
-          "before": 9,
-          "after": 9,
-          "date": "2026-04-15"
-        },
-        {
-          "dimensionId": "autonomy",
-          "before": 9,
-          "after": 9,
-          "date": "2026-04-15"
-        },
-        {
-          "dimensionId": "autonomy",
-          "before": 9,
-          "after": 9,
-          "date": "2026-04-15"
-        },
-        {
-          "dimensionId": "autonomy",
-          "before": 9,
-          "after": 9,
-          "date": "2026-04-15"
-        },
-        {
-          "dimensionId": "autonomy",
-          "before": 9,
-          "after": 9,
-          "date": "2026-04-15"
-        },
-        {
-          "dimensionId": "autonomy",
-          "before": 9,
-          "after": 9,
-          "date": "2026-04-15"
-        },
-        {
-          "dimensionId": "autonomy",
-          "before": 9,
-          "after": 9,
-          "date": "2026-04-15"
-        },
-        {
-          "dimensionId": "autonomy",
-          "before": 9,
-          "after": 9,
-          "date": "2026-04-15"
-        },
-        {
-          "dimensionId": "autonomy",
-          "before": 9,
-          "after": 9,
-          "date": "2026-04-15"
-        },
-        {
-          "dimensionId": "autonomy",
-          "before": 9,
-          "after": 9,
-          "date": "2026-04-15"
-        },
-        {
-          "dimensionId": "autonomy",
-          "before": 9,
-          "after": 9,
-          "date": "2026-04-15"
-        },
-        {
-          "dimensionId": "autonomy",
-          "before": 9,
-          "after": 9,
-          "date": "2026-04-15"
-        },
-        {
-          "dimensionId": "autonomy",
-          "before": 9,
-          "after": 9,
-          "date": "2026-04-15"
-        },
-        {
-          "dimensionId": "autonomy",
-          "before": 9,
-          "after": 9,
-          "date": "2026-04-15"
-        },
-        {
-          "dimensionId": "autonomy",
-          "before": 9,
-          "after": 9,
-          "date": "2026-04-15"
-        },
-        {
-          "dimensionId": "autonomy",
-          "before": 9,
-          "after": 9,
-          "date": "2026-04-15"
-        },
-        {
-          "dimensionId": "autonomy",
-          "before": 9,
-          "after": 9,
-          "date": "2026-04-15"
-        },
-        {
-          "dimensionId": "autonomy",
-          "before": 9,
-          "after": 9,
-          "date": "2026-04-15"
-        },
-        {
-          "dimensionId": "autonomy",
-          "before": 9,
-          "after": 9,
-          "date": "2026-04-15"
-        },
-        {
-          "dimensionId": "autonomy",
-          "before": 9,
-          "after": 9,
-          "date": "2026-04-15"
-        },
-        {
-          "dimensionId": "autonomy",
-          "before": 9,
-          "after": 9,
-          "date": "2026-04-15"
-        },
-        {
-          "dimensionId": "autonomy",
-          "before": 9,
-          "after": 9,
-          "date": "2026-04-15"
-        },
-        {
-          "dimensionId": "autonomy",
-          "before": 9,
-          "after": 9,
-          "date": "2026-04-15"
-        },
-        {
-          "dimensionId": "autonomy",
-          "before": 9,
-          "after": 9,
-          "date": "2026-04-15"
-        },
-        {
-          "dimensionId": "autonomy",
-          "before": 10,
-          "after": 65,
-          "date": "2026-04-23"
-        },
-        {
-          "dimensionId": "autonomy",
-          "before": 65,
-          "after": 6.5,
-          "date": "2026-04-23"
         },
         {
           "dimensionId": "autonomy",
@@ -1593,7 +813,7 @@
       "category": "reliability",
       "frequency": "high",
       "scores": {
-        "self": 7,
+        "self": 9,
         "Devin (Cognition AI)": 7,
         "GitHub Copilot Workspace": 8,
         "Cursor": 7.5,
@@ -1625,7 +845,7 @@
         "spec-kit (GitHub)": 4,
         "BMad-METHOD": 3.5
       },
-      "gap_to_leader": 1,
+      "gap_to_leader": 0,
       "leader": "self",
       "gap_to_closed_source_leader": 0,
       "closed_source_leader": "self",
@@ -1638,18 +858,6 @@
           "before": 5,
           "after": 9,
           "date": "2026-04-14"
-        },
-        {
-          "dimensionId": "security",
-          "before": 9.5,
-          "after": 95,
-          "date": "2026-04-23"
-        },
-        {
-          "dimensionId": "security",
-          "before": 95,
-          "after": 9.5,
-          "date": "2026-04-23"
         }
       ],
       "next_sprint_target": 7,
@@ -1742,7 +950,7 @@
       "category": "quality",
       "frequency": "high",
       "scores": {
-        "self": 7,
+        "self": 9,
         "Devin (Cognition AI)": 7.5,
         "GitHub Copilot Workspace": 7.5,
         "Cursor": 7,
@@ -1774,7 +982,7 @@
         "spec-kit (GitHub)": 4,
         "BMad-METHOD": 4
       },
-      "gap_to_leader": 1,
+      "gap_to_leader": 0,
       "leader": "self",
       "gap_to_closed_source_leader": 0,
       "closed_source_leader": "self",
@@ -1787,18 +995,6 @@
           "before": 5,
           "after": 9.5,
           "date": "2026-04-14"
-        },
-        {
-          "dimensionId": "error_handling",
-          "before": 9.5,
-          "after": 95,
-          "date": "2026-04-23"
-        },
-        {
-          "dimensionId": "error_handling",
-          "before": 95,
-          "after": 9.5,
-          "date": "2026-04-23"
         }
       ],
       "next_sprint_target": 7,
@@ -1879,7 +1075,7 @@
       "category": "quality",
       "frequency": "high",
       "scores": {
-        "self": 4,
+        "self": 9,
         "Devin (Cognition AI)": 7.5,
         "GitHub Copilot Workspace": 8.5,
         "Cursor": 8,
@@ -1911,7 +1107,7 @@
         "spec-kit (GitHub)": 5,
         "BMad-METHOD": 4.5
       },
-      "gap_to_leader": 4.5,
+      "gap_to_leader": 0,
       "leader": "self",
       "gap_to_closed_source_leader": 0,
       "closed_source_leader": "self",
@@ -1934,284 +1130,8 @@
         {
           "dimensionId": "performance",
           "before": 7,
-          "after": 7,
-          "date": "2026-04-14"
-        },
-        {
-          "dimensionId": "performance",
-          "before": 7,
-          "after": 7,
-          "date": "2026-04-14"
-        },
-        {
-          "dimensionId": "performance",
-          "before": 7,
-          "after": 7,
-          "date": "2026-04-14"
-        },
-        {
-          "dimensionId": "performance",
-          "before": 7,
-          "after": 7,
-          "date": "2026-04-14"
-        },
-        {
-          "dimensionId": "performance",
-          "before": 7,
-          "after": 7,
-          "date": "2026-04-14"
-        },
-        {
-          "dimensionId": "performance",
-          "before": 7,
-          "after": 7,
-          "date": "2026-04-14"
-        },
-        {
-          "dimensionId": "performance",
-          "before": 7,
-          "after": 7,
-          "date": "2026-04-14"
-        },
-        {
-          "dimensionId": "performance",
-          "before": 7,
-          "after": 7,
-          "date": "2026-04-14"
-        },
-        {
-          "dimensionId": "performance",
-          "before": 7,
-          "after": 7,
-          "date": "2026-04-14"
-        },
-        {
-          "dimensionId": "performance",
-          "before": 7,
-          "after": 7,
-          "date": "2026-04-14"
-        },
-        {
-          "dimensionId": "performance",
-          "before": 7,
-          "after": 7,
-          "date": "2026-04-14"
-        },
-        {
-          "dimensionId": "performance",
-          "before": 7,
-          "after": 7,
-          "date": "2026-04-14"
-        },
-        {
-          "dimensionId": "performance",
-          "before": 7,
-          "after": 7,
-          "date": "2026-04-14"
-        },
-        {
-          "dimensionId": "performance",
-          "before": 7,
-          "after": 7,
-          "date": "2026-04-14"
-        },
-        {
-          "dimensionId": "performance",
-          "before": 7,
-          "after": 7,
-          "date": "2026-04-14"
-        },
-        {
-          "dimensionId": "performance",
-          "before": 7,
-          "after": 7,
-          "date": "2026-04-14"
-        },
-        {
-          "dimensionId": "performance",
-          "before": 7,
-          "after": 7,
-          "date": "2026-04-14"
-        },
-        {
-          "dimensionId": "performance",
-          "before": 7,
-          "after": 7,
-          "date": "2026-04-14"
-        },
-        {
-          "dimensionId": "performance",
-          "before": 7,
-          "after": 7,
-          "date": "2026-04-14"
-        },
-        {
-          "dimensionId": "performance",
-          "before": 7,
-          "after": 7,
-          "date": "2026-04-14"
-        },
-        {
-          "dimensionId": "performance",
-          "before": 7,
-          "after": 7,
-          "date": "2026-04-14"
-        },
-        {
-          "dimensionId": "performance",
-          "before": 7,
-          "after": 7,
-          "date": "2026-04-14"
-        },
-        {
-          "dimensionId": "performance",
-          "before": 7,
-          "after": 7,
-          "date": "2026-04-14"
-        },
-        {
-          "dimensionId": "performance",
-          "before": 7,
-          "after": 7,
-          "date": "2026-04-14"
-        },
-        {
-          "dimensionId": "performance",
-          "before": 7,
-          "after": 7,
-          "date": "2026-04-14"
-        },
-        {
-          "dimensionId": "performance",
-          "before": 7,
-          "after": 7,
-          "date": "2026-04-14"
-        },
-        {
-          "dimensionId": "performance",
-          "before": 7,
-          "after": 7,
-          "date": "2026-04-14"
-        },
-        {
-          "dimensionId": "performance",
-          "before": 7,
-          "after": 7,
-          "date": "2026-04-14"
-        },
-        {
-          "dimensionId": "performance",
-          "before": 7,
-          "after": 7,
-          "date": "2026-04-14"
-        },
-        {
-          "dimensionId": "performance",
-          "before": 7,
-          "after": 7,
-          "date": "2026-04-14"
-        },
-        {
-          "dimensionId": "performance",
-          "before": 7,
-          "after": 7,
-          "date": "2026-04-14"
-        },
-        {
-          "dimensionId": "performance",
-          "before": 7,
-          "after": 7,
-          "date": "2026-04-14"
-        },
-        {
-          "dimensionId": "performance",
-          "before": 7,
-          "after": 7,
-          "date": "2026-04-14"
-        },
-        {
-          "dimensionId": "performance",
-          "before": 7,
-          "after": 7,
-          "date": "2026-04-14"
-        },
-        {
-          "dimensionId": "performance",
-          "before": 7,
-          "after": 7,
-          "date": "2026-04-14"
-        },
-        {
-          "dimensionId": "performance",
-          "before": 7,
-          "after": 7,
-          "date": "2026-04-14"
-        },
-        {
-          "dimensionId": "performance",
-          "before": 7,
-          "after": 7,
-          "date": "2026-04-14"
-        },
-        {
-          "dimensionId": "performance",
-          "before": 7,
-          "after": 7,
-          "date": "2026-04-14"
-        },
-        {
-          "dimensionId": "performance",
-          "before": 7,
-          "after": 7,
-          "date": "2026-04-14"
-        },
-        {
-          "dimensionId": "performance",
-          "before": 7,
-          "after": 7,
-          "date": "2026-04-14"
-        },
-        {
-          "dimensionId": "performance",
-          "before": 7,
-          "after": 7,
-          "date": "2026-04-14"
-        },
-        {
-          "dimensionId": "performance",
-          "before": 7,
-          "after": 7,
-          "date": "2026-04-14"
-        },
-        {
-          "dimensionId": "performance",
-          "before": 7,
-          "after": 7,
-          "date": "2026-04-14"
-        },
-        {
-          "dimensionId": "performance",
-          "before": 7,
-          "after": 7,
-          "date": "2026-04-14"
-        },
-        {
-          "dimensionId": "performance",
-          "before": 7,
           "after": 9.5,
           "date": "2026-04-14"
-        },
-        {
-          "dimensionId": "performance",
-          "before": 9,
-          "after": 90,
-          "date": "2026-04-23"
-        },
-        {
-          "dimensionId": "performance",
-          "before": 90,
-          "after": 9,
-          "date": "2026-04-23"
         }
       ],
       "next_sprint_target": 7,
@@ -2298,7 +1218,7 @@
       "category": "ux",
       "frequency": "medium",
       "scores": {
-        "self": 7,
+        "self": 9,
         "Devin (Cognition AI)": 7,
         "GitHub Copilot Workspace": 8,
         "Cursor": 7.5,
@@ -2330,7 +1250,7 @@
         "spec-kit (GitHub)": 6,
         "BMad-METHOD": 5.5
       },
-      "gap_to_leader": 2,
+      "gap_to_leader": 0,
       "leader": "self",
       "gap_to_closed_source_leader": 0,
       "closed_source_leader": "self",
@@ -2343,18 +1263,6 @@
           "before": 5,
           "after": 9.9,
           "date": "2026-04-14"
-        },
-        {
-          "dimensionId": "documentation",
-          "before": 9.9,
-          "after": 100,
-          "date": "2026-04-23"
-        },
-        {
-          "dimensionId": "documentation",
-          "before": 100,
-          "after": 10,
-          "date": "2026-04-23"
         }
       ],
       "next_sprint_target": 7,
@@ -2441,7 +1349,7 @@
       "category": "features",
       "frequency": "medium",
       "scores": {
-        "self": 7,
+        "self": 9,
         "Devin (Cognition AI)": 8.5,
         "GitHub Copilot Workspace": 5,
         "Cursor": 4.5,
@@ -2473,7 +1381,7 @@
         "spec-kit (GitHub)": 3,
         "BMad-METHOD": 3.5
       },
-      "gap_to_leader": 1.5,
+      "gap_to_leader": 0,
       "leader": "self",
       "gap_to_closed_source_leader": 0,
       "closed_source_leader": "self",
@@ -2486,18 +1394,6 @@
           "before": 5,
           "after": 9.5,
           "date": "2026-04-14"
-        },
-        {
-          "dimensionId": "convergence_self_healing",
-          "before": 10,
-          "after": 70,
-          "date": "2026-04-23"
-        },
-        {
-          "dimensionId": "convergence_self_healing",
-          "before": 70,
-          "after": 7,
-          "date": "2026-04-23"
         },
         {
           "dimensionId": "convergence_self_healing",
@@ -2584,7 +1480,7 @@
       "category": "features",
       "frequency": "medium",
       "scores": {
-        "self": 7,
+        "self": 9,
         "Devin (Cognition AI)": 6,
         "GitHub Copilot Workspace": 5.5,
         "Cursor": 4,
@@ -2617,7 +1513,7 @@
         "BMad-METHOD": 6.5,
         "LangGraph": 7.5
       },
-      "gap_to_leader": 1.5,
+      "gap_to_leader": 0,
       "leader": "self",
       "gap_to_closed_source_leader": 0,
       "closed_source_leader": "self",
@@ -2630,18 +1526,6 @@
           "before": 5,
           "after": 9.5,
           "date": "2026-04-14"
-        },
-        {
-          "dimensionId": "spec_driven_pipeline",
-          "before": 9,
-          "after": 95,
-          "date": "2026-04-23"
-        },
-        {
-          "dimensionId": "spec_driven_pipeline",
-          "before": 95,
-          "after": 9.5,
-          "date": "2026-04-23"
         },
         {
           "dimensionId": "spec_driven_pipeline",
@@ -2728,7 +1612,7 @@
       "category": "features",
       "frequency": "medium",
       "scores": {
-        "self": 7,
+        "self": 9,
         "Devin (Cognition AI)": 8,
         "GitHub Copilot Workspace": 7.5,
         "Cursor": 6.5,
@@ -2761,7 +1645,7 @@
         "BMad-METHOD": 6,
         "LangGraph": 8
       },
-      "gap_to_leader": 1.5,
+      "gap_to_leader": 0,
       "leader": "self",
       "gap_to_closed_source_leader": 0,
       "closed_source_leader": "self",
@@ -2774,18 +1658,6 @@
           "before": 5,
           "after": 9.6,
           "date": "2026-04-14"
-        },
-        {
-          "dimensionId": "planning_quality",
-          "before": 10,
-          "after": 92,
-          "date": "2026-04-23"
-        },
-        {
-          "dimensionId": "planning_quality",
-          "before": 92,
-          "after": 9.2,
-          "date": "2026-04-23"
         },
         {
           "dimensionId": "planning_quality",
@@ -2878,7 +1750,7 @@
       "category": "reliability",
       "frequency": "medium",
       "scores": {
-        "self": 7,
+        "self": 9,
         "Devin (Cognition AI)": 7,
         "GitHub Copilot Workspace": 8,
         "Cursor": 8,
@@ -2910,7 +1782,7 @@
         "spec-kit (GitHub)": 5.5,
         "BMad-METHOD": 5
       },
-      "gap_to_leader": 1.5,
+      "gap_to_leader": 0,
       "leader": "self",
       "gap_to_closed_source_leader": 0,
       "closed_source_leader": "self",
@@ -2923,18 +1795,6 @@
           "before": 5,
           "after": 9.4,
           "date": "2026-04-14"
-        },
-        {
-          "dimensionId": "maintainability",
-          "before": 9,
-          "after": 90,
-          "date": "2026-04-23"
-        },
-        {
-          "dimensionId": "maintainability",
-          "before": 90,
-          "after": 9,
-          "date": "2026-04-23"
         }
       ],
       "next_sprint_target": 7,
@@ -3015,7 +1875,7 @@
       "category": "features",
       "frequency": "medium",
       "scores": {
-        "self": 7,
+        "self": 9,
         "Devin (Cognition AI)": 5.5,
         "GitHub Copilot Workspace": 7.5,
         "Cursor": 7.5,
@@ -3058,7 +1918,7 @@
         "Fabric": 3,
         "Agno": 4
       },
-      "gap_to_leader": 2,
+      "gap_to_leader": 0,
       "leader": "self",
       "gap_to_closed_source_leader": 0,
       "closed_source_leader": "self",
@@ -3071,18 +1931,6 @@
           "before": 5,
           "after": 9,
           "date": "2026-04-14"
-        },
-        {
-          "dimensionId": "token_economy",
-          "before": 10,
-          "after": 90,
-          "date": "2026-04-23"
-        },
-        {
-          "dimensionId": "token_economy",
-          "before": 90,
-          "after": 9,
-          "date": "2026-04-23"
         },
         {
           "dimensionId": "token_economy",
@@ -3175,7 +2023,7 @@
       "category": "features",
       "frequency": "medium",
       "scores": {
-        "self": 7,
+        "self": 8.5,
         "Devin (Cognition AI)": 6.5,
         "GitHub Copilot Workspace": 5,
         "Cursor": 5.5,
@@ -3218,7 +2066,7 @@
         "Fabric": 2,
         "Agno": 3
       },
-      "gap_to_leader": 1.5,
+      "gap_to_leader": 0,
       "leader": "self",
       "gap_to_closed_source_leader": 0,
       "closed_source_leader": "self",
@@ -3231,18 +2079,6 @@
           "before": 5,
           "after": 9.5,
           "date": "2026-04-14"
-        },
-        {
-          "dimensionId": "self_improvement",
-          "before": 10,
-          "after": 65,
-          "date": "2026-04-23"
-        },
-        {
-          "dimensionId": "self_improvement",
-          "before": 65,
-          "after": 6.5,
-          "date": "2026-04-23"
         },
         {
           "dimensionId": "self_improvement",
@@ -3338,7 +2174,7 @@
       "category": "features",
       "frequency": "low",
       "scores": {
-        "self": 7,
+        "self": 9,
         "Devin (Cognition AI)": 5,
         "GitHub Copilot Workspace": 8,
         "Cursor": 7,
@@ -3382,27 +2218,14 @@
         "Fabric": 2,
         "Agno": 8
       },
-      "gap_to_leader": 2.5,
+      "gap_to_leader": 0,
       "leader": "self",
       "gap_to_closed_source_leader": 0,
       "closed_source_leader": "self",
       "gap_to_oss_leader": 0,
       "oss_leader": "self",
       "status": "partially-verified-capability",
-      "sprint_history": [
-        {
-          "dimensionId": "ecosystem_mcp",
-          "before": 10,
-          "after": 100,
-          "date": "2026-04-23"
-        },
-        {
-          "dimensionId": "ecosystem_mcp",
-          "before": 100,
-          "after": 10,
-          "date": "2026-04-23"
-        }
-      ],
+      "sprint_history": [],
       "next_sprint_target": 7,
       "harvest_source": "LangChain Agents",
       "capability_test": {
@@ -3481,7 +2304,7 @@
       "category": "reliability",
       "frequency": "low",
       "scores": {
-        "self": 7,
+        "self": 9,
         "Devin (Cognition AI)": 6,
         "GitHub Copilot Workspace": 8.5,
         "Cursor": 6.5,
@@ -3513,7 +2336,7 @@
         "spec-kit (GitHub)": 4,
         "BMad-METHOD": 3.5
       },
-      "gap_to_leader": 1.5,
+      "gap_to_leader": 0,
       "leader": "self",
       "gap_to_closed_source_leader": 0,
       "closed_source_leader": "self",
@@ -3521,18 +2344,6 @@
       "oss_leader": "self",
       "status": "structural-implementation",
       "sprint_history": [
-        {
-          "dimensionId": "enterprise_readiness",
-          "before": 9,
-          "after": 9,
-          "date": "2026-04-23"
-        },
-        {
-          "dimensionId": "enterprise_readiness",
-          "before": 9,
-          "after": 9,
-          "date": "2026-04-23"
-        },
         {
           "dimensionId": "enterprise_readiness",
           "before": 9,
@@ -3674,732 +2485,6 @@
           "dimensionId": "community_adoption",
           "before": 1.5,
           "after": 1.5,
-          "date": "2026-04-14"
-        },
-        {
-          "dimensionId": "community_adoption",
-          "before": 1.5,
-          "after": 1.5,
-          "date": "2026-04-14"
-        },
-        {
-          "dimensionId": "community_adoption",
-          "before": 1.5,
-          "after": 1.5,
-          "date": "2026-04-14"
-        },
-        {
-          "dimensionId": "community_adoption",
-          "before": 1.5,
-          "after": 1.5,
-          "date": "2026-04-14"
-        },
-        {
-          "dimensionId": "community_adoption",
-          "before": 1.5,
-          "after": 1.5,
-          "date": "2026-04-14"
-        },
-        {
-          "dimensionId": "community_adoption",
-          "before": 1.5,
-          "after": 1.5,
-          "date": "2026-04-14"
-        },
-        {
-          "dimensionId": "community_adoption",
-          "before": 1.5,
-          "after": 1.5,
-          "date": "2026-04-14"
-        },
-        {
-          "dimensionId": "community_adoption",
-          "before": 1.5,
-          "after": 1.5,
-          "date": "2026-04-14"
-        },
-        {
-          "dimensionId": "community_adoption",
-          "before": 1.5,
-          "after": 1.5,
-          "date": "2026-04-14"
-        },
-        {
-          "dimensionId": "community_adoption",
-          "before": 1.5,
-          "after": 1.5,
-          "date": "2026-04-14"
-        },
-        {
-          "dimensionId": "community_adoption",
-          "before": 1.5,
-          "after": 1.5,
-          "date": "2026-04-14"
-        },
-        {
-          "dimensionId": "community_adoption",
-          "before": 1.5,
-          "after": 1.5,
-          "date": "2026-04-14"
-        },
-        {
-          "dimensionId": "community_adoption",
-          "before": 1.5,
-          "after": 1.5,
-          "date": "2026-04-14"
-        },
-        {
-          "dimensionId": "community_adoption",
-          "before": 1.5,
-          "after": 1.5,
-          "date": "2026-04-14"
-        },
-        {
-          "dimensionId": "community_adoption",
-          "before": 1.5,
-          "after": 1.5,
-          "date": "2026-04-14"
-        },
-        {
-          "dimensionId": "community_adoption",
-          "before": 1.5,
-          "after": 1.5,
-          "date": "2026-04-14"
-        },
-        {
-          "dimensionId": "community_adoption",
-          "before": 1.5,
-          "after": 1.5,
-          "date": "2026-04-14"
-        },
-        {
-          "dimensionId": "community_adoption",
-          "before": 1.5,
-          "after": 1.5,
-          "date": "2026-04-14"
-        },
-        {
-          "dimensionId": "community_adoption",
-          "before": 1.5,
-          "after": 1.5,
-          "date": "2026-04-14"
-        },
-        {
-          "dimensionId": "community_adoption",
-          "before": 1.5,
-          "after": 1.5,
-          "date": "2026-04-14"
-        },
-        {
-          "dimensionId": "community_adoption",
-          "before": 1.5,
-          "after": 1.5,
-          "date": "2026-04-14"
-        },
-        {
-          "dimensionId": "community_adoption",
-          "before": 1.5,
-          "after": 1.5,
-          "date": "2026-04-14"
-        },
-        {
-          "dimensionId": "community_adoption",
-          "before": 1.5,
-          "after": 1.5,
-          "date": "2026-04-14"
-        },
-        {
-          "dimensionId": "community_adoption",
-          "before": 1.5,
-          "after": 1.5,
-          "date": "2026-04-14"
-        },
-        {
-          "dimensionId": "community_adoption",
-          "before": 1.5,
-          "after": 1.5,
-          "date": "2026-04-14"
-        },
-        {
-          "dimensionId": "community_adoption",
-          "before": 1.5,
-          "after": 1.5,
-          "date": "2026-04-14"
-        },
-        {
-          "dimensionId": "community_adoption",
-          "before": 1.5,
-          "after": 1.5,
-          "date": "2026-04-14"
-        },
-        {
-          "dimensionId": "community_adoption",
-          "before": 1.5,
-          "after": 1.5,
-          "date": "2026-04-14"
-        },
-        {
-          "dimensionId": "community_adoption",
-          "before": 1.5,
-          "after": 1.5,
-          "date": "2026-04-14"
-        },
-        {
-          "dimensionId": "community_adoption",
-          "before": 1.5,
-          "after": 1.5,
-          "date": "2026-04-14"
-        },
-        {
-          "dimensionId": "community_adoption",
-          "before": 1.5,
-          "after": 1.5,
-          "date": "2026-04-14"
-        },
-        {
-          "dimensionId": "community_adoption",
-          "before": 1.5,
-          "after": 1.5,
-          "date": "2026-04-14"
-        },
-        {
-          "dimensionId": "community_adoption",
-          "before": 1.5,
-          "after": 1.5,
-          "date": "2026-04-14"
-        },
-        {
-          "dimensionId": "community_adoption",
-          "before": 1.5,
-          "after": 1.5,
-          "date": "2026-04-14"
-        },
-        {
-          "dimensionId": "community_adoption",
-          "before": 1.5,
-          "after": 1.5,
-          "date": "2026-04-14"
-        },
-        {
-          "dimensionId": "community_adoption",
-          "before": 1.5,
-          "after": 1.5,
-          "date": "2026-04-14"
-        },
-        {
-          "dimensionId": "community_adoption",
-          "before": 1.5,
-          "after": 1.5,
-          "date": "2026-04-14"
-        },
-        {
-          "dimensionId": "community_adoption",
-          "before": 1.5,
-          "after": 1.5,
-          "date": "2026-04-14"
-        },
-        {
-          "dimensionId": "community_adoption",
-          "before": 1.5,
-          "after": 1.5,
-          "date": "2026-04-14"
-        },
-        {
-          "dimensionId": "community_adoption",
-          "before": 1.5,
-          "after": 1.5,
-          "date": "2026-04-14"
-        },
-        {
-          "dimensionId": "community_adoption",
-          "before": 1.5,
-          "after": 1.5,
-          "date": "2026-04-14"
-        },
-        {
-          "dimensionId": "community_adoption",
-          "before": 1.5,
-          "after": 1.5,
-          "date": "2026-04-14"
-        },
-        {
-          "dimensionId": "community_adoption",
-          "before": 1.5,
-          "after": 1.5,
-          "date": "2026-04-14"
-        },
-        {
-          "dimensionId": "community_adoption",
-          "before": 1.5,
-          "after": 1.5,
-          "date": "2026-04-14"
-        },
-        {
-          "dimensionId": "community_adoption",
-          "before": 1.5,
-          "after": 1.5,
-          "date": "2026-04-14"
-        },
-        {
-          "dimensionId": "community_adoption",
-          "before": 1.5,
-          "after": 1.5,
-          "date": "2026-04-14"
-        },
-        {
-          "dimensionId": "community_adoption",
-          "before": 1.5,
-          "after": 1.5,
-          "date": "2026-04-14"
-        },
-        {
-          "dimensionId": "community_adoption",
-          "before": 1.5,
-          "after": 1.5,
-          "date": "2026-04-14"
-        },
-        {
-          "dimensionId": "community_adoption",
-          "before": 1.5,
-          "after": 1.5,
-          "date": "2026-04-14"
-        },
-        {
-          "dimensionId": "community_adoption",
-          "before": 1.5,
-          "after": 1.5,
-          "date": "2026-04-14"
-        },
-        {
-          "dimensionId": "community_adoption",
-          "before": 1.5,
-          "after": 1.5,
-          "date": "2026-04-14"
-        },
-        {
-          "dimensionId": "community_adoption",
-          "before": 1.5,
-          "after": 1.5,
-          "date": "2026-04-14"
-        },
-        {
-          "dimensionId": "community_adoption",
-          "before": 1.5,
-          "after": 1.5,
-          "date": "2026-04-14"
-        },
-        {
-          "dimensionId": "community_adoption",
-          "before": 1.5,
-          "after": 1.5,
-          "date": "2026-04-14"
-        },
-        {
-          "dimensionId": "community_adoption",
-          "before": 1.5,
-          "after": 1.5,
-          "date": "2026-04-14"
-        },
-        {
-          "dimensionId": "community_adoption",
-          "before": 1.5,
-          "after": 1.5,
-          "date": "2026-04-14"
-        },
-        {
-          "dimensionId": "community_adoption",
-          "before": 1.5,
-          "after": 1.5,
-          "date": "2026-04-14"
-        },
-        {
-          "dimensionId": "community_adoption",
-          "before": 1.5,
-          "after": 1.5,
-          "date": "2026-04-14"
-        },
-        {
-          "dimensionId": "community_adoption",
-          "before": 1.5,
-          "after": 1.5,
-          "date": "2026-04-14"
-        },
-        {
-          "dimensionId": "community_adoption",
-          "before": 1.5,
-          "after": 1.5,
-          "date": "2026-04-14"
-        },
-        {
-          "dimensionId": "community_adoption",
-          "before": 1.5,
-          "after": 1.5,
-          "date": "2026-04-14"
-        },
-        {
-          "dimensionId": "community_adoption",
-          "before": 1.5,
-          "after": 1.5,
-          "date": "2026-04-14"
-        },
-        {
-          "dimensionId": "community_adoption",
-          "before": 1.5,
-          "after": 1.5,
-          "date": "2026-04-14"
-        },
-        {
-          "dimensionId": "community_adoption",
-          "before": 1.5,
-          "after": 1.5,
-          "date": "2026-04-14"
-        },
-        {
-          "dimensionId": "community_adoption",
-          "before": 1.5,
-          "after": 1.5,
-          "date": "2026-04-14"
-        },
-        {
-          "dimensionId": "community_adoption",
-          "before": 1.5,
-          "after": 1.5,
-          "date": "2026-04-14"
-        },
-        {
-          "dimensionId": "community_adoption",
-          "before": 1.5,
-          "after": 1.5,
-          "date": "2026-04-14"
-        },
-        {
-          "dimensionId": "community_adoption",
-          "before": 1.5,
-          "after": 1.5,
-          "date": "2026-04-14"
-        },
-        {
-          "dimensionId": "community_adoption",
-          "before": 1.5,
-          "after": 1.5,
-          "date": "2026-04-14"
-        },
-        {
-          "dimensionId": "community_adoption",
-          "before": 1.5,
-          "after": 1.5,
-          "date": "2026-04-14"
-        },
-        {
-          "dimensionId": "community_adoption",
-          "before": 1.5,
-          "after": 1.5,
-          "date": "2026-04-14"
-        },
-        {
-          "dimensionId": "community_adoption",
-          "before": 1.5,
-          "after": 1.5,
-          "date": "2026-04-14"
-        },
-        {
-          "dimensionId": "community_adoption",
-          "before": 1.5,
-          "after": 1.5,
-          "date": "2026-04-14"
-        },
-        {
-          "dimensionId": "community_adoption",
-          "before": 1.5,
-          "after": 1.5,
-          "date": "2026-04-14"
-        },
-        {
-          "dimensionId": "community_adoption",
-          "before": 1.5,
-          "after": 1.5,
-          "date": "2026-04-14"
-        },
-        {
-          "dimensionId": "community_adoption",
-          "before": 1.5,
-          "after": 1.5,
-          "date": "2026-04-14"
-        },
-        {
-          "dimensionId": "community_adoption",
-          "before": 1.5,
-          "after": 1.5,
-          "date": "2026-04-14"
-        },
-        {
-          "dimensionId": "community_adoption",
-          "before": 1.5,
-          "after": 1.5,
-          "date": "2026-04-14"
-        },
-        {
-          "dimensionId": "community_adoption",
-          "before": 1.5,
-          "after": 1.5,
-          "date": "2026-04-14"
-        },
-        {
-          "dimensionId": "community_adoption",
-          "before": 1.5,
-          "after": 1.5,
-          "date": "2026-04-14"
-        },
-        {
-          "dimensionId": "community_adoption",
-          "before": 1.5,
-          "after": 1.5,
-          "date": "2026-04-14"
-        },
-        {
-          "dimensionId": "community_adoption",
-          "before": 1.5,
-          "after": 1.5,
-          "date": "2026-04-14"
-        },
-        {
-          "dimensionId": "community_adoption",
-          "before": 1.5,
-          "after": 1.5,
-          "date": "2026-04-14"
-        },
-        {
-          "dimensionId": "community_adoption",
-          "before": 1.5,
-          "after": 1.5,
-          "date": "2026-04-14"
-        },
-        {
-          "dimensionId": "community_adoption",
-          "before": 1.5,
-          "after": 1.5,
-          "date": "2026-04-14"
-        },
-        {
-          "dimensionId": "community_adoption",
-          "before": 1.5,
-          "after": 1.5,
-          "date": "2026-04-14"
-        },
-        {
-          "dimensionId": "community_adoption",
-          "before": 1.5,
-          "after": 1.5,
-          "date": "2026-04-14"
-        },
-        {
-          "dimensionId": "community_adoption",
-          "before": 1.5,
-          "after": 1.5,
-          "date": "2026-04-14"
-        },
-        {
-          "dimensionId": "community_adoption",
-          "before": 1.5,
-          "after": 1.5,
-          "date": "2026-04-14"
-        },
-        {
-          "dimensionId": "community_adoption",
-          "before": 1.5,
-          "after": 1.5,
-          "date": "2026-04-14"
-        },
-        {
-          "dimensionId": "community_adoption",
-          "before": 1.5,
-          "after": 1.5,
-          "date": "2026-04-14"
-        },
-        {
-          "dimensionId": "community_adoption",
-          "before": 1.5,
-          "after": 1.5,
-          "date": "2026-04-14"
-        },
-        {
-          "dimensionId": "community_adoption",
-          "before": 1.5,
-          "after": 1.5,
-          "date": "2026-04-14"
-        },
-        {
-          "dimensionId": "community_adoption",
-          "before": 1.5,
-          "after": 1.5,
-          "date": "2026-04-14"
-        },
-        {
-          "dimensionId": "community_adoption",
-          "before": 1.5,
-          "after": 1.5,
-          "date": "2026-04-14"
-        },
-        {
-          "dimensionId": "community_adoption",
-          "before": 1.5,
-          "after": 1.5,
-          "date": "2026-04-14"
-        },
-        {
-          "dimensionId": "community_adoption",
-          "before": 1.5,
-          "after": 1.5,
-          "date": "2026-04-14"
-        },
-        {
-          "dimensionId": "community_adoption",
-          "before": 1.5,
-          "after": 1.5,
-          "date": "2026-04-14"
-        },
-        {
-          "dimensionId": "community_adoption",
-          "before": 1.5,
-          "after": 1.5,
-          "date": "2026-04-14"
-        },
-        {
-          "dimensionId": "community_adoption",
-          "before": 1.5,
-          "after": 1.5,
-          "date": "2026-04-14"
-        },
-        {
-          "dimensionId": "community_adoption",
-          "before": 1.5,
-          "after": 1.5,
-          "date": "2026-04-14"
-        },
-        {
-          "dimensionId": "community_adoption",
-          "before": 1.5,
-          "after": 1.5,
-          "date": "2026-04-14"
-        },
-        {
-          "dimensionId": "community_adoption",
-          "before": 1.5,
-          "after": 1.5,
-          "date": "2026-04-14"
-        },
-        {
-          "dimensionId": "community_adoption",
-          "before": 1.5,
-          "after": 1.5,
-          "date": "2026-04-14"
-        },
-        {
-          "dimensionId": "community_adoption",
-          "before": 1.5,
-          "after": 1.5,
-          "date": "2026-04-14"
-        },
-        {
-          "dimensionId": "community_adoption",
-          "before": 1.5,
-          "after": 1.5,
-          "date": "2026-04-14"
-        },
-        {
-          "dimensionId": "community_adoption",
-          "before": 1.5,
-          "after": 1.5,
-          "date": "2026-04-14"
-        },
-        {
-          "dimensionId": "community_adoption",
-          "before": 1.5,
-          "after": 1.5,
-          "date": "2026-04-14"
-        },
-        {
-          "dimensionId": "community_adoption",
-          "before": 1.5,
-          "after": 1.5,
-          "date": "2026-04-14"
-        },
-        {
-          "dimensionId": "community_adoption",
-          "before": 1.5,
-          "after": 1.5,
-          "date": "2026-04-14"
-        },
-        {
-          "dimensionId": "community_adoption",
-          "before": 1.5,
-          "after": 1.5,
-          "date": "2026-04-14"
-        },
-        {
-          "dimensionId": "community_adoption",
-          "before": 1.5,
-          "after": 1.5,
-          "date": "2026-04-14"
-        },
-        {
-          "dimensionId": "community_adoption",
-          "before": 1.5,
-          "after": 1.5,
-          "date": "2026-04-14"
-        },
-        {
-          "dimensionId": "community_adoption",
-          "before": 1.5,
-          "after": 1.5,
-          "date": "2026-04-15"
-        },
-        {
-          "dimensionId": "community_adoption",
-          "before": 1.5,
-          "after": 1.5,
-          "date": "2026-04-15"
-        },
-        {
-          "dimensionId": "community_adoption",
-          "before": 1.5,
-          "after": 1.5,
-          "date": "2026-04-15"
-        },
-        {
-          "dimensionId": "community_adoption",
-          "before": 1.5,
-          "after": 1.5,
-          "date": "2026-04-15"
-        },
-        {
-          "dimensionId": "community_adoption",
-          "before": 1.5,
-          "after": 1.5,
-          "date": "2026-04-15"
-        },
-        {
-          "dimensionId": "community_adoption",
-          "before": 1.5,
-          "after": 1.5,
-          "date": "2026-04-15"
-        },
-        {
-          "dimensionId": "community_adoption",
-          "before": 1.5,
-          "after": 1.5,
-          "date": "2026-04-15"
-        },
-        {
-          "dimensionId": "community_adoption",
-          "before": 1.5,
-          "after": 1.5,
-          "date": "2026-04-15"
-        },
-        {
-          "dimensionId": "community_adoption",
-          "before": 1.5,
-          "after": 1.5,
           "date": "2026-04-15"
         },
         {
@@ -4442,7 +2527,7 @@
       "category": "reliability",
       "frequency": "high",
       "scores": {
-        "self": 7,
+        "self": 9,
         "Devin (Cognition AI)": 3,
         "GitHub Copilot Workspace": 3.5,
         "Cursor": 4,
@@ -4502,7 +2587,7 @@
         "src/core/agent-dag.ts",
         "src/core/subagent-isolator.ts"
       ],
-      "gap_to_leader": 2,
+      "gap_to_leader": 0,
       "leader": "self",
       "gap_to_closed_source_leader": 0,
       "closed_source_leader": "self",
@@ -4584,7 +2669,7 @@
       "category": "core_differentiator",
       "frequency": "high",
       "scores": {
-        "self": 7,
+        "self": 9,
         "Kiro (AWS)": 7.5,
         "Replit Agent": 3,
         "spec-kit (GitHub)": 7,
@@ -4668,7 +2753,7 @@
         }
       ],
       "declared_ceiling": "T7",
-      "gap_to_leader": 1.5,
+      "gap_to_leader": 0,
       "leader": "self",
       "gap_to_closed_source_leader": 0,
       "closed_source_leader": "self",
@@ -4697,7 +2782,7 @@
       "category": "core_differentiator",
       "frequency": "high",
       "scores": {
-        "self": 7,
+        "self": 9,
         "Kiro (AWS)": 3,
         "Replit Agent": 2,
         "spec-kit (GitHub)": 2,
@@ -4811,7 +2896,7 @@
       "category": "core_differentiator",
       "frequency": "high",
       "scores": {
-        "self": 7,
+        "self": 9,
         "Kiro (AWS)": 4,
         "Replit Agent": 2,
         "spec-kit (GitHub)": 3.5,
@@ -4913,7 +2998,7 @@
       "category": "core_differentiator",
       "frequency": "high",
       "scores": {
-        "self": 7,
+        "self": 9,
         "Kiro (AWS)": 5,
         "Replit Agent": 4,
         "spec-kit (GitHub)": 2,
@@ -5011,7 +3096,7 @@
         }
       ],
       "declared_ceiling": "T7",
-      "gap_to_leader": 2,
+      "gap_to_leader": 0,
       "leader": "self",
       "gap_to_closed_source_leader": 0,
       "closed_source_leader": "self",
@@ -5040,7 +3125,7 @@
       "category": "core_differentiator",
       "frequency": "high",
       "scores": {
-        "self": 7,
+        "self": 9,
         "Kiro (AWS)": 2,
         "Replit Agent": 1.5,
         "spec-kit (GitHub)": 1.5,
