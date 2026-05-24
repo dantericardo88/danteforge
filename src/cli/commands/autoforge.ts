@@ -80,6 +80,8 @@ async function runAutoMode(goal: string | undefined, cwd: string, options: {
   _computeRetroScore?: boolean;
   _runLoop?: (ctx: AutoforgeLoopContext, deps?: { _executeCommand?: (command: string, cwd: string) => Promise<{ success: boolean }> }) => Promise<AutoforgeLoopContext>;
   _executeCommand?: (command: string, cwd: string) => Promise<{ success: boolean }>;
+  /** Injection seam: override runCIPSweep for tests (skips real matrix load + CIP checks). */
+  _cipSweep?: (cwd: string) => Promise<CIPResult[]>;
 }): Promise<void> {
   logger.info(`[scoring-doctrine] ${SCORING_DOCTRINE_SHORT}`);
   logger.info('[AutoForge] Autonomous mode — running convergence loop...');
@@ -145,7 +147,7 @@ async function runAutoMode(goal: string | undefined, cwd: string, options: {
     const MAX_CIP_RETRIES = 3;
     for (let attempt = 1; attempt <= MAX_CIP_RETRIES; attempt++) {
       try {
-        const blocked = await runCIPSweep(cwd);
+        const blocked = await (options._cipSweep ?? runCIPSweep)(cwd);
         if (blocked.length === 0) {
           logger.success(`[autoforge] CIP confirmed — all matrix dim(s) have end-to-end evidence`);
           break;
@@ -277,6 +279,8 @@ export async function autoforge(goal?: string, options: {
   _loadCheckpointFn?: (cwd: string) => Promise<string | undefined>;
   /** Skip CIP gate after --auto loop (dev mode only — never a default) */
   skipCIP?: boolean;
+  /** Injection seam: override runCIPSweep for tests (skips real matrix load + CIP checks). */
+  _cipSweep?: (cwd: string) => Promise<CIPResult[]>;
 } = {}): Promise<void> {
   return withErrorBoundary('autoforge', async () => {
   const maxWaves = options.maxWaves ?? 3;
