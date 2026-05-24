@@ -54,7 +54,7 @@ export function gapBar(gap: number, maxGap = 10): string {
 }
 
 export function formatTrend(dim: MatrixDimension): string {
-  if (dim.sprint_history.length === 0) return chalk.dim('·');
+  if (!dim.sprint_history || dim.sprint_history.length === 0) return chalk.dim('·');
   // Filter out corrupted entries where scores exceeded realistic bounds
   const valid = dim.sprint_history.filter(e => e.before <= 10 && e.after <= 10);
   if (valid.length === 0) return chalk.dim('·');

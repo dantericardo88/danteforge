@@ -162,6 +162,14 @@ const ACTUAL_COMPETITORS_OSS = [
   'LangChain Agents',
   'Dagger',
   're_gent',
+  // Frontier OSS frameworks — added 2026-05-24: these score higher than DanteForge
+  // on multi_agent_orchestration and ecosystem_mcp. Excluding them was producing
+  // false "no gap" signals. "The gap is the value."
+  'LangGraph',
+  'Agno',
+  'Pydantic-AI',
+  'SmolaAgents',
+  'DSPy',
 ];
 
 const REFERENCE_TIER = [
@@ -423,12 +431,74 @@ const BMAD_DEFAULTS = {
   self_improvement: 3.5, ecosystem_mcp: 3.5, enterprise_readiness: 3.5,
   agent_activity_provenance: 2.5,
 };
+// Frontier OSS frameworks — added to ACTUAL_COMPETITORS_OSS 2026-05-24.
+// Scores reflect their actual capability posture as of their latest release.
+const LANGGRAPH_DEFAULTS = {
+  testing: 5.0, developer_experience: 5.0, ux_polish: 4.0, functionality: 6.0,
+  autonomy: 7.0, security: 4.0, error_handling: 5.0, performance: 6.0,
+  documentation: 5.5, convergence_self_healing: 5.0, spec_driven_pipeline: 3.0,
+  planning_quality: 4.0, maintainability: 6.0, token_economy: 5.0,
+  self_improvement: 4.0, ecosystem_mcp: 7.5, enterprise_readiness: 5.0,
+  agent_activity_provenance: 3.0, constitutional_governance: 2.0,
+  depth_doctrine: 2.0, outcome_verification: 2.0, spec_workflow_enforcement: 3.0,
+};
+const AGNO_DEFAULTS = {
+  testing: 5.0, developer_experience: 5.5, ux_polish: 4.5, functionality: 6.5,
+  autonomy: 7.5, security: 4.0, error_handling: 5.0, performance: 6.5,
+  documentation: 6.0, convergence_self_healing: 5.5, spec_driven_pipeline: 3.5,
+  planning_quality: 4.5, maintainability: 6.5, token_economy: 5.5,
+  self_improvement: 4.5, ecosystem_mcp: 7.0, enterprise_readiness: 5.0,
+  agent_activity_provenance: 3.5, constitutional_governance: 2.0,
+  depth_doctrine: 2.0, outcome_verification: 2.0, spec_workflow_enforcement: 3.0,
+};
+const PYDANTICAI_DEFAULTS = {
+  testing: 6.0, developer_experience: 6.5, ux_polish: 5.0, functionality: 6.0,
+  autonomy: 6.0, security: 5.0, error_handling: 6.0, performance: 6.5,
+  documentation: 7.0, convergence_self_healing: 4.0, spec_driven_pipeline: 3.0,
+  planning_quality: 4.0, maintainability: 7.0, token_economy: 6.0,
+  self_improvement: 3.5, ecosystem_mcp: 6.5, enterprise_readiness: 5.5,
+  agent_activity_provenance: 3.0, constitutional_governance: 2.0,
+  depth_doctrine: 2.0, outcome_verification: 2.5, spec_workflow_enforcement: 3.0,
+};
+const SMOLAAGENTS_DEFAULTS = {
+  testing: 5.5, developer_experience: 5.5, ux_polish: 4.5, functionality: 5.5,
+  autonomy: 6.5, security: 4.0, error_handling: 5.0, performance: 6.0,
+  documentation: 6.0, convergence_self_healing: 4.5, spec_driven_pipeline: 2.5,
+  planning_quality: 4.0, maintainability: 6.0, token_economy: 5.5,
+  self_improvement: 4.0, ecosystem_mcp: 6.0, enterprise_readiness: 4.0,
+  agent_activity_provenance: 3.0, constitutional_governance: 2.0,
+  depth_doctrine: 2.0, outcome_verification: 2.0, spec_workflow_enforcement: 2.5,
+};
+const DSPY_DEFAULTS = {
+  testing: 6.0, developer_experience: 5.5, ux_polish: 4.0, functionality: 6.0,
+  autonomy: 5.5, security: 4.5, error_handling: 5.0, performance: 6.5,
+  documentation: 6.5, convergence_self_healing: 4.0, spec_driven_pipeline: 4.0,
+  planning_quality: 5.0, maintainability: 6.5, token_economy: 7.0,
+  self_improvement: 5.5, ecosystem_mcp: 5.5, enterprise_readiness: 4.5,
+  agent_activity_provenance: 3.5, constitutional_governance: 2.0,
+  depth_doctrine: 3.0, outcome_verification: 3.0, spec_workflow_enforcement: 3.5,
+};
 for (const dim of m.dimensions) {
   if (dim.scores['spec-kit (GitHub)'] === undefined && SPECKIT_DEFAULTS[dim.id] !== undefined) {
     dim.scores['spec-kit (GitHub)'] = SPECKIT_DEFAULTS[dim.id];
   }
   if (dim.scores['BMad-METHOD'] === undefined && BMAD_DEFAULTS[dim.id] !== undefined) {
     dim.scores['BMad-METHOD'] = BMAD_DEFAULTS[dim.id];
+  }
+  if (dim.scores['LangGraph'] === undefined && LANGGRAPH_DEFAULTS[dim.id] !== undefined) {
+    dim.scores['LangGraph'] = LANGGRAPH_DEFAULTS[dim.id];
+  }
+  if (dim.scores['Agno'] === undefined && AGNO_DEFAULTS[dim.id] !== undefined) {
+    dim.scores['Agno'] = AGNO_DEFAULTS[dim.id];
+  }
+  if (dim.scores['Pydantic-AI'] === undefined && PYDANTICAI_DEFAULTS[dim.id] !== undefined) {
+    dim.scores['Pydantic-AI'] = PYDANTICAI_DEFAULTS[dim.id];
+  }
+  if (dim.scores['SmolaAgents'] === undefined && SMOLAAGENTS_DEFAULTS[dim.id] !== undefined) {
+    dim.scores['SmolaAgents'] = SMOLAAGENTS_DEFAULTS[dim.id];
+  }
+  if (dim.scores['DSPy'] === undefined && DSPY_DEFAULTS[dim.id] !== undefined) {
+    dim.scores['DSPy'] = DSPY_DEFAULTS[dim.id];
   }
 }
 
