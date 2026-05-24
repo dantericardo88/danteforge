@@ -3093,6 +3093,17 @@
           "timeout_ms": 120000,
           "required_callsite": "src/core/agent-dag.ts",
           "description": "Agent DAG and party orchestration tests execute."
+        },
+        {
+          "id": "mao_t5_adapter_tests",
+          "tier": "T5",
+          "kind": "runtime-exec",
+          "command": "npx tsx --test tests/claude-code-adapter.test.ts tests/codex-adapter.test.ts",
+          "expected_exit": 0,
+          "expected_output_pattern": "pass",
+          "timeout_ms": 60000,
+          "required_callsite": "src/matrix/adapters/claude-code-adapter.ts",
+          "description": "ClaudeCode + Codex adapter unit tests execute (Phase 13)."
         }
       ],
       "declared_ceiling": "T7",
