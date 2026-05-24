@@ -10,11 +10,11 @@ import {
   saveFeatureUniverse,
   saveFeatureScores,
   loadFeatureScores,
-  getCanonicalDanteForgeCompetitors,
   type FeatureUniverse,
   type FeatureUniverseAssessment,
 } from '../../core/feature-universe.js';
 import { loadMatrix } from '../../core/compete-matrix.js';
+import { resolveProjectCompetitors } from '../../core/peer-presets.js';
 import { formatDimensionBar } from '../../core/harsh-scorer.js';
 import { buildProjectContext } from './assess.js';
 import {
@@ -179,13 +179,12 @@ function printUniverseReport(assessment: FeatureUniverseAssessment, target: Comp
 async function resolveCompetitorNames(cwd: string, ctx: { userDefinedCompetitors?: string[]; ossDiscoveries?: string[] }): Promise<string[]> {
   if (ctx.userDefinedCompetitors?.length) return ctx.userDefinedCompetitors;
   if (ctx.ossDiscoveries?.length) return ctx.ossDiscoveries;
+  let state: Awaited<ReturnType<typeof loadState>> | null = null;
   try {
-    const state = await loadState({ cwd });
+    state = await loadState({ cwd });
     if (state.competitors?.length) return state.competitors;
   } catch { /* no state */ }
-  // Read competitors from compete-matrix.json (the 28-name seed that
-  // /compete --calibrate writes). Bare strings flow straight into
-  // buildFeatureUniverse — no normalization needed.
+  // Read competitors from compete-matrix.json (calibrated list).
   try {
     const matrix = await loadMatrix(cwd);
     if (matrix?.competitors && Array.isArray(matrix.competitors) && matrix.competitors.length > 0) {
@@ -195,9 +194,16 @@ async function resolveCompetitorNames(cwd: string, ctx: { userDefinedCompetitors
       if (names.length > 0) return names;
     }
   } catch { /* no matrix */ }
-  // Last-resort: canonical DanteForge peer list so /universe never returns 0
-  // features on a fresh project. Users can override with state.competitors.
-  return getCanonicalDanteForgeCompetitors();
+  // Final fallback: per-project preset. Picks coding-assistant for DanteCode,
+  // dev-tool-optimizer for DanteForge, etc. Returns [] if project type is
+  // unknown — caller surfaces a configuration hint instead of guessing.
+  const { competitors, preset, reason } = await resolveProjectCompetitors(cwd, state ?? undefined);
+  if (competitors.length > 0) {
+    logger.info(`[universe] Using ${preset ? `"${preset}" preset` : 'literal override'} (${reason})`);
+    return competitors;
+  }
+  logger.warn(`[universe] Could not resolve a peer preset for this project. ${reason}`);
+  return [];
 }
 
 async function defaultBuildUniverse(

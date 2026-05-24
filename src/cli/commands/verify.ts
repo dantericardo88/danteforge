@@ -13,6 +13,8 @@ import { detectProjectType, type ProjectType } from '../../core/completion-track
 import { logger } from '../../core/logger.js';
 import { detectAIDrift } from '../../core/drift-detector.js';
 import { withErrorBoundary } from '../../core/cli-error-boundary.js';
+import { recordStage } from '../../core/pipeline-tracker.js';
+import { withProgress } from '../../core/progress-indicator.js';
 
 const execAsync = promisify(exec);
 const execFileAsync = promisify(execFile);
@@ -394,6 +396,8 @@ export interface VerifyOptions {
   json?: boolean;
   light?: boolean;
   cwd?: string;
+  /** Retry verify up to N times on failure, waiting 2s between attempts (default: 0). Commander passes this as a string, so both types are accepted. */
+  retry?: number | string;
   /** Injection seam: override test runner for light-mode (returns true = passed) */
   _runTests?: (cwd: string) => Promise<boolean>;
   /** Injection seam: override build runner for light-mode (returns true = passed) */
@@ -404,6 +408,10 @@ export interface VerifyOptions {
   _captureSuccessLessons?: (receipt: VerifyReceipt, cwd: string) => Promise<unknown>;
   /** Injection seam: stage trace hook for root-cause debugging */
   _trace?: (stage: string) => void;
+  /** Injection seam: override sleep between retries (ms), default 2000 */
+  _retrySleepMs?: number;
+  /** Injection seam: override security scan for tests */
+  _runSecurityScan?: (cwd: string) => Promise<{ criticalCount: number; highCount: number }>;
 }
 
 async function runExecutionGateChecks(result: VerifyResult, state: DanteState, options: VerifyOptions, cwd: string): Promise<void> {
@@ -414,8 +422,11 @@ async function runExecutionGateChecks(result: VerifyResult, state: DanteState, o
   if (options.light || receiptBackedExecution) {
     const modeLabel = options.light ? 'Light mode' : 'Receipt-backed mode';
     traceVerifyStage('before-run-tests', options._trace);
-    const testGate = await runObjectiveExecutionGate('test', 'npm test', cwd, options._runTests, 'npm test',
-      (reason) => { logger.info(`${modeLabel}: fresh test proof unavailable (${describeCommandCheckFallback(reason)}); running npm test...`); });
+    const testGate = await withProgress('Running test suite', async (handle) => {
+      handle.update('checking for fresh receipt...');
+      return runObjectiveExecutionGate('test', 'npm test', cwd, options._runTests, 'npm test',
+        (reason) => { handle.update(`running npm test (${describeCommandCheckFallback(reason)})...`); });
+    });
     if (testGate.passed) {
       result.passed.push(testGate.reusedReceipt
         ? `${modeLabel}: reused fresh test proof for the current worktree`
@@ -426,8 +437,11 @@ async function runExecutionGateChecks(result: VerifyResult, state: DanteState, o
     traceVerifyStage('after-run-tests', options._trace);
     traceVerifyStage('before-run-build', options._trace);
     const buildProofCommand = await resolveBuildProofCommand(cwd);
-    const buildGate = await runObjectiveExecutionGate('build', 'npm run build', cwd, options._runBuild, buildProofCommand,
-      (reason) => { logger.info(`${modeLabel}: fresh build proof unavailable (${describeCommandCheckFallback(reason)}); running ${buildProofCommand}...`); });
+    const buildGate = await withProgress('Running build', async (handle) => {
+      handle.update('checking for fresh receipt...');
+      return runObjectiveExecutionGate('build', 'npm run build', cwd, options._runBuild, buildProofCommand,
+        (reason) => { handle.update(`running ${buildProofCommand} (${describeCommandCheckFallback(reason)})...`); });
+    });
     if (buildGate.passed) {
       result.passed.push(buildGate.reusedReceipt
         ? `${modeLabel}: reused fresh build proof for the current worktree`
@@ -498,6 +512,24 @@ async function runDriftAndAuditChecks(result: VerifyResult, state: DanteState, c
   }
 }
 
+async function runSecurityGateCheck(result: VerifyResult, cwd: string, options: VerifyOptions): Promise<void> {
+  try {
+    const scanFn = options._runSecurityScan ?? (async (dir: string) => {
+      const { securityScan } = await import('./security-scan.js');
+      const r = await securityScan({ cwd: dir, _stdout: () => { /* suppress output */ } });
+      return { criticalCount: r.criticalCount, highCount: r.highCount };
+    });
+    const scan = await scanFn(cwd);
+    if (scan.criticalCount > 0) {
+      result.failures.push(`Security scan: ${scan.criticalCount} CRITICAL finding(s) — run "danteforge security-scan" for details`);
+    } else if (scan.highCount > 0) {
+      result.warnings.push(`Security scan: ${scan.highCount} HIGH finding(s) — run "danteforge security-scan" to review`);
+    } else {
+      result.passed.push('Security scan: no CRITICAL findings');
+    }
+  } catch { /* best-effort — never block verify */ }
+}
+
 async function runLiveBrowserVerification(result: VerifyResult, state: DanteState, options: VerifyOptions, stateDir: string, cwd: string, timestamp: string): Promise<void> {
   if (!options.live || !options.url) return;
   try {
@@ -537,6 +569,8 @@ async function saveVerifyStateAndReceipt(state: DanteState, result: VerifyResult
     state.lastVerifiedAt = timestamp;
     recordWorkflowStage(state, 'verify', timestamp);
   }
+  // Record pipeline stage (best-effort)
+  try { await recordStage('verify', cwd); } catch { /* best-effort */ }
   state.lastVerifyStatus = computeVerifyStatus(result);
   state.auditLog.push(`${timestamp} | verify: ${result.passed.length} passed, ${result.warnings.length} warnings, ${result.failures.length} failures`);
   traceVerifyStage('before-save-state', options._trace);
@@ -620,6 +654,55 @@ async function outputVerifyResults(result: VerifyResult, options: VerifyOptions)
 }
 
 export async function verify(options: VerifyOptions = {}) {
+  // Commander may pass `retry` as a string (from --retry <n>); normalise to number.
+  const retryRaw = options.retry;
+  const retryN = typeof retryRaw === 'string' ? parseInt(retryRaw, 10) : (retryRaw ?? 0);
+  const maxRetries = Math.max(0, Number.isNaN(retryN) ? 0 : retryN);
+  if (maxRetries > 0) {
+    return runVerifyWithRetry(options, maxRetries);
+  }
+  return runVerifyOnce(options);
+}
+
+async function runVerifyWithRetry(options: VerifyOptions, maxRetries: number): Promise<void> {
+  const sleepMs = options._retrySleepMs ?? 2000;
+  let lastRetryCount = 0;
+  for (let attempt = 0; attempt <= maxRetries; attempt++) {
+    if (attempt > 0) {
+      logger.info(`Retry ${attempt}/${maxRetries}...`);
+      await new Promise<void>(resolve => setTimeout(resolve, sleepMs));
+    }
+    lastRetryCount = attempt;
+    // We run the inner verify and capture the exit code change via a flag.
+    // Detect failure by temporarily intercepting process.exitCode.
+    const prevExitCode = process.exitCode;
+    process.exitCode = undefined;
+    await runVerifyOnce(options);
+    if (!process.exitCode || process.exitCode === 0) {
+      // Persist retry count in state (best-effort).
+      try {
+        const cwd = options.cwd ?? process.cwd();
+        const stateModule = await import('../../core/state.js');
+        const state = await stateModule.loadState({ cwd });
+        const extended = state as typeof state & { lastVerifyRetries?: number };
+        extended.lastVerifyRetries = lastRetryCount;
+        await stateModule.saveState(extended, { cwd });
+      } catch { /* best-effort */ }
+      return;
+    }
+  }
+  // Persist final retry count on final failure.
+  try {
+    const cwd = options.cwd ?? process.cwd();
+    const stateModule = await import('../../core/state.js');
+    const state = await stateModule.loadState({ cwd });
+    const extended = state as typeof state & { lastVerifyRetries?: number };
+    extended.lastVerifyRetries = lastRetryCount;
+    await stateModule.saveState(extended, { cwd });
+  } catch { /* best-effort */ }
+}
+
+async function runVerifyOnce(options: VerifyOptions = {}) {
   return withErrorBoundary('verify', async () => {
     const cwd = options.cwd ?? process.cwd();
     const stateDir = path.join(cwd, STATE_DIR);
@@ -674,6 +757,7 @@ export async function verify(options: VerifyOptions = {}) {
 
     await runExecutionGateChecks(result, state, options, cwd);
     await runDriftAndAuditChecks(result, state, cwd, options._trace);
+    await runSecurityGateCheck(result, cwd, options);
     await runLiveBrowserVerification(result, state, options, stateDir, cwd, timestamp);
     if (options.release) await runReleaseVerification(result);
     await saveVerifyStateAndReceipt(state, result, options, cwd, timestamp);

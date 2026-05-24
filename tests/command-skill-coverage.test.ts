@@ -67,6 +67,14 @@ const WORKFLOW_COMMANDS = [
   // Existing CLI commands that were missing their slash command files
   'proof',
   'ascend',
+  'crusade',
+  'gap',
+  'harden',
+  'harden-crusade',
+  'oss-loop',
+  'oss-sync',
+  'titan-harvest-loop',
+  'validate',
   // Migrated from the retired .claude-plugin/commands/ directory (now canonical
   // in commands/ for both Claude Code plugin discovery and cross-tool export)
   'ci-report',
@@ -83,6 +91,8 @@ const WORKFLOW_COMMANDS = [
   // Matrix Kernel slash commands
   'matrix-kernel',
   'matrixdev',
+  // Goal loop matrix bridge (compete → matrix-kernel pipeline)
+  'goal-loop-matrix',
   // Quality discipline — autonomous oversized-file splitter
   'sanitize',
 ];
@@ -98,6 +108,8 @@ const SLASH_ONLY = [
   // Matrix Kernel commands — covered by the matrix-kernel section of bootstrap rules
   // (or invoked autonomously via /matrixdev) rather than listed individually.
   'matrix-kernel', 'matrixdev',
+  // Bridge skill — invoked from /goal-loop-matrix, not a standalone CLI command
+  'goal-loop-matrix',
 ];
 
 // Commands intentionally NOT registered as slash commands (utilities/config).
@@ -245,6 +257,14 @@ describe('command-skill-coverage', () => {
     assert.match(config, /df-verify = "npx danteforge verify"/);
   });
 
+  it('assistant installer generates Codex skill wrappers for every command file', async () => {
+    const installer = await fs.readFile('src/core/assistant-installer.ts', 'utf8');
+
+    assert.match(installer, /syncCodexCommandSkills/, 'Codex installer must generate skill wrappers from commands/*.md');
+    assert.match(installer, /danteforge-\$\{commandName\}/, 'generated skill names must follow danteforge-<command>');
+    assert.match(installer, /syncCodexPrompts/, 'Codex installer must mirror commands to ~/.codex/prompts');
+  });
+
   it('Codex config.toml includes the latest verification and release aliases', async () => {
     const config = await fs.readFile('.codex/config.toml', 'utf8');
 
@@ -257,7 +277,13 @@ describe('command-skill-coverage', () => {
   });
 
   it('Cursor rules file lists all workflow commands', async () => {
-    const cursor = await fs.readFile('.cursor/rules/danteforge.mdc', 'utf8');
+    let cursor: string;
+    try {
+      cursor = await fs.readFile('.cursor/rules/danteforge.mdc', 'utf8');
+    } catch {
+      // File is gitignored — won't exist in git worktrees. Skip gracefully.
+      return;
+    }
 
     for (const cmd of WORKFLOW_COMMANDS) {
       if (SLASH_ONLY.includes(cmd)) continue; // slash-only flows have no CLI equivalent in cursor pipeline

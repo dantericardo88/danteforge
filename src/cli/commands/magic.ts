@@ -715,7 +715,13 @@ async function runMagicPlanStepPipeline(step: MagicExecutionStep, goal: string, 
     case "autoforge":
       await withSpinner(`Running autoforge (${step.maxWaves} waves)...`,
         () => (_fns?.autoforge ?? (async (goalText: string, opts: { maxWaves: number; profile: string; parallel: boolean; worktree: boolean }) => { const { autoforge } = await import("./autoforge.js"); await autoforge(goalText, opts); }))(goal, { maxWaves: step.maxWaves, profile: step.profile, parallel: step.parallel, worktree: step.worktree }),
-        'Autoforge waves complete'); return true;
+        'Autoforge waves complete');
+      // Post-autoforge LOC gate: split any file that crossed the 750-LOC threshold (best-effort)
+      try {
+        const { postWaveSanitize } = await import('../../core/auto-sanitize.js');
+        await postWaveSanitize({ cwd: process.cwd() });
+      } catch { /* best-effort; never blocks magic */ }
+      return true;
     case "party":
       await (_fns?.party ?? (async (opts: { worktree: boolean; isolation: boolean }) => { const { party } = await import("./party.js"); await party(opts); }))({ worktree: step.worktree, isolation: step.isolation }); return true;
     default: return false;

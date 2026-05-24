@@ -101,6 +101,7 @@ export interface DanteState {
   completionTracker?: CompletionTracker;
   // v0.10.0 — Self-Assessment & Onboarding
   competitors?: string[];       // user-defined competitor list for `danteforge assess`
+  peerPreset?: 'coding-assistant' | 'dev-tool-optimizer' | 'agent-framework'; // optional explicit peer preset (overrides identity heuristic in peer-presets.ts)
   preferredLevel?: string;      // preferred magic level set during init wizard (e.g., 'magic', 'inferno')
   completionTarget?: {        // persisted completion target (mode + minScore + coverage)
     mode: 'feature-universe' | 'dimension-based' | 'custom';
@@ -141,6 +142,27 @@ export interface DanteState {
   confirmationState?: 'none' | 'awaiting' | 'confirmed' | 'vetoed';
   policyReceiptPath?: string;  // path to last policy decision receipt
   teamId?: string | null;      // tenant/team identifier for audit scoping
+  // Phase D — Capability Ladder regrade cadence
+  /** Counter incremented per crusade wave. Reset to 0 by `honest-rescore --regrade`. */
+  wavesSinceLastRegrade?: number;
+  /** ISO timestamp of the last skeptic-subagent regrade. */
+  lastRegradeAt?: string;
+  // Phase H — Outcome-derived substrate
+  /** Last project-level frontier terminal seen. Drives Time Machine transition commits. */
+  lastFrontierTerminal?: 'frontier-reached' | 'stuck-on-dims' | 'blocked-by-dispensations' | 'progressing';
+  /**
+   * Phase H Slice 5 — per-dim wave counter (crusade waves without a new passing outcome).
+   * When this exceeds MAX_STUCK_WAVES (default 3), the autonomous-crusade rule halts
+   * that dim for operator review.
+   */
+  wavesSinceProgress?: Record<string, number>;
+  /**
+   * Per-outcome refinement counter (how many times an outcome's command has been
+   * rewritten without ever passing). When this exceeds MAX_REFINEMENTS (default 3),
+   * the autonomous-crusade rule halts and surfaces.
+   * Keys are `${dimId}/${outcomeId}`.
+   */
+  outcomeRefinementCounts?: Record<string, number>;
 }
 
 export interface VerifyEvidence {
@@ -430,6 +452,17 @@ function buildLoadedState(
     hasPluginManifest: parsed?.hasPluginManifest as boolean | undefined,
     mcpToolCount: (parsed as Record<string, unknown> | undefined)?.['mcpToolCount'] as number | undefined,
     providerCount: (parsed as Record<string, unknown> | undefined)?.['providerCount'] as number | undefined,
+    wavesSinceLastRegrade: typeof parsed?.wavesSinceLastRegrade === 'number' ? parsed.wavesSinceLastRegrade : 0,
+    lastRegradeAt: typeof parsed?.lastRegradeAt === 'string' ? parsed.lastRegradeAt : undefined,
+    lastFrontierTerminal: typeof parsed?.lastFrontierTerminal === 'string'
+      ? (parsed.lastFrontierTerminal as DanteState['lastFrontierTerminal'])
+      : undefined,
+    wavesSinceProgress: parsed?.wavesSinceProgress && typeof parsed.wavesSinceProgress === 'object'
+      ? parsed.wavesSinceProgress
+      : undefined,
+    outcomeRefinementCounts: parsed?.outcomeRefinementCounts && typeof parsed.outcomeRefinementCounts === 'object'
+      ? parsed.outcomeRefinementCounts
+      : undefined,
   } as DanteState;
 }
 

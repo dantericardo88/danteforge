@@ -50,6 +50,10 @@ describe('assistant skill install', () => {
     assert.match(codexBootstrap, /DanteForge Codex Bootstrap/);
     assert.match(codexBootstrap, /native Codex workflow command/i);
     await fs.access(path.join(homeDir, '.codex', 'commands', 'autoforge.md'));
+    await fs.access(path.join(homeDir, '.codex', 'prompts', 'autoforge.md'));
+    await fs.access(path.join(homeDir, '.codex', 'skills', 'danteforge-inferno', 'SKILL.md'));
+    await fs.access(path.join(homeDir, '.codex', 'skills', 'danteforge-party', 'SKILL.md'));
+    await fs.access(path.join(homeDir, '.codex', 'skills', 'danteforge-oss-harvest', 'SKILL.md'));
   });
 
   it('syncs the Claude plugin cache to the current package version when a Claude install exists', async () => {
@@ -304,6 +308,7 @@ describe('assistant skill install', () => {
     assert.match(codexConfig, /\[commands\][\s\S]*setup-assistants = "npx danteforge setup assistants --assistants codex"/);
     assert.doesNotMatch(codexConfig, /^autoforge\s*=/m);
     assert.doesNotMatch(codexConfig, /^inferno\s*=/m);
+    assert.doesNotMatch(codexConfig, /^crusade\s*=/m);
   });
 
   it('merges the Codex global bootstrap into an existing AGENTS.md without dropping user content', async () => {

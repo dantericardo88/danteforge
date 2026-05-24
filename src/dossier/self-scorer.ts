@@ -1,4 +1,6 @@
 // src/dossier/self-scorer.ts — Scores DanteForge itself using source files as evidence
+// Includes historicalAccuracy tracking: each build compares the prior dossier's composite
+// score against the actual score achieved, building a calibration signal over time.
 
 import fs from 'node:fs/promises';
 import path from 'node:path';
@@ -12,6 +14,26 @@ export type WriteFileFn = (p: string, d: string) => Promise<void>;
 export type MkdirFn = (p: string, opts: { recursive: boolean }) => Promise<unknown>;
 export type GlobFn = (pattern: string, opts: { cwd: string }) => Promise<string[]>;
 export type GetRubricFn = (cwd: string) => Promise<Rubric>;
+
+/**
+ * Tracks whether a dossier's composite score prediction was accurate.
+ * Written to `.danteforge/dossiers/history/<id>/accuracy.jsonl`.
+ * Used to calibrate future self-scoring and detect scoring drift.
+ */
+export interface HistoricalAccuracyRecord {
+  /** ISO timestamp of this measurement. */
+  measuredAt: string;
+  /** Composite score from the *previous* dossier build (the prediction). */
+  predictedScore: number;
+  /** Composite score from the *current* dossier build (the ground truth). */
+  actualScore: number;
+  /** Absolute delta: actual - predicted. Positive = improvement. */
+  delta: number;
+  /** Number of dossier builds observed so far (including this one). */
+  buildCount: number;
+  /** Rolling mean absolute error across all observed deltas. */
+  meanAbsoluteError: number;
+}
 
 export type SelfExtractEvidenceFn = (
   fileContent: string,
@@ -195,6 +217,286 @@ async function buildDossierDimensions(
   return dimensions;
 }
 
+// ── Historical Accuracy Tracking ───────────────────────────────────────────────
+
+function accuracyLogPath(cwd: string, id: string): string {
+  return path.join(dossierHistoryDir(cwd, id), 'accuracy.jsonl');
+}
+
+/**
+ * Load all prior accuracy records for a competitor dossier.
+ * Returns [] if none exist yet.
+ */
+export async function loadAccuracyLog(
+  cwd: string,
+  id: string,
+  readFileFn: ReadFileFn = (p, e) => fs.readFile(p, e as BufferEncoding),
+): Promise<HistoricalAccuracyRecord[]> {
+  const logPath = accuracyLogPath(cwd, id);
+  let raw: string;
+  try {
+    raw = await readFileFn(logPath, 'utf8');
+  } catch {
+    return [];
+  }
+  const records: HistoricalAccuracyRecord[] = [];
+  for (const line of raw.split('\n')) {
+    const trimmed = line.trim();
+    if (!trimmed) continue;
+    try {
+      records.push(JSON.parse(trimmed) as HistoricalAccuracyRecord);
+    } catch { /* skip malformed lines */ }
+  }
+  return records;
+}
+
+/**
+ * Append a new accuracy record to the log and return it.
+ * The MAE is computed over all records including the new one.
+ */
+export async function appendAccuracyRecord(
+  cwd: string,
+  id: string,
+  predictedScore: number,
+  actualScore: number,
+  mkdirFn: MkdirFn,
+  writeFileFn: WriteFileFn,
+  readFileFn: ReadFileFn,
+): Promise<HistoricalAccuracyRecord> {
+  const priorRecords = await loadAccuracyLog(cwd, id, readFileFn);
+  const delta = actualScore - predictedScore;
+  const allDeltas = [...priorRecords.map(r => Math.abs(r.delta)), Math.abs(delta)];
+  const meanAbsoluteError = allDeltas.reduce((s, d) => s + d, 0) / allDeltas.length;
+
+  const record: HistoricalAccuracyRecord = {
+    measuredAt: new Date().toISOString(),
+    predictedScore,
+    actualScore,
+    delta,
+    buildCount: priorRecords.length + 1,
+    meanAbsoluteError: Math.round(meanAbsoluteError * 1000) / 1000,
+  };
+
+  const logPath = accuracyLogPath(cwd, id);
+  await mkdirFn(path.dirname(logPath), { recursive: true });
+  // Append as JSONL (read existing + append)
+  let existing = '';
+  try {
+    existing = await readFileFn(logPath, 'utf8');
+  } catch { /* first entry */ }
+  const newContent = (existing ? existing.trimEnd() + '\n' : '') + JSON.stringify(record) + '\n';
+  await writeFileFn(logPath, newContent);
+
+  return record;
+}
+
+// ── Calibration score ──────────────────────────────────────────────────────────
+
+/**
+ * Summary of historical scoring accuracy computed from JSONL records.
+ */
+export interface CalibrationSummary {
+  /** Competitor / dossier id the records belong to. */
+  competitorId: string;
+  /** Total number of accuracy records observed. */
+  totalBuilds: number;
+  /** Mean absolute error across all observed deltas (lower is better). */
+  meanAbsoluteError: number;
+  /** Median absolute error. */
+  medianAbsoluteError: number;
+  /**
+   * Calibration confidence on a 0–1 scale.
+   * Defined as max(0, 1 - MAE/5) so a MAE of 0 = perfect (1.0)
+   * and a MAE of 5 or above = no confidence (0.0).
+   */
+  confidence: number;
+  /** Positive if we consistently under-predict; negative if we over-predict. */
+  meanBias: number;
+  /** The most recent accuracy record, or null if no records exist. */
+  latestRecord: HistoricalAccuracyRecord | null;
+}
+
+/**
+ * Compute calibration statistics from the historical accuracy JSONL log.
+ *
+ * This gives the autonomous quality loop a quantitative signal for how well
+ * DanteForge's self-scoring predictions match actual outcomes over time,
+ * enabling adaptive confidence weighting and drift detection.
+ *
+ * @param cwd  Project root (where `.danteforge/` lives).
+ * @param id   Competitor / dossier identifier (default: "dantescode").
+ * @param readFileFn  Optional injection seam for testing.
+ */
+export async function calibrationScore(
+  cwd: string,
+  id: string = DEFAULT_SELF_COMPETITOR_ID,
+  readFileFn: ReadFileFn = (p, e) => fs.readFile(p, e as BufferEncoding),
+): Promise<CalibrationSummary> {
+  const records = await loadAccuracyLog(cwd, id, readFileFn);
+
+  if (records.length === 0) {
+    return {
+      competitorId: id,
+      totalBuilds: 0,
+      meanAbsoluteError: 0,
+      medianAbsoluteError: 0,
+      confidence: 1.0,   // no evidence of inaccuracy yet
+      meanBias: 0,
+      latestRecord: null,
+    };
+  }
+
+  const absDeltas = records.map(r => Math.abs(r.delta));
+  const biasDeltas = records.map(r => r.delta);
+
+  const mae = absDeltas.reduce((s, v) => s + v, 0) / absDeltas.length;
+  const meanBias = biasDeltas.reduce((s, v) => s + v, 0) / biasDeltas.length;
+
+  // Median: sort ascending, pick middle element
+  const sorted = [...absDeltas].sort((a, b) => a - b);
+  const mid = Math.floor(sorted.length / 2);
+  const medianAbsoluteError = sorted.length % 2 === 1
+    ? (sorted[mid] ?? 0)
+    : ((sorted[mid - 1] ?? 0) + (sorted[mid] ?? 0)) / 2;
+
+  const confidence = Math.max(0, Math.min(1, 1 - mae / 5));
+
+  return {
+    competitorId: id,
+    totalBuilds: records.length,
+    meanAbsoluteError: Math.round(mae * 1000) / 1000,
+    medianAbsoluteError: Math.round(medianAbsoluteError * 1000) / 1000,
+    confidence: Math.round(confidence * 1000) / 1000,
+    meanBias: Math.round(meanBias * 1000) / 1000,
+    latestRecord: records[records.length - 1] ?? null,
+  };
+}
+
+// ── Score plateau detection ────────────────────────────────────────────────────
+
+/**
+ * Describes a dimension that has failed to improve over consecutive dossier builds.
+ */
+export interface PlateauReport {
+  /** Dimension key (e.g. "1", "7"). */
+  dimKey: string;
+  /** Human-readable dimension name from the most recent snapshot. */
+  dimName: string;
+  /** Number of consecutive builds with no improvement (>= 3). */
+  staleBuildCount: number;
+  /** Score value that has been stuck. */
+  staleScore: number;
+  /** ISO timestamp of the oldest build in the stale window. */
+  since: string;
+}
+
+/**
+ * Read all dossier snapshots from `.danteforge/dossiers/history/<id>/` and
+ * identify dimensions that have not improved across 3 or more consecutive builds.
+ *
+ * A dimension is considered "stale" when each consecutive delta is <= 0.0
+ * (i.e. the score never increased) for at least `minStaleBuildCount` builds.
+ *
+ * @param cwd              Project root.
+ * @param id               Competitor / dossier identifier (default: "dantescode").
+ * @param minStaleBuildCount  Minimum number of consecutive non-improving builds (default: 3).
+ * @param readFileFn       Optional injection seam.
+ * @param listDirFn        Optional injection seam — returns filenames in a directory.
+ */
+export async function detectScorePlateaus(
+  cwd: string,
+  id: string = DEFAULT_SELF_COMPETITOR_ID,
+  minStaleBuildCount = 3,
+  readFileFn: ReadFileFn = (p, e) => fs.readFile(p, e as BufferEncoding),
+  listDirFn: (dir: string) => Promise<string[]> = async (dir) => {
+    const entries = await fs.readdir(dir, { withFileTypes: true });
+    return entries.filter(e => e.isFile()).map(e => e.name);
+  },
+): Promise<PlateauReport[]> {
+  const histDir = dossierHistoryDir(cwd, id);
+
+  // Collect snapshot file names
+  let fileNames: string[];
+  try {
+    fileNames = await listDirFn(histDir);
+  } catch {
+    // History directory doesn't exist yet — no plateaus to report
+    return [];
+  }
+
+  // Filter to *.json snapshot files, sort chronologically (oldest first)
+  const snapshotFiles = fileNames
+    .filter(f => f.endsWith('.json') && f !== 'accuracy.jsonl')
+    .sort();
+
+  if (snapshotFiles.length === 0) return [];
+
+  // Load snapshots in order
+  const snapshots: Dossier[] = [];
+  for (const fileName of snapshotFiles) {
+    const filePath = path.join(histDir, fileName);
+    try {
+      const raw = await readFileFn(filePath, 'utf8');
+      snapshots.push(JSON.parse(raw) as Dossier);
+    } catch { /* skip unreadable snapshots */ }
+  }
+
+  if (snapshots.length < minStaleBuildCount) return [];
+
+  // Gather all known dimension keys
+  const allDimKeys = new Set<string>();
+  for (const snap of snapshots) {
+    for (const k of Object.keys(snap.dimensions)) {
+      allDimKeys.add(k);
+    }
+  }
+
+  const plateaus: PlateauReport[] = [];
+
+  for (const dimKey of allDimKeys) {
+    // Build ordered list of (timestamp, score) pairs for this dimension
+    const history: Array<{ ts: string; score: number; dimName: string }> = [];
+    for (const snap of snapshots) {
+      const dim = snap.dimensions[dimKey];
+      if (dim !== undefined) {
+        history.push({
+          ts: snap.lastBuilt,
+          score: dim.humanOverride ?? dim.score,
+          dimName: (snap.dimensions[dimKey] as DossierDimension & { name?: string }).name ??
+            `dimension-${dimKey}`,
+        });
+      }
+    }
+
+    if (history.length < minStaleBuildCount) continue;
+
+    // Walk the history from the end and count consecutive non-improving builds
+    let staleBuildCount = 0;
+    for (let i = history.length - 1; i >= 1; i--) {
+      const curr = history[i]!;
+      const prev = history[i - 1]!;
+      if (curr.score <= prev.score) {
+        staleBuildCount += 1;
+      } else {
+        break; // improvement found — streak broken
+      }
+    }
+
+    if (staleBuildCount >= minStaleBuildCount) {
+      const staleEntry = history[history.length - staleBuildCount - 1]!;
+      plateaus.push({
+        dimKey,
+        dimName: history[history.length - 1]!.dimName,
+        staleBuildCount,
+        staleScore: history[history.length - 1]!.score,
+        since: staleEntry.ts,
+      });
+    }
+  }
+
+  return plateaus;
+}
+
 export async function buildSelfDossier(opts: SelfScorerOptions): Promise<Dossier> {
   const { cwd } = opts;
   const competitorId = opts.competitorId ?? DEFAULT_SELF_COMPETITOR_ID;
@@ -265,6 +567,22 @@ export async function buildSelfDossier(opts: SelfScorerOptions): Promise<Dossier
       dossierSnapshotPath(cwd, competitorId, existing.lastBuilt),
       JSON.stringify(existing, null, 2),
     );
+
+    // Track historical accuracy: the prior dossier's composite is the "prediction"
+    // and the newly computed composite is the "actual". Best-effort — never blocks.
+    try {
+      const accuracyRecord = await appendAccuracyRecord(
+        cwd,
+        competitorId,
+        existing.composite,
+        dossier.composite,
+        mkdirFn,
+        writeFileFn,
+        readFileFn,
+      );
+      // Attach accuracy metadata to dossier for downstream consumers
+      (dossier as Dossier & { historicalAccuracy?: HistoricalAccuracyRecord }).historicalAccuracy = accuracyRecord;
+    } catch { /* best-effort */ }
   }
   await writeFileFn(dossierPath(cwd, competitorId), JSON.stringify(dossier, null, 2));
 

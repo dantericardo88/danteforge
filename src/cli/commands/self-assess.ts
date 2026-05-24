@@ -23,18 +23,45 @@ import {
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
+/** A concrete, machine-readable improvement proposal derived from objective metrics. */
+export interface ImprovementProposal {
+  /** Short label for the gap area (e.g. "eslint-errors", "test-coverage", "bundle-size"). */
+  area: 'eslint-errors' | 'typescript-errors' | 'test-coverage' | 'bundle-size' | 'score-regression' | 'general';
+  /** One-sentence human description of what to fix. */
+  description: string;
+  /** Priority rank: P0 = critical, P1 = high, P2 = medium. */
+  priority: 'P0' | 'P1' | 'P2';
+  /** Measurable acceptance criterion — what "done" looks like. */
+  acceptanceCriteria: string;
+  /** Suggested file path(s) to look at first (relative to cwd). May be empty. */
+  suggestedFiles: string[];
+  /** Current metric value as a string for display. */
+  currentValue: string;
+  /** Target metric value as a string for display. */
+  targetValue: string;
+}
+
 export interface SelfAssessOptions {
   cwd?: string;
   /** LLM score to blend with objective score. Default 7.0 (neutral). */
   llmScore?: number;
   /** Compare against previous baseline and report diff. Default true. */
   compareBaseline?: boolean;
+  /**
+   * When true, write a structured JSON assessment to
+   * `.danteforge/assessments/<timestamp>.json` in addition to the normal snapshot.
+   * The JSON file is machine-readable and suitable for programmatic consumption
+   * by CI pipelines, the Matrix Kernel, or external tooling.
+   */
+  outputJson?: boolean;
   /** Inject for testing — replaces captureObjectiveMetrics */
   _captureMetrics?: (opts: ObjectiveMetricsOptions) => Promise<ObjectiveMetrics>;
   /** Inject for testing — replaces loadLatestSnapshot */
   _loadBaseline?: (cwd?: string) => Promise<QualitySnapshot | null>;
   /** Inject for testing — replaces saveSnapshot */
   _saveSnapshot?: (snapshot: QualitySnapshot, cwd?: string) => Promise<string>;
+  /** Inject for testing — replaces fs.writeFile for JSON output */
+  _writeJsonOutput?: (filePath: string, content: string) => Promise<void>;
 }
 
 export interface SelfAssessResult {
@@ -45,6 +72,13 @@ export interface SelfAssessResult {
   /** true if hybrid score improved vs previous baseline */
   improved: boolean;
   summary: string;
+  /** Concrete, prioritized improvement proposals derived from objective metrics. */
+  improvementProposals: ImprovementProposal[];
+  /**
+   * Path to the structured JSON assessment file, if `outputJson` was enabled.
+   * Undefined if `outputJson` was false or the write failed.
+   */
+  jsonOutputPath?: string;
 }
 
 // ── Main command ──────────────────────────────────────────────────────────────
@@ -68,6 +102,11 @@ export async function runSelfAssess(opts: SelfAssessOptions = {}): Promise<SelfA
   const captureMetrics = opts._captureMetrics ?? captureObjectiveMetrics;
   const loadBaseline = opts._loadBaseline ?? loadLatestSnapshot;
   const saveFn = opts._saveSnapshot ?? saveSnapshot;
+  const writeJsonOutputFn = opts._writeJsonOutput
+    ?? (async (filePath: string, content: string) => {
+      await fs.mkdir(path.dirname(filePath), { recursive: true });
+      await fs.writeFile(filePath, content, 'utf8');
+    });
 
   logger.info('[self-assess] Capturing objective quality metrics for DanteForge...');
 
@@ -106,6 +145,15 @@ export async function runSelfAssess(opts: SelfAssessOptions = {}): Promise<SelfA
 
   const improved = previous !== null && current.hybridScore > previous.hybridScore;
 
+  // Generate concrete improvement proposals from the metrics
+  const improvementProposals = buildImprovementProposals(metrics, current, diff);
+  if (improvementProposals.length > 0) {
+    logger.info(`[self-assess] ${improvementProposals.length} improvement proposal(s) generated:`);
+    for (const p of improvementProposals) {
+      logger.info(`  [${p.priority}] ${p.area}: ${p.description}`);
+    }
+  }
+
   const summary = buildSummary(current, previous, diff);
   logger.info(summary);
 
@@ -116,7 +164,139 @@ export async function runSelfAssess(opts: SelfAssessOptions = {}): Promise<SelfA
     await recordDecision({ session: _dnSess, parentNodeId: _dnStartNodeId, actorType: 'agent', prompt: 'self-assess: objective metric capture [complete]', result: 'self-assess complete', success: true, latencyMs: Date.now() - _dnT0 });
   } catch { /* best-effort */ }
 
-  return { current, previous, diff, snapshotPath, improved, summary };
+  // ── Structured JSON output (--output-json) ────────────────────────────────
+  let jsonOutputPath: string | undefined;
+  if (opts.outputJson) {
+    try {
+      const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+      const assessmentsDir = path.join(cwd, '.danteforge', 'assessments');
+      const jsonPath = path.join(assessmentsDir, `${timestamp}.json`);
+
+      const jsonPayload = {
+        generatedAt: new Date().toISOString(),
+        objectiveScore: current.objectiveScore,
+        hybridScore: current.hybridScore,
+        eslintErrors: current.metrics.eslintErrors,
+        typescriptErrors: current.metrics.typescriptErrors,
+        testPassRate: current.metrics.testPassRate,
+        testCount: current.metrics.testCount,
+        bundleSizeBytes: current.metrics.bundleSizeBytes,
+        improved,
+        regressions: diff?.regressions ?? [],
+        deltaHybridScore: diff?.deltaHybridScore ?? null,
+        improvementProposals,
+        snapshotPath,
+      };
+
+      await writeJsonOutputFn(jsonPath, JSON.stringify(jsonPayload, null, 2));
+      jsonOutputPath = jsonPath;
+      logger.info(`[self-assess] JSON assessment written: ${path.relative(cwd, jsonPath)}`);
+    } catch (jsonErr) {
+      logger.warn(`[self-assess] Failed to write JSON output: ${jsonErr instanceof Error ? jsonErr.message : String(jsonErr)}`);
+    }
+  }
+
+  return { current, previous, diff, snapshotPath, improved, summary, improvementProposals, jsonOutputPath };
+}
+
+// ── Improvement Proposal Generator ────────────────────────────────────────────
+
+/**
+ * Derive concrete, measurable improvement proposals from objective metrics.
+ * Each proposal specifies what to fix, how to verify it, and which files to start with.
+ */
+export function buildImprovementProposals(
+  metrics: ObjectiveMetrics,
+  current: QualitySnapshot,
+  diff: SnapshotDiff | null,
+): ImprovementProposal[] {
+  const proposals: ImprovementProposal[] = [];
+
+  // P0: TypeScript errors block compilation — highest priority
+  if (metrics.typescriptErrors > 0) {
+    proposals.push({
+      area: 'typescript-errors',
+      priority: 'P0',
+      description: `Fix ${metrics.typescriptErrors} TypeScript compilation error(s) that block the build`,
+      acceptanceCriteria: 'npm run typecheck exits 0 with 0 errors',
+      suggestedFiles: ['src/cli/index.ts', 'src/core/state.ts'],
+      currentValue: `${metrics.typescriptErrors} errors`,
+      targetValue: '0 errors',
+    });
+  }
+
+  // P0: ESLint errors above threshold are structural defects
+  if (metrics.eslintErrors > 5) {
+    proposals.push({
+      area: 'eslint-errors',
+      priority: metrics.eslintErrors > 20 ? 'P0' : 'P1',
+      description: `Eliminate ${metrics.eslintErrors} ESLint error(s) — run npm run lint:fix then fix remaining`,
+      acceptanceCriteria: 'npm run lint exits 0 with 0 errors',
+      suggestedFiles: ['src/cli/', 'src/core/'],
+      currentValue: `${metrics.eslintErrors} errors`,
+      targetValue: '0 errors',
+    });
+  }
+
+  // P1: Test pass rate below 100%
+  if (metrics.testPassRate >= 0 && metrics.testPassRate < 1.0) {
+    const failCount = Math.round(metrics.testCount * (1 - metrics.testPassRate));
+    proposals.push({
+      area: 'test-coverage',
+      priority: metrics.testPassRate < 0.95 ? 'P0' : 'P1',
+      description: `Fix ${failCount} failing test(s) — pass rate is ${(metrics.testPassRate * 100).toFixed(1)}%`,
+      acceptanceCriteria: 'npm test exits 0 with 100% pass rate',
+      suggestedFiles: ['tests/'],
+      currentValue: `${(metrics.testPassRate * 100).toFixed(1)}% (${failCount} failing)`,
+      targetValue: '100%',
+    });
+  }
+
+  // P1: Score regression vs previous baseline
+  if (diff?.hasRegression) {
+    const regressedAreas = diff.regressions.join('; ');
+    proposals.push({
+      area: 'score-regression',
+      priority: 'P1',
+      description: `Recover from score regression: ${regressedAreas}`,
+      acceptanceCriteria: `Hybrid score >= previous baseline (${current.hybridScore.toFixed(2)}/10)`,
+      suggestedFiles: [],
+      currentValue: `${current.hybridScore.toFixed(2)}/10 (regressed)`,
+      targetValue: 'No regressions vs baseline',
+    });
+  }
+
+  // P2: Bundle size warning (>5MB is unusually large for a CLI)
+  const bundleMb = metrics.bundleSizeBytes / (1024 * 1024);
+  if (bundleMb > 5) {
+    proposals.push({
+      area: 'bundle-size',
+      priority: 'P2',
+      description: `Reduce bundle size from ${bundleMb.toFixed(1)} MB — consider dynamic imports for heavy deps`,
+      acceptanceCriteria: 'Bundle size < 5 MB',
+      suggestedFiles: ['src/cli/index.ts', 'tsup.config.ts'],
+      currentValue: `${bundleMb.toFixed(1)} MB`,
+      targetValue: '< 5 MB',
+    });
+  }
+
+  // P2: If overall score is below 8.0, suggest general improvement
+  if (current.hybridScore < 8.0 && proposals.length === 0) {
+    proposals.push({
+      area: 'general',
+      priority: 'P2',
+      description: `Hybrid score is ${current.hybridScore.toFixed(2)}/10 — run self-improve to identify specific gaps`,
+      acceptanceCriteria: 'Hybrid score >= 9.0/10',
+      suggestedFiles: [],
+      currentValue: `${current.hybridScore.toFixed(2)}/10`,
+      targetValue: '9.0/10',
+    });
+  }
+
+  // Sort: P0 first, then P1, then P2
+  const priority = { P0: 0, P1: 1, P2: 2 };
+  proposals.sort((a, b) => priority[a.priority] - priority[b.priority]);
+  return proposals;
 }
 
 // ── Report ────────────────────────────────────────────────────────────────────

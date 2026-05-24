@@ -10,7 +10,8 @@ export type MergeDecisionOutcome =
   | 'BLOCKED_BY_REGRESSION'
   | 'BLOCKED_BY_POLICY'
   | 'BLOCKED_BY_TASTE_GATE'
-  | 'BLOCKED_BY_RED_TEAM';
+  | 'BLOCKED_BY_RED_TEAM'
+  | 'BLOCKED_BY_SECURITY';
 
 export interface MergeScoreDelta {
   dimensionId: string;
@@ -70,6 +71,7 @@ const OUTCOMES: readonly MergeDecisionOutcome[] = [
   'APPROVED', 'REJECTED', 'NEEDS_REPAIR', 'NEEDS_HUMAN_REVIEW',
   'SUPERSEDED_BY_BETTER_BRANCH', 'BLOCKED_BY_CONFLICT', 'BLOCKED_BY_REGRESSION',
   'BLOCKED_BY_POLICY', 'BLOCKED_BY_TASTE_GATE', 'BLOCKED_BY_RED_TEAM',
+  'BLOCKED_BY_SECURITY',
 ];
 
 export function isMergeOutcome(v: unknown): v is MergeDecisionOutcome {

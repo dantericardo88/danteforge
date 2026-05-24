@@ -18,6 +18,24 @@ export interface StructuredLesson {
   tags: string[];
 }
 
+/** Aggregate statistics about the lessons knowledge base. */
+export interface LessonStats {
+  totalCount: number;
+  byCategory: Record<string, number>;
+  oldestDate: string | null;
+  newestDate: string | null;
+  /** Approximate number of lessons added per week, derived from date range. */
+  estimatedWeeklyRate: number;
+}
+
+/** Flat lesson entry used by CLI export / search commands. */
+export interface LessonEntry {
+  id: string;
+  category: string;
+  content: string;
+  timestamp: string;
+}
+
 /**
  * Parse the lessons.md file into structured lessons.
  * @param cwd - Optional project root; defaults to process.cwd().
@@ -187,4 +205,89 @@ export async function recordRootCauseLesson(result: SevenLevelsResult, cwd?: str
   } catch (err) {
     logger.warn(`[7LD] Failed to record root cause lesson: ${err instanceof Error ? err.message : String(err)}`);
   }
+}
+
+// ---------------------------------------------------------------------------
+// New query helpers — self-improvement loop signals
+// ---------------------------------------------------------------------------
+
+/**
+ * Return all lessons that belong to the given category string.
+ * Comparison is case-insensitive against StructuredLesson.category.
+ */
+export async function getLessonsByCategory(category: string, cwd?: string): Promise<LessonEntry[]> {
+  const structured = await indexLessons(cwd);
+  const lower = category.toLowerCase();
+  return structured
+    .filter(l => l.category.toLowerCase() === lower)
+    .map(l => ({
+      id: l.id,
+      category: l.category,
+      content: l.rule + (l.context ? ` — ${l.context}` : ''),
+      timestamp: l.timestamp,
+    }));
+}
+
+/**
+ * Return aggregate statistics about the lessons knowledge base.
+ */
+export async function getLessonStats(cwd?: string): Promise<LessonStats> {
+  const structured = await indexLessons(cwd);
+
+  const byCategory: Record<string, number> = {};
+  const dates: Date[] = [];
+
+  for (const l of structured) {
+    byCategory[l.category] = (byCategory[l.category] ?? 0) + 1;
+
+    // Attempt to parse a date from the timestamp field (may be full ISO or YYYY-MM-DD)
+    const d = new Date(l.timestamp);
+    if (!isNaN(d.getTime())) {
+      dates.push(d);
+    }
+  }
+
+  dates.sort((a, b) => a.getTime() - b.getTime());
+
+  const oldestDate = dates.length > 0 ? (dates[0]?.toISOString() ?? null) : null;
+  const newestDate = dates.length > 0 ? (dates[dates.length - 1]?.toISOString() ?? null) : null;
+
+  let estimatedWeeklyRate = 0;
+  if (dates.length >= 2 && oldestDate && newestDate) {
+    const oldest = dates[0]!;
+    const newest = dates[dates.length - 1]!;
+    const weeksElapsed = (newest.getTime() - oldest.getTime()) / (7 * 24 * 60 * 60 * 1000);
+    estimatedWeeklyRate = weeksElapsed > 0 ? Math.round((dates.length / weeksElapsed) * 10) / 10 : dates.length;
+  } else if (dates.length === 1) {
+    estimatedWeeklyRate = 1;
+  }
+
+  return {
+    totalCount: structured.length,
+    byCategory,
+    oldestDate,
+    newestDate,
+    estimatedWeeklyRate,
+  };
+}
+
+/**
+ * Full-text search across lesson content (rule + context + tags).
+ * Comparison is case-insensitive.
+ */
+export async function searchLessons(query: string, cwd?: string): Promise<LessonEntry[]> {
+  const structured = await indexLessons(cwd);
+  const lower = query.toLowerCase();
+
+  return structured
+    .filter(l => {
+      const haystack = `${l.rule} ${l.context} ${l.tags.join(' ')} ${l.category}`.toLowerCase();
+      return haystack.includes(lower);
+    })
+    .map(l => ({
+      id: l.id,
+      category: l.category,
+      content: l.rule + (l.context ? ` — ${l.context}` : ''),
+      timestamp: l.timestamp,
+    }));
 }

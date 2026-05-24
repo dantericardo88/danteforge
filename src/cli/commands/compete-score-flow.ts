@@ -4,8 +4,23 @@ import path from 'path';
 import { logger } from '../../core/logger.js';
 import { readLatestVerifyReceipt } from '../../core/verify-receipts.js';
 import { mergeScoreProposals, writeScoreProposal } from '../../core/matrix-development-engine.js';
+import { saveMatrix, type CompeteMatrix } from '../../core/compete-matrix.js';
 
 import type { CompeteEvidence, CompeteOptions, CompeteResult } from './compete.js';
+
+/**
+ * Persist the in-memory matrix to disk before the proposal+merge flow runs.
+ * The proposal flow (`writeScoreProposal` → `mergeScoreProposals`) reads the
+ * matrix from disk via `requireMatrix(cwd)` — there is no in-memory variant.
+ * In production this is effectively a no-op (matrix already loaded from disk,
+ * serialize back to same path). In tests with injected `_loadMatrix`, this
+ * materializes the test fixture so the proposal flow operates on the right
+ * input. Always overwrites: tests sharing a tmpDir that swap matrices between
+ * cases get the right one for each call.
+ */
+export async function ensureMatrixOnDisk(matrix: CompeteMatrix, cwd: string): Promise<void> {
+  await saveMatrix(matrix, cwd);
+}
 
 export function parseRescore(rescore: string): { dimensionId: string; score: number; commit?: string } {
   const [idPart, rest] = rescore.split('=');

@@ -1,6 +1,7 @@
 // compete-display.ts — display/formatting helpers extracted from compete.ts
 // Separated to keep compete.ts under the 750-LOC hard cap.
 
+import chalk from 'chalk';
 import { logger } from '../../core/logger.js';
 import {
   computeGapPriority,
@@ -15,18 +16,53 @@ export function formatScore(score: number): string {
   return score.toFixed(1);
 }
 
+/** Color a score value based on threshold bands; pad plain spaces after so table alignment holds. */
+function colorScore(score: number, padWidth = 0): string {
+  const s = score.toFixed(1);
+  const colored =
+    score >= 9 ? chalk.green(s) :
+    score >= 7 ? chalk.cyan(s) :
+    score >= 5 ? chalk.yellow(s) :
+    chalk.red(s);
+  return colored + ' '.repeat(Math.max(0, padWidth - s.length));
+}
+
+/** Color a gap value — small gaps are good (green), large gaps are bad (red). */
+function colorGap(gap: number, padWidth = 0): string {
+  const s = gap.toFixed(1);
+  const colored =
+    gap <= 0.5 ? chalk.green(s) :
+    gap <= 1.5 ? chalk.yellow(s) :
+    chalk.red(s);
+  return colored + ' '.repeat(Math.max(0, padWidth - s.length));
+}
+
+/** Color a priority value — high priorities get bold red. */
+function colorPriority(priority: number, padWidth = 0): string {
+  const s = priority.toFixed(1);
+  const colored =
+    priority >= 4 ? chalk.bold.red(s) :
+    priority >= 2 ? chalk.red(s) :
+    priority >= 1 ? chalk.yellow(s) :
+    chalk.dim(s);
+  return colored + ' '.repeat(Math.max(0, padWidth - s.length));
+}
+
 export function gapBar(gap: number, maxGap = 10): string {
   const filled = Math.round((gap / maxGap) * 10);
-  return '█'.repeat(filled) + '░'.repeat(10 - filled);
+  return chalk.red('█'.repeat(filled)) + chalk.dim('░'.repeat(10 - filled));
 }
 
 export function formatTrend(dim: MatrixDimension): string {
-  if (dim.sprint_history.length === 0) return '·';
-  const last = dim.sprint_history[dim.sprint_history.length - 1]!;
+  if (dim.sprint_history.length === 0) return chalk.dim('·');
+  // Filter out corrupted entries where scores exceeded realistic bounds
+  const valid = dim.sprint_history.filter(e => e.before <= 10 && e.after <= 10);
+  if (valid.length === 0) return chalk.dim('·');
+  const last = valid[valid.length - 1]!;
   const delta = last.after - last.before;
-  if (delta > 0) return `+${delta.toFixed(1)}↑`;
-  if (delta < 0) return `${delta.toFixed(1)}↓`;
-  return '→';
+  if (delta > 0.05) return chalk.green(`+${delta.toFixed(1)}↑`);
+  if (delta < -0.05) return chalk.red(`${delta.toFixed(1)}↓`);
+  return chalk.dim('→');
 }
 
 // ── Table renderer ─────────────────────────────────────────────────────────────
@@ -34,33 +70,41 @@ export function formatTrend(dim: MatrixDimension): string {
 // know which ones require `danteforge compete --amend` instead of forge cycles.
 
 export function formatStatusTable(matrix: CompeteMatrix): string {
-  const lines: string[] = [
-    `\n## Competitive Matrix — ${matrix.project}`,
-    `Overall self score: ${formatScore(matrix.overallSelfScore)}/10  |  Last updated: ${matrix.lastUpdated.slice(0, 10)}`,
-    `\n${'Dimension'.padEnd(32)} ${'Self'.padEnd(6)} ${'Leader'.padEnd(8)} ${'Gap'.padEnd(6)} ${'Priority'.padEnd(10)} ${'Trend'.padEnd(8)} Status`,
-    '─'.repeat(88),
+  const overallColored = colorScore(matrix.overallSelfScore);
+  const header = [
+    chalk.bold(`\n  Competitive Matrix — ${matrix.project}`),
+    chalk.dim(`  Overall: ${overallColored}${chalk.dim('/10')}  |  Last updated: ${matrix.lastUpdated.slice(0, 10)}`),
+    '',
+    chalk.dim('  ' + 'Dimension'.padEnd(32) + ' Self   Leader  Gap    Priority  Trend    Status'),
+    chalk.dim('  ' + '─'.repeat(84)),
   ];
 
   const sorted = [...matrix.dimensions].sort(
     (a, b) => computeGapPriority(b) - computeGapPriority(a),
   );
 
+  const rows: string[] = [];
   for (const dim of sorted) {
     const leaderScore = Math.max(
       ...Object.entries(dim.scores).filter(([k]) => k !== 'self').map(([, v]) => v),
       0,
     );
-    const priority = computeGapPriority(dim).toFixed(1);
-    const statusIcon = dim.status === 'closed' ? '✓' : dim.status === 'in-progress' ? '⚡' : '·';
+    const priority = computeGapPriority(dim);
+    const statusIcon =
+      dim.status === 'closed' ? chalk.green('✓') :
+      dim.status === 'in-progress' ? chalk.cyan('⚡') :
+      chalk.dim('·');
     const trend = formatTrend(dim);
     const isMarket = mapDimIdToScoringDimension(dim.id) === null;
     const rawLabel = isMarket ? `${dim.label.slice(0, 28)} [M]` : dim.label.slice(0, 31);
-    lines.push(
-      `${rawLabel.padEnd(32)} ${formatScore(dim.scores['self'] ?? 0).padEnd(6)} ${formatScore(leaderScore).padEnd(8)} ${formatScore(dim.gap_to_leader).padEnd(6)} ${priority.padEnd(10)} ${trend.padEnd(8)} ${statusIcon} ${dim.status}`,
+    const selfScore = dim.scores['self'] ?? 0;
+
+    rows.push(
+      `  ${rawLabel.padEnd(32)} ${colorScore(selfScore, 6)}${colorScore(leaderScore, 8)}${colorGap(dim.gap_to_leader, 7)}${colorPriority(priority, 10)}${trend.padEnd(9)} ${statusIcon} ${chalk.dim(dim.status)}`,
     );
   }
 
-  return lines.join('\n');
+  return [...header, ...rows].join('\n');
 }
 
 // ── Sprint output helpers ─────────────────────────────────────────────────────

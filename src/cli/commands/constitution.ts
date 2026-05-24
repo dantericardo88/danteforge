@@ -12,6 +12,12 @@ export async function constitution(options: {
   const handoffFn = options._handoff ?? handoff;
 
   return withErrorBoundary('constitution', async () => {
+    // Install LOC pre-commit hook into the target project (best-effort)
+    try {
+      const { installLocHook } = await import('../../core/install-git-hooks.js');
+      await installLocHook(process.cwd());
+    } catch { /* best-effort */ }
+
     // --- Decision-node: record start (best-effort) ---
     let _dnStartNodeId: string | undefined;
     const _dnT0 = Date.now();

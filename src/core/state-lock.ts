@@ -2,6 +2,7 @@
 // No external dependencies. Uses fs.open with 'wx' (exclusive create) which is
 // atomic on all platforms (POSIX O_EXCL, Windows CREATE_NEW).
 import fs from 'fs/promises';
+import path from 'path';
 import { DanteError } from './errors.js';
 class StateError extends DanteError {
   constructor(message: string) { super(message, 'STATE_ERROR', 'Check STATE.yaml'); this.name = 'StateError'; }
@@ -75,5 +76,74 @@ export async function withStateLock<T>(lockPath: string, fn: () => Promise<T>): 
     return await fn();
   } finally {
     await release();
+  }
+}
+
+/** Maximum age (ms) of a lock file before it is considered stale in withSelfHealingLock. */
+export const SELF_HEALING_LOCK_STALE_MS = 5 * 60 * 1000; // 5 minutes
+
+/**
+ * Self-healing lock wrapper for a given working directory.
+ *
+ * Behaviour:
+ *  1. Try to acquire `<cwd>/.danteforge/STATE.lock`.
+ *  2. If the lock file exists (EEXIST), read its mtime.
+ *  3. If mtime is older than SELF_HEALING_LOCK_STALE_MS (5 min):
+ *       — delete the stale file and retry acquisition once.
+ *  4. If the file is fresh, read the PID from the file and throw a helpful message.
+ *
+ * Injection seams:
+ *  - `_now`: overrides `Date.now()` for deterministic tests.
+ *  - `_stat`: overrides `fs.stat()` for deterministic tests.
+ *  - `_unlink`: overrides `fs.unlink()` for deterministic tests.
+ */
+export async function withSelfHealingLock<T>(
+  cwd: string,
+  fn: () => Promise<T>,
+  opts?: {
+    _now?: () => number;
+    _stat?: (p: string) => Promise<{ mtimeMs: number }>;
+    _unlink?: (p: string) => Promise<void>;
+  },
+): Promise<T> {
+  const lockPath = path.join(cwd, '.danteforge', 'STATE.lock');
+  const now = opts?._now ?? (() => Date.now());
+  const statFn = opts?._stat ?? ((p: string) => fs.stat(p));
+  const unlinkFn = opts?._unlink ?? ((p: string) => fs.unlink(p));
+
+  try {
+    return await withStateLock(lockPath, fn);
+  } catch (err: unknown) {
+    // If it's not a lock-conflict error, re-throw immediately.
+    const message = err instanceof Error ? err.message : String(err);
+    if (!message.includes('Could not acquire state lock')) throw err;
+
+    // Try to determine whether the lock is stale.
+    let stalePid: number | null = null;
+    let isStale = false;
+    try {
+      const statResult = await statFn(lockPath);
+      isStale = now() - statResult.mtimeMs > SELF_HEALING_LOCK_STALE_MS;
+      if (!isStale) {
+        // Read PID for helpful error message.
+        const content = await fs.readFile(lockPath, 'utf8');
+        const parsed = parseInt(content.trim(), 10);
+        if (!Number.isNaN(parsed)) stalePid = parsed;
+      }
+    } catch {
+      // Lock disappeared between check and read — just retry.
+      isStale = true;
+    }
+
+    if (isStale) {
+      // Remove stale lock and retry once.
+      try { await unlinkFn(lockPath); } catch { /* already gone */ }
+      return await withStateLock(lockPath, fn);
+    }
+
+    const pidHint = stalePid !== null ? ` PID: ${stalePid}.` : '';
+    throw new Error(
+      `Another danteforge process may be running.${pidHint} Lock: ${lockPath}`,
+    );
   }
 }

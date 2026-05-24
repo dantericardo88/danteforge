@@ -12,6 +12,12 @@ verification_required: true
 
 # /magic - Balanced Default Preset
 
+## Depth Doctrine (MANDATORY)
+
+**Wave type: BREADTH.** Write modules + tests. Score ceiling: 6.
+Answer 3 callsite questions per module. No mocks, no stubs, no TODOs.
+After this wave, run `danteforge validate <dim>` (DEPTH wave) to unlock scores 7-9.
+
 When the user invokes `/magic`, follow this workflow:
 
 1. Treat `/magic` as the default balanced combo command for daily work

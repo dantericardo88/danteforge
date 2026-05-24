@@ -43,6 +43,25 @@ describe('gitFilter.filter', () => {
     const result = gitFilter.filter(output, 'git', ['log']);
     assert.ok(result.output.length < output.length);
   });
+
+  it('does not sacred-bypass git log with keywords in commit messages', () => {
+    // Commit messages with words like "error", "warn", "security", "rejected" are normal
+    // development vocabulary and must NOT trigger sacred-bypass in git log output.
+    const lines = Array.from({ length: 40 }, (_, i) =>
+      `a1b2c${i.toString().padStart(2, '0')} fix(security): handle warn on rejected promise — error path`,
+    );
+    const result = gitFilter.filter(lines.join('\n'), 'git', ['log']);
+    assert.notEqual(result.status, 'sacred-bypass', 'commit message keywords should not trigger sacred-bypass');
+    assert.ok(result.output.length < lines.join('\n').length, 'long log should be compacted');
+  });
+
+  it('still sacred-bypasses git log with actual error lines outside commit messages', () => {
+    // Real git errors (like "fatal: repository not found") that appear on their own
+    // lines SHOULD still trigger sacred-bypass.
+    const output = 'fatal: repository not found\nPlease check your remote URL.';
+    const result = gitFilter.filter(output, 'git', ['log']);
+    assert.equal(result.status, 'sacred-bypass');
+  });
 });
 
 // ── npm ───────────────────────────────────────────────────────────────────────

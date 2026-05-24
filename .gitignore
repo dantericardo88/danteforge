@@ -25,6 +25,8 @@ vscode-extension/.artifacts/
 !.danteforge/score-proposals/.gitkeep
 .danteforge/score-proposals/*
 !.danteforge/score-proposals/.gitkeep
+!.danteforge/capability-tests/
+!.danteforge/capability-tests/*
 !examples/todo-app/.danteforge/
 examples/todo-app/.danteforge/**
 !examples/todo-app/.danteforge/AUTOFORGE_GUIDANCE.md

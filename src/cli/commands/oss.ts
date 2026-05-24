@@ -4,8 +4,8 @@ import fs from 'node:fs/promises';
 import path from 'node:path';
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
-import os from 'node:os';
 import { logger } from '../../core/logger.js';
+import { getOssCacheRepoDir, ensureCacheRoot } from '../../core/oss-cache.js';
 import { loadState, saveState } from '../../core/state.js';
 import { isLLMAvailable, callLLM } from '../../core/llm.js';
 import {
@@ -22,7 +22,6 @@ import { withErrorBoundary } from '../../core/cli-error-boundary.js';
 
 const execFileAsync = promisify(execFile);
 
-const OSS_CLONE_PREFIX = 'oss-research-';
 const MAX_REPOS_DEFAULT = 8;
 const CLONE_TIMEOUT_MS = 120_000;
 
@@ -49,16 +48,22 @@ async function readLicenseFile(repoDir: string): Promise<string> {
 }
 
 /**
- * Shallow-clone a git repository to a temp directory.
+ * Shallow-clone a git repository to the shared OSS cache.
  * Returns the clone path on success, null on failure.
+ * Cache-hit: if a .git directory already exists at the target path, skips the download.
  */
-async function shallowClone(url: string, name: string): Promise<string | null> {
+async function shallowClone(url: string, name: string, cwd: string): Promise<string | null> {
   const safeName = name.replace(/[^a-z0-9-]/gi, '-').toLowerCase();
-  const clonePath = path.join(os.tmpdir(), `${OSS_CLONE_PREFIX}${safeName}`);
+  const clonePath = getOssCacheRepoDir(safeName, cwd);
 
-  // Remove any stale clone
-  await safeRm(clonePath);
+  // Cache hit — reuse existing clone
+  try {
+    await fs.access(path.join(clonePath, '.git'));
+    logger.info(`  Cache hit: ${name} at ${clonePath}`);
+    return clonePath;
+  } catch { /* not cached yet — proceed to clone */ }
 
+  await ensureCacheRoot(cwd);
   try {
     await execFileAsync('git', ['clone', '--depth', '1', '--single-branch', url, clonePath], {
       timeout: CLONE_TIMEOUT_MS,
@@ -301,7 +306,7 @@ function buildResearchPlanPrompt(
     '',
     '**Phase 2 — Clone & License Gate**',
     'For each selected repo:',
-    '1. Run: `git clone --depth 1 <url> /tmp/oss-research-<name>`',
+    '1. Run: `git clone --depth 1 <url> <projectsRoot>/OSSHarvest/<name>`',
     '2. Read the LICENSE file immediately',
     '3. If GPL/AGPL/SSPL: delete clone and skip',
     '',
@@ -323,8 +328,9 @@ function buildResearchPlanPrompt(
     'Prioritize by P0 (critical, small effort) through P3 (niche, high effort).',
     'Implement top 5-8 P0/P1 patterns fresh — never copy code verbatim.',
     '',
-    '**Phase 6 — Cleanup**',
-    'Run `rm -rf /tmp/oss-research-*` when done.',
+    '**Phase 6 — Cache**',
+    'Clones persist in `<projectsRoot>/OSSHarvest/` for reuse across projects.',
+    'Run `danteforge oss-clean` to free space when no longer needed.',
     '',
     `CLI equivalent: \`danteforge oss\``,
   ];
@@ -360,7 +366,7 @@ function displayDryRun(
   logger.info('');
   logger.info('Pipeline steps:');
   logger.info('  1. Search for relevant OSS repos using queries above');
-  logger.info('  2. Clone up to ' + maxRepos + ' repos to /tmp/oss-research-*');
+  logger.info('  2. Clone up to ' + maxRepos + ' repos to <projectsRoot>/OSSHarvest/*');
   logger.info('  3. License gate: skip GPL/AGPL/SSPL/proprietary');
   logger.info('  4. Rapid structural scan (2-3 min per repo)');
   logger.info('  5. Pattern extraction across 5 categories');
@@ -393,13 +399,13 @@ function displayLocalFallback(
   logger.info('');
   logger.info('Manual pipeline:');
   logger.info('  1. Search GitHub for repos matching the queries above');
-  logger.info('  2. Clone with: git clone --depth 1 <url> /tmp/oss-research-<name>');
+  logger.info('  2. Clone with: git clone --depth 1 <url> <projectsRoot>/OSSHarvest/<name>');
   logger.info('  3. Check LICENSE file — skip GPL, AGPL, SSPL');
   logger.info('  4. Read src/index.ts, package.json for patterns');
   logger.info('  5. Identify architecture, CLI/UX, quality patterns');
   logger.info('  6. Implement the best patterns in this project');
   logger.info('  7. Run: npm run verify');
-  logger.info('  8. Cleanup: rm -rf /tmp/oss-research-*');
+  logger.info('  8. Clones persist in <projectsRoot>/OSSHarvest/ for reuse. Run `danteforge oss-clean` to free space.');
   logger.info('');
   logger.info('Tip: Configure an LLM provider for automated research:');
   logger.info('  danteforge config --set-key "grok:<key>"');
@@ -408,7 +414,7 @@ function displayLocalFallback(
 async function cloneAndLicenseGate(
   candidateRepos: OSSRepo[],
   report: OSSResearchReport,
-  clonedPaths: string[],
+  cwd: string,
 ): Promise<Array<OSSRepo & { clonePath: string }>> {
   logger.info('');
   logger.info('Phase 2/3: Clone & License Gate');
@@ -416,9 +422,8 @@ async function cloneAndLicenseGate(
   const allowedRepos: Array<OSSRepo & { clonePath: string }> = [];
   for (const repo of candidateRepos) {
     logger.info(`Cloning: ${repo.name} (${repo.url})`);
-    const clonePath = await shallowClone(repo.url, repo.name.split('/').pop() ?? repo.name);
+    const clonePath = await shallowClone(repo.url, repo.name.split('/').pop() ?? repo.name, cwd);
     if (!clonePath) { report.skipped.push(`${repo.name} — clone failed`); continue; }
-    clonedPaths.push(clonePath);
     const licenseContent = await readLicenseFile(clonePath);
     const { status, name: licenseName } = classifyLicense(licenseContent);
     const finalRepo: OSSRepo = { ...repo, license: status, licenseName: licenseContent ? licenseName : repo.licenseName, clonePath };
@@ -426,7 +431,6 @@ async function cloneAndLicenseGate(
       logger.warn(`  License BLOCKED (${licenseName}) — skipping ${repo.name}`);
       report.skipped.push(`${repo.name} — ${licenseName} license blocked`);
       await safeRm(clonePath);
-      clonedPaths.splice(clonedPaths.indexOf(clonePath), 1);
       report.reposScanned.push({ ...finalRepo, clonePath: undefined });
       continue;
     }
@@ -434,7 +438,6 @@ async function cloneAndLicenseGate(
       logger.warn(`  License UNKNOWN — skipping ${repo.name} (no license file or unrecognized)`);
       report.skipped.push(`${repo.name} — license unknown or missing`);
       await safeRm(clonePath);
-      clonedPaths.splice(clonedPaths.indexOf(clonePath), 1);
       report.reposScanned.push({ ...finalRepo, clonePath: undefined });
       continue;
     }
@@ -453,8 +456,8 @@ async function executeOSSResearch(
   language: string,
   queries: string[],
   maxRepos: number,
+  cwd: string,
 ): Promise<OSSResearchReport> {
-  const clonedPaths: string[] = [];
   const report: OSSResearchReport = {
     projectSummary,
     reposScanned: [],
@@ -464,30 +467,30 @@ async function executeOSSResearch(
     filesChanged: [],
   };
 
+  // Phase 1: Refine queries with LLM
+  logger.info('Refining search queries with LLM...');
+  let refinedQueries = queries;
   try {
-    // Phase 1: Refine queries with LLM
-    logger.info('Refining search queries with LLM...');
-    let refinedQueries = queries;
-    try {
-      refinedQueries = await refineQueries(queries, projectSummary, projectType);
-      logger.info(`Using ${refinedQueries.length} refined queries`);
-    } catch (err) {
-      logger.warn(`Query refinement failed: ${err instanceof Error ? err.message : String(err)} — using base queries`);
-    }
+    refinedQueries = await refineQueries(queries, projectSummary, projectType);
+    logger.info(`Using ${refinedQueries.length} refined queries`);
+  } catch (err) {
+    logger.warn(`Query refinement failed: ${err instanceof Error ? err.message : String(err)} — using base queries`);
+  }
 
-    // Phase 2: Gap analysis & repo selection via LLM
-    logger.info('Selecting repositories to analyze...');
-    const candidateRepos = await gapAnalysisAndRepoSelection(refinedQueries, projectSummary, maxRepos);
+  // Phase 2: Gap analysis & repo selection via LLM
+  logger.info('Selecting repositories to analyze...');
+  const candidateRepos = await gapAnalysisAndRepoSelection(refinedQueries, projectSummary, maxRepos);
 
-    if (candidateRepos.length === 0) {
-      logger.warn('LLM did not return usable repo candidates. Check connectivity.');
-      return report;
-    }
+  if (candidateRepos.length === 0) {
+    logger.warn('LLM did not return usable repo candidates. Check connectivity.');
+    return report;
+  }
 
-    logger.info(`Selected ${candidateRepos.length} candidate repos`);
+  logger.info(`Selected ${candidateRepos.length} candidate repos`);
 
-    // Phase 3: Clone & license gate
-    const allowedRepos = await cloneAndLicenseGate(candidateRepos, report, clonedPaths);
+  {
+    // Phase 3: Clone & license gate (allowed repos stay in shared cache)
+    const allowedRepos = await cloneAndLicenseGate(candidateRepos, report, cwd);
 
     if (allowedRepos.length === 0) {
       logger.warn('No repos passed the license gate. Nothing to analyze.');
@@ -529,17 +532,6 @@ async function executeOSSResearch(
     }
 
     return report;
-  } finally {
-    // Cleanup all cloned repos
-    if (clonedPaths.length > 0) {
-      logger.info('');
-      logger.info('Cleaning up cloned repos...');
-      for (const clonePath of clonedPaths) {
-        await safeRm(clonePath);
-        logger.verbose(`  Removed: ${clonePath}`);
-      }
-      logger.info('Cleanup complete.');
-    }
   }
 }
 
@@ -562,7 +554,7 @@ async function runOSSExecuteMode(ctx: {
 
   logger.info(`LLM provider available — starting full OSS research pipeline (max ${maxRepos} repos)`);
   logger.info('');
-  const report = await executeOSSResearch(projectSummary, projectType, language, queries, maxRepos);
+  const report = await executeOSSResearch(projectSummary, projectType, language, queries, maxRepos, cwd);
 
   const reportPath = path.join(cwd, '.danteforge', 'OSS_REPORT.md');
   await fs.mkdir(path.join(cwd, '.danteforge'), { recursive: true });

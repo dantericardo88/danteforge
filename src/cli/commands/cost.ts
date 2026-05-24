@@ -3,6 +3,8 @@ import fs from 'fs/promises';
 import path from 'path';
 import { logger } from '../../core/logger.js';
 import type { TokenReport } from '../../core/execution-telemetry.js';
+import { loadLedgerHistory, summariseLedger, ledgerPath } from '../../core/token-ledger.js';
+import type { TokenRecord } from '../../core/token-ledger.js';
 
 const REPORTS_DIR = '.danteforge/reports';
 const COST_PREFIX = 'cost-';
@@ -13,6 +15,8 @@ export interface CostOptions {
   byTier?: boolean;
   savings?: boolean;
   history?: boolean;
+  efficiency?: boolean;
+  reset?: boolean;
 }
 
 async function findCostReports(cwd: string): Promise<string[]> {
@@ -129,16 +133,87 @@ function printHistorySummary(reports: TokenReport[]): void {
   logger.info(`Cumulative cost: ${formatUsd(cumulativeCost)}`);
 }
 
+// ── Efficiency report helpers ─────────────────────────────────────────────────
+
+export interface EfficiencyRecord {
+  command: string;
+  inputTokens: number;
+  outputTokens: number;
+  estimatedCostUsd: number;
+}
+
+export function computeEfficiencyReport(
+  ledgerRecords: TokenRecord[],
+): EfficiencyRecord[] {
+  const { byCommand } = summariseLedger(ledgerRecords);
+  const result: EfficiencyRecord[] = [];
+  for (const [command, totals] of byCommand.entries()) {
+    result.push({ command, ...totals });
+  }
+  return result.sort((a, b) => b.estimatedCostUsd - a.estimatedCostUsd);
+}
+
+function printEfficiencyReport(records: EfficiencyRecord[], totalCostUsd: number, totalTokens: number): void {
+  logger.info('--- Token Efficiency Report ---');
+  logger.info(`Total tokens: ${formatTokens(totalTokens)}  |  Total cost: ${formatUsd(totalCostUsd)}`);
+  logger.info('');
+  logger.info(`${padRight('Command', 20)} ${padLeft('Input', 10)} ${padLeft('Output', 10)} ${padLeft('Cost', 10)} ${padLeft('% of total', 12)}`);
+  logger.info(`${'-'.repeat(64)}`);
+  for (const r of records) {
+    const pct = totalCostUsd > 0 ? ((r.estimatedCostUsd / totalCostUsd) * 100).toFixed(1) : '0.0';
+    logger.info(
+      `${padRight(r.command, 20)} ${padLeft(formatTokens(r.inputTokens), 10)} ${padLeft(formatTokens(r.outputTokens), 10)} ${padLeft(formatUsd(r.estimatedCostUsd), 10)} ${padLeft(`${pct}%`, 12)}`,
+    );
+  }
+  logger.info('');
+  logger.info(`Tip: commands with high cost and few quality improvements have low token ROI.`);
+  logger.info(`Run "danteforge cost --history" to see cross-session totals.`);
+}
+
+// ── Main command ──────────────────────────────────────────────────────────────
+
 export interface CostCommandOptions extends CostOptions {
   _findReports?: typeof findCostReports;
   _readReport?: typeof readReport;
+  _loadLedger?: (cwd: string) => ReturnType<typeof loadLedgerHistory>;
+  _deleteFile?: (filePath: string) => Promise<void>;
 }
 
 export async function cost(options: CostCommandOptions = {}): Promise<void> {
   const findFn = options._findReports ?? findCostReports;
   const readFn = options._readReport ?? readReport;
+  const loadLedger = options._loadLedger ?? loadLedgerHistory;
+  const deleteFile = options._deleteFile ?? ((p) => fs.unlink(p));
 
   const cwd = process.cwd();
+
+  // ── --reset: clear the ledger ─────────────────────────────────────────────
+  if (options.reset) {
+    const lPath = ledgerPath(cwd);
+    try {
+      await deleteFile(lPath);
+      logger.info('Token ledger cleared.');
+    } catch {
+      logger.info('No token ledger found — nothing to clear.');
+    }
+    return;
+  }
+
+  // ── --efficiency: per-command token breakdown ──────────────────────────────
+  if (options.efficiency) {
+    const records = await loadLedger(cwd);
+    if (records.length === 0) {
+      logger.info('No token ledger data found in .danteforge/token-ledger.jsonl.');
+      logger.info('LLM calls will be tracked automatically once the ledger is populated.');
+      return;
+    }
+    const { estimatedCostUsd, inputTokens, outputTokens } = summariseLedger(records);
+    const efficiencyRecords = computeEfficiencyReport(records);
+    printEfficiencyReport(efficiencyRecords, estimatedCostUsd, inputTokens + outputTokens);
+    return;
+  }
+
+  // ── Legacy report-file mode ────────────────────────────────────────────────
   const reportFiles = await findFn(cwd);
 
   if (reportFiles.length === 0) {

@@ -1,7 +1,9 @@
 // quality — CLI-native quality scorecard: dimension bars, P0 gaps, ceilings, next action.
 // Faster than `score --full`: no LLM calls. Pure filesystem read + harsh scorer.
-// Usage: danteforge quality
+// Usage: danteforge quality [--baseline] [--save-baseline]
 
+import fs from 'node:fs/promises';
+import path from 'node:path';
 import chalk from 'chalk';
 import { logger } from '../../core/logger.js';
 import { KNOWN_CEILINGS } from '../../core/compete-matrix.js';
@@ -9,13 +11,43 @@ import type { HarshScoreResult, ScoringDimension } from '../../core/harsh-scorer
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
+export interface QualityBaseline {
+  savedAt: string;
+  overallScore: number;
+  dimensions: Record<string, number>;
+}
+
+export interface BaselineDiff {
+  dimension: string;
+  label: string;
+  baseline: number;
+  current: number;
+  delta: number;
+}
+
 export interface QualityOptions {
   cwd?: string;
   json?: boolean;
+  /**
+   * Compare current scores against a saved baseline in
+   * `.danteforge/quality-baseline.json`.  Emits a diff table.
+   */
+  baseline?: boolean;
+  /**
+   * Save the current scores as the new baseline to
+   * `.danteforge/quality-baseline.json`.
+   */
+  saveBaseline?: boolean;
   // Injection seams
   _computeScore?: (cwd: string) => Promise<HarshScoreResult>;
   _stdout?: (line: string) => void;
   _isTTY?: boolean;
+  /** Injected fs.readFile for testing (mirrors node:fs/promises signature). */
+  _readFile?: (p: string, enc: 'utf8') => Promise<string>;
+  /** Injected fs.writeFile for testing. */
+  _writeFile?: (p: string, data: string) => Promise<void>;
+  /** Injected fs.mkdir for testing. */
+  _mkdir?: (p: string, opts: { recursive: true }) => Promise<string | undefined>;
 }
 
 // ── Dimension labels ──────────────────────────────────────────────────────────
@@ -151,6 +183,98 @@ function renderScorecard(result: HarshScoreResult, emit: (l: string) => void, is
   emit('');
 }
 
+// ── Baseline I/O ──────────────────────────────────────────────────────────────
+
+function baselinePath(cwd: string): string {
+  return path.join(cwd, '.danteforge', 'quality-baseline.json');
+}
+
+async function loadBaseline(
+  cwd: string,
+  readFile: (p: string, enc: 'utf8') => Promise<string>,
+): Promise<QualityBaseline | null> {
+  try {
+    const raw = await readFile(baselinePath(cwd), 'utf8');
+    return JSON.parse(raw) as QualityBaseline;
+  } catch {
+    return null;
+  }
+}
+
+async function saveBaseline(
+  cwd: string,
+  result: HarshScoreResult,
+  writeFile: (p: string, data: string) => Promise<void>,
+  mkdir: (p: string, opts: { recursive: true }) => Promise<string | undefined>,
+): Promise<void> {
+  const bl: QualityBaseline = {
+    savedAt: new Date().toISOString(),
+    overallScore: result.displayScore,
+    dimensions: { ...(result.displayDimensions ?? {}) } as Record<string, number>,
+  };
+  const p = baselinePath(cwd);
+  await mkdir(path.dirname(p), { recursive: true });
+  await writeFile(p, JSON.stringify(bl, null, 2));
+}
+
+function buildBaselineDiff(
+  current: Record<string, number>,
+  baseline: QualityBaseline,
+): BaselineDiff[] {
+  const allIds = new Set([...Object.keys(current), ...Object.keys(baseline.dimensions)]);
+  const diffs: BaselineDiff[] = [];
+  for (const id of allIds) {
+    if (id === 'communityAdoption') continue;
+    const cur = current[id] ?? 0;
+    const base = baseline.dimensions[id] ?? 0;
+    diffs.push({ dimension: id, label: DIM_LABELS[id] ?? id, baseline: base, current: cur, delta: cur - base });
+  }
+  diffs.sort((a, b) => a.delta - b.delta); // worst regressions first
+  return diffs;
+}
+
+function renderBaselineDiff(
+  diffs: BaselineDiff[],
+  currentScore: number,
+  bl: QualityBaseline,
+  emit: (l: string) => void,
+  isTTY: boolean,
+): void {
+  const sep = isTTY
+    ? chalk.gray('  ─────────────────────────────────────────────')
+    : '  ─────────────────────────────────────────────';
+
+  emit('');
+  emit(isTTY ? chalk.bold('  Quality Baseline Comparison') : '  Quality Baseline Comparison');
+  emit(sep);
+
+  const overallDelta = currentScore - bl.overallScore;
+  const deltaStr = (overallDelta >= 0 ? '+' : '') + overallDelta.toFixed(1);
+  const deltaColored = isTTY
+    ? (overallDelta >= 0 ? chalk.green(deltaStr) : chalk.red(deltaStr))
+    : deltaStr;
+  emit(`  Baseline saved: ${new Date(bl.savedAt).toLocaleString()}`);
+  emit(`  Overall:  ${bl.overallScore.toFixed(1)} → ${currentScore.toFixed(1)}  (${deltaColored})`);
+  emit('');
+
+  if (diffs.length > 0) {
+    emit('  Dimension changes:');
+    const nameW = 26;
+    for (const d of diffs) {
+      const label = d.label.padEnd(nameW);
+      const delta = (d.delta >= 0 ? '+' : '') + d.delta.toFixed(1);
+      const deltaC = isTTY
+        ? (d.delta > 0 ? chalk.green(delta) : d.delta < 0 ? chalk.red(delta) : chalk.gray(delta))
+        : delta;
+      emit(`    ${label}  ${d.baseline.toFixed(1)} → ${d.current.toFixed(1)}  ${deltaC}`);
+    }
+    emit('');
+  }
+
+  emit(sep);
+  emit('');
+}
+
 // ── Default score loader ──────────────────────────────────────────────────────
 
 async function defaultComputeScore(cwd: string): Promise<HarshScoreResult> {
@@ -183,12 +307,40 @@ export async function quality(options: QualityOptions = {}): Promise<void> {
   const isTTY = options._isTTY ?? (process.stdout.isTTY === true);
   const computeScoreFn = options._computeScore ?? defaultComputeScore;
 
+  // Injected FS helpers (default to real node:fs/promises)
+  const readFileFn = options._readFile ?? ((p: string, enc: 'utf8') => fs.readFile(p, enc));
+  const writeFileFn = options._writeFile ?? ((p: string, data: string) => fs.writeFile(p, data));
+  const mkdirFn = options._mkdir ?? ((p: string, opts: { recursive: true }) => fs.mkdir(p, opts));
+
   try {
     const result = await computeScoreFn(cwd);
+    const dims = (result.displayDimensions ?? {}) as Record<string, number>;
+
+    // --save-baseline: persist current scores then return
+    if (options.saveBaseline) {
+      await saveBaseline(cwd, result, writeFileFn, mkdirFn);
+      emit(`Baseline saved to .danteforge/quality-baseline.json  (overall: ${result.displayScore.toFixed(1)}/10)`);
+      return;
+    }
+
     if (options.json) {
       emit(buildQualityJson(result));
     } else {
       renderScorecard(result, emit, isTTY);
+
+      // --baseline: load saved baseline and show diff after the scorecard
+      if (options.baseline) {
+        const bl = await loadBaseline(cwd, readFileFn);
+        if (!bl) {
+          emit(isTTY
+            ? chalk.yellow('  No quality baseline found. Run: danteforge quality --save-baseline')
+            : '  No quality baseline found. Run: danteforge quality --save-baseline');
+          emit('');
+        } else {
+          const diffs = buildBaselineDiff(dims, bl);
+          renderBaselineDiff(diffs, result.displayScore, bl, emit, isTTY);
+        }
+      }
     }
   } catch (err) {
     logger.error(`quality: ${err instanceof Error ? err.message : String(err)}`);

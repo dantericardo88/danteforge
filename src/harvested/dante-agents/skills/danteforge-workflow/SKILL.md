@@ -99,6 +99,20 @@ Use `--light` flag to bypass gates (only for prototyping):
 danteforge forge --light   # skip gates
 ```
 
+## File Size Discipline — 750 LOC Hard Cap
+
+**Every TypeScript/JavaScript file must stay under 750 LOC (hard cap) / 500 LOC (ideal).** This is enforced by:
+- `npm run check:file-size` — fails CI if any `src/` file exceeds 750 LOC
+- `postWaveSanitize` — auto-splits oversized files after each forge/ascend/magic wave
+- The `danteforge-forge` skill's Step 2d LOC gate — mandatory manual check before every verify
+
+After any wave completes, check for violations:
+```bash
+git diff --name-only HEAD | grep -E '\.(ts|tsx|js|mjs)$' | xargs wc -l 2>/dev/null | sort -rn | awk '$1 > 750 {print $1, $2}'
+```
+
+Split any listed file before proceeding: `foo.ts` → `foo.ts` + `foo-types.ts` + `foo-utils.ts`.
+
 ## Lessons and Self-Improvement
 
 DanteForge learns from failures:

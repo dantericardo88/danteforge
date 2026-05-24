@@ -6,6 +6,7 @@
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import { logger } from '../../core/logger.js';
+import { withProgress } from '../../core/progress-indicator.js';
 import type { ScoreOptions, ScoreResult } from './score.js';
 import type { DanteState } from '../../core/state.js';
 import { loadState } from '../../core/state.js';
@@ -147,7 +148,7 @@ export async function build(options: BuildOptions): Promise<BuildResult> {
     emit(`  Running: ${stage}...`);
     let ok = false;
     try {
-      ok = await runStageFn(stage, options.spec, cwd);
+      ok = await withProgress(`Building: ${stage}`, async () => runStageFn(stage, options.spec, cwd));
     } catch {
       ok = false;
     }

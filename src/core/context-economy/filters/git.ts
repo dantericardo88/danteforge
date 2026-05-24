@@ -4,6 +4,15 @@ import { estimateTokens } from '../../token-estimator.js';
 import { detectSacredSpans, containsSacredContent, injectSacredSpans } from '../sacred-content.js';
 import type { CommandFilter, FilterResult } from '../types.js';
 
+// git log --oneline lines look like: "a1b2c3d feat: message text"
+// Commit messages routinely contain keywords that look sacred (fix, error, warn, security)
+// but are not error data. Only check non-commit lines for sacred content in log output.
+const COMMIT_LINE = /^[0-9a-f]{6,40}\s/i;
+
+function containsSacredContentOutsideCommitMessages(text: string): boolean {
+  return text.split('\n').some((line) => !COMMIT_LINE.test(line) && containsSacredContent(line));
+}
+
 const FILTER_ID = 'git';
 
 const STRIP_PATTERNS: RegExp[] = [
@@ -53,8 +62,15 @@ export const gitFilter: CommandFilter = {
 
   filter(output: string, _command: string, args: string[]): FilterResult {
     const inputTokens = estimateTokens(output);
+    const sub = args[0] ?? '';
 
-    if (containsSacredContent(output)) {
+    // For git log, commit messages contain keywords like "error", "warn", "security" that are
+    // not actual error data — use a smarter check that ignores commit message lines.
+    const hasSacred = sub === 'log'
+      ? containsSacredContentOutsideCommitMessages(output)
+      : containsSacredContent(output);
+
+    if (hasSacred) {
       const sacred = detectSacredSpans(output);
       return {
         output,
@@ -68,10 +84,18 @@ export const gitFilter: CommandFilter = {
       };
     }
 
-    const sub = args[0] ?? '';
     let filtered: string;
     if (sub === 'log') {
+      // For git log, only detect sacred spans on non-commit-message lines.
+      // Commit messages are already filtered by compactLog; don't reinject them as "sacred".
       filtered = compactLog(output);
+      const nonCommitLines = output.split('\n').filter((l) => !COMMIT_LINE.test(l)).join('\n');
+      const sacred = detectSacredSpans(nonCommitLines);
+      const finalOutput = sacred.length > 0 ? injectSacredSpans(filtered, sacred) : filtered;
+      const outputTokens = estimateTokens(finalOutput);
+      const savedTokens = Math.max(0, inputTokens - outputTokens);
+      const savingsPercent = inputTokens > 0 ? Math.round((savedTokens / inputTokens) * 100) : 0;
+      return { output: finalOutput, status: savingsPercent < 10 ? 'low-yield' : 'filtered', inputTokens, outputTokens, savedTokens, savingsPercent, sacredSpanCount: sacred.length, filterId: FILTER_ID };
     } else {
       filtered = filterLines(output.split('\n')).join('\n').trim();
     }

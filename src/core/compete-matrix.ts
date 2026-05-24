@@ -82,6 +82,12 @@ export interface MatrixDimension {
   // the dimension-synthesizer's heuristic token-match inference. Use this when
   // your dimension ID doesn't share tokens with the file paths it should scope.
   touches?: string[];
+
+  // Evidence provenance for competitor leader scores.
+  // 'llm-baseline': initial score was an LLM estimate
+  // 'github-evidence': adjusted down from real open-issue counts
+  // 'benchmark': set from a published benchmark result
+  leaderScoreSource?: Record<string, 'llm-baseline' | 'github-evidence' | 'benchmark'>;
 }
 
 export interface AdversarialCalibration {
@@ -173,17 +179,103 @@ export function getMatrixPath(cwd?: string): string {
 
 // ── Persistence ───────────────────────────────────────────────────────────────
 
+// In-memory TTL cache: avoids re-parsing the matrix JSON on every call
+// within a single process (e.g. crusade frontier loop calling loadMatrix per cycle).
+const MATRIX_CACHE_TTL_MS = 5_000; // 5 s — short enough to pick up saves
+interface MatrixCacheEntry { matrix: CompeteMatrix; expiresAt: number; path: string }
+let _matrixCache: MatrixCacheEntry | null = null;
+
+/** Invalidate the in-process matrix cache (called by saveMatrix). */
+export function invalidateMatrixCache(): void {
+  _matrixCache = null;
+}
+
 export async function loadMatrix(
   cwd?: string,
   _fsRead?: (p: string) => Promise<string>,
 ): Promise<CompeteMatrix | null> {
   const matrixPath = getMatrixPath(cwd);
+
+  // Return cached value if still valid and no injection override is active
+  if (!_fsRead && _matrixCache && _matrixCache.path === matrixPath && Date.now() < _matrixCache.expiresAt) {
+    return _matrixCache.matrix;
+  }
+
   const read = _fsRead ?? ((p: string) => fs.readFile(p, 'utf8'));
   try {
     const raw = await read(matrixPath);
-    return JSON.parse(raw) as CompeteMatrix;
+    const matrix = JSON.parse(raw) as CompeteMatrix;
+
+    // Phase F: outcome-derived scoring. For any dim that declares `outcomes`,
+    // replace `scores.self` with the score computed from the current outcome
+    // evidence on disk. The original writable value is preserved at
+    // `legacy_score` for transition diff display. This is the read-time
+    // honesty enforcement — every consumer of loadMatrix sees the derived
+    // value, never the agent-written one.
+    if (!_fsRead) {
+      await applyOutcomeDerivedScores(matrix, cwd ?? process.cwd());
+      _matrixCache = { matrix, expiresAt: Date.now() + MATRIX_CACHE_TTL_MS, path: matrixPath };
+    }
+    return matrix;
   } catch {
     return null;
+  }
+}
+
+/**
+ * Phase F: walk the matrix, and for every dim that declares outcomes, replace
+ * `scores.self` with the derived value. Preserves the original at `legacy_score`.
+ * Best-effort — if evidence cannot be loaded, the legacy score is preserved unchanged.
+ */
+async function applyOutcomeDerivedScores(matrix: CompeteMatrix, cwd: string): Promise<void> {
+  let evidence: import('../matrix/types/outcome.js').OutcomeEvidence | null = null;
+  for (const dim of matrix.dimensions) {
+    const outcomes = (dim as unknown as Record<string, unknown>)['outcomes'];
+    if (!Array.isArray(outcomes) || outcomes.length === 0) continue;
+
+    // Lazy-load evidence only when at least one dim declares outcomes.
+    if (evidence === null) {
+      try {
+        const { loadOutcomeEvidence } = await import('../matrix/engines/outcome-runner.js');
+        evidence = await loadOutcomeEvidence(cwd);
+      } catch {
+        return; // best-effort
+      }
+    }
+
+    try {
+      // Staleness guard: only override scores.self when at least one evidence entry
+      // for this dimension was recorded in the last 24 hours. Stale evidence causes
+      // the derived score to compute as 0.0, which is worse than the stored value.
+      const EVIDENCE_MAX_AGE_MS = 86_400_000; // 24 hours
+      const now = Date.now();
+      const { makeEvidenceKey } = await import('../matrix/types/outcome.js');
+      const dimOutcomes = outcomes as Array<{ id: string }>;
+      const hasFreshEvidence = dimOutcomes.some(o => {
+        const entry = evidence!.get(makeEvidenceKey(dim.id, o.id));
+        if (!entry?.ranAt) return false;
+        return (now - new Date(entry.ranAt).getTime()) < EVIDENCE_MAX_AGE_MS;
+      });
+      if (!hasFreshEvidence) continue; // keep stored scores.self — evidence is stale
+
+      const { computeDerivedScoreWithBreakdown } = await import('./derived-score.js');
+      const { applyLegacyReceiptCeiling } = await import('../matrix/engines/receipt-ceiling.js');
+      const dfs = {
+        id: dim.id,
+        outcomes: outcomes as import('../matrix/types/outcome.js').Outcome[],
+        declared_ceiling: (dim as unknown as Record<string, unknown>)['declared_ceiling'] as 'T0'|'T1'|'T2'|'T3'|'T4'|'T5'|'T6'|undefined,
+        legacy_score: dim.scores.self,
+        scores: dim.scores,
+      };
+      const breakdown = computeDerivedScoreWithBreakdown(dfs, evidence!);
+      // Depth doctrine: dims with no outcomes declared cannot exceed 7.0.
+      const derived = applyLegacyReceiptCeiling(breakdown.score, breakdown);
+      // Preserve the original (agent-written) value for diff displays.
+      (dim as unknown as Record<string, unknown>)['legacy_score'] = dim.scores.self;
+      dim.scores.self = derived;
+    } catch {
+      // best-effort; if scoring fails, leave the legacy value
+    }
   }
 }
 
@@ -198,6 +290,8 @@ export async function saveMatrix(
     await fs.writeFile(p, content, 'utf8');
   });
   await write(matrixPath, JSON.stringify(matrix, null, 2));
+  // Bust the in-process cache so the next loadMatrix reads the saved value
+  invalidateMatrixCache();
 }
 
 // ── Core Computations ─────────────────────────────────────────────────────────
@@ -348,16 +442,19 @@ export function updateDimensionScore(
   dim.gap_to_oss_leader = twoGaps.gap_to_oss_leader;
   dim.oss_leader = twoGaps.oss_leader;
 
-  // Record sprint
-  const record: SprintRecord = {
-    dimensionId,
-    before,
-    after: clamped,
-    date: new Date().toISOString().slice(0, 10),
-    ...(commit ? { commit } : {}),
-    ...(harvestSource ? { harvestSource } : {}),
-  };
-  dim.sprint_history.push(record);
+  // Only record sprint when the score actually changed; cap history at 20.
+  if (clamped !== before) {
+    const record: SprintRecord = {
+      dimensionId,
+      before,
+      after: clamped,
+      date: new Date().toISOString().slice(0, 10),
+      ...(commit ? { commit } : {}),
+      ...(harvestSource ? { harvestSource } : {}),
+    };
+    dim.sprint_history.push(record);
+    if (dim.sprint_history.length > 20) dim.sprint_history.splice(0, dim.sprint_history.length - 20);
+  }
 
   // Update status
   if (dim.gap_to_leader <= 0) {
@@ -368,6 +465,110 @@ export function updateDimensionScore(
 
   matrix.lastUpdated = new Date().toISOString();
   matrix.overallSelfScore = computeOverallScore(matrix);
+}
+
+/**
+ * Apply competitor weakness intelligence to leader scores.
+ *
+ * When a competitor has >10 open GitHub issues in a dimension category, reduce
+ * their score for that dimension by 0.5 per 10 issues (max reduction: 2.0).
+ * Records leaderScoreSource='github-evidence' so callers can distinguish
+ * evidence-adjusted scores from the original LLM baseline.
+ *
+ * @param matrix - matrix to mutate (caller must saveMatrix() afterward)
+ * @param intelPath - path to weakness-intelligence.json (if it exists)
+ */
+export async function applyIntelLeaderScores(
+  matrix: CompeteMatrix,
+  intelPath: string,
+): Promise<number> {
+  let adjustmentsApplied = 0;
+  let intelData: { signals: Array<{ tool: string; category: string }> } | null = null;
+
+  try {
+    const raw = await (await import('fs/promises')).readFile(intelPath, 'utf-8');
+    intelData = JSON.parse(raw) as { signals: Array<{ tool: string; category: string }> };
+  } catch {
+    return 0; // no intel file yet — no-op
+  }
+
+  // Count issues per (competitor, category) pair
+  const issueCounts = new Map<string, number>();
+  for (const signal of intelData.signals ?? []) {
+    const key = `${signal.tool}::${signal.category}`;
+    issueCounts.set(key, (issueCounts.get(key) ?? 0) + 1);
+  }
+
+  for (const dim of matrix.dimensions) {
+    const competitors = Object.keys(dim.scores).filter(k => k !== 'self');
+    for (const competitor of competitors) {
+      // Match competitor name to category — category label may not match dim.id exactly;
+      // use a loose substring check across all signals for this competitor in this dimension.
+      const dimSignals = (intelData.signals ?? []).filter(
+        s => s.tool === competitor && matchesDimension(s.category, dim.id),
+      );
+      if (dimSignals.length < 10) continue;
+
+      const reduction = Math.min(2.0, Math.floor(dimSignals.length / 10) * 0.5);
+      const currentScore = dim.scores[competitor] ?? 0;
+      const adjusted = Math.max(0, currentScore - reduction);
+
+      if (adjusted !== currentScore) {
+        dim.scores[competitor] = adjusted;
+        if (!dim.leaderScoreSource) dim.leaderScoreSource = {};
+        dim.leaderScoreSource[competitor] = 'github-evidence';
+        adjustmentsApplied++;
+      }
+    }
+
+    // Re-derive gap fields after any competitor score adjustments
+    if (adjustmentsApplied > 0) {
+      const competitorEntries = Object.entries(dim.scores).filter(([k]) => k !== 'self');
+      const maxEntry = competitorEntries.reduce(
+        (best, [k, v]) => v > best[1] ? [k, v] : best,
+        ['', 0] as [string, number],
+      );
+      const selfScore = dim.scores['self'] ?? 0;
+      dim.gap_to_leader = Math.max(0, maxEntry[1] - selfScore);
+      if (maxEntry[0]) dim.leader = maxEntry[0];
+      const twoGaps = computeTwoGaps(dim, matrix.competitors_closed_source ?? [], matrix.competitors_oss ?? []);
+      dim.gap_to_closed_source_leader = twoGaps.gap_to_closed_source_leader;
+      dim.closed_source_leader = twoGaps.closed_source_leader;
+      dim.gap_to_oss_leader = twoGaps.gap_to_oss_leader;
+      dim.oss_leader = twoGaps.oss_leader;
+    }
+  }
+
+  if (adjustmentsApplied > 0) {
+    matrix.lastUpdated = new Date().toISOString();
+    matrix.overallSelfScore = computeOverallScore(matrix);
+  }
+
+  return adjustmentsApplied;
+}
+
+// Loose match: check if an intel category label corresponds to a matrix dimension id.
+function matchesDimension(categoryLabel: string, dimensionId: string): boolean {
+  const label = categoryLabel.toLowerCase().replace(/[^a-z]/g, '');
+  const id = dimensionId.toLowerCase().replace(/[^a-z]/g, '');
+  if (label.includes(id) || id.includes(label)) return true;
+  // Common label→id mappings that don't share tokens
+  const LABEL_MAP: Record<string, string> = {
+    'windowssupport': 'developerexperience',
+    'performance': 'performance',
+    'testquality': 'testing',
+    'documentation': 'documentation',
+    'autonomy': 'autonomy',
+    'multiagent': 'multiagentorchestration',
+    'security': 'security',
+    'uxclipolish': 'uxpolish',
+    'tokencontextmanagement': 'tokeneconomy',
+    'enterprisefeatures': 'enterprisereadiness',
+    'specplanningpipeline': 'specdrivenpipeline',
+    'errorhandling': 'errorhandling',
+  };
+  const mappedId = LABEL_MAP[label];
+  return mappedId !== undefined && (mappedId.includes(id) || id.includes(mappedId));
 }
 
 /**

@@ -92,7 +92,7 @@ export async function setupAssistants(options: {
     }
     logger.info(`Shared secrets/config: ${paths.configFile}`);
     if (assistants?.includes('codex')) {
-      logger.info('Codex install contract: native commands in `~/.codex/commands`, CLI fallback in `~/.codex/skills/danteforge-cli`, bootstrap in `~/.codex/AGENTS.md`, and utility aliases in `~/.codex/config.toml`.');
+      logger.info('Codex install contract: every `commands/*.md` file is mirrored to `~/.codex/commands`, `~/.codex/prompts`, and generated `~/.codex/skills/danteforge-<command>` wrappers; CLI fallback lives in `~/.codex/skills/danteforge-cli`, bootstrap in `~/.codex/AGENTS.md`, utility aliases in `~/.codex/config.toml`.');
       logger.info('Codex validation: rerun `danteforge doctor` and see `docs/Codex-Install.md` for npm, tarball, and source install flows on other machines.');
       logger.info('Codex note: local Codex installs are supported; hosted Codex/chat surfaces may ignore user-level `~/.codex/*` files.');
     }

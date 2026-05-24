@@ -10,6 +10,10 @@ const tsxCliPath = path.join(repoRoot, 'node_modules', 'tsx', 'dist', 'cli.mjs')
 const NOISY_LOG_PREFIX = /^\[(INFO|WARN|OK)\]\s/;
 const suiteStart = Date.now();
 
+// --lanes=<csv> — restrict execution to named lane IDs (e.g. --lanes=default)
+const lanesArg = process.argv.find(a => a.startsWith('--lanes='));
+const laneFilter = lanesArg ? new Set(lanesArg.slice('--lanes='.length).split(',').map(s => s.trim())) : null;
+
 async function listTestFiles(dir) {
   const entries = await fs.readdir(dir, { withFileTypes: true });
   const files = [];
@@ -60,7 +64,8 @@ function pipeFiltered(stream, target) {
 const testFiles = (await listTestFiles(testsRoot))
   .sort((left, right) => left.localeCompare(right))
   .map(file => path.relative(repoRoot, file));
-const testPlan = buildTestPlan(testFiles);
+const allLanes = buildTestPlan(testFiles);
+const testPlan = laneFilter ? allLanes.filter(lane => laneFilter.has(lane.id)) : allLanes;
 
 if (testFiles.length === 0) {
   process.stderr.write('No test files found under tests/**/*.test.ts\n');
@@ -118,6 +123,9 @@ function runLane(lane) {
   });
 }
 
+if (laneFilter) {
+  process.stderr.write(`[tests] Lane filter: ${[...laneFilter].join(', ')}\n`);
+}
 process.stderr.write(`[tests] Running ${testFiles.length} files across ${testPlan.length} deterministic lane(s)\n`);
 
 try {

@@ -1,10 +1,11 @@
 // OSS Clean — purge cached OSS clones and deep-extraction outputs.
-// Removes .danteforge/oss-repos/ and .danteforge/oss-deep/ directories.
+// Removes the shared OSSHarvest/ cache and the per-project .danteforge/oss-deep/ directory.
 // Use --dry-run to preview what would be deleted before committing.
 
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import { logger } from '../../core/logger.js';
+import { getOssCacheRoot } from '../../core/oss-cache.js';
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -43,9 +44,12 @@ async function getDirSize(dir: string): Promise<number> {
 // ── Main entry ─────────────────────────────────────────────────────────────────
 
 /**
- * Purge OSS cache directories from .danteforge/.
- * Removes oss-repos/ (cloned repos) and oss-deep/ (extraction outputs).
- * The next `oss-deep` run will re-clone and re-extract from scratch.
+ * Purge OSS cache directories.
+ * Removes the shared OSSHarvest/ clone cache (sibling of the project root) and
+ * the per-project .danteforge/oss-deep/ extraction outputs.
+ * The next oss/oss-deep run will re-clone and re-extract from scratch.
+ *
+ * Note: OSSHarvest/ is shared across all sibling projects — cleaning it affects them all.
  */
 export async function ossClean(opts: OssCleanOptions = {}): Promise<void> {
   const accessFn = opts._access ?? ((p) => fs.access(p));
@@ -54,21 +58,24 @@ export async function ossClean(opts: OssCleanOptions = {}): Promise<void> {
   const emit = opts._stdout ?? ((l) => logger.info(l));
 
   const cwd = opts.cwd ?? process.cwd();
-  const danteforgeDir = path.join(cwd, '.danteforge');
-  const cacheNames = ['oss-repos', 'oss-deep'];
+
+  const targets = [
+    { path: getOssCacheRoot(cwd), label: 'shared OSS clone cache (OSSHarvest/)' },
+    { path: path.join(cwd, '.danteforge', 'oss-deep'), label: 'deep extraction outputs (oss-deep/)' },
+  ];
+
   let anyFound = false;
 
-  for (const name of cacheNames) {
-    const target = path.join(danteforgeDir, name);
+  for (const target of targets) {
     try {
-      await accessFn(target);
+      await accessFn(target.path);
       anyFound = true;
-      const size = await getSizeFn(target);
+      const size = await getSizeFn(target.path);
       if (opts.dryRun) {
-        emit(`[oss-clean] Would remove: ${target} (${formatBytes(size)})`);
+        emit(`[oss-clean] Would remove: ${target.path} — ${target.label} (${formatBytes(size)})`);
       } else {
-        await rmFn(target, { recursive: true, force: true });
-        emit(`[oss-clean] Removed: ${target} (${formatBytes(size)})`);
+        await rmFn(target.path, { recursive: true, force: true });
+        emit(`[oss-clean] Removed: ${target.path} — ${target.label} (${formatBytes(size)})`);
       }
     } catch { /* directory does not exist — skip silently */ }
   }
@@ -78,6 +85,6 @@ export async function ossClean(opts: OssCleanOptions = {}): Promise<void> {
   } else if (opts.dryRun) {
     emit('[oss-clean] Dry run complete. Re-run without --dry-run to delete.');
   } else {
-    emit('[oss-clean] Cache cleared. Next oss-deep run will re-clone from scratch.');
+    emit('[oss-clean] Cache cleared. Next oss/oss-deep run will re-clone from scratch.');
   }
 }

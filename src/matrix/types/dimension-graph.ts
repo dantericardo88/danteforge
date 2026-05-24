@@ -1,5 +1,6 @@
 // Matrix Kernel — Dimension Graph types (PRD §9.2, §10, §11)
 // "Map what excellence requires."
+import type { CapabilityTestEntry } from './capability-test.js';
 
 export type CompetitorCategory =
   | 'oss'
@@ -57,6 +58,13 @@ export interface DimensionContract {
   rubric?: DimensionRubricLevel[];
   /** Frontier-leader competitorId per inspection mode, optional. */
   frontierLeaderId?: string;
+  /**
+   * Capability test for this dimension. Required for scores > 5.0.
+   * Either a CapabilityTestSpec (real shell command) or NoCapabilityTestMarker.
+   * Dimensions without this field are treated as if no_capability_test: true
+   * and are hard-capped at 5.0.
+   */
+  capability_test?: CapabilityTestEntry;
 }
 
 export interface DimensionGraphNode extends DimensionContract {

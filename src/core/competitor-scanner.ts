@@ -59,15 +59,14 @@ export interface CompetitorScanOptions {
   _now?: () => string;
 }
 
-// -- DanteForge peer baseline ------------------------------------------------
-// DanteForge is an agnostic optimizer that sits ON TOP OF AI coding assistants.
-// Competitors are spec-driven dev kits, autonomous research loops, Claude Code
-// skill consolidators, and agent-orchestration frameworks -- NOT the assistants
-// themselves (Cursor / Devin / Claude Code / GitHub Copilot / Codex CLI etc.).
-// See ~/.claude/projects/c--Projects-DanteForge/memory/project_positioning.md
-// for the canonical taxonomy.
+// -- Preset baselines --------------------------------------------------------
+// Each baseline corresponds to a named preset in src/core/peer-presets.ts.
+// `scanCompetitors` picks the right baseline based on resolved project
+// identity, so DanteForge (dev-tool-optimizer preset) sees its spec-kit /
+// BMAD / etc. peers, while DanteCode (coding-assistant preset) sees the
+// Cursor / Aider / OpenHands / etc. peers.
 
-const DEV_TOOL_BASELINES: CompetitorProfile[] = [
+const DEV_TOOL_OPTIMIZER_BASELINES: CompetitorProfile[] = [
   // -- Direct peers: spec-driven dev kits --------------------------------------
   {
     name: 'spec-kit (GitHub)',
@@ -298,6 +297,277 @@ const DEV_TOOL_BASELINES: CompetitorProfile[] = [
   },
 ];
 
+// -- Coding-assistant baseline -----------------------------------------------
+// AI coding assistants and inner-loop dev agents. Used by sibling projects
+// like DanteCode that directly compete with Cursor / Cline / Aider / etc.
+// (NOT DanteForge — DanteForge sits on top of these as an optimizer.)
+
+const CODING_ASSISTANT_BASELINES: CompetitorProfile[] = [
+  {
+    name: 'Cursor',
+    url: 'https://cursor.com',
+    description: 'AI-first code editor with deep codebase context and inline code generation.',
+    source: 'hardcoded',
+    scores: {
+      functionality: 85, testing: 70, errorHandling: 68, security: 72,
+      uxPolish: 92, documentation: 72, performance: 74, maintainability: 76,
+      developerExperience: 90, autonomy: 65, planningQuality: 62, selfImprovement: 50,
+      specDrivenPipeline: 35, convergenceSelfHealing: 40, tokenEconomy: 70,
+      ecosystemMcp: 65, enterpriseReadiness: 60, communityAdoption: 95,
+      contextEconomy: 0, causalCoherence: 0,
+    },
+  },
+  {
+    name: 'GitHub Copilot Workspace',
+    url: 'https://githubnext.com/projects/copilot-workspace',
+    description: 'Task-centric dev environment. Brainstorm, plan, build, test in Copilot chat.',
+    source: 'hardcoded',
+    scores: {
+      functionality: 82, testing: 78, errorHandling: 72, security: 80,
+      uxPolish: 85, documentation: 75, performance: 70, maintainability: 74,
+      developerExperience: 88, autonomy: 68, planningQuality: 76, selfImprovement: 55,
+      specDrivenPipeline: 60, convergenceSelfHealing: 55, tokenEconomy: 55,
+      ecosystemMcp: 80, enterpriseReadiness: 88, communityAdoption: 92,
+      contextEconomy: 0, causalCoherence: 0,
+    },
+  },
+  {
+    name: 'Claude Code',
+    url: 'https://claude.ai/code',
+    description: 'Anthropic\'s official CLI for Claude. Agentic coding in the terminal.',
+    source: 'hardcoded',
+    scores: {
+      functionality: 85, testing: 75, errorHandling: 78, security: 80,
+      uxPolish: 72, documentation: 80, performance: 76, maintainability: 80,
+      developerExperience: 88, autonomy: 72, planningQuality: 70, selfImprovement: 60,
+      specDrivenPipeline: 40, convergenceSelfHealing: 55, tokenEconomy: 75,
+      ecosystemMcp: 90, enterpriseReadiness: 72, communityAdoption: 90,
+      contextEconomy: 0, causalCoherence: 0,
+    },
+  },
+  {
+    name: 'Devin (Cognition AI)',
+    url: 'https://cognition.ai',
+    description: 'Fully autonomous AI software engineer. First agent to exceed 13% on SWE-bench.',
+    source: 'hardcoded',
+    scores: {
+      functionality: 88, testing: 72, errorHandling: 75, security: 70,
+      uxPolish: 65, documentation: 68, performance: 72, maintainability: 70,
+      developerExperience: 75, autonomy: 92, planningQuality: 78, selfImprovement: 60,
+      specDrivenPipeline: 55, convergenceSelfHealing: 85, tokenEconomy: 50,
+      ecosystemMcp: 45, enterpriseReadiness: 55, communityAdoption: 72,
+      contextEconomy: 0, causalCoherence: 0,
+    },
+  },
+  {
+    name: 'Aider',
+    url: 'https://aider.chat',
+    description: 'AI pair programming in your terminal. Edits code across entire repos.',
+    source: 'hardcoded',
+    scores: {
+      functionality: 78, testing: 68, errorHandling: 65, security: 62,
+      uxPolish: 58, documentation: 70, performance: 65, maintainability: 70,
+      developerExperience: 75, autonomy: 70, planningQuality: 60, selfImprovement: 55,
+      specDrivenPipeline: 30, convergenceSelfHealing: 50, tokenEconomy: 55,
+      ecosystemMcp: 40, enterpriseReadiness: 35, communityAdoption: 82,
+      contextEconomy: 0, causalCoherence: 0,
+    },
+  },
+  {
+    name: 'OpenHands (All-Hands AI)',
+    url: 'https://github.com/All-Hands-AI/OpenHands',
+    description: 'SWE-bench leading autonomous agent with Docker-sandboxed execution environment.',
+    source: 'hardcoded',
+    scores: {
+      functionality: 85, testing: 80, errorHandling: 78, security: 80,
+      uxPolish: 62, documentation: 72, performance: 74, maintainability: 72,
+      developerExperience: 68, autonomy: 88, planningQuality: 72, selfImprovement: 65,
+      specDrivenPipeline: 40, convergenceSelfHealing: 80, tokenEconomy: 45,
+      ecosystemMcp: 55, enterpriseReadiness: 50, communityAdoption: 75,
+      contextEconomy: 0, causalCoherence: 0,
+    },
+  },
+  {
+    name: 'Cline',
+    url: 'https://github.com/cline/cline',
+    description: 'Autonomous VS Code agent that reads, writes, and executes code with human approval gates.',
+    source: 'hardcoded',
+    scores: {
+      functionality: 80, testing: 68, errorHandling: 72, security: 72,
+      uxPolish: 85, documentation: 65, performance: 72, maintainability: 68,
+      developerExperience: 88, autonomy: 78, planningQuality: 60, selfImprovement: 55,
+      specDrivenPipeline: 25, convergenceSelfHealing: 45, tokenEconomy: 55,
+      ecosystemMcp: 85, enterpriseReadiness: 50, communityAdoption: 78,
+      contextEconomy: 0, causalCoherence: 0,
+    },
+  },
+  {
+    name: 'Continue.dev',
+    url: 'https://docs.continue.dev',
+    description: 'Open-source IDE copilot with agent, chat, autocomplete, and edit modes across IDEs.',
+    source: 'hardcoded',
+    scores: {
+      functionality: 80, testing: 70, errorHandling: 70, security: 72,
+      uxPolish: 88, documentation: 75, performance: 74, maintainability: 72,
+      developerExperience: 90, autonomy: 65, planningQuality: 62, selfImprovement: 58,
+      specDrivenPipeline: 30, convergenceSelfHealing: 40, tokenEconomy: 50,
+      ecosystemMcp: 82, enterpriseReadiness: 48, communityAdoption: 75,
+      contextEconomy: 0, causalCoherence: 0,
+    },
+  },
+  {
+    name: 'Codex CLI (OpenAI)',
+    url: 'https://developers.openai.com/codex/cli',
+    description: 'Rust-based terminal agent with OS-level sandboxing, first-class plugins, MCP support.',
+    source: 'hardcoded',
+    scores: {
+      functionality: 82, testing: 72, errorHandling: 72, security: 78,
+      uxPolish: 70, documentation: 75, performance: 80, maintainability: 76,
+      developerExperience: 82, autonomy: 80, planningQuality: 68, selfImprovement: 55,
+      specDrivenPipeline: 35, convergenceSelfHealing: 60, tokenEconomy: 65,
+      ecosystemMcp: 78, enterpriseReadiness: 65, communityAdoption: 80,
+      contextEconomy: 0, causalCoherence: 0,
+    },
+  },
+  {
+    name: 'Gemini CLI (Google)',
+    url: 'https://github.com/google-gemini/gemini-cli',
+    description: 'Open-source CLI with 1M token context via Gemini 2.5 Pro, generous free tier.',
+    source: 'hardcoded',
+    scores: {
+      functionality: 78, testing: 68, errorHandling: 68, security: 72,
+      uxPolish: 72, documentation: 70, performance: 72, maintainability: 70,
+      developerExperience: 78, autonomy: 65, planningQuality: 60, selfImprovement: 50,
+      specDrivenPipeline: 25, convergenceSelfHealing: 40, tokenEconomy: 72,
+      ecosystemMcp: 65, enterpriseReadiness: 68, communityAdoption: 75,
+      contextEconomy: 0, causalCoherence: 0,
+    },
+  },
+  {
+    name: 'GitHub Copilot CLI',
+    url: 'https://github.blog/changelog/2026-02-25-github-copilot-cli-is-now-generally-available/',
+    description: 'GA Feb 2026. Plan mode, autopilot, dynamic agent delegation, multi-model, persistent memory.',
+    source: 'hardcoded',
+    scores: {
+      functionality: 85, testing: 78, errorHandling: 75, security: 82,
+      uxPolish: 85, documentation: 80, performance: 74, maintainability: 78,
+      developerExperience: 90, autonomy: 75, planningQuality: 78, selfImprovement: 60,
+      specDrivenPipeline: 55, convergenceSelfHealing: 60, tokenEconomy: 60,
+      ecosystemMcp: 82, enterpriseReadiness: 88, communityAdoption: 95,
+      contextEconomy: 0, causalCoherence: 0,
+    },
+  },
+  {
+    name: 'Goose (Block)',
+    url: 'https://block.xyz/open-source/goose',
+    description: 'Open-source MCP-native agent, Linux Foundation Agentic AI member, red-team tested.',
+    source: 'hardcoded',
+    scores: {
+      functionality: 78, testing: 70, errorHandling: 72, security: 75,
+      uxPolish: 68, documentation: 70, performance: 68, maintainability: 72,
+      developerExperience: 75, autonomy: 72, planningQuality: 60, selfImprovement: 55,
+      specDrivenPipeline: 30, convergenceSelfHealing: 50, tokenEconomy: 50,
+      ecosystemMcp: 85, enterpriseReadiness: 55, communityAdoption: 72,
+      contextEconomy: 0, causalCoherence: 0,
+    },
+  },
+  {
+    name: 'Replit Agent',
+    url: 'https://replit.com',
+    description: 'Most autonomous app builder — continuous generate/test/debug/fix loop with deployment.',
+    source: 'hardcoded',
+    scores: {
+      functionality: 82, testing: 68, errorHandling: 70, security: 68,
+      uxPolish: 88, documentation: 65, performance: 70, maintainability: 65,
+      developerExperience: 88, autonomy: 85, planningQuality: 65, selfImprovement: 60,
+      specDrivenPipeline: 45, convergenceSelfHealing: 78, tokenEconomy: 55,
+      ecosystemMcp: 60, enterpriseReadiness: 50, communityAdoption: 85,
+      contextEconomy: 0, causalCoherence: 0,
+    },
+  },
+  {
+    name: 'SWE-Agent (Princeton)',
+    url: 'https://swe-agent.com',
+    description: 'Autonomous agent for GitHub issues. ACI interface for OS interaction.',
+    source: 'hardcoded',
+    scores: {
+      functionality: 80, testing: 78, errorHandling: 72, security: 65,
+      uxPolish: 52, documentation: 68, performance: 68, maintainability: 68,
+      developerExperience: 62, autonomy: 82, planningQuality: 72, selfImprovement: 58,
+      specDrivenPipeline: 45, convergenceSelfHealing: 70, tokenEconomy: 40,
+      ecosystemMcp: 35, enterpriseReadiness: 40, communityAdoption: 68,
+      contextEconomy: 0, causalCoherence: 0,
+    },
+  },
+  {
+    name: 'CodiumAI / Qodo',
+    url: 'https://www.codium.ai',
+    description: 'AI test suite generation and code integrity analysis directly from source code.',
+    source: 'hardcoded',
+    scores: {
+      functionality: 80, testing: 90, errorHandling: 72, security: 70,
+      uxPolish: 78, documentation: 68, performance: 68, maintainability: 74,
+      developerExperience: 82, autonomy: 68, planningQuality: 60, selfImprovement: 72,
+      specDrivenPipeline: 30, convergenceSelfHealing: 72, tokenEconomy: 50,
+      ecosystemMcp: 60, enterpriseReadiness: 65, communityAdoption: 70,
+      contextEconomy: 0, causalCoherence: 0,
+    },
+  },
+  {
+    name: 'CodeRabbit',
+    url: 'https://coderabbit.ai',
+    description: 'AI-powered code review with line-level suggestions and context-aware PR feedback.',
+    source: 'hardcoded',
+    scores: {
+      functionality: 82, testing: 78, errorHandling: 80, security: 82,
+      uxPolish: 85, documentation: 72, performance: 72, maintainability: 80,
+      developerExperience: 88, autonomy: 62, planningQuality: 60, selfImprovement: 68,
+      specDrivenPipeline: 25, convergenceSelfHealing: 50, tokenEconomy: 45,
+      ecosystemMcp: 70, enterpriseReadiness: 78, communityAdoption: 72,
+      contextEconomy: 0, causalCoherence: 0,
+    },
+  },
+  {
+    name: 'Kiro (AWS)',
+    url: 'https://kiro.dev',
+    description: 'Spec-driven development tool with EARS-notation requirements, agent hooks, built on Bedrock.',
+    source: 'hardcoded',
+    scores: {
+      functionality: 78, testing: 72, errorHandling: 70, security: 78,
+      uxPolish: 75, documentation: 72, performance: 70, maintainability: 72,
+      developerExperience: 80, autonomy: 72, planningQuality: 82, selfImprovement: 55,
+      specDrivenPipeline: 80, convergenceSelfHealing: 55, tokenEconomy: 60,
+      ecosystemMcp: 65, enterpriseReadiness: 80, communityAdoption: 62,
+      contextEconomy: 0, causalCoherence: 0,
+    },
+  },
+  {
+    name: 'Kilo Code',
+    url: 'https://marketplace.visualstudio.com/items?itemName=kilocode.Kilo-Code',
+    description: 'Open-source multi-IDE agent with structured modes, 500+ AI model support.',
+    source: 'hardcoded',
+    scores: {
+      functionality: 78, testing: 68, errorHandling: 68, security: 70,
+      uxPolish: 82, documentation: 68, performance: 72, maintainability: 70,
+      developerExperience: 85, autonomy: 72, planningQuality: 58, selfImprovement: 52,
+      specDrivenPipeline: 30, convergenceSelfHealing: 45, tokenEconomy: 55,
+      ecosystemMcp: 78, enterpriseReadiness: 48, communityAdoption: 62,
+      contextEconomy: 0, causalCoherence: 0,
+    },
+  },
+];
+
+// Preset → baseline selector. Imported types stay local to avoid pulling
+// peer-presets into module init eagerly. The string compare matches PeerPreset.
+function getBaselineForPreset(preset: string | null): CompetitorProfile[] {
+  if (preset === 'dev-tool-optimizer') return DEV_TOOL_OPTIMIZER_BASELINES.map((c) => ({ ...c }));
+  if (preset === 'coding-assistant') return CODING_ASSISTANT_BASELINES.map((c) => ({ ...c }));
+  // agent-framework, or null: default to coding-assistant since that's the
+  // more common sibling-project category. DanteForge itself matches dev-tool-
+  // optimizer via package.json name so it doesn't hit this branch.
+  return CODING_ASSISTANT_BASELINES.map((c) => ({ ...c }));
+}
+
 // All 20 dimension keys for iteration
 const ALL_DIMENSIONS: ScoringDimension[] = [
   'functionality', 'testing', 'errorHandling', 'security',
@@ -350,10 +620,20 @@ export async function scanCompetitors(opts: CompetitorScanOptions): Promise<Comp
     } catch { /* fall through to default */ }
   }
 
-  // â”€â”€ Priority 4: Dev-tool fallback â€” only if project appears to be a coding tool
+  // Priority 4: Dev-tool fallback — only if project appears to be a coding tool.
+  // Selects the correct baseline based on the project's resolved peer preset
+  // (DanteForge → dev-tool-optimizer; DanteCode et al → coding-assistant).
   if (competitors.length === 0) {
     if (isDevToolProject(ctx)) {
-      competitors = DEV_TOOL_BASELINES.map((c) => ({ ...c }));
+      let resolvedPreset: string | null = null;
+      try {
+        const { resolveProjectPreset } = await import('./peer-presets.js');
+        const resolution = await resolveProjectPreset(process.cwd(), {
+          project: ctx?.projectName,
+        });
+        resolvedPreset = resolution.preset;
+      } catch { /* preset resolver failed — default branch handles it */ }
+      competitors = getBaselineForPreset(resolvedPreset);
       competitorSource = 'dev-tool-default';
       if (enableSearch) {
         competitors = await enrichDevToolScores(competitors, callLLMFn);
@@ -698,5 +978,10 @@ function avg(values: number[]): number {
   return values.reduce((a, b) => a + b, 0) / values.length;
 }
 
-// Export for tests and assess command
-export { DEV_TOOL_BASELINES as COMPETITOR_BASELINES };
+// Export for tests and assess command.
+// COMPETITOR_BASELINES is kept as a back-compat alias pointing at the
+// dev-tool-optimizer baseline (DanteForge's own peer category). Callers that
+// need the coding-assistant peer list import CODING_ASSISTANT_BASELINES.
+export { DEV_TOOL_OPTIMIZER_BASELINES, CODING_ASSISTANT_BASELINES };
+export { DEV_TOOL_OPTIMIZER_BASELINES as COMPETITOR_BASELINES };
+export { DEV_TOOL_OPTIMIZER_BASELINES as DEV_TOOL_BASELINES };

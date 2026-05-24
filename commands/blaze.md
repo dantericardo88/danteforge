@@ -12,6 +12,12 @@ verification_required: true
 
 # /blaze - High-Power Preset
 
+## Depth Doctrine (MANDATORY)
+
+BREADTH wave: write modules + tests, ceiling 6. Answer 3 callsite questions per module.
+Follow with DEPTH wave: `danteforge validate <dim>` to unlock 7-9.
+No mocks, no stubs, no TODOs in `src/` files.
+
 When the user invokes `/blaze`, execute the high-power preset in the workspace:
 
 1. Run strong autoforge with parallel execution lanes

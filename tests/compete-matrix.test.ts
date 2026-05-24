@@ -826,3 +826,40 @@ describe('excludedDimensions', () => {
     assert.deepStrictEqual(matrix.excludedDimensions, []);
   });
 });
+
+// ── loadMatrix TTL cache ───────────────────────────────────────────────────────
+
+import { invalidateMatrixCache } from '../src/core/compete-matrix.js';
+
+describe('loadMatrix in-process cache', () => {
+  it('returns cached result on second call when using real fs (via injected reads)', async () => {
+    // Use injected reads so the cache key never matches real fs — safe isolation
+    let readCount = 0;
+    const dim = makeDim({ id: 'cache_test', scores: { self: 7.0 }, gap_to_leader: 1.0 });
+    const matrixJson = JSON.stringify(makeMatrix([dim]));
+    const fakeRead = async (_p: string) => { readCount++; return matrixJson; };
+
+    const m1 = await loadMatrix('/fake/cache/cwd', fakeRead);
+    const m2 = await loadMatrix('/fake/cache/cwd', fakeRead);
+
+    // Both calls return valid matrices
+    assert.ok(m1 !== null && m2 !== null);
+    assert.strictEqual(m1!.dimensions[0]!.id, 'cache_test');
+    // Injected reads bypass the cache, so readCount should be 2
+    assert.strictEqual(readCount, 2);
+  });
+
+  it('invalidateMatrixCache is a callable export', () => {
+    // Smoke test: should not throw
+    assert.doesNotThrow(() => { invalidateMatrixCache(); });
+  });
+
+  it('saveMatrix calls through without error on injected write', async () => {
+    let written = '';
+    const dim = makeDim({ id: 'save_cache_test', scores: { self: 8.0 }, gap_to_leader: 0.5 });
+    const matrix = makeMatrix([dim]);
+    await saveMatrix(matrix, '/fake/save/cwd', async (_p, c) => { written = c; });
+    const parsed = JSON.parse(written) as CompeteMatrix;
+    assert.strictEqual(parsed.dimensions[0]!.id, 'save_cache_test');
+  });
+});

@@ -5,7 +5,10 @@ import { logger } from '../../core/logger.js';
 import { withErrorBoundary } from '../../core/cli-error-boundary.js';
 import { runPolicyGate } from '../../core/policy-gate.js';
 import { loadState, saveState } from '../../core/state.js';
+import { withProgress } from '../../core/progress-indicator.js';
 import fs from 'fs/promises';
+import { checkSpecDrift } from '../../core/spec-drift-detector.js';
+import { recordStage } from '../../core/pipeline-tracker.js';
 
 async function checkLLMPreflight(
   isLLMAvailableFn?: () => Promise<boolean>,
@@ -33,6 +36,7 @@ async function checkLLMPreflight(
 export async function forge(phase = '1', options: {
   profile?: string; parallel?: boolean; prompt?: boolean; light?: boolean;
   worktree?: boolean; figma?: boolean; skipUx?: boolean; confirm?: boolean;
+  dryRun?: boolean;
   _isLLMAvailable?: () => Promise<boolean>;
   _policyGate?: typeof runPolicyGate;
   /** Injection seam: replaces createTimeMachineCommit for testing */
@@ -67,6 +71,38 @@ export async function forge(phase = '1', options: {
   if (!(await runGate(() => requirePlan(options.light)))) return;
   if (!(await runGate(() => requireTests(options.light)))) return;
 
+  // Spec drift check — warn if spec changed since last plan (best-effort)
+  try {
+    const drift = await checkSpecDrift(process.cwd());
+    if (drift.drifted) {
+      logger.warn(`[forge] ${drift.message}`);
+      logger.warn('[forge] The plan may be stale. Run "danteforge clarify" and "danteforge plan" to realign before forging.');
+    }
+  } catch { /* best-effort — never block forge */ }
+
+  // Record pipeline stage (best-effort)
+  try { await recordStage('forge', process.cwd()); } catch { /* best-effort */ }
+
+  // Dry-run mode: show what would execute without side effects
+  if (options.dryRun) {
+    const profile = options.profile ?? 'balanced';
+    logger.info(`[forge --dry-run] Phase: ${phase} | Profile: ${profile} | Parallel: ${!!options.parallel}`);
+    logger.info('[forge --dry-run] Gates: PLAN ✓, TESTS ✓');
+    try {
+      const tasksRaw = await fs.readFile('.danteforge/TASKS.md', 'utf8');
+      const taskLines = tasksRaw.split('\n').filter(l => /^[-*]|\d+\./.test(l.trim())).slice(0, 10);
+      if (taskLines.length) {
+        logger.info('[forge --dry-run] Tasks that would be executed:');
+        taskLines.forEach(l => logger.info(`  ${l.trim()}`));
+        if (tasksRaw.split('\n').filter(l => /^[-*]|\d+\./.test(l.trim())).length > 10) {
+          logger.info('  ... (truncated, see .danteforge/TASKS.md for full list)');
+        }
+      }
+    } catch { /* TASKS.md may not exist yet */ }
+    logger.info('[forge --dry-run] No files modified. Re-run without --dry-run to execute.');
+    return;
+  }
+
   // LLM pre-flight — surface misconfiguration before wasting a full wave
   if (!options.prompt && !(await checkLLMPreflight(options._isLLMAvailable))) return;
 
@@ -94,11 +130,20 @@ export async function forge(phase = '1', options: {
 
   const profile = options.profile ?? 'balanced';
   const onChunk = process.stdout.isTTY ? (chunk: string) => { process.stdout.write(chunk); } : undefined;
-  const result = await executeWave(parseInt(phase, 10), profile, options.parallel, options.prompt, options.worktree, undefined, { _onChunk: onChunk });
+  const result = await withProgress(`Forging phase ${phase} [${profile}]`, async (handle) => {
+    handle.update('running wave executor...');
+    return executeWave(parseInt(phase, 10), profile, options.parallel, options.prompt, options.worktree, undefined, { _onChunk: onChunk });
+  });
   if (!result.success) {
     process.exitCode = 1;
     return;
   }
+
+  // Post-wave auto-sanitize: split any file that crossed the 750-LOC threshold (best-effort)
+  try {
+    const { postWaveSanitize } = await import('../../core/auto-sanitize.js');
+    await postWaveSanitize({ cwd: process.cwd() });
+  } catch { /* best-effort; never blocks forge */ }
 
   if (result.success && result.mode === 'executed') {
     try {

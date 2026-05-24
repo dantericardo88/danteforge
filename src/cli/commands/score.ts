@@ -8,7 +8,9 @@
 
 import fs from 'node:fs/promises';
 import path from 'node:path';
+import chalk from 'chalk';
 import { logger } from '../../core/logger.js';
+import { SCORING_DOCTRINE_SHORT } from '../../core/scoring-doctrine.js';
 import { loadState, saveState, appendScoreHistory } from '../../core/state.js';
 import type { DanteState, ScoreHistoryEntry } from '../../core/state.js';
 import {
@@ -577,6 +579,20 @@ function shouldUseLegacyInjectionPath(options: ScoreOptions): boolean {
   );
 }
 
+function colorScoreDim(score: number): string {
+  const s = score.toFixed(1);
+  if (score >= 9) return chalk.green(s);
+  if (score >= 7) return chalk.cyan(s);
+  if (score >= 5) return chalk.yellow(s);
+  return chalk.red(s);
+}
+
+function scoreBar(score: number, width = 10): string {
+  const filled = Math.round((score / 10) * width);
+  const bar = chalk.green('█'.repeat(filled)) + chalk.dim('░'.repeat(width - filled));
+  return `[${bar}]`;
+}
+
 function renderDimensionsBlock(
   emit: (line: string) => void,
   result: { displayDimensions: Record<string, number> },
@@ -584,16 +600,16 @@ function renderDimensionsBlock(
 ): void {
   if (full) {
     const dims = (Object.entries(result.displayDimensions) as [ScoringDimension, number][]).sort((a, b) => a[1] - b[1]);
-    emit('  All 20 dimensions (worst gaps first):');
+    emit('  All 20 dimensions (worst → best):');
     emit('');
     dims.forEach(([dim, sc]) => {
       const wt = Math.round((SCORE_DISPLAY_WEIGHTS[dim] ?? 0) * 100);
-      emit(`  ${dim.padEnd(26)}${sc.toFixed(1)}  (weight ${`${wt}%`.padStart(4)})`);
+      emit(`  ${dim.padEnd(26)} ${scoreBar(sc)}  ${colorScoreDim(sc)}  ${chalk.dim(`(wt ${`${wt}%`.padStart(3)})`)}`);
     });
     emit('');
-    emit('  For LLM competitor benchmarking: danteforge assess');
+    emit(chalk.dim('  For LLM competitor benchmarking: danteforge assess'));
   } else {
-    emit('  Run with --full for all 20 dimensions.');
+    emit(chalk.dim('  Run with --full for all 20 dimensions.'));
   }
 }
 
@@ -623,6 +639,7 @@ function computeSessionDelta(state: import('../../core/state.js').DanteState, di
 export async function score(options: ScoreOptions = {}): Promise<ScoreResult> {
   const cwd = options.cwd ?? process.cwd();
   const emit = options._stdout ?? ((line: string) => logger.info(line));
+  emit(`[scoring-doctrine] ${SCORING_DOCTRINE_SHORT}`);
 
   if (!shouldUseLegacyInjectionPath(options)) {
     const _scr = await scoreCanonicalPath(options, cwd, emit);

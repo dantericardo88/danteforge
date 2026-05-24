@@ -49,6 +49,14 @@ export interface WorkPacket {
 
   createdAt: string;
   createdBy?: string;            // workstream or human
+
+  // Depth doctrine: breadth waves write new modules (ceiling 6); depth waves
+  // run outcomes on existing code to unlock scores 7-9 via receipts.
+  waveType?: 'breadth' | 'depth';
+  /** Score ceiling for this packet. Breadth waves: 6. Depth waves: 9. */
+  scoreCeiling?: number;
+  /** Depth waves: outcome IDs to run (filtered by tier). */
+  focusedOutcomeIds?: string[];
 }
 
 export interface WorkGraph {

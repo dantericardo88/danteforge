@@ -315,6 +315,145 @@ export async function writeCoverageReport(
 }
 
 // ---------------------------------------------------------------------------
+// Requirement coverage (forge-output traceability)
+// ---------------------------------------------------------------------------
+
+/**
+ * Coverage result when matching a spec against forge output.
+ * All pure-string based — no filesystem I/O.
+ */
+export interface RequirementCoverage {
+  total: number;
+  matched: number;
+  unmatched: string[];
+  coveragePercent: number;
+}
+
+/**
+ * Extracts discrete requirement strings from spec text.
+ * Recognises:
+ *   - Numbered items:   "1. …" or "1) …"
+ *   - REQ identifiers:  "REQ-042: …"
+ *   - Checkboxes:       "- [ ] …" / "- [x] …"
+ *   - Bold Must/Should: "**Must** …" / "**Should** …"
+ *   - Acceptance lines: lines inside an "Acceptance Criteria" block that start with "- " or "* "
+ *
+ * Returns the requirement *text* (not the ID) for each parsed line.
+ */
+export function parseSpecRequirements(spec: string): string[] {
+  const lines = spec.split('\n');
+  const results: string[] = [];
+  let inAcceptanceCriteria = false;
+
+  for (const raw of lines) {
+    const line = raw.trim();
+    if (!line) continue;
+
+    // Detect acceptance-criteria section headers
+    if (/^#+\s*(acceptance\s+criteria|ac\b)/i.test(line)) {
+      inAcceptanceCriteria = true;
+      continue;
+    }
+    // Leave acceptance-criteria section when another heading appears
+    if (/^#+\s/.test(line) && inAcceptanceCriteria) {
+      inAcceptanceCriteria = false;
+    }
+
+    // Bold Must / Should markers
+    const boldMatch = /^\*\*(Must|Should)\*\*[:\s]+(.+)/i.exec(line);
+    if (boldMatch) {
+      const text = boldMatch[2]!.trim();
+      if (text.length > 0) { results.push(text); }
+      continue;
+    }
+
+    // Acceptance-criteria bullet points
+    if (inAcceptanceCriteria) {
+      const acMatch = /^[-*]\s+(.+)/.exec(line);
+      if (acMatch) {
+        const text = acMatch[1]!.trim();
+        if (text.length > 0) { results.push(text); }
+        continue;
+      }
+    }
+
+    // REQ-NNN format requirement identifier lines (e.g. "REQ-001: description")
+    const reqIdMatch = /^(REQ-\d+)[:\s]+(.+)/i.exec(line);
+    if (reqIdMatch) {
+      const text = reqIdMatch[2]!.trim();
+      if (text.length > 0) { results.push(text); }
+      continue;
+    }
+
+    // Numbered list items
+    const numberedMatch = /^(\d+)[.)]\s+(.+)/.exec(line);
+    if (numberedMatch) {
+      const text = numberedMatch[2]!.trim();
+      if (text.length > 0) { results.push(text); }
+      continue;
+    }
+
+    // Checkbox items (- [ ] or - [x])
+    const checkboxMatch = /^-\s+\[[ xX]\]\s+(.+)/.exec(line);
+    if (checkboxMatch) {
+      const text = checkboxMatch[1]!.trim();
+      if (text.length > 0) { results.push(text); }
+    }
+  }
+
+  return results;
+}
+
+/**
+ * Checks whether a single requirement string is satisfied by forge output.
+ * Uses a keyword-overlap heuristic: at least one meaningful keyword (>3 chars)
+ * from the requirement must appear in the forge output (case-insensitive).
+ */
+function requirementMatchesOutput(requirement: string, forgeOutput: string): boolean {
+  const lower = forgeOutput.toLowerCase();
+  const keywords = requirement
+    .toLowerCase()
+    .replace(/[^a-z0-9\s]/g, ' ')
+    .split(/\s+/)
+    .filter((w) => w.length > 3);
+
+  return keywords.some((kw) => lower.includes(kw));
+}
+
+/**
+ * Computes how many spec requirements are addressed by forge output.
+ * All pure strings — no filesystem I/O.
+ *
+ * @param spec        Raw spec text (markdown / plain text)
+ * @param forgeOutput The generated code / output to check against
+ */
+export function computeRequirementCoverage(
+  spec: string,
+  forgeOutput: string,
+): RequirementCoverage {
+  const requirements = parseSpecRequirements(spec);
+  const total = requirements.length;
+
+  if (total === 0) {
+    return { total: 0, matched: 0, unmatched: [], coveragePercent: 0 };
+  }
+
+  const unmatched: string[] = [];
+  let matched = 0;
+
+  for (const req of requirements) {
+    if (requirementMatchesOutput(req, forgeOutput)) {
+      matched++;
+    } else {
+      unmatched.push(req);
+    }
+  }
+
+  const coveragePercent = Math.round((matched / total) * 100);
+  return { total, matched, unmatched, coveragePercent };
+}
+
+// ---------------------------------------------------------------------------
 // Load spec text
 // ---------------------------------------------------------------------------
 

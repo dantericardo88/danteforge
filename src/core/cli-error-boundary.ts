@@ -4,11 +4,21 @@
 import { logger } from './logger.js';
 import { DanteError } from './errors.js';
 import { GateError } from './gates.js';
-import { formatAndLogError } from './format-error.js';
+import { formatAndLogError, suggestNextStep } from './format-error.js';
 
 export interface ErrorBoundaryOptions {
   _logger?: typeof logger;
   _verbose?: boolean;
+}
+
+/**
+ * Emit a recovery hint when not in verbose mode.
+ * Guides users toward --verbose for deeper diagnosis.
+ */
+function emitRecoveryHint(log: typeof logger, verbose: boolean): void {
+  if (!verbose && !process.env.DANTEFORGE_VERBOSE) {
+    log.error('  Run with --verbose for the full stack trace, or --help for usage.');
+  }
 }
 
 export async function withErrorBoundary(
@@ -33,11 +43,16 @@ export async function withErrorBoundary(
       } else if (err instanceof Error) {
         log.error(`Unexpected error in "${commandName}": ${err.message}`);
         if (verbose && err.stack) log.verbose(err.stack);
+        const suggestion = suggestNextStep(err.message);
+        if (suggestion) log.error(`  Suggestion: ${suggestion}`);
+        emitRecoveryHint(log, verbose);
       } else {
         log.error(`Unexpected error in "${commandName}": ${String(err)}`);
+        emitRecoveryHint(log, verbose);
       }
     } else {
       formatAndLogError(err, commandName);
+      emitRecoveryHint(log, verbose);
     }
     process.exitCode = 1;
   }

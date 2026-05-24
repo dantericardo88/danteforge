@@ -17,6 +17,7 @@ import { runProof, generateProofReport } from '../../core/proof-engine.js';
 import type { ProofEngineOptions, ProofReport, PipelineProofOptions, PipelineProofReport, ConvergenceProofOptions, ConvergenceProofReport } from '../../core/proof-engine.js';
 import type { SemanticScoringOptions } from '../../core/pdse-semantic.js';
 import type { ScoreHistoryEntry } from '../../core/state.js';
+import { buildProvenanceSummary, formatProvenanceSummary, type ProvenanceSummaryDeps } from '../../core/provenance-summary.js';
 
 // ── Score Arc ─────────────────────────────────────────────────────────────────
 
@@ -96,12 +97,14 @@ export interface ProofCommandOptions {
   skipGit?: boolean;
   strictGitBinding?: boolean;
   since?: string;
+  summary?: boolean;
   cwd?: string;
   semantic?: boolean;
   _runProof?: (rawPrompt: string, opts?: ProofEngineOptions) => Promise<ProofReport>;
   _runPipelineProof?: (opts?: PipelineProofOptions) => Promise<PipelineProofReport>;
   _runConvergenceProof?: (opts?: ConvergenceProofOptions) => Promise<ConvergenceProofReport>;
   _loadScoreHistory?: (cwd: string) => Promise<{ history: ScoreHistoryEntry[]; currentScore: number }>;
+  _buildProvenanceSummary?: (cwd: string, deps?: ProvenanceSummaryDeps) => ReturnType<typeof buildProvenanceSummary>;
   _stdout?: (line: string) => void;
   _semanticOpts?: SemanticScoringOptions;
 }
@@ -131,6 +134,16 @@ export async function proof(options: ProofCommandOptions = {}): Promise<void> {
     const { history, currentScore } = await loadHistory(cwd);
     const arc = buildScoreArc(options.since, history, currentScore);
     for (const line of arc.markdown.split('\n')) {
+      out(line);
+    }
+    return;
+  }
+
+  if (options.summary) {
+    const summaryBuilder = options._buildProvenanceSummary ?? buildProvenanceSummary;
+    const summary = await summaryBuilder(cwd);
+    const text = formatProvenanceSummary(summary);
+    for (const line of text.split('\n')) {
       out(line);
     }
     return;

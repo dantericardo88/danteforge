@@ -3,6 +3,7 @@
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import type { PatternExtraction } from './oss-researcher.js';
+import { getOssCacheRoot, getOssCacheRepoDir } from './oss-cache.js';
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -21,39 +22,39 @@ export interface OSSRegistryEntry {
   lastLearnedAt: string;
   /** Number of patterns extracted */
   patternsCount: number;
-  /** Relative path from cwd to stored repo, e.g. ".danteforge/oss-repos/express" */
+  /** Absolute path to the stored repo in the shared OSS cache (e.g. X:\Projects\OSSHarvest\express) */
   storagePath: string;
   /** Extracted patterns stored inline for holistic synthesis */
   patterns: PatternExtraction[];
 }
 
 export interface OSSRegistry {
-  version: '1';
+  version: string;
   repos: OSSRegistryEntry[];
   updatedAt: string;
+  entries?: Record<string, unknown>;
+  [key: string]: unknown;
 }
 
 // ── Path helpers ──────────────────────────────────────────────────────────────
 
 const REGISTRY_FILENAME = 'oss-registry.json';
-const OSS_REPOS_DIRNAME = 'oss-repos';
 
 function getDanteforgeDir(cwd?: string): string {
   return path.join(cwd ?? process.cwd(), '.danteforge');
 }
 
-/** Absolute path to `.danteforge/oss-repos/` */
+/** Absolute path to the shared OSS clone cache root (e.g. X:\Projects\OSSHarvest). */
 export function getOssReposDir(cwd?: string): string {
-  return path.join(getDanteforgeDir(cwd), OSS_REPOS_DIRNAME);
+  return getOssCacheRoot(cwd);
 }
 
 /**
- * Absolute path to `.danteforge/oss-repos/{safeName}`.
+ * Absolute path to the shared cache directory for a given repo name.
  * Normalises the repo name to a safe directory name.
  */
 export function getRepoStoragePath(repoName: string, cwd?: string): string {
-  const safeName = repoName.replace(/[^a-z0-9-]/gi, '-').toLowerCase();
-  return path.join(getOssReposDir(cwd), safeName);
+  return getOssCacheRepoDir(repoName, cwd);
 }
 
 // ── Load / Save ───────────────────────────────────────────────────────────────
@@ -64,6 +65,7 @@ export async function loadRegistry(cwd?: string): Promise<OSSRegistry> {
   try {
     const raw = await fs.readFile(registryPath, 'utf8');
     const parsed = JSON.parse(raw) as OSSRegistry;
+    parsed.repos ??= legacyEntriesToRepos(parsed.entries, cwd);
     // Ensure patterns field exists on every entry (backwards compat)
     for (const repo of parsed.repos ?? []) {
       repo.patterns ??= [];
@@ -72,6 +74,35 @@ export async function loadRegistry(cwd?: string): Promise<OSSRegistry> {
   } catch {
     return { version: '1', repos: [], updatedAt: new Date().toISOString() };
   }
+}
+
+function legacyEntriesToRepos(entries: unknown, cwd?: string): OSSRegistryEntry[] {
+  if (!entries || typeof entries !== 'object' || Array.isArray(entries)) {
+    return [];
+  }
+
+  return Object.entries(entries as Record<string, Record<string, unknown>>)
+    .filter(([, entry]) => typeof entry?.url === 'string')
+    .map(([key, entry]) => {
+      const name = typeof entry.name === 'string' ? entry.name : key;
+      const harvestedAt = typeof entry.harvestedAt === 'string'
+        ? entry.harvestedAt
+        : new Date().toISOString();
+      const licenseGate = typeof entry.licenseGate === 'string' ? entry.licenseGate : '';
+      return {
+        name,
+        url: entry.url as string,
+        license: typeof entry.license === 'string' ? entry.license : 'unknown',
+        status: licenseGate === 'blocked' ? 'blocked' : 'active',
+        clonedAt: harvestedAt,
+        lastLearnedAt: harvestedAt,
+        patternsCount: typeof entry.patternCount === 'number' ? entry.patternCount : 0,
+        storagePath: typeof entry.storagePath === 'string'
+          ? entry.storagePath
+          : getOssCacheRepoDir(name, cwd),
+        patterns: [],
+      };
+    });
 }
 
 /** Persist registry to disk. Automatically updates `updatedAt`. */

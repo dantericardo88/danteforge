@@ -12,6 +12,7 @@
 import { type LLMProvider } from './config.js';
 import { type AdversaryResolution } from './config.js';
 import { type HarshScoreResult, type ScoringDimension } from './harsh-scorer.js';
+import { SCORING_RULES_FOR_LLM_PROMPT } from './scoring-doctrine.js';
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -84,8 +85,9 @@ function buildDimensionPrompt(
     ? `IMPORTANT: Play the role of a skeptical external evaluator. Score independently — do NOT anchor to any prior score.\n\n`
     : '';
 
-  return `${selfChallengePreamble}You are a hostile technical reviewer hired by a competitor.
-Score the "${dimension}" dimension of this software project from 0 to 10.
+  return `${selfChallengePreamble}${SCORING_RULES_FOR_LLM_PROMPT}
+
+You are a hostile technical reviewer scoring the "${dimension}" dimension from 0 to 10.
 
 SCALE:
   0  — broken or absent
@@ -95,10 +97,8 @@ SCALE:
   9  — best-in-class (top 10% of similar tools)
   10 — industry-defining
 
-RULES:
-  - Score COMPETITIVE POSITION, not just whether the feature exists
+ADDITIONAL RULES:
   - A feature that EXISTS but is NOT CALLED from the execution path scores no higher than 4
-  - Most projects overestimate by 1-2 points — be aggressive
   - Do NOT give 7+ unless evidence is concrete and specific
   - Do NOT anchor to any self-reported score — score cold from the evidence alone
 
@@ -115,12 +115,13 @@ function buildSummaryPrompt(
     ? `IMPORTANT: Play the role of a skeptical external evaluator. Score independently — do NOT anchor to any prior score.\n\n`
     : '';
 
-  return `${selfChallengePreamble}You are a hostile technical reviewer hired by a competitor.
-Score this software project overall from 0 to 10.
+  return `${selfChallengePreamble}${SCORING_RULES_FOR_LLM_PROMPT}
+
+You are a hostile technical reviewer scoring this project overall from 0 to 10.
 
 SCALE: 0=broken, 3=has gaps, 5=average, 7=competitive, 9=best-in-class, 10=industry-defining
 Score COMPETITIVE POSITION — does this beat leading alternatives at its core mission?
-Most projects overestimate by 1-2 points. Be aggressive. Do NOT anchor to any self-reported score.
+Do NOT anchor to any self-reported score.
 
 PROJECT CONTEXT:
 ${projectContext}

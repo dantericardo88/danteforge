@@ -427,8 +427,11 @@ describe('verify --light mode', () => {
       const jsonOutput = stdoutWrites.join('');
       assert.ok(jsonOutput.includes('"status":"pass"'), 'json verify should still succeed after rerunning fast proofs');
       const stderrOutput = stderrWrites.join('');
-      assert.match(stderrOutput, /fresh test proof unavailable \(the worktree changed since the last proof\); running npm test/);
-      assert.match(stderrOutput, /fresh build proof unavailable \(the worktree changed since the last proof\); running npm run build/);
+      // Verify emits "[Running test suite] running npm test (the worktree changed since the last proof)..."
+      // when the receipt is stale. The previous phrasing was refactored; this assertion
+      // matches the substring pattern emitted by src/cli/commands/verify.ts.
+      assert.match(stderrOutput, /running npm test \(the worktree changed since the last proof\)/);
+      assert.match(stderrOutput, /running npm run build \(the worktree changed since the last proof\)/);
     });
   });
 });

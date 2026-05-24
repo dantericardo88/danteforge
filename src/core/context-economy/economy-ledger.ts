@@ -4,11 +4,13 @@
 import fs from 'fs/promises';
 import path from 'path';
 import crypto from 'crypto';
-import type { LedgerRecord, LedgerSummary, FilterStatus } from './types.js';
+import type { LedgerRecord, LedgerSummary, FilterStatus, CommandCostRecord, CommandSpendReport, EconomyLedger, LedgerStats } from './types.js';
 
 export type { LedgerRecord } from './types.js';
+export type { CommandCostRecord, CommandSpendReport, EconomyLedger, LedgerStats } from './types.js';
 
 const LEDGER_DIR = '.danteforge/evidence/context-economy';
+const COMMAND_COST_FILE = '.danteforge/evidence/command-costs.jsonl';
 
 function ledgerPath(cwd: string, date?: string): string {
   const d = date ?? new Date().toISOString().slice(0, 10);
@@ -181,4 +183,188 @@ export function formatLedgerReport(summary: LedgerSummary, json?: boolean): stri
   }
 
   return lines.join('\n');
+}
+
+// ── Command Cost Tracking ─────────────────────────────────────────────────────
+
+/**
+ * Append a per-command token cost record so callers can correlate
+ * token spend with specific CLI commands and outcome quality.
+ *
+ * @param command        The CLI command name (e.g. "forge", "verify").
+ * @param tokensIn       Input tokens consumed by the LLM call.
+ * @param tokensOut      Output tokens produced by the LLM call.
+ * @param outcomeQuality Optional 0–10 quality score for the outcome (used for ROI).
+ * @param cwd            Project root directory. Defaults to process.cwd().
+ */
+export async function trackCommandCost(
+  command: string,
+  tokensIn: number,
+  tokensOut: number,
+  outcomeQuality?: number,
+  cwd: string = process.cwd(),
+): Promise<void> {
+  const record: CommandCostRecord = {
+    timestamp: new Date().toISOString(),
+    command,
+    tokensIn,
+    tokensOut,
+    totalTokens: tokensIn + tokensOut,
+    ...(outcomeQuality !== undefined ? { outcomeQuality } : {}),
+  };
+  const file = path.join(cwd, COMMAND_COST_FILE);
+  await fs.mkdir(path.dirname(file), { recursive: true });
+  await fs.appendFile(file, JSON.stringify(record) + '\n', 'utf8');
+}
+
+/**
+ * Load all command cost records and return an aggregated spend report
+ * broken down by command name.
+ *
+ * @param cwd Project root directory. Defaults to process.cwd().
+ */
+export async function getSpendReport(cwd: string = process.cwd()): Promise<CommandSpendReport> {
+  const file = path.join(cwd, COMMAND_COST_FILE);
+  let records: CommandCostRecord[] = [];
+  try {
+    const raw = await fs.readFile(file, 'utf8');
+    records = raw
+      .split('\n')
+      .filter(Boolean)
+      .map((line) => JSON.parse(line) as CommandCostRecord);
+  } catch {
+    // No cost file yet — return empty report.
+  }
+
+  const byCommand = new Map<string, {
+    callCount: number;
+    totalTokensIn: number;
+    totalTokensOut: number;
+    totalTokens: number;
+    qualitySum: number;
+    qualityCount: number;
+  }>();
+
+  for (const r of records) {
+    const entry = byCommand.get(r.command) ?? {
+      callCount: 0,
+      totalTokensIn: 0,
+      totalTokensOut: 0,
+      totalTokens: 0,
+      qualitySum: 0,
+      qualityCount: 0,
+    };
+    entry.callCount++;
+    entry.totalTokensIn += r.tokensIn;
+    entry.totalTokensOut += r.tokensOut;
+    entry.totalTokens += r.totalTokens;
+    if (r.outcomeQuality !== undefined) {
+      entry.qualitySum += r.outcomeQuality;
+      entry.qualityCount++;
+    }
+    byCommand.set(r.command, entry);
+  }
+
+  let grandTotalTokensIn = 0;
+  let grandTotalTokensOut = 0;
+  let grandTotalTokens = 0;
+
+  const commands = [...byCommand.entries()]
+    .sort((a, b) => b[1].totalTokens - a[1].totalTokens)
+    .map(([command, entry]) => {
+      grandTotalTokensIn += entry.totalTokensIn;
+      grandTotalTokensOut += entry.totalTokensOut;
+      grandTotalTokens += entry.totalTokens;
+      return {
+        command,
+        callCount: entry.callCount,
+        totalTokensIn: entry.totalTokensIn,
+        totalTokensOut: entry.totalTokensOut,
+        totalTokens: entry.totalTokens,
+        ...(entry.qualityCount > 0
+          ? { avgOutcomeQuality: Math.round((entry.qualitySum / entry.qualityCount) * 100) / 100 }
+          : {}),
+      };
+    });
+
+  return {
+    generatedAt: new Date().toISOString(),
+    commands,
+    grandTotalTokensIn,
+    grandTotalTokensOut,
+    grandTotalTokens,
+  };
+}
+
+// ── EconomyLedger helpers ─────────────────────────────────────────────────────
+
+const ECONOMY_LEDGER_FILE = '.danteforge/economy-ledger.json';
+
+/**
+ * Compute aggregate statistics from an EconomyLedger.
+ * Returns topFilters sorted by total tokens saved (descending), up to 5 entries.
+ */
+export function getLedgerStats(ledger: EconomyLedger): LedgerStats {
+  const { entries } = ledger;
+  if (entries.length === 0) {
+    return { entryCount: 0, totalFiltered: 0, avgSavingsPct: 0, topFilters: [] };
+  }
+
+  let totalFiltered = 0;
+  let savingsPctSum = 0;
+  const filterSavings = new Map<string, number>();
+
+  for (const e of entries) {
+    totalFiltered += e.savedTokens;
+    savingsPctSum += e.savingsPercent;
+    if (e.savedTokens > 0) {
+      filterSavings.set(e.filterId, (filterSavings.get(e.filterId) ?? 0) + e.savedTokens);
+    }
+  }
+
+  const avgSavingsPct = Math.round(savingsPctSum / entries.length);
+
+  const topFilters = [...filterSavings.entries()]
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, 5)
+    .map(([filterId]) => filterId);
+
+  return { entryCount: entries.length, totalFiltered, avgSavingsPct, topFilters };
+}
+
+/**
+ * Prune an EconomyLedger to keep only the most recent `keepLastN` entries.
+ * Returns a new EconomyLedger; the original is not mutated.
+ */
+export function pruneLedger(ledger: EconomyLedger, keepLastN: number): EconomyLedger {
+  const kept = keepLastN <= 0 ? [] : ledger.entries.slice(-keepLastN);
+  return {
+    entries: kept,
+    createdAt: ledger.createdAt,
+    updatedAt: new Date().toISOString(),
+  };
+}
+
+/**
+ * Persist an EconomyLedger to `.danteforge/economy-ledger.json` inside `cwd`.
+ */
+export async function saveLedger(cwd: string, ledger: EconomyLedger): Promise<void> {
+  const file = path.join(cwd, ECONOMY_LEDGER_FILE);
+  await fs.mkdir(path.dirname(file), { recursive: true });
+  await fs.writeFile(file, JSON.stringify(ledger, null, 2), 'utf8');
+}
+
+/**
+ * Load an EconomyLedger from `.danteforge/economy-ledger.json` inside `cwd`.
+ * Returns an empty ledger if the file does not exist or is corrupt.
+ */
+export async function loadLedger(cwd: string): Promise<EconomyLedger> {
+  const file = path.join(cwd, ECONOMY_LEDGER_FILE);
+  try {
+    const raw = await fs.readFile(file, 'utf8');
+    return JSON.parse(raw) as EconomyLedger;
+  } catch {
+    const now = new Date().toISOString();
+    return { entries: [], createdAt: now, updatedAt: now };
+  }
 }

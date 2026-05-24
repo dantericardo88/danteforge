@@ -5,6 +5,14 @@ description: "Zero-token planning preset - review through tasks for new ideas an
 
 # /spark - Zero-Token Planning Preset
 
+## Depth Doctrine (MANDATORY — for planning output)
+
+When generating tasks, use TWO task types:
+- **[FORGE]**: implement module + test, ceiling 6. Include 3 callsite answers.
+- **[VALIDATE]**: run `danteforge validate <dim>`, ceiling 9. Include receipt path.
+
+No mocks, no stubs, no TODOs in any planned work.
+
 When the user invokes `/spark`, execute the planning-only preset in the workspace:
 
 1. `review`
