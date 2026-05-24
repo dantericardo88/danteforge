@@ -37,6 +37,10 @@ export interface CIPResult {
   outcomesPassed: number;
   /** null when no capability_test is declared for this dimension. */
   capabilityTestPassed: boolean | null;
+  /** Outcomes whose command/id share no keywords with the dimension ID. */
+  irrelevantOutcomes: number;
+  /** Age of the newest outcome-evidence receipt in days. null = no receipts found. */
+  evidenceAgeDays: number | null;
 }
 
 export interface CIPOptions {
@@ -157,7 +161,27 @@ function makeMissingResult(dimensionId: string, storedScore: number, gaps: strin
     outcomesRun: 0,
     outcomesPassed: 0,
     capabilityTestPassed: null,
+    irrelevantOutcomes: 0,
+    evidenceAgeDays: null,
   };
+}
+
+// Returns age in ms of the newest outcome-evidence receipt for this dim, or null if none exist.
+async function newestEvidenceAgeMs(dimId: string, cwd: string): Promise<number | null> {
+  const dir = path.join(cwd, '.danteforge', 'outcome-evidence');
+  const safeDim = dimId.replace(/[^a-z0-9]/gi, '-');
+  let entries: import('node:fs').Dirent[];
+  try { entries = await fs.readdir(dir, { withFileTypes: true }); }
+  catch { return null; }
+  const relevant = entries.filter(e => e.isFile() && e.name.includes(safeDim) && e.name.endsWith('.json'));
+  if (relevant.length === 0) return null;
+  const ages = await Promise.all(relevant.map(async e => {
+    try {
+      const rec = JSON.parse(await fs.readFile(path.join(dir, e.name), 'utf8')) as { ranAt?: string };
+      return rec.ranAt ? Date.now() - new Date(rec.ranAt).getTime() : Infinity;
+    } catch { return Infinity; }
+  }));
+  return Math.min(...ages);
 }
 
 // ── Main ──────────────────────────────────────────────────────────────────────
@@ -206,11 +230,13 @@ export async function runCIPCheck(
   // Step 1: capability_test (Fix A gate — Scoring Doctrine Rule 10)
   const capTestResult = await runCapabilityTest(dim, cwd);
 
-  // Step 2: Re-execute declared outcomes directly — never trust stored evidence (Rule 9)
+  // Step 2: Re-execute declared outcomes directly — never trust stored evidence (Rule 9).
+  // Concurrently load evidence receipt age (freshness gate, Step 6b).
   const rawOutcomes = dimRaw['outcomes'] as DeclaredOutcome[] | undefined;
-  const { total: outcomesRun, passing: outcomesPassed } = await runDeclaredOutcomes(
-    rawOutcomes ?? [], cwd, timeoutMs,
-  );
+  const [{ total: outcomesRun, passing: outcomesPassed }, evidenceAgeMs] = await Promise.all([
+    runDeclaredOutcomes(rawOutcomes ?? [], cwd, timeoutMs),
+    newestEvidenceAgeMs(dimensionId, cwd),
+  ]);
 
   // Step 3: Stubs in critical path (Rule 7 — receipts required)
   let stubsInCriticalPath = 0;
@@ -241,9 +267,37 @@ export async function runCIPCheck(
   // Step 6: Quality ceiling — weakest outcome kind limits the max achievable score.
   // File-existence→7.0, unit-tests→8.0, cli-smoke→8.5, E2E→9.0, benchmark→9.5.
   const outcomesToClassify = (rawOutcomes ?? []) as Parameters<typeof classifyOutcomeKind>[0][];
-  const qualityCeiling = outcomesToClassify.length > 0
+  let qualityCeiling = outcomesToClassify.length > 0
     ? Math.min(...outcomesToClassify.map(o => classifyOutcomeKind(o).maxScore))
     : 9.0;
+
+  // Step 6a: Outcome relevance check — all outcomes must share at least one keyword with
+  // the dimension ID. If none do, the ceiling drops to 7.0 (structural-only tier).
+  const dimKeywords = dimensionId.split('_').filter(w => w.length >= 4);
+  const irrelevantCount = (rawOutcomes ?? []).filter(o => {
+    const text = `${o.command ?? ''} ${o.id ?? ''}`.toLowerCase();
+    return dimKeywords.length > 0 && !dimKeywords.some(kw => text.includes(kw));
+  }).length;
+  const allOutcomesIrrelevant = (rawOutcomes ?? []).length > 0 && irrelevantCount === (rawOutcomes ?? []).length;
+  if (allOutcomesIrrelevant) {
+    qualityCeiling = Math.min(qualityCeiling, 7.0);
+    gaps.push(`all ${irrelevantCount} outcome(s) may not exercise this dimension — scope command or add explicit kind field`);
+  }
+
+  // Step 6b: Evidence freshness gate — T7 (≥9.0) requires receipts ≤7 days old.
+  // CIP still re-executes outcomes cold (Rule 9). This is an additional structural check.
+  const SEVEN_DAYS_MS = 7 * 24 * 60 * 60 * 1000;
+  const evidenceAgeDays = evidenceAgeMs !== null ? evidenceAgeMs / 86_400_000 : null;
+  let freshnessBlocks = false;
+  if (storedScore >= 9.0) {
+    if (evidenceAgeMs === null) {
+      gaps.push('score ≥9.0 but no outcome-evidence receipts found — run `danteforge validate <id>`');
+      freshnessBlocks = true;
+    } else if (evidenceAgeMs > SEVEN_DAYS_MS) {
+      gaps.push(`T7 score but evidence is ${Math.round(evidenceAgeDays!)}d old (max 7d) — run \`danteforge validate\``);
+      freshnessBlocks = true;
+    }
+  }
 
   const cipScore = Math.min(capResult.cap, qualityCeiling, 9.5);
   const cipClass = classifyStatus(capResult);
@@ -272,7 +326,8 @@ export async function runCIPCheck(
     cipScore < target - 0.5 ||
     stubsInCriticalPath > 0 ||
     capabilityTestPassed === false ||
-    outcomesRun === 0;
+    outcomesRun === 0 ||
+    freshnessBlocks;
 
   return {
     dimensionId,
@@ -285,5 +340,7 @@ export async function runCIPCheck(
     outcomesRun,
     outcomesPassed,
     capabilityTestPassed,
+    irrelevantOutcomes: irrelevantCount,
+    evidenceAgeDays,
   };
 }

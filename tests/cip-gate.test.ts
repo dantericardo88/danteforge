@@ -41,6 +41,8 @@ function blockedCIP(dimensionId: string): CIPResult {
     outcomesRun: 0,
     outcomesPassed: 0,
     capabilityTestPassed: null,
+    irrelevantOutcomes: 0,
+    evidenceAgeDays: null,
   };
 }
 
@@ -56,6 +58,8 @@ function passingCIP(dimensionId: string): CIPResult {
     outcomesRun: 3,
     outcomesPassed: 3,
     capabilityTestPassed: true,
+    irrelevantOutcomes: 0,
+    evidenceAgeDays: 1,
   };
 }
 
