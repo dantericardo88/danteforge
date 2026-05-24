@@ -46,6 +46,10 @@ function baseOpts(overrides: Partial<HardenCrusadeOptions> = {}): HardenCrusadeO
     _runAutoResearch: async () => { /* no-op */ },
     _runOutcomesForDim: async () => { /* no-op */ },
     _writeFile: async () => { /* no-op */ },
+    // CIP pass-through: tests run without a real project dir; bypass the matrix.json check
+    _cipCheck: async () => ({ passed: true, gaps: [], score: 1.0, cipScore: 1.0, blocksFrontierReached: false }),
+    // Autonomy rules bypass: tests run without crusade state on disk
+    _checkAutonomyRules: null,
     ...overrides,
   };
 }
