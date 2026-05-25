@@ -1,6 +1,9 @@
 // testing-dimension.test.ts — Tests for mutation-score-tracker, test-coverage-analyzer, and test-coverage command
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
+import fs from 'node:fs/promises';
+import os from 'node:os';
+import path from 'node:path';
 import {
   recordMutationScore,
   getMutationSummary,
@@ -308,6 +311,27 @@ describe('analyzeTestCoverage', () => {
     const report = await analyzeTestCoverage('src', 'tests', mockGlob, '/tmp/proj');
     if (report.suggestions.length > 0) {
       assert.ok(report.suggestions[0]!.includes('my-module'));
+    }
+  });
+
+  it('counts nested tests that import a source module', async () => {
+    const cwd = await fs.mkdtemp(path.join(os.tmpdir(), 'dante-coverage-nested-'));
+    try {
+      await fs.mkdir(path.join(cwd, 'src/core'), { recursive: true });
+      await fs.mkdir(path.join(cwd, 'tests/matrix'), { recursive: true });
+      await fs.writeFile(path.join(cwd, 'src/core/lease-manager.ts'), 'export const leaseManager = true;\n');
+      await fs.writeFile(
+        path.join(cwd, 'tests/matrix/lease-manager-behavior.test.ts'),
+        "import { leaseManager } from '../../src/core/lease-manager.js';\n",
+      );
+
+      const report = await analyzeTestCoverage('src', 'tests', undefined, cwd);
+
+      assert.equal(report.coveragePercent, 100);
+      assert.deepEqual(report.covered, ['lease-manager']);
+      assert.deepEqual(report.uncovered, []);
+    } finally {
+      await fs.rm(cwd, { recursive: true, force: true });
     }
   });
 });

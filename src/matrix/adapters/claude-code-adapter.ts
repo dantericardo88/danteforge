@@ -275,14 +275,18 @@ export class ClaudeCodeAdapter implements AgentAdapter {
         const gitDiff = this.options._gitDiff ?? defaultGitDiff;
         const changedAfterJudge = await gitDiff(worktreeRoot);
         if (changedAfterJudge.length > 0) {
-          logger.warn(`[ClaudeCodeAdapter] judge ${runId} modified ${changedAfterJudge.length} file(s) — reverting and invalidating verdict`);
+          logger.warn(`[ClaudeCodeAdapter] judge ${runId} modified ${changedAfterJudge.length} file(s) — reverting; preserving text output`);
           const revertFile = this.options._revertFile ?? defaultRevertFile;
           await Promise.allSettled(changedAfterJudge.map(f => revertFile(worktreeRoot, f)));
-          state.capturedOutput = '';  // clear so resolveFinalMessage uses finalMessage below
-          state.finalMessage = '(judge modified worktree — verdict invalidated)';
-          state.status = 'failed';
-          state.errorReason = `judge_wrote_files: ${changedAfterJudge.join(', ')}`;
-          finalize(state, runId);
+          // Preserve the text output — it contains the verdict/rebuttal reasoning
+          // even when the adapter also wrote files. Files are reverted (worktree safe);
+          // text is kept so the caller can parse VERDICT:/REBUTTAL: fields.
+          state.errorReason = `judge_wrote_files_reverted: ${changedAfterJudge.join(', ')}`;
+          state.finalMessage = state.capturedOutput.trim() || '(judge modified worktree — no text output)';
+          state.capturedOutput = '';  // let resolveFinalMessage use finalMessage
+          state.status = 'completed';
+          state.events.push({ eventId: `${runId}.complete`, runId, ts: now(), kind: 'completed' });
+          state.endMs = Date.now();
           return;
         }
         state.finalMessage = state.capturedOutput.trim() || '(no judge output)';

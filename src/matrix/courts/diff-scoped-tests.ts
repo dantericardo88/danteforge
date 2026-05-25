@@ -22,6 +22,7 @@
 
 import fs from 'node:fs/promises';
 import path from 'node:path';
+import { matchesGlob } from '../util/glob.js';
 
 const TESTS_ROOT = 'tests';
 
@@ -113,7 +114,7 @@ export async function selectTestsForDiff(options: SelectTestsOptions): Promise<s
  * `.ts` and `.js` extensions.
  */
 function testImportsAnyOf(testContent: string, changedFiles: string[]): boolean {
-  const importPattern = /(?:from|import\(|require\()\s*['"]([^'"]+)['"]/g;
+  const importPattern = /(?:from\s*|import\s*\(\s*|require\s*\(\s*|^\s*import\s+)['"]([^'"]+)['"]/gm;
   let match: RegExpExecArray | null;
   const imports: string[] = [];
   while ((match = importPattern.exec(testContent)) !== null) {
@@ -142,7 +143,7 @@ function resolveAlwaysRun(allTests: string[], alwaysRun: string[]): string[] {
   const normalized = alwaysRun.map(p => p.replace(/\\/g, '/'));
   for (const test of allTests) {
     const norm = test.replace(/\\/g, '/');
-    if (normalized.some(p => norm === p || norm.endsWith(`/${p}`))) {
+    if (normalized.some(p => norm === p || norm.endsWith(`/${p}`) || matchesGlob(norm, p))) {
       out.push(test);
     }
   }

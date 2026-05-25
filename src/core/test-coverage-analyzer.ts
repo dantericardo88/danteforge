@@ -46,7 +46,7 @@ export async function analyzeTestCoverage(
   const srcFiles = await globFn(srcPattern, { cwd });
 
   // Discover all test files
-  const testPattern = path.posix.join(testDir.replace(/\\/g, '/'), '*.test.ts');
+  const testPattern = path.posix.join(testDir.replace(/\\/g, '/'), '**', '*.test.ts');
   const testFiles = await globFn(testPattern, { cwd });
 
   // Build a set of module names referenced in test files (import scan)
@@ -141,8 +141,38 @@ async function defaultGlob(pattern: string, options?: { cwd?: string }): Promise
   const fs = fsModule;
   const cwd = options?.cwd ?? process.cwd();
 
+  const normalizedPattern = pattern.replace(/\\/g, '/');
+  const recursiveMarker = '/**/';
+  if (normalizedPattern.includes(recursiveMarker)) {
+    const [rootDir, leafPattern] = normalizedPattern.split(recursiveMarker, 2);
+    const suffix = leafPattern?.replace('*', '') ?? '';
+    if (!rootDir || !suffix) return [];
+
+    const out: string[] = [];
+    async function walk(dir: string): Promise<void> {
+      let entries: import('node:fs').Dirent[];
+      try {
+        entries = await fs.readdir(path.join(cwd, dir), { withFileTypes: true });
+      } catch {
+        return;
+      }
+
+      for (const entry of entries) {
+        const rel = path.posix.join(dir, entry.name);
+        if (entry.isDirectory()) {
+          await walk(rel);
+        } else if (entry.isFile() && entry.name.endsWith(suffix)) {
+          out.push(rel);
+        }
+      }
+    }
+
+    await walk(rootDir);
+    return out.sort();
+  }
+
   // Parse pattern: split on last '*' wildcard segment
-  const parts = pattern.split('/');
+  const parts = normalizedPattern.split('/');
   const dir = parts.slice(0, -1).join('/');
   const ext = parts[parts.length - 1]?.replace('*', '') ?? '.ts';
 

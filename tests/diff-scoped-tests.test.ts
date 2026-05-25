@@ -11,7 +11,9 @@ const FAKE_TESTS = [
   'tests/foo-edge.test.ts',
   'tests/bar.test.ts',
   'tests/matrix/baz.test.ts',
+  'tests/matrix/critical-flow.test.ts',
   'tests/integration/wide-scope.test.ts',
+  'tests/side-effect-import.test.ts',
   'tests/matrix-golden-flow.test.ts',
   'tests/command-skill-coverage.test.ts',
   'tests/unrelated.test.ts',
@@ -60,6 +62,19 @@ describe('selectTestsForDiff', () => {
     assert.ok(!result.includes('tests/unrelated.test.ts'), 'should NOT pull in unrelated test');
   });
 
+  it('finds side-effect imports of changed source files', async () => {
+    const result = await selectTestsForDiff({
+      changedFiles: ['src/core/bootstrap.ts'],
+      cwd: '/fake/cwd',
+      _listTests: async () => FAKE_TESTS,
+      _readFile: fakeReader({
+        'tests/side-effect-import.test.ts': `import '../src/core/bootstrap.js';\nimport assert from 'node:assert/strict';`,
+      }),
+    });
+
+    assert.ok(result.includes('tests/side-effect-import.test.ts'), 'should pull tests with static side-effect imports');
+  });
+
   it('includes always-run patterns regardless of diff', async () => {
     const result = await selectTestsForDiff({
       changedFiles: ['src/core/foo.ts'],
@@ -70,6 +85,19 @@ describe('selectTestsForDiff', () => {
     });
     assert.ok(result.includes('tests/matrix-golden-flow.test.ts'));
     assert.ok(result.includes('tests/command-skill-coverage.test.ts'));
+  });
+
+  it('supports glob patterns in always-run entries', async () => {
+    const result = await selectTestsForDiff({
+      changedFiles: ['src/core/foo.ts'],
+      cwd: '/fake/cwd',
+      alwaysRun: ['tests/matrix/*.test.ts'],
+      _listTests: async () => FAKE_TESTS,
+      _readFile: fakeReader({}),
+    });
+
+    assert.ok(result.includes('tests/matrix/baz.test.ts'));
+    assert.ok(result.includes('tests/matrix/critical-flow.test.ts'));
   });
 
   it('returns only always-run when changedFiles is empty', async () => {

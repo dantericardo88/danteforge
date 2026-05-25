@@ -26,6 +26,7 @@ import type { CouncilWorktreeHandle } from './council-worktree.js';
 import { captureWorktreeDiff, getChangedFiles } from './council-worktree.js';
 import type { CouncilWorktreeOpts } from './council-worktree.js';
 import { runDebate } from './council-debate.js';
+import { runRevision } from './council-revision.js';
 import type { FileClaims } from './council-file-claims.js';
 import { computeConsensus, assignVoteWeight } from './council-consensus.js';
 import type { WeightedVote } from './council-consensus.js';
@@ -78,6 +79,14 @@ export interface MergeCourtOptions {
   allSlots?: CouncilSlot[];
   /** Minimum number of cross-member judges required (default: 2). */
   minJudges?: number;
+  /**
+   * When true, use revision-then-rejudge instead of text debate on SPLIT/FAIL.
+   * Revision gives the builder a chance to fix blocking concerns and re-submit.
+   * Default: true (revision is more natural for coding agents than text argument).
+   */
+  useRevision?: boolean;
+  /** Revision cycles before giving up (default: 1). */
+  revisionCycles?: number;
 }
 
 // ── Verdict parsing (self-contained — no import from CLI layer) ───────────────
@@ -304,37 +313,63 @@ export async function runMergeCourt(opts: MergeCourtOptions): Promise<MergeCourt
     // Reveal builder identity in logs after all initial verdicts collected.
     logger.info(`[merge-court] ${candidateId} revealed as ${builderId}: initial consensus = ${consensus}`);
 
-    // If initial verdict is FAIL or SPLIT, offer the builder a structured
-    // rebuttal — judges may change their verdict after hearing the explanation.
+    // If initial verdict is FAIL or SPLIT, give the builder a chance to improve.
+    // useRevision (default: true) → revision-then-rejudge (coding agents fix the code).
+    // useRevision: false          → text debate fallback (original behaviour).
+    const useRevision = opts.useRevision !== false;
     if ((consensus === 'FAIL' || consensus === 'SPLIT') && judgeIds.length > 0) {
-      logger.info(`[merge-court] ${builderId}: ${consensus} — starting debate (up to 2 rounds)`);
-      try {
-        const transcript = await runDebate({
-          builderId,
-          judgeIds,
-          initialVerdicts: verdicts,
-          goal: opts.goal,
-          diff,
-          worktreePath: handle.worktreePath,
-          maxRounds: 2,
-        });
-        finalVerdicts = transcript.finalVerdicts;
-        const debateWeightedVotes: WeightedVote[] = transcript.finalVerdicts.map(v => ({
-          judgeSlotId: `${v.judgeId}-0`,
-          judgeMemberId: v.judgeId,
-          builderMemberId: builderId,
-          verdict: v.verdict,
-          weight: assignVoteWeight(v.judgeId, builderId),
-          confidence: v.confidence,
-          reason: v.reason,
-          dissentSummary: v.dissentSummary,
-        }));
-        const debateConsensus = computeConsensus(debateWeightedVotes, { minJudges });
-        consensus = debateConsensus.verdict === 'PASS' ? 'PASS' :
-          debateConsensus.verdict === 'SPLIT' ? 'SPLIT' : 'FAIL';
-        logger.info(`[merge-court] ${builderId}: post-debate consensus = ${consensus} (${transcript.rounds.length} round(s))`);
-      } catch (err) {
-        logger.warn(`[merge-court] ${builderId}: debate failed — using initial verdict: ${String(err)}`);
+      if (useRevision) {
+        logger.info(`[merge-court] ${builderId}: ${consensus} — starting revision cycle`);
+        try {
+          const revResult = await runRevision({
+            builderId,
+            judgeIds,
+            initialVerdicts: verdicts,
+            goal: opts.goal,
+            diff,
+            worktreePath: handle.worktreePath,
+            worktreeOpts: opts.worktreeOpts,
+            maxCycles: opts.revisionCycles ?? 1,
+          });
+          finalVerdicts = revResult.finalVerdicts;
+          const revWeightedVotes: WeightedVote[] = revResult.finalVerdicts.map(v => ({
+            judgeSlotId: `${v.judgeId}-0`,
+            judgeMemberId: v.judgeId,
+            builderMemberId: builderId,
+            verdict: v.verdict,
+            weight: assignVoteWeight(v.judgeId, builderId),
+            confidence: v.confidence,
+            reason: v.reason,
+            dissentSummary: v.dissentSummary,
+          }));
+          const revConsensus = computeConsensus(revWeightedVotes, { minJudges });
+          consensus = revConsensus.verdict === 'PASS' ? 'PASS' :
+            revConsensus.verdict === 'SPLIT' ? 'SPLIT' : 'FAIL';
+          logger.info(`[merge-court] ${builderId}: post-revision consensus = ${consensus} (${revResult.cycles.length} cycle(s))`);
+        } catch (err) {
+          logger.warn(`[merge-court] ${builderId}: revision failed — using initial verdict: ${String(err)}`);
+        }
+      } else {
+        logger.info(`[merge-court] ${builderId}: ${consensus} — starting debate (up to 2 rounds)`);
+        try {
+          const transcript = await runDebate({
+            builderId, judgeIds, initialVerdicts: verdicts,
+            goal: opts.goal, diff, worktreePath: handle.worktreePath, maxRounds: 2,
+          });
+          finalVerdicts = transcript.finalVerdicts;
+          const debateWeightedVotes: WeightedVote[] = transcript.finalVerdicts.map(v => ({
+            judgeSlotId: `${v.judgeId}-0`, judgeMemberId: v.judgeId,
+            builderMemberId: builderId, verdict: v.verdict,
+            weight: assignVoteWeight(v.judgeId, builderId),
+            confidence: v.confidence, reason: v.reason, dissentSummary: v.dissentSummary,
+          }));
+          const debateConsensus = computeConsensus(debateWeightedVotes, { minJudges });
+          consensus = debateConsensus.verdict === 'PASS' ? 'PASS' :
+            debateConsensus.verdict === 'SPLIT' ? 'SPLIT' : 'FAIL';
+          logger.info(`[merge-court] ${builderId}: post-debate consensus = ${consensus} (${transcript.rounds.length} round(s))`);
+        } catch (err) {
+          logger.warn(`[merge-court] ${builderId}: debate failed — using initial verdict: ${String(err)}`);
+        }
       }
     }
 
