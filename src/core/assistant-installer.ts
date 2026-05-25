@@ -590,15 +590,30 @@ async function installNativeSkills(
   homeDir: string,
   projectDir: string | undefined,
 ): Promise<void> {
-  for (const skillName of skillDirs) {
-    const sourceDir = path.join(skillsDir, skillName);
-    const skillFile = path.join(sourceDir, 'SKILL.md');
-    try {
-      await fs.access(skillFile);
-    } catch {
-      continue;
+  const destinations = [targetDir];
+  if (assistant === 'antigravity') {
+    const configSkillsDir = path.join(homeDir, '.gemini', 'config', 'skills');
+    if (configSkillsDir !== targetDir) {
+      destinations.push(configSkillsDir);
     }
-    await fs.cp(sourceDir, path.join(targetDir, skillName), { recursive: true, force: true });
+  }
+
+  for (const destDir of destinations) {
+    await fs.mkdir(destDir, { recursive: true });
+    for (const skillName of skillDirs) {
+      const sourceDir = path.join(skillsDir, skillName);
+      const skillFile = path.join(sourceDir, 'SKILL.md');
+      try {
+        await fs.access(skillFile);
+      } catch {
+        continue;
+      }
+      await fs.cp(sourceDir, path.join(destDir, skillName), { recursive: true, force: true });
+    }
+  }
+
+  if (assistant === 'antigravity') {
+    await syncAntigravityCommandSkills(homeDir);
   }
 
   if (assistant === 'codex') {
@@ -766,8 +781,8 @@ async function syncGrokCommandSkills(homeDir: string): Promise<void> {
     const commandName = path.basename(entry, '.md');
     // Use bare names (e.g. "inferno", "frontier", "blaze") so users get clean
     // `/inferno`, `/frontier` slash commands in Grok Build, matching the
-    // first-class experience in Claude Code. Grok's qualified forms
-    // (/local:xxx) are available if a builtin collision ever occurs.
+    // first-class experience in Claude Code. Grok's qualified form
+    // (/local:<name>) is available if a builtin collision ever occurs.
     const skillDir = path.join(targetRoot, commandName);
     const parsed = await parseCommandFile(path.join(commandsDir, entry));
     await fs.mkdir(skillDir, { recursive: true });
@@ -778,3 +793,63 @@ async function syncGrokCommandSkills(homeDir: string): Promise<void> {
     );
   }
 }
+
+// ---------------------------------------------------------------------------
+// Antigravity/Gemini native integration (skills + slash commands as /danteforge-*)
+// ---------------------------------------------------------------------------
+
+function buildAntigravityCommandSkill(commandName: string, description: string, body: string): string {
+  const title = commandName
+    .split('-')
+    .map(part => (part.length > 0 ? part[0]!.toUpperCase() + part.slice(1) : part))
+    .join(' ');
+  return [
+    '---',
+    `name: danteforge-${commandName}`,
+    `description: ${escapeYamlScalar(`Native DanteForge /${commandName} workflow command for Antigravity/Gemini. ${description}`.trim())}`,
+    'source: danteforge-command',
+    '---',
+    '',
+    `# DanteForge /${commandName}`,
+    '',
+    `Use this skill when the user invokes \`/${commandName}\`, asks for the DanteForge ${title} workflow, or references \`${commandName}\` in a DanteForge context.`,
+    '',
+    'Execute this as a native Antigravity/Gemini workflow using your own tools (reading files, executing commands, etc.) to complete the steps. Fall back to the `danteforge` CLI only for deterministic actions (e.g. forge waves, verify, matrix state) or when explicitly requested.',
+    '',
+    '## Command Instructions',
+    '',
+    body.trim(),
+    '',
+  ].join('\n');
+}
+
+async function syncAntigravityCommandSkills(homeDir: string): Promise<void> {
+  const commandsDir = resolvePackagedCommandsDir();
+  const targets = [
+    path.join(homeDir, '.gemini', 'antigravity', 'skills'),
+    path.join(homeDir, '.gemini', 'config', 'skills'),
+  ];
+  let entries: string[];
+  try {
+    entries = await fs.readdir(commandsDir);
+  } catch {
+    return;
+  }
+
+  for (const targetRoot of targets) {
+    await fs.mkdir(targetRoot, { recursive: true });
+    for (const entry of entries) {
+      if (!entry.endsWith('.md')) continue;
+      const commandName = path.basename(entry, '.md');
+      const skillDir = path.join(targetRoot, `danteforge-${commandName}`);
+      const parsed = await parseCommandFile(path.join(commandsDir, entry));
+      await fs.mkdir(skillDir, { recursive: true });
+      await fs.writeFile(
+        path.join(skillDir, 'SKILL.md'),
+        buildAntigravityCommandSkill(commandName, parsed.description, parsed.body),
+        'utf8',
+      );
+    }
+  }
+}
+

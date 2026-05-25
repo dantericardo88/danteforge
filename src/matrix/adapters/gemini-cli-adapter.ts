@@ -1,12 +1,15 @@
-// Matrix Kernel — GeminiCLIAdapter (Phase 14e: subprocess CLI orchestration)
+// Matrix Kernel — AntигравитацияAdapter / GeminiCLIAdapter (Phase 14e)
 //
-// Spawns the `gemini` CLI (Google Gemini CLI) as a subprocess inside the
-// lease's worktree. Uses --prompt for headless (non-interactive) mode and
-// --yolo to auto-accept all tool calls. For judge/review roles, uses
-// --approval-mode plan (read-only) instead.
+// Spawns the Antigravity CLI (`agy`) as a subprocess in the lease's worktree.
+// Antigravity replaced the old `gemini` CLI — binary is `agy` or
+// `C:\Users\<user>\AppData\Local\agy\bin\agy.exe` on Windows.
 //
-// Auth: uses the user's existing Google account via gemini CLI auth.
-// No API key needed in build mode.
+// Headless non-interactive mode uses --print (agy's -p flag).
+// Build mode:  agy --print "<prompt>" --dangerously-skip-permissions
+// Judge mode:  agy --print "<prompt>"  (no skip — read-only by intent + post-run diff assert)
+//
+// Auth: uses the user's existing Google account via agy's own auth.
+// No API key needed.
 import { spawn } from 'node:child_process';
 import type { SpawnOptions } from 'node:child_process';
 import { execFile } from 'node:child_process';
@@ -89,20 +92,20 @@ export class GeminiCLIAdapter implements AgentAdapter {
 
   async isAvailable(): Promise<boolean> {
     if (this.options._isAvailable) return this.options._isAvailable();
-    const base = this.options.binary ?? process.env.GEMINI_BIN ?? 'gemini';
+    // Antigravity (agy) replaces the old gemini CLI.
+    // Resolution order: explicit binary override → AGY_BIN env → default agy path → 'agy' on PATH.
+    const explicit = this.options.binary ?? process.env.AGY_BIN ?? process.env.GEMINI_BIN;
+    const winDefault = process.platform === 'win32'
+      ? path.join(process.env['LOCALAPPDATA'] ?? '', 'agy', 'bin', 'agy.exe')
+      : null;
 
-    // On Windows, resolve the full path via where.exe first so .cmd/.ps1 shims
-    // can be invoked with the correct wrapper (cmd.exe or powershell.exe).
-    if (process.platform === 'win32' && !path.isAbsolute(base) && !base.includes('.')) {
-      try {
-        const { stdout } = await execFileAsync('where.exe', [base], { timeout: 5000 });
-        for (const resolved of stdout.trim().split('\n').map(l => l.trim()).filter(Boolean)) {
-          if (await this._probeCandidate(resolved)) return true;
-        }
-      } catch { /* where.exe not found or gemini not on PATH — fall through to candidate list */ }
-    }
+    const candidates: string[] = [];
+    if (explicit) candidates.push(...candidateBinaries(explicit));
+    if (winDefault) candidates.push(winDefault);
+    candidates.push(...candidateBinaries('agy'));
+    candidates.push(...candidateBinaries('gemini')); // legacy fallback
 
-    for (const candidate of candidateBinaries(base)) {
+    for (const candidate of candidates) {
       if (await this._probeCandidate(candidate)) return true;
     }
     return false;
@@ -224,10 +227,12 @@ export class GeminiCLIAdapter implements AgentAdapter {
       const isPs1 = binary.endsWith('.ps1');
       const isCmdShim = this._resolvedUsesShell && process.platform === 'win32';
 
-      // Gemini args: --prompt "<task>" --yolo (build) or --approval-mode plan (judge/read-only)
+      // agy (Antigravity) args: --print for non-interactive mode.
+      // Build mode adds --dangerously-skip-permissions (auto-approve tool calls).
+      // Judge mode omits it — read-only by intent; post-run diff assert verifies.
       const geminiArgs = judgeMode
-        ? ['--prompt', prompt, '--approval-mode', 'plan']
-        : ['--prompt', prompt, '--yolo'];
+        ? ['--print', prompt]
+        : ['--print', prompt, '--dangerously-skip-permissions'];
 
       let cmd: string;
       let args: string[];
@@ -252,13 +257,10 @@ export class GeminiCLIAdapter implements AgentAdapter {
           stdio: ['ignore', 'pipe', 'pipe'],
         },
         this.options.timeoutMs ?? DEFAULT_TIMEOUT_MS,
-        judgeMode ? chunks : undefined,  // only capture stdout in judge mode
+        chunks,
       );
       state.exitCode = exitCode;
-
-      if (judgeMode) {
-        state.capturedOutput = Buffer.concat(chunks).toString('utf8');
-      }
+      state.capturedOutput = Buffer.concat(chunks).toString('utf8');
 
       if (exitCode !== 0 && !judgeMode) {
         state.status = 'failed';

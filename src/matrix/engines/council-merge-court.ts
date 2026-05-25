@@ -25,6 +25,7 @@ import type { CouncilWorktreeHandle } from './council-worktree.js';
 import { captureWorktreeDiff, getChangedFiles } from './council-worktree.js';
 import type { CouncilWorktreeOpts } from './council-worktree.js';
 import { runDebate } from './council-debate.js';
+import type { FileClaims } from './council-file-claims.js';
 
 const execFileAsync = promisify(execFile);
 
@@ -55,6 +56,8 @@ export interface MergeCourtOptions {
   handles: CouncilWorktreeHandle[];
   allMemberIds: CouncilMemberId[];
   goal: string;
+  /** When provided, builders whose ALL changed files are claimed by another member are skipped. */
+  fileClaims?: FileClaims;
 }
 
 // ── Verdict parsing (self-contained — no import from CLI layer) ───────────────
@@ -169,6 +172,18 @@ export async function runMergeCourt(opts: MergeCourtOptions): Promise<MergeCourt
       results.push({ memberId: builderId, worktreePath: handle.worktreePath,
         changedFiles: [], verdicts: [], consensus: 'FAIL', merged: false });
       continue;
+    }
+
+    // File-claim gate: if all changed files are already claimed by another member, skip merge.
+    if (opts.fileClaims) {
+      const allClaimed = changedFiles.every(f => opts.fileClaims!.hasConflict(builderId as CouncilMemberId, [f]));
+      if (allClaimed) {
+        logger.warn(`[merge-court] ${builderId}: all ${changedFiles.length} file(s) claimed by other members — skipping (structural gate)`);
+        results.push({ memberId: builderId, worktreePath: handle.worktreePath,
+          changedFiles, verdicts: [], consensus: 'FAIL', merged: false,
+          mergeError: 'all files claimed by other council members' });
+        continue;
+      }
     }
 
     const judgeIds = opts.allMemberIds.filter(id => id !== builderId);

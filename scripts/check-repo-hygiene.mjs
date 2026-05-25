@@ -13,6 +13,21 @@ const forbiddenPaths = [
   'vscode-extension/dist',
 ];
 
+// Specific paths inside forbidden directories that are intentionally tracked.
+// These are canonical project artifacts that must be committed alongside source.
+const allowedTrackedPaths = new Set([
+  '.danteforge/compete/matrix.json',
+  '.danteforge/agent-guard.json',
+  '.danteforge/agent-ownership.json',
+  '.danteforge/test-config.json',
+  '.danteforge/protected-lines.json',
+  '.danteforge/agent-claims/.gitkeep',
+  '.danteforge/score-proposals/.gitkeep',
+  '.danteforge/dimension-claims/.gitkeep',
+  '.danteforge/capability-tests/orphan_audit.sh',
+  '.danteforge/capability-tests/recency_check.sh',
+]);
+
 async function exists(pathname) {
   try {
     await access(pathname, fsConstants.F_OK);
@@ -39,7 +54,7 @@ for (const pathname of forbiddenPaths) {
     problems.push(`Forbidden generated/vendor path exists in repo checkout: ${pathname}`);
   }
 
-  const tracked = trackedEntries(pathname);
+  const tracked = trackedEntries(pathname).filter(p => !allowedTrackedPaths.has(p));
   if (tracked.length > 0) {
     problems.push(`Forbidden generated/vendor path is tracked by git: ${pathname}`);
   }

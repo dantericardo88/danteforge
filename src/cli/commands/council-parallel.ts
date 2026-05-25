@@ -280,7 +280,7 @@ export async function runParallelCouncil(options: ParallelCouncilOptions): Promi
         }
       }
 
-      // Run merge court — skips builders whose ALL files are already claimed
+      // Run merge court — fileClaims enforced structurally (not advisory)
       logger.info('\nRunning merge court...');
       const mergeResults = await runMergeCourt({
         projectPath: cwd,
@@ -288,6 +288,7 @@ export async function runParallelCouncil(options: ParallelCouncilOptions): Promi
         handles,
         allMemberIds: available,
         goal: options.goal,
+        fileClaims,
       });
 
       const roundMerged = mergeResults.filter(r => r.merged).length;

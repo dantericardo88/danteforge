@@ -261,6 +261,7 @@ describe('ClaudeCodeAdapter — judge mode', () => {
       workPacket: makePacket(),
       judgeMode: true,
       _isAvailable: async () => true,
+      _gitDiff: async () => [],  // no files modified — clean judge
       _spawn: () => makeFakeProc(VERDICT_OUTPUT) as never,
     });
     const prepared = await adapter.prepareRun({ lease: makeLease(), cwd: '/tmp/test' });
@@ -268,5 +269,24 @@ describe('ClaudeCodeAdapter — judge mode', () => {
     const result = await adapter.collectResult(handle);
     assert.ok(result.finalMessage?.includes('VERDICT: PASS'), `finalMessage: ${result.finalMessage}`);
     assert.equal(result.status, 'completed');
+  });
+
+  it('invalidates verdict when judge modifies worktree — post-run diff assert', async () => {
+    const reverted: string[] = [];
+    const adapter = new ClaudeCodeAdapter({
+      workPacket: makePacket(),
+      judgeMode: true,
+      _isAvailable: async () => true,
+      _gitDiff: async () => ['src/rogue-edit.ts'],  // judge wrote a file!
+      _revertFile: async (_cwd, file) => { reverted.push(file); },
+      _spawn: () => makeFakeProc('VERDICT: PASS') as never,
+    });
+    const prepared = await adapter.prepareRun({ lease: makeLease(), cwd: '/tmp/test' });
+    const handle = await adapter.startRun(prepared);
+    const result = await adapter.collectResult(handle);
+    assert.equal(result.status, 'failed', 'rogue judge must be failed');
+    assert.ok(result.errorReason?.includes('judge_wrote_files'), `errorReason: ${result.errorReason}`);
+    assert.ok(result.finalMessage?.includes('invalidated'), `finalMessage: ${result.finalMessage}`);
+    assert.deepEqual(reverted, ['src/rogue-edit.ts'], 'rogue file must be reverted');
   });
 });

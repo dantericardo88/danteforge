@@ -96,6 +96,10 @@ const DEFAULT_ALLOWED_TOOLS = [
   'Bash(node:*)',
 ];
 
+// Judge mode must be structurally read-only — no edit/write/bash tools.
+// Prompting "do not edit" is insufficient; the tool allowlist enforces it.
+const JUDGE_ALLOWED_TOOLS = ['Read', 'Glob', 'Grep'];
+
 // ── Adapter state (per run) ─────────────────────────────────────────────────
 
 interface ClaudeRunState {
@@ -249,11 +253,13 @@ export class ClaudeCodeAdapter implements AgentAdapter {
     });
 
     try {
-      // Judge mode: capture stdout as verdict output, skip file validation.
+      // Judge mode: read-only review — structurally enforced via JUDGE_ALLOWED_TOOLS
+      // (Read, Glob, Grep only — no Edit/Write/MultiEdit/Bash).
+      // Post-run diff assert verifies the worktree is untouched.
       if (this.options.judgeMode) {
         const chunks: Buffer[] = [];
         const judgeArgs = buildClaudeArgs(buildClaudeJudgePrompt(state.workPacket, lease),
-          this.options.allowedTools ?? DEFAULT_ALLOWED_TOOLS, false);
+          JUDGE_ALLOWED_TOOLS, false);
         const [jCmd, jFinalArgs] = resolveSpawnTarget(state.binaryUsed, judgeArgs, this._resolvedUsesShell);
         const spawnFn: ClaudeSpawnFn = this.options._spawn ?? ((c, a, o) => spawn(c, a, o));
         state.exitCode = await runChild(spawnFn, jCmd, [...jFinalArgs], {
@@ -263,6 +269,20 @@ export class ClaudeCodeAdapter implements AgentAdapter {
           stdio: ['ignore', 'pipe', 'pipe'],
         }, this.options.timeoutMs ?? DEFAULT_TIMEOUT_MS, chunks);
         state.capturedOutput = Buffer.concat(chunks).toString('utf8');
+        // Post-run diff assertion: judges must not modify the worktree.
+        const gitDiff = this.options._gitDiff ?? defaultGitDiff;
+        const changedAfterJudge = await gitDiff(worktreeRoot);
+        if (changedAfterJudge.length > 0) {
+          logger.warn(`[ClaudeCodeAdapter] judge ${runId} modified ${changedAfterJudge.length} file(s) — reverting and invalidating verdict`);
+          const revertFile = this.options._revertFile ?? defaultRevertFile;
+          await Promise.allSettled(changedAfterJudge.map(f => revertFile(worktreeRoot, f)));
+          state.capturedOutput = '';  // clear so resolveFinalMessage uses finalMessage below
+          state.finalMessage = '(judge modified worktree — verdict invalidated)';
+          state.status = 'failed';
+          state.errorReason = `judge_wrote_files: ${changedAfterJudge.join(', ')}`;
+          finalize(state, runId);
+          return;
+        }
         state.finalMessage = state.capturedOutput.trim() || '(no judge output)';
         state.status = 'completed';
         state.events.push({ eventId: `${runId}.complete`, runId, ts: now(), kind: 'completed' });
