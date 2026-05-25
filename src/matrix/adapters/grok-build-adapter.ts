@@ -191,11 +191,11 @@ export class GrokBuildAdapter implements AgentAdapter {
       const spawnFn: GrokBuildSpawnFn = this.options._spawn ?? ((c, a, o) => spawn(c, a, o));
       const binary = state.binaryUsed;
 
-      // Build mode: --always-approve (auto-accept all tool calls like write/edit/bash)
-      // Judge mode: --permission-mode plan (read-only, no writes allowed)
+      // --single/-p passes the prompt as a single-turn headless invocation and exits.
+      // Previously the prompt was args[0], which Grok's CLI treated as a subcommand name.
       const grokArgs = judgeMode
-        ? [prompt, '--permission-mode', 'plan', '--output-format', 'plain', '--cwd', normalizeCwd(worktreeRoot), '--no-memory']
-        : [prompt, '--always-approve', '--effort', effort, '--cwd', normalizeCwd(worktreeRoot), '--no-memory', '--check'];
+        ? ['--single', prompt, '--permission-mode', 'plan', '--output-format', 'plain', '--cwd', normalizeCwd(worktreeRoot), '--no-memory']
+        : ['--single', prompt, '--always-approve', '--effort', effort, '--cwd', normalizeCwd(worktreeRoot), '--no-memory', '--check'];
 
       const chunks: Buffer[] = [];
       const exitCode = await runChild(
