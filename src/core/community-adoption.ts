@@ -11,6 +11,10 @@ import {
   writeCommunityOnboardingDocs,
   type CommunityOnboardingReport,
 } from './community-onboarding.js';
+import {
+  analyzeCommunityEngagement,
+  writeCommunityEngagementDocs,
+} from './community-engagement.js';
 
 export { computeCommunityAdoptionScore, type CommunityMetrics, type CommunityReadinessScore };
 export { analyzeCommunityOnboarding, type CommunityOnboardingReport };
@@ -74,6 +78,10 @@ const ADOPTION_ACTIONS: Record<string, string> = {
   'copy-paste-onboarding': 'Add fenced shell commands that install, run, and verify the tool.',
   'command-reference': 'Add docs/COMMANDS.md with the commands a new adopter needs first.',
   'troubleshooting-support': 'Add docs/TROUBLESHOOTING.md with doctor, logs, reproduction, and issue guidance.',
+  'support-policy': 'Add SUPPORT.md with response expectations and high-quality report guidance.',
+  'pull-request-template': 'Add a pull request template with summary and verification checklists.',
+  'contributor-labels': 'Add contributor-friendly labels such as good first issue, help wanted, and needs-triage.',
+  'discussion-routing': 'Route questions and workflow discussions away from bug reports.',
 };
 
 async function exists(filePath: string): Promise<boolean> {
@@ -196,6 +204,7 @@ export async function assessCommunityAdoptionReadiness(cwd: string = process.cwd
     && onboarding.copyPasteCommandCount >= 3;
   const hasPackageManagerCoverage = onboarding.packageManagers.includes('npm')
     && (onboarding.packageManagers.includes('npx') || onboarding.packageManagers.length >= 2);
+  const engagement = await analyzeCommunityEngagement(cwd);
 
   const signals: CommunityReadinessSignal[] = [
     signal('package-metadata', 'Package metadata', 15, hasPackageBasics, hasPackageBasics
@@ -246,6 +255,22 @@ export async function assessCommunityAdoptionReadiness(cwd: string = process.cwd
       onboarding.hasTroubleshooting
         ? 'Troubleshooting docs explain diagnostics and useful issue details.'
         : 'Troubleshooting docs need doctor, logs, reproduction, and issue guidance.'),
+    signal('support-policy', 'Support and triage policy', 8, engagement.supportPolicy,
+      engagement.supportPolicy
+        ? 'SUPPORT.md sets response expectations and useful report details.'
+        : 'Support policy needs triage expectations and report-quality guidance.'),
+    signal('pull-request-template', 'Pull request template', 6, engagement.pullRequestTemplate,
+      engagement.pullRequestTemplate
+        ? 'Pull request template asks for summary and verification evidence.'
+        : 'Pull request template is missing summary or verification expectations.'),
+    signal('contributor-labels', 'Contributor labels', 5, engagement.contributorLabels,
+      engagement.contributorLabels
+        ? 'Contributor labels expose good-first-issue and triage paths.'
+        : 'Contributor labels for good first issue, help wanted, or triage are missing.'),
+    signal('discussion-routing', 'Discussion routing', 4, engagement.discussionRouting,
+      engagement.discussionRouting
+        ? 'Issue template configuration routes questions to discussions.'
+        : 'Question and discussion routing is not documented.'),
   ];
 
   const maxScore = signals.reduce((sum, item) => sum + item.weight, 0);
@@ -379,6 +404,7 @@ echo "Run 'danteforge assess' to see quality scores."
 
 async function generateAdoptionPack(cwd: string): Promise<string> {
   await writeCommunityOnboardingDocs(cwd);
+  await writeCommunityEngagementDocs(cwd);
 
   await writeIfMissing(path.join(cwd, 'COMMUNITY.md'), `# Community
 
@@ -486,17 +512,6 @@ body:
       description: What should be true after this ships?
     validations:
       required: true
-`);
-
-  await writeIfMissing(path.join(cwd, '.github', 'PULL_REQUEST_TEMPLATE.md'), `## Summary
-
-Describe the behavior change and the user-facing outcome.
-
-## Verification
-
-- [ ] Tests added or updated
-- [ ] \`npm run typecheck\`
-- [ ] Relevant DanteForge command output or receipt included
 `);
 
   return 'Generated community adoption pack';

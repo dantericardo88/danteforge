@@ -218,4 +218,80 @@ describe('community adoption readiness', () => {
     await assert.doesNotReject(() => fs.access(path.join(cwd, 'docs', 'COMMANDS.md')));
     await assert.doesNotReject(() => fs.access(path.join(cwd, 'docs', 'TROUBLESHOOTING.md')));
   });
+
+  it('credits maintainer response workflows that turn user reports into actionable work', async () => {
+    const cwd = await makeProject({
+      'package.json': JSON.stringify({
+        name: 'sample-tool',
+        version: '1.2.3',
+        description: 'A useful CLI tool',
+        license: 'MIT',
+        repository: { type: 'git', url: 'https://github.com/acme/sample-tool.git' },
+        bugs: { url: 'https://github.com/acme/sample-tool/issues' },
+        homepage: 'https://github.com/acme/sample-tool#readme',
+        bin: { 'sample-tool': 'dist/index.js' },
+        files: ['dist', 'README.md', 'LICENSE'],
+        keywords: ['cli', 'automation', 'developer-tools'],
+        publishConfig: { access: 'public' },
+      }),
+      'README.md': [
+        '# Sample Tool',
+        '',
+        '## Quick start',
+        '',
+        '```bash',
+        'npm install -g sample-tool',
+        'sample-tool --help',
+        'sample-tool doctor',
+        '```',
+      ].join('\n'),
+      'CONTRIBUTING.md': '# Contributing\n\nRun `npm ci`, `npm run typecheck`, and `npm test` before pull requests.\n',
+      'SECURITY.md': '# Security\n\nReport vulnerabilities privately before public disclosure.\n',
+      'CHANGELOG.md': '# Changelog\n\n## 1.2.3\n\n- Release notes.\n',
+      'CODE_OF_CONDUCT.md': '# Code of Conduct\n\nUse welcoming, respectful collaboration.\n',
+      'SUPPORT.md': [
+        '# Support',
+        '',
+        'Maintainers triage new issues within 3 business days.',
+        'Use the bug template for defects, the feature template for proposals, and discussions for workflow questions.',
+        'Include logs, reproduction steps, Node version, operating system, expected behavior, and actual behavior.',
+      ].join('\n'),
+      '.github/ISSUE_TEMPLATE/bug_report.yml': 'name: Bug report\nbody:\n  - type: textarea\n    id: reproduction\n',
+      '.github/ISSUE_TEMPLATE/feature_request.yml': 'name: Feature request\nbody:\n  - type: textarea\n    id: use-case\n',
+      '.github/PULL_REQUEST_TEMPLATE.md': '## Summary\n\n## Verification\n\n- [ ] npm run typecheck\n- [ ] npm test\n',
+      '.github/labels.yml': '- name: good first issue\n- name: help wanted\n- name: needs-triage\n',
+      '.github/ISSUE_TEMPLATE/config.yml': 'blank_issues_enabled: false\ndiscussions:\n  - name: Questions\n    url: https://github.com/acme/sample-tool/discussions\n',
+      'docs/COMMANDS.md': '# Command Reference\n\n| Command | Purpose |\n| --- | --- |\n| `sample-tool doctor` | Diagnose setup. |\n| `sample-tool verify` | Run checks. |\n| `sample-tool help` | Show help. |\n',
+      'docs/TROUBLESHOOTING.md': '# Troubleshooting\n\nRun `sample-tool doctor` and open an issue with logs, reproduction steps, Node version, and operating system.\n',
+      'examples/quickstart/README.md': '# Quickstart example\n',
+    });
+
+    const report = await assessCommunityAdoptionReadiness(cwd);
+
+    for (const id of ['support-policy', 'pull-request-template', 'contributor-labels', 'discussion-routing']) {
+      assert.ok(
+        report.signals.some((signal) => signal.id === id && signal.status === 'pass'),
+        `expected ${id} signal to pass`,
+      );
+    }
+    assert.equal(report.missingRequired.length, 0);
+    assert.ok(report.score >= 120, `expected advanced adoption readiness score, got ${report.score}`);
+  });
+
+  it('generates support policy, PR template, labels, and discussion routing in the adoption pack', async () => {
+    const cwd = await makeProject({
+      'package.json': JSON.stringify({ name: 'sample-tool', version: '0.1.0', license: 'MIT' }),
+    });
+
+    await improveCommunityAdoption({ cwd, generateAdoptionPack: true });
+    const report = await assessCommunityAdoptionReadiness(cwd);
+
+    await assert.doesNotReject(() => fs.access(path.join(cwd, 'SUPPORT.md')));
+    await assert.doesNotReject(() => fs.access(path.join(cwd, '.github', 'PULL_REQUEST_TEMPLATE.md')));
+    await assert.doesNotReject(() => fs.access(path.join(cwd, '.github', 'labels.yml')));
+    await assert.doesNotReject(() => fs.access(path.join(cwd, '.github', 'ISSUE_TEMPLATE', 'config.yml')));
+    assert.ok(report.signals.some((signal) => signal.id === 'support-policy' && signal.status === 'pass'));
+    assert.ok(report.signals.some((signal) => signal.id === 'pull-request-template' && signal.status === 'pass'));
+    assert.ok(report.signals.some((signal) => signal.id === 'contributor-labels' && signal.status === 'pass'));
+  });
 });

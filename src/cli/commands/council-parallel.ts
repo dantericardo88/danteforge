@@ -329,16 +329,21 @@ export async function runParallelCouncil(options: ParallelCouncilOptions): Promi
         if (!next) return;
         slotStatus.set(next.judgeSlot.slotId, 'judging');
         try {
-          // Inline single-candidate judge: reuse merge court with one handle
-          const judgeHandle = handles.find(h => h.slotId === next.judgeSlot.slotId
-            || (h.memberId === next.judgeSlot.memberId && !h.slotId));
-          if (!judgeHandle) { judgeQueue.markJudgeComplete(next.candidate.candidateId, 'FAIL'); return; }
+          // Pass the BUILDER's memberId so runMergeCourt knows who built it.
+          // Restrict allSlots to the judge's slot only — cross-member enforcement
+          // inside runMergeCourt selects judges where memberId !== builder's memberId.
+          const builderHandle: CouncilWorktreeHandle = {
+            memberId: next.candidate.memberId,
+            worktreePath: next.candidate.worktreePath,
+            branchName: `council/${roundRunId}/${next.candidate.slotId}`,
+            slotId: next.candidate.slotId,
+          };
           const singleResult = await runMergeCourt({
             projectPath: cwd,
             worktreeOpts,
-            handles: [{ ...judgeHandle, worktreePath: next.candidate.worktreePath }],
+            handles: [builderHandle],
             allMemberIds: available,
-            allSlots: roundSlots.filter(s => s.memberId === next.judgeSlot.memberId),
+            allSlots: [next.judgeSlot],
             goal: options.goal,
             minJudges: 1,
           });
