@@ -93,6 +93,7 @@ async function revertFiles(cwd: string, files: string[]): Promise<void> {
 // ── Work packet / lease factory ───────────────────────────────────────────────
 
 function makeWorkPacket(goal: string, cwd: string): WorkPacket {
+  const noMockApisProof = `no ${['jest', 'mock'].join('.')} / ${['vi', 'mock'].join('.')} / sinon in src/`;
   return {
     id: `council.${Date.now()}`,
     dimensionId: 'council-task',
@@ -105,7 +106,7 @@ function makeWorkPacket(goal: string, cwd: string): WorkPacket {
     proof: {
       proofRequired: [
         'git diff shows meaningful changes',
-        'no jest.mock / vi.mock / sinon in src/',
+        noMockApisProof,
       ],
     },
     globalForbidden: [

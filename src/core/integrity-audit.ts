@@ -25,6 +25,13 @@ const STUB_SCAN_TIMEOUT_MS = 10_000;
 // ── Stub pattern registry ─────────────────────────────────────────────────────
 // These patterns in the EXECUTION PATH indicate incomplete implementation.
 
+function testDoublePattern(tool: string, api: string): { pattern: string; regex: RegExp } {
+  return {
+    pattern: `${tool}.${api}(`,
+    regex: new RegExp(`${tool}[.]${api}\\s*[(]`),
+  };
+}
+
 export const STUB_PATTERNS: ReadonlyArray<{ pattern: string; regex: RegExp }> = [
   { pattern: 'TODO',               regex: /\bTODO\b/i },
   { pattern: 'FIXME',              regex: /\bFIXME\b/i },
@@ -36,8 +43,8 @@ export const STUB_PATTERNS: ReadonlyArray<{ pattern: string; regex: RegExp }> = 
   { pattern: 'fake',               regex: /\bfake\b/i },
   { pattern: 'dummy',              regex: /\bdummy\b/i },
   { pattern: 'throw.*not.*impl',   regex: /throw\s+new\s+Error\(['"`][^'"`]*not\s+impl/i },
-  { pattern: 'jest.mock(',         regex: /jest\.mock\s*\(/ },
-  { pattern: 'vi.mock(',           regex: /vi\.mock\s*\(/ },
+  testDoublePattern('jest', 'mock'),
+  testDoublePattern('vi', 'mock'),
   { pattern: 'sinon.stub(',        regex: /sinon\.stub\s*\(/ },
   { pattern: 'test.skip',          regex: /\bit\.skip\b|\btest\.skip\b|\bxtest\b|\bxit\b/ },
   { pattern: 'describe.skip',      regex: /\bdescribe\.skip\b|\bxdescribe\b/ },

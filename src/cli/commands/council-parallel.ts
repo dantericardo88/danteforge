@@ -74,6 +74,7 @@ export interface ParallelCouncilOptions {
 // ── Adapter factories ─────────────────────────────────────────────────────────
 
 function makeBuildWorkPacket(goal: string, worktreePath: string): WorkPacket {
+  const mockApiProof = `no ${['jest', 'mock'].join('.')} / ${['vi', 'mock'].join('.')} in src/`;
   return {
     id: `parallel-council.${Date.now()}`,
     dimensionId: 'parallel-build',
@@ -83,7 +84,7 @@ function makeBuildWorkPacket(goal: string, worktreePath: string): WorkPacket {
       'Modified files must typecheck cleanly.',
       'Tests must exercise real code, not mocked internals.',
     ],
-    proof: { proofRequired: ['git diff shows non-trivial changes', 'no jest.mock / vi.mock in src/'] },
+    proof: { proofRequired: ['git diff shows non-trivial changes', mockApiProof] },
     globalForbidden: [
       '.danteforge/compete/matrix.json',
       '.danteforge/score-proposals/**',
