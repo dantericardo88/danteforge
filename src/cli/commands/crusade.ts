@@ -9,6 +9,8 @@ import { logger } from '../../core/logger.js';
 import { withProgress } from '../../core/ux-progress.js';
 import { loadMatrix, computeGapPriority, type MatrixDimension, type CompeteMatrix } from '../../core/compete-matrix.js';
 import { runCIPCheck, type CIPOptions, type CIPResult } from '../../core/completion-integrity.js';
+import { inferFailureKind, selectRecoveryAction, formatRecoveryPlan, type RecoveryContext } from '../../core/loop-recovery.js';
+import { buildCycleRecord, assessLoopHealth, type CycleRecord } from '../../matrix/engines/autonomy-loop-monitor.js';
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -195,6 +197,9 @@ export async function runCrusade(options: CrusadeOptions): Promise<CrusadeResult
   const writeFile = options._writeFile ?? ((p: string, content: string) => fs.writeFile(p, content, 'utf8'));
 
   const cycles: CrusadeCycleReport[] = [];
+  const loopRecords: CycleRecord[] = [];
+  let consecutiveForgeFailures = 0;
+  let consecutiveZeroPatterns = 0;
   let totalPatternsHarvested = 0;
   let currentScore = await getScore(dimension, cwd);
 
@@ -229,16 +234,48 @@ export async function runCrusade(options: CrusadeOptions): Promise<CrusadeResult
     }
     totalPatternsHarvested += cyclePatterns;
 
+    if (cyclePatterns === 0) {
+      consecutiveZeroPatterns++;
+    } else {
+      consecutiveZeroPatterns = 0;
+    }
+
     // Phase B: Forge wave toward goal
     logger.info(`[crusade]   Running forge wave...`);
     const forgeResult = await withProgress('forge wave', () => runForgeWave(options.goal, cwd));
     if (!forgeResult.success) {
+      consecutiveForgeFailures++;
       logger.warn(`[crusade]   Forge wave failed: ${forgeResult.error ?? 'unknown'}`);
+      // Surface a structured recovery recommendation
+      const ctx: RecoveryContext = {
+        dimensionId: dimension,
+        consecutiveFailures: Math.max(consecutiveZeroPatterns, consecutiveForgeFailures),
+        lastPatternCount: cyclePatterns,
+        lastScoreDelta: 0,
+        cyclesWithoutProgress: cycle,
+        llmAvailable: true,
+      };
+      const failureKind = inferFailureKind({
+        patternsFound: cyclePatterns, forgeSucceeded: false,
+        scoreDelta: 0, cyclesWithoutProgress: consecutiveForgeFailures,
+        capabilityTestFailed: false, llmAvailable: true,
+      });
+      const recovery = selectRecoveryAction(failureKind, ctx);
+      logger.warn(`[crusade]   Recovery: ${formatRecoveryPlan(recovery)}`);
+    } else {
+      consecutiveForgeFailures = 0;
     }
 
     // Phase C: Rescore
     currentScore = await getScore(dimension, cwd);
     const scoreAfter = currentScore;
+
+    // Track loop health
+    loopRecords.push(buildCycleRecord({
+      cycle, dimensionId: dimension,
+      patternsHarvested: cyclePatterns, forgeWaveSuccess: forgeResult.success,
+      scoreBefore, scoreAfter,
+    }));
 
     const report: CrusadeCycleReport = {
       cycle,
@@ -274,6 +311,8 @@ export async function runCrusade(options: CrusadeOptions): Promise<CrusadeResult
     }
   }
 
+  const health = assessLoopHealth(loopRecords);
+  logger.info(`[crusade] Loop health: ${health.status} — ${health.recommendation}`);
   logger.warn(`[crusade] Max cycles reached. Final score: ${currentScore.toFixed(2)} (target: ${target})`);
   const finalResult: CrusadeResult = {
     status: 'CRUSADE_MAX_CYCLES',
