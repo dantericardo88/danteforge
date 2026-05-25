@@ -43,6 +43,7 @@ import { runMergeCourt } from '../../matrix/engines/council-merge-court.js';
 import type { MergeCourtResult } from '../../matrix/engines/council-merge-court.js';
 import { FileClaims } from '../../matrix/engines/council-file-claims.js';
 import { ConvergenceTracker } from '../../matrix/engines/council-convergence.js';
+import { MemberHealthTracker, isQuotaError } from '../../matrix/engines/council-member-health.js';
 import type { WorkPacket } from '../../matrix/types/work-graph.js';
 import type { AgentLease } from '../../matrix/types/lease.js';
 
@@ -188,14 +189,30 @@ export async function runParallelCouncil(options: ParallelCouncilOptions): Promi
 
   // Session-level state
   const convergence = new ConvergenceTracker(3);
+  const health = new MemberHealthTracker();
   let totalMerged = 0;
 
   for (let round = 1; round <= maxRounds; round++) {
     logger.info(chalk.cyan(`\n── Round ${round}/${maxRounds} ─────────────────────────────────────`));
 
+    // Drop members that exhausted quota or degraded this session
+    const roundMembers = health.getActiveMembers(available);
+    if (roundMembers.length < 2) {
+      logger.error(chalk.red('Council quorum lost — fewer than 2 active members. Stopping.'));
+      const degraded = health.getStatus().filter(h => h.status !== 'active');
+      if (degraded.length > 0) {
+        logger.warn(chalk.yellow(`  Unavailable: ${degraded.map(h => `${h.id} (${h.status})`).join(', ')}`));
+      }
+      break;
+    }
+    if (roundMembers.length < available.length) {
+      const removed = available.filter(id => !roundMembers.includes(id));
+      logger.warn(chalk.yellow(`  Degraded member(s) excluded this round: ${removed.join(', ')}`));
+    }
+
     // Schedule dims — prune stuck dims so we don't retry known dead-ends
-    const allScheduled = await scheduleWork(available, cwd, {
-      maxDims: options.maxDimsPerRound ?? available.length * 3,
+    const allScheduled = await scheduleWork(roundMembers, cwd, {
+      maxDims: options.maxDimsPerRound ?? roundMembers.length * 3,
       minGap: options.minGap,
     });
     const scheduled = convergence.pruneStuck(allScheduled);
@@ -215,7 +232,7 @@ export async function runParallelCouncil(options: ParallelCouncilOptions): Promi
     const worktreeOpts = { projectPath: cwd, runId };
     const fileClaims = new FileClaims();
 
-    const handles: CouncilWorktreeHandle[] = await createCouncilWorktrees(available, worktreeOpts);
+    const handles: CouncilWorktreeHandle[] = await createCouncilWorktrees(roundMembers, worktreeOpts);
     if (handles.length === 0) {
       logger.error('Could not create worktrees. Check git state.');
       break;
@@ -239,9 +256,17 @@ export async function runParallelCouncil(options: ParallelCouncilOptions): Promi
           logger.info(`  [${chalk.bold(memberId)}] building ${myDims.length} dim(s)...`);
           try {
             const result = await runAdapter(adapter, { lease, cwd: handle.worktreePath });
+            health.recordSuccess(memberId);
             logger.info(`  [${chalk.bold(memberId)}] done: ${result.status}, ${result.filesChanged.length} file(s)`);
           } catch (err) {
-            logger.warn(`  [${chalk.bold(memberId)}] build failed: ${String(err)}`);
+            const errStr = String(err);
+            const exitCode = (err as NodeJS.ErrnoException & { code?: number }).code;
+            health.recordFailure(memberId, errStr, typeof exitCode === 'number' ? exitCode : undefined);
+            if (!health.isAvailable(memberId)) {
+              logger.warn(chalk.yellow(`  [${chalk.bold(memberId)}] removed from session: ${health.getStatus().find(h => h.id === memberId)?.status}`));
+            } else {
+              logger.warn(`  [${chalk.bold(memberId)}] build failed: ${errStr}`);
+            }
           }
         }),
       );

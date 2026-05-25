@@ -111,19 +111,33 @@ export class GeminiCLIAdapter implements AgentAdapter {
   private async _probeCandidate(candidate: string): Promise<boolean> {
     const isCmdShim = candidate.endsWith('.cmd') || candidate.endsWith('.bat');
     const isPs1 = candidate.endsWith('.ps1');
+    // On Windows, extensionless paths (bash scripts for unix) can't be executed directly.
+    if (process.platform === 'win32' && !isCmdShim && !isPs1 && !candidate.endsWith('.exe') && path.extname(candidate) === '') {
+      return false;
+    }
     try {
+      // Use --help rather than --version: Gemini CLI doesn't have --version.
+      // Treat any non-ENOENT exit as "available" — binary ran, just returned non-zero.
       if (isCmdShim && process.platform === 'win32') {
-        await execFileAsync('cmd.exe', ['/c', candidate, '--version'], { timeout: 5000 });
+        await execFileAsync('cmd.exe', ['/c', candidate, '--help'], { timeout: 5000 });
       } else if (isPs1) {
-        // ps1 needs a full path; by here it is always absolute (resolved via where.exe above)
-        await execFileAsync('powershell.exe', ['-NonInteractive', '-File', candidate, '--version'], { timeout: 5000 });
+        await execFileAsync('powershell.exe', ['-NonInteractive', '-File', candidate, '--help'], { timeout: 5000 });
       } else {
-        await execFileAsync(candidate, ['--version'], { timeout: 5000 });
+        await execFileAsync(candidate, ['--help'], { timeout: 5000 });
       }
       this._resolvedBinary = candidate;
       this._resolvedUsesShell = isCmdShim;
       return true;
-    } catch { return false; }
+    } catch (err) {
+      const code = (err as NodeJS.ErrnoException).code;
+      // ENOENT = binary missing; any other error = ran but failed → still available.
+      if (code !== 'ENOENT') {
+        this._resolvedBinary = candidate;
+        this._resolvedUsesShell = isCmdShim;
+        return true;
+      }
+      return false;
+    }
   }
 
   async prepareRun(input: AgentRunInput): Promise<PreparedAgentRun> {

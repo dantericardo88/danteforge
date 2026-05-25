@@ -16,6 +16,7 @@ import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import fs from 'node:fs/promises';
 import path from 'node:path';
+import os from 'node:os';
 import { logger } from '../../core/logger.js';
 import { matchesAnyGlob } from '../util/glob.js';
 import type {
@@ -34,6 +35,7 @@ import type {
 const execFileAsync = promisify(execFile);
 
 export interface CodexChildLike {
+  stdin?: NodeJS.WritableStream | null;
   stdout?: NodeJS.ReadableStream | null;
   stderr?: NodeJS.ReadableStream | null;
   on(event: 'close', cb: (code: number | null) => void): unknown;
@@ -192,20 +194,29 @@ export class CodexAdapter implements AgentAdapter {
       const spawnFn: CodexSpawnFn = this.options._spawn ?? ((c, a, o) => spawn(c, a, o));
       const usesCmdShim = this._resolvedUsesShell && process.platform === 'win32';
 
-      // Judge mode: capture stdout as verdict, skip file validation entirely.
+      // Judge mode: capture verdict via --output-last-message file (avoids TUI stdout),
+      // with stdout-chunks as fallback so injection-seam tests still pass.
       if (this.options.judgeMode) {
         const judgePrompt = buildCodexJudgePrompt(state.workPacket, lease);
+        const tmpFile = path.join(os.tmpdir(), `codex-judge-${Date.now()}.txt`);
+        // Pipe prompt via stdin (-) to avoid cmd.exe argument mangling on Windows.
         const [jCmd, jArgs] = usesCmdShim
-          ? ['cmd.exe', ['/c', state.binaryUsed, 'exec', judgePrompt]] as const
-          : [state.binaryUsed, ['exec', judgePrompt]] as const;
+          ? ['cmd.exe', ['/c', state.binaryUsed, 'exec', '--ephemeral', '--output-last-message', tmpFile, '-']] as const
+          : [state.binaryUsed, ['exec', '--ephemeral', '--output-last-message', tmpFile, '-']] as const;
         const chunks: Buffer[] = [];
         state.exitCode = await runChild(spawnFn, jCmd, [...jArgs], {
           cwd: normalizeCwd(worktreeRoot),
           env: { ...process.env, ...(state.input.env ?? {}) },
           shell: false,
-          stdio: ['ignore', 'pipe', 'pipe'],
-        }, this.options.timeoutMs ?? DEFAULT_TIMEOUT_MS, chunks);
-        state.capturedOutput = Buffer.concat(chunks).toString('utf8');
+          stdio: ['pipe', 'pipe', 'pipe'],
+        }, this.options.timeoutMs ?? DEFAULT_TIMEOUT_MS, chunks, judgePrompt);
+        // File output takes precedence; stdout fallback for test fake-procs.
+        let fromFile = '';
+        try {
+          fromFile = (await fs.readFile(tmpFile, 'utf8')).trim();
+          await fs.unlink(tmpFile).catch(() => { /* ignore */ });
+        } catch { /* file not written — subprocess mocked or flag unsupported */ }
+        state.capturedOutput = fromFile || Buffer.concat(chunks).toString('utf8');
         state.finalMessage = state.capturedOutput.trim() || '(no judge output)';
         state.status = 'completed';
         state.events.push({ eventId: `${runId}.complete`, runId, ts: now(), kind: 'completed' });
@@ -214,24 +225,22 @@ export class CodexAdapter implements AgentAdapter {
       }
 
       const prompt = buildCodexPrompt(state.workPacket, lease);
-      // On Windows, .cmd shims can't be passed long prompts via `shell: true`
-      // because cmd.exe mangles whitespace + special chars in the args. Invoke
-      // through `cmd.exe /c <binary> <args>` so cmd.exe handles quoting itself.
+      // Pipe prompt via stdin (-) to avoid cmd.exe argument mangling on Windows
+      // with multi-line, special-char prompts. Forward-slash cwd avoids a node
+      // spawn bug where backslash paths cause cmd.exe to appear unresolvable.
       const [cmd, args] = usesCmdShim
-        ? ['cmd.exe', ['/c', state.binaryUsed, 'exec', prompt]] as const
-        : [state.binaryUsed, ['exec', prompt]] as const;
+        ? ['cmd.exe', ['/c', state.binaryUsed, 'exec', '-']] as const
+        : [state.binaryUsed, ['exec', '-']] as const;
       const exitCode = await runChild(spawnFn, cmd, [...args],
         {
-          // Normalize backslash → forward-slash on Windows. With a backslash
-          // cwd, node's spawn fails to find cmd.exe (ENOENT on C:\WINDOWS\…
-          // even though the path is correct). Empirically, forward slashes
-          // work. This bit me for hours on Phase 14d smoke.
           cwd: normalizeCwd(worktreeRoot),
           env: { ...process.env, ...(state.input.env ?? {}) },
           shell: false,
-          stdio: ['ignore', 'pipe', 'pipe'],
+          stdio: ['pipe', 'pipe', 'pipe'],
         },
         this.options.timeoutMs ?? DEFAULT_TIMEOUT_MS,
+        undefined,
+        prompt,
       );
       state.exitCode = exitCode;
 
@@ -381,6 +390,7 @@ function runChild(
   opts: SpawnOptions,
   timeoutMs: number,
   captureChunks?: Buffer[],
+  stdinData?: string,
 ): Promise<number> {
   return new Promise<number>((resolve) => {
     const child: CodexChildLike = spawnFn(cmd, args, opts);
@@ -403,6 +413,9 @@ function runChild(
     child.stderr?.on('data', () => { /* drain */ });
     child.on('close', (code) => settle((code ?? 1) as number));
     child.on('error', () => settle(1));
+    if (stdinData && child.stdin) {
+      child.stdin.write(stdinData, () => child.stdin!.end());
+    }
   });
 }
 

@@ -24,6 +24,7 @@ import type { AgentLease } from '../types/lease.js';
 import type { CouncilWorktreeHandle } from './council-worktree.js';
 import { captureWorktreeDiff, getChangedFiles } from './council-worktree.js';
 import type { CouncilWorktreeOpts } from './council-worktree.js';
+import { runDebate } from './council-debate.js';
 
 const execFileAsync = promisify(execFile);
 
@@ -189,7 +190,31 @@ export async function runMergeCourt(opts: MergeCourtOptions): Promise<MergeCourt
       }),
     );
 
-    const consensus = resolveConsensus(verdicts);
+    let finalVerdicts = verdicts;
+    let consensus = resolveConsensus(verdicts);
+
+    // If initial verdict is FAIL or SPLIT, offer the builder a structured
+    // rebuttal — judges may change their verdict after hearing the explanation.
+    if ((consensus === 'FAIL' || consensus === 'SPLIT') && judgeIds.length > 0) {
+      logger.info(`[merge-court] ${builderId}: ${consensus} — starting debate (up to 2 rounds)`);
+      try {
+        const transcript = await runDebate({
+          builderId,
+          judgeIds,
+          initialVerdicts: verdicts,
+          goal: opts.goal,
+          diff,
+          worktreePath: handle.worktreePath,
+          maxRounds: 2,
+        });
+        finalVerdicts = transcript.finalVerdicts;
+        consensus = transcript.finalConsensus;
+        logger.info(`[merge-court] ${builderId}: post-debate consensus = ${consensus} (${transcript.rounds.length} round(s))`);
+      } catch (err) {
+        logger.warn(`[merge-court] ${builderId}: debate failed — using initial verdict: ${String(err)}`);
+      }
+    }
+
     let merged = false;
     let mergeError: string | undefined;
 
@@ -207,7 +232,7 @@ export async function runMergeCourt(opts: MergeCourtOptions): Promise<MergeCourt
     }
 
     results.push({ memberId: builderId, worktreePath: handle.worktreePath,
-      changedFiles, verdicts, consensus, merged, mergeError });
+      changedFiles, verdicts: finalVerdicts, consensus, merged, mergeError });
   }
 
   return results;

@@ -857,6 +857,7 @@ program
   .option('--parallel', 'True parallel mode: all members build simultaneously in isolated git worktrees, then cross-judge each other')
   .option('--rounds <n>', 'Number of parallel rounds to run (parallel mode, default: 1)', '1')
   .option('--max-dims <n>', 'Max dimensions to schedule per round (parallel mode)')
+  .option('--skip-validate', 'Skip running danteforge validate after merges (faster for first runs)')
   .option('--discover', 'Only probe and list available council members, then exit')
   .option('--json', 'Emit JSON summary at end')
   .option('--cwd <path>', 'Project directory (defaults to cwd)')
@@ -883,6 +884,7 @@ program
             maxDimsPerRound: opts.maxDims ? parseInt(opts.maxDims as string, 10) : undefined,
             loop: opts.loop as boolean | undefined,
             json: opts.json as boolean | undefined,
+            skipValidate: opts.skipValidate as boolean | undefined,
           });
           return;
         }
