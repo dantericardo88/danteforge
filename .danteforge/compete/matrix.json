@@ -58,7 +58,7 @@
       "category": "quality",
       "frequency": "high",
       "scores": {
-        "self": 7,
+        "self": 9,
         "Devin (Cognition AI)": 7.5,
         "GitHub Copilot Workspace": 8,
         "Cursor": 7,
@@ -647,7 +647,7 @@
       "category": "features",
       "frequency": "high",
       "scores": {
-        "self": 7.0,
+        "self": 7,
         "Devin (Cognition AI)": 9.5,
         "GitHub Copilot Workspace": 7,
         "Cursor": 7,
@@ -2796,7 +2796,7 @@
       "category": "core_differentiator",
       "frequency": "high",
       "scores": {
-        "self": 6.5,
+        "self": 9,
         "Kiro (AWS)": 7.5,
         "Replit Agent": 3,
         "spec-kit (GitHub)": 7,
@@ -3109,7 +3109,7 @@
       "category": "core_differentiator",
       "frequency": "high",
       "scores": {
-        "self": 8.0,
+        "self": 8,
         "Kiro (AWS)": 5,
         "Replit Agent": 4,
         "spec-kit (GitHub)": 2,
