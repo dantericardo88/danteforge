@@ -850,6 +850,7 @@ program
   .command('council')
   .description('Multi-LLM council: builder + independent judges. The one who builds never judges. Dispatches real work to Codex, Gemini, Grok Build via subscription CLIs.')
   .option('--goal <goal>', 'Task for the council to tackle')
+  .option('--ask <question>', 'Ask all available council members a question (read-only consultation — no code changes)')
   .option('--builder <id>', 'Preferred builder (codex|gemini-cli|grok-build|claude-code) — sequential mode only')
   .option('--loop', 'Continue cycling until --target-dims passes achieved')
   .option('--target-dims <n>', 'Stop after this many council-approved passes (sequential mode)', '1')
@@ -873,7 +874,16 @@ program
           }
           return;
         }
-        if (!opts.goal) throw new Error('--goal is required. Example: danteforge council --goal "fix the gate script paradox in DanteDojo"');
+        if (opts.ask) {
+          const { runCouncilAsk } = await import('./commands/council-ask.js');
+          await runCouncilAsk({
+            cwd: opts.cwd as string | undefined,
+            question: opts.ask as string,
+            json: opts.json as boolean | undefined,
+          });
+          return;
+        }
+        if (!opts.goal) throw new Error('--goal or --ask is required. Example: danteforge council --ask "What is the biggest reliability gap?"');
 
         if (opts.parallel) {
           const { runParallelCouncil } = await import('./commands/council-parallel.js');

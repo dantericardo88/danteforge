@@ -1,11 +1,10 @@
 // Matrix Kernel — GrokBuildAdapter (Phase 14f: subprocess CLI orchestration)
 //
-// Spawns `grok.exe` (Grok Build TUI) as a headless subprocess using --single
-// for non-interactive execution. Uses the user's Grok Build subscription —
-// no xAI API key required.
+// Spawns `grok.exe` (Grok Build TUI) as a headless subprocess.
+// Uses the user's Grok Build subscription — no xAI API key required.
 //
-// Build mode:  grok --single "<prompt>" --always-approve --cwd <dir>
-// Judge mode:  grok --single "<prompt>" --permission-mode plan --cwd <dir>
+// Build mode:  grok "<prompt>" --always-approve --effort <level> --cwd <dir>
+// Judge mode:  grok "<prompt>" --permission-mode plan --cwd <dir>
 //              (read-only: plan mode disables all write tools)
 //
 // Output capture: --output-format plain writes the agent's final message to
@@ -195,8 +194,8 @@ export class GrokBuildAdapter implements AgentAdapter {
       // Build mode: --always-approve (auto-accept all tool calls like write/edit/bash)
       // Judge mode: --permission-mode plan (read-only, no writes allowed)
       const grokArgs = judgeMode
-        ? ['--single', prompt, '--permission-mode', 'plan', '--output-format', 'plain', '--cwd', normalizeCwd(worktreeRoot), '--no-memory']
-        : ['--single', prompt, '--always-approve', '--effort', effort, '--cwd', normalizeCwd(worktreeRoot), '--no-memory', '--check'];
+        ? [prompt, '--permission-mode', 'plan', '--output-format', 'plain', '--cwd', normalizeCwd(worktreeRoot), '--no-memory']
+        : [prompt, '--always-approve', '--effort', effort, '--cwd', normalizeCwd(worktreeRoot), '--no-memory', '--check'];
 
       const chunks: Buffer[] = [];
       const exitCode = await runChild(
