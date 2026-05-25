@@ -14,6 +14,7 @@ import os from 'node:os';
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import { logger } from '../../core/logger.js';
+import { COUNCIL_PROFILES } from './council-member-profiles.js';
 import { GeminiCLIAdapter } from '../adapters/gemini-cli-adapter.js';
 import { GrokBuildAdapter } from '../adapters/grok-build-adapter.js';
 import { CodexAdapter } from '../adapters/codex-adapter.js';
@@ -37,6 +38,10 @@ export interface MemberVerdict {
   confidence: 'HIGH' | 'MEDIUM' | 'LOW';
   scoreSuggestion: number | null;
   reason: string;
+  /** Specific technical concerns that must be resolved before PASS (Karpathy-style dissent capture). */
+  blockingConcerns: string[];
+  /** Minority position preserved even when overall consensus is PASS. */
+  dissentSummary: string;
   rawOutput: string;
 }
 
@@ -48,6 +53,10 @@ export interface MergeCourtResult {
   consensus: 'PASS' | 'FAIL' | 'SPLIT';
   merged: boolean;
   mergeError?: string;
+  /** candidateId → builderId revealed after all verdicts collected (anonymous peer review). */
+  anonymizationMap?: Record<string, string>;
+  /** Dissent from minority judges preserved even on PASS consensus. */
+  dissentLog: string[];
 }
 
 export interface MergeCourtOptions {
@@ -78,7 +87,17 @@ function parseVerdict(judgeId: CouncilMemberId, rawOutput: string): MemberVerdic
   const reasonMatch = rawOutput.match(/REASON:\s*(.+?)(?=\n[A-Z_]+:|$)/is);
   const reason = reasonMatch ? reasonMatch[1]!.trim().slice(0, 300) : rawOutput.slice(0, 200);
 
-  return { judgeId, verdict, confidence, scoreSuggestion, reason, rawOutput };
+  const concernsMatch = rawOutput.match(/BLOCKING_CONCERNS:\s*(.+?)(?=\n[A-Z_]+:|$)/is);
+  const blockingConcerns = concernsMatch && concernsMatch[1]!.trim().toLowerCase() !== 'none'
+    ? concernsMatch[1]!.trim().split('\n').map(l => l.replace(/^[-•]\s*/, '').trim()).filter(Boolean)
+    : [];
+
+  const dissentMatch = rawOutput.match(/DISSENT:\s*(.+?)(?=\n[A-Z_]+:|$)/is);
+  const dissentSummary = dissentMatch && dissentMatch[1]!.trim().toLowerCase() !== 'none'
+    ? dissentMatch[1]!.trim().slice(0, 300)
+    : '';
+
+  return { judgeId, verdict, confidence, scoreSuggestion, reason, blockingConcerns, dissentSummary, rawOutput };
 }
 
 function resolveConsensus(verdicts: MemberVerdict[]): 'PASS' | 'FAIL' | 'SPLIT' {
@@ -92,30 +111,39 @@ function resolveConsensus(verdicts: MemberVerdict[]): 'PASS' | 'FAIL' | 'SPLIT' 
 
 // ── Judge adapter factory (judge-mode only) ───────────────────────────────────
 
-function makeJudgeWorkPacket(goal: string, diff: string, worktreePath: string): WorkPacket {
+function makeJudgeWorkPacket(
+  goal: string, diff: string, worktreePath: string,
+  persona: string, candidateId: string,
+): WorkPacket {
   const diffSnippet = diff.slice(0, 4000);
   return {
     id: `merge-court.${Date.now()}`,
     dimensionId: 'council-review',
     objective: [
-      `You are an independent code reviewer. READ ONLY — do NOT make changes.`,
+      `You are acting as: ${persona}`,
+      `You are an independent code reviewer in an anonymous peer-review council.`,
+      `The builder's identity is hidden (you are reviewing ${candidateId}).`,
+      `READ ONLY — do NOT make any file changes.`,
       ``,
-      `Evaluate whether the following diff correctly implements: ${goal}`,
+      `Evaluate whether ${candidateId}'s diff correctly implements: ${goal}`,
       ``,
       `DIFF (first 4000 chars):`,
       diffSnippet || '(no diff — builder made no changes)',
       ``,
-      `Output your verdict in EXACTLY this format:`,
+      `Output your verdict in EXACTLY this format (all fields required):`,
       `VERDICT: PASS`,
       `CONFIDENCE: HIGH`,
       `REASON: <one paragraph>`,
       `SCORE_SUGGESTION: <number 0-10>`,
       `BLOCKING_ISSUES: none`,
+      `BLOCKING_CONCERNS: none`,
+      `DISSENT: none`,
       ``,
-      `or VERDICT: FAIL with BLOCKING_ISSUES as a bullet list.`,
-      `Be harsh. Only PASS if the implementation is real and non-trivial.`,
+      `or VERDICT: FAIL with BLOCKING_ISSUES and BLOCKING_CONCERNS as bullet lists.`,
+      `If you PASS but have reservations, put them in DISSENT — they are preserved in the audit log.`,
+      `Be harsh through your ${persona} lens. Only PASS if the implementation is real and non-trivial.`,
     ].join('\n'),
-    acceptanceCriteria: ['Rendered verdict with VERDICT, CONFIDENCE, REASON, SCORE_SUGGESTION, BLOCKING_ISSUES'],
+    acceptanceCriteria: ['Rendered verdict with all required fields'],
     proof: { proofRequired: ['verdict output'] },
     globalForbidden: ['**'],
     context: { worktreePath },
@@ -141,6 +169,24 @@ function makeJudgeAdapter(id: CouncilMemberId, workPacket: WorkPacket) {
   }
 }
 
+// ── Anonymous peer review helpers (Karpathy protocol) ────────────────────────
+
+const CANDIDATE_LABELS = ['Alpha', 'Beta', 'Gamma', 'Delta', 'Epsilon', 'Zeta'];
+
+function buildAnonymizationMap(builderIds: CouncilMemberId[]): {
+  idToCandidate: Map<CouncilMemberId, string>;
+  candidateToId: Map<string, CouncilMemberId>;
+} {
+  const idToCandidate = new Map<CouncilMemberId, string>();
+  const candidateToId = new Map<string, CouncilMemberId>();
+  builderIds.forEach((id, i) => {
+    const label = `Candidate-${CANDIDATE_LABELS[i] ?? String(i + 1)}`;
+    idToCandidate.set(id, label);
+    candidateToId.set(label, id);
+  });
+  return { idToCandidate, candidateToId };
+}
+
 // ── Merge via git apply ───────────────────────────────────────────────────────
 
 async function applyDiffToMain(diff: string, projectPath: string): Promise<void> {
@@ -161,16 +207,24 @@ async function applyDiffToMain(diff: string, projectPath: string): Promise<void>
 export async function runMergeCourt(opts: MergeCourtOptions): Promise<MergeCourtResult[]> {
   const results: MergeCourtResult[] = [];
 
+  // Build session-wide anonymization map (Karpathy: hide builder identity from judges).
+  const allBuilderIds = opts.handles.map(h => h.memberId as CouncilMemberId);
+  const { idToCandidate, candidateToId } = buildAnonymizationMap(allBuilderIds);
+  const anonymizationMap: Record<string, string> = {};
+  for (const [cid, bid] of candidateToId) anonymizationMap[cid] = bid;
+
   for (const handle of opts.handles) {
     const builderId = handle.memberId as CouncilMemberId;
+    const candidateId = idToCandidate.get(builderId) ?? builderId;
 
     const diff = await captureWorktreeDiff(handle, opts.worktreeOpts);
     const changedFiles = await getChangedFiles(handle.worktreePath);
 
     if (changedFiles.length === 0) {
-      logger.info(`[merge-court] ${builderId}: no changes — skipping judge phase`);
+      logger.info(`[merge-court] ${candidateId} (${builderId}): no changes — skipping judge phase`);
       results.push({ memberId: builderId, worktreePath: handle.worktreePath,
-        changedFiles: [], verdicts: [], consensus: 'FAIL', merged: false });
+        changedFiles: [], verdicts: [], consensus: 'FAIL', merged: false,
+        anonymizationMap, dissentLog: [] });
       continue;
     }
 
@@ -181,32 +235,38 @@ export async function runMergeCourt(opts: MergeCourtOptions): Promise<MergeCourt
         logger.warn(`[merge-court] ${builderId}: all ${changedFiles.length} file(s) claimed by other members — skipping (structural gate)`);
         results.push({ memberId: builderId, worktreePath: handle.worktreePath,
           changedFiles, verdicts: [], consensus: 'FAIL', merged: false,
-          mergeError: 'all files claimed by other council members' });
+          mergeError: 'all files claimed by other council members',
+          anonymizationMap, dissentLog: [] });
         continue;
       }
     }
 
     const judgeIds = opts.allMemberIds.filter(id => id !== builderId);
-    logger.info(`[merge-court] ${builderId}: ${changedFiles.length} file(s) changed → ${judgeIds.length} judge(s)`);
+    logger.info(`[merge-court] ${candidateId}: ${changedFiles.length} file(s) → ${judgeIds.length} anonymous judge(s)`);
 
-    const workPacket = makeJudgeWorkPacket(opts.goal, diff, handle.worktreePath);
     const lease = makeReadOnlyLease(handle.worktreePath);
 
     const verdicts = await Promise.all(
       judgeIds.map(async (judgeId): Promise<MemberVerdict> => {
+        const persona = COUNCIL_PROFILES[judgeId]?.persona ?? judgeId;
+        const workPacket = makeJudgeWorkPacket(opts.goal, diff, handle.worktreePath, persona, candidateId);
         try {
           const adapter = makeJudgeAdapter(judgeId, workPacket);
           const result = await runAdapter(adapter, { lease, cwd: handle.worktreePath });
           return parseVerdict(judgeId, result.finalMessage ?? '');
         } catch (err) {
           return { judgeId, verdict: 'UNCLEAR', confidence: 'LOW',
-            scoreSuggestion: null, reason: String(err), rawOutput: '' };
+            scoreSuggestion: null, reason: String(err),
+            blockingConcerns: [], dissentSummary: '', rawOutput: '' };
         }
       }),
     );
 
     let finalVerdicts = verdicts;
     let consensus = resolveConsensus(verdicts);
+
+    // Reveal builder identity in logs after all initial verdicts collected.
+    logger.info(`[merge-court] ${candidateId} revealed as ${builderId}: initial consensus = ${consensus}`);
 
     // If initial verdict is FAIL or SPLIT, offer the builder a structured
     // rebuttal — judges may change their verdict after hearing the explanation.
@@ -230,6 +290,14 @@ export async function runMergeCourt(opts: MergeCourtOptions): Promise<MergeCourt
       }
     }
 
+    // Collect dissent from minority judges (preserved even on PASS — Karpathy/Block pattern).
+    const dissentLog = finalVerdicts
+      .filter(v => v.dissentSummary)
+      .map(v => `[${v.judgeId}] ${v.dissentSummary}`);
+    if (consensus === 'PASS' && dissentLog.length > 0) {
+      logger.info(`[merge-court] ${builderId}: PASS with ${dissentLog.length} dissent(s) logged`);
+    }
+
     let merged = false;
     let mergeError: string | undefined;
 
@@ -247,7 +315,8 @@ export async function runMergeCourt(opts: MergeCourtOptions): Promise<MergeCourt
     }
 
     results.push({ memberId: builderId, worktreePath: handle.worktreePath,
-      changedFiles, verdicts: finalVerdicts, consensus, merged, mergeError });
+      changedFiles, verdicts: finalVerdicts, consensus, merged, mergeError,
+      anonymizationMap, dissentLog });
   }
 
   return results;

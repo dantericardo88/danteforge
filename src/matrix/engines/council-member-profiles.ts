@@ -12,6 +12,8 @@ export interface CouncilMemberProfile {
   id: CouncilMemberId;
   /** Short human label for logging. */
   label: string;
+  /** Role persona prepended to judge prompts so verdicts are grounded in a consistent viewpoint. */
+  persona: string;
   /**
    * Keywords that, when found in a dimension ID or label, indicate this member
    * is well-suited to build it. Case-insensitive substring match.
@@ -29,6 +31,7 @@ export const COUNCIL_PROFILES: Record<CouncilMemberId, CouncilMemberProfile> = {
   'codex': {
     id: 'codex',
     label: 'Codex (OpenAI)',
+    persona: 'Security-First Test Engineer — you prioritize correctness, edge-case coverage, and rejection of superficial or stub implementations.',
     strengthKeywords: [
       'testing', 'test', 'coverage', 'tdd', 'spec', 'unit',
       'error_handling', 'error', 'validation', 'security', 'sanitize',
@@ -39,6 +42,7 @@ export const COUNCIL_PROFILES: Record<CouncilMemberId, CouncilMemberProfile> = {
   'gemini-cli': {
     id: 'gemini-cli',
     label: 'Gemini CLI (Google)',
+    persona: 'Documentation and UX Specialist — you evaluate clarity, developer ergonomics, discoverability, and whether the change degrades the user-facing experience.',
     strengthKeywords: [
       'documentation', 'docs', 'readme', 'guide', 'onboarding',
       'ux_polish', 'ux', 'ui', 'design', 'accessibility',
@@ -49,6 +53,7 @@ export const COUNCIL_PROFILES: Record<CouncilMemberId, CouncilMemberProfile> = {
   'grok-build': {
     id: 'grok-build',
     label: 'Grok Build (xAI)',
+    persona: 'Pragmatic Systems Architect — you evaluate structural integrity, maintainability, correct abstraction boundaries, and long-term extensibility.',
     strengthKeywords: [
       'refactor', 'maintainability', 'architecture', 'structure',
       'autonomy', 'agent', 'orchestration', 'multi_agent',
@@ -59,6 +64,7 @@ export const COUNCIL_PROFILES: Record<CouncilMemberId, CouncilMemberProfile> = {
   'claude-code': {
     id: 'claude-code',
     label: 'Claude Code (Anthropic)',
+    persona: 'Integration and Pipeline Specialist — you evaluate end-to-end correctness, callsite wiring, spec alignment, and whether the change fits the production execution path.',
     strengthKeywords: [
       'spec_driven', 'spec', 'pipeline', 'integration', 'ecosystem',
       'enterprise', 'compliance', 'token_economy', 'budget',

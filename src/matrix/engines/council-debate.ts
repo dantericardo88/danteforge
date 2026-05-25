@@ -10,6 +10,7 @@
 // Injection seam (_runPrompt) lets tests override the subprocess calls.
 // Production path spawns adapters in judgeMode with debate-specific prompts.
 import { logger } from '../../core/logger.js';
+import { COUNCIL_PROFILES } from './council-member-profiles.js';
 import { GeminiCLIAdapter } from '../adapters/gemini-cli-adapter.js';
 import { GrokBuildAdapter } from '../adapters/grok-build-adapter.js';
 import { CodexAdapter } from '../adapters/codex-adapter.js';
@@ -73,7 +74,15 @@ function parseVerdict(judgeId: CouncilMemberId, rawOutput: string): MemberVerdic
   const scoreSuggestion = scoreMatch ? parseFloat(scoreMatch[1]!) : null;
   const reasonMatch = rawOutput.match(/REASON:\s*(.+?)(?=\n[A-Z_]+:|$)/is);
   const reason = reasonMatch ? reasonMatch[1]!.trim().slice(0, 300) : rawOutput.slice(0, 200);
-  return { judgeId, verdict, confidence, scoreSuggestion, reason, rawOutput };
+  const concernsMatch = rawOutput.match(/BLOCKING_CONCERNS:\s*(.+?)(?=\n[A-Z_]+:|$)/is);
+  const blockingConcerns = concernsMatch && concernsMatch[1]!.trim().toLowerCase() !== 'none'
+    ? concernsMatch[1]!.trim().split('\n').map(l => l.replace(/^[-•]\s*/, '').trim()).filter(Boolean)
+    : [];
+  const dissentMatch = rawOutput.match(/DISSENT:\s*(.+?)(?=\n[A-Z_]+:|$)/is);
+  const dissentSummary = dissentMatch && dissentMatch[1]!.trim().toLowerCase() !== 'none'
+    ? dissentMatch[1]!.trim().slice(0, 300)
+    : '';
+  return { judgeId, verdict, confidence, scoreSuggestion, reason, blockingConcerns, dissentSummary, rawOutput };
 }
 
 function extractBlockingIssues(verdicts: MemberVerdict[]): string {
@@ -109,10 +118,12 @@ function buildRebuttalPrompt(goal: string, diff: string, blockingIssues: string,
 
 function buildReEvalPrompt(
   goal: string, diff: string, rebuttal: string,
-  priorRawOutput: string, round: number,
+  priorRawOutput: string, round: number, judgeId: CouncilMemberId,
 ): string {
+  const persona = COUNCIL_PROFILES[judgeId]?.persona ?? judgeId;
   return [
     `DEBATE ROUND ${round} — JUDGE RE-EVALUATION`,
+    `You are acting as: ${persona}`,
     ``,
     `You previously reviewed a diff. The builder has responded to your concerns.`,
     `Re-evaluate considering their rebuttal. You may change your verdict.`,
@@ -128,14 +139,17 @@ function buildReEvalPrompt(
     `Your prior verdict:`,
     priorRawOutput.slice(0, 500) || '(not available)',
     ``,
-    `Output your UPDATED verdict in EXACTLY this format:`,
+    `Output your UPDATED verdict in EXACTLY this format (all fields required):`,
     `VERDICT: PASS`,
     `CONFIDENCE: HIGH`,
     `REASON: <one paragraph>`,
     `SCORE_SUGGESTION: <number 0-10>`,
     `BLOCKING_ISSUES: none`,
+    `BLOCKING_CONCERNS: none`,
+    `DISSENT: none`,
     ``,
-    `or VERDICT: FAIL with BLOCKING_ISSUES as a bullet list.`,
+    `or VERDICT: FAIL with BLOCKING_ISSUES and BLOCKING_CONCERNS as bullet lists.`,
+    `If you PASS but still have reservations, record them in DISSENT.`,
   ].join('\n');
 }
 
@@ -215,14 +229,15 @@ export async function runDebate(opts: DebateOptions): Promise<DebateTranscript> 
     const judgeUpdates = await Promise.all(
       judgeIds.map(async (judgeId): Promise<MemberVerdict> => {
         const prior = transcript.finalVerdicts.find(v => v.judgeId === judgeId);
-        const reEvalPrompt = buildReEvalPrompt(goal, diff, builderRebuttal, prior?.rawOutput ?? '', round);
+        const reEvalPrompt = buildReEvalPrompt(goal, diff, builderRebuttal, prior?.rawOutput ?? '', round, judgeId);
         try {
           const raw = await runPrompt(judgeId, reEvalPrompt, worktreePath);
           return parseVerdict(judgeId, raw);
         } catch (err) {
           return prior ?? {
             judgeId, verdict: 'UNCLEAR', confidence: 'LOW',
-            scoreSuggestion: null, reason: String(err), rawOutput: '',
+            scoreSuggestion: null, reason: String(err),
+            blockingConcerns: [], dissentSummary: '', rawOutput: '',
           };
         }
       }),

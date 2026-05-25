@@ -859,6 +859,7 @@ program
   .option('--rounds <n>', 'Number of parallel rounds to run (parallel mode, default: 1)', '1')
   .option('--max-dims <n>', 'Max dimensions to schedule per round (parallel mode)')
   .option('--skip-validate', 'Skip running danteforge validate after merges (faster for first runs)')
+  .option('--resume <runId>', 'Resume a parallel council run from its last checkpoint (runId from COUNCIL_SESSION_<runId>.json)')
   .option('--discover', 'Only probe and list available council members, then exit')
   .option('--json', 'Emit JSON summary at end')
   .option('--cwd <path>', 'Project directory (defaults to cwd)')
@@ -895,6 +896,7 @@ program
             loop: opts.loop as boolean | undefined,
             json: opts.json as boolean | undefined,
             skipValidate: opts.skipValidate as boolean | undefined,
+            resumeRunId: opts.resume as string | undefined,
           });
           return;
         }

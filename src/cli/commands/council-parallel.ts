@@ -44,6 +44,12 @@ import type { MergeCourtResult } from '../../matrix/engines/council-merge-court.
 import { FileClaims } from '../../matrix/engines/council-file-claims.js';
 import { ConvergenceTracker } from '../../matrix/engines/council-convergence.js';
 import { MemberHealthTracker, isQuotaError } from '../../matrix/engines/council-member-health.js';
+import {
+  makeSessionId,
+  makeInitialState,
+  writeSessionState,
+  loadSessionState,
+} from '../../matrix/engines/council-session-state.js';
 import type { WorkPacket } from '../../matrix/types/work-graph.js';
 import type { AgentLease } from '../../matrix/types/lease.js';
 
@@ -59,6 +65,8 @@ export interface ParallelCouncilOptions {
   loop?: boolean;
   /** Skip running danteforge validate after merges (faster, but no receipts). */
   skipValidate?: boolean;
+  /** Resume a previous run from its last checkpoint (runId from COUNCIL_SESSION_<runId>.json). */
+  resumeRunId?: string;
   /** Injection seam: override council discovery for tests */
   _discover?: () => Promise<CouncilMember[]>;
 }
@@ -167,7 +175,7 @@ export async function runParallelCouncil(options: ParallelCouncilOptions): Promi
   const maxRounds = options.maxRounds ?? (options.loop ? 10 : 1);
 
   logger.info(chalk.bold('\n=== DanteForge Parallel Council ==='));
-  logger.info(chalk.dim('Builder never judges. Isolated worktrees. File claims prevent conflicts.\n'));
+  logger.info(chalk.dim('Builder never judges. Isolated worktrees. Anonymous peer review. File claims prevent conflicts.\n'));
 
   const discover = options._discover ?? discoverCouncil;
   const members = await discover();
@@ -192,7 +200,26 @@ export async function runParallelCouncil(options: ParallelCouncilOptions): Promi
   const health = new MemberHealthTracker();
   let totalMerged = 0;
 
+  // Session checkpoint (GAP 3: LangGraph-inspired persistent state for resume).
+  let resumedRound = 0;
+  const runId = options.resumeRunId ?? makeSessionId();
+  if (options.resumeRunId) {
+    const saved = await loadSessionState(cwd, options.resumeRunId);
+    if (saved) {
+      resumedRound = saved.round;
+      totalMerged = saved.totalMerged;
+      logger.info(chalk.yellow(`Resuming session ${runId} from round ${resumedRound + 1} (${saved.totalMerged} prior merges)`));
+    } else {
+      logger.warn(chalk.yellow(`No checkpoint found for runId "${options.resumeRunId}" — starting fresh`));
+    }
+  }
+  const sessionState = makeInitialState(runId, options.goal, available, maxRounds);
+
   for (let round = 1; round <= maxRounds; round++) {
+    if (round <= resumedRound) {
+      logger.info(chalk.dim(`── Round ${round}/${maxRounds} skipped (already completed in resumed session)`));
+      continue;
+    }
     logger.info(chalk.cyan(`\n── Round ${round}/${maxRounds} ─────────────────────────────────────`));
 
     // Drop members that exhausted quota or degraded this session
@@ -329,6 +356,20 @@ export async function runParallelCouncil(options: ParallelCouncilOptions): Promi
         convergence: { converged: conv.converged, stuck: conv.stuck, inProgress: conv.inProgress },
         ts: new Date().toISOString(),
       });
+
+      // Checkpoint session state for resume support.
+      sessionState.round = round;
+      sessionState.phase = 'validate';
+      sessionState.totalMerged = totalMerged;
+      sessionState.convergence = { ...conv, stuckDims: conv.stuckDims };
+      sessionState.mergeResults = mergeResults.map(r => ({
+        memberId: r.memberId,
+        consensus: r.consensus,
+        merged: r.merged,
+        changedFiles: r.changedFiles,
+        dissentLog: r.dissentLog,
+      }));
+      await writeSessionState(cwd, sessionState);
 
       if (convergence.isDone()) {
         logger.info(chalk.green.bold('\nAll dimensions converged or stuck. Council complete.'));
