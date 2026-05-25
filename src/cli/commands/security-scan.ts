@@ -184,7 +184,16 @@ export async function securityScan(options: SecurityScanOptions = {}): Promise<S
     return nodeGlob(pattern, opts);
   });
 
-  const files = await globFn('src/**/*.ts', { cwd, absolute: true });
+  // Exclude security tooling files — they define patterns as regex literals
+  // which the scanner matches against itself (false positives).
+  const SCANNER_OWN_FILES = new Set([
+    'src/cli/commands/security-scan.ts',
+    'src/core/paranoid-review.ts',
+    'src/core/pattern-security-scanner.ts',
+    'src/matrix/courts/security-red-team.ts',
+  ]);
+  const files = (await globFn('src/**/*.ts', { cwd, absolute: true }))
+    .filter(f => !SCANNER_OWN_FILES.has(path.relative(cwd, f).replace(/\\/g, '/')));
 
   const allFindings: ScanFinding[] = [];
 
