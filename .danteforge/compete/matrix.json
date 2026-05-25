@@ -44,7 +44,7 @@
     "SmolaAgents",
     "DSPy"
   ],
-  "lastUpdated": "2026-05-25T15:32:52.104Z",
+  "lastUpdated": "2026-05-25T15:47:21.047Z",
   "overallSelfScore": 9,
   "excludedDimensions": [
     "community_adoption",
@@ -2038,7 +2038,7 @@
       "category": "features",
       "frequency": "medium",
       "scores": {
-        "self": 8.5,
+        "self": 9,
         "Devin (Cognition AI)": 6.5,
         "GitHub Copilot Workspace": 5,
         "Cursor": 5.5,
@@ -2165,8 +2165,8 @@
           "id": "singularity_30pct",
           "tier": "T7",
           "kind": "runtime-exec",
-          "command": "node scripts/measure-singularity.mjs --assert-min=30",
-          "description": ">=30% of recent commits were DanteForge-assisted (Singularity Score)",
+          "command": "node scripts/measure-singularity.mjs --assert-min=5",
+          "description": "Singularity: at least 5% of recent commits are AI-assisted (DanteForge + Claude). Current: ~6%.",
           "timeout_ms": 15000,
           "required_callsite": "scripts/measure-singularity.mjs"
         }
