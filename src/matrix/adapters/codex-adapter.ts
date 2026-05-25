@@ -49,6 +49,8 @@ export interface CodexAdapterOptions {
   workPacket: WorkPacket;
   binary?: string;
   timeoutMs?: number;
+  /** When true, runs as a read-only reviewer: stdout is captured as finalMessage. */
+  judgeMode?: boolean;
   _spawn?: CodexSpawnFn;
   _isAvailable?: () => Promise<boolean>;
   _gitDiff?: (cwd: string) => Promise<string[]>;
@@ -67,6 +69,7 @@ interface CodexRunState {
   errorReason?: string;
   events: AgentRunEvent[];
   finalMessage?: string;
+  capturedOutput: string;
   startMs: number;
   endMs?: number;
   exitCode: number | null;
@@ -127,6 +130,7 @@ export class CodexAdapter implements AgentAdapter {
       filesReverted: [],
       status: 'running',
       events: [],
+      capturedOutput: '',
       startMs: Date.now(),
       exitCode: null,
       binaryUsed: binary,
@@ -152,7 +156,7 @@ export class CodexAdapter implements AgentAdapter {
     const state = RUN_STATE.get(handle.runId);
     if (!state) throw new Error(`Run ${handle.runId} not found`);
     const violationCount = state.filesReverted.length;
-    const finalMessage = state.finalMessage
+    const finalMessage = (state.capturedOutput.trim() || state.finalMessage)
       ?? (violationCount > 0
         ? `Codex CLI ran; ${state.filesChanged.length} file(s) kept, ${violationCount} reverted (lease violation)`
         : `Codex CLI ran; ${state.filesChanged.length} file(s) changed`);
@@ -185,13 +189,34 @@ export class CodexAdapter implements AgentAdapter {
     });
 
     try {
-      const prompt = buildCodexPrompt(state.workPacket, lease);
-
       const spawnFn: CodexSpawnFn = this.options._spawn ?? ((c, a, o) => spawn(c, a, o));
+      const usesCmdShim = this._resolvedUsesShell && process.platform === 'win32';
+
+      // Judge mode: capture stdout as verdict, skip file validation entirely.
+      if (this.options.judgeMode) {
+        const judgePrompt = buildCodexJudgePrompt(state.workPacket, lease);
+        const [jCmd, jArgs] = usesCmdShim
+          ? ['cmd.exe', ['/c', state.binaryUsed, 'exec', judgePrompt]] as const
+          : [state.binaryUsed, ['exec', judgePrompt]] as const;
+        const chunks: Buffer[] = [];
+        state.exitCode = await runChild(spawnFn, jCmd, [...jArgs], {
+          cwd: normalizeCwd(worktreeRoot),
+          env: { ...process.env, ...(state.input.env ?? {}) },
+          shell: false,
+          stdio: ['ignore', 'pipe', 'pipe'],
+        }, this.options.timeoutMs ?? DEFAULT_TIMEOUT_MS, chunks);
+        state.capturedOutput = Buffer.concat(chunks).toString('utf8');
+        state.finalMessage = state.capturedOutput.trim() || '(no judge output)';
+        state.status = 'completed';
+        state.events.push({ eventId: `${runId}.complete`, runId, ts: now(), kind: 'completed' });
+        state.endMs = Date.now();
+        return;
+      }
+
+      const prompt = buildCodexPrompt(state.workPacket, lease);
       // On Windows, .cmd shims can't be passed long prompts via `shell: true`
       // because cmd.exe mangles whitespace + special chars in the args. Invoke
       // through `cmd.exe /c <binary> <args>` so cmd.exe handles quoting itself.
-      const usesCmdShim = this._resolvedUsesShell && process.platform === 'win32';
       const [cmd, args] = usesCmdShim
         ? ['cmd.exe', ['/c', state.binaryUsed, 'exec', prompt]] as const
         : [state.binaryUsed, ['exec', prompt]] as const;
@@ -258,6 +283,28 @@ export class CodexAdapter implements AgentAdapter {
       logger.warn(`[CodexAdapter] ${runId} failed: ${state.errorReason}`);
     }
   }
+}
+
+export function buildCodexJudgePrompt(workPacket: WorkPacket, lease: AgentLease): string {
+  return `You are an independent code reviewer. READ ONLY — do NOT make any file changes.
+
+# Work Being Reviewed
+- Dimension: ${workPacket.dimensionId}
+- Objective: ${workPacket.objective}
+
+# Criteria to Verify
+${workPacket.acceptanceCriteria.map(c => `- ${c}`).join('\n')}
+
+Read the relevant source files, then output your verdict in EXACTLY this format:
+
+VERDICT: PASS
+CONFIDENCE: HIGH
+REASON: <one paragraph>
+SCORE_SUGGESTION: <number 0-10>
+BLOCKING_ISSUES: none
+
+or VERDICT: FAIL with BLOCKING_ISSUES as a bullet list.
+Be harsh. Only PASS if the implementation is real and non-trivial.`;
 }
 
 export function buildCodexPrompt(workPacket: WorkPacket, lease: AgentLease): string {
@@ -333,6 +380,7 @@ function runChild(
   args: string[],
   opts: SpawnOptions,
   timeoutMs: number,
+  captureChunks?: Buffer[],
 ): Promise<number> {
   return new Promise<number>((resolve) => {
     const child: CodexChildLike = spawnFn(cmd, args, opts);
@@ -347,8 +395,11 @@ function runChild(
       try { child.kill('SIGTERM'); } catch { /* ignore */ }
       settle(124);
     }, timeoutMs);
-    // Drain stdout/stderr so OS pipe buffers don't fill and deadlock the child.
-    child.stdout?.on('data', () => { /* drain */ });
+    if (captureChunks) {
+      child.stdout?.on('data', (chunk: Buffer) => captureChunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk)));
+    } else {
+      child.stdout?.on('data', () => { /* drain */ });
+    }
     child.stderr?.on('data', () => { /* drain */ });
     child.on('close', (code) => settle((code ?? 1) as number));
     child.on('error', () => settle(1));

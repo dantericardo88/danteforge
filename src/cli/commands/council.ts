@@ -146,10 +146,10 @@ function assignRoles(
 
 function makeAdapter(id: CouncilMemberId, workPacket: WorkPacket, judgeMode = false) {
   switch (id) {
-    case 'codex': return new CodexAdapter({ workPacket });
+    case 'codex': return new CodexAdapter({ workPacket, judgeMode });
     case 'gemini-cli': return new GeminiCLIAdapter({ workPacket, judgeMode });
     case 'grok-build': return new GrokBuildAdapter({ workPacket, judgeMode });
-    case 'claude-code': return new ClaudeCodeAdapter({ workPacket });
+    case 'claude-code': return new ClaudeCodeAdapter({ workPacket, judgeMode });
   }
 }
 

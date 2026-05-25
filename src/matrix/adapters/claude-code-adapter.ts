@@ -70,6 +70,8 @@ export interface ClaudeCodeAdapterOptions {
   allowedTools?: string[];
   /** Skip interactive permission prompts (recommended in sandboxed worktrees). */
   skipPermissions?: boolean;
+  /** When true, runs as a read-only reviewer: stdout is captured as finalMessage. */
+  judgeMode?: boolean;
   /** Injection seam: override subprocess spawn. */
   _spawn?: ClaudeSpawnFn;
   /** Injection seam: override availability probe. */
@@ -106,6 +108,7 @@ interface ClaudeRunState {
   errorReason?: string;
   events: AgentRunEvent[];
   finalMessage?: string;
+  capturedOutput: string;
   startMs: number;
   endMs?: number;
   exitCode: number | null;
@@ -194,6 +197,7 @@ export class ClaudeCodeAdapter implements AgentAdapter {
       filesReverted: [],
       status: 'running',
       events: [],
+      capturedOutput: '',
       startMs: Date.now(),
       exitCode: null,
       binaryUsed: binary,
@@ -245,6 +249,27 @@ export class ClaudeCodeAdapter implements AgentAdapter {
     });
 
     try {
+      // Judge mode: capture stdout as verdict output, skip file validation.
+      if (this.options.judgeMode) {
+        const chunks: Buffer[] = [];
+        const judgeArgs = buildClaudeArgs(buildClaudeJudgePrompt(state.workPacket, lease),
+          this.options.allowedTools ?? DEFAULT_ALLOWED_TOOLS, false);
+        const [jCmd, jFinalArgs] = resolveSpawnTarget(state.binaryUsed, judgeArgs, this._resolvedUsesShell);
+        const spawnFn: ClaudeSpawnFn = this.options._spawn ?? ((c, a, o) => spawn(c, a, o));
+        state.exitCode = await runChild(spawnFn, jCmd, [...jFinalArgs], {
+          cwd: normalizeCwd(worktreeRoot),
+          env: { ...process.env, ...(state.input.env ?? {}) },
+          shell: false,
+          stdio: ['ignore', 'pipe', 'pipe'],
+        }, this.options.timeoutMs ?? DEFAULT_TIMEOUT_MS, chunks);
+        state.capturedOutput = Buffer.concat(chunks).toString('utf8');
+        state.finalMessage = state.capturedOutput.trim() || '(no judge output)';
+        state.status = 'completed';
+        state.events.push({ eventId: `${runId}.complete`, runId, ts: now(), kind: 'completed' });
+        state.endMs = Date.now();
+        return;
+      }
+
       const exitCode = await this.spawnClaudeCli(state, worktreeRoot, lease);
       state.exitCode = exitCode;
 
@@ -364,6 +389,28 @@ export class ClaudeCodeAdapter implements AgentAdapter {
  * work packet inside its isolated worktree. The prompt encodes hard path
  * constraints so the agent self-enforces the lease boundary.
  */
+export function buildClaudeJudgePrompt(workPacket: WorkPacket, _lease: AgentLease): string {
+  return `You are an independent code reviewer. READ ONLY — do NOT make any file changes.
+
+# Work Being Reviewed
+- Dimension: ${workPacket.dimensionId}
+- Objective: ${workPacket.objective}
+
+# Criteria to Verify
+${workPacket.acceptanceCriteria.map(c => `- ${c}`).join('\n')}
+
+Read the relevant source files. Output your verdict in EXACTLY this format:
+
+VERDICT: PASS
+CONFIDENCE: HIGH
+REASON: <one paragraph>
+SCORE_SUGGESTION: <number 0-10>
+BLOCKING_ISSUES: none
+
+or VERDICT: FAIL with BLOCKING_ISSUES as a bullet list.
+Be honest and harsh. Only PASS if the implementation is real and complete.`;
+}
+
 export function buildClaudeCodePrompt(workPacket: WorkPacket, lease: AgentLease): string {
   return `You are a coding agent working on a Work Packet inside an isolated git worktree. Use your native tools (Read, Edit, Write) to make the changes — do NOT emit JSON.
 
@@ -443,6 +490,7 @@ function runChild(
   args: string[],
   opts: SpawnOptions,
   timeoutMs: number,
+  captureChunks?: Buffer[],
 ): Promise<number> {
   return new Promise<number>((resolve) => {
     const child: ClaudeChildLike = spawnFn(cmd, args, opts);
@@ -457,9 +505,12 @@ function runChild(
       try { child.kill('SIGTERM'); } catch { /* ignore */ }
       settle(124);
     }, timeoutMs);
-    // Drain stdout/stderr so OS pipe buffers don't fill and deadlock the
-    // child. We don't need the content; git diff is the source of truth.
-    child.stdout?.on('data', () => { /* drain */ });
+    if (captureChunks) {
+      child.stdout?.on('data', (chunk: Buffer) => captureChunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk)));
+    } else {
+      // Drain so OS pipe buffers don't deadlock the child; git diff is truth.
+      child.stdout?.on('data', () => { /* drain */ });
+    }
     child.stderr?.on('data', () => { /* drain */ });
     child.on('close', (code) => settle((code ?? 1) as number));
     child.on('error', () => settle(1));
@@ -468,6 +519,7 @@ function runChild(
 
 /** Build the human-readable completion message for a run. */
 function resolveFinalMessage(state: ClaudeRunState): string {
+  if (state.capturedOutput.trim()) return state.capturedOutput.trim();
   if (state.finalMessage) return state.finalMessage;
   const violationCount = state.filesReverted.length;
   if (violationCount > 0) {

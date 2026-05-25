@@ -132,8 +132,8 @@ function makeJudgeAdapter(id: CouncilMemberId, workPacket: WorkPacket) {
   switch (id) {
     case 'gemini-cli':  return new GeminiCLIAdapter({ workPacket, judgeMode: true });
     case 'grok-build':  return new GrokBuildAdapter({ workPacket, judgeMode: true });
-    case 'codex':       return new CodexAdapter({ workPacket });
-    case 'claude-code': return new ClaudeCodeAdapter({ workPacket });
+    case 'codex':       return new CodexAdapter({ workPacket, judgeMode: true });
+    case 'claude-code': return new ClaudeCodeAdapter({ workPacket, judgeMode: true });
   }
 }
 

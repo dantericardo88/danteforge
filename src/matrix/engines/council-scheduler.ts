@@ -1,10 +1,13 @@
 // Matrix Kernel — CouncilScheduler
 //
 // Loads eligible dimensions from the competitive matrix and distributes them
-// across available council members via round-robin, prioritising highest gap.
-// No LLM calls here — pure data slicing.
+// across available council members, prioritising highest gap.
+// Uses member strength profiles (council-member-profiles.ts) to route dims to
+// the builder most likely to succeed; falls back to round-robin when no profile
+// matches. No LLM calls here — pure data slicing.
 import path from 'node:path';
 import fs from 'node:fs/promises';
+import { bestMemberForDim } from './council-member-profiles.js';
 
 export type CouncilMemberId = 'codex' | 'gemini-cli' | 'grok-build' | 'claude-code';
 
@@ -73,10 +76,11 @@ export async function scheduleWork(
     eligible = eligible.slice(0, opts.maxDims);
   }
 
-  // Round-robin assignment: member[i % len] gets dim i
+  // Profile-aware assignment: prefer member whose strength keywords match the dim;
+  // fall back to round-robin index when no profile has a keyword hit.
   return eligible.map((dim, i) => ({
     ...dim,
-    assignedTo: memberIds[i % memberIds.length]!,
+    assignedTo: bestMemberForDim(dim.dimensionId, dim.label, memberIds, i),
   }));
 }
 
