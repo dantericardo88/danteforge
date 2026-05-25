@@ -59,6 +59,8 @@ export interface RevisionResult {
   cycles: RevisionCycle[];
   finalVerdicts: MemberVerdict[];
   finalConsensus: 'PASS' | 'FAIL' | 'SPLIT';
+  /** The last revised diff — what judges actually evaluated. Use this for merging, not the original diff. */
+  finalDiff: string;
 }
 
 // ── Internal helpers ──────────────────────────────────────────────────────────
@@ -241,6 +243,7 @@ export async function runRevision(opts: RevisionOptions): Promise<RevisionResult
     cycles: [],
     finalVerdicts: [...opts.initialVerdicts],
     finalConsensus: resolveConsensus(opts.initialVerdicts),
+    finalDiff: diff,
   };
 
   for (let cycle = 1; cycle <= maxCycles; cycle++) {
@@ -309,6 +312,7 @@ export async function runRevision(opts: RevisionOptions): Promise<RevisionResult
     result.cycles.push({ cycle, selfAssessment, revisedDiff, rejudgeVerdicts, consensus: cycleConsensus });
     result.finalVerdicts = rejudgeVerdicts;
     result.finalConsensus = cycleConsensus;
+    result.finalDiff = revisedDiff;
 
     logger.info(`[revision] Cycle ${cycle}: ${builderId} post-revision consensus = ${cycleConsensus}`);
     if (cycleConsensus === 'PASS') break;

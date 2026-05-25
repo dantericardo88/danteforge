@@ -332,6 +332,11 @@ export async function runMergeCourt(opts: MergeCourtOptions): Promise<MergeCourt
             maxCycles: opts.revisionCycles ?? 1,
           });
           finalVerdicts = revResult.finalVerdicts;
+          // Use the revised diff for merging — judges evaluated this, not the original.
+          if (revResult.finalDiff && revResult.finalDiff !== diff) {
+            diff = revResult.finalDiff;
+            logger.info(`[merge-court] ${builderId}: using revised diff for merge (${diff.length} chars)`);
+          }
           const revWeightedVotes: WeightedVote[] = revResult.finalVerdicts.map(v => ({
             judgeSlotId: `${v.judgeId}-0`,
             judgeMemberId: v.judgeId,
