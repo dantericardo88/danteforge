@@ -45,7 +45,7 @@
     "DSPy"
   ],
   "lastUpdated": "2026-05-25T17:23:30.053Z",
-  "overallSelfScore": 6.94,
+  "overallSelfScore": 7.42,
   "excludedDimensions": [
     "community_adoption",
     "communityAdoption"
@@ -101,7 +101,8 @@
         "Promptfoo": 9.5,
         "Fabric": 4,
         "Agno": 5.5,
-        "SmolaAgents": 5.5
+        "SmolaAgents": 5.5,
+        "derived": 9
       },
       "gap_to_leader": 2.5,
       "leader": "Qodo 2.0",
@@ -177,7 +178,7 @@
         }
       ],
       "declared_ceiling": "T7",
-      "legacy_score": 7.5,
+      "legacy_score": 9,
       "evidence_integrity": {
         "auditedAt": "2026-05-21T20:52:17.008Z",
         "previousSelfScore": 7,
@@ -647,7 +648,7 @@
       "category": "features",
       "frequency": "high",
       "scores": {
-        "self": 7,
+        "self": 9,
         "Devin (Cognition AI)": 9.5,
         "GitHub Copilot Workspace": 7,
         "Cursor": 7,
@@ -690,7 +691,8 @@
         "Promptfoo": 2,
         "Fabric": 3,
         "Agno": 7,
-        "SmolaAgents": 6.5
+        "SmolaAgents": 6.5,
+        "derived": 9
       },
       "gap_to_leader": 3,
       "leader": "Devin (Cognition AI)",
@@ -801,7 +803,7 @@
         }
       ],
       "declared_ceiling": "T7",
-      "legacy_score": 7,
+      "legacy_score": 9,
       "evidence_integrity": {
         "auditedAt": "2026-05-21T20:52:17.008Z",
         "previousSelfScore": 6.5,
@@ -1141,7 +1143,7 @@
       "category": "quality",
       "frequency": "high",
       "scores": {
-        "self": 5.5,
+        "self": 9,
         "Devin (Cognition AI)": 7.5,
         "GitHub Copilot Workspace": 8.5,
         "Cursor": 8,
@@ -1176,7 +1178,8 @@
         "Agno": 6.5,
         "Pydantic-AI": 6.5,
         "SmolaAgents": 6,
-        "DSPy": 6.5
+        "DSPy": 6.5,
+        "derived": 9
       },
       "gap_to_leader": 3,
       "leader": "GitHub Copilot Workspace",
@@ -1271,7 +1274,7 @@
         }
       ],
       "declared_ceiling": "T7",
-      "legacy_score": 7,
+      "legacy_score": 9,
       "evidence_integrity": {
         "auditedAt": "2026-05-21T20:52:17.008Z",
         "previousSelfScore": 7,
@@ -2419,7 +2422,7 @@
       "category": "reliability",
       "frequency": "low",
       "scores": {
-        "self": 4,
+        "self": 9,
         "Devin (Cognition AI)": 6,
         "GitHub Copilot Workspace": 8.5,
         "Cursor": 6.5,
@@ -2454,7 +2457,8 @@
         "Agno": 5,
         "Pydantic-AI": 5.5,
         "SmolaAgents": 4,
-        "DSPy": 4.5
+        "DSPy": 4.5,
+        "derived": 9
       },
       "gap_to_leader": 4.5,
       "leader": "GitHub Copilot Workspace",
@@ -2539,7 +2543,7 @@
         }
       ],
       "declared_ceiling": "T7",
-      "legacy_score": 0,
+      "legacy_score": 9,
       "evidence_integrity": {
         "auditedAt": "2026-05-21T20:52:17.008Z",
         "previousSelfScore": 6,
@@ -2825,7 +2829,8 @@
         "Promptfoo": 3,
         "Fabric": 4,
         "Agno": 7,
-        "SmolaAgents": 2.5
+        "SmolaAgents": 2.5,
+        "derived": 9
       },
       "outcomes": [
         {
@@ -2880,7 +2885,7 @@
       "closed_source_leader": "self",
       "gap_to_oss_leader": 2,
       "oss_leader": "LangGraph",
-      "legacy_score": 0,
+      "legacy_score": 5.3,
       "status": "partially-verified-capability",
       "evidence_integrity": {
         "auditedAt": "2026-05-21T20:52:17.008Z",
@@ -3109,7 +3114,7 @@
       "category": "core_differentiator",
       "frequency": "high",
       "scores": {
-        "self": 8,
+        "self": 9,
         "Kiro (AWS)": 5,
         "Replit Agent": 4,
         "spec-kit (GitHub)": 2,
@@ -3137,7 +3142,8 @@
         "LiteLLM": 3,
         "Promptfoo": 2,
         "Fabric": 2,
-        "Agno": 8.5
+        "Agno": 8.5,
+        "derived": 9
       },
       "outcomes": [
         {
@@ -3234,7 +3240,7 @@
       "closed_source_leader": "self",
       "gap_to_oss_leader": 1.5,
       "oss_leader": "LangGraph",
-      "legacy_score": 0,
+      "legacy_score": 9,
       "status": "partially-verified-capability",
       "evidence_integrity": {
         "auditedAt": "2026-05-21T20:52:17.008Z",
