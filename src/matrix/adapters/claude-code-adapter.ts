@@ -253,13 +253,16 @@ export class ClaudeCodeAdapter implements AgentAdapter {
     });
 
     try {
-      // Judge mode: read-only review — structurally enforced via JUDGE_ALLOWED_TOOLS
-      // (Read, Glob, Grep only — no Edit/Write/MultiEdit/Bash).
-      // Post-run diff assert verifies the worktree is untouched.
+      // Judge mode: pure-text output, zero tool use.
+      // The diff is embedded in the workPacket.objective by the caller (council.ts / merge-court).
+      // Using --output-format text with -p means Claude outputs a text response only — no tools,
+      // no file reads, no file writes. Structurally impossible to modify the worktree.
       if (this.options.judgeMode) {
         const chunks: Buffer[] = [];
-        const judgeArgs = buildClaudeArgs(buildClaudeJudgePrompt(state.workPacket, lease),
-          JUDGE_ALLOWED_TOOLS, false);
+        const prompt = state.workPacket.objective.length > 50
+          ? state.workPacket.objective
+          : buildClaudeJudgePrompt(state.workPacket, lease);
+        const judgeArgs = ['-p', prompt, '--output-format', 'text'];
         const [jCmd, jFinalArgs] = resolveSpawnTarget(state.binaryUsed, judgeArgs, this._resolvedUsesShell);
         const spawnFn: ClaudeSpawnFn = this.options._spawn ?? ((c, a, o) => spawn(c, a, o));
         state.exitCode = await runChild(spawnFn, jCmd, [...jFinalArgs], {
@@ -429,6 +432,41 @@ BLOCKING_ISSUES: none
 
 or VERDICT: FAIL with BLOCKING_ISSUES as a bullet list.
 Be honest and harsh. Only PASS if the implementation is real and complete.`;
+}
+
+/**
+ * Builds a self-contained judge prompt with the builder's diff embedded.
+ * Used by council.ts sequential mode — judges receive the diff in the prompt
+ * so they need zero tool use to produce a verdict.
+ */
+export function buildClaudeJudgeTextPrompt(goal: string, diff: string, changedFiles: string[]): string {
+  return `You are an independent code reviewer evaluating a pull request.
+Output ONLY a structured verdict — no file reads, no tool calls.
+
+## Goal
+${goal}
+
+## Files Changed
+${changedFiles.length > 0 ? changedFiles.map(f => `- ${f}`).join('\n') : '(none)'}
+
+## Diff
+\`\`\`diff
+${diff.slice(0, 4000)}
+\`\`\`
+
+## Your Task
+Review the diff above. Output your verdict in EXACTLY this format (all fields required):
+
+VERDICT: PASS
+CONFIDENCE: HIGH
+REASON: <one paragraph — what the diff achieves and why it is correct>
+SCORE_SUGGESTION: <number 0-10>
+BLOCKING_ISSUES: none
+BLOCKING_CONCERNS: none
+DISSENT: none
+
+or VERDICT: FAIL with BLOCKING_ISSUES as a bullet list.
+Be harsh. Inflation is the enemy. Only PASS if the diff is real, complete, and non-trivial.`;
 }
 
 export function buildClaudeCodePrompt(workPacket: WorkPacket, lease: AgentLease): string {

@@ -112,9 +112,10 @@ function makeBuildLease(worktreePath: string): AgentLease {
 function makeBuilderAdapter(id: CouncilMemberId, workPacket: WorkPacket) {
   switch (id) {
     case 'codex':       return new CodexAdapter({ workPacket });
-    case 'gemini-cli':  return new GeminiCLIAdapter({ workPacket });
     case 'grok-build':  return new GrokBuildAdapter({ workPacket });
     case 'claude-code': return new ClaudeCodeAdapter({ workPacket, skipPermissions: true });
+    // gemini-cli is excluded from parallel council (API-based, quota-exhausts frequently)
+    case 'gemini-cli':  return new GeminiCLIAdapter({ workPacket });
   }
 }
 

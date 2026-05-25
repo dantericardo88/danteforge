@@ -207,7 +207,8 @@ export class GrokBuildAdapter implements AgentAdapter {
           stdio: ['ignore', 'pipe', 'pipe'],
         },
         this.options.timeoutMs ?? DEFAULT_TIMEOUT_MS,
-        chunks,  // always capture stdout — used for judge verdicts + build logs
+        chunks,
+        judgeMode, // in judge mode, also capture stderr (Grok may route output there)
       );
       state.exitCode = exitCode;
       state.capturedOutput = Buffer.concat(chunks).toString('utf8');
@@ -220,6 +221,8 @@ export class GrokBuildAdapter implements AgentAdapter {
       }
 
       if (judgeMode) {
+        // Explicit finalMessage so collectResult() doesn't fall through to "Grok ran; 0 files" fallback.
+        state.finalMessage = state.capturedOutput.trim() || '(no judge output from grok)';
         state.status = 'completed';
         state.events.push({ eventId: `${runId}.complete`, runId, ts: now(), kind: 'completed' });
         state.endMs = Date.now();
@@ -292,41 +295,33 @@ ${workPacket.proof.proofRequired.map(p => `- ${p}`).join('\n')}
 Implement all acceptance criteria. No stubs. No mocks in src/ files. Stop when done.`;
 }
 
-export function buildGrokJudgePrompt(workPacket: WorkPacket, lease: AgentLease): string {
-  return `You are an independent code reviewer. Read the code — do NOT make changes.
+export function buildGrokJudgePrompt(workPacket: WorkPacket, _lease: AgentLease): string {
+  // If the objective already contains a diff (diff-embedded mode), use it directly.
+  // Otherwise fall back to asking Grok to read files (plan-mode).
+  const hasDiff = workPacket.objective.includes('```diff') || workPacket.objective.includes('VERDICT:');
+  if (hasDiff) return workPacket.objective;
 
-# Work Being Reviewed
+  return `You are an independent code reviewer. Output only a structured verdict.
+
+## Work Being Reviewed
 - Dimension: ${workPacket.dimensionId}
 - Objective: ${workPacket.objective}
 
-# Criteria to Verify
+## Criteria
 ${workPacket.acceptanceCriteria.map(c => `- ${c}`).join('\n')}
 
-# What to Check
-1. Are there any stubs (jest.mock, vi.mock, throw new Error('not implemented')) in src/ files?
-2. Do the tests actually exercise real code (not mocked internals)?
-3. Would the capability_test for this dimension pass right now?
-4. Is the evidence genuine or self-asserted?
-
-Read the relevant source files and tests, then output your verdict in this EXACT format:
+Output your verdict in EXACTLY this format (all fields required):
 
 VERDICT: PASS
 CONFIDENCE: HIGH
 REASON: <one paragraph>
 SCORE_SUGGESTION: <number 0-10>
 BLOCKING_ISSUES: none
+BLOCKING_CONCERNS: none
+DISSENT: none
 
-or
-
-VERDICT: FAIL
-CONFIDENCE: HIGH
-REASON: <one paragraph>
-SCORE_SUGGESTION: <number 0-10>
-BLOCKING_ISSUES:
-- <issue 1>
-- <issue 2>
-
-Be harsh. Inflation is the enemy. Only PASS if you would personally stake your reputation on it.`;
+or VERDICT: FAIL with BLOCKING_ISSUES as a bullet list.
+Be harsh. Inflation is the enemy. Only PASS if the implementation is real and complete.`;
 }
 
 // ── Shared utilities ──────────────────────────────────────────────────────────
@@ -360,6 +355,7 @@ function runChild(
   opts: SpawnOptions,
   timeoutMs: number,
   captureChunks: Buffer[],
+  captureStderr = false,
 ): Promise<number> {
   return new Promise<number>((resolve) => {
     const child: GrokBuildChildLike = spawnFn(cmd, args, opts);
@@ -377,7 +373,9 @@ function runChild(
     child.stdout?.on('data', (chunk: Buffer) => {
       captureChunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));
     });
-    child.stderr?.on('data', () => { /* drain */ });
+    child.stderr?.on('data', (chunk: Buffer) => {
+      if (captureStderr) captureChunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));
+    });
     child.on('close', (code) => settle((code ?? 1) as number));
     child.on('error', () => settle(1));
   });

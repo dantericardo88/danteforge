@@ -16,7 +16,7 @@ import { logger } from '../../core/logger.js';
 import { CodexAdapter } from '../../matrix/adapters/codex-adapter.js';
 import { GeminiCLIAdapter } from '../../matrix/adapters/gemini-cli-adapter.js';
 import { GrokBuildAdapter } from '../../matrix/adapters/grok-build-adapter.js';
-import { ClaudeCodeAdapter } from '../../matrix/adapters/claude-code-adapter.js';
+import { ClaudeCodeAdapter, buildClaudeJudgeTextPrompt } from '../../matrix/adapters/claude-code-adapter.js';
 import type { WorkPacket } from '../../matrix/types/work-graph.js';
 import type { AgentLease } from '../../matrix/types/lease.js';
 import type { AgentRunResult } from '../../matrix/types/agent.js';
@@ -65,6 +65,21 @@ export interface RunCouncilOptions {
 }
 
 const execFileAsync = promisify(execFile);
+
+// Captures the unified diff of changed files so judges receive the actual change
+// in their prompt rather than having to autonomously read source files.
+async function captureBuilderDiff(cwd: string, files: string[]): Promise<string> {
+  if (files.length === 0) return '(no files changed)';
+  try {
+    const { stdout } = await execFileAsync(
+      'git', ['diff', 'HEAD', '--', ...files.slice(0, 20)],
+      { cwd, timeout: 10_000 },
+    );
+    return stdout.trim() || '(diff empty — files may be untracked, see git status)';
+  } catch {
+    return '(diff unavailable)';
+  }
+}
 
 // Reverts specific files to HEAD — used when a council FAIL leaves the builder's
 // edits in the main working tree (no worktree isolation in sequential mode).
@@ -121,12 +136,16 @@ function makeLease(cwd: string): AgentLease {
 export async function discoverCouncil(): Promise<CouncilMember[]> {
   const dummy = makeWorkPacket('probe', process.cwd());
 
+  // Gemini CLI is API-based (not subscription) and quota-exhausts quickly — excluded from default roster.
+  // The type still carries 'gemini-cli' for backward compatibility; it just won't appear as available.
   const probes: Array<{ id: CouncilMemberId; label: string; adapter: { isAvailable(): Promise<boolean> } }> = [
     { id: 'codex', label: 'Codex (OpenAI subscription)', adapter: new CodexAdapter({ workPacket: dummy }) },
-    { id: 'gemini-cli', label: 'Gemini CLI (Google subscription)', adapter: new GeminiCLIAdapter({ workPacket: dummy }) },
     { id: 'grok-build', label: 'Grok Build (~/.grok/bin/grok.exe)', adapter: new GrokBuildAdapter({ workPacket: dummy }) },
     { id: 'claude-code', label: 'Claude Code (claude binary)', adapter: new ClaudeCodeAdapter({ workPacket: dummy }) },
   ];
+
+  // Keep GeminiCLIAdapter importable but never probe it — prevents unused-import errors.
+  void GeminiCLIAdapter;
 
   const results: CouncilMember[] = [];
   await Promise.all(probes.map(async p => {
@@ -221,16 +240,17 @@ export async function runCouncilCycle(
     logger.warn(`  [council] Builder failed: ${buildResult.errorReason}`);
   }
 
-  // Judge phase — all judges run in parallel, each gets the same read-only task
+  // Capture the actual diff so judges review real changes, not an open-ended codebase read.
+  // Diff is embedded in the judge prompt — judges output pure text verdicts with zero tool use.
+  const diff = await captureBuilderDiff(cwd, buildResult.filesChanged);
+
+  // Judge phase — all judges run in parallel, each gets the same diff-embedded task
   logger.info(chalk.cyan(`  [council] Judges: ${roles.judges.map(j => chalk.bold(j)).join(', ')}`));
-  const judgeWorkPacket = makeWorkPacket(
-    `Review the latest changes in this project. Evaluate: ${goal}`,
-    cwd,
-  );
+  const judgePrompt = buildClaudeJudgeTextPrompt(goal, diff, buildResult.filesChanged);
 
   const verdictPromises = roles.judges.map(async (judgeId): Promise<JudgeVerdict> => {
     try {
-      const judgeAdapter = makeAdapter(judgeId, judgeWorkPacket, true);
+      const judgeAdapter = makeAdapter(judgeId, makeWorkPacket(judgePrompt, cwd), true);
       const result = await runAdapter(judgeAdapter, { lease, cwd });
       const output = result.finalMessage ?? '';
       return parseVerdict(judgeId, output);
@@ -285,7 +305,7 @@ export async function runCouncilCommand(options: RunCouncilOptions): Promise<voi
 
   const roles = assignRoles(members, options.builderPref);
   if (!roles) {
-    logger.error('Need at least 2 available council members. Install Codex, Gemini CLI, or Grok Build.');
+    logger.error('Need at least 2 available council members. Install Codex, Grok Build, or ensure Claude Code is on PATH.');
     process.exitCode = 1;
     return;
   }

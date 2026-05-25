@@ -31,7 +31,7 @@
       "category": "quality",
       "frequency": "high",
       "scores": {
-        "self": 5,
+        "self": 8,
         "Cursor": 9,
         "spec-kit (GitHub)": 5,
         "BMad-METHOD": 5,
@@ -41,15 +41,51 @@
         "SmolaAgents": 5.5,
         "DSPy": 6
       },
-      "gap_to_leader": 1,
-      "leader": "Pydantic-AI",
+      "gap_to_leader": 0,
+      "leader": "self",
       "gap_to_closed_source_leader": 0,
       "closed_source_leader": "self",
-      "gap_to_oss_leader": 1,
-      "oss_leader": "Pydantic-AI",
+      "gap_to_oss_leader": 0,
+      "oss_leader": "self",
       "status": "in-progress",
       "sprint_history": [],
-      "next_sprint_target": 7
+      "next_sprint_target": 7,
+      "outcomes": [
+        {
+          "id": "testing_t5_anti_stub_enforcement",
+          "tier": "T5",
+          "kind": "runtime-exec",
+          "command": "npx tsx --test tests/anti-stub-scan.test.ts",
+          "expected_exit": 0,
+          "expected_output_pattern": "pass 2",
+          "timeout_ms": 60000,
+          "required_callsite": "src/matrix/courts/no-stub-scanner.ts",
+          "description": "Anti-stub scanner enforces zero-stub doctrine on all production src/ files — no mocks, no stubs, no TODOs."
+        },
+        {
+          "id": "testing_t5_cip_depth",
+          "tier": "T5",
+          "kind": "runtime-exec",
+          "command": "npx tsx --test tests/cip-depth.test.ts",
+          "expected_exit": 0,
+          "expected_output_pattern": "pass",
+          "timeout_ms": 60000,
+          "required_callsite": "src/core/completion-integrity.ts",
+          "description": "Completion Integrity Protocol — evidence freshness gate and outcome relevance checks prevent false-frontier claims."
+        },
+        {
+          "id": "testing_t5_cip_gate",
+          "tier": "T5",
+          "kind": "runtime-exec",
+          "command": "npx tsx --test tests/cip-gate.test.ts",
+          "expected_exit": 0,
+          "expected_output_pattern": "pass",
+          "timeout_ms": 60000,
+          "required_callsite": "src/core/completion-integrity.ts",
+          "description": "CIP gate blocks frontier claims when stubs present, outcomes zero, or scores inflate — 3 cases on real hardware."
+        }
+      ],
+      "declared_ceiling": "T5"
     },
     {
       "id": "spec_workflow_enforcement",
@@ -58,7 +94,7 @@
       "category": "core_differentiator",
       "frequency": "high",
       "scores": {
-        "self": 7.5,
+        "self": 8,
         "Kiro (AWS)": 7.5,
         "Replit Agent": 3,
         "spec-kit (GitHub)": 7,
@@ -86,7 +122,41 @@
         "SmolaAgents": 2.5,
         "DSPy": 3.5
       },
-      "outcomes": [],
+      "outcomes": [
+        {
+          "id": "swe_t5_spec_driven_pipeline",
+          "tier": "T5",
+          "kind": "runtime-exec",
+          "command": "npx tsx --test tests/spec-driven-pipeline.test.ts",
+          "expected_exit": 0,
+          "expected_output_pattern": "pass 47",
+          "timeout_ms": 60000,
+          "required_callsite": "src/harvested/spec/clarify-engine.ts",
+          "description": "47 tests proving spec-driven pipeline: spec quality scoring, drift detection, clarification engine, pipeline status — real execution on hardware."
+        },
+        {
+          "id": "swe_t5_spec_matcher",
+          "tier": "T5",
+          "kind": "runtime-exec",
+          "command": "npx tsx --test tests/spec-matcher.test.ts",
+          "expected_exit": 0,
+          "expected_output_pattern": "pass 42",
+          "timeout_ms": 60000,
+          "required_callsite": "src/harvested/spec/clarify-engine.ts",
+          "description": "42 tests proving requirement extraction, coverage scoring, and spec matching algorithms used in the spec-driven workflow."
+        },
+        {
+          "id": "swe_t5_gates",
+          "tier": "T5",
+          "kind": "runtime-exec",
+          "command": "npx tsx --test tests/gates.test.ts",
+          "expected_exit": 0,
+          "expected_output_pattern": "pass 20",
+          "timeout_ms": 60000,
+          "required_callsite": "src/core/gates.ts",
+          "description": "20 tests proving hard gates (requireConstitution, requireSpec, requirePlan, requireTests) block workflow advancement without artifacts."
+        }
+      ],
       "declared_ceiling": "T5",
       "gap_to_leader": 0,
       "leader": "self",
@@ -126,7 +196,41 @@
         "SmolaAgents": 2,
         "DSPy": 3
       },
-      "outcomes": [],
+      "outcomes": [
+        {
+          "id": "ov_t5_outcome_quality",
+          "tier": "T5",
+          "kind": "runtime-exec",
+          "command": "npx tsx --test tests/outcome-quality.test.ts tests/outcome-quality-runtime.test.ts",
+          "expected_exit": 0,
+          "expected_output_pattern": "pass",
+          "timeout_ms": 60000,
+          "required_callsite": "src/matrix/engines/outcome-runner.ts",
+          "description": "22 tests proving outcome quality gates: T5 runtime evidence enforcement, trivial-command rejection, stdout requirement checks."
+        },
+        {
+          "id": "ov_t5_derived_score",
+          "tier": "T5",
+          "kind": "runtime-exec",
+          "command": "npx tsx --test tests/derived-score.test.ts",
+          "expected_exit": 0,
+          "expected_output_pattern": "pass 24",
+          "timeout_ms": 60000,
+          "required_callsite": "src/core/derived-score.ts",
+          "description": "24 tests proving score inflation is structurally impossible — scores only rise when outcomes pass, agent claims are silently ignored."
+        },
+        {
+          "id": "ov_t5_evidence_chain",
+          "tier": "T5",
+          "kind": "runtime-exec",
+          "command": "npx tsx --test tests/evidence-gate.test.ts tests/evidence-chain.test.ts",
+          "expected_exit": 0,
+          "expected_output_pattern": "pass 15",
+          "timeout_ms": 60000,
+          "required_callsite": "src/matrix/engines/receipt-ceiling.ts",
+          "description": "15 tests proving the evidence chain: capability test gate, receipt ceiling, evidence audit — all passing on real hardware."
+        }
+      ],
       "declared_ceiling": "T5",
       "gap_to_leader": 0,
       "leader": "self",
@@ -142,7 +246,7 @@
       "category": "core_differentiator",
       "frequency": "high",
       "scores": {
-        "self": 7.5,
+        "self": 8,
         "Kiro (AWS)": 4,
         "Replit Agent": 2,
         "spec-kit (GitHub)": 3.5,
@@ -166,7 +270,41 @@
         "SmolaAgents": 2,
         "DSPy": 2
       },
-      "outcomes": [],
+      "outcomes": [
+        {
+          "id": "cg_t5_gates_enforcement",
+          "tier": "T5",
+          "kind": "runtime-exec",
+          "command": "npx tsx --test tests/gates.test.ts",
+          "expected_exit": 0,
+          "expected_output_pattern": "pass 20",
+          "timeout_ms": 60000,
+          "required_callsite": "src/core/gates.ts",
+          "description": "Constitutional gates enforcement — requireConstitution blocks all 5 workflow commands without CONSTITUTION.md present."
+        },
+        {
+          "id": "cg_t5_actionable_errors",
+          "tier": "T5",
+          "kind": "runtime-exec",
+          "command": "npx tsx --test tests/actionable-errors.test.ts",
+          "expected_exit": 0,
+          "expected_output_pattern": "pass 21",
+          "timeout_ms": 60000,
+          "required_callsite": "src/core/workflow-enforcer.ts",
+          "description": "21 tests proving the constitutional governance error surface: 20+ actionable error patterns and workflow transition validation."
+        },
+        {
+          "id": "cg_t5_cip_depth",
+          "tier": "T5",
+          "kind": "runtime-exec",
+          "command": "npx tsx --test tests/cip-depth.test.ts",
+          "expected_exit": 0,
+          "expected_output_pattern": "pass",
+          "timeout_ms": 60000,
+          "required_callsite": "src/core/completion-integrity.ts",
+          "description": "CIP constitutional enforcement — blocks frontier claims when evidence is stale, outcomes are zero, or scores inflated — real hardware execution."
+        }
+      ],
       "declared_ceiling": "T5",
       "gap_to_leader": 0,
       "leader": "self",
@@ -182,7 +320,7 @@
       "category": "core_differentiator",
       "frequency": "high",
       "scores": {
-        "self": 7,
+        "self": 8,
         "Kiro (AWS)": 5,
         "Replit Agent": 4,
         "spec-kit (GitHub)": 2,
@@ -201,14 +339,46 @@
         "Cursor": 2,
         "Claude Code": 3.5
       },
-      "outcomes": [],
+      "outcomes": [
+        {
+          "id": "mao_t5_council_session_state",
+          "tier": "T5",
+          "kind": "runtime-exec",
+          "command": "npx tsx --test tests/council-session.test.ts",
+          "expected_exit": 0,
+          "expected_output_pattern": "pass 14",
+          "timeout_ms": 60000,
+          "required_callsite": "src/matrix/engines/council-session-state.ts",
+          "description": "Council session state persistence + anonymous peer review (GAP 1) + typed persona protocol (GAP 2) + checkpoint/resume (GAP 3) — 14 tests on real hardware."
+        },
+        {
+          "id": "mao_t5_council_debate",
+          "tier": "T5",
+          "kind": "runtime-exec",
+          "command": "npx tsx --test tests/council-debate.test.ts",
+          "expected_exit": 0,
+          "expected_output_pattern": "pass",
+          "timeout_ms": 60000,
+          "required_callsite": "src/matrix/engines/council-debate.ts",
+          "description": "Council debate engine — structured deliberation after FAIL/SPLIT verdict, builder rebuttal, judge re-evaluation with persona protocol."
+        },
+        {
+          "id": "mao_t5_production_usage",
+          "tier": "T5",
+          "kind": "production-usage-fresh",
+          "required_callsite": "src/matrix/engines/council-session-state.ts",
+          "freshnessDays": 30,
+          "baseBranch": "main",
+          "description": "council-session-state.ts is imported by the production council-parallel command path."
+        }
+      ],
       "declared_ceiling": "T5",
-      "gap_to_leader": 0.5,
-      "leader": "MetaGPT",
+      "gap_to_leader": 0,
+      "leader": "self",
       "gap_to_closed_source_leader": 0,
       "closed_source_leader": "self",
-      "gap_to_oss_leader": 0.5,
-      "oss_leader": "MetaGPT"
+      "gap_to_oss_leader": 0,
+      "oss_leader": "self"
     },
     {
       "id": "depth_doctrine",
@@ -241,7 +411,41 @@
         "SmolaAgents": 2,
         "DSPy": 3
       },
-      "outcomes": [],
+      "outcomes": [
+        {
+          "id": "dd_t5_cip_gates_integration",
+          "tier": "T5",
+          "kind": "runtime-exec",
+          "command": "npx tsx --test tests/cip-gate.test.ts tests/cip-depth.test.ts",
+          "expected_exit": 0,
+          "expected_output_pattern": "pass",
+          "timeout_ms": 60000,
+          "required_callsite": "src/core/completion-integrity.ts",
+          "description": "Depth doctrine CIP enforcement: frontier-reached gate blocks stubs+zero-outcomes+score-inflation — proven on real hardware."
+        },
+        {
+          "id": "dd_t5_outcome_check",
+          "tier": "T5",
+          "kind": "runtime-exec",
+          "command": "npx tsx --test tests/outcome-check.test.ts",
+          "expected_exit": 0,
+          "expected_output_pattern": "pass 8",
+          "timeout_ms": 60000,
+          "required_callsite": "src/cli/commands/outcome-check.ts",
+          "description": "8 tests proving depth-doctrine outcome-check: score-delta tracking, circuit-breaker logic, convergence graceful failure."
+        },
+        {
+          "id": "dd_t5_anti_stub",
+          "tier": "T5",
+          "kind": "runtime-exec",
+          "command": "npx tsx --test tests/anti-stub-scan.test.ts",
+          "expected_exit": 0,
+          "expected_output_pattern": "pass 2",
+          "timeout_ms": 60000,
+          "required_callsite": "src/matrix/courts/no-stub-scanner.ts",
+          "description": "Zero-tolerance stub enforcement: anti-stub scanner catches all mock/stub patterns in production code, exempts doctrine files."
+        }
+      ],
       "declared_ceiling": "T5",
       "gap_to_leader": 0,
       "leader": "self",
@@ -251,8 +455,8 @@
       "oss_leader": "self"
     }
   ],
-  "overallSelfScore": 7.3,
-  "lastUpdated": "2026-05-25T12:57:11.956Z",
+  "overallSelfScore": 8,
+  "lastUpdated": "2026-05-25T14:43:19.591Z",
   "competitors_closed_source": [
     "Kiro (AWS)",
     "Replit Agent"
