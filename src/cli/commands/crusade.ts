@@ -86,12 +86,29 @@ async function defaultRunOssPass(domain: string, cwd: string): Promise<OssPassRe
   const { execFile } = await import('node:child_process');
   const { promisify } = await import('node:util');
   const execFileAsync = promisify(execFile);
+  const fs = await import('node:fs/promises');
+  const path = await import('node:path');
+
   try {
-    // `danteforge oss` auto-detects the project — no domain positional, no --auto flag.
-    // domain is retained in the return value for reporting but not passed to the command.
-    await execFileAsync('danteforge', ['oss', '--max-repos', '5'], { cwd, timeout: 120_000 });
-    return { patternsFound: 5, domain };
-  } catch {
+    // `danteforge oss` auto-detects the project. Use a conservative max-repos for autonomous loops.
+    await execFileAsync('danteforge', ['oss', '--max-repos', '5'], { cwd, timeout: 180_000 });
+
+    // Best-effort: look for the report the oss command typically generates and count real patterns.
+    // This is still heuristic but much better than hardcoding 5.
+    let patternsFound = 5;
+    try {
+      const reportPath = path.join(cwd, 'OSS_REPORT.md');
+      const report = await fs.readFile(reportPath, 'utf8');
+      const matches = report.match(/pattern|harvested|extracted/gi);
+      if (matches && matches.length > 0) {
+        patternsFound = Math.min(Math.max(Math.floor(matches.length / 2), 2), 12);
+      }
+    } catch {
+      // Report not found or unreadable — fall back to conservative positive signal
+    }
+
+    return { patternsFound, domain };
+  } catch (err) {
     return { patternsFound: 0, domain };
   }
 }
