@@ -850,10 +850,13 @@ program
   .command('council')
   .description('Multi-LLM council: builder + independent judges. The one who builds never judges. Dispatches real work to Codex, Gemini, Grok Build via subscription CLIs.')
   .option('--goal <goal>', 'Task for the council to tackle')
-  .option('--builder <id>', 'Preferred builder (codex|gemini-cli|grok-build|claude-code)')
+  .option('--builder <id>', 'Preferred builder (codex|gemini-cli|grok-build|claude-code) — sequential mode only')
   .option('--loop', 'Continue cycling until --target-dims passes achieved')
-  .option('--target-dims <n>', 'Stop after this many council-approved passes', '1')
+  .option('--target-dims <n>', 'Stop after this many council-approved passes (sequential mode)', '1')
   .option('--max-cycles <n>', 'Safety cap on cycles (default 20 in loop mode)', '20')
+  .option('--parallel', 'True parallel mode: all members build simultaneously in isolated git worktrees, then cross-judge each other')
+  .option('--rounds <n>', 'Number of parallel rounds to run (parallel mode, default: 1)', '1')
+  .option('--max-dims <n>', 'Max dimensions to schedule per round (parallel mode)')
   .option('--discover', 'Only probe and list available council members, then exit')
   .option('--json', 'Emit JSON summary at end')
   .option('--cwd <path>', 'Project directory (defaults to cwd)')
@@ -870,6 +873,20 @@ program
           return;
         }
         if (!opts.goal) throw new Error('--goal is required. Example: danteforge council --goal "fix the gate script paradox in DanteDojo"');
+
+        if (opts.parallel) {
+          const { runParallelCouncil } = await import('./commands/council-parallel.js');
+          await runParallelCouncil({
+            cwd: opts.cwd as string | undefined,
+            goal: opts.goal as string,
+            maxRounds: opts.rounds ? parseInt(opts.rounds as string, 10) : 1,
+            maxDimsPerRound: opts.maxDims ? parseInt(opts.maxDims as string, 10) : undefined,
+            loop: opts.loop as boolean | undefined,
+            json: opts.json as boolean | undefined,
+          });
+          return;
+        }
+
         await runCouncilCommand({
           cwd: opts.cwd as string | undefined,
           goal: opts.goal as string,

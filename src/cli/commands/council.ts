@@ -155,7 +155,7 @@ function makeAdapter(id: CouncilMemberId, workPacket: WorkPacket, judgeMode = fa
 
 // ── Verdict parsing ───────────────────────────────────────────────────────────
 
-function parseVerdict(memberId: CouncilMemberId, rawOutput: string): JudgeVerdict {
+export function parseVerdict(memberId: CouncilMemberId, rawOutput: string): JudgeVerdict {
   const upper = rawOutput.toUpperCase();
   const verdict: 'PASS' | 'FAIL' | 'UNCLEAR' =
     upper.includes('VERDICT: PASS') ? 'PASS' :

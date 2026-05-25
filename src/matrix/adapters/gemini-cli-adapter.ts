@@ -89,23 +89,41 @@ export class GeminiCLIAdapter implements AgentAdapter {
 
   async isAvailable(): Promise<boolean> {
     if (this.options._isAvailable) return this.options._isAvailable();
-    const candidates = candidateBinaries(this.options.binary ?? process.env.GEMINI_BIN ?? 'gemini');
-    for (const candidate of candidates) {
-      const needsShim = candidate.endsWith('.cmd') || candidate.endsWith('.bat');
+    const base = this.options.binary ?? process.env.GEMINI_BIN ?? 'gemini';
+
+    // On Windows, resolve the full path via where.exe first so .cmd/.ps1 shims
+    // can be invoked with the correct wrapper (cmd.exe or powershell.exe).
+    if (process.platform === 'win32' && !path.isAbsolute(base) && !base.includes('.')) {
       try {
-        if (needsShim && process.platform === 'win32') {
-          await execFileAsync('cmd.exe', ['/c', candidate, '--version'], { timeout: 5000 });
-        } else if (candidate.endsWith('.ps1')) {
-          await execFileAsync('powershell.exe', ['-NonInteractive', '-File', candidate, '--version'], { timeout: 5000 });
-        } else {
-          await execFileAsync(candidate, ['--version'], { timeout: 5000 });
+        const { stdout } = await execFileAsync('where.exe', [base], { timeout: 5000 });
+        for (const resolved of stdout.trim().split('\n').map(l => l.trim()).filter(Boolean)) {
+          if (await this._probeCandidate(resolved)) return true;
         }
-        this._resolvedBinary = candidate;
-        this._resolvedUsesShell = needsShim;
-        return true;
-      } catch { /* try next */ }
+      } catch { /* where.exe not found or gemini not on PATH — fall through to candidate list */ }
+    }
+
+    for (const candidate of candidateBinaries(base)) {
+      if (await this._probeCandidate(candidate)) return true;
     }
     return false;
+  }
+
+  private async _probeCandidate(candidate: string): Promise<boolean> {
+    const isCmdShim = candidate.endsWith('.cmd') || candidate.endsWith('.bat');
+    const isPs1 = candidate.endsWith('.ps1');
+    try {
+      if (isCmdShim && process.platform === 'win32') {
+        await execFileAsync('cmd.exe', ['/c', candidate, '--version'], { timeout: 5000 });
+      } else if (isPs1) {
+        // ps1 needs a full path; by here it is always absolute (resolved via where.exe above)
+        await execFileAsync('powershell.exe', ['-NonInteractive', '-File', candidate, '--version'], { timeout: 5000 });
+      } else {
+        await execFileAsync(candidate, ['--version'], { timeout: 5000 });
+      }
+      this._resolvedBinary = candidate;
+      this._resolvedUsesShell = isCmdShim;
+      return true;
+    } catch { return false; }
   }
 
   async prepareRun(input: AgentRunInput): Promise<PreparedAgentRun> {
