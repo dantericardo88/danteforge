@@ -111,6 +111,18 @@ export interface CompeteOptions {
   ) => Promise<import('../../core/adversarial-scorer-dim.js').AdversarialScoreResult>;
 }
 
+// ── Score snapshot helper ─────────────────────────────────────────────────────
+
+async function writeScoreSnapshot(score: number, cwd: string): Promise<void> {
+  try {
+    const reportsDir = path.join(cwd, '.danteforge', 'reports');
+    await fs.mkdir(reportsDir, { recursive: true });
+    const ts = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
+    const file = path.join(reportsDir, `score-${ts}.json`);
+    await fs.writeFile(file, JSON.stringify({ overallScore: score, timestamp: new Date().toISOString(), dims: 24, source: 'compete-matrix' }, null, 2));
+  } catch { /* never block compete */ }
+}
+
 export interface CompeteResult {
   action: 'status' | 'init' | 'sprint' | 'rescore' | 'report' | 'validate' | 'auto' | 'sync-scores' | 'calibrate' | 'check-all-nine' | 'next-dims';
   matrixPath: string;
@@ -275,10 +287,12 @@ async function actionStatus(options: CompeteOptions, cwd: string): Promise<Compe
     logger.success('\n✓ All dimensions closed. Matrix complete!');
   }
 
+  const overallScore = matrix.overallSelfScore;
+  void writeScoreSnapshot(overallScore, cwd);
   return {
     action: 'status',
     matrixPath,
-    overallScore: matrix.overallSelfScore,
+    overallScore,
     nextDimension: next ?? undefined,
   };
 }
@@ -463,7 +477,9 @@ async function actionRescore(options: CompeteOptions, cwd: string, rescore: stri
   const next = getNextSprintDimension(updatedMatrix);
   if (next) logger.info(`\nNext sprint: "${next.label}" (gap: ${formatScore(next.gap_to_leader)})`);
 
-  return { action: 'rescore', matrixPath, overallScore: updatedMatrix.overallSelfScore, nextDimension: next ?? undefined, dimensionsUpdated: 1 };
+  const rescoreOverall = updatedMatrix.overallSelfScore;
+  void writeScoreSnapshot(rescoreOverall, cwd);
+  return { action: 'rescore', matrixPath, overallScore: rescoreOverall, nextDimension: next ?? undefined, dimensionsUpdated: 1 };
 }
 
 async function actionReport(options: CompeteOptions, cwd: string): Promise<CompeteResult> {
