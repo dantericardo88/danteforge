@@ -647,7 +647,7 @@
       "category": "features",
       "frequency": "high",
       "scores": {
-        "self": 6.5,
+        "self": 7.0,
         "Devin (Cognition AI)": 9.5,
         "GitHub Copilot Workspace": 7,
         "Cursor": 7,
@@ -3109,7 +3109,7 @@
       "category": "core_differentiator",
       "frequency": "high",
       "scores": {
-        "self": 7.5,
+        "self": 8.0,
         "Kiro (AWS)": 5,
         "Replit Agent": 4,
         "spec-kit (GitHub)": 2,
