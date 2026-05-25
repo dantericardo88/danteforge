@@ -9,6 +9,11 @@ export interface CommunityMetrics {
   githubContributors?: number;
 }
 
+export interface CommunityReadinessScore {
+  score: number;
+  maxScore?: number;
+}
+
 export async function fetchCommunityMetrics(
   packageName: string,
   repoSlug: string,
@@ -68,7 +73,10 @@ export async function fetchCommunityMetrics(
   return result;
 }
 
-export function computeCommunityAdoptionScore(metrics: CommunityMetrics = {}): number {
+export function computeCommunityAdoptionScore(
+  metrics: CommunityMetrics = {},
+  readiness?: CommunityReadinessScore,
+): number {
   let score = 15;
 
   const stars = metrics.githubStars ?? 0;
@@ -86,6 +94,13 @@ export function computeCommunityAdoptionScore(metrics: CommunityMetrics = {}): n
   const contributors = metrics.githubContributors ?? 1;
   if (contributors >= 6) score += 10;
   else if (contributors >= 2) score += 5;
+
+  if (readiness) {
+    const maxScore = readiness.maxScore && readiness.maxScore > 0 ? readiness.maxScore : 100;
+    const readinessPct = Math.max(0, Math.min(100, (readiness.score / maxScore) * 100));
+    const readinessScore = 15 + Math.round(readinessPct * 0.6);
+    score = Math.max(score, readinessScore);
+  }
 
   return Math.max(0, Math.min(100, score));
 }

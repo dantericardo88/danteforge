@@ -253,16 +253,15 @@ export class ClaudeCodeAdapter implements AgentAdapter {
     });
 
     try {
-      // Judge mode: pure-text output, zero tool use.
-      // The diff is embedded in the workPacket.objective by the caller (council.ts / merge-court).
-      // Using --output-format text with -p means Claude outputs a text response only — no tools,
-      // no file reads, no file writes. Structurally impossible to modify the worktree.
+      // Judge mode: pure-text output, read-only tools only.
+      // --output-format text controls output format but does NOT disable tool use.
+      // --allowedTools restricts Claude to read-only tools, making file writes structurally impossible.
       if (this.options.judgeMode) {
         const chunks: Buffer[] = [];
         const prompt = state.workPacket.objective.length > 50
           ? state.workPacket.objective
           : buildClaudeJudgePrompt(state.workPacket, lease);
-        const judgeArgs = ['-p', prompt, '--output-format', 'text'];
+        const judgeArgs = ['-p', prompt, '--output-format', 'text', '--allowedTools', 'Read,Glob,Grep'];
         const [jCmd, jFinalArgs] = resolveSpawnTarget(state.binaryUsed, judgeArgs, this._resolvedUsesShell);
         const spawnFn: ClaudeSpawnFn = this.options._spawn ?? ((c, a, o) => spawn(c, a, o));
         state.exitCode = await runChild(spawnFn, jCmd, [...jFinalArgs], {
