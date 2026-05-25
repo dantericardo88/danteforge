@@ -292,6 +292,7 @@ describe('runFrontierCrusade', () => {
       _getScore: async (dimId) => dimId === 'a' ? 9.0 : 7.0,
       _runAutoResearch: async () => { /* no-op */ },
       _loadState: null,
+      _cipCheck: async () => ({ passed: true, gaps: [], cipScore: 1.0, blocksFrontierReached: false }),
     };
     const result = await runFrontierCrusade(opts);
     assert.equal(result.status, 'PARTIAL');
@@ -343,6 +344,7 @@ describe('runFrontierCrusade', () => {
       },
       _runAutoResearch: async () => { /* no-op */ },
       _loadState: null,
+      _cipCheck: async () => ({ passed: true, gaps: [], cipScore: 1.0, blocksFrontierReached: false }),
     };
     const result = await runFrontierCrusade(opts);
     assert.equal(result.status, 'ALL_DONE');
@@ -368,6 +370,7 @@ describe('runFrontierCrusade', () => {
       },
       _runAutoResearch: async () => { /* no-op */ },
       _loadState: null,
+      _cipCheck: async () => ({ passed: true, gaps: [], cipScore: 1.0, blocksFrontierReached: false }),
     };
     const result = await runFrontierCrusade(opts);
     const dim = result.dimensions[0];
@@ -393,6 +396,7 @@ describe('runFrontierCrusade', () => {
       _runVerifyCap: async () => { capCallCount++; return true; },
       _runAutoResearch: async () => { /* no-op */ },
       _loadState: null,
+      _cipCheck: async () => ({ passed: true, gaps: [], cipScore: 1.0, blocksFrontierReached: false }),
     };
     const result = await runFrontierCrusade(opts);
     assert.equal(result.dimensions[0]?.status, 'FRONTIER_REACHED');
