@@ -62,6 +62,11 @@ function makeOptions(overrides: Partial<FrontierCrusadeOptions> & {
     _getScore: getScore,
     _runAutoResearch: async () => { /* no-op */ },
     _loadState: null,  // disable regrade-cadence guard (DanteForge's real STATE.yaml otherwise leaks in)
+    // Bypass subprocess seams — tests run without a real project dir or CLI on PATH
+    _cipCheck: async () => ({ passed: true, gaps: [], cipScore: 1.0, blocksFrontierReached: false }),
+    _runValidate: async () => { /* no-op */ },
+    _runEvidenceRescore: async () => { /* no-op */ },
+    _createTimeMachineCommit: null,
     ...rest,
   };
 }

@@ -844,6 +844,49 @@ See commands/frontier.md for the full autonomous protocol.
     })();
   });
 
+// ── council ──────────────────────────────────────────────────────────────────
+
+program
+  .command('council')
+  .description('Multi-LLM council: builder + independent judges. The one who builds never judges. Dispatches real work to Codex, Gemini, Grok Build via subscription CLIs.')
+  .option('--goal <goal>', 'Task for the council to tackle')
+  .option('--builder <id>', 'Preferred builder (codex|gemini-cli|grok-build|claude-code)')
+  .option('--loop', 'Continue cycling until --target-dims passes achieved')
+  .option('--target-dims <n>', 'Stop after this many council-approved passes', '1')
+  .option('--max-cycles <n>', 'Safety cap on cycles (default 20 in loop mode)', '20')
+  .option('--discover', 'Only probe and list available council members, then exit')
+  .option('--json', 'Emit JSON summary at end')
+  .option('--cwd <path>', 'Project directory (defaults to cwd)')
+  .action((opts) => {
+    void (async () => {
+      try {
+        const { runCouncilCommand, discoverCouncil } = await import('./commands/council.js');
+        if (opts.discover) {
+          const { logger } = await import('../core/logger.js');
+          const members = await discoverCouncil();
+          for (const m of members) {
+            logger.info(`${m.available ? '✓' : '✗'}  ${m.label}`);
+          }
+          return;
+        }
+        if (!opts.goal) throw new Error('--goal is required. Example: danteforge council --goal "fix the gate script paradox in DanteDojo"');
+        await runCouncilCommand({
+          cwd: opts.cwd as string | undefined,
+          goal: opts.goal as string,
+          builderPref: opts.builder as 'codex' | 'gemini-cli' | 'grok-build' | 'claude-code' | undefined,
+          loop: opts.loop as boolean | undefined,
+          targetDims: opts.targetDims ? parseInt(opts.targetDims as string, 10) : undefined,
+          maxCycles: opts.maxCycles ? parseInt(opts.maxCycles as string, 10) : undefined,
+          json: opts.json as boolean | undefined,
+        });
+      } catch (err) {
+        const { formatAndLogError } = await import('../core/format-error.js');
+        formatAndLogError(err, 'council');
+        process.exitCode = 1;
+      }
+    })();
+  });
+
 // ── search (Phase L) ────────────────────────────────────────────────────────
 
 const searchCmd = program
