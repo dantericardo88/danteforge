@@ -858,6 +858,7 @@ program
   .option('--parallel', 'True parallel mode: all members build simultaneously in isolated git worktrees, then cross-judge each other')
   .option('--rounds <n>', 'Number of parallel rounds to run (parallel mode, default: 1)', '1')
   .option('--max-dims <n>', 'Max dimensions to schedule per round (parallel mode)')
+  .option('--focus-dims <ids>', 'Comma-separated dimension IDs to target (skips gap ranking, e.g. "testing,spec_workflow_enforcement")')
   .option('--slots-per-member <n>', 'Sub-agents per council member — M members × N slots = M*N parallel worktrees (default: 1)', '1')
   .option('--min-judges <n>', 'Minimum cross-member judges required per candidate (default: 2)', '2')
   .option('--skip-validate', 'Skip running danteforge validate after merges (faster for first runs)')
@@ -901,6 +902,7 @@ program
             resumeRunId: opts.resume as string | undefined,
             slotsPerMember: opts.slotsPerMember ? parseInt(opts.slotsPerMember as string, 10) : 1,
             minJudges: opts.minJudges ? parseInt(opts.minJudges as string, 10) : 2,
+            focusDims: opts.focusDims ? (opts.focusDims as string).split(',').map((s: string) => s.trim()) : undefined,
           });
           return;
         }

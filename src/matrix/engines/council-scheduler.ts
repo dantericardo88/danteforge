@@ -29,6 +29,8 @@ export interface SchedulerOptions {
   minGap?: number;
   /** Cap total dims per scheduling pass (default: unlimited) */
   maxDims?: number;
+  /** Only schedule these specific dimension IDs (overrides gap ranking; still respects maxDims) */
+  focusDims?: string[];
 }
 
 interface RawDimension {
@@ -63,6 +65,7 @@ export async function scheduleWork(
 
   let eligible = dimensions
     .filter(d => {
+      if (opts?.focusDims?.length) return opts.focusDims.includes(d.id);
       const score = d.scores?.self ?? 0;
       const gap = d.gap_to_oss_leader ?? d.gap_to_leader ?? 0;
       return gap >= minGap && score < 9.5;

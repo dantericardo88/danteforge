@@ -78,6 +78,8 @@ export interface ParallelCouncilOptions {
   slotsPerMember?: number;
   /** Minimum cross-member judges required per candidate (default: 2). */
   minJudges?: number;
+  /** Only schedule these specific dimension IDs (skips gap ranking entirely). */
+  focusDims?: string[];
   /** Injection seam: override council discovery for tests */
   _discover?: () => Promise<CouncilMember[]>;
 }
@@ -266,10 +268,12 @@ export async function runParallelCouncil(options: ParallelCouncilOptions): Promi
       ? await scheduleWorkForSlots(roundSlots, cwd, {
           maxDims: options.maxDimsPerRound ?? roundSlots.length * 2,
           minGap: options.minGap,
+          focusDims: options.focusDims,
         })
       : await scheduleWork(roundMembers, cwd, {
           maxDims: options.maxDimsPerRound ?? roundMembers.length * 3,
           minGap: options.minGap,
+          focusDims: options.focusDims,
         });
     const scheduled = convergence.pruneStuck(allScheduled);
 
