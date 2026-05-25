@@ -27,7 +27,8 @@ export type AssistantRegistry =
   | 'openhands'
   | 'copilot'
   | 'continue'
-  | 'gemini-cli';
+  | 'gemini-cli'
+  | 'grok';
 
 export interface AssistantInstallResult {
   assistant: AssistantRegistry;
@@ -171,6 +172,8 @@ function resolveAssistantTargetDir(homeDir: string, assistant: AssistantRegistry
       return path.join(homeDir, '.continue');
     case 'gemini-cli':
       return projectDir;
+    case 'grok':
+      return path.join(homeDir, '.grok', 'skills');
   }
 }
 
@@ -220,7 +223,7 @@ async function syncContinueConfig(targetDir: string): Promise<void> {
   await fs.writeFile(configPath, newLines.join('\n'), 'utf8');
 }
 
-const DEFAULT_GLOBAL_ASSISTANTS: AssistantRegistry[] = ['claude', 'codex', 'antigravity', 'opencode'];
+const DEFAULT_GLOBAL_ASSISTANTS: AssistantRegistry[] = ['claude', 'codex', 'antigravity', 'opencode', 'grok'];
 
 function buildCodexCommandLine(command: string, target: string): string {
   return `${command} = "${target}"`;
@@ -701,6 +704,14 @@ export async function installAssistantSkills(
       continue;
     }
 
+    if (assistant === 'grok') {
+      // Grok gets the full packaged dante- skills via the generic path below.
+      // Workflow commands are installed with bare names (inferno, frontier, blaze, etc.)
+      // so users get first-class `/inferno`, `/frontier --drive`, etc. — matching the
+      // Claude Code experience.
+      await syncGrokCommandSkills(homeDir);
+    }
+
     await installNativeSkills(assistant, skillDirs, skillsDir, targetDir, homeDir, projectDir);
     const installedSkills = assistant === 'codex'
       ? (await fs.readdir(targetDir)).filter(entry => !entry.startsWith('.')).sort()
@@ -709,4 +720,61 @@ export async function installAssistantSkills(
   }
 
   return { homeDir, assistants: results };
+}
+
+// ---------------------------------------------------------------------------
+// Grok Build native integration (skills + slash commands as /danteforge-*)
+// ---------------------------------------------------------------------------
+
+function buildGrokCommandSkill(commandName: string, description: string, body: string): string {
+  const title = commandName
+    .split('-')
+    .map(part => (part.length > 0 ? part[0]!.toUpperCase() + part.slice(1) : part))
+    .join(' ');
+  return [
+    '---',
+    `name: ${commandName}`,
+    `description: ${escapeYamlScalar(`DanteForge ${title} workflow. ${description}`.trim())}`,
+    'source: danteforge',
+    '---',
+    '',
+    `# DanteForge /${commandName}`,
+    '',
+    `Use this skill when the user invokes \`/${commandName}\` (preferred in Grok Build), asks for the DanteForge ${title} workflow, or references \`${commandName}\` in a DanteForge context. The prefixed form \`/danteforge-${commandName}\` is also supported as a fallback.`,
+    '',
+    'Prefer native Grok tools (read, edit, terminal commands) for the steps below. Fall back to the `danteforge` CLI binary only for deterministic actions (forge waves, verify, matrix state, etc.).',
+    '',
+    body.trim(),
+    '',
+  ].join('\n');
+}
+
+async function syncGrokCommandSkills(homeDir: string): Promise<void> {
+  const commandsDir = resolvePackagedCommandsDir();
+  const targetRoot = path.join(homeDir, '.grok', 'skills');
+  let entries: string[];
+  try {
+    entries = await fs.readdir(commandsDir);
+  } catch {
+    return;
+  }
+
+  await fs.mkdir(targetRoot, { recursive: true });
+
+  for (const entry of entries) {
+    if (!entry.endsWith('.md')) continue;
+    const commandName = path.basename(entry, '.md');
+    // Use bare names (e.g. "inferno", "frontier", "blaze") so users get clean
+    // `/inferno`, `/frontier` slash commands in Grok Build, matching the
+    // first-class experience in Claude Code. Grok's qualified forms
+    // (/local:xxx) are available if a builtin collision ever occurs.
+    const skillDir = path.join(targetRoot, commandName);
+    const parsed = await parseCommandFile(path.join(commandsDir, entry));
+    await fs.mkdir(skillDir, { recursive: true });
+    await fs.writeFile(
+      path.join(skillDir, 'SKILL.md'),
+      buildGrokCommandSkill(commandName, parsed.description, parsed.body),
+      'utf8',
+    );
+  }
 }

@@ -8,6 +8,7 @@ const DEFAULT_ASSISTANTS: AssistantRegistry[] = ['claude', 'codex', 'antigravity
 const ALL_ASSISTANTS: AssistantRegistry[] = [
   'claude', 'codex', 'antigravity', 'opencode', 'cursor',
   'windsurf', 'aider', 'openhands', 'copilot', 'continue', 'gemini-cli',
+  'grok',
 ];
 
 function normalizeAssistant(value: string): AssistantRegistry | null {
@@ -43,6 +44,11 @@ function normalizeAssistant(value: string): AssistantRegistry | null {
       return 'continue';
     case 'gemini-cli':
       return 'gemini-cli';
+    case 'grok':
+    case 'grok-build':
+    case 'grok-tui':
+    case 'xai':
+      return 'grok';
     default:
       return null;
   }
@@ -63,7 +69,7 @@ function parseAssistants(raw: string | undefined): AssistantRegistry[] | undefin
     .filter(Boolean);
 
   if (assistants.length === 0) {
-    throw new Error('Invalid assistant list. Use: claude,codex,cursor,windsurf,aider,openhands,copilot,continue,gemini-cli or "all"');
+    throw new Error('Invalid assistant list. Use: claude,codex,cursor,windsurf,aider,openhands,copilot,continue,gemini-cli,grok or "all"');
   }
 
   return [...new Set(assistants)] as AssistantRegistry[];
@@ -95,6 +101,9 @@ export async function setupAssistants(options: {
       logger.info('Codex install contract: every `commands/*.md` file is mirrored to `~/.codex/commands`, `~/.codex/prompts`, and generated `~/.codex/skills/danteforge-<command>` wrappers; CLI fallback lives in `~/.codex/skills/danteforge-cli`, bootstrap in `~/.codex/AGENTS.md`, utility aliases in `~/.codex/config.toml`.');
       logger.info('Codex validation: rerun `danteforge doctor` and see `docs/Codex-Install.md` for npm, tarball, and source install flows on other machines.');
       logger.info('Codex note: local Codex installs are supported; hosted Codex/chat surfaces may ignore user-level `~/.codex/*` files.');
+    }
+    if (assistants?.includes('grok')) {
+      logger.info('Grok Build: DanteForge skills installed to `~/.grok/skills/` with bare names (spark, inferno, frontier, blaze, review, dante-tdd, etc.). Use `/inferno`, `/frontier --drive`, `/spark` etc. directly. MCP: run `grok mcp add danteforge --command danteforge --args mcp-server`.');
     }
     logger.info('Cursor is project-local and opt-in. Run `danteforge setup assistants --assistants cursor` when you want the `.cursor/rules/danteforge.mdc` bootstrap file.');
     logger.info('Next: run `danteforge config --set-key "openai:..."` and `danteforge doctor --live` on the target machine.');

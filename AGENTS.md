@@ -22,7 +22,8 @@ This file is the repo-level source of truth for coding agents (Codex, Claude Cod
 - Project workflow artifacts live in `./.danteforge/` (state/spec/plan/tasks/prompts).
 - Secrets are stored in user config at `~/.danteforge/config.yaml` (migrated from legacy project-local config on first read).
 - Prefer small, high-confidence edits and keep CLI behavior backward compatible unless a task explicitly changes UX/contracts.
-- In Codex, treat workflow slash commands backed by `commands/*.md` as native repo commands. When the user invokes `/spark`, `/ember`, `/canvas`, `/magic`, `/blaze`, `/nova`, `/inferno`, `/autoforge`, `/party`, `/local-harvest`, or another workflow slash command, execute the workflow in the workspace instead of defaulting to `danteforge <command>` unless the user explicitly asks for CLI execution or parity testing.
+- In Codex and Grok Build, treat workflow slash commands backed by `commands/*.md` as native repo commands. When the user invokes `/spark`, `/ember`, `/canvas`, `/magic`, `/blaze`, `/nova`, `/inferno`, `/autoforge`, `/party`, `/local-harvest`, `/frontier`, or another workflow slash command (or the `danteforge-` prefixed forms in Grok), execute the workflow in the workspace instead of defaulting to `danteforge <command>` unless the user explicitly asks for CLI execution or parity testing.
+- For long-running autonomous frontier attainment (50-100+ dimensions), the canonical command is `danteforge frontier --drive --target-dims 70`. This is the "one command" that loops using harden-crusade + strict doctrine gates until the target is honestly reached. Prefer this over manual crusade/ascend loops when the goal is set-and-forget frontier closure.
 - Keep `.codex/config.toml` free of workflow-command alias collisions so native slash commands win in Codex.
 - Do not commit generated/vendor paths (`node_modules/`, `dist/`, `coverage/`, `./.danteforge/`, `vscode-extension/node_modules/`, `vscode-extension/dist/`).
 
@@ -226,12 +227,13 @@ The loop stops honestly when every dimension is `FRONTIER_REACHED` or `AT_CEILIN
 ## Cross-Tool Skill + Command Distribution
 
 This repo doubles as a skills library for Claude Code, Codex, Cursor, Windsurf,
-Aider, OpenHands, Copilot, Continue, and Gemini CLI. Every file under `commands/`
+Aider, OpenHands, Copilot, Continue, Gemini CLI, and Grok Build. Every file under `commands/`
 becomes both a Claude Code slash command (canonical path) AND a per-tool rule
 file when users run `danteforge setup assistants --assistants all`. The
 installer:
 
 - Copies `commands/*.md` to `~/.codex/commands/` (Codex native slash commands)
+- Writes `danteforge-<name>/SKILL.md` wrappers into `~/.grok/skills/` (Grok Build native `/danteforge-*` slash commands)
 - Writes each command as `.cursor/rules/danteforge-<name>.mdc` with
   `alwaysApply: false`
 - Writes each command as `.windsurf/rules/danteforge-<name>.md` with a derived

@@ -137,6 +137,8 @@ DanteForge exposes an MCP server that connects to any AI assistant:
 
 - **Claude Code** — full MCP integration + plugin manifest + slash commands
 - **Codex CLI** — native workflow slash commands via `~/.codex/commands`
+- **Grok Build** — native skills (`~/.grok/skills/danteforge-*`) + MCP + `/danteforge-spark`, `/frontier --drive`, etc.
+  - The premier autonomous command is `danteforge frontier --drive --target-dims 70` — one command that loops until dozens of dimensions reach genuine frontier under the full scoring doctrine.
 - **Cursor** — MCP server + `.cursor/mcp.json` config + per-command rule files
 - **Windsurf** — MCP server via stdio + per-command rule files
 
@@ -151,6 +153,7 @@ Every slash command in `commands/` and every skill in `src/harvested/dante-agent
 ```bash
 danteforge setup assistants --assistants all
 # Installs to ~/.claude/skills, ~/.codex/skills + ~/.codex/commands,
+# ~/.grok/skills (dante-*/ + danteforge-* wrappers for Grok Build),
 # .cursor/rules/danteforge-<cmd>.mdc, .windsurf/rules/danteforge-<cmd>.md,
 # .openhands/microagents, .github/copilot-instructions.md, and more.
 ```

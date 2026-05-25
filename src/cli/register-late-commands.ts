@@ -779,33 +779,50 @@ dispensationCmd
 
 program
   .command('frontier')
-  .description('Report project frontier state: per-dim status + terminal verdict (frontier-reached | stuck-on-dims | blocked-by-dispensations | progressing). Phase H Slice 4.')
+  .description('Report project frontier state OR drive the project autonomously until 50-100+ dimensions reach genuine frontier (use --drive).')
   .option('--dim <id>', 'Show only one dimension')
   .option('--stuck-threshold <n>', 'Waves-without-progress before a dim is marked stuck (default 3)', '3')
   .option('--require <state>', 'CI gate: exit 0 iff terminal state matches (frontier-reached|progressing|stuck-on-dims|blocked-by-dispensations)')
+  .option('--drive', 'Autonomous attainment mode: run hardened crusade loops until --target-dims dimensions meet the full strict frontier criteria')
+  .option('--target-dims <n>', 'Goal number of dimensions at strict frontier when using --drive (default 50)', '50')
+  .option('--target <score>', 'Per-dimension score target for inner crusade (default 9.0)', '9')
+  .option('--parallel <n>', 'Parallel dimensions during drive (default 4)', '4')
+  .option('--time <m>', 'Autoresearch minutes per inner cycle (default 45)', '45')
+  .option('--max-cycles <n>', 'Max outer attainment cycles in --drive mode (default 20)', '20')
   .option('--json', 'Machine-readable JSON output')
   .option('--cwd <path>', 'Project directory (defaults to cwd)')
   .addHelpText('after', `
-A dim is at frontier iff THREE conjunction conditions hold:
-  1. All outcomes at declared_ceiling pass
-  2. No active dispensation against the dim
-  3. production-usage-fresh passes (or declared_ceiling < T3)
+Report mode (default):
+  Shows current frontier status with strict doctrine evaluation.
 
-The project's terminal state is one of:
-  frontier-reached         all eligible dims at frontier (exit 0)
-  stuck-on-dims            >=1 dim halted after N waves (exit 1)
-  blocked-by-dispensations operator overrides outstanding (exit 1)
-  progressing              still working (exit 1)
+Drive mode (--drive):
+  The real "1 command" autonomous attainment loop.
+  Repeatedly runs harden-crusade, evaluates the full frontier gate (CIP + capability_test + harden + recency + Time Machine), and continues until --target-dims dimensions are genuinely at frontier.
 
-CI gate examples:
-  danteforge frontier --require frontier-reached --json   release-blocker
-  danteforge frontier --require progressing --json        sanity check the loop isn't stuck
+Examples:
+  danteforge frontier --drive --target-dims 70
+  danteforge frontier --drive --target-dims 100 --parallel 6 --time 60
+  danteforge frontier --require frontier-reached --json     # CI gate
 
-See docs/CAPABILITY-TIERS.md for the per-tier contracts.
+See commands/frontier.md for the full autonomous protocol.
 `)
   .action((opts) => {
     void (async () => {
       try {
+        if (opts.drive) {
+          const { runFrontierDrive } = await import('./commands/frontier.js');
+          await runFrontierDrive({
+            cwd: opts.cwd as string | undefined,
+            targetDims: opts.targetDims ? parseInt(opts.targetDims as string, 10) : undefined,
+            targetScore: opts.target ? parseFloat(opts.target as string) : undefined,
+            parallel: opts.parallel ? parseInt(opts.parallel as string, 10) : undefined,
+            maxOuterCycles: opts.maxCycles ? parseInt(opts.maxCycles as string, 10) : undefined,
+            timeMinutes: opts.time ? parseInt(opts.time as string, 10) : undefined,
+            json: opts.json as boolean | undefined,
+          });
+          return;
+        }
+
         const { runFrontierCommand } = await import('./commands/frontier.js');
         const requireState = opts.require as string | undefined;
         const valid = ['frontier-reached', 'progressing', 'stuck-on-dims', 'blocked-by-dispensations'];

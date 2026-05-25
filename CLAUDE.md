@@ -43,6 +43,7 @@ a session-persistent guide file you can load with `@.danteforge/GUIDE.md`.
 - `lib/` - JS skill discovery for plugin runtime
 - `vscode-extension/` - VS Code integration (shells out to CLI)
 - `.claude-plugin/` - Claude Code plugin manifest
+- Grok Build support added via the same `danteforge setup assistants --assistants grok` path (skills in `~/.grok/skills/`, MCP via stdio)
 
 ## Matrix Kernel (`src/matrix/`)
 
@@ -160,7 +161,7 @@ Never write a stub that passes silently — that is breadth masquerading as dept
 
 ## Conventions
 
-- `AGENTS.md` is the canonical agent instruction file (Codex/Claude/etc.); this file is adapter/context guidance
+- `AGENTS.md` is the canonical agent instruction file (Codex/Claude/Grok/etc.); this file is adapter/context guidance
 - ESM-only (`"type": "module"`)
 - TypeScript strict mode, ES2022 target
 - tsup bundles to single `dist/index.js`
