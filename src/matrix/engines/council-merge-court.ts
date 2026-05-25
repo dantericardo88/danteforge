@@ -237,7 +237,7 @@ export async function runMergeCourt(opts: MergeCourtOptions): Promise<MergeCourt
     const builderId = handle.memberId as CouncilMemberId;
     const candidateId = idToCandidate.get(builderId) ?? builderId;
 
-    const diff = await captureWorktreeDiff(handle, opts.worktreeOpts);
+    let diff = await captureWorktreeDiff(handle, opts.worktreeOpts);
     const changedFiles = await getChangedFiles(handle.worktreePath);
 
     if (changedFiles.length === 0) {
