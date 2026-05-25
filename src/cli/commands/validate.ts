@@ -21,7 +21,7 @@
 import path from 'node:path';
 import chalk from 'chalk';
 import { logger } from '../../core/logger.js';
-import { loadMatrix } from '../../core/compete-matrix.js';
+import { loadMatrix, saveMatrix } from '../../core/compete-matrix.js';
 import { runAllOutcomes, loadOutcomeEvidence } from '../../matrix/engines/outcome-runner.js';
 import {
   computeDerivedScoreWithBreakdown,
@@ -181,6 +181,22 @@ export async function runValidateCli(options: ValidateCliOptions): Promise<Valid
   }
 
   const allPassed = results.every(r => r.failingOutcomes === 0);
+
+  // Write derived scores back to matrix.json so scores.derived reflects receipt evidence.
+  try {
+    const liveMatrix = await loadMatrix(cwd);
+    if (liveMatrix) {
+      let changed = false;
+      for (const r of results) {
+        const dim = liveMatrix.dimensions.find(d => d.id === r.dimensionId);
+        if (dim && r.failingOutcomes === 0 && r.scoreAfter > 0) {
+          dim.scores['derived'] = Math.round(r.scoreAfter * 100) / 100;
+          changed = true;
+        }
+      }
+      if (changed) await saveMatrix(liveMatrix, cwd);
+    }
+  } catch { /* never block validation output */ }
 
   // Time Machine: record the validation run for audit trail.
   try {
