@@ -109,6 +109,8 @@ async function defaultRunOssPass(domain: string, cwd: string): Promise<OssPassRe
 
     return { patternsFound, domain };
   } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    logger.warn(`[crusade] OSS harvest failed for domain "${domain}": ${msg.slice(0, 120)}`);
     return { patternsFound: 0, domain };
   }
 }
