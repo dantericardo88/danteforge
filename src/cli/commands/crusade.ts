@@ -87,7 +87,9 @@ async function defaultRunOssPass(domain: string, cwd: string): Promise<OssPassRe
   const { promisify } = await import('node:util');
   const execFileAsync = promisify(execFile);
   try {
-    await execFileAsync('danteforge', ['oss', domain, '--auto'], { cwd, timeout: 120_000 });
+    // `danteforge oss` auto-detects the project — no domain positional, no --auto flag.
+    // domain is retained in the return value for reporting but not passed to the command.
+    await execFileAsync('danteforge', ['oss', '--max-repos', '5'], { cwd, timeout: 120_000 });
     return { patternsFound: 5, domain };
   } catch {
     return { patternsFound: 0, domain };
@@ -99,7 +101,8 @@ async function defaultRunForgeWave(goal: string, cwd: string): Promise<ForgeWave
   const { promisify } = await import('node:util');
   const execFileAsync = promisify(execFile);
   try {
-    await execFileAsync('danteforge', ['forge', '--goal', goal], { cwd, timeout: 300_000 });
+    // `danteforge magic <goal>` is the correct hero command — `forge` has no --goal flag.
+    await execFileAsync('danteforge', ['magic', goal, '--yes'], { cwd, timeout: 300_000 });
     return { success: true };
   } catch (err) {
     return { success: false, error: err instanceof Error ? err.message : String(err) };
