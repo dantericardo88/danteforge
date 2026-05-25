@@ -10,7 +10,7 @@ import path from 'node:path';
 import chalk from 'chalk';
 import { logger } from '../../core/logger.js';
 import { discoverCouncil } from './council.js';
-import type { CouncilMember } from './council.js';
+import type { CouncilMember, CouncilMemberId } from './council.js';
 import { CodexAdapter } from '../../matrix/adapters/codex-adapter.js';
 import { GeminiCLIAdapter } from '../../matrix/adapters/gemini-cli-adapter.js';
 import { GrokBuildAdapter } from '../../matrix/adapters/grok-build-adapter.js';
@@ -18,7 +18,6 @@ import { ClaudeCodeAdapter } from '../../matrix/adapters/claude-code-adapter.js'
 import { runAdapter } from '../../matrix/adapters/adapter-interface.js';
 import type { WorkPacket } from '../../matrix/types/work-graph.js';
 import type { AgentLease } from '../../matrix/types/lease.js';
-import type { CouncilMemberId } from '../../matrix/engines/council-member-health.js';
 
 export interface CouncilAskOptions {
   cwd?: string;
@@ -94,6 +93,8 @@ function makeConsultAdapter(id: CouncilMemberId, workPacket: WorkPacket) {
     case 'gemini-cli':  return new GeminiCLIAdapter({ workPacket, judgeMode: true });
     case 'grok-build':  return new GrokBuildAdapter({ workPacket, judgeMode: true });
     case 'claude-code': return new ClaudeCodeAdapter({ workPacket, judgeMode: true });
+    default:
+      throw new Error(`Unsupported council member: ${id}`);
   }
 }
 

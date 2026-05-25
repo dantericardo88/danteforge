@@ -9,6 +9,8 @@
 
 import path from 'node:path';
 import fs from 'node:fs/promises';
+import { execFile } from 'node:child_process';
+import { promisify } from 'node:util';
 import chalk from 'chalk';
 import { logger } from '../../core/logger.js';
 import { CodexAdapter } from '../../matrix/adapters/codex-adapter.js';
@@ -60,6 +62,17 @@ export interface RunCouncilOptions {
   json?: boolean;
   /** Injection seam for tests. */
   _discover?: () => Promise<CouncilMember[]>;
+}
+
+const execFileAsync = promisify(execFile);
+
+// Reverts specific files to HEAD — used when a council FAIL leaves the builder's
+// edits in the main working tree (no worktree isolation in sequential mode).
+async function revertFiles(cwd: string, files: string[]): Promise<void> {
+  if (files.length === 0) return;
+  await Promise.allSettled(
+    files.map(f => execFileAsync('git', ['checkout', '--', f], { cwd }).catch(() => { /* best-effort */ })),
+  );
 }
 
 // ── Work packet / lease factory ───────────────────────────────────────────────
@@ -149,7 +162,7 @@ function makeAdapter(id: CouncilMemberId, workPacket: WorkPacket, judgeMode = fa
     case 'codex': return new CodexAdapter({ workPacket, judgeMode });
     case 'gemini-cli': return new GeminiCLIAdapter({ workPacket, judgeMode });
     case 'grok-build': return new GrokBuildAdapter({ workPacket, judgeMode });
-    case 'claude-code': return new ClaudeCodeAdapter({ workPacket, judgeMode });
+    case 'claude-code': return new ClaudeCodeAdapter({ workPacket, judgeMode, skipPermissions: !judgeMode });
   }
 }
 
@@ -234,6 +247,13 @@ export async function runCouncilCycle(
   const scoreSuggested = scoreValues.length > 0
     ? Math.round((scoreValues.reduce((a, b) => a + b, 0) / scoreValues.length) * 10) / 10
     : null;
+
+  // Revert builder changes on rejection so the main working tree stays clean.
+  // Judges have already read from cwd — revert is safe at this point.
+  if (consensus !== 'PASS' && buildResult.filesChanged.length > 0) {
+    logger.info(chalk.dim(`  [council] ${consensus} — reverting ${buildResult.filesChanged.length} builder file(s) to keep main worktree clean`));
+    await revertFiles(cwd, buildResult.filesChanged);
+  }
 
   return {
     builderId: roles.builder,

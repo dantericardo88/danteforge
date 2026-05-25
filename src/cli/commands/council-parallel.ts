@@ -106,7 +106,7 @@ function makeBuilderAdapter(id: CouncilMemberId, workPacket: WorkPacket) {
     case 'codex':       return new CodexAdapter({ workPacket });
     case 'gemini-cli':  return new GeminiCLIAdapter({ workPacket });
     case 'grok-build':  return new GrokBuildAdapter({ workPacket });
-    case 'claude-code': return new ClaudeCodeAdapter({ workPacket });
+    case 'claude-code': return new ClaudeCodeAdapter({ workPacket, skipPermissions: true });
   }
 }
 
