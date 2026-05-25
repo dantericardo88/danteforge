@@ -45,7 +45,7 @@
     "DSPy"
   ],
   "lastUpdated": "2026-05-25T17:23:30.053Z",
-  "overallSelfScore": 6.6,
+  "overallSelfScore": 6.71,
   "excludedDimensions": [
     "community_adoption",
     "communityAdoption"
@@ -821,7 +821,7 @@
       "category": "reliability",
       "frequency": "high",
       "scores": {
-        "self": 6,
+        "self": 7,
         "Devin (Cognition AI)": 7,
         "GitHub Copilot Workspace": 8,
         "Cursor": 7.5,
@@ -987,7 +987,7 @@
       "category": "quality",
       "frequency": "high",
       "scores": {
-        "self": 6.5,
+        "self": 7.5,
         "Devin (Cognition AI)": 7.5,
         "GitHub Copilot Workspace": 7.5,
         "Cursor": 7,
