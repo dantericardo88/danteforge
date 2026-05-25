@@ -4,6 +4,7 @@ import fs from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import {
+  analyzeCommunityOnboarding,
   assessCommunityAdoptionReadiness,
   computeCommunityAdoptionScore,
   improveCommunityAdoption,
@@ -142,5 +143,79 @@ describe('community adoption readiness', () => {
     await assert.doesNotReject(() => fs.access(path.join(cwd, 'CODE_OF_CONDUCT.md')));
     await assert.doesNotReject(() => fs.access(path.join(cwd, '.github', 'ISSUE_TEMPLATE', 'bug_report.yml')));
     await assert.doesNotReject(() => fs.access(path.join(cwd, '.github', 'ISSUE_TEMPLATE', 'feature_request.yml')));
+  });
+
+  it('recognizes copy-paste onboarding, command reference, and troubleshooting support', async () => {
+    const cwd = await makeProject({
+      'package.json': JSON.stringify({
+        name: 'sample-tool',
+        version: '1.2.3',
+        description: 'A useful CLI tool',
+        license: 'MIT',
+        repository: { type: 'git', url: 'https://github.com/acme/sample-tool.git' },
+        bugs: { url: 'https://github.com/acme/sample-tool/issues' },
+        homepage: 'https://github.com/acme/sample-tool#readme',
+        bin: { 'sample-tool': 'dist/index.js' },
+        files: ['dist', 'README.md', 'LICENSE'],
+        keywords: ['cli', 'automation', 'developer-tools'],
+        publishConfig: { access: 'public' },
+      }),
+      'README.md': [
+        '# Sample Tool',
+        '',
+        '## Quick start',
+        '',
+        '```bash',
+        'npm install -g sample-tool',
+        'sample-tool --help',
+        'sample-tool doctor',
+        '```',
+        '',
+        '## Install',
+        '',
+        'Use `npm install -g sample-tool`, `npx sample-tool --help`, or `pnpm dlx sample-tool --help`.',
+      ].join('\n'),
+      'docs/COMMANDS.md': [
+        '# Command Reference',
+        '',
+        '| Command | Purpose |',
+        '| --- | --- |',
+        '| `sample-tool init` | Initialize artifacts. |',
+        '| `sample-tool verify` | Run verification. |',
+        '| `sample-tool doctor` | Diagnose setup. |',
+      ].join('\n'),
+      'docs/TROUBLESHOOTING.md': [
+        '# Troubleshooting',
+        '',
+        'Run `sample-tool doctor` first, then open an issue with logs, OS, Node version, expected behavior, and reproduction steps.',
+      ].join('\n'),
+    });
+
+    const onboarding = await analyzeCommunityOnboarding(cwd);
+    const report = await assessCommunityAdoptionReadiness(cwd);
+
+    assert.ok(onboarding.copyPasteCommandCount >= 3);
+    assert.deepEqual([...onboarding.packageManagers].sort(), ['npm', 'pnpm', 'npx'].sort());
+    for (const id of ['copy-paste-onboarding', 'package-manager-coverage', 'command-reference', 'troubleshooting-support']) {
+      assert.ok(
+        report.signals.some((signal) => signal.id === id && signal.status === 'pass'),
+        `expected ${id} signal to pass`,
+      );
+    }
+  });
+
+  it('generates onboarding docs that a new adopter can run without project-specific knowledge', async () => {
+    const cwd = await makeProject({
+      'package.json': JSON.stringify({ name: 'sample-tool', version: '0.1.0', license: 'MIT' }),
+    });
+
+    await improveCommunityAdoption({ cwd, generateAdoptionPack: true });
+    const onboarding = await analyzeCommunityOnboarding(cwd);
+
+    assert.ok(onboarding.copyPasteCommandCount >= 3);
+    assert.ok(onboarding.packageManagers.includes('npm'));
+    await assert.doesNotReject(() => fs.access(path.join(cwd, 'docs', 'ONBOARDING.md')));
+    await assert.doesNotReject(() => fs.access(path.join(cwd, 'docs', 'COMMANDS.md')));
+    await assert.doesNotReject(() => fs.access(path.join(cwd, 'docs', 'TROUBLESHOOTING.md')));
   });
 });

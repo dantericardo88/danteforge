@@ -6,8 +6,14 @@ import {
   type CommunityMetrics,
   type CommunityReadinessScore,
 } from './harsh-scorer-community.js';
+import {
+  analyzeCommunityOnboarding,
+  writeCommunityOnboardingDocs,
+  type CommunityOnboardingReport,
+} from './community-onboarding.js';
 
 export { computeCommunityAdoptionScore, type CommunityMetrics, type CommunityReadinessScore };
+export { analyzeCommunityOnboarding, type CommunityOnboardingReport };
 
 export interface CommunityAdoptionOptions {
   cwd?: string;
@@ -64,6 +70,10 @@ const ADOPTION_ACTIONS: Record<string, string> = {
   'security-policy': 'Add SECURITY.md with a private vulnerability reporting path.',
   'release-notes': 'Add CHANGELOG.md or RELEASE.md with release history.',
   examples: 'Add at least one runnable example or showcase walkthrough.',
+  'package-manager-coverage': 'Document install and first-run paths for npm/npx and at least one alternate package manager.',
+  'copy-paste-onboarding': 'Add fenced shell commands that install, run, and verify the tool.',
+  'command-reference': 'Add docs/COMMANDS.md with the commands a new adopter needs first.',
+  'troubleshooting-support': 'Add docs/TROUBLESHOOTING.md with doctor, logs, reproduction, and issue guidance.',
 };
 
 async function exists(filePath: string): Promise<boolean> {
@@ -179,6 +189,13 @@ export async function assessCommunityAdoptionReadiness(cwd: string = process.cwd
     && /(quick\s*start|getting started|first run|--help)/i.test(readme);
   const hasGovernance = await exists(path.join(cwd, 'CODE_OF_CONDUCT.md'))
     || await exists(path.join(cwd, 'COMMUNITY.md'));
+  const onboarding = await analyzeCommunityOnboarding(cwd);
+  const hasCopyPasteOnboarding = onboarding.installCommands.length > 0
+    && onboarding.firstRunCommands.length > 0
+    && onboarding.verificationCommands.length > 0
+    && onboarding.copyPasteCommandCount >= 3;
+  const hasPackageManagerCoverage = onboarding.packageManagers.includes('npm')
+    && (onboarding.packageManagers.includes('npx') || onboarding.packageManagers.length >= 2);
 
   const signals: CommunityReadinessSignal[] = [
     signal('package-metadata', 'Package metadata', 15, hasPackageBasics, hasPackageBasics
@@ -213,6 +230,22 @@ export async function assessCommunityAdoptionReadiness(cwd: string = process.cwd
       'Release notes give evaluators a change history.'),
     signal('examples', 'Runnable examples', 10, await hasExampleSurface(cwd),
       'Examples or showcase assets demonstrate real usage.'),
+    signal('package-manager-coverage', 'Package manager coverage', 8, hasPackageManagerCoverage,
+      hasPackageManagerCoverage
+        ? `Docs cover ${onboarding.packageManagers.join(', ')} adoption paths.`
+        : 'Docs need npm plus npx or another package-manager path.'),
+    signal('copy-paste-onboarding', 'Copy-paste onboarding', 10, hasCopyPasteOnboarding,
+      hasCopyPasteOnboarding
+        ? `Docs include ${onboarding.copyPasteCommandCount} runnable onboarding commands.`
+        : 'Docs need runnable install, first-run, and verification commands.', true),
+    signal('command-reference', 'Command reference', 7, onboarding.hasCommandReference,
+      onboarding.hasCommandReference
+        ? 'docs/COMMANDS.md gives new adopters a command map.'
+        : 'docs/COMMANDS.md is missing or too thin.'),
+    signal('troubleshooting-support', 'Troubleshooting support', 7, onboarding.hasTroubleshooting,
+      onboarding.hasTroubleshooting
+        ? 'Troubleshooting docs explain diagnostics and useful issue details.'
+        : 'Troubleshooting docs need doctor, logs, reproduction, and issue guidance.'),
   ];
 
   const maxScore = signals.reduce((sum, item) => sum + item.weight, 0);
@@ -345,6 +378,8 @@ echo "Run 'danteforge assess' to see quality scores."
 }
 
 async function generateAdoptionPack(cwd: string): Promise<string> {
+  await writeCommunityOnboardingDocs(cwd);
+
   await writeIfMissing(path.join(cwd, 'COMMUNITY.md'), `# Community
 
 ## Where To Start
