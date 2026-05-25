@@ -82,6 +82,8 @@ export { traceability } from './traceability.js';
 export { compete } from './compete.js';
 export { matrixStatus, matrixClaim, matrixPropose, matrixMerge, matrixAscend } from './matrix.js';
 export { showcase } from './showcase.js';
+export { community } from './community.js';
+export type { CommunityOptions, CommunityCommandResult } from './community.js';
 export { score } from './score.js';
 export { quality } from './quality.js';
 export { prime } from './prime.js';

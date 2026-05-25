@@ -97,6 +97,7 @@
     "test:design": "tsx --test tests/op-codec.test.ts tests/tool-registry.test.ts tests/design-command.test.ts tests/design-gate.test.ts tests/design-agent.test.ts tests/spatial-decomposer.test.ts tests/token-extractor.test.ts tests/headless-renderer.test.ts",
     "test:sanitize-live": "cross-env DANTEFORGE_LIVE_LLM=1 tsx --test tests/sanitize-live-llm.test.ts",
     "test:matrix-live": "cross-env DANTEFORGE_LIVE_LLM=1 tsx --test tests/matrix-live-llm.test.ts",
+    "test:autonomy-full": "tsx --test tests/autonomy.test.ts tests/crusade-autonomy.test.ts tests/frontier-state.test.ts tests/harden-crusade.test.ts tests/autonomy-loop-monitor.test.ts",
     "benchmark:sanitize": "tsx --test tests/sanitize-benchmark.test.ts",
     "lint": "eslint .",
     "lint:fix": "eslint . --fix",

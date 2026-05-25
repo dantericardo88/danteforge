@@ -17,6 +17,9 @@ export interface CouncilWorktreeHandle {
   memberId: string;
   worktreePath: string;
   branchName: string;
+  /** slotIdx and slotId are set when created via createCouncilWorktreesForSlots(). */
+  slotIdx?: number;
+  slotId?: string;
 }
 
 export interface CouncilWorktreeOpts {
@@ -91,6 +94,53 @@ export async function createCouncilWorktrees(
       handles.push(r.value);
     } else {
       logger.warn(`[council-worktree] Failed to create worktree: ${String(r.reason)}`);
+    }
+  }
+  return handles;
+}
+
+/**
+ * Slot-aware variant: creates one worktree per slot, named council-{slotId}.
+ * Enables M members × N slots = M*N parallel worktrees.
+ */
+export async function createCouncilWorktreesForSlots(
+  slots: Array<{ memberId: string; slotIdx: number; slotId: string }>,
+  opts: CouncilWorktreeOpts,
+): Promise<CouncilWorktreeHandle[]> {
+  const runId = opts.runId ?? `c${Date.now()}`;
+  const worktreeBase = path.join(opts.projectPath, '.danteforge-worktrees');
+  const git = opts._git ?? defaultGit();
+
+  const settled = await Promise.allSettled(
+    slots.map(async (slot): Promise<CouncilWorktreeHandle> => {
+      const slug = slot.slotId.replace(/[^a-z0-9-]/gi, '-').toLowerCase();
+      const worktreePath = path.join(worktreeBase, `council-${slug}`);
+      const branchName = `council/${runId}/${slug}`;
+
+      async function tryAdd(): Promise<void> {
+        await git.worktreeAdd(worktreePath, branchName, opts.projectPath);
+      }
+
+      try {
+        await tryAdd();
+      } catch (firstErr) {
+        logger.warn(`[council-worktree] Cleaning stale worktree for ${slot.slotId}: ${String(firstErr)}`);
+        await git.worktreeRemove(worktreePath, opts.projectPath).catch(() => { /* ignore */ });
+        await git.branchDelete(branchName, opts.projectPath).catch(() => { /* ignore */ });
+        await tryAdd();
+      }
+
+      logger.info(`[council-worktree] ${slot.slotId} → ${worktreePath} (${branchName})`);
+      return { memberId: slot.memberId, worktreePath, branchName, slotIdx: slot.slotIdx, slotId: slot.slotId };
+    }),
+  );
+
+  const handles: CouncilWorktreeHandle[] = [];
+  for (const r of settled) {
+    if (r.status === 'fulfilled') {
+      handles.push(r.value);
+    } else {
+      logger.warn(`[council-worktree] Failed to create slot worktree: ${String(r.reason)}`);
     }
   }
   return handles;

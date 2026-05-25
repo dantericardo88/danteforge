@@ -29,16 +29,23 @@ import { ClaudeCodeAdapter } from '../../matrix/adapters/claude-code-adapter.js'
 import { runAdapter } from '../../matrix/adapters/adapter-interface.js';
 import {
   createCouncilWorktrees,
+  createCouncilWorktreesForSlots,
   removeCouncilWorktrees,
   getChangedFiles,
 } from '../../matrix/engines/council-worktree.js';
 import type { CouncilWorktreeHandle } from '../../matrix/engines/council-worktree.js';
 import {
   scheduleWork,
+  scheduleWorkForSlots,
   buildDimGoal,
   groupByMember,
+  groupBySlot,
 } from '../../matrix/engines/council-scheduler.js';
 import type { CouncilMemberId, ScheduledDimension } from '../../matrix/engines/council-scheduler.js';
+import { buildSlots } from '../../matrix/engines/council-slot.js';
+import type { CouncilSlot } from '../../matrix/engines/council-slot.js';
+import { CouncilJudgeQueue } from '../../matrix/engines/council-judge-queue.js';
+import type { JudgeCandidate } from '../../matrix/engines/council-judge-queue.js';
 import { runMergeCourt } from '../../matrix/engines/council-merge-court.js';
 import type { MergeCourtResult } from '../../matrix/engines/council-merge-court.js';
 import { FileClaims } from '../../matrix/engines/council-file-claims.js';
@@ -67,6 +74,10 @@ export interface ParallelCouncilOptions {
   skipValidate?: boolean;
   /** Resume a previous run from its last checkpoint (runId from COUNCIL_SESSION_<runId>.json). */
   resumeRunId?: string;
+  /** Sub-agents per member. slotsPerMember=4 → 3 members × 4 = 12 parallel worktrees (default: 1). */
+  slotsPerMember?: number;
+  /** Minimum cross-member judges required per candidate (default: 2). */
+  minJudges?: number;
   /** Injection seam: override council discovery for tests */
   _discover?: () => Promise<CouncilMember[]>;
 }
@@ -194,7 +205,14 @@ export async function runParallelCouncil(options: ParallelCouncilOptions): Promi
     return;
   }
 
+  const slotsPerMember = options.slotsPerMember ?? 1;
+  const minJudges = options.minJudges ?? 2;
+  const slotMode = slotsPerMember > 1;
+
   logger.info(`${available.length} member(s): ${available.map(id => chalk.bold(id)).join(', ')}`);
+  if (slotMode) {
+    logger.info(`Slot mode: ${slotsPerMember} slot(s)/member → ${available.length * slotsPerMember} parallel worktree(s)`);
+  }
   logger.info(`Goal: ${chalk.italic(options.goal)}\n`);
 
   // Session-level state
@@ -240,10 +258,19 @@ export async function runParallelCouncil(options: ParallelCouncilOptions): Promi
     }
 
     // Schedule dims — prune stuck dims so we don't retry known dead-ends
-    const allScheduled = await scheduleWork(roundMembers, cwd, {
-      maxDims: options.maxDimsPerRound ?? roundMembers.length * 3,
-      minGap: options.minGap,
-    });
+    const roundSlots: CouncilSlot[] = slotMode
+      ? buildSlots(roundMembers, slotsPerMember)
+      : roundMembers.map(id => ({ memberId: id, slotIdx: 0, slotId: `${id}-0` }));
+
+    const allScheduled = slotMode
+      ? await scheduleWorkForSlots(roundSlots, cwd, {
+          maxDims: options.maxDimsPerRound ?? roundSlots.length * 2,
+          minGap: options.minGap,
+        })
+      : await scheduleWork(roundMembers, cwd, {
+          maxDims: options.maxDimsPerRound ?? roundMembers.length * 3,
+          minGap: options.minGap,
+        });
     const scheduled = convergence.pruneStuck(allScheduled);
 
     if (scheduled.length === 0) {
@@ -251,17 +278,28 @@ export async function runParallelCouncil(options: ParallelCouncilOptions): Promi
       break;
     }
 
+    const bySlot = slotMode ? groupBySlot(scheduled) : null;
     const byMember = groupByMember(scheduled);
-    logger.info(`Scheduled ${scheduled.length} dim(s) across ${byMember.size} member(s):`);
-    for (const [id, dims] of byMember) {
-      logger.info(`  ${chalk.bold(id)}: ${dims.map(d => d.dimensionId).join(', ')}`);
+
+    if (slotMode) {
+      logger.info(`Scheduled ${scheduled.length} dim(s) across ${roundSlots.length} slot(s):`);
+      for (const [slotId, dims] of bySlot!) {
+        logger.info(`  ${chalk.bold(slotId)}: ${dims.map(d => d.dimensionId).join(', ')}`);
+      }
+    } else {
+      logger.info(`Scheduled ${scheduled.length} dim(s) across ${byMember.size} member(s):`);
+      for (const [id, dims] of byMember) {
+        logger.info(`  ${chalk.bold(id)}: ${dims.map(d => d.dimensionId).join(', ')}`);
+      }
     }
 
-    const runId = `r${round}.${Date.now()}`;
-    const worktreeOpts = { projectPath: cwd, runId };
+    const roundRunId = `r${round}.${Date.now()}`;
+    const worktreeOpts = { projectPath: cwd, runId: roundRunId };
     const fileClaims = new FileClaims();
 
-    const handles: CouncilWorktreeHandle[] = await createCouncilWorktrees(roundMembers, worktreeOpts);
+    const handles: CouncilWorktreeHandle[] = slotMode
+      ? await createCouncilWorktreesForSlots(roundSlots, worktreeOpts)
+      : await createCouncilWorktrees(roundMembers, worktreeOpts);
     if (handles.length === 0) {
       logger.error('Could not create worktrees. Check git state.');
       break;
@@ -271,41 +309,111 @@ export async function runParallelCouncil(options: ParallelCouncilOptions): Promi
       // Run all builders in parallel, each in their isolated worktree
       logger.info(`\nRunning ${handles.length} builder(s) in parallel...`);
 
+      // Streaming judge queue: as each slot finishes building, idle slots from
+      // OTHER members can judge immediately — no batch wait.
+      const judgeQueue = new CouncilJudgeQueue();
+      const slotStatus = new Map<string, 'building' | 'judging' | 'idle'>(
+        handles.map(h => [h.slotId ?? `${h.memberId}-0`, 'idle'] as const),
+      );
+
+      async function tryAssignStreamingJudge(): Promise<void> {
+        if (!slotMode) return; // streaming only in slot mode
+        const idleSlots = roundSlots.filter(
+          s => slotStatus.get(s.slotId) === 'idle',
+        );
+        const next = judgeQueue.assignNextJudge(idleSlots);
+        if (!next) return;
+        slotStatus.set(next.judgeSlot.slotId, 'judging');
+        try {
+          // Inline single-candidate judge: reuse merge court with one handle
+          const judgeHandle = handles.find(h => h.slotId === next.judgeSlot.slotId
+            || (h.memberId === next.judgeSlot.memberId && !h.slotId));
+          if (!judgeHandle) { judgeQueue.markJudgeComplete(next.candidate.candidateId, 'FAIL'); return; }
+          const singleResult = await runMergeCourt({
+            projectPath: cwd,
+            worktreeOpts,
+            handles: [{ ...judgeHandle, worktreePath: next.candidate.worktreePath }],
+            allMemberIds: available,
+            allSlots: roundSlots.filter(s => s.memberId === next.judgeSlot.memberId),
+            goal: options.goal,
+            minJudges: 1,
+          });
+          const v = singleResult[0]?.consensus ?? 'FAIL';
+          judgeQueue.markJudgeComplete(next.candidate.candidateId, v === 'PASS' ? 'PASS' : v === 'SPLIT' ? 'SPLIT' : 'FAIL');
+        } finally {
+          slotStatus.set(next.judgeSlot.slotId, 'idle');
+          void tryAssignStreamingJudge();
+        }
+      }
+
       await Promise.allSettled(
         handles.map(async (handle) => {
           const memberId = handle.memberId as CouncilMemberId;
-          const myDims = byMember.get(memberId) ?? [];
+          const effectiveSlotId = handle.slotId ?? `${memberId}-0`;
+          const myDims = slotMode
+            ? (bySlot?.get(effectiveSlotId) ?? [])
+            : (byMember.get(memberId) ?? []);
           if (myDims.length === 0) return;
 
+          slotStatus.set(effectiveSlotId, 'building');
           const goal = myDims.map(d => buildDimGoal(d, 'this project')).join('\n\n---\n\n');
           const wp = makeBuildWorkPacket(goal, handle.worktreePath);
           const lease = makeBuildLease(handle.worktreePath);
           const adapter = makeBuilderAdapter(memberId, wp);
 
-          logger.info(`  [${chalk.bold(memberId)}] building ${myDims.length} dim(s)...`);
+          logger.info(`  [${chalk.bold(effectiveSlotId)}] building ${myDims.length} dim(s)...`);
           try {
             const result = await runAdapter(adapter, { lease, cwd: handle.worktreePath });
             health.recordSuccess(memberId);
-            logger.info(`  [${chalk.bold(memberId)}] done: ${result.status}, ${result.filesChanged.length} file(s)`);
+            logger.info(`  [${chalk.bold(effectiveSlotId)}] done: ${result.status}, ${result.filesChanged.length} file(s)`);
+
+            // Enqueue for streaming judging if files changed
+            if (slotMode && result.filesChanged.length > 0) {
+              const candidate: JudgeCandidate = {
+                candidateId: `cand-${effectiveSlotId}-${Date.now()}`,
+                slotId: effectiveSlotId,
+                memberId,
+                dimensionId: myDims[0]?.dimensionId ?? 'unknown',
+                worktreePath: handle.worktreePath,
+                changedFiles: result.filesChanged,
+                completedAt: new Date().toISOString(),
+                status: 'pending',
+              };
+              judgeQueue.enqueue(candidate);
+            }
           } catch (err) {
             const errStr = String(err);
             const exitCode = (err as NodeJS.ErrnoException & { code?: number }).code;
             health.recordFailure(memberId, errStr, typeof exitCode === 'number' ? exitCode : undefined);
             if (!health.isAvailable(memberId)) {
-              logger.warn(chalk.yellow(`  [${chalk.bold(memberId)}] removed from session: ${health.getStatus().find(h => h.id === memberId)?.status}`));
+              logger.warn(chalk.yellow(`  [${chalk.bold(effectiveSlotId)}] removed from session: ${health.getStatus().find(h => h.id === memberId)?.status}`));
             } else {
-              logger.warn(`  [${chalk.bold(memberId)}] build failed: ${errStr}`);
+              logger.warn(`  [${chalk.bold(effectiveSlotId)}] build failed: ${errStr}`);
             }
+          } finally {
+            slotStatus.set(effectiveSlotId, 'idle');
+            // Offer this slot as a judge immediately (streaming pattern)
+            void tryAssignStreamingJudge();
           }
         }),
       );
 
+      // Drain any remaining pending candidates before merge court
+      if (slotMode && judgeQueue.hasPending()) {
+        const stats = judgeQueue.getStats();
+        logger.info(chalk.dim(`  [streaming-judge] Draining ${stats.pending} pending candidate(s)...`));
+      }
+
       // Register file claims BEFORE merge court to detect cross-member conflicts
       for (const handle of handles) {
         const changed = await getChangedFiles(handle.worktreePath);
-        const claim = fileClaims.claim(handle.memberId as CouncilMemberId, changed);
+        const claim = fileClaims.claim(
+          handle.memberId as CouncilMemberId,
+          changed,
+          handle.slotId,
+        );
         if (claim.conflicts.length > 0) {
-          logger.warn(`  [${handle.memberId}] ${claim.conflicts.length} file conflict(s): ${claim.conflicts.map(c => `${c.file} (claimed by ${c.claimedBy})`).join(', ')}`);
+          logger.warn(`  [${handle.slotId ?? handle.memberId}] ${claim.conflicts.length} file conflict(s): ${claim.conflicts.map(c => `${c.file} (claimed by ${c.claimedBy})`).join(', ')}`);
         }
       }
 
@@ -316,8 +424,10 @@ export async function runParallelCouncil(options: ParallelCouncilOptions): Promi
         worktreeOpts,
         handles,
         allMemberIds: available,
+        allSlots: slotMode ? roundSlots : undefined,
         goal: options.goal,
         fileClaims,
+        minJudges,
       });
 
       const roundMerged = mergeResults.filter(r => r.merged).length;
@@ -326,12 +436,16 @@ export async function runParallelCouncil(options: ParallelCouncilOptions): Promi
       printRoundSummary(mergeResults, round, totalMerged);
 
       // Record convergence for each dim that was attempted
+      // In slot mode: match by slotId; in member mode: match by memberId
       const dimsByMember = new Map(
         [...byMember.entries()].map(([id, dims]) => [id, dims] as const),
       );
       for (const r of mergeResults) {
-        const dims: ScheduledDimension[] = dimsByMember.get(r.memberId as CouncilMemberId) ?? [];
-        for (const dim of dims) {
+        const slotId = (r as { slotId?: string }).slotId;
+        const dimsFromSlot: ScheduledDimension[] = slotMode && slotId && bySlot
+          ? (bySlot.get(slotId) ?? [])
+          : (dimsByMember.get(r.memberId as CouncilMemberId) ?? []);
+        for (const dim of dimsFromSlot) {
           convergence.record(dim.dimensionId, r.merged, round);
         }
       }
@@ -345,7 +459,13 @@ export async function runParallelCouncil(options: ParallelCouncilOptions): Promi
       if (!options.skipValidate && roundMerged > 0) {
         const mergedDimIds = mergeResults
           .filter(r => r.merged)
-          .flatMap(r => (dimsByMember.get(r.memberId as CouncilMemberId) ?? []).map(d => d.dimensionId));
+          .flatMap(r => {
+            const slotId = (r as { slotId?: string }).slotId;
+            const dims = slotMode && slotId && bySlot
+              ? (bySlot.get(slotId) ?? [])
+              : (dimsByMember.get(r.memberId as CouncilMemberId) ?? []);
+            return dims.map(d => d.dimensionId);
+          });
         await runPostMergeValidate(cwd, [...new Set(mergedDimIds)]);
       }
 

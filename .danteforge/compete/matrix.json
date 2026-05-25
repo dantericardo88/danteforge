@@ -792,7 +792,7 @@
           "id": "autonomy_t7_full_monitor",
           "tier": "T7",
           "kind": "runtime-exec",
-          "command": "npx tsx --test tests/autonomy.test.ts tests/crusade-autonomy.test.ts tests/frontier-state.test.ts tests/harden-crusade.test.ts tests/autonomy-loop-monitor.test.ts",
+          "command": "npm run test:autonomy-full",
           "expected_exit": 0,
           "expected_output_pattern": "pass",
           "timeout_ms": 60000,
@@ -3181,6 +3181,50 @@
           "timeout_ms": 120000,
           "required_callsite": "src/matrix/engines/council-merge-court.ts",
           "description": "Multi-receipt T7: council judge fix + council debate -- multi-agent orchestration with anonymous review and persona verdicts proven."
+        },
+        {
+          "id": "mao_t5_slot_expansion",
+          "tier": "T5",
+          "kind": "runtime-exec",
+          "command": "npx tsx --test tests/council-slot-expansion.test.ts",
+          "expected_exit": 0,
+          "expected_output_pattern": "pass",
+          "timeout_ms": 60000,
+          "required_callsite": "src/matrix/engines/council-slot.ts",
+          "description": "CouncilSlot expansion: 3×4 slot grid, groupBySlot, pickJudgeSlots, cross-member file-claim rules. Enables 12 parallel worktrees."
+        },
+        {
+          "id": "mao_t5_judge_queue",
+          "tier": "T5",
+          "kind": "runtime-exec",
+          "command": "npx tsx --test tests/council-judge-queue.test.ts",
+          "expected_exit": 0,
+          "expected_output_pattern": "pass",
+          "timeout_ms": 60000,
+          "required_callsite": "src/matrix/engines/council-judge-queue.ts",
+          "description": "Streaming FIFO judge queue: cross-member enforcement, drainPending, PASS/FAIL status transitions."
+        },
+        {
+          "id": "mao_t5_consensus",
+          "tier": "T5",
+          "kind": "runtime-exec",
+          "command": "npx tsx --test tests/council-consensus.test.ts",
+          "expected_exit": 0,
+          "expected_output_pattern": "pass",
+          "timeout_ms": 60000,
+          "required_callsite": "src/matrix/engines/council-consensus.ts",
+          "description": "K-of-M weighted consensus: cross-member votes 1.0 weight, passFraction, INSUFFICIENT/SPLIT handling."
+        },
+        {
+          "id": "mao_t7_hierarchical_council",
+          "tier": "T7",
+          "kind": "runtime-exec",
+          "command": "npx tsx --test tests/council-slot-expansion.test.ts tests/council-judge-queue.test.ts tests/council-consensus.test.ts",
+          "expected_exit": 0,
+          "expected_output_pattern": "pass",
+          "timeout_ms": 120000,
+          "required_callsite": "src/cli/commands/council-parallel.ts",
+          "description": "T7 multi-receipt: hierarchical council (slot expansion + streaming judge queue + K-of-M consensus) proven end-to-end."
         }
       ],
       "declared_ceiling": "T7",

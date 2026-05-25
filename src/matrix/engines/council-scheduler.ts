@@ -8,6 +8,7 @@
 import path from 'node:path';
 import fs from 'node:fs/promises';
 import { bestMemberForDim } from './council-member-profiles.js';
+import type { CouncilSlot } from './council-slot.js';
 
 export type CouncilMemberId = 'codex' | 'gemini-cli' | 'grok-build' | 'claude-code';
 
@@ -17,6 +18,8 @@ export interface ScheduledDimension {
   currentScore: number;
   gapToFrontier: number;
   assignedTo: CouncilMemberId;
+  /** Set when slot-aware scheduling is used (slotsPerMember > 1). */
+  assignedSlot?: CouncilSlot;
 }
 
 export interface SchedulerOptions {
@@ -103,4 +106,50 @@ export function groupByMember(
     groups.set(dim.assignedTo, list);
   }
   return groups;
+}
+
+/**
+ * Group scheduled dims by slotId (for slot-aware scheduling with slotsPerMember > 1).
+ * Falls back to `${memberId}-0` when no assignedSlot is set.
+ */
+export function groupBySlot(
+  scheduled: ScheduledDimension[],
+): Map<string, ScheduledDimension[]> {
+  const groups = new Map<string, ScheduledDimension[]>();
+  for (const dim of scheduled) {
+    const slotId = dim.assignedSlot?.slotId ?? `${dim.assignedTo}-0`;
+    const list = groups.get(slotId) ?? [];
+    list.push(dim);
+    groups.set(slotId, list);
+  }
+  return groups;
+}
+
+/**
+ * Schedule dims across slots (slot-aware; wraps `scheduleWork` with round-robin slot assignment).
+ */
+export async function scheduleWorkForSlots(
+  slots: CouncilSlot[],
+  cwd: string,
+  opts?: SchedulerOptions,
+): Promise<ScheduledDimension[]> {
+  const memberIds = [...new Set(slots.map(s => s.memberId))];
+  const dims = await scheduleWork(memberIds, cwd, opts);
+
+  // Round-robin slot assignment weighted by slot order within member
+  const slotsByMember = new Map<CouncilMemberId, CouncilSlot[]>();
+  for (const slot of slots) {
+    const arr = slotsByMember.get(slot.memberId) ?? [];
+    arr.push(slot);
+    slotsByMember.set(slot.memberId, arr);
+  }
+  const slotCursors = new Map<CouncilMemberId, number>(memberIds.map(id => [id, 0]));
+
+  return dims.map(dim => {
+    const memberSlots = slotsByMember.get(dim.assignedTo) ?? [];
+    const cursor = slotCursors.get(dim.assignedTo) ?? 0;
+    const assignedSlot = memberSlots[cursor % memberSlots.length];
+    slotCursors.set(dim.assignedTo, cursor + 1);
+    return { ...dim, assignedSlot };
+  });
 }

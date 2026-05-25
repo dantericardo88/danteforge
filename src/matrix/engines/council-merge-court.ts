@@ -27,6 +27,10 @@ import { captureWorktreeDiff, getChangedFiles } from './council-worktree.js';
 import type { CouncilWorktreeOpts } from './council-worktree.js';
 import { runDebate } from './council-debate.js';
 import type { FileClaims } from './council-file-claims.js';
+import { computeConsensus, assignVoteWeight } from './council-consensus.js';
+import type { WeightedVote } from './council-consensus.js';
+import { pickJudgeSlots } from './council-slot.js';
+import type { CouncilSlot } from './council-slot.js';
 
 const execFileAsync = promisify(execFile);
 
@@ -67,6 +71,13 @@ export interface MergeCourtOptions {
   goal: string;
   /** When provided, builders whose ALL changed files are claimed by another member are skipped. */
   fileClaims?: FileClaims;
+  /**
+   * When provided (slot-aware mode), judges are selected from allSlots where
+   * slot.memberId !== builder.memberId. Overrides allMemberIds-based judge selection.
+   */
+  allSlots?: CouncilSlot[];
+  /** Minimum number of cross-member judges required (default: 2). */
+  minJudges?: number;
 }
 
 // ── Verdict parsing (self-contained — no import from CLI layer) ───────────────
@@ -241,7 +252,16 @@ export async function runMergeCourt(opts: MergeCourtOptions): Promise<MergeCourt
       }
     }
 
-    const judgeIds = opts.allMemberIds.filter(id => id !== builderId);
+    // Slot-aware judge selection: cross-member slots first; fall back to member-level filter
+    let judgeIds: CouncilMemberId[];
+    if (opts.allSlots && opts.allSlots.length > 0) {
+      const minJudges = opts.minJudges ?? 2;
+      const crossMemberSlots = opts.allSlots.filter(s => s.memberId !== builderId);
+      const pickedSlots = pickJudgeSlots(crossMemberSlots, minJudges);
+      judgeIds = [...new Set(pickedSlots.map(s => s.memberId))];
+    } else {
+      judgeIds = opts.allMemberIds.filter(id => id !== builderId);
+    }
     logger.info(`[merge-court] ${candidateId}: ${changedFiles.length} file(s) → ${judgeIds.length} anonymous judge(s)`);
 
     const lease = makeReadOnlyLease(handle.worktreePath);
@@ -263,7 +283,23 @@ export async function runMergeCourt(opts: MergeCourtOptions): Promise<MergeCourt
     );
 
     let finalVerdicts = verdicts;
-    let consensus = resolveConsensus(verdicts);
+
+    // Build weighted votes from raw verdicts for K-of-M consensus aggregation.
+    const weightedVotes: WeightedVote[] = verdicts.map(v => ({
+      judgeSlotId: `${v.judgeId}-0`,
+      judgeMemberId: v.judgeId,
+      builderMemberId: builderId,
+      verdict: v.verdict,
+      weight: assignVoteWeight(v.judgeId, builderId),
+      confidence: v.confidence,
+      reason: v.reason,
+      dissentSummary: v.dissentSummary,
+    }));
+    const minJudges = opts.minJudges ?? 1;
+    const consensusResult = computeConsensus(weightedVotes, { minJudges });
+    let consensus: 'PASS' | 'FAIL' | 'SPLIT' =
+      consensusResult.verdict === 'PASS' ? 'PASS' :
+      consensusResult.verdict === 'SPLIT' ? 'SPLIT' : 'FAIL';
 
     // Reveal builder identity in logs after all initial verdicts collected.
     logger.info(`[merge-court] ${candidateId} revealed as ${builderId}: initial consensus = ${consensus}`);
@@ -283,7 +319,19 @@ export async function runMergeCourt(opts: MergeCourtOptions): Promise<MergeCourt
           maxRounds: 2,
         });
         finalVerdicts = transcript.finalVerdicts;
-        consensus = transcript.finalConsensus;
+        const debateWeightedVotes: WeightedVote[] = transcript.finalVerdicts.map(v => ({
+          judgeSlotId: `${v.judgeId}-0`,
+          judgeMemberId: v.judgeId,
+          builderMemberId: builderId,
+          verdict: v.verdict,
+          weight: assignVoteWeight(v.judgeId, builderId),
+          confidence: v.confidence,
+          reason: v.reason,
+          dissentSummary: v.dissentSummary,
+        }));
+        const debateConsensus = computeConsensus(debateWeightedVotes, { minJudges });
+        consensus = debateConsensus.verdict === 'PASS' ? 'PASS' :
+          debateConsensus.verdict === 'SPLIT' ? 'SPLIT' : 'FAIL';
         logger.info(`[merge-court] ${builderId}: post-debate consensus = ${consensus} (${transcript.rounds.length} round(s))`);
       } catch (err) {
         logger.warn(`[merge-court] ${builderId}: debate failed — using initial verdict: ${String(err)}`);

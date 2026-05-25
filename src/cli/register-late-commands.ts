@@ -858,6 +858,8 @@ program
   .option('--parallel', 'True parallel mode: all members build simultaneously in isolated git worktrees, then cross-judge each other')
   .option('--rounds <n>', 'Number of parallel rounds to run (parallel mode, default: 1)', '1')
   .option('--max-dims <n>', 'Max dimensions to schedule per round (parallel mode)')
+  .option('--slots-per-member <n>', 'Sub-agents per council member — M members × N slots = M*N parallel worktrees (default: 1)', '1')
+  .option('--min-judges <n>', 'Minimum cross-member judges required per candidate (default: 2)', '2')
   .option('--skip-validate', 'Skip running danteforge validate after merges (faster for first runs)')
   .option('--resume <runId>', 'Resume a parallel council run from its last checkpoint (runId from COUNCIL_SESSION_<runId>.json)')
   .option('--discover', 'Only probe and list available council members, then exit')
@@ -897,6 +899,8 @@ program
             json: opts.json as boolean | undefined,
             skipValidate: opts.skipValidate as boolean | undefined,
             resumeRunId: opts.resume as string | undefined,
+            slotsPerMember: opts.slotsPerMember ? parseInt(opts.slotsPerMember as string, 10) : 1,
+            minJudges: opts.minJudges ? parseInt(opts.minJudges as string, 10) : 2,
           });
           return;
         }
@@ -1862,6 +1866,37 @@ program
         process.exitCode = 1;
       }
     })();
+  });
+
+program
+  .command('community')
+  .description('Assess community adoption readiness and optionally generate contributor/onboarding docs')
+  .option('--fix', 'Generate the community adoption pack for missing local surfaces')
+  .option('--json', 'Output machine-readable JSON')
+  .option('--fail-below <percent>', 'Exit non-zero when readiness is below this percentage')
+  .option('--cwd <path>', 'Project directory')
+  .addHelpText('after', `
+Examples:
+  danteforge community
+  danteforge community --fix
+  danteforge community --json --fail-below 80
+`)
+  .action(async (opts) => {
+    try {
+      const { community } = await import('./commands/community.js');
+      const failBelow = opts.failBelow === undefined ? undefined : parseFloat(opts.failBelow as string);
+      const result = await community({
+        cwd: opts.cwd as string | undefined,
+        fix: opts.fix as boolean | undefined,
+        json: opts.json as boolean | undefined,
+        failBelow,
+      });
+      if (!result.passed) process.exitCode = 1;
+    } catch (err) {
+      const { formatAndLogError } = await import('../core/format-error.js');
+      formatAndLogError(err, 'community');
+      process.exitCode = 1;
+    }
   });
 
 program

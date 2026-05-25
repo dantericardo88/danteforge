@@ -109,6 +109,75 @@ function makeOptions(overrides: Partial<HarshScorerOptions> = {}): HarshScorerOp
 // ── computeHarshScore integration tests ──────────────────────────────────────
 
 describe('computeHarshScore', () => {
+  it('credits local community adoption readiness when external popularity metrics are unavailable', async () => {
+    const cwd = await fs.mkdtemp(path.join(os.tmpdir(), 'df-harsh-community-'));
+    try {
+      await fs.mkdir(path.join(cwd, 'src'), { recursive: true });
+      await fs.mkdir(path.join(cwd, 'docs'), { recursive: true });
+      await fs.mkdir(path.join(cwd, '.github', 'ISSUE_TEMPLATE'), { recursive: true });
+      await fs.mkdir(path.join(cwd, 'examples', 'quickstart'), { recursive: true });
+      await fs.writeFile(path.join(cwd, 'src', 'index.ts'), 'export const ok = true;\n');
+      await fs.writeFile(path.join(cwd, 'package.json'), JSON.stringify({
+        name: 'sample-tool',
+        version: '1.2.3',
+        description: 'A useful CLI tool',
+        license: 'MIT',
+        repository: { type: 'git', url: 'https://github.com/acme/sample-tool.git' },
+        bugs: { url: 'https://github.com/acme/sample-tool/issues' },
+        homepage: 'https://github.com/acme/sample-tool#readme',
+        bin: { 'sample-tool': 'dist/index.js' },
+        files: ['dist', 'README.md', 'LICENSE'],
+        keywords: ['cli', 'automation', 'developer-tools'],
+        publishConfig: { access: 'public' },
+      }));
+      await fs.writeFile(path.join(cwd, 'README.md'), [
+        '# Sample Tool',
+        '',
+        '## Quick start',
+        '',
+        '```bash',
+        'npm install -g sample-tool',
+        'sample-tool --help',
+        'sample-tool doctor',
+        '```',
+        '',
+        'Use `npx sample-tool --help` or `pnpm dlx sample-tool --help` for one-off runs.',
+      ].join('\n'));
+      await fs.writeFile(path.join(cwd, 'CONTRIBUTING.md'), '# Contributing\n\nRun `npm ci`, `npm run typecheck`, and `npm test` before pull requests.\n');
+      await fs.writeFile(path.join(cwd, 'SECURITY.md'), '# Security\n\nReport vulnerabilities privately before public disclosure.\n');
+      await fs.writeFile(path.join(cwd, 'CHANGELOG.md'), '# Changelog\n\n## 1.2.3\n\n- Release notes.\n');
+      await fs.writeFile(path.join(cwd, 'CODE_OF_CONDUCT.md'), '# Code of Conduct\n\nUse respectful collaboration.\n');
+      await fs.writeFile(path.join(cwd, 'docs', 'COMMANDS.md'), [
+        '# Command Reference',
+        '',
+        '| Command | Purpose |',
+        '| --- | --- |',
+        '| `sample-tool init` | Initialize artifacts. |',
+        '| `sample-tool verify` | Run verification. |',
+        '| `sample-tool doctor` | Diagnose setup. |',
+      ].join('\n'));
+      await fs.writeFile(path.join(cwd, 'docs', 'TROUBLESHOOTING.md'), 'Run `sample-tool doctor`, then open an issue with logs, OS, Node version, and reproduction steps.\n');
+      await fs.writeFile(path.join(cwd, '.github', 'ISSUE_TEMPLATE', 'bug_report.yml'), 'name: Bug report\n');
+      await fs.writeFile(path.join(cwd, 'examples', 'quickstart', 'README.md'), '# Quickstart example\n');
+
+      const result = await computeHarshScore(makeOptions({
+        cwd,
+        _readFile: (filePath) => fs.readFile(filePath, 'utf8'),
+        _existsFn: async (filePath) => {
+          try { await fs.access(filePath); return true; } catch { return false; }
+        },
+        _fetchCommunity: async () => ({}),
+      }));
+
+      assert.ok(
+        result.displayDimensions.communityAdoption > 1.5,
+        `expected local adoption readiness to exceed base popularity score, got ${result.displayDimensions.communityAdoption}`,
+      );
+    } finally {
+      await fs.rm(cwd, { recursive: true, force: true });
+    }
+  });
+
   it('returns a valid HarshScoreResult with all required fields', async () => {
     const result = await computeHarshScore(makeOptions());
     assert.ok(result.rawScore >= 0 && result.rawScore <= 100, 'rawScore in range');
@@ -286,6 +355,82 @@ describe('computeHarshScore', () => {
       _readHistory: async () => history,
     }));
     assert.ok(result.harshScore >= 0, 'harshScore never negative');
+  });
+
+  it('credits local community readiness when external adoption metrics are absent', async () => {
+    const cwd = await fs.mkdtemp(path.join(os.tmpdir(), 'df-harsh-community-'));
+    const write = async (rel: string, content: string) => {
+      const full = path.join(cwd, rel);
+      await fs.mkdir(path.dirname(full), { recursive: true });
+      await fs.writeFile(full, content, 'utf8');
+    };
+    const exists = async (p: string) => {
+      try {
+        await fs.access(p);
+        return true;
+      } catch {
+        return false;
+      }
+    };
+
+    try {
+      await write('package.json', JSON.stringify({
+        name: 'sample-tool',
+        version: '1.2.3',
+        description: 'A useful CLI tool',
+        license: 'MIT',
+        repository: { type: 'git', url: 'https://github.com/acme/sample-tool.git' },
+        bugs: { url: 'https://github.com/acme/sample-tool/issues' },
+        homepage: 'https://github.com/acme/sample-tool#readme',
+        bin: { 'sample-tool': 'dist/index.js' },
+        files: ['dist', 'README.md', 'LICENSE'],
+        keywords: ['cli', 'automation', 'developer-tools'],
+        publishConfig: { access: 'public' },
+      }));
+      await write('README.md', [
+        '# Sample Tool',
+        '',
+        '## Quick start',
+        '',
+        '```bash',
+        'npm install -g sample-tool',
+        'npx sample-tool --help',
+        'pnpm dlx sample-tool doctor',
+        'sample-tool verify',
+        '```',
+      ].join('\n'));
+      await write('CONTRIBUTING.md', '# Contributing\n\nRun `npm ci`, `npm run typecheck`, and `npm test` before pull requests.\n');
+      await write('SECURITY.md', '# Security\n\nReport vulnerabilities privately before public disclosure.\n');
+      await write('CHANGELOG.md', '# Changelog\n\n## 1.2.3\n\n- Release notes.\n');
+      await write('COMMUNITY.md', '# Community\n\nOpen issues with reproducible steps and use discussions for questions.\n');
+      await write('docs/COMMANDS.md', [
+        '# Command Reference',
+        '',
+        '| Command | Purpose |',
+        '| --- | --- |',
+        '| `sample-tool init` | Initialize artifacts. |',
+        '| `sample-tool verify` | Run verification. |',
+        '| `sample-tool doctor` | Diagnose setup. |',
+      ].join('\n'));
+      await write('docs/TROUBLESHOOTING.md', '# Troubleshooting\n\nRun `sample-tool doctor`, then open an issue with logs, OS, Node version, expected behavior, and reproduction steps.\n');
+      await write('.github/ISSUE_TEMPLATE/bug_report.yml', 'name: Bug report\n');
+      await write('examples/quickstart/README.md', '# Quickstart example\n');
+
+      const result = await computeHarshScore(makeOptions({
+        cwd,
+        _readFile: (filePath) => fs.readFile(filePath, 'utf8'),
+        _existsFn: exists,
+        _listSourceFiles: async () => [],
+        _fetchCommunity: async () => ({}),
+      }));
+
+      assert.ok(
+        result.displayDimensions.communityAdoption >= 6.5,
+        `expected local readiness to lift community adoption, got ${result.displayDimensions.communityAdoption}`,
+      );
+    } finally {
+      await fs.rm(cwd, { recursive: true, force: true });
+    }
   });
 });
 

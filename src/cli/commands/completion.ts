@@ -47,7 +47,7 @@ export const COMPLETION_COMMANDS = [
   // Tools
   'compact', 'import', 'skills', 'feedback', 'update-mcp', 'docs',
   'ship', 'pack', 'ci-setup', 'proof', 'time-machine', 'benchmark', 'benchmark-llm',
-  'explain', 'quickstart', 'plugin', 'demo',
+  'explain', 'quickstart', 'community', 'plugin', 'demo',
   // Meta
   'help', 'workflow', 'wiki-ingest', 'wiki-lint', 'wiki-query',
   'wiki-status', 'wiki-export',
@@ -127,6 +127,7 @@ const ZSH_CMD_ENTRIES = [
   ['benchmark-llm', 'Benchmark LLM providers'],
   ['explain', 'Explain a term or concept'],
   ['quickstart', 'Guided quickstart flow'],
+  ['community', 'Assess adoption readiness'],
   ['plugin', 'Manage plugins'],
   ['demo', 'Run interactive demo'],
   ['help', 'Context-aware help'],

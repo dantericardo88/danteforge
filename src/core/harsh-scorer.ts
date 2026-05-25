@@ -21,7 +21,9 @@ import {
   readCoveragePercent,
   writeAssessmentHistory,
   type CommunityMetrics,
+  type CommunityReadinessScore,
 } from './harsh-scorer-community.js';
+import { assessCommunityReadiness, fetchCommunityData } from './harsh-scorer-community-readiness.js';
 import { computeStrictDimensions, type StrictDimensions } from './harsh-scorer-strict.js';
 import {
   computeContextEconomyScore,
@@ -201,6 +203,8 @@ export interface HarshScorerOptions {
   _readErrorHandlingProof?: (cwd: string) => Promise<ErrorHandlingEvidenceFlags>;
   /** Injection seam: override community metric fetch for testing */
   _fetchCommunity?: (packageName: string, repoSlug: string) => Promise<CommunityMetrics>;
+  /** Injection seam: override local community readiness analysis for testing */
+  _assessCommunityReadiness?: (cwd: string) => Promise<CommunityReadinessScore>;
   /** Injection seam: override coverage file read for testing */
   _readCoverage?: (cwd: string) => Promise<number | null>;
   /** Injection seam: override integration wiring check for testing */
@@ -291,29 +295,6 @@ async function gatherEvidenceFlags(
   }
 
   return { evidenceFlags, convergenceFlags, errorHandlingFlags, enterpriseFlags };
-}
-
-async function fetchCommunityData(
-  cwd: string,
-  options: HarshScorerOptions,
-  readFileFn: (p: string) => Promise<string>,
-): Promise<CommunityMetrics> {
-  try {
-    const pkgRaw = await readFileFn(path.join(cwd, 'package.json'));
-    const pkg = JSON.parse(pkgRaw) as Record<string, unknown>;
-    const packageName = typeof pkg['name'] === 'string' ? pkg['name'] : '';
-    const repoUrl = typeof pkg['repository'] === 'string'
-      ? pkg['repository']
-      : typeof (pkg['repository'] as Record<string, unknown>)?.['url'] === 'string'
-        ? (pkg['repository'] as Record<string, unknown>)['url'] as string
-        : '';
-    const repoSlug = repoUrl.replace(/^.*github\.com[/:]/, '').replace(/\.git$/, '');
-    if (!packageName) return {};
-    const fetchFn = options._fetchCommunity
-      ? (pn: string, rs: string) => options._fetchCommunity!(pn, rs)
-      : (pn: string, rs: string) => fetchCommunityMetrics(pn, rs);
-    return await fetchFn(packageName, repoSlug).catch(() => ({}));
-  } catch { return {}; }
 }
 
 async function computeAugmentedTestingScore(
@@ -442,6 +423,7 @@ export async function computeHarshScore(options: HarshScorerOptions = {}): Promi
     : undefined;
 
   const communityMetrics = await fetchCommunityData(cwd, options, readFileFn);
+  const communityReadiness = await assessCommunityReadiness(cwd, options);
   const coveragePct = await (options._readCoverage ? options._readCoverage(cwd) : readCoveragePercent(cwd, readFileFn)).catch(() => null);
 
   let causalGlobalCoherence = 0;
@@ -453,7 +435,7 @@ export async function computeHarshScore(options: HarshScorerOptions = {}): Promi
     causalTotalAttributions = matrix.totalAttributions;
   } catch { /* best-effort — no matrix yet */ }
 
-  const newDimensions = computeNewDimensions(pdseScores, state, maturityAssessment, cwd, evidenceFlags, convergenceFlags, communityMetrics, enterpriseFlags, causalGlobalCoherence, causalTotalAttributions);
+  const newDimensions = computeNewDimensions(pdseScores, state, maturityAssessment, cwd, evidenceFlags, convergenceFlags, communityMetrics, communityReadiness, enterpriseFlags, causalGlobalCoherence, causalTotalAttributions);
 
   const dims = maturityAssessment.dimensions;
   const testingScore = await computeAugmentedTestingScore(dims, coveragePct, cwd, existsFn);
@@ -709,6 +691,7 @@ function computeNewDimensions(
   evidenceFlags?: PipelineEvidenceFlags,
   convergenceFlags?: ConvergenceEvidenceFlags,
   communityMetrics?: CommunityMetrics,
+  communityReadiness?: CommunityReadinessScore,
   enterpriseFlags?: EnterpriseEvidenceFlags,
   causalGlobalCoherence = 0,
   causalTotalAttributions = 0,
@@ -724,7 +707,7 @@ function computeNewDimensions(
     contextEconomy: computeContextEconomyScore(cwd),
     ecosystemMcp: computeEcosystemMcpScore(state, cwd),
     enterpriseReadiness: computeEnterpriseReadinessScore(state, assessment, enterpriseFlags),
-    communityAdoption: computeCommunityAdoptionScore(communityMetrics ?? {}),
+    communityAdoption: computeCommunityAdoptionScore(communityMetrics ?? {}, communityReadiness),
     causalCoherence: computeCausalCoherenceScore(causalGlobalCoherence, causalTotalAttributions),
   };
 }
