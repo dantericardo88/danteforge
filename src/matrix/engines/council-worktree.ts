@@ -7,6 +7,7 @@
 // Usage: createCouncilWorktrees(memberIds, opts) → CouncilWorktreeHandle[]
 //        removeCouncilWorktrees(handles, opts) → void
 import path from 'node:path';
+import fs from 'node:fs/promises';
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import { logger } from '../../core/logger.js';
@@ -39,7 +40,19 @@ function defaultGit() {
       await execFileAsync('git', ['worktree', 'add', worktreePath, '-b', branchName], { cwd, timeout: 30_000 });
     },
     async worktreeRemove(worktreePath: string, cwd: string): Promise<void> {
-      await execFileAsync('git', ['worktree', 'remove', worktreePath, '--force'], { cwd, timeout: 30_000 });
+      try {
+        await execFileAsync('git', ['worktree', 'remove', worktreePath, '--force'], { cwd, timeout: 30_000 });
+      } catch (err) {
+        // "not a working tree" means the directory exists but git lost track of it
+        // (e.g. prior process crashed mid-cleanup). Fall back to direct fs removal.
+        const msg = String(err);
+        if (msg.includes('not a working tree') || msg.includes('already exists')) {
+          await fs.rm(worktreePath, { recursive: true, force: true });
+          await execFileAsync('git', ['worktree', 'prune'], { cwd, timeout: 10_000 }).catch(() => { /* ignore */ });
+        } else {
+          throw err;
+        }
+      }
     },
     async branchDelete(branchName: string, cwd: string): Promise<void> {
       await execFileAsync('git', ['branch', '-D', branchName], { cwd, timeout: 10_000 });

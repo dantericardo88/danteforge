@@ -144,6 +144,11 @@ function makeReadOnlyLease(worktreePath: string): AgentLease {
   } as unknown as AgentLease;
 }
 
+// Members with structurally-enforced read-only judge mode.
+// Claude Code uses --allowedTools Read,Glob,Grep; Grok uses --permission-mode plan.
+// Codex exec --ephemeral does NOT prevent file writes on Windows — excluded from judging.
+const JUDGE_CAPABLE_MEMBERS = new Set<CouncilMemberId>(['claude-code', 'grok-build', 'gemini-cli']);
+
 function makeJudgeAdapter(id: CouncilMemberId, workPacket: WorkPacket) {
   switch (id) {
     case 'gemini-cli':  return new GeminiCLIAdapter({ workPacket, judgeMode: true });
@@ -267,15 +272,17 @@ export async function runMergeCourt(opts: MergeCourtOptions): Promise<MergeCourt
       continue;
     }
 
-    // Slot-aware judge selection: cross-member slots first; fall back to member-level filter
+    // Slot-aware judge selection: cross-member slots first; fall back to member-level filter.
+    // Only members in JUDGE_CAPABLE_MEMBERS are eligible — those with structural read-only
+    // enforcement (Claude Code: --allowedTools; Grok: --permission-mode plan).
     let judgeIds: CouncilMemberId[];
     if (opts.allSlots && opts.allSlots.length > 0) {
       const minJudges = opts.minJudges ?? 2;
-      const crossMemberSlots = opts.allSlots.filter(s => s.memberId !== builderId);
+      const crossMemberSlots = opts.allSlots.filter(s => s.memberId !== builderId && JUDGE_CAPABLE_MEMBERS.has(s.memberId));
       const pickedSlots = pickJudgeSlots(crossMemberSlots, minJudges);
       judgeIds = [...new Set(pickedSlots.map(s => s.memberId))];
     } else {
-      judgeIds = opts.allMemberIds.filter(id => id !== builderId);
+      judgeIds = opts.allMemberIds.filter(id => id !== builderId && JUDGE_CAPABLE_MEMBERS.has(id));
     }
     logger.info(`[merge-court] ${candidateId}: ${changedFiles.length} file(s) → ${judgeIds.length} anonymous judge(s)`);
 
