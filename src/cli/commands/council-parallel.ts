@@ -222,6 +222,53 @@ async function writeProgress(cwd: string, summary: RoundSummary): Promise<void> 
   await fs.writeFile(p, JSON.stringify(summary, null, 2), 'utf8').catch(() => { /* best-effort */ });
 }
 
+// ── Per-slot proof ledger ─────────────────────────────────────────────────────
+
+interface SlotProofEntry {
+  slotId: string;
+  memberId: string;
+  assignedDims: string[];
+  filesChanged: string[];
+  consensus: string;
+  merged: boolean;
+  cipBlocked: boolean;
+  judges: Array<{ judgeId: string; verdict: string; confidence: string }>;
+  dissentLog: string[];
+}
+
+async function writeSlotProofLedger(
+  cwd: string,
+  runId: string,
+  round: number,
+  mergeResults: MergeCourtResult[],
+  bySlot: Map<string, ScheduledDimension[]> | undefined,
+  byMember: Map<CouncilMemberId, ScheduledDimension[]>,
+  cipBlockedDimIds: Set<string>,
+): Promise<void> {
+  const slots: SlotProofEntry[] = mergeResults.map(r => {
+    const slotId = (r as { slotId?: string }).slotId ?? `${r.memberId}-0`;
+    const dims = bySlot?.get(slotId) ?? byMember.get(r.memberId as CouncilMemberId) ?? [];
+    const assignedDims = [...new Set(dims.map(d => d.dimensionId))];
+    const blocked = assignedDims.some(d => cipBlockedDimIds.has(d));
+    return {
+      slotId,
+      memberId: r.memberId,
+      assignedDims,
+      filesChanged: r.changedFiles,
+      consensus: r.consensus,
+      merged: r.merged,
+      cipBlocked: blocked,
+      judges: r.verdicts.map(v => ({ judgeId: v.judgeId, verdict: v.verdict, confidence: v.confidence })),
+      dissentLog: r.dissentLog,
+    };
+  });
+  const ledger = { runId, round, slots, ts: new Date().toISOString() };
+  const p = path.join(cwd, '.danteforge', `SLOT_PROOF_LEDGER_round${round}.json`);
+  await fs.mkdir(path.dirname(p), { recursive: true }).catch(() => { /* ignore */ });
+  await fs.writeFile(p, JSON.stringify(ledger, null, 2), 'utf8').catch(() => { /* best-effort */ });
+  logger.info(chalk.dim(`  [ledger] Written: .danteforge/SLOT_PROOF_LEDGER_round${round}.json`));
+}
+
 // ── Round summary logging ─────────────────────────────────────────────────────
 
 function printRoundSummary(results: MergeCourtResult[], round: number, totalMerged: number): void {
@@ -275,6 +322,7 @@ export async function runParallelCouncil(options: ParallelCouncilOptions): Promi
   const convergence = new ConvergenceTracker(3);
   const health = new MemberHealthTracker();
   let totalMerged = 0;
+  let roundsRun = 0;
 
   // Session checkpoint (GAP 3: LangGraph-inspired persistent state for resume).
   let resumedRound = 0;
@@ -297,6 +345,7 @@ export async function runParallelCouncil(options: ParallelCouncilOptions): Promi
       continue;
     }
     logger.info(chalk.cyan(`\n── Round ${round}/${maxRounds} ─────────────────────────────────────`));
+    roundsRun++;
 
     // Drop members that exhausted quota or degraded this session
     const roundMembers = health.getActiveMembers(available);
@@ -480,7 +529,8 @@ export async function runParallelCouncil(options: ParallelCouncilOptions): Promi
         }
       }
 
-      // Run merge court — fileClaims enforced structurally (not advisory)
+      // Run merge court — streaming pre-computed verdicts used as fast-path for
+      // slots already judged; fileClaims enforced structurally (not advisory).
       logger.info('\nRunning merge court...');
       const mergeResults = await runMergeCourt({
         projectPath: cwd,
@@ -491,6 +541,7 @@ export async function runParallelCouncil(options: ParallelCouncilOptions): Promi
         goal: options.goal,
         fileClaims,
         minJudges,
+        preComputedConsensus: slotMode ? judgeQueue.getStreamingVerdicts() : undefined,
       });
 
       const roundMerged = mergeResults.filter(r => r.merged).length;
@@ -498,27 +549,12 @@ export async function runParallelCouncil(options: ParallelCouncilOptions): Promi
 
       printRoundSummary(mergeResults, round, totalMerged);
 
-      // Record convergence for each dim that was attempted
-      // In slot mode: match by slotId; in member mode: match by memberId
+      // Run doctrine BEFORE recording convergence so CIP-blocked dims don't count
+      // as converged. A merge that passes judges but fails CIP is not frontier-ready.
       const dimsByMember = new Map(
         [...byMember.entries()].map(([id, dims]) => [id, dims] as const),
       );
-      for (const r of mergeResults) {
-        const slotId = (r as { slotId?: string }).slotId;
-        const dimsFromSlot: ScheduledDimension[] = slotMode && slotId && bySlot
-          ? (bySlot.get(slotId) ?? [])
-          : (dimsByMember.get(r.memberId as CouncilMemberId) ?? []);
-        for (const dim of dimsFromSlot) {
-          convergence.record(dim.dimensionId, r.merged, round);
-        }
-      }
-
-      const conv = convergence.summarize();
-      if (conv.stuck > 0) {
-        logger.warn(chalk.yellow(`  Stuck dims (${conv.stuck}): ${conv.stuckDims.map(d => d.dimensionId).join(', ')}`));
-      }
-
-      // Auto-validate merged dims, then run CIP + Time Machine doctrine gates
+      const cipBlockedDimIds = new Set<string>();
       if (!options.skipValidate && roundMerged > 0) {
         const mergedDims: PostMergeDim[] = mergeResults
           .filter(r => r.merged)
@@ -533,12 +569,30 @@ export async function runParallelCouncil(options: ParallelCouncilOptions): Promi
               .map(d => ({ dimId: d.dimensionId, changedFiles: r.changedFiles }));
           });
         const doctrineResult = await runPostMergeDoctrine(cwd, mergedDims);
+        for (const dimId of doctrineResult.cipBlocked) cipBlockedDimIds.add(dimId);
         if (doctrineResult.cipBlocked.length > 0) {
           logger.warn(chalk.yellow(
-            `  [doctrine] ${doctrineResult.cipBlocked.length} dim(s) CIP-blocked (frontier not reached): ` +
+            `  [doctrine] ${doctrineResult.cipBlocked.length} dim(s) CIP-blocked — not counting as converged: ` +
             doctrineResult.cipBlocked.join(', '),
           ));
         }
+      }
+
+      // Record convergence: CIP-blocked dims count as not-approved even if merged.
+      for (const r of mergeResults) {
+        const slotId = (r as { slotId?: string }).slotId;
+        const dimsFromSlot: ScheduledDimension[] = slotMode && slotId && bySlot
+          ? (bySlot.get(slotId) ?? [])
+          : (dimsByMember.get(r.memberId as CouncilMemberId) ?? []);
+        for (const dim of dimsFromSlot) {
+          const approved = r.merged && !cipBlockedDimIds.has(dim.dimensionId);
+          convergence.record(dim.dimensionId, approved, round);
+        }
+      }
+
+      const conv = convergence.summarize();
+      if (conv.stuck > 0) {
+        logger.warn(chalk.yellow(`  Stuck dims (${conv.stuck}): ${conv.stuckDims.map(d => d.dimensionId).join(', ')}`));
       }
 
       await writeProgress(cwd, {
@@ -550,6 +604,7 @@ export async function runParallelCouncil(options: ParallelCouncilOptions): Promi
         convergence: { converged: conv.converged, stuck: conv.stuck, inProgress: conv.inProgress },
         ts: new Date().toISOString(),
       });
+      await writeSlotProofLedger(cwd, runId, round, mergeResults, bySlot ?? undefined, byMember, cipBlockedDimIds);
 
       // Checkpoint session state for resume support.
       sessionState.round = round;
@@ -582,7 +637,7 @@ export async function runParallelCouncil(options: ParallelCouncilOptions): Promi
 
   const finalConv = convergence.summarize();
   logger.info(chalk.bold(`\n── Parallel Council Complete ────────────────────────`));
-  logger.info(`Rounds run:      ${Math.min(maxRounds, maxRounds)}`);
+  logger.info(`Rounds run:      ${roundsRun}`);
   logger.info(`Total merges:    ${chalk.bold(String(totalMerged))}`);
   logger.info(`Converged dims:  ${finalConv.converged}`);
   logger.info(`Stuck dims:      ${finalConv.stuck}`);

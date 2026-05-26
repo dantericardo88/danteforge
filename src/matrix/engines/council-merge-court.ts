@@ -32,23 +32,13 @@ import { computeConsensus, assignVoteWeight } from './council-consensus.js';
 import type { WeightedVote } from './council-consensus.js';
 import { pickJudgeSlots } from './council-slot.js';
 import type { CouncilSlot } from './council-slot.js';
+import { parseVerdict } from './council-verdict-parser.js';
+export type { MemberVerdict } from './council-verdict-parser.js';
+import type { MemberVerdict } from './council-verdict-parser.js';
 
 const execFileAsync = promisify(execFile);
 
 export type CouncilMemberId = 'codex' | 'gemini-cli' | 'grok-build' | 'claude-code';
-
-export interface MemberVerdict {
-  judgeId: CouncilMemberId;
-  verdict: 'PASS' | 'FAIL' | 'UNCLEAR';
-  confidence: 'HIGH' | 'MEDIUM' | 'LOW';
-  scoreSuggestion: number | null;
-  reason: string;
-  /** Specific technical concerns that must be resolved before PASS (Karpathy-style dissent capture). */
-  blockingConcerns: string[];
-  /** Minority position preserved even when overall consensus is PASS. */
-  dissentSummary: string;
-  rawOutput: string;
-}
 
 export interface MergeCourtResult {
   memberId: CouncilMemberId;
@@ -87,37 +77,12 @@ export interface MergeCourtOptions {
   useRevision?: boolean;
   /** Revision cycles before giving up (default: 1). */
   revisionCycles?: number;
-}
-
-// ── Verdict parsing (self-contained — no import from CLI layer) ───────────────
-
-function parseVerdict(judgeId: CouncilMemberId, rawOutput: string): MemberVerdict {
-  const up = rawOutput.toUpperCase();
-  const verdict: 'PASS' | 'FAIL' | 'UNCLEAR' =
-    up.includes('VERDICT: PASS') ? 'PASS' :
-    up.includes('VERDICT: FAIL') ? 'FAIL' : 'UNCLEAR';
-
-  const confidence: 'HIGH' | 'MEDIUM' | 'LOW' =
-    up.includes('CONFIDENCE: HIGH') ? 'HIGH' :
-    up.includes('CONFIDENCE: MEDIUM') ? 'MEDIUM' : 'LOW';
-
-  const scoreMatch = rawOutput.match(/SCORE_SUGGESTION:\s*([\d.]+)/i);
-  const scoreSuggestion = scoreMatch ? parseFloat(scoreMatch[1]!) : null;
-
-  const reasonMatch = rawOutput.match(/REASON:\s*(.+?)(?=\n[A-Z_]+:|$)/is);
-  const reason = reasonMatch ? reasonMatch[1]!.trim().slice(0, 300) : rawOutput.slice(0, 200);
-
-  const concernsMatch = rawOutput.match(/BLOCKING_CONCERNS:\s*(.+?)(?=\n[A-Z_]+:|$)/is);
-  const blockingConcerns = concernsMatch && concernsMatch[1]!.trim().toLowerCase() !== 'none'
-    ? concernsMatch[1]!.trim().split('\n').map(l => l.replace(/^[-•]\s*/, '').trim()).filter(Boolean)
-    : [];
-
-  const dissentMatch = rawOutput.match(/DISSENT:\s*(.+?)(?=\n[A-Z_]+:|$)/is);
-  const dissentSummary = dissentMatch && dissentMatch[1]!.trim().toLowerCase() !== 'none'
-    ? dissentMatch[1]!.trim().slice(0, 300)
-    : '';
-
-  return { judgeId, verdict, confidence, scoreSuggestion, reason, blockingConcerns, dissentSummary, rawOutput };
+  /**
+   * Pre-computed streaming verdicts keyed by slotId. When provided, the merge
+   * court skips the LLM judge phase for handles whose slotId has a PASS verdict
+   * here — the streaming judge already approved this candidate.
+   */
+  preComputedConsensus?: Map<string, 'PASS' | 'FAIL' | 'SPLIT'>;
 }
 
 function resolveConsensus(verdicts: MemberVerdict[]): 'PASS' | 'FAIL' | 'SPLIT' {
@@ -248,17 +213,51 @@ export async function runMergeCourt(opts: MergeCourtOptions): Promise<MergeCourt
       continue;
     }
 
-    // File-claim gate: if all changed files are already claimed by another member, skip merge.
+    // File-claim gate: if ANY changed file is already claimed by another member, skip
+    // the merge entirely. Partial-conflict merges corrupt the claim registry because
+    // git apply cannot selectively apply hunks at file granularity without a re-diff.
     if (opts.fileClaims) {
-      const allClaimed = changedFiles.every(f => opts.fileClaims!.hasConflict(builderId as CouncilMemberId, [f]));
-      if (allClaimed) {
-        logger.warn(`[merge-court] ${builderId}: all ${changedFiles.length} file(s) claimed by other members — skipping (structural gate)`);
+      const anyConflict = changedFiles.some(f => opts.fileClaims!.hasConflict(builderId as CouncilMemberId, [f]));
+      if (anyConflict) {
+        const nConflict = changedFiles.filter(f => opts.fileClaims!.hasConflict(builderId as CouncilMemberId, [f])).length;
+        logger.warn(`[merge-court] ${builderId}: ${nConflict}/${changedFiles.length} file(s) claimed by other members — skipping (structural gate)`);
         results.push({ memberId: builderId, worktreePath: handle.worktreePath,
           changedFiles, verdicts: [], consensus: 'FAIL', merged: false,
-          mergeError: 'all files claimed by other council members',
+          mergeError: `${nConflict} of ${changedFiles.length} file(s) claimed by other council members`,
           anonymizationMap, dissentLog: [] });
         continue;
       }
+    }
+
+    // Streaming pre-computed verdict fast-path: if this slot was already judged by
+    // the streaming judge queue and the verdict was PASS, skip re-judging.
+    const slotId = handle.slotId ?? `${builderId}-0`;
+    const preVerd = opts.preComputedConsensus?.get(slotId);
+    if (preVerd === 'PASS') {
+      logger.info(`[merge-court] ${builderId} (${slotId}): streaming pre-approved — skipping re-judge`);
+      const syntheticVerdict: MemberVerdict = {
+        judgeId: 'claude-code',
+        verdict: 'PASS', confidence: 'HIGH',
+        scoreSuggestion: null, reason: 'Pre-approved by streaming judge queue',
+        blockingConcerns: [], dissentSummary: '', rawOutput: '',
+      };
+      // Fall through to the diff-apply block with PASS consensus.
+      let merged = false;
+      let mergeError: string | undefined;
+      try {
+        await applyDiffToMain(diff, opts.projectPath);
+        merged = true;
+        logger.info(`[merge-court] ${builderId}: merged (streaming pre-approved)`);
+      } catch (err) {
+        mergeError = String(err).split('\n')[0];
+        logger.warn(`[merge-court] ${builderId}: merge failed — ${mergeError}`);
+      }
+      results.push({
+        memberId: builderId, worktreePath: handle.worktreePath,
+        changedFiles, verdicts: [syntheticVerdict], consensus: 'PASS', merged,
+        mergeError, anonymizationMap, dissentLog: [],
+      });
+      continue;
     }
 
     // Slot-aware judge selection: cross-member slots first; fall back to member-level filter

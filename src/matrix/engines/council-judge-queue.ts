@@ -28,6 +28,8 @@ export type JudgeFn = (
 export class CouncilJudgeQueue {
   private readonly queue: JudgeCandidate[] = [];
   private readonly statusMap = new Map<string, JudgeCandidate['status']>();
+  /** Verdict stored per slotId for retrieval after streaming completes. */
+  private readonly verdictBySlotId = new Map<string, 'PASS' | 'FAIL' | 'SPLIT'>();
 
   enqueue(candidate: JudgeCandidate): void {
     this.queue.push({ ...candidate, status: 'pending' });
@@ -58,6 +60,12 @@ export class CouncilJudgeQueue {
     if (!candidate) return;
     candidate.status = verdict === 'PASS' ? 'merged' : 'judged';
     this.statusMap.set(candidateId, candidate.status);
+    this.verdictBySlotId.set(candidate.slotId, verdict);
+  }
+
+  /** Returns streaming verdicts keyed by slotId — pass to runMergeCourt as preComputedConsensus. */
+  getStreamingVerdicts(): Map<string, 'PASS' | 'FAIL' | 'SPLIT'> {
+    return new Map(this.verdictBySlotId);
   }
 
   /**

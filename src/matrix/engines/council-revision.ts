@@ -26,7 +26,9 @@ import type { WorkPacket } from '../types/work-graph.js';
 import type { AgentLease } from '../types/lease.js';
 import { captureWorktreeDiff } from './council-worktree.js';
 import type { CouncilWorktreeOpts } from './council-worktree.js';
-import type { CouncilMemberId, MemberVerdict } from './council-merge-court.js';
+import type { CouncilMemberId } from './council-merge-court.js';
+import { parseVerdict } from './council-verdict-parser.js';
+import type { MemberVerdict } from './council-verdict-parser.js';
 
 // ── Public types ──────────────────────────────────────────────────────────────
 
@@ -72,28 +74,6 @@ function resolveConsensus(verdicts: MemberVerdict[]): 'PASS' | 'FAIL' | 'SPLIT' 
   if (passes > fails) return 'PASS';
   if (fails > passes) return 'FAIL';
   return 'SPLIT';
-}
-
-function parseVerdict(judgeId: CouncilMemberId, rawOutput: string): MemberVerdict {
-  const up = rawOutput.toUpperCase();
-  const verdict: 'PASS' | 'FAIL' | 'UNCLEAR' =
-    up.includes('VERDICT: PASS') ? 'PASS' :
-    up.includes('VERDICT: FAIL') ? 'FAIL' : 'UNCLEAR';
-  const confidence: 'HIGH' | 'MEDIUM' | 'LOW' =
-    up.includes('CONFIDENCE: HIGH') ? 'HIGH' :
-    up.includes('CONFIDENCE: MEDIUM') ? 'MEDIUM' : 'LOW';
-  const scoreMatch = rawOutput.match(/SCORE_SUGGESTION:\s*([\d.]+)/i);
-  const scoreSuggestion = scoreMatch ? parseFloat(scoreMatch[1]!) : null;
-  const reasonMatch = rawOutput.match(/REASON:\s*(.+?)(?=\n[A-Z_]+:|$)/is);
-  const reason = reasonMatch ? reasonMatch[1]!.trim().slice(0, 300) : rawOutput.slice(0, 200);
-  const concernsMatch = rawOutput.match(/BLOCKING_CONCERNS:\s*(.+?)(?=\n[A-Z_]+:|$)/is);
-  const blockingConcerns = concernsMatch && concernsMatch[1]!.trim().toLowerCase() !== 'none'
-    ? concernsMatch[1]!.trim().split('\n').map(l => l.replace(/^[-•]\s*/, '').trim()).filter(Boolean)
-    : [];
-  const dissentMatch = rawOutput.match(/DISSENT:\s*(.+?)(?=\n[A-Z_]+:|$)/is);
-  const dissentSummary = dissentMatch && dissentMatch[1]!.trim().toLowerCase() !== 'none'
-    ? dissentMatch[1]!.trim().slice(0, 300) : '';
-  return { judgeId, verdict, confidence, scoreSuggestion, reason, blockingConcerns, dissentSummary, rawOutput };
 }
 
 function extractBlockingConcerns(verdicts: MemberVerdict[]): string {
