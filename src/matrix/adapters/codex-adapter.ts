@@ -207,10 +207,11 @@ export class CodexAdapter implements AgentAdapter {
         const judgeGitDiff = this.options._gitDiff ?? defaultGitDiff;
         const preJudgeDiff = this.options._preJudgeDiff ?? judgeGitDiff;
         const preJudgeFiles = new Set(await preJudgeDiff(worktreeRoot));
+        // --sandbox read-only structurally prevents any file writes during judging.
         // Pipe prompt via stdin (-) to avoid cmd.exe argument mangling on Windows.
         const [jCmd, jArgs] = usesCmdShim
-          ? ['cmd.exe', ['/c', state.binaryUsed, 'exec', '--ephemeral', '--output-last-message', tmpFile, '-']] as const
-          : [state.binaryUsed, ['exec', '--ephemeral', '--output-last-message', tmpFile, '-']] as const;
+          ? ['cmd.exe', ['/c', state.binaryUsed, 'exec', '--ephemeral', '--sandbox', 'read-only', '--output-last-message', tmpFile, '-']] as const
+          : [state.binaryUsed, ['exec', '--ephemeral', '--sandbox', 'read-only', '--output-last-message', tmpFile, '-']] as const;
         const chunks: Buffer[] = [];
         state.exitCode = await runChild(spawnFn, jCmd, [...jArgs], {
           cwd: normalizeCwd(worktreeRoot),

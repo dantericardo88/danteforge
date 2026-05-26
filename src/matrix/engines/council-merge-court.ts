@@ -145,9 +145,10 @@ function makeReadOnlyLease(worktreePath: string): AgentLease {
 }
 
 // Members with structurally-enforced read-only judge mode.
-// Claude Code uses --allowedTools Read,Glob,Grep; Grok uses --permission-mode plan.
-// Codex exec --ephemeral does NOT prevent file writes on Windows — excluded from judging.
-const JUDGE_CAPABLE_MEMBERS = new Set<CouncilMemberId>(['claude-code', 'grok-build', 'gemini-cli']);
+// Claude Code: --allowedTools Read,Glob,Grep
+// Grok:        --permission-mode plan
+// Codex:       --sandbox read-only (added to judge invocation in codex-adapter.ts)
+const JUDGE_CAPABLE_MEMBERS = new Set<CouncilMemberId>(['claude-code', 'grok-build', 'gemini-cli', 'codex']);
 
 function makeJudgeAdapter(id: CouncilMemberId, workPacket: WorkPacket) {
   switch (id) {
