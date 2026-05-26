@@ -237,27 +237,27 @@ describe('help text — Examples sections', () => {
   // with Examples content, since instantiating Commander in tests would
   // require full program wiring.
 
-  it('register-late-commands.ts contains Examples for compete', async () => {
-    const filePath = path.join(process.cwd(), 'src', 'cli', 'register-late-commands.ts');
+  it('register-compete-cmds.ts contains Examples for compete', async () => {
+    const filePath = path.join(process.cwd(), 'src', 'cli', 'register-compete-cmds.ts');
     const content = await fs.readFile(filePath, 'utf8');
     assert.ok(content.includes("addHelpText('after'"), 'compete command should have addHelpText');
     assert.ok(content.includes('danteforge compete'), 'should have compete examples');
   });
 
-  it('register-late-commands.ts contains Examples for score', async () => {
-    const filePath = path.join(process.cwd(), 'src', 'cli', 'register-late-commands.ts');
+  it('register-convergence-cmds.ts contains Examples for score', async () => {
+    const filePath = path.join(process.cwd(), 'src', 'cli', 'register-convergence-cmds.ts');
     const content = await fs.readFile(filePath, 'utf8');
     assert.ok(content.includes('danteforge score'), 'should have score examples');
   });
 
-  it('register-late-commands.ts contains Examples for go', async () => {
-    const filePath = path.join(process.cwd(), 'src', 'cli', 'register-late-commands.ts');
+  it('register-ops-cmds.ts contains Examples for go', async () => {
+    const filePath = path.join(process.cwd(), 'src', 'cli', 'register-ops-cmds.ts');
     const content = await fs.readFile(filePath, 'utf8');
     assert.ok(content.includes('danteforge go'), 'should have go examples');
   });
 
-  it('register-core-commands.ts contains Examples for forge', async () => {
-    const filePath = path.join(process.cwd(), 'src', 'cli', 'register-core-commands.ts');
+  it('register-core-craft-cmds.ts contains Examples for forge', async () => {
+    const filePath = path.join(process.cwd(), 'src', 'cli', 'register-core-craft-cmds.ts');
     const content = await fs.readFile(filePath, 'utf8');
     assert.ok(content.includes("addHelpText('after'"), 'forge command should have addHelpText');
     assert.ok(content.includes('danteforge forge'), 'should have forge examples');
@@ -271,17 +271,17 @@ describe('help text — Examples sections', () => {
   });
 
   it('all 5 commands include the word "Examples" in their help text blocks', async () => {
-    const lateCmds = await fs.readFile(
-      path.join(process.cwd(), 'src', 'cli', 'register-late-commands.ts'), 'utf8',
+    const competeCmds = await fs.readFile(
+      path.join(process.cwd(), 'src', 'cli', 'register-compete-cmds.ts'), 'utf8',
     );
-    const coreCmds = await fs.readFile(
-      path.join(process.cwd(), 'src', 'cli', 'register-core-commands.ts'), 'utf8',
+    const coreCraft = await fs.readFile(
+      path.join(process.cwd(), 'src', 'cli', 'register-core-craft-cmds.ts'), 'utf8',
     );
     const indexTs = await fs.readFile(
       path.join(process.cwd(), 'src', 'cli', 'index.ts'), 'utf8',
     );
 
-    const allContent = lateCmds + coreCmds + indexTs;
+    const allContent = competeCmds + coreCraft + indexTs;
     const examplesCount = (allContent.match(/Examples:/g) ?? []).length;
     assert.ok(examplesCount >= 5, `expected at least 5 "Examples:" sections, found ${examplesCount}`);
   });
