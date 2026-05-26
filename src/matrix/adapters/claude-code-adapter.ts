@@ -276,18 +276,17 @@ export class ClaudeCodeAdapter implements AgentAdapter {
         const gitDiff = this.options._gitDiff ?? defaultGitDiff;
         const changedAfterJudge = await gitDiff(worktreeRoot);
         if (changedAfterJudge.length > 0) {
-          logger.warn(`[ClaudeCodeAdapter] judge ${runId} modified ${changedAfterJudge.length} file(s) — reverting; preserving text output`);
+          logger.warn(`[ClaudeCodeAdapter] judge ${runId} modified ${changedAfterJudge.length} file(s) — reverting; verdict invalidated`);
           const revertFile = this.options._revertFile ?? defaultRevertFile;
           await Promise.allSettled(changedAfterJudge.map(f => revertFile(worktreeRoot, f)));
-          // Preserve the text output — it contains the verdict/rebuttal reasoning
-          // even when the adapter also wrote files. Files are reverted (worktree safe);
-          // text is kept so the caller can parse VERDICT:/REBUTTAL: fields.
-          state.errorReason = `judge_wrote_files_reverted: ${changedAfterJudge.join(', ')}`;
-          state.finalMessage = state.capturedOutput.trim() || '(judge modified worktree — no text output)';
-          state.capturedOutput = '';  // let resolveFinalMessage use finalMessage
-          state.status = 'completed';
-          state.events.push({ eventId: `${runId}.complete`, runId, ts: now(), kind: 'completed' });
-          state.endMs = Date.now();
+          // A judge that modifies the worktree has its verdict invalidated — the output
+          // cannot be trusted as an independent review. Files are reverted; status is 'failed'
+          // so the merge court treats this judge as UNCLEAR (same as any other error path).
+          state.errorReason = `judge_wrote_files: ${changedAfterJudge.join(', ')}`;
+          state.finalMessage = `(verdict invalidated — judge modified worktree: ${changedAfterJudge.join(', ')})`;
+          state.capturedOutput = '';
+          state.status = 'failed';
+          finalize(state, runId);
           return;
         }
         state.finalMessage = state.capturedOutput.trim() || '(no judge output)';
