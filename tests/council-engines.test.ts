@@ -270,7 +270,7 @@ describe('CodexAdapter — judge mode', () => {
     const result = await adapter.collectResult(handle);
     assert.equal(result.status, 'failed', 'rogue Codex judge must be failed');
     assert.ok(result.errorReason?.includes('judge_wrote_files'), `errorReason: ${result.errorReason}`);
-    assert.ok(result.finalMessage?.includes('invalidated'), `finalMessage: ${result.finalMessage}`);
+    assert.ok(result.finalMessage?.includes('VERDICT: FAIL'), `rogue judge must auto-FAIL: ${result.finalMessage}`);
     assert.deepEqual(reverted, ['src/rogue-edit.ts']);
   });
 });
@@ -307,7 +307,7 @@ describe('ClaudeCodeAdapter — judge mode', () => {
     const result = await adapter.collectResult(handle);
     assert.equal(result.status, 'failed', 'rogue judge must be failed');
     assert.ok(result.errorReason?.includes('judge_wrote_files'), `errorReason: ${result.errorReason}`);
-    assert.ok(result.finalMessage?.includes('invalidated'), `finalMessage: ${result.finalMessage}`);
+    assert.ok(result.finalMessage?.includes('VERDICT: FAIL'), `rogue judge must auto-FAIL: ${result.finalMessage}`);
     assert.deepEqual(reverted, ['src/rogue-edit.ts'], 'rogue file must be reverted');
   });
 });
@@ -348,7 +348,7 @@ describe('GrokBuildAdapter — judge mode', () => {
     const result = await adapter.collectResult(handle);
     assert.equal(result.status, 'failed', 'rogue Grok judge must be failed');
     assert.ok(result.errorReason?.includes('judge_wrote_files'), `errorReason: ${result.errorReason}`);
-    assert.ok(result.finalMessage?.includes('invalidated'), `finalMessage: ${result.finalMessage}`);
+    assert.ok(result.finalMessage?.includes('VERDICT: FAIL'), `rogue judge must auto-FAIL: ${result.finalMessage}`);
     assert.deepEqual(reverted, ['src/rogue-edit.ts']);
   });
 });
@@ -389,7 +389,7 @@ describe('GeminiCLIAdapter — judge mode', () => {
     const result = await adapter.collectResult(handle);
     assert.equal(result.status, 'failed', 'rogue Gemini judge must be failed');
     assert.ok(result.errorReason?.includes('judge_wrote_files'), `errorReason: ${result.errorReason}`);
-    assert.ok(result.finalMessage?.includes('invalidated'), `finalMessage: ${result.finalMessage}`);
+    assert.ok(result.finalMessage?.includes('VERDICT: FAIL'), `rogue judge must auto-FAIL: ${result.finalMessage}`);
     assert.deepEqual(reverted, ['src/rogue-edit.ts']);
   });
 });

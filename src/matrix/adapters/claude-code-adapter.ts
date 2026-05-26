@@ -283,15 +283,14 @@ export class ClaudeCodeAdapter implements AgentAdapter {
         // Post-run diff: only flag files that are NEW since the pre-judge snapshot.
         const changedAfterJudge = (await gitDiff(worktreeRoot)).filter(f => !preJudgeFiles.has(f));
         if (changedAfterJudge.length > 0) {
-          logger.warn(`[ClaudeCodeAdapter] judge ${runId} modified ${changedAfterJudge.length} file(s) — reverting; verdict invalidated`);
+          logger.warn(`[ClaudeCodeAdapter] judge ${runId} modified ${changedAfterJudge.length} file(s) — reverting; auto-FAIL verdict`);
           const revertFile = this.options._revertFile ?? defaultRevertFile;
           await Promise.allSettled(changedAfterJudge.map(f => revertFile(worktreeRoot, f)));
-          // A judge that modifies the worktree has its verdict invalidated — the output
-          // cannot be trusted as an independent review. Files are reverted; status is 'failed'
-          // so the merge court treats this judge as UNCLEAR (same as any other error path).
+          // Judge wrote files despite --allowedTools restriction → bad-faith violation.
+          // Emit explicit FAIL (not void) so the verdict counts toward quorum.
           state.errorReason = `judge_wrote_files: ${changedAfterJudge.join(', ')}`;
-          state.finalMessage = `(verdict invalidated — judge modified worktree: ${changedAfterJudge.join(', ')})`;
           state.capturedOutput = '';
+          state.finalMessage = `VERDICT: FAIL\nCONFIDENCE: HIGH\nREASON: Judge modified worktree files during review (${changedAfterJudge.join(', ')}) — bad-faith violation. Automatic FAIL to preserve quorum integrity.`;
           state.status = 'failed';
           finalize(state, runId);
           return;
