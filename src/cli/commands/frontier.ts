@@ -92,9 +92,16 @@ async function loadDispensations(cwd: string): Promise<Record<string, string[]>>
 }
 
 async function loadWavesSinceProgress(cwd: string): Promise<Record<string, number>> {
-  // Best-effort: read STATE.yaml if it has outcomeRefinementCounts (Phase H Slice 5 field).
-  // Until then, return empty — every dim has 0 waves recorded.
-  void cwd;
+  // Read STATE.yaml outcomeRefinementCounts if present (written by the crusade loop).
+  // Fall back to empty — every dim has 0 waves recorded.
+  try {
+    const { loadState } = await import('../../core/state.js');
+    const state = await loadState({ cwd });
+    const counts = (state as unknown as Record<string, unknown>)['outcomeRefinementCounts'];
+    if (counts && typeof counts === 'object' && !Array.isArray(counts)) {
+      return counts as Record<string, number>;
+    }
+  } catch { /* best-effort */ }
   return {};
 }
 
@@ -117,8 +124,8 @@ export interface FrontierState {
   totalEligible: number;
 }
 
-export async function getFrontierState(cwd: string, options: { dim?: string; stuckThreshold?: number } = {}): Promise<FrontierState> {
-  const loadMatrixFn = loadMatrix;
+export async function getFrontierState(cwd: string, options: { dim?: string; stuckThreshold?: number; _loadMatrix?: typeof loadMatrix } = {}): Promise<FrontierState> {
+  const loadMatrixFn = options._loadMatrix ?? loadMatrix;
   const matrix = await loadMatrixFn(cwd);
   if (!matrix) throw new Error(`No matrix.json at ${cwd}/.danteforge/compete/matrix.json`);
 

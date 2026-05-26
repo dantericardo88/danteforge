@@ -184,6 +184,7 @@ async function runDepthWave(
   dim: MatrixDimension,
   cwd: string,
   target: number,
+  cipOpts?: { skipCIP?: boolean; _cipCheck?: (dimensionId: string, opts: CIPOptions) => Promise<CIPResult> },
 ): Promise<DimHardenCrusadeResult> {
   const initialScore = dim.scores['self'] ?? 0;
   const hasOutcomes = Array.isArray((dim as unknown as Record<string, unknown>)['outcomes']) &&
@@ -218,6 +219,27 @@ async function runDepthWave(
   const finalScore = updatedDim?.scores['self'] ?? initialScore;
 
   logger.info(`[harden-crusade:${dim.id}] depth wave: ${initialScore.toFixed(2)} → ${finalScore.toFixed(2)}`);
+
+  // CIP gate before FRONTIER_REACHED — mirrors runDimensionLoop (Rule 14).
+  if (finalScore >= target && !cipOpts?.skipCIP) {
+    const cipFn = cipOpts?._cipCheck ?? runCIPCheck;
+    try {
+      const cip = await cipFn(dim.id, { cwd, target });
+      if (cip.blocksFrontierReached) {
+        logger.warn(`[harden-crusade:${dim.id}] depth wave: CIP blocked FRONTIER_REACHED — ${cip.gaps.join('; ')}`);
+        return {
+          dimensionId: dim.id, label: dim.label, initialScore, finalScore,
+          cyclesRun: 1, autoresearchRuns: 0,
+          hardenPassed: false, finalCap: 10,
+          status: 'CIP_BLOCKED',
+          reason: `depth wave: score ${finalScore.toFixed(2)} >= target but CIP blocked — ${cip.gaps.join('; ')}`,
+        };
+      }
+    } catch (err) {
+      logger.warn(`[harden-crusade:${dim.id}] depth wave: CIP check error — ${String(err)}`);
+    }
+  }
+
   return {
     dimensionId: dim.id, label: dim.label, initialScore, finalScore,
     cyclesRun: 1, autoresearchRuns: 0,
@@ -486,7 +508,7 @@ export async function runHardenCrusade(options: HardenCrusadeOptions): Promise<H
       // Depth wave: run `danteforge validate` for each dim to produce receipts.
       // Dims without outcomes are skipped (not yet ready for depth validation).
       const depthPassResults = await Promise.all(
-        todo.map(d => runDepthWave(d, cwd, target).catch(err => ({
+        todo.map(d => runDepthWave(d, cwd, target, { skipCIP: options.skipCIP, _cipCheck: options._cipCheck }).catch(err => ({
           dimensionId: d.id, label: d.label,
           initialScore: d.scores['self'] ?? 0, finalScore: d.scores['self'] ?? 0,
           cyclesRun: 1, autoresearchRuns: 0,

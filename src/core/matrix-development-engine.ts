@@ -396,8 +396,10 @@ export async function mergeScoreProposals(options: MatrixDevelopmentEngineOption
             logger.success(`[harden-gate] ${dimensionId}: all checks passed ✓ — score ${proposal.proposedScore} stands at ${finalScore}`);
           }
         } catch (err) {
-          // Best-effort: if the gate itself crashes, do not block the merge but log loudly.
-          logger.warn(`[harden-gate] ${dimensionId}: gate threw — ${err instanceof Error ? err.message : String(err)}; proceeding without harden cap`);
+          // Gate crash: cap at threshold rather than letting an unverified score through.
+          // A crashed gate is NOT a passing gate — silence it downward, never upward.
+          logger.error(`[harden-gate] ${dimensionId}: gate threw — ${err instanceof Error ? err.message : String(err)}; capping at ${HARDEN_GATE_THRESHOLD} (crash ≠ pass)`);
+          finalScore = Math.min(finalScore, HARDEN_GATE_THRESHOLD);
         }
       }
 
