@@ -19,6 +19,7 @@ import { runAdapter } from '../adapters/adapter-interface.js';
 import type { WorkPacket } from '../types/work-graph.js';
 import type { AgentLease } from '../types/lease.js';
 import type { CouncilMemberId } from './council-merge-court.js';
+import { makeReadOnlyLease } from './council-worktree.js';
 import { parseVerdict } from './council-verdict-parser.js';
 import type { MemberVerdict } from './council-verdict-parser.js';
 
@@ -147,15 +148,6 @@ function makeDebateWorkPacket(objective: string, cwd: string): WorkPacket {
   } as unknown as WorkPacket;
 }
 
-function makeReadOnlyLease(cwd: string): AgentLease {
-  return {
-    id: `debate-lease.${Date.now()}`,
-    worktreePath: cwd,
-    allowedWritePaths: [],
-    allowedReadPaths: ['**'],
-    forbiddenPaths: ['**'],
-  } as unknown as AgentLease;
-}
 
 function makeDebateAdapter(id: CouncilMemberId, wp: WorkPacket) {
   switch (id) {

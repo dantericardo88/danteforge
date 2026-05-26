@@ -5,6 +5,7 @@ import {
   pickJudgeSlots,
   type CouncilSlot,
 } from '../src/matrix/engines/council-slot.js';
+import { makeReadOnlyLease } from '../src/matrix/engines/council-worktree.js';
 import {
   groupBySlot,
   groupByMember,
@@ -170,6 +171,29 @@ describe('FileClaims — slot-aware conflict rule', () => {
 });
 
 // ── groupByMember still works (backward compat) ───────────────────────────────
+
+// ── makeReadOnlyLease shared factory ─────────────────────────────────────────
+
+describe('makeReadOnlyLease — shared factory (consolidation fix)', () => {
+  test('forbids all writes, allows all reads', () => {
+    const lease = makeReadOnlyLease('/some/worktree');
+    assert.deepEqual((lease as unknown as Record<string, unknown>)['allowedWritePaths'], []);
+    assert.deepEqual((lease as unknown as Record<string, unknown>)['allowedReadPaths'], ['**']);
+    assert.deepEqual((lease as unknown as Record<string, unknown>)['forbiddenPaths'], ['**']);
+  });
+
+  test('uses custom prefix in lease id', () => {
+    const lease = makeReadOnlyLease('/some/worktree', 'merge-court');
+    const id = (lease as unknown as Record<string, unknown>)['id'] as string;
+    assert.ok(id.startsWith('merge-court-readonly-lease.'), `expected prefix in id, got ${id}`);
+  });
+
+  test('default prefix is "council"', () => {
+    const lease = makeReadOnlyLease('/some/worktree');
+    const id = (lease as unknown as Record<string, unknown>)['id'] as string;
+    assert.ok(id.startsWith('council-readonly-lease.'), `expected "council" prefix, got ${id}`);
+  });
+});
 
 describe('groupByMember — backward compat', () => {
   test('groups by assignedTo memberId', () => {

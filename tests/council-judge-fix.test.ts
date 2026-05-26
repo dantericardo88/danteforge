@@ -109,6 +109,18 @@ describe('buildGrokJudgePrompt — FIX 3: diff-pass-through', () => {
     assert.ok(result.includes('DISSENT:'), 'should contain DISSENT field');
     assert.ok(!result.includes('```diff'), 'should not contain diff block when no diff passed');
   });
+
+  it('passes consultation objective through without verdict template (council-ask fix)', () => {
+    const consultationPrompt = 'You are SeniorEngineer. QUESTION: Is the project ready? ASSESSMENT: ...';
+    const wp = {
+      ...makeMinimalWorkPacket(consultationPrompt),
+      dimensionId: 'council-consultation',
+    };
+    const result = buildGrokJudgePrompt(wp as never, makeMinimalLease());
+    assert.equal(result, consultationPrompt, 'consultation objective must reach model verbatim');
+    assert.ok(!result.includes('You are an independent code reviewer'), 'must not wrap in judge template');
+    assert.ok(!result.includes('BLOCKING_ISSUES:'), 'must not add verdict fields to consultation');
+  });
 });
 
 // ── FIX 4: council.ts — makeAdapter judge mode doesn't include gemini ─────────

@@ -133,8 +133,10 @@ async function defaultRunForgeWave(goal: string, cwd: string): Promise<ForgeWave
   try {
     // `danteforge magic <goal>` is the correct hero command — `forge` has no --goal flag.
     // Use the currently-running Node process + CLI entry to avoid .ps1 shim issues on Windows.
+    // --light bypasses hard gates (CONSTITUTION, SPEC) that are not present when running
+    // DanteForge on itself; the crusade manages its own quality gates (harden, CIP, Fix A).
     const [node, cli] = selfCli();
-    await execFileAsync(node, [cli, 'magic', goal, '--yes'], { cwd, timeout: 300_000 });
+    await execFileAsync(node, [cli, 'magic', goal, '--yes', '--light'], { cwd, timeout: 300_000 });
     return { success: true };
   } catch (err) {
     const e = err as Error & { stderr?: string; stdout?: string };

@@ -24,7 +24,7 @@ import { runAdapter } from '../adapters/adapter-interface.js';
 import type { AgentAdapter } from '../adapters/adapter-interface.js';
 import type { WorkPacket } from '../types/work-graph.js';
 import type { AgentLease } from '../types/lease.js';
-import { captureWorktreeDiff } from './council-worktree.js';
+import { captureWorktreeDiff, makeReadOnlyLease } from './council-worktree.js';
 import type { CouncilWorktreeOpts } from './council-worktree.js';
 import type { CouncilMemberId } from './council-merge-court.js';
 import { parseVerdict } from './council-verdict-parser.js';
@@ -210,15 +210,6 @@ function makeRevisionWorkPacket(objective: string, worktreePath: string): WorkPa
   } as unknown as WorkPacket;
 }
 
-function makeReadOnlyLease(worktreePath: string): AgentLease {
-  return {
-    id: `revision-inspect-lease.${Date.now()}`,
-    worktreePath,
-    allowedWritePaths: [],
-    allowedReadPaths: ['**'],
-    forbiddenPaths: ['**'],
-  } as unknown as AgentLease;
-}
 
 function makeWriteLease(worktreePath: string): AgentLease {
   return {

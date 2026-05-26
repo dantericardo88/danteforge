@@ -11,6 +11,7 @@ import fs from 'node:fs/promises';
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import { logger } from '../../core/logger.js';
+import type { AgentLease } from '../types/lease.js';
 
 const execFileAsync = promisify(execFile);
 
@@ -195,4 +196,19 @@ export async function getChangedFiles(worktreePath: string): Promise<string[]> {
       .map(l => l.trim()).filter(Boolean)
       .map(l => l.slice(l.indexOf(' ')).trim());
   } catch { return []; }
+}
+
+/**
+ * Shared read-only lease factory — forbids all writes, allows all reads.
+ * Single authoritative definition replacing the four local copies that were
+ * scattered across council-ask, council-debate, council-merge-court, council-revision.
+ */
+export function makeReadOnlyLease(worktreePath: string, prefix = 'council'): AgentLease {
+  return {
+    id: `${prefix}-readonly-lease.${Date.now()}`,
+    worktreePath,
+    allowedWritePaths: [],
+    allowedReadPaths: ['**'],
+    forbiddenPaths: ['**'],
+  } as unknown as AgentLease;
 }

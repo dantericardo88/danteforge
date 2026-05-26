@@ -22,7 +22,7 @@ import { runAdapter } from '../adapters/adapter-interface.js';
 import type { WorkPacket } from '../types/work-graph.js';
 import type { AgentLease } from '../types/lease.js';
 import type { CouncilWorktreeHandle } from './council-worktree.js';
-import { captureWorktreeDiff, getChangedFiles } from './council-worktree.js';
+import { captureWorktreeDiff, getChangedFiles, makeReadOnlyLease } from './council-worktree.js';
 import type { CouncilWorktreeOpts } from './council-worktree.js';
 import { runDebate } from './council-debate.js';
 import { runRevision } from './council-revision.js';
@@ -134,15 +134,6 @@ function makeJudgeWorkPacket(
   } as unknown as WorkPacket;
 }
 
-function makeReadOnlyLease(worktreePath: string): AgentLease {
-  return {
-    id: `merge-court-lease.${Date.now()}`,
-    worktreePath,
-    allowedWritePaths: [],
-    allowedReadPaths: ['**'],
-    forbiddenPaths: ['**'],
-  } as unknown as AgentLease;
-}
 
 // Members with structurally-enforced read-only judge mode.
 // Claude Code: --allowedTools Read,Glob,Grep

@@ -17,7 +17,7 @@ import { GrokBuildAdapter } from '../../matrix/adapters/grok-build-adapter.js';
 import { ClaudeCodeAdapter } from '../../matrix/adapters/claude-code-adapter.js';
 import { runAdapter } from '../../matrix/adapters/adapter-interface.js';
 import type { WorkPacket } from '../../matrix/types/work-graph.js';
-import type { AgentLease } from '../../matrix/types/lease.js';
+import { makeReadOnlyLease } from '../../matrix/engines/council-worktree.js';
 
 export interface CouncilAskOptions {
   cwd?: string;
@@ -77,15 +77,6 @@ function makeConsultWorkPacket(question: string, label: string, cwd: string): Wo
   } as unknown as WorkPacket;
 }
 
-function makeReadOnlyLease(cwd: string): AgentLease {
-  return {
-    id: `council-ask-lease.${Date.now()}`,
-    worktreePath: cwd,
-    allowedWritePaths: [],
-    allowedReadPaths: ['**'],
-    forbiddenPaths: ['**'],
-  } as unknown as AgentLease;
-}
 
 function makeConsultAdapter(id: CouncilMemberId, workPacket: WorkPacket) {
   switch (id) {

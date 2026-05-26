@@ -359,6 +359,12 @@ Implement all acceptance criteria. No stubs. No mocks in src/ files. Stop when d
 }
 
 export function buildGrokJudgePrompt(workPacket: WorkPacket, _lease: AgentLease): string {
+  // Consultation objectives (council-ask) already contain the full structured prompt —
+  // return them as-is so the question reaches the model without being replaced by the
+  // generic "code reviewer" template.
+  const isConsultation = workPacket.dimensionId === 'council-consultation';
+  if (isConsultation) return workPacket.objective;
+
   // If the objective already contains a diff (diff-embedded mode), use it directly.
   // Otherwise fall back to asking Grok to read files (plan-mode).
   const hasDiff = workPacket.objective.includes('```diff') || workPacket.objective.includes('VERDICT:');
