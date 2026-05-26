@@ -7,6 +7,7 @@
 export type FailureKind =
   | 'zero-patterns'        // OSS harvest returned 0 patterns
   | 'forge-wave-failed'    // magic/forge subprocess failed
+  | 'synthesize-blocked'   // synthesize step blocked — verify pass required first
   | 'score-no-progress'    // 3+ cycles with delta < threshold
   | 'capability-test-fail' // Fix A gate blocked the score
   | 'evidence-stale'       // outcome evidence files are old
@@ -64,6 +65,14 @@ export function selectRecoveryAction(failure: FailureKind, ctx: RecoveryContext)
         urgency: 'medium',
         description: 'OSS harvest returned 0 patterns. Retry with a broader domain scope.',
         command: `danteforge oss --max-repos 8`,
+      };
+
+    case 'synthesize-blocked':
+      return {
+        kind: 'validate-evidence',
+        urgency: 'high',
+        description: 'Synthesize is blocked because verify has not run yet. Run verify to complete the pipeline stage, then retry the forge wave.',
+        command: `danteforge verify --light`,
       };
 
     case 'forge-wave-failed':
@@ -136,11 +145,15 @@ export function inferFailureKind(ctx: {
   cyclesWithoutProgress: number;
   capabilityTestFailed: boolean;
   llmAvailable: boolean;
+  forgeError?: string;
 }): FailureKind {
   if (!ctx.llmAvailable) return 'llm-unreachable';
   if (ctx.capabilityTestFailed) return 'capability-test-fail';
   if (ctx.patternsFound === 0) return 'zero-patterns';
-  if (!ctx.forgeSucceeded) return 'forge-wave-failed';
+  if (!ctx.forgeSucceeded) {
+    if (ctx.forgeError?.includes('Synthesis is blocked')) return 'synthesize-blocked';
+    return 'forge-wave-failed';
+  }
   if (ctx.cyclesWithoutProgress >= 3) return 'score-no-progress';
   return 'unknown';
 }

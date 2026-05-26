@@ -119,9 +119,9 @@ export async function synthesize(options: {
   const state = await loadFn();
   const canSynthesize = state.workflowStage === 'verify' || state.workflowStage === 'synthesize';
   if (!state.lastVerifiedAt || !canSynthesize) {
-    logger.error('Synthesis is blocked until verification succeeds. Run "danteforge verify" after a real forge pass first.');
-    process.exitCode = 1;
-    return;
+    const msg = 'Synthesis is blocked until verification succeeds. Run "danteforge verify" after a real forge pass first.';
+    logger.error(msg);
+    throw new Error(msg);
   }
   const docs = await gatherDocs();
   const timestamp = new Date().toISOString();

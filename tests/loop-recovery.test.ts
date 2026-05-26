@@ -119,6 +119,16 @@ describe('inferFailureKind', () => {
     assert.equal(kind, 'forge-wave-failed');
   });
 
+  it('infers synthesize-blocked when forge error contains "Synthesis is blocked"', () => {
+    const kind = inferFailureKind({
+      patternsFound: 5, forgeSucceeded: false,
+      scoreDelta: 0, cyclesWithoutProgress: 0,
+      capabilityTestFailed: false, llmAvailable: true,
+      forgeError: 'Command failed: node dist/index.js magic test --yes\nSynthesis is blocked until verification succeeds.',
+    });
+    assert.equal(kind, 'synthesize-blocked');
+  });
+
   it('infers score-no-progress after 3+ cycles of stall', () => {
     const kind = inferFailureKind({
       patternsFound: 5, forgeSucceeded: true,

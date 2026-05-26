@@ -137,7 +137,10 @@ async function defaultRunForgeWave(goal: string, cwd: string): Promise<ForgeWave
     await execFileAsync(node, [cli, 'magic', goal, '--yes'], { cwd, timeout: 300_000 });
     return { success: true };
   } catch (err) {
-    return { success: false, error: err instanceof Error ? err.message : String(err) };
+    const e = err as Error & { stderr?: string; stdout?: string };
+    const details = [e.stderr, e.stdout].filter(Boolean).join('\n').trim();
+    const error = details ? `${e.message}\n${details}` : e.message;
+    return { success: false, error };
   }
 }
 
@@ -270,6 +273,7 @@ export async function runCrusade(options: CrusadeOptions): Promise<CrusadeResult
         patternsFound: cyclePatterns, forgeSucceeded: false,
         scoreDelta: 0, cyclesWithoutProgress: consecutiveForgeFailures,
         capabilityTestFailed: false, llmAvailable: true,
+        forgeError: forgeResult.error,
       });
       const recovery = selectRecoveryAction(failureKind, ctx);
       logger.warn(`[crusade]   Recovery: ${formatRecoveryPlan(recovery)}`);
