@@ -1,7 +1,8 @@
 # Session Brief — 2026-05-26
 
 **Project:** danteforge
-**Score:** 7.1/10 — target: 9.0
+**Builder score:** 9.3/10 (needs-work) — target: 9.0
+**Competitive score:** 7.1/10 vs OSS leaders (run: danteforge compete)
 **Top gaps:** communityAdoption (6.9), autonomy (7.5), tokenEconomy (7.5)
 
 ## Architecture

@@ -10,6 +10,8 @@ import { computeHarshScore } from '../../core/harsh-scorer.js';
 import type { HarshScorerOptions, HarshScoreResult, ScoringDimension } from '../../core/harsh-scorer.js';
 import { indexLessons } from '../../core/lessons-index.js';
 import type { StructuredLesson } from '../../core/lessons-index.js';
+import { loadMatrix } from '../../core/compete-matrix.js';
+import type { CompeteMatrix } from '../../core/compete-matrix.js';
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -20,6 +22,7 @@ export interface PrimeOptions {
   _harshScore?: (opts: HarshScorerOptions) => Promise<HarshScoreResult>;
   _loadState?: typeof loadState;
   _indexLessons?: typeof indexLessons;
+  _loadMatrix?: (cwd: string) => Promise<CompeteMatrix | null>;
   _writeFile?: (filePath: string, content: string) => Promise<void>;
   _stdout?: (line: string) => void;
 }
@@ -34,16 +37,20 @@ export function buildPrimeMarkdown(
   antiPatterns: string[],
   architectureSummary: string,
   sessionDate: string,
+  competitiveScore?: number,
 ): string {
   const gapLine = p0Gaps.length > 0 ? p0Gaps.join(', ') : 'none — all dimensions healthy';
   const antiPatternLines = antiPatterns.length > 0
     ? antiPatterns.map(p => `- Do NOT: ${p}`).join('\n')
     : '- No corrections recorded yet — run `danteforge teach` to capture AI mistakes.';
+  const competitiveLine = competitiveScore !== undefined
+    ? `\n**Competitive score:** ${competitiveScore.toFixed(1)}/10 vs OSS leaders (run: danteforge compete)`
+    : '';
 
   return `# Session Brief — ${sessionDate}
 
 **Project:** ${projectName}
-**Score:** ${score.toFixed(1)}/10 (${verdict}) — target: 9.0
+**Builder score:** ${score.toFixed(1)}/10 (${verdict}) — target: 9.0${competitiveLine}
 **Top gaps:** ${gapLine}
 
 ## Architecture
@@ -65,13 +72,15 @@ export async function prime(options: PrimeOptions = {}): Promise<void> {
   const harshScoreFn = options._harshScore ?? computeHarshScore;
   const loadStateFn = options._loadState ?? loadState;
   const indexLessonsFn = options._indexLessons ?? indexLessons;
+  const loadMatrixFn = options._loadMatrix ?? loadMatrix;
   const writeFileFn = options._writeFile ?? defaultWriteFile;
 
   // Load project state and score
-  const [state, scoreResult, lessons] = await Promise.all([
+  const [state, scoreResult, lessons, matrix] = await Promise.all([
     loadStateFn({ cwd }),
     harshScoreFn({ cwd }),
     indexLessonsFn(cwd),
+    loadMatrixFn(cwd).catch(() => null),
   ]);
 
   const projectName = state.project ?? 'unknown';
@@ -106,6 +115,7 @@ export async function prime(options: PrimeOptions = {}): Promise<void> {
     critical,
     architectureSummary,
     sessionDate,
+    matrix?.overallSelfScore,
   );
 
   const outPath = path.join(cwd, '.danteforge', 'PRIME.md');
