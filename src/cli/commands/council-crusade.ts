@@ -175,6 +175,9 @@ export async function runCouncilCrusade(options: CouncilCrusadeOptions): Promise
   logger.info(`Target: ${target} | Max passes: ${maxPasses} | Dims/pass: ${maxDimsPerPass}`);
   if (goal) logger.info(`Goal: ${goal}`);
 
+  // Project identity guard — show target before any agents start so wrong-cwd is immediately visible.
+  logger.info(`[council-crusade] Target directory: ${cwd}`);
+
   // ── Dry-run: print plan and exit ────────────────────────────────────────────
   if (options.dryRun) {
     const matrix = await loadFn(cwd).catch(() => null);
@@ -193,6 +196,7 @@ export async function runCouncilCrusade(options: CouncilCrusadeOptions): Promise
   if (!initialMatrix) {
     throw new Error('No compete matrix found. Run `danteforge compete --init` first.');
   }
+  logger.info(`[council-crusade] Project: ${initialMatrix.project ?? 'unknown'} | Overall self-score: ${(initialMatrix.overallSelfScore ?? 0).toFixed(2)}`);
 
   const initialDims = selectDims(initialMatrix, target, maxDimsPerPass, options.focusDims);
   if (initialDims.length === 0) {

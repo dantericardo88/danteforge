@@ -61,6 +61,7 @@ import type { WorkPacket } from '../../matrix/types/work-graph.js';
 import type { AgentLease } from '../../matrix/types/lease.js';
 import { runCIPCheck } from '../../core/completion-integrity.js';
 import { createTimeMachineCommit } from '../../core/time-machine.js';
+import { loadMatrix } from '../../core/compete-matrix.js';
 
 const execFileAsync = promisify(execFile);
 
@@ -155,30 +156,8 @@ async function runPostMergeDoctrine(
 
   const dimIds = mergedDims.map(d => d.dimId);
 
-  // Step 1: validate — generate receipts.
-  // Use the installed `danteforge` binary if available; fall back to `node dist/index.js`
-  // only when running inside the DanteForge source tree (dev mode).
-  logger.info(chalk.dim(`  [validate] Running validate for ${dimIds.length} merged dim(s)...`));
-  const validateCmd = await (async () => {
-    try {
-      const { stdout } = await execFileAsync('danteforge', ['--version'], { cwd, timeout: 5_000 });
-      if (stdout) return { bin: 'danteforge', args: (d: string) => ['validate', d] };
-    } catch { /* not on PATH */ }
-    return { bin: 'node', args: (d: string) => ['dist/index.js', 'validate', d] };
-  })();
-  for (const dimId of dimIds) {
-    try {
-      await execFileAsync(validateCmd.bin, validateCmd.args(dimId), {
-        cwd, timeout: 120_000,
-        env: { ...process.env, DANTEFORGE_MATRIX_MERGE_RECEIPT: '1' },
-      });
-      logger.info(chalk.dim(`  [validate] ${dimId} ✓`));
-    } catch {
-      logger.info(chalk.dim(`  [validate] ${dimId} — no outcome defined or failed (ok at breadth stage)`));
-    }
-  }
-
-  // Step 2: CIP check — best-effort, warns if blocksFrontierReached but never aborts
+  // Step 1: CIP check FIRST — dims that fail CIP must not get validate receipts,
+  // otherwise their score would be elevated based on incomplete integration.
   const cipBlocked: string[] = [];
   for (const dimId of dimIds) {
     try {
@@ -186,7 +165,7 @@ async function runPostMergeDoctrine(
       if (result.blocksFrontierReached) {
         cipBlocked.push(dimId);
         logger.warn(chalk.yellow(
-          `  [cip] ${dimId} blocks frontier — gaps: ${result.gaps.slice(0, 3).join('; ')}`,
+          `  [cip] ${dimId} BLOCKED — gaps: ${result.gaps.slice(0, 3).join('; ')} (score not updated)`,
         ));
       } else {
         logger.info(chalk.dim(`  [cip] ${dimId} ${result.cipClass} (score ${result.cipScore.toFixed(1)})`));
@@ -194,6 +173,28 @@ async function runPostMergeDoctrine(
     } catch (err) {
       logger.info(chalk.dim(`  [cip] ${dimId} — check skipped: ${String(err).split('\n')[0]}`));
     }
+  }
+
+  // Step 2: validate — generate receipts only for dims that passed CIP.
+  // CIP-blocked dims are excluded so their score ceilings are not lifted.
+  const validateDims = dimIds.filter(id => !cipBlocked.includes(id));
+  if (validateDims.length > 0) {
+    logger.info(chalk.dim(`  [validate] Running validate for ${validateDims.length} dim(s)...`));
+    // Use the currently-running Node process + CLI entry (avoids .ps1 shim on Windows)
+    const [nodeBin, cliEntry] = [process.execPath, process.argv[1] ?? 'dist/index.js'];
+    for (const dimId of validateDims) {
+      try {
+        await execFileAsync(nodeBin, [cliEntry, 'validate', dimId], {
+          cwd, timeout: 120_000,
+          env: { ...process.env, DANTEFORGE_MATRIX_MERGE_RECEIPT: '1' },
+        });
+        logger.info(chalk.dim(`  [validate] ${dimId} ✓`));
+      } catch {
+        logger.info(chalk.dim(`  [validate] ${dimId} — no outcome defined or failed (ok at breadth stage)`));
+      }
+    }
+  } else if (cipBlocked.length > 0) {
+    logger.warn(chalk.yellow(`  [validate] Skipped — all merged dims are CIP-blocked. Fix integration gaps first.`));
   }
 
   // Step 3: Time Machine commit — best-effort, never blocks (but failures are logged as warn)
@@ -301,6 +302,18 @@ export async function runParallelCouncil(options: ParallelCouncilOptions): Promi
 
   logger.info(chalk.bold('\n=== DanteForge Parallel Council ==='));
   logger.info(chalk.dim('Builder never judges. Isolated worktrees. Anonymous peer review. File claims prevent conflicts.\n'));
+
+  // Project identity guard — operator confirms the right target before any agents spin up.
+  try {
+    const matrix = await loadMatrix(cwd);
+    if (matrix) {
+      logger.info(chalk.cyan(`[council] Target: ${cwd}`));
+      logger.info(chalk.cyan(`[council] Project: ${matrix.project ?? 'unknown'} | Overall self-score: ${(matrix.overallSelfScore ?? 0).toFixed(2)}`));
+    } else {
+      logger.warn(chalk.yellow(`[council] WARNING: No compete matrix at ${cwd} — agents will have no matrix context. Run 'danteforge compete --init' first.`));
+    }
+  } catch { /* non-blocking — just skip the guard */ }
+  logger.info('');
 
   const discover = options._discover ?? discoverCouncil;
   const members = await discover();
