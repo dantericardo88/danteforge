@@ -360,12 +360,23 @@ export function classifyDimensions(matrix: CompeteMatrix, target = 9.0): {
 /**
  * Compute weighted average self score across all dimensions (0-10 scale).
  */
+/**
+ * Effective score for a dimension: min(self, derived) when derived evidence exists,
+ * else self. This prevents inflated self-scores from surfacing in the headline metric
+ * when test evidence only supports a lower value.
+ */
+export function effectiveDimScore(dim: { scores: Record<string, number> }): number {
+  const self = dim.scores['self'] ?? 0;
+  const derived = dim.scores['derived'];
+  return derived !== undefined ? Math.min(self, derived) : self;
+}
+
 export function computeOverallScore(matrix: CompeteMatrix): number {
   if (matrix.dimensions.length === 0) return 0;
   const totalWeight = matrix.dimensions.reduce((s, d) => s + d.weight, 0);
   if (totalWeight === 0) return 0;
   const weightedSum = matrix.dimensions.reduce(
-    (s, d) => s + d.weight * (d.scores['self'] ?? 0),
+    (s, d) => s + d.weight * effectiveDimScore(d),
     0,
   );
   return Math.round((weightedSum / totalWeight) * 10) / 10;

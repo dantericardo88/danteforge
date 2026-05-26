@@ -529,24 +529,26 @@ for (const dim of m.dimensions) {
   const result = computeDerivedScore(dim, evidence);
 
   if (!result.legacy) {
-    const oldScore = dim.scores.self;
-    dim.scores.self = result.score;
+    // Write to scores.derived only. scores.self is the adversarial/competitive
+    // assessment and must not be overwritten by validate evidence.
+    const oldDerived = dim.scores.derived;
+    dim.scores.derived = result.score;
     const tierStr = result.highestFullPassedTier ?? 'none';
     const evidenceCount = result.perTier.reduce((s, p) => s + p.passing, 0);
     const totalOutcomes = result.perTier.reduce((s, p) => s + p.declared, 0);
-    const changed = oldScore !== result.score ? ` (was ${oldScore})` : '';
+    const changed = oldDerived !== result.score ? ` (was ${oldDerived ?? 'unset'})` : '';
     console.log(
       `${dim.id.padEnd(32)} ${dim.weight.toFixed(1).padStart(3)}    ` +
       `${evidenceCount}/${totalOutcomes}`.padEnd(10) +
       `${result.score.toFixed(1).padStart(5)}    ` +
       `${tierStr.padEnd(9)}` +
-      `EVIDENCE${changed}`
+      `DERIVED${changed}`
     );
   } else {
     console.log(
       `${dim.id.padEnd(32)} ${dim.weight.toFixed(1).padStart(3)}    ` +
       `—`.padEnd(10) +
-      `${result.score.toFixed(1).padStart(5)}    ` +
+      `${(dim.scores.self ?? 0).toFixed(1).padStart(5)}    ` +
       `—`.padEnd(9) +
       `LEGACY (no outcomes)`
     );
@@ -556,7 +558,13 @@ for (const dim of m.dimensions) {
   const gaps = computeGaps(dim);
   Object.assign(dim, gaps);
 
-  totalWeightedScore += dim.scores.self * dim.weight;
+  // Effective score = min(self, derived) when derived exists — evidence caps the claim.
+  // If derived > self: claim is honest, evidence exceeds it (fine).
+  // If derived < self: evidence doesn't support the claim → cap down.
+  const effectiveScore = (dim.scores.derived !== undefined)
+    ? Math.min(dim.scores.self ?? 0, dim.scores.derived)
+    : (dim.scores.self ?? 0);
+  totalWeightedScore += effectiveScore * dim.weight;
   totalWeight += dim.weight;
 }
 
