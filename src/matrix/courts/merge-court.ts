@@ -8,6 +8,9 @@
 //   - matrix-development-engine.ts:mergeScoreProposals (extend, don't replace)
 import fs from 'node:fs/promises';
 import path from 'node:path';
+import { execFile } from 'node:child_process';
+import { promisify } from 'node:util';
+const execFileAsync = promisify(execFile);
 import type { AgentLease } from '../types/lease.js';
 import type { WorkPacket } from '../types/work-graph.js';
 import type {
@@ -159,7 +162,8 @@ export async function runMergeCourt(
 
     const outcome = arbitrate(candidate, options.conflictReport, approvedPaths);
     if (outcome === 'APPROVED') {
-      const mergeResult = await (options._runMerge ?? defaultRunMerge)(candidate);
+      const runMergeFn = options._runMerge ?? ((input: MergeCourtInput) => defaultRunMerge(input, baseCwd));
+      const mergeResult = await runMergeFn(candidate);
       if (!mergeResult.success) {
         decisions.push(buildDecision(candidate, 'NEEDS_REPAIR', `merge failed: ${mergeResult.error ?? 'unknown'}`, undefined, now));
         continue;
@@ -343,9 +347,22 @@ function buildDecision(
   };
 }
 
-async function defaultRunMerge(_input: MergeCourtInput): Promise<{ success: boolean; error?: string }> {
-  // In tests this is always injected. For real use, would shell out to git merge.
-  return { success: true };
+async function defaultRunMerge(
+  input: MergeCourtInput,
+  cwd: string,
+): Promise<{ success: boolean; error?: string }> {
+  const branch = input.lease.branch;
+  if (!branch) return { success: false, error: 'no branch in lease — cannot merge' };
+  try {
+    await execFileAsync(
+      'git',
+      ['merge', '--no-ff', branch, '-m', `merge-court: ${input.candidate.candidateId}`],
+      { cwd, timeout: 60_000 },
+    );
+    return { success: true };
+  } catch (err) {
+    return { success: false, error: String(err).split('\n')[0] };
+  }
 }
 
 function defaultRunCapabilityTest(input: MergeCourtInput, cwd: string): CapabilityTestVerdict {

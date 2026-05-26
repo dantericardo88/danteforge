@@ -539,8 +539,7 @@ function registerMergeCourt(matrix: Command): void {
       const result = await runMergeCourt({
         candidates: candidates.map(c => c as never),
         conflictReport: conflictReport as never,
-        _runMerge: async () => ({ success: true }),
-        _createTimeMachineCommit: async (input) => ({ eventId: `tm.${input.candidate.candidateId}` }),
+        cwd,
       });
       const existing = (await loadGraph<{ decisions: unknown[] }>(cwd, 'mergeDecisions'))?.decisions ?? [];
       await saveGraph(cwd, 'mergeDecisions', { generatedAt: new Date().toISOString(), decisions: [...existing, ...result.decisions] });
