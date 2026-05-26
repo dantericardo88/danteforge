@@ -155,11 +155,20 @@ async function runPostMergeDoctrine(
 
   const dimIds = mergedDims.map(d => d.dimId);
 
-  // Step 1: validate — generate receipts (existing behavior, unchanged)
+  // Step 1: validate — generate receipts.
+  // Use the installed `danteforge` binary if available; fall back to `node dist/index.js`
+  // only when running inside the DanteForge source tree (dev mode).
   logger.info(chalk.dim(`  [validate] Running validate for ${dimIds.length} merged dim(s)...`));
+  const validateCmd = await (async () => {
+    try {
+      const { stdout } = await execFileAsync('danteforge', ['--version'], { cwd, timeout: 5_000 });
+      if (stdout) return { bin: 'danteforge', args: (d: string) => ['validate', d] };
+    } catch { /* not on PATH */ }
+    return { bin: 'node', args: (d: string) => ['dist/index.js', 'validate', d] };
+  })();
   for (const dimId of dimIds) {
     try {
-      await execFileAsync('node', ['dist/index.js', 'validate', dimId], {
+      await execFileAsync(validateCmd.bin, validateCmd.args(dimId), {
         cwd, timeout: 120_000,
         env: { ...process.env, DANTEFORGE_MATRIX_MERGE_RECEIPT: '1' },
       });
@@ -312,6 +321,15 @@ export async function runParallelCouncil(options: ParallelCouncilOptions): Promi
   const minJudges = options.minJudges ?? 2;
   const slotMode = slotsPerMember > 1;
 
+  // Pre-flight: with N available members, each candidate has at most N-1 cross-member
+  // judges. If N-1 < minJudges every candidate fails consensus — warn loudly.
+  if (available.length - 1 < minJudges) {
+    logger.warn(chalk.yellow(
+      `[council] WARNING: ${available.length} member(s) available but --min-judges=${minJudges} requires at least ${minJudges + 1} members for cross-member consensus. ` +
+      `All candidates will return INSUFFICIENT. Use --min-judges ${available.length - 1} or add more members.`,
+    ));
+  }
+
   logger.info(`${available.length} member(s): ${available.map(id => chalk.bold(id)).join(', ')}`);
   if (slotMode) {
     logger.info(`Slot mode: ${slotsPerMember} slot(s)/member → ${available.length * slotsPerMember} parallel worktree(s)`);
@@ -397,6 +415,13 @@ export async function runParallelCouncil(options: ParallelCouncilOptions): Promi
     const scheduled = convergence.pruneStuck(allScheduled);
 
     if (scheduled.length === 0) {
+      if (round === 1 && (options.focusDims === undefined || options.focusDims.length === 0)) {
+        logger.error(chalk.red(
+          'No dimensions scheduled. If this is a fresh project, run `danteforge assess` first to initialise .danteforge/compete/matrix.json.',
+        ));
+        process.exitCode = 1;
+        return;
+      }
       logger.info(chalk.green('No eligible dimensions left. Frontier or convergence limit reached.'));
       break;
     }

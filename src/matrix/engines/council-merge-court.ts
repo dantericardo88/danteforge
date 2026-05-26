@@ -10,7 +10,6 @@
 // `git apply` conflicts are caught one at a time.
 import path from 'node:path';
 import fs from 'node:fs/promises';
-import os from 'node:os';
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import { logger } from '../../core/logger.js';
@@ -92,15 +91,6 @@ export interface MergeCourtOptions {
    * final judging.
    */
   judgeOnly?: boolean;
-}
-
-function resolveConsensus(verdicts: MemberVerdict[]): 'PASS' | 'FAIL' | 'SPLIT' {
-  if (verdicts.length === 0) return 'FAIL';
-  const passes = verdicts.filter(v => v.verdict === 'PASS').length;
-  const fails  = verdicts.filter(v => v.verdict === 'FAIL').length;
-  if (passes > fails) return 'PASS';
-  if (fails > passes) return 'FAIL';
-  return 'SPLIT';
 }
 
 // ── Judge adapter factory (judge-mode only) ───────────────────────────────────
@@ -185,7 +175,11 @@ function buildAnonymizationMap(builderIds: CouncilMemberId[]): {
 
 async function applyDiffToMain(diff: string, projectPath: string): Promise<void> {
   if (!diff.trim()) return;
-  const tmpFile = path.join(os.tmpdir(), `council-patch-${Date.now()}.patch`);
+  // Use a project-relative temp dir to avoid os.tmpdir() paths with spaces on
+  // Windows (e.g. C:\Users\My Name\AppData\Local\Temp) which break git apply.
+  const tmpDir = path.join(projectPath, '.danteforge-worktrees', '.tmp-patches');
+  await fs.mkdir(tmpDir, { recursive: true });
+  const tmpFile = path.join(tmpDir, `council-patch-${Date.now()}.patch`);
   try {
     await fs.writeFile(tmpFile, diff, 'utf8');
     await execFileAsync('git', ['apply', '--whitespace=nowarn', '--3way', tmpFile], {
