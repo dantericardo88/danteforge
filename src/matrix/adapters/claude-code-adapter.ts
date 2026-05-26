@@ -422,6 +422,7 @@ export class ClaudeCodeAdapter implements AgentAdapter {
  * constraints so the agent self-enforces the lease boundary.
  */
 export function buildClaudeJudgePrompt(workPacket: WorkPacket, _lease: AgentLease): string {
+  if (workPacket.dimensionId === 'council-consultation') return workPacket.objective;
   return `You are an independent code reviewer. READ ONLY — do NOT make any file changes.
 
 # Work Being Reviewed

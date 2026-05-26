@@ -366,6 +366,7 @@ Make the file edits needed to satisfy the acceptance criteria. Stop when done.`;
 }
 
 export function buildGeminiJudgePrompt(workPacket: WorkPacket, lease: AgentLease): string {
+  if (workPacket.dimensionId === 'council-consultation') return workPacket.objective;
   return `You are a code reviewer. Read the current state of the codebase and render a verdict on whether the work meets the criteria below. Do NOT make any file changes.
 
 # Work Being Reviewed

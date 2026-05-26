@@ -123,7 +123,48 @@ describe('buildGrokJudgePrompt — FIX 3: diff-pass-through', () => {
   });
 });
 
-// ── FIX 4: council.ts — makeAdapter judge mode doesn't include gemini ─────────
+// ── FIX 5: All adapters pass consultation objectives through verbatim ─────────
+
+import { buildCodexJudgePrompt } from '../src/matrix/adapters/codex-adapter.js';
+import { buildClaudeJudgePrompt } from '../src/matrix/adapters/claude-code-adapter.js';
+import { buildGeminiJudgePrompt } from '../src/matrix/adapters/gemini-cli-adapter.js';
+
+function makeConsultWorkPacket(objective: string): WorkPacket {
+  return {
+    ...makeMinimalWorkPacket(objective),
+    dimensionId: 'council-consultation',
+  } as unknown as WorkPacket;
+}
+
+describe('consultation passthrough — all 4 adapters', () => {
+  const consultPrompt = 'You are SeniorEng. QUESTION: Is this ready? ASSESSMENT: ...';
+
+  it('Codex passes consultation through verbatim', () => {
+    const result = buildCodexJudgePrompt(makeConsultWorkPacket(consultPrompt), makeMinimalLease());
+    assert.equal(result, consultPrompt);
+    assert.ok(!result.includes('independent code reviewer'));
+  });
+
+  it('Claude Code passes consultation through verbatim', () => {
+    const result = buildClaudeJudgePrompt(makeConsultWorkPacket(consultPrompt), makeMinimalLease());
+    assert.equal(result, consultPrompt);
+    assert.ok(!result.includes('independent code reviewer'));
+  });
+
+  it('Gemini passes consultation through verbatim', () => {
+    const result = buildGeminiJudgePrompt(makeConsultWorkPacket(consultPrompt), makeMinimalLease());
+    assert.equal(result, consultPrompt);
+    assert.ok(!result.includes('code reviewer'));
+  });
+
+  it('Grok passes consultation through verbatim', () => {
+    const result = buildGrokJudgePrompt(makeConsultWorkPacket(consultPrompt), makeMinimalLease());
+    assert.equal(result, consultPrompt);
+    assert.ok(!result.includes('code reviewer'));
+  });
+});
+
+// ── FIX 4 (original): council.ts — makeAdapter judge mode doesn't include gemini ─────────
 
 import type { CouncilMemberId } from '../src/cli/commands/council.js';
 
