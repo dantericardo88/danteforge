@@ -309,3 +309,83 @@ describe('ClaudeCodeAdapter — judge mode', () => {
     assert.deepEqual(reverted, ['src/rogue-edit.ts'], 'rogue file must be reverted');
   });
 });
+
+// ── GrokBuildAdapter judge-mode capture ──────────────────────────────────────
+
+import { GrokBuildAdapter } from '../src/matrix/adapters/grok-build-adapter.js';
+
+describe('GrokBuildAdapter — judge mode', () => {
+  it('captures stdout as finalMessage when judgeMode:true', async () => {
+    const adapter = new GrokBuildAdapter({
+      workPacket: makePacket(),
+      judgeMode: true,
+      _isAvailable: async () => true,
+      _gitDiff: async () => [],
+      _spawn: () => makeFakeProc(VERDICT_OUTPUT) as never,
+    });
+    const prepared = await adapter.prepareRun({ lease: makeLease(), cwd: '/tmp/test' });
+    const handle = await adapter.startRun(prepared);
+    const result = await adapter.collectResult(handle);
+    assert.ok(result.finalMessage?.includes('VERDICT: PASS'), `finalMessage: ${result.finalMessage}`);
+    assert.equal(result.status, 'completed');
+  });
+
+  it('invalidates verdict when Grok judge modifies worktree', async () => {
+    const reverted: string[] = [];
+    const adapter = new GrokBuildAdapter({
+      workPacket: makePacket(),
+      judgeMode: true,
+      _isAvailable: async () => true,
+      _gitDiff: async () => ['src/rogue-edit.ts'],
+      _revertFile: async (_cwd, file) => { reverted.push(file); },
+      _spawn: () => makeFakeProc('VERDICT: PASS') as never,
+    });
+    const prepared = await adapter.prepareRun({ lease: makeLease(), cwd: '/tmp/test' });
+    const handle = await adapter.startRun(prepared);
+    const result = await adapter.collectResult(handle);
+    assert.equal(result.status, 'failed', 'rogue Grok judge must be failed');
+    assert.ok(result.errorReason?.includes('judge_wrote_files'), `errorReason: ${result.errorReason}`);
+    assert.ok(result.finalMessage?.includes('invalidated'), `finalMessage: ${result.finalMessage}`);
+    assert.deepEqual(reverted, ['src/rogue-edit.ts']);
+  });
+});
+
+// ── GeminiCLIAdapter judge-mode capture ──────────────────────────────────────
+
+import { GeminiCLIAdapter } from '../src/matrix/adapters/gemini-cli-adapter.js';
+
+describe('GeminiCLIAdapter — judge mode', () => {
+  it('captures stdout as finalMessage when judgeMode:true', async () => {
+    const adapter = new GeminiCLIAdapter({
+      workPacket: makePacket(),
+      judgeMode: true,
+      _isAvailable: async () => true,
+      _gitDiff: async () => [],
+      _spawn: () => makeFakeProc(VERDICT_OUTPUT) as never,
+    });
+    const prepared = await adapter.prepareRun({ lease: makeLease(), cwd: '/tmp/test' });
+    const handle = await adapter.startRun(prepared);
+    const result = await adapter.collectResult(handle);
+    assert.ok(result.finalMessage?.includes('VERDICT: PASS'), `finalMessage: ${result.finalMessage}`);
+    assert.equal(result.status, 'completed');
+  });
+
+  it('invalidates verdict when Gemini judge modifies worktree', async () => {
+    const reverted: string[] = [];
+    const adapter = new GeminiCLIAdapter({
+      workPacket: makePacket(),
+      judgeMode: true,
+      _isAvailable: async () => true,
+      _gitDiff: async () => ['src/rogue-edit.ts'],
+      _revertFile: async (_cwd, file) => { reverted.push(file); },
+      _spawn: () => makeFakeProc('VERDICT: PASS') as never,
+    });
+    const prepared = await adapter.prepareRun({ lease: makeLease(), cwd: '/tmp/test' });
+    const handle = await adapter.startRun(prepared);
+    const result = await adapter.collectResult(handle);
+    assert.equal(result.status, 'failed', 'rogue Gemini judge must be failed');
+    assert.ok(result.errorReason?.includes('judge_wrote_files'), `errorReason: ${result.errorReason}`);
+    assert.ok(result.finalMessage?.includes('invalidated'), `finalMessage: ${result.finalMessage}`);
+    assert.deepEqual(reverted, ['src/rogue-edit.ts']);
+  });
+});
