@@ -59,6 +59,8 @@ import {
 } from '../../matrix/engines/council-session-state.js';
 import type { WorkPacket } from '../../matrix/types/work-graph.js';
 import type { AgentLease } from '../../matrix/types/lease.js';
+import { runCIPCheck } from '../../core/completion-integrity.js';
+import { createTimeMachineCommit } from '../../core/time-machine.js';
 
 const execFileAsync = promisify(execFile);
 
@@ -133,12 +135,29 @@ function makeBuilderAdapter(id: CouncilMemberId, workPacket: WorkPacket) {
   }
 }
 
-// ── Post-merge validate (auto-receipt generation) ─────────────────────────────
+// ── Post-merge doctrine (validate + CIP + Time Machine) ──────────────────────
 
-async function runPostMergeValidate(cwd: string, mergedDims: string[]): Promise<void> {
-  if (mergedDims.length === 0) return;
-  logger.info(chalk.dim(`  [validate] Running validate for ${mergedDims.length} merged dim(s)...`));
-  for (const dimId of mergedDims) {
+interface PostMergeDim {
+  dimId: string;
+  changedFiles: string[];
+}
+
+interface PostMergeDoctrineResult {
+  cipBlocked: string[];
+  timeMachineCommitId: string | null;
+}
+
+async function runPostMergeDoctrine(
+  cwd: string,
+  mergedDims: PostMergeDim[],
+): Promise<PostMergeDoctrineResult> {
+  if (mergedDims.length === 0) return { cipBlocked: [], timeMachineCommitId: null };
+
+  const dimIds = mergedDims.map(d => d.dimId);
+
+  // Step 1: validate — generate receipts (existing behavior, unchanged)
+  logger.info(chalk.dim(`  [validate] Running validate for ${dimIds.length} merged dim(s)...`));
+  for (const dimId of dimIds) {
     try {
       await execFileAsync('node', ['dist/index.js', 'validate', dimId], {
         cwd, timeout: 120_000,
@@ -149,6 +168,41 @@ async function runPostMergeValidate(cwd: string, mergedDims: string[]): Promise<
       logger.info(chalk.dim(`  [validate] ${dimId} — no outcome defined or failed (ok at breadth stage)`));
     }
   }
+
+  // Step 2: CIP check — best-effort, warns if blocksFrontierReached but never aborts
+  const cipBlocked: string[] = [];
+  for (const dimId of dimIds) {
+    try {
+      const result = await runCIPCheck(dimId, { cwd });
+      if (result.blocksFrontierReached) {
+        cipBlocked.push(dimId);
+        logger.warn(chalk.yellow(
+          `  [cip] ${dimId} blocks frontier — gaps: ${result.gaps.slice(0, 3).join('; ')}`,
+        ));
+      } else {
+        logger.info(chalk.dim(`  [cip] ${dimId} ${result.cipClass} (score ${result.cipScore.toFixed(1)})`));
+      }
+    } catch (err) {
+      logger.info(chalk.dim(`  [cip] ${dimId} — check skipped: ${String(err).split('\n')[0]}`));
+    }
+  }
+
+  // Step 3: Time Machine commit — best-effort, never blocks
+  let timeMachineCommitId: string | null = null;
+  try {
+    const allChangedFiles = [...new Set(mergedDims.flatMap(d => d.changedFiles))];
+    const commit = await createTimeMachineCommit({
+      cwd,
+      paths: allChangedFiles,
+      label: `council-merge/${dimIds.join(',')}`,
+    });
+    timeMachineCommitId = commit.commitId;
+    logger.info(chalk.dim(`  [time-machine] commit ${commit.commitId.slice(0, 12)} recorded`));
+  } catch (err) {
+    logger.info(chalk.dim(`  [time-machine] skipped — ${String(err).split('\n')[0]}`));
+  }
+
+  return { cipBlocked, timeMachineCommitId };
 }
 
 // ── Progress artifact ─────────────────────────────────────────────────────────
@@ -464,18 +518,27 @@ export async function runParallelCouncil(options: ParallelCouncilOptions): Promi
         logger.warn(chalk.yellow(`  Stuck dims (${conv.stuck}): ${conv.stuckDims.map(d => d.dimensionId).join(', ')}`));
       }
 
-      // Auto-validate merged dims to generate receipts
+      // Auto-validate merged dims, then run CIP + Time Machine doctrine gates
       if (!options.skipValidate && roundMerged > 0) {
-        const mergedDimIds = mergeResults
+        const mergedDims: PostMergeDim[] = mergeResults
           .filter(r => r.merged)
           .flatMap(r => {
             const slotId = (r as { slotId?: string }).slotId;
             const dims = slotMode && slotId && bySlot
               ? (bySlot.get(slotId) ?? [])
               : (dimsByMember.get(r.memberId as CouncilMemberId) ?? []);
-            return dims.map(d => d.dimensionId);
+            const seen = new Set<string>();
+            return dims
+              .filter(d => { const dup = seen.has(d.dimensionId); seen.add(d.dimensionId); return !dup; })
+              .map(d => ({ dimId: d.dimensionId, changedFiles: r.changedFiles }));
           });
-        await runPostMergeValidate(cwd, [...new Set(mergedDimIds)]);
+        const doctrineResult = await runPostMergeDoctrine(cwd, mergedDims);
+        if (doctrineResult.cipBlocked.length > 0) {
+          logger.warn(chalk.yellow(
+            `  [doctrine] ${doctrineResult.cipBlocked.length} dim(s) CIP-blocked (frontier not reached): ` +
+            doctrineResult.cipBlocked.join(', '),
+          ));
+        }
       }
 
       await writeProgress(cwd, {

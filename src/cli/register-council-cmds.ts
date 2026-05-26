@@ -82,4 +82,47 @@ program
       }
     })();
   });
+
+// ── council-crusade ───────────────────────────────────────────────────────────
+
+program
+  .command('council-crusade')
+  .description('Autonomous multi-agent frontier push: council loops over weakest dims until target score reached. Combines council --parallel with outer scoring loop.')
+  .option('--goal <goal>', 'Mission statement for each council pass')
+  .option('--target <n>', 'Score target per dimension (default: 9)', '9')
+  .option('--passes <n>', 'Maximum outer loop passes (default: 5)', '5')
+  .option('--rounds-per-pass <n>', 'Council rounds per pass (default: 2)', '2')
+  .option('--dims-per-pass <n>', 'Max dimensions per pass (default: 4)', '4')
+  .option('--slots-per-member <n>', 'Sub-agents per council member (default: 2)', '2')
+  .option('--min-judges <n>', 'Min cross-member judges per candidate (default: 2)', '2')
+  .option('--focus-dims <ids>', 'Comma-separated dim IDs to restrict to')
+  .option('--skip-validate', 'Skip post-merge validate (faster for testing)')
+  .option('--dry-run', 'Print plan without running')
+  .option('--json', 'Emit JSON summary')
+  .option('--cwd <path>', 'Project directory')
+  .action((opts) => {
+    void (async () => {
+      try {
+        const { runCouncilCrusade } = await import('./commands/council-crusade.js');
+        await runCouncilCrusade({
+          cwd: opts.cwd as string | undefined,
+          goal: opts.goal as string | undefined,
+          target: opts.target ? parseInt(opts.target as string, 10) : 9,
+          maxPasses: opts.passes ? parseInt(opts.passes as string, 10) : 5,
+          maxRoundsPerPass: opts.roundsPerPass ? parseInt(opts.roundsPerPass as string, 10) : 2,
+          maxDimsPerPass: opts.dimsPerPass ? parseInt(opts.dimsPerPass as string, 10) : 4,
+          slotsPerMember: opts.slotsPerMember ? parseInt(opts.slotsPerMember as string, 10) : 2,
+          minJudges: opts.minJudges ? parseInt(opts.minJudges as string, 10) : 2,
+          focusDims: opts.focusDims ? (opts.focusDims as string).split(',').map((s: string) => s.trim()) : undefined,
+          skipValidate: opts.skipValidate as boolean | undefined,
+          dryRun: opts.dryRun as boolean | undefined,
+          json: opts.json as boolean | undefined,
+        });
+      } catch (err) {
+        const { formatAndLogError } = await import('../core/format-error.js');
+        formatAndLogError(err, 'council-crusade');
+        process.exitCode = 1;
+      }
+    })();
+  });
 }

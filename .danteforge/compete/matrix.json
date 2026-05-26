@@ -3247,6 +3247,28 @@
           "timeout_ms": 120000,
           "required_callsite": "src/cli/commands/council-parallel.ts",
           "description": "T7 multi-receipt: hierarchical council (slot expansion + streaming judge queue + K-of-M consensus) proven end-to-end."
+        },
+        {
+          "id": "mao_t5_council_crusade",
+          "tier": "T5",
+          "kind": "runtime-exec",
+          "command": "npx tsx --test tests/council-crusade.test.ts",
+          "expected_exit": 0,
+          "expected_output_pattern": "pass 15",
+          "timeout_ms": 60000,
+          "required_callsite": "src/cli/commands/council-crusade.ts",
+          "description": "Council crusade autonomous loop: dim selection by gap×weight, stall detection, COMPLETE/MAX_PASSES status, report writer — 15 tests on real hardware."
+        },
+        {
+          "id": "mao_t7_council_crusade_complete",
+          "tier": "T7",
+          "kind": "runtime-exec",
+          "command": "npx tsx --test tests/council-slot-expansion.test.ts tests/council-judge-queue.test.ts tests/council-consensus.test.ts tests/council-crusade.test.ts",
+          "expected_exit": 0,
+          "expected_output_pattern": "pass",
+          "timeout_ms": 180000,
+          "required_callsite": "src/cli/commands/council-crusade.ts",
+          "description": "T7 multi-receipt: full council stack proven — slots + streaming judges + K-of-M consensus + autonomous crusade loop with doctrine gates wired."
         }
       ],
       "declared_ceiling": "T7",
