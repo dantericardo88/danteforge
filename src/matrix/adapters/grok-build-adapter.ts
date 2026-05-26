@@ -201,9 +201,11 @@ export class GrokBuildAdapter implements AgentAdapter {
 
       // --single/-p passes the prompt as a single-turn headless invocation and exits.
       // Previously the prompt was args[0], which Grok's CLI treated as a subcommand name.
+      // Note: --effort maps to the reasoningEffort API parameter which the grok-build model
+      // does not support (400 Bad Request). Omit it to use the model's default effort level.
       const grokArgs = judgeMode
         ? ['--single', prompt, '--permission-mode', 'plan', '--output-format', 'plain', '--cwd', normalizeCwd(worktreeRoot), '--no-memory']
-        : ['--single', prompt, '--always-approve', '--effort', effort, '--cwd', normalizeCwd(worktreeRoot), '--no-memory', '--check'];
+        : ['--single', prompt, '--always-approve', '--cwd', normalizeCwd(worktreeRoot), '--no-memory'];
 
       const spawnOpts: SpawnOptions = {
         cwd: normalizeCwd(worktreeRoot),
