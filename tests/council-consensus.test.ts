@@ -84,6 +84,36 @@ describe('computeConsensus', () => {
     assert.notEqual(r.verdict, 'PASS');
   });
 
+  test('UNCLEAR-dominant: 1 PASS + 1 UNCLEAR → FAIL (not false-PASS)', () => {
+    const votes: WeightedVote[] = [
+      makeVote({ verdict: 'PASS', judgeMemberId: 'codex', builderMemberId: 'claude-code' }),
+      makeVote({ verdict: 'UNCLEAR', judgeMemberId: 'grok-build', builderMemberId: 'claude-code' }),
+    ];
+    const r = computeConsensus(votes, { minJudges: 2 });
+    assert.equal(r.verdict, 'FAIL');
+    assert.ok(r.summary.includes('UNCLEAR-dominant'));
+  });
+
+  test('UNCLEAR-dominant: 2 UNCLEAR → FAIL with summary', () => {
+    const votes: WeightedVote[] = [
+      makeVote({ verdict: 'UNCLEAR', judgeMemberId: 'codex', builderMemberId: 'claude-code' }),
+      makeVote({ verdict: 'UNCLEAR', judgeMemberId: 'grok-build', builderMemberId: 'claude-code' }),
+    ];
+    const r = computeConsensus(votes, { minJudges: 2 });
+    assert.equal(r.verdict, 'FAIL');
+    assert.ok(r.summary.includes('2/2'));
+  });
+
+  test('UNCLEAR minority: 2 PASS + 1 UNCLEAR → PASS (not blocked)', () => {
+    const votes: WeightedVote[] = [
+      makeVote({ verdict: 'PASS', judgeMemberId: 'codex', builderMemberId: 'claude-code' }),
+      makeVote({ verdict: 'PASS', judgeMemberId: 'grok-build', builderMemberId: 'claude-code' }),
+      makeVote({ verdict: 'UNCLEAR', judgeMemberId: 'codex', builderMemberId: 'claude-code' }),
+    ];
+    const r = computeConsensus(votes, { minJudges: 2 });
+    assert.equal(r.verdict, 'PASS');
+  });
+
   test('PASS without any cross-member judge → FAIL (no cross-member PASS)', () => {
     const votes: WeightedVote[] = [
       makeVote({ verdict: 'PASS', judgeMemberId: 'claude-code', builderMemberId: 'claude-code', weight: 0.5 }),

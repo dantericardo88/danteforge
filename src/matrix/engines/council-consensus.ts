@@ -95,6 +95,21 @@ export function computeConsensus(
 
   const weightedScore = totalWeight > 0 ? passWeight / totalWeight : 0;
 
+  // Guard: if a majority of judges abstained (UNCLEAR), treat as FAIL rather than
+  // letting a single PASS vote produce a deceptively high weightedScore.
+  const unclearCount = votes.filter(v => v.verdict === 'UNCLEAR').length;
+  if (unclearCount * 2 >= votes.length) {
+    return {
+      verdict: 'FAIL',
+      weightedScore: 0,
+      totalWeight,
+      minJudgesMet: true,
+      crossMemberJudges,
+      dissentLog,
+      summary: `UNCLEAR-dominant: ${unclearCount}/${votes.length} judges abstained — treating as FAIL`,
+    };
+  }
+
   let verdict: ConsensusResult['verdict'];
   if (passWeight > failWeight && weightedScore >= passFraction && crossMemberJudges >= 1) {
     verdict = 'PASS';

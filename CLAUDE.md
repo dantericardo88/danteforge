@@ -49,14 +49,14 @@ a session-persistent guide file you can load with `@.danteforge/GUIDE.md`.
 
 DanteForge's substrate for coordinating many AI agents in parallel without losing truth, architecture, or control. Implements the **Observe → Map → Decompose → Simulate → Lease → Execute → Verify → Merge → Rescore → Learn → Repeat** loop with constitutional discipline: agents propose, DanteForge disposes.
 
-**MVP status:** Phases 0–12 shipped, Golden Flow integration test passing, planning-loop CLI wired. Fixes A/B/C (self-scoring elimination, kernel-owned score writes, protected-line provenance) shipped on branch `matrix-kernel-phase-1`. Phase 13 (real Codex/Claude Code/DanteCode adapters) and Phase 14 (VS Code War Room) are follow-up passes.
+**MVP status:** Phases 0–14 shipped. Golden Flow integration test passing, planning-loop CLI wired. Fixes A/B/C (self-scoring elimination, kernel-owned score writes, protected-line provenance) shipped. Phase 13 real adapters shipped: `codex-adapter`, `claude-code-adapter`, `grok-build-adapter`, `gemini-cli-adapter`, `dantecode-adapter`. Phase 14 (VS Code War Room) deferred.
 
 **Surfaces:**
 - CLI: `danteforge matrix-kernel <init|map-project|synthesize-dimensions|work-packets|simulate|status|leases-list|verify-capability|protect|protected-lines|unprotect>`
 - Types: `src/matrix/types/*` (six graphs + courts + reports + capability-test + agent-evidence)
 - Engines: `src/matrix/engines/*` (project graph, dimension synth, work packets, dependency graph, ownership, lease, conflict radar, simulation, retrospective, report generator, **capability-test-runner**, **protected-lines**)
 - Courts: `src/matrix/courts/*` (verification, no-stub scan, red-team, taste-gate, merge-court)
-- Adapters: `src/matrix/adapters/*` (interface, fake, generic-shell — real adapters deferred)
+- Adapters: `src/matrix/adapters/*` (interface, fake, generic-shell, codex, claude-code, grok-build, gemini-cli, dantecode)
 - Util: `src/matrix/util/glob.ts` (shared glob matcher)
 - **Load-bearing test:** `tests/matrix-golden-flow.test.ts` — 18 assertions covering the entire MVP loop
 

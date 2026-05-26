@@ -63,6 +63,9 @@ export async function createCouncilWorktrees(
   const worktreeBase = path.join(opts.projectPath, '.danteforge-worktrees');
   const git = opts._git ?? defaultGit();
 
+  // Prune stale worktree refs left by prior aborted runs before creating new ones.
+  await execFileAsync('git', ['worktree', 'prune'], { cwd: opts.projectPath, timeout: 10_000 }).catch(() => { /* ignore */ });
+
   const settled = await Promise.allSettled(
     memberIds.map(async (memberId): Promise<CouncilWorktreeHandle> => {
       const slug = memberId.replace(/[^a-z0-9]/gi, '-').toLowerCase();
@@ -110,6 +113,9 @@ export async function createCouncilWorktreesForSlots(
   const runId = opts.runId ?? `c${Date.now()}`;
   const worktreeBase = path.join(opts.projectPath, '.danteforge-worktrees');
   const git = opts._git ?? defaultGit();
+
+  // Prune stale worktree refs left by prior aborted runs before creating new ones.
+  await execFileAsync('git', ['worktree', 'prune'], { cwd: opts.projectPath, timeout: 10_000 }).catch(() => { /* ignore */ });
 
   const settled = await Promise.allSettled(
     slots.map(async (slot): Promise<CouncilWorktreeHandle> => {
