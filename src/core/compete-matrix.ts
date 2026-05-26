@@ -223,9 +223,10 @@ export async function loadMatrix(
 }
 
 /**
- * Phase F: walk the matrix, and for every dim that declares outcomes, replace
- * `scores.self` with the derived value. Preserves the original at `legacy_score`.
- * Best-effort — if evidence cannot be loaded, the legacy score is preserved unchanged.
+ * Phase F: walk the matrix, and for every dim that declares outcomes, compute
+ * the outcome-evidence-derived score and store it in `scores.derived`.
+ * `scores.self` is the competitive/adversarial assessment — this function does NOT touch it.
+ * Best-effort — if evidence cannot be loaded, derived is left unchanged.
  */
 async function applyOutcomeDerivedScores(matrix: CompeteMatrix, cwd: string): Promise<void> {
   let evidence: import('../matrix/types/outcome.js').OutcomeEvidence | null = null;
@@ -270,9 +271,9 @@ async function applyOutcomeDerivedScores(matrix: CompeteMatrix, cwd: string): Pr
       const breakdown = computeDerivedScoreWithBreakdown(dfs, evidence!);
       // Depth doctrine: dims with no outcomes declared cannot exceed 7.0.
       const derived = applyLegacyReceiptCeiling(breakdown.score, breakdown);
-      // Preserve the original (agent-written) value for diff displays.
-      (dim as unknown as Record<string, unknown>)['legacy_score'] = dim.scores.self;
-      dim.scores.self = derived;
+      // Write derived score to scores.derived only.
+      // scores.self is the human/adversarial competitive assessment — do not overwrite it.
+      (dim.scores as unknown as Record<string, unknown>)['derived'] = derived;
     } catch {
       // best-effort; if scoring fails, leave the legacy value
     }
