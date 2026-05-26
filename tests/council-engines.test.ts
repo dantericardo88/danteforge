@@ -239,7 +239,7 @@ describe('CodexAdapter — judge mode', () => {
     assert.equal(result.status, 'completed');
   });
 
-  it('does NOT call _gitDiff in judge mode', async () => {
+  it('calls _gitDiff in judge mode to detect rogue writes', async () => {
     let gitDiffCalled = false;
     const adapter = new CodexAdapter({
       workPacket: makePacket(),
@@ -251,7 +251,26 @@ describe('CodexAdapter — judge mode', () => {
     const prepared = await adapter.prepareRun({ lease: makeLease(), cwd: '/tmp/test' });
     const handle = await adapter.startRun(prepared);
     await adapter.collectResult(handle);
-    assert.equal(gitDiffCalled, false, 'gitDiff must NOT be called in judge mode');
+    assert.equal(gitDiffCalled, true, 'gitDiff MUST be called in judge mode to catch rogue writes');
+  });
+
+  it('invalidates verdict when Codex judge modifies worktree', async () => {
+    const reverted: string[] = [];
+    const adapter = new CodexAdapter({
+      workPacket: makePacket(),
+      judgeMode: true,
+      _isAvailable: async () => true,
+      _gitDiff: async () => ['src/rogue-edit.ts'],
+      _revertFile: async (_cwd, file) => { reverted.push(file); },
+      _spawn: () => makeFakeProc('VERDICT: PASS') as never,
+    });
+    const prepared = await adapter.prepareRun({ lease: makeLease(), cwd: '/tmp/test' });
+    const handle = await adapter.startRun(prepared);
+    const result = await adapter.collectResult(handle);
+    assert.equal(result.status, 'failed', 'rogue Codex judge must be failed');
+    assert.ok(result.errorReason?.includes('judge_wrote_files'), `errorReason: ${result.errorReason}`);
+    assert.ok(result.finalMessage?.includes('invalidated'), `finalMessage: ${result.finalMessage}`);
+    assert.deepEqual(reverted, ['src/rogue-edit.ts']);
   });
 });
 

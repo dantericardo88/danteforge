@@ -272,6 +272,21 @@ export class GeminiCLIAdapter implements AgentAdapter {
 
       // In judge mode, non-zero exit is non-fatal (judge may have nothing to write).
       if (judgeMode) {
+        state.finalMessage = state.capturedOutput.trim() || '(no judge output from gemini)';
+        // Post-run diff: judges must not modify the worktree.
+        const judgeGitDiff = this.options._gitDiff ?? defaultGitDiff;
+        const changedAfterJudge = await judgeGitDiff(worktreeRoot);
+        if (changedAfterJudge.length > 0) {
+          logger.warn(`[GeminiCLIAdapter] judge ${runId} modified ${changedAfterJudge.length} file(s) — reverting; verdict invalidated`);
+          const revertFile = this.options._revertFile ?? defaultRevertFile;
+          await Promise.allSettled(changedAfterJudge.map(f => revertFile(worktreeRoot, f)));
+          state.errorReason = `judge_wrote_files: ${changedAfterJudge.join(', ')}`;
+          state.finalMessage = `(verdict invalidated — judge modified worktree: ${changedAfterJudge.join(', ')})`;
+          state.capturedOutput = '';
+          state.status = 'failed';
+          finalize(state, runId);
+          return;
+        }
         state.status = 'completed';
         state.events.push({ eventId: `${runId}.complete`, runId, ts: now(), kind: 'completed' });
         state.endMs = Date.now();

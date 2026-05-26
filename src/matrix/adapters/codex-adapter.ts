@@ -219,6 +219,20 @@ export class CodexAdapter implements AgentAdapter {
         } catch { /* file not written — subprocess mocked or flag unsupported */ }
         state.capturedOutput = fromFile || Buffer.concat(chunks).toString('utf8');
         state.finalMessage = state.capturedOutput.trim() || '(no judge output)';
+        // Post-run diff: judges must not modify the worktree.
+        const judgeGitDiff = this.options._gitDiff ?? defaultGitDiff;
+        const changedAfterJudge = await judgeGitDiff(worktreeRoot);
+        if (changedAfterJudge.length > 0) {
+          logger.warn(`[CodexAdapter] judge ${runId} modified ${changedAfterJudge.length} file(s) — reverting; verdict invalidated`);
+          const revertFile = this.options._revertFile ?? defaultRevertFile;
+          await Promise.allSettled(changedAfterJudge.map(f => revertFile(worktreeRoot, f)));
+          state.errorReason = `judge_wrote_files: ${changedAfterJudge.join(', ')}`;
+          state.finalMessage = `(verdict invalidated — judge modified worktree: ${changedAfterJudge.join(', ')})`;
+          state.capturedOutput = '';
+          state.status = 'failed';
+          finalize(state, runId);
+          return;
+        }
         state.status = 'completed';
         state.events.push({ eventId: `${runId}.complete`, runId, ts: now(), kind: 'completed' });
         state.endMs = Date.now();

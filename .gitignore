@@ -40,6 +40,12 @@ examples/todo-app/.danteforge/**
 # Worktrees created by DanteForge agents
 .danteforge-worktrees/
 
+# AI tool workspace sidecars — gitignored so they don't trigger rogue-judge detection
+# when council members initialise their own workspace dirs during judge sessions.
+.openhands/
+.continue/
+.cursor/
+
 # Logs
 *.log
 

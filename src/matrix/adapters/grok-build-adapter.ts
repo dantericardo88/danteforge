@@ -255,6 +255,20 @@ export class GrokBuildAdapter implements AgentAdapter {
       if (judgeMode) {
         // Explicit finalMessage so collectResult() doesn't fall through to "Grok ran; 0 files" fallback.
         state.finalMessage = state.capturedOutput.trim() || '(no judge output from grok)';
+        // Post-run diff: judges must not modify the worktree.
+        const judgeGitDiff = this.options._gitDiff ?? defaultGitDiff;
+        const changedAfterJudge = await judgeGitDiff(worktreeRoot);
+        if (changedAfterJudge.length > 0) {
+          logger.warn(`[GrokBuildAdapter] judge ${runId} modified ${changedAfterJudge.length} file(s) — reverting; verdict invalidated`);
+          const revertFile = this.options._revertFile ?? defaultRevertFile;
+          await Promise.allSettled(changedAfterJudge.map(f => revertFile(worktreeRoot, f)));
+          state.errorReason = `judge_wrote_files: ${changedAfterJudge.join(', ')}`;
+          state.finalMessage = `(verdict invalidated — judge modified worktree: ${changedAfterJudge.join(', ')})`;
+          state.capturedOutput = '';
+          state.status = 'failed';
+          finalize(state, runId);
+          return;
+        }
         state.status = 'completed';
         state.events.push({ eventId: `${runId}.complete`, runId, ts: now(), kind: 'completed' });
         state.endMs = Date.now();
