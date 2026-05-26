@@ -42,6 +42,8 @@ export type CouncilMemberId = 'codex' | 'gemini-cli' | 'grok-build' | 'claude-co
 
 export interface MergeCourtResult {
   memberId: CouncilMemberId;
+  /** Slot that produced this result — undefined in non-slot mode. */
+  slotId?: string;
   worktreePath: string;
   changedFiles: string[];
   verdicts: MemberVerdict[];
@@ -83,6 +85,13 @@ export interface MergeCourtOptions {
    * here — the streaming judge already approved this candidate.
    */
   preComputedConsensus?: Map<string, 'PASS' | 'FAIL' | 'SPLIT'>;
+  /**
+   * When true, collect verdicts but do NOT apply any diffs to the main working
+   * tree. Used by the streaming judge phase — only the final merge court applies
+   * diffs, preventing double-apply when a candidate gets both streaming and
+   * final judging.
+   */
+  judgeOnly?: boolean;
 }
 
 function resolveConsensus(verdicts: MemberVerdict[]): 'PASS' | 'FAIL' | 'SPLIT' {
@@ -207,23 +216,23 @@ export async function runMergeCourt(opts: MergeCourtOptions): Promise<MergeCourt
 
     if (changedFiles.length === 0) {
       logger.info(`[merge-court] ${candidateId} (${builderId}): no changes — skipping judge phase`);
-      results.push({ memberId: builderId, worktreePath: handle.worktreePath,
+      results.push({ memberId: builderId, slotId: handle.slotId, worktreePath: handle.worktreePath,
         changedFiles: [], verdicts: [], consensus: 'FAIL', merged: false,
         anonymizationMap, dissentLog: [] });
       continue;
     }
 
-    // File-claim gate: if ANY changed file is already claimed by another member, skip
-    // the merge entirely. Partial-conflict merges corrupt the claim registry because
-    // git apply cannot selectively apply hunks at file granularity without a re-diff.
+    // File-claim gate: if ANY changed file is already claimed by a conflicting slot,
+    // skip the merge entirely. In slot mode, same-member different-slot also conflicts.
     if (opts.fileClaims) {
-      const anyConflict = changedFiles.some(f => opts.fileClaims!.hasConflict(builderId as CouncilMemberId, [f]));
+      const slotIdForCheck = handle.slotId;
+      const anyConflict = changedFiles.some(f => opts.fileClaims!.hasConflict(builderId as CouncilMemberId, [f], slotIdForCheck));
       if (anyConflict) {
-        const nConflict = changedFiles.filter(f => opts.fileClaims!.hasConflict(builderId as CouncilMemberId, [f])).length;
-        logger.warn(`[merge-court] ${builderId}: ${nConflict}/${changedFiles.length} file(s) claimed by other members — skipping (structural gate)`);
-        results.push({ memberId: builderId, worktreePath: handle.worktreePath,
+        const nConflict = changedFiles.filter(f => opts.fileClaims!.hasConflict(builderId as CouncilMemberId, [f], slotIdForCheck)).length;
+        logger.warn(`[merge-court] ${builderId}: ${nConflict}/${changedFiles.length} file(s) conflict — skipping (structural gate)`);
+        results.push({ memberId: builderId, slotId: handle.slotId, worktreePath: handle.worktreePath,
           changedFiles, verdicts: [], consensus: 'FAIL', merged: false,
-          mergeError: `${nConflict} of ${changedFiles.length} file(s) claimed by other council members`,
+          mergeError: `${nConflict} of ${changedFiles.length} file(s) claimed by conflicting slot`,
           anonymizationMap, dissentLog: [] });
         continue;
       }
@@ -241,19 +250,20 @@ export async function runMergeCourt(opts: MergeCourtOptions): Promise<MergeCourt
         scoreSuggestion: null, reason: 'Pre-approved by streaming judge queue',
         blockingConcerns: [], dissentSummary: '', rawOutput: '',
       };
-      // Fall through to the diff-apply block with PASS consensus.
       let merged = false;
       let mergeError: string | undefined;
-      try {
-        await applyDiffToMain(diff, opts.projectPath);
-        merged = true;
-        logger.info(`[merge-court] ${builderId}: merged (streaming pre-approved)`);
-      } catch (err) {
-        mergeError = String(err).split('\n')[0];
-        logger.warn(`[merge-court] ${builderId}: merge failed — ${mergeError}`);
+      if (!opts.judgeOnly) {
+        try {
+          await applyDiffToMain(diff, opts.projectPath);
+          merged = true;
+          logger.info(`[merge-court] ${builderId}: merged (streaming pre-approved)`);
+        } catch (err) {
+          mergeError = String(err).split('\n')[0];
+          logger.warn(`[merge-court] ${builderId}: merge failed — ${mergeError}`);
+        }
       }
       results.push({
-        memberId: builderId, worktreePath: handle.worktreePath,
+        memberId: builderId, slotId: handle.slotId, worktreePath: handle.worktreePath,
         changedFiles, verdicts: [syntheticVerdict], consensus: 'PASS', merged,
         mergeError, anonymizationMap, dissentLog: [],
       });
@@ -388,7 +398,7 @@ export async function runMergeCourt(opts: MergeCourtOptions): Promise<MergeCourt
     let merged = false;
     let mergeError: string | undefined;
 
-    if (consensus === 'PASS') {
+    if (consensus === 'PASS' && !opts.judgeOnly) {
       try {
         await applyDiffToMain(diff, opts.projectPath);
         merged = true;
@@ -397,11 +407,13 @@ export async function runMergeCourt(opts: MergeCourtOptions): Promise<MergeCourt
         mergeError = String(err);
         logger.warn(`[merge-court] ✗ ${builderId}: diff application failed: ${mergeError}`);
       }
-    } else {
+    } else if (consensus !== 'PASS') {
       logger.info(`[merge-court] ${builderId}: ${consensus} — changes isolated in worktree ${handle.worktreePath}`);
+    } else {
+      logger.info(`[merge-court] ${builderId}: PASS (judge-only — diff held for final court)`);
     }
 
-    results.push({ memberId: builderId, worktreePath: handle.worktreePath,
+    results.push({ memberId: builderId, slotId: handle.slotId, worktreePath: handle.worktreePath,
       changedFiles, verdicts: finalVerdicts, consensus, merged, mergeError,
       anonymizationMap, dissentLog });
   }

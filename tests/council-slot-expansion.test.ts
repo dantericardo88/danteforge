@@ -115,11 +115,21 @@ describe('pickJudgeSlots', () => {
 // ── FileClaims slot-aware conflict rule ───────────────────────────────────────
 
 describe('FileClaims — slot-aware conflict rule', () => {
-  test('same member different slots → no conflict (same-member rule)', () => {
+  test('same member different slots (slot mode) → conflict (independent branches can diverge)', () => {
     const claims = new FileClaims();
     claims.claim('codex', ['src/foo.ts'], 'codex-0');
     const result = claims.claim('codex', ['src/foo.ts'], 'codex-1');
-    // Same member → no conflict even with different slots
+    // In slot mode, same member + different slot = conflict (independent worktrees)
+    assert.equal(result.conflicts.length, 1);
+    assert.equal(result.conflicts[0]!.claimedBy, 'codex');
+    assert.equal(result.accepted.length, 0);
+  });
+
+  test('same member same slot re-claim → no conflict (idempotent)', () => {
+    const claims = new FileClaims();
+    claims.claim('codex', ['src/foo.ts'], 'codex-0');
+    const result = claims.claim('codex', ['src/foo.ts'], 'codex-0');
+    // Same slot re-claiming the same file is idempotent
     assert.equal(result.conflicts.length, 0);
     assert.equal(result.accepted.length, 1);
   });
@@ -132,16 +142,23 @@ describe('FileClaims — slot-aware conflict rule', () => {
     assert.equal(result.conflicts[0]!.claimedBy, 'codex');
   });
 
-  test('hasConflict returns false for same-member', () => {
+  test('hasConflict with no slotId → backward compat, member-only check (same member = false)', () => {
     const claims = new FileClaims();
     claims.claim('claude-code', ['src/engine.ts'], 'claude-code-0');
+    // No slotId provided: non-slot mode uses member-only conflict check
     assert.equal(claims.hasConflict('claude-code', ['src/engine.ts']), false);
   });
 
-  test('hasConflict returns true for cross-member', () => {
+  test('hasConflict returns true for cross-member (with slotId)', () => {
     const claims = new FileClaims();
     claims.claim('claude-code', ['src/engine.ts'], 'claude-code-0');
-    assert.equal(claims.hasConflict('codex', ['src/engine.ts']), true);
+    assert.equal(claims.hasConflict('codex', ['src/engine.ts'], 'codex-0'), true);
+  });
+
+  test('hasConflict returns true for same-member different slot (slot mode)', () => {
+    const claims = new FileClaims();
+    claims.claim('codex', ['src/engine.ts'], 'codex-0');
+    assert.equal(claims.hasConflict('codex', ['src/engine.ts'], 'codex-1'), true);
   });
 
   test('clear resets all claims', () => {

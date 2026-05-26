@@ -246,7 +246,7 @@ async function writeSlotProofLedger(
   cipBlockedDimIds: Set<string>,
 ): Promise<void> {
   const slots: SlotProofEntry[] = mergeResults.map(r => {
-    const slotId = (r as { slotId?: string }).slotId ?? `${r.memberId}-0`;
+    const slotId = r.slotId ?? `${r.memberId}-0`;
     const dims = bySlot?.get(slotId) ?? byMember.get(r.memberId as CouncilMemberId) ?? [];
     const assignedDims = [...new Set(dims.map(d => d.dimensionId))];
     const blocked = assignedDims.some(d => cipBlockedDimIds.has(d));
@@ -449,6 +449,7 @@ export async function runParallelCouncil(options: ParallelCouncilOptions): Promi
             allSlots: [next.judgeSlot],
             goal: options.goal,
             minJudges: 1,
+            judgeOnly: true, // streaming judges evaluate — final court applies diffs
           });
           const v = singleResult[0]?.consensus ?? 'FAIL';
           judgeQueue.markJudgeComplete(next.candidate.candidateId, v === 'PASS' ? 'PASS' : v === 'SPLIT' ? 'SPLIT' : 'FAIL');
@@ -559,7 +560,7 @@ export async function runParallelCouncil(options: ParallelCouncilOptions): Promi
         const mergedDims: PostMergeDim[] = mergeResults
           .filter(r => r.merged)
           .flatMap(r => {
-            const slotId = (r as { slotId?: string }).slotId;
+            const slotId = r.slotId;
             const dims = slotMode && slotId && bySlot
               ? (bySlot.get(slotId) ?? [])
               : (dimsByMember.get(r.memberId as CouncilMemberId) ?? []);
@@ -580,7 +581,7 @@ export async function runParallelCouncil(options: ParallelCouncilOptions): Promi
 
       // Record convergence: CIP-blocked dims count as not-approved even if merged.
       for (const r of mergeResults) {
-        const slotId = (r as { slotId?: string }).slotId;
+        const slotId = r.slotId;
         const dimsFromSlot: ScheduledDimension[] = slotMode && slotId && bySlot
           ? (bySlot.get(slotId) ?? [])
           : (dimsByMember.get(r.memberId as CouncilMemberId) ?? []);

@@ -31,21 +31,30 @@ interface ClaimEntry {
   slotId?: string;
 }
 
+/** True when an existing claim conflicts with a new claim from (memberId, slotId). */
+function isSlotConflict(existing: ClaimEntry, memberId: CouncilMemberId, slotId?: string): boolean {
+  if (existing.memberId !== memberId) return true; // always conflict across members
+  // Slot mode: same member, different slot → conflict (independent branches can diverge)
+  if (slotId !== undefined && existing.slotId !== undefined && existing.slotId !== slotId) return true;
+  return false;
+}
+
 /**
  * Per-round file-claim registry.
  * Call `clear()` at the start of each round; `claim()` as each builder's
  * worktree diff is scanned; `hasConflict()` to gate the merge court.
  *
- * Slot-aware conflict rule: two slots from the SAME member may write to the
- * same file (the merge court handles that); only CROSS-MEMBER conflicts are flagged.
+ * Slot-aware conflict rule: in slot mode (both caller and existing claim have
+ * slotId), ANY different slot — including same-member — constitutes a conflict.
+ * Independent branches from the same member can still diverge and conflict.
+ * Without slotId (non-slot mode), only cross-member conflicts are flagged.
  */
 export class FileClaims {
   private readonly claimedFiles = new Map<string, ClaimEntry>();
 
   /**
-   * Attempt to claim `files` on behalf of `memberId` (and optionally `slotId`).
-   * Files already claimed by a DIFFERENT MEMBER are returned in `rejected`.
-   * Same-member claims (different slots) are accepted without conflict.
+   * Attempt to claim `files` on behalf of `memberId` / `slotId`.
+   * Conflict = different member OR (slot mode AND different slot).
    */
   claim(memberId: CouncilMemberId, files: string[], slotId?: string): ClaimResult {
     const accepted: string[] = [];
@@ -54,7 +63,7 @@ export class FileClaims {
 
     for (const file of files) {
       const existing = this.claimedFiles.get(file);
-      if (existing !== undefined && existing.memberId !== memberId) {
+      if (existing !== undefined && isSlotConflict(existing, memberId, slotId)) {
         rejected.push(file);
         conflicts.push({ file, claimedBy: existing.memberId, claimedBySlotId: existing.slotId });
       } else {
@@ -66,13 +75,14 @@ export class FileClaims {
   }
 
   /**
-   * Returns true if any of the given files are claimed by a DIFFERENT MEMBER.
-   * Same-member slots do not constitute a conflict.
+   * Returns true if any of the given files are claimed by a conflicting slot.
+   * In slot mode: same-member different-slot IS a conflict.
+   * In non-slot mode: only cross-member conflicts are flagged.
    */
-  hasConflict(memberId: CouncilMemberId, files: string[]): boolean {
+  hasConflict(memberId: CouncilMemberId, files: string[], slotId?: string): boolean {
     return files.some(f => {
       const owner = this.claimedFiles.get(f);
-      return owner !== undefined && owner.memberId !== memberId;
+      return owner !== undefined && isSlotConflict(owner, memberId, slotId);
     });
   }
 
