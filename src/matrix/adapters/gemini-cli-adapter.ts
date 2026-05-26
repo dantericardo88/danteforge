@@ -385,7 +385,11 @@ Be honest and harsh. A passing score requires real evidence, not aspirational co
 
 // ── Shared utilities (mirrors codex-adapter.ts) ───────────────────────────────
 
-const KERNEL_STATE_DIRS = ['.danteforge/', '.danteforge-worktrees/', '.matrix-worktrees-test/'];
+const KERNEL_STATE_DIRS = [
+  '.danteforge/', '.danteforge-worktrees/', '.matrix-worktrees-test/',
+  // AI tool workspace sidecars — created automatically during judge sessions, not real edits
+  '.openhands/', '.claude/', '.cursor/', '.continue/', '.grok/', '.dantecode/', '.aider/',
+];
 
 async function defaultGitDiff(cwd: string): Promise<string[]> {
   try {

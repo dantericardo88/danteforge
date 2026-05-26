@@ -84,6 +84,7 @@ interface GrokRunState {
   exitCode: number | null;
   binaryUsed: string;
   capturedOutput: string;
+  capturedStderr: string;
 }
 
 const RUN_STATE = new Map<string, GrokRunState>();
@@ -129,7 +130,7 @@ export class GrokBuildAdapter implements AgentAdapter {
       filesChanged: [], filesReverted: [],
       status: 'running', events: [],
       startMs: Date.now(), exitCode: null,
-      binaryUsed: binary, capturedOutput: '',
+      binaryUsed: binary, capturedOutput: '', capturedStderr: '',
     };
     RUN_STATE.set(runId, state);
     await this.executeRun(runId, state);
@@ -231,12 +232,14 @@ export class GrokBuildAdapter implements AgentAdapter {
         const rawForRetry = judgeMode ? stdout : (stderr || stdout);
         if (exitCode === 0 || !isTransientGrokError(rawForRetry, exitCode)) {
           state.capturedOutput = stdout;
+          state.capturedStderr = stderr;
           break;
         }
         const retryAfterMs = parseRetryAfter(rawForRetry);
         attempt++;
         if (attempt > maxRetries) {
           state.capturedOutput = stdout || stderr;
+          state.capturedStderr = stderr;
           break;
         }
         logger.warn(`[GrokBuildAdapter] transient error (attempt ${attempt}/${maxRetries}), retrying in ${retryAfterMs / 1000}s — exit=${exitCode}`);
@@ -245,7 +248,12 @@ export class GrokBuildAdapter implements AgentAdapter {
 
       state.exitCode = exitCode;
 
-      if (exitCode !== 0 && !judgeMode) {
+      // Grok exits 255 on normal single-turn completion (not an error).
+      // Any other non-zero exit in build mode is a genuine failure.
+      const grokExitOk = exitCode === 0 || exitCode === 255;
+      if (!grokExitOk && !judgeMode) {
+        const errSnippet = (state.capturedStderr || state.capturedOutput).trim().slice(0, 300) || '(no output)';
+        logger.warn(`[GrokBuildAdapter] ${runId} exit=${exitCode} — ${errSnippet}`);
         state.status = 'failed';
         state.errorReason = `grok_exit_${exitCode}`;
         finalize(state, runId);
@@ -394,7 +402,11 @@ function parseRetryAfter(output: string): number {
   return Math.min(Math.max(seconds, 5), 300) * 1000;
 }
 
-const KERNEL_STATE_DIRS = ['.danteforge/', '.danteforge-worktrees/', '.matrix-worktrees-test/'];
+const KERNEL_STATE_DIRS = [
+  '.danteforge/', '.danteforge-worktrees/', '.matrix-worktrees-test/',
+  // AI tool workspace sidecars — created automatically during judge sessions, not real edits
+  '.openhands/', '.claude/', '.cursor/', '.continue/', '.grok/', '.dantecode/', '.aider/',
+];
 
 async function defaultGitDiff(cwd: string): Promise<string[]> {
   try {

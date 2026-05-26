@@ -502,7 +502,11 @@ If no changes are needed, simply stop without editing anything.`;
 // ── Git helpers ────────────────────────────────────────────────────────────
 
 /** Paths matrix-kernel manages itself; never count them as "agent edits." */
-const KERNEL_STATE_DIRS = ['.danteforge/', '.danteforge-worktrees/', '.matrix-worktrees-test/'];
+const KERNEL_STATE_DIRS = [
+  '.danteforge/', '.danteforge-worktrees/', '.matrix-worktrees-test/',
+  // AI tool workspace sidecars — created automatically during judge sessions, not real edits
+  '.openhands/', '.claude/', '.cursor/', '.continue/', '.grok/', '.dantecode/', '.aider/',
+];
 
 async function defaultGitDiff(cwd: string): Promise<string[]> {
   try {
