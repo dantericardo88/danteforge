@@ -316,8 +316,13 @@ export async function runMergeCourt(opts: MergeCourtOptions): Promise<MergeCourt
       consensusResult.verdict === 'PASS' ? 'PASS' :
       consensusResult.verdict === 'SPLIT' ? 'SPLIT' : 'FAIL';
 
-    // Reveal builder identity in logs after all initial verdicts collected.
-    logger.info(`[merge-court] ${candidateId} revealed as ${builderId}: initial consensus = ${consensus}`);
+    // Reveal builder identity and log full consensus summary (includes UNCLEAR-dominant reason).
+    logger.info(`[merge-court] ${candidateId} revealed as ${builderId}: initial consensus = ${consensus} — ${consensusResult.summary}`);
+    if (consensusResult.summary.includes('UNCLEAR-dominant')) {
+      logger.warn(`[merge-court] ${builderId}: UNCLEAR-dominant — judges returned unstructured output. ` +
+        `Check that agents are responding with "VERDICT: PASS" or "VERDICT: FAIL" in their output. ` +
+        `If running on a new codebase, agents may need more context in the goal prompt.`);
+    }
 
     // If initial verdict is FAIL or SPLIT, give the builder a chance to improve.
     // useRevision (default: true) → revision-then-rejudge (coding agents fix the code).

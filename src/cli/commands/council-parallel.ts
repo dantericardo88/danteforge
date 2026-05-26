@@ -333,6 +333,12 @@ export async function runParallelCouncil(options: ParallelCouncilOptions): Promi
   logger.info(`${available.length} member(s): ${available.map(id => chalk.bold(id)).join(', ')}`);
   if (slotMode) {
     logger.info(`Slot mode: ${slotsPerMember} slot(s)/member → ${available.length * slotsPerMember} parallel worktree(s)`);
+    if (minJudges > 1) {
+      logger.info(chalk.dim(
+        `  Streaming judges are advisory at --min-judges ${minJudges}. ` +
+        `Final court re-judges all candidates. Use --min-judges 1 to activate the streaming fast-path.`,
+      ));
+    }
   }
   logger.info(`Goal: ${chalk.italic(options.goal)}\n`);
 
