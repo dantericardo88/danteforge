@@ -198,7 +198,7 @@
       "category": "ux",
       "frequency": "high",
       "scores": {
-        "self": 7,
+        "self": 9,
         "Devin (Cognition AI)": 7.5,
         "GitHub Copilot Workspace": 9,
         "Cursor": 9.5,
@@ -233,7 +233,8 @@
         "LangGraph": 5,
         "Agno": 5.5,
         "SmolaAgents": 5.5,
-        "DSPy": 5.5
+        "DSPy": 5.5,
+        "derived": 9
       },
       "gap_to_leader": 2.5,
       "leader": "Cursor",
@@ -338,7 +339,7 @@
         }
       ],
       "declared_ceiling": "T7",
-      "legacy_score": 0,
+      "legacy_score": 9,
       "evidence_integrity": {
         "auditedAt": "2026-05-21T20:52:17.008Z",
         "previousSelfScore": 7,
@@ -1437,7 +1438,7 @@
       "category": "features",
       "frequency": "medium",
       "scores": {
-        "self": 6.5,
+        "self": 9,
         "Devin (Cognition AI)": 8.5,
         "GitHub Copilot Workspace": 5,
         "Cursor": 4.5,
@@ -1472,7 +1473,8 @@
         "Agno": 5.5,
         "Pydantic-AI": 4,
         "SmolaAgents": 4.5,
-        "DSPy": 4
+        "DSPy": 4,
+        "derived": 9
       },
       "gap_to_leader": 2,
       "leader": "Devin (Cognition AI)",
@@ -1555,7 +1557,7 @@
         }
       ],
       "declared_ceiling": "T7",
-      "legacy_score": 0,
+      "legacy_score": 9,
       "evidence_integrity": {
         "auditedAt": "2026-05-21T20:52:17.008Z",
         "previousSelfScore": 6.5,
@@ -1992,7 +1994,7 @@
       "category": "features",
       "frequency": "medium",
       "scores": {
-        "self": 7,
+        "self": 9,
         "Devin (Cognition AI)": 5.5,
         "GitHub Copilot Workspace": 7.5,
         "Cursor": 7.5,
@@ -2034,7 +2036,8 @@
         "Promptfoo": 4,
         "Fabric": 3,
         "Agno": 4,
-        "SmolaAgents": 5.5
+        "SmolaAgents": 5.5,
+        "derived": 9
       },
       "gap_to_leader": 2,
       "leader": "Helicone",
@@ -2123,7 +2126,7 @@
         }
       ],
       "declared_ceiling": "T7",
-      "legacy_score": 0,
+      "legacy_score": 9,
       "evidence_integrity": {
         "auditedAt": "2026-05-21T20:52:17.008Z",
         "previousSelfScore": 7,
@@ -2298,7 +2301,7 @@
       "category": "features",
       "frequency": "low",
       "scores": {
-        "self": 7,
+        "self": 9,
         "Devin (Cognition AI)": 5,
         "GitHub Copilot Workspace": 8,
         "Cursor": 7,
@@ -2341,7 +2344,8 @@
         "Promptfoo": 2,
         "Fabric": 2,
         "Agno": 8,
-        "SmolaAgents": 6
+        "SmolaAgents": 6,
+        "derived": 9
       },
       "gap_to_leader": 2.5,
       "leader": "Claude Code",
@@ -2411,7 +2415,7 @@
         }
       ],
       "declared_ceiling": "T7",
-      "legacy_score": 0,
+      "legacy_score": 9,
       "evidence_integrity": {
         "auditedAt": "2026-05-21T20:52:17.008Z",
         "previousSelfScore": 7,
