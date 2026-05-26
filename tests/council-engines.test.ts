@@ -260,7 +260,8 @@ describe('CodexAdapter — judge mode', () => {
       workPacket: makePacket(),
       judgeMode: true,
       _isAvailable: async () => true,
-      _gitDiff: async () => ['src/rogue-edit.ts'],
+      _preJudgeDiff: async () => [],               // clean baseline before judge runs
+      _gitDiff: async () => ['src/rogue-edit.ts'], // judge wrote this after baseline
       _revertFile: async (_cwd, file) => { reverted.push(file); },
       _spawn: () => makeFakeProc('VERDICT: PASS') as never,
     });
@@ -296,7 +297,8 @@ describe('ClaudeCodeAdapter — judge mode', () => {
       workPacket: makePacket(),
       judgeMode: true,
       _isAvailable: async () => true,
-      _gitDiff: async () => ['src/rogue-edit.ts'],  // judge wrote a file!
+      _preJudgeDiff: async () => [],                // clean baseline before judge runs
+      _gitDiff: async () => ['src/rogue-edit.ts'],  // judge wrote this after baseline
       _revertFile: async (_cwd, file) => { reverted.push(file); },
       _spawn: () => makeFakeProc('VERDICT: PASS') as never,
     });
@@ -336,7 +338,8 @@ describe('GrokBuildAdapter — judge mode', () => {
       workPacket: makePacket(),
       judgeMode: true,
       _isAvailable: async () => true,
-      _gitDiff: async () => ['src/rogue-edit.ts'],
+      _preJudgeDiff: async () => [],               // clean baseline before judge runs
+      _gitDiff: async () => ['src/rogue-edit.ts'], // judge wrote this after baseline
       _revertFile: async (_cwd, file) => { reverted.push(file); },
       _spawn: () => makeFakeProc('VERDICT: PASS') as never,
     });
@@ -376,7 +379,8 @@ describe('GeminiCLIAdapter — judge mode', () => {
       workPacket: makePacket(),
       judgeMode: true,
       _isAvailable: async () => true,
-      _gitDiff: async () => ['src/rogue-edit.ts'],
+      _preJudgeDiff: async () => [],               // clean baseline before judge runs
+      _gitDiff: async () => ['src/rogue-edit.ts'], // judge wrote this after baseline
       _revertFile: async (_cwd, file) => { reverted.push(file); },
       _spawn: () => makeFakeProc('VERDICT: PASS') as never,
     });

@@ -79,6 +79,9 @@ export interface ClaudeCodeAdapterOptions {
   _isAvailable?: () => Promise<boolean>;
   /** Injection seam: override `git status --porcelain` for tests. */
   _gitDiff?: (cwd: string) => Promise<string[]>;
+  /** Injection seam: snapshot before judge runs (default: same as _gitDiff). Used to
+   *  distinguish pre-existing builder changes from new writes by the judge. */
+  _preJudgeDiff?: (cwd: string) => Promise<string[]>;
   /** Injection seam: override `git checkout -- <file>` for tests. */
   _revertFile?: (cwd: string, file: string) => Promise<void>;
 }
@@ -265,6 +268,11 @@ export class ClaudeCodeAdapter implements AgentAdapter {
         const judgeArgs = ['-p', prompt, '--output-format', 'text', '--allowedTools', 'Read,Glob,Grep'];
         const [jCmd, jFinalArgs] = resolveSpawnTarget(state.binaryUsed, judgeArgs, this._resolvedUsesShell);
         const spawnFn: ClaudeSpawnFn = this.options._spawn ?? ((c, a, o) => spawn(c, a, o));
+        // Snapshot worktree state before judge runs to distinguish builder's pre-existing
+        // changes from any new writes by the judge (judge runs in the builder's worktree).
+        const gitDiff = this.options._gitDiff ?? defaultGitDiff;
+        const preJudgeDiff = this.options._preJudgeDiff ?? gitDiff;
+        const preJudgeFiles = new Set(await preJudgeDiff(worktreeRoot));
         state.exitCode = await runChild(spawnFn, jCmd, [...jFinalArgs], {
           cwd: normalizeCwd(worktreeRoot),
           env: { ...process.env, ...(state.input.env ?? {}) },
@@ -272,9 +280,8 @@ export class ClaudeCodeAdapter implements AgentAdapter {
           stdio: ['ignore', 'pipe', 'pipe'],
         }, this.options.timeoutMs ?? DEFAULT_TIMEOUT_MS, chunks);
         state.capturedOutput = Buffer.concat(chunks).toString('utf8');
-        // Post-run diff assertion: judges must not modify the worktree.
-        const gitDiff = this.options._gitDiff ?? defaultGitDiff;
-        const changedAfterJudge = await gitDiff(worktreeRoot);
+        // Post-run diff: only flag files that are NEW since the pre-judge snapshot.
+        const changedAfterJudge = (await gitDiff(worktreeRoot)).filter(f => !preJudgeFiles.has(f));
         if (changedAfterJudge.length > 0) {
           logger.warn(`[ClaudeCodeAdapter] judge ${runId} modified ${changedAfterJudge.length} file(s) — reverting; verdict invalidated`);
           const revertFile = this.options._revertFile ?? defaultRevertFile;

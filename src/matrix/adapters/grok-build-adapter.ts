@@ -62,6 +62,8 @@ export interface GrokBuildAdapterOptions {
   _spawn?: GrokBuildSpawnFn;
   _isAvailable?: () => Promise<boolean>;
   _gitDiff?: (cwd: string) => Promise<string[]>;
+  /** Snapshot before judge runs to distinguish builder's pre-existing changes from judge's writes. */
+  _preJudgeDiff?: (cwd: string) => Promise<string[]>;
   _revertFile?: (cwd: string, file: string) => Promise<void>;
   /** Inject sleep for tests (default: real setTimeout). */
   _sleep?: (ms: number) => Promise<void>;
@@ -211,6 +213,10 @@ export class GrokBuildAdapter implements AgentAdapter {
       };
       const maxRetries = this.options.maxGrokRetries ?? 3;
       const sleepFn = this.options._sleep ?? ((ms: number) => new Promise(r => setTimeout(r, ms)));
+      // For judge mode: snapshot worktree state BEFORE spawning to detect only new writes.
+      const judgeBaseGitDiff = this.options._gitDiff ?? defaultGitDiff;
+      const preJudgeDiffFn = this.options._preJudgeDiff ?? judgeBaseGitDiff;
+      const preJudgeFiles = judgeMode ? new Set(await preJudgeDiffFn(worktreeRoot)) : new Set<string>();
       let exitCode = 1;
       let attempt = 0;
       let chunks: Buffer[] = [];
@@ -263,9 +269,8 @@ export class GrokBuildAdapter implements AgentAdapter {
       if (judgeMode) {
         // Explicit finalMessage so collectResult() doesn't fall through to "Grok ran; 0 files" fallback.
         state.finalMessage = state.capturedOutput.trim() || '(no judge output from grok)';
-        // Post-run diff: judges must not modify the worktree.
-        const judgeGitDiff = this.options._gitDiff ?? defaultGitDiff;
-        const changedAfterJudge = await judgeGitDiff(worktreeRoot);
+        // Post-run diff: only flag files NEW since pre-judge snapshot.
+        const changedAfterJudge = (await judgeBaseGitDiff(worktreeRoot)).filter(f => !preJudgeFiles.has(f));
         if (changedAfterJudge.length > 0) {
           logger.warn(`[GrokBuildAdapter] judge ${runId} modified ${changedAfterJudge.length} file(s) — reverting; verdict invalidated`);
           const revertFile = this.options._revertFile ?? defaultRevertFile;

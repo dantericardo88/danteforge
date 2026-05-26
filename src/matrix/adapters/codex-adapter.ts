@@ -57,6 +57,8 @@ export interface CodexAdapterOptions {
   _spawn?: CodexSpawnFn;
   _isAvailable?: () => Promise<boolean>;
   _gitDiff?: (cwd: string) => Promise<string[]>;
+  /** Snapshot before judge runs to distinguish builder's pre-existing changes from judge's writes. */
+  _preJudgeDiff?: (cwd: string) => Promise<string[]>;
   _revertFile?: (cwd: string, file: string) => Promise<void>;
 }
 
@@ -200,6 +202,11 @@ export class CodexAdapter implements AgentAdapter {
       if (this.options.judgeMode) {
         const judgePrompt = buildCodexJudgePrompt(state.workPacket, lease);
         const tmpFile = path.join(os.tmpdir(), `codex-judge-${Date.now()}.txt`);
+        // Snapshot worktree state BEFORE judge runs — builder's pre-existing changes must
+        // not trigger rogue detection (judge runs in the builder's dirty worktree).
+        const judgeGitDiff = this.options._gitDiff ?? defaultGitDiff;
+        const preJudgeDiff = this.options._preJudgeDiff ?? judgeGitDiff;
+        const preJudgeFiles = new Set(await preJudgeDiff(worktreeRoot));
         // Pipe prompt via stdin (-) to avoid cmd.exe argument mangling on Windows.
         const [jCmd, jArgs] = usesCmdShim
           ? ['cmd.exe', ['/c', state.binaryUsed, 'exec', '--ephemeral', '--output-last-message', tmpFile, '-']] as const
@@ -219,9 +226,8 @@ export class CodexAdapter implements AgentAdapter {
         } catch { /* file not written — subprocess mocked or flag unsupported */ }
         state.capturedOutput = fromFile || Buffer.concat(chunks).toString('utf8');
         state.finalMessage = state.capturedOutput.trim() || '(no judge output)';
-        // Post-run diff: judges must not modify the worktree.
-        const judgeGitDiff = this.options._gitDiff ?? defaultGitDiff;
-        const changedAfterJudge = await judgeGitDiff(worktreeRoot);
+        // Post-run diff: only flag files that are NEW since the pre-judge snapshot.
+        const changedAfterJudge = (await judgeGitDiff(worktreeRoot)).filter(f => !preJudgeFiles.has(f));
         if (changedAfterJudge.length > 0) {
           logger.warn(`[CodexAdapter] judge ${runId} modified ${changedAfterJudge.length} file(s) — reverting; verdict invalidated`);
           const revertFile = this.options._revertFile ?? defaultRevertFile;

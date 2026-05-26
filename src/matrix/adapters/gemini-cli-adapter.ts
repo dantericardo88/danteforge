@@ -55,6 +55,8 @@ export interface GeminiCLIAdapterOptions {
   _spawn?: GeminiSpawnFn;
   _isAvailable?: () => Promise<boolean>;
   _gitDiff?: (cwd: string) => Promise<string[]>;
+  /** Snapshot before judge runs to distinguish builder's pre-existing changes from judge's writes. */
+  _preJudgeDiff?: (cwd: string) => Promise<string[]>;
   _revertFile?: (cwd: string, file: string) => Promise<void>;
 }
 
@@ -248,6 +250,10 @@ export class GeminiCLIAdapter implements AgentAdapter {
         args = geminiArgs;
       }
 
+      // For judge mode: snapshot worktree state BEFORE spawning to detect only new writes.
+      const geminiGitDiff = this.options._gitDiff ?? defaultGitDiff;
+      const preJudgeDiffFn = this.options._preJudgeDiff ?? geminiGitDiff;
+      const preJudgeFiles = judgeMode ? new Set(await preJudgeDiffFn(worktreeRoot)) : new Set<string>();
       const chunks: Buffer[] = [];
       const exitCode = await runChild(
         spawnFn, cmd, args,
@@ -273,9 +279,8 @@ export class GeminiCLIAdapter implements AgentAdapter {
       // In judge mode, non-zero exit is non-fatal (judge may have nothing to write).
       if (judgeMode) {
         state.finalMessage = state.capturedOutput.trim() || '(no judge output from gemini)';
-        // Post-run diff: judges must not modify the worktree.
-        const judgeGitDiff = this.options._gitDiff ?? defaultGitDiff;
-        const changedAfterJudge = await judgeGitDiff(worktreeRoot);
+        // Post-run diff: only flag files NEW since pre-judge snapshot.
+        const changedAfterJudge = (await geminiGitDiff(worktreeRoot)).filter(f => !preJudgeFiles.has(f));
         if (changedAfterJudge.length > 0) {
           logger.warn(`[GeminiCLIAdapter] judge ${runId} modified ${changedAfterJudge.length} file(s) — reverting; verdict invalidated`);
           const revertFile = this.options._revertFile ?? defaultRevertFile;
