@@ -76,49 +76,80 @@ function resolveConsensus(verdicts: MemberVerdict[]): 'PASS' | 'FAIL' | 'SPLIT' 
   return 'SPLIT';
 }
 
-function extractBlockingConcerns(verdicts: MemberVerdict[]): string {
-  const lines = verdicts
-    .filter(v => v.verdict === 'FAIL' || v.verdict === 'UNCLEAR')
-    .flatMap(v => {
-      const issueMatch = v.rawOutput.match(/BLOCKING_ISSUES:\s*(.+?)(?=\n[A-Z_]+:|$)/is);
-      const issues = issueMatch ? issueMatch[1]!.trim() : '';
-      return [`[${v.judgeId}] ${v.reason}`, ...(issues && issues.toLowerCase() !== 'none' ? [issues] : [])];
-    });
-  return lines.join('\n') || '(no specific issues listed)';
+/** Full picture: what each judge said, separated into preserve vs fix buckets. */
+function extractAllJudgeFeedback(verdicts: MemberVerdict[]): { preserveContext: string; fixContext: string } {
+  const passes = verdicts.filter(v => v.verdict === 'PASS');
+  const fails  = verdicts.filter(v => v.verdict === 'FAIL' || v.verdict === 'UNCLEAR');
+
+  const preserveLines = passes.map(v => `[${v.judgeId} APPROVED]: ${v.reason}`);
+
+  const fixLines = fails.flatMap(v => {
+    const issueMatch = v.rawOutput.match(/BLOCKING_ISSUES:\s*(.+?)(?=\n[A-Z_]+:|$)/is);
+    const issues = issueMatch ? issueMatch[1]!.trim() : '';
+    return [
+      `[${v.judgeId} BLOCKED]: ${v.reason}`,
+      ...(issues && issues.toLowerCase() !== 'none' ? [`  Issues: ${issues}`] : []),
+    ];
+  });
+
+  return {
+    preserveContext: preserveLines.join('\n') || '(no approvals yet)',
+    fixContext: fixLines.join('\n') || '(no specific issues listed)',
+  };
+}
+
+/** Compact peer-verdict summary for rejudge prompts (each judge sees what the other said). */
+function peerVerdictSummary(verdicts: MemberVerdict[], excludeJudgeId: string): string {
+  return verdicts
+    .filter(v => v.judgeId !== excludeJudgeId)
+    .map(v => `[${v.judgeId}: ${v.verdict}] ${v.reason.slice(0, 200)}`)
+    .join('\n') || '(no peer verdict available)';
 }
 
 // ── Prompt builders ───────────────────────────────────────────────────────────
 
-function buildSelfInspectPrompt(goal: string, diff: string, blockingConcerns: string): string {
+function buildSelfInspectPrompt(
+  goal: string, diff: string, preserveContext: string, fixContext: string,
+): string {
   return [
-    `SELF-INSPECTION — you built this diff. Read it along with the judge feedback below.`,
+    `SELF-INSPECTION — you built this diff. Read ALL judge feedback below, both approvals and rejections.`,
     ``,
     `Goal: ${goal}`,
     ``,
-    `Judge blocking concerns:`,
-    blockingConcerns,
+    `=== WHAT JUDGES APPROVED (preserve these aspects) ===`,
+    preserveContext,
+    ``,
+    `=== WHAT JUDGES REJECTED (must fix these) ===`,
+    fixContext,
     ``,
     `Your diff (first 2000 chars):`,
     diff.slice(0, 2000),
     ``,
-    `DO NOT write any files. Output ONLY a structured self-assessment:`,
-    `SELF_ASSESSMENT: <what you implemented, what the judges flagged, what you would specifically change>`,
+    `DO NOT write any files. Output a structured multi-part self-assessment:`,
+    `WHAT_WORKED: <aspects judges approved — what you will NOT change>`,
+    `WHAT_TO_FIX: <specific code/test gaps the blocking judge identified>`,
+    `FIX_PLAN: <concrete file-by-file changes you will make to address each blocking concern>`,
   ].join('\n');
 }
 
-function buildRevisionPrompt(goal: string, blockingConcerns: string, selfAssessment: string, cycle: number): string {
+function buildRevisionPrompt(
+  goal: string, preserveContext: string, fixContext: string, selfAssessment: string, cycle: number,
+): string {
   return [
-    `REVISION CYCLE ${cycle} — address the judges' blocking concerns in this worktree.`,
+    `REVISION CYCLE ${cycle} — address the blocking judge's concerns WITHOUT breaking what the approving judge liked.`,
     ``,
     `Goal: ${goal}`,
     ``,
-    `Blocking concerns to address:`,
-    blockingConcerns,
+    `=== PRESERVE (approving judge — do NOT change these) ===`,
+    preserveContext,
     ``,
-    `Your self-assessment:`,
-    selfAssessment.slice(0, 800),
+    `=== FIX (blocking judge — must address ALL of these) ===`,
+    fixContext,
     ``,
-    `Make targeted fixes ONLY to address the blocking concerns above.`,
+    `Your self-assessment and fix plan:`,
+    selfAssessment.slice(0, 1200),
+    ``,
+    `Make targeted fixes to address ONLY the blocking concerns. Preserve everything the approving judge liked.`,
     `Do NOT add unrelated changes. Do NOT add stubs or TODOs.`,
     `When done, stop — do not emit JSON, changes are detected via git status.`,
   ].join('\n');
@@ -126,25 +157,31 @@ function buildRevisionPrompt(goal: string, blockingConcerns: string, selfAssessm
 
 function buildRejudgePrompt(
   goal: string, revisedDiff: string, selfAssessment: string,
-  priorRawOutput: string, judgeId: CouncilMemberId, cycle: number,
+  priorRawOutput: string, judgeId: CouncilMemberId, peerSummary: string, cycle: number,
 ): string {
   const persona = COUNCIL_PROFILES[judgeId]?.persona ?? judgeId;
   return [
     `REVISION RE-EVALUATION (cycle ${cycle}) — You are acting as: ${persona}`,
     ``,
-    `The builder received your feedback and has revised their implementation.`,
+    `The builder received ALL judge feedback (yours + peer) and has revised their implementation.`,
     `Re-evaluate the REVISED diff below. You may update your verdict.`,
     ``,
     `Goal: ${goal}`,
     ``,
-    `Builder's self-assessment (what they changed and why):`,
-    selfAssessment.slice(0, 600),
+    `=== YOUR PRIOR VERDICT ===`,
+    priorRawOutput.slice(0, 400) || '(not available)',
     ``,
-    `Revised diff (first 2000 chars):`,
-    revisedDiff.slice(0, 2000),
+    `=== PEER JUDGE VERDICT (your co-reviewer) ===`,
+    peerSummary,
     ``,
-    `Your prior verdict (for reference):`,
-    priorRawOutput.slice(0, 300) || '(not available)',
+    `=== BUILDER SELF-ASSESSMENT (what they changed and why) ===`,
+    selfAssessment.slice(0, 800),
+    ``,
+    `=== REVISED DIFF (first 2500 chars) ===`,
+    revisedDiff.slice(0, 2500),
+    ``,
+    `If the builder specifically addressed your blocking concerns, vote PASS.`,
+    `If critical concerns remain unaddressed, vote FAIL with specific remaining issues.`,
     ``,
     `Output your UPDATED verdict in EXACTLY this format:`,
     `VERDICT: PASS`,
@@ -153,7 +190,7 @@ function buildRejudgePrompt(
     `SCORE_SUGGESTION: <number 0-10>`,
     `BLOCKING_ISSUES: none`,
     `BLOCKING_CONCERNS: none`,
-    `DISSENT: none`,
+    `DISSENT: <note any remaining concerns even if passing>`,
     ``,
     `or VERDICT: FAIL with BLOCKING_ISSUES and BLOCKING_CONCERNS as bullet lists.`,
   ].join('\n');
@@ -229,26 +266,26 @@ export async function runRevision(opts: RevisionOptions): Promise<RevisionResult
   for (let cycle = 1; cycle <= maxCycles; cycle++) {
     if (resolveConsensus(result.finalVerdicts) === 'PASS') break;
 
-    const blockingConcerns = extractBlockingConcerns(result.finalVerdicts);
+    const { preserveContext, fixContext } = extractAllJudgeFeedback(result.finalVerdicts);
     logger.info(`[revision] Cycle ${cycle}/${maxCycles}: ${builderId} addressing ${result.finalVerdicts.filter(v => v.verdict !== 'PASS').length} FAIL/UNCLEAR verdict(s)`);
 
-    // 1. Self-inspection: builder reads its diff + judge feedback
+    // 1. Self-inspection: builder reads ALL judge feedback (both PASS and FAIL)
     let selfAssessment = '(self-inspection skipped)';
     try {
-      const inspectPrompt = buildSelfInspectPrompt(goal, diff, blockingConcerns);
+      const inspectPrompt = buildSelfInspectPrompt(goal, diff, preserveContext, fixContext);
       const inspectWp = makeRevisionWorkPacket(inspectPrompt, worktreePath);
       const inspectAdapter = makeBuilder(builderId, { ...inspectWp, objective: inspectPrompt } as WorkPacket);
       const inspectLease = makeReadOnlyLease(worktreePath);
       const inspectResult = await runAdapter(inspectAdapter, { lease: inspectLease, cwd: worktreePath });
-      selfAssessment = inspectResult.finalMessage?.slice(0, 800) ?? '(no self-assessment output)';
+      selfAssessment = inspectResult.finalMessage?.slice(0, 1200) ?? '(no self-assessment output)';
       logger.info(`[revision] Cycle ${cycle}: ${builderId} self-assessment (${selfAssessment.length} chars)`);
     } catch (err) {
       logger.warn(`[revision] Cycle ${cycle}: ${builderId} self-inspection failed: ${String(err)}`);
     }
 
-    // 2. Revision: builder addresses blocking concerns in the same worktree
+    // 2. Revision: builder addresses blocking concerns while preserving approvals
     try {
-      const revisionPrompt = buildRevisionPrompt(goal, blockingConcerns, selfAssessment, cycle);
+      const revisionPrompt = buildRevisionPrompt(goal, preserveContext, fixContext, selfAssessment, cycle);
       const revisionWp = makeRevisionWorkPacket(revisionPrompt, worktreePath);
       const revisionAdapter = makeBuilder(builderId, revisionWp);
       const writeLease = makeWriteLease(worktreePath);
@@ -267,11 +304,12 @@ export async function runRevision(opts: RevisionOptions): Promise<RevisionResult
       logger.warn(`[revision] Cycle ${cycle}: could not capture revised diff: ${String(err)}`);
     }
 
-    // 4. Re-judge: run original judges on the revised diff with self-assessment as context
+    // 4. Re-judge: each judge sees their prior verdict AND what the peer judge said
     const rejudgeVerdicts = await Promise.all(
       judgeIds.map(async (judgeId): Promise<MemberVerdict> => {
         const prior = result.finalVerdicts.find(v => v.judgeId === judgeId);
-        const rejudgePrompt = buildRejudgePrompt(goal, revisedDiff, selfAssessment, prior?.rawOutput ?? '', judgeId, cycle);
+        const peers = peerVerdictSummary(result.finalVerdicts, judgeId);
+        const rejudgePrompt = buildRejudgePrompt(goal, revisedDiff, selfAssessment, prior?.rawOutput ?? '', judgeId, peers, cycle);
         try {
           const rejudgeWp = makeRevisionWorkPacket(rejudgePrompt, worktreePath);
           const judgeAdapter = makeJudge(judgeId, { ...rejudgeWp, objective: rejudgePrompt } as WorkPacket);

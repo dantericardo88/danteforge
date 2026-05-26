@@ -348,7 +348,7 @@ export async function runMergeCourt(opts: MergeCourtOptions): Promise<MergeCourt
             diff,
             worktreePath: handle.worktreePath,
             worktreeOpts: opts.worktreeOpts,
-            maxCycles: opts.revisionCycles ?? 1,
+            maxCycles: opts.revisionCycles ?? 2,
           });
           finalVerdicts = revResult.finalVerdicts;
           // Use the revised diff for merging — judges evaluated this, not the original.
