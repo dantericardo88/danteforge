@@ -216,4 +216,16 @@ describe('runPolicyGate', () => {
     assert.equal(decision.allowed, true);
     assert.equal(decision.requiresApproval, true);
   });
+
+  it('requireApproval takes priority over allowedCommands (regression: autoforge blocked by allowedCommands)', async () => {
+    // autoforge is in requireApproval but NOT in allowedCommands — must be allowed (gated, not blocked)
+    const mockPolicy: PolicyConfig = {
+      allowedCommands: ['specify', 'plan', 'tasks', 'verify', 'assess'],
+      requireApproval: ['forge', 'autoforge'],
+    };
+    const decision = await runPolicyGate('autoforge', '/irrelevant', async () => mockPolicy);
+    assert.equal(decision.allowed, true);
+    assert.equal(decision.requiresApproval, true);
+    assert.match(decision.reason, /requires human approval/);
+  });
 });

@@ -91,7 +91,18 @@ export function evaluatePolicy(command: string, policy: PolicyConfig): PolicyDec
     return { command, allowed: false, requiresApproval: false, reason: `command '${command}' is in blockedCommands policy`, bypassActive: false, timestamp, teamId };
   }
 
-  // Allowlist mode — if set, only listed commands pass
+  // Approval required — evaluated before allowlist so requireApproval commands are
+  // always reachable (they're gated, not blocked — even if not in allowedCommands).
+  const needsApproval = policy.requireApproval?.some((a) => command === a || command.startsWith(`${a} `)) ?? false;
+  if (needsApproval) {
+    return {
+      command, allowed: true, requiresApproval: true,
+      reason: `command '${command}' requires human approval`,
+      bypassActive: false, timestamp, teamId,
+    };
+  }
+
+  // Allowlist mode — if set, only listed commands pass (requireApproval already handled above)
   if (policy.allowedCommands && policy.allowedCommands.length > 0) {
     const permitted = policy.allowedCommands.some((a) => command === a || command.startsWith(`${a} `));
     if (!permitted) {
@@ -99,11 +110,9 @@ export function evaluatePolicy(command: string, policy: PolicyConfig): PolicyDec
     }
   }
 
-  // Approval required — allowed but must pause for human confirmation
-  const needsApproval = policy.requireApproval?.some((a) => command === a || command.startsWith(`${a} `)) ?? false;
   return {
-    command, allowed: true, requiresApproval: needsApproval,
-    reason: needsApproval ? `command '${command}' requires human approval` : 'allowed',
+    command, allowed: true, requiresApproval: false,
+    reason: 'allowed',
     bypassActive: false, timestamp, teamId,
   };
 }
