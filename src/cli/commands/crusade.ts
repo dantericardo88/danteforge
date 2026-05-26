@@ -84,6 +84,13 @@ function hasPlateaued(recentCounts: number[]): boolean {
 
 // ── Real subprocess runners (used when seams not injected) ────────────────────
 
+/** Returns the Node.js binary + path to the currently-running CLI entry point.
+ *  More reliable than `danteforge` on PATH (which may be a .ps1 shim on Windows
+ *  that execFileAsync cannot invoke without shell:true). */
+function selfCli(): [string, string] {
+  return [process.execPath, process.argv[1] ?? 'dist/index.js'];
+}
+
 async function defaultRunOssPass(domain: string, cwd: string): Promise<OssPassResult> {
   const { execFile } = await import('node:child_process');
   const { promisify } = await import('node:util');
@@ -92,8 +99,10 @@ async function defaultRunOssPass(domain: string, cwd: string): Promise<OssPassRe
   const path = await import('node:path');
 
   try {
-    // `danteforge oss` auto-detects the project. Use a conservative max-repos for autonomous loops.
-    await execFileAsync('danteforge', ['oss', '--max-repos', '5'], { cwd, timeout: 180_000 });
+    // Use the currently-running Node process + CLI entry to avoid PATH resolution
+    // issues on Windows (danteforge may be a .ps1 shim, not directly executable).
+    const [node, cli] = selfCli();
+    await execFileAsync(node, [cli, 'oss', '--max-repos', '5'], { cwd, timeout: 180_000 });
 
     // Best-effort: look for the report the oss command typically generates and count real patterns.
     // This is still heuristic but much better than hardcoding 5.
@@ -123,7 +132,9 @@ async function defaultRunForgeWave(goal: string, cwd: string): Promise<ForgeWave
   const execFileAsync = promisify(execFile);
   try {
     // `danteforge magic <goal>` is the correct hero command — `forge` has no --goal flag.
-    await execFileAsync('danteforge', ['magic', goal, '--yes'], { cwd, timeout: 300_000 });
+    // Use the currently-running Node process + CLI entry to avoid .ps1 shim issues on Windows.
+    const [node, cli] = selfCli();
+    await execFileAsync(node, [cli, 'magic', goal, '--yes'], { cwd, timeout: 300_000 });
     return { success: true };
   } catch (err) {
     return { success: false, error: err instanceof Error ? err.message : String(err) };
@@ -399,10 +410,11 @@ async function defaultRunAutoResearch(dimensionId: string, goal: string, cwd: st
   const { execFile } = await import('node:child_process');
   const { promisify } = await import('node:util');
   const execFileAsync = promisify(execFile);
+  const [node, cli] = selfCli();
   // 30-minute budget; allow-dirty because inferno may have staged files
   await execFileAsync(
-    'danteforge',
-    ['autoresearch', '--goal', goal, '--metric', dimensionId, '--time', '30', '--allow-dirty'],
+    node,
+    [cli, 'autoresearch', '--goal', goal, '--metric', dimensionId, '--time', '30', '--allow-dirty'],
     { cwd, timeout: 1_900_000 },
   );
 }
@@ -411,9 +423,10 @@ async function defaultRunVerifyCap(dimensionId: string, cwd: string): Promise<bo
   const { execFile } = await import('node:child_process');
   const { promisify } = await import('node:util');
   const execFileAsync = promisify(execFile);
+  const [node, cli] = selfCli();
   try {
     await execFileAsync(
-      'danteforge', ['matrix-kernel', 'verify-capability', dimensionId],
+      node, [cli, 'matrix-kernel', 'verify-capability', dimensionId],
       { cwd, timeout: 120_000 },
     );
     return true;
@@ -425,13 +438,14 @@ async function defaultRunVerifyCap(dimensionId: string, cwd: string): Promise<bo
 async function defaultRunValidate(dimId: string, cwd: string): Promise<void> {
   const { execFile } = await import('node:child_process');
   const { promisify } = await import('node:util');
-  await promisify(execFile)('danteforge', ['validate', dimId, '--force-cold'], { cwd, timeout: 120_000 });
+  const [node, cli] = selfCli();
+  await promisify(execFile)(node, [cli, 'validate', dimId, '--force-cold'], { cwd, timeout: 120_000 });
 }
 
 async function defaultRunEvidenceRescore(cwd: string): Promise<void> {
   const { execFile } = await import('node:child_process');
   const { promisify } = await import('node:util');
-  await promisify(execFile)('node', ['scripts/evidence-rescore.mjs'], { cwd, timeout: 60_000 });
+  await promisify(execFile)(process.execPath, ['scripts/evidence-rescore.mjs'], { cwd, timeout: 60_000 });
 }
 
 // Fix A gate (Scoring Doctrine Rule 10): runs the dimension's capability_test command.
