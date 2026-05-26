@@ -45,8 +45,31 @@ export async function readLessons(): Promise<string> {
   return readLessonsFrom(LESSONS_FILE);
 }
 
+/** Normalize a rule string for deduplication comparison. */
+function normalizeRule(s: string): string {
+  return s.toLowerCase().replace(/\s+/g, ' ').trim();
+}
+
+/** Extract the canonical rule text from a lesson entry block. */
+function extractRuleText(entry: string): string | null {
+  const m = entry.match(/\*\*Rule:\*\*\s*(.+)|^Rule:\s*(.+)/m);
+  if (!m) return null;
+  return normalizeRule(m[1] ?? m[2] ?? '');
+}
+
+/** Collect all normalized rule texts from existing lessons.md content. */
+function extractExistingRules(content: string): Set<string> {
+  const rules = new Set<string>();
+  for (const m of content.matchAll(/\*\*Rule:\*\*\s*(.+)|^Rule:\s*(.+)/gm)) {
+    const r = normalizeRule(m[1] ?? m[2] ?? '');
+    if (r) rules.add(r);
+  }
+  return rules;
+}
+
 /**
  * Append a new lesson entry to lessons.md.
+ * Deduplicates by normalized rule text — identical rules are silently skipped.
  * @param cwd - Optional project root; defaults to process.cwd(). Fixes a bug where
  *              verify called from a subdirectory would write lessons to the wrong location.
  */
@@ -56,8 +79,47 @@ export async function appendLesson(entry: string, cwd?: string): Promise<void> {
   const file = path.join(dir, 'lessons.md');
   await fs.mkdir(dir, { recursive: true });
   const existing = await readLessonsFrom(file);
+
+  // Deduplication: skip if this rule already exists (prevents verify-failure spam)
+  const ruleText = extractRuleText(entry);
+  if (ruleText) {
+    const existingRules = extractExistingRules(existing);
+    if (existingRules.has(ruleText)) return;
+  }
+
   const header = existing ? '' : '# Lessons Learned\n\n_Auto-maintained by DanteForge — rules captured from corrections, failures, and refinements._\n\n---\n\n';
   await fs.writeFile(file, header + existing + entry + '\n\n', 'utf8');
+}
+
+/**
+ * Deduplicate an existing lessons.md file in place.
+ * Keeps the first occurrence of each unique normalized rule; removes later duplicates.
+ * Returns the number of entries removed.
+ */
+export async function deduplicateLessonsFile(cwd?: string): Promise<number> {
+  const base = cwd ?? process.cwd();
+  const file = path.join(base, '.danteforge', 'lessons.md');
+  const content = await readLessonsFrom(file);
+  if (!content) return 0;
+
+  const blocks = content.split(/(?=^## )/m).filter(b => b.trim());
+  const seen = new Set<string>();
+  const kept: string[] = [];
+  let removed = 0;
+
+  for (const block of blocks) {
+    if (block.startsWith('# Lessons')) { kept.push(block); continue; }
+    const ruleText = extractRuleText(block);
+    const key = ruleText ?? normalizeRule(block.slice(0, 120));
+    if (seen.has(key)) { removed++; continue; }
+    seen.add(key);
+    kept.push(block);
+  }
+
+  if (removed > 0) {
+    await fs.writeFile(file, kept.join(''), 'utf8');
+  }
+  return removed;
 }
 
 /**

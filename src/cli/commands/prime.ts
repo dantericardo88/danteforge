@@ -82,9 +82,9 @@ export async function prime(options: PrimeOptions = {}): Promise<void> {
   dims.sort((a, b) => a[1] - b[1]);
   const p0Gaps = dims.slice(0, 3).map(([dim, sc]) => `${dim} (${sc.toFixed(1)})`);
 
-  // Anti-patterns from critical lessons (rule field only, max 5)
+  // Anti-patterns from critical + important lessons (rule field only, max 5)
   const critical = lessons
-    .filter(l => l.severity === 'critical')
+    .filter(l => l.severity === 'critical' || l.severity === 'important')
     .slice(0, 5)
     .map((l: StructuredLesson) => l.rule);
 

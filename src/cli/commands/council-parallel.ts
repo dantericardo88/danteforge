@@ -187,7 +187,7 @@ async function runPostMergeDoctrine(
     }
   }
 
-  // Step 3: Time Machine commit — best-effort, never blocks
+  // Step 3: Time Machine commit — best-effort, never blocks (but failures are logged as warn)
   let timeMachineCommitId: string | null = null;
   try {
     const allChangedFiles = [...new Set(mergedDims.flatMap(d => d.changedFiles))];
@@ -199,7 +199,7 @@ async function runPostMergeDoctrine(
     timeMachineCommitId = commit.commitId;
     logger.info(chalk.dim(`  [time-machine] commit ${commit.commitId.slice(0, 12)} recorded`));
   } catch (err) {
-    logger.info(chalk.dim(`  [time-machine] skipped — ${String(err).split('\n')[0]}`));
+    logger.warn(chalk.yellow(`  [time-machine] commit failed — audit trail incomplete: ${String(err).split('\n')[0]}`));
   }
 
   return { cipBlocked, timeMachineCommitId };

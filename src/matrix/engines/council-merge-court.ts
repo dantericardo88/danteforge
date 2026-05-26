@@ -239,10 +239,13 @@ export async function runMergeCourt(opts: MergeCourtOptions): Promise<MergeCourt
     }
 
     // Streaming pre-computed verdict fast-path: if this slot was already judged by
-    // the streaming judge queue and the verdict was PASS, skip re-judging.
+    // the streaming judge queue and the verdict was PASS, skip re-judging — but
+    // ONLY when minJudges <= 1 (streaming ran exactly 1 judge). When minJudges > 1
+    // the final court still needs additional cross-member judges; the streaming vote
+    // is treated as advisory, not conclusive.
     const slotId = handle.slotId ?? `${builderId}-0`;
     const preVerd = opts.preComputedConsensus?.get(slotId);
-    if (preVerd === 'PASS') {
+    if (preVerd === 'PASS' && (opts.minJudges ?? 2) <= 1) {
       logger.info(`[merge-court] ${builderId} (${slotId}): streaming pre-approved — skipping re-judge`);
       const syntheticVerdict: MemberVerdict = {
         judgeId: 'claude-code',
