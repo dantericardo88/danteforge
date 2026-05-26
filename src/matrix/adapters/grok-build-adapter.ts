@@ -56,10 +56,14 @@ export interface GrokBuildAdapterOptions {
   effort?: 'low' | 'medium' | 'high' | 'xhigh' | 'max';
   /** When true: read-only judge mode (--permission-mode plan). */
   judgeMode?: boolean;
+  /** Max retries on transient 502/503 errors (default: 3). */
+  maxGrokRetries?: number;
   _spawn?: GrokBuildSpawnFn;
   _isAvailable?: () => Promise<boolean>;
   _gitDiff?: (cwd: string) => Promise<string[]>;
   _revertFile?: (cwd: string, file: string) => Promise<void>;
+  /** Inject sleep for tests (default: real setTimeout). */
+  _sleep?: (ms: number) => Promise<void>;
 }
 
 const DEFAULT_TIMEOUT_MS = 12 * 60_000;
@@ -197,21 +201,48 @@ export class GrokBuildAdapter implements AgentAdapter {
         ? ['--single', prompt, '--permission-mode', 'plan', '--output-format', 'plain', '--cwd', normalizeCwd(worktreeRoot), '--no-memory']
         : ['--single', prompt, '--always-approve', '--effort', effort, '--cwd', normalizeCwd(worktreeRoot), '--no-memory', '--check'];
 
-      const chunks: Buffer[] = [];
-      const exitCode = await runChild(
-        spawnFn, binary, grokArgs,
-        {
-          cwd: normalizeCwd(worktreeRoot),
-          env: { ...process.env, ...(state.input.env ?? {}) },
-          shell: false,
-          stdio: ['ignore', 'pipe', 'pipe'],
-        },
-        this.options.timeoutMs ?? DEFAULT_TIMEOUT_MS,
-        chunks,
-        judgeMode, // in judge mode, also capture stderr (Grok may route output there)
-      );
+      const spawnOpts: SpawnOptions = {
+        cwd: normalizeCwd(worktreeRoot),
+        env: { ...process.env, ...(state.input.env ?? {}) },
+        shell: false,
+        stdio: ['ignore', 'pipe', 'pipe'],
+      };
+      const maxRetries = this.options.maxGrokRetries ?? 3;
+      const sleepFn = this.options._sleep ?? ((ms: number) => new Promise(r => setTimeout(r, ms)));
+      let exitCode = 1;
+      let attempt = 0;
+      let chunks: Buffer[] = [];
+
+      while (attempt <= maxRetries) {
+        chunks = [];
+        const stderrChunks: Buffer[] = [];
+        exitCode = await runChild(
+          spawnFn, binary, grokArgs, spawnOpts,
+          this.options.timeoutMs ?? DEFAULT_TIMEOUT_MS,
+          chunks,
+          judgeMode,
+          stderrChunks,
+        );
+        const stdout = Buffer.concat(chunks).toString('utf8');
+        const stderr = Buffer.concat(stderrChunks).toString('utf8');
+        // For judge mode, captured output is stdout (already merged via captureStderr).
+        // For build mode, use stderr for transient detection (grok writes errors there).
+        const rawForRetry = judgeMode ? stdout : (stderr || stdout);
+        if (exitCode === 0 || !isTransientGrokError(rawForRetry, exitCode)) {
+          state.capturedOutput = stdout;
+          break;
+        }
+        const retryAfterMs = parseRetryAfter(rawForRetry);
+        attempt++;
+        if (attempt > maxRetries) {
+          state.capturedOutput = stdout || stderr;
+          break;
+        }
+        logger.warn(`[GrokBuildAdapter] transient error (attempt ${attempt}/${maxRetries}), retrying in ${retryAfterMs / 1000}s — exit=${exitCode}`);
+        await sleepFn(retryAfterMs);
+      }
+
       state.exitCode = exitCode;
-      state.capturedOutput = Buffer.concat(chunks).toString('utf8');
 
       if (exitCode !== 0 && !judgeMode) {
         state.status = 'failed';
@@ -326,6 +357,28 @@ Be harsh. Inflation is the enemy. Only PASS if the implementation is real and co
 
 // ── Shared utilities ──────────────────────────────────────────────────────────
 
+/** 502/503 patterns that appear in grok.exe stderr when the proxy is overloaded. */
+const TRANSIENT_PATTERNS = [
+  /502\s*bad\s*gateway/i,
+  /503\s*service\s*unavailable/i,
+  /\b502\b/,
+  /retry.?after/i,
+  /gateway\s*error/i,
+  /upstream\s*(connect|timeout)/i,
+];
+
+function isTransientGrokError(output: string, exitCode: number): boolean {
+  if (exitCode === 0) return false;
+  return TRANSIENT_PATTERNS.some(p => p.test(output));
+}
+
+/** Extract retry-after seconds from output (default: 60s). */
+function parseRetryAfter(output: string): number {
+  const m = /retry.?after[:\s]+(\d+)/i.exec(output);
+  const seconds = m ? parseInt(m[1], 10) : 60;
+  return Math.min(Math.max(seconds, 5), 300) * 1000;
+}
+
 const KERNEL_STATE_DIRS = ['.danteforge/', '.danteforge-worktrees/', '.matrix-worktrees-test/'];
 
 async function defaultGitDiff(cwd: string): Promise<string[]> {
@@ -356,6 +409,7 @@ function runChild(
   timeoutMs: number,
   captureChunks: Buffer[],
   captureStderr = false,
+  stderrChunks?: Buffer[],
 ): Promise<number> {
   return new Promise<number>((resolve) => {
     const child: GrokBuildChildLike = spawnFn(cmd, args, opts);
@@ -374,7 +428,9 @@ function runChild(
       captureChunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));
     });
     child.stderr?.on('data', (chunk: Buffer) => {
-      if (captureStderr) captureChunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));
+      const buf = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk);
+      if (captureStderr) captureChunks.push(buf);
+      stderrChunks?.push(buf);
     });
     child.on('close', (code) => settle((code ?? 1) as number));
     child.on('error', () => settle(1));
