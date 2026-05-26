@@ -3,6 +3,7 @@
 // Runs an arbitrary shell command in the lease's worktree. Stdout/stderr
 // are surfaced as AgentRunEvents; the exit code becomes the run result.
 import { spawn } from 'node:child_process';
+import { killProcess, killPid } from './kill-process.js';
 import type {
   AgentAdapter,
   AgentRunInput,
@@ -76,7 +77,7 @@ export class GenericShellAdapter implements AgentAdapter {
       RUN_STATE.set(runId, state);
 
       const timer = setTimeout(() => {
-        try { child.kill('SIGTERM'); } catch { /* ignore */ }
+        killProcess(child);
       }, this.timeoutMs);
 
       child.stdout?.setEncoding('utf8');
@@ -125,7 +126,7 @@ export class GenericShellAdapter implements AgentAdapter {
 
   async stopRun(handle: AgentRunHandle): Promise<void> {
     if (handle.pid) {
-      try { process.kill(handle.pid, 'SIGTERM'); } catch { /* ignore */ }
+      killPid(handle.pid);
     }
     RUN_STATE.delete(handle.runId);
   }

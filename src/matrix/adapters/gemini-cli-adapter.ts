@@ -17,6 +17,7 @@ import { promisify } from 'node:util';
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import { logger } from '../../core/logger.js';
+import { killProcess } from './kill-process.js';
 import { matchesAnyGlob } from '../util/glob.js';
 import type {
   AgentAdapter,
@@ -417,7 +418,7 @@ function runChild(
       resolve(code);
     };
     const timer = setTimeout(() => {
-      try { child.kill('SIGTERM'); } catch { /* ignore */ }
+      killProcess(child);
       settle(124);
     }, timeoutMs);
     if (captureChunks) {

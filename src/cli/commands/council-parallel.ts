@@ -339,7 +339,23 @@ export async function runParallelCouncil(options: ParallelCouncilOptions): Promi
   }
   const sessionState = makeInitialState(runId, options.goal, available, maxRounds);
 
+  // SIGINT handler: when the user hits Ctrl+C, set the abort flag so the round
+  // loop exits on its next check — this allows the per-round `finally` block to
+  // run `removeCouncilWorktrees` and prevent orphaned git worktrees. Without this,
+  // Node.js exits immediately on SIGINT, bypassing all `finally` blocks.
+  let sigintAborted = false;
+  const sigintHandler = (): void => {
+    if (!sigintAborted) {
+      logger.warn(chalk.yellow('\n[council] SIGINT received — finishing current operation and cleaning up worktrees...'));
+      sigintAborted = true;
+    }
+  };
+  process.on('SIGINT', sigintHandler);
+
+  try {
+
   for (let round = 1; round <= maxRounds; round++) {
+    if (sigintAborted) break;
     if (round <= resumedRound) {
       logger.info(chalk.dim(`── Round ${round}/${maxRounds} skipped (already completed in resumed session)`));
       continue;
@@ -636,8 +652,15 @@ export async function runParallelCouncil(options: ParallelCouncilOptions): Promi
     }
   }
 
+  } finally {
+    process.removeListener('SIGINT', sigintHandler);
+  }
+
   const finalConv = convergence.summarize();
   logger.info(chalk.bold(`\n── Parallel Council Complete ────────────────────────`));
+  if (sigintAborted) {
+    logger.warn(chalk.yellow('Run was interrupted by SIGINT — worktrees cleaned up.'));
+  }
   logger.info(`Rounds run:      ${roundsRun}`);
   logger.info(`Total merges:    ${chalk.bold(String(totalMerged))}`);
   logger.info(`Converged dims:  ${finalConv.converged}`);
