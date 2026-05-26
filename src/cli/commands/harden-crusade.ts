@@ -183,6 +183,7 @@ async function defaultRunHardenForDim(dimensionId: string, cwd: string): Promise
 async function runDepthWave(
   dim: MatrixDimension,
   cwd: string,
+  target: number,
 ): Promise<DimHardenCrusadeResult> {
   const initialScore = dim.scores['self'] ?? 0;
   const hasOutcomes = Array.isArray((dim as unknown as Record<string, unknown>)['outcomes']) &&
@@ -220,9 +221,9 @@ async function runDepthWave(
   return {
     dimensionId: dim.id, label: dim.label, initialScore, finalScore,
     cyclesRun: 1, autoresearchRuns: 0,
-    hardenPassed: finalScore > 7,
+    hardenPassed: finalScore >= target,
     finalCap: 10,
-    status: finalScore >= 7 ? 'FRONTIER_REACHED' : 'GATE_BLOCKED',
+    status: finalScore >= target ? 'FRONTIER_REACHED' : 'GATE_BLOCKED',
     reason: `depth wave: validated outcomes, score ${initialScore.toFixed(2)} → ${finalScore.toFixed(2)}`,
   };
 }
@@ -485,7 +486,7 @@ export async function runHardenCrusade(options: HardenCrusadeOptions): Promise<H
       // Depth wave: run `danteforge validate` for each dim to produce receipts.
       // Dims without outcomes are skipped (not yet ready for depth validation).
       const depthPassResults = await Promise.all(
-        todo.map(d => runDepthWave(d, cwd).catch(err => ({
+        todo.map(d => runDepthWave(d, cwd, target).catch(err => ({
           dimensionId: d.id, label: d.label,
           initialScore: d.scores['self'] ?? 0, finalScore: d.scores['self'] ?? 0,
           cyclesRun: 1, autoresearchRuns: 0,

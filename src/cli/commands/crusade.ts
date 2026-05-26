@@ -532,6 +532,27 @@ async function runDimensionFrontierLoop(
       logger.warn(`[frontier:${dim.id}] Inferno failed cycle ${cycle}: ${err}`);
     }
 
+    // CIP pre-check: skip validate for dims that can't satisfy production callsite evidence.
+    // Mirrors council-parallel runPostMergeDoctrine — CIP before validate, never after.
+    if (!options.skipCIP) {
+      const cipFn = options._cipCheck ?? runCIPCheck;
+      let cipBlocked = false;
+      try {
+        const cipPre = await cipFn(dim.id, { cwd, target });
+        if (cipPre.blocksFrontierReached) {
+          logger.warn(`[frontier:${dim.id}] CIP pre-check blocked validate (cycle ${cycle}) — ${cipPre.gaps.join('; ')}`);
+          cipBlocked = true;
+        }
+      } catch (err) {
+        logger.warn(`[frontier:${dim.id}] CIP pre-check error (cycle ${cycle}) — proceeding: ${err}`);
+      }
+      if (cipBlocked) {
+        // Skip the rest of the evidence pipeline; treat cycle as no-progress.
+        consecutiveNoProgress++;
+        continue;
+      }
+    }
+
     // Evidence pipeline (Scoring Doctrine Rules 9–13):
     // validate writes receipts → evidence-rescore updates matrix → Fix A gate clamps if needed.
     try { await runValidate(dim.id, cwd); } catch (err) {
