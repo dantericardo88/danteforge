@@ -268,7 +268,7 @@ async function applyOutcomeDerivedScores(matrix: CompeteMatrix, cwd: string): Pr
         legacy_score: dim.scores.self,
         scores: dim.scores,
       };
-      const breakdown = computeDerivedScoreWithBreakdown(dfs, evidence!);
+      const breakdown = computeDerivedScoreWithBreakdown(dfs, evidence!, new Date());
       // Depth doctrine: dims with no outcomes declared cannot exceed 7.0.
       const derived = applyLegacyReceiptCeiling(breakdown.score, breakdown);
       // Write derived score to scores.derived only.

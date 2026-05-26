@@ -16,8 +16,9 @@
 //
 // This is the function that replaces "agent writes a score" as the source of truth.
 
-import { TIER_SCORE_CAPS, type CapabilityTier } from '../matrix/types/capability-test.js';
+import { TIER_SCORE_CAPS, isEvidenceStale, type CapabilityTier } from '../matrix/types/capability-test.js';
 import { isOutcomePassing, makeEvidenceKey, type Outcome, type OutcomeEvidence } from '../matrix/types/outcome.js';
+import { classifyOutcomeKind } from '../matrix/engines/outcome-quality.js';
 
 // ── Inputs ───────────────────────────────────────────────────────────────────
 
@@ -57,6 +58,8 @@ export interface DerivedScoreBreakdown {
     tier: CapabilityTier;
     declared: number;
     passing: number;
+    /** Outcomes that had evidence but it was older than TIER_FRESHNESS_MS. */
+    stale: number;
     allPassing: boolean;
   }>;
   /** True if the dim has no outcomes declared (legacy fallback). */
@@ -82,14 +85,22 @@ export interface DerivedScoreBreakdown {
 export function computeDerivedScore(
   dim: DimensionForScoring,
   evidence: OutcomeEvidence,
+  now?: Date,
 ): number {
-  return computeDerivedScoreWithBreakdown(dim, evidence).score;
+  return computeDerivedScoreWithBreakdown(dim, evidence, now).score;
 }
 
-/** Same as computeDerivedScore but returns the full breakdown for diagnostics. */
+/**
+ * Same as computeDerivedScore but returns the full breakdown for diagnostics.
+ *
+ * @param now — When provided, evidence older than TIER_FRESHNESS_MS[tier] is
+ *   treated as not-passing (score decay). Omit to disable staleness checking
+ *   (backward-compatible — all existing callers that don't pass `now` are unaffected).
+ */
 export function computeDerivedScoreWithBreakdown(
   dim: DimensionForScoring,
   evidence: OutcomeEvidence,
+  now?: Date,
 ): DerivedScoreBreakdown {
   const outcomes = dim.outcomes ?? [];
   if (outcomes.length === 0) {
@@ -126,8 +137,19 @@ export function computeDerivedScoreWithBreakdown(
     }
 
     let passing = 0;
+    let stale = 0;
     for (const outcome of tierOutcomes) {
+      // Quality cap: T5+ outcomes whose kind cannot support the declared tier
+      // are excluded. Prevents shell npm-test outcomes from claiming T5+ credit.
+      if (TIER_INDEX[outcome.tier] >= TIER_INDEX.T5) {
+        const { maxScore } = classifyOutcomeKind(outcome);
+        if (maxScore < TIER_SCORE_CAPS[outcome.tier]) continue;
+      }
       const entry = evidence.get(makeEvidenceKey(dim.id, outcome.id));
+      if (now && entry && isEvidenceStale(outcome.tier, entry.ranAt, now)) {
+        stale++;
+        continue; // treat stale evidence as not-passing
+      }
       if (isOutcomePassing(outcome, entry)) passing++;
     }
 
@@ -145,7 +167,7 @@ export function computeDerivedScoreWithBreakdown(
       }
     }
 
-    perTier.push({ tier, declared: tierOutcomes.length, passing, allPassing });
+    perTier.push({ tier, declared: tierOutcomes.length, passing, stale, allPassing });
 
     if (allPassing) {
       highestFullPassedTier = tier;

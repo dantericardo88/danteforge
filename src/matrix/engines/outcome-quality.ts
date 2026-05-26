@@ -53,9 +53,11 @@ export function classifyOutcomeKind(outcome: Outcome): OutcomeKindClassification
     return { maxScore: 8.5, evidenceTier: 'cli-smoke', reason: 'CLI smoke — real invocation, pattern-checked output' };
   }
 
-  // Shell command running a real test suite (npx tsx, npm test, jest, vitest) → T5 (8.0)
+  // Shell command running a real test suite (npx tsx, npm test, jest, vitest) → T4 (7.0).
+  // These commands prove tests pass in isolation, not production behavior. To unlock T5+,
+  // use kind='runtime-exec', 'cli-smoke', or 'e2e-workflow' instead.
   if (kind === 'shell' && /npx\s+tsx\s+--test|npm\s+(?:run\s+)?test|jest|vitest|mocha/.test(cmd)) {
-    return { maxScore: 8.0, evidenceTier: 'unit-test', reason: 'Unit/integration test suite — internal runtime verification' };
+    return { maxScore: 7.0, evidenceTier: 'unit-test', reason: 'Unit/integration test suite — proves isolation, not production behavior; caps at T4/7.0' };
   }
 
   // Shell: structural file checks (readFileSync, existsSync, file contains string) → T4 (7.0)
