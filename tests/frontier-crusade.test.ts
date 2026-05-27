@@ -120,6 +120,15 @@ describe('runFrontierCrusade', () => {
       _loadMatrix: async () => matrix,
       _writeFile: async () => { /* no-op */ },
       _runInferno: async () => { /* no-op */ },
+      _runValidate: async () => { /* no-op */ },
+      _runEvidenceRescore: async () => { /* no-op */ },
+      _createTimeMachineCommit: null,
+      _cipCheck: async (dimId: string) => ({
+        dimensionId: dimId, cipScore: 4.0, storedScore: 4.0,
+        cipClass: 'partially-verified' as const, blocksFrontierReached: false,
+        gaps: [], stubsFound: 0, outcomesRun: 0, outcomesPassed: 0,
+        capabilityTestPassed: null, irrelevantOutcomes: 0, evidenceAgeDays: null,
+      }),
       _getScore: (() => {
         let call = 0;
         const seq = [4.5, 5.0]; // reaches ceiling=5.0 before target=9.0
@@ -149,6 +158,15 @@ describe('runFrontierCrusade', () => {
       _loadMatrix: async () => matrix,
       _writeFile: async () => { /* no-op */ },
       _runInferno: async () => { /* no-op */ },
+      _runValidate: async () => { /* no-op */ },
+      _runEvidenceRescore: async () => { /* no-op */ },
+      _createTimeMachineCommit: null,
+      _cipCheck: async (dimId: string) => ({
+        dimensionId: dimId, cipScore: 7.0, storedScore: 7.0,
+        cipClass: 'partially-verified' as const, blocksFrontierReached: false,
+        gaps: [], stubsFound: 0, outcomesRun: 0, outcomesPassed: 0,
+        capabilityTestPassed: null, irrelevantOutcomes: 0, evidenceAgeDays: null,
+      }),
       _runAutoResearch: async () => { autoresearchCalled++; },
       _loadState: null,
       _getScore: (() => {
