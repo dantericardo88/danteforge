@@ -29,6 +29,12 @@ import type { CouncilWorktreeOpts } from './council-worktree.js';
 import type { CouncilMemberId } from './council-merge-court.js';
 import { parseVerdict } from './council-verdict-parser.js';
 import type { MemberVerdict } from './council-verdict-parser.js';
+import {
+  recordCouncilRevisionFrontierReceipt,
+  runRevisionProofCommands,
+  type RecordCouncilRevisionReceiptResult,
+  type RevisionProofCommandResult,
+} from './council-revision-proof.js';
 
 // ── Public types ──────────────────────────────────────────────────────────────
 
@@ -43,6 +49,12 @@ export interface RevisionOptions {
   worktreeOpts: CouncilWorktreeOpts;
   /** Revision cycles before giving up (default: 1). */
   maxCycles?: number;
+  /** Runtime proof commands run after revision and before rejudge. */
+  proofCommands?: string[];
+  /** Matrix dimension receiving this revision evidence. */
+  dimensionId?: string;
+  /** Frontier target used in the emitted score-evidence receipt. */
+  targetScore?: number;
   /** Injection seam: override builder adapter creation. */
   _makeBuilderAdapter?: (id: CouncilMemberId, wp: WorkPacket) => AgentAdapter;
   /** Injection seam: override judge adapter creation. */
@@ -53,6 +65,8 @@ export interface RevisionCycle {
   cycle: number;
   selfAssessment: string;
   revisedDiff: string;
+  proofCommands: RevisionProofCommandResult[];
+  frontierReceipt?: RecordCouncilRevisionReceiptResult;
   rejudgeVerdicts: MemberVerdict[];
   consensus: 'PASS' | 'FAIL' | 'SPLIT';
 }
@@ -63,6 +77,7 @@ export interface RevisionResult {
   finalConsensus: 'PASS' | 'FAIL' | 'SPLIT';
   /** The last revised diff — what judges actually evaluated. Use this for merging, not the original diff. */
   finalDiff: string;
+  frontierReceipts: RecordCouncilRevisionReceiptResult[];
 }
 
 // ── Internal helpers ──────────────────────────────────────────────────────────
@@ -104,6 +119,34 @@ function peerVerdictSummary(verdicts: MemberVerdict[], excludeJudgeId: string): 
     .filter(v => v.judgeId !== excludeJudgeId)
     .map(v => `[${v.judgeId}: ${v.verdict}] ${v.reason.slice(0, 200)}`)
     .join('\n') || '(no peer verdict available)';
+}
+
+function averageScoreSuggestion(verdicts: MemberVerdict[]): number | null {
+  const scores = verdicts
+    .map(v => v.scoreSuggestion)
+    .filter((score): score is number => typeof score === 'number' && Number.isFinite(score));
+  if (scores.length === 0) return null;
+  return Math.round((scores.reduce((sum, score) => sum + score, 0) / scores.length) * 100) / 100;
+}
+
+function changedFilesFromDiff(diff: string): string[] {
+  const files = new Set<string>();
+  for (const line of diff.split(/\r?\n/)) {
+    const match = line.match(/^diff --git a\/(.+?) b\/(.+)$/);
+    if (match?.[2]) files.add(match[2]);
+  }
+  return [...files].sort();
+}
+
+function formatProofCommands(results: RevisionProofCommandResult[]): string {
+  if (results.length === 0) return '(no runtime proof commands configured)';
+  return results.map((result) => [
+    `COMMAND: ${result.command}`,
+    `EXIT: ${result.exitCode}`,
+    `STATUS: ${result.passed ? 'PASS' : 'FAIL'}`,
+    `STDOUT: ${result.stdout.trim().slice(0, 1000) || '(empty)'}`,
+    `STDERR: ${result.stderr.trim().slice(0, 1000) || '(empty)'}`,
+  ].join('\n')).join('\n\n');
 }
 
 // ── Prompt builders ───────────────────────────────────────────────────────────
@@ -158,6 +201,7 @@ function buildRevisionPrompt(
 function buildRejudgePrompt(
   goal: string, revisedDiff: string, selfAssessment: string,
   priorRawOutput: string, judgeId: CouncilMemberId, peerSummary: string, cycle: number,
+  proofCommands: RevisionProofCommandResult[],
 ): string {
   const persona = COUNCIL_PROFILES[judgeId]?.persona ?? judgeId;
   return [
@@ -180,7 +224,11 @@ function buildRejudgePrompt(
     `=== REVISED DIFF (first 2500 chars) ===`,
     revisedDiff.slice(0, 2500),
     ``,
+    `=== RUNTIME PROOF COMMANDS ===`,
+    formatProofCommands(proofCommands),
+    ``,
     `If the builder specifically addressed your blocking concerns, vote PASS.`,
+    `Treat failing runtime proof as a blocking concern unless it is clearly unrelated to this revision.`,
     `If critical concerns remain unaddressed, vote FAIL with specific remaining issues.`,
     ``,
     `Output your UPDATED verdict in EXACTLY this format:`,
@@ -252,12 +300,21 @@ export async function runRevision(opts: RevisionOptions): Promise<RevisionResult
     finalVerdicts: [...opts.initialVerdicts],
     finalConsensus: resolveConsensus(opts.initialVerdicts),
     finalDiff: diff,
+    frontierReceipts: [],
   };
 
   for (let cycle = 1; cycle <= maxCycles; cycle++) {
     if (resolveConsensus(result.finalVerdicts) === 'PASS') break;
 
+    const consensusBefore = resolveConsensus(result.finalVerdicts);
+    const scoreBefore = averageScoreSuggestion(result.finalVerdicts);
     const { preserveContext, fixContext } = extractAllJudgeFeedback(result.finalVerdicts);
+    const preservedApprovals = result.finalVerdicts
+      .filter(v => v.verdict === 'PASS')
+      .map(v => `[${v.judgeId}] ${v.reason}`);
+    const blockingConcerns = result.finalVerdicts
+      .filter(v => v.verdict !== 'PASS')
+      .flatMap(v => v.blockingConcerns.length > 0 ? v.blockingConcerns : [v.reason]);
     logger.info(`[revision] Cycle ${cycle}/${maxCycles}: ${builderId} addressing ${result.finalVerdicts.filter(v => v.verdict !== 'PASS').length} FAIL/UNCLEAR verdict(s)`);
 
     // 1. Self-inspection: builder reads ALL judge feedback (both PASS and FAIL)
@@ -295,12 +352,16 @@ export async function runRevision(opts: RevisionOptions): Promise<RevisionResult
       logger.warn(`[revision] Cycle ${cycle}: could not capture revised diff: ${String(err)}`);
     }
 
+    const proofCommands = opts.proofCommands && opts.proofCommands.length > 0
+      ? await runRevisionProofCommands(worktreePath, opts.proofCommands)
+      : [];
+
     // 4. Re-judge: each judge sees their prior verdict AND what the peer judge said
     const rejudgeVerdicts = await Promise.all(
       judgeIds.map(async (judgeId): Promise<MemberVerdict> => {
         const prior = result.finalVerdicts.find(v => v.judgeId === judgeId);
         const peers = peerVerdictSummary(result.finalVerdicts, judgeId);
-        const rejudgePrompt = buildRejudgePrompt(goal, revisedDiff, selfAssessment, prior?.rawOutput ?? '', judgeId, peers, cycle);
+        const rejudgePrompt = buildRejudgePrompt(goal, revisedDiff, selfAssessment, prior?.rawOutput ?? '', judgeId, peers, cycle, proofCommands);
         try {
           const rejudgeWp = makeRevisionWorkPacket(rejudgePrompt, worktreePath);
           const judgeAdapter = makeJudge(judgeId, { ...rejudgeWp, objective: rejudgePrompt } as WorkPacket);
@@ -318,7 +379,38 @@ export async function runRevision(opts: RevisionOptions): Promise<RevisionResult
     );
 
     const cycleConsensus = resolveConsensus(rejudgeVerdicts);
-    result.cycles.push({ cycle, selfAssessment, revisedDiff, rejudgeVerdicts, consensus: cycleConsensus });
+    let frontierReceipt: RecordCouncilRevisionReceiptResult | undefined;
+    if (proofCommands.length > 0) {
+      try {
+        frontierReceipt = await recordCouncilRevisionFrontierReceipt({
+          cwd: worktreePath,
+          receipt: {
+            dimensionId: opts.dimensionId ?? 'council-revision',
+            runId: `council-revision.${builderId}.cycle-${cycle}.${Date.now()}`,
+            cycle,
+            builderId,
+            judgeIds,
+            consensusBefore,
+            consensusAfter: cycleConsensus,
+            scoreBefore,
+            scoreAfter: averageScoreSuggestion(rejudgeVerdicts),
+            targetScore: opts.targetScore ?? 9,
+            proofCommands,
+            preservedApprovals,
+            blockingConcerns,
+            changedFiles: changedFilesFromDiff(revisedDiff),
+            originalDiff: diff,
+            revisedDiff,
+          },
+        });
+        result.frontierReceipts.push(frontierReceipt);
+        logger.info(`[revision] Cycle ${cycle}: frontier receipt ${frontierReceipt.timeMachineCommitId}`);
+      } catch (err) {
+        logger.warn(`[revision] Cycle ${cycle}: could not write frontier receipt: ${String(err)}`);
+      }
+    }
+
+    result.cycles.push({ cycle, selfAssessment, revisedDiff, proofCommands, frontierReceipt, rejudgeVerdicts, consensus: cycleConsensus });
     result.finalVerdicts = rejudgeVerdicts;
     result.finalConsensus = cycleConsensus;
     result.finalDiff = revisedDiff;

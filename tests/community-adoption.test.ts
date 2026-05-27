@@ -294,4 +294,81 @@ describe('community adoption readiness', () => {
     assert.ok(report.signals.some((signal) => signal.id === 'pull-request-template' && signal.status === 'pass'));
     assert.ok(report.signals.some((signal) => signal.id === 'contributor-labels' && signal.status === 'pass'));
   });
+
+  it('credits ownership, recognition, and roadmap surfaces that help outsiders contribute', async () => {
+    const cwd = await makeProject({
+      'package.json': JSON.stringify({
+        name: 'sample-tool',
+        version: '1.2.3',
+        description: 'A useful CLI tool',
+        license: 'MIT',
+        repository: { type: 'git', url: 'https://github.com/acme/sample-tool.git' },
+        bugs: { url: 'https://github.com/acme/sample-tool/issues' },
+        homepage: 'https://github.com/acme/sample-tool#readme',
+        bin: { 'sample-tool': 'dist/index.js' },
+        files: ['dist', 'README.md', 'LICENSE'],
+        keywords: ['cli', 'automation', 'developer-tools'],
+        publishConfig: { access: 'public' },
+      }),
+      'README.md': [
+        '# Sample Tool',
+        '',
+        '## Quick start',
+        '',
+        '```bash',
+        'npm install -g sample-tool',
+        'sample-tool --help',
+        'sample-tool doctor',
+        '```',
+      ].join('\n'),
+      'CONTRIBUTING.md': '# Contributing\n\nRun tests before pull requests.\n',
+      'SECURITY.md': '# Security\n\nReport vulnerabilities privately.\n',
+      'CHANGELOG.md': '# Changelog\n\n## 1.2.3\n\n- Release notes.\n',
+      'SUPPORT.md': '# Support\n\nMaintainers triage issues within 3 business days. Include logs, Node version, operating system, and reproduction steps.\n',
+      '.github/CODEOWNERS': '* @acme/maintainers\nsrc/ @acme/core\n',
+      '.github/FUNDING.yml': 'github: [acme]\nopen_collective: sample-tool\n',
+      '.github/ISSUE_TEMPLATE/config.yml': 'blank_issues_enabled: false\ncontact_links:\n  - name: Questions\n    url: https://github.com/acme/sample-tool/discussions\n    about: Ask support questions in discussions.\n',
+      '.github/PULL_REQUEST_TEMPLATE.md': '## Summary\n\n## Verification\n\n- [ ] npm test\n',
+      '.github/labels.yml': '- name: good first issue\n- name: help wanted\n- name: needs-triage\n',
+      'docs/ROADMAP.md': '# Roadmap\n\n## Current Priorities\n\n- Improve first-run setup.\n\n## Up Next\n\n- Add more examples.\n\n## How To Help\n\nPick a good first issue or discuss proposals before implementation.\n',
+      'docs/COMMANDS.md': '# Command Reference\n\n| Command | Purpose |\n| --- | --- |\n| `sample-tool doctor` | Diagnose setup. |\n| `sample-tool verify` | Run checks. |\n| `sample-tool help` | Show help. |\n',
+      'docs/TROUBLESHOOTING.md': '# Troubleshooting\n\nRun `sample-tool doctor` and open an issue with logs, reproduction steps, Node version, and operating system.\n',
+      'examples/quickstart/README.md': '# Quickstart example\n',
+    });
+
+    const report = await assessCommunityAdoptionReadiness(cwd);
+
+    for (const id of ['maintainer-ownership', 'contributor-recognition', 'community-roadmap']) {
+      assert.ok(
+        report.signals.some((signal) => signal.id === id && signal.status === 'pass'),
+        `expected ${id} signal to pass`,
+      );
+    }
+  });
+
+  it('generates maintainer ownership, contributor recognition, and roadmap assets in the adoption pack', async () => {
+    const cwd = await makeProject({
+      'package.json': JSON.stringify({
+        name: 'sample-tool',
+        version: '0.1.0',
+        license: 'MIT',
+        repository: { type: 'git', url: 'https://github.com/acme/sample-tool.git' },
+      }),
+    });
+
+    await improveCommunityAdoption({ cwd, generateAdoptionPack: true });
+    const report = await assessCommunityAdoptionReadiness(cwd);
+    const codeowners = await fs.readFile(path.join(cwd, '.github', 'CODEOWNERS'), 'utf8');
+    const funding = await fs.readFile(path.join(cwd, '.github', 'FUNDING.yml'), 'utf8');
+
+    await assert.doesNotReject(() => fs.access(path.join(cwd, '.github', 'CODEOWNERS')));
+    await assert.doesNotReject(() => fs.access(path.join(cwd, '.github', 'FUNDING.yml')));
+    await assert.doesNotReject(() => fs.access(path.join(cwd, 'docs', 'ROADMAP.md')));
+    assert.match(codeowners, /@acme/);
+    assert.match(funding, /github: \[acme\]/);
+    assert.match(funding, /https:\/\/github\.com\/acme\/sample-tool/);
+    assert.ok(report.signals.some((signal) => signal.id === 'maintainer-ownership' && signal.status === 'pass'));
+    assert.ok(report.signals.some((signal) => signal.id === 'contributor-recognition' && signal.status === 'pass'));
+    assert.ok(report.signals.some((signal) => signal.id === 'community-roadmap' && signal.status === 'pass'));
+  });
 });

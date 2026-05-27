@@ -35,6 +35,19 @@ export interface CouncilWorktreeOpts {
   };
 }
 
+/** Remove junction/symlink entries one level deep before recursive deletion.
+ *  Prevents fs.rm({recursive}) from following Windows junctions into their targets. */
+async function unlinkJunctions(dir: string): Promise<void> {
+  try {
+    const entries = await fs.readdir(dir, { withFileTypes: true });
+    await Promise.all(
+      entries
+        .filter(e => e.isSymbolicLink())
+        .map(e => fs.unlink(path.join(dir, e.name)).catch(() => { /* ignore */ })),
+    );
+  } catch { /* ignore — dir may not exist */ }
+}
+
 function defaultGit() {
   return {
     async worktreeAdd(worktreePath: string, branchName: string, cwd: string): Promise<void> {
@@ -48,6 +61,9 @@ function defaultGit() {
         // (e.g. prior process crashed mid-cleanup). Fall back to direct fs removal.
         const msg = String(err);
         if (msg.includes('not a working tree') || msg.includes('already exists')) {
+          // Unlink junction symlinks first — on Windows, fs.rm({recursive}) follows
+          // junctions and deletes the target directory (e.g. the real node_modules).
+          await unlinkJunctions(worktreePath);
           await fs.rm(worktreePath, { recursive: true, force: true });
           await execFileAsync('git', ['worktree', 'prune'], { cwd, timeout: 10_000 }).catch(() => { /* ignore */ });
         } else {
@@ -149,6 +165,13 @@ export async function createCouncilWorktreesForSlots(
         await git.branchDelete(branchName, opts.projectPath).catch(() => { /* ignore */ });
         await tryAdd();
       }
+
+      // NOTE: We intentionally do NOT create a node_modules junction here.
+      // Junctions on Windows point at the real directory — any npm operation
+      // an adapter performs inside the worktree (e.g. `npm install`) writes
+      // through the junction into the MAIN node_modules, corrupting it for
+      // all other slots. Adapters must write code only; validation runs from
+      // the main project directory after merging.
 
       logger.info(`[council-worktree] ${slot.slotId} → ${worktreePath} (${branchName})`);
       return { memberId: slot.memberId, worktreePath, branchName, slotIdx: slot.slotIdx, slotId: slot.slotId };

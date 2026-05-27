@@ -1,142 +1,206 @@
-// Progress indicator for long-running CLI operations
-// Uses stderr for output so stdout stays clean for JSON/piped data.
-// Non-TTY aware: no spinners if stderr is not a TTY, just prints lines.
+// Canonical progress indicator for long-running CLI operations.
+// Output uses stderr by default so stdout stays clean for JSON and piped data.
 
-// ---------------------------------------------------------------------------
-// Types
-// ---------------------------------------------------------------------------
+const FRAMES = ['-', '\\', '|', '/'];
+const FRAME_INTERVAL_MS = 80;
+
+export type ProgressMode = 'auto' | 'spinner' | 'plain' | 'silent';
 
 export interface ProgressHandle {
-  /** Update the progress message without marking done/failed. */
+  /** Replace the current progress label without marking the operation terminal. */
   update(message: string): void;
-  /** Mark the operation as done with an optional final message. */
+  /** Mark the operation as done. */
   done(message?: string): void;
-  /** Mark the operation as failed with an error message. */
-  fail(message: string): void;
+  /** Alias for done(), kept for callsites that use action-oriented wording. */
+  succeed(message?: string): void;
+  /** Mark the operation as failed. */
+  fail(message?: string): void;
+  /** Stop rendering without emitting a terminal success/failure line. */
+  stop(): void;
 }
 
 export interface ProgressOptions {
-  /** Override stderr write function (for testing). */
+  /** Explicit output mode. auto selects spinner only for interactive terminals. */
+  mode?: ProgressMode;
+  /** Spinner interval in milliseconds. */
+  intervalMs?: number;
+  /** Override stderr write function. */
   _writeFn?: (msg: string) => void;
-  /** Override isTTY detection (for testing). */
+  /** Compatibility alias for callers migrated from ux-progress. */
+  _write?: (msg: string) => void;
+  /** Override isTTY detection. */
   _isTTY?: boolean;
+  /** Override terminal columns for truncation tests. */
+  _columns?: number;
+  /** Override clock for deterministic tests. */
+  _now?: () => number;
+  /** Override environment for deterministic mode tests. */
+  _env?: NodeJS.ProcessEnv;
+  /** Override timers for deterministic spinner tests. */
+  _setInterval?: typeof setInterval;
+  _clearInterval?: typeof clearInterval;
 }
 
-// ---------------------------------------------------------------------------
-// Internal state
-// ---------------------------------------------------------------------------
-
-const SPINNER_FRAMES = ['⠋', '⠙', '⠹', '⠸', '⠼', '⠴', '⠦', '⠧', '⠇', '⠏'];
-
-interface InternalHandle {
-  label: string;
-  done: boolean;
-  failed: boolean;
-  frameIndex: number;
-  timerId?: ReturnType<typeof setInterval>;
-  write: (msg: string) => void;
-  isTTY: boolean;
-}
+type TerminalState = 'running' | 'succeeded' | 'failed' | 'stopped';
 
 function defaultWrite(msg: string): void {
   process.stderr.write(msg);
 }
 
-function formatLine(frame: string, label: string, message: string): string {
-  return `\r${frame} ${label}${message ? ': ' + message : ''}`;
+function isTTY(options: ProgressOptions): boolean {
+  return options._isTTY ?? (process.stderr.isTTY === true);
 }
 
-// ---------------------------------------------------------------------------
-// Main factory
-// ---------------------------------------------------------------------------
+function elapsed(startMs: number, now: () => number): string {
+  const seconds = Math.max(0, Math.floor((now() - startMs) / 1000));
+  if (seconds < 60) return `${seconds}s`;
+  return `${Math.floor(seconds / 60)}m${seconds % 60}s`;
+}
 
-/**
- * Start a progress indicator for a named operation.
- * Returns a handle to update, complete, or fail the indicator.
- */
-export function startProgress(label: string, options: ProgressOptions = {}): ProgressHandle {
-  const write = options._writeFn ?? defaultWrite;
-  const isTTY = options._isTTY ?? (process.stderr.isTTY === true);
+function sanitizeLabel(label: string): string {
+  return label
+    .replace(/\x1B\[[0-?]*[ -/]*[@-~]/g, '')
+    .replace(/[\r\n\t]+/g, ' ')
+    .replace(/[\x00-\x1F\x7F]/g, '')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
 
-  const state: InternalHandle = {
-    label,
-    done: false,
-    failed: false,
-    frameIndex: 0,
-    write,
-    isTTY,
+function truncateToWidth(line: string, columns: number): string {
+  if (columns <= 0 || line.length <= columns) return line;
+  if (columns <= 3) return line.slice(0, columns);
+  return `${line.slice(0, columns - 3)}...`;
+}
+
+function normalizeMode(value: string | undefined): ProgressMode | undefined {
+  const normalized = value?.toLowerCase();
+  if (normalized === 'off' || normalized === 'false' || normalized === '0') return 'silent';
+  if (normalized === 'spinner' || normalized === 'plain' || normalized === 'silent') return normalized;
+  return undefined;
+}
+
+function resolveMode(options: ProgressOptions): Exclude<ProgressMode, 'auto'> {
+  const env = options._env ?? process.env;
+  const explicit = options.mode && options.mode !== 'auto'
+    ? options.mode
+    : normalizeMode(env.DANTEFORGE_PROGRESS);
+
+  if (explicit && explicit !== 'auto') return explicit;
+  if (env.DANTEFORGE_NO_SPINNER === '1') return 'plain';
+  if (env.CI === 'true' || env.CI === '1') return 'plain';
+  if ((env.TERM ?? '').toLowerCase() === 'dumb') return 'plain';
+  return isTTY(options) ? 'spinner' : 'plain';
+}
+
+function makeNoopHandle(): ProgressHandle {
+  return {
+    update: () => {},
+    done: () => {},
+    succeed: () => {},
+    fail: () => {},
+    stop: () => {},
   };
+}
 
-  if (isTTY) {
-    // Spin on TTY
-    state.timerId = setInterval(() => {
-      if (state.done || state.failed) return;
-      const frame = SPINNER_FRAMES[state.frameIndex % SPINNER_FRAMES.length];
-      state.frameIndex++;
-      write(formatLine(frame, label, ''));
-    }, 80);
-  } else {
-    // Non-TTY: just print a start line
-    write(`[START] ${label}\n`);
+export function startProgress(initialLabel: string, options: ProgressOptions = {}): ProgressHandle {
+  const mode = resolveMode(options);
+  if (mode === 'silent') return makeNoopHandle();
+
+  const write = options._writeFn ?? options._write ?? defaultWrite;
+  const now = options._now ?? Date.now;
+  const columns = options._columns ?? process.stderr.columns ?? 80;
+  let label = sanitizeLabel(initialLabel);
+  let frameIdx = 0;
+  let state: TerminalState = 'running';
+  const startMs = now();
+
+  if (mode === 'plain') {
+    write(`[progress] ${label}\n`);
+    const complete = (terminalState: 'succeeded' | 'failed', next?: string): void => {
+      if (state !== 'running') return;
+      state = terminalState;
+      label = sanitizeLabel(next ?? label);
+      const tag = terminalState === 'succeeded' ? 'done' : 'failed';
+      write(`[${tag}] ${label} (${elapsed(startMs, now)})\n`);
+    };
+
+    return {
+      update(next: string) {
+        if (state !== 'running') return;
+        const nextLabel = sanitizeLabel(next);
+        if (nextLabel === label) return;
+        label = nextLabel;
+        write(`[progress] ${label}\n`);
+      },
+      done(next?: string) {
+        complete('succeeded', next);
+      },
+      succeed(next?: string) {
+        complete('succeeded', next);
+      },
+      fail(next?: string) {
+        complete('failed', next);
+      },
+      stop() {
+        if (state !== 'running') return;
+        state = 'stopped';
+      },
+    };
   }
 
-  const handle: ProgressHandle = {
-    update(message: string): void {
-      if (state.done || state.failed) return;
-      if (isTTY) {
-        const frame = SPINNER_FRAMES[state.frameIndex % SPINNER_FRAMES.length];
-        write(formatLine(frame, label, message));
-      } else {
-        write(`[${label}] ${message}\n`);
-      }
-    },
+  function render(): void {
+    if (state !== 'running') return;
+    const frame = FRAMES[frameIdx % FRAMES.length];
+    const line = truncateToWidth(`${frame} ${label} (${elapsed(startMs, now)})`, columns);
+    write(`\r${line}`);
+  }
 
-    done(message?: string): void {
-      if (state.done || state.failed) return;
-      state.done = true;
-      if (state.timerId !== undefined) {
-        clearInterval(state.timerId);
-      }
-      if (isTTY) {
-        const finalMsg = message ? `: ${message}` : '';
-        write(`\r${isTTY ? '\x1B[2K' : ''}✓ ${label}${finalMsg}\n`);
-      } else {
-        write(`[DONE] ${label}${message ? ': ' + message : ''}\n`);
-      }
-    },
+  const setTimer = options._setInterval ?? setInterval;
+  const clearTimer = options._clearInterval ?? clearInterval;
+  const timer = setTimer(() => {
+    frameIdx++;
+    render();
+  }, options.intervalMs ?? FRAME_INTERVAL_MS);
 
-    fail(message: string): void {
-      if (state.done || state.failed) return;
-      state.failed = true;
-      if (state.timerId !== undefined) {
-        clearInterval(state.timerId);
-      }
-      if (isTTY) {
-        write(`\r${isTTY ? '\x1B[2K' : ''}✗ ${label}: ${message}\n`);
-      } else {
-        write(`[FAIL] ${label}: ${message}\n`);
-      }
+  render();
+
+  function clear(): void {
+    clearTimer(timer);
+    write('\r\x1b[K');
+  }
+
+  function complete(terminalState: 'succeeded' | 'failed', next?: string): void {
+    if (state !== 'running') return;
+    state = terminalState;
+    clear();
+    label = sanitizeLabel(next ?? label);
+    const prefix = terminalState === 'succeeded' ? 'OK' : 'FAIL';
+    write(`${prefix} ${label} (${elapsed(startMs, now)})\n`);
+  }
+
+  return {
+    update(next: string) {
+      if (state !== 'running') return;
+      label = sanitizeLabel(next);
+      render();
+    },
+    done(next?: string) {
+      complete('succeeded', next);
+    },
+    succeed(next?: string) {
+      complete('succeeded', next);
+    },
+    fail(next?: string) {
+      complete('failed', next);
+    },
+    stop() {
+      if (state !== 'running') return;
+      state = 'stopped';
+      clear();
     },
   };
-
-  return handle;
 }
 
-// ---------------------------------------------------------------------------
-// Convenience wrapper
-// ---------------------------------------------------------------------------
-
-/**
- * Run an async operation with a progress indicator.
- * The indicator is automatically marked done on resolution or failed on rejection.
- *
- * @example
- * const result = await withProgress('Building project', async (handle) => {
- *   handle.update('compiling...');
- *   const out = await buildProject();
- *   return out;
- * });
- */
 export async function withProgress<T>(
   label: string,
   fn: (handle: ProgressHandle) => Promise<T>,

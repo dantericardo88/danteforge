@@ -6,6 +6,15 @@ export interface CommunityEngagementReport {
   pullRequestTemplate: boolean;
   contributorLabels: boolean;
   discussionRouting: boolean;
+  maintainerOwnership: boolean;
+  contributorRecognition: boolean;
+  communityRoadmap: boolean;
+}
+
+interface PackageMetadata {
+  name?: unknown;
+  repository?: unknown;
+  homepage?: unknown;
 }
 
 async function readText(filePath: string): Promise<string> {
@@ -24,6 +33,14 @@ async function writeIfMissing(filePath: string, content: string): Promise<boolea
     await fs.mkdir(path.dirname(filePath), { recursive: true });
     await fs.writeFile(filePath, content, 'utf8');
     return true;
+  }
+}
+
+async function readPackage(cwd: string): Promise<PackageMetadata> {
+  try {
+    return JSON.parse(await fs.readFile(path.join(cwd, 'package.json'), 'utf8')) as PackageMetadata;
+  } catch {
+    return {};
   }
 }
 
@@ -48,6 +65,53 @@ function discussionRoutingReady(text: string, supportText: string): boolean {
   return /discussion/i.test(text) || (/discussion/i.test(supportText) && /question|support|workflow/i.test(supportText));
 }
 
+function maintainerOwnershipReady(text: string): boolean {
+  const activeLines = text
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter((line) => line && !line.startsWith('#'));
+  return activeLines.some((line) => {
+    const parts = line.split(/\s+/);
+    return parts.length >= 2 && parts.slice(1).some((owner) =>
+      /^@[\w.-]+(?:\/[\w.-]+)?$/.test(owner) || /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(owner));
+  });
+}
+
+function contributorRecognitionReady(text: string): boolean {
+  return /(?:github|open_collective|patreon|tidelift|ko_fi|thanks_dev|custom):/i.test(text)
+    || /(?:sponsor|funding|backer|contributor|recognition|thanks)/i.test(text);
+}
+
+function communityRoadmapReady(text: string): boolean {
+  return /roadmap|current priorities|up next|planned/i.test(text)
+    && /(?:current priorities|now|up next|planned|next)/i.test(text)
+    && /(?:how to help|contribut|good first issue|help wanted|discussion)/i.test(text);
+}
+
+function packageRepositoryUrl(pkg: PackageMetadata): string {
+  if (typeof pkg.repository === 'string') return pkg.repository;
+  if (pkg.repository && typeof pkg.repository === 'object') {
+    const url = (pkg.repository as Record<string, unknown>)['url'];
+    if (typeof url === 'string') return url;
+  }
+  return typeof pkg.homepage === 'string' ? pkg.homepage : '';
+}
+
+function inferCodeOwner(pkg: PackageMetadata): string {
+  const repoUrl = packageRepositoryUrl(pkg);
+  const match = repoUrl.match(/github\.com[:/](?<owner>[\w.-]+)\/(?<repo>[\w.-]+)/i);
+  if (match?.groups?.owner) return `@${match.groups.owner}`;
+  if (typeof pkg.name === 'string' && pkg.name.startsWith('@')) {
+    const scope = pkg.name.split('/')[0];
+    if (scope && /^@[\w.-]+$/.test(scope)) return scope;
+  }
+  return '@dantericardo88';
+}
+
+function normalizeRepositoryUrl(value: string): string {
+  return value.replace(/^git\+/, '').replace(/\.git$/i, '');
+}
+
 export async function analyzeCommunityEngagement(cwd: string = process.cwd()): Promise<CommunityEngagementReport> {
   const supportText = [
     await readText(path.join(cwd, 'SUPPORT.md')),
@@ -64,16 +128,42 @@ export async function analyzeCommunityEngagement(cwd: string = process.cwd()): P
     await readText(path.join(cwd, '.github', 'labels.json')),
   ].join('\n');
   const issueConfigText = await readText(path.join(cwd, '.github', 'ISSUE_TEMPLATE', 'config.yml'));
+  const ownershipText = [
+    await readText(path.join(cwd, '.github', 'CODEOWNERS')),
+    await readText(path.join(cwd, 'CODEOWNERS')),
+    await readText(path.join(cwd, 'docs', 'CODEOWNERS')),
+  ].join('\n');
+  const recognitionText = [
+    await readText(path.join(cwd, '.github', 'FUNDING.yml')),
+    await readText(path.join(cwd, '.github', 'FUNDING.yaml')),
+    await readText(path.join(cwd, 'FUNDING.yml')),
+    await readText(path.join(cwd, 'README.md')),
+    await readText(path.join(cwd, 'CONTRIBUTING.md')),
+    await readText(path.join(cwd, 'COMMUNITY.md')),
+  ].join('\n');
+  const roadmapText = [
+    await readText(path.join(cwd, 'ROADMAP.md')),
+    await readText(path.join(cwd, 'docs', 'ROADMAP.md')),
+    await readText(path.join(cwd, 'README.md')),
+  ].join('\n');
 
   return {
     supportPolicy: supportPolicyReady(supportText),
     pullRequestTemplate: pullRequestTemplateReady(pullRequestTemplateText),
     contributorLabels: contributorLabelsReady(labelsText),
     discussionRouting: discussionRoutingReady(issueConfigText, supportText),
+    maintainerOwnership: maintainerOwnershipReady(ownershipText),
+    contributorRecognition: contributorRecognitionReady(recognitionText),
+    communityRoadmap: communityRoadmapReady(roadmapText),
   };
 }
 
 export async function writeCommunityEngagementDocs(cwd: string): Promise<void> {
+  const pkg = await readPackage(cwd);
+  const codeOwner = inferCodeOwner(pkg);
+  const fundingAccount = codeOwner.replace(/^@/, '').split('/')[0] || 'dantericardo88';
+  const projectUrl = normalizeRepositoryUrl(packageRepositoryUrl(pkg) || 'https://github.com/dantericardo88/danteforge');
+
   await writeIfMissing(path.join(cwd, 'SUPPORT.md'), `# Support
 
 Maintainers triage new issues within 3 business days. Security reports follow the private process in SECURITY.md.
@@ -123,5 +213,40 @@ contact_links:
   - name: Questions and workflow discussions
     url: https://github.com/dantericardo88/danteforge/discussions
     about: Ask setup questions, compare workflows, and discuss proposals before filing an issue.
+`);
+
+  await writeIfMissing(path.join(cwd, '.github', 'CODEOWNERS'), `# Default maintainers for review routing.
+* ${codeOwner}
+
+# High-risk runtime surfaces should always receive maintainer review.
+src/ ${codeOwner}
+commands/ ${codeOwner}
+scripts/ ${codeOwner}
+`);
+
+  await writeIfMissing(path.join(cwd, '.github', 'FUNDING.yml'), `github: [${fundingAccount}]
+custom:
+  - ${projectUrl}
+`);
+
+  await writeIfMissing(path.join(cwd, 'docs', 'ROADMAP.md'), `# Roadmap
+
+## Current Priorities
+
+- Keep first-run setup predictable across supported agent hosts.
+- Expand real examples that show complete workflows from idea to verification.
+- Improve diagnostics for provider, package manager, and workflow setup failures.
+
+## Up Next
+
+- More beginner-sized good first issue candidates.
+- More command-specific troubleshooting recipes.
+- Clearer contributor ownership for runtime, docs, and release surfaces.
+
+## How To Help
+
+- Start with issues labeled \`good first issue\` or \`help wanted\`.
+- Discuss workflow proposals before implementation when the change affects command behavior.
+- Include verification output in pull requests so maintainers can review quickly.
 `);
 }

@@ -6,7 +6,7 @@
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import { logger } from '../../core/logger.js';
-import { withProgress } from '../../core/ux-progress.js';
+import { withProgress } from '../../core/progress-indicator.js';
 import { loadMatrix, computeGapPriority, type MatrixDimension, type CompeteMatrix } from '../../core/compete-matrix.js';
 import { runCIPCheck, type CIPOptions, type CIPResult } from '../../core/completion-integrity.js';
 import { inferFailureKind, selectRecoveryAction, formatRecoveryPlan, type RecoveryContext } from '../../core/loop-recovery.js';
@@ -258,7 +258,12 @@ export async function runCrusade(options: CrusadeOptions): Promise<CrusadeResult
 
     // Phase B: Forge wave toward goal
     logger.info(`[crusade]   Running forge wave...`);
-    const forgeResult = await withProgress('forge wave', () => runForgeWave(options.goal, cwd));
+    const forgeResult = await withProgress('forge wave', async (progress) => {
+      const result = await runForgeWave(options.goal, cwd);
+      if (result.success) progress.succeed('forge wave complete');
+      else progress.fail('forge wave failed');
+      return result;
+    });
     if (!forgeResult.success) {
       consecutiveForgeFailures++;
       logger.warn(`[crusade]   Forge wave failed: ${forgeResult.error ?? 'unknown'}`);

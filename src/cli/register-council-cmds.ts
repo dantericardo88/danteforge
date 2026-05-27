@@ -2,6 +2,19 @@ import type { Command } from 'commander';
 
 type Commands = Awaited<typeof import('./commands/index.js')>;
 
+function parseMemberSlots(spec: string): Record<string, number> {
+  const result: Record<string, number> = {};
+  for (const part of spec.split(',')) {
+    const colon = part.lastIndexOf(':');
+    if (colon > 0) {
+      const id = part.slice(0, colon).trim();
+      const n = parseInt(part.slice(colon + 1).trim(), 10);
+      if (id && !isNaN(n) && n > 0) result[id] = n;
+    }
+  }
+  return result;
+}
+
 export function registerCouncilCmds(program: Command, _C: () => Promise<Commands>): void {
 // ── council ──────────────────────────────────────────────────────────────────
 
@@ -19,6 +32,7 @@ program
   .option('--max-dims <n>', 'Max dimensions to schedule per round (parallel mode)')
   .option('--focus-dims <ids>', 'Comma-separated dimension IDs to target (skips gap ranking, e.g. "testing,spec_workflow_enforcement")')
   .option('--slots-per-member <n>', 'Sub-agents per council member — M members × N slots = M*N parallel worktrees (default: 1)', '1')
+  .option('--member-slots <spec>', 'Per-member slot overrides, e.g. "claude-code:4,codex:4,grok-build:2" (overrides --slots-per-member for named members)')
   .option('--min-judges <n>', 'Minimum cross-member judges required per candidate (default: 2)', '2')
   .option('--skip-validate', 'Skip running danteforge validate after merges (faster for first runs)')
   .option('--resume <runId>', 'Resume a parallel council run from its last checkpoint (runId from COUNCIL_SESSION_<runId>.json)')
@@ -60,6 +74,7 @@ program
             skipValidate: opts.skipValidate as boolean | undefined,
             resumeRunId: opts.resume as string | undefined,
             slotsPerMember: opts.slotsPerMember ? parseInt(opts.slotsPerMember as string, 10) : 1,
+            memberSlots: opts.memberSlots ? parseMemberSlots(opts.memberSlots as string) : undefined,
             minJudges: opts.minJudges ? parseInt(opts.minJudges as string, 10) : 2,
             focusDims: opts.focusDims ? (opts.focusDims as string).split(',').map((s: string) => s.trim()) : undefined,
           });
@@ -83,6 +98,51 @@ program
     })();
   });
 
+// ── council-frontier-loop ─────────────────────────────────────────────────────
+
+program
+  .command('council-frontier-loop')
+  .description('Continuous quality ratchet: research → build → verify → confirm → loop until all dims reach target. Claude builds, Codex researches+confirms, Grok verifies (minimal usage).')
+  .option('--goal <goal>', 'Build goal injected into every forge prompt')
+  .option('--target <n>', 'Score target per dimension (default: 9)', '9')
+  .option('--max-iterations <n>', 'Max loop iterations before stopping (default: 100)', '100')
+  .option('--builder <id>', 'Builder member (default: claude-code)', 'claude-code')
+  .option('--researchers <ids>', 'Comma-separated researcher members (default: codex,grok-build)', 'codex,grok-build')
+  .option('--verifier <id>', 'Checklist verifier — binary pass/fail per item (default: grok-build)', 'grok-build')
+  .option('--confirmer <id>', 'Final verdict confirmer (default: codex)', 'codex')
+  .option('--oss-harvest-path <path>', 'Path to OSS harvest directory (default: X:\\Projects\\OSSHarvest)')
+  .option('--skip-research', 'Skip research phase — use existing forge briefs only')
+  .option('--skip-validate', 'Skip post-merge validate (faster, no receipts)')
+  .option('--min-gap <n>', 'Minimum gap to include (default: 0)', '0')
+  .option('--json', 'Emit JSON result at end')
+  .option('--cwd <path>', 'Project directory (defaults to cwd)')
+  .action((opts) => {
+    void (async () => {
+      try {
+        const { runFrontierLoopCommand } = await import('./commands/council-frontier-loop.js');
+        await runFrontierLoopCommand({
+          cwd: opts.cwd as string | undefined,
+          goal: opts.goal as string | undefined,
+          target: opts.target ? parseFloat(opts.target as string) : 9.0,
+          maxIterations: opts.maxIterations ? parseInt(opts.maxIterations as string, 10) : 100,
+          builder: opts.builder as string | undefined,
+          researchers: opts.researchers as string | undefined,
+          verifier: opts.verifier as string | undefined,
+          confirmer: opts.confirmer as string | undefined,
+          ossHarvestPath: opts.ossHarvestPath as string | undefined,
+          skipResearch: opts.skipResearch as boolean | undefined,
+          skipValidate: opts.skipValidate as boolean | undefined,
+          minGap: opts.minGap ? parseFloat(opts.minGap as string) : 0,
+          json: opts.json as boolean | undefined,
+        });
+      } catch (err) {
+        const { formatAndLogError } = await import('../core/format-error.js');
+        formatAndLogError(err, 'council-frontier-loop');
+        process.exitCode = 1;
+      }
+    })();
+  });
+
 // ── council-crusade ───────────────────────────────────────────────────────────
 
 program
@@ -94,6 +154,7 @@ program
   .option('--rounds-per-pass <n>', 'Council rounds per pass (default: 2)', '2')
   .option('--dims-per-pass <n>', 'Max dimensions per pass (default: 4)', '4')
   .option('--slots-per-member <n>', 'Sub-agents per council member (default: 2)', '2')
+  .option('--member-slots <spec>', 'Per-member slot overrides, e.g. "claude-code:4,codex:4,grok-build:2" (overrides --slots-per-member for named members)')
   .option('--min-judges <n>', 'Min cross-member judges per candidate (default: 2)', '2')
   .option('--focus-dims <ids>', 'Comma-separated dim IDs to restrict to')
   .option('--skip-validate', 'Skip post-merge validate (faster for testing)')
@@ -112,6 +173,7 @@ program
           maxRoundsPerPass: opts.roundsPerPass ? parseInt(opts.roundsPerPass as string, 10) : 2,
           maxDimsPerPass: opts.dimsPerPass ? parseInt(opts.dimsPerPass as string, 10) : 4,
           slotsPerMember: opts.slotsPerMember ? parseInt(opts.slotsPerMember as string, 10) : 2,
+          memberSlots: opts.memberSlots ? parseMemberSlots(opts.memberSlots as string) : undefined,
           minJudges: opts.minJudges ? parseInt(opts.minJudges as string, 10) : 2,
           focusDims: opts.focusDims ? (opts.focusDims as string).split(',').map((s: string) => s.trim()) : undefined,
           skipValidate: opts.skipValidate as boolean | undefined,

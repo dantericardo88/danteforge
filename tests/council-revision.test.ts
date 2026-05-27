@@ -1,11 +1,26 @@
 // council-revision.test.ts — Tests for the revision-then-rejudge loop
-import { describe, it } from 'node:test';
+import { describe, it, after } from 'node:test';
 import assert from 'node:assert/strict';
+import fs from 'node:fs/promises';
+import os from 'node:os';
+import path from 'node:path';
 import { runRevision } from '../src/matrix/engines/council-revision.js';
 import type { RevisionOptions } from '../src/matrix/engines/council-revision.js';
 import type { MemberVerdict } from '../src/matrix/engines/council-merge-court.js';
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
+
+const tempDirs: string[] = [];
+
+async function makeTempDir(): Promise<string> {
+  const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'df-council-revision-loop-'));
+  tempDirs.push(dir);
+  return dir;
+}
+
+after(async () => {
+  await Promise.all(tempDirs.splice(0).map((dir) => fs.rm(dir, { recursive: true, force: true })));
+});
 
 function makeVerdict(judgeId: 'grok-build' | 'codex', verdict: 'PASS' | 'FAIL' | 'UNCLEAR'): MemberVerdict {
   return {
@@ -226,5 +241,71 @@ describe('runRevision', () => {
     assert.equal(result.cycles.length, 0);
     // Builder never called — no revision needed
     assert.equal(builderCalls, 0);
+  });
+
+  it('records runtime proof and a frontier receipt for revised council work', async () => {
+    const worktreePath = await makeTempDir();
+    let rejudgePrompt = '';
+
+    const opts = makeBaseOpts({
+      worktreePath,
+      proofCommands: ['node -e "console.log(\'council revision runtime proof\')"'],
+      _makeBuilderAdapter: (_id, _wp) => ({
+        id: 'fake-builder',
+        name: 'FakeBuilder',
+        isAvailable: async () => true,
+        prepareRun: async (input) => ({ ...input, prepared: true }),
+        startRun: async (input) => ({ runId: `fake`, leaseId: input.lease.id, provider: 'fake', startedAt: new Date().toISOString() }),
+        streamEvents: async function* () { /* empty */ },
+        stopRun: async () => undefined,
+        collectResult: async (handle) => ({
+          runId: handle.runId, leaseId: handle.leaseId, status: 'completed',
+          filesChanged: ['src/matrix/engines/council-revision.ts'], commandsExecuted: [], provider: 'fake',
+          finalMessage: 'WHAT_WORKED: kept approvals\nWHAT_TO_FIX: add runtime proof\nFIX_PLAN: emit receipt',
+          startedAt: new Date().toISOString(), completedAt: new Date().toISOString(), events: [],
+        }),
+      }),
+      _makeJudgeAdapter: (id, wp) => {
+        rejudgePrompt = wp.objective;
+        return {
+          id: 'fake-judge',
+          name: 'FakeJudge',
+          isAvailable: async () => true,
+          prepareRun: async (input) => ({ ...input, prepared: true }),
+          startRun: async (input) => ({ runId: `judge-${id}`, leaseId: input.lease.id, provider: 'fake', startedAt: new Date().toISOString() }),
+          streamEvents: async function* () { /* empty */ },
+          stopRun: async () => undefined,
+          collectResult: async (handle) => ({
+            runId: handle.runId, leaseId: handle.leaseId, status: 'completed',
+            filesChanged: [], commandsExecuted: [], provider: 'fake',
+            finalMessage: 'VERDICT: PASS\nCONFIDENCE: HIGH\nREASON: Runtime proof receipt addresses the blocker\nSCORE_SUGGESTION: 9\nBLOCKING_ISSUES: none\nBLOCKING_CONCERNS: none\nDISSENT: none',
+            startedAt: new Date().toISOString(), completedAt: new Date().toISOString(), events: [],
+          }),
+        };
+      },
+      worktreeOpts: {
+        projectPath: worktreePath,
+        _git: {
+          worktreeAdd: async () => undefined,
+          worktreeRemove: async () => undefined,
+          branchDelete: async () => undefined,
+          getDiff: async () => 'diff --git a/src/matrix/engines/council-revision.ts b/src/matrix/engines/council-revision.ts\n+receipt emitted',
+        },
+      },
+    });
+
+    const result = await runRevision(opts);
+
+    assert.equal(result.finalConsensus, 'PASS');
+    assert.equal(result.frontierReceipts.length, 1);
+    assert.match(rejudgePrompt, /RUNTIME PROOF COMMANDS/);
+    assert.match(rejudgePrompt, /council revision runtime proof/);
+    const receipt = result.frontierReceipts[0]!;
+    const parsed = JSON.parse(await fs.readFile(receipt.receiptPath, 'utf8')) as Record<string, unknown>;
+    assert.equal(parsed.dimensionId, 'council-revision');
+    assert.equal(parsed.timeMachineCommitId, receipt.timeMachineCommitId);
+    assert.match(receipt.timeMachineCommitId, /^tm_/);
+    await assert.doesNotReject(() =>
+      fs.access(path.join(worktreePath, '.danteforge', 'time-machine', 'commits', `${receipt.timeMachineCommitId}.json`)));
   });
 });

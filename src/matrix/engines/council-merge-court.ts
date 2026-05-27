@@ -78,6 +78,8 @@ export interface MergeCourtOptions {
   useRevision?: boolean;
   /** Revision cycles before giving up (default: 1). */
   revisionCycles?: number;
+  /** Runtime proof commands that must run after a revision before rejudge. */
+  revisionProofCommands?: string[];
   /**
    * Pre-computed streaming verdicts keyed by slotId. When provided, the merge
    * court skips the LLM judge phase for handles whose slotId has a PASS verdict
@@ -340,6 +342,8 @@ export async function runMergeCourt(opts: MergeCourtOptions): Promise<MergeCourt
             worktreePath: handle.worktreePath,
             worktreeOpts: opts.worktreeOpts,
             maxCycles: opts.revisionCycles ?? 2,
+            proofCommands: opts.revisionProofCommands ?? ['npm run test:council'],
+            dimensionId: 'council-revision',
           });
           finalVerdicts = revResult.finalVerdicts;
           // Use the revised diff for merging — judges evaluated this, not the original.
