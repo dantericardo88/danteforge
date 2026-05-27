@@ -1,0 +1,292 @@
+// compete-matrix-score.ts — Scoring and calibration functions for the CompeteMatrix.
+// Split from compete-matrix.ts to keep files under the 750-LOC hard cap.
+import type {
+  MatrixDimension,
+  CompeteMatrix,
+  AdversarialCalibration,
+} from './compete-matrix.js';
+
+// ── Priority Constants ────────────────────────────────────────────────────────
+
+export const FREQUENCY_MULTIPLIERS: Record<string, number> = {
+  high: 1.5,
+  medium: 1.0,
+  low: 0.5,
+};
+
+// ── Scoring ───────────────────────────────────────────────────────────────────
+
+export function computeGapPriority(dim: MatrixDimension): number {
+  const freq = FREQUENCY_MULTIPLIERS[dim.frequency] ?? 1.0;
+  return dim.weight * dim.gap_to_leader * freq;
+}
+
+export function getNextSprintDimension(matrix: CompeteMatrix, target = 9.0): MatrixDimension | null {
+  const excluded = new Set(matrix.excludedDimensions ?? []);
+  const eligible = matrix.dimensions.filter(d =>
+    !excluded.has(d.id) &&
+    d.status !== 'closed' &&
+    (d.scores['self'] ?? 0) < target &&
+    (d.ceiling === undefined || (d.ceiling >= target && (d.scores['self'] ?? 0) < d.ceiling)),
+  );
+  if (eligible.length === 0) return null;
+  return eligible.reduce((best, d) =>
+    computeGapPriority(d) > computeGapPriority(best) ? d : best,
+  );
+}
+
+export function classifyDimensions(matrix: CompeteMatrix, target = 9.0): {
+  achievable: MatrixDimension[];
+  atCeiling: MatrixDimension[];
+} {
+  const excluded = new Set(matrix.excludedDimensions ?? []);
+  const atCeiling = matrix.dimensions.filter(d =>
+    !excluded.has(d.id) &&
+    d.status !== 'closed' &&
+    d.ceiling !== undefined &&
+    (d.ceiling < target || (d.scores['self'] ?? 0) >= d.ceiling),
+  );
+  const atCeilingIds = new Set(atCeiling.map(d => d.id));
+  const achievable = matrix.dimensions.filter(d =>
+    !excluded.has(d.id) && d.status !== 'closed' && !atCeilingIds.has(d.id),
+  );
+  return { achievable, atCeiling };
+}
+
+export function effectiveDimScore(dim: { scores: Record<string, number> }): number {
+  const self = dim.scores['self'] ?? 0;
+  const derived = dim.scores['derived'];
+  return derived !== undefined ? Math.min(self, derived) : self;
+}
+
+export function computeOverallScore(matrix: CompeteMatrix): number {
+  if (matrix.dimensions.length === 0) return 0;
+  const totalWeight = matrix.dimensions.reduce((s, d) => s + d.weight, 0);
+  if (totalWeight === 0) return 0;
+  const weightedSum = matrix.dimensions.reduce(
+    (s, d) => s + d.weight * effectiveDimScore(d),
+    0,
+  );
+  return Math.round((weightedSum / totalWeight) * 10) / 10;
+}
+
+export function computeTwoGaps(
+  dim: { scores: Record<string, number> },
+  closedSourceNames: string[],
+  ossNames: string[],
+): {
+  gap_to_closed_source_leader: number;
+  closed_source_leader: string;
+  gap_to_oss_leader: number;
+  oss_leader: string;
+} {
+  const selfScore = dim.scores['self'] ?? 0;
+
+  const findBest = (names: string[]): [string, number] => {
+    let bestName = '';
+    let bestScore = 0;
+    for (const name of names) {
+      const s = dim.scores[name] ?? 0;
+      if (s > bestScore) { bestScore = s; bestName = name; }
+    }
+    return [bestName, bestScore];
+  };
+
+  const [csLeader, csScore] = findBest(closedSourceNames);
+  const [ossLeader, ossScore] = findBest(ossNames);
+
+  return {
+    gap_to_closed_source_leader: Math.max(0, csScore - selfScore),
+    closed_source_leader: csLeader || 'unknown',
+    gap_to_oss_leader: Math.max(0, ossScore - selfScore),
+    oss_leader: ossLeader || 'unknown',
+  };
+}
+
+export function updateDimensionScore(
+  matrix: CompeteMatrix,
+  dimensionId: string,
+  newScore: number,
+  commit?: string,
+  harvestSource?: string,
+): void {
+  const dim = matrix.dimensions.find(d => d.id === dimensionId);
+  if (!dim) throw new Error(`Dimension "${dimensionId}" not found in matrix`);
+
+  const before = dim.scores['self'] ?? 0;
+  const clamped = dim.ceiling !== undefined ? Math.min(newScore, dim.ceiling) : newScore;
+  dim.scores['self'] = clamped;
+
+  const competitorEntries = Object.entries(dim.scores).filter(([k]) => k !== 'self');
+  const maxEntry = competitorEntries.reduce(
+    (best, [k, v]) => v > best[1] ? [k, v] : best,
+    ['', 0] as [string, number],
+  );
+  dim.gap_to_leader = Math.max(0, maxEntry[1] - clamped);
+  if (maxEntry[0]) dim.leader = maxEntry[0];
+
+  const twoGaps = computeTwoGaps(dim, matrix.competitors_closed_source ?? [], matrix.competitors_oss ?? []);
+  dim.gap_to_closed_source_leader = twoGaps.gap_to_closed_source_leader;
+  dim.closed_source_leader = twoGaps.closed_source_leader;
+  dim.gap_to_oss_leader = twoGaps.gap_to_oss_leader;
+  dim.oss_leader = twoGaps.oss_leader;
+
+  if (clamped !== before) {
+    const record = {
+      dimensionId,
+      before,
+      after: clamped,
+      date: new Date().toISOString().slice(0, 10),
+      ...(commit ? { commit } : {}),
+      ...(harvestSource ? { harvestSource } : {}),
+    };
+    dim.sprint_history.push(record);
+    if (dim.sprint_history.length > 20) dim.sprint_history.splice(0, dim.sprint_history.length - 20);
+  }
+
+  if (dim.gap_to_leader <= 0) {
+    dim.status = 'closed';
+  } else if (dim.status === 'not-started') {
+    dim.status = 'in-progress';
+  }
+
+  matrix.lastUpdated = new Date().toISOString();
+  matrix.overallSelfScore = computeOverallScore(matrix);
+}
+
+export async function applyIntelLeaderScores(
+  matrix: CompeteMatrix,
+  intelPath: string,
+): Promise<number> {
+  let adjustmentsApplied = 0;
+  let intelData: { signals: Array<{ tool: string; category: string }> } | null = null;
+
+  try {
+    const raw = await (await import('fs/promises')).readFile(intelPath, 'utf-8');
+    intelData = JSON.parse(raw) as { signals: Array<{ tool: string; category: string }> };
+  } catch {
+    return 0;
+  }
+
+  for (const signal of intelData.signals ?? []) {
+    const key = signal.tool + '::' + signal.category;
+    void key;
+  }
+
+  for (const dim of matrix.dimensions) {
+    const competitors = Object.keys(dim.scores).filter(k => k !== 'self');
+    for (const competitor of competitors) {
+      const dimSignals = (intelData.signals ?? []).filter(
+        s => s.tool === competitor && matchesDimension(s.category, dim.id),
+      );
+      if (dimSignals.length < 10) continue;
+
+      const reduction = Math.min(2.0, Math.floor(dimSignals.length / 10) * 0.5);
+      const currentScore = dim.scores[competitor] ?? 0;
+      const adjusted = Math.max(0, currentScore - reduction);
+
+      if (adjusted !== currentScore) {
+        dim.scores[competitor] = adjusted;
+        if (!dim.leaderScoreSource) dim.leaderScoreSource = {};
+        dim.leaderScoreSource[competitor] = 'github-evidence';
+        adjustmentsApplied++;
+      }
+    }
+
+    if (adjustmentsApplied > 0) {
+      const competitorEntries = Object.entries(dim.scores).filter(([k]) => k !== 'self');
+      const maxEntry = competitorEntries.reduce(
+        (best, [k, v]) => v > best[1] ? [k, v] : best,
+        ['', 0] as [string, number],
+      );
+      const selfScore = dim.scores['self'] ?? 0;
+      dim.gap_to_leader = Math.max(0, maxEntry[1] - selfScore);
+      if (maxEntry[0]) dim.leader = maxEntry[0];
+      const twoGaps = computeTwoGaps(dim, matrix.competitors_closed_source ?? [], matrix.competitors_oss ?? []);
+      dim.gap_to_closed_source_leader = twoGaps.gap_to_closed_source_leader;
+      dim.closed_source_leader = twoGaps.closed_source_leader;
+      dim.gap_to_oss_leader = twoGaps.gap_to_oss_leader;
+      dim.oss_leader = twoGaps.oss_leader;
+    }
+  }
+
+  if (adjustmentsApplied > 0) {
+    matrix.lastUpdated = new Date().toISOString();
+    matrix.overallSelfScore = computeOverallScore(matrix);
+  }
+
+  return adjustmentsApplied;
+}
+
+function matchesDimension(categoryLabel: string, dimensionId: string): boolean {
+  const label = categoryLabel.toLowerCase().replace(/[^a-z]/g, '');
+  const id = dimensionId.toLowerCase().replace(/[^a-z]/g, '');
+  if (label.includes(id) || id.includes(label)) return true;
+  const LABEL_MAP: Record<string, string> = {
+    windowssupport: 'developerexperience',
+    performance: 'performance',
+    testquality: 'testing',
+    documentation: 'documentation',
+    autonomy: 'autonomy',
+    multiagent: 'multiagentorchestration',
+    security: 'security',
+    uxclipolish: 'uxpolish',
+    tokencontextmanagement: 'tokeneconomy',
+    enterprisefeatures: 'enterprisereadiness',
+    specplanningpipeline: 'specdrivenpipeline',
+    errorhandling: 'errorhandling',
+  };
+  const mappedId = LABEL_MAP[label];
+  return mappedId !== undefined && (mappedId.includes(id) || id.includes(mappedId));
+}
+
+export function applyAdversarialCalibration(
+  matrix: CompeteMatrix,
+  dimensionId: string,
+  harshScore: number,
+  adversarialScore: number,
+  verdict: AdversarialCalibration['verdict'],
+  rationale: string,
+): boolean {
+  if (verdict !== 'inflated') return false;
+
+  const dim = matrix.dimensions.find(d => d.id === dimensionId);
+  if (!dim) return false;
+
+  const before = dim.scores['self'] ?? 0;
+  const consensus = (harshScore + adversarialScore) / 2;
+  const clamped = dim.ceiling !== undefined ? Math.min(consensus, dim.ceiling) : consensus;
+  const after = Math.round(clamped * 10) / 10;
+
+  dim.scores['self'] = after;
+
+  const competitorEntries = Object.entries(dim.scores).filter(([k]) => k !== 'self');
+  const maxEntry = competitorEntries.reduce(
+    (best, [k, v]) => v > best[1] ? [k, v] : best,
+    ['', 0] as [string, number],
+  );
+  dim.gap_to_leader = Math.max(0, maxEntry[1] - after);
+  if (maxEntry[0]) dim.leader = maxEntry[0];
+
+  const twoGaps = computeTwoGaps(dim, matrix.competitors_closed_source ?? [], matrix.competitors_oss ?? []);
+  dim.gap_to_closed_source_leader = twoGaps.gap_to_closed_source_leader;
+  dim.closed_source_leader = twoGaps.closed_source_leader;
+  dim.gap_to_oss_leader = twoGaps.gap_to_oss_leader;
+  dim.oss_leader = twoGaps.oss_leader;
+
+  const calibration: AdversarialCalibration = {
+    dimensionId,
+    beforeScore: before,
+    afterScore: after,
+    adversarialScore,
+    verdict,
+    rationale,
+    date: new Date().toISOString(),
+  };
+  matrix.adversarialCalibrations ??= [];
+  matrix.adversarialCalibrations.push(calibration);
+
+  matrix.lastUpdated = new Date().toISOString();
+  matrix.overallSelfScore = computeOverallScore(matrix);
+  return true;
+}
