@@ -36,6 +36,8 @@ export interface CouncilCrusadeOptions {
   minJudges?: number;
   /** Restrict to these dimension IDs only. */
   focusDims?: string[];
+  /** Explicit per-member slot overrides e.g. "grok-build:2". */
+  memberSlots?: Record<string, number>;
   /** Skip post-merge validate (faster for testing). */
   skipValidate?: boolean;
   /** Print plan without running. */

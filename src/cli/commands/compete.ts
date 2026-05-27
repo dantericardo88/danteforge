@@ -45,6 +45,7 @@ import { handleAmend, handleAmendFile } from './compete-amend.js';
 import { defaultEvidenceWriter, ensureMatrixOnDisk, parseRescore, proposeAndMergeScore, runCertifyGate, writeRescoreEvidence } from './compete-score-flow.js';
 import { actionCalibrate } from './compete-calibrate.js';
 import { actionReport, actionValidate, actionSyncScores, actionAutoSprint, actionNextDims, actionCheckAllNine } from './compete-reports.js';
+export { actionCheckAllNine, actionNextDims } from './compete-reports.js';
 import { SCORING_DOCTRINE_SHORT } from '../../core/scoring-doctrine.js';
 
 // ── Types ─────────────────────────────────────────────────────────────────────

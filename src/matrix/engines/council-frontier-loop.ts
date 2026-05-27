@@ -79,6 +79,10 @@ export interface FrontierLoopOptions {
   skipValidate?: boolean;
   /** Minimum gap to include in loop. Default: 0 (include all below targetScore) */
   minGap?: number;
+  /** Max concurrent research briefs. Default: 6 */
+  researchConcurrencyLimit?: number;
+  /** Max retries for research phase. Default: 2 */
+  researchMaxRetries?: number;
 }
 
 export interface IterationResult {

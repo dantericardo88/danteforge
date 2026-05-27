@@ -12,6 +12,7 @@ import {
   computeOverallScore,
   getMatrixPath,
   applyAdversarialCalibration,
+  checkMatrixStaleness,
   type CompeteMatrix,
   type MatrixDimension,
 } from '../../core/compete-matrix.js';

@@ -214,7 +214,7 @@ async function runDimResearch(
     if (!skipAvailabilityCheck) {
       const available = await adapter.isAvailable();
       if (!available) {
-        return { output: '', exitCode: 1, filesChanged: [] } as AgentRunResult;
+        return { output: '', exitCode: 1, filesChanged: [] } as unknown as AgentRunResult;
       }
     }
     const timeoutPromise = new Promise<AgentRunResult>((_, reject) =>
@@ -223,7 +223,7 @@ async function runDimResearch(
     return await Promise.race([_run(adapter, { lease }), timeoutPromise]);
   } catch (err) {
     logger.verbose(`[research-phase] ${memberId}/${target.dimId} failed: ${String(err).split('\n')[0]}`);
-    return { output: '', exitCode: 1, filesChanged: [] } as AgentRunResult;
+    return { output: '', exitCode: 1, filesChanged: [] } as unknown as AgentRunResult;
   }
 }
 

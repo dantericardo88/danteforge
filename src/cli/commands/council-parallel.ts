@@ -83,6 +83,8 @@ export interface ParallelCouncilOptions {
   minJudges?: number;
   /** Only schedule these specific dimension IDs (skips gap ranking entirely). */
   focusDims?: string[];
+  /** Explicit per-member slot overrides e.g. "grok-build:2,codex:3". */
+  memberSlots?: Record<string, number>;
   /** Injection seam: override council discovery for tests */
   _discover?: () => Promise<CouncilMember[]>;
 }

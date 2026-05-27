@@ -2,6 +2,7 @@
 // dependency-injectable MCP tool handlers (return string, not ToolResult).
 // Split from mcp-server.ts to keep files under the 750-LOC hard cap.
 import { loadState } from './state.js';
+import type { RateLimiter } from './rate-limiter.js';
 
 // ---------------------------------------------------------------------------
 // McpServerDeps â€” injection interface for testing
@@ -203,7 +204,6 @@ async function handleSimpleInjectable(
 
 
 export {
-  McpServerDeps,
   handleAssess,
   handleStateRead,
   handleWorkflow,
@@ -211,4 +211,3 @@ export {
   handleAdversarialScore,
   handleSimpleInjectable,
 };
-export type { ToolName };

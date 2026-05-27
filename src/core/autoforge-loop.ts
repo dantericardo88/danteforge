@@ -23,6 +23,7 @@ import {
   writeGuidanceFile,
 } from './autoforge-guidance.js';
 import { printSummaryTable, detectStall, AUTOFORGE_PAUSE_FILE, saveCheckpoint, loadCheckpoint } from './autoforge-checkpoint.js';
+import type { AutoforgePauseSnapshot } from './autoforge-checkpoint.js';
 export { detectStall, AUTOFORGE_PAUSE_FILE, saveCheckpoint, loadCheckpoint } from './autoforge-checkpoint.js';
 export type { AutoforgeCheckpoint, AutoforgePauseSnapshot } from './autoforge-checkpoint.js';
 export { AUTOFORGE_CHECKPOINT_FILE, CHECKPOINT_MAX_AGE_MS } from './autoforge-checkpoint.js';

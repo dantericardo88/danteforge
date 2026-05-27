@@ -26,6 +26,8 @@ export interface FrontierLoopCLIOptions {
   minGap?: number;
   concurrency?: number;
   maxRetries?: number;
+  researchConcurrencyLimit?: number;
+  researchMaxRetries?: number;
   json?: boolean;
 }
 

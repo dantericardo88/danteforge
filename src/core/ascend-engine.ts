@@ -33,7 +33,8 @@ import { confirmMatrix } from './matrix-confirm.js';
 import { isLLMAvailable } from './llm.js';
 import { mergeScoreProposals, writeScoreProposal } from './matrix-development-engine.js';
 import { ensureMatrixOnDisk } from '../cli/commands/compete-score-flow.js';
-import { isDimensionRecentlyInflated, buildCeilingReports, buildAscendReport } from './ascend-reporting.js';
+import { isDimensionRecentlyInflated, buildCeilingReports, buildAscendReport, buildManualAction, buildAscendReportWithWiring, mapDimIdToScoringDimension } from './ascend-reporting.js';
+export { mapDimIdToScoringDimension } from './ascend-reporting.js';
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -172,30 +173,6 @@ export interface AdversarialCritique {
   generatedAt: string;
 }
 
-// ── Dimension ID ↔ ScoringDimension mapping ──────────────────────────────────
-
-const ALL_SCORING_DIMENSIONS = new Set<string>([
-  'functionality', 'testing', 'errorHandling', 'security', 'uxPolish',
-  'documentation', 'performance', 'maintainability', 'developerExperience',
-  'autonomy', 'planningQuality', 'selfImprovement', 'specDrivenPipeline',
-  'convergenceSelfHealing', 'tokenEconomy', 'contextEconomy', 'causalCoherence', 'ecosystemMcp',
-  'enterpriseReadiness', 'communityAdoption',
-]);
-
-/**
- * Convert snake_case matrix dimension id to camelCase ScoringDimension key.
- * Returns null if the key is not a known ScoringDimension.
- */
-export function mapDimIdToScoringDimension(id: string): ScoringDimension | null {
-  const camel = id.replace(/_([a-z])/g, (_: string, c: string) => c.toUpperCase());
-  return ALL_SCORING_DIMENSIONS.has(camel) ? (camel as ScoringDimension) : null;
-}
-
-/**
- * Returns true if the matrix has an adversarial calibration for this dimension
- * with verdict 'inflated' that was applied within the last 24 hours.
- * Used to skip dimensions that were just corrected — prevents immediately re-inflating them.
- */
 // ── Checkpoint helpers ────────────────────────────────────────────────────────
 
 async function defaultSaveCheckpoint(cp: AscendCheckpoint, cwd: string): Promise<void> {

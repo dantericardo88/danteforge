@@ -1,8 +1,22 @@
 // ascend-reporting.ts — Report-building helpers for the Ascend engine.
 // Split from ascend-engine.ts to keep files under the 750-LOC hard cap.
-import { computeGapPriority } from './compete-matrix.js';
+import { computeGapPriority, computeUnweightedComposite } from './compete-matrix.js';
 import type { CompeteMatrix, MatrixDimension, AdversarialCalibration } from './compete-matrix.js';
 import type { CeilingReport, AscendResult } from './ascend-engine.js';
+import type { ScoringDimension } from './harsh-scorer.js';
+
+const ALL_SCORING_DIMENSIONS = new Set<string>([
+  'functionality', 'testing', 'errorHandling', 'security', 'uxPolish',
+  'documentation', 'performance', 'maintainability', 'developerExperience',
+  'autonomy', 'planningQuality', 'selfImprovement', 'specDrivenPipeline',
+  'convergenceSelfHealing', 'tokenEconomy', 'contextEconomy', 'causalCoherence', 'ecosystemMcp',
+  'enterpriseReadiness', 'communityAdoption',
+]);
+
+export function mapDimIdToScoringDimension(id: string): ScoringDimension | null {
+  const camel = id.replace(/_([a-z])/g, (_: string, c: string) => c.toUpperCase());
+  return ALL_SCORING_DIMENSIONS.has(camel) ? (camel as ScoringDimension) : null;
+}
 
 export function isDimensionRecentlyInflated(matrix: CompeteMatrix, dimensionId: string): boolean {
   const calibrations: AdversarialCalibration[] = matrix.adversarialCalibrations ?? [];
@@ -16,7 +30,7 @@ export function isDimensionRecentlyInflated(matrix: CompeteMatrix, dimensionId: 
 
 // ── Ceiling report builder ────────────────────────────────────────────────────
 
-function buildManualAction(dim: MatrixDimension): string {
+export function buildManualAction(dim: MatrixDimension): string {
   if (dim.manualActionHint) return dim.manualActionHint;
   const reason = dim.ceilingReason ?? '';
   if (reason.includes('npm downloads') || reason.includes('GitHub stars')) {
@@ -114,7 +128,7 @@ export function buildAscendReport(
   return lines.join('\n');
 }
 
-function buildAscendReportWithWiring(
+export function buildAscendReportWithWiring(
   matrix: CompeteMatrix,
   result: AscendResult,
   target: number,

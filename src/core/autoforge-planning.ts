@@ -1,5 +1,7 @@
 // autoforge-planning.ts — GitHub issue context enrichment + predictor factory.
 // Split from autoforge.ts to keep files under the 750-LOC hard cap.
+import fs from 'fs/promises';
+import path from 'path';
 import { exec as execCallback } from 'child_process';
 import { promisify } from 'util';
 import { loadCausalWeightMatrix } from './causal-weight-matrix.js';

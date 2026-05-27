@@ -54,6 +54,8 @@ export interface AgentRunResult {
   provider?: string;
   /** Events streamed by the adapter, captured for persistence. */
   events?: AgentRunEvent[];
+  /** Raw text output from the agent run (for research/ask phases). */
+  output?: string;
 }
 
 // ── Structured Mailbox (PRD §15) ────────────────────────────────────────────
