@@ -351,6 +351,8 @@ describe('council-research-phase', () => {
         ],
         researchers: ['codex', 'grok-build'],
         skipExisting: false,
+        maxRetries: 0,
+        _sleep: async () => {},
         _runAdapter: mockRunAdapter as never,
       });
 
@@ -373,6 +375,8 @@ describe('council-research-phase', () => {
         targets: [{ dimId: 'autonomy', dimName: 'Autonomy', currentScore: 6.5, targetScore: 9.0 }],
         researchers: ['codex'],
         skipExisting: false,
+        maxRetries: 0,
+        _sleep: async () => {},
         _runAdapter: mockRunAdapter as never,
       });
 
@@ -382,4 +386,89 @@ describe('council-research-phase', () => {
       await fs.rm(dir4, { recursive: true, force: true });
     }
   });
+})
+describe('council-research-phase retry', () => {
+  const GOOD_BRIEF_JSON = JSON.stringify({
+    dimId: 'autonomy',
+    dimName: 'Autonomy',
+    ossCapabilities: [
+      { leader: 'Aider', capability: 'auto-commit', theirImplementation: 'aider/coders.py', ourGap: 'missing' },
+    ],
+    checklist: [
+      {
+        id: 'item-1',
+        description: 'Wire auto-commit',
+        productionCallsite: 'src/core/autocommit.ts:run',
+        observableOutput: 'LOG: auto-commit done',
+        testCommand: 'npx tsx --test tests/autocommit.test.ts',
+        effort: 'M',
+      },
+    ],
+  });
+  const FENCE = '```';
+  const GOOD_OUTPUT = FENCE + 'forge-brief\n' + GOOD_BRIEF_JSON + '\n' + FENCE;
+
+  test('retries on parse failure then succeeds', async () => {
+    const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'retry-ok-'));
+    try {
+      let callCount = 0;
+      const progressEvents: string[] = [];
+      const mockRun = async () => {
+        callCount++;
+        const finalMessage = callCount === 1 ? 'not a brief' : GOOD_OUTPUT;
+        return { finalMessage, exitCode: 0, filesChanged: [] as string[] };
+      };
+
+      const result = await runResearchPhase({
+        projectPath: dir,
+        targets: [{ dimId: 'autonomy', dimName: 'Autonomy', currentScore: 6.5, targetScore: 9.0 }],
+        researchers: ['codex'],
+        skipExisting: false,
+        maxRetries: 1,
+        _sleep: async () => {},
+        _runAdapter: mockRun as never,
+        onProgress: (dimId, status) => { progressEvents.push(status); },
+      });
+
+      assert.equal(callCount, 2, 'should have been called twice');
+      assert.deepEqual(result.written, ['autonomy']);
+      assert.deepEqual(result.failed, []);
+      assert.ok(progressEvents.includes('retry'), 'retry event should fire');
+      assert.ok(progressEvents.includes('done'), 'done event should fire');
+    } finally {
+      await fs.rm(dir, { recursive: true, force: true });
+    }
+  });
+
+  test('exhausted retries marks dim as failed', async () => {
+    const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'retry-fail-'));
+    try {
+      let callCount = 0;
+      const progressEvents: string[] = [];
+      const mockRun = async () => {
+        callCount++;
+        return { finalMessage: 'not a brief', exitCode: 0, filesChanged: [] as string[] };
+      };
+
+      const result = await runResearchPhase({
+        projectPath: dir,
+        targets: [{ dimId: 'autonomy', dimName: 'Autonomy', currentScore: 6.5, targetScore: 9.0 }],
+        researchers: ['codex'],
+        skipExisting: false,
+        maxRetries: 1,
+        _sleep: async () => {},
+        _runAdapter: mockRun as never,
+        onProgress: (dimId, status) => { progressEvents.push(status); },
+      });
+
+      assert.equal(callCount, 2, 'should try original + 1 retry');
+      assert.deepEqual(result.failed, ['autonomy']);
+      assert.deepEqual(result.written, []);
+      assert.ok(progressEvents.includes('retry'), 'retry event should fire');
+      assert.ok(progressEvents.includes('failed'), 'failed event should fire');
+    } finally {
+      await fs.rm(dir, { recursive: true, force: true });
+    }
+  });
 });
+

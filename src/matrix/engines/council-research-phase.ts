@@ -46,6 +46,12 @@ export interface ResearchPhaseOptions {
   timeoutMs?: number;
   /** Max parallel dim research calls. Default: 6 */
   concurrencyLimit?: number;
+  /** Max retries per dim if adapter returns unparseable output. Default: 2 */
+  maxRetries?: number;
+  /** Called on each dim status change. */
+  onProgress?: (dimId: string, status: "started" | "done" | "failed" | "retry", researcher: string) => void;
+  /** Sleep seam for tests. */
+  _sleep?: (ms: number) => Promise<void>;
   /** Injection seam for tests */
   _runAdapter?: typeof runAdapter;
 }
@@ -178,7 +184,7 @@ function parseForgeBrief(
       verificationHistory: [],
     };
   } catch {
-    logger.warn(`[research-phase] Failed to parse forge-brief JSON for ${target.dimId}`);
+    logger.verbose(`[research-phase] Failed to parse forge-brief JSON for ${target.dimId}`);
     return null;
   }
 }
@@ -213,7 +219,7 @@ async function runDimResearch(
     );
     return await Promise.race([_run(adapter, { lease }), timeoutPromise]);
   } catch (err) {
-    logger.warn(`[research-phase] ${memberId}/${target.dimId} failed: ${String(err).split('\n')[0]}`);
+    logger.verbose(`[research-phase] ${memberId}/${target.dimId} failed: ${String(err).split('\n')[0]}`);
     return { output: '', exitCode: 1, filesChanged: [] } as AgentRunResult;
   }
 }
@@ -248,6 +254,9 @@ export async function runResearchPhase(
     skipExisting = true,
     timeoutMs = 600_000,
     concurrencyLimit = 6,
+    maxRetries = 2,
+    onProgress,
+    _sleep = (ms: number) => new Promise<void>(r => setTimeout(r, ms)),
     _runAdapter: _run = runAdapter,
   } = opts;
 
@@ -284,18 +293,27 @@ export async function runResearchPhase(
 
   // One focused API call per dim — run in parallel up to concurrencyLimit
   const tasks = assignments.map(({ memberId, target }) => async () => {
-    logger.info(`[research-phase] ${memberId} → ${target.dimId} (${target.dimName})`);
-    const runResult = await runDimResearch(memberId, target, projectPath, ossContext, timeoutMs, _run);
-    const brief = parseForgeBrief(runResult.output ?? '', target, memberId);
-
-    if (brief) {
-      await saveForgeBrief(projectPath, brief);
-      result.written.push(brief.dimId);
-      logger.info(`[research-phase] ✓ ${brief.dimId} — ${brief.checklist.length} checklist item(s) (by ${memberId})`);
-    } else {
-      result.failed.push(target.dimId);
-      logger.warn(`[research-phase] ✗ ${memberId} produced no brief for ${target.dimId}`);
+    for (let attempt = 0; attempt <= maxRetries; attempt++) {
+      if (attempt > 0) {
+        onProgress?.(target.dimId, 'retry', memberId);
+        await _sleep(2_000);
+      }
+      onProgress?.(target.dimId, 'started', memberId);
+      logger.info(`[research-phase] ${memberId} → ${target.dimId} (${target.dimName})${attempt > 0 ? ` [retry ${attempt}]` : ''}`);
+      const runResult = await runDimResearch(memberId, target, projectPath, ossContext, timeoutMs, _run);
+      const output = runResult.finalMessage ?? (runResult as unknown as { output?: string }).output ?? '';
+      const brief = parseForgeBrief(output, target, memberId);
+      if (brief) {
+        await saveForgeBrief(projectPath, brief);
+        result.written.push(brief.dimId);
+        logger.info(`[research-phase] ✓ ${brief.dimId} — ${brief.checklist.length} checklist item(s) (by ${memberId})`);
+        onProgress?.(target.dimId, 'done', memberId);
+        return;
+      }
     }
+    result.failed.push(target.dimId);
+    logger.verbose(`[research-phase] ✗ ${memberId} produced no brief for ${target.dimId}`);
+    onProgress?.(target.dimId, 'failed', memberId);
   });
 
   await runWithConcurrency(tasks, concurrencyLimit);

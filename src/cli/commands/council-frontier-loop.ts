@@ -24,6 +24,8 @@ export interface FrontierLoopCLIOptions {
   skipResearch?: boolean;
   skipValidate?: boolean;
   minGap?: number;
+  concurrency?: number;
+  maxRetries?: number;
   json?: boolean;
 }
 
@@ -48,15 +50,17 @@ export async function runFrontierLoopCommand(opts: FrontierLoopCLIOptions): Prom
     projectPath,
     goal: opts.goal,
     targetScore: opts.target ?? 9.0,
-    maxIterations: opts.maxIterations ?? 100,
+    maxIterations: opts.maxIterations,
     builder: opts.builder ? parseMemberId(opts.builder, '--builder') : 'claude-code',
-    researchers: opts.researchers ? parseMemberIds(opts.researchers, '--researchers') : ['codex', 'grok-build'],
+    researchers: opts.researchers ? parseMemberIds(opts.researchers, '--researchers') : undefined,
     verifier: opts.verifier ? parseMemberId(opts.verifier, '--verifier') : 'grok-build',
     confirmer: opts.confirmer ? parseMemberId(opts.confirmer, '--confirmer') : 'codex',
-    ossHarvestPath: opts.ossHarvestPath ?? 'X:\\Projects\\OSSHarvest',
+    ossHarvestPath: opts.ossHarvestPath ?? process.env['DANTEFORGE_OSS_HARVEST_PATH'] ?? 'X:\\Projects\\OSSHarvest',
     skipResearch: opts.skipResearch ?? false,
     skipValidate: opts.skipValidate ?? false,
     minGap: opts.minGap ?? 0,
+    researchConcurrencyLimit: opts.concurrency ?? 6,
+    researchMaxRetries: opts.maxRetries ?? 2,
   };
 
   logger.info(chalk.bold('\n╔══════════════════════════════════════════════╗'));

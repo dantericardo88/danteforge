@@ -105,15 +105,17 @@ program
   .description('Continuous quality ratchet: research → build → verify → confirm → loop until all dims reach target. Claude builds, Codex researches+confirms, Grok verifies (minimal usage).')
   .option('--goal <goal>', 'Build goal injected into every forge prompt')
   .option('--target <n>', 'Score target per dimension (default: 9)', '9')
-  .option('--max-iterations <n>', 'Max loop iterations before stopping (default: 100)', '100')
+  .option('--max-iterations <n>', 'Max loop iterations (default: auto — max(50, N_dims x 3))')
   .option('--builder <id>', 'Builder member (default: claude-code)', 'claude-code')
-  .option('--researchers <ids>', 'Comma-separated researcher members (default: codex,grok-build)', 'codex,grok-build')
+  .option('--researchers <ids>', 'Comma-separated researcher members (default: claude-code,codex,grok-build)')
   .option('--verifier <id>', 'Checklist verifier — binary pass/fail per item (default: grok-build)', 'grok-build')
   .option('--confirmer <id>', 'Final verdict confirmer (default: codex)', 'codex')
   .option('--oss-harvest-path <path>', 'Path to OSS harvest directory (default: X:\\Projects\\OSSHarvest)')
   .option('--skip-research', 'Skip research phase — use existing forge briefs only')
   .option('--skip-validate', 'Skip post-merge validate (faster, no receipts)')
   .option('--min-gap <n>', 'Minimum gap to include (default: 0)', '0')
+  .option('--concurrency <n>', 'Max parallel research calls per researcher (default: 6)', '6')
+  .option('--max-retries <n>', 'Max retries per dim on research parse failure (default: 2)', '2')
   .option('--json', 'Emit JSON result at end')
   .option('--cwd <path>', 'Project directory (defaults to cwd)')
   .action((opts) => {
@@ -124,7 +126,7 @@ program
           cwd: opts.cwd as string | undefined,
           goal: opts.goal as string | undefined,
           target: opts.target ? parseFloat(opts.target as string) : 9.0,
-          maxIterations: opts.maxIterations ? parseInt(opts.maxIterations as string, 10) : 100,
+          maxIterations: opts.maxIterations ? parseInt(opts.maxIterations as string, 10) : undefined,
           builder: opts.builder as string | undefined,
           researchers: opts.researchers as string | undefined,
           verifier: opts.verifier as string | undefined,
@@ -133,6 +135,8 @@ program
           skipResearch: opts.skipResearch as boolean | undefined,
           skipValidate: opts.skipValidate as boolean | undefined,
           minGap: opts.minGap ? parseFloat(opts.minGap as string) : 0,
+          researchConcurrencyLimit: opts.concurrency ? parseInt(opts.concurrency as string, 10) : undefined,
+          researchMaxRetries: opts.maxRetries ? parseInt(opts.maxRetries as string, 10) : undefined,
           json: opts.json as boolean | undefined,
         });
       } catch (err) {
@@ -183,6 +187,63 @@ program
       } catch (err) {
         const { formatAndLogError } = await import('../core/format-error.js');
         formatAndLogError(err, 'council-crusade');
+        process.exitCode = 1;
+      }
+    })();
+  });
+// ── de-sloppify ──────────────────────────────────────────────────────────────
+
+program
+  .command('de-sloppify')
+  .description('Post-forge cleanup: fresh-context agent removes type-system-only tests, debug artifacts, over-defensive null checks, and dead imports. Author-bias elimination by design.')
+  .option('--files <pattern>', 'Comma-separated glob patterns (default: src/**/*.ts,tests/**/*.ts)')
+  .option('--dry-run', 'Report what would be removed without editing files')
+  .option('--json', 'Emit JSON result at end')
+  .option('--cwd <path>', 'Project directory (defaults to cwd)')
+  .action((opts) => {
+    void (async () => {
+      try {
+        const { runDeSloppifyCommand } = await import('./commands/de-sloppify.js');
+        await runDeSloppifyCommand({
+          cwd: opts.cwd as string | undefined,
+          files: opts.files as string | undefined,
+          dryRun: opts.dryRun as boolean | undefined,
+          json: opts.json as boolean | undefined,
+        });
+      } catch (err) {
+        const { formatAndLogError } = await import('../core/format-error.js');
+        formatAndLogError(err, 'de-sloppify');
+        process.exitCode = 1;
+      }
+    })();
+  });
+
+// ── verify-loop ───────────────────────────────────────────────────────────────
+
+program
+  .command('verify-loop')
+  .description('6-phase quality gate: Build -> Typecheck -> Lint -> Tests -> Security -> Diff Review. Runs in sequence; stops on first failure.')
+  .option('--dim <id>', 'Focus test phase on a specific dimension')
+  .option('--phases <list>', 'Comma-separated subset: build,typecheck,lint,tests,security,diff')
+  .option('--continuous', 'Run continuously every --interval-ms milliseconds')
+  .option('--interval-ms <n>', 'Interval for continuous mode in ms (default: 900000)', '900000')
+  .option('--json', 'Emit JSON result at end')
+  .option('--cwd <path>', 'Project directory (defaults to cwd)')
+  .action((opts) => {
+    void (async () => {
+      try {
+        const { runVerifyLoopCommand } = await import('./commands/verify-loop.js');
+        await runVerifyLoopCommand({
+          cwd: opts.cwd as string | undefined,
+          dim: opts.dim as string | undefined,
+          phases: opts.phases as string | undefined,
+          continuous: opts.continuous as boolean | undefined,
+          intervalMs: opts.intervalMs ? parseInt(opts.intervalMs as string, 10) : undefined,
+          json: opts.json as boolean | undefined,
+        });
+      } catch (err) {
+        const { formatAndLogError } = await import('../core/format-error.js');
+        formatAndLogError(err, 'verify-loop');
         process.exitCode = 1;
       }
     })();
