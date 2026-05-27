@@ -556,6 +556,17 @@ async function runDimensionFrontierLoop(
       if (cipBlocked) {
         // Skip the rest of the evidence pipeline; treat cycle as no-progress.
         consecutiveNoProgress++;
+        // Stall check must run even when CIP blocks — dim may be permanently stuck.
+        if (consecutiveNoProgress >= stallThreshold) {
+          logger.info(`[frontier:${dim.id}] Stalled (CIP-blocked) — triggering autoresearch`);
+          try {
+            await runAutoResearch(dim.id, dimGoal, cwd);
+            autoresearchRuns++;
+          } catch (err) {
+            logger.warn(`[frontier:${dim.id}] Autoresearch failed: ${err}`);
+          }
+          consecutiveNoProgress = 0;
+        }
         continue;
       }
     }
