@@ -44,8 +44,8 @@
     "SmolaAgents",
     "DSPy"
   ],
-  "lastUpdated": "2026-05-26T18:23:21.867Z",
-  "overallSelfScore": 7.1,
+  "lastUpdated": "2026-05-27T22:54:54.272Z",
+  "overallSelfScore": 7.3,
   "excludedDimensions": [
     "community_adoption",
     "communityAdoption"
@@ -537,7 +537,7 @@
         "Agno": 7,
         "SmolaAgents": 5.5,
         "DSPy": 6,
-        "derived": 9
+        "derived": 7
       },
       "gap_to_leader": 1.5,
       "leader": "OpenHands (All-Hands AI)",
@@ -651,7 +651,7 @@
       "category": "features",
       "frequency": "high",
       "scores": {
-        "self": 6.5,
+        "self": 7.5,
         "Devin (Cognition AI)": 9.5,
         "GitHub Copilot Workspace": 7,
         "Cursor": 7,
@@ -697,11 +697,11 @@
         "SmolaAgents": 6.5,
         "derived": 9
       },
-      "gap_to_leader": 2.5,
-      "leader": "OpenHands (All-Hands AI)",
-      "gap_to_closed_source_leader": 1.5,
+      "gap_to_leader": 2,
+      "leader": "Devin (Cognition AI)",
+      "gap_to_closed_source_leader": 0.5,
       "closed_source_leader": "Replit Agent",
-      "gap_to_oss_leader": 2.5,
+      "gap_to_oss_leader": 1.5,
       "oss_leader": "OpenHands (All-Hands AI)",
       "status": "partially-verified-capability",
       "sprint_history": [
@@ -722,6 +722,18 @@
           "before": 6.5,
           "after": 10,
           "date": "2026-04-23"
+        },
+        {
+          "dimensionId": "autonomy",
+          "before": 6.5,
+          "after": 7.5,
+          "date": "2026-05-27",
+          "proposalIds": [
+            "proposal_1779921724669_3b43880a"
+          ],
+          "selectedProposalId": "proposal_1779921724669_3b43880a",
+          "mergeReceipt": ".danteforge/score-proposals/merge-receipts/merge_1779921829188_e5a8499b.json",
+          "timeMachineCommitId": "tm_7496c9b537eb53155b5defc2"
         }
       ],
       "next_sprint_target": 7,
@@ -1438,7 +1450,7 @@
       "category": "features",
       "frequency": "medium",
       "scores": {
-        "self": 6.5,
+        "self": 7.5,
         "Devin (Cognition AI)": 8.5,
         "GitHub Copilot Workspace": 5,
         "Cursor": 4.5,
@@ -1477,10 +1489,10 @@
         "derived": 9
       },
       "gap_to_leader": 1.5,
-      "leader": "OpenHands (All-Hands AI)",
+      "leader": "derived",
       "gap_to_closed_source_leader": 0,
-      "closed_source_leader": "self",
-      "gap_to_oss_leader": 1.5,
+      "closed_source_leader": "Replit Agent",
+      "gap_to_oss_leader": 0.5,
       "oss_leader": "OpenHands (All-Hands AI)",
       "status": "partially-verified-capability",
       "sprint_history": [
@@ -1495,6 +1507,18 @@
           "before": 7,
           "after": 10,
           "date": "2026-04-23"
+        },
+        {
+          "dimensionId": "convergence_self_healing",
+          "before": 6.5,
+          "after": 7.5,
+          "date": "2026-05-27",
+          "proposalIds": [
+            "proposal_1779921881329_29606d70"
+          ],
+          "selectedProposalId": "proposal_1779921881329_29606d70",
+          "mergeReceipt": ".danteforge/score-proposals/merge-receipts/merge_1779921993424_48111379.json",
+          "timeMachineCommitId": "tm_e2193984baca41b4cbd0b901"
         }
       ],
       "next_sprint_target": 7,
@@ -1577,7 +1601,7 @@
       "category": "features",
       "frequency": "medium",
       "scores": {
-        "self": 6.5,
+        "self": 7.5,
         "Devin (Cognition AI)": 6,
         "GitHub Copilot Workspace": 5.5,
         "Cursor": 4,
@@ -1615,11 +1639,11 @@
         "DSPy": 4,
         "derived": 9
       },
-      "gap_to_leader": 2,
-      "leader": "Kiro (AWS)",
-      "gap_to_closed_source_leader": 2,
+      "gap_to_leader": 1.5,
+      "leader": "derived",
+      "gap_to_closed_source_leader": 1,
       "closed_source_leader": "Kiro (AWS)",
-      "gap_to_oss_leader": 1,
+      "gap_to_oss_leader": 0,
       "oss_leader": "LangGraph",
       "status": "partially-verified-capability",
       "sprint_history": [
@@ -1634,6 +1658,18 @@
           "before": 9.5,
           "after": 9,
           "date": "2026-04-23"
+        },
+        {
+          "dimensionId": "spec_driven_pipeline",
+          "before": 6.5,
+          "after": 7.5,
+          "date": "2026-05-27",
+          "proposalIds": [
+            "proposal_1779922384557_9bd3eaec"
+          ],
+          "selectedProposalId": "proposal_1779922384557_9bd3eaec",
+          "mergeReceipt": ".danteforge/score-proposals/merge-receipts/merge_1779922494585_180ac586.json",
+          "timeMachineCommitId": "tm_c7dca1f2840588d0162d41e0"
         }
       ],
       "next_sprint_target": 7,
@@ -1716,7 +1752,7 @@
       "category": "features",
       "frequency": "medium",
       "scores": {
-        "self": 6.5,
+        "self": 7.5,
         "Devin (Cognition AI)": 8,
         "GitHub Copilot Workspace": 7.5,
         "Cursor": 6.5,
@@ -1754,11 +1790,11 @@
         "DSPy": 5,
         "derived": 9
       },
-      "gap_to_leader": 2,
-      "leader": "Kiro (AWS)",
-      "gap_to_closed_source_leader": 2,
+      "gap_to_leader": 1.5,
+      "leader": "derived",
+      "gap_to_closed_source_leader": 1,
       "closed_source_leader": "Kiro (AWS)",
-      "gap_to_oss_leader": 1.5,
+      "gap_to_oss_leader": 0.5,
       "oss_leader": "LangGraph",
       "status": "partially-verified-capability",
       "sprint_history": [
@@ -1773,6 +1809,18 @@
           "before": 9.2,
           "after": 10,
           "date": "2026-04-23"
+        },
+        {
+          "dimensionId": "planning_quality",
+          "before": 6.5,
+          "after": 7.5,
+          "date": "2026-05-27",
+          "proposalIds": [
+            "proposal_1779922226149_f0595441"
+          ],
+          "selectedProposalId": "proposal_1779922226149_f0595441",
+          "mergeReceipt": ".danteforge/score-proposals/merge-receipts/merge_1779922330828_47235052.json",
+          "timeMachineCommitId": "tm_dd7eaf83723fead6a2a72bca"
         }
       ],
       "next_sprint_target": 7,
@@ -2146,7 +2194,7 @@
       "category": "features",
       "frequency": "medium",
       "scores": {
-        "self": 6.5,
+        "self": 7.5,
         "Devin (Cognition AI)": 6.5,
         "GitHub Copilot Workspace": 5,
         "Cursor": 5.5,
@@ -2191,11 +2239,11 @@
         "SmolaAgents": 4,
         "derived": 9
       },
-      "gap_to_leader": 2,
-      "leader": "DSPy",
+      "gap_to_leader": 1.5,
+      "leader": "derived",
       "gap_to_closed_source_leader": 0,
-      "closed_source_leader": "self",
-      "gap_to_oss_leader": 2,
+      "closed_source_leader": "Kiro (AWS)",
+      "gap_to_oss_leader": 1,
       "oss_leader": "DSPy",
       "status": "partially-verified-capability",
       "sprint_history": [
@@ -2210,6 +2258,18 @@
           "before": 6.5,
           "after": 10,
           "date": "2026-04-23"
+        },
+        {
+          "dimensionId": "self_improvement",
+          "before": 6.5,
+          "after": 7.5,
+          "date": "2026-05-27",
+          "proposalIds": [
+            "proposal_1779922047376_5eb6ae55"
+          ],
+          "selectedProposalId": "proposal_1779922047376_5eb6ae55",
+          "mergeReceipt": ".danteforge/score-proposals/merge-receipts/merge_1779922164941_3d8b8e23.json",
+          "timeMachineCommitId": "tm_4d60416bb412065cffc05277"
         }
       ],
       "next_sprint_target": 7,

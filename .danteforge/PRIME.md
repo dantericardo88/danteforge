@@ -1,9 +1,9 @@
-# Session Brief — 2026-05-26
+# Session Brief — 2026-05-27
 
 **Project:** danteforge
 **Builder score:** 9.3/10 (needs-work) — target: 9.0
 **Competitive score:** 7.1/10 vs OSS leaders (run: danteforge compete)
-**Top gaps:** communityAdoption (6.9), autonomy (7.5), tokenEconomy (7.5)
+**Top gaps:** communityAdoption (6.6), autonomy (7.5), tokenEconomy (7.5)
 
 ## Architecture
 ESM-only TypeScript. Commander.js CLI. tsup → dist/index.js.
