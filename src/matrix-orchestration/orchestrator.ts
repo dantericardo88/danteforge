@@ -10,6 +10,8 @@
 
 import path from 'node:path';
 import fs from 'node:fs/promises';
+import { execSync } from 'node:child_process';
+import { createHash } from 'node:crypto';
 import {
   appendAudit,
   ensureOrchDir,
@@ -379,33 +381,90 @@ async function defaultSynthesize(
   _universe: CompetitiveUniverse,
   opts: OrchestratorOptions,
 ): Promise<OrchestrationDimensionMatrix> {
-  // Track B owns the synthesizer; if its export isn't ready yet, callers
-  // should pass `_synthesizeDimensions` seam. We return a minimal stub here.
-  const minimal: OrchestrationDimensionMatrix = {
+  const matrixPath = path.join(opts.cwd, '.danteforge', 'compete', 'matrix.json');
+  type RawDim = {
+    id: string; label: string; category: string; weight: number;
+    scores: Record<string, number>;
+    gap_to_oss_leader: number; oss_leader: string;
+    gap_to_closed_source_leader: number; closed_source_leader: string;
+  };
+  let rawDims: RawDim[] = [];
+  try {
+    const raw = JSON.parse(await fs.readFile(matrixPath, 'utf-8')) as { dimensions?: RawDim[] };
+    rawDims = raw.dimensions ?? [];
+  } catch { /* matrix not found — return empty */ }
+
+  const dims = rawDims.map(d => {
+    const selfScore = d.scores['self'] ?? 0;
+    return {
+      dimensionId: d.id,
+      name: d.label,
+      category: d.category,
+      weight: d.weight ?? 1.0,
+      rubric: { score5: 'Basic ' + d.label, score7: 'Solid ' + d.label, score9: 'Leading ' + d.label },
+      evidenceRequired: ['capability_test'],
+      currentScore: selfScore,
+      ossFrontierScore: selfScore + (d.gap_to_oss_leader ?? 0),
+      closedFrontierScore: selfScore + (d.gap_to_closed_source_leader ?? 0),
+      gapToOssFrontier: d.gap_to_oss_leader ?? 0,
+      gapToClosedFrontier: d.gap_to_closed_source_leader ?? 0,
+      ossFrontierLeader: d.oss_leader,
+      closedFrontierLeader: d.closed_source_leader,
+    };
+  });
+
+  const totalWeight = dims.reduce((s, d) => s + d.weight, 0) || 1;
+  const wavg = (key: 'currentScore' | 'ossFrontierScore' | 'closedFrontierScore'): number =>
+    Math.round(dims.reduce((s, d) => s + d.weight * d[key], 0) / totalWeight * 10) / 10;
+
+  return {
     generatedAt: new Date().toISOString(),
     projectName: path.basename(opts.cwd),
-    dimensions: [],
-    overallCurrentScore: 0,
-    overallOssFrontierScore: 0,
-    overallClosedFrontierScore: 0,
+    dimensions: dims,
+    overallCurrentScore: wavg('currentScore'),
+    overallOssFrontierScore: wavg('ossFrontierScore'),
+    overallClosedFrontierScore: wavg('closedFrontierScore'),
     approvedByUser: false,
   };
-  return minimal;
 }
 
 async function defaultDetectCapacity(opts: OrchestratorOptions): Promise<CapacityReport> {
-  // Track C ships the real detector; until then, return a deterministic stub
-  // so the orchestrator can complete end-to-end.
+  const os = await import('node:os');
+  const sig = createHash('sha256')
+    .update(process.version + '|' + os.platform() + '|' + os.arch() + '|' + os.cpus().length)
+    .digest('hex')
+    .slice(0, 16);
+
+  function isInstalled(cmd: string): boolean {
+    try { execSync(cmd + ' --version', { stdio: 'pipe', timeout: 5000 }); return true; }
+    catch { return false; }
+  }
+
+  type P = import('./types.js').ProviderCapacity;
+  const providerList: P[] = [];
+  if (isInstalled('claude')) {
+    providerList.push({ providerId: 'claude', installed: true, authStatus: 'authenticated', concurrentInstances: 2 });
+  }
+  if (isInstalled('codex')) {
+    providerList.push({ providerId: 'codex', installed: true, authStatus: 'authenticated', concurrentInstances: 2 });
+  }
+  if (isInstalled('ollama')) {
+    providerList.push({ providerId: 'ollama', installed: true, authStatus: 'authenticated', concurrentInstances: 1, costPerKTokenUsd: 0 });
+  }
+  for (const p of opts.providers ?? []) {
+    if (!providerList.some(pl => pl.providerId === p)) {
+      providerList.push({ providerId: p as P['providerId'], installed: false, authStatus: 'unknown', concurrentInstances: 0 });
+    }
+  }
+  if (providerList.length === 0) {
+    providerList.push({ providerId: 'shell', installed: true, authStatus: 'authenticated', concurrentInstances: 1 });
+  }
+
   return {
     generatedAt: new Date().toISOString(),
-    hostMachineSignature: 'unknown',
-    providers: (opts.providers ?? ['fake']).map(p => ({
-      providerId: p,
-      installed: true,
-      authStatus: 'authenticated' as const,
-      concurrentInstances: 1,
-    })),
-    totalPracticalConcurrency: opts.maxAgents ?? 1,
+    hostMachineSignature: sig,
+    providers: providerList,
+    totalPracticalConcurrency: Math.min(opts.maxAgents ?? 8, providerList.reduce((s, p) => s + p.concurrentInstances, 0)),
     benchmarkDurationMs: 0,
   };
 }

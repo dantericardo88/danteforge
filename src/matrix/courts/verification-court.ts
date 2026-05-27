@@ -141,12 +141,8 @@ export async function reviewBranch(options: ReviewBranchOptions): Promise<GateRe
       : `${stubResult.findings.length} stub(s) detected: ${stubResult.findings.slice(0, 3).map(f => `${f.filePath}:${f.line} (${f.kind})`).join('; ')}`,
   });
 
-  // Check 6: dimension_score (placeholder — Merge Court computes the real delta)
-  checks.push({
-    name: 'dimension_score',
-    status: 'passed',
-    details: `pending merge-court arbitration for ${workPacket.dimensionId}`,
-  });
+  // Check 6: dimension_score — validates score against capability_test ceiling
+  checks.push(await checkDimensionScore(workPacket, options.cwd));
 
   const status: GateReport['status'] = checks.some(c => c.status === 'failed')
     ? 'failed'
@@ -214,6 +210,39 @@ function checkLeaseCompliance(
       ? 'all changes within lease scope'
       : result.violations.slice(0, 3).join('; '),
   };
+}
+
+// ── Dimension score check ────────────────────────────────────────────────────
+
+async function checkDimensionScore(
+  workPacket: WorkPacket,
+  cwd?: string,
+): Promise<GateCheckResult> {
+  const root = cwd ?? process.cwd();
+  const matrixPath = path.join(root, '.danteforge', 'compete', 'matrix.json');
+  try {
+    type MatrixDim = { id: string; scores?: Record<string, number>; ceiling?: number; capability_test?: string; no_capability_test?: boolean };
+    const raw = JSON.parse(await fs.readFile(matrixPath, 'utf-8')) as { dimensions?: MatrixDim[] };
+    const dim = (raw.dimensions ?? []).find(d => d.id === workPacket.dimensionId);
+    if (!dim) {
+      return { name: 'dimension_score', status: 'warning', details: 'dimension "' + workPacket.dimensionId + '" not found in matrix.json' };
+    }
+    const selfScore = dim.scores?.['self'] ?? 0;
+    const ceiling = dim.ceiling;
+    const hasCapTest = !!(dim.capability_test || dim.no_capability_test);
+    const noTestCap = 7.0;
+    if (!hasCapTest && selfScore > noTestCap) {
+      return { name: 'dimension_score', status: 'failed', details: 'score ' + selfScore + ' exceeds ' + noTestCap + ' ceiling — no capability_test defined for "' + workPacket.dimensionId + '"' };
+    }
+    if (ceiling !== undefined && selfScore > ceiling) {
+      return { name: 'dimension_score', status: 'failed', details: 'score ' + selfScore + ' exceeds dimension ceiling ' + ceiling + ' for "' + workPacket.dimensionId + '"' };
+    }
+    const ceilingNote = ceiling !== undefined ? ' / ceiling ' + ceiling : '';
+    const capNote = !hasCapTest ? ' (no capability_test, cap 7.0)' : '';
+    return { name: 'dimension_score', status: 'passed', details: 'score ' + selfScore + ceilingNote + capNote };
+  } catch {
+    return { name: 'dimension_score', status: 'warning', details: 'matrix.json not readable — score check skipped' };
+  }
 }
 
 // ── Command runner ──────────────────────────────────────────────────────────

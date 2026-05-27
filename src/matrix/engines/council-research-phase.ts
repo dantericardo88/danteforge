@@ -204,15 +204,18 @@ async function runDimResearch(
   ossContext: string,
   timeoutMs: number,
   _run: typeof runAdapter,
+  skipAvailabilityCheck = false,
 ): Promise<AgentRunResult> {
   const workPacket = makeDimResearchPacket(target, ossContext);
   const lease = makeResearchLease(projectPath);
   const adapter = makeAdapter(memberId, workPacket);
 
   try {
-    const available = await adapter.isAvailable();
-    if (!available) {
-      return { output: '', exitCode: 1, filesChanged: [] } as AgentRunResult;
+    if (!skipAvailabilityCheck) {
+      const available = await adapter.isAvailable();
+      if (!available) {
+        return { output: '', exitCode: 1, filesChanged: [] } as AgentRunResult;
+      }
     }
     const timeoutPromise = new Promise<AgentRunResult>((_, reject) =>
       setTimeout(() => reject(new Error(`Research timeout after ${timeoutMs}ms for ${target.dimId}`)), timeoutMs),
@@ -292,6 +295,7 @@ export async function runResearchPhase(
   });
 
   // One focused API call per dim — run in parallel up to concurrencyLimit
+  const isTestRun = opts._runAdapter !== undefined;
   const tasks = assignments.map(({ memberId, target }) => async () => {
     for (let attempt = 0; attempt <= maxRetries; attempt++) {
       if (attempt > 0) {
@@ -300,7 +304,7 @@ export async function runResearchPhase(
       }
       onProgress?.(target.dimId, 'started', memberId);
       logger.info(`[research-phase] ${memberId} → ${target.dimId} (${target.dimName})${attempt > 0 ? ` [retry ${attempt}]` : ''}`);
-      const runResult = await runDimResearch(memberId, target, projectPath, ossContext, timeoutMs, _run);
+      const runResult = await runDimResearch(memberId, target, projectPath, ossContext, timeoutMs, _run, isTestRun);
       const output = runResult.finalMessage ?? (runResult as unknown as { output?: string }).output ?? '';
       const brief = parseForgeBrief(output, target, memberId);
       if (brief) {

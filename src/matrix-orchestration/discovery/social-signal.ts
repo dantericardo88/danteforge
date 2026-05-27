@@ -21,6 +21,8 @@
 // Injection seams in this stub already match what the v1.1 implementation
 // will need, so wiring tests stay valid across the version bump.
 
+import path from 'node:path';
+import fs from 'node:fs/promises';
 import { saveOrch, appendAudit, ensureOrchDir } from '../state-io.js';
 import type {
   CompetitiveUniverse,
@@ -80,24 +82,74 @@ export async function captureSocialSignal(
     return report;
   }
 
-  // v1.1 will replace this branch with real fetches. For now we log that the
-  // user opted in but the implementation is not yet available, then return an
-  // empty report (no exception — non-fatal). The signal that v1.1 should
-  // start: the appendAudit payload carries 'social_signal_v1_1_required'.
-  report.skippedReason =
-    'social signal opted-in but v1.1 fetch backends not yet implemented in this build';
-  // Touch each declared seam so static analysis confirms they are wired —
-  // and so a test can assert that opting-in still produces an audit event.
   const sources: SocialSource[] = options.sources ?? ['hackernews'];
+  const cacheDir = path.join(cwd, '.danteforge', 'matrix-orchestration', 'social-cache');
+  await fs.mkdir(cacheDir, { recursive: true });
+
+  const TTL_MS = 7 * 24 * 60 * 60 * 1000;
+  const bucket = Math.floor(Date.now() / TTL_MS);
+
+  for (const entry of universe.entries) {
+    const competitorName = entry.name;
+    for (const source of sources) {
+      if (source !== 'hackernews') continue;
+      const safeKey = competitorName.replace(/[^a-z0-9]/gi, '-').toLowerCase();
+      const cachePath = path.join(cacheDir, 'hn-' + safeKey + '-' + bucket + '.json');
+      type HnHit = { url?: string; story_text?: string; title?: string };
+      let hits: HnHit[] = [];
+      try {
+        hits = JSON.parse(await fs.readFile(cachePath, 'utf-8')) as HnHit[];
+      } catch {
+        try {
+          const hnFetch = options._hnSearch ??
+            ((q: string) => fetch(
+              'https://hn.algolia.com/api/v1/search?query=' + encodeURIComponent(q) + '&tags=story&hitsPerPage=10',
+            ).then(r => r.json()));
+          const raw = await hnFetch(competitorName) as { hits?: HnHit[] };
+          hits = raw.hits ?? [];
+          await fs.writeFile(cachePath, JSON.stringify(hits), 'utf-8');
+        } catch { hits = []; }
+      }
+      for (const hit of hits) {
+        const excerpt = ((hit.story_text ?? hit.title ?? '') as string).slice(0, 200);
+        if (!excerpt) continue;
+        const lc = excerpt.toLowerCase();
+        const sentiment =
+          lc.includes('slow') || lc.includes('bug') || lc.includes('issue') || lc.includes('fail')
+            ? 'complaint' as const
+            : lc.includes('great') || lc.includes('love') || lc.includes('excellent') || lc.includes('best')
+              ? 'praise' as const
+              : 'neutral' as const;
+        report.mentions.push({ competitorName, source: 'hackernews', url: hit.url, excerpt, sentiment, capturedAt: now() });
+      }
+    }
+  }
+
+  const aggMap = new Map<string, { totalMentions: number; praiseCount: number; complaintCount: number }>();
+  for (const m of report.mentions) {
+    const agg = aggMap.get(m.competitorName) ?? { totalMentions: 0, praiseCount: 0, complaintCount: 0 };
+    agg.totalMentions++;
+    if (m.sentiment === 'praise') agg.praiseCount++;
+    else if (m.sentiment === 'complaint') agg.complaintCount++;
+    aggMap.set(m.competitorName, agg);
+  }
+  report.aggregates = Array.from(aggMap.entries()).map(([competitorName, agg]) => ({
+    competitorName,
+    totalMentions: agg.totalMentions,
+    praiseCount: agg.praiseCount,
+    complaintCount: agg.complaintCount,
+    topComplaints: [],
+    topPraises: [],
+    confidence: 0.5,
+  }));
+
   await saveOrch(cwd, 'socialSignal', report);
   await appendAudit(cwd, {
     ts: now(), runId, kind: 'stage_completed',
     payload: {
       stage: 'social_signal',
-      skipped: true,
-      reason: 'social_signal_v1_1_required',
-      sourcesRequested: sources,
       competitorCount: universe.entries.length,
+      mentionsCollected: report.mentions.length,
     },
   });
   return report;
