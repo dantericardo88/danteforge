@@ -1,16 +1,11 @@
 // Matrix Kernel — CouncilResearchPhase
 //
-// The research phase runs BEFORE and DURING the build phase. Codex and Grok
-// divide all target dimensions between them, each doing a deep OSS dive to
-// produce a precise FORGE_BRIEF per dimension. Claude Code reads these briefs
-// before each build cycle, so every build is targeted rather than exploratory.
+// Research phase: Claude Code, Codex, and Grok each own 1/3 of the dims.
+// Each dim gets its OWN focused API call (not a batch). All calls run in
+// parallel (up to concurrencyLimit). This avoids the timeout that occurs
+// when one call tries to produce 12 FORGE_BRIEFs at once.
 //
-// Flow: divide dims → assign half to Codex, half to Grok → each researcher
-//   runs its adapter with a research-focused prompt → parses response into a
-//   ForgeBrief → writes to .danteforge/forge-briefs/<dimId>.json
-//
-// Research runs concurrently with the builder's first cycle. By the time Claude
-// finishes building dims 1–4, all remaining briefs are ready.
+// Storage: .danteforge/forge-briefs/<dimId>.json
 import path from 'node:path';
 import fs from 'node:fs/promises';
 import { logger } from '../../core/logger.js';
@@ -41,14 +36,16 @@ export interface ResearchTarget {
 export interface ResearchPhaseOptions {
   projectPath: string;
   targets: ResearchTarget[];
-  /** Which members do the research. Default: ['codex', 'grok-build'] */
+  /** Which members do the research. Default: ['claude-code', 'codex', 'grok-build'] */
   researchers?: CouncilMemberId[];
   /** Path to OSS harvest directory (for local repo scanning context). */
   ossHarvestPath?: string;
   /** Skip dims that already have a brief on disk (resume mode). Default: true */
   skipExisting?: boolean;
-  /** Timeout per researcher in ms. Default: 300_000 (5 min) */
+  /** Timeout per individual dim call in ms. Default: 600_000 (10 min) */
   timeoutMs?: number;
+  /** Max parallel dim research calls. Default: 6 */
+  concurrencyLimit?: number;
   /** Injection seam for tests */
   _runAdapter?: typeof runAdapter;
 }
@@ -59,46 +56,57 @@ export interface ResearchPhaseResult {
   failed: string[];
 }
 
-function makeResearchWorkPacket(targets: ResearchTarget[], ossContext: string): WorkPacket {
-  const dimList = targets.map(t =>
-    `  - ${t.dimId} (${t.dimName}): current ${t.currentScore} → target ${t.targetScore}` +
-    (t.ossLeader ? `, OSS leader: ${t.ossLeader}` : ''),
-  ).join('\n');
-
+/** Build a focused research prompt for a SINGLE dimension. */
+function makeDimResearchPacket(target: ResearchTarget, ossContext: string): WorkPacket {
   return {
-    id: `research-phase.${Date.now()}`,
-    dimensionId: 'research',
+    id: `research.${target.dimId}.${Date.now()}`,
+    dimensionId: target.dimId,
     objective: [
-      'Research each dimension below and produce a FORGE_BRIEF JSON for each one.',
-      'For each dimension, identify:',
-      '  1. What OSS leaders do that this project does not (with specific file references if possible)',
-      '  2. A numbered checklist of SPECIFIC things to implement to reach the target score',
-      '     Each checklist item must have:',
-      '       - id: "item-N"',
-      '       - description: what to build',
-      '       - productionCallsite: "src/module/file.ts:functionName"',
-      '       - observableOutput: a log line, file path, or CLI output',
-      '       - testCommand: "npx tsx --test tests/name.test.ts"',
-      '       - effort: "S" | "M" | "L"',
+      `Research the "${target.dimName}" dimension for DanteForge (current score: ${target.currentScore}/10, target: ${target.targetScore}/10).`,
+      target.ossLeader ? `OSS leader to study: ${target.ossLeader}` : '',
       '',
-      'Dimensions to research:',
-      dimList,
+      'Your job: produce ONE precise FORGE_BRIEF JSON block that tells the builder exactly what to implement.',
       '',
-      ossContext,
-      '',
-      'Output format — for EACH dimension, output a JSON block wrapped in:',
+      'Required output — a single JSON block:',
       '```forge-brief',
-      '{ "dimId": "...", "dimName": "...", "ossCapabilities": [...], "checklist": [...] }',
+      JSON.stringify({
+        dimId: target.dimId,
+        dimName: target.dimName,
+        ossCapabilities: [
+          {
+            leader: '<OSS tool name>',
+            capability: '<what they do>',
+            theirImplementation: '<their specific file/function/approach>',
+            ourGap: '<what we are missing>',
+          },
+        ],
+        checklist: [
+          {
+            id: 'item-1',
+            description: '<specific thing to implement>',
+            productionCallsite: 'src/<file>.ts:<functionName>',
+            observableOutput: '<log line, file path, or CLI output that proves it ran>',
+            testCommand: 'npx tsx --test tests/<name>.test.ts',
+            effort: 'S | M | L',
+          },
+        ],
+      }, null, 2),
       '```',
       '',
-      'Be specific and actionable. No vague advice. Real file paths and function names.',
-    ].join('\n'),
+      'Rules:',
+      '  - ossCapabilities: 2–4 items, each citing a REAL OSS tool (e.g. Aider, OpenHands, CrewAI, MetaGPT)',
+      '  - checklist: 3–6 specific build tasks, each with a REAL src/ callsite and observable output',
+      '  - No vague advice. No "improve X". Name functions, file paths, log lines.',
+      '  - Every checklist item must answer: what production function calls it, what output proves it ran',
+      '',
+      ossContext,
+    ].filter(Boolean).join('\n'),
     acceptanceCriteria: [
-      'Each dimension has a forge-brief JSON block in the output',
-      'Each checklist item has all required fields',
-      'OSS capabilities reference real tools by name',
+      'Exactly one forge-brief JSON block in output',
+      'dimId matches the requested dimension',
+      'Each checklist item has productionCallsite and observableOutput',
     ],
-    proof: { proofRequired: ['forge-brief JSON blocks present in output'] },
+    proof: { proofRequired: ['forge-brief JSON block present'] },
     globalForbidden: [
       '.danteforge/compete/matrix.json',
       '.danteforge/score-proposals/**',
@@ -119,64 +127,60 @@ async function buildOssContext(ossHarvestPath?: string): Promise<string> {
     const entries = await fs.readdir(ossHarvestPath, { withFileTypes: true });
     const repos = entries.filter(e => e.isDirectory()).map(e => e.name).slice(0, 20);
     if (repos.length === 0) return '';
-    return `Available OSS repos in harvest (reference these for patterns):\n${repos.map(r => `  - ${r}`).join('\n')}`;
+    return `Available OSS repos in harvest directory (reference these for patterns):\n${repos.map(r => `  - ${r}`).join('\n')}`;
   } catch {
     return '';
   }
 }
 
-function parseForgeBriefs(
+function parseForgeBrief(
   output: string,
-  targets: ResearchTarget[],
+  target: ResearchTarget,
   researchedBy: string,
-): ForgeBrief[] {
-  const briefs: ForgeBrief[] = [];
-  const briefRegex = /```forge-brief\s*([\s\S]*?)```/g;
-  let match: RegExpExecArray | null;
+): ForgeBrief | null {
+  const briefRegex = /```forge-brief\s*([\s\S]*?)```/;
+  const match = briefRegex.exec(output);
+  if (!match) return null;
 
-  while ((match = briefRegex.exec(output)) !== null) {
-    try {
-      const raw = JSON.parse(match[1]!.trim()) as {
-        dimId?: string;
-        dimName?: string;
-        ossCapabilities?: OssCapability[];
-        checklist?: ChecklistItem[];
-      };
+  try {
+    const raw = JSON.parse(match[1]!.trim()) as {
+      dimId?: string;
+      dimName?: string;
+      ossCapabilities?: OssCapability[];
+      checklist?: ChecklistItem[];
+    };
 
-      if (!raw.dimId) continue;
-      const target = targets.find(t => t.dimId === raw.dimId);
-      if (!target) continue;
+    if (!raw.dimId || raw.dimId !== target.dimId) return null;
 
-      briefs.push({
-        dimId: raw.dimId,
-        dimName: raw.dimName ?? target.dimName,
-        currentScore: target.currentScore,
-        targetScore: target.targetScore,
-        researchedBy,
-        researchedAt: new Date().toISOString(),
-        ossCapabilities: raw.ossCapabilities ?? [],
-        checklist: (raw.checklist ?? []).map((item, i) => ({
-          id: item.id ?? `item-${i + 1}`,
-          description: item.description ?? '',
-          productionCallsite: item.productionCallsite ?? '',
-          observableOutput: item.observableOutput ?? '',
-          testCommand: item.testCommand ?? '',
-          effort: item.effort ?? 'M',
-          completed: false,
-        })),
-        completionState: {
-          lastChecked: new Date().toISOString(),
-          itemsComplete: [],
-          itemsMissing: (raw.checklist ?? []).map((item, i) => item.id ?? `item-${i + 1}`),
-          projectedScore: target.currentScore,
-        },
-        verificationHistory: [],
-      });
-    } catch {
-      logger.warn('[research-phase] Failed to parse a forge-brief JSON block — skipping');
-    }
+    return {
+      dimId: raw.dimId,
+      dimName: raw.dimName ?? target.dimName,
+      currentScore: target.currentScore,
+      targetScore: target.targetScore,
+      researchedBy,
+      researchedAt: new Date().toISOString(),
+      ossCapabilities: raw.ossCapabilities ?? [],
+      checklist: (raw.checklist ?? []).map((item, i) => ({
+        id: item.id ?? `item-${i + 1}`,
+        description: item.description ?? '',
+        productionCallsite: item.productionCallsite ?? '',
+        observableOutput: item.observableOutput ?? '',
+        testCommand: item.testCommand ?? '',
+        effort: item.effort ?? 'M',
+        completed: false,
+      })),
+      completionState: {
+        lastChecked: new Date().toISOString(),
+        itemsComplete: [],
+        itemsMissing: (raw.checklist ?? []).map((item, i) => item.id ?? `item-${i + 1}`),
+        projectedScore: target.currentScore,
+      },
+      verificationHistory: [],
+    };
+  } catch {
+    logger.warn(`[research-phase] Failed to parse forge-brief JSON for ${target.dimId}`);
+    return null;
   }
-  return briefs;
 }
 
 function makeAdapter(memberId: CouncilMemberId, workPacket: WorkPacket) {
@@ -187,15 +191,15 @@ function makeAdapter(memberId: CouncilMemberId, workPacket: WorkPacket) {
   }
 }
 
-async function runResearcher(
+async function runDimResearch(
   memberId: CouncilMemberId,
-  targets: ResearchTarget[],
+  target: ResearchTarget,
   projectPath: string,
   ossContext: string,
   timeoutMs: number,
   _run: typeof runAdapter,
 ): Promise<AgentRunResult> {
-  const workPacket = makeResearchWorkPacket(targets, ossContext);
+  const workPacket = makeDimResearchPacket(target, ossContext);
   const lease = makeResearchLease(projectPath);
   const adapter = makeAdapter(memberId, workPacket);
 
@@ -205,13 +209,32 @@ async function runResearcher(
       return { output: '', exitCode: 1, filesChanged: [] } as AgentRunResult;
     }
     const timeoutPromise = new Promise<AgentRunResult>((_, reject) =>
-      setTimeout(() => reject(new Error(`Research timeout after ${timeoutMs}ms`)), timeoutMs),
+      setTimeout(() => reject(new Error(`Research timeout after ${timeoutMs}ms for ${target.dimId}`)), timeoutMs),
     );
     return await Promise.race([_run(adapter, { lease }), timeoutPromise]);
   } catch (err) {
-    logger.warn(`[research-phase] ${memberId} failed: ${String(err).split('\n')[0]}`);
+    logger.warn(`[research-phase] ${memberId}/${target.dimId} failed: ${String(err).split('\n')[0]}`);
     return { output: '', exitCode: 1, filesChanged: [] } as AgentRunResult;
   }
+}
+
+/** Run N async tasks with a concurrency ceiling. */
+async function runWithConcurrency<T>(
+  tasks: Array<() => Promise<T>>,
+  limit: number,
+): Promise<T[]> {
+  const results: T[] = [];
+  let idx = 0;
+
+  async function worker(): Promise<void> {
+    while (idx < tasks.length) {
+      const myIdx = idx++;
+      results[myIdx] = await tasks[myIdx]!();
+    }
+  }
+
+  await Promise.all(Array.from({ length: Math.min(limit, tasks.length) }, () => worker()));
+  return results;
 }
 
 export async function runResearchPhase(
@@ -220,10 +243,11 @@ export async function runResearchPhase(
   const {
     projectPath,
     targets,
-    researchers = ['codex', 'grok-build'],
+    researchers = ['claude-code', 'codex', 'grok-build'],
     ossHarvestPath,
     skipExisting = true,
-    timeoutMs = 300_000,
+    timeoutMs = 600_000,
+    concurrencyLimit = 6,
     _runAdapter: _run = runAdapter,
   } = opts;
 
@@ -247,38 +271,34 @@ export async function runResearchPhase(
 
   const ossContext = await buildOssContext(ossHarvestPath);
 
-  // Divide dims evenly among researchers
-  const chunks: ResearchTarget[][] = Array.from({ length: researchers.length }, () => []);
-  toResearch.forEach((t, i) => chunks[i % researchers.length]!.push(t));
+  // Assign each dim to a researcher (round-robin by researcher index)
+  const assignments: Array<{ memberId: CouncilMemberId; target: ResearchTarget }> = toResearch.map(
+    (t, i) => ({ memberId: researchers[i % researchers.length]!, target: t }),
+  );
 
-  logger.info(`[research-phase] Dividing ${toResearch.length} dims across ${researchers.length} researcher(s):`);
-  researchers.forEach((r, i) => {
-    logger.info(`  ${r}: ${(chunks[i] ?? []).map(t => t.dimId).join(', ')}`);
+  logger.info(`[research-phase] ${toResearch.length} dims → ${researchers.length} researcher(s), ${concurrencyLimit} parallel calls`);
+  researchers.forEach(r => {
+    const rDims = assignments.filter(a => a.memberId === r).map(a => a.target.dimId);
+    if (rDims.length > 0) logger.info(`  ${r} (${rDims.length}): ${rDims.join(', ')}`);
   });
 
-  const researchPromises = researchers.map(async (memberId, i) => {
-    const chunk = chunks[i] ?? [];
-    if (chunk.length === 0) return;
+  // One focused API call per dim — run in parallel up to concurrencyLimit
+  const tasks = assignments.map(({ memberId, target }) => async () => {
+    logger.info(`[research-phase] ${memberId} → ${target.dimId} (${target.dimName})`);
+    const runResult = await runDimResearch(memberId, target, projectPath, ossContext, timeoutMs, _run);
+    const brief = parseForgeBrief(runResult.output ?? '', target, memberId);
 
-    logger.info(`[research-phase] ${memberId} researching ${chunk.length} dim(s)...`);
-    const runResult = await runResearcher(memberId, chunk, projectPath, ossContext, timeoutMs, _run);
-
-    const briefs = parseForgeBriefs(runResult.output ?? '', chunk, memberId);
-    logger.info(`[research-phase] ${memberId} produced ${briefs.length}/${chunk.length} briefs`);
-
-    for (const brief of briefs) {
+    if (brief) {
       await saveForgeBrief(projectPath, brief);
       result.written.push(brief.dimId);
-      logger.info(`[research-phase] Wrote brief for ${brief.dimId} (${brief.checklist.length} checklist items)`);
-    }
-
-    const missing = chunk.filter(t => !briefs.some(b => b.dimId === t.dimId));
-    result.failed.push(...missing.map(t => t.dimId));
-    if (missing.length > 0) {
-      logger.warn(`[research-phase] ${memberId} produced no brief for: ${missing.map(t => t.dimId).join(', ')}`);
+      logger.info(`[research-phase] ✓ ${brief.dimId} — ${brief.checklist.length} checklist item(s) (by ${memberId})`);
+    } else {
+      result.failed.push(target.dimId);
+      logger.warn(`[research-phase] ✗ ${memberId} produced no brief for ${target.dimId}`);
     }
   });
 
-  await Promise.allSettled(researchPromises);
+  await runWithConcurrency(tasks, concurrencyLimit);
+  logger.info(`[research-phase] Done: ${result.written.length} written, ${result.skipped.length} skipped, ${result.failed.length} failed`);
   return result;
 }
