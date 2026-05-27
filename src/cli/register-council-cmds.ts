@@ -116,6 +116,8 @@ program
   .option('--min-gap <n>', 'Minimum gap to include (default: 0)', '0')
   .option('--concurrency <n>', 'Max parallel research calls per researcher (default: 6)', '6')
   .option('--max-retries <n>', 'Max retries per dim on research parse failure (default: 2)', '2')
+  .option('--run-de-sloppify', 'Run de-sloppify cleanup after each PASS merge (author-bias elimination)')
+  .option('--verify-mode <mode>', 'Verify mode: grok (default, pre-merge checklist) or loop (6-phase gate post-merge)', 'grok')
   .option('--json', 'Emit JSON result at end')
   .option('--cwd <path>', 'Project directory (defaults to cwd)')
   .action((opts) => {
@@ -137,6 +139,8 @@ program
           minGap: opts.minGap ? parseFloat(opts.minGap as string) : 0,
           researchConcurrencyLimit: opts.concurrency ? parseInt(opts.concurrency as string, 10) : undefined,
           researchMaxRetries: opts.maxRetries ? parseInt(opts.maxRetries as string, 10) : undefined,
+          runDeSloppify: opts.runDeSloppify as boolean | undefined,
+          verifyMode: (opts.verifyMode as 'grok' | 'loop' | undefined) ?? 'grok',
           json: opts.json as boolean | undefined,
         });
       } catch (err) {

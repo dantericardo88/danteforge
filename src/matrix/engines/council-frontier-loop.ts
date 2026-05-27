@@ -58,6 +58,13 @@ import type { ResearchTarget } from './council-research-phase.js';
 
 const execFileAsync = promisify(execFile);
 
+/** Extract changed src file paths from a git diff string. */
+function extractChangedFiles(diff: string): string[] {
+  return [...diff.matchAll(/^diff --git a\/.+ b\/(.+)$/gm)].map(m => m[1]!).filter(
+    f => f.endsWith('.ts') && !f.startsWith('tests/'),
+  );
+}
+
 export interface FrontierLoopOptions {
   projectPath: string;
   goal?: string;
@@ -83,6 +90,10 @@ export interface FrontierLoopOptions {
   researchConcurrencyLimit?: number;
   /** Max retries for research phase. Default: 2 */
   researchMaxRetries?: number;
+  /** After each PASS merge, run de-sloppify on changed files in a fresh agent context. Default: false */
+  runDeSloppify?: boolean;
+  /** Verify mode: 'grok' (default) = Grok binary checklist pre-merge; 'loop' = 6-phase verify-loop post-merge. */
+  verifyMode?: 'grok' | 'loop';
 }
 
 export interface IterationResult {
@@ -386,6 +397,8 @@ export async function runFrontierLoop(
     skipResearch = false,
     skipValidate = false,
     minGap = 0,
+    runDeSloppify = false,
+    verifyMode = 'grok',
   } = opts;
 
   const iterationResults: IterationResult[] = [];
@@ -521,6 +534,25 @@ export async function runFrontierLoop(
         scoreAfter = await readCurrentScore(projectPath, dim.dimId) ?? undefined;
         logger.info(chalk.green(`  Merged! Score: ${dim.score} → ${scoreAfter ?? '?'}`));
         if ((scoreAfter ?? 0) >= targetScore) dimsReachedTarget.push(dim.dimId);
+
+        if (runDeSloppify) {
+          const changedFiles = extractChangedFiles(diff);
+          if (changedFiles.length > 0) {
+            logger.info(`[frontier-loop] Running de-sloppify on ${changedFiles.length} changed file(s)...`);
+            const { runDeSloppifyCommand } = await import('../../cli/commands/de-sloppify.js');
+            await runDeSloppifyCommand({ cwd: projectPath, files: changedFiles.join(',') }).catch(err => {
+              logger.warn(`[frontier-loop] de-sloppify failed: ${String(err).split('\n')[0]}`);
+            });
+          }
+        }
+
+        if (verifyMode === 'loop') {
+          logger.info(`[frontier-loop] Running 6-phase verify-loop on ${dim.dimId}...`);
+          const { runVerifyLoopCommand } = await import('../../cli/commands/verify-loop.js');
+          await runVerifyLoopCommand({ cwd: projectPath, dim: dim.dimId }).catch(err => {
+            logger.warn(`[frontier-loop] verify-loop failed: ${String(err).split('\n')[0]}`);
+          });
+        }
       }
     } else {
       logger.info(chalk.yellow(`  FAIL — ${dim.dimId} re-queued with updated brief`));

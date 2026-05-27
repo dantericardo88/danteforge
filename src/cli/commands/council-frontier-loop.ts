@@ -28,6 +28,8 @@ export interface FrontierLoopCLIOptions {
   maxRetries?: number;
   researchConcurrencyLimit?: number;
   researchMaxRetries?: number;
+  runDeSloppify?: boolean;
+  verifyMode?: 'grok' | 'loop';
   json?: boolean;
 }
 
@@ -61,8 +63,10 @@ export async function runFrontierLoopCommand(opts: FrontierLoopCLIOptions): Prom
     skipResearch: opts.skipResearch ?? false,
     skipValidate: opts.skipValidate ?? false,
     minGap: opts.minGap ?? 0,
-    researchConcurrencyLimit: opts.concurrency ?? 6,
-    researchMaxRetries: opts.maxRetries ?? 2,
+    researchConcurrencyLimit: opts.researchConcurrencyLimit ?? opts.concurrency ?? 6,
+    researchMaxRetries: opts.researchMaxRetries ?? opts.maxRetries ?? 2,
+    runDeSloppify: opts.runDeSloppify ?? false,
+    verifyMode: opts.verifyMode ?? 'grok',
   };
 
   logger.info(chalk.bold('\n╔══════════════════════════════════════════════╗'));
