@@ -1,0 +1,13 @@
+{
+  "dimensionId": "testing",
+  "outcomeId": "testing_t5_cip_gate",
+  "tier": "T5",
+  "gitSha": "dba77a64e587720d0da24eedce387ced45869e1c",
+  "passed": true,
+  "exitCode": 0,
+  "durationMs": 2137,
+  "stdoutTail": "[INFO] [daemon] Starting autonomous improvement loop\n[INFO] [daemon] Strategy: adaptive | Target: 9 | Time limit: 1m\n[INFO] [daemon] Log: .danteforge/daemon-log.jsonl\n[INFO] \n[daemon] ── Pass 1 (crusade) ──────────────────\n[INFO] [daemon] Score: 5 → 9.5 (+4.50)\n[WARN] [daemon] CIP blocked target-reached: 1 dim(s) lack end-to-end evidence\n[WARN]   test_dim: claimed — no outcomes declared; no src implementation found\n[INFO] [daemon] Time limit reached (1m elapsed)\n▶ daemon CIP gate (Rule 14)\n  ✔ T1: CIP-blocked dims prevent target-reached — daemon exits via time limit (25.3728ms)\n[INFO] [daemon] Starting autonomous improvement loop\n[INFO] [daemon] Strategy: adaptive | Target: 9 | Time limit: 60m\n[INFO] [daemon] Log: .danteforge/daemon-log.jsonl\n[INFO] \n[daemon] ── Pass 1 (crusade) ──────────────────\n[INFO] [daemon] Score: 5 → 9.5 (+4.50)\n[INFO] [daemon] TARGET REACHED: 9.5 >= 9 (CIP confirmed all dims)\n  ✔ T2: CIP-passing dims allow target-reached — daemon exits immediately (9.3901ms)\n[INFO] [daemon] Starting autonomous improvement loop\n[INFO] [daemon] Strategy: adaptive | Target: 9 | Time limit: 60m\n[INFO] [daemon] Log: .danteforge/daemon-log.jsonl\n[INFO] \n[daemon] ── Pass 1 (crusade) ──────────────────\n[INFO] [daemon] Score: 5 → 9.5 (+4.50)\n[INFO] [daemon] TARGET REACHED: 9.5 >= 9 (CIP confirmed all dims)\n  ✔ T3: CIP is a no-op when all dimensions are excluded — target-reached is allowed (7.8905ms)\n✔ daemon CIP gate (Rule 14) (44.4525ms)\nℹ tests 3\nℹ suites 1\nℹ pass 3\nℹ fail 0\nℹ cancelled 0\nℹ skipped 0\nℹ todo 0\nℹ duration_ms 495.1702\n",
+  "stderrTail": "",
+  "ranAt": "2026-05-25T16:28:05.455Z",
+  "evidencePath": "X:\\Projects\\DanteForge\\.danteforge\\outcome-evidence\\dba77a64e587720d0da24eedce387ced45869e1c-testing-testing_t5_cip_gate.json"
+}

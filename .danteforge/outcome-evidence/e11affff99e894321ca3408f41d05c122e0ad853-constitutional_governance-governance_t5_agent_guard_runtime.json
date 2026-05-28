@@ -1,0 +1,13 @@
+{
+  "dimensionId": "constitutional_governance",
+  "outcomeId": "governance_t5_agent_guard_runtime",
+  "tier": "T5",
+  "gitSha": "e11affff99e894321ca3408f41d05c122e0ad853",
+  "passed": true,
+  "exitCode": 0,
+  "durationMs": 1303,
+  "stdoutTail": "▶ check-agent-guard\n  ✔ blocks edits to frozen kernel files (51.3029ms)\n  ✔ allows frozen kernel edits only with explicit platform override (47.2702ms)\n  ✔ blocks workstream edits outside owned files (44.7601ms)\n  ✔ blocks partial atomic score updates (43.479ms)\n  ✔ blocks committed claim files (43.5234ms)\n  ✔ blocks dimension claim lock files from being committed (43.1952ms)\n  ✔ blocks direct matrix edits unless a matrix-engine merge receipt is staged too (90.8204ms)\n  ✔ blocks changed files above the hard LOC cap (43.1901ms)\n✔ check-agent-guard (408.5826ms)\nℹ tests 8\nℹ suites 1\nℹ pass 8\nℹ fail 0\nℹ cancelled 0\nℹ skipped 0\nℹ todo 0\nℹ duration_ms 579.6026\n",
+  "stderrTail": "",
+  "ranAt": "2026-05-24T17:22:54.170Z",
+  "evidencePath": "X:\\Projects\\DanteForge\\.danteforge\\outcome-evidence\\e11affff99e894321ca3408f41d05c122e0ad853-constitutional_governance-governance_t5_agent_guard_runtime.json"
+}

@@ -1,0 +1,13 @@
+{
+  "dimensionId": "spec_driven_pipeline",
+  "outcomeId": "sdp_t5_workflow_runtime",
+  "tier": "T5",
+  "gitSha": "914c4d255e171d0356ebbb98f5a4054e13189f56",
+  "passed": true,
+  "exitCode": 0,
+  "durationMs": 1016,
+  "stdoutTail": "ns clarify and plan from specify (2.0322ms)\n  ✔ returns synthesize from verify (1.8523ms)\n  ✔ returns empty array from synthesize (terminal) (1.9794ms)\n✔ getNextSteps (10.626ms)\n▶ isStageComplete\n  ✔ returns false when artifact is missing (5.3557ms)\n  ✔ returns true when artifact exists (5.5395ms)\n  ✔ returns true for stages with no required artifacts (2.124ms)\n✔ isStageComplete (13.2617ms)\n▶ getWorkflowGraph\n  ✔ returns a non-empty graph (2.8206ms)\n  ✔ graph covers all major stages (1.8936ms)\n✔ getWorkflowGraph (4.8406ms)\n[ERR] Cannot transition from 'initialized' to 'forge'. Valid source stages: tasks, design\n[INFO] Remedy: Complete the 'design' stage first.\n▶ enforceWorkflow strict-by-default\n  ✔ throws GateError for out-of-order commands when enforcementMode is not set (9.5792ms)\n  ✔ allows valid transitions even in strict mode (3.6792ms)\n✔ enforceWorkflow strict-by-default (13.4369ms)\nℹ tests 19\nℹ suites 5\nℹ pass 19\nℹ fail 0\nℹ cancelled 0\nℹ skipped 0\nℹ todo 0\nℹ duration_ms 441.65\n",
+  "stderrTail": "",
+  "ranAt": "2026-05-28T14:04:21.559Z",
+  "evidencePath": ".danteforge/outcome-evidence/914c4d255e171d0356ebbb98f5a4054e13189f56-spec_driven_pipeline-sdp_t5_workflow_runtime.json"
+}

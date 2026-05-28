@@ -1,0 +1,13 @@
+{
+  "dimensionId": "convergence_self_healing",
+  "outcomeId": "csh_loop",
+  "tier": "T2",
+  "gitSha": "ec7556220a90aa98e9e20c20d8dceae0b293d420",
+  "passed": true,
+  "exitCode": 0,
+  "durationMs": 82,
+  "stdoutTail": "",
+  "stderrTail": "",
+  "ranAt": "2026-05-24T16:53:18.503Z",
+  "evidencePath": "X:\\Projects\\DanteForge\\.danteforge\\outcome-evidence\\ec7556220a90aa98e9e20c20d8dceae0b293d420-convergence_self_healing-csh_loop.json"
+}

@@ -1,0 +1,13 @@
+{
+  "dimensionId": "testing",
+  "outcomeId": "t_golden_flow_runtime",
+  "tier": "T5",
+  "gitSha": "ec7556220a90aa98e9e20c20d8dceae0b293d420",
+  "passed": true,
+  "exitCode": 0,
+  "durationMs": 1831,
+  "stdoutTail": "▶ Matrix Kernel — Golden Flow (PRD §28 MVP)\n  ✔ runs the full 18-step loop and produces every required report (490.9823ms)\n✔ Matrix Kernel — Golden Flow (PRD §28 MVP) (491.9732ms)\nℹ tests 1\nℹ suites 1\nℹ pass 1\nℹ fail 0\nℹ cancelled 0\nℹ skipped 0\nℹ todo 0\nℹ duration_ms 856.5701\n",
+  "stderrTail": "",
+  "ranAt": "2026-05-24T16:56:33.773Z",
+  "evidencePath": "X:\\Projects\\DanteForge\\.danteforge\\outcome-evidence\\ec7556220a90aa98e9e20c20d8dceae0b293d420-testing-t_golden_flow_runtime.json"
+}

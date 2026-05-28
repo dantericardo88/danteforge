@@ -1,0 +1,13 @@
+{
+  "dimensionId": "ecosystem_mcp",
+  "outcomeId": "mcp_snapshot_tools",
+  "tier": "T3",
+  "gitSha": "272df75d9a15568c1b76629b0bfd1d849c6be562",
+  "passed": true,
+  "exitCode": 0,
+  "durationMs": 3884,
+  "stdoutTail": "",
+  "stderrTail": "",
+  "ranAt": "2026-05-28T06:34:20.950Z",
+  "evidencePath": "X:\\Projects\\DanteForge\\.danteforge\\outcome-evidence\\272df75d9a15568c1b76629b0bfd1d849c6be562-ecosystem_mcp-mcp_snapshot_tools.json"
+}

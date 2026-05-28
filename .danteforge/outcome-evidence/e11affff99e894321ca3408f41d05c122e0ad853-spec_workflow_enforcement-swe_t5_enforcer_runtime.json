@@ -1,0 +1,13 @@
+{
+  "dimensionId": "spec_workflow_enforcement",
+  "outcomeId": "swe_t5_enforcer_runtime",
+  "tier": "T5",
+  "gitSha": "e11affff99e894321ca3408f41d05c122e0ad853",
+  "passed": true,
+  "exitCode": 0,
+  "durationMs": 1053,
+  "stdoutTail": "▶ validateTransition\n  ✔ allows initialized -> review (13.727ms)\n  ✔ allows initialized -> constitution (3.0048ms)\n  ✔ blocks initialized -> forge (not adjacent) (2.7666ms)\n  ✔ blocks constitution -> forge (skips specify/plan) (2.7387ms)\n  ✔ allows plan -> tasks (2.533ms)\n  ✔ allows light mode to bypass gate checks (2.1864ms)\n  ✔ reports unknown target stage (2.012ms)\n✔ validateTransition (29.9528ms)\n▶ getNextSteps\n  ✔ returns review and constitution from initialized (2.2812ms)\n  ✔ returns specify from constitution (2.0332ms)\n  ✔ returns clarify and plan from specify (2.0124ms)\n  ✔ returns synthesize from verify (1.8557ms)\n  ✔ returns empty array from synthesize (terminal) (1.9593ms)\n✔ getNextSteps (10.445ms)\n▶ isStageComplete\n  ✔ returns false when artifact is missing (4.9249ms)\n  ✔ returns true when artifact exists (4.1672ms)\n  ✔ returns true for stages with no required artifacts (1.8235ms)\n✔ isStageComplete (11.1246ms)\n▶ getWorkflowGraph\n  ✔ returns a non-empty graph (2.189ms)\n  ✔ graph covers all major stages (1.6942ms)\n✔ getWorkflowGraph (3.9928ms)\n[ERR] Cannot transition from 'initialized' to 'forge'. Valid source stages: tasks, design\n[INFO] Remedy: Complete the 'design' stage first.\n▶ enforceWorkflow strict-by-default\n  ✔ throws GateError for out-of-order commands when enforcementMode is not set (10.011ms)\n  ✔ allows valid transitions even in strict mode (3.8446ms)\n✔ enforceWorkflow strict-by-default (13.9759ms)\nℹ tests 19\nℹ suites 5\nℹ pass 19\nℹ fail 0\nℹ cancelled 0\nℹ skipped 0\nℹ todo 0\nℹ duration_ms 347.3932\n",
+  "stderrTail": "",
+  "ranAt": "2026-05-24T17:20:42.449Z",
+  "evidencePath": "X:\\Projects\\DanteForge\\.danteforge\\outcome-evidence\\e11affff99e894321ca3408f41d05c122e0ad853-spec_workflow_enforcement-swe_t5_enforcer_runtime.json"
+}

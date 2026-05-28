@@ -1,0 +1,13 @@
+{
+  "dimensionId": "autonomy",
+  "outcomeId": "a_t4_frontier_e2e",
+  "tier": "T4",
+  "gitSha": "701ae003ea8343f5b9e5622656da1caa2f97bf89",
+  "passed": true,
+  "exitCode": 0,
+  "durationMs": 65,
+  "stdoutTail": "",
+  "stderrTail": "",
+  "ranAt": "2026-05-27T21:41:05.062Z",
+  "evidencePath": "x:\\Projects\\DanteForge\\.danteforge\\outcome-evidence\\701ae003ea8343f5b9e5622656da1caa2f97bf89-autonomy-a_t4_frontier_e2e.json"
+}

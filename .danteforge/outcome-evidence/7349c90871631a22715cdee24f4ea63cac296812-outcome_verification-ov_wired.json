@@ -1,0 +1,13 @@
+{
+  "dimensionId": "outcome_verification",
+  "outcomeId": "ov_wired",
+  "tier": "T3",
+  "gitSha": "7349c90871631a22715cdee24f4ea63cac296812",
+  "passed": true,
+  "exitCode": 0,
+  "durationMs": 1462,
+  "stdoutTail": "",
+  "stderrTail": "",
+  "ranAt": "2026-05-22T17:28:15.908Z",
+  "evidencePath": "X:\\Projects\\DanteForge\\.danteforge\\outcome-evidence\\7349c90871631a22715cdee24f4ea63cac296812-outcome_verification-ov_wired.json"
+}

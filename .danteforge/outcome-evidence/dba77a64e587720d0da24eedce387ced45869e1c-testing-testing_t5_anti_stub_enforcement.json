@@ -1,0 +1,13 @@
+{
+  "dimensionId": "testing",
+  "outcomeId": "testing_t5_anti_stub_enforcement",
+  "tier": "T5",
+  "gitSha": "dba77a64e587720d0da24eedce387ced45869e1c",
+  "passed": true,
+  "exitCode": 0,
+  "durationMs": 2293,
+  "stdoutTail": "▶ anti-stub scan\n  ✔ passes for clean implementation files and exempt doctrine/config files (122.4475ms)\n  ✔ fails when a production implementation file contains stub markers (94.5579ms)\n✔ anti-stub scan (218.9211ms)\nℹ tests 2\nℹ suites 1\nℹ pass 2\nℹ fail 0\nℹ cancelled 0\nℹ skipped 0\nℹ todo 0\nℹ duration_ms 650.1982\n",
+  "stderrTail": "",
+  "ranAt": "2026-05-25T16:26:42.568Z",
+  "evidencePath": "X:\\Projects\\DanteForge\\.danteforge\\outcome-evidence\\dba77a64e587720d0da24eedce387ced45869e1c-testing-testing_t5_anti_stub_enforcement.json"
+}

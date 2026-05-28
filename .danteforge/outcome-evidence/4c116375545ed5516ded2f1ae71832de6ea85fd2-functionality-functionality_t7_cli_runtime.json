@@ -1,0 +1,13 @@
+{
+  "dimensionId": "functionality",
+  "outcomeId": "functionality_t7_cli_runtime",
+  "tier": "T7",
+  "gitSha": "4c116375545ed5516ded2f1ae71832de6ea85fd2",
+  "passed": true,
+  "exitCode": 0,
+  "durationMs": 16246,
+  "stdoutTail": "▶ CLI flag parsing\n  ✔ --version outputs version string (1487.1777ms)\n  ✔ --help lists the 12 canonical commands (1121.231ms)\n  ✔ root help shows start alias and quick start section (1151.508ms)\n  ✔ forge --help shows --parallel, --prompt, --light flags (1392.7264ms)\n  ✔ party --help shows --agents and --worktree flags (1139.8379ms)\n  ✔ config --help shows --set-key option (1091.3792ms)\n  ✔ rubric-score --help shows scoring options and diff subcommand (1091.8032ms)\n  ✔ unknown command shows error or help (1406.2665ms)\n  ✔ forge without state exits with non-zero status (1480.423ms)\n✔ CLI flag parsing (11365.6129ms)\n▶ cli-smoke-runner\n  ✔ passes when CLI exits 0 and stdout matches patterns (4.3554ms)\n  ✔ fails when CLI exits non-zero (0.5923ms)\n  ✔ fails when expected stdout pattern does not match (2.0067ms)\n  ✔ fails when forbidden stdout pattern matches (0.7845ms)\n  ✔ accepts custom expected_exit code (0.6818ms)\n  ✔ uses temp dir when cwd_strategy is temp (0.9373ms)\n  ✔ records durationMs > 0 (0.5019ms)\n  ✔ handles spawn errors gracefully (0.5473ms)\n  ✔ requires all expected_stdout_patterns to match (0.657ms)\n✔ cli-smoke-runner (13.9668ms)\nℹ tests 18\nℹ suites 2\nℹ pass 18\nℹ fail 0\nℹ cancelled 0\nℹ skipped 0\nℹ todo 0\nℹ duration_ms 12050.8199\n",
+  "stderrTail": "",
+  "ranAt": "2026-05-26T00:22:24.520Z",
+  "evidencePath": "X:\\Projects\\DanteForge\\.danteforge\\outcome-evidence\\4c116375545ed5516ded2f1ae71832de6ea85fd2-functionality-functionality_t7_cli_runtime.json"
+}

@@ -1,0 +1,13 @@
+{
+  "dimensionId": "autonomy",
+  "outcomeId": "autonomy_t5_frontier_runtime",
+  "tier": "T5",
+  "gitSha": "e11affff99e894321ca3408f41d05c122e0ad853",
+  "passed": true,
+  "exitCode": 0,
+  "durationMs": 1297,
+  "stdoutTail": "▶ validateOutcomeForTier\n  ✔ T0/T1 outcomes do not require required_callsite (1.0027ms)\n  ✔ T2 outcome without required_callsite is rejected (0.2739ms)\n  ✔ T2 outcome with required_callsite passes (0.1141ms)\n  ✔ T4 outcome requires sibling snapshot-test outcome (0.4794ms)\n  ✔ T5 outcome without benchmark reference is rejected (0.4693ms)\n  ✔ T5 outcome with swe-bench command passes (0.2495ms)\n  ✔ T6 outcome must be kind=telemetry (0.1573ms)\n✔ validateOutcomeForTier (3.8675ms)\n▶ computeDimensionFrontierStatus\n  ✔ returns no-outcomes-declared when dim has no outcomes (0.6819ms)\n  ✔ returns at-frontier when all ceiling outcomes pass and ceiling < T3 (no fresh check) (0.475ms)\n  ✔ returns progressing when T3 ceiling has no production-usage-fresh outcome (0.3049ms)\n  ✔ returns at-frontier when T3 dim has passing production-usage-fresh (0.2836ms)\n  ✔ returns blocked-by-dispensation when a dispensation is outstanding (0.1616ms)\n  ✔ returns stuck when wavesSinceProgress >= threshold and not at frontier (0.1962ms)\n✔ computeDimensionFrontierStatus (2.4176ms)\n▶ computeProjectFrontierState — terminal verdicts\n  ✔ frontier-reached when every declared dim is at frontier (0.4043ms)\n  ✔ stuck-on-dims when at least one dim hit stuck threshold (0.8342ms)\n  ✔ blocked-by-dispensations supersedes everything else (0.2217ms)\n  ✔ progressing when neither at frontier nor stuck nor blocked (0.1502ms)\n✔ computeProjectFrontierState — terminal verdicts (1.7678ms)\nℹ tests 17\nℹ suites 3\nℹ pass 17\nℹ fail 0\nℹ cancelled 0\nℹ skipped 0\nℹ todo 0\nℹ duration_ms 274.7727\n",
+  "stderrTail": "",
+  "ranAt": "2026-05-24T17:02:29.870Z",
+  "evidencePath": "X:\\Projects\\DanteForge\\.danteforge\\outcome-evidence\\e11affff99e894321ca3408f41d05c122e0ad853-autonomy-autonomy_t5_frontier_runtime.json"
+}

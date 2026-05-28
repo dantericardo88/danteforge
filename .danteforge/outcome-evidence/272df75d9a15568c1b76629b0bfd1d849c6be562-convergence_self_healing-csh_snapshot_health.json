@@ -1,0 +1,13 @@
+{
+  "dimensionId": "convergence_self_healing",
+  "outcomeId": "csh_snapshot_health",
+  "tier": "T3",
+  "gitSha": "272df75d9a15568c1b76629b0bfd1d849c6be562",
+  "passed": true,
+  "exitCode": 0,
+  "durationMs": 190,
+  "stdoutTail": "",
+  "stderrTail": "",
+  "ranAt": "2026-05-28T06:47:57.844Z",
+  "evidencePath": "X:\\Projects\\DanteForge\\.danteforge\\outcome-evidence\\272df75d9a15568c1b76629b0bfd1d849c6be562-convergence_self_healing-csh_snapshot_health.json"
+}

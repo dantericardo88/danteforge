@@ -1,0 +1,13 @@
+{
+  "dimensionId": "maintainability",
+  "outcomeId": "m_filesize",
+  "tier": "T2",
+  "gitSha": "a30545d2ba82ddcb738005b3d047eee58ae09c3b",
+  "passed": true,
+  "exitCode": 0,
+  "durationMs": 186,
+  "stdoutTail": "",
+  "stderrTail": "",
+  "ranAt": "2026-05-25T20:13:03.034Z",
+  "evidencePath": "X:\\Projects\\DanteForge\\.danteforge\\outcome-evidence\\a30545d2ba82ddcb738005b3d047eee58ae09c3b-maintainability-m_filesize.json"
+}

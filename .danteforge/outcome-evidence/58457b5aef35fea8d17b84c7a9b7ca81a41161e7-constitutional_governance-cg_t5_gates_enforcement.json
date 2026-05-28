@@ -1,0 +1,13 @@
+{
+  "dimensionId": "constitutional_governance",
+  "outcomeId": "cg_t5_gates_enforcement",
+  "tier": "T5",
+  "gitSha": "58457b5aef35fea8d17b84c7a9b7ca81a41161e7",
+  "passed": true,
+  "exitCode": 0,
+  "durationMs": 1193,
+  "stdoutTail": "[WARN] Approval gate: \"test-artifact\" requires human review before proceeding.\n[ERR] blocked\n[INFO] Remedy: fix\n▶ GateError\n  ✔ has gate and remedy properties (0.7591ms)\n  ✔ is an instance of Error (0.2387ms)\n✔ GateError (1.6797ms)\n▶ gates light mode bypass\n  ✔ requireConstitution passes in light mode (0.2573ms)\n  ✔ requireSpec passes in light mode (0.1572ms)\n  ✔ requirePlan passes in light mode (0.1879ms)\n  ✔ requireTests passes in light mode (0.2364ms)\n  ✔ requireApproval does not throw in any mode (0.7889ms)\n✔ gates light mode bypass (1.8681ms)\n▶ runGate\n  ✔ returns true when gate passes (0.2499ms)\n  ✔ returns false when gate throws GateError (0.3768ms)\n  ✔ rethrows non-GateError errors (0.3273ms)\n✔ runGate (1.1388ms)\n[INFO] STATE.yaml updated\n▶ gates with cwd injection\n  ✔ requireConstitution passes with cwd pointing to valid state + CONSTITUTION.md (27.7494ms)\n[INFO] STATE.yaml updated\n  ✔ requireConstitution throws GateError with cwd pointing to empty state (4.4807ms)\n[INFO] STATE.yaml updated\n  ✔ requireSpec passes with cwd and SPEC.md present (2.5746ms)\n[INFO] STATE.yaml updated\n  ✔ requireSpec throws GateError without SPEC.md at cwd (2.259ms)\n[INFO] STATE.yaml updated\n  ✔ requirePlan passes with cwd and PLAN.md present (2.7468ms)\n[INFO] STATE.yaml updated\n  ✔ requirePlan throws GateError without PLAN.md at cwd (3.479ms)\n[INFO] STATE.yaml updated\n  ✔ requireDesign passes with valid DESIGN.op at cwd (3.2137ms)\n[INFO] STATE.yaml updated\n  ✔ requireDesign throws GateError without DESIGN.op at cwd (2.2638ms)\n[INFO] STATE.yaml updated\n  ✔ requireClarify passes with cwd and CLARIFY.md present (2.6401ms)\n[INFO] STATE.yaml updated\n  ✔ requireClarify throws GateError without CLARIFY.md at cwd (2.0467ms)\n✔ gates with cwd injection (53.9964ms)\nℹ tests 20\nℹ suites 4\nℹ pass 20\nℹ fail 0\nℹ cancelled 0\nℹ skipped 0\nℹ todo 0\nℹ duration_ms 395.3614\n",
+  "stderrTail": "",
+  "ranAt": "2026-05-28T13:27:01.024Z",
+  "evidencePath": "X:\\Projects\\DanteForge\\.danteforge\\outcome-evidence\\58457b5aef35fea8d17b84c7a9b7ca81a41161e7-constitutional_governance-cg_t5_gates_enforcement.json"
+}

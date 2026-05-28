@@ -1,0 +1,13 @@
+{
+  "dimensionId": "agent_activity_provenance",
+  "outcomeId": "aap_sdk",
+  "tier": "T2",
+  "gitSha": "272df75d9a15568c1b76629b0bfd1d849c6be562",
+  "passed": true,
+  "exitCode": 0,
+  "durationMs": 263,
+  "stdoutTail": "",
+  "stderrTail": "",
+  "ranAt": "2026-05-28T06:33:19.587Z",
+  "evidencePath": "X:\\Projects\\DanteForge\\.danteforge\\outcome-evidence\\272df75d9a15568c1b76629b0bfd1d849c6be562-agent_activity_provenance-aap_sdk.json"
+}

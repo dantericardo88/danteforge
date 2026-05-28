@@ -1,0 +1,13 @@
+{
+  "dimensionId": "error_handling",
+  "outcomeId": "eh_boundary",
+  "tier": "T2",
+  "gitSha": "4160926120eca4eb40ef47a08a9c0393429d013f",
+  "passed": true,
+  "exitCode": 0,
+  "durationMs": 171,
+  "stdoutTail": "",
+  "stderrTail": "",
+  "ranAt": "2026-05-25T19:28:25.798Z",
+  "evidencePath": "X:\\Projects\\DanteForge\\.danteforge\\outcome-evidence\\4160926120eca4eb40ef47a08a9c0393429d013f-error_handling-eh_boundary.json"
+}

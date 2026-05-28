@@ -1,0 +1,13 @@
+{
+  "dimensionId": "maintainability",
+  "outcomeId": "maint_t7_anti_stub_runtime",
+  "tier": "T7",
+  "gitSha": "e030555f1e13a8977d5d5771eeb9b20fa72db884",
+  "passed": true,
+  "exitCode": 0,
+  "durationMs": 2890,
+  "stdoutTail": "▶ anti-stub scan\n  ✔ passes for clean implementation files and exempt doctrine/config files (126.9143ms)\n  ✔ fails when a production implementation file contains stub markers (128.4647ms)\n✔ anti-stub scan (257.8138ms)\nℹ tests 2\nℹ suites 1\nℹ pass 2\nℹ fail 0\nℹ cancelled 0\nℹ skipped 0\nℹ todo 0\nℹ duration_ms 717.4651\n",
+  "stderrTail": "",
+  "ranAt": "2026-05-25T20:20:20.425Z",
+  "evidencePath": "X:\\Projects\\DanteForge\\.danteforge\\outcome-evidence\\e030555f1e13a8977d5d5771eeb9b20fa72db884-maintainability-maint_t7_anti_stub_runtime.json"
+}

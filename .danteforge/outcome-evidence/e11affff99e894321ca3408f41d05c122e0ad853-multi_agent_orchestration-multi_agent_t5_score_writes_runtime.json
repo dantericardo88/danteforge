@@ -1,0 +1,13 @@
+{
+  "dimensionId": "multi_agent_orchestration",
+  "outcomeId": "multi_agent_t5_score_writes_runtime",
+  "tier": "T5",
+  "gitSha": "e11affff99e894321ca3408f41d05c122e0ad853",
+  "passed": true,
+  "exitCode": 0,
+  "durationMs": 903,
+  "stdoutTail": "▶ isAgentEvidenceFile\n  ✔ accepts valid evidence (0.4483ms)\n  ✔ rejects evidence missing required fields (0.0872ms)\n✔ isAgentEvidenceFile (1.0896ms)\n▶ MATRIX_SCORE_SURFACE_PATTERNS\n  ✔ includes matrix.json (0.0943ms)\n  ✔ includes score-proposals glob (0.0989ms)\n  ✔ EVIDENCE_FILE_NAME is defined (0.085ms)\n✔ MATRIX_SCORE_SURFACE_PATTERNS (0.4077ms)\n▶ generateWorkPackets: matrix score surface in forbiddenPaths\n  ✔ every packet has matrix.json in forbiddenPaths (1.0548ms)\n  ✔ every packet has score-proposals glob in forbiddenPaths (0.1854ms)\n  ✔ caller-supplied globalForbiddenPaths are also included (0.1486ms)\n✔ generateWorkPackets: matrix score surface in forbiddenPaths (1.5449ms)\n▶ pre-commit matrix guard logic\n  ✔ flags matrix.json as a violation (0.1467ms)\n  ✔ flags matrix backup files as violations (0.116ms)\n  ✔ flags score-proposals as violations (0.0842ms)\n  ✔ does not flag regular source files (0.1097ms)\n  ✔ does not flag compete REPORT.md (0.0496ms)\n✔ pre-commit matrix guard logic (1.2702ms)\nℹ tests 13\nℹ suites 4\nℹ pass 13\nℹ fail 0\nℹ cancelled 0\nℹ skipped 0\nℹ todo 0\nℹ duration_ms 197.292\n",
+  "stderrTail": "",
+  "ranAt": "2026-05-24T17:23:59.003Z",
+  "evidencePath": "X:\\Projects\\DanteForge\\.danteforge\\outcome-evidence\\e11affff99e894321ca3408f41d05c122e0ad853-multi_agent_orchestration-multi_agent_t5_score_writes_runtime.json"
+}

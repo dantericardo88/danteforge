@@ -1,0 +1,13 @@
+{
+  "dimensionId": "documentation",
+  "outcomeId": "d_content",
+  "tier": "T2",
+  "gitSha": "8d64ff042f73539c475ad464caaff7ffa8354d2c",
+  "passed": true,
+  "exitCode": 0,
+  "durationMs": 93,
+  "stdoutTail": "",
+  "stderrTail": "",
+  "ranAt": "2026-05-28T06:21:59.195Z",
+  "evidencePath": "X:\\Projects\\DanteForge\\.danteforge\\outcome-evidence\\8d64ff042f73539c475ad464caaff7ffa8354d2c-documentation-d_content.json"
+}

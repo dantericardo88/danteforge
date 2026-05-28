@@ -1,0 +1,13 @@
+{
+  "dimensionId": "planning_quality",
+  "outcomeId": "pq_wired",
+  "tier": "T2",
+  "gitSha": "7349c90871631a22715cdee24f4ea63cac296812",
+  "passed": true,
+  "exitCode": 0,
+  "durationMs": 303,
+  "stdoutTail": "",
+  "stderrTail": "",
+  "ranAt": "2026-05-22T15:29:51.615Z",
+  "evidencePath": "X:\\Projects\\DanteForge\\.danteforge\\outcome-evidence\\7349c90871631a22715cdee24f4ea63cac296812-planning_quality-pq_wired.json"
+}

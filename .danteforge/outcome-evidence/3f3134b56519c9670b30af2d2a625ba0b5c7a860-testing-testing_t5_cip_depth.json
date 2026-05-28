@@ -1,0 +1,13 @@
+{
+  "dimensionId": "testing",
+  "outcomeId": "testing_t5_cip_depth",
+  "tier": "T5",
+  "gitSha": "3f3134b56519c9670b30af2d2a625ba0b5c7a860",
+  "passed": true,
+  "exitCode": 0,
+  "durationMs": 2417,
+  "stdoutTail": "▶ outcome relevance check\n  ✔ T1: all outcomes have zero keyword overlap with dim — irrelevantOutcomes=1, ceiling ≤ 7.0 (85.1024ms)\n  ✔ T2: outcome command contains dim keyword — irrelevantOutcomes=0 (60.0568ms)\n  ✔ T2b: dim with short ID but descriptive label — label keyword match counts as relevant (87.1454ms)\n  ✔ T2c: skip_relevance_check=true exempts an outcome from the relevance count (386.2212ms)\n✔ outcome relevance check (619.9366ms)\n▶ evidence freshness gate\n  ✔ T3: storedScore ≥9.0 with no evidence files → blocksFrontierReached=true (52.6872ms)\n  ✔ T4: storedScore ≥9.0 with evidence 1 day old → no freshness block (53.8239ms)\n  ✔ T5: storedScore < 9.0 with no evidence files → freshness gate is silent (51.0687ms)\n✔ evidence freshness gate (158.0195ms)\nℹ tests 7\nℹ suites 2\nℹ pass 7\nℹ fail 0\nℹ cancelled 0\nℹ skipped 0\nℹ todo 0\nℹ duration_ms 1157.34\n",
+  "stderrTail": "",
+  "ranAt": "2026-05-27T22:15:43.604Z",
+  "evidencePath": "X:\\Projects\\DanteForge\\.danteforge\\outcome-evidence\\3f3134b56519c9670b30af2d2a625ba0b5c7a860-testing-testing_t5_cip_depth.json"
+}

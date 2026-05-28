@@ -1,0 +1,13 @@
+{
+  "dimensionId": "error_handling",
+  "outcomeId": "errors_t5_loop_recovery",
+  "tier": "T5",
+  "gitSha": "ff9e7756e32e6860205997fb58a17013bdc18f34",
+  "passed": true,
+  "exitCode": 0,
+  "durationMs": 1338,
+  "stdoutTail": "▶ selectRecoveryAction\n  ✔ returns wait-llm when LLM is unavailable regardless of failure kind (0.9207ms)\n  ✔ returns retry-oss on first zero-patterns failure (0.1447ms)\n  ✔ escalates to run-autoresearch after 2+ consecutive zero-pattern failures (0.1778ms)\n  ✔ returns switch-dimension after 3+ forge failures (0.1515ms)\n  ✔ returns run-autoresearch for score-no-progress after moderate cycles (0.1423ms)\n  ✔ escalates to halt-operator for prolonged no-progress (0.1025ms)\n  ✔ returns fix-capability-test for capability-test-fail (0.0925ms)\n  ✔ returns validate-evidence for stale evidence (0.1012ms)\n  ✔ returns halt-operator for unknown failure kind (0.109ms)\n✔ selectRecoveryAction (3.0794ms)\n▶ inferFailureKind\n  ✔ infers llm-unreachable when LLM is not available (0.2909ms)\n  ✔ infers capability-test-fail before zero-patterns (0.0917ms)\n  ✔ infers zero-patterns when patterns=0 and LLM ok (0.1052ms)\n  ✔ infers forge-wave-failed when patterns>0 but forge failed (0.071ms)\n  ✔ infers synthesize-blocked when forge error contains \"Synthesis is blocked\" (0.1158ms)\n  ✔ infers score-no-progress after 3+ cycles of stall (0.0779ms)\n✔ inferFailureKind (0.97ms)\n▶ formatRecoveryPlan\n  ✔ includes kind and urgency in output (0.1943ms)\n  ✔ includes command when action has one (0.0959ms)\n✔ formatRecoveryPlan (0.362ms)\nℹ tests 17\nℹ suites 3\nℹ pass 17\nℹ fail 0\nℹ cancelled 0\nℹ skipped 0\nℹ todo 0\nℹ duration_ms 283.512\n",
+  "stderrTail": "",
+  "ranAt": "2026-05-28T04:02:21.237Z",
+  "evidencePath": "X:\\Projects\\DanteForge\\.danteforge\\outcome-evidence\\ff9e7756e32e6860205997fb58a17013bdc18f34-error_handling-errors_t5_loop_recovery.json"
+}

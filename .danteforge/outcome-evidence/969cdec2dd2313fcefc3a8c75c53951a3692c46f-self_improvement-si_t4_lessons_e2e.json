@@ -1,0 +1,13 @@
+{
+  "dimensionId": "self_improvement",
+  "outcomeId": "si_t4_lessons_e2e",
+  "tier": "T4",
+  "gitSha": "969cdec2dd2313fcefc3a8c75c53951a3692c46f",
+  "passed": true,
+  "exitCode": 0,
+  "durationMs": 125,
+  "stdoutTail": "",
+  "stderrTail": "",
+  "ranAt": "2026-05-25T15:43:13.537Z",
+  "evidencePath": "X:\\Projects\\DanteForge\\.danteforge\\outcome-evidence\\969cdec2dd2313fcefc3a8c75c53951a3692c46f-self_improvement-si_t4_lessons_e2e.json"
+}

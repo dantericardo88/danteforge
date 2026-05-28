@@ -1,0 +1,13 @@
+{
+  "dimensionId": "multi_agent_orchestration",
+  "outcomeId": "multi_agent_t5_engine_runtime",
+  "tier": "T5",
+  "gitSha": "2a08a5817edcbfbdd930e304b6cf41bd8764a10d",
+  "passed": true,
+  "exitCode": 0,
+  "durationMs": 1321,
+  "stdoutTail": "▶ MatrixDevelopmentEngine\n  ✔ reports matrix status and top next dimensions (27.3353ms)\n  ✔ allows multiple agents to claim the same dimension independently (13.6218ms)\n  ✔ writes score proposals without rewriting the canonical matrix (8.0546ms)\n[OK] [score-gate] long_run_reasoning: capability_test passed ✓ — score 7.2 accepted\n[OK] [harden-gate] long_run_reasoning: all checks passed ✓ — score 7.2 stands at 7.2\n  ✔ merges proposals under lock, clamps ceilings, and writes a receipt with Time Machine links (155.9788ms)\n✔ MatrixDevelopmentEngine (206.0376ms)\nℹ tests 4\nℹ suites 1\nℹ pass 4\nℹ fail 0\nℹ cancelled 0\nℹ skipped 0\nℹ todo 0\nℹ duration_ms 469.2022\n",
+  "stderrTail": "",
+  "ranAt": "2026-05-21T19:45:38.402Z",
+  "evidencePath": "X:\\Projects\\DanteForge\\.danteforge\\outcome-evidence\\2a08a5817edcbfbdd930e304b6cf41bd8764a10d-multi_agent_orchestration-multi_agent_t5_engine_runtime.json"
+}

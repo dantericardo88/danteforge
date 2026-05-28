@@ -1,0 +1,13 @@
+{
+  "dimensionId": "self_improvement",
+  "outcomeId": "singularity_30pct",
+  "tier": "T7",
+  "gitSha": "4c116375545ed5516ded2f1ae71832de6ea85fd2",
+  "passed": true,
+  "exitCode": 0,
+  "durationMs": 506,
+  "stdoutTail": "[singularity] Commits analysed: 6230 (since 90 days ago)\n[singularity] DanteForge-assisted: 386 (6.2%)\n[singularity] Human-only:          5844\n[singularity] Aider baseline:       62%  |  DanteForge: 6.2%  |  Gap: 55.8%\n[singularity] Report: X:\\Projects\\DanteForge\\.danteforge\\metrics\\singularity.json\n[singularity] Top assisted commits:\n  4c116375  fix(grok-adapter): pass prompt via --single flag, not as positional arg\n  b65a8a29  score(matrix): enterprise_readiness + performance → 9.0 via cold validate\n  3bdd77fd  fix(validate): write scores.derived back to matrix.json after passing outcomes\n  495bb66f  fix(convergence): wire score-snapshot auto-write + fix stale overallSelfScore\n  ce49ab39  refactor(cli): split giant registrar files + fix security scanner false positives\n[singularity] PASS — 6.2% >= 5% threshold\n",
+  "stderrTail": "",
+  "ranAt": "2026-05-26T00:21:21.630Z",
+  "evidencePath": "X:\\Projects\\DanteForge\\.danteforge\\outcome-evidence\\4c116375545ed5516ded2f1ae71832de6ea85fd2-self_improvement-singularity_30pct.json"
+}

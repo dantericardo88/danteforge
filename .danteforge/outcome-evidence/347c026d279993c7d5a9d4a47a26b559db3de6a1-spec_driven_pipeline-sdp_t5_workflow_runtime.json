@@ -1,0 +1,13 @@
+{
+  "dimensionId": "spec_driven_pipeline",
+  "outcomeId": "sdp_t5_workflow_runtime",
+  "tier": "T5",
+  "gitSha": "347c026d279993c7d5a9d4a47a26b559db3de6a1",
+  "passed": true,
+  "exitCode": 0,
+  "durationMs": 1113,
+  "stdoutTail": "▶ validateTransition\n  ✔ allows initialized -> review (13.4904ms)\n  ✔ allows initialized -> constitution (2.4738ms)\n  ✔ blocks initialized -> forge (not adjacent) (2.7522ms)\n  ✔ blocks constitution -> forge (skips specify/plan) (2.2166ms)\n  ✔ allows plan -> tasks (2.2553ms)\n  ✔ allows light mode to bypass gate checks (2.0315ms)\n  ✔ reports unknown target stage (2.1179ms)\n✔ validateTransition (28.3639ms)\n▶ getNextSteps\n  ✔ returns review and constitution from initialized (2.0667ms)\n  ✔ returns specify from constitution (1.919ms)\n  ✔ returns clarify and plan from specify (2.4939ms)\n  ✔ returns synthesize from verify (1.8947ms)\n  ✔ returns empty array from synthesize (terminal) (2.284ms)\n✔ getNextSteps (10.9839ms)\n▶ isStageComplete\n  ✔ returns false when artifact is missing (4.9069ms)\n  ✔ returns true when artifact exists (4.7674ms)\n  ✔ returns true for stages with no required artifacts (2.0832ms)\n✔ isStageComplete (12.0228ms)\n▶ getWorkflowGraph\n  ✔ returns a non-empty graph (2.313ms)\n  ✔ graph covers all major stages (1.7769ms)\n✔ getWorkflowGraph (4.2022ms)\n[ERR] Cannot transition from 'initialized' to 'forge'. Valid source stages: tasks, design\n[INFO] Remedy: Complete the 'design' stage first.\n▶ enforceWorkflow strict-by-default\n  ✔ throws GateError for out-of-order commands when enforcementMode is not set (9.355ms)\n  ✔ allows valid transitions even in strict mode (3.7558ms)\n✔ enforceWorkflow strict-by-default (13.2411ms)\nℹ tests 19\nℹ suites 5\nℹ pass 19\nℹ fail 0\nℹ cancelled 0\nℹ skipped 0\nℹ todo 0\nℹ duration_ms 362.5164\n",
+  "stderrTail": "",
+  "ranAt": "2026-05-24T15:57:50.666Z",
+  "evidencePath": "X:\\Projects\\DanteForge\\.danteforge\\outcome-evidence\\347c026d279993c7d5a9d4a47a26b559db3de6a1-spec_driven_pipeline-sdp_t5_workflow_runtime.json"
+}

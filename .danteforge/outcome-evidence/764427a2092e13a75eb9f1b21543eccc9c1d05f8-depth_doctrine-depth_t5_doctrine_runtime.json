@@ -1,0 +1,13 @@
+{
+  "dimensionId": "depth_doctrine",
+  "outcomeId": "depth_t5_doctrine_runtime",
+  "tier": "T5",
+  "gitSha": "764427a2092e13a75eb9f1b21543eccc9c1d05f8",
+  "passed": true,
+  "exitCode": 0,
+  "durationMs": 4432,
+  "stdoutTail": "[INFO] [scoring-doctrine] Evidence-based scoring only. Compare against actual competitors (not downstream consumers). No adoption penalties on pre-release tools. The gap is the value. \"Harsh\" = evidence-based, not opinion-based. Scores above 7.0 require runtime execution evidence. Zero-evidence = run outcomes manually. Fix A caps at 5.0 if capability_test fails. Triage outcome failures before scoring. Flag bootstrapping deps separately. Every scoring pass emits a Time Machine commit.\n[INFO] \n[INFO] danteforge validate — Depth Doctrine Receipt Runner\n[INFO] ────────────────────────────────────────────────────────────\n[INFO] Running outcomes for 1 dimension(s)…\n[INFO] \n[INFO] \n[INFO] Validation Results\n[INFO] ────────────────────────────────────────────────────────────\n[INFO]   [PASS] test_depth                       0.0 → 8.0  (1/1 outcomes) ✓ ceiling lifted\n[INFO]          Score ceiling lifted: was capped at 7, now 8.0\n[INFO] \n[INFO] ────────────────────────────────────────────────────────────\n[INFO] ✓ All outcomes passed. Score ceilings lifted where applicable.\n[INFO]   Re-run `danteforge score` to see updated scores.\n[INFO] \n▶ Depth Doctrine E2E\n  ✔ validate → receipt → score rises above 7.0 (the full plumbing proof) (999.7917ms)\n✔ Depth Doctrine E2E (1001.9179ms)\nℹ tests 1\nℹ suites 1\nℹ pass 1\nℹ fail 0\nℹ cancelled 0\nℹ skipped 0\nℹ todo 0\nℹ duration_ms 1664.31\n",
+  "stderrTail": "",
+  "ranAt": "2026-05-22T18:46:44.240Z",
+  "evidencePath": "X:\\Projects\\DanteForge\\.danteforge\\outcome-evidence\\764427a2092e13a75eb9f1b21543eccc9c1d05f8-depth_doctrine-depth_t5_doctrine_runtime.json"
+}

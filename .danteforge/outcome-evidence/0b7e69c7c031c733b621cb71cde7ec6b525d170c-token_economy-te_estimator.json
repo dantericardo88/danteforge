@@ -1,0 +1,13 @@
+{
+  "dimensionId": "token_economy",
+  "outcomeId": "te_estimator",
+  "tier": "T2",
+  "gitSha": "0b7e69c7c031c733b621cb71cde7ec6b525d170c",
+  "passed": true,
+  "exitCode": 0,
+  "durationMs": 464,
+  "stdoutTail": "",
+  "stderrTail": "",
+  "ranAt": "2026-05-26T00:57:57.754Z",
+  "evidencePath": "X:\\Projects\\DanteForge\\.danteforge\\outcome-evidence\\0b7e69c7c031c733b621cb71cde7ec6b525d170c-token_economy-te_estimator.json"
+}

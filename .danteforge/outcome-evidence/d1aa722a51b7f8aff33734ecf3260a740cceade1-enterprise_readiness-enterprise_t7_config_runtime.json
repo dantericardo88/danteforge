@@ -1,0 +1,13 @@
+{
+  "dimensionId": "enterprise_readiness",
+  "outcomeId": "enterprise_t7_config_runtime",
+  "tier": "T7",
+  "gitSha": "d1aa722a51b7f8aff33734ecf3260a740cceade1",
+  "passed": true,
+  "exitCode": 0,
+  "durationMs": 3923,
+  "stdoutTail": "▶ config storage paths\n  ✔ resolves secrets to a user-level config dir and keeps project legacy path separate (2.3178ms)\n[WARN] Migrated config from C:\\Users\\richa\\AppData\\Local\\Temp\\danteforge-config-test-bdSoaJ\\project\\.danteforge\\config.yaml to C:\\Users\\richa\\AppData\\Local\\Temp\\danteforge-config-test-bdSoaJ\\user-home\\.danteforge\\config.yaml\n  ✔ loads legacy project config and migrates it to the user config location (68.2495ms)\n  ✔ saves config to the user config location instead of the project state folder (23.9002ms)\n✔ config storage paths (97.1956ms)\n▶ validateSecurityControls\n  ✔ returns all false when no checks requested (5.9828ms)\n  ✔ checkPermissions sets permissionsValid true when configDir accessible (13.6669ms)\n  ✔ checkIntegrity adds issue when audit dir missing (3.1025ms)\n  ✔ checkSecrets runs without throwing (80.9958ms)\n  ✔ issues array collects from all enabled checks (69.6048ms)\n✔ validateSecurityControls (177.4725ms)\nℹ tests 8\nℹ suites 2\nℹ pass 8\nℹ fail 0\nℹ cancelled 0\nℹ skipped 0\nℹ todo 0\nℹ duration_ms 898.2929\n",
+  "stderrTail": "",
+  "ranAt": "2026-05-25T20:52:12.238Z",
+  "evidencePath": "X:\\Projects\\DanteForge\\.danteforge\\outcome-evidence\\d1aa722a51b7f8aff33734ecf3260a740cceade1-enterprise_readiness-enterprise_t7_config_runtime.json"
+}

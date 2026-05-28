@@ -1,0 +1,13 @@
+{
+  "dimensionId": "spec_workflow_enforcement",
+  "outcomeId": "swe_t5_spec_matcher",
+  "tier": "T5",
+  "gitSha": "914c4d255e171d0356ebbb98f5a4054e13189f56",
+  "passed": true,
+  "exitCode": 0,
+  "durationMs": 789,
+  "stdoutTail": " parses acceptance-criteria block bullets (0.1008ms)\n  ✔ PS6: returns [] on empty spec (0.0429ms)\n  ✔ PS7: ignores plain prose that is not a requirement marker (0.05ms)\n  ✔ PS8: mixed format spec returns all requirements (0.0654ms)\n  ✔ PS9: numbered requirements with ) delimiter are parsed (0.0448ms)\n✔ parseSpecRequirements (0.9042ms)\n▶ computeRequirementCoverage\n  ✔ RC1: matched=0, coveragePercent=0 when forge output is empty (0.2008ms)\n  ✔ RC2: total=0, coveragePercent=0 when spec has no requirements (0.0485ms)\n  ✔ RC3: computes coveragePercent correctly for partial match (0.0604ms)\n  ✔ RC4: unmatched list contains only unmatched requirement texts (0.0694ms)\n  ✔ RC5: 100% coverage when all requirements are present in output (0.048ms)\n  ✔ RC6: coveragePercent is an integer (rounded) (0.0476ms)\n  ✔ RC7: matched + unmatched.length === total (0.05ms)\n✔ computeRequirementCoverage (0.6447ms)\nℹ tests 42\nℹ suites 6\nℹ pass 42\nℹ fail 0\nℹ cancelled 0\nℹ skipped 0\nℹ todo 0\nℹ duration_ms 219.6891\n",
+  "stderrTail": "",
+  "ranAt": "2026-05-28T14:04:26.136Z",
+  "evidencePath": ".danteforge/outcome-evidence/914c4d255e171d0356ebbb98f5a4054e13189f56-spec_workflow_enforcement-swe_t5_spec_matcher.json"
+}

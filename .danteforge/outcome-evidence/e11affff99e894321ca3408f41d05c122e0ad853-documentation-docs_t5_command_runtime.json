@@ -1,0 +1,13 @@
+{
+  "dimensionId": "documentation",
+  "outcomeId": "docs_t5_command_runtime",
+  "tier": "T5",
+  "gitSha": "e11affff99e894321ca3408f41d05c122e0ad853",
+  "passed": true,
+  "exitCode": 0,
+  "durationMs": 1456,
+  "stdoutTail": "▶ formatCommandReference\n  ✔ returns a non-empty string (0.9878ms)\n  ✔ includes the DanteForge Command Reference header (0.2271ms)\n  ✔ includes all major groups (0.1775ms)\n  ✔ includes core pipeline commands (0.1916ms)\n  ✔ includes automation presets (0.1718ms)\n  ✔ is deterministic across multiple calls (1.0314ms)\n  ✔ includes danteforge prefix in usage examples (0.224ms)\n  ✔ includes table of contents section (0.1669ms)\n✔ formatCommandReference (4.2057ms)\nℹ tests 8\nℹ suites 1\nℹ pass 8\nℹ fail 0\nℹ cancelled 0\nℹ skipped 0\nℹ todo 0\nℹ duration_ms 401.328\n",
+  "stderrTail": "",
+  "ranAt": "2026-05-24T17:09:02.839Z",
+  "evidencePath": "X:\\Projects\\DanteForge\\.danteforge\\outcome-evidence\\e11affff99e894321ca3408f41d05c122e0ad853-documentation-docs_t5_command_runtime.json"
+}

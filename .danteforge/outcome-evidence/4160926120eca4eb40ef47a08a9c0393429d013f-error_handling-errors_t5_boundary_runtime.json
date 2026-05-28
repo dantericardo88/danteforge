@@ -1,0 +1,13 @@
+{
+  "dimensionId": "error_handling",
+  "outcomeId": "errors_t5_boundary_runtime",
+  "tier": "T5",
+  "gitSha": "4160926120eca4eb40ef47a08a9c0393429d013f",
+  "passed": true,
+  "exitCode": 0,
+  "durationMs": 2903,
+  "stdoutTail": "[ERR] Error in test-cmd: test error\n[ERR]   → An unexpected error occurred. Run with `--debug` for more detail, or check `.danteforge/audit.log`.\n[ERR]   Run with --verbose for the full stack trace, or --help for usage.\n[ERR] Error in test-cmd: string error\n[ERR]   Run with --verbose for the full stack trace, or --help for usage.\n▶ withErrorBoundary — newly wrapped commands\n  ✔ sets exitCode=1 when wrapped function throws (4.4057ms)\n  ✔ does not set exitCode when function succeeds (0.4118ms)\n  ✔ handles non-Error throws gracefully (0.6335ms)\n✔ withErrorBoundary — newly wrapped commands (7.4129ms)\nℹ tests 3\nℹ suites 1\nℹ pass 3\nℹ fail 0\nℹ cancelled 0\nℹ skipped 0\nℹ todo 0\nℹ duration_ms 795.864\n",
+  "stderrTail": "",
+  "ranAt": "2026-05-25T19:32:26.952Z",
+  "evidencePath": "X:\\Projects\\DanteForge\\.danteforge\\outcome-evidence\\4160926120eca4eb40ef47a08a9c0393429d013f-error_handling-errors_t5_boundary_runtime.json"
+}

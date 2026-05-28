@@ -1,0 +1,13 @@
+{
+  "dimensionId": "multi_agent_orchestration",
+  "outcomeId": "mao_t5_judge_queue",
+  "tier": "T5",
+  "gitSha": "3bdd77fd15ed27efff0b7ee1e3d2704380f159d2",
+  "passed": true,
+  "exitCode": 0,
+  "durationMs": 2127,
+  "stdoutTail": "▶ CouncilJudgeQueue — enqueue and assign\n  ✔ enqueue then assignNextJudge picks cross-member slot (2.4395ms)\n  ✔ returns null when no cross-member slot available (0.3327ms)\n  ✔ returns null when queue is empty (0.183ms)\n  ✔ FIFO: earliest candidate assigned first (0.2447ms)\n  ✔ already under-review candidate is skipped (0.2232ms)\n✔ CouncilJudgeQueue — enqueue and assign (4.9536ms)\n▶ CouncilJudgeQueue — markJudgeComplete\n  ✔ PASS verdict → status: merged (0.4696ms)\n  ✔ FAIL verdict → status: judged (0.2831ms)\n  ✔ getStats reflects correct counts (0.276ms)\n✔ CouncilJudgeQueue — markJudgeComplete (1.3383ms)\n▶ CouncilJudgeQueue — drainPending\n  ✔ drains all pending candidates using provided runJudge fn (0.5159ms)\n✔ CouncilJudgeQueue — drainPending (0.7314ms)\nℹ tests 9\nℹ suites 3\nℹ pass 9\nℹ fail 0\nℹ cancelled 0\nℹ skipped 0\nℹ todo 0\nℹ duration_ms 410.041\n",
+  "stderrTail": "",
+  "ranAt": "2026-05-25T22:51:31.982Z",
+  "evidencePath": "X:\\Projects\\DanteForge\\.danteforge\\outcome-evidence\\3bdd77fd15ed27efff0b7ee1e3d2704380f159d2-multi_agent_orchestration-mao_t5_judge_queue.json"
+}

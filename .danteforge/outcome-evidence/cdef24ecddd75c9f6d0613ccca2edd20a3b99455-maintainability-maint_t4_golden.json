@@ -1,0 +1,13 @@
+{
+  "dimensionId": "maintainability",
+  "outcomeId": "maint_t4_golden",
+  "tier": "T4",
+  "gitSha": "cdef24ecddd75c9f6d0613ccca2edd20a3b99455",
+  "passed": true,
+  "exitCode": 0,
+  "durationMs": 64,
+  "stdoutTail": "",
+  "stderrTail": "",
+  "ranAt": "2026-05-28T12:48:12.323Z",
+  "evidencePath": "X:\\Projects\\DanteForge\\.danteforge\\outcome-evidence\\cdef24ecddd75c9f6d0613ccca2edd20a3b99455-maintainability-maint_t4_golden.json"
+}

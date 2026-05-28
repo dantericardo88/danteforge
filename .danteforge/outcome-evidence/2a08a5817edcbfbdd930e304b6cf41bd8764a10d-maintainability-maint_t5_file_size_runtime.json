@@ -1,0 +1,13 @@
+{
+  "dimensionId": "maintainability",
+  "outcomeId": "maint_t5_file_size_runtime",
+  "tier": "T5",
+  "gitSha": "2a08a5817edcbfbdd930e304b6cf41bd8764a10d",
+  "passed": true,
+  "exitCode": 0,
+  "durationMs": 1304,
+  "stdoutTail": "▶ file-size hygiene\n  ✔ counts non-blank, non-comment LOC (0.6054ms)\n  ✔ reports oversized source files and ignores tests/generated output (13.3045ms)\n  ✔ writes a maintainable refactor plan for files above the target size (6.0346ms)\n✔ file-size hygiene (20.7604ms)\nℹ tests 3\nℹ suites 1\nℹ pass 3\nℹ fail 0\nℹ cancelled 0\nℹ skipped 0\nℹ todo 0\nℹ duration_ms 234.7574\n",
+  "stderrTail": "",
+  "ranAt": "2026-05-21T19:42:38.889Z",
+  "evidencePath": "X:\\Projects\\DanteForge\\.danteforge\\outcome-evidence\\2a08a5817edcbfbdd930e304b6cf41bd8764a10d-maintainability-maint_t5_file_size_runtime.json"
+}

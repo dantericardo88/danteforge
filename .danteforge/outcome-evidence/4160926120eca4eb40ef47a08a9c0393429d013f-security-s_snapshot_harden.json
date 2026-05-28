@@ -1,0 +1,13 @@
+{
+  "dimensionId": "security",
+  "outcomeId": "s_snapshot_harden",
+  "tier": "T3",
+  "gitSha": "4160926120eca4eb40ef47a08a9c0393429d013f",
+  "passed": true,
+  "exitCode": 0,
+  "durationMs": 146,
+  "stdoutTail": "",
+  "stderrTail": "",
+  "ranAt": "2026-05-25T19:21:41.596Z",
+  "evidencePath": "X:\\Projects\\DanteForge\\.danteforge\\outcome-evidence\\4160926120eca4eb40ef47a08a9c0393429d013f-security-s_snapshot_harden.json"
+}

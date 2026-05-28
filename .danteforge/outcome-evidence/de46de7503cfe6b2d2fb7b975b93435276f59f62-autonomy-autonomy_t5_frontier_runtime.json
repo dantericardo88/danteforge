@@ -1,0 +1,13 @@
+{
+  "dimensionId": "autonomy",
+  "outcomeId": "autonomy_t5_frontier_runtime",
+  "tier": "T5",
+  "gitSha": "de46de7503cfe6b2d2fb7b975b93435276f59f62",
+  "passed": true,
+  "exitCode": 0,
+  "durationMs": 4191,
+  "stdoutTail": "▶ validateOutcomeForTier\n  ✔ T0/T1 outcomes do not require required_callsite (3.9133ms)\n  ✔ T2 outcome without required_callsite is rejected (1.0465ms)\n  ✔ T2 outcome with required_callsite passes (0.5293ms)\n  ✔ T4 outcome requires sibling snapshot-test outcome (1.4953ms)\n  ✔ T5 outcome without benchmark reference is rejected (1.1334ms)\n  ✔ T5 outcome with swe-bench command passes (0.7146ms)\n  ✔ T6 outcome must be kind=telemetry (0.435ms)\n✔ validateOutcomeForTier (12.7689ms)\n▶ computeDimensionFrontierStatus\n  ✔ returns no-outcomes-declared when dim has no outcomes (1.5416ms)\n  ✔ returns at-frontier when all ceiling outcomes pass and ceiling < T3 (no fresh check) (1.3873ms)\n  ✔ returns progressing when T3 ceiling has no production-usage-fresh outcome (0.8824ms)\n  ✔ returns at-frontier when T3 dim has passing production-usage-fresh (0.7478ms)\n  ✔ returns blocked-by-dispensation when a dispensation is outstanding (0.4475ms)\n  ✔ returns stuck when wavesSinceProgress >= threshold and not at frontier (0.6913ms)\n✔ computeDimensionFrontierStatus (6.7696ms)\n▶ computeProjectFrontierState — terminal verdicts\n  ✔ frontier-reached when every declared dim is at frontier (1.1182ms)\n  ✔ stuck-on-dims when at least one dim hit stuck threshold (2.4912ms)\n  ✔ blocked-by-dispensations supersedes everything else (0.7915ms)\n  ✔ progressing when neither at frontier nor stuck nor blocked (0.5513ms)\n✔ computeProjectFrontierState — terminal verdicts (5.4236ms)\nℹ tests 17\nℹ suites 3\nℹ pass 17\nℹ fail 0\nℹ cancelled 0\nℹ skipped 0\nℹ todo 0\nℹ duration_ms 802.5942\n",
+  "stderrTail": "",
+  "ranAt": "2026-05-25T17:29:41.183Z",
+  "evidencePath": "X:\\Projects\\DanteForge\\.danteforge\\outcome-evidence\\de46de7503cfe6b2d2fb7b975b93435276f59f62-autonomy-autonomy_t5_frontier_runtime.json"
+}

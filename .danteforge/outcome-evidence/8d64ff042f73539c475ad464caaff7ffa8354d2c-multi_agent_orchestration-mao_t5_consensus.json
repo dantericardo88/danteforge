@@ -1,0 +1,13 @@
+{
+  "dimensionId": "multi_agent_orchestration",
+  "outcomeId": "mao_t5_consensus",
+  "tier": "T5",
+  "gitSha": "8d64ff042f73539c475ad464caaff7ffa8354d2c",
+  "passed": true,
+  "exitCode": 0,
+  "durationMs": 1251,
+  "stdoutTail": "▶ assignVoteWeight\n  ✔ cross-member judge → 1.0 (0.5047ms)\n  ✔ same-member judge → 0.5 (0.1101ms)\n✔ assignVoteWeight (1.3301ms)\n▶ computeConsensus\n  ✔ two PASS votes → PASS (0.4974ms)\n  ✔ PASS + FAIL tie → SPLIT (not PASS) (0.1612ms)\n  ✔ two FAIL votes → FAIL (0.1113ms)\n  ✔ empty votes with minJudges:2 → INSUFFICIENT (0.0829ms)\n  ✔ single vote with minJudges:2 → INSUFFICIENT (0.0919ms)\n  ✔ same-member votes do not satisfy N-of-M cross-member judge quorum (0.1472ms)\n  ✔ two cross-member votes satisfy N-of-M consensus quorum (0.1471ms)\n  ✔ UNCLEAR votes do not count as PASS (0.1449ms)\n  ✔ 1 PASS + 1 UNCLEAR (50% abstain) → PASS — 50% is not a majority (0.1862ms)\n  ✔ UNCLEAR-dominant: 2 PASS + 3 UNCLEAR (60% abstain) → FAIL (0.1065ms)\n  ✔ UNCLEAR-dominant: 2 UNCLEAR → FAIL with summary (0.0898ms)\n  ✔ UNCLEAR minority: 2 PASS + 1 UNCLEAR → PASS (not blocked) (0.0774ms)\n  ✔ PASS without any cross-member judge → FAIL (no cross-member PASS) (0.072ms)\n  ✔ dissent is preserved in dissentLog even on PASS (0.11ms)\n  ✔ summary string is non-empty (0.087ms)\n  ✔ custom passFraction: 2 PASS + 1 FAIL with passFraction 0.6 → PASS (0.667 >= 0.6) (0.0653ms)\n  ✔ minJudges:1 single cross-member PASS → PASS (0.0466ms)\n  ✔ explicit N-of-M threshold blocks one PASS plus abstention when two PASS votes are required (0.1581ms)\n  ✔ explicit N-of-M threshold passes when enough cross-member judges vote PASS (0.059ms)\n✔ computeConsensus (2.9348ms)\nℹ tests 21\nℹ suites 2\nℹ pass 21\nℹ fail 0\nℹ cancelled 0\nℹ skipped 0\nℹ todo 0\nℹ duration_ms 254.3004\n",
+  "stderrTail": "",
+  "ranAt": "2026-05-28T06:21:09.366Z",
+  "evidencePath": "X:\\Projects\\DanteForge\\.danteforge\\outcome-evidence\\8d64ff042f73539c475ad464caaff7ffa8354d2c-multi_agent_orchestration-mao_t5_consensus.json"
+}

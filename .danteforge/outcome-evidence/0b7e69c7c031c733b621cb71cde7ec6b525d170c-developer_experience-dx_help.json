@@ -1,0 +1,13 @@
+{
+  "dimensionId": "developer_experience",
+  "outcomeId": "dx_help",
+  "tier": "T1",
+  "gitSha": "0b7e69c7c031c733b621cb71cde7ec6b525d170c",
+  "passed": true,
+  "exitCode": 0,
+  "durationMs": 419,
+  "stdoutTail": "",
+  "stderrTail": "",
+  "ranAt": "2026-05-26T00:55:50.407Z",
+  "evidencePath": "X:\\Projects\\DanteForge\\.danteforge\\outcome-evidence\\0b7e69c7c031c733b621cb71cde7ec6b525d170c-developer_experience-dx_help.json"
+}

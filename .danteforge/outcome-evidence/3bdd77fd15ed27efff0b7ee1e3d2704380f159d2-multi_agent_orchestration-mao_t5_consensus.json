@@ -1,0 +1,13 @@
+{
+  "dimensionId": "multi_agent_orchestration",
+  "outcomeId": "mao_t5_consensus",
+  "tier": "T5",
+  "gitSha": "3bdd77fd15ed27efff0b7ee1e3d2704380f159d2",
+  "passed": true,
+  "exitCode": 0,
+  "durationMs": 2167,
+  "stdoutTail": "▶ assignVoteWeight\n  ✔ cross-member judge → 1.0 (0.7424ms)\n  ✔ same-member judge → 0.5 (0.1427ms)\n✔ assignVoteWeight (1.8464ms)\n▶ computeConsensus\n  ✔ two PASS votes → PASS (0.5177ms)\n  ✔ PASS + FAIL tie → SPLIT (not PASS) (0.2156ms)\n  ✔ two FAIL votes → FAIL (0.1998ms)\n  ✔ empty votes with minJudges:2 → INSUFFICIENT (0.1101ms)\n  ✔ single vote with minJudges:2 → INSUFFICIENT (0.1175ms)\n  ✔ UNCLEAR votes do not count as PASS (0.1604ms)\n  ✔ PASS without any cross-member judge → FAIL (no cross-member PASS) (0.178ms)\n  ✔ dissent is preserved in dissentLog even on PASS (0.2458ms)\n  ✔ summary string is non-empty (0.1499ms)\n  ✔ custom passFraction: 2 PASS + 1 FAIL with passFraction 0.6 → PASS (0.667 >= 0.6) (0.1022ms)\n  ✔ minJudges:1 single cross-member PASS → PASS (0.0712ms)\n✔ computeConsensus (2.5672ms)\nℹ tests 13\nℹ suites 2\nℹ pass 13\nℹ fail 0\nℹ cancelled 0\nℹ skipped 0\nℹ todo 0\nℹ duration_ms 397.2281\n",
+  "stderrTail": "",
+  "ranAt": "2026-05-25T22:52:36.561Z",
+  "evidencePath": "X:\\Projects\\DanteForge\\.danteforge\\outcome-evidence\\3bdd77fd15ed27efff0b7ee1e3d2704380f159d2-multi_agent_orchestration-mao_t5_consensus.json"
+}

@@ -1,0 +1,13 @@
+{
+  "dimensionId": "testing",
+  "outcomeId": "t_golden_flow",
+  "tier": "T4",
+  "gitSha": "347c026d279993c7d5a9d4a47a26b559db3de6a1",
+  "passed": true,
+  "exitCode": 0,
+  "durationMs": 69,
+  "stdoutTail": "",
+  "stderrTail": "",
+  "ranAt": "2026-05-24T15:49:32.462Z",
+  "evidencePath": "X:\\Projects\\DanteForge\\.danteforge\\outcome-evidence\\347c026d279993c7d5a9d4a47a26b559db3de6a1-testing-t_golden_flow.json"
+}

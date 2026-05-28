@@ -1,0 +1,13 @@
+{
+  "dimensionId": "planning_quality",
+  "outcomeId": "pq_snapshot_tasks",
+  "tier": "T2",
+  "gitSha": "764427a2092e13a75eb9f1b21543eccc9c1d05f8",
+  "passed": true,
+  "exitCode": 0,
+  "durationMs": 305,
+  "stdoutTail": "",
+  "stderrTail": "",
+  "ranAt": "2026-05-22T19:02:56.946Z",
+  "evidencePath": "X:\\Projects\\DanteForge\\.danteforge\\outcome-evidence\\764427a2092e13a75eb9f1b21543eccc9c1d05f8-planning_quality-pq_snapshot_tasks.json"
+}

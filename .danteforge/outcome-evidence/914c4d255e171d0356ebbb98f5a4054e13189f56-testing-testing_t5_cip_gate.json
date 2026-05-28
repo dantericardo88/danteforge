@@ -1,0 +1,13 @@
+{
+  "dimensionId": "testing",
+  "outcomeId": "testing_t5_cip_gate",
+  "tier": "T5",
+  "gitSha": "914c4d255e171d0356ebbb98f5a4054e13189f56",
+  "passed": true,
+  "exitCode": 0,
+  "durationMs": 812,
+  "stdoutTail": " via time limit (13.067ms)\n[INFO] [daemon] Starting autonomous improvement loop\n[INFO] [daemon] Strategy: adaptive | Target: 9 | Time limit: 60m\n[INFO] [daemon] Log: .danteforge/daemon-log.jsonl\n[INFO] \n[daemon] ── Pass 1 (crusade) ──────────────────\n[INFO] [daemon] Score: 5 → 9.5 (+4.50)\n[INFO] [daemon] TARGET REACHED: 9.5 >= 9 (CIP confirmed all dims)\n  ✔ T2: CIP-passing dims allow target-reached — daemon exits immediately (4.0396ms)\n[INFO] [daemon] Starting autonomous improvement loop\n[INFO] [daemon] Strategy: adaptive | Target: 9 | Time limit: 60m\n[INFO] [daemon] Log: .danteforge/daemon-log.jsonl\n[INFO] \n[daemon] ── Pass 1 (crusade) ──────────────────\n[INFO] [daemon] Score: 5 → 9.5 (+4.50)\n[INFO] [daemon] TARGET REACHED: 9.5 >= 9 (CIP confirmed all dims)\n  ✔ T3: CIP is a no-op when all dimensions are excluded — target-reached is allowed (3.198ms)\n✔ daemon CIP gate (Rule 14) (21.0518ms)\nℹ tests 3\nℹ suites 1\nℹ pass 3\nℹ fail 0\nℹ cancelled 0\nℹ skipped 0\nℹ todo 0\nℹ duration_ms 244.6446\n",
+  "stderrTail": "",
+  "ranAt": "2026-05-28T14:04:19.069Z",
+  "evidencePath": ".danteforge/outcome-evidence/914c4d255e171d0356ebbb98f5a4054e13189f56-testing-testing_t5_cip_gate.json"
+}

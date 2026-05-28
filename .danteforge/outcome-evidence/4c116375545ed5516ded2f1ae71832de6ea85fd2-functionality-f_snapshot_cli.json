@@ -1,0 +1,13 @@
+{
+  "dimensionId": "functionality",
+  "outcomeId": "f_snapshot_cli",
+  "tier": "T3",
+  "gitSha": "4c116375545ed5516ded2f1ae71832de6ea85fd2",
+  "passed": true,
+  "exitCode": 0,
+  "durationMs": 623,
+  "stdoutTail": "",
+  "stderrTail": "",
+  "ranAt": "2026-05-26T00:10:54.197Z",
+  "evidencePath": "X:\\Projects\\DanteForge\\.danteforge\\outcome-evidence\\4c116375545ed5516ded2f1ae71832de6ea85fd2-functionality-f_snapshot_cli.json"
+}

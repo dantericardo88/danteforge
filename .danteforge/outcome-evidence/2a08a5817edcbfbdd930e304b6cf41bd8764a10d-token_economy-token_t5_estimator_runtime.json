@@ -1,0 +1,13 @@
+{
+  "dimensionId": "token_economy",
+  "outcomeId": "token_t5_estimator_runtime",
+  "tier": "T5",
+  "gitSha": "2a08a5817edcbfbdd930e304b6cf41bd8764a10d",
+  "passed": true,
+  "exitCode": 0,
+  "durationMs": 1250,
+  "stdoutTail": "▶ estimateTokens\n  ✔ estimates roughly 1 token per 4 chars (0.5757ms)\n  ✔ returns 0 for empty string (0.1014ms)\n  ✔ rounds up partial tokens (0.098ms)\n✔ estimateTokens (1.4544ms)\n▶ estimateCost\n  ✔ returns zero for ollama (0.1727ms)\n  ✔ returns positive cost for paid providers (0.1333ms)\n  ✔ output cost assumes 25% of input tokens (0.0696ms)\n✔ estimateCost (0.5354ms)\n▶ chunkText\n  ✔ returns single chunk for short text (0.1416ms)\n  ✔ splits long text into multiple chunks (0.3289ms)\n  ✔ tries to split at paragraph boundaries (0.1053ms)\n  ✔ handles empty text (0.1034ms)\n✔ chunkText (0.851ms)\n▶ TOKEN_LIMITS\n  ✔ has limits for all providers (0.123ms)\n✔ TOKEN_LIMITS (0.182ms)\n▶ code-aware estimation\n  ✔ isLikelyCode detects TypeScript as code (0.1787ms)\n  ✔ isLikelyCode detects prose as not code (0.071ms)\n  ✔ estimateTokens with code-aware strategy gives higher count for code (0.0939ms)\n✔ code-aware estimation (0.4843ms)\nℹ tests 14\nℹ suites 5\nℹ pass 14\nℹ fail 0\nℹ cancelled 0\nℹ skipped 0\nℹ todo 0\nℹ duration_ms 268.1932\n",
+  "stderrTail": "",
+  "ranAt": "2026-05-21T19:42:58.412Z",
+  "evidencePath": "X:\\Projects\\DanteForge\\.danteforge\\outcome-evidence\\2a08a5817edcbfbdd930e304b6cf41bd8764a10d-token_economy-token_t5_estimator_runtime.json"
+}

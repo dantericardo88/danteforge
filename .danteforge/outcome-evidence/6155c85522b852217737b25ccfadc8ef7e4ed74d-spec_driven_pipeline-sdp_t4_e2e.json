@@ -1,0 +1,13 @@
+{
+  "dimensionId": "spec_driven_pipeline",
+  "outcomeId": "sdp_t4_e2e",
+  "tier": "T4",
+  "gitSha": "6155c85522b852217737b25ccfadc8ef7e4ed74d",
+  "passed": true,
+  "exitCode": 0,
+  "durationMs": 200,
+  "stdoutTail": "",
+  "stderrTail": "",
+  "ranAt": "2026-05-25T20:00:54.177Z",
+  "evidencePath": "X:\\Projects\\DanteForge\\.danteforge\\outcome-evidence\\6155c85522b852217737b25ccfadc8ef7e4ed74d-spec_driven_pipeline-sdp_t4_e2e.json"
+}

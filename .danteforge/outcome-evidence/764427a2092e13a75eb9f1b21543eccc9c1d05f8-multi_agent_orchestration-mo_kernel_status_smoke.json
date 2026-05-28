@@ -1,0 +1,13 @@
+{
+  "dimensionId": "multi_agent_orchestration",
+  "outcomeId": "mo_kernel_status_smoke",
+  "tier": "T5",
+  "gitSha": "764427a2092e13a75eb9f1b21543eccc9c1d05f8",
+  "passed": true,
+  "exitCode": 0,
+  "durationMs": 701,
+  "stdoutTail": "[INFO] [matrix-kernel] Status:\n[INFO]   ✓ projectGraph         .danteforge/matrix/matrix.project-graph.json  (384948 bytes)\n[INFO]   ✓ dimensionGraph       .danteforge/matrix/matrix.dimension-graph.json  (17442 bytes)\n[INFO]   ✓ workGraph            .danteforge/matrix/matrix.work-graph.json  (87222 bytes)\n[INFO]   · dependencyGraph      .danteforge/matrix/matrix.dependency-graph.json  (not yet generated)\n[INFO]   ✓ leaseGraph           .danteforge/matrix/matrix.lease-graph.json  (189395 bytes)\n[INFO]   · evidenceGraph        .danteforge/matrix/matrix.evidence-graph.json  (not yet generated)\n[INFO]   ✓ simulationPlan       .danteforge/matrix/matrix.simulation-plan.json  (8459 bytes)\n[INFO]   · ownershipMap         .danteforge/matrix/matrix.ownership-map.json  (not yet generated)\n[INFO]   · conflicts            .danteforge/matrix/matrix.conflicts.json  (not yet generated)\n[INFO]   · workPackets          .danteforge/matrix/matrix.work-packets.json  (not yet generated)\n[INFO]   · leases               .danteforge/matrix/matrix.leases.json  (not yet generated)\n[INFO]   ✓ agentRuns            .danteforge/matrix/matrix.agent-runs.json  (30122 bytes)\n[INFO]   ✓ mailbox              .danteforge/matrix/matrix.mailbox.json  (49599 bytes)\n[INFO]   ✓ gateReports          .danteforge/matrix/matrix.gate-reports.json  (60394 bytes)\n[INFO]   ✓ redTeamReports       .danteforge/matrix/matrix.red-team-reports.json  (512 bytes)\n[INFO]   · tasteGates           .danteforge/matrix/matrix.taste-gates.json  (not yet generated)\n[INFO]   ✓ mergeDecisions       .danteforge/matrix/matrix.merge-decisions.json  (17772 bytes)\n[INFO]   ✓ retrospective        .danteforge/matrix/matrix.retrospective.json  (2236 bytes)\n[INFO]   ✓ finalReport          .danteforge/matrix/matrix.final-report.md  (1827 bytes)\n[INFO]   · agentMemoryDir       .danteforge/matrix/agent-memory  (not yet generated)\n",
+  "stderrTail": "",
+  "ranAt": "2026-05-22T18:46:28.508Z",
+  "evidencePath": "X:\\Projects\\DanteForge\\.danteforge\\outcome-evidence\\764427a2092e13a75eb9f1b21543eccc9c1d05f8-multi_agent_orchestration-mo_kernel_status_smoke.json"
+}

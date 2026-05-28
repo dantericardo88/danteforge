@@ -1,0 +1,13 @@
+{
+  "dimensionId": "self_improvement",
+  "outcomeId": "singularity_30pct",
+  "tier": "T7",
+  "gitSha": "a69eca46067bf561370c0c798db329e2cf256f3a",
+  "passed": true,
+  "exitCode": 0,
+  "durationMs": 381,
+  "stdoutTail": "[singularity] Commits analysed: 6090 (since 90 days ago)\n[singularity] DanteForge-assisted: 370 (6.1%)\n[singularity] Human-only:          5720\n[singularity] Aider baseline:       62%  |  DanteForge: 6.1%  |  Gap: 55.9%\n[singularity] Report: X:\\Projects\\DanteForge\\.danteforge\\metrics\\singularity.json\n[singularity] Top assisted commits:\n  a69eca46  feat(community): council adds onboarding generator + readiness checks (round 2)\n  ad7a6985  fix(matrix): compute gap_to_oss_leader for all 24 dims from competitor scores\n  9b4cad76  feat(community): council builds community-adoption readiness + pack generator\n  9f0febba  score(depth): lift security 6→7 and error_handling 6.5→7.5 from T7 receipts\n  389ec3f4  feat(crusade): wire loop-recovery + loop-monitor into crusade main loop\n[singularity] PASS — 6.1% >= 5% threshold\n",
+  "stderrTail": "",
+  "ranAt": "2026-05-25T18:36:43.737Z",
+  "evidencePath": "X:\\Projects\\DanteForge\\.danteforge\\outcome-evidence\\a69eca46067bf561370c0c798db329e2cf256f3a-self_improvement-singularity_30pct.json"
+}

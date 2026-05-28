@@ -1,0 +1,13 @@
+{
+  "dimensionId": "multi_agent_orchestration",
+  "outcomeId": "mao_t5_slot_expansion",
+  "tier": "T5",
+  "gitSha": "3bdd77fd15ed27efff0b7ee1e3d2704380f159d2",
+  "passed": true,
+  "exitCode": 0,
+  "durationMs": 2526,
+  "stdoutTail": "▶ buildSlots\n  ✔ 3 members × 4 slots → 12 entries (1.418ms)\n  ✔ slotIds are unique (0.3124ms)\n  ✔ slotId format is memberId-slotIdx (1.1772ms)\n  ✔ slotsPerMember:1 → same as member count (0.314ms)\n  ✔ each slot has correct memberId and slotIdx (0.3112ms)\n✔ buildSlots (5.181ms)\n▶ groupBySlot\n  ✔ groups dims by slotId correctly (0.4318ms)\n  ✔ fallback to memberId-0 when no assignedSlot (0.3124ms)\n✔ groupBySlot (1.0369ms)\n▶ pickJudgeSlots\n  ✔ picks n slots with cross-member diversity (0.5478ms)\n  ✔ picks fewer than n if not enough slots available (0.2262ms)\n  ✔ returns empty array for empty input (0.2754ms)\n✔ pickJudgeSlots (1.4175ms)\n▶ FileClaims — slot-aware conflict rule\n  ✔ same member different slots → no conflict (same-member rule) (0.493ms)\n  ✔ different member different slot → conflict detected (0.1963ms)\n  ✔ hasConflict returns false for same-member (0.2841ms)\n  ✔ hasConflict returns true for cross-member (0.1842ms)\n  ✔ clear resets all claims (0.2289ms)\n✔ FileClaims — slot-aware conflict rule (1.7127ms)\n▶ groupByMember — backward compat\n  ✔ groups by assignedTo memberId (0.227ms)\n✔ groupByMember — backward compat (0.3489ms)\nℹ tests 16\nℹ suites 5\nℹ pass 16\nℹ fail 0\nℹ cancelled 0\nℹ skipped 0\nℹ todo 0\nℹ duration_ms 478.3088\n",
+  "stderrTail": "",
+  "ranAt": "2026-05-25T22:50:33.434Z",
+  "evidencePath": "X:\\Projects\\DanteForge\\.danteforge\\outcome-evidence\\3bdd77fd15ed27efff0b7ee1e3d2704380f159d2-multi_agent_orchestration-mao_t5_slot_expansion.json"
+}

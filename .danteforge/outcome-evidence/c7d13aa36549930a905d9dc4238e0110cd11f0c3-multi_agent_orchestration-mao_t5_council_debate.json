@@ -1,0 +1,13 @@
+{
+  "dimensionId": "multi_agent_orchestration",
+  "outcomeId": "mao_t5_council_debate",
+  "tier": "T5",
+  "gitSha": "c7d13aa36549930a905d9dc4238e0110cd11f0c3",
+  "passed": true,
+  "exitCode": 0,
+  "durationMs": 2507,
+  "stdoutTail": "[INFO] [debate] Round 1: claude-code rebuttal (150 chars)\n[INFO] [debate] Round 1: PASS — PASS reached\n[INFO] [debate] Round 1: claude-code rebuttal (62 chars)\n[INFO] [debate] Round 1: FAIL — continuing\n[INFO] [debate] Round 2: claude-code rebuttal (62 chars)\n[INFO] [debate] Round 2: FAIL — cap reached\n[INFO] [debate] Round 1: codex rebuttal (150 chars)\n[INFO] [debate] Round 1: PASS — PASS reached\n[INFO] [debate] Round 1: grok-build rebuttal (150 chars)\n[INFO] [debate] Round 1: PASS — PASS reached\n[INFO] [debate] Round 1: claude-code rebuttal (62 chars)\n[INFO] [debate] Round 1: FAIL — cap reached\n▶ runDebate — consensus resolution\n  ✔ returns PASS immediately if initial verdicts are already PASS (1.5719ms)\n  ✔ runs one round and reaches PASS if judges flip (6.349ms)\n  ✔ runs all rounds and returns FAIL if judges never flip (1.6379ms)\n✔ runDebate — consensus resolution (11.5431ms)\n▶ runDebate — transcript shape\n  ✔ transcript has correct builderId and round structure (1.1791ms)\n  ✔ each round carries judgeUpdates with blockingConcerns and dissentSummary (0.9782ms)\n✔ runDebate — transcript shape (2.5489ms)\n▶ runDebate — error resilience\n  ✔ falls back to prior verdict if runPrompt throws for a judge (0.7387ms)\n✔ runDebate — error resilience (1.0169ms)\nℹ tests 6\nℹ suites 3\nℹ pass 6\nℹ fail 0\nℹ cancelled 0\nℹ skipped 0\nℹ todo 0\nℹ duration_ms 529.0362\n",
+  "stderrTail": "",
+  "ranAt": "2026-05-25T21:51:29.448Z",
+  "evidencePath": "X:\\Projects\\DanteForge\\.danteforge\\outcome-evidence\\c7d13aa36549930a905d9dc4238e0110cd11f0c3-multi_agent_orchestration-mao_t5_council_debate.json"
+}

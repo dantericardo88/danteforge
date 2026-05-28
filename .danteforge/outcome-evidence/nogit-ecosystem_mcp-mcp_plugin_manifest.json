@@ -1,0 +1,14 @@
+{
+  "dimensionId": "ecosystem_mcp",
+  "outcomeId": "mcp_plugin_manifest",
+  "tier": "T5",
+  "gitSha": null,
+  "passed": false,
+  "exitCode": 1,
+  "durationMs": 21075,
+  "stdoutTail": "",
+  "stderrTail": "node:fs:439\r\n    return binding.readFileUtf8(path, stringToFlags(options.flag));\r\n                   ^\r\n\r\nError: ENOENT: no such file or directory, open 'X:\\Projects\\DanteForge\\.claude\\plugin.json'\r\n    at Object.readFileSync (node:fs:439:20)\r\n    at [eval]:1:15\r\n    at runScriptInThisContext (node:internal/vm:219:10)\r\n    at node:internal/process/execution:451:12\r\n    at [eval]-wrapper:6:24\r\n    at runScriptInContext (node:internal/process/execution:449:60)\r\n    at evalFunction (node:internal/process/execution:283:30)\r\n    at evalTypeScript (node:internal/process/execution:295:3)\r\n    at node:internal/main/eval_string:71:3 {\r\n  errno: -4058,\r\n  code: 'ENOENT',\r\n  syscall: 'open',\r\n  path: 'X:\\\\Projects\\\\DanteForge\\\\.claude\\\\plugin.json'\r\n}\r\n\r\nNode.js v24.13.1\r\n",
+  "failureReason": "exit 1 (expected 0)",
+  "ranAt": "2026-05-21T16:44:26.844Z",
+  "evidencePath": "X:\\Projects\\DanteForge\\.danteforge\\outcome-evidence\\nogit-ecosystem_mcp-mcp_plugin_manifest.json"
+}

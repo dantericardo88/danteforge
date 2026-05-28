@@ -1,0 +1,13 @@
+{
+  "dimensionId": "ux_polish",
+  "outcomeId": "ux_substance",
+  "tier": "T2",
+  "gitSha": "dba77a64e587720d0da24eedce387ced45869e1c",
+  "passed": true,
+  "exitCode": 0,
+  "durationMs": 135,
+  "stdoutTail": "",
+  "stderrTail": "",
+  "ranAt": "2026-05-25T16:35:00.082Z",
+  "evidencePath": "X:\\Projects\\DanteForge\\.danteforge\\outcome-evidence\\dba77a64e587720d0da24eedce387ced45869e1c-ux_polish-ux_substance.json"
+}

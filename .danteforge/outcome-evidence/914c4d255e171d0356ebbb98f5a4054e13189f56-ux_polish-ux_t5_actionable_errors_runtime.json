@@ -1,0 +1,13 @@
+{
+  "dimensionId": "ux_polish",
+  "outcomeId": "ux_t5_actionable_errors_runtime",
+  "tier": "T5",
+  "gitSha": "914c4d255e171d0356ebbb98f5a4054e13189f56",
+  "passed": true,
+  "exitCode": 0,
+  "durationMs": 805,
+  "stdoutTail": "gestion (0.1066ms)\n  ✔ maps \"permission denied\" to permissions suggestion (0.1019ms)\n✔ enrichError — known patterns (3.1533ms)\n▶ enrichError — unknown patterns\n  ✔ returns a non-empty code for unrecognized messages (0.1158ms)\n  ✔ still includes the original message in the result (0.0754ms)\n  ✔ provides a generic helpful suggestion for unknown errors (0.0728ms)\n✔ enrichError — unknown patterns (0.3508ms)\n▶ enrichError — context matching\n  ✔ uses command context to improve pattern matching (0.0947ms)\n✔ enrichError — context matching (0.1284ms)\n▶ formatActionableError\n  ✔ includes the error code (0.0842ms)\n  ✔ includes the suggestion with → arrow (0.0426ms)\n  ✔ includes docsRef when available (0.0467ms)\n✔ formatActionableError (0.2324ms)\n▶ ERROR_SUGGESTIONS map\n  ✔ contains at least 20 patterns (0.0598ms)\n  ✔ all suggestions are non-empty strings (0.088ms)\n✔ ERROR_SUGGESTIONS map (0.1957ms)\nℹ tests 21\nℹ suites 5\nℹ pass 21\nℹ fail 0\nℹ cancelled 0\nℹ skipped 0\nℹ todo 0\nℹ duration_ms 230.7343\n",
+  "stderrTail": "",
+  "ranAt": "2026-05-28T14:04:38.994Z",
+  "evidencePath": ".danteforge/outcome-evidence/914c4d255e171d0356ebbb98f5a4054e13189f56-ux_polish-ux_t5_actionable_errors_runtime.json"
+}

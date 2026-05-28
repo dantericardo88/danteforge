@@ -1,0 +1,13 @@
+{
+  "dimensionId": "multi_agent_orchestration",
+  "outcomeId": "mao_kernel",
+  "tier": "T2",
+  "gitSha": "e11affff99e894321ca3408f41d05c122e0ad853",
+  "passed": true,
+  "exitCode": 0,
+  "durationMs": 62,
+  "stdoutTail": "",
+  "stderrTail": "",
+  "ranAt": "2026-05-24T17:23:12.643Z",
+  "evidencePath": "X:\\Projects\\DanteForge\\.danteforge\\outcome-evidence\\e11affff99e894321ca3408f41d05c122e0ad853-multi_agent_orchestration-mao_kernel.json"
+}

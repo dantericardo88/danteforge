@@ -1,0 +1,13 @@
+{
+  "dimensionId": "community_adoption",
+  "outcomeId": "ca_t5_adoption_readiness",
+  "tier": "T5",
+  "gitSha": "914c4d255e171d0356ebbb98f5a4054e13189f56",
+  "passed": true,
+  "exitCode": 0,
+  "durationMs": 978,
+  "stdoutTail": "unity adoption improvements completed:\n[INFO]   - Generated community adoption pack\n  ✔ generates support policy, PR template, labels, and discussion routing in the adoption pack (17.8941ms)\n  ✔ credits ownership, recognition, and roadmap surfaces that help outsiders contribute (9.1843ms)\n  ✔ credits an evidence guide and verified public adopter proof separately (6.4658ms)\n[INFO] Improving community adoption features...\n[OK] Community adoption improvements completed:\n[INFO]   - Generated community adoption pack\n  ✔ generates an adoption evidence guide without claiming public adopters (21.4168ms)\n[INFO] Improving community adoption features...\n[OK] Community adoption improvements completed:\n[INFO]   - Generated community adoption pack\n  ✔ generates maintainer ownership, contributor recognition, and roadmap assets in the adoption pack (20.0136ms)\n✔ community adoption readiness (161.5013ms)\nℹ tests 12\nℹ suites 1\nℹ pass 12\nℹ fail 0\nℹ cancelled 0\nℹ skipped 0\nℹ todo 0\nℹ duration_ms 406.5767\n",
+  "stderrTail": "",
+  "ranAt": "2026-05-28T14:04:52.192Z",
+  "evidencePath": ".danteforge/outcome-evidence/914c4d255e171d0356ebbb98f5a4054e13189f56-community_adoption-ca_t5_adoption_readiness.json"
+}

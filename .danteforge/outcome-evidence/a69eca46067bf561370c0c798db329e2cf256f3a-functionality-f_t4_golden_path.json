@@ -1,0 +1,13 @@
+{
+  "dimensionId": "functionality",
+  "outcomeId": "f_t4_golden_path",
+  "tier": "T4",
+  "gitSha": "a69eca46067bf561370c0c798db329e2cf256f3a",
+  "passed": true,
+  "exitCode": 0,
+  "durationMs": 181,
+  "stdoutTail": "",
+  "stderrTail": "",
+  "ranAt": "2026-05-25T19:05:08.909Z",
+  "evidencePath": "X:\\Projects\\DanteForge\\.danteforge\\outcome-evidence\\a69eca46067bf561370c0c798db329e2cf256f3a-functionality-f_t4_golden_path.json"
+}

@@ -1,0 +1,13 @@
+{
+  "dimensionId": "spec_driven_pipeline",
+  "outcomeId": "sdp_t5_clarify_runtime",
+  "tier": "T5",
+  "gitSha": "389ec3f47250f349f7d8c4a2eb2b403cbc5ada65",
+  "passed": true,
+  "exitCode": 0,
+  "durationMs": 2464,
+  "stdoutTail": "[INFO] Analyzing spec for ambiguities...\n[INFO] Analyzing spec for ambiguities...\n▶ clarify-engine — fallback gap detection\n  ✔ returns 4 gaps for empty spec (no persona, performance, error, security) (82.8724ms)\n[INFO] Analyzing spec for ambiguities...\n  ✔ returns fewer gaps when spec contains \"persona\" (17.5391ms)\n[INFO] Analyzing spec for ambiguities...\n  ✔ returns fewer gaps when spec contains \"performance\" (15.3619ms)\n[INFO] Analyzing spec for ambiguities...\n  ✔ returns fewer gaps when spec contains \"error\" (20.5918ms)\n[INFO] Analyzing spec for ambiguities...\n  ✔ returns fewer gaps when spec contains \"security\" (31.3483ms)\n[INFO] Analyzing spec for ambiguities...\n  ✔ returns 0 gaps when spec covers all keywords (28.929ms)\n[INFO] Running consistency check against constitution...\n  ✔ each gap has id, question, and context fields (49.6124ms)\n  ✔ runConsistencyCheck returns empty array when no LLM available (16.8416ms)\n[INFO] Analyzing spec for ambiguities...\n[INFO] Analyzing spec for ambiguities...\n[INFO] Analyzing spec for ambiguities...\n[INFO] Analyzing spec for ambiguities...\n[WARN] LLM clarification failed, using local analysis\n[INFO] Running consistency check against constitution...\n[WARN] Found 2 consistency issue(s)\n[INFO] Running consistency check against constitution...\n[OK] Spec is consistent with constitution\n[INFO] Running consistency check against constitution...\n[WARN] LLM consistency check failed\n✔ clarify-engine — fallback gap detection (273.9096ms)\n▶ clarify-engine — _llmCaller injection\n  ✔ parseQuestions parses [QUESTION] [CONTEXT] format (0.6094ms)\n  ✔ parseQuestions handles numbered lines without [QUESTION] markers (0.3914ms)\n  ✔ falls back to detectBasicGaps when LLM returns no parseable questions (0.1991ms)\n  ✔ falls back to local analysis when LLM throws (0.2216ms)\n  ✔ runConsistencyCheck parses VIOLATION lines (0.2389ms)\n  ✔ runConsistencyCheck returns empty for no violations (0.1563ms)\n  ✔ runConsistencyCheck falls back on LLM error (0.1204ms)\n✔ clarify-engine — _llmCaller injection (2.1992ms)\nℹ tests 15\nℹ suites 2\nℹ pass 15\nℹ fail 0\nℹ cancelled 0\nℹ skipped 0\nℹ todo 0\nℹ duration_ms 867.3248\n",
+  "stderrTail": "",
+  "ranAt": "2026-05-25T17:35:00.933Z",
+  "evidencePath": "X:\\Projects\\DanteForge\\.danteforge\\outcome-evidence\\389ec3f47250f349f7d8c4a2eb2b403cbc5ada65-spec_driven_pipeline-sdp_t5_clarify_runtime.json"
+}

@@ -1,0 +1,13 @@
+{
+  "dimensionId": "autonomy",
+  "outcomeId": "a_dryrun",
+  "tier": "T2",
+  "gitSha": "4160926120eca4eb40ef47a08a9c0393429d013f",
+  "passed": true,
+  "exitCode": 0,
+  "durationMs": 148,
+  "stdoutTail": "",
+  "stderrTail": "",
+  "ranAt": "2026-05-25T19:19:15.230Z",
+  "evidencePath": "x:\\Projects\\DanteForge\\.danteforge\\outcome-evidence\\4160926120eca4eb40ef47a08a9c0393429d013f-autonomy-a_dryrun.json"
+}

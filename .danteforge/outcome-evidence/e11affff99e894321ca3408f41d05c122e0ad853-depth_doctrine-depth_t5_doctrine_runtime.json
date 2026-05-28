@@ -1,0 +1,13 @@
+{
+  "dimensionId": "depth_doctrine",
+  "outcomeId": "depth_t5_doctrine_runtime",
+  "tier": "T5",
+  "gitSha": "e11affff99e894321ca3408f41d05c122e0ad853",
+  "passed": true,
+  "exitCode": 0,
+  "durationMs": 1190,
+  "stdoutTail": "[INFO] [scoring-doctrine] Evidence-based scoring only. Compare against actual competitors (not downstream consumers). No adoption penalties on pre-release tools. The gap is the value. \"Harsh\" = evidence-based, not opinion-based. Scores above 7.0 require runtime execution evidence. Zero-evidence = run outcomes manually. Fix A caps at 5.0 if capability_test fails. Triage outcome failures before scoring. Flag bootstrapping deps separately. Every scoring pass emits a Time Machine commit. CIP (runCIPCheck) is mandatory before FRONTIER_REACHED — stubs, zero outcomes, failing capability_test, or cipScore ≥0.5 below stored score all block it.\n[INFO] \n[INFO] danteforge validate — Depth Doctrine Receipt Runner\n[INFO] ────────────────────────────────────────────────────────────\n[INFO] Running outcomes for 1 dimension(s)…\n[INFO] \n[INFO] \n[INFO] Validation Results\n[INFO] ────────────────────────────────────────────────────────────\n[INFO]   [PASS] test_depth                       0.0 → 8.0  (1/1 outcomes) ✓ ceiling lifted\n[INFO]          Score ceiling lifted: was capped at 7, now 8.0\n[INFO] \n[INFO] ────────────────────────────────────────────────────────────\n[INFO] ✓ All outcomes passed. Score ceilings lifted where applicable.\n[INFO]   Re-run `danteforge score` to see updated scores.\n[INFO] \n▶ Depth Doctrine E2E\n  ✔ validate → receipt → score rises above 7.0 (the full plumbing proof) (266.5064ms)\n✔ Depth Doctrine E2E (267.1306ms)\nℹ tests 1\nℹ suites 1\nℹ pass 1\nℹ fail 0\nℹ cancelled 0\nℹ skipped 0\nℹ todo 0\nℹ duration_ms 482.0184\n",
+  "stderrTail": "",
+  "ranAt": "2026-05-24T17:25:05.314Z",
+  "evidencePath": "X:\\Projects\\DanteForge\\.danteforge\\outcome-evidence\\e11affff99e894321ca3408f41d05c122e0ad853-depth_doctrine-depth_t5_doctrine_runtime.json"
+}

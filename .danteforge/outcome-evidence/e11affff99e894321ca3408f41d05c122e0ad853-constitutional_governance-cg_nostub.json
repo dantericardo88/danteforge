@@ -1,0 +1,13 @@
+{
+  "dimensionId": "constitutional_governance",
+  "outcomeId": "cg_nostub",
+  "tier": "T4",
+  "gitSha": "e11affff99e894321ca3408f41d05c122e0ad853",
+  "passed": true,
+  "exitCode": 0,
+  "durationMs": 61,
+  "stdoutTail": "",
+  "stderrTail": "",
+  "ranAt": "2026-05-24T17:22:34.361Z",
+  "evidencePath": "X:\\Projects\\DanteForge\\.danteforge\\outcome-evidence\\e11affff99e894321ca3408f41d05c122e0ad853-constitutional_governance-cg_nostub.json"
+}

@@ -1,0 +1,13 @@
+{
+  "dimensionId": "self_improvement",
+  "outcomeId": "self_t7_lessons_runtime",
+  "tier": "T7",
+  "gitSha": "4c116375545ed5516ded2f1ae71832de6ea85fd2",
+  "passed": true,
+  "exitCode": 0,
+  "durationMs": 4050,
+  "stdoutTail": "▶ detectLessonEvents\n  ✔ returns empty array when no changes (2.8857ms)\n  ✔ detects tsc_errors_increased (0.4833ms)\n  ✔ detects tests_regressed (0.2935ms)\n  ✔ detects score_dropped (more than 5 points) (0.2702ms)\n  ✔ does not detect score_dropped for small drop (5 or fewer points) (0.3239ms)\n  ✔ returns multiple events when multiple conditions met (0.267ms)\n✔ detectLessonEvents (7.4285ms)\n▶ extractDeterministicLessons\n  ✔ returns empty array for empty diff (2.0994ms)\n  ✔ detects new exported symbols (3.1389ms)\n  ✔ detects new test files (0.7561ms)\n  ✔ detects injection seams (0.4928ms)\n  ✔ returns at most 2 lessons (0.2986ms)\n  ✔ returns empty for unrelated diff (0.2562ms)\n✔ extractDeterministicLessons (7.7827ms)\n▶ captureAutoLesson\n  ✔ does not throw when lesson is captured (1.8625ms)\n  ✔ does not throw when _recordLesson fails (1.4183ms)\n✔ captureAutoLesson (3.9312ms)\n[INFO] STATE.yaml updated\n[INFO] STATE.yaml updated\n[OK] Lesson recorded: [Workflow] Run design lint before forge for UI-heavy work\n▶ lessons command integration\n  ✔ records a correction memory entry when a lesson is added (81.4662ms)\n✔ lessons command integration (84.8885ms)\nℹ tests 15\nℹ suites 4\nℹ pass 15\nℹ fail 0\nℹ cancelled 0\nℹ skipped 0\nℹ todo 0\nℹ duration_ms 1274.991\n",
+  "stderrTail": "",
+  "ranAt": "2026-05-26T00:18:59.691Z",
+  "evidencePath": "X:\\Projects\\DanteForge\\.danteforge\\outcome-evidence\\4c116375545ed5516ded2f1ae71832de6ea85fd2-self_improvement-self_t7_lessons_runtime.json"
+}

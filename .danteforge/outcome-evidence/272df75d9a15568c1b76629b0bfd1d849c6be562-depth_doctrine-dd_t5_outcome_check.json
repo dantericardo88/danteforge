@@ -1,0 +1,14 @@
+{
+  "dimensionId": "depth_doctrine",
+  "outcomeId": "dd_t5_outcome_check",
+  "tier": "T5",
+  "gitSha": "272df75d9a15568c1b76629b0bfd1d849c6be562",
+  "passed": false,
+  "exitCode": 1,
+  "durationMs": 60172,
+  "stdoutTail": "",
+  "stderrTail": "",
+  "failureReason": "exit 1 (expected 0)",
+  "ranAt": "2026-05-28T06:36:35.948Z",
+  "evidencePath": "X:\\Projects\\DanteForge\\.danteforge\\outcome-evidence\\272df75d9a15568c1b76629b0bfd1d849c6be562-depth_doctrine-dd_t5_outcome_check.json"
+}

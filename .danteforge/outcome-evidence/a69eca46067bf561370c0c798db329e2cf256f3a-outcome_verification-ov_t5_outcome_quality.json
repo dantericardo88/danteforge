@@ -1,0 +1,13 @@
+{
+  "dimensionId": "outcome_verification",
+  "outcomeId": "ov_t5_outcome_quality",
+  "tier": "T5",
+  "gitSha": "a69eca46067bf561370c0c798db329e2cf256f3a",
+  "passed": true,
+  "exitCode": 0,
+  "durationMs": 2529,
+  "stdoutTail": "▶ outcome-quality runtime gate\n  ✔ rejects T5 shell outcome that only reads files (3.3679ms)\n  ✔ allows T5 cli-smoke outcome (0.402ms)\n  ✔ allows T5 runtime-exec outcome (0.2789ms)\n  ✔ allows T5 e2e-workflow outcome (0.2718ms)\n  ✔ allows T2 shell outcome with readFileSync (below gate) (0.2581ms)\n  ✔ allows T5 shell outcome that actually spawns processes (0.4056ms)\n  ✔ allows T5 shell with readFileSync if it also spawns (0.4457ms)\n✔ outcome-quality runtime gate (7.5202ms)\n▶ outcome-quality gate\n  ✔ passes a real T5 outcome with meaningful stdout (3.2117ms)\n  ✔ rejects T5 outcome with timeout_ms < 5000 (0.5037ms)\n  ✔ rejects T5 outcome with empty stdout (0.223ms)\n  ✔ rejects T3+ shell outcome with trivial echo command (0.1749ms)\n  ✔ passes T2 outcome with echo command (gate only fires T3+) (0.1522ms)\n  ✔ rejects T3 shell outcome with very short command (0.1656ms)\n  ✔ passes T5 outcome with real command and stdout (0.2674ms)\n✔ outcome-quality gate (6.5965ms)\nℹ tests 14\nℹ suites 2\nℹ pass 14\nℹ fail 0\nℹ cancelled 0\nℹ skipped 0\nℹ todo 0\nℹ duration_ms 545.0627\n",
+  "stderrTail": "",
+  "ranAt": "2026-05-25T18:55:50.918Z",
+  "evidencePath": "X:\\Projects\\DanteForge\\.danteforge\\outcome-evidence\\a69eca46067bf561370c0c798db329e2cf256f3a-outcome_verification-ov_t5_outcome_quality.json"
+}

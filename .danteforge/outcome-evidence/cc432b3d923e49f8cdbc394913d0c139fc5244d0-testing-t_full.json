@@ -1,0 +1,13 @@
+{
+  "dimensionId": "testing",
+  "outcomeId": "t_full",
+  "tier": "T2",
+  "gitSha": "cc432b3d923e49f8cdbc394913d0c139fc5244d0",
+  "passed": true,
+  "exitCode": 0,
+  "durationMs": 212,
+  "stdoutTail": "",
+  "stderrTail": "",
+  "ranAt": "2026-05-22T11:25:00.777Z",
+  "evidencePath": "X:\\Projects\\DanteForge\\.danteforge\\outcome-evidence\\cc432b3d923e49f8cdbc394913d0c139fc5244d0-testing-t_full.json"
+}

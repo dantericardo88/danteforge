@@ -1,0 +1,13 @@
+{
+  "dimensionId": "self_improvement",
+  "outcomeId": "singularity_30pct",
+  "tier": "T7",
+  "gitSha": "969cdec2dd2313fcefc3a8c75c53951a3692c46f",
+  "passed": true,
+  "exitCode": 0,
+  "durationMs": 363,
+  "stdoutTail": "[singularity] Commits analysed: 6013 (since 90 days ago)\n[singularity] DanteForge-assisted: 359 (6%)\n[singularity] Human-only:          5654\n[singularity] Aider baseline:       62%  |  DanteForge: 6%  |  Gap: 56%\n[singularity] Report: X:\\Projects\\DanteForge\\.danteforge\\metrics\\singularity.json\n[singularity] Top assisted commits:\n  969cdec2  feat(matrix): lift 6 new dims to 9.0 via T7 multi-receipt evidence + overall 9.0/10\n  2c7d805b  fix(council): subscription-only roster + diff-embedded judges + Grok stderr capture\n  f111f415  feat(council): 3-gap frontier push — anonymous review + persona verdicts + session resume\n  60d34b9b  fix(council): revert-on-fail + skipPermissions for all builder modes\n  dcf5d048  fix(council): 5 Codex-identified structural gaps + Antigravity (agy) adapter\n[singularity] PASS — 6% >= 5% threshold\n",
+  "stderrTail": "",
+  "ranAt": "2026-05-25T15:45:31.366Z",
+  "evidencePath": "X:\\Projects\\DanteForge\\.danteforge\\outcome-evidence\\969cdec2dd2313fcefc3a8c75c53951a3692c46f-self_improvement-singularity_30pct.json"
+}

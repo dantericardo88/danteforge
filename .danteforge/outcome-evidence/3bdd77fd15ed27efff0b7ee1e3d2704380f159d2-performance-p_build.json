@@ -1,0 +1,13 @@
+{
+  "dimensionId": "performance",
+  "outcomeId": "p_build",
+  "tier": "T2",
+  "gitSha": "3bdd77fd15ed27efff0b7ee1e3d2704380f159d2",
+  "passed": true,
+  "exitCode": 0,
+  "durationMs": 196,
+  "stdoutTail": "",
+  "stderrTail": "",
+  "ranAt": "2026-05-25T23:12:43.837Z",
+  "evidencePath": "X:\\Projects\\DanteForge\\.danteforge\\outcome-evidence\\3bdd77fd15ed27efff0b7ee1e3d2704380f159d2-performance-p_build.json"
+}

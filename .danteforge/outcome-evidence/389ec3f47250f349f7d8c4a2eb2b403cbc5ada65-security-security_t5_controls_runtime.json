@@ -1,0 +1,13 @@
+{
+  "dimensionId": "security",
+  "outcomeId": "security_t5_controls_runtime",
+  "tier": "T5",
+  "gitSha": "389ec3f47250f349f7d8c4a2eb2b403cbc5ada65",
+  "passed": true,
+  "exitCode": 0,
+  "durationMs": 3672,
+  "stdoutTail": "▶ validateSecurityControls\n  ✔ returns all false when no checks requested (3.6615ms)\n  ✔ checkPermissions sets permissionsValid true when configDir accessible (12.0017ms)\n  ✔ checkIntegrity adds issue when audit dir missing (4.0429ms)\n  ✔ checkSecrets runs without throwing (86.2157ms)\n  ✔ issues array collects from all enabled checks (67.5807ms)\n✔ validateSecurityControls (176.8043ms)\nℹ tests 5\nℹ suites 1\nℹ pass 5\nℹ fail 0\nℹ cancelled 0\nℹ skipped 0\nℹ todo 0\nℹ duration_ms 923.1562\n",
+  "stderrTail": "",
+  "ranAt": "2026-05-25T17:40:25.503Z",
+  "evidencePath": "X:\\Projects\\DanteForge\\.danteforge\\outcome-evidence\\389ec3f47250f349f7d8c4a2eb2b403cbc5ada65-security-security_t5_controls_runtime.json"
+}

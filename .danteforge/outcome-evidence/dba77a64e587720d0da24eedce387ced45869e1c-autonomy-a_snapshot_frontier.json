@@ -1,0 +1,13 @@
+{
+  "dimensionId": "autonomy",
+  "outcomeId": "a_snapshot_frontier",
+  "tier": "T3",
+  "gitSha": "dba77a64e587720d0da24eedce387ced45869e1c",
+  "passed": true,
+  "exitCode": 0,
+  "durationMs": 152,
+  "stdoutTail": "",
+  "stderrTail": "",
+  "ranAt": "2026-05-25T16:34:19.277Z",
+  "evidencePath": "X:\\Projects\\DanteForge\\.danteforge\\outcome-evidence\\dba77a64e587720d0da24eedce387ced45869e1c-autonomy-a_snapshot_frontier.json"
+}

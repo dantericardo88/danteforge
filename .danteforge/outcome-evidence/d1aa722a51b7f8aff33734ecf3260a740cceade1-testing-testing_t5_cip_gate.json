@@ -1,0 +1,13 @@
+{
+  "dimensionId": "testing",
+  "outcomeId": "testing_t5_cip_gate",
+  "tier": "T5",
+  "gitSha": "d1aa722a51b7f8aff33734ecf3260a740cceade1",
+  "passed": true,
+  "exitCode": 0,
+  "durationMs": 3337,
+  "stdoutTail": "[INFO] [daemon] Starting autonomous improvement loop\n[INFO] [daemon] Strategy: adaptive | Target: 9 | Time limit: 1m\n[INFO] [daemon] Log: .danteforge/daemon-log.jsonl\n[INFO] \n[daemon] ── Pass 1 (crusade) ──────────────────\n[INFO] [daemon] Score: 5 → 9.5 (+4.50)\n[WARN] [daemon] CIP blocked target-reached: 1 dim(s) lack end-to-end evidence\n[WARN]   test_dim: claimed — no outcomes declared; no src implementation found\n[INFO] [daemon] Time limit reached (1m elapsed)\n▶ daemon CIP gate (Rule 14)\n  ✔ T1: CIP-blocked dims prevent target-reached — daemon exits via time limit (37.2906ms)\n[INFO] [daemon] Starting autonomous improvement loop\n[INFO] [daemon] Strategy: adaptive | Target: 9 | Time limit: 60m\n[INFO] [daemon] Log: .danteforge/daemon-log.jsonl\n[INFO] \n[daemon] ── Pass 1 (crusade) ──────────────────\n[INFO] [daemon] Score: 5 → 9.5 (+4.50)\n[INFO] [daemon] TARGET REACHED: 9.5 >= 9 (CIP confirmed all dims)\n  ✔ T2: CIP-passing dims allow target-reached — daemon exits immediately (14.2563ms)\n[INFO] [daemon] Starting autonomous improvement loop\n[INFO] [daemon] Strategy: adaptive | Target: 9 | Time limit: 60m\n[INFO] [daemon] Log: .danteforge/daemon-log.jsonl\n[INFO] \n[daemon] ── Pass 1 (crusade) ──────────────────\n[INFO] [daemon] Score: 5 → 9.5 (+4.50)\n[INFO] [daemon] TARGET REACHED: 9.5 >= 9 (CIP confirmed all dims)\n  ✔ T3: CIP is a no-op when all dimensions are excluded — target-reached is allowed (12.7128ms)\n✔ daemon CIP gate (Rule 14) (67.6457ms)\nℹ tests 3\nℹ suites 1\nℹ pass 3\nℹ fail 0\nℹ cancelled 0\nℹ skipped 0\nℹ todo 0\nℹ duration_ms 779.2769\n",
+  "stderrTail": "",
+  "ranAt": "2026-05-25T20:49:45.170Z",
+  "evidencePath": "X:\\Projects\\DanteForge\\.danteforge\\outcome-evidence\\d1aa722a51b7f8aff33734ecf3260a740cceade1-testing-testing_t5_cip_gate.json"
+}

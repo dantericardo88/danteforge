@@ -1,0 +1,13 @@
+{
+  "dimensionId": "ux_polish",
+  "outcomeId": "ux_t5_actionable_errors_runtime",
+  "tier": "T5",
+  "gitSha": "3f3134b56519c9670b30af2d2a625ba0b5c7a860",
+  "passed": true,
+  "exitCode": 0,
+  "durationMs": 1636,
+  "stdoutTail": "▶ enrichError — known patterns\n  ✔ maps ENOENT .danteforge to init suggestion (3.6963ms)\n  ✔ maps \"No config found\" to config --setup suggestion (0.2788ms)\n  ✔ maps \"No constitution\" to constitution command suggestion (0.2827ms)\n  ✔ maps \"No spec found\" to specify command suggestion (0.1821ms)\n  ✔ maps \"LLM timeout\" to ollama / --prompt suggestion (0.1698ms)\n  ✔ maps \"Rate limit\" to wait / ollama suggestion (0.1305ms)\n  ✔ maps \"429\" HTTP error to retry / provider suggestion (0.1548ms)\n  ✔ maps \"connection refused\" to ollama serve suggestion (0.1928ms)\n  ✔ maps \"No plan found\" to plan command suggestion (0.2172ms)\n  ✔ maps \"gate failed\" to verify / --light suggestion (0.2908ms)\n  ✔ maps \"TypeScript error\" to typecheck suggestion (0.1988ms)\n  ✔ maps \"permission denied\" to permissions suggestion (0.2965ms)\n✔ enrichError — known patterns (7.9632ms)\n▶ enrichError — unknown patterns\n  ✔ returns a non-empty code for unrecognized messages (0.2396ms)\n  ✔ still includes the original message in the result (0.1428ms)\n  ✔ provides a generic helpful suggestion for unknown errors (0.1305ms)\n✔ enrichError — unknown patterns (0.7126ms)\n▶ enrichError — context matching\n  ✔ uses command context to improve pattern matching (0.1559ms)\n✔ enrichError — context matching (0.2324ms)\n▶ formatActionableError\n  ✔ includes the error code (0.1913ms)\n  ✔ includes the suggestion with → arrow (0.0898ms)\n  ✔ includes docsRef when available (0.0812ms)\n✔ formatActionableError (0.4727ms)\n▶ ERROR_SUGGESTIONS map\n  ✔ contains at least 20 patterns (0.12ms)\n  ✔ all suggestions are non-empty strings (0.1873ms)\n✔ ERROR_SUGGESTIONS map (0.4047ms)\nℹ tests 21\nℹ suites 5\nℹ pass 21\nℹ fail 0\nℹ cancelled 0\nℹ skipped 0\nℹ todo 0\nℹ duration_ms 380.3693\n",
+  "stderrTail": "",
+  "ranAt": "2026-05-27T22:03:40.865Z",
+  "evidencePath": "X:\\Projects\\DanteForge\\.danteforge\\outcome-evidence\\3f3134b56519c9670b30af2d2a625ba0b5c7a860-ux_polish-ux_t5_actionable_errors_runtime.json"
+}

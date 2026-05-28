@@ -1,0 +1,13 @@
+{
+  "dimensionId": "agent_activity_provenance",
+  "outcomeId": "aap_snapshot_tm",
+  "tier": "T3",
+  "gitSha": "4c116375545ed5516ded2f1ae71832de6ea85fd2",
+  "passed": true,
+  "exitCode": 0,
+  "durationMs": 358,
+  "stdoutTail": "",
+  "stderrTail": "",
+  "ranAt": "2026-05-25T23:35:11.605Z",
+  "evidencePath": "X:\\Projects\\DanteForge\\.danteforge\\outcome-evidence\\4c116375545ed5516ded2f1ae71832de6ea85fd2-agent_activity_provenance-aap_snapshot_tm.json"
+}

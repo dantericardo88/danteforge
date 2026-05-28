@@ -1,0 +1,13 @@
+{
+  "dimensionId": "testing",
+  "outcomeId": "t_runtime_exec_runner_runtime",
+  "tier": "T5",
+  "gitSha": "347c026d279993c7d5a9d4a47a26b559db3de6a1",
+  "passed": true,
+  "exitCode": 0,
+  "durationMs": 1010,
+  "stdoutTail": "▶ runtime-exec-runner\n  ✔ passes when command exits 0 (1.6326ms)\n  ✔ fails when command exits non-zero (0.3354ms)\n  ✔ rejects when duration is below min_duration_ms (0.2662ms)\n  ✔ passes when duration exceeds min_duration_ms (20.111ms)\n  ✔ checks expected_output_pattern (0.3493ms)\n  ✔ fails when output pattern does not match (0.3532ms)\n  ✔ handles spawn errors gracefully (0.3146ms)\n  ✔ accepts custom expected_exit (0.2322ms)\n✔ runtime-exec-runner (24.5288ms)\nℹ tests 8\nℹ suites 1\nℹ pass 8\nℹ fail 0\nℹ cancelled 0\nℹ skipped 0\nℹ todo 0\nℹ duration_ms 221.6251\n",
+  "stderrTail": "",
+  "ranAt": "2026-05-24T15:49:54.669Z",
+  "evidencePath": "X:\\Projects\\DanteForge\\.danteforge\\outcome-evidence\\347c026d279993c7d5a9d4a47a26b559db3de6a1-testing-t_runtime_exec_runner_runtime.json"
+}

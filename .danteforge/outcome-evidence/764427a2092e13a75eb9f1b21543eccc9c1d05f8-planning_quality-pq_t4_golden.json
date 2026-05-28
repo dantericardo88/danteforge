@@ -1,0 +1,13 @@
+{
+  "dimensionId": "planning_quality",
+  "outcomeId": "pq_t4_golden",
+  "tier": "T4",
+  "gitSha": "764427a2092e13a75eb9f1b21543eccc9c1d05f8",
+  "passed": true,
+  "exitCode": 0,
+  "durationMs": 321,
+  "stdoutTail": "",
+  "stderrTail": "",
+  "ranAt": "2026-05-22T19:03:32.589Z",
+  "evidencePath": "X:\\Projects\\DanteForge\\.danteforge\\outcome-evidence\\764427a2092e13a75eb9f1b21543eccc9c1d05f8-planning_quality-pq_t4_golden.json"
+}

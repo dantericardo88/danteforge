@@ -1,0 +1,13 @@
+{
+  "dimensionId": "ux_polish",
+  "outcomeId": "ux_t4_golden_path",
+  "tier": "T4",
+  "gitSha": "cc432b3d923e49f8cdbc394913d0c139fc5244d0",
+  "passed": true,
+  "exitCode": 0,
+  "durationMs": 131,
+  "stdoutTail": "",
+  "stderrTail": "",
+  "ranAt": "2026-05-22T11:25:59.428Z",
+  "evidencePath": "X:\\Projects\\DanteForge\\.danteforge\\outcome-evidence\\cc432b3d923e49f8cdbc394913d0c139fc5244d0-ux_polish-ux_t4_golden_path.json"
+}

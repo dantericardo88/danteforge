@@ -1,0 +1,13 @@
+{
+  "dimensionId": "developer_experience",
+  "outcomeId": "dx_t4_golden",
+  "tier": "T4",
+  "gitSha": "dba77a64e587720d0da24eedce387ced45869e1c",
+  "passed": true,
+  "exitCode": 0,
+  "durationMs": 191,
+  "stdoutTail": "",
+  "stderrTail": "",
+  "ranAt": "2026-05-25T16:31:15.096Z",
+  "evidencePath": "X:\\Projects\\DanteForge\\.danteforge\\outcome-evidence\\dba77a64e587720d0da24eedce387ced45869e1c-developer_experience-dx_t4_golden.json"
+}

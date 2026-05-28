@@ -1,0 +1,14 @@
+{
+  "dimensionId": "ecosystem_mcp",
+  "outcomeId": "mcp_server_module",
+  "tier": "T5",
+  "gitSha": null,
+  "passed": false,
+  "exitCode": 1,
+  "durationMs": 11669,
+  "stdoutTail": "",
+  "stderrTail": "",
+  "failureReason": "exit 1 (expected 0)",
+  "ranAt": "2026-05-21T16:43:38.306Z",
+  "evidencePath": "X:\\Projects\\DanteForge\\.danteforge\\outcome-evidence\\nogit-ecosystem_mcp-mcp_server_module.json"
+}

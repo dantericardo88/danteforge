@@ -1,0 +1,13 @@
+{
+  "dimensionId": "security",
+  "outcomeId": "s_audit",
+  "tier": "T2",
+  "gitSha": "88bb8abc6d759086583041b196cdf7f8033f1bea",
+  "passed": true,
+  "exitCode": 0,
+  "durationMs": 262,
+  "stdoutTail": "",
+  "stderrTail": "",
+  "ranAt": "2026-05-25T17:10:31.332Z",
+  "evidencePath": "X:\\Projects\\DanteForge\\.danteforge\\outcome-evidence\\88bb8abc6d759086583041b196cdf7f8033f1bea-security-s_audit.json"
+}

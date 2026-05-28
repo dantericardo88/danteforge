@@ -1,0 +1,13 @@
+{
+  "dimensionId": "outcome_verification",
+  "outcomeId": "ov_ceiling",
+  "tier": "T4",
+  "gitSha": "ec7556220a90aa98e9e20c20d8dceae0b293d420",
+  "passed": true,
+  "exitCode": 0,
+  "durationMs": 73,
+  "stdoutTail": "",
+  "stderrTail": "",
+  "ranAt": "2026-05-24T16:04:10.230Z",
+  "evidencePath": "X:\\Projects\\DanteForge\\.danteforge\\outcome-evidence\\ec7556220a90aa98e9e20c20d8dceae0b293d420-outcome_verification-ov_ceiling.json"
+}

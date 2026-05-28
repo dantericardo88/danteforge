@@ -1,0 +1,13 @@
+{
+  "dimensionId": "testing",
+  "outcomeId": "testing_t7_golden_runtime",
+  "tier": "T7",
+  "gitSha": "2a08a5817edcbfbdd930e304b6cf41bd8764a10d",
+  "passed": true,
+  "exitCode": 0,
+  "durationMs": 1533,
+  "stdoutTail": "▶ Matrix Kernel — Golden Flow (PRD §28 MVP)\n  ✔ runs the full 18-step loop and produces every required report (427.2321ms)\n✔ Matrix Kernel — Golden Flow (PRD §28 MVP) (427.9142ms)\n▶ runtime-exec-runner\n  ✔ passes when command exits 0 (1.8081ms)\n  ✔ fails when command exits non-zero (0.3549ms)\n  ✔ rejects when duration is below min_duration_ms (0.2417ms)\n  ✔ passes when duration exceeds min_duration_ms (19.5044ms)\n  ✔ checks expected_output_pattern (0.3332ms)\n  ✔ fails when output pattern does not match (0.2998ms)\n  ✔ handles spawn errors gracefully (0.2509ms)\n  ✔ accepts custom expected_exit (0.2164ms)\n✔ runtime-exec-runner (24.0441ms)\nℹ tests 9\nℹ suites 2\nℹ pass 9\nℹ fail 0\nℹ cancelled 0\nℹ skipped 0\nℹ todo 0\nℹ duration_ms 754.8248\n",
+  "stderrTail": "",
+  "ranAt": "2026-05-21T19:38:48.120Z",
+  "evidencePath": "X:\\Projects\\DanteForge\\.danteforge\\outcome-evidence\\2a08a5817edcbfbdd930e304b6cf41bd8764a10d-testing-testing_t7_golden_runtime.json"
+}

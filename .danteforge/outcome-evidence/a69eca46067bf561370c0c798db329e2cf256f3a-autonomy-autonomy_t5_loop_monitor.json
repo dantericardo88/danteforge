@@ -1,0 +1,13 @@
+{
+  "dimensionId": "autonomy",
+  "outcomeId": "autonomy_t5_loop_monitor",
+  "tier": "T5",
+  "gitSha": "a69eca46067bf561370c0c798db329e2cf256f3a",
+  "passed": true,
+  "exitCode": 0,
+  "durationMs": 2638,
+  "stdoutTail": "▶ assessLoopHealth\n  ✔ returns HEALTHY for empty records (1.6935ms)\n  ✔ returns HEALTHY for successful progressing cycles (0.7632ms)\n  ✔ returns STALLING for low forge success rate (0.2827ms)\n  ✔ returns STUCK when 3+ cycles have no score progress on same dim (0.3553ms)\n  ✔ computes avgPatternsPerCycle correctly (0.289ms)\n  ✔ does not mark STUCK for a dim with progress amid failures (0.413ms)\n✔ assessLoopHealth (5.6696ms)\n▶ buildCycleRecord\n  ✔ computes scoreDelta correctly (1.3196ms)\n  ✔ stores negative delta when score drops (0.2355ms)\n✔ buildCycleRecord (1.8501ms)\n▶ formatLoopHealthReport\n  ✔ includes status and recommendation (0.4646ms)\n  ✔ shows recent cycle entries (0.4449ms)\n✔ formatLoopHealthReport (1.1818ms)\nℹ tests 10\nℹ suites 3\nℹ pass 10\nℹ fail 0\nℹ cancelled 0\nℹ skipped 0\nℹ todo 0\nℹ duration_ms 478.7248\n",
+  "stderrTail": "",
+  "ranAt": "2026-05-25T19:05:04.862Z",
+  "evidencePath": "X:\\Projects\\DanteForge\\.danteforge\\outcome-evidence\\a69eca46067bf561370c0c798db329e2cf256f3a-autonomy-autonomy_t5_loop_monitor.json"
+}

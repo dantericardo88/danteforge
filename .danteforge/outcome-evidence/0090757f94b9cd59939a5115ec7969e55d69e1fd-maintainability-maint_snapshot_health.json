@@ -1,0 +1,13 @@
+{
+  "dimensionId": "maintainability",
+  "outcomeId": "maint_snapshot_health",
+  "tier": "T2",
+  "gitSha": "0090757f94b9cd59939a5115ec7969e55d69e1fd",
+  "passed": true,
+  "exitCode": 0,
+  "durationMs": 75,
+  "stdoutTail": "",
+  "stderrTail": "",
+  "ranAt": "2026-05-28T12:47:30.426Z",
+  "evidencePath": "X:\\Projects\\DanteForge\\.danteforge\\outcome-evidence\\0090757f94b9cd59939a5115ec7969e55d69e1fd-maintainability-maint_snapshot_health.json"
+}

@@ -1,0 +1,13 @@
+{
+  "dimensionId": "testing",
+  "outcomeId": "testing_t7_golden_runtime",
+  "tier": "T7",
+  "gitSha": null,
+  "passed": true,
+  "exitCode": 0,
+  "durationMs": 7950,
+  "stdoutTail": "▶ Matrix Kernel — Golden Flow (PRD §28 MVP)\n  ✔ runs the full 18-step loop and produces every required report (1129.0787ms)\n✔ Matrix Kernel — Golden Flow (PRD §28 MVP) (1133.1048ms)\n▶ runtime-exec-runner\n  ✔ passes when command exits 0 (8.8131ms)\n  ✔ fails when command exits non-zero (2.1531ms)\n  ✔ rejects when duration is below min_duration_ms (2.2792ms)\n  ✔ passes when duration exceeds min_duration_ms (21.3114ms)\n  ✔ checks expected_output_pattern (1.3342ms)\n  ✔ fails when output pattern does not match (1.4627ms)\n  ✔ handles spawn errors gracefully (2.2873ms)\n  ✔ accepts custom expected_exit (1.2025ms)\n✔ runtime-exec-runner (47.9245ms)\nℹ tests 9\nℹ suites 2\nℹ pass 9\nℹ fail 0\nℹ cancelled 0\nℹ skipped 0\nℹ todo 0\nℹ duration_ms 2426.1915\n",
+  "stderrTail": "",
+  "ranAt": "2026-05-22T13:02:23.396Z",
+  "evidencePath": "X:\\Projects\\DanteForge\\.danteforge\\outcome-evidence\\nogit-testing-testing_t7_golden_runtime.json"
+}

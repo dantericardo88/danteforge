@@ -1,0 +1,13 @@
+{
+  "dimensionId": "multi_agent_orchestration",
+  "outcomeId": "mao_t5_integration_test",
+  "tier": "T5",
+  "gitSha": "ec7556220a90aa98e9e20c20d8dceae0b293d420",
+  "passed": true,
+  "exitCode": 0,
+  "durationMs": 1528,
+  "stdoutTail": "▶ ClaudeCodeAdapter — integration (real hardware, no subprocess)\n  ✔ isAvailable() returns a boolean without throwing (120.4637ms)\n  ✔ prepareRun() returns prepared:true regardless of binary presence (0.2394ms)\n  ✔ prepareRun() cwd is preserved in prepared run (0.1248ms)\n  ✔ isAvailable() result is stable across two consecutive calls (226.1454ms)\n✔ ClaudeCodeAdapter — integration (real hardware, no subprocess) (347.9602ms)\n▶ CodexAdapter — integration (real hardware, no subprocess)\n  ✔ isAvailable() returns a boolean without throwing (90.3653ms)\n  ✔ prepareRun() returns prepared:true regardless of binary presence (0.2972ms)\n  ✔ isAvailable() result is stable across two consecutive calls (171.7394ms)\n✔ CodexAdapter — integration (real hardware, no subprocess) (262.6671ms)\nℹ tests 7\nℹ suites 2\nℹ pass 7\nℹ fail 0\nℹ cancelled 0\nℹ skipped 0\nℹ todo 0\nℹ duration_ms 804.3744\n",
+  "stderrTail": "",
+  "ranAt": "2026-05-24T16:44:15.064Z",
+  "evidencePath": "X:\\Projects\\DanteForge\\.danteforge\\outcome-evidence\\ec7556220a90aa98e9e20c20d8dceae0b293d420-multi_agent_orchestration-mao_t5_integration_test.json"
+}

@@ -1,0 +1,13 @@
+{
+  "dimensionId": "depth_doctrine",
+  "outcomeId": "depth_t5_quality_runtime",
+  "tier": "T5",
+  "gitSha": "e11affff99e894321ca3408f41d05c122e0ad853",
+  "passed": true,
+  "exitCode": 0,
+  "durationMs": 892,
+  "stdoutTail": "▶ outcome-quality runtime gate\n  ✔ rejects T5 shell outcome that only reads files (1.3561ms)\n  ✔ allows T5 cli-smoke outcome (0.1434ms)\n  ✔ allows T5 runtime-exec outcome (0.0894ms)\n  ✔ allows T5 e2e-workflow outcome (0.0828ms)\n  ✔ allows T2 shell outcome with readFileSync (below gate) (0.0786ms)\n  ✔ allows T5 shell outcome that actually spawns processes (0.1406ms)\n  ✔ allows T5 shell with readFileSync if it also spawns (0.1584ms)\n✔ outcome-quality runtime gate (2.8057ms)\nℹ tests 7\nℹ suites 1\nℹ pass 7\nℹ fail 0\nℹ cancelled 0\nℹ skipped 0\nℹ todo 0\nℹ duration_ms 185.6656\n",
+  "stderrTail": "",
+  "ranAt": "2026-05-24T17:25:15.195Z",
+  "evidencePath": "X:\\Projects\\DanteForge\\.danteforge\\outcome-evidence\\e11affff99e894321ca3408f41d05c122e0ad853-depth_doctrine-depth_t5_quality_runtime.json"
+}

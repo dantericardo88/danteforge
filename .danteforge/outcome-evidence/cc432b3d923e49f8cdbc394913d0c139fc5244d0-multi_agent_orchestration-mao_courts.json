@@ -1,0 +1,13 @@
+{
+  "dimensionId": "multi_agent_orchestration",
+  "outcomeId": "mao_courts",
+  "tier": "T4",
+  "gitSha": "cc432b3d923e49f8cdbc394913d0c139fc5244d0",
+  "passed": true,
+  "exitCode": 0,
+  "durationMs": 2225,
+  "stdoutTail": "",
+  "stderrTail": "",
+  "ranAt": "2026-05-22T03:14:27.576Z",
+  "evidencePath": "X:\\Projects\\DanteForge\\.danteforge\\outcome-evidence\\cc432b3d923e49f8cdbc394913d0c139fc5244d0-multi_agent_orchestration-mao_courts.json"
+}

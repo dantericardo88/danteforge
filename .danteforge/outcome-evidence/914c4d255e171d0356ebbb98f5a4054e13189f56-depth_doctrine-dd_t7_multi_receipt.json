@@ -1,0 +1,13 @@
+{
+  "dimensionId": "depth_doctrine",
+  "outcomeId": "dd_t7_multi_receipt",
+  "tier": "T7",
+  "gitSha": "914c4d255e171d0356ebbb98f5a4054e13189f56",
+  "passed": true,
+  "exitCode": 0,
+  "durationMs": 1324,
+  "stdoutTail": "the objective directly when it contains a diff block (0.1995ms)\n  ✔ builds a structured prompt when objective has no diff (0.1335ms)\n  ✔ passes consultation objective through without verdict template (council-ask fix) (0.1385ms)\n✔ buildGrokJudgePrompt — FIX 3: diff-pass-through (0.6354ms)\n▶ consultation passthrough — all 4 adapters\n  ✔ Codex passes consultation through verbatim (0.126ms)\n  ✔ Claude Code passes consultation through verbatim (0.1185ms)\n  ✔ Gemini passes consultation through verbatim (0.0904ms)\n  ✔ Grok passes consultation through verbatim (0.0534ms)\n✔ consultation passthrough — all 4 adapters (0.4756ms)\n▶ CouncilMemberId type — gemini-cli still valid for backward compat\n  ✔ gemini-cli is a valid CouncilMemberId value (0.0693ms)\n  ✔ all 3 subscription members are valid CouncilMemberIds (0.0618ms)\n✔ CouncilMemberId type — gemini-cli still valid for backward compat (0.1879ms)\nℹ tests 24\nℹ suites 8\nℹ pass 24\nℹ fail 0\nℹ cancelled 0\nℹ skipped 0\nℹ todo 0\nℹ duration_ms 755.8989\n",
+  "stderrTail": "",
+  "ranAt": "2026-05-28T14:04:34.056Z",
+  "evidencePath": ".danteforge/outcome-evidence/914c4d255e171d0356ebbb98f5a4054e13189f56-depth_doctrine-dd_t7_multi_receipt.json"
+}

@@ -1,0 +1,14 @@
+{
+  "dimensionId": "security",
+  "outcomeId": "sec_npm_audit",
+  "tier": "T5",
+  "gitSha": "2a08a5817edcbfbdd930e304b6cf41bd8764a10d",
+  "passed": false,
+  "exitCode": 0,
+  "durationMs": 1146,
+  "stdoutTail": "",
+  "stderrTail": "",
+  "failureReason": "quality gate: T5+ outcome produced zero stdout. Silent outcomes cannot prove observable behavior.; T5+ shell outcome is a structural file check, not runtime execution.",
+  "ranAt": "2026-05-21T16:20:24.162Z",
+  "evidencePath": "X:\\Projects\\DanteForge\\.danteforge\\outcome-evidence\\2a08a5817edcbfbdd930e304b6cf41bd8764a10d-security-sec_npm_audit.json"
+}

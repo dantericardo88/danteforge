@@ -1,0 +1,13 @@
+{
+  "dimensionId": "outcome_verification",
+  "outcomeId": "ov_t5_outcome_quality",
+  "tier": "T5",
+  "gitSha": "e3947e3111381c3e65cc253c91619f49f3c65032",
+  "passed": true,
+  "exitCode": 0,
+  "durationMs": 893,
+  "stdoutTail": "▶ classifyOutcomeKind — quality caps\n  ✔ npx tsx --test shell outcome caps at T4 (7.0) (0.6743ms)\n  ✔ npm test shell outcome caps at T4 (7.0) (0.1647ms)\n  ✔ npm run test shell outcome caps at T4 (7.0) (0.0952ms)\n  ✔ jest shell outcome caps at T4 (7.0) (0.063ms)\n  ✔ runtime-exec npx-tsx-test unlocks T5 (9.0 cap) (0.0869ms)\n  ✔ cli-smoke caps at T6 (8.5) (0.1029ms)\n✔ classifyOutcomeKind — quality caps (1.8903ms)\n▶ derived score — quality cap enforcement\n  ✔ T5 shell npx-tsx-test does NOT unlock T5 cap (0.9929ms)\n  ✔ T5 runtime-exec npx-tsx-test DOES unlock T5 cap (0.1923ms)\n  ✔ shell npm-test at T4 is allowed (cap equals T4) (0.1426ms)\n  ✔ mix: T4 shell passes + T5 shell blocked → T4 cap (0.1524ms)\n  ✔ mix: T4 shell passes + T5 runtime-exec passes → T5 cap (0.1182ms)\n✔ derived score — quality cap enforcement (1.8155ms)\n▶ outcome-quality runtime gate\n  ✔ rejects T5 shell outcome that only reads files (1.3648ms)\n  ✔ allows T5 cli-smoke outcome (0.1617ms)\n  ✔ allows T5 runtime-exec outcome (0.0965ms)\n  ✔ allows T5 e2e-workflow outcome (0.0819ms)\n  ✔ allows T2 shell outcome with readFileSync (below gate) (0.0864ms)\n  ✔ allows T5 shell outcome that actually spawns processes (0.1388ms)\n  ✔ allows T5 shell with readFileSync if it also spawns (0.1557ms)\n✔ outcome-quality runtime gate (2.8581ms)\n▶ outcome-quality gate\n  ✔ passes a real T5 outcome with meaningful stdout (1.3879ms)\n  ✔ rejects T5 outcome with timeout_ms < 5000 (0.2202ms)\n  ✔ rejects T5 outcome with empty stdout (0.097ms)\n  ✔ rejects T3+ shell outcome with trivial echo command (0.0775ms)\n  ✔ passes T2 outcome with echo command (gate only fires T3+) (0.0701ms)\n  ✔ rejects T3 shell outcome with very short command (0.0816ms)\n  ✔ passes T5 outcome with real command and stdout (0.1134ms)\n✔ outcome-quality gate (2.7981ms)\nℹ tests 25\nℹ suites 4\nℹ pass 25\nℹ fail 0\nℹ cancelled 0\nℹ skipped 0\nℹ todo 0\nℹ duration_ms 212.4288\n",
+  "stderrTail": "",
+  "ranAt": "2026-05-28T03:53:49.886Z",
+  "evidencePath": "X:\\Projects\\DanteForge\\.danteforge\\outcome-evidence\\e3947e3111381c3e65cc253c91619f49f3c65032-outcome_verification-ov_t5_outcome_quality.json"
+}

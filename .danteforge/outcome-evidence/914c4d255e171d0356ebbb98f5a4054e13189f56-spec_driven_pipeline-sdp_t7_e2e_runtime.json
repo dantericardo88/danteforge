@@ -1,0 +1,13 @@
+{
+  "dimensionId": "spec_driven_pipeline",
+  "outcomeId": "sdp_t7_e2e_runtime",
+  "tier": "T7",
+  "gitSha": "914c4d255e171d0356ebbb98f5a4054e13189f56",
+  "passed": true,
+  "exitCode": 0,
+  "durationMs": 1892,
+  "stdoutTail": "  ✔ score is capped at 95 even with all bonuses (125 → 95) (0.1297ms)\n  ✔ evidence flags are optional — undefined behaves same as all-false (0.1344ms)\n✔ computeSpecDrivenPipelineScore — evidence bonuses (0.8142ms)\n▶ computeHarshScore evidence detection via _existsFn\n  ✔ specDrivenPipeline gains evidence bonus when _existsFn returns true for pipeline-run.json path (24.2233ms)\n  ✔ specDrivenPipeline gains E2E test bonus when _existsFn returns true for e2e-spec-pipeline.test.ts (10.3783ms)\n  ✔ specDrivenPipeline reaches 95 when all artifacts + synthesize stage + both evidence flags (5.3001ms)\n  ✔ specDrivenPipeline is unaffected by non-evidence paths returning true (10.3056ms)\n✔ computeHarshScore evidence detection via _existsFn (50.4922ms)\n▶ pipeline-run.json evidence schema\n  ✔ reads and validates the todo-app evidence file schema (4.4201ms)\n✔ pipeline-run.json evidence schema (6.2801ms)\nℹ tests 20\nℹ suites 5\nℹ pass 20\nℹ fail 0\nℹ cancelled 0\nℹ skipped 0\nℹ todo 0\nℹ duration_ms 1300.9155\n",
+  "stderrTail": "",
+  "ranAt": "2026-05-28T14:04:24.406Z",
+  "evidencePath": ".danteforge/outcome-evidence/914c4d255e171d0356ebbb98f5a4054e13189f56-spec_driven_pipeline-sdp_t7_e2e_runtime.json"
+}

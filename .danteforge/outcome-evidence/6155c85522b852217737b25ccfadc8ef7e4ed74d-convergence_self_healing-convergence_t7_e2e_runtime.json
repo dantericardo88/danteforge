@@ -1,0 +1,13 @@
+{
+  "dimensionId": "convergence_self_healing",
+  "outcomeId": "convergence_t7_e2e_runtime",
+  "tier": "T7",
+  "gitSha": "6155c85522b852217737b25ccfadc8ef7e4ed74d",
+  "passed": true,
+  "exitCode": 0,
+  "durationMs": 3502,
+  "stdoutTail": "✔ e2e convergence: nova ramps an under-threshold dim to ≥9.0 across retries (368.4871ms)\n✔ e2e convergence: nova exhausts retries when scorer never crosses threshold (164.128ms)\n✔ e2e convergence: chain_hash differs across runs with different convergence outcomes (211.9174ms)\n▶ computeConvergenceSelfHealingScore — base behavior\n  ✔ base score is 30 with no state signals and no evidence (1.3648ms)\n  ✔ lastVerifyStatus=pass adds 25 points (0.3075ms)\n  ✔ autoforgeFailedAttempts>0 AND pass adds 15 more points (recovery proven) (0.2142ms)\n  ✔ auditLog.length>10 adds 15 points; length>3 adds 8 points (0.2681ms)\n  ✔ autoforgeEnabled adds 10 points (0.2636ms)\n  ✔ score is capped at 95 even with all state signals (120 → 95) (0.2339ms)\n✔ computeConvergenceSelfHealingScore — base behavior (4.4192ms)\n▶ computeConvergenceSelfHealingScore — evidence bonuses\n  ✔ hasConvergenceProof: true adds 15 points (0.2398ms)\n  ✔ hasE2EConvergenceTest: true adds 10 points (0.1906ms)\n  ✔ both flags stack: +25 total (0.1672ms)\n  ✔ score is capped at 95 even with all state signals + both bonuses (0.2771ms)\n  ✔ undefined flags behave same as all-false (0.1504ms)\n✔ computeConvergenceSelfHealingScore — evidence bonuses (1.3449ms)\n▶ computeHarshScore convergence detection via _readConvergenceProof\n  ✔ gains proof bonus when _readConvergenceProof returns hasConvergenceProof=true (37.6071ms)\n  ✔ gains E2E test bonus when _readConvergenceProof returns hasE2EConvergenceTest=true (13.7299ms)\n  ✔ reaches 95 when all state signals + both evidence flags (6.5953ms)\n  ✔ convergenceSelfHealing unaffected when _readConvergenceProof returns all-false (19.9764ms)\n✔ computeHarshScore convergence detection via _readConvergenceProof (78.5612ms)\nℹ tests 18\nℹ suites 3\nℹ pass 18\nℹ fail 0\nℹ cancelled 0\nℹ skipped 0\nℹ todo 0\nℹ duration_ms 1479.9655\n",
+  "stderrTail": "",
+  "ranAt": "2026-05-25T19:57:56.445Z",
+  "evidencePath": "X:\\Projects\\DanteForge\\.danteforge\\outcome-evidence\\6155c85522b852217737b25ccfadc8ef7e4ed74d-convergence_self_healing-convergence_t7_e2e_runtime.json"
+}

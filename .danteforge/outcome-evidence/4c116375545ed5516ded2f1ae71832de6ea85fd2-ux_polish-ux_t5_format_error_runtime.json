@@ -1,0 +1,13 @@
+{
+  "dimensionId": "ux_polish",
+  "outcomeId": "ux_t5_format_error_runtime",
+  "tier": "T5",
+  "gitSha": "4c116375545ed5516ded2f1ae71832de6ea85fd2",
+  "passed": true,
+  "exitCode": 0,
+  "durationMs": 3780,
+  "stdoutTail": "▶ format-error\n  ▶ errorToJson\n    ✔ formats DanteError with code and remedy (1.7124ms)\n    ✔ formats GateError (0.7799ms)\n    ✔ formats generic Error (0.339ms)\n    ✔ formats non-Error (0.2555ms)\n  ✔ errorToJson (4.7681ms)\n✔ format-error (5.5985ms)\nℹ tests 4\nℹ suites 2\nℹ pass 4\nℹ fail 0\nℹ cancelled 0\nℹ skipped 0\nℹ todo 0\nℹ duration_ms 1066.7816\n",
+  "stderrTail": "",
+  "ranAt": "2026-05-25T23:56:24.217Z",
+  "evidencePath": "X:\\Projects\\DanteForge\\.danteforge\\outcome-evidence\\4c116375545ed5516ded2f1ae71832de6ea85fd2-ux_polish-ux_t5_format_error_runtime.json"
+}

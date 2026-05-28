@@ -1,0 +1,13 @@
+{
+  "dimensionId": "spec_workflow_enforcement",
+  "outcomeId": "swe_t5_gates",
+  "tier": "T5",
+  "gitSha": "2c7d805b2c7528398a20678a2c63b2a5f3003110",
+  "passed": true,
+  "exitCode": 0,
+  "durationMs": 2657,
+  "stdoutTail": "[WARN] Approval gate: \"test-artifact\" requires human review before proceeding.\n[ERR] blocked\n[INFO] Remedy: fix\n▶ GateError\n  ✔ has gate and remedy properties (0.9692ms)\n  ✔ is an instance of Error (0.3428ms)\n✔ GateError (2.3557ms)\n▶ gates light mode bypass\n  ✔ requireConstitution passes in light mode (0.3693ms)\n  ✔ requireSpec passes in light mode (0.4028ms)\n  ✔ requirePlan passes in light mode (0.3301ms)\n  ✔ requireTests passes in light mode (0.3746ms)\n  ✔ requireApproval does not throw in any mode (1.0945ms)\n✔ gates light mode bypass (2.9748ms)\n▶ runGate\n  ✔ returns true when gate passes (0.3396ms)\n  ✔ returns false when gate throws GateError (0.445ms)\n  ✔ rethrows non-GateError errors (0.2867ms)\n✔ runGate (1.2861ms)\n[INFO] STATE.yaml updated\n▶ gates with cwd injection\n  ✔ requireConstitution passes with cwd pointing to valid state + CONSTITUTION.md (37.3358ms)\n[INFO] STATE.yaml updated\n  ✔ requireConstitution throws GateError with cwd pointing to empty state (7.4474ms)\n[INFO] STATE.yaml updated\n  ✔ requireSpec passes with cwd and SPEC.md present (4.7776ms)\n[INFO] STATE.yaml updated\n  ✔ requireSpec throws GateError without SPEC.md at cwd (3.5495ms)\n[INFO] STATE.yaml updated\n  ✔ requirePlan passes with cwd and PLAN.md present (4.1691ms)\n[INFO] STATE.yaml updated\n  ✔ requirePlan throws GateError without PLAN.md at cwd (3.7562ms)\n[INFO] STATE.yaml updated\n  ✔ requireDesign passes with valid DESIGN.op at cwd (4.4448ms)\n[INFO] STATE.yaml updated\n  ✔ requireDesign throws GateError without DESIGN.op at cwd (3.2143ms)\n[INFO] STATE.yaml updated\n  ✔ requireClarify passes with cwd and CLARIFY.md present (4.4724ms)\n[INFO] STATE.yaml updated\n  ✔ requireClarify throws GateError without CLARIFY.md at cwd (4.0289ms)\n✔ gates with cwd injection (77.9247ms)\nℹ tests 20\nℹ suites 4\nℹ pass 20\nℹ fail 0\nℹ cancelled 0\nℹ skipped 0\nℹ todo 0\nℹ duration_ms 670.3335\n",
+  "stderrTail": "",
+  "ranAt": "2026-05-25T15:31:23.878Z",
+  "evidencePath": "X:\\Projects\\DanteForge\\.danteforge\\outcome-evidence\\2c7d805b2c7528398a20678a2c63b2a5f3003110-spec_workflow_enforcement-swe_t5_gates.json"
+}

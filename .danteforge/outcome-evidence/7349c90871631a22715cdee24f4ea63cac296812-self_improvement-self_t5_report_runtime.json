@@ -1,0 +1,13 @@
+{
+  "dimensionId": "self_improvement",
+  "outcomeId": "self_t5_report_runtime",
+  "tier": "T5",
+  "gitSha": "7349c90871631a22715cdee24f4ea63cac296812",
+  "passed": true,
+  "exitCode": 0,
+  "durationMs": 2356,
+  "stdoutTail": "▶ buildImprovementReport (pure function)\n  ✔ T1: returns Markdown containing \"Before:\" and \"After:\" summary (0.8234ms)\n  ✔ T2: report contains cycle table with correct delta (0.1603ms)\n[INFO] \n[INFO] ╔══════════════════════════════════════════════════════╗\n[INFO] ║    DanteForge Autonomous Self-Improvement Loop        ║\n[INFO] ║    Target: 9.0/10  Max cycles: 2                  ║\n[INFO] ╚══════════════════════════════════════════════════════╝\n[INFO] \n[INFO] Completion target: Mode: Standard 18-Dimension Scoring\nTarget: 9/10 across all dimensions\nDescription: default\n[INFO] \n[INFO] Starting score: 6.0/10  |  Target: 9.0/10\n[INFO] \n[INFO] ━━━ Cycle 1/2  |  Score: 6.0/10  |  Gap: 3.0 ━━━\n[WARN] [self-improve] No actionable gaps found — stopping\n[INFO] \n[INFO] ═══════════════════════════════════════════════════════\n[INFO]   Self-Improvement Loop — Final Report\n[INFO] ═══════════════════════════════════════════════════════\n[INFO]   Cycles run:    1\n[INFO]   Start score:   6.0/10\n[INFO]   Final score:   6.0/10  (+0.0 gain)\n[INFO]   Target:        9.0/10\n[INFO]   Stop reason:   error\n[INFO] ═══════════════════════════════════════════════════════\n  ✔ T3: _writeReport injection captures content without disk I/O (18.6837ms)\n  ✔ T4: verdict label is correct for each stop reason (0.2667ms)\n✔ buildImprovementReport (pure function) (20.7822ms)\nℹ tests 4\nℹ suites 1\nℹ pass 4\nℹ fail 0\nℹ cancelled 0\nℹ skipped 0\nℹ todo 0\nℹ duration_ms 894.7459\n",
+  "stderrTail": "",
+  "ranAt": "2026-05-22T15:51:06.300Z",
+  "evidencePath": "X:\\Projects\\DanteForge\\.danteforge\\outcome-evidence\\7349c90871631a22715cdee24f4ea63cac296812-self_improvement-self_t5_report_runtime.json"
+}

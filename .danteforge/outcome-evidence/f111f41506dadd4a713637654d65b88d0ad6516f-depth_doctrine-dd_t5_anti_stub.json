@@ -1,0 +1,13 @@
+{
+  "dimensionId": "depth_doctrine",
+  "outcomeId": "dd_t5_anti_stub",
+  "tier": "T5",
+  "gitSha": "f111f41506dadd4a713637654d65b88d0ad6516f",
+  "passed": true,
+  "exitCode": 0,
+  "durationMs": 1034,
+  "stdoutTail": "▶ anti-stub scan\n  ✔ passes for clean implementation files and exempt doctrine/config files (52.3447ms)\n  ✔ fails when a production implementation file contains stub markers (47.1499ms)\n✔ anti-stub scan (100.315ms)\nℹ tests 2\nℹ suites 1\nℹ pass 2\nℹ fail 0\nℹ cancelled 0\nℹ skipped 0\nℹ todo 0\nℹ duration_ms 284.8415\n",
+  "stderrTail": "",
+  "ranAt": "2026-05-25T14:40:14.695Z",
+  "evidencePath": "X:\\Projects\\DanteForge\\.danteforge\\outcome-evidence\\f111f41506dadd4a713637654d65b88d0ad6516f-depth_doctrine-dd_t5_anti_stub.json"
+}

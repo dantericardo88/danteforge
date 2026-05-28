@@ -1,0 +1,13 @@
+{
+  "dimensionId": "token_economy",
+  "outcomeId": "te_ledger",
+  "tier": "T4",
+  "gitSha": "a69eca46067bf561370c0c798db329e2cf256f3a",
+  "passed": true,
+  "exitCode": 0,
+  "durationMs": 148,
+  "stdoutTail": "",
+  "stderrTail": "",
+  "ranAt": "2026-05-25T18:26:30.758Z",
+  "evidencePath": "X:\\Projects\\DanteForge\\.danteforge\\outcome-evidence\\a69eca46067bf561370c0c798db329e2cf256f3a-token_economy-te_ledger.json"
+}

@@ -1,0 +1,13 @@
+{
+  "dimensionId": "community_adoption",
+  "outcomeId": "ca_t5_mcp_ecosystem",
+  "tier": "T5",
+  "gitSha": "914c4d255e171d0356ebbb98f5a4054e13189f56",
+  "passed": true,
+  "exitCode": 0,
+  "durationMs": 1362,
+  "stdoutTail": "status MCP tool (9.4811ms)\n▶ danteforge_git_activity MCP tool\n  ✔ handler exists in TOOL_HANDLERS (0.1146ms)\n  ✔ returns branchCount field (31.9886ms)\n✔ danteforge_git_activity MCP tool (32.2524ms)\n▶ danteforge_health MCP tool\n  ✔ handler exists in TOOL_HANDLERS (0.1159ms)\n  ✔ returns checks array with timestamp (116.3037ms)\n  ✔ each check has name, status, and detail fields (28.7109ms)\n✔ danteforge_health MCP tool (145.2876ms)\n▶ TOOL_DEFINITIONS includes new ecosystem tools\n  ✔ contains danteforge_convergence_status (0.5875ms)\n  ✔ contains danteforge_git_activity (0.3573ms)\n  ✔ contains danteforge_health (0.3289ms)\n✔ TOOL_DEFINITIONS includes new ecosystem tools (1.3578ms)\n▶ convergence status with real score files\n  ✔ reads score field from both overallScore and score keys (3.1379ms)\n  ✔ stalled trend when scores are flat (2.8694ms)\n✔ convergence status with real score files (6.1124ms)\nℹ tests 33\nℹ suites 9\nℹ pass 33\nℹ fail 0\nℹ cancelled 0\nℹ skipped 0\nℹ todo 0\nℹ duration_ms 790.0531\n",
+  "stderrTail": "",
+  "ranAt": "2026-05-28T14:04:53.555Z",
+  "evidencePath": ".danteforge/outcome-evidence/914c4d255e171d0356ebbb98f5a4054e13189f56-community_adoption-ca_t5_mcp_ecosystem.json"
+}

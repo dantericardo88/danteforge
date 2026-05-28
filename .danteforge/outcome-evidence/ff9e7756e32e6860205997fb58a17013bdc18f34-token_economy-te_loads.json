@@ -1,0 +1,13 @@
+{
+  "dimensionId": "token_economy",
+  "outcomeId": "te_loads",
+  "tier": "T1",
+  "gitSha": "ff9e7756e32e6860205997fb58a17013bdc18f34",
+  "passed": true,
+  "exitCode": 0,
+  "durationMs": 70,
+  "stdoutTail": "",
+  "stderrTail": "",
+  "ranAt": "2026-05-28T04:00:04.462Z",
+  "evidencePath": "X:\\Projects\\DanteForge\\.danteforge\\outcome-evidence\\ff9e7756e32e6860205997fb58a17013bdc18f34-token_economy-te_loads.json"
+}

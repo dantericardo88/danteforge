@@ -1,0 +1,13 @@
+{
+  "dimensionId": "error_handling",
+  "outcomeId": "eh_snapshot_cli",
+  "tier": "T3",
+  "gitSha": "ff9e7756e32e6860205997fb58a17013bdc18f34",
+  "passed": true,
+  "exitCode": 0,
+  "durationMs": 71,
+  "stdoutTail": "",
+  "stderrTail": "",
+  "ranAt": "2026-05-28T03:58:36.562Z",
+  "evidencePath": "X:\\Projects\\DanteForge\\.danteforge\\outcome-evidence\\ff9e7756e32e6860205997fb58a17013bdc18f34-error_handling-eh_snapshot_cli.json"
+}

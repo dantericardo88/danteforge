@@ -1,0 +1,13 @@
+{
+  "dimensionId": "performance",
+  "outcomeId": "performance_t5_monitor_runtime",
+  "tier": "T5",
+  "gitSha": "e11affff99e894321ca3408f41d05c122e0ad853",
+  "passed": true,
+  "exitCode": 0,
+  "durationMs": 1314,
+  "stdoutTail": "▶ PerformanceMonitor\n  ✔ constructs without throwing (1.0403ms)\n  ✔ getCurrentMetrics returns expected shape when no data (0.3369ms)\n  ✔ recordStartupTime adds a measurement (8.5471ms)\n[WARN] [CRITICAL] startupTime is 150% above baseline (250.0 vs 100.0)\n[WARN] [CRITICAL] startupTime is 150% above baseline (250.0 vs 100.0)\n  ✔ averages.startupTime equals the recorded value for single measurement (1.8208ms)\n  ✔ getCurrentMetrics returns regression=false without baseline (1.5122ms)\n[INFO] Performance baseline updated\n  ✔ updateBaseline does not throw (2.8208ms)\n[WARN] [CRITICAL] startupTime is 100% above baseline (200.0 vs 100.0)\n[WARN] [CRITICAL] startupTime is 200% above baseline (300.0 vs 100.0)\n[WARN] [CRITICAL] startupTime is 100% above baseline (200.0 vs 100.0)\n  ✔ multiple recordStartupTime calls accumulate measurements (2.8841ms)\n[WARN] [CRITICAL] startupTime is 100% above baseline (200.0 vs 100.0)\n[WARN] [CRITICAL] startupTime is 50% above baseline (150.0 vs 100.0)\n  ✔ averages.startupTime averages recent measurements (2.1414ms)\n[WARN] [WARNING] startupTime is 30% above baseline (130.0 vs 100.0)\n[WARN] [WARNING] startupTime is 40% above baseline (140.0 vs 100.0)\n  ✔ recent slice is limited to last 10 (9.939ms)\n  ✔ each measurement has a timestamp (1.2531ms)\n✔ PerformanceMonitor (33.7043ms)\nℹ tests 10\nℹ suites 1\nℹ pass 10\nℹ fail 0\nℹ cancelled 0\nℹ skipped 0\nℹ todo 0\nℹ duration_ms 297.1239\n",
+  "stderrTail": "",
+  "ranAt": "2026-05-24T17:07:26.393Z",
+  "evidencePath": "X:\\Projects\\DanteForge\\.danteforge\\outcome-evidence\\e11affff99e894321ca3408f41d05c122e0ad853-performance-performance_t5_monitor_runtime.json"
+}

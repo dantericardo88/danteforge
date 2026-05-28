@@ -1,0 +1,14 @@
+{
+  "dimensionId": "functionality",
+  "outcomeId": "fn_commands_count",
+  "tier": "T5",
+  "gitSha": "2a08a5817edcbfbdd930e304b6cf41bd8764a10d",
+  "passed": false,
+  "exitCode": 0,
+  "durationMs": 84,
+  "stdoutTail": "",
+  "stderrTail": "",
+  "failureReason": "quality gate: T5+ outcome produced zero stdout. Silent outcomes cannot prove observable behavior.",
+  "ranAt": "2026-05-21T19:30:54.323Z",
+  "evidencePath": "X:\\Projects\\DanteForge\\.danteforge\\outcome-evidence\\2a08a5817edcbfbdd930e304b6cf41bd8764a10d-functionality-fn_commands_count.json"
+}

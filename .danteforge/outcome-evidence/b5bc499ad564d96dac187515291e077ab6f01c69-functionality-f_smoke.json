@@ -1,0 +1,13 @@
+{
+  "dimensionId": "functionality",
+  "outcomeId": "f_smoke",
+  "tier": "T2",
+  "gitSha": "b5bc499ad564d96dac187515291e077ab6f01c69",
+  "passed": true,
+  "exitCode": 0,
+  "durationMs": 133,
+  "stdoutTail": "",
+  "stderrTail": "",
+  "ranAt": "2026-05-25T16:38:19.053Z",
+  "evidencePath": "X:\\Projects\\DanteForge\\.danteforge\\outcome-evidence\\b5bc499ad564d96dac187515291e077ab6f01c69-functionality-f_smoke.json"
+}

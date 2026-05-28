@@ -1,0 +1,13 @@
+{
+  "dimensionId": "testing",
+  "outcomeId": "testing_t5_smoke_runtime",
+  "tier": "T5",
+  "gitSha": "cc432b3d923e49f8cdbc394913d0c139fc5244d0",
+  "passed": true,
+  "exitCode": 0,
+  "durationMs": 3099,
+  "stdoutTail": "[INFO] STATE.yaml updated\n▶ DanteForge Core State\n  ✔ loads default state (15.0643ms)\n[INFO] STATE.yaml updated\n  ✔ has valid default profile (5.8206ms)\n[INFO] STATE.yaml updated\n  ✔ starts at phase 0 (7.3702ms)\n✔ DanteForge Core State (29.8041ms)\n▶ DanteForge Commands\n  ✔ review command exports correctly (207.9592ms)\n  ✔ verify command exports correctly (49.5197ms)\n  ✔ synthesize command exports correctly (22.7254ms)\n[INFO] STATE.yaml updated\n[INFO] STATE.yaml updated\n[OK] Handoff complete: review -> next phase\n  ✔ handoff accepts review as source (33.2587ms)\n✔ DanteForge Commands (314.0213ms)\n▶ DanteForge Gates & Skills\n  ✔ gates module exports correctly (1.0944ms)\n  ✔ requireConstitution gate blocks when no constitution (23.1137ms)\n  ✔ requireConstitution gate passes in light mode (0.944ms)\n  ✔ skills module exports correctly (12.5786ms)\n[WARN] Failed to parse SKILL.md frontmatter — falling back to regex\n  ✔ discovers all 11 skills (427.0827ms)\n[WARN] Failed to parse SKILL.md frontmatter — falling back to regex\n  ✔ resolves a skill by name (247.8229ms)\n[WARN] Failed to parse SKILL.md frontmatter — falling back to regex\n  ✔ returns null for unknown skill (226.233ms)\n  ✔ discovers user-installed Claude, Codex, Antigravity, and OpenCode skills alongside packaged skills (25.5036ms)\n  ✔ prefers user-installed skills over packaged skills when names collide (12.838ms)\n  ✔ debug command exports correctly (8.3542ms)\n  ✔ compact command exports correctly (5.3783ms)\n  ✔ ux-refine command exports correctly (32.5957ms)\n  ✔ worktree utility exports correctly (19.8676ms)\n[INFO] STATE.yaml updated\n  ✔ state interface supports extended fields (6.984ms)\n  ✔ token estimator exports correctly (1.3681ms)\n  ✔ help command exports correctly (8.3977ms)\n✔ DanteForge Gates & Skills (1061.3091ms)\nℹ tests 23\nℹ suites 3\nℹ pass 23\nℹ fail 0\nℹ cancelled 0\nℹ skipped 0\nℹ todo 0\nℹ duration_ms 1783.1177\n",
+  "stderrTail": "",
+  "ranAt": "2026-05-22T11:25:31.295Z",
+  "evidencePath": "X:\\Projects\\DanteForge\\.danteforge\\outcome-evidence\\cc432b3d923e49f8cdbc394913d0c139fc5244d0-testing-testing_t5_smoke_runtime.json"
+}

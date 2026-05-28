@@ -1,0 +1,13 @@
+{
+  "dimensionId": "outcome_verification",
+  "outcomeId": "ov_t5_derived_score",
+  "tier": "T5",
+  "gitSha": "344a1be295c330d8dcebbde8e3b522c1bf0f1f3b",
+  "passed": true,
+  "exitCode": 0,
+  "durationMs": 3251,
+  "stdoutTail": "▶ isOutcomePassing\n  ✔ returns false when no evidence provided (1.3953ms)\n  ✔ returns true on clean exit-0 evidence (0.2654ms)\n  ✔ honors expected_exit (non-zero expected) (0.297ms)\n  ✔ requires the output pattern to match when set (0.4175ms)\n  ✔ returns false on a malformed regex (defensive) (0.2511ms)\n✔ isOutcomePassing (4.4769ms)\n▶ computeDerivedScore — pure function properties\n  ✔ returns 0 for a dim with one T1 outcome failing (0.8707ms)\n  ✔ returns T1 cap (4.0) when the single T1 outcome passes (0.2992ms)\n  ✔ walks tiers low to high: T1 passes + T2 fails → T1 cap (0.2948ms)\n  ✔ walks tiers: T1+T2 pass + T3 fails → T2 cap (0.2758ms)\n  ✔ continuous tier-internal progress: 2/4 T2 outcomes pass → between T1 and T2 caps (0.3587ms)\n  ✔ declared_ceiling caps the score even when more outcomes pass (0.3899ms)\n  ✔ legacy fallback: no outcomes declared → returns legacy_score (0.2306ms)\n  ✔ legacy fallback: no outcomes + no legacy → falls back to scores.self (0.13ms)\n  ✔ legacy fallback: no outcomes + no legacy + no scores.self → 0 (0.1028ms)\n  ✔ pure: same inputs produce same outputs across calls (0.1952ms)\n  ✔ monotonic: more outcomes passing never lowers the score (0.3241ms)\n✔ computeDerivedScore — pure function properties (4.1039ms)\n▶ computeDerivedScoreWithBreakdown\n  ✔ returns the per-tier breakdown (0.192ms)\n  ✔ flags legacy fallback when no outcomes declared (0.1264ms)\n✔ computeDerivedScoreWithBreakdown (0.4376ms)\n▶ hasOutcomes\n  ✔ false when outcomes undefined (0.1397ms)\n  ✔ false when outcomes empty array (0.3159ms)\n  ✔ true when outcomes has entries (0.1902ms)\n✔ hasOutcomes (2.7772ms)\n▶ STRUCTURAL: inflation is impossible by construction\n  ✔ an agent claim of 9.0 is silently ignored when only T1 outcome passes (0.4458ms)\n  ✔ an agent attempt to \"raise the score\" without adding evidence does nothing (0.2893ms)\n  ✔ the only way to raise the score is to make outcomes pass (0.3021ms)\n✔ STRUCTURAL: inflation is impossible by construction (1.2717ms)\nℹ tests 24\nℹ suites 5\nℹ pass 24\nℹ fail 0\nℹ cancelled 0\nℹ skipped 0\nℹ todo 0\nℹ duration_ms 668.3053\n",
+  "stderrTail": "",
+  "ranAt": "2026-05-25T21:33:02.532Z",
+  "evidencePath": "X:\\Projects\\DanteForge\\.danteforge\\outcome-evidence\\344a1be295c330d8dcebbde8e3b522c1bf0f1f3b-outcome_verification-ov_t5_derived_score.json"
+}

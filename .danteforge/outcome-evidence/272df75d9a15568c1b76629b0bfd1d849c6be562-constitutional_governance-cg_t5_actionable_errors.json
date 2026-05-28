@@ -1,0 +1,13 @@
+{
+  "dimensionId": "constitutional_governance",
+  "outcomeId": "cg_t5_actionable_errors",
+  "tier": "T5",
+  "gitSha": "272df75d9a15568c1b76629b0bfd1d849c6be562",
+  "passed": true,
+  "exitCode": 0,
+  "durationMs": 8464,
+  "stdoutTail": "▶ enrichError — known patterns\n  ✔ maps ENOENT .danteforge to init suggestion (5.2289ms)\n  ✔ maps \"No config found\" to config --setup suggestion (0.4829ms)\n  ✔ maps \"No constitution\" to constitution command suggestion (1.6118ms)\n  ✔ maps \"No spec found\" to specify command suggestion (0.4302ms)\n  ✔ maps \"LLM timeout\" to ollama / --prompt suggestion (0.464ms)\n  ✔ maps \"Rate limit\" to wait / ollama suggestion (0.3722ms)\n  ✔ maps \"429\" HTTP error to retry / provider suggestion (0.3405ms)\n  ✔ maps \"connection refused\" to ollama serve suggestion (0.3812ms)\n  ✔ maps \"No plan found\" to plan command suggestion (0.4643ms)\n  ✔ maps \"gate failed\" to verify / --light suggestion (0.5909ms)\n  ✔ maps \"TypeScript error\" to typecheck suggestion (0.4579ms)\n  ✔ maps \"permission denied\" to permissions suggestion (0.3945ms)\n✔ enrichError — known patterns (15.7874ms)\n▶ enrichError — unknown patterns\n  ✔ returns a non-empty code for unrecognized messages (0.4838ms)\n  ✔ still includes the original message in the result (0.3149ms)\n  ✔ provides a generic helpful suggestion for unknown errors (0.319ms)\n✔ enrichError — unknown patterns (1.4647ms)\n▶ enrichError — context matching\n  ✔ uses command context to improve pattern matching (0.4644ms)\n✔ enrichError — context matching (0.6225ms)\n▶ formatActionableError\n  ✔ includes the error code (0.4052ms)\n  ✔ includes the suggestion with → arrow (0.3004ms)\n  ✔ includes docsRef when available (0.2414ms)\n✔ formatActionableError (1.2203ms)\n▶ ERROR_SUGGESTIONS map\n  ✔ contains at least 20 patterns (0.2766ms)\n  ✔ all suggestions are non-empty strings (0.3289ms)\n✔ ERROR_SUGGESTIONS map (0.8106ms)\nℹ tests 21\nℹ suites 5\nℹ pass 21\nℹ fail 0\nℹ cancelled 0\nℹ skipped 0\nℹ todo 0\nℹ duration_ms 891.534\n",
+  "stderrTail": "",
+  "ranAt": "2026-05-28T06:34:25.532Z",
+  "evidencePath": "X:\\Projects\\DanteForge\\.danteforge\\outcome-evidence\\272df75d9a15568c1b76629b0bfd1d849c6be562-constitutional_governance-cg_t5_actionable_errors.json"
+}

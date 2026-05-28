@@ -1,0 +1,13 @@
+{
+  "dimensionId": "spec_workflow_enforcement",
+  "outcomeId": "swe_t5_spec_driven_pipeline",
+  "tier": "T5",
+  "gitSha": "914c4d255e171d0356ebbb98f5a4054e13189f56",
+  "passed": true,
+  "exitCode": 0,
+  "durationMs": 939,
+  "stdoutTail": "08ms)\n✔ getLastStageTime (0.5395ms)\n▶ getPipelineSummary\n  ✔ returns empty summary when no log exists (0.2839ms)\n  ✔ shows completed stages in pipeline order regardless of log order (0.2091ms)\n  ✔ computes totalElapsedMs correctly (0.1162ms)\n  ✔ reports current stage as most recently run stage (0.0934ms)\n  ✔ next action mentions the next stage after specify (0.1015ms)\n  ✔ runCount tracks multiple runs of the same stage (0.1081ms)\n  ✔ includes all entries in the entries array (0.1154ms)\n✔ getPipelineSummary (1.1749ms)\n▶ pipelineStatus command\n  ✔ returns a result with summary, drift, and specQuality fields (1.4451ms)\n  ✔ includes specQuality when spec text is available (0.5287ms)\n  ✔ detects spec drift in the result (0.4725ms)\n  ✔ JSON output mode: writes parseable JSON to stdout (0.1871ms)\n  ✔ returns a stub result when inner function throws (0.5486ms)\n✔ pipelineStatus command (3.3142ms)\nℹ tests 47\nℹ suites 8\nℹ pass 47\nℹ fail 0\nℹ cancelled 0\nℹ skipped 0\nℹ todo 0\nℹ duration_ms 370.4958\n",
+  "stderrTail": "",
+  "ranAt": "2026-05-28T14:04:25.347Z",
+  "evidencePath": ".danteforge/outcome-evidence/914c4d255e171d0356ebbb98f5a4054e13189f56-spec_workflow_enforcement-swe_t5_spec_driven_pipeline.json"
+}

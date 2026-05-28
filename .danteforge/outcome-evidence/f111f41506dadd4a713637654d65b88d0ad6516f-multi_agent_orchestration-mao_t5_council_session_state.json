@@ -1,0 +1,13 @@
+{
+  "dimensionId": "multi_agent_orchestration",
+  "outcomeId": "mao_t5_council_session_state",
+  "tier": "T5",
+  "gitSha": "f111f41506dadd4a713637654d65b88d0ad6516f",
+  "passed": true,
+  "exitCode": 0,
+  "durationMs": 1247,
+  "stdoutTail": "▶ MemberVerdict — GAP 1+2 shape\n  ✔ has blockingConcerns and dissentSummary fields (1.3302ms)\n✔ MemberVerdict — GAP 1+2 shape (2.991ms)\n▶ CouncilMemberProfiles — GAP 2 persona\n  ✔ all profiles have a non-empty persona string (0.4794ms)\n  ✔ codex persona reflects security/testing orientation (0.3562ms)\n  ✔ gemini-cli persona reflects documentation/UX orientation (0.2929ms)\n  ✔ grok-build persona reflects architecture orientation (0.2128ms)\n  ✔ claude-code persona reflects integration/pipeline orientation (0.2371ms)\n✔ CouncilMemberProfiles — GAP 2 persona (2.0875ms)\n▶ MergeCourtResult — GAP 1 anonymization fields\n  ✔ result has anonymizationMap and dissentLog fields (0.3713ms)\n  ✔ dissentLog captures minority positions even on PASS (1.7354ms)\n✔ MergeCourtResult — GAP 1 anonymization fields (2.4826ms)\n▶ CouncilSessionState — GAP 3 persistence\n  ✔ makeSessionId returns a non-empty string (0.4208ms)\n  ✔ makeInitialState creates state with correct defaults (1.8058ms)\n  ✔ writeSessionState + loadSessionState round-trips correctly (16.3677ms)\n  ✔ loadSessionState returns null for non-existent runId (1.3084ms)\n  ✔ listSessions returns saved sessions sorted newest-first (25.9115ms)\n  ✔ writeSessionState does not throw if .danteforge dir does not exist (3.7364ms)\n✔ CouncilSessionState — GAP 3 persistence (50.1334ms)\nℹ tests 14\nℹ suites 4\nℹ pass 14\nℹ fail 0\nℹ cancelled 0\nℹ skipped 0\nℹ todo 0\nℹ duration_ms 335.2846\n",
+  "stderrTail": "",
+  "ranAt": "2026-05-25T14:30:25.903Z",
+  "evidencePath": "X:\\Projects\\DanteForge\\.danteforge\\outcome-evidence\\f111f41506dadd4a713637654d65b88d0ad6516f-multi_agent_orchestration-mao_t5_council_session_state.json"
+}

@@ -1,0 +1,13 @@
+{
+  "dimensionId": "multi_agent_orchestration",
+  "outcomeId": "mao_t5_adapter_tests",
+  "tier": "T5",
+  "gitSha": "e11affff99e894321ca3408f41d05c122e0ad853",
+  "passed": true,
+  "exitCode": 0,
+  "durationMs": 922,
+  "stdoutTail": "▶ ClaudeCodeAdapter\n  ✔ T1: isAvailable() returns false via injection seam (1.1629ms)\n  ✔ T2: prepareRun() returns input with prepared:true (0.1581ms)\n  ✔ T3: exit 0 + allowed file change → status completed, filesChanged populated (6.0608ms)\n  ✔ T4: exit 1 → status failed, errorReason contains exit code (1.03ms)\n  ✔ T5: forbidden file → _revertFile called, status failed, errorReason is edit_outside_lease (0.7678ms)\n✔ ClaudeCodeAdapter (10.0086ms)\n▶ CodexAdapter\n  ✔ T1: isAvailable() returns false via injection seam (1.1369ms)\n  ✔ T2: prepareRun() returns input with prepared:true (0.157ms)\n  ✔ T3: exit 0 + allowed file change → status completed, filesChanged populated (5.924ms)\n  ✔ T4: exit 1 → status failed, errorReason contains exit code (1.0127ms)\n  ✔ T5: forbidden file → _revertFile called, status failed, errorReason is edit_outside_lease (0.7412ms)\n✔ CodexAdapter (9.8296ms)\nℹ tests 10\nℹ suites 2\nℹ pass 10\nℹ fail 0\nℹ cancelled 0\nℹ skipped 0\nℹ todo 0\nℹ duration_ms 213.9799\n",
+  "stderrTail": "",
+  "ranAt": "2026-05-24T17:24:18.530Z",
+  "evidencePath": "X:\\Projects\\DanteForge\\.danteforge\\outcome-evidence\\e11affff99e894321ca3408f41d05c122e0ad853-multi_agent_orchestration-mao_t5_adapter_tests.json"
+}

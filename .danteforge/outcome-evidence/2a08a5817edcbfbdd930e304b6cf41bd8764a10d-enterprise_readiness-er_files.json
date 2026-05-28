@@ -1,0 +1,13 @@
+{
+  "dimensionId": "enterprise_readiness",
+  "outcomeId": "er_files",
+  "tier": "T1",
+  "gitSha": "2a08a5817edcbfbdd930e304b6cf41bd8764a10d",
+  "passed": true,
+  "exitCode": 0,
+  "durationMs": 85,
+  "stdoutTail": "",
+  "stderrTail": "",
+  "ranAt": "2026-05-21T19:43:44.437Z",
+  "evidencePath": "X:\\Projects\\DanteForge\\.danteforge\\outcome-evidence\\2a08a5817edcbfbdd930e304b6cf41bd8764a10d-enterprise_readiness-er_files.json"
+}

@@ -1,0 +1,13 @@
+{
+  "dimensionId": "error_handling",
+  "outcomeId": "eh_t4_e2e",
+  "tier": "T4",
+  "gitSha": "ff9e7756e32e6860205997fb58a17013bdc18f34",
+  "passed": true,
+  "exitCode": 0,
+  "durationMs": 63,
+  "stdoutTail": "",
+  "stderrTail": "",
+  "ranAt": "2026-05-28T03:59:12.877Z",
+  "evidencePath": "X:\\Projects\\DanteForge\\.danteforge\\outcome-evidence\\ff9e7756e32e6860205997fb58a17013bdc18f34-error_handling-eh_t4_e2e.json"
+}

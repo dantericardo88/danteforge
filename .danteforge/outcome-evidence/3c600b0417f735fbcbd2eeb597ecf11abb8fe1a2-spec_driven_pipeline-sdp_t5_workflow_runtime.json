@@ -1,0 +1,13 @@
+{
+  "dimensionId": "spec_driven_pipeline",
+  "outcomeId": "sdp_t5_workflow_runtime",
+  "tier": "T5",
+  "gitSha": "3c600b0417f735fbcbd2eeb597ecf11abb8fe1a2",
+  "passed": true,
+  "exitCode": 0,
+  "durationMs": 3489,
+  "stdoutTail": "▶ validateTransition\n  ✔ allows initialized -> review (41.0114ms)\n  ✔ allows initialized -> constitution (7.8194ms)\n  ✔ blocks initialized -> forge (not adjacent) (7.6552ms)\n  ✔ blocks constitution -> forge (skips specify/plan) (6.7972ms)\n  ✔ allows plan -> tasks (6.5119ms)\n  ✔ allows light mode to bypass gate checks (6.0481ms)\n  ✔ reports unknown target stage (5.9948ms)\n✔ validateTransition (85.201ms)\n▶ getNextSteps\n  ✔ returns review and constitution from initialized (7.1441ms)\n  ✔ returns specify from constitution (5.8194ms)\n  ✔ returns clarify and plan from specify (6.0364ms)\n  ✔ returns synthesize from verify (5.5733ms)\n  ✔ returns empty array from synthesize (terminal) (6.0057ms)\n✔ getNextSteps (31.4802ms)\n▶ isStageComplete\n  ✔ returns false when artifact is missing (14.7553ms)\n  ✔ returns true when artifact exists (13.1864ms)\n  ✔ returns true for stages with no required artifacts (5.7243ms)\n✔ isStageComplete (34.3492ms)\n▶ getWorkflowGraph\n  ✔ returns a non-empty graph (6.7604ms)\n  ✔ graph covers all major stages (5.3813ms)\n✔ getWorkflowGraph (12.4887ms)\n[ERR] Cannot transition from 'initialized' to 'forge'. Valid source stages: tasks, design\n[INFO] Remedy: Complete the 'design' stage first.\n▶ enforceWorkflow strict-by-default\n  ✔ throws GateError for out-of-order commands when enforcementMode is not set (30.3462ms)\n  ✔ allows valid transitions even in strict mode (12.7365ms)\n✔ enforceWorkflow strict-by-default (43.4842ms)\nℹ tests 19\nℹ suites 5\nℹ pass 19\nℹ fail 0\nℹ cancelled 0\nℹ skipped 0\nℹ todo 0\nℹ duration_ms 1147.7023\n",
+  "stderrTail": "",
+  "ranAt": "2026-05-25T17:03:33.582Z",
+  "evidencePath": "X:\\Projects\\DanteForge\\.danteforge\\outcome-evidence\\3c600b0417f735fbcbd2eeb597ecf11abb8fe1a2-spec_driven_pipeline-sdp_t5_workflow_runtime.json"
+}

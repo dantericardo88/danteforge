@@ -1,0 +1,13 @@
+{
+  "dimensionId": "security",
+  "outcomeId": "s_t4_gate_e2e",
+  "tier": "T4",
+  "gitSha": "7349c90871631a22715cdee24f4ea63cac296812",
+  "passed": true,
+  "exitCode": 0,
+  "durationMs": 415,
+  "stdoutTail": "",
+  "stderrTail": "",
+  "ranAt": "2026-05-22T13:39:43.966Z",
+  "evidencePath": "X:\\Projects\\DanteForge\\.danteforge\\outcome-evidence\\7349c90871631a22715cdee24f4ea63cac296812-security-s_t4_gate_e2e.json"
+}

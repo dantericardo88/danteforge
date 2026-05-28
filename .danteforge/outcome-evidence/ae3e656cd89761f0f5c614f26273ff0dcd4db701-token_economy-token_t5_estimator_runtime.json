@@ -1,0 +1,13 @@
+{
+  "dimensionId": "token_economy",
+  "outcomeId": "token_t5_estimator_runtime",
+  "tier": "T5",
+  "gitSha": "ae3e656cd89761f0f5c614f26273ff0dcd4db701",
+  "passed": true,
+  "exitCode": 0,
+  "durationMs": 1018,
+  "stdoutTail": "▶ estimateTokens\n  ✔ estimates roughly 1 token per 4 chars (0.4984ms)\n  ✔ returns 0 for empty string (0.0858ms)\n  ✔ rounds up partial tokens (0.0802ms)\n✔ estimateTokens (1.2539ms)\n▶ estimateCost\n  ✔ returns zero for ollama (0.2966ms)\n  ✔ returns positive cost for paid providers (0.1257ms)\n  ✔ output cost assumes 25% of input tokens (0.0645ms)\n✔ estimateCost (0.6202ms)\n▶ chunkText\n  ✔ returns single chunk for short text (0.1572ms)\n  ✔ splits long text into multiple chunks (0.3113ms)\n  ✔ tries to split at paragraph boundaries (0.0986ms)\n  ✔ handles empty text (0.118ms)\n✔ chunkText (0.8401ms)\n▶ TOKEN_LIMITS\n  ✔ has limits for all providers (0.0875ms)\n✔ TOKEN_LIMITS (0.1325ms)\n▶ chunkForProvider\n  ✔ returns single chunk when text fits within provider limit (0.2178ms)\n  ✔ splits long prose into multiple chunks for ollama (small context window) (0.143ms)\n  ✔ code text produces smaller chunks than prose for same provider (0.1042ms)\n  ✔ concatenating all chunks reproduces the original text (0.0588ms)\n✔ chunkForProvider (0.6019ms)\n▶ code-aware estimation\n  ✔ isLikelyCode detects TypeScript as code (0.052ms)\n  ✔ isLikelyCode detects prose as not code (0.0357ms)\n  ✔ estimateTokens with code-aware strategy gives higher count for code (0.0399ms)\n✔ code-aware estimation (0.1782ms)\nℹ tests 18\nℹ suites 6\nℹ pass 18\nℹ fail 0\nℹ cancelled 0\nℹ skipped 0\nℹ todo 0\nℹ duration_ms 247.6491\n",
+  "stderrTail": "",
+  "ranAt": "2026-05-28T13:41:00.664Z",
+  "evidencePath": "X:\\Projects\\DanteForge\\.danteforge\\outcome-evidence\\ae3e656cd89761f0f5c614f26273ff0dcd4db701-token_economy-token_t5_estimator_runtime.json"
+}

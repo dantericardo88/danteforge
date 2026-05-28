@@ -1,0 +1,13 @@
+{
+  "dimensionId": "developer_experience",
+  "outcomeId": "dx_t5_command_suggest_runtime",
+  "tier": "T5",
+  "gitSha": "2a08a5817edcbfbdd930e304b6cf41bd8764a10d",
+  "passed": true,
+  "exitCode": 0,
+  "durationMs": 1633,
+  "stdoutTail": "▶ levenshteinDistance\n  ✔ returns 0 for identical strings (0.8045ms)\n  ✔ returns full length when one string is empty (0.1266ms)\n  ✔ returns 1 for a single character insertion (0.1873ms)\n  ✔ returns 1 for a single character deletion (0.1397ms)\n  ✔ returns 1 for a single character substitution (0.1123ms)\n  ✔ is symmetric (0.0994ms)\n  ✔ handles completely different strings (0.1539ms)\n  ✔ handles single-character strings (0.0959ms)\n✔ levenshteinDistance (2.7663ms)\n▶ findClosestCommand\n  ✔ returns null for an exact match (no suggestion needed) (0.4727ms)\n  ✔ finds a close match for a one-character typo (0.3462ms)\n  ✔ finds a close match for a missing letter (0.2835ms)\n  ✔ finds a close match for a transposition (0.2121ms)\n  ✔ returns null for a completely different input (0.2081ms)\n  ✔ returns null when the command list is empty (0.0857ms)\n  ✔ is case-insensitive in comparison (0.11ms)\n  ✔ returns null when distance ratio > 0.4 (not helpful enough) (0.2475ms)\n✔ findClosestCommand (2.3975ms)\n▶ formatCommandSuggestion\n  ✔ uses the expected message format (0.2207ms)\n  ✔ includes both the input and the suggestion (0.1112ms)\n  ✔ ends with a question mark (0.0886ms)\n  ✔ wraps both terms in double quotes (0.0962ms)\n✔ formatCommandSuggestion (0.6718ms)\nℹ tests 20\nℹ suites 3\nℹ pass 20\nℹ fail 0\nℹ cancelled 0\nℹ skipped 0\nℹ todo 0\nℹ duration_ms 357.3804\n",
+  "stderrTail": "",
+  "ranAt": "2026-05-21T19:47:22.627Z",
+  "evidencePath": "X:\\Projects\\DanteForge\\.danteforge\\outcome-evidence\\2a08a5817edcbfbdd930e304b6cf41bd8764a10d-developer_experience-dx_t5_command_suggest_runtime.json"
+}

@@ -1,0 +1,13 @@
+{
+  "dimensionId": "self_improvement",
+  "outcomeId": "singularity_30pct",
+  "tier": "T7",
+  "gitSha": "d1aa722a51b7f8aff33734ecf3260a740cceade1",
+  "passed": true,
+  "exitCode": 0,
+  "durationMs": 534,
+  "stdoutTail": "[singularity] Commits analysed: 6146 (since 90 days ago)\n[singularity] DanteForge-assisted: 376 (6.1%)\n[singularity] Human-only:          5770\n[singularity] Aider baseline:       62%  |  DanteForge: 6.1%  |  Gap: 55.9%\n[singularity] Report: X:\\Projects\\DanteForge\\.danteforge\\metrics\\singularity.json\n[singularity] Top assisted commits:\n  d1aa722a  fix(council): streaming judge passes builder memberId not judge memberId\n  e030555f  feat(council): add --focus-dims flag for targeted proof runs\n  a30545d2  docs: promote 9PLUS_REQUIREMENTS and ADVERSARIAL_EVALUATION to repo-tracked docs\n  6155c855  score: autonomy 7.0 + multi_agent_orchestration 8.0 — validated 8/8\n  56f2d7b3  fix(tests): add _cipCheck seam to frontier-crusade tests that reached target score\n[singularity] PASS — 6.1% >= 5% threshold\n",
+  "stderrTail": "",
+  "ranAt": "2026-05-25T20:36:13.010Z",
+  "evidencePath": "X:\\Projects\\DanteForge\\.danteforge\\outcome-evidence\\d1aa722a51b7f8aff33734ecf3260a740cceade1-self_improvement-singularity_30pct.json"
+}

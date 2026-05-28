@@ -1,0 +1,13 @@
+{
+  "dimensionId": "agent_activity_provenance",
+  "outcomeId": "aap_t4_golden",
+  "tier": "T4",
+  "gitSha": "a69eca46067bf561370c0c798db329e2cf256f3a",
+  "passed": true,
+  "exitCode": 0,
+  "durationMs": 123,
+  "stdoutTail": "",
+  "stderrTail": "",
+  "ranAt": "2026-05-25T18:49:49.500Z",
+  "evidencePath": "X:\\Projects\\DanteForge\\.danteforge\\outcome-evidence\\a69eca46067bf561370c0c798db329e2cf256f3a-agent_activity_provenance-aap_t4_golden.json"
+}

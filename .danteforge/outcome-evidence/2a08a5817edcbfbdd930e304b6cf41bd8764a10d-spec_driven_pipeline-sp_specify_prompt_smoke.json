@@ -1,0 +1,14 @@
+{
+  "dimensionId": "spec_driven_pipeline",
+  "outcomeId": "sp_specify_prompt_smoke",
+  "tier": "T5",
+  "gitSha": "2a08a5817edcbfbdd930e304b6cf41bd8764a10d",
+  "passed": false,
+  "exitCode": 1,
+  "durationMs": 109,
+  "stdoutTail": "",
+  "stderrTail": "error: missing required argument 'idea'\n",
+  "failureReason": "exit 1 (expected 0)",
+  "ranAt": "2026-05-21T19:41:53.554Z",
+  "evidencePath": "X:\\Projects\\DanteForge\\.danteforge\\outcome-evidence\\2a08a5817edcbfbdd930e304b6cf41bd8764a10d-spec_driven_pipeline-sp_specify_prompt_smoke.json"
+}

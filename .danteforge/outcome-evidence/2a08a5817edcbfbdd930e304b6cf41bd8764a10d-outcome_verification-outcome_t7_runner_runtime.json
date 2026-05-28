@@ -1,0 +1,13 @@
+{
+  "dimensionId": "outcome_verification",
+  "outcomeId": "outcome_t7_runner_runtime",
+  "tier": "T7",
+  "gitSha": "2a08a5817edcbfbdd930e304b6cf41bd8764a10d",
+  "passed": true,
+  "exitCode": 0,
+  "durationMs": 1140,
+  "stdoutTail": "▶ e2e-workflow-runner\n  ✔ passes when all steps succeed (2.0717ms)\n  ✔ fails when a step exits non-zero (0.2555ms)\n  ✔ validates expected_stdout_patterns per step (0.2187ms)\n  ✔ fails when expected_stdout_patterns do not match (0.1961ms)\n  ✔ validates expected_artifacts after each step (0.3027ms)\n  ✔ fails when expected artifact is missing (0.3695ms)\n  ✔ uses temp dir when cwd_strategy is temp (0.4247ms)\n  ✔ handles spawn errors in steps gracefully (0.3333ms)\n✔ e2e-workflow-runner (5.3999ms)\n▶ outcome-quality gate\n  ✔ passes a real T5 outcome with meaningful stdout (1.7688ms)\n  ✔ rejects T5 outcome with timeout_ms < 5000 (0.2668ms)\n  ✔ rejects T5 outcome with empty stdout (0.1205ms)\n  ✔ rejects T3+ shell outcome with trivial echo command (0.1186ms)\n  ✔ passes T2 outcome with echo command (gate only fires T3+) (0.0951ms)\n  ✔ rejects T3 shell outcome with very short command (0.0883ms)\n  ✔ passes T5 outcome with real command and stdout (0.1548ms)\n✔ outcome-quality gate (3.6219ms)\nℹ tests 15\nℹ suites 2\nℹ pass 15\nℹ fail 0\nℹ cancelled 0\nℹ skipped 0\nℹ todo 0\nℹ duration_ms 298.9756\n",
+  "stderrTail": "",
+  "ranAt": "2026-05-21T19:45:05.534Z",
+  "evidencePath": "X:\\Projects\\DanteForge\\.danteforge\\outcome-evidence\\2a08a5817edcbfbdd930e304b6cf41bd8764a10d-outcome_verification-outcome_t7_runner_runtime.json"
+}

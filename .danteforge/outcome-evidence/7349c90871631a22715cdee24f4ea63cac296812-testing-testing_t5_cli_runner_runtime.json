@@ -1,0 +1,13 @@
+{
+  "dimensionId": "testing",
+  "outcomeId": "testing_t5_cli_runner_runtime",
+  "tier": "T5",
+  "gitSha": "7349c90871631a22715cdee24f4ea63cac296812",
+  "passed": true,
+  "exitCode": 0,
+  "durationMs": 2968,
+  "stdoutTail": "▶ cli-smoke-runner\n  ✔ passes when CLI exits 0 and stdout matches patterns (4.4096ms)\n  ✔ fails when CLI exits non-zero (0.4997ms)\n  ✔ fails when expected stdout pattern does not match (0.4899ms)\n  ✔ fails when forbidden stdout pattern matches (0.6736ms)\n  ✔ accepts custom expected_exit code (0.6713ms)\n  ✔ uses temp dir when cwd_strategy is temp (0.8516ms)\n  ✔ records durationMs > 0 (0.4393ms)\n  ✔ handles spawn errors gracefully (0.521ms)\n  ✔ requires all expected_stdout_patterns to match (0.9231ms)\n✔ cli-smoke-runner (12.1762ms)\nℹ tests 9\nℹ suites 1\nℹ pass 9\nℹ fail 0\nℹ cancelled 0\nℹ skipped 0\nℹ todo 0\nℹ duration_ms 724.5049\n",
+  "stderrTail": "",
+  "ranAt": "2026-05-22T14:03:45.955Z",
+  "evidencePath": "X:\\Projects\\DanteForge\\.danteforge\\outcome-evidence\\7349c90871631a22715cdee24f4ea63cac296812-testing-testing_t5_cli_runner_runtime.json"
+}

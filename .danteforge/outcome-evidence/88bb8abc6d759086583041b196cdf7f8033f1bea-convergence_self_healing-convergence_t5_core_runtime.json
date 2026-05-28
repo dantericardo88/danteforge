@@ -1,0 +1,13 @@
+{
+  "dimensionId": "convergence_self_healing",
+  "outcomeId": "convergence_t5_core_runtime",
+  "tier": "T5",
+  "gitSha": "88bb8abc6d759086583041b196cdf7f8033f1bea",
+  "passed": true,
+  "exitCode": 0,
+  "durationMs": 3590,
+  "stdoutTail": "▶ Convergence — initConvergence\n  ✔ T1: initConvergence sets targetScore and empty dimensions (5.548ms)\n  ✔ initConvergence with custom target score (0.4584ms)\n✔ Convergence — initConvergence (8.2209ms)\n▶ Convergence — updateDimension\n  ✔ T2: updateDimension adds new dimension with scoreHistory=[score] (1.1259ms)\n  ✔ T3: updateDimension appends to scoreHistory on second call (0.5011ms)\n  ✔ updateDimension preserves evidence list (0.4312ms)\n  ✔ updateDimension handles multiple dimensions independently (0.5958ms)\n✔ Convergence — updateDimension (3.2817ms)\n▶ Convergence — isFullyConverged\n  ✔ T4: isFullyConverged returns false when any dimension < targetScore (0.8685ms)\n  ✔ T5: isFullyConverged returns true when all dimensions >= target AND stable (0.4781ms)\n  ✔ T6: isFullyConverged returns false when stable but only 1 score in history (0.4312ms)\n  ✔ isFullyConverged returns false with empty dimensions (0.5359ms)\n✔ Convergence — isFullyConverged (3.2859ms)\n▶ Convergence — detectPlateau\n  ✔ T7: detectPlateau returns false when improvement > 0.5 in window (1.3075ms)\n  ✔ T8: detectPlateau returns true when 3 consecutive cycles produce < 0.5 total improvement (0.3983ms)\n  ✔ T9: detectPlateau returns false when fewer than windowSize (3) cycles (0.4872ms)\n  ✔ detectPlateau uses only the last windowSize cycles (0.4457ms)\n✔ Convergence — detectPlateau (3.013ms)\n▶ Convergence — renderConvergenceChart\n  ✔ T10: renderConvergenceChart produces ASCII bars for each dimension (1.2585ms)\n  ✔ T11: renderConvergenceChart marks converged dimensions with ✓ (0.5885ms)\n  ✔ renderConvergenceChart shows arrow for unconverged dimension (0.2606ms)\n  ✔ renderConvergenceChart returns placeholder for empty dimensions (0.2974ms)\n✔ Convergence — renderConvergenceChart (2.8209ms)\n▶ Convergence — persistence\n  ✔ T12: loadConvergence + saveConvergence round-trip preserves all fields (37.1892ms)\n  ✔ loadConvergence returns fresh state when file not found (2.2478ms)\n✔ Convergence — persistence (39.9856ms)\nℹ tests 20\nℹ suites 6\nℹ pass 20\nℹ fail 0\nℹ cancelled 0\nℹ skipped 0\nℹ todo 0\nℹ duration_ms 703.5688\n",
+  "stderrTail": "",
+  "ranAt": "2026-05-25T17:11:51.364Z",
+  "evidencePath": "X:\\Projects\\DanteForge\\.danteforge\\outcome-evidence\\88bb8abc6d759086583041b196cdf7f8033f1bea-convergence_self_healing-convergence_t5_core_runtime.json"
+}

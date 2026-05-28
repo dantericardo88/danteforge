@@ -1,0 +1,13 @@
+{
+  "dimensionId": "developer_experience",
+  "outcomeId": "dx_t7_docs_cli_runtime",
+  "tier": "T7",
+  "gitSha": "ec7556220a90aa98e9e20c20d8dceae0b293d420",
+  "passed": true,
+  "exitCode": 0,
+  "durationMs": 1505,
+  "stdoutTail": "▶ withErrorBoundary\n  ✔ success path — no error, exitCode not set (1.197ms)\n  ✔ GateError — logs gate message + remedy (0.4602ms)\n  ✔ DanteError — logs code + message + remedy (0.4316ms)\n  ✔ Generic Error — logs \"Unexpected error in <name>\" (0.5458ms)\n  ✔ Non-Error throw — logs stringified value (0.3728ms)\n  ✔ sets process.exitCode = 1 on error (0.3369ms)\n  ✔ shows stack in verbose mode (2.1763ms)\n  ✔ does not show stack when not verbose (0.3999ms)\n  ✔ DanteError with empty remedy does not log remedy line (0.4381ms)\n✔ withErrorBoundary (7.7102ms)\n▶ formatCommandReference\n  ✔ returns a non-empty string (1.1087ms)\n  ✔ includes the DanteForge Command Reference header (0.2878ms)\n  ✔ includes all major groups (0.212ms)\n  ✔ includes core pipeline commands (0.2159ms)\n  ✔ includes automation presets (0.1909ms)\n  ✔ is deterministic across multiple calls (0.3158ms)\n  ✔ includes danteforge prefix in usage examples (0.2237ms)\n  ✔ includes table of contents section (0.1903ms)\n✔ formatCommandReference (3.9101ms)\nℹ tests 17\nℹ suites 2\nℹ pass 17\nℹ fail 0\nℹ cancelled 0\nℹ skipped 0\nℹ todo 0\nℹ duration_ms 481.562\n",
+  "stderrTail": "",
+  "ranAt": "2026-05-24T16:58:59.551Z",
+  "evidencePath": "X:\\Projects\\DanteForge\\.danteforge\\outcome-evidence\\ec7556220a90aa98e9e20c20d8dceae0b293d420-developer_experience-dx_t7_docs_cli_runtime.json"
+}

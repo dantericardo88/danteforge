@@ -1,0 +1,13 @@
+{
+  "dimensionId": "constitutional_governance",
+  "outcomeId": "cg_t5_cip_depth",
+  "tier": "T5",
+  "gitSha": "a69eca46067bf561370c0c798db329e2cf256f3a",
+  "passed": true,
+  "exitCode": 0,
+  "durationMs": 3656,
+  "stdoutTail": "▶ outcome relevance check\n  ✔ T1: all outcomes have zero keyword overlap with dim — irrelevantOutcomes=1, ceiling ≤ 7.0 (113.3383ms)\n  ✔ T2: outcome command contains dim keyword — irrelevantOutcomes=0 (87.6469ms)\n  ✔ T2b: dim with short ID but descriptive label — label keyword match counts as relevant (143.4869ms)\n  ✔ T2c: skip_relevance_check=true exempts an outcome from the relevance count (598.9133ms)\n✔ outcome relevance check (945.5363ms)\n▶ evidence freshness gate\n  ✔ T3: storedScore ≥9.0 with no evidence files → blocksFrontierReached=true (79.1472ms)\n  ✔ T4: storedScore ≥9.0 with evidence 1 day old → no freshness block (75.7435ms)\n  ✔ T5: storedScore < 9.0 with no evidence files → freshness gate is silent (85.7858ms)\n✔ evidence freshness gate (241.1968ms)\nℹ tests 7\nℹ suites 2\nℹ pass 7\nℹ fail 0\nℹ cancelled 0\nℹ skipped 0\nℹ todo 0\nℹ duration_ms 1697.9308\n",
+  "stderrTail": "",
+  "ranAt": "2026-05-25T19:00:59.678Z",
+  "evidencePath": "X:\\Projects\\DanteForge\\.danteforge\\outcome-evidence\\a69eca46067bf561370c0c798db329e2cf256f3a-constitutional_governance-cg_t5_cip_depth.json"
+}

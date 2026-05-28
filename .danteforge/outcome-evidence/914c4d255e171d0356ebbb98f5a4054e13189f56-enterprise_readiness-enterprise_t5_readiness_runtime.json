@@ -1,0 +1,13 @@
+{
+  "dimensionId": "enterprise_readiness",
+  "outcomeId": "enterprise_t5_readiness_runtime",
+  "tier": "T5",
+  "gitSha": "914c4d255e171d0356ebbb98f5a4054e13189f56",
+  "passed": true,
+  "exitCode": 0,
+  "durationMs": 853,
+  "stdoutTail": "report generated: C:\\Users\\richa\\AppData\\Local\\Temp\\enterprise-readiness-test-mVZ24X\\nested\\deep\\report.json\n[INFO] Overall enterprise readiness score: 7.5/10\n[INFO] Features implemented: 10/10 (100%)\n[INFO] Generating enterprise readiness report...\n  ✔ does not throw when output directory does not exist (1.4622ms)\n[OK] Enterprise readiness report generated: C:\\Users\\richa\\AppData\\Local\\Temp\\enterprise-readiness-test-mVZ24X\\same1.json\n[INFO] Overall enterprise readiness score: 7.5/10\n[INFO] Features implemented: 10/10 (100%)\n[INFO] Generating enterprise readiness report...\n[OK] Enterprise readiness report generated: C:\\Users\\richa\\AppData\\Local\\Temp\\enterprise-readiness-test-mVZ24X\\same2.json\n[INFO] Overall enterprise readiness score: 7.5/10\n[INFO] Features implemented: 10/10 (100%)\n  ✔ returns the same report regardless of format (1.5598ms)\n✔ generateEnterpriseReadinessReport (22.586ms)\nℹ tests 11\nℹ suites 1\nℹ pass 11\nℹ fail 0\nℹ cancelled 0\nℹ skipped 0\nℹ todo 0\nℹ duration_ms 262.8141\n",
+  "stderrTail": "",
+  "ranAt": "2026-05-28T14:04:35.098Z",
+  "evidencePath": ".danteforge/outcome-evidence/914c4d255e171d0356ebbb98f5a4054e13189f56-enterprise_readiness-enterprise_t5_readiness_runtime.json"
+}

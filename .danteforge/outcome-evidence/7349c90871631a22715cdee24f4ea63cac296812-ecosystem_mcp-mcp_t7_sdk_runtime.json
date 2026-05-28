@@ -1,0 +1,13 @@
+{
+  "dimensionId": "ecosystem_mcp",
+  "outcomeId": "mcp_t7_sdk_runtime",
+  "tier": "T7",
+  "gitSha": "7349c90871631a22715cdee24f4ea63cac296812",
+  "passed": true,
+  "exitCode": 0,
+  "durationMs": 6146,
+  "stdoutTail": "▶ mcp-server command\n  ✔ mcpServer is exported from commands/index.ts (6.1784ms)\n  ✔ mcp-server is registered in src/cli/index.ts (1.2781ms)\n  ✔ mcpServer calls _startMcpServer injection seam when provided (488.348ms)\n  ✔ mcp-server is in the preAction skip set in src/cli/index.ts (1.1921ms)\n✔ mcp-server command (497.9526ms)\n▶ mcp-server SDK\n  ✔ @modelcontextprotocol/sdk is in package.json dependencies (8.3102ms)\n  ✔ All TOOL_HANDLERS exports are intact (0.2094ms)\n  ✔ createMcpServer returns a ManualMcpServer with handleRequest method (0.1705ms)\n✔ mcp-server SDK (9.61ms)\nℹ tests 7\nℹ suites 2\nℹ pass 7\nℹ fail 0\nℹ cancelled 0\nℹ skipped 0\nℹ todo 0\nℹ duration_ms 810.7152\n",
+  "stderrTail": "",
+  "ranAt": "2026-05-22T15:53:27.074Z",
+  "evidencePath": "X:\\Projects\\DanteForge\\.danteforge\\outcome-evidence\\7349c90871631a22715cdee24f4ea63cac296812-ecosystem_mcp-mcp_t7_sdk_runtime.json"
+}

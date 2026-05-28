@@ -1,0 +1,14 @@
+{
+  "dimensionId": "autonomy",
+  "outcomeId": "aut_t7_consensus",
+  "tier": "T7",
+  "gitSha": "2a08a5817edcbfbdd930e304b6cf41bd8764a10d",
+  "passed": false,
+  "exitCode": 0,
+  "durationMs": 93,
+  "stdoutTail": "",
+  "stderrTail": "",
+  "failureReason": "quality gate: T5+ outcome produced zero stdout. Silent outcomes cannot prove observable behavior.; T5+ shell outcome is a structural file check, not runtime execution.",
+  "ranAt": "2026-05-21T19:31:00.740Z",
+  "evidencePath": "X:\\Projects\\DanteForge\\.danteforge\\outcome-evidence\\2a08a5817edcbfbdd930e304b6cf41bd8764a10d-autonomy-aut_t7_consensus.json"
+}

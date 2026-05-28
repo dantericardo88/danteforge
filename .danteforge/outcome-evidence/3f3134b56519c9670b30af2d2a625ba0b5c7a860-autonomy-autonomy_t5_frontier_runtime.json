@@ -1,0 +1,13 @@
+{
+  "dimensionId": "autonomy",
+  "outcomeId": "autonomy_t5_frontier_runtime",
+  "tier": "T5",
+  "gitSha": "3f3134b56519c9670b30af2d2a625ba0b5c7a860",
+  "passed": true,
+  "exitCode": 0,
+  "durationMs": 1216,
+  "stdoutTail": "▶ validateOutcomeForTier\n  ✔ T0/T1 outcomes do not require required_callsite (0.8372ms)\n  ✔ T2 outcome without required_callsite is rejected (0.2141ms)\n  ✔ T2 outcome with required_callsite passes (0.096ms)\n  ✔ T4 outcome requires sibling snapshot-test outcome (0.3511ms)\n  ✔ T5 outcome without benchmark reference is rejected (0.3785ms)\n  ✔ T5 outcome with swe-bench command passes (0.3232ms)\n  ✔ T6 outcome must be kind=telemetry (0.1746ms)\n✔ validateOutcomeForTier (3.3294ms)\n▶ computeDimensionFrontierStatus\n  ✔ returns no-outcomes-declared when dim has no outcomes (0.5715ms)\n  ✔ returns at-frontier when all ceiling outcomes pass and ceiling < T3 (no fresh check) (0.3738ms)\n  ✔ returns progressing when T3 ceiling has no production-usage-fresh outcome (0.2439ms)\n  ✔ returns at-frontier when T3 dim has passing production-usage-fresh (0.2416ms)\n  ✔ returns blocked-by-dispensation when a dispensation is outstanding (0.126ms)\n  ✔ returns stuck when wavesSinceProgress >= threshold and not at frontier (0.1557ms)\n✔ computeDimensionFrontierStatus (2.0044ms)\n▶ computeProjectFrontierState — terminal verdicts\n  ✔ frontier-reached when every declared dim is at frontier (0.3343ms)\n  ✔ stuck-on-dims when at least one dim hit stuck threshold (0.6987ms)\n  ✔ blocked-by-dispensations supersedes everything else (0.2005ms)\n  ✔ progressing when neither at frontier nor stuck nor blocked (0.1291ms)\n✔ computeProjectFrontierState — terminal verdicts (1.4988ms)\nℹ tests 17\nℹ suites 3\nℹ pass 17\nℹ fail 0\nℹ cancelled 0\nℹ skipped 0\nℹ todo 0\nℹ duration_ms 279.8326\n",
+  "stderrTail": "",
+  "ranAt": "2026-05-27T22:12:33.760Z",
+  "evidencePath": "X:\\Projects\\DanteForge\\.danteforge\\outcome-evidence\\3f3134b56519c9670b30af2d2a625ba0b5c7a860-autonomy-autonomy_t5_frontier_runtime.json"
+}

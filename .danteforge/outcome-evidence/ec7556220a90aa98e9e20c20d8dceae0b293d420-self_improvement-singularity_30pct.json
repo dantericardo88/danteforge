@@ -1,0 +1,14 @@
+{
+  "dimensionId": "self_improvement",
+  "outcomeId": "singularity_30pct",
+  "tier": "T7",
+  "gitSha": "ec7556220a90aa98e9e20c20d8dceae0b293d420",
+  "passed": false,
+  "exitCode": 1,
+  "durationMs": 218,
+  "stdoutTail": "[singularity] Commits analysed: 5760 (since 90 days ago)\n[singularity] DanteForge-assisted: 474 (8.2%)\n[singularity] Human-only:          5286\n[singularity] Aider baseline:       62%  |  DanteForge: 8.2%  |  Gap: 53.8%\n[singularity] Report: X:\\Projects\\DanteForge\\.danteforge\\metrics\\singularity.json\n[singularity] Top assisted commits:\n  ec755622  feat(phase13): ClaudeCode + Codex adapter tests; T5 outcome on multi_agent_orchestration\n  347c026d  chore(release): bump to v0.18.0; honest overallSelfScore; CHANGELOG for Phase 1\n  985d0898  fix(cip): normalize keywords to lowercase; reset matrix scores to honest audited values\n  00d8bd8e  feat(frontier): harden relevance check, add test:fast, fix autonomy seam — frontier closure wave\n  3b38917d  feat(cip): integration tests for CIP gates on harden-crusade, frontier-crusade, and autoforge retry loop\n",
+  "stderrTail": "[singularity] FAIL — 8.2% < 30% threshold\n",
+  "failureReason": "exit 1 (expected 0)",
+  "ranAt": "2026-05-24T16:59:45.684Z",
+  "evidencePath": "X:\\Projects\\DanteForge\\.danteforge\\outcome-evidence\\ec7556220a90aa98e9e20c20d8dceae0b293d420-self_improvement-singularity_30pct.json"
+}

@@ -1,0 +1,14 @@
+{
+  "dimensionId": "functionality",
+  "outcomeId": "fn_verify_prompt_smoke",
+  "tier": "T5",
+  "gitSha": "2a08a5817edcbfbdd930e304b6cf41bd8764a10d",
+  "passed": false,
+  "exitCode": 1,
+  "durationMs": 105,
+  "stdoutTail": "",
+  "stderrTail": "error: unknown option '--prompt'\n",
+  "failureReason": "exit 1 (expected 0)",
+  "ranAt": "2026-05-21T19:39:29.484Z",
+  "evidencePath": "X:\\Projects\\DanteForge\\.danteforge\\outcome-evidence\\2a08a5817edcbfbdd930e304b6cf41bd8764a10d-functionality-fn_verify_prompt_smoke.json"
+}

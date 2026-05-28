@@ -1,0 +1,13 @@
+{
+  "dimensionId": "spec_driven_pipeline",
+  "outcomeId": "sdp_workflow",
+  "tier": "T2",
+  "gitSha": "3f3134b56519c9670b30af2d2a625ba0b5c7a860",
+  "passed": true,
+  "exitCode": 0,
+  "durationMs": 187,
+  "stdoutTail": "",
+  "stderrTail": "",
+  "ranAt": "2026-05-27T22:26:32.055Z",
+  "evidencePath": "X:\\Projects\\DanteForge\\.danteforge\\outcome-evidence\\3f3134b56519c9670b30af2d2a625ba0b5c7a860-spec_driven_pipeline-sdp_workflow.json"
+}

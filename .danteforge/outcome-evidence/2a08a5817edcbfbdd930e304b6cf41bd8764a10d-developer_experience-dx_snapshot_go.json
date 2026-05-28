@@ -1,0 +1,13 @@
+{
+  "dimensionId": "developer_experience",
+  "outcomeId": "dx_snapshot_go",
+  "tier": "T3",
+  "gitSha": "2a08a5817edcbfbdd930e304b6cf41bd8764a10d",
+  "passed": true,
+  "exitCode": 0,
+  "durationMs": 130,
+  "stdoutTail": "",
+  "stderrTail": "",
+  "ranAt": "2026-05-21T19:47:01.991Z",
+  "evidencePath": "X:\\Projects\\DanteForge\\.danteforge\\outcome-evidence\\2a08a5817edcbfbdd930e304b6cf41bd8764a10d-developer_experience-dx_snapshot_go.json"
+}

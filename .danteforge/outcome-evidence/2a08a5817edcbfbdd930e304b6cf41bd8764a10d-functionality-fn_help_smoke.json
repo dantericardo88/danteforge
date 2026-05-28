@@ -1,0 +1,13 @@
+{
+  "dimensionId": "functionality",
+  "outcomeId": "fn_help_smoke",
+  "tier": "T5",
+  "gitSha": "2a08a5817edcbfbdd930e304b6cf41bd8764a10d",
+  "passed": true,
+  "exitCode": 0,
+  "durationMs": 873,
+  "stdoutTail": "[INFO] \n[INFO] DanteForge - start with one of the 5 canonical processes\n[INFO] \n[INFO]   Canonical processes:\n[INFO]     danteforge plan [goal]       - what should we build?\n[INFO]     danteforge build <spec>      - how do we make progress?\n[INFO]     danteforge measure           - how good is the project?\n[INFO]     danteforge compete           - where do we lag the market?\n[INFO]     danteforge harvest [goal]    - what can we learn from OSS?\n[INFO] \n[INFO]   Use a shared depth model:\n[INFO]     --level light                - quick answer or first pass\n[INFO]     --level standard             - default balanced workflow\n[INFO]     --level deep                 - maximum rigor and orchestration\n[INFO] \n[INFO]   Common starting points:\n[INFO]     danteforge go               - see current score and top gaps\n[INFO]     danteforge plan --level light \"<idea>\"\n[INFO]     danteforge build --level standard \"<goal>\"\n[INFO]     danteforge measure --level light\n[INFO] \n[INFO]   Specialist/support commands:\n[INFO]     danteforge verify|check     - machine-readable quality gate\n[INFO]     danteforge autoresearch     - metric-driven optimization loop\n[INFO]     danteforge inferno          - branded deep build preset\n[INFO]     danteforge explain <term>   - plain-English glossary\n[INFO]     danteforge init             - first-run wizard\n[INFO] \n[INFO]   Current workflow stage: synthesize\n[OK]   Next for your project: Run \"danteforge feedback\" for manual refinement or \"danteforge feedback --auto\" with a verified live provider.\n[INFO] \n[INFO]   See all 100+ commands:  danteforge help --all\n[INFO]   Command detail:         danteforge help <command>\n[INFO]   Usage flags:            danteforge <command> --help\n[INFO] \n",
+  "stderrTail": "",
+  "ranAt": "2026-05-21T19:47:06.758Z",
+  "evidencePath": "X:\\Projects\\DanteForge\\.danteforge\\outcome-evidence\\2a08a5817edcbfbdd930e304b6cf41bd8764a10d-functionality-fn_help_smoke.json"
+}

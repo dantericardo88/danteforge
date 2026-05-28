@@ -1,0 +1,13 @@
+{
+  "dimensionId": "testing",
+  "outcomeId": "testing_t7_multi_receipt",
+  "tier": "T7",
+  "gitSha": "914c4d255e171d0356ebbb98f5a4054e13189f56",
+  "passed": true,
+  "exitCode": 0,
+  "durationMs": 1328,
+  "stdoutTail": "the objective directly when it contains a diff block (0.1796ms)\n  ✔ builds a structured prompt when objective has no diff (0.1222ms)\n  ✔ passes consultation objective through without verdict template (council-ask fix) (0.1247ms)\n✔ buildGrokJudgePrompt — FIX 3: diff-pass-through (0.5878ms)\n▶ consultation passthrough — all 4 adapters\n  ✔ Codex passes consultation through verbatim (0.1344ms)\n  ✔ Claude Code passes consultation through verbatim (0.1165ms)\n  ✔ Gemini passes consultation through verbatim (0.0907ms)\n  ✔ Grok passes consultation through verbatim (0.0471ms)\n✔ consultation passthrough — all 4 adapters (0.474ms)\n▶ CouncilMemberId type — gemini-cli still valid for backward compat\n  ✔ gemini-cli is a valid CouncilMemberId value (0.0654ms)\n  ✔ all 3 subscription members are valid CouncilMemberIds (0.0654ms)\n✔ CouncilMemberId type — gemini-cli still valid for backward compat (0.1816ms)\nℹ tests 26\nℹ suites 9\nℹ pass 26\nℹ fail 0\nℹ cancelled 0\nℹ skipped 0\nℹ todo 0\nℹ duration_ms 763.4496\n",
+  "stderrTail": "",
+  "ranAt": "2026-05-28T14:04:20.397Z",
+  "evidencePath": ".danteforge/outcome-evidence/914c4d255e171d0356ebbb98f5a4054e13189f56-testing-testing_t7_multi_receipt.json"
+}

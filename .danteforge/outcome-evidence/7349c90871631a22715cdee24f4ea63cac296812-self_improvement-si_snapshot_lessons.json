@@ -1,0 +1,13 @@
+{
+  "dimensionId": "self_improvement",
+  "outcomeId": "si_snapshot_lessons",
+  "tier": "T3",
+  "gitSha": "7349c90871631a22715cdee24f4ea63cac296812",
+  "passed": true,
+  "exitCode": 0,
+  "durationMs": 193,
+  "stdoutTail": "",
+  "stderrTail": "",
+  "ranAt": "2026-05-22T15:44:21.231Z",
+  "evidencePath": "X:\\Projects\\DanteForge\\.danteforge\\outcome-evidence\\7349c90871631a22715cdee24f4ea63cac296812-self_improvement-si_snapshot_lessons.json"
+}

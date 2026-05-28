@@ -1,0 +1,13 @@
+{
+  "dimensionId": "security",
+  "outcomeId": "security_t5_dep_audit",
+  "tier": "T5",
+  "gitSha": "de46de7503cfe6b2d2fb7b975b93435276f59f62",
+  "passed": true,
+  "exitCode": 0,
+  "durationMs": 4350,
+  "stdoutTail": "▶ scoreDependencyAudit\n  ✔ returns 10 for zero vulnerabilities (2.6847ms)\n  ✔ returns ≤3 for any critical vulnerability (1.2334ms)\n  ✔ returns 3–5 range for high vulnerabilities only (0.5459ms)\n  ✔ returns 6–7 for moderate only (0.8671ms)\n  ✔ returns 8 for low only (0.6008ms)\n✔ scoreDependencyAudit (10.5806ms)\n▶ runDependencyAudit\n  ✔ parses clean audit and returns score=10 + passed=true (3.7501ms)\n  ✔ parses high-severity audit and returns passed=false (0.9659ms)\n  ✔ identifies fixAvailable correctly on vulnerabilities (1.0101ms)\n  ✔ returns passed=false for critical even with exitCode=0 (0.768ms)\n  ✔ handles unparseable JSON gracefully and returns score=5 (0.7662ms)\n  ✔ respects failOnSeverity=moderate (1.1996ms)\n✔ runDependencyAudit (9.6081ms)\n▶ formatAuditSummary\n  ✔ includes score and PASS/FAIL (1.2244ms)\n  ✔ shows FAIL and highlights critical/high in summary (0.7158ms)\n✔ formatAuditSummary (2.3281ms)\nℹ tests 13\nℹ suites 3\nℹ pass 13\nℹ fail 0\nℹ cancelled 0\nℹ skipped 0\nℹ todo 0\nℹ duration_ms 835.4451\n",
+  "stderrTail": "",
+  "ranAt": "2026-05-25T17:27:49.340Z",
+  "evidencePath": "X:\\Projects\\DanteForge\\.danteforge\\outcome-evidence\\de46de7503cfe6b2d2fb7b975b93435276f59f62-security-security_t5_dep_audit.json"
+}

@@ -1,0 +1,14 @@
+{
+  "dimensionId": "developer_experience",
+  "outcomeId": "dx_go",
+  "tier": "T2",
+  "gitSha": "a69eca46067bf561370c0c798db329e2cf256f3a",
+  "passed": false,
+  "exitCode": -1,
+  "durationMs": 0,
+  "stdoutTail": "",
+  "stderrTail": "",
+  "failureReason": "outcome threw: Cannot find module 'X:\\Projects\\DanteForge\\dist\\outcome-quality-B75I5SBF.js' imported from X:\\Projects\\DanteForge\\dist\\chunk-GJXO4F7Z.js",
+  "ranAt": "2026-05-25T18:55:48.908Z",
+  "evidencePath": "X:\\Projects\\DanteForge\\.danteforge\\outcome-evidence\\a69eca46067bf561370c0c798db329e2cf256f3a-developer_experience-dx_go.json"
+}

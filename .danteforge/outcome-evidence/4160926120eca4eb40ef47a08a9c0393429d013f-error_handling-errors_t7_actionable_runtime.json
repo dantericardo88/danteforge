@@ -1,0 +1,13 @@
+{
+  "dimensionId": "error_handling",
+  "outcomeId": "errors_t7_actionable_runtime",
+  "tier": "T7",
+  "gitSha": "4160926120eca4eb40ef47a08a9c0393429d013f",
+  "passed": true,
+  "exitCode": 0,
+  "durationMs": 2953,
+  "stdoutTail": "▶ enrichError — known patterns\n  ✔ maps ENOENT .danteforge to init suggestion (2.3671ms)\n  ✔ maps \"No config found\" to config --setup suggestion (0.3811ms)\n  ✔ maps \"No constitution\" to constitution command suggestion (0.4013ms)\n  ✔ maps \"No spec found\" to specify command suggestion (0.2966ms)\n  ✔ maps \"LLM timeout\" to ollama / --prompt suggestion (0.2921ms)\n  ✔ maps \"Rate limit\" to wait / ollama suggestion (0.2194ms)\n  ✔ maps \"429\" HTTP error to retry / provider suggestion (0.2491ms)\n  ✔ maps \"connection refused\" to ollama serve suggestion (0.2813ms)\n  ✔ maps \"No plan found\" to plan command suggestion (0.4106ms)\n  ✔ maps \"gate failed\" to verify / --light suggestion (0.5667ms)\n  ✔ maps \"TypeScript error\" to typecheck suggestion (0.4163ms)\n  ✔ maps \"permission denied\" to permissions suggestion (0.3334ms)\n✔ enrichError — known patterns (9.5913ms)\n▶ enrichError — unknown patterns\n  ✔ returns a non-empty code for unrecognized messages (0.5ms)\n  ✔ still includes the original message in the result (0.2695ms)\n  ✔ provides a generic helpful suggestion for unknown errors (0.312ms)\n✔ enrichError — unknown patterns (1.3738ms)\n▶ enrichError — context matching\n  ✔ uses command context to improve pattern matching (0.3395ms)\n✔ enrichError — context matching (0.4854ms)\n▶ formatActionableError\n  ✔ includes the error code (0.3581ms)\n  ✔ includes the suggestion with → arrow (0.2066ms)\n  ✔ includes docsRef when available (0.1969ms)\n✔ formatActionableError (1.0138ms)\n▶ ERROR_SUGGESTIONS map\n  ✔ contains at least 20 patterns (0.2239ms)\n  ✔ all suggestions are non-empty strings (0.3213ms)\n✔ ERROR_SUGGESTIONS map (0.7499ms)\n▶ format-error\n  ▶ errorToJson\n    ✔ formats DanteError with code and remedy (1.5322ms)\n    ✔ formats GateError (0.6918ms)\n    ✔ formats generic Error (0.3211ms)\n    ✔ formats non-Error (0.2799ms)\n  ✔ errorToJson (4.4769ms)\n✔ format-error (5.1921ms)\nℹ tests 25\nℹ suites 7\nℹ pass 25\nℹ fail 0\nℹ cancelled 0\nℹ skipped 0\nℹ todo 0\nℹ duration_ms 950.395\n",
+  "stderrTail": "",
+  "ranAt": "2026-05-25T19:33:33.954Z",
+  "evidencePath": "X:\\Projects\\DanteForge\\.danteforge\\outcome-evidence\\4160926120eca4eb40ef47a08a9c0393429d013f-error_handling-errors_t7_actionable_runtime.json"
+}

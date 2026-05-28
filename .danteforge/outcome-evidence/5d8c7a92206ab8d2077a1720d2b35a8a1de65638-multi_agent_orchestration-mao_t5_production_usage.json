@@ -1,0 +1,13 @@
+{
+  "dimensionId": "multi_agent_orchestration",
+  "outcomeId": "mao_t5_production_usage",
+  "tier": "T5",
+  "gitSha": "5d8c7a92206ab8d2077a1720d2b35a8a1de65638",
+  "passed": true,
+  "exitCode": 0,
+  "durationMs": 1129,
+  "stdoutTail": "{\n  \"totalImporters\": 1,\n  \"freshImporters\": 1,\n  \"freshnessDays\": 30,\n  \"baseBranch\": \"main\",\n  \"detail\": [\n    {\n      \"importer\": \"src\\\\cli\\\\commands\\\\council-parallel.ts\",\n      \"lastCommit\": \"2026-05-25T21:42:11-04:00\",\n      \"fresh\": true\n    }\n  ]\n}",
+  "stderrTail": "",
+  "ranAt": "2026-05-26T02:06:50.361Z",
+  "evidencePath": "X:\\Projects\\DanteForge\\.danteforge\\outcome-evidence\\5d8c7a92206ab8d2077a1720d2b35a8a1de65638-multi_agent_orchestration-mao_t5_production_usage.json"
+}

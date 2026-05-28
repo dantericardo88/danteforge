@@ -1,0 +1,13 @@
+{
+  "dimensionId": "agent_activity_provenance",
+  "outcomeId": "provenance_t5_time_machine_runtime",
+  "tier": "T5",
+  "gitSha": "344a1be295c330d8dcebbde8e3b522c1bf0f1f3b",
+  "passed": true,
+  "exitCode": 0,
+  "durationMs": 3442,
+  "stdoutTail": "▶ outcome-runner Time Machine integration\n  ✔ records a Time Machine commit after writing evidence (10.9305ms)\n  ✔ records a fail-labeled commit when the outcome fails (0.9719ms)\n  ✔ explicit null disables the integration (test seam contract) (1.7849ms)\n  ✔ TM crash does not block the outcome runner (1.8868ms)\n✔ outcome-runner Time Machine integration (17.6345ms)\n▶ hardener Time Machine integration\n  ✔ records a Time Machine commit after a verdict (allowed) (59.3507ms)\n  ✔ records blocked-by label when a check fails (47.7702ms)\n  ✔ null seam disables, TM crash does not block (94.5941ms)\n  ✔ _noWrite suppresses both receipt and TM commit (0.8101ms)\n✔ hardener Time Machine integration (203.417ms)\nℹ tests 8\nℹ suites 2\nℹ pass 8\nℹ fail 0\nℹ cancelled 0\nℹ skipped 0\nℹ todo 0\nℹ duration_ms 836.8723\n",
+  "stderrTail": "",
+  "ranAt": "2026-05-25T21:24:13.209Z",
+  "evidencePath": "X:\\Projects\\DanteForge\\.danteforge\\outcome-evidence\\344a1be295c330d8dcebbde8e3b522c1bf0f1f3b-agent_activity_provenance-provenance_t5_time_machine_runtime.json"
+}

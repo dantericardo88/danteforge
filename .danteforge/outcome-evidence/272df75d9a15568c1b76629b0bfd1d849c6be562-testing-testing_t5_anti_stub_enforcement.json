@@ -1,0 +1,13 @@
+{
+  "dimensionId": "testing",
+  "outcomeId": "testing_t5_anti_stub_enforcement",
+  "tier": "T5",
+  "gitSha": "272df75d9a15568c1b76629b0bfd1d849c6be562",
+  "passed": true,
+  "exitCode": 0,
+  "durationMs": 1514,
+  "stdoutTail": "▶ anti-stub scan\n  ✔ passes for clean implementation files and exempt doctrine/config files (49.0237ms)\n  ✔ fails when a production implementation file contains stub markers (40.7946ms)\n✔ anti-stub scan (90.5721ms)\nℹ tests 2\nℹ suites 1\nℹ pass 2\nℹ fail 0\nℹ cancelled 0\nℹ skipped 0\nℹ todo 0\nℹ duration_ms 273.6145\n",
+  "stderrTail": "npm notice\nnpm notice New minor version of npm available! 11.8.0 -> 11.16.0\nnpm notice Changelog: https://github.com/npm/cli/releases/tag/v11.16.0\nnpm notice To update run: npm install -g npm@11.16.0\nnpm notice\n",
+  "ranAt": "2026-05-28T12:11:33.120Z",
+  "evidencePath": "X:\\Projects\\DanteForge\\.danteforge\\outcome-evidence\\272df75d9a15568c1b76629b0bfd1d849c6be562-testing-testing_t5_anti_stub_enforcement.json"
+}

@@ -1,0 +1,13 @@
+{
+  "dimensionId": "spec_driven_pipeline",
+  "outcomeId": "sdp_t5_workflow_runtime",
+  "tier": "T5",
+  "gitSha": "ec7556220a90aa98e9e20c20d8dceae0b293d420",
+  "passed": true,
+  "exitCode": 0,
+  "durationMs": 1259,
+  "stdoutTail": "▶ validateTransition\n  ✔ allows initialized -> review (13.6053ms)\n  ✔ allows initialized -> constitution (2.9026ms)\n  ✔ blocks initialized -> forge (not adjacent) (2.8547ms)\n  ✔ blocks constitution -> forge (skips specify/plan) (2.5392ms)\n  ✔ allows plan -> tasks (2.4943ms)\n  ✔ allows light mode to bypass gate checks (2.6987ms)\n  ✔ reports unknown target stage (2.9173ms)\n✔ validateTransition (31.2037ms)\n▶ getNextSteps\n  ✔ returns review and constitution from initialized (2.667ms)\n  ✔ returns specify from constitution (2.359ms)\n  ✔ returns clarify and plan from specify (3.5597ms)\n  ✔ returns synthesize from verify (2.9662ms)\n  ✔ returns empty array from synthesize (terminal) (3.9719ms)\n✔ getNextSteps (15.9594ms)\n▶ isStageComplete\n  ✔ returns false when artifact is missing (6.7358ms)\n  ✔ returns true when artifact exists (5.7057ms)\n  ✔ returns true for stages with no required artifacts (2.3055ms)\n✔ isStageComplete (15.0302ms)\n▶ getWorkflowGraph\n  ✔ returns a non-empty graph (2.4579ms)\n  ✔ graph covers all major stages (2.4146ms)\n✔ getWorkflowGraph (5.0229ms)\n[ERR] Cannot transition from 'initialized' to 'forge'. Valid source stages: tasks, design\n[INFO] Remedy: Complete the 'design' stage first.\n▶ enforceWorkflow strict-by-default\n  ✔ throws GateError for out-of-order commands when enforcementMode is not set (12.0373ms)\n  ✔ allows valid transitions even in strict mode (4.7554ms)\n✔ enforceWorkflow strict-by-default (16.9508ms)\nℹ tests 19\nℹ suites 5\nℹ pass 19\nℹ fail 0\nℹ cancelled 0\nℹ skipped 0\nℹ todo 0\nℹ duration_ms 404.1625\n",
+  "stderrTail": "",
+  "ranAt": "2026-05-24T16:54:47.602Z",
+  "evidencePath": "X:\\Projects\\DanteForge\\.danteforge\\outcome-evidence\\ec7556220a90aa98e9e20c20d8dceae0b293d420-spec_driven_pipeline-sdp_t5_workflow_runtime.json"
+}

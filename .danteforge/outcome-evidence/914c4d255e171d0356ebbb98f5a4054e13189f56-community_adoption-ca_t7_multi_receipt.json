@@ -1,0 +1,13 @@
+{
+  "dimensionId": "community_adoption",
+  "outcomeId": "ca_t7_multi_receipt",
+  "tier": "T7",
+  "gitSha": "914c4d255e171d0356ebbb98f5a4054e13189f56",
+  "passed": true,
+  "exitCode": 0,
+  "durationMs": 1001,
+  "stdoutTail": "y adoption features...\n[OK] Community adoption improvements completed:\n[INFO]   - Generated community adoption pack\n  ✔ generates an adoption evidence guide without claiming public adopters (20.4434ms)\n[INFO] Improving community adoption features...\n[OK] Community adoption improvements completed:\n[INFO]   - Generated community adoption pack\n  ✔ generates maintainer ownership, contributor recognition, and roadmap assets in the adoption pack (21.0814ms)\n✔ community adoption readiness (165.0031ms)\n▶ community command\n  ✔ reports adoption readiness with missing required surfaces (16.3745ms)\n[INFO] Improving community adoption features...\n[OK] Community adoption improvements completed:\n[INFO]   - Generated community adoption pack\n  ✔ generates a real adoption pack and improves local readiness (27.2533ms)\n  ✔ emits machine-readable JSON for automation (4.7182ms)\n✔ community command (49.1826ms)\nℹ tests 15\nℹ suites 2\nℹ pass 15\nℹ fail 0\nℹ cancelled 0\nℹ skipped 0\nℹ todo 0\nℹ duration_ms 427.6578\n",
+  "stderrTail": "",
+  "ranAt": "2026-05-28T14:04:55.911Z",
+  "evidencePath": ".danteforge/outcome-evidence/914c4d255e171d0356ebbb98f5a4054e13189f56-community_adoption-ca_t7_multi_receipt.json"
+}

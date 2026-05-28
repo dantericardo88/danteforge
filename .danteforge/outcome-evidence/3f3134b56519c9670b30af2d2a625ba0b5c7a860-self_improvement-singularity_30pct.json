@@ -1,0 +1,13 @@
+{
+  "dimensionId": "self_improvement",
+  "outcomeId": "singularity_30pct",
+  "tier": "T7",
+  "gitSha": "3f3134b56519c9670b30af2d2a625ba0b5c7a860",
+  "passed": true,
+  "exitCode": 0,
+  "durationMs": 273,
+  "stdoutTail": "[singularity] Commits analysed: 6745 (since 90 days ago)\n[singularity] DanteForge-assisted: 442 (6.6%)\n[singularity] Human-only:          6303\n[singularity] Aider baseline:       62%  |  DanteForge: 6.6%  |  Gap: 55.4%\n[singularity] Report: X:\\Projects\\DanteForge\\.danteforge\\metrics\\singularity.json\n[singularity] Top assisted commits:\n  3f3134b5  fix(crusade): re-apply CIP-blocked stall check (lost in stash round-trip)\n  1b549f32  fix(crusade): stall→autoresearch check fires even when CIP blocks cycle\n  701ae003  feat(frontier-loop): add runDeSloppify + verifyMode post-merge options\n  427f54e1  fix(types): resolve 18 TypeScript errors introduced by file splits\n  58dfe83a  chore(allowlist): remove 8 split files from .file-size-allowlist\n[singularity] PASS — 6.6% >= 5% threshold\n",
+  "stderrTail": "",
+  "ranAt": "2026-05-27T22:30:03.626Z",
+  "evidencePath": "X:\\Projects\\DanteForge\\.danteforge\\outcome-evidence\\3f3134b56519c9670b30af2d2a625ba0b5c7a860-self_improvement-singularity_30pct.json"
+}

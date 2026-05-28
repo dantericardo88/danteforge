@@ -1,0 +1,13 @@
+{
+  "dimensionId": "self_improvement",
+  "outcomeId": "singularity_30pct",
+  "tier": "T7",
+  "gitSha": "0090757f94b9cd59939a5115ec7969e55d69e1fd",
+  "passed": true,
+  "exitCode": 0,
+  "durationMs": 130,
+  "stdoutTail": "[singularity] Commits analysed: 6813 (since 90 days ago)\n[singularity] DanteForge-assisted: 450 (6.6%)\n[singularity] Human-only:          6363\n[singularity] Aider baseline:       62%  |  DanteForge: 6.6%  |  Gap: 55.4%\n[singularity] Report: X:\\Projects\\DanteForge\\.danteforge\\metrics\\singularity.json\n[singularity] Top assisted commits:\n  0090757f  score(matrix): security 7.5→9.0, documentation 7.0→9.0 (validate receipts)\n  272df75d  score(matrix): lift multi_agent_orchestration, security, documentation to 9.0\n  8d64ff04  fix(council): resolve 3-way merge conflicts from security/consensus batch\n  36d45f4e  feat(scores): error_handling 7.0→9.0, outcome_verification 7.5→9.0 (overall 7.3→7.5)\n  ff9e7756  feat(council): 4-dim merge batch — error_handling, token_economy, community_adoption, outcome_verification\n[singularity] PASS — 6.6% >= 5% threshold\n",
+  "stderrTail": "",
+  "ranAt": "2026-05-28T12:39:45.490Z",
+  "evidencePath": "X:\\Projects\\DanteForge\\.danteforge\\outcome-evidence\\0090757f94b9cd59939a5115ec7969e55d69e1fd-self_improvement-singularity_30pct.json"
+}

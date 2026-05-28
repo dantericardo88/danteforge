@@ -1,0 +1,13 @@
+{
+  "dimensionId": "spec_workflow_enforcement",
+  "outcomeId": "swe_t5_enforcer_runtime",
+  "tier": "T5",
+  "gitSha": "ec7556220a90aa98e9e20c20d8dceae0b293d420",
+  "passed": true,
+  "exitCode": 0,
+  "durationMs": 1104,
+  "stdoutTail": "▶ validateTransition\n  ✔ allows initialized -> review (12.7684ms)\n  ✔ allows initialized -> constitution (2.7381ms)\n  ✔ blocks initialized -> forge (not adjacent) (2.6792ms)\n  ✔ blocks constitution -> forge (skips specify/plan) (2.3675ms)\n  ✔ allows plan -> tasks (2.1792ms)\n  ✔ allows light mode to bypass gate checks (2.1937ms)\n  ✔ reports unknown target stage (2.3928ms)\n✔ validateTransition (28.3987ms)\n▶ getNextSteps\n  ✔ returns review and constitution from initialized (2.3648ms)\n  ✔ returns specify from constitution (2.0052ms)\n  ✔ returns clarify and plan from specify (1.8865ms)\n  ✔ returns synthesize from verify (1.7373ms)\n  ✔ returns empty array from synthesize (terminal) (2.0556ms)\n✔ getNextSteps (10.3589ms)\n▶ isStageComplete\n  ✔ returns false when artifact is missing (4.6796ms)\n  ✔ returns true when artifact exists (4.2946ms)\n  ✔ returns true for stages with no required artifacts (2.1207ms)\n✔ isStageComplete (11.319ms)\n▶ getWorkflowGraph\n  ✔ returns a non-empty graph (1.9936ms)\n  ✔ graph covers all major stages (1.9696ms)\n✔ getWorkflowGraph (4.0898ms)\n[ERR] Cannot transition from 'initialized' to 'forge'. Valid source stages: tasks, design\n[INFO] Remedy: Complete the 'design' stage first.\n▶ enforceWorkflow strict-by-default\n  ✔ throws GateError for out-of-order commands when enforcementMode is not set (10.4555ms)\n  ✔ allows valid transitions even in strict mode (3.9519ms)\n✔ enforceWorkflow strict-by-default (14.5416ms)\nℹ tests 19\nℹ suites 5\nℹ pass 19\nℹ fail 0\nℹ cancelled 0\nℹ skipped 0\nℹ todo 0\nℹ duration_ms 363.8357\n",
+  "stderrTail": "",
+  "ranAt": "2026-05-24T16:03:36.162Z",
+  "evidencePath": "X:\\Projects\\DanteForge\\.danteforge\\outcome-evidence\\ec7556220a90aa98e9e20c20d8dceae0b293d420-spec_workflow_enforcement-swe_t5_enforcer_runtime.json"
+}

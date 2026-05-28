@@ -1,0 +1,13 @@
+{
+  "dimensionId": "maintainability",
+  "outcomeId": "maint_t5_complexity_runtime",
+  "tier": "T5",
+  "gitSha": "914c4d255e171d0356ebbb98f5a4054e13189f56",
+  "passed": true,
+  "exitCode": 0,
+  "durationMs": 802,
+  "stdoutTail": "s a default value (0.0287ms)\n  ✔ jsonOption returns correct flags (0.0364ms)\n  ✔ yesOption returns correct flags (0.0371ms)\n  ✔ quietOption returns correct flags (0.0645ms)\n  ✔ addCwdOption returns a Command object (0.0917ms)\n  ✔ addJsonOption returns a Command object (0.07ms)\n✔ shared-options descriptors (0.5645ms)\n▶ scoreMaintainability\n  ✔ returns a number between 0 and 10 for clean project (0.2825ms)\n  ✔ applies penalties for files over LOC limit (0.1684ms)\n  ✔ rewards presence of shared-options.ts (0.1366ms)\n  ✔ rewards presence of complexity.ts command (0.1653ms)\n  ✔ caps score at 10.0 (0.1316ms)\n✔ scoreMaintainability (0.9846ms)\n▶ complexity command\n  ✔ returns a result with report and threshold (0.3225ms)\n  ✔ sets exceedsThreshold true when a file score is over threshold (0.1751ms)\n  ✔ does not exceed threshold when all files under limit (0.1059ms)\n✔ complexity command (0.6749ms)\nℹ tests 33\nℹ suites 5\nℹ pass 33\nℹ fail 0\nℹ cancelled 0\nℹ skipped 0\nℹ todo 0\nℹ duration_ms 240.1488\n",
+  "stderrTail": "",
+  "ranAt": "2026-05-28T14:04:14.549Z",
+  "evidencePath": ".danteforge/outcome-evidence/914c4d255e171d0356ebbb98f5a4054e13189f56-maintainability-maint_t5_complexity_runtime.json"
+}

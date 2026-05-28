@@ -1,0 +1,13 @@
+{
+  "dimensionId": "community_adoption",
+  "outcomeId": "ca_t5_mcp_server",
+  "tier": "T5",
+  "gitSha": "914c4d255e171d0356ebbb98f5a4054e13189f56",
+  "passed": true,
+  "exitCode": 0,
+  "durationMs": 1353,
+  "stdoutTail": "returns graceful message when no lessons exist (0.677ms)\n[INFO] STATE.yaml updated\n  ✔ danteforge_lessons handler reads lessons.md when it exists (3.1034ms)\n  ✔ danteforge_budget_status handler returns graceful message when no reports dir exists (0.6693ms)\n[INFO] STATE.yaml updated\n  ✔ danteforge_route_task handler routes a simple rename task to local tier (5.9729ms)\n  ✔ danteforge_route_task handler returns error for empty task name (0.4709ms)\n✔ MCP tool handlers (with temp workspace) (109.7564ms)\n▶ core functions used by MCP handlers\n  ✔ loadState returns valid state with auditLog as array (2.0688ms)\n  ✔ loadState returns tasks accessible by phase for task_list tool (2.1258ms)\n  ✔ assessComplexity produces valid assessment via complexity classifier (5.438ms)\n  ✔ classifyTaskSignature + routeTask produce valid routing decision (2.2398ms)\n✔ core functions used by MCP handlers (14.8101ms)\nℹ tests 33\nℹ suites 7\nℹ pass 33\nℹ fail 0\nℹ cancelled 0\nℹ skipped 0\nℹ todo 0\nℹ duration_ms 761.9966\n",
+  "stderrTail": "",
+  "ranAt": "2026-05-28T14:04:54.909Z",
+  "evidencePath": ".danteforge/outcome-evidence/914c4d255e171d0356ebbb98f5a4054e13189f56-community_adoption-ca_t5_mcp_server.json"
+}
