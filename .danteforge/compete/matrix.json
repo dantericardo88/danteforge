@@ -2507,7 +2507,7 @@
       "category": "reliability",
       "frequency": "low",
       "scores": {
-        "self": 9,
+        "self": 5,
         "Devin (Cognition AI)": 6,
         "GitHub Copilot Workspace": 8.5,
         "Cursor": 6.5,
@@ -2648,7 +2648,7 @@
       "category": "features",
       "frequency": "low",
       "scores": {
-        "self": 9,
+        "self": 5,
         "Devin (Cognition AI)": 7.5,
         "GitHub Copilot Workspace": 9,
         "Cursor": 9.5,

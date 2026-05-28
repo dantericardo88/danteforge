@@ -7,7 +7,7 @@
 // no monorepo detection, no per-package mapping (outcomes are dim-scoped).
 
 import fs from 'node:fs/promises';
-import { existsSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import path from 'node:path';
 import { randomUUID } from 'node:crypto';
 import { spawnSync } from 'node:child_process';
@@ -189,7 +189,7 @@ export async function runOneOutcome(options: RunOutcomeOptions): Promise<Outcome
     const engine = new RipgrepFallback();
     const result = await runProductionUsageFresh(freshOutcome, cwd, undefined, engine);
     const entry = freshResultToEvidence(freshOutcome, options.dimensionId, result, gitSha, evidencePath, Date.now() - start);
-    tagEvidenceQuality(entry, (freshOutcome as { command?: string }).command, options.dimensionId);
+    tagEvidenceQuality(entry, (freshOutcome as { command?: string }).command, options.dimensionId, cwd);
     await writeFn(evidencePath, JSON.stringify(entry, null, 2));
     await recordOutcomeEvidenceCommit(entry, cwd, options._createTimeMachineCommit);
     return entry;
@@ -205,7 +205,7 @@ export async function runOneOutcome(options: RunOutcomeOptions): Promise<Outcome
       _readGitSha: async () => gitSha,
     });
     entry.evidencePath = evidencePath;
-    tagEvidenceQuality(entry, (smokeOutcome as { command?: string }).command, options.dimensionId);
+    tagEvidenceQuality(entry, (smokeOutcome as { command?: string }).command, options.dimensionId, cwd);
     await writeFn(evidencePath, JSON.stringify(entry, null, 2));
     await recordOutcomeEvidenceCommit(entry, cwd, options._createTimeMachineCommit);
     return entry;
@@ -219,7 +219,7 @@ export async function runOneOutcome(options: RunOutcomeOptions): Promise<Outcome
       _readGitSha: async () => gitSha,
     });
     entry.evidencePath = evidencePath;
-    tagEvidenceQuality(entry, (rtOutcome as { command?: string }).command, options.dimensionId);
+    tagEvidenceQuality(entry, (rtOutcome as { command?: string }).command, options.dimensionId, cwd);
     await writeFn(evidencePath, JSON.stringify(entry, null, 2));
     await recordOutcomeEvidenceCommit(entry, cwd, options._createTimeMachineCommit);
     return entry;
@@ -232,7 +232,7 @@ export async function runOneOutcome(options: RunOutcomeOptions): Promise<Outcome
       _readGitSha: async () => gitSha,
     });
     entry.evidencePath = evidencePath;
-    tagEvidenceQuality(entry, (e2eOutcome as { command?: string }).command, options.dimensionId);
+    tagEvidenceQuality(entry, (e2eOutcome as { command?: string }).command, options.dimensionId, cwd);
     await writeFn(evidencePath, JSON.stringify(entry, null, 2));
     await recordOutcomeEvidenceCommit(entry, cwd, options._createTimeMachineCommit);
     return entry;
@@ -334,7 +334,7 @@ export async function runOneOutcome(options: RunOutcomeOptions): Promise<Outcome
   }
 
   // Confidence-tagging: classify evidence quality before writing to disk.
-  tagEvidenceQuality(entry, shellOutcome.command, options.dimensionId);
+  tagEvidenceQuality(entry, shellOutcome.command, options.dimensionId, cwd);
 
   await writeFn(evidencePath, JSON.stringify(entry, null, 2));
   await recordOutcomeEvidenceCommit(entry, cwd, options._createTimeMachineCommit);
@@ -350,15 +350,23 @@ const SEAM_PATTERNS_RT = [
 ];
 const MARKET_DIMS_RT = new Set(['community_adoption', 'enterprise_readiness']);
 
+/** Regex matching test file paths in shell commands (mirrors extractPrimaryTestFiles in derived-score.ts). */
+const TEST_FILE_RE = /[\w./-]+\.test\.[jt]sx?/g;
+
 /**
  * Tag an evidence entry with EXTRACTED/INFERRED/AMBIGUOUS quality and a
  * numeric confidence score, following the confidence-tagging doctrine.
  * Mutates `entry` in-place before it is written to disk.
+ *
+ * File-content seam detection: inspects referenced test files, not just the command string.
+ * A clean command like `npx tsx --test tests/foo.test.ts` is still INFERRED when foo.test.ts
+ * contains seam injection patterns (_cipCheck, vi.mock, etc).
  */
 function tagEvidenceQuality(
   entry: OutcomeEvidenceEntry,
   command: string | undefined,
   dimId: string,
+  cwd?: string,
 ): void {
   entry.session_id = PROCESS_SESSION_ID;
   if (MARKET_DIMS_RT.has(dimId)) {
@@ -370,6 +378,29 @@ function tagEvidenceQuality(
     entry.evidenceQuality = 'INFERRED';
     entry.confidenceScore = 0.65;
     return;
+  }
+  // File-content seam check: extract referenced test file names and inspect their contents.
+  // A command that looks clean but calls seamed tests is still INFERRED.
+  if (command && cwd) {
+    const fileNames = [...command.matchAll(TEST_FILE_RE)].map(m => m[0]);
+    for (const name of fileNames) {
+      const candidates = [
+        path.resolve(cwd, name),
+        path.resolve(cwd, 'tests', path.basename(name)),
+        path.resolve(cwd, 'src', path.basename(name)),
+      ];
+      for (const candidate of candidates) {
+        try {
+          const content = readFileSync(candidate, 'utf8');
+          if (SEAM_PATTERNS_RT.some(p => p.test(content))) {
+            entry.evidenceQuality = 'INFERRED';
+            entry.confidenceScore = 0.65;
+            return;
+          }
+          break; // file found and clean — skip remaining candidates for this name
+        } catch { /* file not found at this path — try next candidate */ }
+      }
+    }
   }
   entry.evidenceQuality = 'EXTRACTED';
   entry.confidenceScore = 1.0;

@@ -17,6 +17,10 @@ const TIER_SCORE_CAPS = {
 };
 const TIER_ORDER = ['T0', 'T1', 'T2', 'T3', 'T4', 'T5', 'T6', 'T7', 'T8'];
 const MIN_T7_HIGH_TIER_OUTCOMES = 3;
+// Market dims: internal evidence cannot certify adoption/enterprise scores above 5.0.
+// Mirrors MARKET_DIMS + MARKET_DIM_IMPLEMENTATION_CAP in src/core/derived-score.ts.
+const MARKET_DIMS = new Set(['community_adoption', 'enterprise_readiness']);
+const MARKET_DIM_CAP = 5.0;
 
 // ── Load evidence ────────────────────────────────────────────────────────────
 
@@ -99,11 +103,22 @@ function computeDerivedScore(dim, evidence) {
 
     let allPassing = passing === tierOutcomes.length;
 
+    // INFERRED evidence quality: tiers with INFERRED/AMBIGUOUS evidence cannot
+    // contribute to the T7 multi-receipt consensus minimum. Mirrors derived-score.ts.
+    // INFERRED still earns normal pass/partial credit for T5/T6 — just cannot certify T7.
+    const anyInferred = tierOutcomes.some(o => {
+      const entry = evidence.get(`${dim.id}::${o.id}`);
+      const q = entry?.evidenceQuality;
+      return q === 'INFERRED' || q === 'AMBIGUOUS';
+    });
+
     if (allPassing && tier === 'T7') {
       const highTierPassCount = perTier
-        .filter(pt => TIER_ORDER.indexOf(pt.tier) >= TIER_ORDER.indexOf('T5') && pt.allPassing)
+        .filter(pt => TIER_ORDER.indexOf(pt.tier) >= TIER_ORDER.indexOf('T5') && pt.allPassing && !pt.anyInferred)
         .reduce((sum, pt) => sum + pt.declared, 0);
-      if (highTierPassCount + tierOutcomes.length < MIN_T7_HIGH_TIER_OUTCOMES) {
+      // T7 tier's own contribution is also excluded when anyInferred.
+      const currentTierContrib = anyInferred ? 0 : tierOutcomes.length;
+      if (highTierPassCount + currentTierContrib < MIN_T7_HIGH_TIER_OUTCOMES) {
         allPassing = false;
       }
 
@@ -124,7 +139,7 @@ function computeDerivedScore(dim, evidence) {
       if (!allPassing) passing = 0;
     }
 
-    perTier.push({ tier, declared: tierOutcomes.length, passing, allPassing });
+    perTier.push({ tier, declared: tierOutcomes.length, passing, allPassing, anyInferred });
 
     if (allPassing) {
       highestFullPassedTier = tier;
@@ -151,6 +166,12 @@ function computeDerivedScore(dim, evidence) {
   if (dim.declared_ceiling && TIER_SCORE_CAPS[dim.declared_ceiling] !== undefined) {
     const cap = TIER_SCORE_CAPS[dim.declared_ceiling];
     if (score > cap) score = cap;
+  }
+
+  // Market dim cap: internal evidence cannot certify scores > 5.0 for adoption/enterprise.
+  // Do not trust prompts or warnings as enforcement — the invariant is enforced here.
+  if (MARKET_DIMS.has(dim.id) && score > MARKET_DIM_CAP) {
+    score = MARKET_DIM_CAP;
   }
 
   score = Math.round(score * 10) / 10;

@@ -103,6 +103,10 @@ export function computeTwoGaps(
   };
 }
 
+/** Market dims: internal evidence cannot certify adoption/enterprise scores above 5.0. */
+const MARKET_DIMS_SCORE_CAP = new Set(['community_adoption', 'enterprise_readiness']);
+const MARKET_DIM_MAX_SCORE = 5.0;
+
 export function updateDimensionScore(
   matrix: CompeteMatrix,
   dimensionId: string,
@@ -114,7 +118,11 @@ export function updateDimensionScore(
   if (!dim) throw new Error(`Dimension "${dimensionId}" not found in matrix`);
 
   const before = dim.scores['self'] ?? 0;
-  const clamped = dim.ceiling !== undefined ? Math.min(newScore, dim.ceiling) : newScore;
+  let clamped = dim.ceiling !== undefined ? Math.min(newScore, dim.ceiling) : newScore;
+  // Do not trust prompts or warnings as enforcement — market cap is enforced on every write.
+  if (MARKET_DIMS_SCORE_CAP.has(dimensionId)) {
+    clamped = Math.min(clamped, MARKET_DIM_MAX_SCORE);
+  }
   dim.scores['self'] = clamped;
 
   const competitorEntries = Object.entries(dim.scores).filter(([k]) => k !== 'self');

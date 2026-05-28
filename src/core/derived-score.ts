@@ -52,9 +52,11 @@ const MIN_T7_HIGH_TIER_OUTCOMES = 3;
 const MARKET_DIMS = new Set(['community_adoption', 'enterprise_readiness']);
 const MARKET_DIM_IMPLEMENTATION_CAP = 5.0;
 
-/** Extract test file names from a command string. Used for cross-dim sharing detection. */
+/** Extract test file paths from a command string. Used for cross-dim sharing detection.
+ *  Includes directory separators so `tests/a/x.test.ts` and `tests/b/x.test.ts` are distinct.
+ */
 export function extractPrimaryTestFiles(command: string): string[] {
-  const matches = command.match(/[\w.-]+\.test\.[jt]sx?/g);
+  const matches = command.match(/[\w./-]+\.test\.[jt]sx?/g);
   return matches ? [...new Set(matches)] : [];
 }
 
@@ -74,6 +76,9 @@ export interface DerivedScoreBreakdown {
     /** Outcomes that had evidence but it was older than TIER_FRESHNESS_MS. */
     stale: number;
     allPassing: boolean;
+    /** True if ANY outcome in this tier has evidenceQuality INFERRED or AMBIGUOUS.
+     *  INFERRED tiers cannot contribute to the T7 multi-receipt consensus minimum. */
+    anyInferred: boolean;
   }>;
   /** True if the dim has no outcomes declared (legacy fallback). */
   usedLegacyFallback: boolean;
@@ -168,14 +173,26 @@ export function computeDerivedScoreWithBreakdown(
 
     let allPassing = passing === tierOutcomes.length;
 
+    // INFERRED evidence quality check: a tier where any outcome has INFERRED or AMBIGUOUS
+    // evidence cannot contribute to the T7 multi-receipt consensus minimum. INFERRED
+    // evidence still earns normal pass/partial credit for lower tiers — it simply cannot
+    // be used to self-certify at the highest trust level.
+    const anyInferred = tierOutcomes.some(o => {
+      const e = evidence.get(makeEvidenceKey(dim.id, o.id));
+      const q = e?.evidenceQuality;
+      return q === 'INFERRED' || q === 'AMBIGUOUS';
+    });
+
     // T7 multi-receipt consensus: even if this tier's outcomes pass, the dim
-    // must have 3+ outcomes at T5+ all passing to claim T7. Without broad
-    // depth evidence, a lone T7 outcome cannot unlock 9.0.
+    // must have 3+ outcomes at T5+ all passing AND all EXTRACTED to claim T7.
+    // Without broad depth evidence from clean sources, a lone T7 outcome cannot unlock 9.0.
     if (allPassing && tier === 'T7') {
       const highTierPassCount = perTier
-        .filter(pt => TIER_INDEX[pt.tier] >= TIER_INDEX.T5 && pt.allPassing)
+        .filter(pt => TIER_INDEX[pt.tier] >= TIER_INDEX.T5 && pt.allPassing && !pt.anyInferred)
         .reduce((sum, pt) => sum + pt.declared, 0);
-      if (highTierPassCount + tierOutcomes.length < MIN_T7_HIGH_TIER_OUTCOMES) {
+      // T7 tier itself is also excluded from the count when anyInferred.
+      const currentTierContrib = anyInferred ? 0 : tierOutcomes.length;
+      if (highTierPassCount + currentTierContrib < MIN_T7_HIGH_TIER_OUTCOMES) {
         allPassing = false;
         passing = 0; // structural veto — partial credit must not reach T7 cap
       }
@@ -213,7 +230,7 @@ export function computeDerivedScoreWithBreakdown(
       }
     }
 
-    perTier.push({ tier, declared: tierOutcomes.length, passing, stale, allPassing });
+    perTier.push({ tier, declared: tierOutcomes.length, passing, stale, allPassing, anyInferred });
 
     if (allPassing) {
       highestFullPassedTier = tier;

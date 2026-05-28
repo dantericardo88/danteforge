@@ -30,7 +30,7 @@ function makeDim(outcomes: Outcome[], opts: Partial<DimensionForScoring> = {}): 
   return { id: 'test', outcomes, ...opts };
 }
 
-function makeEvidence(records: Array<{ dim: string; outcomeId: string; passed: boolean; exitCode?: number; pattern?: string; sessionId?: string }>): OutcomeEvidence {
+function makeEvidence(records: Array<{ dim: string; outcomeId: string; passed: boolean; exitCode?: number; pattern?: string; sessionId?: string; evidenceQuality?: 'EXTRACTED' | 'INFERRED' | 'AMBIGUOUS' }>): OutcomeEvidence {
   const map: OutcomeEvidence = new Map();
   for (const r of records) {
     const entry: OutcomeEvidenceEntry = {
@@ -46,6 +46,7 @@ function makeEvidence(records: Array<{ dim: string; outcomeId: string; passed: b
       ranAt: '2026-05-18T15:00:00Z',
       evidencePath: '/fake',
       session_id: r.sessionId,
+      evidenceQuality: r.evidenceQuality,
     };
     map.set(makeEvidenceKey(r.dim, r.outcomeId), entry);
   }
@@ -457,5 +458,62 @@ describe('STRUCTURAL: inflation is impossible by construction', () => {
     const evidence = makeEvidence([{ dim: 'community_adoption', outcomeId: 'install', passed: true }]);
     const score = computeDerivedScore(dim, evidence);
     assert.ok(score <= 5.0, `Expected ≤ 5.0 for market dim, got ${score}`);
+  });
+
+  it('T7 with INFERRED-only evidence pool cannot reach 9.0', () => {
+    // All three outcomes tagged INFERRED → anyInferred=true for every T5+ tier.
+    // No EXTRACTED tier can satisfy the T7 highTierPassCount minimum → structural veto.
+    const dim: DimensionForScoring = {
+      id: 'testing',
+      outcomes: [
+        makeOutcome('o1', 'T5', { kind: 'cli-smoke', command: 'node dist/index.js run tests/a.test.ts' }),
+        makeOutcome('o2', 'T5', { kind: 'cli-smoke', command: 'node dist/index.js validate tests/b.test.ts' }),
+        makeOutcome('o7', 'T7', { kind: 'runtime-exec', command: 'node dist/index.js e2e tests/c.test.ts' }),
+      ],
+    };
+    const evidence = makeEvidence([
+      { dim: 'testing', outcomeId: 'o1', passed: true, sessionId: 'A', evidenceQuality: 'INFERRED' },
+      { dim: 'testing', outcomeId: 'o2', passed: true, sessionId: 'A', evidenceQuality: 'INFERRED' },
+      { dim: 'testing', outcomeId: 'o7', passed: true, sessionId: 'B', evidenceQuality: 'INFERRED' },
+    ]);
+    const score = computeDerivedScore(dim, evidence);
+    assert.ok(score < 9.0, `Expected < 9.0 for INFERRED-only T7 pool, got ${score}`);
+  });
+
+  it('T7 with all EXTRACTED evidence can reach 9.0 (INFERRED gate does not block clean evidence)', () => {
+    // Two EXTRACTED T5 + one EXTRACTED T7, two sessions → T7 consensus met → 9.0.
+    const dim: DimensionForScoring = {
+      id: 'testing',
+      outcomes: [
+        makeOutcome('o1', 'T5', { kind: 'cli-smoke', command: 'node dist/index.js run tests/a.test.ts' }),
+        makeOutcome('o2', 'T5', { kind: 'cli-smoke', command: 'node dist/index.js validate tests/b.test.ts' }),
+        makeOutcome('o7', 'T7', { kind: 'runtime-exec', command: 'node dist/index.js e2e tests/c.test.ts' }),
+      ],
+    };
+    const evidence = makeEvidence([
+      { dim: 'testing', outcomeId: 'o1', passed: true, sessionId: 'A', evidenceQuality: 'EXTRACTED' },
+      { dim: 'testing', outcomeId: 'o2', passed: true, sessionId: 'A', evidenceQuality: 'EXTRACTED' },
+      { dim: 'testing', outcomeId: 'o7', passed: true, sessionId: 'B', evidenceQuality: 'EXTRACTED' },
+    ]);
+    const score = computeDerivedScore(dim, evidence);
+    assert.equal(score, TIER_SCORE_CAPS.T7, `Expected T7 cap for EXTRACTED evidence pool, got ${score}`);
+  });
+
+  it('INFERRED T5 evidence still earns T5 partial credit (INFERRED does not zero lower tiers)', () => {
+    // Two T5 outcomes passing with INFERRED quality: no T7 declared → score is T5 cap, not 0.
+    // INFERRED only blocks T7 consensus counting; it does not block T5 allPassing.
+    const dim: DimensionForScoring = {
+      id: 'testing',
+      outcomes: [
+        makeOutcome('o1', 'T5', { kind: 'cli-smoke', command: 'node dist/index.js run tests/a.test.ts' }),
+        makeOutcome('o2', 'T5', { kind: 'cli-smoke', command: 'node dist/index.js validate tests/b.test.ts' }),
+      ],
+    };
+    const evidence = makeEvidence([
+      { dim: 'testing', outcomeId: 'o1', passed: true, sessionId: 'A', evidenceQuality: 'INFERRED' },
+      { dim: 'testing', outcomeId: 'o2', passed: true, sessionId: 'A', evidenceQuality: 'INFERRED' },
+    ]);
+    const score = computeDerivedScore(dim, evidence);
+    assert.equal(score, TIER_SCORE_CAPS.T5, `Expected T5 cap for INFERRED T5 evidence, got ${score}`);
   });
 });
