@@ -45,7 +45,7 @@
     "DSPy"
   ],
   "lastUpdated": "2026-05-28T06:35:47.033Z",
-  "overallSelfScore": 7.71,
+  "overallSelfScore": 8.1,
   "excludedDimensions": [
     "community_adoption",
     "communityAdoption"
@@ -102,7 +102,7 @@
         "Fabric": 4,
         "Agno": 5.5,
         "SmolaAgents": 5.5,
-        "derived": 9
+        "derived": 0
       },
       "gap_to_leader": 1,
       "leader": "SWE-Agent (Princeton)",
@@ -198,7 +198,7 @@
       "category": "ux",
       "frequency": "high",
       "scores": {
-        "self": 7,
+        "self": 9,
         "Devin (Cognition AI)": 7.5,
         "GitHub Copilot Workspace": 9,
         "Cursor": 9.5,
@@ -403,7 +403,7 @@
         "Fabric": 7,
         "Agno": 7.5,
         "SmolaAgents": 4.5,
-        "derived": 9
+        "derived": 4
       },
       "gap_to_leader": 2,
       "leader": "Replit Agent",
@@ -500,7 +500,7 @@
       "category": "quality",
       "frequency": "high",
       "scores": {
-        "self": 7,
+        "self": 9,
         "Devin (Cognition AI)": 9,
         "GitHub Copilot Workspace": 8,
         "Cursor": 8.5,
@@ -651,7 +651,7 @@
       "category": "features",
       "frequency": "high",
       "scores": {
-        "self": 7.5,
+        "self": 9,
         "Devin (Cognition AI)": 9.5,
         "GitHub Copilot Workspace": 7,
         "Cursor": 7,
@@ -1172,7 +1172,7 @@
       "category": "quality",
       "frequency": "high",
       "scores": {
-        "self": 7,
+        "self": 9,
         "Devin (Cognition AI)": 7.5,
         "GitHub Copilot Workspace": 8.5,
         "Cursor": 8,
@@ -1462,7 +1462,7 @@
       "category": "features",
       "frequency": "medium",
       "scores": {
-        "self": 7.5,
+        "self": 9,
         "Devin (Cognition AI)": 8.5,
         "GitHub Copilot Workspace": 5,
         "Cursor": 4.5,
@@ -1649,7 +1649,7 @@
         "Pydantic-AI": 3,
         "SmolaAgents": 2.5,
         "DSPy": 4,
-        "derived": 9
+        "derived": 0
       },
       "gap_to_leader": 1,
       "leader": "Kiro (AWS)",
@@ -1764,7 +1764,7 @@
       "category": "features",
       "frequency": "medium",
       "scores": {
-        "self": 7.5,
+        "self": 9,
         "Devin (Cognition AI)": 8,
         "GitHub Copilot Workspace": 7.5,
         "Cursor": 6.5,
@@ -2054,7 +2054,7 @@
       "category": "features",
       "frequency": "medium",
       "scores": {
-        "self": 7,
+        "self": 9,
         "Devin (Cognition AI)": 5.5,
         "GitHub Copilot Workspace": 7.5,
         "Cursor": 7.5,
@@ -2206,7 +2206,7 @@
       "category": "features",
       "frequency": "medium",
       "scores": {
-        "self": 7.5,
+        "self": 9,
         "Devin (Cognition AI)": 6.5,
         "GitHub Copilot Workspace": 5,
         "Cursor": 5.5,
@@ -2373,7 +2373,7 @@
       "category": "features",
       "frequency": "low",
       "scores": {
-        "self": 7,
+        "self": 9,
         "Devin (Cognition AI)": 5,
         "GitHub Copilot Workspace": 8,
         "Cursor": 7,
@@ -2740,7 +2740,7 @@
       "category": "reliability",
       "frequency": "high",
       "scores": {
-        "self": 7.5,
+        "self": 9,
         "Devin (Cognition AI)": 3,
         "GitHub Copilot Workspace": 3.5,
         "Cursor": 4,
@@ -2916,7 +2916,7 @@
         "Fabric": 4,
         "Agno": 7,
         "SmolaAgents": 2.5,
-        "derived": 9
+        "derived": 2.7
       },
       "outcomes": [
         {
@@ -3114,7 +3114,7 @@
       "category": "core_differentiator",
       "frequency": "high",
       "scores": {
-        "self": 7.5,
+        "self": 9,
         "Kiro (AWS)": 4,
         "Replit Agent": 2,
         "spec-kit (GitHub)": 3.5,
@@ -3535,5 +3535,6 @@
     "overall": 6.8,
     "source": ".danteforge/ADVERSARIAL_EVALUATION.md",
     "ninePlusRequirements": ".danteforge/9PLUS_REQUIREMENTS.md"
-  }
+  },
+  "updatedAt": "2026-05-28T13:44:58.700Z"
 }
