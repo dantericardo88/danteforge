@@ -199,6 +199,37 @@ program
       }
     })();
   });
+// ── council-universe ──────────────────────────────────────────────────────────
+
+program
+  .command('council-universe')
+  .description('Research competitive universe per dim: council members use web search to define exactly what 9+ looks like for each of the 24 matrix dimensions. Output: .danteforge/compete/universe/<dim_id>.md')
+  .option('--dims <ids>', 'Comma-separated dim IDs to research (default: all from matrix)')
+  .option('--members <ids>', 'Comma-separated researcher members (default: claude-code,codex)', 'claude-code,codex')
+  .option('--no-skip-existing', 'Force re-research even if universe files already exist')
+  .option('--concurrency <n>', 'Max parallel dim research calls (default: 4)', '4')
+  .option('--json', 'Emit JSON result at end')
+  .option('--cwd <path>', 'Project directory (defaults to cwd)')
+  .action((opts) => {
+    void (async () => {
+      try {
+        const { runCouncilUniverseCommand } = await import('./commands/council-universe.js');
+        await runCouncilUniverseCommand({
+          cwd: opts.cwd as string | undefined,
+          dims: opts.dims as string | undefined,
+          members: opts.members as string | undefined,
+          skipExisting: opts.skipExisting !== false,
+          concurrency: opts.concurrency ? parseInt(opts.concurrency as string, 10) : 4,
+          json: opts.json as boolean | undefined,
+        });
+      } catch (err) {
+        const { formatAndLogError } = await import('../core/format-error.js');
+        formatAndLogError(err, 'council-universe');
+        process.exitCode = 1;
+      }
+    })();
+  });
+
 // ── de-sloppify ──────────────────────────────────────────────────────────────
 
 program

@@ -51,4 +51,6 @@ export const MATRIX_SCORE_SURFACE_PATTERNS: readonly string[] = [
   '.danteforge/compete/COMPETE_REPORT.md',
   '.danteforge/scores/**',
   '.danteforge/score-proposals/**',
+  // Universe files define what 9+ means — builders must not edit them during forge work.
+  '.danteforge/compete/universe/**',
 ];

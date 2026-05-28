@@ -51,6 +51,7 @@ import {
   parseVerifierResponse,
   buildScoringPrompt,
   parseScoringResponse,
+  loadUniverseFile,
 } from './council-forge-brief.js';
 import type { ForgeBrief } from './council-forge-brief.js';
 import { runResearchPhase } from './council-research-phase.js';
@@ -219,7 +220,8 @@ async function runBuildPhase(
   }
 
   const handle = handles[0]!;
-  const briefPrefix = brief ? buildBriefPromptPrefix(brief) : '';
+  const universeContent = brief ? await loadUniverseFile(projectPath, brief.dimId) : null;
+  const briefPrefix = brief ? buildBriefPromptPrefix(brief, universeContent) : '';
   const dimGoal = [
     briefPrefix,
     goal,
@@ -298,8 +300,9 @@ async function runConfirmPhase(
 ): Promise<{ verdict: 'PASS' | 'FAIL'; score: number; notes: string; highestImpactNext: string }> {
   // Use the full scoring rubric from scoringprompt-dim.md if a brief exists,
   // otherwise fall back to a simple pass/fail check.
+  const universeContent = brief ? await loadUniverseFile(projectPath, brief.dimId) : null;
   const prompt = brief
-    ? buildScoringPrompt(brief, diff, passThreshold)
+    ? buildScoringPrompt(brief, diff, passThreshold, universeContent)
     : [
         `Score this diff and issue PASS or FAIL. A PASS requires real production code with no stubs.`,
         `Respond with: SCORE: X.X\nVERDICT: PASS\nREASON: ...\nHIGHEST_IMPACT_NEXT: ...`,

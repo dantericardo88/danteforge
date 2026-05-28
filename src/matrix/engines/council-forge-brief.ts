@@ -87,6 +87,21 @@ export async function saveForgeBrief(
   await fs.writeFile(briefPath(projectPath, brief.dimId), JSON.stringify(brief, null, 2), 'utf8');
 }
 
+function universeDir(projectPath: string): string {
+  return path.join(projectPath, '.danteforge', 'compete', 'universe');
+}
+
+export async function loadUniverseFile(projectPath: string, dimId: string): Promise<string | null> {
+  try {
+    return await fs.readFile(path.join(universeDir(projectPath), `${dimId}.md`), 'utf8');
+  } catch { return null; }
+}
+
+export async function saveUniverseFile(projectPath: string, dimId: string, content: string): Promise<void> {
+  await fs.mkdir(universeDir(projectPath), { recursive: true });
+  await fs.writeFile(path.join(universeDir(projectPath), `${dimId}.md`), content, 'utf8');
+}
+
 export async function loadAllBriefs(projectPath: string): Promise<ForgeBrief[]> {
   try {
     const dir = briefsDir(projectPath);
@@ -145,7 +160,7 @@ export function recordVerification(
 }
 
 /** Build a builder prompt prefix that injects the forge brief context. */
-export function buildBriefPromptPrefix(brief: ForgeBrief): string {
+export function buildBriefPromptPrefix(brief: ForgeBrief, universeContent?: string | null): string {
   const missing = brief.checklist.filter(i => !i.completed);
   if (missing.length === 0) return '';
 
@@ -162,9 +177,18 @@ export function buildBriefPromptPrefix(brief: ForgeBrief): string {
     ].join('\n'),
   ).join('\n');
 
+  const universeSections = universeContent
+    ? extractUniverseSections(universeContent, ['Key techniques that separate 9+ from 7', 'Builder checklist for 9+'])
+    : null;
+
   return [
     `=== FORGE BRIEF: ${brief.dimName} (current: ${brief.currentScore} → target: ${brief.targetScore}) ===`,
     '',
+    ...(universeSections ? [
+      '## COMPETITIVE UNIVERSE — what 9+ looks like for this dimension',
+      universeSections,
+      '',
+    ] : []),
     'What OSS leaders do that we do not:',
     ossLines || '  (none recorded yet)',
     '',
@@ -180,6 +204,17 @@ export function buildBriefPromptPrefix(brief: ForgeBrief): string {
     '=== END FORGE BRIEF ===',
     '',
   ].join('\n');
+}
+
+/** Extract named H2 sections from a universe markdown file. */
+function extractUniverseSections(content: string, sections: string[]): string {
+  const parts: string[] = [];
+  for (const section of sections) {
+    const regex = new RegExp(`## ${section.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}([\\s\\S]*?)(?=\n## |$)`, 'i');
+    const m = regex.exec(content);
+    if (m) parts.push(`### ${section}${m[1]!.trimEnd()}`);
+  }
+  return parts.join('\n\n');
 }
 
 /** Build a verifier prompt: "which checklist items were built in this diff?" */
@@ -215,6 +250,7 @@ export function buildScoringPrompt(
   brief: ForgeBrief,
   diff: string,
   passThreshold = 7.0,
+  universeContent?: string | null,
 ): string {
   const ossLeader = brief.ossCapabilities[0]?.leader ?? 'OSS leaders';
   const missing = brief.checklist.filter(i => !i.completed);
@@ -225,6 +261,10 @@ export function buildScoringPrompt(
       ).join('\n')
     : '  (all checklist items already verified as complete in prior cycles)';
 
+  const universeCriteria = universeContent
+    ? extractUniverseSections(universeContent, ['Score Ladder', 'Judge scoring criteria'])
+    : null;
+
   return [
     `You are an independent scoring agent. Your job is to assign an evidence-backed score (0–10)`,
     `to **${brief.dimName}** (dim ID: \`${brief.dimId}\`) based on the diff below, then issue a PASS or FAIL verdict.`,
@@ -234,6 +274,11 @@ export function buildScoringPrompt(
     `## FORGE_BRIEF checklist — what was supposed to be built`,
     checklistLines,
     ``,
+    ...(universeCriteria ? [
+      `## Competitive universe criteria (what 9+ means for ${brief.dimName})`,
+      universeCriteria,
+      ``,
+    ] : []),
     `## Scoring scale`,
     `| Score | Meaning |`,
     `|-------|---------|`,
