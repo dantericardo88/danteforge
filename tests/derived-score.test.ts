@@ -362,4 +362,57 @@ describe('STRUCTURAL: inflation is impossible by construction', () => {
     // To go higher, the dim must DECLARE a T3+ outcome AND make it pass.
     // The agent cannot just claim a higher number.
   });
+
+  it('T7 with 3 outcomes all pointing to the same test file cannot reach 9.0', () => {
+    // Regression: extractPrimaryTestFiles regex must correctly detect shared receipts.
+    // Three outcomes referencing shared.test.ts = one receipt, not three.
+    // Use cli-smoke kind (maxScore=8.5 ≥ T5 cap 8.0) so T5 outcomes pass quality gate.
+    const dim: DimensionForScoring = {
+      id: 'testing',
+      outcomes: [
+        makeOutcome('o1', 'T5', { kind: 'cli-smoke', command: 'node dist/index.js run tests/shared.test.ts' }),
+        makeOutcome('o2', 'T5', { kind: 'cli-smoke', command: 'node dist/index.js validate tests/shared.test.ts' }),
+        makeOutcome('o7', 'T7', { kind: 'runtime-exec', command: 'node dist/index.js e2e tests/shared.test.ts' }),
+      ],
+    };
+    const evidence = makeEvidence([
+      { dim: 'testing', outcomeId: 'o1', passed: true },
+      { dim: 'testing', outcomeId: 'o2', passed: true },
+      { dim: 'testing', outcomeId: 'o7', passed: true },
+    ]);
+    const score = computeDerivedScore(dim, evidence);
+    assert.ok(score < 9.0, `Expected < 9.0 for shared-receipt T7, got ${score}`);
+  });
+
+  it('T7 with 2 distinct test files can reach 9.0', () => {
+    // Complement to above: genuine multi-receipt (distinct files) must unlock T7.
+    // a.test.ts and b.test.ts are distinct → uniqueFiles.size=2 ≥ 2.
+    const dim: DimensionForScoring = {
+      id: 'testing',
+      outcomes: [
+        makeOutcome('o1', 'T5', { kind: 'cli-smoke', command: 'node dist/index.js run tests/a.test.ts' }),
+        makeOutcome('o2', 'T5', { kind: 'cli-smoke', command: 'node dist/index.js validate tests/b.test.ts' }),
+        makeOutcome('o7', 'T7', { kind: 'runtime-exec', command: 'node dist/index.js e2e tests/a.test.ts tests/b.test.ts' }),
+      ],
+    };
+    const evidence = makeEvidence([
+      { dim: 'testing', outcomeId: 'o1', passed: true },
+      { dim: 'testing', outcomeId: 'o2', passed: true },
+      { dim: 'testing', outcomeId: 'o7', passed: true },
+    ]);
+    const score = computeDerivedScore(dim, evidence);
+    assert.equal(score, TIER_SCORE_CAPS.T7, `Expected T7 cap (${TIER_SCORE_CAPS.T7}) for genuine multi-receipt, got ${score}`);
+  });
+
+  it('community_adoption is hard-capped at 5.0 regardless of passing outcomes', () => {
+    const dim: DimensionForScoring = {
+      id: 'community_adoption',
+      outcomes: [
+        makeOutcome('install', 'T5', { kind: 'cli-smoke', command: 'node dist/index.js --version' }),
+      ],
+    };
+    const evidence = makeEvidence([{ dim: 'community_adoption', outcomeId: 'install', passed: true }]);
+    const score = computeDerivedScore(dim, evidence);
+    assert.ok(score <= 5.0, `Expected ≤ 5.0 for market dim, got ${score}`);
+  });
 });

@@ -181,6 +181,7 @@ export async function runOneOutcome(options: RunOutcomeOptions): Promise<Outcome
     const engine = new RipgrepFallback();
     const result = await runProductionUsageFresh(freshOutcome, cwd, undefined, engine);
     const entry = freshResultToEvidence(freshOutcome, options.dimensionId, result, gitSha, evidencePath, Date.now() - start);
+    tagEvidenceQuality(entry, (freshOutcome as { command?: string }).command, options.dimensionId);
     await writeFn(evidencePath, JSON.stringify(entry, null, 2));
     await recordOutcomeEvidenceCommit(entry, cwd, options._createTimeMachineCommit);
     return entry;
@@ -196,6 +197,7 @@ export async function runOneOutcome(options: RunOutcomeOptions): Promise<Outcome
       _readGitSha: async () => gitSha,
     });
     entry.evidencePath = evidencePath;
+    tagEvidenceQuality(entry, (smokeOutcome as { command?: string }).command, options.dimensionId);
     await writeFn(evidencePath, JSON.stringify(entry, null, 2));
     await recordOutcomeEvidenceCommit(entry, cwd, options._createTimeMachineCommit);
     return entry;
@@ -209,6 +211,7 @@ export async function runOneOutcome(options: RunOutcomeOptions): Promise<Outcome
       _readGitSha: async () => gitSha,
     });
     entry.evidencePath = evidencePath;
+    tagEvidenceQuality(entry, (rtOutcome as { command?: string }).command, options.dimensionId);
     await writeFn(evidencePath, JSON.stringify(entry, null, 2));
     await recordOutcomeEvidenceCommit(entry, cwd, options._createTimeMachineCommit);
     return entry;
@@ -221,6 +224,7 @@ export async function runOneOutcome(options: RunOutcomeOptions): Promise<Outcome
       _readGitSha: async () => gitSha,
     });
     entry.evidencePath = evidencePath;
+    tagEvidenceQuality(entry, (e2eOutcome as { command?: string }).command, options.dimensionId);
     await writeFn(evidencePath, JSON.stringify(entry, null, 2));
     await recordOutcomeEvidenceCommit(entry, cwd, options._createTimeMachineCommit);
     return entry;
@@ -321,9 +325,45 @@ export async function runOneOutcome(options: RunOutcomeOptions): Promise<Outcome
     }
   }
 
+  // Confidence-tagging: classify evidence quality before writing to disk.
+  tagEvidenceQuality(entry, shellOutcome.command, options.dimensionId);
+
   await writeFn(evidencePath, JSON.stringify(entry, null, 2));
   await recordOutcomeEvidenceCommit(entry, cwd, options._createTimeMachineCommit);
   return entry;
+}
+
+// ── Confidence tagging ────────────────────────────────────────────────────────
+
+const SEAM_PATTERNS_RT = [
+  /_cipCheck/, /_runPass/, /_runAutoforge/, /_runVerify/, /_now\b/,
+  /_discover/, /_loadMatrix/, /_runAdapter/,
+  /jest\.mock\(/, /vi\.mock\(/, /sinon\.stub\(/, /sinon\.mock\(/,
+];
+const MARKET_DIMS_RT = new Set(['community_adoption', 'enterprise_readiness']);
+
+/**
+ * Tag an evidence entry with EXTRACTED/INFERRED/AMBIGUOUS quality and a
+ * numeric confidence score, following the confidence-tagging doctrine.
+ * Mutates `entry` in-place before it is written to disk.
+ */
+function tagEvidenceQuality(
+  entry: OutcomeEvidenceEntry,
+  command: string | undefined,
+  dimId: string,
+): void {
+  if (MARKET_DIMS_RT.has(dimId)) {
+    entry.evidenceQuality = 'INFERRED';
+    entry.confidenceScore = 0.75;
+    return;
+  }
+  if (command && SEAM_PATTERNS_RT.some(p => p.test(command))) {
+    entry.evidenceQuality = 'INFERRED';
+    entry.confidenceScore = 0.65;
+    return;
+  }
+  entry.evidenceQuality = 'EXTRACTED';
+  entry.confidenceScore = 1.0;
 }
 
 /**

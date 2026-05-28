@@ -187,6 +187,15 @@ export interface OutcomeEvidenceEntry {
    * about the initial failure.
    */
   firstAttemptFailureReason?: string;
+  /**
+   * Evidence quality tier from the confidence-tagging doctrine.
+   * EXTRACTED = explicitly observed from a primary source (trust 1.0).
+   * INFERRED  = reasonable deduction; confidence 0.55–0.95.
+   * AMBIGUOUS = uncertain; score should not be raised based on this alone.
+   */
+  evidenceQuality?: 'EXTRACTED' | 'INFERRED' | 'AMBIGUOUS';
+  /** Numeric confidence: 1.0 (EXTRACTED), 0.55–0.95 (INFERRED), 0.1–0.3 (AMBIGUOUS). */
+  confidenceScore?: number;
 }
 
 /**

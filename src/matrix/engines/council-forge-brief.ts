@@ -35,6 +35,8 @@ export interface VerificationRound {
   verifiedBy: string;
   confirmedBy: string;
   verdict: 'PASS' | 'FAIL';
+  /** Judge's self-reported confidence level, from CONFIDENCE: HIGH|MEDIUM|LOW in output. */
+  confidence?: 'high' | 'medium' | 'low';
   itemsBuilt: string[];
   itemsMissing: string[];
   notes: string;
@@ -323,6 +325,7 @@ export function parseScoringResponse(response: string): {
 } {
   const scoreMatch = response.match(/SCORE:\s*([\d.]+)/i);
   const verdictMatch = response.match(/VERDICT:\s*(PASS|FAIL)/i);
+  const confidenceMatch = response.match(/CONFIDENCE:\s*(HIGH|MEDIUM|LOW)/i);
   const reasonMatch = response.match(/REASON:\s*(.+?)(?=\nHIGHEST|$)/is);
   const nextMatch = response.match(/HIGHEST_IMPACT_NEXT:\s*(.+?)(?=\n|$)/i);
 
@@ -331,9 +334,12 @@ export function parseScoringResponse(response: string): {
     checklistResults[m[1]!] = m[2]!.toUpperCase() as 'BUILT' | 'PARTIAL' | 'MISSING';
   }
 
+  const rawConfidence = confidenceMatch?.[1]?.toLowerCase() as 'high' | 'medium' | 'low' | undefined;
+
   return {
     score: scoreMatch ? parseFloat(scoreMatch[1]!) : 0,
     verdict: (verdictMatch?.[1]?.toUpperCase() as 'PASS' | 'FAIL') ?? 'FAIL',
+    confidence: rawConfidence,
     reason: reasonMatch?.[1]?.trim() ?? '',
     highestImpactNext: nextMatch?.[1]?.trim() ?? '',
     checklistResults,

@@ -54,7 +54,7 @@ const MARKET_DIM_IMPLEMENTATION_CAP = 5.0;
 
 /** Extract test file names from a command string. Used for cross-dim sharing detection. */
 export function extractPrimaryTestFiles(command: string): string[] {
-  const matches = command.match(/[w.-]+.test.[jt]sx?/g);
+  const matches = command.match(/[\w.-]+\.test\.[jt]sx?/g);
   return matches ? [...new Set(matches)] : [];
 }
 
@@ -177,6 +177,7 @@ export function computeDerivedScoreWithBreakdown(
         .reduce((sum, pt) => sum + pt.declared, 0);
       if (highTierPassCount + tierOutcomes.length < MIN_T7_HIGH_TIER_OUTCOMES) {
         allPassing = false;
+        passing = 0; // structural veto — partial credit must not reach T7 cap
       }
       // Distinct test-file check: all T5+ outcomes pointing to the same single test
       // file is one receipt dressed as many — not genuine multi-receipt.
@@ -186,7 +187,10 @@ export function computeDerivedScoreWithBreakdown(
           o => extractPrimaryTestFiles((o as { command?: string }).command ?? ''),
         );
         const uniqueFiles = new Set(testFiles);
-        if (testFiles.length > 0 && uniqueFiles.size < 2) allPassing = false;
+        if (testFiles.length > 0 && uniqueFiles.size < 2) {
+          allPassing = false;
+          passing = 0; // structural veto — partial credit must not reach T7 cap
+        }
       }
     }
 

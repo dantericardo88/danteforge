@@ -60,6 +60,8 @@ export interface ValidateDimResult {
   passingOutcomes: number;
   failingOutcomes: number;
   error?: string;
+  /** Set when an integrity violation capped the score below what outcomes earned. */
+  integrityCap?: 'SHARED_RECEIPT' | 'SEAM_USAGE';
 }
 
 export interface ValidateCliResult {
@@ -67,9 +69,24 @@ export interface ValidateCliResult {
   allPassed: boolean;
 }
 
-// ── Main entry point ─────────────────────────────────────────────────────────
+// ── Helpers ───────────────────────────────────────────────────────────────────
 
 const RUNTIME_KINDS = new Set(['cli-smoke', 'runtime-exec', 'e2e-workflow']);
+
+function applyIntegrityCaps(
+  score: number,
+  dimId: string,
+  report: import('../../matrix/engines/outcome-integrity.js').IntegrityReport | null,
+): { cappedScore: number; integrityCap: 'SHARED_RECEIPT' | 'SEAM_USAGE' | undefined } {
+  if (!report) return { cappedScore: score, integrityCap: undefined };
+  if (report.sharedReceiptDims.includes(dimId) && score > 7.0)
+    return { cappedScore: 7.0, integrityCap: 'SHARED_RECEIPT' };
+  if (report.seamedDims.includes(dimId) && score > 6.0)
+    return { cappedScore: 6.0, integrityCap: 'SEAM_USAGE' };
+  return { cappedScore: score, integrityCap: undefined };
+}
+
+// ── Main entry point ─────────────────────────────────────────────────────────
 
 export async function runValidateCli(options: ValidateCliOptions): Promise<ValidateCliResult> {
   const cwd = options.cwd ?? process.cwd();
@@ -133,8 +150,9 @@ export async function runValidateCli(options: ValidateCliOptions): Promise<Valid
   }
 
   // Integrity pre-flight: detect cross-dim shared receipts, seamed tests, market dims
+  let integrityReport: import('../../matrix/engines/outcome-integrity.js').IntegrityReport | null = null;
   try {
-    const integrityReport = await checkOutcomeIntegrity(
+    integrityReport = await checkOutcomeIntegrity(
       matrix.dimensions as Parameters<typeof checkOutcomeIntegrity>[0],
       cwd,
     );
@@ -177,20 +195,24 @@ export async function runValidateCli(options: ValidateCliOptions): Promise<Valid
     const passing = dimRunResult?.passing ?? 0;
     const failing = dimRunResult?.failing ?? 0;
 
+    // Apply integrity caps: shared receipts → 7.0, seamed outcomes → 6.0
+    const { cappedScore, integrityCap } = applyIntegrityCaps(scoreAfter, dim.id, integrityReport);
+
     // Ceiling lifted = score was capped at legacy ceiling before, now above it
     const wasCapped = scoreBefore <= LEGACY_NO_RECEIPT_CEILING && !breakdown.usedLegacyFallback;
-    const ceilingLifted = wasCapped && scoreAfter > LEGACY_NO_RECEIPT_CEILING;
+    const ceilingLifted = wasCapped && cappedScore > LEGACY_NO_RECEIPT_CEILING;
 
     results.push({
       dimensionId: dim.id,
       label: dim.label,
       scoreBefore,
-      scoreAfter,
+      scoreAfter: cappedScore,
       ceilingLifted,
       ceilingWas: scoreBefore <= LEGACY_NO_RECEIPT_CEILING ? LEGACY_NO_RECEIPT_CEILING : null,
       totalOutcomes: total,
       passingOutcomes: passing,
       failingOutcomes: failing,
+      integrityCap,
     });
   }
 
@@ -280,6 +302,9 @@ function printResults(results: ValidateDimResult[], allPassed: boolean): void {
 
     if (r.failingOutcomes > 0) {
       logger.info(chalk.dim(`         ${r.failingOutcomes} outcome(s) failed — run with --force-cold to re-execute`));
+    }
+    if (r.integrityCap) {
+      logger.info(chalk.yellow(`         Score capped at ${r.scoreAfter.toFixed(1)} by ${r.integrityCap} integrity violation`));
     }
     if (r.ceilingLifted) {
       logger.info(chalk.green(`         Score ceiling lifted: was capped at ${r.ceilingWas}, now ${r.scoreAfter.toFixed(1)}`));

@@ -297,7 +297,7 @@ async function runConfirmPhase(
   confirmer: CouncilMemberId,
   projectPath: string,
   passThreshold = 7.0,
-): Promise<{ verdict: 'PASS' | 'FAIL'; score: number; notes: string; highestImpactNext: string }> {
+): Promise<{ verdict: 'PASS' | 'FAIL'; score: number; notes: string; highestImpactNext: string; confidence?: 'high' | 'medium' | 'low' }> {
   // Use the full scoring rubric from scoringprompt-dim.md if a brief exists,
   // otherwise fall back to a simple pass/fail check.
   const universeContent = brief ? await loadUniverseFile(projectPath, brief.dimId) : null;
@@ -340,6 +340,7 @@ async function runConfirmPhase(
       score: parsed.score,
       notes: parsed.reason,
       highestImpactNext: parsed.highestImpactNext,
+      confidence: parsed.confidence,
     };
   } catch (err) {
     return { verdict: 'FAIL', score: 0, notes: String(err).split('\n')[0], highestImpactNext: '' };
@@ -518,7 +519,7 @@ export async function runFrontierLoop(
 
     // Phase 3: Confirm (Codex scores using full rubric from scoringprompt-dim.md)
     logger.info(`  Confirming (${confirmer})...`);
-    const { verdict, score: confirmedScore, notes, highestImpactNext } = await runConfirmPhase(
+    const { verdict, score: confirmedScore, notes, highestImpactNext, confidence } = await runConfirmPhase(
       brief, diff, built, confirmer, projectPath,
     );
     logger.info(`  Score: ${confirmedScore.toFixed(1)} | Verdict: ${verdict === 'PASS' ? chalk.green('PASS') : chalk.red('FAIL')} — ${notes}`);
@@ -529,7 +530,7 @@ export async function runFrontierLoop(
       const ticked = tickChecklist(brief, built);
       const withRecord = recordVerification(
         ticked,
-        { cycle: iteration, verifiedBy: verifier, confirmedBy: confirmer, verdict, itemsBuilt: built, itemsMissing: missing, notes },
+        { cycle: iteration, verifiedBy: verifier, confirmedBy: confirmer, verdict, confidence, itemsBuilt: built, itemsMissing: missing, notes },
         verdict === 'PASS' ? confirmedScore : undefined,
       );
       await saveForgeBrief(projectPath, withRecord);
