@@ -118,6 +118,8 @@ program
   .option('--max-retries <n>', 'Max retries per dim on research parse failure (default: 2)', '2')
   .option('--run-de-sloppify', 'Run de-sloppify cleanup after each PASS merge (author-bias elimination)')
   .option('--verify-mode <mode>', 'Verify mode: grok (default, pre-merge checklist) or loop (6-phase gate post-merge)', 'grok')
+  .option('--max-dim-fails <n>', 'Skip dim after N consecutive FAILs (default: 10)', '10')
+  .option('--skip-dims <ids>', 'Comma-separated dim IDs to exclude (e.g. community_adoption)')
   .option('--json', 'Emit JSON result at end')
   .option('--cwd <path>', 'Project directory (defaults to cwd)')
   .action((opts) => {
@@ -141,6 +143,8 @@ program
           researchMaxRetries: opts.maxRetries ? parseInt(opts.maxRetries as string, 10) : undefined,
           runDeSloppify: opts.runDeSloppify as boolean | undefined,
           verifyMode: (opts.verifyMode as 'grok' | 'loop' | undefined) ?? 'grok',
+          maxDimFails: opts.maxDimFails ? parseInt(opts.maxDimFails as string, 10) : 10,
+          skipDims: opts.skipDims as string | undefined,
           json: opts.json as boolean | undefined,
         });
       } catch (err) {

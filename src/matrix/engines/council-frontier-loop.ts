@@ -94,6 +94,10 @@ export interface FrontierLoopOptions {
   runDeSloppify?: boolean;
   /** Verify mode: 'grok' (default) = Grok binary checklist pre-merge; 'loop' = 6-phase verify-loop post-merge. */
   verifyMode?: 'grok' | 'loop';
+  /** After this many consecutive FAILs on a single dim, skip it for the rest of the run. Default: 10 */
+  maxDimFails?: number;
+  /** Dim IDs to exclude from the loop (e.g. dims requiring manual/community work). */
+  skipDimIds?: string[];
 }
 
 export interface IterationResult {
@@ -399,10 +403,14 @@ export async function runFrontierLoop(
     minGap = 0,
     runDeSloppify = false,
     verifyMode = 'grok',
+    maxDimFails = 10,
+    skipDimIds = [],
   } = opts;
 
   const iterationResults: IterationResult[] = [];
   const dimsReachedTarget: string[] = [];
+  const dimFailCounts = new Map<string, number>();
+  const dimSkipSet = new Set<string>(skipDimIds);
 
   logger.info(chalk.bold('\n[frontier-loop] Starting Frontier Loop'));
   logger.info(`  Builder:    ${builder}`);
@@ -462,7 +470,7 @@ export async function runFrontierLoop(
     for (const id of dimsAtTarget) {
       if (!dimsReachedTarget.includes(id)) dimsReachedTarget.push(id);
     }
-    dimQueue = dimQueue.filter(d => d.score < targetScore);
+    dimQueue = dimQueue.filter(d => d.score < targetScore && !dimSkipSet.has(d.dimId));
 
     if (dimQueue.length === 0) {
       logger.info(chalk.green('\n[frontier-loop] All dims reached target score! Loop complete.'));
@@ -528,6 +536,7 @@ export async function runFrontierLoop(
     let scoreAfter: number | undefined;
 
     if (verdict === 'PASS') {
+      dimFailCounts.set(dim.dimId, 0);
       logger.info(chalk.green(`  Merging ${dim.dimId}...`));
       merged = await applyAndMerge(handle, diff, projectPath, skipValidate, dim.dimId);
       if (merged) {
@@ -555,7 +564,14 @@ export async function runFrontierLoop(
         }
       }
     } else {
-      logger.info(chalk.yellow(`  FAIL — ${dim.dimId} re-queued with updated brief`));
+      const fails = (dimFailCounts.get(dim.dimId) ?? 0) + 1;
+      dimFailCounts.set(dim.dimId, fails);
+      if (fails >= maxDimFails) {
+        dimSkipSet.add(dim.dimId);
+        logger.warn(`[frontier-loop] ${dim.dimId}: ${fails} consecutive FAILs — skipping for rest of run`);
+      } else {
+        logger.info(chalk.yellow(`  FAIL (${fails}/${maxDimFails}) — ${dim.dimId} re-queued with updated brief`));
+      }
     }
 
     await removeCouncilWorktrees([handle], { projectPath }).catch(() => { /* ignore */ });

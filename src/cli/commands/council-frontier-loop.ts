@@ -30,6 +30,10 @@ export interface FrontierLoopCLIOptions {
   researchMaxRetries?: number;
   runDeSloppify?: boolean;
   verifyMode?: 'grok' | 'loop';
+  /** After N consecutive FAILs on a dim, skip it for rest of run. Default: 10 */
+  maxDimFails?: number;
+  /** Comma-separated dim IDs to exclude (e.g. dims requiring community/manual work). */
+  skipDims?: string;
   json?: boolean;
 }
 
@@ -67,6 +71,8 @@ export async function runFrontierLoopCommand(opts: FrontierLoopCLIOptions): Prom
     researchMaxRetries: opts.researchMaxRetries ?? opts.maxRetries ?? 2,
     runDeSloppify: opts.runDeSloppify ?? false,
     verifyMode: opts.verifyMode ?? 'grok',
+    maxDimFails: opts.maxDimFails ?? 10,
+    skipDimIds: opts.skipDims ? opts.skipDims.split(',').map(s => s.trim()) : [],
   };
 
   logger.info(chalk.bold('\n╔══════════════════════════════════════════════╗'));
