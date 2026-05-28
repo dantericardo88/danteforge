@@ -360,6 +360,7 @@ function tagEvidenceQuality(
   command: string | undefined,
   dimId: string,
 ): void {
+  entry.session_id = PROCESS_SESSION_ID;
   if (MARKET_DIMS_RT.has(dimId)) {
     entry.evidenceQuality = 'INFERRED';
     entry.confidenceScore = 0.75;
@@ -372,7 +373,6 @@ function tagEvidenceQuality(
   }
   entry.evidenceQuality = 'EXTRACTED';
   entry.confidenceScore = 1.0;
-  entry.session_id = PROCESS_SESSION_ID;
 }
 
 /**

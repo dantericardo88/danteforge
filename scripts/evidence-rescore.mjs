@@ -44,7 +44,8 @@ function loadEvidence() {
       if (!entry?.dimensionId || !entry?.outcomeId) continue;
 
       const key = `${entry.dimensionId}::${entry.outcomeId}`;
-      const mtime = entry.finishedAt ? new Date(entry.finishedAt).getTime() : 0;
+      const tsStr = entry.finishedAt ?? entry.ranAt;
+      const mtime = tsStr ? new Date(tsStr).getTime() : 0;
       const existing = allEntries.get(key);
 
       if (!existing || mtime > existing.mtime) {
@@ -105,6 +106,22 @@ function computeDerivedScore(dim, evidence) {
       if (highTierPassCount + tierOutcomes.length < MIN_T7_HIGH_TIER_OUTCOMES) {
         allPassing = false;
       }
+
+      // Session-ID temporal separation: T7 requires evidence from ≥2 distinct
+      // validate sessions. Mirrors the check in src/core/derived-score.ts.
+      if (allPassing) {
+        const sessionIds = (dim.outcomes ?? [])
+          .filter(o => TIER_ORDER.indexOf(o.tier) >= TIER_ORDER.indexOf('T5'))
+          .map(o => evidence.get(`${dim.id}::${o.id}`)?.session_id)
+          .filter(s => typeof s === 'string');
+        if (sessionIds.length >= 2 && new Set(sessionIds).size < 2) {
+          allPassing = false;
+        }
+      }
+
+      // Structural veto: any T7 structural failure resets passing to 0 so that
+      // nextTierProgress cannot interpolate the score up to 9.0 silently.
+      if (!allPassing) passing = 0;
     }
 
     perTier.push({ tier, declared: tierOutcomes.length, passing, allPassing });
