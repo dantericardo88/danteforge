@@ -207,6 +207,8 @@ program
   .option('--dims <ids>', 'Comma-separated dim IDs to research (default: all from matrix)')
   .option('--members <ids>', 'Comma-separated researcher members (default: claude-code,codex)', 'claude-code,codex')
   .option('--no-skip-existing', 'Force re-research even if universe files already exist')
+  .option('--skip-verify', 'Skip Phase 2 verification pass (second member checks citations + specificity)')
+  .option('--propose-outcomes', 'After research+verify, extract capability-test proposals for danteforge validate')
   .option('--concurrency <n>', 'Max parallel dim research calls (default: 4)', '4')
   .option('--json', 'Emit JSON result at end')
   .option('--cwd <path>', 'Project directory (defaults to cwd)')
@@ -219,12 +221,43 @@ program
           dims: opts.dims as string | undefined,
           members: opts.members as string | undefined,
           skipExisting: opts.skipExisting !== false,
+          skipVerify: opts.skipVerify as boolean | undefined,
+          proposeOutcomes: opts.proposeOutcomes as boolean | undefined,
           concurrency: opts.concurrency ? parseInt(opts.concurrency as string, 10) : 4,
           json: opts.json as boolean | undefined,
         });
       } catch (err) {
         const { formatAndLogError } = await import('../core/format-error.js');
         formatAndLogError(err, 'council-universe');
+        process.exitCode = 1;
+      }
+    })();
+  });
+
+// ── council-universe-apply ────────────────────────────────────────────────────
+
+program
+  .command('council-universe-apply')
+  .description('Apply verified universe outcome proposals to matrix.json dims. Adds proposed capability_test and outcomes[] entries. Run danteforge validate after to generate receipts.')
+  .option('--dims <ids>', 'Comma-separated dim IDs to apply (default: all with proposals)')
+  .option('--dry-run', 'Preview changes without writing to matrix.json')
+  .option('--no-skip-unverified', 'Apply proposals even for dims without a VERIFIED verdict')
+  .option('--json', 'Emit JSON result at end')
+  .option('--cwd <path>', 'Project directory (defaults to cwd)')
+  .action((opts) => {
+    void (async () => {
+      try {
+        const { runCouncilUniverseApply } = await import('./commands/council-universe-apply.js');
+        await runCouncilUniverseApply({
+          cwd: opts.cwd as string | undefined,
+          dims: opts.dims as string | undefined,
+          dryRun: opts.dryRun as boolean | undefined,
+          skipUnverified: opts.skipUnverified !== false,
+          json: opts.json as boolean | undefined,
+        });
+      } catch (err) {
+        const { formatAndLogError } = await import('../core/format-error.js');
+        formatAndLogError(err, 'council-universe-apply');
         process.exitCode = 1;
       }
     })();
