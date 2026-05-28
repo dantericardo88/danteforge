@@ -120,6 +120,10 @@ function makeExtractionPacket(
     objective: [
       `You are a capability-test extractor for the **${dimName}** dimension of DanteForge.`,
       ``,
+      `CONTEXT: DanteForge is a provider-agnostic AI coding assistant optimizer — a meta-layer applied ON TOP OF`,
+      `Claude Code, Codex, Cursor, Aider, Grok Build, etc. Tests must prove DanteForge's OPTIMIZER capability,`,
+      `not the underlying coding assistant. Tests run against the DanteForge TypeScript/Node.js codebase.`,
+      ``,
       `A verified competitive universe file exists. Extract runnable shell tests from it.`,
       `These tests will be run by \`danteforge validate ${dimId}\` to lift score ceilings above 7.0.`,
       ``,
