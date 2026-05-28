@@ -26,39 +26,46 @@ export async function executeToolsBatch(
   executor: (call: MCPToolCall) => Promise<MCPToolResult>,
   options: { maxConcurrency?: number; timeout?: number; failFast?: boolean } = {},
 ): Promise<MCPToolResult[]> {
-  const maxConcurrency = options.maxConcurrency ?? 4;
+  if (calls.length === 0) return [];
+
+  const maxConcurrency = normalizeConcurrency(options.maxConcurrency ?? 4, calls.length);
   const timeout = options.timeout ?? 30000;
   const results: MCPToolResult[] = new Array(calls.length);
+  let nextIndex = 0;
+  let failFastTriggered = false;
 
-  // Process in concurrent chunks
-  for (let i = 0; i < calls.length; i += maxConcurrency) {
-    const chunk = calls.slice(i, i + maxConcurrency);
-    const chunkPromises = chunk.map((call, j) => {
-      const index = i + j;
-      return executeWithTimeout(call, executor, timeout)
-        .then(result => { results[index] = result; })
-        .catch(err => {
-          results[index] = {
-            tool: call.tool,
-            success: false,
-            error: err instanceof Error ? err.message : String(err),
-            durationMs: 0,
-          };
-        });
-    });
+  async function worker(): Promise<void> {
+    while (!failFastTriggered) {
+      const index = nextIndex++;
+      if (index >= calls.length) return;
 
-    await Promise.all(chunkPromises);
+      const call = calls[index]!;
+      try {
+        results[index] = await executeWithTimeout(call, executor, timeout);
+      } catch (err) {
+        results[index] = {
+          tool: call.tool,
+          success: false,
+          error: err instanceof Error ? err.message : String(err),
+          durationMs: 0,
+        };
+      }
 
-    // Check for fail-fast
-    if (options.failFast) {
-      const failed = results.filter(r => r && !r.success);
-      if (failed.length > 0) {
-        logger.warn(`Fail-fast: ${failed.length} tool(s) failed, aborting batch`);
-        // Fill remaining with skipped
-        for (let k = i + maxConcurrency; k < calls.length; k++) {
-          results[k] = { tool: calls[k].tool, success: false, error: 'Skipped (fail-fast)', durationMs: 0 };
-        }
+      if (options.failFast && !results[index]!.success) {
+        failFastTriggered = true;
         break;
+      }
+    }
+  }
+
+  await Promise.all(Array.from({ length: maxConcurrency }, () => worker()));
+
+  if (failFastTriggered) {
+    const failed = results.filter(r => r && !r.success);
+    logger.warn(`Fail-fast: ${failed.length} tool(s) failed, aborting batch`);
+    for (let i = 0; i < calls.length; i++) {
+      if (!results[i]) {
+        results[i] = { tool: calls[i]!.tool, success: false, error: 'Skipped (fail-fast)', durationMs: 0 };
       }
     }
   }
@@ -66,17 +73,35 @@ export async function executeToolsBatch(
   return results;
 }
 
+function normalizeConcurrency(value: number, callCount: number): number {
+  if (!Number.isFinite(value) || value < 1) return 1;
+  return Math.min(Math.floor(value), callCount);
+}
+
 async function executeWithTimeout(
   call: MCPToolCall,
   executor: (call: MCPToolCall) => Promise<MCPToolResult>,
   timeout: number,
 ): Promise<MCPToolResult> {
-  return Promise.race([
-    executor(call),
-    new Promise<MCPToolResult>((_, reject) =>
-      setTimeout(() => reject(new NetworkError(`Tool "${call.tool}" timed out after ${timeout}ms`, `Increase timeout or check if "${call.tool}" is responsive`)), timeout),
-    ),
-  ]);
+  return new Promise<MCPToolResult>((resolve, reject) => {
+    const timer = setTimeout(() => {
+      reject(new NetworkError(
+        `Tool "${call.tool}" timed out after ${timeout}ms`,
+        `Increase timeout or check if "${call.tool}" is responsive`,
+      ));
+    }, timeout);
+
+    executor(call).then(
+      (result) => {
+        clearTimeout(timer);
+        resolve(result);
+      },
+      (error: unknown) => {
+        clearTimeout(timer);
+        reject(error);
+      },
+    );
+  });
 }
 
 /**

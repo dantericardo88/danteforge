@@ -91,18 +91,29 @@ function resolveConsensus(verdicts: MemberVerdict[]): 'PASS' | 'FAIL' | 'SPLIT' 
   return 'SPLIT';
 }
 
+function makeReviewerLabels(judgeIds: CouncilMemberId[]): Map<CouncilMemberId, string> {
+  const labels = new Map<CouncilMemberId, string>();
+  for (const judgeId of judgeIds) {
+    if (!labels.has(judgeId)) labels.set(judgeId, `Reviewer-${labels.size + 1}`);
+  }
+  return labels;
+}
+
 /** Full picture: what each judge said, separated into preserve vs fix buckets. */
-function extractAllJudgeFeedback(verdicts: MemberVerdict[]): { preserveContext: string; fixContext: string } {
+function extractAllJudgeFeedback(
+  verdicts: MemberVerdict[],
+  reviewerLabels: Map<CouncilMemberId, string>,
+): { preserveContext: string; fixContext: string } {
   const passes = verdicts.filter(v => v.verdict === 'PASS');
   const fails  = verdicts.filter(v => v.verdict === 'FAIL' || v.verdict === 'UNCLEAR');
 
-  const preserveLines = passes.map(v => `[${v.judgeId} APPROVED]: ${v.reason}`);
+  const preserveLines = passes.map(v => `[${reviewerLabels.get(v.judgeId) ?? 'Reviewer'} APPROVED]: ${v.reason}`);
 
   const fixLines = fails.flatMap(v => {
     const issueMatch = v.rawOutput.match(/BLOCKING_ISSUES:\s*(.+?)(?=\n[A-Z_]+:|$)/is);
     const issues = issueMatch ? issueMatch[1]!.trim() : '';
     return [
-      `[${v.judgeId} BLOCKED]: ${v.reason}`,
+      `[${reviewerLabels.get(v.judgeId) ?? 'Reviewer'} BLOCKED]: ${v.reason}`,
       ...(issues && issues.toLowerCase() !== 'none' ? [`  Issues: ${issues}`] : []),
     ];
   });
@@ -114,10 +125,14 @@ function extractAllJudgeFeedback(verdicts: MemberVerdict[]): { preserveContext: 
 }
 
 /** Compact peer-verdict summary for rejudge prompts (each judge sees what the other said). */
-function peerVerdictSummary(verdicts: MemberVerdict[], excludeJudgeId: string): string {
+function peerVerdictSummary(
+  verdicts: MemberVerdict[],
+  excludeJudgeId: string,
+  reviewerLabels: Map<CouncilMemberId, string>,
+): string {
   return verdicts
     .filter(v => v.judgeId !== excludeJudgeId)
-    .map(v => `[${v.judgeId}: ${v.verdict}] ${v.reason.slice(0, 200)}`)
+    .map(v => `[${reviewerLabels.get(v.judgeId) ?? 'Reviewer'}: ${v.verdict}] ${v.reason.slice(0, 200)}`)
     .join('\n') || '(no peer verdict available)';
 }
 
@@ -294,11 +309,14 @@ export async function runRevision(opts: RevisionOptions): Promise<RevisionResult
   const maxCycles = opts.maxCycles ?? 1;
   const makeBuilder = opts._makeBuilderAdapter ?? defaultMakeBuilderAdapter;
   const makeJudge = opts._makeJudgeAdapter ?? defaultMakeJudgeAdapter;
+  const effectiveJudgeIds = [...new Set(judgeIds.filter(id => id !== builderId))];
+  const reviewerLabels = makeReviewerLabels(effectiveJudgeIds);
+  const initialVerdicts = opts.initialVerdicts.filter(v => v.judgeId !== builderId);
 
   const result: RevisionResult = {
     cycles: [],
-    finalVerdicts: [...opts.initialVerdicts],
-    finalConsensus: resolveConsensus(opts.initialVerdicts),
+    finalVerdicts: [...initialVerdicts],
+    finalConsensus: resolveConsensus(initialVerdicts),
     finalDiff: diff,
     frontierReceipts: [],
   };
@@ -308,10 +326,10 @@ export async function runRevision(opts: RevisionOptions): Promise<RevisionResult
 
     const consensusBefore = resolveConsensus(result.finalVerdicts);
     const scoreBefore = averageScoreSuggestion(result.finalVerdicts);
-    const { preserveContext, fixContext } = extractAllJudgeFeedback(result.finalVerdicts);
+    const { preserveContext, fixContext } = extractAllJudgeFeedback(result.finalVerdicts, reviewerLabels);
     const preservedApprovals = result.finalVerdicts
       .filter(v => v.verdict === 'PASS')
-      .map(v => `[${v.judgeId}] ${v.reason}`);
+      .map(v => `[${reviewerLabels.get(v.judgeId) ?? 'Reviewer'}] ${v.reason}`);
     const blockingConcerns = result.finalVerdicts
       .filter(v => v.verdict !== 'PASS')
       .flatMap(v => v.blockingConcerns.length > 0 ? v.blockingConcerns : [v.reason]);
@@ -358,9 +376,9 @@ export async function runRevision(opts: RevisionOptions): Promise<RevisionResult
 
     // 4. Re-judge: each judge sees their prior verdict AND what the peer judge said
     const rejudgeVerdicts = await Promise.all(
-      judgeIds.map(async (judgeId): Promise<MemberVerdict> => {
+      effectiveJudgeIds.map(async (judgeId): Promise<MemberVerdict> => {
         const prior = result.finalVerdicts.find(v => v.judgeId === judgeId);
-        const peers = peerVerdictSummary(result.finalVerdicts, judgeId);
+        const peers = peerVerdictSummary(result.finalVerdicts, judgeId, reviewerLabels);
         const rejudgePrompt = buildRejudgePrompt(goal, revisedDiff, selfAssessment, prior?.rawOutput ?? '', judgeId, peers, cycle, proofCommands);
         try {
           const rejudgeWp = makeRevisionWorkPacket(rejudgePrompt, worktreePath);
@@ -389,7 +407,7 @@ export async function runRevision(opts: RevisionOptions): Promise<RevisionResult
             runId: `council-revision.${builderId}.cycle-${cycle}.${Date.now()}`,
             cycle,
             builderId,
-            judgeIds,
+            judgeIds: effectiveJudgeIds,
             consensusBefore,
             consensusAfter: cycleConsensus,
             scoreBefore,

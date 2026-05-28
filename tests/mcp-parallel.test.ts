@@ -62,6 +62,46 @@ describe('executeToolsBatch', () => {
     await executeToolsBatch(calls, executor, { maxConcurrency: 2 });
     assert.ok(maxConcurrent <= 2, `Max concurrent was ${maxConcurrent}, expected <= 2`);
   });
+
+  it('starts queued work as soon as a concurrency slot frees up', async () => {
+    const calls: MCPToolCall[] = [
+      { tool: 'slow', params: {} },
+      { tool: 'fast', params: {} },
+      { tool: 'next', params: {} },
+    ];
+
+    const started: string[] = [];
+    let releaseSlow!: () => void;
+    const slowGate = new Promise<void>((resolve) => {
+      releaseSlow = resolve;
+    });
+
+    const executor = async (call: MCPToolCall): Promise<MCPToolResult> => {
+      started.push(call.tool);
+      if (call.tool === 'slow') await slowGate;
+      return { tool: call.tool, success: true, durationMs: call.tool === 'slow' ? 50 : 1 };
+    };
+
+    const batch = executeToolsBatch(calls, executor, { maxConcurrency: 2 });
+
+    while (started.length < 2) {
+      await new Promise((resolve) => setImmediate(resolve));
+    }
+    await new Promise((resolve) => setImmediate(resolve));
+
+    const startedBeforeSlowFinished = [...started];
+    releaseSlow();
+    const results = await batch;
+
+    assert.deepStrictEqual(
+      startedBeforeSlowFinished,
+      ['slow', 'fast', 'next'],
+      'the third call should start after fast finishes, without waiting for slow',
+    );
+
+    assert.deepStrictEqual(results.map((r) => r.tool), ['slow', 'fast', 'next']);
+    assert.ok(results.every((r) => r.success));
+  });
 });
 
 describe('summarizeBatch', () => {

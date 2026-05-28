@@ -42,7 +42,7 @@ import {
   groupBySlot,
 } from '../../matrix/engines/council-scheduler.js';
 import type { CouncilMemberId, ScheduledDimension } from '../../matrix/engines/council-scheduler.js';
-import { buildSlots } from '../../matrix/engines/council-slot.js';
+import { buildSlotsForMembers } from '../../matrix/engines/council-slot.js';
 import type { CouncilSlot } from '../../matrix/engines/council-slot.js';
 import { CouncilJudgeQueue } from '../../matrix/engines/council-judge-queue.js';
 import type { JudgeCandidate } from '../../matrix/engines/council-judge-queue.js';
@@ -239,11 +239,15 @@ async function writeProgress(cwd: string, summary: RoundSummary): Promise<void> 
 interface SlotProofEntry {
   slotId: string;
   memberId: string;
+  anonymousCandidateId?: string;
   assignedDims: string[];
   filesChanged: string[];
   consensus: string;
   merged: boolean;
   cipBlocked: boolean;
+  requiredPassVotes?: number;
+  crossMemberReviewers: string[];
+  builderExcludedFromJudges: boolean;
   judges: Array<{ judgeId: string; verdict: string; confidence: string }>;
   dissentLog: string[];
 }
@@ -265,11 +269,15 @@ async function writeSlotProofLedger(
     return {
       slotId,
       memberId: r.memberId,
+      anonymousCandidateId: r.reviewAssignment?.candidateId,
       assignedDims,
       filesChanged: r.changedFiles,
       consensus: r.consensus,
       merged: r.merged,
       cipBlocked: blocked,
+      requiredPassVotes: r.reviewAssignment?.requiredPassVotes,
+      crossMemberReviewers: r.reviewAssignment?.judgeMemberIds ?? r.verdicts.map(v => v.judgeId),
+      builderExcludedFromJudges: !(r.reviewAssignment?.judgeMemberIds ?? r.verdicts.map(v => v.judgeId)).includes(r.memberId),
       judges: r.verdicts.map(v => ({ judgeId: v.judgeId, verdict: v.verdict, confidence: v.confidence })),
       dissentLog: r.dissentLog,
     };
@@ -419,7 +427,7 @@ export async function runParallelCouncil(options: ParallelCouncilOptions): Promi
 
     // Schedule dims — prune stuck dims so we don't retry known dead-ends
     const roundSlots: CouncilSlot[] = slotMode
-      ? buildSlots(roundMembers, slotsPerMember)
+      ? buildSlotsForMembers(roundMembers, slotsPerMember, options.memberSlots)
       : roundMembers.map(id => ({ memberId: id, slotIdx: 0, slotId: `${id}-0` }));
 
     const allScheduled = slotMode

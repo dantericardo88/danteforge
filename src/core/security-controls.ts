@@ -1,7 +1,11 @@
 import fs from 'fs/promises';
 import path from 'path';
 import crypto from 'crypto';
+import { execFile } from 'node:child_process';
+import { promisify } from 'node:util';
 import { logger } from '../core/logger.js';
+
+const execFileAsync = promisify(execFile);
 
 // ── Types ──────────────────────────────────────────────────────────────────────
 
@@ -9,6 +13,13 @@ export interface SecurityValidationOptions {
   checkSecrets?: boolean;
   checkPermissions?: boolean;
   checkIntegrity?: boolean;
+  cwd?: string;
+}
+
+interface SecretFinding {
+  relativePath: string;
+  line: number;
+  kind: string;
 }
 
 /** Structured error thrown when an input exceeds its allowed length. */
@@ -130,6 +141,7 @@ export function sha256(data: string): string {
  * rather than thrown so that a single failing check never blocks the others.
  */
 export async function validateSecurityControls(options: SecurityValidationOptions = {}) {
+  const cwd = options.cwd ?? process.cwd();
   const results = {
     secretsSecure: false,
     permissionsValid: false,
@@ -140,9 +152,16 @@ export async function validateSecurityControls(options: SecurityValidationOption
   // Check secrets are not in repo
   if (options.checkSecrets) {
     try {
-      const gitOutput = await runCommand('git', ['ls-files', '|', 'grep', '-E', '(secret|key|password|token)']);
-      if (gitOutput.trim()) {
-        results.issues.push('Potential secrets found in repository');
+      const findings = await scanTrackedFilesForSecrets(cwd);
+      if (findings.length > 0) {
+        for (const finding of findings.slice(0, 10)) {
+          results.issues.push(
+            `Potential secret in ${finding.relativePath}:${finding.line} (${finding.kind})`,
+          );
+        }
+        if (findings.length > 10) {
+          results.issues.push(`Potential secrets truncated: ${findings.length - 10} additional finding(s)`);
+        }
       } else {
         results.secretsSecure = true;
       }
@@ -167,7 +186,7 @@ export async function validateSecurityControls(options: SecurityValidationOption
   if (options.checkIntegrity) {
     try {
       // Basic integrity check — ensure audit files exist and are readable
-      const auditDir = path.join(process.cwd(), '.danteforge', 'audit');
+      const auditDir = path.join(cwd, '.danteforge', 'audit');
       await fs.access(auditDir);
       results.integrityVerified = true;
     } catch {
@@ -180,18 +199,99 @@ export async function validateSecurityControls(options: SecurityValidationOption
 
 // ── Internal helpers ───────────────────────────────────────────────────────────
 
-async function runCommand(cmd: string, args: string[]): Promise<string> {
-  const { spawn } = await import('child_process');
-  return new Promise((resolve, reject) => {
-    const child = spawn(cmd, args, { stdio: 'pipe' });
-    let output = '';
-    child.stdout.on('data', (data: Buffer) => { output += data.toString(); });
-    child.stderr.on('data', (data: Buffer) => { output += data.toString(); });
-    child.on('close', (code: number | null) => {
-      if (code === 0) resolve(output);
-      else reject(new Error(`Command failed: ${cmd} ${args.join(' ')}`));
-    });
+const MAX_SECRET_SCAN_BYTES = 1024 * 1024;
+
+const TEXT_FILE_EXTENSIONS = new Set([
+  '',
+  '.cjs',
+  '.env',
+  '.js',
+  '.json',
+  '.jsx',
+  '.md',
+  '.mjs',
+  '.toml',
+  '.ts',
+  '.tsx',
+  '.txt',
+  '.yaml',
+  '.yml',
+]);
+
+const SECRET_PATTERNS: Array<{ kind: string; regex: RegExp }> = [
+  {
+    kind: 'credential-assignment',
+    regex: /\b(?:api[_-]?key|access[_-]?token|auth[_-]?token|client[_-]?secret|password|private[_-]?key|secret|token)\b\s*[:=]\s*['"`][^'"`\s]{12,}['"`]/gi,
+  },
+  {
+    kind: 'provider-token',
+    regex: /\b(?:sk-[A-Za-z0-9_-]{20,}|xai-[A-Za-z0-9_-]{20,}|ghp_[A-Za-z0-9_]{20,}|github_pat_[A-Za-z0-9_]{20,})\b/g,
+  },
+  {
+    kind: 'private-key-block',
+    regex: /-----BEGIN (?:RSA |DSA |EC |OPENSSH |PGP )?PRIVATE KEY-----/g,
+  },
+];
+
+function isSecretScanCandidate(relativePath: string): boolean {
+  const normalized = relativePath.replace(/\\/g, '/');
+  if (
+    normalized.startsWith('dist/') ||
+    normalized.startsWith('node_modules/') ||
+    normalized.startsWith('coverage/')
+  ) {
+    return false;
+  }
+  return TEXT_FILE_EXTENSIONS.has(path.extname(normalized).toLowerCase());
+}
+
+function lineNumberAt(content: string, index: number): number {
+  let line = 1;
+  for (let i = 0; i < index; i++) {
+    if (content.charCodeAt(i) === 10) line++;
+  }
+  return line;
+}
+
+function scanContentForSecrets(relativePath: string, content: string): SecretFinding[] {
+  const findings: SecretFinding[] = [];
+  for (const pattern of SECRET_PATTERNS) {
+    pattern.regex.lastIndex = 0;
+    let match: RegExpExecArray | null;
+    while ((match = pattern.regex.exec(content)) !== null) {
+      findings.push({
+        relativePath,
+        line: lineNumberAt(content, match.index),
+        kind: pattern.kind,
+      });
+    }
+  }
+  return findings;
+}
+
+async function listTrackedFiles(cwd: string): Promise<string[]> {
+  const { stdout } = await execFileAsync('git', ['ls-files', '-z'], {
+    cwd,
+    timeout: 10_000,
+    maxBuffer: 10 * 1024 * 1024,
   });
+  return stdout.split('\0').filter(Boolean);
+}
+
+async function scanTrackedFilesForSecrets(cwd: string): Promise<SecretFinding[]> {
+  const trackedFiles = await listTrackedFiles(cwd);
+  const findings: SecretFinding[] = [];
+  for (const relativePath of trackedFiles) {
+    if (!isSecretScanCandidate(relativePath)) continue;
+    const root = path.resolve(cwd);
+    const absolutePath = path.resolve(cwd, relativePath);
+    if (!absolutePath.startsWith(root + path.sep) && absolutePath !== root) continue;
+    const stat = await fs.stat(absolutePath);
+    if (!stat.isFile() || stat.size > MAX_SECRET_SCAN_BYTES) continue;
+    const content = await fs.readFile(absolutePath, 'utf8');
+    findings.push(...scanContentForSecrets(relativePath.replace(/\\/g, '/'), content));
+  }
+  return findings;
 }
 
 // Re-export crypto for convenience — avoids callers importing Node built-ins

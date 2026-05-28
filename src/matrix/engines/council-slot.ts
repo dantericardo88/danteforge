@@ -24,6 +24,21 @@ export function buildSlots(memberIds: CouncilMemberId[], slotsPerMember: number)
   );
 }
 
+/** Build slots with optional per-member slot counts. */
+export function buildSlotsForMembers(
+  memberIds: CouncilMemberId[],
+  defaultSlotsPerMember: number,
+  memberSlots: Record<string, number> = {},
+): CouncilSlot[] {
+  return memberIds.flatMap((memberId) => {
+    const configured = memberSlots[memberId];
+    const slotsForMember = configured !== undefined && Number.isFinite(configured) && configured > 0
+      ? Math.floor(configured)
+      : defaultSlotsPerMember;
+    return buildSlots([memberId], slotsForMember);
+  });
+}
+
 /** Pick N judge slots with cross-member diversity (round-robin by memberId). */
 export function pickJudgeSlots(slots: CouncilSlot[], n: number): CouncilSlot[] {
   const byMember = new Map<CouncilMemberId, CouncilSlot[]>();

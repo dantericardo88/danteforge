@@ -376,6 +376,20 @@ function makeTestReadFile(fileMap: Record<string, string>) {
 }
 
 describe('securityScan', () => {
+  it('runs validateSecurityControls from the production security-scan command', async () => {
+    const safeFiles = { '/proj/src/safe.ts': FAKE_FILES['/proj/src/safe.ts'] };
+    const result = await securityScan({
+      cwd: '/proj',
+      _glob: makeTestGlob(safeFiles),
+      _readFile: makeTestReadFile(safeFiles),
+      _stdout: () => {},
+      _setExitCode: () => {},
+    });
+
+    assert.ok(result.securityControls, 'security-scan should expose security control validation output');
+    assert.ok(Array.isArray(result.securityControls.issues));
+  });
+
   it('returns zero findings for a safe file', async () => {
     const safeFiles = { '/proj/src/safe.ts': FAKE_FILES['/proj/src/safe.ts'] };
     const result = await securityScan({

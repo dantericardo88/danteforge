@@ -2,6 +2,7 @@ import { test, describe } from 'node:test';
 import assert from 'node:assert/strict';
 import {
   buildSlots,
+  buildSlotsForMembers,
   pickJudgeSlots,
   type CouncilSlot,
 } from '../src/matrix/engines/council-slot.js';
@@ -12,6 +13,10 @@ import {
   type ScheduledDimension,
 } from '../src/matrix/engines/council-scheduler.js';
 import { FileClaims } from '../src/matrix/engines/council-file-claims.js';
+import {
+  buildAnonymousReviewPlan,
+  assertBuilderNeverJudges,
+} from '../src/matrix/engines/council-review-plan.js';
 
 // ── buildSlots ────────────────────────────────────────────────────────────────
 
@@ -44,6 +49,48 @@ describe('buildSlots', () => {
     const ccSlots = slots.filter(s => s.memberId === 'claude-code');
     assert.equal(ccSlots.length, 2);
     assert.deepEqual(ccSlots.map(s => s.slotIdx), [0, 1]);
+  });
+});
+
+describe('buildSlotsForMembers', () => {
+  test('applies per-member slot overrides while preserving default slots', () => {
+    const slots = buildSlotsForMembers(
+      ['claude-code', 'codex', 'grok-build'],
+      2,
+      { codex: 4, 'grok-build': 1 },
+    );
+
+    assert.equal(slots.filter(s => s.memberId === 'claude-code').length, 2);
+    assert.equal(slots.filter(s => s.memberId === 'codex').length, 4);
+    assert.equal(slots.filter(s => s.memberId === 'grok-build').length, 1);
+    assert.equal(slots.length, 7);
+  });
+
+  test('ignores invalid per-member slot overrides', () => {
+    const slots = buildSlotsForMembers(['codex'], 2, { codex: 0 });
+    assert.deepEqual(slots.map(s => s.slotId), ['codex-0', 'codex-1']);
+  });
+});
+
+describe('anonymous peer review candidate labels', () => {
+  test('assigns unique anonymous candidates per slot, not just per member', () => {
+    const handles = [
+      { memberId: 'codex', slotId: 'codex-0', worktreePath: '/fake/codex-0', branchName: 'codex-0' },
+      { memberId: 'codex', slotId: 'codex-1', worktreePath: '/fake/codex-1', branchName: 'codex-1' },
+      { memberId: 'grok-build', slotId: 'grok-build-0', worktreePath: '/fake/grok-build-0', branchName: 'grok-build-0' },
+    ];
+
+    const plan = buildAnonymousReviewPlan({
+      handles,
+      allMemberIds: ['codex', 'claude-code', 'grok-build'],
+      minJudges: 1,
+    });
+
+    const candidateIds = plan.assignments.map(a => a.candidateId);
+    assert.equal(new Set(candidateIds).size, 3);
+    const codex0 = plan.assignments.find(a => a.builderSlotId === 'codex-0')!.candidateId;
+    const codex1 = plan.assignments.find(a => a.builderSlotId === 'codex-1')!.candidateId;
+    assert.notEqual(codex0, codex1);
   });
 });
 
@@ -205,5 +252,44 @@ describe('groupByMember — backward compat', () => {
     const groups = groupByMember(dims);
     assert.equal(groups.get('codex')?.length, 2);
     assert.equal(groups.get('claude-code')?.length, 1);
+  });
+});
+
+describe('buildAnonymousReviewPlan', () => {
+  test('assigns anonymous cross-member judges for every parallel worktree candidate', () => {
+    const slots = buildSlots(['codex', 'grok-build', 'claude-code'], 2);
+    const handles = slots.map(slot => ({
+      memberId: slot.memberId,
+      slotId: slot.slotId,
+      slotIdx: slot.slotIdx,
+      worktreePath: `/tmp/${slot.slotId}`,
+      branchName: `council/run/${slot.slotId}`,
+    }));
+
+    const plan = buildAnonymousReviewPlan({
+      handles,
+      allMemberIds: ['codex', 'grok-build', 'claude-code'],
+      allSlots: slots,
+      minJudges: 2,
+    });
+
+    assert.equal(plan.assignments.length, handles.length);
+    assert.equal(plan.requiredPassVotes, 2);
+    assert.equal(plan.anonymizationMap['Candidate-Alpha'], 'codex');
+
+    for (const assignment of plan.assignments) {
+      assert.match(assignment.candidateId, /^Candidate-/);
+      assert.equal(assignment.judgeMemberIds.includes(assignment.builderMemberId), false);
+      assert.equal(new Set(assignment.judgeMemberIds).size, 2);
+      assert.equal(assignment.judgeSlots.some(slot => slot.memberId === assignment.builderMemberId), false);
+      assert.equal(assignment.isStructurallyValid, true);
+    }
+  });
+
+  test('fails closed when a builder is present in its own judge list', () => {
+    assert.throws(
+      () => assertBuilderNeverJudges('codex', ['grok-build', 'codex'], 'unit-test'),
+      /builder-never-judges violation/,
+    );
   });
 });

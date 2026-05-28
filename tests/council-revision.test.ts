@@ -308,4 +308,84 @@ describe('runRevision', () => {
     await assert.doesNotReject(() =>
       fs.access(path.join(worktreePath, '.danteforge', 'time-machine', 'commits', `${receipt.timeMachineCommitId}.json`)));
   });
+
+  it('excludes the builder from rejudging its own revision and anonymizes peer review context', async () => {
+    const judgeCalls: string[] = [];
+    const prompts: string[] = [];
+    const initialVerdicts: MemberVerdict[] = [
+      {
+        judgeId: 'claude-code',
+        verdict: 'FAIL',
+        confidence: 'HIGH',
+        scoreSuggestion: 2,
+        reason: 'Builder self-review must not count',
+        blockingConcerns: ['self review'],
+        dissentSummary: '',
+        rawOutput: 'VERDICT: FAIL\nREASON: Builder self-review must not count\nBLOCKING_ISSUES:\n- self review',
+      },
+      {
+        judgeId: 'codex',
+        verdict: 'FAIL',
+        confidence: 'HIGH',
+        scoreSuggestion: 4,
+        reason: 'Needs anonymous peer review',
+        blockingConcerns: ['identity leakage'],
+        dissentSummary: '',
+        rawOutput: 'VERDICT: FAIL\nREASON: Needs anonymous peer review\nBLOCKING_ISSUES:\n- identity leakage',
+      },
+    ];
+
+    const result = await runRevision(makeBaseOpts({
+      builderId: 'claude-code',
+      judgeIds: ['claude-code', 'codex', 'grok-build'],
+      initialVerdicts,
+      _makeBuilderAdapter: () => ({
+        id: 'fake-builder', name: 'FakeBuilder',
+        isAvailable: async () => true,
+        prepareRun: async (input) => ({ ...input, prepared: true }),
+        startRun: async (input) => ({ runId: 'builder-run', leaseId: input.lease.id, provider: 'fake', startedAt: new Date().toISOString() }),
+        streamEvents: async function* () { /* empty */ },
+        stopRun: async () => undefined,
+        collectResult: async (handle) => ({
+          runId: handle.runId, leaseId: handle.leaseId, status: 'completed',
+          filesChanged: [], commandsExecuted: [], provider: 'fake',
+          finalMessage: 'WHAT_TO_FIX: preserve anonymity and exclude builder judges',
+          startedAt: new Date().toISOString(), completedAt: new Date().toISOString(), events: [],
+        }),
+      }),
+      _makeJudgeAdapter: (id, wp) => {
+        judgeCalls.push(id);
+        prompts.push(wp.objective);
+        return {
+          id: 'fake-judge', name: 'FakeJudge',
+          isAvailable: async () => true,
+          prepareRun: async (input) => ({ ...input, prepared: true }),
+          startRun: async (input) => ({ runId: `judge-${id}`, leaseId: input.lease.id, provider: 'fake', startedAt: new Date().toISOString() }),
+          streamEvents: async function* () { /* empty */ },
+          stopRun: async () => undefined,
+          collectResult: async (handle) => ({
+            runId: handle.runId, leaseId: handle.leaseId, status: 'completed',
+            filesChanged: [], commandsExecuted: [], provider: 'fake',
+            finalMessage: 'VERDICT: PASS\nCONFIDENCE: HIGH\nREASON: Cross-member anonymous review passed\nSCORE_SUGGESTION: 9\nBLOCKING_ISSUES: none\nBLOCKING_CONCERNS: none\nDISSENT: none',
+            startedAt: new Date().toISOString(), completedAt: new Date().toISOString(), events: [],
+          }),
+        };
+      },
+      worktreeOpts: {
+        projectPath: '/fake/project',
+        _git: {
+          worktreeAdd: async () => undefined,
+          worktreeRemove: async () => undefined,
+          branchDelete: async () => undefined,
+          getDiff: async () => 'diff --git a/src/matrix/engines/council-revision.ts b/src/matrix/engines/council-revision.ts\n+anonymous peer review',
+        },
+      },
+    }));
+
+    assert.equal(result.finalConsensus, 'PASS');
+    assert.deepEqual(judgeCalls.sort(), ['codex', 'grok-build']);
+    assert.equal(prompts.some(prompt => prompt.includes('[claude-code:')), false);
+    assert.equal(prompts.some(prompt => prompt.includes('[codex:')), false);
+    assert.equal(prompts.some(prompt => prompt.includes('Reviewer-')), true);
+  });
 });

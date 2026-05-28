@@ -5,6 +5,7 @@
 import fs from 'fs/promises';
 import path from 'path';
 import { logger } from '../../core/logger.js';
+import { validateSecurityControls } from '../../core/security-controls.js';
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -34,6 +35,7 @@ export interface SecurityScanResult {
   highCount: number;
   mediumCount: number;
   passed: boolean;
+  securityControls: Awaited<ReturnType<typeof validateSecurityControls>>;
 }
 
 export interface SecurityScanOptions {
@@ -150,21 +152,31 @@ function formatFindings(result: SecurityScanResult, emit: (l: string) => void): 
   emit('## DanteForge Security Scan');
   emit(`Files scanned: ${result.filesScanned}`);
   emit(`Findings: CRITICAL=${result.criticalCount} HIGH=${result.highCount} MEDIUM=${result.mediumCount}`);
+  if (result.securityControls.issues.length > 0) {
+    emit(`Security controls: ${result.securityControls.issues.length} issue(s)`);
+  }
   emit('');
 
-  if (result.findings.length === 0) {
+  if (result.findings.length === 0 && result.securityControls.issues.length === 0) {
     emit('No security findings. All clear.');
-    return;
+  } else if (result.findings.length === 0) {
+    emit('No source pattern findings.');
+  } else {
+    emit('| File | Line | Risk | Pattern | Description |');
+    emit('|------|------|------|---------|-------------|');
+
+    for (const f of result.findings) {
+      emit(`| ${f.file} | ${f.line} | ${f.risk} | ${f.patternId} | ${f.description} |`);
+    }
+
+    emit('');
   }
 
-  emit('| File | Line | Risk | Pattern | Description |');
-  emit('|------|------|------|---------|-------------|');
-
-  for (const f of result.findings) {
-    emit(`| ${f.file} | ${f.line} | ${f.risk} | ${f.patternId} | ${f.description} |`);
+  if (result.securityControls.issues.length > 0) {
+    emit('### Security Controls');
+    for (const issue of result.securityControls.issues) emit(`- ${issue}`);
+    emit('');
   }
-
-  emit('');
 
   if (!result.passed) {
     emit('CRITICAL findings detected — fix before merging.');
@@ -214,7 +226,12 @@ export async function securityScan(options: SecurityScanOptions = {}): Promise<S
     return a.line - b.line;
   });
 
-  const criticalCount = allFindings.filter((f) => f.risk === 'CRITICAL').length;
+  const securityControls = await validateSecurityControls({ cwd, checkSecrets: true });
+  const secretControlCriticalCount = securityControls.issues.filter((issue) =>
+    issue.startsWith('Potential secret in '),
+  ).length;
+
+  const criticalCount = allFindings.filter((f) => f.risk === 'CRITICAL').length + secretControlCriticalCount;
   const highCount = allFindings.filter((f) => f.risk === 'HIGH').length;
   const mediumCount = allFindings.filter((f) => f.risk === 'MEDIUM').length;
   const passed = criticalCount === 0;
@@ -226,6 +243,7 @@ export async function securityScan(options: SecurityScanOptions = {}): Promise<S
     highCount,
     mediumCount,
     passed,
+    securityControls,
   };
 
   if (options.json) {

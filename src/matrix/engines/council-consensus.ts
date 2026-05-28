@@ -1,8 +1,9 @@
-// Matrix Kernel — CouncilConsensus
+// Matrix Kernel - CouncilConsensus
 //
-// K-of-M weighted voting aggregator for the Hierarchical Multi-Agent Council.
+// N-of-M weighted voting aggregator for the Hierarchical Multi-Agent Council.
 // Cross-member votes weight 1.0; same-member votes weight 0.5 (safety net only).
-// Requires minJudges and at least 1 cross-member PASS for a PASS verdict.
+// Requires minJudges independent cross-member judges and at least one
+// cross-member PASS for a PASS verdict.
 import type { CouncilMemberId } from './council-scheduler.js';
 
 export interface WeightedVote {
@@ -22,6 +23,8 @@ export interface ConsensusResult {
   totalWeight: number;
   minJudgesMet: boolean;
   crossMemberJudges: number;
+  passVotes: number;
+  requiredPassVotes: number;
   dissentLog: string[];
   summary: string;
 }
@@ -29,6 +32,8 @@ export interface ConsensusResult {
 export interface ConsensusOptions {
   minJudges: number;
   passFraction?: number;
+  /** Required number of PASS ballots among eligible judges. Enables explicit N-of-M voting. */
+  minPasses?: number;
 }
 
 /**
@@ -47,10 +52,11 @@ export function assignVoteWeight(
  * Aggregate weighted votes into a consensus verdict.
  *
  * Verdict rules (in order):
- *   INSUFFICIENT — fewer votes than minJudges
- *   PASS         — weightedScore >= passFraction AND at least 1 cross-member PASS
- *   FAIL         — weightedScore < passFraction
- *   SPLIT        — exact tie → treated as FAIL (conservative)
+ *   INSUFFICIENT — fewer cross-member votes than minJudges
+ *   PASS         — passVotes >= minPasses, weightedScore >= passFraction,
+ *                  and at least 1 cross-member PASS
+ *   FAIL         — weightedScore < passFraction or passVotes < minPasses
+ *   SPLIT        — exact tie, treated conservatively by callers
  *
  * UNCLEAR votes contribute to totalWeight but not to either PASS or FAIL mass.
  */
@@ -59,38 +65,45 @@ export function computeConsensus(
   opts: ConsensusOptions,
 ): ConsensusResult {
   const passFraction = opts.passFraction ?? 0.5;
-  const minJudgesMet = votes.length >= opts.minJudges;
+  const requiredPassVotes = opts.minPasses ?? 1;
 
   const dissentLog = votes
     .filter(v => v.dissentSummary)
     .map(v => `[${v.judgeSlotId}] ${v.dissentSummary}`);
 
-  if (!minJudgesMet) {
-    return {
-      verdict: 'INSUFFICIENT',
-      weightedScore: 0,
-      totalWeight: 0,
-      minJudgesMet: false,
-      crossMemberJudges: 0,
-      dissentLog,
-      summary: `Insufficient judges: ${votes.length}/${opts.minJudges} required`,
-    };
-  }
-
   let passWeight = 0;
   let failWeight = 0;
   let totalWeight = 0;
   let crossMemberJudges = 0;
+  let passVotes = 0;
+  let crossMemberPasses = 0;
 
   for (const v of votes) {
+    const isCrossMember = v.judgeMemberId !== v.builderMemberId;
+    if (isCrossMember) crossMemberJudges++;
     totalWeight += v.weight;
     if (v.verdict === 'PASS') {
+      passVotes++;
       passWeight += v.weight;
-      if (v.judgeMemberId !== v.builderMemberId) crossMemberJudges++;
+      if (isCrossMember) crossMemberPasses++;
     } else if (v.verdict === 'FAIL') {
       failWeight += v.weight;
     }
-    // UNCLEAR: counted in totalWeight but not pass/fail mass
+  }
+
+  const minJudgesMet = crossMemberJudges >= opts.minJudges;
+  if (!minJudgesMet) {
+    return {
+      verdict: 'INSUFFICIENT',
+      weightedScore: 0,
+      totalWeight,
+      minJudgesMet: false,
+      crossMemberJudges,
+      passVotes: 0,
+      requiredPassVotes,
+      dissentLog,
+      summary: `Insufficient cross-member judges: ${crossMemberJudges}/${opts.minJudges} required`,
+    };
   }
 
   const weightedScore = totalWeight > 0 ? passWeight / totalWeight : 0;
@@ -108,27 +121,41 @@ export function computeConsensus(
       totalWeight,
       minJudgesMet: true,
       crossMemberJudges,
+      passVotes,
+      requiredPassVotes,
       dissentLog,
       summary: `UNCLEAR-dominant: ${unclearCount}/${votes.length} judges abstained — treating as FAIL`,
     };
   }
 
   let verdict: ConsensusResult['verdict'];
-  if (passWeight > failWeight && weightedScore >= passFraction && crossMemberJudges >= 1) {
+  if (passVotes < requiredPassVotes) {
+    verdict = 'FAIL';
+  } else if (passWeight > failWeight && weightedScore >= passFraction && crossMemberPasses >= 1) {
     verdict = 'PASS';
   } else if (failWeight > passWeight) {
     verdict = 'FAIL';
   } else if (Math.abs(passWeight - failWeight) < 0.001) {
     verdict = 'SPLIT';
   } else {
-    // Pass weight > fail but no cross-member PASS: treat as FAIL
     verdict = 'FAIL';
   }
 
   const summary = [
     `${verdict}: ${(weightedScore * 100).toFixed(0)}% weighted pass`,
     `(${votes.length} judge(s), ${crossMemberJudges} cross-member)`,
+    `${passVotes}/${requiredPassVotes} PASS votes`,
   ].join(' ');
 
-  return { verdict, weightedScore, totalWeight, minJudgesMet, crossMemberJudges, dissentLog, summary };
+  return {
+    verdict,
+    weightedScore,
+    totalWeight,
+    minJudgesMet,
+    crossMemberJudges,
+    passVotes,
+    requiredPassVotes,
+    dissentLog,
+    summary,
+  };
 }

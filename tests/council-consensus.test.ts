@@ -75,6 +75,31 @@ describe('computeConsensus', () => {
     assert.equal(r.verdict, 'INSUFFICIENT');
   });
 
+  test('same-member votes do not satisfy N-of-M cross-member judge quorum', () => {
+    const votes: WeightedVote[] = [
+      makeVote({ verdict: 'PASS', judgeMemberId: 'codex', builderMemberId: 'codex' }),
+      makeVote({ verdict: 'PASS', judgeMemberId: 'grok-build', builderMemberId: 'codex' }),
+    ];
+
+    const r = computeConsensus(votes, { minJudges: 2 });
+
+    assert.equal(r.crossMemberJudges, 1);
+    assert.equal(r.minJudgesMet, false);
+    assert.equal(r.verdict, 'INSUFFICIENT');
+  });
+
+  test('two cross-member votes satisfy N-of-M consensus quorum', () => {
+    const votes: WeightedVote[] = [
+      makeVote({ verdict: 'PASS', judgeMemberId: 'grok-build', builderMemberId: 'codex' }),
+      makeVote({ verdict: 'PASS', judgeMemberId: 'claude-code', builderMemberId: 'codex' }),
+    ];
+
+    const r = computeConsensus(votes, { minJudges: 2 });
+
+    assert.equal(r.crossMemberJudges, 2);
+    assert.equal(r.verdict, 'PASS');
+  });
+
   test('UNCLEAR votes do not count as PASS', () => {
     const votes: WeightedVote[] = [
       makeVote({ verdict: 'UNCLEAR', judgeMemberId: 'codex', builderMemberId: 'claude-code' }),
@@ -177,5 +202,30 @@ describe('computeConsensus', () => {
     const r = computeConsensus(votes, { minJudges: 1 });
     assert.equal(r.verdict, 'PASS');
     assert.equal(r.minJudgesMet, true);
+  });
+
+  test('explicit N-of-M threshold blocks one PASS plus abstention when two PASS votes are required', () => {
+    const votes: WeightedVote[] = [
+      makeVote({ verdict: 'PASS', judgeMemberId: 'codex', builderMemberId: 'claude-code' }),
+      makeVote({ verdict: 'UNCLEAR', judgeMemberId: 'grok-build', builderMemberId: 'claude-code' }),
+      makeVote({ verdict: 'FAIL', judgeMemberId: 'gemini-cli', builderMemberId: 'claude-code' }),
+    ];
+    const r = computeConsensus(votes, { minJudges: 3, minPasses: 2 });
+    assert.equal(r.verdict, 'FAIL');
+    assert.equal(r.passVotes, 1);
+    assert.equal(r.requiredPassVotes, 2);
+    assert.match(r.summary, /1\/2 PASS votes/);
+  });
+
+  test('explicit N-of-M threshold passes when enough cross-member judges vote PASS', () => {
+    const votes: WeightedVote[] = [
+      makeVote({ verdict: 'PASS', judgeMemberId: 'codex', builderMemberId: 'claude-code' }),
+      makeVote({ verdict: 'PASS', judgeMemberId: 'grok-build', builderMemberId: 'claude-code' }),
+      makeVote({ verdict: 'FAIL', judgeMemberId: 'gemini-cli', builderMemberId: 'claude-code' }),
+    ];
+    const r = computeConsensus(votes, { minJudges: 3, minPasses: 2 });
+    assert.equal(r.verdict, 'PASS');
+    assert.equal(r.passVotes, 2);
+    assert.equal(r.requiredPassVotes, 2);
   });
 });

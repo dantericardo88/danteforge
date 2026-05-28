@@ -185,6 +185,7 @@ export class GrokBuildAdapter implements AgentAdapter {
     const worktreeRoot = state.input.cwd ?? lease.worktreePath;
     const judgeMode = this.options.judgeMode ?? false;
     const effort = this.options.effort ?? 'high';
+    let cleanupGrokMcpSupport: (() => Promise<void>) | undefined;
 
     state.events.push({
       eventId: `${runId}.start`, runId, ts: state.startedAt, kind: 'started',
@@ -207,7 +208,9 @@ export class GrokBuildAdapter implements AgentAdapter {
         ? ['--single', prompt, '--permission-mode', 'plan', '--output-format', 'plain', '--cwd', normalizeCwd(worktreeRoot), '--no-memory']
         : ['--single', prompt, '--always-approve', '--cwd', normalizeCwd(worktreeRoot), '--no-memory'];
 
-      const env = await buildGrokSpawnEnv({ ...process.env, ...(state.input.env ?? {}) }, worktreeRoot);
+      const envSetup = await buildGrokSpawnEnv({ ...process.env, ...(state.input.env ?? {}) }, worktreeRoot);
+      cleanupGrokMcpSupport = envSetup.cleanup;
+      const env = envSetup.env;
       const spawnOpts: SpawnOptions = {
         cwd: normalizeCwd(worktreeRoot),
         env,
@@ -231,14 +234,12 @@ export class GrokBuildAdapter implements AgentAdapter {
           spawnFn, binary, grokArgs, spawnOpts,
           this.options.timeoutMs ?? DEFAULT_TIMEOUT_MS,
           chunks,
-          judgeMode,
+          false,
           stderrChunks,
         );
         const stdout = Buffer.concat(chunks).toString('utf8');
         const stderr = Buffer.concat(stderrChunks).toString('utf8');
-        // For judge mode, captured output is stdout (already merged via captureStderr).
-        // For build mode, use stderr for transient detection (grok writes errors there).
-        const rawForRetry = judgeMode ? stdout : (stderr || stdout);
+        const rawForRetry = stderr || stdout;
         if (exitCode === 0 || !isTransientGrokError(rawForRetry, exitCode)) {
           state.capturedOutput = stdout;
           state.capturedStderr = stderr;
@@ -333,6 +334,10 @@ export class GrokBuildAdapter implements AgentAdapter {
       state.errorReason = String(err);
       finalize(state, runId);
       logger.warn(`[GrokBuildAdapter] ${runId} failed: ${state.errorReason}`);
+    } finally {
+      await cleanupGrokMcpSupport?.().catch((err) => {
+        logger.warn(`[GrokBuildAdapter] could not clean up Grok MCP override: ${String(err)}`);
+      });
     }
   }
 }
@@ -441,24 +446,30 @@ async function defaultRevertFile(cwd: string, file: string): Promise<void> {
   });
 }
 
-async function buildGrokSpawnEnv(baseEnv: NodeJS.ProcessEnv, worktreeRoot: string): Promise<NodeJS.ProcessEnv> {
+async function buildGrokSpawnEnv(
+  baseEnv: NodeJS.ProcessEnv,
+  worktreeRoot: string,
+): Promise<{ env: NodeJS.ProcessEnv; cleanup?: () => Promise<void> }> {
   const env = { ...baseEnv };
-  const shimDir = await ensureDanteforgeCommandShim(worktreeRoot).catch((err) => {
+  const support = await ensureDanteforgeCommandShim(worktreeRoot).catch((err) => {
     logger.warn(`[GrokBuildAdapter] could not prepare danteforge MCP shim: ${String(err)}`);
     return undefined;
   });
-  if (!shimDir) return env;
+  if (!support) return { env };
   const pathKey = Object.keys(env).find(k => k.toLowerCase() === 'path') ?? 'PATH';
   const currentPath = env[pathKey] ?? '';
-  env[pathKey] = currentPath ? `${shimDir}${path.delimiter}${currentPath}` : shimDir;
-  return env;
+  env[pathKey] = currentPath ? `${support.shimDir}${path.delimiter}${currentPath}` : support.shimDir;
+  return { env, cleanup: support.cleanup };
 }
 
-async function ensureDanteforgeCommandShim(worktreeRoot: string): Promise<string | undefined> {
+async function ensureDanteforgeCommandShim(
+  worktreeRoot: string,
+): Promise<{ shimDir: string; cleanup?: () => Promise<void> } | undefined> {
   const root = await findDanteforgeRoot(worktreeRoot);
   if (!root) return undefined;
   const invocation = await resolveDanteforgeInvocation(root);
   if (!invocation) return undefined;
+  const cleanup = await writeGrokMcpOverride(worktreeRoot, invocation);
   const shimDir = path.join(os.tmpdir(), 'danteforge-grok-mcp-shims', Buffer.from(root).toString('hex').slice(0, 48));
   await fs.mkdir(shimDir, { recursive: true });
   if (process.platform === 'win32') {
@@ -467,6 +478,12 @@ async function ensureDanteforgeCommandShim(worktreeRoot: string): Promise<string
       ? `"${invocation.entry}" %*`
       : `"${invocation.tsx}" "${invocation.entry}" %*`;
     await fs.writeFile(shimPath, `@echo off\r\nnode ${args}\r\n`, 'utf8');
+    const posixShimPath = path.join(shimDir, 'danteforge');
+    const posixArgs = invocation.kind === 'dist'
+      ? `${shQuote(invocation.entry)} "$@"`
+      : `${shQuote(invocation.tsx)} ${shQuote(invocation.entry)} "$@"`;
+    await fs.writeFile(posixShimPath, `#!/usr/bin/env sh\nexec node ${posixArgs}\n`, { encoding: 'utf8', mode: 0o755 });
+    await fs.chmod(posixShimPath, 0o755).catch(() => undefined);
   } else {
     const shimPath = path.join(shimDir, 'danteforge');
     const args = invocation.kind === 'dist'
@@ -475,7 +492,62 @@ async function ensureDanteforgeCommandShim(worktreeRoot: string): Promise<string
     await fs.writeFile(shimPath, `#!/usr/bin/env sh\nexec node ${args}\n`, { encoding: 'utf8', mode: 0o755 });
     await fs.chmod(shimPath, 0o755).catch(() => undefined);
   }
-  return shimDir;
+  return { shimDir, cleanup };
+}
+
+async function writeGrokMcpOverride(
+  worktreeRoot: string,
+  invocation: { kind: 'dist'; entry: string } | { kind: 'src'; entry: string; tsx: string },
+): Promise<(() => Promise<void>) | undefined> {
+  const stat = await fs.stat(worktreeRoot).catch(() => undefined);
+  if (!stat?.isDirectory()) return undefined;
+  const grokDir = path.join(worktreeRoot, '.grok');
+  const configPath = path.join(grokDir, 'config.toml');
+  const prior = await fs.readFile(configPath, 'utf8').catch(() => undefined);
+  const priorDirExists = await fs.stat(grokDir).then(s => s.isDirectory()).catch(() => false);
+  const next = replaceTomlSection(prior, 'mcp_servers.danteforge', buildDanteforgeMcpToml(invocation));
+  await fs.mkdir(grokDir, { recursive: true });
+  await fs.writeFile(configPath, next, 'utf8');
+  return async () => {
+    if (prior === undefined) {
+      await fs.rm(configPath, { force: true });
+      if (!priorDirExists) await fs.rmdir(grokDir).catch(() => undefined);
+      return;
+    }
+    await fs.writeFile(configPath, prior, 'utf8');
+  };
+}
+
+function buildDanteforgeMcpToml(
+  invocation: { kind: 'dist'; entry: string } | { kind: 'src'; entry: string; tsx: string },
+): string {
+  const args = invocation.kind === 'dist'
+    ? [invocation.entry, 'mcp-server']
+    : [invocation.tsx, invocation.entry, 'mcp-server'];
+  return [
+    '[mcp_servers.danteforge]',
+    'command = "node"',
+    `args = [${args.map(tomlQuote).join(', ')}]`,
+    'enabled = true',
+    'startup_timeout_sec = 30',
+    '',
+  ].join('\n');
+}
+
+function replaceTomlSection(source: string | undefined, sectionName: string, replacement: string): string {
+  source ??= '';
+  const sectionHeader = `[${sectionName}]`;
+  const lines = source.replace(/\r\n/g, '\n').split('\n');
+  const start = lines.findIndex(line => line.trim() === sectionHeader);
+  if (start === -1) return `${source.trimEnd()}${source.trim() ? '\n\n' : ''}${replacement}`;
+  let end = start + 1;
+  while (end < lines.length && !/^\s*\[[^\]]+\]\s*$/.test(lines[end]!)) end++;
+  const updated = [...lines.slice(0, start), replacement.trimEnd(), ...lines.slice(end)];
+  return `${updated.join('\n').trimEnd()}\n`;
+}
+
+function tomlQuote(value: string): string {
+  return `"${value.replace(/\\/g, '\\\\').replace(/"/g, '\\"')}"`;
 }
 
 async function findDanteforgeRoot(start: string): Promise<string | undefined> {

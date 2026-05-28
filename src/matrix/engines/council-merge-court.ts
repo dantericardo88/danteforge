@@ -29,8 +29,9 @@ import { runRevision } from './council-revision.js';
 import type { FileClaims } from './council-file-claims.js';
 import { computeConsensus, assignVoteWeight } from './council-consensus.js';
 import type { WeightedVote } from './council-consensus.js';
-import { pickJudgeSlots } from './council-slot.js';
 import type { CouncilSlot } from './council-slot.js';
+import { buildAnonymousReviewPlan } from './council-review-plan.js';
+import type { AnonymousReviewAssignment } from './council-review-plan.js';
 import { parseVerdict } from './council-verdict-parser.js';
 export type { MemberVerdict } from './council-verdict-parser.js';
 import type { MemberVerdict } from './council-verdict-parser.js';
@@ -51,6 +52,8 @@ export interface MergeCourtResult {
   mergeError?: string;
   /** candidateId → builderId revealed after all verdicts collected (anonymous peer review). */
   anonymizationMap?: Record<string, string>;
+  /** Anonymous cross-member review assignment used for this candidate. */
+  reviewAssignment?: AnonymousReviewAssignment;
   /** Dissent from minority judges preserved even on PASS consensus. */
   dissentLog: string[];
 }
@@ -154,22 +157,6 @@ function makeJudgeAdapter(id: CouncilMemberId, workPacket: WorkPacket) {
 
 // ── Anonymous peer review helpers (Karpathy protocol) ────────────────────────
 
-const CANDIDATE_LABELS = ['Alpha', 'Beta', 'Gamma', 'Delta', 'Epsilon', 'Zeta'];
-
-function buildAnonymizationMap(builderIds: CouncilMemberId[]): {
-  idToCandidate: Map<CouncilMemberId, string>;
-  candidateToId: Map<string, CouncilMemberId>;
-} {
-  const idToCandidate = new Map<CouncilMemberId, string>();
-  const candidateToId = new Map<string, CouncilMemberId>();
-  builderIds.forEach((id, i) => {
-    const label = `Candidate-${CANDIDATE_LABELS[i] ?? String(i + 1)}`;
-    idToCandidate.set(id, label);
-    candidateToId.set(label, id);
-  });
-  return { idToCandidate, candidateToId };
-}
-
 // ── Merge via git apply ───────────────────────────────────────────────────────
 
 async function applyDiffToMain(diff: string, projectPath: string): Promise<void> {
@@ -194,15 +181,21 @@ async function applyDiffToMain(diff: string, projectPath: string): Promise<void>
 export async function runMergeCourt(opts: MergeCourtOptions): Promise<MergeCourtResult[]> {
   const results: MergeCourtResult[] = [];
 
-  // Build session-wide anonymization map (Karpathy: hide builder identity from judges).
-  const allBuilderIds = opts.handles.map(h => h.memberId as CouncilMemberId);
-  const { idToCandidate, candidateToId } = buildAnonymizationMap(allBuilderIds);
-  const anonymizationMap: Record<string, string> = {};
-  for (const [cid, bid] of candidateToId) anonymizationMap[cid] = bid;
+  const minJudges = opts.minJudges ?? 1;
+  const reviewPlan = buildAnonymousReviewPlan({
+    handles: opts.handles,
+    allMemberIds: opts.allMemberIds,
+    allSlots: opts.allSlots,
+    minJudges,
+    judgeCapableMembers: JUDGE_CAPABLE_MEMBERS,
+  });
+  const assignmentByWorktree = new Map(reviewPlan.assignments.map(assignment => [assignment.worktreePath, assignment]));
+  const anonymizationMap = reviewPlan.anonymizationMap;
 
   for (const handle of opts.handles) {
     const builderId = handle.memberId as CouncilMemberId;
-    const candidateId = idToCandidate.get(builderId) ?? builderId;
+    const reviewAssignment = assignmentByWorktree.get(handle.worktreePath);
+    const candidateId = reviewAssignment?.candidateId ?? builderId;
 
     let diff = await captureWorktreeDiff(handle, opts.worktreeOpts);
     const changedFiles = await getChangedFiles(handle.worktreePath);
@@ -211,7 +204,7 @@ export async function runMergeCourt(opts: MergeCourtOptions): Promise<MergeCourt
       logger.info(`[merge-court] ${candidateId} (${builderId}): no changes — skipping judge phase`);
       results.push({ memberId: builderId, slotId: handle.slotId, worktreePath: handle.worktreePath,
         changedFiles: [], verdicts: [], consensus: 'FAIL', merged: false,
-        anonymizationMap, dissentLog: [] });
+        anonymizationMap, reviewAssignment, dissentLog: [] });
       continue;
     }
 
@@ -226,7 +219,7 @@ export async function runMergeCourt(opts: MergeCourtOptions): Promise<MergeCourt
         results.push({ memberId: builderId, slotId: handle.slotId, worktreePath: handle.worktreePath,
           changedFiles, verdicts: [], consensus: 'FAIL', merged: false,
           mergeError: `${nConflict} of ${changedFiles.length} file(s) claimed by conflicting slot`,
-          anonymizationMap, dissentLog: [] });
+          anonymizationMap, reviewAssignment, dissentLog: [] });
         continue;
       }
     }
@@ -238,10 +231,11 @@ export async function runMergeCourt(opts: MergeCourtOptions): Promise<MergeCourt
     // is treated as advisory, not conclusive.
     const slotId = handle.slotId ?? `${builderId}-0`;
     const preVerd = opts.preComputedConsensus?.get(slotId);
-    if (preVerd === 'PASS' && (opts.minJudges ?? 2) <= 1) {
+    const streamingJudgeId = reviewAssignment?.judgeMemberIds[0];
+    if (preVerd === 'PASS' && streamingJudgeId && (opts.minJudges ?? 2) <= 1) {
       logger.info(`[merge-court] ${builderId} (${slotId}): streaming pre-approved — skipping re-judge`);
       const syntheticVerdict: MemberVerdict = {
-        judgeId: 'claude-code',
+        judgeId: streamingJudgeId,
         verdict: 'PASS', confidence: 'HIGH',
         scoreSuggestion: null, reason: 'Pre-approved by streaming judge queue',
         blockingConcerns: [], dissentSummary: '', rawOutput: '',
@@ -261,22 +255,17 @@ export async function runMergeCourt(opts: MergeCourtOptions): Promise<MergeCourt
       results.push({
         memberId: builderId, slotId: handle.slotId, worktreePath: handle.worktreePath,
         changedFiles, verdicts: [syntheticVerdict], consensus: 'PASS', merged,
-        mergeError, anonymizationMap, dissentLog: [],
+        mergeError, anonymizationMap, reviewAssignment, dissentLog: [],
       });
       continue;
     }
 
-    // Slot-aware judge selection: cross-member slots first; fall back to member-level filter.
+    // Review plan enforces anonymous labels, cross-member judges, and builder-never-judges.
     // Only members in JUDGE_CAPABLE_MEMBERS are eligible — those with structural read-only
     // enforcement (Claude Code: --allowedTools; Grok: --permission-mode plan).
-    let judgeIds: CouncilMemberId[];
-    if (opts.allSlots && opts.allSlots.length > 0) {
-      const minJudges = opts.minJudges ?? 2;
-      const crossMemberSlots = opts.allSlots.filter(s => s.memberId !== builderId && JUDGE_CAPABLE_MEMBERS.has(s.memberId));
-      const pickedSlots = pickJudgeSlots(crossMemberSlots, minJudges);
-      judgeIds = [...new Set(pickedSlots.map(s => s.memberId))];
-    } else {
-      judgeIds = opts.allMemberIds.filter(id => id !== builderId && JUDGE_CAPABLE_MEMBERS.has(id));
+    const judgeIds = reviewAssignment?.judgeMemberIds ?? [];
+    if (reviewAssignment && !reviewAssignment.isStructurallyValid) {
+      logger.warn(`[merge-court] ${candidateId}: ${reviewAssignment.violationReason}`);
     }
     logger.info(`[merge-court] ${candidateId}: ${changedFiles.length} file(s) → ${judgeIds.length} anonymous judge(s)`);
 
@@ -311,8 +300,7 @@ export async function runMergeCourt(opts: MergeCourtOptions): Promise<MergeCourt
       reason: v.reason,
       dissentSummary: v.dissentSummary,
     }));
-    const minJudges = opts.minJudges ?? 1;
-    const consensusResult = computeConsensus(weightedVotes, { minJudges });
+    const consensusResult = computeConsensus(weightedVotes, { minJudges, minPasses: minJudges });
     let consensus: 'PASS' | 'FAIL' | 'SPLIT' =
       consensusResult.verdict === 'PASS' ? 'PASS' :
       consensusResult.verdict === 'SPLIT' ? 'SPLIT' : 'FAIL';
@@ -361,7 +349,7 @@ export async function runMergeCourt(opts: MergeCourtOptions): Promise<MergeCourt
             reason: v.reason,
             dissentSummary: v.dissentSummary,
           }));
-          const revConsensus = computeConsensus(revWeightedVotes, { minJudges });
+          const revConsensus = computeConsensus(revWeightedVotes, { minJudges, minPasses: minJudges });
           consensus = revConsensus.verdict === 'PASS' ? 'PASS' :
             revConsensus.verdict === 'SPLIT' ? 'SPLIT' : 'FAIL';
           logger.info(`[merge-court] ${builderId}: post-revision consensus = ${consensus} (${revResult.cycles.length} cycle(s))`);
@@ -382,7 +370,7 @@ export async function runMergeCourt(opts: MergeCourtOptions): Promise<MergeCourt
             weight: assignVoteWeight(v.judgeId, builderId),
             confidence: v.confidence, reason: v.reason, dissentSummary: v.dissentSummary,
           }));
-          const debateConsensus = computeConsensus(debateWeightedVotes, { minJudges });
+          const debateConsensus = computeConsensus(debateWeightedVotes, { minJudges, minPasses: minJudges });
           consensus = debateConsensus.verdict === 'PASS' ? 'PASS' :
             debateConsensus.verdict === 'SPLIT' ? 'SPLIT' : 'FAIL';
           logger.info(`[merge-court] ${builderId}: post-debate consensus = ${consensus} (${transcript.rounds.length} round(s))`);
@@ -420,7 +408,7 @@ export async function runMergeCourt(opts: MergeCourtOptions): Promise<MergeCourt
 
     results.push({ memberId: builderId, slotId: handle.slotId, worktreePath: handle.worktreePath,
       changedFiles, verdicts: finalVerdicts, consensus, merged, mergeError,
-      anonymizationMap, dissentLog });
+      anonymizationMap, reviewAssignment, dissentLog });
   }
 
   return results;

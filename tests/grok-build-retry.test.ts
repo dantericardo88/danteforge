@@ -4,6 +4,7 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
+import os from 'node:os';
 import path from 'node:path';
 import { GrokBuildAdapter } from '../src/matrix/adapters/grok-build-adapter.js';
 import type { GrokBuildSpawnFn } from '../src/matrix/adapters/grok-build-adapter.js';
@@ -86,29 +87,118 @@ describe('GrokBuildAdapter — 502 retry', () => {
   });
 
   it('prepends a local danteforge command shim so Grok MCP config can spawn the server', async () => {
+    const worktreeRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'df-grok-mcp-shim-'));
     let spawnPath = '';
+    try {
+      const adapter = new GrokBuildAdapter({
+        workPacket: makeWorkPacket(),
+        judgeMode: true,
+        _isAvailable: async () => true,
+        _spawn: (cmd, args, opts) => {
+          spawnPath = String(opts.env?.PATH ?? opts.env?.Path ?? '');
+          return makeSpawn([{ exitCode: 0, stdout: 'VERDICT: PASS\nCONFIDENCE: HIGH\nREASON: ok\nSCORE_SUGGESTION: 8\nBLOCKING_ISSUES: none\nBLOCKING_CONCERNS: none\nDISSENT: none' }])(cmd, args, opts);
+        },
+        _sleep: async () => undefined,
+      });
+
+      const handle = await adapter.startRun({
+        lease: { ...makeLease(), worktreePath: worktreeRoot },
+        cwd: worktreeRoot,
+        prepared: true,
+      } as never);
+      const result = await adapter.collectResult(handle);
+
+      const firstPathEntry = spawnPath.split(path.delimiter)[0]!;
+      const shimName = process.platform === 'win32' ? 'danteforge.cmd' : 'danteforge';
+      assert.equal(result.status, 'completed');
+      assert.ok(fs.existsSync(path.join(firstPathEntry, shimName)), `missing ${shimName} in ${firstPathEntry}`);
+    } finally {
+      fs.rmSync(worktreeRoot, { recursive: true, force: true });
+    }
+  });
+
+  it('provides an exact danteforge executable name for MCP launchers that do not resolve PATHEXT', async () => {
+    const worktreeRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'df-grok-mcp-exact-'));
+    let spawnPath = '';
+    try {
+      const adapter = new GrokBuildAdapter({
+        workPacket: makeWorkPacket(),
+        judgeMode: true,
+        _isAvailable: async () => true,
+        _spawn: (cmd, args, opts) => {
+          spawnPath = String(opts.env?.PATH ?? opts.env?.Path ?? '');
+          return makeSpawn([{ exitCode: 0, stdout: 'VERDICT: PASS\nCONFIDENCE: HIGH\nREASON: ok\nSCORE_SUGGESTION: 8\nBLOCKING_ISSUES: none\nBLOCKING_CONCERNS: none\nDISSENT: none' }])(cmd, args, opts);
+        },
+        _sleep: async () => undefined,
+      });
+
+      const handle = await adapter.startRun({
+        lease: { ...makeLease(), worktreePath: worktreeRoot },
+        cwd: worktreeRoot,
+        prepared: true,
+      } as never);
+      const result = await adapter.collectResult(handle);
+
+      const firstPathEntry = spawnPath.split(path.delimiter)[0]!;
+      assert.equal(result.status, 'completed');
+      assert.ok(fs.existsSync(path.join(firstPathEntry, 'danteforge')), `missing exact danteforge shim in ${firstPathEntry}`);
+    } finally {
+      fs.rmSync(worktreeRoot, { recursive: true, force: true });
+    }
+  });
+
+  it('writes a Grok-native MCP override that launches danteforge through node', async () => {
+    const worktreeRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'df-grok-mcp-config-'));
+    let configDuringSpawn = '';
+    try {
+      const adapter = new GrokBuildAdapter({
+        workPacket: makeWorkPacket(),
+        judgeMode: true,
+        _isAvailable: async () => true,
+        _spawn: (cmd, args, opts) => {
+          configDuringSpawn = fs.readFileSync(path.join(worktreeRoot, '.grok', 'config.toml'), 'utf8');
+          return makeSpawn([{ exitCode: 0, stdout: 'VERDICT: PASS\nCONFIDENCE: HIGH\nREASON: ok\nSCORE_SUGGESTION: 8\nBLOCKING_ISSUES: none\nBLOCKING_CONCERNS: none\nDISSENT: none' }])(cmd, args, opts);
+        },
+        _sleep: async () => undefined,
+      });
+
+      const handle = await adapter.startRun({
+        lease: { ...makeLease(), worktreePath: worktreeRoot },
+        cwd: worktreeRoot,
+        prepared: true,
+      } as never);
+      const result = await adapter.collectResult(handle);
+
+      assert.equal(result.status, 'completed');
+      assert.match(configDuringSpawn, /\[mcp_servers\.danteforge\]/);
+      assert.match(configDuringSpawn, /command = "node"/);
+      assert.match(configDuringSpawn, /"mcp-server"/);
+      assert.doesNotMatch(configDuringSpawn, /command = "danteforge"/);
+      assert.equal(fs.existsSync(path.join(worktreeRoot, '.grok', 'config.toml')), false);
+    } finally {
+      fs.rmSync(worktreeRoot, { recursive: true, force: true });
+    }
+  });
+
+  it('does not mix non-fatal MCP stderr into a successful judge verdict', async () => {
     const adapter = new GrokBuildAdapter({
       workPacket: makeWorkPacket(),
       judgeMode: true,
       _isAvailable: async () => true,
-      _spawn: (cmd, args, opts) => {
-        spawnPath = String(opts.env?.PATH ?? opts.env?.Path ?? '');
-        return makeSpawn([{ exitCode: 0, stdout: 'VERDICT: PASS\nCONFIDENCE: HIGH\nREASON: ok\nSCORE_SUGGESTION: 8\nBLOCKING_ISSUES: none\nBLOCKING_CONCERNS: none\nDISSENT: none' }])(cmd, args, opts);
-      },
+      _spawn: makeSpawn([{
+        exitCode: 0,
+        stdout: 'VERDICT: PASS\nCONFIDENCE: HIGH\nREASON: ok\nSCORE_SUGGESTION: 8\nBLOCKING_ISSUES: none\nBLOCKING_CONCERNS: none\nDISSENT: none',
+        stderr: "ERROR Failed to spawn MCP server 'danteforge': program not found",
+      }]),
       _sleep: async () => undefined,
     });
 
-    const handle = await adapter.startRun({
-      lease: { ...makeLease(), worktreePath: process.cwd() },
-      cwd: process.cwd(),
-      prepared: true,
-    } as never);
+    const handle = await adapter.startRun({ lease: makeLease(), prepared: true } as never);
     const result = await adapter.collectResult(handle);
 
-    const firstPathEntry = spawnPath.split(path.delimiter)[0]!;
-    const shimName = process.platform === 'win32' ? 'danteforge.cmd' : 'danteforge';
     assert.equal(result.status, 'completed');
-    assert.ok(fs.existsSync(path.join(firstPathEntry, shimName)), `missing ${shimName} in ${firstPathEntry}`);
+    assert.match(result.finalMessage, /^VERDICT: PASS/);
+    assert.doesNotMatch(result.finalMessage, /Failed to spawn MCP server/);
   });
 
   it('retries on 502 output and succeeds on second attempt', async () => {
