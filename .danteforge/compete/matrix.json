@@ -44,8 +44,8 @@
     "SmolaAgents",
     "DSPy"
   ],
-  "lastUpdated": "2026-05-28T04:08:14.846Z",
-  "overallSelfScore": 7.5,
+  "lastUpdated": "2026-05-28T06:31:16.825Z",
+  "overallSelfScore": 7.71,
   "excludedDimensions": [
     "community_adoption",
     "communityAdoption"
@@ -838,7 +838,7 @@
       "category": "reliability",
       "frequency": "high",
       "scores": {
-        "self": 7.5,
+        "self": 9,
         "Devin (Cognition AI)": 7,
         "GitHub Copilot Workspace": 8,
         "Cursor": 7.5,
@@ -1044,11 +1044,11 @@
         "derived": 9
       },
       "gap_to_leader": 0,
-      "leader": "derived",
+      "leader": "self",
       "gap_to_closed_source_leader": 0,
-      "closed_source_leader": "Kiro (AWS)",
+      "closed_source_leader": "self",
       "gap_to_oss_leader": 0,
-      "oss_leader": "OpenHands (All-Hands AI)",
+      "oss_leader": "self",
       "status": "closed",
       "sprint_history": [
         {
@@ -1323,7 +1323,7 @@
       "category": "ux",
       "frequency": "medium",
       "scores": {
-        "self": 7,
+        "self": 9,
         "Devin (Cognition AI)": 7,
         "GitHub Copilot Workspace": 8,
         "Cursor": 7.5,
@@ -3069,11 +3069,11 @@
       ],
       "declared_ceiling": "T7",
       "gap_to_leader": 0,
-      "leader": "derived",
+      "leader": "self",
       "gap_to_closed_source_leader": 0,
-      "closed_source_leader": "Kiro (AWS)",
+      "closed_source_leader": "self",
       "gap_to_oss_leader": 0,
-      "oss_leader": "SWE-Agent (Princeton)",
+      "oss_leader": "self",
       "legacy_score": 9,
       "status": "closed",
       "evidence_integrity": {
@@ -3216,7 +3216,7 @@
       "category": "core_differentiator",
       "frequency": "high",
       "scores": {
-        "self": 7.5,
+        "self": 9,
         "Kiro (AWS)": 5,
         "Replit Agent": 4,
         "spec-kit (GitHub)": 2,
