@@ -44,6 +44,19 @@ If no universe file exists for a dimension, score against the generic scale belo
 
 ---
 
+
+## Anti-inflation hard caps (applies to every dimension)
+
+These rules are enforced by the substrate regardless of LLM verdict. Score honestly.
+
+1. **T7 is virtual.** 9.0 requires 3+ T5 outcomes with **distinct test files** (≥2 unique
+   `.test.ts` files). Three outcomes sharing the same test file = one receipt, not three.
+2. **Seamed tests cap at 6.0.** Outcomes using `_cipCheck`, `_runPass`, `_runAutoforge`,
+   or mocking frameworks (vi.mock, sinon.stub) prove code paths, not real behavior.
+3. **Shared receipts cap at 7.0.** Same test file as T5+ evidence in ≥2 dims caps both at 7.0.
+4. **Market dims hard cap at 5.0.** `community_adoption` and `enterprise_readiness` require
+   external signals (downloads, stars, production installs) for scores above 5.0.
+
 ## Scoring scale (applies to every dimension)
 
 | Score | Meaning | T-tier evidence required |
@@ -55,7 +68,7 @@ If no universe file exists for a dimension, score against the generic scale belo
 | 6     | Works with mocks/stubs/fake data — not production-real | T2 |
 | 7     | End-to-end works but with caveats or incomplete coverage | T4 (production callsite wired) |
 | 8     | End-to-end works with realistic inputs, no material stubs in critical path | T5 (smoke test, ≤7 days) |
-| 9     | Production-real, repeatable, competitive with OSS leaders | T7 (3+ outcomes, all passing) |
+| 9     | Production-real, repeatable, competitive with OSS leaders | T7 (3+ distinct T5s, all passing) |
 | 10    | Best-in-class, fully integrated, robust across all realistic scenarios | T8 (live verify, ≤24h) |
 
 **Hard caps (non-negotiable):**
@@ -64,6 +77,7 @@ If no universe file exists for a dimension, score against the generic scale belo
 - Cannot score 7+ if the critical path uses mocks, stubs, TODOs, fake data, or hardcoded outputs
 - Cannot score 6+ if the code exists but was never exercised by a real test or callsite
 - Cannot score 5+ based on documentation or planned work alone
+- `community_adoption` and `enterprise_readiness` cannot exceed 5.0 from internal tests (market dims)
 
 ---
 
@@ -87,7 +101,7 @@ For each dimension below, produce a score and 1–2 sentence justification:
 14. **documentation** — In-code docs, CLI help, guides
 15. **security** — Input validation, secret handling, hook safety
 16. **performance** — Token budget, parallelism, speed vs. OSS leaders
-17. **enterprise_readiness** — Audit logs, config management, team support
+17. **enterprise_readiness** — Audit logs, config management, team support *(market dim — max 5.0 from internal tests)*
 18. **ecosystem_mcp** — MCP integration surface, tool registry, plugin system
 19. **maintainability** — File size discipline, modularity, LOC standards
 20. **token_economy** — Budget tracking, cost warnings, chunk sizing
@@ -122,7 +136,7 @@ For each dimension below, produce a score and 1–2 sentence justification:
 
 ```
 SCORES:
-- autonomy:                    X.X  — <1-sentence evidence citation> [cap_test: YES|NO] [universe: YES|NO|N/A]
+- autonomy:                    X.X  — <1-sentence evidence citation> [cap_test: YES|NO] [universe: YES|NO|N/A] [seams: YES|NO]
 - multi_agent_orchestration:   X.X  — <1-sentence evidence citation> [cap_test: YES|NO] [universe: YES|NO|N/A]
 - spec_driven_pipeline:        X.X  — <1-sentence evidence citation> [cap_test: YES|NO] [universe: YES|NO|N/A]
 - functionality:               X.X  — <1-sentence evidence citation> [cap_test: YES|NO] [universe: YES|NO|N/A]
@@ -148,6 +162,8 @@ SCORES:
 - depth_doctrine:              X.X  — <1-sentence evidence citation> [cap_test: YES|NO] [universe: YES|NO|N/A]
 
 OVERALL: X.X
+
+INFLATION_FLAGS: <NONE | list dims with SHARED_RECEIPTS, SEAMED_TESTS, or MARKET_DIM violations>
 
 WEAKEST_DIM: <dimId>
 WEAKEST_REASON: <why this dimension is hardest to advance>

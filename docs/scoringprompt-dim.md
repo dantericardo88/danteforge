@@ -37,6 +37,33 @@ the ceiling faster. The receipts are what matter.
 
 ---
 
+
+## Anti-inflation hard caps (read before scoring)
+
+These rules are enforced structurally by `derived-score.ts`. Your score is a verdict input —
+the substrate will apply these caps regardless of what you write. Score honestly; don't game them.
+
+1. **T7 is virtual.** It cannot be claimed by writing a single T7 outcome. 9.0 requires 3+ T5
+   outcomes ALL passing with **distinct test files** (≥2 unique `.test.ts` files across them).
+   Three outcomes pointing to the same test file = one receipt, not three.
+
+2. **Seamed tests cap at 6.0.** If an outcome command invokes `_cipCheck`, `_runPass`,
+   `_runAutoforge`, or any other injection seam (vi.mock, sinon.stub, etc.), it proves a code
+   path exists, not real behavior. Cap the dimension at 6.0 regardless of pass rate.
+
+3. **Shared receipts cap at 7.0.** If the same test file appears as T5+ evidence in ≥2
+   dimensions simultaneously, both dimensions are capped at 7.0. One test suite cannot be
+   multi-receipt for multiple capabilities.
+
+4. **Builder-session evidence caps at 7.0.** Evidence produced in the same agent session as
+   the code change (hot evidence) caps at 7.0. Cold re-run required for 8+.
+
+5. **Market dims hard cap at 5.0.** `community_adoption` and `enterprise_readiness` cannot
+   exceed 5.0 from internal implementation tests. External telemetry (download counts, GitHub
+   stars, production installs) required for higher scores.
+
+---
+
 ## Scoring rules (non-negotiable)
 
 Score ONLY what is proven by this diff. Not what the code looks like it might do.
@@ -50,7 +77,7 @@ Score ONLY what is proven by this diff. Not what the code looks like it might do
 | 6 | Works with mocks/stubs/fake data — not production-real | T2 |
 | 7 | End-to-end works but with caveats or incomplete coverage | T4 (production callsite wired) |
 | 8 | End-to-end works with realistic inputs, no material stubs in critical path | T5 (smoke test passes, ≤7 days) |
-| 9 | Production-real, competitive with {{OSS_LEADER}}, multi-receipt consensus | T7 (3+ outcomes, all passing) |
+| 9 | Production-real, competitive with {{OSS_LEADER}}, multi-receipt consensus | T7 (3+ distinct T5 outcomes, all passing) |
 | 10 | Best-in-class, fully integrated, robust across realistic scenarios | T8 (live verification, ≤24h) |
 
 **Hard caps (non-negotiable):**
@@ -59,6 +86,7 @@ Score ONLY what is proven by this diff. Not what the code looks like it might do
 - Cannot score 7+ if the critical path uses mocks, stubs, TODOs, fake data, or hardcoded outputs
 - Cannot score 6+ if the code exists but was not exercised by a real test or callsite
 - Cannot score 5+ based on documentation or planned work alone
+- `community_adoption` and `enterprise_readiness` cannot exceed 5.0 from internal tests (market dims)
 
 ---
 
@@ -115,6 +143,7 @@ REASON: <2–3 sentences citing specific files/functions from the diff>
 
 UNIVERSE_CRITERIA_MET: YES | NO | N/A (if no universe file was injected)
 CAPABILITY_TEST_PRESENT: YES | NO
+INFLATION_FLAGS: NONE | <comma-separated: SHARED_RECEIPTS, SEAMED_TESTS, MARKET_DIM, HOT_EVIDENCE>
 
 HIGHEST_IMPACT_NEXT: <one specific thing to implement to raise score by 0.5+>
 ```

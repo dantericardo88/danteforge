@@ -45,6 +45,19 @@ const TIER_INDEX: Record<CapabilityTier, number> = {
  */
 const MIN_T7_HIGH_TIER_OUTCOMES = 3;
 
+/**
+ * Dims bounded by external/market signals, not internal tests.
+ * Internal evidence cannot exceed MARKET_DIM_IMPLEMENTATION_CAP.
+ */
+const MARKET_DIMS = new Set(['community_adoption', 'enterprise_readiness']);
+const MARKET_DIM_IMPLEMENTATION_CAP = 5.0;
+
+/** Extract test file names from a command string. Used for cross-dim sharing detection. */
+export function extractPrimaryTestFiles(command: string): string[] {
+  const matches = command.match(/[w.-]+.test.[jt]sx?/g);
+  return matches ? [...new Set(matches)] : [];
+}
+
 // ── Breakdown for diagnostics ────────────────────────────────────────────────
 
 export interface DerivedScoreBreakdown {
@@ -165,6 +178,16 @@ export function computeDerivedScoreWithBreakdown(
       if (highTierPassCount + tierOutcomes.length < MIN_T7_HIGH_TIER_OUTCOMES) {
         allPassing = false;
       }
+      // Distinct test-file check: all T5+ outcomes pointing to the same single test
+      // file is one receipt dressed as many — not genuine multi-receipt.
+      if (allPassing) {
+        const highTierOuts = outcomes.filter(o => TIER_INDEX[o.tier] >= TIER_INDEX.T5);
+        const testFiles = highTierOuts.flatMap(
+          o => extractPrimaryTestFiles((o as { command?: string }).command ?? ''),
+        );
+        const uniqueFiles = new Set(testFiles);
+        if (testFiles.length > 0 && uniqueFiles.size < 2) allPassing = false;
+      }
     }
 
     perTier.push({ tier, declared: tierOutcomes.length, passing, stale, allPassing });
@@ -197,6 +220,11 @@ export function computeDerivedScoreWithBreakdown(
   if (dim.declared_ceiling) {
     const ceilingCap = TIER_SCORE_CAPS[dim.declared_ceiling];
     if (score > ceilingCap) score = ceilingCap;
+  }
+
+  // Market dims: internal evidence cannot exceed MARKET_DIM_IMPLEMENTATION_CAP.
+  if (MARKET_DIMS.has(dim.id) && score > MARKET_DIM_IMPLEMENTATION_CAP) {
+    score = MARKET_DIM_IMPLEMENTATION_CAP;
   }
 
   return {

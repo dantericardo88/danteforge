@@ -30,6 +30,7 @@ import {
 import { applyLegacyReceiptCeiling, LEGACY_NO_RECEIPT_CEILING } from '../../matrix/engines/receipt-ceiling.js';
 import type { Outcome } from '../../matrix/types/outcome.js';
 import { SCORING_DOCTRINE_SHORT } from '../../core/scoring-doctrine.js';
+import { checkOutcomeIntegrity, formatIntegrityReport } from '../../matrix/engines/outcome-integrity.js';
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -130,6 +131,19 @@ export async function runValidateCli(options: ValidateCliOptions): Promise<Valid
     logger.info(chalk.dim(`Running outcomes for ${dimsWithOutcomes.length} dimension(s)…`));
     logger.info('');
   }
+
+  // Integrity pre-flight: detect cross-dim shared receipts, seamed tests, market dims
+  try {
+    const integrityReport = await checkOutcomeIntegrity(
+      matrix.dimensions as Parameters<typeof checkOutcomeIntegrity>[0],
+      cwd,
+    );
+    if (!integrityReport.clean && !options.json) {
+      logger.warn(chalk.yellow('\n⚠  ' + formatIntegrityReport(integrityReport)));
+      logger.warn(chalk.yellow('   Violations cap derived scores. Fix outcomes to unlock honest 9.0.'));
+      logger.info('');
+    }
+  } catch { /* best-effort — integrity check never blocks validation */ }
 
   // Run outcomes — optionally filter to runtime-only kinds
   const filterOutcomes = (outcomes: Outcome[] | undefined): Outcome[] | undefined => {
