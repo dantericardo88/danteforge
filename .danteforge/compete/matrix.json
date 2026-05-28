@@ -44,7 +44,7 @@
     "SmolaAgents",
     "DSPy"
   ],
-  "lastUpdated": "2026-05-28T06:31:16.825Z",
+  "lastUpdated": "2026-05-28T06:35:47.033Z",
   "overallSelfScore": 7.71,
   "excludedDimensions": [
     "community_adoption",
@@ -1044,11 +1044,11 @@
         "derived": 9
       },
       "gap_to_leader": 0,
-      "leader": "self",
+      "leader": "derived",
       "gap_to_closed_source_leader": 0,
-      "closed_source_leader": "self",
+      "closed_source_leader": "Kiro (AWS)",
       "gap_to_oss_leader": 0,
-      "oss_leader": "self",
+      "oss_leader": "OpenHands (All-Hands AI)",
       "status": "closed",
       "sprint_history": [
         {
@@ -3069,11 +3069,11 @@
       ],
       "declared_ceiling": "T7",
       "gap_to_leader": 0,
-      "leader": "self",
+      "leader": "derived",
       "gap_to_closed_source_leader": 0,
-      "closed_source_leader": "self",
+      "closed_source_leader": "Kiro (AWS)",
       "gap_to_oss_leader": 0,
-      "oss_leader": "self",
+      "oss_leader": "SWE-Agent (Princeton)",
       "legacy_score": 9,
       "status": "closed",
       "evidence_integrity": {
@@ -3098,11 +3098,12 @@
           "after": 9,
           "date": "2026-05-28",
           "proposalIds": [
-            "proposal_1779940938168_10477163"
+            "proposal_1779941266908_9db2fd39",
+            "proposal_1779941355875_6b6948c4"
           ],
-          "selectedProposalId": "proposal_1779940938168_10477163",
-          "mergeReceipt": ".danteforge/score-proposals/merge-receipts/merge_1779941295118_3814b461.json",
-          "timeMachineCommitId": "tm_5dcb0caebc4b458c0bc47265"
+          "selectedProposalId": "proposal_1779941266908_9db2fd39",
+          "mergeReceipt": ".danteforge/score-proposals/merge-receipts/merge_1779950289116_82c39771.json",
+          "timeMachineCommitId": "tm_ad4d96b38532b5c05cfcebe2"
         }
       ]
     },
@@ -3358,14 +3359,14 @@
         }
       ],
       "declared_ceiling": "T7",
-      "gap_to_leader": 1.5,
+      "gap_to_leader": 0,
       "leader": "LangGraph",
       "gap_to_closed_source_leader": 0,
-      "closed_source_leader": "self",
-      "gap_to_oss_leader": 1.5,
+      "closed_source_leader": "Kiro (AWS)",
+      "gap_to_oss_leader": 0,
       "oss_leader": "LangGraph",
       "legacy_score": 9,
-      "status": "partially-verified-capability",
+      "status": "closed",
       "evidence_integrity": {
         "auditedAt": "2026-05-21T20:52:17.008Z",
         "previousSelfScore": 6.5,
@@ -3380,7 +3381,22 @@
         "description": "Matrix Kernel status + party mode available; checkpointer enables durable work-packet resume"
       },
       "requirementsForNinePlus": "Full council-driven wave producing verified competitive progress + T7+ outcomes on council quality.",
-      "ninePlusRequirementsFile": ".danteforge/9PLUS_REQUIREMENTS.md"
+      "ninePlusRequirementsFile": ".danteforge/9PLUS_REQUIREMENTS.md",
+      "sprint_history": [
+        {
+          "dimensionId": "multi_agent_orchestration",
+          "before": 7.5,
+          "after": 9,
+          "date": "2026-05-28",
+          "proposalIds": [
+            "proposal_1779949802901_76e948a2",
+            "proposal_1779949807890_c9fc554e"
+          ],
+          "selectedProposalId": "proposal_1779949802901_76e948a2",
+          "mergeReceipt": ".danteforge/score-proposals/merge-receipts/merge_1779950289116_82c39771.json",
+          "timeMachineCommitId": "tm_ad4d96b38532b5c05cfcebe2"
+        }
+      ]
     },
     {
       "id": "depth_doctrine",
