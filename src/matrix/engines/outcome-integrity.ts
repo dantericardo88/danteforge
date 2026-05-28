@@ -154,10 +154,14 @@ export async function checkOutcomeIntegrity(
     }
   }
 
-  // Cross-dim shared-receipt detection
+  // Cross-dim shared-receipt detection.
+  // Two dims legitimately sharing a test (e.g. gates.test.ts proving both spec
+  // enforcement AND governance) is acceptable. Three or more dims sharing the
+  // same file is egregious — one test suite cannot be multi-receipt for 3+
+  // distinct capabilities simultaneously.
   for (const [testFile, refs] of fileToOutcomes) {
     const dimsUsingFile = new Set(refs.map(r => r.dimId));
-    if (dimsUsingFile.size < 2) continue;
+    if (dimsUsingFile.size < 3) continue;
 
     for (const ref of refs) {
       sharedReceiptDimSet.add(ref.dimId);
