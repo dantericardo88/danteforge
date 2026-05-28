@@ -91,6 +91,9 @@ function makeConsultAdapter(id: CouncilMemberId, workPacket: WorkPacket) {
 
 // ── Real dispatch (production path) ──────────────────────────────────────────
 
+/** Per-member timeout: if a member's service is down but binary exists, don't hang forever. */
+const MEMBER_ASK_TIMEOUT_MS = 300_000; // 5 minutes
+
 async function dispatchToMember(
   member: CouncilMember,
   question: string,
@@ -101,7 +104,10 @@ async function dispatchToMember(
   const lease = makeReadOnlyLease(cwd);
   try {
     const adapter = makeConsultAdapter(member.id as CouncilMemberId, workPacket);
-    const result = await runAdapter(adapter, { lease, cwd });
+    const timeoutPromise = new Promise<never>((_, reject) =>
+      setTimeout(() => reject(new Error(`${member.id} timed out after ${MEMBER_ASK_TIMEOUT_MS / 1000}s (service may be down)`)), MEMBER_ASK_TIMEOUT_MS),
+    );
+    const result = await Promise.race([runAdapter(adapter, { lease, cwd }), timeoutPromise]);
     return {
       memberId: member.id,
       label: member.label,
