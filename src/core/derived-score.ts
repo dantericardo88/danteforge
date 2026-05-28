@@ -192,6 +192,25 @@ export function computeDerivedScoreWithBreakdown(
           passing = 0; // structural veto — partial credit must not reach T7 cap
         }
       }
+
+      // Session-ID temporal separation: T7 evidence must span ≥2 distinct
+      // validate sessions. A single `danteforge validate` run stamps the same
+      // PROCESS_SESSION_ID on all entries it writes — so evidence written in
+      // one session cannot self-certify at T7 regardless of file diversity.
+      // Backward-compatible: old evidence without session_id skips this check.
+      if (allPassing) {
+        const highTierOuts = outcomes.filter(o => TIER_INDEX[o.tier] >= TIER_INDEX.T5);
+        const sessionIds = highTierOuts
+          .map(o => evidence.get(makeEvidenceKey(dim.id, o.id))?.session_id)
+          .filter((s): s is string => typeof s === 'string');
+        if (sessionIds.length >= 2) {
+          const uniqueSessions = new Set(sessionIds);
+          if (uniqueSessions.size < 2) {
+            allPassing = false;
+            passing = 0; // structural veto — single-session self-certification cannot reach T7
+          }
+        }
+      }
     }
 
     perTier.push({ tier, declared: tierOutcomes.length, passing, stale, allPassing });

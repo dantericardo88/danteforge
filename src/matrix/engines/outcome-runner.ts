@@ -9,6 +9,7 @@
 import fs from 'node:fs/promises';
 import { existsSync } from 'node:fs';
 import path from 'node:path';
+import { randomUUID } from 'node:crypto';
 import { spawnSync } from 'node:child_process';
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
@@ -24,6 +25,13 @@ import { isEvidenceStale } from '../types/capability-test.js';
 
 const execFileAsync = promisify(execFile);
 const OUTCOME_EVIDENCE_DIR = path.join('.danteforge', 'outcome-evidence');
+
+/**
+ * Unique identifier for this process invocation. Stamped into every evidence
+ * entry so T7 can require ≥2 distinct sessions — a single `validate` run
+ * cannot self-certify at T7.
+ */
+const PROCESS_SESSION_ID = randomUUID();
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -364,6 +372,7 @@ function tagEvidenceQuality(
   }
   entry.evidenceQuality = 'EXTRACTED';
   entry.confidenceScore = 1.0;
+  entry.session_id = PROCESS_SESSION_ID;
 }
 
 /**

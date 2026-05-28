@@ -30,7 +30,7 @@ function makeDim(outcomes: Outcome[], opts: Partial<DimensionForScoring> = {}): 
   return { id: 'test', outcomes, ...opts };
 }
 
-function makeEvidence(records: Array<{ dim: string; outcomeId: string; passed: boolean; exitCode?: number; pattern?: string }>): OutcomeEvidence {
+function makeEvidence(records: Array<{ dim: string; outcomeId: string; passed: boolean; exitCode?: number; pattern?: string; sessionId?: string }>): OutcomeEvidence {
   const map: OutcomeEvidence = new Map();
   for (const r of records) {
     const entry: OutcomeEvidenceEntry = {
@@ -45,6 +45,7 @@ function makeEvidence(records: Array<{ dim: string; outcomeId: string; passed: b
       stderrTail: '',
       ranAt: '2026-05-18T15:00:00Z',
       evidencePath: '/fake',
+      session_id: r.sessionId,
     };
     map.set(makeEvidenceKey(r.dim, r.outcomeId), entry);
   }
@@ -402,6 +403,48 @@ describe('STRUCTURAL: inflation is impossible by construction', () => {
     ]);
     const score = computeDerivedScore(dim, evidence);
     assert.equal(score, TIER_SCORE_CAPS.T7, `Expected T7 cap (${TIER_SCORE_CAPS.T7}) for genuine multi-receipt, got ${score}`);
+  });
+
+  it('T7 with 3 outcomes all from the same validate session cannot reach 9.0', () => {
+    // Session-ID temporal separation: even with 3 distinct test files, if all
+    // evidence shares the same session_id, T7 structural veto fires.
+    // This proves a single `danteforge validate` run cannot self-certify at T7.
+    const dim: DimensionForScoring = {
+      id: 'testing',
+      outcomes: [
+        makeOutcome('o1', 'T5', { kind: 'cli-smoke', command: 'node dist/index.js run tests/a.test.ts' }),
+        makeOutcome('o2', 'T5', { kind: 'cli-smoke', command: 'node dist/index.js validate tests/b.test.ts' }),
+        makeOutcome('o7', 'T7', { kind: 'runtime-exec', command: 'node dist/index.js e2e tests/c.test.ts' }),
+      ],
+    };
+    const evidence = makeEvidence([
+      { dim: 'testing', outcomeId: 'o1', passed: true, sessionId: 'session-A' },
+      { dim: 'testing', outcomeId: 'o2', passed: true, sessionId: 'session-A' },
+      { dim: 'testing', outcomeId: 'o7', passed: true, sessionId: 'session-A' },
+    ]);
+    const score = computeDerivedScore(dim, evidence);
+    assert.ok(score < 9.0, `Expected < 9.0 for single-session T7, got ${score}`);
+  });
+
+  it('T7 with outcomes spanning 2 validate sessions can reach 9.0', () => {
+    // Complement: when evidence spans two different sessions the temporal
+    // separation check passes, unlocking T7. The builder and verifier are
+    // structurally different processes.
+    const dim: DimensionForScoring = {
+      id: 'testing',
+      outcomes: [
+        makeOutcome('o1', 'T5', { kind: 'cli-smoke', command: 'node dist/index.js run tests/a.test.ts' }),
+        makeOutcome('o2', 'T5', { kind: 'cli-smoke', command: 'node dist/index.js validate tests/b.test.ts' }),
+        makeOutcome('o7', 'T7', { kind: 'runtime-exec', command: 'node dist/index.js e2e tests/c.test.ts' }),
+      ],
+    };
+    const evidence = makeEvidence([
+      { dim: 'testing', outcomeId: 'o1', passed: true, sessionId: 'session-A' },
+      { dim: 'testing', outcomeId: 'o2', passed: true, sessionId: 'session-A' },
+      { dim: 'testing', outcomeId: 'o7', passed: true, sessionId: 'session-B' },
+    ]);
+    const score = computeDerivedScore(dim, evidence);
+    assert.equal(score, TIER_SCORE_CAPS.T7, `Expected T7 cap for multi-session evidence, got ${score}`);
   });
 
   it('community_adoption is hard-capped at 5.0 regardless of passing outcomes', () => {

@@ -196,6 +196,12 @@ export interface OutcomeEvidenceEntry {
   evidenceQuality?: 'EXTRACTED' | 'INFERRED' | 'AMBIGUOUS';
   /** Numeric confidence: 1.0 (EXTRACTED), 0.55–0.95 (INFERRED), 0.1–0.3 (AMBIGUOUS). */
   confidenceScore?: number;
+  /**
+   * Process-level session identifier stamped by the outcome-runner at write time.
+   * A new UUID is generated per `danteforge validate` invocation. T7 requires
+   * evidence from ≥2 distinct sessions — a single run cannot self-certify at T7.
+   */
+  session_id?: string;
 }
 
 /**
