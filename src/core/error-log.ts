@@ -4,6 +4,14 @@
 
 import fs from 'node:fs';
 import path from 'node:path';
+import {
+  collectErrorCauses,
+  errorSearchText,
+  firstCauseCode,
+  safeErrorMessage,
+  safeErrorStack,
+  type SerializedErrorCause,
+} from './error-normalization.js';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -17,6 +25,7 @@ export interface StructuredErrorEntry {
   phase?: string;
   cwd?: string;
   stack?: string; // first 3 lines of stack only
+  causes?: SerializedErrorCause[];
 }
 
 export interface ErrorRateResult {
@@ -107,14 +116,16 @@ export function logStructuredError(
 ): void {
   try {
     const code = deriveErrorCode(err);
+    const causes = collectErrorCauses(err);
     const entry: StructuredErrorEntry = {
       timestamp: new Date().toISOString(),
       code,
-      message: err.message,
+      message: safeErrorMessage(err),
       ...(context.command ? { command: context.command } : {}),
       ...(context.phase ? { phase: context.phase } : {}),
       ...(context.cwd ? { cwd: context.cwd } : {}),
-      ...(err.stack ? { stack: truncateStack(err.stack) } : {}),
+      ...(err.stack ? { stack: truncateStack(safeErrorStack(err)) } : {}),
+      ...(causes.length > 0 ? { causes } : {}),
     };
 
     const line = JSON.stringify(entry);
@@ -270,7 +281,7 @@ const CODE_PATTERNS: Array<[RegExp, string]> = [
  * // 'ERR_STATE_CORRUPT'
  */
 export function deriveErrorCode(err: Error): string {
-  const msg = err.message;
+  const msg = errorSearchText(err);
   for (const [pattern, code] of CODE_PATTERNS) {
     if (pattern.test(msg)) return code;
   }
@@ -279,5 +290,7 @@ export function deriveErrorCode(err: Error): string {
   if (typeof codeish === 'string' && codeish && codeish !== 'ERR_UNKNOWN') {
     return codeish;
   }
+  const causeCode = firstCauseCode(err);
+  if (causeCode && causeCode !== 'ERR_UNKNOWN') return causeCode;
   return 'ERR_UNKNOWN';
 }

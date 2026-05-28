@@ -11,28 +11,52 @@ import { logger } from './logger.js';
  * Keys are matched by prefix so "claude-3-5-sonnet-20241022" matches "claude-3-5-sonnet".
  */
 const MODEL_PRICING: Array<{ prefix: string; inputPer1M: number; outputPer1M: number }> = [
+  // Claude 4.x models (latest family)
+  { prefix: 'claude-opus-4', inputPer1M: 15.00, outputPer1M: 75.00 },
+  { prefix: 'claude-sonnet-4-6', inputPer1M: 3.00, outputPer1M: 15.00 },
+  { prefix: 'claude-sonnet-4-5', inputPer1M: 3.00, outputPer1M: 15.00 },
+  { prefix: 'claude-haiku-4-5', inputPer1M: 0.80, outputPer1M: 4.00 },
+  { prefix: 'claude-sonnet-4', inputPer1M: 3.00, outputPer1M: 15.00 },
+  { prefix: 'claude-haiku-4', inputPer1M: 0.80, outputPer1M: 4.00 },
+  // Claude 3.x models
+  { prefix: 'claude-3-7-sonnet', inputPer1M: 3.00, outputPer1M: 15.00 },
   { prefix: 'claude-3-5-sonnet', inputPer1M: 3.00, outputPer1M: 15.00 },
   { prefix: 'claude-3-5-haiku', inputPer1M: 0.80, outputPer1M: 4.00 },
   { prefix: 'claude-3-haiku', inputPer1M: 0.25, outputPer1M: 1.25 },
   { prefix: 'claude-3-opus', inputPer1M: 15.00, outputPer1M: 75.00 },
   { prefix: 'claude-3-sonnet', inputPer1M: 3.00, outputPer1M: 15.00 },
+  // Claude generic prefixes (fallback, ordered longest-first above)
   { prefix: 'claude-sonnet', inputPer1M: 3.00, outputPer1M: 15.00 },
-  { prefix: 'claude-haiku', inputPer1M: 0.25, outputPer1M: 1.25 },
+  { prefix: 'claude-haiku', inputPer1M: 0.80, outputPer1M: 4.00 },
+  { prefix: 'claude-opus', inputPer1M: 15.00, outputPer1M: 75.00 },
   { prefix: 'claude', inputPer1M: 3.00, outputPer1M: 15.00 },
+  // OpenAI models
+  { prefix: 'gpt-4.1-mini', inputPer1M: 0.40, outputPer1M: 1.60 },
+  { prefix: 'gpt-4.1-nano', inputPer1M: 0.10, outputPer1M: 0.40 },
+  { prefix: 'gpt-4.1', inputPer1M: 2.00, outputPer1M: 8.00 },
   { prefix: 'gpt-4o-mini', inputPer1M: 0.15, outputPer1M: 0.60 },
   { prefix: 'gpt-4o', inputPer1M: 5.00, outputPer1M: 15.00 },
   { prefix: 'gpt-4-turbo', inputPer1M: 10.00, outputPer1M: 30.00 },
   { prefix: 'gpt-4', inputPer1M: 30.00, outputPer1M: 60.00 },
   { prefix: 'gpt-3.5', inputPer1M: 0.50, outputPer1M: 1.50 },
-  { prefix: 'grok-3', inputPer1M: 5.00, outputPer1M: 15.00 },
+  // Grok models
+  { prefix: 'grok-3-mini', inputPer1M: 0.30, outputPer1M: 0.50 },
+  { prefix: 'grok-3', inputPer1M: 3.00, outputPer1M: 15.00 },
+  { prefix: 'grok-2', inputPer1M: 2.00, outputPer1M: 10.00 },
   { prefix: 'grok', inputPer1M: 5.00, outputPer1M: 15.00 },
+  // Gemini models
+  { prefix: 'gemini-2.5-flash', inputPer1M: 0.15, outputPer1M: 0.60 },
+  { prefix: 'gemini-2.5-pro', inputPer1M: 1.25, outputPer1M: 10.00 },
   { prefix: 'gemini-2.0-flash', inputPer1M: 0.10, outputPer1M: 0.40 },
   { prefix: 'gemini-1.5-flash', inputPer1M: 0.075, outputPer1M: 0.30 },
   { prefix: 'gemini-1.5-pro', inputPer1M: 3.50, outputPer1M: 10.50 },
   { prefix: 'gemini', inputPer1M: 0.10, outputPer1M: 0.40 },
+  // Local / free models
   { prefix: 'ollama', inputPer1M: 0, outputPer1M: 0 },
   { prefix: 'llama', inputPer1M: 0, outputPer1M: 0 },
   { prefix: 'mistral', inputPer1M: 2.00, outputPer1M: 6.00 },
+  { prefix: 'deepseek', inputPer1M: 0.14, outputPer1M: 0.28 },
+  { prefix: 'qwen', inputPer1M: 0, outputPer1M: 0 },
 ];
 
 /**
@@ -372,4 +396,91 @@ export function summariseLedger(records: TokenRecord[]): SessionTotal & { byComm
   }
 
   return { inputTokens, outputTokens, estimatedCostUsd, callCount, byCommand };
+}
+
+/** Daily spend aggregation: one entry per UTC calendar day. */
+export interface DailySpend {
+  date: string;
+  inputTokens: number;
+  outputTokens: number;
+  estimatedCostUsd: number;
+  callCount: number;
+}
+
+/**
+ * Aggregate token records by UTC calendar day (YYYY-MM-DD).
+ *
+ * Useful for rendering daily cost trend charts and detecting budget-burn spikes.
+ *
+ * @param records - Array of `TokenRecord` objects (e.g. from `loadLedgerHistory`).
+ * @returns Array of `DailySpend` objects sorted by date ascending.
+ *
+ * @example
+ * const records = await loadLedgerHistory(cwd);
+ * const daily = summariseLedgerByDay(records);
+ * for (const d of daily) console.log(`${d.date}: $${d.estimatedCostUsd.toFixed(4)}`);
+ */
+export function summariseLedgerByDay(records: TokenRecord[]): DailySpend[] {
+  const byDay = new Map<string, DailySpend>();
+
+  for (const r of records) {
+    const day = r.timestamp.slice(0, 10); // YYYY-MM-DD
+    const existing = byDay.get(day) ?? {
+      date: day,
+      inputTokens: 0,
+      outputTokens: 0,
+      estimatedCostUsd: 0,
+      callCount: 0,
+    };
+    byDay.set(day, {
+      date: day,
+      inputTokens: existing.inputTokens + r.inputTokens,
+      outputTokens: existing.outputTokens + r.outputTokens,
+      estimatedCostUsd: existing.estimatedCostUsd + r.estimatedCostUsd,
+      callCount: existing.callCount + 1,
+    });
+  }
+
+  return [...byDay.values()].sort((a, b) => a.date.localeCompare(b.date));
+}
+
+/** A command name with its total estimated cost and call count. */
+export interface CommandCostEntry {
+  command: string;
+  estimatedCostUsd: number;
+  callCount: number;
+  inputTokens: number;
+  outputTokens: number;
+}
+
+/**
+ * Return the top N most expensive commands by total estimated cost.
+ *
+ * Useful for pointing users at the commands that dominate their token spend
+ * so they can selectively apply `--light` mode or caching.
+ *
+ * @param records - Array of `TokenRecord` objects.
+ * @param topN    - Maximum number of entries to return (default 5).
+ * @returns Array of `CommandCostEntry` sorted by cost descending, up to `topN` entries.
+ *
+ * @example
+ * const records = await loadLedgerHistory(cwd);
+ * const top = topCostCommands(records, 3);
+ * // Returns the 3 most expensive commands
+ */
+export function topCostCommands(records: TokenRecord[], topN = 5): CommandCostEntry[] {
+  const { byCommand } = summariseLedger(records);
+  const entries: CommandCostEntry[] = [];
+  for (const [command, totals] of byCommand.entries()) {
+    entries.push({
+      command,
+      estimatedCostUsd: totals.estimatedCostUsd,
+      callCount: records.filter(r => r.command === command).length,
+      inputTokens: totals.inputTokens,
+      outputTokens: totals.outputTokens,
+    });
+  }
+  return entries
+    .sort((a, b) => b.estimatedCostUsd - a.estimatedCostUsd)
+    .slice(0, topN);
 }

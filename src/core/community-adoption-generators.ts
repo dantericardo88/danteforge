@@ -131,6 +131,26 @@ echo "Run 'danteforge assess' to see quality scores."
 export async function generateAdoptionPack(cwd: string): Promise<string> {
   await writeCommunityOnboardingDocs(cwd);
   await writeCommunityEngagementDocs(cwd);
+  await writeIfMissing(path.join(cwd, 'docs', 'ADOPTION_EVIDENCE.md'), `# Adoption Evidence
+
+Use this file when a public user, project, or organization adopts the tool. Keep claims narrow and link to public proof that a maintainer can re-check.
+
+## Required Fields
+
+| Field | Required detail |
+| --- | --- |
+| Adopter | Public team, project, or organization name. |
+| Use case | Workflow or command path adopted. |
+| Proof link | Public issue, discussion, package, article, repository, or release note URL. |
+| Verified date | Date maintainers last checked the proof in YYYY-MM-DD format. |
+| Outcome | Result observed by the adopter. |
+
+## Review Rules
+
+- Do not count private conversations without a public link.
+- Re-check links before release notes or scoring runs.
+- Remove stale entries when the proof link disappears or no longer supports the claim.
+`);
 
   await writeIfMissing(path.join(cwd, 'COMMUNITY.md'), `# Community
 

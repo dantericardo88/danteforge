@@ -15,6 +15,7 @@ import { promisify } from 'node:util';
 import {
   applyOutcomeDefaults,
   makeEvidenceKey,
+  validateOutcomesForDuplicateIds,
   type Outcome,
   type OutcomeEvidence,
   type OutcomeEvidenceEntry,
@@ -245,7 +246,8 @@ export async function runOneOutcome(options: RunOutcomeOptions): Promise<Outcome
   const durationMs = Date.now() - start;
 
   const expectedExit = shellOutcome.expected_exit ?? 0;
-  const actualExit = result.status ?? 1;
+  // `let` so the retry block can update it if the first run fails.
+  let actualExit = result.status ?? 1;
   let passed = actualExit === expectedExit;
 
   // Check output pattern if declared
@@ -265,6 +267,33 @@ export async function runOneOutcome(options: RunOutcomeOptions): Promise<Outcome
   }
   if (!passed && !failureReason) {
     failureReason = `exit ${actualExit} (expected ${expectedExit})`;
+  }
+
+  // Flake tolerance: if non-zero and outcome failed, retry once.
+  // Handles transient failures (network timeouts, resource contention).
+  // Accept if the retry succeeds — a consistently failing command stays failed.
+  const flakeTolerance = shellOutcome.flake_tolerance ?? 0;
+  if (!passed && flakeTolerance > 0) {
+    let retryR: SpawnResult;
+    try {
+      retryR = spawn(shellOutcome.command, { shell: resolveShell(), cwd, timeout, encoding: 'utf8' });
+    } catch (err) {
+      retryR = { status: -1, stdout: '', stderr: `retry error: ${err instanceof Error ? err.message : String(err)}` };
+    }
+    const retryExit = retryR.status ?? 1;
+    if (retryExit === expectedExit) {
+      let retryOk = true;
+      if (shellOutcome.expected_output_pattern) {
+        try { retryOk = new RegExp(shellOutcome.expected_output_pattern).test(`${retryR.stdout}\n${retryR.stderr}`); }
+        catch { retryOk = false; }
+      }
+      if (retryOk) {
+        passed = true;
+        failureReason = undefined;
+        actualExit = retryExit;
+        result = retryR;
+      }
+    }
   }
 
   const entry: OutcomeEvidenceEntry = {
@@ -339,10 +368,48 @@ export async function runAllOutcomes(options: RunAllOutcomesOptions): Promise<Ru
   let passingOutcomes = 0;
   let failingOutcomes = 0;
 
+  const writeEvidenceFn = options._writeFile ?? (async (p: string, d: string) => {
+    await fs.mkdir(path.dirname(p), { recursive: true });
+    await fs.writeFile(p, d, 'utf8');
+  });
+
   for (const dim of options.dimensions) {
     if (options.dim && dim.id !== options.dim) continue;
-    const outcomes = (dim.outcomes ?? []).filter(o => !options.tier || o.tier === options.tier);
+    const allDimOutcomes = dim.outcomes ?? [];
+    const outcomes = allDimOutcomes.filter(o => !options.tier || o.tier === options.tier);
     if (outcomes.length === 0) continue;
+
+    // Guard: duplicate outcome ids cause evidence key collisions — the second
+    // evidence write silently overwrites the first, producing an incorrect
+    // derived score. Validate against the FULL (unfiltered) dim.outcomes list
+    // so cross-tier duplicates (same id, different tiers) are also caught when
+    // a tier filter is active. Fail all tier-filtered outcomes early.
+    const dupErrors = validateOutcomesForDuplicateIds(allDimOutcomes);
+    if (dupErrors.length > 0) {
+      const dupIds = [...new Set(dupErrors.map(e => e.outcomeId))].join(', ');
+      onProgress(`  ✗ ${dim.id}: duplicate outcome ids [${dupIds}] — skipping dim to prevent evidence collision`);
+      let dimFailing = 0;
+      const gitSha = await (options._readGitSha ?? defaultReadGitSha)(options.cwd);
+      for (const outcome of outcomes) {
+        const ep = path.join(options.cwd, OUTCOME_EVIDENCE_DIR, `${gitSha ?? 'nogit'}-${dim.id}-${outcome.id}.json`);
+        const entry: OutcomeEvidenceEntry = {
+          dimensionId: dim.id, outcomeId: outcome.id, tier: outcome.tier,
+          gitSha, passed: false, exitCode: -1, durationMs: 0,
+          stdoutTail: '', stderrTail: '',
+          failureReason: `duplicate outcome id "${outcome.id}" — evidence key collision blocked execution`,
+          ranAt: new Date().toISOString(), evidencePath: ep,
+        };
+        // Write to disk so validate.ts reloading evidence from disk sees the
+        // failure, not an old passing receipt left over from a prior run.
+        try { await writeEvidenceFn(ep, JSON.stringify(entry, null, 2)); } catch { /* best-effort */ }
+        evidence.set(makeEvidenceKey(dim.id, outcome.id), entry);
+        totalOutcomes++;
+        failingOutcomes++;
+        dimFailing++;
+      }
+      perDimension.push({ dimensionId: dim.id, total: outcomes.length, passing: 0, failing: dimFailing });
+      continue;
+    }
 
     let dimPassing = 0;
     let dimFailing = 0;

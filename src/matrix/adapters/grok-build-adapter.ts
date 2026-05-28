@@ -207,9 +207,10 @@ export class GrokBuildAdapter implements AgentAdapter {
         ? ['--single', prompt, '--permission-mode', 'plan', '--output-format', 'plain', '--cwd', normalizeCwd(worktreeRoot), '--no-memory']
         : ['--single', prompt, '--always-approve', '--cwd', normalizeCwd(worktreeRoot), '--no-memory'];
 
+      const env = await buildGrokSpawnEnv({ ...process.env, ...(state.input.env ?? {}) }, worktreeRoot);
       const spawnOpts: SpawnOptions = {
         cwd: normalizeCwd(worktreeRoot),
-        env: { ...process.env, ...(state.input.env ?? {}) },
+        env,
         shell: false,
         stdio: ['ignore', 'pipe', 'pipe'],
       };
@@ -400,6 +401,7 @@ const TRANSIENT_PATTERNS = [
   /502\s*bad\s*gateway/i,
   /503\s*service\s*unavailable/i,
   /\b502\b/,
+  /responses\s+API\s+error/i,
   /retry.?after/i,
   /gateway\s*error/i,
   /upstream\s*(connect|timeout)/i,
@@ -437,6 +439,104 @@ async function defaultRevertFile(cwd: string, file: string): Promise<void> {
   await execFileAsync('git', ['checkout', '--', file], { cwd, timeout: 5000 }).catch(async () => {
     try { await fs.unlink(path.join(cwd, file)); } catch { /* best-effort */ }
   });
+}
+
+async function buildGrokSpawnEnv(baseEnv: NodeJS.ProcessEnv, worktreeRoot: string): Promise<NodeJS.ProcessEnv> {
+  const env = { ...baseEnv };
+  const shimDir = await ensureDanteforgeCommandShim(worktreeRoot).catch((err) => {
+    logger.warn(`[GrokBuildAdapter] could not prepare danteforge MCP shim: ${String(err)}`);
+    return undefined;
+  });
+  if (!shimDir) return env;
+  const pathKey = Object.keys(env).find(k => k.toLowerCase() === 'path') ?? 'PATH';
+  const currentPath = env[pathKey] ?? '';
+  env[pathKey] = currentPath ? `${shimDir}${path.delimiter}${currentPath}` : shimDir;
+  return env;
+}
+
+async function ensureDanteforgeCommandShim(worktreeRoot: string): Promise<string | undefined> {
+  const root = await findDanteforgeRoot(worktreeRoot);
+  if (!root) return undefined;
+  const invocation = await resolveDanteforgeInvocation(root);
+  if (!invocation) return undefined;
+  const shimDir = path.join(os.tmpdir(), 'danteforge-grok-mcp-shims', Buffer.from(root).toString('hex').slice(0, 48));
+  await fs.mkdir(shimDir, { recursive: true });
+  if (process.platform === 'win32') {
+    const shimPath = path.join(shimDir, 'danteforge.cmd');
+    const args = invocation.kind === 'dist'
+      ? `"${invocation.entry}" %*`
+      : `"${invocation.tsx}" "${invocation.entry}" %*`;
+    await fs.writeFile(shimPath, `@echo off\r\nnode ${args}\r\n`, 'utf8');
+  } else {
+    const shimPath = path.join(shimDir, 'danteforge');
+    const args = invocation.kind === 'dist'
+      ? `${shQuote(invocation.entry)} "$@"`
+      : `${shQuote(invocation.tsx)} ${shQuote(invocation.entry)} "$@"`;
+    await fs.writeFile(shimPath, `#!/usr/bin/env sh\nexec node ${args}\n`, { encoding: 'utf8', mode: 0o755 });
+    await fs.chmod(shimPath, 0o755).catch(() => undefined);
+  }
+  return shimDir;
+}
+
+async function findDanteforgeRoot(start: string): Promise<string | undefined> {
+  for (const candidate of uniquePaths([start, process.cwd(), path.resolve(start, '..'), path.resolve(start, '..', '..')])) {
+    const found = await findUp(candidate, async (dir) =>
+      await exists(path.join(dir, 'src', 'cli', 'index.ts')) || await exists(path.join(dir, 'dist', 'index.js')));
+    if (found) return found;
+  }
+  return undefined;
+}
+
+async function resolveDanteforgeInvocation(root: string): Promise<
+  | { kind: 'dist'; entry: string }
+  | { kind: 'src'; entry: string; tsx: string }
+  | undefined
+> {
+  const distEntry = path.join(root, 'dist', 'index.js');
+  if (await exists(distEntry)) return { kind: 'dist', entry: distEntry };
+  const srcEntry = path.join(root, 'src', 'cli', 'index.ts');
+  if (!await exists(srcEntry)) return undefined;
+  const tsx = await findNearestTsxCli(root);
+  return tsx ? { kind: 'src', entry: srcEntry, tsx } : undefined;
+}
+
+async function findNearestTsxCli(root: string): Promise<string | undefined> {
+  for (const candidate of uniquePaths([root, process.cwd(), path.resolve(root, '..'), path.resolve(root, '..', '..')])) {
+    const found = await findUp(candidate, async (dir) => {
+      const cli = path.join(dir, 'node_modules', 'tsx', 'dist', 'cli.mjs');
+      return await exists(cli) ? cli : false;
+    });
+    if (found) return path.join(found, 'node_modules', 'tsx', 'dist', 'cli.mjs');
+  }
+  return undefined;
+}
+
+async function findUp(start: string, predicate: (dir: string) => Promise<boolean | string>): Promise<string | undefined> {
+  let dir = path.resolve(start);
+  while (true) {
+    const matched = await predicate(dir);
+    if (matched) return dir;
+    const parent = path.dirname(dir);
+    if (parent === dir) return undefined;
+    dir = parent;
+  }
+}
+
+function uniquePaths(paths: string[]): string[] {
+  return [...new Set(paths.map(p => path.resolve(p)))];
+}
+
+async function exists(filePath: string): Promise<boolean> {
+  try {
+    await fs.access(filePath);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+function shQuote(value: string): string {
+  return `'${value.replace(/'/g, `'\\''`)}'`;
 }
 
 function normalizeCwd(p: string): string {

@@ -5,6 +5,12 @@ import { DanteError } from './errors.js';
 import { GateError } from './gates.js';
 import { logger } from './logger.js';
 import { enrichError } from './actionable-errors.js';
+import {
+  collectErrorCauses,
+  safeErrorMessage,
+  safeErrorStack,
+} from './error-normalization.js';
+import { deriveErrorCode } from './error-log.js';
 
 /**
  * Map common error message patterns to a concrete actionable next step.
@@ -39,9 +45,9 @@ export function formatAndLogError(err: unknown, context?: string): void {
 
   if (err instanceof Error) {
     const prefix = context ? `Error in ${context}: ` : '';
-    logger.error(`${prefix}${err.message}`);
+    logger.error(`${prefix}${safeErrorMessage(err)}`);
     if (logger.getLevel() === 'verbose' && err.stack) {
-      logger.verbose(err.stack);
+      logger.verbose(safeErrorStack(err) ?? err.stack);
     }
     const ae = enrichError(err, { command: context });
     if (ae.code !== 'ERR_UNKNOWN') {
@@ -62,20 +68,26 @@ export function errorToJson(err: unknown): Record<string, unknown> {
     return {
       error: true,
       code: err.code,
-      message: err.message,
-      remedy: err.remedy,
+      message: safeErrorMessage(err),
+      remedy: safeErrorMessage(err.remedy),
       name: err.name,
     };
   }
   if (err instanceof Error) {
     const ae = enrichError(err);
+    const causes = collectErrorCauses(err).map(cause => ({
+      ...cause,
+      code: cause.code ?? deriveErrorCode(new Error(cause.message)),
+    }));
+    const code = deriveErrorCode(err);
     return {
       error: true,
-      code: ae.code !== 'ERR_UNKNOWN' ? ae.code : undefined,
-      message: err.message,
+      code: code !== 'ERR_UNKNOWN' ? code : (ae.code !== 'ERR_UNKNOWN' ? ae.code : undefined),
+      message: safeErrorMessage(err),
       name: err.name,
       ...(ae.code !== 'ERR_UNKNOWN' ? { suggestion: ae.suggestion } : {}),
+      ...(causes.length > 0 ? { causes } : {}),
     };
   }
-  return { error: true, message: String(err) };
+  return { error: true, message: safeErrorMessage(err) };
 }

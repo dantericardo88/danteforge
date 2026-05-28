@@ -176,6 +176,17 @@ export interface OutcomeEvidenceEntry {
   ranAt: string;
   /** Path to the file on disk that holds this entry. */
   evidencePath: string;
+  /**
+   * Number of execution attempts. Absent (or 1) means a single attempt.
+   * 2+ means a retry occurred due to flake_tolerance.
+   */
+  attemptCount?: number;
+  /**
+   * When attemptCount > 1 and the outcome ultimately passed, this records
+   * why the first attempt failed — so evidence is not misleadingly silent
+   * about the initial failure.
+   */
+  firstAttemptFailureReason?: string;
 }
 
 /**
@@ -351,6 +362,30 @@ export function validateOutcomeForTier(
     }
   }
 
+  return errors;
+}
+
+/**
+ * Validate that all outcomes in a set have unique ids. Duplicate ids cause
+ * evidence key collisions — the second evidence entry silently overwrites the
+ * first, producing an incorrect derived score.
+ *
+ * Returns one error per duplicated id (not per duplicated occurrence).
+ */
+export function validateOutcomesForDuplicateIds(outcomes: Outcome[]): OutcomeValidationError[] {
+  const seen = new Set<string>();
+  const errors: OutcomeValidationError[] = [];
+  for (const o of outcomes) {
+    if (seen.has(o.id)) {
+      errors.push({
+        outcomeId: o.id,
+        tier: o.tier,
+        reason: `Duplicate outcome id "${o.id}" in dimension. Duplicate ids cause evidence key collisions — the second write silently overwrites the first.`,
+        remedy: `Rename one of the outcomes with id "${o.id}" to a unique id. Outcome ids must be unique within a dimension.`,
+      });
+    }
+    seen.add(o.id);
+  }
   return errors;
 }
 

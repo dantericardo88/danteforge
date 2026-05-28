@@ -8,8 +8,8 @@ import { compressArtifact } from '../src/core/context-economy/artifact-compresso
 // ── CommandFilterRegistry ────────────────────────────────────────────────────
 
 describe('CommandFilterRegistry', () => {
-  it('ships 10 built-in filters', () => {
-    assert.equal(defaultRegistry.size, 10);
+  it('ships 11 built-in filters', () => {
+    assert.equal(defaultRegistry.size, 11);
   });
 
   it('returns found for git status', () => {
@@ -60,18 +60,19 @@ describe('CommandFilterRegistry', () => {
         savingsPercent: 80, sacredSpanCount: 0, filterId: 'custom-tool',
       }),
     }]);
-    assert.equal(custom.size, 11);
+    assert.equal(custom.size, 12);
     const result = custom.lookup('mytool', []);
     assert.equal(result.filterStatus, 'found');
   });
 
-  it('filterIds returns all 10 built-in filter ids', () => {
+  it('filterIds returns all 11 built-in filter ids', () => {
     const ids = defaultRegistry.filterIds;
     assert.ok(ids.includes('git'));
     assert.ok(ids.includes('npm'));
     assert.ok(ids.includes('cargo'));
     assert.ok(ids.includes('docker'));
-    assert.equal(ids.length, 10);
+    assert.ok(ids.includes('tsc'));
+    assert.equal(ids.length, 11);
   });
 });
 

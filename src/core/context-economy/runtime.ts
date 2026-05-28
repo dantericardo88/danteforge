@@ -17,7 +17,7 @@ const REQUIRED_MODULES = [
   'artifact-compressor',
   'runtime',
 ] as const;
-const REQUIRED_FILTERS = ['git', 'npm', 'pnpm', 'eslint', 'jest', 'vitest', 'cargo', 'docker', 'find', 'pytest'] as const;
+const REQUIRED_FILTERS = ['git', 'npm', 'pnpm', 'eslint', 'jest', 'vitest', 'cargo', 'docker', 'find', 'pytest', 'tsc'] as const;
 
 export interface FilterShellResultInput {
   command: string;

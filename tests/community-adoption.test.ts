@@ -5,6 +5,7 @@ import os from 'node:os';
 import path from 'node:path';
 import {
   analyzeCommunityOnboarding,
+  analyzeCommunityProof,
   assessCommunityAdoptionReadiness,
   computeCommunityAdoptionScore,
   improveCommunityAdoption,
@@ -344,6 +345,89 @@ describe('community adoption readiness', () => {
         `expected ${id} signal to pass`,
       );
     }
+  });
+
+  it('credits an evidence guide and verified public adopter proof separately', async () => {
+    const cwd = await makeProject({
+      'package.json': JSON.stringify({
+        name: 'sample-tool',
+        version: '1.2.3',
+        description: 'A useful CLI tool',
+        license: 'MIT',
+        repository: { type: 'git', url: 'https://github.com/acme/sample-tool.git' },
+        bugs: { url: 'https://github.com/acme/sample-tool/issues' },
+        homepage: 'https://github.com/acme/sample-tool#readme',
+        bin: { 'sample-tool': 'dist/index.js' },
+        files: ['dist', 'README.md', 'LICENSE'],
+        keywords: ['cli', 'automation', 'developer-tools'],
+        publishConfig: { access: 'public' },
+      }),
+      'README.md': [
+        '# Sample Tool',
+        '',
+        '## Quick start',
+        '',
+        '```bash',
+        'npm install -g sample-tool',
+        'sample-tool --help',
+        'sample-tool doctor',
+        '```',
+      ].join('\n'),
+      'docs/ADOPTION_EVIDENCE.md': [
+        '# Adoption Evidence',
+        '',
+        '| Field | Required detail |',
+        '| --- | --- |',
+        '| Adopter | Public team, project, or organization name. |',
+        '| Use case | Workflow or command path adopted. |',
+        '| Proof link | Public issue, discussion, package, article, or repository URL. |',
+        '| Verified date | Date maintainers last checked the proof. |',
+        '| Outcome | Result observed by the adopter. |',
+      ].join('\n'),
+      'ADOPTERS.md': [
+        '# Adopters',
+        '',
+        '## Acme Automation Team',
+        '',
+        '- Use case: runs `sample-tool verify` in release preparation.',
+        '- Proof link: https://github.com/acme/sample-tool/discussions/42',
+        '- Verified date: 2026-05-01',
+        '- Outcome: reduced manual release checklist work.',
+      ].join('\n'),
+    });
+
+    const proof = await analyzeCommunityProof(cwd);
+    const report = await assessCommunityAdoptionReadiness(cwd);
+
+    assert.equal(proof.evidenceGuide, true);
+    assert.equal(proof.verifiedAdopterProofs.length, 1);
+    for (const id of ['adoption-evidence-guide', 'public-adopter-proof']) {
+      assert.ok(
+        report.signals.some((signal) => signal.id === id && signal.status === 'pass'),
+        `expected ${id} signal to pass`,
+      );
+    }
+  });
+
+  it('generates an adoption evidence guide without claiming public adopters', async () => {
+    const cwd = await makeProject({
+      'package.json': JSON.stringify({
+        name: 'sample-tool',
+        version: '0.1.0',
+        license: 'MIT',
+        repository: { type: 'git', url: 'https://github.com/acme/sample-tool.git' },
+      }),
+    });
+
+    await improveCommunityAdoption({ cwd, generateAdoptionPack: true });
+    const proof = await analyzeCommunityProof(cwd);
+    const report = await assessCommunityAdoptionReadiness(cwd);
+
+    await assert.doesNotReject(() => fs.access(path.join(cwd, 'docs', 'ADOPTION_EVIDENCE.md')));
+    assert.equal(proof.evidenceGuide, true);
+    assert.equal(proof.verifiedAdopterProofs.length, 0);
+    assert.ok(report.signals.some((signal) => signal.id === 'adoption-evidence-guide' && signal.status === 'pass'));
+    assert.ok(report.signals.some((signal) => signal.id === 'public-adopter-proof' && signal.status === 'fail'));
   });
 
   it('generates maintainer ownership, contributor recognition, and roadmap assets in the adoption pack', async () => {

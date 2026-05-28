@@ -81,7 +81,8 @@ export async function runRuntimeExecOutcome(
   }
 
   const durationMs = Date.now() - start;
-  const actualExit = result.status ?? 1;
+  // `let` so the retry block can update it if the first run fails.
+  let actualExit = result.status ?? 1;
   let passed = actualExit === expectedExit;
   let failureReason: string | undefined;
 
@@ -107,6 +108,47 @@ export async function runRuntimeExecOutcome(
     }
   }
 
+  // Flake tolerance: retry once on failure if non-zero.
+  // Handles transient failures (network timeouts, resource contention).
+  // min_duration_ms IS re-checked on the retry: an outcome that failed because
+  // it was "too fast to be a real runtime check" must also meet the threshold
+  // on the retry — otherwise a deliberately instant check bypasses the gate.
+  const flakeTolerance = outcome.flake_tolerance ?? 0;
+  const firstAttemptFailureReason = failureReason;
+  let finalDurationMs = durationMs;
+  let attemptCount = 1;
+
+  if (!passed && flakeTolerance > 0) {
+    attemptCount = 2;
+    const retryStart = Date.now();
+    let retryR: SpawnResult;
+    try {
+      retryR = spawn(outcome.command, { shell: resolveShell(), cwd, timeout, encoding: 'utf8' });
+    } catch (err) {
+      retryR = { status: -1, stdout: '', stderr: `retry error: ${err instanceof Error ? err.message : String(err)}` };
+    }
+    const retryDurationMs = Date.now() - retryStart;
+    const retryExit = retryR.status ?? 1;
+    if (retryExit === expectedExit) {
+      let retryOk = true;
+      if (outcome.expected_output_pattern) {
+        try { retryOk = new RegExp(outcome.expected_output_pattern).test(`${retryR.stdout}\n${retryR.stderr}`); }
+        catch { retryOk = false; }
+      }
+      // Re-check min_duration_ms against the retry's own duration.
+      if (retryOk && minDuration > 0 && retryDurationMs < minDuration) {
+        retryOk = false;
+      }
+      if (retryOk) {
+        passed = true;
+        failureReason = undefined;
+        actualExit = retryExit;
+        result = retryR;
+        finalDurationMs = retryDurationMs;
+      }
+    }
+  }
+
   const gitSha = options._readGitSha ? await options._readGitSha() : null;
 
   return {
@@ -116,11 +158,12 @@ export async function runRuntimeExecOutcome(
     gitSha,
     passed,
     exitCode: actualExit,
-    durationMs,
+    durationMs: finalDurationMs,
     stdoutTail: tailLines(result.stdout, 100),
     stderrTail: tailLines(result.stderr, 100),
     failureReason,
     ranAt: now(),
     evidencePath: '',
+    ...(attemptCount > 1 ? { attemptCount, firstAttemptFailureReason } : {}),
   };
 }

@@ -14,6 +14,10 @@ import {
   analyzeCommunityEngagement,
 } from './community-engagement.js';
 import {
+  analyzeCommunityProof,
+  type CommunityProofReport,
+} from './community-proof.js';
+import {
   createShowcaseDemo,
   generateAdoptionPack,
   generateExampleProjects,
@@ -23,6 +27,7 @@ import {
 
 export { computeCommunityAdoptionScore, type CommunityMetrics, type CommunityReadinessScore };
 export { analyzeCommunityOnboarding, type CommunityOnboardingReport };
+export { analyzeCommunityProof, type CommunityProofReport };
 
 export interface CommunityAdoptionOptions {
   cwd?: string;
@@ -90,6 +95,8 @@ const ADOPTION_ACTIONS: Record<string, string> = {
   'maintainer-ownership': 'Add CODEOWNERS so outside contributors know who reviews each surface.',
   'contributor-recognition': 'Add funding or recognition metadata so contributors see how participation is valued.',
   'community-roadmap': 'Add a public roadmap with current priorities, upcoming work, and how contributors can help.',
+  'adoption-evidence-guide': 'Add docs/ADOPTION_EVIDENCE.md with the fields maintainers require for public adoption proof.',
+  'public-adopter-proof': 'Record at least one verified public adopter with a proof link, verified date, use case, and outcome.',
 };
 
 async function exists(filePath: string): Promise<boolean> {
@@ -213,6 +220,7 @@ export async function assessCommunityAdoptionReadiness(cwd: string = process.cwd
   const hasPackageManagerCoverage = onboarding.packageManagers.includes('npm')
     && (onboarding.packageManagers.includes('npx') || onboarding.packageManagers.length >= 2);
   const engagement = await analyzeCommunityEngagement(cwd);
+  const proof = await analyzeCommunityProof(cwd);
 
   const signals: CommunityReadinessSignal[] = [
     signal('package-metadata', 'Package metadata', 15, hasPackageBasics, hasPackageBasics
@@ -291,6 +299,14 @@ export async function assessCommunityAdoptionReadiness(cwd: string = process.cwd
       engagement.communityRoadmap
         ? 'Roadmap docs explain priorities and how contributors can help.'
         : 'Roadmap docs need priorities, upcoming work, and contribution guidance.'),
+    signal('adoption-evidence-guide', 'Adoption evidence guide', 6, proof.evidenceGuide,
+      proof.evidenceGuide
+        ? 'Adoption evidence docs define adopter, proof link, verification date, use case, and outcome fields.'
+        : 'Adoption evidence docs need the fields required to verify public usage.'),
+    signal('public-adopter-proof', 'Public adopter proof', 12, proof.verifiedAdopterProofs.length > 0,
+      proof.verifiedAdopterProofs.length > 0
+        ? `${proof.verifiedAdopterProofs.length} verified public adopter proof record(s) found.`
+        : 'No verified public adopter proof records were found.'),
   ];
 
   const maxScore = signals.reduce((sum, item) => sum + item.weight, 0);

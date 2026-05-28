@@ -1,6 +1,8 @@
 // Actionable error engine — maps DanteForge error codes/messages to helpful suggestions.
 // Used by CLI commands to surface next-step guidance instead of raw error dumps.
 
+import { errorSearchText, safeErrorMessage } from './error-normalization.js';
+
 // ---------------------------------------------------------------------------
 // Types
 // ---------------------------------------------------------------------------
@@ -279,10 +281,9 @@ export function enrichError(
   err: Error | string,
   context?: { command?: string; cwd?: string },
 ): ActionableError {
-  const rawMessage = err instanceof Error ? err.message : String(err);
+  const rawMessage = safeErrorMessage(err);
   const combined = [
-    rawMessage,
-    err instanceof Error && err.cause instanceof Error ? err.cause.message : '',
+    err instanceof Error ? errorSearchText(err) : rawMessage,
     context?.command ?? '',
   ]
     .filter(Boolean)

@@ -19,6 +19,7 @@ import {
 } from '../src/core/error-log.js';
 
 import { enrichError, ERROR_SUGGESTIONS } from '../src/core/actionable-errors.js';
+import { DanteError } from '../src/core/errors.js';
 import { errorRate } from '../src/cli/commands/error-rate.js';
 
 // ---------------------------------------------------------------------------
@@ -126,6 +127,54 @@ describe('logStructuredError — JSONL output', () => {
     const e2 = JSON.parse(mem.lines[1]!) as StructuredErrorEntry;
     assert.equal(e1.command, 'cmd1');
     assert.equal(e2.command, 'cmd2');
+  });
+
+  it('derives the log code from nested causes and records the cause chain', () => {
+    const mem = makeMemoryWriter();
+    const err = new Error('startup failed', {
+      cause: new Error('provider bootstrap failed', {
+        cause: new Error('config.yaml missing'),
+      }),
+    });
+
+    logStructuredError(err, { command: 'forge' }, { _writeFile: mem.write });
+
+    const parsed = JSON.parse(mem.lines[0]!) as StructuredErrorEntry;
+    assert.equal(parsed.code, 'ERR_CONFIG_MISSING');
+    assert.ok(Array.isArray(parsed.causes), 'causes should be recorded');
+    assert.deepEqual(
+      parsed.causes?.map(cause => cause.message),
+      ['provider bootstrap failed', 'config.yaml missing'],
+    );
+  });
+
+  it('uses a wrapped DanteError cause code when no message pattern matches', () => {
+    const mem = makeMemoryWriter();
+    const err = new Error('startup failed', {
+      cause: new DanteError('opaque provider boot failure', 'PROVIDER_BOOT_FAILED', 'restart provider'),
+    });
+
+    logStructuredError(err, { command: 'forge' }, { _writeFile: mem.write });
+
+    const parsed = JSON.parse(mem.lines[0]!) as StructuredErrorEntry;
+    assert.equal(parsed.code, 'PROVIDER_BOOT_FAILED');
+    assert.equal(parsed.causes?.[0]?.code, 'PROVIDER_BOOT_FAILED');
+  });
+
+  it('redacts secrets before writing structured error logs', () => {
+    const mem = makeMemoryWriter();
+    const err = new Error('request failed for key=ABCDEFGHIJKLMNOPQRST', {
+      cause: new Error('Authorization: Bearer abcdefghijklmnopqrstuvwxyz123456'),
+    });
+    err.stack = 'Error: request failed for key=ABCDEFGHIJKLMNOPQRST\n  at callProvider\n  at main';
+
+    logStructuredError(err, { command: 'forge' }, { _writeFile: mem.write });
+
+    const parsed = JSON.parse(mem.lines[0]!) as StructuredErrorEntry;
+    assert.equal(parsed.message, 'request failed for key=****');
+    assert.ok(parsed.stack?.includes('key=****'));
+    assert.ok(!parsed.stack?.includes('ABCDEFGHIJKLMNOPQRST'));
+    assert.equal(parsed.causes?.[0]?.message, 'Authorization: Bearer ****');
   });
 });
 

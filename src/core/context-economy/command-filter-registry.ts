@@ -11,6 +11,7 @@ import { cargoFilter } from './filters/cargo.js';
 import { dockerFilter } from './filters/docker.js';
 import { findFilter } from './filters/find.js';
 import { pytestFilter } from './filters/pytest.js';
+import { tscFilter } from './filters/tsc.js';
 import { estimateTokens } from '../token-estimator.js';
 
 const BUILT_IN_FILTERS: CommandFilter[] = [
@@ -24,6 +25,7 @@ const BUILT_IN_FILTERS: CommandFilter[] = [
   dockerFilter,
   findFilter,
   pytestFilter,
+  tscFilter,
 ];
 
 export interface RegistryLookupResult {

@@ -3,6 +3,8 @@
 
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
+import fs from 'node:fs';
+import path from 'node:path';
 import { GrokBuildAdapter } from '../src/matrix/adapters/grok-build-adapter.js';
 import type { GrokBuildSpawnFn } from '../src/matrix/adapters/grok-build-adapter.js';
 import type { WorkPacket } from '../src/matrix/types/work-graph.js';
@@ -83,6 +85,32 @@ describe('GrokBuildAdapter — 502 retry', () => {
     assert.equal(sleepCalls.length, 0, 'should not sleep on success');
   });
 
+  it('prepends a local danteforge command shim so Grok MCP config can spawn the server', async () => {
+    let spawnPath = '';
+    const adapter = new GrokBuildAdapter({
+      workPacket: makeWorkPacket(),
+      judgeMode: true,
+      _isAvailable: async () => true,
+      _spawn: (cmd, args, opts) => {
+        spawnPath = String(opts.env?.PATH ?? opts.env?.Path ?? '');
+        return makeSpawn([{ exitCode: 0, stdout: 'VERDICT: PASS\nCONFIDENCE: HIGH\nREASON: ok\nSCORE_SUGGESTION: 8\nBLOCKING_ISSUES: none\nBLOCKING_CONCERNS: none\nDISSENT: none' }])(cmd, args, opts);
+      },
+      _sleep: async () => undefined,
+    });
+
+    const handle = await adapter.startRun({
+      lease: { ...makeLease(), worktreePath: process.cwd() },
+      cwd: process.cwd(),
+      prepared: true,
+    } as never);
+    const result = await adapter.collectResult(handle);
+
+    const firstPathEntry = spawnPath.split(path.delimiter)[0]!;
+    const shimName = process.platform === 'win32' ? 'danteforge.cmd' : 'danteforge';
+    assert.equal(result.status, 'completed');
+    assert.ok(fs.existsSync(path.join(firstPathEntry, shimName)), `missing ${shimName} in ${firstPathEntry}`);
+  });
+
   it('retries on 502 output and succeeds on second attempt', async () => {
     const sleepCalls: number[] = [];
     const responses = [
@@ -101,6 +129,25 @@ describe('GrokBuildAdapter — 502 retry', () => {
     assert.equal(result.status, 'completed');
     assert.equal(sleepCalls.length, 1, 'should sleep once before retry');
     assert.equal(sleepCalls[0], 10_000, 'should respect retry-after: 10');
+  });
+
+  it('retries Grok responses API errors before giving up', async () => {
+    const sleepCalls: number[] = [];
+    const responses = [
+      { exitCode: 1, stderr: 'responses API error status=' },
+      { exitCode: 0, stdout: 'VERDICT: PASS\nCONFIDENCE: HIGH\nREASON: ok\nSCORE_SUGGESTION: 8\nBLOCKING_ISSUES: none\nBLOCKING_CONCERNS: none\nDISSENT: none' },
+    ];
+    const adapter = new GrokBuildAdapter({
+      workPacket: makeWorkPacket(),
+      judgeMode: true,
+      _isAvailable: async () => true,
+      _spawn: makeSpawn(responses),
+      _sleep: async (ms) => { sleepCalls.push(ms); },
+    });
+    const handle = await adapter.startRun({ lease: makeLease(), prepared: true } as never);
+    const result = await adapter.collectResult(handle);
+    assert.equal(result.status, 'completed');
+    assert.equal(sleepCalls.length, 1, 'should retry once on responses API errors');
   });
 
   it('fails after exhausting max retries', async () => {

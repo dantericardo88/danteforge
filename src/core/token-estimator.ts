@@ -112,10 +112,16 @@ export async function warnIfExpensive(text: string, provider: LLMProvider): Prom
 
 /**
  * Split oversized text into chunks that fit within the provider's token limit.
+ *
+ * Uses the code-aware estimation strategy when the text looks like code
+ * (denser token packing ~2.5 chars/token vs prose ~3.5 chars/token).
+ * This prevents code-heavy payloads from silently exceeding context windows.
  */
 export function chunkForProvider(text: string, provider: LLMProvider): string[] {
   const limit = getTokenLimit(provider);
-  const charsPerChunk = limit * 4; // ~4 chars per token
+  // Use code-aware ratio so code-heavy payloads get smaller chunks
+  const charsPerToken = isLikelyCode(text) ? 2.5 : 3.5;
+  const charsPerChunk = Math.floor(limit * charsPerToken);
   if (text.length <= charsPerChunk) return [text];
 
   const chunks: string[] = [];

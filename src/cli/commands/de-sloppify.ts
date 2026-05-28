@@ -68,7 +68,7 @@ function buildDeSloppifyPrompt(files: string[], dryRun: boolean): string {
     'Slop patterns to remove:',
     '  1. Type-system-only tests — tests that only assert TypeScript compilation, never call real functions',
     '     (e.g., `const _: MyType = { ... }` with no actual assertions)',
-    '  2. Debug artifacts — console.log, // TODO, // FIXME in src/ files',
+    '  2. Debug artifacts — console.log and open-work marker comments in src/ files',
     '  3. Over-defensive null checks on values guaranteed by the framework or type system',
     '     (e.g., `if (arr === undefined) return` when arr is typed as string[])',
     '  4. Dead imports — imports that are never used in the file',
