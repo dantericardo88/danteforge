@@ -140,6 +140,7 @@ export function updateDimensionScore(
       ...(commit ? { commit } : {}),
       ...(harvestSource ? { harvestSource } : {}),
     };
+    if (!dim.sprint_history) dim.sprint_history = [];
     dim.sprint_history.push(record);
     if (dim.sprint_history.length > 20) dim.sprint_history.splice(0, dim.sprint_history.length - 20);
   }
