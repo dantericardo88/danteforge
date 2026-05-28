@@ -336,7 +336,7 @@ export async function runCouncilUniversePhase(
     });
 
     if (verifyResult.verdict === 'VERIFIED') {
-      await saveVerdictFile(projectPath, target.dimId, verifyResult, verifier, false, 0);
+      await saveVerdictFile(projectPath, target.dimId, verifyResult, verifier, false, 0, output);
       result.verified.push(target.dimId);
       onProgress?.(target.dimId, 'verified', verifier);
       logger.info(`[universe] ✓ ${target.dimId} VERIFIED by ${verifier}`);
@@ -364,7 +364,7 @@ export async function runCouncilUniversePhase(
           timeoutMs: verifyTimeoutMs,
           _runAdapter: _run,
         });
-        await saveVerdictFile(projectPath, target.dimId, reVerify, verifier, true, 1);
+        await saveVerdictFile(projectPath, target.dimId, reVerify, verifier, true, 1, revisedOutput);
         if (reVerify.verdict === 'VERIFIED') {
           result.verified.push(target.dimId);
           logger.info(`[universe] ✓ ${target.dimId} VERIFIED after revision`);
@@ -377,7 +377,7 @@ export async function runCouncilUniversePhase(
     }
 
     // Verifier error or no fixes to apply — save verdict and move on
-    await saveVerdictFile(projectPath, target.dimId, verifyResult, verifier, false, 0);
+    await saveVerdictFile(projectPath, target.dimId, verifyResult, verifier, false, 0, output);
     result.needsRevision.push(target.dimId);
     logger.warn(`[universe] ${target.dimId} verdict: ${verifyResult.verdict} — file kept for manual review`);
   });

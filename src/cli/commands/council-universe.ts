@@ -71,10 +71,16 @@ export async function runCouncilUniverseCommand(opts: {
 
   // Phase 2b: extract outcome proposals for verified dims
   if (opts.proposeOutcomes && result.written.length > 0) {
+    if (opts.skipVerify) {
+      logger.warn('[council-universe] --propose-outcomes is blocked when --skip-verify is set.');
+      logger.warn('[council-universe] Proposals without independent verification can introduce unvetted outcomes.');
+      logger.warn('[council-universe] Remove --skip-verify, or run council-universe-apply with --no-skip-unverified if you accept the risk.');
+      return;
+    }
+
     logger.info(`[council-universe] Extracting outcome proposals for ${result.written.length} written dim(s)`);
     const dimsToPropose = result.written.filter(dimId => {
-      const verdict = result.verified.includes(dimId) ? 'VERIFIED' : 'unverified';
-      if (!result.verified.includes(dimId) && !opts.skipVerify) {
+      if (!result.verified.includes(dimId)) {
         logger.verbose(`[council-universe] Skipping proposals for unverified dim: ${dimId}`);
         return false;
       }
@@ -107,6 +113,7 @@ export async function runCouncilUniverseCommand(opts: {
         await saveProposalFile(projectPath, dimId, proposal, {
           extractedBy: extractor,
           verified: verdict?.verdict === 'VERIFIED',
+          universeContent,
         });
         logger.info(`[council-universe] ✓ proposals saved for ${dimId} (${proposal.proposedOutcomes.length} outcomes)`);
       }

@@ -1,9 +1,12 @@
 import path from 'node:path';
 import fs from 'node:fs/promises';
+import { createHash } from 'node:crypto';
 import { logger } from '../../core/logger.js';
 import { loadMatrix, saveMatrix } from '../../core/compete-matrix.js';
 import { loadProposalFile } from '../../matrix/engines/council-universe-proposals.js';
 import { loadVerdictFile } from '../../matrix/engines/council-universe-verifier.js';
+import { loadUniverseFile } from '../../matrix/engines/council-forge-brief.js';
+import { isValidOutcome, validateOutcomeForTier } from '../../matrix/types/outcome.js';
 import type { ProposedOutcome } from '../../matrix/engines/council-universe-proposals.js';
 
 function proposalsDir(projectPath: string): string {
@@ -52,10 +55,36 @@ export async function runCouncilUniverseApply(opts: {
     if (!proposal) continue;
 
     // Check verdict if skipUnverified
+    const verdict = await loadVerdictFile(projectPath, dimId);
     if (skipUnverified) {
-      const verdict = await loadVerdictFile(projectPath, dimId);
       if (!verdict || verdict.verdict !== 'VERIFIED') {
         logger.verbose(`[universe-apply] Skipping ${dimId}: not verified (verdict: ${verdict?.verdict ?? 'none'})`);
+        dimsSkipped.push(dimId);
+        continue;
+      }
+    }
+
+    // Hash guard: reject if universe file changed since verification
+    if (verdict?.universeSha256) {
+      const currentContent = await loadUniverseFile(projectPath, dimId);
+      const currentHash = currentContent
+        ? createHash('sha256').update(currentContent).digest('hex')
+        : '';
+      if (currentHash !== verdict.universeSha256) {
+        logger.warn(`[universe-apply] ${dimId}: universe file changed since verification — skipping (stale verdict)`);
+        dimsSkipped.push(dimId);
+        continue;
+      }
+    }
+
+    // Proposal hash guard: reject if universe file changed since extraction
+    if (proposal.universeSha256) {
+      const currentContent = await loadUniverseFile(projectPath, dimId);
+      const currentHash = currentContent
+        ? createHash('sha256').update(currentContent).digest('hex')
+        : '';
+      if (currentHash !== proposal.universeSha256) {
+        logger.warn(`[universe-apply] ${dimId}: universe file changed since proposal extraction — skipping (stale proposal)`);
         dimsSkipped.push(dimId);
         continue;
       }
@@ -82,21 +111,35 @@ export async function runCouncilUniverseApply(opts: {
       }
     }
 
-    // Apply proposed outcomes (skip IDs already present)
+    // Apply proposed outcomes (skip IDs already present; validate schema)
     const existingOutcomes = (dimAny['outcomes'] as Array<{ id: string }> | undefined) ?? [];
     const existingIds = new Set(existingOutcomes.map(o => o.id));
-    const newOutcomes = proposal.proposedOutcomes.filter(o => !existingIds.has(o.id));
+    const candidateOutcomes = proposal.proposedOutcomes.filter(o => !existingIds.has(o.id));
 
-    if (newOutcomes.length > 0) {
+    const validatedOutcomes: ProposedOutcome[] = [];
+    for (const o of candidateOutcomes) {
+      if (!isValidOutcome(o)) {
+        logger.warn(`[universe-apply] ${dimId}: outcome ${o.id} failed isValidOutcome — skipping`);
+        continue;
+      }
+      const tierErrors = validateOutcomeForTier(o as Parameters<typeof validateOutcomeForTier>[0]);
+      if (tierErrors.length > 0) {
+        logger.warn(`[universe-apply] ${dimId}: outcome ${o.id} tier validation failed — ${tierErrors.map(e => e.reason).join('; ')} — skipping`);
+        continue;
+      }
+      validatedOutcomes.push(o);
+    }
+
+    if (validatedOutcomes.length > 0) {
       if (opts.dryRun) {
-        for (const o of newOutcomes) {
+        for (const o of validatedOutcomes) {
           logger.info(`[universe-apply] DRY-RUN: would add outcome ${o.id} to ${dimId}: ${o.command}`);
         }
       } else {
-        dimAny['outcomes'] = [...existingOutcomes, ...newOutcomes];
-        totalOutcomesAdded += newOutcomes.length;
+        dimAny['outcomes'] = [...existingOutcomes, ...validatedOutcomes];
+        totalOutcomesAdded += validatedOutcomes.length;
         changed = true;
-        logger.info(`[universe-apply] + ${newOutcomes.length} outcome(s) for ${dimId}`);
+        logger.info(`[universe-apply] + ${validatedOutcomes.length} outcome(s) for ${dimId}`);
       }
     }
 
@@ -109,6 +152,17 @@ export async function runCouncilUniverseApply(opts: {
     process.env['DANTEFORGE_MATRIX_MERGE_RECEIPT'] = '1';
     await saveMatrix(matrix, projectPath);
     logger.info(`[universe-apply] matrix.json updated — run: danteforge validate --all to generate receipts`);
+
+    // Write apply receipt for auditability
+    const receiptPath = path.join(projectPath, '.danteforge', 'compete', 'universe-proposals', 'apply-receipt.json');
+    const receipt = {
+      appliedAt: new Date().toISOString(),
+      dimsApplied: dimsAdded,
+      dimsSkipped,
+      outcomesAdded: totalOutcomesAdded,
+      capTestsAdded: totalCapTestsAdded,
+    };
+    await fs.writeFile(receiptPath, JSON.stringify(receipt, null, 2), 'utf8');
   }
 
   if (opts.json) {

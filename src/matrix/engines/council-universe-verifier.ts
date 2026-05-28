@@ -15,6 +15,7 @@
 // Storage: .danteforge/compete/universe/<dimId>.verdict.json
 import path from 'node:path';
 import fs from 'node:fs/promises';
+import { createHash } from 'node:crypto';
 import { logger } from '../../core/logger.js';
 import { CodexAdapter } from '../adapters/codex-adapter.js';
 import { ClaudeCodeAdapter } from '../adapters/claude-code-adapter.js';
@@ -49,6 +50,43 @@ export interface VerdictRecord {
   suggestedFixes: string[];
   revised: boolean;
   revisionCount: number;
+  /** SHA-256 of the universe file content at verification time. */
+  universeSha256: string;
+}
+
+/** Mechanical pre-check of the ## Sources table. Returns issue strings if invalid. */
+export function checkSourcesTable(content: string): string[] {
+  const issues: string[] = [];
+  const sourcesMatch = /## Sources([\s\S]*?)(?=\n## |$)/i.exec(content);
+  if (!sourcesMatch) {
+    issues.push('Missing ## Sources section');
+    return issues;
+  }
+
+  const rows = (sourcesMatch[1]!.match(/\|[^|]+\|[^|]+\|/g) ?? [])
+    .filter(r => !r.includes('---') && !r.toLowerCase().includes('url'));
+
+  if (rows.length < 2) {
+    issues.push(`## Sources has ${rows.length} data row(s) — need at least 2`);
+  }
+
+  const placeholderPattern = /example\.com|github-url|reddit-url|<github|<reddit|placeholder/i;
+  const datePattern = /\d{4}-\d{2}-\d{2}/;
+  const urlPattern = /https?:\/\/[^\s|]+/;
+
+  for (const row of rows) {
+    if (placeholderPattern.test(row)) {
+      issues.push(`Sources row contains placeholder text: ${row.trim().slice(0, 80)}`);
+    }
+    if (!urlPattern.test(row)) {
+      issues.push(`Sources row missing a valid https:// URL: ${row.trim().slice(0, 80)}`);
+    }
+    if (!datePattern.test(row)) {
+      issues.push(`Sources row missing date (YYYY-MM-DD): ${row.trim().slice(0, 80)}`);
+    }
+  }
+
+  return issues;
 }
 
 function verdictDir(projectPath: string): string {
@@ -73,6 +111,7 @@ export async function saveVerdictFile(
   verifier: string,
   revised = false,
   revisionCount = 0,
+  universeContent = '',
 ): Promise<void> {
   const record: VerdictRecord = {
     dimId,
@@ -84,6 +123,7 @@ export async function saveVerdictFile(
     suggestedFixes: result.suggestedFixes,
     revised,
     revisionCount,
+    universeSha256: createHash('sha256').update(universeContent).digest('hex'),
   };
   await fs.mkdir(verdictDir(projectPath), { recursive: true });
   await fs.writeFile(verdictPath(projectPath, dimId), JSON.stringify(record, null, 2), 'utf8');
@@ -175,10 +215,22 @@ function makeVerifierAdapter(verifier: 'claude-code' | 'codex', workPacket: Work
 }
 
 export async function runSingleDimVerification(opts: VerificationOptions): Promise<VerificationResult> {
-  const { projectPath, dimId, dimName, universeContent, verifier, timeoutMs = 300_000, _runAdapter: _run = runAdapter } = opts;
+  const { projectPath: _projectPath, dimId, dimName, universeContent, verifier, timeoutMs = 300_000, _runAdapter: _run = runAdapter } = opts;
+
+  // Mechanical pre-check: Sources table must be structurally valid before LLM verifier runs.
+  const mechanicalIssues = checkSourcesTable(universeContent);
+  if (mechanicalIssues.length > 0) {
+    logger.warn(`[universe-verify] ${dimId}: mechanical Sources check failed (${mechanicalIssues.length} issue(s))`);
+    return {
+      verdict: 'NEEDS_REVISION',
+      reason: 'Sources table failed mechanical validation before LLM verifier ran',
+      issues: mechanicalIssues,
+      suggestedFixes: mechanicalIssues.map(i => `Fix: ${i}`),
+    };
+  }
 
   const workPacket = makeVerificationPacket(dimName, universeContent);
-  const lease = makeReadOnlyLease(projectPath, 'universe-verify');
+  const lease = makeReadOnlyLease(_projectPath, 'universe-verify');
   const adapter = makeVerifierAdapter(verifier, workPacket);
 
   try {

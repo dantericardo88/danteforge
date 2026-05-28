@@ -4,11 +4,16 @@
 // Proposals are saved to .danteforge/compete/universe-proposals/<dimId>.json
 // and applied to matrix.json via council-universe-apply (kernel-controlled write).
 //
-// A proposal is NOT a score change — it's a candidate outcome entry (shell/cli-smoke/
+// A proposal is NOT a score change — it's a candidate outcome entry (shell /
 // runtime-exec) that can be run by `danteforge validate <dimId>` to produce real
 // receipts and unlock scores above 7.0 via the existing receipt-ceiling system.
+//
+// cli-smoke is excluded: it requires cli_args: string[] rather than command: string,
+// and correct arg splitting cannot be reliably inferred by extraction. Use
+// runtime-exec or shell for DanteForge CLI checks instead.
 import path from 'node:path';
 import fs from 'node:fs/promises';
+import { createHash } from 'node:crypto';
 import { logger } from '../../core/logger.js';
 import { CodexAdapter } from '../adapters/codex-adapter.js';
 import { ClaudeCodeAdapter } from '../adapters/claude-code-adapter.js';
@@ -19,11 +24,13 @@ import { makeReadOnlyLease } from './council-worktree.js';
 export interface ProposedOutcome {
   id: string;
   tier: 'T2' | 'T5' | 'T7';
-  kind: 'shell' | 'cli-smoke' | 'runtime-exec';
+  kind: 'shell' | 'runtime-exec';
   command: string;
   expected_exit: number;
   expected_output_pattern?: string;
   timeout_ms: number;
+  /** File that this outcome exercises — mandatory for T2+ (enforced by apply). */
+  required_callsite: string;
   description: string;
 }
 
@@ -38,6 +45,12 @@ export interface ProposalRecord extends ProposalResult {
   extractedAt: string;
   extractedBy: string;
   verified: boolean;
+  /** SHA-256 of the universe file at extraction time. Apply verifies this hasn't changed. */
+  universeSha256: string;
+}
+
+export function hashUniverseContent(content: string): string {
+  return createHash('sha256').update(content).digest('hex');
 }
 
 export interface ProposalOptions {
@@ -71,7 +84,7 @@ export async function saveProposalFile(
   projectPath: string,
   dimId: string,
   result: ProposalResult,
-  meta: { extractedBy: string; verified: boolean },
+  meta: { extractedBy: string; verified: boolean; universeContent: string },
 ): Promise<void> {
   const record: ProposalRecord = {
     ...result,
@@ -80,6 +93,7 @@ export async function saveProposalFile(
     extractedAt: new Date().toISOString(),
     extractedBy: meta.extractedBy,
     verified: meta.verified,
+    universeSha256: hashUniverseContent(meta.universeContent),
   };
   await fs.mkdir(proposalsDir(projectPath), { recursive: true });
   await fs.writeFile(proposalPath(projectPath, dimId), JSON.stringify(record, null, 2), 'utf8');
@@ -114,9 +128,10 @@ function makeExtractionPacket(
       `- Deterministic: no external network calls, no LLM — or short timeout (≤60s)`,
       `- Exit 0 on success, non-zero on failure`,
       `- shell: npm scripts, npx tsx, node scripts — check exit code`,
-      `- cli-smoke: \`node dist/index.js <cmd>\` — check exit + optional stdout pattern`,
-      `- runtime-exec: node/tsx script that exercises real code paths`,
-      `- Tier T5 preferred (≤7 days freshness window) — unlock score ceiling to 8.0`,
+      `- runtime-exec: node/tsx script or test file that exercises real code paths`,
+      `- DO NOT propose cli-smoke: it requires a different field format not supported here`,
+      `- Propose the tier that HONESTLY reflects what the test proves (T2=code exists, T5=smoke pass, T7=multi-receipt consensus)`,
+      `- required_callsite: the src/ file the outcome exercises (mandatory — every outcome must have one)`,
       ``,
       `## Capability test`,
       capTestNote,
@@ -140,12 +155,13 @@ function makeExtractionPacket(
           {
             id: `${dimId}_t5_u_1`,
             tier: 'T5',
-            kind: 'shell',
-            command: 'npm run test:smoke',
+            kind: 'runtime-exec',
+            command: 'npx tsx --test tests/specific.test.ts',
             expected_exit: 0,
             expected_output_pattern: 'pass',
-            timeout_ms: 30000,
-            description: `Example — replace with real test from universe criteria`,
+            timeout_ms: 60000,
+            required_callsite: `src/path/to/relevant-module.ts`,
+            description: `Example — replace with real test that proves ${dimName} capability`,
           },
         ],
       }, null, 2),
@@ -172,7 +188,10 @@ function parseProposalOutput(output: string): ProposalResult | null {
     };
 
     const outcomes = (raw.proposedOutcomes ?? []).filter(o =>
-      o.id && o.kind && o.command && o.tier && typeof o.expected_exit === 'number',
+      o.id && o.command && o.tier &&
+      (o.kind === 'shell' || o.kind === 'runtime-exec') &&
+      typeof o.expected_exit === 'number' &&
+      typeof o.required_callsite === 'string' && o.required_callsite.length > 0,
     );
 
     return {
