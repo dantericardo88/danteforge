@@ -95,10 +95,13 @@ export function computeConsensus(
 
   const weightedScore = totalWeight > 0 ? passWeight / totalWeight : 0;
 
-  // Guard: if a majority of judges abstained (UNCLEAR), treat as FAIL rather than
+  // Guard: if a strict majority of judges abstained (UNCLEAR), treat as FAIL rather than
   // letting a single PASS vote produce a deceptively high weightedScore.
+  // Exactly 50% abstention (e.g. 1 PASS + 1 UNCLEAR) is NOT a majority and still
+  // allows the real votes to decide — this avoids blocking merges when one judge
+  // is structurally unavailable (e.g. API 403 / connection failure).
   const unclearCount = votes.filter(v => v.verdict === 'UNCLEAR').length;
-  if (unclearCount * 2 >= votes.length) {
+  if (unclearCount * 2 > votes.length) {
     return {
       verdict: 'FAIL',
       weightedScore: 0,

@@ -84,9 +84,24 @@ describe('computeConsensus', () => {
     assert.notEqual(r.verdict, 'PASS');
   });
 
-  test('UNCLEAR-dominant: 1 PASS + 1 UNCLEAR → FAIL (not false-PASS)', () => {
+  test('1 PASS + 1 UNCLEAR (50% abstain) → PASS — 50% is not a majority', () => {
+    // Exactly 50% abstention is NOT UNCLEAR-dominant (majority requires >50%).
+    // This handles the operational case where one judge is unavailable (API 403)
+    // but the other real judge gave a clear PASS.
     const votes: WeightedVote[] = [
       makeVote({ verdict: 'PASS', judgeMemberId: 'codex', builderMemberId: 'claude-code' }),
+      makeVote({ verdict: 'UNCLEAR', judgeMemberId: 'grok-build', builderMemberId: 'claude-code' }),
+    ];
+    const r = computeConsensus(votes, { minJudges: 2 });
+    assert.equal(r.verdict, 'PASS');
+  });
+
+  test('UNCLEAR-dominant: 2 PASS + 3 UNCLEAR (60% abstain) → FAIL', () => {
+    const votes: WeightedVote[] = [
+      makeVote({ verdict: 'PASS', judgeMemberId: 'codex', builderMemberId: 'claude-code' }),
+      makeVote({ verdict: 'PASS', judgeMemberId: 'gemini-cli', builderMemberId: 'claude-code' }),
+      makeVote({ verdict: 'UNCLEAR', judgeMemberId: 'grok-build', builderMemberId: 'claude-code' }),
+      makeVote({ verdict: 'UNCLEAR', judgeMemberId: 'grok-build', builderMemberId: 'claude-code' }),
       makeVote({ verdict: 'UNCLEAR', judgeMemberId: 'grok-build', builderMemberId: 'claude-code' }),
     ];
     const r = computeConsensus(votes, { minJudges: 2 });
