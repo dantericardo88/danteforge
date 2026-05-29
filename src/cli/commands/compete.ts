@@ -74,6 +74,7 @@ export interface CompeteOptions {
   validate?: boolean;           // --validate: cross-check matrix vs harsh-scorer
   syncScores?: boolean;         // --sync-scores: auto-apply live scorer values to matrix self-scores
   gapReport?: boolean;          // --gap-report: gap-first relative position vs competitors + reference snapshot
+  force?: boolean;              // --force: allow --init to overwrite an existing substantial matrix (backs up first)
   cwd?: string;
   // Injection seams for testing
   _loadMatrix?: (cwd: string) => Promise<CompeteMatrix | null>;
@@ -161,6 +162,25 @@ async function actionInit(options: CompeteOptions, cwd: string): Promise<Compete
   const scanFn = options._scanCompetitors ?? scanCompetitors;
   const harshScoreFn = options._harshScore ?? computeHarshScore;
 
+  // ── Clobber guard (data-loss protection) ──────────────────────────────────
+  // `--init` is for FIRST-TIME bootstrap. If a substantial matrix already exists
+  // (real competitors scanned, or a large dimension set), refuse to overwrite it
+  // — re-running --init on a configured project (or a failed LLM scan) must never
+  // silently destroy committed competitive scores. Use --reset (backs up) for a
+  // deliberate replace, or --force here as an escape hatch.
+  const existing = await loadFn(cwd).catch(() => null);
+  const existingCompetitors = existing?.competitors?.length ?? 0;
+  const existingDims = existing?.dimensions?.length ?? 0;
+  const existingSubstantial = !!existing && (existingCompetitors > 0 || existingDims > 30);
+  if (existingSubstantial && !options.force) {
+    logger.error(`A competitive matrix already exists for this project: ${existingDims} dimensions, ${existingCompetitors} competitors.`);
+    logger.error(`\`compete --init\` would OVERWRITE it. This is almost never what you want on a configured project.`);
+    logger.info(`  • To view it:            danteforge compete --gap-report`);
+    logger.info(`  • To replace deliberately: danteforge compete --reset --use-canonical   (backs up first)`);
+    logger.info(`  • To force re-bootstrap:   danteforge compete --init --force            (backs up first)`);
+    return { action: 'init', matrixPath, overallScore: existing?.overallSelfScore };
+  }
+
   logger.info('Scanning competitors to bootstrap CHL matrix...');
 
   // Get current project scores via harsh scorer
@@ -183,6 +203,32 @@ async function actionInit(options: CompeteOptions, cwd: string): Promise<Compete
 
   const project = comparison.projectName || state?.project || path.basename(cwd);
   const matrix = bootstrapMatrixFromComparison(comparison, project);
+
+  // ── Empty-scan guard (LLM-failure protection) ─────────────────────────────
+  // If the competitor scan returned zero competitors, the LLM provider almost
+  // certainly failed/timed out (e.g. local Ollama over the 180s cap with no cloud
+  // key). Writing this empty preset over a real matrix is destructive; even with
+  // --force, never replace an existing matrix with a competitor-less stub.
+  if (matrix.competitors.length === 0) {
+    logger.error(`Competitor scan returned 0 competitors — the LLM provider likely failed or timed out.`);
+    logger.error(`Fix the LLM backend, then retry:`);
+    logger.info(`  • Set a cloud key:  danteforge config --set-key "anthropic:sk-..."   (or "openai:sk-...")`);
+    logger.info(`  • Or a faster model: danteforge config --model "ollama:qwen2.5-coder:7b"`);
+    if (existing) {
+      logger.error(`Existing matrix PRESERVED (${existingDims} dims, ${existingCompetitors} competitors) — refusing to overwrite it with an empty scan.`);
+      return { action: 'init', matrixPath, overallScore: existing.overallSelfScore };
+    }
+    logger.warn(`No prior matrix to preserve; writing the empty preset so you have a starting point, but it is NOT a real baseline until the scan works.`);
+  }
+
+  // Back up any existing matrix before overwriting (belt-and-suspenders on top of git tracking).
+  if (existing) {
+    try {
+      const backupPath = matrixPath.replace(/\.json$/, `.backup-${new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19)}.json`);
+      await fs.copyFile(matrixPath, backupPath);
+      logger.info(`Backed up previous matrix → ${path.basename(backupPath)}`);
+    } catch { /* best-effort backup */ }
+  }
 
   await saveFn(matrix, cwd);
 

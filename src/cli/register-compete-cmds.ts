@@ -63,6 +63,7 @@ program
   .option('--validate', 'Cross-check matrix self-scores against latest harsh-scorer assessment')
   .option('--sync-scores', 'Sync all matrix self-scores from the live strict scorer (eliminates drift automatically)')
   .option('--gap-report', 'Gap-first view: relative position vs competitors on the identical rubric (the honest, self-policing headline) + freeze a reference-set snapshot')
+  .option('--force', 'With --init: overwrite an existing substantial matrix (backs up first). Without it, --init refuses to clobber a configured matrix.')
   .option('--auto', 'Run autonomous sprint+rescore loop (up to 5 cycles, stops when all gaps closed)')
   .option('--remove-competitor <name>', 'Remove a competitor from the matrix and recompute gaps')
   .option('--drop-dimension <id>', 'Remove a scoring dimension from the matrix')
@@ -116,6 +117,7 @@ Examples:
           validate: opts.validate as boolean | undefined,
           syncScores: opts.syncScores as boolean | undefined,
           gapReport: opts.gapReport as boolean | undefined,
+          force: opts.force as boolean | undefined,
           auto: opts.auto as boolean | undefined,
           amend: opts.amend as string | undefined,
           amendFile: opts.amendFile as string | undefined,
