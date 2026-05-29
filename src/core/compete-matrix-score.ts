@@ -26,8 +26,8 @@ export function getNextSprintDimension(matrix: CompeteMatrix, target = 9.0): Mat
   const eligible = matrix.dimensions.filter(d =>
     !excluded.has(d.id) &&
     d.status !== 'closed' &&
-    (d.scores['self'] ?? 0) < target &&
-    (d.ceiling === undefined || (d.ceiling >= target && (d.scores['self'] ?? 0) < d.ceiling)),
+    effectiveDimScore(d) < target &&
+    (d.ceiling === undefined || (d.ceiling >= target && effectiveDimScore(d) < d.ceiling)),
   );
   if (eligible.length === 0) return null;
   return eligible.reduce((best, d) =>
@@ -44,7 +44,7 @@ export function classifyDimensions(matrix: CompeteMatrix, target = 9.0): {
     !excluded.has(d.id) &&
     d.status !== 'closed' &&
     d.ceiling !== undefined &&
-    (d.ceiling < target || (d.scores['self'] ?? 0) >= d.ceiling),
+    (d.ceiling < target || effectiveDimScore(d) >= d.ceiling),
   );
   const atCeilingIds = new Set(atCeiling.map(d => d.id));
   const achievable = matrix.dimensions.filter(d =>

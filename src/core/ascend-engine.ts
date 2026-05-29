@@ -532,7 +532,7 @@ async function checkConvergenceBreak(
   matrix: CompeteMatrix, target: number, newScoreResult: HarshScoreResult, adversaryTolerance: number, cwd: string,
 ): Promise<boolean> {
   const { achievable: stillAchievable } = classifyDimensions(matrix, target);
-  if (!stillAchievable.every(d => (d.scores['self'] ?? 0) >= target)) return false;
+  if (!stillAchievable.every(d => effectiveDimScore(d) >= target)) return false;
 
   // Mandatory harsh verification — runs before any convergence, even without adversarialGating.
   // Prevents premature loop exit when LLM self-score hits target but harsh score is still low.
