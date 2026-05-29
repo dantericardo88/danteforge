@@ -91,7 +91,7 @@ program
   .description('Manage API keys and LLM provider settings')
   .option('--set-key <provider:key>', 'Set API key (e.g., "grok:xai-abc123")')
   .option('--delete-key <provider>', 'Remove a stored API key')
-  .option('--provider <name>', 'Set default provider (grok, claude, openai, gemini, ollama)')
+  .option('--provider <name>', 'Set default provider: grok, claude, openai, gemini, ollama (API/local), or claude-code, codex (subscription CLI, no key)')
   .option('--model <provider:model>', 'Set model for provider (e.g., "grok:grok-3")')
   .option('--show', 'Show current configuration')
   .action((...a: unknown[]) => void C().then(c => (c.configCmd as (...x: unknown[]) => unknown)(...a)));

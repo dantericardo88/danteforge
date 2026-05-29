@@ -12,7 +12,12 @@ import {
   type LLMProvider,
 } from '../../core/config.js';
 
+// API-key / local providers (need a key or a local server).
 const VALID_PROVIDERS = new Set(['grok', 'claude', 'openai', 'gemini', 'ollama']);
+// Subscription-CLI providers: no API key — DanteForge shells out to the `claude` / `codex`
+// CLIs you already have (see src/core/llm-cli-provider.ts). Valid as a default --provider
+// so the whole pipeline (scan/research/scoring) runs on your subscription.
+const CLI_PROVIDERS = new Set(['claude-code', 'codex']);
 
 function showConfigStatus(
   config: Awaited<ReturnType<typeof loadConfig>>,
@@ -35,6 +40,10 @@ function showConfigStatus(
     const isDefault = p === config.defaultProvider ? ' [DEFAULT]' : '';
     logger.info(`  ${p}${isDefault}: key=${hasKey}, model=${model}`);
   }
+  for (const p of ['claude-code', 'codex']) {
+    const isDefault = p === config.defaultProvider ? ' [DEFAULT]' : '';
+    logger.info(`  ${p}${isDefault}: subscription CLI (no key needed) — uses your ${p === 'codex' ? 'Codex' : 'Claude Code'} login`);
+  }
 
   logger.info('');
   logger.info('Commands:');
@@ -47,7 +56,7 @@ function showConfigStatus(
 }
 
 function isValidProvider(p: string): p is LLMProvider {
-  return VALID_PROVIDERS.has(p);
+  return VALID_PROVIDERS.has(p) || CLI_PROVIDERS.has(p);
 }
 
 function maskKey(key: string): string {
