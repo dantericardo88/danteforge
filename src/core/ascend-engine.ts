@@ -34,7 +34,7 @@ import { isLLMAvailable } from './llm.js';
 import { mergeScoreProposals, writeScoreProposal } from './matrix-development-engine.js';
 import { ensureMatrixOnDisk } from '../cli/commands/compete-score-flow.js';
 import { isDimensionRecentlyInflated, buildCeilingReports, buildAscendReport, buildManualAction, buildAscendReportWithWiring, mapDimIdToScoringDimension } from './ascend-reporting.js';
-export { mapDimIdToScoringDimension } from './ascend-reporting.js';
+export { mapDimIdToScoringDimension, buildAscendReport } from './ascend-reporting.js';
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -379,7 +379,7 @@ function buildDryRunResult(achievable: MatrixDimension[], atCeiling: MatrixDimen
       logger.info(`    ${i + 1}. ${d.id.padEnd(28)} self=${self}  gap=${d.gap_to_leader.toFixed(1)}  → ${hint}`);
     });
   }
-  return { cyclesRun: 0, dimensionsImproved: 0, dimensionsAtTarget: matrix.dimensions.filter(d => (d.scores['self'] ?? 0) >= target).length, ceilingReports: buildCeilingReports(atCeiling), finalScore: matrix.overallSelfScore, success: false };
+  return { cyclesRun: 0, dimensionsImproved: 0, dimensionsAtTarget: matrix.dimensions.filter(d => effectiveDimScore(d) >= target).length, ceilingReports: buildCeilingReports(atCeiling), finalScore: matrix.overallSelfScore, success: false };
 }
 
 async function setupAscendLoopState(
@@ -640,7 +640,7 @@ export async function runAscend(options: AscendEngineOptions = {}): Promise<Asce
 
   if (achievable.length === 0) {
     logger.success('[Ascend] All dimensions are at target or ceiling. Nothing to do.');
-    return { cyclesRun: 0, dimensionsImproved: 0, dimensionsAtTarget: matrix.dimensions.filter(d => (d.scores['self'] ?? 0) >= target).length, ceilingReports: buildCeilingReports(atCeiling), finalScore: matrix.overallSelfScore, success: true };
+    return { cyclesRun: 0, dimensionsImproved: 0, dimensionsAtTarget: matrix.dimensions.filter(d => effectiveDimScore(d) >= target).length, ceilingReports: buildCeilingReports(atCeiling), finalScore: matrix.overallSelfScore, success: true };
   }
   if (dryRun) return buildDryRunResult(achievable, atCeiling, matrix, target, (initState as { project?: string }).project ?? 'project', baselineResult);
 

@@ -25,9 +25,12 @@ export interface RunAdapterArgs {
  * Returns a `_runAdapter` function compatible with Phase A's options.
  * The function instantiates the right matrix-kernel adapter for the
  * provider, dispatches, and returns AgentRunResult. Unknown providers
- * (aider, cursor, shell) fall back to FakeAgentAdapter with action=success
- * so the run completes rather than crashes; they should be wired through
- * proper subprocess adapters in a future pass.
+ * (aider, cursor, shell) are NOT YET WIRED — they fall back to a no-op
+ * FakeAgentAdapter (action='noop') so the run completes rather than crashes,
+ * but produces ZERO synthetic work. A no-op cannot mint a fake diff, so an
+ * unsupported provider can never be counted as a passing autonomy receipt.
+ * (Honesty invariant — see council review 2026-05-29: fake success must not
+ * count as autonomy proof.) Wire real subprocess adapters in a future pass.
  */
 export function buildRunAdapter(): (args: RunAdapterArgs) => Promise<AgentRunResult> {
   return async ({ providerId, lease, packet }) => {
@@ -44,13 +47,18 @@ export function buildRunAdapter(): (args: RunAdapterArgs) => Promise<AgentRunRes
         case 'codex':     return new CodexAdapter({ workPacket: packet });
         case 'dantecode': return new DanteCodeAdapter({ workPacket: packet });
         case 'ollama':    return new LLMAgentAdapter({ workPacket: packet, provider: 'ollama', providerLabel: 'ollama' });
-        case 'fake':      return new FakeAgentAdapter({ action: 'success' });
-        default:
-          // aider/cursor/shell — not yet wired as subprocess adapters in
-          // the kernel. Falling through to the no-op adapter so the run
-          // completes rather than crashing; real subprocess wiring for
-          // those CLIs is a follow-up workstream.
-          return new FakeAgentAdapter({ action: 'success' });
+        case 'fake':      return new FakeAgentAdapter({ action: 'success' }); // explicit test request only
+        default: {
+          // aider/cursor/shell — not yet wired as subprocess adapters. Use a
+          // no-op (NOT success): the run completes rather than crashing, but
+          // produces no synthetic diff, so it can never pass the courts as a
+          // real autonomy receipt. Fake success here would be a credibility hole.
+          void (async () => {
+            const { logger } = await import('../core/logger.js');
+            logger.warn(`[orchestration] Provider "${providerId}" is not wired as a real adapter — running as no-op (no work produced). This will NOT count as a passing autonomy receipt.`);
+          })();
+          return new FakeAgentAdapter({ action: 'noop' });
+        }
       }
     })();
 
