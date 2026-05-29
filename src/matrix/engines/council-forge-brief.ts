@@ -319,6 +319,7 @@ export function buildScoringPrompt(
 export function parseScoringResponse(response: string): {
   score: number;
   verdict: 'PASS' | 'FAIL';
+  confidence?: 'high' | 'medium' | 'low';
   reason: string;
   highestImpactNext: string;
   checklistResults: Record<string, 'BUILT' | 'PARTIAL' | 'MISSING'>;

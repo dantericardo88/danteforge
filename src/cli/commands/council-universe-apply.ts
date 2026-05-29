@@ -118,8 +118,11 @@ export async function runCouncilUniverseApply(opts: {
 
     const validatedOutcomes: ProposedOutcome[] = [];
     for (const o of candidateOutcomes) {
+      // Capture id before the type guard — isValidOutcome narrows the negative
+      // branch to `never`, so o.id is unreadable after the guard fails.
+      const oid = o.id;
       if (!isValidOutcome(o)) {
-        logger.warn(`[universe-apply] ${dimId}: outcome ${o.id} failed isValidOutcome — skipping`);
+        logger.warn(`[universe-apply] ${dimId}: outcome ${oid} failed isValidOutcome — skipping`);
         continue;
       }
       const tierErrors = validateOutcomeForTier(o as Parameters<typeof validateOutcomeForTier>[0]);
