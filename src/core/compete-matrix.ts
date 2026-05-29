@@ -9,6 +9,7 @@
 
 import fs from 'fs/promises';
 import path from 'path';
+import os from 'node:os';
 
 const STATE_DIR = '.danteforge';
 const COMPETE_DIR = 'compete';
@@ -221,6 +222,26 @@ export async function saveMatrix(
   _fsWrite?: (p: string, content: string) => Promise<void>,
 ): Promise<void> {
   const matrixPath = getMatrixPath(cwd);
+
+  // Test-isolation guard (council 2026-05-29): a test once called saveMatrix()
+  // with the default (real-disk) write and the real repo as cwd, clobbering the
+  // live .danteforge/compete/matrix.json with a 1-dim fixture. Catch the whole
+  // class at the chokepoint: when running under Node's test runner with a REAL
+  // disk write (no _fsWrite seam) to a path OUTSIDE the OS temp dir, throw.
+  // Tests must either pass the _fsWrite seam or a tmp cwd. This never fires in
+  // production (NODE_TEST_CONTEXT is only set by `node --test`).
+  if (process.env['NODE_TEST_CONTEXT'] && !_fsWrite) {
+    const resolved = path.resolve(matrixPath);
+    const tmpReal = path.resolve(os.tmpdir());
+    if (!resolved.toLowerCase().startsWith(tmpReal.toLowerCase())) {
+      throw new Error(
+        `[saveMatrix] Refusing to write a real matrix.json during a test run: ${resolved}. ` +
+        `Tests must pass the _fsWrite seam or a cwd under os.tmpdir() — writing the live ` +
+        `project matrix from a test clobbers real competitive scores.`,
+      );
+    }
+  }
+
   const write = _fsWrite ?? (async (p: string, content: string) => {
     await fs.mkdir(path.dirname(p), { recursive: true });
     await fs.writeFile(p, content, 'utf8');

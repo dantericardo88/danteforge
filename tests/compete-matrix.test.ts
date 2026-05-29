@@ -26,6 +26,9 @@ import {
   type CompeteMatrix,
 } from '../src/core/compete-matrix.js';
 import type { CompetitorComparison } from '../src/core/competitor-scanner.js';
+import os from 'node:os';
+import path from 'node:path';
+import fs from 'node:fs/promises';
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -885,5 +888,41 @@ describe('loadMatrix in-process cache', () => {
     await saveMatrix(matrix, '/fake/save/cwd', async (_p, c) => { written = c; });
     const parsed = JSON.parse(written) as CompeteMatrix;
     assert.strictEqual(parsed.dimensions[0]!.id, 'save_cache_test');
+  });
+});
+
+// ── Test-isolation guard ──────────────────────────────────────────────────────
+// Regression for the matrix-clobber incident (council 2026-05-29): a test wrote
+// the live .danteforge/compete/matrix.json. saveMatrix now refuses a real-disk
+// write to a non-temp path during a test run.
+
+describe('saveMatrix test-isolation guard', () => {
+  it('THROWS on a real-disk write to a non-temp path during a test run', async () => {
+    const matrix = makeMatrix([makeDim({ id: 'guard_test', scores: { self: 8.0 } })]);
+    // No _fsWrite seam + a real (non-tmp) cwd → must throw rather than clobber.
+    await assert.rejects(
+      () => saveMatrix(matrix, 'X:/Projects/DanteForge'),
+      /Refusing to write a real matrix\.json during a test run/,
+    );
+  });
+
+  it('ALLOWS a real write when the cwd is under os.tmpdir()', async () => {
+    const tmpRoot = await fs.mkdtemp(path.join(os.tmpdir(), 'df-matrix-guard-'));
+    try {
+      const matrix = makeMatrix([makeDim({ id: 'tmp_ok', scores: { self: 7.0 } })]);
+      await saveMatrix(matrix, tmpRoot); // real write, but under tmp → allowed
+      const written = await fs.readFile(path.join(tmpRoot, '.danteforge', 'compete', 'matrix.json'), 'utf8');
+      assert.ok(written.includes('tmp_ok'));
+    } finally {
+      await fs.rm(tmpRoot, { recursive: true, force: true });
+    }
+  });
+
+  it('ALLOWS any path when the _fsWrite seam is provided (no real disk write)', async () => {
+    const matrix = makeMatrix([makeDim({ id: 'seam_ok', scores: { self: 9.0 } })]);
+    let captured = '';
+    // Seam present → guard does not fire even for a real-looking path.
+    await saveMatrix(matrix, 'X:/Projects/DanteForge', async (_p, c) => { captured = c; });
+    assert.ok(captured.includes('seam_ok'));
   });
 });
