@@ -37,15 +37,19 @@ program
   .option('--skip-validate', 'Skip running danteforge validate after merges (faster for first runs)')
   .option('--resume <runId>', 'Resume a parallel council run from its last checkpoint (runId from COUNCIL_SESSION_<runId>.json)')
   .option('--discover', 'Only probe and list available council members, then exit')
+  .option('--members <ids>', 'Comma-separated member IDs to use (e.g. "codex,claude-code"). Overrides DANTEFORGE_COUNCIL_MEMBERS env var.')
   .option('--json', 'Emit JSON summary at end')
   .option('--cwd <path>', 'Project directory (defaults to cwd)')
   .action((opts) => {
     void (async () => {
       try {
         const { runCouncilCommand, discoverCouncil } = await import('./commands/council.js');
+        const memberFilter: string[] | undefined = opts.members
+          ? (opts.members as string).split(',').map((s: string) => s.trim()).filter(Boolean)
+          : undefined;
         if (opts.discover) {
           const { logger } = await import('../core/logger.js');
-          const members = await discoverCouncil();
+          const members = await discoverCouncil(memberFilter);
           for (const m of members) {
             logger.info(`${m.available ? '✓' : '✗'}  ${m.label}`);
           }
@@ -57,6 +61,7 @@ program
             cwd: opts.cwd as string | undefined,
             question: opts.ask as string,
             json: opts.json as boolean | undefined,
+            _discover: memberFilter ? () => discoverCouncil(memberFilter) : undefined,
           });
           return;
         }
