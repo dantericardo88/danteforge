@@ -17,6 +17,7 @@ import { recordMemory } from './memory-engine.js';
 import { LLMError } from './errors.js';
 import { TokenLedger, checkPreflightBudget, BudgetExceededError } from './token-ledger.js';
 import { getCachedResponse, cacheResponse } from './llm-cache.js';
+import { isCliAgentProvider, callCliAgent } from './llm-cli-provider.js';
 
 /**
  * Module-level singleton ledger — shared across all callLLM invocations in a
@@ -617,6 +618,15 @@ async function _callLLMInner(
           result = await callOllama(enrichedPrompt, modelUsed, target.baseUrl, perCallFetch);
           break;
         }
+        case 'claude-code':
+        case 'codex': {
+          // Subscription CLI as LLM backend — same `claude`/`codex` CLIs the council uses.
+          // No API key; uses the CLI's own auth + model. Lets the whole pipeline run on
+          // the subscriptions the user already has.
+          modelUsed = `${target.provider} CLI`;
+          result = { text: await callCliAgent(target.provider, enrichedPrompt) };
+          break;
+        }
         default: {
           // Try the provider registry for additional providers (together, groq, mistral, etc.)
           const adapter = getRegistryProvider(target.provider);
@@ -703,6 +713,12 @@ export async function probeLLMProvider(providerOverride?: LLMProvider): Promise<
           ? `Ollama model "${resolvedModel}" is reachable.`
           : `Ollama model "${target.ollamaModel}" resolved to "${resolvedModel}" and is reachable.`;
         return { ok: true, provider: 'ollama', model: resolvedModel, message: resolutionMessage };
+      }
+      case 'claude-code':
+      case 'codex': {
+        // Subscription CLI backend — no API key. Reachability is the binary on PATH;
+        // `danteforge council --discover` is the authoritative probe for these.
+        return { ok: true, provider: target.provider, model: `${target.provider} CLI`, message: `${target.provider} subscription CLI used as LLM backend (no API key needed).` };
       }
       default: {
         // Extended providers — just check if we have an API key
