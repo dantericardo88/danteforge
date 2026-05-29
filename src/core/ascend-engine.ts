@@ -20,7 +20,7 @@ import {
   type HarshScoreResult,
   type ScoringDimension,
 } from './harsh-scorer.js';
-import { loadMatrix, saveMatrix, classifyDimensions, getNextSprintDimension, updateDimensionScore, clampDimScore, effectiveDimScore, getDimensionStrategy, computeUnweightedComposite, getTopGapDimensions, type CompeteMatrix, type MatrixDimension, type AdversarialCalibration } from './compete-matrix.js';
+import { loadMatrix, saveMatrix, classifyDimensions, getNextSprintDimension, updateDimensionScore, clampDimScore, decisionDimScore, getDimensionStrategy, computeUnweightedComposite, getTopGapDimensions, type CompeteMatrix, type MatrixDimension, type AdversarialCalibration } from './compete-matrix.js';
 import { readSweBenchScore, formatSweBenchGoal, isSweBenchDimension } from './swe-bench-probe.js';
 import { defineUniverse, type UniverseDefinerOptions } from './universe-definer.js';
 import { runAutoforgeLoop, AutoforgeLoopState, type AutoforgeLoopContext, type AutoforgeLoopDeps } from './autoforge-loop.js';
@@ -379,7 +379,7 @@ function buildDryRunResult(achievable: MatrixDimension[], atCeiling: MatrixDimen
       logger.info(`    ${i + 1}. ${d.id.padEnd(28)} self=${self}  gap=${d.gap_to_leader.toFixed(1)}  → ${hint}`);
     });
   }
-  return { cyclesRun: 0, dimensionsImproved: 0, dimensionsAtTarget: matrix.dimensions.filter(d => effectiveDimScore(d) >= target).length, ceilingReports: buildCeilingReports(atCeiling), finalScore: matrix.overallSelfScore, success: false };
+  return { cyclesRun: 0, dimensionsImproved: 0, dimensionsAtTarget: matrix.dimensions.filter(d => decisionDimScore(d) >= target).length, ceilingReports: buildCeilingReports(atCeiling), finalScore: matrix.overallSelfScore, success: false };
 }
 
 async function setupAscendLoopState(
@@ -532,7 +532,7 @@ async function checkConvergenceBreak(
   matrix: CompeteMatrix, target: number, newScoreResult: HarshScoreResult, adversaryTolerance: number, cwd: string,
 ): Promise<boolean> {
   const { achievable: stillAchievable } = classifyDimensions(matrix, target);
-  if (!stillAchievable.every(d => effectiveDimScore(d) >= target)) return false;
+  if (!stillAchievable.every(d => decisionDimScore(d) >= target)) return false;
 
   // Mandatory harsh verification — runs before any convergence, even without adversarialGating.
   // Prevents premature loop exit when LLM self-score hits target but harsh score is still low.
@@ -583,8 +583,8 @@ async function finalizeAscendRun(
   // Success/target use the EFFECTIVE score (min(self, derived)) — not raw scores.self.
   // A dim only counts as "at target" if its evidence-derived score backs the claim;
   // an un-capped self-score must not let an autonomous loop declare false victory.
-  const dimensionsAtTarget = matrix.dimensions.filter(d => effectiveDimScore(d) >= target).length;
-  const success = finalAchievable.every(d => effectiveDimScore(d) >= target);
+  const dimensionsAtTarget = matrix.dimensions.filter(d => decisionDimScore(d) >= target).length;
+  const success = finalAchievable.every(d => decisionDimScore(d) >= target);
   const finalScoreResult = await harshScoreFn({ cwd, _readHistory: async () => [], _writeHistory: async () => {} }).catch(() => null);
   const result: AscendResult = { cyclesRun, dimensionsImproved, dimensionsAtTarget, ceilingReports, finalScore: matrix.overallSelfScore, success };
   await writeFileFn(path.join(cwd, '.danteforge', 'ASCEND_REPORT.md'), buildAscendReportWithWiring(matrix, result, target, beforeScores, finalScoreResult?.unwiredModules ?? [])).catch(() => {});
@@ -640,7 +640,7 @@ export async function runAscend(options: AscendEngineOptions = {}): Promise<Asce
 
   if (achievable.length === 0) {
     logger.success('[Ascend] All dimensions are at target or ceiling. Nothing to do.');
-    return { cyclesRun: 0, dimensionsImproved: 0, dimensionsAtTarget: matrix.dimensions.filter(d => effectiveDimScore(d) >= target).length, ceilingReports: buildCeilingReports(atCeiling), finalScore: matrix.overallSelfScore, success: true };
+    return { cyclesRun: 0, dimensionsImproved: 0, dimensionsAtTarget: matrix.dimensions.filter(d => decisionDimScore(d) >= target).length, ceilingReports: buildCeilingReports(atCeiling), finalScore: matrix.overallSelfScore, success: true };
   }
   if (dryRun) return buildDryRunResult(achievable, atCeiling, matrix, target, (initState as { project?: string }).project ?? 'project', baselineResult);
 

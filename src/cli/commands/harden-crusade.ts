@@ -23,7 +23,7 @@ import fs from 'node:fs/promises';
 import path from 'node:path';
 import chalk from 'chalk';
 import { logger } from '../../core/logger.js';
-import { loadMatrix, effectiveDimScore, type CompeteMatrix, type MatrixDimension } from '../../core/compete-matrix.js';
+import { loadMatrix, decisionDimScore, type CompeteMatrix, type MatrixDimension } from '../../core/compete-matrix.js';
 import { SCORING_DOCTRINE_SHORT } from '../../core/scoring-doctrine.js';
 import { runCIPCheck, type CIPOptions, type CIPResult } from '../../core/completion-integrity.js';
 
@@ -155,7 +155,7 @@ async function defaultGetScore(dimensionId: string, cwd: string): Promise<number
   const matrix = await loadMatrix(cwd);
   if (!matrix) return 0;
   const dim = matrix.dimensions.find(d => d.id === dimensionId);
-  return dim ? effectiveDimScore(dim) : 0; // effective, not raw self (anti-inflation)
+  return dim ? decisionDimScore(dim) : 0; // effective, not raw self (anti-inflation)
 }
 
 async function defaultRunHardenForDim(dimensionId: string, cwd: string): Promise<HardenDimResult> {
@@ -381,7 +381,7 @@ function pickWeakestDims(
   const candidates = matrix.dimensions
     .filter(d => {
       if (excluded.has(d.id)) return false;
-      const score = effectiveDimScore(d); // effective, not raw self (anti-inflation)
+      const score = decisionDimScore(d); // effective, not raw self (anti-inflation)
       const isClosed = (d as unknown as Record<string, unknown>)['status'] === 'closed';
       // Reopen "closed" dims whose derived score dropped significantly below target.
       // "Closed" was set by the old crusade against inflated writable scores. With
@@ -394,7 +394,7 @@ function pickWeakestDims(
       if (d.ceiling !== undefined && score >= d.ceiling) return false;
       return true;
     });
-  candidates.sort((a, b) => effectiveDimScore(a) - effectiveDimScore(b));
+  candidates.sort((a, b) => decisionDimScore(a) - decisionDimScore(b));
   const selected = candidates.slice(0, parallel);
 
   // Intel-driven targeting: promote focusDimension to the front slot if it's eligible.

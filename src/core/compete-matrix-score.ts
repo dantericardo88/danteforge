@@ -26,8 +26,8 @@ export function getNextSprintDimension(matrix: CompeteMatrix, target = 9.0): Mat
   const eligible = matrix.dimensions.filter(d =>
     !excluded.has(d.id) &&
     d.status !== 'closed' &&
-    effectiveDimScore(d) < target &&
-    (d.ceiling === undefined || (d.ceiling >= target && effectiveDimScore(d) < d.ceiling)),
+    decisionDimScore(d) < target &&
+    (d.ceiling === undefined || (d.ceiling >= target && decisionDimScore(d) < d.ceiling)),
   );
   if (eligible.length === 0) return null;
   return eligible.reduce((best, d) =>
@@ -44,7 +44,7 @@ export function classifyDimensions(matrix: CompeteMatrix, target = 9.0): {
     !excluded.has(d.id) &&
     d.status !== 'closed' &&
     d.ceiling !== undefined &&
-    (d.ceiling < target || effectiveDimScore(d) >= d.ceiling),
+    (d.ceiling < target || decisionDimScore(d) >= d.ceiling),
   );
   const atCeilingIds = new Set(atCeiling.map(d => d.id));
   const achievable = matrix.dimensions.filter(d =>
@@ -57,6 +57,34 @@ export function effectiveDimScore(dim: { scores: Record<string, number> }): numb
   const self = dim.scores['self'] ?? 0;
   const derived = dim.scores['derived'];
   return derived !== undefined ? Math.min(self, derived) : self;
+}
+
+/**
+ * Decision cap for a dim that declares outcomes but has NO fresh evidence to back them.
+ * Depth doctrine: code without a fresh receipt is a hypothesis, not a feature — so go/no-go
+ * WORK decisions must not trust such a dim's self-claim. Capping it here keeps it eligible
+ * for work (re-validate or improve) instead of being skipped as "already met, nothing to do".
+ */
+export const UNVERIFIED_DECISION_CAP = 5.0;
+
+function dimDeclaresOutcomes(dim: unknown): boolean {
+  const o = (dim as { outcomes?: unknown }).outcomes;
+  return Array.isArray(o) && o.length > 0;
+}
+
+/**
+ * Score used for go/no-go WORK decisions (crusade / sprint selection / harden / all-nine gate),
+ * as distinct from effectiveDimScore (display + overall). Closes the first-run inflation hole:
+ * loadMatrix leaves scores.derived UNSET for a dim whose outcomes have stale/no evidence, so
+ * effectiveDimScore would fall back to the raw (inflatable) self-score. Here, a dim that DECLARES
+ * outcomes but lacks a derived score is treated as UNVERIFIED and capped — so crusade can't be
+ * fooled into skipping inflated-but-unproven dimensions. Dims with no outcome mechanism at all
+ * fall back to the effective score (legacy/market dims are bounded by other caps).
+ */
+export function decisionDimScore(dim: { scores: Record<string, number>; outcomes?: unknown }): number {
+  if (dim.scores['derived'] !== undefined) return effectiveDimScore(dim); // fresh evidence → honest already
+  if (dimDeclaresOutcomes(dim)) return Math.min(dim.scores['self'] ?? 0, UNVERIFIED_DECISION_CAP);
+  return effectiveDimScore(dim); // no outcome mechanism → self is the only signal
 }
 
 export function computeOverallScore(matrix: CompeteMatrix): number {

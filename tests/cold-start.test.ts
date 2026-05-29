@@ -13,6 +13,8 @@ import fs from 'node:fs';
 import path from 'node:path';
 import {
   effectiveDimScore,
+  decisionDimScore,
+  UNVERIFIED_DECISION_CAP,
   getNextSprintDimension,
   type CompeteMatrix,
   type MatrixDimension,
@@ -59,6 +61,29 @@ describe('cold-start: sprint selection uses effective score, not inflated self',
   it('does NOT pick a genuinely-proven dim (self=8, derived=8) below target 7', () => {
     const m = matrix([dim('proven', 8, 8)]);
     assert.equal(getNextSprintDimension(m, 7), null, 'a dim with real evidence >= target is done');
+  });
+});
+
+// ── Truth 2b: the DEEP first-run hole — a dim that DECLARES outcomes but has NO derived
+// evidence (loadMatrix leaves derived unset when evidence is stale/absent) must NOT be
+// trusted at its raw self for WORK decisions, or crusade skips inflated-but-unproven dims.
+describe('cold-start: unproven dims are capped for decisions (decisionDimScore)', () => {
+  it('a dim declaring outcomes with no derived evidence is capped, not trusted at self=9', () => {
+    const d = { ...dim('unproven', 9), outcomes: [{ id: 'o1' }] } as unknown as MatrixDimension;
+    assert.equal(decisionDimScore(d), UNVERIFIED_DECISION_CAP, 'unproven-but-declared dim is capped for decisions');
+    const m = matrix([d]);
+    assert.equal(getNextSprintDimension(m, 7)?.id, 'unproven', 'so it STAYS eligible for work, not skipped');
+  });
+  it('a dim with NO outcome mechanism falls back to self (legacy/market, other caps apply)', () => {
+    assert.equal(decisionDimScore(dim('legacy', 6)), 6);
+  });
+  it('a dim with fresh derived evidence uses the honest min(self, derived)', () => {
+    const d = { ...dim('proven', 9, 4), outcomes: [{ id: 'o1' }] } as unknown as MatrixDimension;
+    assert.equal(decisionDimScore(d), 4, 'fresh evidence wins — no extra cap applied');
+  });
+  it('display score (effectiveDimScore) is unchanged — stays lenient, no decision cap', () => {
+    const d = { ...dim('unproven', 9), outcomes: [{ id: 'o1' }] } as unknown as MatrixDimension;
+    assert.equal(effectiveDimScore(d), 9, 'display headline stays stable; only WORK decisions cap');
   });
 });
 

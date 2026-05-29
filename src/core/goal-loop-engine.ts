@@ -6,7 +6,7 @@
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import { logger } from './logger.js';
-import { loadMatrix, getMatrixPath, effectiveDimScore } from './compete-matrix.js';
+import { loadMatrix, getMatrixPath, decisionDimScore } from './compete-matrix.js';
 import { loadProjectsManifest, type ProjectRegistryEntry } from './project-registry.js';
 import { SCORING_DOCTRINE_SHORT } from './scoring-doctrine.js';
 
@@ -104,7 +104,7 @@ export async function readProjectStatus(
     }
     const failing = matrix.dimensions.filter(d => {
       if (d.ceiling !== undefined && d.ceiling < target) return false;
-      return effectiveDimScore(d) < target; // effective, not raw self (anti-inflation)
+      return decisionDimScore(d) < target; // effective, not raw self (anti-inflation)
     }).length;
     const blocked = matrix.dimensions.filter(d => d.ceiling !== undefined && d.ceiling < target).length;
     const passing = matrix.dimensions.length - failing - blocked;

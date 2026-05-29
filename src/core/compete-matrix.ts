@@ -251,6 +251,6 @@ export async function saveMatrix(
   invalidateMatrixCache();
 }
 
-export { FREQUENCY_MULTIPLIERS, computeGapPriority, getNextSprintDimension, classifyDimensions, effectiveDimScore, computeOverallScore, computeTwoGaps, updateDimensionScore, applyIntelLeaderScores, applyAdversarialCalibration, clampDimScore, MARKET_DIMS_SCORE_CAP, MARKET_DIM_MAX_SCORE } from './compete-matrix-score.js';
+export { FREQUENCY_MULTIPLIERS, computeGapPriority, getNextSprintDimension, classifyDimensions, effectiveDimScore, decisionDimScore, UNVERIFIED_DECISION_CAP, computeOverallScore, computeTwoGaps, updateDimensionScore, applyIntelLeaderScores, applyAdversarialCalibration, clampDimScore, MARKET_DIMS_SCORE_CAP, MARKET_DIM_MAX_SCORE } from './compete-matrix-score.js';
 export { KNOWN_OSS_TOOLS, isOssTool, KNOWN_CEILINGS, addOrUpdateCompetitor, addOrUpdateDimension, removeCompetitor, dropDimension, recategorizeDimension, setDimensionWeight, bootstrapMatrixFromComparison, checkMatrixStaleness, getDimensionStrategy, computeUnweightedComposite, getTopGapDimensions, HUMAN_ACTION_DIMENSION_IDS, excludeDimension, includeDimension } from './compete-matrix-ops.js';
 export type { MatrixStalenessReport } from './compete-matrix-ops.js';

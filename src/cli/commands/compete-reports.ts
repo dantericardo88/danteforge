@@ -10,7 +10,7 @@ import {
   getNextSprintDimension,
   updateDimensionScore,
   computeOverallScore,
-  effectiveDimScore,
+  decisionDimScore,
   getMatrixPath,
   applyAdversarialCalibration,
   checkMatrixStaleness,
@@ -439,7 +439,7 @@ export async function actionCheckAllNine(options: CompeteOptions, cwd: string): 
     const harshScore = harshDims?.[camelKey] ?? harshDims?.[dim.id];
     // Fall back to the EVIDENCE-effective score, not raw self — the all-nine victory
     // gate must not pass an inflated dim that lacks supporting evidence.
-    const effectiveScore = harshScore ?? effectiveDimScore(dim);
+    const effectiveScore = harshScore ?? decisionDimScore(dim);
     if (effectiveScore >= target) {
       passing.push(dim.label ?? dim.id);
     } else {
