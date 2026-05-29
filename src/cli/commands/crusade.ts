@@ -7,7 +7,7 @@ import fs from 'node:fs/promises';
 import path from 'node:path';
 import { logger } from '../../core/logger.js';
 import { withProgress } from '../../core/progress-indicator.js';
-import { loadMatrix, computeGapPriority, type MatrixDimension, type CompeteMatrix } from '../../core/compete-matrix.js';
+import { loadMatrix, computeGapPriority, effectiveDimScore, type MatrixDimension, type CompeteMatrix } from '../../core/compete-matrix.js';
 import { runCIPCheck, type CIPOptions, type CIPResult } from '../../core/completion-integrity.js';
 import { inferFailureKind, selectRecoveryAction, formatRecoveryPlan, type RecoveryContext } from '../../core/loop-recovery.js';
 import { buildCycleRecord, assessLoopHealth, type CycleRecord } from '../../matrix/engines/autonomy-loop-monitor.js';
@@ -147,13 +147,16 @@ async function defaultRunForgeWave(goal: string, cwd: string): Promise<ForgeWave
 }
 
 async function defaultGetScore(dimension: string, cwd: string): Promise<number> {
-  // Read the competitive matrix self score for this dimension — authoritative source for crusade progress.
-  // Falls back to 0 if the matrix or dimension is not found.
+  // Use the EFFECTIVE score (min of self + evidence-derived), not the raw self-score.
+  // Crusade once trusted scores.self and skipped any dim self-claiming >= target —
+  // which means an inflated matrix made crusade declare "already met / nothing to do"
+  // and do no work (the split-brain we closed in ascend-engine + gap-report). The
+  // effective score respects evidence caps, so crusade can't be fooled by inflation.
   try {
     const matrix = await loadMatrix(cwd);
     if (!matrix) return 0;
     const dim = matrix.dimensions.find(d => d.id === dimension);
-    return dim?.scores['self'] ?? 0;
+    return dim ? effectiveDimScore(dim) : 0;
   } catch {
     return 0;
   }
@@ -522,7 +525,7 @@ async function runDimensionFrontierLoop(
   const runValidate = options._runValidate ?? defaultRunValidate;
   const runEvidenceRescore = options._runEvidenceRescore ?? defaultRunEvidenceRescore;
 
-  const initialScore = dim.scores['self'] ?? 0;
+  const initialScore = effectiveDimScore(dim); // evidence-capped, not raw self (anti-inflation)
   let score = initialScore;
   let consecutiveNoProgress = 0;
   let consecutiveCapTestFail = 0;
@@ -699,8 +702,8 @@ async function runFrontierPass(options: FrontierCrusadeOptions): Promise<Frontie
     .filter(d =>
       !excluded.has(d.id) &&
       d.status !== 'closed' &&
-      (d.scores['self'] ?? 0) < target &&
-      (d.ceiling === undefined || (d.scores['self'] ?? 0) < d.ceiling),
+      effectiveDimScore(d) < target &&
+      (d.ceiling === undefined || effectiveDimScore(d) < d.ceiling),
     )
     .sort((a, b) => computeGapPriority(b) - computeGapPriority(a))
     .slice(0, parallel);
