@@ -10,7 +10,7 @@ import path from 'node:path';
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import { logger } from '../../core/logger.js';
-import { loadMatrix, saveMatrix, clampDimScore } from '../../core/compete-matrix.js';
+import { loadMatrix, saveMatrix, updateDimensionScore } from '../../core/compete-matrix.js';
 import {
   scanForStubs,
   isInCriticalPath,
@@ -250,10 +250,10 @@ export async function runScoreAudit(options: ScoreAuditOptions = {}): Promise<In
 
     // g) Apply evidence-supported score to matrix (if --apply)
     if (apply && (capped || raised)) {
-      // Funnel through the canonical clamp — market-dim cap must hold even via --apply.
-      const persistScore = clampDimScore(dim.id, adjScore, dim.ceiling);
-      dim.scores['self'] = persistScore;
-      dim.gap_to_leader = Math.max(0, record.leaderScore - persistScore);
+      // Route through updateDimensionScore — the single reconciler. It funnels the
+      // value through clampDimScore (ceiling + market cap) AND recomputes gap/leader/
+      // sprint_history/overall consistently. No direct scores.self write here.
+      updateDimensionScore(matrix, dim.id, adjScore);
     }
 
     totalBefore += priorScore;

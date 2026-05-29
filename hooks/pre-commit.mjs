@@ -126,12 +126,23 @@ if (fs.existsSync(PROTECTED_LINES_PATH)) {
 // chokepoint. Exempt modules:
 //   - src/core/compete-matrix.ts: owns the matrix API (derived-score writeback
 //     in loadMatrix, legacy applyAdversarialCalibration retained for tests)
+//   - src/core/compete-matrix-score.ts: HOME of the reconciler — updateDimensionScore,
+//     applyAdversarialCalibration, and clampDimScore all live here and are the
+//     sanctioned write path every other module is required to funnel through
 //   - src/cli/commands/honest-rescore.ts: writes a CLONE to matrix.honest.json,
 //     never to matrix.json
-const SCORE_WRITE_RE = /\bdim\.scores(\['?self'?\]|\.self)\s*=/;
+//   - src/core/ascend-engine.ts: strict-override + swe-bench recalibration writes
+//     that clamp via clampDimScore inline (cap holds) and intentionally skip
+//     sprint_history so recalibration does not masquerade as improvement sprints
+// Regex matches ANY variable's `.scores['self'] = ` / `.scores.self = ` assignment
+// (not just `dim.`), so a rename like `matDim` cannot smuggle a write past the guard.
+// The (?!=) lookahead excludes equality comparisons (===, ==).
+const SCORE_WRITE_RE = /\.scores(\['?self'?\]|\.self)\s*=(?!=)/;
 const SCORE_WRITE_EXEMPT = new Set([
   'src/core/compete-matrix.ts',
+  'src/core/compete-matrix-score.ts',
   'src/cli/commands/honest-rescore.ts',
+  'src/core/ascend-engine.ts',
 ]);
 const stagedNonTestTs = stagedTs.filter(f => !f.startsWith('tests/') && !f.includes('/test/') && !/\.test\.ts$/.test(f));
 const scoreViolations = [];

@@ -20,7 +20,7 @@ import {
   type HarshScoreResult,
   type ScoringDimension,
 } from './harsh-scorer.js';
-import { loadMatrix, saveMatrix, classifyDimensions, getNextSprintDimension, updateDimensionScore, clampDimScore, getDimensionStrategy, computeUnweightedComposite, getTopGapDimensions, type CompeteMatrix, type MatrixDimension, type AdversarialCalibration } from './compete-matrix.js';
+import { loadMatrix, saveMatrix, classifyDimensions, getNextSprintDimension, updateDimensionScore, clampDimScore, effectiveDimScore, getDimensionStrategy, computeUnweightedComposite, getTopGapDimensions, type CompeteMatrix, type MatrixDimension, type AdversarialCalibration } from './compete-matrix.js';
 import { readSweBenchScore, formatSweBenchGoal, isSweBenchDimension } from './swe-bench-probe.js';
 import { defineUniverse, type UniverseDefinerOptions } from './universe-definer.js';
 import { runAutoforgeLoop, AutoforgeLoopState, type AutoforgeLoopContext, type AutoforgeLoopDeps } from './autoforge-loop.js';
@@ -580,8 +580,11 @@ async function finalizeAscendRun(
 ): Promise<AscendResult> {
   const { atCeiling: finalCeiling, achievable: finalAchievable } = classifyDimensions(matrix, target);
   const ceilingReports = buildCeilingReports(finalCeiling);
-  const dimensionsAtTarget = matrix.dimensions.filter(d => (d.scores['self'] ?? 0) >= target).length;
-  const success = finalAchievable.every(d => (d.scores['self'] ?? 0) >= target);
+  // Success/target use the EFFECTIVE score (min(self, derived)) — not raw scores.self.
+  // A dim only counts as "at target" if its evidence-derived score backs the claim;
+  // an un-capped self-score must not let an autonomous loop declare false victory.
+  const dimensionsAtTarget = matrix.dimensions.filter(d => effectiveDimScore(d) >= target).length;
+  const success = finalAchievable.every(d => effectiveDimScore(d) >= target);
   const finalScoreResult = await harshScoreFn({ cwd, _readHistory: async () => [], _writeHistory: async () => {} }).catch(() => null);
   const result: AscendResult = { cyclesRun, dimensionsImproved, dimensionsAtTarget, ceilingReports, finalScore: matrix.overallSelfScore, success };
   await writeFileFn(path.join(cwd, '.danteforge', 'ASCEND_REPORT.md'), buildAscendReportWithWiring(matrix, result, target, beforeScores, finalScoreResult?.unwiredModules ?? [])).catch(() => {});
