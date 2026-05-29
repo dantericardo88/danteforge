@@ -21,7 +21,8 @@ import type {
 } from '../types/merge.js';
 import type { GateReport, RedTeamReport, TasteGateRequest } from '../types/gate.js';
 import type { ConflictReport } from '../types/conflict.js';
-import { isBlockingStatus } from './taste-gate.js';
+import { isBlockingStatus, checkTasteGate, writeTasteGates } from './taste-gate.js';
+import type { AgentRunResult } from '../types/agent.js';
 import { isBlockingConflict } from '../engines/conflict-radar.js';
 import { scanForStubs, type StubScanResult } from './no-stub-scanner.js';
 import { MATRIX_DIR, MATRIX_REPORT_PATHS } from '../types/index.js';
@@ -64,6 +65,10 @@ export interface RunMergeCourtOptions {
   _runCapabilityTest?: (input: MergeCourtInput, cwd: string) => CapabilityTestVerdict;
   /** Injection seam: replaces stub scanner for tests. */
   _scanForStubs?: (files: string[], worktreeRoot: string) => Promise<StubScanResult>;
+  /** Injection seam: replaces taste-gate generation for tests. */
+  _checkTasteGate?: typeof checkTasteGate;
+  /** Injection seam: replaces taste-gate persistence for tests. */
+  _writeTasteGates?: typeof writeTasteGates;
   _now?: () => string;
 }
 
@@ -93,6 +98,42 @@ export async function runMergeCourt(
   const securityCourtFn = options._runSecurityCourt ?? defaultRunSecurityCourt;
   const capabilityTestFn = options._runCapabilityTest ?? defaultRunCapabilityTest;
   const stubScanFn = options._scanForStubs ?? defaultScanForStubs;
+  const checkTasteGateFn = options._checkTasteGate ?? checkTasteGate;
+  const writeTasteGatesFn = options._writeTasteGates ?? writeTasteGates;
+
+  // Integrity fix (council 2026-05-29): the taste gate must NEVER be silently
+  // skipped. arbitrate() only blocks when a tasteGateRequest exists — so a
+  // candidate that arrived without one (any autonomous path that didn't run the
+  // taste-gate CLI step) would bypass human review entirely. Here we generate a
+  // request for every candidate missing one, persist it (so `taste-gate approve
+  // <id>` can find it), and feed it into arbitration. checkTasteGate returns
+  // not_required for non-product-sensitive changes, so this never over-blocks.
+  const generatedGates: TasteGateRequest[] = [];
+  for (const candidate of ranked) {
+    if (!candidate.tasteGateRequest) {
+      const req = checkTasteGateFn({
+        lease: candidate.lease,
+        workPacket: candidate.workPacket,
+        agentRunResult: candidate.candidate as unknown as AgentRunResult,
+        _now: now,
+      });
+      candidate.tasteGateRequest = req;
+      generatedGates.push(req);
+    }
+  }
+  if (generatedGates.length > 0) {
+    try {
+      // Merge with any existing persisted requests so we don't clobber prior decisions.
+      let existing: TasteGateRequest[] = [];
+      try {
+        const raw = await fs.readFile(path.join(baseCwd, MATRIX_REPORT_PATHS.tasteGates), 'utf8');
+        existing = (JSON.parse(raw).requests ?? []) as TasteGateRequest[];
+      } catch { /* no prior file */ }
+      const byId = new Map(existing.map(r => [r.id, r]));
+      for (const g of generatedGates) if (!byId.has(g.id)) byId.set(g.id, g);
+      await writeTasteGatesFn([...byId.values()], baseCwd);
+    } catch { /* persistence is best-effort; the gate evaluation above is the load-bearing part */ }
+  }
 
   for (const candidate of ranked) {
     // LOC gate: block any candidate that introduced a .ts/.tsx file exceeding 750 lines

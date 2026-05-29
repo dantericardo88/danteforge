@@ -62,6 +62,18 @@ function makeOptions(
     _createTimeMachineCommit: async (c) => ({ eventId: `tm.${c.candidate.candidateId}` }),
     _now: () => '2026-01-01T00:00:00.000Z',
     _checkLocViolations: locFn,
+    // Isolate these LOC-gate tests from the (now-enforced) taste gate: return
+    // not_required so taste-surface detection on docs/.md files doesn't block.
+    _checkTasteGate: (opts) => ({
+      id: `taste.${opts.lease.id}`,
+      leaseId: opts.lease.id,
+      workPacketId: opts.workPacket.id,
+      status: 'not_required',
+      reason: 'test: taste gate not under test',
+      affectedSurfaces: [],
+      requestedAt: '2026-01-01T00:00:00.000Z',
+    }),
+    _writeTasteGates: async () => 'noop',
   };
 }
 
