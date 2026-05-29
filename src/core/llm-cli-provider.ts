@@ -16,6 +16,7 @@
 //   codex exec <prompt> — prompt as arg, prints response + footer noise (cleaned)
 
 import { spawn } from 'node:child_process';
+import { withCliSlot } from './cli-semaphore.js';
 
 export type CliAgentProvider = 'claude-code' | 'codex';
 
@@ -67,6 +68,18 @@ export async function callCliAgent(
   const spec = CLI_AGENTS[provider];
   const args = spec.viaStdin ? [...spec.args] : [...spec.args, prompt];
 
+  // Fleet governor: hold one of N shared CLI slots for the lifetime of this spawn so
+  // a fleet of windows collectively stays under the per-account subscription rate limit.
+  return withCliSlot(() => spawnCliAgent(spec, args, prompt, timeoutMs, _spawn), { label: provider });
+}
+
+function spawnCliAgent(
+  spec: CliAgentSpec,
+  args: string[],
+  prompt: string,
+  timeoutMs: number,
+  _spawn: typeof spawn,
+): Promise<string> {
   return new Promise<string>((resolve, reject) => {
     const child = _spawn(spec.bin, args, { stdio: ['pipe', 'pipe', 'pipe'], windowsHide: true });
     let stdout = '';
@@ -84,7 +97,7 @@ export async function callCliAgent(
     child.on('error', (err: Error) => {
       clearTimeout(timer);
       finish(() => reject(new Error(
-        `Failed to spawn "${spec.bin}": ${err.message}. Is the ${provider} CLI installed and on PATH? ` +
+        `Failed to spawn "${spec.bin}": ${err.message}. Is the ${spec.bin} CLI installed and on PATH? ` +
         `Run \`danteforge council --discover\` to check.`,
       )));
     });

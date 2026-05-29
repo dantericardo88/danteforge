@@ -93,7 +93,11 @@ const DEV_TOOL_KEYWORDS = [
 
 export async function scanCompetitors(opts: CompetitorScanOptions): Promise<CompetitorComparison> {
   const now = opts._now ?? (() => new Date().toISOString());
-  const callLLMFn = opts._callLLM ?? ((prompt: string) => callLLM(prompt));
+  // The competitor scan is a rare, heavy, one-shot call. Tag it 'setup-oneshot' so the
+  // fleet router uses the configured capable backend (e.g. the claude-code CLI) for it
+  // instead of downgrading it to the high-frequency local fallback — and so it's
+  // fleet-slot-governed like every other CLI call.
+  const callLLMFn = opts._callLLM ?? ((prompt: string) => callLLM(prompt, undefined, { routingHint: 'setup-oneshot' }));
   const enableSearch = opts.enableWebSearch ?? true;
   const ctx = opts.projectContext;
   const projectName = ctx?.projectName ?? 'this project';

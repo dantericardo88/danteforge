@@ -425,15 +425,31 @@ async function resolveOllamaCallableModel(configuredModel: string, baseUrl: stri
   return resolveConfiguredModelName('ollama', configuredModel, payload);
 }
 
-async function resolveCallTarget(providerOverride?: LLMProvider, modelOverride?: string) {
+/**
+ * Fleet router: keep high-frequency internal traffic OFF the shared subscription-CLI
+ * bucket. If the configured provider is a CLI agent (claude-code/codex), only
+ * 'setup-oneshot' calls actually use it; everything else (loop scoring, gap-rank,
+ * research — fired constantly across a fleet of windows) routes to a fleet-safe local
+ * backend (DANTEFORGE_CLI_FALLBACK_PROVIDER, default 'ollama'). Non-CLI providers
+ * (ollama / claude-API / openai / …) are returned unchanged — they scale on their own.
+ */
+export function resolveEffectiveProvider(configured: LLMProvider, hint?: CallLLMOptions['routingHint']): LLMProvider {
+  if (!isCliAgentProvider(configured)) return configured;
+  if (hint === 'setup-oneshot') return configured;
+  return (process.env['DANTEFORGE_CLI_FALLBACK_PROVIDER'] as LLMProvider) || 'ollama';
+}
+
+async function resolveCallTarget(providerOverride?: LLMProvider, modelOverride?: string, routingHint?: CallLLMOptions['routingHint']) {
   const resolved = await resolveProvider();
-  const provider = providerOverride ?? resolved.provider;
+  const configured = providerOverride ?? resolved.provider;
+  const provider = resolveEffectiveProvider(configured, routingHint);
   const config = await loadConfig();
   const providerConfig = config.providers[provider];
 
-  // When the provider is overridden, fall back to that provider's own defaults rather than
-  // bleeding the default-provider's model/apiKey/baseUrl (e.g. Ollama's URL for a Claude call).
-  const isOverridden = Boolean(providerOverride);
+  // Use the effective provider's own defaults whenever it differs from the resolved
+  // default — either an explicit override OR a router downgrade (claude-code→ollama) —
+  // so we don't bleed the default provider's model/apiKey/baseUrl into the call.
+  const isOverridden = Boolean(providerOverride) || provider !== resolved.provider;
   const fallbackModel = isOverridden ? getDefaultModel(provider) : resolved.model;
   const fallbackApiKey = isOverridden ? undefined : resolved.apiKey;
   const fallbackBaseUrl = isOverridden ? undefined : resolved.baseUrl;
@@ -537,7 +553,7 @@ async function _callLLMInner(
   // Resolve the per-call fetch: prefer per-call _fetch, then module-level override, then globalThis
   const perCallFetch: typeof globalThis.fetch | undefined = options._fetch ?? _llmFetchOverride;
 
-  const target = await resolveCallTarget(providerOverride, options.model);
+  const target = await resolveCallTarget(providerOverride, options.model, options.routingHint);
   // Display the model that will ACTUALLY be called: for ollama, that's the
   // user's configured ollamaModel (resolved against /api/tags), not the
   // generic DEFAULT_MODELS fallback. Avoids the misleading "ollama/llama3"

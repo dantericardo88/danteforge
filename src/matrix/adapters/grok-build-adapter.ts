@@ -17,6 +17,7 @@ import fs from 'node:fs/promises';
 import path from 'node:path';
 import os from 'node:os';
 import { logger } from '../../core/logger.js';
+import { withCliSlot } from '../../core/cli-semaphore.js';
 import { killProcess } from './kill-process.js';
 import { matchesAnyGlob } from '../util/glob.js';
 import type {
@@ -625,7 +626,8 @@ function runChild(
   captureStderr = false,
   stderrChunks?: Buffer[],
 ): Promise<number> {
-  return new Promise<number>((resolve) => {
+  // Fleet governor: shared CLI slot held for the child's lifetime (per-account limit).
+  return withCliSlot(() => new Promise<number>((resolve) => {
     const child: GrokBuildChildLike = spawnFn(cmd, args, opts);
     let settled = false;
     const settle = (code: number) => {
@@ -648,7 +650,7 @@ function runChild(
     });
     child.on('close', (code) => settle((code ?? 1) as number));
     child.on('error', () => settle(1));
-  });
+  }));
 }
 
 function finalize(state: GrokRunState, runId: string): void {

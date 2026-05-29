@@ -28,6 +28,7 @@ import { promisify } from 'node:util';
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import { logger } from '../../core/logger.js';
+import { withCliSlot } from '../../core/cli-semaphore.js';
 import { killProcess } from './kill-process.js';
 import { matchesAnyGlob } from '../util/glob.js';
 import type {
@@ -582,7 +583,9 @@ function runChild(
   timeoutMs: number,
   captureChunks?: Buffer[],
 ): Promise<number> {
-  return new Promise<number>((resolve) => {
+  // Fleet governor: hold a shared CLI slot for the child's lifetime so concurrent
+  // council agents across the fleet stay under the per-account subscription limit.
+  return withCliSlot(() => new Promise<number>((resolve) => {
     const child: ClaudeChildLike = spawnFn(cmd, args, opts);
     let settled = false;
     const settle = (code: number) => {
@@ -604,7 +607,7 @@ function runChild(
     child.stderr?.on('data', () => { /* drain */ });
     child.on('close', (code) => settle((code ?? 1) as number));
     child.on('error', () => settle(1));
-  });
+  }));
 }
 
 /** Build the human-readable completion message for a run. */

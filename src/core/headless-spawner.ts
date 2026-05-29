@@ -1,6 +1,7 @@
 // Headless Claude Code agent spawner — parallel execution engine for party mode.
 import { spawn } from 'node:child_process';
 import { logger } from './logger.js';
+import { withCliSlot } from './cli-semaphore.js';
 
 import type { AgentRole } from './subagent-isolator.js';
 
@@ -274,8 +275,12 @@ export async function spawnHeadlessAgent(
   logger.verbose(`[HeadlessSpawner] Spawning ${config.role} agent (timeout=${timeoutMs}ms)`);
 
   try {
-    const child = spawnFn(CLAUDE_CLI_BINARY, cliArgs, spawnOpts);
-    const result = await awaitAgentProcess(child, config, timeoutMs, start);
+    // Fleet governor: hold a shared CLI slot for the agent's lifetime so concurrent
+    // party-mode agents across the fleet stay under the per-account subscription limit.
+    const result = await withCliSlot(() => {
+      const child = spawnFn(CLAUDE_CLI_BINARY, cliArgs, spawnOpts);
+      return awaitAgentProcess(child, config, timeoutMs, start);
+    });
 
     if (result.exitCode !== 0) {
       logger.warn(`[HeadlessSpawner] ${config.role} agent exited with code ${result.exitCode}`);

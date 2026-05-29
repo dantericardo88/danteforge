@@ -16,6 +16,14 @@ export interface CallLLMOptions {
   model?: string;
   /** Task signature for routing decisions (v0.9.0 — 3-tier model routing) */
   taskSignature?: import('./task-router.js').TaskSignature;
+  /**
+   * Fleet routing hint. When the configured provider is a subscription CLI
+   * (claude-code/codex), only 'setup-oneshot' calls actually use the CLI; all
+   * other (high-frequency loop/research) calls are routed to a fleet-safe local
+   * backend so a fleet of windows can't drain the shared subscription bucket.
+   * Default (undefined) is treated as high-frequency loop traffic.
+   */
+  routingHint?: 'setup-oneshot' | 'loop' | 'research' | 'gap-rank';
   /** Budget fence for per-agent cost caps (v0.9.0 — budget fences) */
   budgetFence?: { agentRole: string; maxBudgetUsd: number; currentSpendUsd: number; isExceeded: boolean; warningThresholdPercent: number };
   /** Callback for real token usage data from provider responses (v0.9.0 hardening) */

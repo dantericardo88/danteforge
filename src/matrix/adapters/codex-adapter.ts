@@ -18,6 +18,7 @@ import fs from 'node:fs/promises';
 import path from 'node:path';
 import os from 'node:os';
 import { logger } from '../../core/logger.js';
+import { withCliSlot } from '../../core/cli-semaphore.js';
 import { killProcess } from './kill-process.js';
 import { matchesAnyGlob } from '../util/glob.js';
 import type {
@@ -431,7 +432,8 @@ function runChild(
   captureChunks?: Buffer[],
   stdinData?: string,
 ): Promise<number> {
-  return new Promise<number>((resolve) => {
+  // Fleet governor: shared CLI slot held for the child's lifetime (per-account limit).
+  return withCliSlot(() => new Promise<number>((resolve) => {
     const child: CodexChildLike = spawnFn(cmd, args, opts);
     let settled = false;
     const settle = (code: number) => {
@@ -455,7 +457,7 @@ function runChild(
     if (stdinData && child.stdin) {
       child.stdin.write(stdinData, () => child.stdin!.end());
     }
-  });
+  }));
 }
 
 function finalize(state: CodexRunState, runId: string): void {
