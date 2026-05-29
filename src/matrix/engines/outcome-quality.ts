@@ -38,8 +38,10 @@ export function classifyOutcomeKind(outcome: Outcome): OutcomeKindClassification
   const kind = outcome.kind ?? 'shell';
   const cmd = (outcome as { command?: string }).command ?? '';
 
-  // External benchmark outcomes unlock T8 (9.5) — independently reproducible
-  if (kind === 'external-benchmark' || /swe.bench|exercism|benchmark.*--suite/i.test(cmd)) {
+  // External benchmark outcomes unlock T8 (9.5) — independently reproducible.
+  // `swe[-\s]?bench` matches the real variants (swe-bench, swebench, "swe bench")
+  // without the unescaped-dot false-match (`swe.bench` would match `sweXbench`).
+  if (kind === 'external-benchmark' || /swe[-\s]?bench|exercism|benchmark.*--suite/i.test(cmd)) {
     return { maxScore: 9.5, evidenceTier: 'external-benchmark', reason: 'External benchmark — independently reproducible' };
   }
 
