@@ -104,8 +104,28 @@ export function computeTwoGaps(
 }
 
 /** Market dims: internal evidence cannot certify adoption/enterprise scores above 5.0. */
-const MARKET_DIMS_SCORE_CAP = new Set(['community_adoption', 'enterprise_readiness']);
-const MARKET_DIM_MAX_SCORE = 5.0;
+export const MARKET_DIMS_SCORE_CAP = new Set(['community_adoption', 'enterprise_readiness']);
+export const MARKET_DIM_MAX_SCORE = 5.0;
+
+/**
+ * The single canonical clamp every `scores.self` write must pass through.
+ *
+ * Enforces two caps in priority order: the per-dim `ceiling` (if declared) and
+ * the hard market-dim cap (community_adoption / enterprise_readiness ≤ 5.0).
+ * The market cap is applied last so it always wins — internal evidence can never
+ * certify a market dim above 5.0 regardless of ceiling.
+ *
+ * Do not trust prompts or warnings as enforcement: ALL writers
+ * (updateDimensionScore, applyAdversarialCalibration, ascend-engine, score-audit)
+ * funnel through here so the invariant lives in exactly one place.
+ */
+export function clampDimScore(dimensionId: string, score: number, ceiling?: number): number {
+  let clamped = ceiling !== undefined ? Math.min(score, ceiling) : score;
+  if (MARKET_DIMS_SCORE_CAP.has(dimensionId)) {
+    clamped = Math.min(clamped, MARKET_DIM_MAX_SCORE);
+  }
+  return clamped;
+}
 
 export function updateDimensionScore(
   matrix: CompeteMatrix,
@@ -118,11 +138,7 @@ export function updateDimensionScore(
   if (!dim) throw new Error(`Dimension "${dimensionId}" not found in matrix`);
 
   const before = dim.scores['self'] ?? 0;
-  let clamped = dim.ceiling !== undefined ? Math.min(newScore, dim.ceiling) : newScore;
-  // Do not trust prompts or warnings as enforcement — market cap is enforced on every write.
-  if (MARKET_DIMS_SCORE_CAP.has(dimensionId)) {
-    clamped = Math.min(clamped, MARKET_DIM_MAX_SCORE);
-  }
+  const clamped = clampDimScore(dimensionId, newScore, dim.ceiling);
   dim.scores['self'] = clamped;
 
   const competitorEntries = Object.entries(dim.scores).filter(([k]) => k !== 'self');
@@ -264,8 +280,8 @@ export function applyAdversarialCalibration(
 
   const before = dim.scores['self'] ?? 0;
   const consensus = (harshScore + adversarialScore) / 2;
-  const clamped = dim.ceiling !== undefined ? Math.min(consensus, dim.ceiling) : consensus;
-  const after = Math.round(clamped * 10) / 10;
+  // Funnel through the canonical clamp so the market-dim cap is never bypassed.
+  const after = Math.round(clampDimScore(dimensionId, consensus, dim.ceiling) * 10) / 10;
 
   dim.scores['self'] = after;
 

@@ -13,6 +13,7 @@
 
 import fs from 'node:fs/promises';
 import path from 'node:path';
+import { extractPrimaryTestFiles } from '../../core/derived-score.js';
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -57,10 +58,11 @@ const SEAM_PATTERNS = [
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
-function extractTestFiles(command: string): string[] {
-  const matches = command.match(/[\w.-]+\.test\.[jt]sx?/g);
-  return matches ? [...new Set(matches)] : [];
-}
+// Single source of truth: the same extractor derived-score.ts uses for its
+// distinct-receipt T7 veto. Sharing the regex prevents the integrity reporter
+// and the score engine from disagreeing about what counts as "the same file"
+// (the regex must include `/` so tests/a/x.test.ts ≠ tests/b/x.test.ts).
+const extractTestFiles = extractPrimaryTestFiles;
 
 async function commandHasSeams(command: string, projectPath: string): Promise<boolean> {
   // Check the command string itself first

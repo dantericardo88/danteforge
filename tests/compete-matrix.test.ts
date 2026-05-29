@@ -431,8 +431,11 @@ describe('compete-matrix', () => {
   // ── T11: ceiling clamp ────────────────────────────────────────────────────────
 
   it('T11: updateDimensionScore clamps score to ceiling when score > ceiling', () => {
+    // Use a non-market dim so this exercises pure ceiling clamping. Market dims
+    // (enterprise_readiness / community_adoption) carry an additional hard 5.0
+    // cap that would mask the ceiling under test — see T11c for that invariant.
     const dim = makeDim({
-      id: 'enterprise_readiness',
+      id: 'testing',
       scores: { self: 4.0, Cursor: 9.0 },
       ceiling: 6.0,
     } as Partial<MatrixDimension>);
@@ -446,7 +449,7 @@ describe('compete-matrix', () => {
       dimensions: [dim],
     };
     // Attempt to set score to 7.0, should be clamped to ceiling 6.0
-    updateDimensionScore(matrix, 'enterprise_readiness', 7.0);
+    updateDimensionScore(matrix, 'testing', 7.0);
     assert.strictEqual(matrix.dimensions[0]!.scores['self'], 6.0, 'Score must be clamped to ceiling');
     assert.strictEqual(matrix.dimensions[0]!.sprint_history.at(-1)!.after, 6.0, 'Sprint record after must reflect clamped value');
   });
@@ -468,6 +471,27 @@ describe('compete-matrix', () => {
     };
     updateDimensionScore(matrix, 'community_adoption', 4.0);
     assert.strictEqual(matrix.dimensions[0]!.scores['self'], 4.0, 'Score exactly at ceiling should be accepted');
+  });
+
+  it('T11c: market dims hard-cap at 5.0 even when ceiling is higher', () => {
+    // enterprise_readiness with a generous 9.0 ceiling — internal evidence still
+    // cannot push it past 5.0. The market cap wins over the ceiling.
+    const dim = makeDim({
+      id: 'enterprise_readiness',
+      scores: { self: 4.0, Cursor: 9.0 },
+      ceiling: 9.0,
+    } as Partial<MatrixDimension>);
+    const matrix: CompeteMatrix = {
+      project: 'TestProject',
+      competitors: ['Cursor'],
+      competitors_closed_source: ['Cursor'],
+      competitors_oss: [],
+      lastUpdated: new Date().toISOString(),
+      overallSelfScore: 4.0,
+      dimensions: [dim],
+    };
+    updateDimensionScore(matrix, 'enterprise_readiness', 8.0);
+    assert.strictEqual(matrix.dimensions[0]!.scores['self'], 5.0, 'Market dim must be capped at 5.0 regardless of ceiling');
   });
 
   it('T12: bootstrapMatrixFromComparison clamps initial selfScore to ceiling', () => {

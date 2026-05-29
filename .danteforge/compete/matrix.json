@@ -44,8 +44,8 @@
     "SmolaAgents",
     "DSPy"
   ],
-  "lastUpdated": "2026-05-28T18:27:28.718Z",
-  "overallSelfScore": 9,
+  "lastUpdated": "2026-05-29T13:54:37.866Z",
+  "overallSelfScore": 8.9,
   "excludedDimensions": [
     "community_adoption",
     "communityAdoption"
@@ -2543,14 +2543,14 @@
         "Pydantic-AI": 5.5,
         "SmolaAgents": 4,
         "DSPy": 4.5,
-        "derived": 9
+        "derived": 5
       },
-      "gap_to_leader": 0,
-      "leader": "self",
-      "gap_to_closed_source_leader": 0,
-      "closed_source_leader": "self",
-      "gap_to_oss_leader": 0,
-      "oss_leader": "self",
+      "gap_to_leader": 3.5,
+      "leader": "Kiro (AWS)",
+      "gap_to_closed_source_leader": 3.5,
+      "closed_source_leader": "Kiro (AWS)",
+      "gap_to_oss_leader": 2,
+      "oss_leader": "AutoGen (Microsoft)",
       "status": "partially-verified-capability",
       "sprint_history": [
         {

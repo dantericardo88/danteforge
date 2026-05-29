@@ -20,7 +20,7 @@ import {
   type HarshScoreResult,
   type ScoringDimension,
 } from './harsh-scorer.js';
-import { loadMatrix, saveMatrix, classifyDimensions, getNextSprintDimension, updateDimensionScore, getDimensionStrategy, computeUnweightedComposite, getTopGapDimensions, type CompeteMatrix, type MatrixDimension, type AdversarialCalibration } from './compete-matrix.js';
+import { loadMatrix, saveMatrix, classifyDimensions, getNextSprintDimension, updateDimensionScore, clampDimScore, getDimensionStrategy, computeUnweightedComposite, getTopGapDimensions, type CompeteMatrix, type MatrixDimension, type AdversarialCalibration } from './compete-matrix.js';
 import { readSweBenchScore, formatSweBenchGoal, isSweBenchDimension } from './swe-bench-probe.js';
 import { defineUniverse, type UniverseDefinerOptions } from './universe-definer.js';
 import { runAutoforgeLoop, AutoforgeLoopState, type AutoforgeLoopContext, type AutoforgeLoopDeps } from './autoforge-loop.js';
@@ -272,7 +272,7 @@ async function orientAndClassify(
     if (STRICT_DIM_IDS.has(matDim.id)) {
       const scoringDim = mapDimIdToScoringDimension(matDim.id);
       if (scoringDim) {
-        const strictScore = baselineResult.displayDimensions[scoringDim] ?? 0;
+        const strictScore = clampDimScore(matDim.id, baselineResult.displayDimensions[scoringDim] ?? 0, matDim.ceiling);
         matDim.scores['self'] = strictScore;
         if (strictScore < target) matDim.status = 'in-progress';
       }
@@ -283,8 +283,9 @@ async function orientAndClassify(
     if (isSweBenchDimension(matDim.id)) {
       const probe = await readSweBenchScore(cwd).catch(() => null);
       if (probe) {
-        matDim.scores['self'] = probe.displayScore;
-        if (probe.displayScore < target) matDim.status = 'in-progress';
+        const sweScore = clampDimScore(matDim.id, probe.displayScore, matDim.ceiling);
+        matDim.scores['self'] = sweScore;
+        if (sweScore < target) matDim.status = 'in-progress';
       }
     }
   }

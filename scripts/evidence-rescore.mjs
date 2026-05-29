@@ -73,6 +73,14 @@ function isOutcomePassing(outcome, entry) {
   return entry.exitCode === expectedExit;
 }
 
+// Mirrors extractPrimaryTestFiles in src/core/derived-score.ts (regex MUST match:
+// include `/` so tests/a/x.test.ts ≠ tests/b/x.test.ts). Used for the T7
+// distinct-receipt veto — 3 outcomes pointing at one test file is one receipt.
+function extractPrimaryTestFiles(command) {
+  const matches = (command ?? '').match(/[\w./-]+\.test\.[jt]sx?/g);
+  return matches ? [...new Set(matches)] : [];
+}
+
 function computeDerivedScore(dim, evidence) {
   const outcomes = dim.outcomes ?? [];
   if (outcomes.length === 0) {
@@ -120,6 +128,17 @@ function computeDerivedScore(dim, evidence) {
       const currentTierContrib = anyInferred ? 0 : tierOutcomes.length;
       if (highTierPassCount + currentTierContrib < MIN_T7_HIGH_TIER_OUTCOMES) {
         allPassing = false;
+      }
+
+      // Distinct test-file check: all T5+ outcomes pointing to the same single
+      // test file is one receipt dressed as many. Mirrors src/core/derived-score.ts.
+      if (allPassing) {
+        const highTierOuts = (dim.outcomes ?? [])
+          .filter(o => TIER_ORDER.indexOf(o.tier) >= TIER_ORDER.indexOf('T5'));
+        const testFiles = highTierOuts.flatMap(o => extractPrimaryTestFiles(o.command));
+        if (testFiles.length > 0 && new Set(testFiles).size < 2) {
+          allPassing = false;
+        }
       }
 
       // Session-ID temporal separation: T7 requires evidence from ≥2 distinct

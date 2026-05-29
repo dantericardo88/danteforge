@@ -12,16 +12,36 @@ import { discoverCouncil } from '../src/cli/commands/council.js';
 
 describe('discoverCouncil — FIX 1: Gemini excluded from default roster', () => {
   it('discoverCouncil probes only codex, grok-build, claude-code (not gemini-cli)', async () => {
-    // Override isAvailable to track which ids are probed
-    const probed: string[] = [];
-    const members = await discoverCouncil();
-    // Members list never contains gemini-cli (not probed)
-    const geminiMember = members.find(m => m.id === 'gemini-cli');
-    assert.equal(geminiMember, undefined, 'gemini-cli should not appear in discovery results');
-    // But the 3 subscription adapters ARE probed
-    const ids = members.map(m => m.id).sort();
-    assert.deepEqual(ids, ['claude-code', 'codex', 'grok-build'].sort());
-    void probed; // unused but referenced for TS
+    // Hermetic: the DANTEFORGE_COUNCIL_MEMBERS env var globally filters the roster,
+    // so clear it for this test to assert the true default (all 3 subscription adapters).
+    const savedFilter = process.env['DANTEFORGE_COUNCIL_MEMBERS'];
+    delete process.env['DANTEFORGE_COUNCIL_MEMBERS'];
+    try {
+      const probed: string[] = [];
+      const members = await discoverCouncil();
+      // Members list never contains gemini-cli (not probed)
+      const geminiMember = members.find(m => m.id === 'gemini-cli');
+      assert.equal(geminiMember, undefined, 'gemini-cli should not appear in discovery results');
+      // But the 3 subscription adapters ARE probed
+      const ids = members.map(m => m.id).sort();
+      assert.deepEqual(ids, ['claude-code', 'codex', 'grok-build'].sort());
+      void probed; // unused but referenced for TS
+    } finally {
+      if (savedFilter !== undefined) process.env['DANTEFORGE_COUNCIL_MEMBERS'] = savedFilter;
+    }
+  });
+
+  it('discoverCouncil honors the DANTEFORGE_COUNCIL_MEMBERS env filter', async () => {
+    const savedFilter = process.env['DANTEFORGE_COUNCIL_MEMBERS'];
+    process.env['DANTEFORGE_COUNCIL_MEMBERS'] = 'codex,claude-code';
+    try {
+      const members = await discoverCouncil();
+      const ids = members.map(m => m.id).sort();
+      assert.deepEqual(ids, ['claude-code', 'codex'], 'env filter must exclude grok-build');
+    } finally {
+      if (savedFilter !== undefined) process.env['DANTEFORGE_COUNCIL_MEMBERS'] = savedFilter;
+      else delete process.env['DANTEFORGE_COUNCIL_MEMBERS'];
+    }
   });
 });
 
