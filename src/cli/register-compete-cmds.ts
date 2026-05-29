@@ -62,6 +62,7 @@ program
   .option('--skip-verify', 'Skip verify receipt check (use when certifying without running verify)')
   .option('--validate', 'Cross-check matrix self-scores against latest harsh-scorer assessment')
   .option('--sync-scores', 'Sync all matrix self-scores from the live strict scorer (eliminates drift automatically)')
+  .option('--gap-report', 'Gap-first view: relative position vs competitors on the identical rubric (the honest, self-policing headline) + freeze a reference-set snapshot')
   .option('--auto', 'Run autonomous sprint+rescore loop (up to 5 cycles, stops when all gaps closed)')
   .option('--remove-competitor <name>', 'Remove a competitor from the matrix and recompute gaps')
   .option('--drop-dimension <id>', 'Remove a scoring dimension from the matrix')
@@ -85,6 +86,7 @@ Examples:
   danteforge compete --sprint                  Generate /inferno masterplan for top gap
   danteforge compete --rescore "ux_polish=8.5" Update score after a sprint
   danteforge compete --auto                    Autonomous sprint+rescore loop (5 cycles)
+  danteforge compete --gap-report              Honest gap-first position vs competitors (+ freeze reference set)
   danteforge compete --check-all-nine          Machine-readable 9.0 victory check (for CI)
   danteforge compete --level deep              Full CHL: assess + universe + sprint loop
   danteforge compete --json                    Machine-readable gap table for scripting
@@ -113,6 +115,7 @@ Examples:
           skipVerify: opts.skipVerify as boolean | undefined,
           validate: opts.validate as boolean | undefined,
           syncScores: opts.syncScores as boolean | undefined,
+          gapReport: opts.gapReport as boolean | undefined,
           auto: opts.auto as boolean | undefined,
           amend: opts.amend as string | undefined,
           amendFile: opts.amendFile as string | undefined,

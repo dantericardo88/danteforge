@@ -47,6 +47,7 @@ import { actionCalibrate } from './compete-calibrate.js';
 import { actionReport, actionValidate, actionSyncScores, actionAutoSprint, actionNextDims, actionCheckAllNine } from './compete-reports.js';
 export { actionCheckAllNine, actionNextDims } from './compete-reports.js';
 import { SCORING_DOCTRINE_SHORT } from '../../core/scoring-doctrine.js';
+import { computeGapReport, formatGapReport, buildReferenceSnapshot } from '../../core/gap-report.js';
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -72,6 +73,7 @@ export interface CompeteOptions {
   skipVerify?: boolean;         // --skip-verify: bypass CERTIFY gate
   validate?: boolean;           // --validate: cross-check matrix vs harsh-scorer
   syncScores?: boolean;         // --sync-scores: auto-apply live scorer values to matrix self-scores
+  gapReport?: boolean;          // --gap-report: gap-first relative position vs competitors + reference snapshot
   cwd?: string;
   // Injection seams for testing
   _loadMatrix?: (cwd: string) => Promise<CompeteMatrix | null>;
@@ -126,7 +128,7 @@ async function writeScoreSnapshot(score: number, cwd: string): Promise<void> {
 }
 
 export interface CompeteResult {
-  action: 'status' | 'init' | 'sprint' | 'rescore' | 'report' | 'validate' | 'auto' | 'sync-scores' | 'calibrate' | 'check-all-nine' | 'next-dims';
+  action: 'status' | 'init' | 'sprint' | 'rescore' | 'report' | 'validate' | 'auto' | 'sync-scores' | 'calibrate' | 'check-all-nine' | 'next-dims' | 'gap-report';
   matrixPath: string;
   overallScore?: number;
   nextDimension?: MatrixDimension;
@@ -135,6 +137,10 @@ export interface CompeteResult {
   victoryMessage?: string;
   allGreen?: boolean;
   nextDims?: NextDimEntry[];
+  /** Net weighted position vs the field (gap-report action). Positive = ahead. */
+  netPosition?: number;
+  /** Path to the frozen reference-set snapshot written by the gap-report action. */
+  referenceSnapshotPath?: string;
 }
 
 export interface NextDimEntry {
@@ -484,6 +490,55 @@ async function actionRescore(options: CompeteOptions, cwd: string, rescore: stri
   return { action: 'rescore', matrixPath, overallScore: rescoreOverall, nextDimension: next ?? undefined, dimensionsUpdated: 1 };
 }
 
+async function actionGapReport(options: CompeteOptions, cwd: string): Promise<CompeteResult> {
+  const loadFn = options._loadMatrix ?? ((c) => loadMatrix(c));
+  const matrix = await loadFn(cwd);
+  if (!matrix) {
+    logger.error('No matrix found. Run `danteforge compete --init` first.');
+    return { action: 'gap-report', matrixPath: getMatrixPath(cwd) };
+  }
+
+  const report = computeGapReport(matrix);
+
+  if (options.json) {
+    logger.info(JSON.stringify(report, null, 2));
+  } else {
+    const out = options._stdout ?? ((l: string) => logger.info(l));
+    for (const line of formatGapReport(report).split('\n')) out(line);
+  }
+
+  // Freeze the competitor reference set so a later rubric change can be diffed
+  // against it (the governance-gate slice). The snapshot is the anchor that makes
+  // self-serving rubric drift visible.
+  const now = options._now ? options._now() : new Date().toISOString();
+  let gitSha: string | null = null;
+  try {
+    const { execFileSync } = await import('node:child_process');
+    gitSha = execFileSync('git', ['rev-parse', 'HEAD'], { cwd, timeout: 5000 }).toString().trim() || null;
+  } catch { /* git optional */ }
+
+  let referenceSnapshotPath: string | undefined;
+  try {
+    const snapshot = buildReferenceSnapshot(matrix, now, gitSha);
+    const dir = path.join(cwd, '.danteforge', 'reference-scores');
+    await fs.mkdir(dir, { recursive: true });
+    const stamp = now.replace(/[:.]/g, '-').slice(0, 19);
+    referenceSnapshotPath = path.join(dir, `${stamp}.json`);
+    await fs.writeFile(referenceSnapshotPath, JSON.stringify(snapshot, null, 2), 'utf8');
+    // Maintain a stable pointer to the most recent snapshot for the future diff gate.
+    await fs.writeFile(path.join(dir, 'latest.json'), JSON.stringify(snapshot, null, 2), 'utf8');
+    if (!options.json) logger.info(`\nReference set frozen → ${path.relative(cwd, referenceSnapshotPath)}`);
+  } catch { /* snapshot is best-effort — never block the report */ }
+
+  return {
+    action: 'gap-report',
+    matrixPath: getMatrixPath(cwd),
+    overallScore: report.absoluteSelfScore,
+    netPosition: report.netPositionOverall,
+    referenceSnapshotPath,
+  };
+}
+
 export async function compete(options: CompeteOptions = {}): Promise<CompeteResult> {
   const cwd = options.cwd ?? process.cwd();
 
@@ -559,6 +614,7 @@ export async function compete(options: CompeteOptions = {}): Promise<CompeteResu
     if (options.report) return await actionReport(options, cwd);
     if (options.validate) return await actionValidate(options, cwd);
     if (options.syncScores) return await actionSyncScores(options, cwd);
+    if (options.gapReport) return await actionGapReport(options, cwd);
     const result = await actionStatus(options, cwd);
     // --- Decision-node: record completion (best-effort) ---
     try {
