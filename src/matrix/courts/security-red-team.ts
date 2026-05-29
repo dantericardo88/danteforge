@@ -116,7 +116,10 @@ const OWASP_PATTERNS: OwaspPattern[] = [
     description: 'exec() with non-literal argument — command injection risk',
     test: (l) => /(?:child_process\.)?exec\s*\(/.test(l) &&
                   !/exec\s*\(\s*['"`]/.test(l) &&
-                  !/execFile|execSync|spawnSync/.test(l),
+                  !/execFile|execSync|spawnSync/.test(l) &&
+                  // `exec(?:...)` is a regex non-capturing group, never a real call —
+                  // do not flag regex literals that happen to contain "exec(".
+                  !/exec\s*\(\?/.test(l),
   },
   {
     id: 'sql-concatenation',
