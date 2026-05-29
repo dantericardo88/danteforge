@@ -12,6 +12,7 @@ import path from 'node:path';
 import { logger } from '../../core/logger.js';
 import {
   loadMatrix,
+  effectiveDimScore,
   type CompeteMatrix,
   type MatrixDimension,
 } from '../../core/compete-matrix.js';
@@ -71,9 +72,9 @@ export interface CouncilCrusadeResult {
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
-/** Score self or 0 if missing. */
+/** Effective score (min self, derived) — not raw self, to resist inflation. */
 function selfScore(dim: MatrixDimension): number {
-  return dim.scores['self'] ?? 0;
+  return effectiveDimScore(dim);
 }
 
 /** Gap x weight priority — higher is more urgent. */

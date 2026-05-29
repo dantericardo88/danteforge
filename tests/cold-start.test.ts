@@ -99,9 +99,13 @@ describe('cold-start: compete --init clobber guard', () => {
 describe('cold-start: no decision path compares raw scores.self to target', () => {
   const decisionFiles = [
     'src/cli/commands/crusade.ts',
+    'src/cli/commands/harden-crusade.ts',
+    'src/cli/commands/council-crusade.ts',
+    'src/cli/commands/compete-reports.ts',
     'src/core/ascend-engine.ts',
     'src/core/compete-matrix-score.ts',
     'src/core/gap-report.ts',
+    'src/core/goal-loop-engine.ts',
   ];
   // The exact antipattern the 11-bug session kept finding: comparing the inflatable
   // self-score directly against a target/ceiling instead of effectiveDimScore.
