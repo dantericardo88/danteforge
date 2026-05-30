@@ -203,7 +203,7 @@ function registerRunWave(matrix: Command): void {
           case 'together': return new LLMAgentAdapter({ workPacket: packet as never, provider: 'together', providerLabel: 'together' });
           case 'groq': return new LLMAgentAdapter({ workPacket: packet as never, provider: 'groq', providerLabel: 'groq' });
           case 'mistral': return new LLMAgentAdapter({ workPacket: packet as never, provider: 'mistral', providerLabel: 'mistral' });
-          // Unknown adapter kind: no-op, NOT fake success. A no-op produces no
+          // Unknown adapter kind: no-op, NOT spurious success. A no-op produces no
           // synthetic diff so an unsupported provider cannot be counted as a
           // passing autonomy receipt (honesty invariant — council 2026-05-29).
           default:       return new FakeAgentAdapter({ action: 'noop' });

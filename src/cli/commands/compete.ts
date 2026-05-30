@@ -208,7 +208,7 @@ async function actionInit(options: CompeteOptions, cwd: string): Promise<Compete
   // If the competitor scan returned zero competitors, the LLM provider almost
   // certainly failed/timed out (e.g. local Ollama over the 180s cap with no cloud
   // key). Writing this empty preset over a real matrix is destructive; even with
-  // --force, never replace an existing matrix with a competitor-less stub.
+  // --force, never replace an existing matrix with a competitor-less empty result.
   if (matrix.competitors.length === 0) {
     logger.error(`Competitor scan returned 0 competitors — the LLM provider likely failed or timed out.`);
     logger.error(`Fix the LLM backend, then retry:`);

@@ -27,9 +27,9 @@ export interface RunAdapterArgs {
  * provider, dispatches, and returns AgentRunResult. Unknown providers
  * (aider, cursor, shell) are NOT YET WIRED — they fall back to a no-op
  * FakeAgentAdapter (action='noop') so the run completes rather than crashes,
- * but produces ZERO synthetic work. A no-op cannot mint a fake diff, so an
+ * but produces ZERO synthetic work. A no-op cannot mint a synthetic diff, so an
  * unsupported provider can never be counted as a passing autonomy receipt.
- * (Honesty invariant — see council review 2026-05-29: fake success must not
+ * (Honesty invariant — see council review 2026-05-29: spurious success must not
  * count as autonomy proof.) Wire real subprocess adapters in a future pass.
  */
 export function buildRunAdapter(): (args: RunAdapterArgs) => Promise<AgentRunResult> {
@@ -52,7 +52,7 @@ export function buildRunAdapter(): (args: RunAdapterArgs) => Promise<AgentRunRes
           // aider/cursor/shell — not yet wired as subprocess adapters. Use a
           // no-op (NOT success): the run completes rather than crashing, but
           // produces no synthetic diff, so it can never pass the courts as a
-          // real autonomy receipt. Fake success here would be a credibility hole.
+          // real autonomy receipt. Spurious success here would be a credibility hole.
           void (async () => {
             const { logger } = await import('../core/logger.js');
             logger.warn(`[orchestration] Provider "${providerId}" is not wired as a real adapter — running as no-op (no work produced). This will NOT count as a passing autonomy receipt.`);
