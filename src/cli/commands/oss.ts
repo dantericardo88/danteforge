@@ -135,7 +135,7 @@ ${queries.map((q, i) => `${i + 1}. ${q}`).join('\n')}
 
 Refine these queries and suggest 5 highly targeted GitHub search queries that will find the most relevant, high-quality, permissively-licensed open-source repositories in the same domain. Each query should be on its own line starting with "Q: ".`;
 
-  const result = await callLLM(prompt, undefined, { enrichContext: false });
+  const result = await callLLM(prompt, undefined, { enrichContext: false, routingHint: 'setup-oneshot' });
   const extracted = result
     .split('\n')
     .filter(line => line.trim().startsWith('Q:'))
@@ -178,7 +178,7 @@ Effort guide:
 - M: 2-8 hours
 - L: > 8 hours`;
 
-  const result = await callLLM(prompt, undefined, { enrichContext: false });
+  const result = await callLLM(prompt, undefined, { enrichContext: false, routingHint: 'setup-oneshot' });
   const patterns: PatternExtraction[] = [];
 
   for (const line of result.split('\n')) {
@@ -245,7 +245,7 @@ REPO|<owner/repo>|<https://github.com/owner/repo>|<one-sentence description>|<es
 
 Only include real, well-known repositories you are confident exist.`;
 
-  const result = await callLLM(prompt, undefined, { enrichContext: false });
+  const result = await callLLM(prompt, undefined, { enrichContext: false, routingHint: 'setup-oneshot' });
   const repos: OSSRepo[] = [];
 
   for (const line of result.split('\n')) {
