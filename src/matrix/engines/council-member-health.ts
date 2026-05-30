@@ -49,6 +49,21 @@ export function isQuotaError(exitCode: number | undefined, errorText: string): b
   return QUOTA_PATTERNS.some(p => lower.includes(p));
 }
 
+/**
+ * Cap the requested min-judges to what the live member pool can actually supply.
+ *
+ * Each candidate can be judged by at most (activeMemberCount - 1) cross-member
+ * judges (builder-never-judges). When a member goes out of credits mid-session the
+ * pool shrinks, but a fixed min-judges keeps demanding judges that no longer exist —
+ * every candidate returns INSUFFICIENT (or can never reach minPasses) and the batch
+ * merges nothing. Shrinking the quorum to the live pool lets a smaller council still
+ * reach consensus instead of stalling the drive. Floor is 1 so a 2-member council
+ * remains functional.
+ */
+export function resolveEffectiveMinJudges(activeMemberCount: number, requestedMinJudges: number): number {
+  return Math.max(1, Math.min(requestedMinJudges, activeMemberCount - 1));
+}
+
 export class MemberHealthTracker {
   private readonly health = new Map<string, MemberHealth>();
 

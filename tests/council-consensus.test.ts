@@ -5,6 +5,7 @@ import {
   assignVoteWeight,
   type WeightedVote,
 } from '../src/matrix/engines/council-consensus.js';
+import { resolveEffectiveMinJudges } from '../src/matrix/engines/council-member-health.js';
 
 function makeVote(
   overrides: Partial<WeightedVote> & Pick<WeightedVote, 'verdict' | 'judgeMemberId' | 'builderMemberId'>,
@@ -227,5 +228,48 @@ describe('computeConsensus', () => {
     assert.equal(r.verdict, 'PASS');
     assert.equal(r.passVotes, 2);
     assert.equal(r.requiredPassVotes, 2);
+  });
+});
+
+// Regression: "council --parallel merged nothing (Grok out of credits)".
+// When a member goes out of credits mid-session, the live pool shrinks. The merge
+// court must shrink min-judges to match the live pool, otherwise every candidate is
+// unmergeable and the drive stalls (the bug behind the AskUserQuestion dialog).
+describe('resolveEffectiveMinJudges — quorum adapts to live pool', () => {
+  test('full 3-member pool keeps min-judges 2 (no behavior change)', () => {
+    assert.equal(resolveEffectiveMinJudges(3, 2), 2);
+  });
+
+  test('Grok dies → 2 live members → min-judges drops 2 → 1 (council still merges)', () => {
+    // The exact screenshot scenario: codex + claude-code remain after grok-build
+    // exhausts credits. With min-judges fixed at 2, each candidate has only 1 possible
+    // cross-member judge → INSUFFICIENT forever. Shrinking to 1 unblocks consensus.
+    assert.equal(resolveEffectiveMinJudges(2, 2), 1);
+  });
+
+  test('1 live member → floored at 1 (never 0)', () => {
+    assert.equal(resolveEffectiveMinJudges(1, 2), 1);
+  });
+
+  test('never raises the requested quorum (4 live, asked for 2 → 2)', () => {
+    assert.equal(resolveEffectiveMinJudges(4, 2), 2);
+  });
+
+  test('end-to-end: shrunk quorum turns the dead-judge FAIL into a PASS', () => {
+    // Before the fix: minPasses == minJudges == 2, but dead grok casts UNCLEAR →
+    // only 1 PASS possible → FAIL (this is the merged-nothing bug, proven below).
+    const liveJudgePlusDead: WeightedVote[] = [
+      makeVote({ verdict: 'PASS', judgeMemberId: 'claude-code', builderMemberId: 'codex' }),
+      makeVote({ verdict: 'UNCLEAR', judgeMemberId: 'grok-build', builderMemberId: 'codex' }),
+    ];
+    assert.equal(computeConsensus(liveJudgePlusDead, { minJudges: 2, minPasses: 2 }).verdict, 'FAIL');
+
+    // After the fix: grok is excluded from judging entirely and the quorum shrinks to
+    // 1, so the single live judge's PASS carries.
+    const k = resolveEffectiveMinJudges(2, 2); // = 1
+    const liveOnly: WeightedVote[] = [
+      makeVote({ verdict: 'PASS', judgeMemberId: 'claude-code', builderMemberId: 'codex' }),
+    ];
+    assert.equal(computeConsensus(liveOnly, { minJudges: k, minPasses: k }).verdict, 'PASS');
   });
 });

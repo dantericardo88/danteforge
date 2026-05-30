@@ -50,7 +50,7 @@ import { runMergeCourt } from '../../matrix/engines/council-merge-court.js';
 import type { MergeCourtResult } from '../../matrix/engines/council-merge-court.js';
 import { FileClaims } from '../../matrix/engines/council-file-claims.js';
 import { ConvergenceTracker } from '../../matrix/engines/council-convergence.js';
-import { MemberHealthTracker, isQuotaError } from '../../matrix/engines/council-member-health.js';
+import { MemberHealthTracker, isQuotaError, resolveEffectiveMinJudges } from '../../matrix/engines/council-member-health.js';
 import {
   makeSessionId,
   makeInitialState,
@@ -515,7 +515,7 @@ export async function runParallelCouncil(options: ParallelCouncilOptions): Promi
             projectPath: cwd,
             worktreeOpts,
             handles: [builderHandle],
-            allMemberIds: available,
+            allMemberIds: health.getActiveMembers(available),
             allSlots: [next.judgeSlot],
             goal: options.goal,
             minJudges: 1,
@@ -600,6 +600,28 @@ export async function runParallelCouncil(options: ParallelCouncilOptions): Promi
         }
       }
 
+      // Members that died (quota / timeout) during THIS round's build phase must
+      // not be assigned as judges. A dead judge throws → UNCLEAR vote, and since
+      // consensus requires minPasses == minJudges PASS ballots, a single permanent
+      // UNCLEAR makes EVERY candidate unmergeable (the "Grok out of credits → merged
+      // nothing" failure). Recompute the live pool now (after builds settled) and
+      // shrink min-judges to what that pool can actually supply (floor 1), so a
+      // 2-member council can still reach consensus instead of stalling the drive.
+      const activeForJudging = health.getActiveMembers(available);
+      const effectiveMinJudges = resolveEffectiveMinJudges(activeForJudging.length, minJudges);
+      const activeSlots = slotMode
+        ? roundSlots.filter(s => activeForJudging.includes(s.memberId as CouncilMemberId))
+        : undefined;
+      if (activeForJudging.length < available.length) {
+        const dead = available.filter(id => !activeForJudging.includes(id));
+        logger.warn(chalk.yellow(`  [merge-court] Excluding unavailable member(s) from judging: ${dead.join(', ')}`));
+      }
+      if (effectiveMinJudges < minJudges) {
+        logger.warn(chalk.yellow(
+          `  [merge-court] Live pool is ${activeForJudging.length} member(s) — lowering min-judges ${minJudges} → ${effectiveMinJudges} so the remaining council can still reach consensus.`,
+        ));
+      }
+
       // Run merge court — streaming pre-computed verdicts used as fast-path for
       // slots already judged; fileClaims enforced structurally (not advisory).
       logger.info('\nRunning merge court...');
@@ -607,11 +629,11 @@ export async function runParallelCouncil(options: ParallelCouncilOptions): Promi
         projectPath: cwd,
         worktreeOpts,
         handles,
-        allMemberIds: available,
-        allSlots: slotMode ? roundSlots : undefined,
+        allMemberIds: activeForJudging,
+        allSlots: activeSlots,
         goal: options.goal,
         fileClaims,
-        minJudges,
+        minJudges: effectiveMinJudges,
         preComputedConsensus: slotMode ? judgeQueue.getStreamingVerdicts() : undefined,
       });
 
