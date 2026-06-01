@@ -29,6 +29,22 @@ export interface OutcomeKindClassification {
   reason: string;
 }
 
+// ── Structural-file-check detection (kind-agnostic) ───────────────────────────
+// A command is a "structural file check" when it inspects file contents/existence
+// (readFileSync/existsSync/...) WITHOUT actually spawning a process or running a real
+// suite. The build loop learned to dodge the file-existence cap by mislabeling
+// `node -e "readFileSync(...).includes(...)"` as kind:'runtime-exec' / 'e2e-workflow'
+// — but a file read is not runtime execution regardless of what the outcome declares.
+// Detection therefore looks at the COMMAND, never the trusted `kind`. Commands that
+// ALSO spawn a process / run a suite / invoke the built CLI are exempt (they read a
+// file as part of a real run, e.g. checking a generated artifact).
+const STRUCTURAL_READ_RE = /readFileSync|readFile\b|existsSync|statSync/;
+const REAL_EXECUTION_RE = /spawn|execFile|exec(?:Sync)?\(|child_process|(?:npm|npx)\s+(?:run\s+)?(?:test|build|start)|tsx\s+--test|node\s+dist\//;
+
+export function isStructuralFileCheck(cmd: string): boolean {
+  return STRUCTURAL_READ_RE.test(cmd) && !REAL_EXECUTION_RE.test(cmd);
+}
+
 // ── Outcome kind classifier ───────────────────────────────────────────────────
 // Maps an outcome to the highest score tier its evidence can support.
 // This is separate from whether the outcome passes — it caps the ceiling
@@ -43,6 +59,13 @@ export function classifyOutcomeKind(outcome: Outcome): OutcomeKindClassification
   // without the unescaped-dot false-match (`swe.bench` would match `sweXbench`).
   if (kind === 'external-benchmark' || /swe[-\s]?bench|exercism|benchmark.*--suite/i.test(cmd)) {
     return { maxScore: 9.5, evidenceTier: 'external-benchmark', reason: 'External benchmark — independently reproducible' };
+  }
+
+  // Structural file checks cap at T4/7.0 REGARDLESS of declared kind. This runs before
+  // the runtime-exec/e2e branch so a builder cannot escape the cap by mislabeling a
+  // `readFileSync(...).includes(...)` one-liner as runtime-exec (the recurring inflation hole).
+  if (isStructuralFileCheck(cmd)) {
+    return { maxScore: 7.0, evidenceTier: 'file-existence', reason: 'Structural file check (readFileSync/existsSync) — proves code exists, not that it runs; capped at T4/7.0 regardless of declared kind' };
   }
 
   // Full E2E workflow or runtime-exec with meaningful output → T7 (9.0)
@@ -60,11 +83,6 @@ export function classifyOutcomeKind(outcome: Outcome): OutcomeKindClassification
   // use kind='runtime-exec', 'cli-smoke', or 'e2e-workflow' instead.
   if (kind === 'shell' && /npx\s+tsx\s+--test|npm\s+(?:run\s+)?test|jest|vitest|mocha/.test(cmd)) {
     return { maxScore: 7.0, evidenceTier: 'unit-test', reason: 'Unit/integration test suite — proves isolation, not production behavior; caps at T4/7.0' };
-  }
-
-  // Shell: structural file checks (readFileSync, existsSync, file contains string) → T4 (7.0)
-  if (kind === 'shell' && /readFileSync|readFile\b|existsSync|statSync/.test(cmd)) {
-    return { maxScore: 7.0, evidenceTier: 'file-existence', reason: 'Structural file check — proves code exists, not that it runs' };
   }
 
   // Default for unknown shell commands: treat as unit-test level (8.0) — benefit of the doubt
@@ -132,20 +150,19 @@ export function validateOutcomeQuality(
     }
   }
 
-  // T5+ shell outcomes: reject structural-only file checks (readFileSync pattern).
-  // Runtime verification requires cli-smoke, runtime-exec, or e2e-workflow kinds.
+  // T5+ outcomes: reject structural-only file checks (readFileSync pattern) REGARDLESS
+  // of declared kind. A builder mislabeling a `readFileSync(...).includes(...)` one-liner
+  // as runtime-exec/e2e does not make it runtime verification — detection is by command,
+  // not the trusted kind. Commands that also spawn/exec/run a suite are exempt.
   if (rank >= RANK.T5) {
-    const kind = outcome.kind ?? 'shell';
-    if (kind === 'shell') {
-      const cmd = (outcome as { command?: string }).command ?? '';
-      if (/readFileSync|readFile|existsSync/.test(cmd) && !/spawn|exec(?:Sync)?|(?:npm|npx)\s+(?:run\s+)?(?:test|build)|tsx\s+--test/.test(cmd)) {
-        errors.push({
-          outcomeId: outcome.id,
-          tier: outcome.tier,
-          reason: `T5+ shell outcome is a structural file check, not runtime execution.`,
-          remedy: `Change kind to 'cli-smoke', 'runtime-exec', or 'e2e-workflow'. Structural checks cap at T4/7.0.`,
-        });
-      }
+    const cmd = (outcome as { command?: string }).command ?? '';
+    if (isStructuralFileCheck(cmd)) {
+      errors.push({
+        outcomeId: outcome.id,
+        tier: outcome.tier,
+        reason: `T5+ outcome "${outcome.id}" (kind=${outcome.kind ?? 'shell'}) is a structural file check, not runtime execution.`,
+        remedy: `Make the command actually run the capability (spawn the CLI / run a suite) — relabeling the kind does not lift the cap. Structural checks cap at T4/7.0.`,
+      });
     }
   }
 
