@@ -18,12 +18,18 @@ import {
 // ── Test helpers ──────────────────────────────────────────────────────────────
 
 function makeOutcome(id: string, tier: Outcome['tier'], opts: Partial<Outcome> = {}): Outcome {
+  // A fixture standing in for a GENUINE runtime/e2e receipt declares real-user-path
+  // provenance — the scoring contract now structurally requires it for the 9.0 (T7) tier.
+  // Tests exercising the synthetic/undeclared path override input_source via opts.
+  const kind = (opts as { kind?: string }).kind;
+  const needsProvenance = kind === 'runtime-exec' || kind === 'e2e-workflow';
   return {
     id, tier,
     description: `outcome ${id}`,
     command: `echo ${id}`,
+    ...(needsProvenance ? { input_source: { type: 'real-user-path', description: `genuine ${id}` } } : {}),
     ...opts,
-  };
+  } as Outcome;
 }
 
 function makeDim(outcomes: Outcome[], opts: Partial<DimensionForScoring> = {}): DimensionForScoring {

@@ -26,6 +26,34 @@ export type OutcomeKind =
   | 'shell' | 'production-usage-fresh' | 'external-benchmark' | 'telemetry'
   | 'cli-smoke' | 'runtime-exec' | 'e2e-workflow';
 
+/**
+ * Externally-recognized benchmark suites whose results are independently
+ * reproducible. ONLY these unlock the 9.5 tier — an arbitrary command containing
+ * the word "benchmark" does not. Checked structurally via the registry, never by
+ * matching command text.
+ */
+export type RegisteredExternalSuite =
+  | 'swe-bench' | 'swe-bench-lite' | 'swe-bench-verified'
+  | 'exercism' | 'humaneval' | 'mbpp';
+
+/**
+ * Structured provenance for an outcome's evidence — the linchpin of honest scoring.
+ * This is a DECLARED, typed field (not inferred from the command), so high tiers can
+ * structurally require real evidence instead of trusting a regex over the command:
+ *   - real-user-path:     a genuine end-to-end run on the path a user exercises.
+ *                         Required for the 9.0 (T7) consensus tier.
+ *   - external-benchmark: a registered, independently-reproducible suite.
+ *                         Required (with a registered `suite`) for the 9.5 (T8) tier.
+ *   - synthetic-fixture:  agent-authored test data / scaffold. Honest but capped at 7.0.
+ * An ABSENT input_source is treated as undeclared and cannot reach 9.0+ (caps at 8.0):
+ * frontier scores must declare their provenance. Declaring real-user-path on a command
+ * that is actually a structural file check is still caught by isStructuralFileCheck.
+ */
+export type OutcomeInputSource =
+  | { type: 'real-user-path'; description: string }
+  | { type: 'external-benchmark'; suite: RegisteredExternalSuite }
+  | { type: 'synthetic-fixture'; fixture_id?: string };
+
 /** Common fields shared by all outcome kinds. */
 interface BaseOutcome {
   /** Stable id, used to key evidence files. Must be unique within a dim. */
@@ -44,6 +72,18 @@ interface BaseOutcome {
    * the callsite is reachable from production code.
    */
   required_callsite?: string;
+  /**
+   * Declared provenance of this outcome's evidence. T5+ tiers structurally consult
+   * this: 9.0 requires real-user-path, 9.5 requires a registered external-benchmark,
+   * synthetic/absent caps below the consensus tier. See OutcomeInputSource.
+   */
+  input_source?: OutcomeInputSource;
+  /**
+   * Minimum wall-clock duration (ms) for a passing receipt at T5+. An outcome that
+   * "passes" in a few ms did not exercise real behavior. Enforced in
+   * validateOutcomeQuality for every kind (not just runtime-exec). Default 0.
+   */
+  min_duration_ms?: number;
   /**
    * True when this outcome was written by the matrix-build scaffolder as a
    * placeholder (command is `exit 1`, callsite is a TODO). It declares the depth
@@ -136,8 +176,7 @@ export interface RuntimeExecOutcome extends BaseOutcome {
   expected_exit?: number;
   /** Regex pattern stdout must match. */
   expected_output_pattern?: string;
-  /** Minimum duration in ms — rejects instant file checks. Default 0 (no minimum). */
-  min_duration_ms?: number;
+  // min_duration_ms is inherited from BaseOutcome (now enforced for every T5+ kind).
 }
 
 /**

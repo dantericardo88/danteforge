@@ -10,6 +10,7 @@
 
 import type { CapabilityTier } from '../types/capability-test.js';
 import { applyOutcomeDefaults, type Outcome, type OutcomeEvidenceEntry } from '../types/outcome.js';
+import { isRegisteredExternalSuite } from './external-suite-registry.js';
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -53,24 +54,42 @@ export function isStructuralFileCheck(cmd: string): boolean {
 export function classifyOutcomeKind(outcome: Outcome): OutcomeKindClassification {
   const kind = outcome.kind ?? 'shell';
   const cmd = (outcome as { command?: string }).command ?? '';
+  const source = outcome.input_source;
 
-  // External benchmark outcomes unlock T8 (9.5) — independently reproducible.
-  // `swe[-\s]?bench` matches the real variants (swe-bench, swebench, "swe bench")
-  // without the unescaped-dot false-match (`swe.bench` would match `sweXbench`).
-  if (kind === 'external-benchmark' || /swe[-\s]?bench|exercism|benchmark.*--suite/i.test(cmd)) {
-    return { maxScore: 9.5, evidenceTier: 'external-benchmark', reason: 'External benchmark — independently reproducible' };
+  // 9.5 (T8) — ONLY a registered external suite, declared structurally. Command text
+  // alone never earns 9.5: an agent can print "benchmark --suite pass". Two structural
+  // paths: a declared input_source.external-benchmark with a registered suite, or the
+  // typed ExternalBenchmarkOutcome.benchmark field set to a registered suite (back-compat).
+  if (kind === 'external-benchmark' && source?.type === 'external-benchmark' && isRegisteredExternalSuite(source.suite)) {
+    return { maxScore: 9.5, evidenceTier: 'external-benchmark', reason: `Registered external benchmark (${source.suite}) — independently reproducible` };
+  }
+  const benchField = (outcome as { benchmark?: string }).benchmark;
+  if (kind === 'external-benchmark' && isRegisteredExternalSuite(benchField)) {
+    return { maxScore: 9.5, evidenceTier: 'external-benchmark', reason: `Registered external benchmark (${benchField}) — independently reproducible` };
   }
 
-  // Structural file checks cap at T4/7.0 REGARDLESS of declared kind. This runs before
-  // the runtime-exec/e2e branch so a builder cannot escape the cap by mislabeling a
-  // `readFileSync(...).includes(...)` one-liner as runtime-exec (the recurring inflation hole).
+  // Structural file checks cap at T4/7.0 REGARDLESS of declared kind. Runs before the
+  // runtime/e2e branch so a builder cannot escape the cap by mislabeling a
+  // `readFileSync(...).includes(...)` one-liner as runtime-exec (the recurring hole).
   if (isStructuralFileCheck(cmd)) {
     return { maxScore: 7.0, evidenceTier: 'file-existence', reason: 'Structural file check (readFileSync/existsSync) — proves code exists, not that it runs; capped at T4/7.0 regardless of declared kind' };
   }
 
-  // Full E2E workflow or runtime-exec with meaningful output → T7 (9.0)
+  // Explicitly synthetic evidence (agent-authored fixtures, scaffold stubs): honest about
+  // what it is, but cannot prove production behavior → caps at T4/7.0.
+  if (source?.type === 'synthetic-fixture') {
+    return { maxScore: 7.0, evidenceTier: 'unit-test', reason: 'Synthetic-fixture evidence — declared agent-authored; caps at T4/7.0' };
+  }
+
+  // The 9.0 (T7) consensus tier structurally requires a declared real-user-path. Runtime
+  // /e2e WITHOUT that declaration are honest runtime checks but cannot self-certify the
+  // frontier — they cap at T5/8.0 until provenance is declared. This is what stops
+  // mislabeled or undeclared evidence from reaching 9.0, the level where audits found inflation.
   if (kind === 'e2e-workflow' || kind === 'runtime-exec') {
-    return { maxScore: 9.0, evidenceTier: 'e2e', reason: 'Runtime execution with observable E2E output' };
+    if (source?.type === 'real-user-path') {
+      return { maxScore: 9.0, evidenceTier: 'e2e', reason: 'Runtime execution on a declared real-user-path — observable E2E output' };
+    }
+    return { maxScore: 8.0, evidenceTier: 'e2e', reason: 'Runtime execution without a declared real-user-path input_source — caps at T5/8.0 until provenance is declared' };
   }
 
   // CLI smoke: invokes the real CLI and checks stdout → T6 (8.5)
@@ -79,8 +98,6 @@ export function classifyOutcomeKind(outcome: Outcome): OutcomeKindClassification
   }
 
   // Shell command running a real test suite (npx tsx, npm test, jest, vitest) → T4 (7.0).
-  // These commands prove tests pass in isolation, not production behavior. To unlock T5+,
-  // use kind='runtime-exec', 'cli-smoke', or 'e2e-workflow' instead.
   if (kind === 'shell' && /npx\s+tsx\s+--test|npm\s+(?:run\s+)?test|jest|vitest|mocha/.test(cmd)) {
     return { maxScore: 7.0, evidenceTier: 'unit-test', reason: 'Unit/integration test suite — proves isolation, not production behavior; caps at T4/7.0' };
   }
@@ -147,6 +164,21 @@ export function validateOutcomeQuality(
           remedy: `Use a real test/benchmark command. Trivial commands cannot prove production behavior.`,
         });
       }
+    }
+  }
+
+  // T5+ duration floor (every kind, not just runtime-exec). A receipt that "passes" in
+  // a few ms did not exercise real behavior. Enforced against the declared min_duration_ms;
+  // T5+ outcomes that set one below 500ms are themselves suspect.
+  if (rank >= RANK.T5 && evidence) {
+    const minDur = (outcome as { min_duration_ms?: number }).min_duration_ms ?? 0;
+    if (minDur > 0 && (evidence.durationMs ?? 0) < minDur) {
+      errors.push({
+        outcomeId: outcome.id,
+        tier: outcome.tier,
+        reason: `T5+ outcome ran in ${evidence.durationMs ?? 0}ms (< declared min_duration_ms=${minDur}). Instant passes do not prove production behavior.`,
+        remedy: `Ensure the command actually exercises the capability, or lower the tier.`,
+      });
     }
   }
 

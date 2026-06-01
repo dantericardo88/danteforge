@@ -55,6 +55,10 @@ function buildOutcomeStub(dimId: string, label: string): Record<string, unknown>
     command: 'exit 1',
     expected_exit: 0,
     required_callsite: 'TODO-set-real-callsite',
+    // Declared provenance: a scaffold is agent-authored placeholder data. This caps it
+    // at 7.0 structurally, so a scaffold can never drift up to a frontier score even if
+    // its command is later flipped to exit 0 without real provenance being declared.
+    input_source: { type: 'synthetic-fixture', fixture_id: 'matrix-build-scaffold' },
     _scaffold: true,
   };
 }
