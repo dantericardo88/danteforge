@@ -2,6 +2,7 @@ import fs from 'node:fs/promises';
 import { readdirSync } from 'node:fs';
 import path from 'node:path';
 import { loadMatrix, type CompeteMatrix } from '../../core/compete-matrix.js';
+import { MARKET_DIMS_SCORE_CAP } from '../../core/compete-matrix-score.js';
 import { logger } from '../../core/logger.js';
 
 // ── Types ─────────────────────────────────────────────────────────────────────
@@ -28,7 +29,34 @@ export interface ScaffoldResult {
   stubGenerated: string[];
   alreadyHave: string[];
   skipped: string[];
+  /** Dims that received a failing T5 outcome stub (the 7→9 depth-path requirement). */
+  outcomeStubsGenerated: string[];
+  /** Dims that already declared outcomes (left untouched). */
+  outcomesAlreadyHave: string[];
   matrixPath: string;
+}
+
+/**
+ * Build a failing T5 outcome stub for a dimension. The command is `exit 1` and the
+ * callsite is a TODO placeholder, so the outcome is declared (the 7→9 depth path is
+ * now visible) but cannot pass until a human replaces it with a real smoke check
+ * that produces an observable artifact. `_scaffold: true` keeps it INFERRED so it can
+ * never contribute to a T7 receipt even if someone flips the command to `exit 0`.
+ */
+function buildOutcomeStub(dimId: string, label: string): Record<string, unknown> {
+  return {
+    id: `${dimId}-t5-scaffold`,
+    kind: 'shell',
+    tier: 'T5',
+    description:
+      `SCAFFOLD — replace with a real T5 smoke check that produces an observable ` +
+      `artifact proving "${label}" works in production. Until then this dimension is ` +
+      `capped at 7.0 (depth doctrine).`,
+    command: 'exit 1',
+    expected_exit: 0,
+    required_callsite: 'TODO-set-real-callsite',
+    _scaffold: true,
+  };
 }
 
 // ── Scaffold map: dim ID → shell command per project type ─────────────────────
@@ -120,6 +148,8 @@ export async function runEvidenceScaffold(options: EvidenceScaffoldOptions = {})
     stubGenerated: [],
     alreadyHave: [],
     skipped: [],
+    outcomeStubsGenerated: [],
+    outcomesAlreadyHave: [],
     matrixPath,
   };
 
@@ -161,6 +191,31 @@ export async function runEvidenceScaffold(options: EvidenceScaffoldOptions = {})
     }
   }
 
+  // Outcome scaffolding (the 7→9 depth-path requirement). capability_test gates
+  // ≤5→7; outcomes gate 7→9. A matrix that declares the first but not the second is
+  // incomplete by its own scoring rules — every dim is silently capped at 7.0 with no
+  // signal. Write a failing T5 stub per receipt-eligible dim so the depth path is
+  // visible and authorable. Market-cap dims are skipped: they are clamped to 5.0
+  // regardless, so an outcome there would be pointless.
+  for (const dim of matrix.dimensions) {
+    const d = dim as unknown as Record<string, unknown>;
+    const existing = d.outcomes;
+    if (Array.isArray(existing) && existing.length > 0) {
+      result.outcomesAlreadyHave.push(dim.id);
+      continue;
+    }
+    if (MARKET_DIMS_SCORE_CAP.has(dim.id)) {
+      result.skipped.push(dim.id);
+      continue;
+    }
+    if (!dryRun) {
+      d.outcomes = [buildOutcomeStub(dim.id, dim.label)];
+      matrixDirty = true;
+    }
+    result.outcomeStubsGenerated.push(dim.id);
+    logger.warn(`[scaffold] ${dim.id}: T5 outcome stub written — replace its \`exit 1\` command with a real smoke check to unlock 7→9`);
+  }
+
   if (!dryRun && matrixDirty) {
     await writeMatrix(matrix, matrixPath);
     logger.success('[evidence-scaffold] matrix.json updated.');
@@ -172,12 +227,20 @@ export async function runEvidenceScaffold(options: EvidenceScaffoldOptions = {})
   logger.success(`[evidence-scaffold] ${dryRun ? 'DRY RUN — ' : ''}Summary:`);
   logger.info(`  ✓ Already have capability_test: ${result.alreadyHave.length}`);
   logger.info(`  ✓ Auto-detected:               ${result.autoDetected.length}`);
-  logger.warn(`  ⚠ Stubs generated (edit them): ${result.stubGenerated.length}`);
-  if (result.skipped.length) logger.info(`  ⊘ Skipped:                    ${result.skipped.length}`);
+  logger.warn(`  ⚠ Cap-test stubs (edit them):  ${result.stubGenerated.length}`);
+  logger.info(`  ✓ Already declare outcomes:    ${result.outcomesAlreadyHave.length}`);
+  logger.warn(`  ⚠ Outcome stubs (edit them):   ${result.outcomeStubsGenerated.length}`);
+  if (result.skipped.length) logger.info(`  ⊘ Skipped (market-cap dims):   ${result.skipped.length}`);
   if (result.stubGenerated.length > 0) {
     logger.info('');
     logger.info('  Edit stub scripts at: .danteforge/capability-tests/');
     logger.info('  Then run: danteforge evidence-audit --run-tests');
+  }
+  if (result.outcomeStubsGenerated.length > 0) {
+    logger.info('');
+    logger.info(`  ${result.outcomeStubsGenerated.length} dim(s) now declare a T5 outcome stub (capped at 7.0 until real).`);
+    logger.info('  Replace each stub\'s `exit 1` command in matrix.json with a real smoke check,');
+    logger.info('  then run: danteforge validate <dim>  (twice, across sessions) to unlock 7→9.');
   }
 
   return result;

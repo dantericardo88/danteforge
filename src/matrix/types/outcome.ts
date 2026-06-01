@@ -44,6 +44,14 @@ interface BaseOutcome {
    * the callsite is reachable from production code.
    */
   required_callsite?: string;
+  /**
+   * True when this outcome was written by the matrix-build scaffolder as a
+   * placeholder (command is `exit 1`, callsite is a TODO). It declares the depth
+   * requirement so the 7→9 path is visible, but proves nothing until a human
+   * replaces it with a real check. Scaffold outcomes fail by construction and are
+   * treated as INFERRED — they can never contribute to a T7 receipt.
+   */
+  _scaffold?: boolean;
 }
 
 /** Default outcome kind: runs a shell command and checks exit code + output pattern. */

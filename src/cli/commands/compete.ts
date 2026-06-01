@@ -232,6 +232,21 @@ async function actionInit(options: CompeteOptions, cwd: string): Promise<Compete
 
   await saveFn(matrix, cwd);
 
+  // Make the matrix complete by its OWN scoring rules. The score ladder needs two
+  // things per dim: a capability_test (gates ≤5→7) and outcomes (gate 7→9). Init only
+  // produced dimensions; scaffolding both here means the depth path is visible and
+  // authorable from day one instead of silently inert (every dim stuck at 7.0 with no
+  // signal). Stubs fail by construction, so nothing is inflated. Skipped under a test
+  // save-seam so seeded init tests are unaffected. Best-effort — never blocks init.
+  if (!options._saveMatrix) {
+    try {
+      const { runEvidenceScaffold } = await import('./evidence-scaffold.js');
+      await runEvidenceScaffold({ cwd });
+    } catch (err) {
+      logger.warn(`Evidence/outcome scaffolding skipped: ${String(err).split('\n')[0]}`);
+    }
+  }
+
   logger.success(`Matrix initialized: ${matrix.dimensions.length} dimensions, overall ${formatScore(matrix.overallSelfScore)}/10`);
   // Show two-matrix split
   if (matrix.competitors_closed_source.length > 0 || matrix.competitors_oss.length > 0) {
