@@ -317,7 +317,7 @@ Examples:
 
 program
   .command('evidence-scaffold')
-  .description('Auto-populate capability_test blocks in matrix.json so scores above 5.0 are provable')
+  .description('Auto-populate capability_test blocks (≤5→7 gate) AND failing T5 outcome stubs (7→9 gate) in matrix.json so both score paths are provable and visible')
   .option('--dry-run', 'Print what would change without writing')
   .option('--project-type <type>', 'Project type: npm (default), go, python, custom')
   .option('--cwd <path>', 'Working directory (defaults to cwd)')
