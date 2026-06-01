@@ -117,6 +117,44 @@ program
     })();
   });
 
+program
+  .command('migrate-outcomes')
+  .description('Backfill structured input_source provenance onto legacy outcomes. Can only lower/hold scores, never raise them. Dry-run by default.')
+  .option('--write', 'Apply the synthetic-fixture / external-benchmark annotations (default: dry-run)')
+  .option('--json', 'Machine-readable JSON output')
+  .option('--cwd <path>', 'Project directory (defaults to cwd)')
+  .addHelpText('after', `
+Classifies every outcome lacking input_source:
+  • structural file check (readFileSync/existsSync)  → synthetic-fixture (caps 7.0)
+  • test suite (npx tsx --test, npm test, jest, …)    → synthetic-fixture (caps 7.0)
+  • registered external suite (swe-bench, exercism…)  → external-benchmark (keeps 9.5)
+  • genuine CLI/runtime/e2e invocation                → CANDIDATE (left undeclared, caps 8.0)
+
+real-user-path is NEVER auto-assigned — that is a human judgement, and auto-assigning it
+would silently raise scores. Candidates are reported for you to confirm by hand.
+
+Examples:
+  danteforge migrate-outcomes              Dry-run: show what would change
+  danteforge migrate-outcomes --write      Apply synthetic/external annotations
+  danteforge migrate-outcomes --json       Machine-readable result for CI
+`)
+  .action((opts) => {
+    void (async () => {
+      try {
+        const { runMigrateOutcomes } = await import('./commands/migrate-outcomes.js');
+        await runMigrateOutcomes({
+          write: opts.write as boolean | undefined,
+          json: opts.json as boolean | undefined,
+          cwd: opts.cwd as string | undefined,
+        });
+      } catch (err) {
+        const { formatAndLogError } = await import('../core/format-error.js');
+        formatAndLogError(err, 'migrate-outcomes');
+        process.exitCode = 1;
+      }
+    })();
+  });
+
 const hardenCmd = program
   .command('harden')
   .description('Deterministic hardening checks (Phase C of Capability Ladder). Catches orphan modules, claim/reality mismatches, hardcoded fallbacks. Cannot be gamed by LLM agents.')
