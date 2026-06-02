@@ -61,7 +61,7 @@ export interface ValidateDimResult {
   failingOutcomes: number;
   error?: string;
   /** Set when an integrity violation capped the score below what outcomes earned. */
-  integrityCap?: 'SHARED_RECEIPT' | 'SEAM_USAGE';
+  integrityCap?: 'SHARED_RECEIPT' | 'SEAM_USAGE' | 'CALLSITE_DECOUPLED';
 }
 
 export interface ValidateCliResult {
@@ -77,12 +77,16 @@ function applyIntegrityCaps(
   score: number,
   dimId: string,
   report: import('../../matrix/engines/outcome-integrity.js').IntegrityReport | null,
-): { cappedScore: number; integrityCap: 'SHARED_RECEIPT' | 'SEAM_USAGE' | undefined } {
+): { cappedScore: number; integrityCap: 'SHARED_RECEIPT' | 'SEAM_USAGE' | 'CALLSITE_DECOUPLED' | undefined } {
   if (!report) return { cappedScore: score, integrityCap: undefined };
-  if (report.sharedReceiptDims.includes(dimId) && score > 7.0)
-    return { cappedScore: 7.0, integrityCap: 'SHARED_RECEIPT' };
+  // Seam is the strictest cap (6.0) — check first so a dim that is both seamed and
+  // shared/decoupled gets the lower ceiling.
   if (report.seamedDims.includes(dimId) && score > 6.0)
     return { cappedScore: 6.0, integrityCap: 'SEAM_USAGE' };
+  if (report.sharedReceiptDims.includes(dimId) && score > 7.0)
+    return { cappedScore: 7.0, integrityCap: 'SHARED_RECEIPT' };
+  if (report.decoupledDims.includes(dimId) && score > 7.0)
+    return { cappedScore: 7.0, integrityCap: 'CALLSITE_DECOUPLED' };
   return { cappedScore: score, integrityCap: undefined };
 }
 

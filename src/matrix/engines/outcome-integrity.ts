@@ -17,7 +17,7 @@ import { extractPrimaryTestFiles } from '../../core/derived-score.js';
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
-export type ViolationKind = 'SHARED_RECEIPT' | 'MARKET_DIM' | 'SEAM_USAGE';
+export type ViolationKind = 'SHARED_RECEIPT' | 'MARKET_DIM' | 'SEAM_USAGE' | 'CALLSITE_DECOUPLED';
 export type Severity = 'ERROR' | 'WARN';
 
 export interface IntegrityViolation {
@@ -33,6 +33,8 @@ export interface IntegrityReport {
   sharedReceiptDims: string[];
   marketCapDims: string[];
   seamedDims: string[];
+  /** Dims whose high-tier outcome runs a test file that does NOT reference its required_callsite. */
+  decoupledDims: string[];
   clean: boolean;
 }
 
@@ -87,11 +89,43 @@ async function commandHasSeams(command: string, projectPath: string): Promise<bo
   return false;
 }
 
+// Callsite-coupling check: does the outcome's command actually exercise the file it
+// claims as required_callsite? The audit found outcomes running an unrelated test
+// (e.g. data-privacy-real-benchmark.test.ts) while declaring a different callsite — the
+// evidence is about the wrong code. We verify by reading the referenced test file(s) and
+// checking they mention the callsite module. Conservative by construction: only fires
+// when we successfully read a referenced test file and NONE mention the callsite. Product
+// runs (no test file) and unreadable files are NOT flagged.
+function callsiteToken(requiredCallsite: string): string {
+  const base = requiredCallsite.split(/[\\/]/).pop() ?? requiredCallsite;
+  return base.replace(/\.(?:ts|tsx|js|jsx|mjs|cjs)$/, '');
+}
+
+async function commandExercisesCallsite(
+  command: string, requiredCallsite: string, projectPath: string,
+): Promise<boolean> {
+  const token = callsiteToken(requiredCallsite);
+  if (!token || token.length < 3) return true; // too-generic to judge — don't false-flag
+  const testFiles = extractTestFiles(command);
+  if (testFiles.length === 0) return true; // product run / no test to inspect — not checkable here
+  let readAny = false;
+  for (const tf of testFiles) {
+    for (const candidate of [path.join(projectPath, 'tests', tf), path.join(projectPath, 'src', tf), path.join(projectPath, tf)]) {
+      try {
+        const content = await fs.readFile(candidate, 'utf8');
+        readAny = true;
+        if (content.includes(token)) return true;
+      } catch { /* try next candidate */ }
+    }
+  }
+  return !readAny; // read a test file but none referenced the callsite → decoupled
+}
+
 // ── Main ──────────────────────────────────────────────────────────────────────
 
 interface MinimalDim {
   id: string;
-  outcomes?: Array<{ id: string; tier: string; kind?: string; command?: string }>;
+  outcomes?: Array<{ id: string; tier: string; kind?: string; command?: string; required_callsite?: string }>;
 }
 
 export async function checkOutcomeIntegrity(
@@ -102,6 +136,7 @@ export async function checkOutcomeIntegrity(
   const sharedReceiptDimSet = new Set<string>();
   const marketCapDimSet = new Set<string>();
   const seamedDimSet = new Set<string>();
+  const decoupledDimSet = new Set<string>();
 
   // Map: testFile -> [(dimId, outcomeId), ...]  for T5+ outcomes
   const fileToOutcomes = new Map<string, Array<{ dimId: string; outcomeId: string }>>();
@@ -153,6 +188,28 @@ export async function checkOutcomeIntegrity(
       } catch {
         // seam check is best-effort
       }
+
+      // Callsite-coupling check: the high-tier outcome must exercise the file it claims.
+      if (outcome.required_callsite) {
+        try {
+          const exercises = await commandExercisesCallsite(command, outcome.required_callsite, projectPath);
+          if (!exercises) {
+            decoupledDimSet.add(dim.id);
+            violations.push({
+              kind: 'CALLSITE_DECOUPLED',
+              severity: 'ERROR',
+              dimId: dim.id,
+              outcomeId: outcome.id,
+              detail:
+                `Outcome "${outcome.id}" runs a test that does not reference its required_callsite ` +
+                `"${outcome.required_callsite}". The evidence exercises different code than the dim claims — ` +
+                `capped at 7.0 until the outcome runs the declared callsite.`,
+            });
+          }
+        } catch {
+          // coupling check is best-effort
+        }
+      }
     }
   }
 
@@ -185,6 +242,7 @@ export async function checkOutcomeIntegrity(
     sharedReceiptDims: [...sharedReceiptDimSet],
     marketCapDims: [...marketCapDimSet],
     seamedDims: [...seamedDimSet],
+    decoupledDims: [...decoupledDimSet],
     clean: violations.length === 0,
   };
 }
@@ -198,8 +256,17 @@ export function formatIntegrityReport(report: IntegrityReport): string {
     SHARED_RECEIPT: [],
     MARKET_DIM: [],
     SEAM_USAGE: [],
+    CALLSITE_DECOUPLED: [],
   };
   for (const v of report.violations) byKind[v.kind].push(v);
+
+  if (byKind.CALLSITE_DECOUPLED.length > 0) {
+    lines.push('');
+    lines.push('  CALLSITE_DECOUPLED (dims capped at 7.0):');
+    for (const v of byKind.CALLSITE_DECOUPLED) {
+      lines.push(`    [${v.dimId}] ${v.outcomeId}: ${v.detail}`);
+    }
+  }
 
   if (byKind.SHARED_RECEIPT.length > 0) {
     lines.push('');
