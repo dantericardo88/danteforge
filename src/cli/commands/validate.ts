@@ -31,6 +31,25 @@ import { applyLegacyReceiptCeiling, LEGACY_NO_RECEIPT_CEILING } from '../../matr
 import type { Outcome } from '../../matrix/types/outcome.js';
 import { SCORING_DOCTRINE_SHORT } from '../../core/scoring-doctrine.js';
 import { checkOutcomeIntegrity, formatIntegrityReport } from '../../matrix/engines/outcome-integrity.js';
+import { effectiveStatus, type FrontierSpec } from '../../core/frontier-spec.js';
+
+/** Score above this requires a frozen frontier_spec — i.e. a defined competitive-frontier target. */
+const FRONTIER_GATE_THRESHOLD = 8.0;
+
+/**
+ * The frontier gate makes "9.0 = the competitive frontier" binding, not just defined.
+ * 8.0 = real execution, capability proven, but NO competitive-frontier target declared.
+ * >8.0 requires a frozen (non-stale) frontier_spec naming the oss/closed-source competitor
+ * to match-or-beat. Without it, a dim cannot claim to be AT the frontier — only that its
+ * own capability runs. Caps at 8.0; the operator authors+freezes a spec to lift it.
+ */
+export function applyFrontierGate(score: number, dim: unknown): { score: number; capped: boolean } {
+  if (score <= FRONTIER_GATE_THRESHOLD) return { score, capped: false };
+  const spec = (dim as { frontier_spec?: FrontierSpec }).frontier_spec;
+  const status = spec ? effectiveStatus(spec) : 'none';
+  if (status === 'frozen' || status === 'validated') return { score, capped: false };
+  return { score: FRONTIER_GATE_THRESHOLD, capped: true };
+}
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -61,7 +80,7 @@ export interface ValidateDimResult {
   failingOutcomes: number;
   error?: string;
   /** Set when an integrity violation capped the score below what outcomes earned. */
-  integrityCap?: 'SHARED_RECEIPT' | 'SEAM_USAGE' | 'CALLSITE_DECOUPLED';
+  integrityCap?: 'SHARED_RECEIPT' | 'SEAM_USAGE' | 'CALLSITE_DECOUPLED' | 'NO_FRONTIER_SPEC';
 }
 
 export interface ValidateCliResult {
@@ -77,7 +96,7 @@ function applyIntegrityCaps(
   score: number,
   dimId: string,
   report: import('../../matrix/engines/outcome-integrity.js').IntegrityReport | null,
-): { cappedScore: number; integrityCap: 'SHARED_RECEIPT' | 'SEAM_USAGE' | 'CALLSITE_DECOUPLED' | undefined } {
+): { cappedScore: number; integrityCap: 'SHARED_RECEIPT' | 'SEAM_USAGE' | 'CALLSITE_DECOUPLED' | 'NO_FRONTIER_SPEC' | undefined } {
   if (!report) return { cappedScore: score, integrityCap: undefined };
   // Seam is the strictest cap (6.0) — check first so a dim that is both seamed and
   // shared/decoupled gets the lower ceiling.
@@ -200,7 +219,13 @@ export async function runValidateCli(options: ValidateCliOptions): Promise<Valid
     const failing = dimRunResult?.failing ?? 0;
 
     // Apply integrity caps: shared receipts → 7.0, seamed outcomes → 6.0
-    const { cappedScore, integrityCap } = applyIntegrityCaps(scoreAfter, dim.id, integrityReport);
+    const integrity = applyIntegrityCaps(scoreAfter, dim.id, integrityReport);
+    // Frontier gate: >8.0 requires a frozen frontier_spec (the competitive target). This
+    // makes "9.0 = the frontier" binding — a proven capability with no declared frontier
+    // target caps at 8.0.
+    const frontier = applyFrontierGate(integrity.cappedScore, dim);
+    const cappedScore = frontier.score;
+    const integrityCap = frontier.capped ? 'NO_FRONTIER_SPEC' as const : integrity.integrityCap;
 
     // Ceiling lifted = score was capped at legacy ceiling before, now above it
     const wasCapped = scoreBefore <= LEGACY_NO_RECEIPT_CEILING && !breakdown.usedLegacyFallback;
@@ -307,7 +332,9 @@ function printResults(results: ValidateDimResult[], allPassed: boolean): void {
     if (r.failingOutcomes > 0) {
       logger.info(chalk.dim(`         ${r.failingOutcomes} outcome(s) failed — run with --force-cold to re-execute`));
     }
-    if (r.integrityCap) {
+    if (r.integrityCap === 'NO_FRONTIER_SPEC') {
+      logger.info(chalk.yellow(`         Capped at ${r.scoreAfter.toFixed(1)} — no frozen frontier_spec. To exceed 8.0, declare the competitive target: danteforge frontier-spec init ${r.dimensionId} → check → freeze`));
+    } else if (r.integrityCap) {
       logger.info(chalk.yellow(`         Score capped at ${r.scoreAfter.toFixed(1)} by ${r.integrityCap} integrity violation`));
     }
     if (r.ceilingLifted) {

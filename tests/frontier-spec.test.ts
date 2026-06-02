@@ -4,6 +4,7 @@ import {
   scaffoldFrontierSpec, checkFrontierSpec, computeSpecHash, effectiveStatus, type FrontierSpec,
 } from '../src/core/frontier-spec.js';
 import { runFrontierSpec } from '../src/cli/commands/frontier-spec.js';
+import { applyFrontierGate } from '../src/cli/commands/validate.js';
 import type { CompeteMatrix } from '../src/core/compete-matrix.js';
 
 function goodSpec(): FrontierSpec {
@@ -82,6 +83,36 @@ describe('freeze hash + stale detection', () => {
 function matrixWith(dim: Record<string, unknown>): CompeteMatrix {
   return { competitors_closed_source: ['Cursor'], competitors_oss: ['Cline'], dimensions: [{ id: 'agent_ux', ...dim }] } as unknown as CompeteMatrix;
 }
+
+describe('applyFrontierGate — 9.0 = frontier is now BINDING', () => {
+  test('a score <= 8.0 is never gated (no frontier target needed for "proven but not frontier")', () => {
+    assert.deepEqual(applyFrontierGate(8.0, {}), { score: 8.0, capped: false });
+    assert.deepEqual(applyFrontierGate(7.0, {}), { score: 7.0, capped: false });
+  });
+
+  test('a 9.0 with NO frontier_spec is capped to 8.0', () => {
+    const r = applyFrontierGate(9.0, {});
+    assert.equal(r.score, 8.0);
+    assert.equal(r.capped, true);
+  });
+
+  test('a 9.0 WITH a frozen (non-stale) frontier_spec is allowed through', () => {
+    const spec = { ...goodSpec(), status: 'frozen' as const };
+    spec.frozen_hash = computeSpecHash(spec);
+    const r = applyFrontierGate(9.0, { frontier_spec: spec });
+    assert.equal(r.score, 9.0);
+    assert.equal(r.capped, false);
+  });
+
+  test('a 9.0 with a STALE (edited-after-freeze) spec is capped to 8.0', () => {
+    const spec = { ...goodSpec(), status: 'frozen' as const };
+    spec.frozen_hash = computeSpecHash(spec);
+    spec.real_user_path.run_command = 'node dist/index.js forge --project fixtures/MOVED'; // goalpost moved
+    const r = applyFrontierGate(9.0, { frontier_spec: spec });
+    assert.equal(r.score, 8.0, 'stale spec cannot certify the frontier');
+    assert.equal(r.capped, true);
+  });
+});
 
 describe('runFrontierSpec command flow', () => {
   test('init writes a draft; freeze refuses while TODOs remain; freeze succeeds once valid', async () => {
