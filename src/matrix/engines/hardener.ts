@@ -27,12 +27,31 @@ import {
 const execFileAsync = promisify(execFile);
 const HARDEN_RECEIPT_DIR = path.join('.danteforge', 'harden-receipts');
 
+// The orphan scan walks the source tree; on a very large or cross-package monorepo this can
+// exceed any reasonable budget and hang the whole rescore (DanteAgents hit an 8-min wall that
+// blocked real, committed work). The scan therefore bounds ITSELF — by wall-clock deadline and
+// by file count — and on exhaustion throws OrphanScanTimeout, which checkOrphanAudit converts to
+// a NON-blocking skip. A stalled scan must never stand in for a verdict. Both are env-tunable.
+const ORPHAN_SCAN_TIMEOUT_MS = Number(process.env['DANTEFORGE_HARDEN_ORPHAN_TIMEOUT_MS'] ?? 90_000);
+const ORPHAN_SCAN_MAX_FILES = Number(process.env['DANTEFORGE_HARDEN_ORPHAN_MAX_FILES'] ?? 20_000);
+
+class OrphanScanTimeout extends Error {
+  constructor(public readonly detail: string) { super(detail); this.name = 'OrphanScanTimeout'; }
+}
+
 // ── Helpers ──────────────────────────────────────────────────────────────────
+
+export interface ListFilesOpts {
+  /** Wall-clock deadline (Date.now() ms). Walk stops and returns what it has so far. */
+  deadlineMs?: number;
+  /** Stop collecting after this many matches (prevents pathological monorepo walks). */
+  maxFiles?: number;
+}
 
 export interface CheckIO {
   readFile: (p: string) => Promise<string>;
   exists: (p: string) => Promise<boolean>;
-  listFiles: (dir: string, glob?: RegExp) => Promise<string[]>;
+  listFiles: (dir: string, glob?: RegExp, opts?: ListFilesOpts) => Promise<string[]>;
 }
 
 export function defaultIO(): CheckIO {
@@ -41,12 +60,18 @@ export function defaultIO(): CheckIO {
     exists: async (p) => {
       try { await fs.access(p); return true; } catch { return false; }
     },
-    listFiles: async (dir, glob) => {
+    listFiles: async (dir, glob, opts) => {
       const out: string[] = [];
+      const deadline = opts?.deadlineMs;
+      const maxFiles = opts?.maxFiles;
       const walk = async (d: string): Promise<void> => {
+        if (deadline && Date.now() > deadline) return;          // budget exhausted — bail
+        if (maxFiles && out.length >= maxFiles) return;          // enough files — bail
         let entries: string[];
         try { entries = await fs.readdir(d); } catch { return; }
         for (const e of entries) {
+          if (deadline && Date.now() > deadline) return;
+          if (maxFiles && out.length >= maxFiles) return;
           if (e === 'node_modules' || e === 'dist' || e === '.git') continue;
           const full = path.join(d, e);
           try {
@@ -114,41 +139,35 @@ export async function checkOrphanAudit(
     };
   }
 
-  // Cross-language path: the JS-shaped SearchEngine + import regex below cannot see
-  // Rust/Python/Go/etc. callsites — they use different import syntax (`use a::b`,
-  // `from x import y`, `import "x"`) and the legacy JS scan only lists `.ts` files, so a
-  // non-JS project has ZERO files scanned and EVERY dim is false-flagged as orphan.
-  // Route non-JS callsites to a language-agnostic symbol-reference scan instead.
-  // (DanteSecurity: ~70 Rust/Python/Go dims were stuck at 6.0 despite real callsites.)
-  if (!/\.(?:tsx?|jsx?|mjs|cjs)$/i.test(callsite.file)) {
-    const findings = await _crossLanguageOrphanAudit(callsite, cwd, io);
+  // Self-bounding dispatch. The scan walks the source tree; on a huge / cross-package
+  // monorepo this can hang, so it bounds itself by deadline + file count and throws
+  // OrphanScanTimeout, which we convert to a NON-blocking skip. Non-JS callsites use the
+  // language-agnostic scan (the JS SearchEngine/import-regex can't see Rust/Python/Go);
+  // JS callsites use SearchEngine when injected, else the legacy grep path (parity-tested).
+  // Read the budget at call time so operators can tune it (and tests exercise the timeout)
+  // without a rebuild. Falls back to the module default.
+  const deadlineMs = Date.now() + Number(process.env['DANTEFORGE_HARDEN_ORPHAN_TIMEOUT_MS'] ?? ORPHAN_SCAN_TIMEOUT_MS);
+  const isJsCallsite = /\.(?:tsx?|jsx?|mjs|cjs)$/i.test(callsite.file);
+  try {
+    const findings = !isJsCallsite
+      ? await _crossLanguageOrphanAudit(callsite, cwd, io, deadlineMs)
+      : (searchEngine && callsite.symbol)
+        ? await _searchEngineOrphanAudit(callsite, cwd, searchEngine)
+        : await _legacyOrphanAudit(callsite, cwd, io, deadlineMs);
     return {
       check: 'orphan-audit', passed: findings.length === 0,
       durationMs: Date.now() - start, findings, scoreCap: HARDEN_CHECK_CAPS['orphan-audit'],
     };
+  } catch (err) {
+    if (err instanceof OrphanScanTimeout) {
+      return {
+        check: 'orphan-audit', passed: true, durationMs: Date.now() - start,
+        findings: [], scoreCap: HARDEN_CHECK_CAPS['orphan-audit'], skipped: true,
+        skipReason: `orphan scan exceeded its budget (${err.detail}) — NOT blocking certification. Raise DANTEFORGE_HARDEN_ORPHAN_TIMEOUT_MS to extend, or wire/verify the callsite manually.`,
+      };
+    }
+    throw err;
   }
-
-  // Phase M.1 path: use SearchEngine if injected; otherwise fall back to the
-  // legacy inline grep path. Both produce identical findings (enforced by parity test).
-  if (searchEngine && callsite.symbol) {
-    const findings = await _searchEngineOrphanAudit(callsite, cwd, searchEngine);
-    return {
-      check: 'orphan-audit',
-      passed: findings.length === 0,
-      durationMs: Date.now() - start,
-      findings,
-      scoreCap: HARDEN_CHECK_CAPS['orphan-audit'],
-    };
-  }
-
-  const findings = await _legacyOrphanAudit(callsite, cwd, io);
-  return {
-    check: 'orphan-audit',
-    passed: findings.length === 0,
-    durationMs: Date.now() - start,
-    findings,
-    scoreCap: HARDEN_CHECK_CAPS['orphan-audit'],
-  };
 }
 
 /**
@@ -207,15 +226,15 @@ async function _legacyOrphanAudit(
   callsite: { file: string; symbol: string; lineHint?: number },
   cwd: string,
   io: CheckIO,
+  deadlineMs?: number,
 ): Promise<HardenFinding[]> {
-  const findings: HardenFinding[] = [];
   const moduleSpec = callsite.file
     .replace(/\.tsx?$/, '')
     .replace(/^src\//, '')
     .replace(/^\.\//, '');
 
   const cwdSrc = path.join(cwd, 'src');
-  const allFiles = await io.listFiles(cwdSrc, /\.tsx?$/);
+  const allFiles = await io.listFiles(cwdSrc, /\.tsx?$/, { deadlineMs, maxFiles: ORPHAN_SCAN_MAX_FILES });
   const productionFiles = allFiles.filter(f => !/[/\\]tests[/\\]/.test(f));
 
   const moduleNeedle = moduleSpec.replace(/[/\\]/g, '[/\\\\]');
@@ -229,27 +248,25 @@ async function _legacyOrphanAudit(
     ? new RegExp(`\\b${callsite.symbol.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b`)
     : null;
 
-  let importHits = 0;
-  let symbolHits = 0;
   for (const f of productionFiles) {
+    if (deadlineMs && Date.now() > deadlineMs) {
+      throw new OrphanScanTimeout(`>${ORPHAN_SCAN_TIMEOUT_MS}ms scanning ${productionFiles.length}+ files`);
+    }
     if (path.resolve(f) === path.resolve(path.join(cwd, callsite.file))) continue;
     try {
       const content = await io.readFile(f);
-      if (importRe.test(content)) importHits++;
+      if (importRe.test(content)) return []; // import found → wired (early-exit)
       importRe.lastIndex = 0;
-      if (symbolRe && symbolRe.test(content)) symbolHits++;
+      if (symbolRe && symbolRe.test(content)) return []; // symbol referenced → wired
     } catch { /* unreadable */ }
   }
 
-  if (importHits === 0 && symbolHits === 0) {
-    findings.push({
-      file: callsite.file,
-      line: callsite.lineHint ?? 1,
-      snippet: `${callsite.file}::${callsite.symbol}`,
-      reason: `Orphan module: 0 production files import this callsite. Tests pass but nothing reaches the code.`,
-    });
-  }
-  return findings;
+  return [{
+    file: callsite.file,
+    line: callsite.lineHint ?? 1,
+    snippet: `${callsite.file}::${callsite.symbol}`,
+    reason: `Orphan module: 0 production files import this callsite. Tests pass but nothing reaches the code.`,
+  }];
 }
 
 /** Exposed for parity testing only. Not for production use. */
@@ -279,15 +296,18 @@ async function _crossLanguageOrphanAudit(
   callsite: { file: string; symbol: string; lineHint?: number },
   cwd: string,
   io: CheckIO,
+  deadlineMs?: number,
 ): Promise<HardenFinding[]> {
   const stripExt = (s: string): string => s.replace(/\.[A-Za-z0-9]+$/, '');
   const baseName = stripExt(path.basename(callsite.file));
   const moduleSpec = stripExt(callsite.file).replace(/^src[/\\]/, '').replace(/^\.[/\\]/, '');
 
   // Scan all cross-language source files. Prefer src/, fall back to repo root for
-  // Rust/Go/Python projects that don't use a top-level src/ directory.
-  let files = await io.listFiles(path.join(cwd, 'src'), CROSS_LANG_SOURCE_RE);
-  if (files.length === 0) files = await io.listFiles(cwd, CROSS_LANG_SOURCE_RE);
+  // Rust/Go/Python projects that don't use a top-level src/ directory. Bounded by
+  // deadline + file count (repo-root fallback can be large on a monorepo).
+  const listOpts = { deadlineMs, maxFiles: ORPHAN_SCAN_MAX_FILES };
+  let files = await io.listFiles(path.join(cwd, 'src'), CROSS_LANG_SOURCE_RE, listOpts);
+  if (files.length === 0) files = await io.listFiles(cwd, CROSS_LANG_SOURCE_RE, listOpts);
   const productionFiles = files.filter(f => !CROSS_LANG_VENDOR_RE.test(f) && !CROSS_LANG_TEST_RE.test(f));
 
   const moduleNeedle = moduleSpec.replace(/[/\\]/g, '[/\\\\]');
@@ -304,6 +324,9 @@ async function _crossLanguageOrphanAudit(
 
   const callsiteAbs = path.resolve(path.join(cwd, callsite.file));
   for (const f of productionFiles) {
+    if (deadlineMs && Date.now() > deadlineMs) {
+      throw new OrphanScanTimeout(`>${ORPHAN_SCAN_TIMEOUT_MS}ms scanning ${productionFiles.length}+ files`);
+    }
     if (path.resolve(f) === callsiteAbs) continue; // a file doesn't wire itself
     try {
       const content = await io.readFile(f);

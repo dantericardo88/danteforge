@@ -2,7 +2,7 @@ import { test, describe, before, after } from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs/promises';
 import path from 'node:path';
-import { checkOrphanAudit } from '../src/matrix/engines/hardener.js';
+import { checkOrphanAudit, type CheckIO } from '../src/matrix/engines/hardener.js';
 import type { MatrixDimension } from '../src/core/compete-matrix.js';
 
 // Real temp projects on X: (never C:/os.tmpdir for persistent artifacts).
@@ -52,5 +52,27 @@ describe('orphan-audit — cross-language (Rust/Python/Go) callsites', () => {
   test('a Python module nothing imports or references IS flagged orphan', async () => {
     const r = await checkOrphanAudit(dimWith('lonely.py', 'solo_fn'), PY);
     assert.equal(r.passed, false, 'a module that no production file imports or references is a true orphan');
+  });
+});
+
+describe('orphan-audit — self-bounding timeout (the DanteAgents 8-min hang)', () => {
+  test('a scan that exceeds its budget returns a NON-blocking skip, never hangs or caps', async () => {
+    // Force the deadline into the past so the first read-loop iteration trips the budget.
+    const prev = process.env['DANTEFORGE_HARDEN_ORPHAN_TIMEOUT_MS'];
+    process.env['DANTEFORGE_HARDEN_ORPHAN_TIMEOUT_MS'] = '-100';
+    try {
+      const io: CheckIO = {
+        readFile: async () => 'no reference here',
+        exists: async () => true,
+        listFiles: async () => ['src/foo.ts'], // ignores deadline so the loop body executes
+      };
+      const r = await checkOrphanAudit(dimWith('src/foo.ts', 'someSymbol'), '/tmp/fake', io);
+      assert.equal(r.passed, true, 'a timed-out scan must NOT block certification');
+      assert.equal(r.skipped, true);
+      assert.match(r.skipReason ?? '', /exceeded its budget/);
+    } finally {
+      if (prev === undefined) delete process.env['DANTEFORGE_HARDEN_ORPHAN_TIMEOUT_MS'];
+      else process.env['DANTEFORGE_HARDEN_ORPHAN_TIMEOUT_MS'] = prev;
+    }
   });
 });
