@@ -49,6 +49,9 @@ export async function runCertifyGate(
     logger.error('CERTIFY BLOCKED: No verify receipt found.');
     logger.info('Run `npm run verify` (or `danteforge verify`) first to certify this sprint.');
     logger.info(`Then re-run: danteforge compete --rescore "${rescore}"`);
+    logger.info('TIP: one green verify certifies EVERY dim you rescore before your next commit —');
+    logger.info('     run verify ONCE, then rescore all ready dims back-to-back. The certify gate');
+    logger.info('     reads the cached receipt; it does NOT re-run verify per dim.');
     logger.info(`Override: danteforge compete --rescore "${rescore}" --skip-verify`);
     return { receipt: null, blocked: true, result: { action: 'rescore', matrixPath } };
   }

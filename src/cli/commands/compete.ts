@@ -540,6 +540,7 @@ async function actionRescore(options: CompeteOptions, cwd: string, rescore: stri
   const delta = score - before;
   const deltaStr = delta >= 0 ? `+${delta.toFixed(1)}` : delta.toFixed(1);
   logger.success(`${dim.label}: ${formatScore(before)} → ${formatScore(score)} (${deltaStr})`);
+  if (receipt) logger.info('(certified against the existing verify receipt — rescore your other ready dims now; re-run verify only after a new commit)');
   logger.info(`Overall: ${formatScore(updatedMatrix.overallSelfScore)}/10`);
   if (commit) logger.info(`Commit: ${commit}`);
   if (dim.status === 'closed') logger.success(`✓ Gap closed on "${dim.label}"!`);
