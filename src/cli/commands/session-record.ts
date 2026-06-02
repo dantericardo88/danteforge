@@ -115,7 +115,10 @@ export async function runSessionRecord(options: SessionRecordOptions): Promise<S
   // Genuine real-user-path exercise — emit the outcome.
   const outcome: Record<string, unknown> = {
     id: `${options.dimId}-rup-${beforeEpoch}`,
-    kind: 'e2e-workflow',
+    // runtime-exec consumes `command` (e2e-workflow expects steps[] — a mismatch would
+    // make validate no-op the receipt). runtime-exec + real-user-path + non-test-runner
+    // reaches 9.0 via classifyOutcomeKind.
+    kind: 'runtime-exec',
     tier: 'T7',
     description: options.description ?? `Real-user-path: \`${options.run}\` produces ${options.artifact}`,
     command: options.run,

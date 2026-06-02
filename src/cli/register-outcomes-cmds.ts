@@ -117,6 +117,62 @@ program
     })();
   });
 
+const frontierCmd = program
+  .command('frontier-spec')
+  .description('Define + track the per-dim "what would 9.0 mean?" contract (frontier_spec): the real-user-path run, observable artifact, and competitor to match. Frozen before implementation so the target cannot move.');
+
+frontierCmd
+  .command('init <dimId>')
+  .description('Scaffold a draft frontier_spec from what the dimension already knows')
+  .option('--write', 'Write the draft to matrix.json (default: dry-run)')
+  .option('--json', 'Machine-readable output')
+  .option('--cwd <path>', 'Project directory')
+  .action((dimId: string, opts) => runFrontierAction('init', dimId, opts));
+
+frontierCmd
+  .command('check <dimId>')
+  .description('Run the honesty guardrails against the dim\'s frontier_spec')
+  .option('--json', 'Machine-readable output')
+  .option('--cwd <path>', 'Project directory')
+  .action((dimId: string, opts) => runFrontierAction('check', dimId, opts));
+
+frontierCmd
+  .command('freeze <dimId>')
+  .description('Lock the frontier_spec before implementation (check must pass; records hash + timestamp)')
+  .option('--write', 'Apply the freeze (default: dry-run)')
+  .option('--json', 'Machine-readable output')
+  .option('--cwd <path>', 'Project directory')
+  .action((dimId: string, opts) => runFrontierAction('freeze', dimId, opts));
+
+frontierCmd
+  .command('status [dimId]')
+  .description('Show where each dim stands vs its frontier_spec (none / draft / frozen / stale / validated)')
+  .option('--all', 'All dimensions (default when no dimId given)')
+  .option('--json', 'Machine-readable output')
+  .option('--cwd <path>', 'Project directory')
+  .action((dimId: string | undefined, opts) => runFrontierAction('status', dimId, opts));
+
+function runFrontierAction(
+  action: 'init' | 'check' | 'freeze' | 'status',
+  dimId: string | undefined,
+  opts: { all?: boolean; write?: boolean; json?: boolean; cwd?: string },
+): void {
+  void (async () => {
+    try {
+      const { runFrontierSpec } = await import('./commands/frontier-spec.js');
+      const r = await runFrontierSpec({
+        action, dimId,
+        all: opts.all, write: opts.write, json: opts.json, cwd: opts.cwd,
+      });
+      if (!r.ok) process.exitCode = 1;
+    } catch (err) {
+      const { formatAndLogError } = await import('../core/format-error.js');
+      formatAndLogError(err, `frontier-spec ${action}`);
+      process.exitCode = 1;
+    }
+  })();
+}
+
 program
   .command('session-record <dimId>')
   .description('Produce real-user-path evidence by running the REAL product on a realistic input. The honest path to 9.0 — captures a genuine product run + observable artifact and emits a real-user-path outcome.')

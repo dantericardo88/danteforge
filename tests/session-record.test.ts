@@ -32,7 +32,7 @@ describe('session-record — honest real-user-path producer', () => {
     assert.equal(r.accepted, true);
     assert.equal(r.wrote, true);
     assert.equal(r.outcome?.tier, 'T7');
-    assert.equal(r.outcome?.kind, 'e2e-workflow');
+    assert.equal(r.outcome?.kind, 'runtime-exec'); // runtime-exec consumes `command`; e2e-workflow needs steps[]
     assert.deepEqual(r.outcome?.input_source, { type: 'real-user-path', description: r.outcome?.input_source && (r.outcome.input_source as { description: string }).description });
     assert.equal((r.outcome?.input_source as { type: string }).type, 'real-user-path');
     assert.equal(r.outcome?.required_callsite, 'src/core/forge-engine.ts');
