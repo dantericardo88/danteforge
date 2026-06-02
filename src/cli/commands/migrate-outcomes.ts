@@ -145,9 +145,10 @@ function printResult(r: MigrateOutcomesResult, write: boolean): void {
   if (r.realUserPathCandidates.length > 0) {
     logger.info('');
     logger.info('  These look like genuine CLI/runtime outcomes but cannot be auto-certified as');
-    logger.info('  real-user-path (that would silently raise scores). Review each and, if a real');
-    logger.info('  user truly exercises that path, set input_source: { type: "real-user-path", description }');
-    logger.info('  manually to unlock 9.0:');
+    logger.info('  real-user-path (that would silently raise scores). To EARN 9.0 on one of these,');
+    logger.info('  record a real product run that produces an observable artifact:');
+    logger.info('    danteforge session-record <dim> --run "<real product cmd>" --callsite <file> --artifact <path> --write');
+    logger.info('  then: danteforge validate <dim> (twice, across sessions). Candidates:');
     for (const id of r.realUserPathCandidates.slice(0, 25)) logger.info(`    • ${id}`);
     if (r.realUserPathCandidates.length > 25) logger.info(`    … and ${r.realUserPathCandidates.length - 25} more`);
   }

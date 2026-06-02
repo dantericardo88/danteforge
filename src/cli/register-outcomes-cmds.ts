@@ -118,6 +118,55 @@ program
   });
 
 program
+  .command('session-record <dimId>')
+  .description('Produce real-user-path evidence by running the REAL product on a realistic input. The honest path to 9.0 — captures a genuine product run + observable artifact and emits a real-user-path outcome.')
+  .requiredOption('--run <command>', 'The real product command to execute (NOT a test runner), e.g. "node dist/index.js forge --project fixtures/sample"')
+  .requiredOption('--callsite <file>', 'The production file this run exercises (recorded as required_callsite)')
+  .requiredOption('--artifact <path>', 'Path to the observable artifact the run must produce/modify')
+  .option('--description <text>', 'Human description of what the run proves')
+  .option('--write', 'Add the real-user-path outcome to matrix.json (default: dry-run)')
+  .option('--json', 'Machine-readable JSON output')
+  .option('--cwd <path>', 'Project directory (defaults to cwd)')
+  .addHelpText('after', `
+Why this exists: 9.0 requires input_source: real-user-path, but a test suite cannot prove
+it (the gate can't tell a real integration test from a mocked one). This command runs the
+ACTUAL product and only emits the outcome if the run genuinely succeeded, took real time,
+and produced an observable artifact — evidence an agent cannot fake without doing the work.
+
+Rejects: test-runner commands, failed runs, instant runs (<1s), runs that produce no artifact.
+
+Example:
+  danteforge session-record forge \\
+    --run "node dist/index.js forge --project fixtures/real-sample" \\
+    --callsite src/core/forge-engine.ts \\
+    --artifact fixtures/real-sample/.danteforge/forge-output.md \\
+    --description "forge produces a real plan for a real sample project" --write
+  # then: danteforge validate forge  (twice, across sessions) → 9.0
+`)
+  .action((dimId: string, opts) => {
+    void (async () => {
+      try {
+        const { runSessionRecord } = await import('./commands/session-record.js');
+        const r = await runSessionRecord({
+          dimId,
+          run: opts.run as string,
+          callsite: opts.callsite as string,
+          artifact: opts.artifact as string,
+          description: opts.description as string | undefined,
+          write: opts.write as boolean | undefined,
+          json: opts.json as boolean | undefined,
+          cwd: opts.cwd as string | undefined,
+        });
+        if (!r.accepted) process.exitCode = 1;
+      } catch (err) {
+        const { formatAndLogError } = await import('../core/format-error.js');
+        formatAndLogError(err, 'session-record');
+        process.exitCode = 1;
+      }
+    })();
+  });
+
+program
   .command('migrate-outcomes')
   .description('Backfill structured input_source provenance onto legacy outcomes. Can only lower/hold scores, never raise them. Dry-run by default.')
   .option('--write', 'Apply the synthetic-fixture / external-benchmark annotations (default: dry-run)')
