@@ -46,6 +46,19 @@ export function isStructuralFileCheck(cmd: string): boolean {
   return STRUCTURAL_READ_RE.test(cmd) && !REAL_EXECUTION_RE.test(cmd);
 }
 
+// A test-runner invocation (jest/vitest/node --test/npm test). These prove tests pass
+// in isolation — and the automated gate cannot tell a real integration test from a
+// mock-based one without reading the test file. So a test-runner command, however it is
+// labeled, can never reach the 9.0 "unambiguous real execution" tier: that tier requires
+// spawning the actual PRODUCT entrypoint (e.g. `node dist/index.js <cmd>`) on a realistic
+// input. This is also the concrete, honest path to 9.0 for a pre-release tool — run the
+// real product, do not require human users.
+const TEST_RUNNER_RE = /npx\s+tsx\s+--test|node\s+--test|npm\s+(?:run\s+)?test|jest|vitest|mocha/;
+
+export function isTestSuiteCommand(cmd: string): boolean {
+  return TEST_RUNNER_RE.test(cmd);
+}
+
 // ── Outcome kind classifier ───────────────────────────────────────────────────
 // Maps an outcome to the highest score tier its evidence can support.
 // This is separate from whether the outcome passes — it caps the ceiling
@@ -86,8 +99,16 @@ export function classifyOutcomeKind(outcome: Outcome): OutcomeKindClassification
   // frontier — they cap at T5/8.0 until provenance is declared. This is what stops
   // mislabeled or undeclared evidence from reaching 9.0, the level where audits found inflation.
   if (kind === 'e2e-workflow' || kind === 'runtime-exec') {
-    if (source?.type === 'real-user-path') {
-      return { maxScore: 9.0, evidenceTier: 'e2e', reason: 'Runtime execution on a declared real-user-path — observable E2E output' };
+    // 9.0 requires BOTH a declared real-user-path AND that the command actually runs the
+    // product (not a test runner). A real integration test is honest evidence but the gate
+    // cannot verify it isn't mocked, so it caps at T5/8.0; running the real product is the
+    // unambiguous path to 9.0. real-user-path means "the production path, executed on a
+    // realistic input" — achievable by a pre-release tool; it does NOT require human users.
+    if (source?.type === 'real-user-path' && !isTestSuiteCommand(cmd)) {
+      return { maxScore: 9.0, evidenceTier: 'e2e', reason: 'Real-user-path execution of the product on a realistic input — observable E2E output' };
+    }
+    if (isTestSuiteCommand(cmd)) {
+      return { maxScore: 8.0, evidenceTier: 'e2e', reason: 'A test-runner command (not a product run) caps at T5/8.0 even when labeled real-user-path — run the real product to reach 9.0' };
     }
     return { maxScore: 8.0, evidenceTier: 'e2e', reason: 'Runtime execution without a declared real-user-path input_source — caps at T5/8.0 until provenance is declared' };
   }
@@ -98,7 +119,7 @@ export function classifyOutcomeKind(outcome: Outcome): OutcomeKindClassification
   }
 
   // Shell command running a real test suite (npx tsx, npm test, jest, vitest) → T4 (7.0).
-  if (kind === 'shell' && /npx\s+tsx\s+--test|npm\s+(?:run\s+)?test|jest|vitest|mocha/.test(cmd)) {
+  if (kind === 'shell' && isTestSuiteCommand(cmd)) {
     return { maxScore: 7.0, evidenceTier: 'unit-test', reason: 'Unit/integration test suite — proves isolation, not production behavior; caps at T4/7.0' };
   }
 

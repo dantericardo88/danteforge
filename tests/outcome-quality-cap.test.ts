@@ -154,6 +154,18 @@ describe('classifyOutcomeKind — input_source provenance gates the frontier', (
     assert.notEqual(classifyOutcomeKind(o).maxScore, 9.5);
   });
 
+  it('a test-runner relabeled runtime-exec + real-user-path STILL caps at 8.0 (not 9.0)', () => {
+    // The gate cannot tell a real integration test from a mocked one, so a test runner
+    // never reaches the 9.0 "unambiguous real execution" tier — even fully declared.
+    const o = { id: 'a', tier: 'T7', description: 'd', kind: 'runtime-exec', command: 'npx tsx --test tests/e2e.test.ts', input_source: { type: 'real-user-path', description: 'claims e2e' } } as unknown as Outcome;
+    assert.equal(classifyOutcomeKind(o).maxScore, 8.0);
+  });
+
+  it('running the real product (node dist/index.js) + real-user-path reaches 9.0', () => {
+    const o = { id: 'a', tier: 'T7', description: 'd', kind: 'runtime-exec', command: 'node dist/index.js forge --project fixtures/sample', input_source: { type: 'real-user-path', description: 'runs forge on a real sample' } } as unknown as Outcome;
+    assert.equal(classifyOutcomeKind(o).maxScore, 9.0);
+  });
+
   it('min_duration_ms is enforced for T5+: a sub-floor duration fails quality', () => {
     const outcome = { ...makeRuntimeOutcome('t5', 'T5', 'node dist/index.js go'), min_duration_ms: 5000, input_source: { type: 'real-user-path', description: 'x' } } as unknown as Outcome;
     const fastEntry = { ...makeEntry('t5', 'T5', true), durationMs: 40 };

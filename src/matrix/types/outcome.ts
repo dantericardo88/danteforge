@@ -40,8 +40,15 @@ export type RegisteredExternalSuite =
  * Structured provenance for an outcome's evidence — the linchpin of honest scoring.
  * This is a DECLARED, typed field (not inferred from the command), so high tiers can
  * structurally require real evidence instead of trusting a regex over the command:
- *   - real-user-path:     a genuine end-to-end run on the path a user exercises.
- *                         Required for the 9.0 (T7) consensus tier.
+ *   - real-user-path:     a genuine end-to-end execution of the PRODUCT on a realistic
+ *                         input — the path a user would exercise, actually run (e.g.
+ *                         `node dist/index.js <cmd>` against a real sample, observing the
+ *                         artifact it produces). Required for the 9.0 (T7) consensus tier.
+ *                         IMPORTANT: this is about real EXECUTION, not real human users.
+ *                         A pre-release tool reaches 9.0 by running its own real path; it is
+ *                         NOT penalized for lacking adoption (that is excluded from scoring).
+ *                         A test-runner command does not qualify — the gate cannot verify a
+ *                         test isn't mocked, so only a real product run reaches 9.0.
  *   - external-benchmark: a registered, independently-reproducible suite.
  *                         Required (with a registered `suite`) for the 9.5 (T8) tier.
  *   - synthetic-fixture:  agent-authored test data / scaffold. Honest but capped at 7.0.
