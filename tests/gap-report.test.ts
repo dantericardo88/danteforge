@@ -164,12 +164,28 @@ describe('buildReferenceSnapshot', () => {
 // ── Rendering ────────────────────────────────────────────────────────────────
 
 describe('formatGapReport', () => {
-  it('leads with net position, not the absolute score', () => {
+  it('leads with net position; absolute score is the RECOMPUTED composite, not the stale cache', () => {
+    // matrix.overallSelfScore is a stale 8.9, but the dim's effective self is 8.0.
+    // The honest composite must recompute from per-dim effective scores → 8.0, not 8.9.
     const m = makeMatrix([makeDim('a', { self: 8.0, Aider: 6.0 })], { overallSelfScore: 8.9 });
     const out = formatGapReport(computeGapReport(m));
     assert.match(out, /Net position vs field:\s+\+2\.0/);
-    assert.match(out, /absolute self score: 8\.9/);
+    assert.match(out, /absolute self score: 8\.0/, 'recomputed from effective scores, NOT the stale cached 8.9');
     // The self-policing reminder must be present.
     assert.match(out, /inflating the rubric inflates the competitors/);
+  });
+});
+
+describe('computeGapReport — absoluteSelfScore ignores the stale cache (the 8.6-vs-6.81 bug)', () => {
+  it('recomputes the composite from per-dim effective scores, not matrix.overallSelfScore', () => {
+    // Three dims honestly at effective 7.0, 7.0, 4.0 → real composite 6.0. The cached
+    // overallSelfScore is a stale, inflated 8.6 left over from before an audit.
+    const m = makeMatrix([
+      makeDim('a', { self: 7.0, Aider: 9.0 }),
+      makeDim('b', { self: 7.0, Aider: 9.0 }),
+      makeDim('c', { self: 9.0, derived: 4.0, Aider: 9.0 }), // claimed 9, derived 4 → effective 4
+    ], { overallSelfScore: 8.6 });
+    const r = computeGapReport(m);
+    assert.equal(r.absoluteSelfScore, 6.0, 'mean of effective 7,7,4 = 6.0 — not the stale 8.6');
   });
 });

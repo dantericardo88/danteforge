@@ -148,7 +148,11 @@ export function computeGapReport(matrix: CompeteMatrix): GapReport {
     netPositionOverall: weightedMean(d => d.overall.gap),
     netPositionOss: weightedMean(d => d.oss.gap),
     netPositionClosed: weightedMean(d => d.closed.gap),
-    absoluteSelfScore: round1(matrix.overallSelfScore ?? 0),
+    // Recompute the composite from CURRENT per-dim effective scores (min(self, derived)) —
+    // never the cached matrix.overallSelfScore, which goes stale after an audit/rescore and
+    // prints an inflated number (the "absolute self 8.6 vs real 6.81" bug). The honest
+    // composite must always derive from the same effective scores the gaps use.
+    absoluteSelfScore: weightedMean(d => d.effectiveSelf),
     ahead,
     behind: dims.length - ahead,
     dimCount: dims.length,
