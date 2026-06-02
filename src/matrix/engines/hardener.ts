@@ -114,6 +114,20 @@ export async function checkOrphanAudit(
     };
   }
 
+  // Cross-language path: the JS-shaped SearchEngine + import regex below cannot see
+  // Rust/Python/Go/etc. callsites — they use different import syntax (`use a::b`,
+  // `from x import y`, `import "x"`) and the legacy JS scan only lists `.ts` files, so a
+  // non-JS project has ZERO files scanned and EVERY dim is false-flagged as orphan.
+  // Route non-JS callsites to a language-agnostic symbol-reference scan instead.
+  // (DanteSecurity: ~70 Rust/Python/Go dims were stuck at 6.0 despite real callsites.)
+  if (!/\.(?:tsx?|jsx?|mjs|cjs)$/i.test(callsite.file)) {
+    const findings = await _crossLanguageOrphanAudit(callsite, cwd, io);
+    return {
+      check: 'orphan-audit', passed: findings.length === 0,
+      durationMs: Date.now() - start, findings, scoreCap: HARDEN_CHECK_CAPS['orphan-audit'],
+    };
+  }
+
   // Phase M.1 path: use SearchEngine if injected; otherwise fall back to the
   // legacy inline grep path. Both produce identical findings (enforced by parity test).
   if (searchEngine && callsite.symbol) {
@@ -240,6 +254,72 @@ async function _legacyOrphanAudit(
 
 /** Exposed for parity testing only. Not for production use. */
 export const __test_legacyOrphanAudit = _legacyOrphanAudit;
+
+// Non-JS source extensions the cross-language orphan scan understands.
+const CROSS_LANG_SOURCE_RE = /\.(?:rs|py|go|java|rb|kt|kts|swift|cs|php|scala|c|cc|cpp|h|hpp|ex|exs|m|mm)$/i;
+// Build/vendor dirs to exclude (in addition to node_modules/dist/.git the IO already skips).
+const CROSS_LANG_VENDOR_RE = /[/\\](?:target|vendor|\.venv|venv|__pycache__|\.cargo|build|out|bin|obj|Pods)[/\\]/i;
+// Test files/dirs across languages (Rust `mod tests`, Python `test_*.py`/`*_test.py`, Go `*_test.go`).
+const CROSS_LANG_TEST_RE = /[/\\](?:tests?|__tests__|spec)[/\\]|[/\\]test_[^/\\]+\.py$|_test\.[a-z]+$|\.(?:test|spec)\.[a-z]+$/i;
+
+/**
+ * Language-agnostic orphan audit for Rust/Python/Go/etc. callsites.
+ *
+ * The JS path keys on JS import syntax; here the PRIMARY signal is language-agnostic:
+ * a genuinely-wired callsite has its declared SYMBOL (function/struct/class name)
+ * referenced in at least one non-test production source file — regardless of language.
+ * A per-language import/use pattern (`from x import`, `use a::base`, `import "x/base"`)
+ * is also matched for precision. Zero references in any non-test production file → orphan.
+ *
+ * Anti-inflation is preserved: a truly-orphan dim (capability written, never called from
+ * production) is still flagged with the same rigor as JS — we only remove the false
+ * positive where a real non-JS callsite existed but the JS-only scan couldn't see it.
+ */
+async function _crossLanguageOrphanAudit(
+  callsite: { file: string; symbol: string; lineHint?: number },
+  cwd: string,
+  io: CheckIO,
+): Promise<HardenFinding[]> {
+  const stripExt = (s: string): string => s.replace(/\.[A-Za-z0-9]+$/, '');
+  const baseName = stripExt(path.basename(callsite.file));
+  const moduleSpec = stripExt(callsite.file).replace(/^src[/\\]/, '').replace(/^\.[/\\]/, '');
+
+  // Scan all cross-language source files. Prefer src/, fall back to repo root for
+  // Rust/Go/Python projects that don't use a top-level src/ directory.
+  let files = await io.listFiles(path.join(cwd, 'src'), CROSS_LANG_SOURCE_RE);
+  if (files.length === 0) files = await io.listFiles(cwd, CROSS_LANG_SOURCE_RE);
+  const productionFiles = files.filter(f => !CROSS_LANG_VENDOR_RE.test(f) && !CROSS_LANG_TEST_RE.test(f));
+
+  const moduleNeedle = moduleSpec.replace(/[/\\]/g, '[/\\\\]');
+  const escapedBase = baseName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  // from/import (py, js), use ...:: (rust), import "..." (go), require/include/mod — then
+  // the module path OR a separator (`/ \ : .`) before the basename (covers ::, package paths).
+  const importRe = new RegExp(
+    `(?:from|import|use|require|include|mod)\\b[^\\n]*?(?:${moduleNeedle}|[/\\\\:.]${escapedBase}\\b)`,
+    'i',
+  );
+  const symbolRe = callsite.symbol
+    ? new RegExp(`\\b${callsite.symbol.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b`)
+    : null;
+
+  const callsiteAbs = path.resolve(path.join(cwd, callsite.file));
+  for (const f of productionFiles) {
+    if (path.resolve(f) === callsiteAbs) continue; // a file doesn't wire itself
+    try {
+      const content = await io.readFile(f);
+      if (importRe.test(content) || (symbolRe && symbolRe.test(content))) {
+        return []; // referenced in production → not an orphan
+      }
+    } catch { /* unreadable — skip */ }
+  }
+
+  return [{
+    file: callsite.file,
+    line: callsite.lineHint ?? 1,
+    snippet: `${callsite.file}::${callsite.symbol}`,
+    reason: `Orphan module: 0 production files reference this callsite (symbol or import) across the project's source. Tests pass but nothing reaches the code.`,
+  }];
+}
 
 // ── Check 2: claim-auditor ───────────────────────────────────────────────────
 
