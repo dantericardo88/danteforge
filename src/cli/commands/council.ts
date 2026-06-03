@@ -137,16 +137,19 @@ export function makeLease(cwd: string): AgentLease {
 export async function discoverCouncil(allowedMemberIds?: string[]): Promise<CouncilMember[]> {
   const dummy = makeWorkPacket('probe', process.cwd());
 
-  // Gemini CLI is API-based (not subscription) and quota-exhausts quickly — excluded from default roster.
-  // The type still carries 'gemini-cli' for backward compatibility; it just won't appear as available.
+  // Default roster = Codex + Claude Code only.
+  // Gemini CLI is API-based (not subscription) and quota-exhausts quickly — excluded.
+  // Grok Build is excluded too: its CLI is unreliable as a council member (parse errors / 502s).
+  // Both types remain for backward compatibility and can be re-enabled by adding a probe here or via
+  // DANTEFORGE_COUNCIL_MEMBERS=codex,claude-code,grok-build.
   const ALL_PROBES: Array<{ id: CouncilMemberId; label: string; adapter: { isAvailable(): Promise<boolean> } }> = [
     { id: 'codex', label: 'Codex (OpenAI subscription)', adapter: new CodexAdapter({ workPacket: dummy }) },
-    { id: 'grok-build', label: 'Grok Build (~/.grok/bin/grok.exe)', adapter: new GrokBuildAdapter({ workPacket: dummy }) },
     { id: 'claude-code', label: 'Claude Code (claude binary)', adapter: new ClaudeCodeAdapter({ workPacket: dummy }) },
   ];
 
-  // Keep GeminiCLIAdapter importable but never probe it — prevents unused-import errors.
+  // Keep the Gemini + Grok adapters importable but never probe them — prevents unused-import errors.
   void GeminiCLIAdapter;
+  void GrokBuildAdapter;
 
   // Member filter: explicit arg → env var → all members.
   // Set DANTEFORGE_COUNCIL_MEMBERS=codex,claude-code to exclude Grok globally.
