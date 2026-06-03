@@ -2,7 +2,7 @@ import { test, describe, after } from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs/promises';
 import path from 'node:path';
-import { runAscendFrontier, type PushResult } from '../src/cli/commands/ascend-frontier.js';
+import { runAscendFrontier, setupCommands, buildTo7Commands, type PushResult } from '../src/cli/commands/ascend-frontier.js';
 import type { DimState } from '../src/core/ascend-frontier-engine.js';
 
 const ROOT = path.join('X:\\tmp', `ascend-loop-${process.pid}`);
@@ -11,6 +11,29 @@ after(async () => { await fs.rm(ROOT, { recursive: true, force: true }).catch(()
 function dim(over: Partial<DimState> = {}): DimState {
   return { id: 'd', effectiveScore: 8.0, frontierStatus: 'frozen', ceiling: null, attempts: 0, isMarketCapped: false, ...over };
 }
+
+describe('ascend-frontier — phase routing (sequential vs council-parallel)', () => {
+  const M = ['codex', 'claude-code', 'grok-build'];
+  test('sequential define = scaffold + migrate only', () => {
+    assert.deepEqual(setupCommands(false, M), [['evidence-scaffold'], ['migrate-outcomes', '--write']]);
+  });
+  test('parallel define fans research out to council-universe (member-split), then serial scaffold/migrate', () => {
+    const c = setupCommands(true, M);
+    assert.deepEqual(c[0], ['council-universe', '--members', 'codex,claude-code,grok-build', '--propose-outcomes']);
+    assert.deepEqual(c.slice(1), [['evidence-scaffold'], ['migrate-outcomes', '--write']]);
+  });
+  test('sequential build-to-7 = harden-crusade', () => {
+    assert.deepEqual(buildTo7Commands(false, M, ['a', 'b']), [['harden-crusade', '--loop', '--target', '7']]);
+  });
+  test('parallel build-to-7 = council --parallel (worktree-isolated, cross-judged) on the below-7 dims', () => {
+    assert.deepEqual(buildTo7Commands(true, M, ['a', 'b']),
+      [['council', '--parallel', '--members', 'codex,claude-code,grok-build', '--focus-dims', 'a,b', '--rounds', '1']]);
+  });
+  test('parallel build falls back to harden-crusade with <2 members or no dims', () => {
+    assert.deepEqual(buildTo7Commands(true, ['codex'], ['a']), [['harden-crusade', '--loop', '--target', '7']]);
+    assert.deepEqual(buildTo7Commands(true, M, []), [['harden-crusade', '--loop', '--target', '7']]);
+  });
+});
 
 describe('ascend-frontier — unattended loop control', () => {
   test('dry-run prints the next action and does not execute', async () => {

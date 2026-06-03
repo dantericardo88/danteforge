@@ -84,6 +84,25 @@ async function df(cwd: string, args: string[]): Promise<void> {
   await execFileAsync(node, [cli, ...args], { cwd, timeout: 30 * 60_000, maxBuffer: 32 * 1024 * 1024 }).catch(() => { /* best-effort; state re-read decides progress */ });
 }
 
+// ── Phase command routing (pure — sequential vs council-parallel) ────────────────
+// In --parallel mode the council fans the work out: define via member-split council-universe
+// research (cross-verify on by default), build-to-7 via council --parallel (isolated worktrees +
+// cross-member merge court + post-merge validate — the correct concurrent build). Scaffolding and
+// outcome migration stay serial: they are fast local file ops, so worktree fan-out is pure overhead.
+
+export function setupCommands(parallel: boolean, members: string[]): string[][] {
+  const cmds: string[][] = [];
+  if (parallel && members.length >= 2) cmds.push(['council-universe', '--members', members.join(','), '--propose-outcomes']);
+  cmds.push(['evidence-scaffold'], ['migrate-outcomes', '--write']);
+  return cmds;
+}
+
+export function buildTo7Commands(parallel: boolean, members: string[], dims: string[]): string[][] {
+  return (parallel && members.length >= 2 && dims.length > 0)
+    ? [['council', '--parallel', '--members', members.join(','), '--focus-dims', dims.join(','), '--rounds', '1']]
+    : [['harden-crusade', '--loop', '--target', '7']];
+}
+
 // ── Orchestrator loop ───────────────────────────────────────────────────────────
 
 export async function runAscendFrontier(options: AscendFrontierOptions): Promise<AscendFrontierResult> {
@@ -92,8 +111,17 @@ export async function runAscendFrontier(options: AscendFrontierOptions): Promise
   const maxAttemptsPerDim = options.maxAttemptsPerDim ?? 3;
   const now = options._now ?? (() => new Date().toISOString());
   const buildState = options._buildState ?? defaultBuildState;
-  const runSetup = options._runSetup ?? ((c, dims) => df(c, ['evidence-scaffold']).then(() => df(c, ['migrate-outcomes', '--write'])).then(() => { void dims; }));
-  const runBuildTo7 = options._runBuildTo7 ?? ((c, dims) => df(c, ['harden-crusade', '--loop', '--target', '7']).then(() => { void dims; }));
+  // Discover the council once (parallel mode) — reused by define, build-to-7, and push fan-out.
+  const members = (options.parallel && !options.dryRun)
+    ? await (options._discoverMembers ?? defaultDiscoverMembers)()
+    : [];
+  const runSetup = options._runSetup ?? (async (c: string, dims: string[]) => {
+    for (const cmd of setupCommands(!!options.parallel, members)) await df(c, cmd);
+    void dims;
+  });
+  const runBuildTo7 = options._runBuildTo7 ?? (async (c: string, dims: string[]) => {
+    for (const cmd of buildTo7Commands(!!options.parallel, members, dims)) await df(c, cmd);
+  });
   const runPushTo9 = options._runPushTo9 ?? defaultPushTo9;
 
   const actions: string[] = [];
@@ -129,8 +157,8 @@ export async function runAscendFrontier(options: AscendFrontierOptions): Promise
           // Fan out: assign the weakest dims to live members and push concurrently, each gated by
           // the frontier-review-court with the builder excluded (builder-never-judges). Reciprocal
           // passes are auto-queued for human audit inside runParallelRound.
-          const members = await (options._discoverMembers ?? defaultDiscoverMembers)();
-          const assignments = assignRound(state, members, { nowIso: now() });
+          const liveMembers = members.length > 0 ? members : await (options._discoverMembers ?? defaultDiscoverMembers)();
+          const assignments = assignRound(state, liveMembers, { nowIso: now() });
           if (assignments.length === 0) break;
           logger.info(`[ascend-frontier] parallel round: ${assignments.map(a => `${a.memberId}→${a.dimId}`).join(', ')}`);
           const round = await runParallelRound(cwd, assignments, {
