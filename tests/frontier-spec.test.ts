@@ -96,8 +96,16 @@ describe('applyFrontierGate — 9.0 = frontier is now BINDING', () => {
     assert.equal(r.capped, true);
   });
 
-  test('a 9.0 WITH a frozen (non-stale) frontier_spec is allowed through', () => {
+  test('a 9.0 with a FROZEN-but-unvalidated spec is now capped to 8.0 (court sign-off required)', () => {
     const spec = { ...goodSpec(), status: 'frozen' as const };
+    spec.frozen_hash = computeSpecHash(spec);
+    const r = applyFrontierGate(9.0, { frontier_spec: spec });
+    assert.equal(r.score, 8.0, 'frozen alone no longer reaches 9.0 — the frontier-review-court must validate it');
+    assert.equal(r.capped, true);
+  });
+
+  test('a 9.0 with a court-VALIDATED (non-stale) spec is allowed through', () => {
+    const spec = { ...goodSpec(), status: 'validated' as const };
     spec.frozen_hash = computeSpecHash(spec);
     const r = applyFrontierGate(9.0, { frontier_spec: spec });
     assert.equal(r.score, 9.0);

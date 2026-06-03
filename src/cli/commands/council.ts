@@ -92,7 +92,7 @@ async function revertFiles(cwd: string, files: string[]): Promise<void> {
 
 // ── Work packet / lease factory ───────────────────────────────────────────────
 
-function makeWorkPacket(goal: string, cwd: string): WorkPacket {
+export function makeWorkPacket(goal: string, cwd: string): WorkPacket {
   const noMockApisProof = `no ${['jest', 'mock'].join('.')} / ${['vi', 'mock'].join('.')} / sinon in src/`;
   return {
     id: `council.${Date.now()}`,
@@ -117,7 +117,7 @@ function makeWorkPacket(goal: string, cwd: string): WorkPacket {
   } as unknown as WorkPacket;
 }
 
-function makeLease(cwd: string): AgentLease {
+export function makeLease(cwd: string): AgentLease {
   return {
     id: `council-lease.${Date.now()}`,
     worktreePath: cwd,
@@ -188,7 +188,7 @@ function assignRoles(
 
 // ── Adapter factories ─────────────────────────────────────────────────────────
 
-function makeAdapter(id: CouncilMemberId, workPacket: WorkPacket, judgeMode = false) {
+export function makeAdapter(id: CouncilMemberId, workPacket: WorkPacket, judgeMode = false) {
   switch (id) {
     case 'codex': return new CodexAdapter({ workPacket, judgeMode });
     case 'gemini-cli': return new GeminiCLIAdapter({ workPacket, judgeMode });

@@ -174,6 +174,33 @@ function runFrontierAction(
 }
 
 program
+  .command('frontier-review <dimId>')
+  .description('Run the frontier-review-court: independent council judges (builder-never-judges) confirm a dim genuinely matches its named competitor. VALIDATED is the ONLY way past 8.0.')
+  .option('--write', 'Apply the verdict: set frontier_spec.status=validated on PASS, write a ceiling receipt on an agreed honest-ceiling')
+  .option('--min-judges <n>', 'Minimum cross-member judges (default: min(2, available))')
+  .option('--json', 'Machine-readable output')
+  .option('--cwd <path>', 'Project directory')
+  .action((dimId: string, opts) => {
+    void (async () => {
+      try {
+        const { runFrontierReviewCli } = await import('./commands/frontier-review.js');
+        const r = await runFrontierReviewCli({
+          dimId,
+          write: opts.write as boolean | undefined,
+          minJudges: opts.minJudges ? parseInt(opts.minJudges as string, 10) : undefined,
+          json: opts.json as boolean | undefined,
+          cwd: opts.cwd as string | undefined,
+        });
+        if (r.result.verdict !== 'VALIDATED') process.exitCode = 1;
+      } catch (err) {
+        const { formatAndLogError } = await import('../core/format-error.js');
+        formatAndLogError(err, 'frontier-review');
+        process.exitCode = 1;
+      }
+    })();
+  });
+
+program
   .command('session-record <dimId>')
   .description('Produce real-user-path evidence by running the REAL product on a realistic input. The honest path to 9.0 — captures a genuine product run + observable artifact and emits a real-user-path outcome.')
   .requiredOption('--run <command>', 'The real product command to execute (NOT a test runner), e.g. "node dist/index.js forge --project fixtures/sample"')
