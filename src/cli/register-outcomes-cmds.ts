@@ -174,6 +174,45 @@ function runFrontierAction(
 }
 
 program
+  .command('ascend-frontier')
+  .description('Unattended autonomous frontier orchestrator: define → build-to-7 → push each dim to a court-validated 9.0, one at a time, until every dim is at the frontier OR an honest ceiling. NEVER prompts.')
+  .option('--dry-run', 'Print the next action without executing')
+  .option('--max-cycles <n>', 'Global stop after N cycles (default 200)')
+  .option('--max-attempts <n>', 'Novel push attempts per dim before an honest generator-ceiling (default 3)')
+  .option('--json', 'Machine-readable result')
+  .option('--cwd <path>', 'Project directory')
+  .addHelpText('after', `
+Phases (no human prompts at any point):
+  A DEFINE     evidence-scaffold + migrate-outcomes + frontier-spec init (Prompt 1)
+  B BUILD-TO-7 harden-crusade --loop --target 7 (Prompt 2)
+  C PUSH-TO-9  per dim, weakest-first: freeze → council-crusade → session-record → validate ×2
+               → frontier-review-court → record 9.0 if VALIDATED, else ceiling/retry-with-novel-evidence
+
+"Complete" = every dim at a court-validated 9.0 OR a signed honest ceiling. A determined fixture can
+still fool the court — sample 9.0s via the (M3) human-audit-queue; that runs out of band and never
+interrupts this loop.
+`)
+  .action((opts) => {
+    void (async () => {
+      try {
+        const { runAscendFrontier } = await import('./commands/ascend-frontier.js');
+        const r = await runAscendFrontier({
+          dryRun: opts.dryRun as boolean | undefined,
+          maxCycles: opts.maxCycles ? parseInt(opts.maxCycles as string, 10) : undefined,
+          maxAttemptsPerDim: opts.maxAttempts ? parseInt(opts.maxAttempts as string, 10) : undefined,
+          json: opts.json as boolean | undefined,
+          cwd: opts.cwd as string | undefined,
+        });
+        if (r.terminal === 'stalled') process.exitCode = 1;
+      } catch (err) {
+        const { formatAndLogError } = await import('../core/format-error.js');
+        formatAndLogError(err, 'ascend-frontier');
+        process.exitCode = 1;
+      }
+    })();
+  });
+
+program
   .command('frontier-review <dimId>')
   .description('Run the frontier-review-court: independent council judges (builder-never-judges) confirm a dim genuinely matches its named competitor. VALIDATED is the ONLY way past 8.0.')
   .option('--write', 'Apply the verdict: set frontier_spec.status=validated on PASS, write a ceiling receipt on an agreed honest-ceiling')
