@@ -11,8 +11,9 @@ import path from 'node:path';
 import fs from 'node:fs/promises';
 import { loadMatrix, saveMatrix, type CompeteMatrix } from '../../core/compete-matrix.js';
 import { logger } from '../../core/logger.js';
-import { effectiveStatus, type FrontierSpec } from '../../core/frontier-spec.js';
+import { effectiveStatus, computeSpecHash, type FrontierSpec } from '../../core/frontier-spec.js';
 import { writeCeilingReceipt } from '../../core/ceiling-receipt.js';
+import { enqueueAudit, type AuditEscrowEntry } from '../../core/audit-escrow.js';
 import {
   runFrontierReviewCourt, type FrontierReviewInput, type FrontierReviewResult,
 } from '../../matrix/courts/frontier-review-court.js';
@@ -30,6 +31,7 @@ export interface FrontierReviewCliOptions {
   _runJudge?: (id: CouncilMemberId, prompt: string) => Promise<string>;
   _readArtifact?: (p: string) => Promise<string>;
   _writeCeiling?: (p: string, c: string) => Promise<void>;
+  _enqueueAudit?: (cwd: string, entry: AuditEscrowEntry) => Promise<void>;
   _now?: string;
 }
 
@@ -97,9 +99,21 @@ export async function runFrontierReviewCli(options: FrontierReviewCliOptions): P
   let ceilingWritten = false;
   const now = options._now ?? new Date().toISOString();
 
+  const enqueue = options._enqueueAudit ?? enqueueAudit;
+  const auditBase = {
+    replayCommand: rup.run_command, artifacts: rup.observable_artifacts.map(a => a.path),
+    frontierSpecHash: computeSpecHash(spec), receipts: reviewInput.evidence.receipts,
+    councilVote: { pass: result.vote.pass, fail: result.vote.fail, summary: result.vote.summary },
+    dissent: result.dissent, enqueuedAt: now, status: 'pending' as const,
+  };
+
   if (result.verdict === 'VALIDATED') {
     logger.success(`[frontier-review] ${options.dimId}: VALIDATED — ${result.vote.summary}`);
-    if (options.write) { spec.status = 'validated'; await saveFn(matrix, cwd); validatedWritten = true; }
+    if (options.write) {
+      spec.status = 'validated'; await saveFn(matrix, cwd); validatedWritten = true;
+      // Sample into the non-blocking human-audit queue (the court can't catch a perfect fixture).
+      await enqueue(cwd, { dimId: options.dimId, kind: 'validated-9.0', ...auditBase });
+    }
   } else {
     logger.warn(`[frontier-review] ${options.dimId}: REJECTED — ${result.vote.summary} (ceiling signal ${result.ceilingSignal}/${result.vote.total})`);
     // Strong, agreed honest-ceiling signal → record a ceiling so the orchestrator stops grinding it.
@@ -112,6 +126,7 @@ export async function runFrontierReviewCli(options: FrontierReviewCliOptions): P
         recordedAt: now,
       }, options._writeCeiling);
       ceilingWritten = true;
+      await enqueue(cwd, { dimId: options.dimId, kind: 'ceiling', ...auditBase });
       logger.info(`[frontier-review] ${options.dimId}: ceiling receipt written (court-rejected).`);
     }
   }

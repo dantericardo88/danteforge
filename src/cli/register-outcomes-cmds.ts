@@ -174,6 +174,36 @@ function runFrontierAction(
 }
 
 program
+  .command('frontier-audit [dimId]')
+  .description('Non-blocking human spot-audit of the autonomous loop. No dim: list pending court decisions. With a dim + --confirm/--fail: record your verdict (a --fail downgrades that dim to 8.0 and re-opens it next cycle).')
+  .option('--confirm', 'Confirm the court was right (no change)')
+  .option('--fail', 'Overrule: the 9.0 is not genuine — downgrade the dim to 8.0 (frozen) and re-open it')
+  .option('--reviewer <name>', 'Who is auditing (required to resolve)')
+  .option('--note <text>', 'Why — recorded as a lesson')
+  .option('--json', 'Machine-readable output')
+  .option('--cwd <path>', 'Project directory')
+  .action((dimId: string | undefined, opts) => {
+    void (async () => {
+      try {
+        const { runFrontierAudit } = await import('./commands/frontier-audit.js');
+        await runFrontierAudit({
+          dimId,
+          confirm: opts.confirm as boolean | undefined,
+          fail: opts.fail as boolean | undefined,
+          reviewer: opts.reviewer as string | undefined,
+          note: opts.note as string | undefined,
+          json: opts.json as boolean | undefined,
+          cwd: opts.cwd as string | undefined,
+        });
+      } catch (err) {
+        const { formatAndLogError } = await import('../core/format-error.js');
+        formatAndLogError(err, 'frontier-audit');
+        process.exitCode = 1;
+      }
+    })();
+  });
+
+program
   .command('ascend-frontier')
   .description('Unattended autonomous frontier orchestrator: define → build-to-7 → push each dim to a court-validated 9.0, one at a time, until every dim is at the frontier OR an honest ceiling. NEVER prompts.')
   .option('--dry-run', 'Print the next action without executing')

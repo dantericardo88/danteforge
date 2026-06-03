@@ -34,6 +34,7 @@ describe('frontier-review CLI — court verdict drives validated/ceiling', () =>
       _discoverMembers: async () => MEMBERS,
       _runJudge: async () => 'VERDICT: PASS\nCONFIDENCE: HIGH\nREASON: genuine repo map matching Cursor',
       _readArtifact: async () => '{"symbols":990}',
+      _enqueueAudit: async () => {},
       _now: '2026-06-03T00:00:00.000Z',
     });
     assert.equal(r.result.verdict, 'VALIDATED');
@@ -68,6 +69,7 @@ describe('frontier-review CLI — court verdict drives validated/ceiling', () =>
       _runJudge: async () => 'VERDICT: FAIL\nCEILING: yes\nREASON: genuine R&D gap, cannot reach frontier yet',
       _readArtifact: async () => '{}',
       _writeCeiling: async (p) => { ceilingPath = p; },
+      _enqueueAudit: async () => {},
       _now: '2026-06-03T00:00:00.000Z',
     });
     assert.equal(r.result.verdict, 'REJECTED');
