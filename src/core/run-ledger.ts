@@ -258,6 +258,10 @@ export class RunLedger {
       await fs.writeFile(path.join(this.runDir, 'bundle-with-gaps.json'), JSON.stringify(bundle, null, 2));
     }
 
+    // Retention: prune oldest run bundles so .danteforge/runs/ can't grow unbounded on a project
+    // that runs the orchestrator frequently. Best-effort — never fail a run on a prune hiccup.
+    await pruneRuns(path.dirname(this.runDir), RUN_RETENTION).catch(() => {});
+
     return this.runId;
   }
 
@@ -309,6 +313,32 @@ ${bundle.verdict.reason ? `**Reason:** ${bundle.verdict.reason}` : ''}
 ${bundle.verdict.evidenceHash}
 `;
   }
+}
+
+/** Keep at most this many run bundles in .danteforge/runs/ (newest first). */
+export const RUN_RETENTION = 50;
+
+/**
+ * Prune the oldest run-bundle directories, keeping the newest `keep`. Run IDs are random UUIDs (not
+ * time-sortable), so order by directory mtime. Best-effort; returns the run ids removed.
+ */
+export async function pruneRuns(runsDir: string, keep: number): Promise<string[]> {
+  let entries: import('fs').Dirent[];
+  try { entries = await fs.readdir(runsDir, { withFileTypes: true }); }
+  catch { return []; }
+  const dirs = entries.filter(e => e.isDirectory());
+  if (dirs.length <= keep) return [];
+  const withTime = await Promise.all(dirs.map(async d => {
+    let mtime = 0;
+    try { mtime = (await fs.stat(path.join(runsDir, d.name))).mtimeMs; } catch { /* treat as oldest */ }
+    return { name: d.name, mtime };
+  }));
+  withTime.sort((a, b) => b.mtime - a.mtime); // newest first
+  const toRemove = withTime.slice(keep);
+  for (const r of toRemove) {
+    await fs.rm(path.join(runsDir, r.name), { recursive: true, force: true }).catch(() => {});
+  }
+  return toRemove.map(r => r.name);
 }
 
 export async function loadRunBundle(runId: string, cwd: string): Promise<EvidenceBundle | null> {

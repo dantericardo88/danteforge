@@ -149,3 +149,37 @@ export function writeVerifiedScore(
   matrix.overallSelfScore = computeOverallScore(matrix);
   return clamped;
 }
+
+export interface ProvenanceViolation { dimId: string; before: number; after: number; }
+
+/**
+ * Persistence-time backstop (closes the grep-guard's blind spot).
+ *
+ * The grep-guard proves no src *code* writes `scores.self` outside this gate — but it cannot see an
+ * alias, `Object.assign`, a dynamic-key write, or a hand-edit of matrix.json on disk. This verifier
+ * runs at the saveMatrix boundary: for every dimension whose `scores.self` CHANGED versus the
+ * previously-persisted matrix, it requires a matching provenance entry (same dim, same final value)
+ * produced by `writeVerifiedScore`. A change with no provenance is exactly the inflation the gate
+ * exists to stop, surfacing as a violation. Returns [] when every change is accounted for.
+ *
+ * `prev` is the last on-disk matrix (null on first write → nothing to compare, returns []).
+ */
+export function assertScoreProvenance(
+  prev: CompeteMatrix | null,
+  next: CompeteMatrix,
+  epsilon = 1e-9,
+): ProvenanceViolation[] {
+  if (!prev) return [];
+  const prevSelf = new Map(prev.dimensions.map(d => [d.id, d.scores['self'] ?? 0]));
+  const provenance = next.scoreProvenance ?? [];
+  const violations: ProvenanceViolation[] = [];
+  for (const dim of next.dimensions) {
+    if (!prevSelf.has(dim.id)) continue;                 // newly-added dim — no prior value to guard
+    const before = prevSelf.get(dim.id)!;
+    const after = dim.scores['self'] ?? 0;
+    if (Math.abs(after - before) <= epsilon) continue;   // unchanged — nothing to verify
+    const accounted = provenance.some(p => p.dimensionId === dim.id && Math.abs(p.after - after) <= epsilon);
+    if (!accounted) violations.push({ dimId: dim.id, before, after });
+  }
+  return violations;
+}

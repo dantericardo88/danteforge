@@ -273,21 +273,44 @@ export async function saveMatrix(
   });
 
   if (_fsWrite || process.env['NODE_TEST_CONTEXT']) {
-    // Tests are seam-driven or run in isolated tmp cwds — no cross-process contention to guard.
+    // Tests are seam-driven or run in isolated tmp cwds — no cross-process contention, and fixture
+    // matrices set scores directly (no gate provenance), so the production-only backstop is skipped.
     await write(matrixPath, content);
   } else {
-    // Production: an exclusive cross-process lock so two concurrent orchestrators (or a daemon +
-    // an ascend run) can never interleave a matrix write and lose one's scores. Best-effort —
-    // if the lock can't be acquired we still write (availability over the rare race).
-    const { withFileLock } = await import('./sanitize-locks.js');
+    // Production score-provenance backstop (closes the grep-guard's blind spot): a `scores.self`
+    // that changed versus the on-disk matrix with NO matching writeVerifiedScore provenance entry is
+    // unverified inflation — fail closed. Escape hatch for deliberate out-of-band edits/migrations:
+    // DANTEFORGE_ALLOW_UNVERIFIED_SCORE=1.
     try {
-      await withFileLock(
-        { cwd: cwd ?? process.cwd(), filePath: path.relative(cwd ?? process.cwd(), matrixPath), lockDir: '.danteforge/locks', maxWaitMs: 30_000 },
-        () => write(matrixPath, content),
-      );
-    } catch {
-      await write(matrixPath, content);
+      const prevRaw = await fs.readFile(matrixPath, 'utf8');
+      const prev = JSON.parse(prevRaw) as CompeteMatrix;
+      const { assertScoreProvenance } = await import('./write-verified-score.js');
+      const violations = assertScoreProvenance(prev, matrix);
+      if (violations.length > 0) {
+        const detail = violations.map(v => `${v.dimId} ${v.before}→${v.after}`).join(', ');
+        if (process.env['DANTEFORGE_ALLOW_UNVERIFIED_SCORE'] === '1') {
+          const { logger } = await import('./logger.js');
+          logger.warn(`[saveMatrix] unverified scores.self change(s) [${detail}] — allowed via DANTEFORGE_ALLOW_UNVERIFIED_SCORE.`);
+        } else {
+          throw new Error(
+            `[saveMatrix] Refusing to persist scores.self change(s) with no writeVerifiedScore provenance: ${detail}. ` +
+            `Every self-score write must go through writeVerifiedScore(). If this is a deliberate out-of-band ` +
+            `edit/migration, re-run with DANTEFORGE_ALLOW_UNVERIFIED_SCORE=1.`,
+          );
+        }
+      }
+    } catch (e) {
+      // Re-throw a real integrity violation; ignore a missing/parse-failed previous matrix (first write).
+      if (e instanceof Error && e.message.startsWith('[saveMatrix] Refusing')) throw e;
     }
+
+    // Cross-process lock — fail CLOSED: an unlocked fallback would defeat the guarantee, so if the
+    // lock can't be acquired we surface the failure rather than risk interleaving a competing write.
+    const { withFileLock } = await import('./sanitize-locks.js');
+    await withFileLock(
+      { cwd: cwd ?? process.cwd(), filePath: path.relative(cwd ?? process.cwd(), matrixPath), lockDir: '.danteforge/locks', maxWaitMs: 30_000 },
+      () => write(matrixPath, content),
+    );
   }
   // Bust the in-process cache so the next loadMatrix reads the saved value
   invalidateMatrixCache();
