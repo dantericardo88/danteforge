@@ -81,6 +81,26 @@ export interface AdversarialCalibration {
   date: string;
 }
 
+/**
+ * One row in the score-provenance audit trail. Every `scores.self` write — from
+ * any code path — produces one of these, recording who wrote it, the raw value
+ * before clamping, the final value after, and which gates (if any) were proven.
+ * The trail is the structural complement to the single `writeVerifiedScore` gate:
+ * the gate makes a bypass impossible to write, this makes every legitimate write
+ * auditable after the fact. Persisted with the matrix (capped to the last 200).
+ */
+export interface ScoreProvenanceEntry {
+  dimensionId: string;
+  agent: string;          // 'merge' | 'score-audit' | 'daemon-calibration' | 'ascend-orient' | …
+  before: number;         // self score before this write
+  after: number;          // self score after clamp + backstop
+  rawScore: number;       // the pre-clamp value the caller proposed
+  rationale?: string;
+  evidence?: string[];
+  gatesPassed?: { capability_test?: boolean; harden?: boolean };
+  date: string;           // ISO timestamp
+}
+
 export interface CompeteMatrix {
   project: string;
 
@@ -98,6 +118,10 @@ export interface CompeteMatrix {
   // Adversarial calibration history — records when hostile-review verdicts
   // were applied to correct inflated self-scores.
   adversarialCalibrations?: AdversarialCalibration[];
+
+  // Score-provenance audit trail — one entry per `scores.self` write, produced
+  // by the single `writeVerifiedScore` gate. Capped to the last 200 entries.
+  scoreProvenance?: ScoreProvenanceEntry[];
 
   // Dimensions the user has explicitly de-prioritized. Excluded dimensions
   // remain in the matrix for scoring continuity but are skipped by sprint

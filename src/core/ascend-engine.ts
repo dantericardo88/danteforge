@@ -20,7 +20,8 @@ import {
   type HarshScoreResult,
   type ScoringDimension,
 } from './harsh-scorer.js';
-import { loadMatrix, saveMatrix, classifyDimensions, getNextSprintDimension, updateDimensionScore, clampDimScore, decisionDimScore, getDimensionStrategy, computeUnweightedComposite, getTopGapDimensions, type CompeteMatrix, type MatrixDimension, type AdversarialCalibration } from './compete-matrix.js';
+import { loadMatrix, saveMatrix, classifyDimensions, getNextSprintDimension, updateDimensionScore, decisionDimScore, getDimensionStrategy, computeUnweightedComposite, getTopGapDimensions, type CompeteMatrix, type MatrixDimension, type AdversarialCalibration } from './compete-matrix.js';
+import { writeVerifiedScore } from './write-verified-score.js';
 import { readSweBenchScore, formatSweBenchGoal, isSweBenchDimension } from './swe-bench-probe.js';
 import { defineUniverse, type UniverseDefinerOptions } from './universe-definer.js';
 import { runAutoforgeLoop, AutoforgeLoopState, type AutoforgeLoopContext, type AutoforgeLoopDeps } from './autoforge-loop.js';
@@ -272,8 +273,11 @@ async function orientAndClassify(
     if (STRICT_DIM_IDS.has(matDim.id)) {
       const scoringDim = mapDimIdToScoringDimension(matDim.id);
       if (scoringDim) {
-        const strictScore = clampDimScore(matDim.id, baselineResult.displayDimensions[scoringDim] ?? 0, matDim.ceiling);
-        matDim.scores['self'] = strictScore;
+        const strictScore = writeVerifiedScore(
+          matrix, matDim.id, baselineResult.displayDimensions[scoringDim] ?? 0,
+          { agent: 'ascend-orient', rationale: 'strict harsh-scorer baseline' },
+          { skipHistory: true, skipStatus: true },
+        );
         if (strictScore < target) matDim.status = 'in-progress';
       }
     }
@@ -283,8 +287,11 @@ async function orientAndClassify(
     if (isSweBenchDimension(matDim.id)) {
       const probe = await readSweBenchScore(cwd).catch(() => null);
       if (probe) {
-        const sweScore = clampDimScore(matDim.id, probe.displayScore, matDim.ceiling);
-        matDim.scores['self'] = sweScore;
+        const sweScore = writeVerifiedScore(
+          matrix, matDim.id, probe.displayScore,
+          { agent: 'ascend-orient', rationale: 'swe-bench probe' },
+          { skipHistory: true, skipStatus: true },
+        );
         if (sweScore < target) matDim.status = 'in-progress';
       }
     }

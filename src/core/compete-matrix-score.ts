@@ -5,6 +5,11 @@ import type {
   CompeteMatrix,
   AdversarialCalibration,
 } from './compete-matrix.js';
+// The single sanctioned score-write gate. updateDimensionScore + applyAdversarialCalibration
+// delegate to it so this file no longer assigns `scores.self` directly (grep-guard enforced).
+// Runtime-only circular import: writeVerifiedScore is called inside function bodies, never at
+// module load, so the binding is always resolved by the time it runs.
+import { writeVerifiedScore } from './write-verified-score.js';
 
 // ── Priority Constants ────────────────────────────────────────────────────────
 
@@ -155,6 +160,11 @@ export function clampDimScore(dimensionId: string, score: number, ceiling?: numb
   return clamped;
 }
 
+/**
+ * Canonical entry point for a clamped, history-tracked self-score write.
+ * Now a thin wrapper over `writeVerifiedScore` (the single gate) — its signature
+ * is preserved so `mergeScoreProposals` and `score-audit` are untouched.
+ */
 export function updateDimensionScore(
   matrix: CompeteMatrix,
   dimensionId: string,
@@ -162,49 +172,7 @@ export function updateDimensionScore(
   commit?: string,
   harvestSource?: string,
 ): void {
-  const dim = matrix.dimensions.find(d => d.id === dimensionId);
-  if (!dim) throw new Error(`Dimension "${dimensionId}" not found in matrix`);
-
-  const before = dim.scores['self'] ?? 0;
-  const clamped = clampDimScore(dimensionId, newScore, dim.ceiling);
-  dim.scores['self'] = clamped;
-
-  const competitorEntries = Object.entries(dim.scores).filter(([k]) => k !== 'self');
-  const maxEntry = competitorEntries.reduce(
-    (best, [k, v]) => v > best[1] ? [k, v] : best,
-    ['', 0] as [string, number],
-  );
-  dim.gap_to_leader = Math.max(0, maxEntry[1] - clamped);
-  if (maxEntry[0]) dim.leader = maxEntry[0];
-
-  const twoGaps = computeTwoGaps(dim, matrix.competitors_closed_source ?? [], matrix.competitors_oss ?? []);
-  dim.gap_to_closed_source_leader = twoGaps.gap_to_closed_source_leader;
-  dim.closed_source_leader = twoGaps.closed_source_leader;
-  dim.gap_to_oss_leader = twoGaps.gap_to_oss_leader;
-  dim.oss_leader = twoGaps.oss_leader;
-
-  if (clamped !== before) {
-    const record = {
-      dimensionId,
-      before,
-      after: clamped,
-      date: new Date().toISOString().slice(0, 10),
-      ...(commit ? { commit } : {}),
-      ...(harvestSource ? { harvestSource } : {}),
-    };
-    if (!dim.sprint_history) dim.sprint_history = [];
-    dim.sprint_history.push(record);
-    if (dim.sprint_history.length > 20) dim.sprint_history.splice(0, dim.sprint_history.length - 20);
-  }
-
-  if (dim.gap_to_leader <= 0) {
-    dim.status = 'closed';
-  } else if (dim.status === 'not-started') {
-    dim.status = 'in-progress';
-  }
-
-  matrix.lastUpdated = new Date().toISOString();
-  matrix.overallSelfScore = computeOverallScore(matrix);
+  writeVerifiedScore(matrix, dimensionId, newScore, { agent: 'matrix-update', commit, harvestSource });
 }
 
 export async function applyIntelLeaderScores(
@@ -308,24 +276,15 @@ export function applyAdversarialCalibration(
 
   const before = dim.scores['self'] ?? 0;
   const consensus = (harshScore + adversarialScore) / 2;
-  // Funnel through the canonical clamp so the market-dim cap is never bypassed.
-  const after = Math.round(clampDimScore(dimensionId, consensus, dim.ceiling) * 10) / 10;
-
-  dim.scores['self'] = after;
-
-  const competitorEntries = Object.entries(dim.scores).filter(([k]) => k !== 'self');
-  const maxEntry = competitorEntries.reduce(
-    (best, [k, v]) => v > best[1] ? [k, v] : best,
-    ['', 0] as [string, number],
+  // Route through the single gate: clamp (round to 1 dp), no sprint_history / status
+  // change (calibration manages its own record), market-dim cap never bypassed.
+  const after = writeVerifiedScore(
+    matrix,
+    dimensionId,
+    consensus,
+    { agent: 'daemon-calibration', rationale },
+    { round1: true, skipHistory: true, skipStatus: true },
   );
-  dim.gap_to_leader = Math.max(0, maxEntry[1] - after);
-  if (maxEntry[0]) dim.leader = maxEntry[0];
-
-  const twoGaps = computeTwoGaps(dim, matrix.competitors_closed_source ?? [], matrix.competitors_oss ?? []);
-  dim.gap_to_closed_source_leader = twoGaps.gap_to_closed_source_leader;
-  dim.closed_source_leader = twoGaps.closed_source_leader;
-  dim.gap_to_oss_leader = twoGaps.gap_to_oss_leader;
-  dim.oss_leader = twoGaps.oss_leader;
 
   const calibration: AdversarialCalibration = {
     dimensionId,
@@ -338,8 +297,6 @@ export function applyAdversarialCalibration(
   };
   matrix.adversarialCalibrations ??= [];
   matrix.adversarialCalibrations.push(calibration);
-
-  matrix.lastUpdated = new Date().toISOString();
-  matrix.overallSelfScore = computeOverallScore(matrix);
+  // writeVerifiedScore already refreshed lastUpdated + overallSelfScore.
   return true;
 }
