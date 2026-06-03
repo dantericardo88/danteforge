@@ -45,7 +45,7 @@ export interface HardenCrusadeOptions {
   cwd?: string;
   skipLLMCheck?: boolean;
   // Injection seams
-  _runAutoResearch?: (dimensionId: string, goal: string, cwd: string, timeMinutes: number) => Promise<void>;
+  _runAutoResearch?: (dimensionId: string, goal: string, cwd: string, timeMinutes: number, measurementCommand?: string) => Promise<void>;
   /** After autoresearch commits, refresh outcome evidence for this dim before re-scoring. */
   _runOutcomesForDim?: (dimensionId: string, cwd: string) => Promise<void>;
   _getScore?: (dimensionId: string, cwd: string) => Promise<number>;
@@ -117,7 +117,7 @@ async function resolveDanteForgeExec(cwd: string): Promise<{ file: string; argsP
 }
 
 async function defaultRunAutoResearch(
-  dimensionId: string, goal: string, cwd: string, timeMinutes: number,
+  dimensionId: string, goal: string, cwd: string, timeMinutes: number, measurementCommand?: string,
 ): Promise<void> {
   const { execFile } = await import('node:child_process');
   const { promisify } = await import('node:util');
@@ -125,11 +125,19 @@ async function defaultRunAutoResearch(
   const cli = await resolveDanteForgeExec(cwd);
   // timeMinutes + 1 min slack on the subprocess timeout (in ms).
   const timeoutMs = (timeMinutes + 1) * 60 * 1000;
-  await execFileAsync(
-    cli.file,
-    [...cli.argsPrefix, 'autoresearch', goal, '--metric', dimensionId, '--time', `${timeMinutes}m`, '--allow-dirty'],
-    { cwd, timeout: timeoutMs },
-  );
+  // The dim's capability_test IS the natural metric. Without --measurement-command, autoresearch
+  // can't measure an arbitrary dimension id and exits 1 ("needs an explicit measurement command")
+  // — the root cause of the build-to-7 crash/hang. Always pass it; the caller guarantees one exists.
+  const args = [...cli.argsPrefix, 'autoresearch', goal, '--metric', dimensionId, '--time', `${timeMinutes}m`, '--allow-dirty'];
+  if (measurementCommand) args.push('--measurement-command', measurementCommand);
+  await execFileAsync(cli.file, args, { cwd, timeout: timeoutMs });
+}
+
+/** Resolve a dim's capability_test shell command (the autoresearch measurement metric), or null. */
+function capabilityTestCommand(dim: MatrixDimension): string | null {
+  const ct = (dim as unknown as { capability_test?: { command?: string }; no_capability_test?: boolean });
+  if (ct.no_capability_test) return null;
+  return ct.capability_test?.command ?? null;
 }
 
 async function defaultRunOutcomesForDim(dimensionId: string, cwd: string): Promise<void> {
@@ -277,13 +285,20 @@ async function runDimensionLoop(
     cycle++;
     const dimGoal = `Improve "${dim.label}" from ${score.toFixed(2)} to ${target}`;
 
-    // 1. Autoresearch wave
-    try {
-      logger.info(`[harden-crusade:${dim.id}] Cycle ${cycle}: autoresearch (${timeMinutes}m)`);
-      await runAutoResearch(dim.id, dimGoal, cwd, timeMinutes);
-      autoresearchRuns++;
-    } catch (err) {
-      logger.warn(`[harden-crusade:${dim.id}] Autoresearch cycle ${cycle} failed: ${err instanceof Error ? err.message : String(err)}`);
+    // 1. Autoresearch wave — driven by the dim's capability_test as the measurement metric.
+    //    A dim with no capability_test (meta-dims like token_economy) has nothing to measure, so
+    //    autoresearch is skipped rather than invoked without a metric (which crashes/hangs the loop).
+    const measurementCommand = capabilityTestCommand(dim);
+    if (!measurementCommand) {
+      logger.info(`[harden-crusade:${dim.id}] Cycle ${cycle}: no capability_test — skipping autoresearch (nothing to measure)`);
+    } else {
+      try {
+        logger.info(`[harden-crusade:${dim.id}] Cycle ${cycle}: autoresearch (${timeMinutes}m, metric=capability_test)`);
+        await runAutoResearch(dim.id, dimGoal, cwd, timeMinutes, measurementCommand);
+        autoresearchRuns++;
+      } catch (err) {
+        logger.warn(`[harden-crusade:${dim.id}] Autoresearch cycle ${cycle} failed: ${err instanceof Error ? err.message : String(err)}`);
+      }
     }
 
     // 1b. Refresh outcome evidence — autoresearch may have committed, changing the SHA

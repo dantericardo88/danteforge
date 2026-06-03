@@ -51,7 +51,7 @@ describe('ascend-frontier run-ledger — the orchestrator leaves an auditable re
       },
       _runPushTo9: async (): Promise<PushResult> => {
         pushN++;
-        return { verdict: 'REJECTED', fingerprint: { dimId: 'd', command: 'run', artifactPath: 'art', gitSha: `sha-${pushN}` } };
+        return { verdict: 'REJECTED', courtRan: true, fingerprint: { dimId: 'd', command: 'run', artifactPath: 'art', gitSha: `sha-${pushN}` } };
       },
       _now: () => '2026-06-03T00:00:00.000Z',
     });
@@ -72,12 +72,45 @@ describe('ascend-frontier run-ledger — the orchestrator leaves an auditable re
     assert.ok(bundle!.events.some(e => e.eventType === 'cycle'), 'per-cycle events recorded');
   });
 
+  test('a push whose court NEVER RAN is recorded as build-failed, NOT a fabricated court rejection (the fleet integrity bug)', async () => {
+    const dir = path.join(ROOT, 'courtless');
+    let pushN = 0;
+    const r = await runAscendFrontier({
+      cwd: dir, maxBuildAttempts: 2, maxCycles: 10,
+      _buildState: async () => {
+        const ceiling = await fs.readFile(path.join(dir, '.danteforge', 'ceilings', 'd.json'), 'utf8').then(JSON.parse).catch(() => null);
+        return [{ ...dim({ id: 'd', effectiveScore: 8.0 }), ceiling }];
+      },
+      // The court never ran (build/evidence/command failed) — courtRan:false every time.
+      _runPushTo9: async (): Promise<PushResult> => {
+        pushN++;
+        return { verdict: 'REJECTED', courtRan: false, fingerprint: { dimId: 'd', command: 'run', artifactPath: 'art', gitSha: `sha-${pushN}` } };
+      },
+      _now: () => '2026-06-03T00:00:00.000Z',
+    });
+
+    assert.equal(r.terminal, 'done', 'the loop still terminates (no spin) via an honest build-failed ceiling');
+    assert.equal(pushN, 2, 'exactly maxBuildAttempts push attempts, then ceiling');
+
+    // The ceiling cause is build-failed — NOT a fabricated generator-ceiling / court-rejected.
+    const ceiling = JSON.parse(await fs.readFile(path.join(dir, '.danteforge', 'ceilings', 'd.json'), 'utf8'));
+    assert.equal(ceiling.cause, 'build-failed', 'a court that never ran must NEVER be recorded as a court rejection');
+    assert.notEqual(ceiling.cause, 'generator-ceiling');
+    assert.ok(ceiling.reviewAfter, 'build-failed is re-attemptable (carries reviewAfter)');
+
+    // CRITICAL: the evidence-novelty ledger has ZERO court attempts — the engine did not fabricate
+    // "the court rejected" provenance from commands that never produced a verdict.
+    const ledger = JSON.parse(await fs.readFile(path.join(dir, '.danteforge', 'evidence-novelty.json'), 'utf8').catch(() => '[]'));
+    assert.equal(ledger.filter((a: { dimId: string }) => a.dimId === 'd').length, 0,
+      'a court that never ran must not appear as a recorded court attempt');
+  });
+
   test('dry-run writes NO ledger (read-only)', async () => {
     const dir = path.join(ROOT, 'dry');
     const r = await runAscendFrontier({
       cwd: dir, dryRun: true,
       _buildState: async () => [dim({ id: 'a', effectiveScore: 7.0 })],
-      _runPushTo9: async () => ({ verdict: 'REJECTED', fingerprint: { dimId: 'a', command: 'x', artifactPath: 'y', gitSha: 's' } }),
+      _runPushTo9: async () => ({ verdict: 'REJECTED', courtRan: true, fingerprint: { dimId: 'a', command: 'x', artifactPath: 'y', gitSha: 's' } }),
       _now: () => '2026-06-03T00:00:00.000Z',
     });
     assert.equal(r.terminal, 'dry-run');

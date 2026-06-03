@@ -27,8 +27,14 @@ import { runCli, parseCourtOutput, setActiveLedger, type CliResult } from './asc
 const execFileAsync = promisify(execFile);
 const MARKET_DIMS = new Set(['community_adoption', 'enterprise_readiness']);
 
-/** A push runner reports the court verdict and the fingerprint of the evidence it produced. */
-export interface PushResult { verdict: 'VALIDATED' | 'REJECTED'; fingerprint: AttemptFingerprint; }
+/**
+ * A push runner reports the court verdict and the fingerprint of the evidence it produced.
+ * `courtRan` is the honesty boundary: it is TRUE only when the frontier-review court actually
+ * executed over real evidence and returned a verdict. When the build/evidence/court sub-commands
+ * fail to run (crash, no evidence), `courtRan` is FALSE — and the loop must NOT record that as a
+ * court rejection (which would fabricate "the court rejected N times" generator-ceiling provenance).
+ */
+export interface PushResult { verdict: 'VALIDATED' | 'REJECTED'; courtRan: boolean; fingerprint: AttemptFingerprint; }
 
 export interface AscendFrontierOptions {
   cwd?: string;
@@ -148,6 +154,11 @@ export async function runAscendFrontier(options: AscendFrontierOptions): Promise
   const setupAttempts = new Map<string, number>();
   const buildAttempts = new Map<string, number>();
   const lastScore = new Map<string, number>();
+  // Distinct from court-attempt counting: a push whose court never RAN (build/evidence/command
+  // failed) increments this, NOT the evidence-novelty attempt ledger. After maxBuildAttempts such
+  // failures a dim gets an honest 'build-failed' ceiling (re-attemptable) — never a fabricated
+  // 'generator-ceiling' (which is reserved for a court that actually ran and rejected).
+  const buildFailedAttempts = new Map<string, number>();
 
   // Run-ledger: an auditable diary of the whole run (every sub-command + exit code, court verdict,
   // ceiling, before/after score). Created lazily on the first real cycle so dry-run / done-at-start
@@ -234,14 +245,37 @@ export async function runAscendFrontier(options: AscendFrontierOptions): Promise
           // Record an attempt per pushed dim so attempt-counts advance (a fresh HEAD makes it novel).
           const sha = await headSha(cwd);
           for (const o of round.outcomes) {
-            led.logGateCheck(`frontier-court:${o.dimId}`, o.verdict === 'VALIDATED' ? 'pass' : 'fail',
-              o.parseError ? 'court output unparseable (recorded as rejection, not a clean no)' : `builder=${o.builderId}`);
+            if (o.parseError) {
+              // The court did NOT run (failed/unparseable output) — never record a non-run as a
+              // rejection; that would fabricate court-rejection provenance toward a generator-ceiling.
+              led.logGateCheck(`frontier-court:${o.dimId}`, 'fail', 'court did NOT run (build/command failure) — not counted as a rejection');
+              continue;
+            }
+            led.logGateCheck(`frontier-court:${o.dimId}`, o.verdict === 'VALIDATED' ? 'pass' : 'fail', `builder=${o.builderId}`);
             await recordAttempt(cwd, { dimId: o.dimId, command: `parallel:${o.builderId}`, artifactPath: '', gitSha: sha },
               o.verdict === 'VALIDATED' ? 'validated' : 'rejected', now());
           }
           break;
         }
         const result = await runPushTo9(cwd, action.dimId);
+        if (!result.courtRan) {
+          // The court NEVER RAN (build/evidence/court sub-command failed) — this is NOT a rejection.
+          // Do not touch the evidence-novelty attempt ledger; count it as a build failure instead.
+          const n = (buildFailedAttempts.get(action.dimId) ?? 0) + 1;
+          buildFailedAttempts.set(action.dimId, n);
+          led.logGateCheck(`frontier-court:${action.dimId}`, 'fail', `court did NOT run (build/evidence/command failure) — attempt ${n}/${maxBuildAttempts}, not counted as a rejection`);
+          if (n >= maxBuildAttempts) {
+            // Honest operational ceiling — re-attemptable, distinct from generator-ceiling. Never
+            // claims the court rejected (it didn't run). reviewAfter so it re-opens once the build is fixed.
+            const reviewAfter = new Date(Date.parse(now()) + 24 * 60 * 60_000).toISOString();
+            led.addReceipt('ceiling', { dimId: action.dimId, cause: 'build-failed', detail: `${n} push attempts failed to run` });
+            await writeCeilingReceipt(cwd, { dimId: action.dimId, cap: scoreOf(state, action.dimId), cause: 'build-failed',
+              detail: `${n} push attempts could not run the court — the build/evidence/court sub-command failed (not a court rejection). Held at current score; re-attempt after fixing the build.`,
+              failedGates: ['build-failed'], recordedAt: now(), reviewAfter });
+          }
+          break;
+        }
+        // The court genuinely ran — record an honest attempt / generator-ceiling.
         led.logGateCheck(`frontier-court:${action.dimId}`, result.verdict === 'VALIDATED' ? 'pass' : 'fail');
         const attemptLedger = await loadAttemptLedger(cwd);
         if (!isNovelAttempt(attemptLedger, result.fingerprint)) {
@@ -293,6 +327,7 @@ async function defaultPushTo9(cwd: string, dimId: string): Promise<PushResult> {
 
   const specBefore = (await loadMatrix(cwd))?.dimensions.find(d => d.id === dimId);
   const spec0 = (specBefore as unknown as { frontier_spec?: FrontierSpec } | undefined)?.frontier_spec;
+  let evidenceOk = false; // did at least one session genuinely record evidence AND validate cleanly?
   if (spec0) {
     const callsite = spec0.real_user_path.required_callsite;
     const artifact = spec0.real_user_path.observable_artifacts[0]?.path ?? '';
@@ -301,25 +336,36 @@ async function defaultPushTo9(cwd: string, dimId: string): Promise<PushResult> {
       // Each session runs a DIFFERENT realistic input (variant rotation) so one prepared fixture
       // cannot satisfy the whole multi-session proof — the anti-circular defense.
       const cmd = resolveRunCommand(spec0, s);
-      await df(cwd, ['session-record', dimId, '--run', cmd, '--callsite', callsite, '--artifact', artifact, '--write']);
-      await df(cwd, ['validate', dimId, '--force-cold']);
+      const rec = await df(cwd, ['session-record', dimId, '--run', cmd, '--callsite', callsite, '--artifact', artifact, '--write']);
+      const val = await df(cwd, ['validate', dimId, '--force-cold']);
+      if (rec.ok && val.ok) evidenceOk = true;
     }
   }
-  await df(cwd, ['frontier-review', dimId, '--write']);
 
-  // Re-read the spec status to learn the court verdict; fingerprint from the spec + HEAD.
-  const matrix = await loadMatrix(cwd);
-  const dim = matrix?.dimensions.find(d => d.id === dimId);
-  const spec = (dim as unknown as { frontier_spec?: FrontierSpec } | undefined)?.frontier_spec;
-  const verdict: PushResult['verdict'] = spec && effectiveStatus(spec) === 'validated' ? 'VALIDATED' : 'REJECTED';
+  // The honesty boundary: the court only "ran" if there's a frozen spec, the evidence pipeline
+  // actually produced something (rec+val exit 0), AND frontier-review itself executed (exit 0).
+  // Otherwise this was a failed build — NOT a court rejection — and must not be recorded as one.
+  let courtRan = false;
+  let verdict: PushResult['verdict'] = 'REJECTED';
+  if (spec0 && evidenceOk) {
+    const review = await df(cwd, ['frontier-review', dimId, '--write']);
+    if (review.ok) {
+      courtRan = true;
+      const matrix = await loadMatrix(cwd);
+      const dim = matrix?.dimensions.find(d => d.id === dimId);
+      const spec = (dim as unknown as { frontier_spec?: FrontierSpec } | undefined)?.frontier_spec;
+      verdict = spec && effectiveStatus(spec) === 'validated' ? 'VALIDATED' : 'REJECTED';
+    }
+  }
+
   let gitSha: string | null = null;
   try { gitSha = (await execFileAsync('git', ['rev-parse', 'HEAD'], { cwd })).stdout.trim(); } catch { /* none */ }
   return {
-    verdict,
+    verdict, courtRan,
     fingerprint: {
       dimId,
-      command: spec?.real_user_path.run_command ?? '',
-      artifactPath: spec?.real_user_path.observable_artifacts[0]?.path ?? '',
+      command: spec0?.real_user_path.run_command ?? '',
+      artifactPath: spec0?.real_user_path.observable_artifacts[0]?.path ?? '',
       gitSha,
     },
   };

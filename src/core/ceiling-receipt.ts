@@ -16,7 +16,10 @@ export type CeilingCause =
   | 'r-and-d-gap'       // the honest score IS the result (e.g. swe_bench pass-rate) — long-horizon research
   | 'environment'       // missing host/network/device/key — fixable substrate, re-attempt after
   | 'generator-ceiling' // the agent genuinely could not build the frontier capability this pass
-  | 'court-rejected';   // the frontier-review-court judged the evidence not genuine competitor parity
+  | 'court-rejected'    // the frontier-review-court judged the evidence not genuine competitor parity
+  | 'build-failed';     // the build/evidence/court sub-command FAILED TO RUN (crash / no evidence) — NOT a
+                        // court rejection. An operational blocker, re-attempt after fixing the build. The
+                        // engine must never record a failed-to-run push as 'generator-ceiling'/'court-rejected'.
 
 export interface CeilingReceipt {
   dimId: string;

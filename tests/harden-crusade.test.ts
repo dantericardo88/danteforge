@@ -17,6 +17,9 @@ function makeDim(id: string, selfScore: number, opts: Partial<MatrixDimension> =
     scores: { self: selfScore },
     weight: 1,
     outcomes: [],
+    // Default capability_test so fixtures exercise the realistic build-to-7 path (autoresearch is
+    // metric-driven). Tests that need the no-metric path pass `no_capability_test: true` explicitly.
+    capability_test: { command: `echo ${id}`, description: 'fixture metric' },
     ...opts,
   } as unknown as MatrixDimension;
 }
@@ -287,5 +290,40 @@ describe('runHardenCrusade — loop mode', () => {
     assert.equal(result.status, 'ALL_DONE');
     // All pushed dims should be FRONTIER_REACHED
     assert.ok(result.dimensions.every(d => d.status === 'FRONTIER_REACHED'), 'all dims should be FRONTIER_REACHED');
+  });
+});
+
+// ── Fix A: capability_test wired as the autoresearch measurement metric ───────────
+// Root cause of the fleet build-to-7 crash/hang: autoresearch was invoked with --metric <dimId>
+// but NO --measurement-command, so it errored "needs an explicit measurement command".
+
+describe('runHardenCrusade — autoresearch measurement-command (fleet build-to-7 fix)', () => {
+  it("passes the dim's capability_test command as the autoresearch measurement metric", async () => {
+    const dim = makeDim('security', 5.0, {
+      capability_test: { command: 'node dist/index.js security-scan --dry-run', description: 'scan' },
+    } as Partial<MatrixDimension>);
+    let receivedMeasurementCommand: string | undefined = 'UNSET';
+    await runHardenCrusade(baseOpts({
+      _loadMatrix: async () => makeMatrix([dim]),
+      _getScore: async () => 5.0,        // stays below target → autoresearch runs
+      _runAutoResearch: async (_id, _goal, _cwd, _t, mc) => { receivedMeasurementCommand = mc; },
+      _runHardenForDim: async () => gatePass,
+      target: 7, maxDimCycles: 1,
+    }));
+    assert.equal(receivedMeasurementCommand, 'node dist/index.js security-scan --dry-run',
+      'autoresearch must receive the capability_test command — never undefined (the crash cause)');
+  });
+
+  it('skips autoresearch entirely for a dim with no_capability_test (no metric to measure)', async () => {
+    const dim = makeDim('token_economy', 5.0, { no_capability_test: true } as Partial<MatrixDimension>);
+    let autoresearchCalls = 0;
+    await runHardenCrusade(baseOpts({
+      _loadMatrix: async () => makeMatrix([dim]),
+      _getScore: async () => 5.0,
+      _runAutoResearch: async () => { autoresearchCalls++; },
+      _runHardenForDim: async () => gatePass,
+      target: 7, maxDimCycles: 1,
+    }));
+    assert.equal(autoresearchCalls, 0, 'a no_capability_test dim must not invoke autoresearch (would crash)');
   });
 });

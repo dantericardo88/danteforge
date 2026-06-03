@@ -36,7 +36,7 @@ describe('ascend-frontier — unattended loop control', () => {
     const r = await runAscendFrontier({
       cwd: ROOT, dryRun: true,
       _buildState: async () => [dim({ id: 'a', effectiveScore: 7.0 })],
-      _runPushTo9: async () => { executed = true; return { verdict: 'REJECTED', fingerprint: { dimId: 'a', command: 'x', artifactPath: 'y', gitSha: 's' } }; },
+      _runPushTo9: async () => { executed = true; return { verdict: 'REJECTED', courtRan: true, fingerprint: { dimId: 'a', command: 'x', artifactPath: 'y', gitSha: 's' } }; },
       _now: () => '2026-06-03T00:00:00.000Z',
     });
     assert.equal(r.terminal, 'dry-run');
@@ -67,7 +67,7 @@ describe('ascend-frontier — unattended loop control', () => {
       },
       _runPushTo9: async (): Promise<PushResult> => {
         pushN++;
-        return { verdict: 'REJECTED', fingerprint: { dimId: 'a', command: 'run', artifactPath: 'art', gitSha: `sha-${pushN}` } }; // fresh SHA → novel each time
+        return { verdict: 'REJECTED', courtRan: true, fingerprint: { dimId: 'a', command: 'run', artifactPath: 'art', gitSha: `sha-${pushN}` } }; // fresh SHA → novel each time
       },
       _now: () => '2026-06-03T00:00:00.000Z',
     });
@@ -145,7 +145,7 @@ describe('ascend-frontier — unattended loop control', () => {
         return [{ ...dim({ id: 'a', effectiveScore: 8.0 }), ceiling }];
       },
       // Same fingerprint every push (no new SHA) — must be caught as non-novel after the first record.
-      _runPushTo9: async (): Promise<PushResult> => ({ verdict: 'REJECTED', fingerprint: { dimId: 'a', command: 'run', artifactPath: 'art', gitSha: 'SAME' } }),
+      _runPushTo9: async (): Promise<PushResult> => ({ verdict: 'REJECTED', courtRan: true, fingerprint: { dimId: 'a', command: 'run', artifactPath: 'art', gitSha: 'SAME' } }),
       _now: () => '2026-06-03T00:00:00.000Z',
     });
     assert.equal(r.terminal, 'done');
