@@ -95,8 +95,8 @@ describe('ascend-frontier — unattended loop control', () => {
         return ['a', 'b', 'c'].map(id => ({ ...dim({ id, effectiveScore: 8.0 }) }));
       },
       _discoverMembers: async () => ['codex', 'claude-code', 'grok-build'],
-      _runParallelPush: async (_cwd, asg) => {
-        rounds = 1;
+      _buildAll: async () => { rounds = 1; },
+      _promoteOne: async (_cwd, asg) => {
         pushedBy[asg.dimId] = asg.memberId;
         return { dimId: asg.dimId, builderId: asg.memberId, verdict: 'VALIDATED', passedByJudges: ['codex', 'claude-code', 'grok-build'].filter(m => m !== asg.memberId) };
       },

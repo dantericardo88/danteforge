@@ -89,22 +89,30 @@ export interface ParallelRoundResult {
 }
 
 /**
- * Run one parallel round: dispatch each assignment's push concurrently, detect reciprocity, and
- * enqueue mandatory audits for reciprocal pairs. Promotion/merge happens inside `runPush` (serial).
+ * Run one parallel round with the council's concurrency contract: a CONCURRENT build-all (each
+ * member builds its dim in an isolated worktree, merged to main — `buildAll` owns that), then a
+ * SERIAL promote per dim (session-record + validate + frontier-review write to matrix.json, so they
+ * must not race). Then detect reciprocity and enqueue mandatory audits for reciprocal pairs.
  */
 export async function runParallelRound(
   cwd: string,
   assignments: RoundAssignment[],
   opts: {
-    runPush: (a: RoundAssignment) => Promise<PushOutcome>;
+    /** Concurrent, worktree-isolated build of the round's dims, merged to main. */
+    buildAll: (cwd: string, assignments: RoundAssignment[]) => Promise<void>;
+    /** Serial promote of ONE dim: capture evidence + run the court. Writes matrix — never concurrent. */
+    promoteOne: (cwd: string, a: RoundAssignment) => Promise<PushOutcome>;
     _enqueueAudit?: (cwd: string, entry: AuditEscrowEntry) => Promise<void>;
     nowIso: string;
   },
 ): Promise<ParallelRoundResult> {
-  const settled = await Promise.allSettled(assignments.map(a => opts.runPush(a)));
-  const outcomes: PushOutcome[] = settled
-    .map((s, i) => s.status === 'fulfilled' ? s.value : { dimId: assignments[i]!.dimId, builderId: assignments[i]!.memberId, verdict: 'REJECTED' as const, passedByJudges: [] })
-    ;
+  await opts.buildAll(cwd, assignments); // parallel build in worktrees → merged to main
+  const outcomes: PushOutcome[] = [];
+  for (const a of assignments) {
+    // SERIAL: each promote writes matrix.json/receipts; running them concurrently would race.
+    try { outcomes.push(await opts.promoteOne(cwd, a)); }
+    catch { outcomes.push({ dimId: a.dimId, builderId: a.memberId, verdict: 'REJECTED', passedByJudges: [] }); }
+  }
 
   const reciprocalPairs = detectReciprocity(outcomes);
   const enqueue = opts._enqueueAudit ?? enqueueAudit;

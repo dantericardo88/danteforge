@@ -61,28 +61,37 @@ describe('detectReciprocity — rubber-stamp pairs', () => {
 });
 
 describe('runParallelRound', () => {
-  test('runs pushes concurrently, enqueues reciprocal pairs for audit, reports validated', async () => {
+  test('build-all runs once (concurrent), promote runs SERIALLY, reciprocal pairs queued for audit', async () => {
     const assignments: RoundAssignment[] = [
       { memberId: 'codex', dimId: 'x' }, { memberId: 'claude-code', dimId: 'y' }, { memberId: 'grok-build', dimId: 'z' },
     ];
-    const enq: AuditEntry[] = [];
     type AuditEntry = { dimId: string; kind: string };
+    const enq: AuditEntry[] = [];
+    let buildAlls = 0;
+    const promoteOrder: string[] = [];
+    let concurrentPromotes = 0, maxConcurrent = 0;
     const r = await runParallelRound('/tmp/fake', assignments, {
-      runPush: async (a) => ({
-        dimId: a.dimId, builderId: a.memberId, verdict: 'VALIDATED',
-        passedByJudges: a.dimId === 'x' ? ['claude-code'] : a.dimId === 'y' ? ['codex'] : ['codex', 'claude-code'],
-      }),
+      buildAll: async () => { buildAlls++; },
+      promoteOne: async (_cwd, a) => {
+        concurrentPromotes++; maxConcurrent = Math.max(maxConcurrent, concurrentPromotes);
+        await Promise.resolve(); promoteOrder.push(a.dimId); concurrentPromotes--;
+        return { dimId: a.dimId, builderId: a.memberId, verdict: 'VALIDATED',
+          passedByJudges: a.dimId === 'x' ? ['claude-code'] : a.dimId === 'y' ? ['codex'] : ['codex', 'claude-code'] };
+      },
       _enqueueAudit: async (_cwd, e) => { enq.push({ dimId: e.dimId, kind: e.kind }); },
       nowIso: NOW,
     });
+    assert.equal(buildAlls, 1, 'one concurrent build-all for the whole round');
+    assert.equal(maxConcurrent, 1, 'promotes are SERIAL — never two matrix-writers at once');
     assert.deepEqual(r.validated.sort(), ['x', 'y', 'z']);
     assert.equal(r.reciprocalPairs.length, 1, 'codex↔claude-code cross-passed');
-    assert.equal(enq.filter(e => e.kind === 'reciprocal-pair').length, 2, 'both dims of the pair queued for human audit');
+    assert.equal(enq.filter(e => e.kind === 'reciprocal-pair').length, 2);
   });
 
-  test('a failed push degrades to REJECTED, never crashes the round', async () => {
+  test('a failed promote degrades to REJECTED, never crashes the round', async () => {
     const r = await runParallelRound('/tmp/fake', [{ memberId: 'codex', dimId: 'x' }], {
-      runPush: async () => { throw new Error('build blew up'); },
+      buildAll: async () => {},
+      promoteOne: async () => { throw new Error('promote blew up'); },
       _enqueueAudit: async () => {},
       nowIso: NOW,
     });

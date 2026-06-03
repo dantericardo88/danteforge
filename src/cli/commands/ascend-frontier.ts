@@ -43,8 +43,10 @@ export interface AscendFrontierOptions {
   _runPushTo9?: (cwd: string, dimId: string) => Promise<PushResult>;
   /** Parallel mode: discover live council members. */
   _discoverMembers?: () => Promise<CouncilMemberId[]>;
-  /** Parallel mode: push one (member, dim) pair — returns the court outcome incl. who passed. */
-  _runParallelPush?: (cwd: string, a: { memberId: CouncilMemberId; dimId: string }) => Promise<PushOutcome>;
+  /** Parallel mode: concurrent worktree-isolated build of the round's dims, merged to main. */
+  _buildAll?: (cwd: string, assignments: { memberId: CouncilMemberId; dimId: string }[]) => Promise<void>;
+  /** Parallel mode: SERIAL promote of one dim — capture evidence + run the court. */
+  _promoteOne?: (cwd: string, a: { memberId: CouncilMemberId; dimId: string }) => Promise<PushOutcome>;
   _now?: () => string;
 }
 
@@ -162,7 +164,8 @@ export async function runAscendFrontier(options: AscendFrontierOptions): Promise
           if (assignments.length === 0) break;
           logger.info(`[ascend-frontier] parallel round: ${assignments.map(a => `${a.memberId}→${a.dimId}`).join(', ')}`);
           const round = await runParallelRound(cwd, assignments, {
-            runPush: (a) => (options._runParallelPush ?? defaultParallelPush)(cwd, a),
+            buildAll: options._buildAll ?? ((c, asg) => defaultBuildAll(c, asg, liveMembers)),
+            promoteOne: options._promoteOne ?? defaultPromoteOne,
             nowIso: now(),
           });
           // Record an attempt per pushed dim so attempt-counts advance (a fresh HEAD makes it novel).
@@ -266,12 +269,23 @@ async function dfCapture(cwd: string, args: string[]): Promise<string> {
   catch (e) { return (e as { stdout?: string }).stdout ?? ''; }
 }
 
-/** Push one (member, dim) pair, then run the court with that member EXCLUDED from judging. */
-async function defaultParallelPush(cwd: string, a: { memberId: CouncilMemberId; dimId: string }): Promise<PushOutcome> {
-  await df(cwd, ['frontier-spec', 'freeze', a.dimId, '--write']);
-  await df(cwd, ['council-crusade', '--focus-dims', a.dimId, '--goal', `Close frontier_spec for ${a.dimId} (builder ${a.memberId})`]);
-  const specBefore = (await loadMatrix(cwd))?.dimensions.find(d => d.id === a.dimId);
-  const spec0 = (specBefore as unknown as { frontier_spec?: FrontierSpec } | undefined)?.frontier_spec;
+/** CONCURRENT build: freeze each dim's spec, then council --parallel builds them in isolated
+ *  worktrees with the cross-member merge court, merging approved work to main. */
+async function defaultBuildAll(cwd: string, assignments: { memberId: CouncilMemberId; dimId: string }[], members: CouncilMemberId[]): Promise<void> {
+  const dims = assignments.map(a => a.dimId);
+  for (const d of dims) await df(cwd, ['frontier-spec', 'freeze', d, '--write']);
+  if (members.length >= 2) {
+    await df(cwd, ['council', '--parallel', '--members', members.join(','), '--focus-dims', dims.join(','), '--rounds', '1']);
+  } else {
+    for (const a of assignments) await df(cwd, ['council-crusade', '--focus-dims', a.dimId, '--goal', `Close frontier_spec for ${a.dimId}`]);
+  }
+}
+
+/** SERIAL promote of one dim: capture real-user-path evidence (variant-rotated), validate across
+ *  sessions, then run the court with the assigned owner EXCLUDED (builder-never-judges). Writes
+ *  matrix.json — runParallelRound guarantees this runs one dim at a time, so no write races. */
+async function defaultPromoteOne(cwd: string, a: { memberId: CouncilMemberId; dimId: string }): Promise<PushOutcome> {
+  const spec0 = ((await loadMatrix(cwd))?.dimensions.find(d => d.id === a.dimId) as unknown as { frontier_spec?: FrontierSpec } | undefined)?.frontier_spec;
   if (spec0) {
     const callsite = spec0.real_user_path.required_callsite;
     const artifact = spec0.real_user_path.observable_artifacts[0]?.path ?? '';
@@ -281,7 +295,6 @@ async function defaultParallelPush(cwd: string, a: { memberId: CouncilMemberId; 
       await df(cwd, ['validate', a.dimId, '--force-cold']);
     }
   }
-  // Court with builder-never-judges: the OTHER members judge (unanimous 2-of-2 in a 3-member council).
   const out = await dfCapture(cwd, ['frontier-review', a.dimId, '--builder', a.memberId, '--min-judges', '2', '--json', '--write']);
   let verdict: PushOutcome['verdict'] = 'REJECTED';
   let passedByJudges: CouncilMemberId[] = [];
