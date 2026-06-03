@@ -1,5 +1,5 @@
 // Tests for the 4 council judge-mode fixes:
-//   FIX 1: Gemini excluded from discoverCouncil() — only codex/grok-build/claude-code probed
+//   FIX 1: Gemini AND Grok excluded from discoverCouncil() — only codex/claude-code probed
 //   FIX 2: Claude Code judge mode → --output-format text (zero tools, zero file writes)
 //   FIX 3: Grok judge mode captures stderr too + sets explicit finalMessage
 //   FIX 4: buildClaudeJudgeTextPrompt embeds diff for tool-free judging
@@ -10,21 +10,21 @@ import { describe, it } from 'node:test';
 
 import { discoverCouncil } from '../src/cli/commands/council.js';
 
-describe('discoverCouncil — FIX 1: Gemini excluded from default roster', () => {
-  it('discoverCouncil probes only codex, grok-build, claude-code (not gemini-cli)', async () => {
+describe('discoverCouncil — FIX 1: Gemini AND Grok excluded from default roster', () => {
+  it('discoverCouncil probes only codex + claude-code (not gemini-cli, not grok-build)', async () => {
     // Hermetic: the DANTEFORGE_COUNCIL_MEMBERS env var globally filters the roster,
-    // so clear it for this test to assert the true default (all 3 subscription adapters).
+    // so clear it for this test to assert the true default (the 2 reliable subscription adapters).
     const savedFilter = process.env['DANTEFORGE_COUNCIL_MEMBERS'];
     delete process.env['DANTEFORGE_COUNCIL_MEMBERS'];
     try {
       const probed: string[] = [];
       const members = await discoverCouncil();
-      // Members list never contains gemini-cli (not probed)
-      const geminiMember = members.find(m => m.id === 'gemini-cli');
-      assert.equal(geminiMember, undefined, 'gemini-cli should not appear in discovery results');
-      // But the 3 subscription adapters ARE probed
+      // Neither gemini-cli nor grok-build is probed (both excluded from the default roster).
+      assert.equal(members.find(m => m.id === 'gemini-cli'), undefined, 'gemini-cli should not appear in discovery results');
+      assert.equal(members.find(m => m.id === 'grok-build'), undefined, 'grok-build should not appear in discovery results');
+      // The 2 reliable subscription adapters ARE probed.
       const ids = members.map(m => m.id).sort();
-      assert.deepEqual(ids, ['claude-code', 'codex', 'grok-build'].sort());
+      assert.deepEqual(ids, ['claude-code', 'codex'].sort());
       void probed; // unused but referenced for TS
     } finally {
       if (savedFilter !== undefined) process.env['DANTEFORGE_COUNCIL_MEMBERS'] = savedFilter;
