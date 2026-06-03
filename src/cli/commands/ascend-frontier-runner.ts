@@ -10,6 +10,7 @@
 
 import { spawn } from 'node:child_process';
 import type { RunLedger } from '../../core/run-ledger.js';
+import { trackChild, untrackChild, killTree, SPAWN_DETACHED } from '../../core/process-tree.js';
 
 /** Keep at most the last N bytes of each captured stream — a 30-min build must never buffer unbounded. */
 const STREAM_TAIL_CAP = 256 * 1024;
@@ -69,14 +70,20 @@ function runOnce(cwd: string, args: string[]): Promise<CliResult> {
   return new Promise<CliResult>((resolve) => {
     let out = '', err = '', settled = false;
     const cap = (s: string) => (s.length > STREAM_TAIL_CAP ? s.slice(s.length - STREAM_TAIL_CAP) : s);
+    // stdin:'ignore' — an unattended sub-command that prompts gets EOF and fails fast instead of
+    // blocking forever (the silent autoresearch hang the fleet hit). detached on POSIX for group-kill.
+    const child = spawn(node, [cli, ...args], { cwd, windowsHide: true, stdio: ['ignore', 'pipe', 'pipe'], detached: SPAWN_DETACHED });
+    trackChild(child.pid);
     const done = (exitCode: number) => {
       if (settled) return;
       settled = true;
       clearTimeout(timer);
+      untrackChild(child.pid);
       resolve({ exitCode, stdout: out, stderr: err, ms: Date.now() - start, ok: exitCode === 0 });
     };
-    const timer = setTimeout(() => { try { child.kill(); } catch { /* */ } done(124); }, 30 * 60_000);
-    const child = spawn(node, [cli, ...args], { cwd, windowsHide: true });
+    // On timeout, kill the WHOLE tree (harden-crusade + its autoresearch grandchildren), not just the
+    // direct child — otherwise the grandchildren orphan and accumulate as zombies across sessions.
+    const timer = setTimeout(() => { killTree(child.pid); done(124); }, 30 * 60_000);
     child.stdout?.on('data', (d: Buffer) => { out = cap(out + d.toString()); });
     child.stderr?.on('data', (d: Buffer) => { err = cap(err + d.toString()); });
     // ENOENT (binary not found) → 127, matching a shell "command not found".

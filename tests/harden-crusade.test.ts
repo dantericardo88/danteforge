@@ -314,6 +314,21 @@ describe('runHardenCrusade — autoresearch measurement-command (fleet build-to-
       'autoresearch must receive the capability_test command — never undefined (the crash cause)');
   });
 
+  it('does NOT select a dim already within a rounding-hair of target (no "Improve from 7.00 to 7" waste)', async () => {
+    const atTarget = makeDim('reliability', 6.97);   // 6.97 >= 7 - 0.05 → excluded
+    const realGap = makeDim('performance', 5.0);     // genuine sub-target → built
+    const built = new Set<string>();
+    await runHardenCrusade(baseOpts({
+      _loadMatrix: async () => makeMatrix([atTarget, realGap]),
+      _getScore: async (id) => (id === 'reliability' ? 6.97 : 5.0),
+      _runAutoResearch: async (id) => { built.add(id); },
+      _runHardenForDim: async () => gatePass,
+      target: 7, maxDimCycles: 1,
+    }));
+    assert.ok(!built.has('reliability'), 'a ~7.0 dim must not consume a build slot');
+    assert.ok(built.has('performance'), 'the genuine sub-target dim is built');
+  });
+
   it('skips autoresearch entirely for a dim with no_capability_test (no metric to measure)', async () => {
     const dim = makeDim('token_economy', 5.0, { no_capability_test: true } as Partial<MatrixDimension>);
     let autoresearchCalls = 0;

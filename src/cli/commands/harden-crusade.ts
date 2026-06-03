@@ -124,11 +124,16 @@ async function resolveDanteForgeExec(cwd: string): Promise<{ file: string; argsP
  */
 async function spawnStreamed(file: string, args: string[], cwd: string, timeoutMs: number): Promise<void> {
   const { spawn } = await import('node:child_process');
+  const { trackChild, untrackChild, killTree, SPAWN_DETACHED } = await import('../../core/process-tree.js');
   await new Promise<void>((resolve, reject) => {
     let settled = false;
-    const finish = (fn: () => void) => { if (!settled) { settled = true; clearTimeout(timer); fn(); } };
-    const child = spawn(file, args, { cwd, stdio: 'inherit', windowsHide: true });
-    const timer = setTimeout(() => { try { child.kill(); } catch { /* */ } finish(() => reject(new Error(`timed out after ${Math.round(timeoutMs / 60000)}m`))); }, timeoutMs);
+    // stdin:'ignore' — an unattended autoresearch that hits a prompt gets EOF and fails fast instead
+    // of blocking forever (the silent ~15-min hang the fleet hit). stdout/stderr inherit (no buffer).
+    const child = spawn(file, args, { cwd, stdio: ['ignore', 'inherit', 'inherit'], windowsHide: true, detached: SPAWN_DETACHED });
+    trackChild(child.pid);
+    const finish = (fn: () => void) => { if (!settled) { settled = true; clearTimeout(timer); untrackChild(child.pid); fn(); } };
+    // Tree-kill on timeout — autoresearch spawns its own workers; killing only the direct child orphans them.
+    const timer = setTimeout(() => { killTree(child.pid); finish(() => reject(new Error(`timed out after ${Math.round(timeoutMs / 60000)}m`))); }, timeoutMs);
     child.on('error', (e: NodeJS.ErrnoException) => finish(() => reject(e)));
     child.on('close', (code, signal) => finish(() => code === 0 ? resolve() : reject(new Error(`exit ${code ?? signal}`))));
   });
@@ -414,7 +419,9 @@ function pickWeakestDims(
       // of its historical status. Threshold: if derived < 80% of target, reopen.
       const reopenClosed = isClosed && score < target * 0.8;
       if (isClosed && !reopenClosed) return false;
-      if (score >= target) return false;
+      // Exclude dims already at (or within a rounding-hair of) target — autoresearching a 6.99→7.0
+      // dim wastes a build slot and shows the misleading "Improve … from 7.00 to 7" the fleet flagged.
+      if (score >= target - 0.05) return false;
       // Use the numeric d.ceiling field (operator-set cap), not declared_ceiling tier.
       if (d.ceiling !== undefined && score >= d.ceiling) return false;
       return true;

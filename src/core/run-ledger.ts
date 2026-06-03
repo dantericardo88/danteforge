@@ -135,13 +135,19 @@ export class RunLedger {
   }
 
   logEvent(eventType: string, data: Record<string, any>): void {
-    this.events.push({
+    const event: EvidenceEvent = {
       timestamp: new Date().toISOString(),
       eventType,
       correlationId: this.correlationId,
       sessionId: this.sessionId,
       data,
-    });
+    };
+    this.events.push(event);
+    // Crash/HANG-durable: append immediately so even a run that HANGS (never completes a command,
+    // never reaches finalize) still leaves a record of how far it got — run_start, the cycle reached,
+    // the phase that blocked. Without this, a hang leaves a completely empty run dir (the fleet saw
+    // exactly this: "creates the run dir, prints cycle 1, then hangs before writing any ledger").
+    void fs.appendFile(path.join(this.runDir, 'events-live.jsonl'), JSON.stringify(event) + '\n').catch(() => { /* best-effort */ });
   }
 
   logFileRead(filePath: string, size?: number, hash?: string): void {

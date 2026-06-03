@@ -92,6 +92,18 @@ describe('pruneRuns — RunLedger bundles cannot grow unbounded', () => {
     assert.deepEqual(row.args, ['harden-crusade', '--parallel', '4'], 'the exact failing argv survives a crash');
   });
 
+  test('logEvent is hang-durable — events land on disk BEFORE finalize (an empty-on-hang run dir is fixed)', async () => {
+    const cwd = path.join(ROOT, 'hangdurable');
+    const ledger = new RunLedger('ascend-frontier', [], cwd);
+    await ledger.initialize();
+    ledger.logEvent('cycle', { cycle: 1, action: 'build-to-7(56 dims)' }); // then "hang" — never finalize
+    await new Promise(r => setTimeout(r, 50));
+    const live = await fs.readFile(path.join(cwd, '.danteforge', 'runs', ledger.getRunId(), 'events-live.jsonl'), 'utf8');
+    const row = JSON.parse(live.trim().split('\n')[0]!);
+    assert.equal(row.eventType, 'cycle', 'a hang still leaves a record of how far the run got');
+    assert.equal(row.data.action, 'build-to-7(56 dims)');
+  });
+
   test('finalize() prunes automatically (retention enforced end-to-end)', async () => {
     const cwd = path.join(ROOT, 'auto');
     // Seed 52 stale run dirs.
