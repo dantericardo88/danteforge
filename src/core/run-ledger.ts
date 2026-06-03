@@ -165,15 +165,13 @@ export class RunLedger {
   }
 
   logCommand(command: string, args: string[], exitCode: number, duration: number, output?: string, error?: string): void {
-    this.commands.push({
-      timestamp: new Date().toISOString(),
-      command,
-      args,
-      exitCode,
-      duration,
-      output,
-      error,
-    });
+    const entry: CommandExecution = { timestamp: new Date().toISOString(), command, args, exitCode, duration, output, error };
+    this.commands.push(entry);
+    // Crash-durable: append immediately so a hard process crash (EPIPE/SIGKILL) still leaves the
+    // exact failing command + exit code on disk, even though finalize() never ran. This is the
+    // single most valuable diagnostic when a run dies mid-build (DanteSecurity DS-024).
+    const line = JSON.stringify({ timestamp: entry.timestamp, command, args, exitCode, duration, error: error?.slice(0, 500) }) + '\n';
+    void fs.appendFile(path.join(this.runDir, 'commands-live.jsonl'), line).catch(() => { /* best-effort */ });
   }
 
   logTest(testName: string, status: 'pass' | 'fail', duration: number, error?: string): void {

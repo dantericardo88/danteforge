@@ -116,12 +116,27 @@ async function resolveDanteForgeExec(cwd: string): Promise<{ file: string; argsP
   return { file: 'danteforge', argsPrefix: [] };
 }
 
+/**
+ * Run a child to completion with its stdio INHERITED (streamed straight to the terminal) — NOT
+ * buffered. A long autoresearch run (30 min) easily exceeds execFile's default ~1 MB stdout buffer,
+ * which destroys the pipe and surfaces as EPIPE / exit 127 mid-build (DanteSecurity DS-024). Inherit
+ * has no buffer to overflow. Resolves on exit 0, rejects on non-zero / spawn error / timeout.
+ */
+async function spawnStreamed(file: string, args: string[], cwd: string, timeoutMs: number): Promise<void> {
+  const { spawn } = await import('node:child_process');
+  await new Promise<void>((resolve, reject) => {
+    let settled = false;
+    const finish = (fn: () => void) => { if (!settled) { settled = true; clearTimeout(timer); fn(); } };
+    const child = spawn(file, args, { cwd, stdio: 'inherit', windowsHide: true });
+    const timer = setTimeout(() => { try { child.kill(); } catch { /* */ } finish(() => reject(new Error(`timed out after ${Math.round(timeoutMs / 60000)}m`))); }, timeoutMs);
+    child.on('error', (e: NodeJS.ErrnoException) => finish(() => reject(e)));
+    child.on('close', (code, signal) => finish(() => code === 0 ? resolve() : reject(new Error(`exit ${code ?? signal}`))));
+  });
+}
+
 async function defaultRunAutoResearch(
   dimensionId: string, goal: string, cwd: string, timeMinutes: number, measurementCommand?: string,
 ): Promise<void> {
-  const { execFile } = await import('node:child_process');
-  const { promisify } = await import('node:util');
-  const execFileAsync = promisify(execFile);
   const cli = await resolveDanteForgeExec(cwd);
   // timeMinutes + 1 min slack on the subprocess timeout (in ms).
   const timeoutMs = (timeMinutes + 1) * 60 * 1000;
@@ -130,7 +145,8 @@ async function defaultRunAutoResearch(
   // — the root cause of the build-to-7 crash/hang. Always pass it; the caller guarantees one exists.
   const args = [...cli.argsPrefix, 'autoresearch', goal, '--metric', dimensionId, '--time', `${timeMinutes}m`, '--allow-dirty'];
   if (measurementCommand) args.push('--measurement-command', measurementCommand);
-  await execFileAsync(cli.file, args, { cwd, timeout: timeoutMs });
+  // Streamed (inherit) — a 30-min autoresearch must not buffer into an EPIPE/127.
+  await spawnStreamed(cli.file, args, cwd, timeoutMs);
 }
 
 /** Resolve a dim's capability_test shell command (the autoresearch measurement metric), or null. */
@@ -144,16 +160,10 @@ async function defaultRunOutcomesForDim(dimensionId: string, cwd: string): Promi
   // After autoresearch commits code, the SHA changes and prior SHA-pinned evidence
   // is stale. Re-run only this dim's outcomes so getScore returns an honest value.
   // Times out in 10 min (most dims have 1–3 outcomes; T1=compile is fastest).
-  const { execFile } = await import('node:child_process');
-  const { promisify } = await import('node:util');
-  const execFileAsync = promisify(execFile);
   const cli = await resolveDanteForgeExec(cwd);
   try {
-    await execFileAsync(
-      cli.file,
-      [...cli.argsPrefix, 'outcomes', '--dim', dimensionId, '--force-cold'],
-      { cwd, timeout: 10 * 60 * 1000 },
-    );
+    // Streamed (inherit) — same EPIPE/buffer-overflow guard as autoresearch.
+    await spawnStreamed(cli.file, [...cli.argsPrefix, 'outcomes', '--dim', dimensionId, '--force-cold'], cwd, 10 * 60 * 1000);
   } catch (err) {
     logger.warn(`[harden-crusade:${dimensionId}] outcomes refresh failed: ${err instanceof Error ? err.message : String(err)}`);
   }

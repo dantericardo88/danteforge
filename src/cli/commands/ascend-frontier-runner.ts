@@ -8,11 +8,11 @@
 // returns a typed {exitCode, stdout, stderr, ms, ok} and is recorded to the active RunLedger. A
 // non-zero exit is now visible in the run bundle instead of being silently inferred away.
 
-import { execFile } from 'node:child_process';
-import { promisify } from 'node:util';
+import { spawn } from 'node:child_process';
 import type { RunLedger } from '../../core/run-ledger.js';
 
-const execFileAsync = promisify(execFile);
+/** Keep at most the last N bytes of each captured stream — a 30-min build must never buffer unbounded. */
+const STREAM_TAIL_CAP = 256 * 1024;
 
 export interface CliResult {
   exitCode: number;
@@ -59,21 +59,30 @@ export function parseCourtOutput(res: { ok: boolean; stdout: string }): CourtPar
   }
 }
 
-async function runOnce(cwd: string, args: string[]): Promise<CliResult> {
+function runOnce(cwd: string, args: string[]): Promise<CliResult> {
   const node = process.execPath;
   const cli = process.argv[1] ?? 'dist/index.js';
   const start = Date.now();
-  try {
-    const { stdout, stderr } = await execFileAsync(node, [cli, ...args], {
-      cwd, timeout: 30 * 60_000, maxBuffer: 32 * 1024 * 1024,
-    });
-    return { exitCode: 0, stdout: stdout ?? '', stderr: stderr ?? '', ms: Date.now() - start, ok: true };
-  } catch (e) {
-    const err = e as { code?: number | string; stdout?: string; stderr?: string; message?: string };
-    // ENOENT (binary not found) surfaces as a string code; a shell "command not found" is exit 127.
-    const exitCode = typeof err.code === 'number' ? err.code : err.code === 'ENOENT' ? 127 : 1;
-    return { exitCode, stdout: err.stdout ?? '', stderr: err.stderr ?? err.message ?? '', ms: Date.now() - start, ok: false };
-  }
+  // spawn + size-capped streaming capture — NOT execFile's fixed maxBuffer, which a long build
+  // overflows → destroyed pipe → EPIPE / exit 127 with no ledger (DanteSecurity DS-024). We always
+  // consume the data events (no backpressure) and keep only the last STREAM_TAIL_CAP bytes.
+  return new Promise<CliResult>((resolve) => {
+    let out = '', err = '', settled = false;
+    const cap = (s: string) => (s.length > STREAM_TAIL_CAP ? s.slice(s.length - STREAM_TAIL_CAP) : s);
+    const done = (exitCode: number) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      resolve({ exitCode, stdout: out, stderr: err, ms: Date.now() - start, ok: exitCode === 0 });
+    };
+    const timer = setTimeout(() => { try { child.kill(); } catch { /* */ } done(124); }, 30 * 60_000);
+    const child = spawn(node, [cli, ...args], { cwd, windowsHide: true });
+    child.stdout?.on('data', (d: Buffer) => { out = cap(out + d.toString()); });
+    child.stderr?.on('data', (d: Buffer) => { err = cap(err + d.toString()); });
+    // ENOENT (binary not found) → 127, matching a shell "command not found".
+    child.on('error', (e: NodeJS.ErrnoException) => done(e.code === 'ENOENT' ? 127 : 1));
+    child.on('close', (code, signal) => done(code ?? (signal ? 1 : 0)));
+  });
 }
 
 /**

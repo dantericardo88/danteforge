@@ -78,6 +78,20 @@ describe('pruneRuns — RunLedger bundles cannot grow unbounded', () => {
     assert.equal(left.length, 3);
   });
 
+  test('logCommand is crash-durable — the failing command lands on disk BEFORE finalize (DS-024)', async () => {
+    const cwd = path.join(ROOT, 'durable');
+    const ledger = new RunLedger('ascend-frontier', [], cwd);
+    await ledger.initialize();
+    ledger.logCommand('danteforge', ['harden-crusade', '--parallel', '4'], 127, 1234, undefined, 'EPIPE: broken pipe');
+    // Give the fire-and-forget append a tick to flush.
+    await new Promise(r => setTimeout(r, 50));
+    // The run is NOT finalized — simulate a hard crash. The command history must still be on disk.
+    const live = await fs.readFile(path.join(cwd, '.danteforge', 'runs', ledger.getRunId(), 'commands-live.jsonl'), 'utf8');
+    const row = JSON.parse(live.trim().split('\n')[0]!);
+    assert.equal(row.exitCode, 127, 'the exact failing exit code survives a crash');
+    assert.deepEqual(row.args, ['harden-crusade', '--parallel', '4'], 'the exact failing argv survives a crash');
+  });
+
   test('finalize() prunes automatically (retention enforced end-to-end)', async () => {
     const cwd = path.join(ROOT, 'auto');
     // Seed 52 stale run dirs.
