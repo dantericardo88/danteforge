@@ -210,6 +210,7 @@ program
   .option('--parallel', 'Fan the WHOLE pipeline out across the council: member-split research (define), worktree-isolated cross-judged build-to-7, and concurrent push-to-9 (builder-never-judges, reciprocity-audited)')
   .option('--max-cycles <n>', 'Global stop after N cycles (default 200)')
   .option('--max-attempts <n>', 'Novel push attempts per dim before an honest generator-ceiling (default 3)')
+  .option('--max-build-attempts <n>', 'No-progress setup/build cycles before a stuck dim is ceilinged (default = max-attempts)')
   .option('--json', 'Machine-readable result')
   .option('--cwd <path>', 'Project directory')
   .addHelpText('after', `
@@ -220,8 +221,17 @@ Phases (no human prompts at any point):
                → frontier-review-court → record 9.0 if VALIDATED, else ceiling/retry-with-novel-evidence
 
 "Complete" = every dim at a court-validated 9.0 OR a signed honest ceiling. A determined fixture can
-still fool the court — sample 9.0s via the (M3) human-audit-queue; that runs out of band and never
-interrupts this loop.
+still fool the court — sample 9.0s via the human-audit-queue (danteforge frontier-audit); that runs
+out of band and never interrupts this loop.
+
+No-spin guarantee: a dim that can't be scaffolded (setup) or built to 7.0 within --max-build-attempts
+cycles is signed an honest ceiling so the loop ALWAYS advances and terminates (never spins to
+--max-cycles on un-buildable market/environment/unimplemented dims).
+
+PARALLEL PUSH requires the council CLIs on PATH: the --parallel push build spawns the member binaries
+(claude, codex, grok). If a worktree subprocess can't find them (exit 127), set CLAUDE_BIN / CODEX_BIN
+/ GROK_BIN or add them to PATH. If a member build fails, the loop stays correct — that dim just earns
+a ceiling instead of a 9. Build-to-7 uses harden-crusade (no member-spawn), so it is unaffected.
 `)
   .action((opts) => {
     void (async () => {
@@ -232,6 +242,7 @@ interrupts this loop.
           parallel: opts.parallel as boolean | undefined,
           maxCycles: opts.maxCycles ? parseInt(opts.maxCycles as string, 10) : undefined,
           maxAttemptsPerDim: opts.maxAttempts ? parseInt(opts.maxAttempts as string, 10) : undefined,
+          maxBuildAttempts: opts.maxBuildAttempts ? parseInt(opts.maxBuildAttempts as string, 10) : undefined,
           json: opts.json as boolean | undefined,
           cwd: opts.cwd as string | undefined,
         });

@@ -22,16 +22,11 @@ describe('ascend-frontier — phase routing (sequential vs council-parallel)', (
     assert.deepEqual(c[0], ['council-universe', '--members', 'codex,claude-code,grok-build', '--propose-outcomes']);
     assert.deepEqual(c.slice(1), [['evidence-scaffold'], ['migrate-outcomes', '--write']]);
   });
-  test('sequential build-to-7 = harden-crusade', () => {
-    assert.deepEqual(buildTo7Commands(false, M, ['a', 'b']), [['harden-crusade', '--loop', '--target', '7']]);
-  });
-  test('parallel build-to-7 = council --parallel (worktree-isolated, cross-judged) on the below-7 dims', () => {
-    assert.deepEqual(buildTo7Commands(true, M, ['a', 'b']),
-      [['council', '--parallel', '--members', 'codex,claude-code,grok-build', '--focus-dims', 'a,b', '--rounds', '1']]);
-  });
-  test('parallel build falls back to harden-crusade with <2 members or no dims', () => {
-    assert.deepEqual(buildTo7Commands(true, ['codex'], ['a']), [['harden-crusade', '--loop', '--target', '7']]);
-    assert.deepEqual(buildTo7Commands(true, M, []), [['harden-crusade', '--loop', '--target', '7']]);
+  test('build-to-7 always uses harden-crusade (internal parallel + loop-to-exhaustion) — both modes', () => {
+    const expected = [['harden-crusade', '--parallel', '4', '--loop', '--target', '7']];
+    assert.deepEqual(buildTo7Commands(false, M, ['a', 'b']), expected);
+    assert.deepEqual(buildTo7Commands(true, M, ['a', 'b']), expected, 'council fan-out is reserved for push-to-9, not the 7.0 bar');
+    assert.deepEqual(buildTo7Commands(true, ['codex'], ['a']), expected);
   });
 });
 
@@ -81,6 +76,39 @@ describe('ascend-frontier — unattended loop control', () => {
     // A generator-ceiling receipt was written for the dim.
     const ceiling = JSON.parse(await fs.readFile(path.join(ROOT, '.danteforge', 'ceilings', 'a.json'), 'utf8'));
     assert.equal(ceiling.cause, 'generator-ceiling');
+  });
+
+  test('an UN-BUILDABLE dim (stuck below 7) is ceilinged after the stall cap → loop reaches DONE (the field bug)', async () => {
+    const dir = path.join(ROOT, 'stuck');
+    let builds = 0;
+    const r = await runAscendFrontier({
+      cwd: dir, maxCycles: 10, maxBuildAttempts: 2,
+      _buildState: async () => {
+        const ceiling = await fs.readFile(path.join(dir, '.danteforge', 'ceilings', 'go_dim.json'), 'utf8').then(JSON.parse).catch(() => null);
+        return [{ ...dim({ id: 'go_dim', effectiveScore: 6.0 }), ceiling }]; // never reaches 7 (e.g. Go, no network)
+      },
+      _runBuildTo7: async () => { builds++; }, // build runs but the dim can't advance
+      _now: () => '2026-06-03T00:00:00.000Z',
+    });
+    assert.equal(r.terminal, 'done', 'the loop signs a ceiling and completes — it does NOT spin to max-cycles');
+    assert.equal(builds, 2, 'exactly maxBuildAttempts build attempts, then a stall-ceiling');
+    const ceiling = JSON.parse(await fs.readFile(path.join(dir, '.danteforge', 'ceilings', 'go_dim.json'), 'utf8'));
+    assert.equal(ceiling.cause, 'generator-ceiling');
+    assert.match(ceiling.detail, /build attempts/);
+  });
+
+  test('a perpetually-needsSetup dim is ceilinged after the cap → loop is never wedged (DanteCode bug)', async () => {
+    const dir = path.join(ROOT, 'setupstuck');
+    const r = await runAscendFrontier({
+      cwd: dir, maxCycles: 10, maxBuildAttempts: 2,
+      _buildState: async () => {
+        const ceiling = await fs.readFile(path.join(dir, '.danteforge', 'ceilings', 's.json'), 'utf8').then(JSON.parse).catch(() => null);
+        return [{ ...dim({ id: 's', effectiveScore: 9.0, frontierStatus: 'none' as const, needsSetup: true }), ceiling }];
+      },
+      _runSetup: async () => {}, // setup runs but never clears needsSetup
+      _now: () => '2026-06-03T00:00:00.000Z',
+    });
+    assert.equal(r.terminal, 'done', 'one stuck-setup dim no longer blocks the entire loop forever');
   });
 
   test('--parallel mode fans the push across members (each builds a different dim concurrently)', async () => {

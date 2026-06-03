@@ -56,6 +56,34 @@ describe('planNextAction — honest autonomous sequencing', () => {
     assert.equal(a.type, 'push-to-9', 'expired ceiling re-opens the dim');
   });
 
+  test('STALLED setup (attempts exhausted) → ceiling, so one stuck dim never wedges the loop', () => {
+    const a = planNextAction([dim({ id: 'stuck', needsSetup: true, setupAttempts: 3 }), dim({ id: 'b', effectiveScore: 6.0 })], OPTS);
+    assert.equal(a.type, 'ceiling');
+    assert.equal((a as { dimId: string }).dimId, 'stuck');
+    assert.equal((a as { cause: string }).cause, 'generator-ceiling');
+  });
+
+  test('setup with attempts REMAINING still runs setup (not ceilinged prematurely)', () => {
+    const a = planNextAction([dim({ id: 'a', needsSetup: true, setupAttempts: 1 })], OPTS);
+    assert.deepEqual(a, { type: 'setup', dims: ['a'] });
+  });
+
+  test('STALLED build-to-7 (un-buildable dim) → ceiling, letting the loop advance to push-to-9', () => {
+    const a = planNextAction([dim({ id: 'gostuck', effectiveScore: 6.0, buildAttempts: 3 }), dim({ id: 'ok', effectiveScore: 8.0 })], OPTS);
+    assert.equal(a.type, 'ceiling');
+    assert.equal((a as { dimId: string }).dimId, 'gostuck');
+  });
+
+  test('build-to-7 with attempts remaining still builds (not ceilinged prematurely)', () => {
+    const a = planNextAction([dim({ id: 'a', effectiveScore: 6.0, buildAttempts: 1 })], OPTS);
+    assert.deepEqual(a, { type: 'build-to-7', dims: ['a'] });
+  });
+
+  test('maxBuildAttempts is independent of push maxAttemptsPerDim', () => {
+    const a = planNextAction([dim({ id: 'a', effectiveScore: 6.0, buildAttempts: 2 })], { ...OPTS, maxBuildAttempts: 2 });
+    assert.equal(a.type, 'ceiling', 'buildAttempts 2 >= maxBuildAttempts 2 → ceiling even though push max is 3');
+  });
+
   test('isDimDone: validated-9 OR active ceiling; frozen-8 is NOT done', () => {
     assert.equal(isDimDone(dim({ effectiveScore: 9.0, frontierStatus: 'validated' }), NOW), true);
     assert.equal(isDimDone(dim({ effectiveScore: 8.0, frontierStatus: 'frozen' }), NOW), false);

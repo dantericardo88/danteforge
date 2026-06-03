@@ -24,6 +24,9 @@ export interface DimState {
   isMarketCapped: boolean;
   /** True when the dim has no capability_test/outcomes yet (setup incomplete). */
   needsSetup?: boolean;
+  /** No-progress counters maintained by the loop: setup/build cycles that did NOT advance this dim. */
+  setupAttempts?: number;
+  buildAttempts?: number;
 }
 
 export type AscendAction =
@@ -37,6 +40,8 @@ export type AscendAction =
 export interface PlanOpts {
   /** Max novel push attempts before a dim is ceilinged as a generator-ceiling. */
   maxAttemptsPerDim: number;
+  /** Max no-progress setup/build cycles before a stuck dim is ceilinged. Default maxAttemptsPerDim. */
+  maxBuildAttempts?: number;
   nowIso: string;
   buildTarget?: number; // default 7.0
 }
@@ -49,10 +54,18 @@ export function isDimDone(d: DimState, nowIso: string): boolean {
 
 export function planNextAction(dims: DimState[], opts: PlanOpts): AscendAction {
   const target = opts.buildTarget ?? 7.0;
+  const maxBuild = opts.maxBuildAttempts ?? opts.maxAttemptsPerDim;
   const active = (d: DimState): boolean => d.ceiling != null && isCeilingActive(d.ceiling, opts.nowIso);
 
-  // 0. Setup: dims with no capability_test/outcome scaffolding yet.
-  const needSetup = dims.filter(d => d.needsSetup && !active(d)).map(d => d.id);
+  // 0a. STALLED setup → sign an honest ceiling so one un-scaffoldable dim never blocks the whole loop
+  //     forever ("setup(1 dims)" every cycle). Checked FIRST so a stuck setup dim can't wedge the run.
+  const setupStuck = dims.find(d => d.needsSetup && !active(d) && (d.setupAttempts ?? 0) >= maxBuild);
+  if (setupStuck) {
+    return { type: 'ceiling', dimId: setupStuck.id, cause: 'generator-ceiling',
+      detail: `Setup could not produce a capability_test/outcome after ${setupStuck.setupAttempts} attempts — held at ${setupStuck.effectiveScore.toFixed(1)} (review: environment limit, market dim, or needs a real frontier_spec).` };
+  }
+  // 0b. Setup: dims still missing scaffolding, with attempts remaining.
+  const needSetup = dims.filter(d => d.needsSetup && !active(d) && (d.setupAttempts ?? 0) < maxBuild).map(d => d.id);
   if (needSetup.length > 0) return { type: 'setup', dims: needSetup };
 
   // 1. Market-capped dims that aren't ceilinged yet → write a market-cap ceiling (done honestly).
@@ -62,8 +75,16 @@ export function planNextAction(dims: DimState[], opts: PlanOpts): AscendAction {
       detail: `Market dimension — pre-release cannot reach 9.0; held at ${market.effectiveScore.toFixed(1)}.` };
   }
 
-  // 2. Build-to-7: any non-ceilinged dim still below the breadth target.
-  const belowTarget = dims.filter(d => d.effectiveScore < target && !active(d)).map(d => d.id);
+  // 2a. STALLED build-to-7 → sign a ceiling for a dim that cannot reach the target (the un-buildable
+  //     ones: environment-blocked, unimplemented placeholders, or a genuine generator ceiling). This
+  //     is what lets the loop ADVANCE to push-to-9 on the buildable dims instead of spinning forever.
+  const buildStuck = dims.find(d => d.effectiveScore < target && !active(d) && (d.buildAttempts ?? 0) >= maxBuild);
+  if (buildStuck) {
+    return { type: 'ceiling', dimId: buildStuck.id, cause: 'generator-ceiling',
+      detail: `Could not reach ${target.toFixed(1)} after ${buildStuck.buildAttempts} build attempts — un-buildable here (environment limit, unimplemented, or generator ceiling); held at ${buildStuck.effectiveScore.toFixed(1)}.` };
+  }
+  // 2b. Build-to-7: non-ceilinged dims still below target, with attempts remaining.
+  const belowTarget = dims.filter(d => d.effectiveScore < target && !active(d) && (d.buildAttempts ?? 0) < maxBuild).map(d => d.id);
   if (belowTarget.length > 0) return { type: 'build-to-7', dims: belowTarget };
 
   // 3. Push-to-9: the weakest dim that is not done and has attempts left. Exhausted → generator ceiling.

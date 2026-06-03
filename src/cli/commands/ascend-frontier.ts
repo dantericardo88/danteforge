@@ -35,6 +35,8 @@ export interface AscendFrontierOptions {
   parallel?: boolean;
   maxCycles?: number;
   maxAttemptsPerDim?: number;
+  /** No-progress setup/build cycles before a stuck dim is ceilinged (default = maxAttemptsPerDim). */
+  maxBuildAttempts?: number;
   json?: boolean;
   // Seams (production defaults shell out to the real commands).
   _buildState?: (cwd: string) => Promise<DimState[]>;
@@ -100,9 +102,13 @@ export function setupCommands(parallel: boolean, members: string[]): string[][] 
 }
 
 export function buildTo7Commands(parallel: boolean, members: string[], dims: string[]): string[][] {
-  return (parallel && members.length >= 2 && dims.length > 0)
-    ? [['council', '--parallel', '--members', members.join(','), '--focus-dims', dims.join(','), '--rounds', '1']]
-    : [['harden-crusade', '--loop', '--target', '7']];
+  // harden-crusade already builds in parallel (--parallel N concurrent) AND loops to exhaustion, so
+  // ONE build-to-7 action drives every BUILDABLE dim to 7.0; what remains below is genuinely stuck
+  // and gets a stall-ceiling. (Member-owned cross-judged worktrees are overkill at the 7.0 bar and
+  // their 1-round-per-cycle cadence would ceiling un-attempted dims prematurely — the council fan-out
+  // is reserved for push-to-9, where competitor parity actually needs it.) `members`/`dims` unused.
+  void parallel; void members; void dims;
+  return [['harden-crusade', '--parallel', '4', '--loop', '--target', '7']];
 }
 
 // ── Orchestrator loop ───────────────────────────────────────────────────────────
@@ -128,10 +134,26 @@ export async function runAscendFrontier(options: AscendFrontierOptions): Promise
 
   const actions: string[] = [];
   let cycles = 0;
+  // No-progress tracking: a setup/build action that runs but doesn't advance a dim increments its
+  // counter; the counter resets the moment the dim genuinely advances. planNextAction ceilings a dim
+  // whose counter hits maxBuildAttempts — so the loop can never spin forever on an un-buildable dim.
+  const BUILD_TARGET = 7.0;
+  const maxBuildAttempts = options.maxBuildAttempts ?? maxAttemptsPerDim;
+  const setupAttempts = new Map<string, number>();
+  const buildAttempts = new Map<string, number>();
+  const lastScore = new Map<string, number>();
 
   while (true) {
     const state = await buildState(cwd);
-    const action = planNextAction(state, { maxAttemptsPerDim, nowIso: now() });
+    for (const d of state) {
+      const prev = lastScore.get(d.id);
+      if (!d.needsSetup) setupAttempts.delete(d.id);                 // scaffolded → reset setup stall
+      if (d.effectiveScore >= BUILD_TARGET || (prev !== undefined && d.effectiveScore > prev)) buildAttempts.delete(d.id); // advanced → reset build stall
+      lastScore.set(d.id, d.effectiveScore);
+      d.setupAttempts = setupAttempts.get(d.id) ?? 0;
+      d.buildAttempts = buildAttempts.get(d.id) ?? 0;
+    }
+    const action = planNextAction(state, { maxAttemptsPerDim, maxBuildAttempts, buildTarget: BUILD_TARGET, nowIso: now() });
 
     if (action.type === 'done') { actions.push('done'); return finish('done', cycles, actions, action.summary, options); }
     if (action.type === 'stalled') { actions.push(`stalled:${action.reason}`); return finish('stalled', cycles, actions, action.reason, options); }
@@ -148,9 +170,16 @@ export async function runAscendFrontier(options: AscendFrontierOptions): Promise
     actions.push(describe(action));
 
     switch (action.type) {
-      case 'setup': await runSetup(cwd, action.dims); break;
-      case 'build-to-7': await runBuildTo7(cwd, action.dims); break;
+      case 'setup':
+        await runSetup(cwd, action.dims);
+        for (const id of action.dims) setupAttempts.set(id, (setupAttempts.get(id) ?? 0) + 1);
+        break;
+      case 'build-to-7':
+        await runBuildTo7(cwd, action.dims);
+        for (const id of action.dims) buildAttempts.set(id, (buildAttempts.get(id) ?? 0) + 1);
+        break;
       case 'ceiling':
+        logger.info(`[ascend-frontier] ceiling ${action.dimId} (${action.cause}): ${action.detail}`);
         await writeCeilingReceipt(cwd, { dimId: action.dimId, cap: scoreOf(state, action.dimId), cause: action.cause,
           detail: action.detail, failedGates: [action.cause], recordedAt: now() });
         break;
