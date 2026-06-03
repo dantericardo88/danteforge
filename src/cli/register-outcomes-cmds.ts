@@ -207,7 +207,7 @@ program
   .command('ascend-frontier')
   .description('Unattended autonomous frontier orchestrator: define → build-to-7 → push each dim to a court-validated 9.0, one at a time, until every dim is at the frontier OR an honest ceiling. NEVER prompts.')
   .option('--dry-run', 'Print the next action without executing')
-  .option('--parallel', 'Fan out the push: each live council member owns a different dim and pushes concurrently (builder-never-judges per dim, reciprocity-audited)')
+  .option('--parallel', 'Fan the WHOLE pipeline out across the council: member-split research (define), worktree-isolated cross-judged build-to-7, and concurrent push-to-9 (builder-never-judges, reciprocity-audited)')
   .option('--max-cycles <n>', 'Global stop after N cycles (default 200)')
   .option('--max-attempts <n>', 'Novel push attempts per dim before an honest generator-ceiling (default 3)')
   .option('--json', 'Machine-readable result')
