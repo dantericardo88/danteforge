@@ -23,6 +23,9 @@ export interface PushOutcome {
   verdict: 'VALIDATED' | 'REJECTED';
   /** Judge members (non-builder) who returned PASS — used for reciprocity detection. */
   passedByJudges: CouncilMemberId[];
+  /** True when the court's output could not be parsed (empty/garbage stdout, non-zero exit) —
+   *  the outcome is REJECTED defensively, but this flags "we don't actually know" vs a clean no. */
+  parseError?: boolean;
 }
 
 export interface ReciprocalPair { memberA: CouncilMemberId; memberB: CouncilMemberId; dimA: string; dimB: string; }

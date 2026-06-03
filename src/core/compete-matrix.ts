@@ -266,11 +266,29 @@ export async function saveMatrix(
     }
   }
 
-  const write = _fsWrite ?? (async (p: string, content: string) => {
+  const content = JSON.stringify(matrix, null, 2);
+  const write = _fsWrite ?? (async (p: string, c: string) => {
     await fs.mkdir(path.dirname(p), { recursive: true });
-    await fs.writeFile(p, content, 'utf8');
+    await fs.writeFile(p, c, 'utf8');
   });
-  await write(matrixPath, JSON.stringify(matrix, null, 2));
+
+  if (_fsWrite || process.env['NODE_TEST_CONTEXT']) {
+    // Tests are seam-driven or run in isolated tmp cwds — no cross-process contention to guard.
+    await write(matrixPath, content);
+  } else {
+    // Production: an exclusive cross-process lock so two concurrent orchestrators (or a daemon +
+    // an ascend run) can never interleave a matrix write and lose one's scores. Best-effort —
+    // if the lock can't be acquired we still write (availability over the rare race).
+    const { withFileLock } = await import('./sanitize-locks.js');
+    try {
+      await withFileLock(
+        { cwd: cwd ?? process.cwd(), filePath: path.relative(cwd ?? process.cwd(), matrixPath), lockDir: '.danteforge/locks', maxWaitMs: 30_000 },
+        () => write(matrixPath, content),
+      );
+    } catch {
+      await write(matrixPath, content);
+    }
+  }
   // Bust the in-process cache so the next loadMatrix reads the saved value
   invalidateMatrixCache();
 }

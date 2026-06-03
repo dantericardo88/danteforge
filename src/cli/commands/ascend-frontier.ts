@@ -21,6 +21,8 @@ import { loadAttemptLedger, recordAttempt, isNovelAttempt, type AttemptFingerpri
 import { planNextAction, type DimState, type AscendAction } from '../../core/ascend-frontier-engine.js';
 import { assignRound, runParallelRound, type PushOutcome } from '../../core/ascend-frontier-parallel.js';
 import type { CouncilMemberId } from '../../matrix/engines/council-scheduler.js';
+import { RunLedger } from '../../core/run-ledger.js';
+import { runCli, parseCourtOutput, setActiveLedger, type CliResult } from './ascend-frontier-runner.js';
 
 const execFileAsync = promisify(execFile);
 const MARKET_DIMS = new Set(['community_adoption', 'enterprise_readiness']);
@@ -57,6 +59,8 @@ export interface AscendFrontierResult {
   cycles: number;
   actions: string[];
   summary: string;
+  /** The run-ledger id (.danteforge/runs/<runId>/) — present for any run that executed ≥1 cycle. */
+  runId?: string;
 }
 
 // ── Production state builder ────────────────────────────────────────────────────
@@ -83,9 +87,11 @@ async function defaultBuildState(cwd: string): Promise<DimState[]> {
   return out;
 }
 
-async function df(cwd: string, args: string[]): Promise<void> {
-  const [node, cli] = [process.execPath, process.argv[1] ?? 'dist/index.js'];
-  await execFileAsync(node, [cli, ...args], { cwd, timeout: 30 * 60_000, maxBuffer: 32 * 1024 * 1024 }).catch(() => { /* best-effort; state re-read decides progress */ });
+/** Run a CLI sub-command. Returns a typed result (exit code captured + ledger-recorded);
+ *  the orchestrator still re-reads state to decide progress, but a swallowed failure is now
+ *  visible in the run bundle instead of being silently inferred away. */
+async function df(cwd: string, args: string[]): Promise<CliResult> {
+  return runCli(cwd, args);
 }
 
 // ── Phase command routing (pure — sequential vs council-parallel) ────────────────
@@ -143,6 +149,31 @@ export async function runAscendFrontier(options: AscendFrontierOptions): Promise
   const buildAttempts = new Map<string, number>();
   const lastScore = new Map<string, number>();
 
+  // Run-ledger: an auditable diary of the whole run (every sub-command + exit code, court verdict,
+  // ceiling, before/after score). Created lazily on the first real cycle so dry-run / done-at-start
+  // write nothing. finalize() emits .danteforge/runs/<runId>/ — the receipt Phase 3 inspects.
+  let ledger: RunLedger | null = null;
+  const ensureLedger = async (): Promise<RunLedger> => {
+    if (!ledger) {
+      ledger = new RunLedger('ascend-frontier', options.parallel ? ['--parallel'] : [], cwd);
+      await ledger.initialize();
+      setActiveLedger(ledger);
+    }
+    return ledger;
+  };
+  const complete = async (terminal: AscendFrontierResult['terminal'], summary: string): Promise<AscendFrontierResult> => {
+    if (ledger) {
+      await ledger.finalize({}, { actions }, {
+        status: terminal === 'done' ? 'success' : terminal === 'dry-run' ? 'success' : 'partial',
+        completionOracle: terminal === 'done',
+        reason: summary,
+      }).catch(() => { /* ledger is advisory — never fail the run on a finalize hiccup */ });
+      setActiveLedger(null);
+    }
+    return finish(terminal, cycles, actions, summary, options, ledger?.getRunId());
+  };
+
+  try {
   while (true) {
     const state = await buildState(cwd);
     for (const d of state) {
@@ -155,17 +186,19 @@ export async function runAscendFrontier(options: AscendFrontierOptions): Promise
     }
     const action = planNextAction(state, { maxAttemptsPerDim, maxBuildAttempts, buildTarget: BUILD_TARGET, nowIso: now() });
 
-    if (action.type === 'done') { actions.push('done'); return finish('done', cycles, actions, action.summary, options); }
-    if (action.type === 'stalled') { actions.push(`stalled:${action.reason}`); return finish('stalled', cycles, actions, action.reason, options); }
+    if (action.type === 'done') { actions.push('done'); return await complete('done', action.summary); }
+    if (action.type === 'stalled') { actions.push(`stalled:${action.reason}`); return await complete('stalled', action.reason); }
 
     if (options.dryRun) {
       actions.push(describe(action));
       logger.info(`[ascend-frontier] DRY RUN — next action: ${describe(action)}`);
-      return finish('dry-run', cycles, actions, `next: ${describe(action)}`, options);
+      return await complete('dry-run', `next: ${describe(action)}`);
     }
 
-    if (cycles >= maxCycles) { return finish('max-cycles', cycles, actions, `stopped at --max-cycles ${maxCycles}`, options); }
+    if (cycles >= maxCycles) { return await complete('max-cycles', `stopped at --max-cycles ${maxCycles}`); }
     cycles++;
+    const led = await ensureLedger();
+    led.logEvent('cycle', { cycle: cycles, action: describe(action) });
     logger.info(`[ascend-frontier] cycle ${cycles}: ${describe(action)}`);
     actions.push(describe(action));
 
@@ -180,6 +213,7 @@ export async function runAscendFrontier(options: AscendFrontierOptions): Promise
         break;
       case 'ceiling':
         logger.info(`[ascend-frontier] ceiling ${action.dimId} (${action.cause}): ${action.detail}`);
+        led.addReceipt('ceiling', { dimId: action.dimId, cause: action.cause, detail: action.detail, cap: scoreOf(state, action.dimId) });
         await writeCeilingReceipt(cwd, { dimId: action.dimId, cap: scoreOf(state, action.dimId), cause: action.cause,
           detail: action.detail, failedGates: [action.cause], recordedAt: now() });
         break;
@@ -200,15 +234,19 @@ export async function runAscendFrontier(options: AscendFrontierOptions): Promise
           // Record an attempt per pushed dim so attempt-counts advance (a fresh HEAD makes it novel).
           const sha = await headSha(cwd);
           for (const o of round.outcomes) {
+            led.logGateCheck(`frontier-court:${o.dimId}`, o.verdict === 'VALIDATED' ? 'pass' : 'fail',
+              o.parseError ? 'court output unparseable (recorded as rejection, not a clean no)' : `builder=${o.builderId}`);
             await recordAttempt(cwd, { dimId: o.dimId, command: `parallel:${o.builderId}`, artifactPath: '', gitSha: sha },
               o.verdict === 'VALIDATED' ? 'validated' : 'rejected', now());
           }
           break;
         }
         const result = await runPushTo9(cwd, action.dimId);
-        const ledger = await loadAttemptLedger(cwd);
-        if (!isNovelAttempt(ledger, result.fingerprint)) {
+        led.logGateCheck(`frontier-court:${action.dimId}`, result.verdict === 'VALIDATED' ? 'pass' : 'fail');
+        const attemptLedger = await loadAttemptLedger(cwd);
+        if (!isNovelAttempt(attemptLedger, result.fingerprint)) {
           // The push produced no NEW evidence (same code/command/artifact) — it can't progress.
+          led.addReceipt('ceiling', { dimId: action.dimId, cause: 'generator-ceiling', detail: 'no novel evidence' });
           await writeCeilingReceipt(cwd, { dimId: action.dimId, cap: scoreOf(state, action.dimId), cause: 'generator-ceiling',
             detail: 'Push produced no novel evidence (unchanged code/command/artifact) — cannot advance.', failedGates: ['evidence-novelty'], recordedAt: now() });
         } else {
@@ -217,6 +255,11 @@ export async function runAscendFrontier(options: AscendFrontierOptions): Promise
         break;
       }
     }
+  }
+  } finally {
+    // Always clear the module-scoped active ledger, even if the loop throws, so a later run
+    // never records into a dead ledger.
+    setActiveLedger(null);
   }
 }
 
@@ -233,9 +276,10 @@ function describe(a: AscendAction): string {
   }
 }
 
-function finish(terminal: AscendFrontierResult['terminal'], cycles: number, actions: string[], summary: string, options: AscendFrontierOptions): AscendFrontierResult {
-  const result: AscendFrontierResult = { terminal, cycles, actions, summary };
+function finish(terminal: AscendFrontierResult['terminal'], cycles: number, actions: string[], summary: string, options: AscendFrontierOptions, runId?: string): AscendFrontierResult {
+  const result: AscendFrontierResult = { terminal, cycles, actions, summary, ...(runId ? { runId } : {}) };
   logger.info(`[ascend-frontier] ${terminal.toUpperCase()} after ${cycles} cycle(s) — ${summary}`);
+  if (runId) logger.info(`[ascend-frontier] run-ledger: .danteforge/runs/${runId}/ (summary.md, commands.json, gates.json, receipts.json)`);
   if (options.json) process.stdout.write(JSON.stringify(result, null, 2) + '\n');
   return result;
 }
@@ -292,12 +336,6 @@ async function defaultDiscoverMembers(): Promise<CouncilMemberId[]> {
   return (await discoverCouncil()).filter(m => m.available).map(m => m.id as CouncilMemberId);
 }
 
-async function dfCapture(cwd: string, args: string[]): Promise<string> {
-  const [node, cli] = [process.execPath, process.argv[1] ?? 'dist/index.js'];
-  try { return (await execFileAsync(node, [cli, ...args], { cwd, timeout: 30 * 60_000, maxBuffer: 32 * 1024 * 1024 })).stdout; }
-  catch (e) { return (e as { stdout?: string }).stdout ?? ''; }
-}
-
 /** CONCURRENT build: freeze each dim's spec, then council --parallel builds them in isolated
  *  worktrees with the cross-member merge court, merging approved work to main. */
 async function defaultBuildAll(cwd: string, assignments: { memberId: CouncilMemberId; dimId: string }[], members: CouncilMemberId[]): Promise<void> {
@@ -324,13 +362,13 @@ async function defaultPromoteOne(cwd: string, a: { memberId: CouncilMemberId; di
       await df(cwd, ['validate', a.dimId, '--force-cold']);
     }
   }
-  const out = await dfCapture(cwd, ['frontier-review', a.dimId, '--builder', a.memberId, '--min-judges', '2', '--json', '--write']);
-  let verdict: PushOutcome['verdict'] = 'REJECTED';
-  let passedByJudges: CouncilMemberId[] = [];
-  try {
-    const j = JSON.parse(out.slice(out.indexOf('{')));
-    verdict = j?.result?.verdict === 'VALIDATED' ? 'VALIDATED' : 'REJECTED';
-    passedByJudges = (j?.result?.judges ?? []).filter((x: { verdict: string }) => x.verdict === 'PASS').map((x: { judgeId: CouncilMemberId }) => x.judgeId);
-  } catch { /* best-effort: REJECTED on unparseable output */ }
-  return { dimId: a.dimId, builderId: a.memberId, verdict, passedByJudges };
+  // Distinguish a real court REJECT from "we couldn't read the court's answer" (non-zero exit or
+  // no JSON): parseCourtOutput flags the latter so the orchestrator records uncertainty, not a clean no.
+  const res = await runCli(cwd, ['frontier-review', a.dimId, '--builder', a.memberId, '--min-judges', '2', '--json', '--write']);
+  const parsed = parseCourtOutput(res);
+  return {
+    dimId: a.dimId, builderId: a.memberId,
+    verdict: parsed.verdict, passedByJudges: parsed.passedByJudges as CouncilMemberId[],
+    ...(parsed.parseError ? { parseError: true } : {}),
+  };
 }

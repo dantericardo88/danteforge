@@ -32,7 +32,9 @@ export interface FrontierAuditOptions {
 export interface FrontierAuditResult {
   mode: 'list' | 'resolved';
   pending?: AuditEscrowEntry[];
-  resolved?: { dimId: string; outcome: 'confirmed' | 'failed'; downgraded: boolean };
+  /** `reason` explains a failed audit that did NOT downgrade — so a human's --fail is never a
+   *  silent no-op (e.g. the spec was already below 9.0). */
+  resolved?: { dimId: string; outcome: 'confirmed' | 'failed'; downgraded: boolean; reason?: string };
 }
 
 export async function runFrontierAudit(options: FrontierAuditOptions): Promise<FrontierAuditResult> {
@@ -68,6 +70,7 @@ export async function runFrontierAudit(options: FrontierAuditOptions): Promise<F
   const entry = await resolveFn(cwd, options.dimId, { outcome, reviewer: options.reviewer, note: options.note, nowIso: now });
 
   let downgraded = false;
+  let reason: string | undefined;
   if (outcome === 'failed') {
     const loadFn = options._loadMatrix ?? loadMatrix;
     const saveFn = options._saveMatrix ?? saveMatrix;
@@ -78,13 +81,26 @@ export async function runFrontierAudit(options: FrontierAuditOptions): Promise<F
       spec.status = 'frozen'; // re-caps to 8.0 via the frontier gate → re-opens for the orchestrator
       await saveFn(matrix, cwd);
       downgraded = true;
+    } else if (!matrix) {
+      reason = 'no compete matrix found';
+    } else if (!dim) {
+      reason = `dimension "${options.dimId}" not in matrix`;
+    } else if (!spec) {
+      reason = `dimension "${options.dimId}" has no frontier_spec (nothing to downgrade)`;
+    } else {
+      reason = `frontier_spec already '${spec.status}' (not 'validated') — already at/below 8.0, nothing to downgrade`;
     }
-    logger.warn(`[frontier-audit] ${options.dimId}: FAILED by ${options.reviewer}${downgraded ? ' — downgraded to 8.0 (frozen), re-opened' : ''}. ${options.note ?? ''}`);
+    // Surface a no-op explicitly: a human's --fail must never silently do nothing.
+    if (downgraded) {
+      logger.warn(`[frontier-audit] ${options.dimId}: FAILED by ${options.reviewer} — downgraded to 8.0 (frozen), re-opened. ${options.note ?? ''}`);
+    } else {
+      logger.warn(`[frontier-audit] ${options.dimId}: FAILED by ${options.reviewer} but NO downgrade applied — ${reason}. ${options.note ?? ''}`);
+    }
   } else {
     logger.success(`[frontier-audit] ${options.dimId}: CONFIRMED by ${options.reviewer}.`);
   }
 
-  const result: FrontierAuditResult = { mode: 'resolved', resolved: { dimId: options.dimId, outcome, downgraded } };
+  const result: FrontierAuditResult = { mode: 'resolved', resolved: { dimId: options.dimId, outcome, downgraded, ...(reason ? { reason } : {}) } };
   if (options.json) process.stdout.write(JSON.stringify({ ...result, entry }, null, 2) + '\n');
   return result;
 }
