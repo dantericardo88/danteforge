@@ -25,6 +25,7 @@ import { registerCoreCommands } from './register-core-commands.js';
 // The registerXxx functions are called synchronously here but the modules
 // load lazily when Node.js resolves the dynamic import promises below.
 import { registerMatrixCommands } from './register-matrix-commands.js';
+import { applyCommandTags } from './command-tags.js';
 import { registerMatrixOrchestrationCommands } from './register-matrix-orchestration-commands.js';
 
 const program = new Command();
@@ -734,6 +735,20 @@ for (const cmd of program.commands) {
     (cmd as unknown as { _hidden: boolean })._hidden = true;
   }
 }
+
+// Curation convention (V2-by-subtraction): tag non-core commands so a reader knows what each is —
+// supported core (visible above), an experiment, or a deprecated alias. Non-destructive: tagging
+// only annotates the help text + hides; nothing is removed. The full curated inventory and the
+// candidate deprecations (incl. the matrix-layer triple, which is load-bearing and needs a
+// dedicated migration — NOT a tag) live in docs/COMMAND_SURFACE.md.
+const EXPERIMENTAL_COMMANDS = new Map<string, string | undefined>([
+  ['war-room', 'Phase 14 — deferred'],
+]);
+const DEPRECATED_COMMANDS = new Map<string, string>([
+  // (none yet — `matrix` claim/propose/merge is still the canonical gated score path; see
+  //  docs/COMMAND_SURFACE.md for the matrix-kernel / matrix-orchestrate consolidation plan)
+]);
+applyCommandTags(program, EXPERIMENTAL_COMMANDS, DEPRECATED_COMMANDS);
 
 const stateWarmupCommand = process.argv.find((arg, index) => index > 1 && !arg.startsWith('-'));
 if (!new Set(['economy', 'mcp-server']).has(stateWarmupCommand ?? '')) {
