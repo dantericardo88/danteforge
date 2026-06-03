@@ -105,6 +105,38 @@ describe('ascend-frontier run-ledger — the orchestrator leaves an auditable re
       'a court that never ran must not appear as a recorded court attempt');
   });
 
+  test('a persistently-crashing cycle aborts with a VISIBLE finalized ledger — never a silent exit / empty run dir (the fleet 127 bug)', async () => {
+    const dir = path.join(ROOT, 'crash');
+    let builds = 0;
+    const r = await runAscendFrontier({
+      cwd: dir, maxCycles: 20,
+      _buildState: async () => [dim({ id: 'd', effectiveScore: 6.0 })], // below 7 → build-to-7
+      _runBuildTo7: async () => { builds++; throw new Error('spawn ENOENT (simulated transient 127)'); },
+      _now: () => '2026-06-03T00:00:00.000Z',
+    });
+    assert.equal(r.terminal, 'failed', 'a persistent crash terminates as failed — not a silent process abort');
+    assert.equal(builds, 3, 'the cycle is retried up to MAX_CONSECUTIVE_ERRORS before giving up');
+    assert.ok(r.runId, 'a runId is surfaced even on failure');
+    const bundle = await loadRunBundle(r.runId!, dir);
+    assert.ok(bundle, 'the ledger is FINALIZED on crash — never the empty run dir the fleet saw');
+    assert.ok(bundle!.events.some(e => e.eventType === 'cycle-error'), 'the failing cycle is recorded (visible), not swallowed');
+    assert.equal(bundle!.verdict.status, 'failure');
+  });
+
+  test('a single transient cycle error does NOT abort the run — it recovers and continues', async () => {
+    const dir = path.join(ROOT, 'transient');
+    let builds = 0;
+    const r = await runAscendFrontier({
+      cwd: dir, maxCycles: 20,
+      _buildState: async () => (builds >= 1
+        ? [dim({ id: 'd', effectiveScore: 9.0, frontierStatus: 'validated' })] // after the build, it's done
+        : [dim({ id: 'd', effectiveScore: 6.0 })]),
+      _runBuildTo7: async () => { builds++; if (builds === 1) throw new Error('transient spawn 127'); },
+      _now: () => '2026-06-03T00:00:00.000Z',
+    });
+    assert.equal(r.terminal, 'done', 'the loop recovered from one transient error and completed honestly');
+  });
+
   test('dry-run writes NO ledger (read-only)', async () => {
     const dir = path.join(ROOT, 'dry');
     const r = await runAscendFrontier({

@@ -61,7 +61,7 @@ export interface AscendFrontierOptions {
 }
 
 export interface AscendFrontierResult {
-  terminal: 'done' | 'stalled' | 'max-cycles' | 'dry-run';
+  terminal: 'done' | 'stalled' | 'max-cycles' | 'dry-run' | 'failed';
   cycles: number;
   actions: string[];
   summary: string;
@@ -175,7 +175,7 @@ export async function runAscendFrontier(options: AscendFrontierOptions): Promise
   const complete = async (terminal: AscendFrontierResult['terminal'], summary: string): Promise<AscendFrontierResult> => {
     if (ledger) {
       await ledger.finalize({}, { actions }, {
-        status: terminal === 'done' ? 'success' : terminal === 'dry-run' ? 'success' : 'partial',
+        status: terminal === 'done' || terminal === 'dry-run' ? 'success' : terminal === 'failed' ? 'failure' : 'partial',
         completionOracle: terminal === 'done',
         reason: summary,
       }).catch(() => { /* ledger is advisory — never fail the run on a finalize hiccup */ });
@@ -184,9 +184,28 @@ export async function runAscendFrontier(options: AscendFrontierOptions): Promise
     return finish(terminal, cycles, actions, summary, options, ledger?.getRunId());
   };
 
+  // Resilience: a single cycle that throws (e.g. an intermittent Windows child-spawn 127, a
+  // transient matrix read during a concurrent council write) must NOT silently abort an hours-long
+  // run. Each cycle's error is logged + recorded to the ledger and the loop continues; only after
+  // MAX_CONSECUTIVE_ERRORS does it stop — with a VISIBLE 'failed' terminal and a FINALIZED ledger
+  // (so the failing command + exit code are on disk, never an empty run dir). This is the council's
+  // exact ask: surface the spawn failure, and don't kill the whole run on one transient glitch.
+  const MAX_CONSECUTIVE_ERRORS = 3;
+  let consecutiveErrors = 0;
   try {
   while (true) {
-    const state = await buildState(cwd);
+    let state: DimState[];
+    try {
+      state = await buildState(cwd);
+    } catch (err) {
+      consecutiveErrors++;
+      const msg = err instanceof Error ? err.message : String(err);
+      logger.error(`[ascend-frontier] could not read project state: ${msg} (${consecutiveErrors}/${MAX_CONSECUTIVE_ERRORS})`);
+      if (!options.dryRun) (await ensureLedger()).logEvent('cycle-error', { phase: 'buildState', error: msg });
+      if (consecutiveErrors >= MAX_CONSECUTIVE_ERRORS) return await complete('failed', `aborted: could not read project state ${consecutiveErrors}× — ${msg}`);
+      await new Promise(r => setTimeout(r, 500));
+      continue;
+    }
     for (const d of state) {
       const prev = lastScore.get(d.id);
       if (!d.needsSetup) setupAttempts.delete(d.id);                 // scaffolded → reset setup stall
@@ -213,6 +232,7 @@ export async function runAscendFrontier(options: AscendFrontierOptions): Promise
     logger.info(`[ascend-frontier] cycle ${cycles}: ${describe(action)}`);
     actions.push(describe(action));
 
+    try {
     switch (action.type) {
       case 'setup':
         await runSetup(cwd, action.dims);
@@ -289,7 +309,26 @@ export async function runAscendFrontier(options: AscendFrontierOptions): Promise
         break;
       }
     }
+    consecutiveErrors = 0; // a clean cycle resets the transient-failure counter
+    } catch (err) {
+      // One cycle threw (most likely a transient child-spawn 127 / worktree glitch). Surface it
+      // loudly + record it, then CONTINUE — never abort the whole run on a single transient failure.
+      consecutiveErrors++;
+      const msg = err instanceof Error ? err.message : String(err);
+      logger.error(`[ascend-frontier] cycle ${cycles} (${describe(action)}) errored: ${msg} — continuing (${consecutiveErrors}/${MAX_CONSECUTIVE_ERRORS})`);
+      led.logEvent('cycle-error', { cycle: cycles, action: describe(action), error: msg });
+      if (consecutiveErrors >= MAX_CONSECUTIVE_ERRORS) {
+        return await complete('failed', `aborted after ${consecutiveErrors} consecutive cycle errors — last: ${msg}`);
+      }
+    }
   }
+  } catch (err) {
+    // Last-resort safety net: any escape finalizes the ledger so the failure is VISIBLE on disk
+    // (summary.md + commands.json with the failing exit code) rather than a silent process abort.
+    const msg = err instanceof Error ? err.message : String(err);
+    logger.error(`[ascend-frontier] run aborted by an unexpected error: ${msg}`);
+    (ledger as RunLedger | null)?.logEvent('run-error', { error: msg });
+    return await complete('failed', `aborted: ${msg}`);
   } finally {
     // Always clear the module-scoped active ledger, even if the loop throws, so a later run
     // never records into a dead ledger.

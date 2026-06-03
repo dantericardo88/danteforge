@@ -59,12 +59,7 @@ export function parseCourtOutput(res: { ok: boolean; stdout: string }): CourtPar
   }
 }
 
-/**
- * Run `node <cli> <args>` in `cwd`, capturing exit code, stdout, stderr and duration.
- * NEVER throws — a failure is returned as `{ ok: false, exitCode }` and logged to the active
- * RunLedger, so the orchestrator can act on (or at least record) a failure rather than swallow it.
- */
-export async function runCli(cwd: string, args: string[]): Promise<CliResult> {
+async function runOnce(cwd: string, args: string[]): Promise<CliResult> {
   const node = process.execPath;
   const cli = process.argv[1] ?? 'dist/index.js';
   const start = Date.now();
@@ -72,16 +67,40 @@ export async function runCli(cwd: string, args: string[]): Promise<CliResult> {
     const { stdout, stderr } = await execFileAsync(node, [cli, ...args], {
       cwd, timeout: 30 * 60_000, maxBuffer: 32 * 1024 * 1024,
     });
-    const ms = Date.now() - start;
-    activeLedger?.logCommand('danteforge', args, 0, ms, truncate(stdout), truncate(stderr));
-    return { exitCode: 0, stdout: stdout ?? '', stderr: stderr ?? '', ms, ok: true };
+    return { exitCode: 0, stdout: stdout ?? '', stderr: stderr ?? '', ms: Date.now() - start, ok: true };
   } catch (e) {
-    const ms = Date.now() - start;
     const err = e as { code?: number | string; stdout?: string; stderr?: string; message?: string };
-    const exitCode = typeof err.code === 'number' ? err.code : 1;
-    const stdout = err.stdout ?? '';
-    const stderr = err.stderr ?? err.message ?? '';
-    activeLedger?.logCommand('danteforge', args, exitCode, ms, truncate(stdout), truncate(stderr));
-    return { exitCode, stdout, stderr, ms, ok: false };
+    // ENOENT (binary not found) surfaces as a string code; a shell "command not found" is exit 127.
+    const exitCode = typeof err.code === 'number' ? err.code : err.code === 'ENOENT' ? 127 : 1;
+    return { exitCode, stdout: err.stdout ?? '', stderr: err.stderr ?? err.message ?? '', ms: Date.now() - start, ok: false };
   }
+}
+
+/**
+ * Run `node <cli> <args>` in `cwd`, capturing exit code, stdout, stderr and duration.
+ *
+ * NEVER throws — a failure is returned as `{ ok: false, exitCode }`, **logged loudly**, and recorded
+ * to the active RunLedger, so the orchestrator can act on a failure rather than swallow it (the
+ * council asked for exactly this: surface the failing command + exit code instead of a silent abort).
+ *
+ * A *fast* exit 127 / ENOENT (a command-not-found that failed at spawn time, before doing any work)
+ * is the intermittent Windows child-spawn glitch the fleet hit — it is retried once after a short
+ * backoff. A 127 that arrives only after real work ran (a deep child died) is NOT retried (it would
+ * re-run minutes of work); it's returned for the loop to handle as a build failure.
+ */
+export async function runCli(cwd: string, args: string[]): Promise<CliResult> {
+  let res = await runOnce(cwd, args);
+  // Retry only a spawn-time 127/ENOENT (failed in <3s ⇒ nothing ran ⇒ transient spawn race).
+  if (!res.ok && res.exitCode === 127 && res.ms < 3000) {
+    const { logger } = await import('../../core/logger.js');
+    logger.warn(`[ascend-frontier] transient spawn failure (exit 127, ${res.ms}ms) for "danteforge ${args[0]}" — retrying once`);
+    await new Promise(r => setTimeout(r, 750));
+    res = await runOnce(cwd, args);
+  }
+  activeLedger?.logCommand('danteforge', args, res.exitCode, res.ms, truncate(res.stdout), truncate(res.stderr));
+  if (!res.ok) {
+    const { logger } = await import('../../core/logger.js');
+    logger.warn(`[ascend-frontier] sub-command FAILED (exit ${res.exitCode}, ${res.ms}ms): danteforge ${args.join(' ')}${res.stderr ? ` — ${truncate(res.stderr, 300)}` : ''}`);
+  }
+  return res;
 }
