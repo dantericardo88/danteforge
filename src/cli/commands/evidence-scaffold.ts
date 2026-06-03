@@ -29,7 +29,7 @@ export interface ScaffoldResult {
   stubGenerated: string[];
   alreadyHave: string[];
   skipped: string[];
-  /** Dims that received a failing T5 outcome stub (the 7→9 depth-path requirement). */
+  /** Dims that received a failing T5 outcome scaffold-marker (the 7→9 depth-path requirement). */
   outcomeStubsGenerated: string[];
   /** Dims that already declared outcomes (left untouched). */
   outcomesAlreadyHave: string[];
@@ -37,8 +37,8 @@ export interface ScaffoldResult {
 }
 
 /**
- * Build a failing T5 outcome stub for a dimension. The command is `exit 1` and the
- * callsite is a TODO placeholder, so the outcome is declared (the 7→9 depth path is
+ * Build a failing T5 outcome scaffold-marker for a dimension. The command is `exit 1` and the
+ * callsite is a to-be-filled marker, so the outcome is declared (the 7→9 depth path is
  * now visible) but cannot pass until a human replaces it with a real smoke check
  * that produces an observable artifact. `_scaffold: true` keeps it INFERRED so it can
  * never contribute to a T7 receipt even if someone flips the command to `exit 0`.
@@ -55,7 +55,7 @@ function buildOutcomeStub(dimId: string, label: string): Record<string, unknown>
     command: 'exit 1',
     expected_exit: 0,
     required_callsite: 'TODO-set-real-callsite',
-    // Declared provenance: a scaffold is agent-authored placeholder data. This caps it
+    // Declared provenance: a scaffold is agent-authored starter data. This caps it
     // at 7.0 structurally, so a scaffold can never drift up to a frontier score even if
     // its command is later flipped to exit 0 without real provenance being declared.
     input_source: { type: 'synthetic-fixture', fixture_id: 'matrix-build-scaffold' },
@@ -198,7 +198,7 @@ export async function runEvidenceScaffold(options: EvidenceScaffoldOptions = {})
   // Outcome scaffolding (the 7→9 depth-path requirement). capability_test gates
   // ≤5→7; outcomes gate 7→9. A matrix that declares the first but not the second is
   // incomplete by its own scoring rules — every dim is silently capped at 7.0 with no
-  // signal. Write a failing T5 stub per receipt-eligible dim so the depth path is
+  // signal. Write a failing T5 scaffold-marker per receipt-eligible dim so the depth path is
   // visible and authorable. Market-cap dims are skipped: they are clamped to 5.0
   // regardless, so an outcome there would be pointless.
   for (const dim of matrix.dimensions) {

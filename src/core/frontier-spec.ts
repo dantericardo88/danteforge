@@ -34,6 +34,12 @@ export interface FrontierSpec {
     /** The REAL product command (not a test runner) that exercises the capability. */
     run_command: string;
     realistic_input?: string;
+    /**
+     * Multiple realistic inputs/scenarios. The two-session protocol uses a DIFFERENT one per
+     * session (selectInputForSession), so a single prepared fixture can't satisfy both sessions —
+     * the anti-circular-validation defense. The run_command may reference the input via {input}.
+     */
+    realistic_inputs?: string[];
     observable_artifacts: Array<{ kind: string; path: string }>;
   };
   required_receipts: {
@@ -138,5 +144,29 @@ export function checkFrontierSpec(spec: FrontierSpec, competitors: string[]): Fr
     warnings.push(`Targeting beyond a ${lt.score} leader via a category delta — make sure the delta is real and reviewer-confirmed, not aspirational.`);
   }
 
+  // Anti-circular nudge: the two-session protocol resists prepared fixtures best when each session
+  // runs a DIFFERENT realistic input. A single input lets one staged fixture satisfy both sessions.
+  if (spec.required_receipts.min_distinct_sessions >= 2 && (rup.realistic_inputs?.length ?? 0) < 2) {
+    warnings.push('Only one realistic input — declare real_user_path.realistic_inputs[] (≥2) so each session exercises a different one; a single fixture can satisfy both sessions otherwise.');
+  }
+
   return { ok: errors.length === 0, errors, warnings };
+}
+
+/**
+ * Pick the realistic input for a 0-based session index. With multiple realistic_inputs the
+ * two-session protocol rotates through them, so a single prepared fixture cannot satisfy every
+ * session. Falls back to the singular realistic_input, or undefined.
+ */
+export function selectInputForSession(spec: FrontierSpec, sessionIndex: number): string | undefined {
+  const inputs = spec.real_user_path.realistic_inputs;
+  if (inputs && inputs.length > 0) return inputs[sessionIndex % inputs.length];
+  return spec.real_user_path.realistic_input;
+}
+
+/** Resolve the run_command for a session, substituting the session's input into any {input} token. */
+export function resolveRunCommand(spec: FrontierSpec, sessionIndex: number): string {
+  const input = selectInputForSession(spec, sessionIndex);
+  const cmd = spec.real_user_path.run_command;
+  return input ? cmd.replace(/\{input\}/g, input) : cmd;
 }

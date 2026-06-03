@@ -2,7 +2,7 @@
 //
 // The keystone of the input_source contract: 9.0 (T7) requires an outcome with
 // input_source: real-user-path, but nothing could PRODUCE one — so "drive to 9" was
-// unsatisfiable by construction (every agent would give up or fake it). This command
+// unsatisfiable by construction (every agent would give up or fabricate it). This command
 // closes that loop honestly.
 //
 // It runs a genuine product command (NOT a test runner) against a realistic input,
@@ -130,7 +130,7 @@ export async function runSessionRecord(options: SessionRecordOptions): Promise<S
   let wrote = false;
   if (write) {
     const d = dim as unknown as { outcomes?: Array<Record<string, unknown>> };
-    // Drop any scaffold stub for this dim — it is now superseded by a real outcome.
+    // Drop any scaffold marker for this dim — it is now superseded by a real outcome.
     d.outcomes = (d.outcomes ?? []).filter(o => o._scaffold !== true);
     d.outcomes.push(outcome);
     await writeMatrix(matrix, matrixPath);

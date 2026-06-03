@@ -15,7 +15,7 @@ import { promisify } from 'node:util';
 import { logger } from '../../core/logger.js';
 import { loadMatrix, type CompeteMatrix } from '../../core/compete-matrix.js';
 import { effectiveDimScore } from '../../core/compete-matrix-score.js';
-import { effectiveStatus, type FrontierSpec } from '../../core/frontier-spec.js';
+import { effectiveStatus, resolveRunCommand, type FrontierSpec } from '../../core/frontier-spec.js';
 import { loadCeilingReceipt, writeCeilingReceipt } from '../../core/ceiling-receipt.js';
 import { loadAttemptLedger, recordAttempt, isNovelAttempt, type AttemptFingerprint } from '../../core/evidence-novelty.js';
 import { planNextAction, type DimState, type AscendAction } from '../../core/ascend-frontier-engine.js';
@@ -155,13 +155,26 @@ function finish(terminal: AscendFrontierResult['terminal'], cycles: number, acti
 // ── Production push runner (one dim, full depth pass) ─────────────────────────────
 
 async function defaultPushTo9(cwd: string, dimId: string): Promise<PushResult> {
-  // freeze (if needed) → capability work → session-record → validate ×2 → frontier-review.
+  // freeze → capability work → real-user-path capture (per-session variant) → validate ×N → court.
   await df(cwd, ['frontier-spec', 'freeze', dimId, '--write']);
   await df(cwd, ['council-crusade', '--focus-dims', dimId, '--goal', `Close frontier_spec for ${dimId}`]);
-  // session-record args come from the frozen spec; the orchestrator passes them through frontier-spec.
-  await df(cwd, ['validate', dimId, '--force-cold']);
-  await df(cwd, ['validate', dimId, '--force-cold']); // second session
+
+  const specBefore = (await loadMatrix(cwd))?.dimensions.find(d => d.id === dimId);
+  const spec0 = (specBefore as unknown as { frontier_spec?: FrontierSpec } | undefined)?.frontier_spec;
+  if (spec0) {
+    const callsite = spec0.real_user_path.required_callsite;
+    const artifact = spec0.real_user_path.observable_artifacts[0]?.path ?? '';
+    const sessions = Math.max(2, spec0.required_receipts.min_distinct_sessions);
+    for (let s = 0; s < sessions; s++) {
+      // Each session runs a DIFFERENT realistic input (variant rotation) so one prepared fixture
+      // cannot satisfy the whole multi-session proof — the anti-circular defense.
+      const cmd = resolveRunCommand(spec0, s);
+      await df(cwd, ['session-record', dimId, '--run', cmd, '--callsite', callsite, '--artifact', artifact, '--write']);
+      await df(cwd, ['validate', dimId, '--force-cold']);
+    }
+  }
   await df(cwd, ['frontier-review', dimId, '--write']);
+
   // Re-read the spec status to learn the court verdict; fingerprint from the spec + HEAD.
   const matrix = await loadMatrix(cwd);
   const dim = matrix?.dimensions.find(d => d.id === dimId);

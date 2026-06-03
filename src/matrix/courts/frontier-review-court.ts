@@ -72,10 +72,16 @@ export function buildFrontierJudgePrompt(input: FrontierReviewInput): string {
     `  receipts:`,
     receipts || '  (none)',
     ``,
+    (input.frontierSpec.real_user_path.realistic_inputs?.length ?? 0) >= 2
+      ? `Declared realistic inputs (evidence should generalize across these, not be tied to one): ${input.frontierSpec.real_user_path.realistic_inputs!.join(' | ')}`
+      : ``,
+    ``,
     `Ask, skeptically:`,
     `  - Does this artifact GENUINELY demonstrate a capability that matches or beats ${lt.competitor}'s`,
     `    "${lt.observed_capability}" — would a real user of ${lt.competitor} agree, or is this narrower/weaker?`,
     `  - Is this a REAL run on a realistic input, or a prepared/toy fixture crafted only to pass the gate?`,
+    `  - Is the EVIDENCE DESIGN sound — does the run_command actually exercise the claimed capability on`,
+    `    realistic input, or is it narrowly rigged to the one scenario that passes?`,
     `  - Is ${lt.competitor} the RIGHT comparator and genuinely at the frontier for this dimension?`,
     `  - Is the bar too easy (a weak competitor, or a category_delta that isn't actually real)?`,
     ``,
