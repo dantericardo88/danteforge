@@ -105,6 +105,8 @@ export async function runFrontierReviewCourt(
   input: FrontierReviewInput,
   opts: {
     members: CouncilMemberId[];
+    /** The member that BUILT this dim — excluded from the judge pool (builder-never-judges). */
+    builderMemberId?: CouncilMemberId;
     minJudges?: number;
     runJudge: (judgeId: CouncilMemberId, prompt: string) => Promise<string>;
   },
@@ -113,19 +115,24 @@ export async function runFrontierReviewCourt(
   const judges: FrontierJudgeRecord[] = [];
   const votes: WeightedVote[] = [];
 
-  for (const member of opts.members) {
+  // In parallel mode the builder is a real member; it must NOT judge its own dim. The remaining
+  // members are the independent judges, and all their votes are cross-member by construction.
+  const builder = opts.builderMemberId ?? NO_BUILDER;
+  const judgePool = opts.builderMemberId ? opts.members.filter(m => m !== opts.builderMemberId) : opts.members;
+
+  for (const member of judgePool) {
     let raw = '';
     try { raw = await opts.runJudge(member, prompt); } catch (err) { raw = `VERDICT: UNCLEAR\nREASON: judge error ${String(err)}`; }
     const v = parseVerdict(member, raw);
     const ceiling = /CEILING:\s*YES/i.test(raw);
     judges.push({ judgeId: member, verdict: v.verdict, ceiling, reason: v.reason });
     votes.push({
-      judgeSlotId: `${member}-0`, judgeMemberId: member, builderMemberId: NO_BUILDER,
+      judgeSlotId: `${member}-0`, judgeMemberId: member, builderMemberId: builder,
       verdict: v.verdict, weight: 1.0, confidence: v.confidence, reason: v.reason, dissentSummary: v.dissentSummary,
     });
   }
 
-  const minJudges = opts.minJudges ?? Math.min(2, opts.members.length);
+  const minJudges = opts.minJudges ?? Math.min(2, judgePool.length);
   const consensus = computeConsensus(votes, { minJudges, minPasses: minJudges });
   const pass = judges.filter(j => j.verdict === 'PASS').length;
   const fail = judges.filter(j => j.verdict === 'FAIL').length;

@@ -14,7 +14,9 @@ const QUEUE_DIR_REL = path.join('.danteforge', 'human-audit-queue');
 
 export interface AuditEscrowEntry {
   dimId: string;
-  kind: 'validated-9.0' | 'ceiling';
+  /** 'reciprocal-pair' = members cross-passed each other's dims in the same parallel round —
+   *  a possible rubber-stamp; flagged for MANDATORY human review (scores still land, non-blocking). */
+  kind: 'validated-9.0' | 'ceiling' | 'reciprocal-pair';
   /** Everything needed to independently replay the evidence. */
   replayCommand: string;
   artifacts: string[];

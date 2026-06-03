@@ -19,6 +19,8 @@ import { effectiveStatus, resolveRunCommand, type FrontierSpec } from '../../cor
 import { loadCeilingReceipt, writeCeilingReceipt } from '../../core/ceiling-receipt.js';
 import { loadAttemptLedger, recordAttempt, isNovelAttempt, type AttemptFingerprint } from '../../core/evidence-novelty.js';
 import { planNextAction, type DimState, type AscendAction } from '../../core/ascend-frontier-engine.js';
+import { assignRound, runParallelRound, type PushOutcome } from '../../core/ascend-frontier-parallel.js';
+import type { CouncilMemberId } from '../../matrix/engines/council-scheduler.js';
 
 const execFileAsync = promisify(execFile);
 const MARKET_DIMS = new Set(['community_adoption', 'enterprise_readiness']);
@@ -29,6 +31,8 @@ export interface PushResult { verdict: 'VALIDATED' | 'REJECTED'; fingerprint: At
 export interface AscendFrontierOptions {
   cwd?: string;
   dryRun?: boolean;
+  /** Parallel fan-out: each live council member owns a different dim and pushes concurrently. */
+  parallel?: boolean;
   maxCycles?: number;
   maxAttemptsPerDim?: number;
   json?: boolean;
@@ -37,6 +41,10 @@ export interface AscendFrontierOptions {
   _runSetup?: (cwd: string, dims: string[]) => Promise<void>;
   _runBuildTo7?: (cwd: string, dims: string[]) => Promise<void>;
   _runPushTo9?: (cwd: string, dimId: string) => Promise<PushResult>;
+  /** Parallel mode: discover live council members. */
+  _discoverMembers?: () => Promise<CouncilMemberId[]>;
+  /** Parallel mode: push one (member, dim) pair — returns the court outcome incl. who passed. */
+  _runParallelPush?: (cwd: string, a: { memberId: CouncilMemberId; dimId: string }) => Promise<PushOutcome>;
   _now?: () => string;
 }
 
@@ -117,6 +125,26 @@ export async function runAscendFrontier(options: AscendFrontierOptions): Promise
           detail: action.detail, failedGates: [action.cause], recordedAt: now() });
         break;
       case 'push-to-9': {
+        if (options.parallel) {
+          // Fan out: assign the weakest dims to live members and push concurrently, each gated by
+          // the frontier-review-court with the builder excluded (builder-never-judges). Reciprocal
+          // passes are auto-queued for human audit inside runParallelRound.
+          const members = await (options._discoverMembers ?? defaultDiscoverMembers)();
+          const assignments = assignRound(state, members, { nowIso: now() });
+          if (assignments.length === 0) break;
+          logger.info(`[ascend-frontier] parallel round: ${assignments.map(a => `${a.memberId}→${a.dimId}`).join(', ')}`);
+          const round = await runParallelRound(cwd, assignments, {
+            runPush: (a) => (options._runParallelPush ?? defaultParallelPush)(cwd, a),
+            nowIso: now(),
+          });
+          // Record an attempt per pushed dim so attempt-counts advance (a fresh HEAD makes it novel).
+          const sha = await headSha(cwd);
+          for (const o of round.outcomes) {
+            await recordAttempt(cwd, { dimId: o.dimId, command: `parallel:${o.builderId}`, artifactPath: '', gitSha: sha },
+              o.verdict === 'VALIDATED' ? 'validated' : 'rejected', now());
+          }
+          break;
+        }
         const result = await runPushTo9(cwd, action.dimId);
         const ledger = await loadAttemptLedger(cwd);
         if (!isNovelAttempt(ledger, result.fingerprint)) {
@@ -191,4 +219,48 @@ async function defaultPushTo9(cwd: string, dimId: string): Promise<PushResult> {
       gitSha,
     },
   };
+}
+
+// ── Parallel production helpers ──────────────────────────────────────────────────
+
+async function headSha(cwd: string): Promise<string | null> {
+  try { return (await execFileAsync('git', ['rev-parse', 'HEAD'], { cwd })).stdout.trim(); } catch { return null; }
+}
+
+async function defaultDiscoverMembers(): Promise<CouncilMemberId[]> {
+  const { discoverCouncil } = await import('./council.js');
+  return (await discoverCouncil()).filter(m => m.available).map(m => m.id as CouncilMemberId);
+}
+
+async function dfCapture(cwd: string, args: string[]): Promise<string> {
+  const [node, cli] = [process.execPath, process.argv[1] ?? 'dist/index.js'];
+  try { return (await execFileAsync(node, [cli, ...args], { cwd, timeout: 30 * 60_000, maxBuffer: 32 * 1024 * 1024 })).stdout; }
+  catch (e) { return (e as { stdout?: string }).stdout ?? ''; }
+}
+
+/** Push one (member, dim) pair, then run the court with that member EXCLUDED from judging. */
+async function defaultParallelPush(cwd: string, a: { memberId: CouncilMemberId; dimId: string }): Promise<PushOutcome> {
+  await df(cwd, ['frontier-spec', 'freeze', a.dimId, '--write']);
+  await df(cwd, ['council-crusade', '--focus-dims', a.dimId, '--goal', `Close frontier_spec for ${a.dimId} (builder ${a.memberId})`]);
+  const specBefore = (await loadMatrix(cwd))?.dimensions.find(d => d.id === a.dimId);
+  const spec0 = (specBefore as unknown as { frontier_spec?: FrontierSpec } | undefined)?.frontier_spec;
+  if (spec0) {
+    const callsite = spec0.real_user_path.required_callsite;
+    const artifact = spec0.real_user_path.observable_artifacts[0]?.path ?? '';
+    const sessions = Math.max(2, spec0.required_receipts.min_distinct_sessions);
+    for (let s = 0; s < sessions; s++) {
+      await df(cwd, ['session-record', a.dimId, '--run', resolveRunCommand(spec0, s), '--callsite', callsite, '--artifact', artifact, '--write']);
+      await df(cwd, ['validate', a.dimId, '--force-cold']);
+    }
+  }
+  // Court with builder-never-judges: the OTHER members judge (unanimous 2-of-2 in a 3-member council).
+  const out = await dfCapture(cwd, ['frontier-review', a.dimId, '--builder', a.memberId, '--min-judges', '2', '--json', '--write']);
+  let verdict: PushOutcome['verdict'] = 'REJECTED';
+  let passedByJudges: CouncilMemberId[] = [];
+  try {
+    const j = JSON.parse(out.slice(out.indexOf('{')));
+    verdict = j?.result?.verdict === 'VALIDATED' ? 'VALIDATED' : 'REJECTED';
+    passedByJudges = (j?.result?.judges ?? []).filter((x: { verdict: string }) => x.verdict === 'PASS').map((x: { judgeId: CouncilMemberId }) => x.judgeId);
+  } catch { /* best-effort: REJECTED on unparseable output */ }
+  return { dimId: a.dimId, builderId: a.memberId, verdict, passedByJudges };
 }

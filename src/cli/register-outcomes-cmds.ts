@@ -207,6 +207,7 @@ program
   .command('ascend-frontier')
   .description('Unattended autonomous frontier orchestrator: define → build-to-7 → push each dim to a court-validated 9.0, one at a time, until every dim is at the frontier OR an honest ceiling. NEVER prompts.')
   .option('--dry-run', 'Print the next action without executing')
+  .option('--parallel', 'Fan out the push: each live council member owns a different dim and pushes concurrently (builder-never-judges per dim, reciprocity-audited)')
   .option('--max-cycles <n>', 'Global stop after N cycles (default 200)')
   .option('--max-attempts <n>', 'Novel push attempts per dim before an honest generator-ceiling (default 3)')
   .option('--json', 'Machine-readable result')
@@ -228,6 +229,7 @@ interrupts this loop.
         const { runAscendFrontier } = await import('./commands/ascend-frontier.js');
         const r = await runAscendFrontier({
           dryRun: opts.dryRun as boolean | undefined,
+          parallel: opts.parallel as boolean | undefined,
           maxCycles: opts.maxCycles ? parseInt(opts.maxCycles as string, 10) : undefined,
           maxAttemptsPerDim: opts.maxAttempts ? parseInt(opts.maxAttempts as string, 10) : undefined,
           json: opts.json as boolean | undefined,
@@ -246,6 +248,7 @@ program
   .command('frontier-review <dimId>')
   .description('Run the frontier-review-court: independent council judges (builder-never-judges) confirm a dim genuinely matches its named competitor. VALIDATED is the ONLY way past 8.0.')
   .option('--write', 'Apply the verdict: set frontier_spec.status=validated on PASS, write a ceiling receipt on an agreed honest-ceiling')
+  .option('--builder <memberId>', 'The member that built this dim — excluded from judging (parallel mode, builder-never-judges)')
   .option('--min-judges <n>', 'Minimum cross-member judges (default: min(2, available))')
   .option('--json', 'Machine-readable output')
   .option('--cwd <path>', 'Project directory')
@@ -256,6 +259,7 @@ program
         const r = await runFrontierReviewCli({
           dimId,
           write: opts.write as boolean | undefined,
+          builderMemberId: opts.builder as never,
           minJudges: opts.minJudges ? parseInt(opts.minJudges as string, 10) : undefined,
           json: opts.json as boolean | undefined,
           cwd: opts.cwd as string | undefined,

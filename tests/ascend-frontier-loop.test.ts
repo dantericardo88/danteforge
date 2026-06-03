@@ -60,6 +60,31 @@ describe('ascend-frontier — unattended loop control', () => {
     assert.equal(ceiling.cause, 'generator-ceiling');
   });
 
+  test('--parallel mode fans the push across members (each builds a different dim concurrently)', async () => {
+    const dir = path.join(ROOT, 'par');
+    const pushedBy: Record<string, string> = {};
+    let rounds = 0;
+    const r = await runAscendFrontier({
+      cwd: dir, parallel: true, maxCycles: 3,
+      _buildState: async () => {
+        // After round 1, all three are validated → done. Before, three frozen dims at 8.0.
+        if (rounds >= 1) return ['a', 'b', 'c'].map(id => ({ ...dim({ id, effectiveScore: 9.0, frontierStatus: 'validated' as const }) }));
+        return ['a', 'b', 'c'].map(id => ({ ...dim({ id, effectiveScore: 8.0 }) }));
+      },
+      _discoverMembers: async () => ['codex', 'claude-code', 'grok-build'],
+      _runParallelPush: async (_cwd, asg) => {
+        rounds = 1;
+        pushedBy[asg.dimId] = asg.memberId;
+        return { dimId: asg.dimId, builderId: asg.memberId, verdict: 'VALIDATED', passedByJudges: ['codex', 'claude-code', 'grok-build'].filter(m => m !== asg.memberId) };
+      },
+      _now: () => '2026-06-03T00:00:00.000Z',
+    });
+    assert.equal(r.terminal, 'done');
+    // Each of the 3 dims was pushed by a DIFFERENT member in the same round.
+    assert.deepEqual(Object.keys(pushedBy).sort(), ['a', 'b', 'c']);
+    assert.equal(new Set(Object.values(pushedBy)).size, 3, 'three distinct member-builders');
+  });
+
   test('a non-novel push (no new evidence) is ceilinged immediately (anti-grind)', async () => {
     const dir = path.join(ROOT, 'nn');
     const r = await runAscendFrontier({

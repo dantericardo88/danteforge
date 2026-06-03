@@ -23,6 +23,8 @@ export interface FrontierReviewCliOptions {
   dimId: string;
   cwd?: string;
   minJudges?: number;
+  /** The member that built this dim (parallel mode) — excluded from judging. */
+  builderMemberId?: CouncilMemberId;
   write?: boolean;
   json?: boolean;
   _loadMatrix?: (cwd: string) => Promise<CompeteMatrix | null>;
@@ -89,11 +91,12 @@ export async function runFrontierReviewCli(options: FrontierReviewCliOptions): P
   };
 
   const members = await (options._discoverMembers ?? defaultDiscoverMembers)();
-  if (members.length < 2) throw new Error(`Frontier review needs ≥2 independent council members; found ${members.length}.`);
+  const judgeCount = options.builderMemberId ? members.filter(m => m !== options.builderMemberId).length : members.length;
+  if (judgeCount < 2) throw new Error(`Frontier review needs ≥2 independent judges (excluding the builder); found ${judgeCount} of ${members.length} members.`);
   const runJudge = options._runJudge ?? ((id: CouncilMemberId, prompt: string) => defaultRunJudge(id, prompt, cwd));
 
-  logger.info(`[frontier-review] ${options.dimId}: ${members.length} independent judges vs ${spec.leader_target.competitor}…`);
-  const result = await runFrontierReviewCourt(reviewInput, { members, minJudges: options.minJudges, runJudge });
+  logger.info(`[frontier-review] ${options.dimId}: ${judgeCount} independent judges${options.builderMemberId ? ` (excluding builder ${options.builderMemberId})` : ''} vs ${spec.leader_target.competitor}…`);
+  const result = await runFrontierReviewCourt(reviewInput, { members, builderMemberId: options.builderMemberId, minJudges: options.minJudges, runJudge });
 
   let validatedWritten = false;
   let ceilingWritten = false;

@@ -78,6 +78,28 @@ describe('frontier-review-court — the automated 9.0 semantic gate', () => {
     assert.equal(r.ceilingSignal, 2, 'both judges flagged an honest ceiling');
   });
 
+  test('builder-never-judges: the builder is excluded; only the other members judge', async () => {
+    const asked: string[] = [];
+    const r = await runFrontierReviewCourt(input(), {
+      members: ['codex', 'claude-code', 'grok-build'],
+      builderMemberId: 'codex', // codex built this dim → must not judge it
+      runJudge: async (id) => { asked.push(id); return 'VERDICT: PASS\nREASON: genuine'; },
+    });
+    assert.ok(!asked.includes('codex'), 'the builder (codex) was NOT asked to judge its own dim');
+    assert.deepEqual(asked.sort(), ['claude-code', 'grok-build']);
+    assert.equal(r.verdict, 'VALIDATED'); // 2 cross-member PASS
+    assert.equal(r.vote.crossMember, 2);
+  });
+
+  test('parallel unanimous gate: with builder excluded, one FAIL from the other two blocks 9.0', async () => {
+    const r = await runFrontierReviewCourt(input(), {
+      members: ['codex', 'claude-code', 'grok-build'],
+      builderMemberId: 'codex', minJudges: 2,
+      runJudge: async (id) => id === 'grok-build' ? 'VERDICT: FAIL\nREASON: prepared fixture' : 'VERDICT: PASS\nREASON: ok',
+    });
+    assert.equal(r.verdict, 'REJECTED', 'unanimous 2-of-2 required — a single FAIL blocks');
+  });
+
   test('a judge error degrades to UNCLEAR, never a silent PASS', async () => {
     const r = await runFrontierReviewCourt(input(), {
       members: MEMBERS,
