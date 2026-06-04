@@ -76,6 +76,12 @@ export async function proposeOutcome(
   await deps.writeFile(proposalPath(cwd, dimId, outcome.id), JSON.stringify(proposal, null, 2));
 }
 
+/** Load one pending proposal, or null if it isn't queued. */
+export async function loadProposal(cwd: string, dimId: string, outcomeId: string, deps: ProposalFsDeps = defaultProposalFsDeps()): Promise<OutcomeProposal | null> {
+  try { return JSON.parse(await deps.readFile(proposalPath(cwd, dimId, outcomeId))) as OutcomeProposal; }
+  catch { return null; }
+}
+
 export async function listProposedOutcomes(cwd: string, dimId: string, deps: ProposalFsDeps = defaultProposalFsDeps()): Promise<OutcomeProposal[]> {
   const files = (await deps.readdir(proposalDir(cwd, dimId))).filter(f => f.endsWith('.json'));
   const out: OutcomeProposal[] = [];

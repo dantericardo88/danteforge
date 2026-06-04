@@ -73,19 +73,20 @@ describe('dimDispatch', () => {
     assert.equal(saved, false, 'no win → no score write');
   });
 
-  it('hands off feature_construction dims without executing them', async () => {
-    const log: string[] = [];
+  it('queues a feature work-packet for feature_construction dims, without executing them', async () => {
     const load = async (): Promise<CompeteMatrix> => matrix([dim('feat', { self: 4 }, 'node scripts/feat.mjs')]);
     let captured: unknown;
+    const writes: string[] = [];
     await dimDispatch({
       _loadMatrix: load as never, _saveMatrix: async () => {},
       _isLLMAvailable: async () => true, _callLLM: fakeLLM,
       _fileExists: async () => true, _readFile: async () => 'x',
-      _writeFile: async () => {}, _mkdir: async () => {},
+      _writeFile: async (p) => { writes.push(p); }, _mkdir: async () => {},
       _runners: { runAutoresearch: async () => { captured = 'ran'; }, runOutcomes: async () => {}, runCapabilityTest: async () => true },
       json: true,
     });
     assert.equal(captured, undefined, 'feature dim was NOT executed via autoresearch');
+    assert.ok(writes.some(p => p.includes('feature-queue') && p.includes('feat.json')), 'a feature work-packet was queued');
   });
 
   it('--dry-run classifies and plans without running anything', async () => {

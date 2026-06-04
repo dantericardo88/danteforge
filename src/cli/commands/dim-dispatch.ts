@@ -120,12 +120,25 @@ export async function dimDispatch(opts: DimDispatchOpts = {}): Promise<void> {
       logger.info(`[dispatch] ${c.id}: capability_test ${passed ? 'PASS' : 'fail'}; ${promote?.reason ?? 'no promote'}`);
     }
 
-    for (const c of feature) {
-      actions.push({ dimId: c.id, category: c.category, action: 'handoff', note: `run /matrixdev or /forge on ${c.id} — feature-scale work, not a surgical edit` });
-    }
-
     const writeFile = opts._writeFile ?? ((p: string, c: string) => fs.writeFile(p, c, 'utf8'));
     const mkdir = opts._mkdir ?? (async (p: string) => { await fs.mkdir(p, { recursive: true }); });
+
+    // feature_construction needs multi-file work the surgical loop can't do, and matrixdev/forge are
+    // agent-driven slash-commands (not CLI we can spawn). So route honestly: emit a tracked work-packet
+    // to .danteforge/feature-queue/ that an agent loop or human picks up — not a faked auto-execution.
+    for (const c of feature) {
+      const dim = byId.get(c.id);
+      const packet = {
+        dimId: c.id, label: dim?.label ?? c.id, score: c.score,
+        capabilityTest: dim?.capability_test?.command ?? null,
+        recommendedCommand: `/matrixdev --dimension ${c.id}  (or /forge)`,
+        reason: c.reason,
+      };
+      await mkdir(path.join(cwd, '.danteforge', 'feature-queue')).catch(() => { /* best-effort */ });
+      await writeFile(path.join(cwd, '.danteforge', 'feature-queue', `${c.id}.json`), JSON.stringify(packet, null, 2)).catch(() => { /* best-effort */ });
+      actions.push({ dimId: c.id, category: c.category, action: 'handoff', note: `queued feature work-packet → .danteforge/feature-queue/${c.id}.json (run /matrixdev)` });
+    }
+
     await writeDispatchReport(cwd, matrix.project, actions, mkdir, writeFile);
     if (opts.json) { process.stdout.write(JSON.stringify({ actions }, null, 2) + '\n'); return; }
     printSummary(actions);
