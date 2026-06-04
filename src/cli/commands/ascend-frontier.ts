@@ -368,19 +368,24 @@ async function defaultPushTo9(cwd: string, dimId: string): Promise<PushResult> {
 
   const specBefore = (await loadMatrix(cwd))?.dimensions.find(d => d.id === dimId);
   const spec0 = (specBefore as unknown as { frontier_spec?: FrontierSpec } | undefined)?.frontier_spec;
-  let evidenceOk = false; // did at least one session genuinely record evidence AND validate cleanly?
+  let evidenceOk = false;
   if (spec0) {
     const callsite = spec0.real_user_path.required_callsite;
     const artifact = spec0.real_user_path.observable_artifacts[0]?.path ?? '';
     const sessions = Math.max(2, spec0.required_receipts.min_distinct_sessions);
+    let okSessions = 0;
     for (let s = 0; s < sessions; s++) {
       // Each session runs a DIFFERENT realistic input (variant rotation) so one prepared fixture
       // cannot satisfy the whole multi-session proof — the anti-circular defense.
       const cmd = resolveRunCommand(spec0, s);
       const rec = await df(cwd, ['session-record', dimId, '--run', cmd, '--callsite', callsite, '--artifact', artifact, '--write']);
       const val = await df(cwd, ['validate', dimId, '--force-cold']);
-      if (rec.ok && val.ok) evidenceOk = true;
+      if (rec.ok && val.ok) okSessions++;
     }
+    // Require ALL required distinct sessions to succeed — not just one. A single passing session is
+    // NOT enough evidence to convene the court (it would violate min_distinct_sessions); treat a
+    // partial run as a build failure, not a court attempt. (Council/Codex: evidenceOk was too permissive.)
+    evidenceOk = okSessions >= sessions;
   }
 
   // The honesty boundary: the court only "ran" if there's a frozen spec, the evidence pipeline
