@@ -89,6 +89,38 @@ describe('dimDispatch', () => {
     assert.ok(writes.some(p => p.includes('feature-queue') && p.includes('feat.json')), 'a feature work-packet was queued');
   });
 
+  it('5→7 bridge: a promoted dim with a DIRTY harden gate is re-routed to feature work', async () => {
+    const writes: string[] = [];
+    let call = 0;
+    // promote 4 → 6 (derived 6 on reload), landing in the [5,7) bridge band.
+    const load = async (): Promise<CompeteMatrix> => { call++; return matrix([dim('surg', call >= 2 ? { self: 4, derived: 6 } : { self: 4 }, 'node scripts/surg.mjs')]); };
+    await dimDispatch({
+      _loadMatrix: load as never, _saveMatrix: async () => {},
+      _isLLMAvailable: async () => true, _callLLM: fakeLLM,
+      _fileExists: async () => true, _readFile: async () => 'x',
+      _writeFile: async (p) => { writes.push(p); }, _mkdir: async () => {},
+      _runners: { runAutoresearch: async () => {}, runOutcomes: async () => {}, runCapabilityTest: async () => true,
+        runHardenCheck: async () => ({ clean: false, failedChecks: ['orphan-audit'] }) },
+    });
+    assert.ok(writes.some(p => p.includes('feature-queue') && p.includes('surg.json')), 'dirty harden → re-routed to the feature queue');
+  });
+
+  it('depth-guard: a dim already at ≥7 is delegated to ascend-frontier, never autoresearched', async () => {
+    let autoresearched = false;
+    // 'surg' classifies surgical but is already at 7.5 → must be delegated, not run.
+    const load = async (): Promise<CompeteMatrix> => matrix([dim('surg', { self: 7.5 }, 'node scripts/surg.mjs')]);
+    await dimDispatch({
+      target: 9, // include the [7,9) band
+      _loadMatrix: load as never, _saveMatrix: async () => {},
+      _isLLMAvailable: async () => true, _callLLM: fakeLLM,
+      _fileExists: async () => true, _readFile: async () => 'x',
+      _writeFile: async () => {}, _mkdir: async () => {},
+      _runners: { runAutoresearch: async () => { autoresearched = true; }, runOutcomes: async () => {}, runCapabilityTest: async () => true, runHardenCheck: async () => ({ clean: true, failedChecks: [] }) },
+      json: true,
+    });
+    assert.equal(autoresearched, false, 'dim-dispatch does NOT run its surgical loop on a ≥7 dim');
+  });
+
   it('--dry-run classifies and plans without running anything', async () => {
     const log: string[] = [];
     const load = async (): Promise<CompeteMatrix> => matrix([dim('surg', { self: 4 }, 'node scripts/surg.mjs')]);

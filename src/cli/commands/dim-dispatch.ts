@@ -16,6 +16,8 @@ import { isLLMAvailable, callLLM } from '../../core/llm.js';
 import { withErrorBoundary } from '../../core/cli-error-boundary.js';
 import { promoteVerifiedScore, type PromoteResult } from '../../core/promote-score.js';
 import { resolveAutonomousTarget } from '../../core/autonomy-cap.js';
+import { decideHardenBridge, inBridgeBand, type HardenCheckResult } from '../../core/harden-bridge.js';
+import { dimBandState } from '../../core/dim-band.js';
 import { NEEDS_SHELL, splitCommand } from '../../core/autoresearch-engine.js';
 import { classifyMatrixDims, type LooseDim } from './dim-triage.js';
 import type { DimClassification } from '../../core/dim-triage.js';
@@ -27,6 +29,8 @@ export interface DispatchRunners {
   runOutcomes: (dimId: string, cwd: string) => Promise<void>;
   /** Run the capability_test; true iff it exits 0. */
   runCapabilityTest: (command: string, cwd: string) => Promise<boolean>;
+  /** Run the deterministic harden gate for one dim (orphan/recency/claim) — the 5→7 bridge check. */
+  runHardenCheck: (dimId: string, cwd: string) => Promise<HardenCheckResult>;
 }
 
 interface DimDispatchOpts {
@@ -49,7 +53,7 @@ interface DimDispatchOpts {
 export interface DispatchAction {
   dimId: string;
   category: DimClassification['category'];
-  action: 'executed' | 'handoff' | 'skipped';
+  action: 'executed' | 'handoff' | 'skipped' | 'delegate';
   promote?: PromoteResult;
   note: string;
 }
@@ -66,7 +70,24 @@ function defaultRunners(): DispatchRunners {
     },
     runOutcomes: (dimId, cwd) => spawnCli(['outcomes', '--dim', dimId, '--force-cold'], cwd),
     runCapabilityTest: (command, cwd) => runCapabilityTest(command, cwd),
+    runHardenCheck: async (dimId, cwd) => {
+      try {
+        const { runHardenAll } = await import('./harden.js');
+        const report = await runHardenAll({ cwd, dim: dimId });
+        return { clean: report.failedCount === 0, failedChecks: report.failedCount > 0 ? ['harden'] : [] };
+      } catch { return { clean: true, failedChecks: [] }; } // harden unavailable → don't block the bridge
+    },
   };
+}
+
+/** Emit a tracked feature work-packet to .danteforge/feature-queue/<dim>.json for the agent loop/human. */
+async function queueFeaturePacket(
+  cwd: string, dimId: string, label: string, capabilityTest: string | null, reason: string,
+  mkdir: (p: string) => Promise<void>, writeFile: (p: string, c: string) => Promise<void>,
+): Promise<void> {
+  const packet = { dimId, label, capabilityTest, recommendedCommand: `/matrixdev --dimension ${dimId}  (or /forge)`, reason };
+  await mkdir(path.join(cwd, '.danteforge', 'feature-queue')).catch(() => { /* best-effort */ });
+  await writeFile(path.join(cwd, '.danteforge', 'feature-queue', `${dimId}.json`), JSON.stringify(packet, null, 2)).catch(() => { /* best-effort */ });
 }
 
 export async function dimDispatch(opts: DimDispatchOpts = {}): Promise<void> {
@@ -85,24 +106,32 @@ export async function dimDispatch(opts: DimDispatchOpts = {}): Promise<void> {
     const matrix = await loadMatrixFn(cwd);
     if (!matrix) { logger.error('No competitive matrix found. Run `danteforge compete` first.'); process.exitCode = 1; return; }
 
+    const byId = new Map((matrix.dimensions as LooseDim[]).map(d => [d.id, d]));
     const llmOk = await (opts._isLLMAvailable ?? isLLMAvailable)();
     const classes = await classifyMatrixDims(matrix.dimensions as LooseDim[], {
       cwd, target, fileExists, readFile, llmOk, callLLM: callLLMFn, excluded: new Set(matrix.excludedDimensions ?? []),
     });
 
-    const surgical = classes.filter(c => c.category === 'surgical').slice(0, max);
-    const feature = classes.filter(c => c.category === 'feature_construction');
-    logger.info(`Dispatch plan: ${surgical.length} surgical → autoresearch+promote, ${feature.length} feature → matrixdev handoff (target ${target}).`);
+    // Depth-guard: dim-dispatch owns to-7 work ONLY. A classified dim already at ≥7.0 is 7→9 work —
+    // never run the surgical loop on it; hand it to ascend-frontier (the orchestrator does the call).
+    const atDepth = classes.filter(c => { const d = byId.get(c.id); return !!d && dimBandState(d).effectiveScore >= 7.0; });
+    const atDepthIds = new Set(atDepth.map(c => c.id));
+    const surgical = classes.filter(c => c.category === 'surgical' && !atDepthIds.has(c.id)).slice(0, max);
+    const feature = classes.filter(c => c.category === 'feature_construction' && !atDepthIds.has(c.id));
+    logger.info(`Dispatch plan: ${surgical.length} surgical → autoresearch, ${feature.length} feature → queue, ${atDepth.length} at ≥7 → ascend-frontier (target ${target}).`);
 
     if (opts.dryRun) {
       for (const c of [...surgical, ...feature]) logger.info(`  ${c.category === 'surgical' ? 'EXEC ' : 'HANDOFF'} ${c.id} — ${c.reason}`);
+      for (const c of atDepth) logger.info(`  DELEGATE ${c.id} — ≥7.0, ascend-frontier owns 7→9`);
       logger.info('--dry-run: no execution.');
-      if (opts.json) process.stdout.write(JSON.stringify({ planned: { surgical: surgical.map(c => c.id), feature: feature.map(c => c.id) } }, null, 2) + '\n');
+      if (opts.json) process.stdout.write(JSON.stringify({ planned: { surgical: surgical.map(c => c.id), feature: feature.map(c => c.id), delegate: atDepth.map(c => c.id) } }, null, 2) + '\n');
       return;
     }
 
     const actions: DispatchAction[] = [];
-    const byId = new Map((matrix.dimensions as LooseDim[]).map(d => [d.id, d]));
+    for (const c of atDepth) actions.push({ dimId: c.id, category: c.category, action: 'delegate', note: '≥7.0 — 7→9 is ascend-frontier\'s job (run `danteforge ascend-frontier`)' });
+    const writeFile = opts._writeFile ?? ((p: string, c: string) => fs.writeFile(p, c, 'utf8'));
+    const mkdir = opts._mkdir ?? (async (p: string) => { await fs.mkdir(p, { recursive: true }); });
 
     for (const c of surgical) {
       const dim = byId.get(c.id);
@@ -116,26 +145,28 @@ export async function dimDispatch(opts: DimDispatchOpts = {}): Promise<void> {
       const fresh = await loadMatrixFn(cwd);
       const promote = fresh ? promoteVerifiedScore(fresh, c.id, { capabilityTestPassed: passed, agent: 'dim-dispatch' }) : undefined;
       if (fresh && promote?.promoted) await saveMatrixFn(fresh, cwd);
-      actions.push({ dimId: c.id, category: c.category, action: 'executed', promote, note: promote?.reason ?? 'no score change' });
-      logger.info(`[dispatch] ${c.id}: capability_test ${passed ? 'PASS' : 'fail'}; ${promote?.reason ?? 'no promote'}`);
-    }
 
-    const writeFile = opts._writeFile ?? ((p: string, c: string) => fs.writeFile(p, c, 'utf8'));
-    const mkdir = opts._mkdir ?? (async (p: string) => { await fs.mkdir(p, { recursive: true }); });
+      // 5→7 bridge: a freshly-promoted dim in [5,7) runs the harden gate. Clean → depth-wave ready;
+      // dirty (e.g. orphan — no production callsite) → it needs real wiring, so re-route to feature work.
+      let note = promote?.reason ?? 'no score change';
+      if (promote?.promoted && inBridgeBand(promote.after)) {
+        const harden = await runners.runHardenCheck(c.id, cwd);
+        const bridge = decideHardenBridge(c.id, promote.after, harden);
+        note = `${note}; ${bridge.note}`;
+        if (bridge.decision === 'needs-feature') {
+          await queueFeaturePacket(cwd, c.id, dim.label ?? c.id, cmd, bridge.note, mkdir, writeFile);
+        }
+      }
+      actions.push({ dimId: c.id, category: c.category, action: 'executed', promote, note });
+      logger.info(`[dispatch] ${c.id}: capability_test ${passed ? 'PASS' : 'fail'}; ${note}`);
+    }
 
     // feature_construction needs multi-file work the surgical loop can't do, and matrixdev/forge are
     // agent-driven slash-commands (not CLI we can spawn). So route honestly: emit a tracked work-packet
     // to .danteforge/feature-queue/ that an agent loop or human picks up — not a faked auto-execution.
     for (const c of feature) {
       const dim = byId.get(c.id);
-      const packet = {
-        dimId: c.id, label: dim?.label ?? c.id, score: c.score,
-        capabilityTest: dim?.capability_test?.command ?? null,
-        recommendedCommand: `/matrixdev --dimension ${c.id}  (or /forge)`,
-        reason: c.reason,
-      };
-      await mkdir(path.join(cwd, '.danteforge', 'feature-queue')).catch(() => { /* best-effort */ });
-      await writeFile(path.join(cwd, '.danteforge', 'feature-queue', `${c.id}.json`), JSON.stringify(packet, null, 2)).catch(() => { /* best-effort */ });
+      await queueFeaturePacket(cwd, c.id, dim?.label ?? c.id, dim?.capability_test?.command ?? null, c.reason, mkdir, writeFile);
       actions.push({ dimId: c.id, category: c.category, action: 'handoff', note: `queued feature work-packet → .danteforge/feature-queue/${c.id}.json (run /matrixdev)` });
     }
 
