@@ -93,12 +93,33 @@ describe('runMeasurement', () => {
     );
   });
 
-  it('throws when stdout contains no parseable number', async () => {
-    const execFn = async () => ({ stdout: 'no number here' });
-    await assert.rejects(
-      () => runMeasurement(makeConfig({ measurementCommand: 'echo x' }), execFn),
-      /no parseable number/i,
-    );
+  it('a passing test (exit 0) with no number → metric 0 (already at target)', async () => {
+    const execFn = async () => ({ stdout: 'All tests passed!' });
+    const result = await runMeasurement(makeConfig({ measurementCommand: 'run tests' }), execFn);
+    assert.strictEqual(result, 0, 'exit 0 + no number = passing = 0');
+  });
+
+  // ── The fleet root-cause fix: a FAILING capability_test is a valid baseline, not a broken command ──
+  it('a FAILING test (non-zero exit) is the baseline — returns the exit code, does NOT throw', async () => {
+    const execFn = async () => { throw Object.assign(new Error('Command failed'), { code: 1, stdout: 'Council ledger tests: FAIL' }); };
+    const result = await runMeasurement(makeConfig({ measurementCommand: 'python dante.py test x' }), execFn);
+    assert.strictEqual(result, 1, 'exit 1 (failing test) = baseline metric 1, to be driven to 0');
+  });
+
+  it('a failing test that prints a count → uses the printed number', async () => {
+    const execFn = async () => { throw Object.assign(new Error('failed'), { code: 1, stdout: '3 failing assertions' }); };
+    const result = await runMeasurement(makeConfig({ measurementCommand: 'run' }), execFn);
+    assert.strictEqual(result, 3);
+  });
+
+  it('a command that cannot RUN (ENOENT) DOES throw — genuinely broken', async () => {
+    const execFn = async () => { throw Object.assign(new Error('not found'), { code: 'ENOENT' }); };
+    await assert.rejects(() => runMeasurement(makeConfig({ measurementCommand: 'nope' }), execFn), /could not run/i);
+  });
+
+  it('a timed-out/killed command DOES throw', async () => {
+    const execFn = async () => { throw Object.assign(new Error('timeout'), { killed: true }); };
+    await assert.rejects(() => runMeasurement(makeConfig({ measurementCommand: 'hang' }), execFn), /could not run/i);
   });
 
   it('passes split args to execFn', async () => {
@@ -225,7 +246,8 @@ describe('runBaseline', () => {
   });
 
   it('propagates execFn error (command timeout)', async () => {
-    const execFn: ExecFileFn = async () => { throw new Error('Command timed out'); };
+    // A real timeout from execFile sets killed:true — that IS a genuine measure failure (re-thrown).
+    const execFn: ExecFileFn = async () => { throw Object.assign(new Error('Command timed out'), { killed: true }); };
     await assert.rejects(
       () => runBaseline(makeConfig({ measurementCommand: 'slow-cmd' }), execFn),
       /timed out/,

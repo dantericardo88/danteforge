@@ -181,7 +181,11 @@ async function applyHypothesis(hypothesis: Hypothesis, cwd: string): Promise<boo
   const targetPath = path.resolve(cwd, hypothesis.fileToChange);
   try {
     await fs.mkdir(path.dirname(targetPath), { recursive: true });
-    await fs.writeFile(targetPath, hypothesis.change, 'utf8');
+    // The LLM sometimes returns `change` as a parsed object rather than a string; fs.writeFile then
+    // throws "Received an instance of Object" and every hypothesis-apply fails for the full 30-min
+    // run (DanteCode). Coerce to a string so a structured change is still written.
+    const content = typeof hypothesis.change === 'string' ? hypothesis.change : JSON.stringify(hypothesis.change, null, 2);
+    await fs.writeFile(targetPath, content, 'utf8');
     return true;
   } catch (err) {
     logger.error(`Failed to apply hypothesis to ${targetPath}: ${err instanceof Error ? err.message : String(err)}`);

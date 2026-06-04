@@ -217,21 +217,37 @@ export async function runMeasurement(
     throw new Error('Empty measurement command');
   }
 
-  const { stdout } = await execFn(executable, args, {
-    cwd: config.cwd,
-    timeout: MEASUREMENT_TIMEOUT_MS,
-    maxBuffer: 10 * 1024 * 1024,
-    env: process.env,
-  });
-
-  const value = extractNumber(stdout);
-  if (value === null) {
-    throw new Error(
-      `Measurement command produced no parseable number. stdout: ${stdout.slice(0, 300)}`,
-    );
+  // A capability_test is a PASS/FAIL command: it exits 0 when the capability works and non-zero when
+  // it doesn't. The sub-7 dims are EXACTLY the ones whose test currently FAILS — that failing exit is
+  // the valid BASELINE autoresearch exists to drive to 0, NOT a "broken measurement command." So a
+  // non-zero exit must NOT throw (the bug that aborted build-to-7 on every dim that needed work).
+  // Only a genuine spawn failure (command not found) or a timeout is fatal.
+  let stdout = '';
+  let exitCode = 0;
+  try {
+    const res = await execFn(executable, args, {
+      cwd: config.cwd, timeout: MEASUREMENT_TIMEOUT_MS, maxBuffer: 10 * 1024 * 1024, env: process.env,
+    });
+    stdout = res.stdout ?? '';
+  } catch (e) {
+    const err = e as { code?: number | string; stdout?: string; killed?: boolean; signal?: string };
+    // "The command RAN and exited non-zero" is signalled by a numeric exit code or captured stdout.
+    // Anything else (not-found, killed/timeout, or an unexpected throw with no run signal) is a
+    // genuine inability to measure — re-throw so the experiment is recorded as a crash.
+    const ranButFailed = typeof err.code === 'number' || typeof err.stdout === 'string';
+    if (err.code === 'ENOENT' || err.killed || err.signal === 'SIGTERM' || !ranButFailed) {
+      throw new Error(`Measurement command could not run (${err.killed || err.signal ? 'timed out' : err.code ?? 'error'}): ${config.measurementCommand}`);
+    }
+    // The command RAN and exited non-zero (e.g. a failing test). That's a real, measurable baseline.
+    stdout = err.stdout ?? '';
+    exitCode = typeof err.code === 'number' ? err.code : 1;
   }
 
-  return value;
+  // Prefer a numeric metric the command printed (e.g. "bundle size 123.4"); otherwise fall back to
+  // the exit code so a pass/fail capability_test is a measurable metric (0 = passing/target,
+  // non-zero = failing/baseline). Lower is better (see shouldKeep), so autoresearch drives it to 0.
+  const value = extractNumber(stdout);
+  return value !== null ? value : exitCode;
 }
 
 /**
