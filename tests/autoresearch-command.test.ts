@@ -213,9 +213,10 @@ describe('autoResearch: execute mode — experiment cycle', () => {
       _now: () => budgetExpired ? 31 * 60 * 1000 : 0,
     });
     await autoResearch('goal', { time: '30m', measurementCommand: 'echo 0' }, opts);
-    // git should have been called for add + commit (keeping the experiment)
-    assert.ok(gitCalls.some(args => args[0] === 'add'), 'git add should be called for kept experiment');
+    // A kept experiment commits; with no changed files it commits empty. It must NEVER `git add -A`
+    // (that swept pre-existing untracked files into the commit — DanteAgents).
     assert.ok(gitCalls.some(args => args[0] === 'commit'), 'git commit should be called for kept experiment');
+    assert.ok(!gitCalls.some(args => args[0] === 'add' && args[1] === '-A'), 'must not git add -A');
   });
 
   it('calls _git for reset when experiment is discarded', async () => {
@@ -311,7 +312,7 @@ describe('autoResearch: execute mode — experiment error paths', () => {
     await assert.doesNotReject(() =>
       autoResearch('goal', { time: '30m', measurementCommand: 'echo 0' }, opts));
     assert.ok(opts.saved.length > 0, 'state should be saved even when commit fails');
-    assert.ok(gitCalls.some(a => a[0] === 'add'), 'git add should be called in keep path');
+    assert.ok(gitCalls.some(a => a[0] === 'commit'), 'commit should be attempted in keep path');
   });
 
   it('does not throw when git reset fails during rollback (best-effort rollback)', async () => {

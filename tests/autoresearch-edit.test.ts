@@ -174,6 +174,27 @@ describe('autoResearch — agent mode integration', () => {
     assert.ok(dispatched >= 1, 'agent ran without a configured json LLM — did not abort "No LLM available"');
   });
 
+  it('stages ONLY the experiment path on keep — never git add -A, never pre-existing untracked', async () => {
+    const gitCalls: string[][] = [];
+    let budgetExpired = false;
+    // Tree has a pre-existing untracked file (LEGACY.txt) plus the agent's tracked edit (src/feature.ts).
+    await autoResearch('opt', { time: '30m', measurementCommand: 'node scripts/proof.mjs', allowDirty: true }, {
+      _loadState: async () => makeState(), _saveState: async () => {},
+      _isLLMAvailable: async () => true,
+      _isAgentEditAvailable: async () => true,
+      _dispatchAgentEdit: async (_c, id) => { budgetExpired = true; return { description: `agent exp ${id}`, ranOk: true }; },
+      _runBaseline: async () => 100,
+      _runExperiment: async (_c, id): Promise<ExperimentResult> => ({ id, description: 'x', metricValue: 50, status: 'keep' }),
+      _git: async (args: string[]) => { gitCalls.push([...args]); return args[0] === 'status' ? ' M src/feature.ts\n?? LEGACY.txt' : 'abc1234'; },
+      _writeFile: async () => {}, _appendFile: async () => {}, _now: () => budgetExpired ? 31 * 60 * 1000 : 0,
+    });
+    const add = gitCalls.find(a => a[0] === 'add');
+    assert.ok(add, 'git add was called with an explicit pathspec');
+    assert.ok(!add!.includes('-A'), 'must not be git add -A');
+    assert.ok(add!.includes('src/feature.ts'), 'stages the experiment edit');
+    assert.ok(!add!.includes('LEGACY.txt'), 'never stages the pre-existing untracked file');
+  });
+
   it('rejects (no commit) when the agent touches the yardstick — git guard catches it', async () => {
     const gitCalls: string[][] = [];
     let budgetExpired = false;

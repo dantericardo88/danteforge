@@ -133,8 +133,48 @@ async function rollbackExperiment(hash: string, preUntracked: Set<string>, cwd: 
   await gitCleanCreatedUntracked(cwd, preUntracked, gitFn);
 }
 
-async function gitCommitAll(message: string, cwd: string, gitFn: GitFn = git): Promise<string> {
-  await gitFn(['add', '-A'], cwd);
+const UNTRACKED_BACKUP_MAX_BYTES = 256 * 1024;
+const UNTRACKED_BACKUP_MAX_FILES = 200;
+
+// Best-effort content backup of the user's PRE-EXISTING untracked files. A coding agent has a shell and
+// will delete conspicuous untracked files (proven: a root sentinel removed mid-experiment), and
+// `git reset --hard` cannot restore an untracked deletion — so without a backup it is lost forever.
+// Capped so a tree littered with many/large untracked files doesn't blow up I/O. (.danteforge/ is
+// already excluded by gitUntracked.) The real guarantee is worktree isolation; this is the interim net.
+async function snapshotUntracked(cwd: string, untracked: Set<string>): Promise<Map<string, string>> {
+  const backup = new Map<string, string>();
+  if (untracked.size > UNTRACKED_BACKUP_MAX_FILES) {
+    logger.warn(`[autoresearch] ${untracked.size} pre-existing untracked files — too many to back up; agent deletions of them cannot be auto-restored. Consider --no-agent or a clean tree.`);
+    return backup;
+  }
+  for (const rel of untracked) {
+    try {
+      const abs = path.resolve(cwd, rel);
+      const st = await fs.stat(abs);
+      if (!st.isFile() || st.size > UNTRACKED_BACKUP_MAX_BYTES) continue;
+      backup.set(rel, await fs.readFile(abs, 'utf8'));
+    } catch { /* symlink/dir/unreadable — skip */ }
+  }
+  return backup;
+}
+
+// Re-create any backed-up pre-existing untracked file the experiment deleted. Only restores MISSING
+// files — never clobbers one still present (so a kept experiment's own edits are untouched).
+async function restoreDeletedUntracked(cwd: string, backup: Map<string, string>): Promise<void> {
+  for (const [rel, content] of backup) {
+    const abs = path.resolve(cwd, rel);
+    try { await fs.access(abs); } catch {
+      try { await fs.mkdir(path.dirname(abs), { recursive: true }); await fs.writeFile(abs, content, 'utf8'); }
+      catch { /* best-effort */ }
+    }
+  }
+}
+
+// Commit ONLY the experiment's own paths. `git add -A` swept all pre-existing untracked files into a
+// kept commit — a 1-line fix produced a 156-file / +10k-line commit (DanteAgents). Stage an explicit
+// pathspec of what the experiment actually changed instead.
+async function gitCommitPaths(message: string, paths: string[], cwd: string, gitFn: GitFn = git): Promise<string> {
+  if (paths.length > 0) await gitFn(['add', '--', ...paths], cwd);
   await gitFn(['commit', '--allow-empty', '-m', message], cwd);
   return gitCurrentHash(cwd, gitFn);
 }
@@ -429,16 +469,26 @@ async function runExperimentLoop(
   const forbiddenTargets = collectForbiddenTargets(config.measurementCommand, cwd);
   const forbiddenRel = forbiddenTargets.map(f => path.relative(cwd, f).split(path.sep).join('/'));
   const rejectionNotes: string[] = []; // fed back to the model so it stops repeating a bad move
+  // Back up the user's pre-existing untracked files ONCE — the agent may delete them and reset can't
+  // restore them. This set is stable across the run (kept files get committed, discarded ones cleaned).
+  const baselineBackup = await snapshotUntracked(cwd, await gitUntracked(cwd, gitFn));
+
+  // Full rollback = revert tracked + clean only what the experiment created + restore any pre-existing
+  // untracked file the agent deleted.
+  const doRollback = async (preHash: string, preUntracked: Set<string>): Promise<void> => {
+    await rollbackExperiment(preHash, preUntracked, cwd, gitFn);
+    await restoreDeletedUntracked(cwd, baselineBackup);
+  };
 
   const reject = async (id: number, description: string, preHash: string, preUntracked: Set<string>, why: string): Promise<void> => {
     logger.warn(`Rejecting experiment ${id}: ${why}. Rolling back.`);
     rejectionNotes.push(why);
-    await rollbackExperiment(preHash, preUntracked, cwd, gitFn);
+    await doRollback(preHash, preUntracked);
     const r: ExperimentResult = { id, description, metricValue: null, status: 'discard' };
     allExperiments.push(r); await appendTsv(tsvPath, r, appendFileFn);
   };
   const crash = async (id: number, description: string, preHash: string, preUntracked: Set<string>): Promise<void> => {
-    await rollbackExperiment(preHash, preUntracked, cwd, gitFn);
+    await doRollback(preHash, preUntracked);
     const r: ExperimentResult = { id, description, metricValue: null, status: 'crash' };
     allExperiments.push(r); await appendTsv(tsvPath, r, appendFileFn);
   };
@@ -464,6 +514,7 @@ async function runExperimentLoop(
 
     // Wrap edit→guard→measure so ANY throw rolls the tree fully back instead of leaving a half-edit.
     let result: ExperimentResult;
+    let changedFiles: string[] = [];
     try {
       const edit = await performEdit(config, experimentId, allExperiments, rejectionNotes, forbiddenTargets, forbiddenRel, cwd, deps);
       if (!edit) { experimentId++; continue; } // hypothesis generation failed — skip cleanly
@@ -471,7 +522,7 @@ async function runExperimentLoop(
 
       // Guard what ACTUALLY changed (mode-agnostic). Forbidden yardstick edits and syntactically broken
       // files are refused before the metric is ever trusted — a broken test can score "better".
-      const changedFiles = await gitChangedFiles(cwd, gitFn);
+      changedFiles = await gitChangedFiles(cwd, gitFn);
       let guardReject: string | undefined;
       for (const f of changedFiles) {
         const forb = forbiddenTargetReason(f, cwd, forbiddenTargets);
@@ -494,15 +545,19 @@ async function runExperimentLoop(
     if (result.status === 'keep' && result.metricValue !== null) {
       try {
         const prevBest = bestValue;
-        const hash = await gitCommitAll(`experiment: ${result.description}`, cwd, gitFn);
+        // Commit ONLY the experiment's own paths — never the user's pre-existing untracked files.
+        const toStage = changedFiles.filter(f => !preUntracked.has(f));
+        const hash = await gitCommitPaths(`experiment: ${result.description}`, toStage, cwd, gitFn);
         result = { ...result, commitHash: hash };
         bestValue = result.metricValue!; bestHash = hash;
         logger.success(`Kept! New best: ${bestValue} (was ${prevBest}). Commit: ${hash.slice(0, 8)}`);
+        // The agent may have deleted a pre-existing untracked file even on a kept experiment — undo that.
+        await restoreDeletedUntracked(cwd, baselineBackup);
       } catch (err) { logger.warn(`Commit failed: ${err instanceof Error ? err.message : String(err)}`); }
     } else {
       const reasonText = result.status === 'crash' ? 'crashed' : 'did not improve metric';
       logger.info(`Discarding (${reasonText}). Rolling back to ${preExperimentHash.slice(0, 8)}.`);
-      await rollbackExperiment(preExperimentHash, preUntracked, cwd, gitFn);
+      await doRollback(preExperimentHash, preUntracked);
     }
     allExperiments.push(result); await appendTsv(tsvPath, result, appendFileFn);
     experimentId++;
