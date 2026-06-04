@@ -50,6 +50,18 @@ program
   }));
 
 program
+  .command('dim-triage')
+  .description('Classify every sub-target dimension and route it to the loop that can move it (autoresearch | matrixdev | fix-test | ceiling)')
+  .option('--target <n>', 'Score below which a dim is triaged (default: 7.0)')
+  .option('--apply', 'Write explicit ceilings on genuinely-capped dims so selection stops picking them')
+  .option('--json', 'Emit the classification as JSON')
+  .action(async (opts) => (await C()).dimTriage({
+    target: opts.target !== undefined ? parseFloat(opts.target) : undefined,
+    apply: opts.apply,
+    json: opts.json,
+  }));
+
+program
   .command('harvest [goal]')
   .description('Discover and learn from OSS patterns. --level selects depth: light=focused pattern, standard=bounded OSS pass, deep=OSS+local+universe refresh.')
   .option('--level <level>', 'Canonical intensity: light | standard | deep')
