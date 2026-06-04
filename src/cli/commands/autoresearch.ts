@@ -386,7 +386,13 @@ async function initExperimentSetup(
   const baselineResult: ExperimentResult = { id: 0, description: 'unmodified baseline', metricValue: baseline, status: 'keep' };
   const allExperiments: ExperimentResult[] = [baselineResult];
   const bestHash = await gitCurrentHash(cwd, gitFn).catch(() => '');
-  const tsvPath = path.join(cwd, 'results.tsv');
+  // Write artifacts UNDER .danteforge/ (untracked) — never the tracked repo root. A tracked
+  // results.tsv at the root dirties the working tree, and the per-dim `git checkout` (or a switch to
+  // an existing autoresearch branch) then fails "local changes to results.tsv would be overwritten"
+  // and --loop retries forever (DanteAgents). An untracked artifact never blocks a checkout.
+  const artifactDir = path.join(cwd, '.danteforge', 'autoresearch');
+  await fs.mkdir(artifactDir, { recursive: true }).catch(() => { /* best-effort */ });
+  const tsvPath = path.join(artifactDir, 'results.tsv');
   await writeTsv(tsvPath, [baselineResult], writeFileFn);
   logger.info(`Beginning experiment loop. Time budget: ${config.timeBudgetMinutes} minutes.`);
   logger.info('');
@@ -481,7 +487,10 @@ async function generateAndWriteReport(
   const nonBaselineExperiments = allExperiments.filter(e => e.id > 0);
   const insights = await generateInsights(config, nonBaselineExperiments, baseline, bestValue, callLLMFn, isLLMAvailableFn);
   const report: AutoResearchReport = { goal, metric, duration: durationStr, baseline, final: bestValue, improvement, improvementPercent, experiments: nonBaselineExperiments, kept, discarded, crashed, insights };
-  const reportPath = path.join(cwd, 'AUTORESEARCH_REPORT.md');
+  // Under .danteforge/ (untracked) — same reason as results.tsv: never dirty the tracked tree.
+  const reportDir = path.join(cwd, '.danteforge', 'autoresearch');
+  await fs.mkdir(reportDir, { recursive: true }).catch(() => { /* best-effort */ });
+  const reportPath = path.join(reportDir, 'AUTORESEARCH_REPORT.md');
   await writeFileFn(reportPath, formatReport(report));
   const state = await loadStateFn({ cwd });
   state.auditLog.push(`${new Date().toISOString()} | autoresearch: complete — goal: ${goal}, metric: ${metric}, experiments: ${nonBaselineExperiments.length}, kept: ${kept}, improvement: ${improvementPercent.toFixed(2)}%`);
