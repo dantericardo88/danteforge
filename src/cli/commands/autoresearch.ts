@@ -21,6 +21,7 @@ import {
   type AutoResearchReport,
 } from '../../core/autoresearch-engine.js';
 import { withErrorBoundary } from '../../core/cli-error-boundary.js';
+import { runGit } from '../../core/git-safe.js';
 
 const execFileAsync = promisify(execFile);
 
@@ -51,10 +52,10 @@ export function slugify(text: string): string {
 
 type GitFn = (args: string[], cwd: string) => Promise<string>;
 
-async function git(args: string[], cwd: string): Promise<string> {
-  const { stdout } = await execFileAsync('git', args, { cwd, timeout: 30_000, env: process.env });
-  return stdout.trim();
-}
+// All git operations route through the shared git-safe helper: mutating verbs are serialized
+// cross-process and clear a stale index.lock, fixing the harden-crusade --parallel index-lock
+// deadlock (concurrent workers racing the shared .git). Read-only verbs run directly.
+const git: GitFn = (args, cwd) => runGit(args, cwd);
 
 async function gitIsDirty(cwd: string, gitFn: GitFn = git): Promise<boolean> {
   try {

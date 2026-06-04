@@ -113,7 +113,7 @@ export async function runCli(cwd: string, args: string[]): Promise<CliResult> {
     await new Promise(r => setTimeout(r, 750));
     res = await runOnce(cwd, args);
   }
-  activeLedger?.logCommand('danteforge', args, res.exitCode, res.ms, truncate(res.stdout), truncate(res.stderr));
+  activeLedger?.logCommand('danteforge', args, res.exitCode, res.ms, truncate(res.stdout), truncate(res.stderr), cwd);
   if (!res.ok) {
     const { logger } = await import('../../core/logger.js');
     logger.warn(`[ascend-frontier] sub-command FAILED (exit ${res.exitCode}, ${res.ms}ms): danteforge ${args.join(' ')}${res.stderr ? ` — ${truncate(res.stderr, 300)}` : ''}`);
