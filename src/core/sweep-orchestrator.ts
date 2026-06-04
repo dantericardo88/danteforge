@@ -35,11 +35,14 @@ export interface SweepResult {
   bandsBefore: Record<ScoreBand, number>;
   bandsAfter: Record<ScoreBand, number>;
   stoppedEarly?: string;
+  /** Dims that were depth-waved but did NOT advance — surfaced for re-triage on the next cycle. */
+  stalledDims: string[];
 }
 
 export async function runFullSweep(cwd: string, opts: SweepOpts, deps: SweepDeps): Promise<SweepResult> {
   const target = clampAutonomousTarget(opts.target ?? 9.0);
   const phases: string[] = [];
+  const stalled = new Set<string>();
   let stoppedEarly: string | undefined;
   const snapshot = async () => { const m = await deps.loadMatrix(cwd); return m ? snapshotBands(m) : []; };
 
@@ -61,7 +64,7 @@ export async function runFullSweep(cwd: string, opts: SweepOpts, deps: SweepDeps
       const pilot = fiveToSeven.slice(0, opts.pilotSize ?? 2);
       logger.info(`[sweep] Phase 2: pilot ${pilot.length} dim(s) to 7 via depth-wave`);
       let advanced = 0;
-      for (const p of pilot) { if ((await deps.runDepthWave(cwd, p.id)).promoted) advanced++; }
+      for (const p of pilot) { if ((await deps.runDepthWave(cwd, p.id)).promoted) advanced++; else stalled.add(p.id); }
       phases.push('pilot-7');
       if (advanced === 0) {
         stoppedEarly = 'pilot moved nothing — the 5→7 machinery is not advancing these dims (likely need feature work / outcomes authored)';
@@ -70,7 +73,7 @@ export async function runFullSweep(cwd: string, opts: SweepOpts, deps: SweepDeps
         // Phase 3 — sweep the rest.
         const remaining = (await snapshot()).filter(b => b.band === 'fiveToSeven');
         logger.info(`[sweep] Phase 3: sweep ${remaining.length} remaining dim(s) to 7`);
-        for (const r of remaining) await deps.runDepthWave(cwd, r.id);
+        for (const r of remaining) { if (!(await deps.runDepthWave(cwd, r.id)).promoted) stalled.add(r.id); }
         phases.push('sweep-7');
         bands = await snapshot();
       }
@@ -84,5 +87,6 @@ export async function runFullSweep(cwd: string, opts: SweepOpts, deps: SweepDeps
     phases.push('depth-9');
   }
 
-  return { phasesRun: phases, bandsBefore, bandsAfter: bandCounts(await snapshot()), ...(stoppedEarly ? { stoppedEarly } : {}) };
+  if (stalled.size > 0) logger.warn(`[sweep] ${stalled.size} dim(s) stalled at 5→7 — will be re-triaged next cycle: ${[...stalled].join(', ')}`);
+  return { phasesRun: phases, bandsBefore, bandsAfter: bandCounts(await snapshot()), stalledDims: [...stalled], ...(stoppedEarly ? { stoppedEarly } : {}) };
 }

@@ -3,6 +3,7 @@
 // autonomous target at 9.0. --dry-run prints the band snapshot + phase plan without touching anything.
 
 import fs from 'fs/promises';
+import path from 'path';
 import { spawn } from 'node:child_process';
 import { logger } from '../../core/logger.js';
 import { withErrorBoundary } from '../../core/cli-error-boundary.js';
@@ -20,6 +21,8 @@ interface SweepOptions {
   json?: boolean;
   _loadMatrix?: (cwd: string) => Promise<CompeteMatrix | null>;
   _deps?: SweepDeps;
+  _writeFile?: (p: string, c: string) => Promise<void>;
+  _mkdir?: (p: string) => Promise<void>;
 }
 
 const CLI = (): string => process.argv[1] ?? 'dist/index.js';
@@ -50,8 +53,26 @@ export async function sweep(opts: SweepOptions = {}): Promise<void> {
 
     const result = await runFullSweep(cwd, { target, pilotSize: opts.pilotSize }, opts._deps ?? defaultSweepDeps());
     reportSweep(result);
+    await writeLedger(cwd, target, result, opts._writeFile ?? ((p, c) => fs.writeFile(p, c, 'utf8')), opts._mkdir ?? (async (p) => { await fs.mkdir(p, { recursive: true }); }));
     if (opts.json) process.stdout.write(JSON.stringify(result, null, 2) + '\n');
   });
+}
+
+/** Append an auditable campaign receipt to .danteforge/sweep/ (every raise is already provenance-stamped in matrix.json). */
+async function writeLedger(cwd: string, target: number, result: SweepResult, writeFile: (p: string, c: string) => Promise<void>, mkdir: (p: string) => Promise<void>): Promise<void> {
+  const dir = path.join(cwd, '.danteforge', 'sweep');
+  await mkdir(dir).catch(() => { /* best-effort */ });
+  const summary = { target, ...result };
+  await writeFile(path.join(dir, 'SWEEP_SUMMARY.json'), JSON.stringify(summary, null, 2)).catch(() => { /* best-effort */ });
+  const md = [
+    `# Sweep — target ${target}`, '',
+    `Phases: ${result.phasesRun.join(' → ') || '(none)'}`,
+    `Before: below5=${result.bandsBefore.below5} 5→7=${result.bandsBefore.fiveToSeven} 7→9=${result.bandsBefore.sevenToNine} done=${result.bandsBefore.done}`,
+    `After:  below5=${result.bandsAfter.below5} 5→7=${result.bandsAfter.fiveToSeven} 7→9=${result.bandsAfter.sevenToNine} done=${result.bandsAfter.done}`,
+    result.stalledDims.length ? `Stalled (re-triage next cycle): ${result.stalledDims.join(', ')}` : 'Stalled: none',
+    result.stoppedEarly ? `Stopped early: ${result.stoppedEarly}` : '',
+  ].join('\n');
+  await writeFile(path.join(dir, 'SWEEP_SUMMARY.md'), md).catch(() => { /* best-effort */ });
 }
 
 function defaultSweepDeps(): SweepDeps {

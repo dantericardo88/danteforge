@@ -43,6 +43,7 @@ describe('runFullSweep', () => {
     assert.ok(!r.phasesRun.includes('sweep-7'), 'no full sweep after a dead pilot');
     assert.ok(!r.phasesRun.includes('depth-9'), 'no 7→9 after a dead pilot');
     assert.match(r.stoppedEarly ?? '', /pilot moved nothing/);
+    assert.ok(r.stalledDims.length > 0, 'the stuck pilot dims are surfaced as stalled for re-triage');
   });
 
   it('does not delegate to ascend-frontier when target ≤ 7', async () => {

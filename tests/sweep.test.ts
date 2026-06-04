@@ -27,17 +27,19 @@ describe('sweep command', () => {
     assert.deepEqual(log, [], 'dry-run runs no executors');
   });
 
-  it('clamps the target to the 9.0 autonomy ceiling and runs the phases', async () => {
+  it('clamps the target to the 9.0 ceiling, runs the phases, and writes a ledger', async () => {
     const log: string[] = [];
+    const writes: string[] = [];
     const deps: SweepDeps = {
       loadMatrix: async () => mtx([2, 6, 8]),
       runDispatch: async (_c, t) => { log.push(`dispatch:${t}`); },
       runDepthWave: async () => { log.push('depthwave'); return { promoted: true }; },
       runAscendFrontier: async () => { log.push('ascend'); },
     };
-    await sweep({ target: 10, _loadMatrix: async () => mtx([2, 6, 8]), _deps: deps });
+    await sweep({ target: 10, _loadMatrix: async () => mtx([2, 6, 8]), _deps: deps, _writeFile: async (p) => { writes.push(p); }, _mkdir: async () => {} });
     assert.ok(log.includes('dispatch:5'), 'Phase 1 dispatched to 5');
     assert.ok(log.includes('ascend'), 'Phase 4 delegated 7→9 (target was clamped to 9, still > 7)');
+    assert.ok(writes.some(p => p.includes('SWEEP_SUMMARY')), 'a campaign ledger was written');
   });
 
   it('errors cleanly when there is no matrix', async () => {
