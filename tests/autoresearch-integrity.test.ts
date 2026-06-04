@@ -7,7 +7,7 @@ import path from 'node:path';
 import type { DanteState } from '../src/core/state.js';
 import type { AutoResearchConfig, ExperimentResult } from '../src/core/autoresearch-engine.js';
 import { runMeasurement, NEEDS_SHELL } from '../src/core/autoresearch-engine.js';
-import { autoResearch, gitUntracked, gitCleanCreatedUntracked } from '../src/cli/commands/autoresearch.js';
+import { autoResearch, gitUntracked, gitCleanCreatedUntracked, gitChangedFiles } from '../src/cli/commands/autoresearch.js';
 import {
   collectForbiddenTargets,
   forbiddenTargetReason,
@@ -178,6 +178,21 @@ describe('gitUntracked', () => {
     const gitFn = async () => '?? a.py\n M src/x.ts\n?? sub/b.py\n?? .danteforge/autoresearch/results.tsv\n';
     const set = await gitUntracked('/proj', gitFn);
     assert.deepEqual([...set].sort(), ['a.py', 'sub/b.py']);
+  });
+});
+
+describe('gitChangedFiles — porcelain trim off-by-one (DanteCode)', () => {
+  it('parses the path correctly even when the first line lost its leading space to stdout.trim()', async () => {
+    // runGit returns stdout.trim(), so the first " M packages/x.json" arrives as "M packages/x.json".
+    const gitFn = async () => 'M packages/core/x.json\n M src/second.ts';
+    const changed = await gitChangedFiles('/proj', gitFn);
+    assert.deepEqual(changed, ['packages/core/x.json', 'src/second.ts'], 'no leading path char eaten');
+  });
+
+  it('still handles a normal (untrimmed) " M path" first line and renames', async () => {
+    const gitFn = async () => ' M src/a.ts\nR  src/old.ts -> src/new.ts\n?? root.txt';
+    const changed = await gitChangedFiles('/proj', gitFn);
+    assert.deepEqual(changed, ['src/a.ts', 'src/new.ts', 'root.txt']);
   });
 });
 

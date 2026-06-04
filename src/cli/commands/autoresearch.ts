@@ -89,6 +89,17 @@ async function gitResetHard(hash: string, cwd: string, gitFn: GitFn = git): Prom
   await gitFn(['reset', '--hard', hash], cwd);
 }
 
+// Strip a porcelain-v1 status prefix to get the path. Format is "XY path" (2 status cols + 1 space =
+// 3 chars). BUT runGit returns stdout.trim(), so the FIRST line loses its leading space when status
+// col-0 is a space (" M path" -> "M path"), shifting its prefix to 2 chars; a blind .slice(3) then
+// eats one path char ("packages/x" -> "ackages/x") and the parse-gate reads a wrong path (DanteCode).
+// Detect the prefix length per-line from where the single separator space actually sits.
+export function stripPorcelainPrefix(line: string): string {
+  if (line[2] === ' ') return line.slice(3); // normal "XY path"
+  if (line[1] === ' ') return line.slice(2); // first line, leading space trimmed: "Y path"
+  return line.slice(3);
+}
+
 // The set of untracked paths right now (porcelain `??` lines), excluding our own .danteforge/ artifacts.
 export async function gitUntracked(cwd: string, gitFn: GitFn = git): Promise<Set<string>> {
   try {
@@ -97,7 +108,7 @@ export async function gitUntracked(cwd: string, gitFn: GitFn = git): Promise<Set
     for (const raw of out.split('\n')) {
       const l = raw.replace(/\r$/, '');
       if (!l.startsWith('??')) continue;
-      const p = l.slice(3).replace(/^"|"$/g, '');
+      const p = stripPorcelainPrefix(l).replace(/^"|"$/g, '');
       if (p && !p.startsWith('.danteforge/')) set.add(p);
     }
     return set;
@@ -131,13 +142,13 @@ async function gitCommitAll(message: string, cwd: string, gitFn: GitFn = git): P
 // What an experiment ACTUALLY changed in the working tree — the single source of truth for the guards.
 // The coding agent (Tier 2) picks its own files, so we can't trust a declared `fileToChange`; we read
 // `git status` instead. Renames take the new path; our own .danteforge/ artifacts are ignored.
-async function gitChangedFiles(cwd: string, gitFn: GitFn = git): Promise<string[]> {
+export async function gitChangedFiles(cwd: string, gitFn: GitFn = git): Promise<string[]> {
   try {
     const out = await gitFn(['status', '--porcelain'], cwd);
     return out.split('\n')
       .map(l => l.replace(/\r$/, ''))
       .filter(l => l.trim().length > 0)
-      .map(l => l.slice(3).replace(/^"|"$/g, ''))           // strip the 2-char XY status + space
+      .map(l => stripPorcelainPrefix(l).replace(/^"|"$/g, '')) // trim-robust prefix strip
       .map(l => (l.includes(' -> ') ? l.split(' -> ')[1]! : l))
       .filter(f => f && !f.startsWith('.danteforge/'));
   } catch { return []; }
