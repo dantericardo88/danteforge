@@ -1,5 +1,6 @@
 import { randomUUID } from 'crypto';
 import fs from 'fs/promises';
+import { appendFileSync } from 'node:fs';
 import path from 'path';
 import type { DanteState } from './state.js';
 import type { ResidualGapReport } from './residual-gap-miner.js';
@@ -143,11 +144,11 @@ export class RunLedger {
       data,
     };
     this.events.push(event);
-    // Crash/HANG-durable: append immediately so even a run that HANGS (never completes a command,
-    // never reaches finalize) still leaves a record of how far it got — run_start, the cycle reached,
-    // the phase that blocked. Without this, a hang leaves a completely empty run dir (the fleet saw
-    // exactly this: "creates the run dir, prints cycle 1, then hangs before writing any ledger").
-    void fs.appendFile(path.join(this.runDir, 'events-live.jsonl'), JSON.stringify(event) + '\n').catch(() => { /* best-effort */ });
+    // Crash/HANG-durable AND fast-exit-durable: append SYNCHRONOUSLY so the record is on disk before
+    // control returns — a run that hangs OR exits instantly (15s no-op) still leaves a trail of how
+    // far it got. (Async fire-and-forget lost the write when the process exited before the flush —
+    // exactly why a no-op run left an empty run dir and we were blind to it.)
+    try { appendFileSync(path.join(this.runDir, 'events-live.jsonl'), JSON.stringify(event) + '\n'); } catch { /* best-effort */ }
   }
 
   logFileRead(filePath: string, size?: number, hash?: string): void {
@@ -178,7 +179,9 @@ export class RunLedger {
     // single most valuable diagnostic when a run dies mid-build (DanteSecurity DS-024; DanteCode
     // asked for cwd so a deadlock can be reproduced without inferring it from a lock path).
     const line = JSON.stringify({ timestamp: entry.timestamp, command, args, exitCode, duration, cwd, error: error?.slice(0, 500) }) + '\n';
-    void fs.appendFile(path.join(this.runDir, 'commands-live.jsonl'), line).catch(() => { /* best-effort */ });
+    // Synchronous: guaranteed on disk before the next line runs, so even an instant process exit
+    // can't lose the exact failing command (the diagnostic the fleet kept missing).
+    try { appendFileSync(path.join(this.runDir, 'commands-live.jsonl'), line); } catch { /* best-effort */ }
   }
 
   logTest(testName: string, status: 'pass' | 'fail', duration: number, error?: string): void {

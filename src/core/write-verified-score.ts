@@ -150,6 +150,28 @@ export function writeVerifiedScore(
   return clamped;
 }
 
+/**
+ * Frozen-spec preservation (saveMatrix backstop): a `frontier_spec` at status `frozen` or
+ * `validated` is hard-won protocol state — it must never be silently WIPED by a matrix rewrite that
+ * doesn't know about it (DanteAgents: a no-op build cycle clobbered D19's frozen spec → undefined).
+ * Mutates `next` to re-attach any frozen/validated spec the incoming matrix dropped (purely additive —
+ * it never removes or downgrades). Returns the dimension ids it restored.
+ */
+export function preserveFrozenSpecs(prev: CompeteMatrix, next: CompeteMatrix): string[] {
+  const prevById = new Map(prev.dimensions.map(d => [d.id, d]));
+  const restored: string[] = [];
+  for (const dim of next.dimensions) {
+    const ps = (prevById.get(dim.id) as unknown as { frontier_spec?: { status?: string } } | undefined)?.frontier_spec;
+    const ns = (dim as unknown as { frontier_spec?: { status?: string } }).frontier_spec;
+    const dropped = !ns || ns.status === undefined || ns.status === 'none';
+    if (ps && (ps.status === 'frozen' || ps.status === 'validated') && dropped) {
+      (dim as unknown as { frontier_spec?: unknown }).frontier_spec = ps;
+      restored.push(dim.id);
+    }
+  }
+  return restored;
+}
+
 export interface ProvenanceViolation { dimId: string; before: number; after: number; }
 
 /**

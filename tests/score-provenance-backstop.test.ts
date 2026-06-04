@@ -2,7 +2,7 @@ import { test, describe, after } from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs/promises';
 import path from 'node:path';
-import { assertScoreProvenance, writeVerifiedScore } from '../src/core/write-verified-score.js';
+import { assertScoreProvenance, writeVerifiedScore, preserveFrozenSpecs } from '../src/core/write-verified-score.js';
 import { pruneRuns, RunLedger, listRuns } from '../src/core/run-ledger.js';
 import type { CompeteMatrix, MatrixDimension } from '../src/core/compete-matrix.js';
 
@@ -60,6 +60,42 @@ describe('assertScoreProvenance — the persistence-time backstop (closes the gr
     const next = mkMatrix(6);
     next.dimensions.push({ ...next.dimensions[0]!, id: 'new', scores: { self: 9, Cursor: 8 } });
     assert.deepEqual(assertScoreProvenance(prev, next), []);
+  });
+});
+
+describe('preserveFrozenSpecs — a frozen/validated frontier_spec is never silently wiped (D19 regression)', () => {
+  function withSpec(self: number, status?: string): CompeteMatrix {
+    const m = mkMatrix(self);
+    (m.dimensions[0] as unknown as { frontier_spec?: unknown }).frontier_spec =
+      status ? { status, leader_target: 'x', real_user_path: {} } : undefined;
+    return m;
+  }
+
+  test('a rewrite that DROPS a frozen spec → it is re-attached', () => {
+    const prev = withSpec(7, 'frozen');
+    const next = withSpec(7, undefined);            // the destructive rewrite (frozen → gone)
+    const restored = preserveFrozenSpecs(prev, next);
+    assert.deepEqual(restored, ['d']);
+    assert.equal((next.dimensions[0] as unknown as { frontier_spec?: { status?: string } }).frontier_spec?.status, 'frozen');
+  });
+
+  test('a validated spec is preserved too', () => {
+    const prev = withSpec(9, 'validated');
+    const next = withSpec(9, undefined);
+    assert.deepEqual(preserveFrozenSpecs(prev, next), ['d']);
+  });
+
+  test('a legitimate validated→frozen downgrade (audit) is NOT touched — the spec object stays', () => {
+    const prev = withSpec(9, 'validated');
+    const next = withSpec(8, 'frozen');             // audit downgrade keeps the spec object
+    assert.deepEqual(preserveFrozenSpecs(prev, next), []);
+    assert.equal((next.dimensions[0] as unknown as { frontier_spec?: { status?: string } }).frontier_spec?.status, 'frozen');
+  });
+
+  test('a draft/none spec is not protected (only frozen/validated)', () => {
+    const prev = withSpec(7, 'draft');
+    const next = withSpec(7, undefined);
+    assert.deepEqual(preserveFrozenSpecs(prev, next), []);
   });
 });
 

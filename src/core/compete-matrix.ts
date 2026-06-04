@@ -274,16 +274,30 @@ export async function saveMatrix(
 
   if (_fsWrite || process.env['NODE_TEST_CONTEXT']) {
     // Tests are seam-driven or run in isolated tmp cwds — no cross-process contention, and fixture
-    // matrices set scores directly (no gate provenance), so the production-only backstop is skipped.
+    // matrices set scores directly (no gate provenance), so the production-only backstops are skipped.
     await write(matrixPath, content);
   } else {
-    // Production score-provenance backstop (closes the grep-guard's blind spot): a `scores.self`
-    // that changed versus the on-disk matrix with NO matching writeVerifiedScore provenance entry is
-    // unverified inflation — fail closed. Escape hatch for deliberate out-of-band edits/migrations:
-    // DANTEFORGE_ALLOW_UNVERIFIED_SCORE=1.
-    try {
-      const prevRaw = await fs.readFile(matrixPath, 'utf8');
-      const prev = JSON.parse(prevRaw) as CompeteMatrix;
+    // Read the previous on-disk matrix once for both integrity backstops.
+    let prev: CompeteMatrix | null = null;
+    try { prev = JSON.parse(await fs.readFile(matrixPath, 'utf8')) as CompeteMatrix; } catch { prev = null; }
+
+    // (A) Frozen-spec preservation: a frozen/validated frontier_spec is hard-won protocol state and
+    // must NEVER be silently wiped by a matrix rewrite (DanteAgents: a no-op build cycle clobbered
+    // D19's frozen spec frozen→undefined). Re-attach any the incoming matrix dropped — purely
+    // additive, never removes. Override for a deliberate reset: DANTEFORGE_ALLOW_SPEC_RESET=1.
+    if (prev && process.env['DANTEFORGE_ALLOW_SPEC_RESET'] !== '1') {
+      const { preserveFrozenSpecs } = await import('./write-verified-score.js');
+      const restored = preserveFrozenSpecs(prev, matrix);
+      if (restored.length > 0) {
+        const { logger } = await import('./logger.js');
+        logger.warn(`[saveMatrix] preserved frozen/validated frontier_spec for [${restored.join(', ')}] — a rewrite tried to drop it. (DANTEFORGE_ALLOW_SPEC_RESET=1 to override.)`);
+      }
+    }
+
+    // (B) Score-provenance backstop (closes the grep-guard's blind spot): a `scores.self` changed
+    // versus the on-disk matrix with NO matching writeVerifiedScore provenance entry is unverified
+    // inflation — fail closed. Escape: DANTEFORGE_ALLOW_UNVERIFIED_SCORE=1.
+    if (prev) {
       const { assertScoreProvenance } = await import('./write-verified-score.js');
       const violations = assertScoreProvenance(prev, matrix);
       if (violations.length > 0) {
@@ -299,17 +313,15 @@ export async function saveMatrix(
           );
         }
       }
-    } catch (e) {
-      // Re-throw a real integrity violation; ignore a missing/parse-failed previous matrix (first write).
-      if (e instanceof Error && e.message.startsWith('[saveMatrix] Refusing')) throw e;
     }
 
-    // Cross-process lock — fail CLOSED: an unlocked fallback would defeat the guarantee, so if the
-    // lock can't be acquired we surface the failure rather than risk interleaving a competing write.
+    // Re-serialize AFTER preservation may have re-attached a dropped spec, then write under an
+    // exclusive cross-process lock (fail CLOSED — an unlocked fallback would defeat the guarantee).
+    const finalContent = JSON.stringify(matrix, null, 2);
     const { withFileLock } = await import('./sanitize-locks.js');
     await withFileLock(
       { cwd: cwd ?? process.cwd(), filePath: path.relative(cwd ?? process.cwd(), matrixPath), lockDir: '.danteforge/locks', maxWaitMs: 30_000 },
-      () => write(matrixPath, content),
+      () => write(matrixPath, finalContent),
     );
   }
   // Bust the in-process cache so the next loadMatrix reads the saved value
