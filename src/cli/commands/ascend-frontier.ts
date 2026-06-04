@@ -114,13 +114,15 @@ export function setupCommands(parallel: boolean, members: string[]): string[][] 
 }
 
 export function buildTo7Commands(parallel: boolean, members: string[], dims: string[]): string[][] {
-  // harden-crusade already builds in parallel (--parallel N concurrent) AND loops to exhaustion, so
-  // ONE build-to-7 action drives every BUILDABLE dim to 7.0; what remains below is genuinely stuck
-  // and gets a stall-ceiling. (Member-owned cross-judged worktrees are overkill at the 7.0 bar and
-  // their 1-round-per-cycle cadence would ceiling un-attempted dims prematurely — the council fan-out
-  // is reserved for push-to-9, where competitor parity actually needs it.) `members`/`dims` unused.
+  // SERIAL build (--parallel 1), deliberately. harden-crusade --loop still drives EVERY buildable dim
+  // to 7.0 (it re-ranks and loops to exhaustion) — just one at a time. We do NOT use --parallel N here
+  // because N autoresearch workers share ONE working tree: concurrent checkout/applyHypothesis(file
+  // writes)/reset --hard corrupt each other (council confirmed — the git-index mutex stops the
+  // deadlock but NOT the shared-working-tree race). Serial is slower but CORRECT. The permanent fix is
+  // worktree-per-worker isolation (like council --parallel) — tracked as a follow-up. The council
+  // fan-out (already worktree-isolated) is reserved for push-to-9, where parity needs it.
   void parallel; void members; void dims;
-  return [['harden-crusade', '--parallel', '4', '--loop', '--target', '7']];
+  return [['harden-crusade', '--parallel', '1', '--loop', '--target', '7']];
 }
 
 // ── Orchestrator loop ───────────────────────────────────────────────────────────

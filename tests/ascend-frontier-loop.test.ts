@@ -22,8 +22,10 @@ describe('ascend-frontier — phase routing (sequential vs council-parallel)', (
     assert.deepEqual(c[0], ['council-universe', '--members', 'codex,claude-code,grok-build', '--propose-outcomes']);
     assert.deepEqual(c.slice(1), [['evidence-scaffold'], ['migrate-outcomes', '--write']]);
   });
-  test('build-to-7 always uses harden-crusade (internal parallel + loop-to-exhaustion) — both modes', () => {
-    const expected = [['harden-crusade', '--parallel', '4', '--loop', '--target', '7']];
+  test('build-to-7 uses harden-crusade SERIAL (--parallel 1) — shared-working-tree race avoided', () => {
+    // Serial, not --parallel N: N autoresearch workers share one working tree and corrupt each other
+    // (checkout/file-writes/reset --hard). harden-crusade --loop still drives every dim, one at a time.
+    const expected = [['harden-crusade', '--parallel', '1', '--loop', '--target', '7']];
     assert.deepEqual(buildTo7Commands(false, M, ['a', 'b']), expected);
     assert.deepEqual(buildTo7Commands(true, M, ['a', 'b']), expected, 'council fan-out is reserved for push-to-9, not the 7.0 bar');
     assert.deepEqual(buildTo7Commands(true, ['codex'], ['a']), expected);
