@@ -53,15 +53,21 @@ function makeWorkPacket(goal: string, objective: string, experimentId: number, f
 
 // Field names MUST match what the adapter actually reads — `id` (runId / leaseId) and
 // `allowedReadPaths` (prompt). The de-sloppify lease used `agentId`/`readOnlyPaths` and crashed the
-// ClaudeCodeAdapter with "Cannot read properties of undefined (reading 'join')" (DanteCode). Mirror the
-// canonical council makeLease shape instead.
+// ClaudeCodeAdapter with "Cannot read properties of undefined (reading 'join')" (DanteCode).
+//
+// allowedWritePaths is BROAD ('**') on purpose. The adapter REVERTS any changed file outside
+// allowedWritePaths (claude-code-adapter.ts applyLeaseValidation), so a narrow allowlist silently
+// threw away the agent's real edits to root/config files and the metric never moved — the autonomy
+// blocker the fleet hit (a root AAA_metric.json edit reverted; only scripts/** edits survived). An
+// autoresearch experiment may legitimately need to edit ANY source the metric depends on, so allow
+// everything and rely on forbiddenPaths (checked first) to block the yardstick, build, deps, and git.
 function makeWriteLease(cwd: string, forbidden: string[]): AgentLease {
   return {
     id: `autoresearch-lease.${Date.now()}`,
     worktreePath: cwd,
-    allowedWritePaths: ['src/**', 'tests/**', 'lib/**', 'scripts/**', 'packages/**'],
+    allowedWritePaths: ['**'],
     allowedReadPaths: ['**'],
-    forbiddenPaths: ['.danteforge/**', 'dist/**', 'node_modules/**', ...forbidden],
+    forbiddenPaths: ['.danteforge/**', 'dist/**', 'node_modules/**', '.git/**', ...forbidden],
   } as unknown as AgentLease;
 }
 

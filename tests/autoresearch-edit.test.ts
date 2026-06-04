@@ -125,6 +125,12 @@ describe('dispatchAgentEdit', () => {
     assert.match(objective, /speed up/);
     assert.match(objective, /scripts\/proof\.mjs/, 'yardstick is forbidden in the agent prompt');
     assert.ok(ranWith && typeof ranWith === 'object' && 'lease' in (ranWith as object), 'runAdapter received a lease');
+    // The lease must allow editing ANYWHERE (else the adapter reverts root/config edits and the metric
+    // never moves — the autonomy blocker), while still forbidding the yardstick + build/deps.
+    const lease = (ranWith as { lease: { allowedWritePaths: string[]; forbiddenPaths: string[] } }).lease;
+    assert.deepEqual(lease.allowedWritePaths, ['**'], 'agent may write anywhere not forbidden');
+    assert.ok(lease.forbiddenPaths.includes('scripts/proof.mjs'), 'yardstick is in forbiddenPaths');
+    assert.ok(lease.forbiddenPaths.includes('.danteforge/**'), 'score surface forbidden');
   });
 
   it('returns a reject (never throws) when the adapter dispatch fails', async () => {
@@ -193,6 +199,9 @@ describe('autoResearch — agent mode integration', () => {
     assert.ok(!add!.includes('-A'), 'must not be git add -A');
     assert.ok(add!.includes('src/feature.ts'), 'stages the experiment edit');
     assert.ok(!add!.includes('LEGACY.txt'), 'never stages the pre-existing untracked file');
+    // Experiment commits must bypass the target repo's pre-commit hooks or the keep is silently lost.
+    const commit = gitCalls.find(a => a[0] === 'commit');
+    assert.ok(commit!.includes('--no-verify'), 'experiment commit bypasses repo pre-commit hooks');
   });
 
   it('rejects (no commit) when the agent touches the yardstick — git guard catches it', async () => {

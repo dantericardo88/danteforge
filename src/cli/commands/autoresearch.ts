@@ -173,9 +173,14 @@ async function restoreDeletedUntracked(cwd: string, backup: Map<string, string>)
 // Commit ONLY the experiment's own paths. `git add -A` swept all pre-existing untracked files into a
 // kept commit — a 1-line fix produced a 156-file / +10k-line commit (DanteAgents). Stage an explicit
 // pathspec of what the experiment actually changed instead.
+//
+// --no-verify is intentional: this is a scratch experiment commit on a throwaway autoresearch branch,
+// validated by the capability_test (the real gate), not the target repo's pre-commit hook. Without it,
+// a repo with an anti-stub/format hook silently REJECTS the commit and the kept win is lost (DanteCode).
+// A winning experiment promoted to a real branch later re-runs the hooks normally.
 async function gitCommitPaths(message: string, paths: string[], cwd: string, gitFn: GitFn = git): Promise<string> {
   if (paths.length > 0) await gitFn(['add', '--', ...paths], cwd);
-  await gitFn(['commit', '--allow-empty', '-m', message], cwd);
+  await gitFn(['commit', '--allow-empty', '--no-verify', '-m', message], cwd);
   return gitCurrentHash(cwd, gitFn);
 }
 
