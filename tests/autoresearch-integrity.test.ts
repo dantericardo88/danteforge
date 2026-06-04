@@ -7,7 +7,8 @@ import path from 'node:path';
 import type { DanteState } from '../src/core/state.js';
 import type { AutoResearchConfig, ExperimentResult } from '../src/core/autoresearch-engine.js';
 import { runMeasurement, NEEDS_SHELL } from '../src/core/autoresearch-engine.js';
-import { autoResearch, gitUntracked, gitCleanCreatedUntracked, gitChangedFiles } from '../src/cli/commands/autoresearch.js';
+import { autoResearch } from '../src/cli/commands/autoresearch.js';
+import { gitUntracked, gitCleanCreatedUntracked, gitChangedFiles } from '../src/cli/commands/autoresearch-git.js';
 import {
   collectForbiddenTargets,
   forbiddenTargetReason,

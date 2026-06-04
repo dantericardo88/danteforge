@@ -60,7 +60,8 @@ function defaultRunners(): DispatchRunners {
     runAutoresearch: (dim, cwd, timeBudget) => {
       const cmd = dim.capability_test?.command;
       if (!cmd) return Promise.resolve();
-      return spawnCli([`autoresearch`, `improve ${dim.label || dim.id}`, '--measurement-command', cmd, '--time', timeBudget, '--allow-dirty'], cwd);
+      // --isolate: each experiment runs in a clean worktree, so dim-dispatch never mutates the user tree.
+      return spawnCli([`autoresearch`, `improve ${dim.label || dim.id}`, '--measurement-command', cmd, '--time', timeBudget, '--isolate'], cwd);
     },
     runOutcomes: (dimId, cwd) => spawnCli(['outcomes', '--dim', dimId, '--force-cold'], cwd),
     runCapabilityTest: (command, cwd) => runCapabilityTest(command, cwd),

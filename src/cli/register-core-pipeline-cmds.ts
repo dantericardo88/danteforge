@@ -39,6 +39,7 @@ program
   .option('--dry-run', 'Show the experiment plan without running')
   .option('--allow-dirty', 'Allow execution on a dirty git working tree (unsafe; disabled by default)')
   .option('--no-agent', 'Use the lightweight JSON-hypothesis edit path instead of dispatching a coding agent')
+  .option('--isolate', 'Run every experiment in an isolated git worktree — your tree is never touched (no --allow-dirty needed)')
   .action(async (goal, opts) => (await C()).autoResearch(goal, {
     metric: opts.metric,
     measurementCommand: opts.measurementCommand,
@@ -47,6 +48,7 @@ program
     dryRun: opts.dryRun,
     allowDirty: opts.allowDirty,
     noAgent: opts.agent === false,
+    isolate: opts.isolate,
   }));
 
 program
