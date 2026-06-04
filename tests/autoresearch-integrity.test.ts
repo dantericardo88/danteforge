@@ -7,7 +7,7 @@ import path from 'node:path';
 import type { DanteState } from '../src/core/state.js';
 import type { AutoResearchConfig, ExperimentResult } from '../src/core/autoresearch-engine.js';
 import { runMeasurement, NEEDS_SHELL } from '../src/core/autoresearch-engine.js';
-import { autoResearch } from '../src/cli/commands/autoresearch.js';
+import { autoResearch, gitUntracked, gitCleanCreatedUntracked } from '../src/cli/commands/autoresearch.js';
 import {
   collectForbiddenTargets,
   forbiddenTargetReason,
@@ -148,10 +148,10 @@ describe('autoResearch: integrity guard at command level', () => {
       _now: () => budgetExpired ? 31 * 60 * 1000 : 0,
     });
     assert.ok(!gitCalls.some(a => a[0] === 'commit'), 'forbidden experiment must NOT be committed');
-    assert.ok(gitCalls.some(a => a[0] === 'clean'), 'rollback must clean untracked junk');
+    assert.ok(gitCalls.some(a => a[0] === 'reset'), 'forbidden experiment is rolled back');
   });
 
-  it('cleans untracked files when an ordinary experiment is discarded', async () => {
+  it('rolls back tracked changes when an ordinary experiment is discarded', async () => {
     const gitCalls: string[][] = [];
     let budgetExpired = false;
     const state = makeState();
@@ -168,6 +168,34 @@ describe('autoResearch: integrity guard at command level', () => {
       _now: () => budgetExpired ? 31 * 60 * 1000 : 0,
     });
     assert.ok(gitCalls.some(a => a[0] === 'reset'), 'discard resets tracked changes');
-    assert.ok(gitCalls.some(a => a[0] === 'clean'), 'discard cleans untracked junk');
+  });
+});
+
+// ── targeted untracked cleanup — never delete pre-existing files (DanteCode --allow-dirty collateral) ──
+
+describe('gitUntracked', () => {
+  it('returns only untracked (??) paths, excluding tracked changes and .danteforge', async () => {
+    const gitFn = async () => '?? a.py\n M src/x.ts\n?? sub/b.py\n?? .danteforge/autoresearch/results.tsv\n';
+    const set = await gitUntracked('/proj', gitFn);
+    assert.deepEqual([...set].sort(), ['a.py', 'sub/b.py']);
+  });
+});
+
+describe('gitCleanCreatedUntracked', () => {
+  it('cleans ONLY files that appeared after the pre-experiment snapshot', async () => {
+    const calls: string[][] = [];
+    // Post-rollback the tree has a pre-existing file (keep.py) AND a new one (junk.py).
+    const gitFn = async (args: string[]) => { calls.push([...args]); return args[0] === 'status' ? '?? keep.py\n?? junk.py\n' : ''; };
+    await gitCleanCreatedUntracked('/proj', new Set(['keep.py']), gitFn);
+    const clean = calls.find(a => a[0] === 'clean');
+    assert.ok(clean, 'git clean was invoked');
+    assert.deepEqual(clean, ['clean', '-fd', '--', 'junk.py'], 'only the experiment-created file is cleaned — keep.py is spared');
+  });
+
+  it('does NOT invoke git clean when the experiment created nothing', async () => {
+    const calls: string[][] = [];
+    const gitFn = async (args: string[]) => { calls.push([...args]); return args[0] === 'status' ? '?? keep.py\n' : ''; };
+    await gitCleanCreatedUntracked('/proj', new Set(['keep.py']), gitFn);
+    assert.ok(!calls.some(a => a[0] === 'clean'), 'pre-existing untracked files are never cleaned');
   });
 });

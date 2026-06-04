@@ -51,16 +51,17 @@ function makeWorkPacket(goal: string, objective: string, experimentId: number, f
   } as unknown as WorkPacket;
 }
 
+// Field names MUST match what the adapter actually reads — `id` (runId / leaseId) and
+// `allowedReadPaths` (prompt). The de-sloppify lease used `agentId`/`readOnlyPaths` and crashed the
+// ClaudeCodeAdapter with "Cannot read properties of undefined (reading 'join')" (DanteCode). Mirror the
+// canonical council makeLease shape instead.
 function makeWriteLease(cwd: string, forbidden: string[]): AgentLease {
   return {
-    agentId: 'autoresearch',
-    workspaceRoot: cwd,
-    branchName: 'main',
+    id: `autoresearch-lease.${Date.now()}`,
     worktreePath: cwd,
+    allowedWritePaths: ['src/**', 'tests/**', 'lib/**', 'scripts/**', 'packages/**'],
+    allowedReadPaths: ['**'],
     forbiddenPaths: ['.danteforge/**', 'dist/**', 'node_modules/**', ...forbidden],
-    allowedWritePaths: ['src/**', 'tests/**', 'lib/**', 'scripts/**'],
-    readOnlyPaths: [],
-    expiresAt: new Date(Date.now() + 15 * 60 * 1000).toISOString(),
   } as unknown as AgentLease;
 }
 

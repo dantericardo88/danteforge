@@ -159,6 +159,21 @@ describe('autoResearch — agent mode integration', () => {
     assert.ok(gitCalls.some(a => a[0] === 'commit'), 'a kept clean change is committed');
   });
 
+  it('runs the agent path even when NO json-provider LLM is available (claude/codex uses its own auth)', async () => {
+    let dispatched = 0, budgetExpired = false;
+    await autoResearch('opt', { time: '30m', measurementCommand: 'node scripts/proof.mjs', allowDirty: true }, {
+      _loadState: async () => makeState(), _saveState: async () => {},
+      _isLLMAvailable: async () => false, // no Ollama / API key configured
+      _isAgentEditAvailable: async () => true,
+      _dispatchAgentEdit: async (_c, id) => { dispatched++; budgetExpired = true; return { description: `agent exp ${id}`, ranOk: true }; },
+      _runBaseline: async () => 100,
+      _runExperiment: async (_c, id): Promise<ExperimentResult> => ({ id, description: 'x', metricValue: 50, status: 'keep' }),
+      _git: async (args: string[]) => (args[0] === 'status' ? '' : 'abc1234'),
+      _writeFile: async () => {}, _appendFile: async () => {}, _now: () => budgetExpired ? 31 * 60 * 1000 : 0,
+    });
+    assert.ok(dispatched >= 1, 'agent ran without a configured json LLM — did not abort "No LLM available"');
+  });
+
   it('rejects (no commit) when the agent touches the yardstick — git guard catches it', async () => {
     const gitCalls: string[][] = [];
     let budgetExpired = false;
@@ -175,6 +190,6 @@ describe('autoResearch — agent mode integration', () => {
       _writeFile: async () => {}, _appendFile: async () => {}, _now: () => budgetExpired ? 31 * 60 * 1000 : 0,
     });
     assert.ok(!gitCalls.some(a => a[0] === 'commit'), 'a yardstick edit is never committed');
-    assert.ok(gitCalls.some(a => a[0] === 'clean'), 'the rejected experiment is rolled back + cleaned');
+    assert.ok(gitCalls.some(a => a[0] === 'reset'), 'the rejected experiment is rolled back');
   });
 });

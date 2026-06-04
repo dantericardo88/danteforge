@@ -89,20 +89,37 @@ async function gitResetHard(hash: string, cwd: string, gitFn: GitFn = git): Prom
   await gitFn(['reset', '--hard', hash], cwd);
 }
 
-// `git reset --hard` reverts tracked files only — a discarded experiment that CREATED new files leaves
-// them as untracked junk. Across many discarded experiments that accumulates (DanteSecurity found 18
-// hallucinated .py files strewn in the wrong language/location across crashed runs). Clean untracked
-// files too, but never our own artifacts under .danteforge/, and `-fd` (no `-x`) respects .gitignore
-// so node_modules/dist are safe.
-async function gitCleanUntracked(cwd: string, gitFn: GitFn = git): Promise<void> {
-  try { await gitFn(['clean', '-fd', '--exclude=.danteforge'], cwd); } catch { /* best-effort */ }
+// The set of untracked paths right now (porcelain `??` lines), excluding our own .danteforge/ artifacts.
+export async function gitUntracked(cwd: string, gitFn: GitFn = git): Promise<Set<string>> {
+  try {
+    const out = await gitFn(['status', '--porcelain'], cwd);
+    const set = new Set<string>();
+    for (const raw of out.split('\n')) {
+      const l = raw.replace(/\r$/, '');
+      if (!l.startsWith('??')) continue;
+      const p = l.slice(3).replace(/^"|"$/g, '');
+      if (p && !p.startsWith('.danteforge/')) set.add(p);
+    }
+    return set;
+  } catch { return new Set(); }
 }
 
-// Roll a discarded/broken experiment fully back to the pre-experiment commit: revert tracked changes
-// AND remove untracked junk it created, leaving the tree exactly as it was before the experiment.
-async function rollbackExperiment(hash: string, cwd: string, gitFn: GitFn = git): Promise<void> {
+// Remove ONLY the untracked files THIS experiment created — never pre-existing ones. `git reset --hard`
+// reverts tracked files only, so a discarded experiment that CREATED files leaves untracked junk
+// (DanteSecurity: 18 hallucinated .py files). But a blanket `git clean -fd` deletes ALL untracked
+// files, which under --allow-dirty wiped 19 unrelated files outside .danteforge (DanteCode). So diff
+// the post-rollback untracked set against the pre-experiment snapshot and clean only the new paths.
+export async function gitCleanCreatedUntracked(cwd: string, preUntracked: Set<string>, gitFn: GitFn = git): Promise<void> {
+  const created = [...await gitUntracked(cwd, gitFn)].filter(p => !preUntracked.has(p));
+  if (created.length === 0) return;
+  try { await gitFn(['clean', '-fd', '--', ...created], cwd); } catch { /* best-effort */ }
+}
+
+// Roll a discarded/broken experiment fully back: revert tracked changes AND remove only the untracked
+// junk IT created, leaving everything that existed before the experiment exactly as it was.
+async function rollbackExperiment(hash: string, preUntracked: Set<string>, cwd: string, gitFn: GitFn = git): Promise<void> {
   try { await gitResetHard(hash, cwd, gitFn); } catch (err) { logger.warn(`Rollback reset failed: ${err instanceof Error ? err.message : String(err)}`); }
-  await gitCleanUntracked(cwd, gitFn);
+  await gitCleanCreatedUntracked(cwd, preUntracked, gitFn);
 }
 
 async function gitCommitAll(message: string, cwd: string, gitFn: GitFn = git): Promise<string> {
@@ -303,6 +320,7 @@ async function initExperimentSetup(
   gitFn: GitFn, runBaselineFn: (c: AutoResearchConfig) => Promise<number>,
   isLLMAvailableFn: () => Promise<boolean>,
   writeFileFn: (p: string, c: string) => Promise<void>,
+  useAgent: boolean,
 ): Promise<{ branchName: string; baseline: number; allExperiments: ExperimentResult[]; bestValue: number; bestHash: string; tsvPath: string } | null> {
   const branchName = `autoresearch/${slugify(goal)}`;
   logger.info(`Creating branch: ${branchName}`);
@@ -334,12 +352,17 @@ async function initExperimentSetup(
   await writeTsv(tsvPath, [baselineResult], writeFileFn);
   logger.info(`Beginning experiment loop. Time budget: ${config.timeBudgetMinutes} minutes.`);
   logger.info('');
-  const llmOk = await isLLMAvailableFn();
-  if (!llmOk) {
-    logger.error('No LLM available — cannot generate hypotheses.');
-    logger.error('Fix: set ANTHROPIC_API_KEY, or start Ollama, or run with --prompt for copy-paste mode.');
-    process.exitCode = 1;
-    return null;
+  // The JSON-hypothesis path needs a configured LLM provider (Ollama/API). The coding-agent path does
+  // NOT — it drives the claude/codex CLI's own auth — so don't abort agent runs for a missing provider
+  // (DanteSecurity: agent path aborted "No LLM available" despite both CLIs installed and no Ollama).
+  if (!useAgent) {
+    const llmOk = await isLLMAvailableFn();
+    if (!llmOk) {
+      logger.error('No LLM available — cannot generate hypotheses.');
+      logger.error('Fix: set ANTHROPIC_API_KEY, or start Ollama, run with --prompt, or install a claude/codex CLI for the agent path.');
+      process.exitCode = 1;
+      return null;
+    }
   }
   return { branchName, baseline, allExperiments, bestValue: baseline, bestHash, tsvPath };
 }
@@ -396,38 +419,44 @@ async function runExperimentLoop(
   const forbiddenRel = forbiddenTargets.map(f => path.relative(cwd, f).split(path.sep).join('/'));
   const rejectionNotes: string[] = []; // fed back to the model so it stops repeating a bad move
 
-  const reject = async (id: number, description: string, preHash: string, why: string): Promise<void> => {
+  const reject = async (id: number, description: string, preHash: string, preUntracked: Set<string>, why: string): Promise<void> => {
     logger.warn(`Rejecting experiment ${id}: ${why}. Rolling back.`);
     rejectionNotes.push(why);
-    await rollbackExperiment(preHash, cwd, gitFn);
+    await rollbackExperiment(preHash, preUntracked, cwd, gitFn);
     const r: ExperimentResult = { id, description, metricValue: null, status: 'discard' };
     allExperiments.push(r); await appendTsv(tsvPath, r, appendFileFn);
   };
-  const crash = async (id: number, description: string, preHash: string): Promise<void> => {
-    await rollbackExperiment(preHash, cwd, gitFn);
+  const crash = async (id: number, description: string, preHash: string, preUntracked: Set<string>): Promise<void> => {
+    await rollbackExperiment(preHash, preUntracked, cwd, gitFn);
     const r: ExperimentResult = { id, description, metricValue: null, status: 'crash' };
     allExperiments.push(r); await appendTsv(tsvPath, r, appendFileFn);
   };
 
   while (nowFn() - startTime < budgetMs) {
     if (budgetMs - (nowFn() - startTime) < 90_000) { logger.info('Time budget nearly exhausted — stopping experiment loop.'); break; }
-    const llmOk = await isLLMAvailableFn();
-    if (!llmOk) {
-      consecutiveLLMFailures++;
-      if (consecutiveLLMFailures >= MAX_LLM_FAILURES) { logger.error(`LLM unavailable for ${MAX_LLM_FAILURES} consecutive checks — stopping experiment loop.`); break; }
-      logger.warn(`LLM temporarily unavailable (${consecutiveLLMFailures}/${MAX_LLM_FAILURES}). Retrying in 30s...`);
-      await sleepFn(30_000); continue;
+    // Only the JSON path needs the configured LLM provider; the agent path uses the CLI's own auth.
+    if (!deps.useAgent) {
+      const llmOk = await isLLMAvailableFn();
+      if (!llmOk) {
+        consecutiveLLMFailures++;
+        if (consecutiveLLMFailures >= MAX_LLM_FAILURES) { logger.error(`LLM unavailable for ${MAX_LLM_FAILURES} consecutive checks — stopping experiment loop.`); break; }
+        logger.warn(`LLM temporarily unavailable (${consecutiveLLMFailures}/${MAX_LLM_FAILURES}). Retrying in 30s...`);
+        await sleepFn(30_000); continue;
+      }
+      consecutiveLLMFailures = 0;
     }
-    consecutiveLLMFailures = 0;
     logger.info(`--- Experiment ${experimentId} (${deps.useAgent ? 'agent' : 'json'}) ---`);
     const preExperimentHash = await gitCurrentHash(cwd, gitFn).catch(() => '');
+    // Snapshot untracked files NOW so rollback only removes what this experiment creates (never the
+    // user's pre-existing untracked files — the --allow-dirty collateral DanteCode hit).
+    const preUntracked = await gitUntracked(cwd, gitFn);
 
     // Wrap edit→guard→measure so ANY throw rolls the tree fully back instead of leaving a half-edit.
     let result: ExperimentResult;
     try {
       const edit = await performEdit(config, experimentId, allExperiments, rejectionNotes, forbiddenTargets, forbiddenRel, cwd, deps);
       if (!edit) { experimentId++; continue; } // hypothesis generation failed — skip cleanly
-      if (edit.rejectReason) { await reject(experimentId, edit.description, preExperimentHash, edit.rejectReason); experimentId++; continue; }
+      if (edit.rejectReason) { await reject(experimentId, edit.description, preExperimentHash, preUntracked, edit.rejectReason); experimentId++; continue; }
 
       // Guard what ACTUALLY changed (mode-agnostic). Forbidden yardstick edits and syntactically broken
       // files are refused before the metric is ever trusted — a broken test can score "better".
@@ -439,13 +468,13 @@ async function runExperimentLoop(
         const pe = await checkEditParses(f, cwd);
         if (pe) { guardReject = `edit left ${f} broken (${pe})`; break; }
       }
-      if (guardReject) { await reject(experimentId, edit.description, preExperimentHash, guardReject); experimentId++; continue; }
+      if (guardReject) { await reject(experimentId, edit.description, preExperimentHash, preUntracked, guardReject); experimentId++; continue; }
 
       result = await runExperimentFn(config, experimentId, edit.description);
       result = { ...result, description: edit.description };
     } catch (err) {
       logger.warn(`Experiment ${experimentId} threw — rolling back: ${err instanceof Error ? err.message : String(err)}`);
-      await crash(experimentId, `experiment ${experimentId}`, preExperimentHash); experimentId++; continue;
+      await crash(experimentId, `experiment ${experimentId}`, preExperimentHash, preUntracked); experimentId++; continue;
     }
 
     if (result.status !== 'crash' && result.metricValue !== null) {
@@ -462,7 +491,7 @@ async function runExperimentLoop(
     } else {
       const reasonText = result.status === 'crash' ? 'crashed' : 'did not improve metric';
       logger.info(`Discarding (${reasonText}). Rolling back to ${preExperimentHash.slice(0, 8)}.`);
-      await rollbackExperiment(preExperimentHash, cwd, gitFn);
+      await rollbackExperiment(preExperimentHash, preUntracked, cwd, gitFn);
     }
     allExperiments.push(result); await appendTsv(tsvPath, result, appendFileFn);
     experimentId++;
@@ -590,14 +619,15 @@ export async function autoResearch(
   const startTime = nowFn();
   const budgetMs = timeBudgetMinutes * 60 * 1000;
 
-  const setup = await initExperimentSetup(goal, config, cwd, gitFn, runBaselineFn, isLLMAvailableFn, writeFileFn);
-  if (!setup) return;
-  const { branchName, baseline, allExperiments, bestValue: initBest, bestHash: initHash, tsvPath } = setup;
-
-  // Prefer the high-quality coding-agent edit path when a claude/codex CLI is installed; fall back to
-  // the lightweight JSON-hypothesis path otherwise (or when --no-agent is passed).
+  // Decide the edit strategy BEFORE setup so the LLM-provider gate can be skipped in agent mode: prefer
+  // the high-quality coding-agent path when a claude/codex CLI is installed; otherwise (or with
+  // --no-agent) the lightweight JSON-hypothesis path.
   const useAgent = !options.noAgent && await isAgentEditAvailableFn();
   logger.info(`Edit strategy: ${useAgent ? 'coding agent (claude/codex)' : 'JSON hypothesis (lightweight)'}`);
+
+  const setup = await initExperimentSetup(goal, config, cwd, gitFn, runBaselineFn, isLLMAvailableFn, writeFileFn, useAgent);
+  if (!setup) return;
+  const { branchName, baseline, allExperiments, bestValue: initBest, bestHash: initHash, tsvPath } = setup;
 
   const { bestValue, bestHash: _finalHash } = await runExperimentLoop(
     config, allExperiments, initBest, initHash, tsvPath, noiseMargin, startTime, budgetMs, cwd,
