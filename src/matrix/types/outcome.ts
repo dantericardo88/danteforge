@@ -61,10 +61,30 @@ export type OutcomeInputSource =
   | { type: 'external-benchmark'; suite: RegisteredExternalSuite }
   | { type: 'synthetic-fixture'; fixture_id?: string };
 
+/**
+ * Independent-acceptance stamp for a T5+ outcome. Agent-authored outcomes at T5+ are PROPOSE-ONLY:
+ * they sit in a pending queue and only carry this stamp once an independent reviewer (court or human)
+ * accepts them. Without it, an autonomous loop authors its own goalposts (reward-hacking the very
+ * definition of "done"). `acceptedBy` must differ from `proposedBy` for the stamp to count.
+ */
+export interface OutcomeAcceptance {
+  acceptedBy: string;
+  acceptedAt: string;
+  /** The agent/builder that PROPOSED the outcome — must differ from acceptedBy (no self-accept). */
+  proposedBy?: string;
+  note?: string;
+}
+
 /** Common fields shared by all outcome kinds. */
 interface BaseOutcome {
   /** Stable id, used to key evidence files. Must be unique within a dim. */
   id: string;
+  /**
+   * Independent-acceptance stamp (T5+ only). Present iff this outcome went through propose → court/
+   * human accept. The install gate (outcome-proposal.ts) refuses to admit a T5+ outcome without it,
+   * so an autonomous loop can never author its own high-tier goalposts.
+   */
+  acceptance?: OutcomeAcceptance;
   /** The Capability Ladder tier this outcome contributes to. */
   tier: CapabilityTier;
   /** Human description: what user-visible thing this outcome proves. */
@@ -283,6 +303,11 @@ export interface DimensionOutcomeStatus {
 
 const TIER_NAMES: ReadonlyArray<CapabilityTier> = ['T0', 'T1', 'T2', 'T3', 'T4', 'T5', 'T6', 'T7', 'T8'];
 const TIER_RANK: Record<CapabilityTier, number> = { T0: 0, T1: 1, T2: 2, T3: 3, T4: 4, T5: 5, T6: 6, T7: 7, T8: 8 };
+
+/** True for tiers (T5+) that require an independent-acceptance stamp before they may affect the score. */
+export function isHighTierOutcome(tier: CapabilityTier): boolean {
+  return TIER_RANK[tier] >= TIER_RANK.T5;
+}
 
 function isTier(v: unknown): v is CapabilityTier {
   return typeof v === 'string' && (TIER_NAMES as ReadonlyArray<string>).includes(v);

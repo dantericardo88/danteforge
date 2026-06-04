@@ -25,6 +25,7 @@ import chalk from 'chalk';
 import { logger } from '../../core/logger.js';
 import { loadMatrix, decisionDimScore, type CompeteMatrix, type MatrixDimension } from '../../core/compete-matrix.js';
 import { SCORING_DOCTRINE_SHORT } from '../../core/scoring-doctrine.js';
+import { resolveAutonomousTarget } from '../../core/autonomy-cap.js';
 import { runCIPCheck, type CIPOptions, type CIPResult } from '../../core/completion-integrity.js';
 
 const MAX_WAVES_WITHOUT_REGRADE = 3;
@@ -280,7 +281,7 @@ async function runDimensionLoop(
   options: HardenCrusadeOptions,
 ): Promise<DimHardenCrusadeResult> {
   const cwd = options.cwd ?? process.cwd();
-  const target = options.target ?? DEFAULT_TARGET;
+  const target = resolveAutonomousTarget(options.target, DEFAULT_TARGET);
   const maxDimCycles = options.maxDimCycles ?? DEFAULT_MAX_CYCLES;
   const timeMinutes = options.timeMinutes ?? DEFAULT_TIME_MIN;
   const runAutoResearch = options._runAutoResearch ?? defaultRunAutoResearch;
@@ -474,7 +475,7 @@ async function checkRegradeCadence(
 export async function runHardenCrusade(options: HardenCrusadeOptions): Promise<HardenCrusadeResult> {
   const cwd = options.cwd ?? process.cwd();
   const parallel = options.parallel ?? DEFAULT_PARALLEL;
-  const target = options.target ?? DEFAULT_TARGET;
+  const target = resolveAutonomousTarget(options.target, DEFAULT_TARGET);
   const loadMatrixFn = options._loadMatrix ?? loadMatrix;
   const writeFile = options._writeFile ?? ((p: string, c: string) => fs.writeFile(p, c, 'utf8'));
 

@@ -15,6 +15,7 @@ import { loadMatrix, saveMatrix } from '../../core/compete-matrix.js';
 import { isLLMAvailable, callLLM } from '../../core/llm.js';
 import { withErrorBoundary } from '../../core/cli-error-boundary.js';
 import { promoteVerifiedScore, type PromoteResult } from '../../core/promote-score.js';
+import { resolveAutonomousTarget } from '../../core/autonomy-cap.js';
 import { NEEDS_SHELL, splitCommand } from '../../core/autoresearch-engine.js';
 import { classifyMatrixDims, type LooseDim } from './dim-triage.js';
 import type { DimClassification } from '../../core/dim-triage.js';
@@ -71,7 +72,7 @@ function defaultRunners(): DispatchRunners {
 export async function dimDispatch(opts: DimDispatchOpts = {}): Promise<void> {
   return withErrorBoundary('dim-dispatch', async () => {
     const cwd = process.cwd();
-    const target = opts.target ?? 7.0;
+    const target = resolveAutonomousTarget(opts.target, 7.0);
     const max = opts.max ?? 3;
     const time = opts.time ?? '10m';
     const loadMatrixFn = opts._loadMatrix ?? ((c?: string) => loadMatrix(c, (p) => fs.readFile(p, 'utf8'))); // bypass cache → fresh derived
