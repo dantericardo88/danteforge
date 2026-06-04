@@ -39,6 +39,7 @@ export { retro } from './retro.js';
 export { ship } from './ship.js';
 export { autoResearch } from './autoresearch.js';
 export { dimTriage } from './dim-triage.js';
+export { dimDispatch } from './dim-dispatch.js';
 export { ossResearcher } from './oss.js';
 export { truthLoopRun } from './truth-loop.js';
 export { truthLoopList } from './truth-loop-list.js';

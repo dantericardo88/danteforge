@@ -62,6 +62,22 @@ program
   }));
 
 program
+  .command('dim-dispatch')
+  .description('Execute dim-triage routes: run autoresearch+promote on surgical dims, hand off feature dims to matrixdev')
+  .option('--target <n>', 'Score below which a dim is dispatched (default: 7.0)')
+  .option('--max <n>', 'Max surgical dims to run this pass (default: 3)')
+  .option('--time <budget>', 'Per-dim autoresearch time budget (default: 10m)')
+  .option('--dry-run', 'Classify and show the dispatch plan without executing')
+  .option('--json', 'Emit the dispatch result as JSON')
+  .action(async (opts) => (await C()).dimDispatch({
+    target: opts.target !== undefined ? parseFloat(opts.target) : undefined,
+    max: opts.max !== undefined ? parseInt(opts.max, 10) : undefined,
+    time: opts.time,
+    dryRun: opts.dryRun,
+    json: opts.json,
+  }));
+
+program
   .command('harvest [goal]')
   .description('Discover and learn from OSS patterns. --level selects depth: light=focused pattern, standard=bounded OSS pass, deep=OSS+local+universe refresh.')
   .option('--level <level>', 'Canonical intensity: light | standard | deep')

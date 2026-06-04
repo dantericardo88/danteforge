@@ -22,7 +22,37 @@ import {
   type DimClassification,
 } from '../../core/dim-triage.js';
 
-type LooseDim = MatrixDimension & { capability_test?: { command?: string }; no_capability_test?: boolean };
+export type LooseDim = MatrixDimension & { capability_test?: { command?: string }; no_capability_test?: boolean };
+
+export interface ClassifyDeps {
+  cwd: string;
+  target: number;
+  fileExists: (p: string) => Promise<boolean>;
+  readFile: (p: string) => Promise<string>;
+  llmOk: boolean;
+  callLLM: (prompt: string) => Promise<string>;
+  excluded?: Set<string>;
+}
+
+/** Classify every sub-target dimension (deterministic + an LLM judgment pass for the ambiguous ones). */
+export async function classifyMatrixDims(dims: LooseDim[], deps: ClassifyDeps): Promise<DimClassification[]> {
+  const excluded = deps.excluded ?? new Set<string>();
+  const todo = dims.filter(d => (d.scores?.self ?? 0) < deps.target && !excluded.has(d.id));
+  const out: DimClassification[] = [];
+  for (const dim of todo) {
+    const signals = await gatherSignals(dim, deps.cwd, deps.fileExists);
+    let cls = classifyDimDeterministic(signals);
+    if (cls.needsLLM && deps.llmOk) {
+      try {
+        const src = await readScriptSource(signals, deps.cwd, deps.readFile);
+        const parsed = parseClassifyResponse(signals, await deps.callLLM(buildClassifyPrompt(signals, src)));
+        if (parsed) cls = parsed;
+      } catch { /* leave as unknown */ }
+    }
+    out.push(cls);
+  }
+  return out;
+}
 
 interface DimTriageOpts {
   target?: number;
@@ -90,26 +120,14 @@ export async function dimTriage(opts: DimTriageOpts = {}): Promise<void> {
     if (!matrix) { logger.error('No competitive matrix found (.danteforge/compete/matrix.json). Run `danteforge compete` first.'); process.exitCode = 1; return; }
 
     const excluded = new Set(matrix.excludedDimensions ?? []);
-    const todo = (matrix.dimensions as LooseDim[]).filter(d => (d.scores?.self ?? 0) < target && !excluded.has(d.id));
-    if (todo.length === 0) { logger.success(`All dimensions are at or above target ${target}. Nothing to triage.`); return; }
+    const todoCount = (matrix.dimensions as LooseDim[]).filter(d => (d.scores?.self ?? 0) < target && !excluded.has(d.id)).length;
+    if (todoCount === 0) { logger.success(`All dimensions are at or above target ${target}. Nothing to triage.`); return; }
 
-    logger.info(`Triaging ${todo.length} sub-${target} dimension(s)...`);
+    logger.info(`Triaging ${todoCount} sub-${target} dimension(s)...`);
     const llmOk = await isLLMAvailableFn();
     if (!llmOk) logger.warn('No LLM available — deterministic triage only; ambiguous dims are left as "unknown" (manual review).');
 
-    const classes: DimClassification[] = [];
-    for (const dim of todo) {
-      const signals = await gatherSignals(dim, cwd, fileExists);
-      let cls = classifyDimDeterministic(signals);
-      if (cls.needsLLM && llmOk) {
-        try {
-          const src = await readScriptSource(signals, cwd, readFile);
-          const parsed = parseClassifyResponse(signals, await callLLMFn(buildClassifyPrompt(signals, src)));
-          if (parsed) cls = parsed;
-        } catch (err) { logger.warn(`LLM triage failed for ${dim.id}: ${err instanceof Error ? err.message : String(err)} — leaving as unknown.`); }
-      }
-      classes.push(cls);
-    }
+    const classes = await classifyMatrixDims(matrix.dimensions as LooseDim[], { cwd, target, fileExists, readFile, llmOk, callLLM: callLLMFn, excluded });
 
     // Write the report (untracked, under .danteforge/).
     const reportDir = path.join(cwd, '.danteforge', 'triage');
