@@ -33,6 +33,8 @@ function makeBaseOpts(overrides: Partial<Parameters<typeof autoResearch>[2]> = {
     _writeFile: async (_p: string, _c: string) => {},
     _appendFile: async (_p: string, _c: string) => {},
     _now: () => 0,
+    // Force the deterministic JSON-hypothesis path — never dispatch a real coding agent in unit tests.
+    _isAgentEditAvailable: async () => false,
     saved,
     ...overrides,
   };

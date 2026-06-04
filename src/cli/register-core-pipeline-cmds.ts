@@ -38,6 +38,7 @@ program
   .option('--prompt', 'Generate a copy-paste prompt instead of executing')
   .option('--dry-run', 'Show the experiment plan without running')
   .option('--allow-dirty', 'Allow execution on a dirty git working tree (unsafe; disabled by default)')
+  .option('--no-agent', 'Use the lightweight JSON-hypothesis edit path instead of dispatching a coding agent')
   .action(async (goal, opts) => (await C()).autoResearch(goal, {
     metric: opts.metric,
     measurementCommand: opts.measurementCommand,
@@ -45,6 +46,7 @@ program
     prompt: opts.prompt,
     dryRun: opts.dryRun,
     allowDirty: opts.allowDirty,
+    noAgent: opts.agent === false,
   }));
 
 program

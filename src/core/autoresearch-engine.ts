@@ -209,9 +209,26 @@ export async function runMeasurement(
 ): Promise<number> {
   const MEASUREMENT_TIMEOUT_MS = 5 * 60 * 1000; // 5 minutes hard cap
 
-  // Split command into executable + args to avoid shell injection.
-  const parts = splitCommand(config.measurementCommand);
-  const [executable, ...args] = parts;
+  // A capability_test / measurement command frequently contains shell plumbing — a pipe, a redirect,
+  // `&&`, or `2>&1` (see deriveMeasurementCommand). execFile spawns NO shell, so a token-split runs
+  // `npm test 2>&1 | tail -1` as the literal argv [npm, test, 2>&1, |, tail, -1] → the pipe never
+  // applies and the spawn fails (exit 127 / garbage). When shell metacharacters are present, route the
+  // WHOLE command through the platform shell so the plumbing actually works. The simple case (no
+  // operators) keeps the safe token-split (no shell injection surface).
+  let executable: string;
+  let args: string[];
+  if (NEEDS_SHELL.test(config.measurementCommand)) {
+    if (process.platform === 'win32') {
+      executable = process.env.ComSpec || 'cmd.exe';
+      args = ['/d', '/s', '/c', config.measurementCommand];
+    } else {
+      executable = '/bin/sh';
+      args = ['-c', config.measurementCommand];
+    }
+  } else {
+    const parts = splitCommand(config.measurementCommand);
+    [executable, ...args] = parts;
+  }
 
   if (!executable) {
     throw new Error('Empty measurement command');
@@ -249,6 +266,13 @@ export async function runMeasurement(
   const value = extractNumber(stdout);
   return value !== null ? value : exitCode;
 }
+
+/**
+ * Shell metacharacters that mean the measurement command can only run through a shell: pipes,
+ * redirects, command separators, sub-shells, and the `2>&1` fd-dup. When ANY of these are present,
+ * runMeasurement spawns the platform shell instead of token-splitting (which would mangle them).
+ */
+export const NEEDS_SHELL = /[|&;<>`]|\$\(|\d?>&\d/;
 
 /**
  * Split a shell-style command string into tokens without spawning a shell.

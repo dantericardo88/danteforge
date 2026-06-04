@@ -49,6 +49,20 @@ describe('RunLedger: logging methods', () => {
     assert.doesNotThrow(() => ledger.logCommand('npm', ['test'], 0, 1200, 'ok'));
   });
 
+  it('logCommandStart writes a durable pre-spawn breadcrumb to commands-live.jsonl', async () => {
+    const ledger = new RunLedger('forge', [], tmpDir);
+    await ledger.initialize();
+    // Emit a start breadcrumb but NEVER call logCommand — simulating a child killed mid-flight.
+    ledger.logCommandStart('danteforge', ['build-to-7'], '/some/cwd');
+    const livePath = path.join(tmpDir, '.danteforge', 'runs', ledger.getRunId(), 'commands-live.jsonl');
+    const raw = await fs.readFile(livePath, 'utf8');
+    const entry = JSON.parse(raw.trim().split('\n')[0]!);
+    assert.equal(entry.event, 'start');
+    assert.equal(entry.command, 'danteforge');
+    assert.deepEqual(entry.args, ['build-to-7']);
+    assert.equal(entry.cwd, '/some/cwd');
+  });
+
   it('logTest does not throw', () => {
     const ledger = new RunLedger('forge', [], tmpDir);
     assert.doesNotThrow(() => ledger.logTest('my test', 'pass', 50));

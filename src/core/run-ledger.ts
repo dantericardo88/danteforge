@@ -171,6 +171,16 @@ export class RunLedger {
     });
   }
 
+  logCommandStart(command: string, args: string[], cwd?: string): void {
+    // Pre-spawn breadcrumb. logCommand() only fires AFTER the child resolves — so a sub-command that
+    // is KILLED mid-flight (parent SIGTERM'd at a timeout, or a deep hang the outer harness reaps)
+    // never reaches it, and commands-live.jsonl was EMPTY for the crashed run → the failure was
+    // undebuggable (DanteSecurity DS-026: exit-127 ~10min in, no ledger entry). Record the INTENT
+    // synchronously before spawning so even a killed parent leaves "running X in cwd Y at T" on disk.
+    const line = JSON.stringify({ timestamp: new Date().toISOString(), event: 'start', command, args, cwd }) + '\n';
+    try { appendFileSync(path.join(this.runDir, 'commands-live.jsonl'), line); } catch { /* best-effort */ }
+  }
+
   logCommand(command: string, args: string[], exitCode: number, duration: number, output?: string, error?: string, cwd?: string): void {
     const entry: CommandExecution = { timestamp: new Date().toISOString(), command, args, exitCode, duration, output, error };
     this.commands.push(entry);

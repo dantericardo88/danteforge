@@ -105,6 +105,10 @@ function runOnce(cwd: string, args: string[]): Promise<CliResult> {
  * re-run minutes of work); it's returned for the loop to handle as a build failure.
  */
 export async function runCli(cwd: string, args: string[]): Promise<CliResult> {
+  // Breadcrumb BEFORE the spawn: if this parent is killed while the child runs, the post-resolve
+  // logCommand() below never fires — without this line the run's commands-live.jsonl is empty and the
+  // crash is undebuggable (DanteSecurity DS-026). Synchronous append guarantees it's on disk first.
+  activeLedger?.logCommandStart('danteforge', args, cwd);
   let res = await runOnce(cwd, args);
   // Retry only a spawn-time 127/ENOENT (failed in <3s ⇒ nothing ran ⇒ transient spawn race).
   if (!res.ok && res.exitCode === 127 && res.ms < 3000) {

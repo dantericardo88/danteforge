@@ -3,13 +3,9 @@
 
 import fs from 'fs/promises';
 import path from 'path';
-import { execFile } from 'node:child_process';
-import { promisify } from 'node:util';
 import { logger } from '../../core/logger.js';
 import { loadState, saveState } from '../../core/state.js';
 import { isLLMAvailable, callLLM } from '../../core/llm.js';
-import type { LLMProvider } from '../../core/config.js';
-import type { CallLLMOptions } from '../../core/llm-pipeline.js';
 import {
   runBaseline,
   runExperiment,
@@ -22,8 +18,9 @@ import {
 } from '../../core/autoresearch-engine.js';
 import { withErrorBoundary } from '../../core/cli-error-boundary.js';
 import { runGit } from '../../core/git-safe.js';
-
-const execFileAsync = promisify(execFile);
+import { collectForbiddenTargets, forbiddenTargetReason, checkEditParses } from './autoresearch-integrity.js';
+import { generateHypothesis, applyHypothesis, type CallLLMFn } from './autoresearch-hypothesis.js';
+import { isAgentEditAvailable, dispatchAgentEdit } from './autoresearch-agent-edit.js';
 
 // ── Noise margins per spec ────────────────────────────────────────────────────
 
@@ -92,106 +89,44 @@ async function gitResetHard(hash: string, cwd: string, gitFn: GitFn = git): Prom
   await gitFn(['reset', '--hard', hash], cwd);
 }
 
+// `git reset --hard` reverts tracked files only — a discarded experiment that CREATED new files leaves
+// them as untracked junk. Across many discarded experiments that accumulates (DanteSecurity found 18
+// hallucinated .py files strewn in the wrong language/location across crashed runs). Clean untracked
+// files too, but never our own artifacts under .danteforge/, and `-fd` (no `-x`) respects .gitignore
+// so node_modules/dist are safe.
+async function gitCleanUntracked(cwd: string, gitFn: GitFn = git): Promise<void> {
+  try { await gitFn(['clean', '-fd', '--exclude=.danteforge'], cwd); } catch { /* best-effort */ }
+}
+
+// Roll a discarded/broken experiment fully back to the pre-experiment commit: revert tracked changes
+// AND remove untracked junk it created, leaving the tree exactly as it was before the experiment.
+async function rollbackExperiment(hash: string, cwd: string, gitFn: GitFn = git): Promise<void> {
+  try { await gitResetHard(hash, cwd, gitFn); } catch (err) { logger.warn(`Rollback reset failed: ${err instanceof Error ? err.message : String(err)}`); }
+  await gitCleanUntracked(cwd, gitFn);
+}
+
 async function gitCommitAll(message: string, cwd: string, gitFn: GitFn = git): Promise<string> {
   await gitFn(['add', '-A'], cwd);
   await gitFn(['commit', '--allow-empty', '-m', message], cwd);
   return gitCurrentHash(cwd, gitFn);
 }
 
-// ── LLM-based hypothesis generation ──────────────────────────────────────────
-
-interface Hypothesis {
-  description: string;
-  fileToChange: string;
-  change: string;
+// What an experiment ACTUALLY changed in the working tree — the single source of truth for the guards.
+// The coding agent (Tier 2) picks its own files, so we can't trust a declared `fileToChange`; we read
+// `git status` instead. Renames take the new path; our own .danteforge/ artifacts are ignored.
+async function gitChangedFiles(cwd: string, gitFn: GitFn = git): Promise<string[]> {
+  try {
+    const out = await gitFn(['status', '--porcelain'], cwd);
+    return out.split('\n')
+      .map(l => l.replace(/\r$/, ''))
+      .filter(l => l.trim().length > 0)
+      .map(l => l.slice(3).replace(/^"|"$/g, ''))           // strip the 2-char XY status + space
+      .map(l => (l.includes(' -> ') ? l.split(' -> ')[1]! : l))
+      .filter(f => f && !f.startsWith('.danteforge/'));
+  } catch { return []; }
 }
 
-type CallLLMFn = (prompt: string, provider?: LLMProvider | undefined, opts?: CallLLMOptions) => Promise<string>;
-
-async function generateHypothesis(
-  config: AutoResearchConfig,
-  experimentId: number,
-  previousResults: ExperimentResult[],
-  callLLMFn: CallLLMFn = callLLM,
-  readFileFn: (p: string) => Promise<string> = (p) => fs.readFile(p, 'utf8'),
-): Promise<Hypothesis> {
-  const resultsContext = previousResults.length > 0
-    ? `Previous experiments:\n${formatResultsTsv(previousResults)}\n`
-    : 'No previous experiments yet.\n';
-
-  // Read optional program.md research strategy (Karpathy pattern: human-authored guidance per iteration)
-  let programContext = '';
-  try {
-    const programMd = await readFileFn(path.join(config.cwd, 'autoresearch.program.md'));
-    if (programMd.trim()) {
-      programContext = `Research strategy (from autoresearch.program.md):\n${programMd.trim()}\n\n`;
-    }
-  } catch { /* optional file — no-op */ }
-
-  const prompt = `You are an autonomous code optimizer implementing Karpathy's autoresearch pattern.
-
-Goal: ${config.goal}
-Metric: ${config.metric} (lower is better for performance metrics)
-Measurement command: ${config.measurementCommand}
-Working directory: ${config.cwd}
-Experiment number: ${experimentId}
-
-${programContext}${resultsContext}
-
-Generate a single, focused hypothesis for the next experiment. Make ONE small, surgical change.
-Prefer high-impact, low-effort changes. Build on what worked; avoid what failed.
-
-Respond with EXACTLY this JSON format (no other text, no markdown fences):
-{
-  "description": "<one sentence: what you are changing and why>",
-  "fileToChange": "<relative path to the file to change>",
-  "change": "<complete new content for that file, or a precise diff/patch>"
-}`;
-
-  const response = await callLLMFn(prompt, undefined, {
-    enrichContext: true,
-    cwd: config.cwd,
-  });
-
-  try {
-    // Strip any accidental markdown fences
-    const cleaned = response.replace(/^```(?:json)?\n?/m, '').replace(/\n?```$/m, '').trim();
-    const parsed = JSON.parse(cleaned) as Hypothesis;
-    if (!parsed.description || !parsed.fileToChange || !parsed.change) {
-      throw new Error('Missing required fields in hypothesis JSON');
-    }
-    return parsed;
-  } catch (err) {
-    logger.warn(`Failed to parse LLM hypothesis JSON: ${err instanceof Error ? err.message : String(err)}`);
-    // Provide a safe fallback hypothesis that won't break anything
-    return {
-      description: `Experiment ${experimentId}: exploratory no-op to establish loop integrity`,
-      fileToChange: '',
-      change: '',
-    };
-  }
-}
-
-async function applyHypothesis(hypothesis: Hypothesis, cwd: string): Promise<boolean> {
-  if (!hypothesis.fileToChange || !hypothesis.change) {
-    logger.info('No file change in hypothesis — running as-is.');
-    return true;
-  }
-
-  const targetPath = path.resolve(cwd, hypothesis.fileToChange);
-  try {
-    await fs.mkdir(path.dirname(targetPath), { recursive: true });
-    // The LLM sometimes returns `change` as a parsed object rather than a string; fs.writeFile then
-    // throws "Received an instance of Object" and every hypothesis-apply fails for the full 30-min
-    // run (DanteCode). Coerce to a string so a structured change is still written.
-    const content = typeof hypothesis.change === 'string' ? hypothesis.change : JSON.stringify(hypothesis.change, null, 2);
-    await fs.writeFile(targetPath, content, 'utf8');
-    return true;
-  } catch (err) {
-    logger.error(`Failed to apply hypothesis to ${targetPath}: ${err instanceof Error ? err.message : String(err)}`);
-    return false;
-  }
-}
+// ── Insight generation ───────────────────────────────────────────────────────
 
 async function generateInsights(
   config: AutoResearchConfig,
@@ -325,6 +260,9 @@ export interface AutoResearchOpts {
   _readFile?: (p: string) => Promise<string>;
   _sleep?: (ms: number) => Promise<void>;
   _now?: () => number;
+  /** Force/skip the coding-agent edit path (defaults to auto-detecting an installed claude/codex CLI). */
+  _isAgentEditAvailable?: () => Promise<boolean>;
+  _dispatchAgentEdit?: typeof dispatchAgentEdit;
 }
 
 async function handlePromptModeExit(
@@ -406,21 +344,70 @@ async function initExperimentSetup(
   return { branchName, baseline, allExperiments, bestValue: baseline, bestHash, tsvPath };
 }
 
+interface LoopDeps {
+  callLLMFn: CallLLMFn;
+  readFileFn: (p: string) => Promise<string>;
+  runExperimentFn: (c: AutoResearchConfig, id: number, desc: string) => Promise<ExperimentResult>;
+  gitFn: GitFn;
+  isLLMAvailableFn: () => Promise<boolean>;
+  appendFileFn: (p: string, c: string) => Promise<void>;
+  nowFn: () => number;
+  sleepFn: (ms: number) => Promise<void>;
+  /** When true, drive the high-quality coding-agent edit path instead of the JSON-hypothesis path. */
+  useAgent: boolean;
+  dispatchAgentEditFn: typeof dispatchAgentEdit;
+}
+
+/** Produce the edit for one experiment — agent path or JSON path. Returns the changed files + reason. */
+async function performEdit(
+  config: AutoResearchConfig, experimentId: number, allExperiments: ExperimentResult[],
+  rejectionNotes: string[], forbiddenTargets: string[], forbiddenRel: string[], cwd: string, deps: LoopDeps,
+): Promise<{ description: string; rejectReason?: string } | null> {
+  if (deps.useAgent) {
+    const ae = await deps.dispatchAgentEditFn(config, experimentId, forbiddenRel, allExperiments);
+    return { description: ae.description, rejectReason: ae.ranOk ? undefined : (ae.rejectReason ?? 'agent did not run') };
+  }
+  let hypothesis;
+  try {
+    hypothesis = await generateHypothesis(config, experimentId, allExperiments, rejectionNotes, deps.callLLMFn, deps.readFileFn);
+    logger.info(`Hypothesis: ${hypothesis.description}`);
+  } catch (err) { logger.warn(`Hypothesis generation failed: ${err instanceof Error ? err.message : String(err)}`); return null; }
+  // Fast reject before writing: never even attempt to edit the yardstick.
+  if (hypothesis.fileToChange) {
+    const forbidden = forbiddenTargetReason(hypothesis.fileToChange, cwd, forbiddenTargets);
+    if (forbidden) return { description: hypothesis.description, rejectReason: `${hypothesis.fileToChange} is ${forbidden}` };
+  }
+  const apply = await applyHypothesis(hypothesis, cwd);
+  return { description: hypothesis.description, rejectReason: apply.applied ? undefined : (apply.rejectReason ?? 'could not apply hypothesis') };
+}
+
 async function runExperimentLoop(
   config: AutoResearchConfig, allExperiments: ExperimentResult[], initialBestValue: number, initialBestHash: string,
-  tsvPath: string, noiseMargin: number, startTime: number, budgetMs: number,
-  callLLMFn: CallLLMFn, readFileFn: (p: string) => Promise<string>,
-  runExperimentFn: (c: AutoResearchConfig, id: number, desc: string) => Promise<ExperimentResult>,
-  gitFn: GitFn, isLLMAvailableFn: () => Promise<boolean>,
-  appendFileFn: (p: string, c: string) => Promise<void>,
-  nowFn: () => number, sleepFn: (ms: number) => Promise<void>,
-  cwd: string,
+  tsvPath: string, noiseMargin: number, startTime: number, budgetMs: number, cwd: string, deps: LoopDeps,
 ): Promise<{ bestValue: number; bestHash: string }> {
+  const { runExperimentFn, gitFn, isLLMAvailableFn, appendFileFn, nowFn, sleepFn } = deps;
   let bestValue = initialBestValue;
   let bestHash = initialBestHash;
   let experimentId = 1;
   let consecutiveLLMFailures = 0;
   const MAX_LLM_FAILURES = 5;
+  // The scripts the measurement command runs are the yardstick — an experiment may never edit them.
+  const forbiddenTargets = collectForbiddenTargets(config.measurementCommand, cwd);
+  const forbiddenRel = forbiddenTargets.map(f => path.relative(cwd, f).split(path.sep).join('/'));
+  const rejectionNotes: string[] = []; // fed back to the model so it stops repeating a bad move
+
+  const reject = async (id: number, description: string, preHash: string, why: string): Promise<void> => {
+    logger.warn(`Rejecting experiment ${id}: ${why}. Rolling back.`);
+    rejectionNotes.push(why);
+    await rollbackExperiment(preHash, cwd, gitFn);
+    const r: ExperimentResult = { id, description, metricValue: null, status: 'discard' };
+    allExperiments.push(r); await appendTsv(tsvPath, r, appendFileFn);
+  };
+  const crash = async (id: number, description: string, preHash: string): Promise<void> => {
+    await rollbackExperiment(preHash, cwd, gitFn);
+    const r: ExperimentResult = { id, description, metricValue: null, status: 'crash' };
+    allExperiments.push(r); await appendTsv(tsvPath, r, appendFileFn);
+  };
 
   while (nowFn() - startTime < budgetMs) {
     if (budgetMs - (nowFn() - startTime) < 90_000) { logger.info('Time budget nearly exhausted — stopping experiment loop.'); break; }
@@ -432,34 +419,50 @@ async function runExperimentLoop(
       await sleepFn(30_000); continue;
     }
     consecutiveLLMFailures = 0;
-    logger.info(`--- Experiment ${experimentId} ---`);
-    let hypothesis;
-    try {
-      hypothesis = await generateHypothesis(config, experimentId, allExperiments, callLLMFn, readFileFn);
-      logger.info(`Hypothesis: ${hypothesis.description}`);
-    } catch (err) { logger.warn(`Hypothesis generation failed: ${err instanceof Error ? err.message : String(err)}`); experimentId++; continue; }
+    logger.info(`--- Experiment ${experimentId} (${deps.useAgent ? 'agent' : 'json'}) ---`);
     const preExperimentHash = await gitCurrentHash(cwd, gitFn).catch(() => '');
-    const applied = await applyHypothesis(hypothesis, cwd);
-    if (!applied) {
-      logger.warn('Could not apply hypothesis — skipping.');
-      const crashResult: ExperimentResult = { id: experimentId, description: hypothesis.description, metricValue: null, status: 'crash' };
-      allExperiments.push(crashResult); await appendTsv(tsvPath, crashResult, appendFileFn); experimentId++; continue;
+
+    // Wrap edit→guard→measure so ANY throw rolls the tree fully back instead of leaving a half-edit.
+    let result: ExperimentResult;
+    try {
+      const edit = await performEdit(config, experimentId, allExperiments, rejectionNotes, forbiddenTargets, forbiddenRel, cwd, deps);
+      if (!edit) { experimentId++; continue; } // hypothesis generation failed — skip cleanly
+      if (edit.rejectReason) { await reject(experimentId, edit.description, preExperimentHash, edit.rejectReason); experimentId++; continue; }
+
+      // Guard what ACTUALLY changed (mode-agnostic). Forbidden yardstick edits and syntactically broken
+      // files are refused before the metric is ever trusted — a broken test can score "better".
+      const changedFiles = await gitChangedFiles(cwd, gitFn);
+      let guardReject: string | undefined;
+      for (const f of changedFiles) {
+        const forb = forbiddenTargetReason(f, cwd, forbiddenTargets);
+        if (forb) { guardReject = `changed file ${f} is ${forb}`; break; }
+        const pe = await checkEditParses(f, cwd);
+        if (pe) { guardReject = `edit left ${f} broken (${pe})`; break; }
+      }
+      if (guardReject) { await reject(experimentId, edit.description, preExperimentHash, guardReject); experimentId++; continue; }
+
+      result = await runExperimentFn(config, experimentId, edit.description);
+      result = { ...result, description: edit.description };
+    } catch (err) {
+      logger.warn(`Experiment ${experimentId} threw — rolling back: ${err instanceof Error ? err.message : String(err)}`);
+      await crash(experimentId, `experiment ${experimentId}`, preExperimentHash); experimentId++; continue;
     }
-    let result = await runExperimentFn(config, experimentId, hypothesis.description);
+
     if (result.status !== 'crash' && result.metricValue !== null) {
       result = { ...result, status: shouldKeep(result.metricValue, bestValue, noiseMargin) ? 'keep' : 'discard' };
     }
     if (result.status === 'keep' && result.metricValue !== null) {
       try {
-        const hash = await gitCommitAll(`experiment: ${hypothesis.description}`, cwd, gitFn);
+        const prevBest = bestValue;
+        const hash = await gitCommitAll(`experiment: ${result.description}`, cwd, gitFn);
         result = { ...result, commitHash: hash };
         bestValue = result.metricValue!; bestHash = hash;
-        logger.success(`Kept! New best: ${bestValue} (was ${bestValue}). Commit: ${hash.slice(0, 8)}`);
+        logger.success(`Kept! New best: ${bestValue} (was ${prevBest}). Commit: ${hash.slice(0, 8)}`);
       } catch (err) { logger.warn(`Commit failed: ${err instanceof Error ? err.message : String(err)}`); }
     } else {
-      const reason = result.status === 'crash' ? 'crashed' : 'did not improve metric';
-      logger.info(`Discarding (${reason}). Rolling back to ${preExperimentHash.slice(0, 8)}.`);
-      try { await gitResetHard(preExperimentHash, cwd, gitFn); } catch (err) { logger.warn(`Rollback failed: ${err instanceof Error ? err.message : String(err)}`); }
+      const reasonText = result.status === 'crash' ? 'crashed' : 'did not improve metric';
+      logger.info(`Discarding (${reasonText}). Rolling back to ${preExperimentHash.slice(0, 8)}.`);
+      await rollbackExperiment(preExperimentHash, cwd, gitFn);
     }
     allExperiments.push(result); await appendTsv(tsvPath, result, appendFileFn);
     experimentId++;
@@ -523,6 +526,8 @@ export async function autoResearch(
     prompt?: boolean;
     dryRun?: boolean;
     allowDirty?: boolean;
+    /** Skip the coding-agent edit path and use the lightweight JSON-hypothesis path even if a CLI exists. */
+    noAgent?: boolean;
   } = {},
   _opts: AutoResearchOpts = {},
 ): Promise<void> {
@@ -552,6 +557,8 @@ export async function autoResearch(
   const readFileFn = _opts._readFile ?? ((p: string) => fs.readFile(p, 'utf8'));
   const sleepFn = _opts._sleep ?? ((ms: number) => new Promise<void>(r => setTimeout(r, ms)));
   const nowFn = _opts._now ?? (() => Date.now());
+  const isAgentEditAvailableFn = _opts._isAgentEditAvailable ?? isAgentEditAvailable;
+  const dispatchAgentEditFn = _opts._dispatchAgentEdit ?? dispatchAgentEdit;
 
   const measurementCommand = options.measurementCommand ?? deriveMeasurementCommand(metric);
   const displayMeasurementCommand = measurementCommand ?? '<provide --measurement-command>';
@@ -587,9 +594,14 @@ export async function autoResearch(
   if (!setup) return;
   const { branchName, baseline, allExperiments, bestValue: initBest, bestHash: initHash, tsvPath } = setup;
 
+  // Prefer the high-quality coding-agent edit path when a claude/codex CLI is installed; fall back to
+  // the lightweight JSON-hypothesis path otherwise (or when --no-agent is passed).
+  const useAgent = !options.noAgent && await isAgentEditAvailableFn();
+  logger.info(`Edit strategy: ${useAgent ? 'coding agent (claude/codex)' : 'JSON hypothesis (lightweight)'}`);
+
   const { bestValue, bestHash: _finalHash } = await runExperimentLoop(
-    config, allExperiments, initBest, initHash, tsvPath, noiseMargin, startTime, budgetMs,
-    callLLMFn, readFileFn, runExperimentFn, gitFn, isLLMAvailableFn, appendFileFn, nowFn, sleepFn, cwd,
+    config, allExperiments, initBest, initHash, tsvPath, noiseMargin, startTime, budgetMs, cwd,
+    { callLLMFn, readFileFn, runExperimentFn, gitFn, isLLMAvailableFn, appendFileFn, nowFn, sleepFn, useAgent, dispatchAgentEditFn },
   );
 
   await generateAndWriteReport(goal, metric, config, allExperiments, baseline, bestValue, branchName, tsvPath, startTime, nowFn, callLLMFn, isLLMAvailableFn, writeFileFn, loadStateFn, saveStateFn, cwd);
