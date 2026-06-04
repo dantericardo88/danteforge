@@ -80,6 +80,20 @@ program
   }));
 
 program
+  .command('sweep')
+  .description('Staged frontier campaign: sweep every dim to 5, pilot+sweep 5→7, delegate 7→9 to ascend-frontier (caps at 9.0)')
+  .option('--target <n>', 'Campaign target (default 9.0; clamped to the 9.0 autonomous ceiling)')
+  .option('--pilot-size <n>', 'How many dims to pilot to 7 before sweeping the rest (default 2)')
+  .option('--dry-run', 'Print the band snapshot + phase plan without executing')
+  .option('--json', 'Machine-readable result')
+  .action(async (opts) => (await C()).sweep({
+    target: opts.target !== undefined ? parseFloat(opts.target) : undefined,
+    pilotSize: opts.pilotSize !== undefined ? parseInt(opts.pilotSize, 10) : undefined,
+    dryRun: opts.dryRun,
+    json: opts.json,
+  }));
+
+program
   .command('harvest [goal]')
   .description('Discover and learn from OSS patterns. --level selects depth: light=focused pattern, standard=bounded OSS pass, deep=OSS+local+universe refresh.')
   .option('--level <level>', 'Canonical intensity: light | standard | deep')
