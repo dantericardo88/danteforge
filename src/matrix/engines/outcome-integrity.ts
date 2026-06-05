@@ -73,7 +73,7 @@ const SEAM_PATTERNS = [
 // (the regex must include `/` so tests/a/x.test.ts ≠ tests/b/x.test.ts).
 const extractTestFiles = extractPrimaryTestFiles;
 
-async function commandHasSeams(command: string, projectPath: string): Promise<boolean> {
+export async function commandHasSeams(command: string, projectPath: string): Promise<boolean> {
   // Check the command string itself first
   if (SEAM_PATTERNS.some(p => p.test(command))) return true;
   // Check referenced test files for seam patterns
@@ -290,7 +290,7 @@ function isTestPath(p: string): boolean {
   const n = p.replace(/\\/g, '/');
   return /\.(test|spec)\.[cm]?[jt]sx?$/.test(n) || /\/(tests?|__tests__)\//.test(n);
 }
-async function buildWiredBasenames(projectPath: string): Promise<Set<string>> {
+export async function buildWiredBasenames(projectPath: string): Promise<Set<string>> {
   const wired = new Set<string>();
   async function walk(dir: string): Promise<void> {
     let entries: import('node:fs').Dirent[];

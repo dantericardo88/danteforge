@@ -54,6 +54,17 @@ program
   }));
 
 program
+  .command('ground-outcomes')
+  .description('Make the outcome suite HONEST: ground gate-flagged outcomes to real wired callsites where the seam-free test exercises one, else honestly downgrade to orphan-pending. The repeatable "properly define" step — never fabricates. Run on any project via --project.')
+  .option('--project <path>', 'Target project root (default: cwd) — point at a fleet repo to ground its outcomes')
+  .option('--apply', 'Write the grounded matrix (default: dry-run report)')
+  .option('--json', 'Emit the grounding result as JSON')
+  .action(async (opts) => {
+    const { groundOutcomesCommand } = await import('./commands/ground-outcomes.js');
+    await groundOutcomesCommand({ project: opts.project, apply: opts.apply, json: opts.json });
+  });
+
+program
   .command('dim-triage')
   .description('Classify every sub-target dimension and route it to the loop that can move it (autoresearch | matrixdev | fix-test | ceiling)')
   .option('--target <n>', 'Score below which a dim is triaged (default: 7.0)')

@@ -1,0 +1,152 @@
+// outcome-grounding.ts — make any project's outcome suite HONEST, automatically.
+//
+// The universe-definer scaffolds dimensions with un-grounded outcomes: a
+// required_callsite pointing at a sentinel string, a test file, or a module that is
+// not wired into the product. This engine grounds them: for every outcome the
+// integrity gate flags, it either
+//   (a) GROUNDS it — repoints required_callsite to a real, production-wired module
+//       that the outcome's SEAM-FREE test genuinely imports (recovers an honest
+//       score, e.g. the decoupled-but-real case), or
+//   (b) DOWNGRADES it to T2 (orphan-pending) — when the test is seamed, or no wired
+//       module is exercised, or the outcome is un-grounded.
+//
+// It never invents evidence: it only ever points a callsite at a module the test actually
+// imports AND that production code imports. Everything else is honestly downgraded.
+// This is what makes "properly define all dimensions" repeatable + safe on any
+// project (run, then validate — the score can't lie). The result is re-checked by
+// the same gate that scores it.
+
+import fs from 'node:fs/promises';
+import { existsSync } from 'node:fs';
+import path from 'node:path';
+import { extractPrimaryTestFiles } from './derived-score.js';
+import { checkOutcomeIntegrity, buildWiredBasenames, commandHasSeams } from '../matrix/engines/outcome-integrity.js';
+import type { CompeteMatrix } from './compete-matrix.js';
+
+const HIGH = new Set(['T5', 'T6', 'T7', 'T8']);
+
+export type GroundingStatus = 'already-honest' | 'grounded' | 'downgraded' | 'partial';
+
+export interface GroundingResult {
+  dimId: string;
+  status: GroundingStatus;
+  /** Human-readable per-outcome changes applied. */
+  changes: string[];
+  /** Candidate wired modules a downgraded outcome could reach T5 against (after de-seaming). */
+  suggestions: string[];
+}
+
+export interface GroundingSummary {
+  results: GroundingResult[];
+  counts: Record<GroundingStatus, number>;
+}
+
+interface LooseOutcome { id: string; tier: string; command?: string; required_callsite?: string; description?: string }
+interface LooseDim { id: string; outcomes?: LooseOutcome[] }
+
+/**
+ * Mutates `matrix` in place: grounds or honestly downgrades every gate-flagged
+ * T5+ outcome. Caller decides whether to persist. Re-run the gate afterward to
+ * confirm CLEAN.
+ */
+export async function groundOutcomes(opts: { matrix: CompeteMatrix; projectPath: string }): Promise<GroundingSummary> {
+  const { matrix, projectPath } = opts;
+  const dims = matrix.dimensions as unknown as LooseDim[];
+  const wired = await buildWiredBasenames(projectPath);
+  const report = await checkOutcomeIntegrity(dims, projectPath);
+  const dirty = new Set([...report.seamedDims, ...report.decoupledDims, ...report.orphanDims]);
+  const results: GroundingResult[] = [];
+
+  for (const dim of dims) {
+    if (!dirty.has(dim.id)) { results.push({ dimId: dim.id, status: 'already-honest', changes: [], suggestions: [] }); continue; }
+    const changes: string[] = [];
+    const suggestions: string[] = [];
+    let grounded = false, downgraded = false;
+
+    for (const o of dim.outcomes ?? []) {
+      if (!HIGH.has(o.tier)) continue;
+      const flagged = report.violations.some(v => v.dimId === dim.id && v.outcomeId === o.id);
+      if (!flagged) continue;
+
+      const seamed = await commandHasSeams(o.command ?? '', projectPath);
+      const cand = await findWiredCallsite(o.command ?? '', projectPath, wired);
+
+      if (cand && !seamed) {
+        if (o.required_callsite !== cand) {
+          changes.push(`${o.id}: callsite ${o.required_callsite ?? '(none)'} -> ${cand} (real wired module the test exercises)`);
+        }
+        o.required_callsite = cand;
+        grounded = true;
+      } else {
+        const reason = seamed ? 'seamed test (proves code paths, not real behavior)'
+          : 'no production-wired module is exercised (orphan / un-grounded)';
+        changes.push(`${o.id}: ${o.tier} -> T2 — ${reason} [honest orphan-pending]`);
+        o.tier = 'T2';
+        delete o.required_callsite;
+        if (!/orphan-pending|downgraded to T2/i.test(o.description ?? '')) {
+          o.description = `[grounded: downgraded to T2 — ${reason}] ${o.description ?? ''}`.trim();
+        }
+        downgraded = true;
+        if (cand && seamed) suggestions.push(`${o.id}: de-seam its test to reach T5 against ${cand}`);
+      }
+    }
+
+    const status: GroundingStatus = grounded && downgraded ? 'partial' : grounded ? 'grounded' : 'downgraded';
+    results.push({ dimId: dim.id, status, changes, suggestions });
+  }
+
+  const counts: Record<GroundingStatus, number> = { 'already-honest': 0, grounded: 0, downgraded: 0, partial: 0 };
+  for (const r of results) counts[r.status] += 1;
+  return { results, counts };
+}
+
+// Find a real, production-wired module that the outcome's test file genuinely imports.
+async function findWiredCallsite(command: string, projectPath: string, wired: Set<string>): Promise<string | null> {
+  for (const abs of locateTestFiles(command, projectPath)) {
+    let content: string;
+    try { content = await fs.readFile(abs, 'utf8'); } catch { continue; }
+    for (const spec of extractLocalImports(content)) {
+      const base = path.basename(spec).replace(/\.[cm]?[jt]sx?$/, '');
+      if (!wired.has(base)) continue;
+      const resolved = resolveToProject(abs, spec, projectPath);
+      if (resolved) return resolved;
+    }
+  }
+  return null;
+}
+
+// Candidate absolute paths for the command's test file(s) — handles `cd <dir> && ...`
+// (monorepo) plus the standard tests/ src/ project-root locations.
+function locateTestFiles(command: string, projectPath: string): string[] {
+  const cd = command.match(/cd\s+([^\s&|;]+)/);
+  const baseDir = cd ? path.join(projectPath, cd[1]!) : projectPath;
+  const out: string[] = [];
+  for (const tf of extractPrimaryTestFiles(command)) {
+    for (const root of [baseDir, projectPath, path.join(projectPath, 'tests'), path.join(projectPath, 'src')]) {
+      out.push(path.join(root, tf));
+    }
+  }
+  return out;
+}
+
+function extractLocalImports(content: string): string[] {
+  const re = /(?:from|import|require)\s*\(?\s*['"]([^'"]+)['"]/g;
+  const out: string[] = [];
+  for (const m of content.matchAll(re)) {
+    const s = m[1]!;
+    if (s.startsWith('.') || s.includes('/src/')) out.push(s);
+  }
+  return out;
+}
+
+// Resolve a test's import specifier to a project-relative module path that exists.
+function resolveToProject(testAbs: string, spec: string, projectPath: string): string | null {
+  const baseAbs = (spec.startsWith('.') ? path.resolve(path.dirname(testAbs), spec) : path.join(projectPath, spec))
+    .replace(/\.[cm]?[jt]sx?$/, '');
+  for (const ext of ['.ts', '.tsx', '.mts', '.js']) {
+    if (existsSync(baseAbs + ext)) {
+      return path.relative(projectPath, baseAbs + ext).split(path.sep).join('/');
+    }
+  }
+  return null;
+}
