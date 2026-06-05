@@ -25,6 +25,7 @@ import { writeVerifiedScore } from './write-verified-score.js';
 import { readSweBenchScore, formatSweBenchGoal, isSweBenchDimension } from './swe-bench-probe.js';
 import { defineUniverse, type UniverseDefinerOptions } from './universe-definer.js';
 import { runAutoforgeLoop, AutoforgeLoopState, type AutoforgeLoopContext, type AutoforgeLoopDeps } from './autoforge-loop.js';
+import { diagnoseStallFromProject, routeStallAction, formatDiagnosis } from './frontier-course-corrector.js';
 import { executeAutoforgeCommand } from './autoforge-executor.js';
 import { generateAdversarialCritique } from './adversarial-critique.js';
 import { logger } from './logger.js';
@@ -232,6 +233,8 @@ interface AscendCycleState {
   dimensionsImproved: number;
   plateauedDims: Set<string>;
   dimRetryCounts: Record<string, number>;
+  /** Per-dim evidence-based course-corrections applied on a stall (budget-bounded → honest ceiling). */
+  dimCorrectionCounts: Record<string, number>;
   pendingCritique: AdversarialCritique | null;
   critiqueTargetDimId: string | null;
   state: Awaited<ReturnType<typeof loadState>> | { project?: string };
@@ -490,6 +493,29 @@ async function rescoreAndGetDelta(
   return { newSelfScore, delta, newScoreResult };
 }
 
+// Evidence-based course-correction on a stall: diagnose WHY the build didn't move the score
+// (from outcome-integrity + changed files + the score delta), then ACT — run a self-correcting
+// command (ground-outcomes for an honesty stall) and retry, or stop the dim at an honest ceiling.
+// Replaces the old "blindly add to plateaued". Budget-bounded inside diagnoseStall → no infinite
+// churn. Under the test runner we keep the legacy plateau (the routing + diagnosis are unit-tested
+// directly; this avoids real git/matrix I/O against the test cwd).
+async function applyStallCorrection(
+  nextDim: MatrixDimension, beforeScore: number, newSelfScore: number,
+  cs: AscendCycleState, cwd: string,
+  exec: (cmd: string, cwd: string) => Promise<{ success: boolean }>,
+): Promise<void> {
+  if (process.env['NODE_TEST_CONTEXT']) { cs.plateauedDims.add(nextDim.id); logger.info('  (plateau detected — moving to next dimension)'); return; }
+  const attempts = cs.dimCorrectionCounts[nextDim.id] ?? 0;
+  const diag = await diagnoseStallFromProject({ cwd, dimId: nextDim.id, scoreBefore: beforeScore, scoreAfter: newSelfScore, attemptsSoFar: attempts });
+  cs.dimCorrectionCounts[nextDim.id] = attempts + 1;
+  logger.info('  ' + formatDiagnosis(diag));
+  logger.info(`  [course-correct] ${diag.rationale}`);
+  const route = routeStallAction(diag);
+  if (route.exec) { await exec(route.exec, cwd).catch((e: unknown) => logger.warn(`  [course-correct] ${route.exec} failed: ${String(e)}`)); }
+  if (route.plateau) cs.plateauedDims.add(nextDim.id);
+  else cs.plateauedDims.delete(nextDim.id); // un-plateau → the loop revisits this dim and retries
+}
+
 async function runAdversarialCritiqueStep(
   options: AscendEngineOptions, generateCritiqueFn: AscendEngineOptions['_generateCritique'],
   nextDim: MatrixDimension, newSelfScore: number, beforeScore: number,
@@ -653,7 +679,7 @@ export async function runAscend(options: AscendEngineOptions = {}): Promise<Asce
 
   const loopSetup = await setupAscendLoopState(options, cwd, beforeScores, executeCommandFn, loadCheckpointFn);
   const { wrappedExecuteCommandFn, startedAt } = loopSetup;
-  const cs: AscendCycleState = { cyclesRun: loopSetup.cyclesRun, dimensionsImproved: 0, plateauedDims: loopSetup.plateauedDims, dimRetryCounts: {}, pendingCritique: null, critiqueTargetDimId: null, state: initState };
+  const cs: AscendCycleState = { cyclesRun: loopSetup.cyclesRun, dimensionsImproved: 0, plateauedDims: loopSetup.plateauedDims, dimRetryCounts: {}, dimCorrectionCounts: {}, pendingCritique: null, critiqueTargetDimId: null, state: initState };
   const dimTracker = createStepTracker(achievable.length);
 
   while (cs.cyclesRun < maxCycles) {
@@ -751,8 +777,13 @@ export async function runAscend(options: AscendEngineOptions = {}): Promise<Asce
     }
     cs.state = await loadStateFn({ cwd }).catch(() => cs.state);
     const { newSelfScore, delta, newScoreResult } = await rescoreAndGetDelta(harshScoreFn, computeStrictDimsFn, nextDim, beforeScore, cwd);
-    if (Math.abs(delta) < 0.1) { cs.plateauedDims.add(nextDim.id); logger.info(`  (plateau detected — moving to next dimension)`); }
-    else { cs.plateauedDims.delete(nextDim.id); if (delta > 0) cs.dimensionsImproved++; }
+    if (Math.abs(delta) < 0.1) {
+      // STALL — the build didn't move the score. Instead of blindly plateauing, diagnose WHY from
+      // hard evidence (outcome-integrity violations + changed files + score delta) and adjust course.
+      // Budget-bounded: after MAX_COURSE_CORRECTIONS the diagnosis returns an honest ceiling.
+      await applyStallCorrection(nextDim, beforeScore, newSelfScore, cs, cwd, wrappedExecuteCommandFn);
+    }
+    else { cs.plateauedDims.delete(nextDim.id); cs.dimCorrectionCounts[nextDim.id] = 0; if (delta > 0) cs.dimensionsImproved++; }
     await runAdversarialCritiqueStep(options, generateCritiqueFn, nextDim, newSelfScore, beforeScore, target, goal, cwd, maxDimRetries, cs);
     // Phase E final migration: proposal flow is the single writer.
     void saveMatrixFn;

@@ -128,6 +128,77 @@ export function isCeiling(d: StallDiagnosis): boolean {
   return d.category === 'honest-ceiling' || d.category === 'unbuildable';
 }
 
+/**
+ * Gather the live evidence for a stalled dim from the project (outcome-integrity
+ * violations + changed-files count from git), then diagnose. Best-effort: any
+ * source that can't be read contributes nothing rather than throwing, so a stall
+ * is always diagnosable (it degrades to the score-delta branch). Seams let tests
+ * drive it without a real repo. Command exit codes are not yet threaded (no
+ * per-cycle RunLedger in ascend), so `commands` is empty — integrity + diff +
+ * score-delta carry the diagnosis, which is exactly the honesty-stall path that
+ * routes to ground-outcomes.
+ */
+export async function diagnoseStallFromProject(deps: {
+  cwd: string; dimId: string; scoreBefore: number; scoreAfter: number; attemptsSoFar: number;
+  _integrityViolations?: () => Promise<Array<{ kind: string; detail: string }>>;
+  _changedFiles?: () => Promise<number>;
+}): Promise<StallDiagnosis> {
+  let integrityViolations: Array<{ kind: string; detail: string }> = [];
+  try {
+    if (deps._integrityViolations) {
+      integrityViolations = await deps._integrityViolations();
+    } else {
+      const { checkOutcomeIntegrity } = await import('../matrix/engines/outcome-integrity.js');
+      const { loadMatrix } = await import('./compete-matrix.js');
+      const m = await loadMatrix(deps.cwd);
+      if (m) {
+        const r = await checkOutcomeIntegrity(m.dimensions as never, deps.cwd);
+        integrityViolations = r.violations
+          .filter((v: { dimId: string }) => v.dimId === deps.dimId)
+          .map((v: { kind: string; detail: string }) => ({ kind: v.kind, detail: v.detail }));
+      }
+    }
+  } catch { /* best-effort */ }
+
+  let filesChanged = 0;
+  try { filesChanged = deps._changedFiles ? await deps._changedFiles() : await countChangedFiles(deps.cwd); } catch { /* best-effort */ }
+
+  return diagnoseStall({
+    dimId: deps.dimId, scoreBefore: deps.scoreBefore, scoreAfter: deps.scoreAfter,
+    commands: [], gateFailures: [], integrityViolations, filesChanged, attemptsSoFar: deps.attemptsSoFar,
+  });
+}
+
+async function countChangedFiles(cwd: string): Promise<number> {
+  const { execFile } = await import('node:child_process');
+  const { promisify } = await import('node:util');
+  const { stdout } = await promisify(execFile)('git', ['status', '--porcelain'], { cwd });
+  return stdout.split('\n').filter(l => l.trim().length > 0).length;
+}
+
+/** What the orchestrator should do for a diagnosis: maybe run a self-correcting CLI
+ *  command, and whether to plateau the dim (stop) or let it retry. Pure — the loop
+ *  executes the side effects. */
+export interface StallActionResult {
+  /** A danteforge subcommand to run as the self-correction, or null (just retry). */
+  exec: string | null;
+  /** true = stop this dim (honest ceiling / unbuildable); false = retry next cycle. */
+  plateau: boolean;
+}
+
+export function routeStallAction(d: StallDiagnosis): StallActionResult {
+  switch (d.action) {
+    case 'ground-orphan':
+    case 'fix-outcome':
+      return { exec: 'ground-outcomes --apply', plateau: false }; // grounding fixes the honesty stall → retry
+    case 'retry-decompose':
+      return { exec: null, plateau: false };                       // retry a different approach (budget-bounded)
+    case 'mark-unbuildable':
+    case 'honest-ceiling':
+      return { exec: null, plateau: true };                        // nothing more will help — stop honestly
+  }
+}
+
 export function formatDiagnosis(d: StallDiagnosis): string {
   const facts = d.evidence.map(e => `${e.kind}:${e.detail}`).join(' | ');
   return `[course-correct] ${d.dimId} → ${d.category} ⇒ ${d.action}  (${facts})`;
