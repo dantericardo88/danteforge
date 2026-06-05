@@ -7,7 +7,7 @@ import fs from 'fs/promises';
 import path from 'path';
 import { logger } from '../../core/logger.js';
 import { loadMatrix, saveMatrix, type CompeteMatrix, type MatrixDimension } from '../../core/compete-matrix.js';
-import { MARKET_DIMS_SCORE_CAP } from '../../core/compete-matrix-score.js';
+import { MARKET_DIMS_SCORE_CAP, decisionDimScore } from '../../core/compete-matrix-score.js';
 import { isLLMAvailable, callLLM } from '../../core/llm.js';
 import { withErrorBoundary } from '../../core/cli-error-boundary.js';
 import {
@@ -32,17 +32,26 @@ export interface ClassifyDeps {
   llmOk: boolean;
   callLLM: (prompt: string) => Promise<string>;
   excluded?: Set<string>;
+  /** Cap LLM classifications per run — a 100-scaffold-dim matrix would otherwise fire 100 LLM calls
+   *  and hang on a slow/flaky provider (the triage-hang the fleet hit). Default 12. */
+  maxLLM?: number;
 }
 
 /** Classify every sub-target dimension (deterministic + an LLM judgment pass for the ambiguous ones). */
 export async function classifyMatrixDims(dims: LooseDim[], deps: ClassifyDeps): Promise<DimClassification[]> {
   const excluded = deps.excluded ?? new Set<string>();
-  const todo = dims.filter(d => (d.scores?.self ?? 0) < deps.target && !excluded.has(d.id));
+  // Filter on decisionDimScore — the SAME canonical score the sweep orchestrator bands on — not raw
+  // scores.self. Filtering on self let an inflated self=7 (with no verified evidence) be skipped as
+  // "at target" while sweep banded it below5, so the plan and the executor disagreed (council).
+  const todo = dims.filter(d => decisionDimScore(d) < deps.target && !excluded.has(d.id));
   const out: DimClassification[] = [];
+  const maxLLM = deps.maxLLM ?? 12;
+  let llmUsed = 0;
   for (const dim of todo) {
     const signals = await gatherSignals(dim, deps.cwd, deps.fileExists);
     let cls = classifyDimDeterministic(signals);
-    if (cls.needsLLM && deps.llmOk) {
+    if (cls.needsLLM && deps.llmOk && llmUsed < maxLLM) {
+      llmUsed++;
       try {
         const src = await readScriptSource(signals, deps.cwd, deps.readFile);
         const parsed = parseClassifyResponse(signals, await deps.callLLM(buildClassifyPrompt(signals, src)));

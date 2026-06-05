@@ -11,7 +11,7 @@ import fs from 'fs/promises';
 import path from 'path';
 import { spawn } from 'node:child_process';
 import { logger } from '../../core/logger.js';
-import { loadMatrix, saveMatrix } from '../../core/compete-matrix.js';
+import { loadMatrix, saveMatrix, invalidateMatrixCache } from '../../core/compete-matrix.js';
 import { isLLMAvailable, callLLM } from '../../core/llm.js';
 import { withErrorBoundary } from '../../core/cli-error-boundary.js';
 import { promoteVerifiedScore, type PromoteResult } from '../../core/promote-score.js';
@@ -96,7 +96,10 @@ export async function dimDispatch(opts: DimDispatchOpts = {}): Promise<void> {
     const target = resolveAutonomousTarget(opts.target, 7.0);
     const max = opts.max ?? 3;
     const time = opts.time ?? '10m';
-    const loadMatrixFn = opts._loadMatrix ?? ((c?: string) => loadMatrix(c, (p) => fs.readFile(p, 'utf8'))); // bypass cache → fresh derived
+    // Force a FRESH read that STILL applies outcome-derived scores. Passing _fsRead bypasses the cache
+    // but ALSO skips applyOutcomeDerivedScores (compete-matrix.ts) — so the post-outcomes reload saw no
+    // fresh derived and promote never fired (council/Codex). invalidate + plain loadMatrix does both.
+    const loadMatrixFn = opts._loadMatrix ?? (async (c?: string) => { invalidateMatrixCache(); return loadMatrix(c); });
     const saveMatrixFn = opts._saveMatrix ?? saveMatrix;
     const callLLMFn = opts._callLLM ?? ((p: string) => callLLM(p, undefined, { enrichContext: false, cwd }));
     const fileExists = opts._fileExists ?? (async (p: string) => { try { await fs.access(p); return true; } catch { return false; } });

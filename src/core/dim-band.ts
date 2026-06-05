@@ -2,7 +2,7 @@
 // sweep orchestrator schedules over: which band is a dim in (below5 / fiveToSeven / sevenToNine /
 // done), is it at a ceiling, does it carry a capability_test and declared outcomes. No IO.
 
-import { effectiveDimScore, MARKET_DIMS_SCORE_CAP, MARKET_DIM_MAX_SCORE } from './compete-matrix-score.js';
+import { decisionDimScore, MARKET_DIMS_SCORE_CAP, MARKET_DIM_MAX_SCORE } from './compete-matrix-score.js';
 import { MAX_AUTONOMOUS_TARGET } from './autonomy-cap.js';
 import type { MatrixDimension, CompeteMatrix } from './compete-matrix.js';
 
@@ -34,7 +34,11 @@ export function bandFor(score: number): ScoreBand {
 }
 
 export function dimBandState(dim: BandDim): DimBandState {
-  const effectiveScore = effectiveDimScore(dim);
+  // decisionDimScore — the SINGLE canonical work-decision score (council/Codex): it's the effective
+  // score (min self/derived) when fresh evidence exists, but caps a dim that DECLARES outcomes yet has
+  // no derived evidence at 5.0 (unverified ≠ done). classifyMatrixDims must filter on the SAME score,
+  // or the orchestrator's band plan and the dispatcher's eligibility disagree (the reported mismatch).
+  const effectiveScore = decisionDimScore(dim);
   const ceiling = dim.ceiling;
   const atCeiling =
     effectiveScore >= MAX_AUTONOMOUS_TARGET

@@ -7,7 +7,7 @@ import path from 'path';
 import { spawn } from 'node:child_process';
 import { logger } from '../../core/logger.js';
 import { withErrorBoundary } from '../../core/cli-error-boundary.js';
-import { loadMatrix, saveMatrix, type CompeteMatrix } from '../../core/compete-matrix.js';
+import { loadMatrix, saveMatrix, invalidateMatrixCache, type CompeteMatrix } from '../../core/compete-matrix.js';
 import { resolveAutonomousTarget } from '../../core/autonomy-cap.js';
 import { snapshotBands, bandCounts } from '../../core/dim-band.js';
 import { runFullSweep, type SweepDeps, type SweepResult } from '../../core/sweep-orchestrator.js';
@@ -23,10 +23,14 @@ interface SweepOptions {
   _deps?: SweepDeps;
   _writeFile?: (p: string, c: string) => Promise<void>;
   _mkdir?: (p: string) => Promise<void>;
+  /** Bootstrap check — does the checkout have node_modules so capability_tests/outcomes can actually run? */
+  _nodeModulesExists?: (cwd: string) => Promise<boolean>;
 }
 
 const CLI = (): string => process.argv[1] ?? 'dist/index.js';
-const freshLoad = (cwd: string) => loadMatrix(cwd, (p) => fs.readFile(p, 'utf8')); // bypass cache → fresh derived
+// Force a FRESH read that STILL applies outcome-derived scores. _fsRead bypasses the cache but ALSO
+// skips applyOutcomeDerivedScores — so a reload via _fsRead sees no fresh derived (council/Codex).
+const freshLoad = async (cwd: string) => { invalidateMatrixCache(); return loadMatrix(cwd); };
 
 export async function sweep(opts: SweepOptions = {}): Promise<void> {
   return withErrorBoundary('sweep', async () => {
@@ -49,6 +53,15 @@ export async function sweep(opts: SweepOptions = {}): Promise<void> {
       logger.info('--dry-run: no execution.');
       if (opts.json) process.stdout.write(JSON.stringify({ target, bands: before }, null, 2) + '\n');
       return;
+    }
+
+    // Bootstrap gate: a checkout with no node_modules cannot execute its own capability_tests/outcomes,
+    // so EVERY dim would derive 0 and the chain would churn forever moving nothing (the inert state the
+    // fleet hit). Refuse the live run with a clear remedy rather than burning loops on a phantom project.
+    const nodeModulesExists = opts._nodeModulesExists ?? (async (c: string) => { try { await fs.access(path.join(c, 'node_modules')); return true; } catch { return false; } });
+    if (!(await nodeModulesExists(cwd))) {
+      logger.error('[sweep] node_modules is missing — this checkout cannot run its own capability_tests/outcomes (every dim derives 0). Run `npm ci && npm run build` first, then re-run sweep. (`--dry-run` still works.)');
+      process.exitCode = 1; return;
     }
 
     const result = await runFullSweep(cwd, { target, pilotSize: opts.pilotSize }, opts._deps ?? defaultSweepDeps());
