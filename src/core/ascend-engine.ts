@@ -26,6 +26,7 @@ import { readSweBenchScore, formatSweBenchGoal, isSweBenchDimension } from './sw
 import { defineUniverse, type UniverseDefinerOptions } from './universe-definer.js';
 import { runAutoforgeLoop, AutoforgeLoopState, type AutoforgeLoopContext, type AutoforgeLoopDeps } from './autoforge-loop.js';
 import { diagnoseStallFromProject, routeStallAction, formatDiagnosis } from './frontier-course-corrector.js';
+import { nextLevelGoalSuffix } from './rubric-ladder.js';
 import { executeAutoforgeCommand } from './autoforge-executor.js';
 import { generateAdversarialCritique } from './adversarial-critique.js';
 import { logger } from './logger.js';
@@ -439,11 +440,14 @@ async function executeDimensionCycle(
     // SWE-bench gets a goal that names specific failure modes from the latest
     // bench-results.json. Other dimensions stay on the generic improve-goal —
     // the harsh-scorer for those dims can drive convergence on its own.
-    const forgeGoal = isSweBenchDimension(nextDim.id)
+    // Tell the builder EXACTLY what the next score level requires for this dim, from the
+    // competitor-grounded rubric ladder (research output, not invented). Empty if no ladder.
+    const rubricSuffix = await nextLevelGoalSuffix(cwd, nextDim.id, beforeScore).catch(() => '');
+    const forgeGoal = (isSweBenchDimension(nextDim.id)
       ? await formatSweBenchGoal(cwd, target).catch(() =>
           `Improve ${nextDim.label}: current ${beforeScore.toFixed(1)}/10, target ${target}/10`,
         )
-      : `Improve ${nextDim.label}: current ${beforeScore.toFixed(1)}/10, target ${target}/10`;
+      : `Improve ${nextDim.label}: current ${beforeScore.toFixed(1)}/10, target ${target}/10`) + rubricSuffix;
     const setWorkflowStageFn = options._setWorkflowStage ?? (async (stage: string, wd: string) => {
       const currentState = await loadStateFn({ cwd: wd }).catch(() => null);
       if (currentState) {
