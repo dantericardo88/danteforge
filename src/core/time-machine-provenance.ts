@@ -5,6 +5,8 @@ import path from 'node:path';
 import type { DecisionNode, DecisionNodeStore } from './decision-node.js';
 import type { TimeMachineCommit, TimeMachineSnapshotEntry } from './time-machine.js';
 
+export const PROVENANCE_SCHEMA_VERSION = 'danteforge.time-machine.provenance.v2' as const;
+
 export interface LineProvenanceRecord {
   commitId: string;
   label: string;
@@ -12,10 +14,35 @@ export interface LineProvenanceRecord {
   sourceLine: number;
 }
 
+/** Per-file provenance as of one commit. `blobHash` lets an incremental update
+ *  read this version's text later to diff the NEXT version — so the index is
+ *  self-sufficient and the hot path never has to reload commit objects. */
+export interface LineProvenanceFileNode {
+  blobHash: string;
+  records: LineProvenanceRecord[];
+}
+
+/** A commit stores ONLY the files it touched (a DELTA), plus its parent so a
+ *  query can walk back to the nearest ancestor that touched a file. This is what
+ *  makes the index O(edited content) instead of O(commits × files × lines) — the
+ *  unbounded full-clone-per-commit model was the 500+ MB / OOM root cause. */
+export interface LineProvenanceCommitNode {
+  parent: string | null;
+  files: Record<string, LineProvenanceFileNode>;
+}
+
 export interface LineProvenanceIndex {
-  schemaVersion: 'danteforge.time-machine.provenance.v1';
+  schemaVersion: typeof PROVENANCE_SCHEMA_VERSION;
   updatedAt: string;
-  commits: Record<string, { files: Record<string, LineProvenanceRecord[]> }>;
+  commits: Record<string, LineProvenanceCommitNode>;
+}
+
+/** How the provenance engine pulls commits without holding all of them in
+ *  memory: list ids cheaply (from the reflog), load one at a time for a
+ *  streaming rebuild. Supplied by time-machine.ts. */
+export interface ProvenanceCommitSource {
+  listCommitIds: () => Promise<string[]>;
+  loadCommit: (commitId: string) => Promise<TimeMachineCommit>;
 }
 
 export interface LineProvenanceQueryResult extends LineProvenanceRecord {
@@ -31,28 +58,82 @@ export interface LineProvenanceQueryResult extends LineProvenanceRecord {
   };
 }
 
+// v2 lives in a NEW file so the (possibly gigantic) v1 line-provenance-index.json
+// is never parsed — loading it would OOM by itself (it grew past 500 MB under the
+// old full-clone-per-commit model). The legacy file is deleted on the first v2 write.
+const INDEX_FILENAME = 'line-provenance-index-v2.json';
+const LEGACY_INDEX_FILENAME = 'line-provenance-index.json';
+
+// Per-file LCS is O(prev × next); cap it so one giant file can't become a compute
+// bomb. Past the cap, attribute every line to the current commit (coarser, safe).
+const LCS_LINE_CAP = 4000;
+
+// Skip files where per-line provenance is meaningless AND ruinously expensive:
+// bulk machine-generated evidence/receipts that get re-snapshotted wholesale on
+// every validate/forge cycle (thousands of files × thousands of commits = the
+// compute bomb + the 500 MB index), the time-machine store itself, and oversized
+// blobs. Real source/docs/ledger files are kept.
+function isProvenanceWorthy(entry: TimeMachineSnapshotEntry): boolean {
+  if (entry.contentType === 'binary') return false;
+  if (entry.byteLength > 512 * 1024) return false;
+  const p = entry.path.replace(/\\/g, '/');
+  if (p.includes('.danteforge/outcome-evidence/')) return false;
+  if (p.includes('.danteforge/time-machine/')) return false;
+  if (p.includes('.danteforge/harden-receipts/')) return false;
+  if (p.includes('.danteforge/reports/')) return false;
+  if (p.includes('/evidence-export/')) return false;
+  return true;
+}
+
+function freshIndex(): LineProvenanceIndex {
+  return { schemaVersion: PROVENANCE_SCHEMA_VERSION, updatedAt: '', commits: {} };
+}
+
+/**
+ * Full rebuild — STREAMING. Loads one commit at a time (never the whole reflog
+ * array) and writes per-commit DELTAS (only the provenance-worthy files that
+ * commit touched). Used for repair + the lazy self-heal on query, NOT on the
+ * commit hot path. Peak memory is the working set of tracked source files, not
+ * commits × files.
+ */
 export async function writeLineProvenanceIndex(options: {
-  cwd: string;
   root: string;
-  commits: TimeMachineCommit[];
+  source: ProvenanceCommitSource;
 }): Promise<LineProvenanceIndex> {
-  const index = await buildLineProvenanceIndex(options);
-  await fs.mkdir(path.join(options.root, 'index'), { recursive: true });
-  await fs.writeFile(indexPath(options.root), JSON.stringify(index, null, 2) + '\n', 'utf8');
+  const index = await rebuildStreaming(options.root, options.source);
+  await persistIndex(options.root, index);
+  // Reclaim the legacy v1 monster (can be hundreds of MB) — best-effort.
+  await fs.rm(path.join(options.root, 'index', LEGACY_INDEX_FILENAME), { force: true }).catch(() => {});
   return index;
+}
+
+/**
+ * Hot-path incremental append: index ONLY the provenance-worthy files the new
+ * commit touched, diffing against the nearest ancestor already in the index.
+ * O(touched worthy files) — never reloads history, never rebuilds. This replaced
+ * the per-commit full rebuild that loaded all commits and OOMed at 3316.
+ */
+export async function updateLineProvenanceForCommit(options: {
+  root: string;
+  commit: TimeMachineCommit;
+}): Promise<void> {
+  const index = (await readIndexFile(options.root)) ?? freshIndex();
+  await appendCommit(options.root, index, options.commit);
+  await persistIndex(options.root, index);
 }
 
 export async function queryLineProvenance(options: {
   cwd: string;
   root: string;
-  commits: TimeMachineCommit[];
+  source: ProvenanceCommitSource;
   commitId: string;
   filePath: string;
   line: number;
 }): Promise<LineProvenanceQueryResult | null> {
   const normalized = normalizePath(options.filePath);
-  const index = await loadOrBuildLineProvenanceIndex(options);
-  const record = index.commits[options.commitId]?.files[normalized]?.[options.line - 1];
+  const index = await loadOrBuildIndex(options.root, options.source);
+  const node = findFileNode(index, options.commitId, normalized);
+  const record = node?.records[options.line - 1];
   if (!record) return null;
   const decisionNode = await findDecisionNodeForCommit(options.cwd, record.commitId);
   return {
@@ -63,58 +144,88 @@ export async function queryLineProvenance(options: {
   };
 }
 
-async function loadOrBuildLineProvenanceIndex(options: {
-  cwd: string;
-  root: string;
-  commits: TimeMachineCommit[];
-}): Promise<LineProvenanceIndex> {
-  try {
-    const raw = await fs.readFile(indexPath(options.root), 'utf8');
-    const parsed = JSON.parse(raw) as LineProvenanceIndex;
-    const knownIds = new Set(options.commits.map(commit => commit.commitId));
-    const hasAllCommits = options.commits.every(commit => parsed.commits[commit.commitId]);
-    if (hasAllCommits && Object.keys(parsed.commits).every(commitId => knownIds.has(commitId))) return parsed;
-  } catch {
-    // Rebuild below from canonical commit objects and blobs.
+// Return the cached index iff it is v2 AND covers exactly the full commit set
+// (no missing, no extra). Otherwise rebuild (streaming). A partial/hot-path index
+// is never served to a query — the gate forces a one-time full rebuild, after
+// which incremental appends keep it complete.
+async function loadOrBuildIndex(root: string, source: ProvenanceCommitSource): Promise<LineProvenanceIndex> {
+  const existing = await readIndexFile(root);
+  if (existing) {
+    const ids = await source.listCommitIds();
+    const known = new Set(ids);
+    const hasAll = ids.every(id => existing.commits[id]);
+    const noExtra = Object.keys(existing.commits).every(id => known.has(id));
+    if (hasAll && noExtra) return existing;
   }
-  return writeLineProvenanceIndex(options);
+  return writeLineProvenanceIndex({ root, source });
 }
 
-async function buildLineProvenanceIndex(options: {
-  root: string;
-  commits: TimeMachineCommit[];
-}): Promise<LineProvenanceIndex> {
-  const currentFiles = new Map<string, LineProvenanceRecord[]>();
+async function rebuildStreaming(root: string, source: ProvenanceCommitSource): Promise<LineProvenanceIndex> {
+  const index = freshIndex();
   const currentLines = new Map<string, string[]>();
-  const commits: LineProvenanceIndex['commits'] = {};
-
-  for (const commit of options.commits) {
+  const currentRecords = new Map<string, LineProvenanceRecord[]>();
+  for (const commitId of await source.listCommitIds()) {
+    let commit: TimeMachineCommit;
+    try { commit = await source.loadCommit(commitId); } catch { continue; }
+    const parent = commit.parents[0] ?? null;
+    const files: Record<string, LineProvenanceFileNode> = {};
     for (const entry of commit.entries) {
-      if (entry.contentType === 'binary') continue;
-      const lines = await readEntryLines(options.root, entry);
-      const previousLines = currentLines.get(entry.path) ?? [];
-      const previousRecords = currentFiles.get(entry.path) ?? [];
-      const records = attributeLines(previousLines, previousRecords, lines, commit);
-      currentLines.set(entry.path, lines);
-      currentFiles.set(entry.path, records);
+      if (!isProvenanceWorthy(entry)) continue;
+      const key = normalizePath(entry.path);
+      const nextLines = await readBlobLines(root, entry.blobHash).catch(() => [] as string[]);
+      const records = attribute(currentLines.get(key) ?? [], currentRecords.get(key) ?? [], nextLines, commit);
+      currentLines.set(key, nextLines);
+      currentRecords.set(key, records);
+      files[key] = { blobHash: entry.blobHash, records };
     }
-    commits[commit.commitId] = { files: cloneFileMap(currentFiles) };
+    index.commits[commit.commitId] = { parent, files };
   }
-
-  return {
-    schemaVersion: 'danteforge.time-machine.provenance.v1',
-    updatedAt: new Date().toISOString(),
-    commits,
-  };
+  return index;
 }
 
-function attributeLines(
+async function appendCommit(root: string, index: LineProvenanceIndex, commit: TimeMachineCommit): Promise<void> {
+  const parent = commit.parents[0] ?? null;
+  const files: Record<string, LineProvenanceFileNode> = {};
+  for (const entry of commit.entries) {
+    if (!isProvenanceWorthy(entry)) continue;
+    const key = normalizePath(entry.path);
+    const nextLines = await readBlobLines(root, entry.blobHash).catch(() => [] as string[]);
+    const prev = findFileNode(index, parent, key);
+    const prevLines = prev ? await readBlobLines(root, prev.blobHash).catch(() => [] as string[]) : [];
+    const records = attribute(prevLines, prev?.records ?? [], nextLines, commit);
+    files[key] = { blobHash: entry.blobHash, records };
+  }
+  index.commits[commit.commitId] = { parent, files };
+}
+
+// Walk from `startCommitId` toward root; return the file's records as of the
+// nearest ancestor that touched it. Unchanged lines keep the commitId that
+// originally introduced them (attribute() reuses records by reference), so the
+// answer matches the old full-clone model for every (commit, path, line).
+function findFileNode(index: LineProvenanceIndex, startCommitId: string | null, key: string): LineProvenanceFileNode | undefined {
+  let id = startCommitId;
+  const seen = new Set<string>();
+  while (id && !seen.has(id)) {
+    seen.add(id);
+    const node = index.commits[id];
+    if (!node) return undefined;
+    const fileNode = node.files[key];
+    if (fileNode) return fileNode;
+    id = node.parent;
+  }
+  return undefined;
+}
+
+function attribute(
   previousLines: string[],
   previousRecords: LineProvenanceRecord[],
   nextLines: string[],
   commit: TimeMachineCommit,
 ): LineProvenanceRecord[] {
   if (previousLines.length === 0 || previousRecords.length === 0) {
+    return nextLines.map((_, index) => recordForCommit(commit, index + 1));
+  }
+  if (previousLines.length > LCS_LINE_CAP || nextLines.length > LCS_LINE_CAP) {
     return nextLines.map((_, index) => recordForCommit(commit, index + 1));
   }
   const matches = lcsLineMatches(previousLines, nextLines);
@@ -156,8 +267,8 @@ function lcsLineMatches(previous: string[], next: string[]): Map<number, number>
   return matches;
 }
 
-async function readEntryLines(root: string, entry: TimeMachineSnapshotEntry): Promise<string[]> {
-  const content = await fs.readFile(path.join(root, 'blobs', entry.blobHash), 'utf8');
+async function readBlobLines(root: string, blobHash: string): Promise<string[]> {
+  const content = await fs.readFile(path.join(root, 'blobs', blobHash), 'utf8');
   const lines = content.split(/\r?\n/);
   if (lines.at(-1) === '') lines.pop();
   return lines;
@@ -172,12 +283,21 @@ function recordForCommit(commit: TimeMachineCommit, sourceLine: number): LinePro
   };
 }
 
-function cloneFileMap(files: Map<string, LineProvenanceRecord[]>): Record<string, LineProvenanceRecord[]> {
-  const out: Record<string, LineProvenanceRecord[]> = {};
-  for (const [filePath, records] of files.entries()) {
-    out[filePath] = records.map(record => ({ ...record }));
+async function readIndexFile(root: string): Promise<LineProvenanceIndex | null> {
+  try {
+    const raw = await fs.readFile(indexPath(root), 'utf8');
+    const parsed = JSON.parse(raw) as LineProvenanceIndex;
+    if (parsed.schemaVersion !== PROVENANCE_SCHEMA_VERSION) return null;
+    return parsed;
+  } catch {
+    return null;
   }
-  return out;
+}
+
+async function persistIndex(root: string, index: LineProvenanceIndex): Promise<void> {
+  index.updatedAt = new Date().toISOString();
+  await fs.mkdir(path.join(root, 'index'), { recursive: true });
+  await fs.writeFile(indexPath(root), JSON.stringify(index) + '\n', 'utf8');
 }
 
 // ── Decision-node lookup cache ─────────────────────────────────────────────
@@ -408,7 +528,7 @@ async function findDecisionNodeUncached(
 }
 
 function indexPath(root: string): string {
-  return path.join(root, 'index', 'line-provenance-index.json');
+  return path.join(root, 'index', INDEX_FILENAME);
 }
 
 function normalizePath(input: string): string {

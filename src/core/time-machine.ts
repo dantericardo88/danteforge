@@ -15,8 +15,9 @@ import {
 import type { CounterfactualReplayResult } from './time-machine-replay.js';
 import {
   queryLineProvenance,
-  writeLineProvenanceIndex,
+  updateLineProvenanceForCommit,
   buildSessionGraph,
+  type ProvenanceCommitSource,
 } from './time-machine-provenance.js';
 import { detectContentType, normalizeRelativePath, sanitizePathSegment } from './time-machine-path-utils.js';
 
@@ -188,8 +189,11 @@ export async function createTimeMachineCommit(options: CreateTimeMachineCommitOp
   await fs.writeFile(commitPath(cwd, commitId), JSON.stringify(commit, null, 2) + '\n', 'utf8');
   await writeHead(cwd, commitId);
   await appendReflog(cwd, { commitId, parent: parents[0] ?? null, at: createdAt, label: options.label });
-  await writeCausalIndex(cwd);
-  await writeLineProvenanceIndexBestEffort(cwd);
+  // Hot path: update BOTH derived indexes incrementally for THIS commit only.
+  // The old full-history rebuilds (loadCommitsInReflogOrder + per-commit clone)
+  // were O(total history) per commit and OOMed at 3316 commits.
+  await updateCausalIndexForCommit(cwd, commit);
+  await updateLineProvenanceForCommitBestEffort(cwd, commit);
   return commit;
 }
 
@@ -422,13 +426,21 @@ export async function queryTimeMachine(options: QueryTimeMachineOptions): Promis
         }),
       };
     }
-    const commits = await loadCommitsInReflogOrder(cwd);
+    // Index missing this file — self-heal by rebuilding the causal index
+    // (STREAMING, bounded memory), then read it back. The old fallback loaded
+    // all commits at once, which is the OOM the index exists to avoid.
+    await writeCausalIndex(cwd);
+    const rebuilt = await readCausalIndex(cwd);
+    const rebuiltHistory = rebuilt?.fileHistory[normalized] ?? [];
+    const reflogFallback = await readReflog(cwd);
+    const reflogFallbackById = new Map(reflogFallback.map(entry => [entry.commitId, entry]));
     return {
       kind: 'file-history',
       status: 'ok',
-      results: commits
-        .filter(commit => commit.entries.some(entry => entry.path === normalized))
-        .map(commit => ({ commitId: commit.commitId, label: commit.label, createdAt: commit.createdAt })),
+      results: rebuiltHistory.map(commitId => {
+        const entry = reflogFallbackById.get(commitId);
+        return { commitId, label: entry?.label ?? '', createdAt: entry?.at ?? '' };
+      }),
     };
   }
 
@@ -436,11 +448,10 @@ export async function queryTimeMachine(options: QueryTimeMachineOptions): Promis
     if (!options.path) throw new Error('line-provenance query requires --path');
     if (!options.line || options.line < 1) throw new Error('line-provenance query requires --line >= 1');
     if (!commitId) throw new Error('line-provenance query requires a commit');
-    const commits = await loadCommitsInReflogOrder(cwd);
     const result = await queryLineProvenance({
       cwd,
       root: getTimeMachineRoot(cwd),
-      commits,
+      source: provenanceCommitSource(cwd),
       commitId,
       filePath: options.path,
       line: options.line,
@@ -682,9 +693,8 @@ async function mapWithConcurrency<T, R>(items: T[], limit: number, mapper: (item
   return results;
 }
 
-async function writeCausalIndex(cwd: string): Promise<void> {
-  const commits = await loadCommitsInReflogOrder(cwd);
-  const index: CausalIndex = {
+function emptyCausalIndex(): CausalIndex {
+  return {
     schemaVersion: TIME_MACHINE_SCHEMA_VERSION,
     updatedAt: new Date().toISOString(),
     verdictEvidence: {},
@@ -696,40 +706,81 @@ async function writeCausalIndex(cwd: string): Promise<void> {
     outputProducts: {},
     sourceCommitIds: {},
   };
-  for (const commit of commits) {
-    for (const item of commit.causalLinks.verdictEvidence) index.verdictEvidence[item.verdictId] = item.evidenceIds;
-    for (const item of commit.causalLinks.evidenceArtifacts) index.evidenceArtifacts[item.evidenceId] = item.artifactId;
-    for (const entry of commit.entries) {
-      const history = index.fileHistory[entry.path] ?? [];
-      history.push(commit.commitId);
-      index.fileHistory[entry.path] = history;
-    }
-    index.rejectedClaims.push(...commit.causalLinks.rejectedClaims);
-    for (const item of commit.causalLinks.alternativesConsidered ?? []) {
-      index.alternativesConsidered[item.verdictId] = item.alternatives;
-    }
-    for (const item of commit.causalLinks.inputDependencies ?? []) {
-      const deps = index.inputDependencies[item.verdictId] ?? [];
-      deps.push({ paths: item.paths, commitIds: item.commitIds });
-      index.inputDependencies[item.verdictId] = deps;
-    }
-    for (const item of commit.causalLinks.outputProducts ?? []) {
-      index.outputProducts[item.verdictId] = item.paths;
-    }
-    if (commit.causalLinks.sourceCommitIds?.length) {
-      index.sourceCommitIds[commit.commitId] = commit.causalLinks.sourceCommitIds;
-    }
+}
+
+// Merge ONE commit's causal links into the index. Applied in reflog (append)
+// order this is byte-for-byte equivalent to a full rebuild: every field is
+// either an order-stable last-write-wins assign (keyed by an id the commit
+// owns) or an in-order append. That equivalence is what lets the hot path
+// update incrementally — O(1) in history — instead of reloading all commits.
+function mergeCommitIntoCausalIndex(index: CausalIndex, commit: TimeMachineCommit): void {
+  for (const item of commit.causalLinks.verdictEvidence) index.verdictEvidence[item.verdictId] = item.evidenceIds;
+  for (const item of commit.causalLinks.evidenceArtifacts) index.evidenceArtifacts[item.evidenceId] = item.artifactId;
+  for (const entry of commit.entries) {
+    const history = index.fileHistory[entry.path] ?? [];
+    history.push(commit.commitId);
+    index.fileHistory[entry.path] = history;
   }
+  index.rejectedClaims.push(...commit.causalLinks.rejectedClaims);
+  for (const item of commit.causalLinks.alternativesConsidered ?? []) {
+    index.alternativesConsidered[item.verdictId] = item.alternatives;
+  }
+  for (const item of commit.causalLinks.inputDependencies ?? []) {
+    const deps = index.inputDependencies[item.verdictId] ?? [];
+    deps.push({ paths: item.paths, commitIds: item.commitIds });
+    index.inputDependencies[item.verdictId] = deps;
+  }
+  for (const item of commit.causalLinks.outputProducts ?? []) {
+    index.outputProducts[item.verdictId] = item.paths;
+  }
+  if (commit.causalLinks.sourceCommitIds?.length) {
+    index.sourceCommitIds[commit.commitId] = commit.causalLinks.sourceCommitIds;
+  }
+}
+
+async function writeCausalIndexFile(cwd: string, index: CausalIndex): Promise<void> {
+  index.updatedAt = new Date().toISOString();
   await fs.writeFile(path.join(getTimeMachineRoot(cwd), 'index', 'causal-index.json'), JSON.stringify(index, null, 2) + '\n', 'utf8');
 }
 
-async function writeLineProvenanceIndexBestEffort(cwd: string): Promise<void> {
+// Incremental hot-path update: merge ONLY the just-created commit into the
+// existing index. O(1) in history — replaces the all-commits reload that OOMed
+// at 3316 commits.
+async function updateCausalIndexForCommit(cwd: string, commit: TimeMachineCommit): Promise<void> {
+  const index = (await readCausalIndex(cwd)) ?? emptyCausalIndex();
+  mergeCommitIntoCausalIndex(index, commit);
+  await writeCausalIndexFile(cwd, index);
+}
+
+// Full rebuild — STREAMING (one commit resident at a time, never the whole
+// 3316-commit array). Used only for repair and the file-history lazy self-heal,
+// not the commit hot path.
+async function writeCausalIndex(cwd: string): Promise<void> {
+  const index = emptyCausalIndex();
+  for (const entry of await readReflog(cwd)) {
+    if (!existsSync(commitPath(cwd, entry.commitId))) continue;
+    const commit = await loadTimeMachineCommit({ cwd, commitId: entry.commitId });
+    mergeCommitIntoCausalIndex(index, commit);
+  }
+  await writeCausalIndexFile(cwd, index);
+}
+
+// Streaming commit source for the provenance engine — lists ids cheaply from
+// the reflog and loads one commit at a time, so neither a rebuild nor a query
+// ever materializes the whole history.
+function provenanceCommitSource(cwd: string): ProvenanceCommitSource {
+  return {
+    listCommitIds: async () => {
+      const reflog = await readReflog(cwd);
+      return reflog.filter(entry => existsSync(commitPath(cwd, entry.commitId))).map(entry => entry.commitId);
+    },
+    loadCommit: (commitId: string) => loadTimeMachineCommit({ cwd, commitId }),
+  };
+}
+
+async function updateLineProvenanceForCommitBestEffort(cwd: string, commit: TimeMachineCommit): Promise<void> {
   try {
-    await writeLineProvenanceIndex({
-      cwd,
-      root: getTimeMachineRoot(cwd),
-      commits: await loadCommitsInReflogOrder(cwd),
-    });
+    await updateLineProvenanceForCommit({ root: getTimeMachineRoot(cwd), commit });
   } catch {
     // Derived provenance is rebuildable; a failed index write must not break snapshot capture.
   }

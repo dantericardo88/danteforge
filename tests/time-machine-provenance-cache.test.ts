@@ -10,8 +10,8 @@ import path from 'node:path';
 import {
   queryLineProvenance,
   clearProvenanceCache,
+  type ProvenanceCommitSource,
 } from '../src/core/time-machine-provenance.js';
-import type { TimeMachineCommit } from '../src/core/time-machine.js';
 
 const tmpDirs: string[] = [];
 after(async () => {
@@ -44,46 +44,55 @@ async function seedDecisionNodes(cwd: string, nodes: Array<{ id: string; fileSta
 }
 
 // Bypass writeLineProvenanceIndex (which needs full TimeMachineCommit infra +
-// on-disk blob files) by writing the index JSON file directly. queryLineProvenance
-// reads `<root>/index/line-provenance-index.json` via loadOrBuildLineProvenanceIndex.
+// on-disk blob files) by writing the v2 index JSON file directly.
+// queryLineProvenance reads `<root>/index/line-provenance-index-v2.json` via
+// loadOrBuildIndex. v2 stores per-commit DELTAS: each commit node has a parent
+// and a `files` map of touched files → { blobHash, records }.
 async function seedProvenanceIndex(
   root: string,
   records: Array<{ commitId: string; filePath: string; lines: Array<{ sourceCommitId: string }> }>,
 ): Promise<void> {
+  type FileNode = { blobHash: string; records: Array<{ commitId: string; label: string; createdAt: string; sourceLine: number }> };
   type IndexShape = {
     schemaVersion: string;
     updatedAt: string;
-    commits: Record<string, { files: Record<string, Array<{ commitId: string; label: string; createdAt: string; sourceLine: number }>> }>;
+    commits: Record<string, { parent: string | null; files: Record<string, FileNode> }>;
   };
   const commits: IndexShape['commits'] = {};
   for (const r of records) {
     commits[r.commitId] = {
+      parent: null,
       files: {
-        [r.filePath]: r.lines.map((l, i) => ({
-          commitId: l.sourceCommitId,
-          label: 'fixture',
-          createdAt: '2026-05-12T00:00:00Z',
-          sourceLine: i + 1,
-        })),
+        [r.filePath]: {
+          blobHash: 'fake-blob',
+          records: r.lines.map((l, i) => ({
+            commitId: l.sourceCommitId,
+            label: 'fixture',
+            createdAt: '2026-05-12T00:00:00Z',
+            sourceLine: i + 1,
+          })),
+        },
       },
     };
   }
   const index: IndexShape = {
-    schemaVersion: 'danteforge.time-machine.provenance.v1',
+    schemaVersion: 'danteforge.time-machine.provenance.v2',
     updatedAt: '2026-05-12T00:00:00Z',
     commits,
   };
   const indexDir = path.join(root, 'index');
   await fs.mkdir(indexDir, { recursive: true });
-  await fs.writeFile(path.join(indexDir, 'line-provenance-index.json'), JSON.stringify(index) + '\n', 'utf8');
+  await fs.writeFile(path.join(indexDir, 'line-provenance-index-v2.json'), JSON.stringify(index) + '\n', 'utf8');
 }
 
-// Fake TimeMachineCommit objects used purely as keys for queryLineProvenance's
-// `commits` arg — it only checks `commitId` membership to decide whether the
-// pre-built index is still valid. None of the other fields are read in the
-// cached-lookup path we're testing.
-function fakeCommitKey(commitId: string): TimeMachineCommit {
-  return { commitId } as unknown as TimeMachineCommit;
+// A commit source whose listCommitIds covers exactly the seeded commits, so the
+// index's cache-validity gate accepts the pre-built index and never rebuilds
+// (loadCommit therefore must never be called).
+function fakeSource(commitIds: string[]): ProvenanceCommitSource {
+  return {
+    listCommitIds: async () => commitIds,
+    loadCommit: async () => { throw new Error('rebuild should not be triggered in this test'); },
+  };
 }
 
 describe('time-machine-provenance — decision-node cache', () => {
@@ -94,7 +103,7 @@ describe('time-machine-provenance — decision-node cache', () => {
       { id: 'node-1', fileStateRef: 'commit-A', prompt: 'first edit' },
       { id: 'node-2', fileStateRef: 'commit-B', prompt: 'second edit' },
     ]);
-    const commits = [fakeCommitKey('commit-A'), fakeCommitKey('commit-B')];
+    const source = fakeSource(['commit-A', 'commit-B']);
     await seedProvenanceIndex(root, [
       { commitId: 'commit-A', filePath: 'src/feature.ts', lines: [{ sourceCommitId: 'commit-A' }, { sourceCommitId: 'commit-A' }] },
       { commitId: 'commit-B', filePath: 'src/feature.ts', lines: [{ sourceCommitId: 'commit-B' }] },
@@ -110,9 +119,9 @@ describe('time-machine-provenance — decision-node cache', () => {
     };
 
     try {
-      const r1 = await queryLineProvenance({ cwd, root, commits, commitId: 'commit-A', filePath: 'src/feature.ts', line: 1 });
-      const r2 = await queryLineProvenance({ cwd, root, commits, commitId: 'commit-A', filePath: 'src/feature.ts', line: 2 });
-      const r3 = await queryLineProvenance({ cwd, root, commits, commitId: 'commit-B', filePath: 'src/feature.ts', line: 1 });
+      const r1 = await queryLineProvenance({ cwd, root, source, commitId: 'commit-A', filePath: 'src/feature.ts', line: 1 });
+      const r2 = await queryLineProvenance({ cwd, root, source, commitId: 'commit-A', filePath: 'src/feature.ts', line: 2 });
+      const r3 = await queryLineProvenance({ cwd, root, source, commitId: 'commit-B', filePath: 'src/feature.ts', line: 1 });
       assert.ok(r1?.decisionNode);
       assert.equal(r1?.decisionNode?.id, 'node-1');
       assert.ok(r2?.decisionNode);
@@ -130,19 +139,19 @@ describe('time-machine-provenance — decision-node cache', () => {
     const { cwd, root } = await makeTmpRoot();
     clearProvenanceCache();
     await seedDecisionNodes(cwd, [{ id: 'old', fileStateRef: 'commit-A', prompt: 'old' }]);
-    const commits = [fakeCommitKey('commit-A')];
+    const source = fakeSource(['commit-A']);
     await seedProvenanceIndex(root, [
       { commitId: 'commit-A', filePath: 'src/feature.ts', lines: [{ sourceCommitId: 'commit-A' }] },
     ]);
 
-    const first = await queryLineProvenance({ cwd, root, commits, commitId: 'commit-A', filePath: 'src/feature.ts', line: 1 });
+    const first = await queryLineProvenance({ cwd, root, source, commitId: 'commit-A', filePath: 'src/feature.ts', line: 1 });
     assert.equal(first?.decisionNode?.id, 'old');
 
     // Wait a tick + bump mtime by overwriting the store with a new node.
     await new Promise(r => setTimeout(r, 25));
     await seedDecisionNodes(cwd, [{ id: 'new', fileStateRef: 'commit-A', prompt: 'updated' }]);
 
-    const second = await queryLineProvenance({ cwd, root, commits, commitId: 'commit-A', filePath: 'src/feature.ts', line: 1 });
+    const second = await queryLineProvenance({ cwd, root, source, commitId: 'commit-A', filePath: 'src/feature.ts', line: 1 });
     assert.equal(second?.decisionNode?.id, 'new', 'cache must reflect the rewritten store');
   });
 
@@ -150,7 +159,7 @@ describe('time-machine-provenance — decision-node cache', () => {
     const { cwd, root } = await makeTmpRoot();
     clearProvenanceCache();
     await seedDecisionNodes(cwd, [{ id: 'node-1', fileStateRef: 'commit-A', prompt: 'p' }]);
-    const commits = [fakeCommitKey('commit-A')];
+    const source = fakeSource(['commit-A']);
     await seedProvenanceIndex(root, [
       { commitId: 'commit-A', filePath: 'src/feature.ts', lines: [{ sourceCommitId: 'commit-A' }] },
     ]);
@@ -163,14 +172,14 @@ describe('time-machine-provenance — decision-node cache', () => {
       return origReadFile(p, enc);
     };
     try {
-      await queryLineProvenance({ cwd, root, commits, commitId: 'commit-A', filePath: 'src/feature.ts', line: 1 });
+      await queryLineProvenance({ cwd, root, source, commitId: 'commit-A', filePath: 'src/feature.ts', line: 1 });
       assert.equal(storeReadCount, 1);
       // Second query — cache hit, no read.
-      await queryLineProvenance({ cwd, root, commits, commitId: 'commit-A', filePath: 'src/feature.ts', line: 1 });
+      await queryLineProvenance({ cwd, root, source, commitId: 'commit-A', filePath: 'src/feature.ts', line: 1 });
       assert.equal(storeReadCount, 1);
       // Explicit clear forces another read on the next query.
       clearProvenanceCache();
-      await queryLineProvenance({ cwd, root, commits, commitId: 'commit-A', filePath: 'src/feature.ts', line: 1 });
+      await queryLineProvenance({ cwd, root, source, commitId: 'commit-A', filePath: 'src/feature.ts', line: 1 });
       assert.equal(storeReadCount, 2);
     } finally {
       // @ts-expect-error
