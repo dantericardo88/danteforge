@@ -203,6 +203,9 @@ export async function runValidateCli(options: ValidateCliOptions): Promise<Valid
     })),
     forceCold: options.forceCold ?? true,
     _onProgress: onProgress,
+    // Disable the PER-OUTCOME Time Machine commit — validate already does ONE at the end; per-outcome
+    // commits are redundant and heavy on a large repo.
+    _createTimeMachineCommit: null,
   });
 
   // Load evidence AFTER running to compute "after" scores
