@@ -217,7 +217,15 @@ async function applyOutcomeDerivedScores(matrix: CompeteMatrix, cwd: string): Pr
         if (!entry?.ranAt) return false;
         return (now - new Date(entry.ranAt).getTime()) < EVIDENCE_MAX_AGE_MS;
       });
-      if (!hasFreshEvidence) continue; // keep stored scores.self — evidence is stale
+      if (!hasFreshEvidence) {
+        // No fresh evidence (<24h) — a stored `derived` is STALE and must NOT coast at its old value.
+        // Dropping it makes the dim read as UNVERIFIED: decisionDimScore caps a declared-outcome dim
+        // with no derived at 5.0 (the T2 floor), and computeOverallScore ranks on that. Keeping the
+        // stale value is EXACTLY how 22/24 dims showed 9.0 on zero current evidence (council reality
+        // check). Unverified ≠ proven; it also ≠ broken — hence the 5.0 floor, not 0.
+        delete (dim.scores as unknown as Record<string, unknown>)['derived'];
+        continue;
+      }
 
       const { computeDerivedScoreWithBreakdown } = await import('./derived-score.js');
       const { applyLegacyReceiptCeiling } = await import('../matrix/engines/receipt-ceiling.js');

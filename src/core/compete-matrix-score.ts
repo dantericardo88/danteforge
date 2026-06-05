@@ -96,8 +96,13 @@ export function computeOverallScore(matrix: CompeteMatrix): number {
   if (matrix.dimensions.length === 0) return 0;
   const totalWeight = matrix.dimensions.reduce((s, d) => s + d.weight, 0);
   if (totalWeight === 0) return 0;
+  // The headline ranks on decisionDimScore, NOT effectiveDimScore — so a dim that DECLARES outcomes but
+  // has no fresh evidence is treated as unverified (capped at 5), never coasting on its agent-written
+  // self-claim. effectiveDimScore = min(self, derived) silently falls back to self when derived is unset
+  // (un-run outcomes), which is exactly how 22/24 dims showed 9.0 on zero evidence (council). A dim with
+  // no outcome mechanism at all is unaffected (decisionDimScore == effectiveDimScore there).
   const weightedSum = matrix.dimensions.reduce(
-    (s, d) => s + d.weight * effectiveDimScore(d),
+    (s, d) => s + d.weight * decisionDimScore(d),
     0,
   );
   return Math.round((weightedSum / totalWeight) * 10) / 10;
