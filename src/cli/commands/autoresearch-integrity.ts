@@ -2,8 +2,8 @@
 //
 // The single most damaging autoresearch failure mode is reward-hacking: an experiment "improves" the
 // metric by GUTTING the capability_test it is supposed to be optimizing (DanteAgents observed a
-// 468-line proof script overwritten with a broken stub, committed as a win — the test went from
-// failing to not even parsing). These pure helpers make the yardstick off-limits and refuse to
+// 468-line proof script overwritten with a broken one-line fragment, committed as a win — the test
+// went from failing to not even parsing). These pure helpers make the yardstick off-limits and refuse to
 // measure a syntactically broken edit, so a destroyed test can never masquerade as an improvement.
 
 import fs from 'fs/promises';
