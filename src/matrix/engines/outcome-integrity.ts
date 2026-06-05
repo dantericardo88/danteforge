@@ -17,7 +17,7 @@ import { extractPrimaryTestFiles } from '../../core/derived-score.js';
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
-export type ViolationKind = 'SHARED_RECEIPT' | 'MARKET_DIM' | 'SEAM_USAGE' | 'CALLSITE_DECOUPLED';
+export type ViolationKind = 'SHARED_RECEIPT' | 'MARKET_DIM' | 'SEAM_USAGE' | 'CALLSITE_DECOUPLED' | 'ORPHAN_CALLSITE';
 export type Severity = 'ERROR' | 'WARN';
 
 export interface IntegrityViolation {
@@ -35,12 +35,19 @@ export interface IntegrityReport {
   seamedDims: string[];
   /** Dims whose high-tier outcome runs a test file that does NOT reference its required_callsite. */
   decoupledDims: string[];
+  /** Dims with a T4+ outcome whose required_callsite EXISTS + is tested but is never imported by
+   *  any production (non-test) src file — an orphan. Unwired code can't honestly claim T4+ (Depth
+   *  Doctrine: T4 = production callsite wired). */
+  orphanDims: string[];
   clean: boolean;
 }
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 
 const HIGH_TIERS = new Set(['T5', 'T6', 'T7', 'T8']);
+// The orphan (production-wiring) check applies from T4 up — T4 IS the
+// "production callsite wired" tier, so an unwired T4+ callsite is a violation.
+const T4_PLUS = new Set(['T4', 'T5', 'T6', 'T7', 'T8']);
 const MARKET_DIMS = new Set(['community_adoption', 'enterprise_readiness']);
 
 const SEAM_PATTERNS = [
@@ -137,6 +144,9 @@ export async function checkOutcomeIntegrity(
   const marketCapDimSet = new Set<string>();
   const seamedDimSet = new Set<string>();
   const decoupledDimSet = new Set<string>();
+  const orphanDimSet = new Set<string>();
+  // Lazily built (only when a T4+ outcome with a callsite needs the orphan check).
+  let wiredBasenames: Set<string> | null = null;
 
   // Map: testFile -> [(dimId, outcomeId), ...]  for T5+ outcomes
   const fileToOutcomes = new Map<string, Array<{ dimId: string; outcomeId: string }>>();
@@ -146,6 +156,24 @@ export async function checkOutcomeIntegrity(
 
     for (const outcome of outcomes) {
       const command = outcome.command ?? '';
+
+      // Orphan (production-wiring) check — T4+. A required_callsite that is never imported by any
+      // production (non-test) src file is an orphan: it may have a passing seam-free test, but the
+      // capability isn't wired into the product, so it can't honestly claim T4+. (The coupling +
+      // seam checks below only prove the TEST exercises the module — not that PRODUCTION calls it.)
+      const cs = outcome.required_callsite;
+      if (T4_PLUS.has(outcome.tier) && cs && !cs.startsWith('tests/') && !cs.endsWith('.test.ts')) {
+        if (wiredBasenames === null) wiredBasenames = await buildWiredBasenames(projectPath);
+        const base = path.basename(cs).replace(/\.ts$/, '');
+        if (!wiredBasenames.has(base)) {
+          orphanDimSet.add(dim.id);
+          violations.push({
+            kind: 'ORPHAN_CALLSITE', severity: 'ERROR', dimId: dim.id, outcomeId: outcome.id,
+            detail: `Outcome "${outcome.id}" required_callsite "${cs}" is not imported by any production (non-test) src file — an orphan (unwired). Unwired code cannot honestly claim T4+; capped at 7.0 until it is wired into the product or the outcome is downgraded.`,
+          });
+        }
+      }
+
       if (!HIGH_TIERS.has(outcome.tier)) continue;
 
       // Index test files for cross-dim sharing detection
@@ -243,11 +271,37 @@ export async function checkOutcomeIntegrity(
     marketCapDims: [...marketCapDimSet],
     seamedDims: [...seamedDimSet],
     decoupledDims: [...decoupledDimSet],
+    orphanDims: [...orphanDimSet],
     clean: violations.length === 0,
   };
 }
 
-export type IntegrityCapKind = 'SHARED_RECEIPT' | 'SEAM_USAGE' | 'CALLSITE_DECOUPLED';
+// Collect the basename of every locally-imported module across non-test src files
+// (`'.../<name>.js'` — matches static import, dynamic import(), and require()). A
+// required_callsite whose basename is NOT in this set is never imported by
+// production code = an orphan. Substring/basename matching is deliberate: it
+// catches dynamic and registrar wiring that a static `from`-only scan misses (so
+// dynamically-loaded CLI commands are not false-flagged as orphans).
+async function buildWiredBasenames(projectPath: string): Promise<Set<string>> {
+  const wired = new Set<string>();
+  const importRe = /['"][^'"]*\/([\w.-]+)\.js['"]/g;
+  async function walk(dir: string): Promise<void> {
+    let entries: import('node:fs').Dirent[];
+    try { entries = await fs.readdir(dir, { withFileTypes: true }); } catch { return; }
+    for (const e of entries) {
+      const p = path.join(dir, e.name);
+      if (e.isDirectory()) { await walk(p); continue; }
+      if (!e.name.endsWith('.ts') || e.name.includes('.test.')) continue;
+      let content: string;
+      try { content = await fs.readFile(p, 'utf8'); } catch { continue; }
+      for (const match of content.matchAll(importRe)) wired.add(match[1]!);
+    }
+  }
+  await walk(path.join(projectPath, 'src'));
+  return wired;
+}
+
+export type IntegrityCapKind = 'SHARED_RECEIPT' | 'SEAM_USAGE' | 'CALLSITE_DECOUPLED' | 'ORPHAN_CALLSITE';
 
 /**
  * Cap a score by a dim's outcome-integrity violations. Seam is the strictest
@@ -272,6 +326,10 @@ export function integrityCapFor(
     return { cappedScore: 7.0, integrityCap: 'SHARED_RECEIPT' };
   if (report.decoupledDims.includes(dimId) && score > 7.0)
     return { cappedScore: 7.0, integrityCap: 'CALLSITE_DECOUPLED' };
+  // Orphan: a T4+ outcome's required_callsite is not wired into production. The high-tier evidence
+  // isn't validly anchored to product code → same 7.0 ceiling as callsite-decoupled.
+  if ((report.orphanDims ?? []).includes(dimId) && score > 7.0)
+    return { cappedScore: 7.0, integrityCap: 'ORPHAN_CALLSITE' };
   return { cappedScore: score, integrityCap: undefined };
 }
 
@@ -285,6 +343,7 @@ export function formatIntegrityReport(report: IntegrityReport): string {
     MARKET_DIM: [],
     SEAM_USAGE: [],
     CALLSITE_DECOUPLED: [],
+    ORPHAN_CALLSITE: [],
   };
   for (const v of report.violations) byKind[v.kind].push(v);
 
@@ -292,6 +351,14 @@ export function formatIntegrityReport(report: IntegrityReport): string {
     lines.push('');
     lines.push('  CALLSITE_DECOUPLED (dims capped at 7.0):');
     for (const v of byKind.CALLSITE_DECOUPLED) {
+      lines.push(`    [${v.dimId}] ${v.outcomeId}: ${v.detail}`);
+    }
+  }
+
+  if (byKind.ORPHAN_CALLSITE.length > 0) {
+    lines.push('');
+    lines.push('  ORPHAN_CALLSITE (dims capped at 7.0 — callsite not wired into production):');
+    for (const v of byKind.ORPHAN_CALLSITE) {
       lines.push(`    [${v.dimId}] ${v.outcomeId}: ${v.detail}`);
     }
   }

@@ -83,7 +83,7 @@ export interface ValidateDimResult {
   failingOutcomes: number;
   error?: string;
   /** Set when an integrity violation capped the score below what outcomes earned. */
-  integrityCap?: 'SHARED_RECEIPT' | 'SEAM_USAGE' | 'CALLSITE_DECOUPLED' | 'NO_FRONTIER_SPEC';
+  integrityCap?: 'SHARED_RECEIPT' | 'SEAM_USAGE' | 'CALLSITE_DECOUPLED' | 'ORPHAN_CALLSITE' | 'NO_FRONTIER_SPEC';
 }
 
 export interface ValidateCliResult {
@@ -102,7 +102,7 @@ function applyIntegrityCaps(
   score: number,
   dimId: string,
   report: import('../../matrix/engines/outcome-integrity.js').IntegrityReport | null,
-): { cappedScore: number; integrityCap: 'SHARED_RECEIPT' | 'SEAM_USAGE' | 'CALLSITE_DECOUPLED' | 'NO_FRONTIER_SPEC' | undefined } {
+): { cappedScore: number; integrityCap: 'SHARED_RECEIPT' | 'SEAM_USAGE' | 'CALLSITE_DECOUPLED' | 'ORPHAN_CALLSITE' | 'NO_FRONTIER_SPEC' | undefined } {
   return integrityCapFor(score, dimId, report);
 }
 
