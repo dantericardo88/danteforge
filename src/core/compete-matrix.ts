@@ -212,17 +212,19 @@ async function applyOutcomeDerivedScores(matrix: CompeteMatrix, cwd: string): Pr
     }
 
     try {
-      // Staleness guard: only override scores.self when at least one evidence entry
-      // for this dimension was recorded in the last 24 hours. Stale evidence causes
-      // the derived score to compute as 0.0, which is worse than the stored value.
-      const EVIDENCE_MAX_AGE_MS = 86_400_000; // 24 hours
-      const now = Date.now();
+      // Staleness guard: only override scores.self when at least one evidence entry for this
+      // dimension is still within ITS TIER's freshness window. Tier-aware (was a flat 24h that
+      // over-decayed T5, which the tier system allows for 7 days — so an overnight unattended run
+      // dropped T5 scores to unverified by hour 25 and the loop churned on stale 5s). T6/T8 stay
+      // same-day; T5 holds a week; T1/T2 hold months — see TIER_FRESHNESS_MS.
+      const nowDate = new Date();
       const { makeEvidenceKey } = await import('../matrix/types/outcome.js');
-      const dimOutcomes = outcomes as Array<{ id: string }>;
+      const { isEvidenceStale } = await import('../matrix/types/capability-test.js');
+      const dimOutcomes = outcomes as Array<{ id: string; tier?: import('../matrix/types/capability-test.js').CapabilityTier }>;
       const hasFreshEvidence = dimOutcomes.some(o => {
         const entry = evidence!.get(makeEvidenceKey(dim.id, o.id));
         if (!entry?.ranAt) return false;
-        return (now - new Date(entry.ranAt).getTime()) < EVIDENCE_MAX_AGE_MS;
+        return !isEvidenceStale(o.tier ?? 'T5', entry.ranAt, nowDate);
       });
       if (!hasFreshEvidence) {
         // No fresh evidence (<24h) — a stored `derived` is STALE and must NOT coast at its old value.

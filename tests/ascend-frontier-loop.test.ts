@@ -25,7 +25,8 @@ describe('ascend-frontier — phase routing (sequential vs council-parallel)', (
   test('build-to-7 uses harden-crusade SERIAL (--parallel 1) — shared-working-tree race avoided', () => {
     // Serial, not --parallel N: N autoresearch workers share one working tree and corrupt each other
     // (checkout/file-writes/reset --hard). harden-crusade --loop still drives every dim, one at a time.
-    const expected = [['harden-crusade', '--parallel', '1', '--loop', '--target', '7']];
+    // build pass, then re-ground (honesty self-correction: a build can introduce a fresh orphan).
+    const expected = [['harden-crusade', '--parallel', '1', '--loop', '--target', '7'], ['ground-outcomes', '--apply']];
     assert.deepEqual(buildTo7Commands(false, M, ['a', 'b']), expected);
     assert.deepEqual(buildTo7Commands(true, M, ['a', 'b']), expected, 'council fan-out is reserved for push-to-9, not the 7.0 bar');
     assert.deepEqual(buildTo7Commands(true, ['codex'], ['a']), expected);

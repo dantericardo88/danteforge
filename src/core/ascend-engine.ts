@@ -435,7 +435,7 @@ async function executeDimensionCycle(
   wrappedExec: (cmd: string, cwd: string) => Promise<{ success: boolean }>,
   runLoopFn: typeof runAutoforgeLoop, beforeScore: number, target: number, goal: string,
   cwd: string, loadStateFn: typeof loadState,
-): Promise<void> {
+): Promise<{ buildFailed: boolean }> {
   if ((options.executeMode ?? 'forge') === 'forge') {
     // SWE-bench gets a goal that names specific failure modes from the latest
     // bench-results.json. Other dimensions stay on the generic improve-goal —
@@ -457,14 +457,17 @@ async function executeDimensionCycle(
     });
     try {
       await setWorkflowStageFn('forge', cwd);
-      await wrappedExec(`forge "${forgeGoal.replace(/"/g, '\\"')}"`, cwd);
+      const r = await wrappedExec(`forge "${forgeGoal.replace(/"/g, '\\"')}"`, cwd);
       logger.info(`[Ascend] Forge executed for ${nextDim.label}`);
+      return { buildFailed: !r.success };
     } catch (err: unknown) {
       logger.warn(`[Ascend] Forge failed for ${nextDim.label}: ${String(err)} — falling back to advisory`);
       await runLoopFn(loopCtx, {}).catch((e: unknown) => logger.warn(`[Ascend] Loop error: ${String(e)}`));
+      return { buildFailed: true };
     }
   } else {
     await runLoopFn(loopCtx, options._executeCommand ? { _executeCommand: wrappedExec } : {}).catch((err: unknown) => logger.warn(`[Ascend] Loop error for ${nextDim.label}: ${String(err)}`));
+    return { buildFailed: false };
   }
 }
 
@@ -507,10 +510,14 @@ async function applyStallCorrection(
   nextDim: MatrixDimension, beforeScore: number, newSelfScore: number,
   cs: AscendCycleState, cwd: string,
   exec: (cmd: string, cwd: string) => Promise<{ success: boolean }>,
+  buildFailed: boolean,
 ): Promise<void> {
   if (process.env['NODE_TEST_CONTEXT']) { cs.plateauedDims.add(nextDim.id); logger.info('  (plateau detected — moving to next dimension)'); return; }
   const attempts = cs.dimCorrectionCounts[nextDim.id] ?? 0;
-  const diag = await diagnoseStallFromProject({ cwd, dimId: nextDim.id, scoreBefore: beforeScore, scoreAfter: newSelfScore, attemptsSoFar: attempts });
+  // Thread the build outcome so the build-failed branch can fire (a failed build is decompose-and-retry,
+  // NOT a misdiagnosed wrong-approach that burns the budget and false-ceilings a fixable dim).
+  const commands = buildFailed ? [{ command: 'forge (build)', exitCode: 1 }] : [];
+  const diag = await diagnoseStallFromProject({ cwd, dimId: nextDim.id, scoreBefore: beforeScore, scoreAfter: newSelfScore, attemptsSoFar: attempts, commands });
   cs.dimCorrectionCounts[nextDim.id] = attempts + 1;
   logger.info('  ' + formatDiagnosis(diag));
   logger.info(`  [course-correct] ${diag.rationale}`);
@@ -770,14 +777,16 @@ export async function runAscend(options: AscendEngineOptions = {}): Promise<Asce
     const { getWaveGuard } = await import('./wave-alternation.js');
     const waveGuard = getWaveGuard(cs.cyclesRun);
 
+    let buildFailed = false;
     if (waveGuard.type === 'depth') {
       // Depth wave: run outcomes for this dim instead of forging new code.
       logger.info(`  [Ascend] DEPTH WAVE: running outcomes for ${nextDim.label}`);
-      await wrappedExecuteCommandFn(`validate ${nextDim.id} --force-cold`, cwd);
+      const r = await wrappedExecuteCommandFn(`validate ${nextDim.id} --force-cold`, cwd);
+      buildFailed = !r.success;
     } else {
       // Breadth wave: forge new code (existing behavior).
       const loopCtx: AutoforgeLoopContext = { goal, cwd, state: cs.state as Parameters<typeof runAutoforgeLoop>[0]['state'], loopState: AutoforgeLoopState.IDLE, cycleCount: 0, startedAt: new Date().toISOString(), retryCounters: {}, blockedArtifacts: [], lastGuidance: null, isWebProject: false, force: true, maxRetries: 10, recentScores: [] };
-      await executeDimensionCycle(options, loopCtx, nextDim, wrappedExecuteCommandFn, runLoopFn, beforeScore, target, goal, cwd, loadStateFn);
+      ({ buildFailed } = await executeDimensionCycle(options, loopCtx, nextDim, wrappedExecuteCommandFn, runLoopFn, beforeScore, target, goal, cwd, loadStateFn));
     }
     cs.state = await loadStateFn({ cwd }).catch(() => cs.state);
     const { newSelfScore, delta, newScoreResult } = await rescoreAndGetDelta(harshScoreFn, computeStrictDimsFn, nextDim, beforeScore, cwd);
@@ -785,7 +794,7 @@ export async function runAscend(options: AscendEngineOptions = {}): Promise<Asce
       // STALL — the build didn't move the score. Instead of blindly plateauing, diagnose WHY from
       // hard evidence (outcome-integrity violations + changed files + score delta) and adjust course.
       // Budget-bounded: after MAX_COURSE_CORRECTIONS the diagnosis returns an honest ceiling.
-      await applyStallCorrection(nextDim, beforeScore, newSelfScore, cs, cwd, wrappedExecuteCommandFn);
+      await applyStallCorrection(nextDim, beforeScore, newSelfScore, cs, cwd, wrappedExecuteCommandFn, buildFailed);
     }
     else { cs.plateauedDims.delete(nextDim.id); cs.dimCorrectionCounts[nextDim.id] = 0; if (delta > 0) cs.dimensionsImproved++; }
     await runAdversarialCritiqueStep(options, generateCritiqueFn, nextDim, newSelfScore, beforeScore, target, goal, cwd, maxDimRetries, cs);

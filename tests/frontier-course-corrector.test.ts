@@ -120,6 +120,16 @@ describe('diagnoseStallFromProject — gathers live evidence (seamed)', () => {
     });
     assert.equal(d.category, 'no-op-build');
   });
+  it('threaded command exit codes un-blind the build-failed branch (was structurally impossible with commands:[])', async () => {
+    const d = await diagnoseStallFromProject({
+      cwd: '/nonexistent', dimId: 'd', scoreBefore: 7, scoreAfter: 7, attemptsSoFar: 0,
+      commands: [{ command: 'forge (build)', exitCode: 1 }],
+      _integrityViolations: async () => [], _changedFiles: async () => 0,
+    });
+    assert.equal(d.category, 'build-failed');
+    assert.deepEqual(routeStallAction(d), { exec: null, plateau: false }); // retry-decompose, don't burn budget on the wrong fix
+  });
+
   it('budget exhausted → honest ceiling regardless of evidence', async () => {
     const d = await diagnoseStallFromProject({
       cwd: '/nonexistent', dimId: 'd', scoreBefore: 7, scoreAfter: 7, attemptsSoFar: MAX_COURSE_CORRECTIONS,

@@ -127,7 +127,11 @@ export function buildTo7Commands(parallel: boolean, members: string[], dims: str
   // worktree-per-worker isolation (like council --parallel) — tracked as a follow-up. The council
   // fan-out (already worktree-isolated) is reserved for push-to-9, where parity needs it.
   void parallel; void members; void dims;
-  return [['harden-crusade', '--parallel', '1', '--loop', '--target', '7']];
+  // After the build pass, RE-GROUND: a build can introduce a new module that isn't wired into
+  // production (a fresh orphan) or a test that drifts from its callsite. ground-outcomes re-anchors
+  // or honestly downgrades it, so the loop never advances toward 7 on un-grounded evidence the build
+  // itself just created — the honesty self-correction in the real one-command path (not just runAscend).
+  return [['harden-crusade', '--parallel', '1', '--loop', '--target', '7'], ['ground-outcomes', '--apply']];
 }
 
 // ── Orchestrator loop ───────────────────────────────────────────────────────────

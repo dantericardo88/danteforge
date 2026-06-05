@@ -56,8 +56,11 @@ export interface StallInputs {
   attemptsSoFar: number;
 }
 
-/** Max course-corrections before an honest ceiling — prevents infinite churn on misdiagnosis. */
-export const MAX_COURSE_CORRECTIONS = 2;
+/** Max course-corrections before an honest ceiling — prevents infinite churn on misdiagnosis.
+ *  3 (not 2): a dim can legitimately hit two distinct fixable problems (e.g. orphan-still, then a
+ *  wrong-approach on a different angle) before a third try; 2 ceilinged genuinely-buildable dims too
+ *  early. Still bounded. (A per-category budget would be tighter still — tracked as a refinement.) */
+export const MAX_COURSE_CORRECTIONS = 3;
 
 const ENV_BLOCK_RE = /not found|command not found|ENOENT|cannot find module|no such file|network|ECONN|ETIMEDOUT|getaddrinfo|EAI_AGAIN|permission denied/i;
 
@@ -140,6 +143,10 @@ export function isCeiling(d: StallDiagnosis): boolean {
  */
 export async function diagnoseStallFromProject(deps: {
   cwd: string; dimId: string; scoreBefore: number; scoreAfter: number; attemptsSoFar: number;
+  /** Command results from the build attempt (exit codes). Threading these un-blinds the
+   *  build-failed / unbuildable branches — without them every build failure misdiagnoses as
+   *  wrong-approach. Empty when the caller has no command signal. */
+  commands?: Array<{ command: string; exitCode: number }>;
   _integrityViolations?: () => Promise<Array<{ kind: string; detail: string }>>;
   _changedFiles?: () => Promise<number>;
 }): Promise<StallDiagnosis> {
@@ -165,7 +172,7 @@ export async function diagnoseStallFromProject(deps: {
 
   return diagnoseStall({
     dimId: deps.dimId, scoreBefore: deps.scoreBefore, scoreAfter: deps.scoreAfter,
-    commands: [], gateFailures: [], integrityViolations, filesChanged, attemptsSoFar: deps.attemptsSoFar,
+    commands: deps.commands ?? [], gateFailures: [], integrityViolations, filesChanged, attemptsSoFar: deps.attemptsSoFar,
   });
 }
 

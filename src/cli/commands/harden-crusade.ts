@@ -25,6 +25,7 @@ import chalk from 'chalk';
 import { logger } from '../../core/logger.js';
 import { loadMatrix, decisionDimScore, type CompeteMatrix, type MatrixDimension } from '../../core/compete-matrix.js';
 import { SCORING_DOCTRINE_SHORT } from '../../core/scoring-doctrine.js';
+import { nextLevelGoalSuffix } from '../../core/rubric-ladder.js';
 import { resolveAutonomousTarget } from '../../core/autonomy-cap.js';
 import { runCIPCheck, type CIPOptions, type CIPResult } from '../../core/completion-integrity.js';
 
@@ -308,7 +309,10 @@ async function runDimensionLoop(
 
   while (cycle < maxDimCycles) {
     cycle++;
-    const dimGoal = `Improve "${dim.label}" from ${score.toFixed(2)} to ${target}`;
+    // Build toward the SPECIFIC, competitor-grounded next level ("to reach a 9: <criteria>"), parsed
+    // from this dim's universe Score Ladder — not a vague "improve". Empty if no ladder (no fabrication).
+    const rubricSuffix = await nextLevelGoalSuffix(cwd, dim.id, score).catch(() => '');
+    const dimGoal = `Improve "${dim.label}" from ${score.toFixed(2)} to ${target}` + rubricSuffix;
 
     // 1. Autoresearch wave — driven by the dim's capability_test as the measurement metric.
     //    A dim with no capability_test (meta-dims like token_economy) has nothing to measure, so
