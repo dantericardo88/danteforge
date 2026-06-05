@@ -46,7 +46,7 @@ export interface StallInputs {
   scoreAfter: number;
   /** From the RunLedger for this dim's last attempt. */
   commands: Array<{ command: string; exitCode: number }>;
-  /** Non-integrity gate/court rejections (e.g. no-stub, taste, merge-court). */
+  /** Non-integrity gate/court rejections (e.g. taste-gate, merge-court, red-team). */
   gateFailures: Array<{ gateName: string; detail?: string }>;
   /** checkOutcomeIntegrity violations scoped to this dim (kind = ORPHAN_CALLSITE / CALLSITE_DECOUPLED / SEAM_USAGE …). */
   integrityViolations: Array<{ kind: string; detail: string }>;
