@@ -110,6 +110,11 @@ export function setupCommands(parallel: boolean, members: string[]): string[][] 
   const cmds: string[][] = [];
   if (parallel && members.length >= 2) cmds.push(['council-universe', '--members', members.join(','), '--propose-outcomes']);
   cmds.push(['evidence-scaffold'], ['migrate-outcomes', '--write']);
+  // Honest-define: ground the scaffolded outcomes (real wired callsites or honest orphan-pending)
+  // BEFORE build-to-7. The universe-definer/scaffold emit un-grounded outcomes (sentinel callsites);
+  // without this the build phase would chase fabricated/orphan evidence the gate caps. ground-outcomes
+  // never invents evidence — it grounds what the seam-free tests genuinely exercise, downgrades the rest.
+  cmds.push(['ground-outcomes', '--apply']);
   return cmds;
 }
 

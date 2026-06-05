@@ -14,13 +14,13 @@ function dim(over: Partial<DimState> = {}): DimState {
 
 describe('ascend-frontier — phase routing (sequential vs council-parallel)', () => {
   const M = ['codex', 'claude-code', 'grok-build'];
-  test('sequential define = scaffold + migrate only', () => {
-    assert.deepEqual(setupCommands(false, M), [['evidence-scaffold'], ['migrate-outcomes', '--write']]);
+  test('sequential define = scaffold + migrate + honest-define grounding', () => {
+    assert.deepEqual(setupCommands(false, M), [['evidence-scaffold'], ['migrate-outcomes', '--write'], ['ground-outcomes', '--apply']]);
   });
-  test('parallel define fans research out to council-universe (member-split), then serial scaffold/migrate', () => {
+  test('parallel define fans research out to council-universe (member-split), then serial scaffold/migrate/ground', () => {
     const c = setupCommands(true, M);
     assert.deepEqual(c[0], ['council-universe', '--members', 'codex,claude-code,grok-build', '--propose-outcomes']);
-    assert.deepEqual(c.slice(1), [['evidence-scaffold'], ['migrate-outcomes', '--write']]);
+    assert.deepEqual(c.slice(1), [['evidence-scaffold'], ['migrate-outcomes', '--write'], ['ground-outcomes', '--apply']]);
   });
   test('build-to-7 uses harden-crusade SERIAL (--parallel 1) — shared-working-tree race avoided', () => {
     // Serial, not --parallel N: N autoresearch workers share one working tree and corrupt each other

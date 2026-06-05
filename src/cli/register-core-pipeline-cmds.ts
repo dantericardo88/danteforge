@@ -98,11 +98,13 @@ program
   .option('--target <n>', 'Campaign target (default 9.0; clamped to the 9.0 autonomous ceiling)')
   .option('--pilot-size <n>', 'How many dims to pilot to 7 before sweeping the rest (default 2)')
   .option('--dry-run', 'Print the band snapshot + phase plan without executing')
+  .option('--no-ground', 'Skip the honest-define grounding pre-flight (ground-outcomes runs first by default)')
   .option('--json', 'Machine-readable result')
   .action(async (opts) => (await C()).sweep({
     target: opts.target !== undefined ? parseFloat(opts.target) : undefined,
     pilotSize: opts.pilotSize !== undefined ? parseInt(opts.pilotSize, 10) : undefined,
     dryRun: opts.dryRun,
+    noGround: opts.ground === false,
     json: opts.json,
   }));
 

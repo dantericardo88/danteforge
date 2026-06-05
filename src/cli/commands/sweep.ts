@@ -19,6 +19,8 @@ interface SweepOptions {
   pilotSize?: number;
   dryRun?: boolean;
   json?: boolean;
+  /** Skip the honest-define grounding pre-flight (default: ground first). */
+  noGround?: boolean;
   _loadMatrix?: (cwd: string) => Promise<CompeteMatrix | null>;
   _deps?: SweepDeps;
   _writeFile?: (p: string, c: string) => Promise<void>;
@@ -62,6 +64,29 @@ export async function sweep(opts: SweepOptions = {}): Promise<void> {
     if (!(await nodeModulesExists(cwd))) {
       logger.error('[sweep] node_modules is missing — this checkout cannot run its own capability_tests/outcomes (every dim derives 0). Run `npm ci && npm run build` first, then re-run sweep. (`--dry-run` still works.)');
       process.exitCode = 1; return;
+    }
+
+    // Honest-define pre-flight: GROUND the outcomes before advancing, so the loop never tries to
+    // advance on un-grounded/fabricated evidence (the universe-definer scaffolds outcomes with
+    // sentinel callsites). Grounding repoints flagged outcomes to the real wired module their
+    // seam-free test exercises, else honestly downgrades to orphan-pending — it never invents
+    // evidence. Skipped under the test runner + when --no-ground is passed. Best-effort.
+    if (!opts.noGround && !process.env['NODE_TEST_CONTEXT']) {
+      try {
+        const { groundOutcomes } = await import('../../core/outcome-grounding.js');
+        const mtx = await freshLoad(cwd);
+        if (mtx) {
+          const g = await groundOutcomes({ matrix: mtx, projectPath: cwd });
+          const touched = g.counts.grounded + g.counts.downgraded + g.counts.partial;
+          if (touched > 0) {
+            await saveMatrix(mtx, cwd);
+            invalidateMatrixCache();
+            logger.info(`[sweep] honest-define pre-flight: grounded ${g.counts.grounded}, downgraded ${g.counts.downgraded}, partial ${g.counts.partial} (now gate-clean before advancing)`);
+          }
+        }
+      } catch (e) {
+        logger.warn(`[sweep] grounding pre-flight skipped (${e instanceof Error ? e.message : String(e)})`);
+      }
     }
 
     const result = await runFullSweep(cwd, { target, pilotSize: opts.pilotSize }, opts._deps ?? defaultSweepDeps());
