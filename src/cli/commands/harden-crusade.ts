@@ -260,7 +260,16 @@ async function runDepthWave(
         };
       }
     } catch (err) {
-      logger.warn(`[harden-crusade:${dim.id}] depth wave: CIP check error — ${String(err)}`);
+      // FAIL CLOSED: an integrity check that ERRORS must not let a dim claim the frontier. The old
+      // code logged and fell through to FRONTIER_REACHED — a CIP exception silently bypassed the gate
+      // (council/Codex). A check we couldn't run is not a check that passed.
+      logger.warn(`[harden-crusade:${dim.id}] depth wave: CIP check errored — failing CLOSED — ${String(err)}`);
+      return {
+        dimensionId: dim.id, label: dim.label, initialScore, finalScore,
+        cyclesRun: 1, autoresearchRuns: 0, hardenPassed: false, finalCap: 10,
+        status: 'CIP_BLOCKED',
+        reason: `depth wave: score ${finalScore.toFixed(2)} >= target but CIP check errored (failing closed) — ${String(err)}`,
+      };
     }
   }
 
