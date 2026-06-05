@@ -30,7 +30,7 @@ import {
 import { applyLegacyReceiptCeiling, LEGACY_NO_RECEIPT_CEILING } from '../../matrix/engines/receipt-ceiling.js';
 import type { Outcome } from '../../matrix/types/outcome.js';
 import { SCORING_DOCTRINE_SHORT } from '../../core/scoring-doctrine.js';
-import { checkOutcomeIntegrity, formatIntegrityReport } from '../../matrix/engines/outcome-integrity.js';
+import { checkOutcomeIntegrity, formatIntegrityReport, integrityCapFor } from '../../matrix/engines/outcome-integrity.js';
 import { effectiveStatus, type FrontierSpec } from '../../core/frontier-spec.js';
 
 /** Score above this requires an independently court-VALIDATED frontier_spec. */
@@ -95,21 +95,15 @@ export interface ValidateCliResult {
 
 const RUNTIME_KINDS = new Set(['cli-smoke', 'runtime-exec', 'e2e-workflow']);
 
+// Integrity caps are shared with the loadMatrix-derived path via integrityCapFor
+// (outcome-integrity.ts) so the headline score can never drift above this honest
+// value. NO_FRONTIER_SPEC is layered on separately below (frontier-spec gate).
 function applyIntegrityCaps(
   score: number,
   dimId: string,
   report: import('../../matrix/engines/outcome-integrity.js').IntegrityReport | null,
 ): { cappedScore: number; integrityCap: 'SHARED_RECEIPT' | 'SEAM_USAGE' | 'CALLSITE_DECOUPLED' | 'NO_FRONTIER_SPEC' | undefined } {
-  if (!report) return { cappedScore: score, integrityCap: undefined };
-  // Seam is the strictest cap (6.0) — check first so a dim that is both seamed and
-  // shared/decoupled gets the lower ceiling.
-  if (report.seamedDims.includes(dimId) && score > 6.0)
-    return { cappedScore: 6.0, integrityCap: 'SEAM_USAGE' };
-  if (report.sharedReceiptDims.includes(dimId) && score > 7.0)
-    return { cappedScore: 7.0, integrityCap: 'SHARED_RECEIPT' };
-  if (report.decoupledDims.includes(dimId) && score > 7.0)
-    return { cappedScore: 7.0, integrityCap: 'CALLSITE_DECOUPLED' };
-  return { cappedScore: score, integrityCap: undefined };
+  return integrityCapFor(score, dimId, report);
 }
 
 // ── Main entry point ─────────────────────────────────────────────────────────

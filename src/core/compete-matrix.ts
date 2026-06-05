@@ -190,6 +190,13 @@ export async function loadMatrix(
  */
 async function applyOutcomeDerivedScores(matrix: CompeteMatrix, cwd: string): Promise<void> {
   let evidence: import('../matrix/types/outcome.js').OutcomeEvidence | null = null;
+  // Outcome-integrity report is computed lazily — only when a dim actually has
+  // fresh evidence to score — so steady-state loadMatrix (no fresh evidence)
+  // pays nothing. Without this, the derived score was recomputed UNcapped at
+  // load and clobbered validate's honest integrity-capped value, so the headline
+  // reverted from ~6.5 (honest) to ~7.9 on the next load.
+  let integrityReport: import('../matrix/engines/outcome-integrity.js').IntegrityReport | null = null;
+  let integrityChecked = false;
   for (const dim of matrix.dimensions) {
     const outcomes = (dim as unknown as Record<string, unknown>)['outcomes'];
     if (!Array.isArray(outcomes) || outcomes.length === 0) continue;
@@ -238,7 +245,25 @@ async function applyOutcomeDerivedScores(matrix: CompeteMatrix, cwd: string): Pr
       };
       const breakdown = computeDerivedScoreWithBreakdown(dfs, evidence!, new Date());
       // Depth doctrine: dims with no outcomes declared cannot exceed 7.0.
-      const derived = applyLegacyReceiptCeiling(breakdown.score, breakdown);
+      let derived = applyLegacyReceiptCeiling(breakdown.score, breakdown);
+      // Outcome-integrity caps (seamed → 6.0, shared-receipt / callsite-decoupled
+      // → 7.0): the SAME caps validate.ts applies, via the shared integrityCapFor.
+      // Computed once (lazily) and reused for every dim so the headline derived
+      // score matches validate's honest score instead of an uncapped tier score.
+      if (!integrityChecked) {
+        integrityChecked = true;
+        try {
+          const { checkOutcomeIntegrity } = await import('../matrix/engines/outcome-integrity.js');
+          integrityReport = await checkOutcomeIntegrity(
+            matrix.dimensions as unknown as Parameters<typeof checkOutcomeIntegrity>[0],
+            cwd,
+          );
+        } catch { integrityReport = null; }
+      }
+      if (integrityReport) {
+        const { integrityCapFor } = await import('../matrix/engines/outcome-integrity.js');
+        derived = integrityCapFor(derived, dim.id, integrityReport).cappedScore;
+      }
       // Write derived score to scores.derived only.
       // scores.self is the human/adversarial competitive assessment — do not overwrite it.
       (dim.scores as unknown as Record<string, unknown>)['derived'] = derived;

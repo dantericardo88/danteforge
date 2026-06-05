@@ -247,6 +247,34 @@ export async function checkOutcomeIntegrity(
   };
 }
 
+export type IntegrityCapKind = 'SHARED_RECEIPT' | 'SEAM_USAGE' | 'CALLSITE_DECOUPLED';
+
+/**
+ * Cap a score by a dim's outcome-integrity violations. Seam is the strictest
+ * cap (6.0) — checked first so a dim that is both seamed AND shared/decoupled
+ * gets the lower ceiling. Shared-receipt and callsite-decoupled cap at 7.0.
+ *
+ * This is the SINGLE source of truth for integrity caps. Both validate.ts
+ * (which surfaces the cap to the operator) and the loadMatrix-derived path
+ * (applyOutcomeDerivedScores) call it, so the headline score can never drift
+ * above the honest, integrity-aware score the way it did before — derived was
+ * recomputed UNcapped at load and clobbered validate's capped value.
+ */
+export function integrityCapFor(
+  score: number,
+  dimId: string,
+  report: IntegrityReport | null,
+): { cappedScore: number; integrityCap: IntegrityCapKind | undefined } {
+  if (!report) return { cappedScore: score, integrityCap: undefined };
+  if (report.seamedDims.includes(dimId) && score > 6.0)
+    return { cappedScore: 6.0, integrityCap: 'SEAM_USAGE' };
+  if (report.sharedReceiptDims.includes(dimId) && score > 7.0)
+    return { cappedScore: 7.0, integrityCap: 'SHARED_RECEIPT' };
+  if (report.decoupledDims.includes(dimId) && score > 7.0)
+    return { cappedScore: 7.0, integrityCap: 'CALLSITE_DECOUPLED' };
+  return { cappedScore: score, integrityCap: undefined };
+}
+
 export function formatIntegrityReport(report: IntegrityReport): string {
   if (report.clean) return 'Outcome integrity: clean';
 
