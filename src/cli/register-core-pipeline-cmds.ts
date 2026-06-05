@@ -40,6 +40,7 @@ program
   .option('--allow-dirty', 'Allow execution on a dirty git working tree (unsafe; disabled by default)')
   .option('--no-agent', 'Use the lightweight JSON-hypothesis edit path instead of dispatching a coding agent')
   .option('--isolate', 'Run every experiment in an isolated git worktree — your tree is never touched (no --allow-dirty needed)')
+  .option('--exit-code-metric', 'Treat the measurement as a pass/fail capability_test: use its exit code (0 = target) and ignore any number it prints')
   .action(async (goal, opts) => (await C()).autoResearch(goal, {
     metric: opts.metric,
     measurementCommand: opts.measurementCommand,
@@ -49,6 +50,7 @@ program
     allowDirty: opts.allowDirty,
     noAgent: opts.agent === false,
     isolate: opts.isolate,
+    exitCodeMetric: opts.exitCodeMetric,
   }));
 
 program

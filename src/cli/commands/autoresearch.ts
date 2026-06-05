@@ -488,6 +488,9 @@ export async function autoResearch(
     noAgent?: boolean;
     /** Run every experiment in an isolated git worktree so the user's tree is never touched. */
     isolate?: boolean;
+    /** The measurement is a pass/fail capability_test — use its exit code as the metric and ignore
+     *  any number it prints (set by dim-dispatch when wiring a dim's capability_test). */
+    exitCodeMetric?: boolean;
   } = {},
   _opts: AutoResearchOpts = {},
 ): Promise<void> {
@@ -568,7 +571,7 @@ export async function autoResearch(
   }
 
   try {
-    const config: AutoResearchConfig = { goal, metric, timeBudgetMinutes, measurementCommand, cwd: execCwd };
+    const config: AutoResearchConfig = { goal, metric, timeBudgetMinutes, measurementCommand, cwd: execCwd, exitCodeMetric: options.exitCodeMetric ?? false };
     const noiseMargin = resolveNoiseMargin(metric);
     const startTime = nowFn();
     const budgetMs = timeBudgetMinutes * 60 * 1000;

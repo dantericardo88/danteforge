@@ -112,6 +112,21 @@ describe('runMeasurement', () => {
     assert.strictEqual(result, 3);
   });
 
+  // ── exitCodeMetric: a pass/fail capability_test must use its EXIT CODE, never a number it prints ──
+  // (DanteCode field finding: a capability_test that prints "42 passing" was minimized toward FEWER
+  //  passing tests because extractNumber grabbed the 42. dim-dispatch now passes --exit-code-metric.)
+  it('exitCodeMetric: a PASSING test that prints a high count → metric 0 (exit code), NOT the count', async () => {
+    const execFn = async () => ({ stdout: '42 passing' });
+    const result = await runMeasurement(makeConfig({ measurementCommand: 'npm test', exitCodeMetric: true }), execFn);
+    assert.strictEqual(result, 0, 'exit 0 is the metric; the printed 42 must be ignored');
+  });
+
+  it('exitCodeMetric: a FAILING test that prints a count → metric = exit code (1), NOT the count', async () => {
+    const execFn = async () => { throw Object.assign(new Error('failed'), { code: 1, stdout: '7 passing, 2 failing' }); };
+    const result = await runMeasurement(makeConfig({ measurementCommand: 'npm test', exitCodeMetric: true }), execFn);
+    assert.strictEqual(result, 1, 'exit 1 is the baseline metric; the printed 7 must be ignored');
+  });
+
   it('a command that cannot RUN (ENOENT) DOES throw — genuinely broken', async () => {
     const execFn = async () => { throw Object.assign(new Error('not found'), { code: 'ENOENT' }); };
     await assert.rejects(() => runMeasurement(makeConfig({ measurementCommand: 'nope' }), execFn), /could not run/i);

@@ -66,7 +66,9 @@ function defaultRunners(): DispatchRunners {
       const cmd = dim.capability_test?.command;
       if (!cmd) return Promise.resolve();
       // --isolate: each experiment runs in a clean worktree, so dim-dispatch never mutates the user tree.
-      return spawnCli([`autoresearch`, `improve ${dim.label || dim.id}`, '--measurement-command', cmd, '--time', timeBudget, '--isolate'], cwd);
+      // --exit-code-metric: a capability_test is pass/fail — drive its EXIT CODE to 0, never a number it
+      // happens to print (which autoresearch would otherwise minimize, e.g. toward fewer passing tests).
+      return spawnCli([`autoresearch`, `improve ${dim.label || dim.id}`, '--measurement-command', cmd, '--time', timeBudget, '--isolate', '--exit-code-metric'], cwd);
     },
     runOutcomes: (dimId, cwd) => spawnCli(['outcomes', '--dim', dimId, '--force-cold'], cwd),
     runCapabilityTest: (command, cwd) => runCapabilityTest(command, cwd),

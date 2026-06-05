@@ -14,6 +14,15 @@ export interface AutoResearchConfig {
   timeBudgetMinutes: number;
   measurementCommand: string;
   cwd: string;
+  /**
+   * When true, the metric IS the exit code (0 = passing/target, non-zero =
+   * failing/baseline) and ANY number the command prints to stdout is IGNORED.
+   * Set for pass/fail capability_tests: a test that prints e.g. "42 passing"
+   * must NOT have that 42 parsed as a lower-is-better metric and then be driven
+   * toward FEWER passing tests (the DanteCode field finding). Genuine numeric
+   * metrics (bundle size, lint count) leave this false and parse stdout.
+   */
+  exitCodeMetric?: boolean;
 }
 
 export interface ExperimentResult {
@@ -260,9 +269,12 @@ export async function runMeasurement(
     exitCode = typeof err.code === 'number' ? err.code : 1;
   }
 
-  // Prefer a numeric metric the command printed (e.g. "bundle size 123.4"); otherwise fall back to
-  // the exit code so a pass/fail capability_test is a measurable metric (0 = passing/target,
-  // non-zero = failing/baseline). Lower is better (see shouldKeep), so autoresearch drives it to 0.
+  // Pass/fail capability_test: the metric IS the exit code. Ignore any number the command prints
+  // (e.g. a test runner's "42 passing") — parsing it would make autoresearch minimize the wrong
+  // quantity (driving toward FEWER passing tests). Lower is better, so it drives the exit code to 0.
+  if (config.exitCodeMetric) return exitCode;
+  // Otherwise prefer a numeric metric the command printed (e.g. "bundle size 123.4"); fall back to
+  // the exit code so a bare pass/fail command is still a measurable metric (0 = passing/target).
   const value = extractNumber(stdout);
   return value !== null ? value : exitCode;
 }
