@@ -275,7 +275,18 @@ export async function runAscendFrontier(options: AscendFrontierOptions): Promise
             if (o.parseError) {
               // The court did NOT run (failed/unparseable output) — never record a non-run as a
               // rejection; that would fabricate court-rejection provenance toward a generator-ceiling.
-              led.logGateCheck(`frontier-court:${o.dimId}`, 'fail', 'court did NOT run (build/command failure) — not counted as a rejection');
+              // BUT count it as a build-failure attempt (mirroring the sequential push path, line ~291)
+              // so a build-failing dim CEILINGS instead of churning forever in parallel mode.
+              const n = (buildFailedAttempts.get(o.dimId) ?? 0) + 1;
+              buildFailedAttempts.set(o.dimId, n);
+              led.logGateCheck(`frontier-court:${o.dimId}`, 'fail', `court did NOT run (build/command failure) — attempt ${n}/${maxBuildAttempts}, not counted as a rejection`);
+              if (n >= maxBuildAttempts) {
+                const reviewAfter = new Date(Date.parse(now()) + 24 * 60 * 60_000).toISOString();
+                led.addReceipt('ceiling', { dimId: o.dimId, cause: 'build-failed', detail: `${n} parallel push attempts failed to run` });
+                await writeCeilingReceipt(cwd, { dimId: o.dimId, cap: scoreOf(state, o.dimId), cause: 'build-failed',
+                  detail: `${n} parallel push attempts could not run the court — the build/command failed (not a court rejection). Held at current score; re-attempt after fixing the build.`,
+                  failedGates: ['build-failed'], recordedAt: now(), reviewAfter });
+              }
               continue;
             }
             led.logGateCheck(`frontier-court:${o.dimId}`, o.verdict === 'VALIDATED' ? 'pass' : 'fail', `builder=${o.builderId}`);
