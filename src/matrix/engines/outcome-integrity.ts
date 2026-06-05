@@ -276,28 +276,39 @@ export async function checkOutcomeIntegrity(
   };
 }
 
-// Collect the basename of every locally-imported module across non-test src files
-// (`'.../<name>.js'` — matches static import, dynamic import(), and require()). A
+// Collect the basename of every locally-imported module across all non-test source
+// files in the project (static import, dynamic import(), and require()). A
 // required_callsite whose basename is NOT in this set is never imported by
-// production code = an orphan. Substring/basename matching is deliberate: it
-// catches dynamic and registrar wiring that a static `from`-only scan misses (so
-// dynamically-loaded CLI commands are not false-flagged as orphans).
+// production code = an orphan. Basename matching is deliberate: it catches dynamic
+// and registrar wiring that a static `from`-only scan misses (so dynamically-loaded
+// CLI commands aren't false-flagged). Walks the WHOLE project (skipping deps/build/
+// tests) so it handles monorepos (packages/*/src) — not just a single src/ — which
+// is essential for the fleet (DanteCode etc. are monorepos).
+const WIRE_SKIP_DIRS = new Set(['node_modules', 'dist', '.git', '.danteforge', 'coverage', '.next', 'build', 'out', '.turbo', '.cache', '.vscode-test']);
+const WIRE_IMPORT_RE = /(?:from|import|require)\s*\(?\s*['"]([^'"]+)['"]/g;
+function isTestPath(p: string): boolean {
+  const n = p.replace(/\\/g, '/');
+  return /\.(test|spec)\.[cm]?[jt]sx?$/.test(n) || /\/(tests?|__tests__)\//.test(n);
+}
 async function buildWiredBasenames(projectPath: string): Promise<Set<string>> {
   const wired = new Set<string>();
-  const importRe = /['"][^'"]*\/([\w.-]+)\.js['"]/g;
   async function walk(dir: string): Promise<void> {
     let entries: import('node:fs').Dirent[];
     try { entries = await fs.readdir(dir, { withFileTypes: true }); } catch { return; }
     for (const e of entries) {
       const p = path.join(dir, e.name);
-      if (e.isDirectory()) { await walk(p); continue; }
-      if (!e.name.endsWith('.ts') || e.name.includes('.test.')) continue;
+      if (e.isDirectory()) { if (!WIRE_SKIP_DIRS.has(e.name)) await walk(p); continue; }
+      if (!/\.[cm]?[jt]sx?$/.test(e.name) || isTestPath(p)) continue;
       let content: string;
       try { content = await fs.readFile(p, 'utf8'); } catch { continue; }
-      for (const match of content.matchAll(importRe)) wired.add(match[1]!);
+      for (const match of content.matchAll(WIRE_IMPORT_RE)) {
+        const mod = match[1]!;
+        if (!mod.includes('/')) continue; // bare package import — not a local module
+        wired.add(path.basename(mod).replace(/\.[cm]?[jt]sx?$/, ''));
+      }
     }
   }
-  await walk(path.join(projectPath, 'src'));
+  await walk(projectPath);
   return wired;
 }
 
