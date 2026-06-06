@@ -61,4 +61,17 @@ describe('groundOutcomes', () => {
     const dirty = [...new Set([...after.seamedDims, ...after.decoupledDims, ...after.orphanDims])];
     assert.deepEqual(dirty, [], `suite must be gate-clean after grounding, still dirty: ${dirty.join(',')}`);
   });
+
+  it('self-heals node:test --grep → --test-name-pattern (and leaves mocha/vitest --grep alone)', async () => {
+    const matrix: any = {
+      dimensions: [
+        { id: 'dnode', outcomes: [{ id: 'o', tier: 'T2', command: "npx tsx --test --grep 'scorePlan' tests/x.test.ts" }] },
+        { id: 'dmocha', outcomes: [{ id: 'o2', tier: 'T2', command: "npx mocha --grep 'foo' tests/y.test.ts" }] },
+      ],
+    };
+    await groundOutcomes({ matrix, projectPath: R });
+    assert.match(matrix.dimensions[0].outcomes[0].command, /--test-name-pattern 'scorePlan'/, 'node:test --grep corrected');
+    assert.ok(!matrix.dimensions[0].outcomes[0].command.includes('--grep'), 'no --grep left on the node:test command');
+    assert.match(matrix.dimensions[1].outcomes[0].command, /mocha --grep 'foo'/, 'mocha --grep is left untouched (valid there)');
+  });
 });

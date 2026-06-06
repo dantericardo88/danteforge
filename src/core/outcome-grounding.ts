@@ -52,6 +52,20 @@ interface LooseDim { id: string; outcomes?: LooseOutcome[] }
 export async function groundOutcomes(opts: { matrix: CompeteMatrix; projectPath: string }): Promise<GroundingSummary> {
   const { matrix, projectPath } = opts;
   const dims = matrix.dimensions as unknown as LooseDim[];
+
+  // Self-heal a known-broken flag before anything else: an outcome that runs Node's test runner
+  // (`tsx --test` / `node --test`) but filters with `--grep` CRASHES with exit 9 (invalid argument) —
+  // Node uses `--test-name-pattern`. Authors copy mocha's `--grep`; the command then always "fails"
+  // even though the real tests pass. Correct it so the outcome actually runs. Scoped to node:test
+  // commands (mocha legitimately uses --grep), so it never breaks a vitest/mocha command.
+  for (const dim of dims) {
+    for (const o of dim.outcomes ?? []) {
+      if (o.command && /(?:^|\s)(?:tsx|node)\b[^|&;]*\s--test\b/.test(o.command) && o.command.includes('--grep ')) {
+        o.command = o.command.replace(/--grep /g, '--test-name-pattern ');
+      }
+    }
+  }
+
   const wired = await buildWiredBasenames(projectPath);
   const report = await checkOutcomeIntegrity(dims, projectPath);
   const dirty = new Set([...report.seamedDims, ...report.decoupledDims, ...report.orphanDims]);
