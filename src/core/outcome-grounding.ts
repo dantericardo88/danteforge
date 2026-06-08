@@ -180,20 +180,24 @@ function locateTestFiles(command: string, projectPath: string): string[] {
 }
 
 function extractLocalImports(content: string): string[] {
-  const re = /(?:from|import|require)\s*\(?\s*['"]([^'"]+)['"]/g;
   const out: string[] = [];
-  for (const m of content.matchAll(re)) {
+  // JS/TS + Go (quoted specifiers).
+  for (const m of content.matchAll(/(?:from|import|require)\s*\(?\s*['"]([^'"]+)['"]/g)) {
     const s = m[1]!;
     if (s.startsWith('.') || s.includes('/src/')) out.push(s);
   }
+  // Python: `from a.b.c import X` / `import a.b.c` (unquoted) — dotted module → path spec.
+  for (const m of content.matchAll(/^[ \t]*from[ \t]+([.\w]+)[ \t]+import\b/gm)) out.push(m[1]!.replace(/\./g, '/'));
+  for (const m of content.matchAll(/^[ \t]*import[ \t]+([.\w]+)/gm)) out.push(m[1]!.replace(/\./g, '/'));
   return out;
 }
 
-// Resolve a test's import specifier to a project-relative module path that exists.
+// Resolve a test's import specifier to a project-relative module path that exists. Language-aware:
+// resolves JS/TS, Python (.py), Rust (.rs), and Go (.go) so non-JS callsites can be grounded.
 function resolveToProject(testAbs: string, spec: string, projectPath: string): string | null {
   const baseAbs = (spec.startsWith('.') ? path.resolve(path.dirname(testAbs), spec) : path.join(projectPath, spec))
-    .replace(/\.[cm]?[jt]sx?$/, '');
-  for (const ext of ['.ts', '.tsx', '.mts', '.js']) {
+    .replace(/\.([cm]?[jt]sx?|py|rs|go)$/, '');
+  for (const ext of ['.ts', '.tsx', '.mts', '.js', '.py', '.rs', '.go']) {
     if (existsSync(baseAbs + ext)) {
       return path.relative(projectPath, baseAbs + ext).split(path.sep).join('/');
     }

@@ -105,7 +105,7 @@ export async function commandHasSeams(command: string, projectPath: string): Pro
 // runs (no test file) and unreadable files are NOT flagged.
 function callsiteToken(requiredCallsite: string): string {
   const base = requiredCallsite.split(/[\\/]/).pop() ?? requiredCallsite;
-  return base.replace(/\.(?:ts|tsx|js|jsx|mjs|cjs)$/, '');
+  return base.replace(/\.(?:ts|tsx|js|jsx|mjs|cjs|py|rs|go)$/, '');
 }
 
 async function commandExercisesCallsite(
@@ -164,7 +164,7 @@ export async function checkOutcomeIntegrity(
       const cs = outcome.required_callsite;
       if (T4_PLUS.has(outcome.tier) && cs && !cs.startsWith('tests/') && !cs.endsWith('.test.ts')) {
         if (wiredBasenames === null) wiredBasenames = await buildWiredBasenames(projectPath);
-        const base = path.basename(cs).replace(/\.ts$/, '');
+        const base = path.basename(cs).replace(/\.([cm]?[jt]sx?|py|rs|go)$/, '');
         if (!wiredBasenames.has(base)) {
           orphanDimSet.add(dim.id);
           violations.push({
@@ -286,25 +286,58 @@ export async function checkOutcomeIntegrity(
 // is essential for the fleet (DanteCode etc. are monorepos).
 const WIRE_SKIP_DIRS = new Set(['node_modules', 'dist', '.git', '.danteforge', 'coverage', '.next', 'build', 'out', '.turbo', '.cache', '.vscode-test']);
 const WIRE_IMPORT_RE = /(?:from|import|require)\s*\(?\s*['"]([^'"]+)['"]/g;
+// Language-aware import scanners — production wiring exists in any language the fleet targets,
+// not just JS/TS. Without these, a Python/Rust/Go required_callsite is NEVER found in the wired
+// set and is force-flagged ORPHAN_CALLSITE (capped 7.0) even when production genuinely calls it.
+//   Python: `from a.b.c import X` / `import a.b.c [as d]`  → wired basename = last dotted segment (c).
+//   Rust:   `mod foo;` (declares foo.rs) + `use a::b::C;`   → wired basenames = each path segment.
+//   Go:     `import "pkg/foo"` is quoted → handled by WIRE_IMPORT_RE (basename of the path).
+const WIRE_PY_FROM_RE = /^[ \t]*from[ \t]+([.\w]+)[ \t]+import\b/gm;
+const WIRE_PY_IMPORT_RE = /^[ \t]*import[ \t]+([.\w]+)/gm;
+const WIRE_RS_MOD_RE = /^[ \t]*(?:pub[ \t]+)?mod[ \t]+(\w+)/gm;
+const WIRE_RS_USE_RE = /\buse[ \t]+([\w:]+)/g;
 function isTestPath(p: string): boolean {
   const n = p.replace(/\\/g, '/');
-  return /\.(test|spec)\.[cm]?[jt]sx?$/.test(n) || /\/(tests?|__tests__)\//.test(n);
+  return /\.(test|spec)\.[cm]?[jt]sx?$/.test(n)        // JS/TS
+    || /\/(tests?|__tests__)\//.test(n)                // any test dir
+    || /(^|\/)test_\w+\.py$/.test(n) || /_test\.py$/.test(n) || /(^|\/)conftest\.py$/.test(n)  // Python
+    || /_test\.go$/.test(n);                            // Go
+}
+// A production source file in any language DanteForge fleets target.
+function isWireSource(name: string): boolean {
+  return /\.([cm]?[jt]sx?|py|rs|go)$/.test(name);
 }
 export async function buildWiredBasenames(projectPath: string): Promise<Set<string>> {
   const wired = new Set<string>();
+  const addLast = (spec: string, sep: string): void => {
+    const seg = spec.split(sep).filter(Boolean).pop();
+    if (seg) wired.add(seg);
+  };
   async function walk(dir: string): Promise<void> {
     let entries: import('node:fs').Dirent[];
     try { entries = await fs.readdir(dir, { withFileTypes: true }); } catch { return; }
     for (const e of entries) {
       const p = path.join(dir, e.name);
       if (e.isDirectory()) { if (!WIRE_SKIP_DIRS.has(e.name)) await walk(p); continue; }
-      if (!/\.[cm]?[jt]sx?$/.test(e.name) || isTestPath(p)) continue;
+      if (!isWireSource(e.name) || isTestPath(p)) continue;
       let content: string;
       try { content = await fs.readFile(p, 'utf8'); } catch { continue; }
-      for (const match of content.matchAll(WIRE_IMPORT_RE)) {
-        const mod = match[1]!;
-        if (!mod.includes('/')) continue; // bare package import — not a local module
-        wired.add(path.basename(mod).replace(/\.[cm]?[jt]sx?$/, ''));
+      const ext = path.extname(e.name).toLowerCase();
+      if (ext === '.py') {
+        for (const m of content.matchAll(WIRE_PY_FROM_RE)) addLast(m[1]!, '.');
+        for (const m of content.matchAll(WIRE_PY_IMPORT_RE)) addLast(m[1]!, '.');
+      } else if (ext === '.rs') {
+        for (const m of content.matchAll(WIRE_RS_MOD_RE)) wired.add(m[1]!);
+        for (const m of content.matchAll(WIRE_RS_USE_RE))
+          for (const seg of m[1]!.split('::'))
+            if (seg && seg !== 'crate' && seg !== 'super' && seg !== 'self') wired.add(seg);
+      } else {
+        // JS/TS and Go both use quoted specifiers.
+        for (const match of content.matchAll(WIRE_IMPORT_RE)) {
+          const mod = match[1]!;
+          if (!mod.includes('/')) continue; // bare package import — not a local module
+          wired.add(path.basename(mod).replace(/\.[cm]?[jt]sx?$/, ''));
+        }
       }
     }
   }
