@@ -1,7 +1,7 @@
 // Crusade command — tests
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { runCrusade } from '../src/cli/commands/crusade.js';
+import { runCrusade, buildForgeGoal } from '../src/cli/commands/crusade.js';
 import type { OssPassResult, ForgeWaveResult } from '../src/cli/commands/crusade.js';
 
 // ── Fixture builders ──────────────────────────────────────────────────────────
@@ -149,5 +149,41 @@ describe('runCrusade', () => {
     assert.equal(firstCycle.scoreBefore, 7.0);
     assert.equal(firstCycle.scoreAfter, 8.0);
     assert.equal(firstCycle.scoreDelta, 1.0);
+  });
+});
+
+describe('buildForgeGoal — aim forge at the capability_test gate', () => {
+  it('appends the capability_test as the explicit acceptance test', () => {
+    const g = buildForgeGoal('Improve security scanning', 'node dist/index.js security-scan --dry-run');
+    assert.match(g, /Improve security scanning/);
+    assert.match(g, /ACCEPTANCE TEST/);
+    assert.match(g, /node dist\/index\.js security-scan --dry-run/);
+    assert.match(g, /exit 0/);
+    assert.match(g, /Do NOT stub/i);
+  });
+  it('returns the goal unchanged when there is no real capability_test', () => {
+    assert.equal(buildForgeGoal('g', null), 'g');
+    assert.equal(buildForgeGoal('g', undefined), 'g');
+    assert.equal(buildForgeGoal('g', 'TODO: declare a real command'), 'g', 'a TODO sentinel is not a real gate');
+  });
+});
+
+describe('runCrusade — forge wave is aimed at the gate', () => {
+  it('passes the capability_test-augmented goal to the forge wave (not the bare goal)', async () => {
+    let seenGoal = '';
+    await runCrusade({
+      ...BASE_OPTS,
+      goal: 'Harden the scanner',
+      dimension: 'security',
+      target: 9.0,
+      maxCycles: 1,
+      _capabilityTestCommand: 'node dist/index.js security-scan --dry-run',
+      _getScore: makeScoreSeq([7.0, 7.0]),
+      _runOssPass: makeOssPass(0),
+      _runForgeWave: async (goal) => { seenGoal = goal; return { success: true }; },
+    });
+    assert.match(seenGoal, /Harden the scanner/, 'the original goal is preserved');
+    assert.match(seenGoal, /ACCEPTANCE TEST/, 'forge is told the acceptance test');
+    assert.match(seenGoal, /security-scan --dry-run/, 'the real gate command reaches forge');
   });
 });

@@ -30,6 +30,8 @@ export interface CrusadeOptions {
   _getScore?: (dimension: string, cwd: string) => Promise<number>;
   /** Injection seam: write a file. */
   _writeFile?: (p: string, content: string) => Promise<void>;
+  /** Injection seam: the dimension's capability_test command (the gate forge must aim at). */
+  _capabilityTestCommand?: string | null;
   _now?: () => string;
 }
 
@@ -133,10 +135,13 @@ async function defaultRunForgeWave(goal: string, cwd: string): Promise<ForgeWave
   try {
     // `danteforge magic <goal>` is the correct hero command — `forge` has no --goal flag.
     // Use the currently-running Node process + CLI entry to avoid .ps1 shim issues on Windows.
-    // --light bypasses hard gates (CONSTITUTION, SPEC) that are not present when running
-    // DanteForge on itself; the crusade manages its own quality gates (harden, CIP, Fix A).
+    // `--yes` skips the competitive-matrix confirmation gate. (Historically this also passed
+    // `--light`, but `magic` has no such flag — commander rejected it with "unknown option
+    // '--light'", so EVERY forge wave failed instantly before doing any work, which is why
+    // crusade ran 5.0→5.0 forever. magic runs the full pipeline and creates the constitution/
+    // spec artifacts it needs, so no gate-bypass flag is required.)
     const [node, cli] = selfCli();
-    await execFileAsync(node, [cli, 'magic', goal, '--yes', '--light'], { cwd, timeout: 300_000 });
+    await execFileAsync(node, [cli, 'magic', goal, '--yes'], { cwd, timeout: 300_000 });
     return { success: true };
   } catch (err) {
     const e = err as Error & { stderr?: string; stdout?: string };
@@ -144,6 +149,32 @@ async function defaultRunForgeWave(goal: string, cwd: string): Promise<ForgeWave
     const error = details ? `${e.message}\n${details}` : e.message;
     return { success: false, error };
   }
+}
+
+/** Augment the crusade goal with the dimension's capability_test as the explicit acceptance test, so
+ *  forge AIMS at the real gate (the command that scores the work) instead of a vague target. Pure +
+ *  exported for testing. An absent or still-unfilled sentinel capability_test → goal unchanged. */
+export function buildForgeGoal(goal: string, capabilityTestCommand: string | null | undefined): string {
+  if (!capabilityTestCommand || /TODO/i.test(capabilityTestCommand)) return goal;
+  return [
+    goal,
+    '',
+    'ACCEPTANCE TEST — your implementation MUST make this EXACT command exit 0. It is the gate that',
+    'scores this work; code that does not make it pass earns nothing:',
+    `  ${capabilityTestCommand}`,
+    '',
+    'Wire the real production code so the command genuinely passes. Do NOT stub, mock, special-case,',
+    'or hard-code around the test — the integrity gate rejects that and caps the score.',
+  ].join('\n');
+}
+
+/** Load the dimension's capability_test command from the matrix (null if absent / not declared). */
+async function loadCapabilityTestCommand(dimension: string, cwd: string): Promise<string | null> {
+  try {
+    const matrix = await loadMatrix(cwd);
+    const dim = matrix?.dimensions.find(d => d.id === dimension) as { capability_test?: { command?: string } } | undefined;
+    return dim?.capability_test?.command ?? null;
+  } catch { return null; }
 }
 
 async function defaultGetScore(dimension: string, cwd: string): Promise<number> {
@@ -222,8 +253,18 @@ export async function runCrusade(options: CrusadeOptions): Promise<CrusadeResult
   let totalPatternsHarvested = 0;
   let currentScore = await getScore(dimension, cwd);
 
+  // Aim forge at the REAL gate. The dimension's capability_test is the shell command that actually
+  // scores the work; without it in the goal, forge optimizes for "the LLM thinks it looks good" while
+  // the gate checks "does the command exit 0" — the decoupling that made crusade churn 5.0→5.0
+  // (council finding). Injecting it tells forge exactly what success looks like.
+  const capTestCmd = options._capabilityTestCommand !== undefined
+    ? options._capabilityTestCommand
+    : await loadCapabilityTestCommand(dimension, cwd);
+  const forgeGoal = buildForgeGoal(options.goal, capTestCmd);
+
   logger.info(`[crusade] Starting — goal: "${options.goal}"`);
   logger.info(`[crusade] Dimension: ${dimension} | Target: ${target} | Current: ${currentScore.toFixed(2)}`);
+  if (capTestCmd) logger.info(`[crusade] Forge aimed at the gate: \`${capTestCmd}\``);
 
   if (currentScore >= target) {
     logger.success(`[crusade] Target already met (${currentScore.toFixed(2)} >= ${target}). Nothing to do.`);
@@ -262,7 +303,7 @@ export async function runCrusade(options: CrusadeOptions): Promise<CrusadeResult
     // Phase B: Forge wave toward goal
     logger.info(`[crusade]   Running forge wave...`);
     const forgeResult = await withProgress('forge wave', async (progress) => {
-      const result = await runForgeWave(options.goal, cwd);
+      const result = await runForgeWave(forgeGoal, cwd);
       if (result.success) progress.succeed('forge wave complete');
       else progress.fail('forge wave failed');
       return result;
