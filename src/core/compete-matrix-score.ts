@@ -23,7 +23,12 @@ export const FREQUENCY_MULTIPLIERS: Record<string, number> = {
 
 export function computeGapPriority(dim: MatrixDimension): number {
   const freq = FREQUENCY_MULTIPLIERS[dim.frequency] ?? 1.0;
-  return dim.weight * dim.gap_to_leader * freq;
+  // A real project's matrix can carry a null/undefined gap (unscored dim). Treat it as 0 (lowest
+  // priority) rather than coercing to NaN/0 implicitly — keeps the reduce in getNextSprintDimension
+  // total and deterministic instead of NaN-poisoned.
+  const weight = Number.isFinite(dim.weight) ? dim.weight : 1;
+  const gap = Number.isFinite(dim.gap_to_leader) ? dim.gap_to_leader : 0;
+  return weight * gap * freq;
 }
 
 export function getNextSprintDimension(matrix: CompeteMatrix, target = 9.0): MatrixDimension | null {

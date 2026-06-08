@@ -12,12 +12,20 @@ import { mapDimIdToScoringDimension } from '../../core/ascend-engine.js';
 
 // ── Formatting primitives ─────────────────────────────────────────────────────
 
-export function formatScore(score: number): string {
-  return score.toFixed(1);
+/** A real project's matrix can carry an unscored field (null/undefined) — e.g. a freshly-added dim
+ *  with no gap_to_leader yet. Display primitives must degrade to a visible em-dash marker, never crash
+ *  on `.toFixed` of null (the "works on DanteForge, dies on DanteCode" overfitting class). */
+const NA = '—';
+function isNum(v: unknown): v is number { return typeof v === 'number' && Number.isFinite(v); }
+function pad(s: string, padWidth: number): string { return s + ' '.repeat(Math.max(0, padWidth - s.length)); }
+
+export function formatScore(score: number | null | undefined): string {
+  return isNum(score) ? score.toFixed(1) : NA;
 }
 
 /** Color a score value based on threshold bands; pad plain spaces after so table alignment holds. */
-function colorScore(score: number, padWidth = 0): string {
+function colorScore(score: number | null | undefined, padWidth = 0): string {
+  if (!isNum(score)) return pad(chalk.dim(NA), padWidth);
   const s = score.toFixed(1);
   const colored =
     score >= 9 ? chalk.green(s) :
@@ -28,7 +36,8 @@ function colorScore(score: number, padWidth = 0): string {
 }
 
 /** Color a gap value — small gaps are good (green), large gaps are bad (red). */
-function colorGap(gap: number, padWidth = 0): string {
+function colorGap(gap: number | null | undefined, padWidth = 0): string {
+  if (!isNum(gap)) return pad(chalk.dim(NA), padWidth);
   const s = gap.toFixed(1);
   const colored =
     gap <= 0.5 ? chalk.green(s) :
@@ -38,7 +47,8 @@ function colorGap(gap: number, padWidth = 0): string {
 }
 
 /** Color a priority value — high priorities get bold red. */
-function colorPriority(priority: number, padWidth = 0): string {
+function colorPriority(priority: number | null | undefined, padWidth = 0): string {
+  if (!isNum(priority)) return pad(chalk.dim(NA), padWidth);
   const s = priority.toFixed(1);
   const colored =
     priority >= 4 ? chalk.bold.red(s) :
@@ -48,7 +58,8 @@ function colorPriority(priority: number, padWidth = 0): string {
   return colored + ' '.repeat(Math.max(0, padWidth - s.length));
 }
 
-export function gapBar(gap: number, maxGap = 10): string {
+export function gapBar(gap: number | null | undefined, maxGap = 10): string {
+  if (!isNum(gap)) return chalk.dim('░'.repeat(10));
   const filled = Math.round((gap / maxGap) * 10);
   return chalk.red('█'.repeat(filled)) + chalk.dim('░'.repeat(10 - filled));
 }
