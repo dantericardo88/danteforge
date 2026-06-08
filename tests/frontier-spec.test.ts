@@ -69,6 +69,50 @@ describe('checkFrontierSpec — honesty guardrails', () => {
   });
 });
 
+describe('scaffoldFrontierSpec — honest auto-derivation (never fabricate, never target self)', () => {
+  test('derives the highest-scoring TRACKED peer (not self) + run_command/callsite; leaves only human fields TODO', () => {
+    const dim = {
+      id: 'planning_quality',
+      scores: { self: 9, 'Kiro (AWS)': 8.5, Cursor: 6.5, derived: 7 },
+      oss_leader: 'self', closed_source_leader: 'self',
+      capability_test: { command: 'node dist/index.js plan --help' },
+      outcomes: [
+        { id: 'b', tier: 'T2', required_callsite: 'src/core/task-router.ts' },
+        { id: 'a', tier: 'T4', required_callsite: 'src/core/plan-quality-scorer.ts' },
+      ],
+    };
+    const s = scaffoldFrontierSpec(dim);
+    assert.equal(s.leader_target.competitor, 'Kiro (AWS)', 'targets the highest-scoring tracked peer, never self');
+    assert.equal(s.leader_target.score, 8.5);
+    assert.equal(s.real_user_path.run_command, 'node dist/index.js plan --help', 'run_command derived from the product capability_test');
+    assert.equal(s.real_user_path.required_callsite, 'src/core/plan-quality-scorer.ts', 'callsite from the highest-tier grounded outcome');
+    assert.ok(s.leader_target.category_delta && /TODO/.test(s.leader_target.category_delta), 'a sub-9 leader gets a category_delta TODO to author');
+
+    // The honest residue: competitor + run_command are NOT violations (auto-derived); only the
+    // genuinely-human fields remain — which is exactly the actionable build-list the ceiling reports.
+    const r = checkFrontierSpec(s, ['Kiro (AWS)', 'Cursor']);
+    assert.equal(r.ok, false, 'still incomplete — the human fields need authoring');
+    assert.ok(!r.errors.some(e => /competitor/.test(e)), 'competitor auto-derived → not a violation');
+    assert.ok(!r.errors.some(e => /run_command/.test(e)), 'run_command auto-derived → not a violation');
+    assert.ok(!r.errors.some(e => /required_callsite/.test(e)), 'callsite auto-derived → not a violation');
+    assert.ok(r.errors.some(e => /observed_capability/.test(e)), 'observed_capability flagged — the real human work');
+    assert.ok(r.errors.some(e => /observable_artifacts/.test(e)), 'observable_artifacts flagged');
+    assert.ok(r.errors.some(e => /category_delta/.test(e)), 'category_delta flagged for the sub-9 leader');
+  });
+
+  test('a test-runner capability_test is NOT seeded as run_command (9.0 needs a real product run)', () => {
+    const s = scaffoldFrontierSpec({ id: 'x', scores: { 'Kiro (AWS)': 8.5 }, capability_test: { command: 'npx tsx --test tests/x.test.ts' } });
+    assert.ok(/TODO/.test(s.real_user_path.run_command), 'a test-runner probe cannot honestly become the product run_command');
+  });
+
+  test('no scores + no capability_test → all TODO (nothing to fabricate)', () => {
+    const s = scaffoldFrontierSpec({ id: 'y' });
+    assert.ok(/TODO/.test(s.leader_target.competitor));
+    assert.ok(/TODO/.test(s.real_user_path.run_command));
+    assert.ok(/TODO/.test(s.real_user_path.required_callsite));
+  });
+});
+
 describe('freeze hash + stale detection', () => {
   test('a frozen spec whose content later changes is reported stale', () => {
     const s = goodSpec();

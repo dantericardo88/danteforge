@@ -15,8 +15,8 @@ import { promisify } from 'node:util';
 import { logger } from '../../core/logger.js';
 import { loadMatrix, type CompeteMatrix } from '../../core/compete-matrix.js';
 import { effectiveDimScore } from '../../core/compete-matrix-score.js';
-import { effectiveStatus, resolveRunCommand, type FrontierSpec } from '../../core/frontier-spec.js';
-import { loadCeilingReceipt, writeCeilingReceipt } from '../../core/ceiling-receipt.js';
+import { effectiveStatus, resolveRunCommand, checkFrontierSpec, type FrontierSpec } from '../../core/frontier-spec.js';
+import { loadCeilingReceipt, writeCeilingReceipt, type CeilingCause } from '../../core/ceiling-receipt.js';
 import { loadAttemptLedger, recordAttempt, isNovelAttempt, type AttemptFingerprint } from '../../core/evidence-novelty.js';
 import { planNextAction, type DimState, type AscendAction } from '../../core/ascend-frontier-engine.js';
 import { assignRound, runParallelRound, type PushOutcome } from '../../core/ascend-frontier-parallel.js';
@@ -34,7 +34,16 @@ const MARKET_DIMS = new Set(['community_adoption', 'enterprise_readiness']);
  * fail to run (crash, no evidence), `courtRan` is FALSE — and the loop must NOT record that as a
  * court rejection (which would fabricate "the court rejected N times" generator-ceiling provenance).
  */
-export interface PushResult { verdict: 'VALIDATED' | 'REJECTED'; courtRan: boolean; fingerprint: AttemptFingerprint; }
+export interface PushResult {
+  verdict: 'VALIDATED' | 'REJECTED';
+  courtRan: boolean;
+  fingerprint: AttemptFingerprint;
+  /** Present when the dim cannot honestly reach 9 yet because its frontier_spec is INCOMPLETE — the
+   *  genuinely-human real-user-path fields (observed_capability / category_delta / observable artifact)
+   *  are unfilled. The orchestrator writes this as an ACTIONABLE ceiling that names the exact work,
+   *  distinct from a build failure (the court could not even be reached, but nothing is broken). */
+  ceiling?: { cause: CeilingCause; detail: string };
+}
 
 export interface AscendFrontierOptions {
   cwd?: string;
@@ -300,6 +309,18 @@ export async function runAscendFrontier(options: AscendFrontierOptions): Promise
           break;
         }
         const result = await runPushTo9(cwd, action.dimId);
+        if (result.ceiling) {
+          // The dim's frontier_spec is INCOMPLETE — it genuinely cannot reach 9.0 until the human
+          // real-user-path fields are authored. This is an HONEST, ACTIONABLE ceiling (it names the
+          // exact missing work), NOT a build failure and NOT a court rejection. Re-openable: once the
+          // operator authors the spec, the next push runs the court for real.
+          const reviewAfter = new Date(Date.parse(now()) + 24 * 60 * 60_000).toISOString();
+          led.addReceipt('ceiling', { dimId: action.dimId, cause: result.ceiling.cause, detail: result.ceiling.detail });
+          await writeCeilingReceipt(cwd, { dimId: action.dimId, cap: scoreOf(state, action.dimId), cause: result.ceiling.cause,
+            detail: result.ceiling.detail, failedGates: [result.ceiling.cause], recordedAt: now(), reviewAfter });
+          logger.info(`[ascend-frontier] ${action.dimId} ceiling (spec-incomplete) — author the frontier_spec to unlock 9.0: ${result.ceiling.detail}`);
+          break;
+        }
         if (!result.courtRan) {
           // The court NEVER RAN (build/evidence/court sub-command failed) — this is NOT a rejection.
           // Do not touch the evidence-novelty attempt ledger; count it as a build failure instead.
@@ -381,13 +402,49 @@ function finish(terminal: AscendFrontierResult['terminal'], cycles: number, acti
 
 // ── Production push runner (one dim, full depth pass) ─────────────────────────────
 
+function specOf(dim: unknown): FrontierSpec | undefined {
+  return (dim as { frontier_spec?: FrontierSpec } | undefined)?.frontier_spec;
+}
+function competitorsOf(matrix: CompeteMatrix | null): string[] {
+  const m = matrix as unknown as { competitors_closed_source?: string[]; competitors_oss?: string[] } | null;
+  return [...(m?.competitors_closed_source ?? []), ...(m?.competitors_oss ?? [])];
+}
+
 async function defaultPushTo9(cwd: string, dimId: string): Promise<PushResult> {
-  // freeze → capability work → real-user-path capture (per-session variant) → validate ×N → court.
+  // 0. Ensure a frontier_spec EXISTS before freeze. The autonomous loop never authored one — `freeze`
+  //    used to throw "has no frontier_spec", so every push misrecorded as build-failed and NO dim could
+  //    ever reach the court. init auto-derives the real tracked competitor + a real-product run_command
+  //    / callsite; the genuinely-human fields stay honest TODOs.
+  const m0 = await loadMatrix(cwd);
+  let spec0 = specOf(m0?.dimensions.find(d => d.id === dimId));
+  if (!spec0) {
+    await df(cwd, ['frontier-spec', 'init', dimId, '--write']);
+    spec0 = specOf((await loadMatrix(cwd))?.dimensions.find(d => d.id === dimId));
+  }
+
+  // 1. Honesty guardrails, in-process so we surface the EXACT unfilled fields. A spec that still
+  //    carries un-authored real-user-path fields cannot honestly reach 9.0 — record an ACTIONABLE
+  //    ceiling naming the specific work, NOT a silent build-failure. This is the loop telling the
+  //    truth about the frontier (the council's holy-grail "truthful build list") instead of churning.
+  if (!spec0) {
+    return { verdict: 'REJECTED', courtRan: false, fingerprint: { dimId, command: '', artifactPath: '', gitSha: await headSha(cwd) } };
+  }
+  const check = checkFrontierSpec(spec0, competitorsOf(m0));
+  if (!check.ok) {
+    return {
+      verdict: 'REJECTED', courtRan: false,
+      ceiling: { cause: 'spec-incomplete',
+        detail: `${dimId} is honestly held below 9.0 until its frontier_spec real-user-path is authored — ${check.errors.join(' | ')}` },
+      fingerprint: { dimId, command: spec0.real_user_path.run_command, artifactPath: spec0.real_user_path.observable_artifacts[0]?.path ?? '', gitSha: await headSha(cwd) },
+    };
+  }
+
+  // 2. Spec passes the guardrails → freeze it, build to it, capture evidence, convene the court.
   await df(cwd, ['frontier-spec', 'freeze', dimId, '--write']);
   await df(cwd, ['council-crusade', '--focus-dims', dimId, '--goal', `Close frontier_spec for ${dimId}`]);
 
   const specBefore = (await loadMatrix(cwd))?.dimensions.find(d => d.id === dimId);
-  const spec0 = (specBefore as unknown as { frontier_spec?: FrontierSpec } | undefined)?.frontier_spec;
+  spec0 = specOf(specBefore);
   let evidenceOk = false;
   if (spec0) {
     const callsite = spec0.real_user_path.required_callsite;
@@ -452,7 +509,10 @@ async function defaultDiscoverMembers(): Promise<CouncilMemberId[]> {
  *  worktrees with the cross-member merge court, merging approved work to main. */
 async function defaultBuildAll(cwd: string, assignments: { memberId: CouncilMemberId; dimId: string }[], members: CouncilMemberId[]): Promise<void> {
   const dims = assignments.map(a => a.dimId);
-  for (const d of dims) await df(cwd, ['frontier-spec', 'freeze', d, '--write']);
+  // init BEFORE freeze (same missing-init root cause as the sequential path): freeze throws on a dim
+  // with no spec. init is a no-op when a spec already exists. (Parallel promote still runs the court
+  // even on an incomplete spec — a noted follow-up; the court honestly rejects an unvalidated spec.)
+  for (const d of dims) { await df(cwd, ['frontier-spec', 'init', d, '--write']); await df(cwd, ['frontier-spec', 'freeze', d, '--write']); }
   if (members.length >= 2) {
     await df(cwd, ['council', '--parallel', '--members', members.join(','), '--focus-dims', dims.join(','), '--rounds', '1']);
   } else {

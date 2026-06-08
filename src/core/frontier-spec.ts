@@ -55,26 +55,86 @@ export interface FrontierCheckResult {
   warnings: string[];
 }
 
-/** Build a draft spec from whatever the dimension already knows. Operator fills the blanks. */
+/** Build a draft spec from whatever the dimension already knows. Operator fills the blanks.
+ *
+ * Auto-derives every field the dim's real data can honestly support — the highest-scoring TRACKED
+ * competitor (never "self"; dims that self-scored above all peers would otherwise scaffold an
+ * un-freezable "self" target), and the run_command + required_callsite from the dim's declared
+ * capability_test / grounded outcomes. It NEVER fabricates the genuinely-human fields
+ * (observed_capability, the beyond-parity category_delta, the observable artifact): those stay
+ * honest TODOs so `checkFrontierSpec` flags them as the specific real work that unlocks 9.0. */
 export function scaffoldFrontierSpec(dim: Record<string, unknown>): FrontierSpec {
-  const leader = (dim.oss_leader as string | undefined) ?? (dim.closed_source_leader as string | undefined) ?? '';
-  const leaderScore = Number(dim.oss_leader_score ?? dim.leader_score ?? 9.0) || 9.0;
+  const { competitor, score } = pickLeaderTarget(dim);
+  const target = 9.0;
+  const leaderBelowTarget = !!competitor && score > 0 && score < target;
+  const { runCommand, callsite } = deriveRealUserPath(dim);
   return {
     version: 1,
-    target_score: 9.0,
+    target_score: target,
     status: 'draft',
     leader_target: {
-      competitor: leader,
-      score: leaderScore,
-      observed_capability: 'TODO: the specific thing the leader does that we must match or beat.',
+      competitor: competitor || 'TODO: name the real tracked competitor to match or beat',
+      score: score > 0 ? score : 9.0,
+      observed_capability: competitor
+        ? `TODO: the specific capability "${competitor}" demonstrates at ${score} that this dim must match or beat (see .danteforge/compete/universe/${String(dim.id ?? '<dim>')}.md Score Ladder).`
+        : 'TODO: the specific thing the leader does that we must match or beat.',
+      // A sub-target leader can only be the frontier via a real beyond-parity delta — emit an
+      // unfilled sentinel so the guardrail demands the operator author it (never auto-pass an easy target).
+      ...(leaderBelowTarget ? { category_delta: `TODO: the beyond-parity capability that takes this past ${competitor} (${score}) to ${target}.` } : {}),
     },
     real_user_path: {
-      required_callsite: 'TODO: src/... the production file this run exercises',
-      run_command: 'TODO: node dist/index.js <real product command> (NOT a test runner)',
+      required_callsite: callsite ?? 'TODO: src/... the production file this run exercises',
+      run_command: runCommand ?? 'TODO: node dist/index.js <real product command> (NOT a test runner)',
       observable_artifacts: [{ kind: 'TODO', path: 'TODO: path to the artifact the run produces' }],
     },
     required_receipts: { min_t5_plus_outcomes: 3, min_distinct_sessions: 2, input_source: 'real-user-path' },
   };
+}
+
+/** The honest frontier leader: the highest-scoring TRACKED competitor in dim.scores, never "self"
+ *  or "derived". Falls back to the legacy named-leader fields (still never "self"). */
+function pickLeaderTarget(dim: Record<string, unknown>): { competitor: string; score: number } {
+  const scores = (dim.scores as Record<string, unknown> | undefined) ?? {};
+  let best = '', bestScore = -1;
+  for (const [name, val] of Object.entries(scores)) {
+    if (name === 'self' || name === 'derived') continue;
+    const n = Number(val);
+    if (Number.isFinite(n) && n > bestScore) { bestScore = n; best = name; }
+  }
+  if (best) return { competitor: best, score: bestScore };
+  const named = [dim.oss_leader, dim.closed_source_leader].find(v => typeof v === 'string' && v && v !== 'self') as string | undefined;
+  const namedScore = Number(dim.oss_leader_score ?? dim.leader_score ?? 9.0) || 9.0;
+  return { competitor: named ?? '', score: named ? namedScore : 0 };
+}
+
+/** Derive a REAL-product run_command (from the dim's capability_test) and the production callsite
+ *  (from its highest-tier grounded outcome). Both honestly default to null → an unfilled sentinel when
+ *  the dim has no real-product probe / no wired src/ callsite, so the guardrails still demand authoring. */
+function deriveRealUserPath(dim: Record<string, unknown>): { runCommand: string | null; callsite: string | null } {
+  let runCommand: string | null = null;
+  const capCmd = (dim.capability_test as { command?: string } | undefined)?.command;
+  if (capCmd && looksLikeProductRun(capCmd)) runCommand = capCmd;
+
+  let callsite: string | null = null;
+  const outcomes = (dim.outcomes as Array<Record<string, unknown>> | undefined) ?? [];
+  const ranked = [...outcomes].sort((a, b) => tierRank(String(b.tier ?? '')) - tierRank(String(a.tier ?? '')));
+  for (const o of ranked) {
+    const cs = o.required_callsite;
+    if (typeof cs === 'string' && cs.startsWith('src/') && !TODO_RE.test(cs)) { callsite = cs; break; }
+  }
+  return { runCommand, callsite };
+}
+
+/** A real product invocation (`node dist/index.js <cmd>` / `danteforge <cmd>`), not a test runner
+ *  and not a bare `node -e`/echo shell probe — the only commands honest enough to seed a run_command. */
+function looksLikeProductRun(cmd: string): boolean {
+  if (isTestSuiteCommand(cmd)) return false;
+  return /(?:node\s+dist\/index\.js|(?:^|\s|&&\s*)danteforge)\s+[a-z][\w-]*/i.test(cmd);
+}
+
+function tierRank(tier: string): number {
+  const m = /^T(\d+)$/.exec(tier.trim());
+  return m ? Number(m[1]) : -1;
 }
 
 /** Content fields that define the contract — hashed for the freeze, excludes status/frozen_*. */

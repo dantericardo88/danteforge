@@ -17,9 +17,12 @@ export type CeilingCause =
   | 'environment'       // missing host/network/device/key — fixable substrate, re-attempt after
   | 'generator-ceiling' // the agent genuinely could not build the frontier capability this pass
   | 'court-rejected'    // the frontier-review-court judged the evidence not genuine competitor parity
-  | 'build-failed';     // the build/evidence/court sub-command FAILED TO RUN (crash / no evidence) — NOT a
+  | 'build-failed'      // the build/evidence/court sub-command FAILED TO RUN (crash / no evidence) — NOT a
                         // court rejection. An operational blocker, re-attempt after fixing the build. The
                         // engine must never record a failed-to-run push as 'generator-ceiling'/'court-rejected'.
+  | 'spec-incomplete';  // the dim's frontier_spec is missing genuinely-human real-user-path fields
+                        // (observed_capability / category_delta / observable artifact) — the loop auto-derived
+                        // what it honestly could; reaching 9.0 requires authoring the rest. Actionable + re-openable.
 
 export interface CeilingReceipt {
   dimId: string;

@@ -155,4 +155,33 @@ describe('ascend-frontier — unattended loop control', () => {
     const ceiling = JSON.parse(await fs.readFile(path.join(dir, '.danteforge', 'ceilings', 'a.json'), 'utf8'));
     assert.equal(ceiling.failedGates[0], 'evidence-novelty');
   });
+
+  test('a spec-incomplete push writes an ACTIONABLE ceiling (not build-failed, no churn) and ends the dim honestly', async () => {
+    const dir = path.join(ROOT, 'specinc');
+    let pushN = 0;
+    const r = await runAscendFrontier({
+      cwd: dir, maxCycles: 5,
+      _buildState: async () => {
+        const ceiling = await fs.readFile(path.join(dir, '.danteforge', 'ceilings', 'a.json'), 'utf8').then(JSON.parse).catch(() => null);
+        return [{ ...dim({ id: 'a', effectiveScore: 8.0 }), ceiling }];
+      },
+      // The dim's frontier_spec is missing genuinely-human fields → the push returns an actionable
+      // ceiling (NOT courtRan, NOT a build crash). The loop must record THAT, not a build-failed.
+      _runPushTo9: async (): Promise<PushResult> => {
+        pushN++;
+        return {
+          verdict: 'REJECTED', courtRan: false,
+          ceiling: { cause: 'spec-incomplete', detail: 'a held below 9.0 — author observed_capability | observable_artifacts' },
+          fingerprint: { dimId: 'a', command: 'node dist/index.js plan', artifactPath: '', gitSha: 'sha' },
+        };
+      },
+      _now: () => '2026-06-03T00:00:00.000Z',
+    });
+    assert.equal(r.terminal, 'done', 'the actionable ceiling ends the dim → loop completes');
+    assert.equal(pushN, 1, 'one push writes the ceiling immediately — no build-failed churn');
+    const ceiling = JSON.parse(await fs.readFile(path.join(dir, '.danteforge', 'ceilings', 'a.json'), 'utf8'));
+    assert.equal(ceiling.cause, 'spec-incomplete', 'recorded as spec-incomplete, not build-failed');
+    assert.match(ceiling.detail, /observed_capability/, 'the ceiling names the exact missing work');
+    assert.ok(ceiling.reviewAfter, 're-openable once the operator authors the spec');
+  });
 });
