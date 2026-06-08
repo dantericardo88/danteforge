@@ -4,18 +4,24 @@
 import fs from 'fs/promises';
 import path from 'path';
 import { logger } from '../../core/logger.js';
-import { buildTraceabilityReport, type TraceabilityReport } from '../../core/plan-quality-scorer.js';
+import { type TraceabilityReport } from '../../core/plan-quality-scorer.js';
+import { buildCrossArtifactAnalysis, renderAnalysisMarkdown, type CrossArtifactAnalysis } from '../../core/cross-artifact-analysis.js';
 import { withErrorBoundary } from '../../core/cli-error-boundary.js';
 
 const STATE_DIR = '.danteforge';
+const ARTIFACT_NAME = 'traceability.md';
 
 export interface TraceabilityOptions {
   json?: boolean;
   specFile?: string;
   planFile?: string;
   cwd?: string;
+  /** Skip writing the .danteforge/traceability.md artifact (analysis still runs). */
+  noWrite?: boolean;
   /** Injection seam for file reads (testing) */
   _readFile?: (p: string) => Promise<string>;
+  /** Injection seam for the artifact write (testing). */
+  _writeFile?: (p: string, content: string) => Promise<void>;
 }
 
 // ── Text rendering ────────────────────────────────────────────────────────────
@@ -122,18 +128,53 @@ export async function traceability(options: TraceabilityOptions = {}): Promise<v
       }
     }
 
-    const report = buildTraceabilityReport(specText, planText);
+    const analysis = buildCrossArtifactAnalysis(specText, planText);
+    const report = analysis.coverage;
+
+    // Persist the observable artifact (the Score-Ladder requirement: cross-artifact analysis must
+    // produce a durable report, not just console output). Best-effort — a write failure never masks
+    // the analysis result the caller asked for.
+    let artifactPath = '';
+    if (!options.noWrite) {
+      artifactPath = path.join(cwd, STATE_DIR, ARTIFACT_NAME);
+      try {
+        if (options._writeFile) {
+          await options._writeFile(artifactPath, renderAnalysisMarkdown(analysis));
+        } else {
+          await fs.mkdir(path.join(cwd, STATE_DIR), { recursive: true });
+          await fs.writeFile(artifactPath, renderAnalysisMarkdown(analysis), 'utf8');
+        }
+      } catch (err) {
+        logger.warn(`[traceability] could not write ${ARTIFACT_NAME}: ${err instanceof Error ? err.message : String(err)}`);
+        artifactPath = '';
+      }
+    }
 
     if (options.json) {
-      process.stdout.write(JSON.stringify(report, null, 2) + '\n');
+      process.stdout.write(JSON.stringify({ ...analysis, artifactPath }, null, 2) + '\n');
       return;
     }
 
-    const table = renderTable(report);
-    console.log(table);
+    console.log(renderTable(report));
+    console.log(renderExtras(analysis));
+    if (artifactPath) logger.info(`[traceability] wrote ${path.relative(cwd, artifactPath)}`);
 
-    if (report.uncoveredCount > 0) {
-      process.exitCode = 1;
-    }
+    // Exit non-zero on ANY consistency gap — uncovered requirements, unresolved decisions, or hidden
+    // scope. This is what lets the artifact gate a pipeline (the ladder's "proving requirement coverage
+    // before implementation"), not just describe it.
+    if (!analysis.clean) process.exitCode = 1;
   });
+}
+
+// ── Ambiguity + unmapped rendering (console) ───────────────────────────────────
+
+function renderExtras(a: CrossArtifactAnalysis): string {
+  const lines: string[] = [];
+  lines.push(`  Unresolved decisions (ambiguity): ${a.ambiguityCount}`);
+  for (const m of a.ambiguities.slice(0, 10)) lines.push(`    ! L${m.line} [${m.marker}] ${m.text.slice(0, 64)}`);
+  lines.push(`  Unmapped tasks (possible hidden scope): ${a.unmappedCount}`);
+  for (const t of a.unmappedTasks.slice(0, 10)) lines.push(`    ! ${t.slice(0, 72)}`);
+  if (a.clean) lines.push('\n  Clean: full coverage, no unresolved decisions, no unmapped tasks.');
+  lines.push('');
+  return lines.join('\n');
 }
