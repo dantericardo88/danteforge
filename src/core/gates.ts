@@ -72,7 +72,10 @@ export async function requireSpec(light = false, cwd?: string): Promise<void> {
 }
 
 /**
- * Gate: CLARIFY.md must exist before plan generation
+ * Gate: CLARIFY.md must exist AND every NEEDS CLARIFICATION decision must be resolved before
+ * plan generation. Spec-Kit-grade planning (planning_quality Score Ladder, rung 8): an unresolved
+ * `[NEEDS CLARIFICATION]` marker means a requirement is still open, so planning on it is premature —
+ * the gate BLOCKS implementation until the marker is answered (not merely until CLARIFY.md exists).
  */
 export async function requireClarify(light = false, cwd?: string): Promise<void> {
   if (light) return;
@@ -82,6 +85,34 @@ export async function requireClarify(light = false, cwd?: string): Promise<void>
       'Gate blocked: No CLARIFY.md found.',
       'requireClarify',
       'Run "danteforge clarify" first to resolve requirement gaps before planning.',
+      'DF-WORKFLOW-003',
+      'https://github.com/danteforge/danteforge/blob/main/TROUBLESHOOTING.md#error-gate-checks',
+      'workflow',
+    );
+  }
+
+  // Spec-Kit-grade enforcement: scan the spec + clarify artifacts for UNRESOLVED decisions. Any
+  // remaining NEEDS CLARIFICATION marker blocks planning. Reuses the one ambiguity detector
+  // (cross-artifact-analysis.findAmbiguities) so "what counts as unresolved" has a single definition.
+  const { findAmbiguities } = await import('./cross-artifact-analysis.js');
+  const unresolved: string[] = [];
+  for (const file of ['SPEC.md', 'CLARIFY.md']) {
+    try {
+      const text = await fs.readFile(path.join(base, STATE_DIR, file), 'utf8');
+      for (const m of findAmbiguities(text)) {
+        if (m.marker === 'NEEDS CLARIFICATION') unresolved.push(`${file}:L${m.line}`);
+      }
+    } catch { /* SPEC.md may be absent; CLARIFY.md existence is already enforced above */ }
+  }
+  if (unresolved.length > 0) {
+    const shown = unresolved.slice(0, 5).join(', ') + (unresolved.length > 5 ? `, +${unresolved.length - 5} more` : '');
+    throw new GateError(
+      `Gate blocked: ${unresolved.length} unresolved NEEDS CLARIFICATION decision(s) remain (${shown}).`,
+      'requireClarify',
+      'Resolve every NEEDS CLARIFICATION in SPEC.md/CLARIFY.md before planning — run "danteforge clarify" and answer the open questions, or use --light to bypass.',
+      'DF-WORKFLOW-003',
+      'https://github.com/danteforge/danteforge/blob/main/TROUBLESHOOTING.md#error-gate-checks',
+      'workflow',
     );
   }
 }

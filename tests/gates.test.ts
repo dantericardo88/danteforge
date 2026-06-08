@@ -203,4 +203,34 @@ describe('gates with cwd injection', () => {
       assert.strictEqual(err.gate, 'requireClarify');
     }
   });
+
+  it('requireClarify BLOCKS when an unresolved NEEDS CLARIFICATION remains in SPEC.md (Spec-Kit-grade)', async () => {
+    const dir = await createTempProject();
+    await fs.writeFile(path.join(dir, '.danteforge', 'CLARIFY.md'), '# Clarify');
+    await fs.writeFile(path.join(dir, '.danteforge', 'SPEC.md'),
+      '# Spec\n1. The system MUST authenticate users.\n2. Rate limit policy: [NEEDS CLARIFICATION: which algorithm?]\n');
+    try {
+      await requireClarify(false, dir);
+      assert.fail('Should have blocked on the unresolved marker');
+    } catch (err) {
+      assert.ok(err instanceof GateError);
+      assert.strictEqual(err.gate, 'requireClarify');
+      assert.match(err.message, /unresolved NEEDS CLARIFICATION/i);
+      assert.match(err.message, /SPEC\.md:L3/);
+    }
+  });
+
+  it('requireClarify PASSES once every NEEDS CLARIFICATION is resolved', async () => {
+    const dir = await createTempProject();
+    await fs.writeFile(path.join(dir, '.danteforge', 'CLARIFY.md'), '# Clarify\nAll decisions resolved.');
+    await fs.writeFile(path.join(dir, '.danteforge', 'SPEC.md'),
+      '# Spec\n1. The system MUST authenticate users.\n2. Rate limit: token bucket, 100 req/min.\n');
+    await requireClarify(false, dir); // no throw
+  });
+
+  it('requireClarify in --light mode bypasses the marker check', async () => {
+    const dir = await createTempProject();
+    await fs.writeFile(path.join(dir, '.danteforge', 'SPEC.md'), '# Spec\n[NEEDS CLARIFICATION: anything]\n');
+    await requireClarify(true, dir); // light → no throw even with an open marker
+  });
 });
