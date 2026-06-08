@@ -21,6 +21,7 @@ import { existsSync } from 'node:fs';
 import path from 'node:path';
 import { extractPrimaryTestFiles } from './derived-score.js';
 import { checkOutcomeIntegrity, buildWiredBasenames, commandHasSeams } from '../matrix/engines/outcome-integrity.js';
+import { isTestSuiteCommand } from '../matrix/engines/outcome-quality.js';
 import type { CompeteMatrix } from './compete-matrix.js';
 
 const HIGH = new Set(['T5', 'T6', 'T7', 'T8']);
@@ -41,7 +42,10 @@ export interface GroundingSummary {
   counts: Record<GroundingStatus, number>;
 }
 
-interface LooseOutcome { id: string; tier: string; command?: string; required_callsite?: string; description?: string }
+interface LooseOutcome {
+  id: string; tier: string; kind?: string; command?: string; required_callsite?: string; description?: string;
+  cli_args?: string[]; expected_output_pattern?: string; expected_stdout_patterns?: string[];
+}
 interface LooseDim { id: string; outcomes?: LooseOutcome[] }
 
 /**
@@ -62,6 +66,26 @@ export async function groundOutcomes(opts: { matrix: CompeteMatrix; projectPath:
     for (const o of dim.outcomes ?? []) {
       if (o.command && /(?:^|\s)(?:tsx|node)\b[^|&;]*\s--test\b/.test(o.command) && o.command.includes('--grep ')) {
         o.command = o.command.replace(/--grep /g, '--test-name-pattern ');
+      }
+    }
+  }
+
+  // Self-heal a cli-smoke SCHEMA mismatch: an outcome labeled kind:'cli-smoke' but authored with the
+  // SHELL schema (`command` + `expected_output_pattern`, no `cli_args`) silently FAILS. The cli-smoke
+  // runner spawns `node dist/index.js <cli_args>` and ignores `command`, so an absent/null cli_args runs
+  // the wrong thing (or throws on the spread). Two honest repairs: a test-runner command was never a CLI
+  // smoke → relabel to 'runtime-exec'; a real product-CLI command → derive cli_args (+ move the pattern).
+  for (const dim of dims) {
+    for (const o of dim.outcomes ?? []) {
+      if (o.kind === 'cli-smoke' && (!o.cli_args || o.cli_args.length === 0) && o.command) {
+        if (isTestSuiteCommand(o.command)) {
+          o.kind = 'runtime-exec'; // a test suite is runtime-exec evidence, not a real product CLI smoke
+        } else {
+          o.cli_args = toCliArgs(o.command);
+          if (o.expected_output_pattern && !o.expected_stdout_patterns) o.expected_stdout_patterns = [o.expected_output_pattern];
+          delete o.command;
+          delete o.expected_output_pattern;
+        }
       }
     }
   }
@@ -112,6 +136,18 @@ export async function groundOutcomes(opts: { matrix: CompeteMatrix; projectPath:
   const counts: Record<GroundingStatus, number> = { 'already-honest': 0, grounded: 0, downgraded: 0, partial: 0 };
   for (const r of results) counts[r.status] += 1;
   return { results, counts };
+}
+
+/** Convert a shell-schema cli-smoke `command` into the `cli_args[]` the cli-smoke runner expects. The
+ *  runner already supplies the `node dist/index.js` binary, so strip that (or a `danteforge`) prefix,
+ *  then tokenize honoring single/double quotes (so `--name 'a b'` stays one arg). */
+function toCliArgs(command: string): string[] {
+  const stripped = command.replace(/^\s*(?:node\s+dist\/index\.js|(?:npx\s+)?danteforge)\s*/i, '').trim();
+  const args: string[] = [];
+  const re = /"([^"]*)"|'([^']*)'|(\S+)/g;
+  let m: RegExpExecArray | null;
+  while ((m = re.exec(stripped)) !== null) args.push(m[1] ?? m[2] ?? m[3] ?? '');
+  return args;
 }
 
 // Find a real, production-wired module that the outcome's test file genuinely imports.
