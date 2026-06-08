@@ -109,12 +109,58 @@ function dedupeStrings(arr: string[]): string[] {
 
 // ── Source fetchers ────────────────────────────────────────────────────────
 
-async function defaultGithubSearch(_query: string): Promise<GithubSearchHit[]> {
-  // We intentionally do not hit the GitHub API from this build. The seam is
-  // here so tests inject hits and an integrator can wire in their preferred
-  // search backend (Octokit, gh CLI, search proxy). The Logger note is
-  // emitted once per process via the module-load side effect below.
-  return [];
+/** A shell runner (seam): real impl shells out, tests inject canned output. */
+export type ExecRunner = (cmd: string, args: string[]) => Promise<{ stdout: string }>;
+
+async function realRunner(cmd: string, args: string[]): Promise<{ stdout: string }> {
+  const { execFile } = await import('node:child_process');
+  const { promisify } = await import('node:util');
+  const { stdout } = await promisify(execFile)(cmd, args, { timeout: 25_000, maxBuffer: 8 * 1024 * 1024 });
+  return { stdout };
+}
+
+/** Map one `gh search repos --json` row to a hit. Tolerant of missing fields / shape drift. */
+function ghRowToHit(row: Record<string, unknown>): GithubSearchHit | null {
+  const name = typeof row.fullName === 'string' ? row.fullName : typeof row.name === 'string' ? row.name : '';
+  const url = typeof row.url === 'string' ? row.url : '';
+  if (!name || !url) return null;
+  const lic = row.license as Record<string, unknown> | undefined;
+  const license = lic && typeof lic === 'object'
+    ? (typeof lic.name === 'string' ? lic.name : typeof lic.key === 'string' ? lic.key : undefined)
+    : (typeof row.license === 'string' ? row.license : undefined);
+  const hit: GithubSearchHit = { name, url };
+  if (typeof row.description === 'string' && row.description) hit.description = row.description;
+  if (typeof row.stargazersCount === 'number') hit.stars = row.stargazersCount;
+  if (license) hit.license = license;
+  return hit;
+}
+
+/**
+ * Real GitHub competitor search via the `gh` CLI (the council's named stub, now wired). Best-effort:
+ * if `gh` is absent, unauthenticated, or rate-limited, returns [] so discovery degrades to the
+ * LLM/awesome-list/manual-seed sources rather than failing the whole run. The runner is injectable so
+ * the network call is fully seamed in tests.
+ */
+export async function ghSearchRepos(query: string, run?: ExecRunner, limit = 10): Promise<GithubSearchHit[]> {
+  const q = query.trim();
+  if (!q) return [];
+  const exec = run ?? realRunner;
+  try {
+    const { stdout } = await exec('gh', [
+      'search', 'repos', q,
+      '--json', 'fullName,url,description,stargazersCount,license',
+      '--sort', 'stars', '--limit', String(limit),
+    ]);
+    const parsed: unknown = JSON.parse(stdout);
+    if (!Array.isArray(parsed)) return [];
+    return parsed.map(r => ghRowToHit(r as Record<string, unknown>)).filter((h): h is GithubSearchHit => h !== null);
+  } catch {
+    return []; // gh missing / unauthenticated / rate-limited — degrade gracefully
+  }
+}
+
+async function defaultGithubSearch(query: string): Promise<GithubSearchHit[]> {
+  return ghSearchRepos(query);
 }
 
 async function fetchGithubEntries(
