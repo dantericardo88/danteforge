@@ -61,6 +61,7 @@ export function registerMatrixOrchestrationCommands(program: Command): void {
     });
 
   registerRead(matrix);
+  registerDetect(matrix);
   registerDiscover(matrix);
   registerAnalyze(matrix);
   registerSynthesize(matrix);
@@ -90,6 +91,31 @@ function registerRead(matrix: Command): void {
           mode: (opts.mode as 'llm' | 'prompt' | 'local') ?? 'llm',
         });
         logger.success(`[matrix:read] Extracted intent for "${intent.projectName}" (confidence ${intent.confidence.toFixed(2)})`);
+      });
+    });
+}
+
+function registerDetect(matrix: Command): void {
+  matrix
+    .command('detect')
+    .description('Auto-detect ProjectIntent from a COLD repo (package.json + README) — no PRD needed')
+    .option('--cwd <path>', 'Project root')
+    .action(async (opts: Record<string, unknown>) => {
+      await runSafely('matrix:detect', async () => {
+        const { detectProjectIntent } = await import('../matrix-orchestration/discovery/project-detect.js');
+        const { saveOrch, ensureOrchDir } = await import('../matrix-orchestration/state-io.js');
+        const cwd = parseCwd(opts);
+        const intent = await detectProjectIntent(cwd);
+        await ensureOrchDir(cwd);
+        await saveOrch(cwd, 'projectIntent', intent);
+        logger.success(`[matrix:detect] ${intent.projectName} → ${intent.projectType} (confidence ${intent.confidence.toFixed(2)})`);
+        logger.info(`  goal: ${intent.goal}`);
+        logger.info(`  categories: ${intent.competitiveCategoryBoundary.direct.join(', ') || '(none)'}`);
+        if (intent.confidence < 0.6) {
+          logger.warn('  Low confidence (<0.60) — thin repo signal. Refine the saved intent, or author a PRD + `matrix read` for a stronger target.');
+        } else {
+          logger.info('  Next: danteforge matrix discover   (find competitors via gh + awesome-lists)');
+        }
       });
     });
 }
