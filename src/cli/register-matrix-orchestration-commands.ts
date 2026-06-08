@@ -66,6 +66,7 @@ export function registerMatrixOrchestrationCommands(program: Command): void {
   registerAnalyze(matrix);
   registerSynthesize(matrix);
   registerScore(matrix);
+  registerColdStart(matrix);
   registerDetectCapacity(matrix);
   registerExecutePhases(matrix);
   registerReport(matrix);
@@ -210,6 +211,53 @@ function registerScore(matrix: Command): void {
         });
         await saveOrch(cwd, 'currentStateScore', scored);
         logger.success(`[matrix:score] Scored ${(scored as { dimensions?: unknown[] }).dimensions?.length ?? 0} dimension(s)`);
+      });
+    });
+}
+
+function registerColdStart(matrix: Command): void {
+  matrix
+    .command('cold-start')
+    .description('ONE command on ANY repo: detect intent → discover competitors → synthesize dimensions → score. No PRD or matrix needed.')
+    .option('--cwd <path>', 'Project root')
+    .option('--mode <mode>', 'llm | prompt | local', 'llm')
+    .action(async (opts: Record<string, unknown>) => {
+      await runSafely('matrix:cold-start', async () => {
+        const cwd = parseCwd(opts);
+        const mode = (opts.mode as 'llm' | 'prompt' | 'local') ?? 'llm';
+        const { saveOrch, ensureOrchDir } = await import('../matrix-orchestration/state-io.js');
+        const { detectProjectIntent } = await import('../matrix-orchestration/discovery/project-detect.js');
+        const { discoverUniverse } = await import('../matrix-orchestration/discovery/universe.js');
+        const { synthesizeOrchestrationDimensions } = await import('../matrix-orchestration/analysis/dimension-synthesizer.js');
+        const { scoreCurrentState } = await import('../matrix-orchestration/analysis/current-state-scorer.js');
+        await ensureOrchDir(cwd);
+
+        // Thin glue over the already-proven pieces (detect/discover/synthesize/score) — each step
+        // saves its artifact under .danteforge/matrix-orchestration/, so a crash mid-chain leaves a
+        // resumable trail. cold-start auto-approves discovery (bootstrap one-shot); the universe is
+        // saved for review.
+        const intent = await detectProjectIntent(cwd);
+        await saveOrch(cwd, 'projectIntent', intent);
+        logger.info(`[cold-start] 1/4 intent: ${intent.projectName} → ${intent.projectType} (confidence ${intent.confidence.toFixed(2)})`);
+        if (intent.confidence < 0.6) {
+          logger.warn('[cold-start] thin repo signal (confidence <0.60) — the detected intent is a starting point; refine .danteforge/matrix-orchestration/project-intent.json.');
+        }
+
+        const universe = await discoverUniverse(intent as never, { cwd, mode, skipApproval: true });
+        logger.info(`[cold-start] 2/4 universe: ${universe.entries.length} competitor(s) discovered (auto-approved for bootstrap — review competitive-universe.json)`);
+
+        const matrixDoc = await synthesizeOrchestrationDimensions(
+          { intent: intent as never, universe: universe as never }, { cwd, mode },
+        );
+        await saveOrch(cwd, 'dimensionMatrix', matrixDoc);
+        const dimCount = (matrixDoc as { dimensions?: unknown[] }).dimensions?.length ?? 0;
+        logger.info(`[cold-start] 3/4 dimensions synthesized: ${dimCount}`);
+
+        const scored = await scoreCurrentState(matrixDoc as never, { cwd, mode, strict: false });
+        await saveOrch(cwd, 'currentStateScore', scored);
+        const scoredCount = (scored as { dimensions?: unknown[] }).dimensions?.length ?? dimCount;
+        logger.success(`[cold-start] 4/4 scored ${scoredCount} dimension(s).`);
+        logger.info('  Artifacts under .danteforge/matrix-orchestration/. Review the dimension matrix, then build toward the frontier.');
       });
     });
 }
