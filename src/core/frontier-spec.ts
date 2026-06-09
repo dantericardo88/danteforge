@@ -9,6 +9,7 @@
 
 import { createHash } from 'node:crypto';
 import { isTestSuiteCommand } from '../matrix/engines/outcome-quality.js';
+import type { DimensionRubricLevel } from '../matrix/types/dimension-graph.js';
 
 export type FrontierSpecStatus = 'draft' | 'frozen' | 'validated' | 'stale';
 
@@ -137,6 +138,86 @@ function tierRank(tier: string): number {
   return m ? Number(m[1]) : -1;
 }
 
+// ── Score-Ladder grounding (the anti-laundering anchor) ─────────────────────────
+//
+// The two genuinely-hard frontier_spec fields — observed_capability (what the competitor does)
+// and category_delta (the beyond-parity bar) — are exactly where an agent could "write its own
+// easy exam." But the bar already exists, researched: the per-dim `## Score Ladder`
+// (.danteforge/compete/universe/<dim>.md) is competitor-grounded research output (real code paths).
+// So we SEED those fields VERBATIM from the ladder rather than letting an agent invent them, and
+// `checkFrontierSpec` later rejects any spec whose bar was silently softened away from the ladder.
+
+/** The ladder row at-or-below a score — what a competitor sitting AT that score demonstrates. */
+function ladderRowAtOrBelow(rubric: DimensionRubricLevel[], score: number): DimensionRubricLevel | null {
+  const atOrBelow = rubric.filter(l => l.score <= score + 1e-9).sort((a, b) => b.score - a.score);
+  return atOrBelow[0] ?? null;
+}
+
+/** The lowest ladder row at-or-above a target rung — the bar a sub-target leader has not reached. */
+function ladderRowAtOrAbove(rubric: DimensionRubricLevel[], score: number): DimensionRubricLevel | null {
+  const atOrAbove = rubric.filter(l => l.score >= score - 1e-9).sort((a, b) => a.score - b.score);
+  return atOrAbove[0] ?? null;
+}
+
+/** Normalize for substring matching — lowercase, collapse whitespace. */
+function norm(s: string): string {
+  return s.toLowerCase().replace(/\s+/g, ' ').trim();
+}
+
+/** The fingerprint of a ladder descriptor that must survive in the spec field for the bar to count
+ *  as "still grounded in the ladder." A meaningful leading fragment, robust to minor human edits. */
+function ladderFingerprint(descriptor: string): string {
+  return norm(descriptor).slice(0, 48);
+}
+
+export interface LadderSeedResult {
+  spec: FrontierSpec;
+  seeded: { observed_capability: boolean; category_delta: boolean };
+  ladder_rows_used: number[];
+}
+
+/**
+ * Fill the two genuinely-hard `leader_target` fields VERBATIM from the dim's competitor-grounded
+ * Score Ladder, when they are still TODO. The ladder rows are RESEARCH OUTPUT (real competitor code
+ * paths) — copying them is not fabrication, it is grounding the 9.0 bar in the documented frontier
+ * instead of an agent-invented (potentially laundered) one.
+ *
+ *  - observed_capability ← the ladder row at the competitor's tracked score (what they demonstrate)
+ *  - category_delta      ← the ladder row at the target rung (the beyond-parity bar they haven't reached)
+ *
+ * Records a `score-ladder:rows N,M` provenance tag in `evidence_ref` so `checkFrontierSpec` can verify
+ * the bar was not silently softened. A no-op (returns the spec unchanged) when there is no ladder or
+ * the fields are already authored — it NEVER overwrites human authoring and never invents a level.
+ */
+export function seedLeaderTargetFromLadder(spec: FrontierSpec, rubric: DimensionRubricLevel[]): LadderSeedResult {
+  const rowsUsed: number[] = [];
+  const seeded = { observed_capability: false, category_delta: false };
+  if (rubric.length === 0) return { spec, seeded, ladder_rows_used: rowsUsed };
+  const lt = spec.leader_target;
+
+  if (!lt.observed_capability || TODO_RE.test(lt.observed_capability)) {
+    const row = ladderRowAtOrBelow(rubric, lt.score) ?? ladderRowAtOrAbove(rubric, lt.score);
+    if (row) {
+      lt.observed_capability = `[${row.score}/10 — competitor-grounded Score Ladder] ${row.descriptor}`;
+      rowsUsed.push(row.score);
+      seeded.observed_capability = true;
+    }
+  }
+  if (lt.score < spec.target_score && (!lt.category_delta || TODO_RE.test(lt.category_delta))) {
+    const row = ladderRowAtOrAbove(rubric, spec.target_score);
+    if (row) {
+      lt.category_delta = `[${row.score}/10 — competitor-grounded Score Ladder] ${row.descriptor}`;
+      rowsUsed.push(row.score);
+      seeded.category_delta = true;
+    }
+  }
+  if (rowsUsed.length > 0) {
+    const tag = `score-ladder:rows ${[...new Set(rowsUsed)].sort((a, b) => a - b).join(',')}`;
+    lt.evidence_ref = lt.evidence_ref ? `${lt.evidence_ref}; ${tag}` : tag;
+  }
+  return { spec, seeded, ladder_rows_used: rowsUsed };
+}
+
 /** Content fields that define the contract — hashed for the freeze, excludes status/frozen_*. */
 function contentForHash(spec: FrontierSpec): unknown {
   const { status: _s, frozen_at: _a, frozen_hash: _h, ...content } = spec;
@@ -162,7 +243,7 @@ const TODO_RE = /TODO/i;
  * Honesty guardrails. A frontier_spec must define a REAL target, not an easy one.
  * `competitors` is the matrix's tracked competitor list (closed + oss).
  */
-export function checkFrontierSpec(spec: FrontierSpec, competitors: string[]): FrontierCheckResult {
+export function checkFrontierSpec(spec: FrontierSpec, competitors: string[], rubric: DimensionRubricLevel[] = []): FrontierCheckResult {
   const errors: string[] = [];
   const warnings: string[] = [];
   const lt = spec.leader_target;
@@ -179,6 +260,17 @@ export function checkFrontierSpec(spec: FrontierSpec, competitors: string[]): Fr
   // A 9.0 spec cannot merely match a sub-9 leader: that would define an easy target.
   if (lt.score < spec.target_score && (!lt.category_delta || TODO_RE.test(lt.category_delta))) {
     errors.push(`leader "${lt.competitor}" scores ${lt.score} < target ${spec.target_score}. Matching a sub-target leader is not frontier — declare leader_target.category_delta (the beyond-parity capability) or lower target_score honestly.`);
+  }
+
+  // Anti-laundering: when a competitor-grounded Score Ladder exists, the frontier bar must be GROUNDED
+  // in it — an agent cannot soften the bar into an easy exam it can clear. The category_delta (the
+  // target rung the sub-target leader hasn't reached) is the one most worth softening, so guard it.
+  if (rubric.length > 0 && lt.score < spec.target_score) {
+    const targetRow = ladderRowAtOrAbove(rubric, spec.target_score);
+    const delta = lt.category_delta ?? '';
+    if (targetRow && delta && !TODO_RE.test(delta) && !norm(delta).includes(ladderFingerprint(targetRow.descriptor))) {
+      errors.push(`leader_target.category_delta is not grounded in the competitor-grounded Score Ladder ${targetRow.score}-row ("${targetRow.descriptor.slice(0, 64)}…"). You cannot soften a researched frontier bar — build to the documented ${targetRow.score}.0 capability (seed it with frontier-spec init), or raise target_score with explicit justification.`);
+    }
   }
 
   if (!rup.run_command || TODO_RE.test(rup.run_command)) {

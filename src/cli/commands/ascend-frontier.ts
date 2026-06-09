@@ -16,6 +16,7 @@ import { logger } from '../../core/logger.js';
 import { loadMatrix, type CompeteMatrix } from '../../core/compete-matrix.js';
 import { effectiveDimScore } from '../../core/compete-matrix-score.js';
 import { effectiveStatus, resolveRunCommand, checkFrontierSpec, type FrontierSpec } from '../../core/frontier-spec.js';
+import { loadDimRubric } from '../../core/rubric-ladder.js';
 import { loadCeilingReceipt, writeCeilingReceipt, type CeilingCause } from '../../core/ceiling-receipt.js';
 import { loadAttemptLedger, recordAttempt, isNovelAttempt, type AttemptFingerprint } from '../../core/evidence-novelty.js';
 import { planNextAction, type DimState, type AscendAction } from '../../core/ascend-frontier-engine.js';
@@ -429,7 +430,7 @@ async function defaultPushTo9(cwd: string, dimId: string): Promise<PushResult> {
   if (!spec0) {
     return { verdict: 'REJECTED', courtRan: false, fingerprint: { dimId, command: '', artifactPath: '', gitSha: await headSha(cwd) } };
   }
-  const check = checkFrontierSpec(spec0, competitorsOf(m0));
+  const check = checkFrontierSpec(spec0, competitorsOf(m0), await loadDimRubric(cwd, dimId));
   if (!check.ok) {
     return {
       verdict: 'REJECTED', courtRan: false,

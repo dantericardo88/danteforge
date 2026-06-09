@@ -1,11 +1,12 @@
 import { test, describe } from 'node:test';
 import assert from 'node:assert/strict';
 import {
-  scaffoldFrontierSpec, checkFrontierSpec, computeSpecHash, effectiveStatus, type FrontierSpec,
+  scaffoldFrontierSpec, seedLeaderTargetFromLadder, checkFrontierSpec, computeSpecHash, effectiveStatus, type FrontierSpec,
 } from '../src/core/frontier-spec.js';
 import { runFrontierSpec } from '../src/cli/commands/frontier-spec.js';
 import { applyFrontierGate } from '../src/cli/commands/validate.js';
 import type { CompeteMatrix } from '../src/core/compete-matrix.js';
+import type { DimensionRubricLevel } from '../src/matrix/types/dimension-graph.js';
 
 function goodSpec(): FrontierSpec {
   return {
@@ -110,6 +111,63 @@ describe('scaffoldFrontierSpec — honest auto-derivation (never fabricate, neve
     assert.ok(/TODO/.test(s.leader_target.competitor));
     assert.ok(/TODO/.test(s.real_user_path.run_command));
     assert.ok(/TODO/.test(s.real_user_path.required_callsite));
+  });
+});
+
+describe('seedLeaderTargetFromLadder — ground the 9.0 bar in the competitor-grounded Score Ladder', () => {
+  const ladder: DimensionRubricLevel[] = [
+    { score: 7, descriptor: 'Heuristic planner with templated phases.' },
+    { score: 8, descriptor: 'Kiro-grade spec workflow: clarify + plan + tasks with hard gates.' },
+    { score: 9, descriptor: 'LangGraph-grade runnable PDSE: a typed state graph with clarify/research/architecture/risk/tasking nodes.' },
+    { score: 10, descriptor: 'Cross-assistant planning control plane across Claude Code, Codex, Cursor, Aider.' },
+  ];
+
+  test('fills observed_capability (competitor-score row) + category_delta (target rung) VERBATIM, with provenance', () => {
+    const s = scaffoldFrontierSpec({ id: 'planning_quality', scores: { 'Kiro (AWS)': 8.5 } });
+    assert.ok(/TODO/.test(s.leader_target.observed_capability), 'pre-seed: TODO');
+    const res = seedLeaderTargetFromLadder(s, ladder);
+
+    assert.equal(res.seeded.observed_capability, true);
+    assert.equal(res.seeded.category_delta, true);
+    assert.deepEqual(res.ladder_rows_used, [8, 9], 'observed=row at/below competitor 8.5; delta=row at/above target 9.0');
+    assert.ok(/Kiro-grade spec workflow/.test(s.leader_target.observed_capability), 'observed_capability copied from the 8-row');
+    assert.ok(/LangGraph-grade runnable PDSE/.test(s.leader_target.category_delta ?? ''), 'category_delta copied from the 9-row');
+    assert.ok(/score-ladder:rows 8,9/.test(s.leader_target.evidence_ref ?? ''), 'provenance stamped');
+
+    // The seeded fields are no longer flagged as the human TODO work.
+    const r = checkFrontierSpec(s, ['Kiro (AWS)'], ladder);
+    assert.ok(!r.errors.some(e => /observed_capability/.test(e)), 'observed_capability now grounded → not a violation');
+    assert.ok(!r.errors.some(e => /category_delta/.test(e)), 'category_delta now grounded → not a violation');
+  });
+
+  test('never overwrites human-authored fields', () => {
+    const s = scaffoldFrontierSpec({ id: 'q', scores: { 'Kiro (AWS)': 8.0 } });
+    s.leader_target.observed_capability = 'HUMAN: a specific authored capability';
+    s.leader_target.category_delta = 'HUMAN: a specific beyond-parity delta';
+    const res = seedLeaderTargetFromLadder(s, ladder);
+    assert.equal(res.seeded.observed_capability, false);
+    assert.equal(res.seeded.category_delta, false);
+    assert.equal(s.leader_target.observed_capability, 'HUMAN: a specific authored capability');
+  });
+
+  test('no ladder → no-op (never invents a level)', () => {
+    const s = scaffoldFrontierSpec({ id: 'z', scores: { 'Kiro (AWS)': 8.5 } });
+    const before = JSON.stringify(s);
+    const res = seedLeaderTargetFromLadder(s, []);
+    assert.equal(JSON.stringify(res.spec), before);
+    assert.equal(res.ladder_rows_used.length, 0);
+  });
+
+  test('ANTI-LAUNDERING: a softened category_delta (replacing the ladder bar) is rejected when the rubric is supplied', () => {
+    const s = scaffoldFrontierSpec({ id: 'planning_quality', scores: { 'Kiro (AWS)': 8.5 } });
+    seedLeaderTargetFromLadder(s, ladder);
+    // Agent tries to write its own easy exam, softening the 9.0 bar.
+    s.leader_target.category_delta = 'add a couple more planning heuristics';
+    const r = checkFrontierSpec(s, ['Kiro (AWS)'], ladder);
+    assert.equal(r.ok, false);
+    assert.ok(r.errors.some(e => /not grounded in the competitor-grounded Score Ladder/.test(e)), 'softened bar blocked by the gate, not an LLM');
+    // …and with NO rubric supplied, the legacy behavior is unchanged (back-compat).
+    assert.ok(!checkFrontierSpec(s, ['Kiro (AWS)']).errors.some(e => /not grounded in the competitor-grounded/.test(e)));
   });
 });
 

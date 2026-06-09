@@ -10,9 +10,10 @@ import path from 'node:path';
 import { loadMatrix, type CompeteMatrix } from '../../core/compete-matrix.js';
 import { logger } from '../../core/logger.js';
 import {
-  scaffoldFrontierSpec, checkFrontierSpec, computeSpecHash, effectiveStatus,
+  scaffoldFrontierSpec, seedLeaderTargetFromLadder, checkFrontierSpec, computeSpecHash, effectiveStatus,
   type FrontierSpec,
 } from '../../core/frontier-spec.js';
+import { loadDimRubric } from '../../core/rubric-ladder.js';
 
 export type FrontierSpecAction = 'init' | 'check' | 'freeze' | 'status';
 
@@ -83,20 +84,29 @@ export async function runFrontierSpec(options: FrontierSpecOptions): Promise<Fro
   const dim = matrix.dimensions.find(d => d.id === options.dimId);
   if (!dim) throw new Error(`Dimension "${options.dimId}" not found.`);
   const d = dim as unknown as Record<string, unknown>;
+  // The dim's competitor-grounded Score Ladder — seeds the frontier bar (init) and anchors the
+  // anti-laundering check (check/freeze). [] when the dim has no universe ladder (no fabrication).
+  const rubric = await loadDimRubric(cwd, options.dimId!);
 
   if (options.action === 'init') {
     if (specOf(dim)) {
       res.warnings.push(`"${options.dimId}" already has a frontier_spec (status ${effectiveStatus(specOf(dim)!)}). Not overwriting.`);
     } else if (options.write) {
-      d.frontier_spec = scaffoldFrontierSpec(d);
+      const draft = scaffoldFrontierSpec(d);
+      const seed = seedLeaderTargetFromLadder(draft, rubric);
+      d.frontier_spec = draft;
       await writeMatrix(matrix, matrixPath);
       res.wrote = true;
+      if (seed.ladder_rows_used.length > 0) {
+        res.warnings.push(`Seeded the frontier bar from the competitor-grounded Score Ladder (row(s) ${seed.ladder_rows_used.join(', ')}): ${[seed.seeded.observed_capability && 'observed_capability', seed.seeded.category_delta && 'category_delta'].filter(Boolean).join(' + ')}. Review it — you may sharpen but not soften it.`);
+      }
     } else {
       res.warnings.push('Dry-run — re-run with --write to add the draft spec.');
     }
     logger.info('');
     logger.success(`frontier-spec init "${options.dimId}": ${res.wrote ? 'draft written' : 'dry-run'}`);
-    logger.info('  Fill in the TODOs (run_command, required_callsite, observable_artifacts, observed_capability),');
+    for (const w of res.warnings) logger.warn(`  ⚠ ${w}`);
+    logger.info('  Fill in any remaining TODOs (run_command, required_callsite, observable_artifacts),');
     logger.info(`  then: danteforge frontier-spec check ${options.dimId}  →  freeze ${options.dimId}  (before building).`);
     if (options.json) process.stdout.write(JSON.stringify(res, null, 2) + '\n');
     return res;
@@ -104,7 +114,7 @@ export async function runFrontierSpec(options: FrontierSpecOptions): Promise<Fro
 
   const spec = specOf(dim);
   if (!spec) throw new Error(`"${options.dimId}" has no frontier_spec. Run: danteforge frontier-spec init ${options.dimId} --write`);
-  const check = checkFrontierSpec(spec, competitorsOf(matrix));
+  const check = checkFrontierSpec(spec, competitorsOf(matrix), rubric);
   res.ok = check.ok; res.errors = check.errors; res.warnings = check.warnings;
 
   if (options.action === 'check') {
