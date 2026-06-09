@@ -582,16 +582,45 @@ export async function loadOutcomeEvidence(
   }
 
   const targetSha = gitSha ?? await gitFn(cwd);
-  const prefix = targetSha ? `${targetSha}-` : 'nogit-';
+  const currentPrefix = `${targetSha ?? 'nogit'}-`;
 
-  for (const f of files.filter(n => n.endsWith('.json') && n.startsWith(prefix))) {
+  // Group evidence files by their per-(dim,outcome) suffix WITHOUT reading them.
+  // A filename is `${sha}-${dim}-${outcome}.json` (sha = 40-hex or 'nogit'); the
+  // text after the leading `${sha}-` is a stable key for the (dim,outcome) pair.
+  const groups = new Map<string, string[]>();
+  for (const f of files) {
+    const m = /^([0-9a-f]{40}|nogit)-(.+)\.json$/i.exec(f);
+    if (!m) continue;
+    const arr = groups.get(m[2]);
+    if (arr) arr.push(f); else groups.set(m[2], [f]);
+  }
+
+  // For each (dim,outcome) pick the receipt that best reflects the CURRENT code:
+  // the exact current-SHA receipt when present, else the most-recent prior one —
+  // but ONLY if it is still within its tier's freshness window (isEvidenceStale).
+  // This stops an UNRELATED commit (or tool-written telemetry that shifts HEAD)
+  // from orphaning every receipt and collapsing the whole matrix to 0.0, while
+  // keeping the per-tier freshness window as the real integrity gate. Reads stay
+  // bounded: the exact-SHA receipt alone in the common (fresh) case.
+  const tryRead = async (f: string): Promise<OutcomeEvidenceEntry | null> => {
     try {
-      const raw = await readFile(path.join(dir, f));
-      const entry = JSON.parse(raw) as OutcomeEvidenceEntry;
-      if (entry?.dimensionId && entry?.outcomeId) {
-        evidence.set(makeEvidenceKey(entry.dimensionId, entry.outcomeId), entry);
+      const entry = JSON.parse(await readFile(path.join(dir, f))) as OutcomeEvidenceEntry;
+      if (!entry?.dimensionId || !entry?.outcomeId) return null;
+      return isEvidenceStale(entry.tier, entry.ranAt) ? null : entry;
+    } catch { return null; }
+  };
+
+  for (const [, group] of groups) {
+    const exactFile = group.find(f => f.startsWith(currentPrefix));
+    let best = exactFile ? await tryRead(exactFile) : null;
+    if (!best) {
+      for (const f of group) {
+        if (f === exactFile) continue;
+        const e = await tryRead(f);
+        if (e && (!best || new Date(e.ranAt).getTime() > new Date(best.ranAt).getTime())) best = e;
       }
-    } catch { /* skip unreadable */ }
+    }
+    if (best) evidence.set(makeEvidenceKey(best.dimensionId, best.outcomeId), best);
   }
 
   return evidence;
