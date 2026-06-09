@@ -1,13 +1,39 @@
 // frontier-course-corrector.test.ts — the evidence-only stall classifier.
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { diagnoseStall, isCeiling, routeStallAction, diagnoseStallFromProject, MAX_COURSE_CORRECTIONS, type StallInputs } from '../src/core/frontier-course-corrector.js';
+import { diagnoseStall, isCeiling, routeStallAction, resolveStall, diagnoseStallFromProject, MAX_COURSE_CORRECTIONS, type StallInputs } from '../src/core/frontier-course-corrector.js';
 
 const base = (over: Partial<StallInputs> = {}): StallInputs => ({
   dimId: 'd', scoreBefore: 7, scoreAfter: 7,
   commands: [{ command: 'npx tsx --test tests/x.test.ts', exitCode: 0 }],
   gateFailures: [], integrityViolations: [], filesChanged: 3, attemptsSoFar: 0,
   ...over,
+});
+
+describe('resolveStall — Richard\'s DNA in the stall brain: env blocker is a problem, not a wall', () => {
+  const envBlocked = () => diagnoseStall(base({ commands: [{ command: 'pdftotext in.pdf out.txt', exitCode: 127 }] }));
+
+  it('an env-blocked stall is routed to the registry; SOLVED → un-plateau + retry (not a wall)', async () => {
+    let routed = false;
+    const r = await resolveStall(envBlocked(), '/x', { _solve: async () => { routed = true; return { solved: true }; } });
+    assert.equal(routed, true, 'the unbuildable stall is routed through solveObstacle, not plateaued outright');
+    assert.equal(r.plateau, false);
+    assert.equal(r.solvedByRegistry, true);
+  });
+
+  it('env-blocked but the registry genuinely can\'t solve it → the honest ceiling stands (only AFTER trying)', async () => {
+    const r = await resolveStall(envBlocked(), '/x', { _solve: async () => ({ solved: false }) });
+    assert.equal(r.plateau, true, 'honest ceiling, but it tried 3 solutions first');
+    assert.notEqual(r.solvedByRegistry, true);
+  });
+
+  it('a non-env stall (wrong-approach) keeps the gated path — the registry is NOT invoked', async () => {
+    let routed = false;
+    const wrongApproach = diagnoseStall(base({ filesChanged: 5 })); // clean build, score held → wrong-approach
+    const r = await resolveStall(wrongApproach, '/x', { _solve: async () => { routed = true; return { solved: true }; } });
+    assert.equal(routed, false, 'honesty/score stalls are not registry-auto-solvable by design');
+    assert.deepEqual({ exec: r.exec, plateau: r.plateau }, routeStallAction(wrongApproach));
+  });
 });
 
 describe('diagnoseStall — evidence-only, bounded', () => {

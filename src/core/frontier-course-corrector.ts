@@ -210,3 +210,43 @@ export function formatDiagnosis(d: StallDiagnosis): string {
   const facts = d.evidence.map(e => `${e.kind}:${e.detail}`).join(' | ');
   return `[course-correct] ${d.dimId} → ${d.category} ⇒ ${d.action}  (${facts})`;
 }
+
+function extractFailedCommand(d: StallDiagnosis): string | undefined {
+  const ev = d.evidence.find(e => e.kind === 'exit-code');
+  return ev?.detail.match(/`([^`]+)`/)?.[1];
+}
+
+/**
+ * Richard's DNA, applied to the stall brain: an env/operational blocker is a SOLVABLE sub-problem, not a
+ * wall. Before `unbuildable` plateaus a dim (the old "we can't, mark unbuildable" dead-stop), route it
+ * through the obstacle registry — diagnose -> 3 solutions -> execute the best under (kernel-derived,
+ * deny-guarded) pre-granted authority. Solved -> UN-PLATEAU and retry; only if the registry genuinely
+ * can't solve it does the honest ceiling stand — and only AFTER trying. Honesty/score stalls keep the
+ * gated ground path (routeStallAction); they are not registry-auto-solvable by design.
+ */
+export async function resolveStall(
+  d: StallDiagnosis, cwd: string,
+  opts: { failedCommand?: string; _solve?: (o: import('./obstacle-registry.js').Obstacle) => Promise<{ solved: boolean; ceiling?: string }> } = {},
+): Promise<StallActionResult & { solvedByRegistry?: boolean; solveDetail?: string }> {
+  const base = routeStallAction(d);
+  if (d.category !== 'unbuildable') return base; // only env/operational blockers route to the registry
+  const command = opts.failedCommand ?? extractFailedCommand(d);
+  const obstacle: import('./obstacle-registry.js').Obstacle = {
+    kind: /ENOENT|not found|not recognized|exit(?:\s*code)?\s*127/i.test(`${d.rationale} ${command ?? ''}`) ? 'spawn-failure' : 'env-blocked',
+    signal: (d.evidence.map(e => e.detail).join(' ') || d.rationale),
+    context: { command: command ?? '', cwd },
+  };
+  let solve: { solved: boolean; ceiling?: string };
+  if (opts._solve) {
+    solve = await opts._solve(obstacle);
+  } else {
+    const { registerCoreSolvers } = await import('./solvers/register-core.js');
+    const { solveObstacle } = await import('./obstacle-registry.js');
+    registerCoreSolvers();
+    solve = await solveObstacle(obstacle);
+  }
+  if (solve.solved) {
+    return { exec: null, plateau: false, solvedByRegistry: true, solveDetail: `${d.dimId}: env blocker auto-solved by the obstacle registry — un-plateau + retry (not a wall).` };
+  }
+  return base; // registry couldn't solve it → the honest ceiling stands, but only after trying 3 solutions
+}

@@ -25,7 +25,7 @@ import { writeVerifiedScore } from './write-verified-score.js';
 import { readSweBenchScore, formatSweBenchGoal, isSweBenchDimension } from './swe-bench-probe.js';
 import { defineUniverse, type UniverseDefinerOptions } from './universe-definer.js';
 import { runAutoforgeLoop, AutoforgeLoopState, type AutoforgeLoopContext, type AutoforgeLoopDeps } from './autoforge-loop.js';
-import { diagnoseStallFromProject, routeStallAction, formatDiagnosis } from './frontier-course-corrector.js';
+import { diagnoseStallFromProject, resolveStall, formatDiagnosis } from './frontier-course-corrector.js';
 import { nextLevelGoalSuffix } from './rubric-ladder.js';
 import { executeAutoforgeCommand } from './autoforge-executor.js';
 import { generateAdversarialCritique } from './adversarial-critique.js';
@@ -521,7 +521,10 @@ async function applyStallCorrection(
   cs.dimCorrectionCounts[nextDim.id] = attempts + 1;
   logger.info('  ' + formatDiagnosis(diag));
   logger.info(`  [course-correct] ${diag.rationale}`);
-  const route = routeStallAction(diag);
+  // Richard's DNA: route the stall through the obstacle registry — an env/operational blocker is a
+  // SOLVABLE problem (3 solutions → execute the best under pre-granted authority), not a wall to plateau.
+  const route = await resolveStall(diag, cwd, { failedCommand: commands[0]?.command });
+  if (route.solvedByRegistry) logger.info(`  [course-correct] ${route.solveDetail}`);
   if (route.exec) { await exec(route.exec, cwd).catch((e: unknown) => logger.warn(`  [course-correct] ${route.exec} failed: ${String(e)}`)); }
   if (route.plateau) cs.plateauedDims.add(nextDim.id);
   else cs.plateauedDims.delete(nextDim.id); // un-plateau → the loop revisits this dim and retries
