@@ -79,6 +79,16 @@ capabilityTest
     const { runCapabilityTestAudit } = await import('./commands/capability-test-audit.js');
     await runCapabilityTestAudit({ project: opts.project, json: opts.json, needsAuthoringOnly: opts.needsAuthoring });
   });
+capabilityTest
+  .command('verify')
+  .description('DYNAMIC honesty pass: for every dim the auditor calls REAL, run the sensitivity probe (break the wired callsite → a genuine yardstick must fail). Catches decoupled / self-fulfilling metrics a static pass cannot. Mutates+restores source per probe — runs the test twice per dim.')
+  .option('--project <path>', 'Target project root (default: cwd)')
+  .option('--json', 'Machine-readable JSON output')
+  .option('--limit <n>', 'Cap how many REAL dims to probe this run (probes are slow)', (v) => parseInt(v, 10))
+  .action(async (opts) => {
+    const { runCapabilityTestVerify } = await import('./commands/capability-test-verify.js');
+    await runCapabilityTestVerify({ project: opts.project, json: opts.json, limit: opts.limit });
+  });
 
 program
   .command('dim-triage')

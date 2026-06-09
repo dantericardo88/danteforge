@@ -93,3 +93,21 @@ export async function sensitivityProbe(opts: SensitivityProbeOptions): Promise<S
   }
   return { verdict: 'STUB', baselineExit, faultedExit, reason: `the yardstick still PASSES with ${opts.callsite} broken — it is invariant to the production code (decoupled / self-fulfilling), not a real metric.` };
 }
+
+/** Run the sensitivity probe for a dimension from its yardstick audit (the command + its best wired
+ *  callsite). The bridge the conductor's verifyRealFn and the `capability-test verify` pass both use, so
+ *  there is ONE execution-based definition of "is this REAL verdict actually real?". */
+export async function verifyDimYardstick(
+  audit: { command: string | null; wiredCallsites: string[] },
+  cwd: string,
+  opts: Pick<SensitivityProbeOptions, 'timeoutMs' | '_run' | '_readFile' | '_writeFile'> = {},
+): Promise<SensitivityResult> {
+  if (!audit.command) {
+    return { verdict: 'INCONCLUSIVE', baselineExit: null, faultedExit: null, reason: 'no capability_test command to probe.' };
+  }
+  const callsite = audit.wiredCallsites[0];
+  if (!callsite) {
+    return { verdict: 'INCONCLUSIVE', baselineExit: null, faultedExit: null, reason: 'no wired production callsite to fault — dependence cannot be proven.' };
+  }
+  return sensitivityProbe({ cwd, command: audit.command, callsite, ...opts });
+}

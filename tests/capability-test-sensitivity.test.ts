@@ -1,6 +1,6 @@
 import { test, describe } from 'node:test';
 import assert from 'node:assert/strict';
-import { sensitivityProbe, type SensitivityProbeOptions } from '../src/matrix/engines/capability-test-sensitivity.js';
+import { sensitivityProbe, verifyDimYardstick, type SensitivityProbeOptions } from '../src/matrix/engines/capability-test-sensitivity.js';
 
 /** A runner that returns `baseline` on the first call and `faulted` on the second. */
 function runner(baseline: number, faulted: number): SensitivityProbeOptions['_run'] {
@@ -57,5 +57,18 @@ describe('sensitivityProbe — break the callsite, a real test must flip', () =>
     // last write must restore the ORIGINAL content (not the faulted content)
     assert.equal(writes.at(-1)?.[1], 'ORIGINAL SOURCE');
     assert.match(writes[0]![1], /DANTE_SENSITIVITY_FAULT/); // the fault was applied first
+  });
+});
+
+describe('verifyDimYardstick — bridge from a dim audit to the probe', () => {
+  const runner = (b: number, f: number): SensitivityProbeOptions['_run'] => { let n = 0; return async () => (n++ === 0 ? b : f); };
+  test('probes the dim command against its first wired callsite → GENUINE', async () => {
+    const r = await verifyDimYardstick({ command: 'npx tsx --test t.test.ts', wiredCallsites: ['src/foo.ts'] }, '/x',
+      { _run: runner(0, 1), _readFile: async () => 'X', _writeFile: async () => {} });
+    assert.equal(r.verdict, 'GENUINE');
+  });
+  test('INCONCLUSIVE with no command or no wired callsite (dependence cannot be proven)', async () => {
+    assert.equal((await verifyDimYardstick({ command: null, wiredCallsites: ['src/foo.ts'] }, '/x')).verdict, 'INCONCLUSIVE');
+    assert.equal((await verifyDimYardstick({ command: 'npx tsx --test t.test.ts', wiredCallsites: [] }, '/x')).verdict, 'INCONCLUSIVE');
   });
 });
