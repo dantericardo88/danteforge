@@ -95,6 +95,24 @@ describe('authorYardstick — autonomous examiner → gate → install/revert (n
     assert.equal(dispatched, false, 'must not even dispatch without a grounded bar');
   });
 
+  test('REJECTS + reverts if the examiner edited PRODUCTION code (examiner≠builder, enforced by git-diff)', async () => {
+    let reverted = false, evaluated = false;
+    const r = await authorYardstick('dim011', authorCtx({
+      productionChanged: async () => ['src/endpoint/src/memory_inject.rs'],
+      revert: async () => { reverted = true; },
+      readCandidate: async () => { evaluated = true; return REAL; },
+    }));
+    assert.equal(r.installed, false);
+    assert.equal(reverted, true, 'examiner-edited production must be reverted');
+    assert.equal(evaluated, false, 'must reject BEFORE reading/grading — the exam is tainted');
+    assert.match(r.reason, /production code/);
+  });
+
+  test('PROCEEDS when the examiner touched no production code', async () => {
+    const r = await authorYardstick('dim011', authorCtx({ productionChanged: async () => [] }));
+    assert.equal(r.installed, true, r.reason);
+  });
+
   test('the examiner objective forbids editing production + demands a RED, wired, ungrounded-rejecting test', () => {
     const obj = buildExaminerObjective('dim011', 'the bar', 'src/x.rs');
     assert.match(obj, /NOT[\s\S]*allowed to edit production code/);

@@ -89,6 +89,17 @@ capabilityTest
     const { runCapabilityTestVerify } = await import('./commands/capability-test-verify.js');
     await runCapabilityTestVerify({ project: opts.project, json: opts.json, limit: opts.limit });
   });
+capabilityTest
+  .command('conduct')
+  .description('The conductor brain, end-to-end with NO human: static audit + dynamic sensitivity probe + the self-healing router → the truthful remediation plan (PROCEED / AUTHOR_YARDSTICK / RESEARCH_LADDER / CEILING) the autonomous loop would act on.')
+  .option('--project <path>', 'Target project root (default: cwd)')
+  .option('--json', 'Machine-readable JSON output')
+  .option('--limit <n>', 'Cap how many REAL dims to dynamically probe', (v) => parseInt(v, 10))
+  .option('--no-probe', 'Skip the dynamic probe (static plan only — faster)')
+  .action(async (opts) => {
+    const { runCapabilityTestConduct } = await import('./commands/capability-test-conduct.js');
+    await runCapabilityTestConduct({ project: opts.project, json: opts.json, limit: opts.limit, noProbe: opts.probe === false });
+  });
 
 program
   .command('dim-triage')

@@ -142,6 +142,10 @@ export interface AuthorContext {
   readCandidate: () => Promise<YardstickCandidate | null>;
   /** Restore the dim's capability_test to its prior state when the candidate is rejected. */
   revert: () => Promise<void>;
+  /** Production src files the examiner edited (e.g. from `git diff --name-only`, filtered to non-test
+   *  src/). MUST be empty — an examiner that edits production code could author the exam AND the stub
+   *  that passes it, defeating examiner≠builder. Omit only in trusted/test contexts. */
+  productionChanged?: () => Promise<string[]>;
   timeoutMs?: number;
   run?: RunFn;
 }
@@ -179,6 +183,15 @@ export async function authorYardstick(dimId: string, ctx: AuthorContext): Promis
   const dispatched = await ctx.dispatch(buildExaminerObjective(dimId, ctx.ladderBar, ctx.targetModule));
   if (!dispatched.ranOk) {
     return { dimId, installed: false, reason: `examiner agent did not run: ${dispatched.reason ?? 'unknown'}` };
+  }
+  // Examiner≠builder, enforced structurally: the examiner may write ONLY the yardstick. If it touched
+  // production code it could author the exam AND the stub that passes it — revert + reject outright.
+  if (ctx.productionChanged) {
+    const changed = await ctx.productionChanged();
+    if (changed.length > 0) {
+      await ctx.revert();
+      return { dimId, installed: false, reason: `examiner edited production code (${changed.slice(0, 3).join(', ')}${changed.length > 3 ? ', …' : ''}) — it must author ONLY the yardstick, never the code it grades. Reverted.` };
+    }
   }
   const candidate = await ctx.readCandidate();
   if (!candidate) {
