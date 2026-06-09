@@ -14,6 +14,7 @@
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import { execFile } from 'node:child_process';
+import { randomUUID } from 'node:crypto';
 import { loadMatrix, type CompeteMatrix } from '../../core/compete-matrix.js';
 import { logger } from '../../core/logger.js';
 import { isTestSuiteCommand } from '../../matrix/engines/outcome-quality.js';
@@ -114,7 +115,9 @@ export async function runSessionRecord(options: SessionRecordOptions): Promise<S
 
   // Genuine real-user-path exercise — emit the outcome.
   const outcome: Record<string, unknown> = {
-    id: `${options.dimId}-rup-${beforeEpoch}`,
+    // Unique suffix so two records in the same millisecond (or a seam-fast test loop) can never
+    // collide on the id — a collision would make two distinct sessions read as one receipt downstream.
+    id: `${options.dimId}-rup-${beforeEpoch}-${randomUUID().slice(0, 6)}`,
     // runtime-exec consumes `command` (e2e-workflow expects steps[] — a mismatch would
     // make validate no-op the receipt). runtime-exec + real-user-path + non-test-runner
     // reaches 9.0 via classifyOutcomeKind.

@@ -461,13 +461,13 @@ async function defaultPushTo9(cwd: string, dimId: string): Promise<PushResult> {
       // cannot satisfy the whole multi-session proof — the anti-circular defense.
       const cmd = resolveRunCommand(spec0, s);
       const rec = await df(cwd, ['session-record', dimId, '--run', cmd, '--callsite', callsite, '--artifact', artifact, '--write']);
-      // PLAIN validate (NOT --force-cold): each newly-recorded outcome runs in its OWN process and
-      // keeps that process's session_id, while prior sessions' evidence is served from cache and
-      // PRESERVED. --force-cold re-runs EVERY outcome and re-stamps them all with the LAST process's
-      // session_id, collapsing the multi-session proof to ONE distinct session — which derived-score
-      // structurally vetoes at T7 (it requires >=2 distinct session_ids). That collapse is what made
-      // autonomous 9.0 unreachable; plain validate is what produces the distinct sessions the frontier needs.
-      const val = await df(cwd, ['validate', dimId]);
+      // --preserve-sessions (forceCold=FALSE): run ONLY the newly-recorded outcome (no cache yet) and
+      // serve every prior session's evidence from cache UNCHANGED, so each session keeps its own
+      // session_id. validate DEFAULTS to forceCold=TRUE, which re-runs EVERY outcome and re-stamps them
+      // all with the LAST process's session_id — collapsing the multi-session proof to ONE distinct
+      // session, which derived-score structurally vetoes at T7. That default is what made autonomous
+      // 9.0 unreachable; --preserve-sessions is what produces the >=2 distinct sessions the frontier needs.
+      const val = await df(cwd, ['validate', dimId, '--preserve-sessions']);
       if (rec.ok && val.ok) okSessions++;
     }
     // Require ALL required distinct sessions to succeed — not just one. A single passing session is
@@ -544,9 +544,9 @@ async function defaultPromoteOne(cwd: string, a: { memberId: CouncilMemberId; di
     let okSessions = 0;
     for (let s = 0; s < sessions; s++) {
       const rec = await df(cwd, ['session-record', a.dimId, '--run', resolveRunCommand(spec0, s), '--callsite', callsite, '--artifact', artifact, '--write']);
-      // PLAIN validate (see defaultPushTo9): --force-cold collapses the per-session session_ids into
-      // one, which derived-score vetoes at T7. Plain validate preserves the distinct sessions.
-      const val = await df(cwd, ['validate', a.dimId]);
+      // --preserve-sessions (see defaultPushTo9): validate defaults to forceCold=TRUE which collapses
+      // the per-session session_ids into one; --preserve-sessions serves cache and keeps them distinct.
+      const val = await df(cwd, ['validate', a.dimId, '--preserve-sessions']);
       if (rec.ok && val.ok) okSessions++;
     }
     evidenceOk = okSessions >= sessions;
