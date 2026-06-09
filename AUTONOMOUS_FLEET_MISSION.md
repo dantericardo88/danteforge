@@ -54,3 +54,4 @@ touch DanteForge's own scoring · push to a remote (commit locally only) · use 
 
 <!-- Each cycle appends one line here. -->
 - 2026-06-08 | DanteCode | configuration_ergonomics | 0.0 → 8.0 | built workspace dep chain (cli/mcp/skill-adapter) so the real `config doctor` CLI run executes; corrected tier T7→T5 (single product run). First DanteCode 8.0 from real product evidence.
+- 2026-06-08 | DanteCode | multi_step_task_exec | 0.0 -> 8.0 | post-build the frontier E2E (CLI generates+verifies working slugify code) passes; corrected tier T7->T5 (single real product run). DanteCode derived mean -> 5.7.
