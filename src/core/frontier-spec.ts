@@ -296,10 +296,12 @@ export function checkFrontierSpec(spec: FrontierSpec, competitors: string[], rub
     warnings.push(`Targeting beyond a ${lt.score} leader via a category delta — make sure the delta is real and reviewer-confirmed, not aspirational.`);
   }
 
-  // Anti-circular nudge: the two-session protocol resists prepared fixtures best when each session
-  // runs a DIFFERENT realistic input. A single input lets one staged fixture satisfy both sessions.
+  // Anti-circular: the multi-session protocol resists prepared fixtures only when each session runs a
+  // DIFFERENT realistic input. With <2 inputs both sessions run the SAME command, so the sessions
+  // differ only by a process UUID — proving "two invocations happened," NOT "two meaningfully different
+  // exercises happened." That is too weak for the frontier, so it is an ERROR, not a nudge. (Council.)
   if (spec.required_receipts.min_distinct_sessions >= 2 && (rup.realistic_inputs?.length ?? 0) < 2) {
-    warnings.push('Only one realistic input — declare real_user_path.realistic_inputs[] (≥2) so each session exercises a different one; a single fixture can satisfy both sessions otherwise.');
+    errors.push('real_user_path.realistic_inputs[] needs ≥2 entries so each distinct session exercises a DIFFERENT realistic input — with one input both sessions run the same command and differ only by a process UUID, which a single staged fixture can satisfy.');
   }
 
   return { ok: errors.length === 0, errors, warnings };

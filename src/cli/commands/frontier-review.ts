@@ -18,6 +18,8 @@ import {
   runFrontierReviewCourt, type FrontierReviewInput, type FrontierReviewResult,
 } from '../../matrix/courts/frontier-review-court.js';
 import type { CouncilMemberId } from '../../matrix/engines/council-scheduler.js';
+import { loadOutcomeEvidence } from '../../matrix/engines/outcome-runner.js';
+import { makeEvidenceKey, type OutcomeEvidence } from '../../matrix/types/outcome.js';
 
 export interface FrontierReviewCliOptions {
   dimId: string;
@@ -34,6 +36,7 @@ export interface FrontierReviewCliOptions {
   _readArtifact?: (p: string) => Promise<string>;
   _writeCeiling?: (p: string, c: string) => Promise<void>;
   _enqueueAudit?: (cwd: string, entry: AuditEscrowEntry) => Promise<void>;
+  _loadEvidence?: (cwd: string) => Promise<OutcomeEvidence>;
   _now?: string;
 }
 
@@ -78,6 +81,24 @@ export async function runFrontierReviewCli(options: FrontierReviewCliOptions): P
   let artifactExcerpt = '(artifact not readable)';
   try { artifactExcerpt = (await readArtifact(path.join(cwd, artifactPath))).slice(0, 2000); } catch { /* best-effort */ }
 
+  // DETERMINISTIC pre-court receipt gate. Bind declared real-user-path outcomes to their evidence
+  // and require genuine multi-session receipts BEFORE spending judges. A fixture that can't produce
+  // ≥2 distinct passing sessions never reaches the council — the gate, not the LLM, blocks it.
+  const { receipts, gate } = await gatherReceipts(
+    cwd, dim as { id: string; outcomes?: Array<Record<string, unknown>> }, spec,
+    options._loadEvidence ?? ((c: string) => loadOutcomeEvidence(c)),
+  );
+  if (!gate.ok) {
+    logger.warn(`[frontier-review] ${options.dimId}: receipt gate FAILED — ${gate.reasons.join('; ')}. Court NOT convened.`);
+    const result: FrontierReviewResult = {
+      verdict: 'REJECTED',
+      vote: { pass: 0, fail: 0, unclear: 0, total: 0, crossMember: 0, summary: `pre-court receipt gate failed: ${gate.reasons.join('; ')}` },
+      ceilingSignal: 0, dissent: [], judges: [],
+    };
+    if (options.json) process.stdout.write(JSON.stringify({ dimId: options.dimId, result, validatedWritten: false, ceilingWritten: false }, null, 2) + '\n');
+    return { dimId: options.dimId, result, validatedWritten: false, ceilingWritten: false };
+  }
+
   const reviewInput: FrontierReviewInput = {
     dimId: options.dimId,
     frontierSpec: spec,
@@ -86,7 +107,7 @@ export async function runFrontierReviewCli(options: FrontierReviewCliOptions): P
       requiredCallsite: rup.required_callsite,
       artifactPath,
       artifactExcerpt,
-      receipts: gatherReceipts(dim),
+      receipts,
     },
   };
 
@@ -139,10 +160,43 @@ export async function runFrontierReviewCli(options: FrontierReviewCliOptions): P
   return { dimId: options.dimId, result, validatedWritten, ceilingWritten };
 }
 
-function gatherReceipts(dim: unknown): Array<{ sessionId: string; passed: boolean; tier: string }> {
-  const outcomes = (dim as { outcomes?: Array<Record<string, unknown>> }).outcomes ?? [];
-  // Best-effort: surface declared real-user-path outcomes as the receipts under review.
-  return outcomes
-    .filter(o => (o.input_source as { type?: string } | undefined)?.type === 'real-user-path')
-    .map((o, i) => ({ sessionId: `s${i + 1}`, passed: true, tier: String(o.tier ?? 'T7') }));
+interface ReceiptGate { ok: boolean; reasons: string[]; distinctSessions: number; passingT5plus: number }
+
+function tierNum(tier: string): number {
+  const m = /^T(\d+)$/.exec(String(tier).trim());
+  return m ? Number(m[1]) : -1;
+}
+
+/**
+ * Surface the dim's REAL real-user-path receipts from the outcome-evidence files (not synthesized),
+ * and run a DETERMINISTIC pre-court gate. The court's LLM judges cannot verify session-distinctness
+ * or that a receipt actually passed — so we bind each declared real-user-path outcome to its evidence
+ * entry (via makeEvidenceKey) and require, from the EVIDENCE: >=min_t5_plus_outcomes passing T5+
+ * receipts across >=min_distinct_sessions distinct session_ids, with none failing. A declared outcome
+ * with NO evidence at this SHA is NOT a receipt (the old code surfaced it as a fake passed:true). This
+ * mirrors derived-score's structural T7 veto so a single staged fixture cannot reach the court.
+ */
+async function gatherReceipts(
+  cwd: string,
+  dim: { id: string; outcomes?: Array<Record<string, unknown>> },
+  spec: FrontierSpec,
+  loadEvidence: (cwd: string) => Promise<OutcomeEvidence>,
+): Promise<{ receipts: Array<{ sessionId: string; passed: boolean; tier: string }>; gate: ReceiptGate }> {
+  const evidence = await loadEvidence(cwd);
+  const receipts: Array<{ sessionId: string; passed: boolean; tier: string }> = [];
+  for (const o of dim.outcomes ?? []) {
+    if ((o.input_source as { type?: string } | undefined)?.type !== 'real-user-path') continue;
+    const e = evidence.get(makeEvidenceKey(dim.id, String(o.id ?? '')));
+    if (!e) continue; // no real evidence at this SHA → not a receipt
+    receipts.push({ sessionId: e.session_id ?? '(no-session)', passed: e.passed, tier: String(o.tier ?? e.tier ?? '') });
+  }
+  const passingT5plus = receipts.filter(r => r.passed && tierNum(r.tier) >= 5);
+  const distinct = new Set(passingT5plus.map(r => r.sessionId).filter(s => s && s !== '(no-session)'));
+  const needOutcomes = spec.required_receipts.min_t5_plus_outcomes;
+  const needSessions = spec.required_receipts.min_distinct_sessions;
+  const reasons: string[] = [];
+  if (passingT5plus.length < needOutcomes) reasons.push(`${passingT5plus.length}/${needOutcomes} passing T5+ real-user-path receipts on disk`);
+  if (distinct.size < needSessions) reasons.push(`${distinct.size}/${needSessions} distinct evidence session(s) — a single sitting cannot self-certify`);
+  if (receipts.some(r => !r.passed)) reasons.push('one or more real-user-path receipts FAILED');
+  return { receipts, gate: { ok: reasons.length === 0, reasons, distinctSessions: distinct.size, passingT5plus: passingT5plus.length } };
 }

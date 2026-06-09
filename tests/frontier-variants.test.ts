@@ -35,16 +35,16 @@ describe('frontier multi-input variants — anti-circular defense', () => {
     assert.equal(resolveRunCommand(s, 1), 'node dist/index.js context inspect --project fixtures/b');
   });
 
-  test('checkFrontierSpec nudges (warning, not error) when two-session protocol has <2 inputs', () => {
+  test('checkFrontierSpec ERRORS when the two-session protocol has <2 realistic inputs', () => {
     const single = spec({ run_command: 'node dist/index.js context inspect --project fixtures/a' });
     const r = checkFrontierSpec(single, ['Cursor']);
-    assert.equal(r.ok, true, 'still valid — single input is allowed');
-    assert.ok(r.warnings.some(w => /realistic_inputs/.test(w)), 'but nudges toward multiple inputs');
+    assert.equal(r.ok, false, 'a single input cannot prove two meaningfully-distinct sessions');
+    assert.ok(r.errors.some(e => /realistic_inputs/.test(e)), 'blocks freeze until ≥2 inputs are declared');
   });
 
-  test('two declared inputs → no nudge', () => {
+  test('two declared inputs → no realistic_inputs error', () => {
     const multi = spec({ run_command: 'node dist/index.js context inspect --project {input}', realistic_inputs: ['fixtures/a', 'fixtures/b'] });
     const r = checkFrontierSpec(multi, ['Cursor']);
-    assert.equal(r.warnings.some(w => /realistic_inputs/.test(w)), false);
+    assert.equal(r.errors.some(e => /realistic_inputs/.test(e)), false);
   });
 });

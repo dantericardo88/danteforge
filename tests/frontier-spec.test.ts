@@ -14,7 +14,8 @@ function goodSpec(): FrontierSpec {
     leader_target: { competitor: 'Cursor', score: 9.1, observed_capability: 'In-editor agent flow with preview+apply.' },
     real_user_path: {
       required_callsite: 'vscode-extension/src/webview/AgentPanel.ts',
-      run_command: 'node dist/index.js forge --project fixtures/real-workspace',
+      run_command: 'node dist/index.js forge --project {input}',
+      realistic_inputs: ['fixtures/real-workspace', 'fixtures/other-workspace'],
       observable_artifacts: [{ kind: 'screenshot', path: '.danteforge/runs/agent/webview.png' }],
     },
     required_receipts: { min_t5_plus_outcomes: 3, min_distinct_sessions: 2, input_source: 'real-user-path' },

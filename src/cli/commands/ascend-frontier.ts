@@ -450,14 +450,24 @@ async function defaultPushTo9(cwd: string, dimId: string): Promise<PushResult> {
   if (spec0) {
     const callsite = spec0.real_user_path.required_callsite;
     const artifact = spec0.real_user_path.observable_artifacts[0]?.path ?? '';
-    const sessions = Math.max(2, spec0.required_receipts.min_distinct_sessions);
+    // Run enough sessions to satisfy BOTH receipt requirements at once: >=min_distinct_sessions
+    // distinct process-sessions AND >=min_t5_plus_outcomes total T5+ receipts (each session-record
+    // appends exactly one). Looping only over min_distinct_sessions produced too few outcomes to
+    // satisfy the T7 multi-receipt consensus. (Codex finding.)
+    const sessions = Math.max(2, spec0.required_receipts.min_distinct_sessions, spec0.required_receipts.min_t5_plus_outcomes);
     let okSessions = 0;
     for (let s = 0; s < sessions; s++) {
       // Each session runs a DIFFERENT realistic input (variant rotation) so one prepared fixture
       // cannot satisfy the whole multi-session proof — the anti-circular defense.
       const cmd = resolveRunCommand(spec0, s);
       const rec = await df(cwd, ['session-record', dimId, '--run', cmd, '--callsite', callsite, '--artifact', artifact, '--write']);
-      const val = await df(cwd, ['validate', dimId, '--force-cold']);
+      // PLAIN validate (NOT --force-cold): each newly-recorded outcome runs in its OWN process and
+      // keeps that process's session_id, while prior sessions' evidence is served from cache and
+      // PRESERVED. --force-cold re-runs EVERY outcome and re-stamps them all with the LAST process's
+      // session_id, collapsing the multi-session proof to ONE distinct session — which derived-score
+      // structurally vetoes at T7 (it requires >=2 distinct session_ids). That collapse is what made
+      // autonomous 9.0 unreachable; plain validate is what produces the distinct sessions the frontier needs.
+      const val = await df(cwd, ['validate', dimId]);
       if (rec.ok && val.ok) okSessions++;
     }
     // Require ALL required distinct sessions to succeed — not just one. A single passing session is
@@ -526,14 +536,27 @@ async function defaultBuildAll(cwd: string, assignments: { memberId: CouncilMemb
  *  matrix.json — runParallelRound guarantees this runs one dim at a time, so no write races. */
 async function defaultPromoteOne(cwd: string, a: { memberId: CouncilMemberId; dimId: string }): Promise<PushOutcome> {
   const spec0 = ((await loadMatrix(cwd))?.dimensions.find(d => d.id === a.dimId) as unknown as { frontier_spec?: FrontierSpec } | undefined)?.frontier_spec;
+  let evidenceOk = false;
   if (spec0) {
     const callsite = spec0.real_user_path.required_callsite;
     const artifact = spec0.real_user_path.observable_artifacts[0]?.path ?? '';
-    const sessions = Math.max(2, spec0.required_receipts.min_distinct_sessions);
+    const sessions = Math.max(2, spec0.required_receipts.min_distinct_sessions, spec0.required_receipts.min_t5_plus_outcomes);
+    let okSessions = 0;
     for (let s = 0; s < sessions; s++) {
-      await df(cwd, ['session-record', a.dimId, '--run', resolveRunCommand(spec0, s), '--callsite', callsite, '--artifact', artifact, '--write']);
-      await df(cwd, ['validate', a.dimId, '--force-cold']);
+      const rec = await df(cwd, ['session-record', a.dimId, '--run', resolveRunCommand(spec0, s), '--callsite', callsite, '--artifact', artifact, '--write']);
+      // PLAIN validate (see defaultPushTo9): --force-cold collapses the per-session session_ids into
+      // one, which derived-score vetoes at T7. Plain validate preserves the distinct sessions.
+      const val = await df(cwd, ['validate', a.dimId]);
+      if (rec.ok && val.ok) okSessions++;
     }
+    evidenceOk = okSessions >= sessions;
+  }
+  // Hard-block the court on incomplete evidence: convening judges on a failed/partial evidence run
+  // would let the court "VALIDATE" a dim whose receipts don't actually back it. No spec / not all
+  // sessions captured → REJECTED, court NOT run. (Codex: defaultPromoteOne previously ran the court
+  // even when session-record/validate failed.)
+  if (!spec0 || !evidenceOk) {
+    return { dimId: a.dimId, builderId: a.memberId, verdict: 'REJECTED', passedByJudges: [] };
   }
   // Distinguish a real court REJECT from "we couldn't read the court's answer" (non-zero exit or
   // no JSON): parseCourtOutput flags the latter so the orchestrator records uncertainty, not a clean no.
