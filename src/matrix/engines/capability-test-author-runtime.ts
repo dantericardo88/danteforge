@@ -69,8 +69,8 @@ export interface AuthorRuntimeOptions {
   wired: Set<string>;
   hasLadder: boolean;
   /** Dispatch the examiner agent to write the test at `testFilePath` (ClaudeCodeAdapter, write-scoped).
-   *  The live-agent step — provided by the conductor run loop (reuses the proven dispatchAgentEdit path). */
-  dispatchExaminer: (objective: string, testFilePath: string) => Promise<{ ranOk: boolean; reason?: string }>;
+   *  Defaults to the LIVE defaultExaminerDispatch; injected as a seam in tests. */
+  dispatchExaminer?: (objective: string, testFilePath: string) => Promise<{ ranOk: boolean; reason?: string }>;
   /** Files changed in the working tree. Defaults to `git status --porcelain`. */
   gitChanged?: (cwd: string) => Promise<string[]>;
   /** Persist the accepted capability_test command into the dim's matrix.json. Defaults to matrix I/O. */
@@ -83,6 +83,33 @@ export interface AuthorRuntimeOptions {
 }
 
 const defaultExists = async (p: string): Promise<boolean> => { try { await fs.access(p); return true; } catch { return false; } };
+
+/** The LIVE examiner dispatch: spawn the real claude/codex coding agent to write the yardstick test,
+ *  write-scoped to tests/ (the adapter reverts edits outside the lease — examiner≠builder at the adapter
+ *  layer too, complementing the git-diff check). This is the seam the conductor run loop wires for real. */
+export async function defaultExaminerDispatch(cwd: string, objective: string, testFilePath: string): Promise<{ ranOk: boolean; reason?: string }> {
+  try {
+    const { resolveEditAdapter } = await import('../../cli/commands/autoresearch-agent-edit.js');
+    const { runAdapter } = await import('../adapters/adapter-interface.js');
+    const workPacket = {
+      id: `yardstick-examiner.${Date.now()}`, dimensionId: 'yardstick-examiner', objective,
+      acceptanceCriteria: ['Writes a RED, wired capability test at the given path; edits no production code.'],
+      proof: { proofRequired: [] }, globalForbidden: ['src/**', 'packages/**', 'dist/**', 'node_modules/**', '.danteforge/**', '.git/**'],
+      context: { mode: 'yardstick-examiner' },
+    } as unknown as Parameters<typeof resolveEditAdapter>[0];
+    const adapter = await resolveEditAdapter(workPacket);
+    if (!adapter) return { ranOk: false, reason: 'no coding-agent CLI (claude/codex) available' };
+    const lease = {
+      id: `examiner-lease.${Date.now()}`, worktreePath: cwd,
+      allowedWritePaths: ['tests/**', testFilePath], allowedReadPaths: ['**'],
+      forbiddenPaths: ['src/**', 'packages/**', 'dist/**', 'node_modules/**', '.danteforge/**', '.git/**'],
+    } as unknown as Parameters<typeof runAdapter>[1]['lease'];
+    await runAdapter(adapter, { lease, cwd });
+    return { ranOk: true };
+  } catch (err) {
+    return { ranOk: false, reason: err instanceof Error ? err.message : String(err) };
+  }
+}
 
 /**
  * Author a real, RED, ladder-grounded yardstick for one dim by dispatching the examiner agent, with the
@@ -104,7 +131,7 @@ export async function authorYardstickForDim(opts: AuthorRuntimeOptions): Promise
     cwd: opts.cwd, wired: opts.wired, hasLadder: opts.hasLadder,
     ladderBar: opts.ladderBar, targetModule: opts.targetModule,
     timeoutMs: opts.timeoutMs, run: opts._run,
-    dispatch: (objective) => opts.dispatchExaminer(`${objective}\n\nWrite your test at EXACTLY this path: ${scaffold.testFilePath}`, scaffold.testFilePath),
+    dispatch: (objective) => (opts.dispatchExaminer ?? ((o, p) => defaultExaminerDispatch(opts.cwd, o, p)))(`${objective}\n\nWrite your test at EXACTLY this path: ${scaffold.testFilePath}`, scaffold.testFilePath),
     productionChanged: async () => (await gitChanged(opts.cwd)).filter(isProductionSrc),
     readCandidate: async () => {
       if (!(await exists(absTest))) return null; // the examiner never produced the test
