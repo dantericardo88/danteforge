@@ -224,9 +224,15 @@ export async function runMeasurement(
   // applies and the spawn fails (exit 127 / garbage). When shell metacharacters are present, route the
   // WHOLE command through the platform shell so the plumbing actually works. The simple case (no
   // operators) keeps the safe token-split (no shell injection surface).
+  // On Windows, npx/npm/yarn/pnpm/tsx are `.cmd` wrappers — execFile cannot launch them (ENOENT), so a
+  // token-split command starting with one must also route through cmd (which resolves .cmd). Without this
+  // the build loop's measurement command `npx tsx --test …` fails baseline ENOENT — the first integration
+  // bug the live autopilot key-turn surfaced.
+  const firstToken = config.measurementCommand.trim().split(/\s+/)[0] ?? '';
+  const winCmdWrapper = process.platform === 'win32' && /^(?:npx|pnpx|npm|yarn|pnpm|tsx)(?:\.cmd)?$/i.test(firstToken);
   let executable: string;
   let args: string[];
-  if (NEEDS_SHELL.test(config.measurementCommand)) {
+  if (NEEDS_SHELL.test(config.measurementCommand) || winCmdWrapper) {
     if (process.platform === 'win32') {
       executable = process.env.ComSpec || 'cmd.exe';
       args = ['/d', '/s', '/c', config.measurementCommand];
