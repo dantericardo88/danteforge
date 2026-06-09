@@ -208,6 +208,39 @@ export type ExecFileFn = (
 ) => Promise<{ stdout: string }>;
 
 /**
+ * A spawn failure (ENOENT / 127) is a SOLVABLE obstacle, not a dead stop — the DNA's first production
+ * caller. Route it through the obstacle registry (spawn-failure solver: shell-route / npx --yes /
+ * install-then-retry). A runShell threaded onto execFn captures the recovering run's metric, so a
+ * recovered command returns its real exit/stdout. null = genuinely unrecoverable (then the caller throws).
+ */
+async function recoverSpawnFailure(config: AutoResearchConfig, execFn: ExecFileFn): Promise<{ stdout: string; exitCode: number } | null> {
+  const { registerCoreSolvers } = await import('./solvers/register-core.js');
+  const { solveObstacle } = await import('./obstacle-registry.js');
+  registerCoreSolvers();
+  let lastStdout = '';
+  let lastCode = 1;
+  const runShell = async (command: string, cwd: string): Promise<number> => {
+    const [file, args] = process.platform === 'win32'
+      ? [process.env.ComSpec || 'cmd.exe', ['/d', '/s', '/c', command]]
+      : ['/bin/sh', ['-c', command]];
+    try {
+      const res = await execFn(file as string, args as string[], { cwd, timeout: 5 * 60 * 1000, maxBuffer: 10 * 1024 * 1024, env: process.env });
+      lastStdout = res.stdout ?? ''; lastCode = 0; return 0;
+    } catch (e) {
+      const er = e as { code?: number | string; stdout?: string };
+      lastStdout = er.stdout ?? '';
+      lastCode = typeof er.code === 'number' ? er.code : 1;
+      return er.code === 'ENOENT' ? 127 : lastCode;
+    }
+  };
+  const solve = await solveObstacle(
+    { kind: 'spawn-failure', signal: 'ENOENT', context: { command: config.measurementCommand, cwd: config.cwd } },
+    { runShell },
+  );
+  return solve.solved ? { stdout: lastStdout, exitCode: lastCode } : null;
+}
+
+/**
  * Execute the measurement command and extract a numeric value from stdout.
  * The command is expected to print a number (possibly amid other text); the
  * first floating-point value found in stdout is used as the metric.
@@ -264,15 +297,25 @@ export async function runMeasurement(
   } catch (e) {
     const err = e as { code?: number | string; stdout?: string; killed?: boolean; signal?: string };
     // "The command RAN and exited non-zero" is signalled by a numeric exit code or captured stdout.
-    // Anything else (not-found, killed/timeout, or an unexpected throw with no run signal) is a
-    // genuine inability to measure — re-throw so the experiment is recorded as a crash.
     const ranButFailed = typeof err.code === 'number' || typeof err.stdout === 'string';
-    if (err.code === 'ENOENT' || err.killed || err.signal === 'SIGTERM' || !ranButFailed) {
+    const isSpawnFailure = err.code === 'ENOENT' || err.code === 127;
+    if (isSpawnFailure) {
+      // DNA: a spawn failure is a SOLVABLE obstacle, not a dead stop. Route it through the obstacle
+      // registry, which auto-solves it (shell-route / npx --yes / install-then-retry) and captures the
+      // metric — the loop self-heals the exact class a human had to fix this session. No human.
+      const recovered = await recoverSpawnFailure(config, execFn);
+      if (!recovered) {
+        throw new Error(`Measurement command could not run (${err.code ?? 'error'}) and the obstacle solver could not recover it: ${config.measurementCommand}`);
+      }
+      stdout = recovered.stdout;
+      exitCode = recovered.exitCode;
+    } else if (err.killed || err.signal === 'SIGTERM' || !ranButFailed) {
       throw new Error(`Measurement command could not run (${err.killed || err.signal ? 'timed out' : err.code ?? 'error'}): ${config.measurementCommand}`);
+    } else {
+      // The command RAN and exited non-zero (e.g. a failing test). That's a real, measurable baseline.
+      stdout = err.stdout ?? '';
+      exitCode = typeof err.code === 'number' ? err.code : 1;
     }
-    // The command RAN and exited non-zero (e.g. a failing test). That's a real, measurable baseline.
-    stdout = err.stdout ?? '';
-    exitCode = typeof err.code === 'number' ? err.code : 1;
   }
 
   // Pass/fail capability_test: the metric IS the exit code. Ignore any number the command prints
