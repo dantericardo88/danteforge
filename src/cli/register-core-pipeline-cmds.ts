@@ -66,6 +66,20 @@ program
     await groundOutcomesCommand({ project: opts.project, apply: opts.apply, json: opts.json });
   });
 
+const capabilityTest = program
+  .command('capability-test')
+  .description('Yardstick integrity — audit each dimension\'s capability_test so the autonomous loop knows which metrics are REAL vs self-fulfilling stubs it must re-author.');
+capabilityTest
+  .command('audit')
+  .description('Classify every dim\'s capability_test: REAL_PRODUCT_PROBE / REAL_TEST / STRUCTURAL_ONLY / SELF_FULFILLING_STUB / SCAFFOLD / NONE. A self-fulfilling stub always passes, so the loop would build nothing against it — it is setup work, not a real metric.')
+  .option('--project <path>', 'Target project root (default: cwd) — point at a fleet repo')
+  .option('--json', 'Machine-readable JSON output')
+  .option('--needs-authoring', 'Only list dims whose yardstick must be re-authored (the loop\'s setup worklist)')
+  .action(async (opts) => {
+    const { runCapabilityTestAudit } = await import('./commands/capability-test-audit.js');
+    await runCapabilityTestAudit({ project: opts.project, json: opts.json, needsAuthoringOnly: opts.needsAuthoring });
+  });
+
 program
   .command('dim-triage')
   .description('Classify every sub-target dimension and route it to the loop that can move it (autoresearch | matrixdev | fix-test | ceiling)')
