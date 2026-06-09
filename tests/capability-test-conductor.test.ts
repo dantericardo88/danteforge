@@ -66,6 +66,28 @@ describe('remediateYardsticks — autonomous self-healing pass', () => {
     assert.equal(r.counts.AUTHOR_REJECTED, 1);
   });
 
+  test('sensitivity probe: a PROCEED metric the probe finds DECOUPLED is re-routed to authoring', async () => {
+    let authored = false;
+    const r = await remediateYardsticks([audit('fake-real', 'REAL_PRODUCT_PROBE', true)], ctx({
+      verifyRealFn: async () => 'STUB',
+      authorFn: async (dimId) => { authored = true; return { dimId, installed: true, reason: 'ok' }; },
+    }));
+    assert.ok(authored, 'a decoupled "real" metric must be re-authored, not trusted');
+    assert.equal(r.outcomes[0]!.action, 'AUTHOR_YARDSTICK');
+    assert.equal(r.counts.AUTHORED, 1);
+  });
+
+  test('sensitivity probe: a GENUINE metric stays PROCEED (verified by execution)', async () => {
+    const r = await remediateYardsticks([audit('real', 'REAL_TEST', true)], ctx({ verifyRealFn: async () => 'GENUINE' }));
+    assert.equal(r.counts.PROCEED, 1);
+    assert.match(r.outcomes[0]!.detail ?? '', /GENUINE/);
+  });
+
+  test('without verifyRealFn, PROCEED is trusted statically (back-compat)', async () => {
+    const r = await remediateYardsticks([audit('real', 'REAL_TEST', true)], ctx());
+    assert.equal(r.counts.PROCEED, 1);
+  });
+
   test('budget guard skips remaining authoring work (fleet-scale bound)', async () => {
     let calls = 0;
     const r = await remediateYardsticks([audit('s1', 'SELF_FULFILLING_STUB', true), audit('s2', 'SELF_FULFILLING_STUB', true)], ctx({

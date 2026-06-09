@@ -15,6 +15,7 @@
 
 import type { YardstickAudit } from './capability-test-integrity.js';
 import type { AuthorResult } from './capability-test-author.js';
+import type { SensitivityVerdict } from './capability-test-sensitivity.js';
 
 /** Dimensions whose 9.0 needs real external adoption/telemetry — honestly capped at 5.0, never authored. */
 export const MARKET_CAPPED_DIMS = new Set(['token_economy', 'enterprise_readiness', 'community_adoption']);
@@ -64,6 +65,10 @@ export interface ConductorContext {
   authorFn: (dimId: string) => Promise<AuthorResult>;
   /** Research + author the competitor Score Ladder for a dim (so a frontier bar exists). */
   researchLadderFn: (dimId: string) => Promise<{ ok: boolean; reason: string }>;
+  /** Verify a "real" (PROCEED) yardstick by EXECUTION — the dynamic sensitivity probe. A STUB verdict
+   *  means the metric is decoupled fiction and must be re-authored, not built against. Omit to trust the
+   *  static verdict (weaker — a static REAL is unverified). */
+  verifyRealFn?: (dimId: string) => Promise<SensitivityVerdict>;
   isMarketCapped?: (dimId: string) => boolean;
   /** Token/time budget guard — return false to stop spending on more remediations this pass. */
   hasBudget?: () => boolean;
@@ -79,7 +84,27 @@ export async function remediateYardsticks(audits: YardstickAudit[], ctx: Conduct
   const outcomes: RemediationOutcome[] = [];
 
   for (const plan of planAllRemediations(audits, isMarketCapped)) {
-    if (plan.action === 'PROCEED') { outcomes.push({ ...plan, status: 'PROCEED' }); continue; }
+    if (plan.action === 'PROCEED') {
+      // A static REAL verdict is UNVERIFIED until execution proves dependence. Run the sensitivity probe;
+      // a STUB result (the metric is invariant to its callsite — decoupled / self-fulfilling) re-routes the
+      // dim to authoring. GENUINE / INCONCLUSIVE / BASELINE_RED keep the static decision.
+      if (ctx.verifyRealFn && (!ctx.hasBudget || ctx.hasBudget())) {
+        const v = await ctx.verifyRealFn(plan.dimId);
+        if (v === 'STUB') {
+          const authored = await ctx.authorFn(plan.dimId);
+          outcomes.push({
+            dimId: plan.dimId, action: 'AUTHOR_YARDSTICK',
+            reason: 'sensitivity probe: the PROCEED metric is DECOUPLED (invariant to its callsite) — re-authoring.',
+            status: authored.installed ? 'AUTHORED' : 'AUTHOR_REJECTED', detail: authored.reason,
+          });
+          continue;
+        }
+        outcomes.push({ ...plan, status: 'PROCEED', detail: `sensitivity: ${v}` });
+        continue;
+      }
+      outcomes.push({ ...plan, status: 'PROCEED' });
+      continue;
+    }
     if (plan.action === 'CEILING') { outcomes.push({ ...plan, status: 'CEILING' }); continue; }
     if (ctx.hasBudget && !ctx.hasBudget()) { outcomes.push({ ...plan, status: 'SKIPPED', detail: 'budget exhausted this pass' }); continue; }
 
