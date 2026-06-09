@@ -20,7 +20,12 @@ arbiter of truth. If you can't earn a dim honestly this cycle, log the real work
 
 Run the DanteForge CLI as: `node X:/Projects/DanteForge/dist/index.js <cmd>` (globally npm-linked).
 
-## EACH CYCLE (bounded: 1–3 dims, then STOP)
+## EACH CYCLE (sustained climb — keep going until BLOCKED or budget, then STOP)
+
+Per firing, **repeat steps 3–6 for as many dims as you can honestly earn** — do not stop after one.
+Keep climbing until ONE of these is true, then STOP: (a) you hit a genuinely hard dim that needs more
+than this session (log the real work it needs), (b) you've earned **~5 dims** this firing, or (c) you've
+spent **~90 min**. A no-op run is still success; a fake score is still failure. The next firing continues.
 
 1. **Orient.** cd the target project. `compete status` headline is STALE — compute the DERIVED mean:
    `python -c "import io,json;m=json.load(io.open('.danteforge/compete/matrix.json',encoding='utf-8'));v=[(d.get('scores') or {}).get('derived') for d in m['dimensions']];v=[x for x in v if isinstance(x,(int,float))];print('derived mean',round(sum(v)/len(v),2))"`
@@ -43,7 +48,8 @@ Run the DanteForge CLI as: `node X:/Projects/DanteForge/dist/index.js <cmd>` (gl
    the real CODE changes + a clear message.)
 6. **Log + commit.** Append one dated line to the Progress Log below (project | dim | before→after | the
    real work), and `git add` + commit it with the code.
-7. **STOP.** One cycle per firing. The next firing continues.
+7. **NEXT DIM or STOP.** If you can still honestly earn another dim and you're under budget (≤~5 dims /
+   ≤~90 min), go back to step 3 and climb the next one. Otherwise STOP — the next firing continues.
 
 ## NEVER
 
