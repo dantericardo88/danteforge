@@ -1,87 +1,110 @@
 import { test, describe, beforeEach } from 'node:test';
 import assert from 'node:assert/strict';
-import { registerSolver, clearSolvers, findSolver, solveObstacle, type ObstacleSolver, type Solution, type Obstacle } from '../src/core/obstacle-registry.js';
-import { makeSpawnFailureSolver } from '../src/core/solvers/spawn-failure-solver.js';
+import { registerSolver, clearSolvers, solveObstacle, deriveRadius, type ObstacleSolver, type Solution, type SolverEffect, type Obstacle } from '../src/core/obstacle-registry.js';
+import { spawnFailureSolver } from '../src/core/solvers/spawn-failure-solver.js';
 
-function sol(id: string, blastRadius: Solution['blastRadius'], confidence: number, ok: boolean): Solution {
-  return { id, description: id, blastRadius, confidence, apply: async () => ({ ok, detail: id }) };
+function sol(id: string, effect: SolverEffect, confidence: number): Solution {
+  return { id, description: id, confidence, effect };
 }
-function solver(kind: string, sols: Solution[]): ObstacleSolver {
-  return { kind, canSolve: (o) => o.kind === kind, proposeSolutions: async () => sols };
+function solver(kind: string, sols: Solution[], canSolve?: (o: Obstacle) => boolean): ObstacleSolver {
+  return { kind, canSolve: canSolve ?? ((o) => o.kind === kind), proposeSolutions: async () => sols };
 }
-const obstacle = (kind: string, signal = ''): Obstacle => ({ kind, signal });
+const obstacle = (kind: string, signal = '', context: Record<string, unknown> = {}): Obstacle => ({ kind, signal, context });
+const noop = (detail = 'ok'): SolverEffect => ({ kind: 'noop', detail });
 
 beforeEach(() => clearSolvers());
 
-describe('obstacle-registry — the never-say-cant DNA', () => {
-  test('no solver → needsMetaSolver (the missing solver IS the next sub-problem, not a dead stop)', async () => {
+describe('deriveRadius — the kernel decides the radius from the effect, never the solver', () => {
+  test('noop / safe shell → local-only', () => {
+    assert.equal(deriveRadius({ kind: 'noop', detail: 'x' }), 'local-only');
+    assert.equal(deriveRadius({ kind: 'shell', command: 'npx tsx --test x.test.ts' }), 'local-only');
+  });
+  test('destructive shell → destructive (rm -rf / git reset --hard / git push --force)', () => {
+    assert.equal(deriveRadius({ kind: 'shell', command: 'rm -rf /' }), 'destructive');
+    assert.equal(deriveRadius({ kind: 'shell', command: 'git reset --hard origin/main && git push --force' }), 'destructive');
+  });
+  test('score/yardstick-surface write → shared-state', () => {
+    assert.equal(deriveRadius({ kind: 'shell', command: 'echo x > .danteforge/compete/matrix.json' }), 'shared-state');
+    assert.equal(deriveRadius({ kind: 'write-file', path: '.danteforge/compete/universe/x.md', content: 'easy bar' }), 'shared-state');
+  });
+  test('write-file escaping the project → destructive', () => {
+    assert.equal(deriveRadius({ kind: 'write-file', path: '/etc/passwd', content: 'x' }), 'destructive');
+    assert.equal(deriveRadius({ kind: 'write-file', path: '../../etc/x', content: 'x' }), 'destructive');
+  });
+});
+
+describe('solveObstacle — never-say-cant + KERNEL-derived authority', () => {
+  test('no solver → needsMetaSolver (the missing solver IS the next sub-problem)', async () => {
     const r = await solveObstacle(obstacle('novel'));
-    assert.equal(r.solved, false);
     assert.equal(r.needsMetaSolver, true);
-    assert.match(r.ceiling!, /META-SOLVE/);
   });
 
   test('enforces the >=3-solutions discipline', async () => {
-    registerSolver(solver('x', [sol('a', 'local-only', 0.9, true), sol('b', 'local-only', 0.5, true)]));
+    registerSolver(solver('x', [sol('a', noop(), 0.9), sol('b', noop(), 0.5)]));
     const r = await solveObstacle(obstacle('x'));
     assert.equal(r.solved, false);
     assert.match(r.ceiling!, />=3/);
   });
 
-  test('SOLVES by executing the highest-confidence local-only solution under pre-granted authority', async () => {
-    registerSolver(solver('x', [sol('low', 'local-only', 0.3, true), sol('best', 'local-only', 0.9, true), sol('mid', 'local-only', 0.6, false)]));
+  test('SOLVES by executing the highest-confidence local-only effect under pre-granted authority', async () => {
+    registerSolver(solver('x', [sol('low', noop(), 0.3), sol('best', noop('did it'), 0.9), sol('mid', noop(), 0.6)]));
     const r = await solveObstacle(obstacle('x'));
     assert.equal(r.solved, true);
-    assert.equal(r.attempted[0]!.solution, 'best', 'ranked by confidence; best tried first');
-    assert.equal(r.attempted[0]!.outcome, 'applied');
+    assert.equal(r.attempted[0]!.solution, 'best');
+    assert.equal(r.attempted[0]!.blastRadius, 'local-only');
   });
 
-  test('BLAST RADIUS: a shared-state solution does NOT auto-execute under local-only authority (needs consensus)', async () => {
-    registerSolver(solver('x', [sol('shared', 'shared-state', 0.99, true), sol('local', 'local-only', 0.2, true), sol('z', 'local-only', 0.1, false)]));
-    const r = await solveObstacle(obstacle('x')); // default authority = local-only, no approveSharedState
-    // shared (highest confidence) is deferred for consensus; falls through to the local one which applies.
-    assert.equal(r.attempted[0]!.outcome, 'deferred-needs-consensus');
-    assert.equal(r.solved, true, 'the local-only fallback still resolves it autonomously');
-  });
-
-  test('BLAST RADIUS: shared-state executes only WITH council consensus', async () => {
-    registerSolver(solver('x', [sol('shared', 'shared-state', 0.99, true), sol('a', 'local-only', 0.1, false), sol('b', 'local-only', 0.1, false)]));
-    const r = await solveObstacle(obstacle('x'), { approveSharedState: async () => true });
-    assert.equal(r.solved, true);
-    assert.equal(r.attempted[0]!.outcome, 'applied');
-  });
-
-  test('BLAST RADIUS: destructive ALWAYS defers to a human, even at higher authority', async () => {
-    registerSolver(solver('x', [sol('boom', 'destructive', 0.99, true), sol('a', 'local-only', 0.1, false), sol('b', 'local-only', 0.1, false)]));
+  test('THE FIX: a destructive effect mislabel is impossible — kernel derives destructive, defers to a human', async () => {
+    // a solver that "intends" this as a routine fix; the kernel sees the real effect.
+    registerSolver(solver('x', [
+      sol('sneaky', { kind: 'shell', command: 'git reset --hard origin/main && git push --force' }, 0.99),
+      sol('a', noop(), 0.2), sol('b', noop(), 0.1),
+    ]));
+    // give it max authority short of destructive — it STILL must not auto-run.
     const r = await solveObstacle(obstacle('x'), { authority: 'shared-state', approveSharedState: async () => true });
+    assert.equal(r.attempted[0]!.blastRadius, 'destructive');
     assert.equal(r.attempted[0]!.outcome, 'deferred-needs-human');
-    assert.equal(r.solved, false);
   });
 
-  test('all in-authority solutions fail → an HONEST ceiling with attempts logged (never silent)', async () => {
-    registerSolver(solver('x', [sol('a', 'local-only', 0.9, false), sol('b', 'local-only', 0.5, false), sol('c', 'local-only', 0.3, false)]));
-    const r = await solveObstacle(obstacle('x'));
+  test('deny-guard: even at destructive authority, a destructive effect is BLOCKED at execution (defense in depth)', async () => {
+    registerSolver(solver('x', [sol('boom', { kind: 'shell', command: 'rm -rf /' }, 0.99), sol('a', noop(), 0.1), sol('b', noop(), 0.1)]));
+    let ran = false;
+    const r = await solveObstacle(obstacle('x'), { authority: 'destructive', runShell: async () => { ran = true; return 0; } });
+    assert.equal(r.attempted[0]!.outcome, 'blocked-destructive');
+    assert.equal(ran, false, 'the destructive command must never reach the shell');
+  });
+
+  test('shared-state effect needs council consensus (not auto under local-only authority)', async () => {
+    registerSolver(solver('x', [sol('surface', { kind: 'write-file', path: '.danteforge/compete/matrix.json', content: '{}' }, 0.99), sol('a', noop(), 0.2), sol('b', noop(), 0.1)]));
+    const deferred = await solveObstacle(obstacle('x'));
+    assert.equal(deferred.attempted[0]!.outcome, 'deferred-needs-consensus');
+    const approved = await solveObstacle(obstacle('x'), { approveSharedState: async () => true, writeFile: async () => {} });
+    assert.equal(approved.solved, true);
+  });
+
+  test('greedy canSolve:()=>true is refused fall-through capture (runaway defense)', async () => {
+    registerSolver(solver('greedy', [sol('a', noop(), 0.9), sol('b', noop(), 0.9), sol('c', noop(), 0.9)], () => true));
+    const r = await solveObstacle(obstacle('unrelated'));
+    assert.equal(r.needsMetaSolver, true, 'a greedy solver must NOT capture an unrelated obstacle');
+  });
+
+  test('all fail → honest ceiling with attempts logged', async () => {
+    registerSolver(solver('x', [sol('a', { kind: 'shell', command: 'false' }, 0.9), sol('b', { kind: 'shell', command: 'false' }, 0.5), sol('c', { kind: 'shell', command: 'false' }, 0.3)]));
+    const r = await solveObstacle(obstacle('x'), { runShell: async () => 1 });
     assert.equal(r.solved, false);
     assert.equal(r.attempted.length, 3);
     assert.match(r.ceiling!, /Logged, not abandoned/);
   });
 });
 
-describe('spawn-failure solver — the npx-ENOENT class auto-solved (no human)', () => {
-  test('canSolve matches ENOENT / 127 / not-recognized signals', () => {
-    const s = makeSpawnFailureSolver(async () => 0);
-    assert.equal(s.canSolve(obstacle('spawn-failure', "spawn npx ENOENT")), true);
-    assert.equal(s.canSolve(obstacle('spawn-failure', "'tsx' is not recognized")), true);
-    assert.equal(s.canSolve(obstacle('spawn-failure', 'all good')), false);
-  });
-
-  test('proposes 3 local-only fixes; shell-route (highest confidence) resolves an npx command', async () => {
-    // mock runner: direct launch 127 (fails), shell launch 0 (works) — the real npx-on-Windows behavior.
-    const run = async (_cmd: string, _cwd: string, viaShell: boolean) => (viaShell ? 1 : 127);
-    registerSolver(makeSpawnFailureSolver(run));
-    const r = await solveObstacle({ kind: 'spawn-failure', signal: 'spawn npx ENOENT', context: { command: 'npx tsx --test tests/x.test.ts', cwd: '/x' } });
-    assert.equal(r.solved, true, 'auto-solved with no human');
-    assert.equal(r.attempted[0]!.solution.length > 0 && r.attempted.every(a => a.blastRadius === 'local-only'), true);
-    assert.match(r.attempted[0]!.detail, /launches now/);
+describe('spawn-failure solver — npx/ENOENT auto-solved, all effects kernel-derived local-only', () => {
+  test('proposes 3 shell effects, shell-route resolves (exit != 127 = launches)', async () => {
+    registerSolver(spawnFailureSolver);
+    const r = await solveObstacle(
+      obstacle('spawn-failure', 'spawn npx ENOENT', { command: 'npx tsx --test tests/x.test.ts', cwd: '/x' }),
+      { runShell: async () => 1 }, // launches now (exit 1, not 127)
+    );
+    assert.equal(r.solved, true);
+    assert.equal(r.attempted[0]!.blastRadius, 'local-only', 'all spawn-fix effects are kernel-derived local-only');
   });
 });

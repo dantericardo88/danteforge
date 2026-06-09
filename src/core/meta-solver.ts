@@ -25,18 +25,25 @@ export interface MetaSolveResult {
   solverPath?: string;
   reason: string;
   /** Which gate rejected it, if any. */
-  rejectedBy?: 'already-attempted' | 'dispatch' | 'no-stub' | 'replay' | 'register';
+  rejectedBy?: 'already-attempted' | 'dispatch' | 'no-stub' | 'replay' | 'registration-approval' | 'register';
 }
 
 export interface MetaSolveOptions {
   cwd: string;
-  /** Dispatch the agent to author the solver + replay test at the given paths (write-scoped). */
-  dispatchSolverAuthor: (obstacle: Obstacle, solverPath: string, replayTestPath: string) => Promise<{ ranOk: boolean; reason?: string }>;
-  /** Scan a file for stub/lie patterns → list of violations (empty = clean). Defaults to a static scan. */
+  /** Dispatch the agent to author ONLY the solver file (NOT the replay test — the agent must never write
+   *  the exam it is graded against; that was the v1 self-fixture hole). Write-scoped to solverPath. */
+  dispatchSolverAuthor: (obstacle: Obstacle, solverPath: string) => Promise<{ ranOk: boolean; reason?: string }>;
+  /** Scan a file for stub/lie patterns → violations (empty = clean). Defaults to a static scan. */
   scanForStubs?: (absPath: string) => Promise<string[]>;
-  /** Run the replay test → did the new solver resolve the triggering obstacle? */
-  runReplayTest: (replayTestPath: string) => Promise<{ passed: boolean; detail: string }>;
-  /** Load + register the new solver into the live registry. */
+  /** KERNEL-OWNED replay: load the authored solver and verify it RESOLVES THE REAL obstacle — by
+   *  re-checking the triggering condition (e.g. re-run the failing command), NOT by trusting the solver's
+   *  self-report. The caller (which knows how to re-check this obstacle class) supplies it; the AGENT never
+   *  writes it. Also rejects a solver whose solutions are all noops (a "solve by doing nothing" cheat). */
+  runReplayTest: (solverPath: string, obstacle: Obstacle) => Promise<{ passed: boolean; detail: string }>;
+  /** Approve REGISTRATION of new live in-process code. Registering self-authored executable code is
+   *  shared-state, NOT a local-only auto-action — it requires council/human sign-off. Default: deny. */
+  approveRegistration?: (kind: string, solverPath: string) => Promise<boolean>;
+  /** Load + register the approved solver into the live registry. */
   registerNewSolver: (solverPath: string) => Promise<{ ok: boolean; reason?: string }>;
   /** One new solver per class per pass — returns true if this class was already attempted (no meta-regress). */
   alreadyAttempted: (kind: string) => boolean;
@@ -72,17 +79,14 @@ export async function metaSolve(obstacle: Obstacle, opts: MetaSolveOptions): Pro
     return { registered: false, kind, rejectedBy: 'already-attempted', reason: `class "${kind}" already had a solver authored this pass — no meta-regress; honest ceiling until next pass.` };
   }
   const solverPath = `src/core/solvers/${slug(kind)}-solver.ts`;
-  const replayTestPath = `tests/solvers/${slug(kind)}-solver.replay.test.ts`;
   const absSolver = path.join(opts.cwd, solverPath);
   const exists = opts._exists ?? (async (p: string) => { try { await fs.access(p); return true; } catch { return false; } });
   const removeFile = opts._removeFile ?? ((p: string) => fs.rm(p, { force: true }));
   const scan = opts.scanForStubs ?? defaultScanForStubs;
-  const revert = async (): Promise<void> => {
-    await removeFile(absSolver).catch(() => { /* best-effort */ });
-    await removeFile(path.join(opts.cwd, replayTestPath)).catch(() => { /* best-effort */ });
-  };
+  const revert = (): Promise<void> => removeFile(absSolver).then(() => {}).catch(() => { /* best-effort */ });
 
-  const d = await opts.dispatchSolverAuthor(obstacle, solverPath, replayTestPath);
+  // The agent writes ONLY the solver — never the replay test it is graded against.
+  const d = await opts.dispatchSolverAuthor(obstacle, solverPath);
   if (!d.ranOk) return { registered: false, kind, rejectedBy: 'dispatch', reason: `solver-author agent did not run: ${d.reason ?? 'unknown'}` };
   if (!(await exists(absSolver))) {
     await revert();
@@ -96,11 +100,20 @@ export async function metaSolve(obstacle: Obstacle, opts: MetaSolveOptions): Pro
     return { registered: false, kind, rejectedBy: 'no-stub', reason: `authored solver failed the no-stub scan (${stubs.join('; ')}) — reverted.` };
   }
 
-  // GATE 2 — REPLAY: the solver must resolve the exact obstacle that triggered it.
-  const replay = await opts.runReplayTest(replayTestPath);
+  // GATE 2 — REPLAY (kernel-owned): the solver must RESOLVE THE REAL obstacle, verified by re-checking the
+  // triggering condition, not by a test the agent wrote. Also rejects noop-only "solve by doing nothing".
+  const replay = await opts.runReplayTest(solverPath, obstacle);
   if (!replay.passed) {
     await revert();
-    return { registered: false, kind, rejectedBy: 'replay', reason: `authored solver failed the replay test (${replay.detail}) — reverted.` };
+    return { registered: false, kind, rejectedBy: 'replay', reason: `authored solver failed the kernel replay (${replay.detail}) — reverted.` };
+  }
+
+  // GATE 3 — REGISTRATION APPROVAL: registering new live in-process code is shared-state, never a
+  // local-only auto-action. Self-authored executable code may not register itself under pre-granted
+  // authority — it needs council/human sign-off (default: deny → honest ceiling, code left on disk for review).
+  if (!(opts.approveRegistration && await opts.approveRegistration(kind, solverPath))) {
+    return { registered: false, kind, solverPath, rejectedBy: 'registration-approval',
+      reason: `solver authored + no-stub-clean + replay-verified, but registering live code is shared-state — awaiting council/human approval. Not auto-registered. (file kept at ${solverPath} for review)` };
   }
 
   const reg = await opts.registerNewSolver(solverPath);
@@ -108,5 +121,5 @@ export async function metaSolve(obstacle: Obstacle, opts: MetaSolveOptions): Pro
     await revert();
     return { registered: false, kind, rejectedBy: 'register', reason: reg.reason ?? 'registration failed.' };
   }
-  return { registered: true, kind, solverPath, reason: 'self-extended: solver authored, no-stub-clean, replay-verified, registered. The loop grew a new capability.' };
+  return { registered: true, kind, solverPath, reason: 'self-extended: solver authored, no-stub-clean, replay-verified, approved, registered. The loop grew a new capability.' };
 }

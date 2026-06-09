@@ -1,40 +1,38 @@
 // obstacle-registry.ts — DanteForge's problem-solving DNA.
 //
 // The operating philosophy, made structural: every obstacle is a SOLVABLE sub-problem, never a wall. On
-// hitting an obstacle the loop must DIAGNOSE it, GENERATE >=3 candidate solutions, RANK them, and EXECUTE
-// the best WITH PRE-GRANTED AUTHORITY (no human approval) — then verify and loop. There is no "we can't":
-// there is "here is the problem, here are 3 solutions, here is the best, executing," or — only when a
-// solution genuinely needs more than this authority — an HONEST, actionable escalation (never a dead stop).
+// hitting an obstacle the loop DIAGNOSEs it, GENERATEs >=3 candidate solutions, RANKs them, and EXECUTEs
+// the best WITH PRE-GRANTED AUTHORITY — then verifies and loops. There is no "we can't": there is "here is
+// the problem, here are 3 solutions, here is the best, executing," or an HONEST, actionable escalation.
 //
-// Two structural guarantees keep "never say can't" from degenerating into "lower the bar" / runaway scope:
-//   1. BLAST RADIUS — every solution declares local-only | shared-state | destructive. ONLY local-only
-//      auto-executes under pre-granted authority; shared-state needs council consensus; destructive needs a
-//      human. So unbounded authority is never granted — it is granted exactly for safe, local fixes.
-//   2. THE HONESTY STACK IS NON-NEGOTIABLE — a solver NEVER writes a score. Its output still passes the
-//      capability_test gate, the sensitivity probe, the outcome-acceptance + frontier courts. A solution
-//      that lowers the bar is rejected by those gates before any score moves; the registry cannot bypass them.
-// Plus bounded attempts (a solver gets N tries, default 3) so a class that genuinely can't be solved this
-// pass yields an honest ceiling WITH the attempted solutions logged — an opportunity recorded, not a wall.
+// SECURITY MODEL (hardened after an adversarial red-team that broke v1). The original design trusted a
+// self-declared `blastRadius` string and ran a freeform `apply()` closure with full privileges — so the
+// label was the security boundary and the solver wrote the label. Now:
+//   - A solution declares a TYPED EFFECT (noop | shell | write-file), NOT a closure. The KERNEL executes it.
+//   - The KERNEL DERIVES the blast radius from the effect and IGNORES any claim. Destructive shell ops
+//     (rm -rf, git reset --hard, git push, --force…) and writes to the score/yardstick surface can NEVER be
+//     mislabeled local-only — the kernel sees the real effect.
+//   - PRE-GRANTED AUTHORITY auto-executes ONLY local-only effects. shared-state needs council consensus;
+//     destructive needs a human, always. Plus a deny-guard refuses destructive ops even at execution time.
+//   - A module-owned RE-ENTRANCY + DEPTH guard makes apply()-recursion / runaway self-modification finite.
+// The honesty stack (capability_test, sensitivity probe, courts) still owns all SCORE writes — a solver
+// never writes a score; the registry only fixes obstacles, and a fix that touches the score/yardstick
+// surface is derived shared-state and cannot auto-run.
 
 export type BlastRadius = 'local-only' | 'shared-state' | 'destructive';
 
-export interface Obstacle {
-  /** The obstacle class (the dispatch key), e.g. 'spawn-failure', 'missing-ladder', 'stub-yardstick'. */
-  kind: string;
-  /** The raw diagnostic signal (error text / court dissent / audit verdict). */
-  signal: string;
-  /** Structured context the solver needs (dim id, command, cwd, paths…). */
-  context?: Record<string, unknown>;
-}
+/** WHAT a solution does — a typed effect the kernel executes. The kernel derives the radius from this. */
+export type SolverEffect =
+  | { kind: 'noop'; detail: string }
+  | { kind: 'shell'; command: string; cwd?: string; /** ok when: exit 0 (default) or merely 'launches' (exit != 127). */ successWhen?: 'exit-zero' | 'launches' }
+  | { kind: 'write-file'; path: string; content: string };
 
 export interface Solution {
   id: string;
   description: string;
-  blastRadius: BlastRadius;
-  /** 0..1 — the solver's confidence this solution resolves the obstacle (drives ranking). */
+  /** 0..1 — confidence this resolves the obstacle (drives ranking). */
   confidence: number;
-  /** Do the real work. Returns whether it resolved the obstacle. MUST NOT write a score (honesty stack owns that). */
-  apply: () => Promise<{ ok: boolean; detail: string }>;
+  effect: SolverEffect;
 }
 
 export interface ObstacleSolver {
@@ -44,10 +42,17 @@ export interface ObstacleSolver {
   proposeSolutions: (o: Obstacle) => Promise<Solution[]>;
 }
 
+export interface Obstacle {
+  kind: string;
+  signal: string;
+  context?: Record<string, unknown>;
+}
+
 export interface SolveAttempt {
   solution: string;
+  /** The KERNEL-DERIVED radius (not anything the solver claimed). */
   blastRadius: BlastRadius;
-  outcome: 'applied' | 'failed' | 'deferred-needs-consensus' | 'deferred-needs-human';
+  outcome: 'applied' | 'failed' | 'deferred-needs-consensus' | 'deferred-needs-human' | 'blocked-destructive';
   detail: string;
 }
 
@@ -55,80 +60,139 @@ export interface SolveResult {
   solved: boolean;
   obstacle: Obstacle;
   attempted: SolveAttempt[];
-  /** Set when unsolved THIS pass — an honest, actionable next step (NOT a dead "we can't"). */
   ceiling?: string;
-  /** True when no solver is registered for this class — the meta-solver should build one. */
   needsMetaSolver?: boolean;
 }
 
 export interface SolveOptions {
-  /** Highest blast radius pre-authorized to auto-execute. Default 'local-only' (the safe pre-granted authority). */
+  /** Highest radius pre-authorized to auto-execute. Default 'local-only' (the safe pre-granted authority). */
   authority?: BlastRadius;
-  /** Max solutions to try this pass. Default 3. */
   maxAttempts?: number;
-  /** Council-consensus seam: approve a shared-state solution (returns true to proceed). */
-  approveSharedState?: (s: Solution) => Promise<boolean>;
+  /** Council-consensus seam for a shared-state effect (returns true to proceed). */
+  approveSharedState?: (s: Solution, derived: BlastRadius) => Promise<boolean>;
+  /** Run a shell command → exit code. Injectable for tests. */
+  runShell?: (command: string, cwd: string) => Promise<number>;
+  /** Write a file (already path-checked by the kernel). Injectable for tests. */
+  writeFile?: (path: string, content: string) => Promise<void>;
+  cwd?: string;
 }
 
 const RADIUS_ORDER: Record<BlastRadius, number> = { 'local-only': 0, 'shared-state': 1, 'destructive': 2 };
 const REGISTRY = new Map<string, ObstacleSolver>();
 
-/** Register (or replace) a solver for an obstacle class. The meta-solver uses this to self-extend. */
+// Destructive shell operations — derived 'destructive' AND refused by the deny-guard regardless of authority.
+const DESTRUCTIVE_RE = /\brm\s+-rf|\brmdir\s+\/s|\bgit\s+reset\s+--hard|\bgit\s+clean\b|\bgit\s+checkout\s+--|\bgit\s+push\b|--force\b|\bdel\s+\/[a-z]|\bformat\b|\bmkfs\b|>\s*\/dev\/sd|:\(\)\s*\{.*\};:/i;
+// Score / yardstick / shared-state surface — any write here is derived 'shared-state' (needs consensus).
+const SCORE_SURFACE_RE = /matrix\.json|score-proposals|STATE\.yaml|[/\\]universe[/\\]|frontier_spec|category_delta|observed_capability|\.danteforge[/\\]compete/i;
+
+/** Derive the blast radius from the EFFECT — the kernel's verdict, never the solver's claim. */
+export function deriveRadius(effect: SolverEffect): BlastRadius {
+  if (effect.kind === 'noop') return 'local-only';
+  if (effect.kind === 'shell') {
+    if (DESTRUCTIVE_RE.test(effect.command)) return 'destructive';
+    if (SCORE_SURFACE_RE.test(effect.command)) return 'shared-state';
+    return 'local-only';
+  }
+  // write-file
+  if (SCORE_SURFACE_RE.test(effect.path)) return 'shared-state';
+  if (effect.path.includes('..') || /^(?:[a-z]:[/\\]|\/|\\\\)/i.test(effect.path)) return 'destructive'; // escapes the project
+  return 'local-only';
+}
+
 export function registerSolver(solver: ObstacleSolver): void { REGISTRY.set(solver.kind, solver); }
 export function clearSolvers(): void { REGISTRY.clear(); }
 export function registeredKinds(): string[] { return [...REGISTRY.keys()]; }
 
-/** The solver for an obstacle: prefer an exact kind match, else the first whose canSolve() accepts it. */
+/** The solver for an obstacle: exact kind match, else the first whose canSolve() accepts it. A greedy
+ *  always-true canSolve is rejected (it would capture the whole obstacle stream — a red-team runaway vector). */
 export function findSolver(o: Obstacle): ObstacleSolver | null {
   const exact = REGISTRY.get(o.kind);
   if (exact && exact.canSolve(o)) return exact;
-  for (const s of REGISTRY.values()) if (s.canSolve(o)) return s;
+  const probe: Obstacle = { kind: '__greedy_probe__', signal: '__greedy_probe__' };
+  for (const s of REGISTRY.values()) {
+    if (s.kind === o.kind) continue;
+    if (s.canSolve(probe)) continue; // greedy/unconditional solver — refuse fall-through capture
+    if (s.canSolve(o)) return s;
+  }
   return null;
 }
 
+// Re-entrancy + depth guard — module-owned, so a solver's effect can never recurse the registry unbounded.
+const ACTIVE = new Set<string>();
+const MAX_DEPTH = 8;
+
+async function executeEffect(effect: SolverEffect, derived: BlastRadius, opts: SolveOptions): Promise<{ ok: boolean; detail: string; blocked?: boolean }> {
+  if (derived === 'destructive') return { ok: false, blocked: true, detail: 'deny-guard: destructive effect refused at execution (defense in depth)' };
+  if (effect.kind === 'noop') return { ok: true, detail: effect.detail };
+  if (effect.kind === 'shell') {
+    const run = opts.runShell ?? defaultRunShell;
+    const code = await run(effect.command, effect.cwd ?? opts.cwd ?? process.cwd());
+    const ok = (effect.successWhen === 'launches') ? code !== 127 : code === 0;
+    return { ok, detail: `shell exited ${code} (${ok ? 'ok' : 'fail'})` };
+  }
+  const write = opts.writeFile ?? (async (p: string, c: string) => { const fs = await import('node:fs/promises'); await fs.writeFile(p, c, 'utf8'); });
+  await write(effect.path, effect.content);
+  return { ok: true, detail: `wrote ${effect.path}` };
+}
+
+const defaultRunShell = (command: string, cwd: string): Promise<number> =>
+  import('node:child_process').then(({ execFile }) => new Promise<number>(resolve => {
+    const [file, args] = process.platform === 'win32' ? [process.env.ComSpec || 'cmd.exe', ['/d', '/s', '/c', command]] : ['/bin/sh', ['-c', command]];
+    const child = execFile(file, args, { cwd, timeout: 180_000, windowsHide: true, maxBuffer: 10 * 1024 * 1024 }, (err) => {
+      const code = (err as (NodeJS.ErrnoException & { code?: number | string }) | null)?.code;
+      resolve(typeof code === 'number' ? code : (err ? 1 : 0));
+    });
+    child.on('error', () => resolve(127));
+  }));
+
 /**
- * Solve an obstacle under pre-granted authority. Generates >=3 solutions, ranks by confidence, and executes
- * the best ones whose blast radius is within the granted authority (local-only by default). shared-state
- * solutions require council consensus (approveSharedState); destructive ones always defer to a human. A pass
- * that resolves nothing returns an honest ceiling with the attempts logged — never a silent dead stop.
+ * Solve an obstacle under pre-granted authority. >=3 solutions; ranked by confidence; the kernel DERIVES
+ * each effect's radius and auto-executes only those within the granted authority (local-only by default).
+ * shared-state needs consensus; destructive always defers to a human and is deny-guarded at execution.
+ * Re-entrant / over-depth solves yield an honest ceiling — never unbounded recursion, never a silent stop.
  */
 export async function solveObstacle(o: Obstacle, opts: SolveOptions = {}): Promise<SolveResult> {
-  const solver = findSolver(o);
-  if (!solver) {
-    return { solved: false, obstacle: o, attempted: [], needsMetaSolver: true,
-      ceiling: `No solver registered for obstacle class "${o.kind}" — META-SOLVE: build, test, and register one (the missing solver IS the next sub-problem to solve).` };
+  if (ACTIVE.has(o.kind) || ACTIVE.size >= MAX_DEPTH) {
+    return { solved: false, obstacle: o, attempted: [], ceiling: `re-entrant or over-depth solve for "${o.kind}" (depth ${ACTIVE.size}/${MAX_DEPTH}) — honest ceiling to prevent runaway self-modification.` };
   }
+  ACTIVE.add(o.kind);
+  try {
+    const solver = findSolver(o);
+    if (!solver) {
+      return { solved: false, obstacle: o, attempted: [], needsMetaSolver: true,
+        ceiling: `No solver registered for "${o.kind}" — META-SOLVE: build, test, and register one (the missing solver IS the next sub-problem).` };
+    }
+    const solutions = await solver.proposeSolutions(o);
+    if (solutions.length < 3) {
+      return { solved: false, obstacle: o, attempted: [],
+        ceiling: `Solver "${solver.kind}" returned ${solutions.length} solution(s) — the never-say-can't discipline requires >=3. Broaden the search.` };
+    }
 
-  const solutions = await solver.proposeSolutions(o);
-  if (solutions.length < 3) {
-    return { solved: false, obstacle: o, attempted: [],
-      ceiling: `Solver "${solver.kind}" returned ${solutions.length} solution(s) — the never-say-can't discipline requires >=3. Treat the gap as a sub-problem: broaden the solution search.` };
-  }
+    const authority = opts.authority ?? 'local-only';
+    const ranked = [...solutions].sort((a, b) => b.confidence - a.confidence).slice(0, opts.maxAttempts ?? 3);
+    const attempted: SolveAttempt[] = [];
 
-  const authority = opts.authority ?? 'local-only';
-  const ranked = [...solutions].sort((a, b) => b.confidence - a.confidence).slice(0, opts.maxAttempts ?? 3);
-  const attempted: SolveAttempt[] = [];
-
-  for (const sol of ranked) {
-    if (RADIUS_ORDER[sol.blastRadius] > RADIUS_ORDER[authority]) {
-      // Beyond pre-granted authority — escalate honestly (consensus or human), do NOT silently skip.
-      if (sol.blastRadius === 'shared-state' && opts.approveSharedState) {
-        if (!(await opts.approveSharedState(sol))) {
-          attempted.push({ solution: sol.description, blastRadius: sol.blastRadius, outcome: 'deferred-needs-consensus', detail: 'council consensus withheld' });
+    for (const sol of ranked) {
+      const derived = deriveRadius(sol.effect); // the kernel's verdict — the solver's claim is irrelevant
+      if (RADIUS_ORDER[derived] > RADIUS_ORDER[authority]) {
+        if (derived === 'shared-state' && opts.approveSharedState && (await opts.approveSharedState(sol, derived))) {
+          // approved — fall through to execute
+        } else {
+          attempted.push({ solution: sol.description, blastRadius: derived,
+            outcome: derived === 'destructive' ? 'deferred-needs-human' : 'deferred-needs-consensus',
+            detail: `kernel-derived radius ${derived} exceeds pre-granted authority ${authority}` });
           continue;
         }
-      } else {
-        attempted.push({ solution: sol.description, blastRadius: sol.blastRadius,
-          outcome: sol.blastRadius === 'destructive' ? 'deferred-needs-human' : 'deferred-needs-consensus',
-          detail: `blast radius ${sol.blastRadius} exceeds pre-granted authority ${authority}` });
-        continue;
       }
+      const r = await executeEffect(sol.effect, derived, opts);
+      attempted.push({ solution: sol.description, blastRadius: derived,
+        outcome: r.blocked ? 'blocked-destructive' : (r.ok ? 'applied' : 'failed'), detail: r.detail });
+      if (r.ok) return { solved: true, obstacle: o, attempted };
     }
-    const r = await sol.apply();
-    attempted.push({ solution: sol.description, blastRadius: sol.blastRadius, outcome: r.ok ? 'applied' : 'failed', detail: r.detail });
-    if (r.ok) return { solved: true, obstacle: o, attempted };
-  }
 
-  return { solved: false, obstacle: o, attempted,
-    ceiling: `Exhausted ${attempted.length} solution(s) within ${authority} authority. Next: escalate the highest-confidence deferred solution for consensus/human, or widen authority. Logged, not abandoned.` };
+    return { solved: false, obstacle: o, attempted,
+      ceiling: `Exhausted ${attempted.length} solution(s) within ${authority} authority. Escalate a deferred solution for consensus/human, or widen authority. Logged, not abandoned.` };
+  } finally {
+    ACTIVE.delete(o.kind);
+  }
 }

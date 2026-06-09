@@ -11,6 +11,7 @@ function opts(over: Partial<MetaSolveOptions> = {}): MetaSolveOptions {
     dispatchSolverAuthor: async () => ({ ranOk: true }),
     scanForStubs: async () => [],                 // clean by default
     runReplayTest: async () => ({ passed: true, detail: 'resolves the .rs obstacle' }),
+    approveRegistration: async () => true,        // consensus granted (most tests focus on other gates)
     registerNewSolver: async () => ({ ok: true }),
     alreadyAttempted: () => false,
     _exists: async () => true,                    // agent produced the solver file
@@ -38,6 +39,21 @@ describe('metaSolve — self-extension, gated so it cannot register a cheating s
     const r = await metaSolve(obstacle, opts({ runReplayTest: async () => ({ passed: false, detail: 'still unsolved' }) }));
     assert.equal(r.registered, false);
     assert.equal(r.rejectedBy, 'replay');
+  });
+
+  test('REGISTRATION IS SHARED-STATE: without approval, self-authored code does NOT auto-register (file kept for review)', async () => {
+    let registered = false;
+    const r = await metaSolve(obstacle, opts({ approveRegistration: async () => false, registerNewSolver: async () => { registered = true; return { ok: true }; } }));
+    assert.equal(r.registered, false);
+    assert.equal(r.rejectedBy, 'registration-approval');
+    assert.equal(registered, false, 'live code must never auto-register under pre-granted authority');
+    assert.match(r.reason, /shared-state/);
+  });
+
+  test('the agent is dispatched to write ONLY the solver (never its own replay test)', async () => {
+    let argc = -1;
+    await metaSolve(obstacle, opts({ dispatchSolverAuthor: async (...a) => { argc = a.length; return { ranOk: true }; } }));
+    assert.equal(argc, 2, 'dispatchSolverAuthor receives (obstacle, solverPath) — no replayTestPath to self-fixture');
   });
 
   test('no meta-regress: one solver per class per pass', async () => {
