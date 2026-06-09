@@ -486,6 +486,11 @@ export async function autoResearch(
     allowDirty?: boolean;
     /** Skip the coding-agent edit path and use the lightweight JSON-hypothesis path even if a CLI exists. */
     noAgent?: boolean;
+    /** REQUIRE the capable coding-agent builder. If no claude/codex CLI is available, fail FAST with an
+     *  honest operational signal instead of silently degrading to the JSON-hypothesis/Ollama path (which
+     *  stalls on a missing provider). Set by the autonomous build loop — real capability building must
+     *  never fall back to a blind text-only path. */
+    requireAgent?: boolean;
     /** Run every experiment in an isolated git worktree so the user's tree is never touched. */
     isolate?: boolean;
     /** The measurement is a pass/fail capability_test — use its exit code as the metric and ignore
@@ -552,6 +557,18 @@ export async function autoResearch(
 
   // Decide the edit strategy BEFORE setup so the LLM-provider gate can be skipped in agent mode.
   const useAgent = !options.noAgent && await isAgentEditAvailableFn();
+  // --require-agent: real capability building must use the CAPABLE coding agent (claude/codex), which
+  // drives the CLI's own auth and needs no configured LLM provider. It must NEVER silently degrade to the
+  // JSON-hypothesis path, which depends on callLLM -> Ollama and stalls (exit 127) when none is configured
+  // — the "set-and-forget loop hangs forever" failure. When no agent is available, fail FAST and HONESTLY
+  // (exit 2 = a fixable environment ceiling: install/auth claude or codex), not a silent blind fallback.
+  if (options.requireAgent && !useAgent) {
+    logger.error('AutoResearch --require-agent: no capable coding-agent CLI (claude/codex) is available.');
+    logger.error('The autonomous build loop will NOT fall back to the JSON-hypothesis/Ollama path for real');
+    logger.error('capability work. Fix the environment: install + authenticate `claude` or `codex`.');
+    process.exitCode = 2;
+    return;
+  }
   logger.info(`Edit strategy: ${useAgent ? 'coding agent (claude/codex)' : 'JSON hypothesis (lightweight)'}`);
 
   // Isolation: run every experiment in a fresh worktree off HEAD so the agent's shell can never touch

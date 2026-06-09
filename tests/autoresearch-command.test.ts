@@ -40,6 +40,27 @@ function makeBaseOpts(overrides: Partial<Parameters<typeof autoResearch>[2]> = {
   };
 }
 
+// ── --require-agent guard (no silent Ollama fallback for the autonomous build loop) ──
+
+describe('autoResearch: --require-agent guard', () => {
+  it('fails fast (exit 2) when requireAgent is set but no coding-agent CLI is available — never touches the JSON/LLM path', async () => {
+    let llmCalled = false;
+    const opts = makeBaseOpts({
+      _isAgentEditAvailable: async () => false,
+      _callLLM: async () => { llmCalled = true; return '{"description":"x","fileToChange":"","change":""}'; },
+    });
+    await autoResearch('drive dim to 7', { requireAgent: true, measurementCommand: 'exit 1', allowDirty: true }, opts);
+    assert.strictEqual(process.exitCode, 2, 'honest operational ceiling (fixable env), not a silent fallback');
+    assert.strictEqual(llmCalled, false, 'must NOT degrade to the JSON-hypothesis/Ollama path');
+  });
+
+  it('without requireAgent, a missing agent still falls back to the JSON path (exit 1 on no-LLM) — back-compat preserved', async () => {
+    const opts = makeBaseOpts({ _isAgentEditAvailable: async () => false, _isLLMAvailable: async () => false });
+    await autoResearch('drive dim', { measurementCommand: 'exit 1', allowDirty: true }, opts);
+    assert.strictEqual(process.exitCode, 1, 'legacy path: no LLM → exit 1, distinct from the new exit-2 guard');
+  });
+});
+
 // ── Prompt mode ───────────────────────────────────────────────────────────────
 
 describe('autoResearch: prompt mode', () => {

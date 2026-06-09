@@ -150,7 +150,11 @@ async function defaultRunAutoResearch(
   // The dim's capability_test IS the natural metric. Without --measurement-command, autoresearch
   // can't measure an arbitrary dimension id and exits 1 ("needs an explicit measurement command")
   // — the root cause of the build-to-7 crash/hang. Always pass it; the caller guarantees one exists.
-  const args = [...cli.argsPrefix, 'autoresearch', goal, '--metric', dimensionId, '--time', `${timeMinutes}m`, '--allow-dirty'];
+  // --require-agent: the autonomous build loop drives the CAPABLE coding agent (claude/codex) and must
+  // NOT silently degrade to the JSON-hypothesis/Ollama path (which stalls when no provider is configured —
+  // the "set-and-forget loop hangs" failure). With no agent available it fails fast (exit 2 = a fixable
+  // environment ceiling), so the conductor records an honest signal instead of churning blind.
+  const args = [...cli.argsPrefix, 'autoresearch', goal, '--metric', dimensionId, '--time', `${timeMinutes}m`, '--allow-dirty', '--require-agent'];
   if (measurementCommand) args.push('--measurement-command', measurementCommand);
   // Streamed (inherit) — a 30-min autoresearch must not buffer into an EPIPE/127.
   await spawnStreamed(cli.file, args, cwd, timeoutMs);
