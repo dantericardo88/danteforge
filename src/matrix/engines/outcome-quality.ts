@@ -88,29 +88,30 @@ export function classifyOutcomeKind(outcome: Outcome): OutcomeKindClassification
     return { maxScore: 7.0, evidenceTier: 'file-existence', reason: 'Structural file check (readFileSync/existsSync) — proves code exists, not that it runs; capped at T4/7.0 regardless of declared kind' };
   }
 
+  // A TEST SUITE caps at T4/7.0 REGARDLESS of declared kind. Runs before the runtime/e2e branch
+  // (alongside isStructuralFileCheck) so the SAME `npx tsx --test` cannot earn 7.0 as kind:shell yet
+  // 8.0 as kind:runtime-exec — a label-driven +1.0 bonus agents learn to exploit by relabeling tests
+  // instead of producing real evidence (the fleet-scoring inconsistency the dogfood surfaced). A
+  // unit/integration test proves isolation, not production behavior; 8.0+ requires a REAL product run
+  // (cli-smoke / node dist/index.js … on a realistic input), never a test runner.
+  if (isTestSuiteCommand(cmd)) {
+    return { maxScore: 7.0, evidenceTier: 'unit-test', reason: 'Test-suite command (any declared kind) — proves isolation, not production behavior; caps at T4/7.0. Reach 8.0 with a real product run (cli-smoke / node dist/index.js …), not a test runner.' };
+  }
+
   // Explicitly synthetic evidence (agent-authored fixtures, scaffold stubs): honest about
   // what it is, but cannot prove production behavior → caps at T4/7.0.
   if (source?.type === 'synthetic-fixture') {
     return { maxScore: 7.0, evidenceTier: 'unit-test', reason: 'Synthetic-fixture evidence — declared agent-authored; caps at T4/7.0' };
   }
 
-  // The 9.0 (T7) consensus tier structurally requires a declared real-user-path. Runtime
-  // /e2e WITHOUT that declaration are honest runtime checks but cannot self-certify the
-  // frontier — they cap at T5/8.0 until provenance is declared. This is what stops
+  // Runtime/e2e of the REAL PRODUCT (test runners already capped above). With a declared
+  // real-user-path it reaches 9.0; without provenance it caps at T5/8.0. This is what stops
   // mislabeled or undeclared evidence from reaching 9.0, the level where audits found inflation.
   if (kind === 'e2e-workflow' || kind === 'runtime-exec') {
-    // 9.0 requires BOTH a declared real-user-path AND that the command actually runs the
-    // product (not a test runner). A real integration test is honest evidence but the gate
-    // cannot verify it isn't mocked, so it caps at T5/8.0; running the real product is the
-    // unambiguous path to 9.0. real-user-path means "the production path, executed on a
-    // realistic input" — achievable by a pre-release tool; it does NOT require human users.
-    if (source?.type === 'real-user-path' && !isTestSuiteCommand(cmd)) {
+    if (source?.type === 'real-user-path') {
       return { maxScore: 9.0, evidenceTier: 'e2e', reason: 'Real-user-path execution of the product on a realistic input — observable E2E output' };
     }
-    if (isTestSuiteCommand(cmd)) {
-      return { maxScore: 8.0, evidenceTier: 'e2e', reason: 'A test-runner command (not a product run) caps at T5/8.0 even when labeled real-user-path — run the real product to reach 9.0' };
-    }
-    return { maxScore: 8.0, evidenceTier: 'e2e', reason: 'Runtime execution without a declared real-user-path input_source — caps at T5/8.0 until provenance is declared' };
+    return { maxScore: 8.0, evidenceTier: 'e2e', reason: 'Runtime execution of the product without a declared real-user-path input_source — caps at T5/8.0 until provenance is declared' };
   }
 
   // CLI smoke: invokes the real CLI and checks stdout → T6 (8.5)
@@ -118,12 +119,7 @@ export function classifyOutcomeKind(outcome: Outcome): OutcomeKindClassification
     return { maxScore: 8.5, evidenceTier: 'cli-smoke', reason: 'CLI smoke — real invocation, pattern-checked output' };
   }
 
-  // Shell command running a real test suite (npx tsx, npm test, jest, vitest) → T4 (7.0).
-  if (kind === 'shell' && isTestSuiteCommand(cmd)) {
-    return { maxScore: 7.0, evidenceTier: 'unit-test', reason: 'Unit/integration test suite — proves isolation, not production behavior; caps at T4/7.0' };
-  }
-
-  // Default for unknown shell commands: treat as unit-test level (8.0) — benefit of the doubt
+  // Default for unknown shell commands (non-test, non-structural): assume real runtime execution → 8.0
   return { maxScore: 8.0, evidenceTier: 'unit-test', reason: 'Shell command — assumed runtime execution' };
 }
 

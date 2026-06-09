@@ -57,8 +57,13 @@ describe('classifyOutcomeKind — quality caps', () => {
     assert.equal(maxScore, 7.0);
   });
 
-  it('runtime-exec without input_source caps at T5/8.0 (real-user-path required for 9.0)', () => {
+  it('a TEST RUNNER caps at T4/7.0 even when labeled runtime-exec (harsh-consistent: the kind label gives no +1.0 bonus)', () => {
     const { maxScore } = classifyOutcomeKind(makeRuntimeOutcome('a', 'T5', 'npx tsx --test tests/foo.test.ts'));
+    assert.equal(maxScore, 7.0);
+  });
+
+  it('a runtime-exec NON-test (real product run) without input_source caps at T5/8.0', () => {
+    const { maxScore } = classifyOutcomeKind(makeRuntimeOutcome('a', 'T5', 'node dist/index.js validate --all'));
     assert.equal(maxScore, 8.0);
   });
 
@@ -154,11 +159,11 @@ describe('classifyOutcomeKind — input_source provenance gates the frontier', (
     assert.notEqual(classifyOutcomeKind(o).maxScore, 9.5);
   });
 
-  it('a test-runner relabeled runtime-exec + real-user-path STILL caps at 8.0 (not 9.0)', () => {
-    // The gate cannot tell a real integration test from a mocked one, so a test runner
-    // never reaches the 9.0 "unambiguous real execution" tier — even fully declared.
+  it('a test-runner relabeled runtime-exec + real-user-path caps at T4/7.0 (harsh-consistent — a test is never 8.0+)', () => {
+    // A test runner proves isolation, not production behavior — no kind/input_source relabel earns it
+    // 8.0+. 8.0 requires a real product run; only a non-test real-user-path run reaches 9.0.
     const o = { id: 'a', tier: 'T7', description: 'd', kind: 'runtime-exec', command: 'npx tsx --test tests/e2e.test.ts', input_source: { type: 'real-user-path', description: 'claims e2e' } } as unknown as Outcome;
-    assert.equal(classifyOutcomeKind(o).maxScore, 8.0);
+    assert.equal(classifyOutcomeKind(o).maxScore, 7.0);
   });
 
   it('running the real product (node dist/index.js) + real-user-path reaches 9.0', () => {
@@ -184,13 +189,15 @@ describe('derived score — quality cap enforcement', () => {
     assert.equal(computeDerivedScore(dim, evidence), 0, 'shell npm-test at T5 is quality-capped → 0');
   });
 
-  it('T5 runtime-exec npx-tsx-test DOES unlock T5 cap', () => {
+  it('T5 runtime-exec npx-tsx-test does NOT unlock T5 — a test caps at T4 regardless of kind (harsh-consistent)', () => {
     const dim: DimensionForScoring = {
       id: 'test',
       outcomes: [makeRuntimeOutcome('t5', 'T5', 'npx tsx --test tests/foo.test.ts')],
     };
     const evidence = makeEvidenceMap([makeEntry('t5', 'T5', true)]);
-    assert.equal(computeDerivedScore(dim, evidence), TIER_SCORE_CAPS.T5);
+    // Quality-excluded at T5 (a test suite only supports T4/7.0) — exactly like the kind:shell case;
+    // the runtime-exec label no longer buys a +1.0 bonus.
+    assert.ok(computeDerivedScore(dim, evidence) < TIER_SCORE_CAPS.T5);
   });
 
   it('shell npm-test at T4 is allowed (cap equals T4)', () => {
@@ -214,7 +221,7 @@ describe('derived score — quality cap enforcement', () => {
     assert.equal(computeDerivedScore(dim, evidence), TIER_SCORE_CAPS.T4);
   });
 
-  it('mix: T4 shell passes + T5 runtime-exec passes → T5 cap', () => {
+  it('mix: T4 shell passes + T5 runtime-exec TEST passes → T4 cap (the T5 test is quality-excluded regardless of kind)', () => {
     const dim: DimensionForScoring = {
       id: 'test',
       outcomes: [
@@ -223,6 +230,7 @@ describe('derived score — quality cap enforcement', () => {
       ],
     };
     const evidence = makeEvidenceMap([makeEntry('t4', 'T4', true), makeEntry('t5', 'T5', true)]);
-    assert.equal(computeDerivedScore(dim, evidence), TIER_SCORE_CAPS.T5);
+    // The T5 runtime-exec test is now excluded (a test caps at T4) — same as the shell case above.
+    assert.equal(computeDerivedScore(dim, evidence), TIER_SCORE_CAPS.T4);
   });
 });
