@@ -52,12 +52,34 @@ interface DimLike {
   outcomes?: Array<Record<string, unknown>>;
 }
 
-/** A real product invocation (not a test runner): the CLI itself, or a built binary. */
+/** Trivially-green product subcommands that exit 0 regardless of any capability — not real yardsticks. */
+const TRIVIAL_SUBCOMMANDS = new Set(['help', '--help', '-h', 'version', '--version', '-v', 'status']);
+
+/** A green-forcing wrapper discards the real exit code (`|| true`, `; exit 0`, `|| echo`, trailing `; :`)
+ *  so the command "passes" no matter what the product does — a self-fulfilling-pass signal (red-team). */
+export function hasGreenForcingWrapper(cmd: string): boolean {
+  return /\|\|\s*(?:true|exit\s+0|echo\b|:)/i.test(cmd) || /;\s*(?:true|exit\s+0|:)\s*$/i.test(cmd.trim());
+}
+
+/** Does a single command segment invoke the real product (CLI or built binary) on a NON-trivial subcommand? */
+function isProductInvocation(seg: string): boolean {
+  const m = /(?:^|\s)(?:node\s+dist\/index\.js|danteforge)\s+(--?[a-z][\w-]*|[a-z][\w-]*)/i.exec(seg);
+  if (m) return !TRIVIAL_SUBCOMMANDS.has(m[1]!.toLowerCase());
+  return /target[/\\](?:release|debug)[/\\]/i.test(seg) || /(?:^|\s)\.[/\\](?:bin|dist)[/\\]/.test(seg);
+}
+
+/** A command whose EXIT is decided by a real, non-trivial product invocation. STRUCTURAL, not substring:
+ *  the exit-determining (LAST) segment must itself be the product run — no green-forcing wrapper, no
+ *  self-deciding `node -e`/fixture tail. Closes the red-team's "glue a product token to an inline fixture"
+ *  bypass (`danteforge help; node -e "exit(0)"`, `node dist/index.js x || true`). */
 function looksLikeProductRun(cmd: string): boolean {
   if (isTestSuiteCommand(cmd)) return false;
-  return /(?:node\s+dist\/index\.js|(?:^|\s|&&\s*)danteforge)\s+[a-z][\w-]*/i.test(cmd)
-    || /target[/\\](?:release|debug)[/\\]/i.test(cmd)
-    || /(?:^|\s)\.[/\\](?:bin|dist)[/\\]/.test(cmd);
+  if (hasGreenForcingWrapper(cmd)) return false;
+  const segs = cmd.split(/;|&&|\|\||\||\n/).map(s => s.trim()).filter(Boolean);
+  const last = segs[segs.length - 1];
+  if (!last) return false;
+  if (/\bnode\s+-e\b/i.test(last) || /\b\w*fixture\w*\.(?:m?js|py)\b/i.test(last)) return false;
+  return isProductInvocation(last);
 }
 
 /** A trivial placeholder command (matrix-build scaffold) — no real capability behind it. */
@@ -103,6 +125,9 @@ export function auditCapabilityTest(dim: DimLike, wired: Set<string>, hasLadder:
   }
   if (isStructuralFileCheck(command)) {
     return { ...base, verdict: 'STRUCTURAL_ONLY', reason: 'Structural file check (readFileSync/existsSync) — proves code exists, not that it runs; cannot exceed 7.0.', needsAuthoring: true };
+  }
+  if (hasGreenForcingWrapper(command)) {
+    return { ...base, verdict: 'SELF_FULFILLING_STUB', reason: 'Command discards its real exit code (|| true / ; exit 0 / || echo) — it passes regardless of the product, so it measures nothing.', needsAuthoring: true };
   }
   if (looksLikeProductRun(command)) {
     return { ...base, verdict: 'REAL_PRODUCT_PROBE', reason: 'Invokes the real product — the strongest yardstick (confirm dependence with a dynamic sensitivity probe).', needsAuthoring: false };

@@ -35,22 +35,34 @@ export interface AcceptanceResult {
   /** Why it was rejected (empty when accepted). */
   reasons: string[];
   auditVerdict: YardstickVerdict;
-  /** RED = fails on HEAD (the only acceptable state for an authored yardstick); GREEN = already passes
-   *  (rejected — a green stub or nothing to build); ERROR = could not run (inconclusive, rejected). */
-  redGate: 'RED' | 'GREEN' | 'ERROR';
+  /** RED = fails on HEAD for a CAPABILITY reason (the only acceptable state for an authored yardstick);
+   *  GREEN = already passes (rejected — a green stub); RED_INVALID = fails for a LAUNCH/SYNTAX/ENV reason
+   *  (unknown command / module-not-found / bad flag), NOT a capability gap (rejected); ERROR = could not
+   *  run (inconclusive, rejected). */
+  redGate: 'RED' | 'GREEN' | 'RED_INVALID' | 'ERROR';
 }
 
-type RunFn = (command: string, cwd: string, timeoutMs: number) => Promise<{ exitCode: number }>;
+type RunFn = (command: string, cwd: string, timeoutMs: number) => Promise<{ exitCode: number; output?: string }>;
 
-/** Default runner: execute the command through the shell and return its exit code (any failure -> non-zero). */
+/** Default runner: execute through the shell; return the exit code AND combined stdout+stderr (so the RED
+ *  gate can tell a real capability failure from a launch/syntax/env failure). */
 const defaultRun: RunFn = (command, cwd, timeoutMs) =>
   new Promise(resolve => {
-    const child = execFile(command, { cwd, shell: true, timeout: timeoutMs, windowsHide: true }, (err) => {
+    const child = execFile(command, { cwd, shell: true, timeout: timeoutMs, windowsHide: true, maxBuffer: 10 * 1024 * 1024 }, (err, stdout, stderr) => {
       const code = (err as (NodeJS.ErrnoException & { code?: number | string }) | null)?.code;
-      resolve({ exitCode: typeof code === 'number' ? code : (err ? 1 : 0) });
+      resolve({ exitCode: typeof code === 'number' ? code : (err ? 1 : 0), output: `${stdout ?? ''}\n${stderr ?? ''}` });
     });
-    child.on('error', () => resolve({ exitCode: 1 }));
+    child.on('error', () => resolve({ exitCode: 1, output: '' }));
   });
+
+/** A non-zero exit caused by the command failing to LAUNCH (not by a real capability gap). */
+const LAUNCH_FAILURE_RE = /unknown command|command not found|is not recognized|MODULE_NOT_FOUND|cannot find module|SyntaxError|ENOENT|unknown option|unexpected argument|no such file/i;
+function isLaunchFailure(exitCode: number, output: string): boolean {
+  return exitCode === 127 || LAUNCH_FAILURE_RE.test(output);
+}
+
+/** A command rigged to exit non-zero regardless of the real capability — a MANUFACTURED red. */
+const MANUFACTURED_RED_RE = /process\.exit\(\s*[1-9]|(?:^|;|&&|\|)\s*exit\s+[1-9]|\|\s*false\b|&&\s*false\b/i;
 
 /**
  * Evaluate a freshly-authored capability_test candidate against the three honesty gates. Pure of side
@@ -77,17 +89,27 @@ export async function evaluateCandidateYardstick(
     reasons.push('grounded: the dim has no competitor Score Ladder — the loop must research+author the ladder before authoring a frontier yardstick (else the bar is self-set).');
   }
 
-  // Gate 3 — RED: an authored yardstick MUST fail on current HEAD. A green candidate is rejected.
+  // Gate 3 — RED: an authored yardstick MUST fail on current HEAD for a CAPABILITY reason. Reject a green
+  // candidate, a manufactured red (rigged to exit non-zero regardless of the product), and a RED_INVALID
+  // (fails only because the command can't launch — unknown command / module-not-found / bad flag). These
+  // are the red-team's "any non-zero exit = real gap" bypass (`node dist/index.js not-a-real-command`).
+  if (MANUFACTURED_RED_RE.test(candidate.command)) {
+    reasons.push('red: the candidate forces a non-zero exit (process.exit(1) / exit 1 / && false / | false) regardless of the product — a manufactured RED, not a real capability gap.');
+  }
   const run = ctx.run ?? defaultRun;
   let redGate: AcceptanceResult['redGate'];
   try {
-    const { exitCode } = await run(candidate.command, ctx.cwd, ctx.timeoutMs ?? 120_000);
-    redGate = exitCode === 0 ? 'GREEN' : 'RED';
+    const { exitCode, output } = await run(candidate.command, ctx.cwd, ctx.timeoutMs ?? 120_000);
+    if (exitCode === 0) redGate = 'GREEN';
+    else if (isLaunchFailure(exitCode, output ?? '')) redGate = 'RED_INVALID';
+    else redGate = 'RED';
   } catch {
     redGate = 'ERROR';
   }
   if (redGate === 'GREEN') {
     reasons.push('red: the candidate already PASSES on HEAD — an authored yardstick must FAIL until the capability is genuinely built, or it is a green stub measuring nothing.');
+  } else if (redGate === 'RED_INVALID') {
+    reasons.push('red: the candidate fails for a LAUNCH/SYNTAX/ENV reason (unknown command / module not found / bad flag), not a real capability gap — a yardstick must be RED because the capability is UNBUILT, not because the command is broken.');
   } else if (redGate === 'ERROR') {
     reasons.push('red: the candidate could not be run — inconclusive, so it is not accepted (a yardstick must demonstrably fail for a real capability reason).');
   }

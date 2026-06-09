@@ -43,6 +43,22 @@ describe('evaluateCandidateYardstick — the authored-yardstick honesty gate', (
     assert.equal(r.accepted, false);
     assert.equal(r.redGate, 'ERROR');
   });
+
+  // ── Red-team RED-gate bypasses (wv6k56etl) ──
+  test('REJECTS a LAUNCH failure as RED_INVALID (unknown command is not a capability gap)', async () => {
+    // `node dist/index.js not-a-real-command` fails with "unknown command" — non-zero, but not a real gap.
+    const cand: YardstickCandidate = { dimId: 'd', command: 'node dist/index.js frobnicate-not-real', callsite: 'src/endpoint/src/memory_inject.rs' };
+    const r = await evaluateCandidateYardstick(cand, ctx({ run: async () => ({ exitCode: 1, output: "error: unknown command 'frobnicate-not-real'" }) }));
+    assert.equal(r.accepted, false);
+    assert.equal(r.redGate, 'RED_INVALID');
+  });
+
+  test('REJECTS a MANUFACTURED red (command rigged to exit non-zero regardless of the product)', async () => {
+    const cand: YardstickCandidate = { dimId: 'd', command: 'cargo test -p x --lib memory_inject && node -e "process.exit(1)"', callsite: 'src/endpoint/src/memory_inject.rs' };
+    const r = await evaluateCandidateYardstick(cand, ctx({ run: async () => ({ exitCode: 1, output: '' }) }));
+    assert.equal(r.accepted, false);
+    assert.ok(r.reasons.some(x => /manufactured RED/i.test(x)));
+  });
 });
 
 describe('authorYardstick — autonomous examiner → gate → install/revert (no human)', () => {

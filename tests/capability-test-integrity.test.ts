@@ -57,6 +57,27 @@ describe('auditCapabilityTest — the yardstick stub detector', () => {
     assert.equal(a.verdict, 'SELF_FULFILLING_STUB', 'a test-file callsite is not production wiring');
   });
 
+  // ── Red-team bypasses (wv6k56etl) — each demonstrated exploit must now be rejected ──
+  test('REJECTS "danteforge help; node -e ..." (product token glued to a self-deciding fixture)', () => {
+    const a = auditCapabilityTest(dim('x', 'danteforge help; node -e "const x=2+2; if(x!==4) process.exit(1)"', []), WIRED, true);
+    assert.notEqual(a.verdict, 'REAL_PRODUCT_PROBE', 'the exit-determining segment is node -e, not the product');
+    assert.equal(a.needsAuthoring, true);
+  });
+  test('REJECTS a green-forcing wrapper "node dist/index.js anything || true"', () => {
+    const a = auditCapabilityTest(dim('x', 'node dist/index.js anything || true; node -e "process.exit(0)"', []), WIRED, true);
+    assert.equal(a.verdict, 'SELF_FULFILLING_STUB', 'discards the real exit code → measures nothing');
+  });
+  test('REJECTS a trivially-green product subcommand "danteforge help"', () => {
+    assert.notEqual(auditCapabilityTest(dim('x', 'danteforge help', []), WIRED, true).verdict, 'REAL_PRODUCT_PROBE');
+    assert.notEqual(auditCapabilityTest(dim('x', 'node dist/index.js --version', []), WIRED, true).verdict, 'REAL_PRODUCT_PROBE');
+  });
+  test('REJECTS "danteforge status || true" (green wrapper)', () => {
+    assert.equal(auditCapabilityTest(dim('x', 'danteforge status || true', []), WIRED, true).verdict, 'SELF_FULFILLING_STUB');
+  });
+  test('still ACCEPTS a genuine non-trivial product run', () => {
+    assert.equal(auditCapabilityTest(dim('x', 'node dist/index.js gap security', []), WIRED, true).verdict, 'REAL_PRODUCT_PROBE');
+  });
+
   test('summarizeYardsticks counts verdicts', () => {
     const audits: YardstickAudit[] = [
       auditCapabilityTest(dim('a', 'exit 1'), WIRED, false),
