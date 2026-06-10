@@ -102,6 +102,51 @@ describe('mergeBackIsolatedBranch — isolated work lands WITHOUT touching the o
   });
 });
 
+describe('parallel push honesty — a court that never ran is NEVER a court rejection', () => {
+  test('a promote crash yields courtRan:false (build failure, not rejection provenance)', async () => {
+    const { runParallelRound } = await import('../src/core/ascend-frontier-parallel.js');
+    const r = await runParallelRound('X:\\tmp\\nowhere', [{ memberId: 'codex' as never, dimId: 'd1' }], {
+      buildAll: async () => {},
+      promoteOne: async () => { throw new Error('worktree exploded'); },
+      _enqueueAudit: async () => {},
+      nowIso: new Date().toISOString(),
+    });
+    assert.equal(r.outcomes[0]!.verdict, 'REJECTED');
+    assert.equal(r.outcomes[0]!.courtRan, false, 'a crash means the judges never convened');
+    assert.equal(r.validated.length, 0);
+  });
+});
+
+describe('ascend-frontier pre-flight — broken environments fail fast with a named remedy', () => {
+  test('Node repo without node_modules → ok:false naming the install remedy', async () => {
+    const { defaultPreflight } = await import('../src/cli/commands/ascend-frontier-bootstrap.js');
+    const dir = path.join(ROOT, 'pf-node');
+    await fs.mkdir(dir, { recursive: true });
+    await fs.writeFile(path.join(dir, 'package.json'), '{"name":"x"}', 'utf8');
+    const pf = await defaultPreflight(dir, false, async () => ['codex']);
+    assert.equal(pf.ok, false);
+    assert.match(pf.remedy ?? '', /node_modules is missing/);
+  });
+  test('non-Node repo skips the dependency check and reports agent count honestly', async () => {
+    const { defaultPreflight } = await import('../src/cli/commands/ascend-frontier-bootstrap.js');
+    const dir = path.join(ROOT, 'pf-rust');
+    await fs.mkdir(dir, { recursive: true });
+    await fs.writeFile(path.join(dir, 'Cargo.toml'), '[package]\nname="x"\n', 'utf8');
+    const pf = await defaultPreflight(dir, false, async () => []);
+    assert.equal(pf.ok, true, 'zero agents is a loud warning, not a hard failure');
+    assert.ok(pf.notes.some(n => /non-Node repo/.test(n)));
+    assert.ok(pf.notes.some(n => /WARNING: no claude\/codex/.test(n)));
+  });
+  test('agent discovery crash degrades to a note — pre-flight never invents a verdict', async () => {
+    const { defaultPreflight } = await import('../src/cli/commands/ascend-frontier-bootstrap.js');
+    const dir = path.join(ROOT, 'pf-crash');
+    await fs.mkdir(dir, { recursive: true });
+    const pf = await defaultPreflight(dir, false, async () => { throw new Error('probe died'); });
+    assert.equal(pf.ok, true);
+    assert.ok(pf.notes.some(n => /agent discovery failed/.test(n)));
+  });
+});
+
 describe('source pins — the main-tree and stale-score regressions cannot quietly return', () => {
   const read = (rel: string) => readFileSync(path.join(path.resolve('.'), rel), 'utf8');
 

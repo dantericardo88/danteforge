@@ -69,6 +69,7 @@ function runOnce(cwd: string, args: string[]): Promise<CliResult> {
   // consume the data events (no backpressure) and keep only the last STREAM_TAIL_CAP bytes.
   return new Promise<CliResult>((resolve) => {
     let out = '', err = '', settled = false;
+    let lastOutputAt = Date.now();
     const cap = (s: string) => (s.length > STREAM_TAIL_CAP ? s.slice(s.length - STREAM_TAIL_CAP) : s);
     // stdin:'ignore' — an unattended sub-command that prompts gets EOF and fails fast instead of
     // blocking forever (the silent autoresearch hang the fleet hit). detached on POSIX for group-kill.
@@ -78,14 +79,35 @@ function runOnce(cwd: string, args: string[]): Promise<CliResult> {
       if (settled) return;
       settled = true;
       clearTimeout(timer);
+      clearInterval(heartbeat);
       untrackChild(child.pid);
       resolve({ exitCode, stdout: out, stderr: err, ms: Date.now() - start, ok: exitCode === 0 });
     };
     // On timeout, kill the WHOLE tree (harden-crusade + its autoresearch grandchildren), not just the
     // direct child — otherwise the grandchildren orphan and accumulate as zombies across sessions.
     const timer = setTimeout(() => { killTree(child.pid); done(124); }, 30 * 60_000);
-    child.stdout?.on('data', (d: Buffer) => { out = cap(out + d.toString()); });
-    child.stderr?.on('data', (d: Buffer) => { err = cap(err + d.toString()); });
+    // LIVE ECHO + HEARTBEAT — the fleet's "silent stall": piped output was captured but never shown,
+    // so a 20-min build-to-7 looked frozen and operators killed healthy runs. Echo the child's lines
+    // as they arrive (prefixed, so the operator sees the real sub-command working), and when the child
+    // goes quiet, say so every 60s with how long it has been silent — a stall is now an OBSERVED fact
+    // ("silent for 12m"), not an inference from a blank console.
+    const label = args[0] ?? 'sub-command';
+    const echo = (d: Buffer, stream: NodeJS.WriteStream) => {
+      lastOutputAt = Date.now();
+      const text = d.toString();
+      for (const line of text.split(/\r?\n/)) {
+        if (line.trim().length > 0) stream.write(`  [${label}] ${line}\n`);
+      }
+      return text;
+    };
+    const heartbeat = setInterval(() => {
+      const silentMs = Date.now() - lastOutputAt;
+      if (silentMs >= 55_000) {
+        process.stderr.write(`  [${label}] … still running (${Math.round((Date.now() - start) / 60_000)}m elapsed, no output for ${Math.round(silentMs / 60_000)}m)\n`);
+      }
+    }, 60_000);
+    child.stdout?.on('data', (d: Buffer) => { out = cap(out + echo(d, process.stdout)); });
+    child.stderr?.on('data', (d: Buffer) => { err = cap(err + echo(d, process.stderr)); });
     // ENOENT (binary not found) → 127, matching a shell "command not found".
     child.on('error', (e: NodeJS.ErrnoException) => done(e.code === 'ENOENT' ? 127 : 1));
     child.on('close', (code, signal) => done(code ?? (signal ? 1 : 0)));

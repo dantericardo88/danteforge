@@ -926,3 +926,49 @@ describe('saveMatrix test-isolation guard', () => {
     assert.ok(captured.includes('seam_ok'));
   });
 });
+
+// ── saveMatrix reconciliation clamp ───────────────────────────────────────────
+// Rank-8 split-brain backstop: live derivation refuses values above the market cap /
+// declared ceiling, so a PERSISTED value above them is stale split-brain state. The
+// save boundary clamps both scores.self and scores.derived through the canonical
+// clampDimScore — it can only LOWER or hold, never raise.
+
+describe('saveMatrix reconciliation clamp', () => {
+  it('a stale market-dim (token_economy) self 9.0 / derived 7.5 saves as 5.0; under-cap values untouched', async () => {
+    let written = '';
+    const stale = makeDim({ id: 'token_economy', scores: { self: 9.0, derived: 7.5, cursor: 9.0 } });
+    const honest = makeDim({ id: 'honest_dim', scores: { self: 6.5, derived: 6.0, cursor: 9.0 } });
+    const matrix = makeMatrix([stale, honest]);
+
+    await saveMatrix(matrix, '/fake/reconcile', async (_p, c) => { written = c; });
+
+    const parsed = JSON.parse(written) as CompeteMatrix;
+    const t = parsed.dimensions.find(d => d.id === 'token_economy')!;
+    assert.strictEqual(t.scores['self'], 5.0, 'market-capped self 9.0 must persist as 5.0');
+    assert.strictEqual(t.scores['derived'], 5.0, 'market-capped derived 7.5 must persist as 5.0');
+    const h = parsed.dimensions.find(d => d.id === 'honest_dim')!;
+    assert.strictEqual(h.scores['self'], 6.5, 'a value under the cap must be untouched');
+    assert.strictEqual(h.scores['derived'], 6.0, 'an under-cap derived must be untouched');
+    // The self-lowering routes through writeVerifiedScore → carries an auditable provenance row.
+    assert.ok(
+      parsed.scoreProvenance?.some(p => p.dimensionId === 'token_economy' && p.agent === 'save-reconcile' && p.after === 5.0),
+      'the reconciliation write must carry save-reconcile provenance',
+    );
+  });
+
+  it('clamps above-ceiling values; never raises a value already under its caps', async () => {
+    let written = '';
+    const over = makeDim({ id: 'testing', scores: { self: 7.2, derived: 6.8, cursor: 9.0 }, ceiling: 6.0 });
+    const under = makeDim({ id: 'token_economy', scores: { self: 4.0, cursor: 9.0 } });
+    const matrix = makeMatrix([over, under]);
+
+    await saveMatrix(matrix, '/fake/reconcile2', async (_p, c) => { written = c; });
+
+    const parsed = JSON.parse(written) as CompeteMatrix;
+    const o = parsed.dimensions.find(d => d.id === 'testing')!;
+    assert.strictEqual(o.scores['self'], 6.0, 'above-ceiling self must be clamped to the ceiling');
+    assert.strictEqual(o.scores['derived'], 6.0, 'above-ceiling derived must be clamped to the ceiling');
+    const u = parsed.dimensions.find(d => d.id === 'token_economy')!;
+    assert.strictEqual(u.scores['self'], 4.0, 'reconciliation must never RAISE a value toward the cap');
+  });
+});

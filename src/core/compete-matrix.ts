@@ -172,13 +172,66 @@ export async function loadMatrix(
     // `legacy_score` for transition diff display. This is the read-time
     // honesty enforcement — every consumer of loadMatrix sees the derived
     // value, never the agent-written one.
+    //
+    // The declarations-ledger overlay runs FIRST (before derived scoring) so a dim whose
+    // gate-confirmed outcomes[] were wiped by a git reset / matrix rewrite re-derives from
+    // its restored declarations + the evidence still on disk. Like applyOutcomeDerivedScores,
+    // the overlay is skipped on a seamed read (_fsRead) — tests that need the raw on-disk
+    // matrix get exactly that.
     if (!_fsRead) {
+      await overlayLedgerDeclarations(matrix, cwd ?? process.cwd());
       await applyOutcomeDerivedScores(matrix, cwd ?? process.cwd());
       _matrixCache = { matrix, expiresAt: Date.now() + MATRIX_CACHE_TTL_MS, path: matrixPath };
     }
     return matrix;
   } catch {
     return null;
+  }
+}
+
+/**
+ * Declarations-ledger overlay (the durable-persistence read side): re-attach any
+ * gate-confirmed outcome declaration the on-disk matrix has LOST. matrix.json is
+ * kernel-owned and never committed by agents, so the autopilot's git operations
+ * (`reset --hard`, branch switches) wipe its uncommitted outcomes[] — that is exactly
+ * how the fleet's earns evaporated (3/3 repos, 2026-06-10). The ledger
+ * (.danteforge/compete/declarations/, self-gitignored) survives those operations, and
+ * this overlay restores its declarations at read time.
+ *
+ * Collision rule: the MATRIX ENTRY ALWAYS WINS on outcome-id collision. A
+ * ground-outcomes downgrade writes the downgraded entry back into matrix.json, and the
+ * overlay must never resurrect the older (higher-tier) ledger snapshot — it only ADDS
+ * ids the matrix no longer has. Best-effort: any failure leaves the matrix untouched.
+ */
+async function overlayLedgerDeclarations(matrix: CompeteMatrix, cwd: string): Promise<void> {
+  try {
+    const { loadAllDeclarations } = await import('./declarations-ledger.js');
+    const ledger = await loadAllDeclarations(cwd);
+    if (ledger.size === 0) return;
+    let restored = 0;
+    for (const dim of matrix.dimensions) {
+      const declared = ledger.get(dim.id);
+      if (!declared || declared.length === 0) continue;
+      const d = dim as unknown as Record<string, unknown>;
+      const existing = Array.isArray(d['outcomes'])
+        ? d['outcomes'] as Array<{ id?: unknown }>
+        : [];
+      const existingIds = new Set(
+        existing.map(o => (typeof o?.id === 'string' ? o.id : '')).filter(id => id.length > 0),
+      );
+      const missing = declared.filter(o => !existingIds.has(o.id));
+      if (missing.length === 0) continue;
+      d['outcomes'] = [...existing, ...missing];
+      restored += missing.length;
+    }
+    if (restored > 0) {
+      // One line per LOAD (not per outcome) — enough to explain why a wiped matrix still
+      // scores, without spamming every loop iteration.
+      const { logger } = await import('./logger.js');
+      logger.info(`[declarations-ledger] restored ${restored} gate-confirmed declaration(s) from the ledger (matrix.json lost them — likely a git reset)`);
+    }
+  } catch {
+    // best-effort — the overlay is a recovery net and must never break loadMatrix
   }
 }
 
@@ -275,6 +328,45 @@ async function applyOutcomeDerivedScores(matrix: CompeteMatrix, cwd: string): Pr
   }
 }
 
+/**
+ * Persistence-time score reconciliation: clamp every dim's persisted `scores.self` and
+ * `scores.derived` (when present) through the canonical clampDimScore — market cap +
+ * declared ceiling, ONE clamp in one place (compete-matrix-score.ts). Live derivation
+ * already refuses values above those caps, so a persisted value above them is by
+ * definition stale split-brain state (e.g. token_economy sitting at 7.0 against its
+ * permanent 5.0 market cap) and must die at the save boundary.
+ *
+ * scores.self routes through writeVerifiedScore — the single sanctioned gate — so the
+ * lowering carries an auditable provenance row and passes assertScoreProvenance at the
+ * production save boundary. scores.derived has no gate (validate writes it directly) and
+ * is clamped in place. clampDimScore is min-composed, so this pass can only LOWER or
+ * hold values, never raise them.
+ */
+async function reconcileScoreCaps(matrix: CompeteMatrix): Promise<void> {
+  const { clampDimScore } = await import('./compete-matrix-score.js');
+  let writeVerifiedScoreFn: typeof import('./write-verified-score.js').writeVerifiedScore | null = null;
+  for (const dim of matrix.dimensions) {
+    const derived = dim.scores['derived'];
+    if (typeof derived === 'number' && Number.isFinite(derived)) {
+      const clampedDerived = clampDimScore(dim.id, derived, dim.ceiling);
+      if (clampedDerived < derived) dim.scores['derived'] = clampedDerived;
+    }
+    const self = dim.scores['self'];
+    if (typeof self === 'number' && Number.isFinite(self) && clampDimScore(dim.id, self, dim.ceiling) < self) {
+      if (!writeVerifiedScoreFn) {
+        writeVerifiedScoreFn = (await import('./write-verified-score.js')).writeVerifiedScore;
+      }
+      // Pass the CURRENT value as rawScore — the gate applies the same canonical clamp
+      // internally, records before/raw/after provenance, and recomputes gap/leader/overall
+      // in lockstep. skipHistory/skipStatus: this is reconciliation, not a sprint result.
+      writeVerifiedScoreFn(matrix, dim.id, self, {
+        agent: 'save-reconcile',
+        rationale: 'persistence-time clamp: stale value above market cap / declared ceiling',
+      }, { skipHistory: true, skipStatus: true });
+    }
+  }
+}
+
 export async function saveMatrix(
   matrix: CompeteMatrix,
   cwd?: string,
@@ -300,6 +392,12 @@ export async function saveMatrix(
       );
     }
   }
+
+  // Reconciliation clamp (rank-8 split-brain backstop): a STALE persisted score above the
+  // market cap or the dim's declared ceiling must never survive a save — live derivation
+  // already refuses such values, so persisting them is pure split-brain. Runs on every
+  // save path (seamed and real) and can only LOWER or hold values, never raise.
+  await reconcileScoreCaps(matrix);
 
   const content = JSON.stringify(matrix, null, 2);
   const write = _fsWrite ?? (async (p: string, c: string) => {

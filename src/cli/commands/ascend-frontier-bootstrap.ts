@@ -102,3 +102,48 @@ export async function bootstrapColdRepo(
     return { kind: 'define-failed', reason: err instanceof Error ? err.message : String(err) };
   }
 }
+
+// ── Pre-flight (fleet rank 10) ────────────────────────────────────────────────
+
+export interface PreflightResult { ok: boolean; remedy?: string; notes: string[] }
+
+const exists = async (p: string): Promise<boolean> => { try { await fs.access(p); return true; } catch { return false; } };
+
+/**
+ * Probe the environment ONCE before the loop spends anything. Two checks the fleet paid for in
+ * burned cycles: (1) a Node repo without node_modules cannot run its own capability_tests/outcomes
+ * — every dim derives 0 and the chain churns on phantoms (hard fail, named remedy; sweep refuses
+ * for the same reason); (2) the count of live agent CLIs decides what the run can honestly achieve
+ * (0 → build cycles fail fast; 1 → no court/ladder-research quorum; ≥2 → full chain) — surfaced as
+ * notes + ledgered, never invented. Non-Node repos skip (1): their toolchains are resolved by
+ * toolchainEnv on the gate runners.
+ */
+export async function defaultPreflight(
+  cwd: string,
+  parallel: boolean,
+  discoverMembers: () => Promise<unknown[]>,
+): Promise<PreflightResult> {
+  const notes: string[] = [];
+  if (await exists(path.join(cwd, 'package.json'))) {
+    const hasDeps = await exists(path.join(cwd, 'node_modules'));
+    notes.push(`node repo — node_modules ${hasDeps ? 'present' : 'MISSING'}`);
+    if (!hasDeps) {
+      return {
+        ok: false, notes,
+        remedy: 'node_modules is missing — this checkout cannot run its own capability_tests/outcomes (every dim derives 0). Run the repo install (npm ci) + build, then re-run. (--dry-run still works.)',
+      };
+    }
+  } else {
+    notes.push('non-Node repo (no package.json) — gate runners resolve cargo/go via toolchainEnv');
+  }
+  try {
+    const members = await discoverMembers();
+    notes.push(`agent CLIs: ${members.length}${members.length > 0 ? ` (${members.join(', ')})` : ''}`);
+    if (members.length === 0) notes.push('WARNING: no claude/codex CLI available — every build cycle will fail fast (exit 2) until one is installed + authenticated');
+    else if (parallel && members.length < 2) notes.push('WARNING: --parallel needs ≥2 live members for cross-judging — this round will degrade');
+    else if (members.length < 2) notes.push('NOTE: 1 agent CLI — build-to-7 works; 9.0 court verdicts and ladder research need ≥2 independent members and will honestly block');
+  } catch (err) {
+    notes.push(`agent discovery failed (${err instanceof Error ? err.message : String(err)}) — continuing; build cycles will surface it honestly`);
+  }
+  return { ok: true, notes };
+}

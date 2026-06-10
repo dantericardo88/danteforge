@@ -32,6 +32,7 @@ import type { Outcome } from '../../matrix/types/outcome.js';
 import { SCORING_DOCTRINE_SHORT } from '../../core/scoring-doctrine.js';
 import { checkOutcomeIntegrity, formatIntegrityReport, integrityCapFor } from '../../matrix/engines/outcome-integrity.js';
 import { effectiveStatus, type FrontierSpec } from '../../core/frontier-spec.js';
+import { recordDeclarations } from '../../core/declarations-ledger.js';
 
 /** Score above this requires an independently court-VALIDATED frontier_spec. */
 const FRONTIER_GATE_THRESHOLD = 8.0;
@@ -69,6 +70,8 @@ export interface ValidateCliOptions {
   _loadMatrix?: typeof loadMatrix;
   _onProgress?: (msg: string) => void;
   _createTimeMachineCommit?: ((opts: { cwd: string; paths: string[]; label: string }) => Promise<unknown>) | null;
+  /** Seam: declarations-ledger writer override. `null` disables the ledger write. */
+  _recordDeclarations?: typeof recordDeclarations | null;
 }
 
 export interface ValidateDimResult {
@@ -243,19 +246,47 @@ export async function runValidateCli(options: ValidateCliOptions): Promise<Valid
       failingOutcomes: failing,
       integrityCap,
     });
+
+    // THE LEDGER WRITE (durable persistence for gate-confirmed earns): matrix.json is
+    // kernel-owned and never committed by agents, so a git reset / matrix rewrite wipes
+    // its uncommitted outcomes[] (fleet run 1: earns evaporated on 3/3 repos). Snapshot
+    // this dim's DECLARED outcomes to the self-gitignored declarations ledger — but ONLY
+    // on the gate-confirmed condition: every declared outcome ran (no --quick /
+    // --runtime-only filtering) and passed, with NO integrity or frontier cap. A failing,
+    // capped, or partial run must never snapshot — that would launder an unproven
+    // declaration into durability.
+    const declaredOutcomes = (dim as unknown as Record<string, unknown>)['outcomes'] as Outcome[];
+    const gateConfirmed =
+      total > 0 &&
+      total === declaredOutcomes.length &&
+      failing === 0 &&
+      integrityCap === undefined;
+    if (gateConfirmed && options._recordDeclarations !== null) {
+      const recordFn = options._recordDeclarations ?? recordDeclarations;
+      try {
+        await recordFn(cwd, dim.id, declaredOutcomes);
+      } catch { /* the ledger is a recovery net — it never blocks validation */ }
+    }
   }
 
   const allPassed = results.every(r => r.failingOutcomes === 0);
 
   // Write derived scores back to matrix.json so scores.derived reflects receipt evidence.
+  // ALWAYS persist the freshly recomputed value — UP AND DOWN (the rank-8 split-brain
+  // fix). The old guard (`failingOutcomes === 0 && scoreAfter > 0`) persisted only earns,
+  // so after a regression the stale inflated derived sat in matrix.json while live
+  // derivation said lower, and every consumer of the persisted value saw the inflated
+  // one. Decreases are exactly the writes honesty depends on.
   try {
     const liveMatrix = await loadMatrix(cwd);
     if (liveMatrix) {
       let changed = false;
       for (const r of results) {
         const dim = liveMatrix.dimensions.find(d => d.id === r.dimensionId);
-        if (dim && r.failingOutcomes === 0 && r.scoreAfter > 0) {
-          dim.scores['derived'] = Math.round(r.scoreAfter * 100) / 100;
+        if (!dim) continue;
+        const fresh = Math.round(r.scoreAfter * 100) / 100;
+        if (dim.scores['derived'] !== fresh) {
+          dim.scores['derived'] = fresh;
           changed = true;
         }
       }

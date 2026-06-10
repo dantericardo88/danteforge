@@ -26,6 +26,14 @@ export interface PushOutcome {
   /** True when the court's output could not be parsed (empty/garbage stdout, non-zero exit) —
    *  the outcome is REJECTED defensively, but this flags "we don't actually know" vs a clean no. */
   parseError?: boolean;
+  /** The honesty boundary, mirroring the sequential PushResult: TRUE only when frontier-review
+   *  actually executed over real evidence and returned a verdict. A missing spec, a failed/partial
+   *  evidence capture, or a promote crash is a BUILD failure — recording it as a court rejection
+   *  would fabricate "the court rejected N times" generator-ceiling provenance. */
+  courtRan: boolean;
+  /** Present when the dim cannot honestly reach 9 because its frontier_spec is INCOMPLETE — the
+   *  orchestrator writes this as an ACTIONABLE ceiling naming the exact unfilled fields. */
+  ceiling?: { cause: string; detail: string };
 }
 
 export interface ReciprocalPair { memberA: CouncilMemberId; memberB: CouncilMemberId; dimA: string; dimB: string; }
@@ -113,8 +121,10 @@ export async function runParallelRound(
   const outcomes: PushOutcome[] = [];
   for (const a of assignments) {
     // SERIAL: each promote writes matrix.json/receipts; running them concurrently would race.
+    // A promote CRASH is a build failure (courtRan:false) — the judges never convened, so it must
+    // never be recorded as a court rejection.
     try { outcomes.push(await opts.promoteOne(cwd, a)); }
-    catch { outcomes.push({ dimId: a.dimId, builderId: a.memberId, verdict: 'REJECTED', passedByJudges: [] }); }
+    catch { outcomes.push({ dimId: a.dimId, builderId: a.memberId, verdict: 'REJECTED', passedByJudges: [], courtRan: false }); }
   }
 
   const reciprocalPairs = detectReciprocity(outcomes);

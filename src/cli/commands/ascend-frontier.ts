@@ -25,7 +25,7 @@ import { assignRound, runParallelRound, type PushOutcome } from '../../core/asce
 import type { CouncilMemberId } from '../../matrix/engines/council-scheduler.js';
 import { RunLedger } from '../../core/run-ledger.js';
 import { runCli, parseCourtOutput, setActiveLedger, type CliResult } from './ascend-frontier-runner.js';
-import { bootstrapColdRepo, type DefineUniverseFn } from './ascend-frontier-bootstrap.js';
+import { bootstrapColdRepo, defaultPreflight, type DefineUniverseFn, type PreflightResult } from './ascend-frontier-bootstrap.js';
 
 const execFileAsync = promisify(execFile);
 const MARKET_DIMS = MARKET_CAPPED_DIMS; // canonical set — src/core/market-dims.ts
@@ -65,6 +65,9 @@ export interface AscendFrontierOptions {
   // Seams (production defaults shell out to the real commands).
   /** Cold-repo define runner (default: the real defineUniverse, always interactive:false). */
   _defineUniverse?: DefineUniverseFn;
+  /** Pre-flight prober (default: node_modules + agent-CLI checks). Like _defineUniverse, an
+   *  injected _buildState skips the production pre-flight unless this seam opts back in. */
+  _preflight?: (cwd: string, parallel: boolean) => Promise<PreflightResult>;
   _buildState?: (cwd: string) => Promise<DimState[]>;
   _runSetup?: (cwd: string, dims: string[]) => Promise<void>;
   _runBuildTo7?: (cwd: string, dims: string[]) => Promise<void>;
@@ -273,6 +276,24 @@ export async function runAscendFrontier(options: AscendFrontierOptions): Promise
     }
   }
 
+  // ── Pre-flight (fleet rank 10) ────────────────────────────────────────────────
+  // A run whose environment cannot execute its own gates burns its whole budget on phantoms:
+  // missing node_modules derives every dim to 0 (the inert state the fleet hit), and zero agent
+  // CLIs means every build cycle honest-fails. Check ONCE, loudly, before any cycle — fail fast
+  // with the named remedy for a broken environment, and ledger what was found either way.
+  if (!options.dryRun && (!options._buildState || options._preflight)) {
+    const preflight = options._preflight
+      ?? ((c: string, p: boolean) => defaultPreflight(c, p, options._discoverMembers ?? defaultDiscoverMembers));
+    const pf = await preflight(cwd, !!options.parallel);
+    for (const n of pf.notes) logger.info(`[ascend-frontier] preflight: ${n}`);
+    if (!pf.ok) {
+      (await ensureLedger()).logEvent('preflight-failed', { remedy: pf.remedy, notes: pf.notes });
+      actions.push('preflight-failed');
+      return await complete('failed', `preflight: ${pf.remedy}`);
+    }
+    (await ensureLedger()).logEvent('preflight', { notes: pf.notes });
+  }
+
   // Resilience: a single cycle that throws (e.g. an intermittent Windows child-spawn 127, a
   // transient matrix read during a concurrent council write) must NOT silently abort an hours-long
   // run. Each cycle's error is logged + recorded to the ledger and the loop continues; only after
@@ -365,11 +386,22 @@ export async function runAscendFrontier(options: AscendFrontierOptions): Promise
           // Record an attempt per pushed dim so attempt-counts advance (a fresh HEAD makes it novel).
           const sha = await headSha(cwd);
           for (const o of round.outcomes) {
-            if (o.parseError) {
-              // The court did NOT run (failed/unparseable output) — never record a non-run as a
-              // rejection; that would fabricate court-rejection provenance toward a generator-ceiling.
-              // BUT count it as a build-failure attempt (mirroring the sequential push path, line ~291)
-              // so a build-failing dim CEILINGS instead of churning forever in parallel mode.
+            if (o.ceiling) {
+              // spec-incomplete: honest, ACTIONABLE, names the unfilled fields — same semantics as
+              // the sequential path. Not a build failure and not a court rejection.
+              const reviewAfter = new Date(Date.parse(now()) + 24 * 60 * 60_000).toISOString();
+              led.addReceipt('ceiling', { dimId: o.dimId, cause: o.ceiling.cause, detail: o.ceiling.detail });
+              await writeCeilingReceipt(cwd, { dimId: o.dimId, cap: scoreOf(state, o.dimId), cause: o.ceiling.cause as CeilingCause,
+                detail: o.ceiling.detail, failedGates: [o.ceiling.cause], recordedAt: now(), reviewAfter });
+              logger.info(`[ascend-frontier] ${o.dimId} ceiling (${o.ceiling.cause}) — ${o.ceiling.detail}`);
+              continue;
+            }
+            if (o.parseError || !o.courtRan) {
+              // The court did NOT run (missing/failed evidence, promote crash, or unparseable court
+              // output) — never record a non-run as a rejection; that would fabricate court-rejection
+              // provenance toward a generator-ceiling. Count it as a build-failure attempt
+              // (mirroring the sequential push path) so a build-failing dim CEILINGS instead of
+              // churning forever in parallel mode.
               const n = (buildFailedAttempts.get(o.dimId) ?? 0) + 1;
               buildFailedAttempts.set(o.dimId, n);
               led.logGateCheck(`frontier-court:${o.dimId}`, 'fail', `court did NOT run (build/command failure) — attempt ${n}/${maxBuildAttempts}, not counted as a rejection`);
@@ -639,9 +671,28 @@ async function defaultBuildAll(cwd: string, assignments: { memberId: CouncilMemb
  *  sessions, then run the court with the assigned owner EXCLUDED (builder-never-judges). Writes
  *  matrix.json — runParallelRound guarantees this runs one dim at a time, so no write races. */
 async function defaultPromoteOne(cwd: string, a: { memberId: CouncilMemberId; dimId: string }): Promise<PushOutcome> {
-  const spec0 = ((await loadMatrix(cwd))?.dimensions.find(d => d.id === a.dimId) as unknown as { frontier_spec?: FrontierSpec } | undefined)?.frontier_spec;
+  // Mirror the sequential push's honesty guardrails (the parallel path used to skip them, so an
+  // incomplete spec churned through evidence capture instead of emitting the ACTIONABLE
+  // spec-incomplete ceiling): ensure a spec exists, then check it in-process before any evidence run.
+  const m0 = await loadMatrix(cwd);
+  let spec0 = specOf(m0?.dimensions.find(d => d.id === a.dimId));
+  if (!spec0) {
+    await df(cwd, ['frontier-spec', 'init', a.dimId, '--write']);
+    spec0 = specOf((await loadMatrix(cwd))?.dimensions.find(d => d.id === a.dimId));
+  }
+  if (!spec0) {
+    return { dimId: a.dimId, builderId: a.memberId, verdict: 'REJECTED', passedByJudges: [], courtRan: false };
+  }
+  const check = checkFrontierSpec(spec0, competitorsOf(m0), await loadDimRubric(cwd, a.dimId));
+  if (!check.ok) {
+    return {
+      dimId: a.dimId, builderId: a.memberId, verdict: 'REJECTED', passedByJudges: [], courtRan: false,
+      ceiling: { cause: 'spec-incomplete',
+        detail: `${a.dimId} is honestly held below 9.0 until its frontier_spec real-user-path is authored — ${check.errors.join(' | ')}` },
+    };
+  }
   let evidenceOk = false;
-  if (spec0) {
+  {
     const callsite = spec0.real_user_path.required_callsite;
     const artifact = spec0.real_user_path.observable_artifacts[0]?.path ?? '';
     const sessions = Math.max(2, spec0.required_receipts.min_distinct_sessions, spec0.required_receipts.min_t5_plus_outcomes);
@@ -656,11 +707,10 @@ async function defaultPromoteOne(cwd: string, a: { memberId: CouncilMemberId; di
     evidenceOk = okSessions >= sessions;
   }
   // Hard-block the court on incomplete evidence: convening judges on a failed/partial evidence run
-  // would let the court "VALIDATE" a dim whose receipts don't actually back it. No spec / not all
-  // sessions captured → REJECTED, court NOT run. (Codex: defaultPromoteOne previously ran the court
-  // even when session-record/validate failed.)
-  if (!spec0 || !evidenceOk) {
-    return { dimId: a.dimId, builderId: a.memberId, verdict: 'REJECTED', passedByJudges: [] };
+  // would let the court "VALIDATE" a dim whose receipts don't actually back it. Not all sessions
+  // captured → BUILD failure (courtRan:false), never a court rejection.
+  if (!evidenceOk) {
+    return { dimId: a.dimId, builderId: a.memberId, verdict: 'REJECTED', passedByJudges: [], courtRan: false };
   }
   // Distinguish a real court REJECT from "we couldn't read the court's answer" (non-zero exit or
   // no JSON): parseCourtOutput flags the latter so the orchestrator records uncertainty, not a clean no.
@@ -669,6 +719,7 @@ async function defaultPromoteOne(cwd: string, a: { memberId: CouncilMemberId; di
   return {
     dimId: a.dimId, builderId: a.memberId,
     verdict: parsed.verdict, passedByJudges: parsed.passedByJudges as CouncilMemberId[],
+    courtRan: !parsed.parseError,
     ...(parsed.parseError ? { parseError: true } : {}),
   };
 }
