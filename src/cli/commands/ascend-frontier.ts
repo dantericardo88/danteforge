@@ -13,9 +13,9 @@ import path from 'node:path';
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import { logger } from '../../core/logger.js';
-import { loadMatrix, type CompeteMatrix } from '../../core/compete-matrix.js';
+import { loadMatrix, invalidateMatrixCache, type CompeteMatrix } from '../../core/compete-matrix.js';
 import { MARKET_CAPPED_DIMS } from '../../core/market-dims.js';
-import { effectiveDimScore } from '../../core/compete-matrix-score.js';
+import { decisionDimScore } from '../../core/compete-matrix-score.js';
 import { effectiveStatus, resolveRunCommand, checkFrontierSpec, type FrontierSpec } from '../../core/frontier-spec.js';
 import { loadDimRubric } from '../../core/rubric-ladder.js';
 import { loadCeilingReceipt, writeCeilingReceipt, type CeilingCause } from '../../core/ceiling-receipt.js';
@@ -100,7 +100,13 @@ async function defaultBuildState(cwd: string): Promise<DimState[]> {
     const d = dim as unknown as { capability_test?: unknown; outcomes?: unknown[] };
     out.push({
       id: dim.id,
-      effectiveScore: effectiveDimScore(dim as Parameters<typeof effectiveDimScore>[0]),
+      // decisionDimScore, NOT effectiveDimScore: a dim that declares outcomes but has no fresh
+      // evidence at this SHA must read as UNVERIFIED (≤5), never coast on its stale self-claim.
+      // effectiveDimScore falls back to raw self when derived is unset — on DanteAgents every
+      // sub-7 dim snapped to a stale-high self after HEAD moved, so planNextAction returned a
+      // premature 'done' after ONE unproductive cycle. The planner is a WORK decision; it uses
+      // the work-decision score.
+      effectiveScore: decisionDimScore(dim as Parameters<typeof decisionDimScore>[0]),
       frontierStatus: spec ? effectiveStatus(spec) : 'none',
       ceiling,
       attempts: ledger.filter(a => a.dimId === dim.id).length,
@@ -198,21 +204,44 @@ export async function runAscendFrontier(options: AscendFrontierOptions): Promise
   // ceiling, before/after score). Created lazily on the first real cycle so dry-run / done-at-start
   // write nothing. finalize() emits .danteforge/runs/<runId>/ — the receipt Phase 3 inspects.
   let ledger: RunLedger | null = null;
+  let interruptHandler: (() => void) | null = null;
+  const dropInterruptHandler = (): void => {
+    if (interruptHandler) {
+      process.removeListener('SIGINT', interruptHandler);
+      process.removeListener('SIGTERM', interruptHandler);
+      interruptHandler = null;
+    }
+  };
   const ensureLedger = async (): Promise<RunLedger> => {
     if (!ledger) {
       ledger = new RunLedger('ascend-frontier', options.parallel ? ['--parallel'] : [], cwd);
       await ledger.initialize();
       setActiveLedger(ledger);
+      // An operator-stopped run must STILL leave a complete bundle: the fleet's interrupted runs
+      // produced sparse bundles (no summary.md / gates.json), so nothing verbatim could be quoted
+      // in the reports. Finalize on SIGINT/SIGTERM, then exit with the conventional 130.
+      interruptHandler = () => {
+        const led = ledger;
+        led?.logEvent('run-error', { error: 'interrupted (SIGINT/SIGTERM) — finalizing the bundle before exit' });
+        void led?.finalize({}, { actions }, { status: 'partial', completionOracle: false, reason: 'interrupted by operator' })
+          .catch(() => { /* exiting anyway */ })
+          .finally(() => process.exit(130));
+      };
+      process.once('SIGINT', interruptHandler);
+      process.once('SIGTERM', interruptHandler);
     }
     return ledger;
   };
   const complete = async (terminal: AscendFrontierResult['terminal'], summary: string): Promise<AscendFrontierResult> => {
+    dropInterruptHandler();
     if (ledger) {
+      // Ledger is advisory (never fail the run on it) — but a SWALLOWED finalize error is how the
+      // fleet got an exit-0 run with no summary.md. Surface it.
       await ledger.finalize({}, { actions }, {
         status: terminal === 'done' || terminal === 'dry-run' ? 'success' : terminal === 'failed' ? 'failure' : 'partial',
         completionOracle: terminal === 'done',
         reason: summary,
-      }).catch(() => { /* ledger is advisory — never fail the run on a finalize hiccup */ });
+      }).catch((e) => logger.warn(`[ascend-frontier] run-ledger finalize failed (bundle may be sparse): ${e instanceof Error ? e.message : String(e)}`));
       setActiveLedger(null);
     }
     return finish(terminal, cycles, actions, summary, options, ledger?.getRunId());
@@ -294,10 +323,21 @@ export async function runAscendFrontier(options: AscendFrontierOptions): Promise
 
     try {
     switch (action.type) {
-      case 'setup':
+      case 'setup': {
+        // The fleet lost gate-confirmed outcome declarations to setup's matrix rewrites with NO
+        // signal (DanteAgents: 5 prior-session earns silently dropped, derived 2.09 → 1.74).
+        // Grounding/migration may legitimately DOWNGRADE an outcome — but a declaration that
+        // VANISHES must be loud and ledgered so the operator can restore or contest it.
+        const before = await snapshotDeclarations(cwd);
         await runSetup(cwd, action.dims);
+        const lost = diffLostDeclarations(before, await snapshotDeclarations(cwd));
+        if (lost.length > 0) {
+          logger.warn(`[ascend-frontier] setup REMOVED ${lost.length} outcome declaration(s): ${lost.slice(0, 8).join(', ')}${lost.length > 8 ? ', …' : ''} — grounding must downgrade with provenance, never silently drop. Recorded in the run ledger.`);
+          led.logEvent('declarations-lost', { phase: 'setup', lost });
+        }
         for (const id of action.dims) setupAttempts.set(id, (setupAttempts.get(id) ?? 0) + 1);
         break;
+      }
       case 'build-to-7':
         await runBuildTo7(cwd, action.dims);
         for (const id of action.dims) buildAttempts.set(id, (buildAttempts.get(id) ?? 0) + 1);
@@ -413,13 +453,38 @@ export async function runAscendFrontier(options: AscendFrontierOptions): Promise
     (ledger as RunLedger | null)?.logEvent('run-error', { error: msg });
     return await complete('failed', `aborted: ${msg}`);
   } finally {
-    // Always clear the module-scoped active ledger, even if the loop throws, so a later run
-    // never records into a dead ledger.
+    // Always clear the module-scoped active ledger + interrupt hooks, even if the loop throws,
+    // so a later run never records into a dead ledger or fires a stale signal handler.
+    dropInterruptHandler();
     setActiveLedger(null);
   }
 }
 
 function scoreOf(state: DimState[], id: string): number { return state.find(d => d.id === id)?.effectiveScore ?? 0; }
+
+/** Per-dim outcome-declaration ids, freshly read from disk (setup sub-commands write matrix.json
+ *  in their own processes, so the in-process cache must be invalidated first). */
+async function snapshotDeclarations(cwd: string): Promise<Map<string, Set<string>>> {
+  invalidateMatrixCache();
+  const m = await loadMatrix(cwd).catch(() => null);
+  const snap = new Map<string, Set<string>>();
+  for (const dim of m?.dimensions ?? []) {
+    const ids = ((dim as unknown as { outcomes?: Array<{ id?: unknown }> }).outcomes ?? [])
+      .map(o => String(o.id ?? '')).filter(Boolean);
+    snap.set(dim.id, new Set(ids));
+  }
+  return snap;
+}
+
+/** Declarations present before but ABSENT after — `dim/outcomeId` rows for the warning + ledger. */
+function diffLostDeclarations(before: Map<string, Set<string>>, after: Map<string, Set<string>>): string[] {
+  const lost: string[] = [];
+  for (const [dimId, ids] of before) {
+    const now = after.get(dimId) ?? new Set<string>();
+    for (const id of ids) if (!now.has(id)) lost.push(`${dimId}/${id}`);
+  }
+  return lost;
+}
 
 function describe(a: AscendAction): string {
   switch (a.type) {

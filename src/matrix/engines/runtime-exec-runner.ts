@@ -8,12 +8,14 @@
 import { existsSync } from 'node:fs';
 import { spawnSync } from 'node:child_process';
 import type { RuntimeExecOutcome, OutcomeEvidenceEntry } from '../types/outcome.js';
+import { toolchainEnv } from '../../core/toolchain-path.js';
 
 interface SpawnOpts {
   shell: boolean | string;
   cwd: string;
   timeout: number;
   encoding: 'utf8';
+  env?: NodeJS.ProcessEnv;
 }
 
 interface SpawnResult {
@@ -71,6 +73,7 @@ export async function runRuntimeExecOutcome(
       cwd,
       timeout,
       encoding: 'utf8',
+      env: toolchainEnv(),
     });
   } catch (err) {
     result = {
@@ -123,7 +126,7 @@ export async function runRuntimeExecOutcome(
     const retryStart = Date.now();
     let retryR: SpawnResult;
     try {
-      retryR = spawn(outcome.command, { shell: resolveShell(), cwd, timeout, encoding: 'utf8' });
+      retryR = spawn(outcome.command, { shell: resolveShell(), cwd, timeout, encoding: 'utf8', env: toolchainEnv() });
     } catch (err) {
       retryR = { status: -1, stdout: '', stderr: `retry error: ${err instanceof Error ? err.message : String(err)}` };
     }

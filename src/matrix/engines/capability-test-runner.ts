@@ -4,6 +4,7 @@
 // cap: no dimension may score above CAPABILITY_TEST_SCORE_CAP without a
 // successful capability_test exit-0 run in the same wave.
 import { spawnSync } from 'node:child_process';
+import { toolchainEnv } from '../../core/toolchain-path.js';
 import type {
   CapabilityTestSpec,
   CapabilityTestResult,
@@ -39,7 +40,7 @@ export interface CapabilityTestVerdict {
 type SpawnFn = (
   cmd: string,
   args: string[],
-  opts: { shell: boolean; cwd: string; timeout: number; encoding: 'utf8' },
+  opts: { shell: boolean; cwd: string; timeout: number; encoding: 'utf8'; env?: NodeJS.ProcessEnv },
 ) => { status: number | null; stdout: string; stderr: string };
 
 /** Run the capability_test for one dimension and return a scored verdict. */
@@ -130,7 +131,9 @@ function executeCapabilityTest(
   const start = Date.now();
   let result: { status: number | null; stdout: string; stderr: string };
   try {
-    result = spawn(spec.command, [], { shell: true, cwd, timeout: timeoutMs, encoding: 'utf8' });
+    // toolchainEnv: per-user toolchain dirs (cargo/go) appended to PATH so a portable declared
+    // command like `cargo test -p member --lib mod` resolves in the gate's subprocess too.
+    result = spawn(spec.command, [], { shell: true, cwd, timeout: timeoutMs, encoding: 'utf8', env: toolchainEnv() });
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
     return {

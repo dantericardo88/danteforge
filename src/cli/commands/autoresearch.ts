@@ -493,6 +493,10 @@ export async function autoResearch(
     requireAgent?: boolean;
     /** Run every experiment in an isolated git worktree so the user's tree is never touched. */
     isolate?: boolean;
+    /** With isolate: the exact worktree branch name. An orchestrator (harden-crusade) sets this so
+     *  it can deterministically find the kept-commits branch afterward and merge it back through
+     *  its own gate — without parsing stdout or guessing slugs. */
+    isolateBranch?: string;
     /** The measurement is a pass/fail capability_test — use its exit code as the metric and ignore
      *  any number it prints (set by dim-dispatch when wiring a dim's capability_test). */
     exitCodeMetric?: boolean;
@@ -580,7 +584,8 @@ export async function autoResearch(
   if (options.isolate) {
     const stamp = nowFn();
     const slug = slugify(goal);
-    session = await (_opts._setupWorktree ?? setupWorktree)(cwd, `autoresearch-${slug}-${stamp}`, `autoresearch/${slug}-${stamp}`, defaultWorktreeDeps());
+    const branchName = options.isolateBranch ?? `autoresearch/${slug}-${stamp}`;
+    session = await (_opts._setupWorktree ?? setupWorktree)(cwd, `autoresearch-${slug}-${stamp}`, branchName, defaultWorktreeDeps());
     if (!session) { process.exitCode = 1; return; }
     execCwd = session.worktreePath;
     branchOverride = session.branch;

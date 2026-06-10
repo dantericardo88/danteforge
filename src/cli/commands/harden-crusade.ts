@@ -28,6 +28,7 @@ import { SCORING_DOCTRINE_SHORT } from '../../core/scoring-doctrine.js';
 import { nextLevelGoalSuffix } from '../../core/rubric-ladder.js';
 import { resolveAutonomousTarget } from '../../core/autonomy-cap.js';
 import { runCIPCheck, type CIPOptions, type CIPResult } from '../../core/completion-integrity.js';
+import { runGit } from '../../core/git-safe.js';
 
 const MAX_WAVES_WITHOUT_REGRADE = 3;
 const DEFAULT_TARGET = 9.0;
@@ -154,10 +155,41 @@ async function defaultRunAutoResearch(
   // NOT silently degrade to the JSON-hypothesis/Ollama path (which stalls when no provider is configured —
   // the "set-and-forget loop hangs" failure). With no agent available it fails fast (exit 2 = a fixable
   // environment ceiling), so the conductor records an honest signal instead of churning blind.
-  const args = [...cli.argsPrefix, 'autoresearch', goal, '--metric', dimensionId, '--time', `${timeMinutes}m`, '--allow-dirty', '--require-agent'];
+  // --isolate (NEVER --allow-dirty): the fleet run proved main-tree autoresearch is self-sabotage —
+  // it branch-switched the operator's checkout and git-reset uncommitted matrix declarations + wiring,
+  // REGRESSING two repos' honest means. Experiments now run in a worktree off HEAD; the operator's tree
+  // is untouchable. Kept commits land on a deterministic branch we merge back below, gate-verified.
+  const branch = `autoresearch/hc-${dimensionId}-${Date.now()}`;
+  const args = [...cli.argsPrefix, 'autoresearch', goal, '--metric', dimensionId, '--time', `${timeMinutes}m`,
+    '--isolate', '--isolate-branch', branch, '--require-agent'];
   if (measurementCommand) args.push('--measurement-command', measurementCommand);
   // Streamed (inherit) — a 30-min autoresearch must not buffer into an EPIPE/127.
   await spawnStreamed(cli.file, args, cwd, timeoutMs);
+  await mergeBackIsolatedBranch(cwd, branch, dimensionId);
+}
+
+/**
+ * Land an isolated run's kept work on the CURRENT branch — without ever switching the operator's
+ * checkout. No kept commits → silent no-op (the branch was already auto-pruned). A merge conflict
+ * aborts cleanly and reports build-failed-to-land; the commits stay on the branch for review. The
+ * harden gate + outcome refresh that follow every cycle remain the quality judges of what landed.
+ */
+export async function mergeBackIsolatedBranch(cwd: string, branch: string, dimensionId: string): Promise<void> {
+  const exists = await runGit(['rev-parse', '--verify', '--quiet', `refs/heads/${branch}`], cwd).then(() => true).catch(() => false);
+  if (!exists) return; // nothing kept — teardown pruned the branch
+  const ahead = await runGit(['rev-list', '--count', `HEAD..${branch}`], cwd).then(s => parseInt(s.trim(), 10)).catch(() => 0);
+  if (!ahead) {
+    await runGit(['branch', '-D', branch], cwd).catch(() => { /* best-effort prune */ });
+    return;
+  }
+  try {
+    await runGit(['merge', '--no-ff', '--no-edit', branch], cwd);
+    await runGit(['branch', '-D', branch], cwd).catch(() => { /* merged — prune is cosmetic */ });
+    logger.info(`[harden-crusade:${dimensionId}] merged ${ahead} kept commit(s) from the isolated run (${branch})`);
+  } catch (err) {
+    await runGit(['merge', '--abort'], cwd).catch(() => { /* no merge in progress */ });
+    logger.warn(`[harden-crusade:${dimensionId}] isolated work could NOT be merged (${err instanceof Error ? err.message.split('\n')[0] : String(err)}) — kept on branch ${branch} for review; this cycle lands nothing.`);
+  }
 }
 
 /** Resolve a dim's capability_test shell command (the autoresearch measurement metric), or null. */

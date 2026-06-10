@@ -41,6 +41,7 @@ program
   .option('--no-agent', 'Use the lightweight JSON-hypothesis edit path instead of dispatching a coding agent')
   .option('--require-agent', 'REQUIRE the capable coding-agent builder; fail fast (exit 2) if no claude/codex CLI is available instead of silently degrading to the JSON-hypothesis/Ollama path. Used by the autonomous build loop.')
   .option('--isolate', 'Run every experiment in an isolated git worktree — your tree is never touched (no --allow-dirty needed)')
+  .option('--isolate-branch <name>', 'With --isolate: the exact worktree branch name, so an orchestrator (harden-crusade) can find + merge kept work back through its gate')
   .option('--exit-code-metric', 'Treat the measurement as a pass/fail capability_test: use its exit code (0 = target) and ignore any number it prints')
   .action(async (goal, opts) => (await C()).autoResearch(goal, {
     metric: opts.metric,
@@ -52,6 +53,7 @@ program
     noAgent: opts.agent === false,
     requireAgent: opts.requireAgent,
     isolate: opts.isolate,
+    isolateBranch: opts.isolateBranch,
     exitCodeMetric: opts.exitCodeMetric,
   }));
 

@@ -23,6 +23,7 @@ import {
 } from '../types/outcome.js';
 import { isEvidenceStale } from '../types/capability-test.js';
 import { MARKET_CAPPED_DIMS } from '../../core/market-dims.js';
+import { toolchainEnv } from '../../core/toolchain-path.js';
 
 const execFileAsync = promisify(execFile);
 const OUTCOME_EVIDENCE_DIR = path.join('.danteforge', 'outcome-evidence');
@@ -64,6 +65,7 @@ interface SpawnOpts {
   cwd: string;
   timeout: number;
   encoding: 'utf8';
+  env?: NodeJS.ProcessEnv;
 }
 
 // On Windows, cmd.exe doesn't support Unix pipe idioms (tail, 2>&1 pipes).
@@ -249,7 +251,7 @@ export async function runOneOutcome(options: RunOutcomeOptions): Promise<Outcome
   const timeout = outcome.timeout_ms ?? 60_000;
   let result: SpawnResult;
   try {
-    result = spawn(shellOutcome.command, { shell: resolveShell(), cwd, timeout, encoding: 'utf8' });
+    result = spawn(shellOutcome.command, { shell: resolveShell(), cwd, timeout, encoding: 'utf8', env: toolchainEnv() });
   } catch (err) {
     result = {
       status: -1, stdout: '',
@@ -289,7 +291,7 @@ export async function runOneOutcome(options: RunOutcomeOptions): Promise<Outcome
   if (!passed && flakeTolerance > 0) {
     let retryR: SpawnResult;
     try {
-      retryR = spawn(shellOutcome.command, { shell: resolveShell(), cwd, timeout, encoding: 'utf8' });
+      retryR = spawn(shellOutcome.command, { shell: resolveShell(), cwd, timeout, encoding: 'utf8', env: toolchainEnv() });
     } catch (err) {
       retryR = { status: -1, stdout: '', stderr: `retry error: ${err instanceof Error ? err.message : String(err)}` };
     }
