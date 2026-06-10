@@ -53,7 +53,14 @@ export function isStructuralFileCheck(cmd: string): boolean {
 // spawning the actual PRODUCT entrypoint (e.g. `node dist/index.js <cmd>`) on a realistic
 // input. This is also the concrete, honest path to 9.0 for a pre-release tool — run the
 // real product, do not require human users.
-const TEST_RUNNER_RE = /npx\s+tsx\s+--test|node\s+--test|npm\s+(?:run\s+)?test|jest|vitest|mocha/;
+// Recognizes test-runner invocations across languages. JS/TS runners PLUS the
+// polyglot fleet's runners (Rust/Go/Python/.NET/JVM/Ruby/PHP) — without these, a
+// `cargo test` / `pytest` / `go test` declared kind:runtime-exec escapes the T4
+// test-suite cap (line ~97) and falls through to the 8.0 default (line ~122),
+// silently over-crediting a unit test as a product run. Adding them only TIGHTENS
+// (caps at T4) — it can never inflate a score. Patterns are precise test
+// invocations (`cargo test`, not `cargo run`) to avoid false-capping product runs.
+const TEST_RUNNER_RE = /npx\s+tsx\s+--test|node\s+--test|npm\s+(?:run\s+)?test|jest|vitest|mocha|cargo\s+(?:test|nextest)\b|go\s+test\b|\bpytest\b|\bpy\.test\b|python[0-9.]*\s+-m\s+(?:pytest|unittest)\b|\bdotnet\s+test\b|\bgradle\s+test\b|\bmvn\s+test\b|\brspec\b|\bphpunit\b/;
 
 export function isTestSuiteCommand(cmd: string): boolean {
   return TEST_RUNNER_RE.test(cmd);
