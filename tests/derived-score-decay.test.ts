@@ -18,8 +18,8 @@ import {
   type OutcomeEvidenceEntry,
 } from '../src/matrix/types/outcome.js';
 
-function makeOutcome(id: string, tier: Outcome['tier']): Outcome {
-  return { id, tier, description: `outcome ${id}`, command: `echo ${id}` };
+function makeOutcome(id: string, tier: Outcome['tier'], opts: Partial<Outcome> = {}): Outcome {
+  return { id, tier, description: `outcome ${id}`, command: `echo ${id}`, ...opts } as Outcome;
 }
 
 function makeDim(outcomes: Outcome[]): DimensionForScoring {
@@ -85,9 +85,17 @@ describe('score decay — stale evidence treated as not-passing', () => {
   it('T7 evidence 8 days old drops score to T5 cap', () => {
     const now = new Date('2026-05-25T12:00:00Z');
     const fresh = agoMs(now, 60 * 60 * 1000);
+    // The T7 fixture must be genuinely T7-capable (runtime-exec + real-user-path,
+    // quality maxScore 9.0). A generic shell command (maxScore 8.0) would now be
+    // DEMOTED into the T5 bucket and staleness-checked there, which is not what
+    // this test exercises — it isolates decay of a real T7 receipt.
     const dim = makeDim([
       makeOutcome('t5a', 'T5'), makeOutcome('t5b', 'T5'), makeOutcome('t5c', 'T5'),
-      makeOutcome('t7', 'T7'),
+      makeOutcome('t7', 'T7', {
+        kind: 'runtime-exec',
+        command: 'node dist/index.js e2e fixtures/sample',
+        input_source: { type: 'real-user-path', description: 'genuine t7 run' },
+      } as Partial<Outcome>),
     ]);
     const evidence = makeEvidenceMap([
       makeEntry('t5a', 'T5', true, fresh), makeEntry('t5b', 'T5', true, fresh),

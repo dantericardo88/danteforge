@@ -28,6 +28,13 @@ import { resolveProjectCompetitors } from './peer-presets.js';
 export interface UniverseDefinerOptions {
   cwd?: string;
   interactive?: boolean;
+  /** Non-interactive seed: project description for the competitor scan (e.g. the goal field of
+   *  matrix-orchestrate detect's project-intent.json). An interactive answer still wins. */
+  seedProjectDescription?: string;
+  /** Non-interactive seed: competitor names (e.g. matrix-orchestrate discover's
+   *  competitive-universe.json). Fills the gap only when state.competitors is empty —
+   *  explicit user configuration always wins. */
+  seedCompetitors?: string[];
   /** Injection seam: ask a question and return the answer (override in tests) */
   _askQuestion?: (question: string, defaultValue?: string) => Promise<string>;
   /** Injection seam: competitor scan */
@@ -120,8 +127,14 @@ export async function defineUniverse(options: UniverseDefinerOptions = {}): Prom
   const isInteractive = options.interactive && (options._askQuestion != null || process.stdin.isTTY);
   const askFn = options._askQuestion ?? defaultAskQuestion;
 
-  let projectDescription = '';
+  // Cold-repo seeds (ascend-frontier Phase A bootstrap): a seeded description grounds the scan in
+  // the project's real category; seeded competitors fill in ONLY when state has none configured.
+  // Interactive answers (below) override both.
+  let projectDescription = options.seedProjectDescription ?? '';
   let userDefinedCompetitors: string[] = (state as { competitors?: string[] }).competitors ?? [];
+  if (userDefinedCompetitors.length === 0 && options.seedCompetitors !== undefined && options.seedCompetitors.length > 0) {
+    userDefinedCompetitors = options.seedCompetitors;
+  }
   let enableWebSearch = false;
 
   if (isInteractive) {

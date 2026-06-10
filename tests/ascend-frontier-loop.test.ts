@@ -4,6 +4,7 @@ import fs from 'node:fs/promises';
 import path from 'node:path';
 import { runAscendFrontier, setupCommands, buildTo7Commands, type PushResult } from '../src/cli/commands/ascend-frontier.js';
 import type { DimState } from '../src/core/ascend-frontier-engine.js';
+import type { CompeteMatrix } from '../src/core/compete-matrix.js';
 
 const ROOT = path.join('X:\\tmp', `ascend-loop-${process.pid}`);
 after(async () => { await fs.rm(ROOT, { recursive: true, force: true }).catch(() => {}); });
@@ -14,13 +15,21 @@ function dim(over: Partial<DimState> = {}): DimState {
 
 describe('ascend-frontier — phase routing (sequential vs council-parallel)', () => {
   const M = ['codex', 'claude-code', 'grok-build'];
-  test('sequential define = scaffold + migrate + honest-define grounding', () => {
-    assert.deepEqual(setupCommands(false, M), [['evidence-scaffold'], ['migrate-outcomes', '--write'], ['ground-outcomes', '--apply']]);
+  // Setup chain: scaffold → migrate → yardstick self-heal (conduct --execute, budget-bounded) →
+  // honest-define grounding. The conduct step is the conductor brain turned ON inside the loop —
+  // it repairs/re-authors self-fulfilling capability_tests BEFORE the build grips them.
+  const SERIAL_SETUP = [
+    ['evidence-scaffold'], ['migrate-outcomes', '--write'],
+    ['capability-test', 'conduct', '--execute', '--max-actions', '3'],
+    ['ground-outcomes', '--apply'],
+  ];
+  test('sequential define = scaffold + migrate + yardstick self-heal + honest-define grounding', () => {
+    assert.deepEqual(setupCommands(false, M), SERIAL_SETUP);
   });
-  test('parallel define fans research out to council-universe (member-split), then serial scaffold/migrate/ground', () => {
+  test('parallel define fans research out to council-universe (member-split), then serial scaffold/migrate/conduct/ground', () => {
     const c = setupCommands(true, M);
     assert.deepEqual(c[0], ['council-universe', '--members', 'codex,claude-code,grok-build', '--propose-outcomes']);
-    assert.deepEqual(c.slice(1), [['evidence-scaffold'], ['migrate-outcomes', '--write'], ['ground-outcomes', '--apply']]);
+    assert.deepEqual(c.slice(1), SERIAL_SETUP);
   });
   test('build-to-7 uses harden-crusade SERIAL (--parallel 1) — shared-working-tree race avoided', () => {
     // Serial, not --parallel N: N autoresearch workers share one working tree and corrupt each other
@@ -183,5 +192,118 @@ describe('ascend-frontier — unattended loop control', () => {
     assert.equal(ceiling.cause, 'spec-incomplete', 'recorded as spec-incomplete, not build-failed');
     assert.match(ceiling.detail, /observed_capability/, 'the ceiling names the exact missing work');
     assert.ok(ceiling.reviewAfter, 're-openable once the operator authors the spec');
+  });
+});
+
+// ── Phase A bootstrap (cold repo define) ──────────────────────────────────────
+
+function minimalMatrix(): CompeteMatrix {
+  return {
+    project: 'p', competitors: [], competitors_closed_source: [], competitors_oss: [],
+    lastUpdated: '2026-06-09T00:00:00.000Z', overallSelfScore: 0, dimensions: [],
+  };
+}
+
+async function writeMatrixFile(dir: string): Promise<void> {
+  const matrixPath = path.join(dir, '.danteforge', 'compete', 'matrix.json');
+  await fs.mkdir(path.dirname(matrixPath), { recursive: true });
+  await fs.writeFile(matrixPath, JSON.stringify(minimalMatrix()), 'utf8');
+}
+
+describe('ascend-frontier — Phase A bootstrap (cold repo define)', () => {
+  test('no matrix: define runs FIRST (non-interactive), then the loop proceeds with the seamed state', async () => {
+    const dir = path.join(ROOT, 'cold');
+    const defineCalls: { cwd?: string; interactive?: boolean }[] = [];
+    const r = await runAscendFrontier({
+      cwd: dir,
+      _defineUniverse: async (opts) => { defineCalls.push({ cwd: opts.cwd, interactive: opts.interactive }); return minimalMatrix(); },
+      _buildState: async () => [dim({ id: 'a', effectiveScore: 9.0, frontierStatus: 'validated' })],
+      _now: () => '2026-06-09T00:00:00.000Z',
+    });
+    assert.equal(defineCalls.length, 1, 'define ran exactly once');
+    assert.equal(defineCalls[0]!.interactive, false, 'NEVER prompts — the orchestrator contract');
+    assert.equal(defineCalls[0]!.cwd, dir);
+    assert.equal(r.actions[0], 'define(bootstrap)', 'define is recorded as the first action');
+    assert.equal(r.terminal, 'done', 'after define, the loop proceeds and terminates normally');
+  });
+
+  test('--no-bootstrap on a cold repo fails CLEANLY naming the remedy; define is NOT called', async () => {
+    const dir = path.join(ROOT, 'coldnb');
+    let defined = 0;
+    const r = await runAscendFrontier({
+      cwd: dir, bootstrap: false,
+      _defineUniverse: async () => { defined++; return minimalMatrix(); },
+    });
+    assert.equal(r.terminal, 'failed');
+    assert.equal(defined, 0, 'define must NOT run under --no-bootstrap');
+    assert.match(r.summary, /no compete matrix/i);
+    assert.match(r.summary, /--no-bootstrap/, 'the failure explains what blocked the run');
+    assert.match(r.summary, /ascend|matrix-orchestrate/, 'the failure names the remedy');
+  });
+
+  test('define failure → terminal failed with the UNDERLYING reason (not a swallowed retry spin)', async () => {
+    const dir = path.join(ROOT, 'coldfail');
+    const r = await runAscendFrontier({
+      cwd: dir,
+      _defineUniverse: async () => { throw new Error('competitor scan exploded'); },
+      _now: () => '2026-06-09T00:00:00.000Z',
+    });
+    assert.equal(r.terminal, 'failed');
+    assert.match(r.summary, /competitor scan exploded/, 'the real reason surfaces in the terminal summary');
+  });
+
+  test('matrix present: define is never called', async () => {
+    const dir = path.join(ROOT, 'warm');
+    await writeMatrixFile(dir);
+    let defined = 0;
+    const r = await runAscendFrontier({
+      cwd: dir,
+      _defineUniverse: async () => { defined++; return minimalMatrix(); },
+      _buildState: async () => [dim({ id: 'a', effectiveScore: 9.0, frontierStatus: 'validated' })],
+      _now: () => '2026-06-09T00:00:00.000Z',
+    });
+    assert.equal(r.terminal, 'done');
+    assert.equal(defined, 0, 'an existing matrix must never be re-defined');
+  });
+
+  test('dry-run on a cold repo REPORTS define would run — no crash, nothing executed, no ledger', async () => {
+    const dir = path.join(ROOT, 'colddry');
+    let defined = 0;
+    const r = await runAscendFrontier({
+      cwd: dir, dryRun: true,
+      _defineUniverse: async () => { defined++; return minimalMatrix(); },
+      _now: () => '2026-06-09T00:00:00.000Z',
+    });
+    assert.equal(r.terminal, 'dry-run');
+    assert.match(r.actions[0]!, /define/, 'dry-run names define as the next action');
+    assert.equal(defined, 0, 'dry-run must not execute define');
+    assert.equal(r.runId, undefined, 'dry-run stays read-only (no run ledger)');
+  });
+
+  test('matrix-orchestrate detect/discover artifacts seed the define call (cold-start wiring)', async () => {
+    const dir = path.join(ROOT, 'coldseed');
+    const orch = path.join(dir, '.danteforge', 'matrix-orchestration');
+    await fs.mkdir(orch, { recursive: true });
+    await fs.writeFile(path.join(orch, 'project-intent.json'), JSON.stringify({ projectName: 'p', goal: 'A CLI that forges agents' }), 'utf8');
+    await fs.writeFile(path.join(orch, 'competitive-universe.json'), JSON.stringify({ entries: [
+      { name: 'aider', recommendedAction: 'harvest' },
+      { name: 'continue.dev', recommendedAction: 'profile' },
+      { name: 'ignored-tool', recommendedAction: 'skip' },
+      { name: 'aider', recommendedAction: 'observe' }, // duplicate — must dedupe
+    ] }), 'utf8');
+    let seen: { seedProjectDescription?: string; seedCompetitors?: string[] } | null = null;
+    const r = await runAscendFrontier({
+      cwd: dir,
+      _defineUniverse: async (opts) => {
+        seen = { seedProjectDescription: opts.seedProjectDescription, seedCompetitors: opts.seedCompetitors };
+        return minimalMatrix();
+      },
+      _buildState: async () => [dim({ id: 'a', effectiveScore: 9.0, frontierStatus: 'validated' })],
+      _now: () => '2026-06-09T00:00:00.000Z',
+    });
+    assert.equal(r.terminal, 'done');
+    assert.ok(seen, 'define received the seeds');
+    assert.equal(seen!.seedProjectDescription, 'A CLI that forges agents');
+    assert.deepEqual(seen!.seedCompetitors, ['aider', 'continue.dev'], 'skip entries excluded, duplicates removed');
   });
 });

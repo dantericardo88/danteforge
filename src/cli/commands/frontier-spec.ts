@@ -13,6 +13,7 @@ import {
   scaffoldFrontierSpec, seedLeaderTargetFromLadder, checkFrontierSpec, computeSpecHash, effectiveStatus,
   type FrontierSpec,
 } from '../../core/frontier-spec.js';
+import { completeFrontierSpec, type SpecCompletionResult, type SpecProbeRun } from '../../core/frontier-spec-complete.js';
 import { loadDimRubric } from '../../core/rubric-ladder.js';
 
 export type FrontierSpecAction = 'init' | 'check' | 'freeze' | 'status';
@@ -24,10 +25,20 @@ export interface FrontierSpecOptions {
   write?: boolean;
   json?: boolean;
   cwd?: string;
+  /**
+   * init only: run the deterministic evidence-grounded completer after scaffold + ladder seed
+   * (frontier-spec-complete.ts). Defaults ON (`--no-complete` disables) — without it an
+   * autonomous init can never produce a court-checkable spec.
+   */
+  complete?: boolean;
   /** Injected ISO timestamp (avoids Date in tests). */
   _now?: string;
   _loadMatrix?: (cwd: string) => Promise<CompeteMatrix | null>;
   _writeMatrix?: (m: CompeteMatrix, p: string) => Promise<void>;
+  /** Seam: completer probe runner (see SpecCompleteOptions._probeRun). */
+  _probeRun?: (command: string, cwd: string) => Promise<SpecProbeRun>;
+  /** Seam: completer mtime snapshotter (see SpecCompleteOptions._snapshotMtimes). */
+  _snapshotMtimes?: (root: string) => Promise<Map<string, number>>;
 }
 
 export interface FrontierSpecResult {
@@ -39,6 +50,12 @@ export interface FrontierSpecResult {
   wrote: boolean;
   status?: string;
   statuses?: Array<{ dimId: string; status: string; hasSpec: boolean }>;
+  /** init only: which unauthored fields the completer filled from real evidence. */
+  completed?: SpecCompletionResult['completed'];
+  /** init only: true iff the completer's single probe run executed. */
+  probed?: boolean;
+  /** init only: does the written draft already pass checkFrontierSpec (zero human edits)? */
+  specReady?: boolean;
 }
 
 function competitorsOf(matrix: CompeteMatrix): string[] {
@@ -92,13 +109,30 @@ export async function runFrontierSpec(options: FrontierSpecOptions): Promise<Fro
     if (specOf(dim)) {
       res.warnings.push(`"${options.dimId}" already has a frontier_spec (status ${effectiveStatus(specOf(dim)!)}). Not overwriting.`);
     } else if (options.write) {
-      const draft = scaffoldFrontierSpec(d);
+      const tracked = competitorsOf(matrix);
+      const draft = scaffoldFrontierSpec(d, tracked);
       const seed = seedLeaderTargetFromLadder(draft, rubric);
+      // Deterministic completion (default ON): promote evidence the dim has ALREADY recorded
+      // (product-run outcomes, declared artifacts, an observed probe run) into the unauthored
+      // real-user-path fields. Pure derivation — a field with no real evidence stays unauthored
+      // and the honest spec-incomplete ceiling stands. checkFrontierSpec is unchanged.
+      if (options.complete !== false) {
+        const completion = await completeFrontierSpec(draft, d, {
+          cwd, _probeRun: options._probeRun, _snapshotMtimes: options._snapshotMtimes,
+        });
+        res.completed = completion.completed;
+        res.probed = completion.probed;
+        for (const n of completion.notes) res.warnings.push(n);
+      }
       d.frontier_spec = draft;
       await writeMatrix(matrix, matrixPath);
       res.wrote = true;
       if (seed.ladder_rows_used.length > 0) {
         res.warnings.push(`Seeded the frontier bar from the competitor-grounded Score Ladder (row(s) ${seed.ladder_rows_used.join(', ')}): ${[seed.seeded.observed_capability && 'observed_capability', seed.seeded.category_delta && 'category_delta'].filter(Boolean).join(' + ')}. Review it — you may sharpen but not soften it.`);
+      }
+      res.specReady = checkFrontierSpec(draft, tracked, rubric).ok;
+      if (res.specReady) {
+        res.warnings.push('Draft passes the honesty guardrails with ZERO human edits — ready to freeze.');
       }
     } else {
       res.warnings.push('Dry-run — re-run with --write to add the draft spec.');
@@ -106,8 +140,12 @@ export async function runFrontierSpec(options: FrontierSpecOptions): Promise<Fro
     logger.info('');
     logger.success(`frontier-spec init "${options.dimId}": ${res.wrote ? 'draft written' : 'dry-run'}`);
     for (const w of res.warnings) logger.warn(`  ⚠ ${w}`);
-    logger.info('  Fill in any remaining TODOs (run_command, required_callsite, observable_artifacts),');
-    logger.info(`  then: danteforge frontier-spec check ${options.dimId}  →  freeze ${options.dimId}  (before building).`);
+    if (res.specReady) {
+      logger.info(`  Next: danteforge frontier-spec freeze ${options.dimId} --write  (before building).`);
+    } else {
+      logger.info('  Fill in any remaining TODOs (run_command, required_callsite, observable_artifacts),');
+      logger.info(`  then: danteforge frontier-spec check ${options.dimId}  →  freeze ${options.dimId}  (before building).`);
+    }
     if (options.json) process.stdout.write(JSON.stringify(res, null, 2) + '\n');
     return res;
   }

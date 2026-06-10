@@ -12,7 +12,11 @@
 //   5. Continuous within tiers — partial outcome passes give partial credit
 //      between the previous tier's cap and the current tier's cap.
 //   6. Legacy fallback — when a dim declares no outcomes, returns dim.legacy_score
-//      (or scores.self) unchanged. Migration-friendly.
+//      (or scores.self) clamped by the market-dim cap. Migration-friendly.
+//   7. Demote, never annihilate — an outcome declared above what its evidence
+//      kind can support (classifyOutcomeKind) is re-bucketed to the highest tier
+//      its quality cap fits, not dropped. A passing T5 test-runner earns T4/7.0,
+//      never T5/8.0 and never 0.0 (the fleet-wide "derived-stuck-0" bug).
 //
 // This is the function that replaces "agent writes a score" as the source of truth.
 
@@ -85,6 +89,23 @@ export interface DerivedScoreBreakdown {
   usedLegacyFallback: boolean;
   /** When usedLegacyFallback, the legacy score we returned. */
   legacyScoreUsed?: number;
+  /** Over-declared outcomes re-bucketed to the tier their evidence kind supports.
+   *  Surfaced by validate/gap so the operator sees WHY a T5 declaration only
+   *  earned T4 credit — the honest remedy is a real product run, not a relabel. */
+  demotions: Array<{ outcomeId: string; from: CapabilityTier; to: CapabilityTier; reason: string }>;
+}
+
+/**
+ * Highest tier whose score cap fits under a quality maxScore, or null when the
+ * cap sits below every tier floor (only then may an outcome be excluded).
+ * A test-runner's 7.0 quality cap maps to T4 (cap 7.0) — the demotion target.
+ */
+function highestTierWithinCap(maxScore: number): CapabilityTier | null {
+  for (let i = TIER_ORDER.length - 1; i >= 0; i--) {
+    const tier = TIER_ORDER[i]!;
+    if (TIER_SCORE_CAPS[tier] <= maxScore) return tier;
+  }
+  return null;
 }
 
 // ── Main pure function ───────────────────────────────────────────────────────
@@ -93,8 +114,10 @@ export interface DerivedScoreBreakdown {
  * Compute the score a dimension currently merits.
  *
  * Algorithm:
- *   1. If no outcomes declared, return legacy_score (or scores.self) — migration path.
- *   2. Group outcomes by tier; T0..T6.
+ *   1. If no outcomes declared, return legacy_score (or scores.self) clamped by
+ *      the market-dim cap — migration path.
+ *   2. Demote over-declared outcomes to the highest tier their quality cap fits
+ *      (classifyOutcomeKind); group outcomes by effective tier; T0..T8.
  *   3. Walk tiers low to high. While ALL outcomes in a tier pass, "claim" that tier.
  *   4. The first tier where outcomes don't all pass is the "next tier" — partial credit.
  *   5. Score = TIER_SCORE_CAPS[claimed] + (TIER_SCORE_CAPS[next] - TIER_SCORE_CAPS[claimed]) * progress.
@@ -123,7 +146,14 @@ export function computeDerivedScoreWithBreakdown(
 ): DerivedScoreBreakdown {
   const outcomes = dim.outcomes ?? [];
   if (outcomes.length === 0) {
-    const legacy = dim.legacy_score ?? dim.scores?.self ?? 0;
+    // Market dims must be capped on the legacy path too. This return used to
+    // bypass the MARKET_DIMS clamp below entirely, so a market dim with no
+    // outcomes echoed its self-written legacy score uncapped (the token_economy
+    // 7.0-despite-5.0-cap leak). Internal claims never exceed the market cap.
+    let legacy = dim.legacy_score ?? dim.scores?.self ?? 0;
+    if (MARKET_DIMS.has(dim.id) && legacy > MARKET_DIM_IMPLEMENTATION_CAP) {
+      legacy = MARKET_DIM_IMPLEMENTATION_CAP;
+    }
     return {
       dimensionId: dim.id,
       score: legacy,
@@ -131,15 +161,41 @@ export function computeDerivedScoreWithBreakdown(
       perTier: [],
       usedLegacyFallback: true,
       legacyScoreUsed: legacy,
+      demotions: [],
     };
   }
 
-  // Group by tier.
-  const tierBuckets = new Map<CapabilityTier, Outcome[]>();
+  // Quality-cap demotion (the "derived-stuck-0" fix). An outcome declared above
+  // what its evidence kind supports — e.g. a test-runner command declared T5 when
+  // classifyOutcomeKind caps it at 7.0 — used to be EXCLUDED from scoring. When
+  // every outcome of a dim was over-declared, exclusion annihilated the dim to
+  // 0.0 even with all receipts passing (the operator's outcome_verification dim
+  // read 0.0 with 4/4 green). Demotion keeps the honesty invariant — a test-runner
+  // still never unlocks T5/8.0 — while crediting the evidence at the tier it
+  // actually supports: re-bucket into the highest tier whose cap fits under the
+  // quality maxScore (T5 test-runner → T4/7.0). Only a quality cap below every
+  // tier floor still excludes. Demotion depends solely on the outcome's static
+  // shape, so purity/monotonicity/boundedness are preserved.
+  const demotions: DerivedScoreBreakdown['demotions'] = [];
+  const effective: Array<{ outcome: Outcome; tier: CapabilityTier }> = [];
   for (const outcome of outcomes) {
-    const bucket = tierBuckets.get(outcome.tier) ?? [];
+    const { maxScore, reason } = classifyOutcomeKind(outcome);
+    if (maxScore >= TIER_SCORE_CAPS[outcome.tier]) {
+      effective.push({ outcome, tier: outcome.tier });
+      continue;
+    }
+    const demoted = highestTierWithinCap(maxScore);
+    if (demoted === null) continue; // cap below every tier floor — excluded
+    demotions.push({ outcomeId: outcome.id, from: outcome.tier, to: demoted, reason });
+    effective.push({ outcome, tier: demoted });
+  }
+
+  // Group by EFFECTIVE tier (declared tier after any quality-cap demotion).
+  const tierBuckets = new Map<CapabilityTier, Outcome[]>();
+  for (const { outcome, tier } of effective) {
+    const bucket = tierBuckets.get(tier) ?? [];
     bucket.push(outcome);
-    tierBuckets.set(outcome.tier, bucket);
+    tierBuckets.set(tier, bucket);
   }
 
   const perTier: DerivedScoreBreakdown['perTier'] = [];
@@ -158,14 +214,11 @@ export function computeDerivedScoreWithBreakdown(
     let passing = 0;
     let stale = 0;
     for (const outcome of tierOutcomes) {
-      // Quality cap: T5+ outcomes whose kind cannot support the declared tier
-      // are excluded. Prevents shell npm-test outcomes from claiming T5+ credit.
-      if (TIER_INDEX[outcome.tier] >= TIER_INDEX.T5) {
-        const { maxScore } = classifyOutcomeKind(outcome);
-        if (maxScore < TIER_SCORE_CAPS[outcome.tier]) continue;
-      }
+      // Over-declared outcomes were already demoted into this bucket above, so
+      // every outcome here is scored — and freshness-checked — at the tier its
+      // evidence kind genuinely supports (`tier` is the effective bucket tier).
       const entry = evidence.get(makeEvidenceKey(dim.id, outcome.id));
-      if (now && entry && isEvidenceStale(outcome.tier, entry.ranAt, now)) {
+      if (now && entry && isEvidenceStale(tier, entry.ranAt, now)) {
         stale++;
         continue; // treat stale evidence as not-passing
       }
@@ -198,9 +251,13 @@ export function computeDerivedScoreWithBreakdown(
         passing = 0; // structural veto — partial credit must not reach T7 cap
       }
       // Distinct test-file check: all T5+ outcomes pointing to the same single test
-      // file is one receipt dressed as many — not genuine multi-receipt.
+      // file is one receipt dressed as many — not genuine multi-receipt. Filters by
+      // EFFECTIVE tier — a demoted (T4-quality) outcome is not a T5+ receipt and
+      // must not add file diversity toward the T7 consensus.
       if (allPassing) {
-        const highTierOuts = outcomes.filter(o => TIER_INDEX[o.tier] >= TIER_INDEX.T5);
+        const highTierOuts = effective
+          .filter(e => TIER_INDEX[e.tier] >= TIER_INDEX.T5)
+          .map(e => e.outcome);
         const testFiles = highTierOuts.flatMap(
           o => extractPrimaryTestFiles((o as { command?: string }).command ?? ''),
         );
@@ -217,7 +274,9 @@ export function computeDerivedScoreWithBreakdown(
       // one session cannot self-certify at T7 regardless of file diversity.
       // Backward-compatible: old evidence without session_id skips this check.
       if (allPassing) {
-        const highTierOuts = outcomes.filter(o => TIER_INDEX[o.tier] >= TIER_INDEX.T5);
+        const highTierOuts = effective
+          .filter(e => TIER_INDEX[e.tier] >= TIER_INDEX.T5)
+          .map(e => e.outcome);
         const sessionIds = highTierOuts
           .map(o => evidence.get(makeEvidenceKey(dim.id, o.id))?.session_id)
           .filter((s): s is string => typeof s === 'string');
@@ -274,6 +333,7 @@ export function computeDerivedScoreWithBreakdown(
     highestFullPassedTier,
     perTier,
     usedLegacyFallback: false,
+    demotions,
   };
 }
 

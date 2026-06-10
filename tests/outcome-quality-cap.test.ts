@@ -104,10 +104,15 @@ describe('classifyOutcomeKind — runtime-exec/e2e cannot launder a structural f
     assert.equal(classifyOutcomeKind(o).maxScore, 9.0);
   });
 
-  it('T5 runtime-exec readFileSync one-liner does NOT unlock T5 (derived score 0)', () => {
+  it('T5 runtime-exec readFileSync one-liner does NOT unlock T5 — demoted to T4 (earns 7.0, never 8.0)', () => {
     const dim: DimensionForScoring = { id: 'test', outcomes: [makeRuntimeOutcome('t5', 'T5', fileCheck)] };
     const evidence = makeEvidenceMap([makeEntry('t5', 'T5', true)]);
-    assert.equal(computeDerivedScore(dim, evidence), 0, 'mislabeled structural check is quality-capped → 0');
+    const score = computeDerivedScore(dim, evidence);
+    // Demote-not-annihilate: the mislabeled structural check is credited at the tier
+    // its evidence supports (T4/7.0) instead of zeroing the dim — but it must still
+    // NEVER unlock T5/8.0 (the honesty invariant the old exclusion enforced).
+    assert.equal(score, TIER_SCORE_CAPS.T4, 'mislabeled structural check demotes to T4/7.0');
+    assert.ok(score < TIER_SCORE_CAPS.T5, 'must never unlock T5/8.0');
   });
 
   it('validateOutcomeQuality rejects a T5 runtime-exec structural check', () => {
@@ -180,13 +185,17 @@ describe('classifyOutcomeKind — input_source provenance gates the frontier', (
 });
 
 describe('derived score — quality cap enforcement', () => {
-  it('T5 shell npx-tsx-test does NOT unlock T5 cap', () => {
+  it('T5 shell npx-tsx-test does NOT unlock T5 cap — demoted to T4/7.0 (not annihilated to 0)', () => {
     const dim: DimensionForScoring = {
       id: 'test',
       outcomes: [makeShellOutcome('t5', 'T5', 'npx tsx --test tests/foo.test.ts')],
     };
     const evidence = makeEvidenceMap([makeEntry('t5', 'T5', true)]);
-    assert.equal(computeDerivedScore(dim, evidence), 0, 'shell npm-test at T5 is quality-capped → 0');
+    const score = computeDerivedScore(dim, evidence);
+    // The honesty invariant holds (a test-runner never earns T5/8.0); the passing
+    // receipt is credited at the tier it supports instead of zeroing the dim.
+    assert.equal(score, TIER_SCORE_CAPS.T4, 'shell npm-test at T5 demotes to T4/7.0');
+    assert.ok(score < TIER_SCORE_CAPS.T5, 'must never unlock T5/8.0');
   });
 
   it('T5 runtime-exec npx-tsx-test does NOT unlock T5 — a test caps at T4 regardless of kind (harsh-consistent)', () => {
@@ -195,9 +204,11 @@ describe('derived score — quality cap enforcement', () => {
       outcomes: [makeRuntimeOutcome('t5', 'T5', 'npx tsx --test tests/foo.test.ts')],
     };
     const evidence = makeEvidenceMap([makeEntry('t5', 'T5', true)]);
-    // Quality-excluded at T5 (a test suite only supports T4/7.0) — exactly like the kind:shell case;
+    // Demoted at T5 (a test suite only supports T4/7.0) — exactly like the kind:shell case;
     // the runtime-exec label no longer buys a +1.0 bonus.
-    assert.ok(computeDerivedScore(dim, evidence) < TIER_SCORE_CAPS.T5);
+    const score = computeDerivedScore(dim, evidence);
+    assert.equal(score, TIER_SCORE_CAPS.T4);
+    assert.ok(score < TIER_SCORE_CAPS.T5);
   });
 
   it('shell npm-test at T4 is allowed (cap equals T4)', () => {
@@ -209,7 +220,7 @@ describe('derived score — quality cap enforcement', () => {
     assert.equal(computeDerivedScore(dim, evidence), TIER_SCORE_CAPS.T4);
   });
 
-  it('mix: T4 shell passes + T5 shell blocked → T4 cap', () => {
+  it('mix: T4 shell passes + T5 shell test-runner demoted to T4 → T4 cap', () => {
     const dim: DimensionForScoring = {
       id: 'test',
       outcomes: [
@@ -221,7 +232,7 @@ describe('derived score — quality cap enforcement', () => {
     assert.equal(computeDerivedScore(dim, evidence), TIER_SCORE_CAPS.T4);
   });
 
-  it('mix: T4 shell passes + T5 runtime-exec TEST passes → T4 cap (the T5 test is quality-excluded regardless of kind)', () => {
+  it('mix: T4 shell passes + T5 runtime-exec TEST passes → T4 cap (the T5 test is demoted regardless of kind)', () => {
     const dim: DimensionForScoring = {
       id: 'test',
       outcomes: [
@@ -230,7 +241,7 @@ describe('derived score — quality cap enforcement', () => {
       ],
     };
     const evidence = makeEvidenceMap([makeEntry('t4', 'T4', true), makeEntry('t5', 'T5', true)]);
-    // The T5 runtime-exec test is now excluded (a test caps at T4) — same as the shell case above.
+    // The T5 runtime-exec test is demoted into T4 (a test caps at T4) — same as the shell case above.
     assert.equal(computeDerivedScore(dim, evidence), TIER_SCORE_CAPS.T4);
   });
 });

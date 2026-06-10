@@ -1,8 +1,10 @@
 import { test, describe } from 'node:test';
 import assert from 'node:assert/strict';
 import {
-  scaffoldFrontierSpec, seedLeaderTargetFromLadder, checkFrontierSpec, computeSpecHash, effectiveStatus, type FrontierSpec,
+  scaffoldFrontierSpec, seedLeaderTargetFromLadder, checkFrontierSpec, computeSpecHash, effectiveStatus,
+  looksLikeProductRun, resolveRunCommand, type FrontierSpec,
 } from '../src/core/frontier-spec.js';
+import { completeFrontierSpec } from '../src/core/frontier-spec-complete.js';
 import { runFrontierSpec } from '../src/cli/commands/frontier-spec.js';
 import { applyFrontierGate } from '../src/cli/commands/validate.js';
 import type { CompeteMatrix } from '../src/core/compete-matrix.js';
@@ -77,7 +79,8 @@ describe('scaffoldFrontierSpec — honest auto-derivation (never fabricate, neve
       id: 'planning_quality',
       scores: { self: 9, 'Kiro (AWS)': 8.5, Cursor: 6.5, derived: 7 },
       oss_leader: 'self', closed_source_leader: 'self',
-      capability_test: { command: 'node dist/index.js plan --help' },
+      // a REAL product run on a realistic input — a --help-only command no longer qualifies
+      capability_test: { command: 'node dist/index.js plan --project fixtures/sample' },
       outcomes: [
         { id: 'b', tier: 'T2', required_callsite: 'src/core/task-router.ts' },
         { id: 'a', tier: 'T4', required_callsite: 'src/core/plan-quality-scorer.ts' },
@@ -86,7 +89,7 @@ describe('scaffoldFrontierSpec — honest auto-derivation (never fabricate, neve
     const s = scaffoldFrontierSpec(dim);
     assert.equal(s.leader_target.competitor, 'Kiro (AWS)', 'targets the highest-scoring tracked peer, never self');
     assert.equal(s.leader_target.score, 8.5);
-    assert.equal(s.real_user_path.run_command, 'node dist/index.js plan --help', 'run_command derived from the product capability_test');
+    assert.equal(s.real_user_path.run_command, 'node dist/index.js plan --project fixtures/sample', 'run_command derived from the product capability_test');
     assert.equal(s.real_user_path.required_callsite, 'src/core/plan-quality-scorer.ts', 'callsite from the highest-tier grounded outcome');
     assert.ok(s.leader_target.category_delta && /TODO/.test(s.leader_target.category_delta), 'a sub-9 leader gets a category_delta TODO to author');
 
@@ -112,6 +115,41 @@ describe('scaffoldFrontierSpec — honest auto-derivation (never fabricate, neve
     assert.ok(/TODO/.test(s.leader_target.competitor));
     assert.ok(/TODO/.test(s.real_user_path.run_command));
     assert.ok(/TODO/.test(s.real_user_path.required_callsite));
+  });
+
+  test('(3) a --help/--version-only capability_test is NOT seeded as run_command (a bare help screen proves nothing)', () => {
+    for (const cmd of [
+      'node dist/index.js plan --help',
+      'node dist/index.js --help',
+      'node dist/index.js plan -h',
+      'danteforge help',
+      'danteforge version',
+      'danteforge compete --version',
+    ]) {
+      const s = scaffoldFrontierSpec({ id: 'x', scores: { Cursor: 8.5 }, capability_test: { command: cmd } });
+      assert.ok(/TODO/.test(s.real_user_path.run_command), `"${cmd}" must not seed run_command`);
+      assert.equal(looksLikeProductRun(cmd), false, `"${cmd}" is not a product run`);
+    }
+    // …while a real run on a realistic input still qualifies (the strengthening only TIGHTENS).
+    assert.equal(looksLikeProductRun('node dist/index.js plan --project fixtures/sample'), true);
+    assert.equal(looksLikeProductRun('danteforge assess --json'), true);
+  });
+
+  test('(d) scaffold never seeds an UNTRACKED leader when the tracked competitor list is supplied', () => {
+    const dim = { id: 'x', scores: { self: 9, SomeRandomTool: 9.4, Cursor: 8.8 } };
+    const s = scaffoldFrontierSpec(dim, ['Cursor', 'Cline']);
+    assert.equal(s.leader_target.competitor, 'Cursor', 'highest-scoring TRACKED peer wins, not the untracked 9.4');
+    const r = checkFrontierSpec(s, ['Cursor', 'Cline']);
+    assert.ok(!r.errors.some(e => /not a tracked competitor/.test(e)), 'scaffold is consistent with the guardrail');
+    // back-compat: with no tracked list supplied, legacy behavior (raw best score) is unchanged
+    assert.equal(scaffoldFrontierSpec(dim).leader_target.competitor, 'SomeRandomTool');
+  });
+
+  test('(d) legacy named-leader fallback also respects the tracked list', () => {
+    const s = scaffoldFrontierSpec({ id: 'x', oss_leader: 'GhostTool' }, ['Cursor']);
+    assert.ok(/TODO/.test(s.leader_target.competitor), 'an untracked named leader stays an honest TODO');
+    const tracked = scaffoldFrontierSpec({ id: 'x', oss_leader: 'Cline' }, ['Cursor', 'Cline']);
+    assert.equal(tracked.leader_target.competitor, 'Cline');
   });
 });
 
@@ -169,6 +207,179 @@ describe('seedLeaderTargetFromLadder — ground the 9.0 bar in the competitor-gr
     assert.ok(r.errors.some(e => /not grounded in the competitor-grounded Score Ladder/.test(e)), 'softened bar blocked by the gate, not an LLM');
     // …and with NO rubric supplied, the legacy behavior is unchanged (back-compat).
     assert.ok(!checkFrontierSpec(s, ['Kiro (AWS)']).errors.some(e => /not grounded in the competitor-grounded/.test(e)));
+  });
+});
+
+describe('completeFrontierSpec — deterministic evidence-grounded completion (never inventing)', () => {
+  const ladder: DimensionRubricLevel[] = [
+    { score: 8, descriptor: 'Kiro-grade spec workflow: clarify + plan + tasks with hard gates.' },
+    { score: 9, descriptor: 'LangGraph-grade runnable PDSE: a typed state graph with clarify/research/architecture/risk/tasking nodes.' },
+  ];
+
+  function evidenceDim(): Record<string, unknown> {
+    return {
+      id: 'planning_quality',
+      scores: { 'Kiro (AWS)': 8.5 },
+      capability_test: { command: 'node dist/index.js plan --project fixtures/sample' },
+      outcomes: [
+        { id: 'r1', kind: 'runtime-exec', tier: 'T5', command: 'node dist/index.js plan --project fixtures/real-a', required_callsite: 'src/core/plan-quality-scorer.ts' },
+        { id: 'r2', kind: 'runtime-exec', tier: 'T5', command: 'node dist/index.js plan --project fixtures/real-b', required_callsite: 'src/core/plan-quality-scorer.ts' },
+        { id: 'e1', kind: 'e2e-workflow', tier: 'T5', required_callsite: 'src/core/plan-quality-scorer.ts',
+          steps: [{ cli_args: ['plan'], expected_artifacts: ['.danteforge/PLAN.md'] }] },
+      ],
+    };
+  }
+
+  test('(1) product capability_test + 2 runtime-exec outcomes with artifacts → completes to a spec that PASSES checkFrontierSpec with ZERO human edits', async () => {
+    const dim = evidenceDim();
+    const s = scaffoldFrontierSpec(dim, ['Kiro (AWS)']);
+    seedLeaderTargetFromLadder(s, ladder);
+    const res = await completeFrontierSpec(s, dim, {
+      _probeRun: async () => { throw new Error('declared artifacts exist — must NOT probe'); },
+    });
+
+    assert.equal(res.probed, false, 'declared T5+ artifacts mean no probe run');
+    assert.equal(res.completed.observable_artifacts, true);
+    assert.equal(res.completed.realistic_inputs, true);
+    assert.deepEqual(s.real_user_path.observable_artifacts, [{ kind: 'file', path: '.danteforge/PLAN.md' }]);
+
+    // realistic_inputs are the genuinely distinct recorded variants, factored through {input} —
+    // resolving a session reconstructs an EXACT recorded command (nothing synthesized).
+    const inputs = s.real_user_path.realistic_inputs ?? [];
+    assert.ok(inputs.length >= 2, `>=2 distinct variants (got ${inputs.length})`);
+    assert.ok(s.real_user_path.run_command.includes('{input}'));
+    const recorded = new Set([
+      'node dist/index.js plan --project fixtures/sample',
+      'node dist/index.js plan --project fixtures/real-a',
+      'node dist/index.js plan --project fixtures/real-b',
+    ]);
+    for (let i = 0; i < inputs.length; i += 1) {
+      assert.ok(recorded.has(resolveRunCommand(s, i)), `session ${i} resolves to a recorded real command`);
+    }
+    assert.notEqual(resolveRunCommand(s, 0), resolveRunCommand(s, 1), 'sessions exercise DIFFERENT real inputs');
+
+    const check = checkFrontierSpec(s, ['Kiro (AWS)'], ladder);
+    assert.deepEqual(check.errors, [], 'no guardrail violations remain');
+    assert.equal(check.ok, true, 'autonomously court-checkable: zero human edits');
+  });
+
+  test('(2) a dim with NO real product evidence stays incomplete — nothing is invented', async () => {
+    const dim = {
+      id: 'x',
+      scores: { Cursor: 9.2 },
+      capability_test: { command: 'npx tsx --test tests/x.test.ts' },
+      outcomes: [
+        { id: 't1', kind: 'runtime-exec', tier: 'T5', command: 'npx tsx --test tests/y.test.ts', required_callsite: 'src/core/x.ts' },
+        { id: 't2', kind: 'cli-smoke', tier: 'T5', cli_args: ['--help'], required_callsite: 'src/core/x.ts' },
+      ],
+    };
+    const s = scaffoldFrontierSpec(dim, ['Cursor']);
+    const res = await completeFrontierSpec(s, dim, {
+      _probeRun: async () => { throw new Error('no run_command — must NOT probe'); },
+    });
+    assert.equal(res.completed.run_command, false);
+    assert.equal(res.completed.observable_artifacts, false);
+    assert.equal(res.completed.realistic_inputs, false);
+    assert.equal(res.probed, false);
+    assert.ok(/TODO/.test(s.real_user_path.run_command), 'run_command left unauthored');
+    assert.ok(s.real_user_path.observable_artifacts.some(a => /TODO/.test(a.path)), 'artifacts left unauthored');
+    assert.equal(s.real_user_path.realistic_inputs, undefined, 'no inputs invented');
+    assert.equal(checkFrontierSpec(s, ['Cursor']).ok, false, 'the honest spec-incomplete ceiling stands');
+  });
+
+  test('(3) --help-only outcome commands are never promoted to run_command', async () => {
+    const dim = {
+      id: 'x',
+      scores: { Cursor: 9.2 },
+      outcomes: [
+        { id: 'h1', kind: 'runtime-exec', tier: 'T5', command: 'node dist/index.js plan --help', required_callsite: 'src/core/x.ts' },
+        { id: 'h2', kind: 'cli-smoke', tier: 'T5', cli_args: ['plan', '--help'], required_callsite: 'src/core/x.ts' },
+      ],
+    };
+    const s = scaffoldFrontierSpec(dim, ['Cursor']);
+    const res = await completeFrontierSpec(s, dim, {
+      _probeRun: async () => ({ exitCode: 0, durationMs: 2000 }),
+    });
+    assert.equal(res.completed.run_command, false);
+    assert.equal(res.probed, false, 'nothing runnable — no probe');
+    assert.ok(/TODO/.test(s.real_user_path.run_command), 'help screens prove nothing');
+  });
+
+  test('(4) probe-derived artifacts come ONLY from a real probe run (seam): files created/modified during the run', async () => {
+    const dim = {
+      id: 'x',
+      scores: { Cursor: 9.2 },
+      outcomes: [
+        { id: 'r1', kind: 'runtime-exec', tier: 'T5', command: 'node dist/index.js forge --project fixtures/a', required_callsite: 'src/core/x.ts' },
+        { id: 'r2', kind: 'runtime-exec', tier: 'T5', command: 'node dist/index.js forge --project fixtures/b', required_callsite: 'src/core/x.ts' },
+      ],
+    };
+    const s = scaffoldFrontierSpec(dim, ['Cursor']);
+    let probes = 0; let probedCmd = ''; let snapCalls = 0;
+    const res = await completeFrontierSpec(s, dim, {
+      _probeRun: async (cmd) => { probes += 1; probedCmd = cmd; return { exitCode: 0, durationMs: 1500 }; },
+      _snapshotMtimes: async () => {
+        snapCalls += 1;
+        return snapCalls === 1
+          ? new Map([['src/core/x.ts', 100], ['.danteforge/STATE.yaml', 100]])
+          : new Map([['src/core/x.ts', 100], ['.danteforge/STATE.yaml', 200], ['.danteforge/reports/forge-run.json', 300]]);
+      },
+    });
+    assert.equal(probes, 1, 'the probe runs exactly ONCE');
+    assert.equal(probedCmd, 'node dist/index.js forge --project fixtures/a', 'probes the session-0 resolved real command');
+    assert.equal(res.probed, true);
+    assert.equal(res.completed.observable_artifacts, true);
+    const paths = s.real_user_path.observable_artifacts.map(a => a.path).sort();
+    assert.deepEqual(paths, ['.danteforge/STATE.yaml', '.danteforge/reports/forge-run.json'], 'only files the run actually created/modified');
+    assert.ok(!paths.includes('src/core/x.ts'), 'untouched files are never claimed as artifacts');
+  });
+
+  test('(4b) a FAILING probe run leaves observable_artifacts unauthored (a failing run witnesses nothing)', async () => {
+    const dim = {
+      id: 'x', scores: { Cursor: 9.2 },
+      outcomes: [
+        { id: 'r1', kind: 'runtime-exec', tier: 'T5', command: 'node dist/index.js forge --project fixtures/a', required_callsite: 'src/core/x.ts' },
+        { id: 'r2', kind: 'runtime-exec', tier: 'T5', command: 'node dist/index.js forge --project fixtures/b', required_callsite: 'src/core/x.ts' },
+      ],
+    };
+    const s = scaffoldFrontierSpec(dim, ['Cursor']);
+    const snap = async () => new Map([['out.txt', 100]]);
+    const res = await completeFrontierSpec(s, dim, {
+      _probeRun: async () => ({ exitCode: 1, durationMs: 1500 }),
+      _snapshotMtimes: snap,
+    });
+    assert.equal(res.probed, true);
+    assert.equal(res.completed.observable_artifacts, false);
+    assert.ok(s.real_user_path.observable_artifacts.some(a => /TODO/.test(a.path)), 'no artifact claimed from a failed run');
+  });
+
+  test('(4c) a probe with NO observable file changes leaves the field unauthored (honest ceiling stands)', async () => {
+    const dim = {
+      id: 'x', scores: { Cursor: 9.2 },
+      outcomes: [
+        { id: 'r1', kind: 'runtime-exec', tier: 'T5', command: 'node dist/index.js forge --project fixtures/a', required_callsite: 'src/core/x.ts' },
+        { id: 'r2', kind: 'runtime-exec', tier: 'T5', command: 'node dist/index.js forge --project fixtures/b', required_callsite: 'src/core/x.ts' },
+      ],
+    };
+    const s = scaffoldFrontierSpec(dim, ['Cursor']);
+    const res = await completeFrontierSpec(s, dim, {
+      _probeRun: async () => ({ exitCode: 0, durationMs: 1500 }),
+      _snapshotMtimes: async () => new Map([['out.txt', 100]]),
+    });
+    assert.equal(res.probed, true);
+    assert.equal(res.completed.observable_artifacts, false);
+    assert.ok(s.real_user_path.observable_artifacts.some(a => /TODO/.test(a.path)));
+    assert.equal(checkFrontierSpec(s, ['Cursor']).ok, false, 'still honestly incomplete');
+  });
+
+  test('never overwrites authored fields (mirrors the ladder seeder contract)', async () => {
+    const dim = evidenceDim();
+    const s = scaffoldFrontierSpec(dim, ['Kiro (AWS)']);
+    s.real_user_path.observable_artifacts = [{ kind: 'report', path: '.danteforge/HUMAN-AUTHORED.md' }];
+    s.real_user_path.realistic_inputs = ['human/one', 'human/two'];
+    await completeFrontierSpec(s, dim, { probe: false });
+    assert.deepEqual(s.real_user_path.observable_artifacts, [{ kind: 'report', path: '.danteforge/HUMAN-AUTHORED.md' }]);
+    assert.deepEqual(s.real_user_path.realistic_inputs, ['human/one', 'human/two']);
   });
 });
 
@@ -252,5 +463,48 @@ describe('runFrontierSpec command flow', () => {
     assert.equal(r.statuses?.[0]?.dimId, 'agent_ux');
     // frozen_hash was computed over a different object instance but identical content → frozen
     assert.ok(['frozen', 'stale'].includes(r.statuses?.[0]?.status ?? ''));
+  });
+
+  function dimWithEvidence(): Record<string, unknown> {
+    return {
+      oss_leader: 'Cline',
+      capability_test: { command: 'node dist/index.js assess --project fixtures/p1' },
+      outcomes: [
+        { id: 'r1', kind: 'runtime-exec', tier: 'T5', command: 'node dist/index.js assess --project fixtures/p2', required_callsite: 'src/core/assess.ts' },
+        { id: 'e1', kind: 'e2e-workflow', tier: 'T5', required_callsite: 'src/core/assess.ts',
+          steps: [{ cli_args: ['assess'], expected_artifacts: ['.danteforge/ASSESS.md'] }] },
+      ],
+    };
+  }
+
+  test('init --write runs the evidence-grounded completer by DEFAULT (autonomous path)', async () => {
+    const matrix = matrixWith(dimWithEvidence());
+    const r = await runFrontierSpec({
+      action: 'init', dimId: 'agent_ux', write: true,
+      _loadMatrix: async () => matrix, _writeMatrix: async () => {},
+      _probeRun: async () => { throw new Error('declared artifacts — must NOT probe'); },
+    });
+    const dim = (matrix as unknown as { dimensions: Array<Record<string, unknown>> }).dimensions[0]!;
+    const spec = dim.frontier_spec as FrontierSpec;
+    assert.equal(r.wrote, true);
+    assert.equal(r.completed?.observable_artifacts, true);
+    assert.equal(r.completed?.realistic_inputs, true);
+    assert.equal(r.probed, false);
+    assert.ok(spec.real_user_path.run_command.includes('{input}'), 'distinct recorded variants factored through {input}');
+    assert.deepEqual(spec.real_user_path.observable_artifacts, [{ kind: 'file', path: '.danteforge/ASSESS.md' }]);
+    assert.ok((spec.real_user_path.realistic_inputs?.length ?? 0) >= 2);
+  });
+
+  test('init --write with complete:false (--no-complete) leaves the scaffold marks untouched', async () => {
+    const matrix = matrixWith(dimWithEvidence());
+    const r = await runFrontierSpec({
+      action: 'init', dimId: 'agent_ux', write: true, complete: false,
+      _loadMatrix: async () => matrix, _writeMatrix: async () => {},
+    });
+    const dim = (matrix as unknown as { dimensions: Array<Record<string, unknown>> }).dimensions[0]!;
+    const spec = dim.frontier_spec as FrontierSpec;
+    assert.equal(r.completed, undefined, 'completer skipped');
+    assert.ok(spec.real_user_path.observable_artifacts.some(a => /TODO/.test(a.path)), 'scaffold sentinel remains');
+    assert.equal(spec.real_user_path.realistic_inputs, undefined);
   });
 });

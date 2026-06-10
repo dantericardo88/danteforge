@@ -23,6 +23,72 @@ const MIN_T7_HIGH_TIER_OUTCOMES = 3;
 const MARKET_DIMS = new Set(['community_adoption', 'enterprise_readiness', 'token_economy']);
 const MARKET_DIM_CAP = 5.0;
 
+// ── Outcome quality classification (mirror of src/matrix/engines/outcome-quality.ts) ──
+// classifyOutcomeKind caps what an outcome's evidence KIND can certify, regardless of
+// the declared tier. The canonical TS demotes over-declared outcomes (a T5-declared
+// test-runner is scored as T4/7.0, never excluded to 0.0 — the "derived-stuck-0" fix);
+// this mirror must apply the same demotion or the crusade rescore drifts from validate.
+// Regex literals are verbatim copies of outcome-quality.ts (pinned by
+// tests/derived-score-demote.test.ts source-lockstep checks).
+const STRUCTURAL_READ_RE = /readFileSync|readFile\b|existsSync|statSync/;
+const REAL_EXECUTION_RE = /spawn|execFile|exec(?:Sync)?\(|child_process|(?:npm|npx)\s+(?:run\s+)?(?:test|build|start)|tsx\s+--test|node\s+dist\//;
+const TEST_RUNNER_RE = /npx\s+tsx\s+--test|node\s+--test|npm\s+(?:run\s+)?test|jest|vitest|mocha|cargo\s+(?:test|nextest)\b|go\s+test\b|\bpytest\b|\bpy\.test\b|python[0-9.]*\s+-m\s+(?:pytest|unittest)\b|\bdotnet\s+test\b|\bgradle\s+test\b|\bmvn\s+test\b|\brspec\b|\bphpunit\b/;
+// Mirror of external-suite-registry.ts REGISTERED_EXTERNAL_SUITES.
+const REGISTERED_EXTERNAL_SUITES = new Set([
+  'swe-bench', 'swe-bench-lite', 'swe-bench-verified', 'exercism', 'humaneval', 'mbpp',
+]);
+
+function isStructuralFileCheck(cmd) {
+  return STRUCTURAL_READ_RE.test(cmd) && !REAL_EXECUTION_RE.test(cmd);
+}
+
+function isRegisteredExternalSuite(value) {
+  return typeof value === 'string' && REGISTERED_EXTERNAL_SUITES.has(value.toLowerCase());
+}
+
+// Returns { maxScore, reason } — same branch order as classifyOutcomeKind in
+// outcome-quality.ts. Only maxScore matters for the demotion decision.
+function classifyOutcomeMaxScore(outcome) {
+  const kind = outcome.kind ?? 'shell';
+  const cmd = outcome.command ?? '';
+  const source = outcome.input_source;
+  if (kind === 'external-benchmark' && source?.type === 'external-benchmark' && isRegisteredExternalSuite(source.suite)) {
+    return { maxScore: 9.5, reason: `Registered external benchmark (${source.suite})` };
+  }
+  if (kind === 'external-benchmark' && isRegisteredExternalSuite(outcome.benchmark)) {
+    return { maxScore: 9.5, reason: `Registered external benchmark (${outcome.benchmark})` };
+  }
+  if (isStructuralFileCheck(cmd)) {
+    return { maxScore: 7.0, reason: 'Structural file check — proves code exists, not that it runs; caps at T4/7.0' };
+  }
+  if (TEST_RUNNER_RE.test(cmd)) {
+    return { maxScore: 7.0, reason: 'Test-suite command (any declared kind) — proves isolation, not production behavior; caps at T4/7.0' };
+  }
+  if (source?.type === 'synthetic-fixture') {
+    return { maxScore: 7.0, reason: 'Synthetic-fixture evidence — caps at T4/7.0' };
+  }
+  if (kind === 'e2e-workflow' || kind === 'runtime-exec') {
+    if (source?.type === 'real-user-path') {
+      return { maxScore: 9.0, reason: 'Real-user-path execution of the product' };
+    }
+    return { maxScore: 8.0, reason: 'Runtime execution without declared real-user-path — caps at T5/8.0' };
+  }
+  if (kind === 'cli-smoke') {
+    return { maxScore: 8.5, reason: 'CLI smoke — real invocation, pattern-checked output' };
+  }
+  return { maxScore: 8.0, reason: 'Shell command — assumed runtime execution' };
+}
+
+// Highest tier whose cap fits under a quality maxScore (demotion target), or
+// null when the cap sits below every tier floor. Mirrors derived-score.ts.
+function highestTierWithinCap(maxScore) {
+  for (let i = TIER_ORDER.length - 1; i >= 0; i--) {
+    const tier = TIER_ORDER[i];
+    if (TIER_SCORE_CAPS[tier] <= maxScore) return tier;
+  }
+  return null;
+}
+
 // ── Load evidence ────────────────────────────────────────────────────────────
 
 function getGitSha() {
@@ -85,14 +151,38 @@ function extractPrimaryTestFiles(command) {
 function computeDerivedScore(dim, evidence) {
   const outcomes = dim.outcomes ?? [];
   if (outcomes.length === 0) {
-    return { score: dim.scores?.self ?? 0, legacy: true, perTier: [] };
+    // Market dims are capped on the legacy path too (mirrors derived-score.ts:
+    // the early return used to bypass the MARKET_DIM_CAP clamp entirely).
+    let legacy = dim.scores?.self ?? 0;
+    if (MARKET_DIMS.has(dim.id) && legacy > MARKET_DIM_CAP) legacy = MARKET_DIM_CAP;
+    return { score: legacy, legacy: true, perTier: [], demotions: [] };
   }
 
-  const tierBuckets = new Map();
+  // Quality-cap demotion (mirrors derived-score.ts): an over-declared outcome —
+  // e.g. a test-runner declared T5 when its evidence kind supports at most 7.0 —
+  // is re-bucketed into the highest tier its quality cap fits (T5 test-runner →
+  // T4/7.0). Demote, never annihilate: exclusion used to zero whole dims whose
+  // outcomes all passed but were mislabeled one tier too high.
+  const demotions = [];
+  const effective = [];
   for (const o of outcomes) {
-    const bucket = tierBuckets.get(o.tier) ?? [];
-    bucket.push(o);
-    tierBuckets.set(o.tier, bucket);
+    const { maxScore, reason } = classifyOutcomeMaxScore(o);
+    if (maxScore >= TIER_SCORE_CAPS[o.tier]) {
+      effective.push({ outcome: o, tier: o.tier });
+      continue;
+    }
+    const demoted = highestTierWithinCap(maxScore);
+    if (demoted === null) continue; // cap below every tier floor — excluded
+    demotions.push({ outcomeId: o.id, from: o.tier, to: demoted, reason });
+    effective.push({ outcome: o, tier: demoted });
+  }
+
+  // Group by EFFECTIVE tier (declared tier after any quality-cap demotion).
+  const tierBuckets = new Map();
+  for (const { outcome, tier } of effective) {
+    const bucket = tierBuckets.get(tier) ?? [];
+    bucket.push(outcome);
+    tierBuckets.set(tier, bucket);
   }
 
   const perTier = [];
@@ -132,10 +222,13 @@ function computeDerivedScore(dim, evidence) {
       }
 
       // Distinct test-file check: all T5+ outcomes pointing to the same single
-      // test file is one receipt dressed as many. Mirrors src/core/derived-score.ts.
+      // test file is one receipt dressed as many. Mirrors src/core/derived-score.ts:
+      // filters by EFFECTIVE tier — a demoted (T4-quality) outcome is not a T5+
+      // receipt and must not add file diversity toward the T7 consensus.
       if (allPassing) {
-        const highTierOuts = (dim.outcomes ?? [])
-          .filter(o => TIER_ORDER.indexOf(o.tier) >= TIER_ORDER.indexOf('T5'));
+        const highTierOuts = effective
+          .filter(e => TIER_ORDER.indexOf(e.tier) >= TIER_ORDER.indexOf('T5'))
+          .map(e => e.outcome);
         const testFiles = highTierOuts.flatMap(o => extractPrimaryTestFiles(o.command));
         if (testFiles.length > 0 && new Set(testFiles).size < 2) {
           allPassing = false;
@@ -145,9 +238,9 @@ function computeDerivedScore(dim, evidence) {
       // Session-ID temporal separation: T7 requires evidence from ≥2 distinct
       // validate sessions. Mirrors the check in src/core/derived-score.ts.
       if (allPassing) {
-        const sessionIds = (dim.outcomes ?? [])
-          .filter(o => TIER_ORDER.indexOf(o.tier) >= TIER_ORDER.indexOf('T5'))
-          .map(o => evidence.get(`${dim.id}::${o.id}`)?.session_id)
+        const sessionIds = effective
+          .filter(e => TIER_ORDER.indexOf(e.tier) >= TIER_ORDER.indexOf('T5'))
+          .map(e => evidence.get(`${dim.id}::${e.outcome.id}`)?.session_id)
           .filter(s => typeof s === 'string');
         if (sessionIds.length >= 2 && new Set(sessionIds).size < 2) {
           allPassing = false;
@@ -195,7 +288,7 @@ function computeDerivedScore(dim, evidence) {
   }
 
   score = Math.round(score * 10) / 10;
-  return { score, legacy: false, highestFullPassedTier, perTier };
+  return { score, legacy: false, highestFullPassedTier, perTier, demotions };
 }
 
 // ── Competitor taxonomy ──────────────────────────────────────────────────────
@@ -602,6 +695,9 @@ for (const dim of m.dimensions) {
       `${tierStr.padEnd(9)}` +
       `DERIVED${changed}`
     );
+    for (const d of result.demotions ?? []) {
+      console.log(`    ↳ demoted ${d.outcomeId}: ${d.from} → ${d.to} — ${d.reason}`);
+    }
   } else {
     console.log(
       `${dim.id.padEnd(32)} ${dim.weight.toFixed(1).padStart(3)}    ` +

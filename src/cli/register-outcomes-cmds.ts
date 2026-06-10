@@ -126,8 +126,9 @@ const frontierCmd = program
 
 frontierCmd
   .command('init <dimId>')
-  .description('Scaffold a draft frontier_spec from what the dimension already knows')
+  .description('Scaffold a draft frontier_spec from what the dimension already knows, then deterministically complete it from recorded evidence (product-run outcomes, declared artifacts, one probe run)')
   .option('--write', 'Write the draft to matrix.json (default: dry-run)')
+  .option('--no-complete', 'Skip the evidence-grounded spec completer (scaffold + ladder seed only)')
   .option('--json', 'Machine-readable output')
   .option('--cwd <path>', 'Project directory')
   .action((dimId: string, opts) => runFrontierAction('init', dimId, opts));
@@ -158,14 +159,14 @@ frontierCmd
 function runFrontierAction(
   action: 'init' | 'check' | 'freeze' | 'status',
   dimId: string | undefined,
-  opts: { all?: boolean; write?: boolean; json?: boolean; cwd?: string },
+  opts: { all?: boolean; write?: boolean; json?: boolean; cwd?: string; complete?: boolean },
 ): void {
   void (async () => {
     try {
       const { runFrontierSpec } = await import('./commands/frontier-spec.js');
       const r = await runFrontierSpec({
         action, dimId,
-        all: opts.all, write: opts.write, json: opts.json, cwd: opts.cwd,
+        all: opts.all, write: opts.write, json: opts.json, cwd: opts.cwd, complete: opts.complete,
       });
       if (!r.ok) process.exitCode = 1;
     } catch (err) {
@@ -210,6 +211,7 @@ program
   .command('ascend-frontier')
   .description('Unattended autonomous frontier orchestrator: define → build-to-7 → push each dim to a court-validated 9.0, one at a time, until every dim is at the frontier OR an honest ceiling. NEVER prompts.')
   .option('--dry-run', 'Print the next action without executing')
+  .option('--no-bootstrap', 'Cold repo: do NOT auto-create a missing compete matrix (Phase A define); fail cleanly naming the remedy instead')
   .option('--parallel', 'Fan the WHOLE pipeline out across the council: member-split research (define), worktree-isolated cross-judged build-to-7, and concurrent push-to-9 (builder-never-judges, reciprocity-audited)')
   .option('--max-cycles <n>', 'Global stop after N cycles (default 200)')
   .option('--max-attempts <n>', 'Novel push attempts per dim before an honest generator-ceiling (default 3)')
@@ -219,6 +221,8 @@ program
   .addHelpText('after', `
 Phases (no human prompts at any point):
   A DEFINE     evidence-scaffold + migrate-outcomes + frontier-spec init (Prompt 1)
+               COLD REPO: a missing compete matrix is first created via defineUniverse, seeded
+               from matrix-orchestrate detect/discover artifacts when present (--no-bootstrap disables)
   B BUILD-TO-7 harden-crusade --loop --target 7 (Prompt 2)
   C PUSH-TO-9  per dim, weakest-first: freeze → council-crusade → session-record → validate ×2
                → frontier-review-court → record 9.0 if VALIDATED, else ceiling/retry-with-novel-evidence
@@ -242,6 +246,7 @@ a ceiling instead of a 9. Build-to-7 uses harden-crusade (no member-spawn), so i
         const { runAscendFrontier } = await import('./commands/ascend-frontier.js');
         const r = await runAscendFrontier({
           dryRun: opts.dryRun as boolean | undefined,
+          bootstrap: opts.bootstrap as boolean | undefined,
           parallel: opts.parallel as boolean | undefined,
           maxCycles: opts.maxCycles ? parseInt(opts.maxCycles as string, 10) : undefined,
           maxAttemptsPerDim: opts.maxAttempts ? parseInt(opts.maxAttempts as string, 10) : undefined,

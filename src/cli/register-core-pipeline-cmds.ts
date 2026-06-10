@@ -96,7 +96,14 @@ capabilityTest
   .option('--json', 'Machine-readable JSON output')
   .option('--limit <n>', 'Cap how many REAL dims to dynamically probe', (v) => parseInt(v, 10))
   .option('--no-probe', 'Skip the dynamic probe (static plan only — faster)')
+  .option('--execute', 'ACT on the plan instead of only printing it: probe PROCEED dims, repair or re-author self-fulfilling yardsticks via the live examiner protocol, research missing Score Ladders via the council — budget-bounded')
+  .option('--max-actions <n>', 'Cap expensive actions (author + ladder research) per --execute pass (default: 3)', (v) => parseInt(v, 10))
   .action(async (opts) => {
+    if (opts.execute) {
+      const { runCapabilityTestExecute } = await import('./commands/capability-test-execute.js');
+      await runCapabilityTestExecute({ project: opts.project, json: opts.json, maxActions: opts.maxActions });
+      return;
+    }
     const { runCapabilityTestConduct } = await import('./commands/capability-test-conduct.js');
     await runCapabilityTestConduct({ project: opts.project, json: opts.json, limit: opts.limit, noProbe: opts.probe === false });
   });

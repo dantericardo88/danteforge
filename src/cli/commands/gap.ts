@@ -20,12 +20,13 @@ import {
 import { TIER_SCORE_CAPS, type CapabilityTier } from '../../matrix/types/capability-test.js';
 import { applyLegacyReceiptCeiling, LEGACY_NO_RECEIPT_CEILING } from '../../matrix/engines/receipt-ceiling.js';
 import { runHardenGate } from '../../matrix/engines/hardener.js';
+import { MARKET_CAPPED_DIMS, MARKET_DIM_MAX_SCORE } from '../../core/market-dims.js';
 import type { Outcome, OutcomeEvidence } from '../../matrix/types/outcome.js';
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
 export interface GapBlocker {
-  kind: 'no-outcomes' | 'harden-check' | 'stale-evidence' | 'missing-tier' | 'quality-gate' | 'legacy-ceiling';
+  kind: 'no-outcomes' | 'harden-check' | 'stale-evidence' | 'missing-tier' | 'quality-gate' | 'legacy-ceiling' | 'market-cap';
   detail: string;
   remedy: string;
 }
@@ -118,6 +119,23 @@ async function analyzeDimension(
 
   const breakdown = computeDerivedScoreWithBreakdown(dfs, evidence);
   const score = applyLegacyReceiptCeiling(breakdown.score, breakdown);
+
+  // Market-capped meta-dims are bounded by EXTERNAL signals (adoption/enterprise/token telemetry)
+  // that internal evidence cannot certify — at the cap they are DONE, not blocked. Coaching tier
+  // climbs here sends the loop into unwinnable churn, so short-circuit with the honest answer.
+  if (MARKET_CAPPED_DIMS.has(dim.id) && score >= MARKET_DIM_MAX_SCORE) {
+    return {
+      dimensionId: dim.id, label: dim.label,
+      currentScore: MARKET_DIM_MAX_SCORE, currentTier: 'market-cap',
+      nextTier: null, nextTierScore: null,
+      blockers: [{
+        kind: 'market-cap',
+        detail: `Hard market cap ${MARKET_DIM_MAX_SCORE.toFixed(1)} — this meta-dimension needs real external adoption/telemetry, which cannot be built or fabricated internally.`,
+        remedy: 'Done at cap. Score moves only when genuine external market evidence exists (real users, contracts, telemetry).',
+      }],
+      nextAction: `At the ${MARKET_DIM_MAX_SCORE.toFixed(1)} market cap — no internal work can move this dim; spend the loop's budget elsewhere.`,
+    };
+  }
 
   const blockers: GapBlocker[] = [];
 

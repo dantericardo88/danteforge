@@ -25,6 +25,7 @@ import { assignRound, runParallelRound, type PushOutcome } from '../../core/asce
 import type { CouncilMemberId } from '../../matrix/engines/council-scheduler.js';
 import { RunLedger } from '../../core/run-ledger.js';
 import { runCli, parseCourtOutput, setActiveLedger, type CliResult } from './ascend-frontier-runner.js';
+import { bootstrapColdRepo, type DefineUniverseFn } from './ascend-frontier-bootstrap.js';
 
 const execFileAsync = promisify(execFile);
 const MARKET_DIMS = MARKET_CAPPED_DIMS; // canonical set — src/core/market-dims.ts
@@ -50,6 +51,10 @@ export interface PushResult {
 export interface AscendFrontierOptions {
   cwd?: string;
   dryRun?: boolean;
+  /** Phase A cold-repo bootstrap: when no compete matrix exists, define one (non-interactive
+   *  defineUniverse) before the loop. Default true; --no-bootstrap disables and the run fails
+   *  cleanly naming the remedy instead of retry-spinning on the missing matrix. */
+  bootstrap?: boolean;
   /** Parallel fan-out: each live council member owns a different dim and pushes concurrently. */
   parallel?: boolean;
   maxCycles?: number;
@@ -58,6 +63,8 @@ export interface AscendFrontierOptions {
   maxBuildAttempts?: number;
   json?: boolean;
   // Seams (production defaults shell out to the real commands).
+  /** Cold-repo define runner (default: the real defineUniverse, always interactive:false). */
+  _defineUniverse?: DefineUniverseFn;
   _buildState?: (cwd: string) => Promise<DimState[]>;
   _runSetup?: (cwd: string, dims: string[]) => Promise<void>;
   _runBuildTo7?: (cwd: string, dims: string[]) => Promise<void>;
@@ -121,6 +128,11 @@ export function setupCommands(parallel: boolean, members: string[]): string[][] 
   const cmds: string[][] = [];
   if (parallel && members.length >= 2) cmds.push(['council-universe', '--members', members.join(','), '--propose-outcomes']);
   cmds.push(['evidence-scaffold'], ['migrate-outcomes', '--write']);
+  // Yardstick self-heal BEFORE the build: the conductor audits every dim's capability_test
+  // (static + dynamic sensitivity probe), repairs or re-authors the self-fulfilling ones via the
+  // examiner agent, and researches missing Score Ladders — budget-bounded so one setup cycle
+  // cannot burn the run. Without this the build loop grips fictional metrics and "climbs" nothing.
+  cmds.push(['capability-test', 'conduct', '--execute', '--max-actions', '3']);
   // Honest-define: ground the scaffolded outcomes (real wired callsites or honest orphan-pending)
   // BEFORE build-to-7. The universe-definer/scaffold emit un-grounded outcomes (sentinel callsites);
   // without this the build phase would chase fabricated/orphan evidence the gate caps. ground-outcomes
@@ -205,6 +217,32 @@ export async function runAscendFrontier(options: AscendFrontierOptions): Promise
     }
     return finish(terminal, cycles, actions, summary, options, ledger?.getRunId());
   };
+
+  // ── Phase A bootstrap (cold repo) ─────────────────────────────────────────────
+  // The production state builder reads the compete matrix; a cold repo has none, so the loop used
+  // to burn its whole retry budget on "No compete matrix found" and abort — define never ran.
+  // Decide up front instead: define one (default — the same non-interactive defineUniverse
+  // ascend-engine uses), report it (dry-run), or fail cleanly naming the remedy (--no-bootstrap).
+  // Seam rule: an injected _buildState means the matrix is NOT what feeds the loop, so the check
+  // is skipped — unless an injected _defineUniverse explicitly opts the define phase back in.
+  if (!options._buildState || options._defineUniverse) {
+    const boot = await bootstrapColdRepo(cwd, { bootstrap: options.bootstrap, dryRun: options.dryRun, _defineUniverse: options._defineUniverse });
+    if (boot.kind === 'no-bootstrap') {
+      actions.push('define-skipped:no-bootstrap');
+      return await complete('failed', boot.remedy);
+    } else if (boot.kind === 'would-define') {
+      actions.push('define(bootstrap)');
+      logger.info('[ascend-frontier] DRY RUN — next action: define(bootstrap) (no compete matrix yet; defineUniverse would create one)');
+      return await complete('dry-run', 'next: define(bootstrap)');
+    } else if (boot.kind === 'defined') {
+      actions.push('define(bootstrap)');
+      (await ensureLedger()).logEvent('define', boot.detail);
+    } else if (boot.kind === 'define-failed') {
+      actions.push('define(bootstrap)');
+      (await ensureLedger()).logEvent('define-error', { error: boot.reason });
+      return await complete('failed', `Phase A define (bootstrap) failed: ${boot.reason}`);
+    }
+  }
 
   // Resilience: a single cycle that throws (e.g. an intermittent Windows child-spawn 127, a
   // transient matrix read during a concurrent council write) must NOT silently abort an hours-long

@@ -63,9 +63,13 @@ export interface FrontierCheckResult {
  * un-freezable "self" target), and the run_command + required_callsite from the dim's declared
  * capability_test / grounded outcomes. It NEVER fabricates the genuinely-human fields
  * (observed_capability, the beyond-parity category_delta, the observable artifact): those stay
- * honest TODOs so `checkFrontierSpec` flags them as the specific real work that unlocks 9.0. */
-export function scaffoldFrontierSpec(dim: Record<string, unknown>): FrontierSpec {
-  const { competitor, score } = pickLeaderTarget(dim);
+ * honest TODOs so `checkFrontierSpec` flags them as the specific real work that unlocks 9.0.
+ *
+ * `trackedCompetitors` (the matrix's closed+oss competitor lists) keeps the seeded leader
+ * consistent with the guardrail: `checkFrontierSpec` rejects untracked leaders, so seeding one
+ * here would make every autonomous init dead-on-arrival. Empty list = legacy behavior (no filter). */
+export function scaffoldFrontierSpec(dim: Record<string, unknown>, trackedCompetitors: string[] = []): FrontierSpec {
+  const { competitor, score } = pickLeaderTarget(dim, trackedCompetitors);
   const target = 9.0;
   const leaderBelowTarget = !!competitor && score > 0 && score < target;
   const { runCommand, callsite } = deriveRealUserPath(dim);
@@ -93,17 +97,23 @@ export function scaffoldFrontierSpec(dim: Record<string, unknown>): FrontierSpec
 }
 
 /** The honest frontier leader: the highest-scoring TRACKED competitor in dim.scores, never "self"
- *  or "derived". Falls back to the legacy named-leader fields (still never "self"). */
-function pickLeaderTarget(dim: Record<string, unknown>): { competitor: string; score: number } {
+ *  or "derived". When a non-empty `tracked` list is supplied, only names on it qualify — a dim's
+ *  scores map (or legacy named-leader fields) can carry reference-tier tools the matrix does not
+ *  track, and `checkFrontierSpec` rejects those, so seeding one would be self-defeating.
+ *  Falls back to the legacy named-leader fields (still never "self", still tracked-only). */
+function pickLeaderTarget(dim: Record<string, unknown>, tracked: string[] = []): { competitor: string; score: number } {
+  const isTracked = (name: string): boolean =>
+    tracked.length === 0 || tracked.some(c => c.toLowerCase() === name.toLowerCase());
   const scores = (dim.scores as Record<string, unknown> | undefined) ?? {};
   let best = '', bestScore = -1;
   for (const [name, val] of Object.entries(scores)) {
-    if (name === 'self' || name === 'derived') continue;
+    if (name === 'self' || name === 'derived' || !isTracked(name)) continue;
     const n = Number(val);
     if (Number.isFinite(n) && n > bestScore) { bestScore = n; best = name; }
   }
   if (best) return { competitor: best, score: bestScore };
-  const named = [dim.oss_leader, dim.closed_source_leader].find(v => typeof v === 'string' && v && v !== 'self') as string | undefined;
+  const named = [dim.oss_leader, dim.closed_source_leader]
+    .find(v => typeof v === 'string' && v && v !== 'self' && isTracked(v)) as string | undefined;
   const namedScore = Number(dim.oss_leader_score ?? dim.leader_score ?? 9.0) || 9.0;
   return { competitor: named ?? '', score: named ? namedScore : 0 };
 }
@@ -126,14 +136,26 @@ function deriveRealUserPath(dim: Record<string, unknown>): { runCommand: string 
   return { runCommand, callsite };
 }
 
-/** A real product invocation (`node dist/index.js <cmd>` / `danteforge <cmd>`), not a test runner
- *  and not a bare `node -e`/echo shell probe — the only commands honest enough to seed a run_command. */
-function looksLikeProductRun(cmd: string): boolean {
+/** A real product invocation (`node dist/index.js <cmd>` / `danteforge <cmd>`), not a test runner,
+ *  not a bare `node -e`/echo shell probe, and not a help/version-only screen (a bare help screen
+ *  renders for ANY install regardless of capability, so it proves nothing) — the only commands
+ *  honest enough to seed a run_command. Exported so the deterministic spec completer
+ *  (frontier-spec-complete.ts) applies the SAME bar when mining a dim's outcome evidence. */
+export function looksLikeProductRun(cmd: string): boolean {
   if (isTestSuiteCommand(cmd)) return false;
-  return /(?:node\s+dist\/index\.js|(?:^|\s|&&\s*)danteforge)\s+[a-z][\w-]*/i.test(cmd);
+  const m = /(?:node\s+dist\/index\.js|(?:^|\s|&&\s*)danteforge)\s+([a-z][\w-]*)/i.exec(cmd);
+  if (!m) return false;
+  // Trivially-green subcommands: `danteforge help` / `danteforge version` exercise no capability.
+  if (/^(?:help|version)$/i.test(m[1]!)) return false;
+  // A standalone --help / -h / --version token anywhere turns the invocation into a help screen
+  // (commander prints usage and exits before any capability code runs).
+  if (/(?:^|\s)(?:--help|-h|--version)(?:\s|$)/i.test(cmd)) return false;
+  return true;
 }
 
-function tierRank(tier: string): number {
+/** Numeric rank of a capability tier string ("T5" → 5; unknown → -1). Exported for the spec
+ *  completer, which prefers higher-tier outcome evidence when deriving run_command. */
+export function tierRank(tier: string): number {
   const m = /^T(\d+)$/.exec(tier.trim());
   return m ? Number(m[1]) : -1;
 }
@@ -237,7 +259,9 @@ export function effectiveStatus(spec: FrontierSpec): FrontierSpecStatus {
   return spec.status;
 }
 
-const TODO_RE = /TODO/i;
+/** Marks an unauthored spec field. Exported so the spec completer can tell scaffold sentinels
+ *  apart from authored values without re-implementing (and drifting from) the guardrail's test. */
+export const TODO_RE = /TODO/i;
 
 /**
  * Honesty guardrails. A frontier_spec must define a REAL target, not an easy one.
