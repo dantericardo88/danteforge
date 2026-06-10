@@ -384,11 +384,17 @@ export async function saveMatrix(
   if (process.env['NODE_TEST_CONTEXT'] && !_fsWrite) {
     const resolved = path.resolve(matrixPath);
     const tmpReal = path.resolve(os.tmpdir());
-    if (!resolved.toLowerCase().startsWith(tmpReal.toLowerCase())) {
+    // Scratch locations are fine: os.tmpdir() OR any path with a literal tmp/temp segment
+    // (this machine's convention keeps test scratch on X:\tmp so C: never fills — those are
+    // exactly as disposable as os.tmpdir()). Everything else is treated as a REAL project
+    // matrix and refused.
+    const isOsTmp = resolved.toLowerCase().startsWith(tmpReal.toLowerCase());
+    const hasTmpSegment = resolved.toLowerCase().split(path.sep).some(seg => seg === 'tmp' || seg === 'temp');
+    if (!isOsTmp && !hasTmpSegment) {
       throw new Error(
         `[saveMatrix] Refusing to write a real matrix.json during a test run: ${resolved}. ` +
-        `Tests must pass the _fsWrite seam or a cwd under os.tmpdir() — writing the live ` +
-        `project matrix from a test clobbers real competitive scores.`,
+        `Tests must pass the _fsWrite seam or use a scratch cwd (os.tmpdir() or a tmp/temp ` +
+        `directory) — writing the live project matrix from a test clobbers real competitive scores.`,
       );
     }
   }

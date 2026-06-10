@@ -22,6 +22,15 @@ async function makeProject(): Promise<string> {
   tempDirs.push(root);
   await fs.mkdir(path.join(root, '.danteforge', 'compete'), { recursive: true });
   await fs.mkdir(path.join(root, '.danteforge', 'outcome-evidence'), { recursive: true });
+  // A GENUINELY WIRED fixture: the callsite module exists AND a production entry imports it,
+  // and the T5 outcome command runs that real entry. The previous fixture named a callsite that
+  // did not exist in the temp project, so the orphan-callsite integrity gate (correctly) capped
+  // derived at 7.0 and the >=8 assertions failed — the gate was right, the fixture was dishonest.
+  await fs.mkdir(path.join(root, 'src', 'core'), { recursive: true });
+  await fs.writeFile(path.join(root, 'src', 'core', 'feature.mjs'),
+    'export function receipt() { return "REAL RECEIPT"; }\n');
+  await fs.writeFile(path.join(root, 'src', 'index.mjs'),
+    'import { receipt } from "./core/feature.mjs";\nconsole.log(receipt());\n');
   const { execSync } = await import('node:child_process');
   execSync('git init && git commit --allow-empty -m init', { cwd: root, stdio: 'ignore' });
   const matrix = {
@@ -31,8 +40,8 @@ async function makeProject(): Promise<string> {
       id: 'd', label: 'd', weight: 1, category: 'quality', frequency: 'high', scores: { self: 5 },
       gap_to_leader: 0, leader: '', gap_to_closed_source_leader: 0, closed_source_leader: '', gap_to_oss_leader: 0, oss_leader: '',
       status: 'in-progress', sprint_history: [], next_sprint_target: 8, declared_ceiling: 'T5',
-      capability_test: { command: 'node -e "process.exit(0)"', description: 'pass' },
-      outcomes: [{ id: 'p', tier: 'T5', kind: 'shell', description: 'proof', command: 'node -e "console.log(\'REAL RECEIPT\'); process.exit(0)"', expected_exit: 0, timeout_ms: 30000, required_callsite: 'src/core/derived-score.ts' }],
+      capability_test: { command: 'node src/index.mjs', description: 'real product run' },
+      outcomes: [{ id: 'p', tier: 'T5', kind: 'shell', description: 'proof', command: 'node src/index.mjs', expected_exit: 0, timeout_ms: 30000, required_callsite: 'src/core/feature.mjs' }],
     }],
   };
   await fs.writeFile(path.join(root, '.danteforge', 'compete', 'matrix.json'), JSON.stringify(matrix, null, 2));

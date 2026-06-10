@@ -4,6 +4,7 @@ import path from 'node:path';
 import { loadMatrix, type CompeteMatrix } from '../../core/compete-matrix.js';
 import { MARKET_DIMS_SCORE_CAP } from '../../core/compete-matrix-score.js';
 import { logger } from '../../core/logger.js';
+import { detectProductProbes, type ProductProbe } from './evidence-scaffold-detect.js';
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -22,6 +23,8 @@ export interface EvidenceScaffoldOptions {
    * Best-effort: TM failures never block the scaffold write.
    */
   _createTimeMachineCommit?: ((opts: import('../../core/time-machine.js').CreateTimeMachineCommitOptions) => Promise<unknown>) | null;
+  /** Product-probe detection seam (defaults to the real detectProductProbes). */
+  _detectProbes?: (cwd: string) => ProductProbe[];
 }
 
 export interface ScaffoldResult {
@@ -29,8 +32,17 @@ export interface ScaffoldResult {
   stubGenerated: string[];
   alreadyHave: string[];
   skipped: string[];
+  /** Dims whose capability_test came from a runnable product probe (generic-repo detection). */
+  probeDetected: string[];
+  /** Dims whose capability_test is a failing scaffold carrying a needsInput candidate + scaffold_note
+   *  — routed to the yardstick author instead of the build loop. */
+  probeAuthorRouted: string[];
   /** Dims that received a failing T5 outcome scaffold-marker (the 7→9 depth-path requirement). */
   outcomeStubsGenerated: string[];
+  /** Dims whose T5 outcome came from a runnable product probe (real command, not `exit 1`). */
+  outcomeProbesGenerated: string[];
+  /** Dims whose T5 outcome is a failing scaffold carrying a needsInput candidate + scaffold_note. */
+  outcomeAuthorRouted: string[];
   /** Dims that already declared outcomes (left untouched). */
   outcomesAlreadyHave: string[];
   matrixPath: string;
@@ -43,7 +55,7 @@ export interface ScaffoldResult {
  * that produces an observable artifact. `_scaffold: true` keeps it INFERRED so it can
  * never contribute to a T7 receipt even if someone flips the command to `exit 0`.
  */
-function buildOutcomeStub(dimId: string, label: string): Record<string, unknown> {
+function buildOutcomeStub(dimId: string, label: string, candidate?: ProductProbe): Record<string, unknown> {
   return {
     id: `${dimId}-t5-scaffold`,
     kind: 'shell',
@@ -60,6 +72,44 @@ function buildOutcomeStub(dimId: string, label: string): Record<string, unknown>
     // its command is later flipped to exit 0 without real provenance being declared.
     input_source: { type: 'synthetic-fixture', fixture_id: 'matrix-build-scaffold' },
     _scaffold: true,
+    // A detected entrypoint with no derivable realistic input keeps the failing scaffold
+    // (honest) but carries the candidate + a marker so `capability-test conduct` routes the
+    // dim to the yardstick author instead of letting the build loop churn on `exit 1`.
+    ...(candidate ? { candidate_command: candidate.command, scaffold_note: scaffoldNoteFor(candidate) } : {}),
+  };
+}
+
+/** The author-routing marker: names the detected entrypoint and exactly what realistic input is missing. */
+function scaffoldNoteFor(candidate: ProductProbe): string {
+  return (
+    `Runnable ${candidate.language} entrypoint detected via ${candidate.source} ` +
+    `(\`${candidate.command}\`), but ${candidate.missingInput ?? 'no realistic input is derivable'}. ` +
+    `Route to the yardstick author (capability-test conduct) to supply a realistic input — ` +
+    `do not churn the build loop on this failing scaffold.`
+  );
+}
+
+/**
+ * Build a T5 outcome from a RUNNABLE product probe — a real invocation of the repo's own
+ * entrypoint, not `exit 1`. Kind is runtime-exec, NOT cli-smoke: cli-smoke spawns DanteForge's
+ * own binary with cli_args[], while a generic-repo probe is one shell command string.
+ * Honest tier: T5 with no input_source claim (absent provenance caps at 8.0 structurally) and a
+ * to-be-filled callsite marker, so a probe can never launder itself into a frontier receipt.
+ */
+function buildProbeOutcome(dimId: string, label: string, probe: ProductProbe): Record<string, unknown> {
+  return {
+    id: `${dimId}-t5-product-probe`,
+    kind: 'runtime-exec',
+    tier: 'T5',
+    description:
+      `PRODUCT PROBE (auto-detected from ${probe.source}, ${probe.language}) — runs the repo's ` +
+      `real entrypoint as the T5 smoke check for "${label}". Confirm the callsite and tighten ` +
+      `the assertion before trusting it beyond T5.`,
+    command: probe.command,
+    expected_exit: 0,
+    timeout_ms: 120000,
+    required_callsite: 'TODO-set-real-callsite',
+    product_probe: { source: probe.source, language: probe.language, confidence: probe.confidence },
   };
 }
 
@@ -114,12 +164,16 @@ function detectProjectType(cwd: string): 'npm' | 'go' | 'python' | 'custom' {
   return 'custom';
 }
 
-async function writeStubScript(dir: string, dimId: string, writeFn: (p: string, c: string) => Promise<void>): Promise<string> {
+async function writeStubScript(dir: string, dimId: string, writeFn: (p: string, c: string) => Promise<void>, candidate?: ProductProbe): Promise<string> {
   const scriptPath = path.join(dir, `${dimId}.sh`);
   const stub = [
     '#!/bin/bash',
     `# TODO: implement capability test for dimension: ${dimId}`,
     '# Exit 0 = dimension verified  |  Exit 1 = not verified',
+    ...(candidate ? [
+      `# Candidate entrypoint detected (${candidate.source}): ${candidate.command}`,
+      `# Missing: ${candidate.missingInput ?? 'a realistic input'}`,
+    ] : []),
     `echo "STUB: replace this with a real test for '${dimId}'"`,
     'exit 1',
   ].join('\n') + '\n';
@@ -152,12 +206,30 @@ export async function runEvidenceScaffold(options: EvidenceScaffoldOptions = {})
     stubGenerated: [],
     alreadyHave: [],
     skipped: [],
+    probeDetected: [],
+    probeAuthorRouted: [],
     outcomeStubsGenerated: [],
+    outcomeProbesGenerated: [],
+    outcomeAuthorRouted: [],
     outcomesAlreadyHave: [],
     matrixPath,
   };
 
   let matrixDirty = false;
+
+  // Capability-driven detection for generic/cold repos: when the dim-keyed maps find nothing,
+  // probe the TARGET repo's real entrypoints (package.json bin/scripts, pyproject, Cargo, go)
+  // instead of defaulting every dim to an `exit 1` scaffold the build loop churns on.
+  const detectFn = options._detectProbes ?? detectProductProbes;
+  let probesMemo: ProductProbe[] | null = null;
+  const productProbes = (): ProductProbe[] => {
+    if (probesMemo === null) {
+      try { probesMemo = detectFn(cwd); } catch { probesMemo = []; }
+    }
+    return probesMemo;
+  };
+  const runnableProbe = (): ProductProbe | undefined => productProbes().find(p => !p.needsInput);
+  const candidateProbe = (): ProductProbe | undefined => productProbes().find(p => p.needsInput);
 
   for (const dim of matrix.dimensions) {
     const ct = (dim as unknown as Record<string, unknown>).capability_test;
@@ -167,6 +239,8 @@ export async function runEvidenceScaffold(options: EvidenceScaffoldOptions = {})
     }
 
     const command = scaffoldMap[dim.id] ?? scaffoldMap['_default'];
+    const runnable = command ? undefined : runnableProbe();
+    const candidate = command || runnable ? undefined : candidateProbe();
     if (command) {
       if (!dryRun) {
         (dim as unknown as Record<string, unknown>).capability_test = {
@@ -178,6 +252,37 @@ export async function runEvidenceScaffold(options: EvidenceScaffoldOptions = {})
       }
       result.autoDetected.push(dim.id);
       logger.info(`[scaffold] ${dim.id}: auto-detected → ${command}`);
+    } else if (runnable) {
+      // A genuine runnable entrypoint detected from the repo itself — use it instead of a
+      // failing scaffold. Arguments were derived, never invented (see evidence-scaffold-detect).
+      if (!dryRun) {
+        (dim as unknown as Record<string, unknown>).capability_test = {
+          command: runnable.command,
+          description: `Product-probe capability test for ${dim.label} (auto-detected from ${runnable.source})`,
+          timeoutMs: 120000,
+        };
+        matrixDirty = true;
+      }
+      result.probeDetected.push(dim.id);
+      logger.info(`[scaffold] ${dim.id}: product-probe detected (${runnable.source}) → ${runnable.command}`);
+    } else if (candidate) {
+      // Entrypoint exists but no realistic input is derivable: keep the failing scaffold
+      // (honest) and mark it for the yardstick author via scaffold_note + candidate_command.
+      if (!dryRun) {
+        await fs.mkdir(capTestsDir, { recursive: true }).catch(() => { /* ignore */ });
+        const scriptPath = await writeStubScript(capTestsDir, dim.id, writeFn, candidate);
+        const rel = path.relative(cwd, scriptPath).replace(/\\/g, '/');
+        (dim as unknown as Record<string, unknown>).capability_test = {
+          command: `bash ${rel} 2>&1`,
+          description: `Stub capability test for ${dim.label} — edit ${rel}`,
+          timeoutMs: 30000,
+          candidate_command: candidate.command,
+          scaffold_note: scaffoldNoteFor(candidate),
+        };
+        matrixDirty = true;
+      }
+      result.probeAuthorRouted.push(dim.id);
+      logger.warn(`[scaffold] ${dim.id}: entrypoint candidate (${candidate.source}) needs a realistic input — routed to the yardstick author`);
     } else {
       if (!dryRun) {
         await fs.mkdir(capTestsDir, { recursive: true }).catch(() => { /* ignore */ });
@@ -212,25 +317,48 @@ export async function runEvidenceScaffold(options: EvidenceScaffoldOptions = {})
       result.skipped.push(dim.id);
       continue;
     }
-    if (!dryRun) {
-      d.outcomes = [buildOutcomeStub(dim.id, dim.label)];
-      matrixDirty = true;
+    const runnable = runnableProbe();
+    const candidate = runnable ? undefined : candidateProbe();
+    if (runnable) {
+      if (!dryRun) {
+        d.outcomes = [buildProbeOutcome(dim.id, dim.label, runnable)];
+        matrixDirty = true;
+      }
+      result.outcomeProbesGenerated.push(dim.id);
+      logger.info(`[scaffold] ${dim.id}: T5 product-probe outcome written (\`${runnable.command}\`) — run \`danteforge validate ${dim.id}\` for a real receipt`);
+    } else if (candidate) {
+      if (!dryRun) {
+        d.outcomes = [buildOutcomeStub(dim.id, dim.label, candidate)];
+        matrixDirty = true;
+      }
+      result.outcomeAuthorRouted.push(dim.id);
+      logger.warn(`[scaffold] ${dim.id}: entrypoint candidate (${candidate.source}) lacks a realistic input — failing scaffold kept, routed to the yardstick author (see scaffold_note)`);
+    } else {
+      if (!dryRun) {
+        d.outcomes = [buildOutcomeStub(dim.id, dim.label)];
+        matrixDirty = true;
+      }
+      result.outcomeStubsGenerated.push(dim.id);
+      logger.warn(`[scaffold] ${dim.id}: T5 outcome stub written — replace its \`exit 1\` command with a real smoke check to unlock 7→9`);
     }
-    result.outcomeStubsGenerated.push(dim.id);
-    logger.warn(`[scaffold] ${dim.id}: T5 outcome stub written — replace its \`exit 1\` command with a real smoke check to unlock 7→9`);
   }
 
   if (!dryRun && matrixDirty) {
     await writeMatrix(matrix, matrixPath);
     logger.success('[evidence-scaffold] matrix.json updated.');
-    const touchedCount = result.autoDetected.length + result.stubGenerated.length;
+    const touchedCount = result.autoDetected.length + result.stubGenerated.length
+      + result.probeDetected.length + result.probeAuthorRouted.length;
     await recordScaffoldCommit(matrixPath, touchedCount, cwd, options._createTimeMachineCommit);
   }
 
+  const probeDetectedCount = result.probeDetected.length + result.outcomeProbesGenerated.length;
+  const authorRoutedCount = result.probeAuthorRouted.length + result.outcomeAuthorRouted.length;
   logger.info('');
   logger.success(`[evidence-scaffold] ${dryRun ? 'DRY RUN — ' : ''}Summary:`);
   logger.info(`  ✓ Already have capability_test: ${result.alreadyHave.length}`);
-  logger.info(`  ✓ Auto-detected:               ${result.autoDetected.length}`);
+  logger.info(`  ✓ Auto-detected (dim-keyed):   ${result.autoDetected.length}`);
+  logger.info(`  ✓ Product-probe detected:      ${probeDetectedCount} (${result.probeDetected.length} cap-test, ${result.outcomeProbesGenerated.length} outcome)`);
+  logger.warn(`  ⚠ Author-routed candidates:    ${authorRoutedCount} (${result.probeAuthorRouted.length} cap-test, ${result.outcomeAuthorRouted.length} outcome — see scaffold_note)`);
   logger.warn(`  ⚠ Cap-test stubs (edit them):  ${result.stubGenerated.length}`);
   logger.info(`  ✓ Already declare outcomes:    ${result.outcomesAlreadyHave.length}`);
   logger.warn(`  ⚠ Outcome stubs (edit them):   ${result.outcomeStubsGenerated.length}`);
@@ -245,6 +373,16 @@ export async function runEvidenceScaffold(options: EvidenceScaffoldOptions = {})
     logger.info(`  ${result.outcomeStubsGenerated.length} dim(s) now declare a T5 outcome stub (capped at 7.0 until real).`);
     logger.info('  Replace each stub\'s `exit 1` command in matrix.json with a real smoke check,');
     logger.info('  then run: danteforge validate <dim>  (twice, across sessions) to unlock 7→9.');
+  }
+  if (result.outcomeProbesGenerated.length > 0) {
+    logger.info('');
+    logger.info(`  ${result.outcomeProbesGenerated.length} dim(s) carry a T5 product-probe outcome (real entrypoint run).`);
+    logger.info('  Run: danteforge validate <dim>  to produce real receipts.');
+  }
+  if (authorRoutedCount > 0) {
+    logger.info('');
+    logger.info(`  ${authorRoutedCount} candidate(s) need a realistic input (see scaffold_note in matrix.json).`);
+    logger.info('  Run: danteforge capability-test conduct  to route them to the yardstick author.');
   }
 
   return result;

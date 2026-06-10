@@ -13,12 +13,17 @@
 
 import fs from 'node:fs/promises';
 import path from 'node:path';
-import { extractPrimaryTestFiles } from '../../core/derived-score.js';
+import {
+  extractTestFiles,
+  extractUnscannableTestFiles,
+  seamPatternsForFile,
+  SEAM_PATTERNS_BY_LANG,
+} from './test-file-patterns.js';
 import { MARKET_CAPPED_DIMS } from '../../core/market-dims.js';
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
-export type ViolationKind = 'SHARED_RECEIPT' | 'MARKET_DIM' | 'SEAM_USAGE' | 'CALLSITE_DECOUPLED' | 'ORPHAN_CALLSITE';
+export type ViolationKind = 'SHARED_RECEIPT' | 'MARKET_DIM' | 'SEAM_USAGE' | 'CALLSITE_DECOUPLED' | 'ORPHAN_CALLSITE' | 'UNSCANNABLE';
 export type Severity = 'ERROR' | 'WARN';
 
 export interface IntegrityViolation {
@@ -40,6 +45,10 @@ export interface IntegrityReport {
    *  any production (non-test) src file — an orphan. Unwired code can't honestly claim T4+ (Depth
    *  Doctrine: T4 = production callsite wired). */
   orphanDims: string[];
+  /** Dims with a T4+ outcome referencing a test file in a language with NO seam scanner
+   *  (none of JS/Python/Rust/Go). Fail-closed: we cannot verify seam-freedom, so the
+   *  evidence is tagged INFERRED by the runner — silence must not read as cleanliness. */
+  unscannableDims: string[];
   clean: boolean;
 }
 
@@ -51,35 +60,27 @@ const HIGH_TIERS = new Set(['T5', 'T6', 'T7', 'T8']);
 const T4_PLUS = new Set(['T4', 'T5', 'T6', 'T7', 'T8']);
 const MARKET_DIMS = MARKET_CAPPED_DIMS; // canonical set — src/core/market-dims.ts
 
-const SEAM_PATTERNS = [
-  /_cipCheck/,
-  /_runPass/,
-  /_runAutoforge/,
-  /_runVerify/,
-  /_now\b/,
-  /_discover/,
-  /_loadMatrix/,
-  /_runAdapter/,
-  /jest\.mock\(/,
-  /vi\.mock\(/,
-  /sinon\.stub\(/,
-  /sinon\.mock\(/,
-];
-
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
-// Single source of truth: the same extractor derived-score.ts uses for its
-// distinct-receipt T7 veto. Sharing the regex prevents the integrity reporter
-// and the score engine from disagreeing about what counts as "the same file"
-// (the regex must include `/` so tests/a/x.test.ts ≠ tests/b/x.test.ts).
-const extractTestFiles = extractPrimaryTestFiles;
+// Single source of truth: test-file-patterns.ts — the same extractor derived-score.ts
+// uses for its distinct-receipt T7 veto. Sharing the recognizer prevents the integrity
+// reporter and the score engine from disagreeing about what counts as "the same
+// receipt" (it must include `/` so tests/a/x.test.ts ≠ tests/b/x.test.ts, and it must
+// see Python/Rust/Go test files + cargo/go-test targets, not just JS).
 
 export async function commandHasSeams(command: string, projectPath: string): Promise<boolean> {
-  // Check the command string itself first
-  if (SEAM_PATTERNS.some(p => p.test(command))) return true;
-  // Check referenced test files for seam patterns
+  // Check the command string itself first. Command-string seams (injection flags like
+  // _cipCheck, inline vi.mock in a node -e script) are JS/CLI idioms — the JS list.
+  if (SEAM_PATTERNS_BY_LANG.js.some(p => p.test(command))) return true;
+  // Check referenced test files for the SEAM PATTERNS OF THEIR OWN LANGUAGE — a Python
+  // test importing unittest.mock or a Go test importing testify/mock is exactly as
+  // seamed as a JS test calling vi.mock.
   const testFiles = extractTestFiles(command);
   for (const tf of testFiles) {
+    const patterns = seamPatternsForFile(tf);
+    // Pseudo-identifiers (cargo/go targets) name no readable file; unknown languages are
+    // handled fail-closed by the UNSCANNABLE check — neither is silently treated clean here.
+    if (patterns === null) continue;
     const candidates = [
       path.join(projectPath, 'tests', tf),
       path.join(projectPath, 'src', tf),
@@ -88,7 +89,7 @@ export async function commandHasSeams(command: string, projectPath: string): Pro
     for (const candidate of candidates) {
       try {
         const content = await fs.readFile(candidate, 'utf8');
-        if (SEAM_PATTERNS.some(p => p.test(content))) return true;
+        if (patterns.some(p => p.test(content))) return true;
       } catch {
         // file not found at this path — try next
       }
@@ -146,6 +147,7 @@ export async function checkOutcomeIntegrity(
   const seamedDimSet = new Set<string>();
   const decoupledDimSet = new Set<string>();
   const orphanDimSet = new Set<string>();
+  const unscannableDimSet = new Set<string>();
   // Lazily built (only when a T4+ outcome with a callsite needs the orphan check).
   let wiredBasenames: Set<string> | null = null;
 
@@ -171,6 +173,25 @@ export async function checkOutcomeIntegrity(
           violations.push({
             kind: 'ORPHAN_CALLSITE', severity: 'ERROR', dimId: dim.id, outcomeId: outcome.id,
             detail: `Outcome "${outcome.id}" required_callsite "${cs}" is not imported by any production (non-test) src file — an orphan (unwired). Unwired code cannot honestly claim T4+; capped at 7.0 until it is wired into the product or the outcome is downgraded.`,
+          });
+        }
+      }
+
+      // Fail-closed seam coverage (T4+): a test file in a language we have NO seam
+      // scanner for (none of JS/Python/Rust/Go) cannot be verified seam-free. Record a
+      // WARN so the unverifiable evidence is visible — outcome-runner additionally tags
+      // it INFERRED, which keeps it out of the T7 multi-receipt consensus.
+      if (T4_PLUS.has(outcome.tier)) {
+        const unscannable = extractUnscannableTestFiles(command);
+        if (unscannable.length > 0) {
+          unscannableDimSet.add(dim.id);
+          violations.push({
+            kind: 'UNSCANNABLE', severity: 'WARN', dimId: dim.id, outcomeId: outcome.id,
+            detail:
+              `Outcome "${outcome.id}" references test file(s) ${unscannable.join(', ')} in a language ` +
+              `with no seam scanner (not JS/Python/Rust/Go). Seam-freedom cannot be verified — ` +
+              `evidence quality is capped at INFERRED (never EXTRACTED) until the suite is ported ` +
+              `to a scannable language or a scanner is added.`,
           });
         }
       }
@@ -210,8 +231,9 @@ export async function checkOutcomeIntegrity(
             dimId: dim.id,
             outcomeId: outcome.id,
             detail:
-              `Outcome "${outcome.id}" uses injection seams (_cipCheck, _runPass, vi.mock, etc.). ` +
-              `Seamed outcomes prove code paths exist, not real behavior. Score capped at 6.0.`,
+              `Outcome "${outcome.id}" uses injection/mocking seams (_cipCheck, vi.mock, ` +
+              `unittest.mock, testify/mock, mockall, etc.). Seamed outcomes prove code paths ` +
+              `exist, not real behavior. Score capped at 6.0.`,
           });
         }
       } catch {
@@ -273,6 +295,7 @@ export async function checkOutcomeIntegrity(
     seamedDims: [...seamedDimSet],
     decoupledDims: [...decoupledDimSet],
     orphanDims: [...orphanDimSet],
+    unscannableDims: [...unscannableDimSet],
     clean: violations.length === 0,
   };
 }
@@ -389,6 +412,7 @@ export function formatIntegrityReport(report: IntegrityReport): string {
     SEAM_USAGE: [],
     CALLSITE_DECOUPLED: [],
     ORPHAN_CALLSITE: [],
+    UNSCANNABLE: [],
   };
   for (const v of report.violations) byKind[v.kind].push(v);
 
@@ -424,6 +448,14 @@ export function formatIntegrityReport(report: IntegrityReport): string {
     lines.push('');
     lines.push('  SEAM_USAGE (outcomes capped at 6.0):');
     for (const v of byKind.SEAM_USAGE) {
+      lines.push(`    [${v.dimId}] ${v.outcomeId}: ${v.detail}`);
+    }
+  }
+
+  if (byKind.UNSCANNABLE.length > 0) {
+    lines.push('');
+    lines.push('  UNSCANNABLE (evidence quality capped at INFERRED — no seam scanner for the language):');
+    for (const v of byKind.UNSCANNABLE) {
       lines.push(`    [${v.dimId}] ${v.outcomeId}: ${v.detail}`);
     }
   }

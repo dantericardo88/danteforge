@@ -15,6 +15,14 @@ import { resumeAutoforge } from '../src/cli/commands/resume.js';
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
+// UNIQUE scratch cwd per test: runAscend's Phase-E proposal flow writes matrix.json +
+// score-proposals (incl. merge.lock) at cwd for real — a SHARED dir made tests collide on the
+// merge lock and bleed state across cases.
+let cwdCounter = 0;
+function freshCwd(): string {
+  return path.join(os.tmpdir(), `df-resume-${process.pid}-${cwdCounter++}`);
+}
+
 function makeMatrix(dims: Array<{ id: string; score: number }>): CompeteMatrix {
   return {
     dimensions: dims.map(d => ({
@@ -69,7 +77,7 @@ function makeStrictDims() {
 function makeBaseOpts(overrides: Partial<AscendEngineOptions> = {}): AscendEngineOptions {
   const matrix = makeMatrix([{ id: 'functionality', score: 6.0 }]);
   return {
-    cwd: '/tmp/test',
+    cwd: freshCwd(),
     target: 9.0,
     maxCycles: 2,
     executeMode: 'advisory',
@@ -235,7 +243,7 @@ describe('resume.ts — ascend checkpoint detection', () => {
       beforeScores: { functionality: 6.0 },
     };
     await resumeAutoforge({
-      cwd: '/tmp/test',
+      cwd: freshCwd(),
       _readFile: async (p) => {
         if (p.includes('ASCEND_PAUSED')) return JSON.stringify(checkpoint);
         throw new Error('not found');
@@ -253,7 +261,7 @@ describe('resume.ts — ascend checkpoint detection', () => {
   it('falls through to autoforge when no ASCEND_PAUSED file', async () => {
     let errorLogged = false;
     await resumeAutoforge({
-      cwd: '/tmp/test',
+      cwd: freshCwd(),
       _readFile: async () => { throw new Error('not found'); },
       _runAscend: async () => {
         throw new Error('should not be called');

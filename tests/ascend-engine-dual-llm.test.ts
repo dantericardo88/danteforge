@@ -1,5 +1,7 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
+import os from 'node:os';
+import path from 'node:path';
 import {
   runAscend,
   type AscendEngineOptions,
@@ -7,6 +9,14 @@ import {
 } from '../src/core/ascend-engine.js';
 import type { CompeteMatrix, MatrixDimension } from '../src/core/compete-matrix.js';
 import type { HarshScoreResult } from '../src/core/harsh-scorer.js';
+
+// UNIQUE scratch cwd per test: runAscend's Phase-E proposal flow writes matrix.json +
+// score-proposals (incl. merge.lock) at cwd for real — a SHARED dir made tests collide on the
+// merge lock and bleed state across cases.
+let cwdCounter = 0;
+function freshCwd(): string {
+  return path.join(os.tmpdir(), `df-dualllm-${process.pid}-${cwdCounter++}`);
+}
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -88,7 +98,7 @@ function makeStrictDims() {
 function makeBaseOpts(overrides: Partial<AscendEngineOptions> = {}): AscendEngineOptions {
   const matrix = makeMatrix([{ id: 'functionality', score: 6.0 }]);
   return {
-    cwd: '/tmp/test',
+    cwd: freshCwd(),
     target: 9.0,
     maxCycles: 3,
     executeMode: 'advisory',   // tests use advisory path to exercise _runLoop seam

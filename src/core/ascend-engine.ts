@@ -741,7 +741,12 @@ export async function runAscend(options: AscendEngineOptions = {}): Promise<Asce
     const beforeScore = nextDim.scores['self'] ?? 0;
     const harvestHint = nextDim.harvest_source ? ` (harvest from ${nextDim.harvest_source})` : '';
     let goal = `Improve ${nextDim.label} from ${beforeScore.toFixed(1)}/10 toward ${target}/10${harvestHint}`;
-    if (cs.pendingCritique && cs.critiqueTargetDimId === nextDim.id) {
+    // Wave decided BEFORE the critique is consumed: a queued adversarial critique drives the next
+    // BUILD attempt, but a depth wave never hands the goal to the forge loop — consuming it there
+    // burned the retry (the critique vanished and the following breadth wave built blind).
+    const { getWaveGuard } = await import('./wave-alternation.js');
+    const waveGuard = getWaveGuard(cs.cyclesRun);
+    if (waveGuard.type !== 'depth' && cs.pendingCritique && cs.critiqueTargetDimId === nextDim.id) {
       goal = `${goal}\n\n${cs.pendingCritique.critiquePrompt}`;
       cs.pendingCritique = null; cs.critiqueTargetDimId = null;
     }
@@ -776,15 +781,15 @@ export async function runAscend(options: AscendEngineOptions = {}): Promise<Asce
 
     logger.info(`  Goal: ${goal.slice(0, 120)}`);
 
-    // Depth Doctrine: alternate breadth/depth waves.
-    const { getWaveGuard } = await import('./wave-alternation.js');
-    const waveGuard = getWaveGuard(cs.cyclesRun);
-
+    // Depth Doctrine: alternate breadth/depth waves (waveGuard resolved above the goal build).
     let buildFailed = false;
     if (waveGuard.type === 'depth') {
-      // Depth wave: run outcomes for this dim instead of forging new code.
+      // Depth wave: run outcomes for this dim instead of forging new code. --preserve-sessions,
+      // NOT --force-cold: forceCold re-stamps EVERY outcome with this one process's session id,
+      // silently collapsing a dim's multi-session T7 proof (the frontier session-collapse bug) —
+      // preserve-sessions still re-runs anything stale or new while cached distinct sessions stand.
       logger.info(`  [Ascend] DEPTH WAVE: running outcomes for ${nextDim.label}`);
-      const r = await wrappedExecuteCommandFn(`validate ${nextDim.id} --force-cold`, cwd);
+      const r = await wrappedExecuteCommandFn(`validate ${nextDim.id} --preserve-sessions`, cwd);
       buildFailed = !r.success;
     } else {
       // Breadth wave: forge new code (existing behavior).

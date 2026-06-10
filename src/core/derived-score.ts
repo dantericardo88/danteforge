@@ -23,6 +23,7 @@
 import { TIER_SCORE_CAPS, isEvidenceStale, type CapabilityTier } from '../matrix/types/capability-test.js';
 import { isOutcomePassing, makeEvidenceKey, type Outcome, type OutcomeEvidence } from '../matrix/types/outcome.js';
 import { classifyOutcomeKind } from '../matrix/engines/outcome-quality.js';
+import { extractTestFiles } from '../matrix/engines/test-file-patterns.js';
 import { MARKET_CAPPED_DIMS, MARKET_DIM_MAX_SCORE } from './market-dims.js';
 
 // ── Inputs ───────────────────────────────────────────────────────────────────
@@ -57,13 +58,16 @@ const MIN_T7_HIGH_TIER_OUTCOMES = 3;
 const MARKET_DIMS = MARKET_CAPPED_DIMS;
 const MARKET_DIM_IMPLEMENTATION_CAP = MARKET_DIM_MAX_SCORE;
 
-/** Extract test file paths from a command string. Used for cross-dim sharing detection.
- *  Includes directory separators so `tests/a/x.test.ts` and `tests/b/x.test.ts` are distinct.
+/** Extract test-receipt identifiers from a command string. Used for cross-dim sharing
+ *  detection and the T7 distinct-receipt veto. Delegates to the ONE canonical polyglot
+ *  recognizer (test-file-patterns.ts): JS test files (historical regex, unchanged —
+ *  includes directory separators so `tests/a/x.test.ts` ≠ `tests/b/x.test.ts`), plus
+ *  Python/Rust/Go test files and cargo/go-test target pseudo-identifiers, so a polyglot
+ *  repo's shared receipts are visible to the same vetoes as JS ones.
+ *  Lockstep: scripts/evidence-rescore.mjs mirrors this for the crusade rescore;
+ *  tests/evidence-rescore-drift.test.ts pins the two together.
  */
-export function extractPrimaryTestFiles(command: string): string[] {
-  const matches = command.match(/[\w./-]+\.test\.[jt]sx?/g);
-  return matches ? [...new Set(matches)] : [];
-}
+export { extractTestFiles as extractPrimaryTestFiles } from '../matrix/engines/test-file-patterns.js';
 
 // ── Breakdown for diagnostics ────────────────────────────────────────────────
 
@@ -259,7 +263,7 @@ export function computeDerivedScoreWithBreakdown(
           .filter(e => TIER_INDEX[e.tier] >= TIER_INDEX.T5)
           .map(e => e.outcome);
         const testFiles = highTierOuts.flatMap(
-          o => extractPrimaryTestFiles((o as { command?: string }).command ?? ''),
+          o => extractTestFiles((o as { command?: string }).command ?? ''),
         );
         const uniqueFiles = new Set(testFiles);
         if (testFiles.length > 0 && uniqueFiles.size < 2) {

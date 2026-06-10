@@ -24,6 +24,12 @@ import {
 import { isEvidenceStale } from '../types/capability-test.js';
 import { MARKET_CAPPED_DIMS } from '../../core/market-dims.js';
 import { toolchainEnv } from '../../core/toolchain-path.js';
+import {
+  extractTestFiles,
+  extractUnscannableTestFiles,
+  seamPatternsForFile,
+  SEAM_PATTERNS_BY_LANG,
+} from './test-file-patterns.js';
 
 const execFileAsync = promisify(execFile);
 const OUTCOME_EVIDENCE_DIR = path.join('.danteforge', 'outcome-evidence');
@@ -346,24 +352,26 @@ export async function runOneOutcome(options: RunOutcomeOptions): Promise<Outcome
 
 // ── Confidence tagging ────────────────────────────────────────────────────────
 
-const SEAM_PATTERNS_RT = [
-  /_cipCheck/, /_runPass/, /_runAutoforge/, /_runVerify/, /_now\b/,
-  /_discover/, /_loadMatrix/, /_runAdapter/,
-  /jest\.mock\(/, /vi\.mock\(/, /sinon\.stub\(/, /sinon\.mock\(/,
-];
+// Command-string seam idioms (injection flags, inline vi.mock in node -e scripts) are
+// JS/CLI shaped — the canonical JS list from test-file-patterns.ts.
+const SEAM_PATTERNS_RT = SEAM_PATTERNS_BY_LANG.js;
 const MARKET_DIMS_RT = MARKET_CAPPED_DIMS; // canonical set — src/core/market-dims.ts
-
-/** Regex matching test file paths in shell commands (mirrors extractPrimaryTestFiles in derived-score.ts). */
-const TEST_FILE_RE = /[\w./-]+\.test\.[jt]sx?/g;
 
 /**
  * Tag an evidence entry with EXTRACTED/INFERRED/AMBIGUOUS quality and a
  * numeric confidence score, following the confidence-tagging doctrine.
  * Mutates `entry` in-place before it is written to disk.
  *
- * File-content seam detection: inspects referenced test files, not just the command string.
- * A clean command like `npx tsx --test tests/foo.test.ts` is still INFERRED when foo.test.ts
- * contains seam injection patterns (_cipCheck, vi.mock, etc).
+ * File-content seam detection: inspects referenced test files, not just the command
+ * string, using the SEAM PATTERNS OF EACH FILE'S LANGUAGE (test-file-patterns.ts).
+ * A clean command like `npx tsx --test tests/foo.test.ts` is still INFERRED when
+ * foo.test.ts contains seam injection patterns (_cipCheck, vi.mock, etc) — and a
+ * `pytest tests/test_foo.py` is INFERRED when test_foo.py imports unittest.mock,
+ * exactly as a Go test importing testify/mock is.
+ *
+ * Fail-closed: a referenced test file in a language with NO seam scanner (none of
+ * JS/Python/Rust/Go) can never be verified seam-free, so the evidence is tagged
+ * INFERRED — silence must not read as cleanliness.
  */
 function tagEvidenceQuality(
   entry: OutcomeEvidenceEntry,
@@ -382,11 +390,15 @@ function tagEvidenceQuality(
     entry.confidenceScore = 0.65;
     return;
   }
-  // File-content seam check: extract referenced test file names and inspect their contents.
-  // A command that looks clean but calls seamed tests is still INFERRED.
+  // File-content seam check: extract referenced test files and inspect their contents
+  // with their own language's patterns. A command that looks clean but calls seamed
+  // tests is still INFERRED.
   if (command && cwd) {
-    const fileNames = [...command.matchAll(TEST_FILE_RE)].map(m => m[0]);
+    const fileNames = extractTestFiles(command);
     for (const name of fileNames) {
+      const patterns = seamPatternsForFile(name);
+      // cargo/go-test target pseudo-identifiers name no readable file — nothing to inspect.
+      if (patterns === null) continue;
       const candidates = [
         path.resolve(cwd, name),
         path.resolve(cwd, 'tests', path.basename(name)),
@@ -395,7 +407,7 @@ function tagEvidenceQuality(
       for (const candidate of candidates) {
         try {
           const content = readFileSync(candidate, 'utf8');
-          if (SEAM_PATTERNS_RT.some(p => p.test(content))) {
+          if (patterns.some(p => p.test(content))) {
             entry.evidenceQuality = 'INFERRED';
             entry.confidenceScore = 0.65;
             return;
@@ -404,6 +416,13 @@ function tagEvidenceQuality(
         } catch { /* file not found at this path — try next candidate */ }
       }
     }
+  }
+  // Fail-closed: an unscannable-language test file (e.g. *_test.exs) cannot be verified
+  // seam-free — INFERRED, never EXTRACTED. Mirrors outcome-integrity's UNSCANNABLE warn.
+  if (command && extractUnscannableTestFiles(command).length > 0) {
+    entry.evidenceQuality = 'INFERRED';
+    entry.confidenceScore = 0.7;
+    return;
   }
   entry.evidenceQuality = 'EXTRACTED';
   entry.confidenceScore = 1.0;

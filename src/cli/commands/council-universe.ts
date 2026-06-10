@@ -71,10 +71,12 @@ export async function runCouncilUniverseCommand(opts: {
 
   // Phase 2b: extract outcome proposals for verified dims
   if (opts.proposeOutcomes && result.written.length > 0) {
-    if (opts.skipVerify) {
-      logger.warn('[council-universe] --propose-outcomes is blocked when --skip-verify is set.');
+    if (opts.skipVerify || researchers.length < 2) {
+      // Single-member runs are DEGRADED (no cross-member verification possible — a researcher
+      // never verifies its own output), so their files are unverified and get the same block.
+      logger.warn(`[council-universe] --propose-outcomes is blocked: ${opts.skipVerify ? '--skip-verify is set' : 'only 1 researcher (cross-member verification impossible — degraded mode)'}.`);
       logger.warn('[council-universe] Proposals without independent verification can introduce unvetted outcomes.');
-      logger.warn('[council-universe] Remove --skip-verify, or run council-universe-apply with --no-skip-unverified if you accept the risk.');
+      logger.warn('[council-universe] Add a second council member (or remove --skip-verify), or run council-universe-apply with --no-skip-unverified if you accept the risk.');
       return;
     }
 

@@ -16,6 +16,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { TIER_SCORE_CAPS } from '../src/matrix/types/capability-test.js';
+import { extractTestFiles } from '../src/matrix/engines/test-file-patterns.js';
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const read = (rel: string) => fs.readFileSync(path.join(repoRoot, rel), 'utf8');
@@ -69,5 +70,64 @@ describe('evidence-rescore.mjs stays in lockstep with the canonical TS scoring',
   it('MIN_T7_HIGH_TIER_OUTCOMES threshold matches derived-score.ts', () => {
     assert.equal(parseNumber(mjs, 'MIN_T7_HIGH_TIER_OUTCOMES'), parseNumber(derivedScore, 'MIN_T7_HIGH_TIER_OUTCOMES'),
       'evidence-rescore.mjs MIN_T7_HIGH_TIER_OUTCOMES drifted from derived-score.ts');
+  });
+
+  it('derived-score.ts delegates extraction to the canonical test-file-patterns.ts', () => {
+    assert.ok(/export \{ extractTestFiles as extractPrimaryTestFiles \}/.test(derivedScore),
+      'derived-score.ts must re-export the canonical extractTestFiles (one recognizer, no fork)');
+  });
+});
+
+// ── Polyglot test-receipt extraction lockstep ─────────────────────────────────
+// The mjs mirror carries a SELF-CONTAINED copy of extractTestFiles between markers.
+// We eval exactly that block (no import — the script has top-level side effects) and
+// pin its BEHAVIOR to the canonical TS over a polyglot command table. The moment the
+// mirror and the canonical recognizer disagree on any receipt identity, this fails.
+
+describe('evidence-rescore.mjs test-file extraction stays in lockstep (polyglot)', () => {
+  const mjs = read('scripts/evidence-rescore.mjs');
+
+  it('the marked mirror block behaves identically to the canonical extractTestFiles', () => {
+    const block = mjs.match(/\/\/ >>> test-file-extraction[\s\S]*?\/\/ <<< test-file-extraction/);
+    assert.ok(block, 'lockstep markers (>>> test-file-extraction / <<<) missing from evidence-rescore.mjs');
+    const mirror = new Function(`${block![0]}\nreturn extractPrimaryTestFiles;`)() as (c: string) => string[];
+
+    const samples = [
+      // JS — historical behavior, must stay byte-identical
+      'npx tsx --test tests/a/x.test.ts tests/b/x.test.ts',
+      'node dist/index.js run tests/shared.test.ts',
+      'node dist/index.js validate --all',
+      // Python
+      'python -m pytest tests/test_pipeline.py -q',
+      'pytest src/pkg/scanner_test.py::TestScanner -k integration',
+      'pytest tests/integration/api.py',
+      'python scripts/sample.py', // NOT a test file — must extract nothing
+      // Rust
+      'cargo test -p danteguard --lib scanner',
+      'cargo test -p danteguard --lib scanner -- --nocapture',
+      'cargo test --package danteguard --test integration_scan',
+      'cd crates/core && cargo nextest run -p danteguard --lib scanner',
+      'cargo test',
+      // Go
+      'go test ./pkg/scan -run TestScan',
+      'go test -count=1 ./...',
+      'go test ./internal/scan/scan_test.go',
+      'cd services/api && go test ./handlers',
+      // Unknown language — extraction sees nothing (UNSCANNABLE handles it elsewhere)
+      'mix test test/foo_test.exs',
+    ];
+    for (const cmd of samples) {
+      assert.deepEqual(mirror(cmd), extractTestFiles(cmd),
+        `evidence-rescore.mjs extraction drifted from test-file-patterns.ts for: ${cmd}`);
+    }
+  });
+
+  it('two dims sharing one cargo target produce ONE receipt identity (the polyglot T7 veto input)', () => {
+    const a = extractTestFiles('cargo test -p member --lib scanner');
+    const b = extractTestFiles('cargo test -p member --lib scanner');
+    const c = extractTestFiles('cargo test -p member --lib other_mod');
+    assert.equal(a.length, 1);
+    assert.deepEqual(a, b, 'identical cargo targets must collide');
+    assert.notDeepEqual(a, c, 'different cargo targets must stay distinct');
   });
 });

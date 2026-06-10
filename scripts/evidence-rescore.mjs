@@ -140,13 +140,97 @@ function isOutcomePassing(outcome, entry) {
   return entry.exitCode === expectedExit;
 }
 
-// Mirrors extractPrimaryTestFiles in src/core/derived-score.ts (regex MUST match:
-// include `/` so tests/a/x.test.ts ≠ tests/b/x.test.ts). Used for the T7
-// distinct-receipt veto — 3 outcomes pointing at one test file is one receipt.
+// >>> test-file-extraction — LOCKSTEP MIRROR of src/matrix/engines/test-file-patterns.ts
+// (extractTestFiles). Used for the T7 distinct-receipt veto — 3 outcomes pointing at one
+// test receipt is ONE receipt. Polyglot: JS test files (historical regex, MUST include
+// `/` so tests/a/x.test.ts ≠ tests/b/x.test.ts) + Python/Rust/Go test files + cargo/go
+// target pseudo-identifiers (so two dims sharing `cargo test -p m --lib mod` collide).
+// tests/evidence-rescore-drift.test.ts evals this whole marked block and pins its
+// behavior to the canonical TS over a shared command table — keep it SELF-CONTAINED
+// (no references to anything outside the markers) and extend BOTH together.
 function extractPrimaryTestFiles(command) {
-  const matches = (command ?? '').match(/[\w./-]+\.test\.[jt]sx?/g);
-  return matches ? [...new Set(matches)] : [];
+  const JS_TEST_FILE_RE = /[\w./-]+\.test\.[jt]sx?/g;
+  const PY_FILE_RE = /[\w./-]+\.py\b/g;
+  const RS_FILE_RE = /[\w./-]+\.rs\b/g;
+  const GO_TEST_FILE_RE = /[\w./-]+_test\.go\b/g;
+  const CARGO_VALUE_FLAGS = new Set([
+    '-p', '--package', '--features', '--manifest-path', '--target', '--target-dir',
+    '--profile', '-j', '--jobs', '--exclude', '--color', '--message-format', '--config', '-Z',
+  ]);
+  const CARGO_TARGET_FLAGS = new Set(['--bin', '--test', '--example', '--bench']);
+  const GO_VALUE_FLAGS = new Set([
+    '-run', '-bench', '-count', '-timeout', '-tags', '-ldflags', '-coverprofile',
+    '-covermode', '-cpuprofile', '-memprofile', '-p', '-parallel', '-o', '-exec',
+  ]);
+  const baseName = (p) => { const n = p.replace(/\\/g, '/'); return n.split('/').pop() ?? n; };
+  const isPythonTestPath = (p) => {
+    const norm = p.replace(/\\/g, '/');
+    const base = baseName(norm);
+    return /^test_[\w.-]*\.py$/.test(base) || /_test\.py$/.test(base) || /(^|\/)tests?\//.test(norm);
+  };
+  const isRustTestPath = (p) => {
+    const norm = p.replace(/\\/g, '/');
+    return /_test\.rs$/.test(baseName(norm)) || /(^|\/)tests\//.test(norm);
+  };
+  const cdPrefix = (cmd) => {
+    const m = cmd.match(/(?:^|[&|;]\s*)cd\s+([^\s&|;]+)/);
+    return m?.[1] ?? '';
+  };
+  const cargoTestIdentifier = (cmd) => {
+    const m = cmd.match(/\bcargo\s+(?:\+\S+\s+)?(?:test|nextest(?:\s+run)?)\b([^|&;]*)/);
+    if (!m) return null;
+    const tokens = (m[1] ?? '').trim().split(/\s+/).filter(Boolean);
+    let pkg = '';
+    let target = '';
+    const filters = [];
+    let passthrough = false;
+    for (let i = 0; i < tokens.length; i++) {
+      const t = tokens[i];
+      if (t === '--') { passthrough = true; continue; }
+      if (passthrough) { if (!t.startsWith('-')) filters.push(t); continue; }
+      if (t === '-p' || t === '--package') { pkg = tokens[++i] ?? ''; continue; }
+      if (t.startsWith('--package=')) { pkg = t.slice('--package='.length); continue; }
+      if (t === '--lib') { target = 'lib'; continue; }
+      if (t === '--doc') { target = 'doc'; continue; }
+      if (t === '--bins') { target = 'bins'; continue; }
+      if (CARGO_TARGET_FLAGS.has(t)) { target = `${t.slice(2)}=${tokens[++i] ?? ''}`; continue; }
+      if (CARGO_VALUE_FLAGS.has(t)) { i++; continue; }
+      if (t.startsWith('-')) continue;
+      filters.push(t);
+    }
+    return `cargo-test:${cdPrefix(cmd)}:${pkg}:${target}:${filters.join(',')}`;
+  };
+  const goTestIdentifiers = (cmd) => {
+    const m = cmd.match(/\bgo\s+test\b([^|&;]*)/);
+    if (!m) return [];
+    const cd = cdPrefix(cmd);
+    const tokens = (m[1] ?? '').trim().split(/\s+/).filter(Boolean);
+    const ids = [];
+    let sawFileArg = false;
+    for (let i = 0; i < tokens.length; i++) {
+      const t = tokens[i];
+      if (t.startsWith('-')) {
+        const name = t.includes('=') ? t.slice(0, t.indexOf('=')) : t;
+        if (!t.includes('=') && GO_VALUE_FLAGS.has(name)) i++;
+        continue;
+      }
+      if (t.endsWith('.go')) { sawFileArg = true; continue; }
+      ids.push(`go-test:${cd}:${t}`);
+    }
+    if (ids.length === 0 && !sawFileArg) ids.push(`go-test:${cd}:.`);
+    return ids;
+  };
+  const cmd = command ?? '';
+  const found = [...(cmd.match(JS_TEST_FILE_RE) ?? [])];
+  for (const f of cmd.match(PY_FILE_RE) ?? []) if (isPythonTestPath(f)) found.push(f);
+  for (const f of cmd.match(RS_FILE_RE) ?? []) if (isRustTestPath(f)) found.push(f);
+  found.push(...(cmd.match(GO_TEST_FILE_RE) ?? []));
+  const cargoId = cargoTestIdentifier(cmd);
+  if (cargoId) found.push(cargoId);
+  found.push(...goTestIdentifiers(cmd));
+  return [...new Set(found)];
 }
+// <<< test-file-extraction
 
 function computeDerivedScore(dim, evidence) {
   const outcomes = dim.outcomes ?? [];

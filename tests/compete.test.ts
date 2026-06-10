@@ -3,7 +3,8 @@ import assert from 'node:assert';
 import fs from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
-import { compete, actionAutoSprint } from '../src/cli/commands/compete.js';
+import { compete } from '../src/cli/commands/compete.js';
+import { actionAutoSprint } from '../src/cli/commands/compete-reports.js';
 import { loadMatrix, saveMatrix } from '../src/core/compete-matrix.js';
 import type { CompeteMatrix, MatrixDimension } from '../src/core/compete-matrix.js';
 import type { CompetitorComparison, CompetitorScanOptions } from '../src/core/competitor-scanner.js';
@@ -711,9 +712,10 @@ describe('compete --auto (actionAutoSprint)', () => {
     assert.strictEqual(result.action, 'auto');
   });
 
-  it('loop runs multiple cycles — _runInferno called once per cycle', async () => {
+  it('loop runs multiple cycles — _runInferno called on each BREADTH wave (depth waves run validate)', async () => {
     let infernoCallCount = 0;
-    // Matrix with 2 open dimensions — loop should run 2 cycles
+    // Matrix with 2 open dimensions — loop should run 3 cycles (Depth Doctrine alternation:
+    // cycle 1 breadth → inferno, cycle 2 depth → validate, cycle 3 breadth → inferno)
     const matrix2: CompeteMatrix = {
       project: 'test',
       overallSelfScore: 5.0,
@@ -742,14 +744,17 @@ describe('compete --auto (actionAutoSprint)', () => {
 
     await actionAutoSprint({
       cwd: tmpDir2,
-      maxCycles: 2,
+      maxCycles: 3,
       _loadMatrix: async () => JSON.parse(JSON.stringify(matrix2)) as CompeteMatrix,
       _saveMatrix: async () => {},
       _runInferno: async () => { infernoCallCount++; },
       _postSprintScore: async () => makeScoreResult(6.0), // not closing the gap (6.0 < 8.0)
       _stdout: () => {},
     }, tmpDir2);
-    assert.strictEqual(infernoCallCount, 2, '_runInferno should be called once per cycle');
+    // Wave alternation is the Depth Doctrine's contract: breadth (inferno) on cycles 1 and 3,
+    // depth (validate, no inferno) on cycle 2. A count of 3 would mean depth waves stopped
+    // running receipts; a count of 1 would mean the loop stopped looping.
+    assert.strictEqual(infernoCallCount, 2, '_runInferno should run on the two BREADTH waves of 3 cycles');
   });
 
   it('loop stops early when all gaps closed before maxCycles', async () => {

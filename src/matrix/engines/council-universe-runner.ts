@@ -325,6 +325,15 @@ export async function runCouncilUniversePhase(
   const brief = opts.projectBrief ?? await resolveProjectBrief(projectPath);
   logger.info(`[universe] Researching ${toResearch.length} dims for "${brief.projectName}" (identity: ${brief.source}) across ${researchers.length} member(s): ${researchers.join(', ')}`);
 
+  // Single-member DEGRADED mode: cross-member verification requires a second member (a researcher
+  // must never verify its own output — builder-never-judges). With one member, degrade HONESTLY:
+  // research still runs, verification is skipped, and the absence of a verdict file IS the
+  // unverified marking downstream gates read (outcome-proposal extraction refuses unverified files).
+  const effectiveSkipVerify = skipVerify || researchers.length < 2;
+  if (effectiveSkipVerify && !skipVerify) {
+    logger.warn(`[universe] DEGRADED: only 1 researcher (${researchers[0]}) — cross-member verification is impossible, so every universe file from this run is UNVERIFIED (no verdict file). Add a second council member to verify; ladders from this run should be treated as provisional.`);
+  }
+
   const assignments = toResearch.map(
     (t, i) => ({ memberId: researchers[i % researchers.length] as 'claude-code' | 'codex', target: t }),
   );
@@ -340,8 +349,8 @@ export async function runCouncilUniversePhase(
     result.written.push(target.dimId);
     logger.info(`[universe] ✓ ${target.dimId} (${memberId})`);
 
-    // Phase 2: verify (skip if opted out)
-    if (skipVerify) return;
+    // Phase 2: verify (skip if opted out OR single-member degraded mode — see above)
+    if (effectiveSkipVerify) return;
 
     const verifier = assignVerifier(memberId);
     onProgress?.(target.dimId, 'verifying', verifier);

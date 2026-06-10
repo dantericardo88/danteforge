@@ -27,6 +27,7 @@ function run(matrix: CompeteMatrix, opts: { dryRun?: boolean } = {}) {
     _writeFile: async () => { /* no-op: no cap-test stubs in this suite */ },
     _writeMatrix: async (m) => { written = m; },
     _createTimeMachineCommit: null, // disable Time Machine in tests
+    _detectProbes: () => [], // isolate from real-disk product-probe detection
   }).then(result => ({ result, written, matrix }));
 }
 

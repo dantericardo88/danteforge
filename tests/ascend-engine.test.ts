@@ -2,6 +2,9 @@
 
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
+import fs from 'node:fs/promises';
+import os from 'node:os';
+import path from 'node:path';
 import {
   classifyDimensions,
   getNextSprintDimension,
@@ -301,9 +304,14 @@ describe('AscendEngineOptions — Sprint 49 executeMode', () => {
   it('executeMode: advisory does NOT call _executeCommand (default behavior preserved)', async () => {
     const { runAscend } = await import('../src/core/ascend-engine.js');
 
+    // Isolated cwd: the Phase-E proposal flow deliberately materializes the matrix to DISK at cwd
+    // (ensureMatrixOnDisk bypasses _saveMatrix — "proposal flow is the single writer"), and
+    // saveMatrix's test-isolation guard rightly refuses to write the live repo matrix from a test.
+    const cwd = await fs.mkdtemp(path.join(os.tmpdir(), 'df-ascend-adv-'));
     const executeCalls: string[] = [];
     await runAscend({
       yes: true,
+      cwd,
       executeMode: 'advisory',
       maxCycles: 1,
       _loadMatrix: async () => ({
@@ -339,9 +347,12 @@ describe('AscendEngineOptions — Sprint 49 executeMode', () => {
   it('executeMode: forge calls _executeCommand with forge goal string', async () => {
     const { runAscend } = await import('../src/core/ascend-engine.js');
 
+    // Isolated cwd — same reason as the advisory test above.
+    const cwd = await fs.mkdtemp(path.join(os.tmpdir(), 'df-ascend-forge-'));
     const executeCalls: string[] = [];
     await runAscend({
       yes: true,
+      cwd,
       executeMode: 'forge',
       maxCycles: 1,
       _loadMatrix: async () => ({

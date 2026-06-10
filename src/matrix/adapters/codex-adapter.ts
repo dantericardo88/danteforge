@@ -18,6 +18,7 @@ import fs from 'node:fs/promises';
 import path from 'node:path';
 import os from 'node:os';
 import { logger } from '../../core/logger.js';
+import { trackChild, untrackChild, killTree } from '../../core/process-tree.js';
 import { withCliSlot } from '../../core/cli-semaphore.js';
 import { killProcess } from './kill-process.js';
 import { matchesAnyGlob } from '../util/glob.js';
@@ -435,14 +436,21 @@ function runChild(
   // Fleet governor: shared CLI slot held for the child's lifetime (per-account limit).
   return withCliSlot(() => new Promise<number>((resolve) => {
     const child: CodexChildLike = spawnFn(cmd, args, opts);
+    // Track the builder so a parent exit/interrupt tree-kills it — the fleet found builder
+    // agents alive after a clean parent exit because adapter children were never registered.
+    const pid = (child as { pid?: number }).pid;
+    trackChild(pid);
     let settled = false;
     const settle = (code: number) => {
       if (settled) return;
       settled = true;
       clearTimeout(timer);
+      untrackChild(pid);
       resolve(code);
     };
     const timer = setTimeout(() => {
+      // Tree-kill: the CLI spawns its own helpers; killing only the direct child orphans them.
+      killTree(pid);
       killProcess(child);
       settle(124);
     }, timeoutMs);

@@ -7,27 +7,37 @@
 // tree. This module kills the whole tree, and registers exit/interrupt cleanup so an unattended run
 // (or a Ctrl-C) can't leave a forest of orphans behind.
 
-import { spawn } from 'node:child_process';
+import { spawn, spawnSync } from 'node:child_process';
 
 const active = new Set<number>();
 let handlersRegistered = false;
 
-/** Kill `pid` and all of its descendants. Best-effort, never throws. */
-export function killTree(pid: number | undefined): void {
+/** Kill `pid` and all of its descendants. Best-effort, never throws.
+ *  `sync` forces a BLOCKING kill — required inside a process 'exit' handler, where an async
+ *  spawn may never get to exec before the parent dies (the DanteAgents leak: 8 builder agents
+ *  survived a clean parent exit because the detached taskkill was dropped at teardown). */
+export function killTree(pid: number | undefined, sync = false): void {
   if (pid === undefined) return;
   try {
     if (process.platform === 'win32') {
-      // taskkill /T kills the entire tree; /F forces it. Detached + ignored stdio so it can't hang us.
-      spawn('taskkill', ['/pid', String(pid), '/T', '/F'], { stdio: 'ignore', windowsHide: true, detached: true }).unref();
+      // taskkill /T kills the entire tree; /F forces it.
+      if (sync) {
+        spawnSync('taskkill', ['/pid', String(pid), '/T', '/F'], { stdio: 'ignore', windowsHide: true, timeout: 10_000 });
+      } else {
+        spawn('taskkill', ['/pid', String(pid), '/T', '/F'], { stdio: 'ignore', windowsHide: true, detached: true }).unref();
+      }
     } else {
       // POSIX: children are spawned in their own process group (detached), so -pid kills the group.
+      // process.kill is synchronous already — safe in 'exit' handlers as-is.
       try { process.kill(-pid, 'SIGKILL'); } catch { try { process.kill(pid, 'SIGKILL'); } catch { /* gone */ } }
     }
   } catch { /* best-effort */ }
 }
 
 function cleanupAll(): void {
-  for (const pid of active) killTree(pid);
+  // Synchronous kills: this runs from 'exit'/signal handlers where the event loop is done —
+  // an async taskkill would be silently dropped and the tree would orphan.
+  for (const pid of active) killTree(pid, true);
   active.clear();
 }
 
