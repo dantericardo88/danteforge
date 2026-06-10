@@ -20,6 +20,7 @@ import { ClaudeCodeAdapter } from '../adapters/claude-code-adapter.js';
 import { runAdapter } from '../adapters/adapter-interface.js';
 import type { WorkPacket } from '../types/work-graph.js';
 import { makeReadOnlyLease } from './council-worktree.js';
+import { resolveProjectBrief, type ProjectResearchBrief } from './project-research-brief.js';
 
 export interface ProposedOutcome {
   id: string;
@@ -62,6 +63,8 @@ export interface ProposalOptions {
   existingOutcomeIds?: string[];
   extractor: 'claude-code' | 'codex';
   timeoutMs?: number;
+  /** WHO the tests are for. Default: resolved from the TARGET repo's own artifacts. */
+  projectBrief?: ProjectResearchBrief;
   _runAdapter?: typeof runAdapter;
 }
 
@@ -105,6 +108,7 @@ function makeExtractionPacket(
   universeContent: string,
   existingCapabilityTest: ProposalOptions['existingCapabilityTest'],
   existingOutcomeIds: string[],
+  brief: ProjectResearchBrief,
 ): WorkPacket {
   const capTestNote = existingCapabilityTest
     ? `Already has capability_test: "${existingCapabilityTest.command}" — set proposedCapabilityTest to null.`
@@ -118,17 +122,17 @@ function makeExtractionPacket(
     id: `universe-propose.${dimId}.${Date.now()}`,
     dimensionId: dimId,
     objective: [
-      `You are a capability-test extractor for the **${dimName}** dimension of DanteForge.`,
+      `You are a capability-test extractor for the **${dimName}** dimension of **${brief.projectName}**.`,
       ``,
-      `CONTEXT: DanteForge is a provider-agnostic AI coding assistant optimizer — a meta-layer applied ON TOP OF`,
-      `Claude Code, Codex, Cursor, Aider, Grok Build, etc. Tests must prove DanteForge's OPTIMIZER capability,`,
-      `not the underlying coding assistant. Tests run against the DanteForge TypeScript/Node.js codebase.`,
+      `CONTEXT (who the tests must prove a capability FOR):`,
+      ...brief.contextLines,
+      `Tests must prove **${brief.projectName}**'s OWN capability and run against ITS codebase in this repository.`,
       ``,
       `A verified competitive universe file exists. Extract runnable shell tests from it.`,
       `These tests will be run by \`danteforge validate ${dimId}\` to lift score ceilings above 7.0.`,
       ``,
       `## Rules for proposed commands`,
-      `- Run from repo root (e.g. X:\\Projects\\DanteForge)`,
+      `- Run from the repo root (the directory containing .danteforge/)`,
       `- Deterministic: no external network calls, no LLM — or short timeout (≤60s)`,
       `- Exit 0 on success, non-zero on failure`,
       `- shell: npm scripts, npx tsx, node scripts — check exit code`,
@@ -172,7 +176,7 @@ function makeExtractionPacket(
       '```',
       ``,
       `Propose 2–4 outcomes. Use real commands from the universe file's "Builder checklist" and "Judge scoring criteria".`,
-      `Only use commands that would actually work in this TypeScript Node.js project.`,
+      `Only use commands that would actually work in THIS repository's language/toolchain (inspect it — do not assume Node.js).`,
     ].join('\n'),
     acceptanceCriteria: ['Output contains a capability-proposals JSON block'],
     proof: { proofRequired: ['capability-proposals JSON block present'] },
@@ -225,7 +229,10 @@ export async function extractCapabilityProposals(opts: ProposalOptions): Promise
     _runAdapter: _run = runAdapter,
   } = opts;
 
-  const workPacket = makeExtractionPacket(dimId, dimName, universeContent, existingCapabilityTest, existingOutcomeIds);
+  // Identity comes from the TARGET repo, never assumed: proposing "prove DanteForge's optimizer
+  // capability" tests against a security tool's codebase yields wrong-product outcomes.
+  const brief = opts.projectBrief ?? await resolveProjectBrief(projectPath);
+  const workPacket = makeExtractionPacket(dimId, dimName, universeContent, existingCapabilityTest, existingOutcomeIds, brief);
   const lease = makeReadOnlyLease(projectPath, 'universe-propose');
   const adapter = makeExtractorAdapter(extractor, workPacket);
 

@@ -25,6 +25,7 @@ import {
   assignVerifier,
 } from './council-universe-verifier.js';
 import type { CouncilMemberId } from './council-scheduler.js';
+import { resolveProjectBrief, type ProjectResearchBrief } from './project-research-brief.js';
 
 export interface UniverseTarget {
   dimId: string;
@@ -53,6 +54,9 @@ export interface UniverseResearchOptions {
   maxRetries?: number;
   /** Progress callback */
   onProgress?: (dimId: string, status: 'started' | 'done' | 'failed' | 'verifying' | 'verified' | 'revision', researcher: string) => void;
+  /** WHO the research is for. Default: resolved from the TARGET repo's own artifacts
+   *  (project-intent.json / manifest / README) — never assume DanteForge's identity. */
+  projectBrief?: ProjectResearchBrief;
   /** Injection seam for tests */
   _runAdapter?: typeof runAdapter;
 }
@@ -84,11 +88,11 @@ function hasMinimumSources(output: string): boolean {
   return rows.length >= 2;
 }
 
-function makeUniversePacket(target: UniverseTarget, researcher: string, revisionNotes?: string[]): WorkPacket {
+export function makeUniversePacket(target: UniverseTarget, researcher: string, brief: ProjectResearchBrief, revisionNotes?: string[]): WorkPacket {
   const timestamp = new Date().toISOString();
   const ossHint = target.ossLeader
     ? `Known OSS leader to study in depth: **${target.ossLeader}**`
-    : 'Find the best OSS tool for this dimension yourself (e.g. Aider, OpenHands, CrewAI, MetaGPT, SWE-agent, AutoGen, Codex).';
+    : `Find the best OSS tool for this dimension yourself, in ${brief.projectName}'s own domain.`;
 
   const revisionSection = revisionNotes && revisionNotes.length > 0
     ? [
@@ -103,20 +107,10 @@ function makeUniversePacket(target: UniverseTarget, researcher: string, revision
     id: `universe.${target.dimId}.${Date.now()}`,
     dimensionId: target.dimId,
     objective: [
-      `Research the **${target.dimName}** dimension for **DanteForge**. Act as a competitive intelligence analyst.`,
+      `Research the **${target.dimName}** dimension for **${brief.projectName}**. Act as a competitive intelligence analyst.`,
       ``,
       `## CRITICAL CONTEXT — read before researching`,
-      `DanteForge is a **provider-agnostic AI coding assistant optimizer and skillset**.`,
-      `It is NOT a standalone coding assistant. It is a meta-layer that can be applied ON TOP OF:`,
-      `Claude Code, Codex (OpenAI), Grok Build, Cursor, Aider, QwenCoder, Goose, DanteCode, and any future AI coding tool.`,
-      ``,
-      `DanteForge's job: make ANY AI coding assistant dramatically better through structured specs,`,
-      `multi-agent orchestration, wave-based execution, hard gates, skills, lessons, and self-improvement loops.`,
-      ``,
-      `When researching OSS leaders for "${target.dimName}", look for:`,
-      `- Tools that ORCHESTRATE or OPTIMIZE other AI agents (not just tools that write code themselves)`,
-      `- Multi-agent frameworks, eval harnesses, skill systems, workflow engines applied to AI coding`,
-      `- The best published techniques for "${target.dimName}" that a meta-layer tool could implement`,
+      ...brief.contextLines,
       ``,
       `Current score: ${target.currentScore}/10. Target: 9+.`,
       ossHint,
@@ -124,16 +118,17 @@ function makeUniversePacket(target: UniverseTarget, researcher: string, revision
       ``,
       `## Research tasks`,
       ``,
-      `1. **GitHub** — Find the top 1-2 OSS tools or frameworks for "${target.dimName}" in the AI agent / AI coding optimizer space.`,
+      `1. **GitHub** — Find the top 1-2 OSS tools or frameworks for "${target.dimName}" in ${brief.projectName}'s domain (per the CRITICAL CONTEXT above).`,
       `   Read their README and 2-3 key source files to understand their implementation approach.`,
       `   Name specific functions, algorithms, or patterns they use.`,
       ``,
-      `2. **Reddit** — Search r/MachineLearning, r/LocalLLaMA, r/ChatGPT, r/ClaudeAI, r/aipromptengineering`,
-      `   for complaints, feature requests, and praise about "${target.dimName}" in AI coding tools.`,
+      `2. **Reddit** — Search the subreddits where ${brief.projectName}'s actual users live (pick by domain — e.g. AI coding:`,
+      `   r/MachineLearning, r/LocalLLaMA, r/ClaudeAI; security: r/netsec, r/AskNetsec; devops: r/devops) for complaints,`,
+      `   feature requests, and praise about "${target.dimName}".`,
       ``,
-      `3. **Twitter/X and HN** — Find developer commentary on "${target.dimName}" for AI coding orchestration tools.`,
+      `3. **Twitter/X and HN** — Find developer commentary on "${target.dimName}" for tools in ${brief.projectName}'s category.`,
       ``,
-      `4. **Technical papers or blog posts** — any canonical papers or posts about "${target.dimName}" for AI agents or multi-agent systems.`,
+      `4. **Technical papers or blog posts** — any canonical papers or posts about "${target.dimName}" in this domain.`,
       ``,
       `## Required output`,
       ``,
@@ -225,13 +220,14 @@ async function runDimUniverse(
   timeoutMs: number,
   maxRetries: number,
   _run: typeof runAdapter,
+  brief: ProjectResearchBrief,
   onProgress?: UniverseResearchOptions['onProgress'],
   revisionNotes?: string[],
 ): Promise<string | null> {
   onProgress?.(target.dimId, 'started', memberId);
 
   for (let attempt = 0; attempt <= maxRetries; attempt++) {
-    const workPacket = makeUniversePacket(target, memberId, revisionNotes);
+    const workPacket = makeUniversePacket(target, memberId, brief, revisionNotes);
     const lease = makeReadOnlyLease(projectPath, 'universe-research');
     const adapter = makeAdapter(memberId, workPacket);
 
@@ -324,7 +320,10 @@ export async function runCouncilUniversePhase(
     return result;
   }
 
-  logger.info(`[universe] Researching ${toResearch.length} dims across ${researchers.length} member(s): ${researchers.join(', ')}`);
+  // Resolve WHO the research is for from the TARGET repo's own artifacts — researching another
+  // repo's dims under DanteForge's hardcoded identity produced wrong-product Score Ladders.
+  const brief = opts.projectBrief ?? await resolveProjectBrief(projectPath);
+  logger.info(`[universe] Researching ${toResearch.length} dims for "${brief.projectName}" (identity: ${brief.source}) across ${researchers.length} member(s): ${researchers.join(', ')}`);
 
   const assignments = toResearch.map(
     (t, i) => ({ memberId: researchers[i % researchers.length] as 'claude-code' | 'codex', target: t }),
@@ -332,7 +331,7 @@ export async function runCouncilUniversePhase(
 
   const tasks = assignments.map(({ memberId, target }) => async () => {
     // Phase 1: research
-    const output = await runDimUniverse(memberId, target, projectPath, timeoutMs, maxRetries, _run, onProgress);
+    const output = await runDimUniverse(memberId, target, projectPath, timeoutMs, maxRetries, _run, brief, onProgress);
     if (output === null) {
       result.failed.push(target.dimId);
       return;
@@ -371,7 +370,7 @@ export async function runCouncilUniversePhase(
       logger.info(`[universe] ${target.dimId} needs revision — re-invoking ${memberId} with notes`);
 
       const revisedOutput = await runDimUniverse(
-        memberId, target, projectPath, timeoutMs, 1, _run, undefined,
+        memberId, target, projectPath, timeoutMs, 1, _run, brief, undefined,
         verifyResult.suggestedFixes,
       );
 
