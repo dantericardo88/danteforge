@@ -10,6 +10,7 @@ import type {
 // Runtime-only circular import: writeVerifiedScore is called inside function bodies, never at
 // module load, so the binding is always resolved by the time it runs.
 import { writeVerifiedScore } from './write-verified-score.js';
+import { MARKET_CAPPED_DIMS, MARKET_DIM_MAX_SCORE } from './market-dims.js';
 
 // ── Priority Constants ────────────────────────────────────────────────────────
 
@@ -146,9 +147,10 @@ export function computeTwoGaps(
   };
 }
 
-/** Market dims: internal evidence cannot certify adoption/enterprise scores above 5.0. */
-export const MARKET_DIMS_SCORE_CAP = new Set(['community_adoption', 'enterprise_readiness']);
-export const MARKET_DIM_MAX_SCORE = 5.0;
+/** Market dims: internal evidence cannot certify adoption/enterprise/token-spend scores above 5.0.
+ *  Canonical set lives in market-dims.ts — re-exported here under the legacy names. */
+export const MARKET_DIMS_SCORE_CAP = MARKET_CAPPED_DIMS;
+export { MARKET_DIM_MAX_SCORE };
 
 /**
  * The single canonical clamp every `scores.self` write must pass through.

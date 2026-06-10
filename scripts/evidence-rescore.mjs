@@ -17,9 +17,10 @@ const TIER_SCORE_CAPS = {
 };
 const TIER_ORDER = ['T0', 'T1', 'T2', 'T3', 'T4', 'T5', 'T6', 'T7', 'T8'];
 const MIN_T7_HIGH_TIER_OUTCOMES = 3;
-// Market dims: internal evidence cannot certify adoption/enterprise scores above 5.0.
-// Mirrors MARKET_DIMS + MARKET_DIM_IMPLEMENTATION_CAP in src/core/derived-score.ts.
-const MARKET_DIMS = new Set(['community_adoption', 'enterprise_readiness']);
+// Market dims: internal evidence cannot certify adoption/enterprise/token-spend scores above 5.0.
+// Mirrors MARKET_CAPPED_DIMS + MARKET_DIM_MAX_SCORE in src/core/market-dims.ts (the canonical
+// contract); tests/evidence-rescore-drift.test.ts pins this mirror to that file.
+const MARKET_DIMS = new Set(['community_adoption', 'enterprise_readiness', 'token_economy']);
 const MARKET_DIM_CAP = 5.0;
 
 // ── Load evidence ────────────────────────────────────────────────────────────

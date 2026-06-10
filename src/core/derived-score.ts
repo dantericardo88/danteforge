@@ -19,6 +19,7 @@
 import { TIER_SCORE_CAPS, isEvidenceStale, type CapabilityTier } from '../matrix/types/capability-test.js';
 import { isOutcomePassing, makeEvidenceKey, type Outcome, type OutcomeEvidence } from '../matrix/types/outcome.js';
 import { classifyOutcomeKind } from '../matrix/engines/outcome-quality.js';
+import { MARKET_CAPPED_DIMS, MARKET_DIM_MAX_SCORE } from './market-dims.js';
 
 // ── Inputs ───────────────────────────────────────────────────────────────────
 
@@ -47,10 +48,10 @@ const MIN_T7_HIGH_TIER_OUTCOMES = 3;
 
 /**
  * Dims bounded by external/market signals, not internal tests.
- * Internal evidence cannot exceed MARKET_DIM_IMPLEMENTATION_CAP.
+ * Internal evidence cannot exceed the market cap. Canonical set: market-dims.ts.
  */
-const MARKET_DIMS = new Set(['community_adoption', 'enterprise_readiness']);
-const MARKET_DIM_IMPLEMENTATION_CAP = 5.0;
+const MARKET_DIMS = MARKET_CAPPED_DIMS;
+const MARKET_DIM_IMPLEMENTATION_CAP = MARKET_DIM_MAX_SCORE;
 
 /** Extract test file paths from a command string. Used for cross-dim sharing detection.
  *  Includes directory separators so `tests/a/x.test.ts` and `tests/b/x.test.ts` are distinct.

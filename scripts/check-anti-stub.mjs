@@ -54,6 +54,8 @@ const fullyExemptFiles = [
   'integrity-audit.ts',               // score integrity auditor — stores stub patterns as detection data
   'matrix-build-subagent-prompt.ts',   // generates sub-agent prompts that describe anti-patterns by design
   'pre-commit.mjs',                    // depth-doctrine guard — defines the patterns it enforces
+  'meta-solver.ts',                    // solver no-stub gate — stores stub/lie patterns as detection data
+  'capability-test-conduct.ts',        // conductor CLI — documents the literal STUB sensitivity verdict it polices
 ];
 
 // Files exempt from expanded pattern checks only (config, doctrine, docs, code-review tools)

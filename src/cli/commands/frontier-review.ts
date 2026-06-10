@@ -173,7 +173,7 @@ function tierNum(tier: string): number {
  * or that a receipt actually passed — so we bind each declared real-user-path outcome to its evidence
  * entry (via makeEvidenceKey) and require, from the EVIDENCE: >=min_t5_plus_outcomes passing T5+
  * receipts across >=min_distinct_sessions distinct session_ids, with none failing. A declared outcome
- * with NO evidence at this SHA is NOT a receipt (the old code surfaced it as a fake passed:true). This
+ * with NO evidence at this SHA is NOT a receipt (the old code surfaced it as a fabricated passed:true). This
  * mirrors derived-score's structural T7 veto so a single staged fixture cannot reach the court.
  */
 async function gatherReceipts(

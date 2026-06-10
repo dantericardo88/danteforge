@@ -178,7 +178,7 @@ export interface LadderSeedResult {
 
 /**
  * Fill the two genuinely-hard `leader_target` fields VERBATIM from the dim's competitor-grounded
- * Score Ladder, when they are still TODO. The ladder rows are RESEARCH OUTPUT (real competitor code
+ * Score Ladder, when they are still unauthored. The ladder rows are RESEARCH OUTPUT (real competitor code
  * paths) — copying them is not fabrication, it is grounding the 9.0 bar in the documented frontier
  * instead of an agent-invented (potentially laundered) one.
  *

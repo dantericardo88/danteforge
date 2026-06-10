@@ -14,6 +14,7 @@
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import { extractPrimaryTestFiles } from '../../core/derived-score.js';
+import { MARKET_CAPPED_DIMS } from '../../core/market-dims.js';
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -48,7 +49,7 @@ const HIGH_TIERS = new Set(['T5', 'T6', 'T7', 'T8']);
 // The orphan (production-wiring) check applies from T4 up — T4 IS the
 // "production callsite wired" tier, so an unwired T4+ callsite is a violation.
 const T4_PLUS = new Set(['T4', 'T5', 'T6', 'T7', 'T8']);
-const MARKET_DIMS = new Set(['community_adoption', 'enterprise_readiness']);
+const MARKET_DIMS = MARKET_CAPPED_DIMS; // canonical set — src/core/market-dims.ts
 
 const SEAM_PATTERNS = [
   /_cipCheck/,

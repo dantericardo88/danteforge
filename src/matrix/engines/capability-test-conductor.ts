@@ -16,9 +16,11 @@
 import type { YardstickAudit } from './capability-test-integrity.js';
 import type { AuthorResult } from './capability-test-author.js';
 import type { SensitivityVerdict } from './capability-test-sensitivity.js';
+import { MARKET_CAPPED_DIMS } from '../../core/market-dims.js';
 
-/** Dimensions whose 9.0 needs real external adoption/telemetry — honestly capped at 5.0, never authored. */
-export const MARKET_CAPPED_DIMS = new Set(['token_economy', 'enterprise_readiness', 'community_adoption']);
+/** Dimensions whose 9.0 needs real external adoption/telemetry — honestly capped at 5.0, never authored.
+ *  Re-exported from the canonical contract so the conductor and the scoring kernel can never drift. */
+export { MARKET_CAPPED_DIMS };
 
 export type RemediationAction = 'PROCEED' | 'AUTHOR_YARDSTICK' | 'RESEARCH_LADDER' | 'CEILING';
 

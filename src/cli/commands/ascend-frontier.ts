@@ -14,6 +14,7 @@ import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import { logger } from '../../core/logger.js';
 import { loadMatrix, type CompeteMatrix } from '../../core/compete-matrix.js';
+import { MARKET_CAPPED_DIMS } from '../../core/market-dims.js';
 import { effectiveDimScore } from '../../core/compete-matrix-score.js';
 import { effectiveStatus, resolveRunCommand, checkFrontierSpec, type FrontierSpec } from '../../core/frontier-spec.js';
 import { loadDimRubric } from '../../core/rubric-ladder.js';
@@ -26,7 +27,7 @@ import { RunLedger } from '../../core/run-ledger.js';
 import { runCli, parseCourtOutput, setActiveLedger, type CliResult } from './ascend-frontier-runner.js';
 
 const execFileAsync = promisify(execFile);
-const MARKET_DIMS = new Set(['community_adoption', 'enterprise_readiness']);
+const MARKET_DIMS = MARKET_CAPPED_DIMS; // canonical set — src/core/market-dims.ts
 
 /**
  * A push runner reports the court verdict and the fingerprint of the evidence it produced.

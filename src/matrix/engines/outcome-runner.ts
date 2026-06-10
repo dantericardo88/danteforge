@@ -22,6 +22,7 @@ import {
   type OutcomeEvidenceEntry,
 } from '../types/outcome.js';
 import { isEvidenceStale } from '../types/capability-test.js';
+import { MARKET_CAPPED_DIMS } from '../../core/market-dims.js';
 
 const execFileAsync = promisify(execFile);
 const OUTCOME_EVIDENCE_DIR = path.join('.danteforge', 'outcome-evidence');
@@ -348,7 +349,7 @@ const SEAM_PATTERNS_RT = [
   /_discover/, /_loadMatrix/, /_runAdapter/,
   /jest\.mock\(/, /vi\.mock\(/, /sinon\.stub\(/, /sinon\.mock\(/,
 ];
-const MARKET_DIMS_RT = new Set(['community_adoption', 'enterprise_readiness']);
+const MARKET_DIMS_RT = MARKET_CAPPED_DIMS; // canonical set — src/core/market-dims.ts
 
 /** Regex matching test file paths in shell commands (mirrors extractPrimaryTestFiles in derived-score.ts). */
 const TEST_FILE_RE = /[\w./-]+\.test\.[jt]sx?/g;
