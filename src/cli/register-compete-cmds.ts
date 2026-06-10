@@ -210,9 +210,21 @@ program
   });
 
 program
+  .command('enterprise-readiness')
+  .description('Generate the enterprise-readiness assessment report (json | markdown | html)')
+  .option('--format <fmt>', 'Report format: json | markdown | html', 'json')
+  .option('--output <path>', 'Write the report to a file instead of stdout')
+  .action(async (opts) => {
+    // Wired by the import-graph reachability audit: this command file existed but no registrar
+    // imported it, so its production callsite (core/enterprise-readiness.ts) was a true orphan.
+    const { enterpriseReadiness } = await import('./commands/enterprise-readiness.js');
+    await enterpriseReadiness({ format: opts.format as 'json' | 'markdown' | 'html', output: opts.output as string | undefined });
+  });
+
+program
   .command('ascend')
   .alias('auto-improve')
-  .description('Autonomous quality ascent: drives all achievable competitive dimensions to target (default 9.0/10)')
+  .description('LEGACY autonomous ascent loop. For the maintained one-command chain (cold-repo define → build-to-7 → court-gated 9.0) prefer: danteforge ascend-frontier')
   .option('--target <n>', 'target score for all dimensions (0-10)', parseFloat, 9.0)
   .option('--max-cycles <n>', 'max total improvement cycles', parseInt, 60)
   .option('--dry-run', 'print plan without executing')

@@ -20,6 +20,13 @@ import {
   SEAM_PATTERNS_BY_LANG,
 } from './test-file-patterns.js';
 import { MARKET_CAPPED_DIMS } from '../../core/market-dims.js';
+import {
+  buildImportReachability,
+  isCallsiteReachable,
+  isJsTsCallsite,
+  type ImportReachabilityResult,
+} from './import-graph.js';
+import { logger } from '../../core/logger.js';
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -49,6 +56,10 @@ export interface IntegrityReport {
    *  (none of JS/Python/Rust/Go). Fail-closed: we cannot verify seam-freedom, so the
    *  evidence is tagged INFERRED by the runner — silence must not read as cleanliness. */
   unscannableDims: string[];
+  /** Set when the JS/TS import-graph reachability check could not run (no resolvable
+   *  entrypoints, parse failure, or budget exhausted) and the orphan check fell back to
+   *  basename matching for JS/TS callsites — wiring precision was degraded this audit. */
+  wiringGraphDegraded?: string;
   clean: boolean;
 }
 
@@ -150,6 +161,29 @@ export async function checkOutcomeIntegrity(
   const unscannableDimSet = new Set<string>();
   // Lazily built (only when a T4+ outcome with a callsite needs the orphan check).
   let wiredBasenames: Set<string> | null = null;
+  // Import-graph reachability for JS/TS callsites — built ONCE per audit (memoized),
+  // bounded by the same budget as the hardener's orphan scan (env-tunable, read at
+  // call time so operators and tests can adjust without a rebuild).
+  let reachability: ImportReachabilityResult | null = null;
+  let wiringGraphDegraded: string | undefined;
+  const getReachability = async (): Promise<ImportReachabilityResult> => {
+    if (reachability === null) {
+      const budgetMs = Number(process.env['DANTEFORGE_HARDEN_ORPHAN_TIMEOUT_MS'] ?? 90_000);
+      const maxFiles = Number(process.env['DANTEFORGE_HARDEN_ORPHAN_MAX_FILES'] ?? 20_000);
+      reachability = await buildImportReachability(projectPath, {
+        deadlineMs: Date.now() + budgetMs,
+        maxFiles,
+      });
+      if (!reachability.ok) {
+        wiringGraphDegraded = reachability.reason;
+        logger.verbose(
+          `orphan wiring check: import-graph precision degraded (${reachability.reason}) — ` +
+          `using basename matching for JS/TS callsites this audit`,
+        );
+      }
+    }
+    return reachability;
+  };
 
   // Map: testFile -> [(dimId, outcomeId), ...]  for T5+ outcomes
   const fileToOutcomes = new Map<string, Array<{ dimId: string; outcomeId: string }>>();
@@ -160,19 +194,37 @@ export async function checkOutcomeIntegrity(
     for (const outcome of outcomes) {
       const command = outcome.command ?? '';
 
-      // Orphan (production-wiring) check — T4+. A required_callsite that is never imported by any
-      // production (non-test) src file is an orphan: it may have a passing seam-free test, but the
-      // capability isn't wired into the product, so it can't honestly claim T4+. (The coupling +
-      // seam checks below only prove the TEST exercises the module — not that PRODUCTION calls it.)
+      // Orphan (production-wiring) check — T4+. A required_callsite not wired into production is an
+      // orphan: it may have a passing seam-free test, but the capability isn't part of the product,
+      // so it can't honestly claim T4+. (The coupling + seam checks below only prove the TEST
+      // exercises the module — not that PRODUCTION calls it.)
+      //
+      // JS/TS callsites get the PRECISION check: wired means REACHABLE from a production entrypoint
+      // through the static import graph — a basename appearing in a test-only import, an unconsumed
+      // re-export barrel, or an unreachable file no longer counts. Python/Rust/Go callsites stay on
+      // the language-aware basename check (buildWiredBasenames). When the graph cannot be built,
+      // JS/TS degrades to the basename check too — the audit always completes, never hard-fails.
       const cs = outcome.required_callsite;
       if (T4_PLUS.has(outcome.tier) && cs && !cs.startsWith('tests/') && !cs.endsWith('.test.ts')) {
-        if (wiredBasenames === null) wiredBasenames = await buildWiredBasenames(projectPath);
-        const base = path.basename(cs).replace(/\.([cm]?[jt]sx?|py|rs|go)$/, '');
-        if (!wiredBasenames.has(base)) {
+        let wired: boolean | null = null;
+        let unwiredWhy = 'is not imported by any production (non-test) src file — an orphan (unwired)';
+        if (isJsTsCallsite(cs)) {
+          const r = await getReachability();
+          if (r.ok) {
+            wired = isCallsiteReachable(r, projectPath, cs);
+            const roots = r.entrypoints.slice(0, 3).join(', ') + (r.entrypoints.length > 3 ? ', …' : '');
+            unwiredWhy = `is not reachable from any production entrypoint (${roots}) through the static import graph — an orphan (unwired; a basename match in a test-only import or an unconsumed barrel does not count)`;
+          }
+        }
+        if (wired === null) {
+          if (wiredBasenames === null) wiredBasenames = await buildWiredBasenames(projectPath);
+          wired = wiredBasenames.has(path.basename(cs).replace(/\.([cm]?[jt]sx?|py|rs|go)$/, ''));
+        }
+        if (!wired) {
           orphanDimSet.add(dim.id);
           violations.push({
             kind: 'ORPHAN_CALLSITE', severity: 'ERROR', dimId: dim.id, outcomeId: outcome.id,
-            detail: `Outcome "${outcome.id}" required_callsite "${cs}" is not imported by any production (non-test) src file — an orphan (unwired). Unwired code cannot honestly claim T4+; capped at 7.0 until it is wired into the product or the outcome is downgraded.`,
+            detail: `Outcome "${outcome.id}" required_callsite "${cs}" ${unwiredWhy}. Unwired code cannot honestly claim T4+; capped at 7.0 until it is wired into the product or the outcome is downgraded.`,
           });
         }
       }
@@ -198,9 +250,16 @@ export async function checkOutcomeIntegrity(
 
       if (!HIGH_TIERS.has(outcome.tier)) continue;
 
-      // Index test files for cross-dim sharing detection
+      // Index receipts for cross-dim sharing detection. Test files are the receipt identity when
+      // present; a PRODUCT invocation extracts none, which made the detector blind to one generic
+      // probe command minted as the T5 outcome of EVERY dim (adversarial-review finding: a single
+      // smoke run lifted a whole cold matrix — one receipt, not N). For such outcomes the receipt
+      // identity is the full normalized command string itself.
       const testFiles = extractTestFiles(command);
-      for (const tf of testFiles) {
+      const receiptKeys = testFiles.length > 0
+        ? testFiles
+        : (command.trim().length > 0 ? [`cmd:${command.trim().replace(/\s+/g, ' ')}`] : []);
+      for (const tf of receiptKeys) {
         const existing = fileToOutcomes.get(tf) ?? [];
         existing.push({ dimId: dim.id, outcomeId: outcome.id });
         fileToOutcomes.set(tf, existing);
@@ -296,6 +355,7 @@ export async function checkOutcomeIntegrity(
     decoupledDims: [...decoupledDimSet],
     orphanDims: [...orphanDimSet],
     unscannableDims: [...unscannableDimSet],
+    ...(wiringGraphDegraded !== undefined ? { wiringGraphDegraded } : {}),
     clean: violations.length === 0,
   };
 }
@@ -308,6 +368,12 @@ export async function checkOutcomeIntegrity(
 // CLI commands aren't false-flagged). Walks the WHOLE project (skipping deps/build/
 // tests) so it handles monorepos (packages/*/src) — not just a single src/ — which
 // is essential for the fleet (DanteCode etc. are monorepos).
+//
+// Role since the import-graph upgrade: this remains the wiring check for Python/
+// Rust/Go callsites and the degradation path for JS/TS when the import graph cannot
+// be built (import-graph.ts is the precision check for JS/TS T4+ orphan decisions).
+// Other consumers (capability-test-integrity, outcome-grounding, capability-test-
+// execute) use this set directly — its semantics are unchanged.
 const WIRE_SKIP_DIRS = new Set(['node_modules', 'dist', '.git', '.danteforge', 'coverage', '.next', 'build', 'out', '.turbo', '.cache', '.vscode-test']);
 const WIRE_IMPORT_RE = /(?:from|import|require)\s*\(?\s*['"]([^'"]+)['"]/g;
 // Language-aware import scanners — production wiring exists in any language the fleet targets,

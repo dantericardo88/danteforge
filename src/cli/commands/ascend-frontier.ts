@@ -10,6 +10,7 @@
 // commands (crusade/council-crusade/session-record/validate/frontier-review); all are seam-injectable.
 
 import path from 'node:path';
+import fsp from 'node:fs/promises';
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import { logger } from '../../core/logger.js';
@@ -494,17 +495,22 @@ export async function runAscendFrontier(options: AscendFrontierOptions): Promise
 
 function scoreOf(state: DimState[], id: string): number { return state.find(d => d.id === id)?.effectiveScore ?? 0; }
 
-/** Per-dim outcome-declaration ids, freshly read from disk (setup sub-commands write matrix.json
- *  in their own processes, so the in-process cache must be invalidated first). */
+/** Per-dim outcome-declaration ids from the RAW on-disk matrix.json — deliberately NOT loadMatrix:
+ *  the declarations-ledger overlay would silently re-add any ledgered declaration setup removed,
+ *  making this detector blind to exactly the loss class it exists to catch (adversarial-review
+ *  finding: the two persistence fixes cancelled each other's audit signal through the cache). */
 async function snapshotDeclarations(cwd: string): Promise<Map<string, Set<string>>> {
   invalidateMatrixCache();
-  const m = await loadMatrix(cwd).catch(() => null);
   const snap = new Map<string, Set<string>>();
-  for (const dim of m?.dimensions ?? []) {
-    const ids = ((dim as unknown as { outcomes?: Array<{ id?: unknown }> }).outcomes ?? [])
-      .map(o => String(o.id ?? '')).filter(Boolean);
-    snap.set(dim.id, new Set(ids));
-  }
+  try {
+    const raw = await fsp.readFile(path.join(cwd, '.danteforge', 'compete', 'matrix.json'), 'utf8');
+    const m = JSON.parse(raw.replace(/^\uFEFF/, '')) as { dimensions?: Array<{ id?: unknown; outcomes?: Array<{ id?: unknown }> }> };
+    for (const dim of m.dimensions ?? []) {
+      if (typeof dim.id !== 'string') continue;
+      const ids = (dim.outcomes ?? []).map(o => String(o.id ?? '')).filter(Boolean);
+      snap.set(dim.id, new Set(ids));
+    }
+  } catch { /* no matrix on disk yet — empty snapshot */ }
   return snap;
 }
 

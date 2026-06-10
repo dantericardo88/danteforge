@@ -163,9 +163,13 @@ async function defaultRunAutoResearch(
   const args = [...cli.argsPrefix, 'autoresearch', goal, '--metric', dimensionId, '--time', `${timeMinutes}m`,
     '--isolate', '--isolate-branch', branch, '--require-agent'];
   if (measurementCommand) args.push('--measurement-command', measurementCommand);
+  // Record the operator's ref BEFORE the long run: merge-back must land on the branch the run
+  // STARTED on — if the operator switched/detached meanwhile, landing kept work on whatever HEAD
+  // happens to be now would be silent misdelivery (adversarial-review finding).
+  const startRef = await runGit(['symbolic-ref', '--quiet', '--short', 'HEAD'], cwd).then(s => s.trim()).catch(() => '');
   // Streamed (inherit) — a 30-min autoresearch must not buffer into an EPIPE/127.
   await spawnStreamed(cli.file, args, cwd, timeoutMs);
-  await mergeBackIsolatedBranch(cwd, branch, dimensionId);
+  await mergeBackIsolatedBranch(cwd, branch, dimensionId, startRef);
 }
 
 /**
@@ -174,9 +178,26 @@ async function defaultRunAutoResearch(
  * aborts cleanly and reports build-failed-to-land; the commits stay on the branch for review. The
  * harden gate + outcome refresh that follow every cycle remain the quality judges of what landed.
  */
-export async function mergeBackIsolatedBranch(cwd: string, branch: string, dimensionId: string): Promise<void> {
+export async function mergeBackIsolatedBranch(cwd: string, branch: string, dimensionId: string, expectedRef = ''): Promise<void> {
   const exists = await runGit(['rev-parse', '--verify', '--quiet', `refs/heads/${branch}`], cwd).then(() => true).catch(() => false);
   if (!exists) return; // nothing kept — teardown pruned the branch
+  // Guards (adversarial-review finding 8): never merge onto a DIFFERENT ref than the run started
+  // on, never onto a detached HEAD, and never into a tree already mid-merge — each of those lands
+  // kept work in the wrong place or compounds a wedged state. Kept commits stay on their branch.
+  const currentRef = await runGit(['symbolic-ref', '--quiet', '--short', 'HEAD'], cwd).then(s => s.trim()).catch(() => '');
+  if (!currentRef) {
+    logger.warn(`[harden-crusade:${dimensionId}] HEAD is detached — NOT merging; kept work remains on ${branch} for review.`);
+    return;
+  }
+  if (expectedRef && currentRef !== expectedRef) {
+    logger.warn(`[harden-crusade:${dimensionId}] checkout moved (${expectedRef} → ${currentRef}) during the isolated run — NOT merging onto the new branch; kept work remains on ${branch} for review.`);
+    return;
+  }
+  const midMerge = await runGit(['rev-parse', '--verify', '--quiet', 'MERGE_HEAD'], cwd).then(() => true).catch(() => false);
+  if (midMerge) {
+    logger.error(`[harden-crusade:${dimensionId}] the tree is already MID-MERGE (MERGE_HEAD present) — resolve or abort it first. Kept work remains on ${branch}.`);
+    return;
+  }
   const ahead = await runGit(['rev-list', '--count', `HEAD..${branch}`], cwd).then(s => parseInt(s.trim(), 10)).catch(() => 0);
   if (!ahead) {
     await runGit(['branch', '-D', branch], cwd).catch(() => { /* best-effort prune */ });
@@ -187,8 +208,14 @@ export async function mergeBackIsolatedBranch(cwd: string, branch: string, dimen
     await runGit(['branch', '-D', branch], cwd).catch(() => { /* merged — prune is cosmetic */ });
     logger.info(`[harden-crusade:${dimensionId}] merged ${ahead} kept commit(s) from the isolated run (${branch})`);
   } catch (err) {
-    await runGit(['merge', '--abort'], cwd).catch(() => { /* no merge in progress */ });
-    logger.warn(`[harden-crusade:${dimensionId}] isolated work could NOT be merged (${err instanceof Error ? err.message.split('\n')[0] : String(err)}) — kept on branch ${branch} for review; this cycle lands nothing.`);
+    try {
+      await runGit(['merge', '--abort'], cwd);
+      logger.warn(`[harden-crusade:${dimensionId}] isolated work could NOT be merged (${err instanceof Error ? err.message.split('\n')[0] : String(err)}) — aborted cleanly; kept on branch ${branch} for review; this cycle lands nothing.`);
+    } catch (abortErr) {
+      // A failed abort leaves MERGE_HEAD + conflict markers in the OPERATOR'S tree: every later
+      // gate/build would run against garbage and blame the dims. This must STOP the loop loudly.
+      throw new Error(`[harden-crusade:${dimensionId}] merge of ${branch} conflicted AND \`git merge --abort\` failed (${abortErr instanceof Error ? abortErr.message.split('\n')[0] : String(abortErr)}) — the tree is mid-merge. Resolve manually (git merge --abort) before re-running.`);
+    }
   }
 }
 

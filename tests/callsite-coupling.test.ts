@@ -2,7 +2,7 @@ import { test, describe, before, after } from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs/promises';
 import path from 'node:path';
-import { checkOutcomeIntegrity, integrityCapFor } from '../src/matrix/engines/outcome-integrity.js';
+import { checkOutcomeIntegrity, integrityCapFor, buildWiredBasenames } from '../src/matrix/engines/outcome-integrity.js';
 
 // Real temp project on the X: drive (never C:/os.tmpdir for persistent artifacts).
 const ROOT = path.join('X:\\tmp', `coupling-test-${process.pid}`);
@@ -83,5 +83,142 @@ describe('checkOutcomeIntegrity — orphan / production-wiring (ORPHAN_CALLSITE)
     ];
     const report = await checkOutcomeIntegrity(dims, R);
     assert.equal(report.orphanDims.includes('d'), false, 'a T2 outcome may reference an unwired module — that is honest unit-level evidence');
+  });
+});
+
+// ── Import-graph reachability (the precision upgrade over basename matching) ──
+//
+// The old check passed any callsite whose module BASENAME appeared in an import
+// line of any non-test file — including imports inside files nothing reaches.
+// These tests pin the upgrade: wired now means REACHABLE from a production
+// entrypoint through the static import graph (JS/TS only).
+
+describe('checkOutcomeIntegrity — orphan via import-graph reachability', () => {
+  const G1 = path.join('X:\\tmp', `orphan-graph1-${process.pid}`);
+  const G2 = path.join('X:\\tmp', `orphan-graph2-${process.pid}`);
+  const G3 = path.join('X:\\tmp', `orphan-graph3-${process.pid}`);
+  const G5 = path.join('X:\\tmp', `orphan-graph5-${process.pid}`);
+  const w = async (root: string, rel: string, content: string): Promise<void> => {
+    const p = path.join(root, rel);
+    await fs.mkdir(path.dirname(p), { recursive: true });
+    await fs.writeFile(p, content, 'utf8');
+  };
+
+  before(async () => {
+    // G1 — entrypoint src/cli/index.ts; a reachable chain; two basename-credited
+    // but UNREACHABLE modules (test-support import + unconsumed barrel).
+    await w(G1, 'package.json', '{ "name": "g1", "type": "module" }\n');
+    await w(G1, 'src/cli/index.ts', `import { run } from '../core/app.js';\nrun();\n`);
+    await w(G1, 'src/core/app.ts', `import { deep } from './deep/feature.js';\nexport function run(): void { deep(); }\n`);
+    await w(G1, 'src/core/deep/feature.ts', `export function deep(): void {}\n`);
+    // (a) basename appears ONLY in a test-support import: src/testing/ is not a
+    // recognized test path, so the OLD basename check credited it — but nothing
+    // reaches harness.ts from any entrypoint.
+    await w(G1, 'src/core/token-only.ts', `export const t = 1;\n`);
+    await w(G1, 'src/testing/harness.ts', `import { t } from '../core/token-only.js';\nexport const h = t;\n`);
+    await w(G1, 'tests/app.test.ts', `import { h } from '../src/testing/harness.js';\nif (!h) throw new Error('h');\n`);
+    // (b) a barrel re-exports the module, but nothing imports the barrel.
+    await w(G1, 'src/core/lonely-mod.ts', `export const x = 2;\n`);
+    await w(G1, 'src/core/barrel.ts', `export * from './lonely-mod.js';\n`);
+
+    // G2 — entrypoint comes ONLY from package.json bin (no src/index, no src/cli/index);
+    // bin is a real .js file whose imports resolve to .ts sources (ESM ext-twin).
+    await w(G2, 'package.json', '{ "name": "g2", "type": "module", "bin": { "g2": "./bin/run.js" } }\n');
+    await w(G2, 'bin/run.js', `import { boot } from '../src/app.js';\nboot();\n`);
+    await w(G2, 'src/app.ts', `import { feat } from './deep/feature.js';\nexport function boot(): void { feat(); }\n`);
+    await w(G2, 'src/deep/feature.ts', `export function feat(): void {}\n`);
+    await w(G2, 'src/unwired.ts', `export function never(): void {}\n`);
+
+    // G3 — NO resolvable entrypoint (no package.json, no src/index.*, no src/cli/index.*):
+    // the graph cannot be built, so the audit must degrade to the basename check.
+    await w(G3, 'app/main.ts', `import { used } from './used.js';\nused();\n`);
+    await w(G3, 'app/used.ts', `export function used(): void {}\n`);
+    await w(G3, 'app/never.ts', `export function never(): void {}\n`);
+
+    // G5 — Python-only project: cross-language callsites stay on the basename check.
+    await w(G5, 'prod.py', `from helper import h\nh()\n`);
+    await w(G5, 'helper.py', `def h():\n    return 1\n`);
+    await w(G5, 'lone.py', `def l():\n    return 2\n`);
+  });
+
+  after(async () => {
+    for (const r of [G1, G2, G3, G5]) await fs.rm(r, { recursive: true, force: true }).catch(() => {});
+  });
+
+  test('(a) a module whose basename appears in a test-support import ONLY is an ORPHAN (the old check passed it)', async () => {
+    // Pin the upgrade: the old basename set credits it...
+    const oldWired = await buildWiredBasenames(G1);
+    assert.ok(oldWired.has('token-only'), 'precondition: the OLD basename check credited the test-support import');
+    // ...but the import graph does not.
+    const dims = [
+      { id: 'dimToken', outcomes: [{ id: 'o', tier: 'T5', command: 'npx tsx --test tests/app.test.ts', required_callsite: 'src/core/token-only.ts' }] },
+    ];
+    const report = await checkOutcomeIntegrity(dims, G1);
+    assert.ok(report.orphanDims.includes('dimToken'), 'a test-only-imported module must now be flagged as orphan');
+    assert.ok(report.violations.some(v => v.kind === 'ORPHAN_CALLSITE' && v.dimId === 'dimToken'));
+    assert.equal(report.wiringGraphDegraded, undefined, 'the graph built fine — no precision degradation');
+  });
+
+  test('(b) a module imported only by a barrel that nothing imports is an ORPHAN', async () => {
+    const oldWired = await buildWiredBasenames(G1);
+    assert.ok(oldWired.has('lonely-mod'), 'precondition: the OLD basename check credited the barrel re-export');
+    const dims = [
+      { id: 'dimBarrel', outcomes: [{ id: 'o', tier: 'T5', command: 'npx tsx --test tests/b.test.ts', required_callsite: 'src/core/lonely-mod.ts' }] },
+    ];
+    const report = await checkOutcomeIntegrity(dims, G1);
+    assert.ok(report.orphanDims.includes('dimBarrel'), 'an unconsumed barrel must not count as production wiring');
+    assert.deepEqual(integrityCapFor(8.5, 'dimBarrel', report), { cappedScore: 7.0, integrityCap: 'ORPHAN_CALLSITE' });
+  });
+
+  test('(c) a module reachable via entrypoint → bin → chain of imports is WIRED; an unreachable sibling is not', async () => {
+    const dims = [
+      { id: 'dimChain', outcomes: [{ id: 'o1', tier: 'T5', command: 'npx tsx --test tests/c.test.ts', required_callsite: 'src/deep/feature.ts' }] },
+      { id: 'dimUnwired', outcomes: [{ id: 'o2', tier: 'T5', command: 'npx tsx --test tests/c.test.ts', required_callsite: 'src/unwired.ts' }] },
+    ];
+    const report = await checkOutcomeIntegrity(dims, G2);
+    assert.ok(!report.orphanDims.includes('dimChain'), 'package.json bin → .js → .ts import chain must count as wired');
+    assert.ok(report.orphanDims.includes('dimUnwired'), 'a module no entrypoint chain reaches is an orphan');
+    assert.equal(report.wiringGraphDegraded, undefined);
+  });
+
+  test('(d) Python callsites stay on the language-aware basename check (reachability is JS/TS-only)', async () => {
+    const dims = [
+      { id: 'dimPyWired', outcomes: [{ id: 'o1', tier: 'T5', command: 'pytest tests/test_h.py', required_callsite: 'helper.py' }] },
+      { id: 'dimPyLone', outcomes: [{ id: 'o2', tier: 'T5', command: 'pytest tests/test_l.py', required_callsite: 'lone.py' }] },
+    ];
+    const report = await checkOutcomeIntegrity(dims, G5);
+    assert.ok(!report.orphanDims.includes('dimPyWired'), 'a production-imported Python module must NOT be flagged');
+    assert.ok(report.orphanDims.includes('dimPyLone'), 'an unimported Python module is still an orphan');
+    assert.equal(report.wiringGraphDegraded, undefined, 'non-JS callsites never consult (or degrade) the JS import graph');
+  });
+
+  test('(e) graph-build failure (no resolvable entrypoints) falls back to the basename check and completes', async () => {
+    const dims = [
+      { id: 'dimUsed', outcomes: [{ id: 'o1', tier: 'T5', command: 'npx tsx --test tests/u.test.ts', required_callsite: 'app/used.ts' }] },
+      { id: 'dimNever', outcomes: [{ id: 'o2', tier: 'T5', command: 'npx tsx --test tests/n.test.ts', required_callsite: 'app/never.ts' }] },
+    ];
+    const report = await checkOutcomeIntegrity(dims, G3);
+    assert.ok(!report.orphanDims.includes('dimUsed'), 'basename-wired module passes in degraded mode (old behavior preserved)');
+    assert.ok(report.orphanDims.includes('dimNever'), 'a true orphan is still caught by the basename fallback');
+    assert.match(report.wiringGraphDegraded ?? '', /no production entrypoints/, 'the degradation must be surfaced, not silent');
+  });
+
+  test('(f) budget exhaustion degrades to the basename check — the audit never hangs and never over-flags', async () => {
+    const prev = process.env['DANTEFORGE_HARDEN_ORPHAN_TIMEOUT_MS'];
+    process.env['DANTEFORGE_HARDEN_ORPHAN_TIMEOUT_MS'] = '-100';
+    try {
+      // token-only is graph-orphan but basename-wired: in degraded mode the check
+      // must fall back to the OLD (basename) verdict — degradation never makes the
+      // gate stricter than the precision it actually has.
+      const dims = [
+        { id: 'dimToken', outcomes: [{ id: 'o', tier: 'T5', command: 'npx tsx --test tests/app.test.ts', required_callsite: 'src/core/token-only.ts' }] },
+      ];
+      const report = await checkOutcomeIntegrity(dims, G1);
+      assert.ok(!report.orphanDims.includes('dimToken'), 'degraded mode must match the basename verdict');
+      assert.match(report.wiringGraphDegraded ?? '', /budget/, 'the budget trip must be surfaced as degraded precision');
+    } finally {
+      if (prev === undefined) delete process.env['DANTEFORGE_HARDEN_ORPHAN_TIMEOUT_MS'];
+      else process.env['DANTEFORGE_HARDEN_ORPHAN_TIMEOUT_MS'] = prev;
+    }
   });
 });

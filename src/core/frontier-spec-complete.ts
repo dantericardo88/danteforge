@@ -24,10 +24,12 @@ import {
  *  first few (alphabetical, deterministic); the spec needs at least ONE real artifact, not all. */
 const MAX_PROBE_ARTIFACTS = 8;
 const PROBE_TIMEOUT_MS = 600_000;
-/** Directories never snapshotted: .git churns on every command and node_modules is not a product
- *  artifact surface — both would drown the real observable output (same exclusions session-record's
- *  doctrine uses for observable artifacts). */
-const SKIP_DIRS = new Set(['.git', 'node_modules']);
+/** Directories never snapshotted. Beyond .git/node_modules: .danteforge state churns on EVERY
+ *  danteforge invocation (logs, reports, run-ledgers, evidence) and build outputs (dist/target/…)
+ *  are produced regardless of capability — counting any of them as the "observable artifact" makes
+ *  the 9.0 artifact gate trivially green for ANY command (adversarial-review finding: alphabetical
+ *  ordering even made .danteforge/ paths the FIRST picks). An artifact must be product output. */
+const SKIP_DIRS = new Set(['.git', 'node_modules', '.danteforge', 'dist', 'build', 'target', 'out', 'coverage', '.venv', 'venv', '__pycache__', '.next', '.turbo']);
 
 export interface SpecProbeRun {
   exitCode: number;

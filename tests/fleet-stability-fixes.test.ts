@@ -118,14 +118,26 @@ describe('parallel push honesty — a court that never ran is NEVER a court reje
 });
 
 describe('ascend-frontier pre-flight — broken environments fail fast with a named remedy', () => {
-  test('Node repo without node_modules → ok:false naming the install remedy', async () => {
+  test('Node repo WITH declared deps but no node_modules → ok:false naming the install remedy', async () => {
     const { defaultPreflight } = await import('../src/cli/commands/ascend-frontier-bootstrap.js');
     const dir = path.join(ROOT, 'pf-node');
     await fs.mkdir(dir, { recursive: true });
-    await fs.writeFile(path.join(dir, 'package.json'), '{"name":"x"}', 'utf8');
+    await fs.writeFile(path.join(dir, 'package.json'), '{"name":"x","dependencies":{"left-pad":"^1.0.0"}}', 'utf8');
     const pf = await defaultPreflight(dir, false, async () => ['codex']);
     assert.equal(pf.ok, false);
     assert.match(pf.remedy ?? '', /node_modules is missing/);
+  });
+
+  test('Node repo with ZERO declared deps passes without node_modules (zero-dep repos never have one)', async () => {
+    const { defaultPreflight } = await import('../src/cli/commands/ascend-frontier-bootstrap.js');
+    const dir = path.join(ROOT, 'pf-zerodep');
+    await fs.mkdir(dir, { recursive: true });
+    // BOM included deliberately — Windows shells write package.json with one and JSON.parse throws
+    // on it; the BOM-blind parse flipped zero-dep repos into "assume deps" (caught on the live E2E).
+    await fs.writeFile(path.join(dir, 'package.json'), '﻿{"name":"x","bin":{"x":"index.js"}}', 'utf8');
+    const pf = await defaultPreflight(dir, false, async () => ['codex']);
+    assert.equal(pf.ok, true);
+    assert.ok(pf.notes.some(n => /zero declared dependencies/.test(n)), pf.notes.join(' | '));
   });
   test('non-Node repo skips the dependency check and reports agent count honestly', async () => {
     const { defaultPreflight } = await import('../src/cli/commands/ascend-frontier-bootstrap.js');

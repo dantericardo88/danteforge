@@ -7,7 +7,7 @@
 
 import fs from 'node:fs/promises';
 import path from 'node:path';
-import { loadMatrix, type CompeteMatrix } from '../../core/compete-matrix.js';
+import { loadMatrix, invalidateMatrixCache, type CompeteMatrix } from '../../core/compete-matrix.js';
 import { logger } from '../../core/logger.js';
 import {
   scaffoldFrontierSpec, seedLeaderTargetFromLadder, checkFrontierSpec, computeSpecHash, effectiveStatus,
@@ -116,6 +116,8 @@ export async function runFrontierSpec(options: FrontierSpecOptions): Promise<Fro
       // (product-run outcomes, declared artifacts, an observed probe run) into the unauthored
       // real-user-path fields. Pure derivation — a field with no real evidence stays unauthored
       // and the honest spec-incomplete ceiling stands. checkFrontierSpec is unchanged.
+      let matrixToWrite = matrix;
+      let dimToWrite: Record<string, unknown> = d;
       if (options.complete !== false) {
         const completion = await completeFrontierSpec(draft, d, {
           cwd, _probeRun: options._probeRun, _snapshotMtimes: options._snapshotMtimes,
@@ -123,9 +125,22 @@ export async function runFrontierSpec(options: FrontierSpecOptions): Promise<Fro
         res.completed = completion.completed;
         res.probed = completion.probed;
         for (const n of completion.notes) res.warnings.push(n);
+        if (completion.probed) {
+          // The probe just EXECUTED a real product command (up to 10 min) — danteforge-style
+          // probes write matrix.json themselves (validate persists derived up/down, compete
+          // rescores report). Writing our pre-probe in-memory matrix back would clobber all of
+          // it (lost-update; adversarial-review finding). Re-read disk and graft ONLY the spec.
+          invalidateMatrixCache();
+          const fresh = await loadFn(cwd);
+          const freshDim = fresh?.dimensions.find(x => x.id === options.dimId);
+          if (fresh && freshDim) {
+            matrixToWrite = fresh;
+            dimToWrite = freshDim as unknown as Record<string, unknown>;
+          }
+        }
       }
-      d.frontier_spec = draft;
-      await writeMatrix(matrix, matrixPath);
+      dimToWrite.frontier_spec = draft;
+      await writeMatrix(matrixToWrite, matrixPath);
       res.wrote = true;
       if (seed.ladder_rows_used.length > 0) {
         res.warnings.push(`Seeded the frontier bar from the competitor-grounded Score Ladder (row(s) ${seed.ladder_rows_used.join(', ')}): ${[seed.seeded.observed_capability && 'observed_capability', seed.seeded.category_delta && 'category_delta'].filter(Boolean).join(' + ')}. Review it — you may sharpen but not soften it.`);

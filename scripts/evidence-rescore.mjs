@@ -250,6 +250,12 @@ function computeDerivedScore(dim, evidence) {
   const demotions = [];
   const effective = [];
   for (const o of outcomes) {
+    // Invalid/missing tier → EXCLUDED, never demoted (mirrors derived-score.ts): demotion
+    // would otherwise PROMOTE an undeclared tier to the highest its kind supports.
+    if (TIER_SCORE_CAPS[o.tier] === undefined) {
+      demotions.push({ outcomeId: o.id, from: o.tier, to: 'T0', reason: `invalid or missing tier "${String(o.tier)}" — excluded from scoring` });
+      continue;
+    }
     const { maxScore, reason } = classifyOutcomeMaxScore(o);
     if (maxScore >= TIER_SCORE_CAPS[o.tier]) {
       effective.push({ outcome: o, tier: o.tier });

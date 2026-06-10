@@ -183,6 +183,14 @@ export function computeDerivedScoreWithBreakdown(
   const demotions: DerivedScoreBreakdown['demotions'] = [];
   const effective: Array<{ outcome: Outcome; tier: CapabilityTier }> = [];
   for (const outcome of outcomes) {
+    // INVALID/MISSING tier is excluded outright, never demoted: an undeclared tier has no
+    // honest claim level, and routing it through demotion would PROMOTE it to the highest
+    // tier its kind supports (a bare shell command → T5/8.0) — an agent could then omit
+    // `tier` entirely and out-earn an honestly-declared one (adversarial-review finding).
+    if (TIER_SCORE_CAPS[outcome.tier] === undefined) {
+      demotions.push({ outcomeId: outcome.id, from: outcome.tier, to: 'T0', reason: `invalid or missing tier "${String(outcome.tier)}" — excluded from scoring (declare a real T0–T8 tier)` });
+      continue;
+    }
     const { maxScore, reason } = classifyOutcomeKind(outcome);
     if (maxScore >= TIER_SCORE_CAPS[outcome.tier]) {
       effective.push({ outcome, tier: outcome.tier });

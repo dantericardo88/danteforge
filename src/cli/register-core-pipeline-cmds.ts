@@ -140,7 +140,7 @@ program
 
 program
   .command('sweep')
-  .description('Staged frontier campaign: sweep every dim to 5, pilot+sweep 5→7, delegate 7→9 to ascend-frontier (caps at 9.0)')
+  .description('Staged frontier campaign over an EXISTING matrix (band-by-band: 0→5→7, then delegates 7→9 to ascend-frontier). For the full one-command chain incl. cold-repo bootstrap prefer: danteforge ascend-frontier')
   .option('--target <n>', 'Campaign target (default 9.0; clamped to the 9.0 autonomous ceiling)')
   .option('--pilot-size <n>', 'How many dims to pilot to 7 before sweeping the rest (default 2)')
   .option('--dry-run', 'Print the band snapshot + phase plan without executing')
@@ -369,7 +369,7 @@ program
 
 program
   .command('crusade')
-  .description('Multi-pass OSS harvest + goal-gated forge loop — runs until score target is reached or max cycles exhausted')
+  .description('Multi-pass OSS harvest + goal-gated forge loop (Ollama-dependent). For the maintained one-command frontier chain prefer: danteforge ascend-frontier')
   .requiredOption('--goal <text>', 'The goal to pursue each forge wave')
   .option('--domains <csv>', 'Comma-separated OSS domains to harvest (default: dimension name)')
   .option('--dimension <name>', 'Score dimension to track (default: security)', 'security')

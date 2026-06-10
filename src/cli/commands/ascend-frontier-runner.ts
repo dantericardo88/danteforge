@@ -92,11 +92,13 @@ function runOnce(cwd: string, args: string[]): Promise<CliResult> {
     // goes quiet, say so every 60s with how long it has been silent — a stall is now an OBSERVED fact
     // ("silent for 12m"), not an inference from a blank console.
     const label = args[0] ?? 'sub-command';
-    const echo = (d: Buffer, stream: NodeJS.WriteStream) => {
+    // ALWAYS echo to stderr: the parent's stdout is a machine contract (--json prints the final
+    // result there) — interleaving sub-command lines into it would break every JSON consumer.
+    const echo = (d: Buffer) => {
       lastOutputAt = Date.now();
       const text = d.toString();
       for (const line of text.split(/\r?\n/)) {
-        if (line.trim().length > 0) stream.write(`  [${label}] ${line}\n`);
+        if (line.trim().length > 0) process.stderr.write(`  [${label}] ${line}\n`);
       }
       return text;
     };
@@ -106,8 +108,8 @@ function runOnce(cwd: string, args: string[]): Promise<CliResult> {
         process.stderr.write(`  [${label}] … still running (${Math.round((Date.now() - start) / 60_000)}m elapsed, no output for ${Math.round(silentMs / 60_000)}m)\n`);
       }
     }, 60_000);
-    child.stdout?.on('data', (d: Buffer) => { out = cap(out + echo(d, process.stdout)); });
-    child.stderr?.on('data', (d: Buffer) => { err = cap(err + echo(d, process.stderr)); });
+    child.stdout?.on('data', (d: Buffer) => { out = cap(out + echo(d)); });
+    child.stderr?.on('data', (d: Buffer) => { err = cap(err + echo(d)); });
     // ENOENT (binary not found) → 127, matching a shell "command not found".
     child.on('error', (e: NodeJS.ErrnoException) => done(e.code === 'ENOENT' ? 127 : 1));
     child.on('close', (code, signal) => done(code ?? (signal ? 1 : 0)));

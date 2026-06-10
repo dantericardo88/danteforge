@@ -71,6 +71,19 @@ export async function sensitivityProbe(opts: SensitivityProbeOptions): Promise<S
   }
 
   const callsitePath = path.isAbsolute(opts.callsite) ? opts.callsite : path.join(opts.cwd, opts.callsite);
+  // CRASH-SAFE journal (adversarial-review CRITICAL): the fault is written into a REAL production
+  // source file. If this process is tree-killed mid-probe (the orchestrator's 30-min taskkill /F
+  // gives no finally), the operator's tree is left broken with no explanation. So: (1) before
+  // faulting, snapshot the pristine file to a sidecar; (2) on every probe START, restore any stale
+  // sidecar left by a killed prior run; (3) a FAILED restore is a loud error verdict, never a
+  // silent best-effort — a probe that may have left the tree broken must say so.
+  const sidecarPath = `${callsitePath}.df-probe-backup`;
+  try {
+    const stale = await readFile(sidecarPath);
+    await writeFile(callsitePath, stale);
+    await fs.rm(sidecarPath, { force: true });
+  } catch { /* no stale sidecar — the normal case */ }
+
   let original: string;
   try { original = await readFile(callsitePath); }
   catch { return none('INCONCLUSIVE', `callsite ${opts.callsite} could not be read.`); }
@@ -81,11 +94,23 @@ export async function sensitivityProbe(opts: SensitivityProbeOptions): Promise<S
   }
 
   let faultedExit: number | null = null;
+  let restoreFailed: string | null = null;
   try {
+    await writeFile(sidecarPath, original); // journal FIRST — a kill after this point is recoverable
     await writeFile(callsitePath, `${FAULT_MARKER}\n${original}`);
     faultedExit = await run(opts.command, opts.cwd, timeoutMs);
   } finally {
-    await writeFile(callsitePath, original).catch(() => { /* best-effort restore */ });
+    try {
+      await writeFile(callsitePath, original);
+      await fs.rm(sidecarPath, { force: true }).catch(() => { /* sidecar cleanup is cosmetic once restored */ });
+    } catch (err) {
+      restoreFailed = err instanceof Error ? err.message : String(err);
+    }
+  }
+  if (restoreFailed) {
+    return none('INCONCLUSIVE',
+      `PROBE RESTORE FAILED for ${opts.callsite} (${restoreFailed}) — the file may still contain the fault marker. ` +
+      `A pristine copy is journaled at ${path.basename(sidecarPath)}; the next probe (or a manual copy) restores it. DO NOT build until restored.`);
   }
 
   if (faultedExit !== 0) {

@@ -124,14 +124,29 @@ export async function defaultPreflight(
   discoverMembers: () => Promise<unknown[]>,
 ): Promise<PreflightResult> {
   const notes: string[] = [];
-  if (await exists(path.join(cwd, 'package.json'))) {
-    const hasDeps = await exists(path.join(cwd, 'node_modules'));
-    notes.push(`node repo — node_modules ${hasDeps ? 'present' : 'MISSING'}`);
-    if (!hasDeps) {
-      return {
-        ok: false, notes,
-        remedy: 'node_modules is missing — this checkout cannot run its own capability_tests/outcomes (every dim derives 0). Run the repo install (npm ci) + build, then re-run. (--dry-run still works.)',
-      };
+  const pkgRaw = await fs.readFile(path.join(cwd, 'package.json'), 'utf8').catch(() => null);
+  if (pkgRaw !== null) {
+    // node_modules is required only when the manifest actually DECLARES dependencies — a
+    // zero-dep package never has one (npm creates nothing to install), and failing it here
+    // made such repos permanently un-runnable (caught live on the cold-repo define E2E).
+    let declaresDeps = false;
+    try {
+      // BOM-tolerant: Windows editors/shells routinely write package.json with a UTF-8 BOM,
+      // and JSON.parse throws on it — which silently flipped zero-dep repos into "assume deps".
+      const pkg = JSON.parse(pkgRaw.replace(/^\uFEFF/, '')) as { dependencies?: object; devDependencies?: object };
+      declaresDeps = Object.keys(pkg.dependencies ?? {}).length > 0 || Object.keys(pkg.devDependencies ?? {}).length > 0;
+    } catch { declaresDeps = true; /* unreadable manifest — assume deps, the safer direction */ }
+    if (declaresDeps) {
+      const hasDeps = await exists(path.join(cwd, 'node_modules'));
+      notes.push(`node repo — node_modules ${hasDeps ? 'present' : 'MISSING'}`);
+      if (!hasDeps) {
+        return {
+          ok: false, notes,
+          remedy: 'node_modules is missing — this checkout cannot run its own capability_tests/outcomes (every dim derives 0). Run the repo install (npm ci) + build, then re-run. (--dry-run still works.)',
+        };
+      }
+    } else {
+      notes.push('node repo with zero declared dependencies — node_modules not required');
     }
   } else {
     notes.push('non-Node repo (no package.json) — gate runners resolve cargo/go via toolchainEnv');

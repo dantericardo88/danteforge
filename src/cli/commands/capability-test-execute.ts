@@ -176,6 +176,19 @@ export async function runCapabilityTestExecute(options: CapabilityTestExecuteOpt
         return { dimId, installed: true, reason: `repaired, not re-authored: ${repair.reason}` };
       }
     }
+    // DETERMINISTIC preconditions BEFORE budget (adversarial-review finding 9): a dim with no
+    // production target on disk or no ladder bar refuses without any agent spend — paying a budget
+    // slot for a guaranteed refusal starved authorable dims on every setup cycle.
+    if (!options._authorFn && dim) {
+      const targetModule = resolveTargetModule(dim as unknown as Parameters<typeof resolveTargetModule>[0], cwd);
+      if (!targetModule) {
+        return { dimId, installed: false, reason: 'no production src target on disk (no existing outcome required_callsite, and the capability_test command names none) — wire the capability before authoring its yardstick. (No budget consumed.)' };
+      }
+      const rubric = await loadDimRubric(cwd, dimId);
+      if (!(rubric.find(l => l.score === 9) ?? nextLevel(rubric, effectiveDimScore(dim)))) {
+        return { dimId, installed: false, reason: 'the universe ladder defines no row above the current score — no grounded frontier bar to author against. (No budget consumed.)' };
+      }
+    }
     if (!takeBudget()) {
       return { dimId, installed: false, reason: `budget exhausted this pass (${actionsUsed}/${maxActions} expensive actions used) — authoring deferred; raise --max-actions or run another pass.` };
     }
