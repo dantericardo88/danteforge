@@ -263,6 +263,12 @@ export function effectiveStatus(spec: FrontierSpec): FrontierSpecStatus {
  *  apart from authored values without re-implementing (and drifting from) the guardrail's test. */
 export const TODO_RE = /TODO/i;
 
+/** The real-exercise floor: a frontier evidence run must take at least this long — instant
+ *  commands prove nothing. SINGLE SOURCE for session-record's Guard 3 AND the spec completer's
+ *  viability check, so a completed spec can never carry a run_command the evidence protocol
+ *  will structurally reject (live finding: a 644ms derived run_command burned every session). */
+export const REAL_RUN_MIN_MS = 1000;
+
 /**
  * Honesty guardrails. A frontier_spec must define a REAL target, not an easy one.
  * `competitors` is the matrix's tracked competitor list (closed + oss).

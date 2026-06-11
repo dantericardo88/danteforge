@@ -18,9 +18,12 @@ import { randomUUID } from 'node:crypto';
 import { loadMatrix, type CompeteMatrix } from '../../core/compete-matrix.js';
 import { logger } from '../../core/logger.js';
 import { isTestSuiteCommand } from '../../matrix/engines/outcome-quality.js';
+import { REAL_RUN_MIN_MS } from '../../core/frontier-spec.js';
 
-/** A real exercise must run at least this long — instant commands prove nothing. */
-export const MIN_REAL_RUN_MS = 1000;
+/** A real exercise must run at least this long — instant commands prove nothing.
+ *  Canonical value lives in core/frontier-spec.ts (REAL_RUN_MIN_MS) so the spec completer's
+ *  viability check and this gate can never drift; re-exported here for existing importers. */
+export const MIN_REAL_RUN_MS = REAL_RUN_MIN_MS;
 
 export interface SessionRecordOptions {
   cwd?: string;

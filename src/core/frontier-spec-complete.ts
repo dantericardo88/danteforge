@@ -17,7 +17,7 @@ import path from 'node:path';
 import { execFile } from 'node:child_process';
 import { logger } from './logger.js';
 import {
-  looksLikeProductRun, resolveRunCommand, tierRank, TODO_RE, type FrontierSpec,
+  looksLikeProductRun, resolveRunCommand, tierRank, TODO_RE, REAL_RUN_MIN_MS, type FrontierSpec,
 } from './frontier-spec.js';
 
 /** Cap the probe-derived artifact list — a run that touches dozens of files is summarized by its
@@ -273,27 +273,83 @@ export async function completeFrontierSpec(
 
   const probeRun = options._probeRun ?? defaultProbeRun;
   const snapshot = options._snapshotMtimes ?? defaultSnapshotMtimes;
-  logger.info(`[frontier-spec] probe-running ONCE to observe artifacts: ${probeCmd}`);
-  const before = await snapshot(cwd);
-  const run = await probeRun(probeCmd, cwd);
-  result.probed = true;
-  if (run.exitCode !== 0) {
-    result.notes.push(`probe run exited ${run.exitCode} — observable_artifacts left unauthored (a failing run witnesses nothing).`);
+
+  // Probe queue (viability-aware, live fleet-run-3 finding): a derived run_command can be REAL yet
+  // structurally unusable — session-record hard-rejects runs under REAL_RUN_MIN_MS, so a 644ms
+  // command burns every evidence session of every push attempt. Probe up to PROBE_BUDGET real
+  // candidates and prefer the first VIABLE one (exit 0 + >=REAL_RUN_MIN_MS + observable output):
+  //   - template run_command ({input}): rotate the session inputs — no restructuring needed;
+  //   - machine-owned concrete run_command: fall through to the OTHER recorded product-run
+  //     candidates and SWAP when one is viable (the swap target is itself recorded evidence);
+  //   - human-authored run_command: probe it alone, never restructure.
+  const PROBE_BUDGET = 3;
+  const ownedNow = result.completed.run_command || candidates.includes(normalizeCommand(rup.run_command));
+  const isTemplate = rup.run_command.includes('{input}');
+  const queue: Array<{ cmd: string; viaInput: boolean }> = [];
+  if (isTemplate) {
+    const n = Math.min(rup.realistic_inputs?.length ?? 1, PROBE_BUDGET);
+    for (let s = 0; s < n; s += 1) queue.push({ cmd: resolveRunCommand(spec, s), viaInput: true });
+  } else if (probeCmd) {
+    queue.push({ cmd: probeCmd, viaInput: false });
+    if (ownedNow) {
+      for (const c of candidates) {
+        if (normalizeCommand(c) !== normalizeCommand(probeCmd)) queue.push({ cmd: c, viaInput: false });
+      }
+    }
+  }
+
+  let fallback: { cmd: string; changed: string[]; durationMs: number; isCurrent: boolean } | null = null;
+  const tried = new Set<string>();
+  let probesUsed = 0;
+  for (const { cmd, viaInput } of queue) {
+    if (probesUsed >= PROBE_BUDGET) break;
+    if (tried.has(cmd)) continue;
+    tried.add(cmd);
+    probesUsed += 1;
+    logger.info(`[frontier-spec] probe-running to observe artifacts + real-run viability (${probesUsed}/${PROBE_BUDGET}): ${cmd}`);
+    const before = await snapshot(cwd);
+    const run = await probeRun(cmd, cwd);
+    result.probed = true;
+    if (run.exitCode !== 0) {
+      result.notes.push(`probe "${cmd}" exited ${run.exitCode} — skipped (a failing run witnesses nothing).`);
+      continue;
+    }
+    const after = await snapshot(cwd);
+    const changed: string[] = [];
+    for (const [p, mtime] of after) {
+      const prev = before.get(p);
+      if (prev === undefined || mtime > prev) changed.push(p);
+    }
+    changed.sort();
+    const isCurrent = viaInput || normalizeCommand(cmd) === normalizeCommand(probeCmd ?? '');
+    if (changed.length > 0 && run.durationMs >= REAL_RUN_MIN_MS) {
+      if (!isCurrent) {
+        rup.run_command = cmd;
+        result.completed.run_command = true;
+        result.notes.push(`run_command switched to "${cmd}" — the prior derivation could not satisfy the real-exercise protocol (>=${REAL_RUN_MIN_MS}ms + observable artifact); the replacement is itself a recorded product run.`);
+      }
+      rup.observable_artifacts = changed.slice(0, MAX_PROBE_ARTIFACTS).map(p => ({ kind: 'file', path: p }));
+      result.completed.observable_artifacts = true;
+      result.notes.push(`observable_artifacts recorded from a real probe run (${run.durationMs}ms): ${changed.length} file(s) created/modified${changed.length > MAX_PROBE_ARTIFACTS ? ` (keeping the first ${MAX_PROBE_ARTIFACTS})` : ''}.`);
+      return result;
+    }
+    if (changed.length > 0 && isCurrent && !fallback) {
+      fallback = { cmd, changed, durationMs: run.durationMs, isCurrent };
+    }
+    result.notes.push(`probe "${cmd}": ${run.durationMs}ms, ${changed.length} changed file(s) — ${changed.length === 0 ? 'no observable artifact' : `under the ${REAL_RUN_MIN_MS}ms real-exercise floor session-record enforces`} — not viable on its own.`);
+  }
+
+  if (fallback) {
+    // The artifacts are REAL output of the current run_command — record them (derivation, not
+    // invention) but warn loudly: session-record will reject this run as too fast, so the push
+    // cannot capture evidence until a heavier real exercise replaces it.
+    rup.observable_artifacts = fallback.changed.slice(0, MAX_PROBE_ARTIFACTS).map(p => ({ kind: 'file', path: p }));
+    result.completed.observable_artifacts = true;
+    result.notes.push(`observable_artifacts recorded from "${fallback.cmd}" (${fallback.changed.length} file(s)) — WARNING: the run took ${fallback.durationMs}ms < ${REAL_RUN_MIN_MS}ms, so session-record will REJECT it as too fast; author a heavier real exercise before pushing.`);
     return result;
   }
-  const after = await snapshot(cwd);
-  const changed: string[] = [];
-  for (const [p, mtime] of after) {
-    const prev = before.get(p);
-    if (prev === undefined || mtime > prev) changed.push(p);
+  if (result.probed) {
+    result.notes.push('no probed candidate produced a viable real exercise — observable_artifacts left unauthored (the honest ceiling stands).');
   }
-  changed.sort();
-  if (changed.length === 0) {
-    result.notes.push('probe run produced no observable file changes — observable_artifacts left unauthored (the honest ceiling stands).');
-    return result;
-  }
-  rup.observable_artifacts = changed.slice(0, MAX_PROBE_ARTIFACTS).map(p => ({ kind: 'file', path: p }));
-  result.completed.observable_artifacts = true;
-  result.notes.push(`observable_artifacts recorded from a real probe run (${run.durationMs}ms): ${changed.length} file(s) created/modified${changed.length > MAX_PROBE_ARTIFACTS ? ` (keeping the first ${MAX_PROBE_ARTIFACTS})` : ''}.`);
   return result;
 }

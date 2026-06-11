@@ -372,6 +372,58 @@ describe('completeFrontierSpec — deterministic evidence-grounded completion (n
     assert.equal(checkFrontierSpec(s, ['Cursor']).ok, false, 'still honestly incomplete');
   });
 
+  test('(5a) artifacts from a run UNDER the real-exercise floor are recorded with a loud session-record REJECT warning (live fleet-run-3 pin)', async () => {
+    const dim = {
+      id: 'x', scores: { Cursor: 9.2 },
+      outcomes: [
+        { id: 'r1', kind: 'runtime-exec', tier: 'T5', command: 'node dist/index.js traceability --spec fixtures/a.md', required_callsite: 'src/core/x.ts' },
+        { id: 'r2', kind: 'runtime-exec', tier: 'T5', command: 'node dist/index.js traceability --spec fixtures/b.md', required_callsite: 'src/core/x.ts' },
+      ],
+    };
+    const s = scaffoldFrontierSpec(dim, ['Cursor']);
+    let snapCalls = 0;
+    const res = await completeFrontierSpec(s, dim, {
+      _probeRun: async () => ({ exitCode: 0, durationMs: 644 }), // real but too fast — the live planning_quality case
+      _snapshotMtimes: async () => {
+        snapCalls += 1;
+        return snapCalls % 2 === 1
+          ? new Map([['x.md', 100]])
+          : new Map([['x.md', 100], ['.danteforge/traceability.md', 999]]);
+      },
+    });
+    assert.equal(res.completed.observable_artifacts, true, 'real output is recorded (derivation, not invention)');
+    assert.ok(res.notes.some(n => /REJECT/.test(n) && /too fast/i.test(n)),
+      'the completer must say loudly that session-record will reject this run');
+  });
+
+  test('(5b) a machine-owned run_command that cannot satisfy the real-exercise protocol is SWITCHED to a viable recorded candidate', async () => {
+    const dim = {
+      id: 'x', scores: { Cursor: 9.2 },
+      capability_test: { command: 'node dist/index.js gap x' }, // fast, artifact-less
+      outcomes: [
+        { id: 'r1', kind: 'runtime-exec', tier: 'T5', command: 'node dist/index.js matrix-kernel simulate', required_callsite: 'src/core/x.ts' },
+      ],
+    };
+    const s = scaffoldFrontierSpec(dim, ['Cursor']);
+    s.real_user_path.realistic_inputs = ['human/one', 'human/two']; // pre-authored → no template derivation
+    let snapCalls = 0;
+    const res = await completeFrontierSpec(s, dim, {
+      _probeRun: async (cmd) => cmd.includes('simulate')
+        ? { exitCode: 0, durationMs: 2400 }
+        : { exitCode: 0, durationMs: 500 },
+      _snapshotMtimes: async () => {
+        snapCalls += 1;
+        // gap probe (calls 1-2): nothing changes; simulate probe (calls 3-4): plan file written
+        return snapCalls <= 2
+          ? new Map([['x.md', 100]])
+          : (snapCalls === 3 ? new Map([['x.md', 100]]) : new Map([['x.md', 100], ['.danteforge/matrix/matrix.simulation-plan.json', 999]]));
+      },
+    });
+    assert.equal(s.real_user_path.run_command, 'node dist/index.js matrix-kernel simulate', 'switched to the viable recorded candidate');
+    assert.equal(res.completed.observable_artifacts, true);
+    assert.ok(res.notes.some(n => /switched/.test(n)), 'the switch is named in the provenance notes');
+  });
+
   test('never overwrites authored fields (mirrors the ladder seeder contract)', async () => {
     const dim = evidenceDim();
     const s = scaffoldFrontierSpec(dim, ['Kiro (AWS)']);
