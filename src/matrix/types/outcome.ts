@@ -236,7 +236,20 @@ export type Outcome =
 export interface OutcomeEvidenceEntry {
   dimensionId: string;
   outcomeId: string;
+  /**
+   * The tier this receipt's evidence genuinely supports (effectiveEvidenceTier):
+   * the declared tier, demoted when the outcome's kind classification caps below
+   * it (e.g. a test-suite command declared T6 is stamped T4). Freshness windows
+   * (TIER_FRESHNESS_MS) key off THIS field, keeping load-time decay in lockstep
+   * with scoring-time decay — see outcome-quality.ts:effectiveEvidenceTier.
+   */
   tier: CapabilityTier;
+  /**
+   * Provenance: the tier the outcome DECLARED, recorded only when it differs
+   * from `tier` (i.e. the receipt was stamped at a demoted tier). Audits can
+   * see the over-declaration without losing the honest claim level.
+   */
+  declaredTier?: CapabilityTier;
   gitSha: string | null;
   passed: boolean;
   exitCode: number;

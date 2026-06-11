@@ -8,7 +8,7 @@
 // runs. If it finds violations at T3+, the evidence entry is marked as failed
 // even if the shell command exited 0.
 
-import type { CapabilityTier } from '../types/capability-test.js';
+import { TIER_SCORE_CAPS, type CapabilityTier } from '../types/capability-test.js';
 import { applyOutcomeDefaults, type Outcome, type OutcomeEvidenceEntry } from '../types/outcome.js';
 import { isRegisteredExternalSuite } from './external-suite-registry.js';
 
@@ -135,6 +135,63 @@ export function classifyOutcomeKind(outcome: Outcome): OutcomeKindClassification
 const RANK: Record<string, number> = {
   T0: 0, T1: 1, T2: 2, T3: 3, T4: 4, T5: 5, T6: 6, T7: 7, T8: 8,
 };
+
+// ── Effective evidence tier (quality-cap demotion target) ─────────────────────
+
+const TIER_ORDER_DESC: CapabilityTier[] = ['T8', 'T7', 'T6', 'T5', 'T4', 'T3', 'T2', 'T1', 'T0'];
+
+/**
+ * Highest tier whose score cap fits under a quality maxScore, or null when the
+ * cap sits below every tier floor (only then may an outcome be excluded).
+ * A test-runner's 7.0 quality cap maps to T4 (cap 7.0) — the demotion target.
+ * Single source shared by derived-score.ts (scoring buckets) and
+ * outcome-runner.ts (receipt stamping) so the two can never drift.
+ */
+export function highestTierWithinCap(maxScore: number): CapabilityTier | null {
+  for (const tier of TIER_ORDER_DESC) {
+    if (TIER_SCORE_CAPS[tier] <= maxScore) return tier;
+  }
+  return null;
+}
+
+/**
+ * The tier an outcome's EVIDENCE genuinely supports: the declared tier when the
+ * outcome's kind classification (classifyOutcomeKind) can carry it, otherwise the
+ * highest tier whose cap fits under the quality maxScore — exactly the demotion
+ * computeDerivedScoreWithBreakdown applies when bucketing outcomes for scoring.
+ *
+ * Receipts are stamped with this tier at write time (outcome-runner.ts) so the
+ * load-time freshness gate (loadOutcomeEvidence) and the scoring-time freshness
+ * check (derived-score.ts) decay the SAME receipt on the SAME window. Without
+ * this, an over-declared outcome (e.g. a test-suite command declared T6) was
+ * scored at T4 (14-day window) but its receipt was dropped at load after the
+ * declared tier's 24-hour window — collapsing a passing dimension to "failing"
+ * one day after validate, with no code change and all tests green.
+ *
+ * Invalid/missing declared tiers fall back to the declared value unchanged —
+ * scoring excludes them outright (never demotes), so stamping must not invent
+ * a tier for them either.
+ */
+export function effectiveEvidenceTier(outcome: Outcome): CapabilityTier {
+  if (TIER_SCORE_CAPS[outcome.tier] === undefined) return outcome.tier;
+  const { maxScore } = classifyOutcomeKind(outcome);
+  if (maxScore >= TIER_SCORE_CAPS[outcome.tier]) return outcome.tier;
+  return highestTierWithinCap(maxScore) ?? outcome.tier;
+}
+
+/**
+ * Stamp a receipt with its effective evidence tier, preserving the declared
+ * tier as `declaredTier` provenance when the outcome was over-declared.
+ * Called by outcome-runner.ts on EVERY receipt write (all kinds, including
+ * failure entries) so passing and failing receipts decay on the same window.
+ */
+export function stampEvidenceTier(entry: OutcomeEvidenceEntry, outcome: Outcome): void {
+  const effective = effectiveEvidenceTier(outcome);
+  if (effective !== outcome.tier) {
+    entry.declaredTier = outcome.tier;
+    entry.tier = effective;
+  }
+}
 
 // ── Main gate ─────────────────────────────────────────────────────────────────
 

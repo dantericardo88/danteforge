@@ -22,7 +22,7 @@
 
 import { TIER_SCORE_CAPS, isEvidenceStale, type CapabilityTier } from '../matrix/types/capability-test.js';
 import { isOutcomePassing, makeEvidenceKey, type Outcome, type OutcomeEvidence } from '../matrix/types/outcome.js';
-import { classifyOutcomeKind } from '../matrix/engines/outcome-quality.js';
+import { classifyOutcomeKind, highestTierWithinCap } from '../matrix/engines/outcome-quality.js';
 import { extractTestFiles } from '../matrix/engines/test-file-patterns.js';
 import { MARKET_CAPPED_DIMS, MARKET_DIM_MAX_SCORE } from './market-dims.js';
 
@@ -99,18 +99,9 @@ export interface DerivedScoreBreakdown {
   demotions: Array<{ outcomeId: string; from: CapabilityTier; to: CapabilityTier; reason: string }>;
 }
 
-/**
- * Highest tier whose score cap fits under a quality maxScore, or null when the
- * cap sits below every tier floor (only then may an outcome be excluded).
- * A test-runner's 7.0 quality cap maps to T4 (cap 7.0) — the demotion target.
- */
-function highestTierWithinCap(maxScore: number): CapabilityTier | null {
-  for (let i = TIER_ORDER.length - 1; i >= 0; i--) {
-    const tier = TIER_ORDER[i]!;
-    if (TIER_SCORE_CAPS[tier] <= maxScore) return tier;
-  }
-  return null;
-}
+// highestTierWithinCap (the demotion target) is imported from outcome-quality.ts —
+// the ONE shared implementation also used by outcome-runner.ts receipt stamping
+// (effectiveEvidenceTier), so scoring buckets and receipt tiers can never drift.
 
 // ── Main pure function ───────────────────────────────────────────────────────
 

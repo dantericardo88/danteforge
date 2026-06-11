@@ -22,6 +22,7 @@ import {
   type OutcomeEvidenceEntry,
 } from '../types/outcome.js';
 import { isEvidenceStale } from '../types/capability-test.js';
+import { stampEvidenceTier } from './outcome-quality.js';
 import { MARKET_CAPPED_DIMS } from '../../core/market-dims.js';
 import { toolchainEnv } from '../../core/toolchain-path.js';
 import {
@@ -150,6 +151,14 @@ function evidencePathFor(cwd: string, gitSha: string | null, dimensionId: string
   return path.join(cwd, OUTCOME_EVIDENCE_DIR, `${sha}-${safeDim}-${safeId}.json`);
 }
 
+// Every receipt write below goes through stampEvidenceTier (outcome-quality.ts):
+// the receipt carries the tier its evidence genuinely supports, so the load-time
+// freshness gate (loadOutcomeEvidence) decays it on the SAME window the scoring
+// layer (derived-score.ts) credits it at. Without this, a test-suite outcome
+// declared T6 earned T4/7.0 in scoring (14-day window) but its receipt was
+// dropped at load after the declared T6's 24-hour window — collapsing a fully
+// passing dimension to "failing" one day after validate.
+
 // ── Run one outcome ──────────────────────────────────────────────────────────
 
 export async function runOneOutcome(options: RunOutcomeOptions): Promise<OutcomeEvidenceEntry> {
@@ -198,6 +207,7 @@ export async function runOneOutcome(options: RunOutcomeOptions): Promise<Outcome
     const engine = new RipgrepFallback();
     const result = await runProductionUsageFresh(freshOutcome, cwd, undefined, engine);
     const entry = freshResultToEvidence(freshOutcome, options.dimensionId, result, gitSha, evidencePath, Date.now() - start);
+    stampEvidenceTier(entry, outcome);
     tagEvidenceQuality(entry, (freshOutcome as { command?: string }).command, options.dimensionId, cwd);
     await writeFn(evidencePath, JSON.stringify(entry, null, 2));
     await recordOutcomeEvidenceCommit(entry, cwd, options._createTimeMachineCommit);
@@ -214,6 +224,7 @@ export async function runOneOutcome(options: RunOutcomeOptions): Promise<Outcome
       _readGitSha: async () => gitSha,
     });
     entry.evidencePath = evidencePath;
+    stampEvidenceTier(entry, outcome);
     tagEvidenceQuality(entry, (smokeOutcome as { command?: string }).command, options.dimensionId, cwd);
     await writeFn(evidencePath, JSON.stringify(entry, null, 2));
     await recordOutcomeEvidenceCommit(entry, cwd, options._createTimeMachineCommit);
@@ -228,6 +239,7 @@ export async function runOneOutcome(options: RunOutcomeOptions): Promise<Outcome
       _readGitSha: async () => gitSha,
     });
     entry.evidencePath = evidencePath;
+    stampEvidenceTier(entry, outcome);
     tagEvidenceQuality(entry, (rtOutcome as { command?: string }).command, options.dimensionId, cwd);
     await writeFn(evidencePath, JSON.stringify(entry, null, 2));
     await recordOutcomeEvidenceCommit(entry, cwd, options._createTimeMachineCommit);
@@ -241,6 +253,7 @@ export async function runOneOutcome(options: RunOutcomeOptions): Promise<Outcome
       _readGitSha: async () => gitSha,
     });
     entry.evidencePath = evidencePath;
+    stampEvidenceTier(entry, outcome);
     tagEvidenceQuality(entry, (e2eOutcome as { command?: string }).command, options.dimensionId, cwd);
     await writeFn(evidencePath, JSON.stringify(entry, null, 2));
     await recordOutcomeEvidenceCommit(entry, cwd, options._createTimeMachineCommit);
@@ -331,6 +344,7 @@ export async function runOneOutcome(options: RunOutcomeOptions): Promise<Outcome
     ranAt: new Date().toISOString(),
     evidencePath,
   };
+  stampEvidenceTier(entry, outcome);
 
   // Outcome quality gate: reject trivial outcomes at high tiers even if exit code was 0.
   if (entry.passed) {
@@ -501,6 +515,7 @@ export async function runAllOutcomes(options: RunAllOutcomesOptions): Promise<Ru
           failureReason: `duplicate outcome id "${outcome.id}" — evidence key collision blocked execution`,
           ranAt: new Date().toISOString(), evidencePath: ep,
         };
+        stampEvidenceTier(entry, outcome);
         // Write to disk so validate.ts reloading evidence from disk sees the
         // failure, not an old passing receipt left over from a prior run.
         try { await writeEvidenceFn(ep, JSON.stringify(entry, null, 2)); } catch { /* best-effort */ }
@@ -544,6 +559,7 @@ export async function runAllOutcomes(options: RunAllOutcomesOptions): Promise<Ru
           failureReason: `outcome threw: ${err instanceof Error ? err.message : String(err)}`,
           ranAt: new Date().toISOString(), evidencePath,
         };
+        stampEvidenceTier(entry, outcome);
         try { await (options._writeFile ?? fs.writeFile)(evidencePath, JSON.stringify(entry, null, 2)); } catch { /* best-effort */ }
         onProgress(`  ⚠ ${dim.id}/${outcome.id} threw: ${entry.failureReason}`);
       }
