@@ -97,6 +97,8 @@ export interface ValidateCliResult {
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
 const RUNTIME_KINDS = new Set(['cli-smoke', 'runtime-exec', 'e2e-workflow']);
+// --quick keeps only the fast checks (typecheck + unit-test tiers).
+const QUICK_TIERS = new Set(['T1', 'T2']);
 
 // Integrity caps are shared with the loadMatrix-derived path via integrityCapFor
 // (outcome-integrity.ts) so the headline score can never drift above this honest
@@ -160,8 +162,6 @@ export async function runValidateCli(options: ValidateCliOptions): Promise<Valid
     beforeScores.set(dim.id, applyLegacyReceiptCeiling(breakdown.score, breakdown));
   }
 
-  // Determine tier filter for --quick mode (only T1/T2 — fast checks)
-  const tierFilter = options.quick ? ['T1', 'T2'] : undefined;
   const onProgress = options._onProgress ?? ((msg: string) => logger.info(chalk.dim(msg)));
 
   if (!options.json) {
@@ -186,10 +186,15 @@ export async function runValidateCli(options: ValidateCliOptions): Promise<Valid
     }
   } catch { /* best-effort — integrity check never blocks validation */ }
 
-  // Run outcomes — optionally filter to runtime-only kinds
+  // Run outcomes — --runtime-only keeps runtime kinds; --quick keeps only T1/T2 tiers.
+  // Either filter shrinks the run below the declared set, so a filtered run can never
+  // satisfy the gate-confirmed ledger condition below (total === declared length).
   const filterOutcomes = (outcomes: Outcome[] | undefined): Outcome[] | undefined => {
-    if (!options.runtimeOnly || !outcomes) return outcomes;
-    return outcomes.filter(o => RUNTIME_KINDS.has(o.kind ?? 'shell'));
+    if (!outcomes) return outcomes;
+    let kept = outcomes;
+    if (options.runtimeOnly) kept = kept.filter(o => RUNTIME_KINDS.has(o.kind ?? 'shell'));
+    if (options.quick) kept = kept.filter(o => QUICK_TIERS.has(o.tier));
+    return kept;
   };
 
   const runResult = await runAllOutcomes({
@@ -252,15 +257,30 @@ export async function runValidateCli(options: ValidateCliOptions): Promise<Valid
     // its uncommitted outcomes[] (fleet run 1: earns evaporated on 3/3 repos). Snapshot
     // this dim's DECLARED outcomes to the self-gitignored declarations ledger — but ONLY
     // on the gate-confirmed condition: every declared outcome ran (no --quick /
-    // --runtime-only filtering) and passed, with NO integrity or frontier cap. A failing,
-    // capped, or partial run must never snapshot — that would launder an unproven
-    // declaration into durability.
+    // --runtime-only filtering) and passed, with NO integrity violation MEMBERSHIP at
+    // all (adversarial finding 11: integrityCapFor only reports a cap when it BITES —
+    // score above the cap — so a seamed/shared/decoupled/orphan/unscannable dim scoring
+    // below its cap carries integrityCap === undefined yet is NOT gate-clean). The
+    // integrity report itself is required: when the pre-flight failed, cleanliness is
+    // unverified, so the write is refused (fail-closed). A failing, capped, flagged, or
+    // partial run must never snapshot — that would launder an unproven declaration into
+    // durability.
     const declaredOutcomes = (dim as unknown as Record<string, unknown>)['outcomes'] as Outcome[];
+    const dimIntegrityClean =
+      integrityReport !== null &&
+      [
+        integrityReport.seamedDims,
+        integrityReport.sharedReceiptDims,
+        integrityReport.decoupledDims,
+        integrityReport.orphanDims,
+        integrityReport.unscannableDims,
+      ].every(list => !(list ?? []).includes(dim.id));
     const gateConfirmed =
       total > 0 &&
       total === declaredOutcomes.length &&
       failing === 0 &&
-      integrityCap === undefined;
+      integrityCap === undefined &&
+      dimIntegrityClean;
     if (gateConfirmed && options._recordDeclarations !== null) {
       const recordFn = options._recordDeclarations ?? recordDeclarations;
       try {

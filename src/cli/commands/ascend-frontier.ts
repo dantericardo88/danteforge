@@ -283,8 +283,14 @@ export async function runAscendFrontier(options: AscendFrontierOptions): Promise
   // CLIs means every build cycle honest-fails. Check ONCE, loudly, before any cycle — fail fast
   // with the named remedy for a broken environment, and ledger what was found either way.
   if (!options.dryRun && (!options._buildState || options._preflight)) {
+    // ONE council probe per run (review finding 12): parallel mode already discovered the live
+    // members above — preflight reuses that list instead of spawning the version probes again.
+    // Sequential mode probes once, here, where the result is reported + ledgered.
+    const discoverForPreflight: () => Promise<unknown[]> = members.length > 0
+      ? (async () => members)
+      : (options._discoverMembers ?? defaultDiscoverMembers);
     const preflight = options._preflight
-      ?? ((c: string, p: boolean) => defaultPreflight(c, p, options._discoverMembers ?? defaultDiscoverMembers));
+      ?? ((c: string, p: boolean) => defaultPreflight(c, p, discoverForPreflight));
     const pf = await preflight(cwd, !!options.parallel);
     for (const n of pf.notes) logger.info(`[ascend-frontier] preflight: ${n}`);
     if (!pf.ok) {

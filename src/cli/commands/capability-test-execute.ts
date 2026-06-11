@@ -39,6 +39,9 @@ export interface CapabilityTestExecuteOptions {
   json?: boolean;
   /** Cap on expensive actions (author + ladder research) per pass. Default 3. */
   maxActions?: number;
+  /** Cap on dynamic sensitivity probes per pass (each probe runs the capability_test twice).
+   *  Beyond it the probe declines (INCONCLUSIVE — static verdict stands). Default 6. */
+  maxProbes?: number;
   /** Per-command timeout for probes, repair runs, and authored-test executions. */
   timeoutMs?: number;
   // Seams (tests): every expensive or external action is injectable.
@@ -136,10 +139,21 @@ export async function runCapabilityTestExecute(options: CapabilityTestExecuteOpt
     await saveMatrix(fresh, cwd);
   });
 
+  // Probe budget (adversarial-review finding 1, residual): each sensitivity probe executes the
+  // dim's capability_test TWICE. Unbounded probing across a large matrix routinely blew past the
+  // orchestrator's 30-minute sub-command kill — mid-probe, with a fault written into production
+  // source (now journal-protected, but still a wasted pass). Beyond the budget the probe declines
+  // honestly: INCONCLUSIVE keeps the static verdict; it never guesses.
+  const maxProbes = typeof options.maxProbes === 'number' && Number.isFinite(options.maxProbes)
+    ? Math.max(0, Math.floor(options.maxProbes))
+    : 6;
+  let probesUsed = 0;
   const verifyRealFn = async (dimId: string): Promise<SensitivityVerdict> => {
     const audit = auditByDim.get(dimId);
     if (!audit) return 'INCONCLUSIVE';
     if (options._verifyFn) return options._verifyFn(audit, cwd);
+    if (probesUsed >= maxProbes) return 'INCONCLUSIVE';
+    probesUsed += 1;
     return (await verifyDimYardstick(audit, cwd, { timeoutMs: options.timeoutMs })).verdict;
   };
 

@@ -4,6 +4,26 @@ type Commands = Awaited<typeof import('./commands/index.js')>;
 
 export function registerOutcomesCmds(program: Command, _C: () => Promise<Commands>): void {
 program
+  .command('declarations <action> [dimId] [outcomeId]')
+  .description('Operate the gate-confirmed declarations ledger: list (durable snapshots + tombstones), drop <dim> <outcome> (sanctioned removal — tombstones the id so neither the overlay nor a re-record can resurrect it), prune <dim> (delete the dim\'s ledger file — durability lost)')
+  .option('--reason <text>', 'Why the declaration is being dropped (recorded in the tombstone)')
+  .option('--json', 'Machine-readable output (list)')
+  .option('--cwd <path>', 'Project directory (defaults to cwd)')
+  .action((action: string, dimId: string | undefined, outcomeId: string | undefined, opts) => {
+    void (async () => {
+      const { runDeclarationsCli } = await import('./commands/declarations.js');
+      if (action !== 'list' && action !== 'drop' && action !== 'prune') {
+        const { logger } = await import('../core/logger.js');
+        logger.error(`[declarations] unknown action "${action}" — use list | drop | prune.`);
+        process.exitCode = 1;
+        return;
+      }
+      const r = await runDeclarationsCli({ action, dimId, outcomeId, reason: opts.reason as string | undefined, json: opts.json as boolean | undefined, cwd: opts.cwd as string | undefined });
+      if (!r.ok) process.exitCode = 1;
+    })();
+  });
+
+program
   .command('outcomes')
   .description('Run declared outcomes per dimension. Score = derived from evidence (Phase F+G). Replaces writable scores entirely once dims migrate.')
   .option('--dim <id>', 'Run only on this dimension')

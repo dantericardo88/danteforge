@@ -22,6 +22,9 @@ import path from 'node:path';
 import { extractPrimaryTestFiles } from './derived-score.js';
 import { checkOutcomeIntegrity, buildWiredBasenames, commandHasSeams } from '../matrix/engines/outcome-integrity.js';
 import { isTestSuiteCommand } from '../matrix/engines/outcome-quality.js';
+import { updateLedgeredOutcomes } from './declarations-ledger.js';
+import { logger } from './logger.js';
+import type { Outcome } from '../matrix/types/outcome.js';
 import type { CompeteMatrix } from './compete-matrix.js';
 
 const HIGH = new Set(['T5', 'T6', 'T7', 'T8']);
@@ -131,6 +134,19 @@ export async function groundOutcomes(opts: { matrix: CompeteMatrix; projectPath:
 
     const status: GroundingStatus = grounded && downgraded ? 'partial' : grounded ? 'grounded' : 'downgraded';
     results.push({ dimId: dim.id, status, changes, suggestions });
+
+    // Write the SANCTIONED change through to the declarations ledger (adversarial finding 4b):
+    // without this, the ledger keeps the pre-downgrade snapshot and a later matrix wipe restores
+    // the OLD inflated declaration. updateLedgeredOutcomes can only REPLACE ids the ledger already
+    // holds — never add — so this cannot launder anything new in. Best-effort: grounding must
+    // never fail because the ledger write did.
+    if (changes.length > 0) {
+      try {
+        await updateLedgeredOutcomes(projectPath, dim.id, (dim.outcomes ?? []) as Outcome[]);
+      } catch (err) {
+        logger.warn(`[ground-outcomes] ledger write-through failed for "${dim.id}" (grounding itself succeeded): ${err instanceof Error ? err.message : String(err)}`);
+      }
+    }
   }
 
   const counts: Record<GroundingStatus, number> = { 'already-honest': 0, grounded: 0, downgraded: 0, partial: 0 };
