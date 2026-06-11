@@ -2,9 +2,9 @@
 // Supports --output, --format (md|json), and --coverage flags.
 import fs from 'fs/promises';
 import path from 'path';
-import { logger } from '../../core/logger.js';
-import { loadState, saveState } from '../../core/state.js';
-import { withErrorBoundary } from '../../core/cli-error-boundary.js';
+// logger/state/cli-error-boundary are loaded lazily inside docs() so that
+// importing the pure formatters (e.g. formatCommandReference) stays cheap.
+import type { loadState, saveState } from '../../core/state.js';
 import {
   CANVAS_PRESET_TEXT,
   SPARK_PLANNING_TEXT,
@@ -414,8 +414,13 @@ export function generateApiMarkdown(result: DocCoverageResult): string {
  * @param options - Command options with optional injection seams for testing.
  */
 export async function docs(options: DocsOptions = {}): Promise<void> {
-  const loadFn = options._loadState ?? loadState;
-  const saveFn = options._saveState ?? saveState;
+  const [{ logger }, stateModule, { withErrorBoundary }] = await Promise.all([
+    import('../../core/logger.js'),
+    import('../../core/state.js'),
+    import('../../core/cli-error-boundary.js'),
+  ]);
+  const loadFn = options._loadState ?? stateModule.loadState;
+  const saveFn = options._saveState ?? stateModule.saveState;
   const readdirFn = options._readdir ?? fs.readdir;
   const readFileFn = options._readFile ?? ((p: string, enc: BufferEncoding) => fs.readFile(p, enc));
   const mkdirFn = options._mkdir ?? ((p: string, opts?: { recursive?: boolean }) => fs.mkdir(p, opts));
