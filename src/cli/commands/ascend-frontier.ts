@@ -25,29 +25,16 @@ import { planNextAction, type DimState, type AscendAction } from '../../core/asc
 import { assignRound, runParallelRound, type PushOutcome } from '../../core/ascend-frontier-parallel.js';
 import type { CouncilMemberId } from '../../matrix/engines/council-scheduler.js';
 import { RunLedger } from '../../core/run-ledger.js';
-import { runCli, parseCourtOutput, setActiveLedger, type CliResult } from './ascend-frontier-runner.js';
+import { setActiveLedger } from './ascend-frontier-runner.js';
 import { bootstrapColdRepo, defaultPreflight, type DefineUniverseFn, type PreflightResult } from './ascend-frontier-bootstrap.js';
+import { df, defaultPushTo9, defaultDiscoverMembers, defaultBuildAll, defaultPromoteOne, headSha, type PushResult } from './ascend-frontier-push.js';
 
 const execFileAsync = promisify(execFile);
 const MARKET_DIMS = MARKET_CAPPED_DIMS; // canonical set — src/core/market-dims.ts
 
-/**
- * A push runner reports the court verdict and the fingerprint of the evidence it produced.
- * `courtRan` is the honesty boundary: it is TRUE only when the frontier-review court actually
- * executed over real evidence and returned a verdict. When the build/evidence/court sub-commands
- * fail to run (crash, no evidence), `courtRan` is FALSE — and the loop must NOT record that as a
- * court rejection (which would fabricate "the court rejected N times" generator-ceiling provenance).
- */
-export interface PushResult {
-  verdict: 'VALIDATED' | 'REJECTED';
-  courtRan: boolean;
-  fingerprint: AttemptFingerprint;
-  /** Present when the dim cannot honestly reach 9 yet because its frontier_spec is INCOMPLETE — the
-   *  genuinely-human real-user-path fields (observed_capability / category_delta / observable artifact)
-   *  are unfilled. The orchestrator writes this as an ACTIONABLE ceiling that names the exact work,
-   *  distinct from a build failure (the court could not even be reached, but nothing is broken). */
-  ceiling?: { cause: CeilingCause; detail: string };
-}
+// PushResult + the production push/promote runners live in ascend-frontier-push.ts
+// (file-size split); PushResult is re-exported below so existing importers keep working.
+export type { PushResult } from './ascend-frontier-push.js';
 
 export interface AscendFrontierOptions {
   cwd?: string;
@@ -119,13 +106,6 @@ async function defaultBuildState(cwd: string): Promise<DimState[]> {
     });
   }
   return out;
-}
-
-/** Run a CLI sub-command. Returns a typed result (exit code captured + ledger-recorded);
- *  the orchestrator still re-reads state to decide progress, but a swallowed failure is now
- *  visible in the run bundle instead of being silently inferred away. */
-async function df(cwd: string, args: string[]): Promise<CliResult> {
-  return runCli(cwd, args);
 }
 
 // ── Phase command routing (pure — sequential vs council-parallel) ────────────────
@@ -577,191 +557,4 @@ function finish(terminal: AscendFrontierResult['terminal'], cycles: number, acti
   if (runId) logger.info(`[ascend-frontier] run-ledger: .danteforge/runs/${runId}/ (summary.md, commands.json, gates.json, receipts.json)`);
   if (options.json) process.stdout.write(JSON.stringify(result, null, 2) + '\n');
   return result;
-}
-
-// ── Production push runner (one dim, full depth pass) ─────────────────────────────
-
-function specOf(dim: unknown): FrontierSpec | undefined {
-  return (dim as { frontier_spec?: FrontierSpec } | undefined)?.frontier_spec;
-}
-function competitorsOf(matrix: CompeteMatrix | null): string[] {
-  const m = matrix as unknown as { competitors_closed_source?: string[]; competitors_oss?: string[] } | null;
-  return [...(m?.competitors_closed_source ?? []), ...(m?.competitors_oss ?? [])];
-}
-
-async function defaultPushTo9(cwd: string, dimId: string): Promise<PushResult> {
-  // 0. Ensure a frontier_spec EXISTS before freeze. The autonomous loop never authored one — `freeze`
-  //    used to throw "has no frontier_spec", so every push misrecorded as build-failed and NO dim could
-  //    ever reach the court. init auto-derives the real tracked competitor + a real-product run_command
-  //    / callsite; the genuinely-human fields stay honest TODOs.
-  const m0 = await loadMatrix(cwd);
-  let spec0 = specOf(m0?.dimensions.find(d => d.id === dimId));
-  if (!spec0) {
-    await df(cwd, ['frontier-spec', 'init', dimId, '--write']);
-    spec0 = specOf((await loadMatrix(cwd))?.dimensions.find(d => d.id === dimId));
-  }
-
-  // 1. Honesty guardrails, in-process so we surface the EXACT unfilled fields. A spec that still
-  //    carries un-authored real-user-path fields cannot honestly reach 9.0 — record an ACTIONABLE
-  //    ceiling naming the specific work, NOT a silent build-failure. This is the loop telling the
-  //    truth about the frontier (the council's holy-grail "truthful build list") instead of churning.
-  if (!spec0) {
-    return { verdict: 'REJECTED', courtRan: false, fingerprint: { dimId, command: '', artifactPath: '', gitSha: await headSha(cwd) } };
-  }
-  const check = checkFrontierSpec(spec0, competitorsOf(m0), await loadDimRubric(cwd, dimId));
-  if (!check.ok) {
-    return {
-      verdict: 'REJECTED', courtRan: false,
-      ceiling: { cause: 'spec-incomplete',
-        detail: `${dimId} is honestly held below 9.0 until its frontier_spec real-user-path is authored — ${check.errors.join(' | ')}` },
-      fingerprint: { dimId, command: spec0.real_user_path.run_command, artifactPath: spec0.real_user_path.observable_artifacts[0]?.path ?? '', gitSha: await headSha(cwd) },
-    };
-  }
-
-  // 2. Spec passes the guardrails → freeze it, build to it, capture evidence, convene the court.
-  await df(cwd, ['frontier-spec', 'freeze', dimId, '--write']);
-  await df(cwd, ['council-crusade', '--focus-dims', dimId, '--goal', `Close frontier_spec for ${dimId}`]);
-
-  const specBefore = (await loadMatrix(cwd))?.dimensions.find(d => d.id === dimId);
-  spec0 = specOf(specBefore);
-  let evidenceOk = false;
-  if (spec0) {
-    const callsite = spec0.real_user_path.required_callsite;
-    const artifact = spec0.real_user_path.observable_artifacts[0]?.path ?? '';
-    // Run enough sessions to satisfy BOTH receipt requirements at once: >=min_distinct_sessions
-    // distinct process-sessions AND >=min_t5_plus_outcomes total T5+ receipts (each session-record
-    // appends exactly one). Looping only over min_distinct_sessions produced too few outcomes to
-    // satisfy the T7 multi-receipt consensus. (Codex finding.)
-    const sessions = Math.max(2, spec0.required_receipts.min_distinct_sessions, spec0.required_receipts.min_t5_plus_outcomes);
-    let okSessions = 0;
-    for (let s = 0; s < sessions; s++) {
-      // Each session runs a DIFFERENT realistic input (variant rotation) so one prepared fixture
-      // cannot satisfy the whole multi-session proof — the anti-circular defense.
-      const cmd = resolveRunCommand(spec0, s);
-      const rec = await df(cwd, ['session-record', dimId, '--run', cmd, '--callsite', callsite, '--artifact', artifact, '--write']);
-      // --preserve-sessions (forceCold=FALSE): run ONLY the newly-recorded outcome (no cache yet) and
-      // serve every prior session's evidence from cache UNCHANGED, so each session keeps its own
-      // session_id. validate DEFAULTS to forceCold=TRUE, which re-runs EVERY outcome and re-stamps them
-      // all with the LAST process's session_id — collapsing the multi-session proof to ONE distinct
-      // session, which derived-score structurally vetoes at T7. That default is what made autonomous
-      // 9.0 unreachable; --preserve-sessions is what produces the >=2 distinct sessions the frontier needs.
-      const val = await df(cwd, ['validate', dimId, '--preserve-sessions']);
-      if (rec.ok && val.ok) okSessions++;
-    }
-    // Require ALL required distinct sessions to succeed — not just one. A single passing session is
-    // NOT enough evidence to convene the court (it would violate min_distinct_sessions); treat a
-    // partial run as a build failure, not a court attempt. (Council/Codex: evidenceOk was too permissive.)
-    evidenceOk = okSessions >= sessions;
-  }
-
-  // The honesty boundary: the court only "ran" if there's a frozen spec, the evidence pipeline
-  // actually produced something (rec+val exit 0), AND frontier-review itself executed (exit 0).
-  // Otherwise this was a failed build — NOT a court rejection — and must not be recorded as one.
-  let courtRan = false;
-  let verdict: PushResult['verdict'] = 'REJECTED';
-  if (spec0 && evidenceOk) {
-    const review = await df(cwd, ['frontier-review', dimId, '--write']);
-    if (review.ok) {
-      courtRan = true;
-      const matrix = await loadMatrix(cwd);
-      const dim = matrix?.dimensions.find(d => d.id === dimId);
-      const spec = (dim as unknown as { frontier_spec?: FrontierSpec } | undefined)?.frontier_spec;
-      verdict = spec && effectiveStatus(spec) === 'validated' ? 'VALIDATED' : 'REJECTED';
-    }
-  }
-
-  let gitSha: string | null = null;
-  try { gitSha = (await execFileAsync('git', ['rev-parse', 'HEAD'], { cwd })).stdout.trim(); } catch { /* none */ }
-  return {
-    verdict, courtRan,
-    fingerprint: {
-      dimId,
-      command: spec0?.real_user_path.run_command ?? '',
-      artifactPath: spec0?.real_user_path.observable_artifacts[0]?.path ?? '',
-      gitSha,
-    },
-  };
-}
-
-// ── Parallel production helpers ──────────────────────────────────────────────────
-
-async function headSha(cwd: string): Promise<string | null> {
-  try { return (await execFileAsync('git', ['rev-parse', 'HEAD'], { cwd })).stdout.trim(); } catch { return null; }
-}
-
-async function defaultDiscoverMembers(): Promise<CouncilMemberId[]> {
-  const { discoverCouncil } = await import('./council.js');
-  return (await discoverCouncil()).filter(m => m.available).map(m => m.id as CouncilMemberId);
-}
-
-/** CONCURRENT build: freeze each dim's spec, then council --parallel builds them in isolated
- *  worktrees with the cross-member merge court, merging approved work to main. */
-async function defaultBuildAll(cwd: string, assignments: { memberId: CouncilMemberId; dimId: string }[], members: CouncilMemberId[]): Promise<void> {
-  const dims = assignments.map(a => a.dimId);
-  // init BEFORE freeze (same missing-init root cause as the sequential path): freeze throws on a dim
-  // with no spec. init is a no-op when a spec already exists. (Parallel promote still runs the court
-  // even on an incomplete spec — a noted follow-up; the court honestly rejects an unvalidated spec.)
-  for (const d of dims) { await df(cwd, ['frontier-spec', 'init', d, '--write']); await df(cwd, ['frontier-spec', 'freeze', d, '--write']); }
-  if (members.length >= 2) {
-    await df(cwd, ['council', '--parallel', '--members', members.join(','), '--focus-dims', dims.join(','), '--rounds', '1']);
-  } else {
-    for (const a of assignments) await df(cwd, ['council-crusade', '--focus-dims', a.dimId, '--goal', `Close frontier_spec for ${a.dimId}`]);
-  }
-}
-
-/** SERIAL promote of one dim: capture real-user-path evidence (variant-rotated), validate across
- *  sessions, then run the court with the assigned owner EXCLUDED (builder-never-judges). Writes
- *  matrix.json — runParallelRound guarantees this runs one dim at a time, so no write races. */
-async function defaultPromoteOne(cwd: string, a: { memberId: CouncilMemberId; dimId: string }): Promise<PushOutcome> {
-  // Mirror the sequential push's honesty guardrails (the parallel path used to skip them, so an
-  // incomplete spec churned through evidence capture instead of emitting the ACTIONABLE
-  // spec-incomplete ceiling): ensure a spec exists, then check it in-process before any evidence run.
-  const m0 = await loadMatrix(cwd);
-  let spec0 = specOf(m0?.dimensions.find(d => d.id === a.dimId));
-  if (!spec0) {
-    await df(cwd, ['frontier-spec', 'init', a.dimId, '--write']);
-    spec0 = specOf((await loadMatrix(cwd))?.dimensions.find(d => d.id === a.dimId));
-  }
-  if (!spec0) {
-    return { dimId: a.dimId, builderId: a.memberId, verdict: 'REJECTED', passedByJudges: [], courtRan: false };
-  }
-  const check = checkFrontierSpec(spec0, competitorsOf(m0), await loadDimRubric(cwd, a.dimId));
-  if (!check.ok) {
-    return {
-      dimId: a.dimId, builderId: a.memberId, verdict: 'REJECTED', passedByJudges: [], courtRan: false,
-      ceiling: { cause: 'spec-incomplete',
-        detail: `${a.dimId} is honestly held below 9.0 until its frontier_spec real-user-path is authored — ${check.errors.join(' | ')}` },
-    };
-  }
-  let evidenceOk = false;
-  {
-    const callsite = spec0.real_user_path.required_callsite;
-    const artifact = spec0.real_user_path.observable_artifacts[0]?.path ?? '';
-    const sessions = Math.max(2, spec0.required_receipts.min_distinct_sessions, spec0.required_receipts.min_t5_plus_outcomes);
-    let okSessions = 0;
-    for (let s = 0; s < sessions; s++) {
-      const rec = await df(cwd, ['session-record', a.dimId, '--run', resolveRunCommand(spec0, s), '--callsite', callsite, '--artifact', artifact, '--write']);
-      // --preserve-sessions (see defaultPushTo9): validate defaults to forceCold=TRUE which collapses
-      // the per-session session_ids into one; --preserve-sessions serves cache and keeps them distinct.
-      const val = await df(cwd, ['validate', a.dimId, '--preserve-sessions']);
-      if (rec.ok && val.ok) okSessions++;
-    }
-    evidenceOk = okSessions >= sessions;
-  }
-  // Hard-block the court on incomplete evidence: convening judges on a failed/partial evidence run
-  // would let the court "VALIDATE" a dim whose receipts don't actually back it. Not all sessions
-  // captured → BUILD failure (courtRan:false), never a court rejection.
-  if (!evidenceOk) {
-    return { dimId: a.dimId, builderId: a.memberId, verdict: 'REJECTED', passedByJudges: [], courtRan: false };
-  }
-  // Distinguish a real court REJECT from "we couldn't read the court's answer" (non-zero exit or
-  // no JSON): parseCourtOutput flags the latter so the orchestrator records uncertainty, not a clean no.
-  const res = await runCli(cwd, ['frontier-review', a.dimId, '--builder', a.memberId, '--min-judges', '2', '--json', '--write']);
-  const parsed = parseCourtOutput(res);
-  return {
-    dimId: a.dimId, builderId: a.memberId,
-    verdict: parsed.verdict, passedByJudges: parsed.passedByJudges as CouncilMemberId[],
-    courtRan: !parsed.parseError,
-    ...(parsed.parseError ? { parseError: true } : {}),
-  };
 }

@@ -88,17 +88,26 @@ export interface CourtParse {
 }
 
 /**
- * Parse `frontier-review --json` output into a verdict. The key honesty property: a non-zero exit
- * or absent/garbage JSON yields `parseError: true` (verdict defensively REJECTED) so the caller can
- * record "we don't actually know" rather than treating a corrupt stream as a clean rejection.
+ * Parse `frontier-review --json` output into a verdict. The key honesty property: absent/garbage
+ * JSON yields `parseError: true` (verdict defensively REJECTED) so the caller can record "we don't
+ * actually know" rather than treating a corrupt stream as a clean rejection.
+ *
+ * Exit-code coherence (live pilot finding, fleet run 3): the frontier-review CLI exits 1 on an
+ * honest REJECTED *by design* — so a complete court JSON carrying REJECTED on a non-zero exit IS
+ * a court that ran, and must be recorded as a rejection. The old `!res.ok` short-circuit booked
+ * EVERY honest rejection as "court didn't run" (build failure), churning re-convened judges on
+ * retries and never feeding the attempt ledger. VALIDATED always exits 0, so a non-zero exit
+ * claiming VALIDATED is incoherent (e.g. --write failed after printing) — fail CLOSED there only.
  */
 export function parseCourtOutput(res: { ok: boolean; stdout: string }): CourtParse {
   const brace = res.stdout.indexOf('{');
-  if (!res.ok || brace === -1) return { verdict: 'REJECTED', passedByJudges: [], parseError: true };
+  if (brace === -1) return { verdict: 'REJECTED', passedByJudges: [], parseError: true };
   try {
     const j = JSON.parse(res.stdout.slice(brace)) as { result?: { verdict?: string; judges?: { verdict: string; judgeId: string }[] } };
-    const verdict = j?.result?.verdict === 'VALIDATED' ? 'VALIDATED' : 'REJECTED';
-    const passedByJudges = (j?.result?.judges ?? []).filter(x => x.verdict === 'PASS').map(x => x.judgeId);
+    if (typeof j?.result?.verdict !== 'string') return { verdict: 'REJECTED', passedByJudges: [], parseError: true };
+    const verdict = j.result.verdict === 'VALIDATED' ? 'VALIDATED' : 'REJECTED';
+    if (!res.ok && verdict === 'VALIDATED') return { verdict: 'REJECTED', passedByJudges: [], parseError: true };
+    const passedByJudges = (j.result.judges ?? []).filter(x => x.verdict === 'PASS').map(x => x.judgeId);
     return { verdict, passedByJudges, parseError: false };
   } catch {
     return { verdict: 'REJECTED', passedByJudges: [], parseError: true };

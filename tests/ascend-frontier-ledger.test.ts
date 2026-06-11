@@ -27,9 +27,20 @@ describe('parseCourtOutput — court output is read honestly (G3)', () => {
     assert.equal(r.verdict, 'REJECTED');
     assert.equal(r.parseError, true);
   });
-  test('non-zero exit → parseError even if stdout has JSON', () => {
+  test('non-zero exit → parseError even if stdout has JSON claiming VALIDATED', () => {
     const r = parseCourtOutput({ ok: false, stdout: '{"result":{"verdict":"VALIDATED"}}' });
     assert.equal(r.parseError, true, 'a failed command can never be read as a pass');
+  });
+  test('non-zero exit with a complete REJECTED verdict IS a court that ran (live pilot pin)', () => {
+    // frontier-review exits 1 on an honest REJECTED by design — booking it as "court did not
+    // run" (the old !ok short-circuit) misfiled every honest rejection as a build failure.
+    const r = parseCourtOutput({ ok: false, stdout: '{"result":{"verdict":"REJECTED","judges":[{"verdict":"FAIL","judgeId":"codex"}]}}' });
+    assert.equal(r.parseError, false, 'an honest rejection must reach the attempt ledger');
+    assert.equal(r.verdict, 'REJECTED');
+  });
+  test('non-zero exit with JSON but NO verdict field → parseError (crash mid-print)', () => {
+    const r = parseCourtOutput({ ok: false, stdout: '{"result":{}}' });
+    assert.equal(r.parseError, true);
   });
   test('garbage after the brace → parseError', () => {
     const r = parseCourtOutput({ ok: true, stdout: '{not json at all' });
