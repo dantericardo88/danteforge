@@ -54,6 +54,32 @@ function truncate(s: string | undefined, n = 4000): string | undefined {
   return s.length > n ? `${s.slice(0, n)}…[+${s.length - n} chars]` : s;
 }
 
+// ── Process-control seam (laws harness) ──────────────────────────────────────
+// The L4 process-hygiene law (tests/laws/laws-l4-process-hygiene.test.ts) drives runCli with
+// RECORDING implementations of the spawn/track/kill surface so the track↔untrack pairing and the
+// timeout tree-kill (exit 124) path are machine-checked without real long-lived children.
+// Production behavior is unchanged: the defaults below ARE the real functions, and nothing in
+// src ever calls setRunnerProcessControl.
+
+export interface RunnerProcessControl {
+  spawnFn: typeof spawn;
+  trackChildFn: typeof trackChild;
+  untrackChildFn: typeof untrackChild;
+  killTreeFn: typeof killTree;
+  phaseTimeoutMsFn: (args: string[]) => number;
+}
+
+function realProcessControl(): RunnerProcessControl {
+  return { spawnFn: spawn, trackChildFn: trackChild, untrackChildFn: untrackChild, killTreeFn: killTree, phaseTimeoutMsFn: phaseTimeoutMs };
+}
+
+let processControl: RunnerProcessControl = realProcessControl();
+
+/** Install recording overrides (laws harness) or, with no argument, restore the real surface. */
+export function setRunnerProcessControl(next?: Partial<RunnerProcessControl>): void {
+  processControl = next ? { ...realProcessControl(), ...next } : realProcessControl();
+}
+
 export interface CourtParse {
   verdict: 'VALIDATED' | 'REJECTED';
   passedByJudges: string[];
@@ -92,19 +118,19 @@ function runOnce(cwd: string, args: string[]): Promise<CliResult> {
     const cap = (s: string) => (s.length > STREAM_TAIL_CAP ? s.slice(s.length - STREAM_TAIL_CAP) : s);
     // stdin:'ignore' — an unattended sub-command that prompts gets EOF and fails fast instead of
     // blocking forever (the silent autoresearch hang the fleet hit). detached on POSIX for group-kill.
-    const child = spawn(node, [cli, ...args], { cwd, windowsHide: true, stdio: ['ignore', 'pipe', 'pipe'], detached: SPAWN_DETACHED });
-    trackChild(child.pid);
+    const child = processControl.spawnFn(node, [cli, ...args], { cwd, windowsHide: true, stdio: ['ignore', 'pipe', 'pipe'], detached: SPAWN_DETACHED });
+    processControl.trackChildFn(child.pid);
     const done = (exitCode: number) => {
       if (settled) return;
       settled = true;
       clearTimeout(timer);
       clearInterval(heartbeat);
-      untrackChild(child.pid);
+      processControl.untrackChildFn(child.pid);
       resolve({ exitCode, stdout: out, stderr: err, ms: Date.now() - start, ok: exitCode === 0 });
     };
     // On timeout, kill the WHOLE tree (harden-crusade + its autoresearch grandchildren), not just the
     // direct child — otherwise the grandchildren orphan and accumulate as zombies across sessions.
-    const timer = setTimeout(() => { lastTreeKillAt = Date.now(); killTree(child.pid); done(124); }, phaseTimeoutMs(args));
+    const timer = setTimeout(() => { lastTreeKillAt = Date.now(); processControl.killTreeFn(child.pid); done(124); }, processControl.phaseTimeoutMsFn(args));
     // LIVE ECHO + HEARTBEAT — the fleet's "silent stall": piped output was captured but never shown,
     // so a 20-min build-to-7 looked frozen and operators killed healthy runs. Echo the child's lines
     // as they arrive (prefixed, so the operator sees the real sub-command working), and when the child

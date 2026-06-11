@@ -116,6 +116,15 @@ SUPERVISION RULES while it runs / after it terminates:
     broken; later cycles retry). The conductor's budgets (3 expensive actions, 6 probes per pass)
     mean big matrices converge over MULTIPLE cycles by design. exit-127/spawn errors mean a
     missing CLI on PATH (fix environment, re-run).
+  • STOPPING A RUN (operator note from fleet run 2): the autopilot is a detached node process —
+    TaskStop/killing the launching shell does NOT stop it. Use `taskkill /pid <pid> /T /F` on the
+    ascend-frontier node process (find it via the run ledger's commands-live.jsonl or process
+    tree). The SIGINT path finalizes the bundle when you Ctrl-C a foreground run.
+  • ENGINE BUDGETS (fixed after fleet run 2): build-to-7 runs with an 18-minute inner budget and
+    a 55-minute wall-clock checkpoint under a 60-minute phase cap — a long build phase that exits
+    CLEANLY having advanced 1-2 dims and hands back to the orchestrator is the DESIGNED rhythm.
+    Multiple cycles per dim-set is normal; zero dims advanced across 2+ identical cycles is not
+    (report it).
   • If every cycle errors or the run terminates `failed`, paste the last 30 lines of output + the
     ledger summary and go to Phase 3 anyway — manual climbing may still be possible.
 
