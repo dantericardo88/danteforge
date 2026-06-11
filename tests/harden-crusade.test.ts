@@ -46,6 +46,10 @@ function baseOpts(overrides: Partial<HardenCrusadeOptions> = {}): HardenCrusadeO
     timeMinutes: 1,
     loop: false,
     _loadState: null,
+    // L8 default for these suites: a FAILING capability test, so the builder-dispatch path stays
+    // available — the legacy behavior every pre-L8 expectation here was written against. L8's
+    // routing behavior itself is pinned in tests/laws/laws-l8-evidence-bound-routing.test.ts.
+    _runCapTest: async () => 1,
     _runAutoResearch: async () => { /* no-op */ },
     _runOutcomesForDim: async () => { /* no-op */ },
     _writeFile: async () => { /* no-op */ },

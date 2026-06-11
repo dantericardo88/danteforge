@@ -61,6 +61,9 @@ export interface HardenCrusadeOptions {
   _runOutcomesForDim?: (dimensionId: string, cwd: string) => Promise<void>;
   _getScore?: (dimensionId: string, cwd: string) => Promise<number>;
   _runHardenForDim?: (dimensionId: string, cwd: string) => Promise<HardenDimResult>;
+  /** L8 pre-dispatch probe: exit code of the dim's capability_test (0 = already passing →
+   *  builder dispatch is skipped; the exit-code metric would be unimprovable). */
+  _runCapTest?: (dim: MatrixDimension, cwd: string) => Promise<number>;
   _loadMatrix?: (cwd: string) => Promise<CompeteMatrix | null>;
   _writeFile?: (p: string, content: string) => Promise<void>;
   _loadState?: ((opts: { cwd?: string }) => Promise<{ wavesSinceLastRegrade?: number }>) | null;
@@ -246,6 +249,21 @@ export async function mergeBackIsolatedBranch(cwd: string, branch: string, dimen
   }
 }
 
+/** L8 default probe: run the dim's capability_test once in-process and return its exit code.
+ *  Cheap relative to an 18-minute builder dispatch; any error reads as failing (1) so the
+ *  builder path stays available when the probe itself cannot run. */
+async function defaultRunCapTest(dim: MatrixDimension, cwd: string): Promise<number> {
+  try {
+    const { runCapabilityTest } = await import('../../matrix/engines/capability-test-runner.js');
+    const ct = (dim as unknown as { capability_test?: { command: string } }).capability_test;
+    if (!ct?.command) return 1;
+    const verdict = runCapabilityTest({ dimensionId: dim.id, capabilityTest: ct as Parameters<typeof runCapabilityTest>[0]['capabilityTest'], cwd });
+    return verdict.result?.exitCode ?? (verdict.allowed ? 0 : 1);
+  } catch {
+    return 1;
+  }
+}
+
 /** Resolve a dim's capability_test shell command (the autoresearch measurement metric), or null. */
 function capabilityTestCommand(dim: MatrixDimension): string | null {
   const ct = (dim as unknown as { capability_test?: { command?: string }; no_capability_test?: boolean });
@@ -389,6 +407,7 @@ async function runDimensionLoop(
   const runOutcomesForDim = options._runOutcomesForDim ?? defaultRunOutcomesForDim;
   const getScore = options._getScore ?? defaultGetScore;
   const runHardenForDim = options._runHardenForDim ?? defaultRunHardenForDim;
+  const runCapTest = options._runCapTest ?? defaultRunCapTest;
 
   const initialScore = dim.scores['self'] ?? 0;
   let score = initialScore;
@@ -422,8 +441,18 @@ async function runDimensionLoop(
     //    A dim with no capability_test (meta-dims like token_economy) has nothing to measure, so
     //    autoresearch is skipped rather than invoked without a metric (which crashes/hangs the loop).
     const measurementCommand = capabilityTestCommand(dim);
+    let evidenceBoundCycle = false;
     if (!measurementCommand) {
       logger.info(`[harden-crusade:${dim.id}] Cycle ${cycle}: no capability_test — skipping autoresearch (nothing to measure)`);
+    } else if (await runCapTest(dim, cwd) === 0) {
+      // LAW L8 — EVIDENCE-BOUND ROUTING (live finding, fleet run 3): when the capability test
+      // ALREADY PASSES, the exit-code metric is 0 — structurally unimprovable — so dispatching
+      // builders guarantees a full budget of discards (11 straight on documentation, live). A
+      // passing capability with a sub-target score means the gap is EVIDENCE (missing/stale
+      // outcomes), not capability: skip the builder, run the depth pass below, and if the score
+      // still holds, stop with the honest evidence-bound verdict instead of grinding.
+      logger.info(`[harden-crusade:${dim.id}] Cycle ${cycle}: capability_test ALREADY PASSES — builder dispatch skipped (unimprovable exit-code metric); running the depth pass (outcomes refresh + gate)`);
+      evidenceBoundCycle = true;
     } else {
       try {
         logger.info(`[harden-crusade:${dim.id}] Cycle ${cycle}: autoresearch (${timeMinutes}m, metric=capability_test)`);
@@ -447,6 +476,19 @@ async function runDimensionLoop(
 
     // 3. Harden gate
     lastHarden = await runHardenForDim(dim.id, cwd);
+
+    // L8 terminal: the capability passes, the depth pass ran, and the score still holds below
+    // target — building cannot move this dim. Stop honestly, naming the real remaining work
+    // (outcome authoring: validate/session-record), instead of burning the remaining cycles.
+    if (evidenceBoundCycle && score < target && delta <= 0) {
+      return {
+        dimensionId: dim.id, label: dim.label, initialScore, finalScore: score,
+        cyclesRun: cycle, autoresearchRuns,
+        hardenPassed: lastHarden.allowed, finalCap: lastHarden.scoreCap,
+        status: 'AT_CEILING',
+        reason: `evidence-bound: capability_test already passes and the depth pass did not move the score (${score.toFixed(2)} < ${target}) — the gap is missing/stale OUTCOME evidence, not capability. Needs validate/session-record depth work (real receipts), never builder dispatch.`,
+      };
+    }
 
     // 4. Frontier check: score >= target AND gate allows — then CIP gate (Rule 14)
     if (score >= target && lastHarden.allowed) {
