@@ -168,8 +168,19 @@ async function defaultRunAutoResearch(
   // happens to be now would be silent misdelivery (adversarial-review finding).
   const startRef = await runGit(['symbolic-ref', '--quiet', '--short', 'HEAD'], cwd).then(s => s.trim()).catch(() => '');
   // Streamed (inherit) — a 30-min autoresearch must not buffer into an EPIPE/127.
-  await spawnStreamed(cli.file, args, cwd, timeoutMs);
-  await mergeBackIsolatedBranch(cwd, branch, dimensionId, startRef);
+  // MERGE-BACK IN FINALLY (live DanteForge run finding): autoresearch exits non-zero when the
+  // 30-min budget expires without reaching target — but its KEPT experiment commits are real,
+  // gate-verified improvements sitting on the isolate branch. The old post-await placement
+  // skipped the merge on any non-zero exit, stranding kept work and making the next cycle
+  // rebuild from scratch. Kept commits always deserve a landing attempt; the harden gate and
+  // outcome refresh that follow every cycle remain the judges of what landed.
+  try {
+    await spawnStreamed(cli.file, args, cwd, timeoutMs);
+  } finally {
+    // Not caught: a wedged-tree throw from the merge MUST stop the cycle loudly (it is the more
+    // actionable error than a non-zero autoresearch exit it may replace).
+    await mergeBackIsolatedBranch(cwd, branch, dimensionId, startRef);
+  }
 }
 
 /**

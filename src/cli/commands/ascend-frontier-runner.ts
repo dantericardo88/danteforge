@@ -30,6 +30,9 @@ let activeLedger: RunLedger | null = null;
 export function setActiveLedger(ledger: RunLedger | null): void { activeLedger = ledger; }
 export function getActiveLedger(): RunLedger | null { return activeLedger; }
 
+/** When the last phase-timeout tree-kill fired — the next spawn waits out the reaper (see runCli). */
+let lastTreeKillAt = 0;
+
 function truncate(s: string | undefined, n = 4000): string | undefined {
   if (!s) return undefined;
   return s.length > n ? `${s.slice(0, n)}…[+${s.length - n} chars]` : s;
@@ -85,7 +88,7 @@ function runOnce(cwd: string, args: string[]): Promise<CliResult> {
     };
     // On timeout, kill the WHOLE tree (harden-crusade + its autoresearch grandchildren), not just the
     // direct child — otherwise the grandchildren orphan and accumulate as zombies across sessions.
-    const timer = setTimeout(() => { killTree(child.pid); done(124); }, 30 * 60_000);
+    const timer = setTimeout(() => { lastTreeKillAt = Date.now(); killTree(child.pid); done(124); }, 30 * 60_000);
     // LIVE ECHO + HEARTBEAT — the fleet's "silent stall": piped output was captured but never shown,
     // so a 20-min build-to-7 looked frozen and operators killed healthy runs. Echo the child's lines
     // as they arrive (prefixed, so the operator sees the real sub-command working), and when the child
@@ -133,6 +136,13 @@ export async function runCli(cwd: string, args: string[]): Promise<CliResult> {
   // logCommand() below never fires — without this line the run's commands-live.jsonl is empty and the
   // crash is undebuggable (DanteSecurity DS-026). Synchronous append guarantees it's on disk first.
   activeLedger?.logCommandStart('danteforge', args, cwd);
+  // Kill/spawn race guard (live DanteForge run: parent died 5s after a 124 tree-kill, no logs):
+  // the previous phase's timeout fires a DETACHED `taskkill /T /F` that enumerates the old child's
+  // tree asynchronously — spawning the next phase immediately puts fresh PIDs in the reuse window
+  // while that enumeration is still walking. Let the reaper finish before populating new PIDs.
+  if (lastTreeKillAt > 0 && Date.now() - lastTreeKillAt < 5_000) {
+    await new Promise(r => setTimeout(r, 5_000 - (Date.now() - lastTreeKillAt)));
+  }
   let res = await runOnce(cwd, args);
   // Retry only a spawn-time 127/ENOENT (failed in <3s ⇒ nothing ran ⇒ transient spawn race).
   if (!res.ok && res.exitCode === 127 && res.ms < 3000) {

@@ -209,11 +209,17 @@ export async function runAscendFrontier(options: AscendFrontierOptions): Promise
   // write nothing. finalize() emits .danteforge/runs/<runId>/ — the receipt Phase 3 inspects.
   let ledger: RunLedger | null = null;
   let interruptHandler: (() => void) | null = null;
+  let crashHandler: ((err: unknown) => void) | null = null;
   const dropInterruptHandler = (): void => {
     if (interruptHandler) {
       process.removeListener('SIGINT', interruptHandler);
       process.removeListener('SIGTERM', interruptHandler);
       interruptHandler = null;
+    }
+    if (crashHandler) {
+      process.removeListener('uncaughtException', crashHandler);
+      process.removeListener('unhandledRejection', crashHandler);
+      crashHandler = null;
     }
   };
   const ensureLedger = async (): Promise<RunLedger> => {
@@ -233,6 +239,18 @@ export async function runAscendFrontier(options: AscendFrontierOptions): Promise
       };
       process.once('SIGINT', interruptHandler);
       process.once('SIGTERM', interruptHandler);
+      // Silent-death net (live DanteForge run: parent exited 1 with a SPARSE bundle and no log
+      // line — undebuggable). Any escape hatch the try/catch web misses still writes the error
+      // and finalizes the bundle before the process dies.
+      crashHandler = (err: unknown) => {
+        const led = ledger;
+        led?.logEvent('run-error', { error: `uncaught: ${err instanceof Error ? (err.stack ?? err.message) : String(err)}` });
+        void led?.finalize({}, { actions }, { status: 'failure', completionOracle: false, reason: 'uncaught exception/rejection — see run-error event' })
+          .catch(() => { /* dying anyway */ })
+          .finally(() => process.exit(1));
+      };
+      process.once('uncaughtException', crashHandler);
+      process.once('unhandledRejection', crashHandler);
     }
     return ledger;
   };

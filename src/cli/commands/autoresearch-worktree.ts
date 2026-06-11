@@ -73,6 +73,15 @@ export async function teardownWorktree(session: IsolatedSession, userCwd: string
       try { await deps.copyFile(path.join(srcDir, f), path.join(dstDir, f)); } catch { /* artifact may not exist */ }
     }
   } catch { /* best-effort */ }
+  // UNLINK THE node_modules JUNCTION FIRST (live DanteForge run finding): the worktree's
+  // node_modules is a junction into the USER'S real node_modules. Windows directory removal —
+  // including `git worktree remove --force` — can FOLLOW the junction and empty the user's real
+  // dependency tree (observed live: 0 entries left, tsc gone, npm ci required). fs.unlink on a
+  // junction removes only the link itself, never the target; do it before any tree removal.
+  try {
+    const link = path.join(session.worktreePath, 'node_modules');
+    await fs.unlink(link);
+  } catch { /* no junction was created, or already gone — fine */ }
   // removeAgentWorktree force-removes the worktree and deletes the branch ONLY if it has no unmerged
   // commits — so a branch carrying kept experiments survives for the user to review/merge.
   await deps.removeWorktree(session.agentName, { cwd: userCwd, branch: session.branch });
