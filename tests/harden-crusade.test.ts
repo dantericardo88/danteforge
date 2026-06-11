@@ -438,3 +438,36 @@ describe('runHardenCrusade — wall-clock budget checkpoint (--max-minutes)', ()
     assert.equal(result.budgetReached, false, 'the guard must not trip when there was no work to start');
   });
 });
+
+// ── Exhausted-dim economy (fleet run 3b, FIX B) ────────────────────────────────
+// Live failure: documentation stalled evidence-bound and was re-selected by all 10 passes of the
+// same invocation — identical result every time — while testing (the next-weakest dim, 5.7) never
+// received a build slot. A dim that stalls with ZERO movement in BOTH wave types is exhausted for
+// the invocation; selection must move on.
+
+describe('runHardenCrusade — exhausted-dim economy (FIX B)', () => {
+  it('a dim stalled in BOTH waves stops being selected; the next-weakest inherits the slot', async () => {
+    const dimA = makeDim('stuck_dim', 4.0);
+    const dimB = makeDim('next_dim', 6.0);
+    const dispatches: string[] = [];
+    const result = await runHardenCrusade(baseOpts({
+      loop: true,
+      parallel: 1,
+      target: 7,
+      maxDimCycles: 1,
+      _loadMatrix: async () => makeMatrix([dimA, dimB]),
+      // stuck_dim: capability already passes → evidence-bound; next_dim: failing → real builder case
+      _runCapTest: async (d) => (d.id === 'stuck_dim' ? 0 : 1),
+      _getScore: async (id) => (id === 'stuck_dim' ? 4.0 : 6.0), // flat — nobody progresses
+      _runAutoResearch: async (id) => { dispatches.push(id); },
+      _runHardenForDim: async () => gateCap6,
+    }));
+
+    const stuckRuns = result.dimensions.filter(r => r.dimensionId === 'stuck_dim');
+    assert.ok(stuckRuns.length <= 2,
+      `stuck_dim ran ${stuckRuns.length} passes — after one breadth stall + one depth stall it is exhausted (live bug: 10 identical passes)`);
+    assert.equal(dispatches.filter(d => d === 'stuck_dim').length, 0, 'evidence-bound dim never receives a builder (L8)');
+    assert.ok(dispatches.filter(d => d === 'next_dim').length >= 1,
+      'the next-weakest dim must inherit the build slot the exhausted dim was hogging');
+  });
+});

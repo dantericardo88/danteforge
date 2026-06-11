@@ -472,6 +472,9 @@ export async function runAscendFrontier(options: AscendFrontierOptions): Promise
           // Do not touch the evidence-novelty attempt ledger; count it as a build failure instead.
           const n = (buildFailedAttempts.get(action.dimId) ?? 0) + 1;
           buildFailedAttempts.set(action.dimId, n);
+          // Console-visible too (fleet run 3b: this path was ledger-only, so an operator watching
+          // live saw cycles end with NO explanation while a dim silently burned its 3 attempts).
+          logger.warn(`[ascend-frontier] ${action.dimId}: court did NOT run (build/evidence/command failure) — attempt ${n}/${maxBuildAttempts}, not counted as a rejection`);
           led.logGateCheck(`frontier-court:${action.dimId}`, 'fail', `court did NOT run (build/evidence/command failure) — attempt ${n}/${maxBuildAttempts}, not counted as a rejection`);
           if (n >= maxBuildAttempts) {
             // Honest operational ceiling — re-attemptable, distinct from generator-ceiling. Never

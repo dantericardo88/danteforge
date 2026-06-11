@@ -319,7 +319,10 @@ async function runDepthWave(
   target: number,
   cipOpts?: { skipCIP?: boolean; _cipCheck?: (dimensionId: string, opts: CIPOptions) => Promise<CIPResult> },
 ): Promise<DimHardenCrusadeResult> {
-  const initialScore = dim.scores['self'] ?? 0;
+  // Honest decision score on BOTH ends (fleet run 3b: raw scores.self read 9.00 → 9.00 and minted
+  // FRONTIER_REACHED while the decision score was 5.0 — the depth wave must measure what the
+  // orchestrator decides with, or the two disagree forever and ascend ceilings the dim).
+  const initialScore = decisionDimScore(dim);
   const hasOutcomes = Array.isArray((dim as unknown as Record<string, unknown>)['outcomes']) &&
     ((dim as unknown as Record<string, unknown>)['outcomes'] as unknown[]).length > 0;
 
@@ -340,7 +343,10 @@ async function runDepthWave(
     const { promisify } = await import('node:util');
     const execFileAsync = promisify(execFile);
     const cli = await resolveDanteForgeExec(cwd);
-    await execFileAsync(cli.file, [...cli.argsPrefix, 'validate', dim.id, '--force-cold'], { cwd, timeout: 15 * 60 * 1000 });
+    // --preserve-sessions, NOT --force-cold: force-cold re-stamps every receipt with this run's
+    // single session_id, wiping the ≥2-distinct-session diversity T7 (9.0) requires (df09c52).
+    // Legacy ascend's depth wave already made this switch; this callsite had the same bug.
+    await execFileAsync(cli.file, [...cli.argsPrefix, 'validate', dim.id, '--preserve-sessions'], { cwd, timeout: 15 * 60 * 1000 });
   } catch (err) {
     logger.warn(`[harden-crusade:${dim.id}] depth wave validate failed: ${err instanceof Error ? err.message : String(err)}`);
   }
@@ -349,7 +355,7 @@ async function runDepthWave(
   const { loadMatrix: lm } = await import('../../core/compete-matrix.js');
   const matrix = await lm(cwd);
   const updatedDim = matrix?.dimensions.find(d => d.id === dim.id);
-  const finalScore = updatedDim?.scores['self'] ?? initialScore;
+  const finalScore = updatedDim ? decisionDimScore(updatedDim) : initialScore;
 
   logger.info(`[harden-crusade:${dim.id}] depth wave: ${initialScore.toFixed(2)} → ${finalScore.toFixed(2)}`);
 
@@ -409,7 +415,10 @@ async function runDimensionLoop(
   const runHardenForDim = options._runHardenForDim ?? defaultRunHardenForDim;
   const runCapTest = options._runCapTest ?? defaultRunCapTest;
 
-  const initialScore = dim.scores['self'] ?? 0;
+  // Start from the same honest decision score the loop MEASURES with (fleet run 3b: seeding from
+  // raw scores.self logged "9.00 → 5.00 (Δ-4.00)" on a dim that never moved — the two reads are
+  // different metrics, and a stale-high self would also defeat the Δ<=0 stall/evidence-bound checks).
+  const initialScore = await getScore(dim.id, cwd);
   let score = initialScore;
   let cycle = 0;
   let autoresearchRuns = 0;
@@ -683,6 +692,28 @@ export async function runHardenCrusade(options: HardenCrusadeOptions): Promise<H
   let pass = 0;
   const maxPasses = options.loop ? 10 : 1;
 
+  // FIX B (fleet run 3b): a dim that stalls with ZERO score movement in BOTH wave types is
+  // exhausted for this invocation — nothing changes between passes, so re-selecting it burned
+  // 10 identical passes live while the next-weakest dim never got a build slot. Any progress
+  // (or a wall-clock CHECKPOINT / transient FAILED) keeps the dim eligible.
+  const exhaustedWaves = new Map<string, { breadth: boolean; depth: boolean }>();
+  const markStalls = (results: DimHardenCrusadeResult[], wave: 'breadth' | 'depth'): void => {
+    for (const r of results) {
+      if (r.status === 'CHECKPOINT' || r.status === 'FAILED') continue;
+      if (r.finalScore > r.initialScore || r.status === 'FRONTIER_REACHED') {
+        exhaustedWaves.delete(r.dimensionId);
+        continue;
+      }
+      const s = exhaustedWaves.get(r.dimensionId) ?? { breadth: false, depth: false };
+      s[wave] = true;
+      exhaustedWaves.set(r.dimensionId, s);
+    }
+  };
+  const isExhausted = (dimId: string): boolean => {
+    const s = exhaustedWaves.get(dimId);
+    return Boolean(s?.breadth && s?.depth);
+  };
+
   while (pass < maxPasses) {
     pass++;
     // Depth doctrine: use shared wave guard (pass is 1-indexed, guard is 0-indexed).
@@ -695,9 +726,20 @@ export async function runHardenCrusade(options: HardenCrusadeOptions): Promise<H
       return { status: 'PARTIAL', dimensions: allResults };
     }
 
-    const todo = pickWeakestDims(matrix, target, parallel, options.focusDimension);
+    // Selection sees only non-exhausted dims, so when the weakest dim is wave-stalled the
+    // NEXT-weakest gets the build slot instead of an identical re-run (FIX B).
+    const matrixView = exhaustedWaves.size === 0 ? matrix : {
+      ...matrix,
+      dimensions: matrix.dimensions.filter(d => !isExhausted(d.id)),
+    } as CompeteMatrix;
+    const todo = pickWeakestDims(matrixView, target, parallel, options.focusDimension);
     if (todo.length === 0) {
-      logger.success(`[harden-crusade] All dims at target ${target} or at-ceiling. ALL_DONE.`);
+      const skipped = matrix.dimensions.filter(d => isExhausted(d.id)).map(d => d.id);
+      if (skipped.length > 0) {
+        logger.info(`[harden-crusade] Remaining sub-target dim(s) stalled in BOTH wave types this run (evidence-bound — needs outcome authoring, not more passes): ${skipped.join(', ')}`);
+      } else {
+        logger.success(`[harden-crusade] All dims at target ${target} or at-ceiling. ALL_DONE.`);
+      }
       break;
     }
 
@@ -714,7 +756,7 @@ export async function runHardenCrusade(options: HardenCrusadeOptions): Promise<H
         : chalk.dim(' — autoresearch to forge new capabilities (ceiling 6)')),
     );
     for (const d of todo) {
-      logger.info(`  • ${d.id.padEnd(28)} self=${(d.scores['self'] ?? 0).toFixed(2)} target=${target}`);
+      logger.info(`  • ${d.id.padEnd(28)} score=${decisionDimScore(d).toFixed(2)} target=${target}`);
     }
 
     if (waveType === 'depth') {
@@ -731,6 +773,7 @@ export async function runHardenCrusade(options: HardenCrusadeOptions): Promise<H
         }))),
       );
       allResults.push(...depthPassResults);
+      markStalls(depthPassResults, 'depth');
     } else {
       // Breadth wave: run autoresearch to forge new capabilities.
       const passResults = await Promise.all(
@@ -744,6 +787,7 @@ export async function runHardenCrusade(options: HardenCrusadeOptions): Promise<H
         }))),
       );
       allResults.push(...passResults);
+      markStalls(passResults, 'breadth');
     }
 
     // Time Machine: record each wave for audit trail.

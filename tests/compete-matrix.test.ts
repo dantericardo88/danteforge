@@ -881,6 +881,41 @@ describe('loadMatrix in-process cache', () => {
     assert.doesNotThrow(() => { invalidateMatrixCache(); });
   });
 
+  it('sees a SUBPROCESS write immediately — mtime+size validation, never a blind TTL hit (fleet run 3b pin)', async () => {
+    // Live failure: defaultPushTo9 spawned `frontier-spec init --write` (a child process wrote
+    // matrix.json on disk), then re-read through a warm in-process cache and concluded the spec
+    // was never created — silently voiding push cycles. Only invalidateMatrixCache()/saveMatrix
+    // in THIS process busted the cache; child writes were invisible for the full TTL.
+    const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'dfm-cache-pin-'));
+    const matrixDir = path.join(dir, '.danteforge', 'compete');
+    await fs.mkdir(matrixDir, { recursive: true });
+    const matrixPath = path.join(matrixDir, 'matrix.json');
+    const dim = makeDim({ id: 'cache_pin', scores: { self: 5.0 }, gap_to_leader: 2.0 });
+
+    try {
+      invalidateMatrixCache();
+      await fs.writeFile(matrixPath, JSON.stringify(makeMatrix([dim])), 'utf8');
+      const before = await loadMatrix(dir);
+      assert.ok(before, 'first real-fs load fills the cache');
+      assert.strictEqual((before!.dimensions[0] as unknown as Record<string, unknown>)['frontier_spec'], undefined);
+
+      // The "child process": an out-of-band write the parent's cache knows nothing about.
+      const withSpec = makeMatrix([{ ...dim, frontier_spec: { status: 'draft' } } as unknown as MatrixDimension]);
+      await fs.writeFile(matrixPath, JSON.stringify(withSpec), 'utf8');
+
+      const after = await loadMatrix(dir); // well inside the 5s TTL
+      assert.ok(after);
+      assert.deepStrictEqual(
+        (after!.dimensions[0] as unknown as Record<string, unknown>)['frontier_spec'],
+        { status: 'draft' },
+        'a warm cache must never hide an on-disk write made by another process',
+      );
+    } finally {
+      invalidateMatrixCache();
+      await fs.rm(dir, { recursive: true, force: true });
+    }
+  });
+
   it('saveMatrix calls through without error on injected write', async () => {
     let written = '';
     const dim = makeDim({ id: 'save_cache_test', scores: { self: 8.0 }, gap_to_leader: 0.5 });

@@ -142,7 +142,7 @@ export function getMatrixPath(cwd?: string): string {
 // In-memory TTL cache: avoids re-parsing the matrix JSON on every call
 // within a single process (e.g. crusade frontier loop calling loadMatrix per cycle).
 const MATRIX_CACHE_TTL_MS = 5_000; // 5 s — short enough to pick up saves
-interface MatrixCacheEntry { matrix: CompeteMatrix; expiresAt: number; path: string }
+interface MatrixCacheEntry { matrix: CompeteMatrix; expiresAt: number; path: string; mtimeMs: number; size: number }
 let _matrixCache: MatrixCacheEntry | null = null;
 
 /** Invalidate the in-process matrix cache (called by saveMatrix). */
@@ -156,9 +156,19 @@ export async function loadMatrix(
 ): Promise<CompeteMatrix | null> {
   const matrixPath = getMatrixPath(cwd);
 
-  // Return cached value if still valid and no injection override is active
+  // Return cached value if still valid and no injection override is active.
+  // Subprocess-write seam (fleet run 3b): a CHILD process (frontier-spec init --write, validate)
+  // rewrites matrix.json on disk while this process's cache is warm — TTL alone left the parent
+  // blind to the child's write for up to 5s, which silently voided whole ascend push cycles
+  // (spec0 read as missing right after init wrote it). Trust the cache only while the file is
+  // byte-identical by mtime+size; any on-disk change forces a fresh read immediately.
   if (!_fsRead && _matrixCache && _matrixCache.path === matrixPath && Date.now() < _matrixCache.expiresAt) {
-    return _matrixCache.matrix;
+    try {
+      const st = await fs.stat(matrixPath);
+      if (st.mtimeMs === _matrixCache.mtimeMs && st.size === _matrixCache.size) {
+        return _matrixCache.matrix;
+      }
+    } catch { /* stat failed (file replaced/deleted mid-swap) — fall through to a fresh read */ }
   }
 
   const read = _fsRead ?? ((p: string) => fs.readFile(p, 'utf8'));
@@ -181,7 +191,9 @@ export async function loadMatrix(
     if (!_fsRead) {
       await overlayLedgerDeclarations(matrix, cwd ?? process.cwd());
       await applyOutcomeDerivedScores(matrix, cwd ?? process.cwd());
-      _matrixCache = { matrix, expiresAt: Date.now() + MATRIX_CACHE_TTL_MS, path: matrixPath };
+      let mtimeMs = -1, size = -1;
+      try { const st = await fs.stat(matrixPath); mtimeMs = st.mtimeMs; size = st.size; } catch { /* keep sentinel: next hit re-stats and reloads */ }
+      _matrixCache = { matrix, expiresAt: Date.now() + MATRIX_CACHE_TTL_MS, path: matrixPath, mtimeMs, size };
     }
     return matrix;
   } catch {
