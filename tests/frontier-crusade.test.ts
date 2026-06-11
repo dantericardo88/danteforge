@@ -62,6 +62,11 @@ function makeOptions(overrides: Partial<FrontierCrusadeOptions> & {
     _getScore: getScore,
     _runAutoResearch: async () => { /* no-op */ },
     _loadState: null,  // disable regrade-cadence guard (DanteForge's real STATE.yaml otherwise leaks in)
+    // These tests exercise ORCHESTRATION logic with all work seamed — whether an LLM provider
+    // happens to be reachable on this machine is environment noise, not the contract under test.
+    // Without this, the whole suite (and the autonomy receipt that runs it) flips with Ollama's
+    // process state: green on 06-05, red on 06-11, zero code change.
+    skipLLMCheck: true,
     // Bypass subprocess seams — tests run without a real project dir or CLI on PATH
     _cipCheck: async () => ({ passed: true, gaps: [], cipScore: 1.0, blocksFrontierReached: false }),
     _runValidate: async () => { /* no-op */ },
@@ -136,6 +141,7 @@ describe('runFrontierCrusade', () => {
       })(),
       _runAutoResearch: async () => { /* no-op */ },
       _loadState: null,
+      skipLLMCheck: true,
     };
     const result = await runFrontierCrusade(opts);
     const d = result.dimensions[0];
@@ -169,6 +175,7 @@ describe('runFrontierCrusade', () => {
       }),
       _runAutoResearch: async () => { autoresearchCalled++; },
       _loadState: null,
+      skipLLMCheck: true,
       _getScore: (() => {
         let call = 0;
         const seq = [7.0, 7.0, 7.0, 7.0, 9.0]; // flat for 3 cycles then jump
@@ -267,6 +274,7 @@ describe('runFrontierCrusade', () => {
       },
       _runAutoResearch: async () => { /* no-op */ },
       _loadState: null,
+      skipLLMCheck: true,
     };
     const result = await runFrontierCrusade(opts);
     assert.equal(result.dimensions.length, 3);
@@ -286,6 +294,7 @@ describe('runFrontierCrusade', () => {
       _getScore: async () => 9.0,
       _runAutoResearch: async () => { /* no-op */ },
       _loadState: null,
+      skipLLMCheck: true,
     };
     await runFrontierCrusade(opts);
     assert.ok(writtenPath.includes('FRONTIER_CRUSADE_REPORT.md'), `Expected report path, got: ${writtenPath}`);
@@ -310,6 +319,7 @@ describe('runFrontierCrusade', () => {
       _getScore: async (dimId) => dimId === 'a' ? 9.0 : 7.0,
       _runAutoResearch: async () => { /* no-op */ },
       _loadState: null,
+      skipLLMCheck: true,
       _cipCheck: async () => ({ passed: true, gaps: [], cipScore: 1.0, blocksFrontierReached: false }),
     };
     const result = await runFrontierCrusade(opts);
@@ -362,6 +372,7 @@ describe('runFrontierCrusade', () => {
       },
       _runAutoResearch: async () => { /* no-op */ },
       _loadState: null,
+      skipLLMCheck: true,
       _cipCheck: async () => ({ passed: true, gaps: [], cipScore: 1.0, blocksFrontierReached: false }),
     };
     const result = await runFrontierCrusade(opts);
@@ -388,6 +399,7 @@ describe('runFrontierCrusade', () => {
       },
       _runAutoResearch: async () => { /* no-op */ },
       _loadState: null,
+      skipLLMCheck: true,
       _cipCheck: async () => ({ passed: true, gaps: [], cipScore: 1.0, blocksFrontierReached: false }),
     };
     const result = await runFrontierCrusade(opts);
@@ -414,6 +426,7 @@ describe('runFrontierCrusade', () => {
       _runVerifyCap: async () => { capCallCount++; return true; },
       _runAutoResearch: async () => { /* no-op */ },
       _loadState: null,
+      skipLLMCheck: true,
       _cipCheck: async () => ({ passed: true, gaps: [], cipScore: 1.0, blocksFrontierReached: false }),
     };
     const result = await runFrontierCrusade(opts);
