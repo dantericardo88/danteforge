@@ -16,6 +16,53 @@ export type GitFn = (args: string[], cwd: string) => Promise<string>;
 // deadlock (concurrent workers racing the shared .git). Read-only verbs run directly.
 export const git: GitFn = (args, cwd) => runGit(args, cwd);
 
+// ── Isolation pinning (the fleet-run-2 leak) ─────────────────────────────────
+// In --isolate mode the worktree is where ALL git must run — but a git seam captured BEFORE
+// isolation was threaded into the setup/loop/rollback/commit closures, and on DanteCode a closure
+// addressing the ORIGINAL cwd ran `git reset --hard` against the OPERATOR'S MAIN TREE while the
+// experiment edits happened in the worktree: two uncommitted fixes wiped, and a surviving child
+// kept re-reverting their edits for minutes. Two structural defenses live here:
+//   1. bindGitToCwd — every invocation is pinned to the worktree no matter what cwd a caller
+//      passes, so a misbound closure can no longer address the user's tree at all.
+//   2. assertGitTargetNotUserTree — a loud assertion at the reset/rollback call sites: mutating
+//      the user's tree under isolation is the bug itself, worth crashing on, never executing.
+
+/** Wrap a GitFn so EVERY invocation runs in `boundCwd` (the isolated worktree), regardless of the
+ *  cwd the caller passes. A caller that asks for a different cwd gets repinned with a warning that
+ *  names the leak; constructing the pin against the user's own tree is refused outright. */
+export function bindGitToCwd(baseGit: GitFn, boundCwd: string, userCwd: string): GitFn {
+  const bound = path.resolve(boundCwd);
+  const user = path.resolve(userCwd);
+  if (bound === user) {
+    throw new Error(
+      `[autoresearch] isolation pin refused: the worktree path resolves to the user's tree (${user}) — ` +
+      'isolation would be a no-op and git mutations would hit the operator\'s checkout.',
+    );
+  }
+  return (args, requestedCwd) => {
+    if (path.resolve(requestedCwd) !== bound) {
+      logger.warn(
+        `[autoresearch] isolation pin: \`git ${args.join(' ')}\` requested cwd ${requestedCwd} — ` +
+        `repinned to the worktree ${bound} (a pre-isolation git closure survived; see the fleet-run-2 leak).`,
+      );
+    }
+    return baseGit(args, bound);
+  };
+}
+
+/** Defense in depth at the destructive call sites: when isolation is active (`userCwd` set), a git
+ *  mutation aimed at the user's original cwd throws loudly instead of resetting the wrong tree. */
+export function assertGitTargetNotUserTree(targetCwd: string, userCwd: string | undefined, operation: string): void {
+  if (!userCwd) return; // isolation off — the user's tree IS the legitimate target
+  if (path.resolve(targetCwd) === path.resolve(userCwd)) {
+    throw new Error(
+      `[autoresearch] ISOLATION LEAK: refused to run \`${operation}\` against the user's tree (${userCwd}) ` +
+      'while --isolate is active. This is the fleet-run-2 bug where a pre-isolation git closure reset the ' +
+      'operator\'s checkout and re-reverted their uncommitted work.',
+    );
+  }
+}
+
 export async function gitIsDirty(cwd: string, gitFn: GitFn = git): Promise<boolean> {
   try {
     const status = await gitFn(['status', '--porcelain'], cwd);

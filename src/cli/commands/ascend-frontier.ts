@@ -164,7 +164,16 @@ export function buildTo7Commands(parallel: boolean, members: string[], dims: str
   // production (a fresh orphan) or a test that drifts from its callsite. ground-outcomes re-anchors
   // or honestly downgrades it, so the loop never advances toward 7 on un-grounded evidence the build
   // itself just created — the honesty self-correction in the real one-command path (not just runAscend).
-  return [['harden-crusade', '--parallel', '1', '--loop', '--target', '7'], ['ground-outcomes', '--apply']];
+  // TIME BUDGETS (fleet run 2 dead-loop fix): the runner caps harden-crusade at 60m (phaseTimeoutMs).
+  // --time 18 bounds each per-dim autoresearch cycle so at least one FULL cycle (incl. merge-back)
+  // always completes inside the window; --max-minutes 55 makes harden-crusade checkpoint-exit
+  // CLEANLY (exit 0) before starting a cycle it cannot finish — merged progress persists and the
+  // next orchestrator cycle continues from the re-ranked queue, instead of the old 30m-inner vs
+  // 30m-outer tree-kill that died mid-dim-001 every cycle and restarted the fleet at zero forever.
+  return [
+    ['harden-crusade', '--parallel', '1', '--loop', '--target', '7', '--time', '18', '--max-minutes', '55'],
+    ['ground-outcomes', '--apply'],
+  ];
 }
 
 // ── Orchestrator loop ───────────────────────────────────────────────────────────

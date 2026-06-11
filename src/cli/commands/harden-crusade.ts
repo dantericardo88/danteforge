@@ -44,6 +44,14 @@ export interface HardenCrusadeOptions {
   target?: number;            // default 9.0
   maxDimCycles?: number;      // default 6 (autoresearch is slower than inferno)
   timeMinutes?: number;       // autoresearch time budget per cycle (default 30)
+  /**
+   * Wall-clock budget for the WHOLE run, in minutes. Captured at run start; before STARTING another
+   * per-dim autoresearch cycle, if elapsed + (timeMinutes + 2m of merge-back/refresh slack) would
+   * exceed this, the run stops CLEANLY: report written as usual, budgetReached=true, exit 0.
+   * Partial progress is success — the orchestrator's next cycle continues from the re-ranked queue.
+   * Unset = unguarded (prior behavior).
+   */
+  maxMinutes?: number;
   loop?: boolean;             // re-rank + repeat until ALL_DONE (default false)
   cwd?: string;
   skipLLMCheck?: boolean;
@@ -62,6 +70,8 @@ export interface HardenCrusadeOptions {
   skipCIP?: boolean;
   /** Injection seam: override runCIPCheck for tests. */
   _cipCheck?: (dimensionId: string, options: CIPOptions) => Promise<CIPResult>;
+  /** Injection seam: clock in epoch ms for the --max-minutes wall-clock guard (default Date.now). */
+  _now?: () => number;
   /**
    * Injection seam: override the autonomy-rules check.
    *   undefined → run real checkAutonomyRules (production path)
@@ -89,13 +99,15 @@ export interface DimHardenCrusadeResult {
   autoresearchRuns: number;
   hardenPassed: boolean;
   finalCap: number;
-  status: 'FRONTIER_REACHED' | 'AT_CEILING' | 'GATE_BLOCKED' | 'MAX_CYCLES' | 'FAILED' | 'CIP_BLOCKED';
+  status: 'FRONTIER_REACHED' | 'AT_CEILING' | 'GATE_BLOCKED' | 'MAX_CYCLES' | 'FAILED' | 'CIP_BLOCKED' | 'CHECKPOINT';
   reason: string;
   cipScore?: number;
 }
 
 export interface HardenCrusadeResult {
   status: 'ALL_DONE' | 'PARTIAL';
+  /** True when the run stopped at the --max-minutes wall-clock checkpoint (clean partial progress → exit 0). */
+  budgetReached?: boolean;
   dimensions: DimHardenCrusadeResult[];
   reportPath?: string;
 }
@@ -162,7 +174,11 @@ async function defaultRunAutoResearch(
   const branch = `autoresearch/hc-${dimensionId}-${Date.now()}`;
   const args = [...cli.argsPrefix, 'autoresearch', goal, '--metric', dimensionId, '--time', `${timeMinutes}m`,
     '--isolate', '--isolate-branch', branch, '--require-agent'];
-  if (measurementCommand) args.push('--measurement-command', measurementCommand);
+  // --exit-code-metric ALWAYS accompanies --measurement-command: the measurement IS the dim's
+  // capability_test — pass/fail by exit code, never a number scraped from its stdout. Without it
+  // the harness greps stdout for digits (DanteSecurity parsed a bogus "-7" out of dates in
+  // dante.py's banner and could never improve it — the metric measured nothing real).
+  if (measurementCommand) args.push('--measurement-command', measurementCommand, '--exit-code-metric');
   // Record the operator's ref BEFORE the long run: merge-back must land on the branch the run
   // STARTED on — if the operator switched/detached meanwhile, landing kept work on whatever HEAD
   // happens to be now would be silent misdelivery (adversarial-review finding).
@@ -363,6 +379,7 @@ async function runDepthWave(
 async function runDimensionLoop(
   dim: MatrixDimension,
   options: HardenCrusadeOptions,
+  wallClockExhausted?: () => boolean,
 ): Promise<DimHardenCrusadeResult> {
   const cwd = options.cwd ?? process.cwd();
   const target = resolveAutonomousTarget(options.target, DEFAULT_TARGET);
@@ -382,6 +399,19 @@ async function runDimensionLoop(
   logger.info(`[harden-crusade:${dim.id}] Start ${score.toFixed(2)} → target ${target}`);
 
   while (cycle < maxDimCycles) {
+    // Wall-clock checkpoint (fleet run 2 dead-loop fix): never START an autoresearch cycle that
+    // cannot finish inside the --max-minutes budget. Stopping HERE — between cycles — means every
+    // already-merged cycle persists; the old alternative (the orchestrator's tree-kill landing
+    // mid-cycle) persisted nothing and restarted the whole queue at dim001 every outer cycle.
+    if (wallClockExhausted?.()) {
+      return {
+        dimensionId: dim.id, label: dim.label, initialScore, finalScore: score,
+        cyclesRun: cycle, autoresearchRuns,
+        hardenPassed: lastHarden.allowed, finalCap: lastHarden.scoreCap,
+        status: 'CHECKPOINT',
+        reason: `wall-clock budget reached before cycle ${cycle + 1} — clean checkpoint exit; ${cycle} cycle(s) of progress preserved`,
+      };
+    }
     cycle++;
     // Build toward the SPECIFIC, competitor-grounded next level ("to reach a 9: <criteria>"), parsed
     // from this dim's universe Score Ladder — not a vague "improve". Empty if no ladder (no fabrication).
@@ -566,6 +596,22 @@ export async function runHardenCrusade(options: HardenCrusadeOptions): Promise<H
   const loadMatrixFn = options._loadMatrix ?? loadMatrix;
   const writeFile = options._writeFile ?? ((p: string, c: string) => fs.writeFile(p, c, 'utf8'));
 
+  // ── Wall-clock budget guard (--max-minutes) ────────────────────────────────
+  // Captured ONCE at run start. The closure answers "would another full cycle (timeMinutes + 2m of
+  // merge-back/outcome-refresh slack) overrun the budget?" and latches budgetReached when it trips,
+  // so the run can exit 0 with its report written — partial progress is success, the orchestrator
+  // re-plans from the re-ranked queue. Unset maxMinutes → never trips (prior behavior).
+  const now = options._now ?? Date.now;
+  const runStartMs = now();
+  const cycleMinutes = (options.timeMinutes ?? DEFAULT_TIME_MIN) + 2;
+  let budgetReached = false;
+  const wallClockExhausted = (): boolean => {
+    if (options.maxMinutes === undefined) return false;
+    const elapsedMin = (now() - runStartMs) / 60_000;
+    if (elapsedMin + cycleMinutes > options.maxMinutes) { budgetReached = true; return true; }
+    return false;
+  };
+
   logger.info(`[scoring-doctrine] ${SCORING_DOCTRINE_SHORT}`);
 
   // Pre-flight: regrade cadence (mirrors /crusade)
@@ -613,6 +659,11 @@ export async function runHardenCrusade(options: HardenCrusadeOptions): Promise<H
       break;
     }
 
+    // Wall-clock checkpoint between passes (checked AFTER the empty-queue break so a genuinely
+    // finished run still reads ALL_DONE): do not start a pass whose first cycle cannot finish.
+    // Within a breadth pass, runDimensionLoop re-checks before EVERY cycle.
+    if (wallClockExhausted()) break;
+
     logger.info('');
     logger.info(
       chalk.bold(`[harden-crusade] Pass ${pass}/${maxPasses} [${waveType.toUpperCase()} WAVE]: pushing ${todo.length} dim(s):`) +
@@ -641,7 +692,7 @@ export async function runHardenCrusade(options: HardenCrusadeOptions): Promise<H
     } else {
       // Breadth wave: run autoresearch to forge new capabilities.
       const passResults = await Promise.all(
-        todo.map(d => runDimensionLoop(d, options).catch(err => ({
+        todo.map(d => runDimensionLoop(d, options, wallClockExhausted).catch(err => ({
           dimensionId: d.id, label: d.label,
           initialScore: d.scores['self'] ?? 0, finalScore: d.scores['self'] ?? 0,
           cyclesRun: 0, autoresearchRuns: 0,
@@ -666,6 +717,12 @@ export async function runHardenCrusade(options: HardenCrusadeOptions): Promise<H
     if (!options.loop) break;
   }
 
+  if (budgetReached) {
+    const advanced = allResults.filter(r => r.finalScore > r.initialScore).length;
+    const elapsedMin = Math.round((now() - runStartMs) / 60_000);
+    logger.info(`[harden-crusade] wall-clock budget reached (${elapsedMin}m/${options.maxMinutes}m) — exiting cleanly with ${advanced} dim(s) advanced; the orchestrator's next cycle continues from the re-ranked queue`);
+  }
+
   // Write report
   const report = buildReport(allResults, options.goal, target);
   const reportPath = path.join(cwd, 'HARDEN_CRUSADE_REPORT.md');
@@ -675,7 +732,10 @@ export async function runHardenCrusade(options: HardenCrusadeOptions): Promise<H
     r.status === 'FRONTIER_REACHED' || r.status === 'AT_CEILING'
   );
   return {
-    status: everyDimSettled ? 'ALL_DONE' : 'PARTIAL',
+    // A budget stop can NEVER read ALL_DONE: unattempted work may remain past the checkpoint
+    // (the empty-queue break above — the only true ALL_DONE — fires before the budget check).
+    status: everyDimSettled && !budgetReached ? 'ALL_DONE' : 'PARTIAL',
+    budgetReached,
     dimensions: allResults,
     reportPath,
   };
@@ -710,6 +770,6 @@ function buildReport(results: DimHardenCrusadeResult[], goal: string, target: nu
   lines.push(`## Summary`);
   lines.push(`- FRONTIER_REACHED: ${reached}`);
   lines.push(`- AT_CEILING: ${atCeiling}`);
-  lines.push(`- GATE_BLOCKED / MAX_CYCLES / FAILED: ${results.length - reached - atCeiling}`);
+  lines.push(`- GATE_BLOCKED / MAX_CYCLES / FAILED / CHECKPOINT: ${results.length - reached - atCeiling}`);
   return lines.join('\n');
 }

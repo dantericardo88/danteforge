@@ -171,6 +171,16 @@ describe('source pins — the main-tree and stale-score regressions cannot quiet
     assert.doesNotMatch(fn, /'--allow-dirty'/, 'main-tree dirty runs are the fleet self-sabotage class');
   });
 
+  test('harden-crusade measures by EXIT CODE: --exit-code-metric always accompanies --measurement-command', () => {
+    // The measurement IS the dim's capability_test — pass/fail, never a number scraped from stdout.
+    // Without --exit-code-metric the harness greps stdout for digits (DanteSecurity parsed a bogus
+    // "-7" out of dates in dante.py's banner and the metric could never improve).
+    const src = read('src/cli/commands/harden-crusade.ts');
+    const fn = /async function defaultRunAutoResearch[\s\S]*?\n\}/.exec(src)?.[0] ?? '';
+    assert.match(fn, /'--measurement-command',\s*measurementCommand,\s*'--exit-code-metric'/,
+      'the same args.push must pass --exit-code-metric whenever it passes --measurement-command');
+  });
+
   test('ascend-frontier plans on decisionDimScore (unverified dims can never read done off stale self)', () => {
     const src = read('src/cli/commands/ascend-frontier.ts');
     const fn = /async function defaultBuildState[\s\S]*?\n\}/.exec(src)?.[0] ?? '';

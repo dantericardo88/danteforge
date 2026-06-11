@@ -10,7 +10,9 @@
 //      (a ground-outcomes downgrade is never resurrected)
 //   4. the git-reset simulation: validate records → matrix.json rewritten without the
 //      declaration → loadMatrix restores it
-//   5. the gate condition: a validate run WITH an integrity cap does NOT record
+//   5. the gate condition: a validate run WITH an integrity cap does NOT record; the
+//      fleet-run-2 relaxation: cap-enforced orphan/unscannable membership DOES record
+//      (bounds re-applied at load), dishonesty classes (seam/shared/decoupled) still block
 //   6. seam injection: every fs operation is overridable (no real disk)
 
 import { describe, it, after } from 'node:test';
@@ -26,7 +28,8 @@ import {
   type LedgerFs,
 } from '../src/core/declarations-ledger.js';
 import { loadMatrix, invalidateMatrixCache } from '../src/core/compete-matrix.js';
-import { runValidateCli } from '../src/cli/commands/validate.js';
+import { runValidateCli, dimLedgerGateClean } from '../src/cli/commands/validate.js';
+import { checkOutcomeIntegrity, type IntegrityReport } from '../src/matrix/engines/outcome-integrity.js';
 import type { Outcome } from '../src/matrix/types/outcome.js';
 
 const tempDirs: string[] = [];
@@ -227,6 +230,32 @@ describe('validate gate → ledger → git-reset recovery (the fleet-run-1 fix)'
     assert.ok(typeof derived === 'number' && derived > 0, `restored declaration + on-disk evidence must re-derive the earn, got ${derived}`);
   });
 
+  it('an ORPHAN-flagged all-pass dim DOES record — cap-enforced flags are score bounds, not gate dirt', async () => {
+    const cwd = await mkTmp();
+    await gitInit(cwd);
+    // T4 + a callsite whose basename is unwired in a bare temp project: the orphan check
+    // (T4+) flags it, but the orphan cap (7.0) does not BITE at a T4-ceilinged score, so
+    // integrityCap stays undefined. Fleet run 2: blocking on this membership left the
+    // ledger inert fleet-wide (every honest T4 earn is orphan-flagged via barrel wiring).
+    // Laundering-safe: loadMatrix re-applies all integrity caps to restored outcomes.
+    const mPath = await writeMatrix(cwd, [outcome('t4', { tier: 'T4' })]);
+
+    // Premise: the dim really is orphan-flagged (and nothing else).
+    const dims = (JSON.parse(await fs.readFile(mPath, 'utf8')) as { dimensions: Array<{ id: string }> }).dimensions;
+    const pre = await checkOutcomeIntegrity(dims as Parameters<typeof checkOutcomeIntegrity>[0], cwd);
+    assert.ok(pre.orphanDims.includes('d'), 'premise: orphan-flagged');
+    assert.ok(!pre.seamedDims.includes('d') && !pre.decoupledDims.includes('d') && !pre.sharedReceiptDims.includes('d'), 'premise: no dishonesty-class membership');
+
+    const r = await runValidateCli({
+      dimId: 'd', cwd, forceCold: true, _onProgress: () => {}, _createTimeMachineCommit: null,
+    });
+    assert.equal(r.allPassed, true, 'premise: the T4 outcome passes');
+    assert.equal(r.dimensions[0]!.integrityCap, undefined, 'premise: the orphan cap does not bite at a T4 score');
+
+    const ledgerRaw = await fs.readFile(path.join(getLedgerDir(cwd), 'd.json'), 'utf8');
+    assert.ok(ledgerRaw.includes('"t4"'), 'the orphan-flagged gate-confirmed earn must now snapshot to the ledger');
+  });
+
   it('a validate run WITH an integrity cap does NOT record to the ledger', async () => {
     const cwd = await mkTmp();
     await gitInit(cwd);
@@ -271,6 +300,36 @@ describe('validate gate → ledger → git-reset recovery (the fleet-run-1 fix)'
       () => fs.access(path.join(getLedgerDir(cwd), 'd.json')),
       'a filtered run must not snapshot the full declared set',
     );
+  });
+});
+
+// ── The recording precondition itself (fleet run 2: ledger inert fleet-wide) ──
+
+describe('dimLedgerGateClean — cap-enforced classes record, dishonesty classes block', () => {
+  const report = (over: Partial<IntegrityReport>): IntegrityReport => ({
+    violations: [], sharedReceiptDims: [], marketCapDims: [], seamedDims: [],
+    decoupledDims: [], orphanDims: [], unscannableDims: [], clean: true, ...over,
+  });
+
+  it('a null report fails closed — unverified cleanliness never records', () => {
+    assert.equal(dimLedgerGateClean('d', null), false);
+  });
+
+  it('orphan and unscannable memberships (cap-enforced bounds) do NOT block', () => {
+    assert.equal(dimLedgerGateClean('d', report({ orphanDims: ['d'] })), true);
+    assert.equal(dimLedgerGateClean('d', report({ unscannableDims: ['d'] })), true);
+    assert.equal(dimLedgerGateClean('d', report({ orphanDims: ['d'], unscannableDims: ['d'] })), true);
+  });
+
+  it('seam / shared-receipt / decoupled memberships (dishonesty classes) still block', () => {
+    assert.equal(dimLedgerGateClean('d', report({ seamedDims: ['d'] })), false);
+    assert.equal(dimLedgerGateClean('d', report({ sharedReceiptDims: ['d'] })), false);
+    assert.equal(dimLedgerGateClean('d', report({ decoupledDims: ['d'] })), false);
+    assert.equal(dimLedgerGateClean('d', report({ seamedDims: ['d'], orphanDims: ['d'] })), false, 'orphan membership cannot excuse seam membership');
+  });
+
+  it('memberships of OTHER dims never block this one', () => {
+    assert.equal(dimLedgerGateClean('d', report({ seamedDims: ['other'], orphanDims: ['other'] })), true);
   });
 });
 

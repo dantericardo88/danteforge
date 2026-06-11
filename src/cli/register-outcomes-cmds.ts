@@ -528,6 +528,7 @@ program
   .option('--target <n>', 'Score target per dimension (default 9.0)', '9')
   .option('--max-dim-cycles <n>', 'Per-dim cycle cap (default 6)', '6')
   .option('--time <m>', 'Autoresearch time budget per cycle in minutes (default 30)', '30')
+  .option('--max-minutes <m>', 'Wall-clock budget for the WHOLE run: checkpoint-exit cleanly (exit 0, report written) before starting a cycle that cannot finish (default: unguarded)')
   .option('--loop', 'Outer loop: re-rank + re-run until ALL_DONE (max 10 passes)', false)
   .option('--dimension <id>', 'Promote this dimension to the front of every work queue (intel-driven targeting)')
   .option('--json', 'Machine-readable JSON output')
@@ -561,6 +562,7 @@ Writes report to HARDEN_CRUSADE_REPORT.md.
           target: parseFloat(opts.target as string),
           maxDimCycles: parseInt(opts.maxDimCycles as string, 10),
           timeMinutes: parseInt(opts.time as string, 10),
+          maxMinutes: opts.maxMinutes ? parseInt(opts.maxMinutes as string, 10) : undefined,
           loop: opts.loop as boolean,
           cwd: opts.cwd as string | undefined,
           focusDimension: opts.dimension as string | undefined,
@@ -568,7 +570,9 @@ Writes report to HARDEN_CRUSADE_REPORT.md.
         if (opts.json) {
           process.stdout.write(JSON.stringify(result, null, 2) + '\n');
         }
-        if (result.status !== 'ALL_DONE') process.exitCode = 1;
+        // A --max-minutes checkpoint stop is SUCCESS (exit 0): the report is written, merged
+        // progress persists, and the orchestrator's next cycle continues from the re-ranked queue.
+        if (result.status !== 'ALL_DONE' && !result.budgetReached) process.exitCode = 1;
       } catch (err) {
         const { formatAndLogError } = await import('../core/format-error.js');
         formatAndLogError(err, 'harden-crusade');

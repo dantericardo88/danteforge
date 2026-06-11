@@ -6,9 +6,13 @@
 // integrity gate flags, it either
 //   (a) GROUNDS it — repoints required_callsite to a real, production-wired module
 //       that the outcome's SEAM-FREE test genuinely imports (recovers an honest
-//       score, e.g. the decoupled-but-real case), or
-//   (b) DOWNGRADES it to T2 (orphan-pending) — when the test is seamed, or no wired
-//       module is exercised, or the outcome is un-grounded.
+//       score, e.g. the decoupled-but-real case),
+//   (b) DOWNGRADES it to T2 (orphan-pending) — when its TEST is seamed, or no wired
+//       module is exercised, or the outcome is un-grounded, or
+//   (c) ANNOTATES it — a PRODUCT RUN (runtime-exec / cli-smoke / any non-test
+//       command) proves by EXECUTION, not by test coupling; its tier and callsite
+//       are kept, and its honest bound is the ORPHAN_CALLSITE integrity cap (7.0)
+//       enforced at score time — never a de-tier.
 //
 // It never invents evidence: it only ever points a callsite at a module the test actually
 // imports AND that production code imports. Everything else is honestly downgraded.
@@ -29,7 +33,14 @@ import type { CompeteMatrix } from './compete-matrix.js';
 
 const HIGH = new Set(['T5', 'T6', 'T7', 'T8']);
 
-export type GroundingStatus = 'already-honest' | 'grounded' | 'downgraded' | 'partial';
+/** Idempotency marker for product-run outcomes: appended to description ONCE; its
+ *  presence means a later run changes nothing (fleet run 2: groundOutcomes de-tiered
+ *  15 legitimate T5 product runs to T2 on DanteAgents because findWiredCallsite only
+ *  understands TEST-backed commands). */
+export const PRODUCT_RUN_GROUNDING_NOTE =
+  '[grounding: callsite unverifiable for a product-run — bounded by the orphan cap]';
+
+export type GroundingStatus = 'already-honest' | 'grounded' | 'downgraded' | 'partial' | 'annotated';
 
 export interface GroundingResult {
   dimId: string;
@@ -52,9 +63,10 @@ interface LooseOutcome {
 interface LooseDim { id: string; outcomes?: LooseOutcome[] }
 
 /**
- * Mutates `matrix` in place: grounds or honestly downgrades every gate-flagged
- * T5+ outcome. Caller decides whether to persist. Re-run the gate afterward to
- * confirm CLEAN.
+ * Mutates `matrix` in place: grounds, honestly downgrades, or (for product runs)
+ * annotates every gate-flagged T5+ outcome. Caller decides whether to persist.
+ * Re-run the gate afterward — remaining ORPHAN_CALLSITE/UNSCANNABLE flags on
+ * product runs are cap-enforced bounds, not grounding work.
  */
 export async function groundOutcomes(opts: { matrix: CompeteMatrix; projectPath: string }): Promise<GroundingSummary> {
   const { matrix, projectPath } = opts;
@@ -102,12 +114,27 @@ export async function groundOutcomes(opts: { matrix: CompeteMatrix; projectPath:
     if (!dirty.has(dim.id)) { results.push({ dimId: dim.id, status: 'already-honest', changes: [], suggestions: [] }); continue; }
     const changes: string[] = [];
     const suggestions: string[] = [];
-    let grounded = false, downgraded = false;
+    let grounded = false, downgraded = false, annotated = false;
 
     for (const o of dim.outcomes ?? []) {
       if (!HIGH.has(o.tier)) continue;
       const flagged = report.violations.some(v => v.dimId === dim.id && v.outcomeId === o.id);
       if (!flagged) continue;
+
+      // PRODUCT RUN (non-test command): the downgrade logic below assumes a TEST-backed
+      // outcome — findWiredCallsite inspects test files the command references, so a
+      // product run always finds none and would be wrongly de-tiered. A product run
+      // proves by EXECUTION; its honest bound is the ORPHAN_CALLSITE integrity cap
+      // (7.0, applied by integrityCapFor at score time). Keep tier + callsite; append
+      // the annotation once (idempotent) and record it as an annotation, not a downgrade.
+      if (!isTestSuiteCommand(o.command ?? '')) {
+        if (!(o.description ?? '').includes(PRODUCT_RUN_GROUNDING_NOTE)) {
+          o.description = `${o.description ?? ''} ${PRODUCT_RUN_GROUNDING_NOTE}`.trim();
+          changes.push(`${o.id}: annotated — product run keeps ${o.tier} + callsite (proves by execution; bounded by the orphan cap, not de-tiered)`);
+        }
+        annotated = true;
+        continue;
+      }
 
       const seamed = await commandHasSeams(o.command ?? '', projectPath);
       const cand = await findWiredCallsite(o.command ?? '', projectPath, wired);
@@ -132,7 +159,12 @@ export async function groundOutcomes(opts: { matrix: CompeteMatrix; projectPath:
       }
     }
 
-    const status: GroundingStatus = grounded && downgraded ? 'partial' : grounded ? 'grounded' : 'downgraded';
+    const status: GroundingStatus =
+      grounded && downgraded ? 'partial'
+        : grounded ? 'grounded'
+          : downgraded ? 'downgraded'
+            : annotated ? 'annotated'
+              : 'downgraded';
     results.push({ dimId: dim.id, status, changes, suggestions });
 
     // Write the SANCTIONED change through to the declarations ledger (adversarial finding 4b):
@@ -149,7 +181,7 @@ export async function groundOutcomes(opts: { matrix: CompeteMatrix; projectPath:
     }
   }
 
-  const counts: Record<GroundingStatus, number> = { 'already-honest': 0, grounded: 0, downgraded: 0, partial: 0 };
+  const counts: Record<GroundingStatus, number> = { 'already-honest': 0, grounded: 0, downgraded: 0, partial: 0, annotated: 0 };
   for (const r of results) counts[r.status] += 1;
   return { results, counts };
 }

@@ -19,7 +19,8 @@ import {
 import { withErrorBoundary } from '../../core/cli-error-boundary.js';
 import {
   git, gitIsDirty, gitCurrentHash, gitCreateBranch, gitUntracked, rollbackExperiment,
-  snapshotUntracked, restoreDeletedUntracked, gitCommitPaths, gitChangedFiles, type GitFn,
+  snapshotUntracked, restoreDeletedUntracked, gitCommitPaths, gitChangedFiles,
+  bindGitToCwd, assertGitTargetNotUserTree, type GitFn,
 } from './autoresearch-git.js';
 import { collectForbiddenTargets, forbiddenTargetReason, checkEditParses } from './autoresearch-integrity.js';
 import { generateHypothesis, applyHypothesis, type CallLLMFn } from './autoresearch-hypothesis.js';
@@ -293,6 +294,9 @@ interface LoopDeps {
   /** When true, drive the high-quality coding-agent edit path instead of the JSON-hypothesis path. */
   useAgent: boolean;
   dispatchAgentEditFn: typeof dispatchAgentEdit;
+  /** The user's ORIGINAL cwd when --isolate is active (undefined otherwise). Destructive git call
+   *  sites assert their target is never this tree — the fleet-run-2 isolation-leak backstop. */
+  isolationUserCwd?: string;
 }
 
 /** Produce the edit for one experiment — agent path or JSON path. Returns the changed files + reason. */
@@ -339,6 +343,9 @@ async function runExperimentLoop(
   // Full rollback = revert tracked + clean only what the experiment created + restore any pre-existing
   // untracked file the agent deleted.
   const doRollback = async (preHash: string, preUntracked: Set<string>): Promise<void> => {
+    // Defense in depth for the isolation leak: a reset aimed at the user's tree under --isolate IS
+    // the fleet-run-2 bug — crash loudly instead of reverting the operator's uncommitted work.
+    assertGitTargetNotUserTree(cwd, deps.isolationUserCwd, `git reset --hard ${preHash}`);
     await rollbackExperiment(preHash, preUntracked, cwd, gitFn);
     await restoreDeletedUntracked(cwd, baselineBackup);
   };
@@ -523,7 +530,11 @@ export async function autoResearch(
   const callLLMFn: CallLLMFn = _opts._callLLM ?? callLLM;
   const runBaselineFn = _opts._runBaseline ?? runBaseline;
   const runExperimentFn = _opts._runExperiment ?? runExperiment;
-  const gitFn: GitFn = _opts._git ?? git;
+  // The raw git seam is bound to NOTHING. It exists only for (a) the pre-isolation dirty check on
+  // the user's tree and (b) the base of the cwd-bound adapter below the isolation block. Nothing
+  // downstream of isolation may receive it — `gitFn` (declared after isolation) is the only git
+  // surface the setup/loop/rollback/report paths see.
+  const preIsolationGit: GitFn = _opts._git ?? git;
   const writeFileFn = _opts._writeFile ?? ((p: string, c: string) => fs.writeFile(p, c, 'utf8'));
   const appendFileFn = _opts._appendFile ?? ((p: string, c: string) => fs.appendFile(p, c, 'utf8'));
   const readFileFn = _opts._readFile ?? ((p: string) => fs.readFile(p, 'utf8'));
@@ -553,7 +564,7 @@ export async function autoResearch(
   }
   // Isolated mode never touches the user's tree (experiments run in a worktree off HEAD), so the
   // dirty-tree refusal — and the --allow-dirty escape hatch — are irrelevant there.
-  if (!options.isolate && !options.allowDirty && await gitIsDirty(cwd, gitFn)) {
+  if (!options.isolate && !options.allowDirty && await gitIsDirty(cwd, preIsolationGit)) {
     logger.error('AutoResearch refuses to run on a dirty working tree.');
     logger.error('Commit or stash first, rerun with --allow-dirty, or use --isolate to run in a clean worktree.');
     process.exitCode = 1; return;
@@ -592,6 +603,15 @@ export async function autoResearch(
     logger.info(`Isolated: experiments run in ${execCwd} (branch ${session.branch}); your tree is untouched.`);
   }
 
+  // THE ISOLATION PIN (fleet run 2, DanteCode): a single git seam established BEFORE isolation was
+  // threaded through setup/loop/rollback/commit, and a closure bound to the ORIGINAL cwd ran
+  // `git reset --hard` against the operator's main tree while edits happened in the worktree. From
+  // this line on, every git call goes through `gitFn`: under --isolate it is a cwd-BOUND adapter
+  // pinned to the worktree no matter what cwd a downstream caller passes, so no rollback, checkout,
+  // or commit can ever address the user's tree. `preIsolationGit` is consumed here and must not be
+  // referenced below this line.
+  const gitFn: GitFn = session ? bindGitToCwd(preIsolationGit, execCwd, cwd) : preIsolationGit;
+
   try {
     const config: AutoResearchConfig = { goal, metric, timeBudgetMinutes, measurementCommand, cwd: execCwd, exitCodeMetric: options.exitCodeMetric ?? false };
     const noiseMargin = resolveNoiseMargin(metric);
@@ -604,7 +624,10 @@ export async function autoResearch(
 
     const { bestValue } = await runExperimentLoop(
       config, allExperiments, initBest, initHash, tsvPath, noiseMargin, startTime, budgetMs, execCwd,
-      { callLLMFn, readFileFn, runExperimentFn, gitFn, isLLMAvailableFn, appendFileFn, nowFn, sleepFn, useAgent, dispatchAgentEditFn },
+      {
+        callLLMFn, readFileFn, runExperimentFn, gitFn, isLLMAvailableFn, appendFileFn, nowFn, sleepFn,
+        useAgent, dispatchAgentEditFn, isolationUserCwd: session ? cwd : undefined,
+      },
     );
 
     await generateAndWriteReport(goal, metric, config, allExperiments, baseline, bestValue, branchName, tsvPath, startTime, nowFn, callLLMFn, isLLMAvailableFn, writeFileFn, loadStateFn, saveStateFn, execCwd);

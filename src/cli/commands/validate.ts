@@ -111,6 +111,25 @@ function applyIntegrityCaps(
   return integrityCapFor(score, dimId, report);
 }
 
+/**
+ * Ledger-gate cleanliness for one dim (the recording precondition, council-approved
+ * fleet-run-2 relaxation). Membership in a DISHONESTY class — seamed / shared-receipt /
+ * decoupled — blocks recording: that evidence misrepresents what ran. Membership in a
+ * CAP-ENFORCED class — orphan / unscannable — does NOT block: those flags are score
+ * BOUNDS applied by integrityCapFor on every load (loadMatrix re-applies all integrity
+ * caps to restored outcomes), so recording them launders nothing — and the fleet's
+ * entire stock of honest T4 earns is orphan-flagged (barrel wiring), which had left the
+ * ledger inert. A null report fails closed: unverified cleanliness never records.
+ */
+export function dimLedgerGateClean(
+  dimId: string,
+  report: import('../../matrix/engines/outcome-integrity.js').IntegrityReport | null,
+): boolean {
+  if (report === null) return false;
+  return [report.seamedDims, report.sharedReceiptDims, report.decoupledDims]
+    .every(list => !(list ?? []).includes(dimId));
+}
+
 // ── Main entry point ─────────────────────────────────────────────────────────
 
 export async function runValidateCli(options: ValidateCliOptions): Promise<ValidateCliResult> {
@@ -257,24 +276,20 @@ export async function runValidateCli(options: ValidateCliOptions): Promise<Valid
     // its uncommitted outcomes[] (fleet run 1: earns evaporated on 3/3 repos). Snapshot
     // this dim's DECLARED outcomes to the self-gitignored declarations ledger — but ONLY
     // on the gate-confirmed condition: every declared outcome ran (no --quick /
-    // --runtime-only filtering) and passed, with NO integrity violation MEMBERSHIP at
-    // all (adversarial finding 11: integrityCapFor only reports a cap when it BITES —
-    // score above the cap — so a seamed/shared/decoupled/orphan/unscannable dim scoring
-    // below its cap carries integrityCap === undefined yet is NOT gate-clean). The
-    // integrity report itself is required: when the pre-flight failed, cleanliness is
-    // unverified, so the write is refused (fail-closed). A failing, capped, flagged, or
+    // --runtime-only filtering) and passed, with no BITING integrity cap and no
+    // membership in a DISHONESTY violation class (seamed / shared-receipt / decoupled —
+    // adversarial finding 11: integrityCapFor only reports a cap when it BITES, so a
+    // dim scoring below its cap carries integrityCap === undefined yet is NOT gate-clean
+    // when its evidence is seamed/shared/decoupled). Membership in the CAP-ENFORCED
+    // classes (orphan / unscannable) does NOT block recording — see dimLedgerGateClean:
+    // those bounds are re-applied by loadMatrix on every restore, so recording launders
+    // nothing, and blocking on them had left the ledger inert fleet-wide (fleet run 2).
+    // The integrity report itself is required: when the pre-flight failed, cleanliness
+    // is unverified, so the write is refused (fail-closed). A failing, biting-capped, or
     // partial run must never snapshot — that would launder an unproven declaration into
     // durability.
     const declaredOutcomes = (dim as unknown as Record<string, unknown>)['outcomes'] as Outcome[];
-    const dimIntegrityClean =
-      integrityReport !== null &&
-      [
-        integrityReport.seamedDims,
-        integrityReport.sharedReceiptDims,
-        integrityReport.decoupledDims,
-        integrityReport.orphanDims,
-        integrityReport.unscannableDims,
-      ].every(list => !(list ?? []).includes(dim.id));
+    const dimIntegrityClean = dimLedgerGateClean(dim.id, integrityReport);
     const gateConfirmed =
       total > 0 &&
       total === declaredOutcomes.length &&

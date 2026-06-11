@@ -33,6 +33,22 @@ export function getActiveLedger(): RunLedger | null { return activeLedger; }
 /** When the last phase-timeout tree-kill fired — the next spawn waits out the reaper (see runCli). */
 let lastTreeKillAt = 0;
 
+/**
+ * Phase-aware tree-kill cap (fleet run 2 dead-loop fix). The old UNIFORM 30-minute cap killed
+ * build-to-7 mid-dim-001 every cycle: harden-crusade's inner per-dim autoresearch budget defaulted
+ * to the SAME 30 minutes, so the outer kill always landed mid-cycle, the merge-back died with the
+ * process, NOTHING persisted, and the next cycle restarted at dim001 — two fleet repos ran
+ * identical no-progress cycles forever. Build phases (harden-crusade and the council crusades) now
+ * get 60 minutes; paired with the 18m inner cycle budget + --max-minutes 55 checkpoint-exit they
+ * finish and PERSIST on their own, so this cap is strictly a zombie guard, never the exit path.
+ * Every other sub-command keeps the 30-minute cap.
+ */
+export function phaseTimeoutMs(args: string[]): number {
+  const cmd = args[0] ?? '';
+  if (cmd === 'harden-crusade' || cmd === 'council-crusade' || cmd === 'council') return 60 * 60_000;
+  return 30 * 60_000;
+}
+
 function truncate(s: string | undefined, n = 4000): string | undefined {
   if (!s) return undefined;
   return s.length > n ? `${s.slice(0, n)}…[+${s.length - n} chars]` : s;
@@ -88,7 +104,7 @@ function runOnce(cwd: string, args: string[]): Promise<CliResult> {
     };
     // On timeout, kill the WHOLE tree (harden-crusade + its autoresearch grandchildren), not just the
     // direct child — otherwise the grandchildren orphan and accumulate as zombies across sessions.
-    const timer = setTimeout(() => { lastTreeKillAt = Date.now(); killTree(child.pid); done(124); }, 30 * 60_000);
+    const timer = setTimeout(() => { lastTreeKillAt = Date.now(); killTree(child.pid); done(124); }, phaseTimeoutMs(args));
     // LIVE ECHO + HEARTBEAT — the fleet's "silent stall": piped output was captured but never shown,
     // so a 20-min build-to-7 looked frozen and operators killed healthy runs. Echo the child's lines
     // as they arrive (prefixed, so the operator sees the real sub-command working), and when the child

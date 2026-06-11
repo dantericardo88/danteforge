@@ -342,3 +342,95 @@ describe('runHardenCrusade — autoresearch measurement-command (fleet build-to-
     assert.equal(autoresearchCalls, 0, 'a no_capability_test dim must not invoke autoresearch (would crash)');
   });
 });
+
+// ── Wall-clock budget checkpoint (--max-minutes, fleet run 2 dead-loop fix) ───
+// The orchestrator's runner tree-kills harden-crusade at the phase cap. With --max-minutes set
+// UNDER that cap, the run must stop CLEANLY between cycles — never start a cycle it cannot finish
+// — so merged progress persists and the next orchestrator cycle continues from the re-ranked queue.
+
+describe('runHardenCrusade — wall-clock budget checkpoint (--max-minutes)', () => {
+  it('exits cleanly before starting a cycle it cannot finish (seamed clock)', async () => {
+    const dim = makeDim('security', 5.0);
+    let clockMs = 0;
+    let autoresearchCalls = 0;
+    let score = 5.0;
+    const result = await runHardenCrusade(baseOpts({
+      _loadMatrix: async () => makeMatrix([dim]),
+      _now: () => clockMs,
+      maxMinutes: 30,
+      timeMinutes: 18, // a cycle needs 18 + 2m slack of remaining budget to be allowed to start
+      maxDimCycles: 6,
+      target: 9,
+      // Genuine progress each cycle — without the guard the loop would happily keep cycling.
+      _getScore: async () => { score += 0.5; return score; },
+      // Each cycle consumes 25 simulated minutes (autoresearch + merge-back).
+      _runAutoResearch: async () => { autoresearchCalls++; clockMs += 25 * 60_000; },
+      _runHardenForDim: async () => gatePass,
+    }));
+    assert.equal(autoresearchCalls, 1, 'cycle 1 fits (0 + 20 <= 30); cycle 2 must NOT start (25 + 20 > 30)');
+    assert.equal(result.budgetReached, true, 'the clean checkpoint must be marked (this is the exit-0 path)');
+    assert.equal(result.status, 'PARTIAL', 'the dim has not settled — the orchestrator re-plans');
+    assert.equal(result.dimensions[0]?.status, 'CHECKPOINT');
+    assert.equal(result.dimensions[0]?.autoresearchRuns, 1, 'partial progress is recorded, not discarded');
+  });
+
+  it('without --max-minutes the clock never trips the guard (prior behavior preserved)', async () => {
+    const dim = makeDim('security', 5.0);
+    let clockMs = 0;
+    let autoresearchCalls = 0;
+    let score = 5.0;
+    const result = await runHardenCrusade(baseOpts({
+      _loadMatrix: async () => makeMatrix([dim]),
+      _now: () => clockMs,
+      timeMinutes: 18,
+      maxDimCycles: 3,
+      target: 9,
+      _getScore: async () => { score += 0.5; return score; },
+      _runAutoResearch: async () => { autoresearchCalls++; clockMs += 25 * 60_000; },
+      _runHardenForDim: async () => gatePass,
+    }));
+    assert.equal(autoresearchCalls, 3, 'unguarded run cycles to maxDimCycles regardless of elapsed time');
+    assert.equal(result.budgetReached, false);
+    assert.equal(result.dimensions[0]?.status, 'MAX_CYCLES');
+  });
+
+  it('a budget stop with work remaining NEVER inflates to ALL_DONE (report still written)', async () => {
+    // Budget so tight even the FIRST cycle cannot start — the run must checkpoint immediately
+    // (no pass started, zero cycles), write its report as usual, and report PARTIAL + budgetReached.
+    const dim = makeDim('security', 5.0);
+    let autoresearchCalls = 0;
+    let reportWritten = '';
+    const result = await runHardenCrusade(baseOpts({
+      _loadMatrix: async () => makeMatrix([dim]),
+      _now: () => 0,
+      maxMinutes: 10, // 0 + (18 + 2) > 10 → the pass (and cycle 1) never starts
+      timeMinutes: 18,
+      target: 9,
+      _getScore: async () => 5.0,
+      _runAutoResearch: async () => { autoresearchCalls++; },
+      _runHardenForDim: async () => gatePass,
+      _writeFile: async (_p, c) => { reportWritten = c; },
+    }));
+    assert.equal(autoresearchCalls, 0, 'no cycle may start when even the first cannot finish');
+    assert.equal(result.budgetReached, true);
+    assert.equal(result.status, 'PARTIAL', 'a checkpoint exit with work remaining must never read ALL_DONE');
+    assert.equal(result.dimensions.length, 0, 'nothing was attempted — nothing may be claimed');
+    assert.ok(reportWritten.includes('HARDEN_CRUSADE_REPORT'), 'the report is written as usual on a checkpoint exit');
+  });
+
+  it('a genuinely finished run still reads ALL_DONE even with --max-minutes set (no false PARTIAL)', async () => {
+    // All dims already at target → the empty-todo break fires BEFORE the budget check.
+    const dim = makeDim('security', 9.5);
+    const result = await runHardenCrusade(baseOpts({
+      _loadMatrix: async () => makeMatrix([dim]),
+      _now: () => 0,
+      maxMinutes: 10,
+      timeMinutes: 18,
+      target: 9,
+      _getScore: async () => 9.5,
+      _runHardenForDim: async () => gatePass,
+    }));
+    assert.equal(result.status, 'ALL_DONE');
+    assert.equal(result.budgetReached, false, 'the guard must not trip when there was no work to start');
+  });
+});

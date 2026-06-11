@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import { runAscendFrontier, setupCommands, buildTo7Commands, type PushResult } from '../src/cli/commands/ascend-frontier.js';
+import { phaseTimeoutMs } from '../src/cli/commands/ascend-frontier-runner.js';
 import type { DimState } from '../src/core/ascend-frontier-engine.js';
 import type { CompeteMatrix } from '../src/core/compete-matrix.js';
 
@@ -35,10 +36,34 @@ describe('ascend-frontier — phase routing (sequential vs council-parallel)', (
     // Serial, not --parallel N: N autoresearch workers share one working tree and corrupt each other
     // (checkout/file-writes/reset --hard). harden-crusade --loop still drives every dim, one at a time.
     // build pass, then re-ground (honesty self-correction: a build can introduce a fresh orphan).
-    const expected = [['harden-crusade', '--parallel', '1', '--loop', '--target', '7'], ['ground-outcomes', '--apply']];
+    const expected = [
+      ['harden-crusade', '--parallel', '1', '--loop', '--target', '7', '--time', '18', '--max-minutes', '55'],
+      ['ground-outcomes', '--apply'],
+    ];
     assert.deepEqual(buildTo7Commands(false, M, ['a', 'b']), expected);
     assert.deepEqual(buildTo7Commands(true, M, ['a', 'b']), expected, 'council fan-out is reserved for push-to-9, not the 7.0 bar');
     assert.deepEqual(buildTo7Commands(true, ['codex'], ['a']), expected);
+  });
+  test('build-to-7 carries the dead-loop budgets: --time 18 (inner cycle) + --max-minutes 55 (checkpoint exit)', () => {
+    // Fleet run 2 dead-loop: inner autoresearch budget (30m) == outer tree-kill cap (30m), so the
+    // runner killed build-to-7 mid-dim-001 every cycle and NOTHING persisted. --time 18 lets at
+    // least one full cycle finish inside any reasonable window; --max-minutes 55 (under the 60m
+    // phase cap) makes harden-crusade checkpoint-exit cleanly instead of being tree-killed.
+    const [hc] = buildTo7Commands(false, M, ['a']);
+    const timeIdx = hc!.indexOf('--time');
+    assert.ok(timeIdx > 0, 'harden-crusade must carry an explicit --time inner budget');
+    assert.equal(hc![timeIdx + 1], '18');
+    const maxIdx = hc!.indexOf('--max-minutes');
+    assert.ok(maxIdx > 0, 'harden-crusade must carry the --max-minutes wall-clock checkpoint');
+    assert.equal(hc![maxIdx + 1], '55');
+  });
+  test('runner phase cap is phase-aware: crusade builds get 60m, everything else stays 30m', () => {
+    assert.equal(phaseTimeoutMs(['harden-crusade', '--parallel', '1', '--loop']), 60 * 60_000);
+    assert.equal(phaseTimeoutMs(['council-crusade']), 60 * 60_000);
+    assert.equal(phaseTimeoutMs(['council', '--parallel']), 60 * 60_000);
+    assert.equal(phaseTimeoutMs(['ground-outcomes', '--apply']), 30 * 60_000);
+    assert.equal(phaseTimeoutMs(['validate', 'dim001']), 30 * 60_000);
+    assert.equal(phaseTimeoutMs([]), 30 * 60_000);
   });
 });
 
