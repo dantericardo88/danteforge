@@ -175,8 +175,18 @@ export async function defineUniverse(options: UniverseDefinerOptions = {}): Prom
     }
   }
 
-  // Append 30 market dimensions (idempotent — skip any already present)
-  for (const spec of MARKET_DIM_SPECS) {
+  // Append the 30 curated market dimensions — ONLY for projects in their domain. The specs are
+  // AI-coding-assistant dims with Cursor/Copilot baselines (semantic memory, IDE integration…);
+  // landing them on an arbitrary cold repo (a log watcher, a security agent) over-scaffolds it
+  // with ~30 wrong-product dims the loop then has to churn through. Domain signal: the SAME
+  // peer-preset resolution the feature-universe step below uses — a project whose preset resolves
+  // (DanteForge/coding-assistant family) gets the specs; an unknown project gets the honest core
+  // scorer dims only.
+  const preset = await resolveProjectCompetitors(cwd, { project: projectName }).catch(() => ({ competitors: [] as string[] }));
+  if (preset.competitors.length === 0) {
+    logger.info(`[Ascend] Skipping the 30 curated AI-coding market dims — no peer preset resolves for "${projectName}" (this is not that domain). The matrix keeps the ${matrix.dimensions.length} core scorer dims; add domain dims via \`danteforge compete --reset --preset <name>\` or matrix-orchestrate discover.`);
+  }
+  for (const spec of preset.competitors.length === 0 ? [] : MARKET_DIM_SPECS) {
     if (matrix.dimensions.some(d => d.id === spec.id)) continue;
     const selfScore = spec.selfDefault;
     const scores: Record<string, number> = { self: selfScore, ...spec.baselineScores };

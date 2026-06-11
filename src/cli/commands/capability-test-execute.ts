@@ -234,11 +234,22 @@ export async function runCapabilityTestExecute(options: CapabilityTestExecuteOpt
     return { ok: true, reason: 'competitor Score Ladder researched + written by the council.' };
   };
 
+  // SHORT-CIRCUIT after the first failed research of a pass (live cold-repo exam): each council
+  // research costs ~10-13 minutes, and on a repo the researchers can produce nothing for, every
+  // subsequent attempt fails the same way — three in a row burned the whole 30-minute runner
+  // window on predictable failures. One empty result per pass is the signal; retries belong to
+  // later cycles (where the repo, identity brief, or member pool may have changed).
+  let researchFailedThisPass = false;
   const researchLadderFn = async (dimId: string): Promise<{ ok: boolean; reason: string }> => {
+    if (researchFailedThisPass) {
+      return { ok: false, reason: 'ladder research short-circuited — the first research attempt this pass produced no usable ladder for this repo; retry on a later pass.' };
+    }
     if (!takeBudget()) {
       return { ok: false, reason: `budget exhausted this pass (${actionsUsed}/${maxActions} expensive actions used) — ladder research deferred.` };
     }
-    return (options._researchFn ?? researchLadderViaCouncil)(dimId);
+    const r = await (options._researchFn ?? researchLadderViaCouncil)(dimId);
+    if (!r.ok) researchFailedThisPass = true;
+    return r;
   };
 
   const report = await remediateYardsticks(audits, {

@@ -1,5 +1,5 @@
 import fs from 'node:fs/promises';
-import { readdirSync } from 'node:fs';
+import { readdirSync, readFileSync, existsSync } from 'node:fs';
 import path from 'node:path';
 import { loadMatrix, type CompeteMatrix } from '../../core/compete-matrix.js';
 import { MARKET_DIMS_SCORE_CAP } from '../../core/compete-matrix-score.js';
@@ -217,6 +217,25 @@ export async function runEvidenceScaffold(options: EvidenceScaffoldOptions = {})
 
   let matrixDirty = false;
 
+  // Prerequisite check for dim-keyed template commands: the referenced runtime surface must
+  // EXIST in the target repo. `node <file>` needs the file on disk; `npm test`/`npm run X`
+  // need that script in package.json. Anything else (npx tooling etc.) is allowed through —
+  // the command may still fail honestly at run time, but it is not broken-by-construction.
+  const pkgScripts = (() => {
+    try {
+      const raw = readFileSync(path.join(cwd, 'package.json'), 'utf8').replace(/^﻿/, '');
+      return (JSON.parse(raw) as { scripts?: Record<string, string> }).scripts ?? {};
+    } catch { return {} as Record<string, string>; }
+  })();
+  const commandRunnableHere = (command: string, root: string): boolean => {
+    const nodeFile = /(?:^|[;&|]\s*)node\s+([\w./\\-]+\.(?:m?[cj]s|js))/i.exec(command)?.[1];
+    if (nodeFile && !existsSync(path.join(root, nodeFile))) return false;
+    if (/(?:^|[;&|]\s*)npm\s+test\b/.test(command) && pkgScripts['test'] === undefined) return false;
+    const runScript = /(?:^|[;&|]\s*)npm\s+run\s+([\w:.-]+)/.exec(command)?.[1];
+    if (runScript && pkgScripts[runScript] === undefined) return false;
+    return true;
+  };
+
   // Capability-driven detection for generic/cold repos: when the dim-keyed maps find nothing,
   // probe the TARGET repo's real entrypoints (package.json bin/scripts, pyproject, Cargo, go)
   // instead of defaulting every dim to an `exit 1` scaffold the build loop churns on.
@@ -238,7 +257,12 @@ export async function runEvidenceScaffold(options: EvidenceScaffoldOptions = {})
       continue;
     }
 
-    const command = scaffoldMap[dim.id] ?? scaffoldMap['_default'];
+    // A dim-keyed template command counts ONLY if the TARGET repo can actually run it. The live
+    // cold-repo exam caught 13 false positives here: DanteForge-template commands (`node
+    // dist/index.js --help`, `npm test`, `npm run check:anti-stub`) were claimed on a repo with
+    // no dist/ and no such scripts — broken-by-construction yardsticks the loop then churns on.
+    const dimKeyed = scaffoldMap[dim.id] ?? scaffoldMap['_default'];
+    const command = dimKeyed && commandRunnableHere(dimKeyed, cwd) ? dimKeyed : undefined;
     const runnable = command ? undefined : runnableProbe();
     const candidate = command || runnable ? undefined : candidateProbe();
     if (command) {
