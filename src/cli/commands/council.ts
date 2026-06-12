@@ -20,7 +20,7 @@ import { ClaudeCodeAdapter, buildClaudeJudgeTextPrompt } from '../../matrix/adap
 import type { WorkPacket } from '../../matrix/types/work-graph.js';
 import type { AgentLease } from '../../matrix/types/lease.js';
 import type { AgentRunResult } from '../../matrix/types/agent.js';
-import { runAdapter } from '../../matrix/adapters/adapter-interface.js';
+import { runAdapter, builderTimeoutMs } from '../../matrix/adapters/adapter-interface.js';
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -192,11 +192,15 @@ function assignRoles(
 // ── Adapter factories ─────────────────────────────────────────────────────────
 
 export function makeAdapter(id: CouncilMemberId, workPacket: WorkPacket, judgeMode = false) {
+  // Judge/consult runs previously fell to each adapter's 10-MINUTE default while builders got
+  // the 30m rope — run 3j/3k: every plan decomposition (repo-aware design work) was tree-killed
+  // at 10m, mid-thought, on every dim. Judges and consults get the same env-tunable rope.
+  const timeoutMs = judgeMode ? builderTimeoutMs() : undefined;
   switch (id) {
-    case 'codex': return new CodexAdapter({ workPacket, judgeMode });
-    case 'gemini-cli': return new GeminiCLIAdapter({ workPacket, judgeMode });
-    case 'grok-build': return new GrokBuildAdapter({ workPacket, judgeMode });
-    case 'claude-code': return new ClaudeCodeAdapter({ workPacket, judgeMode, skipPermissions: !judgeMode });
+    case 'codex': return new CodexAdapter({ workPacket, judgeMode, timeoutMs });
+    case 'gemini-cli': return new GeminiCLIAdapter({ workPacket, judgeMode, timeoutMs });
+    case 'grok-build': return new GrokBuildAdapter({ workPacket, judgeMode, timeoutMs });
+    case 'claude-code': return new ClaudeCodeAdapter({ workPacket, judgeMode, timeoutMs, skipPermissions: !judgeMode });
   }
 }
 

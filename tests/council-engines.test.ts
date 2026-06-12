@@ -208,7 +208,7 @@ function makeLease(cwd = '/tmp/test'): AgentLease {
 const VERDICT_OUTPUT = 'VERDICT: PASS\nCONFIDENCE: HIGH\nREASON: code is real\nSCORE_SUGGESTION: 8\nBLOCKING_ISSUES: none';
 
 /** Creates a fake child process that emits `output` to stdout then closes with code 0. */
-function makeFakeProc(output: string) {
+function makeFakeProc(output: string, exitCode = 0) {
   const proc = new EventEmitter() as EventEmitter & {
     stdout: EventEmitter; stderr: EventEmitter;
     kill: () => boolean; pid: number;
@@ -219,7 +219,7 @@ function makeFakeProc(output: string) {
   proc.pid = 0;
   setImmediate(() => {
     proc.stdout.emit('data', Buffer.from(output));
-    proc.emit('close', 0);
+    proc.emit('close', exitCode);
   });
   return proc;
 }
@@ -276,6 +276,26 @@ describe('CodexAdapter — judge mode', () => {
     assert.ok(result.finalMessage?.includes('VERDICT: UNCLEAR'), `must be UNCLEAR, never FAIL: ${result.finalMessage}`);
     assert.deepEqual(reverted, [], 'foreign work must NEVER be reverted by a read-only judge');
   });
+
+  it('run-3j/3k regression: a killed Codex judge run (exit 124) reports FAILED, never garbage-as-answer', async () => {
+    // The 10-min timeout tree-killed consults; the only stdout was a taskkill transcript, and
+    // the judge path reported it as a completed answer (status=completed, no error).
+    const adapter = new CodexAdapter({
+      workPacket: makePacket(),
+      judgeMode: true,
+      _isAvailable: async () => true,
+      _preJudgeDiff: async () => [],
+      _gitDiff: async () => [],
+      _spawn: () => makeFakeProc('SUCCESS: The process with PID 23100 has been terminated.', 124) as never,
+    });
+    const prepared = await adapter.prepareRun({ lease: makeLease(), cwd: '/tmp/test' });
+    const handle = await adapter.startRun(prepared);
+    const result = await adapter.collectResult(handle);
+    assert.equal(result.status, 'failed', 'a killed judge run must report failed');
+    assert.equal(result.errorReason, 'judge_timeout');
+    assert.ok(result.finalMessage?.includes('judge run failed'), `finalMessage: ${result.finalMessage}`);
+    assert.ok(!result.finalMessage?.includes('SUCCESS: The process'), 'kill transcripts must never masquerade as answers');
+  });
 });
 
 describe('ClaudeCodeAdapter — judge mode', () => {
@@ -316,6 +336,34 @@ describe('ClaudeCodeAdapter — judge mode', () => {
     assert.ok(result.errorReason?.includes('tree_changed_during_review'), `errorReason: ${result.errorReason}`);
     assert.ok(result.finalMessage?.includes('VERDICT: UNCLEAR'), `must be UNCLEAR, never FAIL: ${result.finalMessage}`);
     assert.deepEqual(reverted, [], 'foreign work must NEVER be reverted by a read-only judge');
+  });
+
+  it('run-3j/3k regression: a killed Claude judge run (exit 124) reports FAILED, never garbage-as-answer', async () => {
+    const adapter = new ClaudeCodeAdapter({
+      workPacket: makePacket(),
+      judgeMode: true,
+      _isAvailable: async () => true,
+      _preJudgeDiff: async () => [],
+      _gitDiff: async () => [],
+      _spawn: () => makeFakeProc('partial output before the kill', 124) as never,
+    });
+    const prepared = await adapter.prepareRun({ lease: makeLease(), cwd: '/tmp/test' });
+    const handle = await adapter.startRun(prepared);
+    const result = await adapter.collectResult(handle);
+    assert.equal(result.status, 'failed', 'a killed judge run must report failed');
+    assert.equal(result.errorReason, 'judge_timeout');
+    assert.ok(result.finalMessage?.includes('judge run failed'), `finalMessage: ${result.finalMessage}`);
+  });
+
+  it('judge/consult adapters get the builder rope, not the 10-minute default', async () => {
+    const { makeAdapter, makeWorkPacket } = await import('../src/cli/commands/council.js');
+    const { builderTimeoutMs } = await import('../src/matrix/adapters/adapter-interface.js');
+    const judge = makeAdapter('codex', makeWorkPacket('probe', 'X:\\tmp'), true);
+    assert.equal((judge as unknown as { options: { timeoutMs?: number } }).options.timeoutMs, builderTimeoutMs(),
+      'judge mode must carry the env-tunable rope (run 3j/3k: consults died at the 10-min default)');
+    const builderModeAdapter = makeAdapter('codex', makeWorkPacket('probe', 'X:\\tmp'), false);
+    assert.equal((builderModeAdapter as unknown as { options: { timeoutMs?: number } }).options.timeoutMs, undefined,
+      'build mode keeps its callsite-provided timeout contract');
   });
 });
 

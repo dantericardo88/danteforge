@@ -222,6 +222,17 @@ export class CodexAdapter implements AgentAdapter {
           shell: false,
           stdio: ['pipe', 'pipe', 'pipe'],
         }, this.options.timeoutMs ?? DEFAULT_TIMEOUT_MS, chunks, judgePrompt);
+        if (state.exitCode !== 0) {
+          // Run 3j/3k: the 10-min timeout tree-killed consults and the ONLY stdout content was
+          // codex's own taskkill transcript — which this path then reported as a COMPLETED
+          // answer. A murdered judge/consult must say so, never hand garbage to the caller.
+          state.errorReason = state.exitCode === 124 ? 'judge_timeout' : `judge_exit_${state.exitCode}`;
+          state.capturedOutput = '';
+          state.finalMessage = `(judge run failed: ${state.errorReason})`;
+          state.status = 'failed';
+          finalize(state, runId);
+          return;
+        }
         // File output takes precedence; stdout fallback for test fake-procs.
         let fromFile = '';
         try {

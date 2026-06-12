@@ -158,5 +158,23 @@
     "openedAt": "2026-06-12T22:01:37.063Z",
     "resolution": "Manifest cross-check shipped (c573b84): resolveProjectBrief reads the repo manifest FIRST; a contradicting intent artifact loses with a loud warn naming the stale file; 3 pins incl. the live Quill regression. Stale artifact removed (backup X:/tmp/quill-stale-intent-backup.json).",
     "resolvedAt": "2026-06-12T22:26:47.737Z"
+  },
+  {
+    "id": "CH-017",
+    "title": "Judges share the builders' write lease in the campaign tree",
+    "problem": "Frontier-review judges are spawned via makeAdapter(judgeMode) but receive the SAME makeLease as builders (allowedWritePaths src/**, tests/**); judge verdicts can also ingest foreign process output (codex judge reason field captured a taskkill cascade verbatim). A judge that can write to the tree it judges can destroy evidence or in-flight work; a contaminated tree auto-FAILs the court, conflating capability verdicts with hygiene violations.",
+    "evidence": "Run 3i agent_activity_provenance court: claude-code judge verdict FAIL with reason 'Judge modified worktree files during review (ascend-frontier-push.ts, frontier-plan.ts) - bad-faith violation'; src/core/frontier-plan.ts was DELETED from the working tree mid-court and push.ts reverted to HEAD, wiping operator edits; codex judge verdict UNCLEAR with taskkill SUCCESS lines as its reason (X:/tmp/ascend-run3i.log)",
+    "opportunity": "Read-only judge leases (or snapshot worktrees) make court verdicts pure capability judgments, immune to tree churn; protects operator/builder work from judge cleanup behavior; unblocks trusting REJECTED verdicts as real signal",
+    "status": "open",
+    "openedAt": "2026-06-12T22:44:57.656Z"
+  },
+  {
+    "id": "CH-018",
+    "title": "Ceiling receipts outlive the generator they measured",
+    "problem": "generator-ceiling receipts are permanent (no reviewAfter) and carry no engine provenance, so they survive engine upgrades that invalidate their premise; the planner then never re-attempts those dims even when the generator that failed has been replaced.",
+    "evidence": "After runs 3g-3k, 8 dims hold permanent generator-ceilings minted while (a) plan decomposition was structurally broken (judge-prompt wrapping + 10-min consult kills), (b) codex court seats returned taskkill transcripts as verdicts; the upgraded engine never gets to retry them (.danteforge/ceilings/*.json)",
+    "opportunity": "Stamp the engine commit SHA into ceiling receipts and add cause-aware re-opening when the generator materially changed - honest terminals that self-revise with the engine instead of manual lifts",
+    "status": "open",
+    "openedAt": "2026-06-12T23:11:25.750Z"
   }
 ]

@@ -5,7 +5,7 @@
 > Entries are never silently deleted: a challenge is open, solved (with the commit), or
 > retired (with the reason). An empty OPEN section is a smell, not an achievement.
 
-## Open (8)
+## Open (10)
 
 ### CH-006: Cycle economics: tiny payload per hour
 - **Problem:** A push attempt costs ~60min of orchestration + LLM for 2-3 file diffs; overhead dominates real building.
@@ -53,6 +53,18 @@
 - **Problem:** Matrix dimension count is an emergent sum (core scorer dims + 30 curated market dims when a peer preset resolves + competitor-derived feature dims from universe research) with no operator knob; DanteCode got 50 where the operator wanted 100; complex projects need denser matrices and re-bootstrap cannot honor a requested granularity.
 - **Evidence:** universe-definer.ts: preset-gated MARKET_DIM_SPECS + feature-universe build, no target-count parameter anywhere (grep targetDims/maxDims across define/discover paths).
 - **Opportunity:** A --target-dims knob on define/bootstrap/discover that scales competitor-feature decomposition depth (split coarse dims into sub-capabilities until the requested density is met, each still ladder-grounded) = right-sized matrices per project complexity, operator-controlled.
+- Opened: 2026-06-12
+
+### CH-017: Judges share the builders' write lease in the campaign tree
+- **Problem:** Frontier-review judges are spawned via makeAdapter(judgeMode) but receive the SAME makeLease as builders (allowedWritePaths src/**, tests/**); judge verdicts can also ingest foreign process output (codex judge reason field captured a taskkill cascade verbatim). A judge that can write to the tree it judges can destroy evidence or in-flight work; a contaminated tree auto-FAILs the court, conflating capability verdicts with hygiene violations.
+- **Evidence:** Run 3i agent_activity_provenance court: claude-code judge verdict FAIL with reason 'Judge modified worktree files during review (ascend-frontier-push.ts, frontier-plan.ts) - bad-faith violation'; src/core/frontier-plan.ts was DELETED from the working tree mid-court and push.ts reverted to HEAD, wiping operator edits; codex judge verdict UNCLEAR with taskkill SUCCESS lines as its reason (X:/tmp/ascend-run3i.log)
+- **Opportunity:** Read-only judge leases (or snapshot worktrees) make court verdicts pure capability judgments, immune to tree churn; protects operator/builder work from judge cleanup behavior; unblocks trusting REJECTED verdicts as real signal
+- Opened: 2026-06-12
+
+### CH-018: Ceiling receipts outlive the generator they measured
+- **Problem:** generator-ceiling receipts are permanent (no reviewAfter) and carry no engine provenance, so they survive engine upgrades that invalidate their premise; the planner then never re-attempts those dims even when the generator that failed has been replaced.
+- **Evidence:** After runs 3g-3k, 8 dims hold permanent generator-ceilings minted while (a) plan decomposition was structurally broken (judge-prompt wrapping + 10-min consult kills), (b) codex court seats returned taskkill transcripts as verdicts; the upgraded engine never gets to retry them (.danteforge/ceilings/*.json)
+- **Opportunity:** Stamp the engine commit SHA into ceiling receipts and add cause-aware re-opening when the generator materially changed - honest terminals that self-revise with the engine instead of manual lifts
 - Opened: 2026-06-12
 
 ## Resolved (8)

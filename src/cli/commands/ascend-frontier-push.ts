@@ -141,17 +141,6 @@ export async function defaultPushTo9(
   // dim (verdict→builder feedback) — every rejection becomes a course correction, never roulette.
   await df(cwd, ['frontier-spec', 'freeze', dimId, '--write']);
   const feedback = await loadCourtFeedback(cwd, dimId);
-  // Repeated-objection tripwire (council lever 3): the last TWO courts raised the same core
-  // objection — another blind build is guaranteed waste. Stop honestly and name the real remedy
-  // (evidence/spec upgrade or plan decomposition), exactly like spec-incomplete names its work.
-  if (repeatedObjection(feedback)) {
-    return {
-      verdict: 'REJECTED', courtRan: false,
-      ceiling: { cause: 'court-rejected' as CeilingCause,
-        detail: `${dimId}: the frontier court raised the SAME objection in consecutive attempts ("${(feedback!.dissent[0] ?? feedback!.summary).slice(0, 200)}…") — further builds cannot fix this; upgrade the evidence design (real_user_path run_command/artifacts must actually exercise the 9-row) or decompose the bar into plan items, then re-push.` },
-      fingerprint: { dimId, command: spec0.real_user_path.run_command, artifactPath: spec0.real_user_path.observable_artifacts[0]?.path ?? '', gitSha: await headSha(cwd) },
-    };
-  }
   // CH-014 BUILD PLAN: decompose the frozen bar ONCE into deterministic-gated checklist items;
   // attempts execute the next OPEN items; the expensive frontier court convenes ONLY when
   // the plan is complete. Item completion = its capability_test exits 0, never builder assertion.
@@ -173,8 +162,11 @@ export async function defaultPushTo9(
         const { makeAdapter, makeLease } = await import('./council.js');
         const { runAdapter } = await import('../../matrix/adapters/adapter-interface.js');
         const adapter = makeAdapter(memberId as CouncilMemberId, await makePlanConsultPacket(prompt, cwd), true);
-        const r = await runAdapter(adapter, { lease: makeLease(cwd), cwd });
-        return (r as { finalMessage?: string }).finalMessage ?? '';
+        const r = await runAdapter(adapter, { lease: makeLease(cwd), cwd }) as { finalMessage?: string; status?: string; errorReason?: string };
+        // A failed/killed consult must surface as a NAMED failure (run 3j/3k: timeout
+        // tree-kills came back as completed-with-garbage and read as "unusable plan").
+        if (r.status === 'failed') throw new Error(r.errorReason ?? 'adapter run failed');
+        return r.finalMessage ?? '';
       }, planLog).catch((err: unknown) => {
       planLog(`${dimId}: plan decomposition THREW (${err instanceof Error ? err.message : String(err)}) — legacy path`);
       return null;
@@ -211,6 +203,19 @@ export async function defaultPushTo9(
       // Plan just completed → fall through to evidence + court below.
     }
   } else {
+    // Repeated-objection tripwire (council lever 3) — LEGACY path only: the last TWO courts
+    // raised the same core objection, so another blind single-build is guaranteed waste. A
+    // plan IS this tripwire's named remedy — when one exists above, we execute it instead of
+    // stopping (the original ordering had the tripwire BEFORE decomposition, permanently
+    // deadlocking exactly the dims whose repeated rejections most needed a plan).
+    if (repeatedObjection(feedback)) {
+      return {
+        verdict: 'REJECTED', courtRan: false,
+        ceiling: { cause: 'court-rejected' as CeilingCause,
+          detail: `${dimId}: the frontier court raised the SAME objection in consecutive attempts ("${(feedback!.dissent[0] ?? feedback!.summary).slice(0, 200)}…") — further blind builds cannot fix this; upgrade the evidence design (real_user_path run_command/artifacts must actually exercise the 9-row) or fix plan decomposition (no plan could be installed for this dim — see [frontier-plan] log lines), then re-push.` },
+        fingerprint: { dimId, command: spec0.real_user_path.run_command, artifactPath: spec0.real_user_path.observable_artifacts[0]?.path ?? '', gitSha: await headSha(cwd) },
+      };
+    }
     const buildGoal = composeBuildGoal(dimId, spec0, feedback);
     await df(cwd, ['council-crusade', '--focus-dims', dimId, '--goal', buildGoal]);
   }

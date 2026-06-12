@@ -282,6 +282,16 @@ export class ClaudeCodeAdapter implements AgentAdapter {
           shell: false,
           stdio: ['ignore', 'pipe', 'pipe'],
         }, this.options.timeoutMs ?? DEFAULT_TIMEOUT_MS, chunks);
+        if (state.exitCode !== 0) {
+          // Run 3j/3k (codex twin): a timed-out/tree-killed judge must report failure —
+          // whatever partial stdout was captured is NOT an answer.
+          state.errorReason = state.exitCode === 124 ? 'judge_timeout' : `judge_exit_${state.exitCode}`;
+          state.capturedOutput = '';
+          state.finalMessage = `(judge run failed: ${state.errorReason})`;
+          state.status = 'failed';
+          finalize(state, runId);
+          return;
+        }
         state.capturedOutput = Buffer.concat(chunks).toString('utf8');
         // Post-run diff: only flag files that are NEW since the pre-judge snapshot.
         const changedAfterJudge = (await gitDiff(worktreeRoot)).filter(f => !preJudgeFiles.has(f));
