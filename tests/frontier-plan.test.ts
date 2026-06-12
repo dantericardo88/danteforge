@@ -86,4 +86,30 @@ describe('frontier-plan — the bar becomes a deterministic checklist, never an 
     assert.equal(await decomposeFrontierPlan(dir, 'dim_c', spec('h'), ['codex'], garbled), null, 'garbled responses fail closed');
     assert.equal(parseAuditVerdict('???').verdict, 'FAIL');
   });
+
+  test('run-3i regression: every fallback NAMES its reason; an install announces itself', async () => {
+    // Run 3i ran an entire campaign on the legacy path with the plan engine silently returning
+    // null — indistinguishable from the engine not existing. The log contract is now load-bearing.
+    const dir = path.join(ROOT, 'repo3');
+    await fs.mkdir(dir, { recursive: true });
+    const logs: string[] = [];
+    const log = (m: string) => logs.push(m);
+
+    await decomposeFrontierPlan(dir, 'dim_l1', spec('h'), [], async () => GOOD_ITEMS, log);
+    assert.match(logs.at(-1)!, /no council members/, 'empty roster names itself');
+
+    await decomposeFrontierPlan(dir, 'dim_l2', spec('h'), ['codex'], async () => { throw new Error('spawn ENOENT'); }, log);
+    assert.match(logs.at(-1)!, /FAILED to run \(spawn ENOENT\)/, 'adapter errors surface verbatim');
+
+    await decomposeFrontierPlan(dir, 'dim_l3', spec('h'), ['codex'], async () => 'not json', log);
+    assert.match(logs.at(-1)!, /unusable plan/, 'malformed decomposition names itself');
+
+    await decomposeFrontierPlan(dir, 'dim_l4', spec('h'), ['codex', 'claude-code'],
+      async (_id, p) => (p.includes('VERDICT') ? 'VERDICT: FAIL — vacuous gate' : GOOD_ITEMS), log);
+    assert.match(logs.at(-1)!, /verdict FAIL \(vacuous gate\)/, 'audit rejection carries the reason');
+
+    await decomposeFrontierPlan(dir, 'dim_l5', spec('h'), ['codex', 'claude-code'],
+      async (_id, p) => (p.includes('VERDICT') ? 'VERDICT: PASS — covers the bar' : GOOD_ITEMS), log);
+    assert.match(logs.at(-1)!, /plan INSTALLED — 3 items/, 'success announces the install');
+  });
 });

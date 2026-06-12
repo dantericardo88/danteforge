@@ -177,11 +177,14 @@ export function parseAuditVerdict(text: string): { verdict: 'PASS' | 'FAIL'; rea
 }
 
 export type RunMember = (memberId: string, prompt: string) => Promise<string>;
+export type PlanLog = (message: string) => void;
 
 /**
  * Decompose the dim's frozen bar into a plan and have a DIFFERENT member audit it once.
  * Returns null (and installs nothing) when: no usable bar, malformed decomposition, or audit FAIL
  * — the caller falls back to the legacy single-build path; a bad plan is worse than no plan.
+ * Every fallback NAMES its reason through `log` — run 3i proved a silent null here is
+ * indistinguishable from the engine not existing at all.
  */
 export async function decomposeFrontierPlan(
   cwd: string,
@@ -189,25 +192,44 @@ export async function decomposeFrontierPlan(
   spec: FrontierSpec,
   members: string[],
   runMember: RunMember,
+  log: PlanLog = () => {},
 ): Promise<FrontierPlan | null> {
   const lt = spec.leader_target;
   const bar = lt.category_delta && !TODO_RE.test(lt.category_delta) ? lt.category_delta
     : lt.observed_capability && !TODO_RE.test(lt.observed_capability) ? lt.observed_capability : '';
-  if (!bar || members.length === 0) return null;
+  if (!bar) { log(`${dimId}: no usable bar (category_delta/observed_capability empty or unauthored) — legacy path`); return null; }
+  if (members.length === 0) { log(`${dimId}: no council members discovered — legacy path`); return null; }
 
   const decomposer = members[0]!;
   const auditor = members.length > 1 ? members[1]! : members[0]!;
 
-  const items = parsePlanItems(await runMember(decomposer, buildDecompositionPrompt(dimId, bar)).catch(() => ''));
-  if (items.length === 0) return null;
+  let decompositionError = '';
+  const raw = await runMember(decomposer, buildDecompositionPrompt(dimId, bar))
+    .catch((err: unknown) => { decompositionError = err instanceof Error ? err.message : String(err); return ''; });
+  const items = parsePlanItems(raw);
+  if (items.length === 0) {
+    log(decompositionError
+      ? `${dimId}: decomposer ${decomposer} FAILED to run (${decompositionError.slice(0, 200)}) — legacy path`
+      : `${dimId}: decomposer ${decomposer} returned an unusable plan (${raw.trim().length} chars, no valid 2-10 item JSON array) — legacy path`);
+    return null;
+  }
 
   const plan: FrontierPlan = {
     dimId, bar, barHash: spec.frozen_hash ?? '', items, createdAt: new Date().toISOString(),
   };
-  const audit = parseAuditVerdict(await runMember(auditor, buildPlanAuditPrompt(plan)).catch(() => ''));
+  let auditError = '';
+  const auditRaw = await runMember(auditor, buildPlanAuditPrompt(plan))
+    .catch((err: unknown) => { auditError = err instanceof Error ? err.message : String(err); return ''; });
+  const audit = parseAuditVerdict(auditRaw);
   plan.decompositionAudit = { judgeId: auditor, verdict: audit.verdict, reason: audit.reason, at: new Date().toISOString() };
-  if (audit.verdict !== 'PASS') return null;
+  if (audit.verdict !== 'PASS') {
+    log(auditError
+      ? `${dimId}: auditor ${auditor} FAILED to run (${auditError.slice(0, 200)}) — failing closed, legacy path`
+      : `${dimId}: auditor ${auditor} verdict FAIL (${audit.reason}) — plan NOT installed, legacy path`);
+    return null;
+  }
 
   await saveFrontierPlan(cwd, plan);
+  log(`${dimId}: plan INSTALLED — ${items.length} items, decomposed by ${decomposer}, audited PASS by ${auditor}`);
   return plan;
 }

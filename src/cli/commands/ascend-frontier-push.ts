@@ -16,6 +16,7 @@ import type { PushOutcome } from '../../core/ascend-frontier-parallel.js';
 import type { CouncilMemberId } from '../../matrix/engines/council-scheduler.js';
 import { runCli, parseCourtOutput, type CliResult } from './ascend-frontier-runner.js';
 import { composeBuildGoal, loadCourtFeedback, parseCourtFeedback, recordCourtFeedback, repeatedObjection } from '../../core/court-feedback.js';
+import { logger } from '../../core/logger.js';
 
 const execFileAsync = promisify(execFile);
 
@@ -156,12 +157,17 @@ export async function defaultPushTo9(
   // the plan is complete. Item completion = its capability_test exits 0, never builder assertion.
   // No usable plan (no bar / malformed decomposition / audit FAIL) → legacy single-build path.
   const planMod = await import('../../core/frontier-plan.js');
+  const planLog = (msg: string) => logger.info(`[frontier-plan] ${msg}`);
   let plan = await planMod.loadFrontierPlan(cwd, dimId);
   if (plan && spec0.frozen_hash && plan.barHash !== spec0.frozen_hash) {
+    planLog(`${dimId}: existing plan invalidated — spec was re-frozen (barHash ${plan.barHash.slice(0, 8)} ≠ ${spec0.frozen_hash.slice(0, 8)})`);
     plan = null; // the spec was re-frozen — goalposts and plans move together or not at all
   }
   if (!plan) {
-    const members = await defaultDiscoverMembers().catch(() => [] as CouncilMemberId[]);
+    const members = await defaultDiscoverMembers().catch((err: unknown) => {
+      planLog(`${dimId}: member discovery threw (${err instanceof Error ? err.message : String(err)})`);
+      return [] as CouncilMemberId[];
+    });
     plan = await planMod.decomposeFrontierPlan(cwd, dimId, spec0, members as string[],
       async (memberId, prompt) => {
         const { makeAdapter, makeWorkPacket, makeLease } = await import('./council.js');
@@ -169,13 +175,17 @@ export async function defaultPushTo9(
         const adapter = makeAdapter(memberId as CouncilMemberId, makeWorkPacket(prompt, cwd), true);
         const r = await runAdapter(adapter, { lease: makeLease(cwd), cwd });
         return (r as { finalMessage?: string }).finalMessage ?? '';
-      }).catch(() => null);
+      }, planLog).catch((err: unknown) => {
+      planLog(`${dimId}: plan decomposition THREW (${err instanceof Error ? err.message : String(err)}) — legacy path`);
+      return null;
+    });
   }
 
   if (plan) {
     await planMod.refreshPlanItems(cwd, plan); // pre-build: pick up items completed out-of-band
     if (!planMod.planComplete(plan)) {
       const items = planMod.nextItems(plan, 2);
+      planLog(`${dimId}: plan ${plan.items.filter(i => i.status === 'done').length}/${plan.items.length} done — dispatching ${items.map(i => i.id).join(', ')}`);
       const itemGoal = [
         composeBuildGoal(dimId, spec0, feedback),
         ``,
@@ -188,6 +198,7 @@ export async function defaultPushTo9(
       await df(cwd, ['council-crusade', '--focus-dims', dimId, '--goal', itemGoal]);
       const { flipped } = await planMod.refreshPlanItems(cwd, plan);
       const done = plan.items.filter(i => i.status === 'done').length;
+      planLog(`${dimId}: post-build refresh — ${flipped.length} item(s) flipped (${flipped.join(', ') || 'none'}), ${done}/${plan.items.length} done`);
       if (!planMod.planComplete(plan)) {
         // Plan still open: report honest progress — NOT a court attempt, NOT a build failure
         // when items genuinely flipped.
