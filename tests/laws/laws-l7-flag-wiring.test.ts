@@ -77,10 +77,12 @@ function checkFlagWiring(root: Command, argv: string[]): string[] {
   return violations;
 }
 
-/** Source-parse the literal df()/runCli() arg arrays out of ascend-frontier.ts. Non-literal
- *  elements (dimId, joined member lists, template goals) are dropped — flags are all literals. */
+/** Source-parse the literal df()/runCli() arg arrays out of the orchestrator AND the push module
+ *  (the push/promote runners split into ascend-frontier-push.ts for the file-size standard).
+ *  Non-literal elements (dimId, joined member lists, template goals) are dropped — flags are all literals. */
 async function parseEmittedArgArrays(): Promise<string[][]> {
-  const src = await fs.readFile(path.resolve('src/cli/commands/ascend-frontier.ts'), 'utf8');
+  const src = (await fs.readFile(path.resolve('src/cli/commands/ascend-frontier.ts'), 'utf8'))
+    + '\n' + (await fs.readFile(path.resolve('src/cli/commands/ascend-frontier-push.ts'), 'utf8'));
   const arrays: string[][] = [];
   const arrayRe = /\b(?:df|runCli)\(\s*[A-Za-z_$][\w$]*\s*,\s*\[([\s\S]*?)\]\s*\)/g;
   let m: RegExpExecArray | null;

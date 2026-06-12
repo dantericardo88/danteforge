@@ -269,6 +269,31 @@ export const TODO_RE = /TODO/i;
  *  will structurally reject (live finding: a 644ms derived run_command burned every session). */
 export const REAL_RUN_MIN_MS = 1000;
 
+/** Score above this requires an independently court-VALIDATED frontier_spec. */
+export const FRONTIER_GATE_THRESHOLD = 8.0;
+
+/**
+ * The frontier gate makes "9.0 = the competitive frontier" binding, AND independently reviewed.
+ *   ≤8.0 — real execution, capability proven (real run + frozen target), but NOT court-confirmed.
+ *   >8.0 — requires frontier_spec.status === 'validated', which ONLY the frontier-review-court sets
+ *          (builder-never-judges, K-of-M consensus). A frozen-but-unvalidated spec caps at 8.0: the
+ *          target is declared and a real run exists, but no independent reviewer has confirmed it
+ *          genuinely matches the named competitor. This is what makes autonomous-to-9 honest — the
+ *          builder cannot self-certify a 9.0. (A `validated` spec edited after the fact goes `stale`
+ *          via effectiveStatus and drops back to 8.0.)
+ *
+ * Lives in core (not validate.ts) so the READ-TIME derived path applies it too — without that, a
+ * frozen-but-unvalidated dim with T7 receipts read 9.0 through loadMatrix/gap/decision scores while
+ * the court had REJECTED it (live pilot finding, fleet run 3: a court-less 9.0 leaked to the board).
+ */
+export function applyFrontierGate(score: number, dim: unknown): { score: number; capped: boolean } {
+  if (score <= FRONTIER_GATE_THRESHOLD) return { score, capped: false };
+  const spec = (dim as { frontier_spec?: FrontierSpec }).frontier_spec;
+  const status = spec ? effectiveStatus(spec) : 'none';
+  if (status === 'validated') return { score, capped: false };
+  return { score: FRONTIER_GATE_THRESHOLD, capped: true };
+}
+
 /**
  * Honesty guardrails. A frontier_spec must define a REAL target, not an easy one.
  * `competitors` is the matrix's tracked competitor list (closed + oss).

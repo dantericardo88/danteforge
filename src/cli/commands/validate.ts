@@ -31,29 +31,11 @@ import { applyLegacyReceiptCeiling, LEGACY_NO_RECEIPT_CEILING } from '../../matr
 import type { Outcome } from '../../matrix/types/outcome.js';
 import { SCORING_DOCTRINE_SHORT } from '../../core/scoring-doctrine.js';
 import { checkOutcomeIntegrity, formatIntegrityReport, integrityCapFor } from '../../matrix/engines/outcome-integrity.js';
-import { effectiveStatus, type FrontierSpec } from '../../core/frontier-spec.js';
 import { recordDeclarations } from '../../core/declarations-ledger.js';
-
-/** Score above this requires an independently court-VALIDATED frontier_spec. */
-const FRONTIER_GATE_THRESHOLD = 8.0;
-
-/**
- * The frontier gate makes "9.0 = the competitive frontier" binding, AND independently reviewed.
- *   ≤8.0 — real execution, capability proven (real run + frozen target), but NOT court-confirmed.
- *   >8.0 — requires frontier_spec.status === 'validated', which ONLY the frontier-review-court sets
- *          (builder-never-judges, K-of-M consensus). A frozen-but-unvalidated spec caps at 8.0: the
- *          target is declared and a real run exists, but no independent reviewer has confirmed it
- *          genuinely matches the named competitor. This is what makes autonomous-to-9 honest — the
- *          builder cannot self-certify a 9.0. (A `validated` spec edited after the fact goes `stale`
- *          via effectiveStatus and drops back to 8.0.)
- */
-export function applyFrontierGate(score: number, dim: unknown): { score: number; capped: boolean } {
-  if (score <= FRONTIER_GATE_THRESHOLD) return { score, capped: false };
-  const spec = (dim as { frontier_spec?: FrontierSpec }).frontier_spec;
-  const status = spec ? effectiveStatus(spec) : 'none';
-  if (status === 'validated') return { score, capped: false };
-  return { score: FRONTIER_GATE_THRESHOLD, capped: true };
-}
+// The frontier gate moved to core/frontier-spec.ts so the READ-TIME derived path
+// (loadMatrix → applyOutcomeDerivedScores) applies it too — re-exported for existing importers.
+import { applyFrontierGate, FRONTIER_GATE_THRESHOLD } from '../../core/frontier-spec.js';
+export { applyFrontierGate } from '../../core/frontier-spec.js';
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 

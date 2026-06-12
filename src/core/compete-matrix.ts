@@ -331,6 +331,14 @@ async function applyOutcomeDerivedScores(matrix: CompeteMatrix, cwd: string): Pr
         const { integrityCapFor } = await import('../matrix/engines/outcome-integrity.js');
         derived = integrityCapFor(derived, dim.id, integrityReport).cappedScore;
       }
+      // Frontier gate at READ TIME (live pilot finding, fleet run 3): >8.0 requires a
+      // court-VALIDATED frontier_spec. validate.ts applied this only in its own display path,
+      // so a frozen-but-unvalidated dim with T7 receipts read 9.0 through loadMatrix — gap,
+      // decision scores, and the headline all showed a 9.0 the court had REJECTED.
+      {
+        const { applyFrontierGate } = await import('./frontier-spec.js');
+        derived = applyFrontierGate(derived, dim).score;
+      }
       // Write derived score to scores.derived only.
       // scores.self is the human/adversarial competitive assessment — do not overwrite it.
       (dim.scores as unknown as Record<string, unknown>)['derived'] = derived;
