@@ -30,6 +30,10 @@ export interface PushResult {
   verdict: 'VALIDATED' | 'REJECTED';
   courtRan: boolean;
   fingerprint: AttemptFingerprint;
+  /** Present when this attempt advanced the dim's BUILD PLAN instead of convening the court
+   *  (CH-014): the court only convenes on plan-complete. flipped>0 = genuine progress (the
+   *  orchestrator must NOT count it as a build failure); flipped=0 = a stuck plan attempt. */
+  planProgress?: { done: number; total: number; flipped: number };
   /** Present when the dim cannot honestly reach 9 yet because its frontier_spec is INCOMPLETE — the
    *  genuinely-human real-user-path fields (observed_capability / category_delta / observable artifact)
    *  are unfilled. The orchestrator writes this as an ACTIONABLE ceiling that names the exact work,
@@ -147,8 +151,58 @@ export async function defaultPushTo9(
       fingerprint: { dimId, command: spec0.real_user_path.run_command, artifactPath: spec0.real_user_path.observable_artifacts[0]?.path ?? '', gitSha: await headSha(cwd) },
     };
   }
-  const buildGoal = composeBuildGoal(dimId, spec0, feedback);
-  await df(cwd, ['council-crusade', '--focus-dims', dimId, '--goal', buildGoal]);
+  // CH-014 BUILD PLAN: decompose the frozen bar ONCE into deterministic-gated checklist items;
+  // attempts execute the next OPEN items; the expensive frontier court convenes ONLY when
+  // the plan is complete. Item completion = its capability_test exits 0, never builder assertion.
+  // No usable plan (no bar / malformed decomposition / audit FAIL) → legacy single-build path.
+  const planMod = await import('../../core/frontier-plan.js');
+  let plan = await planMod.loadFrontierPlan(cwd, dimId);
+  if (plan && spec0.frozen_hash && plan.barHash !== spec0.frozen_hash) {
+    plan = null; // the spec was re-frozen — goalposts and plans move together or not at all
+  }
+  if (!plan) {
+    const members = await defaultDiscoverMembers().catch(() => [] as CouncilMemberId[]);
+    plan = await planMod.decomposeFrontierPlan(cwd, dimId, spec0, members as string[],
+      async (memberId, prompt) => {
+        const { makeAdapter, makeWorkPacket, makeLease } = await import('./council.js');
+        const { runAdapter } = await import('../../matrix/adapters/adapter-interface.js');
+        const adapter = makeAdapter(memberId as CouncilMemberId, makeWorkPacket(prompt, cwd), true);
+        const r = await runAdapter(adapter, { lease: makeLease(cwd), cwd });
+        return (r as { finalMessage?: string }).finalMessage ?? '';
+      }).catch(() => null);
+  }
+
+  if (plan) {
+    await planMod.refreshPlanItems(cwd, plan); // pre-build: pick up items completed out-of-band
+    if (!planMod.planComplete(plan)) {
+      const items = planMod.nextItems(plan, 2);
+      const itemGoal = [
+        composeBuildGoal(dimId, spec0, feedback),
+        ``,
+        `BUILD PLAN — execute EXACTLY these next items (the rest of the plan is done or queued):`,
+        ...items.map(i => `- ${i.id} ${i.title}: ${i.what}\n  DONE when this exits 0: ${i.capability_test.command}`),
+        `Run each item's gate command yourself before finishing — an item is complete only when its gate passes.`,
+      ].join('\n');
+      for (const i of items) i.attempts += 1;
+      await planMod.saveFrontierPlan(cwd, plan);
+      await df(cwd, ['council-crusade', '--focus-dims', dimId, '--goal', itemGoal]);
+      const { flipped } = await planMod.refreshPlanItems(cwd, plan);
+      const done = plan.items.filter(i => i.status === 'done').length;
+      if (!planMod.planComplete(plan)) {
+        // Plan still open: report honest progress — NOT a court attempt, NOT a build failure
+        // when items genuinely flipped.
+        return {
+          verdict: 'REJECTED', courtRan: false,
+          planProgress: { done, total: plan.items.length, flipped: flipped.length },
+          fingerprint: { dimId, command: spec0.real_user_path.run_command, artifactPath: spec0.real_user_path.observable_artifacts[0]?.path ?? '', gitSha: await headSha(cwd) },
+        };
+      }
+      // Plan just completed → fall through to evidence + court below.
+    }
+  } else {
+    const buildGoal = composeBuildGoal(dimId, spec0, feedback);
+    await df(cwd, ['council-crusade', '--focus-dims', dimId, '--goal', buildGoal]);
+  }
 
   const specBefore = (await loadMatrix(cwd))?.dimensions.find(d => d.id === dimId);
   spec0 = specOf(specBefore);

@@ -503,6 +503,18 @@ export async function runAscendFrontier(options: AscendFrontierOptions): Promise
           logger.info(`[ascend-frontier] ${action.dimId} ceiling (spec-incomplete) — author the frontier_spec to unlock 9.0: ${result.ceiling.detail}`);
           break;
         }
+        if (result.planProgress && !result.courtRan && !result.ceiling) {
+          // CH-014: this attempt advanced the dim's BUILD PLAN (court intentionally not convened).
+          const p = result.planProgress;
+          if (p.flipped > 0) {
+            buildFailedAttempts.delete(action.dimId); // genuine progress resets the failure counter
+            logger.info(`[ascend-frontier] ${action.dimId}: plan progress ${p.done}/${p.total} items (+${p.flipped} this attempt) — court convenes on plan-complete.`);
+            led.logEvent('plan-progress', { dimId: action.dimId, ...p });
+            break;
+          }
+          logger.warn(`[ascend-frontier] ${action.dimId}: plan attempt flipped 0 items (${p.done}/${p.total}) — counts toward build-failure.`);
+          // fall through to the build-failure accounting below
+        }
         if (!result.courtRan) {
           // The court NEVER RAN (build/evidence/court sub-command failed) — this is NOT a rejection.
           // Do not touch the evidence-novelty attempt ledger; count it as a build failure instead.
