@@ -26,7 +26,7 @@ import { CodexAdapter } from '../../matrix/adapters/codex-adapter.js';
 import { GeminiCLIAdapter } from '../../matrix/adapters/gemini-cli-adapter.js';
 import { GrokBuildAdapter } from '../../matrix/adapters/grok-build-adapter.js';
 import { ClaudeCodeAdapter } from '../../matrix/adapters/claude-code-adapter.js';
-import { runAdapter } from '../../matrix/adapters/adapter-interface.js';
+import { runAdapter, builderTimeoutMs } from '../../matrix/adapters/adapter-interface.js';
 import {
   createCouncilWorktrees,
   createCouncilWorktreesForSlots,
@@ -130,12 +130,15 @@ function makeBuildLease(worktreePath: string): AgentLease {
 }
 
 function makeBuilderAdapter(id: CouncilMemberId, workPacket: WorkPacket) {
+  // BUILD mode gets the real leash (builderTimeoutMs, default 30m — CH-006): the 10-minute
+  // adapter default structurally cannot produce court-passing capability.
+  const timeoutMs = builderTimeoutMs();
   switch (id) {
-    case 'codex':       return new CodexAdapter({ workPacket });
-    case 'grok-build':  return new GrokBuildAdapter({ workPacket });
-    case 'claude-code': return new ClaudeCodeAdapter({ workPacket, skipPermissions: true });
+    case 'codex':       return new CodexAdapter({ workPacket, timeoutMs });
+    case 'grok-build':  return new GrokBuildAdapter({ workPacket, timeoutMs });
+    case 'claude-code': return new ClaudeCodeAdapter({ workPacket, skipPermissions: true, timeoutMs });
     // gemini-cli is excluded from parallel council (API-based, quota-exhausts frequently)
-    case 'gemini-cli':  return new GeminiCLIAdapter({ workPacket });
+    case 'gemini-cli':  return new GeminiCLIAdapter({ workPacket, timeoutMs });
   }
 }
 

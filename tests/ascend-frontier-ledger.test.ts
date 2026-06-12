@@ -44,6 +44,17 @@ describe('parseCourtOutput — court output is read honestly (G3)', () => {
   });
 });
 
+describe('stale-brain guard — a rebuilt engine never silently runs stale (CH-012 pin)', () => {
+  test('newer dist than launch baseline → restart requested; missing stats / same build → keep running', async () => {
+    const { engineUpdated } = await import('../src/cli/commands/ascend-frontier.js');
+    assert.equal(engineUpdated(1000, 5000), true, 'dist rebuilt after launch → stale');
+    assert.equal(engineUpdated(1000, 1500), false, 'sub-second jitter is not a rebuild');
+    assert.equal(engineUpdated(1000, 1000), false, 'same build → keep running');
+    assert.equal(engineUpdated(null, 5000), false, 'no baseline (tsx/test run) → check disabled');
+    assert.equal(engineUpdated(1000, null), false, 'unreadable current stat → never false-fire');
+  });
+});
+
 describe('budget-window awareness — the loop pauses instead of burning cycles (self-challenge #7)', () => {
   test('parses the live limit error and schedules the NEXT occurrence of the stated time + margin', async () => {
     const { noteBudgetLimit, getBudgetPauseUntil, clearBudgetPause } = await import('../src/cli/commands/ascend-frontier-runner.js');

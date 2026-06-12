@@ -20,6 +20,20 @@ export interface AgentRunInput {
   env?: Record<string, string>;
 }
 
+/**
+ * The builder leash (self-challenge CH-006, cycle economics): every BUILD-mode adapter was
+ * constructed without timeoutMs and fell to the 10-minute default — inside 60-minute
+ * orchestration phases, judged against frontier-grade bars. Ten-minute builds structurally
+ * cannot produce court-passing capability; most of each cycle's cost was overhead around a
+ * sliver of real building. ONE source for the build leash (judge mode stays on the snappy
+ * default): 30 minutes, overridable via DANTEFORGE_BUILDER_TIMEOUT_MS (floor 60s).
+ */
+export function builderTimeoutMs(): number {
+  const env = Number.parseInt(process.env['DANTEFORGE_BUILDER_TIMEOUT_MS'] ?? '', 10);
+  if (Number.isFinite(env) && env >= 60_000) return env;
+  return 30 * 60_000;
+}
+
 export interface PreparedAgentRun extends AgentRunInput {
   prepared: true;
 }

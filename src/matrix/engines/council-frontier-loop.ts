@@ -28,7 +28,7 @@ import { logger } from '../../core/logger.js';
 import { CodexAdapter } from '../adapters/codex-adapter.js';
 import { GrokBuildAdapter } from '../adapters/grok-build-adapter.js';
 import { ClaudeCodeAdapter } from '../adapters/claude-code-adapter.js';
-import { runAdapter } from '../adapters/adapter-interface.js';
+import { runAdapter, builderTimeoutMs } from '../adapters/adapter-interface.js';
 import type { WorkPacket } from '../types/work-graph.js';
 import type { AgentLease } from '../types/lease.js';
 import {
@@ -194,10 +194,14 @@ function makeBuildLease(worktreePath: string): AgentLease {
 }
 
 function makeBuilderAdapter(memberId: CouncilMemberId, workPacket: WorkPacket) {
+  // BUILD mode gets the real leash (builderTimeoutMs, default 30m — CH-006): the 10-minute
+  // adapter default structurally cannot produce court-passing capability. Verify/confirm
+  // adapters below stay on the snappy default — they read, they don't build.
+  const timeoutMs = builderTimeoutMs();
   switch (memberId) {
-    case 'codex':       return new CodexAdapter({ workPacket });
-    case 'grok-build':  return new GrokBuildAdapter({ workPacket });
-    default:            return new ClaudeCodeAdapter({ workPacket, skipPermissions: true });
+    case 'codex':       return new CodexAdapter({ workPacket, timeoutMs });
+    case 'grok-build':  return new GrokBuildAdapter({ workPacket, timeoutMs });
+    default:            return new ClaudeCodeAdapter({ workPacket, skipPermissions: true, timeoutMs });
   }
 }
 

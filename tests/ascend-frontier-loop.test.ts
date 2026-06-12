@@ -57,10 +57,10 @@ describe('ascend-frontier — phase routing (sequential vs council-parallel)', (
     assert.ok(maxIdx > 0, 'harden-crusade must carry the --max-minutes wall-clock checkpoint');
     assert.equal(hc![maxIdx + 1], '55');
   });
-  test('runner phase cap is phase-aware: crusade builds get 60m, everything else stays 30m', () => {
+  test('runner phase cap is phase-aware: council builds get 2h (30m builder leash + revisions + court must FIT, L6), harden-crusade 60m, everything else 30m', () => {
     assert.equal(phaseTimeoutMs(['harden-crusade', '--parallel', '1', '--loop']), 60 * 60_000);
-    assert.equal(phaseTimeoutMs(['council-crusade']), 60 * 60_000);
-    assert.equal(phaseTimeoutMs(['council', '--parallel']), 60 * 60_000);
+    assert.equal(phaseTimeoutMs(['council-crusade']), 120 * 60_000);
+    assert.equal(phaseTimeoutMs(['council', '--parallel']), 120 * 60_000);
     assert.equal(phaseTimeoutMs(['ground-outcomes', '--apply']), 30 * 60_000);
     assert.equal(phaseTimeoutMs(['validate', 'dim001']), 30 * 60_000);
     assert.equal(phaseTimeoutMs([]), 30 * 60_000);

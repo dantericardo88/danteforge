@@ -81,12 +81,19 @@ exists so the REPORT carries the facts even if the run never starts.
    way; paste the failing invariant lines into your report as a CRITICAL finding. (This preflight
    caught a real planner bug the day it was built — that is its job.)
 7. BUDGET WINDOW (operational, learned twice on 2026-06-11): the agent CLIs share a session usage
-   limit that resets on a clock (the error names the reset time, e.g. "resets 7:10pm"). A campaign
-   started near the limit dies mid-flight: builders/judges fail with the limit error, courts can't
-   convene (<2 judges), and work stalls silently. If you see that error in ANY sub-command output,
-   note the reset time, let the current run finish its non-LLM phases, and schedule the next run
-   inside a fresh window. Never count limit-killed phases as build failures in your report —
-   label them "session-limit".
+   limit that resets on a clock (the error names the reset time, e.g. "resets 7:10pm"). The loop
+   now PAUSES ITSELF until the stated reset when it sees that error (ledger event `budget-pause`);
+   if you see the pause in the log, that is designed behavior — do not kill the run. Never count
+   limit-killed phases as build failures in your report — label them "session-limit".
+8. HOST POWER (learned 2026-06-12: a campaign silently froze all night with a sleeping laptop):
+   campaigns only run while the host is awake — OS sleep suspends the whole process tree with no
+   trace and it thaws on wake. Before a long run on a laptop: keep it plugged in and prevent
+   sleep-on-AC (Windows: `powercfg /change standby-timeout-ac 0`), or accept that the campaign
+   pauses whenever the machine does. Report elapsed time honestly (working time ≠ wall time).
+9. ENGINE-UPDATED EXITS (new): if the run terminates with `engine-updated` ("the engine on disk
+   was rebuilt after this run launched"), that is the stale-brain guard — the orchestrator
+   refuses to keep running superseded code. Simply RELAUNCH the same command: all state persists,
+   earns are durable, ceilings re-open. Never treat it as a failure.
 
 ═══════════════════════════════════════════════════════════════════════════════
 PHASE 2 — AUTOPILOT (the one command)

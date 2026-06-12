@@ -45,7 +45,11 @@ let lastTreeKillAt = 0;
  */
 export function phaseTimeoutMs(args: string[]): number {
   const cmd = args[0] ?? '';
-  if (cmd === 'harden-crusade' || cmd === 'council-crusade' || cmd === 'council') return 60 * 60_000;
+  // council-crusade/council run BUILDERS, which now get the real 30m leash (builderTimeoutMs,
+  // CH-006) — a build round + revision cycle + merge court must FIT under the zombie guard
+  // (L6 clock-nesting: outer cap > sum of inner budgets + slack), so those phases get 2h.
+  if (cmd === 'council-crusade' || cmd === 'council') return 120 * 60_000;
+  if (cmd === 'harden-crusade') return 60 * 60_000;
   return 30 * 60_000;
 }
 

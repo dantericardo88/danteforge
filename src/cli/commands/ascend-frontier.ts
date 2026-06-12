@@ -69,8 +69,17 @@ export interface AscendFrontierOptions {
   _now?: () => string;
 }
 
+/** Stale-brain predicate (self-challenge CH-012, exported for the pin): the engine on disk is
+ *  newer than the one this process loaded at launch — continuing would burn budget on code that
+ *  has been superseded (run 3f spent 11h on a pre-feedback engine this way). 1s slack absorbs
+ *  same-write jitter; missing stats (tsx/test runs) disable the check rather than false-fire. */
+export function engineUpdated(baselineMtimeMs: number | null, currentMtimeMs: number | null): boolean {
+  if (baselineMtimeMs === null || currentMtimeMs === null) return false;
+  return currentMtimeMs > baselineMtimeMs + 1000;
+}
+
 export interface AscendFrontierResult {
-  terminal: 'done' | 'stalled' | 'max-cycles' | 'dry-run' | 'failed';
+  terminal: 'done' | 'stalled' | 'max-cycles' | 'dry-run' | 'failed' | 'engine-updated';
   cycles: number;
   actions: string[];
   summary: string;
@@ -186,6 +195,12 @@ export async function runAscendFrontier(options: AscendFrontierOptions): Promise
     for (const cmd of buildTo7Commands(!!options.parallel, members, dims)) await df(c, cmd);
   });
   const runPushTo9 = options._runPushTo9 ?? defaultPushTo9;
+
+  // Stale-brain baseline (CH-012): the mtime of the entry bundle THIS process loaded. Checked
+  // before every cycle; a newer file on disk means the engine was rebuilt and this loop is stale.
+  const engineBaselineMtimeMs: number | null = process.argv[1]
+    ? await fsp.stat(process.argv[1]).then(s => s.mtimeMs).catch(() => null)
+    : null;
 
   const actions: string[] = [];
   let cycles = 0;
@@ -360,6 +375,18 @@ export async function runAscendFrontier(options: AscendFrontierOptions): Promise
     }
 
     if (cycles >= maxCycles) { return await complete('max-cycles', `stopped at --max-cycles ${maxCycles}`); }
+    // Stale-brain guard (self-challenge CH-012): if dist was rebuilt after this process launched,
+    // every cycle from here on runs SUPERSEDED orchestration code (sub-commands pick the new dist
+    // up; this in-memory loop never does). Exit cleanly and ask for a relaunch — state is durable,
+    // earns persist, ceilings re-open: a restart costs nothing, a stale campaign costs hours.
+    {
+      const entry = process.argv[1];
+      const current = entry ? await fsp.stat(entry).then(s => s.mtimeMs).catch(() => null) : null;
+      if (engineUpdated(engineBaselineMtimeMs, current)) {
+        return await complete('engine-updated',
+          `the engine on disk was rebuilt after this run launched (${entry}) — restart \`ascend-frontier\` to run the new engine; all state persists.`);
+      }
+    }
     cycles++;
     const led = await ensureLedger();
     // Budget-window pause (self-challenge #7): once a sub-command reported the shared session
