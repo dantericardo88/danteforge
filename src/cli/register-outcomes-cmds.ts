@@ -227,56 +227,7 @@ program
     })();
   });
 
-program
-  .command('author-outcome <dimId>')
-  .description('Author an honest T5 product-run outcome from a REAL command: runs it twice, selects stdout patterns stable across both runs and safe for the cli-smoke runner, refuses test runners/help screens/flaky output. The callsite is named by YOU, never invented.')
-  .requiredOption('--command <cmd>', 'The real product command (e.g. "node dist/index.js lessons")')
-  .requiredOption('--callsite <path>', 'Production src/ file this command exercises')
-  .option('--write', 'Write the declaration to matrix.json (default: dry-run)')
-  .option('--cwd <path>', 'Project directory')
-  .action((dimId: string, opts) => {
-    void (async () => {
-      try {
-        const { authorProductOutcome } = await import('../matrix/engines/outcome-author.js');
-        const { logger } = await import('../core/logger.js');
-        const r = await authorProductOutcome({
-          cwd: (opts.cwd as string | undefined) ?? process.cwd(), dimId,
-          command: opts.command as string, callsite: opts.callsite as string,
-          write: opts.write as boolean | undefined,
-        });
-        if (r.ok) {
-          logger.success(`[author-outcome] ${r.reason}`);
-          if (r.outcome) logger.info(JSON.stringify(r.outcome, null, 2));
-        } else {
-          logger.error(`[author-outcome] REFUSED: ${r.reason}`);
-          process.exitCode = 1;
-        }
-      } catch (err) {
-        const { formatAndLogError } = await import('../core/format-error.js');
-        formatAndLogError(err, 'author-outcome');
-        process.exitCode = 1;
-      }
-    })();
-  });
-
-program
-  .command('trust-report')
-  .description('Render every score WITH its receipts (commands, sessions, court status, verbatim ceilings) — the externally-verifiable proof behind the honest number. Read-only.')
-  .option('--output <path>', 'Report path (default .danteforge/reports/TRUST_REPORT.md)')
-  .option('--json', 'Machine-readable summary')
-  .option('--cwd <path>', 'Project directory')
-  .action((opts) => {
-    void (async () => {
-      try {
-        const { runTrustReport } = await import('./commands/trust-report.js');
-        await runTrustReport({ cwd: opts.cwd as string | undefined, output: opts.output as string | undefined, json: opts.json as boolean | undefined });
-      } catch (err) {
-        const { formatAndLogError } = await import('../core/format-error.js');
-        formatAndLogError(err, 'trust-report');
-        process.exitCode = 1;
-      }
-    })();
-  });
+// self-challenge / author-outcome / trust-report live in register-truth-cmds.ts (file-size split).
 
 program
   .command('ascend-frontier')

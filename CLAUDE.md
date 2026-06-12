@@ -148,6 +148,24 @@ Until this passes, the dimension is structurally capped at 7.0.
 
 ---
 
+## Self-Challenge Doctrine (DNA)
+
+**Always look for the gaps, problems, and holes in whatever we are building. The minute a
+problem is DEFINED — observably, with evidence — it becomes solvable.** (Operator doctrine,
+2026-06-12.)
+
+- Every substantial build/review/run ends by naming at least one unresolved gap — in the
+  challenge ledger (`danteforge self-challenge add`), the autopilot report's LANDMINES section,
+  or a court dissent. "No problems found" is a smell, not an achievement.
+- A challenge entry is a DEFINED problem: title + observable problem + evidence + opportunity.
+  Vague "improve X" entries are rejected by the tooling.
+- Challenges are never silently deleted: open → solved (with the commit/receipt) or retired
+  (with the reason). The ledger lives at `.danteforge/challenges.md` / `challenges.json`.
+- Flattery audit: when assessing this project (or any), separate what is genuinely good from
+  what is not good enough yet — and lead follow-up work with the second list.
+
+---
+
 ## Zero Tolerance (Non-Negotiable, Pre-Commit Enforced)
 
 **No mocks. No stubs. No TODOs. In any code DanteForge agents write.**
