@@ -42,6 +42,42 @@ describe('parseCourtOutput — court output is read honestly (G3)', () => {
     const r = parseCourtOutput({ ok: false, stdout: '{"result":{}}' });
     assert.equal(r.parseError, true);
   });
+});
+
+describe('defaultBuildState — cause-aware ceiling re-opening (fleet run 3d pin)', () => {
+  test('a spec-incomplete ceiling is RESOLVED once the spec is frozen; a draft-spec ceiling stays', async () => {
+    // Live failure: run 3d exited after ZERO cycles — every dim sat behind a stale spec-incomplete
+    // ceiling written before the specs were authored+frozen. The ceiling names the missing work;
+    // once that work is verifiably done, holding it until reviewAfter starves the loop.
+    const { defaultBuildState } = await import('../src/cli/commands/ascend-frontier.js');
+    const dir = path.join(ROOT, 'reopen');
+    await fs.mkdir(path.join(dir, '.danteforge', 'compete'), { recursive: true });
+    await fs.mkdir(path.join(dir, '.danteforge', 'ceilings'), { recursive: true });
+    const spec = (status: string) => ({
+      version: 1, target_score: 9, status,
+      leader_target: { competitor: 'c', score: 9, observed_capability: 'real' },
+      real_user_path: { required_callsite: 'src/a.ts', run_command: 'node dist/index.js x', observable_artifacts: [{ kind: 'file', path: 'out.json' }], realistic_inputs: ['a', 'b'] },
+      required_receipts: { min_t5_plus_outcomes: 3, min_distinct_sessions: 2, input_source: 'real-user-path' },
+    });
+    await fs.writeFile(path.join(dir, '.danteforge', 'compete', 'matrix.json'), JSON.stringify({
+      project: 'reopen', competitors: [], competitors_closed_source: [], competitors_oss: [],
+      lastUpdated: new Date().toISOString(), overallSelfScore: 8,
+      dimensions: [
+        { id: 'frozen_dim', label: 'f', weight: 1, scores: { self: 8 }, gap_to_leader: 1, leader: 'c', status: 'in-progress', sprint_history: [], frontier_spec: spec('frozen'), capability_test: { command: 'echo x' }, outcomes: [{ id: 'o1', tier: 'T5', kind: 'shell', command: 'echo y' }] },
+        { id: 'draft_dim', label: 'd', weight: 1, scores: { self: 8 }, gap_to_leader: 1, leader: 'c', status: 'in-progress', sprint_history: [], frontier_spec: spec('draft'), capability_test: { command: 'echo x' }, outcomes: [{ id: 'o2', tier: 'T5', kind: 'shell', command: 'echo y' }] },
+      ],
+    }), 'utf8');
+    const tomorrow = new Date(Date.now() + 24 * 60 * 60_000).toISOString();
+    const receipt = (dimId: string) => JSON.stringify({ dimId, cap: 8, cause: 'spec-incomplete', detail: 'author the spec', failedGates: ['spec-incomplete'], recordedAt: new Date().toISOString(), reviewAfter: tomorrow });
+    await fs.writeFile(path.join(dir, '.danteforge', 'ceilings', 'frozen_dim.json'), receipt('frozen_dim'), 'utf8');
+    await fs.writeFile(path.join(dir, '.danteforge', 'ceilings', 'draft_dim.json'), receipt('draft_dim'), 'utf8');
+
+    const state = await defaultBuildState(dir);
+    const frozen = state.find(s => s.id === 'frozen_dim')!;
+    const draft = state.find(s => s.id === 'draft_dim')!;
+    assert.equal(frozen.ceiling, null, 'frozen spec = the named work is DONE — ceiling resolved, push re-opens');
+    assert.ok(draft.ceiling, 'draft spec = the named work is NOT done — ceiling honestly stands');
+  });
   test('garbage after the brace → parseError', () => {
     const r = parseCourtOutput({ ok: true, stdout: '{not json at all' });
     assert.equal(r.parseError, true);

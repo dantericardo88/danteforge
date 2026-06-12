@@ -80,14 +80,24 @@ export interface AscendFrontierResult {
 
 // ── Production state builder ────────────────────────────────────────────────────
 
-async function defaultBuildState(cwd: string): Promise<DimState[]> {
+/** Exported for the ceiling re-open pin (tests drive the real state builder over a temp repo). */
+export async function defaultBuildState(cwd: string): Promise<DimState[]> {
   const matrix = await loadMatrix(cwd);
   if (!matrix) throw new Error('No compete matrix found. (Phase A define has not run.)');
   const ledger = await loadAttemptLedger(cwd);
   const out: DimState[] = [];
   for (const dim of matrix.dimensions) {
     const spec = (dim as unknown as { frontier_spec?: FrontierSpec }).frontier_spec;
-    const ceiling = await loadCeilingReceipt(cwd, dim.id);
+    let ceiling = await loadCeilingReceipt(cwd, dim.id);
+    // Cause-aware re-opening (fleet run 3d: every dim sat behind a stale spec-incomplete ceiling
+    // and the loop exited after ZERO cycles): a ceiling is a receipt for NAMED missing work, so
+    // when that work is verifiably DONE the ceiling is resolved — not held until reviewAfter.
+    // spec-incomplete names "author the real-user-path"; a spec that is now FROZEN (or validated)
+    // passed checkFrontierSpec at freeze time, which is exactly that work completed.
+    if (ceiling?.cause === 'spec-incomplete' && spec && ['frozen', 'validated'].includes(effectiveStatus(spec))) {
+      logger.info(`[ascend-frontier] ${dim.id}: spec-incomplete ceiling RESOLVED — the frontier_spec is now ${effectiveStatus(spec)}; re-opening the push.`);
+      ceiling = null;
+    }
     const d = dim as unknown as { capability_test?: unknown; outcomes?: unknown[] };
     out.push({
       id: dim.id,
