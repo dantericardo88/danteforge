@@ -1,8 +1,9 @@
 # Frontier Autopilot Prompt — One Command, Any Repo, Honest to the Court
 
-THE ultimate generic prompt to hand to ANY repo's own coding-agent session (v2, 2026-06-11 —
-reflects the five hardening passes: isolation, declarations ledger, live echo/heartbeat, built-in
-preflight, court honesty fixes, reality-tested setup). It is built around the one-command chain:
+THE ultimate generic prompt to hand to ANY repo's own coding-agent session (v3, 2026-06-12 —
+adds: mandatory REHEARSAL preflight, autonomous Score-Ladder research inside the push,
+cause-aware ceiling re-opening, court-validated-is-terminal, court exit-code semantics,
+council-merge conflict safety, session-usage budget windows). Built around the one-command chain:
 `danteforge ascend-frontier` runs define(bootstrap) → setup(yardstick self-heal) → build-to-7 →
 push-to-9 → frontier-review court, unattended. The agent's job is no longer to BE the climb loop —
 it is to PREFLIGHT the environment, RUN the autopilot, TOP UP manually where honest T4 work
@@ -65,6 +66,19 @@ exists so the REPORT carries the facts even if the run never starts.
 5. ORIENT: run `danteforge ascend-frontier --dry-run` and paste its planned next action into your
    notes. On a cold repo it must say `define(bootstrap)`; on a warm one, setup/build/push. If
    dry-run CRASHES, stop and report the stack — do not improvise.
+6. REHEARSE (new, MANDATORY): run `danteforge ascend-frontier --rehearse`. This drives the FULL
+   coordination layer (real planner, ledgers, ceiling receipts, re-opening, evidence novelty)
+   against a scripted scratch repo — ~90 seconds, zero LLM cost, 12 invariants. PASS → proceed.
+   FAIL → STOP: the coordination layer itself is broken and a live run would burn budget the same
+   way; paste the failing invariant lines into your report as a CRITICAL finding. (This preflight
+   caught a real planner bug the day it was built — that is its job.)
+7. BUDGET WINDOW (operational, learned twice on 2026-06-11): the agent CLIs share a session usage
+   limit that resets on a clock (the error names the reset time, e.g. "resets 7:10pm"). A campaign
+   started near the limit dies mid-flight: builders/judges fail with the limit error, courts can't
+   convene (<2 judges), and work stalls silently. If you see that error in ANY sub-command output,
+   note the reset time, let the current run finish its non-LLM phases, and schedule the next run
+   inside a fresh window. Never count limit-killed phases as build failures in your report —
+   label them "session-limit".
 
 ═══════════════════════════════════════════════════════════════════════════════
 PHASE 2 — AUTOPILOT (the one command)
@@ -82,11 +96,19 @@ What it does (so you SUPERVISE instead of interfering):
                        via the examiner agent, researches missing Score Ladders via the council) →
                        ground-outcomes.
   build-to-7         — harden-crusade loop, one dim at a time, 7-check harden gate.
-  push-to-9          — per dim: `frontier-spec init` (now AUTO-COMPLETES run_command /
-                       realistic_inputs / observable_artifacts from real recorded evidence — never
-                       invents) → freeze → session-record × N variants → `validate
-                       --preserve-sessions` → frontier-review court (≥3 real-user-path receipts,
-                       ≥2 distinct sessions, independent judges, builder excluded).
+  push-to-9          — per dim: `frontier-spec init` (AUTO-COMPLETES run_command /
+                       realistic_inputs / observable_artifacts from real recorded evidence, now
+                       VIABILITY-CHECKED: derived run_commands must really take ≥1s and write a
+                       real artifact, or the completer says so loudly — never invents) → freeze →
+                       session-record × N variants → `validate --preserve-sessions` →
+                       frontier-review court (≥3 real-user-path receipts, ≥2 distinct sessions,
+                       independent judges, builder excluded).
+                       AUTONOMOUS LADDER RESEARCH (new): a dim whose spec fails ONLY because its
+                       competitive bar was never researched (zero Score Ladder rows → the seeded
+                       leader_target stays unauthored) now triggers ONE single-dim council
+                       research inside the same push, re-seeds the bar VERBATIM from the new
+                       ladder, and re-checks. Research that produces no usable rows fails loudly
+                       and the honest ceiling stands — the bar is researched, never invented.
 
 SUPERVISION RULES while it runs / after it terminates:
   • LIVE OUTPUT + HEARTBEAT (new): every sub-command's output streams with a `[label]` prefix, and
@@ -110,6 +132,22 @@ SUPERVISION RULES while it runs / after it terminates:
     (environment/toolchain — fixable, re-attemptable), generator-ceiling (no novel evidence),
     market-cap (done at cap), RESEARCH_LADDER-blocked. Report each verbatim with its cause.
     Re-run after fixing an environment cause; NEVER after relabeling.
+  • CEILINGS RE-OPEN THEMSELVES (new): a spec-incomplete ceiling is a receipt for NAMED missing
+    work — once that work is verifiably done (the spec is frozen), the next state read RESOLVES
+    the ceiling and re-opens the push automatically ("ceiling RESOLVED — re-opening" in the log).
+    Never hand-delete a ceiling receipt to force a re-attempt.
+  • COURT-VALIDATED IS TERMINAL (new): once the frontier-review court VALIDATES a dim, the loop
+    stops pushing it — even while its derived score sits below 9 (receipt decay / T7 consensus
+    pending is validate/depth work, not push work). A validated dim being re-pushed, or carrying
+    a "attempts failed the court" ceiling, is a planner bug — report it CRITICAL.
+  • COURT EXIT CODES (new): `frontier-review` exits 1 on an honest REJECTED by design. The
+    orchestrator reads the structured verdict, so a rejection is recorded as a real court attempt
+    (feeding the novelty ledger), never as "court didn't run". In your own report, REJECTED with
+    judge reasons is a verdict; only a crash with no verdict JSON is a failure.
+  • COUNCIL MERGES NEVER WRECK THE TREE (new): a conflicted council patch rolls back cleanly
+    (candidate work stays on its council/<round>/<member> branch), and the merge REFUSES to patch
+    over local modifications. Conflict markers or unmerged (UU) index entries appearing in YOUR
+    tree after a run is a CRITICAL finding — capture `git status` + the run ledger.
   • Expected honest behaviors (report, don't patch): Score-Ladder research needs ≥2 live council
     members AND a researchable domain — on thin/unknown repos the FIRST research failure
     short-circuits the rest of that pass (BLOCKED with "short-circuited" reasons is correct, not
@@ -166,6 +204,7 @@ failure rather than working around it. Then paste back:
 FRONTIER AUTOPILOT REPORT
 PROJECT: <repo>   BRANCH: <branch>   PUSH: <pushed / failed: why / local-only / nothing-to-push>
 PREFLIGHT: danteforge <version> | repo builds: <yes/how / no: why> | agent CLIs: N=<0|1|2+> (<which>)
+  | rehearsal: <PASS (12/12) / FAIL: <invariant lines> — run stopped> | budget window: <clear / limit hit, resets <time>>
 AUTOPILOT: terminal=<done|stalled|max-cycles|failed>  cycles=<n>  runId=<.danteforge/runs/...>
   actions: <the per-cycle action list from the result/ledger>
   court verdicts: <dim: VALIDATED/REJECTED (judges) — or "court never convened: <cause>">
