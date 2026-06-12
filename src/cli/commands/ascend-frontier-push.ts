@@ -15,6 +15,7 @@ import type { AttemptFingerprint } from '../../core/evidence-novelty.js';
 import type { PushOutcome } from '../../core/ascend-frontier-parallel.js';
 import type { CouncilMemberId } from '../../matrix/engines/council-scheduler.js';
 import { runCli, parseCourtOutput, type CliResult } from './ascend-frontier-runner.js';
+import { composeBuildGoal, loadCourtFeedback, parseCourtFeedback, recordCourtFeedback } from '../../core/court-feedback.js';
 
 const execFileAsync = promisify(execFile);
 
@@ -131,8 +132,11 @@ export async function defaultPushTo9(
   }
 
   // 2. Spec passes the guardrails → freeze it, build to it, capture evidence, convene the court.
+  // The build goal carries THE BAR the judges judge against + the court's last reasons for this
+  // dim (verdict→builder feedback) — every rejection becomes a course correction, never roulette.
   await df(cwd, ['frontier-spec', 'freeze', dimId, '--write']);
-  await df(cwd, ['council-crusade', '--focus-dims', dimId, '--goal', `Close frontier_spec for ${dimId}`]);
+  const buildGoal = composeBuildGoal(dimId, spec0, await loadCourtFeedback(cwd, dimId));
+  await df(cwd, ['council-crusade', '--focus-dims', dimId, '--goal', buildGoal]);
 
   const specBefore = (await loadMatrix(cwd))?.dimensions.find(d => d.id === dimId);
   spec0 = specOf(specBefore);
@@ -185,6 +189,9 @@ export async function defaultPushTo9(
       const dim = matrix?.dimensions.find(d => d.id === dimId);
       const spec = (dim as unknown as { frontier_spec?: FrontierSpec } | undefined)?.frontier_spec;
       verdict = spec && effectiveStatus(spec) === 'validated' ? 'VALIDATED' : 'REJECTED';
+      // Persist the judges' reasons so the NEXT attempt's build goal addresses them verbatim
+      // (best-effort: feedback failing to record must never fail a court that ran).
+      await recordCourtFeedback(cwd, parseCourtFeedback(review.stdout, dimId, verdict)).catch(() => { /* best-effort */ });
     }
   }
 
