@@ -21,6 +21,7 @@ export interface HealthCheck {
   status: CheckStatus;
   detail: string;
   repairable?: boolean;
+  repairTargets?: string[];
 }
 
 export interface ConvergenceHealthResult {
@@ -64,6 +65,7 @@ export type HealthRecommendationAction =
   | 'clear-stale-lock'
   | 'inspect-regression'
   | 'repair-state'
+  | 'repair-snapshots'
   | 'rerun-verify'
   | 'seed-score-snapshots'
   | 'stabilize-oscillation';
@@ -109,17 +111,34 @@ async function checkScoreTrend(
     }
 
     const snapshots: { score: number; ts: string }[] = [];
+    const invalidFiles: string[] = [];
     for (const file of files) {
       try {
         const raw = await readFile(path.join(snapshotsPath, file), 'utf8');
         const parsed = JSON.parse(raw) as ScoreSnapshot;
-        const score = typeof parsed.score === 'number' ? parsed.score : null;
+        const score = typeof parsed.score === 'number' && Number.isFinite(parsed.score)
+          ? parsed.score
+          : null;
         if (score !== null) {
           snapshots.push({ score, ts: parsed.timestamp ?? file });
+        } else {
+          invalidFiles.push(file);
         }
       } catch {
-        // skip unreadable snapshot
+        invalidFiles.push(file);
       }
+    }
+
+    if (invalidFiles.length > 0) {
+      return {
+        name: 'Score Trend',
+        status: 'fail',
+        detail:
+          `Invalid score snapshot${invalidFiles.length === 1 ? '' : 's'}: ` +
+          `${invalidFiles.join(', ')}. Run auto-repair to quarantine corrupt evidence before trend analysis.`,
+        repairable: true,
+        repairTargets: invalidFiles,
+      };
     }
 
     if (snapshots.length < 2) {
@@ -347,6 +366,17 @@ function recommendationForCheck(check: HealthCheck): HealthRecommendation | null
   }
 
   if (check.name === 'Score Trend' && check.status === 'fail') {
+    if (check.repairable && check.detail.includes('Invalid score snapshot')) {
+      return {
+        checkName: check.name,
+        action: 'repair-snapshots',
+        command: 'danteforge convergence-health --auto-repair',
+        rationale: 'Invalid score snapshots corrupt trend evidence; quarantine them before continuing convergence.',
+        urgency: 'high',
+        repairable: true,
+      };
+    }
+
     return {
       checkName: check.name,
       action: 'inspect-regression',
@@ -413,6 +443,7 @@ function buildRecommendations(checks: HealthCheck[]): HealthRecommendation[] {
 async function autoRepair(
   lockPath: string,
   stateFilePath: string,
+  snapshotsPath: string,
   checks: HealthCheck[],
   opts: ConvergenceHealthOptions,
 ): Promise<RepairAction[]> {
@@ -449,6 +480,45 @@ async function autoRepair(
     }
   }
 
+  const snapshotCheck = checks.find(c =>
+    c.name === 'Score Trend' &&
+    c.status === 'fail' &&
+    c.repairable &&
+    Array.isArray(c.repairTargets) &&
+    c.repairTargets.length > 0,
+  );
+  if (snapshotCheck?.repairTargets) {
+    const quarantinePath = path.join(snapshotsPath, 'quarantine');
+    try {
+      await fs.mkdir(quarantinePath, { recursive: true });
+      for (const target of snapshotCheck.repairTargets) {
+        const fileName = path.basename(target);
+        try {
+          await fs.rename(path.join(snapshotsPath, fileName), path.join(quarantinePath, fileName));
+          repairs.push({
+            type: 'quarantine-invalid-snapshot',
+            description: `Moved invalid score snapshot to quarantine: ${fileName}`,
+            success: true,
+          });
+        } catch (err) {
+          repairs.push({
+            type: 'quarantine-invalid-snapshot',
+            description: `Failed to quarantine invalid score snapshot: ${fileName}`,
+            success: false,
+            error: err instanceof Error ? err.message : String(err),
+          });
+        }
+      }
+    } catch (err) {
+      repairs.push({
+        type: 'quarantine-invalid-snapshot',
+        description: 'Failed to create score snapshot quarantine directory',
+        success: false,
+        error: err instanceof Error ? err.message : String(err),
+      });
+    }
+  }
+
   return repairs;
 }
 
@@ -476,7 +546,7 @@ export async function convergenceHealthCheck(
   const recommendations = buildRecommendations(checks);
 
   const repairs = opts.autoRepair && overallStatus !== 'ok'
-    ? await autoRepair(lockPath, stateFilePath, checks, opts)
+    ? await autoRepair(lockPath, stateFilePath, snapshotsPath, checks, opts)
     : undefined;
 
   return {

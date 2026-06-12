@@ -16,6 +16,10 @@ import type { MasterplanItem } from '../../core/gap-masterplan.js';
 import { formatCompletionTarget, type CompletionTarget } from '../../core/completion-target.js';
 import { buildFeatureForgePrompt, type FeatureScore, type FeatureItem } from '../../core/feature-universe.js';
 import { generatedByLine } from '../../core/version.js';
+import {
+  collectPersistentGapDiagnostics,
+  formatPersistentGapLesson,
+} from './self-improve-diagnostics.js';
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -225,8 +229,8 @@ async function runSelfImproveLoop(ctx: SelfImproveLoopCtx): Promise<LoopOutcome>
           });
 
       // Collect structured proposals for P0/P1 masterplan items
-      const focusItems = selectFocusItems(cycleAssessResult, ctx.focusDimensions);
-      for (const item of focusItems) {
+      const cycleFocusItems = selectFocusItems(cycleAssessResult, ctx.focusDimensions);
+      for (const item of cycleFocusItems) {
         structuredProposals.push(masterplanItemToProposal(item, cycle));
       }
 
@@ -262,6 +266,14 @@ async function runSelfImproveLoop(ctx: SelfImproveLoopCtx): Promise<LoopOutcome>
       logger.info(`[self-improve] Cycle ${cycle} complete: ${prevScore.toFixed(1)} → ${currentScore.toFixed(1)} (${cycleDelta >= 0 ? '+' : ''}${cycleDelta.toFixed(1)})`);
 
       if (cycleDelta < PLATEAU_THRESHOLD) {
+        const postFocusItems = selectFocusItems(postCycleResult, ctx.focusDimensions);
+        const persistentGaps = collectPersistentGapDiagnostics(cycleFocusItems, postFocusItems, ctx.focusDimensions);
+        if (persistentGaps.length > 0) {
+          try {
+            await ctx.appendLessonFn(formatPersistentGapLesson(cycle, persistentGaps));
+          } catch { /* best-effort */ }
+        }
+
         consecutivePlateauCycles++;
         if (consecutivePlateauCycles >= PLATEAU_CYCLE_COUNT) {
           logger.warn(`[self-improve] Score has not improved by ${PLATEAU_THRESHOLD} in ${consecutivePlateauCycles} cycles`);

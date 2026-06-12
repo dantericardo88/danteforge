@@ -144,6 +144,25 @@ function averageScoreSuggestion(verdicts: MemberVerdict[]): number | null {
   return Math.round((scores.reduce((sum, score) => sum + score, 0) / scores.length) * 100) / 100;
 }
 
+function isJudgeInfrastructureFailure(verdict: MemberVerdict): boolean {
+  if (verdict.verdict === 'PASS') return false;
+  const text = [
+    verdict.reason,
+    verdict.rawOutput,
+    verdict.blockingConcerns.join('\n'),
+  ].join('\n').toLowerCase();
+
+  return [
+    'api error:',
+    'socket connection was closed unexpectedly',
+    'second argument to fetch()',
+    'fetch failed',
+    'econnreset',
+    'etimedout',
+    'enotfound',
+  ].some(marker => text.includes(marker));
+}
+
 function changedFilesFromDiff(diff: string): string[] {
   const files = new Set<string>();
   for (const line of diff.split(/\r?\n/)) {
@@ -330,35 +349,42 @@ export async function runRevision(opts: RevisionOptions): Promise<RevisionResult
     const preservedApprovals = result.finalVerdicts
       .filter(v => v.verdict === 'PASS')
       .map(v => `[${reviewerLabels.get(v.judgeId) ?? 'Reviewer'}] ${v.reason}`);
-    const blockingConcerns = result.finalVerdicts
-      .filter(v => v.verdict !== 'PASS')
+    const blockingVerdicts = result.finalVerdicts.filter(v => v.verdict !== 'PASS');
+    const blockingConcerns = blockingVerdicts
       .flatMap(v => v.blockingConcerns.length > 0 ? v.blockingConcerns : [v.reason]);
-    logger.info(`[revision] Cycle ${cycle}/${maxCycles}: ${builderId} addressing ${result.finalVerdicts.filter(v => v.verdict !== 'PASS').length} FAIL/UNCLEAR verdict(s)`);
+    const infrastructureOnlyBlockers = blockingVerdicts.length > 0
+      && blockingVerdicts.every(isJudgeInfrastructureFailure);
+    logger.info(`[revision] Cycle ${cycle}/${maxCycles}: ${builderId} addressing ${blockingVerdicts.length} FAIL/UNCLEAR verdict(s)`);
 
-    // 1. Self-inspection: builder reads ALL judge feedback (both PASS and FAIL)
     let selfAssessment = '(self-inspection skipped)';
-    try {
-      const inspectPrompt = buildSelfInspectPrompt(goal, diff, preserveContext, fixContext);
-      const inspectWp = makeRevisionWorkPacket(inspectPrompt, worktreePath);
-      const inspectAdapter = makeBuilder(builderId, { ...inspectWp, objective: inspectPrompt } as WorkPacket);
-      const inspectLease = makeReadOnlyLease(worktreePath);
-      const inspectResult = await runAdapter(inspectAdapter, { lease: inspectLease, cwd: worktreePath });
-      selfAssessment = inspectResult.finalMessage?.slice(0, 1200) ?? '(no self-assessment output)';
-      logger.info(`[revision] Cycle ${cycle}: ${builderId} self-assessment (${selfAssessment.length} chars)`);
-    } catch (err) {
-      logger.warn(`[revision] Cycle ${cycle}: ${builderId} self-inspection failed: ${String(err)}`);
-    }
+    if (infrastructureOnlyBlockers) {
+      selfAssessment = '(revision skipped: blocking verdicts were judge infrastructure failures, not actionable code concerns)';
+      logger.warn(`[revision] Cycle ${cycle}: skipping builder revision because blocking verdicts are judge infrastructure failures`);
+    } else {
+      // 1. Self-inspection: builder reads ALL judge feedback (both PASS and FAIL)
+      try {
+        const inspectPrompt = buildSelfInspectPrompt(goal, diff, preserveContext, fixContext);
+        const inspectWp = makeRevisionWorkPacket(inspectPrompt, worktreePath);
+        const inspectAdapter = makeBuilder(builderId, { ...inspectWp, objective: inspectPrompt } as WorkPacket);
+        const inspectLease = makeReadOnlyLease(worktreePath);
+        const inspectResult = await runAdapter(inspectAdapter, { lease: inspectLease, cwd: worktreePath });
+        selfAssessment = inspectResult.finalMessage?.slice(0, 1200) ?? '(no self-assessment output)';
+        logger.info(`[revision] Cycle ${cycle}: ${builderId} self-assessment (${selfAssessment.length} chars)`);
+      } catch (err) {
+        logger.warn(`[revision] Cycle ${cycle}: ${builderId} self-inspection failed: ${String(err)}`);
+      }
 
-    // 2. Revision: builder addresses blocking concerns while preserving approvals
-    try {
-      const revisionPrompt = buildRevisionPrompt(goal, preserveContext, fixContext, selfAssessment, cycle);
-      const revisionWp = makeRevisionWorkPacket(revisionPrompt, worktreePath);
-      const revisionAdapter = makeBuilder(builderId, revisionWp);
-      const writeLease = makeWriteLease(worktreePath);
-      await runAdapter(revisionAdapter, { lease: writeLease, cwd: worktreePath });
-      logger.info(`[revision] Cycle ${cycle}: ${builderId} revision complete`);
-    } catch (err) {
-      logger.warn(`[revision] Cycle ${cycle}: ${builderId} revision failed: ${String(err)}`);
+      // 2. Revision: builder addresses blocking concerns while preserving approvals
+      try {
+        const revisionPrompt = buildRevisionPrompt(goal, preserveContext, fixContext, selfAssessment, cycle);
+        const revisionWp = makeRevisionWorkPacket(revisionPrompt, worktreePath);
+        const revisionAdapter = makeBuilder(builderId, revisionWp);
+        const writeLease = makeWriteLease(worktreePath);
+        await runAdapter(revisionAdapter, { lease: writeLease, cwd: worktreePath });
+        logger.info(`[revision] Cycle ${cycle}: ${builderId} revision complete`);
+      } catch (err) {
+        logger.warn(`[revision] Cycle ${cycle}: ${builderId} revision failed: ${String(err)}`);
+      }
     }
 
     // 3. Capture new cumulative diff (initial build + revision stacked)

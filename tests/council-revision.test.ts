@@ -243,6 +243,65 @@ describe('runRevision', () => {
     assert.equal(builderCalls, 0);
   });
 
+  it('does not ask the builder to edit code for transient judge API failures', async () => {
+    const initialVerdicts: MemberVerdict[] = [
+      makeVerdict('grok-build', 'PASS'),
+      {
+        judgeId: 'codex',
+        verdict: 'FAIL',
+        confidence: 'LOW',
+        scoreSuggestion: null,
+        reason: 'API Error: The socket connection was closed unexpectedly. For more information, pass `verbose: true` in the second argument to fetch()',
+        blockingConcerns: [],
+        dissentSummary: '',
+        rawOutput: 'API Error: The socket connection was closed unexpectedly. For more information, pass `verbose: true` in the second argument to fetch()',
+      },
+    ];
+    let builderCalls = 0;
+    const rejudgePrompts: string[] = [];
+
+    const result = await runRevision(makeBaseOpts({
+      initialVerdicts,
+      _makeBuilderAdapter: () => {
+        builderCalls++;
+        throw new Error('builder should not receive a write-lease for judge infrastructure failures');
+      },
+      _makeJudgeAdapter: (_id, wp) => {
+        rejudgePrompts.push(wp.objective);
+        return {
+          id: 'fake-judge', name: 'FakeJudge',
+          isAvailable: async () => true,
+          prepareRun: async (input) => ({ ...input, prepared: true }),
+          startRun: async (input) => ({ runId: `judge-${_id}`, leaseId: input.lease.id, provider: 'fake', startedAt: new Date().toISOString() }),
+          streamEvents: async function* () { /* empty */ },
+          stopRun: async () => undefined,
+          collectResult: async (handle) => ({
+            runId: handle.runId, leaseId: handle.leaseId, status: 'completed',
+            filesChanged: [], commandsExecuted: [], provider: 'fake',
+            finalMessage: 'VERDICT: PASS\nCONFIDENCE: HIGH\nREASON: Prior failure was transient judge infrastructure; unchanged diff is acceptable\nSCORE_SUGGESTION: 8\nBLOCKING_ISSUES: none\nBLOCKING_CONCERNS: none\nDISSENT: none',
+            startedAt: new Date().toISOString(), completedAt: new Date().toISOString(), events: [],
+          }),
+        };
+      },
+      worktreeOpts: {
+        projectPath: '/fake/project',
+        _git: {
+          worktreeAdd: async () => undefined,
+          worktreeRemove: async () => undefined,
+          branchDelete: async () => undefined,
+          getDiff: async () => 'diff --git a/src/test.ts b/src/test.ts\n+export function newFn() {}',
+        },
+      },
+    }));
+
+    assert.equal(builderCalls, 0);
+    assert.equal(result.finalConsensus, 'PASS');
+    assert.equal(result.cycles.length, 1);
+    assert.equal(result.cycles[0]!.selfAssessment, '(revision skipped: blocking verdicts were judge infrastructure failures, not actionable code concerns)');
+    assert.equal(rejudgePrompts.length, 2);
+    assert.equal(rejudgePrompts.some(prompt => prompt.includes('RUNTIME PROOF COMMANDS')), true);
+  });
+
   it('records runtime proof and a frontier receipt for revised council work', async () => {
     const worktreePath = await makeTempDir();
     let rejudgePrompt = '';

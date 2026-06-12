@@ -287,6 +287,66 @@ describe('convergenceHealthCheck', () => {
     }
   });
 
+  it('reports fail for invalid recent score snapshots instead of hiding corrupt evidence', async () => {
+    const snapshotsDir = path.join(tmpDir, '.danteforge', 'snapshots');
+    const files = ['2026-01-01.json', '2026-01-02.json', '2026-01-03.json'];
+    try {
+      await fs.writeFile(path.join(snapshotsDir, files[0]!), JSON.stringify({ score: 7.0 }), 'utf8');
+      await fs.writeFile(path.join(snapshotsDir, files[1]!), '{not-json', 'utf8');
+      await fs.writeFile(path.join(snapshotsDir, files[2]!), JSON.stringify({ score: 7.8 }), 'utf8');
+
+      const result = await convergenceHealthCheck({ cwd: tmpDir });
+      const trendCheck = result.checks.find(c => c.name === 'Score Trend');
+      assert.ok(trendCheck, 'Score Trend check should be present');
+      assert.equal(trendCheck!.status, 'fail');
+      assert.ok(trendCheck!.detail.includes('Invalid score snapshot'), trendCheck!.detail);
+      assert.ok(trendCheck!.detail.includes(files[1]!), trendCheck!.detail);
+      assert.ok(
+        result.recommendations.some(r =>
+          r.action === 'repair-snapshots' &&
+          r.command === 'danteforge convergence-health --auto-repair' &&
+          r.repairable,
+        ),
+        'invalid snapshots should recommend auto-repair',
+      );
+      for (const recommendation of result.recommendations) {
+        assertRecommendationCommandIsOnCliSurface(recommendation.command);
+      }
+    } finally {
+      for (const file of files) {
+        await fs.unlink(path.join(snapshotsDir, file)).catch(() => {});
+      }
+    }
+  });
+
+  it('autoRepair quarantines invalid score snapshots and leaves valid snapshots in place', async () => {
+    const snapshotsDir = path.join(tmpDir, '.danteforge', 'snapshots');
+    const quarantineDir = path.join(snapshotsDir, 'quarantine');
+    const validFile = path.join(snapshotsDir, '2026-01-04.json');
+    const invalidFile = path.join(snapshotsDir, '2026-01-05.json');
+    const quarantinedFile = path.join(quarantineDir, '2026-01-05.json');
+
+    try {
+      await fs.writeFile(validFile, JSON.stringify({ score: 7.2 }), 'utf8');
+      await fs.writeFile(invalidFile, '{"score": "bad"}', 'utf8');
+
+      const result = await convergenceHealthCheck({ cwd: tmpDir, autoRepair: true });
+
+      assert.ok(
+        result.repairs?.some(r => r.type === 'quarantine-invalid-snapshot' && r.success),
+        'invalid score snapshot should be quarantined during auto-repair',
+      );
+      await assert.doesNotReject(() => fs.access(validFile), 'valid snapshot should remain in snapshots directory');
+      await assert.rejects(() => fs.access(invalidFile), 'invalid snapshot should be moved out of snapshots directory');
+      await assert.doesNotReject(() => fs.access(quarantinedFile), 'invalid snapshot should be moved to quarantine');
+    } finally {
+      await fs.unlink(validFile).catch(() => {});
+      await fs.unlink(invalidFile).catch(() => {});
+      await fs.unlink(quarantinedFile).catch(() => {});
+      await fs.rmdir(quarantineDir).catch(() => {});
+    }
+  });
+
   it('reports fail for regressing score trend', async () => {
     const snapshotsDir = path.join(tmpDir, '.danteforge', 'snapshots');
     const timestamps = ['2026-02-01', '2026-02-02', '2026-02-03'];

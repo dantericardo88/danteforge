@@ -129,6 +129,7 @@ function makeOptions(overrides: Partial<SelfImproveOptions> = {}): SelfImproveOp
     _runAutoforge: async () => {},
     _runVerify: async () => {},
     _runParty: async () => {},
+    _runLocalHarvest: async () => {},
     _loadState: async () => makeState(),
     _saveState: async () => {},
     _appendLesson: async () => {},
@@ -277,5 +278,40 @@ describe('selfImprove', () => {
       `Unexpected stopReason: ${result.stopReason}`,
     );
     assert.equal(result.achieved, false);
+  });
+
+  it('captures a lesson when a focused gap persists after a cycle with no score gain', async () => {
+    const lessons: string[] = [];
+    const persistentItem: MasterplanItem = {
+      id: 'P0-self-01',
+      priority: 'P0',
+      dimension: 'selfImprovement',
+      currentScore: 6.0,
+      targetScore: 9.0,
+      title: 'Persist self-improvement proof',
+      description: 'Self-improve repeats the same action without learning from failed cycles',
+      forgeCommand: 'danteforge forge "repair self-improve feedback"',
+      verifyCondition: 'self-improve records persistent gap diagnostics',
+      estimatedDelta: 0.8,
+    };
+
+    const result = await selfImprove(makeOptions({
+      maxCycles: 1,
+      _runAssess: async () => ({
+        ...makeAssessResult(6.0),
+        masterplan: makeMasterplan(6.0, [persistentItem]),
+      }),
+      _appendLesson: async (entry) => { lessons.push(entry); },
+    }));
+
+    assert.equal(result.achieved, false);
+    assert.ok(
+      lessons.some((entry) =>
+        entry.includes('Persistent gaps after cycle 1')
+        && entry.includes('selfImprovement')
+        && entry.includes('self-improve records persistent gap diagnostics'),
+      ),
+      `expected persistent-gap lesson, got ${JSON.stringify(lessons)}`,
+    );
   });
 });
