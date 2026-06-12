@@ -80,6 +80,15 @@ export async function runFrontierReviewCli(options: FrontierReviewCliOptions): P
   const artifactPath = rup.observable_artifacts[0]?.path ?? '';
   let artifactExcerpt = '(artifact not readable)';
   try { artifactExcerpt = (await readArtifact(path.join(cwd, artifactPath))).slice(0, 2000); } catch { /* best-effort */ }
+  // Widened evidence channel (council finding 2026-06-12): the judges previously received ONLY
+  // artifacts[0] truncated to 2000 chars — structurally too narrow to demonstrate a multi-scenario
+  // 9-row even when the capability exists. Pass every declared artifact with its own excerpt.
+  const artifacts: Array<{ path: string; excerpt: string }> = [];
+  for (const a of rup.observable_artifacts.slice(0, 6)) {
+    let excerpt = '(artifact not readable)';
+    try { excerpt = (await readArtifact(path.join(cwd, a.path))).slice(0, 4000); } catch { /* best-effort */ }
+    artifacts.push({ path: a.path, excerpt });
+  }
 
   // DETERMINISTIC pre-court receipt gate. Bind declared real-user-path outcomes to their evidence
   // and require genuine multi-session receipts BEFORE spending judges. A fixture that can't produce
@@ -107,6 +116,7 @@ export async function runFrontierReviewCli(options: FrontierReviewCliOptions): P
       requiredCallsite: rup.required_callsite,
       artifactPath,
       artifactExcerpt,
+      artifacts,
       receipts,
     },
   };

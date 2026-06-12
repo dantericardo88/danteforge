@@ -25,6 +25,10 @@ export interface FrontierReviewInput {
     artifactPath: string;
     /** A snippet of the produced artifact's content, for the judges to inspect. */
     artifactExcerpt?: string;
+    /** ALL declared artifacts with per-artifact excerpts (council finding, 2026-06-12: judges
+     *  previously saw only artifacts[0] truncated to 2000 chars — a multi-scenario 9-row bar
+     *  cannot be demonstrated through a single 2KB keyhole even when the capability exists). */
+    artifacts?: Array<{ path: string; excerpt: string }>;
     /** The validate receipts that backed the score. */
     receipts: Array<{ sessionId: string; passed: boolean; tier: string }>;
   };
@@ -66,9 +70,16 @@ export function buildFrontierJudgePrompt(input: FrontierReviewInput): string {
     `THE EVIDENCE (a real product run, per the frozen frontier_spec):`,
     `  run_command:       ${e.runCommand}`,
     `  required_callsite: ${e.requiredCallsite}`,
-    `  artifact:          ${e.artifactPath}`,
-    `  artifact excerpt:`,
-    (e.artifactExcerpt ?? '(none provided)').split('\n').map(l => `    ${l}`).join('\n').slice(0, 3000),
+    ...(e.artifacts && e.artifacts.length > 0
+      ? e.artifacts.flatMap((a, i) => [
+          `  artifact ${i + 1}/${e.artifacts!.length}: ${a.path}`,
+          a.excerpt.split('\n').map(l => `    ${l}`).join('\n').slice(0, 4500),
+        ])
+      : [
+          `  artifact:          ${e.artifactPath}`,
+          `  artifact excerpt:`,
+          (e.artifactExcerpt ?? '(none provided)').split('\n').map(l => `    ${l}`).join('\n').slice(0, 3000),
+        ]),
     `  receipts:`,
     receipts || '  (none)',
     ``,

@@ -15,7 +15,7 @@ import type { AttemptFingerprint } from '../../core/evidence-novelty.js';
 import type { PushOutcome } from '../../core/ascend-frontier-parallel.js';
 import type { CouncilMemberId } from '../../matrix/engines/council-scheduler.js';
 import { runCli, parseCourtOutput, type CliResult } from './ascend-frontier-runner.js';
-import { composeBuildGoal, loadCourtFeedback, parseCourtFeedback, recordCourtFeedback } from '../../core/court-feedback.js';
+import { composeBuildGoal, loadCourtFeedback, parseCourtFeedback, recordCourtFeedback, repeatedObjection } from '../../core/court-feedback.js';
 
 const execFileAsync = promisify(execFile);
 
@@ -135,7 +135,19 @@ export async function defaultPushTo9(
   // The build goal carries THE BAR the judges judge against + the court's last reasons for this
   // dim (verdict→builder feedback) — every rejection becomes a course correction, never roulette.
   await df(cwd, ['frontier-spec', 'freeze', dimId, '--write']);
-  const buildGoal = composeBuildGoal(dimId, spec0, await loadCourtFeedback(cwd, dimId));
+  const feedback = await loadCourtFeedback(cwd, dimId);
+  // Repeated-objection tripwire (council lever 3): the last TWO courts raised the same core
+  // objection — another blind build is guaranteed waste. Stop honestly and name the real remedy
+  // (evidence/spec upgrade or plan decomposition), exactly like spec-incomplete names its work.
+  if (repeatedObjection(feedback)) {
+    return {
+      verdict: 'REJECTED', courtRan: false,
+      ceiling: { cause: 'court-rejected' as CeilingCause,
+        detail: `${dimId}: the frontier court raised the SAME objection in consecutive attempts ("${(feedback!.dissent[0] ?? feedback!.summary).slice(0, 200)}…") — further builds cannot fix this; upgrade the evidence design (real_user_path run_command/artifacts must actually exercise the 9-row) or decompose the bar into plan items, then re-push.` },
+      fingerprint: { dimId, command: spec0.real_user_path.run_command, artifactPath: spec0.real_user_path.observable_artifacts[0]?.path ?? '', gitSha: await headSha(cwd) },
+    };
+  }
+  const buildGoal = composeBuildGoal(dimId, spec0, feedback);
   await df(cwd, ['council-crusade', '--focus-dims', dimId, '--goal', buildGoal]);
 
   const specBefore = (await loadMatrix(cwd))?.dimensions.find(d => d.id === dimId);

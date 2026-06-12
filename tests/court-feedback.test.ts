@@ -43,6 +43,30 @@ describe('court-feedback — every rejection becomes a course correction', () =>
     assert.doesNotMatch(validated, /JUDGES/, 'a validated dim needs no objection list');
   });
 
+  test('append-only history + repeated-objection tripwire (council lever 3 pin)', async () => {
+    const { repeatedObjection } = await import('../src/core/court-feedback.js');
+    const dir = path.join(ROOT, 'history');
+    await fs.mkdir(dir, { recursive: true });
+    const reject = (n: number, reason: string) => ({
+      dimId: 'dim_h', verdict: 'REJECTED', summary: `FAIL: 0% (attempt ${n})`,
+      dissent: [reason], recordedAt: new Date().toISOString(),
+    });
+    await recordCourtFeedback(dir, reject(1, '[judge-a] the artifact cannot demonstrate failure-injection recovery, only triage output'));
+    let fb = await loadCourtFeedback(dir, 'dim_h');
+    assert.equal(repeatedObjection(fb), false, 'one rejection is iteration, not a wall');
+
+    await recordCourtFeedback(dir, reject(2, '[judge-b] the artifact cannot demonstrate failure-injection recovery, still triage output'));
+    fb = await loadCourtFeedback(dir, 'dim_h');
+    assert.equal(fb?.history?.length, 1, 'prior verdict preserved in history, never overwritten');
+    assert.equal(repeatedObjection(fb), true, 'same core objection twice → stop rebuilding, repair the evidence');
+
+    await recordCourtFeedback(dir, reject(3, '[judge-a] entirely different objection: receipts lack session diversity across inputs'));
+    fb = await loadCourtFeedback(dir, 'dim_h');
+    assert.equal(fb?.history?.length, 2);
+    assert.equal(repeatedObjection(fb), false, 'a NEW objection means the build moved — keep iterating');
+    assert.equal(repeatedObjection({ dimId: 'd', verdict: 'VALIDATED', summary: 'PASS', dissent: [], recordedAt: '' }), false);
+  });
+
   test('record/load roundtrip + lenient parse of frontier-review --json stdout', async () => {
     const dir = path.join(ROOT, 'repo');
     await fs.mkdir(dir, { recursive: true });

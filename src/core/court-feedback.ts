@@ -19,6 +19,9 @@ export interface CourtFeedback {
   /** Judges' dissent/reason lines, verbatim. */
   dissent: string[];
   recordedAt: string;
+  /** Append-only prior verdicts (council finding: a single-record file had AMNESIA — the loop
+   *  could not see "the judges raised the same objection N times" and kept re-rolling builds). */
+  history?: Array<{ verdict: string; summary: string; dissent: string[]; recordedAt: string }>;
 }
 
 const FEEDBACK_DIR = path.join('.danteforge', 'court-feedback');
@@ -30,7 +33,42 @@ function feedbackPath(cwd: string, dimId: string): string {
 export async function recordCourtFeedback(cwd: string, fb: CourtFeedback): Promise<void> {
   const p = feedbackPath(cwd, fb.dimId);
   await fs.mkdir(path.dirname(p), { recursive: true });
+  // Append-only: the prior verdict moves into history (latest first, capped) — never overwritten.
+  const prior = await loadCourtFeedback(cwd, fb.dimId);
+  if (prior) {
+    const priorEntry = { verdict: prior.verdict, summary: prior.summary, dissent: prior.dissent, recordedAt: prior.recordedAt };
+    fb.history = [priorEntry, ...(prior.history ?? [])].slice(0, 8);
+  }
   await fs.writeFile(p, JSON.stringify(fb, null, 2), 'utf8');
+}
+
+/** Normalize a dissent/summary line into a comparable word set (judge tags + noise stripped). */
+function objectionWords(fb: { summary: string; dissent: string[] }): Set<string> {
+  const head = (fb.dissent[0] ?? fb.summary ?? '').toLowerCase()
+    .replace(/\[[^\]]*\]/g, ' ')
+    .replace(/[^a-z0-9-]+/g, ' ')
+    .trim();
+  return new Set(head.split(/\s+/).filter(w => w.length >= 3).slice(0, 40));
+}
+
+/**
+ * The repeated-objection tripwire (council lever 3): TRUE when the latest rejection and the one
+ * before it carry the SAME CORE objection — at that point another blind build is waste; the honest
+ * route is evidence/spec repair (or a ceiling), not a re-roll. Judges never repeat themselves
+ * byte-for-byte, so "same objection" is word-overlap (Jaccard ≥ 0.6 over ≥5 shared content words),
+ * not string equality. Pure; exported for the pin.
+ */
+export function repeatedObjection(fb: CourtFeedback | null): boolean {
+  if (!fb || fb.verdict === 'VALIDATED') return false;
+  const prev = fb.history?.[0];
+  if (!prev || prev.verdict === 'VALIDATED') return false;
+  const a = objectionWords(fb);
+  const b = objectionWords(prev);
+  if (a.size === 0 || b.size === 0) return false;
+  let shared = 0;
+  for (const w of a) if (b.has(w)) shared += 1;
+  const union = a.size + b.size - shared;
+  return shared >= 5 && union > 0 && shared / union >= 0.6;
 }
 
 export async function loadCourtFeedback(cwd: string, dimId: string): Promise<CourtFeedback | null> {
