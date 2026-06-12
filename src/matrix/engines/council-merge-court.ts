@@ -159,7 +159,7 @@ function makeJudgeAdapter(id: CouncilMemberId, workPacket: WorkPacket) {
 
 // ── Merge via git apply ───────────────────────────────────────────────────────
 
-async function applyDiffToMain(diff: string, projectPath: string): Promise<void> {
+export async function applyDiffToMain(diff: string, projectPath: string): Promise<void> {
   if (!diff.trim()) return;
   // Use a project-relative temp dir to avoid os.tmpdir() paths with spaces on
   // Windows (e.g. C:\Users\My Name\AppData\Local\Temp) which break git apply.
@@ -168,9 +168,46 @@ async function applyDiffToMain(diff: string, projectPath: string): Promise<void>
   const tmpFile = path.join(tmpDir, `council-patch-${Date.now()}.patch`);
   try {
     await fs.writeFile(tmpFile, diff, 'utf8');
-    await execFileAsync('git', ['apply', '--whitespace=nowarn', '--3way', tmpFile], {
-      cwd: projectPath, timeout: 60_000,
-    });
+
+    // The files this patch touches, from git itself (authoritative even for renames/adds).
+    const numstat = await execFileAsync('git', ['apply', '--numstat', tmpFile], { cwd: projectPath, timeout: 60_000 });
+    const files = numstat.stdout.trim().split('\n').filter(Boolean)
+      .map(l => l.split('\t')[2]).filter((f): f is string => !!f);
+
+    // SAFETY PRECONDITION (live fleet-run-3e finding): never patch over local modifications.
+    // A conflicted `git apply --3way` leaves conflict markers + unmerged index entries in the
+    // MAIN tree (no MERGE_HEAD — nothing to abort), and cleanup-by-restore would destroy any
+    // pre-existing uncommitted work in those files. Requiring them clean makes the rollback
+    // below provably non-destructive; a dirty target is an honest merge failure (the
+    // candidate's work stays on its council branch).
+    if (files.length > 0) {
+      const dirty = (await execFileAsync('git', ['status', '--porcelain', '--', ...files], { cwd: projectPath, timeout: 60_000 })).stdout.trim();
+      if (dirty) {
+        throw new Error(`refusing to apply council patch: target file(s) carry local modifications (would be destroyed on conflict rollback):\n${dirty}`);
+      }
+    }
+
+    try {
+      await execFileAsync('git', ['apply', '--whitespace=nowarn', '--3way', tmpFile], {
+        cwd: projectPath, timeout: 60_000,
+      });
+    } catch (applyErr) {
+      // --3way already wrote conflict markers + unmerged index entries before failing. The
+      // touched files were verified CLEAN pre-apply, so restoring them to HEAD loses nothing —
+      // the candidate's work is preserved on its branch. Patch-created files (absent from HEAD)
+      // are unstaged and deleted.
+      for (const f of files) {
+        const inHead = await execFileAsync('git', ['cat-file', '-e', `HEAD:${f}`], { cwd: projectPath, timeout: 30_000 })
+          .then(() => true).catch(() => false);
+        if (inHead) {
+          await execFileAsync('git', ['restore', '--staged', '--worktree', '--source=HEAD', '--', f], { cwd: projectPath, timeout: 30_000 }).catch(() => { /* best-effort per file */ });
+        } else {
+          await execFileAsync('git', ['rm', '--cached', '--force', '--', f], { cwd: projectPath, timeout: 30_000 }).catch(() => { /* not in index */ });
+          await fs.unlink(path.join(projectPath, f)).catch(() => { /* not created */ });
+        }
+      }
+      throw applyErr;
+    }
   } finally {
     await fs.unlink(tmpFile).catch(() => { /* ignore */ });
   }

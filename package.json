@@ -134,7 +134,7 @@
     "delegate52:live-full": "node scripts/delegate52-live-full.mjs",
     "time-machine:demo": "npx tsx scripts/time-machine-demo.ts",
     "prepublishOnly": "npm run verify && npm run build",
-    "test:laws": "tsx --test tests/laws/laws-l1-isolation.test.ts tests/laws/laws-l2-score-writes.test.ts tests/laws/laws-l3-declaration-durability.test.ts tests/laws/laws-l4-process-hygiene.test.ts tests/laws/laws-l5-evidence-honor.test.ts tests/laws/laws-l6-clock-nesting.test.ts tests/laws/laws-l7-flag-wiring.test.ts tests/laws/laws-l8-evidence-bound-routing.test.ts tests/compete-matrix-read-gates.test.ts",
+    "test:laws": "tsx --test tests/laws/laws-l1-isolation.test.ts tests/laws/laws-l2-score-writes.test.ts tests/laws/laws-l3-declaration-durability.test.ts tests/laws/laws-l4-process-hygiene.test.ts tests/laws/laws-l5-evidence-honor.test.ts tests/laws/laws-l6-clock-nesting.test.ts tests/laws/laws-l7-flag-wiring.test.ts tests/laws/laws-l8-evidence-bound-routing.test.ts tests/compete-matrix-read-gates.test.ts tests/council-merge-rollback.test.ts",
     "test:zoo": "tsx --test tests/zoo/zoo.test.ts"
   },
   "dependencies": {
