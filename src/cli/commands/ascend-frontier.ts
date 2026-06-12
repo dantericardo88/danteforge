@@ -362,6 +362,25 @@ export async function runAscendFrontier(options: AscendFrontierOptions): Promise
     if (cycles >= maxCycles) { return await complete('max-cycles', `stopped at --max-cycles ${maxCycles}`); }
     cycles++;
     const led = await ensureLedger();
+    // Budget-window pause (self-challenge #7): once a sub-command reported the shared session
+    // limit, every further build/judge fails identically until the stated reset. Sleeping here is
+    // STRICTLY better than burning cycles on guaranteed failures mislabeled as build problems.
+    {
+      const { getBudgetPauseUntil, clearBudgetPause } = await import('./ascend-frontier-runner.js');
+      const pauseUntil = getBudgetPauseUntil();
+      if (pauseUntil !== null && pauseUntil > Date.now()) {
+        const totalMin = Math.ceil((pauseUntil - Date.now()) / 60_000);
+        logger.warn(`[ascend-frontier] agent session budget exhausted — pausing ${totalMin}m until the window resets (${new Date(pauseUntil).toLocaleTimeString()}); the campaign resumes by itself.`);
+        led.logEvent('budget-pause', { minutes: totalMin, resumeAt: new Date(pauseUntil).toISOString() });
+        while (Date.now() < pauseUntil) {
+          await new Promise(r => setTimeout(r, Math.min(5 * 60_000, pauseUntil - Date.now())));
+          const left = Math.ceil((pauseUntil - Date.now()) / 60_000);
+          if (left > 0) logger.info(`[ascend-frontier] budget pause — ${left}m until the window resets`);
+        }
+        clearBudgetPause();
+        logger.info('[ascend-frontier] budget window reopened — resuming the campaign.');
+      }
+    }
     led.logEvent('cycle', { cycle: cycles, action: describe(action) });
     logger.info(`[ascend-frontier] cycle ${cycles}: ${describe(action)}`);
     actions.push(describe(action));

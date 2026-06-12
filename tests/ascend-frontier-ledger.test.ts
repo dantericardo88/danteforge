@@ -44,6 +44,29 @@ describe('parseCourtOutput — court output is read honestly (G3)', () => {
   });
 });
 
+describe('budget-window awareness — the loop pauses instead of burning cycles (self-challenge #7)', () => {
+  test('parses the live limit error and schedules the NEXT occurrence of the stated time + margin', async () => {
+    const { noteBudgetLimit, getBudgetPauseUntil, clearBudgetPause } = await import('../src/cli/commands/ascend-frontier-runner.js');
+    clearBudgetPause();
+    // 3pm "now"; the error names 7:10pm → today 19:12 (2-min margin).
+    const now = new Date(); now.setHours(15, 0, 0, 0);
+    const t = noteBudgetLimit("You've hit your session limit · resets 7:10pm (America/New_York)", now.getTime());
+    assert.ok(t !== null);
+    const at = new Date(t!);
+    assert.equal(at.getHours(), 19); assert.equal(at.getMinutes(), 12);
+    // 11pm "now": 7:10pm already passed → tomorrow.
+    clearBudgetPause();
+    const late = new Date(); late.setHours(23, 0, 0, 0);
+    const t2 = noteBudgetLimit('session limit · resets 7:10pm', late.getTime())!;
+    assert.ok(t2 > late.getTime() + 19 * 3600_000, 'rolls to the next day');
+    // Non-limit output records nothing; repeated reports keep the LATEST reset.
+    clearBudgetPause();
+    assert.equal(noteBudgetLimit('ordinary build failure: exit 1', Date.now()), null);
+    assert.equal(getBudgetPauseUntil(), null);
+    clearBudgetPause();
+  });
+});
+
 describe('ladder remediation — the last permanently-human 8→9 step made autonomous', () => {
   test('routing: research fires ONLY for a never-researched bar (zero rubric rows + ladder-seeded field named)', async () => {
     const { isLadderBlocked } = await import('../src/cli/commands/ascend-frontier-push.js');

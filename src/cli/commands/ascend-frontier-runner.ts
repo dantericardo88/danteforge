@@ -80,6 +80,36 @@ export function setRunnerProcessControl(next?: Partial<RunnerProcessControl>): v
   processControl = next ? { ...realProcessControl(), ...next } : realProcessControl();
 }
 
+// ── Budget-window awareness (self-challenge #7) ────────────────────────────────
+// The agent CLIs share a session usage limit; when it fires, EVERY subsequent build/judge fails
+// with the same error until the stated reset time ("You've hit your session limit · resets
+// 7:10pm (America/New_York)"). Before this, a campaign near the limit burned its remaining cycles
+// on guaranteed failures. The runner detects the error and records the reset instant; the
+// orchestrator pauses the loop until then.
+
+const BUDGET_LIMIT_RE = /session limit[^]{0,80}?resets\s+(\d{1,2}):(\d{2})\s*([ap]m)/i;
+const BUDGET_RESET_MARGIN_MS = 2 * 60_000;
+let budgetPauseUntilMs: number | null = null;
+
+/** Parse a session-limit error out of sub-command output; records (and returns) the pause-until
+ *  instant — the NEXT occurrence of the stated local time, plus a small margin. Pure given nowMs. */
+export function noteBudgetLimit(output: string, nowMs: number = Date.now()): number | null {
+  const m = BUDGET_LIMIT_RE.exec(output);
+  if (!m) return null;
+  let hours = Number.parseInt(m[1]!, 10) % 12;
+  if (m[3]!.toLowerCase() === 'pm') hours += 12;
+  const at = new Date(nowMs);
+  at.setHours(hours, Number.parseInt(m[2]!, 10), 0, 0);
+  let t = at.getTime();
+  if (t <= nowMs) t += 24 * 3600_000; // the stated time already passed today → it names tomorrow's reset
+  t += BUDGET_RESET_MARGIN_MS;
+  budgetPauseUntilMs = Math.max(budgetPauseUntilMs ?? 0, t);
+  return budgetPauseUntilMs;
+}
+
+export function getBudgetPauseUntil(): number | null { return budgetPauseUntilMs; }
+export function clearBudgetPause(): void { budgetPauseUntilMs = null; }
+
 export interface CourtParse {
   verdict: 'VALIDATED' | 'REJECTED';
   passedByJudges: string[];
@@ -135,6 +165,10 @@ function runOnce(cwd: string, args: string[]): Promise<CliResult> {
       clearTimeout(timer);
       clearInterval(heartbeat);
       processControl.untrackChildFn(child.pid);
+      // Budget-window awareness (self-challenge #7): agent CLIs surface their shared usage limit
+      // as an error naming the reset time. Detect it here so the orchestrator can PAUSE until the
+      // window reopens instead of burning cycles on builds/judges that all fail the same way.
+      noteBudgetLimit(out + '\n' + err);
       resolve({ exitCode, stdout: out, stderr: err, ms: Date.now() - start, ok: exitCode === 0 });
     };
     // On timeout, kill the WHOLE tree (harden-crusade + its autoresearch grandchildren), not just the
