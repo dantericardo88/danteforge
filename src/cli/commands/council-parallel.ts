@@ -50,7 +50,8 @@ import { runMergeCourt } from '../../matrix/engines/council-merge-court.js';
 import type { MergeCourtResult } from '../../matrix/engines/council-merge-court.js';
 import { FileClaims } from '../../matrix/engines/council-file-claims.js';
 import { ConvergenceTracker } from '../../matrix/engines/council-convergence.js';
-import { MemberHealthTracker, isQuotaError, resolveEffectiveMinJudges } from '../../matrix/engines/council-member-health.js';
+import { MemberHealthTracker, isQuotaError, resolveEffectiveMinJudges, markDegradedQuorumMerges } from '../../matrix/engines/council-member-health.js';
+import { runPostMergeDoctrine, type PostMergeDim } from './council-parallel-doctrine.js';
 import {
   makeSessionId,
   makeInitialState,
@@ -138,84 +139,8 @@ function makeBuilderAdapter(id: CouncilMemberId, workPacket: WorkPacket) {
   }
 }
 
-// ── Post-merge doctrine (validate + CIP + Time Machine) ──────────────────────
-
-interface PostMergeDim {
-  dimId: string;
-  changedFiles: string[];
-}
-
-interface PostMergeDoctrineResult {
-  cipBlocked: string[];
-  timeMachineCommitId: string | null;
-}
-
-async function runPostMergeDoctrine(
-  cwd: string,
-  mergedDims: PostMergeDim[],
-): Promise<PostMergeDoctrineResult> {
-  if (mergedDims.length === 0) return { cipBlocked: [], timeMachineCommitId: null };
-
-  const dimIds = mergedDims.map(d => d.dimId);
-
-  // Step 1: CIP check FIRST — dims that fail CIP must not get validate receipts,
-  // otherwise their score would be elevated based on incomplete integration.
-  const cipBlocked: string[] = [];
-  for (const dimId of dimIds) {
-    try {
-      const result = await runCIPCheck(dimId, { cwd });
-      if (result.blocksFrontierReached) {
-        cipBlocked.push(dimId);
-        logger.warn(chalk.yellow(
-          `  [cip] ${dimId} BLOCKED — gaps: ${result.gaps.slice(0, 3).join('; ')} (score not updated)`,
-        ));
-      } else {
-        logger.info(chalk.dim(`  [cip] ${dimId} ${result.cipClass} (score ${result.cipScore.toFixed(1)})`));
-      }
-    } catch (err) {
-      logger.info(chalk.dim(`  [cip] ${dimId} — check skipped: ${String(err).split('\n')[0]}`));
-    }
-  }
-
-  // Step 2: validate — generate receipts only for dims that passed CIP.
-  // CIP-blocked dims are excluded so their score ceilings are not lifted.
-  const validateDims = dimIds.filter(id => !cipBlocked.includes(id));
-  if (validateDims.length > 0) {
-    logger.info(chalk.dim(`  [validate] Running validate for ${validateDims.length} dim(s)...`));
-    // Use the currently-running Node process + CLI entry (avoids .ps1 shim on Windows)
-    const [nodeBin, cliEntry] = [process.execPath, process.argv[1] ?? 'dist/index.js'];
-    for (const dimId of validateDims) {
-      try {
-        await execFileAsync(nodeBin, [cliEntry, 'validate', dimId], {
-          cwd, timeout: 120_000,
-          env: { ...process.env, DANTEFORGE_MATRIX_MERGE_RECEIPT: '1' },
-        });
-        logger.info(chalk.dim(`  [validate] ${dimId} ✓`));
-      } catch {
-        logger.info(chalk.dim(`  [validate] ${dimId} — no outcome defined or failed (ok at breadth stage)`));
-      }
-    }
-  } else if (cipBlocked.length > 0) {
-    logger.warn(chalk.yellow(`  [validate] Skipped — all merged dims are CIP-blocked. Fix integration gaps first.`));
-  }
-
-  // Step 3: Time Machine commit — best-effort, never blocks (but failures are logged as warn)
-  let timeMachineCommitId: string | null = null;
-  try {
-    const allChangedFiles = [...new Set(mergedDims.flatMap(d => d.changedFiles))];
-    const commit = await createTimeMachineCommit({
-      cwd,
-      paths: allChangedFiles,
-      label: `council-merge/${dimIds.join(',')}`,
-    });
-    timeMachineCommitId = commit.commitId;
-    logger.info(chalk.dim(`  [time-machine] commit ${commit.commitId.slice(0, 12)} recorded`));
-  } catch (err) {
-    logger.warn(chalk.yellow(`  [time-machine] commit failed — audit trail incomplete: ${String(err).split('\n')[0]}`));
-  }
-
-  return { cipBlocked, timeMachineCommitId };
-}
+// Post-merge doctrine (validate + CIP + Time Machine) lives in council-parallel-doctrine.ts
+// (file-size split).
 
 // ── Progress artifact ─────────────────────────────────────────────────────────
 
@@ -636,6 +561,13 @@ export async function runParallelCouncil(options: ParallelCouncilOptions): Promi
         minJudges: effectiveMinJudges,
         preComputedConsensus: slotMode ? judgeQueue.getStreamingVerdicts() : undefined,
       });
+
+      // Quorum-degradation provenance (self-challenge #4): a thin pool used to lower the judge
+      // quorum SILENTLY — one LLM judge approving a merge is a materially weaker gate, and nothing
+      // downstream knew. The merge still proceeds (the remaining council must stay able to act),
+      // but every degraded-quorum merge now carries the fact in its dissent log, visible to the
+      // round summary, the run ledger, and any later court or human audit.
+      markDegradedQuorumMerges(mergeResults, effectiveMinJudges, minJudges, activeForJudging.length);
 
       const roundMerged = mergeResults.filter(r => r.merged).length;
       totalMerged += roundMerged;

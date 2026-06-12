@@ -64,6 +64,31 @@ export function resolveEffectiveMinJudges(activeMemberCount: number, requestedMi
   return Math.max(1, Math.min(requestedMinJudges, activeMemberCount - 1));
 }
 
+/**
+ * Quorum-degradation provenance (self-challenge #4): when the live pool forced the judge quorum
+ * below policy, every merge approved under the reduced quorum must CARRY that fact — one judge
+ * approving a merge is a materially weaker gate, and silently passing it forward made degraded
+ * merges indistinguishable from fully-judged ones in summaries, ledgers, and later courts.
+ * Mutates each merged result's dissent log; returns how many merges were flagged.
+ */
+export function markDegradedQuorumMerges(
+  results: Array<{ merged: boolean; memberId: string; slotId?: string; dissentLog: string[] }>,
+  effectiveMinJudges: number,
+  policyMinJudges: number,
+  livePoolSize: number,
+): number {
+  if (effectiveMinJudges >= policyMinJudges) return 0;
+  let flagged = 0;
+  for (const r of results) {
+    if (!r.merged) continue;
+    r.dissentLog.push(
+      `quorum-degraded: approved by ${effectiveMinJudges} judge(s) under a policy of ${policyMinJudges} (live pool ${livePoolSize}, builder excluded) — flag for the frontier court / human audit`,
+    );
+    flagged += 1;
+  }
+  return flagged;
+}
+
 export class MemberHealthTracker {
   private readonly health = new Map<string, MemberHealth>();
 

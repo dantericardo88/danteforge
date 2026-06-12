@@ -255,6 +255,22 @@ describe('resolveEffectiveMinJudges — quorum adapts to live pool', () => {
     assert.equal(resolveEffectiveMinJudges(4, 2), 2);
   });
 
+  test('degraded-quorum merges CARRY the fact (self-challenge #4 pin)', async () => {
+    const { markDegradedQuorumMerges } = await import('../src/matrix/engines/council-member-health.js');
+    const results = [
+      { merged: true, memberId: 'codex', slotId: 'codex-0', dissentLog: [] as string[] },
+      { merged: false, memberId: 'claude-code', slotId: 'claude-0', dissentLog: [] as string[] },
+    ];
+    // Degraded (1 judge under a 2-judge policy): the MERGED result gets provenance, the unmerged doesn't.
+    assert.equal(markDegradedQuorumMerges(results, 1, 2, 2), 1);
+    assert.match(results[0]!.dissentLog[0]!, /quorum-degraded.*1 judge.*policy of 2/);
+    assert.equal(results[1]!.dissentLog.length, 0);
+    // Full quorum: nothing flagged, nothing mutated.
+    const clean = [{ merged: true, memberId: 'codex', dissentLog: [] as string[] }];
+    assert.equal(markDegradedQuorumMerges(clean, 2, 2, 3), 0);
+    assert.equal(clean[0]!.dissentLog.length, 0);
+  });
+
   test('end-to-end: shrunk quorum turns the dead-judge FAIL into a PASS', () => {
     // Before the fix: minPasses == minJudges == 2, but dead grok casts UNCLEAR →
     // only 1 PASS possible → FAIL (this is the merged-nothing bug, proven below).
