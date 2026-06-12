@@ -170,9 +170,9 @@ export async function defaultPushTo9(
     });
     plan = await planMod.decomposeFrontierPlan(cwd, dimId, spec0, members as string[],
       async (memberId, prompt) => {
-        const { makeAdapter, makeWorkPacket, makeLease } = await import('./council.js');
+        const { makeAdapter, makeLease } = await import('./council.js');
         const { runAdapter } = await import('../../matrix/adapters/adapter-interface.js');
-        const adapter = makeAdapter(memberId as CouncilMemberId, makeWorkPacket(prompt, cwd), true);
+        const adapter = makeAdapter(memberId as CouncilMemberId, await makePlanConsultPacket(prompt, cwd), true);
         const r = await runAdapter(adapter, { lease: makeLease(cwd), cwd });
         return (r as { finalMessage?: string }).finalMessage ?? '';
       }, planLog).catch((err: unknown) => {
@@ -294,6 +294,17 @@ export async function headSha(cwd: string): Promise<string | null> {
 export async function defaultDiscoverMembers(): Promise<CouncilMemberId[]> {
   const { discoverCouncil } = await import('./council.js');
   return (await discoverCouncil()).filter(m => m.available).map(m => m.id as CouncilMemberId);
+}
+
+/** Build the work packet for a plan decomposition/audit consultation. dimensionId MUST be
+ *  'council-consultation': every adapter's judge prompt builder passes consultation objectives
+ *  through RAW; anything else gets wrapped in code-reviewer VERDICT boilerplate — run 3j's
+ *  decomposer answered as a judge (~345-char verdict, no JSON plan) for exactly this reason. */
+export async function makePlanConsultPacket(prompt: string, cwd: string): Promise<import('../../matrix/types/work-graph.js').WorkPacket> {
+  const { makeWorkPacket } = await import('./council.js');
+  const packet = makeWorkPacket(prompt, cwd);
+  (packet as unknown as { dimensionId: string }).dimensionId = 'council-consultation';
+  return packet;
 }
 
 /** CONCURRENT build: freeze each dim's spec, then council --parallel builds them in isolated

@@ -112,4 +112,18 @@ describe('frontier-plan — the bar becomes a deterministic checklist, never an 
       async (_id, p) => (p.includes('VERDICT') ? 'VERDICT: PASS — covers the bar' : GOOD_ITEMS), log);
     assert.match(logs.at(-1)!, /plan INSTALLED — 3 items/, 'success announces the install');
   });
+
+  test('run-3j regression: the consult packet reaches judge prompt builders RAW, not wrapped in verdict boilerplate', async () => {
+    // Run 3j: the decomposition prompt was sent in a 'council-task' packet, so codex's judge
+    // prompt builder wrapped it in "You are an independent code reviewer… VERDICT: PASS/FAIL"
+    // boilerplate — the decomposer answered as a judge (~345 chars, no JSON array) every time.
+    const { makePlanConsultPacket } = await import('../src/cli/commands/ascend-frontier-push.js');
+    const { makeLease } = await import('../src/cli/commands/council.js');
+    const { buildCodexJudgePrompt } = await import('../src/matrix/adapters/codex-adapter.js');
+    const prompt = 'Decompose this frozen bar into checklist items. Respond with ONLY a JSON array.';
+    const packet = await makePlanConsultPacket(prompt, 'X:\\tmp');
+    assert.equal((packet as unknown as { dimensionId: string }).dimensionId, 'council-consultation');
+    assert.equal(buildCodexJudgePrompt(packet, makeLease('X:\\tmp')), prompt,
+      'the decomposition prompt must pass through verbatim — no reviewer/VERDICT wrapper');
+  });
 });
