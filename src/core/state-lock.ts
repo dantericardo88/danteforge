@@ -32,7 +32,7 @@ export async function clearStaleLock(lockPath: string): Promise<void> {
   try {
     const content = await fs.readFile(lockPath, 'utf8');
     const pid = parseInt(content.trim(), 10);
-    if (!Number.isNaN(pid) && !isProcessAlive(pid)) {
+    if (Number.isNaN(pid) || !isProcessAlive(pid)) {
       await fs.unlink(lockPath);
     }
   } catch { /* lock may already be released or content unreadable */ }
@@ -124,15 +124,18 @@ export async function withSelfHealingLock<T>(
     try {
       const statResult = await statFn(lockPath);
       isStale = now() - statResult.mtimeMs > SELF_HEALING_LOCK_STALE_MS;
-      if (!isStale) {
-        // Read PID for helpful error message.
-        const content = await fs.readFile(lockPath, 'utf8');
-        const parsed = parseInt(content.trim(), 10);
-        if (!Number.isNaN(parsed)) stalePid = parsed;
-      }
+      const content = await fs.readFile(lockPath, 'utf8');
+      const parsed = parseInt(content.trim(), 10);
+      if (!Number.isNaN(parsed)) stalePid = parsed;
     } catch {
       // Lock disappeared between check and read — just retry.
       isStale = true;
+    }
+
+    if (stalePid !== null && isProcessAlive(stalePid)) {
+      throw new Error(
+        `Another danteforge process may be running. PID: ${stalePid}. Lock: ${lockPath}`,
+      );
     }
 
     if (isStale) {

@@ -81,11 +81,11 @@ const MARKET_DIMS = MARKET_CAPPED_DIMS; // canonical set — src/core/market-dim
 
 export async function commandHasSeams(command: string, projectPath: string): Promise<boolean> {
   // Check the command string itself first. Command-string seams (injection flags like
-  // _cipCheck, inline vi.mock in a node -e script) are JS/CLI idioms — the JS list.
+  // _cipCheck, inline Vitest module mocks in a node -e script) are JS/CLI idioms — the JS list.
   if (SEAM_PATTERNS_BY_LANG.js.some(p => p.test(command))) return true;
   // Check referenced test files for the SEAM PATTERNS OF THEIR OWN LANGUAGE — a Python
   // test importing unittest.mock or a Go test importing testify/mock is exactly as
-  // seamed as a JS test calling vi.mock.
+  // seamed as a JS test using Vitest module mocks.
   const testFiles = extractTestFiles(command);
   for (const tf of testFiles) {
     const patterns = seamPatternsForFile(tf);
@@ -290,7 +290,7 @@ export async function checkOutcomeIntegrity(
             dimId: dim.id,
             outcomeId: outcome.id,
             detail:
-              `Outcome "${outcome.id}" uses injection/mocking seams (_cipCheck, vi.mock, ` +
+              `Outcome "${outcome.id}" uses injection/mocking seams (_cipCheck, Vitest module mocking, ` +
               `unittest.mock, testify/mock, mockall, etc.). Seamed outcomes prove code paths ` +
               `exist, not real behavior. Score capped at 6.0.`,
           });

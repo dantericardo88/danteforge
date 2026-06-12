@@ -236,6 +236,8 @@ program
   .option('--max-cycles <n>', 'Global stop after N cycles (default 200)')
   .option('--max-attempts <n>', 'Novel push attempts per dim before an honest generator-ceiling (default 3)')
   .option('--max-build-attempts <n>', 'No-progress setup/build cycles before a stuck dim is ceilinged (default = max-attempts)')
+  .option('--rehearse', 'Rehearsal: drive the FULL coordination layer against a scripted scratch repo (real planner/ledgers/ceilings, recorded work layer) — minutes, zero LLM cost; run before every live campaign')
+  .option('--keep', 'With --rehearse: keep the scratch repo for inspection')
   .option('--json', 'Machine-readable result')
   .option('--cwd <path>', 'Project directory')
   .addHelpText('after', `
@@ -263,6 +265,12 @@ a ceiling instead of a 9. Build-to-7 uses harden-crusade (no member-spawn), so i
   .action((opts) => {
     void (async () => {
       try {
+        if (opts.rehearse) {
+          const { runAscendRehearsal } = await import('./commands/ascend-rehearse.js');
+          const report = await runAscendRehearsal({ json: opts.json as boolean | undefined, keep: opts.keep as boolean | undefined });
+          if (!report.ok) process.exitCode = 1;
+          return;
+        }
         const { runAscendFrontier } = await import('./commands/ascend-frontier.js');
         const r = await runAscendFrontier({
           dryRun: opts.dryRun as boolean | undefined,

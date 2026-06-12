@@ -5,6 +5,7 @@ import fs from 'fs/promises';
 import path from 'path';
 import chalk from 'chalk';
 import { logger } from '../../core/logger.js';
+import { isProcessAlive } from '../../core/state-lock.js';
 
 const STATE_DIR = '.danteforge';
 const SNAPSHOTS_DIR = 'snapshots';
@@ -20,6 +21,7 @@ export interface HealthCheck {
   name: string;
   status: CheckStatus;
   detail: string;
+  repairable?: boolean;
 }
 
 export interface ConvergenceHealthResult {
@@ -46,6 +48,8 @@ export interface ConvergenceHealthOptions {
   _unlink?: (p: string) => Promise<void>;
   /** Injection seam: override writeFile for testing */
   _writeFile?: (p: string, data: string) => Promise<void>;
+  /** Injection seam: override process liveness checks for deterministic tests */
+  _isProcessAlive?: (pid: number) => boolean;
 }
 
 export interface RepairAction {
@@ -60,6 +64,11 @@ export interface RepairAction {
 interface ScoreSnapshot {
   score?: number;
   timestamp?: string;
+}
+
+function parseLockPid(raw: string): number | null {
+  const pid = Number.parseInt(raw.trim(), 10);
+  return Number.isInteger(pid) && pid > 0 ? pid : null;
 }
 
 // ── Individual checks ────────────────────────────────────────────────────────
@@ -190,6 +199,8 @@ async function checkStaleLock(
   opts: ConvergenceHealthOptions,
 ): Promise<HealthCheck> {
   const statFn = opts._stat ?? ((p: string) => fs.stat(p));
+  const readFile = opts._readFile ?? ((p: string, enc: string) => fs.readFile(p, enc as BufferEncoding));
+  const processAlive = opts._isProcessAlive ?? isProcessAlive;
   const now = opts._now ?? (() => Date.now());
 
   try {
@@ -197,6 +208,22 @@ async function checkStaleLock(
     const ageMs = now() - stat.mtimeMs;
     if (ageMs > STALE_LOCK_MS) {
       const ageMin = Math.round(ageMs / 60_000);
+      let pid: number | null = null;
+      try {
+        pid = parseLockPid(await readFile(lockPath, 'utf8'));
+      } catch {
+        // An unreadable old lock is still an abandoned lock candidate.
+      }
+
+      if (pid !== null && processAlive(pid)) {
+        return {
+          name: 'Lock File',
+          status: 'warn',
+          detail: `Old lock file is held by live process PID ${pid} (${ageMin} min old) - preserving lock`,
+          repairable: false,
+        };
+      }
+
       return {
         name: 'Lock File',
         status: 'fail',
@@ -285,7 +312,7 @@ async function autoRepair(
   const repairs: RepairAction[] = [];
 
   // Repair: clear stale lock file
-  const lockCheck = checks.find(c => c.name === 'Lock File' && c.status === 'fail');
+  const lockCheck = checks.find(c => c.name === 'Lock File' && c.status === 'fail' && c.repairable !== false);
   if (lockCheck) {
     try {
       await unlinkFn(lockPath);

@@ -366,7 +366,7 @@ export async function runOneOutcome(options: RunOutcomeOptions): Promise<Outcome
 
 // ── Confidence tagging ────────────────────────────────────────────────────────
 
-// Command-string seam idioms (injection flags, inline vi.mock in node -e scripts) are
+// Command-string seam idioms (injection flags, inline Vitest module mocks in node -e scripts) are
 // JS/CLI shaped — the canonical JS list from test-file-patterns.ts.
 const SEAM_PATTERNS_RT = SEAM_PATTERNS_BY_LANG.js;
 const MARKET_DIMS_RT = MARKET_CAPPED_DIMS; // canonical set — src/core/market-dims.ts
@@ -379,7 +379,7 @@ const MARKET_DIMS_RT = MARKET_CAPPED_DIMS; // canonical set — src/core/market-
  * File-content seam detection: inspects referenced test files, not just the command
  * string, using the SEAM PATTERNS OF EACH FILE'S LANGUAGE (test-file-patterns.ts).
  * A clean command like `npx tsx --test tests/foo.test.ts` is still INFERRED when
- * foo.test.ts contains seam injection patterns (_cipCheck, vi.mock, etc) — and a
+ * foo.test.ts contains seam injection patterns (_cipCheck, Vitest module mocks, etc) — and a
  * `pytest tests/test_foo.py` is INFERRED when test_foo.py imports unittest.mock,
  * exactly as a Go test importing testify/mock is.
  *

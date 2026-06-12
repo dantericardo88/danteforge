@@ -46,9 +46,16 @@ export interface PlanOpts {
   buildTarget?: number; // default 7.0
 }
 
-/** A dim is "complete" for STOP accounting: at the validated frontier OR carrying an active ceiling. */
+/** A dim is "complete" for STOP accounting: at the validated frontier OR carrying an active ceiling.
+ *
+ *  A court-VALIDATED dim is terminal REGARDLESS of its current derived score (rehearsal-mode
+ *  finding): the court is the sole authority past 8.0, and a validated dim whose receipts derive
+ *  below 9 (decay, T7 consensus pending) is depth/validate work — re-PUSHING it re-convenes
+ *  judges on an already-validated spec and, after maxAttempts, ceilinged it with FALSE provenance
+ *  ("N novel attempts failed the court" — they were validations). effectiveStatus already demotes
+ *  a post-validation EDIT to 'stale', so this never lets a moved-goalpost dim read as done. */
 export function isDimDone(d: DimState, nowIso: string): boolean {
-  if (d.frontierStatus === 'validated' && d.effectiveScore >= 9.0) return true;
+  if (d.frontierStatus === 'validated') return true;
   return d.ceiling != null && isCeilingActive(d.ceiling, nowIso);
 }
 
@@ -95,7 +102,7 @@ export function planNextAction(dims: DimState[], opts: PlanOpts): AscendAction {
   if (candidates.length === 0) {
     const total = dims.length;
     const ceilinged = dims.filter(d => active(d)).length;
-    const validated = dims.filter(d => d.frontierStatus === 'validated' && d.effectiveScore >= 9).length;
+    const validated = dims.filter(d => d.frontierStatus === 'validated').length;
     return { type: 'done', summary: `${validated}/${total} at validated frontier, ${ceilinged} at honest ceiling — all dims complete.` };
   }
 

@@ -87,7 +87,7 @@ describe('withSelfHealingLock', () => {
   it('auto-removes stale lock file (>5 min old) and retries', async () => {
     const lockPath = path.join(tmpDir, '.danteforge', 'STATE.lock');
     // Write a fake lock file.
-    await fs.writeFile(lockPath, '99999', 'utf8');
+    await fs.writeFile(lockPath, 'abandoned-lock', 'utf8');
 
     let ran = false;
     const staleTime = Date.now() - SELF_HEALING_LOCK_STALE_MS - 1000;
@@ -101,6 +101,29 @@ describe('withSelfHealingLock', () => {
       },
     );
     assert.ok(ran, 'fn should have run after stale lock was cleared');
+  });
+
+  it('does not clear an old lock held by a live process', async () => {
+    const lockPath = path.join(tmpDir, '.danteforge', 'STATE.lock');
+    await fs.writeFile(lockPath, String(process.pid), 'utf8');
+    const staleTime = Date.now() - SELF_HEALING_LOCK_STALE_MS - 1000;
+    let ran = false;
+
+    await assert.rejects(
+      () => withSelfHealingLock(
+        tmpDir,
+        async () => { ran = true; },
+        {
+          _now: () => Date.now(),
+          _stat: async () => ({ mtimeMs: staleTime }),
+        },
+      ),
+      /Another danteforge process may be running/,
+    );
+
+    assert.strictEqual(ran, false);
+    assert.strictEqual(await fs.readFile(lockPath, 'utf8'), String(process.pid));
+    await fs.unlink(lockPath).catch(() => {});
   });
 
   it('throws a helpful error for a fresh lock held by another process', async () => {
@@ -312,6 +335,32 @@ describe('convergenceHealthCheck', () => {
     assert.ok(lockRepair, 'should have a clear-stale-lock repair action');
     assert.strictEqual(lockRepair!.success, true);
     assert.strictEqual(unlinkCalled, true);
+
+    await fs.unlink(lockPath).catch(() => {});
+  });
+
+  it('autoRepair preserves an old lock held by a live process', async () => {
+    const lockPath = path.join(tmpDir, '.danteforge', 'STATE.lock');
+    await fs.writeFile(lockPath, String(process.pid), 'utf8');
+    const staleDate = new Date(Date.now() - SELF_HEALING_LOCK_STALE_MS - 60_000);
+    await fs.utimes(lockPath, staleDate, staleDate);
+
+    const result = await convergenceHealthCheck({
+      cwd: tmpDir,
+      autoRepair: true,
+    });
+
+    const lockCheck = result.checks.find(c => c.name === 'Lock File');
+    assert.ok(lockCheck, 'Lock File check should be present');
+    assert.strictEqual(lockCheck!.status, 'warn');
+    assert.ok(
+      lockCheck!.detail.includes('live process'),
+      `Expected live process detail, got: ${lockCheck!.detail}`,
+    );
+
+    const lockContent = await fs.readFile(lockPath, 'utf8');
+    assert.strictEqual(lockContent, String(process.pid));
+    assert.ok(!result.repairs?.some(r => r.type === 'clear-stale-lock' && r.success));
 
     await fs.unlink(lockPath).catch(() => {});
   });

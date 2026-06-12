@@ -336,7 +336,7 @@ Read the relevant source files.
 ## Seam Audit (mandatory — check before issuing verdict)
 Examine every test file referenced in outcome commands. Search for injection seam patterns:
   _cipCheck, _runPass, _runAutoforge, _runVerify, _now\\b, _discover, _loadMatrix, _runAdapter,
-  jest.mock(, vi.mock(, sinon.stub(, sinon.mock(
+  Jest/Vitest module-mock calls, sinon.stub(, sinon.mock(
 If any T5/T6/T7/T8 outcome command references a file containing these patterns, add to BLOCKING_ISSUES:
   [SEAM] <filename>:<pattern> — seamed evidence cannot support T5+ credit
 A work packet that introduces seamed T5+ outcome commands MUST receive VERDICT: FAIL.
