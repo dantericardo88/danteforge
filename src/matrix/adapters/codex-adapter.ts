@@ -374,6 +374,14 @@ ${workPacket.proof.proofRequired.map(p => `- ${p}`).join('\n')}
 
 If you write outside the allowed paths, your changes will be reverted and the run will be marked failed.
 
+# TREE SAFETY (ABSOLUTE — your worktree SHARES the main repository's git)
+NEVER run: git clean, git reset --hard / --merge, git checkout -- ., git restore with broad
+pathspecs, git stash, git switch/checkout to another branch, or any command that discards or
+relocates work. Your worktree's git commands can reach the OPERATOR'S checkout — running git
+clean / checkout from the wrong directory has destroyed live uncommitted operator work. Stay in
+your worktree directory at all times; make changes ONLY with file edits; if your work feels
+"dirty" or wrong, STOP and leave it — never wipe state to start over.
+
 # Task
 Make the file edits needed to satisfy the acceptance criteria. Stop when done. We will detect your changes via git status; no JSON output expected.`;
 }
