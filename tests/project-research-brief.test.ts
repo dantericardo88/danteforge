@@ -29,14 +29,14 @@ before(async () => { await fs.mkdir(ROOT, { recursive: true }); });
 after(async () => { await fs.rm(ROOT, { recursive: true, force: true }).catch(() => {}); });
 
 describe('resolveProjectBrief — identity from the TARGET repo, never assumed', () => {
-  test('project-intent.json (detect artifact) wins and carries goal + categories', async () => {
+  test('project-intent.json (detect artifact) wins when it AGREES with the manifest, carrying goal + categories', async () => {
     const dir = await makeRepo({
       '.danteforge/matrix-orchestration/project-intent.json': JSON.stringify({
         projectName: 'acme-scanner', projectType: 'security_tool',
         goal: 'Scan container images for CVEs before deploy.',
         competitiveCategoryBoundary: { direct: ['container security scanners'] },
       }),
-      'package.json': JSON.stringify({ name: 'something-else', description: 'ignored — intent wins' }),
+      'package.json': JSON.stringify({ name: 'acme-scanner', description: 'container CVE scanner' }),
     });
     const brief = await resolveProjectBrief(dir);
     assert.equal(brief.source, 'intent');
@@ -45,6 +45,36 @@ describe('resolveProjectBrief — identity from the TARGET repo, never assumed',
     assert.match(ctx, /Scan container images for CVEs/);
     assert.match(ctx, /container security scanners/);
     assert.doesNotMatch(ctx, /DanteForge/);
+  });
+
+  test('intent wins when there is NO manifest to cross-check against', async () => {
+    const dir = await makeRepo({
+      '.danteforge/matrix-orchestration/project-intent.json': JSON.stringify({
+        projectName: 'lone-intent', projectType: 'cli_tool', goal: 'A repo with no manifest at all.',
+      }),
+    });
+    const brief = await resolveProjectBrief(dir);
+    assert.equal(brief.source, 'intent');
+    assert.equal(brief.projectName, 'lone-intent');
+  });
+
+  test('CH-016 regression: a STALE intent that contradicts the manifest LOSES to the manifest', async () => {
+    // The live failure: a month-old cold-test fixture named "Quill" (a toy TODO-CLI) survived in
+    // project-intent.json and aimed real ladder research at the wrong competitive landscape.
+    const dir = await makeRepo({
+      '.danteforge/matrix-orchestration/project-intent.json': JSON.stringify({
+        projectName: 'Quill', projectType: 'cli_tool',
+        goal: 'A simple command-line TODO list manager.',
+      }),
+      'package.json': JSON.stringify({ name: 'dantesecurity', description: 'USB/endpoint security agent' }),
+      'README.md': '# DanteSecurity\n\nA Rust endpoint agent that blocks unauthorized USB devices.\n',
+    });
+    const brief = await resolveProjectBrief(dir);
+    assert.equal(brief.source, 'manifest', 'stale intent must not override the repo manifest');
+    assert.equal(brief.projectName, 'dantesecurity');
+    const ctx = brief.contextLines.join('\n');
+    assert.doesNotMatch(ctx, /TODO list manager/);
+    assert.match(ctx, /USB\/endpoint security agent/);
   });
 
   test('package.json + README excerpt when no intent artifact exists', async () => {

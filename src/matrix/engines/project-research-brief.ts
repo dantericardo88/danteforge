@@ -7,7 +7,10 @@
 // gate then defends. This module resolves the TARGET repo's own identity from artifacts that
 // already exist, in priority order:
 //
-//   1. .danteforge/matrix-orchestration/project-intent.json  (matrix-orchestrate detect)
+//   1. .danteforge/matrix-orchestration/project-intent.json  (matrix-orchestrate detect),
+//      ONLY if its projectName agrees with the manifest's — a stale intent artifact that
+//      contradicts the repo's own manifest loses (CH-016: a month-old cold-test "Quill"
+//      fixture silently aimed live ladder research at the wrong competitive landscape)
 //   2. package.json / Cargo.toml / pyproject.toml name+description, plus the README's first
 //      prose paragraph
 //   3. an honest "read the README first" instruction — it NEVER invents a domain
@@ -17,6 +20,7 @@
 
 import fs from 'node:fs/promises';
 import path from 'node:path';
+import { logger } from '../../core/logger.js';
 
 export interface ProjectResearchBrief {
   projectName: string;
@@ -109,6 +113,13 @@ function genericContext(name: string, description: string | undefined, readmeExc
  * repo first instead of assuming one.
  */
 export async function resolveProjectBrief(projectPath: string): Promise<ProjectResearchBrief> {
+  // Manifest identity is read FIRST as the cross-check (CH-016, live finding): a stale
+  // project-intent.json from a month-old cold-test fixture ("Quill", a toy TODO-CLI) silently
+  // overrode DanteForge's real identity and aimed live ladder research at the WRONG competitive
+  // landscape. The manifest is the repo's own declaration; an intent artifact that contradicts
+  // it is stale tooling state and must lose.
+  const manifestIdentity = await readManifestIdentity(projectPath);
+
   // 1. The detect/discover artifact (richest honest source — carries goal + category boundary).
   const intentRaw = await readIfExists(path.join(projectPath, '.danteforge', 'matrix-orchestration', 'project-intent.json'));
   if (intentRaw) {
@@ -119,21 +130,26 @@ export async function resolveProjectBrief(projectPath: string): Promise<ProjectR
       };
       if (intent.projectName && intent.goal) {
         if (isDanteForge(intent.projectName)) return danteforgeBrief();
-        const cats = intent.competitiveCategoryBoundary?.direct ?? [];
-        return {
-          projectName: intent.projectName,
-          source: 'intent',
-          contextLines: genericContext(intent.projectName, undefined, null, [
-            `Project type: ${intent.projectType ?? 'software project'}. Goal: ${intent.goal}`,
-            ...(cats.length > 0 ? [`Direct competitive categories: ${cats.join(', ')}.`] : []),
-          ]),
-        };
+        const manifestName = manifestIdentity?.name?.trim();
+        if (manifestName && manifestName.toLowerCase() !== intent.projectName.trim().toLowerCase()) {
+          logger.warn(`[research-brief] project-intent.json names "${intent.projectName}" but the manifest says "${manifestName}" — the intent artifact is stale (cold-test leftover?); trusting the manifest. Delete .danteforge/matrix-orchestration/project-intent.json to silence this.`);
+        } else {
+          const cats = intent.competitiveCategoryBoundary?.direct ?? [];
+          return {
+            projectName: intent.projectName,
+            source: 'intent',
+            contextLines: genericContext(intent.projectName, undefined, null, [
+              `Project type: ${intent.projectType ?? 'software project'}. Goal: ${intent.goal}`,
+              ...(cats.length > 0 ? [`Direct competitive categories: ${cats.join(', ')}.`] : []),
+            ]),
+          };
+        }
       }
     } catch { /* malformed — fall through to the manifest */ }
   }
 
   // 2. Manifest + README.
-  const manifest = await readManifestIdentity(projectPath);
+  const manifest = manifestIdentity;
   if (manifest) {
     if (isDanteForge(manifest.name)) return danteforgeBrief();
     const readme = await readIfExists(path.join(projectPath, 'README.md'));
