@@ -1,0 +1,162 @@
+[
+  {
+    "id": "CH-001",
+    "title": "Blind retry - dissent never reached the builder",
+    "problem": "Frontier-court rejection reasons died in the audit ledger; the next build attempt got the same generic goal.",
+    "evidence": "run 3f cycle 1->2: REJECTED 0/2 then identical goal string in defaultPushTo9.",
+    "opportunity": "Every rejection becomes a course correction.",
+    "status": "solved",
+    "openedAt": "2026-06-12T05:14:11.468Z",
+    "resolution": "solved: court-feedback.ts + composeBuildGoal (commit feat(court): verdict->builder feedback)",
+    "resolvedAt": "2026-06-12T05:14:11.470Z"
+  },
+  {
+    "id": "CH-002",
+    "title": "Bar-goal disconnect",
+    "problem": "Builders built to generic objectives while judges judged the ladder 9-row; rejection was the expected outcome.",
+    "evidence": "convergence rejected: judges demanded the category_delta no builder was ever shown.",
+    "opportunity": "Validation becomes reachable.",
+    "status": "solved",
+    "openedAt": "2026-06-12T05:14:11.471Z",
+    "resolution": "solved: the frozen ladder bar is now in every push build goal (same commit)",
+    "resolvedAt": "2026-06-12T05:14:11.472Z"
+  },
+  {
+    "id": "CH-003",
+    "title": "Quorum degradation was silent",
+    "problem": "Merge court lowered min-judges 2->1 with only a log line; degraded merges were indistinguishable downstream.",
+    "evidence": "run 3e/3f: [merge-court] lowering min-judges 2 -> 1.",
+    "opportunity": "Weaker gates become visible to later courts and audits.",
+    "status": "solved",
+    "openedAt": "2026-06-12T05:14:11.473Z",
+    "resolution": "solved: markDegradedQuorumMerges provenance (commit feat(court): quorum-degradation provenance)",
+    "resolvedAt": "2026-06-12T05:14:11.474Z"
+  },
+  {
+    "id": "CH-004",
+    "title": "Campaigns burned cycles into the session limit",
+    "problem": "Once the shared agent budget fired, every build/judge failed identically until the stated reset; cycles were wasted as fake build-failures.",
+    "evidence": "two workflow mass-stalls + failures list naming resets 7:10pm on 2026-06-11.",
+    "opportunity": "48h+ campaigns survive budget windows unattended.",
+    "status": "solved",
+    "openedAt": "2026-06-12T05:14:11.475Z",
+    "resolution": "solved: noteBudgetLimit + orchestrator budget-pause (commit feat(budget))",
+    "resolvedAt": "2026-06-12T05:14:11.476Z"
+  },
+  {
+    "id": "CH-005",
+    "title": "Fleet suite re-authoring was operator-driven",
+    "problem": "Re-authoring placeholder outcome suites needed hand-built agent workflows; DanteSecurity has 150 dims of fiction.",
+    "evidence": "DanteForge depth top-up required a 25-agent operator-driven workflow.",
+    "opportunity": "One command per dim authors honest receipts fleet-wide.",
+    "status": "solved",
+    "openedAt": "2026-06-12T05:14:11.477Z",
+    "resolution": "solved v1: danteforge author-outcome (commit feat(author)); callsite autonomy still open as CH-006",
+    "resolvedAt": "2026-06-12T05:14:11.477Z"
+  },
+  {
+    "id": "CH-006",
+    "title": "Cycle economics: tiny payload per hour",
+    "problem": "A push attempt costs ~60min of orchestration + LLM for 2-3 file diffs; overhead dominates real building.",
+    "evidence": "run 3e/3f ledgers: 40m-capped council builds, minutes of merge court, per small candidate diffs.",
+    "opportunity": "Bigger payload per cycle = fewer cycles to a court PASS = cheaper, faster 9.0s.",
+    "status": "open",
+    "openedAt": "2026-06-12T05:14:11.478Z"
+  },
+  {
+    "id": "CH-007",
+    "title": "External grounding: provability is not desirability",
+    "problem": "All dims, weights, and outcomes are internally chosen; every receipt can pass while a real user finds the product confusing. No external benchmark or user telemetry feeds any score.",
+    "evidence": "market-capped 5.0s are the system admitting zero users; input_source reserves 9.5 for registered external suites - nothing uses it.",
+    "opportunity": "First external benchmark receipt + first real-user telemetry turn the matrix from self-consistent to world-consistent.",
+    "status": "open",
+    "openedAt": "2026-06-12T05:14:11.479Z"
+  },
+  {
+    "id": "CH-008",
+    "title": "Single-platform: Windows-only proven",
+    "problem": "Junctions, cmd.exe shims, PowerShell assumptions throughout; no CI runs the laws/zoo/rehearsal on Linux/macOS.",
+    "evidence": "council-worktree junction notes; resolveSpawnTarget cmd.exe wrapping; no .github/workflows in repo.",
+    "opportunity": "Linux CI = fleet members can run anywhere; required for any external adoption.",
+    "status": "open",
+    "openedAt": "2026-06-12T05:14:11.480Z"
+  },
+  {
+    "id": "CH-009",
+    "title": "Callsite autonomy for authored outcomes",
+    "problem": "author-outcome requires the caller to name the production callsite; tracing a command registration to its real module is still manual/agent work.",
+    "evidence": "outcome-author.ts requires --callsite by design (inventing callsites was the fabrication era).",
+    "opportunity": "Registration-tracing (commander action -> import chain) could derive callsites honestly, completing fleet-scale authoring.",
+    "status": "open",
+    "openedAt": "2026-06-12T05:14:11.480Z"
+  },
+  {
+    "id": "CH-010",
+    "title": "LLM-judge calibration drift",
+    "problem": "Court quality is bounded by un-calibrated LLM judges; no measurement exists of judge consistency across same-evidence cases.",
+    "evidence": "pending-audit queue exists but no calibration metric; verdicts vary with member availability.",
+    "opportunity": "A judge-calibration receipt (same case, k judges, agreement rate) makes court verdicts auditable instruments.",
+    "status": "open",
+    "openedAt": "2026-06-12T05:14:11.481Z"
+  },
+  {
+    "id": "CH-011",
+    "title": "Host-sleep blindness: campaigns silently freeze with the laptop",
+    "problem": "ascend-frontier assumes an always-on host; OS sleep suspends the whole process tree mid-phase with no trace - the run neither pauses cleanly nor logs the gap, and elapsed-time displays (heartbeats, phase caps) silently absorb the frozen hours.",
+    "evidence": "run 3f PID 39124 launched 23:05 6/11, host slept overnight unplugged, thawed 6/12 morning and continued; operator believed it ran all night; my status reports claimed continuous operation.",
+    "opportunity": "Sleep-awareness (detect wall-clock jumps > Nmin, log a host-sleep event, restate phase timers) + a powercfg preflight note in the autopilot prompt = true set-and-forget on laptops, honest elapsed-time accounting.",
+    "status": "open",
+    "openedAt": "2026-06-12T14:33:36.666Z"
+  },
+  {
+    "id": "CH-012",
+    "title": "Long-running orchestrator cannot pick up rebuilds (stale-brain)",
+    "problem": "ascend-frontier loads dist into memory at launch; the in-process orchestrator (planNextAction, defaultPushTo9, composeBuildGoal, budget-pause) is frozen at launch-time code. Rebuilds during a live run only reach freshly-spawned sub-commands, so engine improvements silently DO NOT take effect mid-campaign.",
+    "evidence": "run 3f PID 39124 launched 23:05 6/11; court-feedback committed 00:57 6/12; .danteforge/court-feedback empty all run, builders flew blind for 11h on the pre-feedback engine.",
+    "opportunity": "A version stamp + mtime check that warns/exits when dist is newer than the running process; or a restart-on-rebuild supervisor. Prevents silently wasting hours of builder budget on superseded code.",
+    "status": "solved",
+    "openedAt": "2026-06-12T15:59:59.492Z",
+    "resolution": "commit: engineUpdated guard - orchestrator exits 'engine-updated' when dist is rebuilt mid-run; v3 prompt instructs relaunch (state durable)",
+    "resolvedAt": "2026-06-12T16:15:00.093Z"
+  },
+  {
+    "id": "CH-013",
+    "title": "Evidence designs cannot demonstrate the 9-rows (court lever 1)",
+    "problem": "Per-dim real_user_path run_commands/artifacts are categorically weaker than the frozen bars: convergence pushes a dim-triage JSON against a failure-injection-recovery 9-row; planning_quality runs on a tests/fixtures path (auto-FAIL per judge prompt); several dims still carry TODO run_commands. No build quality can flip a court through evidence that cannot carry the capability.",
+    "evidence": "Council consultation 2026-06-12 (read the live matrix + court code); judge dissent: 'the failure is structural and visible in the artifact'; 5/5 frontier rejections across 3f/3g.",
+    "opportunity": "One audited authoring pass per dim (upgrade run_command to genuinely exercise the 9-row, realistic non-fixture inputs, artifact set that carries multi-scenario proof; re-freeze) = the highest court-flip probability per token of any lever. Strengthening evidence is legitimate; the anti-laundering gate only forbids softening.",
+    "status": "open",
+    "openedAt": "2026-06-12T18:39:48.909Z"
+  },
+  {
+    "id": "CH-014",
+    "title": "Per-dim BUILD PLAN: decompose the 9-row into court-economical checklist items (court lever 2)",
+    "problem": "Push attempts are single cold 30m builds against multi-week bars; continuity guidance alone still re-derives whats missing each attempt and convenes a 2-judge court per partial attempt (the 0/5 pattern).",
+    "evidence": "Council consultation 2026-06-12: attempt-size mismatch dominates; 9-rows like OpenHands-grade runtime kernel are multi-week; checklist state IS the memory.",
+    "opportunity": "Plan file per dim (.danteforge/frontier-plans/<dim>.json): category_delta decomposed verbatim into items each with its own deterministic capability_test (never builder-asserted); attempts execute next unfinished items; court convenes only on plan-complete; one judge reviews the decomposition once (anti-easy-exam). Court costs drop sharply; builds match the 30m budget.",
+    "status": "solved",
+    "openedAt": "2026-06-12T18:39:49.085Z",
+    "resolution": "commit feat(plan): frontier-plan.ts engine - audited decomposition (different-member, fails closed), deterministic item gates, court-on-plan-complete, barHash invalidation, orchestrator plan-progress accounting; autoresearch-as-item-executor noted as follow-up (merge-back plumbing lives in harden-crusade)",
+    "resolvedAt": "2026-06-12T19:22:12.270Z"
+  },
+  {
+    "id": "CH-015",
+    "title": "Dimension density is emergent, not operator-settable",
+    "problem": "Matrix dimension count is an emergent sum (core scorer dims + 30 curated market dims when a peer preset resolves + competitor-derived feature dims from universe research) with no operator knob; DanteCode got 50 where the operator wanted 100; complex projects need denser matrices and re-bootstrap cannot honor a requested granularity.",
+    "evidence": "universe-definer.ts: preset-gated MARKET_DIM_SPECS + feature-universe build, no target-count parameter anywhere (grep targetDims/maxDims across define/discover paths).",
+    "opportunity": "A --target-dims knob on define/bootstrap/discover that scales competitor-feature decomposition depth (split coarse dims into sub-capabilities until the requested density is met, each still ladder-grounded) = right-sized matrices per project complexity, operator-controlled.",
+    "status": "open",
+    "openedAt": "2026-06-12T18:56:41.532Z"
+  },
+  {
+    "id": "CH-016",
+    "title": "Stale project-intent.json mis-identifies the project to the researcher",
+    "problem": "resolveProjectBrief reads .danteforge/matrix-orchestration/project-intent.json as the HIGHEST-priority identity source with no freshness/consistency check; a month-old cold-test fixture (projectName 'Quill', a TODO-CLI) overrode DanteForge's real manifest identity, so live ladder research for every draft-spec dim targeted the WRONG competitive landscape.",
+    "evidence": "run 3h log: '[universe] Researching 1 dims for Quill (identity: intent)'; project-intent.json mtime 2026-05-12, package.json name='danteforge'; isDanteForge() only checks intent.projectName, never cross-checks the manifest.",
+    "opportunity": "Cross-check: when the local manifest name resolves to a known identity (isDanteForge / peer-preset), it should win over a stale intent artifact; or stamp+expire intent files. Data cleanup done (removed the stale fixture, backup X:/tmp); the CODE fix needs the next rebuild (deferred — run 3h is mid-build, no mid-run rebuild).",
+    "status": "solved",
+    "openedAt": "2026-06-12T22:01:37.063Z",
+    "resolution": "Manifest cross-check shipped (c573b84): resolveProjectBrief reads the repo manifest FIRST; a contradicting intent artifact loses with a loud warn naming the stale file; 3 pins incl. the live Quill regression. Stale artifact removed (backup X:/tmp/quill-stale-intent-backup.json).",
+    "resolvedAt": "2026-06-12T22:26:47.737Z"
+  }
+]
