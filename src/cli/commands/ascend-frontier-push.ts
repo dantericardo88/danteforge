@@ -53,7 +53,46 @@ export function competitorsOf(matrix: CompeteMatrix | null): string[] {
   return [...(m?.competitors_closed_source ?? []), ...(m?.competitors_oss ?? [])];
 }
 
-export async function defaultPushTo9(cwd: string, dimId: string): Promise<PushResult> {
+/**
+ * Ladder remediation for a check-failed spec: when the ONLY structural blocker is the unresearched
+ * competitive bar (leader_target is ladder-seeded; with zero rubric rows the seeder no-ops and
+ * observed_capability stays an unauthored sentinel), run the SAME single-dim council research,
+ * then re-init (init re-seeds leader_target VERBATIM from the new ladder — the deterministic
+ * anti-laundering gate is untouched) and hand back the refreshed spec for a re-check.
+ * Returns null when remediation does not apply or research failed (the honest ceiling stands).
+ */
+/** Pure routing predicate (exported for the pin): remediation applies ONLY when the bar was never
+ *  researched — zero rubric rows AND the check names the ladder-seeded field. A spec failing on
+ *  artifacts/inputs/run_command is authoring work, not research work, and must NOT trigger a
+ *  ~10-minute council research. */
+export function isLadderBlocked(checkErrors: string[], rubricRows: number): boolean {
+  return rubricRows === 0 && checkErrors.some(e => e.includes('observed_capability'));
+}
+
+export async function remediateLadderIfBlocked(
+  cwd: string,
+  dimId: string,
+  checkErrors: string[],
+  researchLadder?: (cwd: string, dimId: string) => Promise<{ ok: boolean; reason: string }>,
+): Promise<FrontierSpec | null> {
+  const rubric = await loadDimRubric(cwd, dimId);
+  if (!isLadderBlocked(checkErrors, rubric.length)) return null;
+  const research = researchLadder ?? (async (c: string, d: string) => {
+    const { researchDimLadder } = await import('../../matrix/engines/ladder-research.js');
+    return researchDimLadder({ cwd: c, dimId: d });
+  });
+  const r = await research(cwd, dimId);
+  if (!r.ok) return null;
+  // Re-init re-seeds the leader_target fields from the freshly researched ladder rows.
+  await df(cwd, ['frontier-spec', 'init', dimId, '--write']);
+  return specOf((await loadMatrix(cwd))?.dimensions.find(d => d.id === dimId)) ?? null;
+}
+
+export async function defaultPushTo9(
+  cwd: string,
+  dimId: string,
+  deps?: { _researchLadder?: (cwd: string, dimId: string) => Promise<{ ok: boolean; reason: string }> },
+): Promise<PushResult> {
   // 0. Ensure a frontier_spec EXISTS before freeze. The autonomous loop never authored one — `freeze`
   //    used to throw "has no frontier_spec", so every push misrecorded as build-failed and NO dim could
   //    ever reach the court. init auto-derives the real tracked competitor + a real-product run_command
@@ -72,7 +111,16 @@ export async function defaultPushTo9(cwd: string, dimId: string): Promise<PushRe
   if (!spec0) {
     return { verdict: 'REJECTED', courtRan: false, fingerprint: { dimId, command: '', artifactPath: '', gitSha: await headSha(cwd) } };
   }
-  const check = checkFrontierSpec(spec0, competitorsOf(m0), await loadDimRubric(cwd, dimId));
+  let check = checkFrontierSpec(spec0, competitorsOf(m0), await loadDimRubric(cwd, dimId));
+  if (!check.ok) {
+    // Ladder remediation (the last permanently-human 8→9 step made autonomous): a row-less Score
+    // Ladder means the bar was never RESEARCHED — research it, re-seed, re-check, one attempt.
+    const remediated = await remediateLadderIfBlocked(cwd, dimId, check.errors, deps?._researchLadder);
+    if (remediated) {
+      spec0 = remediated;
+      check = checkFrontierSpec(spec0, competitorsOf(await loadMatrix(cwd)), await loadDimRubric(cwd, dimId));
+    }
+  }
   if (!check.ok) {
     return {
       verdict: 'REJECTED', courtRan: false,
@@ -195,7 +243,16 @@ export async function defaultPromoteOne(cwd: string, a: { memberId: CouncilMembe
   if (!spec0) {
     return { dimId: a.dimId, builderId: a.memberId, verdict: 'REJECTED', passedByJudges: [], courtRan: false };
   }
-  const check = checkFrontierSpec(spec0, competitorsOf(m0), await loadDimRubric(cwd, a.dimId));
+  let check = checkFrontierSpec(spec0, competitorsOf(m0), await loadDimRubric(cwd, a.dimId));
+  if (!check.ok) {
+    // Same ladder remediation as the sequential push (parity — the parallel path must never be
+    // the weaker honesty boundary). runParallelRound serializes promoteOne, so no research races.
+    const remediated = await remediateLadderIfBlocked(cwd, a.dimId, check.errors);
+    if (remediated) {
+      spec0 = remediated;
+      check = checkFrontierSpec(spec0, competitorsOf(await loadMatrix(cwd)), await loadDimRubric(cwd, a.dimId));
+    }
+  }
   if (!check.ok) {
     return {
       dimId: a.dimId, builderId: a.memberId, verdict: 'REJECTED', passedByJudges: [], courtRan: false,

@@ -209,29 +209,11 @@ export async function runCapabilityTestExecute(options: CapabilityTestExecuteOpt
     return (options._authorFn ?? productionAuthor)(dimId);
   };
 
+  // ONE shared single-dim researcher (ladder-research.ts) — also the push path's spec-incomplete
+  // remediation, so the conductor and the frontier loop can never drift on what "researched" means.
   const researchLadderViaCouncil = async (dimId: string): Promise<{ ok: boolean; reason: string }> => {
-    const dim = dimById.get(dimId);
-    const { runCouncilUniversePhase } = await import('../../matrix/engines/council-universe-runner.js');
-    const result = await runCouncilUniversePhase({
-      projectPath: cwd,
-      targets: [{
-        dimId,
-        dimName: dim?.label ?? dimId,
-        currentScore: dim ? effectiveDimScore(dim) : 0,
-        targetScore: 9,
-        ossLeader: dim?.oss_leader || undefined,
-      }],
-      // The dim was routed here precisely BECAUSE it has no Score Ladder — an existing ladder-less
-      // universe file must be re-researched, not skipped.
-      skipExisting: false,
-    });
-    if (!result.written.includes(dimId)) {
-      return { ok: false, reason: 'council research produced no universe file (no council member available, or its output failed validation) — the ladder stays missing rather than invented.' };
-    }
-    if (!hasLadder(dimId)) {
-      return { ok: false, reason: 'the researched universe file contains no "## Score Ladder" section — the grounded bar is still missing, so authoring stays blocked.' };
-    }
-    return { ok: true, reason: 'competitor Score Ladder researched + written by the council.' };
+    const { researchDimLadder } = await import('../../matrix/engines/ladder-research.js');
+    return researchDimLadder({ cwd, dimId });
   };
 
   // SHORT-CIRCUIT after the first failed research of a pass (live cold-repo exam): each council

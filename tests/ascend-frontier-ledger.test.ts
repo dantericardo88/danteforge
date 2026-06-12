@@ -44,6 +44,53 @@ describe('parseCourtOutput — court output is read honestly (G3)', () => {
   });
 });
 
+describe('ladder remediation — the last permanently-human 8→9 step made autonomous', () => {
+  test('routing: research fires ONLY for a never-researched bar (zero rubric rows + ladder-seeded field named)', async () => {
+    const { isLadderBlocked } = await import('../src/cli/commands/ascend-frontier-push.js');
+    assert.equal(isLadderBlocked(['leader_target.observed_capability is empty/TODO — state the specific capability the leader has.'], 0), true);
+    assert.equal(isLadderBlocked(['real_user_path.observable_artifacts is empty/TODO — declare at least one real artifact the run produces.'], 0), false,
+      'artifact/input failures are authoring work — a 10-minute council research must not fire for them');
+    assert.equal(isLadderBlocked(['leader_target.observed_capability is empty/TODO'], 9), false,
+      'rubric rows exist → the bar WAS researched; an unseeded field is an init problem, not a research problem');
+  });
+
+  test('failed research keeps the honest ceiling (returns null, never invents a bar)', async () => {
+    const { remediateLadderIfBlocked } = await import('../src/cli/commands/ascend-frontier-push.js');
+    const dir = path.join(ROOT, 'ladder-fail');
+    await fs.mkdir(dir, { recursive: true }); // no universe dir → zero rubric rows
+    const out = await remediateLadderIfBlocked(dir, 'some_dim',
+      ['leader_target.observed_capability is empty/TODO'],
+      async () => ({ ok: false, reason: 'no council member available' }));
+    assert.equal(out, null, 'research failure → no spec mutation, the spec-incomplete ceiling stands');
+  });
+
+  test('researchDimLadder verifies USABLE ladder rows — an empty research result fails loudly', async () => {
+    const { researchDimLadder } = await import('../src/matrix/engines/ladder-research.js');
+    const dir = path.join(ROOT, 'ladder-verify');
+    const uniDir = path.join(dir, '.danteforge', 'compete', 'universe');
+    await fs.mkdir(uniDir, { recursive: true });
+    await fs.mkdir(path.join(dir, '.danteforge', 'compete'), { recursive: true });
+    await fs.writeFile(path.join(dir, '.danteforge', 'compete', 'matrix.json'),
+      JSON.stringify({ project: 'p', competitors: [], competitors_closed_source: [], competitors_oss: [], lastUpdated: '', overallSelfScore: 0, dimensions: [{ id: 'dim_x', label: 'X', weight: 1, scores: { self: 8 }, gap_to_leader: 1, leader: 'c', status: 'in-progress', sprint_history: [] }] }), 'utf8');
+
+    // Phase "succeeds" but writes a ladder-less universe file → must fail (bar still missing).
+    const noLadder = await researchDimLadder({ cwd: dir, dimId: 'dim_x',
+      _runPhase: async () => { await fs.writeFile(path.join(uniDir, 'dim_x.md'), '# notes only\n', 'utf8'); return { written: ['dim_x'] }; } });
+    assert.equal(noLadder.ok, false);
+    assert.match(noLadder.reason, /no usable/i);
+
+    // Phase writes REAL ladder rows → ok.
+    const withLadder = await researchDimLadder({ cwd: dir, dimId: 'dim_x',
+      _runPhase: async () => { await fs.writeFile(path.join(uniDir, 'dim_x.md'), '## Score Ladder\n| Score | What it looks like |\n|---|---|\n| 8 | Kiro-grade gates |\n| 9 | LangGraph-grade PDSE |\n', 'utf8'); return { written: ['dim_x'] }; } });
+    assert.equal(withLadder.ok, true);
+    assert.match(withLadder.reason, /2 rows/);
+
+    // Phase wrote NOTHING for this dim → fail, never invented.
+    const nothing = await researchDimLadder({ cwd: dir, dimId: 'dim_x', _runPhase: async () => ({ written: [] }) });
+    assert.equal(nothing.ok, false);
+  });
+});
+
 describe('defaultBuildState — cause-aware ceiling re-opening (fleet run 3d pin)', () => {
   test('a spec-incomplete ceiling is RESOLVED once the spec is frozen; a draft-spec ceiling stays', async () => {
     // Live failure: run 3d exited after ZERO cycles — every dim sat behind a stale spec-incomplete
