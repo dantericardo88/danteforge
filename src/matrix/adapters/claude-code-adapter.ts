@@ -276,16 +276,20 @@ export class ClaudeCodeAdapter implements AgentAdapter {
         const gitDiff = this.options._gitDiff ?? defaultGitDiff;
         const preJudgeDiff = this.options._preJudgeDiff ?? gitDiff;
         const preJudgeFiles = new Set(await preJudgeDiff(worktreeRoot));
+        const errChunks: Buffer[] = [];
         state.exitCode = await runChild(spawnFn, jCmd, [...jFinalArgs], {
           cwd: normalizeCwd(worktreeRoot),
           env: { ...process.env, ...(state.input.env ?? {}) },
           shell: false,
           stdio: ['ignore', 'pipe', 'pipe'],
-        }, this.options.timeoutMs ?? DEFAULT_TIMEOUT_MS, chunks);
+        }, this.options.timeoutMs ?? DEFAULT_TIMEOUT_MS, chunks, errChunks);
         if (state.exitCode !== 0) {
           // Run 3j/3k (codex twin): a timed-out/tree-killed judge must report failure —
-          // whatever partial stdout was captured is NOT an answer.
-          state.errorReason = state.exitCode === 124 ? 'judge_timeout' : `judge_exit_${state.exitCode}`;
+          // whatever partial stdout was captured is NOT an answer. The stderr tail carries
+          // the REAL cause (usage limits, auth failures) — surface it.
+          const { stderrTail } = await import('./adapter-interface.js');
+          const tail = stderrTail(errChunks);
+          state.errorReason = (state.exitCode === 124 ? 'judge_timeout' : `judge_exit_${state.exitCode}`) + (tail ? `: ${tail}` : '');
           state.capturedOutput = '';
           state.finalMessage = `(judge run failed: ${state.errorReason})`;
           state.status = 'failed';
@@ -600,6 +604,7 @@ function runChild(
   opts: SpawnOptions,
   timeoutMs: number,
   captureChunks?: Buffer[],
+  stderrChunks?: Buffer[],
 ): Promise<number> {
   // Fleet governor: hold a shared CLI slot for the child's lifetime so concurrent
   // council agents across the fleet stay under the per-account subscription limit.
@@ -629,7 +634,13 @@ function runChild(
       // Drain so OS pipe buffers don't deadlock the child; git diff is truth.
       child.stdout?.on('data', () => { /* drain */ });
     }
-    child.stderr?.on('data', () => { /* drain */ });
+    if (stderrChunks) {
+      // CLI tools put the REAL failure on stderr (run 3l: codex's "usage limit, try again at
+      // 8:45 PM" died in this drain while stdout carried only its cleanup-taskkill noise).
+      child.stderr?.on('data', (chunk: Buffer) => stderrChunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk)));
+    } else {
+      child.stderr?.on('data', () => { /* drain */ });
+    }
     child.on('close', (code) => settle((code ?? 1) as number));
     child.on('error', () => settle(1));
   }));

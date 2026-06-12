@@ -99,10 +99,11 @@ describe('frontier-plan — the bar becomes a deterministic checklist, never an 
     assert.match(logs.at(-1)!, /no council members/, 'empty roster names itself');
 
     await decomposeFrontierPlan(dir, 'dim_l2', spec('h'), ['codex'], async () => { throw new Error('spawn ENOENT'); }, log);
-    assert.match(logs.at(-1)!, /FAILED to run \(spawn ENOENT\)/, 'adapter errors surface verbatim');
+    assert.match(logs.at(-2)!, /FAILED to run \(spawn ENOENT\)/, 'adapter errors surface verbatim');
+    assert.match(logs.at(-1)!, /ALL 1 member\(s\) failed to decompose/, 'exhausted roster names itself');
 
     await decomposeFrontierPlan(dir, 'dim_l3', spec('h'), ['codex'], async () => 'not json', log);
-    assert.match(logs.at(-1)!, /unusable plan/, 'malformed decomposition names itself');
+    assert.match(logs.at(-2)!, /unusable plan/, 'malformed decomposition names itself');
 
     await decomposeFrontierPlan(dir, 'dim_l4', spec('h'), ['codex', 'claude-code'],
       async (_id, p) => (p.includes('VERDICT') ? 'VERDICT: FAIL — vacuous gate' : GOOD_ITEMS), log);
@@ -111,6 +112,40 @@ describe('frontier-plan — the bar becomes a deterministic checklist, never an 
     await decomposeFrontierPlan(dir, 'dim_l5', spec('h'), ['codex', 'claude-code'],
       async (_id, p) => (p.includes('VERDICT') ? 'VERDICT: PASS — covers the bar' : GOOD_ITEMS), log);
     assert.match(logs.at(-1)!, /plan INSTALLED — 3 items/, 'success announces the install');
+  });
+
+  test('run-3l regression: a dead first member rotates to the next decomposer; auditor differs from the WINNER', async () => {
+    // Codex (always members[0]) hit its usage limit and every decomposition died on it while
+    // claude-code sat idle. Rotation: each member gets one attempt; the auditor is then a
+    // DIFFERENT member from whoever actually decomposed.
+    const dir = path.join(ROOT, 'repo-rotate');
+    await fs.mkdir(dir, { recursive: true });
+    const calls: Array<{ id: string; kind: string }> = [];
+    const member = async (id: string, prompt: string) => {
+      const isAudit = prompt.includes('VERDICT');
+      calls.push({ id, kind: isAudit ? 'audit' : 'decompose' });
+      if (id === 'codex' && !isAudit) throw new Error('judge_exit_1: usage limit');
+      return isAudit ? 'VERDICT: PASS — covers the bar' : GOOD_ITEMS;
+    };
+    const plan = await decomposeFrontierPlan(dir, 'dim_rot', spec('h'), ['codex', 'claude-code'], member);
+    assert.ok(plan, 'a healthy second member rescues the decomposition');
+    assert.deepEqual(calls.map(c => `${c.id}:${c.kind}`), [
+      'codex:decompose',        // dead member tried first
+      'claude-code:decompose',  // rotation rescues
+      'codex:audit',            // auditor = a different member than the WINNING decomposer
+    ]);
+
+    // The full run-3l scenario: codex dead for EVERYTHING — claude decomposes, the dead
+    // auditor candidate rolls past, claude self-audits (the 1-member-council trust level).
+    const logs: string[] = [];
+    const deadCodex = async (id: string, prompt: string) => {
+      if (id === 'codex') throw new Error('judge_exit_1: usage limit');
+      return prompt.includes('VERDICT') ? 'VERDICT: PASS — covers the bar' : GOOD_ITEMS;
+    };
+    const plan2 = await decomposeFrontierPlan(dir, 'dim_rot2', spec('h'), ['codex', 'claude-code'], deadCodex, m => logs.push(m));
+    assert.ok(plan2, 'a single live member still produces an audited plan');
+    assert.equal(plan2!.decompositionAudit?.judgeId, 'claude-code');
+    assert.match(logs.at(-1)!, /self-audit: no other live member/, 'self-audit is named, never silent');
   });
 
   test('run-3j regression: the consult packet reaches judge prompt builders RAW, not wrapped in verdict boilerplate', async () => {

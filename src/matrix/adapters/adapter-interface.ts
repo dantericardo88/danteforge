@@ -34,6 +34,14 @@ export function builderTimeoutMs(): number {
   return 30 * 60_000;
 }
 
+/** The last few meaningful stderr lines, for failure reasons. CLI tools put the REAL cause on
+ *  stderr (run 3l: codex's "usage limit, try again at 8:45 PM" was silently drained while its
+ *  stdout carried only cleanup-taskkill noise that masqueraded as an answer). */
+export function stderrTail(chunks: Buffer[], maxChars = 300): string {
+  return Buffer.concat(chunks).toString('utf8').trim()
+    .split(/\r?\n/).map(l => l.trim()).filter(Boolean).slice(-3).join(' | ').slice(0, maxChars);
+}
+
 export interface PreparedAgentRun extends AgentRunInput {
   prepared: true;
 }

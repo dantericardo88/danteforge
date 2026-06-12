@@ -216,17 +216,21 @@ export class CodexAdapter implements AgentAdapter {
           ? ['cmd.exe', ['/c', state.binaryUsed, 'exec', '--ephemeral', '--sandbox', 'read-only', '--output-last-message', tmpFile, '-']] as const
           : [state.binaryUsed, ['exec', '--ephemeral', '--sandbox', 'read-only', '--output-last-message', tmpFile, '-']] as const;
         const chunks: Buffer[] = [];
+        const errChunks: Buffer[] = [];
         state.exitCode = await runChild(spawnFn, jCmd, [...jArgs], {
           cwd: normalizeCwd(worktreeRoot),
           env: { ...process.env, ...(state.input.env ?? {}) },
           shell: false,
           stdio: ['pipe', 'pipe', 'pipe'],
-        }, this.options.timeoutMs ?? DEFAULT_TIMEOUT_MS, chunks, judgePrompt);
+        }, this.options.timeoutMs ?? DEFAULT_TIMEOUT_MS, chunks, judgePrompt, errChunks);
         if (state.exitCode !== 0) {
           // Run 3j/3k: the 10-min timeout tree-killed consults and the ONLY stdout content was
           // codex's own taskkill transcript — which this path then reported as a COMPLETED
           // answer. A murdered judge/consult must say so, never hand garbage to the caller.
-          state.errorReason = state.exitCode === 124 ? 'judge_timeout' : `judge_exit_${state.exitCode}`;
+          // The stderr tail carries the REAL cause (run 3l: "usage limit, try again at 8:45 PM").
+          const { stderrTail } = await import('./adapter-interface.js');
+          const tail = stderrTail(errChunks);
+          state.errorReason = (state.exitCode === 124 ? 'judge_timeout' : `judge_exit_${state.exitCode}`) + (tail ? `: ${tail}` : '');
           state.capturedOutput = '';
           state.finalMessage = `(judge run failed: ${state.errorReason})`;
           state.status = 'failed';
@@ -448,6 +452,7 @@ function runChild(
   timeoutMs: number,
   captureChunks?: Buffer[],
   stdinData?: string,
+  stderrChunks?: Buffer[],
 ): Promise<number> {
   // Fleet governor: shared CLI slot held for the child's lifetime (per-account limit).
   return withCliSlot(() => new Promise<number>((resolve) => {
@@ -475,7 +480,11 @@ function runChild(
     } else {
       child.stdout?.on('data', () => { /* drain */ });
     }
-    child.stderr?.on('data', () => { /* drain */ });
+    if (stderrChunks) {
+      child.stderr?.on('data', (chunk: Buffer) => stderrChunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk)));
+    } else {
+      child.stderr?.on('data', () => { /* drain */ });
+    }
     child.on('close', (code) => settle((code ?? 1) as number));
     child.on('error', () => settle(1));
     if (stdinData && child.stdin) {

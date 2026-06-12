@@ -200,36 +200,52 @@ export async function decomposeFrontierPlan(
   if (!bar) { log(`${dimId}: no usable bar (category_delta/observed_capability empty or unauthored) — legacy path`); return null; }
   if (members.length === 0) { log(`${dimId}: no council members discovered — legacy path`); return null; }
 
-  const decomposer = members[0]!;
-  const auditor = members.length > 1 ? members[1]! : members[0]!;
-
-  let decompositionError = '';
-  const raw = await runMember(decomposer, buildDecompositionPrompt(dimId, bar))
-    .catch((err: unknown) => { decompositionError = err instanceof Error ? err.message : String(err); return ''; });
-  const items = parsePlanItems(raw);
-  if (items.length === 0) {
+  // Decomposer ROTATION (run 3l: codex — always members[0] — was usage-limited, so every
+  // decomposition died on the dead member while a healthy one sat idle). Each member gets one
+  // attempt, in order, until a plan parses.
+  let decomposer = '';
+  let items: PlanItem[] = [];
+  for (const candidate of members) {
+    let decompositionError = '';
+    const raw = await runMember(candidate, buildDecompositionPrompt(dimId, bar))
+      .catch((err: unknown) => { decompositionError = err instanceof Error ? err.message : String(err); return ''; });
+    items = parsePlanItems(raw);
+    if (items.length > 0) { decomposer = candidate; break; }
     log(decompositionError
-      ? `${dimId}: decomposer ${decomposer} FAILED to run (${decompositionError.slice(0, 200)}) — legacy path`
-      : `${dimId}: decomposer ${decomposer} returned an unusable plan (${raw.trim().length} chars, no valid 2-10 item JSON array) — legacy path`);
+      ? `${dimId}: decomposer ${candidate} FAILED to run (${decompositionError.slice(0, 200)}) — trying next member`
+      : `${dimId}: decomposer ${candidate} returned an unusable plan (${raw.trim().length} chars, no valid 2-10 item JSON array) — trying next member`);
+  }
+  if (items.length === 0) {
+    log(`${dimId}: ALL ${members.length} member(s) failed to decompose — legacy path`);
     return null;
   }
+  // Anti-easy-exam: the auditor must be a DIFFERENT member whenever one is available — but a
+  // dead auditor (adapter error, run 3l: usage-limited codex) rolls to the next candidate,
+  // ending at self-audit (the same trust level the 1-member council always had). Only a
+  // RETURNED verdict is final; verdict-FAIL stays fail-closed.
+  const auditorCandidates = [...members.filter(m => m !== decomposer), decomposer];
 
   const plan: FrontierPlan = {
     dimId, bar, barHash: spec.frozen_hash ?? '', items, createdAt: new Date().toISOString(),
   };
-  let auditError = '';
-  const auditRaw = await runMember(auditor, buildPlanAuditPrompt(plan))
-    .catch((err: unknown) => { auditError = err instanceof Error ? err.message : String(err); return ''; });
-  const audit = parseAuditVerdict(auditRaw);
-  plan.decompositionAudit = { judgeId: auditor, verdict: audit.verdict, reason: audit.reason, at: new Date().toISOString() };
-  if (audit.verdict !== 'PASS') {
-    log(auditError
-      ? `${dimId}: auditor ${auditor} FAILED to run (${auditError.slice(0, 200)}) — failing closed, legacy path`
-      : `${dimId}: auditor ${auditor} verdict FAIL (${audit.reason}) — plan NOT installed, legacy path`);
-    return null;
+  for (const auditor of auditorCandidates) {
+    let auditError = '';
+    const auditRaw = await runMember(auditor, buildPlanAuditPrompt(plan))
+      .catch((err: unknown) => { auditError = err instanceof Error ? err.message : String(err); return ''; });
+    if (auditError) {
+      log(`${dimId}: auditor ${auditor} FAILED to run (${auditError.slice(0, 200)}) — trying next auditor`);
+      continue;
+    }
+    const audit = parseAuditVerdict(auditRaw);
+    plan.decompositionAudit = { judgeId: auditor, verdict: audit.verdict, reason: audit.reason, at: new Date().toISOString() };
+    if (audit.verdict !== 'PASS') {
+      log(`${dimId}: auditor ${auditor} verdict FAIL (${audit.reason}) — plan NOT installed, legacy path`);
+      return null;
+    }
+    await saveFrontierPlan(cwd, plan);
+    log(`${dimId}: plan INSTALLED — ${items.length} items, decomposed by ${decomposer}, audited PASS by ${auditor}${auditor === decomposer ? ' (self-audit: no other live member)' : ''}`);
+    return plan;
   }
-
-  await saveFrontierPlan(cwd, plan);
-  log(`${dimId}: plan INSTALLED — ${items.length} items, decomposed by ${decomposer}, audited PASS by ${auditor}`);
-  return plan;
+  log(`${dimId}: ALL auditor candidates failed to run — failing closed, legacy path`);
+  return null;
 }
