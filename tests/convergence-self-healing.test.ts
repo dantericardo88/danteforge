@@ -7,6 +7,19 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
+import { runTsxCli } from './helpers/cli-runner.ts';
+
+function assertRecommendationCommandIsOnCliSurface(command: string): void {
+  const args = command.trim().split(/\s+/);
+  assert.equal(args.shift(), 'danteforge', `recommendation must start with danteforge: ${command}`);
+
+  const result = runTsxCli([...args, '--help'], { timeout: 30_000 });
+  assert.equal(
+    result.status,
+    0,
+    `recommended command is not accepted by the real CLI surface: ${command}\n${result.stderr}`,
+  );
+}
 
 // ── detectStall ───────────────────────────────────────────────────────────────
 
@@ -379,7 +392,15 @@ describe('convergenceHealthCheck', () => {
 
   it('autoRepair resets failed verify status in STATE.yaml', async () => {
     const stateFile = path.join(tmpDir, '.danteforge', 'STATE.yaml');
-    const original = 'project: test\nlastVerifyStatus: fail\n';
+    const original = [
+      'project: test',
+      'workflowStage: verify',
+      'lastVerifyStatus: fail',
+      'lastVerifyMessage: lint failed',
+      'metadata:',
+      '  owner: qa',
+      '',
+    ].join('\n');
     let writtenContent = '';
     await fs.writeFile(stateFile, original, 'utf8');
 
@@ -393,11 +414,73 @@ describe('convergenceHealthCheck', () => {
       _writeFile: async (_p, data) => { writtenContent = data; },
     });
 
-    if (writtenContent) {
-      assert.ok(writtenContent.includes('lastVerifyStatus: unknown'), 'should reset status to unknown');
+    assert.ok(writtenContent.length > 0, 'auto-repair should write updated STATE.yaml');
+    assert.ok(writtenContent.includes('lastVerifyStatus: unknown'), 'should reset status to unknown');
+    assert.ok(writtenContent.includes('lastVerifyMessage: auto-repaired by convergence-health'), 'should explain the repair');
+    assert.ok(writtenContent.includes('workflowStage: verify'), 'should preserve existing top-level fields');
+    assert.ok(writtenContent.includes('owner: qa'), 'should preserve nested YAML fields');
+
+    await fs.unlink(stateFile).catch(() => {});
+  });
+
+  it('returns structured recommendations for stalled trend, stale lock, and failed verify', async () => {
+    const stateFile = path.join(tmpDir, '.danteforge', 'STATE.yaml');
+    const snapshotsDir = path.join(tmpDir, '.danteforge', 'snapshots');
+    await fs.writeFile(stateFile, 'project: test\nlastVerifyStatus: fail\n', 'utf8');
+    await fs.writeFile(path.join(snapshotsDir, '2026-03-01.json'), JSON.stringify({ score: 8.0 }), 'utf8');
+    await fs.writeFile(path.join(snapshotsDir, '2026-03-02.json'), JSON.stringify({ score: 8.01 }), 'utf8');
+    await fs.writeFile(path.join(snapshotsDir, '2026-03-03.json'), JSON.stringify({ score: 8.0 }), 'utf8');
+
+    const result = await convergenceHealthCheck({
+      cwd: tmpDir,
+      _stat: async () => ({ mtimeMs: Date.now() - 10 * 60 * 1000 }),
+      _now: () => Date.now(),
+    });
+
+    assert.ok(result.recommendations.length >= 3, 'should return actionable self-healing recommendations');
+    assert.ok(
+      result.recommendations.some(r => r.action === 'clear-stale-lock' && r.command.includes('--auto-repair')),
+      'stale lock should recommend auto-repair',
+    );
+    assert.ok(
+      result.recommendations.some(r => r.action === 'rerun-verify' && r.command.includes('verify')),
+      'failed verify should recommend a verify retry',
+    );
+    assert.ok(
+      result.recommendations.some(r => r.action === 'adversarial-rebase' && r.command === 'danteforge assess' && r.urgency === 'medium'),
+      'stalled score trend should recommend adversarial rebase',
+    );
+    for (const recommendation of result.recommendations) {
+      assertRecommendationCommandIsOnCliSurface(recommendation.command);
     }
 
     await fs.unlink(stateFile).catch(() => {});
+    for (const file of ['2026-03-01.json', '2026-03-02.json', '2026-03-03.json']) {
+      await fs.unlink(path.join(snapshotsDir, file)).catch(() => {});
+    }
+  });
+
+  it('returns a runnable convergence proof command for regressing score trend', async () => {
+    const stateFile = path.join(tmpDir, '.danteforge', 'STATE.yaml');
+    const snapshotsDir = path.join(tmpDir, '.danteforge', 'snapshots');
+    await fs.writeFile(stateFile, 'project: test\nlastVerifyStatus: ok\n', 'utf8');
+    await fs.writeFile(path.join(snapshotsDir, '2026-03-01.json'), JSON.stringify({ score: 8.2 }), 'utf8');
+    await fs.writeFile(path.join(snapshotsDir, '2026-03-02.json'), JSON.stringify({ score: 8.1 }), 'utf8');
+
+    const result = await convergenceHealthCheck({ cwd: tmpDir });
+
+    assert.ok(
+      result.recommendations.some(r => r.action === 'inspect-regression' && r.command === 'danteforge proof --convergence'),
+      'regressing score trend should recommend convergence proof without a missing --verify argument',
+    );
+    for (const recommendation of result.recommendations) {
+      assertRecommendationCommandIsOnCliSurface(recommendation.command);
+    }
+
+    await fs.unlink(stateFile).catch(() => {});
+    for (const file of ['2026-03-01.json', '2026-03-02.json']) {
+      await fs.unlink(path.join(snapshotsDir, file)).catch(() => {});
+    }
   });
 });
 

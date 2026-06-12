@@ -28,6 +28,7 @@ export interface ConvergenceHealthResult {
   checks: HealthCheck[];
   overallStatus: CheckStatus;
   timestamp: string;
+  recommendations: HealthRecommendation[];
   repairs?: RepairAction[];
 }
 
@@ -57,6 +58,23 @@ export interface RepairAction {
   description: string;
   success: boolean;
   error?: string;
+}
+
+export type HealthRecommendationAction =
+  | 'adversarial-rebase'
+  | 'clear-stale-lock'
+  | 'inspect-regression'
+  | 'repair-state'
+  | 'rerun-verify'
+  | 'seed-score-snapshots';
+
+export interface HealthRecommendation {
+  checkName: string;
+  action: HealthRecommendationAction;
+  command: string;
+  rationale: string;
+  urgency: 'low' | 'medium' | 'high';
+  repairable: boolean;
 }
 
 // ── Score snapshot shape (minimal) ──────────────────────────────────────────
@@ -300,6 +318,82 @@ async function checkVerifyConsistency(
 
 // ── Auto-repair ──────────────────────────────────────────────────────────────
 
+function recommendationForCheck(check: HealthCheck): HealthRecommendation | null {
+  if (check.name === 'Lock File' && check.status === 'fail' && check.repairable !== false) {
+    return {
+      checkName: check.name,
+      action: 'clear-stale-lock',
+      command: 'danteforge convergence-health --auto-repair',
+      rationale: 'A stale lock can block every convergence loop until it is cleared.',
+      urgency: 'high',
+      repairable: true,
+    };
+  }
+
+  if (check.name === 'Verify Status' && check.status === 'fail') {
+    return {
+      checkName: check.name,
+      action: 'rerun-verify',
+      command: 'danteforge verify --light --retry 1',
+      rationale: 'The last verification failed; rerunning with one retry distinguishes transient failure from a real regression.',
+      urgency: 'high',
+      repairable: false,
+    };
+  }
+
+  if (check.name === 'Score Trend' && check.status === 'fail') {
+    return {
+      checkName: check.name,
+      action: 'inspect-regression',
+      command: 'danteforge proof --convergence',
+      rationale: 'Recent scores regressed, so the next step should collect evidence before applying more changes.',
+      urgency: 'high',
+      repairable: false,
+    };
+  }
+
+  if (check.name === 'Score Trend' && check.status === 'warn' && check.detail.includes('Stalled')) {
+    return {
+      checkName: check.name,
+      action: 'adversarial-rebase',
+      command: 'danteforge assess',
+      rationale: 'A stalled trend needs an adversarial pass to find the weakness the current loop is missing.',
+      urgency: 'medium',
+      repairable: false,
+    };
+  }
+
+  if (check.name === 'Score Trend' && check.status === 'warn') {
+    return {
+      checkName: check.name,
+      action: 'seed-score-snapshots',
+      command: 'danteforge score --full',
+      rationale: 'Trend detection needs at least two parseable score snapshots.',
+      urgency: 'low',
+      repairable: false,
+    };
+  }
+
+  if (check.name === 'STATE.yaml Integrity' && check.status === 'fail') {
+    return {
+      checkName: check.name,
+      action: 'repair-state',
+      command: 'danteforge doctor',
+      rationale: 'A missing or corrupt STATE.yaml prevents reliable convergence bookkeeping.',
+      urgency: 'high',
+      repairable: false,
+    };
+  }
+
+  return null;
+}
+
+function buildRecommendations(checks: HealthCheck[]): HealthRecommendation[] {
+  return checks
+    .map(recommendationForCheck)
+    .filter((r): r is HealthRecommendation => r !== null);
+}
+
 async function autoRepair(
   lockPath: string,
   stateFilePath: string,
@@ -328,9 +422,11 @@ async function autoRepair(
     try {
       const raw = await readFile(stateFilePath, 'utf8').catch(() => '');
       if (raw) {
-        const updated = raw
-          .replace(/^(lastVerifyStatus:\s*).*$/m, '$1unknown')
-          .replace(/^(lastVerifyMessage:\s*).*$/m, '$1auto-repaired by convergence-health');
+        const yaml = await import('yaml');
+        const doc = yaml.default.parseDocument(raw);
+        doc.set('lastVerifyStatus', 'unknown');
+        doc.set('lastVerifyMessage', 'auto-repaired by convergence-health');
+        const updated = doc.toString();
         await writeFn(stateFilePath, updated);
         repairs.push({ type: 'reset-verify-status', description: 'Reset lastVerifyStatus to unknown (was fail)', success: true });
       }
@@ -365,6 +461,8 @@ export async function convergenceHealthCheck(
     : checks.some(c => c.status === 'warn') ? 'warn'
     : 'ok';
 
+  const recommendations = buildRecommendations(checks);
+
   const repairs = opts.autoRepair && overallStatus !== 'ok'
     ? await autoRepair(lockPath, stateFilePath, checks, opts)
     : undefined;
@@ -373,6 +471,7 @@ export async function convergenceHealthCheck(
     checks,
     overallStatus,
     timestamp: new Date().toISOString(),
+    recommendations,
     repairs,
   };
 }
@@ -401,6 +500,20 @@ function printHealthTable(result: ConvergenceHealthResult): void {
       } else {
         process.stdout.write(`  ${chalk.red('✗')}  ${chalk.red(r.description)}: ${r.error ?? 'unknown error'}\n`);
       }
+    }
+    process.stdout.write('\n');
+  }
+
+  if (result.recommendations.length > 0) {
+    process.stdout.write(chalk.bold('  Recommended Next Steps') + '\n');
+    for (const rec of result.recommendations) {
+      const urgency = rec.urgency === 'high'
+        ? chalk.red(rec.urgency)
+        : rec.urgency === 'medium'
+          ? chalk.yellow(rec.urgency)
+          : chalk.dim(rec.urgency);
+      process.stdout.write(`  ${urgency}  ${chalk.bold(rec.command)}\n`);
+      process.stdout.write(`        ${chalk.dim(rec.rationale)}\n`);
     }
     process.stdout.write('\n');
   }

@@ -228,6 +228,25 @@ program
   });
 
 program
+  .command('trust-report')
+  .description('Render every score WITH its receipts (commands, sessions, court status, verbatim ceilings) — the externally-verifiable proof behind the honest number. Read-only.')
+  .option('--output <path>', 'Report path (default .danteforge/reports/TRUST_REPORT.md)')
+  .option('--json', 'Machine-readable summary')
+  .option('--cwd <path>', 'Project directory')
+  .action((opts) => {
+    void (async () => {
+      try {
+        const { runTrustReport } = await import('./commands/trust-report.js');
+        await runTrustReport({ cwd: opts.cwd as string | undefined, output: opts.output as string | undefined, json: opts.json as boolean | undefined });
+      } catch (err) {
+        const { formatAndLogError } = await import('../core/format-error.js');
+        formatAndLogError(err, 'trust-report');
+        process.exitCode = 1;
+      }
+    })();
+  });
+
+program
   .command('ascend-frontier')
   .description('Unattended autonomous frontier orchestrator: define → build-to-7 → push each dim to a court-validated 9.0, one at a time, until every dim is at the frontier OR an honest ceiling. NEVER prompts.')
   .option('--dry-run', 'Print the next action without executing')
