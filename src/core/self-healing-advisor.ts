@@ -38,6 +38,7 @@ const HIGH_PLATEAU_COUNT = 5;
 const MED_PLATEAU_COUNT = 3;
 const LOW_PLATEAU_COUNT = 2;
 const LOW_VELOCITY_THRESHOLD = 0.05;
+const FRONTIER_GAP_THRESHOLD = 0.5;
 
 // ── Core logic ────────────────────────────────────────────────────────────────
 
@@ -45,11 +46,12 @@ const LOW_VELOCITY_THRESHOLD = 0.05;
  * Recommend a single healing action given the current convergence state.
  *
  * Decision tree (evaluated top-to-bottom, first match wins):
- *  1. plateauCount >= 5 AND score >= 8.5  → accept-ceiling
- *  2. plateauCount >= 3 AND score < 7.0   → restart-dimension
- *  3. plateauCount >= 2 AND score < 8.5   → harvest-more
- *  4. velocity < 0.05 per cycle           → adversarial-rebase
- *  5. else                                → expand-search
+ *  1. high plateau with competitor frontier gap -> split-dimension
+ *  2. plateauCount >= 5 AND score >= 8.5  → accept-ceiling
+ *  3. plateauCount >= 3 AND score < 7.0   → restart-dimension
+ *  4. plateauCount >= 2 AND score < 8.5   → harvest-more
+ *  5. velocity < 0.05 per cycle           → adversarial-rebase
+ *  6. else                                → expand-search
  */
 export function recommendHealingAction(
   state: ConvergenceState,
@@ -58,6 +60,23 @@ export function recommendHealingAction(
   const { plateauCount, currentScore } = state;
   const velocity = computeConvergenceVelocity(state);
   const { competitorMax } = options;
+  const frontierGap = competitorMax === undefined ? 0 : competitorMax - currentScore;
+
+  if (
+    plateauCount >= HIGH_PLATEAU_COUNT &&
+    currentScore >= HIGH_SCORE_CEILING &&
+    frontierGap >= FRONTIER_GAP_THRESHOLD
+  ) {
+    return {
+      action: 'split-dimension',
+      rationale:
+        `Score ${currentScore.toFixed(2)} has plateaued for ${plateauCount} consecutive cycles, ` +
+        `but the competitor frontier is ${competitorMax!.toFixed(1)} ` +
+        `(${frontierGap.toFixed(1)} points ahead). The dimension is likely bundling multiple ` +
+        `capabilities, so split it into narrower sub-dimensions before accepting any ceiling.`,
+      urgency: 'high',
+    };
+  }
 
   // Rule 1 — accept-ceiling
   if (plateauCount >= HIGH_PLATEAU_COUNT && currentScore >= HIGH_SCORE_CEILING) {

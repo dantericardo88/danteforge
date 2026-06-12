@@ -6,14 +6,13 @@ import path from 'path';
 import chalk from 'chalk';
 import { logger } from '../../core/logger.js';
 import { isProcessAlive } from '../../core/state-lock.js';
+import { analyzeConvergenceTrend } from '../../core/convergence-trend-analysis.js';
 
 const STATE_DIR = '.danteforge';
 const SNAPSHOTS_DIR = 'snapshots';
 const LOCK_FILE = 'STATE.lock';
 const STATE_FILE = 'STATE.yaml';
 const STALE_LOCK_MS = 5 * 60 * 1000; // 5 minutes
-
-// ── Types ────────────────────────────────────────────────────────────────────
 
 export type CheckStatus = 'ok' | 'warn' | 'fail';
 
@@ -66,7 +65,8 @@ export type HealthRecommendationAction =
   | 'inspect-regression'
   | 'repair-state'
   | 'rerun-verify'
-  | 'seed-score-snapshots';
+  | 'seed-score-snapshots'
+  | 'stabilize-oscillation';
 
 export interface HealthRecommendation {
   checkName: string;
@@ -77,8 +77,6 @@ export interface HealthRecommendation {
   repairable: boolean;
 }
 
-// ── Score snapshot shape (minimal) ──────────────────────────────────────────
-
 interface ScoreSnapshot {
   score?: number;
   timestamp?: string;
@@ -88,8 +86,6 @@ function parseLockPid(raw: string): number | null {
   const pid = Number.parseInt(raw.trim(), 10);
   return Number.isInteger(pid) && pid > 0 ? pid : null;
 }
-
-// ── Individual checks ────────────────────────────────────────────────────────
 
 async function checkScoreTrend(
   snapshotsPath: string,
@@ -137,6 +133,17 @@ async function checkScoreTrend(
     const first = snapshots[0]!.score;
     const last = snapshots[snapshots.length - 1]!.score;
     const delta = last - first;
+    const trend = analyzeConvergenceTrend(snapshots);
+
+    if (trend.status === 'oscillating') {
+      return {
+        name: 'Score Trend',
+        status: 'warn',
+        detail:
+          `Oscillating - delta ${trend.delta.toFixed(2)} with ${trend.directionChanges} ` +
+          `direction changes and ${trend.drawdown.toFixed(2)} drawdown over last ${trend.count} snapshots`,
+      };
+    }
 
     if (delta > 0.05) {
       return {
@@ -316,8 +323,6 @@ async function checkVerifyConsistency(
   }
 }
 
-// ── Auto-repair ──────────────────────────────────────────────────────────────
-
 function recommendationForCheck(check: HealthCheck): HealthRecommendation | null {
   if (check.name === 'Lock File' && check.status === 'fail' && check.repairable !== false) {
     return {
@@ -347,6 +352,17 @@ function recommendationForCheck(check: HealthCheck): HealthRecommendation | null
       action: 'inspect-regression',
       command: 'danteforge proof --convergence',
       rationale: 'Recent scores regressed, so the next step should collect evidence before applying more changes.',
+      urgency: 'high',
+      repairable: false,
+    };
+  }
+
+  if (check.name === 'Score Trend' && check.status === 'warn' && check.detail.includes('Oscillating')) {
+    return {
+      checkName: check.name,
+      action: 'stabilize-oscillation',
+      command: 'danteforge harden --dim convergence_self_healing',
+      rationale: 'Scores are repeatedly giving back gains; run the harden gate before the next convergence wave.',
       urgency: 'high',
       repairable: false,
     };
@@ -405,7 +421,6 @@ async function autoRepair(
   const writeFn = opts._writeFile ?? ((p: string, data: string) => fs.writeFile(p, data, 'utf8'));
   const repairs: RepairAction[] = [];
 
-  // Repair: clear stale lock file
   const lockCheck = checks.find(c => c.name === 'Lock File' && c.status === 'fail' && c.repairable !== false);
   if (lockCheck) {
     try {
@@ -416,7 +431,6 @@ async function autoRepair(
     }
   }
 
-  // Repair: reset failed verify status in STATE.yaml
   const verifyCheck = checks.find(c => c.name === 'Verify Status' && c.status === 'fail');
   if (verifyCheck) {
     try {
@@ -437,8 +451,6 @@ async function autoRepair(
 
   return repairs;
 }
-
-// ── Orchestrator ─────────────────────────────────────────────────────────────
 
 export async function convergenceHealthCheck(
   opts: ConvergenceHealthOptions = {},
@@ -475,8 +487,6 @@ export async function convergenceHealthCheck(
     repairs,
   };
 }
-
-// ── CLI command ──────────────────────────────────────────────────────────────
 
 function printHealthTable(result: ConvergenceHealthResult): void {
   process.stdout.write('\n' + chalk.bold('  ╔══ Convergence Health ══╗') + '\n\n');

@@ -460,6 +460,42 @@ describe('convergenceHealthCheck', () => {
     }
   });
 
+  it('routes oscillating score trends to the harden gate', async () => {
+    const stateFile = path.join(tmpDir, '.danteforge', 'STATE.yaml');
+    const snapshotsDir = path.join(tmpDir, '.danteforge', 'snapshots');
+    await fs.writeFile(stateFile, 'project: test\nlastVerifyStatus: ok\n', 'utf8');
+    const scores = [8.0, 8.4, 8.1, 8.5, 8.2];
+    for (let i = 0; i < scores.length; i++) {
+      await fs.writeFile(
+        path.join(snapshotsDir, `2026-04-0${i + 1}.json`),
+        JSON.stringify({ score: scores[i], timestamp: `2026-04-0${i + 1}` }),
+        'utf8',
+      );
+    }
+
+    const result = await convergenceHealthCheck({ cwd: tmpDir });
+    const trendCheck = result.checks.find(c => c.name === 'Score Trend');
+    assert.ok(trendCheck, 'Score Trend check should be present');
+    assert.equal(trendCheck!.status, 'warn');
+    assert.ok(trendCheck!.detail.includes('Oscillating'), trendCheck!.detail);
+    assert.ok(
+      result.recommendations.some(r =>
+        r.action === 'stabilize-oscillation' &&
+        r.command === 'danteforge harden --dim convergence_self_healing' &&
+        r.urgency === 'high',
+      ),
+      'oscillation should route to the harden gate',
+    );
+    for (const recommendation of result.recommendations) {
+      assertRecommendationCommandIsOnCliSurface(recommendation.command);
+    }
+
+    await fs.unlink(stateFile).catch(() => {});
+    for (let i = 0; i < scores.length; i++) {
+      await fs.unlink(path.join(snapshotsDir, `2026-04-0${i + 1}.json`)).catch(() => {});
+    }
+  });
+
   it('returns a runnable convergence proof command for regressing score trend', async () => {
     const stateFile = path.join(tmpDir, '.danteforge', 'STATE.yaml');
     const snapshotsDir = path.join(tmpDir, '.danteforge', 'snapshots');

@@ -66,6 +66,14 @@ describe('recommendHealingAction — accept-ceiling', () => {
     assert.ok(rec.rationale.includes('competitor') || rec.rationale.includes('No competitor'));
   });
 
+  it('recommends split-dimension when a high plateau still trails the competitor frontier', () => {
+    const state = buildPlateauState(5, 8.9, 9.8);
+    const rec = recommendHealingAction(state, { competitorMax: 9.6 });
+    assert.equal(rec.action, 'split-dimension' satisfies HealingAction);
+    assert.equal(rec.urgency, 'high');
+    assert.ok(rec.rationale.includes('competitor frontier'), rec.rationale);
+  });
+
   it('does NOT recommend accept-ceiling when plateauCount < 5', () => {
     const state = buildPlateauState(4, 8.9, 9.5);
     const rec = recommendHealingAction(state);

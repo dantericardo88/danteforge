@@ -63,6 +63,14 @@ exists so the REPORT carries the facts even if the run never starts.
    has unrelated uncommitted changes → STOP and report. Then create + assert a unique branch:
    `git switch -c danteforge/frontier-autopilot-<repo>-YYYYMMDD-NN` (verify free first; never
    main/master).
+4b. GITIGNORE THE CAMPAIGN STATE (new, repo-local infra — do this FIRST if missing): if this
+   repo's .gitignore does not cover `.danteforge/`, add the line `.danteforge/` as its own
+   labeled commit (`fix(infra): gitignore campaign state`). Two real reasons, both learned live:
+   (a) thousands of untracked evidence/receipt files otherwise pollute `git status` and
+   false-positive the clean-tree check; (b) `git clean -fd` — which a misbehaving agent HAS run
+   in a shared tree — deletes unignored files but SKIPS ignored ones, so this one line is what
+   keeps the repo's earned receipts/ledgers alive through a destructive-git incident. (If the
+   repo deliberately tracks parts of .danteforge, ignore selectively, never un-track history.)
 5. ORIENT: run `danteforge ascend-frontier --dry-run` and paste its planned next action into your
    notes. On a cold repo it must say `define(bootstrap)`; on a warm one, setup/build/push. If
    dry-run CRASHES, stop and report the stack — do not improvise.
