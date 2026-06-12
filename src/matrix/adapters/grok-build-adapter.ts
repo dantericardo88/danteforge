@@ -19,6 +19,7 @@ import os from 'node:os';
 import { logger } from '../../core/logger.js';
 import { withCliSlot } from '../../core/cli-semaphore.js';
 import { killProcess } from './kill-process.js';
+import { defaultRevertFile } from './revert-file.js';
 import { matchesAnyGlob } from '../util/glob.js';
 import type {
   AgentAdapter,
@@ -441,11 +442,6 @@ async function defaultGitDiff(cwd: string): Promise<string[]> {
   } catch { return []; }
 }
 
-async function defaultRevertFile(cwd: string, file: string): Promise<void> {
-  await execFileAsync('git', ['checkout', '--', file], { cwd, timeout: 5000 }).catch(async () => {
-    try { await fs.unlink(path.join(cwd, file)); } catch { /* best-effort */ }
-  });
-}
 
 async function buildGrokSpawnEnv(
   baseEnv: NodeJS.ProcessEnv,

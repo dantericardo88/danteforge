@@ -27,6 +27,7 @@ import type {
   AgentRunInput,
   PreparedAgentRun,
 } from './adapter-interface.js';
+import { defaultRevertFile } from './revert-file.js';
 import type { AgentLease } from '../types/lease.js';
 import type { WorkPacket } from '../types/work-graph.js';
 import type {
@@ -232,16 +233,17 @@ export class CodexAdapter implements AgentAdapter {
         // Post-run diff: only flag files that are NEW since the pre-judge snapshot.
         const changedAfterJudge = (await judgeGitDiff(worktreeRoot)).filter(f => !preJudgeFiles.has(f));
         if (changedAfterJudge.length > 0) {
-          logger.warn(`[CodexAdapter] judge ${runId} modified ${changedAfterJudge.length} file(s) — reverting; auto-FAIL verdict`);
-          const revertFile = this.options._revertFile ?? defaultRevertFile;
-          await Promise.allSettled(changedAfterJudge.map(f => revertFile(worktreeRoot, f)));
-          // Judge wrote files despite --sandbox read-only → bad-faith violation.
-          // Emit explicit FAIL (not void) so the verdict counts toward quorum.
-          state.errorReason = `judge_wrote_files: ${changedAfterJudge.join(', ')}`;
+          // The judge runs with --sandbox read-only — file writes are structurally impossible
+          // for it, so post-snapshot changes are CONCURRENT shared-tree activity, never the
+          // judge. See claude-code-adapter for the run-3i incident the old revert+FAIL caused.
+          // Nothing is reverted; UNCLEAR can never satisfy a PASS quorum.
+          logger.warn(`[CodexAdapter] judge ${runId}: tree changed during review (${changedAfterJudge.join(', ')}) — concurrent activity (judge is read-only by construction); verdict UNCLEAR, nothing reverted`);
+          state.errorReason = `tree_changed_during_review: ${changedAfterJudge.join(', ')}`;
           state.capturedOutput = '';
-          state.finalMessage = `VERDICT: FAIL\nCONFIDENCE: HIGH\nREASON: Judge modified worktree files during review (${changedAfterJudge.join(', ')}) — bad-faith violation. Automatic FAIL to preserve quorum integrity.`;
-          state.status = 'failed';
-          finalize(state, runId);
+          state.finalMessage = `VERDICT: UNCLEAR\nCONFIDENCE: LOW\nREASON: The worktree changed during review (${changedAfterJudge.join(', ')}) — concurrent campaign/operator activity contaminated the review environment. The judge is read-only by construction and cannot have written these files. No capability judgment is possible this round.`;
+          state.status = 'completed';
+          state.events.push({ eventId: `${runId}.complete`, runId, ts: now(), kind: 'completed' });
+          state.endMs = Date.now();
           return;
         }
         state.status = 'completed';
@@ -407,11 +409,6 @@ async function defaultGitDiff(cwd: string): Promise<string[]> {
   }
 }
 
-async function defaultRevertFile(cwd: string, file: string): Promise<void> {
-  await execFileAsync('git', ['checkout', '--', file], { cwd, timeout: 5000 }).catch(async () => {
-    try { await fs.unlink(path.join(cwd, file)); } catch { /* best-effort */ }
-  });
-}
 
 /** Forward-slash a Windows path. Workaround for a node spawn bug where a
  *  backslash cwd causes `cmd.exe` to be unresolvable (ENOENT on its own

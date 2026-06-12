@@ -31,6 +31,7 @@ import { logger } from '../../core/logger.js';
 import { withCliSlot } from '../../core/cli-semaphore.js';
 import { trackChild, untrackChild, killTree } from '../../core/process-tree.js';
 import { killProcess } from './kill-process.js';
+import { defaultRevertFile } from './revert-file.js';
 import { matchesAnyGlob } from '../util/glob.js';
 import type {
   AgentAdapter,
@@ -285,16 +286,20 @@ export class ClaudeCodeAdapter implements AgentAdapter {
         // Post-run diff: only flag files that are NEW since the pre-judge snapshot.
         const changedAfterJudge = (await gitDiff(worktreeRoot)).filter(f => !preJudgeFiles.has(f));
         if (changedAfterJudge.length > 0) {
-          logger.warn(`[ClaudeCodeAdapter] judge ${runId} modified ${changedAfterJudge.length} file(s) — reverting; auto-FAIL verdict`);
-          const revertFile = this.options._revertFile ?? defaultRevertFile;
-          await Promise.allSettled(changedAfterJudge.map(f => revertFile(worktreeRoot, f)));
-          // Judge wrote files despite --allowedTools restriction → bad-faith violation.
-          // Emit explicit FAIL (not void) so the verdict counts toward quorum.
-          state.errorReason = `judge_wrote_files: ${changedAfterJudge.join(', ')}`;
+          // The judge runs with --allowedTools Read,Glob,Grep — file writes are STRUCTURALLY
+          // impossible for it. Any post-snapshot change is therefore CONCURRENT activity in the
+          // shared tree (operator edits, another campaign phase), never the judge. Run 3i: the
+          // old revert+auto-FAIL here destroyed live operator edits, deleted a committed source
+          // file, and booked an environment problem as a capability rejection that poisoned the
+          // court-feedback loop. Nothing is reverted; the verdict is an honest UNCLEAR (which
+          // can never satisfy a PASS quorum — contamination still cannot validate anything).
+          logger.warn(`[ClaudeCodeAdapter] judge ${runId}: tree changed during review (${changedAfterJudge.join(', ')}) — concurrent activity (judge is read-only by construction); verdict UNCLEAR, nothing reverted`);
+          state.errorReason = `tree_changed_during_review: ${changedAfterJudge.join(', ')}`;
           state.capturedOutput = '';
-          state.finalMessage = `VERDICT: FAIL\nCONFIDENCE: HIGH\nREASON: Judge modified worktree files during review (${changedAfterJudge.join(', ')}) — bad-faith violation. Automatic FAIL to preserve quorum integrity.`;
-          state.status = 'failed';
-          finalize(state, runId);
+          state.finalMessage = `VERDICT: UNCLEAR\nCONFIDENCE: LOW\nREASON: The worktree changed during review (${changedAfterJudge.join(', ')}) — concurrent campaign/operator activity contaminated the review environment. The judge is read-only by construction and cannot have written these files. No capability judgment is possible this round.`;
+          state.status = 'completed';
+          state.events.push({ eventId: `${runId}.complete`, runId, ts: now(), kind: 'completed' });
+          state.endMs = Date.now();
           return;
         }
         state.finalMessage = state.capturedOutput.trim() || '(no judge output)';
@@ -557,12 +562,6 @@ async function defaultGitDiff(cwd: string): Promise<string[]> {
   }
 }
 
-async function defaultRevertFile(cwd: string, file: string): Promise<void> {
-  await execFileAsync('git', ['checkout', '--', file], { cwd, timeout: 5000 }).catch(async () => {
-    // File may be untracked (new file claude created). Just delete it.
-    try { await fs.unlink(path.join(cwd, file)); } catch { /* best-effort */ }
-  });
-}
 
 // ── Process plumbing ───────────────────────────────────────────────────────
 

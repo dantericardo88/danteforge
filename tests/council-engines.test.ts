@@ -254,24 +254,27 @@ describe('CodexAdapter — judge mode', () => {
     assert.equal(gitDiffCalled, true, 'gitDiff MUST be called in judge mode to catch rogue writes');
   });
 
-  it('invalidates verdict when Codex judge modifies worktree', async () => {
+  it('run-3i regression: concurrent tree changes during a Codex review → UNCLEAR, NOTHING reverted', async () => {
+    // The codex judge runs --sandbox read-only: it CANNOT have written the file. The old
+    // revert+auto-FAIL destroyed concurrent operator/builder work and booked environment
+    // noise as a capability rejection. UNCLEAR still can't satisfy a PASS quorum.
     const reverted: string[] = [];
     const adapter = new CodexAdapter({
       workPacket: makePacket(),
       judgeMode: true,
       _isAvailable: async () => true,
-      _preJudgeDiff: async () => [],               // clean baseline before judge runs
-      _gitDiff: async () => ['src/rogue-edit.ts'], // judge wrote this after baseline
+      _preJudgeDiff: async () => [],                  // clean baseline before judge runs
+      _gitDiff: async () => ['src/operator-edit.ts'], // changed DURING review — by someone else
       _revertFile: async (_cwd, file) => { reverted.push(file); },
       _spawn: () => makeFakeProc('VERDICT: PASS') as never,
     });
     const prepared = await adapter.prepareRun({ lease: makeLease(), cwd: '/tmp/test' });
     const handle = await adapter.startRun(prepared);
     const result = await adapter.collectResult(handle);
-    assert.equal(result.status, 'failed', 'rogue Codex judge must be failed');
-    assert.ok(result.errorReason?.includes('judge_wrote_files'), `errorReason: ${result.errorReason}`);
-    assert.ok(result.finalMessage?.includes('VERDICT: FAIL'), `rogue judge must auto-FAIL: ${result.finalMessage}`);
-    assert.deepEqual(reverted, ['src/rogue-edit.ts']);
+    assert.equal(result.status, 'completed', 'contamination is an honest verdict, not an adapter failure');
+    assert.ok(result.errorReason?.includes('tree_changed_during_review'), `errorReason: ${result.errorReason}`);
+    assert.ok(result.finalMessage?.includes('VERDICT: UNCLEAR'), `must be UNCLEAR, never FAIL: ${result.finalMessage}`);
+    assert.deepEqual(reverted, [], 'foreign work must NEVER be reverted by a read-only judge');
   });
 });
 
@@ -291,24 +294,28 @@ describe('ClaudeCodeAdapter — judge mode', () => {
     assert.equal(result.status, 'completed');
   });
 
-  it('invalidates verdict when judge modifies worktree — post-run diff assert', async () => {
+  it('run-3i regression: concurrent tree changes during a Claude review → UNCLEAR, NOTHING reverted', async () => {
+    // The claude judge runs --allowedTools Read,Glob,Grep: writes are structurally impossible.
+    // Run 3i: the old revert+auto-FAIL here wiped live operator edits, deleted a committed
+    // source file (via the revert unlink fallback), and poisoned court-feedback with a
+    // fake capability rejection.
     const reverted: string[] = [];
     const adapter = new ClaudeCodeAdapter({
       workPacket: makePacket(),
       judgeMode: true,
       _isAvailable: async () => true,
-      _preJudgeDiff: async () => [],                // clean baseline before judge runs
-      _gitDiff: async () => ['src/rogue-edit.ts'],  // judge wrote this after baseline
+      _preJudgeDiff: async () => [],                   // clean baseline before judge runs
+      _gitDiff: async () => ['src/operator-edit.ts'],  // changed DURING review — by someone else
       _revertFile: async (_cwd, file) => { reverted.push(file); },
       _spawn: () => makeFakeProc('VERDICT: PASS') as never,
     });
     const prepared = await adapter.prepareRun({ lease: makeLease(), cwd: '/tmp/test' });
     const handle = await adapter.startRun(prepared);
     const result = await adapter.collectResult(handle);
-    assert.equal(result.status, 'failed', 'rogue judge must be failed');
-    assert.ok(result.errorReason?.includes('judge_wrote_files'), `errorReason: ${result.errorReason}`);
-    assert.ok(result.finalMessage?.includes('VERDICT: FAIL'), `rogue judge must auto-FAIL: ${result.finalMessage}`);
-    assert.deepEqual(reverted, ['src/rogue-edit.ts'], 'rogue file must be reverted');
+    assert.equal(result.status, 'completed', 'contamination is an honest verdict, not an adapter failure');
+    assert.ok(result.errorReason?.includes('tree_changed_during_review'), `errorReason: ${result.errorReason}`);
+    assert.ok(result.finalMessage?.includes('VERDICT: UNCLEAR'), `must be UNCLEAR, never FAIL: ${result.finalMessage}`);
+    assert.deepEqual(reverted, [], 'foreign work must NEVER be reverted by a read-only judge');
   });
 });
 
