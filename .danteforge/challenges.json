@@ -198,7 +198,9 @@
     "problem": "CH-019's outage detector (provider-outage.ts) matches a FIXED set of regex signatures (session/usage/rate limit, try-again/resets times, auth/quota/401-403). A future codex/claude/grok error wording the regex does not cover would NOT raise the outage marker, so the orchestrator would resume the old behavior — booking the all-abstained court as a build-failure and, after maxBuildAttempts, minting a (now re-attemptable but still spurious) build-failed ceiling. all-abstained → courtRan=false softens this to re-attemptable, but the campaign still burns its build-attempt budget on a dead provider instead of pausing.",
     "evidence": "provider-outage.ts UNTIMED_RES is a closed list; the codex 'usage limit' killer (run 3l) was only caught after it was observed once. Detection is reactive to KNOWN strings, not to the structural fact 'every judge failed identically at the adapter layer'.",
     "opportunity": "A structural outage signal independent of wording: when ALL judges/builders return adapter status 'failed'/'timed_out' in one cycle (regardless of the reason text), treat it as a probable outage and pause-with-backoff. Combine with the signature detector (which still gives exact resume times) so a never-before-seen error string still pauses instead of ceiling-ing.",
-    "status": "open",
-    "openedAt": "2026-06-13T02:25:26.545Z"
+    "status": "solved",
+    "openedAt": "2026-06-13T02:25:26.545Z",
+    "resolution": "fix(autonomy): structural all-judges-unavailable outage signal — FrontierJudgeRecord.unavailable (set when the adapter throws/fails/returns the 'judge unavailable' marker or empty); parseCourtOutput.allUnavailable (every judge unavailable, wording-agnostic); noteStructuralOutage raises the CH-019 pause+marker even with NO provider string matched. Pins in frontier-review-court.test.ts + ascend-frontier-ledger.test.ts",
+    "resolvedAt": "2026-06-13T03:40:11.086Z"
   }
 ]

@@ -14,7 +14,7 @@ import type { CeilingCause } from '../../core/ceiling-receipt.js';
 import type { AttemptFingerprint } from '../../core/evidence-novelty.js';
 import type { PushOutcome } from '../../core/ascend-frontier-parallel.js';
 import type { CouncilMemberId } from '../../matrix/engines/council-scheduler.js';
-import { runCli, parseCourtOutput, type CliResult } from './ascend-frontier-runner.js';
+import { runCli, parseCourtOutput, noteStructuralOutage, type CliResult } from './ascend-frontier-runner.js';
 import { composeBuildGoal, loadCourtFeedback, parseCourtFeedback, recordCourtFeedback, repeatedObjection } from '../../core/court-feedback.js';
 import { logger } from '../../core/logger.js';
 
@@ -280,7 +280,16 @@ export async function defaultPushTo9(
       // (best-effort: feedback failing to record must never fail a court that ran).
       await recordCourtFeedback(cwd, parseCourtFeedback(review.stdout, dimId, verdict)).catch(() => { /* best-effort */ });
     } else if (parsed.allAbstained) {
-      logger.warn(`[ascend-frontier] ${dimId}: frontier court all-abstained (likely provider outage) — not recorded as a rejection or as court-feedback.`);
+      // CH-020: if EVERY judge was structurally unavailable (adapter-failed), this is a provider
+      // outage proven by the court's shape — raise the structural pause even though no provider error
+      // string matched a signature. A substantive all-UNCLEAR (judges reviewed but couldn't tell) does
+      // NOT pause; it stays a re-attemptable non-run.
+      if (parsed.allUnavailable) {
+        noteStructuralOutage(`structural outage: all ${dimId} judges unavailable`);
+        logger.warn(`[ascend-frontier] ${dimId}: ALL judges unavailable (adapter-failed) — structural provider outage; pausing instead of recording anything.`);
+      } else {
+        logger.warn(`[ascend-frontier] ${dimId}: frontier court all-abstained (judges couldn't tell) — not recorded as a rejection or as court-feedback.`);
+      }
     }
   }
 
@@ -426,6 +435,8 @@ export async function defaultPromoteOne(cwd: string, a: { memberId: CouncilMembe
   const parsed = parseCourtOutput(res);
   // CH-019: an all-abstained court (outage) is NOT a court that ran — courtRan:false routes it to the
   // re-attemptable build-failure path instead of fabricating a court rejection toward a permanent ceiling.
+  // CH-020: if every judge was structurally unavailable, raise the wording-agnostic structural pause.
+  if (parsed.allUnavailable) noteStructuralOutage(`structural outage: all ${a.dimId} judges unavailable`);
   return {
     dimId: a.dimId, builderId: a.memberId,
     verdict: parsed.verdict, passedByJudges: parsed.passedByJudges as CouncilMemberId[],

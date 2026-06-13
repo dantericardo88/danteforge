@@ -39,7 +39,17 @@ export interface FrontierJudgeRecord {
   verdict: 'PASS' | 'FAIL' | 'UNCLEAR';
   ceiling: boolean;
   reason: string;
+  /** True when this judge could not actually evaluate — the adapter threw / failed / timed out (a
+   *  provider outage, auth failure, kill), as opposed to a substantive "I reviewed it but can't tell"
+   *  UNCLEAR. A court where EVERY judge is unavailable is a STRUCTURAL outage signal independent of the
+   *  provider's specific error wording (CH-020) — the orchestrator pauses on it, never ceilings. */
+  unavailable?: boolean;
 }
+
+// A judge that COULD NOT RUN reports itself with one of these markers (frontier-review's defaultRunJudge
+// emits "judge unavailable — <errorReason>"; this court's own catch below emits "judge error <err>").
+// Matching our OWN marker — not the provider's wording — is what makes the outage signal wording-agnostic.
+const JUDGE_UNAVAILABLE_RE = /judge (?:unavailable|error)\b/i;
 
 export interface FrontierReviewResult {
   verdict: 'VALIDATED' | 'REJECTED';
@@ -136,7 +146,10 @@ export async function runFrontierReviewCourt(
     try { raw = await opts.runJudge(member, prompt); } catch (err) { raw = `VERDICT: UNCLEAR\nREASON: judge error ${String(err)}`; }
     const v = parseVerdict(member, raw);
     const ceiling = /CEILING:\s*YES/i.test(raw);
-    judges.push({ judgeId: member, verdict: v.verdict, ceiling, reason: v.reason });
+    // CH-020: a judge that abstained ONLY because its adapter could not run (outage/auth/kill) is
+    // marked unavailable — distinct from a substantive UNCLEAR. An empty answer is also unavailability.
+    const unavailable = v.verdict === 'UNCLEAR' && (raw.trim() === '' || JUDGE_UNAVAILABLE_RE.test(raw));
+    judges.push({ judgeId: member, verdict: v.verdict, ceiling, reason: v.reason, unavailable });
     votes.push({
       judgeSlotId: `${member}-0`, judgeMemberId: member, builderMemberId: builder,
       verdict: v.verdict, weight: 1.0, confidence: v.confidence, reason: v.reason, dissentSummary: v.dissentSummary,

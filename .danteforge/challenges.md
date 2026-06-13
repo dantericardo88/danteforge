@@ -5,7 +5,7 @@
 > Entries are never silently deleted: a challenge is open, solved (with the commit), or
 > retired (with the reason). An empty OPEN section is a smell, not an achievement.
 
-## Open (9)
+## Open (8)
 
 ### CH-006: Cycle economics: tiny payload per hour
 - **Problem:** A push attempt costs ~60min of orchestration + LLM for 2-3 file diffs; overhead dominates real building.
@@ -55,13 +55,7 @@
 - **Opportunity:** A --target-dims knob on define/bootstrap/discover that scales competitor-feature decomposition depth (split coarse dims into sub-capabilities until the requested density is met, each still ladder-grounded) = right-sized matrices per project complexity, operator-controlled.
 - Opened: 2026-06-12
 
-### CH-020: Provider-outage detection is signature-based — a novel phrasing slips through
-- **Problem:** CH-019's outage detector (provider-outage.ts) matches a FIXED set of regex signatures (session/usage/rate limit, try-again/resets times, auth/quota/401-403). A future codex/claude/grok error wording the regex does not cover would NOT raise the outage marker, so the orchestrator would resume the old behavior — booking the all-abstained court as a build-failure and, after maxBuildAttempts, minting a (now re-attemptable but still spurious) build-failed ceiling. all-abstained → courtRan=false softens this to re-attemptable, but the campaign still burns its build-attempt budget on a dead provider instead of pausing.
-- **Evidence:** provider-outage.ts UNTIMED_RES is a closed list; the codex 'usage limit' killer (run 3l) was only caught after it was observed once. Detection is reactive to KNOWN strings, not to the structural fact 'every judge failed identically at the adapter layer'.
-- **Opportunity:** A structural outage signal independent of wording: when ALL judges/builders return adapter status 'failed'/'timed_out' in one cycle (regardless of the reason text), treat it as a probable outage and pause-with-backoff. Combine with the signature detector (which still gives exact resume times) so a never-before-seen error string still pauses instead of ceiling-ing.
-- Opened: 2026-06-13
-
-## Resolved (11)
+## Resolved (12)
 
 - **CH-001: Blind retry - dissent never reached the builder** — solved 2026-06-12: solved: court-feedback.ts + composeBuildGoal (commit feat(court): verdict->builder feedback)
 - **CH-002: Bar-goal disconnect** — solved 2026-06-12: solved: the frozen ladder bar is now in every push build goal (same commit)
@@ -74,3 +68,4 @@
 - **CH-017: Judges share the builders' write lease in the campaign tree** — solved 2026-06-13: fix(autonomy): makeJudgeLease (empty allowedWritePaths) for judges + plan consults — defense-in-depth atop the 89a4607 read-only adapters. Pin in ascend-frontier-ledger.test.ts
 - **CH-018: Ceiling receipts outlive the generator they measured** — solved 2026-06-13: fix(autonomy): ceiling receipts carry engineSha (last commit touching the build+court engine, NOT HEAD); shouldReopenForEngine re-opens generator/build-failed/court-rejected ceilings when the engine changed, world/spec ceilings held; wired into defaultBuildState. Pins in ceiling-receipt.test.ts
 - **CH-019: Provider outage mints ceilings instead of pausing the campaign** — solved 2026-06-13: fix(autonomy): provider-outage detector (provider-outage.ts) broadens budget-pause to codex 'try again at' + untimed auth/quota signatures; runner raises a per-cycle outage marker; orchestrator records NOTHING durable on an outage cycle (no attempt/build-failed/generator-ceiling) and pauses; all-abstained courts (every judge UNCLEAR) are courtRan=false + never recorded as court-feedback; defaultRunJudge surfaces errorReason so the signature reaches the court JSON. Pins in ascend-frontier-ledger.test.ts
+- **CH-020: Provider-outage detection is signature-based — a novel phrasing slips through** — solved 2026-06-13: fix(autonomy): structural all-judges-unavailable outage signal — FrontierJudgeRecord.unavailable (set when the adapter throws/fails/returns the 'judge unavailable' marker or empty); parseCourtOutput.allUnavailable (every judge unavailable, wording-agnostic); noteStructuralOutage raises the CH-019 pause+marker even with NO provider string matched. Pins in frontier-review-court.test.ts + ascend-frontier-ledger.test.ts

@@ -114,6 +114,32 @@ describe('provider-outage awareness — outages PAUSE, never mint permanent ceil
     assert.equal(pass.allAbstained, false);
   });
 
+  test('parseCourtOutput flags all-UNAVAILABLE — wording-agnostic structural outage (CH-020)', () => {
+    // Every judge marked unavailable (adapter-failed) → allUnavailable, regardless of any error string.
+    const down = parseCourtOutput({ ok: false, stdout: '{"result":{"verdict":"REJECTED","judges":[{"verdict":"UNCLEAR","judgeId":"codex","unavailable":true},{"verdict":"UNCLEAR","judgeId":"claude-code","unavailable":true}]}}' });
+    assert.equal(down.allAbstained, true, 'all unavailable judges are also all-abstained');
+    assert.equal(down.allUnavailable, true, 'every judge could not run → structural outage');
+    // A substantive all-UNCLEAR (judges reviewed but could not tell) is abstained but NOT unavailable.
+    const cantTell = parseCourtOutput({ ok: false, stdout: '{"result":{"verdict":"REJECTED","judges":[{"verdict":"UNCLEAR","judgeId":"codex"},{"verdict":"UNCLEAR","judgeId":"claude-code","unavailable":false}]}}' });
+    assert.equal(cantTell.allAbstained, true);
+    assert.equal(cantTell.allUnavailable, false, 'genuine can-not-tell must NOT trigger an outage pause');
+    // One judge down, one voted FAIL → neither all-abstained nor all-unavailable.
+    const partial = parseCourtOutput({ ok: false, stdout: '{"result":{"verdict":"REJECTED","judges":[{"verdict":"UNCLEAR","judgeId":"codex","unavailable":true},{"verdict":"FAIL","judgeId":"claude-code"}]}}' });
+    assert.equal(partial.allUnavailable, false);
+  });
+
+  test('noteStructuralOutage schedules a pause + raises the cycle marker with NO provider string (CH-020)', async () => {
+    const { noteStructuralOutage, getBudgetPauseUntil, clearBudgetPause, peekPendingOutage, clearPendingOutage } =
+      await import('../src/cli/commands/ascend-frontier-runner.js');
+    clearBudgetPause(); clearPendingOutage();
+    const now = Date.now();
+    const resume = noteStructuralOutage('structural outage: all judges unavailable', now);
+    assert.ok(resume > now, 'a backoff pause is scheduled');
+    assert.equal(getBudgetPauseUntil(), resume);
+    assert.ok(peekPendingOutage(), 'the cycle marker is raised so the orchestrator skips accounting');
+    clearBudgetPause(); clearPendingOutage();
+  });
+
   test('noteProviderOutage sets the pause AND raises the cycle marker; consume clears it', async () => {
     const { noteProviderOutage, getBudgetPauseUntil, clearBudgetPause, peekPendingOutage, consumePendingOutage, clearPendingOutage } =
       await import('../src/cli/commands/ascend-frontier-runner.js');

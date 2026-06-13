@@ -122,6 +122,19 @@ export function noteProviderOutage(output: string, nowMs: number = Date.now()): 
   return { outage: true, resumeAtMs: resume, signature: o.signature };
 }
 
+/**
+ * Raise a STRUCTURAL outage (CH-020): the court proved every judge was unavailable, with no provider
+ * error string to parse. Schedule the default backoff and raise the cycle marker, exactly like a
+ * signature-matched untimed outage — so a NEVER-BEFORE-SEEN provider failure still PAUSES instead of
+ * being booked toward a ceiling. Returns the resume instant.
+ */
+export function noteStructuralOutage(signature: string, nowMs: number = Date.now()): number {
+  const resume = nowMs + outageBackoffMs();
+  budgetPauseUntilMs = Math.max(budgetPauseUntilMs ?? 0, resume);
+  pendingOutage = { signature: signature.slice(0, 160), at: nowMs };
+  return resume;
+}
+
 /** Back-compat shim (self-challenge #7): returns the pause-until instant ONLY for a TIMED limit
  *  (named reset). Untimed outages return null here but are still handled by noteProviderOutage. */
 export function noteBudgetLimit(output: string, nowMs: number = Date.now()): number | null {
@@ -157,6 +170,10 @@ export interface CourtParse {
    *  tell. Either way it is NOT a clean capability rejection: the caller must not persist it as
    *  court-feedback or as generator-ceiling provenance (CH-019). */
   allAbstained: boolean;
+  /** True when EVERY judge was structurally UNAVAILABLE (adapter threw/failed/timed-out), not merely
+   *  uncertain — a provider outage proven by the court's own shape, with NO dependence on matching the
+   *  provider's error wording (CH-020). The orchestrator pauses on this even when no signature matched. */
+  allUnavailable: boolean;
 }
 
 /**
@@ -172,13 +189,14 @@ export interface CourtParse {
  * claiming VALIDATED is incoherent (e.g. --write failed after printing) — fail CLOSED there only.
  */
 export function parseCourtOutput(res: { ok: boolean; stdout: string }): CourtParse {
+  const fail = (parseError: boolean): CourtParse => ({ verdict: 'REJECTED', passedByJudges: [], parseError, allAbstained: false, allUnavailable: false });
   const brace = res.stdout.indexOf('{');
-  if (brace === -1) return { verdict: 'REJECTED', passedByJudges: [], parseError: true, allAbstained: false };
+  if (brace === -1) return fail(true);
   try {
-    const j = JSON.parse(res.stdout.slice(brace)) as { result?: { verdict?: string; judges?: { verdict: string; judgeId: string }[] } };
-    if (typeof j?.result?.verdict !== 'string') return { verdict: 'REJECTED', passedByJudges: [], parseError: true, allAbstained: false };
+    const j = JSON.parse(res.stdout.slice(brace)) as { result?: { verdict?: string; judges?: { verdict: string; judgeId: string; unavailable?: boolean }[] } };
+    if (typeof j?.result?.verdict !== 'string') return fail(true);
     const verdict = j.result.verdict === 'VALIDATED' ? 'VALIDATED' : 'REJECTED';
-    if (!res.ok && verdict === 'VALIDATED') return { verdict: 'REJECTED', passedByJudges: [], parseError: true, allAbstained: false };
+    if (!res.ok && verdict === 'VALIDATED') return fail(true);
     const judges = j.result.judges ?? [];
     const passedByJudges = judges.filter(x => x.verdict === 'PASS').map(x => x.judgeId);
     // All-abstained: the court ran (≥1 judge) but none reached a PASS or a FAIL. A genuine REJECTED
@@ -186,9 +204,12 @@ export function parseCourtOutput(res: { ok: boolean; stdout: string }): CourtPar
     const allAbstained = judges.length > 0
       && passedByJudges.length === 0
       && judges.filter(x => x.verdict === 'FAIL').length === 0;
-    return { verdict, passedByJudges, parseError: false, allAbstained };
+    // All-unavailable (CH-020): every judge was structurally unable to run. Proven by the court's own
+    // shape — no dependence on the provider's error wording. allUnavailable ⊆ allAbstained.
+    const allUnavailable = judges.length > 0 && judges.every(x => x.unavailable === true);
+    return { verdict, passedByJudges, parseError: false, allAbstained, allUnavailable };
   } catch {
-    return { verdict: 'REJECTED', passedByJudges: [], parseError: true, allAbstained: false };
+    return fail(true);
   }
 }
 

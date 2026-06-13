@@ -100,7 +100,7 @@ describe('frontier-review-court — the automated 9.0 semantic gate', () => {
     assert.equal(r.verdict, 'REJECTED', 'unanimous 2-of-2 required — a single FAIL blocks');
   });
 
-  test('a judge error degrades to UNCLEAR, never a silent PASS', async () => {
+  test('a judge error degrades to UNCLEAR, never a silent PASS, and is marked unavailable (CH-020)', async () => {
     const r = await runFrontierReviewCourt(input(), {
       members: MEMBERS,
       runJudge: async (id) => { if (id === 'codex') throw new Error('quota'); return 'VERDICT: PASS\nREASON: ok'; },
@@ -108,5 +108,18 @@ describe('frontier-review-court — the automated 9.0 semantic gate', () => {
     // 1 PASS + 1 UNCLEAR with minPasses=2 cannot validate.
     assert.equal(r.verdict, 'REJECTED');
     assert.equal(r.vote.unclear, 1);
+    // CH-020: the thrown judge is flagged unavailable (adapter failure), the voting judge is not.
+    assert.equal(r.judges.find(j => j.judgeId === 'codex')?.unavailable, true, 'a thrown judge could not run');
+    assert.equal(r.judges.find(j => j.judgeId !== 'codex' && j.verdict === 'PASS')?.unavailable, false, 'a judge that voted is available');
+  });
+
+  test('every judge unavailable → all marked unavailable (structural outage signal, CH-020)', async () => {
+    const r = await runFrontierReviewCourt(input(), {
+      members: MEMBERS,
+      // Both the court-caught throw AND the CLI "judge unavailable — <reason>" marker count as unavailable.
+      runJudge: async (id) => { if (id === 'codex') throw new Error('usage limit'); return 'VERDICT: UNCLEAR\nREASON: judge unavailable — try again at 8:45 PM'; },
+    });
+    assert.equal(r.verdict, 'REJECTED');
+    assert.ok(r.judges.length >= 2 && r.judges.every(j => j.unavailable === true), 'a fully-down council marks every judge unavailable');
   });
 });
