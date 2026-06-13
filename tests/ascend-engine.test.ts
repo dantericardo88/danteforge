@@ -15,6 +15,7 @@ import {
   type MatrixDimension,
 } from '../src/core/compete-matrix.js';
 import { mapDimIdToScoringDimension, buildAscendReport, type AscendResult } from '../src/core/ascend-engine.js';
+import { readWaveLedger, reconcileReceipts } from '../src/core/wave-ledger.js';
 import type { CompetitorComparison } from '../src/core/competitor-scanner.js';
 import type { ScoringDimension } from '../src/core/harsh-scorer.js';
 
@@ -383,6 +384,54 @@ describe('AscendEngineOptions — Sprint 49 executeMode', () => {
     const forgeCalls = executeCalls.filter(c => c.startsWith('forge '));
     assert.ok(forgeCalls.length >= 1, `Expected at least one forge call, got: ${JSON.stringify(executeCalls)}`);
     assert.ok(forgeCalls[0]!.includes('Testing'), 'Forge goal should mention dimension label');
+  });
+});
+
+// ── depth_doctrine: ascend drives the shared WAVE LEDGER (CH-021 loop #3) ────────
+describe('runAscend — emits durable wave receipts (depth_doctrine rung-8, CH-021)', () => {
+  it('a real ascend cycle appends a COMPLETED ascend wave with the canonical schema', async () => {
+    const { runAscend } = await import('../src/core/ascend-engine.js');
+    const cwd = path.join('X:\\tmp', `ascend-wave-ledger-${process.pid}-${Date.now()}`);
+    await fs.mkdir(cwd, { recursive: true });
+    try {
+      await runAscend({
+        yes: true, cwd, executeMode: 'forge', maxCycles: 1,
+        _loadMatrix: async () => ({
+          project: 'test', competitors: [], oss_competitors: [], closed_source_competitors: [],
+          dimensions: [{
+            id: 'testing', label: 'Testing', weight: 1.0, category: 'quality', frequency: 'high' as const,
+            scores: { self: 5.0, Cursor: 9.0 }, gap_to_leader: 4.0, leader: 'Cursor',
+            gap_to_closed_source_leader: 4.0, closed_source_leader: 'Cursor',
+            gap_to_oss_leader: 0, oss_leader: 'unknown', status: 'in-progress' as const,
+            sprint_history: [], next_sprint_target: 7.0,
+          }],
+          overallSelfScore: 5.0, lastUpdated: new Date().toISOString(),
+        }),
+        _saveMatrix: async () => {},
+        _harshScore: async () => ({ displayScore: 5.0, displayDimensions: { testing: 5 }, rawScores: {}, summary: '', recommendations: [] } as never),
+        _computeStrictDims: async () => ({ autonomy: 50, selfImprovement: 50, tokenEconomy: 50 }),
+        _loadState: async () => ({ project: 'test', workflowStage: 'forge', tasks: {}, auditLog: [] } as never),
+        _saveState: async () => {},
+        _confirmMatrix: async () => true,
+        _isLLMAvailable: async () => true,
+        _bootstrapHarvest: async () => {},
+        _runVerify: async () => {},
+        _runLoop: async (ctx) => ctx,
+        _setWorkflowStage: async () => {},
+        _executeCommand: async () => ({ success: true }),
+      });
+      const rows = await readWaveLedger(cwd);
+      const done = reconcileReceipts(rows).find(r => r.loopName === 'ascend' && r.status === 'completed');
+      assert.ok(done, 'ascend genuinely drove the SHARED wave ledger — a receipt, not a hypothesis');
+      assert.strictEqual(done!.dimensionId, 'testing');
+      assert.strictEqual(done!.scoreBefore, 5.0, 'real scoreBefore (0-10 matrix score)');
+      // Byte-comparable to harden-crusade + autoforge: the same canonical key-set.
+      for (const k of ['waveId', 'runId', 'loopName', 'waveIndex', 'waveType', 'scoreCeiling', 'allowedActions', 'scoreBefore', 'scoreAfter', 'commandsRun', 'status', 'startedAt', 'completedAt']) {
+        assert.ok(done && k in done, `ascend receipt carries the canonical field "${k}"`);
+      }
+    } finally {
+      await fs.rm(cwd, { recursive: true, force: true }).catch(() => {});
+    }
   });
 });
 
