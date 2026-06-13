@@ -1,10 +1,13 @@
-import { describe, it } from 'node:test';
+import { describe, it, after } from 'node:test';
 import assert from 'node:assert/strict';
+import fs from 'node:fs/promises';
+import path from 'node:path';
 import {
   runHardenCrusade,
   type HardenCrusadeOptions,
   type HardenDimResult,
 } from '../src/cli/commands/harden-crusade.js';
+import { readWaveLedger, reconcileReceipts } from '../src/core/wave-ledger.js';
 import type { CompeteMatrix, MatrixDimension } from '../src/core/compete-matrix.js';
 
 // ── Fixture helpers ────────────────────────────────────────────────────────────
@@ -469,5 +472,36 @@ describe('runHardenCrusade — exhausted-dim economy (FIX B)', () => {
     assert.equal(dispatches.filter(d => d === 'stuck_dim').length, 0, 'evidence-bound dim never receives a builder (L8)');
     assert.ok(dispatches.filter(d => d === 'next_dim').length >= 1,
       'the next-weakest dim must inherit the build slot the exhausted dim was hogging');
+  });
+});
+
+// ── depth_doctrine: harden-crusade drives the shared WAVE LEDGER ────────────────
+describe('runHardenCrusade — emits durable wave receipts (depth_doctrine rung-8 proof)', () => {
+  const LEDGER_CWD = path.join('X:\\tmp', `hc-wave-ledger-${process.pid}`);
+  after(async () => { await fs.rm(LEDGER_CWD, { recursive: true, force: true }).catch(() => {}); });
+
+  it('a real harden-crusade cycle appends a COMPLETED wave receipt with the canonical schema', async () => {
+    const dim = makeDim('security', 6.0);
+    await fs.mkdir(LEDGER_CWD, { recursive: true });
+    await runHardenCrusade(baseOpts({
+      cwd: LEDGER_CWD,
+      _loadMatrix: async () => makeMatrix([dim]),
+      _getScore: async () => 6.0,           // sub-target → the cycle runs
+      _runCapTest: async () => 1,           // failing cap test → autoresearch (breadth) path
+      _runHardenForDim: async () => gatePass,
+      maxDimCycles: 1,
+    }));
+    const rows = await readWaveLedger(LEDGER_CWD);
+    assert.ok(rows.length >= 2, 'a start (running) and a finish receipt were both appended (durable history)');
+    const done = reconcileReceipts(rows).find(r => r.loopName === 'harden-crusade' && r.status === 'completed');
+    assert.ok(done, 'harden-crusade genuinely drove the SHARED ledger to a completed wave — receipt, not hypothesis');
+    assert.equal(done!.dimensionId, 'security');
+    assert.equal(done!.scoreBefore, 6.0, 'real scoreBefore captured in-loop');
+    assert.equal(done!.scoreAfter, 6.0, 'real scoreAfter captured in-loop');
+    assert.equal(done!.capabilityTestExit, 1, 'the cycle\'s capability_test exit is recorded');
+    // The canonical cross-loop schema fields are all present (byte-comparable to other loops).
+    for (const k of ['waveId', 'runId', 'loopName', 'waveIndex', 'waveType', 'scoreCeiling', 'allowedActions', 'commandsRun', 'startedAt', 'completedAt']) {
+      assert.ok(k in done!, `receipt carries the canonical field "${k}"`);
+    }
   });
 });

@@ -5,7 +5,7 @@
 > Entries are never silently deleted: a challenge is open, solved (with the commit), or
 > retired (with the reason). An empty OPEN section is a smell, not an achievement.
 
-## Open (8)
+## Open (9)
 
 ### CH-006: Cycle economics: tiny payload per hour
 - **Problem:** A push attempt costs ~60min of orchestration + LLM for 2-3 file diffs; overhead dominates real building.
@@ -54,6 +54,12 @@
 - **Evidence:** universe-definer.ts: preset-gated MARKET_DIM_SPECS + feature-universe build, no target-count parameter anywhere (grep targetDims/maxDims across define/discover paths).
 - **Opportunity:** A --target-dims knob on define/bootstrap/discover that scales competitor-feature decomposition depth (split coarse dims into sub-capabilities until the requested density is met, each still ladder-grounded) = right-sized matrices per project complexity, operator-controlled.
 - Opened: 2026-06-12
+
+### CH-021: depth_doctrine: wave ledger lands, but only 1 loop wired + no replay/interrupt (rung-8→9)
+- **Problem:** The shared WaveLedger (src/core/wave-ledger.ts) is the rung-8 RAIL — canonical WaveReceipt schema, append-only JSONL, recovery anchor (lastSuccessfulWave) — and harden-crusade genuinely drives it (proven by a real emission pin). But the frozen 9-row bar needs MORE than the rail: (a) >=3 independent loops (autoforge, ascend, harden-crusade/matrixdev) emitting IDENTICAL receipts — only harden-crusade is wired so far; (b) a resumable state graph with checkpointed super-steps + 'danteforge wave replay <id>'; (c) a human/machine interrupt gate BEFORE score writes. The honest score stays ~8 (rung-7 doctrine primitive + rung-8 ledger foundation) and was NOT raised.
+- **Evidence:** Live council audit 2026-06-12 (codex + claude-code read the code): 'each loop emits different artifacts; they share a guard, not an engine or a receipt' + 'do NOT attempt the full state-graph in one session — that is the 9, multi-session, and a one-session attempt yields scaffolding the court rejects.' wave-ledger.ts wired into harden-crusade only (autoforge/ascend still emit their own loop-result.json/etc).
+- **Opportunity:** Wire autoforge-loop (close-prev/open-current to capture scoreAfter across cycles) + ascend-engine so >=3 loops emit byte-comparable receipts (then the 'identical receipts' clause is TRUE). Then build replay from the ledger (resume from lastSuccessfulWave) + an interrupt-before-score-write gate. Each is an honest rung toward 9; none should re-declare the score until its capability_test proves it.
+- Opened: 2026-06-13
 
 ## Resolved (12)
 

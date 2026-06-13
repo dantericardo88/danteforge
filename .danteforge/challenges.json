@@ -202,5 +202,14 @@
     "openedAt": "2026-06-13T02:25:26.545Z",
     "resolution": "fix(autonomy): structural all-judges-unavailable outage signal — FrontierJudgeRecord.unavailable (set when the adapter throws/fails/returns the 'judge unavailable' marker or empty); parseCourtOutput.allUnavailable (every judge unavailable, wording-agnostic); noteStructuralOutage raises the CH-019 pause+marker even with NO provider string matched. Pins in frontier-review-court.test.ts + ascend-frontier-ledger.test.ts",
     "resolvedAt": "2026-06-13T03:40:11.086Z"
+  },
+  {
+    "id": "CH-021",
+    "title": "depth_doctrine: wave ledger lands, but only 1 loop wired + no replay/interrupt (rung-8→9)",
+    "problem": "The shared WaveLedger (src/core/wave-ledger.ts) is the rung-8 RAIL — canonical WaveReceipt schema, append-only JSONL, recovery anchor (lastSuccessfulWave) — and harden-crusade genuinely drives it (proven by a real emission pin). But the frozen 9-row bar needs MORE than the rail: (a) >=3 independent loops (autoforge, ascend, harden-crusade/matrixdev) emitting IDENTICAL receipts — only harden-crusade is wired so far; (b) a resumable state graph with checkpointed super-steps + 'danteforge wave replay <id>'; (c) a human/machine interrupt gate BEFORE score writes. The honest score stays ~8 (rung-7 doctrine primitive + rung-8 ledger foundation) and was NOT raised.",
+    "evidence": "Live council audit 2026-06-12 (codex + claude-code read the code): 'each loop emits different artifacts; they share a guard, not an engine or a receipt' + 'do NOT attempt the full state-graph in one session — that is the 9, multi-session, and a one-session attempt yields scaffolding the court rejects.' wave-ledger.ts wired into harden-crusade only (autoforge/ascend still emit their own loop-result.json/etc).",
+    "opportunity": "Wire autoforge-loop (close-prev/open-current to capture scoreAfter across cycles) + ascend-engine so >=3 loops emit byte-comparable receipts (then the 'identical receipts' clause is TRUE). Then build replay from the ledger (resume from lastSuccessfulWave) + an interrupt-before-score-write gate. Each is an honest rung toward 9; none should re-declare the score until its capability_test proves it.",
+    "status": "open",
+    "openedAt": "2026-06-13T03:52:01.999Z"
   }
 ]
