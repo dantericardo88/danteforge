@@ -209,7 +209,18 @@
     "problem": "The shared WaveLedger (src/core/wave-ledger.ts) is the rung-8 RAIL — canonical WaveReceipt schema, append-only JSONL, recovery anchor (lastSuccessfulWave) — and harden-crusade genuinely drives it (proven by a real emission pin). But the frozen 9-row bar needs MORE than the rail: (a) >=3 independent loops (autoforge, ascend, harden-crusade/matrixdev) emitting IDENTICAL receipts — only harden-crusade is wired so far; (b) a resumable state graph with checkpointed super-steps + 'danteforge wave replay <id>'; (c) a human/machine interrupt gate BEFORE score writes. The honest score stays ~8 (rung-7 doctrine primitive + rung-8 ledger foundation) and was NOT raised.",
     "evidence": "Live council audit 2026-06-12 (codex + claude-code read the code): 'each loop emits different artifacts; they share a guard, not an engine or a receipt' + 'do NOT attempt the full state-graph in one session — that is the 9, multi-session, and a one-session attempt yields scaffolding the court rejects.' wave-ledger.ts wired into harden-crusade only (autoforge/ascend still emit their own loop-result.json/etc).",
     "opportunity": "Wire autoforge-loop (close-prev/open-current to capture scoreAfter across cycles) + ascend-engine so >=3 loops emit byte-comparable receipts (then the 'identical receipts' clause is TRUE). Then build replay from the ledger (resume from lastSuccessfulWave) + an interrupt-before-score-write gate. Each is an honest rung toward 9; none should re-declare the score until its capability_test proves it.",
+    "status": "solved",
+    "openedAt": "2026-06-13T03:52:01.999Z",
+    "resolution": "≥3-loop clause LANDED (commits d684d81 harden-crusade, f43bb90 autoforge, 8bde9b2 ascend): all three independent loops now drive the shared WaveLedger and emit byte-identical receipts, each PROVEN by a real emission pin (receipt, not hypothesis). File splits unblocked it: autoforge-loop-core.ts (enum+types+result writer, dissolved the value cycle) + ascend-engine-cycle.ts (cycle helpers). Score NOT raised. Remaining rung-9 (replay + interrupt-before-score-write) → CH-022.",
+    "resolvedAt": "2026-06-13T11:29:55.192Z"
+  },
+  {
+    "id": "CH-022",
+    "title": "depth_doctrine rung-9: WaveLedger has no replay or interrupt-before-score-write gate",
+    "problem": "The shared WaveLedger now records every wave across ≥3 loops (rung-8 clause TRUE) and exposes lastSuccessfulWave() as a recovery anchor — but nothing CONSUMES it yet. The frozen 9-row bar additionally requires: (a) a resumable state graph — 'danteforge wave replay <id>' that resumes a campaign from the last successful wave instead of restarting; (b) a human/machine INTERRUPT gate BEFORE score writes / frontier declarations (today score writes are gated by kernel-ownership + CIP, not by a cadence interrupt() checkpoint; SIGINT only saves+exits). Without these the dim stays an honest ~8, not 9.",
+    "evidence": "Live council audit 2026-06-12 bucketed replay + interrupt as the rung-9 (multi-session) work, distinct from the rung-8 ledger. wave-ledger.ts has lastSuccessfulWave() but no replay command and no interrupt gate; grep: no 'wave replay' CLI, no interrupt-before-score-write checkpoint.",
+    "opportunity": "Build 'danteforge wave replay <runId>' that reads the ledger, finds lastSuccessfulWave, and resumes the loop from there (skipping completed waves) — proven by a crash-mid-campaign → replay → resumes-not-restarts test. Then an interrupt gate: a pending-approval object written before any score write, releasable by human or policy. Each is a real rung toward 9; neither re-declares the score until its capability_test proves it.",
     "status": "open",
-    "openedAt": "2026-06-13T03:52:01.999Z"
+    "openedAt": "2026-06-13T11:29:55.423Z"
   }
 ]
