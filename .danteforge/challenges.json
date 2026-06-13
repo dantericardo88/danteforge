@@ -165,8 +165,10 @@
     "problem": "Frontier-review judges are spawned via makeAdapter(judgeMode) but receive the SAME makeLease as builders (allowedWritePaths src/**, tests/**); judge verdicts can also ingest foreign process output (codex judge reason field captured a taskkill cascade verbatim). A judge that can write to the tree it judges can destroy evidence or in-flight work; a contaminated tree auto-FAILs the court, conflating capability verdicts with hygiene violations.",
     "evidence": "Run 3i agent_activity_provenance court: claude-code judge verdict FAIL with reason 'Judge modified worktree files during review (ascend-frontier-push.ts, frontier-plan.ts) - bad-faith violation'; src/core/frontier-plan.ts was DELETED from the working tree mid-court and push.ts reverted to HEAD, wiping operator edits; codex judge verdict UNCLEAR with taskkill SUCCESS lines as its reason (X:/tmp/ascend-run3i.log)",
     "opportunity": "Read-only judge leases (or snapshot worktrees) make court verdicts pure capability judgments, immune to tree churn; protects operator/builder work from judge cleanup behavior; unblocks trusting REJECTED verdicts as real signal",
-    "status": "open",
-    "openedAt": "2026-06-12T22:44:57.656Z"
+    "status": "solved",
+    "openedAt": "2026-06-12T22:44:57.656Z",
+    "resolution": "fix(autonomy): makeJudgeLease (empty allowedWritePaths) for judges + plan consults — defense-in-depth atop the 89a4607 read-only adapters. Pin in ascend-frontier-ledger.test.ts",
+    "resolvedAt": "2026-06-13T02:25:11.502Z"
   },
   {
     "id": "CH-018",
@@ -174,7 +176,29 @@
     "problem": "generator-ceiling receipts are permanent (no reviewAfter) and carry no engine provenance, so they survive engine upgrades that invalidate their premise; the planner then never re-attempts those dims even when the generator that failed has been replaced.",
     "evidence": "After runs 3g-3k, 8 dims hold permanent generator-ceilings minted while (a) plan decomposition was structurally broken (judge-prompt wrapping + 10-min consult kills), (b) codex court seats returned taskkill transcripts as verdicts; the upgraded engine never gets to retry them (.danteforge/ceilings/*.json)",
     "opportunity": "Stamp the engine commit SHA into ceiling receipts and add cause-aware re-opening when the generator materially changed - honest terminals that self-revise with the engine instead of manual lifts",
+    "status": "solved",
+    "openedAt": "2026-06-12T23:11:25.750Z",
+    "resolution": "fix(autonomy): ceiling receipts carry engineSha (last commit touching the build+court engine, NOT HEAD); shouldReopenForEngine re-opens generator/build-failed/court-rejected ceilings when the engine changed, world/spec ceilings held; wired into defaultBuildState. Pins in ceiling-receipt.test.ts",
+    "resolvedAt": "2026-06-13T02:25:11.310Z"
+  },
+  {
+    "id": "CH-019",
+    "title": "Provider outage mints ceilings instead of pausing the campaign",
+    "problem": "When council CLIs are provider-exhausted (usage limits), pushes still run: courts convene with all judges abstaining (UNCLEAR-dominant booked as REJECTED into court-feedback), builds 'fail', and the orchestrator mints generator-ceiling (permanent) and build-failed ceilings for dims whose only problem was the outage; the next campaign then exits DONE after 0 cycles. Budget-pause exists but only parses claude limit messages from runCli child output - adapter-level provider failures never reach it.",
+    "evidence": "Run 3m (2026-06-12): codex dead from ~6 PM, claude died ~7:45 PM; 19 cycles minted 5 permanent generator-ceilings (courts 2/2-abstained) + 4 build-faileds; run 3n then exited DONE after 0 cycles with a fully-alive council. Ceilings lifted manually twice in one night (backups X:/tmp/ceilings-3k-backup, ceilings-3m-backup).",
+    "opportunity": "Detect provider-outage signatures (judge_exit with auth/limit stderr) at the orchestrator, PAUSE like budget-pause instead of ceiling-ing, and never record court-feedback from all-abstained courts - campaigns survive outages without poisoning durable state",
+    "status": "solved",
+    "openedAt": "2026-06-13T01:46:11.051Z",
+    "resolution": "fix(autonomy): provider-outage detector (provider-outage.ts) broadens budget-pause to codex 'try again at' + untimed auth/quota signatures; runner raises a per-cycle outage marker; orchestrator records NOTHING durable on an outage cycle (no attempt/build-failed/generator-ceiling) and pauses; all-abstained courts (every judge UNCLEAR) are courtRan=false + never recorded as court-feedback; defaultRunJudge surfaces errorReason so the signature reaches the court JSON. Pins in ascend-frontier-ledger.test.ts",
+    "resolvedAt": "2026-06-13T02:25:11.107Z"
+  },
+  {
+    "id": "CH-020",
+    "title": "Provider-outage detection is signature-based — a novel phrasing slips through",
+    "problem": "CH-019's outage detector (provider-outage.ts) matches a FIXED set of regex signatures (session/usage/rate limit, try-again/resets times, auth/quota/401-403). A future codex/claude/grok error wording the regex does not cover would NOT raise the outage marker, so the orchestrator would resume the old behavior — booking the all-abstained court as a build-failure and, after maxBuildAttempts, minting a (now re-attemptable but still spurious) build-failed ceiling. all-abstained → courtRan=false softens this to re-attemptable, but the campaign still burns its build-attempt budget on a dead provider instead of pausing.",
+    "evidence": "provider-outage.ts UNTIMED_RES is a closed list; the codex 'usage limit' killer (run 3l) was only caught after it was observed once. Detection is reactive to KNOWN strings, not to the structural fact 'every judge failed identically at the adapter layer'.",
+    "opportunity": "A structural outage signal independent of wording: when ALL judges/builders return adapter status 'failed'/'timed_out' in one cycle (regardless of the reason text), treat it as a probable outage and pause-with-backoff. Combine with the signature detector (which still gives exact resume times) so a never-before-seen error string still pauses instead of ceiling-ing.",
     "status": "open",
-    "openedAt": "2026-06-12T23:11:25.750Z"
+    "openedAt": "2026-06-13T02:25:26.545Z"
   }
 ]

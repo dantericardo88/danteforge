@@ -11,6 +11,7 @@
 import { spawn } from 'node:child_process';
 import type { RunLedger } from '../../core/run-ledger.js';
 import { trackChild, untrackChild, killTree, SPAWN_DETACHED } from '../../core/process-tree.js';
+import { detectProviderOutage } from '../../core/provider-outage.js';
 
 /** Keep at most the last N bytes of each captured stream — a 30-min build must never buffer unbounded. */
 const STREAM_TAIL_CAP = 256 * 1024;
@@ -84,41 +85,78 @@ export function setRunnerProcessControl(next?: Partial<RunnerProcessControl>): v
   processControl = next ? { ...realProcessControl(), ...next } : realProcessControl();
 }
 
-// ── Budget-window awareness (self-challenge #7) ────────────────────────────────
+// ── Budget-window + provider-outage awareness (self-challenge #7, CH-019) ──────
 // The agent CLIs share a session usage limit; when it fires, EVERY subsequent build/judge fails
-// with the same error until the stated reset time ("You've hit your session limit · resets
-// 7:10pm (America/New_York)"). Before this, a campaign near the limit burned its remaining cycles
-// on guaranteed failures. The runner detects the error and records the reset instant; the
-// orchestrator pauses the loop until then.
+// with the same error until the window reopens ("You've hit your session limit · resets 7:10pm",
+// or codex's "usage limit … try again at 8:45 PM"). Untimed outages (auth failures, quota) fail
+// the same way with no reset time. Before this, a campaign near the limit burned its remaining
+// cycles on guaranteed failures — and CH-019: the orchestrator misrecorded those as PERMANENT
+// generator-ceilings. The runner detects the outage and records the resume instant; the orchestrator
+// pauses the loop until then and records NOTHING durable for the affected cycle.
 
-const BUDGET_LIMIT_RE = /session limit[^]{0,80}?resets\s+(\d{1,2}):(\d{2})\s*([ap]m)/i;
-const BUDGET_RESET_MARGIN_MS = 2 * 60_000;
+/** Untimed-outage backoff: how long to sleep when the provider error names no reset time. A fixed
+ *  sleep is strictly better than burning cycles on guaranteed failures. Env-tunable (floor 60s). */
+function outageBackoffMs(): number {
+  const env = Number.parseInt(process.env['DANTEFORGE_OUTAGE_BACKOFF_MS'] ?? '', 10);
+  if (Number.isFinite(env) && env >= 60_000) return env;
+  return 20 * 60_000;
+}
+
 let budgetPauseUntilMs: number | null = null;
+// The orchestrator consumes this AFTER each action: a non-null marker means a provider outage was
+// detected during the cycle's sub-commands, so the cycle's lack of progress was the outage — not a
+// generator failure — and must NOT advance any no-progress counter or mint a ceiling (CH-019).
+let pendingOutage: { signature: string; at: number } | null = null;
 
-/** Parse a session-limit error out of sub-command output; records (and returns) the pause-until
- *  instant — the NEXT occurrence of the stated local time, plus a small margin. Pure given nowMs. */
+/**
+ * Detect a provider outage in sub-command output and, if found, set the pause-until instant (the
+ * named reset, or now + backoff) AND raise the pending-outage marker for the orchestrator. Pure
+ * given nowMs except for the two module-scoped sinks it intentionally updates.
+ */
+export function noteProviderOutage(output: string, nowMs: number = Date.now()): { outage: boolean; resumeAtMs: number; signature: string } | null {
+  const o = detectProviderOutage(output, nowMs);
+  if (!o.outage) return null;
+  const resume = o.resumeAtMs ?? nowMs + outageBackoffMs();
+  budgetPauseUntilMs = Math.max(budgetPauseUntilMs ?? 0, resume);
+  pendingOutage = { signature: o.signature, at: nowMs };
+  return { outage: true, resumeAtMs: resume, signature: o.signature };
+}
+
+/** Back-compat shim (self-challenge #7): returns the pause-until instant ONLY for a TIMED limit
+ *  (named reset). Untimed outages return null here but are still handled by noteProviderOutage. */
 export function noteBudgetLimit(output: string, nowMs: number = Date.now()): number | null {
-  const m = BUDGET_LIMIT_RE.exec(output);
-  if (!m) return null;
-  let hours = Number.parseInt(m[1]!, 10) % 12;
-  if (m[3]!.toLowerCase() === 'pm') hours += 12;
-  const at = new Date(nowMs);
-  at.setHours(hours, Number.parseInt(m[2]!, 10), 0, 0);
-  let t = at.getTime();
-  if (t <= nowMs) t += 24 * 3600_000; // the stated time already passed today → it names tomorrow's reset
-  t += BUDGET_RESET_MARGIN_MS;
-  budgetPauseUntilMs = Math.max(budgetPauseUntilMs ?? 0, t);
+  const o = detectProviderOutage(output, nowMs);
+  if (!o.outage || o.resumeAtMs === null) return null;
+  budgetPauseUntilMs = Math.max(budgetPauseUntilMs ?? 0, o.resumeAtMs);
   return budgetPauseUntilMs;
 }
 
 export function getBudgetPauseUntil(): number | null { return budgetPauseUntilMs; }
 export function clearBudgetPause(): void { budgetPauseUntilMs = null; }
 
+/** Non-clearing read of the pending-outage marker (used inside a cycle to gate counter increments). */
+export function peekPendingOutage(): { signature: string } | null {
+  return pendingOutage ? { signature: pendingOutage.signature } : null;
+}
+/** Read AND clear the pending-outage marker (used after a cycle to log + reset for the next cycle). */
+export function consumePendingOutage(): { signature: string } | null {
+  const p = pendingOutage;
+  pendingOutage = null;
+  return p ? { signature: p.signature } : null;
+}
+/** Clear the marker without reading (used at the top of each cycle for a fresh slate). */
+export function clearPendingOutage(): void { pendingOutage = null; }
+
 export interface CourtParse {
   verdict: 'VALIDATED' | 'REJECTED';
   passedByJudges: string[];
   /** True when we could NOT read the court's answer (non-zero exit / no JSON) — REJECTED defensively. */
   parseError: boolean;
+  /** True when the court RAN but EVERY judge abstained (0 PASS, 0 FAIL, ≥1 UNCLEAR) — the signature
+   *  of a provider outage (failed judge adapters parse to UNCLEAR) or judges that genuinely couldn't
+   *  tell. Either way it is NOT a clean capability rejection: the caller must not persist it as
+   *  court-feedback or as generator-ceiling provenance (CH-019). */
+  allAbstained: boolean;
 }
 
 /**
@@ -135,16 +173,22 @@ export interface CourtParse {
  */
 export function parseCourtOutput(res: { ok: boolean; stdout: string }): CourtParse {
   const brace = res.stdout.indexOf('{');
-  if (brace === -1) return { verdict: 'REJECTED', passedByJudges: [], parseError: true };
+  if (brace === -1) return { verdict: 'REJECTED', passedByJudges: [], parseError: true, allAbstained: false };
   try {
     const j = JSON.parse(res.stdout.slice(brace)) as { result?: { verdict?: string; judges?: { verdict: string; judgeId: string }[] } };
-    if (typeof j?.result?.verdict !== 'string') return { verdict: 'REJECTED', passedByJudges: [], parseError: true };
+    if (typeof j?.result?.verdict !== 'string') return { verdict: 'REJECTED', passedByJudges: [], parseError: true, allAbstained: false };
     const verdict = j.result.verdict === 'VALIDATED' ? 'VALIDATED' : 'REJECTED';
-    if (!res.ok && verdict === 'VALIDATED') return { verdict: 'REJECTED', passedByJudges: [], parseError: true };
-    const passedByJudges = (j.result.judges ?? []).filter(x => x.verdict === 'PASS').map(x => x.judgeId);
-    return { verdict, passedByJudges, parseError: false };
+    if (!res.ok && verdict === 'VALIDATED') return { verdict: 'REJECTED', passedByJudges: [], parseError: true, allAbstained: false };
+    const judges = j.result.judges ?? [];
+    const passedByJudges = judges.filter(x => x.verdict === 'PASS').map(x => x.judgeId);
+    // All-abstained: the court ran (≥1 judge) but none reached a PASS or a FAIL. A genuine REJECTED
+    // always carries ≥1 FAIL; an all-UNCLEAR court is an outage/can't-tell signal, not a no.
+    const allAbstained = judges.length > 0
+      && passedByJudges.length === 0
+      && judges.filter(x => x.verdict === 'FAIL').length === 0;
+    return { verdict, passedByJudges, parseError: false, allAbstained };
   } catch {
-    return { verdict: 'REJECTED', passedByJudges: [], parseError: true };
+    return { verdict: 'REJECTED', passedByJudges: [], parseError: true, allAbstained: false };
   }
 }
 
@@ -169,10 +213,11 @@ function runOnce(cwd: string, args: string[]): Promise<CliResult> {
       clearTimeout(timer);
       clearInterval(heartbeat);
       processControl.untrackChildFn(child.pid);
-      // Budget-window awareness (self-challenge #7): agent CLIs surface their shared usage limit
-      // as an error naming the reset time. Detect it here so the orchestrator can PAUSE until the
-      // window reopens instead of burning cycles on builds/judges that all fail the same way.
-      noteBudgetLimit(out + '\n' + err);
+      // Budget-window + provider-outage awareness (self-challenge #7, CH-019): agent CLIs surface
+      // their shared usage limit AND auth/quota failures as errors here. Detect them so the
+      // orchestrator can PAUSE until the window reopens (and skip ceiling-minting for the affected
+      // cycle) instead of burning cycles on builds/judges that all fail the same way.
+      noteProviderOutage(out + '\n' + err);
       resolve({ exitCode, stdout: out, stderr: err, ms: Date.now() - start, ok: exitCode === 0 });
     };
     // On timeout, kill the WHOLE tree (harden-crusade + its autoresearch grandchildren), not just the

@@ -159,10 +159,11 @@ export async function defaultPushTo9(
     });
     plan = await planMod.decomposeFrontierPlan(cwd, dimId, spec0, members as string[],
       async (memberId, prompt) => {
-        const { makeAdapter, makeLease } = await import('./council.js');
+        const { makeAdapter, makeJudgeLease } = await import('./council.js');
         const { runAdapter } = await import('../../matrix/adapters/adapter-interface.js');
         const adapter = makeAdapter(memberId as CouncilMemberId, await makePlanConsultPacket(prompt, cwd), true);
-        const r = await runAdapter(adapter, { lease: makeLease(cwd), cwd }) as { finalMessage?: string; status?: string; errorReason?: string };
+        // CH-017: a decomposition consult is a read-only review — it reads the repo, it never writes.
+        const r = await runAdapter(adapter, { lease: makeJudgeLease(cwd), cwd }) as { finalMessage?: string; status?: string; errorReason?: string };
         // A failed/killed consult must surface as a NAMED failure (run 3j/3k: timeout
         // tree-kills came back as completed-with-garbage and read as "unusable plan").
         if (r.status === 'failed') throw new Error(r.errorReason ?? 'adapter run failed');
@@ -263,7 +264,11 @@ export async function defaultPushTo9(
   if (spec0 && evidenceOk) {
     const review = await runCli(cwd, ['frontier-review', dimId, '--write', '--json']);
     const parsed = parseCourtOutput(review);
-    if (!parsed.parseError) {
+    // CH-019: an all-abstained court (every judge UNCLEAR) is an outage / can't-tell, NOT a clean
+    // rejection — treat it like an unreadable court (courtRan stays false → re-attemptable build
+    // failure, never a generator-ceiling) and DO NOT persist its reasons as court-feedback (that
+    // poisoned the verdict→builder loop with "the judges objected" when they never actually judged).
+    if (!parsed.parseError && !parsed.allAbstained) {
       courtRan = true;
       // VALIDATED is confirmed against the PERSISTED spec status (the stronger source — the
       // verdict only counts if --write actually landed it on disk).
@@ -274,6 +279,8 @@ export async function defaultPushTo9(
       // Persist the judges' reasons so the NEXT attempt's build goal addresses them verbatim
       // (best-effort: feedback failing to record must never fail a court that ran).
       await recordCourtFeedback(cwd, parseCourtFeedback(review.stdout, dimId, verdict)).catch(() => { /* best-effort */ });
+    } else if (parsed.allAbstained) {
+      logger.warn(`[ascend-frontier] ${dimId}: frontier court all-abstained (likely provider outage) — not recorded as a rejection or as court-feedback.`);
     }
   }
 
@@ -294,6 +301,38 @@ export async function defaultPushTo9(
 
 export async function headSha(cwd: string): Promise<string | null> {
   try { return (await execFileAsync('git', ['rev-parse', 'HEAD'], { cwd })).stdout.trim(); } catch { return null; }
+}
+
+/** The autonomous-loop ENGINE source: the build+court+adapter machinery that mints ceilings. Used to
+ *  derive a STABLE engine identity for CH-018 — distinct from HEAD, which council product commits
+ *  move on nearly every cycle (so HEAD-change reopening would never let a ceiling stop the grind). */
+const ENGINE_PATHS: readonly string[] = [
+  'src/core/ascend-frontier-engine.ts',
+  'src/core/ascend-frontier-parallel.ts',
+  'src/core/frontier-plan.ts',
+  'src/core/court-feedback.ts',
+  'src/core/provider-outage.ts',
+  'src/core/ceiling-receipt.ts',
+  'src/cli/commands/ascend-frontier.ts',
+  'src/cli/commands/ascend-frontier-push.ts',
+  'src/cli/commands/ascend-frontier-runner.ts',
+  'src/cli/commands/frontier-review.ts',
+  'src/cli/commands/council.ts',
+  'src/matrix/courts/frontier-review-court.ts',
+  'src/matrix/adapters',
+];
+
+/**
+ * The git SHA of the last commit that touched the autonomous-loop ENGINE (CH-018). Ceilings the
+ * engine mints carry this SHA so they re-open when the generator that failed them is replaced, while
+ * ordinary council PRODUCT commits leave it stable so a ceiling still stops the grind. Null when git
+ * or the paths are unavailable — then ceilings are simply held (we never re-open on absent provenance).
+ */
+export async function engineSha(cwd: string): Promise<string | null> {
+  try {
+    const out = (await execFileAsync('git', ['log', '-1', '--format=%H', '--', ...ENGINE_PATHS], { cwd })).stdout.trim();
+    return out || null;
+  } catch { return null; }
 }
 
 export async function defaultDiscoverMembers(): Promise<CouncilMemberId[]> {
@@ -385,10 +424,12 @@ export async function defaultPromoteOne(cwd: string, a: { memberId: CouncilMembe
   // no JSON): parseCourtOutput flags the latter so the orchestrator records uncertainty, not a clean no.
   const res = await runCli(cwd, ['frontier-review', a.dimId, '--builder', a.memberId, '--min-judges', '2', '--json', '--write']);
   const parsed = parseCourtOutput(res);
+  // CH-019: an all-abstained court (outage) is NOT a court that ran — courtRan:false routes it to the
+  // re-attemptable build-failure path instead of fabricating a court rejection toward a permanent ceiling.
   return {
     dimId: a.dimId, builderId: a.memberId,
     verdict: parsed.verdict, passedByJudges: parsed.passedByJudges as CouncilMemberId[],
-    courtRan: !parsed.parseError,
+    courtRan: !parsed.parseError && !parsed.allAbstained,
     ...(parsed.parseError ? { parseError: true } : {}),
   };
 }

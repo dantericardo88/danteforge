@@ -132,6 +132,23 @@ export function makeLease(cwd: string): AgentLease {
   } as unknown as AgentLease;
 }
 
+/**
+ * Read-only lease for JUDGES and CONSULTS (self-challenge CH-017). A reviewer must never hold the
+ * builders' write lease over the tree it judges — run 3i: a judge that could write reverted live
+ * operator edits and DELETED a tracked source file mid-court, poisoning the verdict with a hygiene
+ * violation that read as a capability rejection. The claude/codex judge adapters are already
+ * structurally read-only (`--allowedTools Read,Glob,Grep` / `--sandbox read-only`, 89a4607); this
+ * makes the LEASE itself honest (empty allowedWritePaths) — defense-in-depth for any adapter that
+ * honors the lease, and the truth a verdict's provenance should carry.
+ */
+export function makeJudgeLease(cwd: string): AgentLease {
+  return {
+    ...makeLease(cwd),
+    id: `council-judge-lease.${Date.now()}`,
+    allowedWritePaths: [],
+  } as unknown as AgentLease;
+}
+
 // ── Council discovery ─────────────────────────────────────────────────────────
 
 export async function discoverCouncil(allowedMemberIds?: string[]): Promise<CouncilMember[]> {

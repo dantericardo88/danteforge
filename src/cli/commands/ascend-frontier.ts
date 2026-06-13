@@ -19,15 +19,15 @@ import { MARKET_CAPPED_DIMS } from '../../core/market-dims.js';
 import { decisionDimScore } from '../../core/compete-matrix-score.js';
 import { effectiveStatus, resolveRunCommand, checkFrontierSpec, type FrontierSpec } from '../../core/frontier-spec.js';
 import { loadDimRubric } from '../../core/rubric-ladder.js';
-import { loadCeilingReceipt, writeCeilingReceipt, type CeilingCause } from '../../core/ceiling-receipt.js';
+import { loadCeilingReceipt, writeCeilingReceipt, shouldReopenForEngine, type CeilingCause } from '../../core/ceiling-receipt.js';
 import { loadAttemptLedger, recordAttempt, isNovelAttempt, type AttemptFingerprint } from '../../core/evidence-novelty.js';
 import { planNextAction, type DimState, type AscendAction } from '../../core/ascend-frontier-engine.js';
 import { assignRound, runParallelRound, type PushOutcome } from '../../core/ascend-frontier-parallel.js';
 import type { CouncilMemberId } from '../../matrix/engines/council-scheduler.js';
 import { RunLedger } from '../../core/run-ledger.js';
-import { setActiveLedger } from './ascend-frontier-runner.js';
+import { setActiveLedger, peekPendingOutage, consumePendingOutage, clearPendingOutage } from './ascend-frontier-runner.js';
 import { bootstrapColdRepo, defaultPreflight, type DefineUniverseFn, type PreflightResult } from './ascend-frontier-bootstrap.js';
-import { df, defaultPushTo9, defaultDiscoverMembers, defaultBuildAll, defaultPromoteOne, headSha, type PushResult } from './ascend-frontier-push.js';
+import { df, defaultPushTo9, defaultDiscoverMembers, defaultBuildAll, defaultPromoteOne, headSha, engineSha, type PushResult } from './ascend-frontier-push.js';
 
 const execFileAsync = promisify(execFile);
 const MARKET_DIMS = MARKET_CAPPED_DIMS; // canonical set — src/core/market-dims.ts
@@ -94,10 +94,23 @@ export async function defaultBuildState(cwd: string): Promise<DimState[]> {
   const matrix = await loadMatrix(cwd);
   if (!matrix) throw new Error('No compete matrix found. (Phase A define has not run.)');
   const ledger = await loadAttemptLedger(cwd);
+  // CH-018: the STABLE identity of the build+court engine that mints generator/build/court ceilings
+  // (the last commit touching the engine source, NOT HEAD — council product commits move HEAD every
+  // cycle). A fix to the engine changes this; a ceiling minted by the old engine then re-opens.
+  const currentEngineSha = await engineSha(cwd);
   const out: DimState[] = [];
   for (const dim of matrix.dimensions) {
     const spec = (dim as unknown as { frontier_spec?: FrontierSpec }).frontier_spec;
     let ceiling = await loadCeilingReceipt(cwd, dim.id);
+    // CH-018: cause-aware re-opening on engine change. An engine-bound ceiling (generator-ceiling /
+    // build-failed / court-rejected) whose minting engineSha differs from the current HEAD measured
+    // a generator that no longer exists — re-open it so the fixed engine retries, instead of forcing
+    // the manual ceiling-lifts run 3k/3m needed. World/spec ceilings (market-cap, spec-incomplete)
+    // are untouched. Legacy receipts (no engineSha) are held — we never re-open on absent provenance.
+    if (ceiling && shouldReopenForEngine(ceiling, currentEngineSha)) {
+      logger.info(`[ascend-frontier] ${dim.id}: ${ceiling.cause} ceiling RE-OPENED — minted by engine ${ceiling.engineSha?.slice(0, 8)}, current engine is ${currentEngineSha?.slice(0, 8)}; the generator changed, so its premise is stale.`);
+      ceiling = null;
+    }
     // Cause-aware re-opening (fleet run 3d: every dim sat behind a stale spec-incomplete ceiling
     // and the loop exited after ZERO cycles): a ceiling is a receipt for NAMED missing work, so
     // when that work is verifiably DONE the ceiling is resolved — not held until reviewAfter.
@@ -201,6 +214,9 @@ export async function runAscendFrontier(options: AscendFrontierOptions): Promise
   const engineBaselineMtimeMs: number | null = process.argv[1]
     ? await fsp.stat(process.argv[1]).then(s => s.mtimeMs).catch(() => null)
     : null;
+  // CH-018: stamp every minted ceiling with the engine that minted it, so a later run on a FIXED
+  // engine re-opens the engine-bound ceilings this run produced (instead of needing a manual lift).
+  const mintEngineSha = await engineSha(cwd);
 
   const actions: string[] = [];
   let cycles = 0;
@@ -408,6 +424,9 @@ export async function runAscendFrontier(options: AscendFrontierOptions): Promise
         logger.info('[ascend-frontier] budget window reopened — resuming the campaign.');
       }
     }
+    // CH-019: fresh slate — the pending-outage marker now reflects ONLY this cycle's sub-commands.
+    // If any of them hits a provider outage, we record nothing durable for the dim this cycle.
+    clearPendingOutage();
     led.logEvent('cycle', { cycle: cycles, action: describe(action) });
     logger.info(`[ascend-frontier] cycle ${cycles}: ${describe(action)}`);
     actions.push(describe(action));
@@ -426,18 +445,21 @@ export async function runAscendFrontier(options: AscendFrontierOptions): Promise
           logger.warn(`[ascend-frontier] setup REMOVED ${lost.length} outcome declaration(s): ${lost.slice(0, 8).join(', ')}${lost.length > 8 ? ', …' : ''} — grounding must downgrade with provenance, never silently drop. Recorded in the run ledger.`);
           led.logEvent('declarations-lost', { phase: 'setup', lost });
         }
-        for (const id of action.dims) setupAttempts.set(id, (setupAttempts.get(id) ?? 0) + 1);
+        // CH-019: a provider outage during setup is not an un-scaffoldable dim — don't march it
+        // toward a generator-ceiling on a dead council; the cycle-top pause waits out the window.
+        if (!peekPendingOutage()) for (const id of action.dims) setupAttempts.set(id, (setupAttempts.get(id) ?? 0) + 1);
         break;
       }
       case 'build-to-7':
         await runBuildTo7(cwd, action.dims);
-        for (const id of action.dims) buildAttempts.set(id, (buildAttempts.get(id) ?? 0) + 1);
+        // CH-019: an outage (no provider) is not a build that failed to progress — skip the counter.
+        if (!peekPendingOutage()) for (const id of action.dims) buildAttempts.set(id, (buildAttempts.get(id) ?? 0) + 1);
         break;
       case 'ceiling':
         logger.info(`[ascend-frontier] ceiling ${action.dimId} (${action.cause}): ${action.detail}`);
         led.addReceipt('ceiling', { dimId: action.dimId, cause: action.cause, detail: action.detail, cap: scoreOf(state, action.dimId) });
         await writeCeilingReceipt(cwd, { dimId: action.dimId, cap: scoreOf(state, action.dimId), cause: action.cause,
-          detail: action.detail, failedGates: [action.cause], recordedAt: now() });
+          detail: action.detail, failedGates: [action.cause], recordedAt: now(), engineSha: mintEngineSha ?? undefined });
         break;
       case 'push-to-9': {
         if (options.parallel) {
@@ -453,6 +475,12 @@ export async function runAscendFrontier(options: AscendFrontierOptions): Promise
             promoteOne: options._promoteOne ?? defaultPromoteOne,
             nowIso: now(),
           });
+          // CH-019: a provider outage during the round means the builds/courts couldn't really run —
+          // record NOTHING durable (no attempts, no ceilings) and let the cycle-top pause wait it out.
+          if (peekPendingOutage()) {
+            logger.warn('[ascend-frontier] parallel round hit a provider outage — recording nothing this round; pausing until the window reopens.');
+            break;
+          }
           // Record an attempt per pushed dim so attempt-counts advance (a fresh HEAD makes it novel).
           const sha = await headSha(cwd);
           for (const o of round.outcomes) {
@@ -462,7 +490,7 @@ export async function runAscendFrontier(options: AscendFrontierOptions): Promise
               const reviewAfter = new Date(Date.parse(now()) + 24 * 60 * 60_000).toISOString();
               led.addReceipt('ceiling', { dimId: o.dimId, cause: o.ceiling.cause, detail: o.ceiling.detail });
               await writeCeilingReceipt(cwd, { dimId: o.dimId, cap: scoreOf(state, o.dimId), cause: o.ceiling.cause as CeilingCause,
-                detail: o.ceiling.detail, failedGates: [o.ceiling.cause], recordedAt: now(), reviewAfter });
+                detail: o.ceiling.detail, failedGates: [o.ceiling.cause], recordedAt: now(), reviewAfter, engineSha: mintEngineSha ?? undefined });
               logger.info(`[ascend-frontier] ${o.dimId} ceiling (${o.ceiling.cause}) — ${o.ceiling.detail}`);
               continue;
             }
@@ -480,7 +508,7 @@ export async function runAscendFrontier(options: AscendFrontierOptions): Promise
                 led.addReceipt('ceiling', { dimId: o.dimId, cause: 'build-failed', detail: `${n} parallel push attempts failed to run` });
                 await writeCeilingReceipt(cwd, { dimId: o.dimId, cap: scoreOf(state, o.dimId), cause: 'build-failed',
                   detail: `${n} parallel push attempts could not run the court — the build/command failed (not a court rejection). Held at current score; re-attempt after fixing the build.`,
-                  failedGates: ['build-failed'], recordedAt: now(), reviewAfter });
+                  failedGates: ['build-failed'], recordedAt: now(), reviewAfter, engineSha: mintEngineSha ?? undefined });
               }
               continue;
             }
@@ -491,6 +519,14 @@ export async function runAscendFrontier(options: AscendFrontierOptions): Promise
           break;
         }
         const result = await runPushTo9(cwd, action.dimId);
+        // CH-019: a provider outage during this push means the court couldn't really run / the build
+        // couldn't really build — record NOTHING durable (no attempt, no build-failed, no
+        // generator-ceiling) and let the cycle-top pause wait out the window. Without this guard, an
+        // outage minted permanent generator-ceilings against live dims (run 3m: 5 in one night).
+        if (peekPendingOutage()) {
+          logger.warn(`[ascend-frontier] ${action.dimId}: provider outage during push — not counted; pausing until the provider window reopens.`);
+          break;
+        }
         if (result.ceiling) {
           // The dim's frontier_spec is INCOMPLETE — it genuinely cannot reach 9.0 until the human
           // real-user-path fields are authored. This is an HONEST, ACTIONABLE ceiling (it names the
@@ -499,7 +535,7 @@ export async function runAscendFrontier(options: AscendFrontierOptions): Promise
           const reviewAfter = new Date(Date.parse(now()) + 24 * 60 * 60_000).toISOString();
           led.addReceipt('ceiling', { dimId: action.dimId, cause: result.ceiling.cause, detail: result.ceiling.detail });
           await writeCeilingReceipt(cwd, { dimId: action.dimId, cap: scoreOf(state, action.dimId), cause: result.ceiling.cause,
-            detail: result.ceiling.detail, failedGates: [result.ceiling.cause], recordedAt: now(), reviewAfter });
+            detail: result.ceiling.detail, failedGates: [result.ceiling.cause], recordedAt: now(), reviewAfter, engineSha: mintEngineSha ?? undefined });
           logger.info(`[ascend-frontier] ${action.dimId} ceiling (spec-incomplete) — author the frontier_spec to unlock 9.0: ${result.ceiling.detail}`);
           break;
         }
@@ -531,7 +567,7 @@ export async function runAscendFrontier(options: AscendFrontierOptions): Promise
             led.addReceipt('ceiling', { dimId: action.dimId, cause: 'build-failed', detail: `${n} push attempts failed to run` });
             await writeCeilingReceipt(cwd, { dimId: action.dimId, cap: scoreOf(state, action.dimId), cause: 'build-failed',
               detail: `${n} push attempts could not run the court — the build/evidence/court sub-command failed (not a court rejection). Held at current score; re-attempt after fixing the build.`,
-              failedGates: ['build-failed'], recordedAt: now(), reviewAfter });
+              failedGates: ['build-failed'], recordedAt: now(), reviewAfter, engineSha: mintEngineSha ?? undefined });
           }
           break;
         }
@@ -542,12 +578,19 @@ export async function runAscendFrontier(options: AscendFrontierOptions): Promise
           // The push produced no NEW evidence (same code/command/artifact) — it can't progress.
           led.addReceipt('ceiling', { dimId: action.dimId, cause: 'generator-ceiling', detail: 'no novel evidence' });
           await writeCeilingReceipt(cwd, { dimId: action.dimId, cap: scoreOf(state, action.dimId), cause: 'generator-ceiling',
-            detail: 'Push produced no novel evidence (unchanged code/command/artifact) — cannot advance.', failedGates: ['evidence-novelty'], recordedAt: now() });
+            detail: 'Push produced no novel evidence (unchanged code/command/artifact) — cannot advance.', failedGates: ['evidence-novelty'], recordedAt: now(), engineSha: mintEngineSha ?? undefined });
         } else {
           await recordAttempt(cwd, result.fingerprint, result.verdict === 'VALIDATED' ? 'validated' : 'rejected', now());
         }
         break;
       }
+    }
+    // CH-019: surface + clear the outage marker. The pause was already scheduled inside runCli; this
+    // makes the outage an OBSERVED fact in the ledger/console (not a silent "nothing happened" cycle).
+    const outageThisCycle = consumePendingOutage();
+    if (outageThisCycle) {
+      logger.warn(`[ascend-frontier] cycle ${cycles}: provider outage (${outageThisCycle.signature}) — no durable state recorded; the campaign pauses until the window reopens and resumes by itself.`);
+      led.logEvent('provider-outage', { cycle: cycles, signature: outageThisCycle.signature });
     }
     consecutiveErrors = 0; // a clean cycle resets the transient-failure counter
     } catch (err) {

@@ -78,6 +78,73 @@ describe('budget-window awareness — the loop pauses instead of burning cycles 
   });
 });
 
+describe('provider-outage awareness — outages PAUSE, never mint permanent ceilings (CH-019)', () => {
+  test('detectProviderOutage: claude timed, codex timed, untimed, and clean build all classify correctly', async () => {
+    const { detectProviderOutage } = await import('../src/core/provider-outage.js');
+    const now = new Date(); now.setHours(15, 0, 0, 0);
+    // claude phrasing (timed): resolves to the named reset.
+    const claude = detectProviderOutage("You've hit your session limit · resets 7:10pm (America/New_York)", now.getTime());
+    assert.equal(claude.outage, true);
+    assert.ok(claude.resumeAtMs !== null);
+    assert.equal(new Date(claude.resumeAtMs!).getHours(), 19);
+    // codex phrasing (timed): "usage limit … try again at 8:45 PM".
+    const codex = detectProviderOutage('ERROR: You have hit your usage limit. Please try again at 8:45 PM.', now.getTime());
+    assert.equal(codex.outage, true);
+    assert.ok(codex.resumeAtMs !== null);
+    assert.equal(new Date(codex.resumeAtMs!).getHours(), 20);
+    assert.equal(new Date(codex.resumeAtMs!).getMinutes(), 47);
+    // untimed outage: real signature, no parseable time → resumeAtMs null (caller backs off).
+    const untimed = detectProviderOutage('error: authentication failed (401 Unauthorized)', now.getTime());
+    assert.equal(untimed.outage, true);
+    assert.equal(untimed.resumeAtMs, null);
+    // ordinary build/test output must NOT be read as an outage.
+    assert.equal(detectProviderOutage('FAIL tests/foo.test.ts — expected 3, got 4 (exit 1)', now.getTime()).outage, false);
+    assert.equal(detectProviderOutage('compiled 412 files; rate of 2000 lines/s', now.getTime()).outage, false);
+  });
+
+  test('parseCourtOutput flags all-abstained (every judge UNCLEAR) — NOT a clean rejection', () => {
+    const allUnclear = parseCourtOutput({ ok: false, stdout: '{"result":{"verdict":"REJECTED","judges":[{"verdict":"UNCLEAR","judgeId":"codex"},{"verdict":"UNCLEAR","judgeId":"claude-code"}]}}' });
+    assert.equal(allUnclear.parseError, false, 'the court ran — the JSON is complete');
+    assert.equal(allUnclear.allAbstained, true, 'all judges abstained → outage/can-not-tell, never a no');
+    // A genuine REJECTED carries ≥1 FAIL → not all-abstained.
+    const realReject = parseCourtOutput({ ok: false, stdout: '{"result":{"verdict":"REJECTED","judges":[{"verdict":"FAIL","judgeId":"codex"},{"verdict":"UNCLEAR","judgeId":"claude-code"}]}}' });
+    assert.equal(realReject.allAbstained, false);
+    // A clean PASS → not all-abstained.
+    const pass = parseCourtOutput({ ok: true, stdout: '{"result":{"verdict":"VALIDATED","judges":[{"verdict":"PASS","judgeId":"codex"}]}}' });
+    assert.equal(pass.allAbstained, false);
+  });
+
+  test('noteProviderOutage sets the pause AND raises the cycle marker; consume clears it', async () => {
+    const { noteProviderOutage, getBudgetPauseUntil, clearBudgetPause, peekPendingOutage, consumePendingOutage, clearPendingOutage } =
+      await import('../src/cli/commands/ascend-frontier-runner.js');
+    clearBudgetPause(); clearPendingOutage();
+    const now = Date.now();
+    // An untimed outage pauses for the default backoff window and raises the marker.
+    const o = noteProviderOutage('ERROR: usage limit reached for this account', now);
+    assert.ok(o && o.outage);
+    assert.ok(getBudgetPauseUntil()! > now, 'a pause is scheduled');
+    assert.ok(peekPendingOutage(), 'the cycle marker is raised (orchestrator skips ceiling accounting)');
+    assert.ok(consumePendingOutage(), 'consume returns the marker');
+    assert.equal(peekPendingOutage(), null, 'consume cleared it');
+    // Ordinary output raises nothing.
+    clearBudgetPause(); clearPendingOutage();
+    assert.equal(noteProviderOutage('build OK, 0 errors', Date.now()), null);
+    assert.equal(peekPendingOutage(), null);
+    clearBudgetPause(); clearPendingOutage();
+  });
+});
+
+describe('judge lease is READ-ONLY — a reviewer never holds the builders write lease (CH-017)', () => {
+  test('makeJudgeLease has empty allowedWritePaths while makeLease (builder) grants src/tests', async () => {
+    const { makeLease, makeJudgeLease } = await import('../src/cli/commands/council.js');
+    const builder = makeLease(process.cwd()) as unknown as { allowedWritePaths: string[] };
+    const judge = makeJudgeLease(process.cwd()) as unknown as { allowedWritePaths: string[]; allowedReadPaths: string[] };
+    assert.ok(builder.allowedWritePaths.length > 0, 'a builder can write');
+    assert.deepEqual(judge.allowedWritePaths, [], 'a judge can write NOTHING — it only audits');
+    assert.ok(judge.allowedReadPaths.includes('**'), 'a judge can still read the whole tree to review it');
+  });
+});
+
 describe('ladder remediation — the last permanently-human 8→9 step made autonomous', () => {
   test('routing: research fires ONLY for a never-researched bar (zero rubric rows + ladder-seeded field named)', async () => {
     const { isLadderBlocked } = await import('../src/cli/commands/ascend-frontier-push.js');

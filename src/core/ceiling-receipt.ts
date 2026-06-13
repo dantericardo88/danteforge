@@ -41,6 +41,30 @@ export interface CeilingReceipt {
   recordedAt: string;
   /** ISO date after which the orchestrator should RE-ATTEMPT this dim (env/r-and-d ceilings). */
   reviewAfter?: string;
+  /** The engine commit SHA that MINTED this ceiling (CH-018). generator-ceiling / build-failed /
+   *  court-rejected ceilings measure the GENERATOR (the build+court engine); when the engine that
+   *  failed them materially changes, their premise is stale and the orchestrator re-opens them
+   *  cause-awarely instead of holding forever (run 3g–3k minted 8 permanent ceilings while plan
+   *  decomposition and codex judging were structurally broken; the fixed engine never retried them).
+   *  Absent on legacy receipts — we never invent provenance, so a receipt with no engineSha is held. */
+  engineSha?: string;
+}
+
+/** Causes whose premise IS the generator/engine — they re-open when the engine SHA changes (CH-018).
+ *  market-cap / spec-incomplete / environment / r-and-d are about the WORLD or the SPEC, not the
+ *  engine, so an engine rebuild does not invalidate them. */
+const ENGINE_BOUND_CAUSES: ReadonlySet<CeilingCause> = new Set<CeilingCause>(['generator-ceiling', 'build-failed', 'court-rejected']);
+
+/**
+ * Should this ceiling re-open because the engine that minted it has changed? Pure (CH-018).
+ * Only engine-bound causes re-open, and only when the receipt CARRIES a minting SHA that differs
+ * from the current engine SHA. A receipt with no engineSha (legacy) or an unknown current SHA is
+ * left untouched — re-opening on absent provenance would be guessing.
+ */
+export function shouldReopenForEngine(receipt: CeilingReceipt, currentEngineSha: string | null): boolean {
+  if (!currentEngineSha || !receipt.engineSha) return false;
+  if (!ENGINE_BOUND_CAUSES.has(receipt.cause)) return false;
+  return receipt.engineSha !== currentEngineSha;
 }
 
 function receiptPath(cwd: string, dimId: string): string {

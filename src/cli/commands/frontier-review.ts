@@ -54,11 +54,20 @@ async function defaultDiscoverMembers(): Promise<CouncilMemberId[]> {
 }
 
 async function defaultRunJudge(id: CouncilMemberId, prompt: string, cwd: string): Promise<string> {
-  const { makeAdapter, makeWorkPacket, makeLease } = await import('./council.js');
+  const { makeAdapter, makeWorkPacket, makeJudgeLease } = await import('./council.js');
   const { runAdapter } = await import('../../matrix/adapters/adapter-interface.js');
   const adapter = makeAdapter(id, makeWorkPacket(prompt, cwd), true);
-  const r = await runAdapter(adapter, { lease: makeLease(cwd), cwd });
-  return (r as { finalMessage?: string }).finalMessage ?? '';
+  // CH-017: a judge gets a READ-ONLY lease (empty allowedWritePaths) — it audits, it never writes.
+  const r = await runAdapter(adapter, { lease: makeJudgeLease(cwd), cwd }) as { finalMessage?: string; status?: string; errorReason?: string };
+  // CH-019: a failed/killed judge (provider outage, auth failure, timeout) must surface WHY in its
+  // verdict text instead of silently returning '' (which parses to a contentless UNCLEAR with no
+  // reason). The court then reads an honest "judge unavailable — <reason>" abstention, and the
+  // outage signature (e.g. "usage limit … try again at 8:45 PM") flows into the court JSON, where
+  // the orchestrator's provider-outage detector finds it and PAUSES rather than ceiling-ing.
+  if (r.status === 'failed' || r.status === 'timed_out') {
+    return `VERDICT: UNCLEAR\nCONFIDENCE: LOW\nREASON: judge unavailable — ${r.errorReason ?? r.status}`;
+  }
+  return r.finalMessage ?? '';
 }
 
 export async function runFrontierReviewCli(options: FrontierReviewCliOptions): Promise<FrontierReviewCliResult> {

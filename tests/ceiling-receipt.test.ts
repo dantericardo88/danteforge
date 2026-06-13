@@ -2,7 +2,7 @@ import { test, describe } from 'node:test';
 import assert from 'node:assert/strict';
 import {
   writeCeilingReceipt, loadCeilingReceipt, loadAllCeilingReceipts,
-  isCeilingActive, isDimComplete, type CeilingReceipt,
+  isCeilingActive, isDimComplete, shouldReopenForEngine, type CeilingReceipt,
 } from '../src/core/ceiling-receipt.js';
 
 function receipt(over: Partial<CeilingReceipt> = {}): CeilingReceipt {
@@ -41,6 +41,23 @@ describe('ceiling-receipt — honest-ceiling records', () => {
     const expiredEnv = receipt({ cause: 'environment', reviewAfter: '2026-07-01T00:00:00.000Z' });
     assert.equal(isDimComplete(false, expiredEnv, now), false, 'expired env ceiling → re-attempt, not done');
     assert.equal(isDimComplete(false, null, now), false, 'no frontier, no ceiling → not done');
+  });
+
+  test('shouldReopenForEngine: engine-bound ceilings re-open on engine change; world/spec ceilings do not (CH-018)', () => {
+    // generator-ceiling minted by engine ABC; current engine is XYZ → the generator changed → re-open.
+    const gen = receipt({ cause: 'generator-ceiling', engineSha: 'ABC123' });
+    assert.equal(shouldReopenForEngine(gen, 'XYZ789'), true, 'engine changed → re-open the generator ceiling');
+    assert.equal(shouldReopenForEngine(gen, 'ABC123'), false, 'same engine → still in force');
+    // build-failed + court-rejected are also engine-bound.
+    assert.equal(shouldReopenForEngine(receipt({ cause: 'build-failed', engineSha: 'ABC123' }), 'XYZ789'), true);
+    assert.equal(shouldReopenForEngine(receipt({ cause: 'court-rejected', engineSha: 'ABC123' }), 'XYZ789'), true);
+    // market-cap / spec-incomplete / environment / r-and-d are about the WORLD or SPEC, not the engine.
+    assert.equal(shouldReopenForEngine(receipt({ cause: 'market-cap', engineSha: 'ABC123' }), 'XYZ789'), false);
+    assert.equal(shouldReopenForEngine(receipt({ cause: 'spec-incomplete', engineSha: 'ABC123' }), 'XYZ789'), false);
+    assert.equal(shouldReopenForEngine(receipt({ cause: 'environment', engineSha: 'ABC123' }), 'XYZ789'), false);
+    // Legacy receipts (no engineSha) or unknown current SHA → never re-open on absent provenance.
+    assert.equal(shouldReopenForEngine(receipt({ cause: 'generator-ceiling' }), 'XYZ789'), false, 'no minting SHA → held');
+    assert.equal(shouldReopenForEngine(gen, null), false, 'unknown current engine → held');
   });
 
   test('loadAll reads every receipt in the dir', async () => {
