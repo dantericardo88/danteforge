@@ -32,7 +32,7 @@ describe('wave-replay — resume from the last successful wave (depth_doctrine C
     assert.equal(plan.lastSuccessful?.waveIndex, 1, 'last successful is wave 1');
     assert.equal(plan.resumeFromIndex, 2, 'resume at wave 2 (the crashed one) — NOT 0 (the whole point of replay)');
     assert.equal(plan.alreadyComplete, false);
-    assert.equal(plan.unfinished.length, 1);
+    assert.equal(plan.pending.length, 1);
   });
 
   test('an ALL-COMPLETED run has nothing to resume', async () => {
@@ -41,7 +41,7 @@ describe('wave-replay — resume from the last successful wave (depth_doctrine C
     await finishWave(cwd, w0, { status: 'completed', scoreAfter: 2 });
     const plan = planReplay(await readWaveLedger(cwd), 'r1');
     assert.equal(plan.alreadyComplete, true);
-    assert.equal(plan.unfinished.length, 0);
+    assert.equal(plan.pending.length, 0);
     assert.equal(plan.resumeFromIndex, 1);
   });
 

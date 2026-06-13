@@ -23,7 +23,7 @@ export interface ReplayPlan {
   /** The waveIndex a resumed campaign should start AT (lastSuccessful.waveIndex + 1, or 0 if none). */
   resumeFromIndex: number;
   /** Waves recorded but NOT completed: running = crashed mid-wave, failed = ran but failed. */
-  unfinished: WaveReceipt[];
+  pending: WaveReceipt[];
   /** True when every recorded wave completed — nothing to resume. */
   alreadyComplete: boolean;
   /** True when the run has no receipts at all (unknown run id). */
@@ -42,7 +42,7 @@ export function planReplay(rows: WaveReceipt[], runId: string): ReplayPlan {
   if (mine.length === 0) {
     return {
       runId, loopName: null, totalWaves: 0, completedWaves: 0, failedWaves: 0, runningWaves: 0,
-      lastSuccessful: null, resumeFromIndex: 0, unfinished: [], alreadyComplete: false, unknown: true,
+      lastSuccessful: null, resumeFromIndex: 0, pending: [], alreadyComplete: false, unknown: true,
       reason: `No waves recorded for run "${runId}".`,
     };
   }
@@ -56,16 +56,16 @@ export function planReplay(rows: WaveReceipt[], runId: string): ReplayPlan {
     : completed.slice().sort((a, b) =>
         a.waveIndex - b.waveIndex || (a.completedAt ?? '').localeCompare(b.completedAt ?? ''))[completed.length - 1]!;
   const resumeFromIndex = lastSuccessful ? lastSuccessful.waveIndex + 1 : 0;
-  const unfinished = [...running, ...failed].sort((a, b) => a.waveIndex - b.waveIndex);
-  const alreadyComplete = unfinished.length === 0 && completed.length > 0;
+  const pending = [...running, ...failed].sort((a, b) => a.waveIndex - b.waveIndex);
+  const alreadyComplete = pending.length === 0 && completed.length > 0;
   const reason = alreadyComplete
     ? `All ${completed.length} wave(s) completed — nothing to resume.`
     : lastSuccessful
-      ? `Resume "${loopName}" from wave ${resumeFromIndex} — last successful was wave ${lastSuccessful.waveIndex} (${lastSuccessful.dimensionId ?? 'n/a'}, score→${lastSuccessful.scoreAfter ?? '?'}); ${unfinished.length} unfinished.`
-      : `No wave completed yet — a resume restarts from wave 0; ${unfinished.length} unfinished.`;
+      ? `Resume "${loopName}" from wave ${resumeFromIndex} — last successful was wave ${lastSuccessful.waveIndex} (${lastSuccessful.dimensionId ?? 'n/a'}, score→${lastSuccessful.scoreAfter ?? '?'}); ${pending.length} not completed.`
+      : `No wave completed yet — a resume restarts from wave 0; ${pending.length} not completed.`;
   return {
     runId, loopName, totalWaves: mine.length, completedWaves: completed.length, failedWaves: failed.length,
-    runningWaves: running.length, lastSuccessful, resumeFromIndex, unfinished, alreadyComplete, unknown: false, reason,
+    runningWaves: running.length, lastSuccessful, resumeFromIndex, pending, alreadyComplete, unknown: false, reason,
   };
 }
 

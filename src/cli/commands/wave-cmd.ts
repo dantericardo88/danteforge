@@ -42,8 +42,8 @@ export async function waveReplay(runId: string, opts: { cwd?: string; json?: boo
   logger.info(`  ${plan.reason}`);
   if (!plan.alreadyComplete) {
     logger.info(`  → resume from wave index ${plan.resumeFromIndex}`);
-    if (plan.unfinished.length > 0) {
-      logger.info(`  unfinished: ${plan.unfinished.map(w => `${w.waveIndex}(${w.status})`).join(', ')}`);
+    if (plan.pending.length > 0) {
+      logger.info(`  not completed: ${plan.pending.map(w => `${w.waveIndex}(${w.status})`).join(', ')}`);
     }
     // Honest boundary: this reports the resume point; auto re-entry into the loop is the CH-022 follow-up.
     logger.info('  (auto re-entry into the loop from this index is the CH-022 follow-up; this command reports the resume point.)');
