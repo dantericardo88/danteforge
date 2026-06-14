@@ -29,6 +29,7 @@ import { nextLevelGoalSuffix } from '../../core/rubric-ladder.js';
 import { resolveAutonomousTarget } from '../../core/autonomy-cap.js';
 import { runCIPCheck, type CIPOptions, type CIPResult } from '../../core/completion-integrity.js';
 import { startWave, finishWave, type WaveReceipt } from '../../core/wave-ledger.js';
+import { resolveResumeIndex } from '../../core/wave-replay.js';
 import { runGit } from '../../core/git-safe.js';
 import {
   resolveDanteForgeExec, defaultRunAutoResearch, mergeBackIsolatedBranch, defaultRunCapTest,
@@ -62,6 +63,9 @@ export interface HardenCrusadeOptions {
   loop?: boolean;             // re-rank + repeat until ALL_DONE (default false)
   cwd?: string;
   skipLLMCheck?: boolean;
+  /** depth_doctrine auto re-entry (CH-022): resume each dim from the WaveLedger's last successful wave
+   *  (run hc-<dim>) instead of restarting at wave 0 — skips already-completed cycles of a crashed run. */
+  resume?: boolean;
   // Injection seams
   _runAutoResearch?: (dimensionId: string, goal: string, cwd: string, timeMinutes: number, measurementCommand?: string) => Promise<void>;
   /** After autoresearch commits, refresh outcome evidence for this dim before re-scoring. */
@@ -233,6 +237,18 @@ async function runDimensionLoop(
   const initialScore = await getScore(dim.id, cwd);
   let score = initialScore;
   let cycle = 0;
+  // depth_doctrine AUTO RE-ENTRY (CH-022): when resuming, start this dim's cycle counter from the
+  // WaveLedger's resume index so we SKIP waves a prior (crashed) run already completed, instead of
+  // redoing them from 0. `cycle++` runs before the wave below, so starting at resumeIdx-1 lands the
+  // first new wave at resumeIdx — a continuous run id (hc-<dim>), not a restart. Best-effort: no
+  // ledger / read error → 0 (cold start), so a fresh run is never wedged.
+  if (options.resume) {
+    const resumeIdx = await resolveResumeIndex(cwd, `hc-${dim.id}`);
+    if (resumeIdx > 0) {
+      cycle = resumeIdx - 1;
+      logger.info(`[harden-crusade:${dim.id}] RESUME — ${resumeIdx - 1} wave(s) already completed; first new wave is ${resumeIdx} (not a restart).`);
+    }
+  }
   let autoresearchRuns = 0;
   let lastHarden: HardenDimResult = { allowed: true, scoreCap: 10, failedChecks: [] };
 

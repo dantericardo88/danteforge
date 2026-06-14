@@ -7,7 +7,7 @@ import {
   type HardenCrusadeOptions,
   type HardenDimResult,
 } from '../src/cli/commands/harden-crusade.js';
-import { readWaveLedger, reconcileReceipts } from '../src/core/wave-ledger.js';
+import { readWaveLedger, reconcileReceipts, startWave, finishWave } from '../src/core/wave-ledger.js';
 import type { CompeteMatrix, MatrixDimension } from '../src/core/compete-matrix.js';
 
 // ── Fixture helpers ────────────────────────────────────────────────────────────
@@ -502,6 +502,55 @@ describe('runHardenCrusade — emits durable wave receipts (depth_doctrine rung-
     // The canonical cross-loop schema fields are all present (byte-comparable to other loops).
     for (const k of ['waveId', 'runId', 'loopName', 'waveIndex', 'waveType', 'scoreCeiling', 'allowedActions', 'commandsRun', 'startedAt', 'completedAt']) {
       assert.ok(k in done!, `receipt carries the canonical field "${k}"`);
+    }
+  });
+});
+
+// ── depth_doctrine: AUTO RE-ENTRY — resume from the last successful wave (CH-022) ──
+describe('runHardenCrusade — --resume continues from wave K, not 0 (depth_doctrine CH-022)', () => {
+  it('with resume:true a crashed run continues from the planner index, NEVER restarting completed waves', async () => {
+    const cwd = path.join('X:\\tmp', `hc-resume-${process.pid}`);
+    await fs.mkdir(cwd, { recursive: true });
+    try {
+      // Simulate a prior run of hc-security that completed waves 1 and 2, then crashed.
+      const w1 = await startWave(cwd, { runId: 'hc-security', loopName: 'harden-crusade', waveIndex: 1, dimensionId: 'security', scoreBefore: 5 });
+      await finishWave(cwd, w1, { status: 'completed', scoreAfter: 6 });
+      const w2 = await startWave(cwd, { runId: 'hc-security', loopName: 'harden-crusade', waveIndex: 2, dimensionId: 'security', scoreBefore: 6 });
+      await finishWave(cwd, w2, { status: 'completed', scoreAfter: 6 });
+
+      await runHardenCrusade(baseOpts({
+        cwd, resume: true,
+        _loadMatrix: async () => makeMatrix([makeDim('security', 6.0)]),
+        _getScore: async () => 6.0, _runCapTest: async () => 1, _runHardenForDim: async () => gatePass,
+        maxDimCycles: 5,
+      }));
+
+      const reconciled = reconcileReceipts(await readWaveLedger(cwd)).filter(r => r.runId === 'hc-security');
+      const atIndex = (i: number) => reconciled.filter(r => r.waveIndex === i);
+      assert.equal(atIndex(1).length, 1, 'wave 1 was NOT re-run — only the original seeded receipt (no restart)');
+      assert.equal(atIndex(2).length, 1, 'wave 2 was NOT re-run — no restart');
+      assert.ok(reconciled.some(r => r.waveIndex === 3), 'the resumed run continued from wave 3 — the planner index, NOT 0');
+    } finally {
+      await fs.rm(cwd, { recursive: true, force: true }).catch(() => {});
+    }
+  });
+
+  it('WITHOUT resume the same ledger RESTARTS at wave 1 (default behavior preserved)', async () => {
+    const cwd = path.join('X:\\tmp', `hc-noresume-${process.pid}`);
+    await fs.mkdir(cwd, { recursive: true });
+    try {
+      const w1 = await startWave(cwd, { runId: 'hc-security', loopName: 'harden-crusade', waveIndex: 1, dimensionId: 'security', scoreBefore: 5 });
+      await finishWave(cwd, w1, { status: 'completed', scoreAfter: 6 });
+      await runHardenCrusade(baseOpts({
+        cwd, resume: false,
+        _loadMatrix: async () => makeMatrix([makeDim('security', 6.0)]),
+        _getScore: async () => 6.0, _runCapTest: async () => 1, _runHardenForDim: async () => gatePass,
+        maxDimCycles: 1,
+      }));
+      const atIndex1 = reconcileReceipts(await readWaveLedger(cwd)).filter(r => r.runId === 'hc-security' && r.waveIndex === 1);
+      assert.equal(atIndex1.length, 2, 'without resume a NEW wave 1 is created (restart) — two distinct waveIds at index 1');
+    } finally {
+      await fs.rm(cwd, { recursive: true, force: true }).catch(() => {});
     }
   });
 });

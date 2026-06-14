@@ -540,6 +540,7 @@ program
   .option('--time <m>', 'Autoresearch time budget per cycle in minutes (default 30)', '30')
   .option('--max-minutes <m>', 'Wall-clock budget for the WHOLE run: checkpoint-exit cleanly (exit 0, report written) before starting a cycle that cannot finish (default: unguarded)')
   .option('--loop', 'Outer loop: re-rank + re-run until ALL_DONE (max 10 passes)', false)
+  .option('--resume', 'Auto re-entry: resume each dim from the WaveLedger\'s last successful wave (skip completed cycles of a crashed run) instead of restarting at wave 0', false)
   .option('--dimension <id>', 'Promote this dimension to the front of every work queue (intel-driven targeting)')
   .option('--json', 'Machine-readable JSON output')
   .option('--cwd <path>', 'Project directory (defaults to cwd)')
@@ -574,6 +575,7 @@ Writes report to HARDEN_CRUSADE_REPORT.md.
           timeMinutes: parseInt(opts.time as string, 10),
           maxMinutes: opts.maxMinutes ? parseInt(opts.maxMinutes as string, 10) : undefined,
           loop: opts.loop as boolean,
+          resume: opts.resume as boolean,
           cwd: opts.cwd as string | undefined,
           focusDimension: opts.dimension as string | undefined,
         });

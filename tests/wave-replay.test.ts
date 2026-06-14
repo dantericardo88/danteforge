@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import { startWave, finishWave, readWaveLedger } from '../src/core/wave-ledger.js';
-import { planReplay, summarizeRuns } from '../src/core/wave-replay.js';
+import { planReplay, summarizeRuns, resolveResumeIndex } from '../src/core/wave-replay.js';
 
 const ROOT = path.join('X:\\tmp', `wave-replay-${process.pid}`);
 after(async () => { await fs.rm(ROOT, { recursive: true, force: true }).catch(() => {}); });
@@ -60,6 +60,14 @@ describe('wave-replay — resume from the last successful wave (depth_doctrine C
     assert.equal(plan.unknown, true);
     assert.equal(plan.resumeFromIndex, 0);
     assert.equal(plan.lastSuccessful, null);
+  });
+
+  test('resolveResumeIndex returns the resume point (the auto re-entry primitive)', async () => {
+    const cwd = await fresh('resume-index');
+    const w0 = await startWave(cwd, { runId: 'r1', loopName: 'harden-crusade', waveIndex: 0, scoreBefore: 5 });
+    await finishWave(cwd, w0, { status: 'completed', scoreAfter: 6 });
+    assert.equal(await resolveResumeIndex(cwd, 'r1'), 1, 'resume after the one completed wave (index 0)');
+    assert.equal(await resolveResumeIndex(cwd, 'never-ran'), 0, 'unknown run → cold start at 0');
   });
 
   test('summarizeRuns groups distinct runs with their completion counts', async () => {

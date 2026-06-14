@@ -73,6 +73,16 @@ export async function loadReplayPlan(cwd: string, runId: string): Promise<Replay
   return planReplay(await readWaveLedger(cwd), runId);
 }
 
+/**
+ * The wave index a loop should START at to resume run `runId` from the ledger — the AUTO RE-ENTRY
+ * primitive (CH-022). 0 means "no prior progress, start cold". A loop reads this at launch and skips
+ * the waves already completed, instead of redoing them. Best-effort: any read error → 0 (cold start),
+ * so a missing/corrupt ledger never wedges a fresh run.
+ */
+export async function resolveResumeIndex(cwd: string, runId: string): Promise<number> {
+  try { return (await loadReplayPlan(cwd, runId)).resumeFromIndex; } catch { return 0; }
+}
+
 export interface RunSummary {
   runId: string;
   loopName: string;
