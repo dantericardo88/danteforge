@@ -2,6 +2,27 @@
 
 import type { Command } from 'commander';
 
+/** `danteforge grounding` — external-grounding ratio (grading-integrity #6). Registered alongside
+ *  wave via the same hub; read-only honesty surface. */
+export function registerGroundingCmd(program: Command): void {
+  program
+    .command('grounding')
+    .description('How much of the matrix score is externally grounded vs self-attested (depth honesty)')
+    .option('--json', 'machine-readable output')
+    .action((opts) => {
+      void (async () => {
+        try {
+          const { grounding } = await import('./commands/grounding-cmd.js');
+          await grounding({ json: !!(opts as { json?: boolean }).json });
+        } catch (err) {
+          const { formatAndLogError } = await import('../core/format-error.js');
+          formatAndLogError(err, 'grounding');
+          process.exitCode = 1;
+        }
+      })();
+    });
+}
+
 export function registerWaveCmds(program: Command): void {
   const wave = program
     .command('wave')

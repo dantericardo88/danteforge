@@ -7,7 +7,7 @@ import { registerSearchCmds } from './register-search-cmds.js';
 import { registerOutcomesCmds } from './register-outcomes-cmds.js';
 import { registerTruthCmds } from './register-truth-cmds.js';
 import { registerOpsCmds } from './register-ops-cmds.js';
-import { registerWaveCmds } from './register-wave-cmds.js';
+import { registerWaveCmds, registerGroundingCmd } from './register-wave-cmds.js';
 
 type Commands = Awaited<typeof import('./commands/index.js')>;
 
@@ -21,4 +21,5 @@ export function registerLateCommands(program: Command, C: () => Promise<Commands
   registerTruthCmds(program);
   registerOpsCmds(program, C);
   registerWaveCmds(program);
+  registerGroundingCmd(program);
 }
