@@ -52,11 +52,20 @@ describe('sensitivityProbe — break the callsite, a real test must flip', () =>
     const writes: Array<[string, string]> = [];
     await sensitivityProbe(base({
       _run: runner(0, 1),
+      // No stale sidecar in the normal case: the crash-safe journal reads <callsite>.df-probe-backup on
+      // start and restores it if present. Return the source for the callsite, but signal "no sidecar" so
+      // the spurious stale-restore doesn't fire (the original test predated the journaling feature).
+      _readFile: async (p: string) => { if (p.endsWith('.df-probe-backup')) throw new Error('no sidecar'); return 'ORIGINAL SOURCE'; },
       _writeFile: async (p, c) => { writes.push([p, c]); },
     }));
-    // last write must restore the ORIGINAL content (not the faulted content)
-    assert.equal(writes.at(-1)?.[1], 'ORIGINAL SOURCE');
-    assert.match(writes[0]![1], /DANTE_SENSITIVITY_FAULT/); // the fault was applied first
+    // The fault WAS applied at some point (into the callsite), and the LAST write restores the original —
+    // so the working tree is never left mutated regardless of the journaling steps in between.
+    // callsitePath is path.join(cwd, callsite) (absolute, platform separators) — match by suffix.
+    const isCallsite = (p: string): boolean => p.endsWith('foo.ts'); // excludes the *.df-probe-backup sidecar
+    const faultWrite = writes.find(([p, c]) => isCallsite(p) && /DANTE_SENSITIVITY_FAULT/.test(c));
+    assert.ok(faultWrite, 'the fault marker was written into the callsite');
+    const lastCallsiteWrite = [...writes].reverse().find(([p]) => isCallsite(p));
+    assert.equal(lastCallsiteWrite?.[1], 'ORIGINAL SOURCE', 'the final callsite write restores the original');
   });
 });
 
