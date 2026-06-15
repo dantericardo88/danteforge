@@ -4,9 +4,27 @@
 // (reading 'toFixed')" because a dim had gap_to_leader: null.
 import { describe, test } from 'node:test';
 import assert from 'node:assert/strict';
-import { formatScore, gapBar } from '../src/cli/commands/compete-display.js';
+import { formatScore, gapBar, formatStatusTable } from '../src/cli/commands/compete-display.js';
 import { computeGapPriority } from '../src/core/compete-matrix-score.js';
-import type { MatrixDimension } from '../src/core/compete-matrix.js';
+import type { MatrixDimension, CompeteMatrix } from '../src/core/compete-matrix.js';
+
+describe('formatStatusTable — unverified-self badge (grading-integrity #9)', () => {
+  const mk = (dims: unknown[]): CompeteMatrix =>
+    ({ project: 't', competitors: [], dimensions: dims, overallSelfScore: 8, lastUpdated: '2026-06-15' } as unknown as CompeteMatrix);
+  const d = (over: Record<string, unknown>): unknown =>
+    ({ id: 'a', label: 'A', weight: 1, frequency: 'medium', gap_to_leader: 0, scores: { self: 9 }, ...over });
+
+  test('a self>8 with no validated frontier_spec is flagged as unverified', () => {
+    assert.match(formatStatusTable(mk([d({})])), /NOT validated|unverified/i);
+  });
+  test('a court-validated self>8 is NOT flagged', () => {
+    assert.ok(!/NOT validated/i.test(formatStatusTable(mk([d({ frontier_spec: { status: 'validated' } })]))),
+      'a court-validated 9 is a real 9, not an unverified claim');
+  });
+  test('a self<=8 is never flagged (nothing to verify above the gate)', () => {
+    assert.ok(!/NOT validated/i.test(formatStatusTable(mk([d({ scores: { self: 8 } })]))));
+  });
+});
 
 describe('display primitives — null-safe (cross-project generality)', () => {
   test('formatScore renders a number, and a placeholder for null/undefined/NaN', () => {

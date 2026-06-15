@@ -80,15 +80,29 @@ export function formatTrend(dim: MatrixDimension): string {
 // Market dims (no auto-scorer) are tagged with [M] in the label column so users
 // know which ones require `danteforge compete --amend` instead of forge cycles.
 
+/** Grading-integrity #9: a self-score above the frontier gate (8.0) is an UNVERIFIED claim until the
+ *  frontier-review court validates it — "every self:9 was fiction" until proven. Returns true when the
+ *  displayed self exceeds 8.0 without a validated frontier_spec, so the table can badge it honestly. */
+function isSelfUnverified(dim: MatrixDimension): boolean {
+  const self = dim.scores['self'] ?? 0;
+  if (self <= 8.0) return false;
+  const status = (dim as unknown as { frontier_spec?: { status?: string } }).frontier_spec?.status;
+  return status !== 'validated';
+}
+
 export function formatStatusTable(matrix: CompeteMatrix): string {
   const overallColored = colorScore(matrix.overallSelfScore);
+  const unverified = matrix.dimensions.filter(isSelfUnverified);
   const header = [
     chalk.bold(`\n  Competitive Matrix — ${matrix.project}`),
     chalk.dim(`  Overall: ${overallColored}${chalk.dim('/10')}  |  Last updated: ${matrix.lastUpdated.slice(0, 10)}`),
+    unverified.length > 0
+      ? chalk.yellow(`  ⚠ ${unverified.length} dim(s) show self > 8.0 that the court has NOT validated (marked ? — unverified claims, not confirmed 9s)`)
+      : '',
     '',
     chalk.dim('  ' + 'Dimension'.padEnd(32) + ' Self   Leader  Gap    Priority  Trend    Status'),
     chalk.dim('  ' + '─'.repeat(84)),
-  ];
+  ].filter(l => l !== '');
 
   const sorted = [...matrix.dimensions].sort(
     (a, b) => computeGapPriority(b) - computeGapPriority(a),
@@ -96,8 +110,9 @@ export function formatStatusTable(matrix: CompeteMatrix): string {
 
   const rows: string[] = [];
   for (const dim of sorted) {
+    // Exclude 'self' AND 'derived' — neither is a competitor; 'derived' had masqueraded as the leader.
     const leaderScore = Math.max(
-      ...Object.entries(dim.scores).filter(([k]) => k !== 'self').map(([, v]) => v),
+      ...Object.entries(dim.scores).filter(([k]) => k !== 'self' && k !== 'derived').map(([, v]) => v),
       0,
     );
     const priority = computeGapPriority(dim);
@@ -109,9 +124,11 @@ export function formatStatusTable(matrix: CompeteMatrix): string {
     const isMarket = mapDimIdToScoringDimension(dim.id) === null;
     const rawLabel = isMarket ? `${dim.label.slice(0, 28)} [M]` : dim.label.slice(0, 31);
     const selfScore = dim.scores['self'] ?? 0;
+    // A trailing '?' marks an unverified self>8 (kept outside the padded score cell so columns align).
+    const unverifiedMark = isSelfUnverified(dim) ? chalk.yellow('?') : ' ';
 
     rows.push(
-      `  ${rawLabel.padEnd(32)} ${colorScore(selfScore, 6)}${colorScore(leaderScore, 8)}${colorGap(dim.gap_to_leader, 7)}${colorPriority(priority, 10)}${trend.padEnd(9)} ${statusIcon} ${chalk.dim(dim.status)}`,
+      `  ${rawLabel.padEnd(32)} ${colorScore(selfScore, 5)}${unverifiedMark}${colorScore(leaderScore, 8)}${colorGap(dim.gap_to_leader, 7)}${colorPriority(priority, 10)}${trend.padEnd(9)} ${statusIcon} ${chalk.dim(dim.status)}`,
     );
   }
 
