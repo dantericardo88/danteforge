@@ -32,6 +32,7 @@ self-CONSISTENCY, never self-GROUNDING.
 
 - ✅ **#4 (lock half)** kernel-own outcome-evidence — a build worker can no longer write the receipts the scorer trusts (commit a2ec29b). Remaining: route session-record through propose≠accept + derived-score consult isAccepted (the orchestrator-self-author half).
 - ✅ **#6 (visibility half)** `danteforge grounding` + externalGroundingReport — surfaces the self-vs-world ratio (today 0%) (commit 219bd9a). Remaining: run ONE registered external benchmark end-to-end (needs compute/LLM) + decide the self-run→8.0 provenance cap (policy).
+- ✅ **#7** cli-smoke `--help`/version/bare probes now cap at 7.0, not 8.5 — closed the 7→8 banner lift (commit b723739).
 
 **Remaining work, by what it needs:**
 - *Code I can build next:* #3 builder-never-self (court), #7 cli-smoke must assert a computed result, #9/#10 badge raw self + evidence staleness, #11 make the two honesty tools agree, #12 wire ladder rung into derivation + author ux_polish ladder.
