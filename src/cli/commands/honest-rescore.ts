@@ -63,6 +63,11 @@ export interface HonestRescoreResult {
   evidenceUsed: Array<{ tier: ProbeTier; gitSha: string | null; failedPackageCount: number }>;
   honestMatrixPath: string;
   diffReportPath: string;
+  /** Grading-integrity #11: true when there is NO runtime-evidence probe data at all. In that case
+   *  this tool has no basis to assess and collapses every dim to T0/1.0 — which is NOT the authoritative
+   *  honest score (that comes from outcome-evidence via `danteforge compete`/`gap`). Surfaced loudly so
+   *  the two honesty tools don't appear to disagree by ~7 points when one simply has no input. */
+  noRuntimeEvidence: boolean;
 }
 
 export interface HonestRescoreOptions {
@@ -233,6 +238,13 @@ function renderDiffMarkdown(result: HonestRescoreResult): string {
   lines.push(`**Project:** ${result.project}`);
   lines.push(`**Generated:** ${new Date().toISOString()}`);
   lines.push('');
+  if (result.noRuntimeEvidence) {
+    lines.push(`> ⚠ **NOT AUTHORITATIVE — no runtime-evidence probe data.** This tool reads a separate`);
+    lines.push(`> \`runtime-evidence\` store and, with none present, caps every dimension at T0/1.0. That is`);
+    lines.push(`> NOT the project's honest score — the canonical honest score is derived from outcome-evidence`);
+    lines.push(`> (run \`danteforge compete\` or \`danteforge gap\`). Run \`danteforge probe\` to populate this tool.`);
+    lines.push('');
+  }
   lines.push(`| Metric | Reported | Honest | Δ |`);
   lines.push(`|---|---|---|---|`);
   const delta = (result.honestOverall - result.reportedOverall).toFixed(2);
@@ -335,7 +347,17 @@ export async function runHonestRescore(options: HonestRescoreOptions = {}): Prom
     evidenceUsed,
     honestMatrixPath: path.join(cwd, HONEST_PATH),
     diffReportPath: path.join(cwd, DIFF_PATH),
+    noRuntimeEvidence: evidence.size === 0,
   };
+  if (result.noRuntimeEvidence) {
+    // #11: do NOT let an empty-probe 1.0 masquerade as "the honest score". This tool's runtime-evidence
+    // store is separate from the canonical outcome-evidence the compete/gap path scores from; with no
+    // probe data it can only cap at T0, which would falsely read ~7 points below the canonical honest
+    // score. Make the absence loud rather than authoritative.
+    logger.warn('[honest-rescore] NO runtime-evidence probe data — this report is NOT the authoritative honest score.');
+    logger.warn('[honest-rescore] The canonical honest score comes from outcome-evidence: run `danteforge compete` or `danteforge gap`.');
+    logger.warn('[honest-rescore] To populate THIS tool\'s runtime-evidence, run `danteforge probe` first.');
+  }
 
   // Write the honest matrix (a copy with self scores replaced) — never overwrite matrix.json.
   const honestMatrix = JSON.parse(JSON.stringify(matrix));
