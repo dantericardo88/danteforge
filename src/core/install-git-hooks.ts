@@ -4,6 +4,19 @@ import path from 'node:path';
 const MARKER_START = '# ---- danteforge-loc-gate-start ---- do not edit between markers';
 const MARKER_END = '# ---- danteforge-loc-gate-end ----';
 
+// CH-024: the documented "Zero Tolerance — Pre-Commit Enforced" Pillar-2 guards live in
+// hooks/pre-commit.mjs (the matrix-surface, outcome-evidence, protected-lines, score-write, and
+// zero-tolerance integrity guards, plus a typecheck) but were NEVER installed — only the LOC gate was,
+// so the entire enforcement was dormant.
+// This block chains the full guard script. It is a no-op in consumer repos that don't vendor the script
+// ([ -f ] check), and Phase A / typecheck inside it degrade/skip safely (warn-when-absent;
+// DANTEFORGE_SKIP_PRECOMMIT_TSC=1) so arming it can never wedge an in-flight loop.
+const GUARDS_MARKER_START = '# ---- danteforge-guards-start ---- do not edit between markers';
+const GUARDS_MARKER_END = '# ---- danteforge-guards-end ----';
+const GUARDS_BLOCK = `${GUARDS_MARKER_START}
+if [ -f hooks/pre-commit.mjs ]; then node hooks/pre-commit.mjs || exit 1; fi
+${GUARDS_MARKER_END}`;
+
 const LOC_GATE_BLOCK = `${MARKER_START}
 node -e "
 const {execSync}=require('child_process');
@@ -55,20 +68,23 @@ export async function installLocHook(
     const hookExists = await existsFn(hookPath);
 
     if (!hookExists) {
-      const content = `#!/bin/sh\n${LOC_GATE_BLOCK}\n`;
+      const content = `#!/bin/sh\n${LOC_GATE_BLOCK}\n${GUARDS_BLOCK}\n`;
       await writeFileFn(hookPath, content, 0o755);
       return { installed: true, updated: false, skipped: false };
     }
 
+    // Ensure BOTH the LOC gate AND the Pillar-2 guards are present — append whichever is missing. A repo
+    // that already had only the LOC gate (the dormant-defenses state, CH-024) gets the guards added.
     const existing = await readFileFn(hookPath);
-    if (existing.includes(MARKER_START)) {
+    const hasLoc = existing.includes(MARKER_START);
+    const hasGuards = existing.includes(GUARDS_MARKER_START);
+    if (hasLoc && hasGuards) {
       return { installed: false, updated: false, skipped: true };
     }
-
-    const appended = existing.endsWith('\n')
-      ? `${existing}${LOC_GATE_BLOCK}\n`
-      : `${existing}\n${LOC_GATE_BLOCK}\n`;
-    await writeFileFn(hookPath, appended, 0o755);
+    let body = existing.endsWith('\n') ? existing : `${existing}\n`;
+    if (!hasLoc) body += `${LOC_GATE_BLOCK}\n`;
+    if (!hasGuards) body += `${GUARDS_BLOCK}\n`;
+    await writeFileFn(hookPath, body, 0o755);
     return { installed: false, updated: true, skipped: false };
   } catch {
     return { installed: false, updated: false, skipped: false };

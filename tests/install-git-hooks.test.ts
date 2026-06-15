@@ -53,6 +53,27 @@ describe('installLocHook', () => {
     assert.ok(mem.store[hookPath].startsWith('#!/bin/sh'), 'should start with shebang');
     assert.ok(mem.store[hookPath].includes('danteforge-loc-gate-start'), 'should contain marker');
     assert.ok(mem.store[hookPath].includes('750'), 'should enforce 750-line limit');
+    // CH-024: a fresh install now ALSO chains the full Pillar-2 guard script.
+    assert.ok(mem.store[hookPath].includes('danteforge-guards-start'), 'should contain the guards marker');
+    assert.ok(mem.store[hookPath].includes('hooks/pre-commit.mjs'), 'should invoke the full guard script');
+  });
+
+  it('CH-024: upgrades a loc-ONLY hook (dormant-defenses state) by appending the Pillar-2 guards', async () => {
+    const cwd = '/fake';
+    const hookPath = path.join(cwd, '.git', 'hooks', 'pre-commit');
+    // The exact state this repo was in: only the LOC gate installed, all the security guards dormant.
+    const locOnly = '#!/bin/sh\n# ---- danteforge-loc-gate-start ---- do not edit between markers\nnode -e ""\n# ---- danteforge-loc-gate-end ----\n';
+    const mem = makeMemFs({ [hookPath]: locOnly });
+    mem.dirs.add(path.join(cwd, '.git', 'hooks'));
+
+    const result = await installLocHook(cwd, {
+      _exists: mem._exists, _readFile: mem._readFile, _writeFile: mem._writeFile, _mkdir: mem._mkdir,
+    });
+
+    assert.equal(result.updated, true, 'a loc-only hook is upgraded, not skipped');
+    assert.ok(mem.store[hookPath].includes('danteforge-loc-gate-start'), 'keeps the existing loc gate');
+    assert.ok(mem.store[hookPath].includes('danteforge-guards-start'), 'adds the guards block');
+    assert.ok(mem.store[hookPath].includes('hooks/pre-commit.mjs'), 'invokes the full guard script');
   });
 
   it('appends managed block to an existing hook without the marker', async () => {
@@ -82,7 +103,7 @@ describe('installLocHook', () => {
     const cwd = '/fake';
     const hooksDir = path.join(cwd, '.git', 'hooks');
     const hookPath = path.join(hooksDir, 'pre-commit');
-    const existing = '#!/bin/sh\n# ---- danteforge-loc-gate-start ---- do not edit between markers\nnode -e ""\n# ---- danteforge-loc-gate-end ----\n';
+    const existing = '#!/bin/sh\n# ---- danteforge-loc-gate-start ---- do not edit between markers\nnode -e ""\n# ---- danteforge-loc-gate-end ----\n# ---- danteforge-guards-start ---- do not edit between markers\nif [ -f hooks/pre-commit.mjs ]; then node hooks/pre-commit.mjs || exit 1; fi\n# ---- danteforge-guards-end ----\n';
     const mem = makeMemFs({ [hookPath]: existing });
     mem.dirs.add(hooksDir);
 
