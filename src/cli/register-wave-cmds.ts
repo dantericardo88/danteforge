@@ -50,6 +50,33 @@ export function registerHarvestDemandCmd(program: Command): void {
     });
 }
 
+/** `danteforge demand-spec` — Phase 6 v2 intake→build handoff: turn a ranked demand cluster from the
+ *  saved backlog into a specify-ready brief (acceptance criteria from the requesters' own words +
+ *  external-demand provenance). Offline; reads .danteforge/demand-backlog.json. */
+export function registerDemandSpecCmd(program: Command): void {
+  program
+    .command('demand-spec')
+    .description('Turn a ranked demand cluster (from harvest-demand --write) into a specify-ready brief with requester-sourced acceptance criteria + external provenance')
+    .option('--rank <n>', '1-based cluster rank to spec (default: 1 = top demand)')
+    .option('--backlog <path>', 'path to demand-backlog.json (default: .danteforge/demand-backlog.json)')
+    .option('--write', 'persist .danteforge/demand-specs/<rank>-<theme>.md (+ .json)')
+    .option('--json', 'machine-readable output')
+    .option('--cwd <path>', 'project directory')
+    .action((opts) => {
+      void (async () => {
+        try {
+          const { demandSpecCli } = await import('./commands/demand-spec-cmd.js');
+          const o = opts as { rank?: string; backlog?: string; write?: boolean; json?: boolean; cwd?: string };
+          await demandSpecCli({ rank: o.rank, backlog: o.backlog, write: o.write, json: o.json, cwd: o.cwd });
+        } catch (err) {
+          const { formatAndLogError } = await import('../core/format-error.js');
+          formatAndLogError(err, 'demand-spec');
+          process.exitCode = 1;
+        }
+      })();
+    });
+}
+
 export function registerWaveCmds(program: Command): void {
   const wave = program
     .command('wave')
