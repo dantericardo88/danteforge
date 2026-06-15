@@ -23,6 +23,15 @@ self-CONSISTENCY, never self-GROUNDING.
 3. **At least one anchor outside the repo** — one real external-benchmark receipt; an independent grader
    scoring the named competitors; gap_to_leader vs honest derived; external telemetry for meta-dims.
 
+## Progress (2026-06-15)
+**Closed + proven (the 4 highest-leverage deterministic inflation paths):**
+- ✅ **#1** capability gate now inspects meaning — `--help`/test-suite/structural pass → cap 7.0, green-forcing → 5.0, only a real product run → 10; merge court clamps on `>scoreCap` (commit 2e80fc3).
+- ✅ **#2** T7 cloning hole closed — distinct-COMMAND consensus across derived-score + evidence-rescore + court gatherReceipts (commit 733aa19).
+- ✅ **#5** verdict parser anchored to the LAST `VERDICT:` declaration — a reasoning FAIL no longer parses as PASS (commit 2e80fc3).
+- ✅ **#8** gap_to_leader computed from the honest decision score, `derived` excluded from the competitor pool (commit 2e80fc3).
+
+**Remaining** (medium → strategic): #3 court independence, #4 propose/accept enforcement (large), #6 external grounding (strategic decision), #7 cli-smoke meaning, #9 badge raw self, #10 staleness badge, #11 honesty-tool agreement, #12 ladder wiring, #13 semantic relevance + meta-dim split. Also filed: capability-test-sensitivity.test.ts "always RESTORES" fails at HEAD (pre-existing, not in any verify lane).
+
 ## Ranked gaps (confirmed)
 
 | # | Gap | Effort | Distortion | Fix |
