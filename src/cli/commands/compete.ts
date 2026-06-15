@@ -358,6 +358,15 @@ async function actionStatus(options: CompeteOptions, cwd: string): Promise<Compe
 
   const overallScore = matrix.overallSelfScore;
   void writeScoreSnapshot(overallScore, cwd);
+
+  // #10: surface whether these scores describe the CURRENT code or borrowed prior-SHA evidence.
+  // Best-effort + read-only — a staleness probe must never break `compete status`.
+  try {
+    const { computeEvidenceStaleness, formatStalenessLine } = await import('../../core/evidence-staleness.js');
+    const line = formatStalenessLine(await computeEvidenceStaleness({ cwd, matrix }));
+    if (line) logger.info(`\n${line}`);
+  } catch { /* staleness is advisory; never block status */ }
+
   return {
     action: 'status',
     matrixPath,
