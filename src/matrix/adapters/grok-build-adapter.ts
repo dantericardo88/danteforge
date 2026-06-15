@@ -222,7 +222,8 @@ export class GrokBuildAdapter implements AgentAdapter {
       const maxRetries = this.options.maxGrokRetries ?? 3;
       const sleepFn = this.options._sleep ?? ((ms: number) => new Promise(r => setTimeout(r, ms)));
       // For judge mode: snapshot worktree state BEFORE spawning to detect only new writes.
-      const judgeBaseGitDiff = this.options._gitDiff ?? defaultGitDiff;
+      // court-audit #13: judge tripwire uses judgeWriteDiff (keeps .danteforge/ visible), not defaultGitDiff.
+      const judgeBaseGitDiff = this.options._gitDiff ?? judgeWriteDiff;
       const preJudgeDiffFn = this.options._preJudgeDiff ?? judgeBaseGitDiff;
       const preJudgeFiles = judgeMode ? new Set(await preJudgeDiffFn(worktreeRoot)) : new Set<string>();
       let exitCode = 1;
@@ -261,13 +262,18 @@ export class GrokBuildAdapter implements AgentAdapter {
       state.exitCode = exitCode;
 
       // Grok exits 255 on normal single-turn completion (not an error).
-      // Any other non-zero exit in build mode is a genuine failure.
+      // Any other non-zero exit is a genuine failure — in BUILD mode (bad work) AND in JUDGE mode.
+      // court-audit #11: the old `&& !judgeMode` guard meant a killed/timed-out/crashed judge's PARTIAL
+      // buffered stdout (which may end in "VERDICT: PASS") was trusted as a real verdict — the exact bug
+      // codex/claude were patched against. A judge that did not exit cleanly produced NO verdict: discard
+      // its output and report failed, so defaultRunJudge surfaces an honest UNCLEAR-unavailable abstention.
       const grokExitOk = exitCode === 0 || exitCode === 255;
-      if (!grokExitOk && !judgeMode) {
+      if (!grokExitOk) {
         const errSnippet = (state.capturedStderr || state.capturedOutput).trim().slice(0, 300) || '(no output)';
-        logger.warn(`[GrokBuildAdapter] ${runId} exit=${exitCode} — ${errSnippet}`);
+        logger.warn(`[GrokBuildAdapter] ${runId} ${judgeMode ? 'JUDGE ' : ''}exit=${exitCode} — ${errSnippet}`);
         state.status = 'failed';
-        state.errorReason = `grok_exit_${exitCode}`;
+        state.errorReason = judgeMode ? `judge_exit_${exitCode}: ${errSnippet}` : `grok_exit_${exitCode}`;
+        if (judgeMode) { state.capturedOutput = ''; state.finalMessage = ''; }
         finalize(state, runId);
         return;
       }
@@ -439,6 +445,23 @@ async function defaultGitDiff(cwd: string): Promise<string[]> {
       .map(l => l.trim()).filter(l => l.length > 0)
       .map(l => l.slice(l.indexOf(' ')).trim())
       .filter(p => !KERNEL_STATE_DIRS.some(prefix => p === prefix || p.startsWith(prefix)));
+  } catch { return []; }
+}
+
+// court-audit #13 (parity with gemini): the JUDGE read-only tripwire must SEE `.danteforge/` writes — a
+// judge writing the score surface is the #1 thing to catch. defaultGitDiff hides `.danteforge/` (right for
+// build mode, lease-enforced); judgeWriteDiff filters only genuine AI-tool sidecars, keeping kernel state visible.
+const JUDGE_NOISE_DIRS = [
+  '.danteforge-worktrees/', '.matrix-worktrees-test/',
+  '.openhands/', '.claude/', '.cursor/', '.continue/', '.grok/', '.dantecode/', '.aider/',
+];
+async function judgeWriteDiff(cwd: string): Promise<string[]> {
+  try {
+    const { stdout } = await execFileAsync('git', ['status', '--porcelain'], { cwd, timeout: 10000 });
+    return stdout.split('\n')
+      .map(l => l.trim()).filter(l => l.length > 0)
+      .map(l => l.slice(l.indexOf(' ')).trim())
+      .filter(p => !JUDGE_NOISE_DIRS.some(prefix => p === prefix || p.startsWith(prefix)));
   } catch { return []; }
 }
 

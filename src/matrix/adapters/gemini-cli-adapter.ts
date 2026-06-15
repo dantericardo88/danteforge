@@ -254,7 +254,9 @@ export class GeminiCLIAdapter implements AgentAdapter {
 
       // For judge mode: snapshot worktree state BEFORE spawning to detect only new writes.
       const geminiGitDiff = this.options._gitDiff ?? defaultGitDiff;
-      const preJudgeDiffFn = this.options._preJudgeDiff ?? geminiGitDiff;
+      // court-audit #13: the JUDGE tripwire must see .danteforge/ writes; judgeWriteDiff keeps them visible.
+      const judgeDiffFn = this.options._gitDiff ?? judgeWriteDiff;
+      const preJudgeDiffFn = this.options._preJudgeDiff ?? (judgeMode ? judgeDiffFn : geminiGitDiff);
       const preJudgeFiles = judgeMode ? new Set(await preJudgeDiffFn(worktreeRoot)) : new Set<string>();
       const chunks: Buffer[] = [];
       const exitCode = await runChild(
@@ -278,11 +280,23 @@ export class GeminiCLIAdapter implements AgentAdapter {
         return;
       }
 
-      // In judge mode, non-zero exit is non-fatal (judge may have nothing to write).
       if (judgeMode) {
+        // court-audit #11: a judge that did not exit cleanly (timeout/kill/crash) produced NO verdict —
+        // its partial stdout (which may end in "VERDICT: PASS") must NOT be trusted. Discard + report
+        // failed so defaultRunJudge surfaces an honest UNCLEAR-unavailable abstention. (Was: "non-zero
+        // exit is non-fatal" — the exact bug codex/claude were patched against.)
+        if (exitCode !== 0) {
+          const errSnippet = state.capturedOutput.trim().slice(0, 300) || '(no output)';
+          state.status = 'failed';
+          state.errorReason = `judge_exit_${exitCode}: ${errSnippet}`;
+          state.capturedOutput = '';
+          state.finalMessage = '';
+          finalize(state, runId);
+          return;
+        }
         state.finalMessage = state.capturedOutput.trim() || '(no judge output from gemini)';
-        // Post-run diff: only flag files NEW since pre-judge snapshot.
-        const changedAfterJudge = (await geminiGitDiff(worktreeRoot)).filter(f => !preJudgeFiles.has(f));
+        // Post-run diff (judgeWriteDiff — catches .danteforge/ writes): only flag files NEW since snapshot.
+        const changedAfterJudge = (await judgeDiffFn(worktreeRoot)).filter(f => !preJudgeFiles.has(f));
         if (changedAfterJudge.length > 0) {
           logger.warn(`[GeminiCLIAdapter] judge ${runId} modified ${changedAfterJudge.length} file(s) — reverting; auto-FAIL verdict`);
           const revertFile = this.options._revertFile ?? defaultRevertFile;
@@ -408,6 +422,25 @@ async function defaultGitDiff(cwd: string): Promise<string[]> {
       .map(l => l.trim()).filter(l => l.length > 0)
       .map(l => l.slice(l.indexOf(' ')).trim())
       .filter(p => !KERNEL_STATE_DIRS.some(prefix => p === prefix || p.startsWith(prefix)));
+  } catch { return []; }
+}
+
+// AI-tool sidecar dirs that a judge's own CLI session legitimately creates (genuine noise) — but NOT
+// `.danteforge/`. The JUDGE read-only tripwire must SEE `.danteforge/` writes: a judge writing the score
+// surface (matrix.json / outcome-evidence / score-proposals) is the single most important thing to catch
+// (court-audit #13). defaultGitDiff hides `.danteforge/`, which is right for build mode (lease-enforced)
+// but blinds the judge tripwire.
+const JUDGE_NOISE_DIRS = [
+  '.danteforge-worktrees/', '.matrix-worktrees-test/',
+  '.openhands/', '.claude/', '.cursor/', '.continue/', '.grok/', '.dantecode/', '.aider/',
+];
+async function judgeWriteDiff(cwd: string): Promise<string[]> {
+  try {
+    const { stdout } = await execFileAsync('git', ['status', '--porcelain'], { cwd, timeout: 10000 });
+    return stdout.split('\n')
+      .map(l => l.trim()).filter(l => l.length > 0)
+      .map(l => l.slice(l.indexOf(' ')).trim())
+      .filter(p => !JUDGE_NOISE_DIRS.some(prefix => p === prefix || p.startsWith(prefix)));
   } catch { return []; }
 }
 

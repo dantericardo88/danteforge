@@ -274,6 +274,26 @@ describe('GrokBuildAdapter — 502 retry', () => {
     assert.equal(sleepCalls.length, 0, 'non-502 errors should not retry');
   });
 
+  it('court-audit #11: a JUDGE that exits non-zero (timeout/kill) is FAILED and its partial PASS is discarded', async () => {
+    // The killer bug: a judge process killed/timed-out mid-stream after emitting a partial
+    // "VERDICT: PASS" must NOT be trusted as a real verdict. Non-zero exit in judge mode ⇒ failed,
+    // output discarded ⇒ defaultRunJudge surfaces an honest UNCLEAR-unavailable abstention.
+    const adapter = new GrokBuildAdapter({
+      workPacket: makeWorkPacket(),
+      judgeMode: true,
+      maxGrokRetries: 1,
+      _isAvailable: async () => true,
+      _spawn: makeSpawn([{ exitCode: 124, stdout: 'analyzing the artifact...\nVERDICT: PASS' }]),
+      _sleep: async () => undefined,
+      _gitDiff: async () => [],
+    });
+    const handle = await adapter.startRun({ lease: makeLease(), prepared: true } as never);
+    const result = await adapter.collectResult(handle);
+    assert.equal(result.status, 'failed', 'a non-zero judge exit is a failed judge, not a verdict');
+    assert.doesNotMatch(result.finalMessage ?? '', /VERDICT: PASS/, 'partial buffered stdout must be discarded');
+    assert.match(result.errorReason ?? '', /judge_exit_124/);
+  });
+
   it('clamps retry-after to [5s, 300s]', async () => {
     const sleepCalls: number[] = [];
     const responses = [
