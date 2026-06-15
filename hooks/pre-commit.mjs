@@ -31,7 +31,11 @@ const MATRIX_SCORE_PATTERNS = [
 const matrixViolations = allStaged.filter(f =>
   MATRIX_SCORE_PATTERNS.some(p => f === p || f.startsWith('.danteforge/compete/matrix-'))
     || f.startsWith('.danteforge/scores/')
-    || f.startsWith('.danteforge/score-proposals/'),
+    || f.startsWith('.danteforge/score-proposals/')
+    // court-audit #2: outcome-evidence is the trust root the scorer READS — a worker committing
+    // hand-authored receipts there forges the factual basis of every derived score. Kernel-owned,
+    // same as the score surface (matches MATRIX_SCORE_SURFACE_PATTERNS in matrix/types/agent-evidence.ts).
+    || f.startsWith('.danteforge/outcome-evidence/'),
 );
 
 if (matrixViolations.length > 0 && !process.env.DANTEFORGE_MATRIX_MERGE_RECEIPT) {

@@ -229,7 +229,36 @@
     "problem": "The independent frontier-review court relies on a SINGLE judge-only member (grok-build). In sequential mode all build-eligible members (codex+claude) are excluded as builders, leaving ONLY grok as an independent judge — one judge < the 2-judge quorum, so the court can never convene there. In parallel mode it needs that one grok PLUS one excluded builder; if grok is down or itself conflicted there are zero independent judges and no 9.0 court can convene at all. The live council probe on this machine currently shows only codex+claude (grok unavailable), so today the independent court is dormant.",
     "evidence": "src/cli/commands/frontier-review.ts:135 throws when independent judges <2; src/cli/commands/ascend-frontier-push.ts:265 sequential path excludes the full builder roster (commit e58c664); live 'danteforge council --ask' returns 2 members (codex+claude), grok absent.",
     "opportunity": "Add a SECOND reliably-available judge-only member (reinstate gemini-cli as judge-only, or a 4th model) so the court has redundancy: sequential mode could then convene (2 judge-only judges) and parallel mode survives grok being down. This is what makes the autonomous independent 9.0 court robust rather than single-point-of-failure.",
+    "status": "solved",
+    "openedAt": "2026-06-15T17:28:59.542Z",
+    "resolution": "Commit (gemini-cli wired as 2nd judge-only member; live council --ask seats 4 — codex+claude build, grok+gemini judge). Court now survives one judge being down.",
+    "resolvedAt": "2026-06-15T18:19:30.830Z"
+  },
+  {
+    "id": "CH-024",
+    "title": "Pillar-2 pre-commit enforcement is not installed (only the LOC gate is)",
+    "problem": "hooks/pre-commit.mjs (matrix-surface guard, outcome-evidence guard, protected-lines, symbol-level score-write guard, stub/mock/TODO zero-tolerance, typecheck) is NEVER invoked by the live .git/hooks/pre-commit. install-git-hooks.ts only writes LOC_GATE_BLOCK; the documented 'Zero Tolerance (Pre-Commit Enforced)' Pillar-2 doctrine is dead on the installed hook.",
+    "evidence": ".git/hooks/pre-commit contains only the danteforge-loc-gate block (verified live); src/core/install-git-hooks.ts builds only LOC_GATE_BLOCK; court-audit run wf_7f28539d-cfa finding #2.",
+    "opportunity": "Wire install-git-hooks.ts to chain 'node hooks/pre-commit.mjs' (no-op in consumer repos lacking the file). ACTIVATION RISK to validate first: Phase-A requires .danteforge/runtime-evidence/ newer than any staged matrix.json (could block the autonomous loop's own merge commits), and it runs tsc --noEmit on every .ts commit (slows commits). Validate against the live loop's commit patterns, then activate.",
     "status": "open",
-    "openedAt": "2026-06-15T17:28:59.542Z"
+    "openedAt": "2026-06-15T19:41:11.437Z"
+  },
+  {
+    "id": "CH-025",
+    "title": "Outcome-evidence store is unauthenticated (forgeable receipts), bounded at 8.0 by the frontier gate",
+    "problem": "loadOutcomeEvidence trusts receipt JSON verbatim (passed/tier/session_id) with no signature, and accepts evidence from a stale/foreign git SHA within the tier window. A worker can hand-author T7 receipts that clear gatherReceipts + derived-score. (court-audit #3+#9.) Impact is now bounded at 8.0 by the frontier gate (#1, commit ef9566c) — it can inflate derived score up to 8.0 but no longer mint a fake 9.0.",
+    "evidence": "src/matrix/engines/outcome-runner.ts:594-662 (no authenticity check) + :651-661 (foreign-SHA fallback); court-audit run wf_7f28539d-cfa findings #3/#9.",
+    "opportunity": "Sign each OutcomeEvidenceEntry with the kernel secret (the signing seam now exists: signValidation/kernelSecret in frontier-spec.ts) when the kernel writes it; loadOutcomeEvidence rejects unverified entries and binds the HMAC over gitSha so foreign-SHA receipts fail. Closes the last evidence-forgery path (single-machine caveat: an agent with FS read can read the secret — the seam is where a remote/hardware signer slots in).",
+    "status": "open",
+    "openedAt": "2026-06-15T19:41:11.642Z"
+  },
+  {
+    "id": "CH-026",
+    "title": "session-record writes matrix.json via raw fs.writeFile, bypassing saveMatrix backstops",
+    "problem": "session-record.ts default _writeMatrix is fs.writeFile and it hardcodes tier:'T7', pushing self-authored T7 outcomes straight to matrix.json without saveMatrix's reconcile/provenance/validated-receipt backstops or any acceptance gate. (court-audit #12.) Impact bounded at 8.0 by the frontier gate (#1).",
+    "evidence": "src/cli/commands/session-record.ts:80,128,141-142; driven by ascend-frontier-push.ts:240,429; court-audit run wf_7f28539d-cfa finding #12.",
+    "opportunity": "Route session-record's write through saveMatrix (reconcile/provenance/lock/validated-strip run) and derive tier from the actual run instead of hardcoding T7. Validate it doesn't disrupt the loop's evidence-capture cadence first.",
+    "status": "open",
+    "openedAt": "2026-06-15T19:41:11.856Z"
   }
 ]

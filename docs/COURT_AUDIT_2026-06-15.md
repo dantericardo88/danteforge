@@ -19,19 +19,26 @@ codex/claude; the deterministic receipt-mechanics gate; the frontier gate's 8.0-
 
 | # | Sev | Hole | Files | Status |
 |---|-----|------|-------|--------|
-| 1 | CRIT | `applyFrontierGate` honors a bare `status:'validated'` string — no court receipt; a hashless validated spec never goes stale | frontier-spec.ts:289-295,254-260,244-247; compete-matrix.ts:338-341 | OPEN |
-| 2 | CRIT | pre-commit doesn't protect `outcome-evidence/**` AND the hook isn't installed (only LOC gate is) | hooks/pre-commit.mjs:26-35; install-git-hooks.ts; init.ts:258-265 | OPEN |
-| 3 | CRIT | `loadOutcomeEvidence` trusts receipt fields verbatim — no authenticity check (HMAC) | outcome-runner.ts:594-662; outcome.ts:526-562 | OPEN |
-| 4 | CRIT | parallel push excludes the round-robin member, not the real (keyword-routed) builder → builder self-judges | ascend-frontier-push.ts:445; ascend-frontier-parallel.ts:45-69; council-scheduler.ts:87-90 | OPEN |
-| 5 | HIGH | `frontier-review` applies NO default builder exclusion — direct call seats builders as judges | frontier-review.ts:137-148; register-outcomes-cmds.ts:297-325 | OPEN |
-| 6 | HIGH | `--min-judges 1` collapses quorum to one PASS + one abstention | register-outcomes-cmds.ts:314; frontier-review-court.ts:169-170 | OPEN |
-| 7 | HIGH | last-`VERDICT`-wins parser fails OPEN (trailing PASS after a real FAIL → PASS) | council-verdict-parser.ts:25-34 | OPEN |
-| 8 | HIGH | builder-controlled artifact excerpt injected verbatim into judge prompt → planted/echoed `VERDICT:` lines | frontier-review-court.ts:86,91,157-158 | OPEN |
-| 9 | HIGH | `loadOutcomeEvidence` accepts evidence from a stale/foreign git SHA | outcome-runner.ts:651-661; capability-test.ts:93,102-112 | OPEN |
-| 10 | HIGH | `saveMatrix` provenance guards `scores.self` but never `frontier_spec.status` | compete-matrix.ts:459-475; write-verified-score.ts:160-207 | OPEN |
-| 11 | HIGH | grok & gemini judges ignore subprocess exit code — a killed judge's partial stdout trusted as a verdict | grok-build-adapter.ts:261-297; gemini-cli-adapter.ts:271-303 | OPEN |
-| 12 | MED | `session-record` writes matrix.json via raw `fs.writeFile`, bypassing saveMatrix + acceptance gate; hardcodes `tier:'T7'` | session-record.ts:80,128,141-142 | OPEN |
-| 13 | MED | gemini judge has no read-only enforcement; post-run diff is blind to `.danteforge/` | gemini-cli-adapter.ts:238-240,285,398-411 | OPEN |
+| 1 | CRIT | `applyFrontierGate` honors a bare `status:'validated'` string — no court receipt; a hashless validated spec never goes stale | frontier-spec.ts | ✅ FIXED ef9566c — `validated_by` receipt (dim+content+secret bound), gate verifies |
+| 2 | CRIT | pre-commit doesn't protect `outcome-evidence/**` AND the hook isn't installed (only LOC gate is) | hooks/pre-commit.mjs; install-git-hooks.ts | ⚠ PARTIAL — outcome-evidence added to guard; hook-not-installed = CH-024 (activating it needs loop validation: Phase-A runtime-evidence + per-commit tsc) |
+| 3 | CRIT | `loadOutcomeEvidence` trusts receipt fields verbatim — no authenticity check (HMAC) | outcome-runner.ts:594-662 | 🟡 CH-025 — but #1 reduces impact: forged evidence now caps at 8.0 (frontier gate), no longer a fake-9.0 path. Signing seam exists (kernelSecret) |
+| 4 | CRIT | parallel push excludes the round-robin member, not the real (keyword-routed) builder → builder self-judges | ascend-frontier-push.ts:445 | ✅ FIXED cc7f87e — promote excludes ALL build-eligible members |
+| 5 | HIGH | `frontier-review` applies NO default builder exclusion — direct call seats builders as judges | frontier-review.ts | ✅ FIXED cc7f87e — flag-less call default-excludes all builders |
+| 6 | HIGH | `--min-judges 1` collapses quorum to one PASS + one abstention | frontier-review-court.ts | ✅ FIXED cc7f87e — court floors minJudges at 2; CLI clamps |
+| 7 | HIGH | last-`VERDICT`-wins parser fails OPEN (trailing PASS after a real FAIL → PASS) | council-verdict-parser.ts | ✅ FIXED cc7f87e — FAIL dominates (fail-closed) |
+| 8 | HIGH | builder-controlled artifact excerpt injected verbatim into judge prompt → planted/echoed `VERDICT:` lines | frontier-review-court.ts | ✅ FIXED cc7f87e — fenced + token-defanged + untrusted-labeled; CEILING anchored |
+| 9 | HIGH | `loadOutcomeEvidence` accepts evidence from a stale/foreign git SHA | outcome-runner.ts:651-661 | 🟡 CH-025 (with #3) — impact bounded at 8.0 by #1 |
+| 10 | HIGH | `saveMatrix` provenance guards `scores.self` but never `frontier_spec.status` | write-verified-score.ts; compete-matrix.ts | ✅ FIXED 951b75e — stripUnverifiedValidations at save boundary |
+| 11 | HIGH | grok & gemini judges ignore subprocess exit code — a killed judge's partial stdout trusted as a verdict | grok/gemini adapters | ✅ FIXED e2e5c69 — non-zero judge exit ⇒ failed, output discarded |
+| 12 | MED | `session-record` writes matrix.json via raw `fs.writeFile`, bypassing saveMatrix + acceptance gate; hardcodes `tier:'T7'` | session-record.ts | 🟡 CH-026 — impact bounded at 8.0 by #1 |
+| 13 | MED | gemini judge has no read-only enforcement; post-run diff is blind to `.danteforge/` | gemini-cli-adapter.ts | ✅ FIXED e2e5c69 — judgeWriteDiff keeps `.danteforge/` visible; both judges |
+
+## Status: 9 of 14 fixed in code (commits cc7f87e, e2e5c69, ef9566c, 951b75e). The fake-9.0 paths are
+closed: a builder can no longer self-judge (#4/#5/#6), the parser/prompt can't be gamed (#7/#8), judges
+fail-closed (#11/#13), and `validated` is a verifiable court receipt on both read and write (#1/#10).
+Remaining (CH-024/025/026): evidence-store authentication + hook activation — with #1 landed these now
+cap forged evidence at 8.0 (the frontier gate) rather than minting a fake 9.0, so they are hardening, not
+open 9.0 forgeries. Until they land, treat an unattended autonomous run's >8.0 claims as court-gated only.
 
 ## Sequencing (per the audit synthesis)
 1. **#1 + #3** — the two structural blockers (court-receipt-bound `validated` + authenticated evidence).
