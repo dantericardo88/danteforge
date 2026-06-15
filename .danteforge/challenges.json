@@ -240,8 +240,10 @@
     "problem": "hooks/pre-commit.mjs (matrix-surface guard, outcome-evidence guard, protected-lines, symbol-level score-write guard, stub/mock/TODO zero-tolerance, typecheck) is NEVER invoked by the live .git/hooks/pre-commit. install-git-hooks.ts only writes LOC_GATE_BLOCK; the documented 'Zero Tolerance (Pre-Commit Enforced)' Pillar-2 doctrine is dead on the installed hook.",
     "evidence": ".git/hooks/pre-commit contains only the danteforge-loc-gate block (verified live); src/core/install-git-hooks.ts builds only LOC_GATE_BLOCK; court-audit run wf_7f28539d-cfa finding #2.",
     "opportunity": "Wire install-git-hooks.ts to chain 'node hooks/pre-commit.mjs' (no-op in consumer repos lacking the file). ACTIVATION RISK to validate first: Phase-A requires .danteforge/runtime-evidence/ newer than any staged matrix.json (could block the autonomous loop's own merge commits), and it runs tsc --noEmit on every .ts commit (slows commits). Validate against the live loop's commit patterns, then activate.",
-    "status": "open",
-    "openedAt": "2026-06-15T19:41:11.437Z"
+    "status": "solved",
+    "openedAt": "2026-06-15T19:41:11.437Z",
+    "resolution": "Commit a5b73aa: install-git-hooks.ts now chains hooks/pre-commit.mjs (idempotent guards block; upgrades a loc-only hook). Re-installed live + DoD proven: matrix.json blocked without merge-receipt; //TODO in src blocked; normal change passes. Safe activation: Phase A warns-when-absent, tsc opt-out via DANTEFORGE_SKIP_PRECOMMIT_TSC. install-git-hooks.test.ts pins the upgrade path.",
+    "resolvedAt": "2026-06-15T21:33:46.988Z"
   },
   {
     "id": "CH-025",

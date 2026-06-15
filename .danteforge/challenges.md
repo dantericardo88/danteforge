@@ -5,7 +5,7 @@
 > Entries are never silently deleted: a challenge is open, solved (with the commit), or
 > retired (with the reason). An empty OPEN section is a smell, not an achievement.
 
-## Open (14)
+## Open (13)
 
 ### CH-006: Cycle economics: tiny payload per hour
 - **Problem:** A push attempt costs ~60min of orchestration + LLM for 2-3 file diffs; overhead dominates real building.
@@ -61,12 +61,6 @@
 - **Opportunity:** Build 'danteforge wave replay <runId>' that reads the ledger, finds lastSuccessfulWave, and resumes the loop from there (skipping completed waves) — proven by a crash-mid-campaign → replay → resumes-not-restarts test. Then an interrupt gate: a pending-approval object written before any score write, releasable by human or policy. Each is a real rung toward 9; neither re-declares the score until its capability_test proves it.
 - Opened: 2026-06-13
 
-### CH-024: Pillar-2 pre-commit enforcement is not installed (only the LOC gate is)
-- **Problem:** hooks/pre-commit.mjs (matrix-surface guard, outcome-evidence guard, protected-lines, symbol-level score-write guard, stub/mock/TODO zero-tolerance, typecheck) is NEVER invoked by the live .git/hooks/pre-commit. install-git-hooks.ts only writes LOC_GATE_BLOCK; the documented 'Zero Tolerance (Pre-Commit Enforced)' Pillar-2 doctrine is dead on the installed hook.
-- **Evidence:** .git/hooks/pre-commit contains only the danteforge-loc-gate block (verified live); src/core/install-git-hooks.ts builds only LOC_GATE_BLOCK; court-audit run wf_7f28539d-cfa finding #2.
-- **Opportunity:** Wire install-git-hooks.ts to chain 'node hooks/pre-commit.mjs' (no-op in consumer repos lacking the file). ACTIVATION RISK to validate first: Phase-A requires .danteforge/runtime-evidence/ newer than any staged matrix.json (could block the autonomous loop's own merge commits), and it runs tsc --noEmit on every .ts commit (slows commits). Validate against the live loop's commit patterns, then activate.
-- Opened: 2026-06-15
-
 ### CH-025: Outcome-evidence store is unauthenticated (forgeable receipts), bounded at 8.0 by the frontier gate
 - **Problem:** loadOutcomeEvidence trusts receipt JSON verbatim (passed/tier/session_id) with no signature, and accepts evidence from a stale/foreign git SHA within the tier window. A worker can hand-author T7 receipts that clear gatherReceipts + derived-score. (court-audit #3+#9.) Impact is now bounded at 8.0 by the frontier gate (#1, commit ef9566c) — it can inflate derived score up to 8.0 but no longer mint a fake 9.0.
 - **Evidence:** src/matrix/engines/outcome-runner.ts:594-662 (no authenticity check) + :651-661 (foreign-SHA fallback); court-audit run wf_7f28539d-cfa findings #3/#9.
@@ -91,7 +85,7 @@
 - **Opportunity:** Bind the build-eligible roster into the receipt: verifyValidation rejects any receipt whose judge_member_ids intersect the build-eligible set. Tension: verifyValidation is SYNC (applyFrontierGate is a hot sync read path) while the roster needs discoverCouncil (async) — either snapshot the roster into the receipt at mint time (record was_builder=false per judge, signed) or accept an async verify on the write/save path only. Prefer snapshotting non-builder attestation INTO the signed receipt so the sync read-gate stays pure.
 - Opened: 2026-06-15
 
-## Resolved (14)
+## Resolved (15)
 
 - **CH-001: Blind retry - dissent never reached the builder** — solved 2026-06-12: solved: court-feedback.ts + composeBuildGoal (commit feat(court): verdict->builder feedback)
 - **CH-002: Bar-goal disconnect** — solved 2026-06-12: solved: the frozen ladder bar is now in every push build goal (same commit)
@@ -107,3 +101,4 @@
 - **CH-020: Provider-outage detection is signature-based — a novel phrasing slips through** — solved 2026-06-13: fix(autonomy): structural all-judges-unavailable outage signal — FrontierJudgeRecord.unavailable (set when the adapter throws/fails/returns the 'judge unavailable' marker or empty); parseCourtOutput.allUnavailable (every judge unavailable, wording-agnostic); noteStructuralOutage raises the CH-019 pause+marker even with NO provider string matched. Pins in frontier-review-court.test.ts + ascend-frontier-ledger.test.ts
 - **CH-021: depth_doctrine: wave ledger lands, but only 1 loop wired + no replay/interrupt (rung-8→9)** — solved 2026-06-13: ≥3-loop clause LANDED (commits d684d81 harden-crusade, f43bb90 autoforge, 8bde9b2 ascend): all three independent loops now drive the shared WaveLedger and emit byte-identical receipts, each PROVEN by a real emission pin (receipt, not hypothesis). File splits unblocked it: autoforge-loop-core.ts (enum+types+result writer, dissolved the value cycle) + ascend-engine-cycle.ts (cycle helpers). Score NOT raised. Remaining rung-9 (replay + interrupt-before-score-write) → CH-022.
 - **CH-023: Court has zero judge-only redundancy (single grok)** — solved 2026-06-15: Commit (gemini-cli wired as 2nd judge-only member; live council --ask seats 4 — codex+claude build, grok+gemini judge). Court now survives one judge being down.
+- **CH-024: Pillar-2 pre-commit enforcement is not installed (only the LOC gate is)** — solved 2026-06-15: Commit a5b73aa: install-git-hooks.ts now chains hooks/pre-commit.mjs (idempotent guards block; upgrades a loc-only hook). Re-installed live + DoD proven: matrix.json blocked without merge-receipt; //TODO in src blocked; normal change passes. Safe activation: Phase A warns-when-absent, tsc opt-out via DANTEFORGE_SKIP_PRECOMMIT_TSC. install-git-hooks.test.ts pins the upgrade path.
