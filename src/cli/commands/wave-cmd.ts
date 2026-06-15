@@ -45,7 +45,9 @@ export async function waveReplay(runId: string, opts: { cwd?: string; json?: boo
     if (plan.pending.length > 0) {
       logger.info(`  not completed: ${plan.pending.map(w => `${w.waveIndex}(${w.status})`).join(', ')}`);
     }
-    // Honest boundary: this reports the resume point; auto re-entry into the loop is the CH-022 follow-up.
-    logger.info('  (auto re-entry into the loop from this index is the CH-022 follow-up; this command reports the resume point.)');
+    // Honest boundary (CH-022): auto re-entry SHIPPED for harden-crusade (it resumes from this index via
+    // --resume); autoforge/ascend still restart cold (their per-invocation runIds need a deterministic-runId
+    // redesign first). This command reports the resume point for any loop.
+    logger.info('  (harden-crusade resumes from this index via --resume; autoforge/ascend auto re-entry pending a deterministic-runId redesign.)');
   }
 }

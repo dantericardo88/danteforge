@@ -431,6 +431,23 @@ export async function saveMatrix(
   // save path (seamed and real) and can only LOWER or hold values, never raise.
   await reconcileScoreCaps(matrix);
 
+  // CH-022 interrupt-before-score-write gate: pause at a clean boundary BEFORE persisting any score so a
+  // partially-built wave is never frozen into the matrix (it stays `running` and resume picks it up). One
+  // check covers BOTH branches below — it is default-OFF (checkScoreInterrupt returns paused:false unless
+  // an operator armed the env/sentinel), so the smoke suite is unaffected. Escape: DANTEFORGE_ALLOW_SCORE_WRITE=1.
+  {
+    const { checkScoreInterrupt } = await import('./score-interrupt.js');
+    const interrupt = await checkScoreInterrupt(cwd ?? process.cwd());
+    if (interrupt.paused) {
+      if (process.env['DANTEFORGE_ALLOW_SCORE_WRITE'] === '1') {
+        const { logger } = await import('./logger.js');
+        logger.warn(`[saveMatrix] score-write interrupt active (${interrupt.reason}) — bypassed via DANTEFORGE_ALLOW_SCORE_WRITE.`);
+      } else {
+        throw new Error(`[saveMatrix] score write BLOCKED by interrupt: ${interrupt.reason}. The matrix was NOT written — the in-flight wave stays resumable. Clear .danteforge/INTERRUPT (or unset ${'DANTEFORGE_INTERRUPT_BEFORE_SCORE'}) to resume, or set DANTEFORGE_ALLOW_SCORE_WRITE=1 to force this write.`);
+      }
+    }
+  }
+
   const content = JSON.stringify(matrix, null, 2);
   const write = _fsWrite ?? (async (p: string, c: string) => {
     await fs.mkdir(path.dirname(p), { recursive: true });
