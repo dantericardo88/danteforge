@@ -262,7 +262,15 @@ export async function defaultPushTo9(
   let courtRan = false;
   let verdict: PushResult['verdict'] = 'REJECTED';
   if (spec0 && evidenceOk) {
-    const review = await runCli(cwd, ['frontier-review', dimId, '--write', '--json']);
+    // The sequential build runs council-crusade, which uses the WHOLE builder roster (codex + claude).
+    // Every one of those members is therefore conflicted as a judge — exclude them ALL so a builder can
+    // never judge its own dim. What remains is the judge-only pool (grok); if that is < 2 the court
+    // honestly refuses to convene (frontier-review throws → courtRan=false → re-attemptable), instead of
+    // letting the two builders rubber-stamp each other. Independent 9.0 in sequential mode thus requires
+    // ≥2 judge-only members; with one grok, use --parallel (single builder excluded + grok = 2 judges).
+    const builders = await defaultDiscoverMembers(); // build-eligible only (judge-only already filtered)
+    const review = await runCli(cwd, ['frontier-review', dimId, '--write', '--json',
+      ...(builders.length ? ['--exclude-builders', builders.join(',')] : [])]);
     const parsed = parseCourtOutput(review);
     // CH-019: an all-abstained court (every judge UNCLEAR) is an outage / can't-tell, NOT a clean
     // rejection — treat it like an unreadable court (courtRan stays false → re-attemptable build

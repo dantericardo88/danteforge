@@ -91,6 +91,34 @@ describe('frontier-review-court — the automated 9.0 semantic gate', () => {
     assert.equal(r.vote.crossMember, 2);
   });
 
+  test('multi-builder exclude: BOTH builders are barred (sequential mode) — neither self-judges', async () => {
+    // The sequential push builds with the whole builder roster (codex + claude). Excluding both leaves
+    // only the judge-only member (grok) — a single judge can't meet the 2-judge quorum, so the court
+    // is INSUFFICIENT (→ REJECTED), never a self-certified PASS by the two builders.
+    const asked: string[] = [];
+    const r = await runFrontierReviewCourt(input(), {
+      members: ['codex', 'claude-code', 'grok-build'],
+      excludeMemberIds: ['codex', 'claude-code'], // both built → both barred
+      minJudges: 2,
+      runJudge: async (id) => { asked.push(id); return 'VERDICT: PASS\nREASON: genuine'; },
+    });
+    assert.ok(!asked.includes('codex') && !asked.includes('claude-code'), 'neither builder judged its own dim');
+    assert.deepEqual(asked, ['grok-build'], 'only the judge-only member was asked');
+    assert.notEqual(r.verdict, 'VALIDATED', 'one judge cannot meet the 2-judge quorum — no self-certified PASS');
+  });
+
+  test('multi-builder exclude: a SECOND judge-only member restores quorum and can VALIDATE', async () => {
+    // With two independent (non-builder) judges, the builder-excluded court convenes honestly.
+    const r = await runFrontierReviewCourt(input(), {
+      members: ['codex', 'claude-code', 'grok-build', 'gemini-cli'],
+      excludeMemberIds: ['codex', 'claude-code'],
+      minJudges: 2,
+      runJudge: judgeReturning({ 'grok-build': 'VERDICT: PASS\nREASON: real', 'gemini-cli': 'VERDICT: PASS\nREASON: real' }),
+    });
+    assert.equal(r.verdict, 'VALIDATED');
+    assert.equal(r.vote.crossMember, 2);
+  });
+
   test('parallel unanimous gate: with builder excluded, one FAIL from the other two blocks 9.0', async () => {
     const r = await runFrontierReviewCourt(input(), {
       members: ['codex', 'claude-code', 'grok-build'],

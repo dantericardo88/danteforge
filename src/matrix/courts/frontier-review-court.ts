@@ -128,6 +128,13 @@ export async function runFrontierReviewCourt(
     members: CouncilMemberId[];
     /** The member that BUILT this dim — excluded from the judge pool (builder-never-judges). */
     builderMemberId?: CouncilMemberId;
+    /** Every member that touched the build — ALL excluded from the judge pool. The sequential push
+     *  builds via the whole builder roster (council-crusade uses both codex + claude), so excluding a
+     *  single builderMemberId is not enough: any build-eligible member that contributed is conflicted.
+     *  Passing the full builder roster here leaves only judge-only members (grok) as judges — and if
+     *  that is < minJudges the court honestly refuses to convene rather than letting a builder
+     *  rubber-stamp its own work. (Gap #3-full: builder-never-judges in the multi-builder path.) */
+    excludeMemberIds?: CouncilMemberId[];
     minJudges?: number;
     runJudge: (judgeId: CouncilMemberId, prompt: string) => Promise<string>;
   },
@@ -138,8 +145,11 @@ export async function runFrontierReviewCourt(
 
   // In parallel mode the builder is a real member; it must NOT judge its own dim. The remaining
   // members are the independent judges, and all their votes are cross-member by construction.
+  // excludeMemberIds additionally removes every member that contributed to a multi-builder build.
   const builder = opts.builderMemberId ?? NO_BUILDER;
-  const judgePool = opts.builderMemberId ? opts.members.filter(m => m !== opts.builderMemberId) : opts.members;
+  const excluded = new Set<CouncilMemberId>(opts.excludeMemberIds ?? []);
+  if (opts.builderMemberId) excluded.add(opts.builderMemberId);
+  const judgePool = opts.members.filter(m => !excluded.has(m));
 
   for (const member of judgePool) {
     let raw = '';

@@ -298,6 +298,7 @@ program
   .description('Run the frontier-review-court: independent council judges (builder-never-judges) confirm a dim genuinely matches its named competitor. VALIDATED is the ONLY way past 8.0.')
   .option('--write', 'Apply the verdict: set frontier_spec.status=validated on PASS, write a ceiling receipt on an agreed honest-ceiling')
   .option('--builder <memberId>', 'The member that built this dim — excluded from judging (parallel mode, builder-never-judges)')
+  .option('--exclude-builders <ids>', 'Comma-separated members that ALL contributed to the build (sequential/multi-builder mode) — every one excluded from judging so a builder never judges its own dim')
   .option('--min-judges <n>', 'Minimum cross-member judges (default: min(2, available))')
   .option('--json', 'Machine-readable output')
   .option('--cwd <path>', 'Project directory')
@@ -309,6 +310,7 @@ program
           dimId,
           write: opts.write as boolean | undefined,
           builderMemberId: opts.builder as never,
+          excludeBuilderIds: opts.excludeBuilders ? (opts.excludeBuilders as string).split(',').map(s => s.trim()).filter(Boolean) as never : undefined,
           minJudges: opts.minJudges ? parseInt(opts.minJudges as string, 10) : undefined,
           json: opts.json as boolean | undefined,
           cwd: opts.cwd as string | undefined,
