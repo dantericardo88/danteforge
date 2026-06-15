@@ -30,7 +30,15 @@ self-CONSISTENCY, never self-GROUNDING.
 - ✅ **#5** verdict parser anchored to the LAST `VERDICT:` declaration — a reasoning FAIL no longer parses as PASS (commit 2e80fc3).
 - ✅ **#8** gap_to_leader computed from the honest decision score, `derived` excluded from the competitor pool (commit 2e80fc3).
 
-**Remaining** (medium → strategic): #3 court independence, #4 propose/accept enforcement (large), #6 external grounding (strategic decision), #7 cli-smoke meaning, #9 badge raw self, #10 staleness badge, #11 honesty-tool agreement, #12 ladder wiring, #13 semantic relevance + meta-dim split. Also filed: capability-test-sensitivity.test.ts "always RESTORES" fails at HEAD (pre-existing, not in any verify lane).
+- ✅ **#4 (lock half)** kernel-own outcome-evidence — a build worker can no longer write the receipts the scorer trusts (commit a2ec29b). Remaining: route session-record through propose≠accept + derived-score consult isAccepted (the orchestrator-self-author half).
+- ✅ **#6 (visibility half)** `danteforge grounding` + externalGroundingReport — surfaces the self-vs-world ratio (today 0%) (commit 219bd9a). Remaining: run ONE registered external benchmark end-to-end (needs compute/LLM) + decide the self-run→8.0 provenance cap (policy).
+
+**Remaining work, by what it needs:**
+- *Code I can build next:* #3 builder-never-self (court), #7 cli-smoke must assert a computed result, #9/#10 badge raw self + evidence staleness, #11 make the two honesty tools agree, #12 wire ladder rung into derivation + author ux_polish ladder.
+- *Larger build:* #4 propose/accept routing + isAccepted consult; #13 semantic-relevance (T7 must exercise the dim's own callsite) + meta-dim internal/external split.
+- *Operator decisions / resources (not "can't" — needs a call or compute):* #3 a real ≥3rd judge in the roster; #6 running a real external benchmark (API/compute) + the self-run→8.0 cap policy.
+
+Also filed: capability-test-sensitivity.test.ts "always RESTORES" fails at HEAD (pre-existing, not in any verify lane).
 
 ## Ranked gaps (confirmed)
 
