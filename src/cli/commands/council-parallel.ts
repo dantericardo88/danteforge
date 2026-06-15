@@ -255,7 +255,9 @@ export async function runParallelCouncil(options: ParallelCouncilOptions): Promi
 
   const discover = options._discover ?? discoverCouncil;
   const members = await discover();
-  const available = members.filter(m => m.available).map(m => m.id as CouncilMemberId);
+  // council --parallel is build-and-cross-judge: every member BUILDS, so judge-only members (grok) are
+  // excluded here — grok judges the frontier 9.0 court (via frontier-review), not parallel builds.
+  const available = members.filter(m => m.available && !m.judgeOnly).map(m => m.id as CouncilMemberId);
 
   for (const m of members) {
     logger.info(`  ${m.available ? chalk.green('✓') : chalk.dim('✗')}  ${m.label}`);

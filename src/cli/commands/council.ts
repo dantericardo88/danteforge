@@ -31,6 +31,12 @@ export interface CouncilMember {
   id: CouncilMemberId;
   label: string;
   available: boolean;
+  /** A judge-only member is eligible to JUDGE but NEVER to build. Grok is reserved this way: it is the
+   *  independent third judge so a builder-excluded court can convene with ≥2 non-builder judges (the
+   *  "one who builds never judges" rule needs that). Grok was pulled from BUILDING for CLI flakiness —
+   *  judging is the lighter role it can still do, and a third model family makes the court genuinely
+   *  independent. When grok's CLI is down it simply isn't available; the court degrades gracefully. */
+  judgeOnly?: boolean;
 }
 
 export interface JudgeVerdict {
@@ -155,19 +161,20 @@ export function makeJudgeLease(cwd: string): AgentLease {
 export async function discoverCouncil(allowedMemberIds?: string[]): Promise<CouncilMember[]> {
   const dummy = makeWorkPacket('probe', process.cwd());
 
-  // Default roster = Codex + Claude Code only.
+  // Roster: Codex + Claude Code BUILD (and judge); Grok is the reserved JUDGE-ONLY third member.
   // Gemini CLI is API-based (not subscription) and quota-exhausts quickly — excluded.
-  // Grok Build is excluded too: its CLI is unreliable as a council member (parse errors / 502s).
-  // Both types remain for backward compatibility and can be re-enabled by adding a probe here or via
-  // DANTEFORGE_COUNCIL_MEMBERS=codex,claude-code,grok-build.
-  const ALL_PROBES: Array<{ id: CouncilMemberId; label: string; adapter: { isAvailable(): Promise<boolean> } }> = [
+  // Grok's CLI is unreliable for BUILDING (parse errors / 502s) but fine for the lighter JUDGE role —
+  // and a third model family (xAI) makes a builder-excluded court genuinely independent (≥2 non-builder
+  // judges), which a 2-member roster cannot do. When grok's CLI is down it just isn't available and the
+  // court degrades gracefully (outage handling). Override membership via DANTEFORGE_COUNCIL_MEMBERS.
+  const ALL_PROBES: Array<{ id: CouncilMemberId; label: string; judgeOnly?: boolean; adapter: { isAvailable(): Promise<boolean> } }> = [
     { id: 'codex', label: 'Codex (OpenAI subscription)', adapter: new CodexAdapter({ workPacket: dummy }) },
     { id: 'claude-code', label: 'Claude Code (claude binary)', adapter: new ClaudeCodeAdapter({ workPacket: dummy }) },
+    { id: 'grok-build', label: 'Grok Build (xAI — judge only)', judgeOnly: true, adapter: new GrokBuildAdapter({ workPacket: dummy }) },
   ];
 
-  // Keep the Gemini + Grok adapters importable but never probe them — prevents unused-import errors.
+  // Keep the Gemini adapter importable but never probe it — prevents an unused-import error.
   void GeminiCLIAdapter;
-  void GrokBuildAdapter;
 
   // Member filter: explicit arg → env var → all members.
   // Set DANTEFORGE_COUNCIL_MEMBERS=codex,claude-code to exclude Grok globally.
@@ -183,27 +190,30 @@ export async function discoverCouncil(allowedMemberIds?: string[]): Promise<Coun
   const results: CouncilMember[] = [];
   await Promise.all(probes.map(async p => {
     const available = await p.adapter.isAvailable().catch(() => false);
-    results.push({ id: p.id, label: p.label, available });
+    results.push({ id: p.id, label: p.label, available, judgeOnly: p.judgeOnly });
   }));
   return results;
 }
 
 // ── Role assignment ───────────────────────────────────────────────────────────
 
-function assignRoles(
+export function assignRoles(
   members: CouncilMember[],
   builderPref?: CouncilMemberId,
 ): { builder: CouncilMemberId; judges: CouncilMemberId[] } | null {
-  const available = members.filter(m => m.available).map(m => m.id);
-  if (available.length < 2) return null;
+  const available = members.filter(m => m.available);
+  const availableIds = available.map(m => m.id);
+  // A judge-only member (grok) can never be the builder; the builder comes from the build-eligible set.
+  const builderEligible = available.filter(m => !m.judgeOnly).map(m => m.id);
+  if (builderEligible.length === 0 || availableIds.length < 2) return null;
 
-  // Builder preference: use pref if available, else pick first
-  const builder = (builderPref && available.includes(builderPref))
+  // Builder preference: use pref if it is build-eligible, else the first build-eligible member.
+  const builder = (builderPref && builderEligible.includes(builderPref))
     ? builderPref
-    : available[0]!;
+    : builderEligible[0]!;
 
-  // Judges: everyone else (never the builder)
-  const judges = available.filter(id => id !== builder);
+  // Judges: everyone else (never the builder) — includes the judge-only member.
+  const judges = availableIds.filter(id => id !== builder);
   return { builder, judges };
 }
 

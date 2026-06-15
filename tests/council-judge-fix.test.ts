@@ -1,5 +1,5 @@
 // Tests for the 4 council judge-mode fixes:
-//   FIX 1: Gemini AND Grok excluded from discoverCouncil() — only codex/claude-code probed
+//   FIX 1: Gemini excluded from discoverCouncil(); Grok is the reserved JUDGE-ONLY 3rd member (codex/claude-code build)
 //   FIX 2: Claude Code judge mode → --output-format text (zero tools, zero file writes)
 //   FIX 3: Grok judge mode captures stderr too + sets explicit finalMessage
 //   FIX 4: buildClaudeJudgeTextPrompt embeds diff for tool-free judging
@@ -10,22 +10,22 @@ import { describe, it } from 'node:test';
 
 import { discoverCouncil } from '../src/cli/commands/council.js';
 
-describe('discoverCouncil — FIX 1: Gemini AND Grok excluded from default roster', () => {
-  it('discoverCouncil probes only codex + claude-code (not gemini-cli, not grok-build)', async () => {
+describe('discoverCouncil — Gemini excluded; Grok reserved as JUDGE-ONLY (#3 court independence)', () => {
+  it('probes codex + claude-code (builders) + grok-build (judge-only); never gemini-cli', async () => {
     // Hermetic: the DANTEFORGE_COUNCIL_MEMBERS env var globally filters the roster,
-    // so clear it for this test to assert the true default (the 2 reliable subscription adapters).
+    // so clear it for this test to assert the true default.
     const savedFilter = process.env['DANTEFORGE_COUNCIL_MEMBERS'];
     delete process.env['DANTEFORGE_COUNCIL_MEMBERS'];
     try {
-      const probed: string[] = [];
       const members = await discoverCouncil();
-      // Neither gemini-cli nor grok-build is probed (both excluded from the default roster).
-      assert.equal(members.find(m => m.id === 'gemini-cli'), undefined, 'gemini-cli should not appear in discovery results');
-      assert.equal(members.find(m => m.id === 'grok-build'), undefined, 'grok-build should not appear in discovery results');
-      // The 2 reliable subscription adapters ARE probed.
-      const ids = members.map(m => m.id).sort();
-      assert.deepEqual(ids, ['claude-code', 'codex'].sort());
-      void probed; // unused but referenced for TS
+      // gemini-cli stays excluded; grok-build is now IN the roster as the reserved judge.
+      assert.equal(members.find(m => m.id === 'gemini-cli'), undefined, 'gemini-cli stays excluded');
+      const grok = members.find(m => m.id === 'grok-build');
+      assert.ok(grok, 'grok-build IS in the roster — the reserved third judge');
+      assert.equal(grok!.judgeOnly, true, 'grok is judge-only: it judges the court, never builds');
+      // Only codex + claude-code are build-eligible (not judge-only).
+      const builders = members.filter(m => !m.judgeOnly).map(m => m.id).sort();
+      assert.deepEqual(builders, ['claude-code', 'codex'], 'only codex + claude-code build');
     } finally {
       if (savedFilter !== undefined) process.env['DANTEFORGE_COUNCIL_MEMBERS'] = savedFilter;
     }

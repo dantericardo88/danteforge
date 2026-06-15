@@ -346,7 +346,10 @@ export async function engineSha(cwd: string): Promise<string | null> {
 
 export async function defaultDiscoverMembers(): Promise<CouncilMemberId[]> {
   const { discoverCouncil } = await import('./council.js');
-  return (await discoverCouncil()).filter(m => m.available).map(m => m.id as CouncilMemberId);
+  // BUILDERS only — judge-only members (grok) are reserved for the court and must never be assigned to
+  // build (or to decompose plans). The frontier court discovers its own judge pool separately and DOES
+  // include the judge-only member, so a builder-excluded court still gets ≥2 independent judges.
+  return (await discoverCouncil()).filter(m => m.available && !m.judgeOnly).map(m => m.id as CouncilMemberId);
 }
 
 /** Build the work packet for a plan decomposition/audit consultation. dimensionId MUST be
