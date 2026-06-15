@@ -1,7 +1,22 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { validateOutcomeQuality } from '../src/matrix/engines/outcome-quality.js';
+import { validateOutcomeQuality, classifyOutcomeKind } from '../src/matrix/engines/outcome-quality.js';
 import type { Outcome, OutcomeEvidenceEntry } from '../src/matrix/types/outcome.js';
+
+describe('classifyOutcomeKind — cli-smoke banner cap (grading-integrity #7)', () => {
+  const cliSmoke = (cli_args: string[], command?: string): Outcome =>
+    ({ id: 'o', tier: 'T6', description: 'd', kind: 'cli-smoke', cli_args, ...(command ? { command } : {}) } as unknown as Outcome);
+  it('a --help cli-smoke caps at 7.0 (reachability, not capability)', () => {
+    assert.equal(classifyOutcomeKind(cliSmoke(['--help'])).maxScore, 7.0);
+    assert.equal(classifyOutcomeKind(cliSmoke(['gap', '--help'])).maxScore, 7.0, 'help flag after a real subcommand is still a banner');
+    assert.equal(classifyOutcomeKind(cliSmoke([])).maxScore, 7.0, 'a bare invocation is a banner');
+  });
+  it('a real cli-smoke (non-trivial subcommand, no help flag) keeps 8.5', () => {
+    assert.equal(classifyOutcomeKind(cliSmoke(['validate', 'security'])).maxScore, 8.5);
+    // shorthand: cli-smoke carrying a real `command` instead of cli_args is not penalized
+    assert.equal(classifyOutcomeKind(cliSmoke([], 'node dist/index.js validate security')).maxScore, 8.5);
+  });
+});
 
 function makeOutcome(overrides: Partial<Outcome> & { command?: string } = {}): Outcome {
   return {

@@ -121,8 +121,26 @@ export function classifyOutcomeKind(outcome: Outcome): OutcomeKindClassification
     return { maxScore: 8.0, evidenceTier: 'e2e', reason: 'Runtime execution of the product without a declared real-user-path input_source — caps at T5/8.0 until provenance is declared' };
   }
 
-  // CLI smoke: invokes the real CLI and checks stdout → T6 (8.5)
+  // CLI smoke: invokes the real CLI and checks stdout → T6 (8.5).
   if (kind === 'cli-smoke') {
+    // Grading-integrity #7: a --help/version/bare cli-smoke proves the CLI is REACHABLE, not that the
+    // capability works — it exits 0 and prints a usage banner regardless of whether the feature runs.
+    // Cap such probes at T4/7.0 (reachability), never T6/8.5. A help/version flag ANYWHERE makes it a
+    // banner (mirrors the #1 capability-gate classifier). A real cli-smoke invokes a non-trivial
+    // subcommand and asserts a computed result via expected_stdout_patterns.
+    const args = ((outcome as { cli_args?: unknown[] }).cli_args ?? []).map(a => String(a).toLowerCase().trim());
+    const TRIVIAL = new Set(['--help', '-h', 'help', '--version', '-v', 'version', 'status', '--dry-run']);
+    // A help/version flag in EITHER the cli_args or the command string marks a usage banner.
+    const hasHelpFlag = args.some(a => ['--help', '-h', '--version', '-v'].includes(a))
+      || /(?:^|\s)(?:--help|-h|--version|-v)(?:\s|$)/i.test(cmd);
+    // "Bare" = a real cli-smoke whose args are ALL trivial, or a truly empty invocation (no args AND no
+    // command). A cli-smoke that carries a real `command` instead of cli_args (the shorthand fixtures use)
+    // is NOT bare and falls through to the normal 8.5 path.
+    const onlyTrivial = (args.length > 0 && args.every(a => TRIVIAL.has(a)))
+      || (args.length === 0 && cmd.trim() === '');
+    if (hasHelpFlag || onlyTrivial) {
+      return { maxScore: 7.0, evidenceTier: 'cli-smoke', reason: 'CLI smoke is a --help/version/bare reachability probe — proves the CLI runs, not that the capability works; caps at T4/7.0. Invoke a real subcommand and assert a COMPUTED result, not a usage banner.' };
+    }
     return { maxScore: 8.5, evidenceTier: 'cli-smoke', reason: 'CLI smoke — real invocation, pattern-checked output' };
   }
 
