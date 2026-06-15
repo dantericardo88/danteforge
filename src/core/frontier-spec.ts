@@ -379,6 +379,14 @@ export function checkFrontierSpec(spec: FrontierSpec, competitors: string[], rub
     errors.push(`leader "${lt.competitor}" scores ${lt.score} < target ${spec.target_score}. Matching a sub-target leader is not frontier — declare leader_target.category_delta (the beyond-parity capability) or lower target_score honestly.`);
   }
 
+  // Missing-ladder gate (court-audit #12): a dim cannot honestly target >8.0 without a competitor-grounded
+  // Score Ladder to judge against — otherwise the frontier bar is whatever the agent declares it to be,
+  // and a ladderless dim is graded the same as a laddered one purely by omission. Make that omission a
+  // loud, actionable failure (only for >gate targets; ≤8.0 needs no ladder).
+  if (spec.target_score > FRONTIER_GATE_THRESHOLD && rubric.length === 0) {
+    errors.push(`no Score Ladder for this dimension — a >${FRONTIER_GATE_THRESHOLD} target needs a researched rubric to judge against (the per-dim "## Score Ladder"). Author .danteforge/compete/universe/<dim>.md (mirror any sibling dim), then re-freeze.`);
+  }
+
   // Anti-laundering: when a competitor-grounded Score Ladder exists, the frontier bar must be GROUNDED
   // in it — an agent cannot soften the bar into an easy exam it can clear. The category_delta (the
   // target rung the sub-target leader hasn't reached) is the one most worth softening, so guard it.

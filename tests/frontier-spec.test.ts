@@ -26,9 +26,13 @@ function goodSpec(): FrontierSpec {
 
 describe('checkFrontierSpec — honesty guardrails', () => {
   const competitors = ['Cursor', 'Cline', 'Aider'];
+  // A >8.0 target now requires a Score Ladder (#12 missing-ladder gate). Tests that assert a 9.0 spec
+  // PASSES must supply one (real callers pass loadDimRubric); the gate's own behavior is pinned in
+  // tests/ladder-coverage.test.ts. Error-presence tests below don't need it (the extra error is harmless).
+  const RUBRIC = [{ score: 8, descriptor: 'eight' }, { score: 9, descriptor: 'nine — the frontier capability' }];
 
   test('a complete, honest spec passes', () => {
-    assert.equal(checkFrontierSpec(goodSpec(), competitors).ok, true);
+    assert.equal(checkFrontierSpec(goodSpec(), competitors, RUBRIC).ok, true);
   });
 
   test('rejects a competitor not in the tracked list (no targeting self/reference)', () => {
@@ -51,8 +55,11 @@ describe('checkFrontierSpec — honesty guardrails', () => {
   });
 
   test('a sub-9 leader WITH a declared category delta passes (with warning)', () => {
-    const s = goodSpec(); s.leader_target.score = 7.2; s.leader_target.category_delta = 'adds real-time multi-file preview no competitor has';
-    const r = checkFrontierSpec(s, competitors);
+    const s = goodSpec(); s.leader_target.score = 7.2; s.leader_target.category_delta = 'adds real-time multi-file preview no rival has';
+    // Sub-target leader + a ladder activates anti-laundering (the delta must be GROUNDED in the target
+    // rung), so ground the rung in the delta itself — this isolates "delta accepted" from that guard.
+    const groundedLadder = [{ score: 9, descriptor: s.leader_target.category_delta! }];
+    const r = checkFrontierSpec(s, competitors, groundedLadder);
     assert.equal(r.ok, true);
     assert.ok(r.warnings.length >= 1);
   });
@@ -533,8 +540,10 @@ describe('runFrontierSpec command flow', () => {
     const f1 = await runFrontierSpec({ action: 'freeze', dimId: 'agent_ux', write: true, _loadMatrix: async () => matrix, _writeMatrix: async () => {} });
     assert.equal(f1.ok, false);
 
-    // operator fills it in honestly
-    Object.assign(dim.frontier_spec as FrontierSpec, goodSpec());
+    // operator fills it in honestly. Target the gate threshold (8.0): this test exercises the init→freeze
+    // FLOW, and agent_ux has no Score Ladder on disk — the separate >8.0-needs-a-ladder gate (#12) is
+    // pinned in tests/ladder-coverage.test.ts, so we don't conflate the two here.
+    Object.assign(dim.frontier_spec as FrontierSpec, { ...goodSpec(), target_score: 8.0 });
     const f2 = await runFrontierSpec({ action: 'freeze', dimId: 'agent_ux', write: true, _now: '2026-06-02T00:00:00.000Z', _loadMatrix: async () => matrix, _writeMatrix: async () => {} });
     assert.equal(f2.ok, true);
     assert.equal(f2.wrote, true);
