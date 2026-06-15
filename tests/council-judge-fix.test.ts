@@ -10,19 +10,21 @@ import { describe, it } from 'node:test';
 
 import { discoverCouncil } from '../src/cli/commands/council.js';
 
-describe('discoverCouncil — Gemini excluded; Grok reserved as JUDGE-ONLY (#3 court independence)', () => {
-  it('probes codex + claude-code (builders) + grok-build (judge-only); never gemini-cli', async () => {
+describe('discoverCouncil — codex+claude BUILD; grok+gemini are reserved JUDGE-ONLY (#3 + CH-023)', () => {
+  it('builders = codex + claude-code; judge-only = grok-build + gemini-cli (two-judge redundancy)', async () => {
     // Hermetic: the DANTEFORGE_COUNCIL_MEMBERS env var globally filters the roster,
     // so clear it for this test to assert the true default.
     const savedFilter = process.env['DANTEFORGE_COUNCIL_MEMBERS'];
     delete process.env['DANTEFORGE_COUNCIL_MEMBERS'];
     try {
       const members = await discoverCouncil();
-      // gemini-cli stays excluded; grok-build is now IN the roster as the reserved judge.
-      assert.equal(members.find(m => m.id === 'gemini-cli'), undefined, 'gemini-cli stays excluded');
-      const grok = members.find(m => m.id === 'grok-build');
-      assert.ok(grok, 'grok-build IS in the roster — the reserved third judge');
-      assert.equal(grok!.judgeOnly, true, 'grok is judge-only: it judges the court, never builds');
+      // Both grok-build and gemini-cli are IN the roster as reserved judge-only members (CH-023:
+      // two judge-only judges give the independent court redundancy if one CLI is down).
+      for (const jid of ['grok-build', 'gemini-cli']) {
+        const j = members.find(m => m.id === jid);
+        assert.ok(j, `${jid} IS in the roster — a reserved judge`);
+        assert.equal(j!.judgeOnly, true, `${jid} is judge-only: it judges, never builds`);
+      }
       // Only codex + claude-code are build-eligible (not judge-only).
       const builders = members.filter(m => !m.judgeOnly).map(m => m.id).sort();
       assert.deepEqual(builders, ['claude-code', 'codex'], 'only codex + claude-code build');
@@ -40,7 +42,7 @@ describe('discoverCouncil — Gemini excluded; Grok reserved as JUDGE-ONLY (#3 c
     try {
       const members = await discoverCouncil();
       const ids = members.map(m => m.id).sort();
-      assert.deepEqual(ids, ['claude-code', 'codex', 'grok-build'], 'grok-build (judge-only) survives the builder filter');
+      assert.deepEqual(ids, ['claude-code', 'codex', 'gemini-cli', 'grok-build'], 'both judge-only members survive the builder filter');
       // The filter still bounds who may BUILD: only the two named members are build-eligible.
       const builders = members.filter(m => !m.judgeOnly).map(m => m.id).sort();
       assert.deepEqual(builders, ['claude-code', 'codex'], 'builder pool is still exactly the filtered set');

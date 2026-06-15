@@ -161,20 +161,19 @@ export function makeJudgeLease(cwd: string): AgentLease {
 export async function discoverCouncil(allowedMemberIds?: string[]): Promise<CouncilMember[]> {
   const dummy = makeWorkPacket('probe', process.cwd());
 
-  // Roster: Codex + Claude Code BUILD (and judge); Grok is the reserved JUDGE-ONLY third member.
-  // Gemini CLI is API-based (not subscription) and quota-exhausts quickly — excluded.
-  // Grok's CLI is unreliable for BUILDING (parse errors / 502s) but fine for the lighter JUDGE role —
-  // and a third model family (xAI) makes a builder-excluded court genuinely independent (≥2 non-builder
-  // judges), which a 2-member roster cannot do. When grok's CLI is down it just isn't available and the
-  // court degrades gracefully (outage handling). Override membership via DANTEFORGE_COUNCIL_MEMBERS.
+  // Roster: Codex + Claude Code BUILD (and judge). Grok (xAI) and Gemini/Antigravity (Google) are the
+  // reserved JUDGE-ONLY members — neither builds. Two judge-only members of distinct model families give
+  // the independent court REDUNDANCY (CH-023): a builder-excluded court can still seat ≥2 independent
+  // judges even if one judge's CLI is down, and no single builder pair can self-certify. Both CLIs were
+  // pulled from BUILDING for flakiness (grok parse errors/502s; gemini quota/API limits), but judging is
+  // the lighter role they handle fine, and a down judge just isn't available (graceful degrade). The
+  // DANTEFORGE_COUNCIL_MEMBERS filter constrains the BUILDER pool only — judge-only members bypass it.
   const ALL_PROBES: Array<{ id: CouncilMemberId; label: string; judgeOnly?: boolean; adapter: { isAvailable(): Promise<boolean> } }> = [
     { id: 'codex', label: 'Codex (OpenAI subscription)', adapter: new CodexAdapter({ workPacket: dummy }) },
     { id: 'claude-code', label: 'Claude Code (claude binary)', adapter: new ClaudeCodeAdapter({ workPacket: dummy }) },
     { id: 'grok-build', label: 'Grok Build (xAI — judge only)', judgeOnly: true, adapter: new GrokBuildAdapter({ workPacket: dummy }) },
+    { id: 'gemini-cli', label: 'Gemini / Antigravity (Google — judge only)', judgeOnly: true, adapter: new GeminiCLIAdapter({ workPacket: dummy }) },
   ];
-
-  // Keep the Gemini adapter importable but never probe it — prevents an unused-import error.
-  void GeminiCLIAdapter;
 
   // Member filter: explicit arg → env var → all members. This filter constrains the BUILDER pool
   // (which members are eligible to do work). It dates from grok's builder era ("exclude flaky Grok
