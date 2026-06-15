@@ -2,7 +2,7 @@ import { test, describe } from 'node:test';
 import assert from 'node:assert/strict';
 import {
   scaffoldFrontierSpec, seedLeaderTargetFromLadder, checkFrontierSpec, computeSpecHash, effectiveStatus,
-  looksLikeProductRun, resolveRunCommand, type FrontierSpec,
+  looksLikeProductRun, resolveRunCommand, signValidation, type FrontierSpec,
 } from '../src/core/frontier-spec.js';
 import { completeFrontierSpec } from '../src/core/frontier-spec-complete.js';
 import { runFrontierSpec } from '../src/cli/commands/frontier-spec.js';
@@ -470,12 +470,45 @@ describe('applyFrontierGate — 9.0 = frontier is now BINDING', () => {
     assert.equal(r.capped, true);
   });
 
-  test('a 9.0 with a court-VALIDATED (non-stale) spec is allowed through', () => {
+  test('a 9.0 with a court-VALIDATED spec carrying a VERIFIABLE receipt is allowed through', () => {
     const spec = { ...goodSpec(), status: 'validated' as const };
-    spec.frozen_hash = computeSpecHash(spec);
-    const r = applyFrontierGate(9.0, { frontier_spec: spec });
+    const hash = computeSpecHash(spec);
+    spec.frozen_hash = hash;
+    const judges = ['grok-build', 'gemini-cli'];
+    spec.validated_by = { frozen_hash: hash, judge_member_ids: judges, validated_at: 'now', sig: signValidation('dimX', hash, judges) };
+    const r = applyFrontierGate(9.0, { id: 'dimX', frontier_spec: spec });
     assert.equal(r.score, 9.0);
     assert.equal(r.capped, false);
+  });
+
+  test('court-audit #1: a bare status:validated with NO receipt is capped to 8.0 (the one-field forgery is closed)', () => {
+    const spec = { ...goodSpec(), status: 'validated' as const }; // hand-edited: no frozen_hash, no validated_by
+    const r = applyFrontierGate(9.0, { id: 'dimX', frontier_spec: spec });
+    assert.equal(r.score, 8.0, 'a hand-written validated string can no longer mint a 9.0');
+    assert.equal(r.capped, true);
+  });
+
+  test('court-audit #1: a receipt minted for ANOTHER dim does not validate this one (dim-bound)', () => {
+    const spec = { ...goodSpec(), status: 'validated' as const };
+    const hash = computeSpecHash(spec);
+    spec.frozen_hash = hash;
+    const judges = ['grok-build', 'gemini-cli'];
+    spec.validated_by = { frozen_hash: hash, judge_member_ids: judges, validated_at: 'now', sig: signValidation('dimA', hash, judges) };
+    const r = applyFrontierGate(9.0, { id: 'dimB', frontier_spec: spec }); // receipt was signed for dimA
+    assert.equal(r.score, 8.0, 'a receipt copied from another dim fails verification');
+    assert.equal(r.capped, true);
+  });
+
+  test('court-audit #1: editing content AFTER validation invalidates the receipt (goalpost move → capped)', () => {
+    const spec = { ...goodSpec(), status: 'validated' as const };
+    const hash = computeSpecHash(spec);
+    spec.frozen_hash = hash;
+    const judges = ['grok-build', 'gemini-cli'];
+    spec.validated_by = { frozen_hash: hash, judge_member_ids: judges, validated_at: 'now', sig: signValidation('dimX', hash, judges) };
+    spec.real_user_path.run_command = 'node dist/index.js forge --project fixtures/EASIER'; // moved after sign-off
+    const r = applyFrontierGate(9.0, { id: 'dimX', frontier_spec: spec });
+    assert.equal(r.score, 8.0, 'a post-validation edit breaks the frozen_hash binding');
+    assert.equal(r.capped, true);
   });
 
   test('a 9.0 with a STALE (edited-after-freeze) spec is capped to 8.0', () => {

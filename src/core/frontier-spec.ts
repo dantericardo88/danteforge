@@ -7,11 +7,65 @@
 // the work is a concrete, falsifiable target — and the freeze + hash prevent moving the
 // goalposts after the fact.
 
-import { createHash } from 'node:crypto';
+import { createHash, createHmac, randomBytes } from 'node:crypto';
+import { homedir } from 'node:os';
+import { join } from 'node:path';
+import { readFileSync, writeFileSync, mkdirSync } from 'node:fs';
 import { isTestSuiteCommand } from '../matrix/engines/outcome-quality.js';
 import type { DimensionRubricLevel } from '../matrix/types/dimension-graph.js';
 
 export type FrontierSpecStatus = 'draft' | 'frozen' | 'validated' | 'stale';
+
+/**
+ * The court receipt that authorizes a `validated` spec (court-audit #1). Without this, `status:'validated'`
+ * was a bare string anyone could hand-write into matrix.json to mint a 9.0 that never went stale. The
+ * receipt binds the validation to THIS dimension, the EXACT content that was reviewed (frozen_hash), and
+ * a kernel secret held OUTSIDE the repo (~/.danteforge/kernel-secret) — so a worker editing matrix.json
+ * cannot forge it, and a receipt copied to another dim or another machine fails verification.
+ */
+export interface FrontierValidationReceipt {
+  /** computeSpecHash of the content at validation time — must still match or the spec is treated unvalidated. */
+  frozen_hash: string;
+  /** the independent judges whose consensus produced the PASS. */
+  judge_member_ids: string[];
+  validated_at: string;
+  /** HMAC over `${dimId}|${frozen_hash}|${sorted judges}` keyed by the out-of-repo kernel secret. */
+  sig: string;
+}
+
+let _kernelSecret: string | null = null;
+/** The kernel secret used to sign court receipts. Stored at ~/.danteforge/kernel-secret (a GLOBAL,
+ *  gitignored location — NOT the in-repo project .danteforge/), created on first use. Caching keeps the
+ *  read-time gate synchronous. NOTE: on a single machine an agent with filesystem read CAN read this
+ *  file; the signature still raises forgery from a one-field edit to "read a non-obvious secret + compute
+ *  an HMAC", blocks committed/cross-machine forgeries, and is the seam a hardware/remote signer slots into. */
+function kernelSecret(): string {
+  if (_kernelSecret) return _kernelSecret;
+  const file = join(homedir(), '.danteforge', 'kernel-secret');
+  try {
+    const existing = readFileSync(file, 'utf8').trim();
+    if (existing) { _kernelSecret = existing; return existing; }
+  } catch { /* not yet created */ }
+  const secret = randomBytes(32).toString('hex');
+  try { mkdirSync(join(homedir(), '.danteforge'), { recursive: true }); writeFileSync(file, secret, { mode: 0o600 }); } catch { /* best-effort */ }
+  _kernelSecret = secret;
+  return secret;
+}
+
+/** Sign a court validation. Called ONLY by the frontier-review court on a genuine PASS consensus. */
+export function signValidation(dimId: string, frozenHash: string, judges: string[]): string {
+  const msg = `${dimId}|${frozenHash}|${[...judges].sort().join(',')}`;
+  return createHmac('sha256', kernelSecret()).update(msg).digest('hex').slice(0, 32);
+}
+
+/** Verify a spec's `validated_by` receipt: present, bound to this dim, matching the current content, and
+ *  correctly signed. A bare `status:'validated'` (no receipt) or a post-validation content edit fails. */
+export function verifyValidation(dimId: string, spec: FrontierSpec): boolean {
+  const v = spec.validated_by;
+  if (!v || !v.sig || !v.frozen_hash) return false;
+  if (v.frozen_hash !== computeSpecHash(spec)) return false;            // content edited since validation
+  return v.sig === signValidation(dimId, v.frozen_hash, v.judge_member_ids ?? []);
+}
 
 export interface FrontierSpec {
   version: number;
@@ -20,6 +74,9 @@ export interface FrontierSpec {
   frozen_at?: string;
   /** sha256 of the content fields at freeze — a later edit makes the spec `stale`. */
   frozen_hash?: string;
+  /** The court receipt authorizing `status:'validated'`. Required for the frontier gate to honor a 9.0
+   *  (court-audit #1). Only the frontier-review court writes it. */
+  validated_by?: FrontierValidationReceipt;
   leader_target: {
     competitor: string;
     competitor_type?: 'closed-source' | 'oss';
@@ -240,9 +297,10 @@ export function seedLeaderTargetFromLadder(spec: FrontierSpec, rubric: Dimension
   return { spec, seeded, ladder_rows_used: rowsUsed };
 }
 
-/** Content fields that define the contract — hashed for the freeze, excludes status/frozen_*. */
+/** Content fields that define the contract — hashed for the freeze. Excludes status, frozen_at,
+ *  frozen_hash, and validated_by (the receipt is computed FROM this hash, so it cannot be part of it). */
 function contentForHash(spec: FrontierSpec): unknown {
-  const { status: _s, frozen_at: _a, frozen_hash: _h, ...content } = spec;
+  const { status: _s, frozen_at: _a, frozen_hash: _h, validated_by: _v, ...content } = spec;
   return content;
 }
 
@@ -288,9 +346,13 @@ export const FRONTIER_GATE_THRESHOLD = 8.0;
  */
 export function applyFrontierGate(score: number, dim: unknown): { score: number; capped: boolean } {
   if (score <= FRONTIER_GATE_THRESHOLD) return { score, capped: false };
-  const spec = (dim as { frontier_spec?: FrontierSpec }).frontier_spec;
+  const d = dim as { id?: string; frontier_spec?: FrontierSpec };
+  const spec = d.frontier_spec;
   const status = spec ? effectiveStatus(spec) : 'none';
-  if (status === 'validated') return { score, capped: false };
+  // 'validated' is honored ONLY with a verifiable court receipt bound to THIS dim, the current content,
+  // and the kernel secret (court-audit #1). A bare `status:'validated'` hand-edit — or a content edit
+  // after validation — no longer reaches 9.0; it caps at 8.0 like any unvalidated dim.
+  if (status === 'validated' && spec && verifyValidation(d.id ?? '', spec)) return { score, capped: false };
   return { score: FRONTIER_GATE_THRESHOLD, capped: true };
 }
 

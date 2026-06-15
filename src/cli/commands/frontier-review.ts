@@ -11,7 +11,7 @@ import path from 'node:path';
 import fs from 'node:fs/promises';
 import { loadMatrix, saveMatrix, type CompeteMatrix } from '../../core/compete-matrix.js';
 import { logger } from '../../core/logger.js';
-import { effectiveStatus, computeSpecHash, type FrontierSpec } from '../../core/frontier-spec.js';
+import { effectiveStatus, computeSpecHash, signValidation, type FrontierSpec } from '../../core/frontier-spec.js';
 import { writeCeilingReceipt } from '../../core/ceiling-receipt.js';
 import { enqueueAudit, type AuditEscrowEntry } from '../../core/audit-escrow.js';
 import {
@@ -172,7 +172,19 @@ export async function runFrontierReviewCli(options: FrontierReviewCliOptions): P
   if (result.verdict === 'VALIDATED') {
     logger.success(`[frontier-review] ${options.dimId}: VALIDATED — ${result.vote.summary}`);
     if (options.write) {
-      spec.status = 'validated'; await saveFn(matrix, cwd); validatedWritten = true;
+      // court-audit #1: write a verifiable receipt, not a bare string. It binds the validation to this
+      // dim + the exact reviewed content (frozen_hash) + the kernel secret, so the 9.0 cannot be forged
+      // by hand-editing matrix.json and goes unvalidated if the spec is edited afterward.
+      const passingJudges = result.judges.filter(j => j.verdict === 'PASS').map(j => String(j.judgeId));
+      const frozenHash = computeSpecHash(spec);
+      spec.status = 'validated';
+      spec.validated_by = {
+        frozen_hash: frozenHash,
+        judge_member_ids: passingJudges,
+        validated_at: now,
+        sig: signValidation(options.dimId, frozenHash, passingJudges),
+      };
+      await saveFn(matrix, cwd); validatedWritten = true;
       // Sample into the non-blocking human-audit queue (the court can't catch a perfect fixture).
       await enqueue(cwd, { dimId: options.dimId, kind: 'validated-9.0', ...auditBase });
     }
