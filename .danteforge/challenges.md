@@ -5,7 +5,7 @@
 > Entries are never silently deleted: a challenge is open, solved (with the commit), or
 > retired (with the reason). An empty OPEN section is a smell, not an achievement.
 
-## Open (12)
+## Open (14)
 
 ### CH-006: Cycle economics: tiny payload per hour
 - **Problem:** A push attempt costs ~60min of orchestration + LLM for 2-3 file diffs; overhead dominates real building.
@@ -77,6 +77,18 @@
 - **Problem:** session-record.ts default _writeMatrix is fs.writeFile and it hardcodes tier:'T7', pushing self-authored T7 outcomes straight to matrix.json without saveMatrix's reconcile/provenance/validated-receipt backstops or any acceptance gate. (court-audit #12.) Impact bounded at 8.0 by the frontier gate (#1).
 - **Evidence:** src/cli/commands/session-record.ts:80,128,141-142; driven by ascend-frontier-push.ts:240,429; court-audit run wf_7f28539d-cfa finding #12.
 - **Opportunity:** Route session-record's write through saveMatrix (reconcile/provenance/lock/validated-strip run) and derive tier from the actual run instead of hardcoding T7. Validate it doesn't disrupt the loop's evidence-capture cadence first.
+- Opened: 2026-06-15
+
+### CH-027: Unattended loop never applies a FAILED human audit (no autonomous self-correction)
+- **Problem:** audit-escrow.ts advertises 'a FAILED audit downgrades the dim on the next cycle', but the only consumer of a failed audit is the human CLI command frontier-audit (register-outcomes-cmds.ts:212). The ascend loop never reads the audit queue, and isDimDone (ascend-frontier-engine.ts:58) marks any frontier_spec.status==='validated' dim done FOREVER. So in the recommended unattended mode (ascend-frontier --max-cycles N), a human marking a fooled 9.0 as failed has NO effect — the fixture-fooled 9.0 is skipped as 'done' every cycle and never re-examined. (court-audit round 2, RANK 6, HIGH.)
+- **Evidence:** src/core/audit-escrow.ts:6-8 (claim) + :75-92 resolveAudit leaves the downgrade to the caller; src/cli/commands/frontier-audit.ts:74-92 (only downgrade path, human CLI only); src/core/ascend-frontier-engine.ts:57-60 isDimDone; ascend loop hook point src/cli/commands/ascend-frontier.ts:361-364.
+- **Opportunity:** At the top of each ascend cycle (before buildState, ascend-frontier.ts:364), apply failed audits: for each loadAuditQueue() entry with status==='failed' on a dim whose frontier_spec.status==='validated', DOWNGRADE to 'frozen' + delete validated_by AND write a re-openable ceiling (cap 8.0, cause 'audit-failed') so the dim is honestly held at 8.0 and isDimDone treats it done (no validate->downgrade->validate loop) until the operator clears the ceiling. Mark the entry appliedAt so it fires once. Makes 'downgrades on next cycle' TRUE and gives the unattended loop real self-correction.
+- Opened: 2026-06-15
+
+### CH-028: Validation receipt does not bind judge-independence (defense-in-depth)
+- **Problem:** signValidation/verifyValidation sign dimId|frozen_hash|judges but never assert the recorded judge_member_ids are NON-builders. The convening layer enforcing builder-never-judges is now a floor (court-audit #4 fix), so this is low residual — but the receipt itself cannot self-attest its judges were independent, so a receipt minted via a future convening regression could record a builder's own id and still verify. (court-audit round 2, RANK 8, LOW.)
+- **Evidence:** src/core/frontier-spec.ts signValidation/verifyValidation (sign only dimId|hash|judges); src/cli/commands/frontier-review.ts receipt minting (judge_member_ids = PASS judges).
+- **Opportunity:** Bind the build-eligible roster into the receipt: verifyValidation rejects any receipt whose judge_member_ids intersect the build-eligible set. Tension: verifyValidation is SYNC (applyFrontierGate is a hot sync read path) while the roster needs discoverCouncil (async) — either snapshot the roster into the receipt at mint time (record was_builder=false per judge, signed) or accept an async verify on the write/save path only. Prefer snapshotting non-builder attestation INTO the signed receipt so the sync read-gate stays pure.
 - Opened: 2026-06-15
 
 ## Resolved (14)
