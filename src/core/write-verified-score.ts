@@ -30,6 +30,7 @@ import {
   computeOverallScore,
   MARKET_DIM_MAX_SCORE,
 } from './compete-matrix-score.js';
+import { verifyValidation, type FrontierSpec } from './frontier-spec.js';
 
 const PROVENANCE_CAP = 200;
 
@@ -170,6 +171,27 @@ export function preserveFrozenSpecs(prev: CompeteMatrix, next: CompeteMatrix): s
     }
   }
   return restored;
+}
+
+/**
+ * Persistence-time validated-receipt backstop (court-audit #10). `frontier_spec.status==='validated'` is
+ * the 8.0→9.0 certificate, but assertScoreProvenance only guards `scores.self` — not this transition. So a
+ * load→mutate→save (or an in-process Object.assign / a hand-edit of matrix.json) could persist a `validated`
+ * the court never minted. This strips any `validated` whose court receipt does not verify (bound to the dim,
+ * the exact reviewed content, and the out-of-repo kernel secret) — demoting it to `frozen`. Only the
+ * frontier-review court can produce a receipt that survives. Mutates `matrix`; returns the stripped dim ids.
+ */
+export function stripUnverifiedValidations(matrix: CompeteMatrix): string[] {
+  const stripped: string[] = [];
+  for (const dim of matrix.dimensions) {
+    const spec = (dim as unknown as { frontier_spec?: FrontierSpec }).frontier_spec;
+    if (spec && spec.status === 'validated' && !verifyValidation(dim.id, spec)) {
+      spec.status = 'frozen';
+      delete spec.validated_by;
+      stripped.push(dim.id);
+    }
+  }
+  return stripped;
 }
 
 export interface ProvenanceViolation { dimId: string; before: number; after: number; }

@@ -2,9 +2,10 @@ import { test, describe, after } from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs/promises';
 import path from 'node:path';
-import { assertScoreProvenance, writeVerifiedScore, preserveFrozenSpecs } from '../src/core/write-verified-score.js';
+import { assertScoreProvenance, writeVerifiedScore, preserveFrozenSpecs, stripUnverifiedValidations } from '../src/core/write-verified-score.js';
 import { pruneRuns, RunLedger, listRuns } from '../src/core/run-ledger.js';
 import type { CompeteMatrix, MatrixDimension } from '../src/core/compete-matrix.js';
+import { signValidation, computeSpecHash, type FrontierSpec } from '../src/core/frontier-spec.js';
 
 const ROOT = path.join('X:\\tmp', `provenance-backstop-${process.pid}`);
 after(async () => { await fs.rm(ROOT, { recursive: true, force: true }).catch(() => {}); });
@@ -96,6 +97,50 @@ describe('preserveFrozenSpecs — a frozen/validated frontier_spec is never sile
     const prev = withSpec(7, 'draft');
     const next = withSpec(7, undefined);
     assert.deepEqual(preserveFrozenSpecs(prev, next), []);
+  });
+});
+
+describe('stripUnverifiedValidations — the persistence-time validated backstop (court-audit #10)', () => {
+  function baseSpec(): FrontierSpec {
+    return {
+      version: 1, target_score: 9, status: 'validated',
+      leader_target: { competitor: 'Cursor', score: 9, observed_capability: 'whole-repo map' },
+      real_user_path: { required_callsite: 'src/x.ts', run_command: 'node dist/index.js x', observable_artifacts: [{ kind: 'json', path: 'o.json' }] },
+      required_receipts: { min_t5_plus_outcomes: 1, min_distinct_sessions: 1, input_source: 'real-user-path' },
+    } as FrontierSpec;
+  }
+  function matrixWithSpec(spec: FrontierSpec): CompeteMatrix {
+    const m = mkMatrix(8);
+    (m.dimensions[0] as unknown as { frontier_spec?: FrontierSpec }).frontier_spec = spec;
+    return m;
+  }
+
+  test('a hand-set status:validated with NO receipt is demoted to frozen + receipt stripped', () => {
+    const m = matrixWithSpec(baseSpec()); // forged: no frozen_hash, no validated_by
+    assert.deepEqual(stripUnverifiedValidations(m), ['d']);
+    const s = (m.dimensions[0] as unknown as { frontier_spec?: FrontierSpec }).frontier_spec!;
+    assert.equal(s.status, 'frozen');
+    assert.equal(s.validated_by, undefined);
+  });
+
+  test('a court-signed receipt survives untouched (validated persists)', () => {
+    const spec = baseSpec();
+    const hash = computeSpecHash(spec);
+    spec.frozen_hash = hash;
+    const judges = ['grok-build', 'gemini-cli'];
+    spec.validated_by = { frozen_hash: hash, judge_member_ids: judges, validated_at: 'now', sig: signValidation('d', hash, judges) };
+    const m = matrixWithSpec(spec);
+    assert.deepEqual(stripUnverifiedValidations(m), [], 'a verifiable receipt is honored');
+    assert.equal((m.dimensions[0] as unknown as { frontier_spec?: FrontierSpec }).frontier_spec!.status, 'validated');
+  });
+
+  test('a receipt forged for ANOTHER dim is stripped (dim-bound)', () => {
+    const spec = baseSpec();
+    const hash = computeSpecHash(spec);
+    spec.frozen_hash = hash;
+    const judges = ['grok-build', 'gemini-cli'];
+    spec.validated_by = { frozen_hash: hash, judge_member_ids: judges, validated_at: 'now', sig: signValidation('OTHER', hash, judges) };
+    assert.deepEqual(stripUnverifiedValidations(matrixWithSpec(spec)), ['d'], 'a cross-dim receipt does not verify');
   });
 });
 

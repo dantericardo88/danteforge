@@ -474,6 +474,20 @@ export async function saveMatrix(
       }
     }
 
+    // (C) Validated-receipt backstop (court-audit #10): `status:'validated'` is the 8.0→9.0 certificate,
+    // but assertScoreProvenance only guards scores.self — NOT this transition. So a load→mutate→save (or
+    // an in-process Object.assign) could persist a hand-set `validated`. Strip any `validated` whose court
+    // receipt does not verify (bound to dim + content + the out-of-repo kernel secret); only the
+    // frontier-review court can mint a real one. Demote to 'frozen' rather than fail the whole save.
+    {
+      const { stripUnverifiedValidations } = await import('./write-verified-score.js');
+      const stripped = stripUnverifiedValidations(matrix);
+      if (stripped.length > 0) {
+        const { logger } = await import('./logger.js');
+        logger.warn(`[saveMatrix] stripped unverified frontier_spec validation for [${stripped.join(', ')}] — only the frontier-review court can mint a 9.0 receipt; demoted to 'frozen'.`);
+      }
+    }
+
     // Re-serialize AFTER preservation may have re-attached a dropped spec, then write under an
     // exclusive cross-process lock (fail CLOSED — an unlocked fallback would defeat the guarantee).
     const finalContent = JSON.stringify(matrix, null, 2);
