@@ -325,6 +325,19 @@ function computeDerivedScore(dim, evidence) {
         }
       }
 
+      // Distinct-COMMAND check (grading-integrity #2, lockstep with derived-score.ts): the file veto
+      // is SKIPPED for product runs (no test file), so N clones of one command satisfied T7. Require
+      // ≥2 distinct normalized commands among T5+ contributors.
+      if (allPassing) {
+        const cmds = effective
+          .filter(e => TIER_ORDER.indexOf(e.tier) >= TIER_ORDER.indexOf('T5'))
+          .map(e => (e.outcome.command ?? '').trim().replace(/\s+/g, ' '))
+          .filter(c => c.length > 0);
+        if (cmds.length >= 2 && new Set(cmds).size < 2) {
+          allPassing = false;
+        }
+      }
+
       // Session-ID temporal separation: T7 requires evidence from ≥2 distinct
       // validate sessions. Mirrors the check in src/core/derived-score.ts.
       if (allPassing) {

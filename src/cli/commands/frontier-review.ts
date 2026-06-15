@@ -203,19 +203,30 @@ async function gatherReceipts(
 ): Promise<{ receipts: Array<{ sessionId: string; passed: boolean; tier: string }>; gate: ReceiptGate }> {
   const evidence = await loadEvidence(cwd);
   const receipts: Array<{ sessionId: string; passed: boolean; tier: string }> = [];
+  // Grading-integrity #2 (lockstep with derived-score): also track the COMMAND per passing T5+ receipt,
+  // so the court can reject one command cloned N times — the session check alone never caught it.
+  const t5Commands: string[] = [];
   for (const o of dim.outcomes ?? []) {
     if ((o.input_source as { type?: string } | undefined)?.type !== 'real-user-path') continue;
     const e = evidence.get(makeEvidenceKey(dim.id, String(o.id ?? '')));
     if (!e) continue; // no real evidence at this SHA → not a receipt
-    receipts.push({ sessionId: e.session_id ?? '(no-session)', passed: e.passed, tier: String(o.tier ?? e.tier ?? '') });
+    const tier = String(o.tier ?? e.tier ?? '');
+    receipts.push({ sessionId: e.session_id ?? '(no-session)', passed: e.passed, tier });
+    if (e.passed && tierNum(tier) >= 5) {
+      t5Commands.push(((o as { command?: string }).command ?? '').trim().replace(/\s+/g, ' '));
+    }
   }
   const passingT5plus = receipts.filter(r => r.passed && tierNum(r.tier) >= 5);
   const distinct = new Set(passingT5plus.map(r => r.sessionId).filter(s => s && s !== '(no-session)'));
+  // Only DECLARED commands count toward clone-detection — outcomes that declare no command are a
+  // different concern (other gates handle them), not "cloning". Penalize only ≥2 real identical commands.
+  const realCommands = t5Commands.filter(c => c.length > 0);
   const needOutcomes = spec.required_receipts.min_t5_plus_outcomes;
   const needSessions = spec.required_receipts.min_distinct_sessions;
   const reasons: string[] = [];
   if (passingT5plus.length < needOutcomes) reasons.push(`${passingT5plus.length}/${needOutcomes} passing T5+ real-user-path receipts on disk`);
   if (distinct.size < needSessions) reasons.push(`${distinct.size}/${needSessions} distinct evidence session(s) — a single sitting cannot self-certify`);
+  if (realCommands.length >= 2 && new Set(realCommands).size < 2) reasons.push(`all ${realCommands.length} T5+ receipts run the SAME command — one command cloned is not multi-receipt consensus (need ≥2 distinct commands)`);
   if (receipts.some(r => !r.passed)) reasons.push('one or more real-user-path receipts FAILED');
   return { receipts, gate: { ok: reasons.length === 0, reasons, distinctSessions: distinct.size, passingT5plus: passingT5plus.length } };
 }

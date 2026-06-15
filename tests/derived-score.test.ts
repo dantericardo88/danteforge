@@ -454,6 +454,45 @@ describe('STRUCTURAL: inflation is impossible by construction', () => {
     assert.equal(score, TIER_SCORE_CAPS.T7, `Expected T7 cap for multi-session evidence, got ${score}`);
   });
 
+  it('T7 with 3 byte-identical CLONED commands cannot reach 9.0 (grading-integrity #2)', () => {
+    // The product-run command carries no test file, so extractTestFiles returns [] → the file-diversity
+    // veto is SKIPPED; distinct sessions defeat the session veto. ONLY the distinct-command veto can
+    // catch this — and it must: one command cloned N times is not multi-receipt consensus.
+    const dim: DimensionForScoring = {
+      id: 'testing',
+      outcomes: [
+        makeOutcome('o1', 'T5', { kind: 'runtime-exec', command: 'node dist/index.js teach' }),
+        makeOutcome('o2', 'T5', { kind: 'runtime-exec', command: 'node dist/index.js teach' }),
+        makeOutcome('o7', 'T7', { kind: 'runtime-exec', command: 'node dist/index.js teach' }),
+      ],
+    };
+    const evidence = makeEvidence([
+      { dim: 'testing', outcomeId: 'o1', passed: true, sessionId: 'session-A' },
+      { dim: 'testing', outcomeId: 'o2', passed: true, sessionId: 'session-B' },
+      { dim: 'testing', outcomeId: 'o7', passed: true, sessionId: 'session-C' },
+    ]);
+    const score = computeDerivedScore(dim, evidence);
+    assert.ok(score < 9.0, `one command cloned 3× must not reach T7; got ${score}`);
+  });
+
+  it('T7 with 3 DISTINCT product-run commands reaches 9.0 (genuine breadth of capability)', () => {
+    const dim: DimensionForScoring = {
+      id: 'testing',
+      outcomes: [
+        makeOutcome('o1', 'T5', { kind: 'runtime-exec', command: 'node dist/index.js teach alpha' }),
+        makeOutcome('o2', 'T5', { kind: 'runtime-exec', command: 'node dist/index.js reflect beta' }),
+        makeOutcome('o7', 'T7', { kind: 'runtime-exec', command: 'node dist/index.js compact gamma' }),
+      ],
+    };
+    const evidence = makeEvidence([
+      { dim: 'testing', outcomeId: 'o1', passed: true, sessionId: 'session-A' },
+      { dim: 'testing', outcomeId: 'o2', passed: true, sessionId: 'session-B' },
+      { dim: 'testing', outcomeId: 'o7', passed: true, sessionId: 'session-C' },
+    ]);
+    const score = computeDerivedScore(dim, evidence);
+    assert.equal(score, TIER_SCORE_CAPS.T7, `3 distinct commands = genuine consensus; got ${score}`);
+  });
+
   it('community_adoption is hard-capped at 5.0 regardless of passing outcomes', () => {
     const dim: DimensionForScoring = {
       id: 'community_adoption',

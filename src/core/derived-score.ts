@@ -271,6 +271,23 @@ export function computeDerivedScoreWithBreakdown(
         }
       }
 
+      // Distinct-COMMAND check (grading-integrity #2): the file-diversity veto above is SKIPPED for
+      // product runs — extractTestFiles returns [] for `node dist/index.js …`, so testFiles.length===0
+      // and N byte-identical clones of ONE command satisfied T7 (reproduced: 3 identical clones → 9.0).
+      // "Multiple-receipt consensus" must mean multiple DISTINCT commands, not one command cloned.
+      // Require ≥2 distinct normalized commands among the T5+ contributors (mirrors uniqueFiles≥2; same
+      // normalization as outcome-integrity's cmd:<command> receipt key).
+      if (allPassing) {
+        const highTierCmds = effective
+          .filter(e => TIER_INDEX[e.tier] >= TIER_INDEX.T5)
+          .map(e => ((e.outcome as { command?: string }).command ?? '').trim().replace(/\s+/g, ' '))
+          .filter(c => c.length > 0);
+        if (highTierCmds.length >= 2 && new Set(highTierCmds).size < 2) {
+          allPassing = false;
+          passing = 0; // structural veto — one command cloned N times is not multi-receipt consensus
+        }
+      }
+
       // Session-ID temporal separation: T7 evidence must span ≥2 distinct
       // validate sessions. A single `danteforge validate` run stamps the same
       // PROCESS_SESSION_ID on all entries it writes — so evidence written in
