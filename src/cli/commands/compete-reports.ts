@@ -47,7 +47,9 @@ export async function actionReport(options: CompeteOptions, cwd: string): Promis
   );
 
   const closedCount = matrix.dimensions.filter(d => d.status === 'closed').length;
-  const sprintCount = matrix.dimensions.reduce((s, d) => s + d.sprint_history.length, 0);
+  // Null-guard sprint_history: universe/competitor-derived dims (and hand-edited matrices) can omit it,
+  // which crashed `compete --report` with "Cannot read properties of undefined (reading 'length')".
+  const sprintCount = matrix.dimensions.reduce((s, d) => s + (d.sprint_history?.length ?? 0), 0);
 
   const lines: string[] = [
     `# Competitive Harvest Loop Report — ${matrix.project}`,
@@ -64,7 +66,7 @@ export async function actionReport(options: CompeteOptions, cwd: string): Promis
       ...Object.entries(dim.scores).filter(([k]) => k !== 'self').map(([, v]) => v),
       0,
     );
-    const trend = dim.sprint_history.length > 0 ? ' ↑' : '';
+    const trend = (dim.sprint_history?.length ?? 0) > 0 ? ' ↑' : '';
     lines.push(
       `| ${dim.label}${trend} | ${formatScore(dim.scores['self'] ?? 0)} | ${dim.leader} (${formatScore(leaderScore)}) | ${formatScore(dim.gap_to_leader)} | ${computeGapPriority(dim).toFixed(1)} | ${dim.status} |`,
     );
@@ -72,7 +74,7 @@ export async function actionReport(options: CompeteOptions, cwd: string): Promis
 
   lines.push('', '## Sprint History');
   const allSprints = matrix.dimensions
-    .flatMap(d => d.sprint_history.map(s => ({ ...s, label: d.label })))
+    .flatMap(d => (d.sprint_history ?? []).map(s => ({ ...s, label: d.label })))
     .sort((a, b) => a.date.localeCompare(b.date));
 
   if (allSprints.length === 0) {
