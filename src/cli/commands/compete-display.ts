@@ -3,6 +3,7 @@
 
 import chalk from 'chalk';
 import { logger } from '../../core/logger.js';
+import { verifyValidation, type FrontierSpec } from '../../core/frontier-spec.js';
 import {
   computeGapPriority,
   type CompeteMatrix,
@@ -86,8 +87,12 @@ export function formatTrend(dim: MatrixDimension): string {
 function isSelfUnverified(dim: MatrixDimension): boolean {
   const self = dim.scores['self'] ?? 0;
   if (self <= 8.0) return false;
-  const status = (dim as unknown as { frontier_spec?: { status?: string } }).frontier_spec?.status;
-  return status !== 'validated';
+  // court-audit #7: trust the VERIFIABLE court receipt, not the bare status string — a hand-edited /
+  // forged / stale `status:'validated'` (no valid validated_by) must still be badged as unverified.
+  const dd = dim as unknown as { id: string; frontier_spec?: FrontierSpec };
+  const spec = dd.frontier_spec;
+  if (!spec || spec.status !== 'validated') return true;
+  return !verifyValidation(dd.id, spec);
 }
 
 export function formatStatusTable(matrix: CompeteMatrix): string {

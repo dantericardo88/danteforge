@@ -403,6 +403,14 @@ export async function mergeScoreProposals(options: MatrixDevelopmentEngineOption
         }
       }
 
+      // court-audit Rank 1 (CRITICAL): the legacy merge path ran the harden gate but NEVER the frontier
+      // gate, so it could certify >8.0 with NO independent court PASS — a parallel un-gated road to a 9.0
+      // (and `matrix ascend` let one agent self-propose AND self-merge it). Clamp through the SAME gate
+      // the read-time derived path uses: any >8.0 requires a verifiable validated_by court receipt.
+      const { applyFrontierGate } = await import('./frontier-spec.js');
+      const fg = applyFrontierGate(finalScore, dim);
+      if (fg.capped) logger.warn(`[frontier-gate] ${dimensionId}: ${finalScore} capped to ${fg.score} — >8.0 needs a court-validated frontier_spec (no self-certified 9.0 via legacy merge).`);
+      finalScore = fg.score;
       updateDimensionScore(matrix, dimensionId, finalScore, proposal.commit);
       const after = getScore(dim);
       const last = dim.sprint_history[dim.sprint_history.length - 1] as unknown as Record<string, unknown> | undefined;

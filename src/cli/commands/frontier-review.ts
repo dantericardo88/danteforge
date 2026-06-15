@@ -139,11 +139,12 @@ export async function runFrontierReviewCli(options: FrontierReviewCliOptions): P
   // sequential builder roster). What remains is the pool of genuinely independent judges.
   const excluded = new Set<CouncilMemberId>(options.excludeBuilderIds ?? []);
   if (options.builderMemberId) excluded.add(options.builderMemberId);
-  // SAFE DEFAULT (court-audit #5): a flag-less `frontier-review <dim>` must NEVER seat a builder as judge
-  // of its own dim. If the caller named no builder to exclude, exclude EVERY build-eligible member so only
-  // judge-only members (grok/gemini) can judge. Orchestrated paths always pass --builder/--exclude-builders;
-  // tests inject _discoverMembers with explicit membership, so this fires only on real CLI invocations.
-  if (!options.builderMemberId && (!options.excludeBuilderIds || options.excludeBuilderIds.length === 0) && !options._discoverMembers) {
+  // BUILDER EXCLUSION IS A FLOOR, NOT AN EITHER/OR (court-audit #4 + #5). Always exclude EVERY
+  // build-eligible member so a builder can NEVER judge its own dim — naming an unrelated judge in
+  // --exclude-builders (e.g. `--exclude-builders grok-build`) must not re-seat codex/claude as judges.
+  // Only judge-only members (grok/gemini) survive. Tests inject _discoverMembers with explicit
+  // membership, so this real-roster floor fires only on genuine CLI/orchestrated invocations.
+  if (!options._discoverMembers) {
     const { discoverCouncil } = await import('./council.js');
     for (const mm of await discoverCouncil()) if (!mm.judgeOnly) excluded.add(mm.id as CouncilMemberId);
   }

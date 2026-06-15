@@ -41,8 +41,17 @@ describe('loadMatrix read-path honesty gates', () => {
       required_receipts: { min_t5_plus_outcomes: 3, min_distinct_sessions: 2, input_source: 'real-user-path' } } };
     assert.equal(applyFrontierGate(9.0, frozen).score, 8.0, 'frozen-not-validated 9.0 must clamp to 8.0');
     assert.equal(applyFrontierGate(9.0, frozen).capped, true);
-    const validated = { frontier_spec: { ...frozen.frontier_spec, status: 'validated', frozen_hash: undefined } };
-    assert.equal(applyFrontierGate(9.0, validated).score, 9.0, 'court-validated 9.0 passes');
+    // court-audit #1: `validated` now requires a verifiable court receipt (dim + content + secret bound),
+    // not a bare string. A signed receipt passes; a receiptless `validated` is capped to 8.0.
+    const { signValidation, computeSpecHash } = await import('../src/core/frontier-spec.js');
+    const vspec = { ...frozen.frontier_spec, status: 'validated' as const };
+    const vhash = computeSpecHash(vspec as never);
+    vspec.frozen_hash = vhash;
+    const judges = ['grok-build', 'gemini-cli'];
+    (vspec as Record<string, unknown>).validated_by = { frozen_hash: vhash, judge_member_ids: judges, validated_at: 'now', sig: signValidation('test_dim', vhash, judges) };
+    assert.equal(applyFrontierGate(9.0, { id: 'test_dim', frontier_spec: vspec }).score, 9.0, 'court-validated (signed receipt) 9.0 passes');
+    const bare = { id: 'test_dim', frontier_spec: { ...frozen.frontier_spec, status: 'validated' } };
+    assert.equal(applyFrontierGate(9.0, bare).score, 8.0, 'a receiptless validated string cannot reach 9.0');
     assert.equal(applyFrontierGate(8.0, {}).score, 8.0, 'at-threshold scores never need a spec');
   });
 

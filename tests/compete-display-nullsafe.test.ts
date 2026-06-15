@@ -7,19 +7,36 @@ import assert from 'node:assert/strict';
 import { formatScore, gapBar, formatStatusTable } from '../src/cli/commands/compete-display.js';
 import { computeGapPriority } from '../src/core/compete-matrix-score.js';
 import type { MatrixDimension, CompeteMatrix } from '../src/core/compete-matrix.js';
+import { signValidation, computeSpecHash, type FrontierSpec } from '../src/core/frontier-spec.js';
 
-describe('formatStatusTable — unverified-self badge (grading-integrity #9)', () => {
+describe('formatStatusTable — unverified-self badge (grading-integrity #9 + court-audit #7)', () => {
   const mk = (dims: unknown[]): CompeteMatrix =>
     ({ project: 't', competitors: [], dimensions: dims, overallSelfScore: 8, lastUpdated: '2026-06-15' } as unknown as CompeteMatrix);
   const d = (over: Record<string, unknown>): unknown =>
     ({ id: 'a', label: 'A', weight: 1, frequency: 'medium', gap_to_leader: 0, scores: { self: 9 }, ...over });
+  function signedSpec(dimId: string): FrontierSpec {
+    const spec = {
+      version: 1, target_score: 9, status: 'validated',
+      leader_target: { competitor: 'Cursor', score: 9, observed_capability: 'x' },
+      real_user_path: { required_callsite: 's', run_command: 'r', observable_artifacts: [] },
+      required_receipts: { min_t5_plus_outcomes: 1, min_distinct_sessions: 1, input_source: 'real-user-path' },
+    } as FrontierSpec;
+    const hash = computeSpecHash(spec);
+    spec.frozen_hash = hash;
+    const judges = ['grok-build', 'gemini-cli'];
+    spec.validated_by = { frozen_hash: hash, judge_member_ids: judges, validated_at: 'now', sig: signValidation(dimId, hash, judges) };
+    return spec;
+  }
 
   test('a self>8 with no validated frontier_spec is flagged as unverified', () => {
     assert.match(formatStatusTable(mk([d({})])), /NOT validated|unverified/i);
   });
-  test('a court-validated self>8 is NOT flagged', () => {
-    assert.ok(!/NOT validated/i.test(formatStatusTable(mk([d({ frontier_spec: { status: 'validated' } })]))),
-      'a court-validated 9 is a real 9, not an unverified claim');
+  test('a court-validated self>8 WITH a verifiable receipt is NOT flagged', () => {
+    assert.ok(!/NOT validated/i.test(formatStatusTable(mk([d({ frontier_spec: signedSpec('a') })]))),
+      'a genuinely court-validated 9 (signed receipt) is a real 9, not an unverified claim');
+  });
+  test('court-audit #7: a bare status:validated with NO receipt is STILL flagged (forgery shown honestly)', () => {
+    assert.match(formatStatusTable(mk([d({ frontier_spec: { status: 'validated' } })])), /NOT validated|unverified/i);
   });
   test('a self<=8 is never flagged (nothing to verify above the gate)', () => {
     assert.ok(!/NOT validated/i.test(formatStatusTable(mk([d({ scores: { self: 8 } })]))));

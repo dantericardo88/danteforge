@@ -191,6 +191,12 @@ export async function loadMatrix(
     if (!_fsRead) {
       await overlayLedgerDeclarations(matrix, cwd ?? process.cwd());
       await applyOutcomeDerivedScores(matrix, cwd ?? process.cwd());
+      // court-audit #3: the displayed headline `overallSelfScore` was never recomputed at read, so a
+      // stale or hand-edited value (e.g. 9.9 with every dim untouched) surfaced uncontested — inflating
+      // the ONE number humans + CI read while every per-dim guard was bypassed. Recompute it from the
+      // gated/derived per-dim scores (same recompute gap-report.ts already does), so it always coheres.
+      const { computeOverallScore } = await import('./compete-matrix-score.js');
+      matrix.overallSelfScore = computeOverallScore(matrix);
       let mtimeMs = -1, size = -1;
       try { const st = await fs.stat(matrixPath); mtimeMs = st.mtimeMs; size = st.size; } catch { /* keep sentinel: next hit re-stats and reloads */ }
       _matrixCache = { matrix, expiresAt: Date.now() + MATRIX_CACHE_TTL_MS, path: matrixPath, mtimeMs, size };
