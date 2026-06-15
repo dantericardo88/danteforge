@@ -23,6 +23,33 @@ export function registerGroundingCmd(program: Command): void {
     });
 }
 
+/** `danteforge harvest-demand` — Phase 6 v1 demand intake: harvest + rank feature-request demand from
+ *  GitHub into a backlog that feeds `specify`. The externally-GOAL-grounded roadmap (CH-007). */
+export function registerHarvestDemandCmd(program: Command): void {
+  program
+    .command('harvest-demand')
+    .description('Harvest + rank open feature-request demand from competitor/topic GitHub repos into a backlog that feeds specify (CH-007 demand grounding)')
+    .option('--repos <slugs>', 'comma-separated owner/repo slugs (default: derived from matrix OSS competitors)')
+    .option('--labels <labels>', 'comma-separated issue labels to query (default: enhancement,feature,feature request,help wanted)')
+    .option('--limit <n>', 'max issues per (repo,label) query (default: 40)')
+    .option('--write', 'persist .danteforge/demand-backlog.json + DEMAND_BACKLOG.md')
+    .option('--json', 'machine-readable output')
+    .option('--cwd <path>', 'project directory')
+    .action((opts) => {
+      void (async () => {
+        try {
+          const { harvestDemandCli } = await import('./commands/harvest-demand-cmd.js');
+          const o = opts as { repos?: string; labels?: string; limit?: string; write?: boolean; json?: boolean; cwd?: string };
+          await harvestDemandCli({ repos: o.repos, labels: o.labels, limit: o.limit, write: o.write, json: o.json, cwd: o.cwd });
+        } catch (err) {
+          const { formatAndLogError } = await import('../core/format-error.js');
+          formatAndLogError(err, 'harvest-demand');
+          process.exitCode = 1;
+        }
+      })();
+    });
+}
+
 export function registerWaveCmds(program: Command): void {
   const wave = program
     .command('wave')
