@@ -5,7 +5,7 @@
 > Entries are never silently deleted: a challenge is open, solved (with the commit), or
 > retired (with the reason). An empty OPEN section is a smell, not an achievement.
 
-## Open (9)
+## Open (10)
 
 ### CH-006: Cycle economics: tiny payload per hour
 - **Problem:** A push attempt costs ~60min of orchestration + LLM for 2-3 file diffs; overhead dominates real building.
@@ -60,6 +60,12 @@
 - **Evidence:** Live council audit 2026-06-12 bucketed replay + interrupt as the rung-9 (multi-session) work, distinct from the rung-8 ledger. wave-ledger.ts has lastSuccessfulWave() but no replay command and no interrupt gate; grep: no 'wave replay' CLI, no interrupt-before-score-write checkpoint.
 - **Opportunity:** Build 'danteforge wave replay <runId>' that reads the ledger, finds lastSuccessfulWave, and resumes the loop from there (skipping completed waves) — proven by a crash-mid-campaign → replay → resumes-not-restarts test. Then an interrupt gate: a pending-approval object written before any score write, releasable by human or policy. Each is a real rung toward 9; neither re-declares the score until its capability_test proves it.
 - Opened: 2026-06-13
+
+### CH-023: Court has zero judge-only redundancy (single grok)
+- **Problem:** The independent frontier-review court relies on a SINGLE judge-only member (grok-build). In sequential mode all build-eligible members (codex+claude) are excluded as builders, leaving ONLY grok as an independent judge — one judge < the 2-judge quorum, so the court can never convene there. In parallel mode it needs that one grok PLUS one excluded builder; if grok is down or itself conflicted there are zero independent judges and no 9.0 court can convene at all. The live council probe on this machine currently shows only codex+claude (grok unavailable), so today the independent court is dormant.
+- **Evidence:** src/cli/commands/frontier-review.ts:135 throws when independent judges <2; src/cli/commands/ascend-frontier-push.ts:265 sequential path excludes the full builder roster (commit e58c664); live 'danteforge council --ask' returns 2 members (codex+claude), grok absent.
+- **Opportunity:** Add a SECOND reliably-available judge-only member (reinstate gemini-cli as judge-only, or a 4th model) so the court has redundancy: sequential mode could then convene (2 judge-only judges) and parallel mode survives grok being down. This is what makes the autonomous independent 9.0 court robust rather than single-point-of-failure.
+- Opened: 2026-06-15
 
 ## Resolved (13)
 
