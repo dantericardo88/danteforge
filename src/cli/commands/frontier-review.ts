@@ -139,13 +139,23 @@ export async function runFrontierReviewCli(options: FrontierReviewCliOptions): P
   // sequential builder roster). What remains is the pool of genuinely independent judges.
   const excluded = new Set<CouncilMemberId>(options.excludeBuilderIds ?? []);
   if (options.builderMemberId) excluded.add(options.builderMemberId);
+  // SAFE DEFAULT (court-audit #5): a flag-less `frontier-review <dim>` must NEVER seat a builder as judge
+  // of its own dim. If the caller named no builder to exclude, exclude EVERY build-eligible member so only
+  // judge-only members (grok/gemini) can judge. Orchestrated paths always pass --builder/--exclude-builders;
+  // tests inject _discoverMembers with explicit membership, so this fires only on real CLI invocations.
+  if (!options.builderMemberId && (!options.excludeBuilderIds || options.excludeBuilderIds.length === 0) && !options._discoverMembers) {
+    const { discoverCouncil } = await import('./council.js');
+    for (const mm of await discoverCouncil()) if (!mm.judgeOnly) excluded.add(mm.id as CouncilMemberId);
+  }
   const judgeCount = members.filter(m => !excluded.has(m)).length;
   const excludedList = [...excluded];
   if (judgeCount < 2) throw new Error(`Frontier review needs ≥2 independent judges (excluding the builder${excludedList.length ? `s ${excludedList.join('+')}` : ''}); found ${judgeCount} of ${members.length} members. A builder may not judge its own dim — add a judge-only member (e.g. grok-build) or use --parallel so a single member builds.`);
   const runJudge = options._runJudge ?? ((id: CouncilMemberId, prompt: string) => defaultRunJudge(id, prompt, cwd));
 
   logger.info(`[frontier-review] ${options.dimId}: ${judgeCount} independent judges${excludedList.length ? ` (excluding builder${excludedList.length > 1 ? 's' : ''} ${excludedList.join('+')})` : ''} vs ${spec.leader_target.competitor}…`);
-  const result = await runFrontierReviewCourt(reviewInput, { members, builderMemberId: options.builderMemberId, excludeMemberIds: options.excludeBuilderIds, minJudges: options.minJudges, runJudge });
+  // Pass the FULLY-computed exclusion set (explicit flags + the safe default) so the court seats only
+  // the genuinely independent judges this CLI layer resolved.
+  const result = await runFrontierReviewCourt(reviewInput, { members, builderMemberId: options.builderMemberId, excludeMemberIds: excludedList, minJudges: options.minJudges, runJudge });
 
   let validatedWritten = false;
   let ceilingWritten = false;

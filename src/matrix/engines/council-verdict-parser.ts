@@ -15,22 +15,31 @@ export interface MemberVerdict {
 }
 
 /**
- * The judge's DECLARED verdict — the LAST line-anchored `VERDICT: X` declaration (CH grading-integrity
- * #5). The old `includes('VERDICT: PASS')`-first read flipped reasoning FAILs to PASS: a judge that
- * wrote "I cannot reach VERDICT: PASS here … VERDICT: FAIL" parsed as PASS because the PASS substring
- * appeared first. Reasoning models routinely echo rubric tokens, so first-substring-wins inflated every
- * council verdict path. We take the FINAL line-anchored declaration (the template's closing verdict
- * line); fall back to the last inline mention; else UNCLEAR. Exported single source for both parsers.
+ * The judge's DECLARED verdict, parsed FAIL-CLOSED (CH grading-integrity #5 + court-audit #7).
+ *
+ * History: the original `includes('VERDICT: PASS')`-first read flipped reasoning FAILs to PASS (a judge
+ * writing "I cannot reach VERDICT: PASS here … VERDICT: FAIL" parsed as PASS). #5 changed it to
+ * last-declaration-wins. The court audit then found last-wins ALSO fails open: a genuine `VERDICT: FAIL`
+ * followed by any trailing `VERDICT: PASS` — a format-reminder template, a fenced example, or a PASS
+ * echoed from a builder-CONTROLLED artifact excerpt (court-audit #8) — parsed as PASS by position alone.
+ *
+ * Rule, in order: (1) FAIL DOMINATES — a single line-anchored `VERDICT: FAIL` anywhere ⇒ FAIL, so no
+ * trailing/planted PASS can ever launder a real FAIL through a 9.0/merge gate; (2) otherwise the last
+ * anchored PASS/UNCLEAR wins; (3) no anchored line ⇒ inline fallback, FAIL still dominant; (4) else
+ * UNCLEAR. The conservative bias is intentional: a false UNCLEAR costs a re-attempt, a false PASS mints
+ * a fake 9.0. Exported single source for both the frontier court and the merge court.
  */
 export function declaredVerdict(rawOutput: string): 'PASS' | 'FAIL' | 'UNCLEAR' {
   const lineRe = /^\s*VERDICT:\s*(PASS|FAIL|UNCLEAR)\b/gim;
+  const anchored: Array<'PASS' | 'FAIL' | 'UNCLEAR'> = [];
   let m: RegExpExecArray | null;
-  let last: 'PASS' | 'FAIL' | 'UNCLEAR' | null = null;
-  while ((m = lineRe.exec(rawOutput)) !== null) last = m[1]!.toUpperCase() as 'PASS' | 'FAIL' | 'UNCLEAR';
-  if (last) return last;
-  // No line-anchored declaration → last inline mention (still better than first-wins), else UNCLEAR.
-  const inline = [...rawOutput.matchAll(/VERDICT:\s*(PASS|FAIL|UNCLEAR)\b/gi)];
-  return inline.length > 0 ? inline[inline.length - 1]![1]!.toUpperCase() as 'PASS' | 'FAIL' | 'UNCLEAR' : 'UNCLEAR';
+  while ((m = lineRe.exec(rawOutput)) !== null) anchored.push(m[1]!.toUpperCase() as 'PASS' | 'FAIL' | 'UNCLEAR');
+  if (anchored.includes('FAIL')) return 'FAIL';            // FAIL dominates — fail closed
+  if (anchored.length > 0) return anchored[anchored.length - 1]!; // PASS/UNCLEAR: last declaration wins
+  // No line-anchored declaration → inline fallback (still FAIL-dominant), else UNCLEAR.
+  const inline = [...rawOutput.matchAll(/VERDICT:\s*(PASS|FAIL|UNCLEAR)\b/gi)].map(x => x[1]!.toUpperCase() as 'PASS' | 'FAIL' | 'UNCLEAR');
+  if (inline.includes('FAIL')) return 'FAIL';
+  return inline.length > 0 ? inline[inline.length - 1]! : 'UNCLEAR';
 }
 
 export function parseVerdict(judgeId: CouncilMemberId, rawOutput: string): MemberVerdict {

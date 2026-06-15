@@ -311,7 +311,8 @@ program
           write: opts.write as boolean | undefined,
           builderMemberId: opts.builder as never,
           excludeBuilderIds: opts.excludeBuilders ? (opts.excludeBuilders as string).split(',').map(s => s.trim()).filter(Boolean) as never : undefined,
-          minJudges: opts.minJudges ? parseInt(opts.minJudges as string, 10) : undefined,
+          // A 9.0 needs ≥2 independent judges — never honor --min-judges 1 (court-audit #6).
+          minJudges: opts.minJudges ? Math.max(2, parseInt(opts.minJudges as string, 10)) : undefined,
           json: opts.json as boolean | undefined,
           cwd: opts.cwd as string | undefined,
         });

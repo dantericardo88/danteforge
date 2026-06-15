@@ -387,7 +387,7 @@ export async function defaultBuildAll(cwd: string, assignments: { memberId: Coun
 }
 
 /** SERIAL promote of one dim: capture real-user-path evidence (variant-rotated), validate across
- *  sessions, then run the court with the assigned owner EXCLUDED (builder-never-judges). Writes
+ *  sessions, then run the court with ALL build-eligible members EXCLUDED (builder-never-judges). Writes
  *  matrix.json — runParallelRound guarantees this runs one dim at a time, so no write races. */
 export async function defaultPromoteOne(cwd: string, a: { memberId: CouncilMemberId; dimId: string }): Promise<PushOutcome> {
   // Mirror the sequential push's honesty guardrails (the parallel path used to skip them, so an
@@ -442,7 +442,13 @@ export async function defaultPromoteOne(cwd: string, a: { memberId: CouncilMembe
   }
   // Distinguish a real court REJECT from "we couldn't read the court's answer" (non-zero exit or
   // no JSON): parseCourtOutput flags the latter so the orchestrator records uncertainty, not a clean no.
-  const res = await runCli(cwd, ['frontier-review', a.dimId, '--builder', a.memberId, '--min-judges', '2', '--json', '--write']);
+  // court-audit #4: defaultBuildAll builds via `council --parallel` across the WHOLE builder roster, and
+  // council routes each focus-dim to a keyword-matched member — NOT necessarily a.memberId (round-robin).
+  // Excluding only a.memberId left the real builder in its own judge pool. Exclude ALL build-eligible
+  // members (judge-only members remain), exactly like the sequential push, so no builder self-judges.
+  const builders = await defaultDiscoverMembers(); // build-eligible roster (judge-only already filtered out)
+  const res = await runCli(cwd, ['frontier-review', a.dimId, '--min-judges', '2', '--json', '--write',
+    ...(builders.length ? ['--exclude-builders', builders.join(',')] : ['--builder', a.memberId])]);
   const parsed = parseCourtOutput(res);
   // CH-019: an all-abstained court (outage) is NOT a court that ran — courtRan:false routes it to the
   // re-attemptable build-failure path instead of fabricating a court rejection toward a permanent ceiling.
