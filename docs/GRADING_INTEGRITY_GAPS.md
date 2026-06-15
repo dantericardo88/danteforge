@@ -33,6 +33,9 @@ self-CONSISTENCY, never self-GROUNDING.
 - ✅ **#4 (lock half)** kernel-own outcome-evidence — a build worker can no longer write the receipts the scorer trusts (commit a2ec29b). Remaining: route session-record through propose≠accept + derived-score consult isAccepted (the orchestrator-self-author half).
 - ✅ **#6 (visibility half)** `danteforge grounding` + externalGroundingReport — surfaces the self-vs-world ratio (today 0%) (commit 219bd9a). Remaining: run ONE registered external benchmark end-to-end (needs compute/LLM) + decide the self-run→8.0 provenance cap (policy).
 - ✅ **#7** cli-smoke `--help`/version/bare probes now cap at 7.0, not 8.5 — closed the 7→8 banner lift (commit b723739).
+- ✅ **#11** honest-rescore defers to the canonical score when it has no probe data — ends the ~7pt false divergence between the two honesty tools (commit dd36228).
+
+**8 of 13 closed.** Remaining: #3 (court independence — code + a ≥3-judge ROSTER decision), #4-full (propose/accept routing — large), #6-run (external benchmark — needs COMPUTE), #9/#10 (display badges for raw-self + stale evidence), #12 (author ux_polish ladder + missing-ladder gate), #13 (semantic relevance + meta-dim split — large). The autonomy finish line is #3 (a 3rd judge) and/or #6 (one real external benchmark run) — both need a resource/decision, not more code.
 
 **Remaining work, by what it needs:**
 - *Code I can build next:* #3 builder-never-self (court), #7 cli-smoke must assert a computed result, #9/#10 badge raw self + evidence staleness, #11 make the two honesty tools agree, #12 wire ladder rung into derivation + author ux_polish ladder.
