@@ -2,7 +2,7 @@
 // Split from compete-matrix.ts to keep files under the 750-LOC hard cap.
 import type { CompetitorComparison } from './competitor-scanner.js';
 import type { MatrixDimension, CompeteMatrix, DimensionStatus } from './compete-matrix.js';
-import { computeOverallScore, computeTwoGaps, computeGapPriority } from './compete-matrix-score.js';
+import { computeOverallScore, computeTwoGaps, computeGapPriority, decisionDimScore } from './compete-matrix-score.js';
 
 // ── Known OSS Tools ───────────────────────────────────────────────────────────
 
@@ -60,8 +60,10 @@ function recomputeDimGaps(
   closedSourceCompetitors: string[],
   ossCompetitors: string[],
 ): void {
-  const selfScore = dim.scores['self'] ?? 0;
-  const entries = Object.entries(dim.scores).filter(([k]) => k !== 'self');
+  // Grading-integrity #8: gap is vs the HONEST score (decisionDimScore), not raw scores.self; and
+  // 'derived' is NOT a competitor — leaving it in the pool let it masquerade as the leader.
+  const selfScore = decisionDimScore(dim);
+  const entries = Object.entries(dim.scores).filter(([k]) => k !== 'self' && k !== 'derived');
   if (entries.length === 0) {
     dim.gap_to_leader = 0;
     dim.leader = 'self';

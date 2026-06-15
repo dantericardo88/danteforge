@@ -51,15 +51,46 @@ describe('runCapabilityTest', () => {
   const passingSpawn = () => ({ status: 0, stdout: 'ok', stderr: '' });
   const failingSpawn = () => ({ status: 1, stdout: '', stderr: 'error' });
 
-  it('returns allowed=true when spawn exits 0', () => {
+  it('a REAL product run that exits 0 earns the full 10 (grading-integrity #1)', () => {
     const verdict = runCapabilityTest({
-      dimensionId: 'testing',
-      capabilityTest: { command: 'npm test', description: 'run tests' },
+      dimensionId: 'planning_quality',
+      capabilityTest: { command: 'node dist/index.js plan "build a thing"', description: 'real product run' },
       _spawnSync: passingSpawn,
     });
     assert.ok(verdict.allowed);
     assert.strictEqual(verdict.scoreCap, 10);
     assert.ok(verdict.result?.passed);
+  });
+
+  it('a passing TEST SUITE proves wiring, not capability → capped at 7.0, not 10 (grading-integrity #1)', () => {
+    const verdict = runCapabilityTest({
+      dimensionId: 'testing',
+      capabilityTest: { command: 'npm test', description: 'run tests' },
+      _spawnSync: passingSpawn,
+    });
+    assert.ok(verdict.allowed, 'a passing test suite still permits scores above 5.0…');
+    assert.strictEqual(verdict.scoreCap, 7.0, '…but only up to the structural ceiling, never 10');
+  });
+
+  it('a --help reachability PROXY that exits 0 is capped at 7.0, never 10 (the #1 inflation vector)', () => {
+    const verdict = runCapabilityTest({
+      dimensionId: 'depth_doctrine',
+      capabilityTest: { command: 'node dist/index.js validate --help && node dist/index.js gap --help', description: 'tooling reachable' },
+      _spawnSync: passingSpawn,
+    });
+    assert.ok(verdict.allowed);
+    assert.strictEqual(verdict.scoreCap, 7.0, 'a usage banner cannot certify a 9');
+    assert.match(verdict.reason, /reachability|wired|proves/i);
+  });
+
+  it('a GREEN-FORCING wrapper that exits 0 measures nothing → capped at 5.0, not allowed above (grading-integrity #1)', () => {
+    const verdict = runCapabilityTest({
+      dimensionId: 'rigged_dim',
+      capabilityTest: { command: 'node dist/index.js plan x || true', description: 'rigged' },
+      _spawnSync: passingSpawn,
+    });
+    assert.ok(!verdict.allowed, 'a rigged pass must not authorize scores above 5.0');
+    assert.strictEqual(verdict.scoreCap, CAPABILITY_TEST_SCORE_CAP);
   });
 
   it('returns allowed=false when spawn exits 1', () => {

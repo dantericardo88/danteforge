@@ -21,6 +21,7 @@ import type { WorkPacket } from '../../matrix/types/work-graph.js';
 import type { AgentLease } from '../../matrix/types/lease.js';
 import type { AgentRunResult } from '../../matrix/types/agent.js';
 import { runAdapter, builderTimeoutMs } from '../../matrix/adapters/adapter-interface.js';
+import { declaredVerdict } from '../../matrix/engines/council-verdict-parser.js';
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -225,9 +226,9 @@ export function makeAdapter(id: CouncilMemberId, workPacket: WorkPacket, judgeMo
 
 export function parseVerdict(memberId: CouncilMemberId, rawOutput: string): JudgeVerdict {
   const upper = rawOutput.toUpperCase();
-  const verdict: 'PASS' | 'FAIL' | 'UNCLEAR' =
-    upper.includes('VERDICT: PASS') ? 'PASS' :
-    upper.includes('VERDICT: FAIL') ? 'FAIL' : 'UNCLEAR';
+  // Grading-integrity #5: last line-anchored declaration wins (shared with council-verdict-parser),
+  // so a reasoning FAIL that quotes "VERDICT: PASS" no longer parses as PASS.
+  const verdict: 'PASS' | 'FAIL' | 'UNCLEAR' = declaredVerdict(rawOutput);
 
   const confidence: 'HIGH' | 'MEDIUM' | 'LOW' =
     upper.includes('CONFIDENCE: HIGH') ? 'HIGH' :

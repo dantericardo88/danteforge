@@ -115,7 +115,7 @@ export function computeOverallScore(matrix: CompeteMatrix): number {
 }
 
 export function computeTwoGaps(
-  dim: { scores: Record<string, number> },
+  dim: { scores: Record<string, number>; outcomes?: unknown },
   closedSourceNames: string[],
   ossNames: string[],
 ): {
@@ -124,7 +124,11 @@ export function computeTwoGaps(
   gap_to_oss_leader: number;
   oss_leader: string;
 } {
-  const selfScore = dim.scores['self'] ?? 0;
+  // Grading-integrity #8: competitive standing is measured against the HONEST score (decisionDimScore),
+  // NOT the raw scores.self the engine elsewhere refuses to trust. Using self made every dim read
+  // leader=self/gap=0 even when its honest derived score trailed the named competitor — which also
+  // mis-routed the loop (computeGapPriority saw gap≈0 → never prioritized dims genuinely behind).
+  const selfScore = decisionDimScore(dim);
 
   const findBest = (names: string[]): [string, number] => {
     let bestName = '';
@@ -227,12 +231,14 @@ export async function applyIntelLeaderScores(
     }
 
     if (adjustmentsApplied > 0) {
-      const competitorEntries = Object.entries(dim.scores).filter(([k]) => k !== 'self');
+      // Exclude 'self' AND 'derived' — neither is a competitor; leaving 'derived' in let it masquerade
+      // as the leader. Gap is vs the HONEST score, not raw self (grading-integrity #8).
+      const competitorEntries = Object.entries(dim.scores).filter(([k]) => k !== 'self' && k !== 'derived');
       const maxEntry = competitorEntries.reduce(
         (best, [k, v]) => v > best[1] ? [k, v] : best,
         ['', 0] as [string, number],
       );
-      const selfScore = dim.scores['self'] ?? 0;
+      const selfScore = decisionDimScore(dim);
       dim.gap_to_leader = Math.max(0, maxEntry[1] - selfScore);
       if (maxEntry[0]) dim.leader = maxEntry[0];
       const twoGaps = computeTwoGaps(dim, matrix.competitors_closed_source ?? [], matrix.competitors_oss ?? []);

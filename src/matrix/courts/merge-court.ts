@@ -33,7 +33,6 @@ import {
   type CapabilityTestVerdict,
 } from '../engines/capability-test-runner.js';
 import type { CapabilityTestEntry } from '../types/capability-test.js';
-import { CAPABILITY_TEST_SCORE_CAP } from '../types/capability-test.js';
 
 // ── Public API ──────────────────────────────────────────────────────────────
 
@@ -182,23 +181,25 @@ export async function runMergeCourt(
       continue;
     }
 
-    // Capability gate: if proposed score > 5.0, capability_test must pass.
+    // Capability gate: a proposed score may not exceed the ceiling the capability_test EARNS.
+    // Grading-integrity #1: clamp on proposedAfter > scoreCap (not merely !allowed). scoreCap is now
+    // 5.0 (no/failed/rigged test), 7.0 (a reachability probe — --help/version/status/test-suite that
+    // proves wiring not capability), or 10 (a real product run). So a proposed 9.0 backed only by a
+    // `--help` probe is clamped to 7.0 instead of waved through, which the old !allowed-only check did.
     const capabilityVerdict = capabilityTestFn(candidate, baseCwd);
     const proposedAfter = candidate.candidate.scoreDelta?.after;
-    if (proposedAfter !== undefined && proposedAfter > CAPABILITY_TEST_SCORE_CAP) {
-      if (!capabilityVerdict.allowed) {
-        const cappedScore = applyScoreCap(proposedAfter, capabilityVerdict);
-        decisions.push(buildDecision(
-          candidate,
-          'BLOCKED_BY_POLICY',
-          `capability_test gate: proposed score ${proposedAfter} exceeds ${CAPABILITY_TEST_SCORE_CAP} cap. ${capabilityVerdict.reason} Capped at ${cappedScore}.`,
-          candidate.candidate.scoreDelta
-            ? { ...candidate.candidate.scoreDelta, after: cappedScore }
-            : undefined,
-          now,
-        ));
-        continue;
-      }
+    if (proposedAfter !== undefined && proposedAfter > capabilityVerdict.scoreCap) {
+      const cappedScore = applyScoreCap(proposedAfter, capabilityVerdict);
+      decisions.push(buildDecision(
+        candidate,
+        'BLOCKED_BY_POLICY',
+        `capability_test gate: proposed score ${proposedAfter} exceeds the capability ceiling ${capabilityVerdict.scoreCap}. ${capabilityVerdict.reason} Capped at ${cappedScore}.`,
+        candidate.candidate.scoreDelta
+          ? { ...candidate.candidate.scoreDelta, after: cappedScore }
+          : undefined,
+        now,
+      ));
+      continue;
     }
 
     const outcome = arbitrate(candidate, options.conflictReport, approvedPaths);

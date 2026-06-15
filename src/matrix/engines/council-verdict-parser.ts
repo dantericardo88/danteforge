@@ -14,11 +14,28 @@ export interface MemberVerdict {
   rawOutput: string;
 }
 
+/**
+ * The judge's DECLARED verdict — the LAST line-anchored `VERDICT: X` declaration (CH grading-integrity
+ * #5). The old `includes('VERDICT: PASS')`-first read flipped reasoning FAILs to PASS: a judge that
+ * wrote "I cannot reach VERDICT: PASS here … VERDICT: FAIL" parsed as PASS because the PASS substring
+ * appeared first. Reasoning models routinely echo rubric tokens, so first-substring-wins inflated every
+ * council verdict path. We take the FINAL line-anchored declaration (the template's closing verdict
+ * line); fall back to the last inline mention; else UNCLEAR. Exported single source for both parsers.
+ */
+export function declaredVerdict(rawOutput: string): 'PASS' | 'FAIL' | 'UNCLEAR' {
+  const lineRe = /^\s*VERDICT:\s*(PASS|FAIL|UNCLEAR)\b/gim;
+  let m: RegExpExecArray | null;
+  let last: 'PASS' | 'FAIL' | 'UNCLEAR' | null = null;
+  while ((m = lineRe.exec(rawOutput)) !== null) last = m[1]!.toUpperCase() as 'PASS' | 'FAIL' | 'UNCLEAR';
+  if (last) return last;
+  // No line-anchored declaration → last inline mention (still better than first-wins), else UNCLEAR.
+  const inline = [...rawOutput.matchAll(/VERDICT:\s*(PASS|FAIL|UNCLEAR)\b/gi)];
+  return inline.length > 0 ? inline[inline.length - 1]![1]!.toUpperCase() as 'PASS' | 'FAIL' | 'UNCLEAR' : 'UNCLEAR';
+}
+
 export function parseVerdict(judgeId: CouncilMemberId, rawOutput: string): MemberVerdict {
   const up = rawOutput.toUpperCase();
-  const verdict: 'PASS' | 'FAIL' | 'UNCLEAR' =
-    up.includes('VERDICT: PASS') ? 'PASS' :
-    up.includes('VERDICT: FAIL') ? 'FAIL' : 'UNCLEAR';
+  const verdict: 'PASS' | 'FAIL' | 'UNCLEAR' = declaredVerdict(rawOutput);
 
   const confidence: 'HIGH' | 'MEDIUM' | 'LOW' =
     up.includes('CONFIDENCE: HIGH') ? 'HIGH' :

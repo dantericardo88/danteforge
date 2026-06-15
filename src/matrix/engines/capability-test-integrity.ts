@@ -64,7 +64,14 @@ export function hasGreenForcingWrapper(cmd: string): boolean {
 /** Does a single command segment invoke the real product (CLI or built binary) on a NON-trivial subcommand? */
 function isProductInvocation(seg: string): boolean {
   const m = /(?:^|\s)(?:node\s+dist\/index\.js|danteforge)\s+(--?[a-z][\w-]*|[a-z][\w-]*)/i.exec(seg);
-  if (m) return !TRIVIAL_SUBCOMMANDS.has(m[1]!.toLowerCase());
+  if (m) {
+    // Grading-integrity #1: a real subcommand followed by ONLY a help/version flag is a USAGE BANNER,
+    // not a product run — `validate --help`, `gap --help`, `party --help` exit 0 regardless of whether
+    // the capability works. The old check looked only at the subcommand token and missed the trailing
+    // flag, so `node dist/index.js gap --help` was misread as a genuine `gap` run.
+    if (/(?:^|\s)(?:--help|-h|--version|-v)(?:\s|$)/i.test(seg)) return false;
+    return !TRIVIAL_SUBCOMMANDS.has(m[1]!.toLowerCase());
+  }
   return /target[/\\](?:release|debug)[/\\]/i.test(seg) || /(?:^|\s)\.[/\\](?:bin|dist)[/\\]/.test(seg);
 }
 
@@ -72,7 +79,7 @@ function isProductInvocation(seg: string): boolean {
  *  the exit-determining (LAST) segment must itself be the product run — no green-forcing wrapper, no
  *  self-deciding `node -e`/fixture tail. Closes the red-team's "glue a product token to an inline fixture"
  *  bypass (`danteforge help; node -e "exit(0)"`, `node dist/index.js x || true`). */
-function looksLikeProductRun(cmd: string): boolean {
+export function looksLikeProductRun(cmd: string): boolean {
   if (isTestSuiteCommand(cmd)) return false;
   if (hasGreenForcingWrapper(cmd)) return false;
   const segs = cmd.split(/;|&&|\|\||\||\n/).map(s => s.trim()).filter(Boolean);
