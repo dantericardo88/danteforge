@@ -35,7 +35,9 @@ self-CONSISTENCY, never self-GROUNDING.
 - ✅ **#7** cli-smoke `--help`/version/bare probes now cap at 7.0, not 8.5 — closed the 7→8 banner lift (commit b723739).
 - ✅ **#11** honest-rescore defers to the canonical score when it has no probe data — ends the ~7pt false divergence between the two honesty tools (commit dd36228).
 
-**8 of 13 closed.** Remaining: #3 (court independence — code + a ≥3-judge ROSTER decision), #4-full (propose/accept routing — large), #6-run (external benchmark — needs COMPUTE), #9/#10 (display badges for raw-self + stale evidence), #12 (author ux_polish ladder + missing-ladder gate), #13 (semantic relevance + meta-dim split — large). The autonomy finish line is #3 (a 3rd judge) and/or #6 (one real external benchmark run) — both need a resource/decision, not more code.
+- ✅ **#9** unverified self>8 badged in `compete status` + derived no longer leaks as leader (commit eed9c03).
+
+**9 of 13 closed.** Remaining: #10 (stale-evidence/HEAD badge — display, needs scored-SHA vs HEAD), #12 (author ux_polish ladder + missing-ladder gate — needs competitive research), #4-full (propose/accept routing — large), #13 (semantic relevance + meta-dim split — large), #3 (court independence — needs a ≥3-judge ROSTER decision), #6-run (external benchmark — needs COMPUTE). The internal-trust layer (a loop can't inflate its own number) is now essentially complete; the autonomy finish line is #3 (a 3rd judge) and/or #6 (one real external benchmark run) — both need a resource/decision, not more code.
 
 **Remaining work, by what it needs:**
 - *Code I can build next:* #3 builder-never-self (court), #7 cli-smoke must assert a computed result, #9/#10 badge raw self + evidence staleness, #11 make the two honesty tools agree, #12 wire ladder rung into derivation + author ux_polish ladder.
