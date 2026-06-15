@@ -31,13 +31,19 @@ describe('discoverCouncil — Gemini excluded; Grok reserved as JUDGE-ONLY (#3 c
     }
   });
 
-  it('discoverCouncil honors the DANTEFORGE_COUNCIL_MEMBERS env filter', async () => {
+  it('the env filter constrains BUILDERS but never drops the judge-only member (footgun fix)', async () => {
+    // DANTEFORGE_COUNCIL_MEMBERS dates from grok's builder era. It still bounds the build-eligible
+    // pool, but grok is judge-only now — a builder filter must NOT silently disable the independent
+    // court, so judge-only members bypass it. (Live 2026-06-15: this var was hiding a working grok.)
     const savedFilter = process.env['DANTEFORGE_COUNCIL_MEMBERS'];
     process.env['DANTEFORGE_COUNCIL_MEMBERS'] = 'codex,claude-code';
     try {
       const members = await discoverCouncil();
       const ids = members.map(m => m.id).sort();
-      assert.deepEqual(ids, ['claude-code', 'codex'], 'env filter must exclude grok-build');
+      assert.deepEqual(ids, ['claude-code', 'codex', 'grok-build'], 'grok-build (judge-only) survives the builder filter');
+      // The filter still bounds who may BUILD: only the two named members are build-eligible.
+      const builders = members.filter(m => !m.judgeOnly).map(m => m.id).sort();
+      assert.deepEqual(builders, ['claude-code', 'codex'], 'builder pool is still exactly the filtered set');
     } finally {
       if (savedFilter !== undefined) process.env['DANTEFORGE_COUNCIL_MEMBERS'] = savedFilter;
       else delete process.env['DANTEFORGE_COUNCIL_MEMBERS'];

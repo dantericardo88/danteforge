@@ -176,8 +176,13 @@ export async function discoverCouncil(allowedMemberIds?: string[]): Promise<Coun
   // Keep the Gemini adapter importable but never probe it — prevents an unused-import error.
   void GeminiCLIAdapter;
 
-  // Member filter: explicit arg → env var → all members.
-  // Set DANTEFORGE_COUNCIL_MEMBERS=codex,claude-code to exclude Grok globally.
+  // Member filter: explicit arg → env var → all members. This filter constrains the BUILDER pool
+  // (which members are eligible to do work). It dates from grok's builder era ("exclude flaky Grok
+  // globally") — but grok is now JUDGE-ONLY, so a builder filter must NOT silently drop it: doing so
+  // disables the independent court (#3) without anyone noticing. Judge-only members therefore BYPASS
+  // the filter — they never build, and if their CLI is down isAvailable() degrades them gracefully.
+  // (Live footgun, 2026-06-15: DANTEFORGE_COUNCIL_MEMBERS=codex,claude-code was hiding a working,
+  // logged-in grok from the court.) To truly silence a judge, uninstall its CLI.
   const envFilter = process.env['DANTEFORGE_COUNCIL_MEMBERS'];
   const filterSet = allowedMemberIds
     ? new Set(allowedMemberIds)
@@ -185,7 +190,7 @@ export async function discoverCouncil(allowedMemberIds?: string[]): Promise<Coun
       ? new Set(envFilter.split(',').map(s => s.trim()).filter(Boolean))
       : null;
 
-  const probes = filterSet ? ALL_PROBES.filter(p => filterSet.has(p.id)) : ALL_PROBES;
+  const probes = filterSet ? ALL_PROBES.filter(p => filterSet.has(p.id) || p.judgeOnly) : ALL_PROBES;
 
   const results: CouncilMember[] = [];
   await Promise.all(probes.map(async p => {
