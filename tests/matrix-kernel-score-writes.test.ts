@@ -46,6 +46,13 @@ describe('MATRIX_SCORE_SURFACE_PATTERNS', () => {
     assert.ok(MATRIX_SCORE_SURFACE_PATTERNS.some(p => p.includes('score-proposals')));
   });
 
+  it('includes outcome-evidence — the trust root workers must not author (grading-integrity #4)', () => {
+    assert.ok(
+      MATRIX_SCORE_SURFACE_PATTERNS.some(p => p.includes('outcome-evidence')),
+      'a worker that can write its own receipts grades its own exam',
+    );
+  });
+
   it('EVIDENCE_FILE_NAME is defined', () => {
     assert.strictEqual(typeof EVIDENCE_FILE_NAME, 'string');
     assert.ok(EVIDENCE_FILE_NAME.endsWith('.json'));
@@ -105,6 +112,17 @@ describe('generateWorkPackets: matrix score surface in forbiddenPaths', () => {
       assert.ok(
         packet.paths.forbiddenPaths.some(p => p.includes('score-proposals')),
         `packet ${packet.id} missing score-proposals in forbiddenPaths`,
+      );
+    }
+  });
+
+  it('every packet forbids outcome-evidence — the trust-root lock propagates to workers (grading-integrity #4)', () => {
+    const { dg, pg } = makeFixtures();
+    const graph = generateWorkPackets({ dimensionGraph: dg, projectGraph: pg });
+    for (const packet of graph.packets) {
+      assert.ok(
+        packet.paths.forbiddenPaths.some(p => p.includes('outcome-evidence')),
+        `packet ${packet.id} missing outcome-evidence in forbiddenPaths — a worker could fabricate its own receipts`,
       );
     }
   });

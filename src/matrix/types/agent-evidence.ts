@@ -53,4 +53,8 @@ export const MATRIX_SCORE_SURFACE_PATTERNS: readonly string[] = [
   '.danteforge/score-proposals/**',
   // Universe files define what 9+ means — builders must not edit them during forge work.
   '.danteforge/compete/universe/**',
+  // Outcome evidence IS the trust root: derived-score, the receipt gate, and the court all read it.
+  // A worker that can write its own receipts grades its own exam (grading-integrity #4). Only the
+  // kernel's session-record/validate (run by the orchestrator, never a build worker) may write here.
+  '.danteforge/outcome-evidence/**',
 ];
