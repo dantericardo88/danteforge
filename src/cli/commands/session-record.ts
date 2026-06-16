@@ -15,7 +15,7 @@ import fs from 'node:fs/promises';
 import path from 'node:path';
 import { execFile } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
-import { loadMatrix, type CompeteMatrix } from '../../core/compete-matrix.js';
+import { loadMatrix, saveMatrix, type CompeteMatrix } from '../../core/compete-matrix.js';
 import { logger } from '../../core/logger.js';
 import { isTestSuiteCommand } from '../../matrix/engines/outcome-quality.js';
 import { REAL_RUN_MIN_MS } from '../../core/frontier-spec.js';
@@ -77,7 +77,11 @@ export async function runSessionRecord(options: SessionRecordOptions): Promise<S
   const cwd = path.resolve(options.cwd ?? process.cwd());
   const write = options.write ?? false;
   const loadFn = options._loadMatrix ?? loadMatrix;
-  const writeMatrix = options._writeMatrix ?? ((m, p) => fs.writeFile(p, JSON.stringify(m, null, 2) + '\n', 'utf8'));
+  // CH-026: the REAL write must go through saveMatrix so session-record cannot bypass the
+  // score-surface gates (market-cap clamp, declared-ceiling, score-interrupt sentinel,
+  // provenance backstop, cross-process lock). The default ignores the legacy path arg and
+  // uses cwd; test seams that override _writeMatrix keep the (matrix, path) contract.
+  const writeMatrix = options._writeMatrix ?? (async (m: CompeteMatrix) => { await saveMatrix(m, cwd); });
   const runCmd = options._runCommand ?? defaultRun;
   const artifactProduced = options._artifactProduced ?? defaultArtifactProduced;
   const matrixPath = path.join(cwd, '.danteforge', 'compete', 'matrix.json');
@@ -139,8 +143,17 @@ export async function runSessionRecord(options: SessionRecordOptions): Promise<S
     // Drop any scaffold marker for this dim — it is now superseded by a real outcome.
     d.outcomes = (d.outcomes ?? []).filter(o => o._scaffold !== true);
     d.outcomes.push(outcome);
-    await writeMatrix(matrix, matrixPath);
-    wrote = true;
+    try {
+      await writeMatrix(matrix, matrixPath);
+      wrote = true;
+    } catch (err) {
+      // saveMatrix fails CLOSED on a score-interrupt sentinel, a held lock, or a provenance
+      // violation. Surface that honestly rather than crashing — the run was real, but the
+      // matrix refused the write, so the outcome is not recorded.
+      const why = err instanceof Error ? err.message : String(err);
+      const reason = `Genuine run, but the matrix save was REFUSED (${why}). Outcome not written.`;
+      return finalize({ accepted: false, reason, outcome, durationMs, wrote: false }, options, reason);
+    }
   }
 
   const reason = `Genuine real-user-path exercise (${durationMs}ms, artifact produced). ${write ? 'Outcome written.' : 'Dry-run — re-run with --write to add it.'}`;

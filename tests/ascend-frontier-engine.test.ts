@@ -1,6 +1,6 @@
 import { test, describe } from 'node:test';
 import assert from 'node:assert/strict';
-import { planNextAction, isDimDone, type DimState } from '../src/core/ascend-frontier-engine.js';
+import { planNextAction, isDimDone, reconcileAuditVerdict, type DimState } from '../src/core/ascend-frontier-engine.js';
 import type { CeilingReceipt } from '../src/core/ceiling-receipt.js';
 
 const NOW = '2026-06-03T00:00:00.000Z';
@@ -88,5 +88,38 @@ describe('planNextAction — honest autonomous sequencing', () => {
     assert.equal(isDimDone(dim({ effectiveScore: 9.0, frontierStatus: 'validated' }), NOW), true);
     assert.equal(isDimDone(dim({ effectiveScore: 8.0, frontierStatus: 'frozen' }), NOW), false);
     assert.equal(isDimDone(dim({ ceiling: ceiling() }), NOW), true);
+  });
+});
+
+describe('reconcileAuditVerdict — CH-027 human audit propagation', () => {
+  test('a FAILED audit on a validated dim → downgraded away from validated + audit-failed ceiling minted', () => {
+    const r = reconcileAuditVerdict({ dimId: 'd', frontierStatus: 'validated', ceiling: null, score: 9.0, hasFailedAudit: true, nowIso: NOW });
+    assert.notEqual(r.frontierStatus, 'validated', 'a human-rejected dim can no longer read as a validated frontier 9');
+    assert.equal(r.ceiling?.cause, 'audit-failed');
+    assert.ok(r.mintedCeiling, 'a fresh ceiling is minted for the caller to persist');
+    assert.ok((r.ceiling?.cap ?? 99) <= 8.0, 'held at or below the frontier-gate cap');
+    // The loop treats it done via the CEILING (stops the re-push) — not via a fake validated status.
+    assert.equal(isDimDone(dim({ id: 'd', frontierStatus: r.frontierStatus, ceiling: r.ceiling }), NOW), true);
+  });
+
+  test('a FAILED audit with an existing audit-failed ceiling is idempotent (not re-minted each cycle)', () => {
+    const existing = ceiling({ dimId: 'd', cause: 'audit-failed', cap: 8.0 });
+    const r = reconcileAuditVerdict({ dimId: 'd', frontierStatus: 'frozen', ceiling: existing, score: 8.0, hasFailedAudit: true, nowIso: NOW });
+    assert.equal(r.mintedCeiling, null);
+    assert.equal(r.ceiling, existing);
+  });
+
+  test('a RESOLVED audit clears a lingering audit-failed ceiling → the dim re-opens for another push', () => {
+    const stale = ceiling({ dimId: 'd', cause: 'audit-failed', cap: 8.0 });
+    const r = reconcileAuditVerdict({ dimId: 'd', frontierStatus: 'frozen', ceiling: stale, score: 8.0, hasFailedAudit: false, nowIso: NOW });
+    assert.equal(r.ceiling, null, 'the human rejection no longer holds → re-open');
+    assert.equal(isDimDone(dim({ id: 'd', frontierStatus: 'frozen', ceiling: r.ceiling }), NOW), false);
+  });
+
+  test('no audit failure leaves an unrelated ceiling untouched', () => {
+    const mc = ceiling({ dimId: 'd', cause: 'market-cap' });
+    const r = reconcileAuditVerdict({ dimId: 'd', frontierStatus: 'frozen', ceiling: mc, score: 5.0, hasFailedAudit: false, nowIso: NOW });
+    assert.equal(r.ceiling, mc);
+    assert.equal(r.mintedCeiling, null);
   });
 });

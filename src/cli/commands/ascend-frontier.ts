@@ -20,8 +20,9 @@ import { decisionDimScore } from '../../core/compete-matrix-score.js';
 import { effectiveStatus, resolveRunCommand, checkFrontierSpec, type FrontierSpec } from '../../core/frontier-spec.js';
 import { loadDimRubric } from '../../core/rubric-ladder.js';
 import { loadCeilingReceipt, writeCeilingReceipt, shouldReopenForEngine, type CeilingCause } from '../../core/ceiling-receipt.js';
+import { loadAuditQueue } from '../../core/audit-escrow.js';
 import { loadAttemptLedger, recordAttempt, isNovelAttempt, type AttemptFingerprint } from '../../core/evidence-novelty.js';
-import { planNextAction, type DimState, type AscendAction } from '../../core/ascend-frontier-engine.js';
+import { planNextAction, reconcileAuditVerdict, type DimState, type AscendAction, type FrontierSpecStatus } from '../../core/ascend-frontier-engine.js';
 import { assignRound, runParallelRound, type PushOutcome } from '../../core/ascend-frontier-parallel.js';
 import type { CouncilMemberId } from '../../matrix/engines/council-scheduler.js';
 import { RunLedger } from '../../core/run-ledger.js';
@@ -98,6 +99,11 @@ export async function defaultBuildState(cwd: string): Promise<DimState[]> {
   // (the last commit touching the engine source, NOT HEAD — council product commits move HEAD every
   // cycle). A fix to the engine changes this; a ceiling minted by the old engine then re-opens.
   const currentEngineSha = await engineSha(cwd);
+  // CH-027: the dims a human spot-audit has FAILED — these must propagate into this unattended loop.
+  const failedAuditDims = new Set(
+    (await loadAuditQueue(cwd)).filter(e => e.status === 'failed').map(e => e.dimId),
+  );
+  const nowIso = new Date().toISOString();
   const out: DimState[] = [];
   for (const dim of matrix.dimensions) {
     const spec = (dim as unknown as { frontier_spec?: FrontierSpec }).frontier_spec;
@@ -121,16 +127,30 @@ export async function defaultBuildState(cwd: string): Promise<DimState[]> {
       ceiling = null;
     }
     const d = dim as unknown as { capability_test?: unknown; outcomes?: unknown[] };
+    // decisionDimScore, NOT effectiveDimScore: a dim that declares outcomes but has no fresh
+    // evidence at this SHA must read as UNVERIFIED (≤5), never coast on its stale self-claim.
+    // effectiveDimScore falls back to raw self when derived is unset — on DanteAgents every
+    // sub-7 dim snapped to a stale-high self after HEAD moved, so planNextAction returned a
+    // premature 'done' after ONE unproductive cycle. The planner is a WORK decision; it uses
+    // the work-decision score.
+    const score = decisionDimScore(dim as Parameters<typeof decisionDimScore>[0]);
+    // CH-027: a FAILED human spot-audit propagates here — it can never read as a validated 9, and
+    // the loop stops re-pushing it (an honest, re-openable audit-failed ceiling) instead of spinning
+    // on a frozen dim forever. A resolved (confirmed) audit clears the ceiling and re-opens the dim.
+    let frontierStatus: FrontierSpecStatus = spec ? effectiveStatus(spec) : 'none';
+    const verdict = reconcileAuditVerdict({
+      dimId: dim.id, frontierStatus, ceiling, score, hasFailedAudit: failedAuditDims.has(dim.id), nowIso,
+    });
+    frontierStatus = verdict.frontierStatus;
+    ceiling = verdict.ceiling;
+    if (verdict.mintedCeiling) {
+      logger.info(`[ascend-frontier] ${dim.id}: human audit FAILED — writing an audit-failed ceiling; the loop will stop re-pushing it until it is rebuilt and re-audited as confirmed.`);
+      await writeCeilingReceipt(cwd, verdict.mintedCeiling);
+    }
     out.push({
       id: dim.id,
-      // decisionDimScore, NOT effectiveDimScore: a dim that declares outcomes but has no fresh
-      // evidence at this SHA must read as UNVERIFIED (≤5), never coast on its stale self-claim.
-      // effectiveDimScore falls back to raw self when derived is unset — on DanteAgents every
-      // sub-7 dim snapped to a stale-high self after HEAD moved, so planNextAction returned a
-      // premature 'done' after ONE unproductive cycle. The planner is a WORK decision; it uses
-      // the work-decision score.
-      effectiveScore: decisionDimScore(dim as Parameters<typeof decisionDimScore>[0]),
-      frontierStatus: spec ? effectiveStatus(spec) : 'none',
+      effectiveScore: score,
+      frontierStatus,
       ceiling,
       attempts: ledger.filter(a => a.dimId === dim.id).length,
       isMarketCapped: MARKET_DIMS.has(dim.id),

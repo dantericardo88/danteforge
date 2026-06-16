@@ -59,6 +59,50 @@ export function isDimDone(d: DimState, nowIso: string): boolean {
   return d.ceiling != null && isCeilingActive(d.ceiling, nowIso);
 }
 
+/**
+ * CH-027: fold a human spot-audit verdict into a dim's loop state (pure).
+ *
+ * A FAILED human audit means a reviewer rejected this dim's frontier validation — so it must never
+ * read as a validated frontier 9, and the unattended loop must STOP re-pushing it (recording WHY)
+ * until the audit is resolved, instead of spinning on a frozen dim forever. This returns the
+ * reconciled { frontierStatus, ceiling }; when it must MINT a fresh audit-failed ceiling it also
+ * returns `mintedCeiling` so the (impure) caller can persist it. When the audit is no longer
+ * failing, a lingering audit-failed ceiling is cleared — the dim re-opens (self-correction).
+ */
+export function reconcileAuditVerdict(input: {
+  dimId: string;
+  frontierStatus: FrontierSpecStatus;
+  ceiling: CeilingReceipt | null;
+  /** Honest score the dim is held at if a ceiling must be minted. */
+  score: number;
+  hasFailedAudit: boolean;
+  nowIso: string;
+}): { frontierStatus: FrontierSpecStatus; ceiling: CeilingReceipt | null; mintedCeiling: CeilingReceipt | null } {
+  let frontierStatus = input.frontierStatus;
+  const ceiling = input.ceiling;
+  if (input.hasFailedAudit) {
+    // A human rejected the validation: never let it short-circuit isDimDone via 'validated'.
+    if (frontierStatus === 'validated') frontierStatus = 'frozen';
+    if (!ceiling || ceiling.cause !== 'audit-failed') {
+      const minted: CeilingReceipt = {
+        dimId: input.dimId,
+        cap: Math.min(input.score, 8.0),
+        cause: 'audit-failed',
+        detail: `Human audit FAILED — a reviewer rejected this dim's frontier validation. Re-build the evidence and re-audit (\`danteforge frontier-audit ${input.dimId} --confirm\`) to re-open.`,
+        failedGates: ['human-audit'],
+        recordedAt: input.nowIso,
+      };
+      return { frontierStatus, ceiling: minted, mintedCeiling: minted };
+    }
+    return { frontierStatus, ceiling, mintedCeiling: null };
+  }
+  // No failed audit. A lingering audit-failed ceiling means the audit was resolved → re-open the dim.
+  if (ceiling?.cause === 'audit-failed') {
+    return { frontierStatus, ceiling: null, mintedCeiling: null };
+  }
+  return { frontierStatus, ceiling, mintedCeiling: null };
+}
+
 export function planNextAction(dims: DimState[], opts: PlanOpts): AscendAction {
   const target = opts.buildTarget ?? 7.0;
   const maxBuild = opts.maxBuildAttempts ?? opts.maxAttemptsPerDim;

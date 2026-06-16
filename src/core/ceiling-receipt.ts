@@ -20,9 +20,12 @@ export type CeilingCause =
   | 'build-failed'      // the build/evidence/court sub-command FAILED TO RUN (crash / no evidence) — NOT a
                         // court rejection. An operational blocker, re-attempt after fixing the build. The
                         // engine must never record a failed-to-run push as 'generator-ceiling'/'court-rejected'.
-  | 'spec-incomplete';  // the dim's frontier_spec is missing genuinely-human real-user-path fields
+  | 'spec-incomplete'   // the dim's frontier_spec is missing genuinely-human real-user-path fields
                         // (observed_capability / category_delta / observable artifact) — the loop auto-derived
                         // what it honestly could; reaching 9.0 requires authoring the rest. Actionable + re-openable.
+  | 'audit-failed';     // CH-027: a HUMAN spot-audit rejected this dim's frontier validation. Distinct from
+                        // 'court-rejected' (the automated court) — it records that a PERSON judged the evidence
+                        // not genuine. Re-openable: cleared once the audit is resolved (re-audited as confirmed).
 
 export interface CeilingReceipt {
   dimId: string;
