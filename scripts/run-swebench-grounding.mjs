@@ -41,6 +41,7 @@ const runId = opt('--run-id', `dfground${offset}_${limit}`);
 const work = opt('--work', 'X:/tmp/swebench-work');
 const solveTimeoutMs = Number(opt('--solve-timeout-ms', '900000')) || 900000;
 const maxIter = Number(opt('--max-iterations', '2')) || 2; // council #2: test-feedback iteration
+const gradeOnly = opt('--grade-only', ''); // CH-035c: resume at the grade step (no re-solve)
 const MODEL_NAME = 'danteforge-agentic';
 
 function fetchJson(url) {
@@ -58,7 +59,13 @@ function sh(cmd, cwd, timeout) {
 }
 
 let instances = [];
-if (spread > 0) {
+if (gradeOnly) {
+  for (const l of readFileSync(gradeOnly, 'utf8').split('\n')) {
+    const t = l.trim(); if (!t) continue;
+    try { instances.push({ instance_id: JSON.parse(t).instance_id, repo: '', base_commit: '', problem_statement: '' }); } catch { /* skip malformed line */ }
+  }
+  console.error(`[swebench] --grade-only: grading ${instances.length} existing prediction(s) from ${gradeOnly} (no re-solve)`);
+} else if (spread > 0) {
   const step = Math.max(1, Math.floor(DATASET_SIZE / spread));
   console.error(`[swebench] CROSS-REPO sample: ${spread} instances at offsets spaced by ${step} across ${DATASET_SIZE}…`);
   for (let k = 0; k < spread; k++) {
@@ -74,10 +81,10 @@ if (instances.length === 0) { console.error('[swebench] no instances parsed'); p
 console.error(`[swebench] repos in sample: ${[...new Set(instances.map(i => i.repo))].join(', ')}`);
 
 mkdirSync(work, { recursive: true });
-const predictionsPath = join(work, `predictions-${runId}.jsonl`);
+const predictionsPath = gradeOnly || join(work, `predictions-${runId}.jsonl`);
 const predLines = [];
 
-for (const inst of instances) {
+for (const inst of (gradeOnly ? [] : instances)) {
   const si = toSolverInput(inst);
   const repoDir = join(work, inst.instance_id.replace(/[^\w.-]/g, '_'));
   console.error(`\n[swebench] ${inst.instance_id} (${inst.repo}@${inst.base_commit.slice(0, 8)})`);
@@ -114,8 +121,10 @@ for (const inst of instances) {
   }
 }
 
-writeFileSync(predictionsPath, predLines.join('\n') + '\n', 'utf8');
-console.error(`\n[swebench] wrote ${predLines.length} prediction(s) → ${predictionsPath}`);
+if (!gradeOnly) {
+  writeFileSync(predictionsPath, predLines.join('\n') + '\n', 'utf8');
+  console.error(`\n[swebench] wrote ${predLines.length} prediction(s) → ${predictionsPath}`);
+}
 
 // GRADE via the LINUX ORCHESTRATOR (CH-034): a Windows host CRLF-corrupts the harness's eval.sh/patch
 // inside the per-instance containers, so we run the ORCHESTRATOR itself in a Linux container (LF-native,
