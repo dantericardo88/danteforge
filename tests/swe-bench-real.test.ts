@@ -61,9 +61,15 @@ test('formatPassRateLine is parsePassRate-compatible (JSON pass_rate shape)', ()
   assert.ok(/^0\.333/.test(String(o.pass_rate)));
 });
 
-test('datasetRowsUrl targets the REAL published SWE-bench-lite dataset', () => {
+test('datasetRowsUrl targets the REAL published SWE-bench dataset (default Lite, test split)', () => {
   const u = datasetRowsUrl(0, 5);
-  assert.match(u, /princeton-nlp%2FSWE-bench_Lite/);
+  assert.match(u, /SWE-bench%2FSWE-bench_Lite/);
   assert.match(u, /offset=0&length=5/);
   assert.match(u, /split=test/);
+});
+
+test('datasetRowsUrl supports the contamination-resistant SWE-bench-Live (lite split)', () => {
+  const u = datasetRowsUrl(0, 5, 'SWE-bench-Live/SWE-bench-Live', 'lite');
+  assert.match(u, /SWE-bench-Live%2FSWE-bench-Live/);
+  assert.match(u, /split=lite/);
 });
