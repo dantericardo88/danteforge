@@ -12,6 +12,10 @@ export default [
       '.danteforge-worktrees/**',
       'vscode-extension/dist/**',
       'vscode-extension/node_modules/**',
+      // Workflow runtime scripts use a top-level `return` (valid in the Workflow
+      // executor, illegal to ESLint's module parser). They are not part of the
+      // lintable source surface — exclude rather than mangle the control flow.
+      'scripts/**/*.workflow.js',
     ],
   },
   {
