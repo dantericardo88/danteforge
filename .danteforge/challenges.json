@@ -337,8 +337,10 @@
     "problem": "The proposed 'SWE-bench runner wrapper over DanteCode/packages/swe-bench-runner' is a DEAD END: that package ships 25 SELF-AUTHORED trivial functions (add/isPrime/chunk) hardcoded in src/index.ts (BUILTIN_INSTANCES), runs them VM-only (no git/repo/docker), and has no solver hook. Grounding on it would be FAKE (self-authored instances are not external). Real SWE-bench-lite = 300 real GitHub issues + repos + test patches needing per-instance repo checkout + real test envs (docker), which is Linux-hostile on this Windows box. So a HARD external-grounding frontier is gated on real benchmark infrastructure, not a quick wrapper.",
     "evidence": "Explore map of X:/Projects/DanteCode/packages/swe-bench-runner/src/index.ts: BUILTIN_INSTANCES lines 43-169 (25 toy fns), runTestPatch VM-only lines 186-220, no solver seam; external-benchmark-runner.ts comment already warned 'unlike the swe-bench-runner toy built-ins'.",
     "opportunity": "Honest paths: (a) build a REAL swe-bench eval (download swe-bench-lite dataset, clone repos at base_commit, apply solver patch, run FAIL_TO_PASS tests) — a major effort tied to CH-008 (Linux CI), not a quick build; (b) MBPP runner (registered, real, larger than HumanEval, but also saturated) as a second real-but-saturated grounding; (c) accept HumanEval grounding as honest-but-saturated and name the hard-frontier infra gap explicitly. Do NOT ground on the toy package. Links CH-008.",
-    "status": "open",
-    "openedAt": "2026-06-16T19:01:09.873Z"
+    "status": "solved",
+    "openedAt": "2026-06-16T19:01:09.873Z",
+    "resolution": "Real SWE-bench infra BUILT + PROVEN (gold 1/1 via the Linux orchestrator, CH-034). swe-bench-real.ts (real dataset, no-answer-leak) + run-swebench-grounding.mjs (fetch real instances -> agentic solver edits files [validated: claude -p edits + git diff] -> official Linux-orchestrated docker grader). The toy @dantecode package is never used. Remaining is NOT infra — it's the solver CAPABILITY CLIMB (does DanteForge resolve real issues; honest start near 0), which is the frontier itself, not a challenge to close.",
+    "resolvedAt": "2026-06-16T19:33:31.164Z"
   },
   {
     "id": "CH-034",
@@ -346,7 +348,9 @@
     "problem": "The official swebench harness EXECUTES on Windows (docker daemon + resource shim proven: it ran astropy__astropy-12907 in a real container, 4m25s, 0 errors). BUT gold predictions came back UNRESOLVED because the Windows HOST writes eval.sh + the patch with CRLF line endings, which corrupt inside the Linux container: test_output.txt shows pathspec 'test_separable.py?' (stray \\r), 'patch does not apply', and '/eval.sh: line 55: pytest: command not found' (mangled conda activation). So a Windows host cannot correctly DRIVE the harness even with docker — the ORCHESTRATOR itself must be Linux (LF-native).",
     "evidence": "logs/run_evaluation/goldcheck2/gold/astropy__astropy-12907/test_output.txt: 'test_separable.py?' + 'patch does not apply' + 'pytest: command not found'; gold.goldcheck2.json resolved 0/1. WSL present but only the docker-desktop appliance distro (no general Linux).",
     "opportunity": "Run the harness in a LINUX env that talks to the host docker daemon: (a) a Linux container with docker-socket passthrough (-v //var/run/docker.sock:/var/run/docker.sock + python+swebench installed) running the eval with LF-native files — the standard swebench-on-Windows path; (b) install a real WSL distro (Ubuntu) + swebench; (c) a Linux CI runner (the durable CH-008 answer). This is the concrete, diagnosed CH-008 — not an assumed wall. The real harness + agentic solver are built; only the orchestrator platform remains.",
-    "status": "open",
-    "openedAt": "2026-06-16T19:24:17.881Z"
+    "status": "solved",
+    "openedAt": "2026-06-16T19:24:17.881Z",
+    "resolution": "BUILT + GOLD-VALIDATED 1/1. scripts/swebench-orch/{Dockerfile,grade.sh}: a Linux orchestrator (python:3.11-slim + swebench 4.1.0) runs the official harness IN LINUX (LF-native files fix CRLF, native resource, host-daemon via socket passthrough). Gold for astropy__astropy-12907 resolved 1/1 (✓=1 ✖=0 error=0) — the CRLF blocker is fully solved and the real grader works end-to-end on this Windows box. run-swebench-grounding.mjs grades via this orchestrator.",
+    "resolvedAt": "2026-06-16T19:33:30.976Z"
   }
 ]
