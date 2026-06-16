@@ -309,7 +309,9 @@
     "problem": "competitor-intel-fetcher.ts (fetchGitHubIssues/fetchHackerNewsMentions/fetchRedditMentions) fetches real competitor-weakness/demand signals but dead-ends at a console table + JSON report (intel.ts saveIntelReport). src/dossier/fetcher.ts fetches real per-competitor capability dossiers with quotes + per-dim scores but dossierToEvidence never calls addOrUpdateCompetitor, so the NUMERIC leader_target.score stays hardcoded (competitor-baselines.ts, every entry source:'hardcoded'). The harvest happens; nothing connects it to the bar.",
     "evidence": "define-and-reach-9 feasibility map (wn7e7rijh, autoresearch/competitor map, 2026-06-16): intel signals -> scoreOpportunities -> report dead-end; dossier scores -> EvidenceRecords only, no addOrUpdateCompetitor call.",
     "opportunity": "Build a harvest->signals adapter that reads .danteforge/dossiers/*.json (capability signals) + the intel report (demand signals) + a leaderboard fetch (benchmark signals) into HarvestedSignal[], feeding seedLeaderTargetFromHarvest. This is the bridge from the live harvesters to the keystone bar-writer (harvested-bar.ts) -- the next wiring increment.",
-    "status": "open",
-    "openedAt": "2026-06-16T17:44:02.191Z"
+    "status": "solved",
+    "openedAt": "2026-06-16T17:44:02.191Z",
+    "resolution": "RESOLVED (c506e32/693af58 + this finding): the harvest->bar bridge (harvest-to-signals.ts) + live wiring (harvest-loader -> frontier-spec init) are shipped. KEY FINDING: the dossier path is a RED HERRING — dossiers score code-tool competitors on the DIMENSIONS_28 code-editing rubric (ghost_text_fim/chat_ux/agentic_edit), a DIFFERENT domain from DanteForge's matrix dims (functionality/autonomy/depth_doctrine); no honest deterministic map exists, so auto-wiring them would fabricate a mapping (correctly NOT done). The clean harvest sources for the matrix bar are intel (demand, keys by matrix dim id, wired) + benchmark leaderboards (objective anchor, loader source added). Real intel/leaderboard harvest RUN remains operator/loop-triggered.",
+    "resolvedAt": "2026-06-16T18:18:11.138Z"
   }
 ]

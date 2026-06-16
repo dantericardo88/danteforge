@@ -5,7 +5,7 @@
 > Entries are never silently deleted: a challenge is open, solved (with the commit), or
 > retired (with the reason). An empty OPEN section is a smell, not an achievement.
 
-## Open (14)
+## Open (13)
 
 ### CH-006: Cycle economics: tiny payload per hour
 - **Problem:** A push attempt costs ~60min of orchestration + LLM for 2-3 file diffs; overhead dominates real building.
@@ -85,13 +85,7 @@
 - **Opportunity:** Bind the build-eligible roster into the receipt: verifyValidation rejects any receipt whose judge_member_ids intersect the build-eligible set. Tension: verifyValidation is SYNC (applyFrontierGate is a hot sync read path) while the roster needs discoverCouncil (async) — either snapshot the roster into the receipt at mint time (record was_builder=false per judge, signed) or accept an async verify on the write/save path only. Prefer snapshotting non-builder attestation INTO the signed receipt so the sync read-gate stays pure.
 - Opened: 2026-06-15
 
-### CH-031: Already-built harvesters are dead-ended: intel + dossier scores never reach the frontier bar
-- **Problem:** competitor-intel-fetcher.ts (fetchGitHubIssues/fetchHackerNewsMentions/fetchRedditMentions) fetches real competitor-weakness/demand signals but dead-ends at a console table + JSON report (intel.ts saveIntelReport). src/dossier/fetcher.ts fetches real per-competitor capability dossiers with quotes + per-dim scores but dossierToEvidence never calls addOrUpdateCompetitor, so the NUMERIC leader_target.score stays hardcoded (competitor-baselines.ts, every entry source:'hardcoded'). The harvest happens; nothing connects it to the bar.
-- **Evidence:** define-and-reach-9 feasibility map (wn7e7rijh, autoresearch/competitor map, 2026-06-16): intel signals -> scoreOpportunities -> report dead-end; dossier scores -> EvidenceRecords only, no addOrUpdateCompetitor call.
-- **Opportunity:** Build a harvest->signals adapter that reads .danteforge/dossiers/*.json (capability signals) + the intel report (demand signals) + a leaderboard fetch (benchmark signals) into HarvestedSignal[], feeding seedLeaderTargetFromHarvest. This is the bridge from the live harvesters to the keystone bar-writer (harvested-bar.ts) -- the next wiring increment.
-- Opened: 2026-06-16
-
-## Resolved (17)
+## Resolved (18)
 
 - **CH-001: Blind retry - dissent never reached the builder** — solved 2026-06-12: solved: court-feedback.ts + composeBuildGoal (commit feat(court): verdict->builder feedback)
 - **CH-002: Bar-goal disconnect** — solved 2026-06-12: solved: the frozen ladder bar is now in every push build goal (same commit)
@@ -110,3 +104,4 @@
 - **CH-024: Pillar-2 pre-commit enforcement is not installed (only the LOC gate is)** — solved 2026-06-15: Commit a5b73aa: install-git-hooks.ts now chains hooks/pre-commit.mjs (idempotent guards block; upgrades a loc-only hook). Re-installed live + DoD proven: matrix.json blocked without merge-receipt; //TODO in src blocked; normal change passes. Safe activation: Phase A warns-when-absent, tsc opt-out via DANTEFORGE_SKIP_PRECOMMIT_TSC. install-git-hooks.test.ts pins the upgrade path.
 - **CH-029: Solver-fidelity: the grounding receipt measures raw 'claude -p', not DanteForge's pipeline** — solved 2026-06-16: 0510458: pipeline-solver.ts — DanteForge's iterate-to-green loop as the --solver-mode pipeline (generate→check visible doctests→feed-back→regenerate); proven 5/5 end-to-end with the live model. The runner now measures DanteForge's orchestration, not raw claude -p. Full-scale pipeline-mode receipt is the receipt-minting step (Stage 5/6).
 - **CH-030: Harvested signals must be kernel-signed (CH-025 pattern) so verified_live/ratified_by can't be self-set** — solved 2026-06-16: 9094089: harvested-signal-signer.ts (signHarvestedSignal/verify, kernel-secret HMAC, CH-025 pattern) + checkHarvestProvenance requireSigned gate (DANTEFORGE_REQUIRE_SIGNED_EVIDENCE lockstep). verified_live/ratified_by now forgery-resistant: a false→true flip invalidates the signature. 166 integrity pins.
+- **CH-031: Already-built harvesters are dead-ended: intel + dossier scores never reach the frontier bar** — solved 2026-06-16: RESOLVED (c506e32/693af58 + this finding): the harvest->bar bridge (harvest-to-signals.ts) + live wiring (harvest-loader -> frontier-spec init) are shipped. KEY FINDING: the dossier path is a RED HERRING — dossiers score code-tool competitors on the DIMENSIONS_28 code-editing rubric (ghost_text_fim/chat_ux/agentic_edit), a DIFFERENT domain from DanteForge's matrix dims (functionality/autonomy/depth_doctrine); no honest deterministic map exists, so auto-wiring them would fabricate a mapping (correctly NOT done). The clean harvest sources for the matrix bar are intel (demand, keys by matrix dim id, wired) + benchmark leaderboards (objective anchor, loader source added). Real intel/leaderboard harvest RUN remains operator/loop-triggered.
