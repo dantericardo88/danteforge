@@ -9,9 +9,15 @@ honest verdict. This doc specifies it precisely so the run is a clean, well-defi
 - `src/matrix/engines/swe-bench-grounding.ts` — the **generic grounding harness core**. Pure + seamed:
   it takes instances + a `solve` (agent) + a `runTest` (sandbox), **withholds the gold answer from the
   solver**, runs each candidate, and aggregates an honest `pass_rate`. `formatPassRateLine` emits the
-  JSON `"pass_rate"` line that `external-benchmark-runner.parsePassRate` reads.
-- `tests/swe-bench-grounding.test.ts` — 6 tests: gold-withholding, perfect→1.0, wrong→0, partial→fraction,
-  throwing-solver→unresolved (never a silent pass), and a parsePassRate round-trip.
+  JSON `"pass_rate"` line that `external-benchmark-runner.parsePassRate` reads. (6 tests.)
+- `src/matrix/engines/humaneval-grounding.ts` — the **REAL HumanEval runner**: loader + a Python sandbox
+  (`prompt + completion + test + check(entry_point)`) + aggregation. The canonical solution is withheld
+  from the solver. **7 tests, including real Python execution** (canonical→pass, wrong→fail).
+- `scripts/run-humaneval-grounding.mjs` — the **one-command grounding run**. `--verify-gold` proves the
+  runner on the real dataset at ZERO compute; the default `--solver "claude -p"` is the real (compute) run.
+- **PROVEN end-to-end (zero compute):** `--verify-gold` over the real 164-problem HumanEval set →
+  **164/164 resolved, pass_rate 1.0**. The full chain (load → assemble → Python exec → aggregate →
+  pass_rate line) works on real data. Only the agent solver (compute) + the human anchor remain.
 
 ## The honesty constraints (do NOT shortcut these)
 
@@ -70,10 +76,14 @@ honest verdict. This doc specifies it precisely so the run is a clean, well-defi
 These cannot be automated: an agent that picks its own suite or softens its own bar is self-grading. This
 is the "human governs the anchor" residue — minutes of judgment, after which the loop runs the rest.
 
-## Run, once ratified
+## Run, once ratified (now a one-command step — the runner is built + proven)
 
-1. Wire `scripts/run-humaneval-grounding.mjs`: load the real HumanEval dataset, `solve` = DanteForge agent,
-   `runTest` = the HumanEval Python harness, print `formatPassRateLine(report)`.
-2. Register the dimension above (with the ratified `leader_target` + `min_pass_rate`).
-3. `node scripts/sign-outcome-evidence.mjs && DANTEFORGE_REQUIRE_SIGNED_EVIDENCE=1 danteforge validate code_generation`
-4. Confirm `externalGroundingReport().weightedGroundingRatio > 0` — the verdict has changed.
+1. Get the dataset: `data/HumanEval.jsonl.gz` from https://github.com/openai/human-eval.
+2. (optional sanity) `node scripts/run-humaneval-grounding.mjs --data HumanEval.jsonl.gz --verify-gold` → ~1.0.
+3. Real run (COMPUTE — one agent call per problem; `--limit N` for a cheap first pass):
+   `node scripts/run-humaneval-grounding.mjs --data HumanEval.jsonl.gz --solver "claude -p"` → the honest pass_rate.
+4. Register the `code_generation` dimension above with the **ratified** `leader_target` + `min_pass_rate`,
+   its `command` set to the step-3 invocation.
+5. Close the surface, then validate:
+   `node scripts/sign-outcome-evidence.mjs && DANTEFORGE_REQUIRE_SIGNED_EVIDENCE=1 danteforge validate code_generation`
+6. Confirm `externalGroundingReport().weightedGroundingRatio > 0` — the verdict has changed.
