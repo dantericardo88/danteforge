@@ -5,7 +5,7 @@
 > Entries are never silently deleted: a challenge is open, solved (with the commit), or
 > retired (with the reason). An empty OPEN section is a smell, not an achievement.
 
-## Open (13)
+## Open (16)
 
 ### CH-006: Cycle economics: tiny payload per hour
 - **Problem:** A push attempt costs ~60min of orchestration + LLM for 2-3 file diffs; overhead dominates real building.
@@ -84,6 +84,24 @@
 - **Evidence:** src/core/frontier-spec.ts signValidation/verifyValidation (sign only dimId|hash|judges); src/cli/commands/frontier-review.ts receipt minting (judge_member_ids = PASS judges).
 - **Opportunity:** Bind the build-eligible roster into the receipt: verifyValidation rejects any receipt whose judge_member_ids intersect the build-eligible set. Tension: verifyValidation is SYNC (applyFrontierGate is a hot sync read path) while the roster needs discoverCouncil (async) — either snapshot the roster into the receipt at mint time (record was_builder=false per judge, signed) or accept an async verify on the write/save path only. Prefer snapshotting non-builder attestation INTO the signed receipt so the sync read-gate stays pure.
 - Opened: 2026-06-15
+
+### CH-029: Solver-fidelity: the grounding receipt measures raw 'claude -p', not DanteForge's pipeline
+- **Problem:** run-humaneval-grounding.mjs shells 'claude -p' once per problem with heuristic body-extraction (scripts/run-humaneval-grounding.mjs ~line 70). That is NOT DanteForge's specify->capability_test->forge orchestration. So a minted external-benchmark receipt would be HONEST about a capability but MISLABELED about WHOSE: it grounds one-shot claude-p, while docs/PHASE2_GROUNDING_DIMENSION.md (~line 31-33) claims 'the solver is DanteForge's own pipeline'. Council (claude-code judge) flagged this as the one unresolved gap; the live 164 run currently in flight measures raw claude, not the orchestrated pipeline.
+- **Evidence:** scripts/run-humaneval-grounding.mjs solver default 'claude -p'; docs/PHASE2_GROUNDING_DIMENSION.md solver claim; council ask b1c3r3w9k (claude-code judge, 2026-06-16).
+- **Opportunity:** Two honest resolutions: (a) when the first receipt lands, LABEL it accurately ('one-shot claude -p on HumanEval', not 'DanteForge code generation') and set leader_target accordingly; OR (b) wire DanteForge's real specify/forge pipeline as the --solver so the receipt measures the orchestration the dimension claims. (b) is the start of the SOLVER/capability axis the council says the next effort belongs to (NOT more integrity machinery). Also: HumanEval is ~saturated by frontier models — use SWE-bench-lite/verified as the honest hard bar so ratio>0 doesn't re-inflate confidence.
+- Opened: 2026-06-16
+
+### CH-030: Harvested signals must be kernel-signed (CH-025 pattern) so verified_live/ratified_by can't be self-set
+- **Problem:** harvested-bar.ts's posture gate (checkHarvestProvenance) is a PURE function over HarvestedSignal records; its forgery-resistance depends on those records being trustworthy. Today nothing stops an agent from writing a signal with verified_live:true / ratified_by:'operator' itself. The gate is correct GIVEN trustworthy signals, but the signal store is not yet kernel-owned/signed.
+- **Evidence:** src/core/harvested-bar.ts TRUST BOUNDARY header; checkHarvestProvenance reads backing.verified_live / backing.ratified_by with no signature check.
+- **Opportunity:** Persist HarvestedSignal[] in a kernel-owned store and sign each record with signOutcomeEvidence/kernelSecret (the CH-025 pattern already used for outcome evidence + frontier validation receipts). The harvester sets verified_live by a real re-fetch; a ratify CLI sets ratified_by + re-signs. Then the bar-grounding chain is forgery-resistant end-to-end.
+- Opened: 2026-06-16
+
+### CH-031: Already-built harvesters are dead-ended: intel + dossier scores never reach the frontier bar
+- **Problem:** competitor-intel-fetcher.ts (fetchGitHubIssues/fetchHackerNewsMentions/fetchRedditMentions) fetches real competitor-weakness/demand signals but dead-ends at a console table + JSON report (intel.ts saveIntelReport). src/dossier/fetcher.ts fetches real per-competitor capability dossiers with quotes + per-dim scores but dossierToEvidence never calls addOrUpdateCompetitor, so the NUMERIC leader_target.score stays hardcoded (competitor-baselines.ts, every entry source:'hardcoded'). The harvest happens; nothing connects it to the bar.
+- **Evidence:** define-and-reach-9 feasibility map (wn7e7rijh, autoresearch/competitor map, 2026-06-16): intel signals -> scoreOpportunities -> report dead-end; dossier scores -> EvidenceRecords only, no addOrUpdateCompetitor call.
+- **Opportunity:** Build a harvest->signals adapter that reads .danteforge/dossiers/*.json (capability signals) + the intel report (demand signals) + a leaderboard fetch (benchmark signals) into HarvestedSignal[], feeding seedLeaderTargetFromHarvest. This is the bridge from the live harvesters to the keystone bar-writer (harvested-bar.ts) -- the next wiring increment.
+- Opened: 2026-06-16
 
 ## Resolved (15)
 

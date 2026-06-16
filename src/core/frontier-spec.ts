@@ -13,6 +13,7 @@ import { join } from 'node:path';
 import { readFileSync, writeFileSync, mkdirSync } from 'node:fs';
 import { isTestSuiteCommand } from '../matrix/engines/outcome-quality.js';
 import type { DimensionRubricLevel } from '../matrix/types/dimension-graph.js';
+import { checkHarvestProvenance, type HarvestedSignal } from './harvested-bar.js';
 
 export type FrontierSpecStatus = 'draft' | 'frozen' | 'validated' | 'stale';
 
@@ -391,11 +392,25 @@ export function applyGroundingGate(
  * Honesty guardrails. A frontier_spec must define a REAL target, not an easy one.
  * `competitors` is the matrix's tracked competitor list (closed + oss).
  */
-export function checkFrontierSpec(spec: FrontierSpec, competitors: string[], rubric: DimensionRubricLevel[] = []): FrontierCheckResult {
+export function checkFrontierSpec(
+  spec: FrontierSpec,
+  competitors: string[],
+  rubric: DimensionRubricLevel[] = [],
+  signals: HarvestedSignal[] = [],
+): FrontierCheckResult {
   const errors: string[] = [];
   const warnings: string[] = [];
   const lt = spec.leader_target;
   const rup = spec.real_user_path;
+
+  // The KEYSTONE gate (harvested-bar.ts): when the grounding gate is on, a >7 bar must trace to
+  // HARVESTED external feedback, not self-authored Score Ladder prose. No-op when no signals are
+  // supplied (legacy callers) or the gate is off — so it never stalls today's loop.
+  if (signals.length > 0) {
+    const hp = checkHarvestProvenance(spec, signals);
+    errors.push(...hp.errors);
+    warnings.push(...hp.warnings);
+  }
 
   if (!lt.competitor || TODO_RE.test(lt.competitor)) {
     errors.push('leader_target.competitor is empty/TODO — name the real competitor to match.');
