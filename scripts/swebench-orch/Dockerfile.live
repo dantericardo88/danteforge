@@ -1,0 +1,8 @@
+# Linux orchestrator for SWE-bench-LIVE (CH-036). Vanilla swebench==4.1.0 KeyErrors on Live's 93 repos
+# (no repo specs). The microsoft/SWE-bench-Live harness is a FORK of swebench (same `swebench.harness`
+# module path) that adds the Live repo specs. Install it from git so the harness can grade Live instances;
+# everything else (docker-socket passthrough, LF-native files) is identical to the lite/verified orchestrator.
+FROM python:3.11-slim
+RUN apt-get update && apt-get install -y --no-install-recommends git && rm -rf /var/lib/apt/lists/*
+RUN pip install --no-cache-dir "git+https://github.com/microsoft/SWE-bench-Live.git"
+WORKDIR /work

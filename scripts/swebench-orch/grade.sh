@@ -21,13 +21,22 @@ ensure_docker() {
 }
 ensure_docker || exit 4
 
-docker build -q -t df-swebench-orch "$(dirname "$0")" >/dev/null
+# CH-036: SWE-bench-Live needs the Live HARNESS FORK (vanilla swebench KeyErrors on Live's repos).
+# Pick the orchestrator image by dataset: Live → Dockerfile.live (forked harness); else the vanilla one.
+DIR="$(dirname "$0")"
+if echo "$DATASET" | grep -qi "Live"; then
+  IMG=df-swebench-orch-live
+  docker build -q -t "$IMG" -f "$DIR/Dockerfile.live" "$DIR" >/dev/null
+else
+  IMG=df-swebench-orch
+  docker build -q -t "$IMG" "$DIR" >/dev/null
+fi
 mkdir -p "$REPORTDIR"
 MSYS_NO_PATHCONV=1 docker run --rm \
   -v /var/run/docker.sock:/var/run/docker.sock \
   -v "${PRED}:/work/predictions.jsonl:ro" \
   -v "${REPORTDIR}:/work/out" \
-  df-swebench-orch \
+  "$IMG" \
   sh -c "cd /work/out && python -m swebench.harness.run_evaluation \
     -d '$DATASET' -s '$SPLIT' -n '$NAMESPACE' -p /work/predictions.jsonl \
     -id '$RUN_ID' --max_workers 1 -i $IDS --report_dir /work/out --cache_level env"
