@@ -5,7 +5,7 @@
 > Entries are never silently deleted: a challenge is open, solved (with the commit), or
 > retired (with the reason). An empty OPEN section is a smell, not an achievement.
 
-## Open (10)
+## Open (11)
 
 ### CH-006: Cycle economics: tiny payload per hour
 - **Problem:** A push attempt costs ~60min of orchestration + LLM for 2-3 file diffs; overhead dominates real building.
@@ -66,6 +66,12 @@
 - **Evidence:** src/core/frontier-spec.ts signValidation/verifyValidation (sign only dimId|hash|judges); src/cli/commands/frontier-review.ts receipt minting (judge_member_ids = PASS judges).
 - **Opportunity:** Bind the build-eligible roster into the receipt: verifyValidation rejects any receipt whose judge_member_ids intersect the build-eligible set. Tension: verifyValidation is SYNC (applyFrontierGate is a hot sync read path) while the roster needs discoverCouncil (async) — either snapshot the roster into the receipt at mint time (record was_builder=false per judge, signed) or accept an async verify on the write/save path only. Prefer snapshotting non-builder attestation INTO the signed receipt so the sync read-gate stays pure.
 - Opened: 2026-06-15
+
+### CH-033: A real SWE-bench grounding needs real dataset + repo/test infra (Linux/docker) — the swe-bench-runner package is TOY
+- **Problem:** The proposed 'SWE-bench runner wrapper over DanteCode/packages/swe-bench-runner' is a DEAD END: that package ships 25 SELF-AUTHORED trivial functions (add/isPrime/chunk) hardcoded in src/index.ts (BUILTIN_INSTANCES), runs them VM-only (no git/repo/docker), and has no solver hook. Grounding on it would be FAKE (self-authored instances are not external). Real SWE-bench-lite = 300 real GitHub issues + repos + test patches needing per-instance repo checkout + real test envs (docker), which is Linux-hostile on this Windows box. So a HARD external-grounding frontier is gated on real benchmark infrastructure, not a quick wrapper.
+- **Evidence:** Explore map of X:/Projects/DanteCode/packages/swe-bench-runner/src/index.ts: BUILTIN_INSTANCES lines 43-169 (25 toy fns), runTestPatch VM-only lines 186-220, no solver seam; external-benchmark-runner.ts comment already warned 'unlike the swe-bench-runner toy built-ins'.
+- **Opportunity:** Honest paths: (a) build a REAL swe-bench eval (download swe-bench-lite dataset, clone repos at base_commit, apply solver patch, run FAIL_TO_PASS tests) — a major effort tied to CH-008 (Linux CI), not a quick build; (b) MBPP runner (registered, real, larger than HumanEval, but also saturated) as a second real-but-saturated grounding; (c) accept HumanEval grounding as honest-but-saturated and name the hard-frontier infra gap explicitly. Do NOT ground on the toy package. Links CH-008.
+- Opened: 2026-06-16
 
 ## Resolved (22)
 

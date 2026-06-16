@@ -71,6 +71,14 @@ path that moves `grounding` off 0%. Do these IN ORDER.
    `humaneval` / `mbpp` (see `external-suite-registry.ts`). If NOTHING in the registry measures this
    dim, it cannot be externally grounded today — climb it to the internal-8 ceiling (the court path,
    below) and log it `no-registered-suite`. Do NOT invent a "benchmark".
+   **⚠ A registered suite NAME is not enough — the DATA must be the real published dataset.** Running
+   the suite name `swe-bench-lite` against SELF-AUTHORED toy instances (e.g. a repo's hardcoded
+   `BUILTIN_INSTANCES` of trivial functions, VM-executed, no real repos/tests) is FAKE grounding — the
+   grader authored the problems, so it's self-consistent, not external. The command must run the
+   INDEPENDENT published dataset (real GitHub issues/repos/test patches for swe-bench; the 164/974
+   published problems for humaneval/mbpp). If you only have toy instances, you are NOT grounded — log
+   it `no-real-dataset` and treat the dim as un-grounded. (DanteForge note: the HumanEval runner uses
+   the real OpenAI dataset; the DanteCode swe-bench-runner package is TOY — never ground on it. CH-033.)
 
 1. **HARVEST the bar (read the world's verdict — this is not self-grading).**
    - Demand: `danteforge intel --save` → `.danteforge/compete/weakness-intelligence.json` (GitHub/HN/

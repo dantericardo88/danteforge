@@ -330,5 +330,14 @@
     "openedAt": "2026-06-16T18:44:14.015Z",
     "resolution": "external-grounding.ts isExternallyGrounded now requires a PASSING external-benchmark receipt (isOutcomePassing over loaded OutcomeEvidence at HEAD), not mere declaration; externalGroundingReport takes the evidence snapshot; grounding-cmd loads it via loadOutcomeEvidence. Proven: adding a declared-but-unrun external-benchmark dim no longer flips the ratio (back to 0% until a real receipt passes). Pins: declared-no-receipt=0%, failing-receipt=0%, passing-receipt=grounded.",
     "resolvedAt": "2026-06-16T18:47:32.285Z"
+  },
+  {
+    "id": "CH-033",
+    "title": "A real SWE-bench grounding needs real dataset + repo/test infra (Linux/docker) — the swe-bench-runner package is TOY",
+    "problem": "The proposed 'SWE-bench runner wrapper over DanteCode/packages/swe-bench-runner' is a DEAD END: that package ships 25 SELF-AUTHORED trivial functions (add/isPrime/chunk) hardcoded in src/index.ts (BUILTIN_INSTANCES), runs them VM-only (no git/repo/docker), and has no solver hook. Grounding on it would be FAKE (self-authored instances are not external). Real SWE-bench-lite = 300 real GitHub issues + repos + test patches needing per-instance repo checkout + real test envs (docker), which is Linux-hostile on this Windows box. So a HARD external-grounding frontier is gated on real benchmark infrastructure, not a quick wrapper.",
+    "evidence": "Explore map of X:/Projects/DanteCode/packages/swe-bench-runner/src/index.ts: BUILTIN_INSTANCES lines 43-169 (25 toy fns), runTestPatch VM-only lines 186-220, no solver seam; external-benchmark-runner.ts comment already warned 'unlike the swe-bench-runner toy built-ins'.",
+    "opportunity": "Honest paths: (a) build a REAL swe-bench eval (download swe-bench-lite dataset, clone repos at base_commit, apply solver patch, run FAIL_TO_PASS tests) — a major effort tied to CH-008 (Linux CI), not a quick build; (b) MBPP runner (registered, real, larger than HumanEval, but also saturated) as a second real-but-saturated grounding; (c) accept HumanEval grounding as honest-but-saturated and name the hard-frontier infra gap explicitly. Do NOT ground on the toy package. Links CH-008.",
+    "status": "open",
+    "openedAt": "2026-06-16T19:01:09.873Z"
   }
 ]
