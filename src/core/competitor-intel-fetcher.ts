@@ -133,7 +133,7 @@ export async function fetchGitHubIssues(toolName: string, timeoutMs = 15_000): P
       const text = `${issue.title} ${issue.body?.slice(0, 300) ?? ''}`;
       if (!NEGATIVE_KEYWORDS.test(text) && (issue.reactions['+1'] ?? 0) < 3) continue;
 
-      const { dimensionId, label } = classifyText(text);
+      const { dimensionId } = classifyText(text);
       signals.push({
         tool: toolName,
         source: 'github-issues',
@@ -141,7 +141,7 @@ export async function fetchGitHubIssues(toolName: string, timeoutMs = 15_000): P
         snippet: issue.body?.slice(0, 200) ?? '',
         url: issue.html_url,
         demandScore: (issue.reactions['+1'] ?? 0) + issue.reactions.total_count * 0.5,
-        category: label,
+        category: dimensionId, // Phase 0.2: matrix dim id (was `label` — broke intelToDemandSignals filtering)
         foundAt: new Date().toISOString(),
       });
     }
@@ -174,7 +174,7 @@ export async function fetchHackerNewsMentions(toolName: string, timeoutMs = 15_0
       const text = hit.comment_text ?? '';
       if (!HN_NEGATIVE.test(text)) continue;
 
-      const { dimensionId, label } = classifyText(text);
+      const { dimensionId } = classifyText(text);
       signals.push({
         tool: toolName,
         source: 'hackernews',
@@ -182,7 +182,7 @@ export async function fetchHackerNewsMentions(toolName: string, timeoutMs = 15_0
         snippet: text.slice(0, 250),
         url: hit.story_url ?? `https://news.ycombinator.com/item?id=${hit.objectID}`,
         demandScore: (hit.points ?? 0) + 1,
-        category: label,
+        category: dimensionId, // Phase 0.2: matrix dim id
         foundAt: new Date().toISOString(),
       });
     }
@@ -247,7 +247,7 @@ export async function fetchRedditMentions(toolName: string, timeoutMs = 15_000):
       const text = `${post.title} ${post.selftext?.slice(0, 200) ?? ''}`;
       if (!REDDIT_NEGATIVE.test(text)) continue;
 
-      const { dimensionId: _dim, label } = classifyText(text);
+      const { dimensionId } = classifyText(text);
       signals.push({
         tool: toolName,
         source: 'reddit',
@@ -255,7 +255,7 @@ export async function fetchRedditMentions(toolName: string, timeoutMs = 15_000):
         snippet: post.selftext?.slice(0, 200) ?? '',
         url: `https://reddit.com${post.permalink}`,
         demandScore: Math.max(post.score, 1),
-        category: label,
+        category: dimensionId, // Phase 0.2: matrix dim id
         foundAt: new Date().toISOString(),
       });
     }
@@ -311,7 +311,7 @@ export function scoreOpportunities(
   const opportunities: OpportunityScore[] = [];
   for (const [category, dimSignals] of byDim) {
     const totalDemand = dimSignals.reduce((s, x) => s + x.demandScore, 0);
-    const dimensionId = dimSignals[0]?.tool ? (CATEGORY_PATTERNS.find(p => p.label === category)?.dimensionId ?? 'functionality') : 'functionality';
+    const dimensionId = category || 'functionality'; // Phase 0.2: category now IS the matrix dim id (signals grouped by it above)
     const gap = ourGaps[dimensionId] ?? 0;
     // Opportunity = demand × gap. High demand + big gap = we need this, customers want it.
     const opportunityScore = totalDemand * (1 + gap);
