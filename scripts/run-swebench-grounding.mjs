@@ -31,6 +31,11 @@ const args = process.argv.slice(2);
 const opt = (n, d) => { const i = args.indexOf(n); return i >= 0 ? args[i + 1] : d; };
 const limit = Number(opt('--limit', '1')) || 1;
 const offset = Number(opt('--offset', '0')) || 0;
+// --spread N: sample N instances at evenly-spaced offsets across the dataset (CROSS-REPO — SWE-bench-lite
+// is ordered by repo, so a contiguous window is one repo; a spread samples django/sympy/flask/… for an
+// honest cross-repo signal, not one repo's sub-score).
+const spread = Number(opt('--spread', '0')) || 0;
+const DATASET_SIZE = 300; // SWE-bench-lite test split
 const solverCmd = opt('--solver', 'claude -p');
 const runId = opt('--run-id', `dfground${offset}_${limit}`);
 const work = opt('--work', 'X:/tmp/swebench-work');
@@ -51,10 +56,21 @@ function sh(cmd, cwd, timeout) {
   return spawnSync(cmd, { shell: true, cwd, timeout, encoding: 'utf8', maxBuffer: 64 * 1024 * 1024 });
 }
 
-console.error(`[swebench] fetching ${limit} real instance(s) from SWE-bench_Lite (offset ${offset})…`);
-const rows = await fetchJson(datasetRowsUrl(offset, limit));
-const instances = parseDatasetRows(rows);
+let instances = [];
+if (spread > 0) {
+  const step = Math.max(1, Math.floor(DATASET_SIZE / spread));
+  console.error(`[swebench] CROSS-REPO sample: ${spread} instances at offsets spaced by ${step} across ${DATASET_SIZE}…`);
+  for (let k = 0; k < spread; k++) {
+    const off = Math.min(DATASET_SIZE - 1, k * step);
+    const got = parseDatasetRows(await fetchJson(datasetRowsUrl(off, 1)));
+    if (got[0]) instances.push(got[0]);
+  }
+} else {
+  console.error(`[swebench] fetching ${limit} real instance(s) from SWE-bench_Lite (offset ${offset})…`);
+  instances = parseDatasetRows(await fetchJson(datasetRowsUrl(offset, limit)));
+}
 if (instances.length === 0) { console.error('[swebench] no instances parsed'); process.exit(2); }
+console.error(`[swebench] repos in sample: ${[...new Set(instances.map(i => i.repo))].join(', ')}`);
 
 mkdirSync(work, { recursive: true });
 const predictionsPath = join(work, `predictions-${runId}.jsonl`);
