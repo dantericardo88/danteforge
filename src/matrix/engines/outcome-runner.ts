@@ -213,7 +213,19 @@ export async function runOneOutcome(options: RunOutcomeOptions): Promise<Outcome
     await recordOutcomeEvidenceCommit(entry, cwd, options._createTimeMachineCommit);
     return entry;
   }
-  // 'external-benchmark' and 'telemetry' fall through to shell mode for now (Phase H Slice 2 follow-up).
+  // external-benchmark: run the registered suite + ENFORCE min_pass_rate (master-plan Phase 1b) — no
+  // longer a bare exit-0 shell fall-through. ('telemetry' still falls through; runner not yet implemented.)
+  if (kind === 'external-benchmark') {
+    const { runExternalBenchmarkOutcome } = await import('./external-benchmark-runner.js');
+    const xbOutcome = outcome as import('../types/outcome.js').ExternalBenchmarkOutcome;
+    const entry = await runExternalBenchmarkOutcome(xbOutcome, options.dimensionId, cwd, { _readGitSha: async () => gitSha });
+    entry.evidencePath = evidencePath;
+    stampEvidenceTier(entry, outcome);
+    tagEvidenceQuality(entry, xbOutcome.command, options.dimensionId, cwd);
+    await writeFn(evidencePath, JSON.stringify(entry, null, 2));
+    await recordOutcomeEvidenceCommit(entry, cwd, options._createTimeMachineCommit);
+    return entry;
+  }
 
   // Runtime quality outcome kinds — spawn real CLI, run real tests, exercise real workflows.
   if (kind === 'cli-smoke') {
