@@ -39,7 +39,7 @@ let _kernelSecret: string | null = null;
  *  read-time gate synchronous. NOTE: on a single machine an agent with filesystem read CAN read this
  *  file; the signature still raises forgery from a one-field edit to "read a non-obvious secret + compute
  *  an HMAC", blocks committed/cross-machine forgeries, and is the seam a hardware/remote signer slots into. */
-function kernelSecret(): string {
+export function kernelSecret(): string {
   if (_kernelSecret) return _kernelSecret;
   const file = join(homedir(), '.danteforge', 'kernel-secret');
   try {

@@ -289,6 +289,14 @@ export interface OutcomeEvidenceEntry {
    * evidence from ≥2 distinct sessions — a single run cannot self-certify at T7.
    */
   session_id?: string;
+  /**
+   * CH-025: HMAC-SHA256 over the receipt's factual content (every field except `sig` and the
+   * machine-local `evidencePath`), keyed by the out-of-repo kernel secret. The outcome-runner
+   * writes it; loadOutcomeEvidence verifies it. A receipt whose `sig` does not match its content
+   * was edited after signing and is rejected — so a derived score is a read-only projection of
+   * receipts the kernel produced, not hand-authored JSON. See core/outcome-evidence-signer.ts.
+   */
+  sig?: string;
 }
 
 /**

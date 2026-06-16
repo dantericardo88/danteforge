@@ -22,6 +22,7 @@ import {
   type OutcomeEvidenceEntry,
 } from '../types/outcome.js';
 import { isEvidenceStale } from '../types/capability-test.js';
+import { signOutcomeEvidence, verifyOutcomeEvidenceSignature } from '../../core/outcome-evidence-signer.js';
 import { stampEvidenceTier } from './outcome-quality.js';
 import { MARKET_CAPPED_DIMS } from '../../core/market-dims.js';
 import { toolchainEnv } from '../../core/toolchain-path.js';
@@ -151,6 +152,12 @@ function evidencePathFor(cwd: string, gitSha: string | null, dimensionId: string
   return path.join(cwd, OUTCOME_EVIDENCE_DIR, `${sha}-${safeDim}-${safeId}.json`);
 }
 
+/** CH-025: serialize an evidence entry WITH its kernel signature. EVERY evidence write goes through
+ *  this, so a receipt's factual fields are tamper-evident and loadOutcomeEvidence can verify them. */
+function serializeSignedEvidence(entry: OutcomeEvidenceEntry): string {
+  return JSON.stringify({ ...entry, sig: signOutcomeEvidence(entry) }, null, 2);
+}
+
 // Every receipt write below goes through stampEvidenceTier (outcome-quality.ts):
 // the receipt carries the tier its evidence genuinely supports, so the load-time
 // freshness gate (loadOutcomeEvidence) decays it on the SAME window the scoring
@@ -209,7 +216,7 @@ export async function runOneOutcome(options: RunOutcomeOptions): Promise<Outcome
     const entry = freshResultToEvidence(freshOutcome, options.dimensionId, result, gitSha, evidencePath, Date.now() - start);
     stampEvidenceTier(entry, outcome);
     tagEvidenceQuality(entry, (freshOutcome as { command?: string }).command, options.dimensionId, cwd);
-    await writeFn(evidencePath, JSON.stringify(entry, null, 2));
+    await writeFn(evidencePath, serializeSignedEvidence(entry));
     await recordOutcomeEvidenceCommit(entry, cwd, options._createTimeMachineCommit);
     return entry;
   }
@@ -222,7 +229,7 @@ export async function runOneOutcome(options: RunOutcomeOptions): Promise<Outcome
     entry.evidencePath = evidencePath;
     stampEvidenceTier(entry, outcome);
     tagEvidenceQuality(entry, xbOutcome.command, options.dimensionId, cwd);
-    await writeFn(evidencePath, JSON.stringify(entry, null, 2));
+    await writeFn(evidencePath, serializeSignedEvidence(entry));
     await recordOutcomeEvidenceCommit(entry, cwd, options._createTimeMachineCommit);
     return entry;
   }
@@ -238,7 +245,7 @@ export async function runOneOutcome(options: RunOutcomeOptions): Promise<Outcome
     entry.evidencePath = evidencePath;
     stampEvidenceTier(entry, outcome);
     tagEvidenceQuality(entry, (smokeOutcome as { command?: string }).command, options.dimensionId, cwd);
-    await writeFn(evidencePath, JSON.stringify(entry, null, 2));
+    await writeFn(evidencePath, serializeSignedEvidence(entry));
     await recordOutcomeEvidenceCommit(entry, cwd, options._createTimeMachineCommit);
     return entry;
   }
@@ -253,7 +260,7 @@ export async function runOneOutcome(options: RunOutcomeOptions): Promise<Outcome
     entry.evidencePath = evidencePath;
     stampEvidenceTier(entry, outcome);
     tagEvidenceQuality(entry, (rtOutcome as { command?: string }).command, options.dimensionId, cwd);
-    await writeFn(evidencePath, JSON.stringify(entry, null, 2));
+    await writeFn(evidencePath, serializeSignedEvidence(entry));
     await recordOutcomeEvidenceCommit(entry, cwd, options._createTimeMachineCommit);
     return entry;
   }
@@ -267,7 +274,7 @@ export async function runOneOutcome(options: RunOutcomeOptions): Promise<Outcome
     entry.evidencePath = evidencePath;
     stampEvidenceTier(entry, outcome);
     tagEvidenceQuality(entry, (e2eOutcome as { command?: string }).command, options.dimensionId, cwd);
-    await writeFn(evidencePath, JSON.stringify(entry, null, 2));
+    await writeFn(evidencePath, serializeSignedEvidence(entry));
     await recordOutcomeEvidenceCommit(entry, cwd, options._createTimeMachineCommit);
     return entry;
   }
@@ -371,7 +378,7 @@ export async function runOneOutcome(options: RunOutcomeOptions): Promise<Outcome
   // Confidence-tagging: classify evidence quality before writing to disk.
   tagEvidenceQuality(entry, shellOutcome.command, options.dimensionId, cwd);
 
-  await writeFn(evidencePath, JSON.stringify(entry, null, 2));
+  await writeFn(evidencePath, serializeSignedEvidence(entry));
   await recordOutcomeEvidenceCommit(entry, cwd, options._createTimeMachineCommit);
   return entry;
 }
@@ -530,7 +537,7 @@ export async function runAllOutcomes(options: RunAllOutcomesOptions): Promise<Ru
         stampEvidenceTier(entry, outcome);
         // Write to disk so validate.ts reloading evidence from disk sees the
         // failure, not an old passing receipt left over from a prior run.
-        try { await writeEvidenceFn(ep, JSON.stringify(entry, null, 2)); } catch { /* best-effort */ }
+        try { await writeEvidenceFn(ep, serializeSignedEvidence(entry)); } catch { /* best-effort */ }
         evidence.set(makeEvidenceKey(dim.id, outcome.id), entry);
         totalOutcomes++;
         failingOutcomes++;
@@ -572,7 +579,7 @@ export async function runAllOutcomes(options: RunAllOutcomesOptions): Promise<Ru
           ranAt: new Date().toISOString(), evidencePath,
         };
         stampEvidenceTier(entry, outcome);
-        try { await (options._writeFile ?? fs.writeFile)(evidencePath, JSON.stringify(entry, null, 2)); } catch { /* best-effort */ }
+        try { await (options._writeFile ?? fs.writeFile)(evidencePath, serializeSignedEvidence(entry)); } catch { /* best-effort */ }
         onProgress(`  ⚠ ${dim.id}/${outcome.id} threw: ${entry.failureReason}`);
       }
       evidence.set(makeEvidenceKey(dim.id, outcome.id), entry);
@@ -652,10 +659,22 @@ export async function loadOutcomeEvidence(
   // from orphaning every receipt and collapsing the whole matrix to 0.0, while
   // keeping the per-tier freshness window as the real integrity gate. Reads stay
   // bounded: the exact-SHA receipt alone in the common (fresh) case.
+  // CH-025: a derived score is a read-only projection of SIGNED receipts. A receipt carrying a
+  // signature that no longer matches its content was edited after signing — reject it ALWAYS. An
+  // UNSIGNED (legacy, pre-migration) receipt is rejected only under strict enforcement, so the live
+  // matrix does not collapse before the corpus is migrated (scripts/sign-outcome-evidence.mjs).
+  const requireSigned = process.env['DANTEFORGE_REQUIRE_SIGNED_EVIDENCE'] === '1';
   const tryRead = async (f: string): Promise<OutcomeEvidenceEntry | null> => {
     try {
       const entry = JSON.parse(await readFile(path.join(dir, f))) as OutcomeEvidenceEntry;
       if (!entry?.dimensionId || !entry?.outcomeId) return null;
+      const sig = (entry as { sig?: unknown }).sig;
+      const hasSig = typeof sig === 'string' && sig.length > 0;
+      if (hasSig) {
+        if (!verifyOutcomeEvidenceSignature(entry)) return null; // tampered → reject (always)
+      } else if (requireSigned) {
+        return null; // unsigned + strict enforcement → reject
+      }
       return isEvidenceStale(entry.tier, entry.ranAt) ? null : entry;
     } catch { return null; }
   };
