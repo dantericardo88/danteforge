@@ -219,6 +219,15 @@ export async function runSingleDimVerification(opts: VerificationOptions): Promi
 
   // Mechanical pre-check: Sources table must be structurally valid before LLM verifier runs.
   const mechanicalIssues = checkSourcesTable(universeContent);
+  // Phase 2.3: when grounding is ON, every >7 ladder rung must trace to cited external evidence (not
+  // LLM prose). Gated behind DANTEFORGE_GROUNDING_GATE so existing universe generation is unaffected
+  // until grounding is turned on, then the yardstick itself must be grounded — the auto-solve's honesty.
+  if (process.env['DANTEFORGE_GROUNDING_GATE'] === '1') {
+    const { parseScoreLadder } = await import('../../core/rubric-ladder.js');
+    const { checkLadderGroundedness } = await import('../../core/ladder-groundedness.js');
+    const ground = checkLadderGroundedness(parseScoreLadder(universeContent));
+    if (!ground.ok) mechanicalIssues.push(...ground.issues);
+  }
   if (mechanicalIssues.length > 0) {
     logger.warn(`[universe-verify] ${dimId}: mechanical Sources check failed (${mechanicalIssues.length} issue(s))`);
     return {
