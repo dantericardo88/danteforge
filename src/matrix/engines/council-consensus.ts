@@ -27,6 +27,11 @@ export interface ConsensusResult {
   requiredPassVotes: number;
   dissentLog: string[];
   summary: string;
+  /** CH-010: a strict majority of judges abstained (UNCLEAR-dominant) — the panel could NOT decide.
+   *  Distinct from a merits FAIL; callers treat it as "re-attempt / escalate", not a clean rejection. */
+  abstained: boolean;
+  /** The agreement/abstention metric: fraction of cast ballots that were UNCLEAR (0..1). */
+  abstentionRate: number;
 }
 
 export interface ConsensusOptions {
@@ -91,6 +96,9 @@ export function computeConsensus(
     }
   }
 
+  const unclearCount = votes.filter(v => v.verdict === 'UNCLEAR').length;
+  const abstentionRate = votes.length ? unclearCount / votes.length : 0;
+
   const minJudgesMet = crossMemberJudges >= opts.minJudges;
   if (!minJudgesMet) {
     return {
@@ -103,6 +111,8 @@ export function computeConsensus(
       requiredPassVotes,
       dissentLog,
       summary: `Insufficient cross-member judges: ${crossMemberJudges}/${opts.minJudges} required`,
+      abstained: false,
+      abstentionRate,
     };
   }
 
@@ -113,7 +123,6 @@ export function computeConsensus(
   // Exactly 50% abstention (e.g. 1 PASS + 1 UNCLEAR) is NOT a majority and still
   // allows the real votes to decide — this avoids blocking merges when one judge
   // is structurally unavailable (e.g. API 403 / connection failure).
-  const unclearCount = votes.filter(v => v.verdict === 'UNCLEAR').length;
   if (unclearCount * 2 > votes.length) {
     return {
       verdict: 'FAIL',
@@ -124,7 +133,9 @@ export function computeConsensus(
       passVotes,
       requiredPassVotes,
       dissentLog,
-      summary: `UNCLEAR-dominant: ${unclearCount}/${votes.length} judges abstained — treating as FAIL`,
+      summary: `UNCLEAR-dominant: ${unclearCount}/${votes.length} judges abstained — could not decide (re-attempt/escalate, NOT a merits rejection)`,
+      abstained: true,
+      abstentionRate,
     };
   }
 
@@ -157,5 +168,7 @@ export function computeConsensus(
     requiredPassVotes,
     dissentLog,
     summary,
+    abstained: false,
+    abstentionRate,
   };
 }

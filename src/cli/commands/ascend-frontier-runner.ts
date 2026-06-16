@@ -174,6 +174,10 @@ export interface CourtParse {
    *  uncertain — a provider outage proven by the court's own shape, with NO dependence on matching the
    *  provider's error wording (CH-020). The orchestrator pauses on this even when no signature matched. */
   allUnavailable: boolean;
+  /** CH-010: a strict MAJORITY of judges abstained (UNCLEAR-dominant) even if ≥1 cast a FAIL — the
+   *  panel could not decide. A lone dissent among abstainers is not a clean capability rejection; the
+   *  caller routes this to a re-attemptable non-run, NOT a recorded rejection. (allAbstained ⊆ this.) */
+  abstainDominant: boolean;
 }
 
 /**
@@ -189,7 +193,7 @@ export interface CourtParse {
  * claiming VALIDATED is incoherent (e.g. --write failed after printing) — fail CLOSED there only.
  */
 export function parseCourtOutput(res: { ok: boolean; stdout: string }): CourtParse {
-  const fail = (parseError: boolean): CourtParse => ({ verdict: 'REJECTED', passedByJudges: [], parseError, allAbstained: false, allUnavailable: false });
+  const fail = (parseError: boolean): CourtParse => ({ verdict: 'REJECTED', passedByJudges: [], parseError, allAbstained: false, allUnavailable: false, abstainDominant: false });
   const brace = res.stdout.indexOf('{');
   if (brace === -1) return fail(true);
   try {
@@ -207,7 +211,12 @@ export function parseCourtOutput(res: { ok: boolean; stdout: string }): CourtPar
     // All-unavailable (CH-020): every judge was structurally unable to run. Proven by the court's own
     // shape — no dependence on the provider's error wording. allUnavailable ⊆ allAbstained.
     const allUnavailable = judges.length > 0 && judges.every(x => x.unavailable === true);
-    return { verdict, passedByJudges, parseError: false, allAbstained, allUnavailable };
+    // CH-010: abstain-DOMINANT — a strict majority abstained even if a lone judge cast a FAIL. Mirror
+    // computeConsensus's UNCLEAR-dominant guard so the push routes "the panel couldn't decide" to a
+    // re-attemptable non-run instead of booking a single dissent as a clean court rejection.
+    const unclearCount = judges.filter(x => x.verdict === 'UNCLEAR').length;
+    const abstainDominant = judges.length > 0 && unclearCount * 2 > judges.length;
+    return { verdict, passedByJudges, parseError: false, allAbstained, allUnavailable, abstainDominant };
   } catch {
     return fail(true);
   }

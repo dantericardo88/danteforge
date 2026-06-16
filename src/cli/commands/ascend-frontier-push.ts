@@ -276,7 +276,7 @@ export async function defaultPushTo9(
     // rejection — treat it like an unreadable court (courtRan stays false → re-attemptable build
     // failure, never a generator-ceiling) and DO NOT persist its reasons as court-feedback (that
     // poisoned the verdict→builder loop with "the judges objected" when they never actually judged).
-    if (!parsed.parseError && !parsed.allAbstained) {
+    if (!parsed.parseError && !parsed.abstainDominant) {
       courtRan = true;
       // VALIDATED is confirmed against the PERSISTED spec status (the stronger source — the
       // verdict only counts if --write actually landed it on disk).
@@ -287,16 +287,20 @@ export async function defaultPushTo9(
       // Persist the judges' reasons so the NEXT attempt's build goal addresses them verbatim
       // (best-effort: feedback failing to record must never fail a court that ran).
       await recordCourtFeedback(cwd, parseCourtFeedback(review.stdout, dimId, verdict)).catch(() => { /* best-effort */ });
-    } else if (parsed.allAbstained) {
-      // CH-020: if EVERY judge was structurally unavailable (adapter-failed), this is a provider
-      // outage proven by the court's shape — raise the structural pause even though no provider error
-      // string matched a signature. A substantive all-UNCLEAR (judges reviewed but couldn't tell) does
-      // NOT pause; it stays a re-attemptable non-run.
+    } else if (parsed.abstainDominant) {
+      // CH-019/CH-020/CH-010: a court where a strict majority abstained could NOT decide — never a clean
+      // rejection. courtRan stays false (re-attemptable non-run), and the reasons are NOT persisted as
+      // court-feedback (that poisoned the verdict→builder loop with "the judges objected" when they
+      // mostly abstained). Three shades, most-structural first:
       if (parsed.allUnavailable) {
+        // CH-020: EVERY judge was structurally unavailable (adapter-failed) — a provider outage proven
+        // by the court's shape, no dependence on the provider's error wording. Raise the structural pause.
         noteStructuralOutage(`structural outage: all ${dimId} judges unavailable`);
         logger.warn(`[ascend-frontier] ${dimId}: ALL judges unavailable (adapter-failed) — structural provider outage; pausing instead of recording anything.`);
-      } else {
+      } else if (parsed.allAbstained) {
         logger.warn(`[ascend-frontier] ${dimId}: frontier court all-abstained (judges couldn't tell) — not recorded as a rejection or as court-feedback.`);
+      } else {
+        logger.warn(`[ascend-frontier] ${dimId}: frontier court ABSTAIN-DOMINANT (a majority abstained, with a lone dissent) — could not decide; not recorded as a rejection or court-feedback, re-attemptable.`);
       }
     }
   }
@@ -457,7 +461,7 @@ export async function defaultPromoteOne(cwd: string, a: { memberId: CouncilMembe
   return {
     dimId: a.dimId, builderId: a.memberId,
     verdict: parsed.verdict, passedByJudges: parsed.passedByJudges as CouncilMemberId[],
-    courtRan: !parsed.parseError && !parsed.allAbstained,
+    courtRan: !parsed.parseError && !parsed.abstainDominant,
     ...(parsed.parseError ? { parseError: true } : {}),
   };
 }
