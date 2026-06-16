@@ -2,9 +2,20 @@
 
 Paste the block below into a fresh agent in ANY project that has a DanteForge matrix. It drives every
 dimension up the honest ladder (0 → 7 → 8 → 9) and KEEPS LOOPING, cycle after cycle, until every
-dimension is either court-validated at the frontier (9.0) or sitting at a DOCUMENTED honest ceiling
-(a court ceiling receipt or a structural market cap). It never fabricates — the integrity gate caps
+dimension is either validated at the frontier (9.0) or sitting at a DOCUMENTED honest ceiling
+(a court/ceiling receipt or a structural market cap). It never fabricates — the integrity gate caps
 anything unearned, so the only way a number moves is real engineering.
+
+> **UPDATED 2026-06-16 — the frontier is now EXTERNALLY GROUNDED, not self-consistent.** The earlier
+> 8→9 rung reached "9.0" via a court judging against a SELF-authored Score Ladder + SELF-run
+> `real_user_path` receipts. That is self-CONSISTENT, not world-CONSISTENT — `grounding` still reads
+> 0% at such a "9.0". The real frontier now requires evidence the grader CANNOT author: a registered
+> EXTERNAL-BENCHMARK receipt, with the BAR itself HARVESTED from the world (leaderboards / competitor
+> capability / real user demand), solved by DanteForge's OWN pipeline (`--solver-mode pipeline`), not
+> raw `claude -p`. The self-attested court path still exists but is capped at 8.0 by the grounding
+> gate. See "Rung 8 → 9" below. (Reframe: defining a 9 is READING the bar the world already wrote, not
+> the agent inventing it — that is harvesting, not self-grading. Reaching it is hard-but-tractable
+> capability work, not a logical wall.)
 
 > This prompt was hardened after an adversarial audit caught a fatal trap: the multi-session frontier
 > proof collapses if you re-run outcomes with the default `validate` (which is `--force-cold`). The
@@ -31,6 +42,9 @@ Run the CLI as `node <path-to>/dist/index.js <cmd>` (or `danteforge <cmd>` if gl
 3. ALWAYS rank and select dims by `scores.derived` (the gate-confirmed score), NEVER `scores.self`
    (which may be fabricated fiction the gate never touched). A dim with self=9 but derived=5 is a
    derived-5 dim — climb it.
+4. `… grounding` — the world-grounding ratio (fraction of the weighted headline backed by a PASSING
+   external-benchmark receipt, not self-attested evidence). 0% means NOTHING is world-grounded yet —
+   the frontier (Rung 8→9) is where you change that. This is the deepest honesty signal; watch it move.
 
 ## The ladder — for each dim, climb the ONE rung that matches its current DERIVED state
 
@@ -47,49 +61,82 @@ Run the CLI as `node <path-to>/dist/index.js <cmd>` (or `danteforge <cmd>` if gl
   to no-credit (T7 needs 3+ for consensus). A single real product run is T5 → 8.0.
 - Confirm: `validate <dim> --force-cold` shows 7 → 8.0.
 
-### Rung 8 → 9  (the frontier — real-user-path receipts + the court) — derived 8.0
-This rung cannot be faked; the gate enforces every step. Do these IN ORDER.
-1. `frontier-spec init <dim> --write` — auto-SEEDS the 9.0 bar (`observed_capability` +
-   `category_delta`) VERBATIM from the competitor-grounded Score Ladder. **If the dim has no Score
-   Ladder** (`spec-incomplete`), STOP this dim and log it as blocked — build the universe first
-   (`compete --init` / universe synthesis); do NOT hand-write an easy bar (the gate rejects a
-   `category_delta` that doesn't contain the documented ladder bar).
-2. Fill the remaining `real_user_path` fields: `required_callsite` (the production file the run
-   exercises), `run_command` (the real product command using a `{input}` token), `observable_artifacts`
-   (a real file the run produces), and `realistic_inputs[]` — **≥2 genuinely DIFFERENT realistic
-   inputs** (required; sessions must differ by more than a process UUID).
-3. `frontier-spec check <dim>` must pass; then `frontier-spec freeze <dim> --write`.
-4. **COMMIT the feature code now, and keep HEAD STABLE through steps 4–5.** Evidence is SHA-scoped and
-   the session cache only holds at one HEAD — a commit between capture and court orphans the receipts
-   (the court then sees 0). Capture ≥3 receipts across ≥2 DISTINCT sessions, one per realistic input —
-   substitute each input into the command BY HAND (session-record does not read `realistic_inputs[]`):
+### Rung 8 → 9  (the EXTERNALLY-GROUNDED frontier) — derived 8.0
+The real frontier requires a number the grader CANNOT author. The bar is HARVESTED from the world and
+the proof is a registered EXTERNAL-BENCHMARK receipt produced by DanteForge's OWN pipeline. This is the
+path that moves `grounding` off 0%. Do these IN ORDER.
+
+0. **Does an external benchmark fit this dim?** The frontier here is for capabilities a registered
+   suite measures — code generation / agentic SWE map to `swe-bench-lite` / `swe-bench-verified` /
+   `humaneval` / `mbpp` (see `external-suite-registry.ts`). If NOTHING in the registry measures this
+   dim, it cannot be externally grounded today — climb it to the internal-8 ceiling (the court path,
+   below) and log it `no-registered-suite`. Do NOT invent a "benchmark".
+
+1. **HARVEST the bar (read the world's verdict — this is not self-grading).**
+   - Demand: `danteforge intel --save` → `.danteforge/compete/weakness-intelligence.json` (GitHub/HN/
+     Reddit weakness signals, keyed by dim).
+   - Benchmark anchor: populate `.danteforge/compete/leaderboards.json` as
+     `{ "<dimId>": [{ suite, numeric, source_url, fetched_at, verified_live }] }` with the REAL
+     published frontier number (e.g. top open SWE-bench-lite agent). `numeric` is the published
+     pass_rate; `verified_live:true` only after a real re-fetch.
+   - `frontier-spec init <dim> --write` now HARVEST-SEEDS the bar from these (harvest outranks the
+     LLM Score Ladder). The competitor SCORE auto-accepts on live-verify; subjective capability/demand
+     prose needs your one-time ratification.
+
+2. **Scaffold the EXTERNAL-BENCHMARK outcome** in the dim's `outcomes[]`:
    ```
-   session-record <dim> --run "<real cmd on input #1>" --callsite <file> --artifact <path> --write
-   validate <dim> --preserve-sessions        #  <-- session 1
-   session-record <dim> --run "<real cmd on input #2>" --callsite <file> --artifact <path> --write
-   validate <dim> --preserve-sessions        #  <-- session 2 (different input)
-   session-record <dim> --run "<real cmd on input #3>" --callsite <file> --artifact <path> --write
-   validate <dim> --preserve-sessions        #  <-- session 3
+   kind: "external-benchmark"
+   benchmark: "swe-bench-lite"            # MUST be in REGISTERED_EXTERNAL_SUITES
+   command: "<runner> --solver-mode pipeline --max-iterations 3 …"   # DanteForge's pipeline (CH-029), NOT raw claude
+   min_pass_rate: <0..1>                  # the ratified honest floor (objective; from the leaderboard)
+   timeout_ms: 1800000
+   input_source: { type: "external-benchmark", suite: "swe-bench-lite" }
    ```
-   **Use `--preserve-sessions` on EVERY validate here, and NEVER `--force-cold` (nor the bare default,
-   which IS `--force-cold`).** Plain/`--force-cold` validate re-runs all outcomes and re-stamps them
-   with ONE session_id, collapsing the proof — the score kernel then vetoes it and 9.0 can never land.
-   `--preserve-sessions` runs only the new receipt (its own session) and serves the priors from cache.
-5. `frontier-review <dim> --write` — a deterministic receipt gate runs first (≥3 passing T5+ receipts
-   across ≥2 distinct sessions); only then do independent judges decide whether the artifact genuinely
-   matches/beats the named competitor. VALIDATED → 9.0. REJECTED with an agreed ceiling → an honest
-   ceiling: it writes a ceiling receipt; log it and move on.
-6. NOW append the Progress-Log line and commit (the per-cycle commit happens AFTER the court, never
-   during capture).
+   The solver MUST be `--solver-mode pipeline` (DanteForge's iterate-to-green orchestration) — raw
+   `claude -p` grounds the MODEL, not your product (CH-029).
+
+3. **RATIFY the bar (the one irreducible human step).** An agent setting its own bar is self-grading.
+   Confirm with the operator: the suite + competitor + `min_pass_rate` are the honest frontier. The
+   numeric bar auto-accepts on live-verify; subjective rows need an explicit OK (hybrid posture). Do
+   NOT proceed past 7.0 on an un-ratified harvested bar.
+
+4. **MINT: `validate <dim>`** — runs the external-benchmark outcome (the suite via the pipeline
+   solver), parses the real pass_rate, ENFORCES `min_pass_rate`, and writes a SIGNED receipt. Then
+   `danteforge grounding` — the dim now counts ONLY because a PASSING receipt exists at HEAD (CH-032:
+   declaration alone never grounds). A FAILED pass_rate writes a FAILED receipt and grounds nothing —
+   that is the honest signal you have not yet reached the bar.
+   - **Do NOT rebuild `dist/` while a `dist`-based run is in flight** (it changes hashed chunk names
+     and kills the run's lazy imports — an operational failure, not a real one).
+
+5. **CLIMB the honest number.** The first real pass_rate will likely be MODEST (a true ~4–6 on the
+   0–10 scale on a hard suite — HumanEval is saturated, so use it only as CHAIN-PROOF; SWE-bench is the
+   honest bar). That gap is the real frontier work: each cycle harvest what the frontier does that you
+   don't → turn it into a failing case → forge → re-`validate`. You cannot gate your way to a higher
+   pass_rate; it is bounded by model + orchestration quality. A modest, RISING, externally-grounded
+   number beats a self-consistent "9.0" every time.
+
+> **The internal-8 ceiling (the old court path — now capped, not the frontier).** The self-attested
+> route — `frontier-spec` seeded from the Score Ladder + `session-record` `real_user_path` receipts
+> across ≥2 sessions + `frontier-review` (builder-never-judges) — still EXISTS and is worth doing for
+> dims with no registered suite, but with `DANTEFORGE_GROUNDING_GATE=1` it CAPS AT 8.0: the court
+> judges against a ladder WE wrote, so it can confirm internal consistency but not world-grounding.
+> Use it to reach a documented, court-validated 8.0; it is NOT a 9. (Capture loop, if you run it: keep
+> HEAD stable, use `validate --preserve-sessions` on EVERY validate, NEVER `--force-cold`.)
 
 ## A dim is DONE (stop climbing it) only when ONE of these is true — never by self-declaration
-- Court-VALIDATED at 9.0.
-- A court-WRITTEN ceiling receipt exists (frontier-review REJECTED with an agreed ceiling). An "honest
+- EXTERNALLY GROUNDED at the frontier: a PASSING registered external-benchmark receipt at HEAD whose
+  pass_rate meets the ratified bar (`grounding` counts it; `validate` minted+signed it). This is the
+  only TRUE 9-class done. A modest-but-rising grounded number is climbing, not done.
+- Court-VALIDATED at the internal-8 ceiling (no registered suite fits the dim) — a documented 8.0, NOT
+  a 9. With the grounding gate on, this is its ceiling.
+- A court/ceiling-WRITTEN receipt exists (frontier-review REJECTED with an agreed ceiling). An "honest
   ceiling" you merely *believe* in does NOT count — only a written receipt does.
 - It is a STRUCTURAL market cap: `token_economy`, `enterprise_readiness`, `community_adoption` are
   permanently capped at 5.0 (they need real external adoption/telemetry you cannot fabricate).
-- `spec-incomplete` because there is no Score Ladder → blocked on universe research; log it.
-Stale receipts (evidence aged out) are NOT done → RE-VALIDATE (re-run the real product); never re-type.
+- `no-registered-suite` (nothing in the registry measures this dim) → grounded-9 not reachable today;
+  climb to the internal-8 ceiling and log it. `spec-incomplete` (no Score Ladder) → blocked; log it.
+Stale receipts (evidence aged out / a commit moved HEAD) are NOT done → RE-VALIDATE (re-run the real
+benchmark/product); never re-type. A grounded receipt re-validates at the new HEAD after any commit.
 
 ## Each cycle
 1. Pick the lowest `scores.derived` non-DONE dim; climb the ONE matching rung above.
@@ -107,7 +154,12 @@ Stale receipts (evidence aged out) are NOT done → RE-VALIDATE (re-run the real
   one process and collapses every validated dim's sessions, reverting them below the frontier).
 
 ## Never
-Fabricate · relabel a decoupled/orphan outcome as real · stub / mock / TODO · use `--force-cold` (or
-the bare default) inside the frontier session loop · `validate --all --force-cold` after dims are
-validated · commit during the receipt-capture → court window · commit broken code · run the full test
-suite · `git reset --hard` / `clean` · declare a dim DONE without a court verdict or a structural cap.
+Fabricate · relabel a decoupled/orphan outcome as real · stub / mock / TODO · ground on a NON-registered
+"benchmark" · use raw `claude -p` as the benchmark solver (use `--solver-mode pipeline` — CH-029) ·
+set `verified_live`/`ratified_by` yourself without a real re-fetch/operator OK (CH-030 signs them) ·
+treat a DECLARED external-benchmark outcome as grounded before its receipt PASSES (CH-032) · proceed
+past 7.0 on an un-ratified harvested bar · call a self-attested court 9 the frontier (it caps at 8.0
+under the grounding gate) · rebuild `dist/` while a run is in flight · use `--force-cold` (or the bare
+default) inside the internal-8 session loop · `validate --all --force-cold` after dims are validated ·
+commit during a receipt-capture window · commit broken code · run the full test suite · `git reset
+--hard` / `clean` · declare a dim DONE without a passing grounded receipt, a court verdict, or a cap.
