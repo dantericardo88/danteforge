@@ -344,8 +344,10 @@ async function applyOutcomeDerivedScores(matrix: CompeteMatrix, cwd: string): Pr
       {
         const { applyFrontierGate, applyGroundingGate } = await import('./frontier-spec.js');
         derived = applyFrontierGate(derived, dim).score;
-        // Phase 1c (default-off until the first external benchmark): >7 requires external grounding.
-        derived = applyGroundingGate(derived, dim).score;
+        // Phase 1c (default-off until the first external benchmark): >7 requires external grounding —
+        // and grounding means a PASSING receipt (CH-032), so pass the loaded evidence (declaration alone
+        // does not lift the gate).
+        derived = applyGroundingGate(derived, dim, evidence ?? undefined).score;
       }
       // Write derived score to scores.derived only.
       // scores.self is the human/adversarial competitive assessment — do not overwrite it.

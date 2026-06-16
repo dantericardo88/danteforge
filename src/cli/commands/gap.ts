@@ -122,7 +122,7 @@ async function analyzeDimension(
   // court-REJECTED dim with T7 receipts coached "9.0, next: T8" while every other surface said 8.0.
   const { applyFrontierGate, applyGroundingGate } = await import('../../core/frontier-spec.js');
   const gated = applyFrontierGate(applyLegacyReceiptCeiling(breakdown.score, breakdown), dim).score;
-  const score = applyGroundingGate(gated, dim).score; // Phase 1c (default-off): >7 needs external grounding
+  const score = applyGroundingGate(gated, dim, evidence).score; // Phase 1c: >7 needs a PASSING external receipt (CH-032)
 
 
   // Market-capped meta-dims are bounded by EXTERNAL signals (adoption/enterprise/token telemetry)

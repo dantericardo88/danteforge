@@ -235,7 +235,7 @@ export async function runValidateCli(options: ValidateCliOptions): Promise<Valid
     const frontier = applyFrontierGate(integrity.cappedScore, dim);
     // Phase 1c (default-off until the first external benchmark): >7 requires external grounding.
     const { applyGroundingGate } = await import('../../core/frontier-spec.js');
-    const grounded = applyGroundingGate(frontier.score, dim);
+    const grounded = applyGroundingGate(frontier.score, dim, evidenceAfter); // CH-032: PASSING receipt, not declaration
     const cappedScore = grounded.score;
     const integrityCap = grounded.capped ? 'NO_EXTERNAL_GROUNDING' as const : frontier.capped ? 'NO_FRONTIER_SPEC' as const : integrity.integrityCap;
 

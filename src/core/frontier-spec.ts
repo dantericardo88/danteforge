@@ -14,6 +14,7 @@ import { readFileSync, writeFileSync, mkdirSync } from 'node:fs';
 import { isTestSuiteCommand } from '../matrix/engines/outcome-quality.js';
 import type { DimensionRubricLevel } from '../matrix/types/dimension-graph.js';
 import { checkHarvestProvenance, type HarvestedSignal } from './harvested-bar.js';
+import { isOutcomePassing, makeEvidenceKey, type Outcome, type OutcomeEvidence } from '../matrix/types/outcome.js';
 
 export type FrontierSpecStatus = 'draft' | 'frozen' | 'validated' | 'stale';
 
@@ -360,11 +361,18 @@ export function applyFrontierGate(score: number, dim: unknown): { score: number;
 /** Score above this requires EXTERNAL grounding (master-plan Phase 1c). */
 export const GROUNDING_GATE_THRESHOLD = 7.0;
 
-/** True when a dim declares ≥1 registered external-benchmark outcome (the receipt the grader cannot
- *  author). Inlined (not imported from external-grounding.ts) to keep this hot module dependency-free. */
-function dimIsExternallyGrounded(dim: unknown): boolean {
-  const outs = (dim as { outcomes?: Array<{ input_source?: { type?: string } }> }).outcomes ?? [];
-  return Array.isArray(outs) && outs.some(o => o?.input_source?.type === 'external-benchmark');
+/** True when a dim has ≥1 external-benchmark outcome with a PASSING receipt at HEAD (CH-032
+ *  follow-through). Declaration alone is NOT grounding — the gate must require the same passing,
+ *  loaded receipt the score derives from, or it can be fooled by an unrun declared outcome. With no
+ *  evidence supplied, returns false (the safe direction — a caller that can't verify can't grant). */
+function dimIsExternallyGrounded(dim: unknown, evidence?: OutcomeEvidence): boolean {
+  const outs = (dim as { outcomes?: Outcome[] }).outcomes;
+  const dimId = (dim as { id?: string }).id ?? '';
+  if (!Array.isArray(outs)) return false;
+  return outs.some(o =>
+    o.input_source?.type === 'external-benchmark'
+    && !!evidence
+    && isOutcomePassing(o, evidence.get(makeEvidenceKey(dimId, o.id))));
 }
 
 /**
@@ -381,10 +389,11 @@ function dimIsExternallyGrounded(dim: unknown): boolean {
 export function applyGroundingGate(
   score: number,
   dim: unknown,
+  evidence?: OutcomeEvidence,
   enabled: boolean = process.env['DANTEFORGE_GROUNDING_GATE'] === '1',
 ): { score: number; capped: boolean } {
   if (!enabled || score <= GROUNDING_GATE_THRESHOLD) return { score, capped: false };
-  if (dimIsExternallyGrounded(dim)) return { score, capped: false };
+  if (dimIsExternallyGrounded(dim, evidence)) return { score, capped: false };
   return { score: GROUNDING_GATE_THRESHOLD, capped: true };
 }
 
