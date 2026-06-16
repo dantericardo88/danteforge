@@ -356,6 +356,37 @@ export function applyFrontierGate(score: number, dim: unknown): { score: number;
   return { score: FRONTIER_GATE_THRESHOLD, capped: true };
 }
 
+/** Score above this requires EXTERNAL grounding (master-plan Phase 1c). */
+export const GROUNDING_GATE_THRESHOLD = 7.0;
+
+/** True when a dim declares ≥1 registered external-benchmark outcome (the receipt the grader cannot
+ *  author). Inlined (not imported from external-grounding.ts) to keep this hot module dependency-free. */
+function dimIsExternallyGrounded(dim: unknown): boolean {
+  const outs = (dim as { outcomes?: Array<{ input_source?: { type?: string } }> }).outcomes ?? [];
+  return Array.isArray(outs) && outs.some(o => o?.input_source?.type === 'external-benchmark');
+}
+
+/**
+ * The EXTERNAL-GROUNDING gate (master-plan shape-move #1, Phase 1c). A score >7.0 requires evidence the
+ * grader CANNOT author — a registered external-benchmark receipt — not merely internal court validation
+ * (the court still judges against a ladder WE wrote). When enabled, an un-grounded dim caps at 7.0; this
+ * makes external grounding the ONLY road past 7, which structurally retires the internal-forgery surface.
+ *
+ * DEFAULT-OFF (`DANTEFORGE_GROUNDING_GATE=1` activates it). It MUST stay off until the first external
+ * benchmark lands (Phase 1b): with 0% grounding it caps every dim at 7.0 with no path up and would stall
+ * the loop. The operator flips it on in the same step that registers the first external-benchmark outcome.
+ * Composed AFTER applyFrontierGate at every read-time score site (the 7.0 floor sits under the 8.0 cap).
+ */
+export function applyGroundingGate(
+  score: number,
+  dim: unknown,
+  enabled: boolean = process.env['DANTEFORGE_GROUNDING_GATE'] === '1',
+): { score: number; capped: boolean } {
+  if (!enabled || score <= GROUNDING_GATE_THRESHOLD) return { score, capped: false };
+  if (dimIsExternallyGrounded(dim)) return { score, capped: false };
+  return { score: GROUNDING_GATE_THRESHOLD, capped: true };
+}
+
 /**
  * Honesty guardrails. A frontier_spec must define a REAL target, not an easy one.
  * `competitors` is the matrix's tracked competitor list (closed + oss).

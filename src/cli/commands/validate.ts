@@ -68,7 +68,7 @@ export interface ValidateDimResult {
   failingOutcomes: number;
   error?: string;
   /** Set when an integrity violation capped the score below what outcomes earned. */
-  integrityCap?: 'SHARED_RECEIPT' | 'SEAM_USAGE' | 'CALLSITE_DECOUPLED' | 'ORPHAN_CALLSITE' | 'NO_FRONTIER_SPEC';
+  integrityCap?: 'SHARED_RECEIPT' | 'SEAM_USAGE' | 'CALLSITE_DECOUPLED' | 'ORPHAN_CALLSITE' | 'NO_FRONTIER_SPEC' | 'NO_EXTERNAL_GROUNDING';
 }
 
 export interface ValidateCliResult {
@@ -233,8 +233,11 @@ export async function runValidateCli(options: ValidateCliOptions): Promise<Valid
     // makes "9.0 = the frontier" binding — a proven capability with no declared frontier
     // target caps at 8.0.
     const frontier = applyFrontierGate(integrity.cappedScore, dim);
-    const cappedScore = frontier.score;
-    const integrityCap = frontier.capped ? 'NO_FRONTIER_SPEC' as const : integrity.integrityCap;
+    // Phase 1c (default-off until the first external benchmark): >7 requires external grounding.
+    const { applyGroundingGate } = await import('../../core/frontier-spec.js');
+    const grounded = applyGroundingGate(frontier.score, dim);
+    const cappedScore = grounded.score;
+    const integrityCap = grounded.capped ? 'NO_EXTERNAL_GROUNDING' as const : frontier.capped ? 'NO_FRONTIER_SPEC' as const : integrity.integrityCap;
 
     // Ceiling lifted = score was capped at legacy ceiling before, now above it
     const wasCapped = scoreBefore <= LEGACY_NO_RECEIPT_CEILING && !breakdown.usedLegacyFallback;

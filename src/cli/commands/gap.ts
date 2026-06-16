@@ -120,8 +120,10 @@ async function analyzeDimension(
   const breakdown = computeDerivedScoreWithBreakdown(dfs, evidence);
   // Frontier gate here too (live pilot finding): gap derives its own score, so without this a
   // court-REJECTED dim with T7 receipts coached "9.0, next: T8" while every other surface said 8.0.
-  const { applyFrontierGate } = await import('../../core/frontier-spec.js');
-  const score = applyFrontierGate(applyLegacyReceiptCeiling(breakdown.score, breakdown), dim).score;
+  const { applyFrontierGate, applyGroundingGate } = await import('../../core/frontier-spec.js');
+  const gated = applyFrontierGate(applyLegacyReceiptCeiling(breakdown.score, breakdown), dim).score;
+  const score = applyGroundingGate(gated, dim).score; // Phase 1c (default-off): >7 needs external grounding
+
 
   // Market-capped meta-dims are bounded by EXTERNAL signals (adoption/enterprise/token telemetry)
   // that internal evidence cannot certify — at the cap they are DONE, not blocked. Coaching tier

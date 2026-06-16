@@ -342,8 +342,10 @@ async function applyOutcomeDerivedScores(matrix: CompeteMatrix, cwd: string): Pr
       // so a frozen-but-unvalidated dim with T7 receipts read 9.0 through loadMatrix — gap,
       // decision scores, and the headline all showed a 9.0 the court had REJECTED.
       {
-        const { applyFrontierGate } = await import('./frontier-spec.js');
+        const { applyFrontierGate, applyGroundingGate } = await import('./frontier-spec.js');
         derived = applyFrontierGate(derived, dim).score;
+        // Phase 1c (default-off until the first external benchmark): >7 requires external grounding.
+        derived = applyGroundingGate(derived, dim).score;
       }
       // Write derived score to scores.derived only.
       // scores.self is the human/adversarial competitive assessment — do not overwrite it.
