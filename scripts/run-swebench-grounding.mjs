@@ -92,16 +92,18 @@ for (const inst of instances) {
 writeFileSync(predictionsPath, predLines.join('\n') + '\n', 'utf8');
 console.error(`\n[swebench] wrote ${predLines.length} prediction(s) → ${predictionsPath}`);
 
-// GRADE with the official harness in docker (real Linux test env). resource-shim on the host PYTHONPATH.
+// GRADE via the LINUX ORCHESTRATOR (CH-034): a Windows host CRLF-corrupts the harness's eval.sh/patch
+// inside the per-instance containers, so we run the ORCHESTRATOR itself in a Linux container (LF-native,
+// has `resource`, reaches the host daemon via socket passthrough). scripts/swebench-orch/grade.sh builds
+// the image once and runs the official harness in Linux.
 const ids = instances.map(i => i.instance_id).join(' ');
-const shim = 'x:/Projects/DanteForge/scripts/swebench-shim';
 const reportDir = join(work, `report-${runId}`);
 mkdirSync(reportDir, { recursive: true });
-console.error(`[swebench] grading via official docker harness (run_id ${runId})… (GB image pulls on first run)`);
+console.error(`[swebench] grading via the LINUX orchestrator (run_id ${runId})… (image build + GB pulls on first run)`);
 const grade = spawnSync(
-  `python -m swebench.harness.run_evaluation -d princeton-nlp/SWE-bench_Lite -s test -p "${predictionsPath}" -id ${runId} --max_workers 1 -i ${ids} --report_dir "${reportDir}" --cache_level env`,
-  { shell: true, cwd: reportDir, timeout: 3 * 3600 * 1000, encoding: 'utf8', maxBuffer: 64 * 1024 * 1024,
-    env: { ...process.env, PYTHONPATH: shim } },
+  `bash scripts/swebench-orch/grade.sh "${predictionsPath}" ${runId} "${reportDir}" ${ids}`,
+  { shell: true, cwd: process.cwd(), timeout: 3 * 3600 * 1000, encoding: 'utf8', maxBuffer: 64 * 1024 * 1024,
+    env: { ...process.env, MSYS_NO_PATHCONV: '1' } },
 );
 process.stderr.write((grade.stdout || '').slice(-2000));
 process.stderr.write((grade.stderr || '').slice(-2000));

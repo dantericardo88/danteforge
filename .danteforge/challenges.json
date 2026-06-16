@@ -339,5 +339,14 @@
     "opportunity": "Honest paths: (a) build a REAL swe-bench eval (download swe-bench-lite dataset, clone repos at base_commit, apply solver patch, run FAIL_TO_PASS tests) — a major effort tied to CH-008 (Linux CI), not a quick build; (b) MBPP runner (registered, real, larger than HumanEval, but also saturated) as a second real-but-saturated grounding; (c) accept HumanEval grounding as honest-but-saturated and name the hard-frontier infra gap explicitly. Do NOT ground on the toy package. Links CH-008.",
     "status": "open",
     "openedAt": "2026-06-16T19:01:09.873Z"
+  },
+  {
+    "id": "CH-034",
+    "title": "SWE-bench grader needs a LINUX ORCHESTRATOR — a Windows host CRLF-corrupts the eval scripts (deeper than resource)",
+    "problem": "The official swebench harness EXECUTES on Windows (docker daemon + resource shim proven: it ran astropy__astropy-12907 in a real container, 4m25s, 0 errors). BUT gold predictions came back UNRESOLVED because the Windows HOST writes eval.sh + the patch with CRLF line endings, which corrupt inside the Linux container: test_output.txt shows pathspec 'test_separable.py?' (stray \\r), 'patch does not apply', and '/eval.sh: line 55: pytest: command not found' (mangled conda activation). So a Windows host cannot correctly DRIVE the harness even with docker — the ORCHESTRATOR itself must be Linux (LF-native).",
+    "evidence": "logs/run_evaluation/goldcheck2/gold/astropy__astropy-12907/test_output.txt: 'test_separable.py?' + 'patch does not apply' + 'pytest: command not found'; gold.goldcheck2.json resolved 0/1. WSL present but only the docker-desktop appliance distro (no general Linux).",
+    "opportunity": "Run the harness in a LINUX env that talks to the host docker daemon: (a) a Linux container with docker-socket passthrough (-v //var/run/docker.sock:/var/run/docker.sock + python+swebench installed) running the eval with LF-native files — the standard swebench-on-Windows path; (b) install a real WSL distro (Ubuntu) + swebench; (c) a Linux CI runner (the durable CH-008 answer). This is the concrete, diagnosed CH-008 — not an assumed wall. The real harness + agentic solver are built; only the orchestrator platform remains.",
+    "status": "open",
+    "openedAt": "2026-06-16T19:24:17.881Z"
   }
 ]

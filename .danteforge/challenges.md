@@ -5,7 +5,7 @@
 > Entries are never silently deleted: a challenge is open, solved (with the commit), or
 > retired (with the reason). An empty OPEN section is a smell, not an achievement.
 
-## Open (11)
+## Open (12)
 
 ### CH-006: Cycle economics: tiny payload per hour
 - **Problem:** A push attempt costs ~60min of orchestration + LLM for 2-3 file diffs; overhead dominates real building.
@@ -71,6 +71,12 @@
 - **Problem:** The proposed 'SWE-bench runner wrapper over DanteCode/packages/swe-bench-runner' is a DEAD END: that package ships 25 SELF-AUTHORED trivial functions (add/isPrime/chunk) hardcoded in src/index.ts (BUILTIN_INSTANCES), runs them VM-only (no git/repo/docker), and has no solver hook. Grounding on it would be FAKE (self-authored instances are not external). Real SWE-bench-lite = 300 real GitHub issues + repos + test patches needing per-instance repo checkout + real test envs (docker), which is Linux-hostile on this Windows box. So a HARD external-grounding frontier is gated on real benchmark infrastructure, not a quick wrapper.
 - **Evidence:** Explore map of X:/Projects/DanteCode/packages/swe-bench-runner/src/index.ts: BUILTIN_INSTANCES lines 43-169 (25 toy fns), runTestPatch VM-only lines 186-220, no solver seam; external-benchmark-runner.ts comment already warned 'unlike the swe-bench-runner toy built-ins'.
 - **Opportunity:** Honest paths: (a) build a REAL swe-bench eval (download swe-bench-lite dataset, clone repos at base_commit, apply solver patch, run FAIL_TO_PASS tests) — a major effort tied to CH-008 (Linux CI), not a quick build; (b) MBPP runner (registered, real, larger than HumanEval, but also saturated) as a second real-but-saturated grounding; (c) accept HumanEval grounding as honest-but-saturated and name the hard-frontier infra gap explicitly. Do NOT ground on the toy package. Links CH-008.
+- Opened: 2026-06-16
+
+### CH-034: SWE-bench grader needs a LINUX ORCHESTRATOR — a Windows host CRLF-corrupts the eval scripts (deeper than resource)
+- **Problem:** The official swebench harness EXECUTES on Windows (docker daemon + resource shim proven: it ran astropy__astropy-12907 in a real container, 4m25s, 0 errors). BUT gold predictions came back UNRESOLVED because the Windows HOST writes eval.sh + the patch with CRLF line endings, which corrupt inside the Linux container: test_output.txt shows pathspec 'test_separable.py?' (stray \r), 'patch does not apply', and '/eval.sh: line 55: pytest: command not found' (mangled conda activation). So a Windows host cannot correctly DRIVE the harness even with docker — the ORCHESTRATOR itself must be Linux (LF-native).
+- **Evidence:** logs/run_evaluation/goldcheck2/gold/astropy__astropy-12907/test_output.txt: 'test_separable.py?' + 'patch does not apply' + 'pytest: command not found'; gold.goldcheck2.json resolved 0/1. WSL present but only the docker-desktop appliance distro (no general Linux).
+- **Opportunity:** Run the harness in a LINUX env that talks to the host docker daemon: (a) a Linux container with docker-socket passthrough (-v //var/run/docker.sock:/var/run/docker.sock + python+swebench installed) running the eval with LF-native files — the standard swebench-on-Windows path; (b) install a real WSL distro (Ubuntu) + swebench; (c) a Linux CI runner (the durable CH-008 answer). This is the concrete, diagnosed CH-008 — not an assumed wall. The real harness + agentic solver are built; only the orchestrator platform remains.
 - Opened: 2026-06-16
 
 ## Resolved (22)
