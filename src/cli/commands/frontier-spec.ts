@@ -15,6 +15,8 @@ import {
 } from '../../core/frontier-spec.js';
 import { completeFrontierSpec, type SpecCompletionResult, type SpecProbeRun } from '../../core/frontier-spec-complete.js';
 import { loadDimRubric } from '../../core/rubric-ladder.js';
+import { seedLeaderTargetFromHarvest } from '../../core/harvested-bar.js';
+import { loadHarvestedSignals } from '../../core/harvest-loader.js';
 
 export type FrontierSpecAction = 'init' | 'check' | 'freeze' | 'status';
 
@@ -111,6 +113,12 @@ export async function runFrontierSpec(options: FrontierSpecOptions): Promise<Fro
     } else if (options.write) {
       const tracked = competitorsOf(matrix);
       const draft = scaffoldFrontierSpec(d, tracked);
+      // KEYSTONE (harvested-bar): seed the bar from HARVESTED external feedback FIRST — harvested
+      // facts (real competitor demand/capability) outrank LLM-authored Score Ladder prose. The
+      // ladder seed then fills only what harvest left unauthored. [] when no harvest artifacts exist
+      // (no fabrication). signals also feed checkFrontierSpec's provenance gate (no-op when gate off).
+      const signals = await loadHarvestedSignals(cwd, options.dimId!);
+      const harvest = seedLeaderTargetFromHarvest(draft, signals);
       const seed = seedLeaderTargetFromLadder(draft, rubric);
       // Deterministic completion (default ON): promote evidence the dim has ALREADY recorded
       // (product-run outcomes, declared artifacts, an observed probe run) into the unauthored
@@ -142,10 +150,13 @@ export async function runFrontierSpec(options: FrontierSpecOptions): Promise<Fro
       dimToWrite.frontier_spec = draft;
       await writeMatrix(matrixToWrite, matrixPath);
       res.wrote = true;
+      if (harvest.tags.length > 0) {
+        res.warnings.push(`Seeded the frontier bar from HARVESTED external feedback (${harvest.tags.join(', ')}): ${[harvest.seeded.score && 'score', harvest.seeded.observed_capability && 'observed_capability', harvest.seeded.category_delta && 'category_delta'].filter(Boolean).join(' + ')}. Subjective (capability/demand) rows need ratification before they unlock >7 (hybrid posture).`);
+      }
       if (seed.ladder_rows_used.length > 0) {
         res.warnings.push(`Seeded the frontier bar from the competitor-grounded Score Ladder (row(s) ${seed.ladder_rows_used.join(', ')}): ${[seed.seeded.observed_capability && 'observed_capability', seed.seeded.category_delta && 'category_delta'].filter(Boolean).join(' + ')}. Review it — you may sharpen but not soften it.`);
       }
-      res.specReady = checkFrontierSpec(draft, tracked, rubric).ok;
+      res.specReady = checkFrontierSpec(draft, tracked, rubric, signals).ok;
       if (res.specReady) {
         res.warnings.push('Draft passes the honesty guardrails with ZERO human edits — ready to freeze.');
       }
