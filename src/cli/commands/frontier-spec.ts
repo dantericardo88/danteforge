@@ -178,7 +178,11 @@ export async function runFrontierSpec(options: FrontierSpecOptions): Promise<Fro
 
   const spec = specOf(dim);
   if (!spec) throw new Error(`"${options.dimId}" has no frontier_spec. Run: danteforge frontier-spec init ${options.dimId} --write`);
-  const check = checkFrontierSpec(spec, competitorsOf(matrix), rubric);
+  // Phase 0.3: freeze (and check) must run the harvest-provenance gate — a >7 bar can't FREEZE on
+  // self-authored prose; it must trace to harvested external signals. No-op when the gate is off / no
+  // signals exist (so today's flow is unaffected until DANTEFORGE_GROUNDING_GATE flips on).
+  const signals = await loadHarvestedSignals(cwd, options.dimId!);
+  const check = checkFrontierSpec(spec, competitorsOf(matrix), rubric, signals);
   res.ok = check.ok; res.errors = check.errors; res.warnings = check.warnings;
 
   if (options.action === 'check') {
