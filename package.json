@@ -135,7 +135,8 @@
     "time-machine:demo": "npx tsx scripts/time-machine-demo.ts",
     "prepublishOnly": "npm run verify && npm run build",
     "test:laws": "tsx --test tests/laws/laws-l1-isolation.test.ts tests/laws/laws-l2-score-writes.test.ts tests/laws/laws-l3-declaration-durability.test.ts tests/laws/laws-l4-process-hygiene.test.ts tests/laws/laws-l5-evidence-honor.test.ts tests/laws/laws-l6-clock-nesting.test.ts tests/laws/laws-l7-flag-wiring.test.ts tests/laws/laws-l8-evidence-bound-routing.test.ts tests/compete-matrix-read-gates.test.ts tests/council-merge-rollback.test.ts",
-    "test:zoo": "tsx --test tests/zoo/zoo.test.ts"
+    "test:zoo": "tsx --test tests/zoo/zoo.test.ts",
+    "test:integrity": "tsx --test tests/council-verdict-parser.test.ts tests/council-grok-judge.test.ts tests/council-judge-fix.test.ts tests/frontier-review-court.test.ts tests/frontier-spec.test.ts tests/ladder-coverage.test.ts tests/score-provenance-backstop.test.ts tests/score-interrupt.test.ts tests/evidence-staleness.test.ts tests/compete-display-nullsafe.test.ts tests/compete-matrix-read-gates.test.ts tests/install-git-hooks.test.ts"
   },
   "dependencies": {
     "@inquirer/prompts": "^8.3.2",
