@@ -5,7 +5,7 @@
 > Entries are never silently deleted: a challenge is open, solved (with the commit), or
 > retired (with the reason). An empty OPEN section is a smell, not an achievement.
 
-## Open (10)
+## Open (11)
 
 ### CH-006: Cycle economics: tiny payload per hour
 - **Problem:** A push attempt costs ~60min of orchestration + LLM for 2-3 file diffs; overhead dominates real building.
@@ -66,6 +66,12 @@
 - **Evidence:** src/core/frontier-spec.ts signValidation/verifyValidation (sign only dimId|hash|judges); src/cli/commands/frontier-review.ts receipt minting (judge_member_ids = PASS judges).
 - **Opportunity:** Bind the build-eligible roster into the receipt: verifyValidation rejects any receipt whose judge_member_ids intersect the build-eligible set. Tension: verifyValidation is SYNC (applyFrontierGate is a hot sync read path) while the roster needs discoverCouncil (async) — either snapshot the roster into the receipt at mint time (record was_builder=false per judge, signed) or accept an async verify on the write/save path only. Prefer snapshotting non-builder attestation INTO the signed receipt so the sync read-gate stays pure.
 - Opened: 2026-06-15
+
+### CH-035: Docker daemon doesn't stay up unattended — blocks 'set and forget' SWE-bench grading (operational autonomy)
+- **Problem:** The real SWE-bench grader depends on the Docker daemon (Docker Desktop). It went DOWN mid-run twice (npipe dockerDesktopLinuxEngine 'cannot find the file specified'), blocking the grade step of an in-flight cross-repo measurement. The solve phase (claude agentic) survived, but grading can't proceed without the daemon. For true unattended/overnight runs, an external dependency that silently stops is exactly the CH-011 host-sleep class: the loop 'runs' but produces no receipt.
+- **Evidence:** docker ps mid-run: 'failed to connect to docker API at npipe dockerDesktopLinuxEngine'; Docker Desktop process absent; b10vm9abw still had 3 live solve procs. Had to relaunch Docker Desktop manually (twice this session).
+- **Opportunity:** For unattended grading: (a) a daemon watchdog that restarts Docker Desktop + waits for readiness before/within the grade step (grade.sh could poll 'docker info' and start Docker Desktop if down); (b) run on a Linux host/CI where dockerd is a managed service (the durable CH-008 answer); (c) checkpoint predictions.jsonl so a daemon-outage grade can resume without re-solving. Links CH-008, CH-011.
+- Opened: 2026-06-16
 
 ## Resolved (24)
 

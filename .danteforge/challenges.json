@@ -352,5 +352,14 @@
     "openedAt": "2026-06-16T19:24:17.881Z",
     "resolution": "BUILT + GOLD-VALIDATED 1/1. scripts/swebench-orch/{Dockerfile,grade.sh}: a Linux orchestrator (python:3.11-slim + swebench 4.1.0) runs the official harness IN LINUX (LF-native files fix CRLF, native resource, host-daemon via socket passthrough). Gold for astropy__astropy-12907 resolved 1/1 (✓=1 ✖=0 error=0) — the CRLF blocker is fully solved and the real grader works end-to-end on this Windows box. run-swebench-grounding.mjs grades via this orchestrator.",
     "resolvedAt": "2026-06-16T19:33:30.976Z"
+  },
+  {
+    "id": "CH-035",
+    "title": "Docker daemon doesn't stay up unattended — blocks 'set and forget' SWE-bench grading (operational autonomy)",
+    "problem": "The real SWE-bench grader depends on the Docker daemon (Docker Desktop). It went DOWN mid-run twice (npipe dockerDesktopLinuxEngine 'cannot find the file specified'), blocking the grade step of an in-flight cross-repo measurement. The solve phase (claude agentic) survived, but grading can't proceed without the daemon. For true unattended/overnight runs, an external dependency that silently stops is exactly the CH-011 host-sleep class: the loop 'runs' but produces no receipt.",
+    "evidence": "docker ps mid-run: 'failed to connect to docker API at npipe dockerDesktopLinuxEngine'; Docker Desktop process absent; b10vm9abw still had 3 live solve procs. Had to relaunch Docker Desktop manually (twice this session).",
+    "opportunity": "For unattended grading: (a) a daemon watchdog that restarts Docker Desktop + waits for readiness before/within the grade step (grade.sh could poll 'docker info' and start Docker Desktop if down); (b) run on a Linux host/CI where dockerd is a managed service (the durable CH-008 answer); (c) checkpoint predictions.jsonl so a daemon-outage grade can resume without re-solving. Links CH-008, CH-011.",
+    "status": "open",
+    "openedAt": "2026-06-16T21:05:57.521Z"
   }
 ]
