@@ -23,6 +23,7 @@
 
 import type { FrontierSpec } from './frontier-spec.js';
 import { TODO_RE, GROUNDING_GATE_THRESHOLD } from './frontier-spec.js';
+import { verifyHarvestedSignalSignature } from './harvested-signal-signer.js';
 
 export type HarvestKind = 'benchmark' | 'capability' | 'demand';
 
@@ -45,6 +46,9 @@ export interface HarvestedSignal {
   /** SUBJECTIVE (capability/demand): the operator id who ratified this as an honest bar. The hybrid
    *  posture accepts a capability/demand bar only when this is set. */
   ratified_by?: string;
+  /** CH-030: HMAC over the signal's factual content (kernel secret). Under enforcement, the gate
+   *  trusts verified_live/ratified_by ONLY when this signature is present and valid. */
+  sig?: string;
 }
 
 /** Normalize a benchmark number to the 0-10 scale the matrix scores on. A value in [0,1] is read as a
@@ -166,6 +170,10 @@ export interface HarvestProvenanceOptions {
   /** Gate is active only when enabled (default: the same DANTEFORGE_GROUNDING_GATE flag as the
    *  external-grounding gate — keeps the bar-grounding and clearance-grounding in lockstep). */
   enabled?: boolean;
+  /** CH-030: when true, a signal's verified_live/ratified_by is trusted ONLY if it carries a valid
+   *  kernel signature (default: the same DANTEFORGE_REQUIRE_SIGNED_EVIDENCE switch as CH-025, so
+   *  signature enforcement flips on in lockstep). Off by default: signals can be migrated first. */
+  requireSigned?: boolean;
 }
 
 /**
@@ -190,10 +198,17 @@ export function checkHarvestProvenance(
   const errors: string[] = [];
   const warnings: string[] = [];
   const enabled = opts.enabled ?? process.env['DANTEFORGE_GROUNDING_GATE'] === '1';
+  const requireSigned = opts.requireSigned ?? process.env['DANTEFORGE_REQUIRE_SIGNED_EVIDENCE'] === '1';
 
   if (!enabled || spec.target_score <= GROUNDING_GATE_THRESHOLD) {
     return { ok: true, errors, warnings };
   }
+
+  // CH-030: under enforcement, a trust claim (verified_live / ratified_by) counts only on a validly
+  // signed signal — an agent without the kernel secret cannot forge the signature. Lazy import keeps
+  // the hot module light and avoids a load-time cycle (the signer imports kernelSecret from here's sibling).
+  const signed = (s: HarvestedSignal): boolean =>
+    !requireSigned || verifyHarvestedSignalSignature(s);
 
   const prov = classifyBarProvenance(spec.leader_target.evidence_ref);
   if (prov.benchmark.length === 0 && prov.capability.length === 0 && prov.demand.length === 0) {
@@ -211,6 +226,8 @@ export function checkHarvestProvenance(
       errors.push(`benchmark provenance "${b.raw}" has no backing harvested signal — the tag cannot be hand-written; supply the signal record.`);
     } else if (!backing.verified_live) {
       errors.push(`benchmark bar "${b.suite}" is not verified live — re-fetch the leaderboard so the published number is confirmed before it sets the bar.`);
+    } else if (!signed(backing)) {
+      errors.push(`benchmark bar "${b.suite}" carries verified_live but no valid kernel signature (CH-030) — a trust claim must be signed, not self-set. Sign it via signedHarvestedSignal after a real re-fetch.`);
     }
   }
 
@@ -220,6 +237,8 @@ export function checkHarvestProvenance(
       errors.push(`subjective provenance "${src}" has no backing harvested signal — supply the signal record.`);
     } else if (!backing.ratified_by) {
       errors.push(`subjective bar from "${src}" awaits ratification — a human must confirm this capability/demand bar is honest (hybrid posture).`);
+    } else if (!signed(backing)) {
+      errors.push(`subjective bar from "${src}" carries ratified_by but no valid kernel signature (CH-030) — ratification must be signed, not self-set. Sign it via signedHarvestedSignal at ratify time.`);
     }
   }
 
