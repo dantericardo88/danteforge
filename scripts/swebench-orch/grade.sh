@@ -1,8 +1,10 @@
 #!/usr/bin/env bash
 # Build (once) the Linux orchestrator image, then grade predictions via the official harness IN LINUX.
-# Usage: grade.sh <predictions.jsonl host path> <run_id> <report_dir host path> <instance_id...>
+# Usage: grade.sh <predictions> <run_id> <report_dir> <dataset> <namespace> <split> <instance_id...>
+#   dataset/namespace/split parameterize the suite: lite/verified use SWE-bench + swebench + test;
+#   live uses SWE-bench-Live/SWE-bench-Live + starryzhang + lite (contamination-resistant, CH-036).
 set -euo pipefail
-PRED="$1"; RUN_ID="$2"; REPORTDIR="$3"; shift 3; IDS="$*"
+PRED="$1"; RUN_ID="$2"; REPORTDIR="$3"; DATASET="$4"; NAMESPACE="$5"; SPLIT="$6"; shift 6; IDS="$*"
 
 # CH-035: the Docker daemon stops unattended (Docker Desktop). Self-heal: if it's down, start it and
 # wait for readiness before grading — so an overnight run survives a daemon outage instead of failing.
@@ -27,5 +29,5 @@ MSYS_NO_PATHCONV=1 docker run --rm \
   -v "${REPORTDIR}:/work/out" \
   df-swebench-orch \
   sh -c "cd /work/out && python -m swebench.harness.run_evaluation \
-    -d SWE-bench/SWE-bench_Lite -s test -p /work/predictions.jsonl \
+    -d '$DATASET' -s '$SPLIT' -n '$NAMESPACE' -p /work/predictions.jsonl \
     -id '$RUN_ID' --max_workers 1 -i $IDS --report_dir /work/out --cache_level env"

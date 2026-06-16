@@ -35,7 +35,16 @@ const offset = Number(opt('--offset', '0')) || 0;
 // is ordered by repo, so a contiguous window is one repo; a spread samples django/sympy/flask/… for an
 // honest cross-repo signal, not one repo's sub-score).
 const spread = Number(opt('--spread', '0')) || 0;
-const DATASET_SIZE = 300; // SWE-bench-lite test split
+// --dataset: lite | verified | live. 'live' = SWE-bench-Live (CONTAMINATION-RESISTANT: post-2024 issues,
+// leak-detected, per-instance docker images in the `starryzhang` namespace) — graded by the SAME official
+// harness with -d/-n/--split (verified 2026-06-16: lite split fetchable + starryzhang images exist).
+const DATASETS = {
+  lite:     { hf: 'SWE-bench/SWE-bench_Lite',          grade: 'SWE-bench/SWE-bench_Lite',          ns: 'swebench',    split: 'test', size: 300 },
+  verified: { hf: 'SWE-bench/SWE-bench_Verified',      grade: 'SWE-bench/SWE-bench_Verified',      ns: 'swebench',    split: 'test', size: 500 },
+  live:     { hf: 'SWE-bench-Live/SWE-bench-Live',     grade: 'SWE-bench-Live/SWE-bench-Live',     ns: 'starryzhang', split: 'lite', size: 300 },
+};
+const DS = DATASETS[opt('--dataset', 'lite')] || DATASETS.lite;
+const DATASET_SIZE = DS.size;
 const solverCmd = opt('--solver', 'claude -p');
 const runId = opt('--run-id', `dfground${offset}_${limit}`);
 const work = opt('--work', 'X:/tmp/swebench-work');
@@ -70,12 +79,12 @@ if (gradeOnly) {
   console.error(`[swebench] CROSS-REPO sample: ${spread} instances at offsets spaced by ${step} across ${DATASET_SIZE}…`);
   for (let k = 0; k < spread; k++) {
     const off = Math.min(DATASET_SIZE - 1, k * step);
-    const got = parseDatasetRows(await fetchJson(datasetRowsUrl(off, 1)));
+    const got = parseDatasetRows(await fetchJson(datasetRowsUrl(off, 1, DS.hf, DS.split)));
     if (got[0]) instances.push(got[0]);
   }
 } else {
-  console.error(`[swebench] fetching ${limit} real instance(s) from SWE-bench_Lite (offset ${offset})…`);
-  instances = parseDatasetRows(await fetchJson(datasetRowsUrl(offset, limit)));
+  console.error(`[swebench] fetching ${limit} real instance(s) from ${DS.hf} [${DS.split}] (offset ${offset})…`);
+  instances = parseDatasetRows(await fetchJson(datasetRowsUrl(offset, limit, DS.hf, DS.split)));
 }
 if (instances.length === 0) { console.error('[swebench] no instances parsed'); process.exit(2); }
 console.error(`[swebench] repos in sample: ${[...new Set(instances.map(i => i.repo))].join(', ')}`);
@@ -134,9 +143,9 @@ if (!gradeOnly) {
 const ids = instances.map(i => i.instance_id).join(' ');
 const reportDir = join(work, `report-${runId}`);
 mkdirSync(reportDir, { recursive: true });
-console.error(`[swebench] grading via the LINUX orchestrator (run_id ${runId})… (image build + GB pulls on first run)`);
+console.error(`[swebench] grading ${DS.grade} [${DS.split}] via the LINUX orchestrator (run_id ${runId}, ns ${DS.ns})… (image build + GB pulls on first run)`);
 const grade = spawnSync(
-  `bash scripts/swebench-orch/grade.sh "${predictionsPath}" ${runId} "${reportDir}" ${ids}`,
+  `bash scripts/swebench-orch/grade.sh "${predictionsPath}" ${runId} "${reportDir}" ${DS.grade} ${DS.ns} ${DS.split} ${ids}`,
   { shell: true, cwd: process.cwd(), timeout: 3 * 3600 * 1000, encoding: 'utf8', maxBuffer: 64 * 1024 * 1024,
     env: { ...process.env, MSYS_NO_PATHCONV: '1' } },
 );

@@ -96,8 +96,9 @@ export function formatPassRateLine(report: { pass_rate: number; resolved: number
   return JSON.stringify({ pass_rate: Number(report.pass_rate.toFixed(4)), resolved: report.resolved, total: report.total });
 }
 
-/** The HF datasets-server rows URL for a page of SWE-bench-lite (real published dataset). */
-export function datasetRowsUrl(offset: number, length: number, dataset = 'princeton-nlp/SWE-bench_Lite'): string {
+/** The HF datasets-server rows URL for a page of a real published SWE-bench dataset/split. `split`
+ *  varies by dataset — 'test' for Lite/Verified, 'lite' for the contamination-resistant SWE-bench-Live. */
+export function datasetRowsUrl(offset: number, length: number, dataset = 'SWE-bench/SWE-bench_Lite', split = 'test'): string {
   const ds = encodeURIComponent(dataset);
-  return `https://datasets-server.huggingface.co/rows?dataset=${ds}&config=default&split=test&offset=${offset}&length=${length}`;
+  return `https://datasets-server.huggingface.co/rows?dataset=${ds}&config=default&split=${split}&offset=${offset}&length=${length}`;
 }
