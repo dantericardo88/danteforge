@@ -319,5 +319,16 @@
     "openedAt": "2026-06-16T17:44:02.191Z",
     "resolution": "RESOLVED (c506e32/693af58 + this finding): the harvest->bar bridge (harvest-to-signals.ts) + live wiring (harvest-loader -> frontier-spec init) are shipped. KEY FINDING: the dossier path is a RED HERRING — dossiers score code-tool competitors on the DIMENSIONS_28 code-editing rubric (ghost_text_fim/chat_ux/agentic_edit), a DIFFERENT domain from DanteForge's matrix dims (functionality/autonomy/depth_doctrine); no honest deterministic map exists, so auto-wiring them would fabricate a mapping (correctly NOT done). The clean harvest sources for the matrix bar are intel (demand, keys by matrix dim id, wired) + benchmark leaderboards (objective anchor, loader source added). Real intel/leaderboard harvest RUN remains operator/loop-triggered.",
     "resolvedAt": "2026-06-16T18:18:11.138Z"
+  },
+  {
+    "id": "CH-032",
+    "title": "Grounding ratio counts DECLARED external-benchmark outcomes, not PASSING ones with a receipt",
+    "problem": "external-grounding.ts:22 isExternallyGrounded returns true when a dim merely DECLARES an external-benchmark outcome (outcomes.some(o => o.input_source?.type==='external-benchmark')) — it never checks the outcome PASSED or that a verified receipt exists at HEAD. Proven live: adding code_generation with a declared (un-run) external-benchmark outcome flipped weightedGroundingRatio 0%→5% BEFORE validate ran, and the report text falsely says 'carry a registered external-benchmark receipt'. The project's deepest honesty metric is gameable by declaration alone.",
+    "evidence": "external-grounding.ts:22-23 (declaration-only); grounding output '5% ... 1/25 dims ... code_generation' emitted before any receipt; outcome-evidence dir empty for the dim.",
+    "opportunity": "isExternallyGrounded must require a PASSING external-benchmark outcome (isOutcomePassing over loaded OutcomeEvidence at HEAD), not mere declaration. externalGroundingReport takes the evidence snapshot; grounding-cmd loads it. The gate's declaration-basis stays sound-in-composition (a failed/unrun outcome drags derived-score <7), but the REPORT metric must reflect real receipts. Pin: a declared-but-not-passing external-benchmark dim counts 0%.",
+    "status": "solved",
+    "openedAt": "2026-06-16T18:44:14.015Z",
+    "resolution": "external-grounding.ts isExternallyGrounded now requires a PASSING external-benchmark receipt (isOutcomePassing over loaded OutcomeEvidence at HEAD), not mere declaration; externalGroundingReport takes the evidence snapshot; grounding-cmd loads it via loadOutcomeEvidence. Proven: adding a declared-but-unrun external-benchmark dim no longer flips the ratio (back to 0% until a real receipt passes). Pins: declared-no-receipt=0%, failing-receipt=0%, passing-receipt=grounded.",
+    "resolvedAt": "2026-06-16T18:47:32.285Z"
   }
 ]

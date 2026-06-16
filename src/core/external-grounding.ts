@@ -11,16 +11,24 @@
 // trustworthy autonomy means the loop's scores are anchored to evidence it cannot author.
 
 import type { CompeteMatrix } from './compete-matrix.js';
+import { isOutcomePassing, makeEvidenceKey, type Outcome, type OutcomeEvidence } from '../matrix/types/outcome.js';
 
 interface DimLike {
   id: string;
   weight?: number;
-  outcomes?: Array<{ input_source?: { type?: string } }>;
+  outcomes?: Outcome[];
 }
 
-/** A dim is externally grounded when it declares ≥1 external-benchmark outcome (registered suite). */
-export function isExternallyGrounded(dim: DimLike): boolean {
-  return (dim.outcomes ?? []).some(o => o.input_source?.type === 'external-benchmark');
+/**
+ * A dim is externally grounded only when it has ≥1 external-benchmark outcome with a PASSING receipt
+ * at HEAD (CH-032). Declaration alone is NOT grounding — the project's deepest honesty metric must
+ * reflect a real, verified receipt, not a promise. `evidence` is the loaded receipt snapshot; without
+ * a passing receipt for the external-benchmark outcome, the dim does not count.
+ */
+export function isExternallyGrounded(dim: DimLike, evidence: OutcomeEvidence): boolean {
+  return (dim.outcomes ?? []).some(o =>
+    o.input_source?.type === 'external-benchmark'
+    && isOutcomePassing(o, evidence.get(makeEvidenceKey(dim.id, o.id))));
 }
 
 export interface ExternalGroundingReport {
@@ -40,10 +48,13 @@ export interface ExternalGroundingReport {
  * the headline number is corroborated by evidence the grader could not author?" — 0 means the score is
  * entirely self-attested.
  */
-export function externalGroundingReport(matrix: Pick<CompeteMatrix, 'dimensions'>): ExternalGroundingReport {
+export function externalGroundingReport(
+  matrix: Pick<CompeteMatrix, 'dimensions'>,
+  evidence: OutcomeEvidence,
+): ExternalGroundingReport {
   const dims = (matrix.dimensions ?? []) as DimLike[];
   const totalDims = dims.length;
-  const grounded = dims.filter(isExternallyGrounded);
+  const grounded = dims.filter(d => isExternallyGrounded(d, evidence));
   const totalWeight = dims.reduce((s, d) => s + (Number.isFinite(d.weight) ? (d.weight as number) : 1), 0);
   const groundedWeight = grounded.reduce((s, d) => s + (Number.isFinite(d.weight) ? (d.weight as number) : 1), 0);
   const weightedGroundingRatio = totalWeight > 0 ? groundedWeight / totalWeight : 0;
