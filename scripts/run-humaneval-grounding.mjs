@@ -17,12 +17,15 @@
 // leader_target), run on a signed surface (sign-outcome-evidence.mjs + DANTEFORGE_REQUIRE_SIGNED_EVIDENCE=1).
 
 import 'tsx/esm';
-import { readFileSync } from 'node:fs';
+import { readFileSync, mkdtempSync, writeFileSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { gunzipSync } from 'node:zlib';
 import { spawnSync } from 'node:child_process';
 
 const { runHumanEvalGrounding, runHumanEvalTest, parseHumanEvalJsonl, formatPassRateLine } =
   await import('../src/matrix/engines/humaneval-grounding.ts');
+const { pipelineSolve } = await import('../src/matrix/engines/pipeline-solver.ts');
 
 const args = process.argv.slice(2);
 const flag = (name) => args.includes(name);
@@ -32,6 +35,10 @@ const dataPath = opt('--data', null);
 const limit = Number(opt('--limit', '0')) || 0;
 const verifyGold = flag('--verify-gold');
 const solverCmd = opt('--solver', 'claude -p');
+// CH-029: 'oneshot' = raw model call (grounds the MODEL); 'pipeline' = DanteForge's iterate-to-green
+// loop over the model (grounds DanteForge's ORCHESTRATION — what the code_generation dim claims).
+const solverMode = opt('--solver-mode', 'oneshot');
+const maxIter = Number(opt('--max-iterations', '3')) || 3;
 
 if (!dataPath) {
   console.error('[humaneval] --data <HumanEval.jsonl|.jsonl.gz> required. Dataset: https://github.com/openai/human-eval (data/HumanEval.jsonl.gz)');
@@ -68,12 +75,34 @@ function extractBody(text, entry) {
   return t.endsWith('\n') ? t : `${t}\n`;
 }
 const parts = solverCmd.split(' ');
-const solve = async (spec) => {
-  const prompt = `Complete this Python function. Output ONLY the function body (the indented lines after the signature) — no signature, no markdown fences, no prose.\n\n${spec.prompt}`;
-  const r = spawnSync(parts[0], [...parts.slice(1), prompt], { encoding: 'utf8', timeout: 120_000, maxBuffer: 8 * 1024 * 1024 });
+const genPrompt = (specPrompt, feedback) =>
+  `Complete this Python function. Output ONLY the function body (the indented lines after the signature) — no signature, no markdown fences, no prose.\n\n${specPrompt}${feedback ? `\n\n${feedback}` : ''}`;
+const callModel = (promptText) => {
+  const r = spawnSync(parts[0], [...parts.slice(1), promptText], { encoding: 'utf8', timeout: 120_000, maxBuffer: 8 * 1024 * 1024 });
   if (r.status !== 0 || !r.stdout) throw new Error(`solver exit ${r.status}: ${(r.stderr || '').slice(0, 200)}`);
-  return extractBody(r.stdout, spec.entry_point);
+  return r.stdout;
 };
+
+const solveOneShot = async (spec) => extractBody(callModel(genPrompt(spec.prompt)), spec.entry_point);
+
+// Python runner for the pipeline loop's VISIBLE-example checks (mirrors humaneval-grounding's runner).
+const pythonRunner = (program) => {
+  const dir = mkdtempSync(join(tmpdir(), 'he-pipe-'));
+  const file = join(dir, 'prog.py');
+  try {
+    writeFileSync(file, program, 'utf8');
+    const r = spawnSync('python', [file], { encoding: 'utf8', timeout: 15_000 });
+    return { status: r.status, stderr: (r.stderr ?? '') + (r.error ? `\n${String(r.error)}` : '') };
+  } finally { rmSync(dir, { recursive: true, force: true }); }
+};
+const solvePipeline = async (spec) => {
+  const generate = async (specPrompt, feedback) => extractBody(callModel(genPrompt(specPrompt, feedback)), spec.entry_point);
+  const res = await pipelineSolve(spec, generate, pythonRunner, { maxIterations: maxIter });
+  return res.body;
+};
+
+const solve = solverMode === 'pipeline' ? solvePipeline : solveOneShot;
+console.error(`[humaneval] solver-mode: ${solverMode}${solverMode === 'pipeline' ? ` (max ${maxIter} iterations)` : ''}`);
 const report = await runHumanEvalGrounding(problems, solve);
 console.error(`[humaneval] resolved ${report.resolved}/${report.total}`);
 console.log(formatPassRateLine(report));
