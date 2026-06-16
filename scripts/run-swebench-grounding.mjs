@@ -40,6 +40,7 @@ const solverCmd = opt('--solver', 'claude -p');
 const runId = opt('--run-id', `dfground${offset}_${limit}`);
 const work = opt('--work', 'X:/tmp/swebench-work');
 const solveTimeoutMs = Number(opt('--solve-timeout-ms', '900000')) || 900000;
+const maxIter = Number(opt('--max-iterations', '2')) || 2; // council #2: test-feedback iteration
 const MODEL_NAME = 'danteforge-agentic';
 
 function fetchJson(url) {
@@ -88,16 +89,24 @@ for (const inst of instances) {
     r = sh(`git checkout --quiet ${inst.base_commit}`, repoDir, 120000);
     if (r.status !== 0) throw new Error(`checkout failed: ${(r.stderr || '').slice(-200)}`);
 
-    // SOLVE: the agentic solver edits files in the repo to fix the issue (problem_statement ONLY).
-    const task = `You are fixing a real GitHub issue in this repository (cwd is the repo root). Edit the source files to resolve it. Do NOT write or modify tests. Make the minimal change that fixes the described problem.\n\nISSUE:\n${si.problem_statement}\n${si.hints_text ? `\nHINTS:\n${si.hints_text}\n` : ''}`;
+    // SOLVE with TEST-FEEDBACK ITERATION (council #2). The agentic solver has Bash, so the prompt
+    // instructs it to reproduce → fix → RUN the repo's relevant tests → iterate until green within a
+    // call. The harness adds a structural retry: if a call produced no diff, retry with feedback (the
+    // largest closable-by-wiring slice of the Devin gap, reusing the sandbox). Tests it runs are the
+    // repo's OWN — never the hidden FAIL_TO_PASS (no answer leak).
     const parts = solverCmd.split(' ');
-    const solve = sh(`${parts[0]} ${parts.slice(1).map(a => `"${a}"`).join(' ')} "${task.replace(/"/g, '\\"').slice(0, 12000)}"`, repoDir, solveTimeoutMs);
-    if (solve.status !== 0) console.error(`  [warn] solver exit ${solve.status}: ${(solve.stderr || '').slice(-160)}`);
-
-    // The candidate patch = whatever the solver changed in tracked source files.
-    const diff = sh(`git diff`, repoDir, 60000);
-    const patch = diff.stdout || '';
-    console.error(`  patch: ${patch.length} chars`);
+    const baseTask = `You are an autonomous software engineer fixing a real GitHub issue in this repository (cwd = repo root).\nSTEPS: (1) explore the codebase to find the cause; (2) reproduce the bug with a throwaway script and run it; (3) edit the SOURCE files to fix it — do NOT modify the test suite; (4) RUN the repository's existing relevant tests + your reproduction and ITERATE on the fix until they pass; (5) make the minimal correct change; (6) delete any throwaway scripts so only the real fix remains.\n\nISSUE:\n${si.problem_statement}\n${si.hints_text ? `\nHINTS:\n${si.hints_text}\n` : ''}`;
+    let patch = '';
+    for (let attempt = 1; attempt <= maxIter; attempt++) {
+      const feedback = attempt === 1 ? '' :
+        `\n\nYour previous attempt left NO source changes. Explore harder, actually edit the source files that cause the bug, run the tests, and iterate until they pass.`;
+      const task = `${baseTask}${feedback}`;
+      const solve = sh(`${parts[0]} ${parts.slice(1).map(a => `"${a}"`).join(' ')} "${task.replace(/"/g, '\\"').slice(0, 12000)}"`, repoDir, solveTimeoutMs);
+      if (solve.status !== 0) console.error(`  [warn] attempt ${attempt} solver exit ${solve.status}: ${(solve.stderr || '').slice(-160)}`);
+      patch = sh(`git diff`, repoDir, 60000).stdout || '';
+      console.error(`  attempt ${attempt}: patch ${patch.length} chars`);
+      if (patch.trim().length > 0) break; // got a candidate; the agent already iterated on tests internally
+    }
     predLines.push(buildPredictionLine(inst.instance_id, MODEL_NAME, patch));
   } catch (err) {
     console.error(`  [error] ${err instanceof Error ? err.message : String(err)} — empty patch`);
