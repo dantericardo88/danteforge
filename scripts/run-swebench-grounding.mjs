@@ -119,6 +119,7 @@ for (const inst of (gradeOnly ? [] : instances)) {
     console.error(`  [error] ${err instanceof Error ? err.message : String(err)} — empty patch`);
     predLines.push(buildPredictionLine(inst.instance_id, MODEL_NAME, '')); // empty patch = unresolved (honest)
   }
+  writeFileSync(predictionsPath, predLines.join('\n') + '\n', 'utf8'); // CH-035c: incremental — a mid-solve wedge keeps completed solves (resume via --grade-only)
 }
 
 if (!gradeOnly) {
