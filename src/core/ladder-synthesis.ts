@@ -27,6 +27,19 @@ export function rungToMarkdownRow(r: SynthesizedRung): string {
   return `| ${r.score} | ${r.descriptor} |`;
 }
 
+/** Render synthesized rungs as a `## Score Ladder` markdown section (what the universe file/prompt uses).
+ *  Empty string when there are no grounded rungs (so callers fall back to the existing LLM ladder). */
+export function renderGroundedLadderSection(rungs: SynthesizedRung[]): string {
+  if (rungs.length === 0) return '';
+  const rows = rungs.map(rungToMarkdownRow).join('\n');
+  return [
+    '## Score Ladder',
+    '| Score | Requirement (grounded in a harvested external signal — EXTRACTED + cited) |',
+    '|-------|---------------------------------------------------------------------------|',
+    rows,
+  ].join('\n') + '\n';
+}
+
 /**
  * Synthesize the competitive ladder rungs (8 = differentiators, 9 = frontier) from harvested signals.
  * Each rung is tagged EXTRACTED and cites its signal's source URL. Returns [] when there are no signals

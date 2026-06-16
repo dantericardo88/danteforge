@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { synthesizeLadderFromSignals, rungToMarkdownRow } from '../src/core/ladder-synthesis.ts';
+import { synthesizeLadderFromSignals, rungToMarkdownRow, renderGroundedLadderSection } from '../src/core/ladder-synthesis.ts';
 import { checkLadderGroundedness } from '../src/core/ladder-groundedness.ts';
 import type { HarvestedSignal } from '../src/core/harvested-bar.ts';
 
@@ -44,4 +44,12 @@ test('END-TO-END: synthesized rungs PASS checkLadderGroundedness by construction
 
 test('rungToMarkdownRow renders a universe Score Ladder table row', () => {
   assert.equal(rungToMarkdownRow({ score: 8, descriptor: 'X [EXTRACTED: https://u]', source: 'https://u' }), '| 8 | X [EXTRACTED: https://u] |');
+});
+
+test('renderGroundedLadderSection emits a Score Ladder section (empty string when no rungs)', () => {
+  assert.equal(renderGroundedLadderSection([]), '');
+  const md = renderGroundedLadderSection(synthesizeLadderFromSignals([cap('repo-aware edits', 'https://u'), bench(0.46)]));
+  assert.match(md, /## Score Ladder/);
+  assert.match(md, /\| 8 \|.*repo-aware/);
+  assert.match(md, /\| 9 \|.*swe-bench-lite/);
 });

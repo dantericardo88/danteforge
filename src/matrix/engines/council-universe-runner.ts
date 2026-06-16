@@ -17,6 +17,8 @@ import { CodexAdapter } from '../adapters/codex-adapter.js';
 import { ClaudeCodeAdapter } from '../adapters/claude-code-adapter.js';
 import { runAdapter } from '../adapters/adapter-interface.js';
 import type { WorkPacket } from '../types/work-graph.js';
+import { synthesizeLadderFromSignals, type SynthesizedRung } from '../../core/ladder-synthesis.js';
+import { loadHarvestedSignals } from '../../core/harvest-loader.js';
 import { makeReadOnlyLease } from './council-worktree.js';
 import { saveUniverseFile, loadUniverseFile } from './council-forge-brief.js';
 import {
@@ -88,7 +90,7 @@ function hasMinimumSources(output: string): boolean {
   return rows.length >= 2;
 }
 
-export function makeUniversePacket(target: UniverseTarget, researcher: string, brief: ProjectResearchBrief, revisionNotes?: string[]): WorkPacket {
+export function makeUniversePacket(target: UniverseTarget, researcher: string, brief: ProjectResearchBrief, revisionNotes?: string[], groundedRungs: SynthesizedRung[] = []): WorkPacket {
   const timestamp = new Date().toISOString();
   const ossHint = target.ossLeader
     ? `Known OSS leader to study in depth: **${target.ossLeader}**`
@@ -150,6 +152,13 @@ export function makeUniversePacket(target: UniverseTarget, researcher: string, b
       `**Name**: `,
       `**Key capability**: `,
       ``,
+      ...(groundedRungs.length > 0 ? [
+        `## GROUNDED Score-Ladder rungs (REQUIRED) — copy these VERBATIM into the matching >7 rows of the`,
+        `Score Ladder below. They are synthesized from HARVESTED external signals (EXTRACTED + cited); do NOT`,
+        `soften, rephrase, or drop the [EXTRACTED: <url>] citations — the groundedness gate rejects uncited >7 rungs:`,
+        ...groundedRungs.map(r => `| ${r.score} | ${r.descriptor} |`),
+        ``,
+      ] : []),
       `## Score Ladder`,
       `| Score | Evidence required for ${target.dimName} |`,
       `|-------|------------------------------------------|`,
@@ -226,8 +235,14 @@ async function runDimUniverse(
 ): Promise<string | null> {
   onProgress?.(target.dimId, 'started', memberId);
 
+  // Phase 2.3 (live): seed the universe packet with GROUNDED rungs synthesized from harvested signals,
+  // so the generated ladder's >7 rows trace to real external evidence instead of LLM prose. Empty when
+  // no signals exist (then the researcher writes the ladder as before — no fabrication).
+  const groundedRungs = synthesizeLadderFromSignals(await loadHarvestedSignals(projectPath, target.dimId));
+  if (groundedRungs.length > 0) logger.info(`[universe] ${target.dimId}: seeding ${groundedRungs.length} grounded rung(s) from harvested signals`);
+
   for (let attempt = 0; attempt <= maxRetries; attempt++) {
-    const workPacket = makeUniversePacket(target, memberId, brief, revisionNotes);
+    const workPacket = makeUniversePacket(target, memberId, brief, revisionNotes, groundedRungs);
     const lease = makeReadOnlyLease(projectPath, 'universe-research');
     const adapter = makeAdapter(memberId, workPacket);
 
