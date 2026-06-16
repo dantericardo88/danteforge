@@ -105,25 +105,30 @@ const grade = spawnSync(
   { shell: true, cwd: process.cwd(), timeout: 3 * 3600 * 1000, encoding: 'utf8', maxBuffer: 64 * 1024 * 1024,
     env: { ...process.env, MSYS_NO_PATHCONV: '1' } },
 );
-process.stderr.write((grade.stdout || '').slice(-2000));
-process.stderr.write((grade.stderr || '').slice(-2000));
+const gradeOut = `${grade.stdout || ''}\n${grade.stderr || ''}`;
+process.stderr.write(gradeOut.slice(-2500));
 
-// The harness writes <model_name>.<run_id>.json in the report dir (or cwd). Find + parse it.
-function findReport(dir) {
-  for (const base of [dir, reportDir, process.cwd()]) {
-    try {
-      const f = readdirSync(base).find(n => n.endsWith(`.${runId}.json`) || (n.includes(runId) && n.endsWith('.json')));
-      if (f) return join(base, f);
-    } catch { /* keep looking */ }
+// AUTHORITATIVE source = the harness's own stdout summary (always printed), robust to the report
+// file landing in the ephemeral container cwd. Fall back to a report file if the lines are absent.
+const mResolved = /Instances resolved:\s*(\d+)/i.exec(gradeOut);
+const mTotal = /Total instances:\s*(\d+)/i.exec(gradeOut);
+let report;
+if (mResolved && mTotal) {
+  const resolved = Number(mResolved[1]), total = Number(mTotal[1]);
+  report = { resolved, total, pass_rate: total > 0 ? resolved / total : 0 };
+  console.error(`[swebench] OFFICIAL grader: resolved ${resolved}/${total}`);
+} else {
+  // Fallback: a report file (model.<run_id>.json) if the harness wrote one to a readable dir.
+  let reportPath = null;
+  for (const base of [reportDir, process.cwd()]) {
+    try { const f = readdirSync(base).find(n => n.includes(runId) && n.endsWith('.json')); if (f) { reportPath = join(base, f); break; } } catch { /* keep looking */ }
   }
-  return null;
+  if (reportPath) {
+    report = parseSwebenchReport(JSON.parse(readFileSync(reportPath, 'utf8')));
+    console.error(`[swebench] resolved ${report.resolved}/${report.total} — ${reportPath}`);
+  } else {
+    console.error('[swebench] grading did not produce a parseable summary (no "Instances resolved:" line, no report file). Honest: unscored.');
+    report = { pass_rate: 0, resolved: 0, total: instances.length };
+  }
 }
-const reportPath = findReport(reportDir);
-if (!reportPath) {
-  console.error('[swebench] no report file found — grading did not complete. Emitting 0/N (honest: unresolved).');
-  console.log(formatPassRateLine({ pass_rate: 0, resolved: 0, total: instances.length }));
-  process.exit(0);
-}
-const report = parseSwebenchReport(JSON.parse(readFileSync(reportPath, 'utf8')));
-console.error(`[swebench] resolved ${report.resolved}/${report.total} — ${reportPath}`);
 console.log(formatPassRateLine(report));

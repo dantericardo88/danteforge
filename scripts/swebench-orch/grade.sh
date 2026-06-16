@@ -10,6 +10,6 @@ MSYS_NO_PATHCONV=1 docker run --rm \
   -v "${PRED}:/work/predictions.jsonl:ro" \
   -v "${REPORTDIR}:/work/out" \
   df-swebench-orch \
-  python -m swebench.harness.run_evaluation \
+  sh -c "cd /work/out && python -m swebench.harness.run_evaluation \
     -d SWE-bench/SWE-bench_Lite -s test -p /work/predictions.jsonl \
-    -id "$RUN_ID" --max_workers 1 -i $IDS --report_dir /work/out --cache_level env
+    -id '$RUN_ID' --max_workers 1 -i $IDS --report_dir /work/out --cache_level env"
