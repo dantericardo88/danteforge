@@ -119,7 +119,7 @@ function bestSignal(signals: HarvestedSignal[], kind: HarvestKind): HarvestedSig
 
 /**
  * Write the genuinely-hard leader_target fields from HARVESTED signals, when still unauthored.
- * Mirrors seedLeaderTargetFromLadder's contract: NEVER overwrites authored (non-TODO) fields, and
+ * Mirrors seedLeaderTargetFromLadder's contract: NEVER overwrites already-authored fields, and
  * stamps a provenance tag into evidence_ref so the posture gate can verify the source.
  *
  *  - leader_target.score        ← the best benchmark signal's normalized number (the world's frontier)
