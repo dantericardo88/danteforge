@@ -4,5 +4,10 @@
 # everything else (docker-socket passthrough, LF-native files) is identical to the lite/verified orchestrator.
 FROM python:3.11-slim
 RUN apt-get update && apt-get install -y --no-install-recommends git && rm -rf /var/lib/apt/lists/*
-RUN pip install --no-cache-dir "git+https://github.com/microsoft/SWE-bench-Live.git"
+# Clone + editable install per the SWE-bench-Live README (the `swebench` package lives in a repo subdir,
+# so `pip install git+…` doesn't expose it; clone + `pip install -e .` does). Fails the build loudly if
+# the package can't import, instead of silently producing an image without the module.
+RUN git clone --depth 1 https://github.com/microsoft/SWE-bench-Live.git /opt/swebench-live \
+    && pip install --no-cache-dir -e /opt/swebench-live \
+    && python -c "import swebench.harness.run_evaluation"
 WORKDIR /work
