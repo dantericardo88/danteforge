@@ -51,6 +51,14 @@ const work = opt('--work', 'X:/tmp/swebench-work');
 const solveTimeoutMs = Number(opt('--solve-timeout-ms', '900000')) || 900000;
 const maxIter = Number(opt('--max-iterations', '2')) || 2; // council #2: test-feedback iteration
 const gradeOnly = opt('--grade-only', ''); // CH-035c: resume at the grade step (no re-solve)
+// CH-039 STRUCTURAL regression-gate: the first contamination-resistant grade showed the solver FIXES the
+// target but breaks previously-passing tests (PASS_TO_PASS regressions), and a prompt telling it "don't
+// regress" produced a byte-identical patch (prompt-trust is insufficient). The gate runs the repo's OWN
+// public test suite before+after the patch and feeds back ONLY the NEWLY-failing tests (never the target
+// tests — no answer leak) so the solver gets the missing signal and re-solves. Off by default (expensive).
+const regressionGate = args.includes('--regression-gate');
+const testCmd = opt('--test-cmd', 'python -m pytest -p no:cacheprovider --tb=no -q');
+const testTimeoutMs = Number(opt('--test-timeout-ms', '900000')) || 900000;
 const MODEL_NAME = 'danteforge-agentic';
 
 function fetchJson(url) {
@@ -65,6 +73,32 @@ function fetchJson(url) {
 
 function sh(cmd, cwd, timeout) {
   return spawnSync(cmd, { shell: true, cwd, timeout, encoding: 'utf8', maxBuffer: 64 * 1024 * 1024 });
+}
+
+// Parse the set of FAILED/ERROR test ids from pytest output (--tb=no -q prints `FAILED path::id - reason`
+// and `ERROR path::id` lines). Returns a Set of bare test ids. Used by the regression gate to diff the
+// failure set before vs after the patch — newly-failing ids are regressions (NOT the target tests).
+function parsePytestFailures(output) {
+  const ids = new Set();
+  for (const line of (output ?? '').split('\n')) {
+    const m = /^(?:FAILED|ERROR)\s+(\S+)/.exec(line.trim());
+    if (m) ids.add(m[1].replace(/\s*-\s.*$/, ''));
+  }
+  return ids;
+}
+
+// Run the repo's public test suite and return { failures:Set, ran:boolean }. ran=false when the runner
+// itself could not execute (wrong runner / collection error) — the gate then skips honestly rather than
+// treating "couldn't run" as "everything regressed".
+function runRepoTests(repoDir, label) {
+  const r = sh(testCmd, repoDir, testTimeoutMs);
+  const out = `${r.stdout || ''}\n${r.stderr || ''}`;
+  // pytest exits 0 (all pass), 1 (tests failed), 5 (no tests). A collection/usage error is exit 2/3/4 or a
+  // missing-module crash — treat those as "could not run" so the gate doesn't fabricate regressions.
+  const usable = r.status === 0 || r.status === 1 || r.status === 5;
+  const failures = parsePytestFailures(out);
+  console.error(`  [regression-gate] ${label}: test run exit ${r.status}, ${failures.size} failing${usable ? '' : ' (UNUSABLE — runner could not execute; gate skipped)'}`);
+  return { failures, ran: usable };
 }
 
 let instances = [];
@@ -120,15 +154,38 @@ for (const inst of (gradeOnly ? [] : instances)) {
       `CRITICAL ACCEPTANCE RULE: your patch is REJECTED if it breaks ANY test that passed before your change — even if it fixes the issue. Keeping existing tests green is EXACTLY as important as the new fix. So make the SMALLEST possible surgical change; do not refactor, rename, reformat, or "improve" anything unrelated to the bug.\n` +
       `STEPS: (1) explore to find the precise cause; (2) reproduce the bug with a throwaway script and run it; (3) BEFORE editing, run the test FILE(S) covering the module(s) you will touch and note which tests pass (your baseline); (4) edit ONLY the SOURCE lines needed to fix the bug — never modify the test suite; (5) re-run those SAME test files PLUS your reproduction: every test that passed in your baseline MUST still pass, and the bug must be fixed. If any previously-passing test now fails, your change is too broad — revert and narrow it to the minimal edit; (6) iterate (3)-(5) until the bug is fixed AND zero regressions; (7) delete throwaway scripts so only the minimal real fix remains.\n\nISSUE:\n${si.problem_statement}\n${si.hints_text ? `\nHINTS:\n${si.hints_text}\n` : ''}`;
     let patch = '';
+    // CH-039 regression gate: capture the pre-patch failure baseline on the CLEAN repo so post-patch we can
+    // isolate NEWLY-failing (regressed) tests from pre-existing/flaky failures AND from the target tests
+    // (which go fail->pass, never pass->fail — so they are never counted as regressions: no answer leak).
+    let baseFail = new Set();
+    let gateActive = false;
+    if (regressionGate) {
+      const b = runRepoTests(repoDir, 'baseline (pre-patch)');
+      gateActive = b.ran;
+      baseFail = b.failures;
+      if (!gateActive) console.error('  [regression-gate] disabled for this instance (runner unusable) — accepting first valid patch');
+    }
+    let regressionNote = '';
     for (let attempt = 1; attempt <= maxIter; attempt++) {
-      const feedback = attempt === 1 ? '' :
-        `\n\nYour previous attempt left NO source changes. Explore harder, actually edit the source files that cause the bug, run the tests, and iterate until they pass.`;
+      const feedback = attempt === 1 ? '' : (regressionNote ||
+        `\n\nYour previous attempt left NO source changes. Explore harder, actually edit the source files that cause the bug, run the tests, and iterate until they pass.`);
       const task = `${baseTask}${feedback}`;
       const solve = sh(`${parts[0]} ${parts.slice(1).map(a => `"${a}"`).join(' ')} "${task.replace(/"/g, '\\"').slice(0, 12000)}"`, repoDir, solveTimeoutMs);
       if (solve.status !== 0) console.error(`  [warn] attempt ${attempt} solver exit ${solve.status}: ${(solve.stderr || '').slice(-160)}`);
       patch = sh(`git diff`, repoDir, 60000).stdout || '';
       console.error(`  attempt ${attempt}: patch ${patch.length} chars`);
-      if (patch.trim().length > 0) break; // got a candidate; the agent already iterated on tests internally
+      if (patch.trim().length === 0) continue;          // no candidate yet — retry with the no-diff feedback
+      if (!gateActive) break;                            // no regression gate → accept first non-empty patch
+      // Re-run the suite; tests failing now but NOT in the pre-patch baseline are regressions caused by the patch.
+      const post = runRepoTests(repoDir, `post-patch attempt ${attempt}`);
+      const regressions = [...post.failures].filter(t => !baseFail.has(t));
+      if (regressions.length === 0) { console.error(`  [regression-gate] attempt ${attempt}: NO regressions — patch accepted`); break; }
+      console.error(`  [regression-gate] attempt ${attempt}: ${regressions.length} regression(s): ${regressions.slice(0, 8).join(', ')}`);
+      if (attempt < maxIter) {
+        regressionNote = `\n\nYour patch fixed the issue but BROKE these previously-passing tests (they MUST pass — keeping them green is REQUIRED):\n${regressions.slice(0, 25).map(t => `  - ${t}`).join('\n')}\nRun each of these tests, find why YOUR change broke it, and fix the issue WITHOUT breaking them — narrow your edit to the minimal change that keeps them green. Do NOT modify the test files.`;
+      } else {
+        console.error(`  [regression-gate] max attempts reached, ${regressions.length} regression(s) remain — recording the patch honestly (grades as unresolved)`);
+      }
     }
     predLines.push(buildPredictionLine(inst.instance_id, MODEL_NAME, patch));
   } catch (err) {
