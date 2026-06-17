@@ -192,10 +192,22 @@ for (const inst of (gradeOnly ? [] : instances)) {
       if (!gateActive) console.error('  [regression-gate] disabled for this instance (runner unusable even after install) — accepting first valid patch');
     }
     // CH-041: the dataset's PASS_TO_PASS is the grader's must-stay-green set (harness-side only — never given
-    // to the solver). Intersecting the gate's newly-failing tests with it makes the gate match the grader
-    // (the full suite over-counts: 26 vs the grader's 4). Empty → the gate uses the conservative full set.
+    // to the solver). Intersecting the gate's newly-failing tests with it makes the gate match the grader.
     const mustStayGreen = parsePassToPass(inst.PASS_TO_PASS);
-    if (gateActive) console.error(`  [regression-gate] PASS_TO_PASS must-stay-green set: ${mustStayGreen.size} tests${mustStayGreen.size ? '' : ' (none — using conservative full-suite signal)'}`);
+    // CH-043 — ENV-FIDELITY self-check: PASS_TO_PASS tests pass in the GRADER's environment by definition.
+    // If any of them ALREADY FAIL in our local baseline, our `pip install -e .` env != the grader's Docker
+    // image, so real regressions in those tests would be masked (they look "already failing") → a false
+    // accept (observed: cfn-lint-3798 — 4 must-stay-green tests fail locally on the clean repo). When that
+    // happens the local gate CANNOT faithfully match the grader, so it disables itself and defers to the
+    // authoritative Docker grade rather than emit a misleading "no regressions".
+    if (gateActive && mustStayGreen.size > 0) {
+      const baselineMustGreenFailures = [...baseFail].filter(t => mustStayGreen.has(t));
+      if (baselineMustGreenFailures.length > 0) {
+        console.error(`  [regression-gate] ENV MISMATCH: ${baselineMustGreenFailures.length} must-stay-green (PASS_TO_PASS) test(s) already FAIL in the local baseline — local env != the grader's Docker image, so regression detection is UNRELIABLE. Disabling the gate (the Docker grade is authoritative).`);
+        gateActive = false;
+      }
+    }
+    if (gateActive) console.error(`  [regression-gate] env OK; PASS_TO_PASS must-stay-green set: ${mustStayGreen.size} tests${mustStayGreen.size ? '' : ' (none — conservative full-suite signal)'}`);
     // CH-040: PERSISTENT iterative session. The fresh-call-per-attempt loop produced byte-identical patches
     // across attempts (the agent re-did the obvious fix with no memory of the feedback). When the solver is
     // `claude`, run attempt 1 under a fixed --session-id and RESUME that session for each follow-up so the
