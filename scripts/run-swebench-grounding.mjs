@@ -166,8 +166,19 @@ if (mResolved && mTotal) {
   console.error(`[swebench] OFFICIAL grader: resolved ${resolved}/${total}`);
 } else if (mLiveOk) {
   const resolved = Number(mLiveOk[1]), total = instances.length;
-  report = { resolved, total, pass_rate: total > 0 ? resolved / total : 0 };
+  // CH-038: the Live grader reports Error/Incomplete (infra/daemon outages, CH-035) SEPARATELY from a real
+  // Failure. Surface them so an UNRESOLVED number that is actually infra-degraded is not mistaken for a true
+  // capability signal — the conservative denominator stays the full sample, but a degraded run is flagged
+  // (so an unattended loop re-runs the errored instances instead of trusting a depressed rate).
+  const errored = Number((/^Error:\s*(\d+)/im.exec(gradeOut) ?? [])[1] ?? 0);
+  const incomplete = Number((/^Incomplete:\s*(\d+)/im.exec(gradeOut) ?? [])[1] ?? 0);
+  const degraded = errored + incomplete;
+  report = { resolved, total, pass_rate: total > 0 ? resolved / total : 0, errored, incomplete };
   console.error(`[swebench] SWE-bench-Live grader (contamination-resistant): resolved ${resolved}/${total}`);
+  if (degraded > 0) {
+    console.error(`[swebench] WARNING: ${degraded}/${total} instance(s) errored/incomplete (infra, not a real fail) — ` +
+      `this rate is DEGRADED. Re-grade the affected instances (--grade-only) before trusting the number as capability.`);
+  }
 } else {
   // Fallback: a report file (model.<run_id>.json) if the harness wrote one to a readable dir.
   let reportPath = null;
