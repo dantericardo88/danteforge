@@ -22,6 +22,7 @@ import { readFileSync, writeFileSync, mkdirSync, existsSync, readdirSync, rmSync
 import { spawnSync } from 'node:child_process';
 import { join } from 'node:path';
 import { get as httpsGet } from 'node:https';
+import { randomUUID } from 'node:crypto';
 
 const {
   parseDatasetRows, toSolverInput, buildPredictionLine, parseSwebenchReport, formatPassRateLine, datasetRowsUrl,
@@ -165,16 +166,24 @@ for (const inst of (gradeOnly ? [] : instances)) {
       baseFail = b.failures;
       if (!gateActive) console.error('  [regression-gate] disabled for this instance (runner unusable) — accepting first valid patch');
     }
-    let regressionNote = '';
+    // CH-040: PERSISTENT iterative session. The fresh-call-per-attempt loop produced byte-identical patches
+    // across attempts (the agent re-did the obvious fix with no memory of the feedback). When the solver is
+    // `claude`, run attempt 1 under a fixed --session-id and RESUME that session for each follow-up so the
+    // agent keeps full context (its prior patch + the specific regression feedback) and actually revises.
+    // For non-claude solvers (or --no-session) fall back to appending feedback to a fresh task.
+    const useSession = /\bclaude\b/.test(solverCmd) && !args.includes('--no-session');
+    const sessionId = useSession ? randomUUID() : null;
+    const NODIFF_FB = `Your previous attempt left NO source changes. Explore harder, actually edit the source files that cause the bug, run the tests, and iterate until they pass.`;
+    let nextMessage = baseTask; // attempt 1 sends the full task; later attempts send feedback (session keeps context)
     for (let attempt = 1; attempt <= maxIter; attempt++) {
-      const feedback = attempt === 1 ? '' : (regressionNote ||
-        `\n\nYour previous attempt left NO source changes. Explore harder, actually edit the source files that cause the bug, run the tests, and iterate until they pass.`);
-      const task = `${baseTask}${feedback}`;
-      const solve = sh(`${parts[0]} ${parts.slice(1).map(a => `"${a}"`).join(' ')} "${task.replace(/"/g, '\\"').slice(0, 12000)}"`, repoDir, solveTimeoutMs);
+      // claude: --session-id on the first turn, --resume on follow-ups (context persists). Legacy: no flag.
+      const sessFlag = useSession ? (attempt === 1 ? `--session-id ${sessionId}` : `--resume ${sessionId}`) : '';
+      const cmd = `${parts[0]} ${parts.slice(1).map(a => `"${a}"`).join(' ')} ${sessFlag} "${nextMessage.replace(/"/g, '\\"').slice(0, 12000)}"`;
+      const solve = sh(cmd, repoDir, solveTimeoutMs);
       if (solve.status !== 0) console.error(`  [warn] attempt ${attempt} solver exit ${solve.status}: ${(solve.stderr || '').slice(-160)}`);
       patch = sh(`git diff`, repoDir, 60000).stdout || '';
-      console.error(`  attempt ${attempt}: patch ${patch.length} chars`);
-      if (patch.trim().length === 0) continue;          // no candidate yet — retry with the no-diff feedback
+      console.error(`  attempt ${attempt}${useSession ? ' (session)' : ''}: patch ${patch.length} chars`);
+      if (patch.trim().length === 0) { nextMessage = useSession ? NODIFF_FB : `${baseTask}\n\n${NODIFF_FB}`; continue; }
       if (!gateActive) break;                            // no regression gate → accept first non-empty patch
       // Re-run the suite; tests failing now but NOT in the pre-patch baseline are regressions caused by the patch.
       const post = runRepoTests(repoDir, `post-patch attempt ${attempt}`);
@@ -182,7 +191,8 @@ for (const inst of (gradeOnly ? [] : instances)) {
       if (regressions.length === 0) { console.error(`  [regression-gate] attempt ${attempt}: NO regressions — patch accepted`); break; }
       console.error(`  [regression-gate] attempt ${attempt}: ${regressions.length} regression(s): ${regressions.slice(0, 8).join(', ')}`);
       if (attempt < maxIter) {
-        regressionNote = `\n\nYour patch fixed the issue but BROKE these previously-passing tests (they MUST pass — keeping them green is REQUIRED):\n${regressions.slice(0, 25).map(t => `  - ${t}`).join('\n')}\nRun each of these tests, find why YOUR change broke it, and fix the issue WITHOUT breaking them — narrow your edit to the minimal change that keeps them green. Do NOT modify the test files.`;
+        const regrFB = `Your patch fixed the issue but BROKE these previously-passing tests (they MUST stay green — keeping them passing is REQUIRED):\n${regressions.slice(0, 25).map(t => `  - ${t}`).join('\n')}\nFor EACH: run it, decide whether your change SHOULD have affected it. If it is a real regression, narrow your edit so the test passes again WITHOUT un-fixing the issue. Do NOT modify the test files. Keep the original bug fixed.`;
+        nextMessage = useSession ? regrFB : `${baseTask}\n\n${regrFB}`;
       } else {
         console.error(`  [regression-gate] max attempts reached, ${regressions.length} regression(s) remain — recording the patch honestly (grades as unresolved)`);
       }
