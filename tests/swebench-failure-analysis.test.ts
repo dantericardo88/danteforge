@@ -1,6 +1,18 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { categorizeInstanceResult, summarizeResults, type SwebenchReport } from '../src/matrix/engines/swebench-failure-analysis.ts';
+import { categorizeInstanceResult, summarizeResults, wilsonInterval, type SwebenchReport } from '../src/matrix/engines/swebench-failure-analysis.ts';
+
+test('wilsonInterval reports the honest small-n uncertainty band (2/14 spans a wide range)', () => {
+  const ci = wilsonInterval(2, 14);
+  assert.ok(ci.low < 0.143 && ci.high > 0.143, 'the point estimate 14.3% sits inside the band');
+  assert.ok(ci.low < 0.05 && ci.high > 0.35, `2/14 is consistent with ~4%..~40% — wide (got ${(ci.low*100).toFixed(0)}-${(ci.high*100).toFixed(0)}%)`);
+  assert.deepEqual(wilsonInterval(0, 0), { low: 0, high: 0 });
+});
+
+test('a small-n delta is exposed as noise: 2/6 and 1/6 CIs overlap heavily', () => {
+  const a = wilsonInterval(2, 6), b = wilsonInterval(1, 6);
+  assert.ok(a.low < b.high, '"+100% lift" on n=6 has overlapping CIs — not a real difference');
+});
 
 const rep = (o: Partial<SwebenchReport> & { f?: [number, number]; p?: [number, number] }): SwebenchReport => ({
   instance_id: o.instance_id ?? 'x',

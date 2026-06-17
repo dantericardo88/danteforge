@@ -26,7 +26,8 @@ for (const r of reports) {
 }
 const s = summarizeResults(reports);
 console.log('\n── summary ──');
-console.log(`resolved ${s.resolved}/${s.total} (pass_rate ${(s.passRate * 100).toFixed(1)}%)`);
+console.log(`resolved ${s.resolved}/${s.total} (pass_rate ${(s.passRate * 100).toFixed(1)}%, ` +
+  `95% CI ${(s.passRateCI.low * 100).toFixed(1)}–${(s.passRateCI.high * 100).toFixed(1)}%)`);
 for (const [cat, n] of Object.entries(s.byCategory)) if (n > 0) console.log(`  ${cat}: ${n}`);
 console.log(`fixed-but-regressed share of unresolved: ${(s.regressionShareOfUnresolved * 100).toFixed(0)}% ` +
   `(high = the climb is regression-discipline; low = genuine fix-capability gap)`);

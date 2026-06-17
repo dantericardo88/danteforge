@@ -47,10 +47,23 @@ export function categorizeInstanceResult(report: SwebenchReport): InstanceAnalys
   return { ...base, category };
 }
 
+/** Wilson score 95% CI for a proportion — the honest uncertainty band on a small-n pass rate. At n=6 a
+ *  "2/6 vs 1/6 = +100% lift" overlaps massively; reporting the band keeps a small-sample delta from becoming
+ *  the new flattering headline (the exact self-flattery the measurement spine exists to kill). */
+export function wilsonInterval(resolved: number, total: number, z = 1.96): { low: number; high: number } {
+  if (total <= 0) return { low: 0, high: 0 };
+  const p = resolved / total, z2 = z * z, denom = 1 + z2 / total;
+  const center = (p + z2 / (2 * total)) / denom;
+  const margin = (z / denom) * Math.sqrt((p * (1 - p)) / total + z2 / (4 * total * total));
+  return { low: Math.max(0, center - margin), high: Math.min(1, center + margin) };
+}
+
 export interface ResultsSummary {
   total: number;
   resolved: number;
   passRate: number;
+  /** 95% Wilson CI on passRate — report this, never the bare rate, on small n. */
+  passRateCI: { low: number; high: number };
   byCategory: Record<FailureCategory, number>;
   /** Of the UNRESOLVED instances, the fraction in the tractable fixed-but-regressed mode. */
   regressionShareOfUnresolved: number;
@@ -68,6 +81,7 @@ export function summarizeResults(reports: SwebenchReport[]): ResultsSummary {
     total,
     resolved,
     passRate: total > 0 ? resolved / total : 0,
+    passRateCI: wilsonInterval(resolved, total),
     byCategory,
     regressionShareOfUnresolved: unresolved > 0 ? byCategory['fixed-but-regressed'] / unresolved : 0,
   };
