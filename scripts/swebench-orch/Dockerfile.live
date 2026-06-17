@@ -1,14 +1,16 @@
-# ⚠ WIP / NON-WORKING (CH-036) — SWE-bench-Live grading is a SEPARATE multi-component pipeline, NOT a
-# swebench.harness drop-in. Diagnosed root cause (repo inspection 2026-06-16): microsoft/SWE-bench-Live
-# has NO `swebench/` package — its top level is evaluation/ + launch/ + curation/, with a flat pyproject
-# (name="swebench", packages.find where=["."]), so `import swebench.harness.run_evaluation` does not exist.
-# Grading Live requires its OWN eval pipeline under evaluation/ + the launch/RepoLaunch environment tooling
-# (per evaluation/README.md). That is a focused infra build, not a Dockerfile tweak — the obstacle chain
-# (KeyError → fork → install method → editable → non-editable → wrong module path) ends here with the real
-# shape named. NEXT SESSION: wire the evaluation/ pipeline (study evaluation/README.md + launch/) here.
-# The SOLVER is already proven on 5 real contamination-resistant Live issues; only this GRADER remains.
+# WIP (CH-036) — SWE-bench-Live grading via `evaluation.evaluation`. Diagnosed precisely to the PACKAGING
+# layer through a 9-step obstacle chain (KeyError → it's a fork → install method → editable → non-editable
+# → wrong module [it's evaluation.evaluation, not swebench.harness] → evaluation imports sibling `launch`
+# → launch not exposed even with PYTHONPATH=repo-root / WORKDIR=repo-root). The microsoft/SWE-bench-Live
+# repo is a research codebase whose flat pyproject (packages.find where=".") does not package `launch` for
+# clean `python -m` invocation. Integrating it is a FOCUSED infra task — study how the project itself
+# invokes evaluation/ (their working-dir/script conventions in evaluation/README.md + launch/RepoLaunch),
+# then wire the docker-socket grade. grade.sh guards Live with a clean WIP exit, so this image is dormant
+# (not built) in the normal flow until the integration is finished. The SOLVER is already proven on 5 real
+# contamination-resistant Live issues; only this GRADER remains, and the bar is exactly: get evaluation/ to run.
 FROM python:3.11-slim
 RUN apt-get update && apt-get install -y --no-install-recommends git && rm -rf /var/lib/apt/lists/*
-RUN git clone --depth 1 https://github.com/microsoft/SWE-bench-Live.git /opt/swebench-live
+RUN git clone --depth 1 https://github.com/microsoft/SWE-bench-Live.git /opt/swebench-live \
+    && pip install --no-cache-dir /opt/swebench-live
+ENV PYTHONPATH=/opt/swebench-live
 WORKDIR /opt/swebench-live
-# TODO(CH-036, next session): install + invoke the Live eval pipeline (evaluation/), not swebench.harness.
