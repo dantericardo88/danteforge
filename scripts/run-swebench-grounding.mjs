@@ -50,6 +50,13 @@ const DATASETS = {
 const DS = DATASETS[opt('--dataset', 'lite')] || DATASETS.lite;
 const DATASET_SIZE = DS.size;
 const solverCmd = opt('--solver', 'claude -p');
+// PLUGGABLE SOLVER SEAM (council-unanimous highest-leverage action): when set, the solve step runs THIS
+// command in the repo checkout instead of the built-in `claude -p`. The task (problem + any regression
+// feedback) is written to $SWEBENCH_TASK_FILE and the command edits the repo; `git diff` becomes the patch.
+// This lets the SAME grade + classifier + signed-receipt pipeline measure ANY solver — a full DanteForge
+// workflow (autoforge/party = the real "run DanteForge on itself"), another agent, or a different tool —
+// without forking the harness. Empty = use the built-in claude solver.
+const solveCommand = opt('--solve-command', '');
 const runId = opt('--run-id', `dfground${offset}_${limit}`);
 const work = opt('--work', 'X:/tmp/swebench-work');
 const solveTimeoutMs = Number(opt('--solve-timeout-ms', '900000')) || 900000;
@@ -78,8 +85,8 @@ function fetchJson(url) {
   });
 }
 
-function sh(cmd, cwd, timeout) {
-  return spawnSync(cmd, { shell: true, cwd, timeout, encoding: 'utf8', maxBuffer: 64 * 1024 * 1024 });
+function sh(cmd, cwd, timeout, env) {
+  return spawnSync(cmd, { shell: true, cwd, timeout, encoding: 'utf8', maxBuffer: 64 * 1024 * 1024, env: env ? { ...process.env, ...env } : process.env });
 }
 
 // parsePytestFailures + computeRegressions + formatRegressionFeedback are imported from the tested
@@ -176,18 +183,30 @@ for (const inst of (gradeOnly ? [] : instances)) {
     // `claude`, run attempt 1 under a fixed --session-id and RESUME that session for each follow-up so the
     // agent keeps full context (its prior patch + the specific regression feedback) and actually revises.
     // For non-claude solvers (or --no-session) fall back to appending feedback to a fresh task.
-    const useSession = /\bclaude\b/.test(solverCmd) && !args.includes('--no-session');
+    // The built-in claude solver uses a persistent session (CH-040); a pluggable --solve-command does not
+    // (it gets the task + feedback via $SWEBENCH_TASK_FILE each attempt — its own internal loop is its own).
+    const useSession = !solveCommand && /\bclaude\b/.test(solverCmd) && !args.includes('--no-session');
     const sessionId = useSession ? randomUUID() : null;
+    const taskFile = solveCommand ? join(work, `${runId}__task.md`) : null;
     const NODIFF_FB = `Your previous attempt left NO source changes. Explore harder, actually edit the source files that cause the bug, run the tests, and iterate until they pass.`;
     let nextMessage = baseTask; // attempt 1 sends the full task; later attempts send feedback (session keeps context)
     for (let attempt = 1; attempt <= maxIter; attempt++) {
-      // claude: --session-id on the first turn, --resume on follow-ups (context persists). Legacy: no flag.
-      const sessFlag = useSession ? (attempt === 1 ? `--session-id ${sessionId}` : `--resume ${sessionId}`) : '';
-      const cmd = `${parts[0]} ${parts.slice(1).map(a => `"${a}"`).join(' ')} ${sessFlag} "${nextMessage.replace(/"/g, '\\"').slice(0, 12000)}"`;
-      const solve = sh(cmd, repoDir, solveTimeoutMs);
+      let solve;
+      if (solveCommand) {
+        // Pluggable solver: hand the task via a file (outside repoDir so it never pollutes git diff) + env.
+        writeFileSync(taskFile, nextMessage, 'utf8');
+        solve = sh(solveCommand, repoDir, solveTimeoutMs, {
+          SWEBENCH_TASK_FILE: taskFile, SWEBENCH_INSTANCE_ID: inst.instance_id, SWEBENCH_REPO: inst.repo,
+        });
+      } else {
+        // claude: --session-id on the first turn, --resume on follow-ups (context persists). Legacy: no flag.
+        const sessFlag = useSession ? (attempt === 1 ? `--session-id ${sessionId}` : `--resume ${sessionId}`) : '';
+        const cmd = `${parts[0]} ${parts.slice(1).map(a => `"${a}"`).join(' ')} ${sessFlag} "${nextMessage.replace(/"/g, '\\"').slice(0, 12000)}"`;
+        solve = sh(cmd, repoDir, solveTimeoutMs);
+      }
       if (solve.status !== 0) console.error(`  [warn] attempt ${attempt} solver exit ${solve.status}: ${(solve.stderr || '').slice(-160)}`);
       patch = sh(`git diff`, repoDir, 60000).stdout || '';
-      console.error(`  attempt ${attempt}${useSession ? ' (session)' : ''}: patch ${patch.length} chars`);
+      console.error(`  attempt ${attempt}${solveCommand ? ' (solve-command)' : useSession ? ' (session)' : ''}: patch ${patch.length} chars`);
       if (patch.trim().length === 0) { nextMessage = useSession ? NODIFF_FB : `${baseTask}\n\n${NODIFF_FB}`; continue; }
       if (!gateActive) break;                            // no regression gate → accept first non-empty patch
       // Re-run the suite; tests failing now but NOT in the pre-patch baseline are regressions caused by the patch.
