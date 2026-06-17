@@ -156,11 +156,18 @@ process.stderr.write(gradeOut.slice(-2500));
 // file landing in the ephemeral container cwd. Fall back to a report file if the lines are absent.
 const mResolved = /Instances resolved:\s*(\d+)/i.exec(gradeOut);
 const mTotal = /Total instances:\s*(\d+)/i.exec(gradeOut);
+// SWE-bench-Live (evaluation.evaluation) prints "Success:" (resolved) instead of the swebench.harness
+// summary; the honest denominator is the full sample we asked to grade (empty/error/failure = unresolved).
+const mLiveOk = /^Success:\s*(\d+)/im.exec(gradeOut);
 let report;
 if (mResolved && mTotal) {
   const resolved = Number(mResolved[1]), total = Number(mTotal[1]);
   report = { resolved, total, pass_rate: total > 0 ? resolved / total : 0 };
   console.error(`[swebench] OFFICIAL grader: resolved ${resolved}/${total}`);
+} else if (mLiveOk) {
+  const resolved = Number(mLiveOk[1]), total = instances.length;
+  report = { resolved, total, pass_rate: total > 0 ? resolved / total : 0 };
+  console.error(`[swebench] SWE-bench-Live grader (contamination-resistant): resolved ${resolved}/${total}`);
 } else {
   // Fallback: a report file (model.<run_id>.json) if the harness wrote one to a readable dir.
   let reportPath = null;
