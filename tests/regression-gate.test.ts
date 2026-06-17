@@ -1,6 +1,30 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { parsePytestFailures, computeRegressions, formatRegressionFeedback, isTestFile } from '../src/matrix/engines/regression-gate.ts';
+import { parsePytestFailures, computeRegressions, formatRegressionFeedback, isTestFile, parsePassToPass } from '../src/matrix/engines/regression-gate.ts';
+
+test('parsePassToPass parses a JSON array string and a bracketed/space list', () => {
+  assert.deepEqual([...parsePassToPass('["a::t1", "b::t2"]')].sort(), ['a::t1', 'b::t2']);
+  assert.deepEqual([...parsePassToPass("['a::t1', 'b::t2']")].sort(), ['a::t1', 'b::t2']);
+  assert.equal(parsePassToPass('').size, 0);
+  assert.equal(parsePassToPass(undefined).size, 0);
+});
+
+test('computeRegressions with PASS_TO_PASS matches the grader (CH-041): 26 newly-failing → only the 4 real', () => {
+  const baseline = new Set(['target']);
+  // 4 real PASS_TO_PASS regressions + 22 message tests the fix legitimately changes
+  const post = new Set(['p2p_1', 'p2p_2', 'p2p_3', 'p2p_4', ...Array.from({ length: 22 }, (_, i) => `msg_${i}`)]);
+  const mustStayGreen = new Set(['p2p_1', 'p2p_2', 'p2p_3', 'p2p_4', 'unrelated_passing']);
+  const r = computeRegressions(baseline, post, mustStayGreen);
+  assert.deepEqual(r.sort(), ['p2p_1', 'p2p_2', 'p2p_3', 'p2p_4']);
+});
+
+test('computeRegressions SAFETY: id-format mismatch (no overlap) falls back to the conservative full set', () => {
+  const baseline = new Set();
+  const post = new Set(['repo/test_x.py::a', 'repo/test_y.py::b']);
+  const mustStayGreen = new Set(['x.py::a', 'y.py::b']); // different format → no overlap
+  // must NOT silently return [] (false-accept) — fall back to all newly-failing
+  assert.deepEqual(computeRegressions(baseline, post, mustStayGreen).sort(), ['repo/test_x.py::a', 'repo/test_y.py::b']);
+});
 
 test('isTestFile flags test files (so the gate can strip test edits — solver may not game by editing tests)', () => {
   // real paths the solver edited to game the v3 gate

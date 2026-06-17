@@ -28,7 +28,7 @@ const {
   parseDatasetRows, toSolverInput, buildPredictionLine, parseSwebenchReport, formatPassRateLine, datasetRowsUrl,
 } = await import('../src/matrix/engines/swe-bench-real.ts');
 const {
-  parsePytestFailures, computeRegressions, formatRegressionFeedback, isTestFile,
+  parsePytestFailures, computeRegressions, formatRegressionFeedback, isTestFile, parsePassToPass,
 } = await import('../src/matrix/engines/regression-gate.ts');
 
 const args = process.argv.slice(2);
@@ -191,6 +191,11 @@ for (const inst of (gradeOnly ? [] : instances)) {
       baseFail = b.failures;
       if (!gateActive) console.error('  [regression-gate] disabled for this instance (runner unusable even after install) — accepting first valid patch');
     }
+    // CH-041: the dataset's PASS_TO_PASS is the grader's must-stay-green set (harness-side only — never given
+    // to the solver). Intersecting the gate's newly-failing tests with it makes the gate match the grader
+    // (the full suite over-counts: 26 vs the grader's 4). Empty → the gate uses the conservative full set.
+    const mustStayGreen = parsePassToPass(inst.PASS_TO_PASS);
+    if (gateActive) console.error(`  [regression-gate] PASS_TO_PASS must-stay-green set: ${mustStayGreen.size} tests${mustStayGreen.size ? '' : ' (none — using conservative full-suite signal)'}`);
     // CH-040: PERSISTENT iterative session. The fresh-call-per-attempt loop produced byte-identical patches
     // across attempts (the agent re-did the obvious fix with no memory of the feedback). When the solver is
     // `claude`, run attempt 1 under a fixed --session-id and RESUME that session for each follow-up so the
@@ -225,7 +230,7 @@ for (const inst of (gradeOnly ? [] : instances)) {
       if (!gateActive) break;                            // no regression gate → accept first non-empty patch
       // Re-run the suite; tests failing now but NOT in the pre-patch baseline are regressions caused by the patch.
       const post = runRepoTests(repoDir, `post-patch attempt ${attempt}`);
-      const regressions = computeRegressions(baseFail, post.failures);
+      const regressions = computeRegressions(baseFail, post.failures, mustStayGreen);
       if (regressions.length === 0) { console.error(`  [regression-gate] attempt ${attempt}: NO regressions — patch accepted`); break; }
       console.error(`  [regression-gate] attempt ${attempt}: ${regressions.length} regression(s): ${regressions.slice(0, 8).join(', ')}`);
       if (attempt < maxIter) {

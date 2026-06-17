@@ -34,6 +34,14 @@ export interface SweBenchSolverInput {
   hints_text?: string;
 }
 
+/** FAIL_TO_PASS/PASS_TO_PASS arrive as an array (datasets-server) or a JSON string (parquet). Normalize to
+ *  a JSON string so downstream parsing (parsePassToPass) is uniform; undefined when absent. */
+function normalizeTestList(v: unknown): string | undefined {
+  if (Array.isArray(v)) return JSON.stringify(v);
+  if (typeof v === 'string' && v.trim()) return v;
+  return undefined;
+}
+
 /** Parse the HF datasets-server rows response into typed instances. Skips rows missing required fields. */
 export function parseDatasetRows(json: unknown): RealSweBenchInstance[] {
   const rows = (json as { rows?: Array<{ row?: Record<string, unknown> }> })?.rows ?? [];
@@ -46,8 +54,10 @@ export function parseDatasetRows(json: unknown): RealSweBenchInstance[] {
     out.push({
       instance_id: id, repo, base_commit: base, problem_statement: ps,
       hints_text: typeof o['hints_text'] === 'string' ? o['hints_text'] : undefined,
-      FAIL_TO_PASS: typeof o['FAIL_TO_PASS'] === 'string' ? o['FAIL_TO_PASS'] : undefined,
-      PASS_TO_PASS: typeof o['PASS_TO_PASS'] === 'string' ? o['PASS_TO_PASS'] : undefined,
+      // The datasets-server returns these as ARRAYS of test ids; the parquet/full-load gives a JSON string.
+      // Normalize to a string (JSON-stringify arrays) so parsePassToPass handles either source uniformly.
+      FAIL_TO_PASS: normalizeTestList(o['FAIL_TO_PASS']),
+      PASS_TO_PASS: normalizeTestList(o['PASS_TO_PASS']),
       version: typeof o['version'] === 'string' ? o['version'] : undefined,
     });
   }

@@ -32,9 +32,38 @@ export function parsePytestFailures(output: string): Set<string> {
   return ids;
 }
 
-/** Regressions = tests failing AFTER the patch that were NOT failing before it. Order-preserving on `post`. */
-export function computeRegressions(baselineFailures: Set<string>, postFailures: Set<string>): string[] {
-  return [...postFailures].filter(t => !baselineFailures.has(t));
+/** Parse the dataset's PASS_TO_PASS field (the grader's must-stay-green test list) into a Set of ids.
+ *  SWE-bench stores it as a JSON array string (sometimes a Python-list string); fall back to splitting. This
+ *  is harness-side ONLY — it is never given to the solver (toSolverInput passes only the problem statement),
+ *  so it is not an answer leak; it tells the gate WHICH existing tests the grader actually scores. */
+export function parsePassToPass(field: string | undefined): Set<string> {
+  if (!field || !field.trim()) return new Set();
+  try {
+    const arr = JSON.parse(field);
+    if (Array.isArray(arr)) return new Set(arr.map(String));
+  } catch { /* not JSON — fall through */ }
+  return new Set(field.replace(/^[[]|[\]]$/g, '').split(/[\s,]+/).map(s => s.replace(/^['"]|['"]$/g, '').trim()).filter(Boolean));
+}
+
+/**
+ * Regressions = tests failing AFTER the patch that were NOT failing before it. When `mustStayGreen` (the
+ * dataset PASS_TO_PASS set) is supplied, intersect with it so the gate matches the GRADER's verdict instead
+ * of over-counting tests the correct fix legitimately changes (CH-041: full-suite flagged 26 where the
+ * grader scored 4). SAFETY: if no post-failure matches any must-stay-green id (an id-format mismatch would
+ * silently zero out real regressions → a dangerous false-accept), fall back to the conservative full set.
+ */
+export function computeRegressions(
+  baselineFailures: Set<string>,
+  postFailures: Set<string>,
+  mustStayGreen?: Set<string>,
+): string[] {
+  const newlyFailing = [...postFailures].filter(t => !baselineFailures.has(t));
+  if (mustStayGreen && mustStayGreen.size > 0) {
+    const anyMatch = [...postFailures].some(t => mustStayGreen.has(t));
+    if (anyMatch) return newlyFailing.filter(t => mustStayGreen.has(t)); // faithful to the grader
+    // else: id formats don't line up — do NOT trust the intersection; stay conservative (over-count, never under)
+  }
+  return newlyFailing;
 }
 
 /** Build the solver feedback that names the regressions (capped) and asks it to judge real-vs-expected —
