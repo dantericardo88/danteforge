@@ -1,13 +1,14 @@
-# Linux orchestrator for SWE-bench-LIVE (CH-036). Vanilla swebench==4.1.0 KeyErrors on Live's 93 repos
-# (no repo specs). The microsoft/SWE-bench-Live harness is a FORK of swebench (same `swebench.harness`
-# module path) that adds the Live repo specs. Install it from git so the harness can grade Live instances;
-# everything else (docker-socket passthrough, LF-native files) is identical to the lite/verified orchestrator.
+# ⚠ WIP / NON-WORKING (CH-036) — SWE-bench-Live grading is a SEPARATE multi-component pipeline, NOT a
+# swebench.harness drop-in. Diagnosed root cause (repo inspection 2026-06-16): microsoft/SWE-bench-Live
+# has NO `swebench/` package — its top level is evaluation/ + launch/ + curation/, with a flat pyproject
+# (name="swebench", packages.find where=["."]), so `import swebench.harness.run_evaluation` does not exist.
+# Grading Live requires its OWN eval pipeline under evaluation/ + the launch/RepoLaunch environment tooling
+# (per evaluation/README.md). That is a focused infra build, not a Dockerfile tweak — the obstacle chain
+# (KeyError → fork → install method → editable → non-editable → wrong module path) ends here with the real
+# shape named. NEXT SESSION: wire the evaluation/ pipeline (study evaluation/README.md + launch/) here.
+# The SOLVER is already proven on 5 real contamination-resistant Live issues; only this GRADER remains.
 FROM python:3.11-slim
 RUN apt-get update && apt-get install -y --no-install-recommends git && rm -rf /var/lib/apt/lists/*
-# Clone + editable install per the SWE-bench-Live README (the `swebench` package lives in a repo subdir,
-# so `pip install git+…` doesn't expose it; clone + `pip install -e .` does). Fails the build loudly if
-# the package can't import, instead of silently producing an image without the module.
-RUN git clone --depth 1 https://github.com/microsoft/SWE-bench-Live.git /opt/swebench-live \
-    && pip install --no-cache-dir -e /opt/swebench-live \
-    && python -c "import swebench.harness.run_evaluation"
-WORKDIR /work
+RUN git clone --depth 1 https://github.com/microsoft/SWE-bench-Live.git /opt/swebench-live
+WORKDIR /opt/swebench-live
+# TODO(CH-036, next session): install + invoke the Live eval pipeline (evaluation/), not swebench.harness.

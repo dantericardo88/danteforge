@@ -21,16 +21,18 @@ ensure_docker() {
 }
 ensure_docker || exit 4
 
-# CH-036: SWE-bench-Live needs the Live HARNESS FORK (vanilla swebench KeyErrors on Live's repos).
-# Pick the orchestrator image by dataset: Live → Dockerfile.live (forked harness); else the vanilla one.
+# CH-036: SWE-bench-Live grading is a SEPARATE multi-component pipeline (evaluation/ + launch/RepoLaunch),
+# NOT a swebench.harness drop-in — see Dockerfile.live. It is NOT wired yet. Solving Live works (proven);
+# grading does not. Fail CLEANLY with the honest reason rather than a cryptic module error.
 DIR="$(dirname "$0")"
 if echo "$DATASET" | grep -qi "Live"; then
-  IMG=df-swebench-orch-live
-  docker build -q -t "$IMG" -f "$DIR/Dockerfile.live" "$DIR" >/dev/null
-else
-  IMG=df-swebench-orch
-  docker build -q -t "$IMG" "$DIR" >/dev/null
+  echo "[grade] SWE-bench-Live grading is not yet integrated (CH-036): Live uses its own evaluation/ +" >&2
+  echo "[grade] launch/ pipeline, not swebench.harness. The 5 solved Live patches are saved; wire the Live" >&2
+  echo "[grade] eval pipeline (see scripts/swebench-orch/Dockerfile.live) to grade them. Solve works; grade is WIP." >&2
+  exit 5
 fi
+IMG=df-swebench-orch
+docker build -q -t "$IMG" "$DIR" >/dev/null
 mkdir -p "$REPORTDIR"
 MSYS_NO_PATHCONV=1 docker run --rm \
   -v /var/run/docker.sock:/var/run/docker.sock \
