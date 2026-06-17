@@ -56,6 +56,28 @@ export function solvePhases(task: SolveTask): Array<{ phase: 'understand' | 'imp
   ];
 }
 
+/**
+ * The BUDGET-MATCHED CONTROL arm. The structured solve makes 3 model calls; a raw one-shot makes 1 — so a
+ * naive A/B confounds STRUCTURE with sheer inference volume (if DanteForge wins you cannot tell which).
+ * This returns N UNstructured turns (default 3, matched to solvePhases) under the same persistent session:
+ * turn 1 states the issue, later turns are a generic "keep going" continuation — no understand/implement/
+ * verify decomposition. Run BOTH arms at the same turn budget and the only difference is the structure.
+ * (Turn-count match, not token match — the strongest cheap control; token-budget matching is a refinement.)
+ */
+export function rawTurns(task: SolveTask, n = 3): Array<{ phase: 'raw'; prompt: string }> {
+  const turns: Array<{ phase: 'raw'; prompt: string }> = [];
+  for (let i = 0; i < Math.max(1, n); i++) {
+    turns.push({
+      phase: 'raw',
+      prompt: i === 0
+        ? `You are an engineer fixing a real GitHub issue (cwd = repo root). Fix it. ${SOURCE_ONLY}\n\n` +
+          `ISSUE:\n${task.problem_statement}${task.hints_text ? `\n\nHINTS:\n${task.hints_text}` : ''}`
+        : `Continue working until the bug is fixed and no existing test regresses. ${SOURCE_ONLY}`,
+    });
+  }
+  return turns;
+}
+
 /** Parse the SWEBENCH_TASK_FILE contents into a SolveTask. The seam writes the problem statement (+ any
  *  regression feedback) as markdown; we keep the whole text as the statement so feedback rounds carry through. */
 export function parseTaskFile(contents: string): SolveTask {
