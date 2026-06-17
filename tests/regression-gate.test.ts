@@ -1,0 +1,54 @@
+import { test } from 'node:test';
+import assert from 'node:assert/strict';
+import { parsePytestFailures, computeRegressions, formatRegressionFeedback } from '../src/matrix/engines/regression-gate.ts';
+
+test('parsePytestFailures extracts FAILED and ERROR ids, ignores other lines', () => {
+  const out = [
+    '......F..',
+    'FAILED test/unit/test_a.py::TestA::test_x - AssertionError: nope',
+    'ERROR test/integration/test_b.py::test_y',
+    'PASSED test/test_c.py::test_z',
+    '5 failed, 1200 passed in 42.1s',
+  ].join('\n');
+  const f = parsePytestFailures(out);
+  assert.deepEqual([...f].sort(), [
+    'test/integration/test_b.py::test_y',
+    'test/unit/test_a.py::TestA::test_x',
+  ]);
+});
+
+test('parsePytestFailures keeps parametrized ids intact and handles empty input', () => {
+  const f = parsePytestFailures('FAILED test/m.py::test_messages[minItems-schema56-instance56-expected56]');
+  assert.ok(f.has('test/m.py::test_messages[minItems-schema56-instance56-expected56]'));
+  assert.equal(parsePytestFailures('').size, 0);
+  assert.equal(parsePytestFailures(undefined as unknown as string).size, 0);
+});
+
+test('computeRegressions = post-patch failures that were NOT failing pre-patch (target tests excluded)', () => {
+  // baseline failures include the TARGET test (fails before the fix) + a pre-existing flaky test.
+  const baseline = new Set(['repo::target_test', 'repo::preexisting_flaky']);
+  // post-patch: target now passes (gone), flaky still fails, and TWO existing tests newly broke.
+  const post = new Set(['repo::preexisting_flaky', 'repo::regressed_one', 'repo::regressed_two']);
+  const regressions = computeRegressions(baseline, post);
+  assert.deepEqual(regressions.sort(), ['repo::regressed_one', 'repo::regressed_two']);
+  // the target test (fail->pass) is never a regression — no answer leak
+  assert.ok(!regressions.includes('repo::target_test'));
+  // a pre-existing failure that persists is not a NEW regression
+  assert.ok(!regressions.includes('repo::preexisting_flaky'));
+});
+
+test('computeRegressions is empty when the patch breaks nothing new (clean accept)', () => {
+  const baseline = new Set(['repo::target_test']);
+  const post = new Set<string>(); // everything green after the fix
+  assert.deepEqual(computeRegressions(baseline, post), []);
+});
+
+test('formatRegressionFeedback names the regressions, caps the list, and asks the solver to judge', () => {
+  const many = Array.from({ length: 30 }, (_, i) => `repo::t${i}`);
+  const fb = formatRegressionFeedback(many, 25);
+  assert.match(fb, /BROKE these previously-passing tests/);
+  assert.match(fb, /repo::t0/);
+  assert.ok(!fb.includes('repo::t25'), 'capped at 25 — the 26th is not listed');
+  assert.match(fb, /WITHOUT un-fixing the issue/);
+  assert.match(fb, /Do NOT modify the test files/);
+});

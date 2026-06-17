@@ -27,6 +27,9 @@ import { randomUUID } from 'node:crypto';
 const {
   parseDatasetRows, toSolverInput, buildPredictionLine, parseSwebenchReport, formatPassRateLine, datasetRowsUrl,
 } = await import('../src/matrix/engines/swe-bench-real.ts');
+const {
+  parsePytestFailures, computeRegressions, formatRegressionFeedback,
+} = await import('../src/matrix/engines/regression-gate.ts');
 
 const args = process.argv.slice(2);
 const opt = (n, d) => { const i = args.indexOf(n); return i >= 0 ? args[i + 1] : d; };
@@ -76,17 +79,8 @@ function sh(cmd, cwd, timeout) {
   return spawnSync(cmd, { shell: true, cwd, timeout, encoding: 'utf8', maxBuffer: 64 * 1024 * 1024 });
 }
 
-// Parse the set of FAILED/ERROR test ids from pytest output (--tb=no -q prints `FAILED path::id - reason`
-// and `ERROR path::id` lines). Returns a Set of bare test ids. Used by the regression gate to diff the
-// failure set before vs after the patch — newly-failing ids are regressions (NOT the target tests).
-function parsePytestFailures(output) {
-  const ids = new Set();
-  for (const line of (output ?? '').split('\n')) {
-    const m = /^(?:FAILED|ERROR)\s+(\S+)/.exec(line.trim());
-    if (m) ids.add(m[1].replace(/\s*-\s.*$/, ''));
-  }
-  return ids;
-}
+// parsePytestFailures + computeRegressions + formatRegressionFeedback are imported from the tested
+// src/matrix/engines/regression-gate.ts (the climb logic that decides what is fed back to the solver).
 
 // Run the repo's public test suite and return { failures:Set, ran:boolean }. ran=false when the runner
 // itself could not execute (wrong runner / collection error) — the gate then skips honestly rather than
@@ -130,13 +124,17 @@ const predLines = [];
 
 for (const inst of (gradeOnly ? [] : instances)) {
   const si = toSolverInput(inst);
-  const repoDir = join(work, inst.instance_id.replace(/[^\w.-]/g, '_'));
+  // Per-RUN repo dir (run-id prefix): two experiments on the SAME instance must not share a checkout — a
+  // prior run holding a Windows file lock made rmSync leave a partial dir and the re-clone fail silently
+  // (empty patch → invalid result). A unique dir per run removes the collision entirely.
+  const repoDir = join(work, `${runId}__${inst.instance_id.replace(/[^\w.-]/g, '_')}`);
   console.error(`\n[swebench] ${inst.instance_id} (${inst.repo}@${inst.base_commit.slice(0, 8)})`);
   try {
     if (existsSync(repoDir)) rmSync(repoDir, { recursive: true, force: true });
-    // Clone the REAL repo and check out the exact base_commit the issue was filed against.
+    // Clone the REAL repo and check out the exact base_commit the issue was filed against. Capture stdout
+    // too so a non-zero clone never fails with an empty (useless) message.
     let r = sh(`git clone --quiet https://github.com/${inst.repo}.git "${repoDir}"`, work, 600000);
-    if (r.status !== 0) throw new Error(`clone failed: ${(r.stderr || '').slice(-200)}`);
+    if (r.status !== 0) throw new Error(`clone failed (exit ${r.status}): ${((r.stderr || '') + (r.stdout || '')).slice(-200) || 'no output'}`);
     r = sh(`git checkout --quiet ${inst.base_commit}`, repoDir, 120000);
     if (r.status !== 0) throw new Error(`checkout failed: ${(r.stderr || '').slice(-200)}`);
 
@@ -187,11 +185,11 @@ for (const inst of (gradeOnly ? [] : instances)) {
       if (!gateActive) break;                            // no regression gate → accept first non-empty patch
       // Re-run the suite; tests failing now but NOT in the pre-patch baseline are regressions caused by the patch.
       const post = runRepoTests(repoDir, `post-patch attempt ${attempt}`);
-      const regressions = [...post.failures].filter(t => !baseFail.has(t));
+      const regressions = computeRegressions(baseFail, post.failures);
       if (regressions.length === 0) { console.error(`  [regression-gate] attempt ${attempt}: NO regressions — patch accepted`); break; }
       console.error(`  [regression-gate] attempt ${attempt}: ${regressions.length} regression(s): ${regressions.slice(0, 8).join(', ')}`);
       if (attempt < maxIter) {
-        const regrFB = `Your patch fixed the issue but BROKE these previously-passing tests (they MUST stay green — keeping them passing is REQUIRED):\n${regressions.slice(0, 25).map(t => `  - ${t}`).join('\n')}\nFor EACH: run it, decide whether your change SHOULD have affected it. If it is a real regression, narrow your edit so the test passes again WITHOUT un-fixing the issue. Do NOT modify the test files. Keep the original bug fixed.`;
+        const regrFB = formatRegressionFeedback(regressions);
         nextMessage = useSession ? regrFB : `${baseTask}\n\n${regrFB}`;
       } else {
         console.error(`  [regression-gate] max attempts reached, ${regressions.length} regression(s) remain — recording the patch honestly (grades as unresolved)`);
