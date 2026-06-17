@@ -63,6 +63,9 @@ const gradeOnly = opt('--grade-only', ''); // CH-035c: resume at the grade step 
 const regressionGate = args.includes('--regression-gate');
 const testCmd = opt('--test-cmd', 'python -m pytest -p no:cacheprovider --tb=no -q');
 const testTimeoutMs = Number(opt('--test-timeout-ms', '900000')) || 900000;
+// The gate's baseline runs on a FRESH clone (before the solver installs anything), so the package must be
+// installed first or pytest can't even collect (exit 2). Editable install of the repo + pytest by default.
+const installCmd = opt('--install-cmd', 'python -m pip install -e . pytest -q');
 const MODEL_NAME = 'danteforge-agentic';
 
 function fetchJson(url) {
@@ -159,10 +162,14 @@ for (const inst of (gradeOnly ? [] : instances)) {
     let baseFail = new Set();
     let gateActive = false;
     if (regressionGate) {
+      // Install the repo so the baseline can collect tests (a fresh clone has no deps yet).
+      console.error(`  [regression-gate] installing repo for baseline (${installCmd})…`);
+      const ins = sh(installCmd, repoDir, testTimeoutMs);
+      if (ins.status !== 0) console.error(`  [regression-gate] install non-zero (exit ${ins.status}) — trying baseline anyway: ${(ins.stderr || '').slice(-160)}`);
       const b = runRepoTests(repoDir, 'baseline (pre-patch)');
       gateActive = b.ran;
       baseFail = b.failures;
-      if (!gateActive) console.error('  [regression-gate] disabled for this instance (runner unusable) — accepting first valid patch');
+      if (!gateActive) console.error('  [regression-gate] disabled for this instance (runner unusable even after install) — accepting first valid patch');
     }
     // CH-040: PERSISTENT iterative session. The fresh-call-per-attempt loop produced byte-identical patches
     // across attempts (the agent re-did the obvious fix with no memory of the feedback). When the solver is
