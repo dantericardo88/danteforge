@@ -111,7 +111,14 @@ for (const inst of (gradeOnly ? [] : instances)) {
     // largest closable-by-wiring slice of the Devin gap, reusing the sandbox). Tests it runs are the
     // repo's OWN — never the hidden FAIL_TO_PASS (no answer leak).
     const parts = solverCmd.split(' ');
-    const baseTask = `You are an autonomous software engineer fixing a real GitHub issue in this repository (cwd = repo root).\nSTEPS: (1) explore the codebase to find the cause; (2) reproduce the bug with a throwaway script and run it; (3) edit the SOURCE files to fix it — do NOT modify the test suite; (4) RUN the repository's existing relevant tests + your reproduction and ITERATE on the fix until they pass; (5) make the minimal correct change; (6) delete any throwaway scripts so only the real fix remains.\n\nISSUE:\n${si.problem_statement}\n${si.hints_text ? `\nHINTS:\n${si.hints_text}\n` : ''}`;
+    // REGRESSION-DISCIPLINED prompt (CH-039). Forensics on the first contamination-resistant grade (0/5)
+    // showed the solver FIXES the target (FAIL_TO_PASS often fully passes) but breaks a handful of
+    // previously-passing tests (PASS_TO_PASS) — SWE-bench requires BOTH. So the lever is not "fix harder"
+    // but "do not regress": minimal surgical diff + establish a baseline + re-run the touched modules' FULL
+    // test files and keep every previously-passing test green.
+    const baseTask = `You are an autonomous software engineer fixing a real GitHub issue in this repository (cwd = repo root).\n` +
+      `CRITICAL ACCEPTANCE RULE: your patch is REJECTED if it breaks ANY test that passed before your change — even if it fixes the issue. Keeping existing tests green is EXACTLY as important as the new fix. So make the SMALLEST possible surgical change; do not refactor, rename, reformat, or "improve" anything unrelated to the bug.\n` +
+      `STEPS: (1) explore to find the precise cause; (2) reproduce the bug with a throwaway script and run it; (3) BEFORE editing, run the test FILE(S) covering the module(s) you will touch and note which tests pass (your baseline); (4) edit ONLY the SOURCE lines needed to fix the bug — never modify the test suite; (5) re-run those SAME test files PLUS your reproduction: every test that passed in your baseline MUST still pass, and the bug must be fixed. If any previously-passing test now fails, your change is too broad — revert and narrow it to the minimal edit; (6) iterate (3)-(5) until the bug is fixed AND zero regressions; (7) delete throwaway scripts so only the minimal real fix remains.\n\nISSUE:\n${si.problem_statement}\n${si.hints_text ? `\nHINTS:\n${si.hints_text}\n` : ''}`;
     let patch = '';
     for (let attempt = 1; attempt <= maxIter; attempt++) {
       const feedback = attempt === 1 ? '' :
