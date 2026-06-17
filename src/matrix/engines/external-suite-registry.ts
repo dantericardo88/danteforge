@@ -14,6 +14,7 @@ export const REGISTERED_EXTERNAL_SUITES: ReadonlySet<RegisteredExternalSuite> = 
   'swe-bench',
   'swe-bench-lite',
   'swe-bench-verified',
+  'swe-bench-live', // contamination-resistant (post-2024, leak-detected); graded via scripts/swebench-orch/Dockerfile.live
   'exercism',
   'humaneval',
   'mbpp',

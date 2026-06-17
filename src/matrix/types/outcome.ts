@@ -33,7 +33,7 @@ export type OutcomeKind =
  * matching command text.
  */
 export type RegisteredExternalSuite =
-  | 'swe-bench' | 'swe-bench-lite' | 'swe-bench-verified'
+  | 'swe-bench' | 'swe-bench-lite' | 'swe-bench-verified' | 'swe-bench-live'
   | 'exercism' | 'humaneval' | 'mbpp';
 
 /**

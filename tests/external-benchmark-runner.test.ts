@@ -55,4 +55,24 @@ describe('runExternalBenchmarkOutcome', () => {
     assert.equal(e.gitSha, 'abc');
     assert.match(e.stdoutTail, /pass rate: 90%/);
   });
+
+  // CH-036 wire: swe-bench-live (contamination-resistant) is a registered suite, and the runner consumes
+  // the LIVE grader's own output shapes — `resolved N/5` and `{"pass_rate":..}` — to mint an HONEST receipt.
+  it('accepts swe-bench-live and mints an HONEST FAILED receipt from the real 0/5 Live output', async () => {
+    const liveOut = 'SWE-bench-Live grader (contamination-resistant): resolved 0/5\n{"pass_rate":0,"resolved":0,"total":5}';
+    const e = await runExternalBenchmarkOutcome(
+      outcome({ benchmark: 'swe-bench-live', min_pass_rate: 0.1, command: 'node scripts/run-swebench-grounding.mjs --dataset live' }),
+      'code_generation', '/x', deps(spawnReturning(0, liveOut)),
+    );
+    assert.equal(e.passed, false, '0/5 must FAIL — exit 0 is not enough; the parsed rate (0) is below min_pass_rate');
+    assert.match(e.failureReason ?? '', /swe-bench-live pass rate 0\.0% < required min_pass_rate 10\.0%/);
+  });
+
+  it('swe-bench-live PASSES once the resolve rate meets the bar (the climb target is reachable)', async () => {
+    const e = await runExternalBenchmarkOutcome(
+      outcome({ benchmark: 'swe-bench-live', min_pass_rate: 0.1 }),
+      'code_generation', '/x', deps(spawnReturning(0, 'resolved 3/5')),
+    );
+    assert.equal(e.passed, true, '3/5 = 60% ≥ 10% min — a non-zero climb produces a passing grounded receipt');
+  });
 });
