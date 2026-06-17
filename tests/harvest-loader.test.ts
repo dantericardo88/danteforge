@@ -57,6 +57,56 @@ test('loadHarvestedSignals reads benchmark anchors from leaderboards.json (skips
   } finally { rmSync(dir, { recursive: true, force: true }); }
 });
 
+function writeDossier(dir: string): void {
+  mkdirSync(join(dir, '.danteforge', 'dossiers'), { recursive: true });
+  const dossier = {
+    competitor: 'aider', displayName: 'Aider', type: 'open-source', lastBuilt: '2026-06-16T00:00:00Z',
+    sources: [], composite: 7, compositeMethod: 'mean_28_dims', rubricVersion: 1,
+    dimensions: {
+      '12': {
+        score: 9, scoreJustification: 'repo-aware edits', humanOverride: null, humanOverrideReason: null,
+        evidence: [
+          { claim: 'multi-file repo-aware edits', quote: 'edits across files in one pass', source: 'https://aider.chat/docs', dim: 12 },
+          { claim: 'no quote', quote: '', source: 'https://x', dim: 12 }, // unverified evidence (empty quote) → dropped
+        ],
+      },
+    },
+  };
+  writeFileSync(join(dir, '.danteforge', 'dossiers', 'aider.json'), JSON.stringify(dossier), 'utf8');
+}
+
+test('loadHarvestedSignals reads dossier capability signals ONLY when the rubric map names the dim', async () => {
+  const dir = tempCwd();
+  try {
+    writeDossier(dir);
+    writeFileSync(join(dir, '.danteforge', 'compete', 'dossier-rubric.json'), JSON.stringify({ code_generation: '12' }), 'utf8');
+    const sigs = await loadHarvestedSignals(dir, 'code_generation');
+    const caps = sigs.filter(s => s.kind === 'capability');
+    assert.equal(caps.length, 1); // only the verified (non-empty quote) evidence counts
+    assert.match(caps[0]!.claim, /repo-aware edits/);
+    assert.equal(caps[0]!.source, 'https://aider.chat/docs');
+  } finally { rmSync(dir, { recursive: true, force: true }); }
+});
+
+test('loadHarvestedSignals pulls NO dossier signals without a rubric map (CH-031 guardrail)', async () => {
+  const dir = tempCwd();
+  try {
+    writeDossier(dir); // dossier present, but NO dossier-rubric.json → no forced 28→matrix mapping
+    const sigs = await loadHarvestedSignals(dir, 'code_generation');
+    assert.equal(sigs.filter(s => s.kind === 'capability').length, 0);
+  } finally { rmSync(dir, { recursive: true, force: true }); }
+});
+
+test('loadHarvestedSignals: a dim absent from the rubric map gets no dossier signals (honest skip)', async () => {
+  const dir = tempCwd();
+  try {
+    writeDossier(dir);
+    writeFileSync(join(dir, '.danteforge', 'compete', 'dossier-rubric.json'), JSON.stringify({ security: '5' }), 'utf8');
+    const sigs = await loadHarvestedSignals(dir, 'code_generation'); // not in the map
+    assert.equal(sigs.filter(s => s.kind === 'capability').length, 0);
+  } finally { rmSync(dir, { recursive: true, force: true }); }
+});
+
 test('loadHarvestedSignals fuses intel + benchmark for the same dimension', async () => {
   const dir = tempCwd();
   try {

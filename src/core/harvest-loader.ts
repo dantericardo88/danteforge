@@ -11,10 +11,18 @@ import { readFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import type { IntelReport } from './competitor-intel-fetcher.js';
 import type { HarvestedSignal } from './harvested-bar.js';
-import { intelToDemandSignals, benchmarkSignal } from './harvest-to-signals.js';
+import { intelToDemandSignals, benchmarkSignal, dossierToCapabilitySignals } from './harvest-to-signals.js';
 
 /** Matches intel.ts: STATE_DIR/COMPETE_DIR/INTEL_FILE. */
 const INTEL_REL = ['.danteforge', 'compete', 'weakness-intelligence.json'] as const;
+
+/** Phase 2.2 / CH-031 guardrail: a PER-PROJECT map from matrix dim id → the competitor-dossier rubric
+ *  dimension number ("1".."28") that grounds it. Dossiers score competitors on the code-tool DIMENSIONS_28
+ *  rubric, a DIFFERENT taxonomy from the matrix dims; forcing a universal 28→matrix map reintroduces
+ *  fabrication. So the dossier capability path is OFF unless the operator supplies this map, and a matrix
+ *  dim with no entry gets NO dossier signals (honest skip, never a forced mapping). Shape:
+ *  `{ "<matrixDimId>": "<dossierDimNumber>" }`. */
+const DOSSIER_RUBRIC_REL = ['.danteforge', 'compete', 'dossier-rubric.json'] as const;
 
 /** The benchmark-leaderboard source: `{ "<dimId>": [{ suite, numeric, source_url, fetched_at,
  *  verified_live, sig }] }`. Populated by the leaderboard fetcher (leaderboard-fetcher.ts) — the
@@ -59,7 +67,25 @@ function leaderboardToSignals(byDim: Record<string, LeaderboardEntry[]>, dimId: 
   return out;
 }
 
-/** Load every on-disk harvested signal for one matrix dimension (intel demand + benchmark anchor). */
+/** Load competitor-dossier capability signals for one matrix dim — ONLY when the operator's per-project
+ *  dossier-rubric.json maps that dim to a dossier rubric number (CH-031 guardrail: no forced 28→matrix map).
+ *  Returns [] when no map, no entry for this dim, or no dossiers — never a fabricated mapping. */
+async function loadDossierCapabilitySignals(cwd: string, dimId: string): Promise<HarvestedSignal[]> {
+  let dimNumber: string | undefined;
+  try {
+    const map = JSON.parse(await readFile(join(cwd, ...DOSSIER_RUBRIC_REL), 'utf8')) as Record<string, unknown>;
+    const v = map?.[dimId];
+    if (typeof v === 'string' || typeof v === 'number') dimNumber = String(v);
+  } catch { /* no rubric map — dossier path stays off (honest) */ }
+  if (!dimNumber) return [];
+  // Lazy import keeps harvest-loader light and avoids pulling the dossier builder into the hot path.
+  const { listDossiers } = await import('../dossier/builder.js');
+  const dossiers = await listDossiers(cwd);
+  return dossiers.flatMap(d => dossierToCapabilitySignals(d, dimNumber!));
+}
+
+/** Load every on-disk harvested signal for one matrix dimension (intel demand + benchmark anchor +
+ *  rubric-mapped dossier capability). */
 export async function loadHarvestedSignals(
   cwd: string,
   dimId: string,
@@ -78,5 +104,6 @@ export async function loadHarvestedSignals(
     const byDim = JSON.parse(raw) as Record<string, LeaderboardEntry[]>;
     if (byDim && typeof byDim === 'object') signals.push(...leaderboardToSignals(byDim, dimId));
   } catch { /* no leaderboard file yet — no fabrication */ }
+  signals.push(...await loadDossierCapabilitySignals(cwd, dimId));
   return signals;
 }
