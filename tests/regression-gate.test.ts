@@ -1,6 +1,20 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { parsePytestFailures, computeRegressions, formatRegressionFeedback } from '../src/matrix/engines/regression-gate.ts';
+import { parsePytestFailures, computeRegressions, formatRegressionFeedback, isTestFile } from '../src/matrix/engines/regression-gate.ts';
+
+test('isTestFile flags test files (so the gate can strip test edits — solver may not game by editing tests)', () => {
+  // real paths the solver edited to game the v3 gate
+  assert.ok(isTestFile('test/unit/module/jsonschema/test_validator.py'));
+  assert.ok(isTestFile('test/integration/jsonschema/test_validator_cfn.py'));
+  assert.ok(isTestFile('tests/test_backends.py'));
+  assert.ok(isTestFile('pkg/foo_test.go'));
+  assert.ok(isTestFile('src/components/Button.test.tsx'));
+  assert.ok(isTestFile('conftest.py'));
+  // SOURCE files must NOT be flagged (the real fix lives here)
+  assert.ok(!isTestFile('src/cfnlint/jsonschema/_keywords.py'));
+  assert.ok(!isTestFile('src/cfnlint/rules/functions/_BaseFn.py'));
+  assert.ok(!isTestFile('lib/latest.py'));
+});
 
 test('parsePytestFailures extracts FAILED and ERROR ids, ignores other lines', () => {
   const out = [

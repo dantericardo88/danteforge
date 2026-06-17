@@ -7,6 +7,20 @@
 // functions decide WHAT gets fed back to the solver each iteration; a bug here silently corrupts the climb,
 // so they are extracted here and unit-tested rather than living inline in scripts/run-swebench-grounding.mjs.
 
+/** True if a repo-relative path is a TEST file. The solver's prediction must be SOURCE-only: SWE-bench's
+ *  grader resets test files (the gold test patch is authoritative), so any solver edit to a test is ignored
+ *  by the grader — but a NAIVE local gate that re-runs the *patched* tests would be GAMED into "no
+ *  regressions" by a solver that edits tests to silence them (observed: v3 attempt 2 edited 15 test files,
+ *  the local gate accepted, the grader correctly failed it 0/1). Reverting test edits before grading makes
+ *  predictions honest (source-only) and the gate faithful (runs the original tests). */
+export function isTestFile(path: string): boolean {
+  return /(^|\/)tests?\//.test(path)            // a tests/ or test/ directory
+    || /(^|\/)test_[^/]*\.[a-z]+$/.test(path)   // test_foo.py
+    || /_test\.[a-z]+$/.test(path)              // foo_test.go / foo_test.py
+    || /\.(test|spec)\.[a-z]+$/.test(path)      // foo.test.ts / foo.spec.js
+    || /(^|\/)conftest\.py$/.test(path);        // pytest conftest
+}
+
 /** Parse the set of FAILED/ERROR test ids from pytest output. `--tb=no -q` prints lines like
  *  `FAILED path::Test::id - AssertionError` and `ERROR path::id`. Returns bare test ids. */
 export function parsePytestFailures(output: string): Set<string> {

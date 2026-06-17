@@ -28,7 +28,7 @@ const {
   parseDatasetRows, toSolverInput, buildPredictionLine, parseSwebenchReport, formatPassRateLine, datasetRowsUrl,
 } = await import('../src/matrix/engines/swe-bench-real.ts');
 const {
-  parsePytestFailures, computeRegressions, formatRegressionFeedback,
+  parsePytestFailures, computeRegressions, formatRegressionFeedback, isTestFile,
 } = await import('../src/matrix/engines/regression-gate.ts');
 
 const args = process.argv.slice(2);
@@ -91,6 +91,19 @@ function sh(cmd, cwd, timeout, env) {
 
 // parsePytestFailures + computeRegressions + formatRegressionFeedback are imported from the tested
 // src/matrix/engines/regression-gate.ts (the climb logic that decides what is fed back to the solver).
+
+// Revert any solver edits to TEST files — SWE-bench scores SOURCE-only (the grader resets tests), and a
+// naive gate is gamed by a solver that edits tests to silence regressions (observed: v3 edited 15 test
+// files, the gate accepted, the grader failed it). Reverting makes the prediction honest + the gate faithful.
+function revertTestEdits(repoDir) {
+  const changed = (sh('git diff --name-only', repoDir, 60000).stdout || '').split('\n').map(s => s.trim()).filter(Boolean);
+  const tests = changed.filter(isTestFile);
+  if (tests.length > 0) {
+    sh(`git checkout -- ${tests.map(t => `"${t}"`).join(' ')}`, repoDir, 60000);
+    console.error(`  [gate] reverted ${tests.length} solver edit(s) to TEST files (prediction is SOURCE-only): ${tests.slice(0, 4).join(', ')}${tests.length > 4 ? ' …' : ''}`);
+  }
+  return tests.length;
+}
 
 // Run the repo's public test suite and return { failures:Set, ran:boolean }. ran=false when the runner
 // itself could not execute (wrong runner / collection error) — the gate then skips honestly rather than
@@ -205,6 +218,7 @@ for (const inst of (gradeOnly ? [] : instances)) {
         solve = sh(cmd, repoDir, solveTimeoutMs);
       }
       if (solve.status !== 0) console.error(`  [warn] attempt ${attempt} solver exit ${solve.status}: ${(solve.stderr || '').slice(-160)}`);
+      revertTestEdits(repoDir); // enforce SOURCE-only predictions + an ungameable gate (no test-file edits)
       patch = sh(`git diff`, repoDir, 60000).stdout || '';
       console.error(`  attempt ${attempt}${solveCommand ? ' (solve-command)' : useSession ? ' (session)' : ''}: patch ${patch.length} chars`);
       if (patch.trim().length === 0) { nextMessage = useSession ? NODIFF_FB : `${baseTask}\n\n${NODIFF_FB}`; continue; }
