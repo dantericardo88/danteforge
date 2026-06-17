@@ -37,17 +37,39 @@ of Docker Desktop; C: had 109GB free, so it was NOT disk). See
 
 ## NEXT — split by what the hardware allows
 
-### Cloud Linux box (heavy Docker)
-1. **Replace the HumanEval receipt with the honest SWE-bench-Live one (CH-044)** — run the full Live grade on
-   cloud, register the swe-bench-live external-benchmark receipt on `code_generation`. Then grounding reflects
-   the honest ~14–33%, not HumanEval 90%.
-2. **The DanteForge-vs-raw A/B (the experiment that validates DanteForge's value)** — via the pluggable seam:
-   raw `claude -p` vs a DanteForge issue-fix workflow on the same Live issues, refereed by the grader. A real
-   lift = the contamination-resistant proof that DanteForge improves AI coding. (Needs a small
-   DanteForge-as-solver adapter behind the `--solve-command` contract.)
-3. **The solver climb** — the local gate can't match the grader without grader-env fidelity (CH-043 proved
-   it). Climb by grading in the grader's Docker per iteration (cloud). The lever is regression discipline
-   (fixed-but-regressed was the dominant failure mode), not "fix harder".
+### Cloud Linux box (heavy Docker) — COUNCIL-VALIDATED RUN PLAN (2026-06-17)
+
+**Key reframe (council):** the A/B *treatment* resolve-rate IS the honest `code_generation` receipt — so
+CH-044 (replace HumanEval) and the thesis A/B are **ONE experiment, not two.** The build is done + dry-run
+proven; the risk is now experimental design, not code. Execute IN THIS ORDER:
+
+0. **Box:** Ubuntu VM, enough RAM for Docker (the WSL2/RAM pressure that reset the Windows box will OOM a
+   small VM — size deliberately, spot/ephemeral, tear down). `git clone` + `npm ci` + `npm run build` + Claude
+   CLI auth. Sanity: `npx tsx --test tests/swe-bench-real.test.ts tests/external-benchmark-runner.test.ts
+   tests/danteforge-solver-steps.test.ts`.
+1. **SMOKE FIRST (1 instance, both arms, REAL grade):** prove the treatment grades end-to-end (it has only
+   ever been `--dry-run`) and the box survives the load before paying for a sweep.
+2. **The 3-arm A/B at a MEANINGFUL n** — use `--spread 40` (cross-repo) to land ≥20 *gradeable* instances
+   after the empty-FAIL_TO_PASS attrition (~half were ungradeable at n=20). Same instances, same model
+   (`DANTEFORGE_SOLVE_CLAUDE`), sequential grades (CH-038 watch `Error:`/`Incomplete:`), `--grade-only` to
+   resume:
+   ```bash
+   # A) raw one-shot          B) budget-matched control       C) DanteForge structured (treatment)
+   --solver "claude -p"   |   --solve-command "node scripts/raw-solve.mjs"   |   --solve-command "node scripts/danteforge-solve.mjs"
+   ```
+   Arms B vs C isolate STRUCTURE (same 3-turn budget); A is the one-shot reference. **Report the Wilson 95%
+   CI (now in the analyzer), never the bare rate** — a small-n delta with overlapping CIs is NOT a win.
+3. **Register the TREATMENT (C) resolve-rate as the `code_generation` swe-bench-live receipt** (`validate
+   code_generation --force-cold` + `evidence-rescore.mjs`) — this simultaneously kills CH-044 (honest receipt
+   replaces HumanEval 90%) and answers the thesis.
+4. **Climb ONLY if C shows a real lift over B (non-overlapping CIs) or a clear fixable failure mode.** A null
+   or negative A/B is THE ANSWER (thesis not supported on hard SWE), not a failure to fix — do not pour cloud
+   budget into climbing a refuted thesis. The climb lever is regression discipline; faithful feedback needs
+   grading in the grader's Docker per iteration (CH-043).
+
+CAVEAT (Codex): the treatment arm is a 3-phase prompt/session adapter, NOT the full autoforge/party workflow
+— a null result may indict the adapter more than the whole thesis. If C ≈ B, try the fuller DanteForge
+workflow behind the same seam before concluding.
 
 ### Locally / per-tool (no Docker — and NOT me editing other repos)
 4. **Make the fleet matrices honest** — DanteCode/DanteSecurity/DanteAgents/DanteHarvest self-grade 6–8 with
