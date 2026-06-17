@@ -192,6 +192,16 @@ program
   });
 
 program
+  .command('leaderboard-fetch')
+  .description('Re-fetch published benchmark frontier numbers from real leaderboards, sign them (CH-030), write leaderboards.json — the objective bar anchor')
+  .option('--dim <id>', 'Fetch only the source(s) for one matrix dimension')
+  .option('--cwd <path>', 'Project directory')
+  .action(async (opts) => {
+    const { leaderboardFetch } = await import('./commands/leaderboard-fetch.js');
+    await leaderboardFetch({ dim: opts.dim, cwd: opts.cwd });
+  });
+
+program
   .command('oss-clean')
   .description('Purge OSS clone cache (.danteforge/oss-repos/ and oss-deep/)')
   .option('--dry-run', 'Show what would be deleted without deleting')

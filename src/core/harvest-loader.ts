@@ -17,17 +17,35 @@ import { intelToDemandSignals, benchmarkSignal } from './harvest-to-signals.js';
 const INTEL_REL = ['.danteforge', 'compete', 'weakness-intelligence.json'] as const;
 
 /** The benchmark-leaderboard source: `{ "<dimId>": [{ suite, numeric, source_url, fetched_at,
- *  verified_live }] }`. Populated by the leaderboard fetcher (or operator) — the objective anchor.
- *  verified_live is the FETCHER's to set on a real re-fetch; the harvest gate trusts it only when
- *  signed (CH-030) under enforcement. The dossier source is deliberately NOT loaded: dossiers score
- *  competitors on the code-tool DIMENSIONS_28 rubric, a different domain from the matrix dims. */
-const LEADERBOARD_REL = ['.danteforge', 'compete', 'leaderboards.json'] as const;
+ *  verified_live, sig }] }`. Populated by the leaderboard fetcher (leaderboard-fetcher.ts) — the
+ *  objective anchor. verified_live is the FETCHER's to set on a real re-fetch; `sig` is the CH-030
+ *  signature the fetcher stamps so the harvest gate trusts verified_live under enforcement. The dossier
+ *  source is deliberately NOT loaded: dossiers score competitors on the code-tool DIMENSIONS_28 rubric,
+ *  a different domain from the matrix dims. */
+export const LEADERBOARD_REL = ['.danteforge', 'compete', 'leaderboards.json'] as const;
 
 /** Default demand floor — drops one-off mentions so the bar reflects real, repeated user demand. */
 const DEFAULT_MIN_DEMAND = 5;
 
-interface LeaderboardEntry {
+export interface LeaderboardEntry {
   suite?: unknown; numeric?: unknown; source_url?: unknown; fetched_at?: unknown; verified_live?: unknown;
+  /** CH-030 signature the fetcher stamps over the reconstructed signal; read back onto the signal here. */
+  sig?: unknown;
+}
+
+/** Build the benchmark signal a leaderboard entry represents, attaching the entry's CH-030 signature so the
+ *  harvest gate can verify it. The fetcher signs the SAME reconstruction, so the signature round-trips. */
+export function signalFromLeaderboardEntry(r: LeaderboardEntry): HarvestedSignal {
+  const numeric = Number(r.numeric);
+  const signal = benchmarkSignal({
+    suite: typeof r.suite === 'string' ? r.suite : 'suite',
+    numeric,
+    sourceUrl: typeof r.source_url === 'string' ? r.source_url : (typeof r.suite === 'string' ? r.suite : 'suite'),
+    fetchedAt: typeof r.fetched_at === 'string' ? r.fetched_at : '',
+    verifiedLive: r.verified_live === true,
+  });
+  if (typeof r.sig === 'string' && r.sig) signal.sig = r.sig;
+  return signal;
 }
 
 /** Build benchmark signals from a leaderboards.json entry list for one dimension (skips malformed rows). */
@@ -35,15 +53,8 @@ function leaderboardToSignals(byDim: Record<string, LeaderboardEntry[]>, dimId: 
   const rows = Array.isArray(byDim[dimId]) ? byDim[dimId]! : [];
   const out: HarvestedSignal[] = [];
   for (const r of rows) {
-    const numeric = Number(r.numeric);
-    if (typeof r.suite !== 'string' || !Number.isFinite(numeric)) continue;
-    out.push(benchmarkSignal({
-      suite: r.suite,
-      numeric,
-      sourceUrl: typeof r.source_url === 'string' ? r.source_url : r.suite,
-      fetchedAt: typeof r.fetched_at === 'string' ? r.fetched_at : '',
-      verifiedLive: r.verified_live === true,
-    }));
+    if (typeof r.suite !== 'string' || !Number.isFinite(Number(r.numeric))) continue;
+    out.push(signalFromLeaderboardEntry(r));
   }
   return out;
 }
