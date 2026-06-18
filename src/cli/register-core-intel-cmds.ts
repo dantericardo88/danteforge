@@ -192,6 +192,16 @@ program
   });
 
 program
+  .command('gate-status')
+  .description('Preflight the autonomy gates (GROUNDING_GATE / REQUIRE_SIGNED_EVIDENCE) — whether each is SAFE to flip now, so the wrong order cannot stall the loop (read-only)')
+  .option('--json', 'Machine-readable output')
+  .option('--cwd <path>', 'Project directory')
+  .action(async (opts) => {
+    const { gateStatus } = await import('./commands/gate-status.js');
+    await gateStatus({ json: opts.json, cwd: opts.cwd });
+  });
+
+program
   .command('autonomy')
   .description('Where this matrix is on the path to maximal honest autonomy — per-dim posture + machine-autonomous coverage (read-only)')
   .option('--json', 'Machine-readable output')
