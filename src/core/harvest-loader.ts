@@ -12,6 +12,7 @@ import { join } from 'node:path';
 import type { IntelReport } from './competitor-intel-fetcher.js';
 import type { HarvestedSignal } from './harvested-bar.js';
 import { intelToDemandSignals, benchmarkSignal, dossierToCapabilitySignals } from './harvest-to-signals.js';
+import { applyRatifications, loadRatifiedSignals } from './ratified-signals.js';
 
 /** Matches intel.ts: STATE_DIR/COMPETE_DIR/INTEL_FILE. */
 const INTEL_REL = ['.danteforge', 'compete', 'weakness-intelligence.json'] as const;
@@ -105,5 +106,8 @@ export async function loadHarvestedSignals(
     if (byDim && typeof byDim === 'object') signals.push(...leaderboardToSignals(byDim, dimId));
   } catch { /* no leaderboard file yet — no fabrication */ }
   signals.push(...await loadDossierCapabilitySignals(cwd, dimId));
-  return signals;
+  // Apply operator ratifications: a subjective (capability/demand) signal the operator has signed off on
+  // carries ratified_by + a valid signature so checkHarvestProvenance accepts it. Benchmarks pass through
+  // (they auto-accept on verified_live). No ratification store → signals unchanged (honest: nothing vouched).
+  return applyRatifications(signals, await loadRatifiedSignals(cwd));
 }

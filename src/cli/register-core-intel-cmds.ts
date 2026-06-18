@@ -192,6 +192,18 @@ program
   });
 
 program
+  .command('ratify')
+  .description('Vouch for a subjective harvested bar (capability/demand) — the human-ratify half of autonomy; lists candidates, signs the chosen one into the ratified-signals store')
+  .option('--dim <id>', 'Dimension whose subjective bar to ratify')
+  .option('--index <n>', 'Index of the candidate to ratify (omit to list)')
+  .option('--as <operator>', 'Your operator id (who is vouching) — required to ratify')
+  .option('--cwd <path>', 'Project directory')
+  .action(async (opts) => {
+    const { ratifyCommand } = await import('./commands/ratify.js');
+    await ratifyCommand({ dim: opts.dim, index: opts.index, as: opts.as, cwd: opts.cwd });
+  });
+
+program
   .command('leaderboard-fetch')
   .description('Re-fetch published benchmark frontier numbers from real leaderboards, sign them (CH-030), write leaderboards.json — the objective bar anchor')
   .option('--dim <id>', 'Fetch only the source(s) for one matrix dimension')
