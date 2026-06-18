@@ -13,8 +13,7 @@
 // be migrated (scripts/sign-outcome-evidence.mjs) before enforcement flips — rejecting unsigned by
 // default would collapse the live matrix's derived scores to 0.
 
-import { createHmac } from 'node:crypto';
-import { kernelSecret } from './frontier-spec.js';
+import { getKernelSigner } from './kernel-signer.js';
 import type { OutcomeEvidenceEntry } from '../matrix/types/outcome.js';
 
 // Fields EXCLUDED from the signed content:
@@ -31,14 +30,15 @@ function canonicalContent(entry: OutcomeEvidenceEntry): string {
   return JSON.stringify(obj);
 }
 
-/** HMAC-SHA256 over the receipt's factual content, keyed by the kernel secret. */
+/** Sign the receipt's factual content via the active kernel signer (CH-045 seam — local HMAC by default,
+ *  an external HSM/remote/quorum signer when installed). */
 export function signOutcomeEvidence(entry: OutcomeEvidenceEntry): string {
-  return createHmac('sha256', kernelSecret()).update(canonicalContent(entry)).digest('hex');
+  return getKernelSigner().sign(canonicalContent(entry));
 }
 
-/** True iff the receipt carries a present signature that matches its current content. */
+/** True iff the receipt carries a present signature that matches its current content (constant-time). */
 export function verifyOutcomeEvidenceSignature(entry: OutcomeEvidenceEntry): boolean {
   const sig = (entry as { sig?: unknown }).sig;
   if (typeof sig !== 'string' || sig.length === 0) return false;
-  return sig === signOutcomeEvidence(entry);
+  return getKernelSigner().verify(canonicalContent(entry), sig);
 }

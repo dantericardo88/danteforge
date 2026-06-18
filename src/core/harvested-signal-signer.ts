@@ -13,8 +13,7 @@
 // still raises forgery from a one-field edit to "read a non-obvious secret + compute an HMAC", and blocks
 // committed / cross-machine forgeries — the seam a hardware/remote signer slots into.
 
-import { createHmac } from 'node:crypto';
-import { kernelSecret } from './frontier-spec.js';
+import { getKernelSigner } from './kernel-signer.js';
 import type { HarvestedSignal } from './harvested-bar.js';
 
 /** `sig` cannot sign over itself; everything else is factual content the signature commits to. */
@@ -28,9 +27,10 @@ function canonicalContent(sig: HarvestedSignal): string {
   return JSON.stringify(obj);
 }
 
-/** HMAC-SHA256 over the signal's factual content, keyed by the kernel secret. */
+/** Sign the signal's factual content via the active kernel signer (CH-045 seam — local HMAC by default,
+ *  an external HSM/remote/quorum signer when installed). */
 export function signHarvestedSignal(signal: HarvestedSignal): string {
-  return createHmac('sha256', kernelSecret()).update(canonicalContent(signal)).digest('hex');
+  return getKernelSigner().sign(canonicalContent(signal));
 }
 
 /** Return a copy of the signal carrying a fresh signature over its current content. */
@@ -38,9 +38,10 @@ export function signedHarvestedSignal(signal: HarvestedSignal): HarvestedSignal 
   return { ...signal, sig: signHarvestedSignal(signal) };
 }
 
-/** True iff the signal carries a present signature that matches its current content. */
+/** True iff the signal carries a present signature that matches its current content (constant-time, via the
+ *  active kernel signer). */
 export function verifyHarvestedSignalSignature(signal: HarvestedSignal): boolean {
   const sig = signal.sig;
   if (typeof sig !== 'string' || sig.length === 0) return false;
-  return sig === signHarvestedSignal(signal);
+  return getKernelSigner().verify(canonicalContent(signal), sig);
 }
