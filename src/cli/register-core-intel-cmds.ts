@@ -192,6 +192,16 @@ program
   });
 
 program
+  .command('autonomy')
+  .description('Where this matrix is on the path to maximal honest autonomy — per-dim posture + machine-autonomous coverage (read-only)')
+  .option('--json', 'Machine-readable output')
+  .option('--cwd <path>', 'Project directory')
+  .action(async (opts) => {
+    const { autonomyStatus } = await import('./commands/autonomy.js');
+    await autonomyStatus({ json: opts.json, cwd: opts.cwd });
+  });
+
+program
   .command('ratify')
   .description('Vouch for a subjective harvested bar (capability/demand) — the human-ratify half of autonomy; lists candidates, signs the chosen one into the ratified-signals store')
   .option('--dim <id>', 'Dimension whose subjective bar to ratify')
