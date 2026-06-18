@@ -1,6 +1,6 @@
 import { describe, test } from 'node:test';
 import assert from 'node:assert/strict';
-import { externalGroundingReport, isExternallyGrounded } from '../src/core/external-grounding.ts';
+import { externalGroundingReport, isExternallyGrounded, isContaminationResistantlyGrounded } from '../src/core/external-grounding.ts';
 import { makeEvidenceKey, type OutcomeEvidence, type OutcomeEvidenceEntry } from '../src/matrix/types/outcome.ts';
 import type { CompeteMatrix } from '../src/core/compete-matrix.ts';
 
@@ -65,7 +65,30 @@ describe('external-grounding — the self-vs-world honesty signal (grading-integ
     assert.deepEqual(r.groundedDimIds, ['functionality']);
     assert.equal(r.weightedGroundingRatio, 0.75, '3 of 4 weight is grounded');
     assert.equal(r.dimGroundingRatio, 0.5);
-    assert.match(r.summary, /external-benchmark receipt/);
+    assert.match(r.summary, /externally grounded/);
+  });
+
+  // CH-044: separate REAL grounding from flattering chain-proof grounding.
+  const benchDim = (id: string, suite: string) => ({
+    id, weight: 1, label: id, scores: { self: 8 },
+    outcomes: [{ id: `${id}-b`, tier: 'T8', kind: 'external-benchmark', benchmark: suite, input_source: { type: 'external-benchmark', suite } }],
+  });
+
+  test('CH-044: a HumanEval (chain-proof) pass is externally grounded but NOT contamination-resistant', () => {
+    const m = matrix([benchDim('code_generation', 'humaneval')]);
+    const r = externalGroundingReport(m, evidenceFor([['code_generation', 'code_generation-b']]));
+    assert.equal(r.externallyGroundedDims, 1, 'HumanEval pass still counts as external (any registered suite)');
+    assert.equal(r.contaminationResistantGroundedDims, 0, 'but it is NOT contamination-resistant (memorization-inflated)');
+    assert.match(r.summary, /chain-proof only|honest-frontier grounding is 0/);
+  });
+
+  test('CH-044: a SWE-bench-Live pass IS contamination-resistant grounded (the honest subset)', () => {
+    const m = matrix([benchDim('code_generation', 'swe-bench-live')]);
+    const r = externalGroundingReport(m, evidenceFor([['code_generation', 'code_generation-b']]));
+    assert.equal(r.contaminationResistantGroundedDims, 1);
+    assert.deepEqual(r.contaminationResistantGroundedDimIds, ['code_generation']);
+    assert.ok(isContaminationResistantlyGrounded(benchDim('code_generation', 'swe-bench-live') as never, evidenceFor([['code_generation', 'code_generation-b']])));
+    assert.ok(!isContaminationResistantlyGrounded(benchDim('x', 'humaneval') as never, evidenceFor([['x', 'x-b']])));
   });
 
   test('isExternallyGrounded requires a PASSING receipt, not mere declaration', () => {

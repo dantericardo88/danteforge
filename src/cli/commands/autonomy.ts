@@ -5,7 +5,7 @@
 
 import { logger } from '../../core/logger.js';
 import { loadMatrix } from '../../core/compete-matrix.js';
-import { isExternallyGrounded } from '../../core/external-grounding.js';
+import { isContaminationResistantlyGrounded } from '../../core/external-grounding.js';
 import { loadOutcomeEvidence } from '../../matrix/engines/outcome-runner.js';
 import { autonomyReport } from '../../core/autonomy-status.js';
 
@@ -15,8 +15,10 @@ export async function autonomyStatus(opts: { cwd?: string; json?: boolean } = {}
   if (!matrix) { logger.warn('[autonomy] No compete matrix found.'); process.exitCode = 1; return; }
   const evidence = await loadOutcomeEvidence(cwd);
   const dims = matrix.dimensions.map((d: { id: string; scores?: { derived?: number } }) => ({ id: d.id, derived: d.scores?.derived ?? 0 }));
+  // Honest coverage uses CONTAMINATION-RESISTANT grounding only — a chain-proof pass (HumanEval) does not
+  // count as machine-autonomous (CH-044). So a flattering receipt cannot inflate the autonomy number.
   const groundedIds = new Set(
-    matrix.dimensions.filter((d: unknown) => isExternallyGrounded(d as never, evidence)).map((d: { id: string }) => d.id),
+    matrix.dimensions.filter((d: unknown) => isContaminationResistantlyGrounded(d as never, evidence)).map((d: { id: string }) => d.id),
   );
   const r = autonomyReport(dims, groundedIds);
 
