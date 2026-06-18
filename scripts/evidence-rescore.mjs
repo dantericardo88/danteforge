@@ -33,9 +33,9 @@ const MARKET_DIM_CAP = 5.0;
 const STRUCTURAL_READ_RE = /readFileSync|readFile\b|existsSync|statSync/;
 const REAL_EXECUTION_RE = /spawn|execFile|exec(?:Sync)?\(|child_process|(?:npm|npx)\s+(?:run\s+)?(?:test|build|start)|tsx\s+--test|node\s+dist\//;
 const TEST_RUNNER_RE = /npx\s+tsx\s+--test|node\s+--test|npm\s+(?:run\s+)?test|jest|vitest|mocha|cargo\s+(?:test|nextest)\b|go\s+test\b|\bpytest\b|\bpy\.test\b|python[0-9.]*\s+-m\s+(?:pytest|unittest)\b|\bdotnet\s+test\b|\bgradle\s+test\b|\bmvn\s+test\b|\brspec\b|\bphpunit\b/;
-// Mirror of external-suite-registry.ts REGISTERED_EXTERNAL_SUITES.
+// Mirror of external-suite-registry.ts REGISTERED_EXTERNAL_SUITES (pinned by tests/evidence-rescore-drift.test.ts).
 const REGISTERED_EXTERNAL_SUITES = new Set([
-  'swe-bench', 'swe-bench-lite', 'swe-bench-verified', 'exercism', 'humaneval', 'mbpp',
+  'swe-bench', 'swe-bench-lite', 'swe-bench-verified', 'swe-bench-live', 'exercism', 'humaneval', 'mbpp',
 ]);
 
 function isStructuralFileCheck(cmd) {

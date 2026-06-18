@@ -44,6 +44,13 @@ function parseMarketDims(src: string, name = 'MARKET_DIMS'): string[] {
   return [...m![1]!.matchAll(/['"]([^'"]+)['"]/g)].map(x => x[1]!).sort();
 }
 
+/** Parse a `new Set([...])` or `new Set<Generic>([...])` literal (handles the canonical TS generic + comments). */
+function parseSet(src: string, name: string): string[] {
+  const m = src.match(new RegExp(`${name}[^=]*=\\s*new Set(?:<[^>]+>)?\\(\\[([^\\]]+)\\]\\)`));
+  assert.ok(m, `could not locate ${name}`);
+  return [...m![1]!.matchAll(/['"]([^'"]+)['"]/g)].map(x => x[1]!).sort();
+}
+
 describe('evidence-rescore.mjs stays in lockstep with the canonical TS scoring', () => {
   const mjs = read('scripts/evidence-rescore.mjs');
   const derivedScore = read('src/core/derived-score.ts');
@@ -70,6 +77,16 @@ describe('evidence-rescore.mjs stays in lockstep with the canonical TS scoring',
   it('MIN_T7_HIGH_TIER_OUTCOMES threshold matches derived-score.ts', () => {
     assert.equal(parseNumber(mjs, 'MIN_T7_HIGH_TIER_OUTCOMES'), parseNumber(derivedScore, 'MIN_T7_HIGH_TIER_OUTCOMES'),
       'evidence-rescore.mjs MIN_T7_HIGH_TIER_OUTCOMES drifted from derived-score.ts');
+  });
+
+  // Codex P1: this mirror drifted — it omitted swe-bench-live, so a passing contamination-resistant receipt
+  // would NOT lift the derived score (isRegisteredExternalSuite returned false). Pin it so it can't recur.
+  it('REGISTERED_EXTERNAL_SUITES match the canonical external-suite-registry.ts', () => {
+    const registry = read('src/matrix/engines/external-suite-registry.ts');
+    assert.deepEqual(parseSet(mjs, 'REGISTERED_EXTERNAL_SUITES'), parseSet(registry, 'REGISTERED_EXTERNAL_SUITES'),
+      'evidence-rescore.mjs REGISTERED_EXTERNAL_SUITES drifted from external-suite-registry.ts — a passing receipt for the missing suite would not lift derived score');
+    assert.ok(parseSet(mjs, 'REGISTERED_EXTERNAL_SUITES').includes('swe-bench-live'),
+      'swe-bench-live (contamination-resistant) must be registered so its receipt grounds code_generation');
   });
 
   it('derived-score.ts delegates extraction to the canonical test-file-patterns.ts', () => {
