@@ -29,6 +29,7 @@ const {
 } = await import('../src/matrix/engines/swe-bench-real.ts');
 const {
   parsePytestFailures, computeRegressions, formatRegressionFeedback, isTestFile, parsePassToPass,
+  extractFailureDetail, formatRegressionFeedbackWithDetail,
 } = await import('../src/matrix/engines/regression-gate.ts');
 const { regressionsFromGradeReport } = await import('../src/matrix/engines/swebench-failure-analysis.ts');
 
@@ -148,7 +149,12 @@ function gradeOneInstance(inst, patch, label) {
     process.cwd(), 2 * 3600 * 1000, { MSYS_NO_PATHCONV: '1' });
   if (g.status !== 0) console.error(`  [grade-in-loop] grader exit ${g.status}: ${((g.stderr || '') + (g.stdout || '')).slice(-200)}`);
   try {
-    return JSON.parse(readFileSync(join(repDir, inst.instance_id, 'report.json'), 'utf8'));
+    const report = JSON.parse(readFileSync(join(repDir, inst.instance_id, 'report.json'), 'utf8'));
+    // CH-050: also capture the grader's full test output (assertion/tracebacks) so the feedback can carry the
+    // real failure detail, not just the test names (the solver can't reproduce these locally on env mismatch).
+    let log = '';
+    try { log = readFileSync(join(repDir, inst.instance_id, 'post_patch_log.txt'), 'utf8'); } catch { /* no log — detail omitted */ }
+    return { report, log };
   } catch {
     console.error(`  [grade-in-loop] no per-instance report.json under ${repDir}/${inst.instance_id} — inconclusive (not a false accept)`);
     return null;
@@ -292,16 +298,20 @@ for (const inst of (gradeOnly ? [] : instances)) {
       // `regressions === null` means "no actionable regression signal" (no oracle, or the GRADE says the fix
       // itself — not regressions — is the blocker): accept the current patch honestly rather than thrash.
       let regressions = null;
+      let regrDetail = ''; // CH-050: the grader's actual failure output for the regressed tests (env-mismatch path)
       if (gateActive) {
         const post = runRepoTests(repoDir, `post-patch attempt ${attempt}`);
         regressions = computeRegressions(baseFail, post.failures, mustStayGreen);
       } else if (gradeInLoop && attempt <= maxGradeIter) {
-        const rep = gradeOneInstance(inst, patch, `a${attempt}`);
-        if (rep && rep.resolved) { console.error(`  [grade-in-loop] attempt ${attempt}: GRADER says RESOLVED — patch accepted`); break; }
-        const gr = rep ? regressionsFromGradeReport(rep) : null;
+        const graded = gradeOneInstance(inst, patch, `a${attempt}`);
+        if (graded && graded.report && graded.report.resolved) { console.error(`  [grade-in-loop] attempt ${attempt}: GRADER says RESOLVED — patch accepted`); break; }
+        const gr = graded && graded.report ? regressionsFromGradeReport(graded.report) : null;
         if (gr) {
           regressions = gr.regressions;
-          console.error(`  [grade-in-loop] attempt ${attempt}: target fixed (${gr.targetFixed}), ${gr.regressions.length} GRADER regression(s): ${gr.regressions.slice(0, 8).join(', ')}`);
+          // CH-050: extract the grader's assertion/traceback for each regressed test so the feedback is
+          // debuggable (the solver cannot reproduce these locally on an env-mismatch instance).
+          regrDetail = extractFailureDetail(graded.log || '', gr.regressions);
+          console.error(`  [grade-in-loop] attempt ${attempt}: target fixed (${gr.targetFixed}), ${gr.regressions.length} GRADER regression(s)${regrDetail ? ' (+failure detail)' : ''}: ${gr.regressions.slice(0, 8).join(', ')}`);
         } else {
           console.error(`  [grade-in-loop] attempt ${attempt}: not fixed-but-regressed (the fix, not regressions, is the blocker) or inconclusive — accepting patch honestly`);
         }
@@ -312,7 +322,7 @@ for (const inst of (gradeOnly ? [] : instances)) {
       if (regressions.length === 0) { console.error(`  [regression] attempt ${attempt}: NO regressions — patch accepted`); break; }
       console.error(`  [regression] attempt ${attempt}: ${regressions.length} regression(s): ${regressions.slice(0, 8).join(', ')}`);
       if (attempt < maxIter) {
-        const regrFB = formatRegressionFeedback(regressions);
+        const regrFB = regrDetail ? formatRegressionFeedbackWithDetail(regressions, regrDetail) : formatRegressionFeedback(regressions);
         nextMessage = useSession ? regrFB : `${baseTask}\n\n${regrFB}`;
       } else {
         console.error(`  [regression] max attempts reached, ${regressions.length} regression(s) remain — recording the patch honestly (grades as unresolved)`);

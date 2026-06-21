@@ -1,6 +1,53 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { parsePytestFailures, computeRegressions, formatRegressionFeedback, isTestFile, parsePassToPass } from '../src/matrix/engines/regression-gate.ts';
+import { parsePytestFailures, computeRegressions, formatRegressionFeedback, isTestFile, parsePassToPass, extractFailureDetail, formatRegressionFeedbackWithDetail } from '../src/matrix/engines/regression-gate.ts';
+
+// CH-050: a representative pytest failure log (the shape grade.sh writes to post_patch_log.txt).
+const PYTEST_LOG = `test/unit/rules/test_x.py ....                                    [ 50%]
+_______________ TestQuickStartTemplates.test_module_integration ________________
+self = <test.integration.test_good_templates.TestQuickStartTemplates>
+    def test_module_integration(self):
+>       exit.assert_called_once_with(0)
+E           AssertionError: expected call not found.
+E           Expected: exit(0)
+E           Actual: exit(2)
+test/integration/test_good_templates.py:42: AssertionError
+____________________ TestRulesCollection.test_success_run ____________________
+    def test_success_run(self):
+>       self.assertEqual(matches, [])
+E       AssertionError: Lists differ: [] != [E2533 deprecated]
+test/unit/module/test_rules_collections.py:170: AssertionError
+=========================== short test summary info ============================`;
+
+test('CH-050: extractFailureDetail pulls the assertion lines for the named tests (not just the name)', () => {
+  const detail = extractFailureDetail(PYTEST_LOG, [
+    'test/integration/test_good_templates.py::TestQuickStartTemplates::test_module_integration',
+    'test/unit/module/test_rules_collections.py::TestRulesCollection::test_success_run',
+  ]);
+  assert.match(detail, /Expected: exit\(0\)/);
+  assert.match(detail, /Actual: exit\(2\)/);
+  assert.match(detail, /Lists differ/);
+  // Each requested test gets a bullet with its id.
+  assert.match(detail, /test_module_integration/);
+  assert.match(detail, /test_success_run/);
+});
+
+test('CH-050: extractFailureDetail returns "" for no tests / empty log (no crash, honest empty)', () => {
+  assert.equal(extractFailureDetail(PYTEST_LOG, []), '');
+  assert.equal(extractFailureDetail('', ['a::b::c']), '');
+  assert.equal(extractFailureDetail(PYTEST_LOG, ['nope::never::absent_test']), '');
+});
+
+test('CH-050: formatRegressionFeedbackWithDetail appends the grader output, and degrades to plain feedback', () => {
+  const regs = ['test/x.py::C::test_module_integration'];
+  const detail = extractFailureDetail(PYTEST_LOG, ['x::TestQuickStartTemplates::test_module_integration']);
+  const withDetail = formatRegressionFeedbackWithDetail(regs, detail);
+  assert.match(withDetail, /BROKE these previously-passing tests/);   // the base feedback
+  assert.match(withDetail, /GRADER's failure output/);                 // the appended detail header
+  assert.match(withDetail, /Actual: exit\(2\)/);                       // the real assertion
+  // No detail → identical to plain feedback (no dangling header).
+  assert.equal(formatRegressionFeedbackWithDetail(regs, ''), formatRegressionFeedback(regs));
+});
 
 test('parsePassToPass parses a JSON array string and a bracketed/space list', () => {
   assert.deepEqual([...parsePassToPass('["a::t1", "b::t2"]')].sort(), ['a::t1', 'b::t2']);

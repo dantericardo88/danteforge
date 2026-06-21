@@ -78,3 +78,41 @@ export function formatRegressionFeedback(regressions: string[], cap = 25): strin
     `the test files. Keep the original bug fixed.`
   );
 }
+
+/**
+ * CH-050: extract pytest failure DETAIL (the assertion/error lines) for specific tests from a grader log.
+ * The grade-in-loop's first validation showed the solver re-submitted a BYTE-IDENTICAL patch when handed only
+ * test NAMES — because on an env-mismatch instance it cannot reproduce those failures locally, so a bare name
+ * is undebuggable. The grader's post_patch_log.txt DOES carry the real assertion (e.g. "E AssertionError:
+ * expected call not found"); feeding that back gives the solver something concrete to act on. pytest prints
+ * each failure under a `____ Class.method ____` banner — capture that section's error lines per requested test.
+ */
+export function extractFailureDetail(logText: string, testIds: string[], capPerTest = 1200): string {
+  if (!logText || testIds.length === 0) return '';
+  // Split into [preamble, banner1, body1, banner2, body2, …] on pytest's underscore failure banners.
+  const parts = logText.split(/\n_{4,}\s*(.+?)\s*_{4,}\n/);
+  const out: string[] = [];
+  for (const id of testIds) {
+    const method = (id.split('::').pop() ?? id).trim();
+    if (!method) continue;
+    for (let i = 1; i + 1 < parts.length; i += 2) {
+      if (!(parts[i] ?? '').includes(method)) continue;
+      const body = (parts[i + 1] ?? '').trim();
+      // Prefer pytest's "E   …" error lines (the assertion); fall back to the body tail if none present.
+      const eLines = body.split('\n').filter(l => /^\s*E\s/.test(l)).join('\n').trim();
+      const detail = (eLines || body.split('\n').slice(-12).join('\n')).slice(0, capPerTest);
+      if (detail) out.push(`• ${id}\n${detail}`);
+      break;
+    }
+  }
+  return out.join('\n\n');
+}
+
+/** CH-050: regression feedback augmented with the grader's actual failure output, when available. The detail
+ *  is essential on env-mismatch instances where the solver cannot reproduce the failures locally. */
+export function formatRegressionFeedbackWithDetail(regressions: string[], detail: string, cap = 25): string {
+  const base = formatRegressionFeedback(regressions, cap);
+  if (!detail.trim()) return base;
+  return `${base}\n\nThe GRADER's failure output for these tests (you CANNOT reproduce these locally — the ` +
+    `grader's environment differs from yours — so read this carefully to understand what your patch changed):\n${detail}`;
+}
