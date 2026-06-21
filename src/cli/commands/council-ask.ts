@@ -45,7 +45,17 @@ export interface CouncilAskResult {
   membersAsked: number;
   membersResponded: number;
   membersErrored: number;
+  /** A council needs ≥ minQuorum independent substantive responses to be a valid verdict; below it the panel
+   *  is degraded and an automated loop must PAUSE rather than act (today 2–3 of 4 judges were down). */
+  quorumMet: boolean;
+  minQuorum: number;
 }
+
+/** A council is only a council with ≥2 independent substantive voices to cross-check each other; a lone
+ *  responder is a single opinion wearing a panel's authority. Below quorum the verdict is degraded and an
+ *  unattended loop must PAUSE, not guess (lived this session: codex+claude timed out, gemini empty → 1 left).
+ *  Override with DANTEFORGE_COUNCIL_MIN_QUORUM. */
+const MIN_COUNCIL_QUORUM = Math.max(1, Number(process.env['DANTEFORGE_COUNCIL_MIN_QUORUM']) || 2);
 
 // ── Prompt ────────────────────────────────────────────────────────────────────
 
@@ -191,7 +201,8 @@ export async function runCouncilAsk(options: CouncilAskOptions): Promise<Council
 
   if (available.length === 0) {
     logger.error(chalk.red('No council members available. Install at least one: codex, gemini, grok, or claude-code.'));
-    return { question: options.question, perspectives: [], membersAsked: 0, membersResponded: 0, membersErrored: 0 };
+    process.exitCode = 3; // zero members is below any quorum — the same pause signal
+    return { question: options.question, perspectives: [], membersAsked: 0, membersResponded: 0, membersErrored: 0, quorumMet: false, minQuorum: MIN_COUNCIL_QUORUM };
   }
 
   const memberTimeoutMs = options.timeoutMs ?? DEFAULT_MEMBER_TIMEOUT_MS;
@@ -224,11 +235,18 @@ export async function runCouncilAsk(options: CouncilAskOptions): Promise<Council
 
   const responded = perspectives.filter(p => !p.error && p.response).length;
   const errored = perspectives.filter(p => Boolean(p.error)).length;
+  const quorumMet = responded >= MIN_COUNCIL_QUORUM;
 
   logger.info(chalk.bold('\n── Council Ask Complete ────────────────────────────'));
   logger.info(`Members asked:      ${available.length}`);
   logger.info(`Responded:          ${chalk.green(String(responded))}`);
   if (errored > 0) logger.info(`Errors:             ${chalk.red(String(errored))}`);
+  if (!quorumMet) {
+    logger.warn(chalk.red.bold(`\n⚠ QUORUM NOT MET: ${responded} substantive response(s) < ${MIN_COUNCIL_QUORUM} required.`));
+    logger.warn(chalk.red('  This is NOT a council verdict — a lone/empty panel cannot cross-check itself. An unattended'));
+    logger.warn(chalk.red('  loop MUST PAUSE here (exit 3) instead of acting on a degraded panel.'));
+    process.exitCode = 3; // distinct pause signal a loop driver can detect (vs 0 = ok, 1 = error)
+  }
   logger.info(chalk.dim('\nNext: synthesize the perspectives above and decide on the best path forward.'));
 
   const result: CouncilAskResult = {
@@ -237,6 +255,8 @@ export async function runCouncilAsk(options: CouncilAskOptions): Promise<Council
     membersAsked: available.length,
     membersResponded: responded,
     membersErrored: errored,
+    quorumMet,
+    minQuorum: MIN_COUNCIL_QUORUM,
   };
 
   if (options.json) {

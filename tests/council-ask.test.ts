@@ -1,7 +1,7 @@
 // Tests for Council Ask consultation mode.
 // All tests use injection seams — no real subprocesses, no disk I/O.
 import assert from 'node:assert/strict';
-import { describe, it } from 'node:test';
+import { describe, it, afterEach } from 'node:test';
 
 import { runCouncilAsk } from '../src/cli/commands/council-ask.js';
 import type { CouncilMember } from '../src/cli/commands/council.js';
@@ -17,6 +17,35 @@ function fakeMembers(ids: Array<'codex' | 'gemini-cli' | 'grok-build' | 'claude-
 }
 
 describe('runCouncilAsk', () => {
+  // runCouncilAsk sets process.exitCode=3 on a sub-quorum panel (the loop-pause signal). Several fixtures
+  // here deliberately produce <2 responders; reset between tests so they don't make the file exit non-zero.
+  afterEach(() => { process.exitCode = 0; });
+
+  it('quorum MET when >= 2 substantive responses (panel can cross-check)', async () => {
+    const result = await runCouncilAsk({
+      question: 'q',
+      _discover: async () => fakeMembers(['codex', 'grok-build']),
+      _dispatch: async (id) => `ASSESSMENT: ${id} ok.\nRECOMMENDATION:\n- go\nRISKS:\n- none`,
+    });
+    assert.equal(result.membersResponded, 2);
+    assert.equal(result.quorumMet, true);
+    assert.equal(result.minQuorum, 2);
+  });
+
+  it('quorum NOT met + exit 3 when < 2 respond (the unattended-loop PAUSE signal)', async () => {
+    const result = await runCouncilAsk({
+      question: 'q',
+      _discover: async () => fakeMembers(['codex', 'grok-build']),
+      _dispatch: async (id) => {
+        if (id === 'grok-build') throw new Error('service down');
+        return 'ASSESSMENT: ok.\nRECOMMENDATION:\n- go\nRISKS:\n- none';
+      },
+    });
+    assert.equal(result.membersResponded, 1);
+    assert.equal(result.quorumMet, false);
+    assert.equal(process.exitCode, 3, 'a degraded panel sets exit 3 so a loop pauses instead of acting');
+  });
+
   it('dispatches question to all available members', async () => {
     const called: string[] = [];
     const result = await runCouncilAsk({
