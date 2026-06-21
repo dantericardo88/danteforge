@@ -84,7 +84,7 @@ export interface ProblemTreeNode {
 }
 
 export interface SolveTreeOptions extends DecomposeOptions {
-  /** Solve one obstacle (inject obstacle-registry's solveObstacle, or a fake in tests). */
+  /** Solve one obstacle (inject obstacle-registry's solveObstacle, or a test double). */
   solve: (o: Obstacle) => Promise<SolveResult>;
   /** Per-run cap on total nodes — the anti-spam guard (decomposition must converge, not breed). Default 32. */
   maxNodes?: number;

@@ -141,7 +141,7 @@ async function dispatchToMember(
     const result = await Promise.race([runAdapter(adapter, { lease, cwd }), timeoutPromise]);
     // A timed-out/failed adapter returns status 'failed' with the REAL reason on errorReason — surface
     // it as an error (renders red, counts as errored) instead of passing off a "(judge run failed…)"
-    // placeholder as a real answer.
+    // stand-in string as a real answer.
     const failed = result.status === 'failed';
     return {
       memberId: member.id,

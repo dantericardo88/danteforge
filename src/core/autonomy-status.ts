@@ -2,7 +2,7 @@
 //
 // "Out of 100" is the wrong frame (100 = literal full unattended autonomy is impossible — the irreducible
 // residue is ~15: ratify-the-yardstick-on-drift + hold-standing + the externality of the trust anchor). So
-// this reports the HONEST decomposition instead of a single fake number: each dimension's autonomy POSTURE
+// this reports the HONEST decomposition instead of a single misleading number: each dimension's autonomy POSTURE
 // (who must act for it to climb), the machine-autonomous COVERAGE, and the residue checklist the council
 // asked for. It classifies from real state (the matrix + which dims carry a passing external receipt), so it
 // can't self-flatter.
