@@ -22,6 +22,10 @@ if ! command -v docker >/dev/null 2>&1; then
   log "Docker installed — if 'docker ps' fails with a permission error, log out/in (group change) and re-run."
 fi
 docker --version
+# Ensure the daemon is actually RUNNING — grade.sh needs `docker info` to succeed; a fresh install may not
+# auto-start it, and the workstation's Docker-Desktop self-heal does not apply here.
+if command -v systemctl >/dev/null 2>&1; then sudo systemctl enable --now docker >/dev/null 2>&1 || true; fi
+docker info >/dev/null 2>&1 && log "docker daemon is up" || log "WARNING: docker daemon not ready — start it before grading"
 
 # 2) Node 20+ (DanteForge is ESM/tsx). Skip if a recent node is present.
 if ! command -v node >/dev/null 2>&1 || [ "$(node -v | sed 's/v\([0-9]*\).*/\1/')" -lt 20 ]; then
@@ -58,17 +62,21 @@ fi
 log "sanity tests (harness path)…"
 npx tsx --test tests/swe-bench-real.test.ts tests/external-benchmark-runner.test.ts tests/danteforge-solver-steps.test.ts
 
-log "Phase 0 complete. Next (Phase 1 — the A/B that grounds code_generation + answers the thesis):"
+log "Phase 0 complete. THE GREEN-LIT STEP (faithful-oracle validation — does the grader-env regression"
+log "oracle turn a fixed-but-regressed instance into a RESOLVE? a single resolve = the first CR receipt):"
 cat <<'NEXT'
-  # Smoke ONE instance, all three arms, REAL grade (prove it grades + the box survives):
-  node scripts/run-swebench-grounding.mjs --dataset live --limit 1 --offset 0 --regression-gate \
-    --solver "claude -p" --run-id smoke_raw
-  node scripts/run-swebench-grounding.mjs --dataset live --limit 1 --offset 0 --regression-gate \
-    --solve-command "node scripts/raw-solve.mjs"      --run-id smoke_ctrl
-  node scripts/run-swebench-grounding.mjs --dataset live --limit 1 --offset 0 --regression-gate \
-    --solve-command "node scripts/danteforge-solve.mjs" --run-id smoke_treat
+  # PRIMARY — the faithful oracle on the closest case (cfn-lint-3798: target 26/26 fixed, only 4 regressions
+  # away). Per-iteration Docker grading is SAFE here (native Linux, not the WSL2 workstation that crashed):
+  node scripts/run-swebench-grounding.mjs --dataset live --grade-in-loop \
+    --instances cfn-lint-3798 --max-grade-iterations 2 --run-id faithful_oracle_validate
 
-  # Then the real 3-arm A/B at n≈20 gradeable (use --spread 40 for cross-repo coverage), sequential grades.
-  # Analyze with Wilson CIs:  npx tsx scripts/analyze-swebench-results.mjs <report-dir>
-  # The treatment − control CI is the thesis verdict. The treatment rate IS the honest code_generation receipt.
+  # If it RESOLVES → the env-fidelity thesis is proven; widen to all 4 fixed-but-regressed:
+  node scripts/run-swebench-grounding.mjs --dataset live --grade-in-loop \
+    --instances "cfn-lint-3798 cfn-lint-3856 xarray-9974 pylint-10240" --max-grade-iterations 2 \
+    --run-id faithful_oracle_batch
+  # The resolve rate from this batch IS the honest code_generation contamination-resistant receipt.
+
+  # BROADER (Phase 1 A/B — measures the solver scaffold vs a budget-matched control across repos):
+  #   node scripts/run-swebench-grounding.mjs --dataset live --spread 40 --regression-gate --solver "claude -p" --run-id ab_treat
+  #   npx tsx scripts/analyze-swebench-results.mjs <report-dir>   # Wilson CIs — treatment − control = the verdict
 NEXT

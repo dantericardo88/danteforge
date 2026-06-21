@@ -12,8 +12,15 @@ ensure_docker() {
   for i in $(seq 1 30); do
     if docker info >/dev/null 2>&1; then return 0; fi
     if [ "$i" -eq 1 ]; then
-      echo "[grade] docker daemon down — starting Docker Desktop and waiting (≤300s)…" >&2
-      powershell.exe -NoProfile -Command "if (Test-Path 'C:\\Program Files\\Docker\\Docker\\Docker Desktop.exe') { Start-Process 'C:\\Program Files\\Docker\\Docker\\Docker Desktop.exe' }" >/dev/null 2>&1 || true
+      # CH-035 self-heal, OS-aware: on the cloud Linux box (the safe grade host) use systemctl; on the
+      # Windows workstation use Docker Desktop. Probing systemctl first keeps the cloud path off powershell.exe.
+      if command -v systemctl >/dev/null 2>&1; then
+        echo "[grade] docker daemon down — starting it via systemctl (Linux) and waiting (≤300s)…" >&2
+        sudo systemctl start docker >/dev/null 2>&1 || true
+      else
+        echo "[grade] docker daemon down — starting Docker Desktop (Windows) and waiting (≤300s)…" >&2
+        powershell.exe -NoProfile -Command "if (Test-Path 'C:\\Program Files\\Docker\\Docker\\Docker Desktop.exe') { Start-Process 'C:\\Program Files\\Docker\\Docker\\Docker Desktop.exe' }" >/dev/null 2>&1 || true
+      fi
     fi
     sleep 10
   done
