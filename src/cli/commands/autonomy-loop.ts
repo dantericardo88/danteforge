@@ -12,8 +12,10 @@
 
 import { logger } from '../../core/logger.js';
 import { loadMatrix } from '../../core/compete-matrix.js';
-import { externalGroundingReport } from '../../core/external-grounding.js';
+import { externalGroundingReport, isContaminationResistantlyGrounded } from '../../core/external-grounding.js';
 import { loadOutcomeEvidence } from '../../matrix/engines/outcome-runner.js';
+import { makeEvidenceKey } from '../../matrix/types/outcome.js';
+import { isContaminationResistantSuite } from '../../matrix/engines/external-suite-registry.js';
 import { runAutonomousLoop, type LoopRunnerDeps, type LoopRunSummary } from '../../core/autonomous-loop-runner.js';
 import type { ChildObstacle } from '../../core/obstacle-decomposition.js';
 
@@ -33,14 +35,35 @@ export interface AutonomyLoopOptions {
   _runCycle?: (cycle: number) => Promise<void>;
 }
 
-/** The honest gradient: fraction of dimensions carrying a passing CONTAMINATION-RESISTANT receipt. Moves off
- *  0 only when a real swe-bench-live (etc.) receipt exists — never on a self-score. */
+/** Parse the resolve RATE (0..1) from a benchmark receipt's stdout. The grading scripts end with
+ *  formatPassRateLine → a JSON line `{"pass_rate":X,...}`. Returns null when absent. */
+export function parseRateFromReceipt(stdoutTail: string): number | null {
+  const m = /"pass_rate"\s*:\s*([0-9]*\.?[0-9]+)/.exec(stdoutTail ?? '');
+  if (!m) return null;
+  const v = Number(m[1]);
+  return Number.isFinite(v) ? Math.max(0, Math.min(1, v)) : null;
+}
+
+/** The honest gradient: the mean resolve RATE across contamination-resistant-grounded dims, read from their
+ *  passing CR receipts (external evidence the loop cannot author). This is CONTINUOUS (CH-058) — it climbs as
+ *  the solver improves the rate WITHIN a grounded dim, not a binary jump that ceilings after one tick. 0 when
+ *  no dim is CR-grounded (today's state until the first receipt lands), so the loop honestly reports a ceiling
+ *  until there is real external evidence to climb. */
 async function measureContaminationResistantGrounding(cwd: string): Promise<number> {
   const matrix = await loadMatrix(cwd);
   if (!matrix) return 0;
   const evidence = await loadOutcomeEvidence(cwd);
-  const r = externalGroundingReport(matrix, evidence);
-  return r.totalDims > 0 ? r.contaminationResistantGroundedDims / r.totalDims : 0;
+  const rates: number[] = [];
+  for (const dim of matrix.dimensions as Array<{ id: string; outcomes?: Array<{ id: string; input_source?: { suite?: unknown } }> }>) {
+    if (!isContaminationResistantlyGrounded(dim as never, evidence)) continue;
+    for (const o of dim.outcomes ?? []) {
+      if (!isContaminationResistantSuite((o.input_source as { suite?: unknown })?.suite)) continue;
+      const entry = evidence.get(makeEvidenceKey(dim.id, o.id));
+      const rate = entry ? parseRateFromReceipt(entry.stdoutTail) : null;
+      if (rate !== null) { rates.push(rate); break; }
+    }
+  }
+  return rates.length === 0 ? 0 : rates.reduce((a, b) => a + b, 0) / rates.length;
 }
 
 /** No-walls: at the ceiling, the un-grounded groundable dims ARE the next sub-problems to attack. */
