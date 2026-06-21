@@ -59,6 +59,10 @@ const DATASETS = {
 const DS = DATASETS[opt('--dataset', 'lite')] || DATASETS.lite;
 const DATASET_SIZE = DS.size;
 const solverCmd = opt('--solver', 'claude -p');
+// CH-060: the built-in claude solver runs with the STRONGEST model by default (headless `claude -p` otherwise
+// defaults to a faster, weaker model). On hard SWE-bench issues, model capability is the dominant lever — a
+// stronger solver finds narrower, correct fixes. Override with --solve-model (e.g. 'sonnet' for cheap runs).
+const solveModel = opt('--solve-model', 'opus');
 // PLUGGABLE SOLVER SEAM (council-unanimous highest-leverage action): when set, the solve step runs THIS
 // command in the repo checkout instead of the built-in `claude -p`. The task (problem + any regression
 // feedback) is written to $SWEBENCH_TASK_FILE and the command edits the repo; `git diff` becomes the patch.
@@ -312,7 +316,10 @@ for (const inst of (gradeOnly ? [] : instances)) {
         });
       } else {
         // claude: --session-id on the first turn, --resume on follow-ups (context persists). Legacy: no flag.
-        const sessFlag = useSession ? (attempt === 1 ? `--session-id ${sessionId}` : `--resume ${sessionId}`) : '';
+        // CH-060: pin the STRONGEST model. On session creation (attempt 1) and non-session runs we pass
+        // --model; a --resume inherits the session's model (re-passing it can conflict), so we omit it there.
+        const modelFlag = `--model ${solveModel}`;
+        const sessFlag = useSession ? (attempt === 1 ? `--session-id ${sessionId} ${modelFlag}` : `--resume ${sessionId}`) : modelFlag;
         const cmd = `${parts[0]} ${parts.slice(1).map(a => `"${a}"`).join(' ')} ${sessFlag} "${nextMessage.replace(/"/g, '\\"').slice(0, 12000)}"`;
         solve = sh(cmd, repoDir, solveTimeoutMs);
       }
