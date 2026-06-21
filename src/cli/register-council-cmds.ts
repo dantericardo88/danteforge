@@ -39,6 +39,7 @@ program
   .option('--discover', 'Only probe and list available council members, then exit')
   .option('--members <ids>', 'Comma-separated member IDs to use (e.g. "codex,claude-code"). Overrides DANTEFORGE_COUNCIL_MEMBERS env var.')
   .option('--json', 'Emit JSON summary at end')
+  .option('--ask-timeout <seconds>', 'Per-member budget for --ask consultations (default 450; raise for thorough codebase-reading members like claude/codex)')
   .option('--cwd <path>', 'Project directory (defaults to cwd)')
   .action((opts) => {
     void (async () => {
@@ -61,6 +62,7 @@ program
             cwd: opts.cwd as string | undefined,
             question: opts.ask as string,
             json: opts.json as boolean | undefined,
+            timeoutMs: opts.askTimeout ? Math.round(parseFloat(opts.askTimeout as string) * 1000) : undefined,
             _discover: memberFilter ? () => discoverCouncil(memberFilter) : undefined,
           });
           return;
