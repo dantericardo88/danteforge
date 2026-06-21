@@ -1,6 +1,14 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { parsePytestFailures, computeRegressions, formatRegressionFeedback, isTestFile, parsePassToPass, extractFailureDetail, formatRegressionFeedbackWithDetail, patchFingerprint, hasAnchored, deAnchorFeedback } from '../src/matrix/engines/regression-gate.ts';
+import { parsePytestFailures, computeRegressions, formatRegressionFeedback, isTestFile, parsePassToPass, extractFailureDetail, formatRegressionFeedbackWithDetail, patchFingerprint, hasAnchored, deAnchorFeedback, hasTargetTests } from '../src/matrix/engines/regression-gate.ts';
+
+test('CH-059: hasTargetTests filters instances with NO target tests (un-evaluable) from the gradeable set', () => {
+  assert.equal(hasTargetTests('["pkg/test.py::test_bug"]'), true, 'a real FAIL_TO_PASS → evaluable');
+  assert.equal(hasTargetTests('["a::t1", "b::t2"]'), true);
+  assert.equal(hasTargetTests('[]'), false, 'empty FAIL_TO_PASS → ill-posed, cannot be resolved');
+  assert.equal(hasTargetTests(''), false);
+  assert.equal(hasTargetTests(undefined), false);
+});
 
 test('CH-052: patchFingerprint is whitespace-insensitive; hasAnchored detects a repeated patch', () => {
   assert.equal(patchFingerprint('diff  a\n\n  b'), patchFingerprint('diff a\nb'), 'whitespace-only differences collapse');

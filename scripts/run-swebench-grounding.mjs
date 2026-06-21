@@ -29,7 +29,7 @@ const {
 } = await import('../src/matrix/engines/swe-bench-real.ts');
 const {
   parsePytestFailures, computeRegressions, formatRegressionFeedback, isTestFile, parsePassToPass,
-  extractFailureDetail, formatRegressionFeedbackWithDetail, hasAnchored, deAnchorFeedback,
+  extractFailureDetail, formatRegressionFeedbackWithDetail, hasAnchored, deAnchorFeedback, hasTargetTests,
 } = await import('../src/matrix/engines/regression-gate.ts');
 const { regressionsFromGradeReport } = await import('../src/matrix/engines/swebench-failure-analysis.ts');
 // No-walls DNA: an env-mismatch instance is not a dead end — decompose it into tracked sub-problems.
@@ -194,6 +194,17 @@ if (gradeOnly) {
   instances = parseDatasetRows(await fetchJson(datasetRowsUrl(offset, limit, DS.hf, DS.split)));
 }
 if (instances.length === 0) { console.error('[swebench] no instances parsed'); process.exit(2); }
+// CH-059: skip instances with NO target tests (empty FAIL_TO_PASS). They CANNOT be resolved (nothing to
+// fix-and-verify), so solving them wastes a solver call and dilutes the resolve rate with an un-evaluable 0 —
+// the rate then reflects capability on WELL-POSED instances. --include-no-target keeps the raw denominator;
+// --grade-only never filters (it grades whatever predictions exist).
+if (!gradeOnly && !args.includes('--include-no-target')) {
+  const before = instances.length;
+  instances = instances.filter(i => hasTargetTests(i.FAIL_TO_PASS));
+  const skipped = before - instances.length;
+  if (skipped > 0) console.error(`[swebench] skipped ${skipped}/${before} instance(s) with NO target tests (empty FAIL_TO_PASS — un-evaluable); measuring capability on ${instances.length} well-posed instance(s). Use --include-no-target for the raw denominator.`);
+  if (instances.length === 0) { console.error('[swebench] all instances were no-target — nothing evaluable to solve'); process.exit(2); }
+}
 console.error(`[swebench] repos in sample: ${[...new Set(instances.map(i => i.repo))].join(', ')}`);
 
 mkdirSync(work, { recursive: true });

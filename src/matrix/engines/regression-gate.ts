@@ -46,6 +46,17 @@ export function parsePassToPass(field: string | undefined): Set<string> {
 }
 
 /**
+ * CH-059: true when a SWE-bench instance has FAIL_TO_PASS target tests — i.e. there is a defined bug-fix to
+ * verify. An instance with NONE is ill-posed for "did the solver fix the bug" (no target to check); solving it
+ * wastes a solver call and dilutes the resolve rate with an un-evaluable 0 (the forensics: 8 of the n=20 had
+ * empty FAIL_TO_PASS, dragging 2/8 well-posed = 25% down to 2/20 = 10%). Filtering these measures capability on
+ * WELL-POSED instances. Reuses parsePassToPass (it parses any JSON-array / bracketed test-list string).
+ */
+export function hasTargetTests(failToPass: string | undefined): boolean {
+  return parsePassToPass(failToPass).size > 0;
+}
+
+/**
  * Regressions = tests failing AFTER the patch that were NOT failing before it. When `mustStayGreen` (the
  * dataset PASS_TO_PASS set) is supplied, intersect with it so the gate matches the GRADER's verdict instead
  * of over-counting tests the correct fix legitimately changes (CH-041: full-suite flagged 26 where the
