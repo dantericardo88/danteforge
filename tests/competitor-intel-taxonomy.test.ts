@@ -3,7 +3,7 @@
 // signals never reached their dimension. These pins lock the contract: category IS a matrix dim id.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { scoreOpportunities, type WeaknessSignal, type IntelReport } from '../src/core/competitor-intel-fetcher.ts';
+import { scoreOpportunities, issuesToWeaknessSignals, type WeaknessSignal, type IntelReport } from '../src/core/competitor-intel-fetcher.ts';
 import { intelToDemandSignals } from '../src/core/harvest-to-signals.ts';
 
 const sig = (category: string, demand: number): WeaknessSignal => ({
@@ -21,6 +21,23 @@ test('scoreOpportunities groups by the dim-id category and sets dimensionId = ca
   assert.ok(byDim['testing'], 'testing opportunity exists with the real dim id');
   assert.equal(byDim['performance']!.totalDemand, 50);
   assert.equal(byDim['performance']!.dimensionId, byDim['performance']!.category, 'dimensionId equals category (both the matrix dim id)');
+});
+
+test('CH-048: a rate-limit/error OBJECT response yields [] (never a "not iterable" crash)', () => {
+  // GitHub returns {message:"API rate limit exceeded"} (an object, not an array) when unauthenticated.
+  assert.deepEqual(issuesToWeaknessSignals({ message: 'API rate limit exceeded' }, 'Aider'), []);
+  assert.deepEqual(issuesToWeaknessSignals(null, 'Aider'), []);
+  assert.deepEqual(issuesToWeaknessSignals(undefined, 'Aider'), []);
+});
+
+test('CH-048: a real issues ARRAY still produces signals (the guard does not break the happy path)', () => {
+  const signals = issuesToWeaknessSignals(
+    [{ title: 'crash when running', body: 'it fails every time', html_url: 'https://gh/1', reactions: { '+1': 5, total_count: 8 } }],
+    'Aider',
+  );
+  assert.equal(signals.length, 1);
+  assert.equal(signals[0]!.tool, 'Aider');
+  assert.equal(signals[0]!.demandScore, 5 + 8 * 0.5);
 });
 
 test('a fetcher-shaped signal (category = matrix dim id) reaches its dimension via intelToDemandSignals', () => {

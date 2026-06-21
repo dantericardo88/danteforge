@@ -128,28 +128,52 @@ export async function fetchGitHubIssues(toolName: string, timeoutMs = 15_000): P
       ? Promise.race([promise, new Promise<never>((_, r) => setTimeout(() => r(new Error('timeout')), timeoutMs))])
       : promise);
 
-    const signals: WeaknessSignal[] = [];
-    for (const issue of data) {
-      const text = `${issue.title} ${issue.body?.slice(0, 300) ?? ''}`;
-      if (!NEGATIVE_KEYWORDS.test(text) && (issue.reactions['+1'] ?? 0) < 3) continue;
-
-      const { dimensionId } = classifyText(text);
-      signals.push({
-        tool: toolName,
-        source: 'github-issues',
-        title: issue.title,
-        snippet: issue.body?.slice(0, 200) ?? '',
-        url: issue.html_url,
-        demandScore: (issue.reactions['+1'] ?? 0) + issue.reactions.total_count * 0.5,
-        category: dimensionId, // Phase 0.2: matrix dim id (was `label` — broke intelToDemandSignals filtering)
-        foundAt: new Date().toISOString(),
-      });
+    // GitHub returns a JSON OBJECT (not an array) on rate-limit/error — e.g.
+    // {message:"API rate limit exceeded", documentation_url:…}. Iterating it with for..of threw
+    // "i is not iterable" (CH-048), masking the REAL cause and crashing the whole harvest. Surface the
+    // actual message + the actionable fix (set GITHUB_TOKEN) so the failure is honest, then delegate to
+    // the pure transform (which itself returns [] for a non-array, never a crash).
+    if (!Array.isArray(data)) {
+      const msg = (data as { message?: string } | null)?.message ?? 'non-array response';
+      logger.warn(`[intel] GitHub returned no issue list for ${toolName}: ${msg}` +
+        (token ? '' : ' (no GITHUB_TOKEN — unauthenticated GitHub is rate-limited to ~60 req/hr; set GITHUB_TOKEN for 5000/hr)'));
     }
-    return signals;
+    return issuesToWeaknessSignals(data, toolName);
   } catch (err) {
     logger.warn(`[intel] GitHub fetch failed for ${toolName}: ${(err as Error).message}`);
     return [];
   }
+}
+
+/**
+ * Pure transform: GitHub issues API response → weakness signals. Returns [] for ANY non-array input
+ * (a rate-limit/error object like {message:"API rate limit exceeded"}) so the harvest fails honestly
+ * instead of crashing on for..of (CH-048). Extracted from fetchGitHubIssues so the guard is unit-testable
+ * without network.
+ */
+export function issuesToWeaknessSignals(data: unknown, toolName: string): WeaknessSignal[] {
+  if (!Array.isArray(data)) return [];
+  const signals: WeaknessSignal[] = [];
+  for (const issue of data as Array<{
+    title: string; body: string | null; html_url: string;
+    reactions: { '+1': number; total_count: number };
+  }>) {
+    const text = `${issue.title} ${issue.body?.slice(0, 300) ?? ''}`;
+    if (!NEGATIVE_KEYWORDS.test(text) && (issue.reactions?.['+1'] ?? 0) < 3) continue;
+
+    const { dimensionId } = classifyText(text);
+    signals.push({
+      tool: toolName,
+      source: 'github-issues',
+      title: issue.title,
+      snippet: issue.body?.slice(0, 200) ?? '',
+      url: issue.html_url,
+      demandScore: (issue.reactions?.['+1'] ?? 0) + (issue.reactions?.total_count ?? 0) * 0.5,
+      category: dimensionId, // Phase 0.2: matrix dim id (was `label` — broke intelToDemandSignals filtering)
+      foundAt: new Date().toISOString(),
+    });
+  }
+  return signals;
 }
 
 // ── HackerNews (Algolia) fetcher ──────────────────────────────────────────────
