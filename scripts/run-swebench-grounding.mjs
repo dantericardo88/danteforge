@@ -63,6 +63,9 @@ const solverCmd = opt('--solver', 'claude -p');
 // defaults to a faster, weaker model). On hard SWE-bench issues, model capability is the dominant lever — a
 // stronger solver finds narrower, correct fixes. Override with --solve-model (e.g. 'sonnet' for cheap runs).
 const solveModel = opt('--solve-model', 'opus');
+// CH-061: crank reasoning effort for the built-in claude solver — more deliberation finds narrower, correct
+// fixes on hard issues. Override with --solve-effort (e.g. 'medium' for cheaper runs).
+const solveEffort = opt('--solve-effort', 'high');
 // PLUGGABLE SOLVER SEAM (council-unanimous highest-leverage action): when set, the solve step runs THIS
 // command in the repo checkout instead of the built-in `claude -p`. The task (problem + any regression
 // feedback) is written to $SWEBENCH_TASK_FILE and the command edits the repo; `git diff` becomes the patch.
@@ -231,6 +234,18 @@ for (const inst of (gradeOnly ? [] : instances)) {
     r = sh(`git checkout --quiet ${inst.base_commit}`, repoDir, 120000);
     if (r.status !== 0) throw new Error(`checkout failed: ${(r.stderr || '').slice(-200)}`);
 
+    // CH-062: give the built-in SOLVER a working LOCAL test environment. The baseTask tells it to run the
+    // repo's tests, but a fresh clone has no deps installed → pytest exits 2 → the solver edits BLIND (the root
+    // of the wide-blast-radius regressions). Install the repo so it can actually verify its changes. Best-effort
+    // (a failed install just means it tests less, never a crash). Skipped under --regression-gate (which installs
+    // for its own baseline) and --no-install. The local env may differ from the grader's, but verifying against
+    // the repo's OWN tests catches most regressions — a far better signal than editing with no oracle at all.
+    if (!solveCommand && !regressionGate && !args.includes('--no-install')) {
+      console.error(`  [solver-env] installing repo so the solver can run tests (${installCmd})…`);
+      const ins = sh(installCmd, repoDir, testTimeoutMs);
+      if (ins.status !== 0) console.error(`  [solver-env] install exit ${ins.status} (solver will test less): ${(ins.stderr || '').slice(-120)}`);
+    }
+
     // SOLVE with TEST-FEEDBACK ITERATION (council #2). The agentic solver has Bash, so the prompt
     // instructs it to reproduce → fix → RUN the repo's relevant tests → iterate until green within a
     // call. The harness adds a structural retry: if a call produced no diff, retry with feedback (the
@@ -318,7 +333,7 @@ for (const inst of (gradeOnly ? [] : instances)) {
         // claude: --session-id on the first turn, --resume on follow-ups (context persists). Legacy: no flag.
         // CH-060: pin the STRONGEST model. On session creation (attempt 1) and non-session runs we pass
         // --model; a --resume inherits the session's model (re-passing it can conflict), so we omit it there.
-        const modelFlag = `--model ${solveModel}`;
+        const modelFlag = `--model ${solveModel} --effort ${solveEffort}`;
         const sessFlag = useSession ? (attempt === 1 ? `--session-id ${sessionId} ${modelFlag}` : `--resume ${sessionId}`) : modelFlag;
         const cmd = `${parts[0]} ${parts.slice(1).map(a => `"${a}"`).join(' ')} ${sessFlag} "${nextMessage.replace(/"/g, '\\"').slice(0, 12000)}"`;
         solve = sh(cmd, repoDir, solveTimeoutMs);
