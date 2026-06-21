@@ -111,6 +111,11 @@ async function dispatchToMember(
   const startMs = Date.now();
   const workPacket = makeConsultWorkPacket(question, member.label, cwd);
   const lease = makeReadOnlyLease(cwd);
+  // Backstop timer handle — MUST be cleared once the race settles (finally below), else a SUCCESSFUL
+  // run leaves a live timer that keeps the node process alive for the full backstop window. Codex
+  // caught this in the very consultation that validated the timeout fix — the original 300s timer
+  // leaked the same way, hanging every council ask after results printed.
+  let backstopTimer: ReturnType<typeof setTimeout> | undefined;
   try {
     // Give the adapter ITS OWN timeout = the council budget, so the adapter's honest timeout path
     // (tree-kill + stderr-tail → a real reason like "usage limit" / "judge_timeout") governs. The
@@ -120,9 +125,9 @@ async function dispatchToMember(
     // Backstop ONLY: fires above the adapter's own timeout, so the adapter's honest failure resolves
     // first. Reaching here means the adapter itself wedged past its timeout (not a normal slow read).
     const backstopMs = memberTimeoutMs + 30_000;
-    const timeoutPromise = new Promise<never>((_, reject) =>
-      setTimeout(() => reject(new Error(`${member.id} did not return within ${Math.round(backstopMs / 1000)}s — the ${member.id} CLI wedged past its own timeout (check its auth / usage limits)`)), backstopMs),
-    );
+    const timeoutPromise = new Promise<never>((_, reject) => {
+      backstopTimer = setTimeout(() => reject(new Error(`${member.id} did not return within ${Math.round(backstopMs / 1000)}s — the ${member.id} CLI wedged past its own timeout (check its auth / usage limits)`)), backstopMs);
+    });
     const result = await Promise.race([runAdapter(adapter, { lease, cwd }), timeoutPromise]);
     // A timed-out/failed adapter returns status 'failed' with the REAL reason on errorReason — surface
     // it as an error (renders red, counts as errored) instead of passing off a "(judge run failed…)"
@@ -143,6 +148,8 @@ async function dispatchToMember(
       error: String(err),
       durationMs: Date.now() - startMs,
     };
+  } finally {
+    if (backstopTimer) clearTimeout(backstopTimer);
   }
 }
 
