@@ -212,6 +212,29 @@ program
   });
 
 program
+  .command('autonomy-loop')
+  .description('Run the autonomous council-loop: climb while contamination-resistant grounding moves, pause on a degraded panel, stop+decompose at the capability ceiling (never a wall)')
+  .option('--max-cycles <n>', 'Safety cap on cycles (default 10)')
+  .option('--ceiling-patience <n>', 'Consecutive no-progress cycles before the honest capability-ceiling stop (default 2)')
+  .option('--cycle-command <cmd>', 'Build step run each cycle (the capability climb); omit for a DRY measurement-only run')
+  .option('--require-quorum', 'Convene a live council quorum each cycle (slow); omit to assume quorum for dry runs')
+  .option('--token-budget <n>', 'Hard token ceiling (output tokens); omit for unbounded')
+  .option('--json', 'Machine-readable output')
+  .option('--cwd <path>', 'Project directory')
+  .action(async (opts) => {
+    const { runAutonomyLoopCommand } = await import('./commands/autonomy-loop.js');
+    await runAutonomyLoopCommand({
+      cwd: opts.cwd,
+      maxCycles: opts.maxCycles ? parseInt(opts.maxCycles as string, 10) : undefined,
+      ceilingPatience: opts.ceilingPatience ? parseInt(opts.ceilingPatience as string, 10) : undefined,
+      tokenBudget: opts.tokenBudget ? parseInt(opts.tokenBudget as string, 10) : null,
+      cycleCommand: opts.cycleCommand as string | undefined,
+      requireQuorum: opts.requireQuorum as boolean | undefined,
+      json: opts.json as boolean | undefined,
+    });
+  });
+
+program
   .command('ratify')
   .description('Vouch for a subjective harvested bar (capability/demand) — the human-ratify half of autonomy; lists candidates, signs the chosen one into the ratified-signals store')
   .option('--dim <id>', 'Dimension whose subjective bar to ratify')
