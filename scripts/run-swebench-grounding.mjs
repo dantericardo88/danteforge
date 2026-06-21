@@ -30,6 +30,7 @@ const {
 const {
   parsePytestFailures, computeRegressions, formatRegressionFeedback, isTestFile, parsePassToPass,
 } = await import('../src/matrix/engines/regression-gate.ts');
+const { regressionsFromGradeReport } = await import('../src/matrix/engines/swebench-failure-analysis.ts');
 
 const args = process.argv.slice(2);
 const opt = (n, d) => { const i = args.indexOf(n); return i >= 0 ? args[i + 1] : d; };
@@ -39,6 +40,9 @@ const offset = Number(opt('--offset', '0')) || 0;
 // is ordered by repo, so a contiguous window is one repo; a spread samples django/sympy/flask/… for an
 // honest cross-repo signal, not one repo's sub-score).
 const spread = Number(opt('--spread', '0')) || 0;
+// --instances <id1,id2>: solve+grade EXACTLY these instance ids (scans the dataset to find them). Used to
+// re-run specific instances — e.g. the known env-mismatch / fixed-but-regressed ones for CH-047 validation.
+const instancesArg = opt('--instances', '');
 // --dataset: lite | verified | live. 'live' = SWE-bench-Live (CONTAMINATION-RESISTANT: post-2024 issues,
 // leak-detected, per-instance docker images in the `starryzhang` namespace) — graded by the SAME official
 // harness with -d/-n/--split (verified 2026-06-16: lite split fetchable + starryzhang images exist).
@@ -68,6 +72,15 @@ const gradeOnly = opt('--grade-only', ''); // CH-035c: resume at the grade step 
 // public test suite before+after the patch and feeds back ONLY the NEWLY-failing tests (never the target
 // tests — no answer leak) so the solver gets the missing signal and re-solves. Off by default (expensive).
 const regressionGate = args.includes('--regression-gate');
+// CH-047 GRADE-IN-THE-LOOP: on env-mismatch instances the local pytest gate self-disables (CH-043), so
+// PASS_TO_PASS regressions ship uncaught (every gradeable SWE-bench-Live instance landed fixed-but-regressed,
+// 0/10). This uses the GRADER ITSELF as the regression oracle — faithful by construction (identical env to
+// the verdict): grade the candidate patch, read the failing PASS_TO_PASS from report.json, feed those EXACT
+// tests back, re-solve. Activates when the local gate is inactive (env mismatch). HEAVY (a Docker grade per
+// iteration) — run locally ONLY under the WSL2 cap, sequentially. Pairs with --regression-gate (local gate for
+// env-OK instances, grader oracle for env-mismatch); alone, the grader oracle runs for every instance.
+const gradeInLoop = args.includes('--grade-in-loop');
+const maxGradeIter = Number(opt('--max-grade-iterations', '2')) || 2;
 const testCmd = opt('--test-cmd', 'python -m pytest -p no:cacheprovider --tb=no -q');
 const testTimeoutMs = Number(opt('--test-timeout-ms', '900000')) || 900000;
 // The gate's baseline runs on a FRESH clone (before the solver installs anything), so the package must be
@@ -119,6 +132,29 @@ function runRepoTests(repoDir, label) {
   return { failures, ran: usable };
 }
 
+// CH-047: grade ONE instance's candidate patch through the SAME Docker grader the final grade uses, and
+// return its report.json (the flat SwebenchReport the classifier reads). The grader resets test files and
+// runs in the instance's own image, so its PASS_TO_PASS.failure is the AUTHORITATIVE regression list — the
+// signal the local pip-env gate cannot produce on env-mismatch instances. Returns null when no per-instance
+// report was produced (infra/daemon outage) so the caller treats it as inconclusive, never a false accept.
+function gradeOneInstance(inst, patch, label) {
+  const gid = `${runId}_gil${label}`;
+  const predPath = join(work, `${gid}.predictions.jsonl`);
+  writeFileSync(predPath, buildPredictionLine(inst.instance_id, MODEL_NAME, patch) + '\n', 'utf8');
+  const repDir = join(work, `report-${gid}`);
+  mkdirSync(repDir, { recursive: true });
+  console.error(`  [grade-in-loop] grading candidate via the Docker grader (${label})… (heavy: container test run)`);
+  const g = sh(`bash scripts/swebench-orch/grade.sh "${predPath}" ${gid} "${repDir}" ${DS.grade} ${DS.ns} ${DS.split} ${inst.instance_id}`,
+    process.cwd(), 2 * 3600 * 1000, { MSYS_NO_PATHCONV: '1' });
+  if (g.status !== 0) console.error(`  [grade-in-loop] grader exit ${g.status}: ${((g.stderr || '') + (g.stdout || '')).slice(-200)}`);
+  try {
+    return JSON.parse(readFileSync(join(repDir, inst.instance_id, 'report.json'), 'utf8'));
+  } catch {
+    console.error(`  [grade-in-loop] no per-instance report.json under ${repDir}/${inst.instance_id} — inconclusive (not a false accept)`);
+    return null;
+  }
+}
+
 let instances = [];
 if (gradeOnly) {
   for (const l of readFileSync(gradeOnly, 'utf8').split('\n')) {
@@ -126,6 +162,15 @@ if (gradeOnly) {
     try { instances.push({ instance_id: JSON.parse(t).instance_id, repo: '', base_commit: '', problem_statement: '' }); } catch { /* skip malformed line */ }
   }
   console.error(`[swebench] --grade-only: grading ${instances.length} existing prediction(s) from ${gradeOnly} (no re-solve)`);
+} else if (instancesArg) {
+  // Target SPECIFIC instances by id (CH-047 validation needs the known env-mismatch instances, e.g.
+  // cfn-lint-3798; the HF datasets-server fetches by offset, so scan in chunks and filter to the wanted ids).
+  const wanted = new Set(instancesArg.split(',').map(s => s.trim()).filter(Boolean));
+  console.error(`[swebench] targeting ${wanted.size} instance(s) by id: ${[...wanted].join(', ')} (scanning ${DATASET_SIZE})…`);
+  for (let off = 0; off < DATASET_SIZE && instances.length < wanted.size; off += 100) {
+    const rows = parseDatasetRows(await fetchJson(datasetRowsUrl(off, Math.min(100, DATASET_SIZE - off), DS.hf, DS.split)));
+    for (const r of rows) if (wanted.has(r.instance_id)) instances.push(r);
+  }
 } else if (spread > 0) {
   const step = Math.max(1, Math.floor(DATASET_SIZE / spread));
   console.error(`[swebench] CROSS-REPO sample: ${spread} instances at offsets spaced by ${step} across ${DATASET_SIZE}…`);
@@ -239,17 +284,38 @@ for (const inst of (gradeOnly ? [] : instances)) {
       patch = sh(`git diff`, repoDir, 60000).stdout || '';
       console.error(`  attempt ${attempt}${solveCommand ? ' (solve-command)' : useSession ? ' (session)' : ''}: patch ${patch.length} chars`);
       if (patch.trim().length === 0) { nextMessage = useSession ? NODIFF_FB : `${baseTask}\n\n${NODIFF_FB}`; continue; }
-      if (!gateActive) break;                            // no regression gate → accept first non-empty patch
-      // Re-run the suite; tests failing now but NOT in the pre-patch baseline are regressions caused by the patch.
-      const post = runRepoTests(repoDir, `post-patch attempt ${attempt}`);
-      const regressions = computeRegressions(baseFail, post.failures, mustStayGreen);
-      if (regressions.length === 0) { console.error(`  [regression-gate] attempt ${attempt}: NO regressions — patch accepted`); break; }
-      console.error(`  [regression-gate] attempt ${attempt}: ${regressions.length} regression(s): ${regressions.slice(0, 8).join(', ')}`);
+      // REGRESSION ORACLE — pick the most faithful source available, in priority order:
+      //  (a) local gate active → fast local pytest before/after (CH-039/041), free.
+      //  (b) gate inactive + --grade-in-loop → the GRADER as oracle (CH-047): the only faithful signal on
+      //      env-mismatch instances where the local gate self-disabled. Heavy (a Docker grade per iteration).
+      //  (c) neither → accept the first non-empty patch (legacy behavior).
+      // `regressions === null` means "no actionable regression signal" (no oracle, or the GRADE says the fix
+      // itself — not regressions — is the blocker): accept the current patch honestly rather than thrash.
+      let regressions = null;
+      if (gateActive) {
+        const post = runRepoTests(repoDir, `post-patch attempt ${attempt}`);
+        regressions = computeRegressions(baseFail, post.failures, mustStayGreen);
+      } else if (gradeInLoop && attempt <= maxGradeIter) {
+        const rep = gradeOneInstance(inst, patch, `a${attempt}`);
+        if (rep && rep.resolved) { console.error(`  [grade-in-loop] attempt ${attempt}: GRADER says RESOLVED — patch accepted`); break; }
+        const gr = rep ? regressionsFromGradeReport(rep) : null;
+        if (gr) {
+          regressions = gr.regressions;
+          console.error(`  [grade-in-loop] attempt ${attempt}: target fixed (${gr.targetFixed}), ${gr.regressions.length} GRADER regression(s): ${gr.regressions.slice(0, 8).join(', ')}`);
+        } else {
+          console.error(`  [grade-in-loop] attempt ${attempt}: not fixed-but-regressed (the fix, not regressions, is the blocker) or inconclusive — accepting patch honestly`);
+        }
+      } else {
+        break;
+      }
+      if (regressions === null) break;                   // no actionable signal → accept current patch
+      if (regressions.length === 0) { console.error(`  [regression] attempt ${attempt}: NO regressions — patch accepted`); break; }
+      console.error(`  [regression] attempt ${attempt}: ${regressions.length} regression(s): ${regressions.slice(0, 8).join(', ')}`);
       if (attempt < maxIter) {
         const regrFB = formatRegressionFeedback(regressions);
         nextMessage = useSession ? regrFB : `${baseTask}\n\n${regrFB}`;
       } else {
-        console.error(`  [regression-gate] max attempts reached, ${regressions.length} regression(s) remain — recording the patch honestly (grades as unresolved)`);
+        console.error(`  [regression] max attempts reached, ${regressions.length} regression(s) remain — recording the patch honestly (grades as unresolved)`);
       }
     }
     predLines.push(buildPredictionLine(inst.instance_id, MODEL_NAME, patch));
