@@ -32,6 +32,10 @@ const {
   extractFailureDetail, formatRegressionFeedbackWithDetail,
 } = await import('../src/matrix/engines/regression-gate.ts');
 const { regressionsFromGradeReport } = await import('../src/matrix/engines/swebench-failure-analysis.ts');
+// No-walls DNA: an env-mismatch instance is not a dead end — decompose it into tracked sub-problems.
+const { solveOrDecompose } = await import('../src/core/obstacle-solve-or-decompose.ts');
+const { graderEnvMismatchObstacle, graderEnvMismatchChildren } = await import('../src/matrix/engines/swebench-obstacle.ts');
+let envMismatchDecomposed = false; // once-per-run guard (recordDecomposition also dedups by title)
 
 const args = process.argv.slice(2);
 const opt = (n, d) => { const i = args.indexOf(n); return i >= 0 ? args[i + 1] : d; };
@@ -256,6 +260,21 @@ for (const inst of (gradeOnly ? [] : instances)) {
       if (baselineMustGreenFailures.length > 0) {
         console.error(`  [regression-gate] ENV MISMATCH: ${baselineMustGreenFailures.length} must-stay-green (PASS_TO_PASS) test(s) already FAIL in the local baseline — local env != the grader's Docker image, so regression detection is UNRELIABLE. Disabling the gate (the Docker grade is authoritative).`);
         gateActive = false;
+        // No-walls: this env-mismatch is a problem to BREAK DOWN, not a dead end. Decompose it into the
+        // council's ranked sub-problems (test-in-grader-image first) and record them to the ledger as the
+        // next work — once per run; recordDecomposition dedups so a fresh repo never duplicates them.
+        if (!envMismatchDecomposed) {
+          envMismatchDecomposed = true;
+          try {
+            const receipt = await solveOrDecompose(
+              graderEnvMismatchObstacle(inst.instance_id, baselineMustGreenFailures.slice(0, 4)),
+              { cwd: process.cwd(), proposeChildren: graderEnvMismatchChildren },
+            );
+            if (receipt.resolution.kind === 'decomposed') {
+              console.error(`  [no-walls] env-mismatch decomposed into ${receipt.resolution.children.length} tracked sub-problem(s) — see the challenge ledger (not a wall)`);
+            }
+          } catch (e) { console.error(`  [no-walls] decomposition skipped: ${e?.message || e}`); }
+        }
       }
     }
     if (gateActive) console.error(`  [regression-gate] env OK; PASS_TO_PASS must-stay-green set: ${mustStayGreen.size} tests${mustStayGreen.size ? '' : ' (none — conservative full-suite signal)'}`);

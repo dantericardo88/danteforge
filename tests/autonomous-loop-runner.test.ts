@@ -72,3 +72,21 @@ test('panel drops MID-run → pauses at that cycle, keeps the cycles already run
   assert.equal(s.status, 'paused');
   assert.equal(runs(), 2, 'ran cycles 1 and 2, paused before cycle 3 when the panel dropped');
 });
+
+test('no-walls: a capability ceiling DECOMPOSES into sub-problems when a proposer is supplied', async () => {
+  const { deps } = fakes({ groundingSeq: [0.2] }); // never moves → ceiling
+  deps.proposeCeilingChildren = () => [
+    { kind: 'a', signal: 'sub-problem a precisely', rationale: 'real sub-problem a' },
+    { kind: 'b', signal: 'sub-problem b precisely', rationale: 'real sub-problem b' },
+  ];
+  const s = await runAutonomousLoop(deps, { maxCycles: 20, ceilingPatience: 3 });
+  assert.equal(s.ceilingHit, true);
+  assert.equal(s.ceilingDecomposition?.resolution.kind, 'decomposed', 'the ceiling became a worklist, not a wall');
+});
+
+test('no-walls: a capability ceiling ESCALATES (never a bare wall) when no proposer is supplied', async () => {
+  const { deps } = fakes({ groundingSeq: [0.2] });
+  const s = await runAutonomousLoop(deps, { maxCycles: 20, ceilingPatience: 3 });
+  assert.equal(s.ceilingHit, true);
+  assert.equal(s.ceilingDecomposition?.resolution.kind, 'escalated', 'no children → escalate to operator, still not a wall');
+});

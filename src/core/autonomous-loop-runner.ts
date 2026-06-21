@@ -11,6 +11,7 @@
 // loop run); tokensSpent = the budget meter.
 
 import { decideLoopAction, type LoopDecision, type LoopDecisionConfig } from './autonomous-loop-decision.js';
+import { decomposeOrEscalate, type ChildObstacle, type DecompositionReceipt } from './obstacle-decomposition.js';
 
 export interface LoopRunnerDeps {
   /** Contamination-resistant grounding ratio (0..1) right now. The ONLY progress signal that counts. */
@@ -23,6 +24,9 @@ export interface LoopRunnerDeps {
   tokensSpent: () => number;
   /** Progress log sink (defaults to no-op). */
   log?: (msg: string) => void;
+  /** No-walls: when the loop hits a CAPABILITY CEILING, propose the smaller sub-problems to attack next
+   *  instead of stopping dead. Omit → the ceiling escalates to the operator (still never a bare wall). */
+  proposeCeilingChildren?: (summary: LoopRunSummary) => ChildObstacle[] | Promise<ChildObstacle[]>;
 }
 
 export interface LoopRunnerConfig extends LoopDecisionConfig {
@@ -39,6 +43,9 @@ export interface LoopRunSummary {
   groundingEnd: number;
   finalReason: string;
   history: Array<{ cycle: number } & LoopDecision>;
+  /** No-walls: when stopped at a capability ceiling, the ceiling broken into smaller sub-problems (or an
+   *  escalation) — so the loop ends with a worklist, never a dead end. Absent unless ceilingHit. */
+  ceilingDecomposition?: DecompositionReceipt;
 }
 
 const DEFAULT_CONFIG: LoopRunnerConfig = { maxCycles: 20, tokenBudget: null, ceilingPatience: 3 };
@@ -95,7 +102,8 @@ export async function runAutonomousLoop(
     grounding = after;
     log(`[loop] cycle ${cycle}: ${decision.action.toUpperCase()} — ${decision.reason}`);
     if (decision.action !== 'continue') {
-      return summarize(decision.action === 'pause' ? 'paused' : 'stopped', decision, cycle, groundingStart, grounding, history);
+      const summary = summarize(decision.action === 'pause' ? 'paused' : 'stopped', decision, cycle, groundingStart, grounding, history);
+      return attachCeilingDecomposition(summary, decision, deps, log);
     }
   }
 
@@ -113,4 +121,22 @@ function summarize(
     status, ceilingHit: decision.ceilingHit === true, cyclesRun,
     groundingStart, groundingEnd, finalReason: decision.reason, history,
   };
+}
+
+/** No-walls invariant for the loop itself: a capability ceiling is a problem to BREAK DOWN, not a terminal.
+ *  Decompose it into the sub-problems to attack next, or escalate to the operator — never a bare stop. */
+async function attachCeilingDecomposition(
+  summary: LoopRunSummary, decision: LoopDecision, deps: LoopRunnerDeps, log: (m: string) => void,
+): Promise<LoopRunSummary> {
+  if (!decision.ceilingHit) return summary;
+  summary.ceilingDecomposition = await decomposeOrEscalate(
+    { solved: false, obstacle: { kind: 'loop-capability-ceiling', signal: decision.reason }, attempted: [], ceiling: decision.reason },
+    {
+      proposeChildren: deps.proposeCeilingChildren ? () => deps.proposeCeilingChildren!(summary) : undefined,
+      escalate: () => ({ to: 'human', reason: 'ceiling reached with no decomposition supplied — operator names the next sub-problem' }),
+    },
+  );
+  const r = summary.ceilingDecomposition.resolution;
+  log(`[loop] ceiling ${r.kind === 'decomposed' ? `decomposed into ${r.children.length} sub-problem(s)` : 'escalated to operator'} — not a wall`);
+  return summary;
 }
