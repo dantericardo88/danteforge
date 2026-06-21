@@ -56,6 +56,41 @@ export function hasTargetTests(failToPass: string | undefined): boolean {
   return parsePassToPass(failToPass).size > 0;
 }
 
+/** CH-064: the cheap LOCAL resolve verdict — the scoring the autonomy loop's self-improvement inner loop needs
+ *  so it can run UNATTENDED on the primary machine (the council's design: mutate the solver → score by a cheap
+ *  local proxy → keep/revert, with only PERIODIC Docker confirmation). It is the loop's missing "operator on the
+ *  solver" made cheap. APPROXIMATE (the local CH-062 env != the grader's Docker env), so it is a RELATIVE signal
+ *  for comparing solver variants on the same instances — never a substitute for the grader's authoritative receipt. */
+export interface LocalResolveVerdict {
+  /** Every FAIL_TO_PASS target test now passes locally (the bug is fixed in the local env). */
+  targetFixed: boolean;
+  targetTotal: number;
+  /** Must-stay-green tests that newly fail locally (the patch regressed them) — excluding target tests. */
+  regressions: string[];
+  /** targetFixed AND no regressions — a LOCAL approximation of the grader's "resolved". */
+  locallyResolved: boolean;
+}
+
+/**
+ * Score a candidate patch LOCALLY from before/after test runs (CH-062 env). `targetTests` = FAIL_TO_PASS;
+ * `baselineFailures`/`postFailures` = the failing-test sets pre/post patch; `mustStayGreen` = PASS_TO_PASS.
+ * Pure. Reuses computeRegressions for the regression half. The inner self-improvement loop ranks solver variants
+ * by `locallyResolved` (or, as a continuous signal, targetFixed minus regression count) — cheaply, no Docker.
+ */
+export function scoreLocalResolve(
+  targetTests: Set<string>,
+  baselineFailures: Set<string>,
+  postFailures: Set<string>,
+  mustStayGreen?: Set<string>,
+): LocalResolveVerdict {
+  const targetTotal = targetTests.size;
+  const targetStillFailing = [...targetTests].filter(t => postFailures.has(t));
+  const targetFixed = targetTotal > 0 && targetStillFailing.length === 0;
+  const regressions = computeRegressions(baselineFailures, postFailures, mustStayGreen)
+    .filter(t => !targetTests.has(t)); // a target test going fail→pass is the GOAL, never a regression
+  return { targetFixed, targetTotal, regressions, locallyResolved: targetFixed && regressions.length === 0 };
+}
+
 /**
  * Regressions = tests failing AFTER the patch that were NOT failing before it. When `mustStayGreen` (the
  * dataset PASS_TO_PASS set) is supplied, intersect with it so the gate matches the GRADER's verdict instead

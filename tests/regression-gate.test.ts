@@ -2,6 +2,28 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { parsePytestFailures, computeRegressions, formatRegressionFeedback, isTestFile, parsePassToPass, extractFailureDetail, formatRegressionFeedbackWithDetail, patchFingerprint, hasAnchored, deAnchorFeedback, hasTargetTests } from '../src/matrix/engines/regression-gate.ts';
 
+test('CH-064: scoreLocalResolve = the cheap local proxy for self-improvement (target-fixed AND no-regression)', async () => {
+  const { scoreLocalResolve } = await import('../src/matrix/engines/regression-gate.ts');
+  const target = new Set(['mod::test_bug']);
+  // target was failing at baseline, passes after, no must-stay-green broke → locally resolved
+  let v = scoreLocalResolve(target, new Set(['mod::test_bug']), new Set([]), new Set(['p::a', 'p::b']));
+  assert.equal(v.targetFixed, true);
+  assert.equal(v.regressions.length, 0);
+  assert.equal(v.locallyResolved, true);
+  // target still fails after → not fixed → not resolved
+  v = scoreLocalResolve(target, new Set(['mod::test_bug']), new Set(['mod::test_bug']), new Set());
+  assert.equal(v.targetFixed, false);
+  assert.equal(v.locallyResolved, false);
+  // target fixed BUT a must-stay-green test regressed → not resolved (the wide-blast-radius failure, caught locally)
+  v = scoreLocalResolve(target, new Set(['mod::test_bug']), new Set(['p::a']), new Set(['p::a', 'p::b']));
+  assert.equal(v.targetFixed, true);
+  assert.deepEqual(v.regressions, ['p::a']);
+  assert.equal(v.locallyResolved, false);
+  // a target test going fail→pass is the GOAL, never counted as a regression even if it appears in mustStayGreen
+  v = scoreLocalResolve(target, new Set(['mod::test_bug']), new Set([]), new Set(['mod::test_bug']));
+  assert.equal(v.locallyResolved, true);
+});
+
 test('CH-059: hasTargetTests filters instances with NO target tests (un-evaluable) from the gradeable set', () => {
   assert.equal(hasTargetTests('["pkg/test.py::test_bug"]'), true, 'a real FAIL_TO_PASS → evaluable');
   assert.equal(hasTargetTests('["a::t1", "b::t2"]'), true);
