@@ -29,7 +29,7 @@ const {
 } = await import('../src/matrix/engines/swe-bench-real.ts');
 const {
   parsePytestFailures, computeRegressions, formatRegressionFeedback, isTestFile, parsePassToPass,
-  extractFailureDetail, formatRegressionFeedbackWithDetail,
+  extractFailureDetail, formatRegressionFeedbackWithDetail, hasAnchored, deAnchorFeedback,
 } = await import('../src/matrix/engines/regression-gate.ts');
 const { regressionsFromGradeReport } = await import('../src/matrix/engines/swebench-failure-analysis.ts');
 // No-walls DNA: an env-mismatch instance is not a dead end — decompose it into tracked sub-problems.
@@ -231,6 +231,7 @@ for (const inst of (gradeOnly ? [] : instances)) {
       `CRITICAL ACCEPTANCE RULE: your patch is REJECTED if it breaks ANY test that passed before your change — even if it fixes the issue. Keeping existing tests green is EXACTLY as important as the new fix. So make the SMALLEST possible surgical change; do not refactor, rename, reformat, or "improve" anything unrelated to the bug.\n` +
       `STEPS: (1) explore to find the precise cause; (2) reproduce the bug with a throwaway script and run it; (3) BEFORE editing, run the test FILE(S) covering the module(s) you will touch and note which tests pass (your baseline); (4) edit ONLY the SOURCE lines needed to fix the bug — never modify the test suite; (5) re-run those SAME test files PLUS your reproduction: every test that passed in your baseline MUST still pass, and the bug must be fixed. If any previously-passing test now fails, your change is too broad — revert and narrow it to the minimal edit; (6) iterate (3)-(5) until the bug is fixed AND zero regressions; (7) delete throwaway scripts so only the minimal real fix remains.\n\nISSUE:\n${si.problem_statement}\n${si.hints_text ? `\nHINTS:\n${si.hints_text}\n` : ''}`;
     let patch = '';
+    const priorPatches = []; // CH-052: prior attempts' patches, for anchoring (byte-identical re-submit) detection
     // CH-039 regression gate: capture the pre-patch failure baseline on the CLEAN repo so post-patch we can
     // isolate NEWLY-failing (regressed) tests from pre-existing/flaky failures AND from the target tests
     // (which go fail->pass, never pass->fail — so they are never counted as regressions: no answer leak).
@@ -308,6 +309,11 @@ for (const inst of (gradeOnly ? [] : instances)) {
       revertTestEdits(repoDir); // enforce SOURCE-only predictions + an ungameable gate (no test-file edits)
       patch = sh(`git diff`, repoDir, 60000).stdout || '';
       console.error(`  attempt ${attempt}${solveCommand ? ' (solve-command)' : useSession ? ' (session)' : ''}: patch ${patch.length} chars`);
+      // CH-052: detect ANCHORING — the solver re-produced a byte-identical patch despite feedback (the observed
+      // cfn-lint-3798 failure). Flag it now so the feedback below forces a structurally different approach.
+      const anchored = patch.trim().length > 0 && hasAnchored(patch, priorPatches);
+      if (anchored) console.error(`  [de-anchor] attempt ${attempt}: patch byte-identical to a prior attempt — forcing a structurally different approach`);
+      if (patch.trim().length > 0) priorPatches.push(patch);
       if (patch.trim().length === 0) { nextMessage = useSession ? NODIFF_FB : `${baseTask}\n\n${NODIFF_FB}`; continue; }
       // REGRESSION ORACLE — pick the most faithful source available, in priority order:
       //  (a) local gate active → fast local pytest before/after (CH-039/041), free.
@@ -341,7 +347,11 @@ for (const inst of (gradeOnly ? [] : instances)) {
       if (regressions.length === 0) { console.error(`  [regression] attempt ${attempt}: NO regressions — patch accepted`); break; }
       console.error(`  [regression] attempt ${attempt}: ${regressions.length} regression(s): ${regressions.slice(0, 8).join(', ')}`);
       if (attempt < maxIter) {
-        const regrFB = regrDetail ? formatRegressionFeedbackWithDetail(regressions, regrDetail) : formatRegressionFeedback(regressions);
+        // CH-052: if the solver anchored (identical patch), escalate to de-anchoring feedback that bans the
+        // repeated wide-blast-radius approach; otherwise the normal regression feedback (+grader detail).
+        const regrFB = anchored
+          ? deAnchorFeedback(regressions, regrDetail)
+          : (regrDetail ? formatRegressionFeedbackWithDetail(regressions, regrDetail) : formatRegressionFeedback(regressions));
         nextMessage = useSession ? regrFB : `${baseTask}\n\n${regrFB}`;
       } else {
         console.error(`  [regression] max attempts reached, ${regressions.length} regression(s) remain — recording the patch honestly (grades as unresolved)`);

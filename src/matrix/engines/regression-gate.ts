@@ -116,3 +116,28 @@ export function formatRegressionFeedbackWithDetail(regressions: string[], detail
   return `${base}\n\nThe GRADER's failure output for these tests (you CANNOT reproduce these locally — the ` +
     `grader's environment differs from yours — so read this carefully to understand what your patch changed):\n${detail}`;
 }
+
+/** CH-052: a whitespace-insensitive fingerprint of a patch — so a cosmetically-reformatted but structurally
+ *  identical patch still reads as "the same approach". Empty patch → empty fingerprint (never counts as a match). */
+export function patchFingerprint(patch: string): string {
+  return (patch ?? '').replace(/\s+/g, ' ').trim();
+}
+
+/** CH-052: true when the current patch repeats a prior attempt's — the solver has ANCHORED (re-did the
+ *  identical fix despite feedback; the observed cfn-lint-3798 failure: byte-identical patch + timeout). */
+export function hasAnchored(currentPatch: string, priorPatches: string[]): boolean {
+  const fp = patchFingerprint(currentPatch);
+  if (!fp) return false;
+  return priorPatches.some(p => patchFingerprint(p) === fp);
+}
+
+/** CH-052: de-anchoring feedback. The solver re-submitted an identical patch, so "narrow your edit" is stuck —
+ *  force a STRUCTURALLY DIFFERENT approach and ban the wide-blast-radius shortcut (rewriting shared functions /
+ *  message strings) that caused the regressions in the first place. */
+export function deAnchorFeedback(regressions: string[], detail: string): string {
+  const base = formatRegressionFeedbackWithDetail(regressions, detail);
+  return `STOP — your last patch was BYTE-IDENTICAL to a previous attempt; repeating it fails the same way. You ` +
+    `MUST take a STRUCTURALLY DIFFERENT approach now: do NOT re-apply the same edit, and do NOT make ` +
+    `wide-blast-radius changes (rewriting shared/base functions or message strings many call-sites depend on). ` +
+    `Find the NARROWEST edit that fixes the issue WITHOUT changing the behavior these tests rely on.\n\n${base}`;
+}

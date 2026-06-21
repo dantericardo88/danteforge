@@ -1,6 +1,22 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { parsePytestFailures, computeRegressions, formatRegressionFeedback, isTestFile, parsePassToPass, extractFailureDetail, formatRegressionFeedbackWithDetail } from '../src/matrix/engines/regression-gate.ts';
+import { parsePytestFailures, computeRegressions, formatRegressionFeedback, isTestFile, parsePassToPass, extractFailureDetail, formatRegressionFeedbackWithDetail, patchFingerprint, hasAnchored, deAnchorFeedback } from '../src/matrix/engines/regression-gate.ts';
+
+test('CH-052: patchFingerprint is whitespace-insensitive; hasAnchored detects a repeated patch', () => {
+  assert.equal(patchFingerprint('diff  a\n\n  b'), patchFingerprint('diff a\nb'), 'whitespace-only differences collapse');
+  assert.equal(patchFingerprint(''), '');
+  assert.equal(hasAnchored('diff a\nb', ['diff a\n b']), true, 'cosmetically-reformatted-but-same → anchored');
+  assert.equal(hasAnchored('diff NEW', ['diff a\nb']), false, 'a genuinely different patch is not anchored');
+  assert.equal(hasAnchored('', ['']), false, 'empty patch never counts as anchored');
+});
+
+test('CH-052: deAnchorFeedback forces a different approach and still carries the regressions', () => {
+  const fb = deAnchorFeedback(['test/x.py::C::t'], 'E   AssertionError: boom');
+  assert.match(fb, /BYTE-IDENTICAL/);
+  assert.match(fb, /STRUCTURALLY DIFFERENT/);
+  assert.match(fb, /BROKE these previously-passing tests/); // the base regression feedback is still present
+  assert.match(fb, /boom/);                                  // and the grader detail
+});
 
 // CH-050: a representative pytest failure log (the shape grade.sh writes to post_patch_log.txt).
 const PYTEST_LOG = `test/unit/rules/test_x.py ....                                    [ 50%]
