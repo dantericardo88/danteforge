@@ -104,7 +104,7 @@
     "lint": "eslint .",
     "lint:fix": "eslint . --fix",
     "check:anti-stub": "node scripts/check-anti-stub.mjs",
-    "check:no-walls": "node scripts/check-no-walls.mjs",
+    "check:no-walls": "node scripts/check-no-walls.mjs --strict",
     "check:plugin-manifests": "node scripts/check-plugin-manifests.mjs",
     "check:proof-integrity": "node scripts/check-proof-integrity.mjs",
     "sbom:generate": "node scripts/generate-sbom.mjs",

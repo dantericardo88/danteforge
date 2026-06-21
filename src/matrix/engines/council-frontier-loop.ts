@@ -605,10 +605,32 @@ export async function runFrontierLoop(
   logger.info(`  Iterations: ${iteration}`);
   logger.info(`  Dims reached target: ${dimsReachedTarget.join(', ') || 'none'}`);
 
+  // No-walls DNA: MAX_ITERATIONS with dims still short of target is NOT a dead end — decompose the remaining
+  // dims into tracked sub-problems (each a DEFINED "dim X plateaued at Y below target Z"), or escalate to the
+  // operator. Best-effort: never blocks the loop's return.
+  const dimsShort = finalQueue.filter(d => d.score < targetScore);
+  if (stoppedReason === 'MAX_ITERATIONS' && dimsShort.length > 0) {
+    try {
+      const { solveOrDecompose } = await import('../../core/obstacle-solve-or-decompose.js');
+      await solveOrDecompose(
+        { kind: 'frontier-loop-incomplete', signal: `council-frontier loop hit MAX_ITERATIONS (${maxIterations}) with ${dimsShort.length} dim(s) below target ${targetScore}`, context: { remaining: dimsShort.map(d => d.dimId) } },
+        {
+          cwd: projectPath,
+          proposeChildren: () => dimsShort.map(d => ({
+            kind: `frontier-dim-${d.dimId}`,
+            signal: `Dimension "${d.dimId}" plateaued at ${d.score} below target ${targetScore} after ${maxIterations} council iterations`,
+            rationale: `the council-frontier loop could not close ${d.dimId} autonomously — it needs a fresh lever (new capability work) or an operator ratify`,
+          })),
+          escalate: () => ({ to: 'consensus', reason: `frontier loop stalled on ${dimsShort.map(d => d.dimId).join(', ')} — council/operator names the next lever` }),
+        },
+      );
+    } catch { /* best-effort — the no-walls decomposition must never block loop exit */ }
+  }
+
   return {
     iterations: iterationResults,
     dimsReachedTarget: [...new Set(dimsReachedTarget)],
-    dimsRemaining: finalQueue.filter(d => d.score < targetScore).map(d => d.dimId),
+    dimsRemaining: dimsShort.map(d => d.dimId),
     finalScores,
     stoppedReason,
   };

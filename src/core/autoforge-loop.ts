@@ -443,6 +443,19 @@ async function writePostLoopArtifacts(
     : !deps._executeCommand ? 'advisory'
     : 'max-cycles';
 
+  // No-walls DNA: a non-completing termination (blocked / max-cycles) is not a dead end — route the remaining
+  // gap to the council/operator as the next sub-problem instead of ending on a silent plateau. Best-effort:
+  // never blocks loop exit. (A code plateau usually needs a fresh externally-named lever, hence escalate.)
+  if (terminationReason === 'blocked' || terminationReason === 'max-cycles') {
+    try {
+      const { solveOrDecompose } = await import('./obstacle-solve-or-decompose.js');
+      await solveOrDecompose(
+        { kind: `autoforge-${terminationReason}`, signal: `Autoforge ended "${terminationReason}" at ${endScore.toFixed(1)} after ${ctx.cycleCount} cycle(s) without reaching target`, context: { endScore, cycles: ctx.cycleCount } },
+        { cwd: ctx.cwd, escalate: () => ({ to: 'consensus', reason: `autoforge ${terminationReason} at ${endScore.toFixed(1)} — council/operator names the next lever (the lowest stuck dim, or a fresh approach)` }) },
+      );
+    } catch { /* best-effort — the no-walls escalation must never block loop exit */ }
+  }
+
   const loopResult: LoopResult = {
     startScore,
     endScore,

@@ -18,7 +18,7 @@ const STRICT = process.argv.includes('--strict');
 const LOOP_FILES = [
   'src/core/autonomous-loop-runner.ts',
   'src/core/ascend-engine-cycle.ts',
-  'src/core/autoforge-loop-core.ts',
+  'src/core/autoforge-loop.ts',
   'src/matrix/engines/council-frontier-loop.ts',
   'src/core/harden-crusade.ts',
   'src/core/frontier-course-corrector.ts',
