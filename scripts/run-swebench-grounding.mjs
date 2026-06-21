@@ -407,9 +407,39 @@ if (!gradeOnly) {
 // inside the per-instance containers, so we run the ORCHESTRATOR itself in a Linux container (LF-native,
 // has `resource`, reaches the host daemon via socket passthrough). scripts/swebench-orch/grade.sh builds
 // the image once and runs the official harness in Linux.
-const ids = instances.map(i => i.instance_id).join(' ');
 const reportDir = join(work, `report-${runId}`);
 mkdirSync(reportDir, { recursive: true });
+let report;
+// CH-038: a hung instance (repo-env build hang) must NOT block the whole grade (observed: a --spread 20 grade
+// hung ~3h on a git-launch env build — 14/20 graded, containers idle). Grade SWE-bench-Live PER-INSTANCE with a
+// per-instance timeout; a timeout is killed + recorded ERRORED (degraded, CH-035) and the run PROCEEDS instead
+// of blocking forever. --all-ids-grade forces the legacy single call (faster when nothing hangs).
+const perInstanceGrade = !gradeOnly && DS.grade.toLowerCase().includes('live') && !args.includes('--all-ids-grade');
+if (perInstanceGrade) {
+  const instTmo = Number(opt('--grade-instance-timeout-ms', '900000')) || 900000;
+  console.error(`[swebench] CH-038 PER-INSTANCE grade of ${instances.length} instance(s) (${Math.round(instTmo / 60000)}min each — a hang skips, never blocks)…`);
+  let resolved = 0, errored = 0;
+  for (const inst of instances) {
+    const g = spawnSync(
+      `bash scripts/swebench-orch/grade.sh "${predictionsPath}" ${runId} "${reportDir}" ${DS.grade} ${DS.ns} ${DS.split} ${inst.instance_id}`,
+      { shell: true, cwd: process.cwd(), timeout: instTmo, encoding: 'utf8', maxBuffer: 64 * 1024 * 1024, env: { ...process.env, MSYS_NO_PATHCONV: '1' } },
+    );
+    const timedOut = !!(g.error && /ETIMEDOUT|timed?.?out|killed/i.test(`${g.error.code ?? ''} ${g.error.message ?? ''}`));
+    let res = null;
+    try { res = JSON.parse(readFileSync(join(reportDir, inst.instance_id, 'report.json'), 'utf8')).resolved === true; } catch { /* no per-instance report */ }
+    if (res === true) { resolved++; console.error(`  [grade] ${inst.instance_id}: RESOLVED`); }
+    else if (res === false) { console.error(`  [grade] ${inst.instance_id}: unresolved`); }
+    else {
+      errored++;
+      console.error(`  [grade] ${inst.instance_id}: ${timedOut ? 'TIMED OUT — killing orphaned containers' : 'no report (errored)'} (degraded, CH-035)`);
+      if (timedOut) sh('docker ps -q | head -20 | xargs -r docker kill', process.cwd(), 60000); // sequential → only the hung instance's containers
+    }
+  }
+  const total = instances.length;
+  report = { resolved, total, pass_rate: total > 0 ? resolved / total : 0, errored };
+  console.error(`[swebench] SWE-bench-Live PER-INSTANCE grade: resolved ${resolved}/${total}${errored ? ` (${errored} errored/timed-out — degraded; re-grade those with --grade-only)` : ''}`);
+} else {
+const ids = instances.map(i => i.instance_id).join(' ');
 console.error(`[swebench] grading ${DS.grade} [${DS.split}] via the LINUX orchestrator (run_id ${runId}, ns ${DS.ns})… (image build + GB pulls on first run)`);
 const grade = spawnSync(
   `bash scripts/swebench-orch/grade.sh "${predictionsPath}" ${runId} "${reportDir}" ${DS.grade} ${DS.ns} ${DS.split} ${ids}`,
@@ -426,7 +456,6 @@ const mTotal = /Total instances:\s*(\d+)/i.exec(gradeOut);
 // SWE-bench-Live (evaluation.evaluation) prints "Success:" (resolved) instead of the swebench.harness
 // summary; the honest denominator is the full sample we asked to grade (empty/error/failure = unresolved).
 const mLiveOk = /^Success:\s*(\d+)/im.exec(gradeOut);
-let report;
 if (mResolved && mTotal) {
   const resolved = Number(mResolved[1]), total = Number(mTotal[1]);
   report = { resolved, total, pass_rate: total > 0 ? resolved / total : 0 };
@@ -459,5 +488,6 @@ if (mResolved && mTotal) {
     console.error('[swebench] grading did not produce a parseable summary (no "Instances resolved:" line, no report file). Honest: unscored.');
     report = { pass_rate: 0, resolved: 0, total: instances.length };
   }
+}
 }
 console.log(formatPassRateLine(report));
