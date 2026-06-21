@@ -47,6 +47,27 @@ export function categorizeInstanceResult(report: SwebenchReport): InstanceAnalys
   return { ...base, category };
 }
 
+/**
+ * CH-047 (grade-in-the-loop): extract the GRADER's own regressions from a report.json — the failing
+ * PASS_TO_PASS (must-stay-green) tests. This is the faithful regression signal the local pip-env gate
+ * CANNOT produce on env-mismatch instances (CH-043: the gate self-disables when the local env can't
+ * reproduce the grader's environment). Returns the failing test ids ONLY when the instance is
+ * FIXED-BUT-REGRESSED (target fully fixed; regressions are the sole blocker) — the exact case where
+ * feeding these back and re-solving can flip the instance to resolved. Returns null when there is nothing
+ * actionable to feed back: resolved already, or the target isn't fixed yet (then the fix — not regressions —
+ * is the blocker, a different feedback). Pure: the grade-in-the-loop driver pairs this with
+ * formatRegressionFeedback (regression-gate.ts) to build the next-iteration prompt.
+ */
+export function regressionsFromGradeReport(
+  report: SwebenchReport,
+): { regressions: string[]; targetFixed: number } | null {
+  const analysis = categorizeInstanceResult(report);
+  if (analysis.category !== 'fixed-but-regressed') return null;
+  const regressions = report.PASS_TO_PASS?.failure ?? [];
+  if (regressions.length === 0) return null;
+  return { regressions: [...regressions], targetFixed: analysis.targetFixed };
+}
+
 /** Wilson score 95% CI for a proportion — the honest uncertainty band on a small-n pass rate. At n=6 a
  *  "2/6 vs 1/6 = +100% lift" overlaps massively; reporting the band keeps a small-sample delta from becoming
  *  the new flattering headline (the exact self-flattery the measurement spine exists to kill). */

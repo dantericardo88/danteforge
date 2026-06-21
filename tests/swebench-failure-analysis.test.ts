@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { categorizeInstanceResult, summarizeResults, wilsonInterval, type SwebenchReport } from '../src/matrix/engines/swebench-failure-analysis.ts';
+import { categorizeInstanceResult, summarizeResults, wilsonInterval, regressionsFromGradeReport, type SwebenchReport } from '../src/matrix/engines/swebench-failure-analysis.ts';
 
 test('wilsonInterval reports the honest small-n uncertainty band (2/14 spans a wide range)', () => {
   const ci = wilsonInterval(2, 14);
@@ -23,6 +23,29 @@ const rep = (o: Partial<SwebenchReport> & { f?: [number, number]; p?: [number, n
 
 test('resolved report → resolved', () => {
   assert.equal(categorizeInstanceResult(rep({ resolved: true, f: [26, 0], p: [1220, 0] })).category, 'resolved');
+});
+
+test('CH-047: regressionsFromGradeReport returns the grader PASS_TO_PASS failures for a fixed-but-regressed instance', () => {
+  const report: SwebenchReport = {
+    instance_id: 'aws-cloudformation__cfn-lint-3798', resolved: false,
+    FAIL_TO_PASS: { success: Array(26).fill('t'), failure: [] }, // target fully fixed
+    PASS_TO_PASS: { success: Array(1216).fill('t'), failure: ['test_a::x', 'test_b::y', 'test_c::z', 'test_d::w'] },
+  };
+  const out = regressionsFromGradeReport(report);
+  assert.ok(out, 'a fixed-but-regressed report yields actionable feedback');
+  assert.deepEqual(out!.regressions, ['test_a::x', 'test_b::y', 'test_c::z', 'test_d::w']);
+  assert.equal(out!.targetFixed, 26);
+});
+
+test('CH-047: regressionsFromGradeReport returns null when regressions are NOT the blocker', () => {
+  // resolved → nothing to feed back
+  assert.equal(regressionsFromGradeReport(rep({ resolved: true, f: [26, 0], p: [1220, 0] })), null);
+  // partial-fix (target not fully fixed) → the FIX is the blocker, not regressions
+  assert.equal(regressionsFromGradeReport(rep({ f: [1, 1], p: [10, 2] })), null);
+  // no-fix → the fix is the blocker
+  assert.equal(regressionsFromGradeReport(rep({ f: [0, 3], p: [10, 0] })), null);
+  // fixed but zero regressions recorded → nothing actionable
+  assert.equal(regressionsFromGradeReport(rep({ f: [2, 0], p: [10, 0] })), null);
 });
 
 test('the cfn-lint-3798 shape (26/26 target fixed, 4 regressions) → fixed-but-regressed', () => {
