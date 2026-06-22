@@ -7,8 +7,10 @@
 
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
+import fs from 'node:fs/promises';
+import path from 'node:path';
 import { loadMatrix, type CompeteMatrix } from '../../core/compete-matrix.js';
-import { effectiveStatus, resolveRunCommand, checkFrontierSpec, type FrontierSpec } from '../../core/frontier-spec.js';
+import { effectiveStatus, resolveRunCommand, checkFrontierSpec, signBuilderProvenance, type FrontierSpec } from '../../core/frontier-spec.js';
 import { loadDimRubric } from '../../core/rubric-ladder.js';
 import type { CeilingCause } from '../../core/ceiling-receipt.js';
 import type { AttemptFingerprint } from '../../core/evidence-novelty.js';
@@ -398,6 +400,30 @@ export async function defaultBuildAll(cwd: string, assignments: { memberId: Coun
   }
 }
 
+/** Read the merge court's SLOT_PROOF_LEDGER(s) to learn which member(s) ACTUALLY built `dimId` this run.
+ *  This is the AUTHORITATIVE builder provenance (the merge court records memberId↔assignedDims after every
+ *  build, line ~213 of council-parallel.ts) — it lets the frontier court seat the OTHER members as
+ *  independent PEER judges instead of excluding the whole roster. Anyone ASSIGNED the dim (merged or not)
+ *  has a stake and is excluded from judging it. Returns [] when no ledger names the dim (→ caller keeps the
+ *  safe exclude-all floor). Read-only: it OBSERVES the build's real routing, never changes it (court-audit #4). */
+export async function buildersOfDimFromLedger(cwd: string, dimId: string): Promise<CouncilMemberId[]> {
+  const dir = path.join(cwd, '.danteforge');
+  let files: string[];
+  try { files = (await fs.readdir(dir)).filter(f => /^SLOT_PROOF_LEDGER_round\d+\.json$/.test(f)); }
+  catch { return []; }
+  const builders = new Set<CouncilMemberId>();
+  for (const f of files) {
+    try {
+      const ledger = JSON.parse(await fs.readFile(path.join(dir, f), 'utf8')) as
+        { slots?: Array<{ memberId?: string; assignedDims?: string[] }> };
+      for (const s of ledger.slots ?? []) {
+        if (s.memberId && (s.assignedDims ?? []).includes(dimId)) builders.add(s.memberId as CouncilMemberId);
+      }
+    } catch { /* skip an unreadable ledger */ }
+  }
+  return [...builders];
+}
+
 /** SERIAL promote of one dim: capture real-user-path evidence (variant-rotated), validate across
  *  sessions, then run the court with ALL build-eligible members EXCLUDED (builder-never-judges). Writes
  *  matrix.json — runParallelRound guarantees this runs one dim at a time, so no write races. */
@@ -454,13 +480,19 @@ export async function defaultPromoteOne(cwd: string, a: { memberId: CouncilMembe
   }
   // Distinguish a real court REJECT from "we couldn't read the court's answer" (non-zero exit or
   // no JSON): parseCourtOutput flags the latter so the orchestrator records uncertainty, not a clean no.
-  // court-audit #4: defaultBuildAll builds via `council --parallel` across the WHOLE builder roster, and
-  // council routes each focus-dim to a keyword-matched member — NOT necessarily a.memberId (round-robin).
-  // Excluding only a.memberId left the real builder in its own judge pool. Exclude ALL build-eligible
-  // members (judge-only members remain), exactly like the sequential push, so no builder self-judges.
-  const builders = await defaultDiscoverMembers(); // build-eligible roster (judge-only already filtered out)
-  const res = await runCli(cwd, ['frontier-review', a.dimId, '--min-judges', '2', '--json', '--write',
-    ...(builders.length ? ['--exclude-builders', builders.join(',')] : ['--builder', a.memberId])]);
+  // court-audit #4 RESOLVED via AUTHORITATIVE provenance (CH-061): `council --parallel` routes each focus-dim
+  // to a member internally, so a.memberId is NOT reliably the real code-builder. The merge court's
+  // SLOT_PROOF_LEDGER records who ACTUALLY built each dim — read it, then seat the OTHER build-eligible members
+  // as independent PEER judges (claude judges a codex-built dim). A kernel-signed builder-provenance token
+  // authorizes the court to exclude ONLY the real builder(s) instead of the whole roster (which left grok alone
+  // → no quorum now that gemini is gone). If the ledger can't name the builder, fall back to the SAFE exclude-all
+  // floor (honest INSUFFICIENT when <2 judges remain) — never a guess that could let a real builder self-judge.
+  const realBuilders = await buildersOfDimFromLedger(cwd, a.dimId);
+  const allBuilders = await defaultDiscoverMembers(); // build-eligible roster (judge-only already filtered out)
+  const courtArgs = realBuilders.length > 0
+    ? ['--exclude-builders', realBuilders.join(','), '--builder-provenance-token', signBuilderProvenance(a.dimId, realBuilders)]
+    : (allBuilders.length ? ['--exclude-builders', allBuilders.join(',')] : ['--builder', a.memberId]);
+  const res = await runCli(cwd, ['frontier-review', a.dimId, '--min-judges', '2', '--json', '--write', ...courtArgs]);
   const parsed = parseCourtOutput(res);
   // CH-019: an all-abstained court (outage) is NOT a court that ran — courtRan:false routes it to the
   // re-attemptable build-failure path instead of fabricating a court rejection toward a permanent ceiling.

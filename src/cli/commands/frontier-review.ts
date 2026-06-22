@@ -62,6 +62,27 @@ async function defaultDiscoverMembers(): Promise<CouncilMemberId[]> {
   return members.filter(m => m.available).map(m => m.id as CouncilMemberId);
 }
 
+/** The court's judge-exclusion decision as a PURE function, so the integrity property is unit-tested: a
+ *  VERIFYING kernel-signed builder-provenance token seats independent PEERS (excludes only the real builder(s));
+ *  anything else — no token, a forged token, a token for the wrong builder/dim — holds the court-audit #4+#5
+ *  FLOOR (exclude EVERY build-eligible member so a builder can never judge its own work). `roster` carries the
+ *  judge-only flags; an empty roster (test seam) makes the floor a no-op, matching the pre-existing behavior. */
+export function computeExcludedJudges(
+  dimId: string,
+  excludeBuilderIds: CouncilMemberId[],
+  builderMemberId: CouncilMemberId | undefined,
+  builderProvenanceToken: string | undefined,
+  roster: Array<{ id: CouncilMemberId; judgeOnly?: boolean }>,
+): Set<CouncilMemberId> {
+  const excluded = new Set<CouncilMemberId>(excludeBuilderIds);
+  if (builderMemberId) excluded.add(builderMemberId);
+  const peerReview = verifyBuilderProvenance(dimId, [...excluded], builderProvenanceToken);
+  if (!peerReview) {
+    for (const mm of roster) if (!mm.judgeOnly) excluded.add(mm.id);
+  }
+  return excluded;
+}
+
 async function defaultRunJudge(id: CouncilMemberId, prompt: string, cwd: string): Promise<string> {
   const { makeAdapter, makeWorkPacket, makeJudgeLease } = await import('./council.js');
   const { runAdapter } = await import('../../matrix/adapters/adapter-interface.js');
@@ -142,21 +163,18 @@ export async function runFrontierReviewCli(options: FrontierReviewCliOptions): P
   const members = await (options._discoverMembers ?? defaultDiscoverMembers)();
   // Exclude every member that contributed to the build (the single parallel builder AND/OR the full
   // sequential builder roster). What remains is the pool of genuinely independent judges.
-  const excluded = new Set<CouncilMemberId>(options.excludeBuilderIds ?? []);
-  if (options.builderMemberId) excluded.add(options.builderMemberId);
-  // BUILDER EXCLUSION IS A FLOOR (court-audit #4 + #5) — UNLESS the kernel vouches for who built this dim.
-  // The named builder(s) above are always excluded. The remaining question is whether the OTHER build-eligible
-  // members may judge. With a KERNEL-SIGNED builder-provenance token naming EXACTLY those builders for this
-  // dim, YES: they did not build it, so they are genuine independent PEERS (claude judges a codex-built dim) —
-  // this restores the roster's original "build AND judge" design and gives a single-builder (parallel) dim a
-  // real 2nd opinion now that gemini is gone. WITHOUT a valid token (a manual or agent-forged invocation), the
-  // floor holds: exclude EVERY build-eligible member so a builder can never re-seat itself to judge its own
-  // work. An agent cannot forge the token (no kernel secret). Tests inject _discoverMembers (skips the floor).
-  const peerReview = verifyBuilderProvenance(options.dimId, [...excluded], options.builderProvenanceToken);
-  if (!peerReview && !options._discoverMembers) {
+  // The exclusion decision (floor vs peer review) is the integrity core — delegate to the pure, unit-tested
+  // computeExcludedJudges. The roster (judge-only flags) comes from the real council unless a test injects
+  // _discoverMembers, in which case the floor naturally no-ops there exactly as before.
+  let roster: Array<{ id: CouncilMemberId; judgeOnly?: boolean }> = [];
+  if (!options._discoverMembers) {
     const { discoverCouncil } = await import('./council.js');
-    for (const mm of await discoverCouncil()) if (!mm.judgeOnly) excluded.add(mm.id as CouncilMemberId);
+    roster = (await discoverCouncil()).map(m => ({ id: m.id as CouncilMemberId, judgeOnly: m.judgeOnly }));
   }
+  const excluded = computeExcludedJudges(
+    options.dimId, options.excludeBuilderIds ?? [], options.builderMemberId,
+    options.builderProvenanceToken, roster,
+  );
   const judgeCount = members.filter(m => !excluded.has(m)).length;
   const excludedList = [...excluded];
   if (judgeCount < 2) throw new Error(`Frontier review needs ≥2 independent judges (excluding the builder${excludedList.length ? `s ${excludedList.join('+')}` : ''}); found ${judgeCount} of ${members.length} members. A builder may not judge its own dim — add a judge-only member (e.g. grok-build) or use --parallel so a single member builds.`);
