@@ -60,10 +60,10 @@ describe('session-record — honest real-user-path producer', () => {
     assert.match(r.reason, /exited 1/);
   });
 
-  test('REJECTS an instant run (< min duration)', async () => {
+  test('REJECTS an instant run that is BOTH too fast AND too small', async () => {
     const r = await runSessionRecord(base(makeMatrix(), { _runCommand: async () => ({ exitCode: 0, durationMs: 40, stdout: 'ok' }) }));
     assert.equal(r.accepted, false);
-    assert.match(r.reason, /Too fast/);
+    assert.match(r.reason, /too fast.*too small/i);
   });
 
   test('REJECTS a run that produced no observable artifact', async () => {

@@ -27,6 +27,10 @@ export const MIN_REAL_RUN_MS = REAL_RUN_MIN_MS;
 /** An artifact below this many bytes is treated as trivial (e.g. an empty `touch`) — it cannot prove
  *  production behavior, so it fails the real-user-path guard (council 2026-06-22). */
 export const MIN_ARTIFACT_BYTES = 16;
+/** An artifact at/above this many bytes counts as SUBSTANTIAL — a fast run that produces one IS a real
+ *  exercise (e.g. `docs` emitting an 8KB reference in ~200ms), so the duration floor is waived for it.
+ *  Closes the duration-only false-negative the council flagged; the court still judges artifact quality. */
+export const SUBSTANTIAL_ARTIFACT_BYTES = 512;
 
 export interface SessionRecordOptions {
   cwd?: string;
@@ -111,11 +115,6 @@ export async function runSessionRecord(options: SessionRecordOptions): Promise<S
     const reason = `Command exited ${exitCode}. A real-user-path receipt requires a successful run.`;
     return finalize({ accepted: false, reason, durationMs, wrote: false }, options, reason);
   }
-  // Guard 3: it must have run long enough to be a real exercise.
-  if (durationMs < MIN_REAL_RUN_MS) {
-    const reason = `Ran in ${durationMs}ms (< ${MIN_REAL_RUN_MS}ms). Too fast to be a real exercise — an instant command does not prove production behavior.`;
-    return finalize({ accepted: false, reason, durationMs, wrote: false }, options, reason);
-  }
   // Guard 4: it must have produced an observable artifact.
   const produced = await artifactProduced(options.artifact, beforeEpoch);
   if (!produced) {
@@ -126,14 +125,25 @@ export async function runSessionRecord(options: SessionRecordOptions): Promise<S
   // mtime check (Guard 4) but proves nothing. Reject a trivial artifact and BIND its content hash into the
   // outcome so a later swap of the file is detectable (the largest deterministic false-9 surface).
   let artifactSha = '';
+  let artifactSize = 0;
   try {
     const st = await fs.stat(options.artifact);
+    artifactSize = st.size;
     if (st.size < MIN_ARTIFACT_BYTES) {
       const reason = `Artifact "${options.artifact}" is ${st.size} bytes (< ${MIN_ARTIFACT_BYTES}) — a trivial/empty output (e.g. an mtime touch) does not prove production behavior.`;
       return finalize({ accepted: false, reason, durationMs, wrote: false }, options, reason);
     }
     artifactSha = createHash('sha256').update(await fs.readFile(options.artifact)).digest('hex');
   } catch { /* Guard 4 already confirmed existence; an unreadable artifact stays non-binding */ }
+  // Guard 3 (real exercise — council 2026-06-22 false-negative fix): a run proves production behavior if it
+  // EITHER ran a sustained ≥MIN_REAL_RUN_MS OR produced a SUBSTANTIAL artifact. A genuine fast command that
+  // writes a real output (e.g. `docs` emitting an 8KB command reference in ~200ms) was previously rejected by
+  // a duration-ONLY gate — a false negative. ONLY a run that is BOTH too fast AND too small is rejected; the
+  // frontier-review court remains the semantic backstop against a large-but-meaningless artifact.
+  if (durationMs < MIN_REAL_RUN_MS && artifactSize < SUBSTANTIAL_ARTIFACT_BYTES) {
+    const reason = `Ran in ${durationMs}ms (< ${MIN_REAL_RUN_MS}ms) AND produced only ${artifactSize} bytes (< ${SUBSTANTIAL_ARTIFACT_BYTES}) — too fast and too small to prove a real exercise. Use a heavier run or one that emits a more substantial artifact.`;
+    return finalize({ accepted: false, reason, durationMs, wrote: false }, options, reason);
+  }
 
   // Genuine real-user-path exercise — emit the outcome.
   const outcome: Record<string, unknown> = {

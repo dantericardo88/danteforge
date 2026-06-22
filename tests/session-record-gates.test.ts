@@ -108,4 +108,18 @@ describe('session-record — Guard 5: artifact must have non-trivial content (co
       assert.equal(sha!.length, 64, 'a real run-bound sha256 is recorded');
     } finally { await fs.rm(dir, { recursive: true, force: true }); }
   });
+
+  test('a FAST run is ACCEPTED if it produces a SUBSTANTIAL artifact (the false-negative fix)', async () => {
+    const dir = await scratch();
+    try {
+      const artifactPath = path.join(dir, 'out.md');
+      await fs.writeFile(artifactPath, '# Real command reference\n'.repeat(40)); // ~1KB > 512 bytes
+      const r = await runSessionRecord({
+        cwd: dir, dimId: 'forge', ...genuineRun, artifact: artifactPath, write: false,
+        _runCommand: async () => ({ exitCode: 0, durationMs: 200, stdout: 'ok' }), // FAST (200ms < 1000ms floor)
+        _loadMatrix: async () => makeMatrix(),
+      });
+      assert.equal(r.accepted, true, 'a 200ms run emitting a ~1KB real artifact is a genuine exercise (e.g. `docs`)');
+    } finally { await fs.rm(dir, { recursive: true, force: true }); }
+  });
 });
