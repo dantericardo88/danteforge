@@ -203,7 +203,7 @@ export async function runFrontierReviewCli(options: FrontierReviewCliOptions): P
   // CH-062: a court PASS is necessary but NOT sufficient. CIP (runCIPCheck) is MANDATORY before FRONTIER_REACHED
   // per the scoring doctrine — it runs the capability_test Fix-A gate, RE-EXECUTES the declared outcomes, scans
   // for stubs, and compares the audited cipScore to the stored score. A VALIDATED verdict that fails it (two
-  // honest judges agreed on parity, but the evidence is stub/zero-outcome/failing-capability_test) is downgraded
+  // honest judges agreed on parity, but the evidence is stubbed/zero-outcome/failing-capability_test) is downgraded
   // to a ceiling — never written as a 9. This closes the last false-9 vectors the council named.
   const cip: CIPResult | null = result.verdict === 'VALIDATED'
     ? (options._runCIP ? await options._runCIP(options.dimId) : await runCIPCheck(options.dimId, { cwd, target: 9.0 }))

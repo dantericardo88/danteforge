@@ -183,7 +183,7 @@ export interface CourtParse {
    *  rejection; the caller routes it to a re-attemptable non-run, exactly like abstainDominant. */
   insufficient: boolean;
   /** CH-062: a VALIDATED verdict the CIP gate DOWNGRADED to a ceiling (the court ran, the integrity backstop
-   *  caught stub/zero-outcome evidence) — a durable REJECTED, NEVER a parse error or build failure. */
+   *  caught stubbed/zero-outcome evidence) — a durable REJECTED, NEVER a parse error or build failure. */
   cipDowngraded: boolean;
 }
 
@@ -212,7 +212,7 @@ export function parseCourtOutput(res: { ok: boolean; stdout: string }): CourtPar
     const verdict = j.result.verdict === 'VALIDATED' ? 'VALIDATED' : 'REJECTED';
     // CH-062 (council 2026-06-22, Codex): a VALIDATED verdict the CIP gate DOWNGRADED (validatedWritten=false +
     // ceilingWritten=true; the CLI legitimately exits 1) is a real INTEGRITY rejection — the court ran and the
-    // structural backstop caught stub/zero-outcome evidence. Book it REJECTED+courtRan, NOT a parse error/build
+    // structural backstop caught stubbed/zero-outcome evidence. Book it REJECTED+courtRan, NOT a parse error/build
     // failure (which would churn). Checked BEFORE the !ok+VALIDATED incoherence guard, since this case exits 1.
     if (verdict === 'VALIDATED' && j.validatedWritten === false && j.ceilingWritten === true) {
       return { verdict: 'REJECTED', passedByJudges: [], parseError: false, allAbstained: false, allUnavailable: false, abstainDominant: false, insufficient: false, cipDowngraded: true };
