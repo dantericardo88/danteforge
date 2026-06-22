@@ -161,6 +161,7 @@ export async function runSessionRecord(options: SessionRecordOptions): Promise<S
     min_duration_ms: MIN_REAL_RUN_MS,
     input_source: { type: 'real-user-path', description: options.description ?? `runs ${options.run} on a realistic input` },
     artifact_sha256: artifactSha, // content hash bound at run time — a later swap of the artifact is detectable
+    observable_artifact: options.artifact, // so the runtime-exec runner can waive the duration floor for a substantial artifact
   };
 
   let wrote = false;

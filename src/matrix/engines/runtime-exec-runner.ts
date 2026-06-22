@@ -5,10 +5,15 @@
 // check and fails. This prevents `readFileSync` checks from masquerading as
 // runtime outcomes.
 
-import { existsSync } from 'node:fs';
+import { existsSync, statSync } from 'node:fs';
+import { join, isAbsolute } from 'node:path';
 import { spawnSync } from 'node:child_process';
 import type { RuntimeExecOutcome, OutcomeEvidenceEntry } from '../types/outcome.js';
 import { toolchainEnv } from '../../core/toolchain-path.js';
+
+/** A fast run still proves production behavior if it emitted an artifact at/above this size (mirrors
+ *  session-record's SUBSTANTIAL_ARTIFACT_BYTES — the council 2026-06-22 false-negative fix). */
+const SUBSTANTIAL_ARTIFACT_BYTES = 512;
 
 interface SpawnOpts {
   shell: boolean | string;
@@ -94,8 +99,18 @@ export async function runRuntimeExecOutcome(
   }
 
   if (passed && minDuration > 0 && durationMs < minDuration) {
-    passed = false;
-    failureReason = `completed in ${durationMs}ms (minimum ${minDuration}ms) — too fast to be a real runtime check`;
+    // False-negative fix (council 2026-06-22): a fast run still proves production behavior if it produced a
+    // SUBSTANTIAL artifact (e.g. `docs` emitting a 350KB reference in ~200ms). Only fast AND artifact-less/small
+    // fails — mirrors session-record Guard 3. The frontier-review court remains the semantic backstop.
+    const artPath = (outcome as { observable_artifact?: string }).observable_artifact;
+    let artifactSubstantial = false;
+    if (artPath) {
+      try { artifactSubstantial = statSync(isAbsolute(artPath) ? artPath : join(cwd, artPath)).size >= SUBSTANTIAL_ARTIFACT_BYTES; } catch { /* missing/unreadable → not substantial */ }
+    }
+    if (!artifactSubstantial) {
+      passed = false;
+      failureReason = `completed in ${durationMs}ms (minimum ${minDuration}ms) and emitted no substantial artifact — too fast to prove a real runtime check`;
+    }
   }
 
   if (passed && outcome.expected_output_pattern) {
