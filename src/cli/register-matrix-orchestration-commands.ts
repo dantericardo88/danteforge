@@ -253,10 +253,28 @@ function registerColdStart(matrix: Command): void {
         const dimCount = (matrixDoc as { dimensions?: unknown[] }).dimensions?.length ?? 0;
         logger.info(`[cold-start] 3/4 dimensions synthesized: ${dimCount}`);
 
-        const scored = await scoreCurrentState(matrixDoc as never, { cwd, mode, strict: false });
+        // Council pivot (2026-06-22): in local mode (no LLM), gather REAL repo signals so dimensions ground
+        // from evidence (build/typecheck/lint) instead of the placeholder 0. Dims with no automatable signal
+        // stay unscored (0) — honest, never fabricated. This is what makes cold-start useful on an arbitrary
+        // repo without an API key. Tests are NOT auto-run (council hardware-risk guard).
+        let repoSignals: import('../matrix-orchestration/analysis/repo-signal-grounding.js').RepoSignals | undefined;
+        if (mode === 'local') {
+          const { gatherRepoSignals } = await import('../matrix-orchestration/analysis/repo-signal-grounding.js');
+          const { existsSync } = await import('node:fs');
+          const { join } = await import('node:path');
+          const { spawnSync } = await import('node:child_process');
+          logger.info('[cold-start] gathering real repo signals (build/typecheck/lint — bounded) for honest grounding…');
+          repoSignals = await gatherRepoSignals({
+            exists: (rel) => existsSync(join(cwd, rel)),
+            run: async (c) => { const r = spawnSync(c, { cwd, shell: true, timeout: 120_000, stdio: 'ignore' }); return r.status ?? 1; },
+          });
+          logger.info(`[cold-start]   stack=${repoSignals.stack} build=${repoSignals.buildPasses} typecheck=${repoSignals.typecheckPasses} lint=${repoSignals.lintPasses} tests=${repoSignals.testsPresent}`);
+        }
+        const scored = await scoreCurrentState(matrixDoc as never, { cwd, mode, strict: false, _repoSignals: repoSignals });
         await saveOrch(cwd, 'currentStateScore', scored);
         const scoredCount = (scored as { dimensions?: unknown[] }).dimensions?.length ?? dimCount;
-        logger.success(`[cold-start] 4/4 scored ${scoredCount} dimension(s).`);
+        const grounded = ((scored as { dimensions?: Array<{ currentScore?: number }> }).dimensions ?? []).filter(d => (d.currentScore ?? 0) > 0).length;
+        logger.success(`[cold-start] 4/4 scored ${scoredCount} dimension(s) — ${grounded} grounded from real signals, ${scoredCount - grounded} unscored (honest, need LLM assess or human).`);
         logger.info('  Artifacts under .danteforge/matrix-orchestration/. Review the dimension matrix, then build toward the frontier.');
       });
     });

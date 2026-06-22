@@ -11,6 +11,7 @@ import type {
 } from '../types.js';
 import { saveOrch, appendAudit } from '../state-io.js';
 import { SCORING_RULES_FOR_LLM_PROMPT } from '../../core/scoring-doctrine.js';
+import { groundDimFromSignals, type RepoSignals } from './repo-signal-grounding.js';
 
 // ── Options ─────────────────────────────────────────────────────────────────
 
@@ -30,6 +31,10 @@ export interface CurrentStateScorerOptions {
     currentScore: number;
   }) => Promise<{ adversarialScore: number; verdict: 'inflated' | 'trusted' | 'watch' | 'underestimated' }>;
   _now?: () => string;
+  /** Local-mode grounding signals (council pivot): gathered ONCE by the caller via gatherRepoSignals; the
+   *  local branch grounds each dim from these REAL signals instead of returning a placeholder 0. A dim the
+   *  signals cannot honestly ground stays 0 (explicitly unscored — never fabricated). */
+  _repoSignals?: RepoSignals;
 }
 
 export interface CurrentStateScoreReport {
@@ -62,9 +67,14 @@ export async function scoreCurrentState(
     if (mode !== 'local' && llmAvailable && options._llmCaller) {
       const raw = await safeLLM(options._llmCaller, buildScorePrompt(dim));
       score = parseScore(raw, /*fallback*/ 0);
+    } else if (mode === 'local' && options._repoSignals) {
+      // Local mode WITH gathered repo signals (council pivot — the per-project oracle): ground each dim from
+      // REAL evidence (build/typecheck/lint/test results). A dim the signals cannot ground returns null →
+      // stays 0 (explicitly UNSCORED, never a fabricated number). This is what turns a cold repo's 0 into an
+      // honest evidence-based baseline without an LLM.
+      score = groundDimFromSignals(dim.category ?? '', dim.dimensionId, options._repoSignals).score ?? 0;
     } else {
-      // Local-mode fallback: optimistic baseline at 0 — caller is expected to
-      // hydrate from compete-matrix downstream.
+      // Local-mode fallback: no LLM and no signals — 0 baseline; caller is expected to hydrate downstream.
       score = 0;
     }
 
