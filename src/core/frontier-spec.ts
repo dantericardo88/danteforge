@@ -30,8 +30,12 @@ export interface FrontierValidationReceipt {
   frozen_hash: string;
   /** the independent judges whose consensus produced the PASS. */
   judge_member_ids: string[];
+  /** the build-eligible members EXCLUDED from judging (builder-never-judges), bound into the signature so a
+   *  receipt where a judge also built the dim fails verification — defense-in-depth on the live court's own
+   *  exclusion (which already refuses to convene with a builder-judge). */
+  builder_member_ids?: string[];
   validated_at: string;
-  /** HMAC over `${dimId}|${frozen_hash}|${sorted judges}` keyed by the out-of-repo kernel secret. */
+  /** HMAC over `${dimId}|${frozen_hash}|${sorted judges}[|builders:${sorted builders}]`, keyed by the kernel secret. */
   sig: string;
 }
 
@@ -54,19 +58,30 @@ export function kernelSecret(): string {
   return secret;
 }
 
-/** Sign a court validation. Called ONLY by the frontier-review court on a genuine PASS consensus. */
-export function signValidation(dimId: string, frozenHash: string, judges: string[]): string {
-  const msg = `${dimId}|${frozenHash}|${[...judges].sort().join(',')}`;
+/** Sign a court validation. Called ONLY by the frontier-review court on a genuine PASS consensus. The
+ *  excluded BUILDERS are bound into the signature (builder-never-judges) so a judge∩builder overlap is
+ *  detectable after the fact. Backward-compatible: with no builders recorded the message is the legacy form. */
+export function signValidation(dimId: string, frozenHash: string, judges: string[], builders: string[] = []): string {
+  const j = [...judges].sort().join(',');
+  const msg = builders.length
+    ? `${dimId}|${frozenHash}|${j}|builders:${[...builders].sort().join(',')}`
+    : `${dimId}|${frozenHash}|${j}`;
   return createHmac('sha256', kernelSecret()).update(msg).digest('hex').slice(0, 32);
 }
 
-/** Verify a spec's `validated_by` receipt: present, bound to this dim, matching the current content, and
- *  correctly signed. A bare `status:'validated'` (no receipt) or a post-validation content edit fails. */
+/** Verify a spec's `validated_by` receipt: present, bound to this dim, matching the current content, the
+ *  judges were NOT builders, and correctly signed. A bare `status:'validated'` (no receipt), a post-validation
+ *  content edit, or a judge who also built the dim all fail. */
 export function verifyValidation(dimId: string, spec: FrontierSpec): boolean {
   const v = spec.validated_by;
   if (!v || !v.sig || !v.frozen_hash) return false;
   if (v.frozen_hash !== computeSpecHash(spec)) return false;            // content edited since validation
-  return v.sig === signValidation(dimId, v.frozen_hash, v.judge_member_ids ?? []);
+  const judges = v.judge_member_ids ?? [];
+  const builders = v.builder_member_ids ?? [];
+  // builder-never-judges, BOUND into the receipt: a judge who also built the dim makes the validation
+  // self-certifying — reject it regardless of an otherwise-valid signature.
+  if (builders.some(b => judges.includes(b))) return false;
+  return v.sig === signValidation(dimId, v.frozen_hash, judges, builders);
 }
 
 export interface FrontierSpec {

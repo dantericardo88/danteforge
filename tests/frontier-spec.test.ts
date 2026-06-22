@@ -2,7 +2,7 @@ import { test, describe } from 'node:test';
 import assert from 'node:assert/strict';
 import {
   scaffoldFrontierSpec, seedLeaderTargetFromLadder, checkFrontierSpec, computeSpecHash, effectiveStatus,
-  looksLikeProductRun, resolveRunCommand, signValidation, type FrontierSpec,
+  looksLikeProductRun, resolveRunCommand, signValidation, verifyValidation, type FrontierSpec,
 } from '../src/core/frontier-spec.js';
 import { completeFrontierSpec } from '../src/core/frontier-spec-complete.js';
 import { runFrontierSpec } from '../src/cli/commands/frontier-spec.js';
@@ -516,6 +516,26 @@ describe('applyFrontierGate — 9.0 = frontier is now BINDING', () => {
     const r = applyFrontierGate(9.0, { id: 'dimX', frontier_spec: spec });
     assert.equal(r.score, 8.0, 'a post-validation edit breaks the frozen_hash binding');
     assert.equal(r.capped, true);
+  });
+
+  test('court-audit: a judge who ALSO built the dim invalidates the receipt (judge≠builder, bound)', () => {
+    const spec = { ...goodSpec(), status: 'validated' as const };
+    const hash = computeSpecHash(spec);
+    spec.frozen_hash = hash;
+    const judges = ['grok-build', 'codex'];
+    const builders = ['codex']; // codex BUILT the dim AND is listed as a judge → self-certifying
+    spec.validated_by = { frozen_hash: hash, judge_member_ids: judges, builder_member_ids: builders, validated_at: 'now', sig: signValidation('dimX', hash, judges, builders) };
+    assert.equal(verifyValidation('dimX', spec), false, 'a judge who built the dim must invalidate the validation');
+  });
+
+  test('court-audit: judges disjoint from builders, correctly signed → verifies', () => {
+    const spec = { ...goodSpec(), status: 'validated' as const };
+    const hash = computeSpecHash(spec);
+    spec.frozen_hash = hash;
+    const judges = ['grok-build', 'gemini-cli'];
+    const builders = ['codex', 'claude-code'];
+    spec.validated_by = { frozen_hash: hash, judge_member_ids: judges, builder_member_ids: builders, validated_at: 'now', sig: signValidation('dimX', hash, judges, builders) };
+    assert.equal(verifyValidation('dimX', spec), true);
   });
 
   test('a 9.0 with a STALE (edited-after-freeze) spec is capped to 8.0', () => {

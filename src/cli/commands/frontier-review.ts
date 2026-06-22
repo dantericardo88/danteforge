@@ -182,8 +182,9 @@ export async function runFrontierReviewCli(options: FrontierReviewCliOptions): P
       spec.validated_by = {
         frozen_hash: frozenHash,
         judge_member_ids: passingJudges,
+        builder_member_ids: excludedList, // bind the excluded builders so judge∩builder is verifiable later
         validated_at: now,
-        sig: signValidation(options.dimId, frozenHash, passingJudges),
+        sig: signValidation(options.dimId, frozenHash, passingJudges, excludedList),
       };
       await saveFn(matrix, cwd); validatedWritten = true;
       // Sample into the non-blocking human-audit queue (the court can't catch a perfect fixture).
