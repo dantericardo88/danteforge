@@ -377,14 +377,22 @@ export async function makePlanConsultPacket(prompt: string, cwd: string): Promis
 
 /** CONCURRENT build: freeze each dim's spec, then council --parallel builds them in isolated
  *  worktrees with the cross-member merge court, merging approved work to main. */
-export async function defaultBuildAll(cwd: string, assignments: { memberId: CouncilMemberId; dimId: string }[], members: CouncilMemberId[]): Promise<void> {
+export async function defaultBuildAll(cwd: string, assignments: { memberId: CouncilMemberId; dimId: string }[], members: CouncilMemberId[], slots?: { slotsPerMember?: number; memberSlots?: string }): Promise<void> {
   const dims = assignments.map(a => a.dimId);
   // init BEFORE freeze (same missing-init root cause as the sequential path): freeze throws on a dim
   // with no spec. init is a no-op when a spec already exists. (Parallel promote still runs the court
   // even on an incomplete spec — a noted follow-up; the court honestly rejects an unvalidated spec.)
   for (const d of dims) { await df(cwd, ['frontier-spec', 'init', d, '--write']); await df(cwd, ['frontier-spec', 'freeze', d, '--write']); }
   if (members.length >= 2) {
-    await df(cwd, ['council', '--parallel', '--members', members.join(','), '--focus-dims', dims.join(','), '--rounds', '1']);
+    // Thread the slot control so each member spins up N sub-agents on ITS dim (M members × N slots =
+    // M*N worktrees). Without this the loop ran 1 agent/member; the operator wants 2–4 each.
+    const slotArgs: string[] = [];
+    if (slots?.slotsPerMember) slotArgs.push('--slots-per-member', String(slots.slotsPerMember));
+    if (slots?.memberSlots) slotArgs.push('--member-slots', slots.memberSlots);
+    // `council --parallel` REQUIRES a --goal (else it exits 1 before spawning any agent — the parallel build
+    // silently failed without this). Each member then builds its OWN focus dim toward that dim's frozen bar.
+    const goal = 'Build the REAL capability toward each focus dim\'s frozen frontier_spec competitor bar. The frontier-review court validates ONLY genuine, runnable progress toward that bar — no stubs, no fabricated evidence.';
+    await df(cwd, ['council', '--parallel', '--members', members.join(','), '--focus-dims', dims.join(','), '--rounds', '1', '--goal', goal, ...slotArgs]);
   } else {
     for (const a of assignments) await df(cwd, ['council-crusade', '--focus-dims', a.dimId, '--goal', `Close frontier_spec for ${a.dimId}`]);
   }

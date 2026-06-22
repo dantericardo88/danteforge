@@ -51,6 +51,11 @@ export interface AscendFrontierOptions {
   /** Dims excluded from the loop (e.g. code_generation, whose grade is cloud-only) — never selected for
    *  setup/build/push, so a local run can drive the safe dims to a court-9 without the heavy Docker grade. */
   skipDims?: string[];
+  /** Parallel (--parallel) sub-agents per member: each council member spins up N agents on ITS assigned dim
+   *  (M members × N = M*N worktrees). The operator's "2–4 agents each". Threaded to `council --parallel`. */
+  slotsPerMember?: number;
+  /** Per-member slot overrides for --parallel, e.g. "claude-code:4,codex:4" (overrides slotsPerMember). */
+  memberSlots?: string;
   /** No-progress setup/build cycles before a stuck dim is ceilinged (default = maxAttemptsPerDim). */
   maxBuildAttempts?: number;
   json?: boolean;
@@ -218,6 +223,8 @@ export async function runAscendFrontier(options: AscendFrontierOptions): Promise
   const maxCycles = options.maxCycles ?? 200;
   const maxAttemptsPerDim = options.maxAttemptsPerDim ?? 3;
   const skipDims = options.skipDims ?? [];
+  const slotsPerMember = options.slotsPerMember;
+  const memberSlots = options.memberSlots;
   const now = options._now ?? (() => new Date().toISOString());
   const buildState = options._buildState ?? defaultBuildState;
   // Discover the council once (parallel mode) — reused by define, build-to-7, and push fan-out.
@@ -495,7 +502,7 @@ export async function runAscendFrontier(options: AscendFrontierOptions): Promise
           if (assignments.length === 0) break;
           logger.info(`[ascend-frontier] parallel round: ${assignments.map(a => `${a.memberId}→${a.dimId}`).join(', ')}`);
           const round = await runParallelRound(cwd, assignments, {
-            buildAll: options._buildAll ?? ((c, asg) => defaultBuildAll(c, asg, liveMembers)),
+            buildAll: options._buildAll ?? ((c, asg) => defaultBuildAll(c, asg, liveMembers, { slotsPerMember, memberSlots })),
             promoteOne: options._promoteOne ?? defaultPromoteOne,
             nowIso: now(),
           });
