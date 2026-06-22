@@ -2,7 +2,8 @@ import { test, describe } from 'node:test';
 import assert from 'node:assert/strict';
 import {
   scaffoldFrontierSpec, seedLeaderTargetFromLadder, checkFrontierSpec, computeSpecHash, effectiveStatus,
-  looksLikeProductRun, resolveRunCommand, signValidation, verifyValidation, type FrontierSpec,
+  looksLikeProductRun, resolveRunCommand, signValidation, verifyValidation,
+  signBuilderProvenance, verifyBuilderProvenance, type FrontierSpec,
 } from '../src/core/frontier-spec.js';
 import { completeFrontierSpec } from '../src/core/frontier-spec-complete.js';
 import { runFrontierSpec } from '../src/cli/commands/frontier-spec.js';
@@ -620,5 +621,35 @@ describe('runFrontierSpec command flow', () => {
     assert.equal(r.completed, undefined, 'completer skipped');
     assert.ok(spec.real_user_path.observable_artifacts.some(a => /TODO/.test(a.path)), 'scaffold sentinel remains');
     assert.equal(spec.real_user_path.realistic_inputs, undefined);
+  });
+});
+
+describe('builder-provenance token — peer-review judging without re-opening self-certification (CH-061)', () => {
+  test('a kernel-signed token verifies for EXACTLY its dim + builder set', () => {
+    const tok = signBuilderProvenance('functionality', ['codex']);
+    assert.equal(verifyBuilderProvenance('functionality', ['codex'], tok), true);
+  });
+
+  test('a forged / garbage token is REJECTED (the agent has no kernel secret)', () => {
+    assert.equal(verifyBuilderProvenance('functionality', ['codex'], 'deadbeefdeadbeefdeadbeefdeadbeef'), false);
+    assert.equal(verifyBuilderProvenance('functionality', ['codex'], undefined), false);
+  });
+
+  test('a token bound to one builder is REJECTED for a different builder (no self-seating)', () => {
+    const tokForClaude = signBuilderProvenance('functionality', ['claude-code']);
+    // An agent that built the dim (claude-code) cannot present claude's token while claiming codex built it
+    // to re-seat itself as judge: the token only excludes who it names.
+    assert.equal(verifyBuilderProvenance('functionality', ['codex'], tokForClaude), false);
+  });
+
+  test('a token is bound to its dim — not reusable across dims', () => {
+    const tok = signBuilderProvenance('functionality', ['codex']);
+    assert.equal(verifyBuilderProvenance('security', ['codex'], tok), false);
+  });
+
+  test('order-independent over the builder set; empty builders never verifies', () => {
+    const tok = signBuilderProvenance('functionality', ['codex', 'claude-code']);
+    assert.equal(verifyBuilderProvenance('functionality', ['claude-code', 'codex'], tok), true, 'sorted internally');
+    assert.equal(verifyBuilderProvenance('functionality', [], signBuilderProvenance('functionality', [])), false);
   });
 });

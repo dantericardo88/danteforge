@@ -11,7 +11,7 @@ import path from 'node:path';
 import fs from 'node:fs/promises';
 import { loadMatrix, saveMatrix, type CompeteMatrix } from '../../core/compete-matrix.js';
 import { logger } from '../../core/logger.js';
-import { effectiveStatus, computeSpecHash, signValidation, type FrontierSpec } from '../../core/frontier-spec.js';
+import { effectiveStatus, computeSpecHash, signValidation, verifyBuilderProvenance, type FrontierSpec } from '../../core/frontier-spec.js';
 import { writeCeilingReceipt } from '../../core/ceiling-receipt.js';
 import { enqueueAudit, type AuditEscrowEntry } from '../../core/audit-escrow.js';
 import {
@@ -31,6 +31,11 @@ export interface FrontierReviewCliOptions {
    *  from judging. Leaves only judge-only members (grok) as judges; if that is < minJudges the court
    *  refuses to convene rather than letting a builder judge its own work. (Gap #3-full.) */
   excludeBuilderIds?: CouncilMemberId[];
+  /** A KERNEL-signed token (signBuilderProvenance) attesting the REAL builder(s) of this dim. When it verifies
+   *  against the excluded builder set, the court seats PEER judges — build-eligible members that did NOT build
+   *  this dim (claude judges a codex-built dim) — instead of the over-broad build-eligible floor. An agent
+   *  cannot forge it (no kernel secret), so a manual/forged invocation still falls back to the safe floor. */
+  builderProvenanceToken?: string;
   write?: boolean;
   json?: boolean;
   _loadMatrix?: (cwd: string) => Promise<CompeteMatrix | null>;
@@ -139,12 +144,16 @@ export async function runFrontierReviewCli(options: FrontierReviewCliOptions): P
   // sequential builder roster). What remains is the pool of genuinely independent judges.
   const excluded = new Set<CouncilMemberId>(options.excludeBuilderIds ?? []);
   if (options.builderMemberId) excluded.add(options.builderMemberId);
-  // BUILDER EXCLUSION IS A FLOOR, NOT AN EITHER/OR (court-audit #4 + #5). Always exclude EVERY
-  // build-eligible member so a builder can NEVER judge its own dim — naming an unrelated judge in
-  // --exclude-builders (e.g. `--exclude-builders grok-build`) must not re-seat codex/claude as judges.
-  // Only judge-only members (grok/gemini) survive. Tests inject _discoverMembers with explicit
-  // membership, so this real-roster floor fires only on genuine CLI/orchestrated invocations.
-  if (!options._discoverMembers) {
+  // BUILDER EXCLUSION IS A FLOOR (court-audit #4 + #5) — UNLESS the kernel vouches for who built this dim.
+  // The named builder(s) above are always excluded. The remaining question is whether the OTHER build-eligible
+  // members may judge. With a KERNEL-SIGNED builder-provenance token naming EXACTLY those builders for this
+  // dim, YES: they did not build it, so they are genuine independent PEERS (claude judges a codex-built dim) —
+  // this restores the roster's original "build AND judge" design and gives a single-builder (parallel) dim a
+  // real 2nd opinion now that gemini is gone. WITHOUT a valid token (a manual or agent-forged invocation), the
+  // floor holds: exclude EVERY build-eligible member so a builder can never re-seat itself to judge its own
+  // work. An agent cannot forge the token (no kernel secret). Tests inject _discoverMembers (skips the floor).
+  const peerReview = verifyBuilderProvenance(options.dimId, [...excluded], options.builderProvenanceToken);
+  if (!peerReview && !options._discoverMembers) {
     const { discoverCouncil } = await import('./council.js');
     for (const mm of await discoverCouncil()) if (!mm.judgeOnly) excluded.add(mm.id as CouncilMemberId);
   }

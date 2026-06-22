@@ -305,6 +305,7 @@ program
   .option('--write', 'Apply the verdict: set frontier_spec.status=validated on PASS, write a ceiling receipt on an agreed honest-ceiling')
   .option('--builder <memberId>', 'The member that built this dim — excluded from judging (parallel mode, builder-never-judges)')
   .option('--exclude-builders <ids>', 'Comma-separated members that ALL contributed to the build (sequential/multi-builder mode) — every one excluded from judging so a builder never judges its own dim')
+  .option('--builder-provenance-token <token>', 'KERNEL-signed token attesting who built this dim — lets members that did NOT build it judge as independent peers (set by the orchestrator; an agent cannot forge it)')
   .option('--min-judges <n>', 'Minimum cross-member judges (default: min(2, available))')
   .option('--json', 'Machine-readable output')
   .option('--cwd <path>', 'Project directory')
@@ -317,6 +318,7 @@ program
           write: opts.write as boolean | undefined,
           builderMemberId: opts.builder as never,
           excludeBuilderIds: opts.excludeBuilders ? (opts.excludeBuilders as string).split(',').map(s => s.trim()).filter(Boolean) as never : undefined,
+          builderProvenanceToken: opts.builderProvenanceToken as string | undefined,
           // A 9.0 needs ≥2 independent judges — never honor --min-judges 1 (court-audit #6).
           minJudges: opts.minJudges ? Math.max(2, parseInt(opts.minJudges as string, 10)) : undefined,
           json: opts.json as boolean | undefined,

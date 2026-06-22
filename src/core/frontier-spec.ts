@@ -84,6 +84,22 @@ export function verifyValidation(dimId: string, spec: FrontierSpec): boolean {
   return v.sig === signValidation(dimId, v.frozen_hash, judges, builders);
 }
 
+/** Sign a builder-provenance token: a KERNEL attestation of which member(s) actually built `dimId`. The court
+ *  uses it to seat genuine PEER judges — members that did NOT build this dim (e.g. claude judges a codex-built
+ *  dim) — instead of the over-broad "no build-eligible member may judge ANY dim" floor. Only the kernel holds
+ *  `kernelSecret()`, so a build agent cannot forge a token to re-seat itself as judge of its own work. */
+export function signBuilderProvenance(dimId: string, builders: string[]): string {
+  const b = [...builders].sort().join(',');
+  return createHmac('sha256', kernelSecret()).update(`court-builder-provenance|${dimId}|${b}`).digest('hex').slice(0, 32);
+}
+
+/** Verify a builder-provenance token names EXACTLY the given builders for this dim and is kernel-signed.
+ *  Empty builders or a missing/forged token → false (the court then keeps the safe floor). */
+export function verifyBuilderProvenance(dimId: string, builders: string[], token: string | undefined): boolean {
+  if (!token || builders.length === 0) return false;
+  return token === signBuilderProvenance(dimId, builders);
+}
+
 export interface FrontierSpec {
   version: number;
   target_score: number;

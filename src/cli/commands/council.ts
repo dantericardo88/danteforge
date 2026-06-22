@@ -161,18 +161,18 @@ export function makeJudgeLease(cwd: string): AgentLease {
 export async function discoverCouncil(allowedMemberIds?: string[]): Promise<CouncilMember[]> {
   const dummy = makeWorkPacket('probe', process.cwd());
 
-  // Roster: Codex + Claude Code BUILD (and judge). Grok (xAI) and Gemini/Antigravity (Google) are the
-  // reserved JUDGE-ONLY members — neither builds. Two judge-only members of distinct model families give
-  // the independent court REDUNDANCY (CH-023): a builder-excluded court can still seat ≥2 independent
-  // judges even if one judge's CLI is down, and no single builder pair can self-certify. Both CLIs were
-  // pulled from BUILDING for flakiness (grok parse errors/502s; gemini quota/API limits), but judging is
-  // the lighter role they handle fine, and a down judge just isn't available (graceful degrade). The
-  // DANTEFORGE_COUNCIL_MEMBERS filter constrains the BUILDER pool only — judge-only members bypass it.
+  // Roster: Codex + Claude Code BUILD (and judge dims they did NOT build — peer review). Grok (xAI) is the
+  // reserved JUDGE-ONLY member. Gemini/Antigravity was REMOVED 2026-06-22 (CH-061): Google deprecated the
+  // standalone `gemini` CLI (IneligibleTierError) and the `agy` replacement hangs in --print (needs an
+  // interactive Google login the loop can't perform) — a permanently dead judge slot. The independent court's
+  // 2nd opinion now comes from PEER REVIEW: with a kernel-signed builder-provenance token, a build-eligible
+  // member judges dims it did not build (claude judges codex's dims and vice versa) — so a single-builder
+  // (parallel) dim seats {the other builder + grok} = 2 reliable independent judges using only models that
+  // actually work here. The DANTEFORGE_COUNCIL_MEMBERS filter constrains the BUILDER pool only — grok bypasses it.
   const ALL_PROBES: Array<{ id: CouncilMemberId; label: string; judgeOnly?: boolean; adapter: { isAvailable(): Promise<boolean> } }> = [
     { id: 'codex', label: 'Codex (OpenAI subscription)', adapter: new CodexAdapter({ workPacket: dummy }) },
     { id: 'claude-code', label: 'Claude Code (claude binary)', adapter: new ClaudeCodeAdapter({ workPacket: dummy }) },
     { id: 'grok-build', label: 'Grok Build (xAI — judge only)', judgeOnly: true, adapter: new GrokBuildAdapter({ workPacket: dummy }) },
-    { id: 'gemini-cli', label: 'Gemini / Antigravity (Google — judge only)', judgeOnly: true, adapter: new GeminiCLIAdapter({ workPacket: dummy }) },
   ];
 
   // Member filter: explicit arg → env var → all members. This filter constrains the BUILDER pool
