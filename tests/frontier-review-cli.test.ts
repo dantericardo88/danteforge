@@ -6,8 +6,20 @@ import type { FrontierSpec } from '../src/core/frontier-spec.js';
 import { computeSpecHash } from '../src/core/frontier-spec.js';
 import type { CouncilMemberId } from '../src/matrix/engines/council-scheduler.js';
 import { makeEvidenceKey, type OutcomeEvidence, type OutcomeEvidenceEntry } from '../src/matrix/types/outcome.js';
+import type { CIPResult } from '../src/core/completion-integrity.js';
 
 const DIM = 'repo_level_context';
+
+/** CH-062: the CIP gate that runs before a VALIDATED verdict is written as a 9.0. The real runCIPCheck reads
+ *  matrix.json from disk + re-executes outcomes, so the CLI tests inject it via the _runCIP seam. */
+const passCIP = (): CIPResult => ({
+  dimensionId: DIM, cipScore: 9.0, storedScore: 9.0, cipClass: 'verified', blocksFrontierReached: false,
+  gaps: [], stubsFound: 0, outcomesRun: 3, outcomesPassed: 3, capabilityTestPassed: true, irrelevantOutcomes: 0, evidenceAgeDays: 0,
+});
+const blockCIP = (): CIPResult => ({
+  ...passCIP(), blocksFrontierReached: true, capabilityTestPassed: false, outcomesPassed: 0, stubsFound: 2,
+  gaps: ['capability_test failed (exit 1)', 'outcomes 0/3 passing', '2 stub(s) found'],
+});
 
 /** Evidence backing the 3 declared real-user-path outcomes. `sessions` maps outcomeId → session_id;
  *  vary it to exercise the deterministic pre-court receipt gate (≥3 passing T5+ across ≥2 sessions). */
@@ -60,11 +72,55 @@ describe('frontier-review CLI — court verdict drives validated/ceiling', () =>
       _runJudge: async () => 'VERDICT: PASS\nCONFIDENCE: HIGH\nREASON: genuine repo map matching Cursor',
       _readArtifact: async () => '{"symbols":990}',
       _loadEvidence: async () => goodEvidence(),
+      _runCIP: async () => passCIP(),
       _enqueueAudit: async () => {},
       _now: '2026-06-03T00:00:00.000Z',
     });
     assert.equal(r.result.verdict, 'VALIDATED');
     assert.equal(r.validatedWritten, true);
+    const dim = (saved as unknown as { dimensions: Array<{ frontier_spec: FrontierSpec }> })!.dimensions[0]!;
+    assert.equal(dim.frontier_spec.status, 'validated');
+  });
+
+  test('CH-062: court VALIDATED but CIP BLOCKS → NO 9.0 written, a ceiling instead (stub/zero-outcome backstop)', async () => {
+    const m = matrix(frozenSpec());
+    let saved: CompeteMatrix | null = null;
+    let ceilingPath = '';
+    const r = await runFrontierReviewCli({
+      dimId: 'repo_level_context', write: true,
+      _loadMatrix: async () => m, _saveMatrix: async (mm) => { saved = mm; },
+      _discoverMembers: async () => MEMBERS,
+      _runJudge: async () => 'VERDICT: PASS\nCONFIDENCE: HIGH\nREASON: looks genuine', // judges PASS...
+      _readArtifact: async () => '{"symbols":990}',
+      _loadEvidence: async () => goodEvidence(),
+      _runCIP: async () => blockCIP(), // ...but CIP catches stub/failing-capability_test evidence
+      _writeCeiling: async (p) => { ceilingPath = p; },
+      _enqueueAudit: async () => {},
+      _now: '2026-06-03T00:00:00.000Z',
+    });
+    assert.equal(r.result.verdict, 'VALIDATED', 'the court honestly passed — CIP is a SEPARATE structural backstop');
+    assert.equal(r.validatedWritten, false, 'a court PASS does NOT bypass CIP — no 9.0 is written');
+    assert.equal(r.ceilingWritten, true, 'the dim is honestly ceilinged instead');
+    assert.equal(saved, null, 'frontier_spec.status is never set to validated');
+    assert.match(ceilingPath, /ceilings[/\\]repo_level_context\.json$/);
+  });
+
+  test('CH-062: court VALIDATED + CIP PASSES → the 9.0 is written (the gate does not block a genuine dim)', async () => {
+    const m = matrix(frozenSpec());
+    let saved: CompeteMatrix | null = null;
+    const r = await runFrontierReviewCli({
+      dimId: 'repo_level_context', write: true,
+      _loadMatrix: async () => m, _saveMatrix: async (mm) => { saved = mm; },
+      _discoverMembers: async () => MEMBERS,
+      _runJudge: async () => 'VERDICT: PASS\nCONFIDENCE: HIGH\nREASON: genuine',
+      _readArtifact: async () => '{"symbols":990}',
+      _loadEvidence: async () => goodEvidence(),
+      _runCIP: async () => passCIP(),
+      _enqueueAudit: async () => {},
+      _now: '2026-06-03T00:00:00.000Z',
+    });
+    assert.equal(r.validatedWritten, true);
+    assert.equal(r.ceilingWritten, false);
     const dim = (saved as unknown as { dimensions: Array<{ frontier_spec: FrontierSpec }> })!.dimensions[0]!;
     assert.equal(dim.frontier_spec.status, 'validated');
   });

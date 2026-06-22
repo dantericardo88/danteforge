@@ -12,6 +12,7 @@ import fs from 'node:fs/promises';
 import { loadMatrix, saveMatrix, type CompeteMatrix } from '../../core/compete-matrix.js';
 import { logger } from '../../core/logger.js';
 import { effectiveStatus, computeSpecHash, signValidation, verifyBuilderProvenance, type FrontierSpec } from '../../core/frontier-spec.js';
+import { runCIPCheck, type CIPResult } from '../../core/completion-integrity.js';
 import { writeCeilingReceipt } from '../../core/ceiling-receipt.js';
 import { enqueueAudit, type AuditEscrowEntry } from '../../core/audit-escrow.js';
 import {
@@ -36,6 +37,8 @@ export interface FrontierReviewCliOptions {
    *  this dim (claude judges a codex-built dim) — instead of the over-broad build-eligible floor. An agent
    *  cannot forge it (no kernel secret), so a manual/forged invocation still falls back to the safe floor. */
   builderProvenanceToken?: string;
+  /** Seam: the CIP integrity check run before a VALIDATED verdict is written as a 9.0 (CH-062). */
+  _runCIP?: (dimId: string) => Promise<CIPResult>;
   write?: boolean;
   json?: boolean;
   _loadMatrix?: (cwd: string) => Promise<CompeteMatrix | null>;
@@ -197,7 +200,16 @@ export async function runFrontierReviewCli(options: FrontierReviewCliOptions): P
     dissent: result.dissent, enqueuedAt: now, status: 'pending' as const,
   };
 
-  if (result.verdict === 'VALIDATED') {
+  // CH-062: a court PASS is necessary but NOT sufficient. CIP (runCIPCheck) is MANDATORY before FRONTIER_REACHED
+  // per the scoring doctrine — it runs the capability_test Fix-A gate, RE-EXECUTES the declared outcomes, scans
+  // for stubs, and compares the audited cipScore to the stored score. A VALIDATED verdict that fails it (two
+  // honest judges agreed on parity, but the evidence is stub/zero-outcome/failing-capability_test) is downgraded
+  // to a ceiling — never written as a 9. This closes the last false-9 vectors the council named.
+  const cip: CIPResult | null = result.verdict === 'VALIDATED'
+    ? (options._runCIP ? await options._runCIP(options.dimId) : await runCIPCheck(options.dimId, { cwd, target: 9.0 }))
+    : null;
+
+  if (result.verdict === 'VALIDATED' && cip && !cip.blocksFrontierReached) {
     logger.success(`[frontier-review] ${options.dimId}: VALIDATED — ${result.vote.summary}`);
     if (options.write) {
       // court-audit #1: write a verifiable receipt, not a bare string. It binds the validation to this
@@ -216,6 +228,18 @@ export async function runFrontierReviewCli(options: FrontierReviewCliOptions): P
       await saveFn(matrix, cwd); validatedWritten = true;
       // Sample into the non-blocking human-audit queue (the court can't catch a perfect fixture).
       await enqueue(cwd, { dimId: options.dimId, kind: 'validated-9.0', ...auditBase });
+    }
+  } else if (result.verdict === 'VALIDATED' && cip && cip.blocksFrontierReached) {
+    logger.warn(`[frontier-review] ${options.dimId}: court PASSED but CIP BLOCKS the 9.0 — ${cip.gaps.slice(0, 3).join('; ') || 'integrity audit failed'}`);
+    if (options.write) {
+      await writeCeilingReceipt(cwd, {
+        dimId: options.dimId, cap: 8.0, cause: 'audit-failed',
+        detail: `Court validated, but CIP blocked FRONTIER_REACHED (capability_test=${cip.capabilityTestPassed}, outcomes ${cip.outcomesPassed}/${cip.outcomesRun}, stubs ${cip.stubsFound}): ${cip.gaps.join('; ')}`.slice(0, 400),
+        failedGates: ['cip'],
+        councilVote: { pass: result.vote.pass, fail: result.vote.fail, summary: result.vote.summary },
+        recordedAt: now,
+      }, options._writeCeiling);
+      ceilingWritten = true;
     }
   } else {
     logger.warn(`[frontier-review] ${options.dimId}: REJECTED — ${result.vote.summary} (ceiling signal ${result.ceilingSignal}/${result.vote.total})`);

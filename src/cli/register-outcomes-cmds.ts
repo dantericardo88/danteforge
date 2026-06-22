@@ -324,7 +324,8 @@ program
           json: opts.json as boolean | undefined,
           cwd: opts.cwd as string | undefined,
         });
-        if (r.result.verdict !== 'VALIDATED') process.exitCode = 1;
+        // Exit 1 on a REJECTED court OR a CIP-downgraded VALIDATED (a ceiling was written instead of a 9.0).
+        if (r.result.verdict !== 'VALIDATED' || r.ceilingWritten) process.exitCode = 1;
       } catch (err) {
         const { formatAndLogError } = await import('../core/format-error.js');
         formatAndLogError(err, 'frontier-review');
