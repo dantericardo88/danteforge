@@ -141,6 +141,8 @@ export async function getFrontierState(cwd: string, options: { dim?: string; stu
       declared_ceiling: (d as unknown as Record<string, unknown>)['declared_ceiling'] as CapabilityTier | undefined,
       scores: d.scores,
       legacy_score: (d as unknown as Record<string, unknown>)['legacy_score'] as number | undefined,
+      // Thread the spec so the terminal counter can credit a COURT-VALIDATED dim (the deadlock fix).
+      frontier_spec: (d as unknown as Record<string, unknown>)['frontier_spec'] as import('../../core/frontier-spec.js').FrontierSpec | undefined,
     }));
 
   const rawState = computeProjectFrontierState({

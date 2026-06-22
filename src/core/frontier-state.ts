@@ -18,6 +18,7 @@ import { computeDerivedScoreWithBreakdown, type DimensionForScoring } from './de
 import type { CapabilityTier } from '../matrix/types/capability-test.js';
 import type { OutcomeEvidence, Outcome } from '../matrix/types/outcome.js';
 import { isOutcomePassing, makeEvidenceKey } from '../matrix/types/outcome.js';
+import { verifyValidation, type FrontierSpec } from './frontier-spec.js';
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
@@ -39,6 +40,9 @@ export interface DimensionFrontierResult {
     allCeilingOutcomesPass: boolean;
     noActiveDispensation: boolean;
     productionUsageFreshOrLowTier: boolean;
+    /** PRE-launch: the dim is court-VALIDATED (signed receipt). Distinguishes a self-consistent frontier
+     *  from a world-grounded (production-usage-fresh) one in the report. */
+    courtValidated: boolean;
   };
   /** Number of crusade waves since this dim last gained a new passing outcome. */
   wavesSinceProgress?: number;
@@ -72,6 +76,9 @@ export interface ProjectFrontierInputs {
     declared_ceiling?: CapabilityTier;
     scores?: { self?: number };
     legacy_score?: number;
+    /** The dim's frontier_spec — needed so the terminal can accept a COURT-VALIDATED dim (signed receipt)
+     *  as at-frontier, not ONLY a production-usage-fresh outcome. The caller must thread this through. */
+    frontier_spec?: FrontierSpec;
   }>;
   evidence: OutcomeEvidence;
   /** Map of dimId → wavesSinceProgress, from DanteState. */
@@ -80,6 +87,11 @@ export interface ProjectFrontierInputs {
   dispensations?: Record<string, string[]>;
   /** Threshold for marking a dim as stuck. Default 3. */
   stuckThreshold?: number;
+  /** Launch posture (default 'pre-launch'). PRE-launch, a court-validated dim counts as at-frontier (the
+   *  self-consistent frontier — court is the independent authority). POST-launch, the stricter
+   *  production-usage-fresh outcome is REQUIRED — court-validation alone no longer suffices. This keeps
+   *  the two distinct (self-consistent vs world-grounded) and re-tightenable once the project ships. */
+  launchStatus?: 'pre-launch' | 'post-launch';
 }
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
@@ -104,6 +116,7 @@ export function computeDimensionFrontierStatus(
     wavesSinceProgress?: number;
     dispensations?: string[];
     stuckThreshold?: number;
+    launchStatus?: 'pre-launch' | 'post-launch';
   } = {},
 ): DimensionFrontierResult {
   const dfs: DimensionForScoring = {
@@ -127,6 +140,7 @@ export function computeDimensionFrontierStatus(
         allCeilingOutcomesPass: false,
         noActiveDispensation: dispensationsFor(dim.id, options.dispensations ? { [dim.id]: options.dispensations } : undefined).length === 0,
         productionUsageFreshOrLowTier: false,
+        courtValidated: false,
       },
       wavesSinceProgress: options.wavesSinceProgress,
       reason: 'dimension has not declared outcomes — run `danteforge outcomes migrate`',
@@ -152,19 +166,25 @@ export function computeDimensionFrontierStatus(
   const dispList = options.dispensations ?? [];
   const noDispensation = dispList.length === 0;
 
-  // Condition 3: production-usage-fresh OR ceiling < T3
+  // Condition 3: terminal product proof. Lower tiers (<T3) auto-pass. For T3+, at-frontier requires EITHER
+  //   (a) a passing production-usage-fresh outcome (the stricter wiring-freshness tier — REQUIRED post-launch), OR
+  //   (b) PRE-LAUNCH only: a COURT-VALIDATED spec — frontier_spec.status==='validated' AND verifyValidation()
+  //       confirms the SIGNED receipt (the independent semantic-parity gate; the same authority ascend-frontier's
+  //       isDimDone already treats as terminal). Reading the SIGNED receipt (NOT a dim-writable flag) keeps this
+  //       kernel-owned (CLAUDE.md Fix B). This resolves the deadlock where a court-validated 9.0 never counted as
+  //       at-frontier and the crusade loop could spin forever / refuse to expand.
   let prodUsageOk: boolean;
+  let courtValidated = false;
   if (!tierAtLeast(ceiling, 'T3')) {
     prodUsageOk = true; // Lower tiers don't require production-reach.
   } else {
-    const freshOutcome = dim.outcomes.find(o => o.kind === 'production-usage-fresh');
-    if (!freshOutcome) {
-      // T3+ dim should declare a production-usage-fresh outcome. Without it we're conservative: fail.
-      prodUsageOk = false;
-    } else {
-      const entry = evidence.get(makeEvidenceKey(dim.id, freshOutcome.id));
-      prodUsageOk = isOutcomePassing(freshOutcome, entry);
-    }
+    const freshOutcome = dim.outcomes?.find(o => o.kind === 'production-usage-fresh');
+    const freshOk = freshOutcome
+      ? isOutcomePassing(freshOutcome, evidence.get(makeEvidenceKey(dim.id, freshOutcome.id)))
+      : false;
+    courtValidated = !!(dim.frontier_spec?.status === 'validated' && verifyValidation(dim.id, dim.frontier_spec));
+    const preLaunch = (options.launchStatus ?? 'pre-launch') === 'pre-launch';
+    prodUsageOk = freshOk || (preLaunch && courtValidated);
   }
 
   const atFrontier = allCeilingPass && noDispensation && prodUsageOk;
@@ -178,7 +198,10 @@ export function computeDimensionFrontierStatus(
     reason = `dispensation outstanding: ${dispList.join(', ')}`;
   } else if (atFrontier) {
     status = 'at-frontier';
-    reason = `all ${ceiling} outcomes pass AND production-usage-fresh passes AND no dispensations`;
+    // LABEL the grounding so a self-consistent (court) frontier is NEVER mistaken for world-grounded usage.
+    reason = courtValidated
+      ? `all ${ceiling} outcomes pass AND court-VALIDATED (signed receipt) — self-consistent frontier (pre-launch); production-usage-fresh not yet required`
+      : `all ${ceiling} outcomes pass AND production-usage-fresh passes AND no dispensations — world-grounded`;
   } else if (waves >= stuckThreshold) {
     status = 'stuck';
     reason = `${waves} crusade waves without a new passing outcome at ${ceiling}; halt for operator review`;
@@ -186,7 +209,7 @@ export function computeDimensionFrontierStatus(
     status = 'progressing';
     const missing: string[] = [];
     if (!allCeilingPass) missing.push(`outcomes at ${ceiling} not all passing`);
-    if (!prodUsageOk) missing.push(`production-usage-fresh missing or failing (required for T3+)`);
+    if (!prodUsageOk) missing.push(`needs a court-VALIDATED spec (pre-launch) OR a passing production-usage-fresh outcome (T3+)`);
     reason = `progressing — ${missing.join('; ')}`;
   }
 
@@ -200,6 +223,7 @@ export function computeDimensionFrontierStatus(
       allCeilingOutcomesPass: allCeilingPass,
       noActiveDispensation: noDispensation,
       productionUsageFreshOrLowTier: prodUsageOk,
+      courtValidated,
     },
     wavesSinceProgress: options.wavesSinceProgress,
     reason,
@@ -215,6 +239,7 @@ export function computeProjectFrontierState(input: ProjectFrontierInputs): Proje
       wavesSinceProgress: input.wavesSinceProgress?.[dim.id],
       dispensations: input.dispensations?.[dim.id],
       stuckThreshold: input.stuckThreshold,
+      launchStatus: input.launchStatus,
     }));
   }
 

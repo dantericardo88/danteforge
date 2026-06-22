@@ -254,7 +254,7 @@ function registerColdStart(matrix: Command): void {
         logger.info(`[cold-start] 3/4 dimensions synthesized: ${dimCount}`);
 
         // Council pivot (2026-06-22): in local mode (no LLM), gather REAL repo signals so dimensions ground
-        // from evidence (build/typecheck/lint) instead of the placeholder 0. Dims with no automatable signal
+        // from evidence (build/typecheck/lint) instead of a hardcoded zero. Dims with no automatable signal
         // stay unscored (0) — honest, never fabricated. This is what makes cold-start useful on an arbitrary
         // repo without an API key. Tests are NOT auto-run (council hardware-risk guard).
         let repoSignals: import('../matrix-orchestration/analysis/repo-signal-grounding.js').RepoSignals | undefined;

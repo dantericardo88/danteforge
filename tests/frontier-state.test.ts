@@ -8,6 +8,28 @@ import { validateOutcomeForTier } from '../src/matrix/types/outcome.js';
 import type { CapabilityTier } from '../src/matrix/types/capability-test.js';
 import type { Outcome, OutcomeEvidence, OutcomeEvidenceEntry } from '../src/matrix/types/outcome.js';
 import { makeEvidenceKey } from '../src/matrix/types/outcome.js';
+import { signValidation, computeSpecHash } from '../src/core/frontier-spec.js';
+import type { FrontierSpec } from '../src/core/frontier-spec.js';
+
+function baseSpec(): FrontierSpec {
+  return {
+    version: 1, target_score: 9.0, status: 'validated',
+    leader_target: { competitor: 'Cursor', score: 9.1, observed_capability: 'frontier capability.' },
+    real_user_path: {
+      required_callsite: 'src/x.ts', run_command: 'node dist/index.js x {input}',
+      realistic_inputs: ['fixtures/a', 'fixtures/b'], observable_artifacts: [{ kind: 'file', path: 'out.json' }],
+    },
+    required_receipts: { min_t5_plus_outcomes: 3, min_distinct_sessions: 2, input_source: 'real-user-path' },
+  } as FrontierSpec;
+}
+function validatedSpec(dimId: string): FrontierSpec {
+  const spec = baseSpec();
+  const hash = computeSpecHash(spec);
+  (spec as { frozen_hash?: string }).frozen_hash = hash;
+  const judges = ['grok-build', 'gemini-cli'];
+  spec.validated_by = { frozen_hash: hash, judge_member_ids: judges, validated_at: 'now', sig: signValidation(dimId, hash, judges) };
+  return spec;
+}
 
 // ── Test helpers ──────────────────────────────────────────────────────────────
 
@@ -137,6 +159,35 @@ describe('computeDimensionFrontierStatus', () => {
     assert.equal(result.status, 'progressing');
     assert.equal(result.conditions.productionUsageFreshOrLowTier, false);
     assert.match(result.reason, /production-usage-fresh/);
+  });
+
+  it('court-VALIDATED dim (signed receipt) counts as at-frontier PRE-LAUNCH — the deadlock fix', () => {
+    const dim = {
+      id: 'x', declared_ceiling: 'T7' as const,
+      outcomes: [makeOutcome('a', 'T1'), makeOutcome('c', 'T7', { required_callsite: 'src/x.ts' })],
+      frontier_spec: validatedSpec('x'),
+    };
+    const evidence = makeEvidence([{ dim: 'x', outcomeId: 'a', passed: true }, { dim: 'x', outcomeId: 'c', passed: true }]);
+    // PRE-LAUNCH (default): a signed court-validation satisfies the terminal — no longer deadlocked.
+    const pre = computeDimensionFrontierStatus(dim, evidence);
+    assert.equal(pre.status, 'at-frontier');
+    assert.equal(pre.conditions.courtValidated, true);
+    assert.match(pre.reason, /self-consistent/);
+    // POST-LAUNCH: court-validation alone is NOT enough — the stricter production-usage-fresh is required.
+    const post = computeDimensionFrontierStatus(dim, evidence, { launchStatus: 'post-launch' });
+    assert.notEqual(post.status, 'at-frontier');
+  });
+
+  it('a status:validated spec WITHOUT a valid signed receipt does NOT reach at-frontier (forgery closed)', () => {
+    const dim = {
+      id: 'x', declared_ceiling: 'T7' as const,
+      outcomes: [makeOutcome('c', 'T7', { required_callsite: 'src/x.ts' })],
+      frontier_spec: baseSpec(), // hand-written status:'validated', NO validated_by receipt
+    };
+    const evidence = makeEvidence([{ dim: 'x', outcomeId: 'c', passed: true }]);
+    const r = computeDimensionFrontierStatus(dim, evidence);
+    assert.equal(r.conditions.courtValidated, false);
+    assert.notEqual(r.status, 'at-frontier');
   });
 
   it('returns at-frontier when T3 dim has passing production-usage-fresh', () => {
