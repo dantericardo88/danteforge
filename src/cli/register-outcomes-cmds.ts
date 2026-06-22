@@ -238,6 +238,7 @@ program
   .option('--max-cycles <n>', 'Global stop after N cycles (default 200)')
   .option('--max-attempts <n>', 'Novel push attempts per dim before an honest generator-ceiling (default 3)')
   .option('--max-build-attempts <n>', 'No-progress setup/build cycles before a stuck dim is ceilinged (default = max-attempts)')
+  .option('--skip-dims <ids>', 'Comma-separated dim ids to EXCLUDE from the loop (e.g. code_generation, whose SWE-bench grade is cloud-only) — lets a local run drive the SAFE dims to a court-9 without the heavy Docker grade')
   .option('--rehearse', 'Rehearsal: drive the FULL coordination layer against a scripted scratch repo (real planner/ledgers/ceilings, recorded work layer) — minutes, zero LLM cost; run before every live campaign')
   .option('--keep', 'With --rehearse: keep the scratch repo for inspection')
   .option('--json', 'Machine-readable result')
@@ -281,6 +282,7 @@ a ceiling instead of a 9. Build-to-7 uses harden-crusade (no member-spawn), so i
           maxCycles: opts.maxCycles ? parseInt(opts.maxCycles as string, 10) : undefined,
           maxAttemptsPerDim: opts.maxAttempts ? parseInt(opts.maxAttempts as string, 10) : undefined,
           maxBuildAttempts: opts.maxBuildAttempts ? parseInt(opts.maxBuildAttempts as string, 10) : undefined,
+          skipDims: opts.skipDims ? (opts.skipDims as string).split(',').map(s => s.trim()).filter(Boolean) : undefined,
           json: opts.json as boolean | undefined,
           cwd: opts.cwd as string | undefined,
         });

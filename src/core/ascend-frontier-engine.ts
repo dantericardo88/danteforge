@@ -44,6 +44,11 @@ export interface PlanOpts {
   maxBuildAttempts?: number;
   nowIso: string;
   buildTarget?: number; // default 7.0
+  /** Dims to EXCLUDE from the loop entirely — e.g. code_generation, whose build-to-7 runs the heavy
+   *  SWE-bench Docker grade that must NOT run on the workstation (it crashed it twice). Lets the autonomous
+   *  loop drive the SAFE dims through build→validate→court locally while a cloud box handles the excluded
+   *  ones separately. An excluded dim is simply never selected for setup/build/push. */
+  skipDims?: string[];
 }
 
 /** A dim is "complete" for STOP accounting: at the validated frontier OR carrying an active ceiling.
@@ -103,7 +108,11 @@ export function reconcileAuditVerdict(input: {
   return { frontierStatus, ceiling, mintedCeiling: null };
 }
 
-export function planNextAction(dims: DimState[], opts: PlanOpts): AscendAction {
+export function planNextAction(allDims: DimState[], opts: PlanOpts): AscendAction {
+  // Exclude skipped dims from EVERY selection (setup/build/push) so e.g. the cloud-only code_generation
+  // grade never wedges a local autonomous run. They're handled on a cloud box, not held against the loop.
+  const skip = new Set(opts.skipDims ?? []);
+  const dims = skip.size ? allDims.filter(d => !skip.has(d.id)) : allDims;
   const target = opts.buildTarget ?? 7.0;
   const maxBuild = opts.maxBuildAttempts ?? opts.maxAttemptsPerDim;
   const active = (d: DimState): boolean => d.ceiling != null && isCeilingActive(d.ceiling, opts.nowIso);

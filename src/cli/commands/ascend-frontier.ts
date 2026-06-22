@@ -48,6 +48,9 @@ export interface AscendFrontierOptions {
   parallel?: boolean;
   maxCycles?: number;
   maxAttemptsPerDim?: number;
+  /** Dims excluded from the loop (e.g. code_generation, whose grade is cloud-only) — never selected for
+   *  setup/build/push, so a local run can drive the safe dims to a court-9 without the heavy Docker grade. */
+  skipDims?: string[];
   /** No-progress setup/build cycles before a stuck dim is ceilinged (default = maxAttemptsPerDim). */
   maxBuildAttempts?: number;
   json?: boolean;
@@ -214,6 +217,7 @@ export async function runAscendFrontier(options: AscendFrontierOptions): Promise
   const cwd = path.resolve(options.cwd ?? process.cwd());
   const maxCycles = options.maxCycles ?? 200;
   const maxAttemptsPerDim = options.maxAttemptsPerDim ?? 3;
+  const skipDims = options.skipDims ?? [];
   const now = options._now ?? (() => new Date().toISOString());
   const buildState = options._buildState ?? defaultBuildState;
   // Discover the council once (parallel mode) — reused by define, build-to-7, and push fan-out.
@@ -399,7 +403,7 @@ export async function runAscendFrontier(options: AscendFrontierOptions): Promise
       d.setupAttempts = setupAttempts.get(d.id) ?? 0;
       d.buildAttempts = buildAttempts.get(d.id) ?? 0;
     }
-    const action = planNextAction(state, { maxAttemptsPerDim, maxBuildAttempts, buildTarget: BUILD_TARGET, nowIso: now() });
+    const action = planNextAction(state, { maxAttemptsPerDim, maxBuildAttempts, buildTarget: BUILD_TARGET, nowIso: now(), skipDims });
 
     if (action.type === 'done') { actions.push('done'); return await complete('done', action.summary); }
     if (action.type === 'stalled') { actions.push(`stalled:${action.reason}`); return await complete('stalled', action.reason); }

@@ -35,6 +35,16 @@ describe('planNextAction — honest autonomous sequencing', () => {
     assert.deepEqual(a, { type: 'push-to-9', dimId: 'b' });
   });
 
+  test('skipDims excludes a dim from EVERY selection (the cloud-only code_generation guard)', () => {
+    const dims = [dim({ id: 'code_generation', effectiveScore: 4.0 }), dim({ id: 'safe', effectiveScore: 8.0 })];
+    // Without skip, the below-7 dim is selected for build-to-7 (would trigger the heavy cloud grade):
+    assert.deepEqual(planNextAction(dims, OPTS), { type: 'build-to-7', dims: ['code_generation'] });
+    // With skip, code_generation never appears in ANY selected action — the loop advances to the safe dim:
+    const withSkip = planNextAction(dims, { ...OPTS, skipDims: ['code_generation'] });
+    assert.equal(withSkip.type, 'push-to-9');
+    assert.ok(!JSON.stringify(withSkip).includes('code_generation'), 'a skipped dim must never be selected');
+  });
+
   test('a dim that exhausted novel attempts → generator-ceiling (no infinite grind)', () => {
     const a = planNextAction([dim({ id: 'a', effectiveScore: 8.0, attempts: 3 })], OPTS);
     assert.equal(a.type, 'ceiling');
