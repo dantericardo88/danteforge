@@ -10,7 +10,7 @@ import path from 'node:path';
 import fs from 'node:fs/promises';
 import { randomUUID } from 'node:crypto';
 import { computeExcludedJudges } from '../src/cli/commands/frontier-review.js';
-import { buildersOfDimFromLedger } from '../src/cli/commands/ascend-frontier-push.js';
+import { buildersOfDimFromLedger, quorumPreflight } from '../src/cli/commands/ascend-frontier-push.js';
 import { signBuilderProvenance } from '../src/core/frontier-spec.js';
 import type { CouncilMemberId } from '../src/cli/commands/council.js';
 
@@ -92,5 +92,35 @@ describe('buildersOfDimFromLedger — authoritative provenance from the merge co
       const excluded = computeExcludedJudges('functionality', realBuilders, undefined, token, ROSTER);
       assert.deepEqual(sorted(excluded), ['codex'], 'the real builder is excluded; claude-code + grok judge as peers');
     } finally { await fs.rm(dir, { recursive: true, force: true }); }
+  });
+});
+
+describe('quorumPreflight — fail LOUD + actionable instead of a silent generator-ceiling (council #1 must-fix)', () => {
+  const AVAILABLE: CouncilMemberId[] = ['codex', 'claude-code', 'grok-build'];
+  const BUILD_ELIGIBLE: CouncilMemberId[] = ['codex', 'claude-code'];
+
+  test('peer review (one real builder) → the other builder + grok seatable = 2 → ok', () => {
+    assert.equal(quorumPreflight('functionality', AVAILABLE, ['codex'], BUILD_ELIGIBLE).ok, true);
+  });
+
+  test('no provenance → exclude-all floor → only grok → FAIL, pointing at --parallel (not a capability wall)', () => {
+    const pf = quorumPreflight('functionality', AVAILABLE, [], BUILD_ELIGIBLE);
+    assert.equal(pf.ok, false);
+    if (!pf.ok) {
+      assert.match(pf.detail, /Cannot convene 2 independent judges/);
+      assert.match(pf.detail, /--parallel/);
+      assert.match(pf.detail, /capability ceiling/i);
+    }
+  });
+
+  test('a dim BOTH members built → only grok → FAIL, pointing at a 3rd judge / --parallel', () => {
+    const pf = quorumPreflight('functionality', AVAILABLE, ['codex', 'claude-code'], BUILD_ELIGIBLE);
+    assert.equal(pf.ok, false);
+    if (!pf.ok) assert.match(pf.detail, /3rd independent judge|--parallel/);
+  });
+
+  test('grok outage + one builder → only the lone peer survives → FAIL (2-of-2 has no redundancy)', () => {
+    // available is just the 2 builders (grok down); excluding the one real builder leaves a single peer.
+    assert.equal(quorumPreflight('functionality', ['codex', 'claude-code'], ['codex'], BUILD_ELIGIBLE).ok, false);
   });
 });

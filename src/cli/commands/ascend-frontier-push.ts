@@ -271,6 +271,18 @@ export async function defaultPushTo9(
     // letting the two builders rubber-stamp each other. Independent 9.0 in sequential mode thus requires
     // ≥2 judge-only members; with one grok, use --parallel (single builder excluded + grok = 2 judges).
     const builders = await defaultDiscoverMembers(); // build-eligible only (judge-only already filtered)
+    // PREFLIGHT (council #1 must-fix): sequential mode excludes the WHOLE build roster → only grok remains.
+    // After gemini's removal that is <2 judges, so the court can NEVER convene — emit a CLEAR, actionable
+    // environment ceiling pointing at `--parallel` (where one builder is excluded and the peer + grok = 2),
+    // instead of letting the court throw judgeCount<2 → re-attempt churn → a misleading generator-ceiling that
+    // reads like a capability wall. 'environment' is not engine-bound, so it terminates cleanly without churn.
+    const availableAll = (await (await import('./council.js')).discoverCouncil()).filter(m => m.available).map(m => m.id as CouncilMemberId);
+    const pf = quorumPreflight(dimId, availableAll, [], builders);
+    if (!pf.ok) {
+      logger.warn(`[ascend-frontier] ${pf.detail}`);
+      return { verdict: 'REJECTED', courtRan: false, fingerprint: { dimId, command: '', artifactPath: '', gitSha: await headSha(cwd) },
+        ceiling: { cause: 'environment' as CeilingCause, detail: pf.detail } };
+    }
     const review = await runCli(cwd, ['frontier-review', dimId, '--write', '--json',
       ...(builders.length ? ['--exclude-builders', builders.join(',')] : [])]);
     const parsed = parseCourtOutput(review);
@@ -424,6 +436,29 @@ export async function buildersOfDimFromLedger(cwd: string, dimId: string): Promi
   return [...builders];
 }
 
+/** Preflight: CAN the frontier court seat >=2 independent judges for this dim, given the live roster, the
+ *  real builder(s) from the ledger, and the floor fallback? When it CANNOT, the loop must emit a clear,
+ *  ACTIONABLE environment ceiling instead of letting the court throw `judgeCount<2` and churning that into a
+ *  silent generator-ceiling (the council's #1 must-fix + the silent-seam guard). Pure → unit-tested.
+ *  - realBuilders empty (no/again-mismatched ledger) → the court will fall to the exclude-ALL floor: if that
+ *    leaves <2, the cause is a missing single-builder provenance — point the operator at `--parallel`/the wiring.
+ *  - realBuilders cover the whole build-eligible roster (a dim both members built) → honest over-exclusion. */
+export function quorumPreflight(
+  dimId: string,
+  availableMemberIds: CouncilMemberId[],
+  realBuilders: CouncilMemberId[],
+  buildEligible: CouncilMemberId[],
+): { ok: true } | { ok: false; detail: string } {
+  const excluded = new Set<CouncilMemberId>(realBuilders.length > 0 ? realBuilders : buildEligible);
+  const seatable = availableMemberIds.filter(id => !excluded.has(id));
+  if (seatable.length >= 2) return { ok: true };
+  const left = seatable.join(', ') || 'none';
+  const reason = realBuilders.length === 0
+    ? `no authoritative single-builder provenance (missing/mismatched SLOT_PROOF_LEDGER) → the court falls to the exclude-all floor, leaving only [${left}]. Run via \`ascend-frontier --parallel\` so the ledger records one builder per dim, or check the ledger/memberId wiring — do NOT read this as a capability ceiling.`
+    : `the recorded builder(s) [${realBuilders.join('+')}] cover the build-eligible roster, leaving only [${left}] to judge independently. Assign ONE builder per dim (--parallel) or seat a 3rd independent judge.`;
+  return { ok: false, detail: `Cannot convene 2 independent judges for ${dimId}: ${reason}` };
+}
+
 /** SERIAL promote of one dim: capture real-user-path evidence (variant-rotated), validate across
  *  sessions, then run the court with ALL build-eligible members EXCLUDED (builder-never-judges). Writes
  *  matrix.json — runParallelRound guarantees this runs one dim at a time, so no write races. */
@@ -489,6 +524,16 @@ export async function defaultPromoteOne(cwd: string, a: { memberId: CouncilMembe
   // floor (honest INSUFFICIENT when <2 judges remain) — never a guess that could let a real builder self-judge.
   const realBuilders = await buildersOfDimFromLedger(cwd, a.dimId);
   const allBuilders = await defaultDiscoverMembers(); // build-eligible roster (judge-only already filtered out)
+  // PREFLIGHT (council #1 must-fix + silent-seam guard): if a 2-judge independent quorum cannot be seated,
+  // emit a clear ACTIONABLE environment ceiling NOW — never let the court throw judgeCount<2 and have it
+  // churned into a silent generator-ceiling that reads like a capability wall (e.g. a ledger/memberId
+  // mismatch silently falling to the floor → grok alone). 'environment' is not engine-bound, so it won't churn.
+  const availableAll = (await (await import('./council.js')).discoverCouncil()).filter(m => m.available).map(m => m.id as CouncilMemberId);
+  const pf = quorumPreflight(a.dimId, availableAll, realBuilders, allBuilders);
+  if (!pf.ok) {
+    return { dimId: a.dimId, builderId: a.memberId, verdict: 'REJECTED', passedByJudges: [], courtRan: false,
+      ceiling: { cause: 'environment' as CeilingCause, detail: pf.detail } };
+  }
   const courtArgs = realBuilders.length > 0
     ? ['--exclude-builders', realBuilders.join(','), '--builder-provenance-token', signBuilderProvenance(a.dimId, realBuilders)]
     : (allBuilders.length ? ['--exclude-builders', allBuilders.join(',')] : ['--builder', a.memberId]);
