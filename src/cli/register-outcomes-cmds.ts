@@ -335,6 +335,25 @@ program
   });
 
 program
+  .command('evaluate <dimId>')
+  .description('Run a dimension\'s CONTINUOUS graded evaluator and report combined_score — the build loop\'s climb signal (the frontier-loop fix for the binary capability_test). Reads the dim\'s `graded_evaluator` command; its final stdout line must be {"combined_score":0..1,"metrics":{...},"artifacts":{...}} (OpenEvolve contract). The score is what the builder climbs; the artifacts are the evidence the court reads.')
+  .option('--json', 'Machine-readable JSON output')
+  .option('--cwd <path>', 'Project directory')
+  .action((dimId: string, opts) => {
+    void (async () => {
+      try {
+        const { runEvaluateCli } = await import('./commands/evaluate.js');
+        const r = await runEvaluateCli({ dimId, json: opts.json as boolean | undefined, cwd: opts.cwd as string | undefined });
+        if (!r.ran) process.exitCode = 1;
+      } catch (err) {
+        const { formatAndLogError } = await import('../core/format-error.js');
+        formatAndLogError(err, 'evaluate');
+        process.exitCode = 1;
+      }
+    })();
+  });
+
+program
   .command('session-record <dimId>')
   .description('Produce real-user-path evidence by running the REAL product on a realistic input. The honest path to 9.0 — captures a genuine product run + observable artifact and emits a real-user-path outcome.')
   .requiredOption('--run <command>', 'The real product command to execute (NOT a test runner), e.g. "node dist/index.js forge --project fixtures/sample"')
