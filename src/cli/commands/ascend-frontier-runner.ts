@@ -178,6 +178,13 @@ export interface CourtParse {
    *  panel could not decide. A lone dissent among abstainers is not a clean capability rejection; the
    *  caller routes this to a re-attemptable non-run, NOT a recorded rejection. (allAbstained ⊆ this.) */
   abstainDominant: boolean;
+  /** Partial-seating OUTAGE (council 2026-06-22, Claude): the court convened but consensus was INSUFFICIENT
+   *  (fewer than 2 LIVE cross-member judges — e.g. a 2-judge quorum that lost one mid-run). NOT a merits
+   *  rejection; the caller routes it to a re-attemptable non-run, exactly like abstainDominant. */
+  insufficient: boolean;
+  /** CH-062: a VALIDATED verdict the CIP gate DOWNGRADED to a ceiling (the court ran, the integrity backstop
+   *  caught stub/zero-outcome evidence) — a durable REJECTED, NEVER a parse error or build failure. */
+  cipDowngraded: boolean;
 }
 
 /**
@@ -193,13 +200,23 @@ export interface CourtParse {
  * claiming VALIDATED is incoherent (e.g. --write failed after printing) — fail CLOSED there only.
  */
 export function parseCourtOutput(res: { ok: boolean; stdout: string }): CourtParse {
-  const fail = (parseError: boolean): CourtParse => ({ verdict: 'REJECTED', passedByJudges: [], parseError, allAbstained: false, allUnavailable: false, abstainDominant: false });
+  const fail = (parseError: boolean): CourtParse => ({ verdict: 'REJECTED', passedByJudges: [], parseError, allAbstained: false, allUnavailable: false, abstainDominant: false, insufficient: false, cipDowngraded: false });
   const brace = res.stdout.indexOf('{');
   if (brace === -1) return fail(true);
   try {
-    const j = JSON.parse(res.stdout.slice(brace)) as { result?: { verdict?: string; judges?: { verdict: string; judgeId: string; unavailable?: boolean }[] } };
+    const j = JSON.parse(res.stdout.slice(brace)) as {
+      validatedWritten?: boolean; ceilingWritten?: boolean;
+      result?: { verdict?: string; judges?: { verdict: string; judgeId: string; unavailable?: boolean }[]; vote?: { crossMember?: number; summary?: string } };
+    };
     if (typeof j?.result?.verdict !== 'string') return fail(true);
     const verdict = j.result.verdict === 'VALIDATED' ? 'VALIDATED' : 'REJECTED';
+    // CH-062 (council 2026-06-22, Codex): a VALIDATED verdict the CIP gate DOWNGRADED (validatedWritten=false +
+    // ceilingWritten=true; the CLI legitimately exits 1) is a real INTEGRITY rejection — the court ran and the
+    // structural backstop caught stub/zero-outcome evidence. Book it REJECTED+courtRan, NOT a parse error/build
+    // failure (which would churn). Checked BEFORE the !ok+VALIDATED incoherence guard, since this case exits 1.
+    if (verdict === 'VALIDATED' && j.validatedWritten === false && j.ceilingWritten === true) {
+      return { verdict: 'REJECTED', passedByJudges: [], parseError: false, allAbstained: false, allUnavailable: false, abstainDominant: false, insufficient: false, cipDowngraded: true };
+    }
     if (!res.ok && verdict === 'VALIDATED') return fail(true);
     const judges = j.result.judges ?? [];
     const passedByJudges = judges.filter(x => x.verdict === 'PASS').map(x => x.judgeId);
@@ -216,7 +233,15 @@ export function parseCourtOutput(res: { ok: boolean; stdout: string }): CourtPar
     // re-attemptable non-run instead of booking a single dissent as a clean court rejection.
     const unclearCount = judges.filter(x => x.verdict === 'UNCLEAR').length;
     const abstainDominant = judges.length > 0 && unclearCount * 2 > judges.length;
-    return { verdict, passedByJudges, parseError: false, allAbstained, allUnavailable, abstainDominant };
+    // Partial-seating INSUFFICIENT (council 2026-06-22, Claude): a 2-judge quorum that loses ONE judge mid-run
+    // yields consensus INSUFFICIENT (crossMember<2). The per-judge counts above MISS it (1 UNCLEAR of 2 is not
+    // abstain-dominant), so without this the orchestrator books "couldn't convene 2 LIVE judges" as a MERITS
+    // reject — re-poisoning the verdict→builder loop CH-019/CH-020 fixed for the all-abstain case. Read the
+    // consensus signal directly and route it to a re-attemptable non-run.
+    const vote = j.result.vote;
+    const insufficient = (typeof vote?.crossMember === 'number' && vote.crossMember < 2)
+      || /insufficient/i.test(vote?.summary ?? '');
+    return { verdict, passedByJudges, parseError: false, allAbstained, allUnavailable, abstainDominant, insufficient, cipDowngraded: false };
   } catch {
     return fail(true);
   }

@@ -290,7 +290,10 @@ export async function defaultPushTo9(
     // rejection — treat it like an unreadable court (courtRan stays false → re-attemptable build
     // failure, never a generator-ceiling) and DO NOT persist its reasons as court-feedback (that
     // poisoned the verdict→builder loop with "the judges objected" when they never actually judged).
-    if (!parsed.parseError && !parsed.abstainDominant) {
+    // CH-019/CH-020 + INSUFFICIENT (council 2026-06-22): an abstain-dominant OR partial-seating-INSUFFICIENT
+    // court (a 2-judge quorum that lost a judge mid-run) is "couldn't convene", NOT a merits reject — same
+    // re-attemptable non-run path so a lost judge never books a phantom "the judges objected".
+    if (!parsed.parseError && !parsed.abstainDominant && !parsed.insufficient) {
       courtRan = true;
       // VALIDATED is confirmed against the PERSISTED spec status (the stronger source — the
       // verdict only counts if --write actually landed it on disk).
@@ -392,6 +395,15 @@ export async function makePlanConsultPacket(prompt: string, cwd: string): Promis
 /** CONCURRENT build: freeze each dim's spec, then council --parallel builds them in isolated
  *  worktrees with the cross-member merge court, merging approved work to main. */
 export async function defaultBuildAll(cwd: string, assignments: { memberId: CouncilMemberId; dimId: string }[], members: CouncilMemberId[], slots?: { slotsPerMember?: number; memberSlots?: string }): Promise<void> {
+  // STALE-LEDGER FIX (council 2026-06-22): clear any prior run's SLOT_PROOF_LEDGER so builder-provenance is read
+  // ONLY from this run — a dim whose build fails to record is then correctly unknown (court → safe exclude-all
+  // floor), never mis-attributed to a stale assignment that could seat the real builder as its own judge.
+  try {
+    const dfDir = path.join(cwd, '.danteforge');
+    for (const f of (await fs.readdir(dfDir)).filter(n => /^SLOT_PROOF_LEDGER_round\d+\.json$/.test(n))) {
+      await fs.rm(path.join(dfDir, f)).catch(() => { /* best-effort */ });
+    }
+  } catch { /* no .danteforge yet — nothing to clear */ }
   const dims = assignments.map(a => a.dimId);
   // init BEFORE freeze (same missing-init root cause as the sequential path): freeze throws on a dim
   // with no spec. init is a no-op when a spec already exists. (Parallel promote still runs the court
@@ -423,15 +435,29 @@ export async function buildersOfDimFromLedger(cwd: string, dimId: string): Promi
   let files: string[];
   try { files = (await fs.readdir(dir)).filter(f => /^SLOT_PROOF_LEDGER_round\d+\.json$/.test(f)); }
   catch { return []; }
-  const builders = new Set<CouncilMemberId>();
+  if (files.length === 0) return [];
+  // STALE-LEDGER FIX (council 2026-06-22, Grok+Codex): unioning ledgers across RUNS is unsafe — if THIS build
+  // fails to record a dim but a prior run's ledger names a DIFFERENT builder, that stale entry could exclude the
+  // wrong member and seat the REAL builder to peer-judge its own dim (self-certification). Scope to the SINGLE
+  // most-recent run (by file mtime → runId) and fail CLOSED ([] → exclude-all floor) for any dim not built in
+  // THIS run. defaultBuildAll also clears prior ledgers, so this is belt-and-suspenders.
+  const parsed: Array<{ runId: string | undefined; mtimeMs: number; slots: Array<{ memberId?: string; assignedDims?: string[] }> }> = [];
   for (const f of files) {
     try {
-      const ledger = JSON.parse(await fs.readFile(path.join(dir, f), 'utf8')) as
-        { slots?: Array<{ memberId?: string; assignedDims?: string[] }> };
-      for (const s of ledger.slots ?? []) {
-        if (s.memberId && (s.assignedDims ?? []).includes(dimId)) builders.add(s.memberId as CouncilMemberId);
-      }
+      const p = path.join(dir, f);
+      const [st, raw] = await Promise.all([fs.stat(p), fs.readFile(p, 'utf8')]);
+      const j = JSON.parse(raw) as { runId?: string; slots?: Array<{ memberId?: string; assignedDims?: string[] }> };
+      parsed.push({ runId: j.runId, mtimeMs: st.mtimeMs, slots: j.slots ?? [] });
     } catch { /* skip an unreadable ledger */ }
+  }
+  if (parsed.length === 0) return [];
+  const newestRunId = parsed.reduce((a, b) => (b.mtimeMs > a.mtimeMs ? b : a)).runId;
+  const builders = new Set<CouncilMemberId>();
+  for (const entry of parsed) {
+    if (entry.runId !== newestRunId) continue; // only the current run's ledgers — never a stale assignment
+    for (const s of entry.slots) {
+      if (s.memberId && (s.assignedDims ?? []).includes(dimId)) builders.add(s.memberId as CouncilMemberId);
+    }
   }
   return [...builders];
 }
@@ -542,11 +568,14 @@ export async function defaultPromoteOne(cwd: string, a: { memberId: CouncilMembe
   // CH-019: an all-abstained court (outage) is NOT a court that ran — courtRan:false routes it to the
   // re-attemptable build-failure path instead of fabricating a court rejection toward a permanent ceiling.
   // CH-020: if every judge was structurally unavailable, raise the wording-agnostic structural pause.
+  // INSUFFICIENT (council 2026-06-22, Claude): a partial-seating outage (a 2-judge quorum that lost ONE judge
+  // mid-run) is also "couldn't convene", NOT a merits reject — courtRan:false so it never books a phantom
+  // "the judges objected". cipDowngraded is the opposite: a real INTEGRITY reject that DID run (courtRan stays true).
   if (parsed.allUnavailable) noteStructuralOutage(`structural outage: all ${a.dimId} judges unavailable`);
   return {
     dimId: a.dimId, builderId: a.memberId,
     verdict: parsed.verdict, passedByJudges: parsed.passedByJudges as CouncilMemberId[],
-    courtRan: !parsed.parseError && !parsed.abstainDominant,
+    courtRan: !parsed.parseError && !parsed.abstainDominant && !parsed.insufficient,
     ...(parsed.parseError ? { parseError: true } : {}),
   };
 }

@@ -60,3 +60,48 @@ describe('parseCourtOutput — CH-010 abstain-dominant routing', () => {
     assert.equal(p.abstainDominant, false);
   });
 });
+
+describe('parseCourtOutput — partial-seating INSUFFICIENT + CIP downgrade (council 2026-06-22 verify)', () => {
+  test('INSUFFICIENT consensus (crossMember<2 — a 2-judge quorum lost one mid-run) → insufficient, NOT a merits reject', () => {
+    // 1 PASS + 1 UNCLEAR is EXACTLY 50% → abstainDominant=false (the per-judge counts miss it); the consensus
+    // crossMember<2 signal is what proves "couldn't convene 2 live judges". This is Claude's high-probability hole.
+    const res = { ok: false, stdout: JSON.stringify({ result: {
+      verdict: 'REJECTED',
+      judges: [{ verdict: 'PASS', judgeId: 'codex' }, { verdict: 'UNCLEAR', judgeId: 'grok-build', unavailable: true }],
+      vote: { crossMember: 1, summary: 'INSUFFICIENT: 1 cross-member judge' },
+    } }) };
+    const p = parseCourtOutput(res);
+    assert.equal(p.insufficient, true, 'a lost judge → re-attemptable non-run, never a phantom "the judges objected"');
+    assert.equal(p.abstainDominant, false, 'the per-judge counts MISS it; the consensus signal catches it');
+  });
+
+  test('a genuine 2-judge merits reject (crossMember=2, both voted) is NOT insufficient', () => {
+    const res = { ok: false, stdout: JSON.stringify({ result: {
+      verdict: 'REJECTED',
+      judges: [{ verdict: 'FAIL', judgeId: 'codex' }, { verdict: 'PASS', judgeId: 'grok-build' }],
+      vote: { crossMember: 2, summary: 'FAIL: no consensus' },
+    } }) };
+    assert.equal(parseCourtOutput(res).insufficient, false);
+  });
+
+  test('CIP downgrade (VALIDATED verdict, validatedWritten=false, ceilingWritten=true, exit 1) → REJECTED+cipDowngraded, NOT a parse error', () => {
+    const res = { ok: false, stdout: JSON.stringify({
+      result: { verdict: 'VALIDATED', judges: [{ verdict: 'PASS', judgeId: 'codex' }, { verdict: 'PASS', judgeId: 'grok-build' }], vote: { crossMember: 2 } },
+      validatedWritten: false, ceilingWritten: true,
+    }) };
+    const p = parseCourtOutput(res);
+    assert.equal(p.cipDowngraded, true);
+    assert.equal(p.verdict, 'REJECTED', 'the 9.0 was refused by CIP — a real integrity reject');
+    assert.equal(p.parseError, false, 'NOT a parse error: the court ran and integrity caught it (was misclassified before)');
+  });
+
+  test('a clean VALIDATED (validatedWritten=true, exit 0) is NOT a CIP downgrade', () => {
+    const res = { ok: true, stdout: JSON.stringify({
+      result: { verdict: 'VALIDATED', judges: [{ verdict: 'PASS', judgeId: 'codex' }, { verdict: 'PASS', judgeId: 'grok-build' }], vote: { crossMember: 2 } },
+      validatedWritten: true, ceilingWritten: false,
+    }) };
+    const p = parseCourtOutput(res);
+    assert.equal(p.cipDowngraded, false);
+    assert.equal(p.verdict, 'VALIDATED');
+  });
+});

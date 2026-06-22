@@ -84,6 +84,24 @@ describe('buildersOfDimFromLedger — authoritative provenance from the merge co
     assert.deepEqual(await buildersOfDimFromLedger(dir, 'functionality'), []);
   });
 
+  test('STALE LEDGER: only the NEWEST run names the builder; a stale prior-run entry is ignored (fail closed)', async () => {
+    const dir = path.join(os.tmpdir(), `court-prov-stale-${process.pid}-${randomUUID().slice(0, 8)}`);
+    await fs.mkdir(path.join(dir, '.danteforge'), { recursive: true });
+    const r1 = path.join(dir, '.danteforge', 'SLOT_PROOF_LEDGER_round1.json');
+    const r2 = path.join(dir, '.danteforge', 'SLOT_PROOF_LEDGER_round2.json');
+    // STALE prior run says codex built `functionality`; the CURRENT run built `planning_quality` with claude and
+    // did NOT touch `functionality`. Deterministic mtimes so "newest run" is unambiguous on any filesystem.
+    await fs.writeFile(r1, JSON.stringify({ runId: 'run-OLD', slots: [{ memberId: 'codex', assignedDims: ['functionality'] }] }));
+    await fs.writeFile(r2, JSON.stringify({ runId: 'run-NEW', slots: [{ memberId: 'claude-code', assignedDims: ['planning_quality'] }] }));
+    const base = Date.UTC(2026, 5, 22);
+    await fs.utimes(r1, new Date(base - 10_000), new Date(base - 10_000)); // OLD
+    await fs.utimes(r2, new Date(base), new Date(base));                   // NEW (most recent)
+    try {
+      assert.deepEqual(await buildersOfDimFromLedger(dir, 'planning_quality'), ['claude-code'], 'the current run names the real builder');
+      assert.deepEqual(await buildersOfDimFromLedger(dir, 'functionality'), [], 'a dim only in the STALE run is unknown → fail closed (the court will use the safe floor)');
+    } finally { await fs.rm(dir, { recursive: true, force: true }); }
+  });
+
   test('END-TO-END: ledger builder → signed token → court seats peers (the full orchestrator path)', async () => {
     const dir = await scratchWithLedger({ slots: [{ memberId: 'codex', assignedDims: ['functionality'] }] });
     try {
