@@ -385,9 +385,9 @@ export async function defaultBuildAll(cwd: string, assignments: { memberId: Coun
   for (const d of dims) { await df(cwd, ['frontier-spec', 'init', d, '--write']); await df(cwd, ['frontier-spec', 'freeze', d, '--write']); }
   if (members.length >= 2) {
     // Thread the slot control so each member spins up N sub-agents on ITS dim (M members × N slots =
-    // M*N worktrees). Without this the loop ran 1 agent/member; the operator wants 2–4 each.
-    const slotArgs: string[] = [];
-    if (slots?.slotsPerMember) slotArgs.push('--slots-per-member', String(slots.slotsPerMember));
+    // M*N worktrees). STANDARD fan-out is 4 agents/member (operator standard); --slots-per-member overrides,
+    // --member-slots overrides per member. Without this the loop silently ran 1 agent/member.
+    const slotArgs: string[] = ['--slots-per-member', String(slots?.slotsPerMember ?? 4)];
     if (slots?.memberSlots) slotArgs.push('--member-slots', slots.memberSlots);
     // `council --parallel` REQUIRES a --goal (else it exits 1 before spawning any agent — the parallel build
     // silently failed without this). Each member then builds its OWN focus dim toward that dim's frozen bar.
