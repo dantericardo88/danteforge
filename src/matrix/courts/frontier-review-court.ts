@@ -185,10 +185,16 @@ export async function runFrontierReviewCourt(
     // marked unavailable — distinct from a substantive UNCLEAR. An empty answer is also unavailability.
     const unavailable = v.verdict === 'UNCLEAR' && (raw.trim() === '' || JUDGE_UNAVAILABLE_RE.test(raw));
     judges.push({ judgeId: member, verdict: v.verdict, ceiling, reason: v.reason, unavailable });
-    votes.push({
-      judgeSlotId: `${member}-0`, judgeMemberId: member, builderMemberId: builder,
-      verdict: v.verdict, weight: 1.0, confidence: v.confidence, reason: v.reason, dissentSummary: v.dissentSummary,
-    });
+    // CH-020 (council 2026-06-22): an UNAVAILABLE judge (dead adapter / empty answer, e.g. an unauthed
+    // gemini-cli) is NOT a seated opinion — it must not sit in the consensus denominator. Otherwise a single
+    // live judge can never reach the 2-PASS quorum and a pure seating OUTAGE masquerades as a quality REJECT.
+    // Only judges that actually answered vote; <2 of those → computeConsensus returns the honest INSUFFICIENT.
+    if (!unavailable) {
+      votes.push({
+        judgeSlotId: `${member}-0`, judgeMemberId: member, builderMemberId: builder,
+        verdict: v.verdict, weight: 1.0, confidence: v.confidence, reason: v.reason, dissentSummary: v.dissentSummary,
+      });
+    }
   }
 
   // A 9.0 needs at least TWO genuine independent opinions — floor minJudges at 2 (court-audit #6). This

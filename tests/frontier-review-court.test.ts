@@ -49,6 +49,24 @@ describe('frontier-review-court — the automated 9.0 semantic gate', () => {
     assert.equal(r.vote.pass, 2);
   });
 
+  test('a DEAD judge (empty answer) is excluded from the quorum — 2 live PASS + 1 dead → VALIDATED', async () => {
+    const r = await runFrontierReviewCourt(input(), {
+      members: ['codex', 'claude-code', 'gemini-cli'],
+      // gemini-cli returns an empty answer (unauthed adapter) — it must NOT sit in the denominator.
+      runJudge: judgeReturning({ codex: 'VERDICT: PASS\nREASON: real', 'claude-code': 'VERDICT: PASS\nREASON: genuine', 'gemini-cli': '' }),
+    });
+    assert.equal(r.verdict, 'VALIDATED', 'two live PASS reach the quorum; a dead judge does not drag it down');
+  });
+
+  test('a seating OUTAGE (1 live + 1 dead judge) is INSUFFICIENT, not a quality REJECT', async () => {
+    const r = await runFrontierReviewCourt(input(), {
+      members: ['codex', 'gemini-cli'],
+      runJudge: judgeReturning({ codex: 'VERDICT: PASS\nREASON: real', 'gemini-cli': '' }),
+    });
+    assert.notEqual(r.verdict, 'VALIDATED', 'one functional judge can never meet the 2-judge quorum');
+    assert.match(r.vote.summary, /insufficient/i);
+  });
+
   test('one PASS + one FAIL → REJECTED (no consensus; builder cannot self-certify)', async () => {
     const r = await runFrontierReviewCourt(input(), {
       members: MEMBERS,
