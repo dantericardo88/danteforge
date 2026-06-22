@@ -14,7 +14,7 @@
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import { execFile } from 'node:child_process';
-import { randomUUID } from 'node:crypto';
+import { randomUUID, createHash } from 'node:crypto';
 import { loadMatrix, saveMatrix, type CompeteMatrix } from '../../core/compete-matrix.js';
 import { logger } from '../../core/logger.js';
 import { isTestSuiteCommand } from '../../matrix/engines/outcome-quality.js';
@@ -24,6 +24,9 @@ import { REAL_RUN_MIN_MS } from '../../core/frontier-spec.js';
  *  Canonical value lives in core/frontier-spec.ts (REAL_RUN_MIN_MS) so the spec completer's
  *  viability check and this gate can never drift; re-exported here for existing importers. */
 export const MIN_REAL_RUN_MS = REAL_RUN_MIN_MS;
+/** An artifact below this many bytes is treated as trivial (e.g. an empty `touch`) — it cannot prove
+ *  production behavior, so it fails the real-user-path guard (council 2026-06-22). */
+export const MIN_ARTIFACT_BYTES = 16;
 
 export interface SessionRecordOptions {
   cwd?: string;
@@ -119,6 +122,18 @@ export async function runSessionRecord(options: SessionRecordOptions): Promise<S
     const reason = `No observable artifact at "${options.artifact}" was produced/modified by the run. 9.0 requires an observable output, not just an exit code.`;
     return finalize({ accepted: false, reason, durationMs, wrote: false }, options, reason);
   }
+  // Guard 5 (council 2026-06-22): the artifact must have NON-TRIVIAL CONTENT — a `touch`/empty file passes the
+  // mtime check (Guard 4) but proves nothing. Reject a trivial artifact and BIND its content hash into the
+  // outcome so a later swap of the file is detectable (the largest deterministic false-9 surface).
+  let artifactSha = '';
+  try {
+    const st = await fs.stat(options.artifact);
+    if (st.size < MIN_ARTIFACT_BYTES) {
+      const reason = `Artifact "${options.artifact}" is ${st.size} bytes (< ${MIN_ARTIFACT_BYTES}) — a trivial/empty output (e.g. an mtime touch) does not prove production behavior.`;
+      return finalize({ accepted: false, reason, durationMs, wrote: false }, options, reason);
+    }
+    artifactSha = createHash('sha256').update(await fs.readFile(options.artifact)).digest('hex');
+  } catch { /* Guard 4 already confirmed existence; an unreadable artifact stays non-binding */ }
 
   // Genuine real-user-path exercise — emit the outcome.
   const outcome: Record<string, unknown> = {
@@ -135,6 +150,7 @@ export async function runSessionRecord(options: SessionRecordOptions): Promise<S
     required_callsite: options.callsite,
     min_duration_ms: MIN_REAL_RUN_MS,
     input_source: { type: 'real-user-path', description: options.description ?? `runs ${options.run} on a realistic input` },
+    artifact_sha256: artifactSha, // content hash bound at run time — a later swap of the artifact is detectable
   };
 
   let wrote = false;

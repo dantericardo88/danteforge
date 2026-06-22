@@ -77,3 +77,35 @@ describe('session-record — CH-026 routes the real write through saveMatrix', (
     }
   });
 });
+
+describe('session-record — Guard 5: artifact must have non-trivial content (council false-9 fix)', () => {
+  test('a trivial (empty) artifact is REJECTED even with a fresh mtime', async () => {
+    const dir = await scratch();
+    try {
+      const artifactPath = path.join(dir, 'out.md');
+      await fs.writeFile(artifactPath, ''); // an empty `touch` — passes Guard 4's mtime, proves nothing
+      const r = await runSessionRecord({
+        cwd: dir, dimId: 'forge', ...genuineRun, artifact: artifactPath, write: false,
+        _loadMatrix: async () => makeMatrix(),
+      });
+      assert.equal(r.accepted, false, 'an empty/touch artifact must not mint a 9.0 outcome');
+      assert.match(r.reason ?? '', /trivial|bytes/i);
+    } finally { await fs.rm(dir, { recursive: true, force: true }); }
+  });
+
+  test('a non-trivial artifact is accepted and its sha256 is bound into the outcome', async () => {
+    const dir = await scratch();
+    try {
+      const artifactPath = path.join(dir, 'out.md');
+      await fs.writeFile(artifactPath, '# Real plan\n- step 1\n- step 2\n'); // > 16 bytes of real content
+      const r = await runSessionRecord({
+        cwd: dir, dimId: 'forge', ...genuineRun, artifact: artifactPath, write: false,
+        _loadMatrix: async () => makeMatrix(),
+      });
+      assert.equal(r.accepted, true);
+      const sha = (r.outcome as { artifact_sha256?: string } | undefined)?.artifact_sha256;
+      assert.equal(typeof sha, 'string');
+      assert.equal(sha!.length, 64, 'a real run-bound sha256 is recorded');
+    } finally { await fs.rm(dir, { recursive: true, force: true }); }
+  });
+});
