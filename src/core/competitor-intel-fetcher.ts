@@ -194,7 +194,9 @@ export async function fetchHackerNewsMentions(toolName: string, timeoutMs = 15_0
       : promise);
 
     const signals: WeaknessSignal[] = [];
-    for (const hit of data.hits) {
+    // CH-048: guard a non-standard response (Algolia returning no `hits`) — for..of undefined throws "not
+    // iterable"; harvest honestly yields [] instead. Mirrors the issuesToWeaknessSignals Array guard.
+    for (const hit of data?.hits ?? []) {
       const text = hit.comment_text ?? '';
       if (!HN_NEGATIVE.test(text)) continue;
 

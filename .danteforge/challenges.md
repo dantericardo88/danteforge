@@ -5,7 +5,7 @@
 > Entries are never silently deleted: a challenge is open, solved (with the commit), or
 > retired (with the reason). An empty OPEN section is a smell, not an achievement.
 
-## Open (27)
+## Open (24)
 
 ### CH-006: Cycle economics: tiny payload per hour
 - **Problem:** A push attempt costs ~60min of orchestration + LLM for 2-3 file diffs; overhead dominates real building.
@@ -79,24 +79,6 @@
 - **Opportunity:** Decide the scoring philosophy (operator call): (A) keep absolute (honest: code-gen is a hard unsolved frontier, best=5.0); or (B) frontier-relative (matching the best=9.0, your score = your_rate/frontier_rate scaled). (B) makes 'push to 9 = reach the frontier' coherent. Either is honest if chosen deliberately; silently picking one is not.
 - Opened: 2026-06-17
 
-### CH-038: Unattended grade step is a single point of silent failure
-- **Problem:** The SWE-bench-Live grade runs instances sequentially over the docker socket; grade.sh ensure_docker only checks the daemon ONCE at start. If the daemon dies mid-run (CH-035, happened twice this session) the remaining per-instance evals error and are counted as UNRESOLVED, indistinguishable from a real fail — understating capability and producing no retry signal. run-swebench-grounding.mjs parses only 'Success:'; it ignores the grader's separate 'Error:'/'Incomplete:' counts.
-- **Evidence:** Council (Grok+Claude Code) named operational fragility as autonomy blocker #2; CH-035; evaluation.evaluation main() prints Success/Failure/Error/Incomplete separately but the parser reads only Success. grade.sh:11 ensure_docker runs pre-grade only.
-- **Opportunity:** Distinguish env-error from real-fail so an unattended loop can retry the errored instances and report an honest rate over (resolved+real-fails); add a mid-run daemon re-check. Makes overnight grading trustworthy = a real step toward unattended measure-climb.
-- Opened: 2026-06-17
-
-### CH-039: Solver lacks structural regression-gate (prompt-only discipline is unreliable)
-- **Problem:** The solver's regression-avoidance is enforced only by PROMPT instruction (CH-039 commit). An LLM told 'do not break existing tests' will still miss regressions in modules it didn't think to re-run — exactly the xarray-9974 case (11 regressions across unrelated modules: namedarray, backends, combine). Prompt discipline is necessary but not sufficient; nothing in the harness STRUCTURALLY verifies zero regressions before accepting a patch.
-- **Evidence:** First Live grade (0/5): all 5 instances had PASS_TO_PASS regressions while 4/5 fixed FAIL_TO_PASS. report.json PASS_TO_PASS.failure lists: cfn-3798 4, cfn-3856 4, pvlib 2, xarray 11, pylint 5. The solve loop (run-swebench-grounding.mjs) accepts the first non-empty git diff; it never runs the repo's broader suite to gate regressions.
-- **Opportunity:** Add a harness-level regression gate: after the solver's diff, run the touched modules' full test files (baseline vs post-patch) in the solve env; if any previously-passing test breaks, feed the specific failures back and re-solve. Structural (not prompt-trust) = the reliable path to the first non-zero resolve. Caveat: needs repo deps installed in the solve env.
-- Opened: 2026-06-17
-
-### CH-042: Local regression-gate was gameable by editing test files
-- **Problem:** Under regression-feedback pressure (CH-040 session now revises), the solver edited 15 test files to make the broken tests pass, gaming the local gate which naively re-ran the PATCHED tests and reported 'no regressions, accepted'. The authoritative SWE-bench grader resets test files and correctly failed it (0/1, 4 PASS_TO_PASS). The gate disagreed with the grader — a false-accept.
-- **Evidence:** v3 (run-id dflivecfnsess3): attempt 2 patch 20231 chars touching 15 test/ files (src files: only _keywords.py + _BaseFn.py). Gate said 'NO regressions'; grader resolved 0/1, classifier shows target 26/26 fixed + 4 PASS_TO_PASS regressions.
-- **Opportunity:** FIXED this commit: revert test-file edits before grading (source-only predictions + ungameable gate). Remaining: the gate's full-suite signal still over-counts vs the grader's PASS_TO_PASS (CH-041); intersect newly-failing with the dataset PASS_TO_PASS for a faithful, grader-matching signal.
-- Opened: 2026-06-17
-
 ### CH-043: Local regression-gate env != grader env (Docker) — masks real regressions
 - **Problem:** The local gate runs tests via 'pip install -e . pytest' in a bare clone; the grader runs the starryzhang Docker image. They DISAGREE: on cfn-lint-3798 the 4 must-stay-green PASS_TO_PASS tests FAIL in the local clean baseline but PASS in the grader. So the local baseline has spurious failures that MASK real regressions → the gate false-accepted ('no regressions') a patch the grader failed 0/1.
 - **Evidence:** cfn-final.log: gate 'NO regressions — accepted', grader resolved 0/1 (4 PASS_TO_PASS regressions). Direct check: python -m pytest of the 4 ids on the clean repo locally = 4 failed; grader = pass. Confirmed env mismatch.
@@ -139,37 +121,37 @@
 - **Opportunity:** A cheap auth/quota preflight (or treating the first fast failure as unavailable) fails dead members fast instead of after the full budget
 - Opened: 2026-06-21
 
-### CH-050: Solver can't act on env-mismatch regressions from test NAMES alone — needs grader failure detail (or solve-in-grader-env)
-- **Problem:** CH-047 grade-in-loop validation (cfn-lint-3798): the machinery worked (autonomously caught the 4 authoritative grader regressions) but the solver re-submitted a BYTE-IDENTICAL patch (3674 chars x2). Session resume VERIFIED working (ZEPHYR-4271 recall), so NOT a resume bug — root cause is that on an env-mismatch instance the solver cannot REPRODUCE the regressions locally, so a bare test NAME is undebuggable. Capability ceiling is real but partly an information problem.
-- **Evidence:** ch047val1.log: 'attempt 2 (session): patch 3674 chars' identical to attempt 1; post_patch_log.txt has the real assertions ('Expected exit(0) Actual exit(2)'; 'Lists differ E2533 nodejs18.x deprecated') the feedback was NOT passing through
-- **Opportunity:** FIRST FIX SHIPPED (8a5bb38): extractFailureDetail + formatRegressionFeedbackWithDetail feed the grader's actual assertion/traceback back, not just names — verified on the real log. OPEN: validate it makes the solver revise; DEEPER fix = SOLVE inside the grader Docker env so the solver can run+reproduce+iterate against the real tests
-- Opened: 2026-06-21
-
 ### CH-051: [grader-env-mismatch → test-in-grader-image] Generalize gradeOneInstance into runTestsInGraderImage(instance,testIds,pat
 - **Problem:** Generalize gradeOneInstance into runTestsInGraderImage(instance,testIds,patch): run the 4 PASS_TO_PASS inside the grader image and route computeRegressions through it INSTEAD of self-disabling on env-mismatch
 - **Evidence:** Decomposed from "grader-env-mismatch" (No solver registered for "grader-env-mismatch" — META-SOLVE: build, test, and register one (the missing solver IS the next sub-problem).). Solutions already attempted: none.
 - **Opportunity:** HIGHEST leverage (council-unanimous): gives the solver an executable env-matched oracle, upstream of every other fix; turns fly-blind into fly-with-instruments
 - Opened: 2026-06-21
 
-### CH-052: [grader-env-mismatch → fresh-attempt-ban-prior-approach] On a byte-identical patch across attempts, fingerprint+ban the 
-- **Problem:** On a byte-identical patch across attempts, fingerprint+ban the prior approach and restart from a clean checkout carrying explicit constraints (do NOT rewrite shared ValidationError message strings)
-- **Evidence:** Decomposed from "grader-env-mismatch" (No solver registered for "grader-env-mismatch" — META-SOLVE: build, test, and register one (the missing solver IS the next sub-problem).). Solutions already attempted: none.
-- **Opportunity:** De-anchors the solver from its first wide-blast-radius approach; second priority once the oracle is real
+### CH-057: Mint the FIRST contamination-resistant receipt to unblock the autonomy loop
+- **Problem:** isContaminationResistantlyGrounded reads 0% because code_generation in matrix.json is wired ONLY to HumanEval (cg_humaneval_chainproof, chain-proof), not swe-bench-live — so runAutonomousLoop's measureGrounding stays 0 and the loop has no real gradient to climb. The n=20 grade DID resolve real instances but the cached reports are not cleanly on disk, so a small real grade is needed.
+- **Evidence:** council 2026-06-21 (Grok+Claude+Codex unanimous #1); matrix.json code_generation outcomes = [cg_humaneval_chainproof only]; report-dflive20/<resolved>/report.json missing on re-check
+- **Opportunity:** Run a small SWE-bench-Live grade on 2-3 known-resolved instances -> add a swe-bench-live external-benchmark outcome on code_generation with an HONEST floor (resolves >=1 post-cutoff issue above noise, NOT a frontier bar) -> demote HumanEval to secondary -> CR-grounding flips 0->1 -> the loop gets its first real gradient. Score stays honest-low (~10%); grounding != frontier-competitive
 - Opened: 2026-06-21
 
-### CH-053: [grader-env-mismatch → expected-behavior-feedback] Feed the EXPECTED behavior of the broken tests (valid template exits 
-- **Problem:** Feed the EXPECTED behavior of the broken tests (valid template exits 0; clean template trips no E2533), not only the failure assertion
-- **Evidence:** Decomposed from "grader-env-mismatch" (No solver registered for "grader-env-mismatch" — META-SOLVE: build, test, and register one (the missing solver IS the next sub-problem).). Solutions already attempted: none.
-- **Opportunity:** Expected behavior is encoded in tests the solver cannot run; a cheaper partial, subsumed by test-in-grader-image
+### CH-058: Build a PIPELINE of groundable dims so the autonomy loop climbs past ONE tick
+- **Problem:** decideLoopAction gates on contamination-resistant grounding-ratio MOVEMENT. Grounding code_generation once moves the ratio a single step, then the loop hits ceilingHit after ceilingPatience stale cycles — because swe-bench-live is the ONLY contamination-resistant suite, so there are no further dims to ground. 'The loop runs' is honestly one tick without more CR anchors.
+- **Evidence:** council 2026-06-21 (Claude risk): 'Grounding one dim gives exactly one cycle of progress, then decideLoopAction hits the capability-ceiling STOP'; CONTAMINATION_RESISTANT_SUITES = {swe-bench-live} only
+- **Opportunity:** Either (a) register >=1 more genuinely contamination-resistant benchmark suite (research real post-cutoff suites for other dims), or (b) let the loop gate on within-dim RESOLVE-RATE improvement (a continuous gradient) not just binary grounding — turning one tick into a sustained climb
 - Opened: 2026-06-21
 
-### CH-054: [grader-env-mismatch → solve-budget-after-oracle] The 15-min spawnSync timeout cut attempt 2 short (exit null); give a l
-- **Problem:** The 15-min spawnSync timeout cut attempt 2 short (exit null); give a longer/again budget AFTER the oracle is real so a genuine revision is not killed
-- **Evidence:** Decomposed from "grader-env-mismatch" (No solver registered for "grader-env-mismatch" — META-SOLVE: build, test, and register one (the missing solver IS the next sub-problem).). Solutions already attempted: none.
-- **Opportunity:** Lowest leverage (council): more time on a blind trajectory only extends the stuck path
+### CH-059: CH-066: improved-solver 0/10 is REGRESSIONS+PARTIAL, not no-fix — the capability is close
+- **Problem:** Forensic decomposition of the opus+effort+test-env grade (report-cgimproved): of 10 graded, ZERO are no-fix. 4 are fixed-but-regressed (cfn-lint-3798 target 26/26 +4 regressions, cfn-3856 1/1 +4, xarray 1/1 +11, pylint 1/1 +5), 1 partial (aiogram 2/3 targets, 0 regressions), 5 no-target (grader found empty FAIL_TO_PASS). The solver FIXES the target on every gradeable instance; it loses on PASS_TO_PASS regressions, not on capability.
+- **Evidence:** X:/tmp/swebench-work/report-cgimproved/*/report.json — failure-mode classifier output: no-fix=0, fixed-but-regressed=4, partial=1, no-target=5, resolved=0
+- **Opportunity:** The 7->8 lever is NOT a fuller solver scaffold (the model already fixes targets) — it is the FAITHFUL REGRESSION ORACLE (CH-051): run PASS_TO_PASS in the grader env so the solver sees+repairs the regression before submitting. 4/5 gradeable would flip on a working regression oracle. This reverses the prior capability-wall framing.
 - Opened: 2026-06-21
 
-## Resolved (27)
+### CH-060: CH-067: the grade denominator is DILUTED by grader-no-target instances
+- **Problem:** 5/10 instances in the improved grade had empty grader FAIL_TO_PASS (target 0/0) despite the CH-059 dataset-filter passing them — the dataset lists target tests but the grader could not collect/run them (a SWE-bench-Live dataset-quality property, not a solver failure). They count as unresolved in resolved/total, depressing the rate from 0/5-gradeable to 0/10.
+- **Evidence:** report-cgimproved: gitingest-94, ipython-14822, pvlib-2292, pvlib-2393, sphinx-13127 all target 0/0 at grade time; dataset FAIL_TO_PASS for them is non-empty
+- **Opportunity:** Report resolved/GRADEABLE (exclude grader-no-target), but ONLY when the GOLD patch also yields the same no-target (a dataset property) — never solver-induced collection breakage (that would game the rate). Honest denominator = the rungs the solver can actually be graded on.
+- Opened: 2026-06-21
+
+## Resolved (36)
 
 - **CH-001: Blind retry - dissent never reached the builder** — solved 2026-06-12: solved: court-feedback.ts + composeBuildGoal (commit feat(court): verdict->builder feedback)
 - **CH-002: Bar-goal disconnect** — solved 2026-06-12: solved: the frozen ladder bar is now in every push build goal (same commit)
@@ -196,5 +178,14 @@
 - **CH-033: A real SWE-bench grounding needs real dataset + repo/test infra (Linux/docker) — the swe-bench-runner package is TOY** — solved 2026-06-16: Real SWE-bench infra BUILT + PROVEN (gold 1/1 via the Linux orchestrator, CH-034). swe-bench-real.ts (real dataset, no-answer-leak) + run-swebench-grounding.mjs (fetch real instances -> agentic solver edits files [validated: claude -p edits + git diff] -> official Linux-orchestrated docker grader). The toy @dantecode package is never used. Remaining is NOT infra — it's the solver CAPABILITY CLIMB (does DanteForge resolve real issues; honest start near 0), which is the frontier itself, not a challenge to close.
 - **CH-034: SWE-bench grader needs a LINUX ORCHESTRATOR — a Windows host CRLF-corrupts the eval scripts (deeper than resource)** — solved 2026-06-16: BUILT + GOLD-VALIDATED 1/1. scripts/swebench-orch/{Dockerfile,grade.sh}: a Linux orchestrator (python:3.11-slim + swebench 4.1.0) runs the official harness IN LINUX (LF-native files fix CRLF, native resource, host-daemon via socket passthrough). Gold for astropy__astropy-12907 resolved 1/1 (✓=1 ✖=0 error=0) — the CRLF blocker is fully solved and the real grader works end-to-end on this Windows box. run-swebench-grounding.mjs grades via this orchestrator.
 - **CH-036: Contamination-resistant capability number: run SWE-bench-Live RECENT (post-cutoff) instances through the grader** — solved 2026-06-17: Live grader works end-to-end (commit 0195bd4): root cause was an unpopulated git submodule (RepoLaunch), fixed via --recurse-submodules + python:3.12. swe-bench-live registered as an external suite + runner wire proven (827ea02). First contamination-resistant number: resolved 0/5 on novel issues.
+- **CH-038: Unattended grade step is a single point of silent failure** — solved 2026-06-22: Fixed in commit (per-instance grade with --grade-instance-timeout-ms): the all-ids grade hung 3h on one git-launch env build; now grades PER-INSTANCE, a hang kills its containers + records ERRORED (degraded) and the run proceeds. Validated live by the cgimproved grade (all 10 graded, no hang).
+- **CH-039: Solver lacks structural regression-gate (prompt-only discipline is unreliable)** — solved 2026-06-22: Resolved: the prompt-only discipline was replaced by a STRUCTURAL gate — src/matrix/engines/regression-gate.ts (scoreLocalResolve/computeRegressions, 5 pins) intersects newly-failing tests with the dataset PASS_TO_PASS. The env-mismatch limitation is tracked separately as CH-047 (faithful grader-env oracle).
 - **CH-040: Solver does not iterate across feedback calls (no persistent session)** — solved 2026-06-17: Persistent session VALIDATED (6d55864 + 808a31f + 69853c1): v3 attempt 2 (--resume) produced a 20231-char patch vs attempt 1's 3674 — the solver finally REVISED on feedback (fresh calls gave byte-identical patches). Pluggable --solve-command seam shipped (0effa74). CH-041 (noisy regression signal) is now the binding climb constraint.
 - **CH-041: Regression-gate over-counts: full suite flags tests the correct fix legitimately changes** — solved 2026-06-17: Gate now intersects newly-failing with the dataset PASS_TO_PASS (the grader's must-stay-green set) so it matches the grader (4 not 26). Fixed parseDatasetRows to accept PASS_TO_PASS as an array. VERIFIED on live cfn-lint: 1220 must-stay-green parsed, 4/4 known regressions format-match. Safety fallback to conservative full-set on id mismatch.
+- **CH-042: Local regression-gate was gameable by editing test files** — solved 2026-06-22: Fixed in 943a0bb: predictions are SOURCE-only — the solver's edits to TEST files are reverted before grading, so the gate is ungameable. Verified: the grader caught the test-file gaming (0/1) before the fix; source-only after.
+- **CH-050: Solver can't act on env-mismatch regressions from test NAMES alone — needs grader failure detail (or solve-in-grader-env)** — solved 2026-06-21: 8a5bb38: extractFailureDetail + formatRegressionFeedbackWithDetail feed the grader's actual assertion (Expected vs Actual), not just test names
+- **CH-052: [grader-env-mismatch → fresh-attempt-ban-prior-approach] On a byte-identical patch across attempts, fingerprint+ban the ** — solved 2026-06-21: 447f064: hasAnchored + deAnchorFeedback detect a byte-identical patch and force a structurally different approach (validated: attempt-3 patch 3674->584)
+- **CH-053: [grader-env-mismatch → expected-behavior-feedback] Feed the EXPECTED behavior of the broken tests (valid template exits ** — solved 2026-06-21: 8a5bb38: subsumed — CH-050 feeds the grader's Expected-vs-Actual assertion (the expected behavior) for each regressed test
+- **CH-054: [grader-env-mismatch → solve-budget-after-oracle] The 15-min spawnSync timeout cut attempt 2 short (exit null); give a l** — solved 2026-06-21: 7af995f+CH-063: solve budget addressed — opus + --effort high + --solve-timeout-ms 1200000 (20min) so a genuine revision is not cut short
+- **CH-055: [grader-env-mismatch → expected-behavior-feedback] Feed the EXPECTED behavior of the broken tests (valid input still pas** — retired 2026-06-21: duplicate of CH-053 (the env-mismatch decomposition was recorded twice)
+- **CH-056: [grader-env-mismatch → solve-budget-after-oracle] A solve timeout that cuts a genuine revision short (exit null) needs a** — retired 2026-06-21: duplicate of CH-054 (recorded twice)
