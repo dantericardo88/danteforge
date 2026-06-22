@@ -59,8 +59,10 @@ async function measureContaminationResistantGrounding(cwd: string): Promise<numb
     for (const o of dim.outcomes ?? []) {
       if (!isContaminationResistantSuite((o.input_source as { suite?: unknown })?.suite)) continue;
       const entry = evidence.get(makeEvidenceKey(dim.id, o.id));
-      const rate = entry ? parseRateFromReceipt(entry.stdoutTail) : null;
-      if (rate !== null) { rates.push(rate); break; }
+      // Prefer the first-class passRate field (the benchmark→score wire); fall back to the stdoutTail regex
+      // for legacy receipts written before passRate was persisted.
+      const rate = entry ? (entry.passRate ?? parseRateFromReceipt(entry.stdoutTail)) : null;
+      if (rate !== null && rate !== undefined) { rates.push(rate); break; }
     }
   }
   return rates.length === 0 ? 0 : rates.reduce((a, b) => a + b, 0) / rates.length;

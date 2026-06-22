@@ -253,6 +253,14 @@ export interface OutcomeEvidenceEntry {
   gitSha: string | null;
   passed: boolean;
   exitCode: number;
+  /**
+   * For external-benchmark outcomes: the parsed 0..1 pass rate (e.g. the SWE-bench-Live resolve rate).
+   * Persisted as a FIRST-CLASS field so scoring + grounding read it structurally instead of regex-parsing
+   * stdoutTail (fragile). This is the council-named "benchmark receipt → score" wire: it lets a passing
+   * contamination-resistant receipt be SCORED by its rate (normalizeBenchmarkScore), not merely thresholded
+   * against min_pass_rate. Absent/null for non-benchmark outcomes.
+   */
+  passRate?: number | null;
   durationMs: number;
   /** Last ~100 lines of stdout, for forensics. */
   stdoutTail: string;

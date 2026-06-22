@@ -107,5 +107,8 @@ export async function runExternalBenchmarkOutcome(
     if (!passed) failureReason = `exit ${exitCode}; no parseable pass rate (the command must enforce min_pass_rate ${outcome.min_pass_rate} itself)`;
   }
 
-  return { ...base, passed, exitCode, durationMs, stdoutTail: tail(r.stdout), stderrTail: tail(r.stderr), failureReason };
+  // Persist the parsed rate as a first-class field (the benchmark→score wire): scoring/grounding read
+  // entry.passRate structurally rather than regex-parsing stdoutTail. null when the command printed no
+  // recognizable rate (then `passed` falls back to the exit code, above).
+  return { ...base, passed, exitCode, durationMs, passRate: rate, stdoutTail: tail(r.stdout), stderrTail: tail(r.stderr), failureReason };
 }

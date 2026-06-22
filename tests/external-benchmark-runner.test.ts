@@ -56,6 +56,15 @@ describe('runExternalBenchmarkOutcome', () => {
     assert.match(e.stdoutTail, /pass rate: 90%/);
   });
 
+  it('persists the parsed pass rate as a first-class field (the benchmark→score wire)', async () => {
+    const e = await runExternalBenchmarkOutcome(outcome({ min_pass_rate: 0.05 }), 'd', '/x', deps(spawnReturning(0, '{"pass_rate": 0.12}')));
+    assert.equal(e.passed, true);
+    assert.equal(e.passRate, 0.12, 'rate is stored structurally, not only in stdoutTail');
+    // null when the command prints no recognizable rate (then `passed` falls back to the exit code)
+    const noRate = await runExternalBenchmarkOutcome(outcome(), 'd', '/x', deps(spawnReturning(0, 'done')));
+    assert.equal(noRate.passRate, null);
+  });
+
   // CH-036 wire: swe-bench-live (contamination-resistant) is a registered suite, and the runner consumes
   // the LIVE grader's own output shapes — `resolved N/5` and `{"pass_rate":..}` — to mint an HONEST receipt.
   it('accepts swe-bench-live and mints an HONEST FAILED receipt from the real 0/5 Live output', async () => {
