@@ -40,6 +40,27 @@ describe('frontier-review-court — the automated 9.0 semantic gate', () => {
     assert.match(p, /prepared\/toy fixture/);
   });
 
+  test('a DEMAND-grounded bar → the ENGINEERING-frontier court (demand satisfaction), not competitor parity', () => {
+    const p = buildFrontierJudgePrompt(input({
+      frontierSpec: {
+        version: 1, target_score: 9.0, status: 'frozen',
+        leader_target: { competitor: 'harvested user demand', score: 5, observed_capability: 'users repeatedly ask for X (12 GitHub issues, 80 reactions)', evidence_ref: 'harvest-demand:github.com/org/repo/issues/42' },
+        real_user_path: { required_callsite: 'src/x.ts', run_command: 'node dist/index.js x', observable_artifacts: [{ kind: 'json', path: 'out/x.json' }] },
+        required_receipts: { min_t5_plus_outcomes: 3, min_distinct_sessions: 2, input_source: 'real-user-path' },
+      },
+    }));
+    assert.match(p, /SATISFY/i);
+    assert.match(p, /ATTRIBUTION/);
+    assert.match(p, /ENGINEERING frontier/);
+    assert.doesNotMatch(p, /matches\/beats the named competitor/);
+  });
+
+  test('a competitor-grounded bar (no harvest-demand:) stays the COMPETITIVE-frontier court (9.5+)', () => {
+    const p = buildFrontierJudgePrompt(input());
+    assert.match(p, /matches or beating|matches\/beats/i);
+    assert.doesNotMatch(p, /SATISFIES the harvested user demand/);
+  });
+
   test('two cross-member PASS → VALIDATED', async () => {
     const r = await runFrontierReviewCourt(input(), {
       members: MEMBERS,
