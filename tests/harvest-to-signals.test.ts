@@ -103,8 +103,13 @@ test('end-to-end: collected harvest seeds a bar that clears the posture gate aft
   assert.ok(!before.ok);
   assert.ok(before.errors.some(e => /awaits ratification/.test(e)));
 
-  // After a human ratifies the subjective signals, the gate clears.
-  const ratified = signals.map(s => (s.kind === 'benchmark' ? s : { ...s, ratified_by: 'operator' }));
-  const after = checkHarvestProvenance(spec, ratified, { enabled: true });
+  // The gate clears once each subjective bar is cleared by its OWN posture (autonomy flip, council 2026-06-23):
+  // CAPABILITY bars still need a human ratify; DEMAND bars clear AUTONOMOUSLY on a signed verified_live re-fetch.
+  const cleared = signals.map(s => {
+    if (s.kind === 'benchmark') return s;
+    if (s.kind === 'demand') return { ...s, verified_live: true };
+    return { ...s, ratified_by: 'operator' };
+  });
+  const after = checkHarvestProvenance(spec, cleared, { enabled: true });
   assert.ok(after.ok, after.errors.join('; '));
 });
